@@ -64,6 +64,13 @@ class TestURLRouting:
         )
         assert url == "/api/games/aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee/map/"
 
+    def test_game_map_history_url(self) -> None:
+        url = reverse(
+            "game:game-map-history",
+            kwargs={"game_id": "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee"},
+        )
+        assert url == "/api/games/aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee/map/history/"
+
     def test_actions_available_url(self) -> None:
         url = reverse(
             "game:actions-available",
@@ -98,6 +105,27 @@ class TestURLRouting:
     def test_game_list_resolves_to_correct_view(self) -> None:
         match = resolve("/api/games/")
         assert match.view_name == "game:game-list"
+
+    # Wave 2 W2.5b: survival duel chart history (owner ruling 3) — served off
+    # the generic node-inspector URL shape (class has no dedicated inspector
+    # route, unlike org/territory).
+    def test_inspector_node_history_url(self) -> None:
+        url = reverse(
+            "game:inspector-node-history",
+            kwargs={"game_id": "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee", "node_id": "C004"},
+        )
+        assert url == "/api/games/aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee/node/C004/history/"
+
+    # Audit Wave 4 straggler (task #76): edge-weight history sparkline.
+    # ">" is a reserved URL character — django's reverse() percent-encodes it
+    # (matches how any "source->target" edge_id round-trips through reverse();
+    # the pre-existing inspector-edge route has the identical quirk).
+    def test_inspector_edge_history_url(self) -> None:
+        url = reverse(
+            "game:inspector-edge-history",
+            kwargs={"game_id": "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee", "edge_id": "C001->C004"},
+        )
+        assert url == "/api/games/aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee/edge/C001-%3EC004/history/"
 
     # Spec 103: Trade surfaces URL routing
     def test_game_trade_flows_url(self) -> None:
@@ -143,6 +171,22 @@ class TestAuthEnforcement:
         from game.api import game_detail
 
         response = game_detail(request, game_id="some-uuid")
+        assert response.status_code == 403
+
+    def test_inspector_node_history_unauthenticated_returns_403(self) -> None:
+        factory = RequestFactory()
+        request = factory.get("/api/games/some-uuid/node/C004/history/")
+        from game.api import inspector_node_history
+
+        response = inspector_node_history(request, game_id="some-uuid", node_id="C004")
+        assert response.status_code == 403
+
+    def test_inspector_edge_history_unauthenticated_returns_403(self) -> None:
+        factory = RequestFactory()
+        request = factory.get("/api/games/some-uuid/edge/C001->C004/history/")
+        from game.api import inspector_edge_history
+
+        response = inspector_edge_history(request, game_id="some-uuid", edge_id="C001->C004")
         assert response.status_code == 403
 
 

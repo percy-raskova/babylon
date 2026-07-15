@@ -1,4 +1,5 @@
 import type { VerbConfig, VerbTarget } from "./types";
+import { parseFlatCost } from "./cost";
 
 interface MoveTarget {
   id?: string;
@@ -37,4 +38,7 @@ export const moveConfig: VerbConfig = {
     target_id: targetId ?? "",
     params: { mode: String(params.mode ?? "expand") },
   }),
+  // Flat {action_points, cadre_labor, sympathizer_labor, material,
+  // can_afford, ...} envelope (engine_bridge.py:3751-3759).
+  parseCost: parseFlatCost,
 };

@@ -1,7 +1,7 @@
 /**
  * Red-first tests for `fetchNarration` — the store-free client for the
- * (currently contract-only) narration endpoint. See `client.ts` for the
- * documented request/response contract.
+ * narration endpoint (real since program-20 B5: `web/game/api.py::game_narration`).
+ * See `client.ts` for the documented request/response contract.
  */
 
 import { describe, it, expect } from "vitest";

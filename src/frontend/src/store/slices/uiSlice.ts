@@ -16,11 +16,13 @@
 import type { StateCreator } from "zustand";
 import type { RootState } from "../types";
 
-/** The three full-screen takeover surfaces (spec-110 B5), or none open. */
-export type TakeoverKind = "wire" | "chronicle" | "dialectic";
+/** The full-screen takeover surfaces (spec-110 B5; `network` added AW4-R2;
+ *  `doctrine` added Epoch 3 Wave 6 Phase 0), or none open. */
+export type TakeoverKind = "wire" | "chronicle" | "dialectic" | "network" | "doctrine";
 
-/** `BottomDrawer`'s three states (architecture §1.4): closed, or one of its two contents. */
-export type BottomDrawerState = "none" | "trends" | "events";
+/** `BottomDrawer`'s six states (architecture §1.4): closed, or one of its five contents. */
+export type BottomDrawerState =
+  "none" | "trends" | "events" | "economy" | "state-apparatus" | "edges";
 
 /**
  * Chrome panel open/collapsed state (architecture §1.4). One field per
@@ -31,6 +33,17 @@ export interface ChromeState {
   outlinerOpen: boolean;
   eventTrayOpen: boolean;
   objectivesOpen: boolean;
+  /** The Bifurcation gauge HUD widget (Wave 3 R2a) — same collapse/expand
+   *  affordance as `objectivesOpen`, no keyboard hotkey (none of this
+   *  family has one; `useSpeedShortcut`'s number keys are unrelated). */
+  bifurcationOpen: boolean;
+  /** The CRISIS TIMELINE HUD widget (business-cycle phase strip) — same
+   *  collapse/expand affordance as `bifurcationOpen`, no keyboard hotkey. */
+  crisisTimelineOpen: boolean;
+  /** The RADAR LOOP tick-scrubber HUD widget (Program 17 Wave 3,
+   *  Frontend-W3R3) — same collapse/expand affordance as `bifurcationOpen`,
+   *  no keyboard hotkey. */
+  radarLoopOpen: boolean;
   bottomDrawer: BottomDrawerState;
   composerOpen: boolean;
 }
@@ -46,6 +59,9 @@ export interface UiSlice {
     toggleOutliner: () => void;
     toggleEventTray: () => void;
     toggleObjectives: () => void;
+    toggleBifurcation: () => void;
+    toggleCrisisTimeline: () => void;
+    toggleRadarLoop: () => void;
     toggleComposer: () => void;
     setBottomDrawer: (state: BottomDrawerState) => void;
     setFocusedPanel: (id: string | null) => void;
@@ -60,6 +76,9 @@ export const createUiSlice: StateCreator<RootState, [], [], UiSlice> = (set) => 
       outlinerOpen: true,
       eventTrayOpen: true,
       objectivesOpen: true,
+      bifurcationOpen: true,
+      crisisTimelineOpen: true,
+      radarLoopOpen: true,
       bottomDrawer: "trends",
       composerOpen: true,
     },
@@ -77,6 +96,21 @@ export const createUiSlice: StateCreator<RootState, [], [], UiSlice> = (set) => 
     toggleObjectives: () =>
       set((s) => ({
         ui: { ...s.ui, chrome: { ...s.ui.chrome, objectivesOpen: !s.ui.chrome.objectivesOpen } },
+      })),
+    toggleBifurcation: () =>
+      set((s) => ({
+        ui: { ...s.ui, chrome: { ...s.ui.chrome, bifurcationOpen: !s.ui.chrome.bifurcationOpen } },
+      })),
+    toggleCrisisTimeline: () =>
+      set((s) => ({
+        ui: {
+          ...s.ui,
+          chrome: { ...s.ui.chrome, crisisTimelineOpen: !s.ui.chrome.crisisTimelineOpen },
+        },
+      })),
+    toggleRadarLoop: () =>
+      set((s) => ({
+        ui: { ...s.ui, chrome: { ...s.ui.chrome, radarLoopOpen: !s.ui.chrome.radarLoopOpen } },
       })),
     toggleComposer: () =>
       set((s) => ({

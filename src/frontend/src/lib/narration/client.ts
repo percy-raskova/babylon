@@ -3,13 +3,13 @@
  *
  * ``GET /api/games/{gameId}/narration/?since_tick={sinceTick}``
  *
- * This endpoint DOES NOT EXIST in the backend yet (2026-07-11). Program 16
- * Lane N defines this contract so the frontend has typed slots to mount AI
- * narration into now, and the backend implementer (the eventual
- * `web/game/narrative_service.py` wiring, or a new view) has a spec to
- * build to. Until it exists, every call 404s and this client reports that
- * as the honest `"offline"` state (Constitution III.11 — absent value
- * renders as "no data"/"offline", never a fabricated empty-but-ready UI).
+ * Program 16 Lane N defined this contract before the backend existed;
+ * Program 20 Track B (task B5) implemented the real view
+ * (`web/game/api.py::game_narration`, reading `NarrationRecord` — task B4).
+ * Routes through the typed endpoint registry (`@/api/endpoints`'s
+ * `narration` entry) rather than a literal URL. A 404 can still occur for
+ * other reasons (unknown/foreign game id) and degrades the same as any
+ * other error — see below.
  *
  * :Request: ``since_tick`` (optional, integer) — only return beats at or
  *     after this tick. Omitted on the first fetch; a caller that wants to
@@ -26,9 +26,7 @@
  *     `status` here is the domain state (see `types/narration.ts`), NOT
  *     the envelope's own `ok`/`error` discriminant — the two are distinct
  *     fields at different nesting levels.
- * :Response (404): the endpoint isn't implemented yet. Treated identically
- *     to a live endpoint reporting `"offline"`.
- * :Response (other errors / network failure): also degrades to
+ * :Response (404) / (other errors / network failure): also degrades to
  *     `{status: "offline", beats: []}` — this client never throws and
  *     never fabricates `"ready"` from a failed request. A future caller
  *     that needs to distinguish "narrator off" from "request failed"
@@ -41,6 +39,7 @@
  */
 
 import { get as apiGet } from "@/api/client";
+import { endpoints } from "@/api/endpoints";
 import type { NarrationBeat, NarrationState } from "@/types/narration";
 
 export interface NarrationFetchResult {
@@ -55,7 +54,9 @@ export async function fetchNarration(
   sinceTick?: number,
 ): Promise<NarrationFetchResult> {
   const query = sinceTick !== undefined ? `?since_tick=${sinceTick}` : "";
-  const res = await apiGet<NarrationFetchResult>(`/api/games/${gameId}/narration/${query}`);
+  const res = await apiGet<NarrationFetchResult>(
+    `${endpoints.narration.path({ id: gameId })}${query}`,
+  );
 
   if (res.status === "error") {
     return OFFLINE;

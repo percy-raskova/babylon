@@ -29,6 +29,14 @@ export interface GameSummary {
 export type GameStatus = "active" | "paused" | "completed" | "abandoned";
 
 /**
+ * Crisis lifecycle phase (mirrors `CrisisPhase` StrEnum,
+ * `domain/economics/tick/types.py`). The business-cycle progression a county
+ * moves through: NORMAL → ONSET → EARLY → DEEP, then RECOVERY once the profit
+ * rate holds above threshold. "In crisis" = onset/early/deep.
+ */
+export type CrisisPhase = "normal" | "onset" | "early" | "deep" | "recovery";
+
+/**
  * Full game state snapshot (Spec 052 §5).
  *
  * Note what is absent: no ``entities`` array, no top-level ``economy``.
@@ -125,6 +133,68 @@ export interface TerritoryState {
    * this territory (spec-109 A2). Never a fabricated default.
    */
   habitability?: number | null;
+  /**
+   * Wave 3 R2a discovery: `_serialize_territory` (`web/game/engine_bridge.py`)
+   * has been emitting this on every `/state/` snapshot territory row since
+   * Program 17 Item 1a's crisis-detector family, read off the graph-only
+   * `tick_bifurcation_score` attr (`_territory_graph_attr`,
+   * `crisis/bifurcation.py`'s per-county sign convention: −1 revolutionary /
+   * +1 fascist, solidarity-*density*-based — NOT the dormant Π₀ topological
+   * invariant, see `bifurcation/analysis.py`). This interface never declared
+   * it, so no frontend consumer could type-check against it until now
+   * (Constitution III.11: `null` before the first year boundary this
+   * session produces usable data, never a fabricated 0).
+   */
+  bifurcation_score?: number | null;
+  /**
+   * Crisis / business-cycle family (Feature 018 crisis-devaluation, surfaced
+   * via Program 17 Item 1a). `_serialize_territory` emits all four on every
+   * `/state/` snapshot territory row, read off the graph-only
+   * `tick_crisis_phase`/`tick_crisis_duration`/`tick_wage_compression`/
+   * `tick_capital_stock` attrs the crisis system writes
+   * (`domain/economics/tick/types.py::CrisisState`; registered
+   * `SeamScope.TERRITORY`, `sentinels/seam/registry.py:433-484`). This
+   * interface never declared them, so no frontend consumer could type-check
+   * against them until the CrisisTimeline widget. Honest `null`/absent before
+   * the first year-boundary this session produces usable data — the crisis
+   * detector runs on the year boundary, never a fabricated default
+   * (Constitution III.11).
+   *
+   * `crisis_phase` is the 5-value lifecycle `CrisisPhase`; `crisis_duration`
+   * counts periods in crisis (ONSET–DEEP); `wage_compression` is cumulative
+   * in [0,1]; `capital_stock` is the county's absolute K (extensive — sum,
+   * don't average, to watch aggregate devaluation).
+   */
+  crisis_phase?: CrisisPhase | null;
+  crisis_duration?: number | null;
+  wage_compression?: number | null;
+  capital_stock?: number | null;
+  /**
+   * Wave 5 receptivity pair (Epistemic Horizon Phase 1 honest display):
+   * `_serialize_territory` emits all three on every `/state/` snapshot
+   * territory row, read off the graph-only `mass_receptivity`/
+   * `intel_confidence`/`vision_state` attrs `EpistemicHorizonSystem`
+   * writes and `_carry_epistemic_horizon` re-injects post-round-trip.
+   * `intel_confidence` deliberately has NO map lens (uniformly 0.1 today,
+   * C_p=0 everywhere — see the program report's Phase-1 findings); it is
+   * a drill-down/tooltip field only. All three are honest `null` for a
+   * tenant-less territory or before the graph has ever been stepped
+   * (Constitution III.11 — never a fabricated 0/state).
+   */
+  mass_receptivity?: number | null;
+  intel_confidence?: number | null;
+  vision_state?: string | null;
+  /**
+   * Feature 021 lens pair (System #5 `ReserveArmySystem` / System #10
+   * `DispossessionEventSystem`): `_serialize_territory` emits both on every
+   * `/state/` snapshot territory row, read off the graph-only
+   * `wage_pressure`/`dispossession_intensity` attrs those systems write.
+   * Honest `null`/absent whenever the writing system found no reserve-army
+   * pressure / no dispossession activity for that territory this tick
+   * (Constitution III.11 — never a fabricated 0).
+   */
+  wage_pressure?: number | null;
+  dispossession_intensity?: number | null;
 }
 
 /** Ternary consciousness vector — always sums to 1.0 (Spec 052 §6). */
@@ -332,6 +402,87 @@ export interface JournalPayload {
  *  latest resolved tick (the Tick Resolution screen's alert feed). */
 export interface AlertsPayload {
   alerts: GameEvent[];
+}
+
+/**
+ * One per-tick point of a `social_class` node's survival-calculus history
+ * (Wave 2 W2.5a/W2.5b, `reports/wave2-implementation-map.md` owner ruling
+ * 3). Sourced from the real `class_snapshot` table (mirrors the
+ * `org_snapshot`/`territory_snapshot` per-tick pattern, spec 111 C2), never
+ * client-side accumulation. Honest-null (Constitution III.11): a tick the
+ * engine has not populated stays `null` rather than a fabricated value.
+ */
+export interface ClassHistoryPoint {
+  tick: number;
+  p_acquiescence: number | null;
+  p_revolution: number | null;
+}
+
+/**
+ * `GET /api/games/:id/node/:entityId/history/` response body for a
+ * `social_class` node (Wave 2 W2.5a/W2.5b) — mirrors `get_org_history`'s
+ * `{org_id, history}` shape (`web/game/engine_bridge.py`). The URL path
+ * param is `node_id` (reusing the generic `/node/:node_id/` inspector
+ * route), but the envelope key follows `get_org_history`'s convention of
+ * naming it after the snapshot table's own PK column — `class_snapshot`'s
+ * is `class_id` (`postgres_schema.py`'s `CLASS_SNAPSHOT_DDL`,
+ * `query_class_snapshot_history`'s `class_id` parameter). Oldest-tick-first;
+ * an empty `history` is an honest "no ticks recorded yet", never a
+ * fabricated flat line.
+ *
+ * `ruptures` is the server-filtered UPRISING/`revolutionary_pressure`
+ * event list for THIS node (`query_node_uprising_events`) — preferred over
+ * client-filtering `/journal/`, whose shared 200-event cap can silently
+ * age an old rupture out of the window in a long game.
+ */
+export interface ClassHistoryPayload {
+  class_id: string;
+  history: ClassHistoryPoint[];
+  ruptures: GameEvent[];
+}
+
+/**
+ * A rupture marker on the Survival Duel chart (Wave 2 W2.5a, owner ruling
+ * 3): one `UPRISING` event whose `data.trigger === "revolutionary_pressure"`
+ * for this class's node id — the only honest P(S|R) > P(S|A) crossing
+ * signal (struggling classes only, agitation gated; `struggle.py`'s
+ * `uprising_condition`). Sourced from `ClassHistoryPayload.ruptures` (the
+ * uncapped, server-filtered list) with the same predicate re-applied
+ * client-side as defense-in-depth — never computed from the raw
+ * probability crossing, which is not evented for non-struggling classes.
+ */
+export interface RuptureMarker {
+  tick: number;
+  eventId: string;
+}
+
+/**
+ * One per-tick `edge_snapshot` reading (audit Wave 4 straggler, task #76 —
+ * the edge-weight history sparkline). `weight` is `value_flow` — the one
+ * promoted numeric column every edge type carries (SOLIDARITY/TRIBUTE/
+ * WAGES/PRESENCE/TENANCY/ADJACENCY/EXPLOITATION alike); `solidarity` is a
+ * real column-level `null` (never fabricated) for every non-SOLIDARITY
+ * edge type. Honest-null throughout (Constitution III.11): a tick the
+ * engine has not populated stays `null` rather than a fabricated value.
+ */
+export interface EdgeHistoryPoint {
+  tick: number;
+  weight: number | null;
+  solidarity: number | null;
+  tension: number | null;
+}
+
+/**
+ * `GET /api/games/:id/edge/:entityId/history/` response body (audit Wave 4
+ * straggler, task #76) — mirrors `get_org_history`'s `{org_id, history}`
+ * shape (`web/game/engine_bridge.py`). `edge_id` is the same
+ * `"{source}->{target}"` scheme `get_inspector_edge` established. Oldest-
+ * tick-first; an empty `history` is an honest "no ticks recorded yet",
+ * never a fabricated flat line.
+ */
+export interface EdgeHistoryPayload {
+  edge_id: string;
+  history: EdgeHistoryPoint[];
 }
 
 /** Spec 093 US5: GET /api/games/{id}/economy/?territory_id= — real
@@ -558,11 +709,32 @@ export interface ActionPreviewResult {
 // Multi-Scale Spatial Rendering Types
 // ---------------------------------------------------------------------------
 
-/** Org-network graph payload from /api/games/{id}/orgs/network/. */
+/**
+ * Org-network graph payload from /api/games/{id}/orgs/network/ — see
+ * `EngineBridge.get_org_network` (`web/game/engine_bridge.py`) for the
+ * authoritative shape. `centrality`/`percolation_ratio` (AW4-R2, verified
+ * against the bridge field-for-field) are bridge-derived analytics over
+ * THIS response's own node/edge set, additive to the original two-field
+ * contract.
+ */
 export interface OrgNetworkPayload {
   tick: number;
   nodes: OrgNetworkNode[];
   edges: OrgNetworkEdge[];
+  /** Per-node degree/betweenness/closeness, keyed by node id. `betweenness`/
+   *  `closeness` are honestly omitted (never 0.0-fabricated) when their
+   *  guard condition (>1 node, and connected for closeness) isn't met. */
+  centrality: Record<string, OrgNetworkCentrality>;
+  /** Real SOLIDARITY-network giant-component ratio (L_max / N), or `null`
+   *  when undefined (zero social_class nodes) — never a fabricated 0.0. */
+  percolation_ratio: number | null;
+}
+
+/** One node's entry in `OrgNetworkPayload.centrality`. */
+export interface OrgNetworkCentrality {
+  degree: number;
+  betweenness?: number;
+  closeness?: number;
 }
 
 /** Node in the org-network graph. */
@@ -579,6 +751,17 @@ export interface OrgNetworkEdge {
   mode: string;
   attributes: Record<string, unknown>;
 }
+
+/** Empty-state default (Constitution III.11) — an honestly empty network,
+ *  never fabricated nodes/edges. Mirrors `EMPTY_CONTRADICTION`/
+ *  `EMPTY_WIRE_FEED`'s convention. */
+export const EMPTY_ORG_NETWORK: OrgNetworkPayload = {
+  tick: 0,
+  nodes: [],
+  edges: [],
+  centrality: {},
+  percolation_ratio: null,
+};
 
 /** Hypergraph community payload from /api/games/{id}/hypergraph/communities/. */
 export interface HypergraphPayload {
@@ -616,6 +799,69 @@ export interface InfrastructureEdge {
   conductance: number;
   type: string;
 }
+
+// ---------------------------------------------------------------------------
+// Doctrine Tree canvas (read-only) — Epoch 3 Wave 6 Phase 0, the 5th
+// takeover. GET /api/games/{id}/doctrine-tree/, see
+// `EngineBridge.get_doctrine_tree` (`web/game/engine_bridge.py`) for the
+// authoritative shape.
+// ---------------------------------------------------------------------------
+
+/** The 3 MVP doctrine tags — see `babylon.models.enums.doctrine.DoctrineTag`. */
+export type DoctrineTagKey = "class_analysis" | "mass_link" | "militancy";
+
+/** The 3 MVP strategic trunks — see `babylon.models.enums.doctrine.DoctrineTrunk`. */
+export type DoctrineTrunkKey = "reformist" | "scientific" | "insurrectionist";
+
+/**
+ * One node in the Doctrine Tree — field-for-field mirror of
+ * `babylon.models.entities.doctrine.DoctrineNode.model_dump(mode="json")`.
+ * `trunk` is `null` for the root and the shared tier-1 node
+ * (`trade_unionism`), which precede the branch split.
+ */
+export interface DoctrineNode {
+  id: string;
+  name: string;
+  tier: number;
+  parents: string[];
+  description: string;
+  tag_deltas: Partial<Record<DoctrineTagKey, number>>;
+  cost_tl: number;
+  trunk: DoctrineTrunkKey | null;
+  unlocks: string[];
+  warning: string | null;
+  is_trap: boolean;
+  trap_condition: string | null;
+  narrative: string | null;
+  is_goal: boolean;
+}
+
+/**
+ * GET /api/games/{id}/doctrine-tree/ payload. The tree itself is static
+ * game-data — identical for every session, since no `DoctrineSystem`/
+ * acquisition wiring exists yet (gated on six pending owner rulings, out of
+ * scope for this read-only canvas). `acquired_ids` is honestly `[]` until
+ * that lands (Constitution III.11 — never a fabricated partial-progress
+ * list); `tags` are the MVP corpus's declared starting values, the true
+ * current tag state while nothing has been acquired.
+ */
+export interface DoctrineTreePayload {
+  root_id: string;
+  nodes: DoctrineNode[];
+  acquired_ids: string[];
+  tags: Record<DoctrineTagKey, number>;
+}
+
+/** Empty-state default (Constitution III.11) — mirrors `EMPTY_ORG_NETWORK`'s
+ *  convention for a panel with no data fetched yet. The real endpoint is
+ *  never actually empty (always the 11-node MVP tree); this is a loading
+ *  placeholder only. */
+export const EMPTY_DOCTRINE_TREE: DoctrineTreePayload = {
+  root_id: "",
+  nodes: [],
+  acquired_ids: [],
+  tags: { class_analysis: 0, mass_link: 0, militancy: 0 },
+};
 
 // ---------------------------------------------------------------------------
 // Spec 110 B3 — cockpit dashboard payload shapes (spec-109 A4 endpoints)
@@ -670,6 +916,18 @@ export interface TimeseriesPayload {
 }
 
 /**
+ * County-level flow-accrual snapshot (owner item 30, point 5). See
+ * `EngineBridge._county_flow_snapshot`: every field is `null` when no
+ * territory has ever carried boundary state this session (Constitution
+ * III.11 — an empty domain, not a fabricated zero).
+ */
+export interface CountyFlowSnapshot {
+  year: number | null;
+  phi_accrued_this_year: number | null;
+  wage_accrued_this_year: number | null;
+}
+
+/**
  * GET /api/games/{id}/economy/ (no `territory_id`) — graph-wide economy
  * dashboard. See `EngineBridge.get_economy_dashboard`. Distinct from
  * `EconomyPayload`, which is the per-territory shape returned when
@@ -689,6 +947,8 @@ export interface EconomyDashboardPayload {
   tribute_flow_total: number;
   /** Wealth summed by `SocialRole`, keyed by role name. */
   wealth_by_class_role: Record<string, number>;
+  /** Hex-level static-economy broadcast (spec-109 A7), surfaced when reachable. */
+  county_flow: CountyFlowSnapshot;
 }
 
 /**
@@ -708,6 +968,84 @@ export interface CommunityEntry {
 /** GET /api/games/{id}/communities/ — communities left-panel dashboard. */
 export interface CommunitiesDashboardPayload {
   communities: CommunityEntry[];
+}
+
+/**
+ * GET /api/games/{id}/state-apparatus/ — the State Apparatus intelligence
+ * screen (spec-111 C2). See `EngineBridge.get_state_apparatus_dashboard` /
+ * `_build_state_apparatus_dashboard`.
+ *
+ * `organizations` reuses `OrgState` (the same shape the Outliner/OrgNetwork
+ * already render) filtered server-side to `org_type === "state_apparatus"` —
+ * wayne_county seeds the Detroit Police Department (`"ORG002"`), so this is
+ * non-empty (`org_count >= 1`) for that scenario. `recent_actions` reuses
+ * `GameEvent` (the same shape the journal/alerts feeds render), pre-filtered
+ * to STATE_REPRESSION/STATE_SURVEILLANCE/STATE_ACTION_EXECUTED rows.
+ *
+ * `state_finances` is honestly `{}` today — no scenario seeds
+ * `WorldState.state_finances` yet (Constitution III.11: an empty map is the
+ * true state, never a fabricated placeholder). Typed as a loose record
+ * (per-state `StateFinance.model_dump()` JSON) rather than a fully-modeled
+ * interface since there is no real data yet to shape one against.
+ */
+export interface StateApparatusDashboard {
+  tick: number;
+  organizations: OrgState[];
+  org_count: number;
+  total_repression_budget: number;
+  total_heat: number;
+  state_finances: Record<string, unknown>;
+  recent_actions: GameEvent[];
+}
+
+/**
+ * One live graph edge projected onto the edges-dashboard row shape — see
+ * `_edge_row` in `web/game/engine_bridge.py`. `edge_type` is the mechanical
+ * `EdgeType` (exploitation/wages/solidarity/tenancy/tribute/…), lowercased;
+ * `edge_mode` is the dialectical EdgeMode classification, also lowercased,
+ * and `null` until `EdgeTransitionSystem` has run at least one tick — a
+ * fresh tick-0 graph legitimately has no edge_mode yet (Constitution
+ * III.11). Both are typed as loose `string`s rather than the uppercase
+ * `EdgeMode` union above: the backend lowercases whatever `EdgeType`/
+ * `EdgeMode` StrEnum value is present, so reusing that union verbatim
+ * would be dishonest casing.
+ */
+export interface EdgeRow {
+  source_id: string;
+  target_id: string;
+  edge_type: string;
+  edge_mode: string | null;
+  value_flow: number;
+  tension: number;
+}
+
+/**
+ * GET /api/games/{id}/edges/ — the edges/relations left-panel dashboard
+ * (spec-111 C2). See `EngineBridge.get_edges_dashboard` /
+ * `_build_edges_dashboard`. Aggregates every live graph edge: counts by
+ * mechanical `edge_type` and by dialectical `edge_mode` (the latter
+ * honestly `{}` until `EdgeTransitionSystem` runs a tick), the top-10
+ * edges by absolute `value_flow` and by `tension` (both deterministically
+ * tie-broken by `(source_id, target_id)`), and SOLIDARITY-edge strength
+ * summary stats. The "where is the class war hottest" ranked/textual
+ * companion to the `field_flow` spatial lens.
+ *
+ * `solidarity_strength_stats`'s `avg`/`min`/`max` are `null` when `count`
+ * is 0 (no SOLIDARITY edges seeded this session) — never a fabricated 0.
+ */
+export interface EdgesDashboardPayload {
+  tick: number;
+  total_edges: number;
+  counts_by_type: Record<string, number>;
+  counts_by_mode: Record<string, number>;
+  top_by_value_flow: EdgeRow[];
+  top_by_tension: EdgeRow[];
+  solidarity_strength_stats: {
+    count: number;
+    avg: number | null;
+    min: number | null;
+    max: number | null;
+  };
 }
 
 /** Aggregated admin-level feature from map snapshot. */
@@ -753,4 +1091,175 @@ export interface AdminFeatureProperties {
    */
   dominant_class?: string | null;
   solidarity_index?: number | null;
+  /**
+   * Wave 2 Round 2 (`reports/wave2-implementation-map.md`) additions —
+   * `_mean_territory_attr`-style pop-weighted mean aggregates:
+   * `throughput_position` (ruling 1, real circulation-intensity Pi, no
+   * longer the frozen `1.0` constant) and `agitation`
+   * (`_agitation_index_by_territory`, DECLARED_CONDITIONAL — legitimately
+   * `0.0` absent a crisis tick). Optional/nullable for the same reason as
+   * `dominant_class`/`solidarity_index` above.
+   */
+  throughput_position?: number | null;
+  agitation?: number | null;
+  /**
+   * Wave 2 Round 2's aggregated `territory_type` — the group's
+   * population-weighted-mode real `TerritoryType` enum value (ruling 4).
+   * Categorical, like `dominant_class`.
+   */
+  territory_type?: string | null;
+  /**
+   * Audit Wave 4 straggler (task #76) — `_aggregate_hex_features`'s
+   * population-weighted mean of `centrality` (a territory's own
+   * degree-centrality within the org-network topology,
+   * `_centrality_by_territory`). Optional/nullable for the same
+   * partial-coverage reason as `throughput_position`/`agitation`.
+   */
+  centrality?: number | null;
+  /**
+   * Wave 5 receptivity pair — `_aggregate_hex_features`'s
+   * population-weighted mean of `mass_receptivity` (M_r) and
+   * population-weighted-mode `vision_state` (desert/mud/water, same
+   * deterministic tie-break as `territory_type`). Optional/nullable for
+   * the same partial-coverage reason as the entries above.
+   */
+  mass_receptivity?: number | null;
+  vision_state?: string | null;
+  /**
+   * Feature 021 lens pair — `_aggregate_hex_features`'s population-weighted
+   * mean of `wage_pressure` (the Reserve Army's bounded-sigmoid
+   * wage-discipline coefficient) and `dispossession_intensity`
+   * (`DispossessionIntensityCalculator`'s composite intensity).
+   * Optional/nullable for the same partial-coverage reason as
+   * `mass_receptivity` above — both are presence-conditional, not merely
+   * value-conditional (the writing system skips a territory entirely
+   * absent reserve-army pressure / dispossession activity this tick).
+   */
+  wage_pressure?: number | null;
+  dispossession_intensity?: number | null;
+}
+
+// ---------------------------------------------------------------------------
+// Program 19/20 Wave 3 Round 1/2a — the field_state endpoint (System-19/20
+// contradiction-field stack). See `EngineBridge.get_field_state`,
+// `_build_field_state_nodes`/`_build_field_state_edges`
+// (`web/game/engine_bridge.py`).
+// ---------------------------------------------------------------------------
+
+/**
+ * One `social_class` node's field-stack entry (`_build_field_state_nodes`).
+ * Every key beyond `id`/`name` is optional and independently present —
+ * Constitution III.11: a node carrying only SOME of the field stack
+ * contributes only the keys it actually has, never a fabricated zero/empty
+ * dict for the rest.
+ *
+ * `fields`/`laplacian`/`df_dt` are keyed by contradiction-field name (e.g.
+ * `"exploitation"`, `"atomization"` — see the Wave-3 implementation map's
+ * "verified-reality census": production computes exactly these two fields
+ * today, not the fuller five the original brief claimed).
+ */
+export interface FieldStateNode {
+  id: string;
+  name: string;
+  /** ContradictionFieldSystem (@19) per-field values. */
+  fields?: Record<string, number>;
+  /** FieldDerivativeSystem (@20) per-field Laplacian. */
+  laplacian?: Record<string, number>;
+  /** FieldDerivativeSystem (@20) per-field temporal derivative. */
+  df_dt?: Record<string, number>;
+  /** FascistFactionSystem's per-class routing signal (`reactionary.py`). */
+  fascist_alignment?: number;
+}
+
+/**
+ * One per-field gradient on a class<->class edge (`_build_field_state_edges`),
+ * territory-anchored via the bridge's existing TENANCY resolution.
+ * `source_territory`/`target_territory` are `null` (key present, never
+ * omitted) when that endpoint class has no resolvable TENANCY territory —
+ * the same keep-key-use-null convention `_serialize_territory`'s
+ * `dominant_class`/`solidarity_index` already use for an unresolvable
+ * per-territory aggregate.
+ */
+export interface FieldStateEdge {
+  source: string;
+  target: string;
+  source_territory: string | null;
+  target_territory: string | null;
+  field: string;
+  gradient: number;
+}
+
+/**
+ * The System-18 fixed-point regime classification stashed on the graph's
+ * `dialectical_regime` attr (`contradiction.py`'s `DIALECTICAL_REGIME_ATTR`,
+ * `classify_regime`). `opposition` names which `OppositionState.key` the
+ * regime/rate describe (`target.key` at the write site — verified against
+ * `contradiction.py:361`, not the stale `"principal"` name a nearby comment
+ * claims).
+ */
+export interface DialecticalRegime {
+  regime: "reproduction" | "crisis" | "sublation";
+  opposition: string;
+  rate: number;
+}
+
+/**
+ * `GET /api/games/{id}/field_state/` — the System-19/20 contradiction-field
+ * stack for the Field screen (Program 19/20, Wave 3 Round 1/2a). See
+ * `EngineBridge.get_field_state`'s docstring for the full trace.
+ *
+ * **Known altitude gap (R1b, not yet fixed):** the web bridge steps via the
+ * `WorldState` round-trip facade, so `contradiction_fields`/`field_derivatives`
+ * are excluded from `SocialClass` reconstruction and `principal_field`/
+ * `dialectical_regime` are outside `to_graph()`'s graph-attr whitelist. On a
+ * real running game today, `nodes`/`edges` are almost always `[]` and
+ * `principal_field`/`dialectical_regime` almost always `null` — only
+ * `fascist_alignment` (a real, defaulted `SocialClass` field) reliably
+ * survives the round-trip. Consume this payload accordingly: an honest
+ * empty is the COMMON case, not a bug, until R1b lands a carry-forward
+ * channel for the rest of the field stack.
+ */
+export interface FieldStatePayload {
+  tick: number;
+  nodes: FieldStateNode[];
+  edges: FieldStateEdge[];
+  principal_field: string | null;
+  dialectical_regime: DialecticalRegime | null;
+}
+
+/**
+ * One tick's per-county values for a replayable map metric — one entry of
+ * `MapHistoryPayload.frames` (Program 17 Wave 3, Backend-W3R3's
+ * `GET /api/games/{id}/map/history/`, `EngineBridge.get_map_history`).
+ * Keyed by `county_fips`, NOT `h3_index` — both persisted sources
+ * (`territory_snapshot`/`view_runtime_trace_emission`) are county-grained,
+ * unlike the live hex-zoom `/map/` payload. `null` is an honest per-county
+ * no-data entry for this tick (Constitution III.11) — the RADAR LOOP
+ * scrubber must render it as an empty, never interpolate/fall back to a
+ * neighboring tick or the live value.
+ */
+export interface MapHistoryFrame {
+  tick: number;
+  values: Record<string, number | null>;
+}
+
+/**
+ * `GET /api/games/{id}/map/history/?metric=<name>[&from_tick=][&to_tick=]`
+ * — the RADAR LOOP tick scrubber's real data source (Program 17 Wave 3,
+ * Frontend-W3R3). Only `MAP_HISTORY_REPLAYABLE_METRICS` (`lib/lens.ts`,
+ * mirroring the backend's `map_contract.py` tuple of the same name) —
+ * heat/population/profit_rate/exploitation_rate — resolve without an
+ * error; every other `MapMetric` 422s (`"not_replayable"`) because it
+ * exists only in the current-tick `hex_latest` cache, not an append-only
+ * history table (see `EngineBridge.get_map_history`'s docstring for the
+ * full verified split). `frames` is tick-ascending. `capped` is `true`
+ * when the served window is narrower than requested — the backend's
+ * 128-tick window cap (`_MAP_HISTORY_WINDOW_CAP`).
+ */
+export interface MapHistoryPayload {
+  metric: string;
+  from_tick: number;
+  to_tick: number;
+  capped: boolean;
+  frames: MapHistoryFrame[];
 }

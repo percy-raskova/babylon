@@ -15,8 +15,11 @@ from __future__ import annotations
 
 import json
 import logging
+from itertools import pairwise
 from typing import TYPE_CHECKING, Any, Final
 from uuid import UUID
+
+import psycopg
 
 from babylon.config.defines import GameDefines
 
@@ -28,20 +31,36 @@ from babylon.config.defines import GameDefines
 from babylon.engine.formula_registry import (  # noqa: F401 — re-exported, see above
     FormulaRegistry as FormulaRegistry,
 )
+from babylon.engine.observers import EndgameDetector
 from babylon.engine.scenarios import get_scenario, list_scenarios
 from babylon.engine.simulation_engine import step
+from babylon.engine.topology_monitor import calculate_component_metrics, extract_solidarity_subgraph
 from babylon.engine.trap_detection import TrapDetectionResult, detect_traps
 from babylon.formulas.constants import HOURS_PER_YEAR, WEEKS_PER_YEAR
 from babylon.formulas.unequal_exchange import calculate_unequal_exchange_rate
 from babylon.models.config import SimulationConfig
-from babylon.models.enums import ActionType
+from babylon.models.enums import ActionType, EventType, GameOutcome, SocialRole
+from babylon.models.events import EndgameEvent
 from babylon.models.vanguard_resources import VanguardResources, check_can_afford
 from babylon.models.world_state import WorldState
 from babylon.ooda.npc_stub import select_npc_actions
-from babylon.persistence.protocols import RuntimePersistence, TickAlreadyResolved
-from babylon.topology.graph import BabylonGraph
 
-from .map_contract import MAP_METRIC_PROPERTIES
+# Program 17 Wave 1 / W1.4: the canonical IdeologicalProfile -> TernaryConsciousness
+# bridge mapping. Underscore-private (persistence-internal), imported directly per
+# owner instruction rather than duplicated — the math (r/l/f simplex algebra) has
+# exactly one home.
+from babylon.persistence.county_aggregation import _ideology_to_ternary
+from babylon.persistence.protocols import RuntimePersistence, TickAlreadyResolved
+from babylon.topology.graph import BabylonGraph, BabylonUGraph
+from babylon.topology.graph_algorithms import (
+    betweenness_centrality,
+    closeness_centrality,
+    degree_centrality,
+    is_connected,
+)
+
+from .log_handler import sanitize_for_log
+from .map_contract import MAP_HISTORY_REPLAYABLE_METRICS, MAP_METRIC_PROPERTIES
 
 if TYPE_CHECKING:
     from game.narrative_service import NarrativeService
@@ -56,30 +75,52 @@ _session_action_history: dict[UUID, list[dict[str, Any]]] = {}
 # Per-session trap state for severity persistence across ticks.
 _session_trap_state: dict[UUID, TrapDetectionResult] = {}
 
+# Per-session EndgameDetector instance (in-memory, not persisted). Program 17
+# / Item 1c: the cross-tick counters ECOLOGICAL_COLLAPSE/RED_OGV/
+# FRAGMENTED_COLLAPSE need (5-consecutive-tick windows, rolling habitability
+# history) require the SAME detector instance to survive across separate
+# ``resolve_tick`` HTTP calls — ``persistent_context`` does not survive
+# between web requests (a fresh ``{}`` every call, see ``resolve_tick``).
+# Same known limitation as ``_session_trap_state`` above: per-process only,
+# lost on worker restart, not shared across horizontally-scaled replicas.
+_session_endgame_detectors: dict[UUID, EndgameDetector] = {}
+
 _ACTION_HISTORY_CAP = 50
 
 # Spec 092: journal/alerts dashboards.
 # Max rows returned by get_journal_dashboard (newest tick first).
 _JOURNAL_LIMIT = 200
+
+# Program 17 Wave 3 (Backend-W3R3): GET /api/games/{id}/map/history/.
+# Generously capped per-request tick-range width — mirrors _JOURNAL_LIMIT's
+# role for the journal dashboard (a simple module constant, not a
+# GameDefines coefficient: this bounds an HTTP response, it does not tune
+# simulation behavior). See get_map_history's docstring for the verified
+# replayable/non-replayable metric split.
+_MAP_HISTORY_WINDOW_CAP = 128
+
+# Which persisted store backs each of MAP_HISTORY_REPLAYABLE_METRICS, and
+# which column on that store carries it. territory_snapshot is dense
+# (game_id, tick, county_fips) — heat/population are direct Territory
+# model fields, no graph needed (_serialize_territory). Both dicts'
+# combined keys must equal MAP_HISTORY_REPLAYABLE_METRICS exactly — see
+# TestGetMapHistory / test_map_history_source_dicts_match_contract.
+_MAP_HISTORY_TERRITORY_SNAPSHOT_METRICS: dict[str, str] = {
+    "heat": "heat",
+    "population": "pop_total",
+}
+# view_runtime_trace_emission (spec-089 hex-delta fill-forward view,
+# entity_kind='county') — a genuine SUM(s)/(SUM(c)+SUM(v)) /
+# SUM(s)/SUM(v) county aggregate, distinct from territory_snapshot's
+# same-named columns (which are NULL today — see get_map_history's
+# docstring for the confirmed wiring gap).
+_MAP_HISTORY_COUNTY_TRACE_METRICS: dict[str, str] = {
+    "profit_rate": "profit_rate",
+    "exploitation_rate": "exploitation_rate",
+}
 # Severities surfaced by get_alerts_dashboard — "informational" is routine
 # flow, not an alert (matches _EVENT_SEVERITY's three-bucket taxonomy).
 _ALERT_SEVERITIES = frozenset({"critical", "warning"})
-
-# Spec 095: all 5 terminal GameOutcome event types (FR-095-02). The previous
-# bridge layer only recognized 3 of 5 (the Slice 1.6 set), so RED_OGV and
-# FRAGMENTED_COLLAPSE endgames never surfaced in the snapshot's ``endgame``
-# block. This set is the authoritative source for both ``resolve_tick`` and
-# ``get_endgame_state``. Matches ``babylon.models.enums.GameOutcome`` minus
-# ``IN_PROGRESS`` (the non-terminal sentinel).
-_TERMINAL_OUTCOMES: frozenset[str] = frozenset(
-    {
-        "REVOLUTIONARY_VICTORY",
-        "ECOLOGICAL_COLLAPSE",
-        "FASCIST_CONSOLIDATION",
-        "RED_OGV",
-        "FRAGMENTED_COLLAPSE",
-    }
-)
 
 # Spec 095: canonical headlines for the chronicle end-screen (FR-095-09).
 # REVOLUTIONARY_VICTORY → rupture palette ("BABYLON FALLS"); all others →
@@ -373,7 +414,11 @@ def _fetch_county_boundary_flows(
                     )
             return result
     except Exception:  # noqa: BLE001 — non-fatal; degrades to empty list
-        logger.exception("Failed to read county boundary flows for %s/%s", session_id, county_fips)
+        logger.exception(
+            "Failed to read county boundary flows for %s/%s",
+            session_id,
+            sanitize_for_log(county_fips),
+        )
         return []
 
 
@@ -512,24 +557,54 @@ def _fetch_flow_type_totals(pool: Any, session_id: UUID) -> list[dict[str, Any]]
         return []
 
 
-def _extract_event_type(event: Any) -> str:
-    """Extract a normalized event_type string from a dict or object event."""
-    if isinstance(event, dict):
-        return str(event.get("event_type", ""))
-    et = getattr(event, "event_type", None)
-    if et is None:
-        return ""
-    if hasattr(et, "value"):
-        return str(et.value)
-    return str(et)
+def _fetch_endgame_event_row(pool: Any, session_id: UUID) -> dict[str, Any] | None:
+    """Read the durable ``endgame_reached`` ``tick_event`` row, if any.
+
+    Spec 095 / Program 17 Item 1c: ``WorldState.events`` is per-tick, not
+    cumulative (CLAUDE.md gotcha) — ``hydrate_graph(tick=None)``'s latest
+    graph loses an endgame event the moment even one more tick elapses.
+    ``tick_event`` (PK ``(game_id, tick, event_id)``) is the only durable
+    source, already populated every tick by ``_persist_tick_events_safe``.
+    Modeled on :func:`_fetch_session_rng_seed_from_pool`.
+
+    A real row is a positional ``(tick, detail, summary)`` tuple (matching
+    every other raw-cursor helper in this module); an unconfigured
+    ``MagicMock`` masquerading as a pool/cursor in tests is truthy but not a
+    tuple, so the ``isinstance`` guard degrades it to ``None`` rather than
+    fabricating a row from mock internals.
+    """
+    if pool is None:
+        return None
+    try:
+        with pool.connection() as conn, conn.cursor() as cur:
+            cur.execute(
+                "SELECT tick, detail, summary FROM tick_event "
+                "WHERE game_id = %s AND event_type = %s ORDER BY tick ASC LIMIT 1",
+                (session_id, EventType.ENDGAME_REACHED.value),
+            )
+            row = cur.fetchone()
+            if not isinstance(row, (tuple, list)) or len(row) < 3:
+                return None
+            return {"tick": row[0], "detail": row[1] or {}, "summary": row[2]}
+    except Exception:  # noqa: BLE001 — non-fatal; degrades to no endgame
+        logger.exception("Failed to read endgame tick_event for session %s", session_id)
+        return None
 
 
-def _extract_event_data(event: Any, key: str, default: Any = None) -> Any:
-    """Extract a field from an event's ``data`` block (dict or object)."""
-    data: Any = event.get("data") if isinstance(event, dict) else getattr(event, "data", None)
-    if isinstance(data, dict):
-        return data.get(key, default)
-    return default
+def _outcome_from_endgame_row(row: dict[str, Any] | None) -> str | None:
+    """Extract the lowercase ``GameOutcome`` value from an endgame row's
+    ``detail`` JSONB blob (validating it against the real enum rather than
+    trusting the DB blob blindly)."""
+    if row is None:
+        return None
+    detail = row.get("detail")
+    raw_outcome = detail.get("outcome") if isinstance(detail, dict) else None
+    if not raw_outcome:
+        return None
+    try:
+        return GameOutcome(raw_outcome).value
+    except ValueError:
+        return str(raw_outcome).lower()
 
 
 def _compute_avg_node_attr(graph: Any, attr: str, default: float = 0.0) -> float:
@@ -574,16 +649,6 @@ def _count_edges_by_mode(graph: Any, modes: frozenset[str]) -> int:
         return count
     except Exception:  # noqa: BLE001 — diagnostic; never blocks the request
         return 0
-
-
-def _detect_terminal_outcome(graph_attrs: dict[str, Any]) -> str | None:
-    """Scan a graph's ``events`` list for a terminal GameOutcome event."""
-    events = graph_attrs.get("events", []) or []
-    for event in events:
-        event_type = _extract_event_type(event)
-        if event_type.upper() in _TERMINAL_OUTCOMES:
-            return event_type.lower()
-    return None
 
 
 def _objective_status(category: str, outcome: str | None) -> str:
@@ -841,6 +906,110 @@ def _sum_edge_value_flow_by_mode(graph: BabylonGraph, edge_types: frozenset[str]
     return round(total, 4)
 
 
+# Program 17 Wave 1 / W1.6: the canonical 4-node imperial circuit (Periphery
+# Proletariat -> Comprador -> Core Bourgeoisie -> Labor Aristocracy), as seeded
+# verbatim by ``create_imperial_circuit_scenario`` (_legacy.py). Order is the
+# registry's ROLE_TO_ENTITY_ID id sequence (C001-C004); membership is resolved
+# by SocialRole, never a hardcoded id, since scenarios rename/reuse ids
+# (wayne_county's C002 is a Labor-Aristocracy-role class named "Suburban Petty
+# Bourgeoisie", and wayne_county has no comprador_bourgeoisie role at all).
+_CIRCUIT_ROLES: Final[tuple[SocialRole, ...]] = (
+    SocialRole.PERIPHERY_PROLETARIAT,
+    SocialRole.COMPRADOR_BOURGEOISIE,
+    SocialRole.CORE_BOURGEOISIE,
+    SocialRole.LABOR_ARISTOCRACY,
+)
+
+# The three EdgeType values that carry real imperial-circuit value flow in the
+# seeded scenarios (verified against ``create_imperial_circuit_scenario``:
+# EXPLOITATION P_w->P_c, TRIBUTE P_c->C_b, WAGES C_b->C_w). No ``RENT`` EdgeType
+# exists in ``babylon.models.enums.topology.EdgeType`` — CLIENT_STATE (the
+# reverse C_b->P_c subsidy) and SOLIDARITY (P_w->C_w) are deliberately excluded:
+# neither is a forward circuit hop.
+_CIRCUIT_EDGE_TYPES: Final[frozenset[str]] = frozenset({"exploitation", "tribute", "wages"})
+
+
+def _circuit_role_to_node_id(graph: BabylonGraph) -> dict[str, str]:
+    """Map each real ``SocialRole`` value present on the graph to one node id.
+
+    Defensive dedup: if more than one ``social_class`` node shares a role (not
+    the case in any current scenario — each seeds at most one class per role),
+    the lexicographically smallest node id wins, so the result is deterministic
+    regardless of graph iteration order.
+    """
+    role_to_node: dict[str, str] = {}
+    for node_id, data in graph.nodes(data=True):
+        if data.get("_node_type") != "social_class":
+            continue
+        role = data.get("role")
+        if role is None:
+            continue
+        role_str = _enum_val(role)
+        existing = role_to_node.get(role_str)
+        role_to_node[role_str] = node_id if existing is None else min(existing, node_id)
+    return role_to_node
+
+
+def _build_circuit_flows(graph: BabylonGraph) -> dict[str, Any]:
+    """Real 4-node imperial-circuit Sankey data for the class InspectionCard.
+
+    Graph-wide (not scoped to any one clicked node) — the same block is
+    attached to every ``social_class`` inspector payload so the frontend's
+    mini-Sankey shows the whole circuit regardless of which node was clicked.
+
+    A role with no matching ``social_class`` node on this graph is honestly
+    OMITTED from ``nodes`` (never a fabricated placeholder node). A hop
+    between two present roles is honestly OMITTED from ``links`` when no real
+    :data:`_CIRCUIT_EDGE_TYPES` edge exists between them (Constitution III.11
+    — absence over fabrication). Both lists are emitted in fixed canonical
+    role order, so the result is deterministic independent of graph iteration
+    order.
+
+    Args:
+        graph: The hydrated tick graph.
+
+    Returns:
+        ``{"nodes": [{"role", "id", "name"}, ...], "links": [{"source_role",
+        "target_role", "source_id", "target_id", "value_flow"}, ...]}``.
+    """
+    role_to_node = _circuit_role_to_node_id(graph)
+
+    nodes: list[dict[str, Any]] = []
+    for role in _CIRCUIT_ROLES:
+        role_str = _enum_val(role)
+        node_id = role_to_node.get(role_str)
+        if node_id is None:
+            continue
+        node_data = graph.nodes[node_id]
+        nodes.append({"role": role_str, "id": node_id, "name": node_data.get("name", node_id)})
+
+    links: list[dict[str, Any]] = []
+    for source_role, target_role in pairwise(_CIRCUIT_ROLES):
+        source_role_str = _enum_val(source_role)
+        target_role_str = _enum_val(target_role)
+        source_id = role_to_node.get(source_role_str)
+        target_id = role_to_node.get(target_role_str)
+        if source_id is None or target_id is None:
+            continue
+        if (source_id, target_id) not in graph.edges:
+            continue
+        edge_data = graph.edges[(source_id, target_id)]
+        etype = str(edge_data.get("edge_type", edge_data.get("_edge_type", ""))).lower()
+        if etype not in _CIRCUIT_EDGE_TYPES:
+            continue
+        links.append(
+            {
+                "source_role": source_role_str,
+                "target_role": target_role_str,
+                "source_id": source_id,
+                "target_id": target_id,
+                "value_flow": float(edge_data.get("value_flow", 0.0)),
+            }
+        )
+
+    return {"nodes": nodes, "links": links}
+
+
 def _wealth_by_class_role(state: WorldState) -> dict[str, float]:
     """Sum ``SocialClass.wealth`` grouped by ``SocialRole`` — real values only."""
     totals: dict[str, float] = {}
@@ -980,14 +1149,15 @@ def _build_state_apparatus_dashboard(
     """Aggregate real state-apparatus data (spec 111 C2).
 
     Filters ``organizations`` (already-serialized :func:`_serialize_organization`
-    dicts) to ``org_type == "state_apparatus"`` — no scenario currently seeds
-    one (wayne_county's sole org is CIVIL_SOCIETY), so this is an honest
-    empty list for every session today, not a fabricated placeholder
-    (Constitution III.11). ``total_repression_budget``/``total_heat`` sum
-    the real ``budget``/``heat`` fields of whatever state orgs do exist.
-    ``state_finances`` surfaces :class:`StateFinance` (police_budget is the
-    literal repression-budget field) when the engine has seeded any — also
-    honestly empty today (no scenario seeds ``WorldState.state_finances``).
+    dicts) to ``org_type == "state_apparatus"``. wayne_county seeds the Detroit
+    Police Department (``ORG002``, a :class:`StateApparatus` — commit ``70d6e3f2``,
+    ``_legacy_wayne.py::_create_state_apparatus_org``), so this list is NON-EMPTY
+    for a real session (``org_count`` >= 1), and ``total_repression_budget``/
+    ``total_heat`` sum the real ``budget``/``heat`` fields of the seeded state
+    orgs. ``state_finances`` surfaces :class:`StateFinance` (police_budget is the
+    literal repression-budget field) when the engine has seeded any — still
+    honestly empty today (no scenario seeds ``WorldState.state_finances``), an
+    honest empty map, never a fabricated placeholder (Constitution III.11).
 
     Args:
         state: The hydrated WorldState.
@@ -1078,7 +1248,15 @@ def _social_class_stats(
         node_data = graph.nodes.get(member_id, {})
         if node_data.get("_node_type") != "social_class":
             continue
-        consciousness = node_data.get("class_consciousness")
+        # Bug fix (Program 17 / Item 1d): `class_consciousness` has never
+        # existed as a top-level graph node key — to_graph() writes it
+        # nested at `ideology.class_consciousness` (**entity.model_dump()`,
+        # `ideology: IdeologicalProfile` is a nested model field). This read
+        # always returned None in production, so avg_consciousness was
+        # always None (see _get_class_consciousness_from_node in
+        # src/babylon/engine/systems/economic.py for the correct pattern).
+        ideology = node_data.get("ideology")
+        consciousness = ideology.get("class_consciousness") if isinstance(ideology, dict) else None
         if consciousness is not None:
             consciousness_values.append(float(consciousness))
         role = node_data.get("role")
@@ -1200,6 +1378,199 @@ def _solidarity_index_by_territory(
     return index
 
 
+def _agitation_index_by_territory(
+    graph: BabylonGraph, tenancy_members: dict[str, list[str]]
+) -> dict[str, float]:
+    """Per-territory population-weighted mean ``IdeologicalProfile.agitation``
+    across TENANCY-linked social_class members (Wave 2 W2.4 ``agitation`` map
+    lens — the Revolutionary Potential Index).
+
+    Population-weighted like :func:`_dominant_class_by_territory` (not the
+    edge-density mean :func:`_solidarity_index_by_territory` uses) — agitation
+    is a per-class scalar (``ideology.agitation``), not an edge property.
+    Legitimately ``0.0`` at tick 0 in every shipped scenario (agitation only
+    rises once ``IdeologySystem`` processes a falling-wage/rent/Φ/g33 crisis
+    tick) — a real ``0.0`` weighted mean is returned in that case, never
+    warmed up or suppressed to look more (or less) alive than the engine has
+    actually made it (Constitution III.11).
+
+    Args:
+        graph: The hydrated session graph.
+        tenancy_members: Output of :func:`_tenancy_members_by_territory`.
+
+    Returns:
+        Map of territory node id -> population-weighted mean agitation. A
+        territory whose TENANCY-linked members carry no ``ideology`` dict (or
+        no ``agitation`` key) at all, or whose weighted members carry zero
+        total population, is absent — callers must treat a missing entry as
+        ``None``, never a fabricated default.
+    """
+    index: dict[str, float] = {}
+    for territory_id, member_ids in tenancy_members.items():
+        weighted_sum = 0.0
+        total_population = 0.0
+        for member_id in member_ids:
+            node_data = graph.nodes.get(member_id, {})
+            ideology = node_data.get("ideology")
+            agitation = ideology.get("agitation") if isinstance(ideology, dict) else None
+            if agitation is None:
+                continue
+            population = float(node_data.get("population") or 0)
+            weighted_sum += float(agitation) * population
+            total_population += population
+        if total_population:
+            index[territory_id] = round(weighted_sum / total_population, 4)
+    return index
+
+
+def _class_to_territory(tenancy_members: dict[str, list[str]]) -> dict[str, str]:
+    """Invert :func:`_tenancy_members_by_territory` to social_class -> territory.
+
+    Program 19/20 (Wave 3 Round 1): the field-stack edge payload
+    (:func:`_build_field_state_edges`) anchors each gradient edge's endpoints
+    onto a territory. Deterministic tie-break: territories and their members
+    are walked in sorted order, so the lexicographically smallest territory
+    wins if a class somehow carries TENANCY edges into more than one
+    territory (not seeded by any current scenario, but not structurally
+    forbidden either).
+
+    Args:
+        tenancy_members: Output of :func:`_tenancy_members_by_territory`
+            (territory node id -> list of tenant social_class node ids).
+
+    Returns:
+        Map of social_class node id -> territory node id. A class with no
+        TENANCY edge into any territory is simply absent — callers must
+        treat a missing entry as unresolved, never a fabricated territory.
+    """
+    mapping: dict[str, str] = {}
+    for territory_id in sorted(tenancy_members):
+        for class_id in sorted(tenancy_members[territory_id]):
+            mapping.setdefault(class_id, territory_id)
+    return mapping
+
+
+def _build_field_state_nodes(graph: Any) -> list[dict[str, Any]]:
+    """Serialize the Systems #19/#20 field stack per social_class node.
+
+    Program 19/20 (Wave 3 Round 1): reads ``contradiction_fields``
+    (ContradictionFieldSystem @19), ``field_derivatives`` (FieldDerivativeSystem
+    @20 — only its ``laplacian``/``df_dt`` sub-keys; ``d2f_dt2`` is out of this
+    endpoint's declared contract), and ``fascist_alignment``
+    (FascistFactionSystem) off each social_class node. Constitution III.11: a
+    node carrying NONE of these attrs is omitted entirely from the result; a
+    node carrying some (not all) contributes only the keys it actually has.
+
+    Args:
+        graph: The hydrated session graph (nx-compat ``.nodes(data=True)``).
+
+    Returns:
+        List of ``{"id", "name", "fields"?, "laplacian"?, "df_dt"?,
+        "fascist_alignment"?}`` dicts, sorted by ``id`` (deterministic,
+        independent of graph iteration order).
+    """
+    nodes_fn = getattr(graph, "nodes", None)
+    if nodes_fn is None:
+        return []
+
+    entries: list[dict[str, Any]] = []
+    for node_id, data in nodes_fn(data=True):
+        if not isinstance(data, dict) or data.get("_node_type") != "social_class":
+            continue
+
+        optional: dict[str, Any] = {}
+
+        fields = data.get("contradiction_fields")
+        if isinstance(fields, dict) and fields:
+            optional["fields"] = dict(fields)
+
+        derivatives = data.get("field_derivatives")
+        if isinstance(derivatives, dict) and derivatives:
+            laplacian = {
+                name: deriv["laplacian"]
+                for name, deriv in derivatives.items()
+                if isinstance(deriv, dict) and deriv.get("laplacian") is not None
+            }
+            df_dt = {
+                name: deriv["df_dt"]
+                for name, deriv in derivatives.items()
+                if isinstance(deriv, dict) and deriv.get("df_dt") is not None
+            }
+            if laplacian:
+                optional["laplacian"] = laplacian
+            if df_dt:
+                optional["df_dt"] = df_dt
+
+        fascist_alignment = data.get("fascist_alignment")
+        if fascist_alignment is not None:
+            optional["fascist_alignment"] = float(fascist_alignment)
+
+        if not optional:
+            continue
+
+        entries.append({"id": node_id, "name": data.get("name", node_id), **optional})
+
+    entries.sort(key=lambda entry: entry["id"])
+    return entries
+
+
+def _build_field_state_edges(graph: Any, class_territory: dict[str, str]) -> list[dict[str, Any]]:
+    """Serialize FieldDerivativeSystem @20's per-edge gradients, territory-anchored.
+
+    Program 19/20 (Wave 3 Round 1): reads the ``field_gradients`` dict
+    FieldDerivativeSystem's ``_compute_edge_gradients`` writes onto every edge
+    whose two endpoints both carry ``contradiction_fields`` (in production,
+    exclusively social_class<->social_class edges — any edge touching a
+    non-social_class node has an empty ``contradiction_fields`` on that end
+    and is skipped by the engine, so it never carries ``field_gradients``
+    either). Each edge contributes one entry per field name it has a gradient
+    for. Territory anchoring reuses :func:`_class_to_territory` (built from
+    :func:`_tenancy_members_by_territory`, the bridge's existing tenancy
+    resolution) — an endpoint with no resolvable territory keeps its edge
+    entry with that territory key present but ``None`` (the same
+    keep-key-use-null convention ``_serialize_territory``'s
+    dominant_class/solidarity_index/agitation reads already use for an
+    unresolvable per-territory aggregate — see :func:`_dominant_class_by_territory`),
+    never omitted or fabricated.
+
+    Args:
+        graph: The hydrated session graph (nx-compat ``.edges(data=True)``).
+        class_territory: Output of :func:`_class_to_territory`.
+
+    Returns:
+        List of ``{"source", "target", "source_territory", "target_territory",
+        "field", "gradient"}`` dicts, sorted by ``(source, target, field)``
+        (deterministic, independent of graph iteration order).
+    """
+    edges_fn = getattr(graph, "edges", None)
+    if edges_fn is None:
+        return []
+
+    entries: list[dict[str, Any]] = []
+    for source, target, data in edges_fn(data=True):
+        if not isinstance(data, dict):
+            continue
+        gradients = data.get("field_gradients")
+        if not isinstance(gradients, dict) or not gradients:
+            continue
+        source_territory = class_territory.get(source)
+        target_territory = class_territory.get(target)
+        for field_name in sorted(gradients):
+            entries.append(
+                {
+                    "source": source,
+                    "target": target,
+                    "source_territory": source_territory,
+                    "target_territory": target_territory,
+                    "field": field_name,
+                    "gradient": gradients[field_name],
+                }
+            )
+
+    entries.sort(key=lambda entry: (entry["source"], entry["target"], entry["field"]))
+    return entries
+
+
 def _build_solidarity_communities(graph: BabylonGraph) -> list[dict[str, Any]]:
     """Group nodes into communities via connected SOLIDARITY edges.
 
@@ -1252,6 +1623,179 @@ def _build_solidarity_communities(graph: BabylonGraph) -> list[dict[str, Any]]:
 
     communities.sort(key=lambda c: (-c["member_count"], str(c["id"])))
     return communities
+
+
+# ---------------------------------------------------------------------- #
+# Inspector view helpers (real graph reads; Constitution III.11)
+# Program 17 / Item 1d.
+# ---------------------------------------------------------------------- #
+
+
+def _incoming_wages_flow(graph: BabylonGraph, node_id: str) -> float:
+    """Sum ``value_flow`` over live WAGES edges targeting ``node_id``.
+
+    WAGES is the engine's Employer -> Worker edge (:class:`EdgeType`); this
+    is the real per-entity "core wages" source ``ProductionSystem``/
+    ``ImperialRentSystem`` write. Verbatim port of
+    ``game.provenance._incoming_wages_flow`` (provenance.py:203-218) — NOT
+    an import, because provenance.py imports FROM this module
+    (``from .engine_bridge import FormulaRegistry, _aggregate_graph_economy``),
+    so the reverse import would be circular.
+    """
+    total = 0.0
+    for source, target in graph.edges:
+        if target != node_id:
+            continue
+        edge_data = graph.edges[(source, target)]
+        etype = str(edge_data.get("edge_type", edge_data.get("_edge_type", ""))).lower()
+        if etype == "wages":
+            total += float(edge_data.get("value_flow", 0.0))
+    return total
+
+
+_APOLOGIST_CLAIM: Final[str] = (
+    "The wage gap reflects a 'skill premium' — harder-earned pay, not a "
+    "politically-arranged subsidy."
+)
+
+# Program 17 Wave 1 / W1.4: no ``class_position`` taxonomy exists anywhere in the
+# codebase for a social_class node (the "class_position" name IS used elsewhere —
+# babylon.domain.economics.melt.class_position's per-household ClassPosition — but
+# that is a different concept on a different entity; nothing computes a per-class
+# structural-position label here). Ships as a clearly-badged mock per the owner's
+# mock doctrine: a self-describing placeholder value, never a fabricated-looking
+# number, PLUS an explicit ``class_position_mock: True`` flag the frontend renders
+# as a visible MOCK badge (Constitution III.11 — a mock must never be mistaken for
+# real data).
+_CLASS_POSITION_MOCK_LABEL: Final[str] = (
+    "Not yet modeled — placeholder for a future class-position taxonomy."
+)
+
+
+def _enum_normalized(data: dict[str, Any]) -> dict[str, Any]:
+    """``{k: v.value if v is enum-like else v}`` — plain-string-ify every
+    enum-typed value in a raw graph node/edge dict so inspector payloads
+    always serialize as their plain string value (mirrors the convention
+    ``_dominant_class_by_territory`` already established)."""
+    return {k: (_enum_val(v) if hasattr(v, "value") else v) for k, v in data.items()}
+
+
+def _ternary_consciousness_or_none(ideology: dict[str, Any]) -> dict[str, float] | None:
+    """The node's ``(revolutionary, liberal, fascist)`` ternary, or ``None``.
+
+    Feeds the node's real ``ideology.class_consciousness``/
+    ``ideology.national_identity`` into the canonical
+    :func:`babylon.persistence.county_aggregation._ideology_to_ternary` bridge
+    mapping. Honest-null (Constitution III.11): if either axis is absent, this
+    returns ``None`` rather than defaulting the missing axis to 0.0 and
+    computing a fabricated ternary.
+
+    Args:
+        ideology: The node's ``ideology`` dict (already normalized to ``{}``
+            by the caller when the node carries no such dict at all).
+
+    Returns:
+        ``{"revolutionary": r, "liberal": l, "fascist": f}`` or ``None``.
+    """
+    class_consciousness = ideology.get("class_consciousness")
+    national_identity = ideology.get("national_identity")
+    if not isinstance(class_consciousness, int | float) or not isinstance(
+        national_identity, int | float
+    ):
+        return None
+    r, l_, f = _ideology_to_ternary(float(class_consciousness), float(national_identity))
+    return {"revolutionary": r, "liberal": l_, "fascist": f}
+
+
+def _social_class_inspector_fields(
+    data: dict[str, Any], core_wages: float, graph: BabylonGraph
+) -> dict[str, Any]:
+    """Build the wage-pairing + apologist narrative block for a
+    ``social_class`` inspector payload.
+
+    Pairs ``core_wages`` (incoming WAGES flow — what this class is PAID)
+    with ``wealth`` (value produced) and their signed difference
+    ``imperial_rent_gap`` (= Φ per the Fundamental Theorem ``W_c − V_c``).
+    Signed deliberately: negative for exploited/periphery classes is itself
+    an honest, theoretically meaningful signal, not an error.
+
+    Program 17 Wave 1 also adds (W1.4): the per-class ternary consciousness
+    (``consciousness``, honest-null per :func:`_ternary_consciousness_or_none`),
+    the real intra-class ``inequality`` Gini, and a clearly-badged
+    ``class_position``/``class_position_mock`` placeholder row; and (W1.6) the
+    graph-wide ``circuit_flows`` mini-Sankey data (:func:`_build_circuit_flows`)
+    — the same block regardless of which social_class node was clicked.
+    Program 17 Wave 2 (W2.5b) adds ``p_acquiescence``/``p_revolution`` — the
+    Survival Calculus P(S|A)/P(S|R) duel (``SurvivalSystem.step``,
+    survival.py:143) — honest-null via :func:`_optional_float`, same as
+    ``organization``/``inequality``.
+
+    AW3-R1 adds ``entitlement``/``volatility`` — the spec-071 Reactionary
+    Subject fields (``babylon.models.entities.social_class.SocialClass``,
+    role-defaulted, [0,1]) that ``FascistFactionSystem`` reads for fascist
+    pull / spontaneous-riot gating. Deliberately does NOT add ``chauvinism``:
+    that quantity is real (``FascistFactionSystem._accrue_chauvinism``) but
+    lives on the org->LA ``MEMBERSHIP`` edge, not the class node — there is
+    no single well-defined per-class scalar to expose here (a class can be
+    the target of zero, one, or many MEMBERSHIP edges from different orgs).
+    Forcing it onto this payload would fabricate a class-level reading that
+    does not exist (Constitution III.8/III.11).
+
+    Args:
+        data: The raw graph node dict for a ``social_class`` node.
+        core_wages: Output of :func:`_incoming_wages_flow` for this node.
+        graph: The hydrated tick graph (for the graph-wide ``circuit_flows``).
+
+    Returns:
+        Dict merged onto the ``get_inspector_node`` base payload.
+    """
+    wealth = float(data.get("wealth", 0.0))
+    imperial_rent_gap = round(core_wages - wealth, 4)
+    ideology = data.get("ideology")
+    ideology = ideology if isinstance(ideology, dict) else {}
+
+    if imperial_rent_gap > 0:
+        apologist_refutation = (
+            f"Core wages ({core_wages:.4f}) exceed value produced ({wealth:.4f}) by "
+            f"{imperial_rent_gap:.4f} — an unearned increment "
+            f"(unearned_increment={_optional_float(data.get('unearned_increment')) or 0.0:.4f}, "
+            f"ppp_multiplier={_optional_float(data.get('ppp_multiplier')) or 1.0:.4f}) transferred "
+            "from the periphery, the material basis of labor-aristocracy loyalty — not a "
+            "return to skill."
+        )
+    else:
+        apologist_refutation = (
+            "No imperial subsidy applies here: core wages do not exceed value produced "
+            f"(gap={imperial_rent_gap:.4f})."
+        )
+
+    return {
+        "role": _enum_val(data.get("role")) if data.get("role") is not None else None,
+        "wealth": wealth,
+        "core_wages": round(core_wages, 4),
+        "imperial_rent_gap": imperial_rent_gap,
+        "unearned_increment": _optional_float(data.get("unearned_increment")),
+        "ppp_multiplier": _optional_float(data.get("ppp_multiplier")),
+        "effective_wealth": _optional_float(data.get("effective_wealth")),
+        "population": data.get("population"),
+        "organization": _optional_float(data.get("organization")),
+        "repression_faced": _optional_float(data.get("repression_faced")),
+        "subsistence_threshold": _optional_float(data.get("subsistence_threshold")),
+        "class_consciousness": ideology.get("class_consciousness"),
+        "national_identity": ideology.get("national_identity"),
+        "agitation": ideology.get("agitation"),
+        "consciousness": _ternary_consciousness_or_none(ideology),
+        "inequality": _optional_float(data.get("inequality")),
+        "p_acquiescence": _optional_float(data.get("p_acquiescence")),
+        "p_revolution": _optional_float(data.get("p_revolution")),
+        "entitlement": _optional_float(data.get("entitlement")),
+        "volatility": _optional_float(data.get("volatility")),
+        "class_position": _CLASS_POSITION_MOCK_LABEL,
+        "class_position_mock": True,
+        "circuit_flows": _build_circuit_flows(graph),
+        "apologist_claim": _APOLOGIST_CLAIM,
+        "apologist_refutation": apologist_refutation,
+    }
 
 
 class EngineBridge:
@@ -1356,6 +1900,10 @@ class EngineBridge:
             solidarity_index_by_territory=_solidarity_index_by_territory(
                 initial_graph, initial_tenancy_members
             ),
+            agitation_by_territory=_agitation_index_by_territory(
+                initial_graph, initial_tenancy_members
+            ),
+            centrality_by_territory=_centrality_by_territory(initial_state, initial_graph),
         )
         # Spec-109 A1: seed the tick-0 snapshot tables + summary row so
         # timeseries/history surfaces have a baseline point from creation.
@@ -1427,6 +1975,10 @@ class EngineBridge:
                     solidarity_index_by_territory=_solidarity_index_by_territory(
                         seeded_graph, seeded_tenancy_members
                     ),
+                    agitation_by_territory=_agitation_index_by_territory(
+                        seeded_graph, seeded_tenancy_members
+                    ),
+                    centrality_by_territory=_centrality_by_territory(seeded_state, seeded_graph),
                 )
                 # Spec-109 A1: same backfill for the snapshot/summary tables.
                 _persist_snapshots_safe(self._persistence, session_id, seeded_state)
@@ -1550,8 +2102,61 @@ class EngineBridge:
         separate accumulator (``dominant_class_pop``, mirroring
         ``member_h3``'s own separate-dict pattern above) since it isn't a
         scalar sum.
+
+        Wave 2 W2.4 (owner ruling 4 — all NEW numeric lenses use
+        population-weighted mean, categorical uses population-weighted mode
+        with a deterministic tie-break): ``throughput_position``/``agitation``
+        get the same partial-coverage-aware weighted mean as
+        ``habitability``/``solidarity_index`` (not every hex has a
+        year-boundary π yet, or TENANCY-linked members). ``territory_type``
+        is categorical — same population-weighted-mode treatment as
+        ``dominant_class``, tracked in its own ``territory_type_pop``
+        accumulator; ties break lexicographically-greatest on the value
+        (``max(items, key=lambda kv: (kv[1], kv[0]))`` — the same tie-break
+        :func:`_dominant_class_by_territory`/this function's own
+        ``dominant_class`` already use, applied here for consistency, not
+        because a tie is expected to occur often for a 2-value enum).
+
+        Audit Wave 4 straggler (task #76): ``centrality`` gets the same
+        partial-coverage-aware population-weighted mean as
+        ``habitability``/``solidarity_index``/``agitation`` — not every hex
+        is a node in the org network (see
+        :func:`_centrality_by_territory`).
+
+        Wave 5 receptivity lens pair: ``mass_receptivity`` gets the same
+        partial-coverage-aware population-weighted mean as the numeric
+        lenses above — not every hex has TENANCY-linked members with
+        positive population (Constitution III.11 honest-null;
+        ``EpistemicHorizonSystem`` skips a tenant-less territory entirely).
+        ``vision_state`` is categorical — same population-weighted-mode
+        treatment as ``territory_type``, tracked in its own
+        ``vision_state_pop`` accumulator with the identical
+        lexicographically-greatest tie-break.
+
+        Feature 021 lens pair: ``wage_pressure``/``dispossession_intensity``
+        get the same partial-coverage-aware population-weighted mean as
+        ``mass_receptivity`` above — ``ReserveArmySystem``/
+        ``DispossessionEventSystem`` write no attr at all for a territory
+        with no reserve-army pressure this tick / no dispossession activity
+        this tick (Constitution III.11 honest-null).
         """
         from collections import defaultdict
+
+        # Numeric lenses aggregated as a population-weighted mean, each tracking
+        # its OWN coverage denominator (a partial-coverage group must never read
+        # as a fabricated 0.0 — Constitution III.11). Data-driven so a new lens
+        # is one tuple entry, not a new accumulation branch — the growth that
+        # repeatedly pushed this function over the C901 complexity limit.
+        weighted_mean_metrics = (
+            "habitability",
+            "solidarity_index",
+            "throughput_position",
+            "agitation",
+            "centrality",
+            "mass_receptivity",
+            "wage_pressure",
+            "dispossession_intensity",
+        )
 
         # Map zoom level to the grouping key
         group_key_map = {
@@ -1583,6 +2188,29 @@ class EngineBridge:
                 # habitability — not every hex has TENANCY-linked members.
                 "solidarity_index_sum": 0.0,
                 "solidarity_index_pop": 0,
+                # Wave 2 W2.4: same partial-coverage pattern — not every hex
+                # has a year-boundary π yet, or TENANCY-linked members.
+                "throughput_position_sum": 0.0,
+                "throughput_position_pop": 0,
+                "agitation_sum": 0.0,
+                "agitation_pop": 0,
+                # Audit Wave 4 straggler (task #76): same partial-coverage
+                # pattern — not every hex is a node in the org network.
+                "centrality_sum": 0.0,
+                "centrality_pop": 0,
+                # Wave 5 receptivity lens pair: same partial-coverage
+                # pattern — not every hex has TENANCY-linked members with
+                # positive population (Constitution III.11 honest-null).
+                "mass_receptivity_sum": 0.0,
+                "mass_receptivity_pop": 0,
+                # Feature 021 lens pair: same partial-coverage pattern —
+                # ReserveArmySystem/DispossessionEventSystem write no attr
+                # at all absent reserve-army pressure / dispossession
+                # activity this tick (Constitution III.11 honest-null).
+                "wage_pressure_sum": 0.0,
+                "wage_pressure_pop": 0,
+                "dispossession_intensity_sum": 0.0,
+                "dispossession_intensity_pop": 0,
                 "count": 0,
             }
         )
@@ -1593,6 +2221,14 @@ class EngineBridge:
         # Spec-113 Lane D: population-weighted vote per group -> role, kept
         # separate for the same reason (dominant_class is categorical).
         dominant_class_pop: dict[str, dict[str, float]] = defaultdict(lambda: defaultdict(float))
+        # Wave 2 W2.4: population-weighted vote per group -> TerritoryType
+        # value, kept separate for the same reason (territory_type is
+        # categorical).
+        territory_type_pop: dict[str, dict[str, float]] = defaultdict(lambda: defaultdict(float))
+        # Wave 5 receptivity lens pair: population-weighted vote per group ->
+        # vision_state value, kept separate for the same reason
+        # (vision_state is categorical, same treatment as territory_type).
+        vision_state_pop: dict[str, dict[str, float]] = defaultdict(lambda: defaultdict(float))
 
         for state in hex_states:
             key = getattr(state, group_attr, None)
@@ -1600,25 +2236,44 @@ class EngineBridge:
                 key = "unknown"
             acc = groups[key]
             pop = state.pop_total or 0
-            acc["profit_rate_sum"] += (state.profit_rate or 0) * pop
-            acc["exploitation_rate_sum"] += (state.exploitation_rate or 0) * pop
-            acc["occ_sum"] += (state.occ or 0) * pop
-            acc["imperial_rent_sum"] += state.imperial_rent or 0
-            acc["heat_sum"] += (state.heat or 0) * pop
+            # These five are Postgres NUMERIC columns (psycopg → Decimal) once
+            # populated; the accumulators are float-seeded (line 1691+), and
+            # ``float += Decimal`` raises TypeError. Cast at the read boundary —
+            # matching the float() convention already used for the attribute-
+            # sourced habitability/solidarity_index sums below. This latent bug
+            # only surfaced once Program 17 1a made imperial_rent non-NULL (a
+            # NULL column read as ``None or 0`` → int, which mixes with float).
+            acc["profit_rate_sum"] += float(state.profit_rate or 0) * pop
+            acc["exploitation_rate_sum"] += float(state.exploitation_rate or 0) * pop
+            acc["occ_sum"] += float(state.occ or 0) * pop
+            acc["imperial_rent_sum"] += float(state.imperial_rent or 0)
+            acc["heat_sum"] += float(state.heat or 0) * pop
             acc["org_presence_sum"] += state.org_count or 0
             acc["population_sum"] += pop
             acc["count"] += 1
             member_h3[key].append(state.h3_index)
 
-            habitability = (getattr(state, "attributes", None) or {}).get("habitability")
-            if habitability is not None:
-                acc["habitability_sum"] += float(habitability) * pop
-                acc["habitability_pop"] += pop
+            attributes = getattr(state, "attributes", None) or {}
+            # Numeric partial-coverage lenses (population-weighted mean, each
+            # with its own coverage denominator). One loop over
+            # ``weighted_mean_metrics`` instead of a branch per lens — identical
+            # arithmetic to the former explicit blocks, no new decision points
+            # as the lens set grows (habitability → … → dispossession_intensity).
+            for metric in weighted_mean_metrics:
+                value = attributes.get(metric)
+                if value is not None:
+                    acc[f"{metric}_sum"] += float(value) * pop
+                    acc[f"{metric}_pop"] += pop
 
-            solidarity_index = (getattr(state, "attributes", None) or {}).get("solidarity_index")
-            if solidarity_index is not None:
-                acc["solidarity_index_sum"] += float(solidarity_index) * pop
-                acc["solidarity_index_pop"] += pop
+            # Categorical lenses: population-weighted mode, tracked in their own
+            # accumulators (distinct value type from the numeric sums above).
+            territory_type = attributes.get("territory_type")
+            if territory_type is not None:
+                territory_type_pop[key][territory_type] += pop
+
+            vision_state = attributes.get("vision_state")
+            if vision_state is not None:
+                vision_state_pop[key][vision_state] += pop
 
             dominant_class = getattr(state, "dominant_class", None)
             if dominant_class is not None:
@@ -1633,7 +2288,15 @@ class EngineBridge:
             total_pop = acc["population_sum"] or 1  # avoid div-by-zero
             habitability_pop = acc["habitability_pop"]
             solidarity_index_pop = acc["solidarity_index_pop"]
+            throughput_position_pop = acc["throughput_position_pop"]
+            agitation_pop = acc["agitation_pop"]
+            centrality_pop = acc["centrality_pop"]
+            mass_receptivity_pop = acc["mass_receptivity_pop"]
+            wage_pressure_pop = acc["wage_pressure_pop"]
+            dispossession_intensity_pop = acc["dispossession_intensity_pop"]
             role_votes = dominant_class_pop.get(key) or {}
+            type_votes = territory_type_pop.get(key) or {}
+            vision_votes = vision_state_pop.get(key) or {}
             features.append(
                 {
                     "type": "Feature",
@@ -1648,7 +2311,12 @@ class EngineBridge:
                         "profit_rate": round(acc["profit_rate_sum"] / total_pop, 6),
                         "exploitation_rate": round(acc["exploitation_rate_sum"] / total_pop, 4),
                         "occ": round(acc["occ_sum"] / total_pop, 4),
-                        "imperial_rent": round(acc["imperial_rent_sum"], 2),
+                        # 6dp, not 2dp: per-hex Φ is ~1e-5 (Leontief structural
+                        # rent), so round(…, 2) collapsed the whole lens to 0.00
+                        # once Program 17 lit real Φ — the default lens read as
+                        # blank even though the value is non-zero. Match the
+                        # profit_rate precision above.
+                        "imperial_rent": round(acc["imperial_rent_sum"], 6),
                         "heat": round(acc["heat_sum"] / total_pop, 4),
                         "org_presence": acc["org_presence_sum"],
                         "population": acc["population_sum"],
@@ -1665,6 +2333,48 @@ class EngineBridge:
                         "dominant_class": (
                             max(role_votes.items(), key=lambda kv: (kv[1], kv[0]))[0]
                             if role_votes
+                            else None
+                        ),
+                        "throughput_position": (
+                            round(acc["throughput_position_sum"] / throughput_position_pop, 4)
+                            if throughput_position_pop
+                            else None
+                        ),
+                        "agitation": (
+                            round(acc["agitation_sum"] / agitation_pop, 4)
+                            if agitation_pop
+                            else None
+                        ),
+                        "centrality": (
+                            round(acc["centrality_sum"] / centrality_pop, 4)
+                            if centrality_pop
+                            else None
+                        ),
+                        "territory_type": (
+                            max(type_votes.items(), key=lambda kv: (kv[1], kv[0]))[0]
+                            if type_votes
+                            else None
+                        ),
+                        "mass_receptivity": (
+                            round(acc["mass_receptivity_sum"] / mass_receptivity_pop, 4)
+                            if mass_receptivity_pop
+                            else None
+                        ),
+                        "vision_state": (
+                            max(vision_votes.items(), key=lambda kv: (kv[1], kv[0]))[0]
+                            if vision_votes
+                            else None
+                        ),
+                        "wage_pressure": (
+                            round(acc["wage_pressure_sum"] / wage_pressure_pop, 4)
+                            if wage_pressure_pop
+                            else None
+                        ),
+                        "dispossession_intensity": (
+                            round(
+                                acc["dispossession_intensity_sum"] / dispossession_intensity_pop, 4
+                            )
+                            if dispossession_intensity_pop
                             else None
                         ),
                     },
@@ -1800,9 +2510,12 @@ class EngineBridge:
         per-territory computation (same EXTRACTIVE/ANTAGONISTIC edge-mode
         filter and exploitation-rate proxy via
         :func:`_aggregate_graph_economy`), plus real WAGES/TRIBUTE flow
-        sums and wealth grouped by class role. ``profit_rate``/``occ`` stay
-        ``None`` — no c/v/s decomposition or organic-composition-of-capital
-        formula runs on the live graph (Constitution III.11).
+        sums and wealth grouped by class role. ``profit_rate``/``occ``
+        (Wave 2 Gap-1 Backend-1) are the mean of every territory's
+        year-boundary ``tick_profit_rate``/``tick_occ``
+        (:func:`_mean_territory_attr`) — ``None`` (not a fabricated 0.0)
+        until at least one territory has crossed a year boundary this
+        session (Constitution III.11).
 
         ``county_flow`` (owner item 30, point 5) surfaces the hex-level
         static-economy broadcast (spec-109 A7) for sessions where it is
@@ -1829,8 +2542,8 @@ class EngineBridge:
             "value_produced": econ["value_produced"],
             "rent_extracted": econ["rent_extracted"],
             "exploitation_rate": econ["exploitation_rate"],
-            "profit_rate": None,
-            "occ": None,
+            "profit_rate": _mean_territory_attr(graph, "tick_profit_rate"),
+            "occ": _mean_territory_attr(graph, "tick_occ"),
             "imperial_rent_pool": (
                 float(state.economy.imperial_rent_pool) if state.economy else None
             ),
@@ -2001,6 +2714,312 @@ class EngineBridge:
                 rows = []
         return {"county_fips": county_fips, "history": rows}
 
+    def get_map_history(
+        self,
+        session_id: UUID,
+        *,
+        metric: str,
+        from_tick: int | None = None,
+        to_tick: int | None = None,
+    ) -> dict[str, Any]:
+        """Return one MAP metric's per-tick, per-county replay frames.
+
+        Backs ``GET /api/games/{id}/map/history/`` (Program 17 Wave 3,
+        Backend-W3R3) — the map lens scrubber's real data source.
+
+        **The verified replayable/non-replayable split** (checked against a
+        running canonical session, not assumed — a live ``territory_snapshot``
+        SELECT and a live ``view_runtime_trace_emission`` SELECT, 2026-07-15):
+        only 4 of the 13 ``MAP_METRIC_PROPERTIES``
+        (:data:`MAP_HISTORY_REPLAYABLE_METRICS`) have a genuine append-only
+        historical source:
+
+        * ``heat``/``population`` off ``territory_snapshot`` (dense, one row
+          per ``(tick, county_fips)`` — :func:`_territory_snapshot_rows`;
+          direct ``Territory.heat``/``Territory.population`` fields, no
+          graph needed, so these are reliably non-null).
+        * ``profit_rate``/``exploitation_rate`` off
+          ``view_runtime_trace_emission`` (the spec-089 hex-delta
+          fill-forward view; a genuine ``SUM(s)/(SUM(c)+SUM(v))`` /
+          ``SUM(s)/SUM(v)`` county aggregate over every hex — confirmed
+          real non-null values across 987 ticks on a running session).
+
+        The remaining 9 (``occ``/``imperial_rent``/``org_presence``/
+        ``habitability``/``dominant_class``/``solidarity_index``/
+        ``throughput_position``/``agitation``/``territory_type``) exist
+        ONLY in ``hex_latest``, a current-tick-only cache (PK
+        ``game_id, h3_index`` — overwritten every tick, see
+        :func:`_persist_hex_state_safe`) with no historical table at all —
+        this method rejects them with ``{"error": "not_replayable", ...}``
+        rather than serving a frame of fabricated nulls (Constitution
+        III.11). Unknown metrics (not in ``MAP_METRIC_PROPERTIES`` at all)
+        get ``{"error": "unknown_metric", ...}``.
+
+        **A separately-flagged real finding, not fixed here:** even
+        ``occ``/``imperial_rent`` — DECLARED ``territory_snapshot``
+        COLUMNS — persist as NULL on every row today, confirmed via a live
+        SELECT. Root cause: ``_persist_snapshots_safe`` (which fills
+        ``territory_snapshot``) calls ``_serialize_territory(t)`` WITHOUT
+        the ``graph=`` kwarg its ``tick_occ``/``tick_phi_hour`` reads need
+        (contrast the SAME tick's ``_persist_hex_state_safe`` call, which
+        DOES pass ``graph=new_graph`` via ``snapshot["territories"]`` —
+        that is why the LIVE ``/map/`` endpoint shows real values for
+        these while their history is blank). Out of this endpoint's scope
+        to fix; flagged so it is not mistaken for "never computed".
+
+        **Keys are ``county_fips``**, not ``h3_index``: both sources are
+        county-grained (no persisted per-tick store carries a per-hex
+        value for any of these 4 metrics either), which diverges from the
+        live hex-zoom ``/map/`` payload's ``h3_index`` keys — a reported
+        divergence from the endpoint's original hex-or-territory-id
+        assumption, not an oversight. ``heat``/``population`` additionally
+        inherit ``territory_snapshot``'s pre-existing, documented grain
+        caveat (see :meth:`get_territory_history`'s docstring): its
+        composite PK + ``ON CONFLICT ... DO NOTHING`` collapses a
+        hex-resolution scenario's many same-county territories onto
+        whichever one wrote first each tick, so those two metrics are NOT
+        a true county aggregate the way ``profit_rate``/
+        ``exploitation_rate`` genuinely are.
+
+        Args:
+            session_id: The game session UUID.
+            metric: One MAP metric name (``MAP_METRIC_PROPERTIES``).
+            from_tick: Inclusive lower tick bound; ``None`` combines with
+                ``to_tick`` to pick the default/capped window (see below).
+            to_tick: Inclusive upper tick bound; ``None`` defaults to the
+                latest tick this game has a row for.
+
+        Returns:
+            On success: ``{"metric", "from_tick", "to_tick", "capped",
+            "frames"}`` — ``frames`` sorted by tick ascending, each
+            ``values`` dict keyed by county_fips (sorted), values
+            ``float | None``. ``capped`` is ``True`` whenever the served
+            range is narrower than what was asked for (explicitly or via
+            the implicit "everything up to latest" default) because it
+            exceeds :data:`_MAP_HISTORY_WINDOW_CAP` ticks. On a metric
+            this method cannot serve: the same shape with empty frames
+            plus an ``"error"``/``"message"`` pair (``api.py`` maps
+            ``"unknown_metric"`` -> 400, ``"not_replayable"`` -> 422) —
+            this method never raises, matching the bridge class's "plain
+            dict" contract.
+        """
+        if metric not in MAP_METRIC_PROPERTIES:
+            return {
+                "metric": metric,
+                "from_tick": from_tick or 0,
+                "to_tick": to_tick or 0,
+                "capped": False,
+                "frames": [],
+                "error": "unknown_metric",
+                "message": (
+                    f"Invalid metric {metric!r}. Valid metrics: {sorted(MAP_METRIC_PROPERTIES)}"
+                ),
+            }
+        if metric not in MAP_HISTORY_REPLAYABLE_METRICS:
+            return {
+                "metric": metric,
+                "from_tick": from_tick or 0,
+                "to_tick": to_tick or 0,
+                "capped": False,
+                "frames": [],
+                "error": "not_replayable",
+                "message": (
+                    f"Metric {metric!r} has no persisted per-tick history — it is only "
+                    "computed live at serialize time (Constitution III.11: never replayed "
+                    f"as fabricated nulls). Replayable metrics: "
+                    f"{sorted(MAP_HISTORY_REPLAYABLE_METRICS)}"
+                ),
+            }
+
+        if metric in _MAP_HISTORY_TERRITORY_SNAPSHOT_METRICS:
+            latest_fn = getattr(self._persistence, "query_territory_snapshot_latest_tick", None)
+            frames_fn = getattr(self._persistence, "query_territory_snapshot_metric_frames", None)
+            value_key = _MAP_HISTORY_TERRITORY_SNAPSHOT_METRICS[metric]
+        else:
+            latest_fn = getattr(self._persistence, "query_county_trace_latest_tick", None)
+            frames_fn = getattr(self._persistence, "query_county_trace_metric_frames", None)
+            value_key = _MAP_HISTORY_COUNTY_TRACE_METRICS[metric]
+
+        empty: dict[str, Any] = {
+            "metric": metric,
+            "from_tick": from_tick or 0,
+            "to_tick": to_tick or 0,
+            "capped": False,
+            "frames": [],
+        }
+        if not callable(latest_fn) or not callable(frames_fn):
+            # SQLite-backed RuntimeDatabase / StubEngineBridge parity: honest empty.
+            return empty
+
+        if to_tick is not None:
+            requested_to = to_tick
+        else:
+            try:
+                latest_tick = latest_fn(session_id)
+            except Exception:  # noqa: BLE001 — diagnostic; never blocks the request
+                logger.exception("get_map_history: latest-tick lookup failed for %r", metric)
+                latest_tick = None
+            if latest_tick is None:
+                return empty
+            requested_to = latest_tick
+
+        requested_from = from_tick if from_tick is not None else 0
+        span = requested_to - requested_from + 1
+        if span > _MAP_HISTORY_WINDOW_CAP:
+            resolved_from = requested_to - _MAP_HISTORY_WINDOW_CAP + 1
+            capped = True
+        else:
+            resolved_from = requested_from
+            capped = False
+
+        rows: list[dict[str, Any]] = []
+        try:
+            rows = frames_fn(session_id, resolved_from, requested_to)
+        except Exception:  # noqa: BLE001 — diagnostic; never blocks the request
+            logger.exception("get_map_history: frame query failed for %r", metric)
+            rows = []
+
+        by_tick: dict[int, dict[str, float | None]] = {}
+        for row in rows:
+            tick_val = int(row["tick"])
+            county = str(row["county_fips"])
+            raw_value = row.get(value_key)
+            by_tick.setdefault(tick_val, {})[county] = (
+                float(raw_value) if raw_value is not None else None
+            )
+
+        frames = [{"tick": t, "values": dict(sorted(by_tick[t].items()))} for t in sorted(by_tick)]
+
+        return {
+            "metric": metric,
+            "from_tick": resolved_from,
+            "to_tick": requested_to,
+            "capped": capped,
+            "frames": frames,
+        }
+
+    def get_class_history(self, session_id: UUID, node_id: str) -> dict[str, Any]:
+        """Return one social class's per-tick history + rupture markers.
+
+        Program 17 Wave 2 W2.5b (owner ruling 3): the survival-probability
+        duel chart's real backing history — replaces client-side
+        accumulation. ``class_snapshot`` carries one real row per ``(session,
+        tick, class_id)`` — see :func:`_class_snapshot_rows`. Served off the
+        SAME ``/node/<id>/history/`` URL as the generic node inspector
+        (social_class has no dedicated ``/class/`` inspector route, unlike
+        org/territory) — the response key is ``class_id`` (not ``id``/
+        ``node_id``) to match the org/territory history contract's
+        "named-after-what's-queried" convention despite the generic route.
+
+        Rupture markers (owner ruling 3): UPRISING events for this node
+        filtered to ``data.trigger == "revolutionary_pressure"`` — the
+        honest P(S|R) > P(S|A) crossing signal ``StruggleSystem`` emits ONLY
+        for the two struggling roles (PERIPHERY_PROLETARIAT/
+        LUMPENPROLETARIAT), agitation-gated (struggle.py:393). The raw
+        crossing is NOT evented for any other class, so a node with no
+        struggling role simply gets an honest empty ``ruptures`` list —
+        never a fabricated crossing.
+
+        Reads via the persistence layer's optional
+        ``query_class_snapshot_history(session_id, class_id, limit=...)``
+        and ``query_node_uprising_events(session_id, node_id, limit=...)``
+        capabilities — same optional-capability pattern as
+        :meth:`get_org_history`; SQLite-backed ``RuntimeDatabase`` has
+        neither and degrades to empty lists.
+
+        Args:
+            session_id: The game session UUID.
+            node_id: The social_class node id (e.g. ``"C004"``).
+
+        Returns:
+            ``{"class_id": node_id, "history": [{"tick": ..., ...}, ...],
+            "ruptures": [GameEvent, ...]}`` — ``history`` oldest-tick-first;
+            ``ruptures`` oldest-tick-first, each in the same shape as
+            ``get_journal_dashboard``'s events (id/type/tick/severity/title/
+            body/data). Both empty when the node has never been persisted or
+            never struggled (honest empty, Constitution III.11).
+        """
+        rows: list[dict[str, Any]] = []
+        query = getattr(self._persistence, "query_class_snapshot_history", None)
+        if callable(query):
+            try:
+                rows = query(session_id, node_id)
+            except Exception:  # noqa: BLE001 — diagnostic; never blocks the request
+                logger.exception("get_class_history: query_class_snapshot_history failed")
+                rows = []
+
+        ruptures: list[dict[str, Any]] = []
+        event_query = getattr(self._persistence, "query_node_uprising_events", None)
+        if callable(event_query):
+            try:
+                ruptures = [
+                    _game_event_from_tick_event_row(row) for row in event_query(session_id, node_id)
+                ]
+            except Exception:  # noqa: BLE001 — diagnostic; never blocks the request
+                logger.exception("get_class_history: query_node_uprising_events failed")
+                ruptures = []
+
+        return {"class_id": node_id, "history": rows, "ruptures": ruptures}
+
+    def get_edge_history(self, session_id: UUID, edge_id: str) -> dict[str, Any]:
+        """Return one edge's per-tick weight history (audit Wave 4 straggler,
+        task #76 — the edge-weight history sparkline in InspectionStack).
+
+        ``edge_id`` uses the same ``"{source}->{target}"`` scheme
+        :meth:`get_inspector_edge` already established (no canonical
+        edge_id format existed before that method; reused here rather than
+        invented). Post-A1, ``edge_snapshot`` carries one real row per
+        ``(session, tick, source, target, edge_type)`` for EVERY edge type
+        (not just SOLIDARITY) — see :func:`_edge_snapshot_rows`. Reads it
+        via the persistence layer's optional
+        ``query_edge_snapshot_history(session_id, source, target,
+        limit=...)`` capability (SQLite-backed ``RuntimeDatabase`` has no
+        such table and degrades to an empty list, same optional-capability
+        pattern as :meth:`get_org_history`).
+
+        ``weight`` is ``value_flow`` — the one promoted numeric column
+        every edge type carries (SOLIDARITY/TRIBUTE/WAGES/PRESENCE/
+        TENANCY/ADJACENCY/EXPLOITATION alike); ``solidarity``/``tension``
+        ride alongside for the SOLIDARITY-specific treatment the audit
+        brief calls out ("distinct visual treatment for CLIENT_STATE/
+        SOLIDARITY edges") — ``solidarity`` is a real column-level
+        ``None`` (never a fabricated 0.0) for every non-SOLIDARITY edge
+        type.
+
+        Args:
+            session_id: The game session UUID.
+            edge_id: The edge id, ``"{source_id}->{target_id}"``.
+
+        Returns:
+            ``{"edge_id": edge_id, "history": [{"tick", "weight",
+            "solidarity", "tension"}, ...]}`` oldest-tick-first; empty
+            history for a malformed id (no ``"->"``) or an edge never
+            persisted (honest empty, Constitution III.11).
+        """
+        source, sep, target = edge_id.partition("->")
+        if not sep:
+            return {"edge_id": edge_id, "history": []}
+
+        rows: list[dict[str, Any]] = []
+        query = getattr(self._persistence, "query_edge_snapshot_history", None)
+        if callable(query):
+            try:
+                rows = query(session_id, source, target)
+            except Exception:  # noqa: BLE001 — diagnostic; never blocks the request
+                logger.exception("get_edge_history: query_edge_snapshot_history failed")
+                rows = []
+
+        history = [
+            {
+                "tick": row["tick"],
+                "weight": (float(row["value_flow"]) if row.get("value_flow") is not None else None),
+                "solidarity": row.get("solidarity"),
+                "tension": row.get("tension"),
+            }
+            for row in rows
+        ]
+        return {"edge_id": edge_id, "history": history}
+
     # ------------------------------------------------------------------ #
     # Spec 061 US6 T091: inspector endpoints (FR-019)
     #
@@ -2122,6 +3141,209 @@ class EngineBridge:
         ][:_STATE_APPARATUS_ACTIONS_LIMIT]
 
         return _build_state_apparatus_dashboard(state, organizations, recent_actions)
+
+    def get_doctrine_tree(
+        self,
+        session_id: UUID,  # noqa: ARG002 — reserved for per-session acquired overlay; tree is static game-data today
+    ) -> dict[str, Any]:
+        """Return the read-only Doctrine Tree canvas payload (the 5th takeover).
+
+        The Doctrine Tree (``babylon.domain.doctrine``, Epoch 3 Wave 6 Phase
+        0 data foundation) is static game-data — the same 11-node MVP tree
+        for every session, exactly like ``SCENARIO_CATALOG`` — not
+        session-derived state, so unlike sibling dashboards this method
+        never calls :meth:`hydrate_state`. ``session_id`` is accepted only
+        for signature parity with every other bridge dashboard method (the
+        view always passes it) and is reserved for a future per-session
+        acquired-node overlay once ``DoctrineSystem``/acquisition/TL-spend
+        wiring lands — those depend on six pending owner rulings and are
+        explicitly out of scope for this read-only canvas.
+
+        ``acquired_ids`` is always ``[]``: no engine system yet mutates a
+        session's acquired-doctrine set, so an honest empty is the only
+        truthful answer (Constitution III.11) — never a fabricated
+        partial-progress list. ``tags`` mirrors that same honesty: with
+        nothing acquired, the player's current tag values ARE the MVP
+        corpus's declared starting values (:func:`starting_tags`), not
+        :func:`~babylon.domain.doctrine.tags.compute_tags` run over an
+        empty acquired set (which would sum to all-zero — a real function,
+        wrong question, see that module's docstring on why the two are not
+        interchangeable).
+
+        Args:
+            session_id: The game session UUID (unused today; see above).
+
+        Returns:
+            Dict with ``root_id`` (str), ``nodes`` (list of
+            ``DoctrineNode.model_dump(mode="json")`` dicts — id, name,
+            tier, parents, description, tag_deltas, cost_tl, trunk,
+            unlocks, warning, is_trap, trap_condition, narrative, is_goal),
+            ``acquired_ids`` (``[]``), and ``tags`` (``dict[str, int]``
+            keyed by :class:`~babylon.models.enums.doctrine.DoctrineTag`
+            value).
+        """
+        from babylon.domain.doctrine import load_doctrine_tree, starting_tags
+
+        tree = load_doctrine_tree()
+        return {
+            "root_id": tree.root_id,
+            "nodes": [node.model_dump(mode="json") for node in tree.nodes.values()],
+            "acquired_ids": [],
+            "tags": {tag.value: value for tag, value in starting_tags().items()},
+        }
+
+    # ------------------------------------------------------------------ #
+    # AW4-R1 (audit Wave 4, "Topology & the Gramscian Wire"): Spatial
+    # Multi-Scale — org-network graph + hypergraph-community stub.
+    # Mirrors urls.py's "API: Spatial Multi-Scale" grouping.
+    # ------------------------------------------------------------------ #
+
+    def get_org_network(
+        self, session_id: UUID, *, territory_filter: str | None = None
+    ) -> dict[str, Any]:
+        """Return the org-network graph (spec-113 Multi-Scale Spatial Rendering).
+
+        Serves the frontend's ``OrgNetworkPayload`` contract
+        (``src/frontend/src/types/game.ts`` ~614-631:
+        ``{tick, nodes: OrgNetworkNode[], edges: OrgNetworkEdge[]}``,
+        ``OrgNetworkNode.type: "organization" | "institution" | "territory"``).
+        AW4-R1 verified two divergences from the brief that shaped this
+        implementation:
+
+        1. The typed ``OrgNetworkNode.type`` union has NO ``"social_class"``
+           member. Serving class nodes under a type value outside that
+           union would be exactly the "classified dishonestly" failure mode
+           the Seam Observatory exists to catch (``sentinels/seam/
+           registry.py`` module docstring), so nodes here are strictly
+           organizations/institutions/territories — the union's own three
+           values, also what this endpoint's pre-existing view docstring
+           already promised ("nodes (orgs, institutions, territories)",
+           ``api.py::org_network``).
+        2. ``EdgeType.MEMBERSHIP`` (Organization -> SocialClass — the one
+           edge type that WOULD connect an org to a class node) has NO
+           production writer anywhere in ``src/babylon`` today (verified by
+           search: only ever queried, by ``CommunitySystem``/
+           ``ReactionarySystem``/the OODA cost helpers/
+           ``domain.organizations.composition``; ``WorldState.to_graph()``
+           never creates one). ``EdgeType.CLIENT_STATE`` (the brief's other
+           named example) is likewise not org-related on inspection — it
+           connects two **social_class** nodes (comprador bourgeoisie ->
+           periphery proletariat subsidy, see
+           ``engine/scenarios/_legacy.py``), not an org to anything. So the
+           class-node scoping question above is moot against real data
+           today; flagged here for a frontend follow-up if a future spec
+           wants class nodes in this specific lens.
+
+        Nodes are organizations/institutions/territories connected via the
+        real graph-materialized org edges (``PRESENCE`` org/institution ->
+        territory, ``HOUSES`` institution -> org — both seeded by
+        ``WorldState.to_graph()``); any future ``ANTAGONISTIC``/
+        ``TRANSACTIONAL``/``SOLIDARISTIC``/``SOLIDARITY`` edge a player's
+        NEGOTIATE action or a later scenario creates between two included
+        nodes is picked up automatically (see :func:`_build_org_network`) —
+        no per-edge-type allowlist to maintain. ``territory_filter``
+        restricts to organizations/institutions whose ``territory_ids``
+        contains the given territory (matching the pre-existing view
+        docstring) plus that territory itself.
+
+        ``mode`` on each edge carries the mechanical ``EdgeType`` value
+        (lowercase — ``"presence"``, ``"houses"``, …), the same convention
+        :func:`_serialize_edge` already uses for the main graph/map lens
+        (``rel.edge_type`` -> ``"mode"``) — NOT the dialectical
+        ``EdgeMode`` (EXPLOITATION/SOLIDARITY-only, written by
+        ``EdgeTransitionSystem``), which, on the rare edge that carries
+        one, rides in ``attributes["edge_mode"]`` instead (never
+        fabricated when absent — Constitution III.11).
+
+        AW4-R1 Deliverable 3 additions (audit brief's "critical-nodes/
+        centrality map lens" + "percolation-ratio HUD chip"): ``centrality``
+        (per-node degree/betweenness/closeness over the undirected
+        projection of exactly this response's own nodes/edges — see
+        :func:`_org_network_centrality`) and ``percolation_ratio`` (the
+        real solidarity-network giant-component ratio — see
+        :func:`_solidarity_percolation_ratio`) are BOTH additive keys with
+        no field in the declared ``OrgNetworkPayload`` today; a frontend
+        follow-up needs to type them. Bridge-altitude computation of these
+        pure topology reads (precedent: :func:`_build_solidarity_communities`)
+        — never engine adjudication math.
+
+        Args:
+            session_id: The game session UUID.
+            territory_filter: Optional territory id; restricts nodes to
+                organizations/institutions present there plus the
+                territory itself.
+
+        Returns:
+            ``{"tick", "nodes", "edges", "centrality", "percolation_ratio"}``.
+            ``nodes``/``edges`` sorted deterministically by id / (source,
+            target, mode) — Constitution III.7.
+        """
+        state, graph = self.hydrate_state(session_id)
+        nodes, edges = _build_org_network(state, graph, territory_filter=territory_filter)
+        return {
+            "tick": state.tick,
+            "nodes": nodes,
+            "edges": edges,
+            "centrality": _org_network_centrality(nodes, edges),
+            "percolation_ratio": _solidarity_percolation_ratio(state, graph),
+        }
+
+    def get_hypergraph_communities(
+        self,
+        session_id: UUID,
+        *,
+        territory_filter: str | None = None,  # noqa: ARG002 — see docstring
+    ) -> dict[str, Any]:
+        """Return the hypergraph community payload — honest, permanently empty.
+
+        Serves the frontend's ``HypergraphPayload`` contract
+        (``src/frontend/src/types/game.ts`` ~648-660:
+        ``{tick, hyperedges: HypergraphCommunity[]}``) — AW4-R1 verified the
+        field is ``hyperedges``, not ``communities``.
+
+        AW4-R1 Deliverable 2: before this method existed, ``GET
+        /api/games/{id}/hypergraph/communities/`` (``api.py::
+        hypergraph_communities``, wired since before this Wave) called
+        ``bridge.get_hypergraph_communities`` on a bridge that had no such
+        method -> guaranteed ``AttributeError`` -> 500, on BOTH bridges
+        (verified 2026-07-15). ``StubEngineBridge`` even already carried a
+        docstring on its ``get_field_state`` calling this exact gap out by
+        name as a cautionary tale to not repeat (see that method's
+        docstring, ``game/stub_bridge.py``).
+
+        The underlying data source is real but never populated:
+        ``SocialClass.community_memberships`` (the XGI hypergraph
+        community layer) is never assigned by any production scenario
+        builder — verified by search, no writer exists outside the model's
+        own tests — so ``CommunitySystem.step`` (``engine/systems/
+        community.py`` position 6) no-ops every tick
+        (``if not all_memberships: return``, see its ``_collect_memberships``
+        helper). This is the SAME gap :func:`_build_solidarity_communities`'s
+        docstring already documents for :meth:`get_communities_dashboard` —
+        both explicitly reason that reading the real (permanently empty)
+        source here would be "an honest but *permanently* empty list,
+        identical to the prior stub." Per this Wave's explicit brief, this
+        endpoint does exactly that instead of relabeling
+        :meth:`get_communities_dashboard`'s real SOLIDARITY-edge clusters
+        as hypergraph communities — those are a distinct, real structure;
+        conflating them would misrepresent a hypergraph community as
+        existing when it does not.
+
+        ``territory_filter`` is accepted for signature parity with the
+        view (``api.py`` forwards the ``?territory=`` query param
+        unconditionally) but has no effect while the underlying layer is
+        unseeded.
+
+        Args:
+            session_id: The game session UUID.
+            territory_filter: Accepted, currently inert (see above).
+
+        Returns:
+            ``{"tick": <int>, "hyperedges": []}`` — honest empty
+            (Constitution III.11), never a fabricated community.
+        """
+        state, _graph = self.hydrate_state(session_id)
+        return {"tick": state.tick, "hyperedges": []}
 
     def get_infrastructure(self, session_id: UUID) -> dict[str, Any]:
         """Return the infrastructure network overlay (transport substrate).
@@ -2256,6 +3478,17 @@ class EngineBridge:
             "cable_id": f"{tick:04d}-A",
             "page_of": "001/001",
             "timestamp_utc": "2026-05-12T08:47:22Z",
+            # Real per-scenario class display names — scenarios reuse
+            # canonical ids under different names (wayne_county's C002 is
+            # "Suburban Petty Bourgeoisie", not the registry's Comprador).
+            # The narrator prefers these over its canonical fallback map so
+            # class-scoped events never narrate a confidently wrong name;
+            # _build_meta drops the key from the wire.yaml output.
+            "class_names": {class_id: sc.name for class_id, sc in sorted(state.entities.items())},
+            # Real per-scenario org display names (AW3-R1) — mirrors
+            # class_names above, for org-scoped events (RED_BROWN_COUP).
+            # _build_meta drops the key from the wire, same as class_names.
+            "org_names": {org_id: o.name for org_id, o in sorted(state.organizations.items())},
         }
 
         feed = self._narrator.narrate(events, meta)
@@ -2376,15 +3609,15 @@ class EngineBridge:
         graph_attrs: dict[str, Any] = getattr(graph, "graph", {}) or {}
         tick = int(graph_attrs.get("tick", 0))
 
-        outcome: str | None = None
-        summary = ""
-        events_raw = graph_attrs.get("events", []) or []
-        for event in events_raw:
-            event_type = _extract_event_type(event)
-            if event_type.upper() in _TERMINAL_OUTCOMES:
-                outcome = event_type.lower()
-                summary = str(_extract_event_data(event, "summary", ""))
-                break
+        # Program 17 / Item 1c: WorldState.events is per-tick, not cumulative
+        # — the latest graph's events list loses an endgame event the moment
+        # even one more tick elapses. tick_event (durable, cumulative) is the
+        # only correct source for "has this game ever ended".
+        row = _fetch_endgame_event_row(getattr(self._persistence, "_pool", None), session_id)
+        outcome = _outcome_from_endgame_row(row)
+        summary = str(row.get("summary") or "") if row is not None and outcome else ""
+        if row is not None and outcome:
+            tick = int(row["tick"])
 
         headline = _OUTCOME_HEADLINES.get((outcome or "").upper(), "") if outcome else ""
 
@@ -2439,7 +3672,8 @@ class EngineBridge:
             else 0.0
         )
 
-        outcome = _detect_terminal_outcome(graph_attrs)
+        row = _fetch_endgame_event_row(getattr(self._persistence, "_pool", None), session_id)
+        outcome = _outcome_from_endgame_row(row)
 
         objectives: list[dict[str, Any]] = [
             {
@@ -2489,6 +3723,70 @@ class EngineBridge:
         return {
             "tick": tick,
             "objectives": objectives,
+        }
+
+    # ------------------------------------------------------------------ #
+    # Program 19/20: Contradiction Field Stack — the Field screen feed
+    # (Wave 3 Round 1, Backend-W3R1).
+    # ------------------------------------------------------------------ #
+
+    def get_field_state(self, session_id: UUID) -> dict[str, Any]:
+        """Return the System-19/20 contradiction-field stack for the Field screen.
+
+        Program 19/20 (Wave 3 Round 1). Reads ``contradiction_fields``/
+        ``field_derivatives`` (ContradictionFieldSystem @19 /
+        FieldDerivativeSystem @20), ``fascist_alignment`` (FascistFactionSystem),
+        and the graph-level ``principal_field``/``dialectical_regime`` attrs via
+        :meth:`hydrate_graph` — the same access pattern as
+        :meth:`get_contradiction_snapshot`/:meth:`get_journal_objectives`
+        (``graph_attrs = getattr(graph, "graph", {}) or {}``). Constitution
+        III.11: a node/attr the engine did not compute this tick is OMITTED,
+        never fabricated as 0.0/""/a default dict.
+
+        Altitude: the W3 R1b field-stack carry (``WorldState.field_stack`` +
+        ``principal_field``/``dialectical_regime`` fields,
+        ``babylon.models.world_state``) re-stamps ``contradiction_fields``/
+        ``field_derivatives``/``field_gradients`` onto every ``to_graph()``
+        output and re-emits the two graph attrs, so the persisted graph now
+        carries the full stack each ``resolve_tick``. Residual honesty caveat
+        (see the DECLARED_CONDITIONAL seam rows): ``df_dt`` (and therefore
+        ``principal_field``'s selection) needs >=2 ticks of
+        ``contradiction_history``, which lives in ``persistent_context`` —
+        still reset per HTTP call — so temporal derivatives read 0.0/absent
+        on the web path until that context survives across requests.
+
+        Args:
+            session_id: The game session UUID.
+
+        Returns:
+            ``FieldState`` dict: ``{"tick", "nodes", "edges", "principal_field",
+            "dialectical_regime"}``. See :func:`_build_field_state_nodes`/
+            :func:`_build_field_state_edges` for the per-entry shape.
+        """
+        graph = self._persistence.hydrate_graph(tick=None, session_id=session_id)
+        graph_attrs: dict[str, Any] = getattr(graph, "graph", {}) or {}
+        tick = int(graph_attrs.get("tick", 0))
+
+        nodes = _build_field_state_nodes(graph)
+        tenancy_members = _tenancy_members_by_territory(graph)
+        class_territory = _class_to_territory(tenancy_members)
+        edges = _build_field_state_edges(graph, class_territory)
+
+        principal_raw = graph_attrs.get("principal_field")
+        principal_field = (
+            principal_raw.get("field_name") if isinstance(principal_raw, dict) else None
+        )
+
+        dialectical_regime = graph_attrs.get("dialectical_regime")
+        if not isinstance(dialectical_regime, dict):
+            dialectical_regime = None
+
+        return {
+            "tick": tick,
+            "nodes": nodes,
+            "edges": edges,
+            "principal_field": principal_field,
+            "dialectical_regime": dialectical_regime,
         }
 
     # ------------------------------------------------------------------ #
@@ -2774,25 +4072,236 @@ class EngineBridge:
     # Inspector Views
     # ------------------------------------------------------------------ #
 
-    def get_inspector_node(self, _session_id: UUID, _node_id: str) -> dict[str, Any]:
-        """Return detailed stats for a generic node click."""
+    def get_inspector_node(self, session_id: UUID, node_id: str) -> dict[str, Any]:
+        """Return detailed stats for a generic node click (spec-113).
+
+        Reads the RAW graph directly — never ``WorldState.from_graph()``,
+        which reconstructs unrecognized ``_node_type`` values (faction,
+        sovereign, community) as a strict ``SocialClass`` and crashes on
+        their real attributes (see :func:`_build_balkanization_block`'s
+        docstring). ``social_class`` nodes get the wage-pairing + apologist
+        narrative block (:func:`_social_class_inspector_fields`); every
+        other node type gets an honest generic dump of its real fields,
+        enum-normalized (matches ``EventsFeed.tsx``'s documented "node is
+        the generic fallback" contract).
+        """
+        graph = self._persistence.hydrate_graph(tick=None, session_id=session_id)
+        if node_id not in graph.nodes:
+            return {}
+        data = graph.nodes[node_id]
+        node_type = data.get("_node_type", "unknown")
+        payload: dict[str, Any] = {
+            "id": node_id,
+            "type": node_type,
+            "name": data.get("name", node_id),
+        }
+        if node_type == "social_class":
+            core_wages = _incoming_wages_flow(graph, node_id)
+            payload.update(_social_class_inspector_fields(data, core_wages, graph))
+        else:
+            payload.update(
+                _enum_normalized({k: v for k, v in data.items() if k not in ("_node_type", "name")})
+            )
+        return payload
+
+    def get_inspector_org(self, session_id: UUID, org_id: str) -> dict[str, Any]:
+        """Return real Organization fields for a drill-down (spec-113).
+
+        Deliberately stricter than :meth:`get_org_status`'s bare membership
+        check: a non-organization node id returns ``{}`` rather than being
+        shaped as one (Constitution III.11 — absence over fabrication).
+        Does NOT fabricate ``wealth``/``ideology``/consciousness-vector
+        fields — the base ``Organization`` model has none of those.
+
+        Program 17 Wave 1 / W1.3: also attaches ``vanguard``
+        (:class:`VanguardResources`, same player-org gating
+        ``_serialize_organization`` uses) and ``traps`` (via the SAME
+        :func:`_compute_traps` code path the main snapshot uses — never
+        duplicated) — both only for the player org; non-player orgs get
+        ``None`` for each rather than an empty-shell section.
+        """
+        graph = self._persistence.hydrate_graph(tick=None, session_id=session_id)
+        if org_id not in graph.nodes or graph.nodes[org_id].get("_node_type") != "organization":
+            return {}
+        data = graph.nodes[org_id]
+        enums = _enum_normalized(
+            {
+                "class_character": data.get("class_character"),
+                "org_type": data.get("org_type"),
+                "legal_standing": data.get("legal_standing"),
+                "consciousness_tendency": data.get("consciousness_tendency"),
+            }
+        )
+        is_player_org = (
+            enums["class_character"] == "proletarian" and enums["org_type"] == "civil_society"
+        )
+
+        vanguard: dict[str, Any] | None = None
+        traps: dict[str, Any] | None = None
+        if is_player_org:
+            vanguard = VanguardResources.from_organization(
+                cadre_level=float(data.get("cadre_level", 0.0)),
+                cohesion=float(data.get("cohesion", 0.0)),
+                budget=float(data.get("budget", 0.0)),
+                heat=float(data.get("heat", 0.0)),
+                territory_count=len(data.get("territory_ids", [])),
+            ).model_dump()
+            # Reputation is functionally dead: no from_organization call site
+            # anywhere carries it tick-to-tick, so it always defaults to 0.0.
+            # Emit None rather than a fabricated number (Constitution III.11)
+            # — wire persistence before ever emitting a real value here.
+            vanguard["reputation"] = None
+
+            # The inspector is a READ: report the trap state the last resolved
+            # tick persisted, verbatim. detect_traps increments
+            # ticks_at_moderate per call, so recomputing here would let
+            # inspector polling escalate a MODERATE trap toward SEVERE. Only
+            # compute fresh (previous carry is None, no writeback) when no
+            # tick has persisted state for this session yet.
+            cached = _session_trap_state.get(session_id)
+            if cached is not None:
+                traps = cached.model_dump()
+            else:
+                world_state = WorldState.from_graph(graph, tick=_graph_tick(graph))
+                traps = _compute_traps(world_state, session_id, persist=False)
+
+        return {
+            "id": org_id,
+            "name": data.get("name", org_id),
+            "class_character": enums["class_character"],
+            "type": enums["org_type"],
+            "budget": float(data.get("budget", 0.0)),
+            "cohesion": float(data.get("cohesion", 0.0)),
+            "cadre_level": float(data.get("cadre_level", 0.0)),
+            "heat": float(data.get("heat", 0.0)),
+            "legal_standing": enums["legal_standing"],
+            "consciousness_tendency": enums["consciousness_tendency"],
+            "territory_ids": list(data.get("territory_ids", [])),
+            "vanguard": vanguard,
+            "traps": traps,
+        }
+
+    def get_inspector_community(self, session_id: UUID, hyperedge_id: str) -> dict[str, Any]:
+        """Return one ``/communities/`` entry by id.
+
+        Pure reuse of :func:`_build_solidarity_communities` — zero new
+        logic — guarantees this inspector can never drift from the
+        dashboard list it drills into.
+        """
+        graph = self._persistence.hydrate_graph(tick=None, session_id=session_id)
+        for community in _build_solidarity_communities(graph):
+            if community["id"] == hyperedge_id:
+                return community
         return {}
 
-    def get_inspector_org(self, _session_id: UUID, _org_id: str) -> dict[str, Any]:
-        """Return detailed drill-down data for a specific organization."""
-        return {}
+    def get_inspector_edge(self, session_id: UUID, edge_id: str) -> dict[str, Any]:
+        """Return one edge's detail by its ``"{source}->{target}"`` id.
 
-    def get_inspector_community(self, _session_id: UUID, _hyperedge_id: str) -> dict[str, Any]:
-        """Return detailed drill-down data for a community hyperedge."""
-        return {}
+        No canonical ``edge_id`` URL format existed before this method;
+        :func:`_outgoing_extractive_edges` already uses this exact
+        ``f"{source}->{target}"`` shape for a payload field (never for URL
+        routing) — reused here rather than invented.
+        """
+        graph = self._persistence.hydrate_graph(tick=None, session_id=session_id)
+        source, sep, target = edge_id.partition("->")
+        if not sep or (source, target) not in graph.edges:
+            return {}
+        data = graph.edges[(source, target)]
+        edge_type = str(data.get("edge_type", data.get("_edge_type", ""))).lower()
+        edge_mode = data.get("edge_mode")
+        payload: dict[str, Any] = {
+            "id": edge_id,
+            "source_id": source,
+            "target_id": target,
+            "source_name": graph.nodes.get(source, {}).get("name", source),
+            "target_name": graph.nodes.get(target, {}).get("name", target),
+            "edge_type": edge_type,
+            "edge_mode": str(edge_mode).lower() if edge_mode is not None else None,
+            "value_flow": float(data.get("value_flow", 0.0)),
+            "tension": float(data.get("tension", 0.0)),
+        }
+        if edge_type == "solidarity":
+            payload["solidarity_strength"] = float(data.get("solidarity_strength", 0.0))
+        return payload
 
-    def get_inspector_edge(self, _session_id: UUID, _edge_id: str) -> dict[str, Any]:
-        """Return detailed drill-down data for an edge."""
-        return {}
+    def get_inspector_hex(self, session_id: UUID, h3_index: str) -> dict[str, Any]:
+        """Return one territory's drill-down detail by its ``h3_index``.
 
-    def get_inspector_hex(self, _session_id: UUID, _h3_index: str) -> dict[str, Any]:
-        """Return detailed drill-down data for a map hex."""
-        return {}
+        ``imperial_rent``/``profit_rate``/``occ``/``exploitation_rate``
+        mirror how :func:`_serialize_territory` reads the same
+        ``tick_``-prefixed graph attrs (Program 17 / Item 1a) — real
+        per-territory values once ``TickDynamicsSystem``'s first year
+        boundary produces them, honest ``None`` until then.
+
+        Wave 2 W2.4: ``throughput_position``/``agitation``/``territory_type``
+        give the hex inspector parity with the 3 new ``/map/`` lenses —
+        ``throughput_position`` mirrors ``imperial_rent`` (real off
+        ``tick_throughput_position`` once wired + a year boundary has run),
+        ``agitation`` reuses :func:`_agitation_index_by_territory` (the same
+        function the map lens's aggregation reads), and ``territory_type``
+        reads the real ``Territory.territory_type`` enum directly off the
+        raw graph node (always present — a required, defaulted field).
+
+        Wave 5 receptivity lens pair: ``mass_receptivity``/``vision_state``
+        mirror ``imperial_rent`` above (native per-territory graph attrs,
+        read directly off the node); ``intel_confidence`` joins them here
+        even though it has no ``/map/`` lens of its own (uniformly 0.1 in
+        every scenario verified so far — a flat lens would be decorative,
+        see the program report's Phase-1 findings). All three are ``None``
+        before ``EpistemicHorizonSystem`` has ever run this session (it
+        executes only inside a tick — this drill-down reads whatever
+        ``hydrate_graph`` last persisted) or for a tenant-less territory
+        (Constitution III.11).
+        """
+        graph = self._persistence.hydrate_graph(tick=None, session_id=session_id)
+        territory_id: str | None = None
+        for node_id, node_data in graph.nodes(data=True):
+            if node_data.get("_node_type") == "territory" and node_data.get("h3_index") == h3_index:
+                territory_id = node_id
+                break
+        if territory_id is None:
+            return {}
+        data = graph.nodes[territory_id]
+        biocapacity = float(data.get("biocapacity", 0.0))
+        max_biocapacity = float(data.get("max_biocapacity", 0.0)) or 1.0
+        habitability = max(0.0, min(1.0, biocapacity / max_biocapacity))
+
+        tenancy_members = _tenancy_members_by_territory(graph)
+        dominant_class = _dominant_class_by_territory(graph, tenancy_members).get(territory_id)
+        solidarity_index = _solidarity_index_by_territory(graph, tenancy_members).get(territory_id)
+        agitation = _agitation_index_by_territory(graph, tenancy_members).get(territory_id)
+        territory_type_raw = data.get("territory_type")
+        org_presence = sum(
+            1
+            for _node_id, member_data in _nodes_in_territory(graph, territory_id)
+            if member_data.get("_node_type") == "organization"
+        )
+
+        return {
+            "id": territory_id,
+            "h3_index": h3_index,
+            "name": data.get("name", territory_id),
+            "habitability": round(habitability, 4),
+            "dominant_class": dominant_class,
+            "solidarity_index": solidarity_index,
+            "org_presence": org_presence,
+            "imperial_rent": _territory_graph_attr(graph, territory_id, "tick_phi_hour"),
+            "profit_rate": _territory_graph_attr(graph, territory_id, "tick_profit_rate"),
+            "occ": _territory_graph_attr(graph, territory_id, "tick_occ"),
+            "exploitation_rate": _territory_graph_attr(
+                graph, territory_id, "tick_exploitation_rate"
+            ),
+            "throughput_position": _territory_graph_attr(
+                graph, territory_id, "tick_throughput_position"
+            ),
+            "agitation": agitation,
+            "territory_type": (
+                _enum_val(territory_type_raw) if territory_type_raw is not None else None
+            ),
+            "mass_receptivity": _territory_graph_attr(graph, territory_id, "mass_receptivity"),
+            "intel_confidence": _territory_graph_attr(graph, territory_id, "intel_confidence"),
+            "vision_state": _territory_graph_attr(graph, territory_id, "vision_state"),
+        }
 
     # ------------------------------------------------------------------ #
     # Tick resolution
@@ -2868,19 +4377,32 @@ class EngineBridge:
         # Owner item 30, point 3: wire the county economics calculators
         # only when this session actually has county-resolution territory
         # data for them to compute over (see _has_county_resolution_territory).
-        calculator_overrides = (
-            _bridge_economics_overrides() if _has_county_resolution_territory(state) else None
+        county_fips_codes = tuple(
+            sorted({t.county_fips for t in state.territories.values() if t.county_fips})
+        )
+        calculator_overrides, leontief_session = (
+            _bridge_economics_overrides(county_fips_codes)
+            if _has_county_resolution_territory(state)
+            else (None, None)
         )
 
         # Step the engine
+        # Program 17 / Item 1a: _bridge_economics_overrides() opens a fresh
+        # SQLAlchemy session every resolve_tick() call (unlike the headless
+        # runner's once-per-run session) — close it as soon as step() returns
+        # so a long-running web session doesn't leak one session per tick.
         logger.debug("Stepping engine session=%s tick=%d", session_id, state.tick)
-        new_state = step(
-            state,
-            sim_config,
-            persistent_context=persistent_context,
-            defines=game_defines,
-            calculator_overrides=calculator_overrides,
-        )
+        try:
+            new_state = step(
+                state,
+                sim_config,
+                persistent_context=persistent_context,
+                defines=game_defines,
+                calculator_overrides=calculator_overrides,
+            )
+        finally:
+            if leontief_session is not None:
+                leontief_session.close()
         logger.info(
             "Engine step complete session=%s tick=%d->%d entities=%d events=%d",
             session_id,
@@ -2890,6 +4412,28 @@ class EngineBridge:
             len(new_state.events),
         )
 
+        # Program 17 / Item 1c: run the real EndgameDetector observer, cached
+        # per-session (module-level _session_endgame_detectors) so its
+        # cross-tick counters (ECOLOGICAL_COLLAPSE's 5-consecutive-tick
+        # window, RED_OGV/FRAGMENTED_COLLAPSE's rolling windows) survive
+        # across separate resolve_tick HTTP calls — persistent_context does
+        # NOT survive between web requests (see module docstring above
+        # _session_endgame_detectors). On first detection, append a real
+        # EndgameEvent to new_state.events so it rides the existing
+        # tick_event persistence pipe below (_persist_tick_events_safe).
+        detector = _session_endgame_detectors.get(session_id)
+        if detector is None:
+            detector = EndgameDetector(defines=game_defines)
+            detector.on_simulation_start(state, sim_config)
+            _session_endgame_detectors[session_id] = detector
+        if not detector.is_game_over:
+            detector.on_tick(state, new_state)
+            if detector.is_game_over:
+                endgame_event = EndgameEvent(tick=new_state.tick, outcome=detector.outcome)
+                new_state = new_state.model_copy(
+                    update={"events": [*new_state.events, endgame_event]}
+                )
+
         # Persist the new tick
         new_graph = new_state.to_graph()
         # Owner item 30, point 1: re-apply TickDynamicsSystem's territory-node
@@ -2897,6 +4441,20 @@ class EngineBridge:
         # stripped (see _carry_tick_dynamics_flows's docstring for why).
         # Mutates new_graph in place, before it gets persisted below.
         _carry_tick_dynamics_flows(graph, new_graph, persistent_context)
+        # Wave 5 receptivity lens pair: re-inject EpistemicHorizonSystem's
+        # mass_receptivity/intel_confidence/vision_state shadow attrs, the
+        # same class of round-trip loss the carry above fixes for
+        # TickDynamicsSystem (see _carry_epistemic_horizon's docstring for
+        # why a recompute, not a persistent_context stash, is correct here).
+        _carry_epistemic_horizon(new_graph, game_defines.epistemic_horizon)
+        # Feature 021 lens pair: re-inject ReserveArmySystem's wage_pressure and
+        # DispossessionEventSystem's dispossession_intensity — both are
+        # TERRITORY_EXCLUDED_FIELDS, so the WorldState round-trip drops them the
+        # same way it drops the receptivity attrs above (see
+        # _carry_reserve_army_dispossession's docstring). A recompute, not a
+        # stash; recomputes ONLY the coefficients, never the systems' wage/
+        # wealth side effects (already applied in-tick).
+        _carry_reserve_army_dispossession(new_graph, game_defines)
         events_as_dicts: list[dict[str, Any]] = [
             e.model_dump(mode="json") for e in new_state.events
         ]
@@ -2942,7 +4500,6 @@ class EngineBridge:
             }
             _persist_action_result(self._persistence, result_data)
 
-        # T019: Check for endgame conditions in events
         snapshot = _state_to_snapshot(new_state, session_id, graph=new_graph)
 
         # Spec 092 R-CONS: persist this tick's events into tick_event so the
@@ -2955,7 +4512,9 @@ class EngineBridge:
         # Spec-109 A2: org_count from live territory_ids, heat_delta from the
         # real pre-step (`graph`) -> post-step (`new_graph`) diff. Spec-113
         # Lane D: dominant_class/solidarity_index from the post-step graph
-        # (this tick's live TENANCY/SOLIDARITY topology).
+        # (this tick's live TENANCY/SOLIDARITY topology). Wave 2 W2.4:
+        # agitation likewise from the post-step graph. Audit Wave 4
+        # straggler (task #76): centrality from the post-step org network.
         new_tenancy_members = _tenancy_members_by_territory(new_graph)
         _persist_hex_state_safe(
             session_id,
@@ -2971,31 +4530,29 @@ class EngineBridge:
             solidarity_index_by_territory=_solidarity_index_by_territory(
                 new_graph, new_tenancy_members
             ),
+            agitation_by_territory=_agitation_index_by_territory(new_graph, new_tenancy_members),
+            centrality_by_territory=_centrality_by_territory(new_state, new_graph),
         )
         # Spec-109 A1: fill the spec-037 snapshot tables + the tick_summary
         # aggregates that back get_game_timeseries (spec-061 FR-003 wire-up).
-        _persist_snapshots_safe(self._persistence, session_id, new_state)
-        # Spec 095 FR-095-02: recognize ALL 5 terminal GameOutcome event types
-        # (was 3-of-5 — RED_OGV and FRAGMENTED_COLLAPSE were missing, so those
-        # endgames never surfaced in the snapshot's ``endgame`` block). The
-        # _TERMINAL_OUTCOMES constant is the authoritative set, matching
-        # ``babylon.models.enums.GameOutcome`` minus IN_PROGRESS.
-        endgame_types = _TERMINAL_OUTCOMES
-        for event in new_state.events:
-            event_type = (
-                event.event_type.value
-                if hasattr(event.event_type, "value")
-                else str(event.event_type)
-            )
-            if event_type in endgame_types:
-                snapshot["endgame"] = {
-                    "outcome": event_type,
-                    "tick": new_state.tick,
-                    "summary": event.data.get("summary", "")
-                    if hasattr(event, "data") and isinstance(event.data, dict)
-                    else "",
-                }
-                break
+        # graph=new_graph (task #70): new_graph carries the tick_* rates
+        # _carry_tick_dynamics_flows just re-injected — without it the
+        # territory_snapshot rate columns persist NULL forever.
+        _persist_snapshots_safe(self._persistence, session_id, new_state, graph=new_graph)
+        # Program 17 / Item 1c: the real EndgameDetector (run above, before
+        # to_graph()) is the authoritative source now — not a literal-string
+        # scan of event_type (EndgameEvent.event_type is ALWAYS
+        # EventType.ENDGAME_REACHED; the real GameOutcome lives in its
+        # separate `outcome` field, never in event_type). `summary` stays
+        # empty: the engine adjudicates, it does not narrate (Constitution)
+        # — the async narrative_service call below is the correct place for
+        # prose, not this synchronous path.
+        if detector.is_game_over:
+            snapshot["endgame"] = {
+                "outcome": detector.outcome.value,
+                "tick": new_state.tick,
+                "summary": "",
+            }
 
         # Mark submitted turns as resolved
         _mark_resolved_safe(self._persistence, session_id, state.tick)
@@ -4137,7 +5694,72 @@ def _has_county_resolution_territory(state: WorldState) -> bool:
     return any(t.county_fips for t in state.territories.values())
 
 
-def _bridge_economics_overrides() -> dict[str, Any]:
+#: Cache of hydrated capital calculators keyed by the county FIPS-set. Hydrating
+#: the TensorRegistry runs one QCEW query per (county, year), and
+#: :func:`_bridge_economics_overrides` is called on EVERY ``resolve_tick`` — so
+#: rebuilding it per tick would re-query the reference DB ~15x per county every
+#: tick. Keyed by ``frozenset`` so distinct scenarios don't collide.
+_CAPITAL_CALCULATOR_CACHE: dict[frozenset[str], Any] = {}
+
+#: QCEW county coverage runs 2010–2024; hydrate the full span once so the
+#: perpetual-inventory ``get_K`` has every year the sim can advance into.
+_CAPITAL_HYDRATION_YEARS: Final[tuple[int, ...]] = tuple(range(2010, 2025))
+
+
+def _build_capital_calculator(fips_codes: tuple[str, ...]) -> Any:
+    """Build (and cache) a ``CapitalStockCalculator`` with a hydrated registry.
+
+    Owner item 25 / Fix B (owner-ruled 2026-07-12): give the web session a REAL
+    per-county capital stock K instead of the engine's ``0.0`` default, so
+    ``occ = K/v`` is non-zero and ``profit_rate = s/(K+v)`` separates from
+    ``exploitation_rate = s/v`` — with K=0 the two are identical, a degenerate,
+    dishonest tie. Mirrors the ``TensorRegistry`` hydration in
+    :meth:`babylon.engine.simulation._legacy.Simulation.from_sqlite`, and reads
+    the SAME reference DB the Leontief rent path already opens (no new runtime
+    dependency). Cached per FIPS-set because hydration hits the DB once per
+    ``(county, year)``.
+
+    Args:
+        fips_codes: The county FIPS this session computes over (non-empty).
+
+    Returns:
+        A ``CapitalStockCalculator`` whose ``get_K`` returns real per-county K
+        for the hydrated years, or a falsy ``NoDataSentinel`` where the
+        reference DB lacks that county-year (the engine's ``_compute_county_states``
+        guards on that truthiness — Constitution III.11 graceful degradation).
+    """
+    key = frozenset(fips_codes)
+    cached = _CAPITAL_CALCULATOR_CACHE.get(key)
+    if cached is not None:
+        return cached
+
+    from pathlib import Path
+
+    import babylon.domain.economics as economics_pkg
+    from babylon.domain.economics.adapters import SQLiteQCEWSource
+    from babylon.domain.economics.capital_stock import CapitalStockCalculator
+    from babylon.domain.economics.department_mapper import DepartmentMapper
+    from babylon.domain.economics.hydrator import MarxianHydrator
+    from babylon.domain.economics.tensor_registry import TensorRegistry
+    from babylon.engine.hydration.reference import StubBEASource
+    from babylon.reference.database import get_reference_session
+
+    registry = TensorRegistry()
+    naics_yaml = Path(economics_pkg.__file__).parent / "data" / "naics_to_dept.yaml"
+    with get_reference_session() as session:
+        hydrator = MarxianHydrator(
+            SQLiteQCEWSource(session),
+            StubBEASource(),  # falls back to DepartmentMapper department ratios
+            DepartmentMapper.from_yaml(naics_yaml),
+        )
+        registry.hydrate_counties(hydrator, list(fips_codes), list(_CAPITAL_HYDRATION_YEARS))
+
+    calculator = CapitalStockCalculator(registry)
+    _CAPITAL_CALCULATOR_CACHE[key] = calculator
+    return calculator
+
+
+def _bridge_economics_overrides(fips_codes: tuple[str, ...] = ()) -> tuple[dict[str, Any], Any]:
     """Wire the ``melt_calculator``/``gamma_calculator`` TickDynamicsSystem needs.
 
     Owner item 30, point 3. Mirrors
@@ -4148,26 +5770,44 @@ def _bridge_economics_overrides() -> dict[str, Any]:
     ``services.melt_calculator is None`` gate at
     ``economics/tick/system/__init__.py``'s annual-pipeline entry).
 
-    Only the same 2 calculators the headless runner wires are wired here.
-    The Spec-057 Leontief imperial-rent pipeline
-    (``periphery_labor_source``/``final_demand_source``/
+    Program 17 / Item 1a: also wires the Spec-057 Leontief imperial-rent
+    pipeline (``periphery_labor_source``/``final_demand_source``/
     ``industry_county_allocator``/``production_chain_calculator``/
-    ``bea_industries``) is unwired in BOTH the headless runner and this
-    bridge — a much larger, separate data-pipeline task, out of this
-    lane's scope (see ``babylon.domain.economics.tick.system.imperial_rent
-    ._spec_057_pipeline_wired``). ``phi_hour`` therefore stays ``0.0``
-    for web sessions exactly as it does for the headless canonical run;
-    ``median_wage``/``employment`` (Vol I's ``DefaultWagePressureCalculator``
-    is ALSO unwired in both runners — no ``reserve_army_data_source`` —
-    so they stay at ``CountyEconomicState``'s bootstrap defaults, 21.0
-    $/hr and 100,000 workers) are the calculator-independent values that
-    make ``flow_wage_accrued`` move (Constitution III.11: these are the
-    engine's own documented graceful-degradation defaults, not a value
-    this lane invents).
+    ``bea_industries``) via
+    :func:`babylon.domain.economics.factory.create_leontief_rent_services`,
+    so ``tick_phi_hour`` is genuinely computed per county for web sessions
+    too, instead of staying at the permanent ``0.0`` stub (see
+    ``babylon.domain.economics.tick.system.imperial_rent
+    ._spec_057_pipeline_wired``). ``median_wage``/``employment`` (Vol I's
+    ``DefaultWagePressureCalculator`` is ALSO unwired in both runners — no
+    ``reserve_army_data_source`` — so they stay at ``CountyEconomicState``'s
+    bootstrap defaults, 21.0 $/hr and 100,000 workers) are the
+    calculator-independent values that make ``flow_wage_accrued`` move
+    (Constitution III.11: these are the engine's own documented
+    graceful-degradation defaults, not a value this lane invents).
+
+    Wave 2 owner ruling 1: also wires ``throughput_calculator`` (Feature 014's
+    ``DefaultThroughputCalculator``, BEA county GDP + QCEW NAICS employment
+    over the same reference-DB ``session_factory``), so ``throughput_position``
+    (π)/``supply_chain_depth`` (D) are genuinely computed per county at year
+    boundaries instead of staying frozen at ``CountyEconomicState``'s bootstrap
+    defaults (1.0/2.0) forever — the fabricated constant even probed as "live"
+    by a naive liveness check, since 1.0 is a plausible real value.
+
+    Unlike the headless runner (which builds overrides ONCE before its
+    tick loop), this function is called FRESH on every ``resolve_tick()``
+    call — the returned session must be closed by the caller within that
+    same call (see the ``try``/``finally`` around ``step()`` at this
+    function's call site) so a long-running web session doesn't leak one
+    open SQLAlchemy session per tick.
 
     Returns:
-        Dict of service overrides for ``step()``'s ``calculator_overrides``.
+        A ``(overrides, leontief_session)`` tuple: ``overrides`` is the
+        dict of service overrides for ``step()``'s ``calculator_overrides``;
+        ``leontief_session`` is the open SQLAlchemy session backing the
+        Leontief overrides, which the caller must close.
     """
+    from babylon.domain.economics.factory import create_leontief_rent_services
     from babylon.domain.economics.gamma.adapters import MVPUnpaidCareHoursSource, QCEWCareAdapter
     from babylon.domain.economics.gamma.gamma_iii import DefaultGammaIIICalculator
     from babylon.domain.economics.melt import DefaultMELTCalculator
@@ -4175,6 +5815,13 @@ def _bridge_economics_overrides() -> dict[str, Any]:
         SQLiteBEANationalGDPSource,
         SQLiteQCEWNationalEmploymentSource,
     )
+    from babylon.domain.economics.throughput.adapters import (
+        SQLiteBEACountyGDPSource,
+        SQLiteQCEWCountyNAICSSource,
+    )
+    from babylon.domain.economics.throughput.calculator import DefaultThroughputCalculator
+    from babylon.domain.economics.throughput.supply_chain import DefaultSupplyChainAnalyzer
+    from babylon.kernel.event_bus import EventBus
     from babylon.reference.database import get_normalized_session_factory
 
     gamma = DefaultGammaIIICalculator(MVPUnpaidCareHoursSource(), QCEWCareAdapter())
@@ -4185,7 +5832,44 @@ def _bridge_economics_overrides() -> dict[str, Any]:
         SQLiteQCEWNationalEmploymentSource(session_factory),
     )
 
-    return {"gamma_calculator": gamma, "melt_calculator": melt}
+    event_bus = EventBus()
+    defines = GameDefines.load_default()
+    leontief_overrides, leontief_session = create_leontief_rent_services(
+        session_factory, event_bus, defines
+    )
+
+    overrides: dict[str, Any] = {"gamma_calculator": gamma, "melt_calculator": melt}
+    overrides.update(leontief_overrides)
+    # Owner item 25 / Fix C: real per-county employment (QCEW county rollup),
+    # so v = v_reproduction·employment·hours is grounded rather than the 100k
+    # placeholder — the last honesty gap in the derived-rate lenses. Queried
+    # per (fips, year); no upfront hydration, so wire it unconditionally.
+    qcew_source = SQLiteQCEWCountyNAICSSource(session_factory)
+    overrides["employment_source"] = qcew_source
+    # Wave 2 owner ruling 1: wire a real throughput_calculator (Feature 014's
+    # DefaultThroughputCalculator over the SAME reference-DB session factory Φ
+    # and employment_source above already use — no new runtime dependency).
+    # Without this, DefaultTickInitializer/_compute_county_states hardcode
+    # throughput_position=1.0/supply_chain_depth=2.0 forever — a fabricated
+    # constant that even probes as "live" (Constitution III.11: the liveness
+    # sensor cannot distinguish a frozen 1.0 from a real one). Reuses
+    # ``qcew_source`` (already constructed for ``employment_source`` above)
+    # for both the throughput calculator's own QCEW dependency and the
+    # ``DefaultSupplyChainAnalyzer`` it composes with — one adapter instance,
+    # two roles, matching the ``session_factory``-reuse convention already
+    # established for gamma/melt/leontief above.
+    overrides["throughput_calculator"] = DefaultThroughputCalculator(
+        SQLiteBEACountyGDPSource(session_factory),
+        qcew_source,
+        DefaultSupplyChainAnalyzer(qcew_source),
+        melt_calculator=melt,
+    )
+    # Owner item 25 / Fix B: wire a real per-county capital_calculator (cached) so
+    # occ and profit_rate are non-degenerate. Only when we know which counties to
+    # hydrate — a bare call (no FIPS) leaves K at the engine's 0.0 default.
+    if fips_codes:
+        overrides["capital_calculator"] = _build_capital_calculator(fips_codes)
+    return overrides, leontief_session
 
 
 def _carry_tick_dynamics_flows(
@@ -4260,8 +5944,17 @@ def _carry_tick_dynamics_flows(
             ``_tick_dynamics`` (graph-level ``TickDynamicsSystem`` output)
             when a boundary ran.
     """
+    from babylon.domain.economics.tick.derived_rates import DerivedRateCalculator
+
     tick_dynamics = persistent_context.get("_tick_dynamics")
     county_states = tick_dynamics.get("county_states") if isinstance(tick_dynamics, dict) else None
+    # national_params is stashed alongside county_states by write_tick_state_to_graph
+    # (graph_bridge.py); it carries tau/v_reproduction — the other half of what
+    # DerivedRateCalculator needs to recompute the per-county derived rates.
+    national_params = (
+        tick_dynamics.get("national_params") if isinstance(tick_dynamics, dict) else None
+    )
+    rate_calc = DerivedRateCalculator()
 
     for node_id, node_data in new_graph.nodes(data=True):
         if node_data.get("_node_type") != "territory":
@@ -4272,6 +5965,20 @@ def _carry_tick_dynamics_flows(
 
         if county_states is not None and fips in county_states:
             county = county_states[fips]
+            # Derived rates (profit_rate/occ/exploitation_rate) are computed by
+            # write_tick_state_to_graph at the boundary but stripped by the
+            # WorldState round-trip; recompute them the SAME way here so the
+            # profit/occ/exploitation map lenses survive to persistence, not just
+            # imperial_rent (tick_phi_hour). national_params is present whenever
+            # county_states is (both stashed together), but guard defensively.
+            rate_updates: dict[str, Any] = {}
+            if national_params is not None:
+                rates = rate_calc.compute_county_rates(county, national_params)
+                rate_updates = {
+                    "tick_profit_rate": rates.profit_rate,
+                    "tick_occ": rates.organic_composition,
+                    "tick_exploitation_rate": rates.exploitation_rate,
+                }
             new_graph.update_node(
                 node_id,
                 tick_capital_stock=county.capital_stock,
@@ -4281,6 +5988,31 @@ def _carry_tick_dynamics_flows(
                 tick_year=county.year,
                 flow_phi_accrued=0.0,
                 flow_wage_accrued=0.0,
+                # Wave 2 Gap-1 Backend-1: Group A (crisis detector) + Group B
+                # (frozen-constant) attrs, same evaporation the derived rates
+                # above were fixed for (W1 Fix A) — write_tick_state_to_graph
+                # computes these at the boundary (graph_bridge.py:108-119) but
+                # the WorldState round-trip strips them before this function
+                # ever runs.
+                tick_crisis_phase=county.crisis_state.phase.value,
+                tick_crisis_duration=county.crisis_state.crisis_duration,
+                tick_bifurcation_score=county.bifurcation_risk.score,
+                tick_wage_compression=county.crisis_state.cumulative_wage_compression,
+                tick_class_distribution={
+                    "bourgeoisie": county.class_distribution.bourgeoisie_share,
+                    "petit_bourgeoisie": county.class_distribution.petit_bourgeoisie_share,
+                    "labor_aristocracy": county.class_distribution.labor_aristocracy_share,
+                    "proletariat": county.class_distribution.proletariat_share,
+                    "lumpenproletariat": county.class_distribution.lumpenproletariat_share,
+                },
+                tick_unemployment_rate=county.unemployment_rate,
+                # Wave 2 owner ruling 1: throughput_position/supply_chain_depth
+                # are real now that _bridge_economics_overrides wires a
+                # throughput_calculator — same evaporation-on-round-trip fix
+                # as Group A/B above, no longer excluded from the carry.
+                tick_throughput_position=county.throughput_position,
+                tick_supply_chain_depth=county.supply_chain_depth,
+                **rate_updates,
             )
             continue
 
@@ -4307,7 +6039,214 @@ def _carry_tick_dynamics_flows(
             tick_year=old_data.get("tick_year"),
             flow_phi_accrued=prior_phi + annual_phi / WEEKS_PER_YEAR,
             flow_wage_accrued=prior_wage + annual_wage / WEEKS_PER_YEAR,
+            # Derived rates are annual (recomputed only at boundaries); carry the
+            # last boundary's values forward so the lenses don't flicker to None
+            # for the 51 ticks between boundaries.
+            tick_profit_rate=old_data.get("tick_profit_rate"),
+            tick_occ=old_data.get("tick_occ"),
+            tick_exploitation_rate=old_data.get("tick_exploitation_rate"),
+            # Wave 2 Gap-1 Backend-1: Group A/B are also annual (recomputed only
+            # at boundaries) — carry them forward byte-identical, same pattern
+            # as the derived rates above, so they don't evaporate mid-year.
+            tick_crisis_phase=old_data.get("tick_crisis_phase"),
+            tick_crisis_duration=old_data.get("tick_crisis_duration"),
+            tick_bifurcation_score=old_data.get("tick_bifurcation_score"),
+            tick_wage_compression=old_data.get("tick_wage_compression"),
+            tick_class_distribution=old_data.get("tick_class_distribution"),
+            tick_unemployment_rate=old_data.get("tick_unemployment_rate"),
+            # Wave 2 owner ruling 1: carry forward byte-identical between
+            # boundaries, same pattern as the derived rates/Group A/B above.
+            tick_throughput_position=old_data.get("tick_throughput_position"),
+            tick_supply_chain_depth=old_data.get("tick_supply_chain_depth"),
         )
+
+
+def _carry_epistemic_horizon(new_graph: Any, defines: Any) -> None:
+    """Re-inject ``EpistemicHorizonSystem``'s shadow territory attrs onto
+    ``new_graph`` before it is persisted — the Wave-5 receptivity-lens
+    counterpart to :func:`_carry_tick_dynamics_flows`.
+
+    Same altitude gap, different fix. ``EpistemicHorizonSystem`` (engine
+    position 27, last in ``_DEFAULT_SYSTEMS``) writes ``mass_receptivity``/
+    ``intel_confidence``/``vision_state`` onto TERRITORY nodes during
+    ``step()``'s internal graph mutation, but ``Territory`` is
+    ``extra="forbid"`` and none of the three are Territory model fields
+    (``TERRITORY_EXCLUDED_FIELDS``, ``babylon.models.world_state``), so
+    ``from_graph()`` drops all three before ``new_state.to_graph()`` (this
+    function's ``new_graph`` argument) ever re-emits them.
+
+    UNLIKE :func:`_carry_tick_dynamics_flows`, this is not a stash-and-
+    forward of boundary-gated historical state
+    (``persistent_context["_tick_dynamics"]``): every input
+    ``EpistemicHorizonSystem`` reads — ``p_acquiescence``, ``ideology.
+    class_consciousness``, ``role``, ``population`` (all real ``SocialClass``
+    model fields, so they DO survive the round trip) plus the live TENANCY/
+    PRESENCE edges — is still present on ``new_graph``. Nothing runs after
+    ``EpistemicHorizonSystem`` within a tick (it is LAST), so simply
+    RECOMPUTING the same pure formula against ``new_graph`` reproduces
+    byte-identical output to what the engine already computed internally —
+    a genuine recompute, not an approximation, and it can never drift out of
+    sync with the engine (no duplicated math — this calls the exact same
+    :func:`~babylon.engine.systems.epistemic_horizon.compute_epistemic_horizon`
+    function ``EpistemicHorizonSystem.step`` delegates to).
+
+    Honest absence carries as absence (Constitution III.11): a territory
+    with no TENANCY-linked social_class members carrying positive
+    population gets none of the three attrs, exactly as
+    ``EpistemicHorizonSystem`` itself would leave it. Only called from
+    :meth:`EngineBridge.resolve_tick` (mirrors ``_carry_tick_dynamics_flows``'s
+    own single call site) — NOT from the tick-0/seeded bootstrap paths,
+    where ``EpistemicHorizonSystem`` has genuinely never run yet (no
+    ``step()`` call has occurred), so honest absence there is "not yet
+    computed", not a bug to carry around.
+
+    Args:
+        new_graph: ``new_state.to_graph()`` — about to be persisted; mutated
+            in place.
+        defines: This session's ``EpistemicHorizonDefines``
+            (``game_defines.epistemic_horizon``).
+    """
+    from babylon.engine.systems.epistemic_horizon import compute_epistemic_horizon
+
+    compute_epistemic_horizon(new_graph, defines)
+
+
+def _nonneg_float(data: dict[str, Any], key: str) -> float:
+    """Non-negative float read of a graph-node attr (mirrors
+    ``babylon.engine.systems.dispossession_events._get_float``): a missing or
+    non-numeric value reads as ``0.0``, else ``max(float(value), 0.0)``. Keeps
+    :func:`_carry_reserve_army_dispossession` byte-identical to
+    ``DispossessionEventSystem.step``'s own rate reads."""
+    val = data.get(key, 0.0)
+    if isinstance(val, (int, float)):
+        return max(float(val), 0.0)
+    return 0.0
+
+
+def _carry_reserve_army_dispossession(new_graph: Any, defines: Any) -> None:
+    """Re-inject ``ReserveArmySystem``'s ``wage_pressure`` and
+    ``DispossessionEventSystem``'s ``dispossession_intensity`` onto
+    ``new_graph`` before it is persisted — the Feature-021 lens-pair
+    counterpart to :func:`_carry_epistemic_horizon`.
+
+    Same altitude gap. ``ReserveArmySystem`` (engine position 5) writes
+    ``wage_pressure`` and ``DispossessionEventSystem`` (position 10) writes
+    ``dispossession_intensity`` onto TERRITORY nodes during ``step()``'s
+    internal graph mutation, but both are ``TERRITORY_EXCLUDED_FIELDS``
+    (``babylon.models.world_state``) and not ``Territory`` model fields, so
+    ``from_graph()`` drops them before ``new_state.to_graph()`` (this
+    function's ``new_graph`` argument) ever re-emits them — without this carry
+    the two lenses render honestly-empty on EVERY resolved tick, not just past
+    tick 1.
+
+    Like :func:`_carry_epistemic_horizon` (and UNLIKE
+    :func:`_carry_tick_dynamics_flows`), this is a genuine RECOMPUTE, not a
+    ``persistent_context`` stash. Every input the two coefficients depend on is
+    a real ``Territory`` model field that survives the round trip untouched —
+    ``reserve_ratio`` for ``wage_pressure``; ``foreclosure_rate``/
+    ``eviction_rate``/``displacement_rate``/``concentrated_ownership``/
+    ``absentee_landlord_share`` for ``dispossession_intensity`` (verified: no
+    system mutates any of them after its producing system runs, and
+    :meth:`DispossessionIntensityCalculator.compute_intensity` reads only those
+    five rates, never ``fips_code``/``year``). Re-running the same pure
+    calculators against ``new_graph`` reproduces byte-identical output to the
+    engine's own in-tick computation (Constitution III.7).
+
+    Recomputes ONLY the two display coefficients — it does NOT re-apply either
+    system's side effect: ``ReserveArmySystem`` multiplicatively reduces
+    ``median_wage`` and ``DispossessionEventSystem`` transfers away territory
+    ``wealth`` (its ``creates_value=True`` mutation). Both already happened
+    in-tick and their results survive on ``new_graph`` as real fields; redoing
+    them here would double-count. Guards mirror each system's ``step`` exactly,
+    so a territory with no positive ``reserve_ratio`` (or no positive
+    dispossession rate) gets no attr (Constitution III.11: honest absence,
+    never a fabricated ``0.0``).
+
+    Only called from :meth:`EngineBridge.resolve_tick` (mirrors
+    ``_carry_epistemic_horizon``'s single call site) — NOT the tick-0/seeded
+    bootstrap paths, where neither system has run yet.
+
+    Args:
+        new_graph: ``new_state.to_graph()`` — about to be persisted; mutated in
+            place.
+        defines: This session's full ``GameDefines`` (its ``reserve_army`` and
+            ``dispossession`` sub-models).
+    """
+    from babylon.domain.economics.dispossession.intensity import (
+        DispossessionIntensityCalculator,
+    )
+    from babylon.domain.economics.dispossession.types import TerritoryDispossessionState
+    from babylon.domain.economics.reserve_army.calculator import (
+        DefaultWagePressureCalculator,
+    )
+
+    wage_calc = DefaultWagePressureCalculator(defines.reserve_army)
+    intensity_calc = DispossessionIntensityCalculator(defines.dispossession)
+
+    for node_id, data in new_graph.nodes(data=True):
+        if data.get("_node_type") != "territory":
+            continue
+
+        # wage_pressure — mirror ReserveArmySystem.step's guards exactly (skip
+        # non-numeric / non-positive reserve_ratio and a non-positive computed
+        # pressure), storing ONLY the coefficient — never the median_wage
+        # reduction the system also applies (already done in-tick, survives).
+        reserve_ratio = data.get("reserve_ratio", 0.0)
+        if isinstance(reserve_ratio, (int, float)):
+            reserve_ratio = float(reserve_ratio)
+            if reserve_ratio > 0.0:
+                wage_pressure = wage_calc.compute_wage_pressure(reserve_ratio)
+                if wage_pressure > 0.0:
+                    new_graph.update_node(node_id, wage_pressure=wage_pressure)
+
+        # dispossession_intensity — mirror DispossessionEventSystem.step's
+        # guards (skip when all three rates are non-positive), storing ONLY the
+        # intensity — never the wealth transfer the system also performs.
+        foreclosure_rate = _nonneg_float(data, "foreclosure_rate")
+        eviction_rate = _nonneg_float(data, "eviction_rate")
+        displacement_rate = _nonneg_float(data, "displacement_rate")
+        if foreclosure_rate <= 0.0 and eviction_rate <= 0.0 and displacement_rate <= 0.0:
+            continue
+        state = TerritoryDispossessionState(
+            fips_code=str(data.get("fips_code", "00000") or "00000")[:5].ljust(5, "0"),
+            year=int(data.get("year", 2010)),
+            foreclosure_rate=min(foreclosure_rate, 1.0),
+            eviction_rate=min(eviction_rate, 1.0),
+            displacement_rate=min(displacement_rate, 1.0),
+            concentrated_ownership=min(_nonneg_float(data, "concentrated_ownership"), 1.0),
+            absentee_landlord_share=min(_nonneg_float(data, "absentee_landlord_share"), 1.0),
+        )
+        new_graph.update_node(
+            node_id, dispossession_intensity=intensity_calc.compute_intensity(state)
+        )
+
+
+def _mean_territory_attr(graph: Any, key: str) -> float | None:
+    """Mean of a non-null territory-node attr across the graph, or ``None``.
+
+    Wave 2 Gap-1 Backend-1: ``get_economy_dashboard``'s ``profit_rate``/``occ``
+    were hardcoded ``None`` even after ``TickDynamicsSystem`` computed real
+    per-territory ``tick_profit_rate``/``tick_occ`` at a year boundary. This
+    is the graph-wide analogue of :func:`_territory_graph_attr` (which reads
+    one territory) — territories with no ``key`` attr yet (no boundary this
+    session) are excluded from the mean, never coerced to a fabricated 0.0
+    (Constitution III.11); an empty domain (nothing to average) is ``None``.
+
+    Args:
+        graph: A live graph (e.g. :meth:`hydrate_state`'s second return
+            value) whose territory nodes may carry the ``tick_*`` attr.
+        key: The territory-node attribute to average.
+
+    Returns:
+        The arithmetic mean of every non-``None`` value, or ``None`` when no
+        territory carries the attr.
+    """
+    values = [
+        float(data[key])
+        for _node_id, data in graph.nodes(data=True)
+        if data.get("_node_type") == "territory" and data.get(key) is not None
+    ]
+    return sum(values) / len(values) if values else None
 
 
 def _county_flow_snapshot(graph: Any) -> dict[str, Any]:
@@ -4362,9 +6301,15 @@ def _seed_balkanization_layer(state: WorldState) -> WorldState:
     quantity (sum would exceed the bound; max overweights outliers). The
     aggregated edge takes the support_type of its highest-influence child
     (lexicographic tie-break — deterministic per III.7). Sovereign
-    ``initial_claims`` seed as CLAIMS edges when their territories are
-    present (the shipped seed file has none — claims stay empty until
-    SovereigntySystem writes them, which is honest, not a bug).
+    ``initial_claims`` seed as CLAIMS edges when their ``territory_id``
+    literally matches a scenario Territory key (the shipped seed file's
+    ``canada`` / ``rest_of_usa`` are :mod:`persistence.external_node`
+    IDs, never scenario Territory keys, so this pass is currently a
+    no-op in every scenario). Per FR-040b (spec-070), every Territory
+    the literal pass doesn't claim falls to ``SOV_EXTERIOR_NULL`` — the
+    documented provisional fallback sovereign — so CLAIMS coverage is
+    total: every Territory in ``state.territories`` ends up claimed by
+    exactly one Sovereign.
 
     Args:
         state: The scenario-built tick-0 WorldState.
@@ -4420,6 +6365,7 @@ def _seed_balkanization_layer(state: WorldState) -> WorldState:
                 )
             )
 
+    claimed_territory_ids: set[str] = set()
     for record in load_seed_sovereigns_raw():
         for claim in record.get("initial_claims", []):
             territory_id = str(claim.get("territory_id", ""))
@@ -4434,6 +6380,25 @@ def _seed_balkanization_layer(state: WorldState) -> WorldState:
                     legal_status=str(claim.get("legal_status", "de_jure")),
                 )
             )
+            claimed_territory_ids.add(territory_id)
+
+    # FR-040b fallback (spec-070): SOV_EXTERIOR_NULL claims every
+    # Territory the literal pass above left unclaimed, so the SC-017
+    # coverage invariant (every Territory influenced or claimed) holds
+    # even when the seed file's initial_claims don't resolve to real
+    # Territory keys. Deterministic iteration order per III.7.
+    for territory_id in sorted(state.territories):
+        if territory_id in claimed_territory_ids:
+            continue
+        new_relationships.append(
+            Relationship(
+                source_id="SOV_EXTERIOR_NULL",
+                target_id=territory_id,
+                edge_type=EdgeType.CLAIMS,
+                control_level=1.0,
+                legal_status="de_jure",
+            )
+        )
 
     return state.model_copy(
         update={
@@ -4469,31 +6434,61 @@ def _optional_float(value: Any) -> float | None:
 
 
 # Spec 061 US3 FR-012: event severity classification.
-# Maps engine EventType strings (the canonical lowercase form) to the
+# Maps engine EventType values (the canonical lowercase form) to the
 # three-bucket frontend taxonomy. Default for unmapped types is
 # "informational" — the safe non-alarming bucket.
+#
+# Every key here is a real ``EventType.value`` — enforced by the Seam
+# Observatory's Sensor 1 (``tools/sentinel_check.py seam``,
+# ``babylon.sentinels.seam.checks.check_severity_vocabulary``). Eight dead
+# keys that matched no EventType
+# (and so classified nothing, silently defaulting their intended events to
+# "informational") were removed, and three drifted aliases were repaired to
+# their real events: ``repression_event`` -> ``state_repression``,
+# ``trap_activated`` -> ``red_settler_trap_detected``, and
+# ``solidarity_transmission`` -> ``consciousness_transmission``
+# (Program 17 Seam Observatory, 2026-07-12).
 _EVENT_SEVERITY: dict[str, str] = {
     # Critical: state-violation / collapse events
     "economic_crisis": "critical",
     "class_decomposition": "critical",
     "superwage_crisis": "critical",
-    "imperial_collapse": "critical",
     "uprising": "critical",
-    "revolution": "critical",
-    "fascist_consolidation": "critical",
-    # Warning: threshold-cross / bifurcation events
-    "consciousness_bifurcation": "warning",
-    "ideology_drift": "warning",
-    "heat_threshold": "warning",
-    "eviction_pipeline": "warning",
-    "repression_event": "warning",
-    "trap_activated": "warning",
+    "endgame_reached": "critical",
+    "power_vacuum": "critical",
+    "revolutionary_offensive": "critical",
+    "fascist_revanchism": "critical",
+    "spontaneous_riot": "critical",
+    "peripheral_revolt": "critical",
+    "ecological_overshoot": "critical",
+    # AW3-R1: a majority-LA-defection org capture is a state-violation event
+    # on par with the rest of this critical tier, not routine flow.
+    "red_brown_coup": "critical",
+    # Warning: threshold-cross / repression events
+    "state_repression": "warning",
+    "red_settler_trap_detected": "warning",
     "excessive_force": "warning",
+    "mass_awakening": "warning",
+    "fascist_drift": "warning",
+    "dispossession_cascade": "warning",
+    # Task #82 / AW3-R1: fascist-capture escalation siblings of the
+    # critical-tier "red_brown_coup" above (reactionary.py) — each is a
+    # threshold-cross precursor to that completed state-violation, not the
+    # violation itself: FASCIST_RECRUITMENT fires when a single node's
+    # fascist alignment crosses fascist_recruitment_threshold;
+    # ORGANIZATIONAL_FRACTURE fires per individual member defection, and
+    # only accumulates into RED_BROWN_COUP once defections exceed
+    # red_brown_coup_fraction of the org. Both were previously absent from
+    # this map entirely, silently defaulting to "informational".
+    "fascist_recruitment": "warning",
+    "organizational_fracture": "warning",
     # Informational: routine flow events
     "surplus_extraction": "informational",
     "imperial_subsidy": "informational",
-    "wage_payment": "informational",
-    "solidarity_transmission": "informational",
+    "consciousness_transmission": "informational",
+    "dispossession_event": "informational",
+    "value_transfer": "informational",
+    "reserve_army_pressure": "informational",
 }
 
 
@@ -4511,7 +6506,7 @@ def _humanize_event_type(event_type_str: str) -> str:
     return event_type_str.replace("_", " ").title()
 
 
-def _serialize_event(event: Any, session_id: UUID) -> dict[str, Any]:
+def _serialize_event(event: Any, session_id: UUID, *, graph: Any = None) -> dict[str, Any]:
     """Serialize a single :class:`SimulationEvent` for the snapshot.
 
     Spec 061 US3 (FR-012): every event surfaces ``id``, ``severity``,
@@ -4527,6 +6522,22 @@ def _serialize_event(event: Any, session_id: UUID) -> dict[str, Any]:
     - ``body``: a short prose body derived from the event payload.
       Falls back to the empty string when no narrative is available
       (the frontend renders body-less events compactly).
+
+    Program 17 Wave 1 W3R2 (Backend-W3R2aFix): UPRISING's payload
+    (``struggle.py``) carries only ``data.node_id`` — a social_class id,
+    never a territory reference — so the storm-marker map layer had no
+    geography to anchor on. Every ``"uprising"`` event gains a real
+    ``data["territory_id"]`` here, resolved via the same TENANCY inversion
+    (:func:`_class_to_territory` / :func:`_tenancy_members_by_territory`)
+    ``_build_field_state_edges`` already uses to territory-anchor
+    social_class nodes. ``graph`` is optional (some ``_state_to_snapshot``
+    callers hydrate without one) — absent graph or unresolvable class both
+    honestly yield ``None``, never a guessed territory (Constitution
+    III.11). This is the single upstream point every downstream consumer
+    of a serialized event shares: the live snapshot (toasts) AND, via
+    :func:`_persist_tick_events_safe` -> ``tick_event`` ->
+    :func:`_game_event_from_tick_event_row`, the journal/alerts dashboards
+    and ``get_class_history``'s ``ruptures``.
     """
     import json
     import uuid
@@ -4544,6 +6555,13 @@ def _serialize_event(event: Any, session_id: UUID) -> dict[str, Any]:
             data = event.model_dump(exclude={"event_type", "tick", "timestamp"})
         except Exception:  # noqa: BLE001 — defensive
             data = {}
+
+    if event_type_str == "uprising":
+        node_id = data.get("node_id")
+        territory_id = None
+        if graph is not None and node_id is not None:
+            territory_id = _class_to_territory(_tenancy_members_by_territory(graph)).get(node_id)
+        data = {**data, "territory_id": territory_id}
 
     deterministic_seed = json.dumps(
         {
@@ -4668,6 +6686,56 @@ def _org_snapshot_rows(organizations: list[dict[str, Any]]) -> list[dict[str, An
     return rows
 
 
+def _class_snapshot_rows(entities: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """Project :func:`_serialize_entity` dicts onto ``class_snapshot`` keys.
+
+    Wave 2 W2.5b (owner ruling 3): mirrors :func:`_org_snapshot_rows`.
+    Reactivates :func:`_serialize_entity` (previously dead code, zero call
+    sites) as this table's sole producer — its field set already carries
+    everything the survival duel + class card need, including
+    ``p_acquiescence``/``p_revolution`` (``SurvivalSystem.step``,
+    survival.py:143). ``consciousness``/``repression``/``subsistence`` map
+    onto the schema's ``class_consciousness``/``repression_faced``/
+    ``subsistence_threshold`` — deliberately renamed so this table's
+    ``consciousness`` column is never confused with the INSPECTOR-scope
+    ternary ``consciousness`` vector (:func:`_social_class_inspector_fields`)
+    — same wire-key-collision hazard the ``imperial_rent`` scope split
+    documents, resolved here by picking distinct column names.
+
+    Args:
+        entities: One dict per social class, from :func:`_serialize_entity`.
+
+    Returns:
+        Payload dicts accepted by ``PostgresRuntime.persist_class_snapshots``.
+    """
+    rows: list[dict[str, Any]] = []
+    for e in entities:
+        class_id = e.get("id")
+        role = e.get("role")
+        if not class_id or not role:
+            continue
+        rows.append(
+            {
+                "class_id": str(class_id),
+                "role": str(role),
+                "wealth": e.get("wealth"),
+                "subsistence_threshold": e.get("subsistence"),
+                "population": e.get("population"),
+                "inequality": e.get("inequality"),
+                "organization": e.get("organization"),
+                "repression_faced": e.get("repression"),
+                "class_consciousness": e.get("consciousness"),
+                "national_identity": e.get("national_identity"),
+                "agitation": e.get("agitation"),
+                "p_acquiescence": e.get("p_acquiescence"),
+                "p_revolution": e.get("p_revolution"),
+                "active": bool(e.get("active", True)),
+                "attributes": {"name": e.get("name")},
+            }
+        )
+    return rows
+
+
 def _edge_snapshot_rows(edges: list[dict[str, Any]]) -> list[dict[str, Any]]:
     """Project :func:`_serialize_edge` dicts onto ``edge_snapshot`` keys.
 
@@ -4748,15 +6816,20 @@ def _build_tick_summary(state: WorldState, organizations: list[dict[str, Any]]) 
 
 
 def _persist_snapshots_safe(
-    persistence: RuntimePersistence, session_id: UUID, state: WorldState
+    persistence: RuntimePersistence,
+    session_id: UUID,
+    state: WorldState,
+    *,
+    graph: Any = None,
 ) -> None:
     """Persist the spec-037 read-model snapshot tables for one tick (spec-109 A1).
 
     The spec-061 FR-003 wire-up that never happened: fills
-    ``territory_snapshot``/``org_snapshot``/``edge_snapshot`` via
-    :meth:`PostgresRuntime.persist_full_tick` and the ``tick_summary``
-    aggregates behind :meth:`EngineBridge.get_game_timeseries` via
-    :meth:`PostgresRuntime.persist_tick_summary`.
+    ``territory_snapshot``/``org_snapshot``/``class_snapshot``/
+    ``edge_snapshot`` via :meth:`PostgresRuntime.persist_full_tick` and the
+    ``tick_summary`` aggregates behind :meth:`EngineBridge.get_game_timeseries`
+    via :meth:`PostgresRuntime.persist_tick_summary`. ``class_snapshot`` is
+    Wave 2 W2.5b (owner ruling 3) — the survival duel's real per-tick history.
 
     Best-effort like its ``_persist_*_safe`` siblings: a read-model write
     failure is logged loudly but never fails tick resolution. SQLite-backed
@@ -4768,14 +6841,23 @@ def _persist_snapshots_safe(
         persistence: The RuntimePersistence instance.
         session_id: The game session UUID.
         state: The freshly stepped (or tick-0 seeded) WorldState.
+        graph: The post-tick graph, when the caller has one. Unlocks the
+            ``tick_*`` year-boundary rates ``_serialize_territory`` reads
+            (occ/imperial_rent/profit_rate/exploitation_rate) so
+            ``territory_snapshot`` history stops persisting NULL for them —
+            the R3 radar-loop finding (task #70): the live ``/map/`` path
+            passed the graph, this history path silently didn't. Bootstrap
+            call sites omit it (tick-0 has no TickDynamics output; honest
+            ``None``, never a fabricated 0.0).
     """
     full_tick_fn = getattr(persistence, "persist_full_tick", None)
     summary_fn = getattr(persistence, "persist_tick_summary", None)
     if not callable(full_tick_fn) or not callable(summary_fn):
         return
 
-    territories = [_serialize_territory(t) for t in state.territories.values()]
+    territories = [_serialize_territory(t, graph=graph) for t in state.territories.values()]
     organizations = [_serialize_organization(o) for o in state.organizations.values()]
+    entities = [_serialize_entity(e) for e in state.entities.values()]
     edges = [_serialize_edge(rel) for rel in state.relationships]
 
     try:
@@ -4784,6 +6866,7 @@ def _persist_snapshots_safe(
             state.tick,
             territories=_territory_snapshot_rows(territories),
             orgs=_org_snapshot_rows(organizations),
+            classes=_class_snapshot_rows(entities),
             edges=_edge_snapshot_rows(edges),
         )
     except TickAlreadyResolved:
@@ -4847,9 +6930,14 @@ def _hex_feature_properties(state: Any) -> dict[str, Any]:
     ``org_presence`` maps from ``org_count``, ``population`` from
     ``pop_total``, ``habitability`` from the JSONB ``attributes`` column —
     Spec-109 A2; ``solidarity_index`` rides the same JSONB ``attributes``
-    column — spec-113 Lane D) plus the identity/context columns. Extracted
-    from the ``get_map_snapshot`` loop so the contract is unit-testable
-    without a database.
+    column — spec-113 Lane D; ``throughput_position``/``agitation``/
+    ``territory_type`` likewise ride ``attributes`` — Wave 2 W2.4;
+    ``centrality`` rides ``attributes`` too — audit Wave 4 straggler, task
+    #76; ``mass_receptivity``/``vision_state`` ride ``attributes`` as well —
+    Wave 5 receptivity lens pair; ``wage_pressure``/``dispossession_intensity``
+    ride ``attributes`` too — Feature 021 lens pair) plus the identity/context columns. Extracted from the
+    ``get_map_snapshot`` loop so the contract is unit-testable without a
+    database.
 
     Args:
         state: One ``HexState`` row (or any object carrying its columns).
@@ -4874,6 +6962,14 @@ def _hex_feature_properties(state: Any) -> dict[str, Any]:
         "population": state.pop_total,
         "habitability": attributes.get("habitability"),
         "solidarity_index": attributes.get("solidarity_index"),
+        "throughput_position": attributes.get("throughput_position"),
+        "agitation": attributes.get("agitation"),
+        "territory_type": attributes.get("territory_type"),
+        "centrality": attributes.get("centrality"),
+        "mass_receptivity": attributes.get("mass_receptivity"),
+        "vision_state": attributes.get("vision_state"),
+        "wage_pressure": attributes.get("wage_pressure"),
+        "dispossession_intensity": attributes.get("dispossession_intensity"),
     }
 
 
@@ -4930,6 +7026,74 @@ def _heat_delta_by_territory(
     return deltas
 
 
+def _build_hex_state_attributes(
+    territory: dict[str, Any],
+    *,
+    solidarity_index: float | None,
+    agitation: float | None,
+    centrality: float | None,
+) -> dict[str, Any]:
+    """Assemble ``hex_latest``'s JSONB ``attributes`` payload for one territory.
+
+    Extracted from :func:`_hex_state_row` (whose docstring carries the full
+    per-key source inventory) purely to keep that function inside the
+    cognitive-complexity budget as the attribute family grew — Wave 5's
+    ``mass_receptivity``/``vision_state`` tipped it over. Two source shapes,
+    both preserved exactly:
+
+    * territory-dict keys (``habitability``/``throughput_position``/
+      ``territory_type``/``mass_receptivity``/``vision_state``/
+      ``wage_pressure``/``dispossession_intensity``) — native per-territory
+      values ``_serialize_territory`` already read off the graph;
+    * caller-computed aggregates (``solidarity_index``/``agitation``/
+      ``centrality``) — TENANCY/network projections passed down from
+      ``_persist_hex_state_safe``.
+
+    Absent/``None`` values are OMITTED, never fabricated (Constitution
+    III.11) — an absent key is the honest no-data signal every reader of
+    this JSONB column (``_hex_feature_properties``,
+    ``_aggregate_hex_features``) already relies on.
+
+    Args:
+        territory: One :func:`_serialize_territory` dict.
+        solidarity_index: Caller-computed SOLIDARITY-edge density, or ``None``.
+        agitation: Caller-computed population-weighted mean agitation, or ``None``.
+        centrality: Caller-computed org-network degree-centrality, or ``None``.
+
+    Returns:
+        The ``attributes`` dict for the :class:`game.models.HexState` row.
+    """
+    attributes: dict[str, Any] = {}
+    habitability = territory.get("habitability")
+    if habitability is not None:
+        attributes["habitability"] = float(habitability)
+    if solidarity_index is not None:
+        attributes["solidarity_index"] = float(solidarity_index)
+    if agitation is not None:
+        attributes["agitation"] = float(agitation)
+    throughput_position = territory.get("throughput_position")
+    if throughput_position is not None:
+        attributes["throughput_position"] = float(throughput_position)
+    territory_type = territory.get("territory_type")
+    if territory_type is not None:
+        attributes["territory_type"] = territory_type
+    if centrality is not None:
+        attributes["centrality"] = float(centrality)
+    mass_receptivity = territory.get("mass_receptivity")
+    if mass_receptivity is not None:
+        attributes["mass_receptivity"] = float(mass_receptivity)
+    vision_state = territory.get("vision_state")
+    if vision_state is not None:
+        attributes["vision_state"] = vision_state
+    wage_pressure = territory.get("wage_pressure")
+    if wage_pressure is not None:
+        attributes["wage_pressure"] = float(wage_pressure)
+    dispossession_intensity = territory.get("dispossession_intensity")
+    if dispossession_intensity is not None:
+        attributes["dispossession_intensity"] = float(dispossession_intensity)
+    return attributes
+
+
 def _hex_state_row(
     session_id: UUID,
     tick: int,
@@ -4939,6 +7103,8 @@ def _hex_state_row(
     heat_delta: float = 0.0,
     dominant_class: str | None = None,
     solidarity_index: float | None = None,
+    agitation: float | None = None,
+    centrality: float | None = None,
 ) -> dict[str, Any] | None:
     """Project one :func:`_serialize_territory` dict onto ``hex_latest`` columns.
 
@@ -4957,10 +7123,18 @@ def _hex_state_row(
       both have real per-tick engine sources.
     * ``attributes["habitability"]`` — the graph-only Sovereign-driven
       metabolic impact (Spec-070 FR-043), when present on ``territory``.
-    * ``profit_rate``/``exploitation_rate``/``occ``/``imperial_rent``/
-      ``g33_visibility`` — NO wired system computes these per-territory
-      (only global aggregates, or orphaned economics/tick/ modules) —
-      left at their NULL column default.
+    * ``profit_rate``/``exploitation_rate``/``occ``/``imperial_rent`` —
+      Program 17 / Item 1a: real per-territory values now, sourced from
+      ``TickDynamicsSystem``'s ``tick_profit_rate``/``tick_exploitation_rate``/
+      ``tick_occ``/``tick_phi_hour`` graph attrs via
+      :func:`_serialize_territory` (``None`` until the first year boundary
+      this session produces usable data for that territory).
+    * ``g33_visibility`` — gamma_III is a single NATIONAL coefficient in
+      this codebase (no per-county visibility_g33 computation is wired
+      anywhere) — deliberately left at its NULL column default (Program 17
+      / Item 1a scope decision, pending owner ruling on open_questions:
+      broadcast the national value vs. defer to a genuine per-county
+      visibility_g33 once tensor_registry is wired).
     * ``pop_bourgeoisie``/``pop_petit_bourgeoisie``/``pop_labor_aristocracy``/
       ``pop_proletariat``/``pop_lumpenproletariat`` — no shipped scenario
       sets ``SocialClass.county_fips``, so there is no live per-territory
@@ -4982,6 +7156,50 @@ def _hex_state_row(
     * ``terrain_type``/``water_coverage``/``internet_access`` — the R8 hex
       substrate (spec-036/063) is built but not wired into the 26-system
       pipeline — left at their structural defaults.
+    * ``attributes["throughput_position"]`` — Wave 2 owner ruling 1: real π
+      once ``_bridge_economics_overrides`` wires a ``throughput_calculator``
+      AND a year boundary has run (sourced from ``territory["throughput_position"]``,
+      itself off ``tick_throughput_position`` — see :func:`_serialize_territory`);
+      rides the JSONB ``attributes`` column like ``habitability``.
+    * ``attributes["agitation"]`` — Wave 2 W2.4: passed in by the caller (see
+      :func:`_agitation_index_by_territory`), population-weighted mean
+      ``ideology.agitation`` over the territory's TENANCY-linked social_class
+      members; a real ``0.0`` (not missing) whenever tenants exist but no
+      crisis has raised agitation yet.
+    * ``attributes["territory_type"]`` — Wave 2 W2.4: the REAL
+      ``TerritoryType`` enum value (off ``territory["territory_type"]``, a
+      required Territory field — always present, never fabricated); rides
+      the JSONB ``attributes`` column since it is categorical, not a
+      dedicated numeric column.
+    * ``attributes["centrality"]`` — audit Wave 4 straggler (task #76):
+      passed in by the caller (see :func:`_centrality_by_territory`), this
+      territory's own degree-centrality within the org-network topology;
+      ``None`` when the territory has no PRESENCE/HOUSES edge from any
+      organization/institution (sparse today — only ``wayne_county`` seeds
+      real ``Organization`` rows). Rides the JSONB ``attributes`` column
+      like ``agitation``/``solidarity_index``.
+    * ``attributes["mass_receptivity"]``/``attributes["vision_state"]`` —
+      Wave 5 receptivity lens pair: read straight off ``territory``'s own
+      key (like ``throughput_position``/``territory_type``, NOT a separate
+      caller arg like ``agitation``/``centrality`` — ``mass_receptivity`` is
+      a native per-territory graph attr, not a TENANCY-projected
+      aggregation). Source: ``_serialize_territory``'s
+      ``mass_receptivity``/``vision_state`` keys, off the
+      ``EpistemicHorizonSystem`` shadow attrs ``_carry_epistemic_horizon``
+      re-injects onto the graph. ``None``/absent for a tenant-less
+      territory (Constitution III.11) or before the graph has ever been
+      stepped.
+    * ``attributes["wage_pressure"]``/``attributes["dispossession_intensity"]``
+      — Feature 021 lens pair: read straight off ``territory``'s own key
+      (like ``mass_receptivity``/``throughput_position``, NOT a separate
+      caller arg like ``agitation``/``centrality``) — both are NATIVE
+      per-territory graph attrs written by ``ReserveArmySystem``/
+      ``DispossessionEventSystem``. Source: ``_serialize_territory``'s
+      ``wage_pressure``/``dispossession_intensity`` keys, off the
+      identically-named graph-only attrs (``_territory_graph_attr``).
+      ``None``/absent whenever the writing system found no reserve-army
+      pressure / no dispossession activity for that territory this tick
+      (Constitution III.11 — never a fabricated 0.0).
 
     Args:
         session_id: The game session UUID (``hex_latest.game_id``).
@@ -4998,6 +7216,15 @@ def _hex_state_row(
         solidarity_index: This territory's SOLIDARITY-edge density this
             tick (see :func:`_solidarity_index_by_territory`); ``None``
             when unknown (spec-113 Lane D).
+        agitation: This territory's population-weighted mean
+            ``ideology.agitation`` this tick (see
+            :func:`_agitation_index_by_territory`); ``None`` when unknown
+            (Wave 2 W2.4).
+        centrality: This territory's own degree-centrality within the
+            org-network topology this tick (see
+            :func:`_centrality_by_territory`); ``None`` when the territory
+            is absent from the org network (audit Wave 4 straggler, task
+            #76).
 
     Returns:
         Kwargs dict for the :class:`game.models.HexState` constructor, or None.
@@ -5014,12 +7241,12 @@ def _hex_state_row(
         return None
 
     county_fips = str(territory.get("county_fips") or "")
-    attributes: dict[str, Any] = {}
-    habitability = territory.get("habitability")
-    if habitability is not None:
-        attributes["habitability"] = float(habitability)
-    if solidarity_index is not None:
-        attributes["solidarity_index"] = float(solidarity_index)
+    attributes = _build_hex_state_attributes(
+        territory,
+        solidarity_index=solidarity_index,
+        agitation=agitation,
+        centrality=centrality,
+    )
 
     row: dict[str, Any] = {
         "game_id": session_id,
@@ -5039,6 +7266,23 @@ def _hex_state_row(
         row["dominant_class"] = dominant_class
     if len(county_fips) >= 2:
         row["state_fips"] = county_fips[:2]
+
+    # Program 17 / Item 1a: real per-territory Marxian indicators (None
+    # until TickDynamicsSystem's first year boundary produces usable data
+    # for this territory — see _serialize_territory).
+    profit_rate = territory.get("profit_rate")
+    if profit_rate is not None:
+        row["profit_rate"] = float(profit_rate)
+    exploitation_rate = territory.get("exploitation_rate")
+    if exploitation_rate is not None:
+        row["exploitation_rate"] = float(exploitation_rate)
+    occ = territory.get("occ")
+    if occ is not None:
+        row["occ"] = float(occ)
+    imperial_rent = territory.get("imperial_rent")
+    if imperial_rent is not None:
+        row["imperial_rent"] = float(imperial_rent)
+
     return row
 
 
@@ -5051,6 +7295,8 @@ def _persist_hex_state_safe(
     heat_deltas: dict[str, float] | None = None,
     dominant_class_by_territory: dict[str, str] | None = None,
     solidarity_index_by_territory: dict[str, float] | None = None,
+    agitation_by_territory: dict[str, float] | None = None,
+    centrality_by_territory: dict[str, float] | None = None,
 ) -> None:
     """Best-effort projection of a tick's territories into ``hex_latest``.
 
@@ -5085,6 +7331,15 @@ def _persist_hex_state_safe(
             SOLIDARITY-edge density this tick (see
             :func:`_solidarity_index_by_territory`, spec-113 Lane D);
             missing entries default to ``None``.
+        agitation_by_territory: Optional map of territory id ->
+            population-weighted mean agitation this tick (see
+            :func:`_agitation_index_by_territory`, Wave 2 W2.4); missing
+            entries default to ``None``.
+        centrality_by_territory: Optional map of territory id -> that
+            territory's own degree-centrality within the org-network
+            topology this tick (see :func:`_centrality_by_territory`,
+            audit Wave 4 straggler task #76); missing entries default to
+            ``None``.
     """
     if not serialized_territories:
         return
@@ -5092,6 +7347,8 @@ def _persist_hex_state_safe(
     heat_deltas = heat_deltas or {}
     dominant_class_by_territory = dominant_class_by_territory or {}
     solidarity_index_by_territory = solidarity_index_by_territory or {}
+    agitation_by_territory = agitation_by_territory or {}
+    centrality_by_territory = centrality_by_territory or {}
     rows = [
         row
         for t in serialized_territories
@@ -5104,6 +7361,8 @@ def _persist_hex_state_safe(
                 heat_delta=heat_deltas.get(str(t.get("id")), 0.0),
                 dominant_class=dominant_class_by_territory.get(str(t.get("id"))),
                 solidarity_index=solidarity_index_by_territory.get(str(t.get("id"))),
+                agitation=agitation_by_territory.get(str(t.get("id"))),
+                centrality=centrality_by_territory.get(str(t.get("id"))),
             )
         )
         is not None
@@ -5129,6 +7388,16 @@ def _persist_hex_state_safe(
                 "org_count",
                 "pop_total",
                 "attributes",
+                # Program 17 / Item 1a-followup: these 4 columns were being
+                # set correctly on first INSERT but silently FROZEN on every
+                # later tick's UPSERT (omitted here means Postgres's ON
+                # CONFLICT ... DO UPDATE never touches them again) — once Φ
+                # went non-zero, the map's imperial-rent lens stopped
+                # animating after tick 0.
+                "profit_rate",
+                "exploitation_rate",
+                "occ",
+                "imperial_rent",
             ],
         )
     except Exception:  # noqa: BLE001 — diagnostic; never blocks tick resolution
@@ -5245,6 +7514,45 @@ def _serialize_territory(t: Any, *, graph: Any = None) -> dict[str, Any]:
     (Spec-070 FR-043, MetabolismSystem), ``dispossession_intensity``
     (Feature 021, DispossessionEventSystem), ``wage_pressure`` (Feature 021,
     ReserveArmySystem). Without a graph these stay ``None``.
+
+    Program 17 / Item 1a: also reads ``imperial_rent``/``profit_rate``/
+    ``occ``/``exploitation_rate`` off the same graph-only ``tick_``-prefixed
+    territory attrs (``tick_phi_hour``/``tick_profit_rate``/``tick_occ``/
+    ``tick_exploitation_rate``) that ``TickDynamicsSystem`` writes at year
+    boundaries via ``graph_bridge.write_tick_state_to_graph`` — these were
+    already being computed but never read at this serialization boundary.
+    ``None`` (not ``0.0``) until the first year boundary this session
+    produces usable data (Constitution III.11).
+
+    Wave 2 Gap-1 Backend-1: likewise exposes the crisis-detector family
+    (``crisis_phase``/``crisis_duration``/``bifurcation_score``/
+    ``wage_compression``/``capital_stock``) and the frozen-constant family
+    (``class_distribution``/``unemployment_rate``) off ``tick_crisis_phase``/
+    ``tick_crisis_duration``/``tick_bifurcation_score``/
+    ``tick_wage_compression``/``tick_capital_stock``/
+    ``tick_class_distribution``/``tick_unemployment_rate``. ``tick_median_wage``
+    is exposed under its own ``tick_``-prefixed wire key (not ``median_wage``)
+    because that key already names the real, distinct Territory model field
+    (Feature 021) — the same wire-key-collision hazard the ``imperial_rent``
+    scope split documents, resolved here by picking a distinct key instead of
+    a distinct scope, since both values ride the same payload dict. Seam
+    Observatory rows: see ``SEAM_REGISTRY`` (scope=TERRITORY).
+
+    Wave 2 owner ruling 1: ``throughput_position``/``supply_chain_depth`` join
+    the same graph-attr family off ``tick_throughput_position``/
+    ``tick_supply_chain_depth`` — real per-county π/D once
+    ``_bridge_economics_overrides`` wires a ``throughput_calculator`` AND a
+    year boundary has run; ``None`` before then (never the engine's frozen
+    1.0/2.0 bootstrap defaults re-surfacing here as if they were live).
+
+    Wave 5 receptivity lenses: ``mass_receptivity``/``intel_confidence``/
+    ``vision_state`` join the same graph-attr family off the identically-
+    named ``EpistemicHorizonSystem`` shadow attrs (non-``tick_``-prefixed,
+    but the same "transient, not a Territory model field" shape) —
+    ``_carry_epistemic_horizon`` re-injects them onto the graph before this
+    is called on a resolve_tick's ``new_graph``. ``None`` for a tenant-less
+    territory (Constitution III.11) or before the graph has ever been
+    stepped (this engine system runs only inside a tick).
     """
     territory_id = t.id
     return {
@@ -5281,6 +7589,25 @@ def _serialize_territory(t: Any, *, graph: Any = None) -> dict[str, Any]:
             graph, territory_id, "dispossession_intensity"
         ),
         "wage_pressure": _territory_graph_attr(graph, territory_id, "wage_pressure"),
+        "imperial_rent": _territory_graph_attr(graph, territory_id, "tick_phi_hour"),
+        "profit_rate": _territory_graph_attr(graph, territory_id, "tick_profit_rate"),
+        "occ": _territory_graph_attr(graph, territory_id, "tick_occ"),
+        "exploitation_rate": _territory_graph_attr(graph, territory_id, "tick_exploitation_rate"),
+        "crisis_phase": _territory_graph_attr(graph, territory_id, "tick_crisis_phase"),
+        "crisis_duration": _territory_graph_attr(graph, territory_id, "tick_crisis_duration"),
+        "bifurcation_score": _territory_graph_attr(graph, territory_id, "tick_bifurcation_score"),
+        "wage_compression": _territory_graph_attr(graph, territory_id, "tick_wage_compression"),
+        "capital_stock": _territory_graph_attr(graph, territory_id, "tick_capital_stock"),
+        "class_distribution": _territory_graph_attr(graph, territory_id, "tick_class_distribution"),
+        "unemployment_rate": _territory_graph_attr(graph, territory_id, "tick_unemployment_rate"),
+        "tick_median_wage": _territory_graph_attr(graph, territory_id, "tick_median_wage"),
+        "throughput_position": _territory_graph_attr(
+            graph, territory_id, "tick_throughput_position"
+        ),
+        "supply_chain_depth": _territory_graph_attr(graph, territory_id, "tick_supply_chain_depth"),
+        "mass_receptivity": _territory_graph_attr(graph, territory_id, "mass_receptivity"),
+        "intel_confidence": _territory_graph_attr(graph, territory_id, "intel_confidence"),
+        "vision_state": _territory_graph_attr(graph, territory_id, "vision_state"),
     }
 
 
@@ -5412,6 +7739,216 @@ def _serialize_institution(inst: Any) -> dict[str, Any]:
     }
 
 
+def _build_org_network(
+    state: WorldState, graph: Any, *, territory_filter: str | None = None
+) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
+    """Build the org-network nodes/edges for :meth:`EngineBridge.get_org_network`.
+
+    See that method's docstring for the full node/edge-type rationale
+    (nodes strictly organization/institution/territory; edges are whatever
+    real graph edge — PRESENCE/HOUSES today, any future org-relevant type
+    tomorrow — connects two included nodes, no per-type allowlist).
+
+    Args:
+        state: The hydrated WorldState (organizations/institutions/
+            territories model dicts).
+        graph: The hydrated session graph (edges live only here — orgs
+            carry no edge collection on their Pydantic model).
+        territory_filter: Optional territory id restricting the node set.
+
+    Returns:
+        ``(nodes, edges)`` — both sorted deterministically
+        (Constitution III.7): nodes by id, edges by
+        ``(source, target, mode)``.
+    """
+    orgs = state.organizations
+    institutions = state.institutions
+    territories = state.territories
+
+    if territory_filter is not None:
+        org_ids = sorted(oid for oid, o in orgs.items() if territory_filter in o.territory_ids)
+        inst_ids = sorted(
+            iid for iid, inst in institutions.items() if territory_filter in inst.territory_ids
+        )
+        territory_ids = [territory_filter] if territory_filter in territories else []
+    else:
+        org_ids = sorted(orgs)
+        inst_ids = sorted(institutions)
+        territory_ids = sorted(
+            {tid for o in orgs.values() for tid in o.territory_ids if tid in territories}
+            | {
+                tid
+                for inst in institutions.values()
+                for tid in inst.territory_ids
+                if tid in territories
+            }
+        )
+
+    nodes: list[dict[str, Any]] = [
+        {"id": oid, "type": "organization", "attributes": _serialize_organization(orgs[oid])}
+        for oid in org_ids
+    ]
+    nodes.extend(
+        {"id": iid, "type": "institution", "attributes": _serialize_institution(institutions[iid])}
+        for iid in inst_ids
+    )
+    nodes.extend(
+        {
+            "id": tid,
+            "type": "territory",
+            "attributes": _serialize_territory(territories[tid], graph=graph),
+        }
+        for tid in territory_ids
+    )
+    nodes.sort(key=lambda n: str(n["id"]))
+
+    node_ids = set(org_ids) | set(inst_ids) | set(territory_ids)
+    edges: list[dict[str, Any]] = []
+    for source, target in graph.edges:
+        if source not in node_ids or target not in node_ids:
+            continue
+        data = graph.edges[(source, target)]
+        mode = str(data.get("edge_type", data.get("_edge_type", ""))).lower()
+        attributes = {k: v for k, v in data.items() if k not in {"edge_type", "_edge_type"}}
+        edges.append({"source": source, "target": target, "mode": mode, "attributes": attributes})
+    edges.sort(key=lambda e: (str(e["source"]), str(e["target"]), str(e["mode"])))
+
+    return nodes, edges
+
+
+def _org_network_centrality(
+    nodes: list[dict[str, Any]], edges: list[dict[str, Any]]
+) -> dict[str, dict[str, float]]:
+    """Degree/betweenness/closeness centrality over the org-network's own
+    undirected projection (AW4-R1 Deliverable 3).
+
+    Mirrors :func:`babylon.ooda.attention.sparrow.analyze_network`'s exact
+    guard idiom (degree always computed; betweenness needs >1 node;
+    closeness needs >1 node AND a connected graph) — real rustworkx-backed
+    formulas (:mod:`babylon.topology.graph_algorithms`), never fabricated.
+
+    Computed over THIS response's own node/edge set (not the whole
+    hydrated graph) so a viewer's centrality numbers describe exactly the
+    network they can see — a deliberate scoping choice: whole-graph
+    centrality (mixing in social_class/EXPLOITATION/WAGES topology orgs
+    never touch) would answer a materially different question.
+
+    Args:
+        nodes: This response's own ``nodes`` list (id/type/attributes).
+        edges: This response's own ``edges`` list (source/target/mode).
+
+    Returns:
+        ``{node_id: {"degree": float, "betweenness"?: float,
+        "closeness"?: float}}`` — the optional keys are honestly omitted
+        (never 0.0-fabricated) when the guard condition isn't met.
+        Empty dict for an empty node set.
+    """
+    undirected = BabylonUGraph()
+    undirected.add_nodes_from([str(n["id"]) for n in nodes])
+    for edge in edges:
+        undirected.add_edge(str(edge["source"]), str(edge["target"]))
+
+    if undirected.number_of_nodes() == 0:
+        return {}
+
+    result: dict[str, dict[str, float]] = {
+        node_id: {"degree": value} for node_id, value in degree_centrality(undirected).items()
+    }
+
+    if undirected.number_of_nodes() > 1:
+        for node_id, value in betweenness_centrality(undirected).items():
+            result[node_id]["betweenness"] = value
+
+    if undirected.number_of_nodes() > 1 and is_connected(undirected):
+        for node_id, value in closeness_centrality(undirected).items():
+            result[node_id]["closeness"] = value
+
+    return result
+
+
+def _solidarity_percolation_ratio(state: WorldState, graph: Any) -> float | None:
+    """Real percolation ratio (L_max / N) over the SOLIDARITY network
+    (AW4-R1 Deliverable 3 — the audit brief's "percolation-ratio HUD chip").
+
+    Reuses :func:`babylon.engine.topology_monitor.calculate_component_metrics`
+    — the engine's own ``TopologyMonitor`` observer formula — rather than
+    reimplementing it (DRY); this is a pure topology read at bridge
+    altitude (precedent: :func:`_build_solidarity_communities`), never
+    engine adjudication math.
+
+    Args:
+        state: The hydrated WorldState (for the real social_class count).
+        graph: The hydrated session graph.
+
+    Returns:
+        The ratio rounded to 4 places, or ``None`` (never a fabricated
+        0.0) when the graph has zero social_class nodes — the ratio is
+        mathematically undefined there (Constitution III.11).
+        ``calculate_component_metrics`` itself returns a bare 0.0 for that
+        case since its engine-internal caller (``TopologyMonitor``) never
+        actually has zero classes; this bridge-altitude wrapper adds the
+        honest-null guard that context doesn't need.
+    """
+    total_social_classes = len(state.entities)
+    if total_social_classes == 0:
+        return None
+    solidarity_graph = extract_solidarity_subgraph(graph)
+    _num_components, _max_component_size, percolation_ratio = calculate_component_metrics(
+        solidarity_graph, total_social_classes
+    )
+    return round(percolation_ratio, 4)
+
+
+def _centrality_by_territory(state: WorldState, graph: Any) -> dict[str, float]:
+    """Per-territory degree-centrality within the org-network topology
+    (audit Wave 4 straggler, task #76 — the "critical-nodes/centrality map
+    lens").
+
+    Reuses :func:`_build_org_network`/:func:`_org_network_centrality`
+    UNFILTERED (the whole session's orgs/institutions/territories, not one
+    request's territory-scoped view) so a territory's centrality reading is
+    comparable across the entire map, then keeps only the ``degree``
+    reading for nodes whose ``type`` is ``"territory"`` — the projection
+    the audit brief calls for: territory nodes are literal nodes in the org
+    network (via PRESENCE/HOUSES edges), so they carry their own real
+    centrality directly. No TENANCY projection through social_class
+    members is needed (unlike :func:`_agitation_index_by_territory`/
+    :func:`_solidarity_index_by_territory`) — the org network's typed
+    contract excludes social_class nodes entirely (AW4-R1 verified
+    divergence), so there is nothing to project.
+
+    Verified non-degenerate on ``wayne_county`` (2026-07-15, the only
+    shipped scenario with real ``Organization`` rows —
+    ``_legacy_wayne.py``): its 3 PRESENCE-linked territories split
+    0.25/0.5/0.5 degree — the hub territory both ORG001 and ORG002 share
+    reads distinctly higher than the one only ORG002 touches, a real
+    structural signal, not a decorative constant. Every OTHER shipped
+    scenario (``us``, ``high_tension``, ``imperial_circuit``,
+    ``labor_aristocracy``, ``two_node``) seeds zero organizations, so the
+    org network — and this lens — is honestly empty there.
+
+    Args:
+        state: The hydrated WorldState (organizations/institutions/
+            territories model dicts) — passed straight to
+            :func:`_build_org_network`.
+        graph: The hydrated session graph (edges live only here).
+
+    Returns:
+        Map of territory node id -> degree centrality in [0, 1], rounded to
+        4 places. A territory absent from the org network (no
+        organization/institution has a PRESENCE edge there) is simply
+        absent — callers must treat a missing entry as ``None``, never a
+        fabricated 0.0 (Constitution III.11).
+    """
+    nodes, edges = _build_org_network(state, graph)
+    centrality = _org_network_centrality(nodes, edges)
+    return {
+        str(node["id"]): round(centrality[str(node["id"])]["degree"], 4)
+        for node in nodes
+        if node["type"] == "territory" and str(node["id"]) in centrality
+    }
+
+
 def _serialize_edge(rel: Any) -> dict[str, Any]:
     """Serialize a Relationship edge.
 
@@ -5460,7 +7997,9 @@ def _state_to_snapshot(state: WorldState, session_id: UUID, *, graph: Any = None
     organizations = [_serialize_organization(o) for o in state.organizations.values()]
     institutions = [_serialize_institution(inst) for inst in state.institutions.values()]
     edges = [_serialize_edge(rel) for rel in state.relationships]
-    events_list: list[dict[str, Any]] = [_serialize_event(e, session_id) for e in state.events]
+    events_list: list[dict[str, Any]] = [
+        _serialize_event(e, session_id, graph=graph) for e in state.events
+    ]
 
     # Compute trap detection for the session
     traps_dict = _compute_traps(state, session_id)
@@ -5490,10 +8029,15 @@ def _state_to_snapshot(state: WorldState, session_id: UUID, *, graph: Any = None
     return snapshot
 
 
-def _compute_traps(state: WorldState, session_id: UUID) -> dict[str, Any] | None:
+def _compute_traps(
+    state: WorldState, session_id: UUID, *, persist: bool = True
+) -> dict[str, Any] | None:
     """Run trap detection for a session, computing scores from action history.
 
     Returns None if no player org is found (non-Wayne County scenarios).
+    ``persist=False`` computes without writing ``_session_trap_state`` —
+    for read-only callers (the org inspector) that must never advance the
+    ``ticks_at_moderate`` escalation carried tick-to-tick.
     """
     # Find the player org
     player_org = None
@@ -5545,7 +8089,8 @@ def _compute_traps(state: WorldState, session_id: UUID) -> dict[str, Any] | None
     )
 
     # Persist trap state for next tick
-    _session_trap_state[session_id] = result
+    if persist:
+        _session_trap_state[session_id] = result
 
     return result.model_dump()
 
@@ -5708,7 +8253,16 @@ def init_persistence(db_config: dict[str, Any]) -> RuntimePersistence:
     persistence = PostgresRuntime(_pool)
     try:
         persistence.init_schema()
-    except Exception as exc:
-        logger.warning("PostgreSQL schema init had non-fatal error: %s", exc)
+    except (psycopg.Error, RuntimeError) as exc:
+        # Schema init is infra-layer, so we catch to keep the web app bootable
+        # rather than hard-crash on a partial-schema hiccup — but LOUDLY
+        # (Constitution III.11). A swallowed WARNING here hid a real hex_cell
+        # column drift for weeks; ERROR + explicit degraded-state wording so it
+        # cannot be mistaken for benign. init_schema now names the failing DDL.
+        logger.error(
+            "PostgreSQL schema init FAILED — engine may run in a DEGRADED state "
+            "(missing tables/indexes); investigate immediately: %s",
+            exc,
+        )
 
     return persistence

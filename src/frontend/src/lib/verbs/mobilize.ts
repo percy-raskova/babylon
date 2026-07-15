@@ -1,8 +1,22 @@
-import type { VerbConfig, VerbTarget } from "./types";
+import type { LiveVerbCost, VerbConfig, VerbTarget } from "./types";
 
 interface MobilizeTarget {
   id: string;
   name: string;
+}
+
+/** mobilize's cost rides TOP-LEVEL fields (mobilize_cost_cl, available_cl),
+ *  NOT under a `cost` key like every other verb (engine_bridge.py:3443-3449;
+ *  GameDefines().mobilize.mobilize_cl_cost = 0.2 per defines.yaml:56). */
+function parseMobilizeCost(raw: Record<string, unknown>): LiveVerbCost | null {
+  const mobilizeCostCl = raw.mobilize_cost_cl;
+  const availableCl = raw.available_cl;
+  if (typeof mobilizeCostCl !== "number") return null;
+
+  return {
+    label: `${mobilizeCostCl} CL`,
+    canAfford: typeof availableCl === "number" && availableCl >= mobilizeCostCl,
+  };
 }
 
 export const mobilizeConfig: VerbConfig = {
@@ -31,4 +45,5 @@ export const mobilizeConfig: VerbConfig = {
     target_id: targetId ?? "",
     params: { sl_committed: Number(params.sl_committed ?? 0) },
   }),
+  parseCost: parseMobilizeCost,
 };

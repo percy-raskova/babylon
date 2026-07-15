@@ -101,4 +101,45 @@ describe("ValueRow", () => {
     );
     expect(screen.queryByTestId("history-Rent Φ")).not.toBeInTheDocument();
   });
+
+  it("renders a MockBadge next to the label when row.mock is true (Program 17 Wave 1 / W1.4)", () => {
+    render(
+      <ValueRow
+        row={{ label: "Class Position", value: "Placeholder", format: "raw", mock: true }}
+        canDrill
+        onDrill={vi.fn()}
+      />,
+    );
+    expect(screen.getByTestId("mock-badge")).toBeInTheDocument();
+  });
+
+  it("does not render a MockBadge when row.mock is absent", () => {
+    render(
+      <ValueRow
+        row={{ label: "Wealth", value: 0.65, format: "decimal2" }}
+        canDrill
+        onDrill={vi.fn()}
+      />,
+    );
+    expect(screen.queryByTestId("mock-badge")).not.toBeInTheDocument();
+  });
+
+  it("renders an ImperialCircuitFlow instead of a plain value when circuitFlows is present (Program 17 Wave 1 / W1.6)", () => {
+    render(
+      <ValueRow
+        row={{
+          label: "Imperial Circuit",
+          value: null,
+          format: "raw",
+          circuitFlows: {
+            nodes: [{ role: "core_bourgeoisie", id: "C003", name: "Core Bourgeoisie" }],
+            links: [],
+          },
+        }}
+        canDrill
+        onDrill={vi.fn()}
+      />,
+    );
+    expect(screen.getByTestId("imperial-circuit-flow")).toBeInTheDocument();
+  });
 });

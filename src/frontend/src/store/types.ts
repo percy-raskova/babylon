@@ -11,6 +11,7 @@ import type { SessionSlice } from "./slices/sessionSlice";
 import type { WorldSlice } from "./slices/worldSlice";
 import type { TimeSlice } from "./slices/timeSlice";
 import type { MapSlice } from "./slices/mapSlice";
+import type { MapReplaySlice } from "./slices/mapReplaySlice";
 import type { PanelsSlice } from "./slices/panels";
 import type { UiSlice } from "./slices/uiSlice";
 import type { ActionsSlice } from "./slices/actionsSlice";
@@ -21,6 +22,7 @@ export type RootState = SessionSlice &
   WorldSlice &
   TimeSlice &
   MapSlice &
+  MapReplaySlice &
   PanelsSlice &
   UiSlice &
   ActionsSlice &

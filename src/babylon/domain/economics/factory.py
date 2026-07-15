@@ -71,7 +71,9 @@ from babylon.domain.economics.throughput.supply_chain import DefaultSupplyChainA
 if TYPE_CHECKING:
     from sqlalchemy.orm import Session
 
+    from babylon.config.defines import GameDefines
     from babylon.domain.economics.tensor_registry import TensorRegistry
+    from babylon.kernel.event_bus import EventBus
 
 
 # Spec 058 / FR-006 / commit 6: process-wide registry holding the parameterless
@@ -147,6 +149,105 @@ def create_economics_services(
         "transition_engine": transition,
         "tensor_registry": tensor_registry,
     }
+
+
+def create_leontief_rent_services(
+    session_factory: Callable[[], Session],
+    event_bus: EventBus,
+    defines: GameDefines,
+) -> tuple[dict[str, Any], Session]:
+    """Wire the Spec 057 Leontief imperial-rent pipeline (Program 17 / Item 1a).
+
+    Resolves the 5 ``ServiceContainer`` fields
+    (``periphery_labor_source``/``final_demand_source``/
+    ``industry_county_allocator``/``production_chain_calculator``/
+    ``bea_industries``) that
+    :func:`babylon.domain.economics.tick.system.imperial_rent.compute` reads
+    to compute a genuinely per-county ``phi_hour`` (imperial rent), instead
+    of the permanent ``0.0`` stub that results when any of them is ``None``.
+
+    Unlike :func:`create_economics_services`, 3 of the 5 adapters
+    (:class:`~babylon.domain.economics.tensor_hierarchy.leontief_rent.final_demand.DefaultFinalDemandSource`,
+    :class:`~babylon.domain.economics.tensor_hierarchy.leontief_rent.periphery_labor_coefficients.DefaultPeripheryLaborCoefficientsSource`,
+    :class:`~babylon.domain.economics.tensor_hierarchy.leontief_rent.industry_to_county_allocator.DefaultIndustryToCountyAllocator`)
+    take an already-open ``db_session: Session`` rather than a
+    ``session_factory`` — this function opens ONE session and returns it
+    alongside the overrides dict so the **caller** owns its lifetime (see
+    call sites in ``babylon.engine.headless_runner.runner`` and
+    ``web/game/engine_bridge.py``, which have different session-lifetime
+    requirements: once-per-run vs. once-per-tick).
+
+    Args:
+        session_factory: Callable returning a SQLAlchemy Session for the
+            normalized reference DB (used by the 2 factory-style adapters).
+        event_bus: EventBus for ``AxiomViolationEvent``/``QcewCarryForwardEvent``/
+            ``PhiHourOutlierEvent`` emission by the periphery-wage and
+            allocator adapters.
+        defines: ``GameDefines`` — ``defines.economy.leontief_rent`` supplies
+            the allocator's QCEW carry-forward window + outlier thresholds.
+
+    Returns:
+        A ``(overrides, session)`` tuple: ``overrides`` is a dict of the 5
+        service-container fields (ready for ``**``-unpacking into
+        ``ServiceContainer.create``), and ``session`` is the open
+        SQLAlchemy ``Session`` the caller must close when done.
+    """
+    from babylon.domain.economics.tensor_hierarchy.inter_industry import (
+        DefaultInterIndustryFlowSource,
+    )
+    from babylon.domain.economics.tensor_hierarchy.leontief_rent.final_demand import (
+        DefaultFinalDemandSource,
+    )
+    from babylon.domain.economics.tensor_hierarchy.leontief_rent.industry_to_county_allocator import (
+        DefaultIndustryToCountyAllocator,
+    )
+    from babylon.domain.economics.tensor_hierarchy.leontief_rent.periphery_labor_coefficients import (
+        DefaultPeripheryLaborCoefficientsSource,
+    )
+    from babylon.domain.economics.tensor_hierarchy.production_chain_rent import (
+        DBImportShareSource,
+        ProductionChainCalculatorBundle,
+        ProductionChainRentCalculator,
+    )
+
+    flow_source = DefaultInterIndustryFlowSource(session_factory)
+    bea_industries = flow_source.get_industry_codes()
+    import_shares_source = DBImportShareSource(session_factory)
+    calculator = ProductionChainRentCalculator()
+
+    # Caller owns this session's lifetime — see docstring.
+    session = session_factory()
+
+    periphery_labor_source = DefaultPeripheryLaborCoefficientsSource(
+        db_session=session,
+        event_bus=event_bus,
+        bea_industries=bea_industries,
+    )
+    final_demand_source = DefaultFinalDemandSource(
+        db_session=session,
+        bea_industries=bea_industries,
+    )
+    industry_county_allocator = DefaultIndustryToCountyAllocator(
+        db_session=session,
+        event_bus=event_bus,
+        defines=defines.economy.leontief_rent,
+    )
+
+    bundle = ProductionChainCalculatorBundle(
+        flow_source=flow_source,
+        import_shares_source=import_shares_source,
+        decomposer=calculator.decomposer,
+        calculator=calculator,
+    )
+
+    overrides: dict[str, Any] = {
+        "periphery_labor_source": periphery_labor_source,
+        "final_demand_source": final_demand_source,
+        "industry_county_allocator": industry_county_allocator,
+        "production_chain_calculator": bundle,
+        "bea_industries": bea_industries,
+    }
+    return overrides, session
 
 
 def load_fred_series_from_db(
@@ -685,6 +786,7 @@ __all__ = [
     "create_circulation_services",
     "create_economics_services",
     "create_financial_services",
+    "create_leontief_rent_services",
     "create_vol1_services",
     "load_circulation_series_from_db",
     "load_fred_series_from_db",

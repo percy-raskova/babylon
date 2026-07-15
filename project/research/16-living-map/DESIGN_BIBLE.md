@@ -357,3 +357,30 @@ and gold-tinted on display numerals only.
 - Colorblind simulator pass on every lens.
 - Content-to-chrome ≥80% on TopBar/ActionDock/InspectionCard.
 - Every wire headline names actor + action + tick (copy lint).
+
+## 11. The weather grammar (Wave 3, adopted 2026-07-14 — binding)
+
+Source: `ai/_inbox/lawvere-visualization.md` + `ai/_inbox/weather-visualization.md`, verified and
+scoped in `reports/wave3-weather-implementation-map.md`. Four laws; the rendering rules ARE the
+physics. They govern every new visualization from Wave 3 on and bind all existing lens work
+retroactively where cheap.
+
+1. **Extensive renders as stuff, intensive renders as color.** Labor-hours, value masses,
+   population, Φ flows → particles, flux width, stacked volume. Rates (r, s/v, OCC, heat,
+   contradiction intensity) → hex fill and edge hue ONLY. Payoff: zoom-merge visibly SUMS stuff
+   (ink conserved) while color fields re-render — conservation becomes perceptible; you cannot
+   missum an intensive because color doesn't add.
+2. **Quantities flow, qualities cut.** Continuous animation is reserved for field evolution and
+   value flows. Every enum flip — regime change, edge-mode transition, phase state — is a hard
+   cut, one frame to the next, never tweened. Qualitative change is discontinuous; the screen
+   teaches it without a word (Anti-Pattern VIII.1 at the presentation layer).
+3. **One motion budget per tick.** Only the principal contradiction pulses — the engine already
+   names it (`principal_field`, max |df/dt|, System 20). Everything else is static between
+   ticks. Tufte-compliant; makes the principal contradiction do player-facing work.
+4. **Curvature is terrain, not decoration.** Geometry deforms only when someone ACTS (topology
+   change), never ambiently. HELD until κ actually exists in live runs — Ollivier-Ricci is
+   currently dormant math with zero production callers; do not fake terrain from anything else.
+
+Corollaries: storm/rupture markers appear as hard cuts (law 2) with intensity = the engine's own
+Mao score; the vector lens (gradient wind) is law 1's first extensive citizen; reduced-motion
+users get law 3's static frame with the principal contradiction marked, not animated.

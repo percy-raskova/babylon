@@ -64,6 +64,7 @@ from babylon.domain.dialectics.core.opposition import (
     GapReading,
     OppositionRegistry,
     OppositionSpec,
+    PoleSample,
 )
 from babylon.domain.dialectics.instances.connectivity import (
     atomization_index,
@@ -104,12 +105,25 @@ class GraphInputs:
         solidarity_subgraph: the undirected SOLIDARITY subgraph
             (from ``extract_solidarity_subgraph``) for the atomization
             cylinder; ``None`` is treated as empty.
+        exploitation_id_pairs: ``(source_id, target_id, labor_wealth,
+            capital_wealth)`` per EXPLOITATION edge — the id-carrying twin
+            of ``exploitation_pairs`` feeding the per-node pole measures
+            (ADR070); built in the same loop, same skip rules.
+        wage_value_id_pairs: ``(node_id, w_paid, v_produced)`` per paid
+            worker class node — the id-carrying twin of ``wage_value_pairs``.
+        tenancy_id_pairs: ``(source_id, target_id, tenant_wealth,
+            rent_level)`` per TENANCY edge — id-carrying twin of
+            ``tenancy_pairs``; no pole measure reads it yet (a
+            landlord/tenant axis is a natural later binding).
     """
 
     exploitation_pairs: tuple[WealthPair, ...] = ()
     wage_value_pairs: tuple[tuple[float, float], ...] = ()
     tenancy_pairs: tuple[WealthPair, ...] = ()
     solidarity_subgraph: BabylonUGraph | None = field(default=None)
+    exploitation_id_pairs: tuple[tuple[str, str, float, float], ...] = ()
+    wage_value_id_pairs: tuple[tuple[str, float, float], ...] = ()
+    tenancy_id_pairs: tuple[tuple[str, str, float, float], ...] = ()
 
 
 def _mean_asymmetry(pairs: Sequence[WealthPair]) -> GapReading:
@@ -173,6 +187,50 @@ def _atomization_measure(inputs: GraphInputs) -> GapReading:
     return GapReading(gap=gap, balance=max(-1.0, min(1.0, balance)))
 
 
+def _capital_labor_poles(inputs: GraphInputs) -> tuple[PoleSample, ...]:
+    """Per-node labor⇄capital position over ALL EXPLOITATION participations.
+
+    Each edge's signed asymmetry balance is credited to BOTH endpoints:
+    the source (labor position) negated — capital dominance pushes it
+    toward pole A — and the target (capital position) as-is. A node
+    appearing on both sides across different edges (an intermediate
+    stratum) gets the mean of its participations, honestly. Nodes with no
+    EXPLOITATION participation are absent (UNPOSITIONED), never 0.0.
+    """
+    accumulator: dict[str, list[float]] = {}
+    for source_id, target_id, labor_wealth, capital_wealth in inputs.exploitation_id_pairs:
+        balance = calculate_wealth_asymmetry_balance(labor_wealth, capital_wealth)
+        accumulator.setdefault(source_id, []).append(-balance)
+        accumulator.setdefault(target_id, []).append(balance)
+    return tuple(
+        PoleSample(entity_id=node_id, sigma=sum(values) / len(values))
+        for node_id, values in sorted(accumulator.items())
+    )
+
+
+def _wage_poles(inputs: GraphInputs) -> tuple[PoleSample, ...]:
+    """Per-node wage⇄value defect sign from the node's own ``(w_paid, v_produced)``.
+
+    Reorders to ``(value-produced = A, price-of-labor-power = B)`` exactly
+    as :func:`_wage_value_reading` does for the aggregate, so a positive
+    sigma means the wage exceeds the value produced — the imperial bribe,
+    pole B. Nodes without the accounting pair are absent (UNPOSITIONED).
+    """
+    return tuple(
+        PoleSample(entity_id=node_id, sigma=calculate_wealth_asymmetry_balance(value, wage))
+        for node_id, wage, value in sorted(inputs.wage_value_id_pairs)
+    )
+
+
+#: ``imperial`` reads the IDENTICAL defect under core/periphery pole names
+#: (the D5 shared-defect design) — reused verbatim, not reimplemented. This
+#: alias is the Program 10 landing seam: its data-grounded per-node sigma
+#: (OCC / capital intensity / integrated labor content) replaces this proxy
+#: as a new pole_measure on the ``imperial`` binding, with every consumer
+#: of :class:`PoleReading` unchanged.
+_imperial_poles = _wage_poles
+
+
 def _imperial_measure(inputs: GraphInputs) -> GapReading:
     """core⇄periphery — the SAME wage⇄value Φ defect, read at the frame level.
 
@@ -209,6 +267,7 @@ def build_default_registry(rate_weight: float = 10.0) -> OppositionRegistry[Grap
                 antagonistic=True,
             ),
             measure=_capital_labor_measure,
+            pole_measure=_capital_labor_poles,
         ),
         BoundOpposition(
             spec=OppositionSpec(
@@ -221,6 +280,7 @@ def build_default_registry(rate_weight: float = 10.0) -> OppositionRegistry[Grap
                 level_name="county",
             ),
             measure=_wage_measure,
+            pole_measure=_wage_poles,
         ),
         BoundOpposition(
             spec=OppositionSpec(
@@ -254,6 +314,7 @@ def build_default_registry(rate_weight: float = 10.0) -> OppositionRegistry[Grap
                 antagonistic=True,
             ),
             measure=_imperial_measure,
+            pole_measure=_imperial_poles,
         ),
     ]
     return OppositionRegistry(bindings=bindings, rate_weight=rate_weight)

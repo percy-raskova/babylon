@@ -1,4 +1,5 @@
 import type { VerbConfig, VerbTarget } from "./types";
+import { parseFlatCost } from "./cost";
 
 interface EducateTarget {
   community_id: string;
@@ -28,4 +29,7 @@ export const educateConfig: VerbConfig = {
     target_community_id: targetId ?? "",
     params,
   }),
+  // Flat {action_points, cadre_labor, sympathizer_labor, material,
+  // can_afford, ...} envelope (engine_bridge.py:3216-3223).
+  parseCost: parseFlatCost,
 };

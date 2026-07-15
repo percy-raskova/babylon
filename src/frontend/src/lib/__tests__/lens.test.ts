@@ -35,12 +35,29 @@ import {
   lensKey,
   lensLegendLabel,
   lensRampStops,
+  MAP_HISTORY_REPLAYABLE_METRICS,
+  lensMetricName,
+  isReplayableLens,
   type Lens,
 } from "../lens";
 import { DATA_RAMPS } from "@/theme/colors";
 
 describe("MAP_METRICS mirrors the backend's map_contract.py MAP_METRIC_PROPERTIES", () => {
-  it("has exactly the 9 numeric contract metric names, in contract order", () => {
+  it("has exactly the 15 numeric contract metric names, in contract order", () => {
+    // Wave 2 Round 2 (reports/wave2-implementation-map.md): throughput_position
+    // (ruling 1 — wired for real, no longer a frozen 1.0 constant) and
+    // agitation (DECLARED_CONDITIONAL — legitimately 0.0 absent a crisis tick)
+    // join the numeric contract, appended after solidarity_index. Audit Wave 4
+    // straggler (task #76): centrality (a territory's own degree-centrality
+    // within the org-network topology) is appended after agitation. Wave 5
+    // receptivity pair: mass_receptivity (M_r, the Epistemic Horizon's
+    // honest-display receptivity) is appended after centrality; its
+    // categorical companion vision_state stays OUT of this numeric array
+    // (dedicated Lens kind, like territory_type). Feature 021 lens pair:
+    // wage_pressure (Reserve Army wage-discipline coefficient) and
+    // dispossession_intensity (composite carceral/eviction intensity) are
+    // appended after mass_receptivity — both NATIVE per-territory graph
+    // attrs with no categorical companion.
     expect(MAP_METRICS).toEqual([
       "profit_rate",
       "exploitation_rate",
@@ -51,11 +68,25 @@ describe("MAP_METRICS mirrors the backend's map_contract.py MAP_METRIC_PROPERTIE
       "population",
       "habitability",
       "solidarity_index",
+      "throughput_position",
+      "agitation",
+      "centrality",
+      "mass_receptivity",
+      "wage_pressure",
+      "dispossession_intensity",
     ]);
   });
 
   it("deliberately excludes dominant_class (categorical — drives the class_composition Lens kind instead)", () => {
     expect(MAP_METRICS).not.toContain("dominant_class");
+  });
+
+  it("deliberately excludes territory_type (categorical — drives the territory_type Lens kind instead)", () => {
+    expect(MAP_METRICS).not.toContain("territory_type");
+  });
+
+  it("deliberately excludes vision_state (categorical — drives the vision_state Lens kind instead)", () => {
+    expect(MAP_METRICS).not.toContain("vision_state");
   });
 });
 
@@ -65,7 +96,7 @@ describe("SELECTABLE_METRICS excludes the metrics with a dedicated Lens kind", (
     expect(SELECTABLE_METRICS).not.toContain("habitability");
   });
 
-  it("keeps every other contract metric, including solidarity_index", () => {
+  it("keeps every other contract metric, including solidarity_index/throughput_position/agitation/centrality/mass_receptivity/wage_pressure/dispossession_intensity", () => {
     expect([...SELECTABLE_METRICS].sort()).toEqual(
       [
         "profit_rate",
@@ -75,6 +106,12 @@ describe("SELECTABLE_METRICS excludes the metrics with a dedicated Lens kind", (
         "org_presence",
         "population",
         "solidarity_index",
+        "throughput_position",
+        "agitation",
+        "centrality",
+        "mass_receptivity",
+        "wage_pressure",
+        "dispossession_intensity",
       ].sort(),
     );
   });
@@ -110,6 +147,21 @@ describe("isSameLens", () => {
     ).toBe(false);
   });
 
+  it("treats field_flow lenses as equal only when the field matches too", () => {
+    expect(
+      isSameLens(
+        { kind: "field_flow", field: "exploitation" },
+        { kind: "field_flow", field: "exploitation" },
+      ),
+    ).toBe(true);
+    expect(
+      isSameLens(
+        { kind: "field_flow", field: "exploitation" },
+        { kind: "field_flow", field: "atomization" },
+      ),
+    ).toBe(false);
+  });
+
   it("a metric lens is never equal to a mode lens, even by name collision", () => {
     // metric:"heat" is not constructible via SELECTABLE_METRICS, but the
     // union type technically allows any MapMetric — verify the comparison
@@ -141,6 +193,14 @@ describe("isBalkanizationLens", () => {
   it("is false for class_composition (hex_latest's own column, not the spec-070 balkanization block)", () => {
     expect(isBalkanizationLens({ kind: "class_composition" })).toBe(false);
   });
+
+  it("is false for territory_type (territory-local TerritoryType enum, not the balkanization block)", () => {
+    expect(isBalkanizationLens({ kind: "territory_type" })).toBe(false);
+  });
+
+  it("is false for field_flow (per-class-pair field_state edges, not the balkanization block)", () => {
+    expect(isBalkanizationLens({ kind: "field_flow", field: "exploitation" })).toBe(false);
+  });
 });
 
 describe("lensKey — stable identity for React keys / updateTriggers arrays", () => {
@@ -160,6 +220,16 @@ describe("lensKey — stable identity for React keys / updateTriggers arrays", (
       expect(modeKeys.has(lensKey({ kind: "metric", metric }))).toBe(false);
     }
   });
+
+  it("field_flow keys differ per field, and never collide with a mode/metric key", () => {
+    const exploitation = lensKey({ kind: "field_flow", field: "exploitation" });
+    const atomization = lensKey({ kind: "field_flow", field: "atomization" });
+    expect(exploitation).not.toBe(atomization);
+    expect(LENS_MODES.map((kind) => lensKey({ kind }))).not.toContain(exploitation);
+    expect(SELECTABLE_METRICS.map((metric) => lensKey({ kind: "metric", metric }))).not.toContain(
+      exploitation,
+    );
+  });
 });
 
 describe("lensLegendLabel", () => {
@@ -177,6 +247,44 @@ describe("lensLegendLabel", () => {
   it("labels class_composition distinctly from every mode/metric lens", () => {
     const label = lensLegendLabel({ kind: "class_composition" }).toLowerCase();
     expect(label).toContain("class");
+  });
+
+  it("labels territory_type distinctly from every mode/metric/class_composition lens", () => {
+    const label = lensLegendLabel({ kind: "territory_type" }).toLowerCase();
+    expect(label).toContain("territory");
+  });
+
+  it("labels the two new metric lenses (throughput_position/agitation) with their own names", () => {
+    expect(
+      lensLegendLabel({ kind: "metric", metric: "throughput_position" }).toLowerCase(),
+    ).toContain("throughput");
+    expect(lensLegendLabel({ kind: "metric", metric: "agitation" }).toLowerCase()).toContain(
+      "agitation",
+    );
+  });
+
+  it("labels the centrality metric lens with its own name (audit Wave 4 straggler, task #76)", () => {
+    expect(lensLegendLabel({ kind: "metric", metric: "centrality" }).toLowerCase()).toContain(
+      "central",
+    );
+  });
+
+  it("labels the Feature 021 lens pair (wage_pressure/dispossession_intensity) with their own names", () => {
+    expect(lensLegendLabel({ kind: "metric", metric: "wage_pressure" }).toLowerCase()).toContain(
+      "labor market pressure",
+    );
+    expect(
+      lensLegendLabel({ kind: "metric", metric: "dispossession_intensity" }).toLowerCase(),
+    ).toContain("dispossession intensity");
+  });
+
+  it("labels field_flow with 'Gradient Wind' plus the title-cased field name", () => {
+    expect(lensLegendLabel({ kind: "field_flow", field: "exploitation" })).toBe(
+      "Gradient Wind · Exploitation Field",
+    );
+    expect(lensLegendLabel({ kind: "field_flow", field: "atomization" })).toBe(
+      "Gradient Wind · Atomization Field",
+    );
   });
 });
 
@@ -209,16 +317,152 @@ describe("lensRampStops — single ramp resolution shared by fill + legend", () 
     }
   });
 
-  it("stance/faction/collapse/class_composition have no single metric ramp (categorical fills, not a ramp)", () => {
+  it("stance/faction/collapse/class_composition/territory_type have no single metric ramp (categorical fills, not a ramp)", () => {
     expect(lensRampStops({ kind: "stance" })).toBeNull();
     expect(lensRampStops({ kind: "faction" })).toBeNull();
     expect(lensRampStops({ kind: "collapse" })).toBeNull();
     expect(lensRampStops({ kind: "class_composition" })).toBeNull();
+    expect(lensRampStops({ kind: "territory_type" })).toBeNull();
+  });
+
+  it("field_flow has no fill ramp — direction/magnitude render as flow geometry, never a color ramp (DESIGN_BIBLE.md §11 law 1)", () => {
+    expect(lensRampStops({ kind: "field_flow", field: "exploitation" })).toBeNull();
   });
 
   it("solidarity_index resolves to its own dedicated ramp, distinct from habitability's", () => {
     const stops = lensRampStops({ kind: "metric", metric: "solidarity_index" });
     expect(stops).toEqual(DATA_RAMPS.solidarity);
     expect(stops).not.toEqual(DATA_RAMPS.biocapacity);
+  });
+
+  it("throughput_position resolves to the wealth ramp, distinct from every other registered metric's ramp", () => {
+    const stops = lensRampStops({ kind: "metric", metric: "throughput_position" });
+    expect(stops).toEqual(DATA_RAMPS.wealth);
+    expect(stops).not.toEqual(DATA_RAMPS.rent);
+    expect(stops).not.toEqual(DATA_RAMPS.solidarity);
+  });
+
+  it("agitation resolves to the consciousness ramp, distinct from heat/solidarity (its nearest struggle-group cousins)", () => {
+    const stops = lensRampStops({ kind: "metric", metric: "agitation" });
+    expect(stops).toEqual(DATA_RAMPS.consciousness);
+    expect(stops).not.toEqual(DATA_RAMPS.heat);
+    expect(stops).not.toEqual(DATA_RAMPS.solidarity);
+  });
+
+  it("throughput_position and agitation resolve to two DISTINCT ramps from each other", () => {
+    const throughput = lensRampStops({ kind: "metric", metric: "throughput_position" });
+    const agitation = lensRampStops({ kind: "metric", metric: "agitation" });
+    expect(throughput).not.toEqual(agitation);
+  });
+
+  it("centrality resolves to the population ramp — the one canonical ramp no other registered lens had yet claimed (audit Wave 4 straggler, task #76)", () => {
+    const stops = lensRampStops({ kind: "metric", metric: "centrality" });
+    expect(stops).toEqual(DATA_RAMPS.population);
+    expect(stops).not.toEqual(DATA_RAMPS.consciousness);
+    expect(stops).not.toEqual(DATA_RAMPS.wealth);
+  });
+
+  it("mass_receptivity resolves to the dedicated receptivity ramp (Wave 5 — corpus desert/mud/water direction), distinct from biocapacity's diverging ramp", () => {
+    const stops = lensRampStops({ kind: "metric", metric: "mass_receptivity" });
+    expect(stops).toEqual(DATA_RAMPS.receptivity);
+    expect(stops).not.toEqual(DATA_RAMPS.biocapacity);
+    expect(stops).not.toEqual(DATA_RAMPS.solidarity);
+  });
+
+  it("vision_state has no fill ramp (categorical, like territory_type)", () => {
+    expect(lensRampStops({ kind: "vision_state" })).toBeNull();
+  });
+
+  it("wage_pressure resolves to its own dedicated ramp (Feature 021 — cool->amber->crimson wage-discipline gauge), distinct from heat/consciousness", () => {
+    const stops = lensRampStops({ kind: "metric", metric: "wage_pressure" });
+    expect(stops).toEqual(DATA_RAMPS.wage_pressure);
+    expect(stops).not.toEqual(DATA_RAMPS.heat);
+    expect(stops).not.toEqual(DATA_RAMPS.consciousness);
+  });
+
+  it("dispossession_intensity resolves to its own dedicated ramp (Feature 021 — carceral/eviction intensity), distinct from rent/biocapacity", () => {
+    const stops = lensRampStops({ kind: "metric", metric: "dispossession_intensity" });
+    expect(stops).toEqual(DATA_RAMPS.dispossession);
+    expect(stops).not.toEqual(DATA_RAMPS.rent);
+    expect(stops).not.toEqual(DATA_RAMPS.biocapacity);
+  });
+
+  it("wage_pressure and dispossession_intensity resolve to two DISTINCT ramps from each other", () => {
+    const wagePressure = lensRampStops({ kind: "metric", metric: "wage_pressure" });
+    const dispossession = lensRampStops({ kind: "metric", metric: "dispossession_intensity" });
+    expect(wagePressure).not.toEqual(dispossession);
+  });
+});
+
+describe("MAP_HISTORY_REPLAYABLE_METRICS mirrors web/game/map_contract.py's tuple of the same name", () => {
+  it("lists exactly heat/population/profit_rate/exploitation_rate", () => {
+    expect([...MAP_HISTORY_REPLAYABLE_METRICS].sort()).toEqual(
+      ["heat", "population", "profit_rate", "exploitation_rate"].sort(),
+    );
+  });
+
+  it("every entry is a real MAP_METRICS member (no invented metric names)", () => {
+    for (const metric of MAP_HISTORY_REPLAYABLE_METRICS) {
+      expect(MAP_METRICS).toContain(metric);
+    }
+  });
+});
+
+describe("lensMetricName — the single MapMetric a lens directly names, or null", () => {
+  it("resolves {kind:'heat'} to 'heat'", () => {
+    expect(lensMetricName({ kind: "heat" })).toBe("heat");
+  });
+
+  it("resolves {kind:'metric', metric} to that metric", () => {
+    expect(lensMetricName({ kind: "metric", metric: "population" })).toBe("population");
+    expect(lensMetricName({ kind: "metric", metric: "occ" })).toBe("occ");
+  });
+
+  it("returns null for every lens kind with no single-metric shape", () => {
+    expect(lensMetricName({ kind: "stance" })).toBeNull();
+    expect(lensMetricName({ kind: "faction" })).toBeNull();
+    expect(lensMetricName({ kind: "collapse" })).toBeNull();
+    expect(lensMetricName({ kind: "habitability" })).toBeNull();
+    expect(lensMetricName({ kind: "class_composition" })).toBeNull();
+    expect(lensMetricName({ kind: "territory_type" })).toBeNull();
+    expect(lensMetricName({ kind: "vision_state" })).toBeNull();
+    expect(lensMetricName({ kind: "field_flow", field: "exploitation" })).toBeNull();
+  });
+});
+
+describe("isReplayableLens — gates the RadarLoopPanel scrubber's availability", () => {
+  it("is true for the heat mode lens", () => {
+    expect(isReplayableLens({ kind: "heat" })).toBe(true);
+  });
+
+  it("is true for the 3 replayable metric sub-selects", () => {
+    expect(isReplayableLens({ kind: "metric", metric: "population" })).toBe(true);
+    expect(isReplayableLens({ kind: "metric", metric: "profit_rate" })).toBe(true);
+    expect(isReplayableLens({ kind: "metric", metric: "exploitation_rate" })).toBe(true);
+  });
+
+  it("is false for a non-replayable metric sub-select", () => {
+    expect(isReplayableLens({ kind: "metric", metric: "occ" })).toBe(false);
+    expect(isReplayableLens({ kind: "metric", metric: "imperial_rent" })).toBe(false);
+  });
+
+  it("is false for every categorical/vector lens kind", () => {
+    expect(isReplayableLens({ kind: "stance" })).toBe(false);
+    expect(isReplayableLens({ kind: "faction" })).toBe(false);
+    expect(isReplayableLens({ kind: "collapse" })).toBe(false);
+    expect(isReplayableLens({ kind: "habitability" })).toBe(false);
+    expect(isReplayableLens({ kind: "class_composition" })).toBe(false);
+    expect(isReplayableLens({ kind: "territory_type" })).toBe(false);
+    expect(isReplayableLens({ kind: "vision_state" })).toBe(false);
+    expect(isReplayableLens({ kind: "field_flow", field: "exploitation" })).toBe(false);
+  });
+
+  it("is false for the mass_receptivity metric (hex_latest-only, no append-only history — mirrors the backend tuple)", () => {
+    expect(isReplayableLens({ kind: "metric", metric: "mass_receptivity" })).toBe(false);
+  });
+
+  it("is false for the Feature 021 lens pair (hex_latest-only, no append-only history)", () => {
+    expect(isReplayableLens({ kind: "metric", metric: "wage_pressure" })).toBe(false);
+    expect(isReplayableLens({ kind: "metric", metric: "dispossession_intensity" })).toBe(false);
   });
 });

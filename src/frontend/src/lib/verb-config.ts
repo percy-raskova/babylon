@@ -85,12 +85,16 @@ export const VERBS: V2Verb[] = [
   },
 ];
 
-/** Spec 061 US5 T081 / FR-025: verbs whose engine handlers don't exist.
- *  Filtered out of the verb picker and rejected at the action-submit
- *  endpoint server-side. A follow-up spec will add real handlers and
- *  remove entries from this set.
+/** Spec 061 US5 T081 / FR-025 disabled `investigate`/`move`/`negotiate` as
+ *  "verbs whose engine handlers don't exist". That claim is now FALSE: all
+ *  9 canonical verbs have real, registered engine resolvers
+ *  (`babylon.engine.actions.VERB_RESOLVERS`), dispatched end-to-end from
+ *  `POST /api/games/{id}/actions/{verb}/` with no server-side disabling —
+ *  pinned by `tests/contract/verbs/test_registry.py`. Re-enabled AW3-R1
+ *  (2026-07-15). Kept as an empty set (rather than deleted) so a future
+ *  verb shipped without a resolver has somewhere to go.
  */
-export const DISABLED_VERBS: ReadonlySet<string> = new Set(["investigate", "move", "negotiate"]);
+export const DISABLED_VERBS: ReadonlySet<string> = new Set([]);
 
 /** VERBS minus disabled verbs — for the verb picker, NavRail, and grids. */
 export const SUPPORTED_VERBS = VERBS.filter((v) => !DISABLED_VERBS.has(v.verb));

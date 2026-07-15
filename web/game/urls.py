@@ -31,6 +31,12 @@ urlpatterns: list[URLPattern] = [
     path("games/<str:game_id>/summary/", api.game_summary, name="game-summary"),
     path("games/<str:game_id>/timeseries/", api.game_timeseries, name="game-timeseries"),
     path("games/<str:game_id>/map/", api.game_map, name="game-map"),
+    # API: Program 17 Wave 3 (Backend-W3R3) — map lens replay history
+    path(
+        "games/<str:game_id>/map/history/",
+        api.game_map_history,
+        name="game-map-history",
+    ),
     # API: Domain Dashboards
     path("games/<str:game_id>/economy/", api.game_economy, name="game-economy"),
     path("games/<str:game_id>/communities/", api.game_communities, name="game-communities"),
@@ -41,9 +47,16 @@ urlpatterns: list[URLPattern] = [
         api.game_state_apparatus,
         name="game-state-apparatus",
     ),
+    path(
+        "games/<str:game_id>/doctrine-tree/",
+        api.game_doctrine_tree,
+        name="game-doctrine-tree",
+    ),
     path("games/<str:game_id>/journal/", api.game_journal, name="game-journal"),
     path("games/<str:game_id>/alerts/", api.game_alerts, name="game-alerts"),
     path("games/<str:game_id>/wire/", api.game_wire, name="game-wire"),
+    # API: Program 20 Track B — AI narration beats (types/narration.ts)
+    path("games/<str:game_id>/narration/", api.game_narration, name="game-narration"),
     # API: Spec 095 — Endgame Chronicle + Journal + Dialectic screen
     path(
         "games/<str:game_id>/contradiction/",
@@ -55,6 +68,12 @@ urlpatterns: list[URLPattern] = [
         "games/<str:game_id>/objectives/",
         api.game_objectives,
         name="game-objectives",
+    ),
+    # API: Program 19/20 — Contradiction Field Stack (Systems #19/#20)
+    path(
+        "games/<str:game_id>/field_state/",
+        api.game_field_state,
+        name="game-field-state",
     ),
     # API: Spec 103 — Trade surfaces
     path(
@@ -104,6 +123,22 @@ urlpatterns: list[URLPattern] = [
         "games/<str:game_id>/territory/<str:county_fips>/history/",
         api.inspector_territory_history,
         name="inspector-territory-history",
+    ),
+    # Wave 2 W2.5b (owner ruling 3): survival duel chart history — social_class
+    # has no dedicated inspector route (unlike org/territory), so this rides
+    # the generic /node/<id>/ URL shape.
+    path(
+        "games/<str:game_id>/node/<str:node_id>/history/",
+        api.inspector_node_history,
+        name="inspector-node-history",
+    ),
+    # Audit Wave 4 straggler (task #76): edge-weight history sparkline — rides
+    # the generic /edge/<edge_id>/ id scheme ("{source}->{target}") set by
+    # inspector-edge above.
+    path(
+        "games/<str:game_id>/edge/<str:edge_id>/history/",
+        api.inspector_edge_history,
+        name="inspector-edge-history",
     ),
     # API: Spec-113 Lane D — formula/metric provenance (InspectionStack FormulaCard)
     path("games/<str:game_id>/explain/", api.game_explain, name="game-explain"),

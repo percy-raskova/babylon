@@ -57,6 +57,27 @@ vi.mock("@deck.gl/geo-layers", () => ({
   // files that don't locally override this mock (that pattern,
   // e.g. DeckGLMap.test.tsx, still takes precedence for its own file).
   H3ClusterLayer: vi.fn(),
+  // Wave 3 §11: DeckGLMap transitively imports fieldFlow.ts's TripsLayer
+  // (the gradient-wind lens's animated trail) on every render, regardless of
+  // the active lens — any test mounting a real DeckGLMap needs this stub,
+  // not just fieldFlow.test.ts's own local override (which additionally
+  // inspects `.id`/`.props`).
+  TripsLayer: vi.fn(),
+}));
+
+// AW4-R2: sigma.js renders to a real WebGL/canvas context sigma itself
+// creates on construction — jsdom has neither, so any test mounting a real
+// `NetworkGraphCanvas` needs this stub, mirroring the deck.gl mocks above.
+// `new Sigma(...)` only needs to yield an object with the instance methods
+// `NetworkGraphCanvas` actually calls (`kill` on unmount). The mock's
+// implementation must be a real `function` (not an arrow) — vitest can only
+// invoke a `vi.fn()` mock with `new` when its implementation is
+// constructor-capable (arrow functions aren't; see the vitest console hint
+// this throws without the `function` keyword here).
+vi.mock("sigma", () => ({
+  default: vi.fn(function SigmaMock() {
+    return { kill: vi.fn(), refresh: vi.fn() };
+  }),
 }));
 
 vi.mock("@deck.gl/layers", () => ({
@@ -67,6 +88,9 @@ vi.mock("@deck.gl/layers", () => ({
   // so any test mounting a real DeckGLMap needs this, not just political.test.ts's
   // own local override (which additionally inspects `.id`/`.props`).
   GeoJsonLayer: vi.fn(),
+  // Wave 3 §11: fieldFlow.ts's static dashed base layer — same reasoning as
+  // TripsLayer above.
+  PathLayer: vi.fn(),
 }));
 
 // ---------------------------------------------------------------------------

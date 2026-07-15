@@ -1,4 +1,5 @@
 import type { VerbConfig, VerbTarget } from "./types";
+import { parseFlatCost } from "./cost";
 
 interface AidPopTarget {
   community_id: string;
@@ -46,4 +47,7 @@ export const aidConfig: VerbConfig = {
     target_id: targetId ?? "",
     params: { transfer_amount: Number(params.transfer_amount ?? 0) },
   }),
+  // Flat {action_points, cadre_labor, sympathizer_labor, material,
+  // can_afford, ...} envelope (engine_bridge.py:3315-3323).
+  parseCost: parseFlatCost,
 };

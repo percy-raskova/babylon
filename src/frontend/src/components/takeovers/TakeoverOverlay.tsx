@@ -30,6 +30,8 @@ import { useStore } from "@/store";
 import { WireTakeover } from "./wire/WireTakeover";
 import { ChronicleTakeover } from "./chronicle/ChronicleTakeover";
 import { DialecticTakeover } from "./dialectic/DialecticTakeover";
+import { NetworkTakeover } from "./network/NetworkTakeover";
+import { DoctrineTakeover } from "./doctrine/DoctrineTakeover";
 import type { TakeoverKind } from "@/store/slices/uiSlice";
 
 interface Props {
@@ -48,6 +50,8 @@ const TAKEOVER_LABEL: Record<TakeoverKind, string> = {
   wire: "Wire Dispatch",
   chronicle: "Chronicle",
   dialectic: "Dialectic",
+  network: "Network",
+  doctrine: "Doctrine Tree",
 };
 
 export function TakeoverOverlay({ gameId }: Props): React.JSX.Element | null {
@@ -99,6 +103,8 @@ export function TakeoverOverlay({ gameId }: Props): React.JSX.Element | null {
           {active === "wire" && <WireTakeover gameId={gameId} />}
           {active === "chronicle" && <ChronicleTakeover gameId={gameId} />}
           {active === "dialectic" && <DialecticTakeover gameId={gameId} />}
+          {active === "network" && <NetworkTakeover gameId={gameId} />}
+          {active === "doctrine" && <DoctrineTakeover gameId={gameId} />}
         </div>
       </div>
     </div>

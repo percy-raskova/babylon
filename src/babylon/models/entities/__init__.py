@@ -30,6 +30,7 @@ from babylon.models.entities.contradiction import (
     Contradiction,
     ContradictionFrame,
 )
+from babylon.models.entities.doctrine import DoctrineNode, DoctrineTree
 from babylon.models.entities.economy import GlobalEconomy
 from babylon.models.entities.effect import Effect
 from babylon.models.entities.event_template import (
@@ -164,4 +165,7 @@ __all__ = [
     # Balkanization (Spec 070)
     "BalkanizationFaction",
     "Sovereign",
+    # Doctrine Tree (Epoch 3, Wave 6 foundation)
+    "DoctrineNode",
+    "DoctrineTree",
 ]

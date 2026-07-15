@@ -29,7 +29,7 @@ from rest_framework.views import APIView
 
 from game.models import ActionResult, GameSession, PlayerAction
 
-from .log_handler import log_game_event
+from .log_handler import log_game_event, sanitize_for_log
 from .map_contract import MAP_METRIC_PROPERTIES
 from .serializers import (
     ActionResultSerializer,
@@ -82,6 +82,18 @@ def _get_bridge() -> Any:
     if _bridge_instance is None:
         from .stub_bridge import StubEngineBridge
 
+        # Seam Sensor 3 (provenance): the StubEngineBridge serves fabricated
+        # values through the real API contract. That is fine in DEBUG (dev/stub
+        # settings, DEBUG=True), but serving it with DEBUG off would render fake
+        # data as if real — the "rendered but fake" honesty violation this sensor
+        # exists to forbid. Fail loud (III.11) instead of silently faking.
+        if not django_settings.DEBUG:
+            raise ImproperlyConfigured(
+                "EngineBridge not initialized and DEBUG is off — refusing to serve the "
+                "StubEngineBridge's fabricated data through the production API "
+                "(Seam Sensor 3 provenance / Constitution III.11). Initialize a real "
+                "bridge via init_bridge() / GameConfig.ready() with a persistence layer."
+            )
         logger.warning(
             "EngineBridge not initialized — falling back to StubEngineBridge. "
             "Set up PostgreSQL or call init_bridge() for production use."
@@ -141,6 +153,27 @@ def _error_with_code(
     return JsonResponse(
         {"status": "error", "error": message, "code": code},
         status=http_status,
+    )
+
+
+def _action_rejected(exc: ValueError, *, session_id: object) -> Response:
+    """Log a rejected-action exception server-side and return a generic client error.
+
+    The bridge raises :class:`ValueError` carrying internal validation detail; per the
+    CodeQL ``py/stack-trace-exposure`` hardening that detail is logged, never surfaced to
+    the client, which receives a stable, non-revealing message.
+
+    :param exc: The ``ValueError`` raised while submitting the action.
+    :param session_id: The game session id, for the server-side log line only.
+    :returns: A 400 DRF ``Response`` with the standard error envelope.
+    """
+    logger.info("Action rejected session=%s: %s", session_id, exc)
+    return Response(
+        {
+            "status": "error",
+            "message": "Action rejected: the request was not valid for the current game state.",
+        },
+        status=status.HTTP_400_BAD_REQUEST,
     )
 
 
@@ -486,6 +519,73 @@ def game_map(request: Request, game_id: str) -> JsonResponse:
     )
 
 
+@api_view(["GET"])
+@permission_classes([IsAuthenticated])
+def game_map_history(request: Request, game_id: str) -> JsonResponse:
+    """GET /api/games/{id}/map/history/ — per-tick map-metric replay frames.
+
+    Program 17 Wave 3 (Backend-W3R3): the map lens scrubber's real data
+    source. See ``EngineBridge.get_map_history``'s docstring for the
+    verified replayable/non-replayable metric split — only
+    ``MAP_HISTORY_REPLAYABLE_METRICS`` (``heat``/``population``/
+    ``profit_rate``/``exploitation_rate``) has a genuine per-tick
+    historical source; the other 9 ``MAP_METRIC_PROPERTIES`` 422 rather
+    than serve a frame of fabricated nulls (Constitution III.11).
+
+    Query parameters:
+        metric (str, required): One of ``MAP_METRIC_PROPERTIES``. 400 if
+            missing or unknown; 422 if known but not historically
+            replayable.
+        from_tick / to_tick (int, optional): Inclusive tick bounds.
+            Default: a window ending at the latest committed tick, capped
+            at ``EngineBridge``'s window cap (``capped: true`` in the
+            response when the served range is narrower than requested).
+    """
+    session = _get_session_or_none(game_id, request.user.id)
+    if session is None:
+        return _error("Game not found", http_status=404)
+
+    metric = request.query_params.get("metric")
+    if not metric:
+        return _error(
+            f"metric query parameter is required. Valid metrics: {sorted(VALID_MAP_LAYERS)}",
+            http_status=400,
+        )
+    if metric not in VALID_MAP_LAYERS:
+        return _error(
+            f"Invalid metric '{metric}'. Valid metrics: {sorted(VALID_MAP_LAYERS)}",
+            http_status=400,
+        )
+
+    try:
+        from_tick_query = request.query_params.get("from_tick")
+        from_tick = int(from_tick_query) if from_tick_query is not None else None
+        to_tick_query = request.query_params.get("to_tick")
+        to_tick = int(to_tick_query) if to_tick_query is not None else None
+    except ValueError:
+        return _error("Invalid from_tick/to_tick parameter", http_status=400)
+
+    if (from_tick is not None and from_tick < 0) or (to_tick is not None and to_tick < 0):
+        return _error("from_tick/to_tick must be non-negative", http_status=400)
+    if from_tick is not None and to_tick is not None and from_tick > to_tick:
+        return _error("from_tick must be <= to_tick", http_status=400)
+
+    bridge = _get_bridge()
+    data = bridge.get_map_history(
+        uuid.UUID(str(session.id)), metric=metric, from_tick=from_tick, to_tick=to_tick
+    )
+
+    error = data.get("error")
+    if error == "unknown_metric":
+        # Unreachable given the VALID_MAP_LAYERS gate above — defense in
+        # depth, matches the bridge's own honest-error contract (III.11).
+        return _error(data["message"], http_status=400)
+    if error == "not_replayable":
+        return _error(data["message"], http_status=422)
+
+    return _envelope(data, tick=session.current_tick, session_id=str(session.id))
+
+
 # ---------------------------------------------------------------------- #
 # Dashboards and Analytics
 # ---------------------------------------------------------------------- #
@@ -585,6 +685,22 @@ def game_state_apparatus(request: Request, game_id: str) -> JsonResponse:
 
 @api_view(["GET"])
 @permission_classes([IsAuthenticated])
+def game_doctrine_tree(request: Request, game_id: str) -> JsonResponse:
+    """GET /api/games/{id}/doctrine-tree/ - Read-only Doctrine Tree canvas.
+
+    Static game-data (the 11-node MVP tree) — the same payload for every
+    session, no engine tick required.
+    """
+    session = _get_session_or_none(game_id, request.user.id)
+    if session is None:
+        return _error("Game not found", http_status=404)
+    bridge = _get_bridge()
+    data = bridge.get_doctrine_tree(uuid.UUID(str(session.id)))
+    return _envelope(data, tick=session.current_tick, session_id=str(session.id))
+
+
+@api_view(["GET"])
+@permission_classes([IsAuthenticated])
 def game_journal(request: Request, game_id: str) -> JsonResponse:
     """GET /api/games/{id}/journal/ - Journal left-panel dashboard."""
     session = _get_session_or_none(game_id, request.user.id)
@@ -621,6 +737,64 @@ def game_wire(request: Request, game_id: str) -> JsonResponse:
         return _error("Game not found", http_status=404)
     bridge = _get_bridge()
     data = bridge.get_wire_feed(uuid.UUID(str(session.id)))
+    return _envelope(data, tick=session.current_tick, session_id=str(session.id))
+
+
+@api_view(["GET"])
+@permission_classes([IsAuthenticated])
+def game_narration(request: Request, game_id: str) -> JsonResponse:
+    """GET /api/games/{id}/narration/?since_tick=N — AI narration beats.
+
+    Program 20 Track B (task B5). Contract: ``src/frontend/src/types/narration.ts``
+    / ``src/frontend/src/lib/narration/client.ts``. Reads straight off
+    ``NarrationRecord`` (task B4) — no bridge/engine call, and no narrative
+    generation happens here (that's ``NarrativeService.schedule``, fired from
+    ``resolve_tick``).
+
+    Flag off (``BABYLON_LLM_NARRATOR``, default off) is an honest, labeled
+    ``"offline"`` — never an empty-but-"ready" fake (Constitution III.11).
+    Flag on with no records at/after ``since_tick`` is ``"pending"`` (the
+    narrator is live but nothing has landed yet for this range). Flag on
+    with records is ``"ready"`` — degraded beats (``NarrationRecord.degraded``)
+    are included in the list, never filtered out; loud failure must stay
+    visible in the beats a client actually renders.
+
+    A non-integer ``since_tick`` is a loud 400 (III.11), never coerced to 0;
+    a missing ``since_tick`` defaults to 0 (full history).
+    """
+    session = _get_session_or_none(game_id, request.user.id)
+    if session is None:
+        return _error("Game not found", http_status=404)
+
+    from .narrative_service import is_enabled
+
+    if not is_enabled():
+        return _envelope(
+            {"status": "offline", "beats": []},
+            tick=session.current_tick,
+            session_id=str(session.id),
+        )
+
+    since_tick_query = request.query_params.get("since_tick")
+    try:
+        since_tick = int(since_tick_query) if since_tick_query is not None else 0
+    except ValueError:
+        return _error("Invalid since_tick parameter", http_status=400)
+
+    records = session.narration_records.filter(tick__gte=since_tick).order_by("tick", "beat_id")
+    beats = [
+        {
+            "id": r.beat_id,
+            "tick": r.tick,
+            "scope": r.scope,
+            "subjectRef": r.subject_ref,
+            "headline": r.headline,
+            "body": r.body,
+            "register": r.register,
+        }
+        for r in records
+    ]
+    data = {"status": "ready" if beats else "pending", "beats": beats}
     return _envelope(data, tick=session.current_tick, session_id=str(session.id))
 
 
@@ -684,6 +858,27 @@ def game_objectives(request: Request, game_id: str) -> JsonResponse:
 # Spec 103: Trade surfaces — Wire INDEX per-bloc lines, Territory Detail
 # import-exposure breakdown, Analysis trade panel.
 # ---------------------------------------------------------------------- #
+
+
+@api_view(["GET"])
+@permission_classes([IsAuthenticated])
+def game_field_state(request: Request, game_id: str) -> JsonResponse:
+    """GET /api/games/{id}/field_state/ — the System-19/20 contradiction-field stack.
+
+    Program 19/20 (Wave 3 Round 1). Reads ``contradiction_fields``/
+    ``field_derivatives`` (ContradictionFieldSystem @19 / FieldDerivativeSystem
+    @20), ``fascist_alignment``, and the graph-level ``principal_field``/
+    ``dialectical_regime`` attrs. Distinct from ``/contradiction/`` (Spec 095's
+    System-18 opposition gap/rate snapshot) — a different concept, never
+    reused under this name. Constitution III: pure read — surfaces field
+    state the engine already computed, never computes it.
+    """
+    session = _get_session_or_none(game_id, request.user.id)
+    if session is None:
+        return _error("Game not found", http_status=404)
+    bridge = _get_bridge()
+    data = bridge.get_field_state(uuid.UUID(str(session.id)))
+    return _envelope(data, tick=session.current_tick, session_id=str(session.id))
 
 
 @api_view(["GET"])
@@ -893,6 +1088,48 @@ def inspector_territory_history(request: Request, game_id: str, county_fips: str
         return _error("Game not found", http_status=404)
     bridge = _get_bridge()
     data = bridge.get_territory_history(uuid.UUID(str(session.id)), county_fips)
+    return _envelope(data, tick=session.current_tick, session_id=str(session.id))
+
+
+@api_view(["GET"])
+@permission_classes([IsAuthenticated])
+def inspector_node_history(request: Request, game_id: str, node_id: str) -> JsonResponse:
+    """GET /api/games/{id}/node/{node_id}/history/ - Survival duel chart
+    history (Program 17 Wave 2 W2.5b, owner ruling 3).
+
+    Rides the generic node-inspector URL shape (social_class has no
+    dedicated ``/class/`` route, unlike org/territory); the bridge always
+    resolves ``node_id`` against ``class_snapshot`` regardless of the
+    node's real type — an id that never had a class row simply returns an
+    honest empty history/ruptures pair, never a 404 (matches
+    ``inspector_org_history``/``inspector_territory_history``'s unknown-id
+    behavior).
+    """
+    session = _get_session_or_none(game_id, request.user.id)
+    if session is None:
+        return _error("Game not found", http_status=404)
+    bridge = _get_bridge()
+    data = bridge.get_class_history(uuid.UUID(str(session.id)), node_id)
+    return _envelope(data, tick=session.current_tick, session_id=str(session.id))
+
+
+@api_view(["GET"])
+@permission_classes([IsAuthenticated])
+def inspector_edge_history(request: Request, game_id: str, edge_id: str) -> JsonResponse:
+    """GET /api/games/{id}/edge/{edge_id}/history/ - Edge-weight history
+    sparkline (audit Wave 4 straggler, task #76).
+
+    Rides the same ``edge_id`` id scheme (``"{source}->{target}"``)
+    ``inspector_edge`` already uses; an id that never had an edge_snapshot
+    row simply returns an honest empty history, never a 404 (matches
+    ``inspector_org_history``/``inspector_territory_history``'s unknown-id
+    behavior).
+    """
+    session = _get_session_or_none(game_id, request.user.id)
+    if session is None:
+        return _error("Game not found", http_status=404)
+    bridge = _get_bridge()
+    data = bridge.get_edge_history(uuid.UUID(str(session.id)), edge_id)
     return _envelope(data, tick=session.current_tick, session_id=str(session.id))
 
 
@@ -1119,7 +1356,11 @@ def actions_list(request: Request, game_id: str) -> JsonResponse:
     # POST: Submit action
     serializer = SubmitActionSerializer(data=request.data)
     if not serializer.is_valid():
-        logger.warning("Invalid action submission session=%s: %s", game_id, serializer.errors)
+        logger.warning(
+            "Invalid action submission session=%s: %s",
+            sanitize_for_log(game_id),
+            sanitize_for_log(serializer.errors),
+        )
         return _error(str(serializer.errors))
 
     # T017: Server-side verb validation against canonical verb set
@@ -1127,7 +1368,11 @@ def actions_list(request: Request, game_id: str) -> JsonResponse:
 
     submitted_verb = serializer.validated_data.get("verb", "")
     if submitted_verb not in CANONICAL_VERBS:
-        logger.warning("Invalid verb '%s' submitted session=%s", submitted_verb, game_id)
+        logger.warning(
+            "Invalid verb '%s' submitted session=%s",
+            sanitize_for_log(submitted_verb),
+            sanitize_for_log(game_id),
+        )
         return _error(
             f"Invalid verb '{submitted_verb}'. Valid verbs: {sorted(CANONICAL_VERBS)}",
             http_status=400,
@@ -1146,8 +1391,13 @@ def actions_list(request: Request, game_id: str) -> JsonResponse:
             params_json=serializer.validated_data.get("params_json"),
         )
     except ValueError as exc:
-        logger.info("Action rejected (affordability) session=%s: %s", game_id, exc)
-        return _error(str(exc), http_status=400)
+        logger.info(
+            "Action rejected (affordability) session=%s: %s", sanitize_for_log(game_id), exc
+        )
+        return _error(
+            "Action rejected: the request was not valid for the current game state.",
+            http_status=400,
+        )
     logger.info(
         "Action submitted session=%s tick=%d org=%s verb=%s turn_id=%d",
         session.id,
@@ -1357,11 +1607,14 @@ class BaseVerbActionView(APIView):
         except ValueError as exc:
             logger.info(
                 "Action rejected session=%s verb=%s: %s",
-                game_id,
+                sanitize_for_log(game_id),
                 self.verb,
                 exc,
             )
-            return _error(str(exc), http_status=400)
+            return _error(
+                "Action rejected: the request was not valid for the current game state.",
+                http_status=400,
+            )
 
         # Compute cost preview and warnings (read-only)
         preview = bridge.preview_action(
@@ -1458,9 +1711,7 @@ class EducateVerbView(APIView):
                 params_json=params,
             )
         except ValueError as e:
-            return Response(
-                {"status": "error", "message": str(e)}, status=status.HTTP_400_BAD_REQUEST
-            )
+            return _action_rejected(e, session_id=session.id)
 
         return Response(
             {
@@ -1523,9 +1774,7 @@ class AidVerbView(APIView):
                 params_json=params,
             )
         except ValueError as e:
-            return Response(
-                {"status": "error", "message": str(e)}, status=status.HTTP_400_BAD_REQUEST
-            )
+            return _action_rejected(e, session_id=session.id)
 
         return Response(
             {
@@ -1588,9 +1837,7 @@ class AttackVerbView(APIView):
                 params_json=params,
             )
         except ValueError as e:
-            return Response(
-                {"status": "error", "message": str(e)}, status=status.HTTP_400_BAD_REQUEST
-            )
+            return _action_rejected(e, session_id=session.id)
 
         return Response(
             {
@@ -1653,9 +1900,7 @@ class MobilizeVerbView(APIView):
                 params_json=params,
             )
         except ValueError as e:
-            return Response(
-                {"status": "error", "message": str(e)}, status=status.HTTP_400_BAD_REQUEST
-            )
+            return _action_rejected(e, session_id=session.id)
 
         return Response(
             {
@@ -1725,9 +1970,7 @@ class MoveVerbView(APIView):
                 params_json=params,
             )
         except ValueError as e:
-            return Response(
-                {"status": "error", "message": str(e)}, status=status.HTTP_400_BAD_REQUEST
-            )
+            return _action_rejected(e, session_id=session.id)
 
         return Response(
             {
@@ -1790,9 +2033,7 @@ class InvestigateVerbView(APIView):
                 params_json=params,
             )
         except ValueError as e:
-            return Response(
-                {"status": "error", "message": str(e)}, status=status.HTTP_400_BAD_REQUEST
-            )
+            return _action_rejected(e, session_id=session.id)
 
         return Response(
             {
@@ -1855,9 +2096,7 @@ class ReproduceVerbView(APIView):
                 params_json=params,
             )
         except ValueError as e:
-            return Response(
-                {"status": "error", "message": str(e)}, status=status.HTTP_400_BAD_REQUEST
-            )
+            return _action_rejected(e, session_id=session.id)
 
         return Response(
             {
@@ -1920,9 +2159,7 @@ class NegotiateVerbView(APIView):
                 params_json=params,
             )
         except ValueError as e:
-            return Response(
-                {"status": "error", "message": str(e)}, status=status.HTTP_400_BAD_REQUEST
-            )
+            return _action_rejected(e, session_id=session.id)
 
         return Response(
             {

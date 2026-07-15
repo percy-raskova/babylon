@@ -584,7 +584,15 @@ class TickDynamicsSystem(SystemBase):
             pter_rate = prev.pter_rate if prev else 0.04
             nilf_rate = prev.nilf_rate if prev else 0.06
             median_wage = prev.median_wage if prev else 21.0
+            # Real per-county headcount from a wired employment_source (QCEW
+            # county rollup), symmetric with capital_stock above; falls back to
+            # the documented 100k default when unwired or the county-year is
+            # absent (Constitution III.11 graceful degradation).
             employment = prev.employment if prev else 100_000.0
+            if services.employment_source is not None:
+                emp_result = services.employment_source.get_county_total_employment(fips, year)
+                if emp_result and isinstance(emp_result, (int, float)):
+                    employment = float(emp_result)
             phi_hour = prev.phi_hour if prev else 0.0
             crisis_state = prev.crisis_state if prev else CrisisState.normal()
 

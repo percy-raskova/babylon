@@ -19,6 +19,8 @@ import random
 from typing import Any
 from uuid import UUID, uuid4
 
+from .map_contract import MAP_HISTORY_REPLAYABLE_METRICS, MAP_METRIC_PROPERTIES
+
 logger = logging.getLogger(__name__)
 
 # Session-local state for the stub
@@ -324,6 +326,30 @@ def _make_hex_features(tick: int, layer: str | None = None) -> list[dict[str, An
             # Spec-113 Lane D: deterministic per-cell SOLIDARITY-edge density,
             # matching the real bridge's population-weighted 0..~a-few range.
             "solidarity_index": round(r * 1.5, 3),
+            # Wave 2 W2.4: deterministic per-cell throughput position (real
+            # bridge range is centered near 1.0, the national π baseline) and
+            # agitation (0..~a-few, matching solidarity_index's range).
+            "throughput_position": round(0.5 + r * 1.0, 3),
+            "agitation": round(r * 1.5, 3),
+            # Real TerritoryType values only (CORE/PERIPHERY) — deliberately
+            # NOT the legacy URBAN/SUBURBAN/PERIURBAN vocabulary _make_territories()
+            # uses for the (unrelated) territories snapshot list.
+            "territory_type": "core" if r < 0.5 else "periphery",
+            # Audit Wave 4 straggler (task #76): deterministic per-cell
+            # degree-centrality, matching the real bridge's [0, 1] range.
+            "centrality": round(r, 3),
+            # Wave 5 receptivity lens pair: deterministic per-cell M_r
+            # (matching the real bridge's [0, 1] range) and its threshold-
+            # derived vision_state (desert < 0.2, water >= 0.8, mud between —
+            # the corpus's own thresholds, EpistemicHorizonDefines defaults).
+            "mass_receptivity": round(r, 3),
+            "vision_state": "desert" if r < 0.2 else ("water" if r >= 0.8 else "mud"),
+            # Feature 021 lens pair: deterministic per-cell wage-discipline
+            # coefficient (matching the real bridge's [0, wage_pressure_ceiling]
+            # range, default ceiling 0.5) and composite dispossession
+            # intensity (matching the real bridge's [0, 1] range).
+            "wage_pressure": round(r * 0.5, 3),
+            "dispossession_intensity": round(r, 3),
         }
 
         # Approximate hex boundary as a small polygon near Detroit
@@ -420,6 +446,23 @@ def _make_aggregated_features(zoom: str, tick: int) -> list[dict[str, Any]]:
                     # aggregation at every non-hex zoom.
                     "dominant_class": "proletariat" if r < 0.6 else "petit_bourgeoisie",
                     "solidarity_index": round(r * 1.5, 3),
+                    # Wave 2 W2.4: same population-weighted-mode categorical /
+                    # weighted-mean numeric aggregation shape as above.
+                    "throughput_position": round(0.5 + r * 1.0, 3),
+                    "agitation": round(r * 1.5, 3),
+                    "territory_type": "core" if r < 0.5 else "periphery",
+                    # Audit Wave 4 straggler (task #76): same deterministic
+                    # per-group degree-centrality shape as above.
+                    "centrality": round(r, 3),
+                    # Wave 5 receptivity lens pair: same deterministic
+                    # per-group M_r/vision_state shape as _make_hex_features.
+                    "mass_receptivity": round(r, 3),
+                    "vision_state": "desert" if r < 0.2 else ("water" if r >= 0.8 else "mud"),
+                    # Feature 021 lens pair: same deterministic per-group
+                    # wage_pressure/dispossession_intensity shape as
+                    # _make_hex_features.
+                    "wage_pressure": round(r * 0.5, 3),
+                    "dispossession_intensity": round(r, 3),
                 },
             }
         )
@@ -744,9 +787,73 @@ class StubEngineBridge:
                     # Spec-113 Lane D
                     "dominant_class",
                     "solidarity_index",
+                    # Wave 2 W2.4
+                    "throughput_position",
+                    "agitation",
+                    "territory_type",
+                    # Audit Wave 4 straggler (task #76)
+                    "centrality",
+                    # Wave 5 receptivity lens pair
+                    "mass_receptivity",
+                    "vision_state",
+                    # Feature 021 lens pair
+                    "wage_pressure",
+                    "dispossession_intensity",
                 ],
             },
             "features": features,
+        }
+
+    def get_map_history(
+        self,
+        _session_id: UUID,
+        *,
+        metric: str,
+        from_tick: int | None = None,
+        to_tick: int | None = None,
+    ) -> dict[str, Any]:
+        """Stub parity for GET /api/games/{id}/map/history/ (Backend-W3R3).
+
+        The stub bridge persists nothing, so there is no historical map
+        data to replay under any metric — mirrors the real
+        ``EngineBridge.get_map_history``'s validation (unknown/
+        non-replayable metric -> the same ``error``/``message`` shape) and
+        its degrade-to-empty path when a persistence layer lacks the query
+        capability (Constitution III.11: never fabricate frames).
+        """
+        if metric not in MAP_METRIC_PROPERTIES:
+            return {
+                "metric": metric,
+                "from_tick": from_tick or 0,
+                "to_tick": to_tick or 0,
+                "capped": False,
+                "frames": [],
+                "error": "unknown_metric",
+                "message": (
+                    f"Invalid metric {metric!r}. Valid metrics: {sorted(MAP_METRIC_PROPERTIES)}"
+                ),
+            }
+        if metric not in MAP_HISTORY_REPLAYABLE_METRICS:
+            return {
+                "metric": metric,
+                "from_tick": from_tick or 0,
+                "to_tick": to_tick or 0,
+                "capped": False,
+                "frames": [],
+                "error": "not_replayable",
+                "message": (
+                    f"Metric {metric!r} has no persisted per-tick history — it is only "
+                    "computed live at serialize time (Constitution III.11: never replayed "
+                    f"as fabricated nulls). Replayable metrics: "
+                    f"{sorted(MAP_HISTORY_REPLAYABLE_METRICS)}"
+                ),
+            }
+        return {
+            "metric": metric,
+            "from_tick": from_tick or 0,
+            "to_tick": to_tick or 0,
+            "capped": False,
+            "frames": [],
         }
 
     def get_explain(self, _session_id: UUID, metric: str, scope: str) -> dict[str, Any] | None:
@@ -804,6 +911,27 @@ class StubEngineBridge:
 
     def get_state_apparatus_dashboard(self, _session_id: UUID) -> dict[str, Any]:
         return {}
+
+    def get_doctrine_tree(self, _session_id: UUID) -> dict[str, Any]:
+        """Return the same static Doctrine Tree the real bridge serves.
+
+        Unlike every stub dashboard above (which return an honest ``{}``
+        because they'd otherwise need a real engine tick), the Doctrine
+        Tree is static game-data, not session state — identical to how
+        ``api.scenario_list`` serves ``SCENARIO_CATALOG`` regardless of
+        which bridge is live. Calling the same loader here (rather than a
+        hand-duplicated payload) keeps stub/real parity automatic as the
+        11-node MVP corpus evolves.
+        """
+        from babylon.domain.doctrine import load_doctrine_tree, starting_tags
+
+        tree = load_doctrine_tree()
+        return {
+            "root_id": tree.root_id,
+            "nodes": [node.model_dump(mode="json") for node in tree.nodes.values()],
+            "acquired_ids": [],
+            "tags": {tag.value: value for tag, value in starting_tags().items()},
+        }
 
     def get_journal_dashboard(self, _session_id: UUID) -> dict[str, Any]:
         return {}
@@ -978,6 +1106,72 @@ class StubEngineBridge:
     # ------------------------------------------------------------------ #
     # Spec 103: Trade surfaces — stub returns honest empty states.
     # ------------------------------------------------------------------ #
+
+    def get_field_state(self, session_id: UUID) -> dict[str, Any]:
+        """Program 19/20 (Wave 3 Round 1): honest empty-but-well-formed stub.
+
+        The hypergraph/communities cautionary tale (a real bridge method the
+        stub never implemented -> guaranteed 500) does not repeat here: the
+        stub carries no engine, so it has no field stack to report — nulls
+        and empty lists, never fabricated field/gradient values.
+        """
+        session = _stub_sessions.get(session_id, {"tick": 0})
+        tick = session.get("tick", 0)
+        return {
+            "tick": tick,
+            "nodes": [],
+            "edges": [],
+            "principal_field": None,
+            "dialectical_regime": None,
+        }
+
+    # ------------------------------------------------------------------ #
+    # AW4-R1 (audit Wave 4): Spatial Multi-Scale — stub returns honest
+    # empty states (same pattern as get_field_state above).
+    # ------------------------------------------------------------------ #
+
+    def get_org_network(
+        self,
+        session_id: UUID,
+        *,
+        territory_filter: str | None = None,  # noqa: ARG002 — stub has no graph
+    ) -> dict[str, Any]:
+        """Honest empty-but-well-formed stub (AW4-R1 Deliverable 1).
+
+        The stub carries no engine, so it has no org-network graph to
+        report — empty lists/dicts and a null percolation ratio, never
+        fabricated nodes/edges/centrality. ``territory_filter`` is
+        accepted for signature parity with the real bridge (the view
+        forwards it unconditionally) but has no effect here.
+        """
+        session = _stub_sessions.get(session_id, {"tick": 0})
+        tick = session.get("tick", 0)
+        return {
+            "tick": tick,
+            "nodes": [],
+            "edges": [],
+            "centrality": {},
+            "percolation_ratio": None,
+        }
+
+    def get_hypergraph_communities(
+        self,
+        session_id: UUID,
+        *,
+        territory_filter: str | None = None,  # noqa: ARG002 — stub has no graph
+    ) -> dict[str, Any]:
+        """Honest empty-but-well-formed stub (AW4-R1 Deliverable 2).
+
+        Closes the exact gap :meth:`get_field_state`'s docstring above
+        calls out by name as a cautionary tale: before AW4-R1 neither
+        bridge implemented ``get_hypergraph_communities`` at all, so the
+        real ``GET .../hypergraph/communities/`` route 500'd
+        unconditionally. Field name is ``hyperedges`` (``HypergraphPayload``,
+        ``src/frontend/src/types/game.ts`` ~648-651), not ``communities``.
+        """
+        session = _stub_sessions.get(session_id, {"tick": 0})
+        tick = session.get("tick", 0)
+        return {"tick": tick, "hyperedges": []}
 
     def get_trade_flows(self, _session_id: UUID) -> dict[str, Any]:
         """Stub: no boundary_flow_register in stub mode → has_data: False."""

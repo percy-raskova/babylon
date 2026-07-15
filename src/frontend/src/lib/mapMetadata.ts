@@ -48,6 +48,57 @@ export interface HexMapFeatureProperties {
   habitability?: number | null;
   dominant_class?: string | null;
   solidarity_index?: number | null;
+  /**
+   * Wave 2 Round 2 (`reports/wave2-implementation-map.md`, ruling 1):
+   * Pi = τ_through / τ_national, wired for real this round — no longer the
+   * frozen `1.0` constant. Null/absent is honest no-data.
+   */
+  throughput_position?: number | null;
+  /**
+   * Wave 2 Round 2: `_agitation_index_by_territory`'s pop-weighted mean of
+   * `SocialClass.ideology.agitation`. DECLARED_CONDITIONAL — legitimately
+   * `0.0` at tick 0 / absent a falling-wage/rent/Φ/g₃₃ crisis tick, never
+   * fabricated warmth.
+   */
+  agitation?: number | null;
+  /**
+   * Wave 2 Round 2: the real `TerritoryType` enum's `.value`
+   * (`src/babylon/models/enums/territory.py`: core/periphery/reservation/
+   * penal_colony/concentration_camp) — NOT `stub_bridge.py`'s legacy
+   * `"URBAN"/"SUBURBAN"/"PERIURBAN"` vocabulary. Categorical.
+   */
+  territory_type?: string | null;
+  /**
+   * Audit Wave 4 straggler (task #76): a territory's own degree-centrality
+   * within the org-network topology (`_centrality_by_territory`). Honest
+   * null/absent for a territory with no PRESENCE/HOUSES edge from any
+   * organization/institution — sparse today (only `wayne_county` seeds
+   * real organizations).
+   */
+  centrality?: number | null;
+  /**
+   * Wave 5 receptivity pair: `mass_receptivity` (M_r, [0, 1] — the
+   * Epistemic Horizon's population-weighted mass-line receptivity, written
+   * by `EpistemicHorizonSystem` and re-injected by
+   * `_carry_epistemic_horizon`) and its categorical companion
+   * `vision_state` (the corpus's `desert`/`mud`/`water` partition). Both
+   * honest null/absent for a tenant-less territory or before the graph has
+   * ever been stepped (Constitution III.11).
+   */
+  mass_receptivity?: number | null;
+  vision_state?: string | null;
+  /**
+   * Feature 021 lens pair (System #5 `ReserveArmySystem` / System #10
+   * `DispossessionEventSystem`): `wage_pressure` (the Reserve Army's
+   * bounded-sigmoid wage-discipline coefficient) and
+   * `dispossession_intensity` (`DispossessionIntensityCalculator`'s
+   * composite foreclosure/eviction/displacement/tax-sale/eminent-domain
+   * weighted intensity). Both honest null/absent whenever the writing
+   * system found no reserve-army pressure / no dispossession activity for
+   * that territory this tick (Constitution III.11 — never a fabricated 0).
+   */
+  wage_pressure?: number | null;
+  dispossession_intensity?: number | null;
   [key: string]: unknown;
 }
 

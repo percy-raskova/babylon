@@ -314,3 +314,28 @@ decisions:
     status: accepted
     date: '2026-07-11'
     file: ADR067_optimization_package.yaml
+  ADR068_program17_wave1_sentinels:
+    title: 'Program 17 Wave 1 (Light the Seam) + the Sentinels family (babylon.sentinels, 5 declared-invariant gates) + seam close-out: per-county Φ lit end-to-end (31,688 IMPORT_USE rows), events 14→34, endgame wired, 5 inspectors real, live verb costs, 4 dynamic sentinels sharing one shared-tick fixture, 82-finding advisory punch-list as the honest UI-wiring backlog'
+    status: accepted
+    date: '2026-07-14'
+    file: ADR068_program17_wave1_sentinels.yaml
+  ADR069_program18_c1_frontend_submodule:
+    title: 'Program 18 (C1 — Frontend Submodule): src/frontend extracted to a public babylon-cockpit repo, consumed as a git submodule at src/frontend; web/ and src/babylon stay together; two-tier web-engine contract mechanism required as the seam safety net; DESIGN accepted, execution PENDING owner green-light'
+    status: accepted
+    date: '2026-07-14'
+    file: ADR069_program18_c1_frontend_submodule.yaml
+  ADR072_divergence_channel:
+    title: 'The Divergence Channel (Option-C generalized): a shadow reading pairing an AUTHORED/subjective pole (off-graph, II.9/VIII.9) with a MATERIALLY-measured pole, surfacing their DIVERGENCE as the first-class signal. Owner ruling "design general, build concrete" — ADR documents the full abstraction as the north star; Phase-1 code = three additive fields (PoleSample.sigma_authored, PoleReading.divergence=DivergenceReading, BoundOpposition.shadow) + the concrete DT chauvinism<->internationalism shadow instance + honest-null; gating-ledger/generalized-sentinel/lifecycle-FSM DEFERRED until a 2nd real instance (rule of three). Extends P19 read_poles (ADR070, unmerged). Proposes Amendment T (Article VIII, observes-only) for BD ratification. Critique fixes: observational-static (not Amendment-S motion), purpose-named DivergenceReading (not GapReading punning), SOLIDARITY=internationalism-unproven proxy, net-new ORGANIZATION_COMPUTED_FIELDS gate + conditional byte-identity.'
+    status: proposed
+    date: '2026-07-15'
+    file: ADR072_divergence_channel.yaml
+  ADR070_emergent_class_partition:
+    title: 'Program 19 (Emergent Class Partition): per-node class position derived from the dialectic (PoleSample/PoleReading, OppositionRegistry.read_poles), SocialRole demoted to slots-as-positions seed vocabulary + display names; recording ADR under I.19; shadow-first phased cutover, ControlRatio last'
+    status: accepted
+    date: '2026-07-14'
+    file: ADR070_emergent_class_partition.yaml
+  ADR071_program20_means_of_production:
+    title: 'Program 20 (Means of Production): infra-as-code subrepo + AI modernization — deploy/ extracted via subtree split into a local-only babylon-infra mount, Nix flake devshell as system layer only (Article X.1 scoped to the production host), Cloudflare Terraform grows an AI Gateway + Workers AI surface, VPS Ansible stays a validated mockup while a workstation playbook becomes the real apply target, parent CI infra jobs retire into the infra repo''s pre-commit battery'
+    status: accepted
+    date: '2026-07-15'
+    file: ADR071_program20_means_of_production.yaml

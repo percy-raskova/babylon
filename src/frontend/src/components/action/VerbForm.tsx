@@ -6,13 +6,13 @@
  * `useVerbTargets.ts`'s docstring for why that pattern is avoided here).
  */
 
-import { useState } from "react";
-import { evaluatePredictedEffect } from "@/lib/verbs";
-import type { VerbConfig } from "@/lib/verbs";
+import { useEffect, useState } from "react";
+import type { LiveVerbCost, VerbConfig } from "@/lib/verbs";
 import type { GameSnapshot, PlayerVerb } from "@/types/game";
 import { TargetPicker } from "./TargetPicker";
 import { ParamFields } from "./ParamFields";
 import { useVerbTargets } from "./useVerbTargets";
+import { useActionPreview } from "./useActionPreview";
 
 interface VerbFormProps {
   gameId: string;
@@ -22,10 +22,42 @@ interface VerbFormProps {
   snapshot: GameSnapshot | null;
   submitting: boolean;
   onSubmit: (targetId: string | null, params: Record<string, unknown>) => void;
+  /** Notifies the sibling VerbGrid of this verb's live cost as it
+   *  resolves, so the selected verb's button can show it instead of the
+   *  static cost_label hint. */
+  onCostChange?: (cost: LiveVerbCost | null) => void;
 }
 
 function defaultParamVals(config: VerbConfig): Record<string, unknown> {
   return Object.fromEntries(config.paramFields.map((p) => [p.key, p.defaultValue]));
+}
+
+/** Round to 2-3 significant decimals for display (the title attribute
+ *  carries the full raw value). */
+function formatMagnitude(value: number): string {
+  return parseFloat(Math.abs(value).toPrecision(3)).toString();
+}
+
+/** One ▲/▼ delta chip for a non-zero estimated preview delta — null (no
+ *  chip) for a zero or non-finite value, same honest-null convention the
+ *  old constant-direction chip used. */
+function DeltaChip({ value, label }: { value: number; label: string }): React.JSX.Element | null {
+  if (!Number.isFinite(value) || value === 0) return null;
+  const direction = value > 0 ? "up" : "down";
+  const sign = value > 0 ? "+" : "-";
+
+  return (
+    <p
+      data-testid="predicted-delta"
+      title={`${label}: ${value > 0 ? "+" : ""}${value}`}
+      className={`font-mono text-[10px] uppercase tracking-widest ${
+        direction === "up" ? "text-accent-gold" : "text-accent-crimson"
+      }`}
+    >
+      {direction === "up" ? "▲" : "▼"} {label} {sign}
+      {formatMagnitude(value)}
+    </p>
+  );
 }
 
 export function VerbForm({
@@ -36,17 +68,22 @@ export function VerbForm({
   snapshot,
   submitting,
   onSubmit,
+  onCostChange,
 }: VerbFormProps): React.JSX.Element {
   const [targetId, setTargetId] = useState<string | null>(null);
   const [paramVals, setParamVals] = useState<Record<string, unknown>>(() =>
     defaultParamVals(config),
   );
-  const { targets, loading, error } = useVerbTargets(gameId, verb, config, orgId, snapshot);
+  const { targets, loading, error, cost } = useVerbTargets(gameId, verb, config, orgId, snapshot);
+
+  useEffect(() => {
+    onCostChange?.(cost);
+  }, [cost, onCostChange]);
 
   const targetRequired = config.targetRequired ?? true;
   const canSubmit = Boolean(orgId && (targetId || !targetRequired) && !submitting);
   const showPicker = !(targetRequired === false && targets.length === 0 && !loading);
-  const predicted = evaluatePredictedEffect(config, snapshot, targetId);
+  const { preview } = useActionPreview(gameId, orgId, verb, config, targetId);
 
   return (
     <>
@@ -68,16 +105,27 @@ export function VerbForm({
         />
       )}
 
-      {predicted && (
-        <p
-          data-testid="predicted-delta"
-          title={`${predicted.label}: ${predicted.value > 0 ? "+" : ""}${predicted.value}`}
-          className={`font-mono text-[10px] uppercase tracking-widest ${
-            predicted.direction === "up" ? "text-accent-gold" : "text-accent-crimson"
-          }`}
-        >
-          {predicted.direction === "up" ? "▲" : "▼"} {predicted.label}
-        </p>
+      {preview && (
+        <div className="flex flex-col gap-1">
+          <DeltaChip value={preview.estimated_consciousness_delta} label="Consciousness" />
+          <DeltaChip value={preview.estimated_heat_delta} label="Heat" />
+          <p
+            data-testid="preview-probability"
+            className="font-mono text-[10px] uppercase tracking-widest text-fog"
+          >
+            {Math.round(preview.success_probability * 100)}% est. success
+          </p>
+          {preview.warnings.length > 0 && (
+            <ul
+              data-testid="preview-warnings"
+              className="flex flex-col gap-0.5 text-[10px] italic text-shroud"
+            >
+              {preview.warnings.map((warning, i) => (
+                <li key={`${i}:${warning}`}>{warning}</li>
+              ))}
+            </ul>
+          )}
+        </div>
       )}
 
       <button

@@ -1,4 +1,5 @@
 import type { VerbConfig, VerbTarget } from "./types";
+import { parseFlatCost } from "./cost";
 
 interface InvestigateScanEntry {
   target_id: string;
@@ -55,4 +56,14 @@ export const investigateConfig: VerbConfig = {
     target_id: targetId,
     params: { scan_type: String(params.scan_type ?? "territory_scan") },
   }),
+  // Flat {action_points, cadre_labor, sympathizer_labor, material,
+  // can_afford, ...} envelope (engine_bridge.py:3662-3670).
+  parseCost: parseFlatCost,
+  // resolve_investigate (babylon/engine/actions/investigate.py) performs
+  // ZERO numeric graph mutation: it is purely informational (fog-of-war
+  // reveal — a `revealed` attribute-name list in direct_effects, no
+  // graph.update_node call at all). The live `/actions/preview/` chip
+  // (Program 17 Wave 1 item W1.2) is expected to show no delta for this
+  // verb — an honest reflection of the real engine effect, not a config
+  // omission to work around.
 };

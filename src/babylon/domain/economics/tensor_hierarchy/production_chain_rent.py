@@ -6,7 +6,8 @@ Calculates $Φ_j$ using the Leontief inverse and import shares.
 from __future__ import annotations
 
 import logging
-from typing import Protocol
+from dataclasses import dataclass
+from typing import Any, Protocol
 
 import numpy as np
 
@@ -42,23 +43,41 @@ class DBImportShareSource:
         self.session_factory = session_factory
 
     def get_import_shares(self, year: int) -> ImportShareVector:
-        """Calculate m_j = (sum of imports into j) / (sum of all intermediate inputs into j)."""
+        """Calculate m_j = (sum of imports into j) / (sum of all intermediate inputs into j).
+
+        Driven from ``dim_bea_industry`` (LEFT JOINed to the per-year
+        coefficient sums) rather than ``fact_bea_io_coefficient`` directly,
+        so every industry in the canonical (line_number, bea_code) ordering
+        — the same ordering :meth:`DefaultInterIndustryFlowSource.
+        get_industry_codes` uses — appears in the result, including the
+        ``BEA0XX`` hierarchy-rollup rows (e.g. "Manufacturing", "Government")
+        that are never a coefficient target and would otherwise be silently
+        dropped by an INNER JOIN. Those rows fall back to ``m_j = 0.0`` via
+        the existing no-intermediate-inputs rule below. Without this,
+        ``ProductionChainDecomposer.decompose`` raises ``ValueError`` because
+        ``ImportShareVector.industries`` (previously a strict subset) never
+        aligns with ``InterIndustryFlow.industries`` (always the full list).
+        """
         from sqlalchemy import text
 
-        # In actual practice, we might use ORM, but for raw speed we use text.
-        # This assumes the table exists and data is loaded.
         query = text("""
             SELECT
                 target.bea_code as industry_code,
-                SUM(CASE WHEN tt.table_type = 'IMPORT_USE' THEN c.coefficient ELSE 0 END) as import_sum,
-                SUM(CASE WHEN tt.table_type = 'USE' THEN c.coefficient ELSE 0 END) as total_sum
-            FROM fact_bea_io_coefficient c
-            JOIN dim_time t ON c.time_id = t.time_id
-            JOIN dim_bea_io_table_type tt ON c.table_type_id = tt.id
-            JOIN dim_bea_industry target ON c.target_industry_id = target.bea_industry_id
-            WHERE t.year = :year
-            GROUP BY target.bea_code
-            ORDER BY target.bea_code
+                COALESCE(sub.import_sum, 0) as import_sum,
+                COALESCE(sub.total_sum, 0) as total_sum
+            FROM dim_bea_industry target
+            LEFT JOIN (
+                SELECT
+                    c.target_industry_id as target_industry_id,
+                    SUM(CASE WHEN tt.table_type = 'IMPORT_USE' THEN c.coefficient ELSE 0 END) as import_sum,
+                    SUM(CASE WHEN tt.table_type = 'USE' THEN c.coefficient ELSE 0 END) as total_sum
+                FROM fact_bea_io_coefficient c
+                JOIN dim_time t ON c.time_id = t.time_id
+                JOIN dim_bea_io_table_type tt ON c.table_type_id = tt.id
+                WHERE t.year = :year
+                GROUP BY c.target_industry_id
+            ) sub ON sub.target_industry_id = target.bea_industry_id
+            ORDER BY target.line_number, target.bea_code
         """)
 
         with self.session_factory() as session:
@@ -199,3 +218,36 @@ class ProductionChainRentCalculator:
             total_phi=total_phi,
             dept_phi=dept_phi,
         )
+
+
+# =============================================================================
+# PRODUCTION SERVICE BUNDLE
+# =============================================================================
+
+
+@dataclass(frozen=True)
+class ProductionChainCalculatorBundle:
+    """Production counterpart of the test-only ``MockProductionChainBundle``.
+
+    ``babylon.domain.economics.tick.system.imperial_rent.compute`` duck-types
+    exactly these 4 attributes off ``services.production_chain_calculator``
+    (see ``imperial_rent.py`` lines 107, 126-128). Fields are ``Any`` to avoid
+    a new import edge from this module onto the ``inter_industry``/
+    ``leontief_rent`` adapter modules that construct the concrete instances
+    (wired in ``babylon.domain.economics.factory.create_leontief_rent_services``).
+
+    Args:
+        flow_source: A ``get_direct_requirements(year)`` source, e.g.
+            :class:`~babylon.domain.economics.tensor_hierarchy.inter_industry.DefaultInterIndustryFlowSource`.
+        import_shares_source: A ``get_import_shares(year)`` source, e.g.
+            :class:`DBImportShareSource`.
+        decomposer: A :class:`ProductionChainDecomposer` (or duck-typed
+            equivalent exposing ``decompose``).
+        calculator: A :class:`ProductionChainRentCalculator` (or duck-typed
+            equivalent exposing ``calculate``).
+    """
+
+    flow_source: Any
+    import_shares_source: Any
+    decomposer: Any
+    calculator: Any

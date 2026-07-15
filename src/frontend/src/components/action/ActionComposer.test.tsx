@@ -41,12 +41,12 @@ describe("ActionComposer", () => {
     ).toBeInTheDocument();
   });
 
-  it("renders the flat 9-verb grid with disabled verbs marked (not hidden)", () => {
+  it("renders the flat 9-verb grid with every verb enabled (AW3-R1: all 9 have real engine handlers)", () => {
     seedPlayerOrg();
     render(<ActionComposer gameId={DEFAULT_GAME_ID} />);
     const grid = screen.getByTestId("verb-grid");
     expect(grid.querySelectorAll("button")).toHaveLength(9);
-    expect(screen.getByRole("button", { name: /investigate/i })).toBeDisabled();
+    expect(screen.getByRole("button", { name: /investigate/i })).toBeEnabled();
     expect(screen.getByRole("button", { name: /educate/i })).toBeEnabled();
   });
 
@@ -126,11 +126,10 @@ describe("ActionComposer", () => {
     );
   });
 
-  it("renders no predicted-delta filler for registry verbs without predictedEffect", async () => {
-    // No VERB_REGISTRY config populates `predictedEffect` today — the
-    // composed educate flow must show NOTHING extra near submit
-    // (Constitution III.11 honest null; fixture-driven rendering is
-    // covered in VerbForm.test.tsx).
+  it("shows the live preview's ▲ Consciousness chip once a target is selected (Program 17 Wave 1 item W1.2)", async () => {
+    // The chip now reflects the real POST /actions/preview/ response
+    // (estimated_consciousness_delta), not a hardcoded config sign — the
+    // fake constant-direction predictedEffect machinery was deleted.
     server.use(
       http.get("/api/games/:id/actions/educate/targets/", () =>
         HttpResponse.json({
@@ -144,6 +143,19 @@ describe("ActionComposer", () => {
           ],
         }),
       ),
+      http.post("/api/games/:id/actions/preview/", () =>
+        HttpResponse.json({
+          status: "ok",
+          data: {
+            estimated_consciousness_delta: 0.15,
+            estimated_heat_delta: 0,
+            action_point_cost: 1,
+            success_probability: 0.8,
+            affected_territory_ids: ["comm-1"],
+            warnings: [],
+          },
+        }),
+      ),
     );
     seedPlayerOrg();
     render(<ActionComposer gameId={DEFAULT_GAME_ID} />);
@@ -153,7 +165,8 @@ describe("ActionComposer", () => {
     await userEvent.click(screen.getByText(/Downtown/));
 
     expect(screen.getByRole("button", { name: /submit educate/i })).toBeEnabled();
-    expect(screen.queryByTestId("predicted-delta")).not.toBeInTheDocument();
+    const delta = await screen.findByTestId("predicted-delta");
+    expect(delta).toHaveTextContent("▲ Consciousness");
   });
 
   it("shows a loud submit error when the backend rejects the action", async () => {

@@ -134,6 +134,10 @@ ast_usages.txt
 ai/scratch/*
 !ai/scratch/README.md
 
+# ai/_inbox is the owner's drop-zone (parsed items → ai/_inbox/archive/). Keep the
+# text notes tracked, but babylon_books/ is 555 MB of reference PDFs — never commit it.
+ai/_inbox/babylon_books/
+
 # Frontend (src/frontend — the cockpit, spec-110/112)
 dev_harness.png
 test_hang.py
@@ -152,9 +156,18 @@ ds-bundle/
 .design-sync/node_modules
 
 # Deployment secrets (NEVER commit)
+# deploy/ was extracted to the infra/ subrepo (program-20, ADR071). These
+# patterns are KEPT deliberately: existing checkouts still hold untracked
+# secret files under deploy/ (tfvars, tfstate, vault pass) that survive the
+# merge on disk — without these lines a careless `git add -A` could stage
+# live credentials. Remove after every checkout has migrated its local
+# deploy/ remnants into infra/ (see infra/docs/secrets.md).
 deploy/terraform/terraform.tfvars
 deploy/terraform/.terraform/
 deploy/terraform/*.tfstate
 deploy/terraform/*.tfstate.backup
 deploy/ansible/.vault_pass
 deploy/ansible/production_inventory.yml
+
+# program-20: local infra subrepo mount (becomes a submodule when it gets a remote)
+/infra/

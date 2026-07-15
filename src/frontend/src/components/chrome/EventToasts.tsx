@@ -16,6 +16,7 @@ import { useStore } from "@/store";
 import type { ToastEntry } from "@/store/slices/eventsSlice";
 import type { EventCategory, StreamEvent } from "@/lib/eventClassifier";
 import { keyButtonClass } from "./installerKit";
+import { maoScore } from "@/components/map/layers/stormMarkers";
 
 interface EventToastsProps {
   gameId: string;
@@ -41,9 +42,26 @@ function toastCategories(toast: ToastEntry): EventCategory[] {
   return Array.from(new Set(toast.events.map((e) => e.category)));
 }
 
+/**
+ * RUPTURE is global (no node/territory anchor — `contradiction.py`'s payload
+ * is `{opposition, gap, rate}`), so it never gets a map glyph
+ * (`stormMarkers.ts`'s module docstring). This is the "ride the existing
+ * global channel minimally" half of that split (Wave 3 R2a brief): every
+ * RUPTURE toast already flows through here (its severity is "critical" in
+ * `EVENT_SEVERITY_MAP`) — grade its copy with the real Mao score when both
+ * `gap`/`rate` are served, never fabricate one when they aren't.
+ */
+function ruptureScoreCopy(event: StreamEvent): string | null {
+  if (event.event.type !== "rupture") return null;
+  const { gap, rate } = event.event.data;
+  if (typeof gap !== "number" || typeof rate !== "number") return null;
+  return `Principal-contradiction score ≈ ${maoScore(gap, rate).toFixed(2)}`;
+}
+
 function EventLine({ event }: { event: StreamEvent }): React.JSX.Element {
   // "Headlines lead with actor + action + tick" (DESIGN_BIBLE §7).
   const headline = event.event.title || event.event.type;
+  const scoreCopy = ruptureScoreCopy(event);
   return (
     <div className="flex flex-col gap-0.5">
       <span className="text-[11px] text-ink">
@@ -51,6 +69,11 @@ function EventLine({ event }: { event: StreamEvent }): React.JSX.Element {
       </span>
       {event.event.body && (
         <span className="text-[10px] text-ksbc-muted-2">{event.event.body}</span>
+      )}
+      {scoreCopy && (
+        <span data-testid={`toast-rupture-score-${event.id}`} className="text-[10px] text-rupture">
+          {scoreCopy}
+        </span>
       )}
     </div>
   );

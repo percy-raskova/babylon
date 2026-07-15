@@ -897,3 +897,16 @@ reactionary:
   pogrom_wealth_destruction: 0.1  # Fraction of target wealth destroyed by a POGROM. (>= 0.0, <= 1.0)
   vigilantism_repression_increment: 0.1  # Local repression spike from VIGILANTISM. (>= 0.0, <= 1.0)
   lockout_wage_attenuation: 0.5  # Fraction by which a LOCKOUT attenuates the target's WAGES/EMPLOYMENT value_flow. (>= 0.0, <= 1.0)
+
+# ---------------------------------------------------------------------
+# epistemic_horizon — Tunable coefficients for the Phase 1 Epistemic Horizon shadow system.
+# ---------------------------------------------------------------------
+epistemic_horizon:
+  base_observation: 0.1  # B_o: public baseline intel confidence, always visible without any presence (fog-of-war.yaml:106-117). (>= 0.0, <= 1.0)
+  desert_threshold: 0.2  # M_r below this is Desert vision state (fog-of-war.yaml:274). (>= 0.0, <= 1.0)
+  water_threshold: 0.8  # M_r at/above this is Water vision state (fog-of-war.yaml threshold table, ~line 322). M_r in between is Mud. (>= 0.0, <= 1.0)
+  class_factor_periphery_proletariat: 1.0  # C_f for PERIPHERY_PROLETARIAT — corpus 'proletariat' P_w (fog-of-war.yaml:203-209). (>= 0.0, <= 1.0)
+  class_factor_lumpenproletariat: 1.0  # C_f for LUMPENPROLETARIAT — corpus 'lumpenproletariat' L_u (fog-of-war.yaml:211-218). (>= 0.0, <= 1.0)
+  class_factor_petty_bourgeoisie: 0.3  # C_f for PETTY_BOURGEOISIE — corpus C_pb, hedges bets (fog-of-war.yaml:220-227). (>= 0.0, <= 1.0)
+  class_factor_labor_aristocracy: 0.2  # C_f for LABOR_ARISTOCRACY — corpus C_la, informs to protect privilege (fog-of-war.yaml:229-236). (>= 0.0, <= 1.0)
+  class_factor_default: 0.0  # C_f fallback for any SocialRole absent from the corpus's 4-entry table (explicit, never silent). (>= 0.0, <= 1.0)

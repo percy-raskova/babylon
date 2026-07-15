@@ -1,13 +1,12 @@
 /**
  * Program 16 (Living Map) Lane N — AI-narration types.
  *
- * There is no dedicated narration endpoint in the backend yet
- * (`web/game/narrative_service.py` is a flag-gated LLM narrator
- * scheduled from `resolve_tick`, but its prose only ever rides inside
- * existing wire-payload event bodies). This module DEFINES the frontend
- * contract for a future `GET /api/games/:id/narration/` endpoint — see
- * `src/lib/narration/client.ts` for the documented request/response shape
- * the backend should build to.
+ * `GET /api/games/:id/narration/` is a real endpoint as of Program 20
+ * Track B (task B5) — `web/game/api.py::game_narration`, reading persisted
+ * `NarrationRecord` rows (task B4), gated by the same
+ * `BABYLON_LLM_NARRATOR` flag as `web/game/narrative_service.py`. This
+ * module defines the frontend-side contract; see
+ * `src/lib/narration/client.ts` for the documented request/response shape.
  *
  * Constitution III.11 (Loud Failure) governs `NarrationState`: an absent
  * or not-yet-generated narration is never rendered as empty/blank —

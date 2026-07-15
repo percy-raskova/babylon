@@ -16,11 +16,13 @@ beforeEach(() => {
 });
 
 describe("ui slice", () => {
-  it("defaults: outliner/eventTray/objectives open, bottom drawer 'trends', composer open, no focus, no takeover", () => {
+  it("defaults: outliner/eventTray/objectives/bifurcation/radarLoop open, bottom drawer 'trends', composer open, no focus, no takeover", () => {
     const { ui } = useStore.getState();
     expect(ui.chrome.outlinerOpen).toBe(true);
     expect(ui.chrome.eventTrayOpen).toBe(true);
     expect(ui.chrome.objectivesOpen).toBe(true);
+    expect(ui.chrome.bifurcationOpen).toBe(true);
+    expect(ui.chrome.radarLoopOpen).toBe(true);
     expect(ui.chrome.bottomDrawer).toBe("trends");
     expect(ui.chrome.composerOpen).toBe(true);
     expect(ui.focusedPanelId).toBeNull();
@@ -48,6 +50,20 @@ describe("ui slice", () => {
     expect(useStore.getState().ui.chrome.objectivesOpen).toBe(true);
   });
 
+  it("toggleBifurcation flips bifurcationOpen", () => {
+    useStore.getState().ui.toggleBifurcation();
+    expect(useStore.getState().ui.chrome.bifurcationOpen).toBe(false);
+    useStore.getState().ui.toggleBifurcation();
+    expect(useStore.getState().ui.chrome.bifurcationOpen).toBe(true);
+  });
+
+  it("toggleRadarLoop flips radarLoopOpen", () => {
+    useStore.getState().ui.toggleRadarLoop();
+    expect(useStore.getState().ui.chrome.radarLoopOpen).toBe(false);
+    useStore.getState().ui.toggleRadarLoop();
+    expect(useStore.getState().ui.chrome.radarLoopOpen).toBe(true);
+  });
+
   it("toggleComposer flips composerOpen", () => {
     useStore.getState().ui.toggleComposer();
     expect(useStore.getState().ui.chrome.composerOpen).toBe(false);
@@ -55,9 +71,11 @@ describe("ui slice", () => {
     expect(useStore.getState().ui.chrome.composerOpen).toBe(true);
   });
 
-  it("setBottomDrawer switches between none/trends/events", () => {
+  it("setBottomDrawer switches between none/trends/events/economy", () => {
     useStore.getState().ui.setBottomDrawer("events");
     expect(useStore.getState().ui.chrome.bottomDrawer).toBe("events");
+    useStore.getState().ui.setBottomDrawer("economy");
+    expect(useStore.getState().ui.chrome.bottomDrawer).toBe("economy");
     useStore.getState().ui.setBottomDrawer("none");
     expect(useStore.getState().ui.chrome.bottomDrawer).toBe("none");
     useStore.getState().ui.setBottomDrawer("trends");
@@ -78,6 +96,10 @@ describe("ui slice", () => {
     expect(useStore.getState().ui.takeover.active).toBe("chronicle");
     useStore.getState().ui.openTakeover("dialectic");
     expect(useStore.getState().ui.takeover.active).toBe("dialectic");
+    useStore.getState().ui.openTakeover("network");
+    expect(useStore.getState().ui.takeover.active).toBe("network");
+    useStore.getState().ui.openTakeover("doctrine");
+    expect(useStore.getState().ui.takeover.active).toBe("doctrine");
     useStore.getState().ui.closeTakeover();
     expect(useStore.getState().ui.takeover.active).toBeNull();
   });

@@ -20,7 +20,8 @@ import pytest
 
 EXPECTED_DEFINES_PUBLIC: frozenset[str] = frozenset(
     {
-        # 42 child *Defines classes (41 from Spec 058 + 1 from Spec 057: LeontiefRentDefines)
+        # 43 child *Defines classes (41 from Spec 058 + 1 from Spec 057: LeontiefRentDefines
+        # + 1 from Epistemic Horizon Phase 1: EpistemicHorizonDefines)
         "AidDefines",
         "ArcGISDefines",
         "BehavioralDefines",
@@ -36,6 +37,7 @@ EXPECTED_DEFINES_PUBLIC: frozenset[str] = frozenset(
         "EconomyDefines",
         "EdgeTransitionDefines",
         "EndgameDefines",
+        "EpistemicHorizonDefines",
         "ExternalDataDefines",
         "InfraTerrainDefines",
         "InfrastructureDefines",
@@ -72,9 +74,10 @@ EXPECTED_DEFINES_PUBLIC: frozenset[str] = frozenset(
 
 EXPECTED_ENUMS_PUBLIC: frozenset[str] = frozenset(
     {
-        # 52 enum classes (45 + 7 Spec 070 balkanization: ClaimLegalStatus,
+        # 54 enum classes (45 + 7 Spec 070 balkanization: ClaimLegalStatus,
         # ColonialStance, ExtractionPolicy, FiscalStatus, PlayerMode,
-        # SovereigntyType, SupportType)
+        # SovereigntyType, SupportType + 2 Wave 6 Doctrine Tree: DoctrineTag,
+        # DoctrineTrunk)
         "ActionType",
         "ApparatusType",
         "BiocapacityType",
@@ -89,6 +92,8 @@ EXPECTED_ENUMS_PUBLIC: frozenset[str] = frozenset(
         "DecisionMode",
         "DisplacementPriorityMode",
         "DispossessionType",
+        "DoctrineTag",
+        "DoctrineTrunk",
         "EdgeMode",
         "EdgeType",
         "EventType",

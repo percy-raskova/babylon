@@ -15,10 +15,12 @@ from unittest.mock import MagicMock
 
 import pytest
 
+from babylon.config import LLMConfig
 from babylon.intelligence.ai.llm_provider import LLMProvider, MockLLM
 from babylon.models import EdgeType, Relationship, SocialClass, SocialRole, WorldState
 from babylon.models.entity_registry import COMPRADOR_ID, PERIPHERY_WORKER_ID
 from babylon.models.events import TransmissionEvent, UprisingEvent
+from game.models import GameSession
 from game.narrative_service import (
     FEATURE_FLAG_ENV,
     PROMPT_VERSION,
@@ -218,6 +220,7 @@ class TestScheduleFlagOff:
 
 @pytest.mark.unit
 class TestScheduleHappyPath:
+    @pytest.mark.django_db(transaction=True)
     def test_generates_dual_narrative_for_significant_event(
         self,
         monkeypatch: pytest.MonkeyPatch,
@@ -225,9 +228,18 @@ class TestScheduleHappyPath:
         previous_state: WorldState,
         new_state_with_uprising: WorldState,
     ) -> None:
+        """``transaction=True``: ``schedule()`` runs generation (including
+        the task-B4 persistence step) on a background thread. pytest-django's
+        default rollback-based isolation leaves the row-creating transaction
+        open on the main thread's connection, which the worker thread's own
+        connection then sees as locked rather than committed — verified
+        empirically. ``transaction=True`` commits for real instead, which is
+        what a genuinely separate thread needs to see the row.
+        """
         from django.conf import settings as django_settings
 
         monkeypatch.setattr(django_settings, "BABYLON_LLM_NARRATOR", True, raising=False)
+        GameSession.objects.create(id=session_id, scenario="narrative-service-test")
         mock_llm = MockLLM(responses=["Corporate narrative", "Liberated narrative"])
         service = NarrativeService(llm=mock_llm)
 
@@ -354,6 +366,7 @@ class TestScheduleDegradation:
 
 @pytest.mark.unit
 class TestScheduleNonBlocking:
+    @pytest.mark.django_db(transaction=True)
     def test_schedule_returns_before_generation_completes(
         self,
         monkeypatch: pytest.MonkeyPatch,
@@ -361,12 +374,22 @@ class TestScheduleNonBlocking:
         previous_state: WorldState,
         new_state_with_uprising: WorldState,
     ) -> None:
-        """schedule() must return immediately — narrative lands later."""
+        """schedule() must return immediately — narrative lands later.
+
+        ``transaction=True`` + a real GameSession row — see the docstring
+        on ``TestScheduleHappyPath.test_generates_dual_narrative_for_significant_event``
+        for why a background-thread persistence write needs both. Without
+        them, the task-B4 persistence step fails on the worker thread and
+        the outer degradation handler silently converts this HEALTHY
+        generation into ``degraded=True`` — so the final assertions pin
+        the healthy outcome explicitly rather than just ``is not None``.
+        """
         import threading
 
         from django.conf import settings as django_settings
 
         monkeypatch.setattr(django_settings, "BABYLON_LLM_NARRATOR", True, raising=False)
+        GameSession.objects.create(id=session_id, scenario="narrative-service-test")
 
         release = threading.Event()
 
@@ -395,7 +418,65 @@ class TestScheduleNonBlocking:
         release.set()
         future.result(timeout=5)
 
-        assert service.get_result(session_id, tick=1) is not None
+        result = service.get_result(session_id, tick=1)
+        assert result is not None
+        assert result.degraded is False, f"healthy generation degraded: {result.error}"
+        assert result.corporate == "delayed narrative"
+        assert result.liberated == "delayed narrative"
+        assert result.error is None
+
+
+# --------------------------------------------------------------------------- #
+# _resolve_llm() — provider factory wiring (program-20 Track B)
+# --------------------------------------------------------------------------- #
+
+
+@pytest.mark.unit
+class TestProviderFactoryWiring:
+    """No injected llm= → the provider comes from build_llm_provider().
+
+    Program 20 Track B rewired NarrativeService._resolve_llm from a
+    hardcoded DeepSeekClient() to build_llm_provider() (selects on
+    LLMConfig.PROVIDER). With PROVIDER monkeypatched to "mock", the
+    factory-built MockLLM's fixed default response landing in the cached
+    NarrativeResult proves the factory is actually consulted.
+    """
+
+    @pytest.mark.django_db(transaction=True)
+    def test_unset_llm_resolves_via_factory(
+        self,
+        monkeypatch: pytest.MonkeyPatch,
+        session_id: uuid.UUID,
+        previous_state: WorldState,
+        new_state_with_uprising: WorldState,
+    ) -> None:
+        """``transaction=True`` — see the docstring on
+        ``TestScheduleHappyPath.test_generates_dual_narrative_for_significant_event``
+        for why a background-thread persistence write needs it.
+        """
+        from django.conf import settings as django_settings
+
+        monkeypatch.setattr(django_settings, "BABYLON_LLM_NARRATOR", True, raising=False)
+        monkeypatch.setattr(LLMConfig, "PROVIDER", "mock")
+        GameSession.objects.create(id=session_id, scenario="narrative-service-test")
+        service = NarrativeService()  # deliberately NO llm= — exercises the factory path
+
+        # Direct check: the lazily-resolved provider is the factory's MockLLM,
+        # not a hardcoded DeepSeekClient (which would raise LLM_001 here —
+        # no API key is configured in the test environment).
+        assert service._resolve_llm().name == "MockLLM"
+
+        # End-to-end: the full schedule/_generate path uses the factory-built
+        # provider, and its canonical default response lands in the result.
+        future = service.schedule(session_id, previous_state, new_state_with_uprising)
+        assert future is not None
+        future.result(timeout=5)
+
+        result = service.get_result(session_id, tick=1)
+        assert result is not None
+        assert result.degraded is False
+        assert result.corporate == "Mock LLM response"
+        assert result.liberated == "Mock LLM response"
 
 
 # --------------------------------------------------------------------------- #

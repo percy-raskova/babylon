@@ -41,4 +41,7 @@ export const campaignConfig: VerbConfig = {
     target_id: targetId ?? "",
     campaign_type: String(params.campaign_type ?? "PUBLIC_PRESSURE"),
   }),
+  // No parseCost — campaign's GET route 405s (see the docstring comment
+  // above), so `raw` never exists for this verb; useVerbTargets never
+  // calls fetchVerbTargets for campaign (targetsSource: "snapshot").
 };

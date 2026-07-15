@@ -106,6 +106,61 @@ class TestStateApparatus:
                 violence_capacity=-0.1,
             )
 
+    @pytest.mark.math
+    def test_default_faction_balance_is_none(self) -> None:
+        """None gates the org onto the legacy static priority queue."""
+        sa = StateApparatus(
+            id="sa-001",
+            name="DPD",
+            class_character=ClassCharacter.BOURGEOIS,
+            jurisdiction=JurisdictionLevel.MUNICIPAL,
+        )
+        assert sa.faction_balance is None
+
+    @pytest.mark.math
+    def test_default_rng_seed_is_none(self) -> None:
+        sa = StateApparatus(
+            id="sa-001",
+            name="DPD",
+            class_character=ClassCharacter.BOURGEOIS,
+            jurisdiction=JurisdictionLevel.MUNICIPAL,
+        )
+        assert sa.rng_seed is None
+
+    @pytest.mark.math
+    def test_faction_balance_round_trips_through_model_dump(self) -> None:
+        """Feature 039's ``_try_state_ai_dispatch`` reads faction_balance back
+        off graph node attrs as a plain dict (``**org.model_dump()``) and
+        reconstructs it with ``FactionBalance(**faction_data)`` — this must
+        survive that dict round trip byte-for-byte on the primitive fields.
+        """
+        from babylon.models.entities.state_apparatus_ai import FactionBalance
+
+        balance = FactionBalance(
+            finance_capital=0.3,
+            security_state=0.5,
+            settler_populist=0.2,
+            stability=0.6,
+            legitimacy=0.5,
+        )
+        sa = StateApparatus(
+            id="sa-001",
+            name="DPD",
+            class_character=ClassCharacter.BOURGEOIS,
+            jurisdiction=JurisdictionLevel.MUNICIPAL,
+            faction_balance=balance,
+            rng_seed=0,
+        )
+        dumped = sa.model_dump()
+        assert dumped["faction_balance"]["finance_capital"] == pytest.approx(0.3)
+        assert dumped["faction_balance"]["security_state"] == pytest.approx(0.5)
+        assert dumped["rng_seed"] == 0
+
+        reconstructed = FactionBalance(**dumped["faction_balance"])
+        assert reconstructed.finance_capital == pytest.approx(0.3)
+        assert reconstructed.security_state == pytest.approx(0.5)
+        assert reconstructed.settler_populist == pytest.approx(0.2)
+
 
 class TestBusiness:
     """Business subtype-specific fields and defaults."""

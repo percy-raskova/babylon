@@ -18,7 +18,16 @@ export type RGBAColor = [number, number, number, number];
 
 /** Map layers that own a canonical data ramp. */
 export type RampLayer =
-  "heat" | "consciousness" | "rent" | "biocapacity" | "wealth" | "population" | "solidarity";
+  | "heat"
+  | "consciousness"
+  | "rent"
+  | "biocapacity"
+  | "wealth"
+  | "population"
+  | "solidarity"
+  | "receptivity"
+  | "wage_pressure"
+  | "dispossession";
 
 /**
  * The six canonical data ramps.
@@ -51,6 +60,46 @@ export const DATA_RAMPS: Record<RampLayer, string[]> = {
   // same terminal `mapLensLayers.ts`'s STANCE_COLOR.ABOLISH already uses, so
   // "high solidarity" reads consistently with the stance lens's ABOLISH tone.
   solidarity: ["#0d1016", "#132a1c", "#1e4a2a", "#2f7a3f", "#48a85c", "#5fbf7a"],
+  // Wave 5 receptivity ramp (Epistemic Horizon mass_receptivity M_r lens):
+  // a diverging desert->mud->water read straight off the corpus's own
+  // territory-overlay direction (ai/epochs/epoch3/fog-of-war.yaml:780-794 —
+  // desert "Red/gray tint", mud "Brown/amber tint", water "Blue-green glow").
+  // Six stops land at t = 0/0.2/0.4/0.6/0.8/1.0, so the corpus's OWN
+  // thresholds sit exactly ON stops: desert_threshold=0.2 is the last
+  // red-family stop, water_threshold=0.8 the first blue-green stop — the
+  // numeric ramp and the categorical vision_state lens partition at the
+  // same values by construction. Stops 0/2/3 reuse canon tokens
+  // (--babylon-thermal collapse-red; the heat ramp's brown/amber body for
+  // mud); stops 1/4/5 are NEW hexes, sanctioned because the corpus names a
+  // direction no existing terminal covers — #3ecfb2 is deliberately
+  // BLUE-green ("fish in water"), distinct from solidarity's pure green
+  // (#5fbf7a) and the spire's pure cyan (#4dd9e6), so water never aliases
+  // either neighbor lens. Diverging like biocapacity — a ratified exception
+  // class, not a rainbow (§9b harmony kept: muted body, one glow terminal).
+  receptivity: ["#b8321f", "#7a3a30", "#7a4720", "#b8581f", "#1f6b62", "#3ecfb2"],
+  // Feature 021 lens pair (Reserve Army wage-discipline / dispossession
+  // carceral-eviction intensity, engine.systems.reserve_army /
+  // dispossession_events). Both built entirely from tokens already used
+  // by other canon ramps above — no new hexes invented.
+  //
+  // wage_pressure: a "cool calm labor market -> heating up under reserve-
+  // army pressure -> wage crisis" read. Stops 0/3/4/5 reuse the heat
+  // ramp's near-black base + amber body + laser alarm terminal; stops 1/2
+  // reuse the consciousness ramp's cool blue-slate body (the reserve army
+  // hasn't yet disciplined wages) — distinct from heat itself (which
+  // opens on a warm dark-gray, not cool blue) and from consciousness
+  // (which ends in spire-cyan, not alarm-red).
+  wage_pressure: ["#0d1016", "#1f2c3d", "#345670", "#7a4720", "#d97a2c", "#ff3344"],
+  // dispossession: a carceral/eviction intensity read — muted institutional
+  // gray body escalating through brick-red/magenta-red to the canon
+  // thermal/collapse-red terminal and the laser alarm at maximum severity.
+  // Stop 1 reuses the heat ramp's dark warm-gray (--babylon-rust);
+  // stop 2 reuses biocapacity's muted brick-red; stop 3 reuses rent's
+  // magenta-red; stop 4 is the canon --babylon-thermal collapse-red (shared
+  // with rent/biocapacity); stop 5 is the canon --babylon-laser alarm red.
+  // Distinct from rent (whose body passes through dark PLUM/purple, not
+  // gray/brick) despite sharing the same crimson family of terminals.
+  dispossession: ["#0d1016", "#3a3530", "#7a3525", "#a83a78", "#b8321f", "#ff3344"],
 };
 
 /** Fill alpha for deck.gl hex layers (near-opaque, as pre-090). */
@@ -158,6 +207,19 @@ export function rampForLayer(layer: MapLayer): string[] {
       return DATA_RAMPS.population;
   }
 }
+
+/**
+ * Gradient-wind vector lens (DESIGN_BIBLE.md §11, "the weather grammar" —
+ * law 1: extensive/flow visuals render as geometry, hue stays FIXED and
+ * subordinate, never a ramp). `DATA_RAMPS.rent`'s terminal stop (`#b8321f`)
+ * as a plain RGB triple — ties the wind's one fixed hue to the same
+ * extraction/violence family `imperial_rent`/`exploitation_rate` already
+ * render in, rather than inventing a new hex literal. Single source of
+ * truth shared by `components/map/layers/fieldFlow.ts` (the actual layer
+ * fill) and `lib/lenses/registry.ts` (the legend swatch) — never a second
+ * duplicated triple.
+ */
+export const FIELD_FLOW_COLOR: readonly [number, number, number] = [184, 50, 31];
 
 /** Convert RGBA to a CSS colour string for use in non-deck.gl contexts. */
 export function rgbaToCss(c: RGBAColor): string {

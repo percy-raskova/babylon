@@ -152,7 +152,10 @@ test.describe("real core loop (cockpit, spec-110 B6)", () => {
     ]);
     expect(resolveResp.status(), "resolve endpoint must not error").toBe(200);
     await expect(page.getByTestId("tick-value")).toHaveText("1", { timeout: 15000 });
-    await expect(page.getByTestId("time-status")).toHaveText("PAUSED");
+    // Since 40ef3d81 events reach live snapshots, so a tick carrying a
+    // critical event AUTOPAUSES instead of returning to plain PAUSED —
+    // both are valid halt states for a Step.
+    await expect(page.getByTestId("time-status")).toHaveText(/^(PAUSED|AUTOPAUSED)$/);
   });
 
   test("EventTray shows the resolved tick's classified events or the honest empty state", async ({

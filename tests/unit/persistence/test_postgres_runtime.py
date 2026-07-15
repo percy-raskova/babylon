@@ -9,6 +9,7 @@ Phase 3 (T011-T013, T015-T024): State persistence and hydration tests.
 from __future__ import annotations
 
 import json
+import logging
 from contextlib import contextmanager
 from datetime import datetime
 from typing import Any
@@ -18,6 +19,10 @@ from uuid import UUID
 import networkx as nx
 import pytest
 
+from babylon.models.entity_registry import PERIPHERY_WORKER_ID
+from babylon.models.enums import EventType
+from babylon.models.events import UprisingEvent
+from babylon.models.world_state import WorldState
 from babylon.persistence.postgres_runtime import PostgresRuntime
 from babylon.topology.graph import BabylonGraph
 
@@ -1196,3 +1201,237 @@ class TestMakeSerializable:
         attrs = {"field": None}
         result = PostgresRuntime._make_serializable(attrs)
         assert result["field"] is None
+
+    # Task #83: ``WorldState.to_graph()`` stores events as python-mode
+    # ``model_dump()`` payloads whose ``datetime`` timestamps fail bare
+    # ``json.dumps``. The original silent drop emptied ``WorldState.events``
+    # on every hydrate — live ``GET /state/`` snapshots never saw an event
+    # (sibling of the P0 #6 datetime crash fixed in ``_persist_events``).
+
+    def test_events_survive_and_revalidate(self) -> None:
+        """Events with datetime timestamps survive into JSON-safe metadata."""
+        uprising = UprisingEvent(
+            tick=8,
+            node_id=PERIPHERY_WORKER_ID,
+            trigger="spark",
+            agitation=0.9,
+            repression=0.7,
+        )
+        state = WorldState(tick=10, events=[uprising])
+        graph = state.to_graph()
+
+        metadata = PostgresRuntime._make_serializable(dict(graph.graph))
+
+        assert "events" in metadata
+        json.dumps(metadata)  # the full extra payload must be JSON-native
+
+        # Full hydrate loop: mirror hydrate_graph's set_graph_attr restore,
+        # then prove from_graph re-validates the converted dicts into typed
+        # events (behavioral pin of persist -> hydrate -> from_graph).
+        graph.set_graph_attr("events", metadata["events"])
+        restored = WorldState.from_graph(graph, tick=10)
+        assert len(restored.events) == 1
+        assert restored.events[0].event_type == EventType.UPRISING
+        assert restored.events[0].tick == 8
+
+    def test_unconvertible_value_drops_loudly(self, caplog: pytest.LogCaptureFixture) -> None:
+        """A genuinely unserializable value is dropped with a WARNING, never silently."""
+        with caplog.at_level(logging.WARNING):
+            result = PostgresRuntime._make_serializable({"bad": object(), "ok": 1})
+
+        assert result == {"ok": 1}
+        assert "bad" in caplog.text
+
+
+# ══════════════════════════════════════════════════════════════════════
+# Backend-W3R3 (Program 17 Wave 3): GET /api/games/{id}/map/history/ query
+# methods. Two sources: territory_snapshot (heat/population, dense,
+# game_id-keyed) and view_runtime_trace_emission (profit_rate/
+# exploitation_rate, session_id-keyed spec-089 hex-delta fill-forward view,
+# entity_kind='county'). Mirrors TestPersistHexState's mock_cursor pattern —
+# no query_*_history method (query_class_snapshot_history et al.) has a
+# dedicated persistence-layer test today (verified: they're only exercised
+# indirectly via test_engine_bridge.py mocks), so this class is new
+# ground, not a pre-existing pattern extension.
+# ══════════════════════════════════════════════════════════════════════
+
+
+class TestQueryTerritorySnapshotLatestTick:
+    """Tests for PostgresRuntime.query_territory_snapshot_latest_tick."""
+
+    def test_returns_max_tick(
+        self,
+        runtime: PostgresRuntime,
+        session_id: UUID,
+        mock_cursor: MagicMock,
+    ) -> None:
+        mock_cursor.fetchone.return_value = {"max_tick": 42}
+
+        result = runtime.query_territory_snapshot_latest_tick(session_id)
+
+        assert result == 42
+        sql = mock_cursor.execute.call_args[0][0]
+        params = mock_cursor.execute.call_args[0][1]
+        assert "MAX(tick)" in sql
+        assert "territory_snapshot" in sql
+        assert params == (session_id,)
+
+    def test_returns_none_when_no_rows(
+        self,
+        runtime: PostgresRuntime,
+        session_id: UUID,
+        mock_cursor: MagicMock,
+    ) -> None:
+        mock_cursor.fetchone.return_value = {"max_tick": None}
+
+        result = runtime.query_territory_snapshot_latest_tick(session_id)
+
+        assert result is None
+
+
+class TestQueryTerritorySnapshotMetricFrames:
+    """Tests for PostgresRuntime.query_territory_snapshot_metric_frames."""
+
+    def test_issues_ranged_query(
+        self,
+        runtime: PostgresRuntime,
+        session_id: UUID,
+        mock_cursor: MagicMock,
+    ) -> None:
+        mock_cursor.fetchall.return_value = [
+            {"tick": 0, "county_fips": "26163", "heat": 0.1, "pop_total": 8000},
+            {"tick": 1, "county_fips": "26163", "heat": 0.2, "pop_total": 8000},
+        ]
+
+        result = runtime.query_territory_snapshot_metric_frames(session_id, 0, 1)
+
+        assert result[0]["heat"] == 0.1
+        assert result[1]["pop_total"] == 8000
+        sql = mock_cursor.execute.call_args[0][0]
+        params = mock_cursor.execute.call_args[0][1]
+        assert "territory_snapshot" in sql
+        assert "BETWEEN" in sql
+        assert params[:3] == (session_id, 0, 1)
+
+
+class TestQueryCountyTraceLatestTick:
+    """Tests for PostgresRuntime.query_county_trace_latest_tick."""
+
+    def test_returns_max_tick_scoped_to_county_entity_kind(
+        self,
+        runtime: PostgresRuntime,
+        session_id: UUID,
+        mock_cursor: MagicMock,
+    ) -> None:
+        mock_cursor.fetchone.return_value = {"max_tick": 987}
+
+        result = runtime.query_county_trace_latest_tick(session_id)
+
+        assert result == 987
+        sql = mock_cursor.execute.call_args[0][0]
+        assert "view_runtime_trace_emission" in sql
+        assert "entity_kind" in sql
+
+    def test_returns_none_when_no_rows(
+        self,
+        runtime: PostgresRuntime,
+        session_id: UUID,
+        mock_cursor: MagicMock,
+    ) -> None:
+        mock_cursor.fetchone.return_value = None
+
+        result = runtime.query_county_trace_latest_tick(session_id)
+
+        assert result is None
+
+
+class TestQueryCountyTraceMetricFrames:
+    """Tests for PostgresRuntime.query_county_trace_metric_frames."""
+
+    def test_issues_ranged_query_aliasing_entity_id(
+        self,
+        runtime: PostgresRuntime,
+        session_id: UUID,
+        mock_cursor: MagicMock,
+    ) -> None:
+        mock_cursor.fetchall.return_value = [
+            {
+                "tick": 986,
+                "county_fips": "26163",
+                "profit_rate": 0.5398,
+                "exploitation_rate": 1.3033,
+            }
+        ]
+
+        result = runtime.query_county_trace_metric_frames(session_id, 986, 987)
+
+        assert result[0]["county_fips"] == "26163"
+        assert result[0]["profit_rate"] == 0.5398
+        sql = mock_cursor.execute.call_args[0][0]
+        params = mock_cursor.execute.call_args[0][1]
+        assert "view_runtime_trace_emission" in sql
+        assert "entity_id AS county_fips" in sql
+        assert "entity_kind" in sql
+        assert params[:3] == (session_id, 986, 987)
+
+
+class TestQueryEdgeSnapshotHistory:
+    """Tests for PostgresRuntime.query_edge_snapshot_history (audit Wave 4
+    straggler, task #76 — the edge-weight history sparkline).
+
+    The cap must be a TRAILING window (most recent ``limit`` ticks,
+    re-ordered oldest-first) per the ``/map/history/`` 128 convention
+    (``_MAP_HISTORY_WINDOW_CAP``: ``resolved_from = requested_to - CAP + 1``)
+    — a plain ``ORDER BY tick LIMIT 128`` would freeze the sparkline at
+    ticks 0-127 forever once a session outlives the cap (the canonical run
+    is past tick 900)."""
+
+    def test_issues_trailing_window_query(
+        self,
+        runtime: PostgresRuntime,
+        session_id: UUID,
+        mock_cursor: MagicMock,
+    ) -> None:
+        mock_cursor.fetchall.return_value = [
+            {
+                "tick": 900,
+                "edge_type": "solidarity",
+                "edge_mode": None,
+                "value_flow": 1.5,
+                "solidarity": 0.4,
+                "tension": 0.1,
+                "attributes": {},
+            },
+            {
+                "tick": 901,
+                "edge_type": "solidarity",
+                "edge_mode": None,
+                "value_flow": 2.0,
+                "solidarity": 0.6,
+                "tension": 0.2,
+                "attributes": {},
+            },
+        ]
+
+        result = runtime.query_edge_snapshot_history(session_id, "C001", "C004")
+
+        assert result[0]["tick"] == 900
+        assert result[1]["value_flow"] == 2.0
+        sql = mock_cursor.execute.call_args[0][0]
+        params = mock_cursor.execute.call_args[0][1]
+        assert "edge_snapshot" in sql
+        # Trailing window: inner DESC-limited select, outer ascending re-order.
+        assert "DESC" in sql
+        assert sql.rindex("ORDER BY tick") > sql.index("DESC")
+        assert params == (session_id, "C001", "C004", 128)
+
+    def test_limit_kwarg_is_forwarded(
+        self,
+        runtime: PostgresRuntime,
+        session_id: UUID,
+        mock_cursor: MagicMock,
+    ) -> None:
+        runtime.query_edge_snapshot_history(session_id, "C001", "C004", limit=16)
+
+        params = mock_cursor.execute.call_args[0][1]
+        assert params[-1] == 16

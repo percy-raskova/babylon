@@ -10,6 +10,7 @@ from __future__ import annotations
 import pytest
 
 from babylon.persistence.postgres_schema import (
+    CLASS_SNAPSHOT_DDL,
     COMMUNITY_SNAPSHOT_DDL,
     ECONOMIC_SUMMARY_DDL,
     EDGE_SNAPSHOT_DDL,
@@ -99,6 +100,18 @@ class TestSpec037SnapshotTables:
         assert "ooda_phase" in ORG_SNAPSHOT_DDL
         assert "action_points" in ORG_SNAPSHOT_DDL
 
+    def test_class_snapshot_ddl(self) -> None:
+        assert "CREATE TABLE IF NOT EXISTS class_snapshot" in CLASS_SNAPSHOT_DDL
+        assert "PRIMARY KEY (game_id, tick, class_id)" in CLASS_SNAPSHOT_DDL
+
+    def test_class_snapshot_survival_calculus_columns(self) -> None:
+        """p_acquiescence/p_revolution — the survival-probability duel (ruling 3)."""
+        assert "p_acquiescence" in CLASS_SNAPSHOT_DDL
+        assert "p_revolution" in CLASS_SNAPSHOT_DDL
+
+    def test_class_snapshot_check_constraint(self) -> None:
+        assert "ck_class_tick_positive" in CLASS_SNAPSHOT_DDL
+
     def test_edge_snapshot_ddl(self) -> None:
         assert "CREATE TABLE IF NOT EXISTS edge_snapshot" in EDGE_SNAPSHOT_DDL
         assert "PRIMARY KEY (game_id, tick, source_id, target_id, edge_type)" in EDGE_SNAPSHOT_DDL
@@ -169,16 +182,17 @@ class TestSpec037Indexes:
     """Spec 037 index declarations."""
 
     def test_index_count(self) -> None:
-        """25 indexes defined for the 11 tables (incl. hex_latest + hex_substrate)."""
-        assert len(SPEC037_INDEXES_DDL) == 25
+        """28 indexes defined for the 12 tables (incl. hex_latest + hex_substrate;
+        Wave 2 W2.5b adds 3 for class_snapshot)."""
+        assert len(SPEC037_INDEXES_DDL) == 28
 
     def test_all_tables_have_tick_index(self) -> None:
         """Every snapshot table should have a game_id+tick index."""
         tick_indexed = [
             idx for idx in SPEC037_INDEXES_DDL if "game_id, tick" in idx and "ON " in idx
         ]
-        # territory, org, edge, community, hex_activity, tick_event = 6 tick indexes
-        assert len(tick_indexed) >= 6
+        # territory, org, class, edge, community, hex_activity, tick_event = 7 tick indexes
+        assert len(tick_indexed) >= 7
 
     def test_partial_index_for_hot_hexes(self) -> None:
         """hex_activity should have a partial index on heat_total > 0."""
@@ -197,6 +211,7 @@ class TestSpec037AggregatedDDL:
             GAME_DEFINES_SNAPSHOT_DDL,
             TERRITORY_SNAPSHOT_DDL,
             ORG_SNAPSHOT_DDL,
+            CLASS_SNAPSHOT_DDL,
             EDGE_SNAPSHOT_DDL,
             COMMUNITY_SNAPSHOT_DDL,
             HEX_ACTIVITY_DDL,

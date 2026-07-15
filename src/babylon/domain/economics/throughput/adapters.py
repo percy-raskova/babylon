@@ -27,8 +27,6 @@ import logging
 from collections.abc import Callable
 from typing import TYPE_CHECKING
 
-from sqlalchemy import func
-
 from babylon.formulas.constants import WEEKS_PER_YEAR
 from babylon.reference.schema import (
     DimBEAIndustry,
@@ -305,19 +303,40 @@ class SQLiteQCEWCountyNAICSSource:
             if time_id is None:
                 return None
 
-            total = (
-                session.query(func.sum(FactQcewAnnual.employment))
+            # 2026-07-15 perf regression fix: filtering ``ownership_id`` as a
+            # SQL equality predicate (alongside county_id/time_id) makes
+            # SQLite's planner favor the low-selectivity single-column
+            # ``idx_qcew_ownership`` over the far more selective
+            # ``idx_qcew_county_time`` — a ~1.3s scan per call on the
+            # 14.6M-row table instead of <1ms (measured; own_code='5'/'0'
+            # alone each cover millions of rows nationwide). Filtering
+            # ownership + sector client-side over the tiny (county, time)
+            # row set (~hundreds of rows) sidesteps the ambiguous index
+            # choice entirely rather than depending on planner heuristics.
+            sector_codes = set(_sector_codes_for(naics))
+            rows = (
+                session.query(
+                    FactQcewAnnual.ownership_id,
+                    DimIndustry.sector_code,
+                    FactQcewAnnual.employment,
+                )
                 .join(DimIndustry, DimIndustry.industry_id == FactQcewAnnual.industry_id)
                 .filter(
                     FactQcewAnnual.county_id == county_id,
-                    FactQcewAnnual.ownership_id == private_ownership_id,
                     FactQcewAnnual.time_id == time_id,
-                    DimIndustry.sector_code.in_(_sector_codes_for(naics)),
+                    DimIndustry.sector_code.in_(sector_codes),
                 )
-                .scalar()
+                .all()
             )
 
-            return int(total) if total is not None else None
+        non_null_emp = [
+            int(emp)
+            for own_id, sector_code, emp in rows
+            if own_id == private_ownership_id and sector_code in sector_codes and emp is not None
+        ]
+        # Mirrors SQL SUM(): NULL (-> None) only when there is nothing to
+        # sum, never conflated with a real zero (spec-098 regression class).
+        return sum(non_null_emp) if non_null_emp else None
 
     def get_county_employment_by_naics(self, fips: str, year: int) -> dict[str, int]:
         """Get private-sector employment by NAICS sector for a county.
@@ -351,27 +370,33 @@ class SQLiteQCEWCountyNAICSSource:
             if time_id is None:
                 return {}
 
+            # 2026-07-15 perf regression fix: see the identical note in
+            # get_county_naics_employment() above — filtering ownership_id
+            # in SQL here misled SQLite into the same ~1.3s-per-call bad
+            # index choice (81 territories x this call was the dominant
+            # cost of the ~300s resolve-tick regression). Group in Python
+            # instead, over the small (county, time) row set.
             rows = (
                 session.query(
+                    FactQcewAnnual.ownership_id,
                     DimIndustry.sector_code,
-                    func.sum(FactQcewAnnual.employment),
+                    FactQcewAnnual.employment,
                 )
                 .join(DimIndustry, DimIndustry.industry_id == FactQcewAnnual.industry_id)
                 .filter(
                     FactQcewAnnual.county_id == county_id,
-                    FactQcewAnnual.ownership_id == private_ownership_id,
                     FactQcewAnnual.time_id == time_id,
                     DimIndustry.sector_code.in_(list(code_to_label)),
                 )
-                .group_by(DimIndustry.sector_code)
                 .all()
             )
 
         result: dict[str, int] = {}
-        for sector_code, emp in rows:
-            if emp is not None:
-                label = code_to_label[sector_code]
-                result[label] = result.get(label, 0) + int(emp)
+        for own_id, sector_code, emp in rows:
+            if own_id != private_ownership_id or emp is None:
+                continue
+            label = code_to_label[sector_code]
+            result[label] = result.get(label, 0) + int(emp)
         return result
 
     def get_county_total_employment(self, fips: str, year: int) -> int | None:
@@ -446,24 +471,40 @@ class SQLiteQCEWCountyNAICSSource:
             if time_id is None:
                 return None
 
-            wages, employment = (
+            # 2026-07-15 perf regression fix: see the identical note in
+            # get_county_naics_employment() above.
+            sector_codes = set(_sector_codes_for(naics))
+            rows = (
                 session.query(
-                    func.sum(FactQcewAnnual.total_wages_usd),
-                    func.sum(FactQcewAnnual.employment),
+                    FactQcewAnnual.ownership_id,
+                    DimIndustry.sector_code,
+                    FactQcewAnnual.total_wages_usd,
+                    FactQcewAnnual.employment,
                 )
                 .join(DimIndustry, DimIndustry.industry_id == FactQcewAnnual.industry_id)
                 .filter(
                     FactQcewAnnual.county_id == county_id,
-                    FactQcewAnnual.ownership_id == private_ownership_id,
                     FactQcewAnnual.time_id == time_id,
-                    DimIndustry.sector_code.in_(_sector_codes_for(naics)),
+                    DimIndustry.sector_code.in_(sector_codes),
                 )
-                .one()
+                .all()
             )
 
-            if wages is None or not employment:
-                return None
-            return float(wages) / float(employment) / WEEKS_PER_YEAR
+        matching = [
+            (w, e)
+            for own_id, sector_code, w, e in rows
+            if own_id == private_ownership_id and sector_code in sector_codes
+        ]
+        non_null_wages = [w for w, _e in matching if w is not None]
+        non_null_emp = [e for _w, e in matching if e is not None]
+        # Mirrors the original two independent SQL SUM()s: NULL (-> None)
+        # only when there is nothing to sum.
+        wages = sum(non_null_wages) if non_null_wages else None
+        employment = sum(non_null_emp) if non_null_emp else None
+
+        if wages is None or not employment:
+            return None
+        return float(wages) / float(employment) / WEEKS_PER_YEAR
 
 
 __all__ = [

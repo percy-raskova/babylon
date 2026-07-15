@@ -23,6 +23,51 @@ _mp.set_start_method = _idempotent_set_start_method
 # END MUTMUT PATCH
 # =============================================================================
 
+# =============================================================================
+# BLAS / OpenMP THREAD CAP - MUST be before any numpy/scipy import
+# =============================================================================
+# The engine's economics (Leontief tensors, LODES matrices) pull in numpy/scipy,
+# whose OpenBLAS backend spawns one thread PER CORE (24 on this 12-core box) in
+# EVERY process by default. Under pytest-xdist (N workers) or N parallel agents
+# that is N x 24 threads - nested process x BLAS parallelism that oversubscribes
+# the CPU and stacks per-thread buffers until the box thrashes and the whole
+# desktop freezes (froze the dev box twice, 2026-07-12; the seam/sentinel tests
+# triggered it because they are among the only unit tests that run a real engine
+# tick). Pin BLAS to 1 thread: xdist already provides process parallelism, so
+# nested BLAS threads are pure harm here. Bonus: single-thread BLAS removes
+# non-deterministic FP reduction order (Constitution III.7). Proven safe:
+# qa:regression stays 5/5 byte-identical with the pin.
+import os as _os
+
+for _blas_var in (
+    "OMP_NUM_THREADS",
+    "OPENBLAS_NUM_THREADS",
+    "MKL_NUM_THREADS",
+    "NUMEXPR_NUM_THREADS",
+    # W1.8: rustworkx centrality parallelizes via rayon above its
+    # parallel_threshold (50 nodes) — same per-core oversubscription hazard,
+    # plus parallel float-summation order breaks Constitution III.7. Rayon
+    # reads this env var once at pool init, so it must be set before the
+    # first rustworkx parallel call.
+    "RAYON_NUM_THREADS",
+):
+    _os.environ.setdefault(_blas_var, "1")
+
+# Env vars only bind before the BLAS lib loads; threadpoolctl also caps an
+# already-loaded lib at runtime. Keep the limiter alive for the whole session
+# via the module-global reference (its __del__ would otherwise restore threads).
+try:
+    from threadpoolctl import (
+        threadpool_limits as _threadpool_limits,  # type: ignore[import-untyped]
+    )
+except ImportError:
+    _BLAS_THREAD_LIMIT = None
+else:
+    _BLAS_THREAD_LIMIT = _threadpool_limits(limits=1)
+# =============================================================================
+# END BLAS THREAD CAP
+# =============================================================================
+
 import logging
 import os
 import random
@@ -113,7 +158,9 @@ def enable_logging_propagation() -> Generator[None, None, None]:
 def test_dir() -> Generator[str, None, None]:
     """Create a temporary directory for all tests."""
     temp_dir = tempfile.mkdtemp()
-    os.chmod(temp_dir, 0o755)
+    os.chmod(
+        temp_dir, 0o700
+    )  # owner-only: mkdtemp's default, no world read/exec (CodeQL py/overly-permissive-file)
     yield temp_dir
     time.sleep(0.1)  # Allow OS to release handles
     shutil.rmtree(temp_dir, ignore_errors=True)

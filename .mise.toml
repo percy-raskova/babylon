@@ -21,6 +21,20 @@ poetry = "2.2.1"  # pinned fleet-wide (CI + local) since the PEP-621 migration
 [env]
 PYTHONPATH = "src"
 BABYLON_ENV = "development"
+# Pin BLAS/OpenMP to 1 thread for every mise-run command. The engine's numpy/scipy
+# economics spawns one OpenBLAS thread PER CORE (24 here) per process by default;
+# under xdist / parallel runs that nested process x BLAS parallelism thrashed the
+# box until the desktop froze (2026-07-12). xdist supplies the parallelism; nested
+# BLAS threads are pure harm. Also removes non-deterministic FP reduction order
+# (Constitution III.7). tests/conftest.py enforces the same for raw `poetry run`.
+OMP_NUM_THREADS = "1"
+OPENBLAS_NUM_THREADS = "1"
+MKL_NUM_THREADS = "1"
+NUMEXPR_NUM_THREADS = "1"
+# W1.8: rustworkx centrality parallelizes via rayon above parallel_threshold
+# (50 nodes) — same oversubscription hazard + parallel float-summation order
+# (Constitution III.7). Rayon reads this once at pool init.
+RAYON_NUM_THREADS = "1"
 # Agent ergonomics: uncolored tool output (kills ANSI-strip pipelines)
 NO_COLOR = "1"
 # Soundfont for MIDI conversion
@@ -86,8 +100,12 @@ description = "Run complexity gate (xenon) - fails if CC > 15"
 run = "poetry run xenon --max-absolute C src/"
 
 [tasks.check]
-description = "Fast CI gate: hygiene + lint + imports + format + typecheck + unit tests"
-depends = ["check:hygiene", "lint", "lint:imports", "format", "typecheck", "test:unit"]
+description = "Fast CI gate: data-pathway + hygiene + seams + coverage + lint + imports + format + typecheck + unit tests"
+depends = ["data:doctor", "check:hygiene", "check:seams", "check:coverage", "lint", "lint:imports", "format", "typecheck", "test:unit"]
+
+[tasks."data:doctor"]
+description = "Loud data-pathway gate: trove mount + repo symlinks + Postgres bind on the data drive (clean skip off the dev box); heal = sudo tools/heal_data_mount.sh"
+run = "tools/data_doctor.sh"
 
 [tasks."check:quick"]
 description = "Quality gate without the test leg: lint + format + typecheck"
@@ -96,6 +114,26 @@ depends = ["lint", "format", "typecheck"]
 [tasks."check:hygiene"]
 description = "Repo-hygiene gate: root allowlist, ignore-consistency, blob sizes (program 14)"
 run = "poetry run python tools/check_repo_hygiene.py"
+
+[tasks."check:seams"]
+description = "Seam Observatory Sensor 1: observable-field continuity gate (Constitution VIII.12 / III.11)"
+run = "poetry run python tools/sentinel_check.py seam --check"
+
+[tasks."check:coverage"]
+description = "Data-coverage sentinel: every declared reference-data source class exists (static gate)"
+run = "poetry run python tools/sentinel_check.py coverage --check"
+
+[tasks.cap]
+description = "Run a command under a HARD memory+CPU cgroup cap (can't freeze the machine). Use for any heavy run: mise run cap -- mise run test:unit"
+run = "tools/capped.sh"
+
+[tasks."test:capped"]
+description = "test:unit under a 12G/8-core hard cap — the safe way to run the full suite locally"
+run = "tools/capped.sh mise run test:unit"
+
+[tasks."mcp:reap"]
+description = "Reap leaked chroma-mcp servers (claude-mem backend leaks ~1GB each on long sessions; 77 = 28GB once nearly froze the box). Safe: Chroma data is on disk, a fresh server respawns on next use. Run when they pile up."
+run = "tools/reap_chroma.sh"
 
 [tasks."lint:imports"]
 description = "Import-boundary contracts: kernel < models/formulas < domain < engine (program 14)"

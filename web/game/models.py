@@ -357,6 +357,59 @@ class OrgSnapshot(models.Model):
         return f"OrgSnapshot({self.game_id}, t={self.tick}, {self.org_id})"
 
 
+class ClassSnapshot(models.Model):
+    """Social class survival-calculus state per tick (append-only).
+
+    Wraps ``class_snapshot`` — powers the survival-probability duel chart
+    (P(S|A) vs P(S|R)) and the class inspector's history tab (Program 17
+    Wave 2 W2.5b, owner ruling 3).
+    """
+
+    game = models.ForeignKey(
+        GameSession,
+        on_delete=models.CASCADE,
+        db_column="game_id",
+    )
+    tick = models.IntegerField()
+    class_id = models.CharField(max_length=64, primary_key=True)
+    role = models.CharField(max_length=32)
+
+    # Material conditions
+    wealth = models.FloatField(null=True)
+    subsistence_threshold = models.FloatField(null=True)
+    population = models.IntegerField(null=True)
+    inequality = models.FloatField(null=True)
+
+    # Organization / repression
+    organization = models.FloatField(null=True)
+    repression_faced = models.FloatField(null=True)
+
+    # Ideological profile
+    class_consciousness = models.FloatField(null=True)
+    national_identity = models.FloatField(null=True)
+    agitation = models.FloatField(null=True)
+
+    # Survival Calculus (P(S|A) vs P(S|R))
+    p_acquiescence = models.FloatField(null=True)
+    p_revolution = models.FloatField(null=True)
+
+    active = models.BooleanField(default=True)
+    attributes = models.JSONField(default=dict)
+
+    class Meta:
+        managed = False
+        db_table = "class_snapshot"
+        constraints = [
+            models.UniqueConstraint(
+                fields=["game", "tick", "class_id"],
+                name="uq_class_snapshot",
+            ),
+        ]
+
+    def __str__(self) -> str:
+        return f"ClassSnapshot({self.game_id}, t={self.tick}, {self.class_id})"
+
+
 class EdgeSnapshot(models.Model):
     """Graph edge state per tick (append-only).
 
@@ -518,6 +571,77 @@ class TickEvent(models.Model):
 
     def __str__(self) -> str:
         return f"TickEvent({self.game_id}, t={self.tick}, {self.event_type})"
+
+
+class NarrationRecord(models.Model):
+    """A persisted narrator beat — one LLM-generated (or degraded) narrative unit.
+
+    Durable counterpart to ``game.narrative_service.NarrativeResult``
+    (program-20 Track B, task B4): ``NarrativeService`` caches results
+    in-process keyed by ``(session_id, tick)`` for fast reads, but that
+    cache is lost on process restart — beats are ALSO written here so
+    they survive it. Unlike ``TickEvent`` and the other spec-037 snapshot
+    tables above (which wrap pre-existing raw-SQL DDL via
+    ``managed = False``), this model has no legacy table to wrap — it is
+    Django-managed and owns its own migration.
+
+    Register mapping (v1): a healthy generation produces a CORPORATE-voice
+    narrative and a LIBERATED-voice narrative (``NarrativeDirector``'s dual
+    narrative). They map onto this table's two-value ``register`` field as
+    CORPORATE -> ``"wire"`` and LIBERATED -> ``"analysis"`` — reusing the
+    vocabulary already established at the API boundary
+    (``NarrativeService.augment_feed``'s ``llm_narrative`` key) rather than
+    inventing new terms. This is deliberately a v1 simplification: a future
+    Gramscian triptych (a third, intermediate register for
+    contested/organic-intellectual narration) will EXTEND this enum, not
+    replace it — ``wire``/``analysis`` is not treated as an exhaustive final
+    model of narrative register.
+
+    Constitution III.6 (model pinning) limitation, documented honestly:
+    both current providers (DeepSeek and Cloudflare Workers AI) expose no
+    tokenizer version over their APIs, so there is deliberately no
+    ``tokenizer_version`` field here. The pin set that IS available and IS
+    recorded is ``model_id`` (the provider/model identifier) plus
+    ``prompt_version`` (a content-derived hash of the prompt templates —
+    see ``babylon.intelligence.ai.prompt_registry.PromptRegistry.version``).
+    Tokenizer version is documented-unavailable, not silently omitted.
+    """
+
+    class Scope(models.TextChoices):
+        EVENT = "event", "Event"
+        TICK = "tick", "Tick"
+        COUNTY = "county", "County"
+        ENDGAME = "endgame", "Endgame"
+
+    class Register(models.TextChoices):
+        WIRE = "wire", "Wire"
+        ANALYSIS = "analysis", "Analysis"
+
+    session = models.ForeignKey(
+        GameSession,
+        on_delete=models.CASCADE,
+        related_name="narration_records",
+    )
+    tick = models.IntegerField()
+    beat_id = models.CharField(max_length=64)
+    scope = models.CharField(max_length=16, choices=Scope.choices)
+    subject_ref = models.CharField(max_length=128, null=True, blank=True)
+    headline = models.TextField()
+    body = models.TextField()
+    register = models.CharField(max_length=16, choices=Register.choices)
+    model_id = models.CharField(max_length=128)
+    prompt_version = models.CharField(max_length=32)
+    degraded = models.BooleanField(default=False)
+    error = models.TextField(blank=True, default="")
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        db_table = "narration_record"
+        unique_together = ("session", "tick", "beat_id")
+        ordering = ("tick", "beat_id")
+
+    def __str__(self) -> str:
+        return f"NarrationRecord({self.session_id}, t={self.tick}, {self.beat_id})"
 
 
 # ═══════════════════════════════════════════════════════════════════════

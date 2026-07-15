@@ -30,9 +30,10 @@ def test_build_economics_overrides_wires_gamma_calculator() -> None:
     """Gamma calculator is wired (parameterless MVP sources)."""
     from babylon.engine.headless_runner.runner import _build_economics_overrides
 
-    overrides = _build_economics_overrides()
+    overrides, leontief_session = _build_economics_overrides()
     assert "gamma_calculator" in overrides, "gamma_calculator key missing from overrides"
     assert overrides["gamma_calculator"] is not None, "gamma_calculator is None"
+    assert leontief_session is None, "no session_factory provided; leontief_session must be None"
 
 
 def test_build_economics_overrides_wires_melt_calculator_with_session() -> None:
@@ -45,11 +46,57 @@ def test_build_economics_overrides_wires_melt_calculator_with_session() -> None:
     from babylon.reference.database import get_normalized_session_factory
 
     session_factory = get_normalized_session_factory()
-    overrides = _build_economics_overrides(session_factory=session_factory)
+    overrides, leontief_session = _build_economics_overrides(session_factory=session_factory)
     assert overrides.get("melt_calculator") is not None, "melt_calculator is None"
     assert overrides.get("gamma_calculator") is not None, "gamma_calculator is None"
+    # event_bus/defines were not provided, so the Leontief pipeline stays unwired.
+    assert overrides.get("production_chain_calculator") is None
+    assert leontief_session is None
 
 
+@pytest.mark.requires_reference_db
+def test_build_economics_overrides_wires_leontief_pipeline_with_event_bus_and_defines() -> None:
+    """Program 17 / Item 1a: Leontief overrides + session are wired when
+    event_bus and defines are also provided alongside session_factory.
+
+    ``requires_reference_db``: constructing the Leontief pipeline loads the BEA
+    industry dimension (``dim_bea_industry``), a table the file-exists guard
+    below cannot detect (the DB-free dev CI tier ships a stub SQLite that has
+    the file but not the table). Deselected on ``test:unit-ci``; runs locally
+    and in main/nightly against the ci-data-v1 subset.
+    """
+    pytest.importorskip("sqlalchemy")
+    if not SQLITE_REF.exists():
+        pytest.skip(f"SQLite reference DB missing at {SQLITE_REF}")
+
+    from babylon.config.defines import GameDefines
+    from babylon.engine.headless_runner.runner import _build_economics_overrides
+    from babylon.kernel.event_bus import EventBus
+    from babylon.reference.database import get_normalized_session_factory
+
+    session_factory = get_normalized_session_factory()
+    event_bus = EventBus()
+    defines = GameDefines.load_default()
+
+    overrides, leontief_session = _build_economics_overrides(
+        session_factory=session_factory,
+        event_bus=event_bus,
+        defines=defines,
+    )
+    try:
+        assert overrides.get("melt_calculator") is not None
+        assert overrides.get("periphery_labor_source") is not None
+        assert overrides.get("final_demand_source") is not None
+        assert overrides.get("industry_county_allocator") is not None
+        assert overrides.get("production_chain_calculator") is not None
+        assert overrides.get("bea_industries")
+        assert leontief_session is not None
+    finally:
+        if leontief_session is not None:
+            leontief_session.close()
+
+
+@pytest.mark.requires_reference_db
 def test_run_passes_gamma_calculator_to_service_container(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,

@@ -4,7 +4,8 @@
  * Handles CSRF tokens, session cookies, and the standard response envelope.
  */
 
-import type { ApiResponse } from "@/types/game";
+import type { ApiResponse, MapHistoryPayload } from "@/types/game";
+import { endpoints } from "@/api/endpoints";
 import type { ExplainResponse } from "@/types/inspection";
 import { getCorrelationId, createLogger } from "@/utils/logger";
 
@@ -136,6 +137,26 @@ export async function fetchExplain(
   scope: string,
 ): Promise<ApiResponse<ExplainResponse>> {
   return get<ExplainResponse>(
-    `/api/games/${gameId}/explain/?metric=${encodeURIComponent(metric)}&scope=${encodeURIComponent(scope)}`,
+    `${endpoints.explain.path({ id: gameId })}?metric=${encodeURIComponent(metric)}&scope=${encodeURIComponent(scope)}`,
+  );
+}
+
+/**
+ * `GET /api/games/{id}/map/history/?metric=<name>` — one map metric's
+ * per-tick, per-county replay frames (Program 17 Wave 3, Frontend-W3R3's
+ * RADAR LOOP scrubber). The caller (`store/slices/mapReplaySlice.ts`)
+ * gates `metric` to `MAP_HISTORY_REPLAYABLE_METRICS` (`lib/lens.ts`)
+ * before ever calling this — a non-replayable metric still round-trips
+ * cleanly (422 -> the standard error envelope), it is just never reached
+ * by the real UI flow. `from_tick`/`to_tick` are omitted: the RadarLoop
+ * scrubber always takes the backend's default/capped window, never a
+ * custom range.
+ */
+export async function fetchMapHistory(
+  gameId: string,
+  metric: string,
+): Promise<ApiResponse<MapHistoryPayload>> {
+  return get<MapHistoryPayload>(
+    `${endpoints.mapHistory.path({ id: gameId })}?metric=${encodeURIComponent(metric)}`,
   );
 }

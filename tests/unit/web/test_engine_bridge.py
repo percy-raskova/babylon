@@ -20,11 +20,13 @@ from babylon.models.enums import EventType
 from babylon.models.events import SimulationEvent
 from babylon.topology.graph import BabylonGraph
 from game.engine_bridge import (
+    _MAP_HISTORY_WINDOW_CAP,
     EngineBridge,
     _build_initial_state_for_scenario,
     _heat_delta_by_territory,
     _hex_feature_properties,
     _hex_state_row,
+    _mean_territory_attr,
     _org_count_by_territory,
     _serialize_territory,
     _state_to_snapshot,
@@ -711,6 +713,77 @@ class TestHexStateProjection:
         assert rows.first().tick == 7
 
     @patch("game.engine_bridge.step")
+    def test_resolve_tick_upsert_updates_phi_columns_on_second_write(
+        self, mock_step: MagicMock
+    ) -> None:
+        """Program 17 / Item 1a-followup: ``_persist_hex_state_safe``'s bulk_create
+        ``update_fields`` omitted profit_rate/exploitation_rate/occ/imperial_rent,
+        so once Phi went non-zero these 4 columns populated on the FIRST insert
+        but froze on every later tick's UPSERT (the map reads hex_latest). A
+        second resolve_tick with DIFFERENT tick_-attr values must actually move
+        these columns, not leave them stuck at the first tick's numbers.
+        """
+        from babylon.models.entities import Territory
+        from babylon.models.enums import SectorType
+        from game.models import HexState
+
+        self._make_session_row()
+        mock_persistence = _make_mock_persistence()
+        mock_persistence.get_pending_turns.return_value = []
+
+        cell = "862a91a17ffffff"  # 15-char lowercase hex, matches Territory pattern
+        territory = Territory(
+            id=cell, h3_index=cell, name="Test Hex", sector_type=SectorType.INDUSTRIAL
+        )
+
+        mock_new_state_1 = _make_mock_new_state(tick=1)
+        mock_new_state_1.territories = {cell: territory}
+        graph_tick1 = BabylonGraph()
+        graph_tick1.add_node(
+            cell,
+            node_type="territory",
+            tick_profit_rate=0.10,
+            tick_exploitation_rate=0.20,
+            tick_occ=0.30,
+            tick_phi_hour=0.40,
+        )
+        mock_new_state_1.to_graph.return_value = graph_tick1
+        mock_step.return_value = mock_new_state_1
+
+        bridge = EngineBridge(mock_persistence)
+        bridge.resolve_tick(self._SID)
+
+        row = HexState.objects.get(game_id=self._SID, h3_index=cell)
+        assert row.profit_rate == pytest.approx(0.10)
+        assert row.exploitation_rate == pytest.approx(0.20)
+        assert row.occ == pytest.approx(0.30)
+        assert row.imperial_rent == pytest.approx(0.40)
+
+        # Second tick: DIFFERENT values. Before the fix, these 4 columns
+        # would stay frozen at the first tick's numbers on this UPSERT.
+        mock_new_state_2 = _make_mock_new_state(tick=2)
+        mock_new_state_2.territories = {cell: territory}
+        graph_tick2 = BabylonGraph()
+        graph_tick2.add_node(
+            cell,
+            node_type="territory",
+            tick_profit_rate=0.55,
+            tick_exploitation_rate=0.65,
+            tick_occ=0.75,
+            tick_phi_hour=0.85,
+        )
+        mock_new_state_2.to_graph.return_value = graph_tick2
+        mock_step.return_value = mock_new_state_2
+
+        bridge.resolve_tick(self._SID)
+
+        row.refresh_from_db()
+        assert row.profit_rate == pytest.approx(0.55)
+        assert row.exploitation_rate == pytest.approx(0.65)
+        assert row.occ == pytest.approx(0.75)
+        assert row.imperial_rent == pytest.approx(0.85)
+
+    @patch("game.engine_bridge.step")
     def test_resolve_tick_skips_territories_without_h3(self, mock_step: MagicMock) -> None:
         """two_node-style territories (h3_index=None) must be skipped, not crash."""
         from babylon.models.entities import Territory
@@ -849,6 +922,59 @@ class TestSerializeTerritoryGraphThreading:
         assert result["median_wage"] == pytest.approx(3.0)
         assert result["max_biocapacity"] == pytest.approx(88.0)
 
+    def test_no_graph_yields_none_for_group_a_b_tick_attrs(self) -> None:
+        """Wave 2 Gap-1: Group A/B tick_* reads are honest None without a graph."""
+        territory = self._make_territory()
+
+        result = _serialize_territory(territory)
+
+        assert result["crisis_phase"] is None
+        assert result["crisis_duration"] is None
+        assert result["bifurcation_score"] is None
+        assert result["wage_compression"] is None
+        assert result["capital_stock"] is None
+        assert result["class_distribution"] is None
+        assert result["unemployment_rate"] is None
+        assert result["tick_median_wage"] is None
+
+    def test_graph_supplies_group_a_b_tick_attrs_when_written(self) -> None:
+        """Wave 2 Gap-1: Group A/B surface from the graph-only tick_* attrs."""
+        territory = self._make_territory()
+        graph = BabylonGraph()
+        dist = {
+            "bourgeoisie": 0.02,
+            "petit_bourgeoisie": 0.08,
+            "labor_aristocracy": 0.30,
+            "proletariat": 0.40,
+            "lumpenproletariat": 0.20,
+        }
+        graph.add_node(
+            "T001",
+            node_type="territory",
+            tick_crisis_phase="deep",
+            tick_crisis_duration=7,
+            tick_bifurcation_score=-0.65,
+            tick_wage_compression=0.22,
+            tick_capital_stock=1e9,
+            tick_class_distribution=dist,
+            tick_unemployment_rate=0.081,
+            tick_median_wage=21.0,
+        )
+
+        result = _serialize_territory(territory, graph=graph)
+
+        assert result["crisis_phase"] == "deep"
+        assert result["crisis_duration"] == 7
+        assert result["bifurcation_score"] == pytest.approx(-0.65)
+        assert result["wage_compression"] == pytest.approx(0.22)
+        assert result["capital_stock"] == pytest.approx(1e9)
+        assert result["class_distribution"] == dist
+        assert result["unemployment_rate"] == pytest.approx(0.081)
+        assert result["tick_median_wage"] == pytest.approx(21.0)
+        # tick_median_wage must not collide with the real Territory.median_wage
+        # field (Feature 021) — both are present, distinctly.
+        assert result["median_wage"] == pytest.approx(3.0)
+
 
 @pytest.mark.unit
 class TestOrgCountByTerritory:
@@ -887,6 +1013,49 @@ class TestHeatDeltaByTerritory:
         deltas = _heat_delta_by_territory(pre, post, ["T001"])
 
         assert "T001" not in deltas
+
+
+@pytest.mark.unit
+class TestMeanTerritoryAttr:
+    """Wave 2 Gap-1 Backend-1: get_economy_dashboard's profit_rate/occ mean."""
+
+    def test_averages_non_null_values_across_territories(self) -> None:
+        graph = BabylonGraph()
+        graph.add_node("T001", node_type="territory", tick_profit_rate=0.10)
+        graph.add_node("T002", node_type="territory", tick_profit_rate=0.20)
+
+        result = _mean_territory_attr(graph, "tick_profit_rate")
+
+        assert result == pytest.approx(0.15)
+
+    def test_excludes_territories_missing_the_attr_never_fabricates_zero(self) -> None:
+        graph = BabylonGraph()
+        graph.add_node("T001", node_type="territory", tick_profit_rate=0.10)
+        graph.add_node("T002", node_type="territory")  # no boundary yet this session
+
+        result = _mean_territory_attr(graph, "tick_profit_rate")
+
+        assert result == pytest.approx(0.10)
+
+    def test_ignores_non_territory_nodes(self) -> None:
+        graph = BabylonGraph()
+        graph.add_node("T001", node_type="territory", tick_profit_rate=0.10)
+        graph.add_node("C001", node_type="social_class", tick_profit_rate=99.0)
+
+        result = _mean_territory_attr(graph, "tick_profit_rate")
+
+        assert result == pytest.approx(0.10)
+
+    def test_no_territory_carries_attr_yields_none(self) -> None:
+        graph = BabylonGraph()
+        graph.add_node("T001", node_type="territory")
+
+        assert _mean_territory_attr(graph, "tick_profit_rate") is None
+
+    def test_empty_graph_yields_none(self) -> None:
+        graph = BabylonGraph()
+
+        assert _mean_territory_attr(graph, "tick_profit_rate") is None
 
 
 @pytest.mark.unit
@@ -1104,6 +1273,92 @@ class TestWireFeed:
         assert "filters" in result
         assert len(result["filters"]) == 5
         assert len(result["index"]) == 1
+
+    def test_class_scoped_event_narrates_the_scenario_name_not_the_canonical_map(self) -> None:
+        """W1.7: wayne_county reuses canonical class ids under different
+        names (its C002 is "Suburban Petty Bourgeoisie"; the registry's C002
+        is the Comprador). ``get_wire_feed`` must pass the hydrated state's
+        real names to the narrator via ``meta["class_names"]`` so a
+        class-scoped event never narrates a confidently wrong name."""
+        from game.engine_bridge import _build_initial_state_for_scenario
+
+        mock_persistence = _make_mock_persistence()
+        mock_persistence.hydrate_graph.return_value = _build_initial_state_for_scenario(
+            "wayne_county"
+        ).to_graph()
+        sid = uuid.uuid4()
+        mock_persistence.query_session_events.return_value = [
+            {
+                "game_id": str(sid),
+                "tick": 5,
+                "event_id": 1,
+                "event_type": "fascist_drift",
+                "severity": "warning",
+                "source_id": None,
+                "target_id": None,
+                "county_fips": None,
+                "h3_index": None,
+                "summary": "Class drifted fascist",
+                "detail": {
+                    "node_id": "C002",
+                    "fascist_pull": 0.71,
+                    "fascist_alignment": 0.42,
+                    "entitlement": 0.66,
+                    "solidarity": 0.12,
+                    "regime": "crisis",
+                },
+            }
+        ]
+        bridge = EngineBridge(mock_persistence)
+
+        result = bridge.get_wire_feed(sid)
+
+        feed_json = json.dumps(result)
+        assert "Suburban Petty Bourgeoisie" in feed_json
+        assert "Comprador" not in feed_json
+        assert "class_names" not in result["meta"]
+
+    def test_org_scoped_event_narrates_the_scenario_org_name(self) -> None:
+        """AW3-R1: RED_BROWN_COUP is org-scoped (``org_id``), not
+        class- or territory-scoped. ``get_wire_feed`` must pass the
+        hydrated state's real org names to the narrator via
+        ``meta["org_names"]`` so the story names the org (wayne_county's
+        ORG001 is "Wayne County Organizing Committee") rather than the
+        raw id or a fabricated "Wayne County" location — mirrors
+        ``test_class_scoped_event_narrates_the_scenario_name_not_the_canonical_map``."""
+        from game.engine_bridge import _build_initial_state_for_scenario
+
+        mock_persistence = _make_mock_persistence()
+        mock_persistence.hydrate_graph.return_value = _build_initial_state_for_scenario(
+            "wayne_county"
+        ).to_graph()
+        sid = uuid.uuid4()
+        mock_persistence.query_session_events.return_value = [
+            {
+                "game_id": str(sid),
+                "tick": 5,
+                "event_id": 1,
+                "event_type": "red_brown_coup",
+                "severity": "critical",
+                "source_id": None,
+                "target_id": None,
+                "county_fips": None,
+                "h3_index": None,
+                "summary": "Majority LA defection",
+                "detail": {
+                    "org_id": "ORG001",
+                    "defections": 4,
+                    "member_count": 6,
+                },
+            }
+        ]
+        bridge = EngineBridge(mock_persistence)
+
+        result = bridge.get_wire_feed(sid)
+
+        feed_json = json.dumps(result)
+        assert "Wayne County Organizing Committee" in feed_json
+        assert "org_names" not in result["meta"]
 
     def test_empty_events_produces_empty_feed(self) -> None:
         mock_persistence = _make_mock_persistence()
@@ -1742,3 +1997,1045 @@ class TestResolveTickNarrativeServiceHook:
         result = bridge.resolve_tick(sid)
 
         assert result["tick"] == 1
+
+
+@pytest.mark.unit
+class TestClassSnapshotRows:
+    """Wave 2 W2.5b (owner ruling 3): ``_class_snapshot_rows`` projects
+    ``_serialize_entity`` dicts onto ``class_snapshot`` columns — mirrors
+    ``_org_snapshot_rows``/``_territory_snapshot_rows``."""
+
+    def test_maps_survival_calculus_and_material_fields(self) -> None:
+        from game.engine_bridge import _class_snapshot_rows
+
+        entities = [
+            {
+                "id": "C004",
+                "name": "Dearborn Industrial Workers",
+                "role": "periphery_proletariat",
+                "wealth": 0.35,
+                "consciousness": 0.1,
+                "national_identity": 0.6,
+                "agitation": 0.2,
+                "organization": 0.15,
+                "repression": 0.4,
+                "p_acquiescence": 0.6,
+                "p_revolution": 0.3,
+                "subsistence": 0.25,
+                "population": 300000,
+                "inequality": 0.5,
+                "active": True,
+            }
+        ]
+
+        rows = _class_snapshot_rows(entities)
+
+        assert len(rows) == 1
+        row = rows[0]
+        assert row["class_id"] == "C004"
+        assert row["role"] == "periphery_proletariat"
+        assert row["wealth"] == pytest.approx(0.35)
+        assert row["subsistence_threshold"] == pytest.approx(0.25)
+        assert row["organization"] == pytest.approx(0.15)
+        assert row["repression_faced"] == pytest.approx(0.4)
+        assert row["class_consciousness"] == pytest.approx(0.1)
+        assert row["national_identity"] == pytest.approx(0.6)
+        assert row["agitation"] == pytest.approx(0.2)
+        assert row["p_acquiescence"] == pytest.approx(0.6)
+        assert row["p_revolution"] == pytest.approx(0.3)
+        assert row["population"] == 300000
+        assert row["inequality"] == pytest.approx(0.5)
+        assert row["active"] is True
+        assert isinstance(row["attributes"], dict)
+
+    def test_skips_entities_missing_id_or_role(self) -> None:
+        from game.engine_bridge import _class_snapshot_rows
+
+        entities = [{"id": None, "role": "proletariat"}, {"id": "C001", "role": None}]
+
+        assert _class_snapshot_rows(entities) == []
+
+    def test_persist_snapshots_safe_wires_class_rows(self) -> None:
+        """``_persist_snapshots_safe`` must reactivate ``_serialize_entity``
+        (dead code, zero call sites pre-W2.5b) and pass ``classes=`` to
+        ``persist_full_tick`` alongside territories/orgs/edges — the exact
+        real ``wayne_county`` C001-C004 roster, DB-free via a MagicMock."""
+        from game.engine_bridge import _build_initial_state_for_scenario, _persist_snapshots_safe
+
+        state = _build_initial_state_for_scenario("wayne_county")
+        mock_persistence = MagicMock()
+
+        _persist_snapshots_safe(mock_persistence, uuid.uuid4(), state)
+
+        mock_persistence.persist_full_tick.assert_called_once()
+        _, kwargs = mock_persistence.persist_full_tick.call_args
+        assert "classes" in kwargs
+        class_ids = {row["class_id"] for row in kwargs["classes"]}
+        assert class_ids == {"C001", "C002", "C003", "C004"}
+
+
+@pytest.mark.unit
+class TestGetClassHistory:
+    """Wave 2 W2.5b (owner ruling 3): real ``class_snapshot`` history + the
+    honest UPRISING/revolutionary_pressure rupture markers — mirrors
+    ``get_org_history``/``get_territory_history``."""
+
+    def test_returns_empty_when_persistence_lacks_query_methods(self) -> None:
+        mock_persistence = _make_mock_persistence()
+        mock_persistence.query_class_snapshot_history = None  # simulate SQLite RuntimeDatabase
+        mock_persistence.query_node_uprising_events = None
+        bridge = EngineBridge(mock_persistence)
+
+        result = bridge.get_class_history(uuid.uuid4(), "C004")
+
+        assert result == {"class_id": "C004", "history": [], "ruptures": []}
+
+    def test_returns_history_rows_and_rupture_markers(self) -> None:
+        mock_persistence = _make_mock_persistence()
+        sid = uuid.uuid4()
+        mock_persistence.query_class_snapshot_history.return_value = [
+            {"tick": 0, "p_acquiescence": 0.7, "p_revolution": 0.1},
+            {"tick": 1, "p_acquiescence": 0.6, "p_revolution": 0.4},
+        ]
+        mock_persistence.query_node_uprising_events.return_value = [
+            {
+                "tick": 1,
+                "event_type": "uprising",
+                "severity": "critical",
+                "source_id": None,
+                "target_id": None,
+                "county_fips": None,
+                "h3_index": None,
+                "summary": "Uprising erupts",
+                "detail": {"node_id": "C004", "trigger": "revolutionary_pressure"},
+            }
+        ]
+        bridge = EngineBridge(mock_persistence)
+
+        result = bridge.get_class_history(sid, "C004")
+
+        assert result["class_id"] == "C004"
+        assert len(result["history"]) == 2
+        assert result["history"][0]["tick"] == 0
+        assert len(result["ruptures"]) == 1
+        rupture = result["ruptures"][0]
+        assert rupture["type"] == "uprising"
+        assert rupture["tick"] == 1
+        assert rupture["data"]["trigger"] == "revolutionary_pressure"
+        mock_persistence.query_class_snapshot_history.assert_called_once_with(sid, "C004")
+        mock_persistence.query_node_uprising_events.assert_called_once_with(sid, "C004")
+
+    def test_history_query_failure_degrades_to_empty(self) -> None:
+        mock_persistence = _make_mock_persistence()
+        mock_persistence.query_class_snapshot_history.side_effect = RuntimeError("boom")
+        mock_persistence.query_node_uprising_events.return_value = []
+        bridge = EngineBridge(mock_persistence)
+
+        result = bridge.get_class_history(uuid.uuid4(), "C004")
+
+        assert result["history"] == []
+
+    def test_rupture_query_failure_degrades_to_empty(self) -> None:
+        mock_persistence = _make_mock_persistence()
+        mock_persistence.query_class_snapshot_history.return_value = []
+        mock_persistence.query_node_uprising_events.side_effect = RuntimeError("boom")
+        bridge = EngineBridge(mock_persistence)
+
+        result = bridge.get_class_history(uuid.uuid4(), "C004")
+
+        assert result["ruptures"] == []
+
+
+@pytest.mark.unit
+class TestGetEdgeHistory:
+    """Audit Wave 4 straggler (task #76): the edge-weight history sparkline
+    — mirrors ``TestGetClassHistory``/``get_org_history``. ``edge_id`` uses
+    the same ``"{source}->{target}"`` scheme ``get_inspector_edge`` set."""
+
+    def test_returns_empty_when_persistence_lacks_query_method(self) -> None:
+        mock_persistence = _make_mock_persistence()
+        mock_persistence.query_edge_snapshot_history = None  # simulate SQLite RuntimeDatabase
+        bridge = EngineBridge(mock_persistence)
+
+        result = bridge.get_edge_history(uuid.uuid4(), "C001->C004")
+
+        assert result == {"edge_id": "C001->C004", "history": []}
+
+    def test_malformed_edge_id_without_arrow_is_honest_empty(self) -> None:
+        mock_persistence = _make_mock_persistence()
+        bridge = EngineBridge(mock_persistence)
+
+        result = bridge.get_edge_history(uuid.uuid4(), "not-an-edge-id")
+
+        assert result == {"edge_id": "not-an-edge-id", "history": []}
+        mock_persistence.query_edge_snapshot_history.assert_not_called()
+
+    def test_returns_history_rows_with_weight_from_value_flow(self) -> None:
+        mock_persistence = _make_mock_persistence()
+        sid = uuid.uuid4()
+        mock_persistence.query_edge_snapshot_history.return_value = [
+            {
+                "tick": 0,
+                "edge_type": "solidarity",
+                "edge_mode": None,
+                "value_flow": 1.5,
+                "solidarity": 0.4,
+                "tension": 0.1,
+                "attributes": {},
+            },
+            {
+                "tick": 1,
+                "edge_type": "solidarity",
+                "edge_mode": None,
+                "value_flow": 2.0,
+                "solidarity": 0.6,
+                "tension": 0.2,
+                "attributes": {},
+            },
+        ]
+        bridge = EngineBridge(mock_persistence)
+
+        result = bridge.get_edge_history(sid, "C001->C004")
+
+        assert result["edge_id"] == "C001->C004"
+        assert result["history"] == [
+            {"tick": 0, "weight": 1.5, "solidarity": 0.4, "tension": 0.1},
+            {"tick": 1, "weight": 2.0, "solidarity": 0.6, "tension": 0.2},
+        ]
+        mock_persistence.query_edge_snapshot_history.assert_called_once_with(sid, "C001", "C004")
+
+    def test_null_value_flow_is_an_honest_null_weight_not_zero(self) -> None:
+        mock_persistence = _make_mock_persistence()
+        mock_persistence.query_edge_snapshot_history.return_value = [
+            {
+                "tick": 0,
+                "edge_type": "presence",
+                "edge_mode": None,
+                "value_flow": None,
+                "solidarity": None,
+                "tension": None,
+                "attributes": {},
+            }
+        ]
+        bridge = EngineBridge(mock_persistence)
+
+        result = bridge.get_edge_history(uuid.uuid4(), "ORG001->T001")
+
+        assert result["history"] == [
+            {"tick": 0, "weight": None, "solidarity": None, "tension": None}
+        ]
+
+    def test_decimal_value_flow_is_cast_to_float(self) -> None:
+        """``value_flow`` is a Postgres NUMERIC column — psycopg returns
+        Decimal; must be cast so JSON serialization doesn't choke."""
+        from decimal import Decimal
+
+        mock_persistence = _make_mock_persistence()
+        mock_persistence.query_edge_snapshot_history.return_value = [
+            {
+                "tick": 0,
+                "edge_type": "tribute",
+                "edge_mode": None,
+                "value_flow": Decimal("3.25"),
+                "solidarity": None,
+                "tension": 0.0,
+                "attributes": {},
+            }
+        ]
+        bridge = EngineBridge(mock_persistence)
+
+        result = bridge.get_edge_history(uuid.uuid4(), "C001->C002")
+
+        weight = result["history"][0]["weight"]
+        assert isinstance(weight, float)
+        assert weight == pytest.approx(3.25)
+
+    def test_history_query_failure_degrades_to_empty(self) -> None:
+        mock_persistence = _make_mock_persistence()
+        mock_persistence.query_edge_snapshot_history.side_effect = RuntimeError("boom")
+        bridge = EngineBridge(mock_persistence)
+
+        result = bridge.get_edge_history(uuid.uuid4(), "C001->C004")
+
+        assert result["history"] == []
+
+
+# ---------------------------------------------------------------------- #
+# Program 19/20 (Wave 3 Round 1, Backend-W3R1): get_field_state serializes
+# the System-19/20 contradiction-field stack — honest omission (III.11) +
+# deterministic sort (III.7).
+# ---------------------------------------------------------------------- #
+
+_FIELD_STATE_SESSION = uuid.UUID("aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee")
+
+
+def _graph_with_field_stack() -> BabylonGraph:
+    """A real BabylonGraph carrying the Systems #19/#20 field stack.
+
+    A real graph (not a MagicMock) is used because ``_tenancy_members_by_territory``
+    reads ``graph.edges`` via both iteration AND ``__getitem__`` while
+    ``_build_field_state_edges`` calls it AND ``graph.edges(data=True)`` —
+    ``BabylonGraph``'s real ``EdgesView`` satisfies every one of those; a
+    hand-rolled mock would have to reimplement all three.
+    """
+    g = BabylonGraph()
+    g.graph["tick"] = 9
+    g.graph["principal_field"] = {
+        "field_name": "exploitation",
+        "max_abs_df_dt": 0.05,
+        "changed": True,
+    }
+    g.graph["dialectical_regime"] = {
+        "regime": "crisis",
+        "opposition": "capital_labor",
+        "rate": 0.12,
+    }
+    # C002 is added before C001 — the serializer must sort by id regardless
+    # of insertion/iteration order.
+    g.add_node(
+        "C002",
+        "social_class",
+        name="Suburban Petit-Bourgeois",
+        contradiction_fields={"exploitation": 0.6, "atomization": 0.2},
+        field_derivatives={
+            "exploitation": {"laplacian": 0.1, "df_dt": 0.02, "d2f_dt2": 0.001},
+            "atomization": {"laplacian": 0.0, "df_dt": None, "d2f_dt2": None},
+        },
+        fascist_alignment=0.4,
+    )
+    g.add_node(
+        "C001",
+        "social_class",
+        name="Detroit Proletariat",
+        contradiction_fields={"exploitation": 0.8, "atomization": 0.2},
+        fascist_alignment=0.0,
+    )
+    # C003 carries NONE of the field-stack attrs — must be omitted entirely.
+    g.add_node("C003", "social_class", name="Wayne County Bourgeoisie")
+    # T001 is a territory — never eligible as a field-state node regardless
+    # of any stray attrs.
+    g.add_node("T001", "territory", name="Downtown Detroit")
+    g.add_edge("C001", "T001", "TENANCY")
+    g.add_edge("C002", "T001", "TENANCY")
+    g.add_edge(
+        "C001",
+        "C002",
+        "EXPLOITATION",
+        field_gradients={"exploitation": -0.2, "atomization": 0.0},
+    )
+    return g
+
+
+def _field_state_bridge() -> EngineBridge:
+    mock_persistence = MagicMock()
+    mock_persistence.hydrate_graph.return_value = _graph_with_field_stack()
+    return EngineBridge(mock_persistence)
+
+
+def _build_live_field_stack_graph() -> BabylonGraph:
+    """A raw engine-shaped graph carrying the field stack PLUS ``role`` on
+    every social_class node (unlike :func:`_graph_with_field_stack`, which
+    the bridge reads RAW and never round-trips through ``WorldState``, so
+    it never needed a required ``SocialClass.role``). Also stamps the
+    ``field_stack`` graph attr via the production builder, so this fixture
+    is exactly what ``FieldDerivativeSystem.step()`` would leave on a real
+    engine graph at the end of a tick.
+    """
+    from babylon.engine.systems.field_derivative import _build_field_stack
+    from babylon.models.enums import EdgeType, SocialRole
+
+    g = BabylonGraph()
+    g.graph["tick"] = 9
+    g.graph["principal_field"] = {
+        "field_name": "exploitation",
+        "max_abs_df_dt": 0.05,
+        "changed": True,
+    }
+    g.graph["dialectical_regime"] = {
+        "regime": "crisis",
+        "opposition": "capital_labor",
+        "rate": 0.12,
+    }
+    g.add_node(
+        "C002",
+        "social_class",
+        name="Suburban Petit-Bourgeois",
+        role=SocialRole.LABOR_ARISTOCRACY.value,
+        contradiction_fields={"exploitation": 0.6, "atomization": 0.2},
+        field_derivatives={
+            "exploitation": {"laplacian": 0.1, "df_dt": 0.02, "d2f_dt2": 0.001},
+            "atomization": {"laplacian": 0.0, "df_dt": None, "d2f_dt2": None},
+        },
+        fascist_alignment=0.4,
+    )
+    g.add_node(
+        "C001",
+        "social_class",
+        name="Detroit Proletariat",
+        role=SocialRole.INTERNAL_PROLETARIAT.value,
+        contradiction_fields={"exploitation": 0.8, "atomization": 0.2},
+        fascist_alignment=0.0,
+    )
+    g.add_node(
+        "C003",
+        "social_class",
+        name="Wayne County Bourgeoisie",
+        role=SocialRole.CORE_BOURGEOISIE.value,
+    )
+    g.add_edge(
+        "C001",
+        "C002",
+        EdgeType.EXPLOITATION.value,
+        field_gradients={"exploitation": -0.2, "atomization": 0.0},
+    )
+    g.graph["field_stack"] = _build_field_stack(g)
+    return g
+
+
+@pytest.mark.unit
+class TestGetFieldState:
+    def test_nodes_honest_omission_of_absent_keys(self) -> None:
+        bridge = _field_state_bridge()
+
+        result = bridge.get_field_state(_FIELD_STATE_SESSION)
+
+        by_id = {n["id"]: n for n in result["nodes"]}
+        # C003 carries none of the 4 attrs -> omitted entirely (III.11).
+        assert "C003" not in by_id
+
+        # C001 has fields + fascist_alignment but no field_derivatives -> no
+        # laplacian/df_dt keys at all (never a fabricated {} or 0.0).
+        c001 = by_id["C001"]
+        assert set(c001.keys()) == {"id", "name", "fields", "fascist_alignment"}
+        assert "laplacian" not in c001
+        assert "df_dt" not in c001
+
+        # C002 has all 4; atomization's df_dt=None is honestly omitted from
+        # the df_dt dict (only exploitation's real df_dt surfaces).
+        c002 = by_id["C002"]
+        assert c002["fields"] == {"exploitation": 0.6, "atomization": 0.2}
+        assert c002["laplacian"] == {"exploitation": 0.1, "atomization": 0.0}
+        assert c002["df_dt"] == {"exploitation": 0.02}
+        assert c002["fascist_alignment"] == 0.4
+
+    def test_nodes_sorted_deterministically_by_id(self) -> None:
+        bridge = _field_state_bridge()
+
+        result = bridge.get_field_state(_FIELD_STATE_SESSION)
+
+        ids = [n["id"] for n in result["nodes"]]
+        assert ids == ["C001", "C002"]
+
+    def test_edges_territory_anchored_and_sorted(self) -> None:
+        bridge = _field_state_bridge()
+
+        result = bridge.get_field_state(_FIELD_STATE_SESSION)
+
+        edges = result["edges"]
+        assert [e["field"] for e in edges] == ["atomization", "exploitation"]
+        for e in edges:
+            assert e["source"] == "C001"
+            assert e["target"] == "C002"
+            assert e["source_territory"] == "T001"
+            assert e["target_territory"] == "T001"
+        atomization_edge = next(e for e in edges if e["field"] == "atomization")
+        assert atomization_edge["gradient"] == 0.0
+        exploitation_edge = next(e for e in edges if e["field"] == "exploitation")
+        assert exploitation_edge["gradient"] == -0.2
+
+    def test_edges_unresolvable_territory_is_null_not_omitted(self) -> None:
+        g = BabylonGraph()
+        g.graph["tick"] = 1
+        g.add_node("C001", "social_class", name="A", contradiction_fields={"exploitation": 0.5})
+        g.add_node("C002", "social_class", name="B", contradiction_fields={"exploitation": 0.1})
+        g.add_edge("C001", "C002", "EXPLOITATION", field_gradients={"exploitation": -0.4})
+        mock_persistence = MagicMock()
+        mock_persistence.hydrate_graph.return_value = g
+        bridge = EngineBridge(mock_persistence)
+
+        result = bridge.get_field_state(_FIELD_STATE_SESSION)
+
+        assert len(result["edges"]) == 1
+        edge = result["edges"][0]
+        # Keep-key-use-null: the territory keys are PRESENT but None, matching
+        # _serialize_territory's existing dominant_class/solidarity_index/
+        # agitation convention for an unresolvable per-territory aggregate.
+        assert "source_territory" in edge
+        assert edge["source_territory"] is None
+        assert "target_territory" in edge
+        assert edge["target_territory"] is None
+
+    def test_principal_field_extracts_field_name_from_graph_attr_dict(self) -> None:
+        bridge = _field_state_bridge()
+
+        result = bridge.get_field_state(_FIELD_STATE_SESSION)
+
+        assert result["principal_field"] == "exploitation"
+
+    def test_principal_field_and_regime_null_when_graph_attrs_absent(self) -> None:
+        g = BabylonGraph()
+        g.graph["tick"] = 3
+        mock_persistence = MagicMock()
+        mock_persistence.hydrate_graph.return_value = g
+        bridge = EngineBridge(mock_persistence)
+
+        result = bridge.get_field_state(_FIELD_STATE_SESSION)
+
+        assert result["principal_field"] is None
+        assert result["dialectical_regime"] is None
+        assert result["nodes"] == []
+        assert result["edges"] == []
+        assert result["tick"] == 3
+
+    def test_dialectical_regime_passthrough(self) -> None:
+        bridge = _field_state_bridge()
+
+        result = bridge.get_field_state(_FIELD_STATE_SESSION)
+
+        assert result["dialectical_regime"] == {
+            "regime": "crisis",
+            "opposition": "capital_labor",
+            "rate": 0.12,
+        }
+
+    def test_tick_read_from_graph_attrs(self) -> None:
+        bridge = _field_state_bridge()
+
+        result = bridge.get_field_state(_FIELD_STATE_SESSION)
+
+        assert result["tick"] == 9
+
+    def test_populated_after_world_state_round_trip(self) -> None:
+        """Program 19/20 Wave 3 Round 1 facade fix: the field stack survives
+        a WorldState.from_graph(...).to_graph() round trip — the same
+        round trip ``resolve_tick`` performs every real tick — and
+        ``get_field_state`` on the ROUND-TRIPPED graph is populated exactly
+        like the class docstring's "Known altitude gap" described as
+        BROKEN before this carry landed. This test does not modify the
+        bridge: it proves the bridge already lights up once WorldState
+        carries the field stack.
+        """
+        from babylon.models.world_state import WorldState
+
+        live_graph = _build_live_field_stack_graph()
+
+        state = WorldState.from_graph(live_graph, tick=9)
+        roundtripped = state.to_graph()
+
+        mock_persistence = MagicMock()
+        mock_persistence.hydrate_graph.return_value = roundtripped
+        bridge = EngineBridge(mock_persistence)
+
+        result = bridge.get_field_state(_FIELD_STATE_SESSION)
+
+        by_id = {n["id"]: n for n in result["nodes"]}
+        # C003 never carried contradiction_fields/field_derivatives, so it
+        # honestly has no 'fields'/'laplacian'/'df_dt' keys — but unlike the
+        # raw-graph fixtures, a WorldState round trip stamps EVERY entity
+        # with fascist_alignment (a real, always-defaulted SocialClass
+        # field, per the registry's fascist_alignment row), so C003 DOES
+        # appear (fascist_alignment=0.0 is a real value, not a fabrication)
+        # while staying free of the three attrs that never survived before
+        # this carry.
+        assert by_id["C003"].keys() == {"id", "name", "fascist_alignment"}
+        assert "fields" not in by_id["C003"]
+        assert "laplacian" not in by_id["C003"]
+        assert "df_dt" not in by_id["C003"]
+        assert by_id["C001"]["fields"] == {"exploitation": 0.8, "atomization": 0.2}
+        assert by_id["C002"]["laplacian"] == {"exploitation": 0.1, "atomization": 0.0}
+        assert by_id["C002"]["df_dt"] == {"exploitation": 0.02}
+
+        edge_fields = {e["field"] for e in result["edges"]}
+        assert edge_fields == {"exploitation", "atomization"}
+
+        assert result["principal_field"] == "exploitation"
+        assert result["dialectical_regime"] == {
+            "regime": "crisis",
+            "opposition": "capital_labor",
+            "rate": 0.12,
+        }
+
+
+@pytest.mark.unit
+class TestGetFieldStateStubParity:
+    """The hypergraph/communities cautionary tale (``GET .../hypergraph/
+    communities/`` calls a bridge method neither bridge implements ->
+    guaranteed 500) must not repeat here — StubEngineBridge needs its own
+    honest-empty-but-well-formed ``get_field_state``."""
+
+    def test_stub_returns_well_formed_empty_payload(self) -> None:
+        from game.stub_bridge import StubEngineBridge
+
+        stub = StubEngineBridge()
+
+        result = stub.get_field_state(_FIELD_STATE_SESSION)
+
+        assert result["tick"] == 0
+        assert result["nodes"] == []
+        assert result["edges"] == []
+        assert result["principal_field"] is None
+        assert result["dialectical_regime"] is None
+
+
+@pytest.mark.unit
+@pytest.mark.django_db
+class TestGetFieldStateAPIView:
+    """GET /api/games/{id}/field_state/ returns the standard envelope
+    (mirrors get_contradiction_snapshot's view wiring)."""
+
+    def test_view_returns_envelope(self) -> None:
+        from django.contrib.auth.models import User
+        from django.test import Client
+        from django.urls import reverse
+
+        import game.api
+        from game.models import GameSession
+
+        user = User.objects.create_user(  # type: ignore[no-untyped-call]
+            username="fieldstateuser", password="fieldstatepass123"
+        )
+        client = Client()
+        client.login(username="fieldstateuser", password="fieldstatepass123")
+        session = GameSession.objects.create(
+            id=uuid.UUID("bbbbbbbb-cccc-dddd-eeee-ffffffffffff"),
+            player_id=user.id,
+            scenario="wayne_county",
+            current_tick=4,
+            status="active",
+        )
+        mock_persistence = _make_mock_persistence()
+        mock_persistence.hydrate_graph.return_value = _graph_with_field_stack()
+        game.api._bridge_instance = EngineBridge(mock_persistence)
+
+        url = reverse("game:game-field-state", kwargs={"game_id": str(session.id)})
+        response = client.get(url)
+
+        assert response.status_code == 200
+        body = json.loads(response.content)
+        assert body["status"] == "ok"
+        assert body["session_id"] == str(session.id)
+        data = body["data"]
+        assert set(data.keys()) == {
+            "tick",
+            "nodes",
+            "edges",
+            "principal_field",
+            "dialectical_regime",
+        }
+        assert data["principal_field"] == "exploitation"
+
+    def test_view_404s_on_unknown_game(self) -> None:
+        from django.contrib.auth.models import User
+        from django.test import Client
+        from django.urls import reverse
+
+        import game.api
+
+        User.objects.create_user(  # type: ignore[no-untyped-call]
+            username="fieldstateghost", password="fieldstatepass123"
+        )
+        client = Client()
+        client.login(username="fieldstateghost", password="fieldstatepass123")
+        game.api._bridge_instance = MagicMock()
+
+        url = reverse("game:game-field-state", kwargs={"game_id": str(uuid.uuid4())})
+        response = client.get(url)
+
+        assert response.status_code == 404
+
+
+# ---------------------------------------------------------------------- #
+# Program 17 Wave 1 W3R2 (Backend-W3R2aFix): UPRISING events anchor to a
+# territory so the storm-marker map layer (stormMarkers.ts) can place
+# them. ``_serialize_event`` resolves ``data.node_id`` (a social_class id)
+# -> territory via the same ``_class_to_territory(_tenancy_members_by_
+# territory(graph))`` inversion ``_build_field_state_edges`` already uses
+# to territory-anchor social_class nodes (see ``_graph_with_field_stack``
+# above). Constitution III.11: unresolvable is a real ``None``, never a
+# guessed territory.
+# ---------------------------------------------------------------------- #
+
+
+def _graph_with_tenancy(*, class_to_territory: dict[str, str | None]) -> BabylonGraph:
+    """A real BabylonGraph (not a MagicMock — see ``_graph_with_field_stack``'s
+    docstring for why) with social_class nodes TENANCY-linked to territories
+    per ``class_to_territory``. A ``None`` value adds the social_class node
+    with NO TENANCY edge at all (an unresolvable class)."""
+    g = BabylonGraph()
+    g.graph["tick"] = 1
+    seen_territories: set[str] = set()
+    for class_id, territory_id in class_to_territory.items():
+        g.add_node(class_id, "social_class", name=class_id)
+        if territory_id is None:
+            continue
+        if territory_id not in seen_territories:
+            g.add_node(territory_id, "territory", name=territory_id)
+            seen_territories.add(territory_id)
+        g.add_edge(class_id, territory_id, "TENANCY")
+    return g
+
+
+def _uprising_event(node_id: str, tick: int = 5) -> MagicMock:
+    event = MagicMock()
+    event.event_type = "uprising"
+    event.tick = tick
+    event.data = {"node_id": node_id, "trigger": "revolutionary_pressure"}
+    event.narrative = None
+    return event
+
+
+@pytest.mark.unit
+class TestSerializeEventUprisingTerritoryAnchoring:
+    """Backend-W3R2aFix: territory_id enrichment for UPRISING events."""
+
+    def test_uprising_gets_territory_id_when_class_has_tenancy_edge(self) -> None:
+        from game.engine_bridge import _serialize_event
+
+        graph = _graph_with_tenancy(class_to_territory={"C001": "T001"})
+        event = _uprising_event("C001")
+
+        result = _serialize_event(event, uuid.uuid4(), graph=graph)
+
+        assert result["data"]["territory_id"] == "T001"
+
+    def test_uprising_gets_null_territory_id_when_class_has_no_tenancy(self) -> None:
+        from game.engine_bridge import _serialize_event
+
+        graph = _graph_with_tenancy(class_to_territory={"C001": "T001", "C999": None})
+        event = _uprising_event("C999")  # not TENANCY-linked to any territory
+
+        result = _serialize_event(event, uuid.uuid4(), graph=graph)
+
+        assert "territory_id" in result["data"]
+        assert result["data"]["territory_id"] is None
+
+    def test_uprising_gets_null_territory_id_when_graph_absent(self) -> None:
+        from game.engine_bridge import _serialize_event
+
+        event = _uprising_event("C001")
+
+        result = _serialize_event(event, uuid.uuid4())
+
+        assert result["data"]["territory_id"] is None
+
+    def test_non_uprising_event_untouched(self) -> None:
+        from game.engine_bridge import _serialize_event
+
+        graph = _graph_with_tenancy(class_to_territory={"C001": "T001"})
+        event = MagicMock()
+        event.event_type = "wage_payment"
+        event.tick = 5
+        event.data = {"node_id": "C001", "amount": 10.0}
+        event.narrative = None
+
+        result = _serialize_event(event, uuid.uuid4(), graph=graph)
+
+        assert "territory_id" not in result["data"]
+        assert result["data"] == {"node_id": "C001", "amount": 10.0}
+
+    def test_deterministic_across_repeated_calls(self) -> None:
+        """Two classes in one territory + one class with zero TENANCY edges —
+        repeated serialization off the same graph must resolve identically
+        (Constitution III.7)."""
+        from game.engine_bridge import _serialize_event
+
+        graph = _graph_with_tenancy(
+            class_to_territory={"C001": "T001", "C002": "T001", "C003": None}
+        )
+        session_id = uuid.uuid4()
+
+        def _resolve(node_id: str) -> Any:
+            return _serialize_event(_uprising_event(node_id), session_id, graph=graph)["data"][
+                "territory_id"
+            ]
+
+        first = {node_id: _resolve(node_id) for node_id in ("C001", "C002", "C003")}
+        second = {node_id: _resolve(node_id) for node_id in ("C001", "C002", "C003")}
+
+        assert first == second == {"C001": "T001", "C002": "T001", "C003": None}
+
+    def test_state_to_snapshot_threads_graph_into_uprising_events(self) -> None:
+        """The bridge-wide enrichment point: ``_state_to_snapshot`` (called
+        from ``resolve_tick``, the inspectors, and ``get_snapshot``) passes
+        its ``graph`` argument through to ``_serialize_event`` so every
+        downstream consumer of ``snapshot["events"]`` (toasts, and via
+        ``_persist_tick_events_safe`` -> tick_event -> journal/ruptures)
+        sees the same territory_id."""
+        graph = _graph_with_tenancy(class_to_territory={"C001": "T001"})
+        mock_state = MagicMock()
+        mock_state.tick = 5
+        mock_state.territories = {}
+        mock_state.organizations = {}
+        mock_state.institutions = {}
+        mock_state.relationships = []
+        mock_state.economy = None
+        mock_state.events = [_uprising_event("C001")]
+
+        snapshot = _state_to_snapshot(mock_state, uuid.uuid4(), graph=graph)
+
+        assert snapshot["events"][0]["data"]["territory_id"] == "T001"
+
+
+# ══════════════════════════════════════════════════════════════════════
+# Backend-W3R3 (Program 17 Wave 3): GET /api/games/{id}/map/history/.
+# Verified against a running canonical session (2026-07-15, tick 987):
+# only heat/population (territory_snapshot) and profit_rate/
+# exploitation_rate (view_runtime_trace_emission) have a genuine
+# append-only per-tick historical source; the other 9 MAP_METRIC_PROPERTIES
+# exist only in hex_latest (current-tick-only cache) and are rejected here
+# with an honest "not_replayable" result rather than served as fabricated
+# null frames (Constitution III.11).
+# ══════════════════════════════════════════════════════════════════════
+
+
+@pytest.mark.unit
+class TestGetMapHistory:
+    """get_map_history: the map lens scrubber's real data source."""
+
+    def test_unknown_metric_is_a_loud_error(self) -> None:
+        bridge = EngineBridge(_make_mock_persistence())
+
+        result = bridge.get_map_history(uuid.uuid4(), metric="not_a_real_metric")
+
+        assert result["error"] == "unknown_metric"
+        assert "not_a_real_metric" in result["message"]
+        assert result["frames"] == []
+
+    def test_non_replayable_metric_is_an_honest_error(self) -> None:
+        """occ/imperial_rent/habitability/... exist only in hex_latest (live-only)."""
+        bridge = EngineBridge(_make_mock_persistence())
+
+        result = bridge.get_map_history(uuid.uuid4(), metric="occ")
+
+        assert result["error"] == "not_replayable"
+        assert "occ" in result["message"]
+        # The error names what IS replayable, not just what isn't.
+        assert "heat" in result["message"]
+        assert "profit_rate" in result["message"]
+        assert result["frames"] == []
+
+    def test_degrades_to_honest_empty_when_persistence_lacks_query_methods(self) -> None:
+        mock_persistence = _make_mock_persistence()
+        mock_persistence.query_territory_snapshot_latest_tick = None
+        mock_persistence.query_territory_snapshot_metric_frames = None
+        bridge = EngineBridge(mock_persistence)
+
+        result = bridge.get_map_history(uuid.uuid4(), metric="heat")
+
+        assert result == {
+            "metric": "heat",
+            "from_tick": 0,
+            "to_tick": 0,
+            "capped": False,
+            "frames": [],
+        }
+
+    def test_frames_sorted_by_tick_and_values_keyed_by_county(self) -> None:
+        mock_persistence = _make_mock_persistence()
+        mock_persistence.query_territory_snapshot_latest_tick.return_value = 1
+        mock_persistence.query_territory_snapshot_metric_frames.return_value = [
+            {"tick": 1, "county_fips": "26163", "heat": 0.2, "pop_total": 8000},
+            {"tick": 0, "county_fips": "26163", "heat": 0.1, "pop_total": 8000},
+            {"tick": 0, "county_fips": "26099", "heat": 0.05, "pop_total": 4000},
+        ]
+        bridge = EngineBridge(mock_persistence)
+
+        result = bridge.get_map_history(uuid.uuid4(), metric="heat")
+
+        assert result["metric"] == "heat"
+        assert [f["tick"] for f in result["frames"]] == [0, 1]
+        assert result["frames"][0]["values"] == {"26099": 0.05, "26163": 0.1}
+        assert list(result["frames"][0]["values"].keys()) == ["26099", "26163"]
+        assert result["frames"][1]["values"] == {"26163": 0.2}
+
+    def test_population_metric_reads_pop_total_column(self) -> None:
+        mock_persistence = _make_mock_persistence()
+        mock_persistence.query_territory_snapshot_latest_tick.return_value = 0
+        mock_persistence.query_territory_snapshot_metric_frames.return_value = [
+            {"tick": 0, "county_fips": "26163", "heat": 0.1, "pop_total": 8000},
+        ]
+        bridge = EngineBridge(mock_persistence)
+
+        result = bridge.get_map_history(uuid.uuid4(), metric="population")
+
+        assert result["frames"][0]["values"] == {"26163": 8000.0}
+        mock_persistence.query_territory_snapshot_metric_frames.assert_called_once()
+
+    def test_county_trace_metric_reads_profit_rate_column(self) -> None:
+        mock_persistence = _make_mock_persistence()
+        mock_persistence.query_county_trace_latest_tick.return_value = 987
+        mock_persistence.query_county_trace_metric_frames.return_value = [
+            {
+                "tick": 987,
+                "county_fips": "26163",
+                "profit_rate": 0.5398,
+                "exploitation_rate": 1.3033,
+            }
+        ]
+        bridge = EngineBridge(mock_persistence)
+
+        result = bridge.get_map_history(uuid.uuid4(), metric="profit_rate")
+
+        assert result["frames"][0]["values"] == {"26163": pytest.approx(0.5398)}
+        # profit_rate must never read the sibling exploitation_rate column.
+        mock_persistence.query_county_trace_metric_frames.assert_called_once()
+
+    def test_null_value_in_a_frame_stays_null_not_fabricated(self) -> None:
+        mock_persistence = _make_mock_persistence()
+        mock_persistence.query_county_trace_latest_tick.return_value = 0
+        mock_persistence.query_county_trace_metric_frames.return_value = [
+            {"tick": 0, "county_fips": "26163", "profit_rate": None, "exploitation_rate": None},
+        ]
+        bridge = EngineBridge(mock_persistence)
+
+        result = bridge.get_map_history(uuid.uuid4(), metric="profit_rate")
+
+        assert result["frames"][0]["values"] == {"26163": None}
+
+    def test_explicit_range_within_cap_is_not_capped(self) -> None:
+        mock_persistence = _make_mock_persistence()
+        mock_persistence.query_territory_snapshot_metric_frames.return_value = []
+        bridge = EngineBridge(mock_persistence)
+
+        result = bridge.get_map_history(uuid.uuid4(), metric="heat", from_tick=10, to_tick=20)
+
+        assert result["capped"] is False
+        assert result["from_tick"] == 10
+        assert result["to_tick"] == 20
+        mock_persistence.query_territory_snapshot_metric_frames.assert_called_once_with(
+            mock_persistence.query_territory_snapshot_metric_frames.call_args[0][0], 10, 20
+        )
+        # Explicit range never triggers the "latest tick" lookup.
+        mock_persistence.query_territory_snapshot_latest_tick.assert_not_called()
+
+    def test_explicit_range_beyond_cap_is_honestly_clamped(self) -> None:
+        mock_persistence = _make_mock_persistence()
+        mock_persistence.query_territory_snapshot_metric_frames.return_value = []
+        bridge = EngineBridge(mock_persistence)
+        to_tick = _MAP_HISTORY_WINDOW_CAP + 50
+
+        result = bridge.get_map_history(uuid.uuid4(), metric="heat", from_tick=0, to_tick=to_tick)
+
+        assert result["capped"] is True
+        assert result["to_tick"] == to_tick
+        assert result["from_tick"] == to_tick - _MAP_HISTORY_WINDOW_CAP + 1
+        span = result["to_tick"] - result["from_tick"] + 1
+        assert span == _MAP_HISTORY_WINDOW_CAP
+
+    def test_default_window_ends_at_latest_committed_tick(self) -> None:
+        mock_persistence = _make_mock_persistence()
+        mock_persistence.query_territory_snapshot_latest_tick.return_value = 5
+        mock_persistence.query_territory_snapshot_metric_frames.return_value = []
+        bridge = EngineBridge(mock_persistence)
+
+        result = bridge.get_map_history(uuid.uuid4(), metric="heat")
+
+        assert result["to_tick"] == 5
+        assert result["from_tick"] == 0
+        assert result["capped"] is False
+
+    def test_default_window_beyond_cap_is_capped_even_with_no_explicit_range(self) -> None:
+        mock_persistence = _make_mock_persistence()
+        latest = _MAP_HISTORY_WINDOW_CAP + 100
+        mock_persistence.query_territory_snapshot_latest_tick.return_value = latest
+        mock_persistence.query_territory_snapshot_metric_frames.return_value = []
+        bridge = EngineBridge(mock_persistence)
+
+        result = bridge.get_map_history(uuid.uuid4(), metric="heat")
+
+        assert result["capped"] is True
+        assert result["to_tick"] == latest
+        assert result["from_tick"] == latest - _MAP_HISTORY_WINDOW_CAP + 1
+
+    def test_no_committed_ticks_yet_is_honest_empty(self) -> None:
+        mock_persistence = _make_mock_persistence()
+        mock_persistence.query_territory_snapshot_latest_tick.return_value = None
+        bridge = EngineBridge(mock_persistence)
+
+        result = bridge.get_map_history(uuid.uuid4(), metric="heat")
+
+        assert result["frames"] == []
+        assert result["capped"] is False
+
+    def test_query_failure_degrades_to_empty_not_a_crash(self) -> None:
+        mock_persistence = _make_mock_persistence()
+        mock_persistence.query_territory_snapshot_latest_tick.return_value = 0
+        mock_persistence.query_territory_snapshot_metric_frames.side_effect = RuntimeError("boom")
+        bridge = EngineBridge(mock_persistence)
+
+        result = bridge.get_map_history(uuid.uuid4(), metric="heat")
+
+        assert result["frames"] == []
+
+    def test_stub_bridge_parity(self) -> None:
+        """StubEngineBridge serves the same envelope shape — honest empty."""
+        from game.stub_bridge import StubEngineBridge
+
+        stub = StubEngineBridge()
+
+        replayable = stub.get_map_history(uuid.uuid4(), metric="heat")
+        assert replayable == {
+            "metric": "heat",
+            "from_tick": 0,
+            "to_tick": 0,
+            "capped": False,
+            "frames": [],
+        }
+
+        not_replayable = stub.get_map_history(uuid.uuid4(), metric="occ")
+        assert not_replayable["error"] == "not_replayable"
+
+        unknown = stub.get_map_history(uuid.uuid4(), metric="not_a_real_metric")
+        assert unknown["error"] == "unknown_metric"
+
+
+@pytest.mark.unit
+class TestPersistSnapshotsGraphWiring:
+    """Task #70 (W3 R3 crown-finding fix): ``_persist_snapshots_safe`` must
+    thread ``graph=`` into ``_serialize_territory`` so ``territory_snapshot``'s
+    occ/imperial_rent/profit_rate/exploitation_rate columns stop persisting
+    NULL forever — the live ``/map/`` path already passes the graph; history
+    silently didn't (verified all-NULL by live SQL, R3 backend report)."""
+
+    def test_graph_kwarg_populates_territory_rate_columns(self) -> None:
+        """With ``graph=`` supplied, the ``tick_*`` year-boundary rates land
+        in the persisted territory rows instead of ``None``."""
+        from game.engine_bridge import _build_initial_state_for_scenario, _persist_snapshots_safe
+
+        state = _build_initial_state_for_scenario("wayne_county")
+        graph = state.to_graph()
+        territory_id = next(iter(state.territories))
+        graph.update_node(
+            territory_id,
+            tick_phi_hour=1.25,
+            tick_profit_rate=0.027,
+            tick_occ=138.6,
+            tick_exploitation_rate=3.79,
+        )
+        mock_persistence = MagicMock()
+
+        _persist_snapshots_safe(mock_persistence, uuid.uuid4(), state, graph=graph)
+
+        _, kwargs = mock_persistence.persist_full_tick.call_args
+        rows = kwargs["territories"]
+        assert rows, "wayne_county's county-keyed territory must produce a snapshot row"
+        row = rows[0]
+        assert row["profit_rate"] == 0.027
+        assert row["occ"] == 138.6
+        assert row["exploitation_rate"] == 3.79
+        assert row["imperial_rent"] == 1.25
+
+    def test_graph_omitted_stays_honest_none(self) -> None:
+        """Bootstrap call sites pass no graph — rates stay honest ``None``
+        (tick-0 has no TickDynamics output), never a fabricated 0.0."""
+        from game.engine_bridge import _build_initial_state_for_scenario, _persist_snapshots_safe
+
+        state = _build_initial_state_for_scenario("wayne_county")
+        mock_persistence = MagicMock()
+
+        _persist_snapshots_safe(mock_persistence, uuid.uuid4(), state)
+
+        _, kwargs = mock_persistence.persist_full_tick.call_args
+        row = kwargs["territories"][0]
+        assert row["profit_rate"] is None
+        assert row["occ"] is None

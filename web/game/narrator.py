@@ -125,6 +125,155 @@ def _slug_from_event(event: dict[str, Any], slug_template: str) -> str:
     return slug_template.format(location=location)
 
 
+# --------------------------------------------------------------------------- #
+# Class-scoped subject resolution (W1.7: MASS_AWAKENING, FASCIST_DRIFT)
+# --------------------------------------------------------------------------- #
+
+# Canonical social-class entity ids -> display names. Duplicated here (never
+# imported) from babylon.models.entity_registry.ROLE_TO_ENTITY_ID: the
+# narrator has zero babylon.* imports (Constitution III — see
+# TestArticleIIIStructural in tests/unit/web/test_narrator.py).
+_CLASS_ID_NAMES: dict[str, str] = {
+    "C001": "the Periphery Proletariat",
+    "C002": "the Comprador Bourgeoisie",
+    "C003": "the Core Bourgeoisie",
+    "C004": "the Labor Aristocracy",
+    "C005": "the Carceral Enforcers",
+    "C006": "the Internal Proletariat",
+}
+
+
+def _subject_from_class_id(class_id: str, names: dict[str, str] | None = None) -> str:
+    """Resolve a social-class node id to a display subject — never a place.
+
+    ``names`` (the bridge's real per-scenario entity names, passed via
+    ``meta["class_names"]`` and stamped onto each event as ``_class_names``)
+    wins outright — scenarios reuse canonical ids under different names
+    (wayne_county's C002 is "Suburban Petty Bourgeoisie", not the registry's
+    Comprador), and a confidently wrong canonical name is a fabrication.
+    Without a real name, known canonical ids (C001-C006, the
+    imperial-circuit scenario's six entities) get their registry class name.
+    Unrecognized ids (custom-scenario class nodes) are humanized from the id
+    string itself rather than guessing a place or falling back to a
+    fabricated default.
+    """
+    if names and class_id in names:
+        return names[class_id]
+    if class_id in _CLASS_ID_NAMES:
+        return _CLASS_ID_NAMES[class_id]
+    return class_id.replace("_", " ").title()
+
+
+#: Event types whose story is about a social class, not a territory — the
+#: value names the event's ``data`` key holding the affected class node id.
+#: MASS_AWAKENING/FASCIST_DRIFT have no place to report; resolving through
+#: here keeps their narration honest instead of falling back to the
+#: hardcoded "Wayne County" default (see _location_from_event).
+_CLASS_SCOPED_SUBJECT_FIELD: dict[str, str] = {
+    "mass_awakening": "target_id",
+    "fascist_drift": "node_id",
+}
+
+
+def _subject_from_org_id(org_id: str, names: dict[str, str] | None = None) -> str:
+    """Resolve an organization node id to a display subject — never a place.
+
+    Mirrors :func:`_subject_from_class_id` for organizations (AW3-R1,
+    RED_BROWN_COUP). ``names`` (the bridge's real per-scenario org names,
+    passed via ``meta["org_names"]`` and stamped onto each event as
+    ``_org_names``) wins outright. Unlike social classes (six fixed
+    canonical roles reused across scenarios), organizations have no small
+    fixed canonical set at all — every scenario creates its own — so there
+    is no hardcoded fallback map here, only an honest humanization of the
+    raw id when no real name is available.
+    """
+    if names and org_id in names:
+        return names[org_id]
+    return org_id.replace("_", " ").title()
+
+
+#: Event types whose story is about an organization, not a territory or a
+#: social class — the value names the event's ``data`` key holding the
+#: affected org node id. RED_BROWN_COUP has no place to report; resolving
+#: through here keeps its narration honest instead of falling back to the
+#: hardcoded "Wayne County" default (see _location_from_event).
+_ORG_SCOPED_SUBJECT_FIELD: dict[str, str] = {
+    "red_brown_coup": "org_id",
+}
+
+
+def _resolve_location(event: dict[str, Any]) -> str:
+    """Resolve the value that fills a template's ``{location}`` placeholder.
+
+    Place-scoped templates defer to :func:`_location_from_event`. Class-scoped
+    templates (see :data:`_CLASS_SCOPED_SUBJECT_FIELD`) resolve to the
+    affected social class's display name instead — never the fabricated
+    "Wayne County" default, since these events carry no territory at all.
+    Org-scoped templates (see :data:`_ORG_SCOPED_SUBJECT_FIELD`) do the same
+    for the affected organization.
+    """
+    event_type = event.get("type", "")
+    class_subject_field = _CLASS_SCOPED_SUBJECT_FIELD.get(event_type)
+    if class_subject_field is not None:
+        class_id = event.get("data", {}).get(class_subject_field)
+        if isinstance(class_id, str) and class_id:
+            return _subject_from_class_id(class_id, event.get("_class_names"))
+        return "an unidentified class formation"
+    org_subject_field = _ORG_SCOPED_SUBJECT_FIELD.get(event_type)
+    if org_subject_field is not None:
+        org_id = event.get("data", {}).get(org_subject_field)
+        if isinstance(org_id, str) and org_id:
+            return _subject_from_org_id(org_id, event.get("_org_names"))
+        return "an unidentified organization"
+    return _location_from_event(event)
+
+
+#: Payload keys that hold a social-class node id rather than a plain display
+#: value — resolved through :func:`_subject_from_class_id` like {location}.
+_CLASS_ID_FIELDS: frozenset[str] = frozenset({"target_id", "node_id", "triggering_source"})
+
+
+def _format_data_value(key: str, value: Any, names: dict[str, str] | None = None) -> str:
+    """Format one payload value for display in template text.
+
+    Class-id fields resolve through :func:`_subject_from_class_id` (never
+    leaking a raw id like ``"C001"`` into rendered prose); numbers render to
+    3 decimal places; strings upper-case to match the intel-cable style;
+    ``None`` renders as ``"UNCLASSIFIED"`` (e.g. FASCIST_DRIFT's ``regime``
+    is unset on tick 1).
+    """
+    if key in _CLASS_ID_FIELDS and isinstance(value, str):
+        return _subject_from_class_id(value, names)
+    if value is None:
+        return "UNCLASSIFIED"
+    if isinstance(value, bool):
+        return str(value)
+    if isinstance(value, (int, float)):
+        return f"{value:.3f}"
+    if isinstance(value, str):
+        return value.upper()
+    return str(value)
+
+
+def _event_data_substitutions(event: dict[str, Any]) -> dict[str, str]:
+    """Build a ``{payload_key: formatted_value}`` map for template filling.
+
+    Lets bespoke templates cite real payload numbers (e.g.
+    ``{old_consciousness}``) in their intel fields/assessment instead of
+    static flavor text. A no-op for templates whose text never references
+    these tokens (every pre-W1.7 template only ever uses ``{location}``).
+    """
+    data = event.get("data", {})
+    if not isinstance(data, dict):
+        return {}
+    names = event.get("_class_names")
+    return {
+        key: _format_data_value(key, value, names)
+        for key, value in data.items()
+        if isinstance(key, str)
+    }
+
+
 # Each template is a dict with:
 #   slug_template: str (with {location} placeholder)
 #   hed: {c, l, i} headline templates
@@ -790,6 +939,203 @@ _TEMPLATES: dict[str, dict[str, Any]] = {
         },
         "coverage": ["c", "l", "i"],
     },
+    "mass_awakening": {
+        # Class-scoped (see _CLASS_SCOPED_SUBJECT_FIELD): {location} below
+        # fills with the affected class's display name, not a place.
+        "slug": "AWAKENING \u00b7 {location}",
+        "hed": {
+            "c": "Renewed Civic Interest Reported Among {location}",
+            "l": "{location} CROSS THE LINE // MASS AWAKENING",
+            "i": "CONSCIOUSNESS THRESHOLD CROSSED // {location}",
+        },
+        "euphemisms": {
+            "interest": {
+                "c": "renewed civic interest",
+                "l": "MASS AWAKENING",
+                "filter": "ideology",
+                "note": "A qualitative leap in class consciousness reframed as a passing poll blip.",
+            },
+        },
+        "continental": {
+            "kicker": "NATIONAL \u00b7 SOCIAL TRENDS",
+            "dek": "Analysts note {euph:interest} among {location}, attributing the shift to localized conditions rather than any organized cause.",
+            "byline": "By Continental Staff \u00b7 Updated 5h ago",
+            "paragraphs": [
+                [
+                    "{location} \u2014 Pollsters report {euph:interest} in recent weeks. Sociologists caution the uptick is likely transient.",
+                ],
+            ],
+            "bibliography": [],
+        },
+        "liberated": {
+            "pre": "[ BEGIN TRANSMISSION \u00b7 THE MASS LINE HOLDS ]",
+            "post": "[ END TRANSMISSION \u00b7 THEY SEE IT NOW ]",
+            "paragraphs": [
+                {
+                    "body": [
+                        "{location} HAVE CROSSED THE THRESHOLD. THIS IS NOT {euph:interest} \u2014 IT IS CLASS CONSCIOUSNESS TAKING HOLD. THEY SEE IT NOW.",
+                    ],
+                    "margin": {
+                        "ref": "ORG BULLETIN",
+                        "chunk": "chunk_awakening_001",
+                        "note": "consciousness delta confirmed",
+                    },
+                },
+            ],
+        },
+        "intel": {
+            "subj": "MASS AWAKENING \u00b7 {location}",
+            "origin": "FIELD STATION",
+            "routing": ["DHS/I&A"],
+            "caveat": "DOMESTIC ONLY",
+            "fields": [
+                ["EVENT", "CONSCIOUSNESS THRESHOLD CROSSED"],
+                ["SUBJECT", "{location}"],
+                ["CONSCIOUSNESS (OLD)", "{old_consciousness}"],
+                ["CONSCIOUSNESS (NEW)", "{new_consciousness}"],
+                ["TRANSMITTED BY", "{triggering_source}"],
+            ],
+            "assessment": [
+                "Consciousness rose from {old_consciousness} to {new_consciousness}, crossing the mass-awakening threshold.",
+                "Transmission traced to {triggering_source} via a live SOLIDARITY edge.",
+            ],
+            "refs": [],
+            "distribution": "\u25ae\u25ae\u25ae\u25ae\u25ae\u25ae \u00b7 DOMESTIC",
+        },
+        "coverage": ["c", "l", "i"],
+    },
+    "fascist_drift": {
+        # Class-scoped (see _CLASS_SCOPED_SUBJECT_FIELD): {location} below
+        # fills with the affected class's display name, not a place.
+        "slug": "DRIFT \u00b7 {location}",
+        "hed": {
+            "c": "Order-Minded Sentiment Grows Among {location}",
+            "l": "{location} DRIFT RIGHT // THE FASH CIRCLE",
+            "i": "FASCIST ALIGNMENT RISING // {location}",
+        },
+        "euphemisms": {
+            "sentiment": {
+                "c": "order-minded sentiment",
+                "l": "FASCIST DRIFT",
+                "filter": "ideology",
+                "note": "A reactionary realignment under entitlement pressure reframed as a preference for order.",
+            },
+        },
+        "continental": {
+            "kicker": "NATIONAL \u00b7 SOCIAL TRENDS",
+            "dek": "Officials note {euph:sentiment} among {location}, calling it a natural response to eroding conditions.",
+            "byline": "By Continental Staff \u00b7 Updated 2h ago",
+            "paragraphs": [
+                [
+                    "{location} \u2014 Analysts report {euph:sentiment} strengthening. Officials describe the trend as order restored to a group under strain, not a political realignment.",
+                ],
+            ],
+            "bibliography": [],
+        },
+        "liberated": {
+            "pre": "[ BEGIN TRANSMISSION \u00b7 WARNING ]",
+            "post": "[ END TRANSMISSION \u00b7 WATCH THIS ONE ]",
+            "paragraphs": [
+                {
+                    "body": [
+                        "{location} ARE DRIFTING FASCIST. THIS IS NOT {euph:sentiment} \u2014 ENTITLEMENT UNDER PRESSURE, SOLIDARITY UNCUT, AND THE FASH ARE CIRCLING. WATCH THIS ONE.",
+                    ],
+                    "margin": {
+                        "ref": "FIELD REPORT",
+                        "chunk": "chunk_drift_001",
+                        "note": "alignment delta confirmed",
+                    },
+                },
+            ],
+        },
+        "intel": {
+            "subj": "FASCIST DRIFT \u00b7 {location}",
+            "origin": "FIELD STATION",
+            "routing": ["DHS/I&A", "DOJ/NSD"],
+            "caveat": "HANDLE VIA DOMESTIC CHANNELS",
+            "fields": [
+                ["EVENT", "FASCIST ALIGNMENT DRIFT"],
+                ["SUBJECT", "{location}"],
+                ["FASCIST PULL", "{fascist_pull}"],
+                ["FASCIST ALIGNMENT", "{fascist_alignment}"],
+                ["ENTITLEMENT", "{entitlement}"],
+                ["SOLIDARITY", "{solidarity}"],
+                ["REGIME", "{regime}"],
+            ],
+            "assessment": [
+                "Fascist pull of {fascist_pull} pushed alignment to {fascist_alignment} under entitlement {entitlement} and solidarity {solidarity}.",
+                "Dialectical regime at time of drift: {regime}.",
+            ],
+            "refs": [],
+            "distribution": "\u25ae\u25ae\u25ae\u25ae\u25ae\u25ae \u00b7 NOFORN",
+        },
+        "coverage": ["c", "l", "i"],
+    },
+    "red_brown_coup": {
+        # Org-scoped (see _ORG_SCOPED_SUBJECT_FIELD): {location} below
+        # fills with the affected organization's display name, not a place.
+        "slug": "COUP \u00b7 {location}",
+        "hed": {
+            "c": "Leadership Change Reported at {location}",
+            "l": "{location} FALLS TO THE FASH // RED-BROWN COUP",
+            "i": "ORGANIZATIONAL CAPTURE // {location} // CONFIRMED",
+        },
+        "euphemisms": {
+            "change": {
+                "c": "leadership change",
+                "l": "RED-BROWN COUP",
+                "filter": "ideology",
+                "note": "A fascist capture of a labor organization from within, reframed as routine leadership turnover.",
+            },
+        },
+        "continental": {
+            "kicker": "NATIONAL \u00b7 LABOR",
+            "dek": "Officials note a {euph:change} at {location} amid economic uncertainty.",
+            "byline": "By Continental Staff \u00b7 Breaking",
+            "paragraphs": [
+                [
+                    "{location} \u2014 A {euph:change} was confirmed following a wave of internal defections. The organization's new direction remains unclear.",
+                ],
+            ],
+            "bibliography": [],
+        },
+        "liberated": {
+            "pre": "[ BEGIN TRANSMISSION \u00b7 MAYDAY ]",
+            "post": "[ END TRANSMISSION \u00b7 THE ROT SPREAD FROM WITHIN ]",
+            "paragraphs": [
+                {
+                    "body": [
+                        "{location} IS LOST. THE FASH TOOK IT FROM INSIDE \u2014 NOT A RAID, A ROT. {euph:change}, THEY CALL IT. WE CALL IT WHAT IT IS: BETRAYAL.",
+                    ],
+                    "margin": {
+                        "ref": "FIELD REPORT",
+                        "chunk": "chunk_coup_001",
+                        "note": "defection count confirmed",
+                    },
+                },
+            ],
+        },
+        "intel": {
+            "subj": "ORGANIZATIONAL CAPTURE \u00b7 {location}",
+            "origin": "FIELD STATION",
+            "routing": ["DHS/I&A", "DOJ/NSD"],
+            "caveat": "HANDLE VIA DOMESTIC CHANNELS",
+            "fields": [
+                ["EVENT", "RED-BROWN COUP"],
+                ["ORGANIZATION", "{location}"],
+                ["DEFECTIONS", "{defections}"],
+                ["MEMBERSHIP", "{member_count}"],
+                ["CONFIDENCE", "CONFIRMED"],
+            ],
+            "assessment": [
+                "{defections} of {member_count} Labor Aristocracy members defected in a single crisis tick, exceeding the majority threshold.",
+                "Organizational control has passed to the fascist faction.",
+            ],
+            "refs": [],
+            "distribution": "\u25ae\u25ae\u25ae\u25ae\u25ae\u25ae \u00b7 NOFORN",
+        },
+        "coverage": ["c", "l", "i"],
+    },
 }
 
 
@@ -838,22 +1184,26 @@ def _generic_template(event: dict[str, Any]) -> dict[str, Any]:
 
 
 def _fill_template(text: str, event: dict[str, Any]) -> str:
-    """Fill in {location} and {euph:term} placeholders in template text.
+    """Fill in {location}, {payload_key}, and {euph:term} placeholders.
 
-    For {euph:term} placeholders, we substitute the corporate phrase from
-    the template's euphemism map — the actual euphemism span markup happens
-    at render time in the frontend.
+    {euph:term} placeholders are left for the paragraph-processing functions
+    (the actual euphemism span markup happens at render time in the
+    frontend). {payload_key} placeholders (e.g. {old_consciousness}) pull
+    the real value from the event's data — used by the class-scoped bespoke
+    templates (mass_awakening, fascist_drift) whose intel fields/assessment
+    cite the actual numbers rather than static flavor text.
     """
-    location = _location_from_event(event)
-    return text.replace("{location}", location)
+    filled = text.replace("{location}", _resolve_location(event))
+    for key, value in _event_data_substitutions(event).items():
+        filled = filled.replace("{" + key + "}", value)
+    return filled
 
 
 def _fill_hed(hed_template: dict[str, str], event: dict[str, Any]) -> dict[str, str]:
-    location = _location_from_event(event)
     return {
-        "c": hed_template["c"].replace("{location}", location),
-        "l": hed_template["l"].replace("{location}", location),
-        "i": hed_template["i"].replace("{location}", location),
+        "c": _fill_template(hed_template["c"], event),
+        "l": _fill_template(hed_template["l"], event),
+        "i": _fill_template(hed_template["i"], event),
     }
 
 
@@ -870,7 +1220,7 @@ def _fill_paragraphs(
 
     So we need to parse {euph:term} from the template text and produce runs.
     """
-    location = _location_from_event(event)
+    location = _resolve_location(event)
     euphemisms = template.get("euphemisms", {})
     result: list[list[dict[str, Any]]] = []
 
@@ -908,7 +1258,7 @@ def _fill_liberated_paragraphs(
     paragraphs: list[Any], event: dict[str, Any], template: dict[str, Any]
 ) -> list[dict[str, Any]]:
     """Process liberated-style paragraphs (with body/margin structure)."""
-    location = _location_from_event(event)
+    location = _resolve_location(event)
     euphemisms = template.get("euphemisms", {})
     result: list[dict[str, Any]] = []
 
@@ -947,8 +1297,7 @@ def _fill_liberated_paragraphs(
 
 
 def _fill_intel_fields(fields: list[Any], event: dict[str, Any]) -> list[list[Any]]:
-    location = _location_from_event(event)
-    return [[k, v.replace("{location}", location) if isinstance(v, str) else v] for k, v in fields]
+    return [[k, _fill_template(v, event) if isinstance(v, str) else v] for k, v in fields]
 
 
 def _fill_intel(intel_template: dict[str, Any], event: dict[str, Any]) -> dict[str, Any]:
@@ -968,7 +1317,7 @@ def _fill_intel(intel_template: dict[str, Any], event: dict[str, Any]) -> dict[s
 
 
 def _build_index_entry(event: dict[str, Any], template: dict[str, Any]) -> dict[str, Any]:
-    location = _location_from_event(event)
+    location = _resolve_location(event)
     slug = template["slug"].replace("{location}", location.upper())
     hed = _fill_hed(template["hed"], event)
     severity_raw = event.get("severity", "informational")
@@ -985,7 +1334,7 @@ def _build_index_entry(event: dict[str, Any], template: dict[str, Any]) -> dict[
 
 
 def _build_story(event: dict[str, Any], template: dict[str, Any]) -> dict[str, Any]:
-    location = _location_from_event(event)
+    location = _resolve_location(event)
     continental = template["continental"]
     liberated = template["liberated"]
     intel_template = template["intel"]
@@ -1123,6 +1472,25 @@ class DeterministicNarrator:
         # Deep-copy inputs to prevent any mutation
         events_copy = [dict(e) for e in events]
         meta_copy = dict(meta)
+
+        # Real per-scenario class names from the bridge (meta["class_names"]).
+        # Stamped onto each event copy as a private key so the module-level
+        # fill helpers can resolve class ids without a signature cascade;
+        # _build_meta allowlists output keys, so the channel never leaks
+        # into the wire.yaml contract.
+        class_names = meta_copy.get("class_names")
+        if isinstance(class_names, dict):
+            for event in events_copy:
+                event["_class_names"] = class_names
+
+        # Real per-scenario org names from the bridge (meta["org_names"]),
+        # AW3-R1 — mirrors the class_names channel above for org-scoped
+        # events (RED_BROWN_COUP). _build_meta allowlists output keys, so
+        # this channel never leaks into the wire.yaml contract either.
+        org_names = meta_copy.get("org_names")
+        if isinstance(org_names, dict):
+            for event in events_copy:
+                event["_org_names"] = org_names
 
         # Build index entries
         index_entries: list[dict[str, Any]] = []

@@ -11,10 +11,16 @@ local models (Ollama). Cloud APIs are transitional tools.
 import os
 from typing import Final
 
+# NOTE: this is the canonical sentence-transformers REFERENCE model (Spec 061
+# FR-001 dimension-parity pin), NOT the runtime default embedder. The runtime
+# default is Ollama `embeddinggemma:latest` (see EMBEDDING_MODEL below,
+# LLM_EMBEDDING_PROVIDER=ollama) — it independently produces 768-dim vectors,
+# which is why it matches CANONICAL_EMBEDDING_DIM without being this model.
 CANONICAL_EMBEDDING_MODEL_ID: Final[str] = "sentence-transformers/all-mpnet-base-v2"
 CANONICAL_EMBEDDING_DIM: Final[int] = 768
 # Spec 061 T120: pinned to a specific HuggingFace commit SHA per
 # Constitution III.6. Captured 2026-05-12 via HfApi().model_info().sha.
+# (Pins the reference model above, not the Ollama runtime default.)
 CANONICAL_EMBEDDING_REVISION: Final[str] = "e8c3b32edf5434bc2275fc9bab85f82640a19130"
 
 
@@ -52,6 +58,30 @@ class LLMConfig:
     # === Batch Processing ===
     BATCH_SIZE: Final[int] = int(os.getenv("LLM_BATCH_SIZE", "8"))
     REQUEST_TIMEOUT: Final[float] = float(os.getenv("LLM_REQUEST_TIMEOUT", "30.0"))
+
+    # === Provider selection (program-20): deepseek | workers_ai | mock ===
+    PROVIDER: Final[str] = os.getenv("LLM_PROVIDER", "deepseek")
+
+    # === Cloudflare Workers AI via AI Gateway (Program 07 Decision 3) ===
+    WORKERS_AI_ACCOUNT_ID: Final[str] = os.getenv("WORKERS_AI_ACCOUNT_ID", "")
+    WORKERS_AI_TOKEN: Final[str] = os.getenv("WORKERS_AI_TOKEN", "")
+    WORKERS_AI_MODEL: Final[str] = os.getenv("WORKERS_AI_MODEL", "@cf/openai/gpt-oss-20b")
+    WORKERS_AI_GATEWAY_ID: Final[str] = os.getenv("WORKERS_AI_GATEWAY_ID", "babylon-narrator")
+    WORKERS_AI_TIMEOUT: Final[float] = float(os.getenv("WORKERS_AI_TIMEOUT", "15.0"))
+
+    @classmethod
+    def is_workers_ai(cls) -> bool:
+        """True when the selected chat provider is Cloudflare Workers AI."""
+        return cls.PROVIDER.lower() == "workers_ai"
+
+    @classmethod
+    def workers_ai_base_url(cls) -> str:
+        """OpenAI-compatible chat base URL through the AI Gateway (loud when unconfigured)."""
+        if not cls.WORKERS_AI_ACCOUNT_ID:
+            raise ValueError(
+                "WORKERS_AI_ACCOUNT_ID not configured — required for LLM_PROVIDER=workers_ai."
+            )
+        return f"https://api.cloudflare.com/client/v4/accounts/{cls.WORKERS_AI_ACCOUNT_ID}/ai/v1"
 
     @classmethod
     def is_configured(cls) -> bool:

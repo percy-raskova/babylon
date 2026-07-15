@@ -20,6 +20,10 @@
  * territory" (the latter already replaces the stack via
  * `mapSlice.setSelection`), so a naive outside-click handler would race
  * against that fan-out. Escape is the one Dismiss affordance for now.
+ *
+ * `gameId` (Wave 2 W2.5a): forwarded to `InspectionCard` so it can feed
+ * `SurvivalDuelPanel`'s own history fetch for a resolved `social_class`
+ * frame — previously accepted here but never used past this component.
  */
 
 import { useEffect } from "react";
@@ -34,7 +38,7 @@ interface InspectionStackProps {
   gameId: string;
 }
 
-export function InspectionStack(_props: InspectionStackProps): React.JSX.Element | null {
+export function InspectionStack({ gameId }: InspectionStackProps): React.JSX.Element | null {
   const stack = useStore((s) => s.inspect.stack);
   const push = useStore((s) => s.inspect.push);
   const pop = useStore((s) => s.inspect.pop);
@@ -119,6 +123,7 @@ export function InspectionStack(_props: InspectionStackProps): React.JSX.Element
             canDrill={!atDepthLimit}
             onDrill={push}
             onTogglePin={() => togglePin(stack.length - 1)}
+            gameId={gameId}
           />
         </div>
       </FloatingPanel>

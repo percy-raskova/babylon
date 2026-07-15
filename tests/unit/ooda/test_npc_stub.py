@@ -8,6 +8,7 @@ from __future__ import annotations
 from babylon.config.defines import OODADefines
 from babylon.models.enums import ActionType, OrgType
 from babylon.ooda.npc_stub import select_npc_actions
+from babylon.topology.graph import BabylonGraph
 
 
 class TestNPCPrioritySelection:
@@ -140,3 +141,158 @@ class TestAPConstraints:
         )
         total_cost = sum(a.action_point_cost for a in actions)
         assert total_cost <= 3
+
+
+class TestStateAIDispatchGate:
+    """Feature 039: ``faction_balance`` gates RuleBasedStateAI dispatch.
+
+    Sibling to ``TestNPCPrioritySelection.test_state_apparatus_priorities``
+    (no ``faction_balance`` -> legacy priority queue, asserted there) —
+    this class asserts the OTHER branch: ``faction_balance`` present ->
+    RuleBasedStateAI. Until wayne_county seeded this attribute
+    (``babylon.engine.scenarios._legacy_wayne._create_state_apparatus_org``),
+    no scenario ever set it, so this branch had never once executed.
+    """
+
+    def test_faction_balance_present_dispatches_to_state_ai(self) -> None:
+        defines = OODADefines()
+        actions = select_npc_actions(
+            org_id="detroit_pd",
+            org_attrs={
+                "org_type": OrgType.STATE_APPARATUS.value,
+                "heat": 0.3,
+                "faction_balance": {
+                    "finance_capital": 0.2,
+                    "security_state": 0.6,
+                    "settler_populist": 0.2,
+                    "stability": 0.5,
+                    "legitimacy": 0.5,
+                },
+                "rng_seed": 0,
+            },
+            target_id="community_1",
+            defines=defines,
+        )
+        # Only RuleBasedStateAI's legacy-compat wrapper sets budget_cost;
+        # the static priority queue never touches that field (stays at the
+        # Action model default of 0.0).
+        assert len(actions) == 1
+        assert actions[0].budget_cost > 0.0
+
+    def test_faction_balance_absent_falls_through_to_legacy(self) -> None:
+        """Control: identical org_type, no faction_balance -> legacy path."""
+        defines = OODADefines()
+        actions = select_npc_actions(
+            org_id="detroit_pd",
+            org_attrs={
+                "org_type": OrgType.STATE_APPARATUS.value,
+                "heat": 0.3,
+                "ooda_profile": {"action_points": 10},
+            },
+            target_id="community_1",
+            defines=defines,
+        )
+        assert len(actions) > 0
+        assert all(a.budget_cost == 0.0 for a in actions)
+
+    def test_with_graph_targets_real_threat_not_self(self) -> None:
+        """Task #73: when a graph is supplied, RuleBasedStateAI dispatch
+        discovers a real target instead of self-targeting. Sibling to
+        ``test_faction_balance_present_dispatches_to_state_ai`` (same
+        setup, no graph) -- proves the graph-wired path actually changes
+        the outcome rather than being dead plumbing."""
+        graph = BabylonGraph()
+        graph.add_node(
+            "detroit_pd",
+            "organization",
+            org_type=OrgType.STATE_APPARATUS.value,
+            heat=0.3,
+        )
+        graph.add_node(
+            "org_player",
+            "organization",
+            org_type=OrgType.CIVIL_SOCIETY.value,
+            heat=0.6,
+        )
+
+        defines = OODADefines()
+        actions = select_npc_actions(
+            org_id="detroit_pd",
+            org_attrs={
+                "org_type": OrgType.STATE_APPARATUS.value,
+                "heat": 0.3,
+                "faction_balance": {
+                    "finance_capital": 0.2,
+                    "security_state": 0.6,
+                    "settler_populist": 0.2,
+                    "stability": 0.5,
+                    "legitimacy": 0.5,
+                },
+                "rng_seed": 0,
+            },
+            target_id="community_1",
+            defines=defines,
+            graph=graph,
+        )
+
+        assert len(actions) == 1
+        assert actions[0].target_id == "org_player"
+        assert actions[0].target_id != "detroit_pd"
+
+    def test_with_graph_no_visible_threat_is_honest_no_op(self) -> None:
+        """Task #73: zero eligible (non-state) candidates -> no actions at
+        all -- never a self-targeting fallback."""
+        graph = BabylonGraph()
+        graph.add_node(
+            "detroit_pd",
+            "organization",
+            org_type=OrgType.STATE_APPARATUS.value,
+            heat=0.3,
+        )
+        graph.add_node(
+            "org_player",
+            "organization",
+            org_type=OrgType.CIVIL_SOCIETY.value,
+            heat=0.0,
+        )
+
+        defines = OODADefines()
+        actions = select_npc_actions(
+            org_id="detroit_pd",
+            org_attrs={
+                "org_type": OrgType.STATE_APPARATUS.value,
+                "heat": 0.3,
+                "faction_balance": {
+                    "finance_capital": 0.2,
+                    "security_state": 0.6,
+                    "settler_populist": 0.2,
+                    "stability": 0.5,
+                    "legitimacy": 0.5,
+                },
+                "rng_seed": 0,
+            },
+            target_id="community_1",
+            defines=defines,
+            graph=graph,
+        )
+
+        assert actions == []
+
+    def test_invalid_faction_balance_falls_through_to_legacy(self) -> None:
+        """A malformed faction_balance (wrong type) logs a warning and falls
+        through rather than crashing — asserted directly since it's the
+        third branch of ``_try_state_ai_dispatch``'s isinstance check."""
+        defines = OODADefines()
+        actions = select_npc_actions(
+            org_id="detroit_pd",
+            org_attrs={
+                "org_type": OrgType.STATE_APPARATUS.value,
+                "heat": 0.3,
+                "faction_balance": "not-a-faction-balance",
+                "ooda_profile": {"action_points": 10},
+            },
+            target_id="community_1",
+            defines=defines,
+        )
+        assert len(actions) > 0
+        assert all(a.budget_cost == 0.0 for a in actions)

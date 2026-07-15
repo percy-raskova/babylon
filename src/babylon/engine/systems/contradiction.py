@@ -38,7 +38,7 @@ from __future__ import annotations
 from typing import TYPE_CHECKING, Any, ClassVar
 
 from babylon.domain.dialectics.core.coupling import StanceIntervention, apply_interventions
-from babylon.domain.dialectics.core.opposition import OppositionState
+from babylon.domain.dialectics.core.opposition import OppositionState, PoleReading
 from babylon.domain.dialectics.core.regime import classify_regime
 from babylon.domain.dialectics.instances.catalog import GraphInputs
 from babylon.domain.dialectics.instances.levels import level_index_for, spatial_lattice_for_counties
@@ -49,6 +49,7 @@ from babylon.kernel.system_base import SystemBase
 from babylon.kernel.system_protocol import ContextType
 from babylon.models.entities.contradiction import Contradiction, ContradictionFrame
 from babylon.models.enums import ContradictionType, EdgeMode, EdgeType, EventType
+from babylon.sentinels.partition.registry import cell_name
 
 if TYPE_CHECKING:
     from babylon.domain.dialectics.core.opposition import OppositionRegistry, OppositionSpec
@@ -69,6 +70,26 @@ _COUNTY_LEVEL_INDEX = 1
 #: tick. Written by verb/OODA systems (spec-071), read + CLEARED here
 #: (consumed-once). No producer writes it yet; unit tests set it directly.
 OPPOSITION_INTERVENTIONS_ATTR = "opposition_interventions"
+
+#: Graph attribute holding the per-node pole channel (Program 19, ADR070):
+#: ``{opposition_key: {entity_id: PoleReading.model_dump()}}`` — this tick's
+#: snapshot AND next tick's tie-inertia source, on the same cross-tick
+#: channel as ``opposition_states``.
+POLE_READINGS_ATTR = "pole_readings"
+
+#: The two principal axes whose sigma is written per node (Phase 1 shadow).
+#: ``imperial`` stays in the graph-attr channel only — its Phase-1 proxy
+#: sigma is identical to ``wage``'s by construction (the D5 shared defect).
+_SIGMA_NODE_ATTRS: dict[str, str] = {
+    "capital_labor": "sigma_capital_labor",
+    "wage": "sigma_wage",
+}
+
+#: The derived-cell vocabulary is NOT defined here: writer and sentinel share
+#: ONE source of truth — :mod:`babylon.sentinels.partition.registry` (layer
+#: 0.5, importable from the engine) — so the cell strings cannot drift from
+#: the sentinel's declared crosswalk. Cells are NOT SocialRole names; the
+#: crosswalk to seeded roles is the sentinel's EVIDENCE, never an input here.
 
 #: Below this rent_level a TENANCY edge carries no contradiction (rent-free).
 _RENT_EPSILON = 1e-9
@@ -161,6 +182,7 @@ class ContradictionSystem(SystemBase):
         graph.set_graph_attr(
             OPPOSITION_STATES_ATTR, {state.key: state.model_dump() for state in states}
         )
+        self._step_pole_channel(graph, registry, inputs)
 
     @staticmethod
     def _apply_interventions(
@@ -182,31 +204,40 @@ class ContradictionSystem(SystemBase):
         return {key: OppositionState(**value) for key, value in raw.items()}
 
     def _build_graph_inputs(self, graph: GraphProtocol) -> GraphInputs:
-        """Pre-extract the per-tick views the catalog measures read."""
+        """Pre-extract the per-tick views the catalog measures read.
+
+        The ``*_id_pairs`` twins (ADR070) are built in the SAME loops as the
+        float pairs — identical skip rules, zero extra graph traversal —
+        feeding the per-node pole measures.
+        """
         exploitation: list[tuple[float, float]] = []
+        exploitation_ids: list[tuple[str, str, float, float]] = []
         for edge in graph.query_edges(edge_type=EdgeType.EXPLOITATION):
             pair = self._edge_wealths(graph, edge.source_id, edge.target_id)
             if pair is not None:  # (labor=source=A, capital=target=B)
                 exploitation.append(pair)
+                exploitation_ids.append((edge.source_id, edge.target_id, *pair))
 
         tenancy: list[tuple[float, float]] = []
+        tenancy_ids: list[tuple[str, str, float, float]] = []
         for edge in graph.query_edges(edge_type=EdgeType.TENANCY):
             src = graph.get_node(edge.source_id)
             tgt = graph.get_node(edge.target_id)
             if src is None or tgt is None:
                 continue
-            tenancy.append(
-                (
-                    float(src.attributes.get("wealth", 0.0)),
-                    float(tgt.attributes.get("rent_level", 0.0)),
-                )
+            pair = (
+                float(src.attributes.get("wealth", 0.0)),
+                float(tgt.attributes.get("rent_level", 0.0)),
             )
+            tenancy.append(pair)
+            tenancy_ids.append((edge.source_id, edge.target_id, *pair))
 
         # Phase D4: one (w_paid, v_produced) pair per paid worker class node.
         # Only the wages phase writes both attrs (on classes it actually paid),
         # so presence-of-both selects exactly those nodes without a node-type
         # filter; skip inactive nodes as the edge extractors do.
         wage_value: list[tuple[float, float]] = []
+        wage_value_ids: list[tuple[str, float, float]] = []
         for node in graph.query_nodes():
             attrs = node.attributes
             if not attrs.get("active", True):
@@ -214,12 +245,16 @@ class ContradictionSystem(SystemBase):
             if "w_paid" not in attrs or "v_produced" not in attrs:
                 continue
             wage_value.append((float(attrs["w_paid"]), float(attrs["v_produced"])))
+            wage_value_ids.append((node.id, float(attrs["w_paid"]), float(attrs["v_produced"])))
 
         return GraphInputs(
             exploitation_pairs=tuple(exploitation),
             wage_value_pairs=tuple(wage_value),
             tenancy_pairs=tuple(tenancy),
             solidarity_subgraph=extract_solidarity_subgraph(graph),
+            exploitation_id_pairs=tuple(exploitation_ids),
+            wage_value_id_pairs=tuple(wage_value_ids),
+            tenancy_id_pairs=tuple(tenancy_ids),
         )
 
     @staticmethod
@@ -237,6 +272,89 @@ class ContradictionSystem(SystemBase):
             float(src.attributes.get("wealth", 0.0)),
             float(tgt.attributes.get("wealth", 0.0)),
         )
+
+    # ------------------------------------------------------------------
+    # 2b. Per-node pole channel — the shadow partition (Program 19, ADR070)
+    # ------------------------------------------------------------------
+
+    def _step_pole_channel(
+        self,
+        graph: GraphProtocol,
+        registry: OppositionRegistry[GraphInputs],
+        inputs: GraphInputs,
+    ) -> None:
+        """Derive, stash, and shadow-write the per-node pole channel.
+
+        Phase 1 is SHADOW ONLY: nothing in the pipeline adjudicates on these
+        attrs — they exist so the seeded-vs-derived disagreement becomes
+        measurable (the partition sentinel reads them). Reuses the tick's
+        ``inputs`` snapshot (no second graph traversal); last tick's readings
+        come from :data:`POLE_READINGS_ATTR` for the σ=0 tie inertia.
+        """
+        previous = self._read_previous_poles(graph)
+        readings = registry.read_poles(inputs, previous)
+        self._write_pole_shadow(graph, readings, previous)
+        stash: dict[str, dict[str, dict[str, Any]]] = {}
+        for reading in readings:
+            stash.setdefault(reading.opposition_key, {})[reading.entity_id] = reading.model_dump()
+        graph.set_graph_attr(POLE_READINGS_ATTR, stash)
+
+    @staticmethod
+    def _read_previous_poles(graph: GraphProtocol) -> dict[tuple[str, str], PoleReading]:
+        """Reconstruct last tick's readings from :data:`POLE_READINGS_ATTR`."""
+        raw: dict[str, dict[str, dict[str, Any]]] = (
+            graph.get_graph_attr(POLE_READINGS_ATTR, {}) or {}
+        )
+        return {
+            (key, entity_id): PoleReading(**dump)
+            for key, per_entity in raw.items()
+            for entity_id, dump in per_entity.items()
+        }
+
+    @staticmethod
+    def _write_pole_shadow(
+        graph: GraphProtocol,
+        readings: tuple[PoleReading, ...],
+        previous: dict[tuple[str, str], PoleReading],
+    ) -> None:
+        """Write ``sigma_*`` per positioned node; the cell needs BOTH axes.
+
+        A node with no participation on an axis is left untouched — absence
+        over fabrication (Constitution III.11). A node that LOSES an axis it
+        held last tick gets an honest ``None`` (never a stale sigma), and
+        loses its cell the same way. Node ids are iterated sorted (the
+        readings are already sorted; the union with previously-written ids
+        re-sorts defensively).
+        """
+        current: dict[str, dict[str, PoleReading]] = {}
+        for reading in readings:
+            if reading.opposition_key in _SIGMA_NODE_ATTRS:
+                current.setdefault(reading.entity_id, {})[reading.opposition_key] = reading
+
+        previously_written = {entity_id for key, entity_id in previous if key in _SIGMA_NODE_ATTRS}
+
+        for entity_id in sorted(current.keys() | previously_written):
+            if graph.get_node(entity_id) is None:
+                continue
+            axes = current.get(entity_id, {})
+            updates: dict[str, Any] = {}
+            for key, attr in _SIGMA_NODE_ATTRS.items():
+                axis_reading = axes.get(key)
+                if axis_reading is not None:
+                    updates[attr] = axis_reading.sigma
+                elif (key, entity_id) in previous:
+                    updates[attr] = None  # de-positioned: honest null, not stale
+            had_cell = ("capital_labor", entity_id) in previous and (
+                "wage",
+                entity_id,
+            ) in previous
+            cell = cell_name({key: reading.side for key, reading in axes.items()})
+            if cell is not None:
+                updates["derived_class_cell"] = cell
+            elif had_cell:
+                updates["derived_class_cell"] = None
+            if updates:
+                graph.update_node(entity_id, **updates)
 
     def _write_frames(
         self,

@@ -16,14 +16,29 @@ import {
   STANCE_COLOR,
   SOCIAL_ROLE_COLOR,
   SOCIAL_ROLE_LABELS,
+  TERRITORY_TYPE_COLOR,
+  TERRITORY_TYPE_LABELS,
+  VISION_STATE_COLOR,
+  VISION_STATE_LABELS,
   type BalkanizationBlock,
 } from "@/components/map/mapLensLayers";
-import { DATA_RAMPS, rampForLayer, type RGBAColor } from "@/theme/colors";
+import { DATA_RAMPS, FIELD_FLOW_COLOR, rampForLayer, type RGBAColor } from "@/theme/colors";
 import type { LensGroupId } from "./groups";
 
+/**
+ * `vector` (Wave 3 §11's gradient-wind addition — the first non-ramp,
+ * non-categorical legend kind): direction + magnitude render as flow
+ * GEOMETRY (width/opacity), not a color scale or a discrete swatch list, so
+ * neither `ramp` nor `categorical` honestly describes the encoding.
+ * `color` is the wind's one fixed hue (weather-grammar law 1: hue stays
+ * subordinate — the SAME triple `fieldFlow.ts`'s layers actually render,
+ * `theme/colors.ts`'s `FIELD_FLOW_COLOR`, never a second duplicated value);
+ * `description` is the direction/width key `MapLegend.tsx` renders verbatim.
+ */
 export type LensLegend =
   | { kind: "ramp"; stops: string[] }
   | { kind: "categorical"; entries: { label: string; color: RGBAColor }[] }
+  | { kind: "vector"; color: RGBAColor; description: string }
   | { kind: "none" };
 
 /**
@@ -86,6 +101,51 @@ const CLASS_COMPOSITION_LEGEND: LensLegend = {
 };
 
 /**
+ * Wave 2 Round 2's `territory_type` categorical legend — one entry per real
+ * `TerritoryType` enum value, built from the SAME `TERRITORY_TYPE_COLOR`/
+ * `TERRITORY_TYPE_LABELS` palette `mapLensLayers.ts`'s hex-native and
+ * `regionFill.ts`'s aggregated fills both read — one source of truth, no
+ * duplicated color table (mirrors `CLASS_COMPOSITION_LEGEND` above).
+ */
+const TERRITORY_TYPE_LEGEND: LensLegend = {
+  kind: "categorical",
+  entries: Object.entries(TERRITORY_TYPE_LABELS).map(([type, label]) => ({
+    label,
+    color: TERRITORY_TYPE_COLOR[type] ?? [58, 53, 48, 160],
+  })),
+};
+
+/**
+ * Wave 5's `vision_state` categorical legend — one entry per corpus
+ * vision state (desert/mud/water), built from the SAME
+ * `VISION_STATE_COLOR`/`VISION_STATE_LABELS` palette `mapLensLayers.ts`'s
+ * hex-native and `regionFill.ts`'s aggregated fills both read — one source
+ * of truth, no duplicated color table (mirrors `TERRITORY_TYPE_LEGEND`).
+ */
+const VISION_STATE_LEGEND: LensLegend = {
+  kind: "categorical",
+  entries: Object.entries(VISION_STATE_LABELS).map(([state, label]) => ({
+    label,
+    color: VISION_STATE_COLOR[state] ?? [58, 53, 48, 160],
+  })),
+};
+
+/** Fixed legend swatch alpha for the vector lens (matches the ramp swatches' `RAMP_ALPHA`-adjacent legibility). */
+const FIELD_FLOW_LEGEND_ALPHA = 220;
+
+/**
+ * `field_flow_exploitation`'s vector legend (Wave 3 §11). `color` reuses
+ * `theme/colors.ts`'s `FIELD_FLOW_COLOR` — the exact hue `fieldFlow.ts`
+ * renders the wind in — so the legend swatch never drifts from the map.
+ */
+const FIELD_FLOW_EXPLOITATION_LEGEND: LensLegend = {
+  kind: "vector",
+  color: [FIELD_FLOW_COLOR[0], FIELD_FLOW_COLOR[1], FIELD_FLOW_COLOR[2], FIELD_FLOW_LEGEND_ALPHA],
+  description:
+    "Width/opacity grade |Δexploitation|; arrow marks the value-transfer direction (source→target when the gradient is positive, reversed when negative).",
+};
+
+/**
  * The lens roster — DESIGN_BIBLE.md §3.2's table, filtered to lenses backed
  * by real data today (the "if a metric backs it" starred entries — wage
  * hierarchy, control ratio — are omitted rather than registered
@@ -112,6 +172,30 @@ export const LENS_REGISTRY: readonly MapLensDef[] = [
     toLens: () => ({ kind: "metric", metric: "exploitation_rate" }),
     availableWhen: hasMetric("exploitation_rate"),
   },
+  {
+    id: "throughput_position",
+    group: "extraction",
+    label: "Throughput Position",
+    tooltip:
+      "Circulation intensity — county's supply-chain throughput vs. the national baseline (Pi = τ_through / τ_national)",
+    legend: { kind: "ramp", stops: DATA_RAMPS.wealth },
+    toLens: () => ({ kind: "metric", metric: "throughput_position" }),
+    availableWhen: hasMetric("throughput_position"),
+  },
+  {
+    // Feature 021 (System #5 ReserveArmySystem). Extraction group: the
+    // Reserve Army's wage discipline is a labor-market/wage-hierarchy
+    // dynamic, the same family as exploitation_rate above — a rising
+    // reserve_ratio disciplines median_wage downward via a bounded sigmoid.
+    id: "wage_pressure",
+    group: "extraction",
+    label: "Wage Pressure",
+    tooltip:
+      "Reserve Army wage discipline — bounded-sigmoid downward pressure on median_wage as reserve_ratio rises",
+    legend: { kind: "ramp", stops: DATA_RAMPS.wage_pressure },
+    toLens: () => ({ kind: "metric", metric: "wage_pressure" }),
+    availableWhen: hasMetric("wage_pressure"),
+  },
   // --- Struggle ------------------------------------------------------------
   {
     id: "heat",
@@ -130,6 +214,86 @@ export const LENS_REGISTRY: readonly MapLensDef[] = [
     legend: { kind: "ramp", stops: DATA_RAMPS.solidarity },
     toLens: () => ({ kind: "metric", metric: "solidarity_index" }),
     availableWhen: hasMetric("solidarity_index"),
+  },
+  {
+    // Audit Wave 4 straggler (task #76, reports/epochs-vision-gap-audit.md
+    // "critical-nodes/centrality map lens" / "Topology legibility"). Placed
+    // next to solidarity_index — both are network-topology-derived
+    // (SOLIDARITY-edge density vs. org-network degree-centrality), distinct
+    // from agitation's per-class ideological scalar.
+    id: "centrality",
+    group: "struggle",
+    label: "Centrality",
+    tooltip:
+      "Structurally-critical territories — degree-centrality within the org-network topology (organizations/institutions linked by PRESENCE/HOUSES)",
+    legend: { kind: "ramp", stops: DATA_RAMPS.population },
+    toLens: () => ({ kind: "metric", metric: "centrality" }),
+    availableWhen: hasMetric("centrality"),
+  },
+  {
+    id: "agitation",
+    group: "struggle",
+    label: "Agitation",
+    tooltip:
+      "Accumulated political energy — routes to fascism or revolution depending on solidarity (legitimately 0 absent a crisis tick)",
+    legend: { kind: "ramp", stops: DATA_RAMPS.consciousness },
+    toLens: () => ({ kind: "metric", metric: "agitation" }),
+    availableWhen: hasMetric("agitation"),
+  },
+  {
+    // Wave 5 receptivity pair (Epistemic Horizon Phase 1 honest display).
+    // Struggle group, not reproduction: M_r reads the mass-line
+    // RELATIONSHIP — desperation (P(S|A), Survival) x class consciousness x
+    // class factor over the SAME TENANCY-linked class state agitation and
+    // solidarity already read — class-struggle intelligence, "you know what
+    // the masses tell you". Reproduction is the metabolic/ecological group
+    // (habitability); receptivity has no metabolic content. Placed adjacent
+    // to agitation (its nearest input cousin), before the vector lens.
+    id: "mass_receptivity",
+    group: "struggle",
+    label: "Mass Receptivity",
+    tooltip:
+      "The masses' willingness to be your eyes — M_r = desperation × consciousness × class factor (Epistemic Horizon; honest display, no masking)",
+    legend: { kind: "ramp", stops: DATA_RAMPS.receptivity },
+    toLens: () => ({ kind: "metric", metric: "mass_receptivity" }),
+    availableWhen: hasMetric("mass_receptivity"),
+  },
+  {
+    // Wave 5 receptivity pair, categorical half — same struggle-group
+    // reasoning as mass_receptivity above (it IS mass_receptivity, cut at
+    // the corpus's own thresholds). "Fish in water": Water = the masses
+    // are your eyes; Mud = partial information; Desert = blind and exposed.
+    id: "vision_state",
+    group: "struggle",
+    label: "Vision State",
+    tooltip:
+      "Fish-in-water partition — Water: the masses are your eyes; Mud: partial information; Desert: you are blind and exposed",
+    legend: VISION_STATE_LEGEND,
+    toLens: () => ({ kind: "vision_state" }),
+    availableWhen: hasMetric("vision_state"),
+  },
+  {
+    // Wave 3 §11's "gradient wind" — the first VECTOR lens kind. Struggle
+    // (not Extraction) group: the System-19/20 contradiction-field stack
+    // (exploitation/atomization) directly FEEDS StruggleSystem/Consciousness
+    // downstream — the same class-struggle-intensity family heat/
+    // solidarity_index/agitation already occupy — rather than Extraction,
+    // which reads material-throughput rates (profit_rate/imperial_rent),
+    // not contradiction-field dynamics. Sourced from GET /field_state/, not
+    // the /map/ payload every other lens reads — so `availableWhen` can't
+    // gate on `available_metrics` (that array never advertises field_state
+    // fields); the honest-empty degradation lives at render time instead
+    // (DeckGLMap's "— no data" legend suffix when the tick's edges are
+    // empty), matching how political lenses degrade (registry never hides
+    // them; NO_DATA fill + a legend suffix carries the signal).
+    id: "field_flow_exploitation",
+    group: "struggle",
+    label: "Gradient Wind · Exploitation",
+    tooltip:
+      "Contradiction-field gradient wind — direction + magnitude of exploitation-field transfer between classes (System 19/20)",
+    legend: FIELD_FLOW_EXPLOITATION_LEGEND,
+    toLens: () => ({ kind: "field_flow", field: "exploitation" }),
+    availableWhen: alwaysAvailable,
   },
   // --- Political -------------------------------------------------------
   {
@@ -168,6 +332,16 @@ export const LENS_REGISTRY: readonly MapLensDef[] = [
     toLens: () => ({ kind: "class_composition" }),
     availableWhen: hasMetric("dominant_class"),
   },
+  {
+    id: "territory_type",
+    group: "political",
+    label: "Territory Type",
+    tooltip:
+      "Settler-colonial territorial classification — Core/Periphery/Reservation/Penal Colony/Concentration Camp",
+    legend: TERRITORY_TYPE_LEGEND,
+    toLens: () => ({ kind: "territory_type" }),
+    availableWhen: hasMetric("territory_type"),
+  },
   // --- Reproduction ----------------------------------------------------
   {
     id: "habitability",
@@ -177,6 +351,20 @@ export const LENS_REGISTRY: readonly MapLensDef[] = [
     legend: { kind: "ramp", stops: DATA_RAMPS.biocapacity },
     toLens: () => ({ kind: "habitability" }),
     availableWhen: alwaysAvailable,
+  },
+  {
+    // Feature 021 (System #10 DispossessionEventSystem). Reproduction
+    // group, next to habitability — eviction/foreclosure is the material
+    // condition of social reproduction under direct threat, the housing-
+    // sphere counterpart to habitability's ecological one.
+    id: "dispossession_intensity",
+    group: "reproduction",
+    label: "Dispossession Intensity",
+    tooltip:
+      "Composite carceral/eviction intensity — weighted foreclosure/eviction/displacement/tax-sale/eminent-domain blend",
+    legend: { kind: "ramp", stops: DATA_RAMPS.dispossession },
+    toLens: () => ({ kind: "metric", metric: "dispossession_intensity" }),
+    availableWhen: hasMetric("dispossession_intensity"),
   },
 ];
 

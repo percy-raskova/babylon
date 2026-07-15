@@ -19,6 +19,15 @@ import {
   makeEndgameState,
   makeObjectivesTracker,
   makeTradeFlowsPayload,
+  makeJournalPayload,
+  makeClassHistoryPayload,
+  makeEdgeHistoryPayload,
+  makeFieldStatePayload,
+  makeMapHistoryPayload,
+  makeOrgNetworkPayload,
+  makeStateApparatusDashboard,
+  makeEdgesDashboard,
+  makeDoctrineTreePayload,
 } from "./fixtures";
 import type { GameSnapshot } from "@/types/game";
 
@@ -183,13 +192,47 @@ export const handlers = [
         wage_flow_total: 30,
         tribute_flow_total: 5,
         wealth_by_class_role: { proletariat: 40, bourgeoisie: 60 },
+        county_flow: { year: null, phi_accrued_this_year: null, wage_accrued_this_year: null },
       },
     });
+  }),
+
+  // Cross-tick event history (spec-092) — not a docked panel (no
+  // `panels.journal` slice), but EconomyDashboard's crisis timeline
+  // (Wave 2 W2.2a) fetches it directly and filters for
+  // `crisis_phase_transition`. Empty by default; tests that need crisis
+  // rows override with server.use().
+  http.get("/api/games/:id/journal/", () => {
+    logRequest("GET journal");
+    return HttpResponse.json({ status: "ok", data: makeJournalPayload() });
   }),
 
   http.get("/api/games/:id/communities/", () => {
     logRequest("GET communities");
     return HttpResponse.json({ status: "ok", data: { communities: [] } });
+  }),
+
+  // spec-111 C2 — the State Apparatus intelligence screen. Defaults mirror
+  // the real wayne_county contract (Detroit PD seeded, no actions/finances
+  // yet); tests needing a specific payload override with server.use().
+  http.get("/api/games/:id/state-apparatus/", () => {
+    logRequest("GET stateApparatus");
+    return HttpResponse.json({
+      status: "ok",
+      data: makeStateApparatusDashboard({ tick: mockSnapshot.tick }),
+    });
+  }),
+
+  // spec-111 C2 — the Edges/Tension dashboard ("where is the class war
+  // hottest"). Defaults mirror the real wayne_county contract (dense
+  // relationship graph, one seeded SOLIDARITY edge, no edge_mode yet);
+  // tests needing a specific payload override with server.use().
+  http.get("/api/games/:id/edges/", () => {
+    logRequest("GET edges");
+    return HttpResponse.json({
+      status: "ok",
+      data: makeEdgesDashboard({ tick: mockSnapshot.tick }),
+    });
   }),
 
   http.get("/api/games/:id/map/", () => {
@@ -198,6 +241,19 @@ export const handlers = [
       status: "ok",
       data: { type: "FeatureCollection", features: [] },
     });
+  }),
+
+  // Program 17 Wave 3 (Backend-W3R3) — RADAR LOOP's map-history replay
+  // frames. Honest empty-but-well-formed by default (mirrors
+  // `stub_bridge.py::get_map_history`'s `frames: []` — this handler does
+  // NOT emulate the real bridge's 400/422 validation, since the frontend
+  // gates `metric` client-side via `isReplayableLens` before ever fetching;
+  // tests exercising a specific frame set or an error response override
+  // with `server.use()`.
+  http.get("/api/games/:id/map/history/", ({ request }) => {
+    logRequest("GET map:history");
+    const metric = new URL(request.url).searchParams.get("metric") ?? "heat";
+    return HttpResponse.json({ status: "ok", data: makeMapHistoryPayload({ metric }) });
   }),
 
   // Spec-113 Lane Carto's cartographic substrate (`lib/geo/topology.ts`) —
@@ -244,9 +300,33 @@ export const handlers = [
     return HttpResponse.json({ status: "ok", data: makeObjectivesTracker() });
   }),
 
+  // Program 19/20 Wave 3 R2a — honest empty-but-well-formed by default
+  // (mirrors the stub bridge, `web/game/stub_bridge.py::get_field_state`);
+  // tests needing real nodes/edges override with server.use().
+  http.get("/api/games/:id/field_state/", () => {
+    logRequest("GET field_state");
+    return HttpResponse.json({ status: "ok", data: makeFieldStatePayload() });
+  }),
+
   http.get("/api/games/:id/trade-flows/", () => {
     logRequest("GET trade-flows");
     return HttpResponse.json({ status: "ok", data: makeTradeFlowsPayload() });
+  }),
+
+  // AW4-R2 — the Network takeover's org-network graph. Honest
+  // empty-but-well-formed by default (Constitution III.11: no fabricated
+  // nodes) — tests exercising real rendering override with server.use().
+  http.get("/api/games/:id/orgs/network/", () => {
+    logRequest("GET orgs:network");
+    return HttpResponse.json({ status: "ok", data: makeOrgNetworkPayload() });
+  }),
+
+  // The Doctrine Tree takeover (read-only canvas, Epoch 3 Wave 6 Phase 0) —
+  // static game-data, the real 11-node MVP tree by default (no honest
+  // "empty" state exists for it, unlike the network handler above).
+  http.get("/api/games/:id/doctrine-tree/", () => {
+    logRequest("GET doctrine-tree");
+    return HttpResponse.json({ status: "ok", data: makeDoctrineTreePayload() });
   }),
 
   // ---- Action Composer: verb targets + submit --------------------------
@@ -264,7 +344,50 @@ export const handlers = [
     return HttpResponse.json({ status: "ok", data: null });
   }),
 
+  // Live preview strip (Program 17 Wave 1 item W1.2) — default is an honest
+  // all-zero/no-warning baseline; tests that care about a specific delta
+  // override with server.use().
+  http.post("/api/games/:id/actions/preview/", () => {
+    logRequest("POST actions:preview");
+    return HttpResponse.json({
+      status: "ok",
+      data: {
+        estimated_consciousness_delta: 0,
+        estimated_heat_delta: 0,
+        action_point_cost: 0,
+        success_probability: 1,
+        affected_territory_ids: [],
+        warnings: [],
+      },
+    });
+  }),
+
   // ---- Inspector drill-downs — GET /api/games/{id}/{kind}/{entityId}/ --
+
+  // Wave 2 W2.5a/W2.5b — GET /api/games/{id}/node/{entityId}/history/: a
+  // class's survival-calculus history (SurvivalDuelPanel's fetch). Registered
+  // ahead of the generic 2-segment catch-all below since this route has an
+  // extra trailing /history/ segment. Empty by default; tests needing real
+  // points/markers override with server.use().
+  http.get("/api/games/:id/node/:entityId/history/", ({ params }) => {
+    logRequest("GET node:history");
+    return HttpResponse.json({
+      status: "ok",
+      data: makeClassHistoryPayload({ class_id: String(params.entityId) }),
+    });
+  }),
+
+  // Audit Wave 4 straggler (task #76) — GET /api/games/{id}/edge/{entityId}/history/:
+  // the edge-weight history sparkline. Registered ahead of the generic
+  // catch-all below for the same reason as node:history above. Empty by
+  // default; tests needing real weight points override with server.use().
+  http.get("/api/games/:id/edge/:entityId/history/", ({ params }) => {
+    logRequest("GET edge:history");
+    return HttpResponse.json({
+      status: "ok",
+      data: makeEdgeHistoryPayload({ edge_id: String(params.entityId) }),
+    });
+  }),
 
   http.get("/api/games/:id/:kind/:entityId/", ({ params }) => {
     logRequest(`GET inspector:${String(params.kind)}`);

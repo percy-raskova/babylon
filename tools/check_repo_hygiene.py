@@ -40,7 +40,6 @@ ALLOWED_TOP_LEVEL_DIRS: frozenset[str] = frozenset(
         ".understand-anything",
         "ai",  # Claude's owned tree: context yamls, decisions/ ADRs, scratch/
         "assets",
-        "deploy",
         "design",
         "docker",
         "docs",
@@ -65,13 +64,13 @@ ALLOWED_TOP_LEVEL_FILES: frozenset[str] = frozenset(
         ".gitattributes",
         ".gitignore",
         ".gitleaks.toml",  # secret-scan policy shared by CI + pre-commit (program 15)
+        ".gitmodules",  # submodule pointer — program 18: src/frontend → babylon-cockpit subrepo
         ".markdownlint.yaml",
         ".markdownlintignore",
         ".mdformat.toml",
         ".mise.toml",
         ".pre-commit-config.yaml",
         ".semgrep.yml",
-        ".tflint.hcl",  # terraform lint config for infra-validate (program 15)
         ".trivyignore",  # curated IaC-scan ignores, every entry evidenced (program 15)
         ".yamllint.yaml",
         "AGENTS.md",

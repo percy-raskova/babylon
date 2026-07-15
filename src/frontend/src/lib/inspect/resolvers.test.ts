@@ -107,4 +107,73 @@ describe("resolveRef", () => {
       "Org not found",
     );
   });
+
+  // Audit Wave 4 straggler (task #76): edge kind fetches its history off a
+  // SECOND endpoint and splices it onto the value_flow row.
+  describe("edge history splicing", () => {
+    it("fetches GET /edge/:id/history/ alongside the edge detail and attaches it to value_flow", async () => {
+      server.use(
+        http.get("/api/games/:id/edge/:entityId/", () =>
+          HttpResponse.json({ status: "ok", data: { value_flow: 2.0 } }),
+        ),
+        http.get("/api/games/:id/edge/:entityId/history/", ({ params }) =>
+          HttpResponse.json({
+            status: "ok",
+            data: {
+              edge_id: String(params.entityId),
+              history: [
+                { tick: 0, weight: 1.0, solidarity: null, tension: 0.0 },
+                { tick: 1, weight: 2.0, solidarity: null, tension: 0.0 },
+              ],
+            },
+          }),
+        ),
+      );
+
+      const node = await resolveRef("game-001", { kind: "edge", id: "C001->C004" });
+
+      const row = node.sections[0]?.rows.find((r) => r.label === "value_flow");
+      expect(row?.history).toEqual([1.0, 2.0]);
+    });
+
+    it("degrades to no sparkline (never a blocking error) when the history fetch itself fails", async () => {
+      server.use(
+        http.get("/api/games/:id/edge/:entityId/", () =>
+          HttpResponse.json({ status: "ok", data: { value_flow: 2.0 } }),
+        ),
+        http.get("/api/games/:id/edge/:entityId/history/", () =>
+          HttpResponse.json({ status: "error", message: "boom" }, { status: 500 }),
+        ),
+      );
+
+      const node = await resolveRef("game-001", { kind: "edge", id: "C001->C004" });
+
+      const row = node.sections[0]?.rows.find((r) => r.label === "value_flow");
+      expect(row?.history).toBeUndefined();
+      expect(row?.value).toBe(2.0); // the edge detail itself still resolved
+    });
+
+    it("an inline edge ref (no fetch at all) carries no history — never a stale/mismatched fetch", async () => {
+      server.use(
+        http.get("/api/games/:id/edge/:entityId/history/", () =>
+          HttpResponse.json({
+            status: "ok",
+            data: {
+              edge_id: "SHOULD-NOT-BE-CALLED",
+              history: [{ tick: 0, weight: 9.9, solidarity: null, tension: 0 }],
+            },
+          }),
+        ),
+      );
+
+      const node = await resolveRef("game-001", {
+        kind: "edge",
+        id: "C001->C004",
+        inline: { value_flow: 2.0 },
+      });
+
+      const row = node.sections[0]?.rows.find((r) => r.label === "value_flow");
+      expect(row?.history).toBeUndefined();
+    });
+  });
 });

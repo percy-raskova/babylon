@@ -46,7 +46,7 @@ fi
 
 # Confirm the units exist
 if ! systemctl status "$WEB_UNIT" >/dev/null 2>&1; then
-    echo "FATAL: $WEB_UNIT not found; install via 'ansible-playbook deploy/ansible/web.yml'" >&2
+    echo "FATAL: $WEB_UNIT not found; install via 'ansible-playbook infra/ansible/web.yml'" >&2
     exit 2
 fi
 

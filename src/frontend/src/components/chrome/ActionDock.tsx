@@ -7,14 +7,13 @@
  *
  * Two pieces:
  *  1. `action-dock-bar` — an always-visible compact bar of the first three
- *     *engine-wired* verbs (`SUPPORTED_VERBS`, Spec 061 FR-025) plus a
- *     labeled "More" button. This is the only per-verb legality signal any
- *     live API exposes today — there is no per-org/per-target eligibility
- *     endpoint, so "legal" here means "has an engine handler", not
- *     "currently actionable for the selected org". Buttons show their
- *     static cost hint (`cost_label`) visibly, per Bible §5.1's "verbs show
- *     live cost/eligibility on the button" — honest affordance over a
- *     fabricated one.
+ *     verbs in catalog order (`SUPPORTED_VERBS`; all 9 canonical verbs are
+ *     engine-wired as of AW3-R1 2026-07-15, so this is currently the same
+ *     as `VERBS.slice(0, 3)` — `SUPPORTED_VERBS` stays the source in case a
+ *     future verb ships without a resolver) plus a labeled "More" button.
+ *     Buttons show their static cost hint (`cost_label`) visibly, per Bible
+ *     §5.1's "verbs show live cost/eligibility on the button" — honest
+ *     affordance over a fabricated one.
  *  2. The `ActionComposer` FloatingPanel (unchanged internals — the flat
  *     9-verb grid is Article V's, not this dock's, and stays frozen) that
  *     every bar button opens via `ui.chrome.composerOpen`. v1 keeps
@@ -62,6 +61,13 @@ export function ActionDock({ gameId }: ActionDockProps): React.JSX.Element {
         data-testid="action-dock-bar"
         className="pointer-events-auto flex items-center gap-1.5 border-2 border-ksbc-muted-1 bg-plate/90 px-2 py-1.5 backdrop-blur-sm shadow-[6px_6px_0_#000]"
       >
+        {/* Deliberate simplification (Program 17 Wave 1 item 1e, owner-ruled
+            descope): these 3 buttons stay on the static cost_label — they are
+            pre-org-context shortcuts that don't even set the verb today
+            (see the file docstring's NOT-implemented note), so a per-button
+            live-cost fetch here would be a new fetch pattern for a display
+            surface that's already an honest, if static, hint. VerbGrid
+            (components/action/VerbGrid.tsx) carries the live-cost fix. */}
         {PRIMARY_VERBS.map((v) => (
           <button
             key={v.verb}

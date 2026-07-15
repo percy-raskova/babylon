@@ -31,7 +31,12 @@
  * strictly against the real `SpeedControls.tsx`/`useSpeedShortcut.ts`
  * contracts — Phase V must run this live.
  */
-import { expect, test, createWayneCountyGame } from "./fixtures";
+import {
+  expect,
+  test,
+  createWayneCountyGame,
+  acknowledgeAutopauseIfPresent,
+} from "./fixtures";
 
 let gameId = "";
 
@@ -44,7 +49,7 @@ test.describe("end turn -> tick resolution (cockpit, spec-110 B6)", () => {
     expect(gameId, "session creation must return a session_id").toBeTruthy();
   });
 
-  test("Step resolves exactly one tick and returns to PAUSED", async ({ page }) => {
+  test("Step resolves exactly one tick and halts (PAUSED or AUTOPAUSED)", async ({ page }) => {
     expect(gameId, "session-creation test ran first").toBeTruthy();
     await page.goto(`/game/${gameId}`);
 
@@ -62,13 +67,21 @@ test.describe("end turn -> tick resolution (cockpit, spec-110 B6)", () => {
     ]);
     expect(resolveResp.status()).toBe(200);
     await expect(page.getByTestId("tick-value")).toHaveText("1", { timeout: 15000 });
-    await expect(page.getByTestId("time-status")).toHaveText("PAUSED", { timeout: 15000 });
+    // Since 40ef3d81 events reach live snapshots, so a tick carrying a
+    // critical event AUTOPAUSES (worldSlice → time.autopause) instead of
+    // returning to plain PAUSED — both are valid halt states for a Step.
+    await expect(page.getByTestId("time-status")).toHaveText(/^(PAUSED|AUTOPAUSED)$/, {
+      timeout: 15000,
+    });
   });
 
   test("Play advances the tick automatically; Pause halts the loop", async ({ page }) => {
     expect(gameId, "session-creation test ran first").toBeTruthy();
     await page.goto(`/game/${gameId}`);
     await expect(page.getByTestId("tick-value")).toHaveText("1", { timeout: 15000 });
+    // Loading a game whose current tick carries a critical event opens
+    // AUTOPAUSED with the modal up (Play stays disabled until resumed).
+    await acknowledgeAutopauseIfPresent(page);
     const startTick = Number((await page.getByTestId("tick-value").textContent()) ?? "0");
 
     const playButton = page.getByRole("button", { name: "Play" });
@@ -82,9 +95,20 @@ test.describe("end turn -> tick resolution (cockpit, spec-110 B6)", () => {
     // resolve settles (timeSlice.pause's docstring) — this is a real
     // stop-request racing a fast local loop, not an abort, so assert on
     // eventual PAUSED + tick progress rather than an exact tick count.
+    //
+    // Since 40ef3d81 events reach live snapshots, so the loop can also halt
+    // ON ITS OWN by autopausing when an advancing tick carries a critical
+    // event — a valid halt that flips the button back to "Play". Click
+    // Pause only if the loop is still running; either halt path stops it.
     await page.waitForTimeout(1500);
-    await page.getByRole("button", { name: "Pause" }).click();
-    await expect(page.getByTestId("time-status")).toHaveText("PAUSED", { timeout: 20000 });
+    const status = page.getByTestId("time-status");
+    const stillPlaying = /^(PLAYING|RESOLVING)$/.test((await status.textContent()) ?? "");
+    if (stillPlaying) {
+      await page.getByRole("button", { name: "Pause" }).click();
+    }
+    await expect(status).toHaveText(/^(PAUSED|AUTOPAUSED)$/, {
+      timeout: 20000,
+    });
 
     const endTick = Number((await page.getByTestId("tick-value").textContent()) ?? "0");
     expect(endTick).toBeGreaterThan(startTick);
@@ -101,7 +125,10 @@ test.describe("end turn -> tick resolution (cockpit, spec-110 B6)", () => {
     test.setTimeout(120_000);
     expect(gameId, "session-creation test ran first").toBeTruthy();
     await page.goto(`/game/${gameId}`);
-    await expect(page.getByTestId("time-status")).toHaveText("PAUSED", { timeout: 15000 });
+    // Loading with a standing critical event opens AUTOPAUSED — resume to
+    // plain PAUSED before driving the play loop (the helper settles on
+    // either status, resumes if needed, and leaves the loop PAUSED).
+    await acknowledgeAutopauseIfPresent(page);
 
     // Speed is valid to set in any status (SpeedControls.tsx's docstring:
     // "setSpeed is valid in any status ... stay live even mid-resolve") —
@@ -126,6 +153,12 @@ test.describe("end turn -> tick resolution (cockpit, spec-110 B6)", () => {
     // allots 30s for a single resolve) — 45s covers a resolve that had just
     // started when Space landed, without masking a stuck loop.
     await page.keyboard.press("Space");
-    await expect(page.getByTestId("time-status")).toHaveText("PAUSED", { timeout: 45000 });
+    // AUTOPAUSED is also a valid halt: if the in-flight tick carries a
+    // critical event, worldSlice autopauses the loop before (or instead
+    // of) the spacebar stop-request landing — the loop is stopped either
+    // way (toggleSpacebar is a no-op outside paused/playing by design).
+    await expect(page.getByTestId("time-status")).toHaveText(/^(PAUSED|AUTOPAUSED)$/, {
+      timeout: 45000,
+    });
   });
 });

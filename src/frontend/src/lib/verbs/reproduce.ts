@@ -1,4 +1,5 @@
 import type { VerbConfig, VerbTarget } from "./types";
+import { parseFlatCost } from "./cost";
 
 interface ReproduceTarget {
   target_id: string;
@@ -55,4 +56,9 @@ export const reproduceConfig: VerbConfig = {
       sl_committed: Number(params.sl_committed ?? 0),
     },
   }),
+  // Top-level cost is `sympathizer_labor:10.0` (flat envelope,
+  // engine_bridge.py:3587-3595) — NOT the same as the per-mode
+  // `resource_cost` nested under targets[0].modes, which parseFlatCost
+  // does not read.
+  parseCost: parseFlatCost,
 };

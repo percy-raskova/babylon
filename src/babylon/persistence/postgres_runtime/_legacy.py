@@ -24,6 +24,7 @@ from uuid import UUID
 
 if TYPE_CHECKING:
     from babylon.topology.graph import BabylonGraph
+import psycopg
 from psycopg import Connection
 from psycopg.rows import dict_row
 from psycopg_pool import ConnectionPool
@@ -87,7 +88,17 @@ class PostgresRuntime:
         with self._pool.connection() as conn:
             conn.autocommit = True
             for ddl in POSTGRES_SCHEMA_DDL:
-                conn.execute(ddl)
+                try:
+                    conn.execute(ddl)
+                except psycopg.Error as exc:
+                    # Loud, statement-attributed failure (Constitution III.11).
+                    # A bare psycopg error here surfaces with no clue which of
+                    # the ~90 DDL statements failed, and (autocommit=True) every
+                    # statement after it is silently skipped. Name the offender.
+                    statement = " ".join(ddl.split())[:300]
+                    raise RuntimeError(
+                        f"schema DDL failed ({type(exc).__name__}: {exc}); statement: {statement}"
+                    ) from exc
         logger.info("PostgreSQL schema initialized (%d statements)", len(POSTGRES_SCHEMA_DDL))
 
     def close(self) -> None:
@@ -1455,6 +1466,162 @@ class PostgresRuntime:
         with self._pool.connection() as conn, conn.cursor() as cur:
             cur.executemany(sql, rows)
 
+    def persist_class_snapshots(
+        self,
+        game_id: UUID,
+        tick: int,
+        classes: list[dict[str, Any]],
+        *,
+        _cursor: Any | None = None,
+    ) -> None:
+        """Bulk INSERT class_snapshot rows for one tick.
+
+        Wave 2 W2.5b (owner ruling 3): mirrors :meth:`persist_org_snapshots`.
+        ``ON CONFLICT (game_id, tick, class_id) DO NOTHING`` for retry safety
+        (spec 061 FR-004 pattern).
+
+        Args:
+            game_id: Game session UUID.
+            tick: Tick number.
+            classes: List of class dicts (:func:`_class_snapshot_rows` shape).
+            _cursor: Optional shared cursor for :meth:`persist_full_tick`.
+        """
+        if not classes:
+            return
+
+        rows = [
+            (
+                game_id,
+                tick,
+                c["class_id"],
+                c["role"],
+                c.get("wealth"),
+                c.get("subsistence_threshold"),
+                c.get("population"),
+                c.get("inequality"),
+                c.get("organization"),
+                c.get("repression_faced"),
+                c.get("class_consciousness"),
+                c.get("national_identity"),
+                c.get("agitation"),
+                c.get("p_acquiescence"),
+                c.get("p_revolution"),
+                c.get("active", True),
+                json.dumps(c.get("attributes", {}), default=_json_default),
+            )
+            for c in classes
+        ]
+        sql = """
+            INSERT INTO class_snapshot
+                (game_id, tick, class_id, role,
+                 wealth, subsistence_threshold, population, inequality,
+                 organization, repression_faced,
+                 class_consciousness, national_identity, agitation,
+                 p_acquiescence, p_revolution,
+                 active, attributes)
+            VALUES (%s, %s, %s, %s,
+                    %s, %s, %s, %s,
+                    %s, %s,
+                    %s, %s, %s,
+                    %s, %s,
+                    %s, %s)
+            ON CONFLICT (game_id, tick, class_id) DO NOTHING
+            """
+        if _cursor is not None:
+            _cursor.executemany(sql, rows)
+            return
+        with self._pool.connection() as conn, conn.cursor() as cur:
+            cur.executemany(sql, rows)
+
+    def query_class_snapshot_history(
+        self,
+        game_id: UUID,
+        class_id: str,
+        *,
+        limit: int = 1000,
+    ) -> list[dict[str, Any]]:
+        """Return ordered ``class_snapshot`` rows for one social class (W2.5b).
+
+        Powers the survival-probability duel chart and the class inspector's
+        history tab via ``EngineBridge.get_class_history``. Mirrors
+        :meth:`query_org_snapshot_history`. Oldest-tick-first, capped at
+        ``limit`` rows.
+
+        Args:
+            game_id: Game session UUID.
+            class_id: The social class's node id (e.g. ``"C004"``).
+            limit: Maximum rows to return.
+
+        Returns:
+            List of dicts with the ``class_snapshot`` column names as keys
+            (``attributes`` already parsed from JSONB by psycopg).
+        """
+        with self._pool.connection() as conn, conn.cursor(row_factory=dict_row) as cur:
+            cur.execute(
+                """
+                SELECT tick, role,
+                       wealth, subsistence_threshold, population, inequality,
+                       organization, repression_faced,
+                       class_consciousness, national_identity, agitation,
+                       p_acquiescence, p_revolution,
+                       active, attributes
+                FROM class_snapshot
+                WHERE game_id = %s AND class_id = %s
+                ORDER BY tick
+                LIMIT %s
+                """,
+                (game_id, class_id, limit),
+            )
+            return [dict(row) for row in cur.fetchall()]
+
+    def query_node_uprising_events(
+        self,
+        game_id: UUID,
+        node_id: str,
+        *,
+        limit: int = 1000,
+    ) -> list[dict[str, Any]]:
+        """Return the honest revolutionary-pressure UPRISING markers for one node.
+
+        Wave 2 W2.5b (owner ruling 3): the survival duel's rupture markers.
+        ``StruggleSystem.step`` (struggle.py:393) emits ``EventType.UPRISING``
+        with ``payload["trigger"] = "spark" if spark_occurred else
+        "revolutionary_pressure"`` — ONLY for the two struggling roles
+        (PERIPHERY_PROLETARIAT/LUMPENPROLETARIAT), agitation-gated. This reads
+        the same ``tick_event`` table :meth:`query_session_events`/
+        :meth:`query_tick_events` read, filtered in SQL on the persisted
+        ``detail`` JSONB payload's ``node_id``/``trigger`` keys — the raw
+        P(S|R) > P(S|A) crossing is NOT evented for any other class, so this
+        is never fabricated for a non-struggling node (it simply returns
+        empty).
+
+        Args:
+            game_id: Game session UUID.
+            node_id: The social_class node id to filter on.
+            limit: Maximum rows to return.
+
+        Returns:
+            List of ``tick_event`` row dicts, oldest-tick-first, restricted
+            to ``event_type='uprising'`` AND ``detail->>'node_id' = node_id``
+            AND ``detail->>'trigger' = 'revolutionary_pressure'``.
+        """
+        with self._pool.connection() as conn, conn.cursor(row_factory=dict_row) as cur:
+            cur.execute(
+                """
+                SELECT tick, event_type, severity, source_id, target_id,
+                       county_fips, h3_index, summary, detail
+                FROM tick_event
+                WHERE game_id = %s
+                  AND event_type = 'uprising'
+                  AND detail ->> 'node_id' = %s
+                  AND detail ->> 'trigger' = 'revolutionary_pressure'
+                ORDER BY tick
+                LIMIT %s
+                """,
+                (game_id, node_id, limit),
+            )
+            return [dict(row) for row in cur.fetchall()]
+
     def query_org_snapshot_history(
         self,
         game_id: UUID,
@@ -1544,6 +1711,153 @@ class PostgresRuntime:
             )
             return [dict(row) for row in cur.fetchall()]
 
+    def query_territory_snapshot_latest_tick(self, game_id: UUID) -> int | None:
+        """Return the highest tick with a ``territory_snapshot`` row for this game.
+
+        Backs :meth:`~babylon.persistence.protocols.RuntimePersistence`'s
+        (duck-typed) map-history default window — see
+        ``EngineBridge.get_map_history`` (Program 17 Wave 3, Backend-W3R3).
+        ``territory_snapshot`` is written densely every resolved tick (one
+        row per ``(game_id, tick, county_fips)`` — unlike the SPARSE
+        ``dynamic_hex_state`` delta table other modules' docstrings warn
+        about), so ``MAX(tick)`` is a safe "latest committed tick" proxy
+        here.
+
+        Args:
+            game_id: Game session UUID.
+
+        Returns:
+            The highest persisted tick, or ``None`` when the game has no
+            ``territory_snapshot`` rows yet (honest empty, Constitution
+            III.11).
+        """
+        with self._pool.connection() as conn, conn.cursor(row_factory=dict_row) as cur:
+            cur.execute(
+                "SELECT MAX(tick) AS max_tick FROM territory_snapshot WHERE game_id = %s",
+                (game_id,),
+            )
+            row = cur.fetchone()
+            return row["max_tick"] if row and row["max_tick"] is not None else None
+
+    def query_territory_snapshot_metric_frames(
+        self,
+        game_id: UUID,
+        from_tick: int,
+        to_tick: int,
+        *,
+        limit: int = 200_000,
+    ) -> list[dict[str, Any]]:
+        """Return ``{tick, county_fips, heat, pop_total}`` rows across a tick range.
+
+        Backs the two ``territory_snapshot``-sourced ``GET /map/history/``
+        metrics (``heat``, ``population``) — see
+        ``EngineBridge.get_map_history``. Oldest-tick-first then
+        county_fips, matching the deterministic-ordering contract every
+        ``/map/history/`` frame needs (Constitution III.7).
+
+        Args:
+            game_id: Game session UUID.
+            from_tick: Inclusive lower tick bound.
+            to_tick: Inclusive upper tick bound.
+            limit: A generous safety cap on rows returned — NOT the
+                caller's tick-range window cap (see
+                ``_MAP_HISTORY_WINDOW_CAP`` in engine_bridge.py for that).
+
+        Returns:
+            List of dicts with ``tick``/``county_fips``/``heat``/``pop_total`` keys.
+        """
+        with self._pool.connection() as conn, conn.cursor(row_factory=dict_row) as cur:
+            cur.execute(
+                """
+                SELECT tick, county_fips, heat, pop_total
+                FROM territory_snapshot
+                WHERE game_id = %s AND tick BETWEEN %s AND %s
+                ORDER BY tick, county_fips
+                LIMIT %s
+                """,
+                (game_id, from_tick, to_tick, limit),
+            )
+            return [dict(row) for row in cur.fetchall()]
+
+    def query_county_trace_latest_tick(self, session_id: UUID) -> int | None:
+        """Return the highest tick with a county-level ``view_runtime_trace_emission`` row.
+
+        Sibling of :meth:`query_territory_snapshot_latest_tick` for the
+        second ``GET /map/history/`` source (the spec-089 hex-delta
+        fill-forward view, ``entity_kind='county'``). The view's own
+        ``spine`` CTE (``tick_commit`` UNION ``dynamic_hex_state`` ticks)
+        makes it dense across every committed tick, so ``MAX(tick)`` here
+        is likewise safe — unlike the raw ``dynamic_hex_state`` table this
+        view derives from (that table IS sparse; see its module docstrings).
+
+        Args:
+            session_id: Game session UUID (the same value passed as
+                ``game_id`` elsewhere on this class —
+                ``view_runtime_trace_emission``'s underlying tables use the
+                ``session_id`` column name instead).
+
+        Returns:
+            The highest tick, or ``None`` when the game has no hex-economics
+            history yet.
+        """
+        with self._pool.connection() as conn, conn.cursor(row_factory=dict_row) as cur:
+            cur.execute(
+                """
+                SELECT MAX(tick) AS max_tick FROM view_runtime_trace_emission
+                WHERE session_id = %s AND entity_kind = 'county'
+                """,
+                (session_id,),
+            )
+            row = cur.fetchone()
+            return row["max_tick"] if row and row["max_tick"] is not None else None
+
+    def query_county_trace_metric_frames(
+        self,
+        session_id: UUID,
+        from_tick: int,
+        to_tick: int,
+        *,
+        limit: int = 200_000,
+    ) -> list[dict[str, Any]]:
+        """Return ``{tick, county_fips, profit_rate, exploitation_rate}`` rows across a tick range.
+
+        Backs the two ``view_runtime_trace_emission``-sourced
+        ``GET /map/history/`` metrics (``profit_rate``,
+        ``exploitation_rate``) — see ``EngineBridge.get_map_history``.
+        These are genuine ``SUM(s)/(SUM(c)+SUM(v))`` and ``SUM(s)/SUM(v)``
+        county aggregates over every hex in the county (unlike
+        ``territory_snapshot``'s ``heat``/``population``, which collapse
+        onto whichever single hex-territory happened to write first per
+        ``ON CONFLICT (game_id, tick, county_fips) DO NOTHING`` — see
+        ``query_territory_snapshot_history``'s docstring for that
+        pre-existing, documented grain limitation).
+
+        Args:
+            session_id: Game session UUID.
+            from_tick: Inclusive lower tick bound.
+            to_tick: Inclusive upper tick bound.
+            limit: A generous safety cap on rows returned (see
+                :meth:`query_territory_snapshot_metric_frames`'s note on
+                this being a safety cap, not the caller's window cap).
+
+        Returns:
+            List of dicts with ``tick``/``county_fips``/``profit_rate``/
+            ``exploitation_rate`` keys.
+        """
+        with self._pool.connection() as conn, conn.cursor(row_factory=dict_row) as cur:
+            cur.execute(
+                """
+                SELECT tick, entity_id AS county_fips, profit_rate, exploitation_rate
+                FROM view_runtime_trace_emission
+                WHERE session_id = %s AND entity_kind = 'county'
+                  AND tick BETWEEN %s AND %s
+                ORDER BY tick, entity_id
+                LIMIT %s
+                """,
+                (session_id, from_tick, to_tick, limit),
+            )
+            return [dict(row) for row in cur.fetchall()]
+
     def persist_edge_snapshots(
         self,
         game_id: UUID,
@@ -1593,6 +1907,64 @@ class PostgresRuntime:
             return
         with self._pool.connection() as conn, conn.cursor() as cur:
             cur.executemany(sql, rows)
+
+    def query_edge_snapshot_history(
+        self,
+        game_id: UUID,
+        source_id: str,
+        target_id: str,
+        *,
+        limit: int = 128,
+    ) -> list[dict[str, Any]]:
+        """Return ordered ``edge_snapshot`` rows for one edge (audit Wave 4
+        straggler, task #76 — the edge-weight history sparkline).
+
+        Powers the edge inspector's history via
+        ``EngineBridge.get_edge_history``. Mirrors
+        :meth:`query_class_snapshot_history`'s shape but caps a TRAILING
+        window — the most recent ``limit`` ticks, re-ordered
+        oldest-first — matching the ``/map/history/`` 128 convention
+        (``_MAP_HISTORY_WINDOW_CAP``: ``resolved_from = requested_to -
+        CAP + 1``), NOT class/org history's leading ``ORDER BY tick
+        LIMIT 1000``: with a 128 cap a leading window would freeze the
+        sparkline at ticks 0-127 forever once a session outlives it (the
+        canonical run is past tick 900). Deliberately narrower than
+        class/org history's 1000 default: an edge's history is
+        sparkline-consumed (a compact strip), not table-consumed.
+
+        Filters by ``(source_id, target_id)`` only, not ``edge_type`` — the
+        same identity :meth:`EngineBridge.get_inspector_edge`'s
+        ``"{source}->{target}"`` id scheme uses (no canonical edge_id format
+        encodes edge_type either); a pair whose edge_type genuinely changed
+        tick to tick would still surface every real row, never silently
+        dropped.
+
+        Args:
+            game_id: Game session UUID.
+            source_id: The edge's source node id.
+            target_id: The edge's target node id.
+            limit: Maximum rows to return.
+
+        Returns:
+            List of dicts with the ``edge_snapshot`` column names as keys
+            (``attributes`` already parsed from JSONB by psycopg).
+        """
+        with self._pool.connection() as conn, conn.cursor(row_factory=dict_row) as cur:
+            cur.execute(
+                """
+                SELECT tick, edge_type, edge_mode, value_flow, solidarity, tension, attributes
+                FROM (
+                    SELECT tick, edge_type, edge_mode, value_flow, solidarity, tension, attributes
+                    FROM edge_snapshot
+                    WHERE game_id = %s AND source_id = %s AND target_id = %s
+                    ORDER BY tick DESC
+                    LIMIT %s
+                ) trailing_window
+                ORDER BY tick
+                """,
+                (game_id, source_id, target_id, limit),
+            )
+            return [dict(row) for row in cur.fetchall()]
 
     def persist_community_snapshots(
         self,
@@ -1861,6 +2233,7 @@ class PostgresRuntime:
         *,
         territories: list[dict[str, Any]] | None = None,
         orgs: list[dict[str, Any]] | None = None,
+        classes: list[dict[str, Any]] | None = None,
         edges: list[dict[str, Any]] | None = None,
         communities: list[dict[str, Any]] | None = None,
         hex_activities: list[dict[str, Any]] | None = None,
@@ -1891,7 +2264,7 @@ class PostgresRuntime:
             game_id: Game session UUID (corresponds to ``session_id`` in
                 ``tick_log``).
             tick: Tick number.
-            territories, orgs, edges, communities, hex_activities,
+            territories, orgs, classes, edges, communities, hex_activities,
                 economic_summary, events: Per-table snapshot payloads.
 
         Raises:
@@ -1920,6 +2293,7 @@ class PostgresRuntime:
             # transaction is a no-op (FR-004).
             self.persist_territory_snapshots(game_id, tick, territories or [], _cursor=cur)
             self.persist_org_snapshots(game_id, tick, orgs or [], _cursor=cur)
+            self.persist_class_snapshots(game_id, tick, classes or [], _cursor=cur)
             self.persist_edge_snapshots(game_id, tick, edges or [], _cursor=cur)
             self.persist_community_snapshots(game_id, tick, communities or [], _cursor=cur)
             self.persist_hex_activity(game_id, tick, hex_activities or [], _cursor=cur)
@@ -2430,14 +2804,34 @@ class PostgresRuntime:
 
     @staticmethod
     def _make_serializable(attrs: dict[str, Any]) -> dict[str, Any]:
-        """Filter attributes to only JSON-serializable values."""
+        """Convert attributes to JSON-serializable values; drop loudly on failure.
+
+        ``WorldState.to_graph()`` stores ``events`` as python-mode
+        ``model_dump()`` payloads whose ``datetime`` timestamps fail bare
+        ``json.dumps``. The original silent ``continue`` dropped the key from
+        ``graph_metadata.extra`` on every tick that had events, so hydrated
+        snapshots always reconstructed ``events == []``. Second pass converts
+        via :func:`json_default` (the same fallback ``_persist_events``
+        trusts); only a value that BOTH passes reject is dropped, with a
+        WARNING (Constitution III.11 — never fail silently).
+        """
         result: dict[str, Any] = {}
         for k, v in attrs.items():
             try:
                 json.dumps(v)
                 result[k] = v
-            except (TypeError, ValueError):
                 continue
+            except (TypeError, ValueError):
+                pass
+            try:
+                result[k] = json.loads(json.dumps(v, default=_json_default))
+            except (TypeError, ValueError):
+                logger.warning(
+                    "graph_metadata: dropping non-JSON-serializable graph attr "
+                    "%r (type %s) — value will be absent after hydration",
+                    k,
+                    type(v).__name__,
+                )
         return result
 
 

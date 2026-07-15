@@ -273,6 +273,59 @@ class TestSQLiteQCEWCountyNAICSSource:
         )
 
 
+class TestFactQcewAnnualQueryPlanRegression:
+    """Perf regression guard for the 2026-07-15 ~300s resolve-tick hang.
+
+    Root cause: filtering ``ownership_id`` as a SQL equality predicate
+    alongside ``county_id``/``time_id`` made SQLite's planner favor the
+    low-selectivity single-column ``idx_qcew_ownership`` index over the far
+    more selective ``idx_qcew_county_time`` — measured ~1.3s/call on the
+    14.6M-row ``fact_qcew_annual`` table (own_code='5' alone covers millions
+    of rows nationwide). `DefaultThroughputCalculator.compute_metrics` calls
+    3 of these methods once per territory per tick (81 territories for
+    wayne_county), so this was the dominant cost of a ~300s tick resolution
+    that blew every 30s e2e resolve-tick test timeout (real-loop.spec.ts,
+    end-turn-flow.spec.ts, event-popup.spec.ts). A generous 1s bound (not a
+    tight one — this guards against the O(seconds) pathology coming back,
+    not a micro-benchmark) on a cold call each.
+    """
+
+    SLOW_QUERY_BOUND_SECONDS = 1.0
+
+    def test_get_county_naics_employment_is_fast(self, qcew_source: SQLiteQCEWCountyNAICSSource):
+        import time
+
+        t0 = time.perf_counter()
+        qcew_source.get_county_naics_employment(WAYNE_FIPS, "52", TEST_YEAR)
+        elapsed = time.perf_counter() - t0
+        assert elapsed < self.SLOW_QUERY_BOUND_SECONDS, (
+            f"get_county_naics_employment took {elapsed:.3f}s — the "
+            "idx_qcew_ownership bad-index-choice regression may be back"
+        )
+
+    def test_get_county_employment_by_naics_is_fast(self, qcew_source: SQLiteQCEWCountyNAICSSource):
+        import time
+
+        t0 = time.perf_counter()
+        qcew_source.get_county_employment_by_naics(WAYNE_FIPS, TEST_YEAR)
+        elapsed = time.perf_counter() - t0
+        assert elapsed < self.SLOW_QUERY_BOUND_SECONDS, (
+            f"get_county_employment_by_naics took {elapsed:.3f}s — the "
+            "idx_qcew_ownership bad-index-choice regression may be back"
+        )
+
+    def test_get_county_naics_wages_is_fast(self, qcew_source: SQLiteQCEWCountyNAICSSource):
+        import time
+
+        t0 = time.perf_counter()
+        qcew_source.get_county_naics_wages(WAYNE_FIPS, "52", TEST_YEAR)
+        elapsed = time.perf_counter() - t0
+        assert elapsed < self.SLOW_QUERY_BOUND_SECONDS, (
+            f"get_county_naics_wages took {elapsed:.3f}s — the "
+            "idx_qcew_ownership bad-index-choice regression may be back"
+        )
+
+
 class TestNAICS2DigitSectors:
     """Tests for NAICS sector constant."""
 

@@ -23,6 +23,9 @@ import { OutlinerOverlay } from "@/components/chrome/OutlinerOverlay";
 import { InspectionStack } from "@/components/inspect/InspectionStack";
 import { EventTray } from "@/components/chrome/EventTray";
 import { ObjectivesTray } from "@/components/chrome/ObjectivesTray";
+import { BifurcationGauge } from "@/components/chrome/BifurcationGauge";
+import { CrisisTimeline } from "@/components/chrome/CrisisTimeline";
+import { RadarLoopPanel } from "@/components/chrome/RadarLoopPanel";
 import { ActionDock } from "@/components/chrome/ActionDock";
 import { BottomDrawer } from "@/components/chrome/BottomDrawer";
 import { EventToasts } from "@/components/chrome/EventToasts";
@@ -62,6 +65,23 @@ export function AppShell({ gameId }: AppShellProps): React.JSX.Element {
           </div>
           <div className="pointer-events-auto shrink-0">
             <ObjectivesTray gameId={gameId} />
+          </div>
+          {/* Bifurcation gauge v1 (Wave 3 R2a) — same right-column chrome
+              stack as EventTray/ObjectivesTray, the "AppShell chrome line"
+              append point (no new screen position invented). */}
+          <div className="pointer-events-auto shrink-0">
+            <BifurcationGauge gameId={gameId} />
+          </div>
+          {/* Crisis / business-cycle timeline (Feature 018 crisis-devaluation
+              surfaced) — same right-column chrome stack append point as
+              BifurcationGauge; data already on the wire in _serialize_territory. */}
+          <div className="pointer-events-auto shrink-0">
+            <CrisisTimeline gameId={gameId} />
+          </div>
+          {/* RADAR LOOP tick scrubber (Program 17 Wave 3, Frontend-W3R3) —
+              same right-column chrome stack append point as BifurcationGauge. */}
+          <div className="pointer-events-auto shrink-0">
+            <RadarLoopPanel gameId={gameId} />
           </div>
         </div>
 

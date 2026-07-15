@@ -73,6 +73,13 @@ class SQLiteBEANationalGDPSource:
         """
         self._session_factory = session_factory
         self._total_industry_id: int | None = None
+        # 2026-07-15 perf regression fix: get_gdp(year) is called once per
+        # territory per tick (throughput calculator -> get_melt(year) for
+        # the SAME year, every territory) — without this cache that is N
+        # redundant DB round-trips per tick for an identical result. Keyed
+        # by year (not a single scalar) so different years each still
+        # resolve independently.
+        self._gdp_cache: dict[int, float | None] = {}
 
     def _get_total_industry_id(self, session: Session) -> int | None:
         """Get bea_industry_id for 'All industries' (line_number=1).
@@ -94,12 +101,25 @@ class SQLiteBEANationalGDPSource:
         Falls back to SUM(FactBEACountyGDP.gdp_millions) when the national
         table is empty (common when only county-level BEA data was loaded).
 
+        Cached per year (see ``__init__``) — a second call for a year
+        already resolved returns the cached value without touching the
+        database.
+
         Args:
             year: Calendar year (typically 2010-2023).
 
         Returns:
             GDP in current dollars, or None if data unavailable.
         """
+        if year in self._gdp_cache:
+            return self._gdp_cache[year]
+
+        result = self._compute_gdp(year)
+        self._gdp_cache[year] = result
+        return result
+
+    def _compute_gdp(self, year: int) -> float | None:
+        """Uncached body of :meth:`get_gdp` — see there for the query strategy."""
         with self._session_factory() as session:
             total_industry_id = self._get_total_industry_id(session)
             if total_industry_id is None:
@@ -165,6 +185,11 @@ class SQLiteQCEWNationalEmploymentSource:
         """
         self._session_factory = session_factory
         self._total_ownership_id: int | None = None
+        # 2026-07-15 perf regression fix — see SQLiteBEANationalGDPSource's
+        # identical ``_gdp_cache`` note: get_melt(year) is called once per
+        # territory per tick, redundantly re-summing the same national
+        # total every time absent this per-year cache.
+        self._employment_cache: dict[int, int | None] = {}
 
     def _get_total_ownership_id(self, session: Session) -> int | None:
         """Get ownership_id for 'Total All' (own_code='0').
@@ -183,12 +208,25 @@ class SQLiteQCEWNationalEmploymentSource:
         SUMs the ``fact_qcew_county_rollup`` Total-Covered (own_code='0')
         row across all counties to produce the national aggregate.
 
+        Cached per year (see ``__init__``) — a second call for a year
+        already resolved returns the cached value without touching the
+        database.
+
         Args:
             year: Calendar year (typically 2010-2023).
 
         Returns:
             Employment count (persons), or None if data unavailable.
         """
+        if year in self._employment_cache:
+            return self._employment_cache[year]
+
+        result = self._compute_national_employment(year)
+        self._employment_cache[year] = result
+        return result
+
+    def _compute_national_employment(self, year: int) -> int | None:
+        """Uncached body of :meth:`get_national_employment` — see there for the query."""
         with self._session_factory() as session:
             total_ownership_id = self._get_total_ownership_id(session)
             if total_ownership_id is None:

@@ -899,7 +899,9 @@ def _sqlite_sha256(path: Path) -> str:
 
 def _build_economics_overrides(
     session_factory: Any = None,
-) -> dict[str, Any]:
+    event_bus: Any = None,
+    defines: Any = None,
+) -> tuple[dict[str, Any], Any]:
     """Construct economics calculator overrides for ``ServiceContainer.create``.
 
     Spec E101: wires gamma (and melt when a session_factory is provided)
@@ -913,16 +915,33 @@ def _build_economics_overrides(
     ``gamma_calculator.compute(year)`` at line 387 — with both ``None``
     the entire system no-ops and gamma stays at the hardcoded 0.33 default.
 
+    Program 17 / Item 1a: when ``event_bus`` and ``defines`` are also
+    provided (alongside ``session_factory``), additionally wires the
+    Spec-057 Leontief imperial-rent pipeline via
+    :func:`babylon.domain.economics.factory.create_leontief_rent_services`
+    so ``tick_phi_hour`` is genuinely computed per county instead of the
+    permanent ``0.0`` stub.
+
     Args:
         session_factory: Optional SQLAlchemy session factory for the
             normalized reference DB. When provided, ``melt_calculator``
             is wired (required to pass the TickDynamicsSystem gate).
             When ``None``, only the parameterless ``gamma_calculator``
             is wired.
+        event_bus: Optional EventBus for the Leontief pipeline's
+            calibration-warning emission. Required (with ``defines``) to
+            wire the Leontief overrides.
+        defines: Optional ``GameDefines`` for the Leontief allocator's
+            tunables (``defines.economy.leontief_rent``). Required (with
+            ``event_bus``) to wire the Leontief overrides.
 
     Returns:
-        Dict of service overrides suitable for ``**``-unpacking into
-        :meth:`ServiceContainer.create`.
+        A ``(overrides, leontief_session)`` tuple: ``overrides`` is a dict
+        of service overrides suitable for ``**``-unpacking into
+        :meth:`ServiceContainer.create`; ``leontief_session`` is the open
+        SQLAlchemy session backing the Leontief overrides (``None`` when
+        ``session_factory``/``event_bus``/``defines`` weren't all
+        supplied) — the caller owns closing it.
     """
     from babylon.domain.economics.gamma.adapters import MVPUnpaidCareHoursSource, QCEWCareAdapter
     from babylon.domain.economics.gamma.gamma_iii import DefaultGammaIIICalculator
@@ -932,6 +951,7 @@ def _build_economics_overrides(
     gamma = DefaultGammaIIICalculator(unpaid_care, paid_care)
 
     overrides: dict[str, Any] = {"gamma_calculator": gamma}
+    leontief_session: Any = None
 
     if session_factory is not None:
         from babylon.domain.economics.melt import DefaultMELTCalculator
@@ -945,7 +965,15 @@ def _build_economics_overrides(
         melt = DefaultMELTCalculator(bea_national, qcew_national)
         overrides["melt_calculator"] = melt
 
-    return overrides
+        if event_bus is not None and defines is not None:
+            from babylon.domain.economics.factory import create_leontief_rent_services
+
+            leontief_overrides, leontief_session = create_leontief_rent_services(
+                session_factory, event_bus, defines
+            )
+            overrides.update(leontief_overrides)
+
+    return overrides, leontief_session
 
 
 def run(config: SimulationRunConfig) -> SimulationRunResult:
@@ -976,6 +1004,7 @@ def run(config: SimulationRunConfig) -> SimulationRunResult:
     error_payload: dict[str, Any] | None = None
     pool = _open_postgres_pool()
     runtime: Any = None
+    leontief_session: Any = None
     ticks_completed = 0
     per_tick_durations: list[float] = []
     t_session = 0.0
@@ -1076,11 +1105,20 @@ def run(config: SimulationRunConfig) -> SimulationRunResult:
         # 0.33 default. MELT is required to pass the
         # ``melt_calculator is not None`` gate at
         # ``tick/system/__init__.py:136`` before gamma is reached.
+        #
+        # Program 17 / Item 1a: also wires the Spec-057 Leontief
+        # imperial-rent pipeline (periphery wages / final demand / county
+        # allocation / production-chain calculator) so ``tick_phi_hour`` is
+        # genuinely computed per county. Built ONCE here, before the tick
+        # loop (mirrors the rest of this construction site); the session it
+        # opens is closed in this function's ``finally`` teardown below.
         from babylon.reference.database import get_normalized_session_factory
 
         calc_session_factory = get_normalized_session_factory()
-        economics_overrides = _build_economics_overrides(
+        economics_overrides, leontief_session = _build_economics_overrides(
             session_factory=calc_session_factory,
+            event_bus=event_bus,
+            defines=defines,
         )
         services = ServiceContainer.create(
             defines=defines,
@@ -1286,6 +1324,9 @@ def run(config: SimulationRunConfig) -> SimulationRunResult:
             ),
         )
     finally:
+        if leontief_session is not None:
+            with suppress(Exception):
+                leontief_session.close()
         if runtime is not None:
             with suppress(Exception):
                 runtime.close()

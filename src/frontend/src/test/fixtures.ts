@@ -22,8 +22,22 @@ import type {
   FactionalComposition,
   GameSummaryPayload,
   TimeseriesPayload,
+  EconomyDashboardPayload,
   CommunityEntry,
   CommunitiesDashboardPayload,
+  StateApparatusDashboard,
+  EdgeRow,
+  EdgesDashboardPayload,
+  JournalPayload,
+  ClassHistoryPoint,
+  ClassHistoryPayload,
+  EdgeHistoryPoint,
+  EdgeHistoryPayload,
+  FieldStateNode,
+  FieldStateEdge,
+  FieldStatePayload,
+  MapHistoryFrame,
+  MapHistoryPayload,
 } from "@/types/game";
 import type { WireFeed, WireStoryIndex } from "@/types/wire";
 import { EMPTY_WIRE_FEED } from "@/types/wire";
@@ -34,6 +48,14 @@ import type {
   ObjectivesTracker,
 } from "@/types/dialectic";
 import type { BlocFlowEntry, TradeFlowsPayload } from "@/types/trade";
+import type {
+  OrgNetworkPayload,
+  OrgNetworkNode,
+  OrgNetworkEdge,
+  OrgNetworkCentrality,
+  DoctrineTreePayload,
+  DoctrineNode,
+} from "@/types/game";
 
 export function makeTerritory(overrides?: Partial<TerritoryState>): TerritoryState {
   return {
@@ -52,6 +74,7 @@ export function makeTerritory(overrides?: Partial<TerritoryState>): TerritorySta
     biocapacity: 0.3,
     max_biocapacity: 100,
     habitability: null,
+    bifurcation_score: null,
     host_id: null,
     occupant_id: null,
     ...overrides,
@@ -385,6 +408,147 @@ export function makeTimeseriesPayload(overrides?: Partial<TimeseriesPayload>): T
   };
 }
 
+/** GET /api/games/{id}/economy/ payload — see `EngineBridge.get_economy_dashboard`. */
+export function makeEconomyDashboardPayload(
+  overrides?: Partial<EconomyDashboardPayload>,
+): EconomyDashboardPayload {
+  return {
+    tick: 1,
+    has_data: true,
+    value_produced: 100,
+    rent_extracted: 20,
+    exploitation_rate: 0.2,
+    profit_rate: null,
+    occ: null,
+    imperial_rent_pool: 50,
+    current_super_wage_rate: 1.2,
+    wage_flow_total: 30,
+    tribute_flow_total: 5,
+    wealth_by_class_role: { periphery_proletariat: 40, core_bourgeoisie: 60 },
+    county_flow: { year: null, phi_accrued_this_year: null, wage_accrued_this_year: null },
+    ...overrides,
+  };
+}
+
+/** GET /api/games/{id}/journal/ payload — full cross-tick event history. */
+export function makeJournalPayload(overrides?: Partial<JournalPayload>): JournalPayload {
+  return {
+    events: [],
+    ...overrides,
+  };
+}
+
+/** One point of GET /api/games/{id}/node/{entityId}/history/'s `history`
+ *  array (Wave 2 W2.5a) — a social_class node's per-tick survival calculus. */
+export function makeClassHistoryPoint(overrides?: Partial<ClassHistoryPoint>): ClassHistoryPoint {
+  return {
+    tick: 1,
+    p_acquiescence: 0.6,
+    p_revolution: 0.2,
+    ...overrides,
+  };
+}
+
+/** GET /api/games/{id}/node/{entityId}/history/ payload (Wave 2 W2.5a). */
+export function makeClassHistoryPayload(
+  overrides?: Partial<ClassHistoryPayload>,
+): ClassHistoryPayload {
+  return {
+    class_id: "C002",
+    history: [],
+    ruptures: [],
+    ...overrides,
+  };
+}
+
+/** One `history[]` entry of GET /api/games/{id}/edge/{entityId}/history/ (audit Wave 4 straggler, task #76). */
+export function makeEdgeHistoryPoint(overrides?: Partial<EdgeHistoryPoint>): EdgeHistoryPoint {
+  return {
+    tick: 0,
+    weight: 1.0,
+    solidarity: null,
+    tension: 0.0,
+    ...overrides,
+  };
+}
+
+/** GET /api/games/{id}/edge/{entityId}/history/ payload (audit Wave 4 straggler, task #76). */
+export function makeEdgeHistoryPayload(
+  overrides?: Partial<EdgeHistoryPayload>,
+): EdgeHistoryPayload {
+  return {
+    edge_id: "C001->C004",
+    history: [],
+    ...overrides,
+  };
+}
+
+/** One `nodes[]` entry of GET /api/games/{id}/field_state/ (Wave 3 R1/R2a). */
+export function makeFieldStateNode(overrides?: Partial<FieldStateNode>): FieldStateNode {
+  return {
+    id: "C001",
+    name: "Worker",
+    ...overrides,
+  };
+}
+
+/** One `edges[]` entry of GET /api/games/{id}/field_state/ (Wave 3 §11's gradient-wind lens). */
+export function makeFieldStateEdge(overrides?: Partial<FieldStateEdge>): FieldStateEdge {
+  return {
+    source: "C001",
+    target: "C002",
+    source_territory: "territory-downtown",
+    target_territory: "territory-suburbs",
+    field: "exploitation",
+    gradient: 0.3,
+    ...overrides,
+  };
+}
+
+/**
+ * GET /api/games/{id}/field_state/ payload. Defaults to the honest
+ * empty-but-well-formed shape the stub bridge always returns (`nodes: []`,
+ * `edges: []`, both graph-level attrs `null`) — see `FieldStatePayload`'s
+ * docstring for why that is also the COMMON case on real games today
+ * (R1b altitude gap), not just the stub.
+ */
+export function makeFieldStatePayload(overrides?: Partial<FieldStatePayload>): FieldStatePayload {
+  return {
+    tick: 1,
+    nodes: [],
+    edges: [],
+    principal_field: null,
+    dialectical_regime: null,
+    ...overrides,
+  };
+}
+
+/** One `frames[]` entry of GET /api/games/{id}/map/history/ (Program 17 Wave 3, Frontend-W3R3). */
+export function makeMapHistoryFrame(overrides?: Partial<MapHistoryFrame>): MapHistoryFrame {
+  return {
+    tick: 1,
+    values: { "26163": 0.4 },
+    ...overrides,
+  };
+}
+
+/**
+ * GET /api/games/{id}/map/history/ payload — defaults to the honest
+ * empty-but-well-formed shape (mirrors `stub_bridge.py::get_map_history`'s
+ * `frames: []`); tests needing real frames override with `server.use()` or
+ * pass `frames` directly.
+ */
+export function makeMapHistoryPayload(overrides?: Partial<MapHistoryPayload>): MapHistoryPayload {
+  return {
+    metric: "heat",
+    from_tick: 0,
+    to_tick: 0,
+    capped: false,
+    frames: [],
+    ...overrides,
+  };
+}
+
 /** One entry of GET /api/games/{id}/communities/'s `communities` array. */
 export function makeCommunityEntry(overrides?: Partial<CommunityEntry>): CommunityEntry {
   return {
@@ -404,6 +568,78 @@ export function makeCommunitiesDashboardPayload(
 ): CommunitiesDashboardPayload {
   return {
     communities: [makeCommunityEntry()],
+    ...overrides,
+  };
+}
+
+/**
+ * GET /api/games/{id}/state-apparatus/ payload (spec-111 C2). Defaults
+ * mirror the real wayne_county contract: the seeded Detroit Police
+ * Department (`ORG002`, a `state_apparatus` org — not player-controlled, so
+ * `vanguard: null`), no state actions fired yet (honest at tick 0), and no
+ * state finances seeded (no scenario ships `WorldState.state_finances`).
+ */
+export function makeStateApparatusDashboard(
+  overrides?: Partial<StateApparatusDashboard>,
+): StateApparatusDashboard {
+  return {
+    tick: 0,
+    organizations: [
+      makeOrg({
+        id: "ORG002",
+        name: "Detroit Police Department",
+        org_type: "state_apparatus",
+        class_character: "state",
+        budget: 40,
+        heat: 0.1,
+        territory_ids: [],
+        hyperedge_memberships: [],
+        vanguard: null,
+      }),
+    ],
+    org_count: 1,
+    total_repression_budget: 40,
+    total_heat: 0.1,
+    state_finances: {},
+    recent_actions: [],
+    ...overrides,
+  };
+}
+
+/** One `EdgeRow` (see `_edge_row` in `engine_bridge.py`). */
+export function makeEdgeRow(overrides?: Partial<EdgeRow>): EdgeRow {
+  return {
+    source_id: "org-finance-bloc",
+    target_id: "org-workers-union",
+    edge_type: "exploitation",
+    edge_mode: null,
+    value_flow: 12.5,
+    tension: 0.4,
+    ...overrides,
+  };
+}
+
+/**
+ * GET /api/games/{id}/edges/ payload (spec-111 C2). Defaults mirror the
+ * real wayne_county contract cited in
+ * `tests/unit/web/test_edges_dashboard.py`: 495 total edges split across
+ * the seeded relation types (summing back to `total_edges`, matching the
+ * backend's own `sum(counts.values()) == total_edges` invariant), one
+ * SOLIDARITY edge at strength 0.05 (the seeded Detroit prole <-> Dearborn
+ * workers edge), and an honestly-empty `counts_by_mode` (tick 0, before
+ * `EdgeTransitionSystem` has run).
+ */
+export function makeEdgesDashboard(
+  overrides?: Partial<EdgesDashboardPayload>,
+): EdgesDashboardPayload {
+  return {
+    tick: 0,
+    total_edges: 495,
+    counts_by_type: { exploitation: 200, wages: 150, solidarity: 50, tenancy: 95 },
+    counts_by_mode: {},
+    top_by_tension: [makeEdgeRow({ tension: 0.82, value_flow: 40 })],
+    top_by_value_flow: [makeEdgeRow({ tension: 0.4, value_flow: 500 })],
+    solidarity_strength_stats: { count: 1, avg: 0.05, min: 0.05, max: 0.05 },
     ...overrides,
   };
 }
@@ -606,6 +842,284 @@ export function makeTradeFlowsPayload(overrides?: Partial<TradeFlowsPayload>): T
     tick: 5,
     has_data: true,
     blocs: [makeBlocFlowEntry()],
+    ...overrides,
+  };
+}
+
+// ---------------------------------------------------------------------------
+// AW4-R2 — Org-network takeover payload factories (GET
+// /api/games/{id}/orgs/network/, see `EngineBridge.get_org_network`).
+// ---------------------------------------------------------------------------
+
+/** One `nodes[]` entry. */
+export function makeOrgNetworkNode(overrides?: Partial<OrgNetworkNode>): OrgNetworkNode {
+  return {
+    id: "org-workers-union",
+    type: "organization",
+    attributes: { name: "Workers Union" },
+    ...overrides,
+  };
+}
+
+/** One `edges[]` entry. */
+export function makeOrgNetworkEdge(overrides?: Partial<OrgNetworkEdge>): OrgNetworkEdge {
+  return {
+    source: "org-workers-union",
+    target: "territory-downtown",
+    mode: "presence",
+    attributes: {},
+    ...overrides,
+  };
+}
+
+/** One `centrality[node_id]` entry. */
+export function makeOrgNetworkCentrality(
+  overrides?: Partial<OrgNetworkCentrality>,
+): OrgNetworkCentrality {
+  return {
+    degree: 0.5,
+    betweenness: 0.2,
+    closeness: 0.6,
+    ...overrides,
+  };
+}
+
+/**
+ * GET /api/games/{id}/orgs/network/ payload — defaults to the honest
+ * empty-but-well-formed shape (mirrors `makeFieldStatePayload`'s precedent:
+ * `nodes: []`, `edges: []`, `centrality: {}`, `percolation_ratio: null`).
+ * Tests needing a populated network pass real nodes/edges/centrality via
+ * overrides, or use `makeOrgNetworkPayload({ ...populated })`.
+ */
+export function makeOrgNetworkPayload(overrides?: Partial<OrgNetworkPayload>): OrgNetworkPayload {
+  return {
+    tick: 5,
+    nodes: [],
+    edges: [],
+    centrality: {},
+    percolation_ratio: null,
+    ...overrides,
+  };
+}
+
+// ---------------------------------------------------------------------------
+// Doctrine Tree canvas payload factories (GET /api/games/{id}/doctrine-tree/,
+// see `EngineBridge.get_doctrine_tree`). Unlike the org-network fixture
+// above, this one has no honest "empty" default — the real endpoint always
+// serves the full static 11-node MVP tree
+// (`src/babylon/data/game/doctrine_tree_mvp.json`), so
+// `makeDoctrineTreePayload()` transcribes that same corpus data byte-for-byte
+// rather than defaulting to `[]`.
+// ---------------------------------------------------------------------------
+
+/** The real 11-node MVP Doctrine Tree, transcribed from
+ *  `src/babylon/data/game/doctrine_tree_mvp.json` (single source of truth:
+ *  keep in sync if that file changes). */
+const DOCTRINE_TREE_NODES: DoctrineNode[] = [
+  {
+    id: "class_consciousness",
+    name: "Class Consciousness",
+    tier: 0,
+    parents: [],
+    description: "Recognition that society is divided into classes with opposing interests.",
+    tag_deltas: { class_analysis: 1 },
+    cost_tl: 0,
+    trunk: null,
+    unlocks: [],
+    warning: null,
+    is_trap: false,
+    trap_condition: null,
+    narrative: null,
+    is_goal: false,
+  },
+  {
+    id: "trade_unionism",
+    name: "Trade Unionism",
+    tier: 1,
+    parents: ["class_consciousness"],
+    description: "Organize workers at the point of production.",
+    tag_deltas: { mass_link: 2 },
+    cost_tl: 25,
+    trunk: null,
+    unlocks: ["electoral_socialism", "democratic_centralism", "armed_vanguard"],
+    warning: null,
+    is_trap: false,
+    trap_condition: null,
+    narrative: null,
+    is_goal: false,
+  },
+  {
+    id: "electoral_socialism",
+    name: "Electoral Socialism",
+    tier: 2,
+    parents: ["trade_unionism"],
+    description: "Win power through the ballot box.",
+    tag_deltas: { mass_link: 2, militancy: -2, class_analysis: -1 },
+    cost_tl: 50,
+    trunk: "reformist",
+    unlocks: ["coalition_politics"],
+    warning: "This path leads toward the Liberal Trap.",
+    is_trap: false,
+    trap_condition: null,
+    narrative: null,
+    is_goal: false,
+  },
+  {
+    id: "coalition_politics",
+    name: "Coalition Politics",
+    tier: 3,
+    parents: ["electoral_socialism"],
+    description: "Build broad alliances with liberals and progressives.",
+    tag_deltas: { mass_link: 3, class_analysis: -2 },
+    cost_tl: 75,
+    trunk: "reformist",
+    unlocks: ["liquidationism"],
+    warning: null,
+    is_trap: false,
+    trap_condition: null,
+    narrative: null,
+    is_goal: false,
+  },
+  {
+    id: "liquidationism",
+    name: "Liquidationism",
+    tier: 4,
+    parents: ["coalition_politics"],
+    description: "The revolutionary party dissolves into the mass movement.",
+    tag_deltas: { mass_link: 4, class_analysis: -3, militancy: -3 },
+    cost_tl: 0,
+    trunk: "reformist",
+    unlocks: [],
+    warning: null,
+    is_trap: true,
+    trap_condition: "CLASS_ANALYSIS <= 0 AND MILITANCY <= 0",
+    narrative:
+      '"ELECTORAL SOCIALISM: The Managed Decline"\n\nYou won the election. You hold power.\nAnd nothing changed.\n\nThe banks are still banks. The police still police.\nYou had power. You just couldn\'t use it.\n\nTHE APOCALYPSE CONTINUES, BUT NOW YOU MANAGE IT.',
+    is_goal: false,
+  },
+  {
+    id: "democratic_centralism",
+    name: "Democratic Centralism",
+    tier: 2,
+    parents: ["trade_unionism"],
+    description: "Freedom of discussion, unity of action.",
+    tag_deltas: { class_analysis: 2, mass_link: 1, militancy: 1 },
+    cost_tl: 75,
+    trunk: "scientific",
+    unlocks: ["mass_line"],
+    warning: null,
+    is_trap: false,
+    trap_condition: null,
+    narrative: null,
+    is_goal: false,
+  },
+  {
+    id: "mass_line",
+    name: "Mass Line",
+    tier: 3,
+    parents: ["democratic_centralism"],
+    description: "From the masses, to the masses.",
+    tag_deltas: { class_analysis: 1, mass_link: 2 },
+    cost_tl: 100,
+    trunk: "scientific",
+    unlocks: ["united_front"],
+    warning: null,
+    is_trap: false,
+    trap_condition: null,
+    narrative: null,
+    is_goal: false,
+  },
+  {
+    id: "united_front",
+    name: "United Front",
+    tier: 4,
+    parents: ["mass_line"],
+    description: "Unity with all progressive forces against the principal enemy.",
+    tag_deltas: { class_analysis: 2, mass_link: 2, militancy: 1 },
+    cost_tl: 150,
+    trunk: "scientific",
+    unlocks: [],
+    warning: null,
+    is_trap: false,
+    trap_condition: null,
+    narrative:
+      "The Scientific path is complete.\nAll actions receive +10% effectiveness.\nTraps are no longer accessible (CLASS_ANALYSIS too high).",
+    is_goal: true,
+  },
+  {
+    id: "armed_vanguard",
+    name: "Armed Vanguard",
+    tier: 2,
+    parents: ["trade_unionism"],
+    description: "The revolution will be armed or it will not be.",
+    tag_deltas: { militancy: 3, mass_link: -1 },
+    cost_tl: 50,
+    trunk: "insurrectionist",
+    unlocks: ["urban_guerrilla"],
+    warning: "This path leads toward isolation.",
+    is_trap: false,
+    trap_condition: null,
+    narrative: null,
+    is_goal: false,
+  },
+  {
+    id: "urban_guerrilla",
+    name: "Urban Guerrilla",
+    tier: 3,
+    parents: ["armed_vanguard"],
+    description: "The city is the battlefield.",
+    tag_deltas: { militancy: 3, mass_link: -2, class_analysis: -1 },
+    cost_tl: 75,
+    trunk: "insurrectionist",
+    unlocks: ["adventurism"],
+    warning: null,
+    is_trap: false,
+    trap_condition: null,
+    narrative: null,
+    is_goal: false,
+  },
+  {
+    id: "adventurism",
+    name: "Adventurism",
+    tier: 4,
+    parents: ["urban_guerrilla"],
+    description: "Actions become ends in themselves.",
+    tag_deltas: { militancy: 4, mass_link: -4, class_analysis: -2 },
+    cost_tl: 0,
+    trunk: "insurrectionist",
+    unlocks: [],
+    warning: null,
+    is_trap: true,
+    trap_condition: "MASS_LINK <= 0",
+    narrative:
+      '"PROPAGANDA OF THE DEED: The Spiral"\n\nYou struck. Again and again.\nAnd the people watched in horror.\n\nNot horror at the State. Horror at YOU.\nYour communiques went unread.\nThe State used your actions to justify everything.\n\nTHE REVOLUTION DIED SO YOUR WAR COULD CONTINUE.',
+    is_goal: false,
+  },
+];
+
+/** One Doctrine Tree node — defaults to the root (`class_consciousness`). */
+export function makeDoctrineNode(overrides?: Partial<DoctrineNode>): DoctrineNode {
+  return {
+    ...(DOCTRINE_TREE_NODES[0] as DoctrineNode),
+    ...overrides,
+  };
+}
+
+/**
+ * GET /api/games/{id}/doctrine-tree/ payload — defaults to the real 11-node
+ * MVP tree with an honest `acquired_ids: []` and the corpus's starting tag
+ * values (Constitution III.11 — no acquisition system is wired yet, so
+ * there is no honest "empty" state to default to; the tree itself is always
+ * fully present).
+ */
+export function makeDoctrineTreePayload(
+  overrides?: Partial<DoctrineTreePayload>,
+): DoctrineTreePayload {
+  return {
+    root_id: "class_consciousness",
+    nodes: DOCTRINE_TREE_NODES,
+    acquired_ids: [],
+    tags: { class_analysis: 1, mass_link: 1, militancy: 0 },
     ...overrides,
   };
 }

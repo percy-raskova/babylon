@@ -1,4 +1,5 @@
 import type { VerbConfig, VerbTarget } from "./types";
+import { parseFlatCost } from "./cost";
 
 interface NegotiateTarget {
   id?: string;
@@ -39,4 +40,14 @@ export const negotiateConfig: VerbConfig = {
     target_id: targetId ?? "",
     params: { proposal: String(params.proposal ?? "coordination_pact") },
   }),
+  // Flat {action_points, cadre_labor, sympathizer_labor, material,
+  // can_afford, ...} envelope (engine_bridge.py:3805-3813 — cost is
+  // always free/can_afford:true for negotiate).
+  parseCost: parseFlatCost,
+  // resolve_negotiate (babylon/engine/actions/negotiate.py) only flips
+  // `edge_type` on success (leverage-gated) — no continuous metric is
+  // written at all (EdgeState.tension exists in the type but the resolver
+  // never touches it). The live `/actions/preview/` chip (Program 17 Wave
+  // 1 item W1.2) is expected to show no delta for this verb, same as
+  // investigate — an honest reflection of the real engine effect.
 };

@@ -10,6 +10,7 @@
 
 import type { StateCreator } from "zustand";
 import { get as apiGet, post as apiPost, postForm as apiPostForm } from "@/api/client";
+import { endpoints } from "@/api/endpoints";
 import type { AuthState, GameSummary, ScenarioInfo, CreateGameParams } from "@/types/game";
 import type { RootState } from "../types";
 
@@ -91,7 +92,7 @@ export const createSessionSlice: StateCreator<RootState, [], [], SessionSlice> =
 
     fetchGames: async () => {
       set((s) => ({ session: { ...s.session, gamesLoading: true } }));
-      const res = await apiGet<GameSummary[]>("/api/games/");
+      const res = await apiGet<GameSummary[]>(endpoints.gameList.path());
       if (res.status === "ok") {
         set((s) => ({ session: { ...s.session, games: res.data, gamesLoading: false } }));
       } else {
@@ -106,7 +107,7 @@ export const createSessionSlice: StateCreator<RootState, [], [], SessionSlice> =
     },
 
     fetchScenarios: async () => {
-      const res = await apiGet<ScenarioInfo[]>("/api/scenarios/");
+      const res = await apiGet<ScenarioInfo[]>(endpoints.scenarioList.path());
       if (res.status === "ok") {
         set((s) => ({ session: { ...s.session, scenarios: res.data } }));
       } else {
@@ -117,7 +118,7 @@ export const createSessionSlice: StateCreator<RootState, [], [], SessionSlice> =
     },
 
     createGame: async (params) => {
-      const res = await apiPost<{ session_id: string }>("/api/games/", params);
+      const res = await apiPost<{ session_id: string }>(endpoints.gameCreate.path(), params);
       if (res.status === "ok") {
         await get().session.fetchGames();
         return res.data.session_id;

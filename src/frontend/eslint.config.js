@@ -74,6 +74,43 @@ export default tseslint.config(
     },
   },
 
+  // Provenance boundary (seam Sensor 3): the game-render tree must never
+  // import test fixtures/relabels or the dev-only Observatory dashboard —
+  // either would put a non-runtime value on screen. Routing (`App.tsx`, which
+  // is not under any of these dirs) legitimately imports the Observatory
+  // route, the `observatory/`/`mocks/` trees own those modules, and test
+  // files legitimately consume fixtures — all excluded (App.tsx by scope,
+  // tests by the `ignores` below).
+  {
+    files: [
+      "src/components/**/*.{ts,tsx}",
+      "src/lib/**/*.{ts,tsx}",
+      "src/hooks/**/*.{ts,tsx}",
+      "src/store/**/*.{ts,tsx}",
+      "src/routes/**/*.{ts,tsx}",
+    ],
+    ignores: ["src/**/*.test.{ts,tsx}", "src/**/__tests__/**"],
+    rules: {
+      "@typescript-eslint/no-restricted-imports": [
+        "error",
+        {
+          patterns: [
+            {
+              group: ["@/observatory", "@/observatory/*"],
+              message:
+                "Game-render code must not import the Observatory dev dashboard (seam Sensor 3: on-screen values must be runtime state, not dev tooling). Route it from App.tsx instead.",
+            },
+            {
+              group: ["@/test/fixtures", "@/test/fixtures/*"],
+              message:
+                "Game-render code must not import test fixtures (seam Sensor 3: on-screen values must be real runtime data, never a fixture/relabel).",
+            },
+          ],
+        },
+      ],
+    },
+  },
+
   // Ignore build output and config files
   {
     ignores: ["dist/", "node_modules/", "*.config.js", "*.config.ts", "e2e/"],

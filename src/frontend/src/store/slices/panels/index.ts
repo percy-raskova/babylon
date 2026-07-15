@@ -1,8 +1,9 @@
 /**
  * Panels slice — one docked-panel state per endpoint (spec-110 B3).
  *
- * `summary`/`timeseries`/`economy`/`communities`/`map` are the 5 tick-driven
- * panels the fetch orchestrator fans out to on `onTickAdvanced`.
+ * `summary`/`timeseries`/`economy`/`communities`/`map`/`edges`/
+ * `stateApparatus` are the 7 tick-driven panels the fetch orchestrator fans
+ * out to on `onTickAdvanced`.
  *
  * `wire`/`contradiction`/`endgame`/`objectives`/`tradeFlows` back the
  * takeover surfaces + Objectives dock tab (spec-110 B5) — same
@@ -21,11 +22,16 @@ import type {
   TimeseriesPayload,
   EconomyDashboardPayload,
   CommunitiesDashboardPayload,
+  StateApparatusDashboard,
+  EdgesDashboardPayload,
+  OrgNetworkPayload,
+  DoctrineTreePayload,
 } from "@/types/game";
 import type { FeatureCollection } from "geojson";
 import type { WireFeed } from "@/types/wire";
 import type { ContradictionSnapshot, EndgameState, ObjectivesTracker } from "@/types/dialectic";
 import type { TradeFlowsPayload } from "@/types/trade";
+import { endpoints } from "@/api/endpoints";
 import type { RootState } from "../../types";
 import { createPanel, type Panel } from "./panelFactory";
 import { createNarrationPanel, type NarrationPanel } from "./narrationPanel";
@@ -45,68 +51,87 @@ export interface PanelsSlice {
     economy: Panel<EconomyDashboardPayload>;
     communities: Panel<CommunitiesDashboardPayload>;
     map: Panel<FeatureCollection>;
+    edges: Panel<EdgesDashboardPayload>;
+    stateApparatus: Panel<StateApparatusDashboard>;
     wire: Panel<WireFeed>;
     contradiction: Panel<ContradictionSnapshot>;
     endgame: Panel<EndgameState>;
     objectives: Panel<ObjectivesTracker>;
     tradeFlows: Panel<TradeFlowsPayload>;
     narration: NarrationPanel;
+    /** AW4-R2 — the Network takeover's org-network graph. */
+    network: Panel<OrgNetworkPayload>;
+    /** The Doctrine Tree takeover's read-only canvas (Epoch 3 Wave 6 Phase 0). */
+    doctrineTree: Panel<DoctrineTreePayload>;
   };
 }
 
 export const createPanelsSlice: StateCreator<RootState, [], [], PanelsSlice> = (set, get) => {
   const summary = createPanel<GameSummaryPayload>(
-    (gameId) => `/api/games/${gameId}/summary/`,
+    (gameId) => endpoints.summary.path({ id: gameId }),
     (updater) => set((s) => ({ panels: { ...s.panels, summary: updater(s.panels.summary) } })),
     get,
   );
   const timeseries = createPanel<TimeseriesPayload>(
-    (gameId) => `/api/games/${gameId}/timeseries/`,
+    (gameId) => endpoints.timeseries.path({ id: gameId }),
     (updater) =>
       set((s) => ({ panels: { ...s.panels, timeseries: updater(s.panels.timeseries) } })),
     get,
   );
   const economy = createPanel<EconomyDashboardPayload>(
-    (gameId) => `/api/games/${gameId}/economy/`,
+    (gameId) => endpoints.economy.path({ id: gameId }),
     (updater) => set((s) => ({ panels: { ...s.panels, economy: updater(s.panels.economy) } })),
     get,
   );
   const communities = createPanel<CommunitiesDashboardPayload>(
-    (gameId) => `/api/games/${gameId}/communities/`,
+    (gameId) => endpoints.communities.path({ id: gameId }),
     (updater) =>
       set((s) => ({ panels: { ...s.panels, communities: updater(s.panels.communities) } })),
     get,
   );
   const mapPanel = createPanel<FeatureCollection>(
-    (gameId, getRoot) => `/api/games/${gameId}/map/?zoom=${getRoot().map.framing}`,
+    (gameId, getRoot) => `${endpoints.map.path({ id: gameId })}?zoom=${getRoot().map.framing}`,
     (updater) => set((s) => ({ panels: { ...s.panels, map: updater(s.panels.map) } })),
+    get,
+  );
+  const edges = createPanel<EdgesDashboardPayload>(
+    (gameId) => endpoints.edges.path({ id: gameId }),
+    (updater) => set((s) => ({ panels: { ...s.panels, edges: updater(s.panels.edges) } })),
+    get,
+  );
+  const stateApparatus = createPanel<StateApparatusDashboard>(
+    (gameId) => endpoints.stateApparatus.path({ id: gameId }),
+    (updater) =>
+      set((s) => ({
+        panels: { ...s.panels, stateApparatus: updater(s.panels.stateApparatus) },
+      })),
     get,
   );
 
   const wire = createPanel<WireFeed>(
-    (gameId) => `/api/games/${gameId}/wire/`,
+    (gameId) => endpoints.wire.path({ id: gameId }),
     (updater) => set((s) => ({ panels: { ...s.panels, wire: updater(s.panels.wire) } })),
     get,
   );
   const contradiction = createPanel<ContradictionSnapshot>(
-    (gameId) => `/api/games/${gameId}/contradiction/`,
+    (gameId) => endpoints.contradiction.path({ id: gameId }),
     (updater) =>
       set((s) => ({ panels: { ...s.panels, contradiction: updater(s.panels.contradiction) } })),
     get,
   );
   const endgame = createPanel<EndgameState>(
-    (gameId) => `/api/games/${gameId}/endgame/`,
+    (gameId) => endpoints.endgame.path({ id: gameId }),
     (updater) => set((s) => ({ panels: { ...s.panels, endgame: updater(s.panels.endgame) } })),
     get,
   );
   const objectives = createPanel<ObjectivesTracker>(
-    (gameId) => `/api/games/${gameId}/objectives/`,
+    (gameId) => endpoints.objectives.path({ id: gameId }),
     (updater) =>
       set((s) => ({ panels: { ...s.panels, objectives: updater(s.panels.objectives) } })),
     get,
   );
   const tradeFlows = createPanel<TradeFlowsPayload>(
-    (gameId) => `/api/games/${gameId}/trade-flows/`,
+    (gameId) => endpoints.tradeFlows.path({ id: gameId }),
     (updater) =>
       set((s) => ({ panels: { ...s.panels, tradeFlows: updater(s.panels.tradeFlows) } })),
     get,
@@ -114,6 +139,17 @@ export const createPanelsSlice: StateCreator<RootState, [], [], PanelsSlice> = (
   const narration = createNarrationPanel(
     (updater) => set((s) => ({ panels: { ...s.panels, narration: updater(s.panels.narration) } })),
     () => get().panels.narration,
+  );
+  const network = createPanel<OrgNetworkPayload>(
+    (gameId) => endpoints.orgNetwork.path({ id: gameId }),
+    (updater) => set((s) => ({ panels: { ...s.panels, network: updater(s.panels.network) } })),
+    get,
+  );
+  const doctrineTree = createPanel<DoctrineTreePayload>(
+    (gameId) => endpoints.doctrineTree.path({ id: gameId }),
+    (updater) =>
+      set((s) => ({ panels: { ...s.panels, doctrineTree: updater(s.panels.doctrineTree) } })),
+    get,
   );
 
   return {
@@ -123,12 +159,16 @@ export const createPanelsSlice: StateCreator<RootState, [], [], PanelsSlice> = (
       economy,
       communities,
       map: mapPanel,
+      edges,
+      stateApparatus,
       wire,
       contradiction,
       endgame,
       objectives,
       tradeFlows,
       narration,
+      network,
+      doctrineTree,
     },
   };
 };

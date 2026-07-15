@@ -87,4 +87,22 @@ describe("MapLegend", () => {
     render(<MapLegend legend={{ kind: "ramp", stops: DATA_RAMPS.heat }} label="Heat" />);
     expect(screen.getByTestId("map-legend")).toHaveAttribute("data-muted", "false");
   });
+
+  describe("vector legend (Wave 3 §11's gradient-wind lens)", () => {
+    it("renders a direction/width key + description for a vector legend, not color stops", () => {
+      const def = LENS_REGISTRY.find((d) => d.id === "field_flow_exploitation")!;
+      render(<MapLegend legend={def.legend} label={def.label} />);
+      const legend = screen.getByTestId("map-legend");
+      expect(legend).toHaveAttribute("data-legend-kind", "vector");
+      expect(screen.getByTestId("map-legend-vector-key")).toBeInTheDocument();
+      if (def.legend.kind !== "vector") throw new Error("expected a vector legend");
+      expect(legend).toHaveTextContent(def.legend.description);
+    });
+
+    it("does not draw a ramp marker for a vector legend even if currentValue is passed", () => {
+      const def = LENS_REGISTRY.find((d) => d.id === "field_flow_exploitation")!;
+      render(<MapLegend legend={def.legend} label={def.label} currentValue={0.5} />);
+      expect(screen.queryByTestId("map-legend-marker")).not.toBeInTheDocument();
+    });
+  });
 });

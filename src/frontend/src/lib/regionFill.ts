@@ -45,7 +45,11 @@
 
 import { lensRampStops, sampleRampStops, type Lens, type MapMetric } from "@/lib/lens";
 import { rampForLayer, type RGBAColor } from "@/theme/colors";
-import { SOCIAL_ROLE_COLOR } from "@/components/map/mapLensLayers";
+import {
+  SOCIAL_ROLE_COLOR,
+  TERRITORY_TYPE_COLOR,
+  VISION_STATE_COLOR,
+} from "@/components/map/mapLensLayers";
 
 /** The value range a domain-normalized field (heat, `{kind:"metric"}`) is scaled against. */
 export interface FillDomain {
@@ -76,6 +80,23 @@ export type RegionFillProperties = Partial<Record<MapMetric, number | null>> & {
    * outside the numeric bag.
    */
   dominant_class?: string | null;
+  /**
+   * Wave 2 Round 2's aggregated `territory_type` — the group's
+   * population-weighted-mode real `TerritoryType` enum value (ruling 4;
+   * deterministic tie-break on the backend), with the same "categorical,
+   * so outside the numeric bag" reasoning as `dominant_class`.
+   */
+  territory_type?: string | null;
+  /**
+   * Wave 5 receptivity pair's aggregated `vision_state` — the group's
+   * population-weighted-mode desert/mud/water value
+   * (`_aggregate_hex_features`'s `vision_state_pop` vote, same
+   * deterministic tie-break as `territory_type`). Categorical, so outside
+   * the numeric bag. `mass_receptivity` (its numeric sibling) needs no
+   * field here — it is a `MapMetric`, covered by the `Partial<Record<...>>`
+   * bag this type intersects.
+   */
+  vision_state?: string | null;
 };
 
 /** True for a real, finite value — false for `null`/`undefined`/`NaN`. */
@@ -124,6 +145,33 @@ function stanceFill(properties: RegionFillProperties): RGBAColor | null {
     : null;
 }
 
+/** The `habitability` case: sampled directly (no domain division — see module docstring). Extracted (cognitive-complexity budget). */
+function habitabilityRegionFill(lens: Lens, properties: RegionFillProperties): RGBAColor | null {
+  const ramp = lensRampStops(lens);
+  if (ramp === null || !isPresent(properties.habitability)) {
+    return null;
+  }
+  return sampleRampStops(ramp, properties.habitability);
+}
+
+/** The `class_composition` case: `properties.dominant_class` via the shared `SOCIAL_ROLE_COLOR` palette. Extracted (cognitive-complexity budget). */
+function classCompositionRegionFill(properties: RegionFillProperties): RGBAColor | null {
+  const role = properties.dominant_class;
+  return role ? (SOCIAL_ROLE_COLOR[role] ?? null) : null;
+}
+
+/** The `territory_type` case: `properties.territory_type` via the shared `TERRITORY_TYPE_COLOR` palette. Extracted (cognitive-complexity budget). */
+function territoryTypeRegionFill(properties: RegionFillProperties): RGBAColor | null {
+  const type = properties.territory_type;
+  return type ? (TERRITORY_TYPE_COLOR[type] ?? null) : null;
+}
+
+/** The `vision_state` case: `properties.vision_state` via the shared `VISION_STATE_COLOR` palette. Extracted (cognitive-complexity budget). */
+function visionStateRegionFill(properties: RegionFillProperties): RGBAColor | null {
+  const state = properties.vision_state;
+  return state ? (VISION_STATE_COLOR[state] ?? null) : null;
+}
+
 /**
  * Resolve the fill color for one aggregated region feature under the
  * active lens, or `null` for an honest empty/neutral fill.
@@ -136,13 +184,8 @@ export function regionFillForLens(
   switch (lens.kind) {
     case "heat":
       return normalizedRampFill(lens, properties.heat, domain);
-    case "habitability": {
-      const ramp = lensRampStops(lens);
-      if (ramp === null || !isPresent(properties.habitability)) {
-        return null;
-      }
-      return sampleRampStops(ramp, properties.habitability);
-    }
+    case "habitability":
+      return habitabilityRegionFill(lens, properties);
     case "metric":
       return normalizedRampFill(lens, properties[lens.metric], domain);
     case "stance":
@@ -150,9 +193,16 @@ export function regionFillForLens(
     case "faction":
     case "collapse":
       return null;
-    case "class_composition": {
-      const role = properties.dominant_class;
-      return role ? (SOCIAL_ROLE_COLOR[role] ?? null) : null;
-    }
+    case "class_composition":
+      return classCompositionRegionFill(properties);
+    case "territory_type":
+      return territoryTypeRegionFill(properties);
+    case "vision_state":
+      return visionStateRegionFill(properties);
+    case "field_flow":
+      // The gradient-wind vector overlay is the signal at every framing —
+      // no aggregated-region equivalent exists (it's per-class-pair, not a
+      // territory property), same reasoning as faction/collapse above.
+      return null;
   }
 }

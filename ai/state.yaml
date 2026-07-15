@@ -2,9 +2,164 @@
 # What exists vs what's planned - KEEP THIS UPDATED
 
 meta:
-  version: "2.26.0"
-  updated: "2026-07-11"
+  version: "2.32.0"  # 2.28.0 lives on feature/19-emergent-class-partition (Program 19 Phase 0+1)
+  updated: "2026-07-15"
   truth_status: |
+    (2026-07-15 ~2pm) DT LAWVERIAN PHASE 0 + UNGATED LENS PAIR LANDED.
+    Owner ruled Option C for the DT tag pair NATIONAL_CHAUVINISM<->INTERNATIONALISM AND
+    "abstract it to apply to whatever" (Opus subagents authorized for this one task). A 9-agent
+    Opus workflow (surveys + 3 design attempts + synthesis + adversarial critique) designed THE
+    DIVERGENCE CHANNEL: a shadow reading pairing an AUTHORED/off-graph pole with a MATERIAL pole,
+    surfacing their DIVERGENCE. The critique returned NEEDS-REVISION/OVER-ABSTRACTED (the "3
+    instances" are 1 real=DT-unbuilt, 1 null=P19, 1 refusal=EH). Escalated two calls to owner:
+    SCOPE = "design general, build concrete" (ADR is the north star; Phase-1 code = 3 additive
+    fields + concrete DT shadow instance + honest-null; gating-ledger/generalized-sentinel/FSM
+    DEFERRED until a 2nd real instance — rule of three); GOVERNANCE = propose Amendment T
+    (Article VIII, observes-only) for BD ratification. Landed cc02a09d: ADR072 (+ index), DT
+    proposal Lawverian section -> Divergence Channel instance #2, EH proposal "Relation to the
+    Divergence Channel" (honestly scoped OUT, display-layer Phase-3 seam named). Critique fixes
+    folded in: observational-static not Amendment-S-motion; purpose-named DivergenceReading not
+    GapReading-punning; SOLIDARITY=internationalism-UNPROVEN (Aleksandrov) proxy; net-new
+    ORGANIZATION_COMPUTED_FIELDS + conditional byte-identity. AWAITING BD: accept/decline
+    Amendment T. Also landed 0b775f52: the wage_pressure + dispossession_intensity /map/ lenses
+    (ungated frontend #87/#88) WITH the missing round-trip carry (_carry_reserve_army_dispossession
+    — they were TERRITORY_EXCLUDED_FIELDS, so blank on every resolved tick without it; recompute,
+    bridge-only, qa:regression 5/5) + a data-driven _aggregate_hex_features refactor. CrisisTimeline
+    HUD shipped bcc63c83 (#86). Ungated frontend surface: 3 of 4 scout targets done; legitimation
+    "faith in the system" badge (#2) is the last one.
+
+    (2026-07-15 ~11:30am) RATIFICATION MORNING. Owner APPROVED both program proposals
+    (Epistemic Horizon + Doctrine Tree — Waves 5b/6 UNGATED) and directed a <=50-Sonnet-agent
+    history sweep over the local marxists.org + ProleWiki mirrors to ground the mechanics.
+    Executed at exactly the cap (workflow wf_daa1826f-9db: 6 scouts -> 31 readers -> 7 theme
+    synthesizers -> completeness critic = 45; + 5 targeted Round-2 agents on the critic's
+    gaps): 727 cited findings from 443 documents, 374 carrying historical numbers convertible
+    to GameDefines coefficients. Artifact: project/research/history-sweep/ (c91dafd1) — 7
+    design briefs, verbatim critique, 5 addenda, findings.json corpus. ALL FIVE open EH/DT
+    owner rulings now carry ratifiable recommendations (EH-5 keep spec decay constants + new
+    event-gated rupture rate 0.776 from Kronstadt; EH-3 per-(org,territory) M_r; DT-3
+    upkeep-decay ~0.55%/tick toward parent from Yan'an; DT-4 non-derivable -> playtest
+    0.15-0.25; DT-5 seeded-RNG weighted by tag deltas from the Lushan press-blackout
+    argument). Foco tension RESOLVED (no exception to the no-scouting law — Guevara's own
+    conditions). Also this morning, the EVENT-SILENCE ROOT CAUSE fell: 40ef3d81 —
+    PostgresRuntime._make_serializable silently dropped the graph "events" key (datetime
+    timestamps fail bare json.dumps), so every live GET /state/ snapshot had events=[]
+    FOREVER; fixed convert-don't-drop + III.11 loud warning; live proof 169 events at tick 3.
+    Sibling a1bf8b83 classified fascist_recruitment/organizational_fracture (warning tier).
+    Flagged for owner: backend/frontend severity-vocabulary drift (toasts run exclusively off
+    the frontend classifier; backend "critical" is decorative), converter gaps
+    (entity_death/population_attrition). Next: Phase-0 promotion of both programs (task #85)
+    folds the sweep's grounding + ruling recommendations into project/programs/ + ADRs.
+
+    (2026-07-15 ~8am, superseded above where they overlap)
+    THE OVERNIGHT ARC: EPOCHS WAVES 1-4 COMPLETE, WAVE 5 HALF-PLAYABLE,
+    WAVES 5b/6 OWNER-GATED. feature/epochs-wave1-spine now carries 50 commits over
+    feature/17-living-engine, every one pushed and gated (scoped suites per round, full
+    check 2x, qa:regression 5/5 after every engine change). Landed overnight, in order:
+    Wave 2 close-out; the Weather Layer (owner briefs: grammar laws DESIGN_BIBLE S11,
+    field_state seam + engine facade carry 722ed92e, storm markers + uprising
+    territory-anchoring, bifurcation gauge, field_flow vector lens 13, radar-loop
+    replay + map/history with the honest 4-of-13 replayable split); audit Wave 3
+    Vanguard Praxis (all 9 verbs live d42da148 - the disable comment was fiction;
+    entitlement/volatility on the class card, chauvinism honestly refused as edge-scoped;
+    RED_BROWN_COUP narration; state-apparatus AI EXECUTING for the first time 70d6e3f2 -
+    Detroit PD seeded, then eef58234 the Blind Giant heat-sort so it targets real threats
+    instead of itself); audit Wave 4 Gramscian Wire (org network + hypergraph dead-route
+    fixes c312e62d, the sigma/graphology Network takeover e6b47f3d - first imports ever,
+    centrality map lens 14 + edge-history sparkline 0dbe1849, SeamScope.NETWORK 6da3ab97);
+    Waves 5+6 corpus-mined into ratifiable program proposals e42c0059
+    (project/research/{epistemic-horizon,doctrine-tree}-program-proposal.md); Epistemic
+    Horizon Phase-1 shadow EXECUTED 483c4265 (ruling-free; EpistemicHorizonSystem @27,
+    crown finding: C_p=0 everywhere - no player marker on any org model -> proposal
+    ruling 6) + the receptivity lens pair fd034f62 (lenses 15+16: mass_receptivity ramp +
+    vision_state weather map, recompute-carry, ZERO masking). Five pre-existing bugs
+    fixed en route: territory_snapshot rate columns NULL-forever (32ccd90c), uprising
+    events unanchorable, two dead 500 routes, regression-harness warning-prefix bug,
+    trace-view flake root-caused to kill-between-0026-and-0030 (79d4390b self-heal).
+    Registry at 76 observables. EVERYTHING REMAINING IS OWNER-GATED: Wave-5 deception
+    half needs the III.11 falsification carve-out (escalation rule forbids building
+    un-ratified); Wave 6 needs the MVP-vs-no-MVP directive conflict resolved + the
+    Strasserism faction-flip architecture ruling; plus R4 forecast scope (#65), PR
+    timing, Program-19 merge order, nationwide #49 (owner-present).
+
+    (2026-07-14 ~11pm, superseded by the entry above where they overlap)
+    EPOCHS WAVE 2 COMPLETE + WAVE 3 SCOPED — see the 07-14 entry below.
+  truth_status_history_2026_07_14: |
+    (2026-07-14 ~11pm) EPOCHS WAVE 2 COMPLETE + WAVE 3 SCOPED. Wave 2 landed in
+    3 rounds on feature/epochs-wave1-spine (R1 c090d48c/31f4b42b economy
+    dashboard + Gap-1 seam rows; R2 b92de750/d50f915d real throughput wiring +
+    3 lenses incl. first categorical territory_type, liveness partition honest
+    at 1-of-7; R3 e284a65e/ef29cb4e class_snapshot history + SurvivalDuelPanel
+    with uncapped server-filtered rupture markers). Full mise run check green
+    on the branch: 9786 passed / 16 skipped / 4 xfailed; qa:regression 5/5
+    byte-identical throughout. Owner then asked to fold the two _inbox
+    visualization briefs (lawvere + weather) into the frontend workflow →
+    verified every claim against code (3 read-only sweeps) and scoped
+    reports/wave3-weather-implementation-map.md: grammar laws (R0), field-seam
+    serialization under the new field_state name (R1 — note the
+    contradiction_field System-18 naming collision), vector lens kind + storm
+    markers + front lines v1 + bifurcation gauge v1 (R2 — zero new npm deps),
+    radar-loop hex history off v_hex_state_asof (R3), deterministic forecast
+    overlay (R4, owner ruling needed). Key corrections vs the briefs:
+    production fields = {exploitation, atomization} only; kappa curvature never
+    computed live; community_memberships never seeded (hull gauge blocked);
+    dead route GET /hypergraph/communities/ calls a nonexistent bridge method
+    (guaranteed 500). Program 19 Phase 0+1 sits on its own stacked branch;
+    front-lines-v2/turbulence instruments ride after it merges.
+
+    (2026-07-14 ~9pm) PROGRAM 19 (EMERGENT CLASS PARTITION) PHASE 0+1 EXECUTED.
+    Owner interrupt ruled the SocialRole typology "seeded, not emergent" and gave
+    it precedence over Wave 2 Round 2. ADR070 (recording ADR — Constitution I.19
+    already ratifies the doctrine; Amendment S untriggered) + master record
+    project/programs/19-emergent-class-partition.md. Owner rulings:
+    slots-as-positions (role attr never mutated; derived partition = occupancy),
+    Wave 2 Rounds 2-3 resume after Phase 1 then run parallel with Phases 2-3+.
+    Landed on feature/19-emergent-class-partition (stacked on epochs-wave1-spine):
+    a38771d5 docs, 1da23e94 per-node pole channel (PoleSample/PoleReading +
+    OppositionRegistry.read_poles, _lead tie rule, UNPOSITIONED=absence III.11,
+    GraphInputs id-pair twins, catalog pole_measures with _imperial_poles =
+    _wage_poles as Program 10's landing seam), 938396d8 shadow write
+    (ContradictionSystem._step_pole_channel: sigma_capital_labor/sigma_wage/
+    derived_class_cell node attrs + pole_readings graph attr, computed-fields
+    registered same-commit, honest-None de-positioning), 7af30c74 partition
+    sentinel (sixth sentinel, ADVISORY-only; cell vocabulary single-SoT in
+    sentinels/partition/registry.py imported BY the engine — drift impossible;
+    tools/partition_probe.py persistent-graph harness; sentinel_check partition).
+    qa:regression 5/5 byte-identical, baselines UNMODIFIED (shadow-safe by
+    construction, proven). CROWN FINDING (first probe, 52t): two_node agreement
+    0.000 — C001 seeded periphery_proletariat derives capital:bribed (the tick-8
+    wealth crossover = label rot, now measurable); synthetics form almost no
+    final-tick cells (wage axis honestly de-positions when wages stop);
+    flips = 1/node (regime transition, NO chattering — Phase-3 gate clear).
+    Phase 2 (redundant cutovers) + 3+ (deep cutover, ControlRatio LAST) are
+    scheduled sessions; seed-default derivation = follow-on program.
+
+    (2026-07-14 ~3pm) PROGRAM 17 WAVE 1 + SENTINELS LANDED ON THE BRANCH,
+    REVIEWED, VERIFIED. feature/17-living-engine (~38 commits over dev@28bef52f)
+    holds: Wave 1 "Light the Seam" (per-county Φ lit end-to-end, events 14→34,
+    endgame wired, 5 real inspectors, live verb costs, item-25 A/B/C — all 4
+    metric lenses honest), the 5-sentinel family + 3 seam sensors, the seam
+    close-out (typed endpoints.ts manifest as API-contract SoT, autonomous
+    bridge-serialization sweep, coverage-sentinel CLI, 82-row wiring punch-list
+    = the UI/UX-pass backlog), and the inbox triage (MELT/TVT corpus landed at
+    project/research/melt-tvt/). A 13-agent adversarial review confirmed 2
+    majors, both fixed same-day: the sweep's silent skip of non-get_ serializers
+    (e096a6d5) and punch-list under-enumeration (013da395); the 5 remaining
+    hardcoded API paths migrated onto the manifest (19b760ab). Gates:
+    qa:regression 5/5 byte-identical; frontend 819 vitest + tsc + eslint green;
+    unit suite 9617 green with 10 environmental reds — the LUKS data drive
+    remounted at /media/user/data1 after the 2026-07-13 session kill, dangling
+    every data/* symlink, AND docker's babylon-pg has been writing a SHADOW data
+    dir on the root fs at /media/user/data/babylon-pg since then (owner runbook
+    delivered; needs sudo). Machine-safety update (owner ruling 2026-07-14):
+    mise run cap retired from routine use — the claude-mem leak is fixed
+    upstream-and-locally, earlyoom is the backstop, and a memory-eating process
+    is a code smell to CATCH loudly, not contain silently. BLAS=1 pin stays.
+    ADR068 (Program 17) + ADR069 (Program 18 C1 design) recorded. Next: owner
+    fixes the mount, full check re-run green, PR feature/17-living-engine → dev;
+    then the Path Forward ranking (B1 reference-DB reproducibility → B2 economy
+    phantom quick-strike → B3 Wave 2 topology).
+
     (2026-07-11 ~5pm) PHASE 8 CLOSED + DEPENDABOT MADE REPRODUCIBLE. A second
     promotion carried the CI-hardening/proving-run wave to main (82a92882 ->
     a491c22d, 28 commits, clean ff via promote.sh; gate 2 saw 21 green checks).
@@ -1602,7 +1757,7 @@ future_concepts:
 # =============================================================================
 
 current_focus:
-  primary: "Epoch 1: The Demonstration - completing Slices 1.4-1.6"
+  primary: "Epochs-audit Wave 1 'Make the Spine Felt' COMPLETE (W1.1-W1.8, 2026-07-14, branch feature/epochs-wave1-spine stacked on PR #185); next: Wave 2 per reports/epochs-vision-gap-audit.md + Amendment R execution (nationwide scenario)"
   roadmap: "ai/epochs-overview.md"
   legacy_roadmap: "brainstorm/plans/four-phase-engine-blueprint.md (DEPRECATED)"
   legacy_phase_roadmap: "ai/roadmap.md (DEPRECATED - see epochs-overview.md)"
@@ -1629,6 +1784,7 @@ current_focus:
     outcome: "Win (solidarity) or Lose (fascism) based on solidarity_strength"
 
   recently_completed:
+    - "Epochs-audit Wave 1 'Make the Spine Felt' (2026-07-14; branch feature/epochs-wave1-spine, 8 commits, all pushed): W1.1 event whitelist 34->44 of 79 EventTypes (10 new converter branches + struggle/dispossession payload models); W1.2 live action-preview feedforward (predictedEffects fiction deleted, fetchActionPreview + useActionPreview, honest-null while pending); W1.3 vanguard triad + trap meters on the org inspector (reputation=None never fabricated-0.0; CROWN FIX: inspector is a READ — detect_traps increments ticks_at_moderate PER CALL, so _compute_traps gained persist=False and the inspector reports tick-persisted state verbatim, else polling escalates traps toward SEVERE); W1.4 class-card ternary consciousness (reuses county_aggregation._ideology_to_ternary) + real inequality Gini (discovery: NOT a mock — VitalitySystem reads it) + class_position as badged MOCK (new MockBadge convention); W1.5 CLAIMS seeding + FR-040b SOV_EXTERIOR_NULL fallback; W1.6 real circuit_flows (role-resolved 4-node imperial circuit, EXPLOITATION/TRIBUTE/WAGES — no RENT EdgeType exists) + ImperialCircuitFlow.tsx SVG + endpoints.ts inspectorNode off Untyped + SeamScope.INSPECTOR with 4 registered rows; W1.7 bespoke MASS_AWAKENING/FASCIST_DRIFT narration (class-scoped subject resolution; CROWN FIX: bridge passes real scenario names via meta['class_names'] — wayne C002='Suburban Petty Bourgeoisie' vs canonical Comprador, registry map alone mislabels; _build_meta allowlist keeps it out of the wire contract); W1.8 determinism (RAYON_NUM_THREADS=1 pin — rustworkx rayon centrality was the unpinned sibling of the BLAS freeze class — + key-sorted _centrality_ids). Same day: Constitution v2.10.0 (Amendment R nationwide canonical scale PENDING CODE + Amendment S dialectical apex) + deterministic-data-artifacts design seed (owner ruling: CI/tests never touch the babylon-data drive). qa:regression 5/5 byte-identical throughout."
     - "Fork Reconciliation Ledger — Part 2 of the src/ sweep (2026-07-09; branch docs/fork-reconciliation-ledger, on dev @ ea403107; ADR059). Authored project/execution/FORK_RECONCILIATION_LEDGER.md via a 30-agent workflow (15 rigor analysts + 15 adversarial verifiers, 0 errors, 14/15 CONFIRMED, 1 CHALLENGED=Fork 4). One rigor+data-accuracy recommendation per successor-fork, grounded in the Constitution (III.8 Aleksandrov P0 tie-breaker; III.10 Earn-Its-Keep; II.2 derived-never-stored; III.4.2 fixture-vs-runtime; III.1; III.7) and adversarially verified. LEDGER PROPOSES, OWNER DISPOSES: no src/ changed, no baseline moved; each entry has a '— Percy's ruling:' slot; Part-2b implements rulings behind mise run check + byte-identical qa:regression. Disposition tally (15 forks): delete-orphan 5 (F2,7,9,10,12 — all byte-identical), wire-orphan/retire-live 4 (F1,3,4,6 — moves baseline), reconcile 4 (F5,8,13,14), unify 2 (F11,15). Corrections logged: II.11 is Subsystem-Table-Ownership not a BEA-SQL rule + both BEA paths raw-SQL (F2); county_exposure is a spatial key not a Φ rival, the 'live path' is a stub-zero pass-through (F1); the 'SQL trace_log view' doesn't exist, 0019/0023 create a different VIEW (F10); validate_schemas.py NOT obsolete (schemas/ survive, no-action); Marx formulas NOT deleted in Phase A (F12); AidDefines not composed into GameDefines (F3); F14 premise largely false. Cross-cutting: bundle F10+F11; fixture-as-runtime (III.4.2) recurs across F1/F6/F8 (own remediation pass); 'stub-is-the-live-path' recurs (F1/6/8). Owner routing: project/owner/owner-queue.md item 26. Non-forks: validate_schemas.py (no action), SimulationConfig shell (Part-3)."
     - "src/ simplification sweep Phases A-D (2026-07-09; branch refactor/src-simplification-sweep, 12 gated commits, NOT yet pushed/merged; ADR058). Owner-authorized decision-free dedup/deadcode pass before resuming project/, under the rigor rule 'byte-identical or defer'. HEADLINE (B3): src/babylon/data/defines.yaml is now THE canonical, player-editable single source of truth for every GameDefines coefficient — generated from the schema by tools/generate_defines_config.py (Paradox-style one file: header + per-category sections + inline '# description (range)' per scalar), read by load_default(), guarded by a hard round-trip gate (load_from_yaml == GameDefines(), proven exact for all 39 categories) + --check staleness mode + test_constants_sync.py guards + docs/how-to/modding-defines.rst. B1 pruned 36 dead SimulationConfig coefficient fields (kept rng_seed); B2 centralized HOURS_PER_YEAR(2080)/WEEKS_PER_YEAR(52) into TimescaleDefines via formulas/constants.py (baselines regenerated for a proven behavior-identical defines_hash drift). C1 hoisted _get_persistent_data to SystemBase; C4 extracted build_schema_registry to utils/. D1 renamed Emmanuel calculate_exploitation_rate->calculate_unequal_exchange_rate (Marx tensor s/v property untouched — DB/wire/React contract); D2 renamed legacy SessionRecorder->JsonlSessionRecorder; D3 fixed stale 0031->0032 migration comments. Byte-identical throughout: test:unit 9370 passed, qa:regression 5/5. DEFERRED per rigor (proven not-byte-identical): C2 QCEW extraction REVERTED (short-circuit query-pattern change), C3 sv-ratios (inf-vs-0.0), C5 EndgameDetector (999.0 sentinel). STOPPED at Part 2 per owner: the Fork Reconciliation Ledger (tensor_hierarchy/leontief, Mobilize/AidDefines wiring, Feature-032 costs, institution/, gamma-III, PersistenceObserver, derivations/, TraceRecorder, Marx reference formulas) + Part 3 (persistence unify onto dynamic_* stack, frontend track) remain."
     - "spec-099 Observatory deep panes (Program 09 Lane O; 2026-07-04; branch 099-observatory-deep-panes, stacks on 096, awaiting BD merge). Adds source=live|archive to every Observatory read: archive reads a session's exported Parquet under BABYLON_ARCHIVE_ROOT via in-memory DuckDB (mirrors babylon.persistence.archival.query_archived_session; ?-placeholder raw-table SQL translated to %s for Postgres), read-only. web/observatory/sources.py (Source, LiveReader/ArchiveReader, open_reader, list_archive_session_ids, SourceReadError), deep_queries.py (pure verify_chain + reader-based read_commit_chain/read_national_series/read_boundary/read_conservation + NATIONAL_RECON_SQL reconstructing the 0030 view over raw hex), deep_views.py (verify/boundary/conservation/diff endpoints). Four deep panes: /verify/ (structural tick_commit chain integrity — contiguity, checkpoint cadence via a locally-mirrored CHECKPOINT_EVERY_TICKS constant, hash length, gaps/dups; NO engine re-run per III.7), /boundary/ (empty-state-first, lights up at spec-101), /conservation/ (severity filter), /diff/ (two national series aligned by tick + commit compare). source= also wired into 096 sessions/ticks/commits/series. Frontend: deepApi.ts + DeepPanes.tsx (VerificationPane/BoundaryPane/ConservationPane) + source selector + Series/Diagnostics tabs in ObservatoryPage. GATE MET: the real archived 520-tick canonical session edf07b2e-ac2f-4ed7-990e-cadd159ed7b2 verifies valid via source=archive (chain 520 ticks, 10 checkpoints, national series over 45,572 hexes, Parquet never rewritten). Tests: 83 backend unit (tests/unit/observatory/) + 29 integration (tests/integration/observatory/ incl. real archive) + 27 Vitest/MSW; product suites untouched-green (backend web 246/246; frontend 337/337 non-parallel). Also swept two 096 re-review LOW nits: queries.py __all__ hex-limit exports + server-side logger.exception on the 503 path. Close-out review caught a third regression: deep_queries.py had imported babylon.persistence.delta directly, tripping tests/unit/web/test_import_boundary.py (only game/engine_bridge.py may cross that boundary); fixed by mirroring CHECKPOINT_EVERY_TICKS as a local constant instead (sources.py already used this convention) — backend web 246/246 verified genuinely green post-fix, not just asserted. No new deps (duckdb/pyarrow already present)."
@@ -2606,3 +2762,41 @@ tech_debt:
     status: "Partially superseded"
     notes: "Tension now tracked on Relationship edges, but legacy class still used in __main__.py"
     action: "Evaluate during Phase 3"
+
+program_20_means_of_production:
+  date: 2026-07-15
+  adr: ADR071
+  spec: docs/superpowers/specs/2026-07-15-infra-iac-ai-modernization-design.md
+  track_a_infra_subrepo: COMPLETE
+  summary: >
+    deploy/ extracted with full history (git subtree split) into the local
+    babylon-infra repo mounted at infra/ (gitignored; submodule when it gains
+    a remote, ADR069 mechanism). Infra repo: nix flake devshell (system layer
+    + infra toolchain, nixos-25.11), terraform AI Gateway + Workers AI surface
+    (cloudflare provider 5.22.0, gpt-oss-20b target), sops+age scaffold,
+    ansible cleanup (bootstrap sshd fix, vendored hetzner.yml pruned),
+    workstation playbook (mount/service/port-split guards, all exercised
+    live). Parent detached: deploy/ + infra-validate + infra-live.yml +
+    .tflint.hcl removed; dependabot deploy block removed; gitignore secret
+    guards + gitleaks history allowlists deliberately KEPT (see a11cac64).
+  owner_actions_pending:
+    - move local deploy/ remnants (tfvars/tfstate/.terraform) into infra/terraform/
+    - add 'use flake ./infra' guard line to the live checkout's .envrc
+    - run terraform plan before next apply (cloudflare provider 5.18->5.22)
+    - owner-run 'ansible-playbook -i localhost, -K ansible/workstation.yml'
+  track_b_ai_modernization: COMPLETE
+  track_b_summary: >
+    Narrator stack modernized behind BABYLON_LLM_NARRATOR (D3 intact, Mock
+    Doctrine): prompt registry (versioned artifacts, hash-derived
+    PROMPT_VERSION + drift-proof), RIOT-style event archetypes bound to
+    real+reachable EventTypes, LLMConfig provider selection, WorkersAIClient
+    (AI Gateway, @cf/openai/gpt-oss-20b, cf-aig-gateway-id) + factory,
+    NarrationRecord persistence (migration 0015), real GET /narration/
+    endpoint to the cockpit's typed contract (registry entry, sentinel
+    rails), architecture.yaml ai_narrative block rewritten to reality.
+    Flag-off wire feed byte-identical (parity tests green).
+  crown_finding: >
+    Fresh worktrees lack the untracked data/ symlink farm; sqlite
+    creates-on-connect forged a stub reference DB that data_doctor's
+    readlink -e check accepted while 30 tests failed. Doctor check 3b now
+    fails loud on a non-symlink data/sqlite (commit c857e060).

@@ -56,7 +56,7 @@ Three-layer local system, no external servers. Full map: `ai/architecture.yaml`.
 
 ## Engine
 
-`SimulationEngine.run_tick(graph, services, context)` runs 26 Systems in strict materialist-causality
+`SimulationEngine.run_tick(graph, services, context)` runs 27 Systems in strict materialist-causality
 order — **source of truth: `simulation_engine._DEFAULT_SYSTEMS`**; annotated order in
 `ai/architecture.yaml`. The three phases:
 
@@ -64,8 +64,9 @@ order — **source of truth: `simulation_engine._DEFAULT_SYSTEMS`**; annotated o
    ReserveArmy, Community, Lifecycle, Solidarity, ImperialRent, Dispossession, Decomposition,
    ControlRatio, Metabolism.
 2. **Action** (@14): OODASystem — organizations observe + act.
-3. **Consequences** (14.5–21): FactionInfluence, Survival, Struggle, Consciousness, FascistFaction,
-   Sovereignty, Contradiction, ContradictionField, FieldDerivative, CollapseTransition, EdgeTransition.
+3. **Consequences** (14.5–22): FactionInfluence, Survival, Struggle, Consciousness, FascistFaction,
+   Sovereignty, Contradiction, ContradictionField, FieldDerivative, CollapseTransition, EdgeTransition,
+   EpistemicHorizon (Phase 1 shadow — Epistemic Horizon program; runs last, observes-only, no masking/gating yet).
 
 Key modules: `engine/services.py` (concrete ServiceContainer; the DI *protocol* is
 `kernel/services.py`), `kernel/event_bus.py` (plain-str types; the `EventType` enum — 79 values —
@@ -151,6 +152,28 @@ mise run db:sql -- "SELECT ..."         # one-shot SQL vs babylon_test
 CI (`.github/workflows/ci.yml`) invokes the same mise tasks devs run (`test:unit-ci`, `lint:check`,
 `qa:regression`, …) — the only raw-poetry exceptions are the py3.13 forward-compat leg (`nightly.yml`)
 and a handful of documented one-offs (migrations, doc build, ad hoc pytest legs).
+
+## Machine safety — resource limits (history: froze the dev box twice, 2026-07-12)
+
+Solo dev box (12 cores / 31 GB RAM). The 2026-07-12 freezes were root-caused and FIXED: BLAS
+thread oversubscription (pinned to 1, commit `f3dde939` — also a determinism win) stacked on the
+claude-mem chroma-mcp leak (fixed upstream + locally 2026-07-13; **earlyoom is now active** as the
+system backstop). Owner ruling 2026-07-14:
+
+- **Run heavy commands UNCAPPED.** `mise run cap` (`tools/capped.sh`) is retired from routine use —
+  a process that eats memory is a **code smell to catch loudly**, not contain silently; earlyoom
+  keeps the box alive. The cap wrapper still exists for deliberately-risky one-offs (memory bombs,
+  untrusted repro scripts), nothing else.
+- **Keep the BLAS=1 pin** (conftest + mise `[env]` + guard test `tests/unit/test_blas_thread_cap.py`)
+  — that one is correctness (deterministic FP reduction order), not just safety.
+- **Still never fan out a Workflow where multiple agents each spawn pytest / the full suite** —
+  `test:unit` is xdist with ~1 GB/worker coverage instrumentation; N agents × 4 workers stacks tens
+  of GB for no benefit. Parallel agents are for read-only investigation and doc work; heavy
+  test/build runs stay single-flight. Prefer scoped `mise run test:q -- <path>` locally.
+- **If chroma-mcp servers accumulate again** (`pgrep -fc -- '--client-type persistent'` climbing):
+  `mise run mcp:reap`. Never `pkill -f chroma-mcp` by hand (matches its own cmdline, SIGTERMs your
+  shell; the script uses a `chroma[-]mcp` bracket guard). The recycle-loop root cause is fixed, so
+  a climbing count is news — investigate, don't just reap.
 
 ## Gotchas (hard-won; details in `ai/anti-patterns.yaml`)
 

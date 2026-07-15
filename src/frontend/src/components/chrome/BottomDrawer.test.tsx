@@ -11,6 +11,7 @@
 
 import { describe, it, expect, beforeEach } from "vitest";
 import { render, screen, waitFor } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 import { BottomDrawer } from "./BottomDrawer";
 import { useStore } from "@/store";
 import { resetStore } from "@/test/resetStore";
@@ -42,5 +43,25 @@ describe("BottomDrawer", () => {
 
     expect(screen.queryByText(/No events loaded yet\./)).not.toBeInTheDocument();
     expect(screen.getByText(/dispatch already runs in the tray/i)).toBeInTheDocument();
+  });
+
+  it("the 'economy' tab toggles and renders EconomyDashboard, keeping it mounted (fan-out eligible) throughout", async () => {
+    render(<BottomDrawer gameId={DEFAULT_GAME_ID} />);
+    await waitFor(() => expect(useStore.getState().panels.economy.mounted).toBe(true));
+
+    // Trends is the default tab — EconomyDashboard is mounted (fetching in
+    // the background) but its container is visually hidden.
+    expect(screen.getByTestId("economy-dashboard").parentElement?.className).toContain("hidden");
+
+    await userEvent.click(screen.getByTestId("bottomdrawer-tab-economy"));
+    expect(useStore.getState().ui.chrome.bottomDrawer).toBe("economy");
+    expect(screen.getByTestId("economy-dashboard")).toBeInTheDocument();
+    expect(screen.getByTestId("economy-dashboard").parentElement?.className).not.toContain(
+      "hidden",
+    );
+
+    // Switching tabs never unmounts either panel.
+    expect(useStore.getState().panels.economy.mounted).toBe(true);
+    expect(useStore.getState().panels.timeseries.mounted).toBe(true);
   });
 });

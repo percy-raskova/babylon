@@ -50,6 +50,43 @@ export function MapLegend({
 }: MapLegendProps) {
   if (legend.kind === "none") return null;
 
+  if (legend.kind === "vector") {
+    return (
+      <div className="flex flex-col gap-1" data-testid="map-legend" data-legend-kind="vector">
+        <span className="text-[10px] uppercase tracking-wider text-ksbc-muted-2">{label}</span>
+        <div className="flex items-center gap-1" data-testid="map-legend-vector-key">
+          {/* Direction/width key (DESIGN_BIBLE.md §11 law 1: magnitude
+              reads as geometry, never a second color) — three bars of
+              increasing thickness feeding an arrowhead glyph, all in the
+              lens's one fixed hue. */}
+          <span
+            aria-hidden="true"
+            className="h-[2px] w-3"
+            style={{ backgroundColor: rgbaToCss(legend.color) }}
+          />
+          <span
+            aria-hidden="true"
+            className="h-[3px] w-4"
+            style={{ backgroundColor: rgbaToCss(legend.color) }}
+          />
+          <span
+            aria-hidden="true"
+            className="h-1 w-5"
+            style={{ backgroundColor: rgbaToCss(legend.color) }}
+          />
+          <span
+            aria-hidden="true"
+            className="text-xs leading-none"
+            style={{ color: rgbaToCss(legend.color) }}
+          >
+            →
+          </span>
+        </div>
+        <span className="max-w-[220px] text-[10px] text-ink">{legend.description}</span>
+      </div>
+    );
+  }
+
   if (legend.kind === "categorical") {
     return (
       <div className="flex flex-col gap-1" data-testid="map-legend" data-legend-kind="categorical">

@@ -45,7 +45,20 @@ import {
 } from "@/components/map/mapLensLayers";
 import { hullPolygonForTerritories } from "@/components/map/mapLensGeometry";
 import { buildPoliticalLayers, type PolityClaim } from "@/components/map/layers/political";
-import { resolvePulseTargets, useCriticalPulses } from "@/components/map/layers/criticalPulse";
+import {
+  resolvePulseTargets,
+  useCriticalPulses,
+  prefersReducedMotion,
+} from "@/components/map/layers/criticalPulse";
+import { resolveStormTargets, buildStormMarkerLayers } from "@/components/map/layers/stormMarkers";
+import {
+  edgesForField,
+  resolveFlowSegments,
+  buildFieldFlowLayers,
+  useFlowAnimationClock,
+} from "@/components/map/layers/fieldFlow";
+import { get as apiGet } from "@/api/client";
+import { endpoints } from "@/api/endpoints";
 import { useStore } from "@/store";
 import {
   loadCountyTopology,
@@ -61,7 +74,7 @@ import {
   availableMetricsFromMapData,
   type HexMapFeatureProperties,
 } from "@/lib/mapMetadata";
-import { lensKey, type Lens } from "@/lib/lens";
+import { lensKey, type Lens, type MapMetric } from "@/lib/lens";
 import { lensDefForLens } from "@/lib/lenses/registry";
 import { territoryToHexInline } from "@/lib/inspect/adapters/hex";
 import type {
@@ -70,6 +83,8 @@ import type {
   GameSnapshot,
   TerritoryState,
   MapSnapshotMetadata,
+  FieldStateEdge,
+  FieldStatePayload,
 } from "@/types/game";
 import type { Feature, FeatureCollection } from "geojson";
 
@@ -99,6 +114,13 @@ const REGION_NO_DATA_FILL: RGBAColor = [58, 53, 48, 160];
 const EMPTY_FILL_DOMAIN: FillDomain = { min: 0, max: 0 };
 /** Structural gray border between adjacent regions. */
 const REGION_LINE_COLOR: RGBAColor = [130, 138, 150, 160];
+/**
+ * Stable empty `field_state` edges array (Wave 3 §11's gradient-wind lens) —
+ * module-level so `relevantFlowEdges`'s memo stays referentially stable
+ * while the active lens isn't `field_flow`, matching `EMPTY_FILL_DOMAIN`'s
+ * own reasoning (`DeckGLMap`'s `layers` referential-stability contract).
+ */
+const EMPTY_FIELD_FLOW_EDGES: FieldStateEdge[] = [];
 
 /**
  * Concentric influence rings (stance/collapse lenses only) — one
@@ -154,6 +176,41 @@ function buildClaimsHullLayers(hulls: HullSpec[], h3Territories: H3Territory[]):
   return layers;
 }
 
+/**
+ * RADAR LOOP replay override (Program 17 Wave 3, Frontend-W3R3) — the one
+ * piece of state `MapStage.tsx` threads down when the tick scrubber is
+ * actively replaying a frame for the map's CURRENTLY ACTIVE lens (`null`
+ * whenever replay is inactive, loading, or the active lens's metric
+ * doesn't match the replay window's own metric — see this prop's docstring
+ * on `DeckGLMapProps`). `metric` is resolved once by the caller via
+ * `lensMetricName(lens)`, so this module never needs to re-derive it.
+ */
+export interface MapReplayFillOverride {
+  metric: MapMetric;
+  /**
+   * The active frame's per-county values (`county_fips` keys). A county
+   * absent here, or explicitly `null`, is honest no-data — the override
+   * NEVER falls back to the territory/feature's live value (Constitution
+   * III.11: a replayed tick with no recorded reading renders empty, not
+   * the present).
+   */
+  valuesByCounty: Record<string, number | null>;
+}
+
+/**
+ * The active replay frame's value for one county, or `null` for
+ * absent/explicit no-data — collapses "missing key" and "explicit null"
+ * into the same honest outcome exactly once, shared by both the hex- and
+ * region-framing override paths below.
+ */
+function replayValueForCounty(
+  replay: MapReplayFillOverride,
+  countyFips: string | null | undefined,
+): number | null {
+  if (!countyFips) return null;
+  return replay.valuesByCounty[countyFips] ?? null;
+}
+
 /** `null` -> `undefined` (the `LensTerritory.metrics` bag's "absent" spelling — see its docstring). */
 function nullToUndefined(v: number | null | undefined): number | undefined {
   return v ?? undefined;
@@ -169,6 +226,18 @@ function hexPropsToMetrics(hexProps: HexMapFeatureProperties): LensTerritory["me
     org_presence: nullToUndefined(hexProps.org_presence),
     population: nullToUndefined(hexProps.population),
     solidarity_index: nullToUndefined(hexProps.solidarity_index),
+    // Wave 2 Round 2 additions.
+    throughput_position: nullToUndefined(hexProps.throughput_position),
+    agitation: nullToUndefined(hexProps.agitation),
+    // Audit Wave 4 straggler (task #76).
+    centrality: nullToUndefined(hexProps.centrality),
+    // Wave 5 receptivity pair (numeric half; vision_state is categorical
+    // and rides territoryToLensTerritory's own visionState field instead).
+    mass_receptivity: nullToUndefined(hexProps.mass_receptivity),
+    // Feature 021 lens pair (System #5 ReserveArmySystem / System #10
+    // DispossessionEventSystem).
+    wage_pressure: nullToUndefined(hexProps.wage_pressure),
+    dispossession_intensity: nullToUndefined(hexProps.dispossession_intensity),
   };
 }
 
@@ -183,9 +252,10 @@ function hexPropsToMetrics(hexProps: HexMapFeatureProperties): LensTerritory["me
 function territoryToLensTerritory(
   t: TerritoryState,
   hexFeaturesByH3: Map<string, HexMapFeatureProperties>,
+  replay: MapReplayFillOverride | null | undefined,
 ): LensTerritory {
   const hexProps = t.h3_index ? hexFeaturesByH3.get(t.h3_index) : undefined;
-  return {
+  const base: LensTerritory = {
     id: t.id,
     h3_index: t.h3_index,
     heat: t.heat,
@@ -194,8 +264,52 @@ function territoryToLensTerritory(
     max_biocapacity: t.max_biocapacity ?? 100,
     habitability: t.habitability ?? hexProps?.habitability ?? null,
     dominantClass: hexProps?.dominant_class ?? null,
+    // Wave 2 Round 2: territory_type has no TerritoryState-level equivalent
+    // (unlike habitability's t.habitability fallback) — the hex feature is
+    // the only source, mirroring dominantClass above.
+    territoryType: hexProps?.territory_type ?? null,
+    // Wave 5: vision_state DOES have a TerritoryState-level source
+    // (_serialize_territory emits it on every /state/ snapshot territory
+    // row), so it follows habitability's dual-source pattern — snapshot
+    // value first, hex feature fallback, honest null when neither exists.
+    visionState: t.vision_state ?? hexProps?.vision_state ?? null,
     metrics: hexProps ? hexPropsToMetrics(hexProps) : undefined,
   };
+  return replay ? applyHexReplayOverride(base, replay, t.county_fips) : base;
+}
+
+/**
+ * RADAR LOOP's hex/scatter-framing override — the ONE injection point for
+ * both framings (`buildHexFramingLayers`/`buildScatterFallbackLayers` both
+ * fill from `lensResult.getFillColor`, which closes over territories built
+ * by `territoryToLensTerritory`). Overrides ONLY `replay.metric`'s value
+ * with the current frame's reading for `countyFips`, leaving every other
+ * field — including every OTHER metric — exactly as the live merge
+ * produced it. `heat` is `LensTerritory`'s own top-level (nullable) field;
+ * every other replayable metric goes through the existing `metrics` bag,
+ * reusing `metricFill`'s established "absent key = honest NO_DATA"
+ * convention instead of inventing a second nullable-number path.
+ */
+function applyHexReplayOverride(
+  base: LensTerritory,
+  replay: MapReplayFillOverride,
+  countyFips: string,
+): LensTerritory {
+  const value = replayValueForCounty(replay, countyFips);
+  if (replay.metric === "heat") {
+    return { ...base, heat: value };
+  }
+  const metrics = { ...base.metrics };
+  if (value === null) {
+    // Dynamic-key delete is disallowed (@typescript-eslint/no-dynamic-delete)
+    // — Reflect.deleteProperty is the same operation via a plain call, not
+    // a `delete` expression, and reproduces metricFill's "absent key =
+    // honest NO_DATA" convention exactly (never a fabricated null value).
+    Reflect.deleteProperty(metrics, replay.metric);
+  } else {
+    metrics[replay.metric] = value;
+  }
+  return { ...base, metrics };
 }
 
 /**
@@ -253,7 +367,10 @@ function currentValueForLens(
     lens.kind === "stance" ||
     lens.kind === "faction" ||
     lens.kind === "collapse" ||
-    lens.kind === "class_composition"
+    lens.kind === "class_composition" ||
+    lens.kind === "territory_type" ||
+    lens.kind === "vision_state" ||
+    lens.kind === "field_flow"
   ) {
     return null;
   }
@@ -326,22 +443,63 @@ function isRegionRampEmpty(
 }
 
 /**
+ * The `lens-legend-label` chip text, or `null` to hide it entirely.
+ * `field_flow`'s honest-empty hint (Constitution III.11) is layered on here
+ * rather than inside `buildLensLayers` — that function has no visibility
+ * into `field_state`'s edges (a different data source entirely, fetched by
+ * `DeckGLMap` itself) — mirroring the SAME "— no data" suffix convention
+ * `buildLensLayers` uses for an empty balkanization block. Extracted to a
+ * top-level function (cognitive-complexity budget) so this isn't a nested
+ * ternary inside `DeckGLMap`'s own render body.
+ */
+function resolveLegendStatusText(
+  showLensLegendLabel: boolean,
+  isFieldFlowLens: boolean,
+  flowSegmentCount: number,
+  legendLabel: string,
+): string | null {
+  if (!showLensLegendLabel) return null;
+  if (isFieldFlowLens && flowSegmentCount === 0) return `${legendLabel} — no data`;
+  return legendLabel;
+}
+
+/**
  * Region (county/cz/msa/bea_ea/state) fill layer — spec-112 C5. Reads real
  * polygons from each feature's `properties.member_h3` via `H3ClusterLayer`
  * (h3-js's `cellsToMultiPolygon` internally), since the backend ships
  * `geometry: null` for aggregated features.
  */
+/**
+ * RADAR LOOP's region-framing override counterpart to
+ * `applyHexReplayOverride` — `RegionFillProperties`' `MapMetric` keys
+ * (heat included) are ALREADY `number | null` (`regionFill.ts`), so no
+ * `LensTerritory`-style nullable-heat type widening was needed on this
+ * side.
+ */
+function overrideRegionMetric(
+  properties: RegionFillProperties,
+  replay: MapReplayFillOverride | null | undefined,
+  countyFips: string,
+): RegionFillProperties {
+  if (!replay) return properties;
+  return { ...properties, [replay.metric]: replayValueForCounty(replay, countyFips) };
+}
+
 function buildRegionLayer(
   features: RegionFeature[],
   lens: Lens,
   domain: FillDomain,
   layerOpacity: number,
+  replay: MapReplayFillOverride | null | undefined,
 ): H3ClusterLayer<RegionFeature> {
   return new H3ClusterLayer<RegionFeature>({
     id: "region-clusters",
     data: features,
     getHexagons: (f) => f.properties.member_h3 ?? [],
-    getFillColor: (f) => regionFillForLens(lens, f.properties, domain) ?? REGION_NO_DATA_FILL,
+    getFillColor: (f) => {
+      const properties = overrideRegionMetric(f.properties, replay, f.properties.county_fips);
+      return regionFillForLens(lens, properties, domain) ?? REGION_NO_DATA_FILL;
+    },
     getLineColor: REGION_LINE_COLOR,
     lineWidthMinPixels: 1,
     getElevation: 0,
@@ -351,7 +509,7 @@ function buildRegionLayer(
     autoHighlight: true,
     highlightColor: [200, 168, 96, 180],
     updateTriggers: {
-      getFillColor: [lens, domain],
+      getFillColor: [lens, domain, replay],
     },
   });
 }
@@ -374,6 +532,15 @@ const INITIAL_VIEW_STATE = {
 
 interface DeckGLMapProps {
   snapshot: GameSnapshot;
+  /**
+   * The active game's id — needed ONLY to fetch `GET /field_state/` when the
+   * `field_flow` lens is active (Wave 3 §11's gradient-wind lens; every
+   * other lens's data already rides `snapshot`/`mapData`, so this is the
+   * ONE new fetch-triggering prop). Optional/omittable: every existing
+   * caller/test that doesn't pass it simply never fetches (the field_flow
+   * lens degrades to its honest-empty state, same as no data ever arriving).
+   */
+  gameId?: string;
   /**
    * The map-snapshot FeatureCollection from `GET /api/games/{id}/map/`
    * (the caller's `mapData`). Spec-093's balkanization block lives under
@@ -406,6 +573,20 @@ interface DeckGLMapProps {
   framing?: AdminLevel;
   /** Called when the user clicks a framing-scale button. Uncontrolled if omitted. */
   onFramingChange?: (level: AdminLevel) => void;
+  /**
+   * RADAR LOOP replay override (Program 17 Wave 3, Frontend-W3R3 — the
+   * second amendment to `DeckGLMap`'s frozen contract after `gameId`/
+   * `field_flow`). `MapStage.tsx` computes this ready-made from the
+   * `mapReplay` slice + the active `lens` (via `lensMetricName`) and
+   * passes it down — `null` whenever replay is inactive/loading/erroring,
+   * OR the active lens's metric doesn't match the replay window's own
+   * metric (an honest silent revert to live fill, never a crash, if the
+   * player switches lenses mid-replay). When non-null, the hex/region fill
+   * for the active lens uses the current frame's per-county values instead
+   * of the live snapshot — see `territoryToLensTerritory`/
+   * `buildRegionLayer`'s docstrings for the exact injection points.
+   */
+  replay?: MapReplayFillOverride | null;
 }
 
 /** Discriminates a hex-territory hover from an aggregated-region hover. */
@@ -623,6 +804,42 @@ function usePoliticalLayers(
 }
 
 /**
+ * One-shot-per-tick fetch of `GET /field_state/`'s `edges[]` (Wave 3 §11's
+ * gradient-wind lens), gated on `active` (the `field_flow` lens actually
+ * being selected) — every OTHER lens fires zero requests, matching the task
+ * brief's "fetch field_state when the active lens is field_flow." Mirrors
+ * `BifurcationGauge.tsx`'s `useFieldStateOnce`/`EconomyDashboard.tsx`'s
+ * `useCrisisTimeline` cancellation idiom, but keyed on `[gameId, tick,
+ * active]` instead of firing once on mount — the wind re-fetches per tick
+ * (a hard cut between ticks: `resolveFlowSegments`/`buildFieldFlowLayers`
+ * never interpolate gradient VALUES, only the trail animation moves).
+ * `apiGet` never throws (errors normalize into its returned envelope), so a
+ * failed/absent fetch just holds the last-known (or initial empty) edges —
+ * an honest, un-fabricated degradation, never a crash.
+ */
+function useFieldFlowEdges(
+  gameId: string | undefined,
+  tick: number,
+  active: boolean,
+): FieldStateEdge[] {
+  const [edges, setEdges] = useState<FieldStateEdge[]>(EMPTY_FIELD_FLOW_EDGES);
+
+  useEffect(() => {
+    if (!active || !gameId) return undefined;
+    let cancelled = false;
+    apiGet<FieldStatePayload>(endpoints.fieldState.path({ id: gameId })).then((res) => {
+      if (cancelled) return;
+      setEdges(res.status === "ok" ? res.data.edges : EMPTY_FIELD_FLOW_EDGES);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [gameId, tick, active]);
+
+  return edges;
+}
+
+/**
  * Fixed per-lens ramp domain (DESIGN_BIBLE.md §3.2/§6: "no silent rescale
  * between ticks") + whether the CURRENT data would need a wider one (an
  * honest "flash" state, the same section's legend-flash requirement) —
@@ -685,6 +902,7 @@ function buildRegionFramingLayers(params: {
   rings: RingSpec[];
   hulls: HullSpec[];
   h3Territories: H3Territory[];
+  replay: MapReplayFillOverride | null | undefined;
 }) {
   const {
     politicalLayers,
@@ -695,10 +913,11 @@ function buildRegionFramingLayers(params: {
     rings,
     hulls,
     h3Territories,
+    replay,
   } = params;
   return [
     ...politicalLayers,
-    buildRegionLayer(regionFeatures, lens, fillDomain, layerOpacity),
+    buildRegionLayer(regionFeatures, lens, fillDomain, layerOpacity, replay),
     ...buildRingLayers(rings, h3Territories),
     ...buildClaimsHullLayers(hulls, h3Territories),
   ];
@@ -797,6 +1016,14 @@ export function DeckGLMap({
   onTerritoryClick,
   framing = "hex",
   onFramingChange,
+  gameId,
+  // Deliberately no `= null` default here: a default *value* is itself a
+  // branch (ESLint's core `complexity` rule counts a default parameter as
+  // +1), and this component's cyclomatic complexity is already at its cap.
+  // `replay` is `MapReplayFillOverride | null | undefined` at every
+  // downstream consumer instead — functionally identical (all of them
+  // already treat a falsy `replay` as "no override").
+  replay,
 }: DeckGLMapProps) {
   const [hoverInfo, setHoverInfo] = useState<HoverInfo | null>(null);
 
@@ -818,6 +1045,49 @@ export function DeckGLMap({
     [criticalToasts, territories],
   );
   const pulseLayers = useCriticalPulses(pulseTargets);
+
+  // Storm markers (Wave 3 Round 2a, DESIGN_BIBLE.md §11) — static UPRISING
+  // glyphs. Reads the SAME `criticalToasts` (really: the full toast queue,
+  // see the comment above) array the pulse does — see `stormMarkers.ts`'s
+  // module docstring for why that IS the shared lifetime/window convention
+  // here, no separate timer-owned hook needed. RUPTURE never contributes a
+  // map glyph (it is global); its own copy grading lives in
+  // `EventToasts.tsx` via the same module's `maoScore`.
+  const stormTargets = useMemo(
+    () => resolveStormTargets(criticalToasts, territories),
+    [criticalToasts, territories],
+  );
+  const stormLayers = useMemo(() => buildStormMarkerLayers(stormTargets), [stormTargets]);
+
+  // Gradient-wind vector lens (Wave 3 §11's "the weather grammar" — the
+  // first VECTOR lens kind). `useFieldFlowEdges` fetches GET /field_state/
+  // ONLY while `field_flow` is the active lens (gameId threaded down from
+  // MapStage solely for this fetch — see the `gameId` prop's docstring);
+  // `edgesForField`/`resolveFlowSegments` are the same pure pipeline
+  // `fieldFlow.test.ts` covers directly. The animation clock is paused
+  // (zero rAF, zero re-renders) whenever the lens isn't active OR reduced
+  // motion is requested, so this whole block is referentially inert for
+  // every other lens — the `layers` stability contract stays intact.
+  const isFieldFlowLens = lens.kind === "field_flow";
+  const fieldFlowEdges = useFieldFlowEdges(gameId, snapshot.tick, isFieldFlowLens);
+  const relevantFlowEdges = useMemo(
+    () =>
+      lens.kind === "field_flow"
+        ? edgesForField(fieldFlowEdges, lens.field)
+        : EMPTY_FIELD_FLOW_EDGES,
+    [fieldFlowEdges, lens],
+  );
+  const flowSegments = useMemo(
+    () => resolveFlowSegments(relevantFlowEdges, territories),
+    [relevantFlowEdges, territories],
+  );
+  const flowReducedMotion = prefersReducedMotion();
+  const flowClockTime = useFlowAnimationClock(!isFieldFlowLens || flowReducedMotion);
+  const fieldFlowLayers = useMemo(
+    () =>
+      buildFieldFlowLayers(flowSegments, { reducedMotion: flowReducedMotion, time: flowClockTime }),
+    [flowSegments, flowReducedMotion, flowClockTime],
+  );
 
   // Political cartography base layer (Lane Carto, spec-113 §7) — de jure
   // county hairlines + state borders, de facto polity fills — see
@@ -857,12 +1127,12 @@ export function DeckGLMap({
   const lensResult = useMemo(
     () =>
       buildLensLayers({
-        territories: territories.map((t) => territoryToLensTerritory(t, hexFeaturesByH3)),
+        territories: territories.map((t) => territoryToLensTerritory(t, hexFeaturesByH3, replay)),
         balkanization,
         lens,
         factionFilter,
       }),
-    [territories, balkanization, lens, factionFilter, hexFeaturesByH3],
+    [territories, balkanization, lens, factionFilter, hexFeaturesByH3, replay],
   );
 
   // Only show the legend-label chip for balkanization lenses when there's
@@ -871,6 +1141,13 @@ export function DeckGLMap({
   const showLensLegendLabel =
     !BALKANIZATION_LENSES.has(lens.kind) ||
     !lensResult.legendLabel.toLowerCase().includes("no data");
+
+  const legendStatusText = resolveLegendStatusText(
+    showLensLegendLabel,
+    isFieldFlowLens,
+    flowSegments.length,
+    lensResult.legendLabel,
+  );
 
   const getColor = useCallback(
     (t: TerritoryState): RGBAColor => lensResult.getFillColor(t.id),
@@ -919,6 +1196,7 @@ export function DeckGLMap({
         rings: lensResult.rings,
         hulls: lensResult.hulls,
         h3Territories,
+        replay,
       });
     }
 
@@ -955,14 +1233,19 @@ export function DeckGLMap({
     regionFeatures,
     effectiveFillDomain,
     politicalLayers,
+    replay,
   ]);
 
-  // Critical-event pulses ride ABOVE the base map so the rupture cue is never
-  // occluded by fills/hulls. `pulseLayers` is a stable-empty array at rest
-  // (memoized in `useCriticalPulses`), so this memo — and the deck.gl layer
-  // list it feeds — is referentially unchanged while nothing is rupturing
+  // Critical-event pulses, storm markers, and the gradient wind ride ABOVE
+  // the base map so none of these cues is ever occluded by fills/hulls. All
+  // three are stable-empty arrays at rest (`useCriticalPulses`/`stormLayers`/
+  // `fieldFlowLayers`), so this memo — and the deck.gl layer list it feeds —
+  // is referentially unchanged while nothing is rupturing/struggling/flowing
   // (DeckGLMap's render/stability contract, architecture §3.3).
-  const allLayers = useMemo(() => [...layers, ...pulseLayers], [layers, pulseLayers]);
+  const allLayers = useMemo(
+    () => [...layers, ...pulseLayers, ...stormLayers, ...fieldFlowLayers],
+    [layers, pulseLayers, stormLayers, fieldFlowLayers],
+  );
 
   return (
     <div className="relative flex h-full flex-col">
@@ -977,7 +1260,7 @@ export function DeckGLMap({
         availability={{ balkanization, availableMetrics }}
         currentValue={currentValue}
         flash={legendFlash}
-        legendStatusText={showLensLegendLabel ? lensResult.legendLabel : null}
+        legendStatusText={legendStatusText}
         rampEmpty={rampEmpty}
       />
 

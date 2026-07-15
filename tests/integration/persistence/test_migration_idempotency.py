@@ -107,6 +107,58 @@ def test_migrations_apply_twice_on_fresh_db(fresh_db_pool: Any) -> None:
     _apply_migrations(fresh_db_pool)
 
 
+# hex_cell as it shipped BEFORE county_name/bea_ea_code/msa_code/state_fips were
+# added to HEX_CELL_DDL. Reproduces the drift observed on the live web DB
+# (2026-07-12): ``CREATE TABLE IF NOT EXISTS`` no-ops on the stale table, so the
+# newer columns never appear and ``CREATE INDEX ... ON hex_cell(bea_ea_code)``
+# fails with UndefinedColumn — which init_schema's caller swallowed as a
+# "non-fatal" warning, silently aborting every DDL statement after it.
+_STALE_HEX_CELL_DDL = """
+CREATE TABLE hex_cell (
+    h3_index        VARCHAR(15) PRIMARY KEY,
+    county_fips     VARCHAR(5) NOT NULL,
+    res6_parent     VARCHAR(15) NOT NULL,
+    res5_parent     VARCHAR(15) NOT NULL,
+    geometry        geometry(Polygon, 4326) NOT NULL,
+    centroid        geometry(Point, 4326) NOT NULL
+)
+"""
+
+
+def test_bootstrap_heals_drifted_hex_cell(fresh_db_pool: Any) -> None:
+    """A pre-existing ``hex_cell`` missing the newer columns must be healed.
+
+    Regression for the 2026-07-12 live-DB drift. ``CREATE TABLE IF NOT EXISTS``
+    cannot add columns to an existing table, so the idempotent ``ALTER TABLE
+    ... ADD COLUMN IF NOT EXISTS`` statements in ``POSTGRES_SCHEMA_DDL`` must add
+    them before ``idx_hex_cell_bea_ea`` runs. The full bootstrap must then
+    complete without error and the healed columns + index must exist.
+    """
+    with fresh_db_pool.connection() as conn:
+        conn.autocommit = True
+        conn.execute("CREATE EXTENSION IF NOT EXISTS postgis")
+        conn.execute(_STALE_HEX_CELL_DDL)
+
+    # Must complete cleanly on the drifted table (RED before the ALTER heal:
+    # raises psycopg UndefinedColumn at the bea_ea_code index).
+    _bootstrap_spec_037_schema(fresh_db_pool)
+
+    with fresh_db_pool.connection() as conn:
+        cols = {
+            row[0]
+            for row in conn.execute(
+                "SELECT column_name FROM information_schema.columns WHERE table_name = 'hex_cell'"
+            ).fetchall()
+        }
+        assert {"county_name", "bea_ea_code", "msa_code", "state_fips"} <= cols, (
+            f"stale hex_cell was not healed; columns present: {sorted(cols)}"
+        )
+        index_row = conn.execute(
+            "SELECT 1 FROM pg_indexes WHERE indexname = 'idx_hex_cell_bea_ea'"
+        ).fetchone()
+        assert index_row is not None, "idx_hex_cell_bea_ea must exist after healing"
+
+
 def test_migrations_dir_resolution_is_cwd_independent(tmp_path: Path, monkeypatch: Any) -> None:
     """The applier must find migrations regardless of the process CWD.
 

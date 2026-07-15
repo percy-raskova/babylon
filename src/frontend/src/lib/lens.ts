@@ -41,6 +41,47 @@ import type { MapLayer } from "@/types/game";
  * metrics only): it drives the dedicated categorical `class_composition`
  * `Lens` kind instead, the same way `heat`/`habitability` get dedicated
  * kinds rather than a `{kind:"metric"}` sub-select.
+ *
+ * Wave 2 Round 2 (`reports/wave2-implementation-map.md`) adds two more:
+ * `throughput_position` (Pi = τ_through / τ_national, ruling 1 — wired for
+ * real this round, no longer the frozen `1.0` constant) and `agitation`
+ * (`SocialClass.ideology.agitation` aggregated per territory —
+ * DECLARED_CONDITIONAL: legitimately `0.0` absent a falling-wage/rent/Φ/g₃₃
+ * crisis tick, never fabricated warmth). A third contract addition this
+ * round, `territory_type` (the real `TerritoryType` enum —
+ * `src/babylon/models/enums/territory.py` — NOT `stub_bridge.py`'s legacy
+ * `"URBAN"/"SUBURBAN"/"PERIURBAN"` vocabulary), is categorical like
+ * `dominant_class` and likewise excluded here; it drives the dedicated
+ * `territory_type` `Lens` kind instead.
+ *
+ * Audit Wave 4 straggler (task #76, `reports/epochs-vision-gap-audit.md`
+ * "critical-nodes/centrality map lens"): `centrality` — a territory's own
+ * degree-centrality within the org-network topology
+ * (`_centrality_by_territory`/`_org_network_centrality`, bridge-derived,
+ * reusing the NETWORK-scope `get_org_network` centrality formula). Numeric
+ * like `agitation`, appended last.
+ *
+ * Wave 5 receptivity pair (Epistemic Horizon Phase 1 honest display,
+ * `project/research/epistemic-horizon-program-proposal.md`):
+ * `mass_receptivity` — M_r, the population-weighted per-territory mean of
+ * `(1 - P(S|A)) x class_consciousness x class_factor` written by
+ * `EpistemicHorizonSystem` (engine position 27) and re-injected onto the
+ * persisted graph by `_carry_epistemic_horizon`. Numeric, appended last.
+ * Its categorical companion `vision_state` (the corpus's desert/mud/water
+ * partition) is — like `dominant_class`/`territory_type` — excluded from
+ * this numeric-only array and drives the dedicated `vision_state` `Lens`
+ * kind instead. `intel_confidence` has NO lens at all (uniformly 0.1
+ * today, C_p=0 everywhere — a flat lens would be decorative; it rides the
+ * territory serializer/inspector payloads only).
+ *
+ * Feature 021 lens pair (System #5 `ReserveArmySystem` / System #10
+ * `DispossessionEventSystem`): `wage_pressure` (the Reserve Army's bounded-
+ * sigmoid wage-discipline coefficient over `reserve_ratio`) and
+ * `dispossession_intensity` (`DispossessionIntensityCalculator`'s composite
+ * foreclosure/eviction/displacement/tax-sale/eminent-domain weighted
+ * intensity). Both are NATIVE per-territory graph attrs (like
+ * `mass_receptivity`/`throughput_position`), numeric, appended last. Neither
+ * has a categorical companion.
  */
 export const MAP_METRICS = [
   "profit_rate",
@@ -52,6 +93,12 @@ export const MAP_METRICS = [
   "population",
   "habitability",
   "solidarity_index",
+  "throughput_position",
+  "agitation",
+  "centrality",
+  "mass_receptivity",
+  "wage_pressure",
+  "dispossession_intensity",
 ] as const;
 
 export type MapMetric = (typeof MAP_METRICS)[number];
@@ -88,9 +135,44 @@ export type LensMode = (typeof LENS_MODES)[number];
  * block) — so it gets its own top-level kind rather than joining
  * `LensMode`, whose `RING_AND_HULL_KINDS`/`BALKANIZATION_LENSES` sets in
  * `mapLensLayers.ts` are keyed to the balkanization block specifically.
+ *
+ * `territory_type` (Wave 2 Round 2): the real `TerritoryType` enum
+ * (settler-colonial hierarchy — core/periphery/reservation/penal_colony/
+ * concentration_camp) per territory, population-weighted-mode at
+ * region/county framing (ruling 4). Categorical for the same reason
+ * `class_composition` is — it gets its own top-level kind (not a
+ * `{kind:"metric"}` sub-select, which is numeric-only) and is territory-
+ * local, never balkanization-derived.
+ *
+ * `field_flow` (Wave 3 §11's "gradient wind" — the first VECTOR lens kind,
+ * not a ramp or a categorical fill): `field` names which contradiction
+ * field's gradients to render (production computes exactly two today,
+ * `"exploitation"` and `"atomization"` — see `FieldStateNode`'s docstring in
+ * `types/game.ts`), so it's a plain `string` sub-select like `MapMetric`
+ * rather than a hardcoded conditional. Sourced from `GET /field_state/`'s
+ * per-class-pair `edges` (`components/map/layers/fieldFlow.ts`), NOT the
+ * `/map/` hex/territory payload every other lens reads — direction +
+ * magnitude render as animated flow geometry (width/opacity), never a fill
+ * ramp (`lensRampStops` returns `null`, like every categorical kind).
+ */
+/**
+ * `vision_state` (Wave 5 receptivity pair): the corpus's fog-of-war
+ * three-state partition — desert (`M_r < 0.2`, "you are blind and
+ * exposed") / mud (partial information) / water (`M_r >= 0.8`, "the
+ * masses are your eyes") — threshold-derived from `mass_receptivity` by
+ * `EpistemicHorizonSystem`. Categorical like `territory_type` and for the
+ * same reason: a three-value enum string, not a numeric ramp, so it gets
+ * its own top-level kind rather than a `{kind:"metric"}` sub-select. It is
+ * territory-local (a native per-territory graph attr), never
+ * balkanization-derived.
  */
 export type Lens =
-  { kind: LensMode } | { kind: "metric"; metric: MapMetric } | { kind: "class_composition" };
+  | { kind: LensMode }
+  | { kind: "metric"; metric: MapMetric }
+  | { kind: "class_composition" }
+  | { kind: "territory_type" }
+  | { kind: "vision_state" }
+  | { kind: "field_flow"; field: string };
 
 /**
  * DESIGN_BIBLE.md §9 amendment 1 (binding): the default lens is Imperial
@@ -106,6 +188,7 @@ export const DEFAULT_LENS: Lens = { kind: "metric", metric: "imperial_rent" };
 export function isSameLens(a: Lens, b: Lens): boolean {
   if (a.kind !== b.kind) return false;
   if (a.kind === "metric" && b.kind === "metric") return a.metric === b.metric;
+  if (a.kind === "field_flow" && b.kind === "field_flow") return a.field === b.field;
   return true;
 }
 
@@ -123,7 +206,9 @@ export function isBalkanizationLens(lens: Lens): boolean {
 
 /** Stable identity string — safe for React `key` props and deck.gl `updateTriggers` arrays. */
 export function lensKey(lens: Lens): string {
-  return lens.kind === "metric" ? `metric:${lens.metric}` : lens.kind;
+  if (lens.kind === "metric") return `metric:${lens.metric}`;
+  if (lens.kind === "field_flow") return `field_flow:${lens.field}`;
+  return lens.kind;
 }
 
 const MODE_LEGEND_LABELS: Record<LensMode, string> = {
@@ -144,30 +229,105 @@ const METRIC_LABELS: Record<MapMetric, string> = {
   population: "Population",
   habitability: "Habitability · Metabolic Rift",
   solidarity_index: "Solidarity · SOLIDARITY-Edge Density",
+  throughput_position: "Throughput Position · Circulation Intensity",
+  agitation: "Agitation · Political Energy",
+  centrality: "Centrality · Org-Network Criticality",
+  mass_receptivity: "Mass Receptivity · Epistemic Horizon",
+  wage_pressure: "Labor Market Pressure · Reserve Army",
+  dispossession_intensity: "Dispossession Intensity · Carceral / Eviction",
 };
+
+/** Title-cases a single word (`"exploitation"` -> `"Exploitation"`) — `field_flow`'s legend label only. */
+function titleCase(word: string): string {
+  return word.charAt(0).toUpperCase() + word.slice(1);
+}
 
 /** Human-readable legend text for a lens (mode label or metric name). */
 export function lensLegendLabel(lens: Lens): string {
   if (lens.kind === "metric") return METRIC_LABELS[lens.metric];
   if (lens.kind === "class_composition") return "Class Composition · Dominant Social Role";
+  if (lens.kind === "territory_type") return "Territory Type · Settler-Colonial Hierarchy";
+  if (lens.kind === "vision_state") return "Vision State · Desert / Mud / Water";
+  if (lens.kind === "field_flow") return `Gradient Wind · ${titleCase(lens.field)} Field`;
   return MODE_LEGEND_LABELS[lens.kind];
 }
 
 /**
  * The `MapLayer` a metric name reuses for its data ramp. `MapMetric` and
  * `MapLayer` overlap on every metric except `habitability`/`solidarity_index`
- * (spec-109 A2 / spec-113 Lane B additions that predate/sit outside
- * `MapLayer` and have no ramp of their own there) — both resolve their real
- * ramp directly in `lensRampStops` instead of through `rampForLayer`.
+ * (spec-109 A2 / spec-113 Lane B additions), `throughput_position`/
+ * `agitation` (Wave 2 Round 2), `centrality` (audit Wave 4 straggler,
+ * task #76), `mass_receptivity` (Wave 5 receptivity pair), and
+ * `wage_pressure`/`dispossession_intensity` (Feature 021 lens pair) — all
+ * eight predate/sit outside `MapLayer` and have no ramp of their own there —
+ * each resolves its real ramp directly in `lensRampStops` instead of
+ * through `rampForLayer`.
  */
 function metricToMapLayer(metric: MapMetric): MapLayer | null {
-  return metric === "habitability" || metric === "solidarity_index" ? null : (metric as MapLayer);
+  return metric === "habitability" ||
+    metric === "solidarity_index" ||
+    metric === "throughput_position" ||
+    metric === "agitation" ||
+    metric === "centrality" ||
+    metric === "mass_receptivity" ||
+    metric === "wage_pressure" ||
+    metric === "dispossession_intensity"
+    ? null
+    : (metric as MapLayer);
+}
+
+/**
+ * The `{kind:"metric"}` half of `lensRampStops` — extracted so the parent
+ * switch stays inside the complexity budget as the metric roster grows.
+ *
+ * Wave 2 Round 2: throughput_position picks the wealth ramp (an
+ * economic-circulation metric, distinct from rent's extraction/violence
+ * terminal already claimed by imperial_rent/exploitation_rate) and
+ * agitation picks the consciousness ramp (raw political energy — the same
+ * "awakening" ramp org_presence uses — distinct from heat's alarm terminal
+ * and solidarity's green, its nearest struggle-group cousins). Both are of
+ * the 3 canonical ramps (consciousness/wealth/population) not yet bound to
+ * any REGISTERED lens before that round; population was left unclaimed
+ * until the audit Wave 4 straggler claimed it: centrality takes the
+ * population ramp — giving it a visual identity distinct from every
+ * existing metric lens rather than reusing agitation's/org_presence's
+ * consciousness ramp.
+ *
+ * Wave 5: mass_receptivity gets its own dedicated receptivity ramp
+ * (theme/colors.ts) — the corpus's desert->mud->water direction is a
+ * DIVERGING read no existing ramp encodes (biocapacity diverges
+ * red<->green, but its green terminal aliases solidarity and reads
+ * "ecology", not "fish in water"); the new ramp's stop positions align
+ * with the EpistemicHorizonDefines thresholds by construction.
+ *
+ * Feature 021 lens pair: wage_pressure and dispossession_intensity each get
+ * their own dedicated ramp (theme/colors.ts) built entirely from tokens
+ * already used elsewhere in the canon palette — a "cool -> amber -> crimson"
+ * wage-discipline pressure gauge and a "muted gray -> crimson" carceral/
+ * eviction intensity read, respectively. Neither reuses an existing whole
+ * ramp verbatim (unlike throughput_position/agitation/centrality above)
+ * because neither direction — "labor market temperature" and "carceral
+ * severity" — is already encoded by an existing metric's ramp.
+ */
+function metricRampStops(metric: MapMetric): string[] {
+  if (metric === "solidarity_index") return DATA_RAMPS.solidarity;
+  if (metric === "throughput_position") return DATA_RAMPS.wealth;
+  if (metric === "agitation") return DATA_RAMPS.consciousness;
+  if (metric === "centrality") return DATA_RAMPS.population;
+  if (metric === "mass_receptivity") return DATA_RAMPS.receptivity;
+  if (metric === "wage_pressure") return DATA_RAMPS.wage_pressure;
+  if (metric === "dispossession_intensity") return DATA_RAMPS.dispossession;
+  const layer = metricToMapLayer(metric);
+  return layer === null ? DATA_RAMPS.biocapacity : rampForLayer(layer);
 }
 
 /**
  * Resolve the canon ramp (hex stops) for a lens, or `null` for the
- * categorical kinds (stance/faction/collapse/class_composition) whose fill
- * is a discrete per-entity color, not a single continuous ramp.
+ * categorical kinds (stance/faction/collapse/class_composition/
+ * territory_type/vision_state) whose fill is a discrete per-entity color,
+ * not a single continuous ramp — and for `field_flow`, whose
+ * direction/magnitude render as flow geometry (DESIGN_BIBLE.md §11 law 1),
+ * never a fill ramp at all.
  */
 export function lensRampStops(lens: Lens): string[] | null {
   switch (lens.kind) {
@@ -175,17 +335,67 @@ export function lensRampStops(lens: Lens): string[] | null {
     case "faction":
     case "collapse":
     case "class_composition":
+    case "territory_type":
+    case "vision_state":
+    case "field_flow":
       return null;
     case "habitability":
       return DATA_RAMPS.biocapacity;
     case "heat":
       return DATA_RAMPS.heat;
-    case "metric": {
-      if (lens.metric === "solidarity_index") return DATA_RAMPS.solidarity;
-      const layer = metricToMapLayer(lens.metric);
-      return layer === null ? DATA_RAMPS.biocapacity : rampForLayer(layer);
-    }
+    case "metric":
+      return metricRampStops(lens.metric);
   }
+}
+
+// ---------------------------------------------------------------------------
+// RADAR LOOP replay (Program 17 Wave 3, Frontend-W3R3) — mirrors
+// web/game/map_contract.py's MAP_HISTORY_REPLAYABLE_METRICS
+// ---------------------------------------------------------------------------
+
+/**
+ * Mirrors `web/game/map_contract.py`'s `MAP_HISTORY_REPLAYABLE_METRICS` in
+ * lockstep — the same "single source of truth per side" convention
+ * `MAP_METRICS` above follows for the backend's `MAP_METRIC_PROPERTIES`.
+ * Only these 4 of the 15 `MAP_METRICS` have a genuine append-only per-tick
+ * historical store (`territory_snapshot`/`view_runtime_trace_emission`) the
+ * `GET /api/games/{id}/map/history/` scrubber can replay; every other
+ * metric exists only in the current-tick `hex_latest` cache and 422s
+ * (`"not_replayable"`) rather than serve fabricated historical nulls
+ * (Constitution III.11). A divergence here from the backend tuple would
+ * either hide a real replayable lens behind the "no history" hint or let
+ * the RadarLoopPanel offer a lens the server refuses to serve.
+ */
+export const MAP_HISTORY_REPLAYABLE_METRICS: readonly MapMetric[] = [
+  "heat",
+  "population",
+  "profit_rate",
+  "exploitation_rate",
+];
+
+/**
+ * The single `MapMetric` a lens directly names, or `null` for a lens with
+ * no single-metric shape (stance/faction/collapse/class_composition/
+ * territory_type/vision_state/field_flow/habitability — none of these read
+ * one scalar per territory the way `{kind:"heat"}`/`{kind:"metric"}` do).
+ * `heat` has its own dedicated `Lens` kind (see this module's docstring),
+ * so it is special-cased rather than routed through `SELECTABLE_METRICS`.
+ */
+export function lensMetricName(lens: Lens): MapMetric | null {
+  if (lens.kind === "heat") return "heat";
+  if (lens.kind === "metric") return lens.metric;
+  return null;
+}
+
+/**
+ * True when `lens` names one of the 4 backend-replayable metrics — gates
+ * the RadarLoopPanel scrubber's availability for whichever lens is
+ * currently active on the map (`DeckGLMap`'s `replay` prop only ever
+ * applies for a lens this returns `true` for).
+ */
+export function isReplayableLens(lens: Lens): boolean {
+  const metric = lensMetricName(lens);
+  return metric !== null && MAP_HISTORY_REPLAYABLE_METRICS.includes(metric);
 }
 
 /** Sample a hex-stop ramp at normalized t in [0,1] into an RGBA tuple. */

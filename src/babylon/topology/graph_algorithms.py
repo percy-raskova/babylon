@@ -71,7 +71,15 @@ def density(graph: AnyGraph) -> float:
 
 
 def _centrality_ids(graph: BabylonUGraph, mapping: Any) -> dict[str, float]:
-    return {graph.id_of(index): float(value) for index, value in mapping.items()}
+    """Id-keyed centrality dict, key-sorted (W1.8, Constitution III.7).
+
+    rustworkx keys centrality by internal node index, so a plain comprehension
+    inherits index-insertion order; downstream consumers (sparrow hub ranking,
+    bifurcation resilience) iterate these dicts, and their order must be a
+    property of the data, not of graph-build history.
+    """
+    by_id = {graph.id_of(index): float(value) for index, value in mapping.items()}
+    return dict(sorted(by_id.items()))
 
 
 def degree_centrality(graph: BabylonUGraph) -> dict[str, float]:

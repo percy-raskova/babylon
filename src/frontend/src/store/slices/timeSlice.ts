@@ -33,6 +33,7 @@
 
 import type { StateCreator } from "zustand";
 import { post as apiPost } from "@/api/client";
+import { endpoints } from "@/api/endpoints";
 import type { RootState } from "../types";
 
 export type TimeStatus = "paused" | "playing" | "resolving" | "autopaused" | "error";
@@ -87,7 +88,7 @@ export const createTimeSlice: StateCreator<RootState, [], [], TimeSlice> = (set,
     const prevTick = get().world.snapshot?.tick ?? 0;
     set((s) => ({ time: { ...s.time, status: "resolving", prevTick } }));
 
-    const res = await apiPost<Record<string, unknown>>(`/api/games/${gameId}/resolve/`);
+    const res = await apiPost<Record<string, unknown>>(endpoints.resolveTick.path({ id: gameId }));
 
     if (res.status === "ok") {
       await get().world.fetchState(gameId);

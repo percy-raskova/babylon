@@ -57,4 +57,86 @@ describe("HexTooltip", () => {
     const stats = screen.getAllByTestId("hex-tooltip-stat-label");
     expect(stats[0]).toHaveTextContent(/population/i);
   });
+
+  it("prioritizes receptivity first for the mass_receptivity metric lens (Wave 5)", () => {
+    render(
+      <HexTooltip
+        territory={makeTerritory({ mass_receptivity: 0.56, vision_state: "mud" })}
+        x={0}
+        y={0}
+        lens={{ kind: "metric", metric: "mass_receptivity" }}
+      />,
+    );
+    const stats = screen.getAllByTestId("hex-tooltip-stat-label");
+    expect(stats[0]).toHaveTextContent(/receptivity/i);
+    expect(screen.getByText("0.56")).toBeInTheDocument();
+  });
+
+  it("prioritizes vision first for the vision_state lens, rendering the real state string (Wave 5)", () => {
+    render(
+      <HexTooltip
+        territory={makeTerritory({ mass_receptivity: 0.06, vision_state: "desert" })}
+        x={0}
+        y={0}
+        lens={{ kind: "vision_state" }}
+      />,
+    );
+    const stats = screen.getAllByTestId("hex-tooltip-stat-label");
+    expect(stats[0]).toHaveTextContent(/vision/i);
+    expect(screen.getByText("desert")).toBeInTheDocument();
+  });
+
+  it("renders an honest em-dash for absent receptivity values, never a fabricated 0 (Constitution III.11)", () => {
+    render(
+      <HexTooltip
+        territory={makeTerritory({ mass_receptivity: null, vision_state: null })}
+        x={0}
+        y={0}
+        lens={{ kind: "vision_state" }}
+      />,
+    );
+    const values = screen.getAllByText("—");
+    expect(values.length).toBeGreaterThan(0);
+  });
+
+  it("prioritizes wage pressure first for the wage_pressure metric lens (Feature 021)", () => {
+    render(
+      <HexTooltip
+        territory={makeTerritory({ wage_pressure: 0.35, dispossession_intensity: 0.2 })}
+        x={0}
+        y={0}
+        lens={{ kind: "metric", metric: "wage_pressure" }}
+      />,
+    );
+    const stats = screen.getAllByTestId("hex-tooltip-stat-label");
+    expect(stats[0]).toHaveTextContent(/wage pressure/i);
+    expect(screen.getByText("0.35")).toBeInTheDocument();
+  });
+
+  it("prioritizes dispossession first for the dispossession_intensity metric lens (Feature 021)", () => {
+    render(
+      <HexTooltip
+        territory={makeTerritory({ wage_pressure: 0.1, dispossession_intensity: 0.62 })}
+        x={0}
+        y={0}
+        lens={{ kind: "metric", metric: "dispossession_intensity" }}
+      />,
+    );
+    const stats = screen.getAllByTestId("hex-tooltip-stat-label");
+    expect(stats[0]).toHaveTextContent(/dispossession/i);
+    expect(screen.getByText("0.62")).toBeInTheDocument();
+  });
+
+  it("renders an honest em-dash for absent wage_pressure/dispossession_intensity values, never a fabricated 0 (Constitution III.11)", () => {
+    render(
+      <HexTooltip
+        territory={makeTerritory({ wage_pressure: null, dispossession_intensity: null })}
+        x={0}
+        y={0}
+        lens={{ kind: "metric", metric: "wage_pressure" }}
+      />,
+    );
+    const values = screen.getAllByText("—");
+    expect(values.length).toBeGreaterThan(0);
+  });
 });

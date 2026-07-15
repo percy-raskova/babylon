@@ -273,6 +273,8 @@ class OODASystem(SystemBase):
                 org_attrs=org_data,
                 target_id=target_id,
                 defines=defines,
+                graph=graph,
+                state_ai_defines=services.defines.state_ai,
             )
             for action in npc_actions:
                 results.append(

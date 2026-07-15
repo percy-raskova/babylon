@@ -15,6 +15,7 @@ from typing import TYPE_CHECKING, Annotated, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
+from babylon.models.entities.state_apparatus_ai import FactionBalance
 from babylon.models.enums import (
     ClassCharacter,
     ConsciousnessTendency,
@@ -236,6 +237,16 @@ class StateApparatus(Organization):
         surveillance_capacity: Capacity for surveillance [0, 1].
         legal_authority: Specific authorities wielded.
         intel_methodology: Intelligence capabilities (Sparrow-grounded).
+        faction_balance: Ruling-class factional weight vector (Feature 039).
+            ``None`` means the org runs the legacy static priority queue
+            (``babylon.ooda.npc_stub._NPC_PRIORITIES``); setting this is the
+            sole gate that activates ``RuleBasedStateAI`` dispatch in
+            ``babylon.ooda.npc_stub._try_state_ai_dispatch``.
+        rng_seed: Deterministic seed for ``RuleBasedStateAI``'s per-candidate
+            tiebreaker draw (Constitution III.7). Read by
+            ``_try_state_ai_dispatch``; required whenever ``faction_balance``
+            is set, or the tiebreaker falls back to OS-entropy-seeded
+            ``random.Random(None)`` — a real non-determinism bug.
     """
 
     org_type: Literal[OrgType.STATE_APPARATUS] = OrgType.STATE_APPARATUS
@@ -266,6 +277,20 @@ class StateApparatus(Organization):
     factional_alignment: StateFaction = Field(
         default=StateFaction.SECURITY_STATE,
         description="Dominant faction alignment of this apparatus (Feature 039)",
+    )
+    faction_balance: FactionBalance | None = Field(
+        default=None,
+        description=(
+            "Ruling-class factional weight vector gating RuleBasedStateAI "
+            "dispatch (Feature 039). None = legacy static priority queue."
+        ),
+    )
+    rng_seed: int | None = Field(
+        default=None,
+        description=(
+            "Deterministic seed for RuleBasedStateAI's tiebreaker draw "
+            "(Constitution III.7). Should be set whenever faction_balance is."
+        ),
     )
 
 

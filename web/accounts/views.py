@@ -12,7 +12,7 @@ from django.http import HttpRequest, HttpResponseBase, JsonResponse
 from django.shortcuts import render
 from django.views.decorators.http import require_GET, require_POST
 
-from game.log_handler import log_game_event
+from game.log_handler import log_game_event, sanitize_for_log
 
 logger = logging.getLogger(__name__)
 
@@ -35,15 +35,15 @@ def _handle_login(request: HttpRequest) -> JsonResponse:
         logger.info("User logged in: %s (id=%s)", user.username, user.pk)
         log_game_event(
             category="auth_login",
-            message=f"User logged in: {user.username}",
+            message=f"User logged in: {sanitize_for_log(user.username)}",
             user_id=user.pk,
             correlation_id=getattr(request, "correlation_id", None),
         )
         return JsonResponse({"status": "ok", "data": {"username": getattr(user, "username", "")}})
-    logger.warning("Failed login attempt for username=%s", username)
+    logger.warning("Failed login attempt for username=%s", sanitize_for_log(username))
     log_game_event(
         category="auth_fail",
-        message=f"Failed login attempt: {username}",
+        message=f"Failed login attempt: {sanitize_for_log(username)}",
         correlation_id=getattr(request, "correlation_id", None),
     )
     return JsonResponse(

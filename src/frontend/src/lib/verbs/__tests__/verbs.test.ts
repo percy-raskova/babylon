@@ -149,6 +149,13 @@ describe("reproduce.parseTargets", () => {
   });
 });
 
+describe("live cost wiring (Program 17 Wave 1 item 1e)", () => {
+  it("educate.parseCost reads the flat cost envelope (engine_bridge.get_educate_targets)", () => {
+    const cost = VERB_REGISTRY.educate!.parseCost?.(educateTargetsFixture);
+    expect(cost).toEqual({ label: "2 CL + 5 SL + $100", canAfford: true });
+  });
+});
+
 describe("Param fields", () => {
   it("aid has transfer_amount number field", () => {
     const fields = VERB_REGISTRY.aid!.paramFields;

@@ -23,6 +23,9 @@ from babylon.domain.dialectics.core.opposition import (
     OppositionSpec,
     OppositionState,
     PoleBinding,
+    PoleMeasure,
+    PoleReading,
+    PoleSample,
 )
 from babylon.domain.dialectics.core.regime import Regime, classify_regime
 
@@ -42,6 +45,9 @@ __all__ = [
     "OppositionSpec",
     "OppositionState",
     "PoleBinding",
+    "PoleMeasure",
+    "PoleReading",
+    "PoleSample",
     "Regime",
     "StanceIntervention",
     "apply_interventions",

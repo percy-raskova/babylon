@@ -53,6 +53,36 @@ _EVENTS: list[dict[str, Any]] = [
         "body": "Class consciousness increased in Detroit",
         "data": {"territory_id": "t_detroit", "delta": 0.022},
     },
+    {
+        "id": "evt-004",
+        "type": "mass_awakening",
+        "tick": 39,
+        "severity": "warning",
+        "title": "Mass Awakening",
+        "body": "Consciousness crossed the mass-awakening threshold",
+        "data": {
+            "target_id": "C001",
+            "old_consciousness": 0.58,
+            "new_consciousness": 0.63,
+            "triggering_source": "C004",
+        },
+    },
+    {
+        "id": "evt-005",
+        "type": "fascist_drift",
+        "tick": 38,
+        "severity": "warning",
+        "title": "Fascist Drift",
+        "body": "Class drifted fascist under entitlement pressure",
+        "data": {
+            "node_id": "C004",
+            "fascist_pull": 0.71,
+            "fascist_alignment": 0.42,
+            "entitlement": 0.66,
+            "solidarity": 0.12,
+            "regime": "crisis",
+        },
+    },
 ]
 
 
@@ -272,6 +302,321 @@ class TestEuphemismSync:
 
         for f in feed["filters"]:
             assert f["hits"] >= 0, f"filter '{f['id']}' has negative hits: {f['hits']}"
+
+
+# -- W1.7: MASS_AWAKENING / FASCIST_DRIFT bespoke templates -------------------
+
+
+class TestClassScopedBespokeTemplates:
+    """MASS_AWAKENING and FASCIST_DRIFT are class-scoped, not place-scoped.
+
+    They must render through their own bespoke templates (not
+    ``_generic_template``) and must never fabricate a location — these
+    events carry a social-class node id (``target_id``/``node_id``), not a
+    territory, so the narrator must resolve a class subject instead of
+    falling back to the hardcoded "Wayne County" default.
+    """
+
+    _MASS_AWAKENING_EVENT: dict[str, Any] = {
+        "id": "evt-awakening",
+        "type": "mass_awakening",
+        "tick": 50,
+        "severity": "warning",
+        "title": "Mass Awakening",
+        "body": "Consciousness crossed the mass-awakening threshold",
+        "data": {
+            "target_id": "C001",
+            "old_consciousness": 0.58,
+            "new_consciousness": 0.63,
+            "triggering_source": "C004",
+        },
+    }
+
+    _FASCIST_DRIFT_EVENT: dict[str, Any] = {
+        "id": "evt-drift",
+        "type": "fascist_drift",
+        "tick": 51,
+        "severity": "warning",
+        "title": "Fascist Drift",
+        "body": "Class drifted fascist under entitlement pressure",
+        "data": {
+            "node_id": "C004",
+            "fascist_pull": 0.71,
+            "fascist_alignment": 0.42,
+            "entitlement": 0.66,
+            "solidarity": 0.12,
+            "regime": "crisis",
+        },
+    }
+
+    def test_meta_class_names_override_the_canonical_fallback_map(
+        self, meta: dict[str, Any]
+    ) -> None:
+        """The bridge passes real per-scenario entity names via
+        ``meta["class_names"]`` — wayne_county reuses class ids with
+        different names than the canonical registry (its labor-aristocracy
+        class is C002 "Suburban Petty Bourgeoisie"). The narrator must
+        prefer the real name: a confidently wrong canonical name is exactly
+        the fabrication class these bespoke templates exist to kill."""
+        from game.narrator import DeterministicNarrator
+
+        meta["class_names"] = {"C004": "the Suburban Petty Bourgeoisie"}
+        narrator = DeterministicNarrator()
+        feed = narrator.narrate([self._FASCIST_DRIFT_EVENT], meta)
+
+        assert "Suburban Petty Bourgeoisie" in feed["index"][0]["hed"]["c"]
+        assert "Labor Aristocracy" not in json.dumps(feed)
+
+    def test_class_names_meta_key_never_leaks_into_the_wire_feed(
+        self, meta: dict[str, Any]
+    ) -> None:
+        """``class_names`` is a narrator input channel, not part of the
+        wire.yaml contract — ``_build_meta``'s allowlist must drop it."""
+        from game.narrator import DeterministicNarrator
+
+        meta["class_names"] = {"C004": "the Suburban Petty Bourgeoisie"}
+        narrator = DeterministicNarrator()
+        feed = narrator.narrate([self._FASCIST_DRIFT_EVENT], meta)
+
+        assert "class_names" not in feed["meta"]
+
+    def test_mass_awakening_index_entry_uses_bespoke_slug(self, meta: dict[str, Any]) -> None:
+        """The generic-template slug is f"{TITLE} · {LOCATION}"; the bespoke
+        mass_awakening template uses its own AWAKENING-prefixed slug."""
+        from game.narrator import DeterministicNarrator
+
+        narrator = DeterministicNarrator()
+        feed = narrator.narrate([self._MASS_AWAKENING_EVENT], meta)
+
+        assert len(feed["index"]) == 1
+        assert feed["index"][0]["slug"].startswith("AWAKENING")
+
+    def test_fascist_drift_index_entry_uses_bespoke_slug(self, meta: dict[str, Any]) -> None:
+        from game.narrator import DeterministicNarrator
+
+        narrator = DeterministicNarrator()
+        feed = narrator.narrate([self._FASCIST_DRIFT_EVENT], meta)
+
+        assert len(feed["index"]) == 1
+        assert feed["index"][0]["slug"].startswith("DRIFT")
+
+    def test_mass_awakening_never_fabricates_a_location(self, meta: dict[str, Any]) -> None:
+        """No rendered string may claim the fabricated default "Wayne
+        County" — MASS_AWAKENING is class-scoped (target_id is a
+        social-class node id), it has no territory to report."""
+        from game.narrator import DeterministicNarrator
+
+        narrator = DeterministicNarrator()
+        feed = narrator.narrate([self._MASS_AWAKENING_EVENT], meta)
+
+        feed_json = json.dumps(feed)
+        assert "Wayne County" not in feed_json
+        assert "WAYNE COUNTY" not in feed_json.upper().replace("WAYNE CO / GRID EN82", "")
+
+    def test_fascist_drift_never_fabricates_a_location(self, meta: dict[str, Any]) -> None:
+        """FASCIST_DRIFT's node_id is not in _location_from_event's checked
+        key tuple, so pre-fix every drift story fell straight to the
+        "Wayne County" default — this is the bug this template fixes."""
+        from game.narrator import DeterministicNarrator
+
+        narrator = DeterministicNarrator()
+        feed = narrator.narrate([self._FASCIST_DRIFT_EVENT], meta)
+
+        feed_json = json.dumps(feed)
+        assert "Wayne County" not in feed_json
+        assert "WAYNE COUNTY" not in feed_json.upper().replace("WAYNE CO / GRID EN82", "")
+
+    def test_mass_awakening_resolves_class_subject_and_bespoke_euphemism(
+        self, meta: dict[str, Any]
+    ) -> None:
+        """The story is written around the affected class (Periphery
+        Proletariat, C001), and the bespoke template contributes its own
+        euphemism (proof the generic template was NOT used, since
+        _generic_template always produces an empty euphemisms dict)."""
+        from game.narrator import DeterministicNarrator
+
+        narrator = DeterministicNarrator()
+        feed = narrator.narrate([self._MASS_AWAKENING_EVENT], meta)
+
+        assert feed["euphemisms"], "bespoke template must contribute a euphemism"
+        feed_json = json.dumps(feed)
+        assert "Periphery Proletariat" in feed_json
+
+    def test_fascist_drift_resolves_class_subject_and_bespoke_euphemism(
+        self, meta: dict[str, Any]
+    ) -> None:
+        """The story is written around the affected class (Labor
+        Aristocracy, C004)."""
+        from game.narrator import DeterministicNarrator
+
+        narrator = DeterministicNarrator()
+        feed = narrator.narrate([self._FASCIST_DRIFT_EVENT], meta)
+
+        assert feed["euphemisms"], "bespoke template must contribute a euphemism"
+        feed_json = json.dumps(feed)
+        assert "Labor Aristocracy" in feed_json
+
+    def test_mass_awakening_intel_cites_real_payload_numbers(self, meta: dict[str, Any]) -> None:
+        """Intel gives the numbers: old/new consciousness + triggering
+        source, not static flavor text (contrast with the crafted-but-
+        unreachable consciousness_shift template's hardcoded "+0.022")."""
+        from game.narrator import DeterministicNarrator
+
+        narrator = DeterministicNarrator()
+        feed = narrator.narrate([self._MASS_AWAKENING_EVENT], meta)
+
+        intel_json = json.dumps(feed["story"]["intel"])
+        assert "0.580" in intel_json
+        assert "0.630" in intel_json
+        assert "Labor Aristocracy" in intel_json  # triggering_source == C004
+
+    def test_fascist_drift_intel_cites_real_payload_numbers(self, meta: dict[str, Any]) -> None:
+        """Intel gives the numbers: fascist_pull/entitlement/solidarity/regime."""
+        from game.narrator import DeterministicNarrator
+
+        narrator = DeterministicNarrator()
+        feed = narrator.narrate([self._FASCIST_DRIFT_EVENT], meta)
+
+        intel_json = json.dumps(feed["story"]["intel"])
+        assert "0.710" in intel_json  # fascist_pull
+        assert "0.420" in intel_json  # fascist_alignment
+        assert "0.660" in intel_json  # entitlement
+        assert "0.120" in intel_json  # solidarity
+        assert "CRISIS" in intel_json  # regime
+
+    def test_other_templates_still_use_location_not_subject(
+        self, events: list[dict[str, Any]], meta: dict[str, Any]
+    ) -> None:
+        """Surgical check: place-scoped templates (e.g. uprising) are
+        untouched — they still resolve a real location, not a class
+        subject, proving the class-scoped resolution path is additive."""
+        from game.narrator import DeterministicNarrator
+
+        narrator = DeterministicNarrator()
+        feed = narrator.narrate(events, meta)
+
+        uprising_entry = next(e for e in feed["index"] if e["slug"].startswith("UPRISING"))
+        assert "HAMTRAMCK" in uprising_entry["slug"]
+
+
+class TestOrgScopedBespokeTemplate:
+    """RED_BROWN_COUP is org-scoped, not place- or class-scoped (AW3-R1).
+
+    Emitted when a majority of an organization's Labor Aristocracy members
+    defect in a single crisis tick (spec-071 US2,
+    ``FascistFactionSystem._process_org_defections``) — real, wire-reachable
+    (``_convert_bus_event_to_pydantic`` handles ``EventType.RED_BROWN_COUP``,
+    Program 17 item 1b) but pre-fix fell to ``_generic_template`` and the
+    fabricated "Wayne County" default, since its subject is an org id
+    (``org_id``), not a territory or a social class. Mirrors
+    ``TestClassScopedBespokeTemplates`` but resolves through
+    ``meta["org_names"]`` instead of ``meta["class_names"]`` — organizations
+    have no small fixed canonical set across scenarios, so there is no
+    hardcoded fallback map, only the real per-scenario name or an honest
+    humanization of the raw id."""
+
+    _RED_BROWN_COUP_EVENT: dict[str, Any] = {
+        "id": "evt-coup",
+        "type": "red_brown_coup",
+        "tick": 60,
+        "severity": "critical",
+        "title": "Red Brown Coup",
+        "body": "Majority of LA members defected under crisis",
+        "data": {
+            "org_id": "ORG001",
+            "defections": 4,
+            "member_count": 6,
+        },
+    }
+
+    def test_meta_org_names_resolve_the_real_org_name(self, meta: dict[str, Any]) -> None:
+        """The bridge passes real per-scenario org names via
+        ``meta["org_names"]`` (mirrors ``class_names``) — a raw org id like
+        "ORG001" in a headline is exactly the fabrication-adjacent flavor
+        text these bespoke templates exist to kill."""
+        from game.narrator import DeterministicNarrator
+
+        meta["org_names"] = {"ORG001": "the Wayne County Organizing Committee"}
+        narrator = DeterministicNarrator()
+        feed = narrator.narrate([self._RED_BROWN_COUP_EVENT], meta)
+
+        assert "Wayne County Organizing Committee" in feed["index"][0]["hed"]["c"]
+        assert "ORG001" not in json.dumps(feed["story"])
+
+    def test_org_names_meta_key_never_leaks_into_the_wire_feed(self, meta: dict[str, Any]) -> None:
+        from game.narrator import DeterministicNarrator
+
+        meta["org_names"] = {"ORG001": "the Wayne County Organizing Committee"}
+        narrator = DeterministicNarrator()
+        feed = narrator.narrate([self._RED_BROWN_COUP_EVENT], meta)
+
+        assert "org_names" not in feed["meta"]
+
+    def test_index_entry_uses_bespoke_slug(self, meta: dict[str, Any]) -> None:
+        """The generic-template slug is f"{TITLE} · {LOCATION}"; the bespoke
+        red_brown_coup template uses its own COUP-prefixed slug."""
+        from game.narrator import DeterministicNarrator
+
+        narrator = DeterministicNarrator()
+        feed = narrator.narrate([self._RED_BROWN_COUP_EVENT], meta)
+
+        assert len(feed["index"]) == 1
+        assert feed["index"][0]["slug"].startswith("COUP")
+
+    def test_never_fabricates_a_location(self, meta: dict[str, Any]) -> None:
+        """No rendered string may claim the fabricated default "Wayne
+        County" — RED_BROWN_COUP is org-scoped (org_id is an organization
+        node id), it has no territory to report."""
+        from game.narrator import DeterministicNarrator
+
+        narrator = DeterministicNarrator()
+        feed = narrator.narrate([self._RED_BROWN_COUP_EVENT], meta)
+
+        feed_json = json.dumps(feed)
+        assert "Wayne County" not in feed_json
+        assert "WAYNE COUNTY" not in feed_json.upper().replace("WAYNE CO / GRID EN82", "")
+
+    def test_resolves_org_subject_without_a_names_map(self, meta: dict[str, Any]) -> None:
+        """Without ``meta["org_names"]``, the org id is honestly humanized
+        (never a fabricated org name) — proves the fallback path, mirroring
+        the class-scoped precedent's unrecognized-id humanization."""
+        from game.narrator import DeterministicNarrator
+
+        narrator = DeterministicNarrator()
+        feed = narrator.narrate([self._RED_BROWN_COUP_EVENT], meta)
+
+        assert "Org001" in feed["index"][0]["hed"]["c"]
+
+    def test_intel_cites_real_payload_numbers(self, meta: dict[str, Any]) -> None:
+        """Intel gives the numbers: defections + member_count, not static
+        flavor text."""
+        from game.narrator import DeterministicNarrator
+
+        narrator = DeterministicNarrator()
+        feed = narrator.narrate([self._RED_BROWN_COUP_EVENT], meta)
+
+        assert feed["euphemisms"], "bespoke template must contribute a euphemism"
+        intel_json = json.dumps(feed["story"]["intel"])
+        assert "4" in intel_json  # defections
+        assert "6" in intel_json  # member_count
+
+    def test_is_selected_as_the_active_story_over_a_merely_warning_event(
+        self, meta: dict[str, Any]
+    ) -> None:
+        """This fixture's ``severity: "critical"`` (matching the real
+        engine-bridge classification — see
+        ``tests/integration/test_event_serialization.py::
+        test_critical_events_classified_as_critical``) wins active-story
+        selection over a concurrent 'warning' event (``_select_active_story``
+        prefers critical first), so the coup is the story the player sees,
+        not merely an index entry."""
+        from game.narrator import DeterministicNarrator
+
+        warning_event = dict(TestClassScopedBespokeTemplates._FASCIST_DRIFT_EVENT)
+        narrator = DeterministicNarrator()
+        feed = narrator.narrate([warning_event, self._RED_BROWN_COUP_EVENT], meta)
+
+        assert feed["story"]["intel"]["subj"].startswith("ORGANIZATIONAL")
 
 
 # -- US5: Provider swap ------------------------------------------------------

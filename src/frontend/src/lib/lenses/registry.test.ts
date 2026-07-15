@@ -37,6 +37,70 @@ describe("LENS_REGISTRY", () => {
     expect(LENS_REGISTRY.some((d) => d.id === "class_composition")).toBe(true);
     expect(LENS_REGISTRY.some((d) => d.id === "solidarity_index")).toBe(true);
   });
+
+  it("includes the three Wave 2 Round 2 additions (throughput_position/agitation/territory_type)", () => {
+    expect(LENS_REGISTRY.some((d) => d.id === "throughput_position")).toBe(true);
+    expect(LENS_REGISTRY.some((d) => d.id === "agitation")).toBe(true);
+    expect(LENS_REGISTRY.some((d) => d.id === "territory_type")).toBe(true);
+  });
+
+  it("includes the field_flow_exploitation gradient-wind addition (Wave 3 §11)", () => {
+    const def = LENS_REGISTRY.find((d) => d.id === "field_flow_exploitation");
+    expect(def).toBeDefined();
+    expect(def?.group).toBe("struggle");
+    expect(def?.legend.kind).toBe("vector");
+    expect(def?.toLens()).toEqual({ kind: "field_flow", field: "exploitation" });
+    expect(def?.availableWhen({})).toBe(true);
+  });
+
+  it("throughput_position and agitation are numeric (ramp legend); territory_type is categorical", () => {
+    const throughput = LENS_REGISTRY.find((d) => d.id === "throughput_position");
+    const agitation = LENS_REGISTRY.find((d) => d.id === "agitation");
+    const territoryType = LENS_REGISTRY.find((d) => d.id === "territory_type");
+    expect(throughput?.legend.kind).toBe("ramp");
+    expect(agitation?.legend.kind).toBe("ramp");
+    expect(territoryType?.legend.kind).toBe("categorical");
+    expect(throughput?.toLens()).toEqual({ kind: "metric", metric: "throughput_position" });
+    expect(agitation?.toLens()).toEqual({ kind: "metric", metric: "agitation" });
+    expect(territoryType?.toLens()).toEqual({ kind: "territory_type" });
+  });
+
+  it("includes the centrality addition (audit Wave 4 straggler, task #76)", () => {
+    const def = LENS_REGISTRY.find((d) => d.id === "centrality");
+    expect(def).toBeDefined();
+    expect(def?.group).toBe("struggle");
+    expect(def?.legend.kind).toBe("ramp");
+    expect(def?.toLens()).toEqual({ kind: "metric", metric: "centrality" });
+  });
+
+  it("includes the Wave 5 receptivity lens pair (mass_receptivity numeric, vision_state categorical)", () => {
+    const massReceptivity = LENS_REGISTRY.find((d) => d.id === "mass_receptivity");
+    const visionState = LENS_REGISTRY.find((d) => d.id === "vision_state");
+    // Struggle group: M_r reads the mass-line relationship (desperation x
+    // consciousness x class factor over the same TENANCY-linked class state
+    // agitation/solidarity read) — class-struggle intelligence, not
+    // reproduction (metabolic/ecological) or political topology.
+    expect(massReceptivity?.group).toBe("struggle");
+    expect(visionState?.group).toBe("struggle");
+    expect(massReceptivity?.legend.kind).toBe("ramp");
+    expect(visionState?.legend.kind).toBe("categorical");
+    expect(massReceptivity?.toLens()).toEqual({ kind: "metric", metric: "mass_receptivity" });
+    expect(visionState?.toLens()).toEqual({ kind: "vision_state" });
+  });
+
+  it("includes the Feature 021 lens pair (wage_pressure in extraction, dispossession_intensity in reproduction)", () => {
+    const wagePressure = LENS_REGISTRY.find((d) => d.id === "wage_pressure");
+    const dispossession = LENS_REGISTRY.find((d) => d.id === "dispossession_intensity");
+    // wage_pressure: labor-market/wage-hierarchy dynamic, same family as
+    // exploitation_rate. dispossession_intensity: housing-sphere material
+    // condition, same family as habitability (both reproduction group).
+    expect(wagePressure?.group).toBe("extraction");
+    expect(dispossession?.group).toBe("reproduction");
+    expect(wagePressure?.legend.kind).toBe("ramp");
+    expect(dispossession?.legend.kind).toBe("ramp");
+    expect(wagePressure?.toLens()).toEqual({ kind: "metric", metric: "wage_pressure" });
+    expect(dispossession?.toLens()).toEqual({ kind: "metric", metric: "dispossession_intensity" });
+  });
 });
 
 describe("lensDefForLens", () => {
@@ -50,6 +114,41 @@ describe("lensDefForLens", () => {
 
   it("resolves class_composition back to its registry entry", () => {
     expect(lensDefForLens({ kind: "class_composition" })?.id).toBe("class_composition");
+  });
+
+  it("resolves territory_type back to its registry entry", () => {
+    expect(lensDefForLens({ kind: "territory_type" })?.id).toBe("territory_type");
+  });
+
+  it("resolves the throughput_position/agitation metric lenses back to their registry entries", () => {
+    expect(lensDefForLens({ kind: "metric", metric: "throughput_position" })?.id).toBe(
+      "throughput_position",
+    );
+    expect(lensDefForLens({ kind: "metric", metric: "agitation" })?.id).toBe("agitation");
+  });
+
+  it("resolves the centrality metric lens back to its registry entry", () => {
+    expect(lensDefForLens({ kind: "metric", metric: "centrality" })?.id).toBe("centrality");
+  });
+
+  it("resolves the Wave 5 receptivity lens pair back to their registry entries", () => {
+    expect(lensDefForLens({ kind: "metric", metric: "mass_receptivity" })?.id).toBe(
+      "mass_receptivity",
+    );
+    expect(lensDefForLens({ kind: "vision_state" })?.id).toBe("vision_state");
+  });
+
+  it("resolves the Feature 021 lens pair back to their registry entries", () => {
+    expect(lensDefForLens({ kind: "metric", metric: "wage_pressure" })?.id).toBe("wage_pressure");
+    expect(lensDefForLens({ kind: "metric", metric: "dispossession_intensity" })?.id).toBe(
+      "dispossession_intensity",
+    );
+  });
+
+  it("resolves field_flow back to its registry entry, keyed by field", () => {
+    expect(lensDefForLens({ kind: "field_flow", field: "exploitation" })?.id).toBe(
+      "field_flow_exploitation",
+    );
   });
 
   it("returns undefined for a lens with no registry entry (e.g. an unregistered metric)", () => {
@@ -84,6 +183,62 @@ describe("availableWhen degradation (existing balkanization pattern)", () => {
   it("solidarity_index degrades honestly when solidarity_index isn't in available_metrics", () => {
     const ctx = { availableMetrics: ["heat", "population"] };
     expect(availableLensRegistry(ctx).map((d) => d.id)).not.toContain("solidarity_index");
+  });
+
+  it("throughput_position/agitation/territory_type degrade honestly when absent from available_metrics", () => {
+    const ctx = { availableMetrics: ["heat", "population"] };
+    const available = availableLensRegistry(ctx).map((d) => d.id);
+    expect(available).not.toContain("throughput_position");
+    expect(available).not.toContain("agitation");
+    expect(available).not.toContain("territory_type");
+  });
+
+  it("throughput_position/agitation/territory_type are available once advertised in available_metrics", () => {
+    const ctx = {
+      availableMetrics: ["throughput_position", "agitation", "territory_type"],
+    };
+    const available = availableLensRegistry(ctx).map((d) => d.id);
+    expect(available).toContain("throughput_position");
+    expect(available).toContain("agitation");
+    expect(available).toContain("territory_type");
+  });
+
+  it("centrality degrades honestly when absent from available_metrics (audit Wave 4 straggler, task #76)", () => {
+    const ctx = { availableMetrics: ["heat", "population"] };
+    expect(availableLensRegistry(ctx).map((d) => d.id)).not.toContain("centrality");
+  });
+
+  it("centrality is available once advertised in available_metrics", () => {
+    const ctx = { availableMetrics: ["centrality"] };
+    expect(availableLensRegistry(ctx).map((d) => d.id)).toContain("centrality");
+  });
+
+  it("mass_receptivity/vision_state degrade honestly when absent from available_metrics (Wave 5)", () => {
+    const ctx = { availableMetrics: ["heat", "population"] };
+    const available = availableLensRegistry(ctx).map((d) => d.id);
+    expect(available).not.toContain("mass_receptivity");
+    expect(available).not.toContain("vision_state");
+  });
+
+  it("mass_receptivity/vision_state are available once advertised in available_metrics", () => {
+    const ctx = { availableMetrics: ["mass_receptivity", "vision_state"] };
+    const available = availableLensRegistry(ctx).map((d) => d.id);
+    expect(available).toContain("mass_receptivity");
+    expect(available).toContain("vision_state");
+  });
+
+  it("wage_pressure/dispossession_intensity degrade honestly when absent from available_metrics (Feature 021)", () => {
+    const ctx = { availableMetrics: ["heat", "population"] };
+    const available = availableLensRegistry(ctx).map((d) => d.id);
+    expect(available).not.toContain("wage_pressure");
+    expect(available).not.toContain("dispossession_intensity");
+  });
+
+  it("wage_pressure/dispossession_intensity are available once advertised in available_metrics", () => {
+    const ctx = { availableMetrics: ["wage_pressure", "dispossession_intensity"] };
+    const available = availableLensRegistry(ctx).map((d) => d.id);
+    expect(available).toContain("wage_pressure");
+    expect(available).toContain("dispossession_intensity");
   });
 
   it("heat and habitability are always available (no backend gate)", () => {
@@ -156,5 +311,105 @@ describe("legend metadata", () => {
     const def = LENS_REGISTRY.find((d) => d.id === "class_composition");
     if (def?.legend.kind !== "categorical") throw new Error("expected categorical legend");
     expect(def.legend.entries).toHaveLength(8);
+  });
+
+  it("territory_type's legend has exactly 5 entries — one per real TerritoryType enum value", () => {
+    const def = LENS_REGISTRY.find((d) => d.id === "territory_type");
+    if (def?.legend.kind !== "categorical") throw new Error("expected categorical legend");
+    expect(def.legend.entries).toHaveLength(5);
+    const labels = def.legend.entries.map((e) => e.label);
+    expect(labels).toEqual(
+      expect.arrayContaining([
+        "Core",
+        "Periphery",
+        "Reservation",
+        "Penal Colony",
+        "Concentration Camp",
+      ]),
+    );
+  });
+
+  it("field_flow_exploitation carries a vector legend with a color and a non-empty description", () => {
+    const def = LENS_REGISTRY.find((d) => d.id === "field_flow_exploitation");
+    if (def?.legend.kind !== "vector") throw new Error("expected a vector legend");
+    expect(def.legend.color).toHaveLength(4);
+    expect(def.legend.description.length).toBeGreaterThan(0);
+  });
+
+  it("throughput_position/agitation carry non-empty ramp stop lists", () => {
+    const throughput = LENS_REGISTRY.find((d) => d.id === "throughput_position");
+    const agitation = LENS_REGISTRY.find((d) => d.id === "agitation");
+    if (throughput?.legend.kind !== "ramp" || agitation?.legend.kind !== "ramp") {
+      throw new Error("expected ramp legends");
+    }
+    expect(throughput.legend.stops.length).toBeGreaterThan(1);
+    expect(agitation.legend.stops.length).toBeGreaterThan(1);
+    expect(throughput.legend.stops).not.toEqual(agitation.legend.stops);
+  });
+
+  it("centrality carries a non-empty ramp stop list distinct from agitation's/throughput_position's (audit Wave 4 straggler, task #76)", () => {
+    const centrality = LENS_REGISTRY.find((d) => d.id === "centrality");
+    const agitation = LENS_REGISTRY.find((d) => d.id === "agitation");
+    const throughput = LENS_REGISTRY.find((d) => d.id === "throughput_position");
+    if (
+      centrality?.legend.kind !== "ramp" ||
+      agitation?.legend.kind !== "ramp" ||
+      throughput?.legend.kind !== "ramp"
+    ) {
+      throw new Error("expected ramp legends");
+    }
+    expect(centrality.legend.stops.length).toBeGreaterThan(1);
+    expect(centrality.legend.stops).not.toEqual(agitation.legend.stops);
+    expect(centrality.legend.stops).not.toEqual(throughput.legend.stops);
+  });
+
+  it("mass_receptivity carries the dedicated receptivity ramp, distinct from every sibling struggle ramp (Wave 5)", () => {
+    const massReceptivity = LENS_REGISTRY.find((d) => d.id === "mass_receptivity");
+    const heat = LENS_REGISTRY.find((d) => d.id === "heat");
+    const solidarity = LENS_REGISTRY.find((d) => d.id === "solidarity_index");
+    const agitation = LENS_REGISTRY.find((d) => d.id === "agitation");
+    if (
+      massReceptivity?.legend.kind !== "ramp" ||
+      heat?.legend.kind !== "ramp" ||
+      solidarity?.legend.kind !== "ramp" ||
+      agitation?.legend.kind !== "ramp"
+    ) {
+      throw new Error("expected ramp legends");
+    }
+    expect(massReceptivity.legend.stops.length).toBeGreaterThan(1);
+    expect(massReceptivity.legend.stops).not.toEqual(heat.legend.stops);
+    expect(massReceptivity.legend.stops).not.toEqual(solidarity.legend.stops);
+    expect(massReceptivity.legend.stops).not.toEqual(agitation.legend.stops);
+  });
+
+  it("vision_state's legend has exactly 3 entries — the corpus's desert/mud/water partition (Wave 5)", () => {
+    const def = LENS_REGISTRY.find((d) => d.id === "vision_state");
+    if (def?.legend.kind !== "categorical") throw new Error("expected categorical legend");
+    expect(def.legend.entries).toHaveLength(3);
+    const labels = def.legend.entries.map((e) => e.label);
+    expect(labels).toEqual(expect.arrayContaining(["Desert", "Mud", "Water"]));
+  });
+
+  it("wage_pressure/dispossession_intensity each carry a non-empty ramp stop list, distinct from every sibling ramp (Feature 021)", () => {
+    const wagePressure = LENS_REGISTRY.find((d) => d.id === "wage_pressure");
+    const dispossession = LENS_REGISTRY.find((d) => d.id === "dispossession_intensity");
+    const heat = LENS_REGISTRY.find((d) => d.id === "heat");
+    const exploitationRate = LENS_REGISTRY.find((d) => d.id === "exploitation_rate");
+    const habitability = LENS_REGISTRY.find((d) => d.id === "habitability");
+    if (
+      wagePressure?.legend.kind !== "ramp" ||
+      dispossession?.legend.kind !== "ramp" ||
+      heat?.legend.kind !== "ramp" ||
+      exploitationRate?.legend.kind !== "ramp" ||
+      habitability?.legend.kind !== "ramp"
+    ) {
+      throw new Error("expected ramp legends");
+    }
+    expect(wagePressure.legend.stops.length).toBeGreaterThan(1);
+    expect(dispossession.legend.stops.length).toBeGreaterThan(1);
+    expect(wagePressure.legend.stops).not.toEqual(dispossession.legend.stops);
+    expect(wagePressure.legend.stops).not.toEqual(heat.legend.stops);
+    expect(dispossession.legend.stops).not.toEqual(exploitationRate.legend.stops);
+    expect(dispossession.legend.stops).not.toEqual(habitability.legend.stops);
   });
 });

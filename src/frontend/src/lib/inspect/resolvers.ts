@@ -7,7 +7,9 @@
  */
 
 import { get as apiGet, fetchExplain } from "@/api/client";
+import { endpoints, type Endpoint } from "@/api/endpoints";
 import type { InspectionNode, InspectionRef } from "@/types/inspection";
+import type { EdgeHistoryPayload, EdgeHistoryPoint } from "@/types/game";
 import { adaptHex } from "./adapters/hex";
 import { adaptOrg } from "./adapters/org";
 import { adaptNode } from "./adapters/node";
@@ -23,12 +25,12 @@ export function refKey(ref: InspectionRef): string {
 
 type EntityRefKind = "hex" | "org" | "node" | "edge" | "community";
 
-const ENTITY_PATH_SEGMENT: Record<EntityRefKind, string> = {
-  hex: "hex",
-  org: "org",
-  node: "node",
-  edge: "edge",
-  community: "community",
+const ENTITY_ENDPOINT: Record<EntityRefKind, Endpoint<unknown>> = {
+  hex: endpoints.inspectorHex,
+  org: endpoints.inspectorOrg,
+  node: endpoints.inspectorNode,
+  edge: endpoints.inspectorEdge,
+  community: endpoints.inspectorCommunity,
 };
 
 const ENTITY_ADAPTER: Record<
@@ -42,6 +44,19 @@ const ENTITY_ADAPTER: Record<
   community: adaptCommunity,
 };
 
+/**
+ * Edge-only second fetch (audit Wave 4 straggler, task #76): the
+ * edge-weight history sparkline. A failed/missing history fetch degrades
+ * to an empty series — `adaptEdge` already treats that as "no sparkline",
+ * never a blocking error for the (more important) edge-detail fetch above.
+ */
+async function fetchEdgeHistory(gameId: string, edgeId: string): Promise<EdgeHistoryPoint[]> {
+  const res = await apiGet<EdgeHistoryPayload>(
+    endpoints.inspectorEdgeHistory.path({ id: gameId, entityId: edgeId }),
+  );
+  return res.status === "ok" ? (res.data?.history ?? []) : [];
+}
+
 async function resolveEntityRef(
   gameId: string,
   ref: InspectionRef,
@@ -54,12 +69,16 @@ async function resolveEntityRef(
   if (ref.inline) {
     return ENTITY_ADAPTER[kind](ref, ref.inline);
   }
-  const segment = ENTITY_PATH_SEGMENT[kind];
-  const res = await apiGet<RawEntity>(`/api/games/${gameId}/${segment}/${ref.id}/`);
+  const res = await apiGet<RawEntity>(ENTITY_ENDPOINT[kind].path({ id: gameId, entityId: ref.id }));
   if (res.status !== "ok") {
     throw new Error(res.message ?? `Failed to load ${kind} ${ref.id}`);
   }
-  return ENTITY_ADAPTER[kind](ref, res.data ?? {});
+  const data = res.data ?? {};
+  if (kind === "edge") {
+    const history = await fetchEdgeHistory(gameId, ref.id);
+    return adaptEdge(ref, data, history);
+  }
+  return ENTITY_ADAPTER[kind](ref, data);
 }
 
 async function resolveMetricRef(gameId: string, ref: InspectionRef): Promise<InspectionNode> {

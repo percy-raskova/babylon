@@ -10,7 +10,7 @@ meta:
     - "4.1.0: Documented DearPyGui as Presentation Layer technology"
   related_docs:
     - "ai/database-spec.yaml - SQLite schema and DDL"
-    - "ai/rag-architecture.yaml - ChromaDB collections"
+    - "ai/rag-architecture.yaml - RAG collections (pgvector, spec-037)"
     - "ai/formulas-spec.yaml - Mathematical formulas"
     - "ai/ui-wireframes.yaml - DearPyGui layout specification"
     - "ai/dpg-patterns.yaml - DearPyGui development patterns"
@@ -653,7 +653,7 @@ directory_map:
       key_files:
         - "simulation_engine.py: SimulationEngine + step(); _DEFAULT_SYSTEMS is the source of truth for system order"
         - "services.py: ServiceContainer (concrete DI; constructs persistence lazily at the composition factory)"
-        - "systems/: the 26 Systems in materialist-causality order"
+        - "systems/: the 27 Systems in materialist-causality order"
         - "actions/: verb resolvers (VERB_RESOLVERS)"
         - "headless_runner/: the composition root (engine + persistence wired here)"
         - "observers/: SessionRecorder (canonical replay seam) + jsonl_recorder.py"
@@ -689,7 +689,7 @@ data_flows:
         - "2. Validate rows against Pydantic models (SocialClass, Territory, Relationship)"
         - "3. Construct WorldState from validated entities"
         - "4. Convert WorldState.to_graph() → BabylonGraph"
-        - "5. Initialize ChromaDB connection for Archive layer"
+        - "5. Initialize pgvector connection pool for Archive layer (spec-037; replaced ChromaDB)"
 
     sql_operations:
       social_classes: "SELECT * FROM social_classes"
@@ -803,7 +803,7 @@ data_flows:
         - "2. Convert Pydantic models to row dicts"
         - "3. Execute INSERT OR REPLACE for each table"
         - "4. Commit transaction (atomic write)"
-        - "5. Optionally update ZEITGEIST collection in ChromaDB"
+        - "5. Optionally update ZEITGEIST collection via pgvector (spec-037; replaced ChromaDB)"
 
     sql_operations:
       social_classes: |
@@ -871,26 +871,28 @@ data_flows:
   # AI NARRATIVE FLOW (Observer Pattern)
   # ---------------------------------------------------------------------------
   ai_narrative:
-    principle: "AI is observer, not controller (ADR003)"
-    status: "Partially implemented - LLM call missing"
+    principle: "AI is observer, not controller (Constitution II.5)"
+    status: "Implemented end-to-end; flag-gated OFF by default (BABYLON_LLM_NARRATOR env var, owner ruling D3) so Wire-feed behavior stays byte-identical until explicitly enabled"
     implementation:
-      observer: "NarrativeDirector implements SimulationObserver"
-      context: "DialecticalPromptBuilder assembles context hierarchy"
-      retrieval: "RagPipeline queries ChromaDB (currently empty)"
-      llm: "NOT YET IMPLEMENTED - Sprint 3.3"
+      observer: "NarrativeDirector implements SimulationObserver (src/babylon/intelligence/ai/director.py)"
+      context: "DialecticalPromptBuilder assembles context hierarchy + event-archetype guidance (prompt_builder.py)"
+      prompts: "PromptRegistry loads versioned prompt artifacts (data/game/prompts/narrator/*.txt) and RIOT-style event archetypes (data/game/prompts/archetypes/*.json, schema-validated at load); PROMPT_VERSION is a content hash over the artifacts, not a manually-bumped constant (Constitution III.12)"
+      retrieval: "RagPipeline queries pgvector (spec-037; replaced ChromaDB) via PgVectorStore; NarrativeService accepts an optional rag_pipeline for future wiring but does not construct a live PgVectorStore at the web bridge boundary itself (no new infra), so RAG context is not yet connected end-to-end in the web path"
+      llm: "build_llm_provider() selects the chat provider from LLMConfig.PROVIDER: deepseek (default) | workers_ai (Cloudflare Workers AI via AI Gateway, @cf/openai/gpt-oss-20b, Program 07 Decision 3) | mock"
+      persistence: "NarrationRecord (web/game/models.py) durably persists each beat keyed by (session, tick, beat_id); a healthy generation writes a wire-register record (corporate voice) and an analysis-register record (liberated voice)"
+      endpoint: "GET /api/games/{id}/narration/ (web/game/api.py:game_narration) — offline/pending/ready contract matching src/frontend/src/types/narration.ts"
     steps:
-      - "Simulation.step() calls observer.on_tick(prev_state, new_state)"
-      - "NarrativeDirector detects new events in event_log"
-      - "Query RagPipeline for relevant history/theory"
-      - "Build context block: Material Conditions → RAG Context → Events"
-      - "Call LLM provider (MISSING)"
-      - "Output narrative text"
-      - "Never modify game mechanics"
+      - "NarrativeService.schedule() fires from resolve_tick on a background thread pool, off the tick's critical path"
+      - "NarrativeDirector.on_tick(prev_state, new_state) detects significant typed SimulationEvents"
+      - "DialecticalPromptBuilder builds context: Material Conditions → RAG Context (when wired) → Event Archetype guidance → Events"
+      - "build_llm_provider() calls the selected chat provider"
+      - "Result is cached in-process (fast reads for augment_feed) and persisted as NarrationRecord row(s)"
+      - "Never modifies game mechanics (read-only observer, Constitution II.5)"
     gaps_identified:
-      - "ChromaDB has no corpus data (RAG returns empty)"
-      - "Only ContradictionSystem emits events (rupture only)"
-      - "No LLM client implementation"
-      - "No CLI runner for vertical slice demo"
+      - "Flag defaults OFF (BABYLON_LLM_NARRATOR) per owner ruling D3 — narration is dormant until an operator opts in"
+      - "RagPipeline is not wired to a live PgVectorStore at the NarrativeService bridge boundary; NarrativeDirector accepts one directly for callers that construct their own"
+      - "Corpus ingestion into pgvector remains partial (see src/babylon/intelligence/rag/)"
+      - "Register mapping is v1 (wire/analysis only) — a third Gramscian triptych register is a documented future extension, not yet built"
 
 # =============================================================================
 # KEY INTERFACES
@@ -907,7 +909,7 @@ interfaces:
     example: "faction.dialectical_relationships → graph edges"
 
   topology_to_archive:
-    pattern: "State changes → ChromaDB queries → narrative"
+    pattern: "State changes → pgvector queries → narrative"
     example: "Contradiction intensified → find similar historical events → generate description"
 
 # =============================================================================

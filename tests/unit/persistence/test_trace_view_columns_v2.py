@@ -10,7 +10,6 @@ columns that now flow from the new spec-065 subsystem tables
 from __future__ import annotations
 
 import os
-from pathlib import Path
 
 import pytest
 
@@ -66,12 +65,16 @@ def pool():
 
 
 def _apply_spec_065_migrations(pool) -> None:
-    """Idempotently apply migrations 0020-0023 against the test DB."""
-    migs_dir = Path("src/babylon/persistence/migrations")
-    files = sorted(migs_dir.glob("002[0-3]_*.sql"))
-    with pool.connection() as conn:
-        for f in files:
-            conn.execute(f.read_text())
+    """Idempotently apply migrations 0020-0023 against the test DB.
+
+    Self-healing (task #77): delegates to the shared
+    ``conftest.apply_migrations_healing`` so a shared ``babylon_test`` DB left
+    mid-migration by a killed background pytest run is healed loudly with one
+    retry instead of erroring fixture setup — see conftest.py docstring.
+    """
+    from tests.unit.persistence.conftest import apply_migrations_healing
+
+    apply_migrations_healing(pool, glob_pattern="002[0-3]_*.sql")
 
 
 def test_view_exposes_22_column_contract(pool) -> None:

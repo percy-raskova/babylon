@@ -18,8 +18,12 @@ Design:
 * **Flag ON**: :meth:`NarrativeService.schedule` submits generation to a
   background thread pool so it NEVER blocks the caller (``resolve_tick``
   returns immediately; the narrative "lands" later). Results are cached
-  in-process keyed by ``(session_id, tick)`` — no new persistence infra;
-  the cache is intentionally ephemeral (process-local, lost on restart).
+  in-process keyed by ``(session_id, tick)`` for fast reads by
+  :meth:`augment_feed`. Since program-20 Track B (task B4), completed
+  generations are ALSO durably written to ``game.models.NarrationRecord``
+  (see :meth:`NarrativeService._persist`) so narrator beats survive a
+  process restart — the in-process cache stays as-is; persistence is
+  additive, not a replacement.
 * **Narrative-only**: generation drives ``NarrativeDirector.on_tick(prev, new)``
   — the engine's existing ``SimulationObserver`` hook (observe, not step).
   This module never calls ``babylon.engine.simulation.step`` and never
@@ -55,7 +59,8 @@ from uuid import UUID
 
 from babylon.config.llm_config import LLMConfig
 from babylon.intelligence.ai.director import NarrativeDirector
-from babylon.intelligence.ai.llm_provider import DeepSeekClient, LLMProvider
+from babylon.intelligence.ai.llm_provider import LLMProvider, build_llm_provider
+from babylon.intelligence.ai.prompt_registry import get_prompt_registry
 
 if TYPE_CHECKING:
     from babylon.intelligence.rag.rag_pipeline import RagPipeline
@@ -70,11 +75,40 @@ logger = logging.getLogger(__name__)
 FEATURE_FLAG_ENV = "BABYLON_LLM_NARRATOR"
 
 # The prompt version pinned alongside every stored NarrativeResult
-# (Constitution III.6). Bump when CORPORATE_SYSTEM_PROMPT / LIBERATED_SYSTEM_PROMPT
-# in babylon.intelligence.ai.director change materially.
-PROMPT_VERSION = "v1"
+# (Constitution III.6). Auto-derived from the content hash of the narrator
+# prompt artifacts (babylon.intelligence.ai.prompt_registry) — manual bumps
+# are retired; editing CORPORATE_SYSTEM_PROMPT / LIBERATED_SYSTEM_PROMPT
+# (src/babylon/data/game/prompts/narrator/*.txt) changes this automatically.
+#
+# STARTUP COUPLING (deliberate, III.11): this module-level read means Django
+# app boot — via EngineBridge.__init__ -> NarrativeService() -> this import —
+# now depends on the prompt/archetype artifacts being present and valid,
+# REGARDLESS of the feature flag. A missing/malformed artifact fails the whole
+# app loudly at startup rather than silently at first narration. The artifacts
+# are committed and pinned by tests (test_prompt_registry, test_event_archetypes).
+PROMPT_VERSION = get_prompt_registry().version()
 
 _TRUE_VALUES = frozenset({"1", "true", "yes", "on"})
+
+# NarrationRecord.headline's list-view budget (Constitution/task-B4 brief).
+_HEADLINE_MAX_CHARS = 120
+
+
+def _split_headline_body(text: str, tick: int) -> tuple[str, str]:
+    """Derive a ``(headline, body)`` pair from one generated narrative's text.
+
+    Multi-line text: the headline is the first line (truncated to
+    ``_HEADLINE_MAX_CHARS``), and the body is everything after it.
+    Single-line text has no natural headline/body split, so the body
+    becomes the full text and the headline falls back to a generic
+    ``"Tick {tick}"`` marker — rather than truncating the one line twice
+    (once for the headline, once implicitly for the body) or duplicating
+    it in both fields.
+    """
+    if "\n" in text:
+        first_line, rest = text.split("\n", 1)
+        return first_line[:_HEADLINE_MAX_CHARS], rest
+    return f"Tick {tick}", text
 
 
 def _env_flag_enabled() -> bool:
@@ -196,9 +230,11 @@ class NarrativeService:
         """Initialize the service.
 
         Args:
-            llm: Optional LLMProvider. If None, a :class:`DeepSeekClient` is
-                constructed lazily on first use (reads DEEPSEEK_API_KEY from
-                the environment — never read/echoed by this module).
+            llm: Optional LLMProvider. If None, a provider is constructed
+                lazily on first use via
+                :func:`babylon.intelligence.ai.llm_provider.build_llm_provider`
+                (selects on ``LLMConfig.PROVIDER``; reads its credentials
+                from the environment — never read/echoed by this module).
             rag_pipeline: Optional RagPipeline for historical/theoretical
                 context retrieval. None disables RAG (matches
                 ``NarrativeDirector``'s own backward-compatible default).
@@ -215,7 +251,7 @@ class NarrativeService:
     def _resolve_llm(self) -> LLMProvider:
         if self._llm is not None:
             return self._llm
-        return DeepSeekClient()
+        return build_llm_provider()
 
     def schedule(
         self,
@@ -250,12 +286,41 @@ class NarrativeService:
         previous_state: WorldState,
         new_state: WorldState,
     ) -> None:
-        """Run NarrativeDirector.on_tick() and cache the result.
+        """Run NarrativeDirector.on_tick(), persist, and cache the result.
 
         Runs on a background thread. Any exception from the provider or
         the director is caught here (III.11 loud degradation — surfaced
         via ``NarrativeResult.degraded``/``error``, never re-raised into
         the thread pool where it would vanish silently).
+
+        Persistence (:meth:`_persist`, task B4) is called INSIDE the try
+        block for the success path deliberately: a caller-supplied
+        ``session_id`` with no backing ``GameSession`` row is a real bug
+        (the session was never created, or was deleted out from under an
+        in-flight generation), not something to skip with a quiet log
+        line. Letting ``GameSession.DoesNotExist`` propagate here reuses
+        the SAME ``except Exception`` handler immediately below —
+        already-tested machinery for provider failures — so a missing
+        session turns an otherwise-successful generation into an explicit
+        ``degraded`` result (III.11: you can generate all the text you
+        want, but if it can't be durably recorded, the tick's narration
+        didn't really complete).
+
+        The degraded branch persists its own (single, visible) record
+        too. If THAT persist attempt also fails — e.g. the session is
+        ALSO missing when generation itself already failed — there is
+        nowhere further to escalate to without breaking the
+        "``schedule()`` never raises" contract the thread pool relies on,
+        so it is logged at ERROR (distinct from the WARNING already
+        logged for the generation failure) and swallowed rather than
+        re-raised. Consequence for ``NarrationRecord`` readers: a
+        ``degraded=True`` in-memory :class:`NarrativeResult` (and hence a
+        ``degraded: true`` marker in ``augment_feed``'s output) does NOT
+        guarantee a corresponding persisted row exists — on this
+        double-failure path the durability failure is visible only in
+        ERROR logs today, so "no NarrationRecord for (session, tick)"
+        can mean quiet-tick OR failed-persist, distinguishable only via
+        the log stream.
         """
         tick = new_state.tick
         model_id = LLMConfig.CHAT_MODEL
@@ -283,6 +348,7 @@ class NarrativeService:
                 corporate=dual["corporate"] if dual else None,
                 liberated=dual["liberated"] if dual else None,
             )
+            self._persist(result, session_id, tick)
         except Exception as exc:  # noqa: BLE001 — III.11: never crash the pool, degrade loudly
             logger.warning(
                 "NarrativeService generation failed session=%s tick=%d: %s",
@@ -297,8 +363,106 @@ class NarrativeService:
                 degraded=True,
                 error=str(exc),
             )
+            try:
+                self._persist(result, session_id, tick)
+            except Exception as persist_exc:  # noqa: BLE001 — see docstring above
+                # NOTE for NarrationRecord readers: after this swallow, the
+                # in-memory result is still cached degraded=True below, but NO
+                # row was persisted — durability failure on this path is
+                # visible only in this ERROR log (see docstring).
+                logger.error(
+                    "NarrativeService degraded-beat persistence ALSO failed session=%s tick=%d: %s",
+                    session_id,
+                    tick,
+                    persist_exc,
+                )
         with self._lock:
             self._results[(session_id, tick)] = result
+
+    @staticmethod
+    def _record_specs(result: NarrativeResult, tick: int) -> list[tuple[str, str, str, str, str]]:
+        """Map a NarrativeResult onto ``(beat_id, headline, body, register, error)`` tuples.
+
+        Pure/static (no Django dependency) so it's independently testable.
+        Returns ``[]`` when there is nothing to persist: a healthy
+        generation with an empty domain (no SIGNIFICANT_EVENT_TYPES this
+        tick — ``corporate``/``liberated`` both None) has no beat to
+        record (III.11 — never fabricate content that wasn't produced).
+        """
+        if result.degraded:
+            error_text = result.error or ""
+            return [(f"wire-{tick}", "NARRATOR DEGRADED", error_text, "wire", error_text)]
+        if result.corporate is None and result.liberated is None:
+            return []
+        specs: list[tuple[str, str, str, str, str]] = []
+        for register, text in (("wire", result.corporate), ("analysis", result.liberated)):
+            headline, body = _split_headline_body(text or "", tick)
+            specs.append((f"{register}-{tick}", headline, body, register, ""))
+        return specs
+
+    def _persist(self, result: NarrativeResult, session_id: UUID, tick: int) -> None:
+        """Durably write this generation's beats to ``NarrationRecord`` (task B4).
+
+        A healthy generation with actual narrative text writes TWO
+        records — corporate text under ``register="wire"``, liberated
+        text under ``register="analysis"`` (the v1 register mapping; see
+        ``NarrationRecord``'s docstring for the rationale and the future
+        Gramscian-triptych extension). A degraded generation writes
+        exactly ONE record (``register="wire"``, ``degraded=True``,
+        headline ``"NARRATOR DEGRADED"``, body = the error string —
+        III.11: visible, never silent). An empty-domain healthy
+        generation (no significant event this tick) writes nothing.
+
+        Runs on a background thread (the ``ThreadPoolExecutor`` in
+        :attr:`_executor`) — Django hands out a fresh per-thread
+        connection automatically, but a long-lived thread pool can end up
+        reusing threads whose connections have gone stale, so
+        ``close_old_connections()`` is called defensively first (no
+        existing call site in this codebase to mirror — this is the
+        first Django ORM access from a non-request thread — so this
+        follows Django's own documented guidance for background-thread
+        DB access).
+
+        Writes are wrapped in ``transaction.atomic()`` and keyed
+        idempotently via ``update_or_create`` on
+        ``(session, tick, beat_id)`` — a replayed/re-scheduled generation
+        for the same tick UPDATES its existing record(s) rather than
+        raising a uniqueness violation or duplicating rows.
+
+        GameSession lookup (``GameSession.objects.get(pk=session_id)``)
+        is intentionally LOUD: it is allowed to raise
+        ``GameSession.DoesNotExist`` rather than being caught here and
+        downgraded to a log warning. See :meth:`_generate`'s docstring
+        for how callers handle that.
+        """
+        records = self._record_specs(result, tick)
+        if not records:
+            return
+
+        from django.db import close_old_connections, transaction
+
+        from .models import GameSession, NarrationRecord
+
+        close_old_connections()
+        with transaction.atomic():
+            session = GameSession.objects.get(pk=session_id)
+            for beat_id, headline, body, register, error_text in records:
+                NarrationRecord.objects.update_or_create(
+                    session=session,
+                    tick=tick,
+                    beat_id=beat_id,
+                    defaults={
+                        "scope": NarrationRecord.Scope.TICK,
+                        "subject_ref": None,
+                        "headline": headline,
+                        "body": body,
+                        "register": register,
+                        "model_id": result.model_id,
+                        "prompt_version": result.prompt_version,
+                        "degraded": result.degraded,
+                        "error": error_text,
+                    },
+                )
 
     def get_result(self, session_id: UUID, tick: int) -> NarrativeResult | None:
         """Return the cached NarrativeResult for (session_id, tick), if any.

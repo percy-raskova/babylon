@@ -33,14 +33,16 @@ from babylon.config.defines import (
     SurvivalDefines,
 )
 from babylon.models.config import SimulationConfig
-from babylon.models.entities.organization import CivilSocietyOrg
+from babylon.models.entities.organization import CivilSocietyOrg, StateApparatus
 from babylon.models.entities.relationship import Relationship
 from babylon.models.entities.social_class import SocialClass
+from babylon.models.entities.state_apparatus_ai import FactionBalance
 from babylon.models.entities.territory import Territory
 from babylon.models.enums import (
     ClassCharacter,
     ConsciousnessTendency,
     EdgeType,
+    JurisdictionLevel,
     LegalStanding,
     OperationalProfile,
     SectorType,
@@ -501,6 +503,73 @@ def _create_player_org(starting_territory_ids: list[str]) -> CivilSocietyOrg:
 
 
 # ---------------------------------------------------------------------------
+# State apparatus (Feature 039 / AW3-R2 item 3)
+# ---------------------------------------------------------------------------
+
+_STATE_APPARATUS_ID = "ORG002"
+
+
+def _create_state_apparatus_org(policed_territory_ids: list[str]) -> StateApparatus:
+    """Create the Detroit Police Department — the module docstring's
+    long-promised "local police" NPC, never actually built until now.
+
+    Setting ``faction_balance`` is the single documented activation gate
+    for ``RuleBasedStateAI`` (``babylon.ooda.npc_stub._try_state_ai_dispatch``
+    — every other Feature 039 entry point, State Action Menu / Attention
+    Threads / Legal Frameworks / Legitimacy-Gated RoE tiers, hangs off this
+    same dispatch and was real, tested-in-isolation code that had never once
+    executed in a scenario before this).
+
+    Faction weights lean Security-State (0.6), matching the org's own
+    ``factional_alignment`` default and Detroit's real material history of
+    heavy policing (mirrors the scenario's ``repression_level=0.6`` param
+    and the Detroit proletariat's ``repression_faced=0.7``). ``heat=0.3``
+    is deliberately the same value ``_try_state_ai_dispatch`` falls back to
+    when heat is absent (FR-D06 escalation ladder input) — chosen so the
+    seeded org sits at a believable "actively surveilling" starting point
+    rather than a cold 0.0 that would understate a functioning apparatus.
+
+    ``rng_seed`` MUST be set alongside ``faction_balance``: without it,
+    ``RuleBasedStateAI.select_action``'s per-candidate tiebreaker falls back
+    to OS-entropy-seeded ``random.Random(None)`` — a genuine Constitution
+    III.7 determinism violation this scenario must not introduce.
+
+    Formerly a known limitation, FIXED by task #73:
+    ``RuleBasedStateAI.select_action`` used to always set
+    ``target_id=org_id`` (itself) — Feature 039 never wired real target
+    selection. It now sorts visible non-state-org threats by
+    ``Heat x Visibility`` (``babylon.ooda.state_ai.decision.
+    select_repress_target``, the epoch-3 "Blind Giant" doctrine) and
+    targets the top one; with zero visible threats (heat 0 everywhere,
+    e.g. right at scenario start before ORG001 has done anything to
+    attract attention) it honestly no-ops rather than self-targeting.
+    """
+    balance = FactionBalance(
+        finance_capital=0.2,
+        security_state=0.6,
+        settler_populist=0.2,
+        stability=0.5,
+        legitimacy=0.5,
+    )
+    return StateApparatus(
+        id=_STATE_APPARATUS_ID,
+        name="Detroit Police Department",
+        class_character=ClassCharacter.BOURGEOIS,
+        consciousness_tendency=ConsciousnessTendency.LIBERAL,
+        jurisdiction=JurisdictionLevel.COUNTY,
+        territory_ids=policed_territory_ids[:3],
+        cohesion=0.8,
+        cadre_level=0.6,
+        budget=100.0,
+        heat=0.3,
+        violence_capacity=0.6,
+        surveillance_capacity=0.5,
+        faction_balance=balance,
+        rng_seed=0,
+    )
+
+
+# ---------------------------------------------------------------------------
 # Public factory function
 # ---------------------------------------------------------------------------
 
@@ -538,12 +607,19 @@ def create_wayne_county_scenario(
     ]
     player_org = _create_player_org(detroit_hexes)
 
+    # Create the state apparatus NPC (Feature 039 activation — see
+    # _create_state_apparatus_org's docstring).
+    state_apparatus_org = _create_state_apparatus_org(detroit_hexes)
+
     # Assemble WorldState
     state = WorldState(
         tick=0,
         entities=entities,
         territories=territories,
-        organizations={_PLAYER_ORG_ID: player_org},
+        organizations={
+            _PLAYER_ORG_ID: player_org,
+            _STATE_APPARATUS_ID: state_apparatus_org,
+        },
         relationships=relationships,
         event_log=[],
     )

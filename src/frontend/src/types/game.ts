@@ -29,6 +29,14 @@ export interface GameSummary {
 export type GameStatus = "active" | "paused" | "completed" | "abandoned";
 
 /**
+ * Crisis lifecycle phase (mirrors `CrisisPhase` StrEnum,
+ * `domain/economics/tick/types.py`). The business-cycle progression a county
+ * moves through: NORMAL → ONSET → EARLY → DEEP, then RECOVERY once the profit
+ * rate holds above threshold. "In crisis" = onset/early/deep.
+ */
+export type CrisisPhase = "normal" | "onset" | "early" | "deep" | "recovery";
+
+/**
  * Full game state snapshot (Spec 052 §5).
  *
  * Note what is absent: no ``entities`` array, no top-level ``economy``.
@@ -138,6 +146,29 @@ export interface TerritoryState {
    * session produces usable data, never a fabricated 0).
    */
   bifurcation_score?: number | null;
+  /**
+   * Crisis / business-cycle family (Feature 018 crisis-devaluation, surfaced
+   * via Program 17 Item 1a). `_serialize_territory` emits all four on every
+   * `/state/` snapshot territory row, read off the graph-only
+   * `tick_crisis_phase`/`tick_crisis_duration`/`tick_wage_compression`/
+   * `tick_capital_stock` attrs the crisis system writes
+   * (`domain/economics/tick/types.py::CrisisState`; registered
+   * `SeamScope.TERRITORY`, `sentinels/seam/registry.py:433-484`). This
+   * interface never declared them, so no frontend consumer could type-check
+   * against them until the CrisisTimeline widget. Honest `null`/absent before
+   * the first year-boundary this session produces usable data — the crisis
+   * detector runs on the year boundary, never a fabricated default
+   * (Constitution III.11).
+   *
+   * `crisis_phase` is the 5-value lifecycle `CrisisPhase`; `crisis_duration`
+   * counts periods in crisis (ONSET–DEEP); `wage_compression` is cumulative
+   * in [0,1]; `capital_stock` is the county's absolute K (extensive — sum,
+   * don't average, to watch aggregate devaluation).
+   */
+  crisis_phase?: CrisisPhase | null;
+  crisis_duration?: number | null;
+  wage_compression?: number | null;
+  capital_stock?: number | null;
   /**
    * Wave 5 receptivity pair (Epistemic Horizon Phase 1 honest display):
    * `_serialize_territory` emits all three on every `/state/` snapshot

@@ -35,6 +35,9 @@ export interface ChromeState {
    *  affordance as `objectivesOpen`, no keyboard hotkey (none of this
    *  family has one; `useSpeedShortcut`'s number keys are unrelated). */
   bifurcationOpen: boolean;
+  /** The CRISIS TIMELINE HUD widget (business-cycle phase strip) — same
+   *  collapse/expand affordance as `bifurcationOpen`, no keyboard hotkey. */
+  crisisTimelineOpen: boolean;
   /** The RADAR LOOP tick-scrubber HUD widget (Program 17 Wave 3,
    *  Frontend-W3R3) — same collapse/expand affordance as `bifurcationOpen`,
    *  no keyboard hotkey. */
@@ -55,6 +58,7 @@ export interface UiSlice {
     toggleEventTray: () => void;
     toggleObjectives: () => void;
     toggleBifurcation: () => void;
+    toggleCrisisTimeline: () => void;
     toggleRadarLoop: () => void;
     toggleComposer: () => void;
     setBottomDrawer: (state: BottomDrawerState) => void;
@@ -71,6 +75,7 @@ export const createUiSlice: StateCreator<RootState, [], [], UiSlice> = (set) => 
       eventTrayOpen: true,
       objectivesOpen: true,
       bifurcationOpen: true,
+      crisisTimelineOpen: true,
       radarLoopOpen: true,
       bottomDrawer: "trends",
       composerOpen: true,
@@ -93,6 +98,13 @@ export const createUiSlice: StateCreator<RootState, [], [], UiSlice> = (set) => 
     toggleBifurcation: () =>
       set((s) => ({
         ui: { ...s.ui, chrome: { ...s.ui.chrome, bifurcationOpen: !s.ui.chrome.bifurcationOpen } },
+      })),
+    toggleCrisisTimeline: () =>
+      set((s) => ({
+        ui: {
+          ...s.ui,
+          chrome: { ...s.ui.chrome, crisisTimelineOpen: !s.ui.chrome.crisisTimelineOpen },
+        },
       })),
     toggleRadarLoop: () =>
       set((s) => ({

@@ -59,6 +59,7 @@ from babylon.topology.graph_algorithms import (
     is_connected,
 )
 
+from .log_handler import sanitize_for_log
 from .map_contract import MAP_HISTORY_REPLAYABLE_METRICS, MAP_METRIC_PROPERTIES
 
 if TYPE_CHECKING:
@@ -413,7 +414,11 @@ def _fetch_county_boundary_flows(
                     )
             return result
     except Exception:  # noqa: BLE001 — non-fatal; degrades to empty list
-        logger.exception("Failed to read county boundary flows for %s/%s", session_id, county_fips)
+        logger.exception(
+            "Failed to read county boundary flows for %s/%s",
+            session_id,
+            sanitize_for_log(county_fips),
+        )
         return []
 
 

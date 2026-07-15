@@ -22,6 +22,21 @@ from uuid import UUID
 logger = logging.getLogger(__name__)
 
 
+def sanitize_for_log(value: object, *, max_length: int = 200) -> str:
+    """Strip CR/LF and control chars from a value bound for a log line, and truncate.
+
+    Prevents CodeQL ``py/log-injection`` (forged log lines via newline injection in
+    user-controlled input).
+
+    :param value: Any value to be logged.
+    :param max_length: Cap on the returned string's length.
+    :returns: A single-line, control-char-free, length-capped string.
+    """
+    text = str(value)
+    cleaned = "".join(ch for ch in text if ch == " " or (ch.isprintable() and ch not in "\r\n"))
+    return cleaned[:max_length]
+
+
 def log_game_event(
     *,
     category: str,
@@ -58,4 +73,8 @@ def log_game_event(
         )
     except Exception:
         # Never let audit logging crash the request — log and move on
-        logger.exception("Failed to persist game event: category=%s message=%s", category, message)
+        logger.exception(
+            "Failed to persist game event: category=%s message=%s",
+            sanitize_for_log(category),
+            sanitize_for_log(message),
+        )

@@ -29,6 +29,8 @@ from rest_framework.decorators import api_view, permission_classes
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.request import Request
 
+from game.log_handler import sanitize_for_log
+
 from .deep_queries import read_commit_chain, read_national_series, read_tick_range
 from .queries import (
     DEFAULT_HEX_LIMIT,
@@ -72,6 +74,20 @@ def _ok(data: Any, http_status: int = 200) -> JsonResponse:
 
 def _err(message: str, http_status: int) -> JsonResponse:
     return JsonResponse({"status": "error", "message": message}, status=http_status)
+
+
+def _bad_input(exc: Exception, message: str = "Invalid request parameters.") -> JsonResponse:
+    """Log the offending exception server-side and return a generic 400.
+
+    CodeQL ``py/stack-trace-exposure``: the exception's text is never returned to the
+    client.
+
+    :param exc: The caught exception (logged only, never serialized to the client).
+    :param message: The stable, client-facing message returned in the envelope.
+    :returns: The module's standard ``{"status": "error", ...}`` 400 JSON response.
+    """
+    logger.info("Observatory request rejected: %s", sanitize_for_log(exc))
+    return _err(message, 400)
 
 
 def _sim_unavailable() -> JsonResponse:
@@ -183,7 +199,8 @@ def _source_or_400(request: Request) -> Source:
     try:
         return parse_source(request.query_params.get("source"))
     except ValueError as exc:
-        raise _BadRequest(str(exc)) from exc
+        logger.info("Invalid source parameter: %s", sanitize_for_log(exc))
+        raise _BadRequest("Invalid request parameters.") from exc
 
 
 def _archive_sessions() -> list[dict[str, Any]]:
@@ -260,7 +277,7 @@ def observatory_sessions(request: Request) -> JsonResponse:
     try:
         source = _source_or_400(request)
     except _BadRequest as exc:
-        return _err(str(exc), 400)
+        return _bad_input(exc)
     try:
         if source is Source.ARCHIVE:
             data = _archive_sessions()
@@ -283,7 +300,7 @@ def observatory_ticks(request: Request, session_id: str) -> JsonResponse:
         sid = _valid_uuid(session_id)
         source = _source_or_400(request)
     except _BadRequest as exc:
-        return _err(str(exc), 400)
+        return _bad_input(exc)
     try:
         if source is Source.ARCHIVE:
             data = _archive_tick_range(sid)
@@ -307,7 +324,7 @@ def observatory_series(request: Request, session_id: str) -> JsonResponse:
     try:
         payload = _series_payload(request, session_id)
     except _BadRequest as exc:
-        return _err(str(exc), 400)
+        return _bad_input(exc)
     except DatabaseError:
         return _sim_unavailable()
     return _ok(payload)
@@ -321,7 +338,7 @@ def observatory_series_csv(request: Request, session_id: str) -> HttpResponseBas
     try:
         payload = _series_payload(request, session_id)
     except _BadRequest as exc:
-        return _err(str(exc), 400)
+        return _bad_input(exc)
     except DatabaseError:
         return _sim_unavailable()
     filename = f"{payload['session_id']}_{payload['scope']}_{payload['scope_id']}.csv"
@@ -393,7 +410,7 @@ def observatory_commits(request: Request, session_id: str) -> JsonResponse:
         from_tick = _parse_int(request.query_params.get("from_tick"), "from_tick")
         to_tick = _parse_int(request.query_params.get("to_tick"), "to_tick")
     except _BadRequest as exc:
-        return _err(str(exc), 400)
+        return _bad_input(exc)
     try:
         if source is Source.ARCHIVE:
             with open_reader(Source.ARCHIVE, sid) as reader:
@@ -406,7 +423,7 @@ def observatory_commits(request: Request, session_id: str) -> JsonResponse:
                 window = _resolve_range(cursor, sid, from_tick, to_tick)
                 data = [] if window is None else fetch_commits(cursor, sid, window[0], window[1])
     except _BadRequest as exc:
-        return _err(str(exc), 400)
+        return _bad_input(exc)
     except DatabaseError:
         return _sim_unavailable()
     except SourceReadError:
@@ -448,7 +465,7 @@ def observatory_hex(request: Request, session_id: str) -> JsonResponse:
         limit = _parse_limit(request.query_params.get("limit"))
         after_h3 = request.query_params.get("after_h3") or None
     except _BadRequest as exc:
-        return _err(str(exc), 400)
+        return _bad_input(exc)
     if source is Source.ARCHIVE:
         return _err(
             "archive hex read not yet implemented: archived sessions do not "

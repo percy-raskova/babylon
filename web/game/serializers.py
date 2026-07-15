@@ -6,9 +6,14 @@ using the standard response envelope.
 
 from __future__ import annotations
 
+import logging
 from typing import Any
 
 from rest_framework import serializers
+
+from .log_handler import sanitize_for_log
+
+logger = logging.getLogger(__name__)
 
 # ---------------------------------------------------------------------- #
 # Request serializers (input validation)
@@ -35,7 +40,14 @@ class CreateGameSerializer(serializers.Serializer[dict[str, Any]]):
         try:
             resolve_scenario(value)
         except ValueError as exc:
-            raise serializers.ValidationError(str(exc)) from exc
+            # CodeQL py/stack-trace-exposure: do NOT surface ``str(exc)``. Rebuild an
+            # equally-useful message from the sanitized user value (a safe, curated
+            # validation string that echoes only the caller's own — length-capped,
+            # control-char-stripped — input, never the exception's internal detail).
+            logger.info("Invalid scenario submitted: %s", sanitize_for_log(value))
+            raise serializers.ValidationError(
+                f"Unknown scenario: {sanitize_for_log(value)!r}"
+            ) from exc
         return value
 
 

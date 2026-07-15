@@ -29,7 +29,7 @@ from rest_framework.views import APIView
 
 from game.models import ActionResult, GameSession, PlayerAction
 
-from .log_handler import log_game_event
+from .log_handler import log_game_event, sanitize_for_log
 from .map_contract import MAP_METRIC_PROPERTIES
 from .serializers import (
     ActionResultSerializer,
@@ -153,6 +153,27 @@ def _error_with_code(
     return JsonResponse(
         {"status": "error", "error": message, "code": code},
         status=http_status,
+    )
+
+
+def _action_rejected(exc: ValueError, *, session_id: object) -> Response:
+    """Log a rejected-action exception server-side and return a generic client error.
+
+    The bridge raises :class:`ValueError` carrying internal validation detail; per the
+    CodeQL ``py/stack-trace-exposure`` hardening that detail is logged, never surfaced to
+    the client, which receives a stable, non-revealing message.
+
+    :param exc: The ``ValueError`` raised while submitting the action.
+    :param session_id: The game session id, for the server-side log line only.
+    :returns: A 400 DRF ``Response`` with the standard error envelope.
+    """
+    logger.info("Action rejected session=%s: %s", session_id, exc)
+    return Response(
+        {
+            "status": "error",
+            "message": "Action rejected: the request was not valid for the current game state.",
+        },
+        status=status.HTTP_400_BAD_REQUEST,
     )
 
 
@@ -1261,7 +1282,11 @@ def actions_list(request: Request, game_id: str) -> JsonResponse:
     # POST: Submit action
     serializer = SubmitActionSerializer(data=request.data)
     if not serializer.is_valid():
-        logger.warning("Invalid action submission session=%s: %s", game_id, serializer.errors)
+        logger.warning(
+            "Invalid action submission session=%s: %s",
+            sanitize_for_log(game_id),
+            sanitize_for_log(serializer.errors),
+        )
         return _error(str(serializer.errors))
 
     # T017: Server-side verb validation against canonical verb set
@@ -1269,7 +1294,11 @@ def actions_list(request: Request, game_id: str) -> JsonResponse:
 
     submitted_verb = serializer.validated_data.get("verb", "")
     if submitted_verb not in CANONICAL_VERBS:
-        logger.warning("Invalid verb '%s' submitted session=%s", submitted_verb, game_id)
+        logger.warning(
+            "Invalid verb '%s' submitted session=%s",
+            sanitize_for_log(submitted_verb),
+            sanitize_for_log(game_id),
+        )
         return _error(
             f"Invalid verb '{submitted_verb}'. Valid verbs: {sorted(CANONICAL_VERBS)}",
             http_status=400,
@@ -1288,8 +1317,13 @@ def actions_list(request: Request, game_id: str) -> JsonResponse:
             params_json=serializer.validated_data.get("params_json"),
         )
     except ValueError as exc:
-        logger.info("Action rejected (affordability) session=%s: %s", game_id, exc)
-        return _error(str(exc), http_status=400)
+        logger.info(
+            "Action rejected (affordability) session=%s: %s", sanitize_for_log(game_id), exc
+        )
+        return _error(
+            "Action rejected: the request was not valid for the current game state.",
+            http_status=400,
+        )
     logger.info(
         "Action submitted session=%s tick=%d org=%s verb=%s turn_id=%d",
         session.id,
@@ -1499,11 +1533,14 @@ class BaseVerbActionView(APIView):
         except ValueError as exc:
             logger.info(
                 "Action rejected session=%s verb=%s: %s",
-                game_id,
+                sanitize_for_log(game_id),
                 self.verb,
                 exc,
             )
-            return _error(str(exc), http_status=400)
+            return _error(
+                "Action rejected: the request was not valid for the current game state.",
+                http_status=400,
+            )
 
         # Compute cost preview and warnings (read-only)
         preview = bridge.preview_action(
@@ -1600,9 +1637,7 @@ class EducateVerbView(APIView):
                 params_json=params,
             )
         except ValueError as e:
-            return Response(
-                {"status": "error", "message": str(e)}, status=status.HTTP_400_BAD_REQUEST
-            )
+            return _action_rejected(e, session_id=session.id)
 
         return Response(
             {
@@ -1665,9 +1700,7 @@ class AidVerbView(APIView):
                 params_json=params,
             )
         except ValueError as e:
-            return Response(
-                {"status": "error", "message": str(e)}, status=status.HTTP_400_BAD_REQUEST
-            )
+            return _action_rejected(e, session_id=session.id)
 
         return Response(
             {
@@ -1730,9 +1763,7 @@ class AttackVerbView(APIView):
                 params_json=params,
             )
         except ValueError as e:
-            return Response(
-                {"status": "error", "message": str(e)}, status=status.HTTP_400_BAD_REQUEST
-            )
+            return _action_rejected(e, session_id=session.id)
 
         return Response(
             {
@@ -1795,9 +1826,7 @@ class MobilizeVerbView(APIView):
                 params_json=params,
             )
         except ValueError as e:
-            return Response(
-                {"status": "error", "message": str(e)}, status=status.HTTP_400_BAD_REQUEST
-            )
+            return _action_rejected(e, session_id=session.id)
 
         return Response(
             {
@@ -1867,9 +1896,7 @@ class MoveVerbView(APIView):
                 params_json=params,
             )
         except ValueError as e:
-            return Response(
-                {"status": "error", "message": str(e)}, status=status.HTTP_400_BAD_REQUEST
-            )
+            return _action_rejected(e, session_id=session.id)
 
         return Response(
             {
@@ -1932,9 +1959,7 @@ class InvestigateVerbView(APIView):
                 params_json=params,
             )
         except ValueError as e:
-            return Response(
-                {"status": "error", "message": str(e)}, status=status.HTTP_400_BAD_REQUEST
-            )
+            return _action_rejected(e, session_id=session.id)
 
         return Response(
             {
@@ -1997,9 +2022,7 @@ class ReproduceVerbView(APIView):
                 params_json=params,
             )
         except ValueError as e:
-            return Response(
-                {"status": "error", "message": str(e)}, status=status.HTTP_400_BAD_REQUEST
-            )
+            return _action_rejected(e, session_id=session.id)
 
         return Response(
             {
@@ -2062,9 +2085,7 @@ class NegotiateVerbView(APIView):
                 params_json=params,
             )
         except ValueError as e:
-            return Response(
-                {"status": "error", "message": str(e)}, status=status.HTTP_400_BAD_REQUEST
-            )
+            return _action_rejected(e, session_id=session.id)
 
         return Response(
             {

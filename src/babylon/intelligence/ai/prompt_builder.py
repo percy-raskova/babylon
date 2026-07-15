@@ -131,6 +131,9 @@ class DialecticalPromptBuilder:
             self._build_rag_section(rag_context),
             self._build_events_section(events),
         ]
+        archetype_section = self._build_archetype_section(events)
+        if archetype_section is not None:
+            sections.append(archetype_section)
         return "\n\n".join(sections)
 
     def _build_material_section(self, state: WorldState) -> str:
@@ -181,6 +184,33 @@ class DialecticalPromptBuilder:
             return f"{header}\nNo new events this tick."
         lines = [f"- {self._format_event(event)}" for event in events]
         return f"{header}\n" + "\n".join(lines)
+
+    def _build_archetype_section(self, events: list[SimulationEvent]) -> str | None:
+        """Build the EVENT ARCHETYPE section for the first matching event.
+
+        Task B1b (Program 20 Track B, emergent-endgames ruling): activates
+        only when a typed event's type has a registered
+        :class:`~babylon.intelligence.ai.prompt_registry.EventArchetype` —
+        no unconditional prompt bloat for ticks with no archetype-matching
+        events. Matches on ``event.event_type.value.upper()`` (e.g.
+        ``UPRISING``), mirroring the existing display convention in
+        :meth:`_format_event`'s fallback branch.
+
+        :param events: Typed events from this tick.
+        :returns: A formatted ``--- EVENT ARCHETYPE: {id} ---`` section for
+            the first event whose type has a registered archetype, or
+            ``None`` if no event matches.
+        """
+        registry = get_prompt_registry()
+        for event in events:
+            archetype = registry.archetype_for(event.event_type.value.upper())
+            if archetype is not None:
+                return (
+                    f"--- EVENT ARCHETYPE: {archetype.id} ---\n"
+                    f"{archetype.guidance}\n"
+                    f"Slots to fill: {', '.join(archetype.slots)}"
+                )
+        return None
 
     def _format_event(self, event: SimulationEvent) -> str:
         """Format a typed event into a human-readable string.

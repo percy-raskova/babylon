@@ -11,10 +11,16 @@ local models (Ollama). Cloud APIs are transitional tools.
 import os
 from typing import Final
 
+# NOTE: this is the canonical sentence-transformers REFERENCE model (Spec 061
+# FR-001 dimension-parity pin), NOT the runtime default embedder. The runtime
+# default is Ollama `embeddinggemma:latest` (see EMBEDDING_MODEL below,
+# LLM_EMBEDDING_PROVIDER=ollama) — it independently produces 768-dim vectors,
+# which is why it matches CANONICAL_EMBEDDING_DIM without being this model.
 CANONICAL_EMBEDDING_MODEL_ID: Final[str] = "sentence-transformers/all-mpnet-base-v2"
 CANONICAL_EMBEDDING_DIM: Final[int] = 768
 # Spec 061 T120: pinned to a specific HuggingFace commit SHA per
 # Constitution III.6. Captured 2026-05-12 via HfApi().model_info().sha.
+# (Pins the reference model above, not the Ollama runtime default.)
 CANONICAL_EMBEDDING_REVISION: Final[str] = "e8c3b32edf5434bc2275fc9bab85f82640a19130"
 
 

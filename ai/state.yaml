@@ -2,10 +2,34 @@
 # What exists vs what's planned - KEEP THIS UPDATED
 
 meta:
-  version: "2.30.0"  # 2.28.0 lives on feature/19-emergent-class-partition (Program 19 Phase 0+1)
+  version: "2.31.0"  # 2.28.0 lives on feature/19-emergent-class-partition (Program 19 Phase 0+1)
   updated: "2026-07-15"
   truth_status: |
-    (2026-07-15 ~8am) THE OVERNIGHT ARC: EPOCHS WAVES 1-4 COMPLETE, WAVE 5 HALF-PLAYABLE,
+    (2026-07-15 ~11:30am) RATIFICATION MORNING. Owner APPROVED both program proposals
+    (Epistemic Horizon + Doctrine Tree — Waves 5b/6 UNGATED) and directed a <=50-Sonnet-agent
+    history sweep over the local marxists.org + ProleWiki mirrors to ground the mechanics.
+    Executed at exactly the cap (workflow wf_daa1826f-9db: 6 scouts -> 31 readers -> 7 theme
+    synthesizers -> completeness critic = 45; + 5 targeted Round-2 agents on the critic's
+    gaps): 727 cited findings from 443 documents, 374 carrying historical numbers convertible
+    to GameDefines coefficients. Artifact: project/research/history-sweep/ (c91dafd1) — 7
+    design briefs, verbatim critique, 5 addenda, findings.json corpus. ALL FIVE open EH/DT
+    owner rulings now carry ratifiable recommendations (EH-5 keep spec decay constants + new
+    event-gated rupture rate 0.776 from Kronstadt; EH-3 per-(org,territory) M_r; DT-3
+    upkeep-decay ~0.55%/tick toward parent from Yan'an; DT-4 non-derivable -> playtest
+    0.15-0.25; DT-5 seeded-RNG weighted by tag deltas from the Lushan press-blackout
+    argument). Foco tension RESOLVED (no exception to the no-scouting law — Guevara's own
+    conditions). Also this morning, the EVENT-SILENCE ROOT CAUSE fell: 40ef3d81 —
+    PostgresRuntime._make_serializable silently dropped the graph "events" key (datetime
+    timestamps fail bare json.dumps), so every live GET /state/ snapshot had events=[]
+    FOREVER; fixed convert-don't-drop + III.11 loud warning; live proof 169 events at tick 3.
+    Sibling a1bf8b83 classified fascist_recruitment/organizational_fracture (warning tier).
+    Flagged for owner: backend/frontend severity-vocabulary drift (toasts run exclusively off
+    the frontend classifier; backend "critical" is decorative), converter gaps
+    (entity_death/population_attrition). Next: Phase-0 promotion of both programs (task #85)
+    folds the sweep's grounding + ruling recommendations into project/programs/ + ADRs.
+
+    (2026-07-15 ~8am, superseded above where they overlap)
+    THE OVERNIGHT ARC: EPOCHS WAVES 1-4 COMPLETE, WAVE 5 HALF-PLAYABLE,
     WAVES 5b/6 OWNER-GATED. feature/epochs-wave1-spine now carries 50 commits over
     feature/17-living-engine, every one pushed and gated (scoped suites per round, full
     check 2x, qa:regression 5/5 after every engine change). Landed overnight, in order:

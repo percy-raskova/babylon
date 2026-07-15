@@ -31,6 +31,10 @@ export interface ChromeState {
   outlinerOpen: boolean;
   eventTrayOpen: boolean;
   objectivesOpen: boolean;
+  /** The Bifurcation gauge HUD widget (Wave 3 R2a) — same collapse/expand
+   *  affordance as `objectivesOpen`, no keyboard hotkey (none of this
+   *  family has one; `useSpeedShortcut`'s number keys are unrelated). */
+  bifurcationOpen: boolean;
   bottomDrawer: BottomDrawerState;
   composerOpen: boolean;
 }
@@ -46,6 +50,7 @@ export interface UiSlice {
     toggleOutliner: () => void;
     toggleEventTray: () => void;
     toggleObjectives: () => void;
+    toggleBifurcation: () => void;
     toggleComposer: () => void;
     setBottomDrawer: (state: BottomDrawerState) => void;
     setFocusedPanel: (id: string | null) => void;
@@ -60,6 +65,7 @@ export const createUiSlice: StateCreator<RootState, [], [], UiSlice> = (set) => 
       outlinerOpen: true,
       eventTrayOpen: true,
       objectivesOpen: true,
+      bifurcationOpen: true,
       bottomDrawer: "trends",
       composerOpen: true,
     },
@@ -77,6 +83,10 @@ export const createUiSlice: StateCreator<RootState, [], [], UiSlice> = (set) => 
     toggleObjectives: () =>
       set((s) => ({
         ui: { ...s.ui, chrome: { ...s.ui.chrome, objectivesOpen: !s.ui.chrome.objectivesOpen } },
+      })),
+    toggleBifurcation: () =>
+      set((s) => ({
+        ui: { ...s.ui, chrome: { ...s.ui.chrome, bifurcationOpen: !s.ui.chrome.bifurcationOpen } },
       })),
     toggleComposer: () =>
       set((s) => ({

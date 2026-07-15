@@ -39,6 +39,7 @@ import type {
   ScenarioInfo,
   ActionPreviewResult,
   ClassHistoryPayload,
+  FieldStatePayload,
 } from "@/types/game";
 import type { ContradictionSnapshot, EndgameState, ObjectivesTracker } from "@/types/dialectic";
 import type { TradeFlowsPayload } from "@/types/trade";
@@ -128,6 +129,11 @@ export const endpoints = {
   contradiction: ep<ContradictionSnapshot>("/api/games/:id/contradiction/"),
   endgame: ep<EndgameState>("/api/games/:id/endgame/"),
   objectives: ep<ObjectivesTracker>("/api/games/:id/objectives/"),
+  // Program 19/20 Wave 3 Round 1/2a — the Field screen's System-19/20
+  // contradiction-field stack (see FieldStatePayload's docstring for the
+  // known R1b altitude gap: nodes/edges/principal_field/dialectical_regime
+  // are honestly empty/null on most real games today).
+  fieldState: ep<FieldStatePayload>("/api/games/:id/field_state/"),
 
   // ---- Trade surfaces (spec-103) ---------------------------------------- //
   tradeFlows: ep<TradeFlowsPayload>("/api/games/:id/trade-flows/"),

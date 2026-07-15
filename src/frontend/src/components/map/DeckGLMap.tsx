@@ -46,6 +46,7 @@ import {
 import { hullPolygonForTerritories } from "@/components/map/mapLensGeometry";
 import { buildPoliticalLayers, type PolityClaim } from "@/components/map/layers/political";
 import { resolvePulseTargets, useCriticalPulses } from "@/components/map/layers/criticalPulse";
+import { resolveStormTargets, buildStormMarkerLayers } from "@/components/map/layers/stormMarkers";
 import { useStore } from "@/store";
 import {
   loadCountyTopology,
@@ -827,6 +828,19 @@ export function DeckGLMap({
   );
   const pulseLayers = useCriticalPulses(pulseTargets);
 
+  // Storm markers (Wave 3 Round 2a, DESIGN_BIBLE.md §11) — static UPRISING
+  // glyphs. Reads the SAME `criticalToasts` (really: the full toast queue,
+  // see the comment above) array the pulse does — see `stormMarkers.ts`'s
+  // module docstring for why that IS the shared lifetime/window convention
+  // here, no separate timer-owned hook needed. RUPTURE never contributes a
+  // map glyph (it is global); its own copy grading lives in
+  // `EventToasts.tsx` via the same module's `maoScore`.
+  const stormTargets = useMemo(
+    () => resolveStormTargets(criticalToasts, territories),
+    [criticalToasts, territories],
+  );
+  const stormLayers = useMemo(() => buildStormMarkerLayers(stormTargets), [stormTargets]);
+
   // Political cartography base layer (Lane Carto, spec-113 §7) — de jure
   // county hairlines + state borders, de facto polity fills — see
   // `usePoliticalLayers`'s docstring.
@@ -965,12 +979,16 @@ export function DeckGLMap({
     politicalLayers,
   ]);
 
-  // Critical-event pulses ride ABOVE the base map so the rupture cue is never
-  // occluded by fills/hulls. `pulseLayers` is a stable-empty array at rest
-  // (memoized in `useCriticalPulses`), so this memo — and the deck.gl layer
-  // list it feeds — is referentially unchanged while nothing is rupturing
-  // (DeckGLMap's render/stability contract, architecture §3.3).
-  const allLayers = useMemo(() => [...layers, ...pulseLayers], [layers, pulseLayers]);
+  // Critical-event pulses and storm markers ride ABOVE the base map so
+  // neither cue is ever occluded by fills/hulls. Both are stable-empty
+  // arrays at rest (`useCriticalPulses`/the `stormLayers` memo), so this
+  // memo — and the deck.gl layer list it feeds — is referentially
+  // unchanged while nothing is rupturing/struggling (DeckGLMap's
+  // render/stability contract, architecture §3.3).
+  const allLayers = useMemo(
+    () => [...layers, ...pulseLayers, ...stormLayers],
+    [layers, pulseLayers, stormLayers],
+  );
 
   return (
     <div className="relative flex h-full flex-col">

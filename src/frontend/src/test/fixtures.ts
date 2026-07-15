@@ -28,6 +28,8 @@ import type {
   JournalPayload,
   ClassHistoryPoint,
   ClassHistoryPayload,
+  FieldStateNode,
+  FieldStatePayload,
 } from "@/types/game";
 import type { WireFeed, WireStoryIndex } from "@/types/wire";
 import { EMPTY_WIRE_FEED } from "@/types/wire";
@@ -56,6 +58,7 @@ export function makeTerritory(overrides?: Partial<TerritoryState>): TerritorySta
     biocapacity: 0.3,
     max_biocapacity: 100,
     habitability: null,
+    bifurcation_score: null,
     host_id: null,
     occupant_id: null,
     ...overrides,
@@ -438,6 +441,33 @@ export function makeClassHistoryPayload(
     class_id: "C002",
     history: [],
     ruptures: [],
+    ...overrides,
+  };
+}
+
+/** One `nodes[]` entry of GET /api/games/{id}/field_state/ (Wave 3 R1/R2a). */
+export function makeFieldStateNode(overrides?: Partial<FieldStateNode>): FieldStateNode {
+  return {
+    id: "C001",
+    name: "Worker",
+    ...overrides,
+  };
+}
+
+/**
+ * GET /api/games/{id}/field_state/ payload. Defaults to the honest
+ * empty-but-well-formed shape the stub bridge always returns (`nodes: []`,
+ * `edges: []`, both graph-level attrs `null`) — see `FieldStatePayload`'s
+ * docstring for why that is also the COMMON case on real games today
+ * (R1b altitude gap), not just the stub.
+ */
+export function makeFieldStatePayload(overrides?: Partial<FieldStatePayload>): FieldStatePayload {
+  return {
+    tick: 1,
+    nodes: [],
+    edges: [],
+    principal_field: null,
+    dialectical_regime: null,
     ...overrides,
   };
 }

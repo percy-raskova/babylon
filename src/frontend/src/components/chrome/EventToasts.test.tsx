@@ -81,6 +81,34 @@ describe("EventToasts", () => {
     expect(useStore.getState().events.mutedCategories).toContain("struggle");
   });
 
+  it("grades a rupture toast's copy with the Mao principal-contradiction score (Wave 3 R2a)", () => {
+    useStore.getState().events.ingest(1, [
+      makeEvent({
+        type: "rupture",
+        tick: 1,
+        id: "e1",
+        data: { opposition: "capital_labor", gap: 0.6, rate: 0.2 },
+      }),
+    ]);
+    render(<EventToasts gameId="game-1" />);
+
+    const id = useStore.getState().events.toasts[0]!.id;
+    // gap * (1 + 10 * |rate|) = 0.6 * (1 + 10 * 0.2) = 1.8
+    expect(screen.getByTestId(`toast-rupture-score-${id}`)).toHaveTextContent("1.80");
+  });
+
+  it("omits the rupture score line when gap/rate are not both served (never fabricates one)", () => {
+    useStore
+      .getState()
+      .events.ingest(1, [
+        makeEvent({ type: "rupture", tick: 1, id: "e1", data: { opposition: "capital_labor" } }),
+      ]);
+    render(<EventToasts gameId="game-1" />);
+
+    const id = useStore.getState().events.toasts[0]!.id;
+    expect(screen.queryByTestId(`toast-rupture-score-${id}`)).not.toBeInTheDocument();
+  });
+
   it("auto-dismisses an ephemeral (batched notable) toast after the generous timeout", async () => {
     vi.useFakeTimers();
     try {

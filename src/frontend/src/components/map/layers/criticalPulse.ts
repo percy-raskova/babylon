@@ -93,19 +93,25 @@ function meanCentroid(h3Indexes: string[]): [number, number] | null {
 }
 
 /**
- * Resolve a single critical event's linked entity to a map `[lng, lat]`, or
- * `null` when it has no geography (Constitution III.11: a non-spatial
- * event — e.g. an org-linked one — pings nowhere rather than fabricating a
- * location). Tries, in order: a territory row-id match, a territory
- * `h3_index` match, a raw valid H3 cell, then a `county_fips` match (pinging
- * the mean centroid of that county's hexes). The match attempts ARE the
- * geographic gate — a non-geographic id resolves to `null`.
+ * Resolve a territory-linked id to a map `[lng, lat]`, or `null` when it has
+ * no geography (Constitution III.11: a non-spatial id — e.g. an org-linked
+ * one, or a `social_class` node id, which lives in a disjoint namespace from
+ * territory ids — resolves nowhere rather than fabricating a location).
+ * Tries, in order: a territory row-id match, a territory `h3_index` match, a
+ * raw valid H3 cell, then a `county_fips` match (pinging the mean centroid of
+ * that county's hexes). The match attempts ARE the geographic gate — a
+ * non-geographic id resolves to `null`.
+ *
+ * The shared geographic gate for every id-anchored map visual — extracted
+ * from `resolveEventPosition` below so `stormMarkers.ts`'s UPRISING anchoring
+ * (payload `data.node_id`, not a `StreamEvent.linkedEntityId`) can reuse the
+ * exact same resolution logic (spec-113 Wave 3 R2a brief: "reuse its
+ * resolution helpers") instead of duplicating it.
  */
-function resolveEventPosition(
-  event: StreamEvent,
+export function resolveEntityPosition(
+  id: string | null,
   territories: TerritoryState[],
 ): [number, number] | null {
-  const id = event.linkedEntityId;
   if (!id) return null;
 
   const byId = territories.find((t) => t.id === id);
@@ -122,6 +128,19 @@ function resolveEventPosition(
   if (countyHexes.length > 0) return meanCentroid(countyHexes);
 
   return null;
+}
+
+/**
+ * Resolve a single critical event's linked entity to a map `[lng, lat]`, or
+ * `null` when it has no geography. Thin wrapper over
+ * `resolveEntityPosition` keyed on the classified stream event's own
+ * `linkedEntityId`.
+ */
+function resolveEventPosition(
+  event: StreamEvent,
+  territories: TerritoryState[],
+): [number, number] | null {
+  return resolveEntityPosition(event.linkedEntityId, territories);
 }
 
 /**

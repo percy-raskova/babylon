@@ -125,6 +125,19 @@ export interface TerritoryState {
    * this territory (spec-109 A2). Never a fabricated default.
    */
   habitability?: number | null;
+  /**
+   * Wave 3 R2a discovery: `_serialize_territory` (`web/game/engine_bridge.py`)
+   * has been emitting this on every `/state/` snapshot territory row since
+   * Program 17 Item 1a's crisis-detector family, read off the graph-only
+   * `tick_bifurcation_score` attr (`_territory_graph_attr`,
+   * `crisis/bifurcation.py`'s per-county sign convention: −1 revolutionary /
+   * +1 fascist, solidarity-*density*-based — NOT the dormant Π₀ topological
+   * invariant, see `bifurcation/analysis.py`). This interface never declared
+   * it, so no frontend consumer could type-check against it until now
+   * (Constitution III.11: `null` before the first year boundary this
+   * session produces usable data, never a fabricated 0).
+   */
+  bifurcation_score?: number | null;
 }
 
 /** Ternary consciousness vector — always sums to 1.0 (Spec 052 §6). */
@@ -836,4 +849,92 @@ export interface AdminFeatureProperties {
    * Categorical, like `dominant_class`.
    */
   territory_type?: string | null;
+}
+
+// ---------------------------------------------------------------------------
+// Program 19/20 Wave 3 Round 1/2a — the field_state endpoint (System-19/20
+// contradiction-field stack). See `EngineBridge.get_field_state`,
+// `_build_field_state_nodes`/`_build_field_state_edges`
+// (`web/game/engine_bridge.py`).
+// ---------------------------------------------------------------------------
+
+/**
+ * One `social_class` node's field-stack entry (`_build_field_state_nodes`).
+ * Every key beyond `id`/`name` is optional and independently present —
+ * Constitution III.11: a node carrying only SOME of the field stack
+ * contributes only the keys it actually has, never a fabricated zero/empty
+ * dict for the rest.
+ *
+ * `fields`/`laplacian`/`df_dt` are keyed by contradiction-field name (e.g.
+ * `"exploitation"`, `"atomization"` — see the Wave-3 implementation map's
+ * "verified-reality census": production computes exactly these two fields
+ * today, not the fuller five the original brief claimed).
+ */
+export interface FieldStateNode {
+  id: string;
+  name: string;
+  /** ContradictionFieldSystem (@19) per-field values. */
+  fields?: Record<string, number>;
+  /** FieldDerivativeSystem (@20) per-field Laplacian. */
+  laplacian?: Record<string, number>;
+  /** FieldDerivativeSystem (@20) per-field temporal derivative. */
+  df_dt?: Record<string, number>;
+  /** FascistFactionSystem's per-class routing signal (`reactionary.py`). */
+  fascist_alignment?: number;
+}
+
+/**
+ * One per-field gradient on a class<->class edge (`_build_field_state_edges`),
+ * territory-anchored via the bridge's existing TENANCY resolution.
+ * `source_territory`/`target_territory` are `null` (key present, never
+ * omitted) when that endpoint class has no resolvable TENANCY territory —
+ * the same keep-key-use-null convention `_serialize_territory`'s
+ * `dominant_class`/`solidarity_index` already use for an unresolvable
+ * per-territory aggregate.
+ */
+export interface FieldStateEdge {
+  source: string;
+  target: string;
+  source_territory: string | null;
+  target_territory: string | null;
+  field: string;
+  gradient: number;
+}
+
+/**
+ * The System-18 fixed-point regime classification stashed on the graph's
+ * `dialectical_regime` attr (`contradiction.py`'s `DIALECTICAL_REGIME_ATTR`,
+ * `classify_regime`). `opposition` names which `OppositionState.key` the
+ * regime/rate describe (`target.key` at the write site — verified against
+ * `contradiction.py:361`, not the stale `"principal"` name a nearby comment
+ * claims).
+ */
+export interface DialecticalRegime {
+  regime: "reproduction" | "crisis" | "sublation";
+  opposition: string;
+  rate: number;
+}
+
+/**
+ * `GET /api/games/{id}/field_state/` — the System-19/20 contradiction-field
+ * stack for the Field screen (Program 19/20, Wave 3 Round 1/2a). See
+ * `EngineBridge.get_field_state`'s docstring for the full trace.
+ *
+ * **Known altitude gap (R1b, not yet fixed):** the web bridge steps via the
+ * `WorldState` round-trip facade, so `contradiction_fields`/`field_derivatives`
+ * are excluded from `SocialClass` reconstruction and `principal_field`/
+ * `dialectical_regime` are outside `to_graph()`'s graph-attr whitelist. On a
+ * real running game today, `nodes`/`edges` are almost always `[]` and
+ * `principal_field`/`dialectical_regime` almost always `null` — only
+ * `fascist_alignment` (a real, defaulted `SocialClass` field) reliably
+ * survives the round-trip. Consume this payload accordingly: an honest
+ * empty is the COMMON case, not a bug, until R1b lands a carry-forward
+ * channel for the rest of the field stack.
+ */
+export interface FieldStatePayload {
+  tick: number;
+  nodes: FieldStateNode[];
+  edges: FieldStateEdge[];
+  principal_field: string | null;
+  dialectical_regime: DialecticalRegime | null;
 }

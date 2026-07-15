@@ -21,6 +21,7 @@ import {
   makeTradeFlowsPayload,
   makeJournalPayload,
   makeClassHistoryPayload,
+  makeFieldStatePayload,
 } from "./fixtures";
 import type { GameSnapshot } from "@/types/game";
 
@@ -255,6 +256,14 @@ export const handlers = [
   http.get("/api/games/:id/objectives/", () => {
     logRequest("GET objectives");
     return HttpResponse.json({ status: "ok", data: makeObjectivesTracker() });
+  }),
+
+  // Program 19/20 Wave 3 R2a — honest empty-but-well-formed by default
+  // (mirrors the stub bridge, `web/game/stub_bridge.py::get_field_state`);
+  // tests needing real nodes/edges override with server.use().
+  http.get("/api/games/:id/field_state/", () => {
+    logRequest("GET field_state");
+    return HttpResponse.json({ status: "ok", data: makeFieldStatePayload() });
   }),
 
   http.get("/api/games/:id/trade-flows/", () => {

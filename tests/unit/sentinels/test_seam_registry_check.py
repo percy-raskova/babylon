@@ -141,14 +141,15 @@ def test_tick_coverage_advisory_lists_unregistered_engine_attrs() -> None:
     """The coverage advisory surfaces engine tick_* writes with no registry row.
 
     Wave 2 Gap-1 registered ``tick_median_wage`` (territory.tick_median_wage);
-    ``tick_throughput_position``/``tick_supply_chain_depth`` remain deliberately
-    unregistered until Round 2 wires the real throughput calculator (owner
-    ruling 1) — they are the still-honest advisory witnesses here.
+    Wave 2 Round 2 (owner ruling 1) wires the real throughput calculator and
+    registers ``tick_throughput_position``/``tick_supply_chain_depth`` too
+    (territory.throughput_position/territory.supply_chain_depth) — they have
+    graduated out of the advisory list, same as tick_median_wage before them.
     """
     findings = sensor1.check_tick_coverage()
     joined = "\n".join(findings)
-    assert "tick_throughput_position" in joined  # real unregistered engine attr
-    assert "tick_supply_chain_depth" in joined  # real unregistered engine attr
+    assert "tick_throughput_position" not in joined  # now registered (territory scope)
+    assert "tick_supply_chain_depth" not in joined  # now registered (territory scope)
     assert "tick_median_wage" not in joined  # now registered (territory.tick_median_wage)
     assert "tick_phi_hour" not in joined  # registered (map.imperial_rent) — excluded
 

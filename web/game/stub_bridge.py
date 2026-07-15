@@ -324,6 +324,15 @@ def _make_hex_features(tick: int, layer: str | None = None) -> list[dict[str, An
             # Spec-113 Lane D: deterministic per-cell SOLIDARITY-edge density,
             # matching the real bridge's population-weighted 0..~a-few range.
             "solidarity_index": round(r * 1.5, 3),
+            # Wave 2 W2.4: deterministic per-cell throughput position (real
+            # bridge range is centered near 1.0, the national π baseline) and
+            # agitation (0..~a-few, matching solidarity_index's range).
+            "throughput_position": round(0.5 + r * 1.0, 3),
+            "agitation": round(r * 1.5, 3),
+            # Real TerritoryType values only (CORE/PERIPHERY) — deliberately
+            # NOT the legacy URBAN/SUBURBAN/PERIURBAN vocabulary _make_territories()
+            # uses for the (unrelated) territories snapshot list.
+            "territory_type": "core" if r < 0.5 else "periphery",
         }
 
         # Approximate hex boundary as a small polygon near Detroit
@@ -420,6 +429,11 @@ def _make_aggregated_features(zoom: str, tick: int) -> list[dict[str, Any]]:
                     # aggregation at every non-hex zoom.
                     "dominant_class": "proletariat" if r < 0.6 else "petit_bourgeoisie",
                     "solidarity_index": round(r * 1.5, 3),
+                    # Wave 2 W2.4: same population-weighted-mode categorical /
+                    # weighted-mean numeric aggregation shape as above.
+                    "throughput_position": round(0.5 + r * 1.0, 3),
+                    "agitation": round(r * 1.5, 3),
+                    "territory_type": "core" if r < 0.5 else "periphery",
                 },
             }
         )
@@ -744,6 +758,10 @@ class StubEngineBridge:
                     # Spec-113 Lane D
                     "dominant_class",
                     "solidarity_index",
+                    # Wave 2 W2.4
+                    "throughput_position",
+                    "agitation",
+                    "territory_type",
                 ],
             },
             "features": features,

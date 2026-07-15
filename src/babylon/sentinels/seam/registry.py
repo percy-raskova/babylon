@@ -193,6 +193,68 @@ _MAP_METRICS: tuple[SeamEntry, ...] = (
             "rides hex_latest's JSONB attributes column like habitability."
         ),
     ),
+    # --- Wave 2 W2.4 (owner ruling 1 + delegated rulings, 2026-07-14) ---
+    SeamEntry(
+        payload="tick_throughput_position",
+        wire_keys=("throughput_position",),
+        scope=SeamScope.MAP,
+        owner_layer="domain.economics.throughput (DefaultThroughputCalculator)",
+        liveness_class=LivenessClass.DECLARED_CONDITIONAL,
+        liveness_condition=(
+            f"{_YEAR_BOUNDARY}; also requires the session to carry real county FIPS AND "
+            "_bridge_economics_overrides to have wired a throughput_calculator (owner ruling 1) "
+            "— before that fix this stamped the engine's frozen bootstrap constant 1.0 forever, "
+            "a value that even probes as 'live' to a naive liveness check"
+        ),
+        dtype="float",
+        read_paths=_MAP_EMITTERS,
+        spec_ref="Epochs audit · Wave 2 · owner ruling 1",
+        notes=(
+            "π = τ_through / τ_national (Feature 014, Domestic Value Geography). Rides "
+            "hex_latest's JSONB attributes column like habitability/solidarity_index — no "
+            "dedicated column. Population-weighted MEAN at county zoom (owner ruling 4)."
+        ),
+    ),
+    SeamEntry(
+        payload="agitation_index",
+        wire_keys=("agitation",),
+        scope=SeamScope.MAP,
+        owner_layer="bridge-derived (_agitation_index_by_territory)",
+        liveness_class=LivenessClass.DECLARED_CONDITIONAL,
+        liveness_condition=(
+            "non-zero once IdeologySystem processes a falling-wage/rent/Φ/g33 crisis tick — "
+            "it is LEGITIMATELY 0.0 at tick 0 in every shipped scenario, never warmed up to "
+            "look more alive than the engine has actually made it"
+        ),
+        dtype="float",
+        read_paths=_MAP_EMITTERS,
+        spec_ref="Epochs audit · Wave 2 · W2.4 delegated ruling",
+        notes=(
+            "Population-weighted mean IdeologicalProfile.agitation over the territory's "
+            "TENANCY-linked social_class members — the Revolutionary Potential Index. "
+            "Rides hex_latest's JSONB attributes column like habitability/solidarity_index."
+        ),
+    ),
+    SeamEntry(
+        payload="territory_type",
+        wire_keys=("territory_type",),
+        scope=SeamScope.MAP,
+        owner_layer="engine (Territory.territory_type, TerritoryType enum)",
+        liveness_class=LivenessClass.MUST_BE_LIVE,
+        dtype="enum:TerritoryType",
+        read_paths=_MAP_EMITTERS,
+        spec_ref="Epochs audit · Wave 2 · W2.4 delegated ruling",
+        notes=(
+            "The real TerritoryType enum (CORE/PERIPHERY plus the Necropolitical Triad "
+            "RESERVATION/PENAL_COLONY/CONCENTRATION_CAMP), a required Territory field with a "
+            "default — always present, never fabricated. Shipped scenarios seed only "
+            "CORE/PERIPHERY; the Triad renders once a scenario seeds one (Amendment R / task "
+            "#49). Population-weighted MODE at county zoom, deterministic tie-break "
+            "lexicographically-greatest on the value (same convention as dominant_class). Do "
+            "NOT confuse with stub_bridge.py's legacy 'URBAN/SUBURBAN/PERIURBAN' vocabulary "
+            "(a different, pre-existing mock field on the unrelated territories snapshot list)."
+        ),
+    ),
 )
 
 # ---------------------------------------------------------------------------
@@ -214,13 +276,17 @@ _MAP_METRICS: tuple[SeamEntry, ...] = (
 # * Group D (9, STRUCTURALLY_IMPOSSIBLE) — the financial-distribution layer,
 #   dead until ``interest_calculator`` is wired (gate: same file, :1248).
 #
-# ``tick_throughput_position``/``tick_supply_chain_depth`` are deliberately
-# EXCLUDED — owner ruling 1 wires them for real in Round 2, alongside the
-# throughput calculator, rather than registering them as frozen constants
-# here only to re-register them days later.
+# ``tick_throughput_position``/``tick_supply_chain_depth`` were deliberately
+# EXCLUDED from this Round-1 list — owner ruling 1 wires them for real in
+# Round 2, alongside the throughput calculator, rather than registering them
+# as frozen constants here only to re-register them days later. They are
+# registered below now that the wiring has landed (see
+# ``_bridge_economics_overrides``'s ``throughput_calculator``), as a Group A
+# variant: genuinely live (not frozen), DECLARED_CONDITIONAL on the session
+# having real county FIPS + the calculator wired + a year boundary.
 # ---------------------------------------------------------------------------
 
-_TERRITORY_EMITTERS: tuple[str, ...] = ("web/game/engine_bridge.py::_serialize_territory (:6009)",)
+_TERRITORY_EMITTERS: tuple[str, ...] = ("web/game/engine_bridge.py::_serialize_territory (:6218)",)
 
 #: Groups C/D reach no serializer — that is the point (STRUCTURALLY_IMPOSSIBLE).
 #: ``read_paths`` honestly cites the one place these attrs exist at all: the
@@ -362,6 +428,43 @@ _TERRITORY_TICK_METRICS: tuple[SeamEntry, ...] = (
             "colliding with the real, distinct Territory.median_wage field "
             "(Feature 021) already on the same _serialize_territory payload."
         ),
+    ),
+    # --- Round 2 (owner ruling 1, 2026-07-14): throughput_position/
+    # supply_chain_depth wired for real — genuinely live (not a Group-B frozen
+    # constant) once a session has real county FIPS + throughput_calculator ---
+    SeamEntry(
+        payload="tick_throughput_position",
+        wire_keys=("throughput_position",),
+        scope=SeamScope.TERRITORY,
+        owner_layer="domain.economics.throughput (DefaultThroughputCalculator)",
+        liveness_class=LivenessClass.DECLARED_CONDITIONAL,
+        liveness_condition=(
+            f"{_YEAR_BOUNDARY}; also requires the session to carry real county FIPS AND "
+            "_bridge_economics_overrides to have wired a throughput_calculator (owner ruling 1)"
+        ),
+        dtype="float",
+        read_paths=_TERRITORY_EMITTERS,
+        spec_ref="Epochs audit · Wave 2 · owner ruling 1",
+        notes=(
+            "π = τ_through / τ_national (Feature 014). Genuinely live now — distinct from "
+            "Group B above, which stays FROZEN pending a named unwired service; this attr's "
+            "gap was pure engineering (the calculator was never constructed), now fixed."
+        ),
+    ),
+    SeamEntry(
+        payload="tick_supply_chain_depth",
+        wire_keys=("supply_chain_depth",),
+        scope=SeamScope.TERRITORY,
+        owner_layer="domain.economics.throughput (DefaultSupplyChainAnalyzer)",
+        liveness_class=LivenessClass.DECLARED_CONDITIONAL,
+        liveness_condition=(
+            f"{_YEAR_BOUNDARY}; also requires the session to carry real county FIPS AND "
+            "_bridge_economics_overrides to have wired a throughput_calculator (owner ruling 1)"
+        ),
+        dtype="float",
+        read_paths=_TERRITORY_EMITTERS,
+        spec_ref="Epochs audit · Wave 2 · owner ruling 1",
+        notes="D, employment-weighted NAICS supply-chain depth (0-5 scale), Feature 014.",
     ),
     # --- Group C: circulation layer, gated on turnover_profile_source (:1050) ---
     SeamEntry(

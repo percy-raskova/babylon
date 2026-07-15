@@ -1337,6 +1337,51 @@ def _solidarity_index_by_territory(
     return index
 
 
+def _agitation_index_by_territory(
+    graph: BabylonGraph, tenancy_members: dict[str, list[str]]
+) -> dict[str, float]:
+    """Per-territory population-weighted mean ``IdeologicalProfile.agitation``
+    across TENANCY-linked social_class members (Wave 2 W2.4 ``agitation`` map
+    lens — the Revolutionary Potential Index).
+
+    Population-weighted like :func:`_dominant_class_by_territory` (not the
+    edge-density mean :func:`_solidarity_index_by_territory` uses) — agitation
+    is a per-class scalar (``ideology.agitation``), not an edge property.
+    Legitimately ``0.0`` at tick 0 in every shipped scenario (agitation only
+    rises once ``IdeologySystem`` processes a falling-wage/rent/Φ/g33 crisis
+    tick) — a real ``0.0`` weighted mean is returned in that case, never
+    warmed up or suppressed to look more (or less) alive than the engine has
+    actually made it (Constitution III.11).
+
+    Args:
+        graph: The hydrated session graph.
+        tenancy_members: Output of :func:`_tenancy_members_by_territory`.
+
+    Returns:
+        Map of territory node id -> population-weighted mean agitation. A
+        territory whose TENANCY-linked members carry no ``ideology`` dict (or
+        no ``agitation`` key) at all, or whose weighted members carry zero
+        total population, is absent — callers must treat a missing entry as
+        ``None``, never a fabricated default.
+    """
+    index: dict[str, float] = {}
+    for territory_id, member_ids in tenancy_members.items():
+        weighted_sum = 0.0
+        total_population = 0.0
+        for member_id in member_ids:
+            node_data = graph.nodes.get(member_id, {})
+            ideology = node_data.get("ideology")
+            agitation = ideology.get("agitation") if isinstance(ideology, dict) else None
+            if agitation is None:
+                continue
+            population = float(node_data.get("population") or 0)
+            weighted_sum += float(agitation) * population
+            total_population += population
+        if total_population:
+            index[territory_id] = round(weighted_sum / total_population, 4)
+    return index
+
+
 def _build_solidarity_communities(graph: BabylonGraph) -> list[dict[str, Any]]:
     """Group nodes into communities via connected SOLIDARITY edges.
 
@@ -1647,6 +1692,9 @@ class EngineBridge:
             solidarity_index_by_territory=_solidarity_index_by_territory(
                 initial_graph, initial_tenancy_members
             ),
+            agitation_by_territory=_agitation_index_by_territory(
+                initial_graph, initial_tenancy_members
+            ),
         )
         # Spec-109 A1: seed the tick-0 snapshot tables + summary row so
         # timeseries/history surfaces have a baseline point from creation.
@@ -1716,6 +1764,9 @@ class EngineBridge:
                         seeded_graph, seeded_tenancy_members
                     ),
                     solidarity_index_by_territory=_solidarity_index_by_territory(
+                        seeded_graph, seeded_tenancy_members
+                    ),
+                    agitation_by_territory=_agitation_index_by_territory(
                         seeded_graph, seeded_tenancy_members
                     ),
                 )
@@ -1841,6 +1892,20 @@ class EngineBridge:
         separate accumulator (``dominant_class_pop``, mirroring
         ``member_h3``'s own separate-dict pattern above) since it isn't a
         scalar sum.
+
+        Wave 2 W2.4 (owner ruling 4 — all NEW numeric lenses use
+        population-weighted mean, categorical uses population-weighted mode
+        with a deterministic tie-break): ``throughput_position``/``agitation``
+        get the same partial-coverage-aware weighted mean as
+        ``habitability``/``solidarity_index`` (not every hex has a
+        year-boundary π yet, or TENANCY-linked members). ``territory_type``
+        is categorical — same population-weighted-mode treatment as
+        ``dominant_class``, tracked in its own ``territory_type_pop``
+        accumulator; ties break lexicographically-greatest on the value
+        (``max(items, key=lambda kv: (kv[1], kv[0]))`` — the same tie-break
+        :func:`_dominant_class_by_territory`/this function's own
+        ``dominant_class`` already use, applied here for consistency, not
+        because a tie is expected to occur often for a 2-value enum).
         """
         from collections import defaultdict
 
@@ -1874,6 +1939,12 @@ class EngineBridge:
                 # habitability — not every hex has TENANCY-linked members.
                 "solidarity_index_sum": 0.0,
                 "solidarity_index_pop": 0,
+                # Wave 2 W2.4: same partial-coverage pattern — not every hex
+                # has a year-boundary π yet, or TENANCY-linked members.
+                "throughput_position_sum": 0.0,
+                "throughput_position_pop": 0,
+                "agitation_sum": 0.0,
+                "agitation_pop": 0,
                 "count": 0,
             }
         )
@@ -1884,6 +1955,10 @@ class EngineBridge:
         # Spec-113 Lane D: population-weighted vote per group -> role, kept
         # separate for the same reason (dominant_class is categorical).
         dominant_class_pop: dict[str, dict[str, float]] = defaultdict(lambda: defaultdict(float))
+        # Wave 2 W2.4: population-weighted vote per group -> TerritoryType
+        # value, kept separate for the same reason (territory_type is
+        # categorical).
+        territory_type_pop: dict[str, dict[str, float]] = defaultdict(lambda: defaultdict(float))
 
         for state in hex_states:
             key = getattr(state, group_attr, None)
@@ -1918,6 +1993,21 @@ class EngineBridge:
                 acc["solidarity_index_sum"] += float(solidarity_index) * pop
                 acc["solidarity_index_pop"] += pop
 
+            attributes = getattr(state, "attributes", None) or {}
+            throughput_position = attributes.get("throughput_position")
+            if throughput_position is not None:
+                acc["throughput_position_sum"] += float(throughput_position) * pop
+                acc["throughput_position_pop"] += pop
+
+            agitation = attributes.get("agitation")
+            if agitation is not None:
+                acc["agitation_sum"] += float(agitation) * pop
+                acc["agitation_pop"] += pop
+
+            territory_type = attributes.get("territory_type")
+            if territory_type is not None:
+                territory_type_pop[key][territory_type] += pop
+
             dominant_class = getattr(state, "dominant_class", None)
             if dominant_class is not None:
                 dominant_class_pop[key][dominant_class] += pop
@@ -1931,7 +2021,10 @@ class EngineBridge:
             total_pop = acc["population_sum"] or 1  # avoid div-by-zero
             habitability_pop = acc["habitability_pop"]
             solidarity_index_pop = acc["solidarity_index_pop"]
+            throughput_position_pop = acc["throughput_position_pop"]
+            agitation_pop = acc["agitation_pop"]
             role_votes = dominant_class_pop.get(key) or {}
+            type_votes = territory_type_pop.get(key) or {}
             features.append(
                 {
                     "type": "Feature",
@@ -1968,6 +2061,21 @@ class EngineBridge:
                         "dominant_class": (
                             max(role_votes.items(), key=lambda kv: (kv[1], kv[0]))[0]
                             if role_votes
+                            else None
+                        ),
+                        "throughput_position": (
+                            round(acc["throughput_position_sum"] / throughput_position_pop, 4)
+                            if throughput_position_pop
+                            else None
+                        ),
+                        "agitation": (
+                            round(acc["agitation_sum"] / agitation_pop, 4)
+                            if agitation_pop
+                            else None
+                        ),
+                        "territory_type": (
+                            max(type_votes.items(), key=lambda kv: (kv[1], kv[0]))[0]
+                            if type_votes
                             else None
                         ),
                     },
@@ -3248,6 +3356,15 @@ class EngineBridge:
         ``tick_``-prefixed graph attrs (Program 17 / Item 1a) — real
         per-territory values once ``TickDynamicsSystem``'s first year
         boundary produces them, honest ``None`` until then.
+
+        Wave 2 W2.4: ``throughput_position``/``agitation``/``territory_type``
+        give the hex inspector parity with the 3 new ``/map/`` lenses —
+        ``throughput_position`` mirrors ``imperial_rent`` (real off
+        ``tick_throughput_position`` once wired + a year boundary has run),
+        ``agitation`` reuses :func:`_agitation_index_by_territory` (the same
+        function the map lens's aggregation reads), and ``territory_type``
+        reads the real ``Territory.territory_type`` enum directly off the
+        raw graph node (always present — a required, defaulted field).
         """
         graph = self._persistence.hydrate_graph(tick=None, session_id=session_id)
         territory_id: str | None = None
@@ -3265,6 +3382,8 @@ class EngineBridge:
         tenancy_members = _tenancy_members_by_territory(graph)
         dominant_class = _dominant_class_by_territory(graph, tenancy_members).get(territory_id)
         solidarity_index = _solidarity_index_by_territory(graph, tenancy_members).get(territory_id)
+        agitation = _agitation_index_by_territory(graph, tenancy_members).get(territory_id)
+        territory_type_raw = data.get("territory_type")
         org_presence = sum(
             1
             for _node_id, member_data in _nodes_in_territory(graph, territory_id)
@@ -3284,6 +3403,13 @@ class EngineBridge:
             "occ": _territory_graph_attr(graph, territory_id, "tick_occ"),
             "exploitation_rate": _territory_graph_attr(
                 graph, territory_id, "tick_exploitation_rate"
+            ),
+            "throughput_position": _territory_graph_attr(
+                graph, territory_id, "tick_throughput_position"
+            ),
+            "agitation": agitation,
+            "territory_type": (
+                _enum_val(territory_type_raw) if territory_type_raw is not None else None
             ),
         }
 
@@ -3482,7 +3608,8 @@ class EngineBridge:
         # Spec-109 A2: org_count from live territory_ids, heat_delta from the
         # real pre-step (`graph`) -> post-step (`new_graph`) diff. Spec-113
         # Lane D: dominant_class/solidarity_index from the post-step graph
-        # (this tick's live TENANCY/SOLIDARITY topology).
+        # (this tick's live TENANCY/SOLIDARITY topology). Wave 2 W2.4:
+        # agitation likewise from the post-step graph.
         new_tenancy_members = _tenancy_members_by_territory(new_graph)
         _persist_hex_state_safe(
             session_id,
@@ -3498,6 +3625,7 @@ class EngineBridge:
             solidarity_index_by_territory=_solidarity_index_by_territory(
                 new_graph, new_tenancy_members
             ),
+            agitation_by_territory=_agitation_index_by_territory(new_graph, new_tenancy_members),
         )
         # Spec-109 A1: fill the spec-037 snapshot tables + the tick_summary
         # aggregates that back get_game_timeseries (spec-061 FR-003 wire-up).
@@ -4749,6 +4877,14 @@ def _bridge_economics_overrides(fips_codes: tuple[str, ...] = ()) -> tuple[dict[
     (Constitution III.11: these are the engine's own documented
     graceful-degradation defaults, not a value this lane invents).
 
+    Wave 2 owner ruling 1: also wires ``throughput_calculator`` (Feature 014's
+    ``DefaultThroughputCalculator``, BEA county GDP + QCEW NAICS employment
+    over the same reference-DB ``session_factory``), so ``throughput_position``
+    (π)/``supply_chain_depth`` (D) are genuinely computed per county at year
+    boundaries instead of staying frozen at ``CountyEconomicState``'s bootstrap
+    defaults (1.0/2.0) forever — the fabricated constant even probed as "live"
+    by a naive liveness check, since 1.0 is a plausible real value.
+
     Unlike the headless runner (which builds overrides ONCE before its
     tick loop), this function is called FRESH on every ``resolve_tick()``
     call — the returned session must be closed by the caller within that
@@ -4770,7 +4906,12 @@ def _bridge_economics_overrides(fips_codes: tuple[str, ...] = ()) -> tuple[dict[
         SQLiteBEANationalGDPSource,
         SQLiteQCEWNationalEmploymentSource,
     )
-    from babylon.domain.economics.throughput.adapters import SQLiteQCEWCountyNAICSSource
+    from babylon.domain.economics.throughput.adapters import (
+        SQLiteBEACountyGDPSource,
+        SQLiteQCEWCountyNAICSSource,
+    )
+    from babylon.domain.economics.throughput.calculator import DefaultThroughputCalculator
+    from babylon.domain.economics.throughput.supply_chain import DefaultSupplyChainAnalyzer
     from babylon.kernel.event_bus import EventBus
     from babylon.reference.database import get_normalized_session_factory
 
@@ -4794,7 +4935,26 @@ def _bridge_economics_overrides(fips_codes: tuple[str, ...] = ()) -> tuple[dict[
     # so v = v_reproduction·employment·hours is grounded rather than the 100k
     # placeholder — the last honesty gap in the derived-rate lenses. Queried
     # per (fips, year); no upfront hydration, so wire it unconditionally.
-    overrides["employment_source"] = SQLiteQCEWCountyNAICSSource(session_factory)
+    qcew_source = SQLiteQCEWCountyNAICSSource(session_factory)
+    overrides["employment_source"] = qcew_source
+    # Wave 2 owner ruling 1: wire a real throughput_calculator (Feature 014's
+    # DefaultThroughputCalculator over the SAME reference-DB session factory Φ
+    # and employment_source above already use — no new runtime dependency).
+    # Without this, DefaultTickInitializer/_compute_county_states hardcode
+    # throughput_position=1.0/supply_chain_depth=2.0 forever — a fabricated
+    # constant that even probes as "live" (Constitution III.11: the liveness
+    # sensor cannot distinguish a frozen 1.0 from a real one). Reuses
+    # ``qcew_source`` (already constructed for ``employment_source`` above)
+    # for both the throughput calculator's own QCEW dependency and the
+    # ``DefaultSupplyChainAnalyzer`` it composes with — one adapter instance,
+    # two roles, matching the ``session_factory``-reuse convention already
+    # established for gamma/melt/leontief above.
+    overrides["throughput_calculator"] = DefaultThroughputCalculator(
+        SQLiteBEACountyGDPSource(session_factory),
+        qcew_source,
+        DefaultSupplyChainAnalyzer(qcew_source),
+        melt_calculator=melt,
+    )
     # Owner item 25 / Fix B: wire a real per-county capital_calculator (cached) so
     # occ and profit_rate are non-degenerate. Only when we know which counties to
     # hydrate — a bare call (no FIPS) leaves K at the engine's 0.0 default.
@@ -4937,6 +5097,12 @@ def _carry_tick_dynamics_flows(
                     "lumpenproletariat": county.class_distribution.lumpenproletariat_share,
                 },
                 tick_unemployment_rate=county.unemployment_rate,
+                # Wave 2 owner ruling 1: throughput_position/supply_chain_depth
+                # are real now that _bridge_economics_overrides wires a
+                # throughput_calculator — same evaporation-on-round-trip fix
+                # as Group A/B above, no longer excluded from the carry.
+                tick_throughput_position=county.throughput_position,
+                tick_supply_chain_depth=county.supply_chain_depth,
                 **rate_updates,
             )
             continue
@@ -4979,6 +5145,10 @@ def _carry_tick_dynamics_flows(
             tick_wage_compression=old_data.get("tick_wage_compression"),
             tick_class_distribution=old_data.get("tick_class_distribution"),
             tick_unemployment_rate=old_data.get("tick_unemployment_rate"),
+            # Wave 2 owner ruling 1: carry forward byte-identical between
+            # boundaries, same pattern as the derived rates/Group A/B above.
+            tick_throughput_position=old_data.get("tick_throughput_position"),
+            tick_supply_chain_depth=old_data.get("tick_supply_chain_depth"),
         )
 
 
@@ -5589,9 +5759,10 @@ def _hex_feature_properties(state: Any) -> dict[str, Any]:
     ``org_presence`` maps from ``org_count``, ``population`` from
     ``pop_total``, ``habitability`` from the JSONB ``attributes`` column —
     Spec-109 A2; ``solidarity_index`` rides the same JSONB ``attributes``
-    column — spec-113 Lane D) plus the identity/context columns. Extracted
-    from the ``get_map_snapshot`` loop so the contract is unit-testable
-    without a database.
+    column — spec-113 Lane D; ``throughput_position``/``agitation``/
+    ``territory_type`` likewise ride ``attributes`` — Wave 2 W2.4) plus the
+    identity/context columns. Extracted from the ``get_map_snapshot`` loop so
+    the contract is unit-testable without a database.
 
     Args:
         state: One ``HexState`` row (or any object carrying its columns).
@@ -5616,6 +5787,9 @@ def _hex_feature_properties(state: Any) -> dict[str, Any]:
         "population": state.pop_total,
         "habitability": attributes.get("habitability"),
         "solidarity_index": attributes.get("solidarity_index"),
+        "throughput_position": attributes.get("throughput_position"),
+        "agitation": attributes.get("agitation"),
+        "territory_type": attributes.get("territory_type"),
     }
 
 
@@ -5681,6 +5855,7 @@ def _hex_state_row(
     heat_delta: float = 0.0,
     dominant_class: str | None = None,
     solidarity_index: float | None = None,
+    agitation: float | None = None,
 ) -> dict[str, Any] | None:
     """Project one :func:`_serialize_territory` dict onto ``hex_latest`` columns.
 
@@ -5732,6 +5907,21 @@ def _hex_state_row(
     * ``terrain_type``/``water_coverage``/``internet_access`` — the R8 hex
       substrate (spec-036/063) is built but not wired into the 26-system
       pipeline — left at their structural defaults.
+    * ``attributes["throughput_position"]`` — Wave 2 owner ruling 1: real π
+      once ``_bridge_economics_overrides`` wires a ``throughput_calculator``
+      AND a year boundary has run (sourced from ``territory["throughput_position"]``,
+      itself off ``tick_throughput_position`` — see :func:`_serialize_territory`);
+      rides the JSONB ``attributes`` column like ``habitability``.
+    * ``attributes["agitation"]`` — Wave 2 W2.4: passed in by the caller (see
+      :func:`_agitation_index_by_territory`), population-weighted mean
+      ``ideology.agitation`` over the territory's TENANCY-linked social_class
+      members; a real ``0.0`` (not missing) whenever tenants exist but no
+      crisis has raised agitation yet.
+    * ``attributes["territory_type"]`` — Wave 2 W2.4: the REAL
+      ``TerritoryType`` enum value (off ``territory["territory_type"]``, a
+      required Territory field — always present, never fabricated); rides
+      the JSONB ``attributes`` column since it is categorical, not a
+      dedicated numeric column.
 
     Args:
         session_id: The game session UUID (``hex_latest.game_id``).
@@ -5748,6 +5938,10 @@ def _hex_state_row(
         solidarity_index: This territory's SOLIDARITY-edge density this
             tick (see :func:`_solidarity_index_by_territory`); ``None``
             when unknown (spec-113 Lane D).
+        agitation: This territory's population-weighted mean
+            ``ideology.agitation`` this tick (see
+            :func:`_agitation_index_by_territory`); ``None`` when unknown
+            (Wave 2 W2.4).
 
     Returns:
         Kwargs dict for the :class:`game.models.HexState` constructor, or None.
@@ -5770,6 +5964,14 @@ def _hex_state_row(
         attributes["habitability"] = float(habitability)
     if solidarity_index is not None:
         attributes["solidarity_index"] = float(solidarity_index)
+    if agitation is not None:
+        attributes["agitation"] = float(agitation)
+    throughput_position = territory.get("throughput_position")
+    if throughput_position is not None:
+        attributes["throughput_position"] = float(throughput_position)
+    territory_type = territory.get("territory_type")
+    if territory_type is not None:
+        attributes["territory_type"] = territory_type
 
     row: dict[str, Any] = {
         "game_id": session_id,
@@ -5818,6 +6020,7 @@ def _persist_hex_state_safe(
     heat_deltas: dict[str, float] | None = None,
     dominant_class_by_territory: dict[str, str] | None = None,
     solidarity_index_by_territory: dict[str, float] | None = None,
+    agitation_by_territory: dict[str, float] | None = None,
 ) -> None:
     """Best-effort projection of a tick's territories into ``hex_latest``.
 
@@ -5852,6 +6055,10 @@ def _persist_hex_state_safe(
             SOLIDARITY-edge density this tick (see
             :func:`_solidarity_index_by_territory`, spec-113 Lane D);
             missing entries default to ``None``.
+        agitation_by_territory: Optional map of territory id ->
+            population-weighted mean agitation this tick (see
+            :func:`_agitation_index_by_territory`, Wave 2 W2.4); missing
+            entries default to ``None``.
     """
     if not serialized_territories:
         return
@@ -5859,6 +6066,7 @@ def _persist_hex_state_safe(
     heat_deltas = heat_deltas or {}
     dominant_class_by_territory = dominant_class_by_territory or {}
     solidarity_index_by_territory = solidarity_index_by_territory or {}
+    agitation_by_territory = agitation_by_territory or {}
     rows = [
         row
         for t in serialized_territories
@@ -5871,6 +6079,7 @@ def _persist_hex_state_safe(
                 heat_delta=heat_deltas.get(str(t.get("id")), 0.0),
                 dominant_class=dominant_class_by_territory.get(str(t.get("id"))),
                 solidarity_index=solidarity_index_by_territory.get(str(t.get("id"))),
+                agitation=agitation_by_territory.get(str(t.get("id"))),
             )
         )
         is not None
@@ -6045,6 +6254,13 @@ def _serialize_territory(t: Any, *, graph: Any = None) -> dict[str, Any]:
     scope split documents, resolved here by picking a distinct key instead of
     a distinct scope, since both values ride the same payload dict. Seam
     Observatory rows: see ``SEAM_REGISTRY`` (scope=TERRITORY).
+
+    Wave 2 owner ruling 1: ``throughput_position``/``supply_chain_depth`` join
+    the same graph-attr family off ``tick_throughput_position``/
+    ``tick_supply_chain_depth`` — real per-county π/D once
+    ``_bridge_economics_overrides`` wires a ``throughput_calculator`` AND a
+    year boundary has run; ``None`` before then (never the engine's frozen
+    1.0/2.0 bootstrap defaults re-surfacing here as if they were live).
     """
     territory_id = t.id
     return {
@@ -6093,6 +6309,10 @@ def _serialize_territory(t: Any, *, graph: Any = None) -> dict[str, Any]:
         "class_distribution": _territory_graph_attr(graph, territory_id, "tick_class_distribution"),
         "unemployment_rate": _territory_graph_attr(graph, territory_id, "tick_unemployment_rate"),
         "tick_median_wage": _territory_graph_attr(graph, territory_id, "tick_median_wage"),
+        "throughput_position": _territory_graph_attr(
+            graph, territory_id, "tick_throughput_position"
+        ),
+        "supply_chain_depth": _territory_graph_attr(graph, territory_id, "tick_supply_chain_depth"),
     }
 
 

@@ -17,19 +17,25 @@ Scope. Only ``LivenessClass.MUST_BE_LIVE`` MAP observables gate here. The
 ``exploitation_rate``, ``occ``, ``imperial_rent``) is deliberately SKIPPED: those
 depend on per-county IMPORT_USE + QCEW reference data the synthetic
 ``imperial_circuit`` scenario never loads, so they are checked nightly against
-the Parquet reference DB, not on the fast-gate substrate.
+the Parquet reference DB, not on the fast-gate substrate. Wave 2 W2.4's
+``throughput_position``/``agitation`` join that same DECLARED_CONDITIONAL,
+skipped-here family (year-boundary + calculator wiring / legitimately-0.0-at-
+tick-0, respectively) — only ``territory_type`` (MUST_BE_LIVE, a plain
+``Territory`` model field) is new gated scope for this sensor.
 
-Honesty (Amendment Q / III.12). No ``MUST_BE_LIVE`` map observable is VALUE-live
-on this fast-gate substrate — see :func:`test_shared_tick_map_liveness_partition`
-and the module docstring's "Reality" note below. That is not a loosened check; it
-is the true altitude finding: the ``/map/`` surface is lit by the web
-``EngineBridge`` against the hex / Postgres projection, **not** by a bare-engine
-run of a synthetic 2-territory scenario whose ``to_graph()`` carries only
-``Territory`` model fields. So this file asserts (a) the probe's *discrimination*
-— proven on injected live / dark / absent fixtures — and (b) the *exact honest
-partition* of the six observables on ``shared_tick``, a characterization contract
-that reds the moment that wiring changes. It does **not** fake a green
-"all-live" gate the substrate cannot honestly produce.
+Honesty (Amendment Q / III.12). Of the seven ``MUST_BE_LIVE`` map observables,
+exactly one (``territory_type``) is VALUE-live on this fast-gate substrate — see
+:func:`test_shared_tick_map_liveness_partition` and the module docstring's
+"Reality" note below. That is not a loosened check; it is the true altitude
+finding: most of the ``/map/`` surface is lit by the web ``EngineBridge`` against
+the hex / Postgres projection, **not** by a bare-engine run of a synthetic
+2-territory scenario whose ``to_graph()`` carries only ``Territory`` model
+fields — ``territory_type`` is the one exception, itself a plain ``Territory``
+field needing no bridge derivation. So this file asserts (a) the probe's
+*discrimination* — proven on injected live / dark / absent fixtures — and (b)
+the *exact honest partition* of the seven observables on ``shared_tick``, a
+characterization contract that reds the moment that wiring changes. It does
+**not** fake a green "all-live" gate the substrate cannot honestly produce.
 """
 
 from __future__ import annotations
@@ -45,12 +51,22 @@ from babylon.sentinels.seam.types import LivenessClass, SeamEntry, SeamScope
 
 pytestmark = pytest.mark.unit
 
-#: The six MUST_BE_LIVE MAP wire keys this sensor is responsible for. Pinned as a
-#: literal so a registry drift (a MUST_BE_LIVE row added/removed/reclassified)
+#: The seven MUST_BE_LIVE MAP wire keys this sensor is responsible for. Pinned as
+#: a literal so a registry drift (a MUST_BE_LIVE row added/removed/reclassified)
 #: reds :func:`test_must_be_live_scope_matches_registry` instead of silently
-#: shrinking the sensor's remit.
+#: shrinking the sensor's remit. Wave 2 W2.4 adds ``territory_type`` (the real
+#: ``Territory.territory_type`` enum — a required, defaulted model field, so it
+#: is always present, never fabricated).
 _EXPECTED_MUST_BE_LIVE: frozenset[str] = frozenset(
-    {"heat", "population", "habitability", "org_presence", "dominant_class", "solidarity_index"}
+    {
+        "heat",
+        "population",
+        "habitability",
+        "org_presence",
+        "dominant_class",
+        "solidarity_index",
+        "territory_type",
+    }
 )
 
 
@@ -189,7 +205,17 @@ def test_must_be_live_scope_matches_registry() -> None:
         for e in SEAM_REGISTRY
         if e.scope is SeamScope.MAP and e.liveness_class is LivenessClass.DECLARED_CONDITIONAL
     }
-    assert conditional == {"profit_rate", "exploitation_rate", "occ", "imperial_rent"}
+    assert conditional == {
+        "profit_rate",
+        "exploitation_rate",
+        "occ",
+        "imperial_rent",
+        # Wave 2 W2.4: throughput_position (year-boundary + calculator wiring)
+        # and agitation (legitimately 0.0 at tick 0) join the DECLARED_CONDITIONAL
+        # family alongside the derived-rate/Φ group above.
+        "throughput_position",
+        "agitation",
+    }
     assert gated.isdisjoint(conditional)
 
 
@@ -250,8 +276,8 @@ def test_gate_is_clean_when_every_gated_observable_is_live() -> None:
     """EFFICACY (positive): the gate goes GREEN when all gated payloads are live.
 
     Proves the sensor is not stuck-red — over a synthetic graph where every one of
-    the six MUST_BE_LIVE payloads carries a non-default value, the gate returns no
-    violations. Without this, an always-red gate would be as useless as an
+    the seven MUST_BE_LIVE payloads carries a non-default value, the gate returns
+    no violations. Without this, an always-red gate would be as useless as an
     always-green one.
     """
     live_node = {
@@ -262,6 +288,7 @@ def test_gate_is_clean_when_every_gated_observable_is_live() -> None:
         "org_presence": 0.3,
         "dominant_class": "periphery_proletariat",
         "solidarity_index": 0.6,
+        "territory_type": "core",
     }
     assert check_map_liveness([live_node], registry=SEAM_REGISTRY) == []
 
@@ -282,7 +309,7 @@ def test_shared_tick_has_territory_nodes(shared_tick: DynamicArtifact) -> None:
 
 
 def test_shared_tick_map_liveness_partition(shared_tick: DynamicArtifact) -> None:
-    """The honest liveness partition of the six MUST_BE_LIVE observables.
+    """The honest liveness partition of the seven MUST_BE_LIVE observables.
 
     Reality on ``imperial_circuit`` (verified, not assumed):
 
@@ -293,13 +320,21 @@ def test_shared_tick_map_liveness_partition(shared_tick: DynamicArtifact) -> Non
       ``solidarity_index`` are NOT ``Territory`` model fields — they are
       bridge-derived / hex-projected at web-serialization time — so they are
       ABSENT from the engine ``to_graph()`` and probe :attr:`DARK_ABSENT`.
+    * ``territory_type`` (Wave 2 W2.4) IS a ``Territory`` model field (unlike the
+      four above) AND every territory carries a real, non-empty enum value
+      (``TerritoryType.CORE``/``"core"`` on this scenario, never ``""``) — so
+      unlike ``heat``/``population`` it genuinely probes :attr:`Liveness.LIVE`.
 
-    Net: **0 of 6 are value-live** on this fast-gate substrate. That is the true
-    altitude finding (the ``/map/`` surface is lit by the web ``EngineBridge``,
-    not the bare engine), asserted here as an explicit characterization contract:
-    if a future change starts lighting any of these on the engine graph — or a
-    field flips model-resident — a verdict changes and this test reds, forcing a
-    conscious registry / altitude review rather than a silent drift.
+    Net: **1 of 7 is value-live** on this fast-gate substrate (``territory_type``
+    — a real, always-populated engine field, not a "renders blank" case at all).
+    The other 6 stay dark for the reasons above. That is the true altitude
+    finding (most of the ``/map/`` surface is lit by the web ``EngineBridge``,
+    not the bare engine — ``territory_type`` is the one exception, a plain
+    model field that needs no bridge derivation), asserted here as an explicit
+    characterization contract: if a future change starts lighting any of the
+    other six on the engine graph — or ``territory_type`` stops being live — a
+    verdict changes and this test reds, forcing a conscious registry / altitude
+    review rather than a silent drift.
     """
     graph = shared_tick.final_state.to_graph()
     attrs = territory_attr_dicts(graph)
@@ -316,6 +351,7 @@ def test_shared_tick_map_liveness_partition(shared_tick: DynamicArtifact) -> Non
         "dominant_class",
         "solidarity_index",
     }
+    genuinely_live = {"territory_type"}
 
     for payload in present_but_default:
         assert verdicts[payload] is Liveness.DARK_DEFAULT, (
@@ -327,6 +363,11 @@ def test_shared_tick_map_liveness_partition(shared_tick: DynamicArtifact) -> Non
             f"{payload}: expected absent from the engine graph (bridge/hex-projected), got "
             f"{verdicts[payload].value} — it may now be engine-graph-resident; re-review"
         )
+    for payload in genuinely_live:
+        assert verdicts[payload] is Liveness.LIVE, (
+            f"{payload}: expected genuinely live (a real, always-populated model field), got "
+            f"{verdicts[payload].value} — re-review Territory.territory_type's default/wiring"
+        )
 
-    # The explicit, loud finding: none of the six are value-live here.
-    assert Liveness.LIVE not in verdicts.values()
+    # The explicit, loud finding: exactly territory_type is value-live here.
+    assert {p for p, v in verdicts.items() if v is Liveness.LIVE} == genuinely_live

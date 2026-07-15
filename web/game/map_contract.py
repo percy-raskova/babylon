@@ -15,8 +15,8 @@ county-zoom ``/map/`` features** (``_hex_feature_properties`` /
 A metric that is not actually emitted MUST NOT be listed. ``habitability``
 joins this tuple when its ``hex_latest`` column + serializer projection land
 (spec-109 A2). Every entry is a numeric ramp EXCEPT ``dominant_class``
-(spec-113 Lane D), a categorical ``SocialRole`` string — the one
-non-numeric member of this contract.
+(spec-113 Lane D) and ``territory_type`` (Wave 2 W2.4) — both categorical
+strings, the non-numeric members of this contract.
 
 Kept dependency-free so both ``api`` and ``engine_bridge`` can import it at
 module level without Django/engine import weight.
@@ -46,4 +46,17 @@ MAP_METRIC_PROPERTIES: tuple[str, ...] = (
     # ``_dominant_class_by_territory``/``_solidarity_index_by_territory``.
     "dominant_class",
     "solidarity_index",
+    # Wave 2 W2.4 (owner ruling 1 + delegated rulings): throughput_position
+    # (π — real once a session has FIPS + a throughput_calculator wired, see
+    # _bridge_economics_overrides — rides hex_latest's JSONB ``attributes``
+    # column like habitability), agitation (population-weighted mean
+    # ideology.agitation over TENANCY-linked social_class members — the
+    # Revolutionary Potential Index; legitimately 0.0 at tick 0, never
+    # warmed up — see _agitation_index_by_territory), and territory_type
+    # (the real TerritoryType enum — CORE/PERIPHERY in shipped scenarios,
+    # the Necropolitical Triad when a scenario seeds one — population-
+    # weighted MODE at county zoom, mirroring dominant_class).
+    "throughput_position",
+    "agitation",
+    "territory_type",
 )

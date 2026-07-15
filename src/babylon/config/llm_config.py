@@ -53,6 +53,30 @@ class LLMConfig:
     BATCH_SIZE: Final[int] = int(os.getenv("LLM_BATCH_SIZE", "8"))
     REQUEST_TIMEOUT: Final[float] = float(os.getenv("LLM_REQUEST_TIMEOUT", "30.0"))
 
+    # === Provider selection (program-20): deepseek | workers_ai | mock ===
+    PROVIDER: Final[str] = os.getenv("LLM_PROVIDER", "deepseek")
+
+    # === Cloudflare Workers AI via AI Gateway (Program 07 Decision 3) ===
+    WORKERS_AI_ACCOUNT_ID: Final[str] = os.getenv("WORKERS_AI_ACCOUNT_ID", "")
+    WORKERS_AI_TOKEN: Final[str] = os.getenv("WORKERS_AI_TOKEN", "")
+    WORKERS_AI_MODEL: Final[str] = os.getenv("WORKERS_AI_MODEL", "@cf/openai/gpt-oss-20b")
+    WORKERS_AI_GATEWAY_ID: Final[str] = os.getenv("WORKERS_AI_GATEWAY_ID", "babylon-narrator")
+    WORKERS_AI_TIMEOUT: Final[float] = float(os.getenv("WORKERS_AI_TIMEOUT", "15.0"))
+
+    @classmethod
+    def is_workers_ai(cls) -> bool:
+        """True when the selected chat provider is Cloudflare Workers AI."""
+        return cls.PROVIDER.lower() == "workers_ai"
+
+    @classmethod
+    def workers_ai_base_url(cls) -> str:
+        """OpenAI-compatible chat base URL through the AI Gateway (loud when unconfigured)."""
+        if not cls.WORKERS_AI_ACCOUNT_ID:
+            raise ValueError(
+                "WORKERS_AI_ACCOUNT_ID not configured — required for LLM_PROVIDER=workers_ai."
+            )
+        return f"https://api.cloudflare.com/client/v4/accounts/{cls.WORKERS_AI_ACCOUNT_ID}/ai/v1"
+
     @classmethod
     def is_configured(cls) -> bool:
         """Check if Chat LLM API is properly configured."""

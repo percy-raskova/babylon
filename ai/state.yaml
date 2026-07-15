@@ -107,6 +107,33 @@ meta:
     (guaranteed 500). Program 19 Phase 0+1 sits on its own stacked branch;
     front-lines-v2/turbulence instruments ride after it merges.
 
+    (2026-07-14 ~9pm) PROGRAM 19 (EMERGENT CLASS PARTITION) PHASE 0+1 EXECUTED.
+    Owner interrupt ruled the SocialRole typology "seeded, not emergent" and gave
+    it precedence over Wave 2 Round 2. ADR070 (recording ADR — Constitution I.19
+    already ratifies the doctrine; Amendment S untriggered) + master record
+    project/programs/19-emergent-class-partition.md. Owner rulings:
+    slots-as-positions (role attr never mutated; derived partition = occupancy),
+    Wave 2 Rounds 2-3 resume after Phase 1 then run parallel with Phases 2-3+.
+    Landed on feature/19-emergent-class-partition (stacked on epochs-wave1-spine):
+    a38771d5 docs, 1da23e94 per-node pole channel (PoleSample/PoleReading +
+    OppositionRegistry.read_poles, _lead tie rule, UNPOSITIONED=absence III.11,
+    GraphInputs id-pair twins, catalog pole_measures with _imperial_poles =
+    _wage_poles as Program 10's landing seam), 938396d8 shadow write
+    (ContradictionSystem._step_pole_channel: sigma_capital_labor/sigma_wage/
+    derived_class_cell node attrs + pole_readings graph attr, computed-fields
+    registered same-commit, honest-None de-positioning), 7af30c74 partition
+    sentinel (sixth sentinel, ADVISORY-only; cell vocabulary single-SoT in
+    sentinels/partition/registry.py imported BY the engine — drift impossible;
+    tools/partition_probe.py persistent-graph harness; sentinel_check partition).
+    qa:regression 5/5 byte-identical, baselines UNMODIFIED (shadow-safe by
+    construction, proven). CROWN FINDING (first probe, 52t): two_node agreement
+    0.000 — C001 seeded periphery_proletariat derives capital:bribed (the tick-8
+    wealth crossover = label rot, now measurable); synthetics form almost no
+    final-tick cells (wage axis honestly de-positions when wages stop);
+    flips = 1/node (regime transition, NO chattering — Phase-3 gate clear).
+    Phase 2 (redundant cutovers) + 3+ (deep cutover, ControlRatio LAST) are
+    scheduled sessions; seed-default derivation = follow-on program.
+
     (2026-07-14 ~3pm) PROGRAM 17 WAVE 1 + SENTINELS LANDED ON THE BRANCH,
     REVIEWED, VERIFIED. feature/17-living-engine (~38 commits over dev@28bef52f)
     holds: Wave 1 "Light the Seam" (per-county Φ lit end-to-end, events 14→34,

@@ -76,6 +76,13 @@ SOCIAL_CLASS_COMPUTED_FIELDS: Final[frozenset[str]] = frozenset(
         # _compute_threat_scores) — transient graph-only attr, not a
         # SocialClass model field.
         "threat_score",
+        # Program 19 Phase 1 (ADR070): the shadow partition. ContradictionSystem
+        # derives these per tick from the node's EXPLOITATION/wage-defect sign
+        # structure (engine/systems/contradiction.py _write_pole_shadow); they
+        # are observations of the dialectic, not SocialClass model fields.
+        "sigma_capital_labor",
+        "sigma_wage",
+        "derived_class_cell",
     }
 )
 

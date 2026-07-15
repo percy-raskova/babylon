@@ -329,3 +329,8 @@ decisions:
     status: proposed
     date: '2026-07-15'
     file: ADR072_divergence_channel.yaml
+  ADR070_emergent_class_partition:
+    title: 'Program 19 (Emergent Class Partition): per-node class position derived from the dialectic (PoleSample/PoleReading, OppositionRegistry.read_poles), SocialRole demoted to slots-as-positions seed vocabulary + display names; recording ADR under I.19; shadow-first phased cutover, ControlRatio last'
+    status: accepted
+    date: '2026-07-14'
+    file: ADR070_emergent_class_partition.yaml

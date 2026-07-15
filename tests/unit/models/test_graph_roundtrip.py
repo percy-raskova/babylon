@@ -688,6 +688,26 @@ class TestWageAccountingAttrsAreTransient:
 
         assert not hasattr(restored.entities["C001"], "threat_score")
 
+    def test_from_graph_drops_shadow_partition_attrs(self) -> None:
+        # Program 19 Phase 1 (ADR070): ContradictionSystem writes the shadow
+        # partition attrs onto social_class nodes each tick; they are derived
+        # per-tick observations, NOT SocialClass fields, so from_graph must
+        # drop them rather than raise extra_forbidden.
+        from babylon.engine.factories import create_proletariat
+
+        state = WorldState(tick=0, entities={"C001": create_proletariat(id="C001")})
+        graph = state.to_graph()
+        graph.nodes["C001"]["sigma_capital_labor"] = -0.5
+        graph.nodes["C001"]["sigma_wage"] = -0.8
+        graph.nodes["C001"]["derived_class_cell"] = "labor:exploited"
+
+        restored = WorldState.from_graph(graph, tick=1)  # must not raise
+
+        entity = restored.entities["C001"]
+        assert not hasattr(entity, "sigma_capital_labor")
+        assert not hasattr(entity, "sigma_wage")
+        assert not hasattr(entity, "derived_class_cell")
+
 
 class TestTerritoryTransientAttrsAreDropped:
     """Design B: system-written territory attrs must not break from_graph."""

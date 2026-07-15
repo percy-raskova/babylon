@@ -20,7 +20,13 @@
  */
 
 import { describe, it, expect } from "vitest";
-import { buildLensLayers, type BalkanizationBlock, type LensTerritory } from "./mapLensLayers";
+import {
+  buildLensLayers,
+  TERRITORY_TYPE_COLOR,
+  TERRITORY_TYPE_LABELS,
+  type BalkanizationBlock,
+  type LensTerritory,
+} from "./mapLensLayers";
 
 const TERRITORIES: LensTerritory[] = [
   { id: "T1", h3_index: "872a3072cffffff", heat: 0.4, biocapacity: 40, max_biocapacity: 100 },
@@ -397,6 +403,117 @@ describe("buildLensLayers", () => {
       });
       expect(result.rings).toEqual([]);
       expect(result.hulls).toEqual([]);
+    });
+  });
+
+  describe("territory_type lens (Wave 2 Round 2 addition)", () => {
+    const TERRITORIES_WITH_TYPE: LensTerritory[] = [
+      { ...TERRITORIES[0]!, territoryType: "core" },
+      { ...TERRITORIES[1]!, territoryType: "periphery" },
+      { ...TERRITORIES[2]!, territoryType: null },
+    ];
+
+    it("fills by territoryType, distinctly per real TerritoryType enum value", () => {
+      const result = buildLensLayers({
+        territories: TERRITORIES_WITH_TYPE,
+        balkanization: null,
+        lens: { kind: "territory_type" },
+      });
+      expect(result.getFillColor("T1")).not.toEqual(result.getFillColor("T2"));
+      expect(result.getFillColor("T1")).toEqual(TERRITORY_TYPE_COLOR.core);
+      expect(result.getFillColor("T2")).toEqual(TERRITORY_TYPE_COLOR.periphery);
+    });
+
+    it("is loud no-data for a territory with no territoryType (Constitution III.11)", () => {
+      const result = buildLensLayers({
+        territories: TERRITORIES_WITH_TYPE,
+        balkanization: null,
+        lens: { kind: "territory_type" },
+      });
+      expect(result.getFillColor("T3")).toEqual([58, 53, 48, 160]);
+    });
+
+    it("is loud no-data for an unrecognized territory-type string", () => {
+      const result = buildLensLayers({
+        territories: [{ ...TERRITORIES[0]!, territoryType: "not_a_real_type" }],
+        balkanization: null,
+        lens: { kind: "territory_type" },
+      });
+      expect(result.getFillColor("T1")).toEqual([58, 53, 48, 160]);
+    });
+
+    it("never requires balkanization data (territory-local, like class_composition)", () => {
+      const result = buildLensLayers({
+        territories: TERRITORIES_WITH_TYPE,
+        balkanization: null,
+        lens: { kind: "territory_type" },
+      });
+      expect(result.legendLabel.toLowerCase()).not.toContain("no data");
+    });
+
+    it("renders no rings/hulls (balkanization-only overlays)", () => {
+      const result = buildLensLayers({
+        territories: TERRITORIES_WITH_TYPE,
+        balkanization: BALKANIZATION,
+        lens: { kind: "territory_type" },
+      });
+      expect(result.rings).toEqual([]);
+      expect(result.hulls).toEqual([]);
+    });
+
+    it("TERRITORY_TYPE_COLOR/TERRITORY_TYPE_LABELS cover exactly the 5 real TerritoryType enum values", () => {
+      // src/babylon/models/enums/territory.py's TerritoryType — CORE/PERIPHERY/
+      // RESERVATION/PENAL_COLONY/CONCENTRATION_CAMP, snake_case wire values.
+      const expectedKeys = [
+        "core",
+        "periphery",
+        "reservation",
+        "penal_colony",
+        "concentration_camp",
+      ];
+      expect(Object.keys(TERRITORY_TYPE_COLOR).sort()).toEqual(expectedKeys.sort());
+      expect(Object.keys(TERRITORY_TYPE_LABELS).sort()).toEqual(expectedKeys.sort());
+    });
+
+    it("every TERRITORY_TYPE_COLOR entry is a distinct color (visually distinguishable)", () => {
+      const colors = Object.values(TERRITORY_TYPE_COLOR).map((c) => c.join(","));
+      expect(new Set(colors).size).toBe(colors.length);
+    });
+  });
+
+  describe("throughput_position / agitation metric lenses (Wave 2 Round 2 addition)", () => {
+    const TERRITORIES_WITH_NEW_METRICS: LensTerritory[] = TERRITORIES.map((t, i) => ({
+      ...t,
+      metrics: { throughput_position: 0.1 + i * 0.4, agitation: 0.2 + i * 0.3 },
+    }));
+
+    it("fills by throughput_position, varying with the underlying value", () => {
+      const result = buildLensLayers({
+        territories: TERRITORIES_WITH_NEW_METRICS,
+        balkanization: null,
+        lens: { kind: "metric", metric: "throughput_position" },
+      });
+      expect(result.getFillColor("T1")).not.toEqual(result.getFillColor("T3"));
+      expect(result.legendLabel.toLowerCase()).toContain("throughput");
+    });
+
+    it("fills by agitation, varying with the underlying value", () => {
+      const result = buildLensLayers({
+        territories: TERRITORIES_WITH_NEW_METRICS,
+        balkanization: null,
+        lens: { kind: "metric", metric: "agitation" },
+      });
+      expect(result.getFillColor("T1")).not.toEqual(result.getFillColor("T3"));
+      expect(result.legendLabel.toLowerCase()).toContain("agitation");
+    });
+
+    it("renders NO_DATA for a territory missing throughput_position/agitation (never a fabricated 0)", () => {
+      const result = buildLensLayers({
+        territories: TERRITORIES, // no `metrics` bag at all
+        balkanization: null,
+        lens: { kind: "metric", metric: "agitation" },
+      });
+      expect(result.getFillColor("T1")).toEqual([58, 53, 48, 160]);
     });
   });
 

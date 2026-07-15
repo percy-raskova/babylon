@@ -169,6 +169,9 @@ function hexPropsToMetrics(hexProps: HexMapFeatureProperties): LensTerritory["me
     org_presence: nullToUndefined(hexProps.org_presence),
     population: nullToUndefined(hexProps.population),
     solidarity_index: nullToUndefined(hexProps.solidarity_index),
+    // Wave 2 Round 2 additions.
+    throughput_position: nullToUndefined(hexProps.throughput_position),
+    agitation: nullToUndefined(hexProps.agitation),
   };
 }
 
@@ -194,6 +197,10 @@ function territoryToLensTerritory(
     max_biocapacity: t.max_biocapacity ?? 100,
     habitability: t.habitability ?? hexProps?.habitability ?? null,
     dominantClass: hexProps?.dominant_class ?? null,
+    // Wave 2 Round 2: territory_type has no TerritoryState-level equivalent
+    // (unlike habitability's t.habitability fallback) — the hex feature is
+    // the only source, mirroring dominantClass above.
+    territoryType: hexProps?.territory_type ?? null,
     metrics: hexProps ? hexPropsToMetrics(hexProps) : undefined,
   };
 }
@@ -253,7 +260,8 @@ function currentValueForLens(
     lens.kind === "stance" ||
     lens.kind === "faction" ||
     lens.kind === "collapse" ||
-    lens.kind === "class_composition"
+    lens.kind === "class_composition" ||
+    lens.kind === "territory_type"
   ) {
     return null;
   }

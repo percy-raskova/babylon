@@ -21,6 +21,15 @@
  * either fact is updated; testids (`map-mode-selector`, `lens-mode-<id>`,
  * `lens-legend-label`) are unchanged.
  *
+ * Wave 2 Round 2 (`reports/wave2-implementation-map.md`) adds three more
+ * registry entries — throughput_position/agitation (numeric metric lenses)
+ * and territory_type (the new dedicated categorical lens kind, the real
+ * `TerritoryType` enum) — bringing the roster to 12. `hasMetric`-gated like
+ * solidarity_index/class_composition, but this file's mock `/map/` response
+ * never sets `metadata.available_metrics`, so `availableLensRegistry`'s
+ * "undefined means available" rule (registry.ts) keeps all three visible
+ * here regardless.
+ *
  * Needs only the cockpit Vite dev server — no live Django/Postgres, no
  * storageState — runs on the default "chromium" project.
  */
@@ -159,12 +168,15 @@ const TIMESERIES = {
 const LENSES = [
   { id: "imperial_rent", label: /imperial rent/i },
   { id: "exploitation_rate", label: /exploitation rate/i },
+  { id: "throughput_position", label: /throughput/i },
   { id: "heat", label: /heat/i },
   { id: "solidarity_index", label: /solidarity/i },
+  { id: "agitation", label: /agitation/i },
   { id: "stance", label: /stance/i },
   { id: "faction", label: /faction/i },
   { id: "collapse", label: /collapse/i },
   { id: "class_composition", label: /class composition/i },
+  { id: "territory_type", label: /territory type/i },
   { id: "habitability", label: /habitability/i },
 ] as const;
 
@@ -199,8 +211,8 @@ async function mockRoutes(page: import("@playwright/test").Page, mapData: unknow
 }
 
 test.describe("Map lens cycling (backend-free, spec-110 B6/spec-113 Lane B)", () => {
-  test("cycles all 9 registered lenses with no uncaught page error", async ({ page }) => {
-    // 9 sequential lens switches = 9 full deck.gl attribute rebuilds — an
+  test("cycles all 12 registered lenses with no uncaught page error", async ({ page }) => {
+    // 12 sequential lens switches = 12 full deck.gl attribute rebuilds — an
     // order of magnitude more GPU work than this file's other tests. Under
     // software GL (headless CI/SwiftShader) each rebuild costs seconds, so
     // this one legitimately needs Playwright's slow-test budget (3×).

@@ -41,6 +41,18 @@ import type { MapLayer } from "@/types/game";
  * metrics only): it drives the dedicated categorical `class_composition`
  * `Lens` kind instead, the same way `heat`/`habitability` get dedicated
  * kinds rather than a `{kind:"metric"}` sub-select.
+ *
+ * Wave 2 Round 2 (`reports/wave2-implementation-map.md`) adds two more:
+ * `throughput_position` (Pi = τ_through / τ_national, ruling 1 — wired for
+ * real this round, no longer the frozen `1.0` constant) and `agitation`
+ * (`SocialClass.ideology.agitation` aggregated per territory —
+ * DECLARED_CONDITIONAL: legitimately `0.0` absent a falling-wage/rent/Φ/g₃₃
+ * crisis tick, never fabricated warmth). A third contract addition this
+ * round, `territory_type` (the real `TerritoryType` enum —
+ * `src/babylon/models/enums/territory.py` — NOT `stub_bridge.py`'s legacy
+ * `"URBAN"/"SUBURBAN"/"PERIURBAN"` vocabulary), is categorical like
+ * `dominant_class` and likewise excluded here; it drives the dedicated
+ * `territory_type` `Lens` kind instead.
  */
 export const MAP_METRICS = [
   "profit_rate",
@@ -52,6 +64,8 @@ export const MAP_METRICS = [
   "population",
   "habitability",
   "solidarity_index",
+  "throughput_position",
+  "agitation",
 ] as const;
 
 export type MapMetric = (typeof MAP_METRICS)[number];
@@ -88,9 +102,20 @@ export type LensMode = (typeof LENS_MODES)[number];
  * block) — so it gets its own top-level kind rather than joining
  * `LensMode`, whose `RING_AND_HULL_KINDS`/`BALKANIZATION_LENSES` sets in
  * `mapLensLayers.ts` are keyed to the balkanization block specifically.
+ *
+ * `territory_type` (Wave 2 Round 2): the real `TerritoryType` enum
+ * (settler-colonial hierarchy — core/periphery/reservation/penal_colony/
+ * concentration_camp) per territory, population-weighted-mode at
+ * region/county framing (ruling 4). Categorical for the same reason
+ * `class_composition` is — it gets its own top-level kind (not a
+ * `{kind:"metric"}` sub-select, which is numeric-only) and is territory-
+ * local, never balkanization-derived.
  */
 export type Lens =
-  { kind: LensMode } | { kind: "metric"; metric: MapMetric } | { kind: "class_composition" };
+  | { kind: LensMode }
+  | { kind: "metric"; metric: MapMetric }
+  | { kind: "class_composition" }
+  | { kind: "territory_type" };
 
 /**
  * DESIGN_BIBLE.md §9 amendment 1 (binding): the default lens is Imperial
@@ -144,30 +169,40 @@ const METRIC_LABELS: Record<MapMetric, string> = {
   population: "Population",
   habitability: "Habitability · Metabolic Rift",
   solidarity_index: "Solidarity · SOLIDARITY-Edge Density",
+  throughput_position: "Throughput Position · Circulation Intensity",
+  agitation: "Agitation · Political Energy",
 };
 
 /** Human-readable legend text for a lens (mode label or metric name). */
 export function lensLegendLabel(lens: Lens): string {
   if (lens.kind === "metric") return METRIC_LABELS[lens.metric];
   if (lens.kind === "class_composition") return "Class Composition · Dominant Social Role";
+  if (lens.kind === "territory_type") return "Territory Type · Settler-Colonial Hierarchy";
   return MODE_LEGEND_LABELS[lens.kind];
 }
 
 /**
  * The `MapLayer` a metric name reuses for its data ramp. `MapMetric` and
  * `MapLayer` overlap on every metric except `habitability`/`solidarity_index`
- * (spec-109 A2 / spec-113 Lane B additions that predate/sit outside
- * `MapLayer` and have no ramp of their own there) — both resolve their real
+ * (spec-109 A2 / spec-113 Lane B additions) and, as of Wave 2 Round 2,
+ * `throughput_position`/`agitation` — all four predate/sit outside
+ * `MapLayer` and have no ramp of their own there — each resolves its real
  * ramp directly in `lensRampStops` instead of through `rampForLayer`.
  */
 function metricToMapLayer(metric: MapMetric): MapLayer | null {
-  return metric === "habitability" || metric === "solidarity_index" ? null : (metric as MapLayer);
+  return metric === "habitability" ||
+    metric === "solidarity_index" ||
+    metric === "throughput_position" ||
+    metric === "agitation"
+    ? null
+    : (metric as MapLayer);
 }
 
 /**
  * Resolve the canon ramp (hex stops) for a lens, or `null` for the
- * categorical kinds (stance/faction/collapse/class_composition) whose fill
- * is a discrete per-entity color, not a single continuous ramp.
+ * categorical kinds (stance/faction/collapse/class_composition/
+ * territory_type) whose fill is a discrete per-entity color, not a single
+ * continuous ramp.
  */
 export function lensRampStops(lens: Lens): string[] | null {
   switch (lens.kind) {
@@ -175,6 +210,7 @@ export function lensRampStops(lens: Lens): string[] | null {
     case "faction":
     case "collapse":
     case "class_composition":
+    case "territory_type":
       return null;
     case "habitability":
       return DATA_RAMPS.biocapacity;
@@ -182,6 +218,17 @@ export function lensRampStops(lens: Lens): string[] | null {
       return DATA_RAMPS.heat;
     case "metric": {
       if (lens.metric === "solidarity_index") return DATA_RAMPS.solidarity;
+      // Wave 2 Round 2: throughput_position picks the wealth ramp (an
+      // economic-circulation metric, distinct from rent's extraction/
+      // violence terminal already claimed by imperial_rent/
+      // exploitation_rate) and agitation picks the consciousness ramp
+      // (raw political energy — the same "awakening" ramp org_presence
+      // uses — distinct from heat's alarm terminal and solidarity's green,
+      // its nearest struggle-group cousins). Both are of the 3 canonical
+      // ramps (consciousness/wealth/population) not yet bound to any
+      // REGISTERED lens before this round; population is left unclaimed.
+      if (lens.metric === "throughput_position") return DATA_RAMPS.wealth;
+      if (lens.metric === "agitation") return DATA_RAMPS.consciousness;
       const layer = metricToMapLayer(lens.metric);
       return layer === null ? DATA_RAMPS.biocapacity : rampForLayer(layer);
     }

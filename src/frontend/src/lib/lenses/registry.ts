@@ -16,6 +16,8 @@ import {
   STANCE_COLOR,
   SOCIAL_ROLE_COLOR,
   SOCIAL_ROLE_LABELS,
+  TERRITORY_TYPE_COLOR,
+  TERRITORY_TYPE_LABELS,
   type BalkanizationBlock,
 } from "@/components/map/mapLensLayers";
 import { DATA_RAMPS, rampForLayer, type RGBAColor } from "@/theme/colors";
@@ -86,6 +88,21 @@ const CLASS_COMPOSITION_LEGEND: LensLegend = {
 };
 
 /**
+ * Wave 2 Round 2's `territory_type` categorical legend — one entry per real
+ * `TerritoryType` enum value, built from the SAME `TERRITORY_TYPE_COLOR`/
+ * `TERRITORY_TYPE_LABELS` palette `mapLensLayers.ts`'s hex-native and
+ * `regionFill.ts`'s aggregated fills both read — one source of truth, no
+ * duplicated color table (mirrors `CLASS_COMPOSITION_LEGEND` above).
+ */
+const TERRITORY_TYPE_LEGEND: LensLegend = {
+  kind: "categorical",
+  entries: Object.entries(TERRITORY_TYPE_LABELS).map(([type, label]) => ({
+    label,
+    color: TERRITORY_TYPE_COLOR[type] ?? [58, 53, 48, 160],
+  })),
+};
+
+/**
  * The lens roster — DESIGN_BIBLE.md §3.2's table, filtered to lenses backed
  * by real data today (the "if a metric backs it" starred entries — wage
  * hierarchy, control ratio — are omitted rather than registered
@@ -112,6 +129,16 @@ export const LENS_REGISTRY: readonly MapLensDef[] = [
     toLens: () => ({ kind: "metric", metric: "exploitation_rate" }),
     availableWhen: hasMetric("exploitation_rate"),
   },
+  {
+    id: "throughput_position",
+    group: "extraction",
+    label: "Throughput Position",
+    tooltip:
+      "Circulation intensity — county's supply-chain throughput vs. the national baseline (Pi = τ_through / τ_national)",
+    legend: { kind: "ramp", stops: DATA_RAMPS.wealth },
+    toLens: () => ({ kind: "metric", metric: "throughput_position" }),
+    availableWhen: hasMetric("throughput_position"),
+  },
   // --- Struggle ------------------------------------------------------------
   {
     id: "heat",
@@ -130,6 +157,16 @@ export const LENS_REGISTRY: readonly MapLensDef[] = [
     legend: { kind: "ramp", stops: DATA_RAMPS.solidarity },
     toLens: () => ({ kind: "metric", metric: "solidarity_index" }),
     availableWhen: hasMetric("solidarity_index"),
+  },
+  {
+    id: "agitation",
+    group: "struggle",
+    label: "Agitation",
+    tooltip:
+      "Accumulated political energy — routes to fascism or revolution depending on solidarity (legitimately 0 absent a crisis tick)",
+    legend: { kind: "ramp", stops: DATA_RAMPS.consciousness },
+    toLens: () => ({ kind: "metric", metric: "agitation" }),
+    availableWhen: hasMetric("agitation"),
   },
   // --- Political -------------------------------------------------------
   {
@@ -167,6 +204,16 @@ export const LENS_REGISTRY: readonly MapLensDef[] = [
     legend: CLASS_COMPOSITION_LEGEND,
     toLens: () => ({ kind: "class_composition" }),
     availableWhen: hasMetric("dominant_class"),
+  },
+  {
+    id: "territory_type",
+    group: "political",
+    label: "Territory Type",
+    tooltip:
+      "Settler-colonial territorial classification — Core/Periphery/Reservation/Penal Colony/Concentration Camp",
+    legend: TERRITORY_TYPE_LEGEND,
+    toLens: () => ({ kind: "territory_type" }),
+    availableWhen: hasMetric("territory_type"),
   },
   // --- Reproduction ----------------------------------------------------
   {

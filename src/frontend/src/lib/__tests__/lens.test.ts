@@ -40,7 +40,11 @@ import {
 import { DATA_RAMPS } from "@/theme/colors";
 
 describe("MAP_METRICS mirrors the backend's map_contract.py MAP_METRIC_PROPERTIES", () => {
-  it("has exactly the 9 numeric contract metric names, in contract order", () => {
+  it("has exactly the 11 numeric contract metric names, in contract order", () => {
+    // Wave 2 Round 2 (reports/wave2-implementation-map.md): throughput_position
+    // (ruling 1 — wired for real, no longer a frozen 1.0 constant) and
+    // agitation (DECLARED_CONDITIONAL — legitimately 0.0 absent a crisis tick)
+    // join the numeric contract, appended after solidarity_index.
     expect(MAP_METRICS).toEqual([
       "profit_rate",
       "exploitation_rate",
@@ -51,11 +55,17 @@ describe("MAP_METRICS mirrors the backend's map_contract.py MAP_METRIC_PROPERTIE
       "population",
       "habitability",
       "solidarity_index",
+      "throughput_position",
+      "agitation",
     ]);
   });
 
   it("deliberately excludes dominant_class (categorical — drives the class_composition Lens kind instead)", () => {
     expect(MAP_METRICS).not.toContain("dominant_class");
+  });
+
+  it("deliberately excludes territory_type (categorical — drives the territory_type Lens kind instead)", () => {
+    expect(MAP_METRICS).not.toContain("territory_type");
   });
 });
 
@@ -65,7 +75,7 @@ describe("SELECTABLE_METRICS excludes the metrics with a dedicated Lens kind", (
     expect(SELECTABLE_METRICS).not.toContain("habitability");
   });
 
-  it("keeps every other contract metric, including solidarity_index", () => {
+  it("keeps every other contract metric, including solidarity_index/throughput_position/agitation", () => {
     expect([...SELECTABLE_METRICS].sort()).toEqual(
       [
         "profit_rate",
@@ -75,6 +85,8 @@ describe("SELECTABLE_METRICS excludes the metrics with a dedicated Lens kind", (
         "org_presence",
         "population",
         "solidarity_index",
+        "throughput_position",
+        "agitation",
       ].sort(),
     );
   });
@@ -141,6 +153,10 @@ describe("isBalkanizationLens", () => {
   it("is false for class_composition (hex_latest's own column, not the spec-070 balkanization block)", () => {
     expect(isBalkanizationLens({ kind: "class_composition" })).toBe(false);
   });
+
+  it("is false for territory_type (territory-local TerritoryType enum, not the balkanization block)", () => {
+    expect(isBalkanizationLens({ kind: "territory_type" })).toBe(false);
+  });
 });
 
 describe("lensKey — stable identity for React keys / updateTriggers arrays", () => {
@@ -178,6 +194,20 @@ describe("lensLegendLabel", () => {
     const label = lensLegendLabel({ kind: "class_composition" }).toLowerCase();
     expect(label).toContain("class");
   });
+
+  it("labels territory_type distinctly from every mode/metric/class_composition lens", () => {
+    const label = lensLegendLabel({ kind: "territory_type" }).toLowerCase();
+    expect(label).toContain("territory");
+  });
+
+  it("labels the two new metric lenses (throughput_position/agitation) with their own names", () => {
+    expect(
+      lensLegendLabel({ kind: "metric", metric: "throughput_position" }).toLowerCase(),
+    ).toContain("throughput");
+    expect(lensLegendLabel({ kind: "metric", metric: "agitation" }).toLowerCase()).toContain(
+      "agitation",
+    );
+  });
 });
 
 describe("lensRampStops — single ramp resolution shared by fill + legend", () => {
@@ -209,16 +239,37 @@ describe("lensRampStops — single ramp resolution shared by fill + legend", () 
     }
   });
 
-  it("stance/faction/collapse/class_composition have no single metric ramp (categorical fills, not a ramp)", () => {
+  it("stance/faction/collapse/class_composition/territory_type have no single metric ramp (categorical fills, not a ramp)", () => {
     expect(lensRampStops({ kind: "stance" })).toBeNull();
     expect(lensRampStops({ kind: "faction" })).toBeNull();
     expect(lensRampStops({ kind: "collapse" })).toBeNull();
     expect(lensRampStops({ kind: "class_composition" })).toBeNull();
+    expect(lensRampStops({ kind: "territory_type" })).toBeNull();
   });
 
   it("solidarity_index resolves to its own dedicated ramp, distinct from habitability's", () => {
     const stops = lensRampStops({ kind: "metric", metric: "solidarity_index" });
     expect(stops).toEqual(DATA_RAMPS.solidarity);
     expect(stops).not.toEqual(DATA_RAMPS.biocapacity);
+  });
+
+  it("throughput_position resolves to the wealth ramp, distinct from every other registered metric's ramp", () => {
+    const stops = lensRampStops({ kind: "metric", metric: "throughput_position" });
+    expect(stops).toEqual(DATA_RAMPS.wealth);
+    expect(stops).not.toEqual(DATA_RAMPS.rent);
+    expect(stops).not.toEqual(DATA_RAMPS.solidarity);
+  });
+
+  it("agitation resolves to the consciousness ramp, distinct from heat/solidarity (its nearest struggle-group cousins)", () => {
+    const stops = lensRampStops({ kind: "metric", metric: "agitation" });
+    expect(stops).toEqual(DATA_RAMPS.consciousness);
+    expect(stops).not.toEqual(DATA_RAMPS.heat);
+    expect(stops).not.toEqual(DATA_RAMPS.solidarity);
+  });
+
+  it("throughput_position and agitation resolve to two DISTINCT ramps from each other", () => {
+    const throughput = lensRampStops({ kind: "metric", metric: "throughput_position" });
+    const agitation = lensRampStops({ kind: "metric", metric: "agitation" });
+    expect(throughput).not.toEqual(agitation);
   });
 });

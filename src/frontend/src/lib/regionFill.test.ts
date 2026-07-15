@@ -7,6 +7,7 @@ import { describe, it, expect } from "vitest";
 import { regionFillForLens, type RegionFillProperties } from "./regionFill";
 import { lensRampStops, sampleRampStops, type Lens } from "@/lib/lens";
 import { rampForLayer } from "@/theme/colors";
+import { TERRITORY_TYPE_COLOR } from "@/components/map/mapLensLayers";
 
 const DOMAIN = { min: 0, max: 1 };
 
@@ -120,6 +121,52 @@ describe("regionFillForLens", () => {
     it("is null-honest for an unrecognized role string", () => {
       const properties: RegionFillProperties = { dominant_class: "not_a_real_role" };
       expect(regionFillForLens({ kind: "class_composition" }, properties, DOMAIN)).toBeNull();
+    });
+  });
+
+  describe("territory_type lens (Wave 2 Round 2 addition)", () => {
+    it("colors by territory_type via the shared TERRITORY_TYPE_COLOR palette", () => {
+      const properties: RegionFillProperties = { territory_type: "core" };
+      expect(regionFillForLens({ kind: "territory_type" }, properties, DOMAIN)).toEqual(
+        TERRITORY_TYPE_COLOR.core,
+      );
+    });
+
+    it("is null-honest when territory_type is absent (never a fabricated fill)", () => {
+      expect(regionFillForLens({ kind: "territory_type" }, {}, DOMAIN)).toBeNull();
+    });
+
+    it("is null-honest for an explicit null territory_type (partial-coverage group)", () => {
+      const properties: RegionFillProperties = { territory_type: null };
+      expect(regionFillForLens({ kind: "territory_type" }, properties, DOMAIN)).toBeNull();
+    });
+
+    it("is null-honest for an unrecognized territory-type string, never a fake zero color", () => {
+      const properties: RegionFillProperties = { territory_type: "not_a_real_type" };
+      expect(regionFillForLens({ kind: "territory_type" }, properties, DOMAIN)).toBeNull();
+    });
+  });
+
+  describe("throughput_position / agitation metric lenses (Wave 2 Round 2 addition)", () => {
+    it("throughput_position samples its own ramp like any other metric lens", () => {
+      const properties: RegionFillProperties = { throughput_position: 0.4 };
+      const lens: Lens = { kind: "metric", metric: "throughput_position" };
+      const result = regionFillForLens(lens, properties, DOMAIN);
+      expect(result).toEqual(sampleRampStops(lensRampStops(lens)!, 0.4));
+    });
+
+    it("agitation samples its own ramp like any other metric lens", () => {
+      const properties: RegionFillProperties = { agitation: 0.0 };
+      const lens: Lens = { kind: "metric", metric: "agitation" };
+      const result = regionFillForLens(lens, properties, DOMAIN);
+      expect(result).toEqual(sampleRampStops(lensRampStops(lens)!, 0.0));
+    });
+
+    it("is null-honest (never a fabricated zero fill) when throughput_position/agitation are missing", () => {
+      const throughputLens: Lens = { kind: "metric", metric: "throughput_position" };
+      const agitationLens: Lens = { kind: "metric", metric: "agitation" };
+      expect(regionFillForLens(throughputLens, {}, DOMAIN)).toBeNull();
+      expect(regionFillForLens(agitationLens, {}, DOMAIN)).toBeNull();
     });
   });
 

@@ -120,6 +120,16 @@ export interface LensTerritory {
    * (Constitution III.11: loud no-data, never a fabricated role).
    */
   dominantClass?: string | null;
+  /**
+   * Wave 2 Round 2's `territory_type` `/map/` property — the real
+   * `TerritoryType` enum's `.value` (`src/babylon/models/enums/
+   * territory.py`: core/periphery/reservation/penal_colony/
+   * concentration_camp), NOT `stub_bridge.py`'s legacy
+   * `"URBAN"/"SUBURBAN"/"PERIURBAN"` vocabulary. Categorical, so it lives
+   * outside the numeric `metrics` bag, like `dominantClass`. `null`/absent
+   * is honest no-data (Constitution III.11), never a fabricated type.
+   */
+  territoryType?: string | null;
 }
 
 export interface RingSpec {
@@ -192,6 +202,38 @@ export const SOCIAL_ROLE_LABELS: Record<string, string> = {
   internal_proletariat: "Internal Proletariat",
   lumpenproletariat: "Lumpenproletariat",
   carceral_enforcer: "Carceral Enforcer",
+};
+
+/**
+ * The 5 real `TerritoryType` enum values (`src/babylon/models/enums/
+ * territory.py`, snake_case `.value` wire form — CORE/PERIPHERY/RESERVATION/
+ * PENAL_COLONY/CONCENTRATION_CAMP; NOT `stub_bridge.py`'s legacy
+ * `"URBAN"/"SUBURBAN"/"PERIURBAN"` vocabulary) — Wave 2 Round 2's
+ * `territory_type` lens, per the settler-colonial territorial hierarchy the
+ * enum's own docstring describes. Palette direction per DESIGN_BIBLE.md §9b
+ * (Percy's binding ksbc ruling, crimson/gold on near-black): CORE gets the
+ * ksbc chrome accent-gold (`#ffd700` — "wealth/privilege"); PERIPHERY gets
+ * the Cold Collapse heat-ramp's `#d97a2c` terminal (the enum's own docstring
+ * calls periphery "high heat"); the Necropolitical Triad
+ * (RESERVATION/PENAL_COLONY/CONCENTRATION_CAMP) escalates through the rent
+ * ramp's "extraction → violence" tones into `--babylon-laser` — no new raw
+ * hex literals invented (same discipline as `SOCIAL_ROLE_COLOR`).
+ */
+export const TERRITORY_TYPE_COLOR: Record<string, RGBAColor> = {
+  core: [255, 215, 0, 220], // ksbc accent-gold #ffd700 — labor-aristocracy destination
+  periphery: [217, 122, 44, 220], // --babylon-heat #d97a2c — "low value, high heat"
+  reservation: [86, 53, 107, 220], // rent ramp mid-tone #56356b — administrative containment
+  penal_colony: [168, 58, 120, 220], // rent ramp #a83a78 — extraction intensifies
+  concentration_camp: [255, 51, 68, 220], // --babylon-laser #ff3344 — necropolitical endpoint
+};
+
+/** Display labels for `TERRITORY_TYPE_COLOR`'s keys — shared by the categorical legend. */
+export const TERRITORY_TYPE_LABELS: Record<string, string> = {
+  core: "Core",
+  periphery: "Periphery",
+  reservation: "Reservation",
+  penal_colony: "Penal Colony",
+  concentration_camp: "Concentration Camp",
 };
 
 const DESATURATED: RGBAColor = [26, 31, 42, 140]; // low-influence dim tone
@@ -342,6 +384,19 @@ function classCompositionFill(territory: LensTerritory | undefined): RGBAColor {
   return SOCIAL_ROLE_COLOR[role] ?? NO_DATA;
 }
 
+/**
+ * `territory_type` fill (Wave 2 Round 2): the territory's own
+ * `territoryType` (real `TerritoryType` enum value), colored via
+ * `TERRITORY_TYPE_COLOR`. Loud no-data (Constitution III.11) for an
+ * absent/unrecognized value, never a fabricated color — mirrors
+ * `classCompositionFill` exactly.
+ */
+function territoryTypeFill(territory: LensTerritory | undefined): RGBAColor {
+  const type = territory?.territoryType;
+  if (!type) return NO_DATA;
+  return TERRITORY_TYPE_COLOR[type] ?? NO_DATA;
+}
+
 // ---------------------------------------------------------------------------
 // Rings + hulls
 // ---------------------------------------------------------------------------
@@ -446,6 +501,8 @@ export function buildLensLayers(input: BuildLensLayersInput): LensLayerResult {
         return metricFill(territory, lens.metric);
       case "class_composition":
         return classCompositionFill(territory);
+      case "territory_type":
+        return territoryTypeFill(territory);
     }
   };
 

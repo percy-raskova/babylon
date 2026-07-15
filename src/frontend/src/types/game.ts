@@ -767,4 +767,21 @@ export interface AdminFeatureProperties {
    */
   dominant_class?: string | null;
   solidarity_index?: number | null;
+  /**
+   * Wave 2 Round 2 (`reports/wave2-implementation-map.md`) additions —
+   * `_mean_territory_attr`-style pop-weighted mean aggregates:
+   * `throughput_position` (ruling 1, real circulation-intensity Pi, no
+   * longer the frozen `1.0` constant) and `agitation`
+   * (`_agitation_index_by_territory`, DECLARED_CONDITIONAL — legitimately
+   * `0.0` absent a crisis tick). Optional/nullable for the same reason as
+   * `dominant_class`/`solidarity_index` above.
+   */
+  throughput_position?: number | null;
+  agitation?: number | null;
+  /**
+   * Wave 2 Round 2's aggregated `territory_type` — the group's
+   * population-weighted-mode real `TerritoryType` enum value (ruling 4).
+   * Categorical, like `dominant_class`.
+   */
+  territory_type?: string | null;
 }

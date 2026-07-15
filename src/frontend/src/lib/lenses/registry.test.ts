@@ -37,6 +37,24 @@ describe("LENS_REGISTRY", () => {
     expect(LENS_REGISTRY.some((d) => d.id === "class_composition")).toBe(true);
     expect(LENS_REGISTRY.some((d) => d.id === "solidarity_index")).toBe(true);
   });
+
+  it("includes the three Wave 2 Round 2 additions (throughput_position/agitation/territory_type)", () => {
+    expect(LENS_REGISTRY.some((d) => d.id === "throughput_position")).toBe(true);
+    expect(LENS_REGISTRY.some((d) => d.id === "agitation")).toBe(true);
+    expect(LENS_REGISTRY.some((d) => d.id === "territory_type")).toBe(true);
+  });
+
+  it("throughput_position and agitation are numeric (ramp legend); territory_type is categorical", () => {
+    const throughput = LENS_REGISTRY.find((d) => d.id === "throughput_position");
+    const agitation = LENS_REGISTRY.find((d) => d.id === "agitation");
+    const territoryType = LENS_REGISTRY.find((d) => d.id === "territory_type");
+    expect(throughput?.legend.kind).toBe("ramp");
+    expect(agitation?.legend.kind).toBe("ramp");
+    expect(territoryType?.legend.kind).toBe("categorical");
+    expect(throughput?.toLens()).toEqual({ kind: "metric", metric: "throughput_position" });
+    expect(agitation?.toLens()).toEqual({ kind: "metric", metric: "agitation" });
+    expect(territoryType?.toLens()).toEqual({ kind: "territory_type" });
+  });
 });
 
 describe("lensDefForLens", () => {
@@ -50,6 +68,17 @@ describe("lensDefForLens", () => {
 
   it("resolves class_composition back to its registry entry", () => {
     expect(lensDefForLens({ kind: "class_composition" })?.id).toBe("class_composition");
+  });
+
+  it("resolves territory_type back to its registry entry", () => {
+    expect(lensDefForLens({ kind: "territory_type" })?.id).toBe("territory_type");
+  });
+
+  it("resolves the throughput_position/agitation metric lenses back to their registry entries", () => {
+    expect(lensDefForLens({ kind: "metric", metric: "throughput_position" })?.id).toBe(
+      "throughput_position",
+    );
+    expect(lensDefForLens({ kind: "metric", metric: "agitation" })?.id).toBe("agitation");
   });
 
   it("returns undefined for a lens with no registry entry (e.g. an unregistered metric)", () => {
@@ -84,6 +113,24 @@ describe("availableWhen degradation (existing balkanization pattern)", () => {
   it("solidarity_index degrades honestly when solidarity_index isn't in available_metrics", () => {
     const ctx = { availableMetrics: ["heat", "population"] };
     expect(availableLensRegistry(ctx).map((d) => d.id)).not.toContain("solidarity_index");
+  });
+
+  it("throughput_position/agitation/territory_type degrade honestly when absent from available_metrics", () => {
+    const ctx = { availableMetrics: ["heat", "population"] };
+    const available = availableLensRegistry(ctx).map((d) => d.id);
+    expect(available).not.toContain("throughput_position");
+    expect(available).not.toContain("agitation");
+    expect(available).not.toContain("territory_type");
+  });
+
+  it("throughput_position/agitation/territory_type are available once advertised in available_metrics", () => {
+    const ctx = {
+      availableMetrics: ["throughput_position", "agitation", "territory_type"],
+    };
+    const available = availableLensRegistry(ctx).map((d) => d.id);
+    expect(available).toContain("throughput_position");
+    expect(available).toContain("agitation");
+    expect(available).toContain("territory_type");
   });
 
   it("heat and habitability are always available (no backend gate)", () => {
@@ -156,5 +203,32 @@ describe("legend metadata", () => {
     const def = LENS_REGISTRY.find((d) => d.id === "class_composition");
     if (def?.legend.kind !== "categorical") throw new Error("expected categorical legend");
     expect(def.legend.entries).toHaveLength(8);
+  });
+
+  it("territory_type's legend has exactly 5 entries — one per real TerritoryType enum value", () => {
+    const def = LENS_REGISTRY.find((d) => d.id === "territory_type");
+    if (def?.legend.kind !== "categorical") throw new Error("expected categorical legend");
+    expect(def.legend.entries).toHaveLength(5);
+    const labels = def.legend.entries.map((e) => e.label);
+    expect(labels).toEqual(
+      expect.arrayContaining([
+        "Core",
+        "Periphery",
+        "Reservation",
+        "Penal Colony",
+        "Concentration Camp",
+      ]),
+    );
+  });
+
+  it("throughput_position/agitation carry non-empty ramp stop lists", () => {
+    const throughput = LENS_REGISTRY.find((d) => d.id === "throughput_position");
+    const agitation = LENS_REGISTRY.find((d) => d.id === "agitation");
+    if (throughput?.legend.kind !== "ramp" || agitation?.legend.kind !== "ramp") {
+      throw new Error("expected ramp legends");
+    }
+    expect(throughput.legend.stops.length).toBeGreaterThan(1);
+    expect(agitation.legend.stops.length).toBeGreaterThan(1);
+    expect(throughput.legend.stops).not.toEqual(agitation.legend.stops);
   });
 });

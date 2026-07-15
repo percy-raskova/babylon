@@ -45,7 +45,7 @@
 
 import { lensRampStops, sampleRampStops, type Lens, type MapMetric } from "@/lib/lens";
 import { rampForLayer, type RGBAColor } from "@/theme/colors";
-import { SOCIAL_ROLE_COLOR } from "@/components/map/mapLensLayers";
+import { SOCIAL_ROLE_COLOR, TERRITORY_TYPE_COLOR } from "@/components/map/mapLensLayers";
 
 /** The value range a domain-normalized field (heat, `{kind:"metric"}`) is scaled against. */
 export interface FillDomain {
@@ -76,6 +76,13 @@ export type RegionFillProperties = Partial<Record<MapMetric, number | null>> & {
    * outside the numeric bag.
    */
   dominant_class?: string | null;
+  /**
+   * Wave 2 Round 2's aggregated `territory_type` — the group's
+   * population-weighted-mode real `TerritoryType` enum value (ruling 4;
+   * deterministic tie-break on the backend), with the same "categorical,
+   * so outside the numeric bag" reasoning as `dominant_class`.
+   */
+  territory_type?: string | null;
 };
 
 /** True for a real, finite value — false for `null`/`undefined`/`NaN`. */
@@ -153,6 +160,10 @@ export function regionFillForLens(
     case "class_composition": {
       const role = properties.dominant_class;
       return role ? (SOCIAL_ROLE_COLOR[role] ?? null) : null;
+    }
+    case "territory_type": {
+      const type = properties.territory_type;
+      return type ? (TERRITORY_TYPE_COLOR[type] ?? null) : null;
     }
   }
 }

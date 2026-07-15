@@ -20,6 +20,7 @@ from babylon.config.defines.consciousness import (
     EdgeTransitionDefines,
     SolidarityDefines,
 )
+from babylon.config.defines.doctrine import DoctrineDefines
 from babylon.config.defines.economy_basic import (
     CrisisDefines,
     EconomyDefines,
@@ -120,6 +121,7 @@ class GameDefines(BaseModel):
     - infra_terrain: Terrain classification and biocapacity coefficients (Feature 036)
     - infrastructure: Infrastructure capacity and internet coefficients (Feature 036)
     - epistemic_horizon: Fog-of-war Phase 1 shadow coefficients (Epistemic Horizon program)
+    - doctrine: DoctrineSystem mechanic coefficients (owner-ratified 2026-07-15)
     """
 
     model_config = ConfigDict(frozen=True)
@@ -180,6 +182,8 @@ class GameDefines(BaseModel):
     reactionary: ReactionaryDefines = Field(default_factory=ReactionaryDefines)
     # Epistemic Horizon — Phase 1 shadow (project/research/epistemic-horizon-program-proposal.md)
     epistemic_horizon: EpistemicHorizonDefines = Field(default_factory=EpistemicHorizonDefines)
+    # Doctrine Tree mechanics — DoctrineSystem coefficients (owner-ratified 2026-07-15)
+    doctrine: DoctrineDefines = Field(default_factory=DoctrineDefines)
 
     # Legacy flat attributes for backward compatibility
     # These delegate to the nested structure
@@ -306,6 +310,7 @@ class GameDefines(BaseModel):
             negotiate=NegotiateDefines(**data.get("negotiate", {})),
             reactionary=ReactionaryDefines(**data.get("reactionary", {})),
             epistemic_horizon=EpistemicHorizonDefines(**data.get("epistemic_horizon", {})),
+            doctrine=DoctrineDefines(**data.get("doctrine", {})),
         )
 
     @classmethod

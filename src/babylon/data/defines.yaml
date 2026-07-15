@@ -910,3 +910,14 @@ epistemic_horizon:
   class_factor_petty_bourgeoisie: 0.3  # C_f for PETTY_BOURGEOISIE — corpus C_pb, hedges bets (fog-of-war.yaml:220-227). (>= 0.0, <= 1.0)
   class_factor_labor_aristocracy: 0.2  # C_f for LABOR_ARISTOCRACY — corpus C_la, informs to protect privilege (fog-of-war.yaml:229-236). (>= 0.0, <= 1.0)
   class_factor_default: 0.0  # C_f fallback for any SocialRole absent from the corpus's 4-entry table (explicit, never silent). (>= 0.0, <= 1.0)
+
+# ---------------------------------------------------------------------
+# doctrine — Tunable coefficients for the DoctrineSystem (owner-ratified 2026-07-15).
+# ---------------------------------------------------------------------
+doctrine:
+  tag_decay_rate: 0.0055  # Ruling 3: per-tick multiplicative decay of accumulated doctrine tag strength (0.55%/tick). (>= 0.0, <= 1.0)
+  study_allocation_min: 0.15  # Ruling 4: lower bound of the surplus fraction an org may route to theoretical labour each tick. (>= 0.0, <= 1.0)
+  study_allocation_max: 0.25  # Ruling 4: upper bound of the surplus fraction an org may route to theoretical labour each tick. (>= 0.0, <= 1.0)
+  congress_interval_ticks: 52  # Ruling 5: ticks between Party Congress events (seeded-RNG resolution weighted by tag deltas). (>= 1)
+  trap_escape_tl: 300  # Ruling 6: theoretical-labour cost of self-criticism to escape an ideological trap node. (>= 0)
+  faction_flip_enabled: false  # Ruling 2: whether acquiring a node may flip a faction's allegiance/behaviour. OFF until Phase 2.

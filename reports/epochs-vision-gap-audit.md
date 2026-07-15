@@ -626,6 +626,21 @@ flowchart TD
 > staging vs the no-MVP directive, and the Strasserism faction-flip architecture).
 > Wave 5's displacement-lens item was largely delivered early by W2 R2's territory_type
 > categorical lens; its HIFLD/MIRTA loader item is gated on the CI-no-drive parquet program.
+>
+> **POST-RATIFICATION PROGRESS (2026-07-15 afternoon):** owner RATIFIED both Wave-5/6 program
+> proposals + directed a 50-agent Marxists.org/ProleWiki history sweep grounding them
+> (`project/research/history-sweep/`, all 5 open EH/DT rulings closed with recommendations).
+> Owner tabled the nationwide migration (#49) and bundled front lines (#69) into it; PR of the
+> spine branch held until the whole arc is done (one ceremonial CI pass). **Ungated
+> frontend-surfacing continues** — a scout found 4 targets whose engine data is already on the
+> wire but had no renderer (all the DI-gated economics families — Circuit-of-Capital, Turnover,
+> Financialization, Credit Cycle, Housing Decomposition — are excluded: their calculators route
+> through `housing_calculator`/`interest_calculator`/`turnover_profile_source`, none of which
+> `_bridge_economics_overrides` constructs). Shipped/in-flight: **CrisisTimeline HUD** (`bcc63c83`,
+> the "Watchable Crisis Timeline" business-cycle phase strip — Wave-2 §647 item, crisis-detector
+> family); **wage_pressure + dispossession_intensity map lenses** (in flight — Reserve Army
+> wage-discipline gauge §451 + continuous carceral-intensity signal §141). Remaining ungated
+> target: the legitimation "faith in the system" badge (§477, needs a thin graph_bridge write).
 
 ### Wave 1 — Make the Spine Felt (P0, no new engine math)
 

@@ -26,6 +26,8 @@ describe("adaptNode (social_class, Program 17 Wave 1 / W1.4+W1.6)", () => {
     consciousness: { revolutionary: 0.09, liberal: 0.42, fascist: 0.49 },
     apologist_claim: "The wage gap reflects a 'skill premium'.",
     apologist_refutation: "Core wages (1.0000) exceed value produced (0.6500) by 0.3500.",
+    entitlement: 0.75,
+    volatility: 0.0,
   };
 
   it("titles from the node's real name", () => {
@@ -80,6 +82,38 @@ describe("adaptNode (social_class, Program 17 Wave 1 / W1.4+W1.6)", () => {
     const node = adaptNode({ kind: "node", id: "C002" }, baseData);
     const ideologySection = node.sections.find((s) => s.label === "Ideology");
     expect(ideologySection?.rows.find((r) => r.label === "Agitation")?.value).toBe(0.0);
+  });
+
+  describe("Reactionary Subject section (AW3-R1)", () => {
+    it("renders Entitlement as a BreakdownBar composition of [value, headroom]", () => {
+      const node = adaptNode({ kind: "node", id: "C002" }, baseData);
+      const section = node.sections.find((s) => s.label === "Reactionary Subject");
+      const row = section?.rows.find((r) => r.label === "Entitlement");
+      expect(row?.composition).toEqual([
+        { key: "Value", value: 0.75, color: "text-rupture" },
+        { key: "Headroom", value: 0.25, color: "text-ash" },
+      ]);
+    });
+
+    it("renders Volatility as a BreakdownBar composition of [value, headroom]", () => {
+      const node = adaptNode({ kind: "node", id: "C002" }, baseData);
+      const section = node.sections.find((s) => s.label === "Reactionary Subject");
+      const row = section?.rows.find((r) => r.label === "Volatility");
+      expect(row?.composition).toEqual([
+        { key: "Value", value: 0.0, color: "text-laser" },
+        { key: "Headroom", value: 1.0, color: "text-ash" },
+      ]);
+    });
+
+    it("renders an undefined composition (BreakdownBar's honest 'no data') when entitlement/volatility are absent", () => {
+      const node = adaptNode(
+        { kind: "node", id: "C002" },
+        { ...baseData, entitlement: undefined, volatility: undefined },
+      );
+      const section = node.sections.find((s) => s.label === "Reactionary Subject");
+      expect(section?.rows.find((r) => r.label === "Entitlement")?.composition).toBeUndefined();
+      expect(section?.rows.find((r) => r.label === "Volatility")?.composition).toBeUndefined();
+    });
   });
 
   it("renders the apologist claim/refutation as its own section", () => {

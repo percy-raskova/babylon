@@ -210,6 +210,14 @@ export interface InspectorNodeResponse {
   p_revolution?: number | null;
   consciousness?: ConsciousnessVector | null;
   inequality?: number | null;
+  /** Reactionary Subject (spec-071, AW3-R1): stake in the imperial order
+   *  [0,1], role-defaulted. Honest-null when the graph node carries no
+   *  `entitlement` attribute. */
+  entitlement?: number | null;
+  /** Reactionary Subject (spec-071, AW3-R1): disorder propensity [0,1],
+   *  role-defaulted for the lumpenproletariat. Honest-null when the graph
+   *  node carries no `volatility` attribute. */
+  volatility?: number | null;
   class_position?: string;
   class_position_mock?: boolean;
   circuit_flows?: CircuitFlows;

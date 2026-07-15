@@ -19,6 +19,7 @@
 
 import type {
   CircuitFlows,
+  InspectionCompositionEntry,
   InspectionNode,
   InspectionRef,
   InspectionRow,
@@ -32,6 +33,25 @@ const CONSCIOUSNESS_COLORS = {
   liberal: "text-cadre",
   fascist: "text-rupture",
 } as const;
+
+/** [value, headroom-to-1.0] composition entries for a bounded [0,1]
+ *  Reactionary Subject intensity (entitlement/volatility) — same
+ *  [current, headroom] shape `org.ts`'s `laborComposition` uses for the
+ *  Vanguard labor pools, fixed at max=1.0 since both fields are
+ *  `Intensity` ([0,1]). `undefined` (not a zeroed bar) when the backend
+ *  sent no value — `BreakdownBar` renders that as an honest "no data"
+ *  (Constitution III.11), matching the ternary-consciousness composition
+ *  above. */
+function reactionaryComposition(
+  value: number | null,
+  color: string,
+): InspectionCompositionEntry[] | undefined {
+  if (value === null) return undefined;
+  return [
+    { key: "Value", value, color },
+    { key: "Headroom", value: Math.max(0, 1.0 - value), color: "text-ash" },
+  ];
+}
 
 /** Section label for the Survival Calculus block (Wave 2 W2.5a) — exported
  * so `InspectionCard` can detect "this frame is a social_class node" from
@@ -131,6 +151,29 @@ function socialClassSections(data: RawEntity): InspectionSection[] {
     { label: "Agitation", value: readNumberField(data, "agitation"), format: "decimal3" },
   ];
 
+  // Reactionary Subject (spec-071 — the fascism branch of the George Jackson
+  // bifurcation, AW3-R1): entitlement/volatility are real, role-defaulted
+  // SocialClass fields (FascistFactionSystem reads them for Fascist_Pull /
+  // SPONTANEOUS_RIOT gating) newly exposed on this endpoint, same pattern as
+  // `inequality` (W1.4). `chauvinism` is deliberately absent here — it is
+  // real but lives on the org->LA MEMBERSHIP edge, not this class node, so
+  // there is no single per-class scalar to render (see the bridge's
+  // `_social_class_inspector_fields` docstring).
+  const reactionaryRows: InspectionRow[] = [
+    {
+      label: "Entitlement",
+      value: null,
+      format: "raw",
+      composition: reactionaryComposition(readNumberField(data, "entitlement"), "text-rupture"),
+    },
+    {
+      label: "Volatility",
+      value: null,
+      format: "raw",
+      composition: reactionaryComposition(readNumberField(data, "volatility"), "text-laser"),
+    },
+  ];
+
   const apologistRows: InspectionRow[] = [
     { label: "Apologist Claim", value: readStringField(data, "apologist_claim"), format: "raw" },
     {
@@ -163,6 +206,7 @@ function socialClassSections(data: RawEntity): InspectionSection[] {
   const sections: InspectionSection[] = [
     { rows: mainRows },
     { label: "Ideology", rows: ideologyRows },
+    { label: "Reactionary Subject", rows: reactionaryRows },
     { label: SURVIVAL_CALCULUS_LABEL, rows: survivalRows },
     { label: "Imperial Apologetics", rows: apologistRows },
   ];

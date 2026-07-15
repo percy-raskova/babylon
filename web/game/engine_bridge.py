@@ -1717,6 +1717,17 @@ def _social_class_inspector_fields(
     survival.py:143) — honest-null via :func:`_optional_float`, same as
     ``organization``/``inequality``.
 
+    AW3-R1 adds ``entitlement``/``volatility`` — the spec-071 Reactionary
+    Subject fields (``babylon.models.entities.social_class.SocialClass``,
+    role-defaulted, [0,1]) that ``FascistFactionSystem`` reads for fascist
+    pull / spontaneous-riot gating. Deliberately does NOT add ``chauvinism``:
+    that quantity is real (``FascistFactionSystem._accrue_chauvinism``) but
+    lives on the org->LA ``MEMBERSHIP`` edge, not the class node — there is
+    no single well-defined per-class scalar to expose here (a class can be
+    the target of zero, one, or many MEMBERSHIP edges from different orgs).
+    Forcing it onto this payload would fabricate a class-level reading that
+    does not exist (Constitution III.8/III.11).
+
     Args:
         data: The raw graph node dict for a ``social_class`` node.
         core_wages: Output of :func:`_incoming_wages_flow` for this node.
@@ -1764,6 +1775,8 @@ def _social_class_inspector_fields(
         "inequality": _optional_float(data.get("inequality")),
         "p_acquiescence": _optional_float(data.get("p_acquiescence")),
         "p_revolution": _optional_float(data.get("p_revolution")),
+        "entitlement": _optional_float(data.get("entitlement")),
+        "volatility": _optional_float(data.get("volatility")),
         "class_position": _CLASS_POSITION_MOCK_LABEL,
         "class_position_mock": True,
         "circuit_flows": _build_circuit_flows(graph),
@@ -3106,6 +3119,10 @@ class EngineBridge:
             # class-scoped events never narrate a confidently wrong name;
             # _build_meta drops the key from the wire.yaml output.
             "class_names": {class_id: sc.name for class_id, sc in sorted(state.entities.items())},
+            # Real per-scenario org display names (AW3-R1) — mirrors
+            # class_names above, for org-scoped events (RED_BROWN_COUP).
+            # _build_meta drops the key from the wire, same as class_names.
+            "org_names": {org_id: o.name for org_id, o in sorted(state.organizations.items())},
         }
 
         feed = self._narrator.narrate(events, meta)
@@ -5888,6 +5905,9 @@ _EVENT_SEVERITY: dict[str, str] = {
     "spontaneous_riot": "critical",
     "peripheral_revolt": "critical",
     "ecological_overshoot": "critical",
+    # AW3-R1: a majority-LA-defection org capture is a state-violation event
+    # on par with the rest of this critical tier, not routine flow.
+    "red_brown_coup": "critical",
     # Warning: threshold-cross / repression events
     "state_repression": "warning",
     "red_settler_trap_detected": "warning",

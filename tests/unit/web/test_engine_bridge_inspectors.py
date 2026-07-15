@@ -150,6 +150,57 @@ class TestGetInspectorNode:
 
         assert result["inequality"] is None
 
+    def test_entitlement_reads_the_real_graph_field(self) -> None:
+        """AW3-R1: ``entitlement`` is a real ``SocialClass`` field (spec-071
+        Reactionary Subject — stake in the imperial order, [0,1],
+        role-defaulted; ``FascistFactionSystem`` reads it for fascist pull)
+        — not a mock. Mutate the real graph attribute and prove it
+        round-trips, same idiom as ``inequality`` (W1.4)."""
+        bridge, graph = _wayne_bridge()
+        graph.nodes["C002"]["entitlement"] = 0.42
+
+        result = bridge.get_inspector_node(uuid.uuid4(), "C002")
+
+        assert result["entitlement"] == pytest.approx(0.42)
+
+    def test_entitlement_is_none_when_absent_not_a_fabricated_zero(self) -> None:
+        bridge, graph = _wayne_bridge()
+        graph.add_node(
+            "C999",
+            _node_type="social_class",
+            name="Synthetic No-Entitlement Class",
+            wealth=0.0,
+        )
+
+        result = bridge.get_inspector_node(uuid.uuid4(), "C999")
+
+        assert result["entitlement"] is None
+
+    def test_volatility_reads_the_real_graph_field(self) -> None:
+        """AW3-R1: ``volatility`` is a real ``SocialClass`` field (spec-071
+        Reactionary Subject — disorder propensity, [0,1], role-defaulted for
+        the lumpenproletariat; gates ``SPONTANEOUS_RIOT``) — not a mock.
+        Mutate the real graph attribute and prove it round-trips."""
+        bridge, graph = _wayne_bridge()
+        graph.nodes["C002"]["volatility"] = 0.37
+
+        result = bridge.get_inspector_node(uuid.uuid4(), "C002")
+
+        assert result["volatility"] == pytest.approx(0.37)
+
+    def test_volatility_is_none_when_absent_not_a_fabricated_zero(self) -> None:
+        bridge, graph = _wayne_bridge()
+        graph.add_node(
+            "C999",
+            _node_type="social_class",
+            name="Synthetic No-Volatility Class",
+            wealth=0.0,
+        )
+
+        result = bridge.get_inspector_node(uuid.uuid4(), "C999")
+
+        assert result["volatility"] is None
+
     def test_class_position_ships_as_a_clearly_badged_mock(self) -> None:
         """Owner's mock doctrine (Program 17 Wave 1 / W1.4): no real
         class-position taxonomy exists in the codebase yet, so the row ships

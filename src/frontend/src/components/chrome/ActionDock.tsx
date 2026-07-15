@@ -7,14 +7,13 @@
  *
  * Two pieces:
  *  1. `action-dock-bar` — an always-visible compact bar of the first three
- *     *engine-wired* verbs (`SUPPORTED_VERBS`, Spec 061 FR-025) plus a
- *     labeled "More" button. This is the only per-verb legality signal any
- *     live API exposes today — there is no per-org/per-target eligibility
- *     endpoint, so "legal" here means "has an engine handler", not
- *     "currently actionable for the selected org". Buttons show their
- *     static cost hint (`cost_label`) visibly, per Bible §5.1's "verbs show
- *     live cost/eligibility on the button" — honest affordance over a
- *     fabricated one.
+ *     verbs in catalog order (`SUPPORTED_VERBS`; all 9 canonical verbs are
+ *     engine-wired as of AW3-R1 2026-07-15, so this is currently the same
+ *     as `VERBS.slice(0, 3)` — `SUPPORTED_VERBS` stays the source in case a
+ *     future verb ships without a resolver) plus a labeled "More" button.
+ *     Buttons show their static cost hint (`cost_label`) visibly, per Bible
+ *     §5.1's "verbs show live cost/eligibility on the button" — honest
+ *     affordance over a fabricated one.
  *  2. The `ActionComposer` FloatingPanel (unchanged internals — the flat
  *     9-verb grid is Article V's, not this dock's, and stays frozen) that
  *     every bar button opens via `ui.chrome.composerOpen`. v1 keeps

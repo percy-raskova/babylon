@@ -175,6 +175,33 @@ _CLASS_SCOPED_SUBJECT_FIELD: dict[str, str] = {
 }
 
 
+def _subject_from_org_id(org_id: str, names: dict[str, str] | None = None) -> str:
+    """Resolve an organization node id to a display subject — never a place.
+
+    Mirrors :func:`_subject_from_class_id` for organizations (AW3-R1,
+    RED_BROWN_COUP). ``names`` (the bridge's real per-scenario org names,
+    passed via ``meta["org_names"]`` and stamped onto each event as
+    ``_org_names``) wins outright. Unlike social classes (six fixed
+    canonical roles reused across scenarios), organizations have no small
+    fixed canonical set at all — every scenario creates its own — so there
+    is no hardcoded fallback map here, only an honest humanization of the
+    raw id when no real name is available.
+    """
+    if names and org_id in names:
+        return names[org_id]
+    return org_id.replace("_", " ").title()
+
+
+#: Event types whose story is about an organization, not a territory or a
+#: social class — the value names the event's ``data`` key holding the
+#: affected org node id. RED_BROWN_COUP has no place to report; resolving
+#: through here keeps its narration honest instead of falling back to the
+#: hardcoded "Wayne County" default (see _location_from_event).
+_ORG_SCOPED_SUBJECT_FIELD: dict[str, str] = {
+    "red_brown_coup": "org_id",
+}
+
+
 def _resolve_location(event: dict[str, Any]) -> str:
     """Resolve the value that fills a template's ``{location}`` placeholder.
 
@@ -182,14 +209,23 @@ def _resolve_location(event: dict[str, Any]) -> str:
     templates (see :data:`_CLASS_SCOPED_SUBJECT_FIELD`) resolve to the
     affected social class's display name instead — never the fabricated
     "Wayne County" default, since these events carry no territory at all.
+    Org-scoped templates (see :data:`_ORG_SCOPED_SUBJECT_FIELD`) do the same
+    for the affected organization.
     """
-    subject_field = _CLASS_SCOPED_SUBJECT_FIELD.get(event.get("type", ""))
-    if subject_field is None:
-        return _location_from_event(event)
-    class_id = event.get("data", {}).get(subject_field)
-    if isinstance(class_id, str) and class_id:
-        return _subject_from_class_id(class_id, event.get("_class_names"))
-    return "an unidentified class formation"
+    event_type = event.get("type", "")
+    class_subject_field = _CLASS_SCOPED_SUBJECT_FIELD.get(event_type)
+    if class_subject_field is not None:
+        class_id = event.get("data", {}).get(class_subject_field)
+        if isinstance(class_id, str) and class_id:
+            return _subject_from_class_id(class_id, event.get("_class_names"))
+        return "an unidentified class formation"
+    org_subject_field = _ORG_SCOPED_SUBJECT_FIELD.get(event_type)
+    if org_subject_field is not None:
+        org_id = event.get("data", {}).get(org_subject_field)
+        if isinstance(org_id, str) and org_id:
+            return _subject_from_org_id(org_id, event.get("_org_names"))
+        return "an unidentified organization"
+    return _location_from_event(event)
 
 
 #: Payload keys that hold a social-class node id rather than a plain display
@@ -1035,6 +1071,71 @@ _TEMPLATES: dict[str, dict[str, Any]] = {
         },
         "coverage": ["c", "l", "i"],
     },
+    "red_brown_coup": {
+        # Org-scoped (see _ORG_SCOPED_SUBJECT_FIELD): {location} below
+        # fills with the affected organization's display name, not a place.
+        "slug": "COUP \u00b7 {location}",
+        "hed": {
+            "c": "Leadership Change Reported at {location}",
+            "l": "{location} FALLS TO THE FASH // RED-BROWN COUP",
+            "i": "ORGANIZATIONAL CAPTURE // {location} // CONFIRMED",
+        },
+        "euphemisms": {
+            "change": {
+                "c": "leadership change",
+                "l": "RED-BROWN COUP",
+                "filter": "ideology",
+                "note": "A fascist capture of a labor organization from within, reframed as routine leadership turnover.",
+            },
+        },
+        "continental": {
+            "kicker": "NATIONAL \u00b7 LABOR",
+            "dek": "Officials note a {euph:change} at {location} amid economic uncertainty.",
+            "byline": "By Continental Staff \u00b7 Breaking",
+            "paragraphs": [
+                [
+                    "{location} \u2014 A {euph:change} was confirmed following a wave of internal defections. The organization's new direction remains unclear.",
+                ],
+            ],
+            "bibliography": [],
+        },
+        "liberated": {
+            "pre": "[ BEGIN TRANSMISSION \u00b7 MAYDAY ]",
+            "post": "[ END TRANSMISSION \u00b7 THE ROT SPREAD FROM WITHIN ]",
+            "paragraphs": [
+                {
+                    "body": [
+                        "{location} IS LOST. THE FASH TOOK IT FROM INSIDE \u2014 NOT A RAID, A ROT. {euph:change}, THEY CALL IT. WE CALL IT WHAT IT IS: BETRAYAL.",
+                    ],
+                    "margin": {
+                        "ref": "FIELD REPORT",
+                        "chunk": "chunk_coup_001",
+                        "note": "defection count confirmed",
+                    },
+                },
+            ],
+        },
+        "intel": {
+            "subj": "ORGANIZATIONAL CAPTURE \u00b7 {location}",
+            "origin": "FIELD STATION",
+            "routing": ["DHS/I&A", "DOJ/NSD"],
+            "caveat": "HANDLE VIA DOMESTIC CHANNELS",
+            "fields": [
+                ["EVENT", "RED-BROWN COUP"],
+                ["ORGANIZATION", "{location}"],
+                ["DEFECTIONS", "{defections}"],
+                ["MEMBERSHIP", "{member_count}"],
+                ["CONFIDENCE", "CONFIRMED"],
+            ],
+            "assessment": [
+                "{defections} of {member_count} Labor Aristocracy members defected in a single crisis tick, exceeding the majority threshold.",
+                "Organizational control has passed to the fascist faction.",
+            ],
+            "refs": [],
+            "distribution": "\u25ae\u25ae\u25ae\u25ae\u25ae\u25ae \u00b7 NOFORN",
+        },
+        "coverage": ["c", "l", "i"],
+    },
 }
 
 
@@ -1381,6 +1482,15 @@ class DeterministicNarrator:
         if isinstance(class_names, dict):
             for event in events_copy:
                 event["_class_names"] = class_names
+
+        # Real per-scenario org names from the bridge (meta["org_names"]),
+        # AW3-R1 — mirrors the class_names channel above for org-scoped
+        # events (RED_BROWN_COUP). _build_meta allowlists output keys, so
+        # this channel never leaks into the wire.yaml contract either.
+        org_names = meta_copy.get("org_names")
+        if isinstance(org_names, dict):
+            for event in events_copy:
+                event["_org_names"] = org_names
 
         # Build index entries
         index_entries: list[dict[str, Any]] = []

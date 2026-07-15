@@ -46,7 +46,22 @@ describe("VERBS catalog", () => {
 });
 
 describe("SUPPORTED_VERBS / DISABLED_VERBS", () => {
-  it("excludes exactly the disabled set (spec 061 FR-025)", () => {
+  // AW3-R1 (2026-07-15): all 9 canonical verbs now have real, registered
+  // engine resolvers (babylon.engine.actions.VERB_RESOLVERS, pinned by
+  // tests/contract/verbs/test_registry.py) dispatched end-to-end from
+  // POST /api/games/{id}/actions/{verb}/. Spec 061 FR-025's disabled set
+  // is resolved — DISABLED_VERBS is empty, kept only as a mechanism for a
+  // future verb that ships without a resolver.
+  it("is currently empty — every canonical verb has a real engine handler", () => {
+    expect(DISABLED_VERBS.size).toBe(0);
+  });
+
+  it("SUPPORTED_VERBS equals the full VERBS catalog while DISABLED_VERBS is empty", () => {
+    expect(SUPPORTED_VERBS).toHaveLength(VERBS.length);
+    expect(SUPPORTED_VERBS).toEqual(VERBS);
+  });
+
+  it("excludes exactly the disabled set, whatever it is", () => {
     expect(SUPPORTED_VERBS).toHaveLength(VERBS.length - DISABLED_VERBS.size);
     for (const v of SUPPORTED_VERBS) {
       expect(DISABLED_VERBS.has(v.verb)).toBe(false);

@@ -588,6 +588,23 @@ flowchart TD
     W5 --> W6
 ```
 
+> **RECONCILIATION (2026-07-15, status markers only — items unchanged):**
+> **Wave 1 ✅ COMPLETE 2026-07-14** (all 7 items + W1.8 determinism hardening, branch
+> `feature/epochs-wave1-spine`; see memory + `reports/wave2-implementation-map.md`).
+> **Wave 2 ✅ COMPLETE 2026-07-14** (3 rounds: Gap-1 rows + EconomyDashboard; three lenses
+> incl. territory_type categorical — the Necropolitical-Triad prerequisite named in Wave 5;
+> survival duel chart w/ uncapped rupture markers; `reports/wave2-implementation-map.md`).
+> **INTERSTITIAL (owner-inserted 2026-07-14): "The Weather Layer"** — the
+> lawvere/weather-visualization briefs (`reports/wave3-weather-implementation-map.md`, 12
+> commits): grammar laws (DESIGN_BIBLE §11), field_state seam + engine facade carry, storm
+> markers + bifurcation gauge, field_flow vector lens (lens 13), radar-loop replay. Serves
+> epoch2-geo-viz + brainstorm-gui items; its deferred queue (front lines, forecast-ruling,
+> df_dt context carry) is task-tracked, not lost.
+> **Wave 3 (Vanguard Praxis) — IN EXECUTION 2026-07-15** (tasks #71-72).
+> Wave 4's sigma/graphology network takeover: note both libs remain installed-unused and
+> `get_hypergraph_communities` is confirmed a dead route (AttributeError 500) — the Gap-2a
+> rebuild claim verified 2026-07-14.
+
 ### Wave 1 — Make the Spine Felt (P0, no new engine math)
 
 The smallest set that makes the corpus's signature dramatic beats — the bifurcation, the collapse, the trap — actually visible. Every item here reuses state the engine already computes every tick; the work is whitelisting, registering, and rendering, not building.

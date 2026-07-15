@@ -1318,6 +1318,48 @@ class TestWireFeed:
         assert "Comprador" not in feed_json
         assert "class_names" not in result["meta"]
 
+    def test_org_scoped_event_narrates_the_scenario_org_name(self) -> None:
+        """AW3-R1: RED_BROWN_COUP is org-scoped (``org_id``), not
+        class- or territory-scoped. ``get_wire_feed`` must pass the
+        hydrated state's real org names to the narrator via
+        ``meta["org_names"]`` so the story names the org (wayne_county's
+        ORG001 is "Wayne County Organizing Committee") rather than the
+        raw id or a fabricated "Wayne County" location — mirrors
+        ``test_class_scoped_event_narrates_the_scenario_name_not_the_canonical_map``."""
+        from game.engine_bridge import _build_initial_state_for_scenario
+
+        mock_persistence = _make_mock_persistence()
+        mock_persistence.hydrate_graph.return_value = _build_initial_state_for_scenario(
+            "wayne_county"
+        ).to_graph()
+        sid = uuid.uuid4()
+        mock_persistence.query_session_events.return_value = [
+            {
+                "game_id": str(sid),
+                "tick": 5,
+                "event_id": 1,
+                "event_type": "red_brown_coup",
+                "severity": "critical",
+                "source_id": None,
+                "target_id": None,
+                "county_fips": None,
+                "h3_index": None,
+                "summary": "Majority LA defection",
+                "detail": {
+                    "org_id": "ORG001",
+                    "defections": 4,
+                    "member_count": 6,
+                },
+            }
+        ]
+        bridge = EngineBridge(mock_persistence)
+
+        result = bridge.get_wire_feed(sid)
+
+        feed_json = json.dumps(result)
+        assert "Wayne County Organizing Committee" in feed_json
+        assert "org_names" not in result["meta"]
+
     def test_empty_events_produces_empty_feed(self) -> None:
         mock_persistence = _make_mock_persistence()
         mock_persistence.query_session_events = None

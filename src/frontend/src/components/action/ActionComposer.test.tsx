@@ -41,12 +41,12 @@ describe("ActionComposer", () => {
     ).toBeInTheDocument();
   });
 
-  it("renders the flat 9-verb grid with disabled verbs marked (not hidden)", () => {
+  it("renders the flat 9-verb grid with every verb enabled (AW3-R1: all 9 have real engine handlers)", () => {
     seedPlayerOrg();
     render(<ActionComposer gameId={DEFAULT_GAME_ID} />);
     const grid = screen.getByTestId("verb-grid");
     expect(grid.querySelectorAll("button")).toHaveLength(9);
-    expect(screen.getByRole("button", { name: /investigate/i })).toBeDisabled();
+    expect(screen.getByRole("button", { name: /investigate/i })).toBeEnabled();
     expect(screen.getByRole("button", { name: /educate/i })).toBeEnabled();
   });
 

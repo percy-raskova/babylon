@@ -57,6 +57,7 @@ class TestSeveritySchema:
             "superwage_crisis",
             "uprising",
             "endgame_reached",
+            "red_brown_coup",
         ):
             assert _classify_event(event_type) == "critical", event_type
 

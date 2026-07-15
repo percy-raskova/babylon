@@ -1,8 +1,11 @@
 /**
  * Flat 9-verb grid (Constitution Article V — no invented tabs/groupings).
- * Verbs without a wired engine handler yet (`DISABLED_VERBS`) render
- * disabled with an honest tooltip rather than being hidden — Article V
- * names nine verbs, and hiding three would misrepresent the vocabulary.
+ * All 9 verbs have real, registered engine resolvers (AW3-R1, 2026-07-15
+ * — see `DISABLED_VERBS`'s docstring), so none render disabled today. The
+ * `DISABLED_VERBS` gate stays wired: a verb without a wired engine handler
+ * would render disabled with an honest tooltip rather than being hidden —
+ * Article V names nine verbs, and hiding one would misrepresent the
+ * vocabulary.
  */
 
 import { VERBS, DISABLED_VERBS } from "@/lib/verb-config";
@@ -30,11 +33,7 @@ export function VerbGrid({ selectedVerb, onSelect, liveCost }: VerbGridProps): R
           <button
             key={v.verb}
             disabled={disabled}
-            title={
-              disabled
-                ? `${v.label}: no engine handler yet (Spec 061 FR-025)`
-                : `${v.label} — ${costText}`
-            }
+            title={disabled ? `${v.label}: no engine handler yet` : `${v.label} — ${costText}`}
             onClick={() => onSelect(v.verb as PlayerVerb)}
             className={`flex flex-col items-center gap-0.5 rounded border p-2 text-center disabled:cursor-not-allowed disabled:opacity-40 ${
               active

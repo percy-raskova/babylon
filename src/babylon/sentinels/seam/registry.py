@@ -737,6 +737,56 @@ _INSPECTOR_METRICS: tuple[SeamEntry, ...] = (
         ),
     ),
     SeamEntry(
+        payload="reactionary_entitlement",
+        wire_keys=("entitlement",),
+        scope=SeamScope.INSPECTOR,
+        owner_layer=(
+            "engine (SocialClass.entitlement, babylon.models.entities.social_class — "
+            "spec-071 Reactionary Subject, role-defaulted; read by FascistFactionSystem "
+            "for Fascist_Pull)"
+        ),
+        liveness_class=LivenessClass.DECLARED_CONDITIONAL,
+        liveness_condition=(
+            "requires the node to carry an 'entitlement' graph attribute; null for a "
+            "social_class-shaped fixture without one — never a fabricated 0.0"
+        ),
+        dtype="float",
+        read_paths=_INSPECTOR_EMITTERS,
+        spec_ref="AW3-R1 (epochs-vision-gap-audit.md Wave 3 item 2)",
+        notes=(
+            "Stake in the imperial order [0.0, 1.0] — a real pre-existing engine field "
+            "(role-defaulted: P=0.2, C_la=0.8, C_pb=0.7, L_u=0.0), newly EXPOSED on this "
+            "endpoint by this pass, same pattern as class_inequality (W1.4). Its sibling "
+            "'chauvinism' (also spec-071 Reactionary Subject, FascistFactionSystem) is "
+            "deliberately NOT registered here: it is real but lives on the org->LA "
+            "MEMBERSHIP edge, not the social_class node, so there is no single per-class "
+            "scalar to expose on this endpoint (see _social_class_inspector_fields's "
+            "docstring)."
+        ),
+    ),
+    SeamEntry(
+        payload="reactionary_volatility",
+        wire_keys=("volatility",),
+        scope=SeamScope.INSPECTOR,
+        owner_layer=(
+            "engine (SocialClass.volatility, babylon.models.entities.social_class — "
+            "spec-071 Reactionary Subject, role-defaulted; gates SPONTANEOUS_RIOT)"
+        ),
+        liveness_class=LivenessClass.DECLARED_CONDITIONAL,
+        liveness_condition=(
+            "requires the node to carry a 'volatility' graph attribute; null for a "
+            "social_class-shaped fixture without one — never a fabricated 0.0"
+        ),
+        dtype="float",
+        read_paths=_INSPECTOR_EMITTERS,
+        spec_ref="AW3-R1 (epochs-vision-gap-audit.md Wave 3 item 2)",
+        notes=(
+            "Disorder propensity [0.0, 1.0] — a real pre-existing engine field "
+            "(role-defaulted: L_u=0.8, else 0.0), newly EXPOSED on this endpoint by this "
+            "pass, same pattern as class_inequality (W1.4)."
+        ),
+    ),
+    SeamEntry(
         payload="survival_p_acquiescence",
         wire_keys=("p_acquiescence",),
         scope=SeamScope.INSPECTOR,

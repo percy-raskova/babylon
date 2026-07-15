@@ -89,3 +89,86 @@ class TestSQLiteBEANationalGDPSourceStillWorks:
         gdp = bea.get_gdp(TEST_YEAR)
         assert gdp is not None
         assert gdp > 1_000_000_000_000  # > $1T sanity floor
+
+
+# Wayne County scenario year — this is the year that has no pre-aggregated
+# ``fact_bea_national_industry`` row and no ``fact_qcew_county_rollup`` short
+# circuit, so both sources fall through to their expensive
+# SUM-across-all-US-counties fallback query on every call. Real-loop.spec.ts's
+# "Step resolves the tick" (and the two other tick-resolving e2e specs) call
+# ``DefaultThroughputCalculator.compute_commuter_adjusted_metrics`` once per
+# territory (81 for wayne_county), and each call reaches
+# ``DefaultMELTCalculator.get_melt(WAYNE_COUNTY_SCENARIO_YEAR)`` — before the
+# per-year cache below, that is 81 redundant fallback SUM queries per tick,
+# empirically ~300s wall-clock (see e2e regression 2026-07-15), blowing every
+# 30s resolve-tick test timeout. Caching per year turns 81 queries into 1.
+WAYNE_COUNTY_SCENARIO_YEAR = 2010
+
+
+class TestSQLiteBEANationalGDPSourceCachesPerYear:
+    """Regression guard for the 2026-07-15 ~300s resolve-tick hang.
+
+    ``get_gdp`` must not re-hit the database for a year it has already
+    resolved (the "All industries" id was already cached this way — the GDP
+    value itself was not, and its fallback branch is the expensive one).
+    """
+
+    def test_second_call_same_year_does_not_requery(self, session_factory):
+        calls = 0
+
+        def counting_factory():
+            nonlocal calls
+            calls += 1
+            return session_factory()
+
+        bea = SQLiteBEANationalGDPSource(counting_factory)
+
+        first = bea.get_gdp(WAYNE_COUNTY_SCENARIO_YEAR)
+        calls_after_first = calls
+        assert calls_after_first > 0, "the first call must open at least one session"
+
+        second = bea.get_gdp(WAYNE_COUNTY_SCENARIO_YEAR)
+
+        assert second == first
+        assert calls == calls_after_first, (
+            "a second get_gdp() call for an already-resolved year must not "
+            "open another session — this is the per-territory redundant "
+            "query the 2026-07-15 ~300s resolve-tick regression traced to"
+        )
+
+    def test_different_years_each_query_independently(self, session_factory):
+        """The cache must be keyed by year, not a blanket "already asked once" flag."""
+        bea = SQLiteBEANationalGDPSource(session_factory)
+
+        gdp_2010 = bea.get_gdp(2010)
+        gdp_2022 = bea.get_gdp(TEST_YEAR)
+
+        assert gdp_2010 is not None
+        assert gdp_2022 is not None
+        assert gdp_2010 != gdp_2022
+
+
+class TestSQLiteQCEWNationalEmploymentSourceCachesPerYear:
+    """Same per-year caching contract as the BEA GDP sibling above."""
+
+    def test_second_call_same_year_does_not_requery(self, session_factory):
+        calls = 0
+
+        def counting_factory():
+            nonlocal calls
+            calls += 1
+            return session_factory()
+
+        qcew = SQLiteQCEWNationalEmploymentSource(counting_factory)
+
+        first = qcew.get_national_employment(WAYNE_COUNTY_SCENARIO_YEAR)
+        calls_after_first = calls
+        assert calls_after_first > 0, "the first call must open at least one session"
+
+        second = qcew.get_national_employment(WAYNE_COUNTY_SCENARIO_YEAR)
+
+        assert second == first
+        assert calls == calls_after_first, (
+            "a second get_national_employment() call for an already-resolved "
+            "year must not open another session"
+        )

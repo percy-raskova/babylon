@@ -54,9 +54,17 @@ def test_build_economics_overrides_wires_melt_calculator_with_session() -> None:
     assert leontief_session is None
 
 
+@pytest.mark.requires_reference_db
 def test_build_economics_overrides_wires_leontief_pipeline_with_event_bus_and_defines() -> None:
     """Program 17 / Item 1a: Leontief overrides + session are wired when
-    event_bus and defines are also provided alongside session_factory."""
+    event_bus and defines are also provided alongside session_factory.
+
+    ``requires_reference_db``: constructing the Leontief pipeline loads the BEA
+    industry dimension (``dim_bea_industry``), a table the file-exists guard
+    below cannot detect (the DB-free dev CI tier ships a stub SQLite that has
+    the file but not the table). Deselected on ``test:unit-ci``; runs locally
+    and in main/nightly against the ci-data-v1 subset.
+    """
     pytest.importorskip("sqlalchemy")
     if not SQLITE_REF.exists():
         pytest.skip(f"SQLite reference DB missing at {SQLITE_REF}")
@@ -88,6 +96,7 @@ def test_build_economics_overrides_wires_leontief_pipeline_with_event_bus_and_de
             leontief_session.close()
 
 
+@pytest.mark.requires_reference_db
 def test_run_passes_gamma_calculator_to_service_container(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,

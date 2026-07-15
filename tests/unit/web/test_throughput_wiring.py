@@ -17,10 +17,11 @@ This suite pins three things (matching the pattern of
    despite the empty ``fips_codes`` gate on ``_build_capital_calculator``,
    this call is NOT reference-DB-free — it eagerly builds the Leontief rent
    services, which load the BEA industry dimension (``dim_bea_industry``)
-   regardless of fips. So these three wiring assertions are guarded by
-   :data:`_requires_bea_industry` and skip on the DB-free unit shard (owner
-   ruling: CI/tests never touch the babylon-data drive), running wherever the
-   reference DB is present. They assert DI object identity, not query results.
+   regardless of fips. So these three wiring assertions carry
+   ``@pytest.mark.requires_reference_db``: deselected on the DB-free dev CI
+   tier (``test:unit-ci`` filters ``not requires_reference_db``), run locally
+   and in main/nightly against the ci-data-v1 subset. They assert DI object
+   identity, not query results.
 2. ``_carry_tick_dynamics_flows`` re-stamps
    ``tick_throughput_position``/``tick_supply_chain_depth`` at a year
    boundary AND carries them forward between boundaries — the exact
@@ -51,48 +52,7 @@ pytestmark = pytest.mark.unit
 WAYNE_FIPS = "26163"
 
 
-def _reference_db_has_bea_industry() -> bool:
-    """Report whether the normalized reference DB carries ``dim_bea_industry``.
-
-    The overrides-wiring tests below call ``_bridge_economics_overrides(())``,
-    which eagerly constructs the Leontief rent services — and that construction
-    loads the BEA industry dimension (``dim_bea_industry``) regardless of
-    ``fips_codes``. The suite's original "empty fips ⇒ no reference-DB access"
-    premise is therefore false. CI's DB-free unit shard (owner ruling: CI/tests
-    never touch the babylon-data drive) has no such table, so these three
-    DI-wiring assertions skip there and run wherever the reference DB is present
-    (local dev + integration legs). No engine-math coverage is lost — the tests
-    assert object identity in the overrides dict, not query results.
-
-    :returns: ``True`` iff a ``dim_bea_industry`` table is queryable; ``False``
-        on any DB/OS-level unavailability (missing table, missing DB file).
-    """
-    from sqlalchemy import text
-    from sqlalchemy.exc import SQLAlchemyError
-
-    from babylon.reference.database import get_normalized_session_factory
-
-    try:
-        session_factory = get_normalized_session_factory()
-        with session_factory() as session:
-            row = session.execute(
-                text(
-                    "SELECT name FROM sqlite_master WHERE type='table' AND name='dim_bea_industry'"
-                )
-            ).first()
-        return row is not None
-    except (SQLAlchemyError, OSError):
-        return False
-
-
-_requires_bea_industry = pytest.mark.skipif(
-    not _reference_db_has_bea_industry(),
-    reason="reference DB lacks dim_bea_industry (DB-free unit shard); "
-    "overrides wiring is verified wherever the reference DB is present",
-)
-
-
-@_requires_bea_industry
+@pytest.mark.requires_reference_db
 class TestBridgeEconomicsOverridesWiresThroughputCalculator:
     """``_bridge_economics_overrides`` must construct a real throughput_calculator."""
 

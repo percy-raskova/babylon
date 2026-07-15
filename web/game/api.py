@@ -664,6 +664,22 @@ def game_state_apparatus(request: Request, game_id: str) -> JsonResponse:
 
 @api_view(["GET"])
 @permission_classes([IsAuthenticated])
+def game_doctrine_tree(request: Request, game_id: str) -> JsonResponse:
+    """GET /api/games/{id}/doctrine-tree/ - Read-only Doctrine Tree canvas.
+
+    Static game-data (the 11-node MVP tree) — the same payload for every
+    session, no engine tick required.
+    """
+    session = _get_session_or_none(game_id, request.user.id)
+    if session is None:
+        return _error("Game not found", http_status=404)
+    bridge = _get_bridge()
+    data = bridge.get_doctrine_tree(uuid.UUID(str(session.id)))
+    return _envelope(data, tick=session.current_tick, session_id=str(session.id))
+
+
+@api_view(["GET"])
+@permission_classes([IsAuthenticated])
 def game_journal(request: Request, game_id: str) -> JsonResponse:
     """GET /api/games/{id}/journal/ - Journal left-panel dashboard."""
     session = _get_session_or_none(game_id, request.user.id)

@@ -72,6 +72,16 @@ describe("TakeoverOverlay", () => {
     await waitFor(() => expect(screen.getByTestId("network-empty")).toBeInTheDocument());
   });
 
+  it("opens the Doctrine takeover and renders DoctrineTakeover content from the doctrine-tree panel fixture", async () => {
+    useStore.getState().ui.openTakeover("doctrine");
+    render(<TakeoverOverlay gameId={DEFAULT_GAME_ID} />);
+
+    expect(screen.getByTestId("takeover-overlay")).toHaveAttribute("data-takeover", "doctrine");
+    await waitFor(() =>
+      expect(screen.getByTestId("doctrine-node-class_consciousness")).toBeInTheDocument(),
+    );
+  });
+
   it("closes via the close button", async () => {
     useStore.getState().ui.openTakeover("dialectic");
     render(<TakeoverOverlay gameId={DEFAULT_GAME_ID} />);
@@ -115,5 +125,15 @@ describe("TakeoverOverlay", () => {
     useStore.getState().ui.closeTakeover();
     await waitFor(() => expect(screen.queryByTestId("takeover-overlay")).not.toBeInTheDocument());
     expect(useStore.getState().panels.network.mounted).toBe(false);
+  });
+
+  it("mounts the doctrineTree panel while the Doctrine takeover is open, unmounts it on close", async () => {
+    useStore.getState().ui.openTakeover("doctrine");
+    render(<TakeoverOverlay gameId={DEFAULT_GAME_ID} />);
+    await waitFor(() => expect(useStore.getState().panels.doctrineTree.mounted).toBe(true));
+
+    useStore.getState().ui.closeTakeover();
+    await waitFor(() => expect(screen.queryByTestId("takeover-overlay")).not.toBeInTheDocument());
+    expect(useStore.getState().panels.doctrineTree.mounted).toBe(false);
   });
 });

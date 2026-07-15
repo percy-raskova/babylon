@@ -16,8 +16,9 @@
 import type { StateCreator } from "zustand";
 import type { RootState } from "../types";
 
-/** The full-screen takeover surfaces (spec-110 B5; `network` added AW4-R2), or none open. */
-export type TakeoverKind = "wire" | "chronicle" | "dialectic" | "network";
+/** The full-screen takeover surfaces (spec-110 B5; `network` added AW4-R2;
+ *  `doctrine` added Epoch 3 Wave 6 Phase 0), or none open. */
+export type TakeoverKind = "wire" | "chronicle" | "dialectic" | "network" | "doctrine";
 
 /** `BottomDrawer`'s four states (architecture §1.4): closed, or one of its three contents. */
 export type BottomDrawerState = "none" | "trends" | "events" | "economy";

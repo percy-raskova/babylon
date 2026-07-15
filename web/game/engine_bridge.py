@@ -3136,6 +3136,56 @@ class EngineBridge:
 
         return _build_state_apparatus_dashboard(state, organizations, recent_actions)
 
+    def get_doctrine_tree(
+        self,
+        session_id: UUID,  # noqa: ARG002 — reserved for per-session acquired overlay; tree is static game-data today
+    ) -> dict[str, Any]:
+        """Return the read-only Doctrine Tree canvas payload (the 5th takeover).
+
+        The Doctrine Tree (``babylon.domain.doctrine``, Epoch 3 Wave 6 Phase
+        0 data foundation) is static game-data — the same 11-node MVP tree
+        for every session, exactly like ``SCENARIO_CATALOG`` — not
+        session-derived state, so unlike sibling dashboards this method
+        never calls :meth:`hydrate_state`. ``session_id`` is accepted only
+        for signature parity with every other bridge dashboard method (the
+        view always passes it) and is reserved for a future per-session
+        acquired-node overlay once ``DoctrineSystem``/acquisition/TL-spend
+        wiring lands — those depend on six pending owner rulings and are
+        explicitly out of scope for this read-only canvas.
+
+        ``acquired_ids`` is always ``[]``: no engine system yet mutates a
+        session's acquired-doctrine set, so an honest empty is the only
+        truthful answer (Constitution III.11) — never a fabricated
+        partial-progress list. ``tags`` mirrors that same honesty: with
+        nothing acquired, the player's current tag values ARE the MVP
+        corpus's declared starting values (:func:`starting_tags`), not
+        :func:`~babylon.domain.doctrine.tags.compute_tags` run over an
+        empty acquired set (which would sum to all-zero — a real function,
+        wrong question, see that module's docstring on why the two are not
+        interchangeable).
+
+        Args:
+            session_id: The game session UUID (unused today; see above).
+
+        Returns:
+            Dict with ``root_id`` (str), ``nodes`` (list of
+            ``DoctrineNode.model_dump(mode="json")`` dicts — id, name,
+            tier, parents, description, tag_deltas, cost_tl, trunk,
+            unlocks, warning, is_trap, trap_condition, narrative, is_goal),
+            ``acquired_ids`` (``[]``), and ``tags`` (``dict[str, int]``
+            keyed by :class:`~babylon.models.enums.doctrine.DoctrineTag`
+            value).
+        """
+        from babylon.domain.doctrine import load_doctrine_tree, starting_tags
+
+        tree = load_doctrine_tree()
+        return {
+            "root_id": tree.root_id,
+            "nodes": [node.model_dump(mode="json") for node in tree.nodes.values()],
+            "acquired_ids": [],
+            "tags": {tag.value: value for tag, value in starting_tags().items()},
+        }
+
     # ------------------------------------------------------------------ #
     # AW4-R1 (audit Wave 4, "Topology & the Gramscian Wire"): Spatial
     # Multi-Scale — org-network graph + hypergraph-community stub.

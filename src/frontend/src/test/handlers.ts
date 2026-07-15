@@ -25,6 +25,7 @@ import {
   makeFieldStatePayload,
   makeMapHistoryPayload,
   makeOrgNetworkPayload,
+  makeDoctrineTreePayload,
 } from "./fixtures";
 import type { GameSnapshot } from "@/types/game";
 
@@ -293,6 +294,14 @@ export const handlers = [
   http.get("/api/games/:id/orgs/network/", () => {
     logRequest("GET orgs:network");
     return HttpResponse.json({ status: "ok", data: makeOrgNetworkPayload() });
+  }),
+
+  // The Doctrine Tree takeover (read-only canvas, Epoch 3 Wave 6 Phase 0) —
+  // static game-data, the real 11-node MVP tree by default (no honest
+  // "empty" state exists for it, unlike the network handler above).
+  http.get("/api/games/:id/doctrine-tree/", () => {
+    logRequest("GET doctrine-tree");
+    return HttpResponse.json({ status: "ok", data: makeDoctrineTreePayload() });
   }),
 
   // ---- Action Composer: verb targets + submit --------------------------

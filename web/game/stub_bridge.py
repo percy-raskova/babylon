@@ -912,6 +912,27 @@ class StubEngineBridge:
     def get_state_apparatus_dashboard(self, _session_id: UUID) -> dict[str, Any]:
         return {}
 
+    def get_doctrine_tree(self, _session_id: UUID) -> dict[str, Any]:
+        """Return the same static Doctrine Tree the real bridge serves.
+
+        Unlike every stub dashboard above (which return an honest ``{}``
+        because they'd otherwise need a real engine tick), the Doctrine
+        Tree is static game-data, not session state — identical to how
+        ``api.scenario_list`` serves ``SCENARIO_CATALOG`` regardless of
+        which bridge is live. Calling the same loader here (rather than a
+        hand-duplicated payload) keeps stub/real parity automatic as the
+        11-node MVP corpus evolves.
+        """
+        from babylon.domain.doctrine import load_doctrine_tree, starting_tags
+
+        tree = load_doctrine_tree()
+        return {
+            "root_id": tree.root_id,
+            "nodes": [node.model_dump(mode="json") for node in tree.nodes.values()],
+            "acquired_ids": [],
+            "tags": {tag.value: value for tag, value in starting_tags().items()},
+        }
+
     def get_journal_dashboard(self, _session_id: UUID) -> dict[str, Any]:
         return {}
 

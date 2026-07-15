@@ -33,6 +33,7 @@
 import { useEffect, useState } from "react";
 import { useStore, type MapReplayStatus } from "@/store";
 import { FloatingPanel } from "./FloatingPanel";
+import { RAIL_RIGHT_W } from "./layout";
 import { keyButtonClass } from "./installerKit";
 import { prefersReducedMotion } from "@/components/map/layers/criticalPulse";
 import {
@@ -276,6 +277,7 @@ export function RadarLoopPanel({ gameId }: RadarLoopPanelProps): React.JSX.Eleme
       title="Radar Loop"
       collapsed={!radarLoopOpen}
       onToggle={toggleRadarLoop}
+      width={RAIL_RIGHT_W}
       testId="radar-loop-panel"
     >
       {active ? (

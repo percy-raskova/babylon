@@ -59,7 +59,7 @@ const SNAPSHOT = {
   territories: [
     {
       id: "t1",
-      name: "Wayne",
+      name: "Wayne County",
       heat: 0.3,
       rent_level: 0.5,
       biocapacity: 0.4,

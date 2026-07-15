@@ -2,9 +2,32 @@
 # What exists vs what's planned - KEEP THIS UPDATED
 
 meta:
-  version: "2.31.0"  # 2.28.0 lives on feature/19-emergent-class-partition (Program 19 Phase 0+1)
+  version: "2.32.0"  # 2.28.0 lives on feature/19-emergent-class-partition (Program 19 Phase 0+1)
   updated: "2026-07-15"
   truth_status: |
+    (2026-07-15 ~2pm) DT LAWVERIAN PHASE 0 + UNGATED LENS PAIR LANDED.
+    Owner ruled Option C for the DT tag pair NATIONAL_CHAUVINISM<->INTERNATIONALISM AND
+    "abstract it to apply to whatever" (Opus subagents authorized for this one task). A 9-agent
+    Opus workflow (surveys + 3 design attempts + synthesis + adversarial critique) designed THE
+    DIVERGENCE CHANNEL: a shadow reading pairing an AUTHORED/off-graph pole with a MATERIAL pole,
+    surfacing their DIVERGENCE. The critique returned NEEDS-REVISION/OVER-ABSTRACTED (the "3
+    instances" are 1 real=DT-unbuilt, 1 null=P19, 1 refusal=EH). Escalated two calls to owner:
+    SCOPE = "design general, build concrete" (ADR is the north star; Phase-1 code = 3 additive
+    fields + concrete DT shadow instance + honest-null; gating-ledger/generalized-sentinel/FSM
+    DEFERRED until a 2nd real instance — rule of three); GOVERNANCE = propose Amendment T
+    (Article VIII, observes-only) for BD ratification. Landed cc02a09d: ADR072 (+ index), DT
+    proposal Lawverian section -> Divergence Channel instance #2, EH proposal "Relation to the
+    Divergence Channel" (honestly scoped OUT, display-layer Phase-3 seam named). Critique fixes
+    folded in: observational-static not Amendment-S-motion; purpose-named DivergenceReading not
+    GapReading-punning; SOLIDARITY=internationalism-UNPROVEN (Aleksandrov) proxy; net-new
+    ORGANIZATION_COMPUTED_FIELDS + conditional byte-identity. AWAITING BD: accept/decline
+    Amendment T. Also landed 0b775f52: the wage_pressure + dispossession_intensity /map/ lenses
+    (ungated frontend #87/#88) WITH the missing round-trip carry (_carry_reserve_army_dispossession
+    — they were TERRITORY_EXCLUDED_FIELDS, so blank on every resolved tick without it; recompute,
+    bridge-only, qa:regression 5/5) + a data-driven _aggregate_hex_features refactor. CrisisTimeline
+    HUD shipped bcc63c83 (#86). Ungated frontend surface: 3 of 4 scout targets done; legitimation
+    "faith in the system" badge (#2) is the last one.
+
     (2026-07-15 ~11:30am) RATIFICATION MORNING. Owner APPROVED both program proposals
     (Epistemic Horizon + Doctrine Tree — Waves 5b/6 UNGATED) and directed a <=50-Sonnet-agent
     history sweep over the local marxists.org + ProleWiki mirrors to ground the mechanics.

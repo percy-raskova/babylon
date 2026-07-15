@@ -2,9 +2,31 @@
 # What exists vs what's planned - KEEP THIS UPDATED
 
 meta:
-  version: "2.27.0"
+  version: "2.29.0"  # 2.28.0 lives on feature/19-emergent-class-partition (Program 19 Phase 0+1)
   updated: "2026-07-14"
   truth_status: |
+    (2026-07-14 ~11pm) EPOCHS WAVE 2 COMPLETE + WAVE 3 SCOPED. Wave 2 landed in
+    3 rounds on feature/epochs-wave1-spine (R1 c090d48c/31f4b42b economy
+    dashboard + Gap-1 seam rows; R2 b92de750/d50f915d real throughput wiring +
+    3 lenses incl. first categorical territory_type, liveness partition honest
+    at 1-of-7; R3 e284a65e/ef29cb4e class_snapshot history + SurvivalDuelPanel
+    with uncapped server-filtered rupture markers). Full mise run check green
+    on the branch: 9786 passed / 16 skipped / 4 xfailed; qa:regression 5/5
+    byte-identical throughout. Owner then asked to fold the two _inbox
+    visualization briefs (lawvere + weather) into the frontend workflow →
+    verified every claim against code (3 read-only sweeps) and scoped
+    reports/wave3-weather-implementation-map.md: grammar laws (R0), field-seam
+    serialization under the new field_state name (R1 — note the
+    contradiction_field System-18 naming collision), vector lens kind + storm
+    markers + front lines v1 + bifurcation gauge v1 (R2 — zero new npm deps),
+    radar-loop hex history off v_hex_state_asof (R3), deterministic forecast
+    overlay (R4, owner ruling needed). Key corrections vs the briefs:
+    production fields = {exploitation, atomization} only; kappa curvature never
+    computed live; community_memberships never seeded (hull gauge blocked);
+    dead route GET /hypergraph/communities/ calls a nonexistent bridge method
+    (guaranteed 500). Program 19 Phase 0+1 sits on its own stacked branch;
+    front-lines-v2/turbulence instruments ride after it merges.
+
     (2026-07-14 ~3pm) PROGRAM 17 WAVE 1 + SENTINELS LANDED ON THE BRANCH,
     REVIEWED, VERIFIED. feature/17-living-engine (~38 commits over dev@28bef52f)
     holds: Wave 1 "Light the Seam" (per-county Φ lit end-to-end, events 14→34,

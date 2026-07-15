@@ -71,6 +71,15 @@ content for the nationwide scenario (Amendment R execution, task #49). Do not co
 
 ## Execution rounds (single-writer on engine_bridge.py — backend items sequence)
 
+> **STATUS 2026-07-14: ALL THREE ROUNDS LANDED** on `feature/epochs-wave1-spine` —
+> R1 `c090d48c`/`31f4b42b`, R2 `b92de750`/`d50f915d`, R3 `e284a65e`/`ef29cb4e`
+> (backend/frontend per round; R3 frontend also rewired rupture markers to the
+> uncapped server-filtered `ruptures` array — single fetch, defense-in-depth
+> client re-filter). Gates at close: 909/909 vitest + tsc/eslint/prettier,
+> scoped python suites green, seam sentinel exit 0, qa:regression 5/5
+> byte-identical. Liveness partition honest at "1 of 7 live"
+> (territory_type MUST_BE_LIVE added in R2).
+
 - **Round 1** — ∥ two agents:
   - *Backend-1 (W2.1+W2.2b):* Gap-1 registration (24 rows: A 5 live + B 3 frozen + C 7 + D 9
     impossible; the 2 throughput attrs register in Round 2 with the real wiring), Group A+B

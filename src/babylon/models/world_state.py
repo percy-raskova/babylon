@@ -111,6 +111,15 @@ TERRITORY_EXCLUDED_FIELDS: Final[frozenset[str]] = frozenset(
         # it transient (like the Feature-021 outputs above) so it is dropped
         # on reconstruction. (verb-dispatch engine, §8.3 landmine.)
         "infrastructure",
+        # Epistemic Horizon Phase 1 shadow outputs (EpistemicHorizonSystem,
+        # runs last in _DEFAULT_SYSTEMS) — mass_receptivity/intel_confidence/
+        # vision_state are non-tick_-prefixed transient per-tick computed
+        # attrs, not Territory model fields, so they hit the same
+        # extra="forbid" landmine as the entries above and are dropped here
+        # rather than tick_-prefix-filtered (they don't carry that prefix).
+        "mass_receptivity",
+        "intel_confidence",
+        "vision_state",
     }
 )
 

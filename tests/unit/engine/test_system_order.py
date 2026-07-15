@@ -80,6 +80,7 @@ class TestMaterialistCausalityOrder:
             "field_derivative",  # 20. FieldDerivativeSystem (Feature 002)
             "CollapseTransition",  # 20.5. CollapseTransitionSystem (Spec 070 FR-023)
             "edge_transition",  # 21. EdgeTransitionSystem (Feature 002)
+            "Epistemic Horizon",  # 22. EpistemicHorizonSystem (Epistemic Horizon Phase 1 shadow)
         ]
         actual_order = [s.name for s in _DEFAULT_SYSTEMS]
         assert actual_order == expected_order, (
@@ -164,13 +165,32 @@ class TestMaterialistCausalityOrder:
             "ContradictionSystem must be registered"
         )
 
-    def test_all_twenty_six_systems_present(self) -> None:
-        """All 26 systems must be registered.
+    def test_all_twenty_seven_systems_present(self) -> None:
+        """All 27 systems must be registered.
 
         13 core + 2 Volume I + 1 community + 1 lifecycle + 3 field topology
         + 1 OODA + 1 substrate (Spec 062 US7) + 3 Spec-070 systems
         (FactionInfluenceSystem at 14.5 + SovereigntySystem at 17.5 +
         CollapseTransitionSystem at 20.5) + 1 Spec-071 system
-        (FascistFactionSystem at 17.4).
+        (FascistFactionSystem at 17.4) + 1 Epistemic Horizon Phase 1 system
+        (EpistemicHorizonSystem, last).
         """
-        assert len(_DEFAULT_SYSTEMS) == 26, f"Expected 26 systems, got {len(_DEFAULT_SYSTEMS)}"
+        assert len(_DEFAULT_SYSTEMS) == 27, f"Expected 27 systems, got {len(_DEFAULT_SYSTEMS)}"
+
+    def test_epistemic_horizon_runs_last(self) -> None:
+        """EpistemicHorizonSystem must be the LAST system in _DEFAULT_SYSTEMS.
+
+        WHY: it computes Mass Receptivity / Intel Confidence from this
+        tick's ``p_acquiescence`` (SurvivalSystem, position 15) and
+        ``class_consciousness`` (ConsciousnessSystem, position 17) — both
+        already mutated earlier in the SAME tick. Running last means it
+        observes the fully-settled tick rather than last tick's stale
+        values, and (Phase 1 SHADOW ONLY) writes read-only attrs nothing
+        else in the engine consumes yet, so its position cannot perturb
+        any other system's inputs.
+        """
+        assert _DEFAULT_SYSTEMS[-1].name == "Epistemic Horizon", (
+            "EpistemicHorizonSystem must run last — it observes the fully-mutated "
+            "tick (this tick's p_acquiescence/class_consciousness), not last "
+            "tick's stale values."
+        )

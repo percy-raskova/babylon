@@ -50,6 +50,7 @@ from babylon.engine.systems.decomposition import DecompositionSystem
 from babylon.engine.systems.dispossession_events import DispossessionEventSystem
 from babylon.engine.systems.economic import ImperialRentSystem
 from babylon.engine.systems.edge_transition import EdgeTransitionSystem
+from babylon.engine.systems.epistemic_horizon import EpistemicHorizonSystem
 from babylon.engine.systems.faction_influence import FactionInfluenceSystem
 from babylon.engine.systems.field_derivative import FieldDerivativeSystem
 from babylon.engine.systems.ideology import ConsciousnessSystem
@@ -366,6 +367,10 @@ class SimulationEngine:
 # 19. ContradictionFieldSystem - Contradiction field computation (Feature 002)
 # 20. FieldDerivativeSystem - Spatial/temporal derivatives + principal (Feature 002)
 # 21. EdgeTransitionSystem - Compound predicates + edge mode transitions (Feature 002)
+# 22. EpistemicHorizonSystem - Fog-of-war M_r/I_c shadow (Epistemic Horizon Phase 1);
+#     runs LAST because it observes the fully-mutated tick (reads this tick's
+#     p_acquiescence/class_consciousness, not last tick's stale values) and
+#     writes read-only shadow attrs nothing else in the engine consumes yet.
 _DEFAULT_SYSTEMS: list[System] = [
     # --- Material Base (positions 1–13, plus Substrate at 2.5) ---
     VitalitySystem(),  # 1. Biological cost + death
@@ -396,6 +401,7 @@ _DEFAULT_SYSTEMS: list[System] = [
     FieldDerivativeSystem(),  # 20. Spatial/temporal derivatives + principal (Feature 002)
     CollapseTransitionSystem(),  # 20.5. Spec-070 sovereign-collapse + territory partition
     EdgeTransitionSystem(),  # 21. Compound predicates + edge mode transitions (Feature 002)
+    EpistemicHorizonSystem(),  # 22. Fog-of-war M_r/I_c shadow (Epistemic Horizon Phase 1) — LAST, observes fully-mutated tick
 ]
 
 
@@ -438,6 +444,7 @@ CONSEQUENCE_SYSTEMS: Final[frozenset[type[System]]] = frozenset(
         ContradictionFieldSystem,
         FieldDerivativeSystem,
         EdgeTransitionSystem,
+        EpistemicHorizonSystem,  # Epistemic Horizon Phase 1 shadow (observes consequences)
     }
 )
 

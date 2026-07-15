@@ -653,7 +653,7 @@ directory_map:
       key_files:
         - "simulation_engine.py: SimulationEngine + step(); _DEFAULT_SYSTEMS is the source of truth for system order"
         - "services.py: ServiceContainer (concrete DI; constructs persistence lazily at the composition factory)"
-        - "systems/: the 26 Systems in materialist-causality order"
+        - "systems/: the 27 Systems in materialist-causality order"
         - "actions/: verb resolvers (VERB_RESOLVERS)"
         - "headless_runner/: the composition root (engine + persistence wired here)"
         - "observers/: SessionRecorder (canonical replay seam) + jsonl_recorder.py"

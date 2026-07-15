@@ -715,6 +715,30 @@ class TestTerritoryTransientAttrsAreDropped:
         assert not hasattr(restored_territory, "habitability")
         assert not hasattr(restored_territory, "dispossession_intensity")
 
+    def test_from_graph_drops_epistemic_horizon_shadow_attrs(self) -> None:
+        # EpistemicHorizonSystem (Epistemic Horizon Phase 1 shadow) writes
+        # mass_receptivity/intel_confidence/vision_state onto territory
+        # nodes; none is a Territory model field (extra="forbid"), so
+        # from_graph must drop them rather than raise.
+        territory = Territory(
+            id="T001",
+            name="District",
+            sector_type=SectorType.INDUSTRIAL,
+            profile=OperationalProfile.LOW_PROFILE,
+        )
+        state = WorldState(tick=0, territories={"T001": territory})
+        graph = state.to_graph()
+        graph.nodes["T001"]["mass_receptivity"] = 0.56
+        graph.nodes["T001"]["intel_confidence"] = 0.66
+        graph.nodes["T001"]["vision_state"] = "mud"
+
+        restored = WorldState.from_graph(graph, tick=1)  # must not raise
+
+        restored_territory = restored.territories["T001"]
+        assert not hasattr(restored_territory, "mass_receptivity")
+        assert not hasattr(restored_territory, "intel_confidence")
+        assert not hasattr(restored_territory, "vision_state")
+
 
 class TestFactionRoundTrip:
     """Spec-109 A6: BalkanizationFaction nodes + INFLUENCES/CLAIMS edge

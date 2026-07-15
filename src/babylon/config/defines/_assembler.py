@@ -38,6 +38,7 @@ from babylon.config.defines.endgame import (
     EndgameDefines,
     InitialDefines,
 )
+from babylon.config.defines.epistemic_horizon import EpistemicHorizonDefines
 from babylon.config.defines.external_data import (
     ArcGISDefines,
     ExternalDataDefines,
@@ -118,6 +119,7 @@ class GameDefines(BaseModel):
     - bifurcation: Bifurcation topology analysis coefficients (Feature 033)
     - infra_terrain: Terrain classification and biocapacity coefficients (Feature 036)
     - infrastructure: Infrastructure capacity and internet coefficients (Feature 036)
+    - epistemic_horizon: Fog-of-war Phase 1 shadow coefficients (Epistemic Horizon program)
     """
 
     model_config = ConfigDict(frozen=True)
@@ -176,6 +178,8 @@ class GameDefines(BaseModel):
     negotiate: NegotiateDefines = Field(default_factory=NegotiateDefines)
     # Reactionary Subject (spec-071)
     reactionary: ReactionaryDefines = Field(default_factory=ReactionaryDefines)
+    # Epistemic Horizon — Phase 1 shadow (project/research/epistemic-horizon-program-proposal.md)
+    epistemic_horizon: EpistemicHorizonDefines = Field(default_factory=EpistemicHorizonDefines)
 
     # Legacy flat attributes for backward compatibility
     # These delegate to the nested structure
@@ -301,6 +305,7 @@ class GameDefines(BaseModel):
             move=MoveDefines(**data.get("move", {})),
             negotiate=NegotiateDefines(**data.get("negotiate", {})),
             reactionary=ReactionaryDefines(**data.get("reactionary", {})),
+            epistemic_horizon=EpistemicHorizonDefines(**data.get("epistemic_horizon", {})),
         )
 
     @classmethod

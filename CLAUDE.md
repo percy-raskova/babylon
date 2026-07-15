@@ -56,7 +56,7 @@ Three-layer local system, no external servers. Full map: `ai/architecture.yaml`.
 
 ## Engine
 
-`SimulationEngine.run_tick(graph, services, context)` runs 26 Systems in strict materialist-causality
+`SimulationEngine.run_tick(graph, services, context)` runs 27 Systems in strict materialist-causality
 order — **source of truth: `simulation_engine._DEFAULT_SYSTEMS`**; annotated order in
 `ai/architecture.yaml`. The three phases:
 
@@ -64,8 +64,9 @@ order — **source of truth: `simulation_engine._DEFAULT_SYSTEMS`**; annotated o
    ReserveArmy, Community, Lifecycle, Solidarity, ImperialRent, Dispossession, Decomposition,
    ControlRatio, Metabolism.
 2. **Action** (@14): OODASystem — organizations observe + act.
-3. **Consequences** (14.5–21): FactionInfluence, Survival, Struggle, Consciousness, FascistFaction,
-   Sovereignty, Contradiction, ContradictionField, FieldDerivative, CollapseTransition, EdgeTransition.
+3. **Consequences** (14.5–22): FactionInfluence, Survival, Struggle, Consciousness, FascistFaction,
+   Sovereignty, Contradiction, ContradictionField, FieldDerivative, CollapseTransition, EdgeTransition,
+   EpistemicHorizon (Phase 1 shadow — Epistemic Horizon program; runs last, observes-only, no masking/gating yet).
 
 Key modules: `engine/services.py` (concrete ServiceContainer; the DI *protocol* is
 `kernel/services.py`), `kernel/event_bus.py` (plain-str types; the `EventType` enum — 79 values —

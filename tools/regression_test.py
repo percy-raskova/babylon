@@ -790,7 +790,12 @@ def compare_baselines(
         diffs.append(
             f"WARNING: defines_hash changed ({expected.defines_hash} -> {actual.defines_hash})"
         )
-        diffs.append("  This may indicate GameDefines parameter changes")
+        # The continuation line MUST carry the WARNING prefix too: the
+        # passed-filter below treats any non-WARNING diff as a failure, and an
+        # unprefixed continuation turned a hash-only (advisory) change into a
+        # spurious 5/5 FAIL on 2026-07-15 when a new GameDefines category
+        # landed with byte-identical tick values.
+        diffs.append("WARNING:   This may indicate GameDefines parameter changes")
 
     # Compare checkpoints
     min_checkpoints = min(len(expected.checkpoints), len(actual.checkpoints))

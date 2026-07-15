@@ -38,6 +38,7 @@ from babylon.config.defines.endgame import (
     EndgameDefines,
     InitialDefines,
 )
+from babylon.config.defines.epistemic_horizon import EpistemicHorizonDefines
 from babylon.config.defines.external_data import (
     ArcGISDefines,
     ExternalDataDefines,
@@ -94,6 +95,7 @@ __all__ = [
     "EconomyDefines",
     "EdgeTransitionDefines",
     "EndgameDefines",
+    "EpistemicHorizonDefines",
     "ExternalDataDefines",
     "GameDefines",
     "InfraTerrainDefines",

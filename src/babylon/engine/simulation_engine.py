@@ -48,6 +48,7 @@ from babylon.engine.systems.contradiction_field import ContradictionFieldSystem
 from babylon.engine.systems.control_ratio import ControlRatioSystem
 from babylon.engine.systems.decomposition import DecompositionSystem
 from babylon.engine.systems.dispossession_events import DispossessionEventSystem
+from babylon.engine.systems.doctrine import DoctrineSystem
 from babylon.engine.systems.economic import ImperialRentSystem
 from babylon.engine.systems.edge_transition import EdgeTransitionSystem
 from babylon.engine.systems.epistemic_horizon import EpistemicHorizonSystem
@@ -390,6 +391,10 @@ _DEFAULT_SYSTEMS: list[System] = [
     # --- Action Phase (position 14) — Spec 056 F6=α reorder ---
     OODASystem(),  # 14. Organizations observe + act (Feature 032)
     FactionInfluenceSystem(),  # 14.5. Spec-070 FR-021 winning-Faction resolution
+    DoctrineSystem(),  # 14.7. Per-org Doctrine Tree state (owner-ratified 2026-07-15);
+    #        shadow: writes org doctrine state (acquire/decay/traps). Feedback into
+    #        bifurcation/consciousness is wired in Unit 6. Byte-safe: the qa:regression
+    #        scenarios carry no organization nodes, so this is a no-op there.
     # --- Consequences (positions 15–21) ---
     SurvivalSystem(),  # 15. Risk assessment
     StruggleSystem(),  # 16. Action/Revolt
@@ -445,6 +450,7 @@ CONSEQUENCE_SYSTEMS: Final[frozenset[type[System]]] = frozenset(
         FieldDerivativeSystem,
         EdgeTransitionSystem,
         EpistemicHorizonSystem,  # Epistemic Horizon Phase 1 shadow (observes consequences)
+        DoctrineSystem,  # Doctrine Tree per-org state (owner-ratified 2026-07-15)
     }
 )
 

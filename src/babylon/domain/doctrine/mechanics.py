@@ -35,7 +35,9 @@ class DoctrineExpressionError(ValueError):
 
 
 #: Comparison operators the DSL supports, longest-token-first for the tokenizer.
-_COMPARISONS: dict[str, Callable[[int, int], bool]] = {
+#: Left operand is a tag total (``float`` accumulator or ``int``); right is the
+#: literal ``int`` threshold from the condition string.
+_COMPARISONS: dict[str, Callable[[float, int], bool]] = {
     "<=": lambda a, b: a <= b,
     ">=": lambda a, b: a >= b,
     "==": lambda a, b: a == b,
@@ -83,7 +85,7 @@ class _Parser:
     remaining input.
     """
 
-    def __init__(self, tokens: list[str], tags: Mapping[DoctrineTag, int], expr: str) -> None:
+    def __init__(self, tokens: list[str], tags: Mapping[DoctrineTag, float], expr: str) -> None:
         self._tokens = tokens
         self._i = 0
         self._tags = tags
@@ -156,7 +158,7 @@ class _Parser:
         return op(self._tags.get(tag, 0), threshold)
 
 
-def evaluate_trap_condition(condition: str, tags: Mapping[DoctrineTag, int]) -> bool:
+def evaluate_trap_condition(condition: str, tags: Mapping[DoctrineTag, float]) -> bool:
     """Return whether ``condition`` holds against the current doctrine ``tags``.
 
     :param condition: A ``trap_condition`` expression in the DSL documented in

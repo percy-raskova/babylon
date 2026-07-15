@@ -2,9 +2,42 @@
 # What exists vs what's planned - KEEP THIS UPDATED
 
 meta:
-  version: "2.29.0"  # 2.28.0 lives on feature/19-emergent-class-partition (Program 19 Phase 0+1)
-  updated: "2026-07-14"
+  version: "2.30.0"  # 2.28.0 lives on feature/19-emergent-class-partition (Program 19 Phase 0+1)
+  updated: "2026-07-15"
   truth_status: |
+    (2026-07-15 ~8am) THE OVERNIGHT ARC: EPOCHS WAVES 1-4 COMPLETE, WAVE 5 HALF-PLAYABLE,
+    WAVES 5b/6 OWNER-GATED. feature/epochs-wave1-spine now carries 50 commits over
+    feature/17-living-engine, every one pushed and gated (scoped suites per round, full
+    check 2x, qa:regression 5/5 after every engine change). Landed overnight, in order:
+    Wave 2 close-out; the Weather Layer (owner briefs: grammar laws DESIGN_BIBLE S11,
+    field_state seam + engine facade carry 722ed92e, storm markers + uprising
+    territory-anchoring, bifurcation gauge, field_flow vector lens 13, radar-loop
+    replay + map/history with the honest 4-of-13 replayable split); audit Wave 3
+    Vanguard Praxis (all 9 verbs live d42da148 - the disable comment was fiction;
+    entitlement/volatility on the class card, chauvinism honestly refused as edge-scoped;
+    RED_BROWN_COUP narration; state-apparatus AI EXECUTING for the first time 70d6e3f2 -
+    Detroit PD seeded, then eef58234 the Blind Giant heat-sort so it targets real threats
+    instead of itself); audit Wave 4 Gramscian Wire (org network + hypergraph dead-route
+    fixes c312e62d, the sigma/graphology Network takeover e6b47f3d - first imports ever,
+    centrality map lens 14 + edge-history sparkline 0dbe1849, SeamScope.NETWORK 6da3ab97);
+    Waves 5+6 corpus-mined into ratifiable program proposals e42c0059
+    (project/research/{epistemic-horizon,doctrine-tree}-program-proposal.md); Epistemic
+    Horizon Phase-1 shadow EXECUTED 483c4265 (ruling-free; EpistemicHorizonSystem @27,
+    crown finding: C_p=0 everywhere - no player marker on any org model -> proposal
+    ruling 6) + the receptivity lens pair fd034f62 (lenses 15+16: mass_receptivity ramp +
+    vision_state weather map, recompute-carry, ZERO masking). Five pre-existing bugs
+    fixed en route: territory_snapshot rate columns NULL-forever (32ccd90c), uprising
+    events unanchorable, two dead 500 routes, regression-harness warning-prefix bug,
+    trace-view flake root-caused to kill-between-0026-and-0030 (79d4390b self-heal).
+    Registry at 76 observables. EVERYTHING REMAINING IS OWNER-GATED: Wave-5 deception
+    half needs the III.11 falsification carve-out (escalation rule forbids building
+    un-ratified); Wave 6 needs the MVP-vs-no-MVP directive conflict resolved + the
+    Strasserism faction-flip architecture ruling; plus R4 forecast scope (#65), PR
+    timing, Program-19 merge order, nationwide #49 (owner-present).
+
+    (2026-07-14 ~11pm, superseded by the entry above where they overlap)
+    EPOCHS WAVE 2 COMPLETE + WAVE 3 SCOPED — see the 07-14 entry below.
+  truth_status_history_2026_07_14: |
     (2026-07-14 ~11pm) EPOCHS WAVE 2 COMPLETE + WAVE 3 SCOPED. Wave 2 landed in
     3 rounds on feature/epochs-wave1-spine (R1 c090d48c/31f4b42b economy
     dashboard + Gap-1 seam rows; R2 b92de750/d50f915d real throughput wiring +

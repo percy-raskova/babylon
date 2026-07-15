@@ -6,9 +6,10 @@
  *
  * Covers:
  * - `resolveStormTargets` — UPRISING events anchored via
- *   `resolveEntityPosition` (criticalPulse's shared geographic gate) off
- *   `data.node_id`; RUPTURE never produces a map glyph (it is global); an
- *   unresolvable UPRISING is honestly dropped (III.11).
+ *   `resolveEntityPosition` (criticalPulse's shared geographic gate) off the
+ *   bridge-enriched `data.territory_id` (W3 R2a-fix), falling back to
+ *   `data.node_id` for pre-enrichment payloads; RUPTURE never produces a map
+ *   glyph (it is global); an unresolvable UPRISING is honestly dropped (III.11).
  * - `stormRadius` — monotonic in `agitation`.
  * - `buildStormMarkerLayers` — one filled (never stroked), untransitioned
  *   (hard-cut, law 2/3) marker layer per target.
@@ -78,6 +79,41 @@ describe("resolveStormTargets", () => {
     expect(resolveStormTargets(toasts, territories)).toEqual([
       { id: "5-0", position: [lng, lat], intensity: 1.5 },
     ]);
+  });
+
+  it("anchors via the bridge-enriched territory_id — the production path (W3 R2a-fix)", () => {
+    const territories = [makeTerritory({ id: "T-detroit", h3_index: H3 })];
+    const toasts = [
+      toast([
+        streamEvent({
+          event: makeEvent({
+            type: "uprising",
+            tick: 5,
+            data: { node_id: "C001", territory_id: "T-detroit", agitation: 1.5 },
+          }),
+        }),
+      ]),
+    ];
+    const [lat, lng] = cellToLatLng(H3);
+    expect(resolveStormTargets(toasts, territories)).toEqual([
+      { id: "5-0", position: [lng, lat], intensity: 1.5 },
+    ]);
+  });
+
+  it("drops an UPRISING whose territory_id is honestly null and node_id matches nothing", () => {
+    const territories = [makeTerritory({ id: "T-detroit", h3_index: H3 })];
+    const toasts = [
+      toast([
+        streamEvent({
+          event: makeEvent({
+            type: "uprising",
+            tick: 5,
+            data: { node_id: "C001", territory_id: null, agitation: 1.5 },
+          }),
+        }),
+      ]),
+    ];
+    expect(resolveStormTargets(toasts, territories)).toEqual([]);
   });
 
   it("does NOT anchor a RUPTURE event — it is global, no fabricated position (III.11)", () => {

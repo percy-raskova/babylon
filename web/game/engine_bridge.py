@@ -3148,23 +3148,17 @@ class EngineBridge:
         III.11: a node/attr the engine did not compute this tick is OMITTED,
         never fabricated as 0.0/""/a default dict.
 
-        Known altitude gap (found during this round, NOT fixed here — the
-        brief is read-only w.r.t. the engine/models): ``contradiction_fields``/
-        ``field_derivatives`` are excluded from ``SocialClass`` reconstruction
-        (``SOCIAL_CLASS_COMPUTED_FIELDS``, ``babylon.models.world_state``), and
-        ``dialectical_regime``/``principal_field`` are graph-level attrs
-        ``WorldState.to_graph()`` never re-emits (its ``G.graph`` write is a
-        fixed whitelist — economy/state_finances/contradiction_frames/
-        opposition_states/events/event_log/institution_relations — that does
-        not include either). Unlike the territory ``tick_*`` attrs
-        ``_carry_tick_dynamics_flows`` re-injects onto ``new_graph`` before
-        every ``persist_tick``, no analogous carry-forward exists for the
-        field stack, so today these four read empty/null on every real
-        ``resolve_tick`` despite the engine computing them every tick — only
-        ``fascist_alignment`` (a real, defaulted ``SocialClass`` field)
-        survives the round-trip. This method is a faithful reader of whatever
-        the persisted graph actually carries; see the Backend-W3R1 report for
-        the full trace.
+        Altitude: the W3 R1b field-stack carry (``WorldState.field_stack`` +
+        ``principal_field``/``dialectical_regime`` fields,
+        ``babylon.models.world_state``) re-stamps ``contradiction_fields``/
+        ``field_derivatives``/``field_gradients`` onto every ``to_graph()``
+        output and re-emits the two graph attrs, so the persisted graph now
+        carries the full stack each ``resolve_tick``. Residual honesty caveat
+        (see the DECLARED_CONDITIONAL seam rows): ``df_dt`` (and therefore
+        ``principal_field``'s selection) needs >=2 ticks of
+        ``contradiction_history``, which lives in ``persistent_context`` —
+        still reset per HTTP call — so temporal derivatives read 0.0/absent
+        on the web path until that context survives across requests.
 
         Args:
             session_id: The game session UUID.
@@ -5710,7 +5704,7 @@ def _humanize_event_type(event_type_str: str) -> str:
     return event_type_str.replace("_", " ").title()
 
 
-def _serialize_event(event: Any, session_id: UUID) -> dict[str, Any]:
+def _serialize_event(event: Any, session_id: UUID, *, graph: Any = None) -> dict[str, Any]:
     """Serialize a single :class:`SimulationEvent` for the snapshot.
 
     Spec 061 US3 (FR-012): every event surfaces ``id``, ``severity``,
@@ -5726,6 +5720,22 @@ def _serialize_event(event: Any, session_id: UUID) -> dict[str, Any]:
     - ``body``: a short prose body derived from the event payload.
       Falls back to the empty string when no narrative is available
       (the frontend renders body-less events compactly).
+
+    Program 17 Wave 1 W3R2 (Backend-W3R2aFix): UPRISING's payload
+    (``struggle.py``) carries only ``data.node_id`` — a social_class id,
+    never a territory reference — so the storm-marker map layer had no
+    geography to anchor on. Every ``"uprising"`` event gains a real
+    ``data["territory_id"]`` here, resolved via the same TENANCY inversion
+    (:func:`_class_to_territory` / :func:`_tenancy_members_by_territory`)
+    ``_build_field_state_edges`` already uses to territory-anchor
+    social_class nodes. ``graph`` is optional (some ``_state_to_snapshot``
+    callers hydrate without one) — absent graph or unresolvable class both
+    honestly yield ``None``, never a guessed territory (Constitution
+    III.11). This is the single upstream point every downstream consumer
+    of a serialized event shares: the live snapshot (toasts) AND, via
+    :func:`_persist_tick_events_safe` -> ``tick_event`` ->
+    :func:`_game_event_from_tick_event_row`, the journal/alerts dashboards
+    and ``get_class_history``'s ``ruptures``.
     """
     import json
     import uuid
@@ -5743,6 +5753,13 @@ def _serialize_event(event: Any, session_id: UUID) -> dict[str, Any]:
             data = event.model_dump(exclude={"event_type", "tick", "timestamp"})
         except Exception:  # noqa: BLE001 — defensive
             data = {}
+
+    if event_type_str == "uprising":
+        node_id = data.get("node_id")
+        territory_id = None
+        if graph is not None and node_id is not None:
+            territory_id = _class_to_territory(_tenancy_members_by_territory(graph)).get(node_id)
+        data = {**data, "territory_id": territory_id}
 
     deterministic_seed = json.dumps(
         {
@@ -6832,7 +6849,9 @@ def _state_to_snapshot(state: WorldState, session_id: UUID, *, graph: Any = None
     organizations = [_serialize_organization(o) for o in state.organizations.values()]
     institutions = [_serialize_institution(inst) for inst in state.institutions.values()]
     edges = [_serialize_edge(rel) for rel in state.relationships]
-    events_list: list[dict[str, Any]] = [_serialize_event(e, session_id) for e in state.events]
+    events_list: list[dict[str, Any]] = [
+        _serialize_event(e, session_id, graph=graph) for e in state.events
+    ]
 
     # Compute trap detection for the session
     traps_dict = _compute_traps(state, session_id)

@@ -22,21 +22,16 @@
  * duplicate or drift out of sync with the toast/tray model already governing
  * every other event-driven map visual.
  *
- * **UPRISING anchoring.** The UPRISING payload (`struggle.py`) carries
- * `data.node_id` — a `social_class` node id (pattern `^C[0-9]{3}$`,
- * `models/entities/social_class.py`), never a territory id/h3/county_fips.
- * `resolveEntityPosition` (criticalPulse's shared geographic gate, reused
- * verbatim here) only matches territory-namespace ids, so on a real running
- * game today NO UPRISING event resolves to a map position — the class-node
- * namespace and the territory-node namespace are disjoint, and nothing in
- * the payload or the frontend's `TerritoryState` carries a class->territory
- * link (see the R2a report: `field_state`'s edge-anchoring resolves classes
- * to territories via TENANCY, but that resolution isn't available on the
- * journal/toast event path). This is why the tests below construct a
- * territory whose `id` happens to equal the event's `node_id` — that is the
- * ONLY way `resolveStormTargets` currently anchors anything; production data
- * never produces that coincidence. Honest per Constitution III.11: every
- * UPRISING event is simply omitted rather than pinned to a guessed location.
+ * **UPRISING anchoring.** The engine's UPRISING payload (`struggle.py`)
+ * carries `data.node_id` — a `social_class` node id, never a territory id.
+ * The bridge enriches every uprising event with `data.territory_id` (W3
+ * R2a-fix, `_serialize_event` in `web/game/engine_bridge.py`: node_id →
+ * territory via the TENANCY resolution, honestly `null` when the class has
+ * no territory). `resolveStormTargets` anchors on `territory_id` first and
+ * falls back to `node_id` only for payloads predating the enrichment (a
+ * class id never matches the territory namespace in production, so the
+ * fallback is effectively inert there). Unresolvable events are omitted
+ * rather than pinned to a guessed location (Constitution III.11).
  *
  * **RUPTURE is global.** Its payload (`contradiction.py`) is
  * `{opposition, gap, rate}` — no node/territory reference at all, by
@@ -109,21 +104,36 @@ export function resolveStormTargets(
   for (const toast of toasts) {
     for (const event of toast.events) {
       if (event.event.type !== "uprising") continue;
-
-      const nodeId = event.event.data.node_id;
-      const position = resolveEntityPosition(
-        typeof nodeId === "string" ? nodeId : null,
-        territories,
-      );
-      if (!position) continue;
-
-      const agitation = event.event.data.agitation;
-      if (typeof agitation !== "number" || !Number.isFinite(agitation)) continue;
-
-      targets.push({ id: event.id, position, intensity: agitation });
+      const target = stormTargetFromUprising(event.id, event.event.data, territories);
+      if (target) targets.push(target);
     }
   }
   return targets;
+}
+
+/**
+ * Resolve one UPRISING event's payload to a storm target, or `null` when it
+ * has no real geography or no finite `agitation` (honest omission, III.11).
+ * Anchor preference: the bridge-enriched `territory_id` (W3 R2a-fix:
+ * `_serialize_event` resolves node_id -> territory via TENANCY, honestly
+ * `null` when unresolvable), falling back to `node_id` only for payloads
+ * predating the enrichment — a social_class id never matches the territory
+ * namespace in production, so the fallback is effectively inert there.
+ */
+function stormTargetFromUprising(
+  eventId: string,
+  data: Record<string, unknown>,
+  territories: TerritoryState[],
+): StormTarget | null {
+  const { territory_id: territoryId, node_id: nodeId, agitation } = data;
+  const anchorId = typeof territoryId === "string" ? territoryId : nodeId;
+  const position = resolveEntityPosition(
+    typeof anchorId === "string" ? anchorId : null,
+    territories,
+  );
+  if (!position) return null;
+  if (typeof agitation !== "number" || !Number.isFinite(agitation)) return null;
+  return { id: eventId, position, intensity: agitation };
 }
 
 /**

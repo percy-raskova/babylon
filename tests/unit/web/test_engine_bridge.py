@@ -2175,6 +2175,66 @@ def _field_state_bridge() -> EngineBridge:
     return EngineBridge(mock_persistence)
 
 
+def _build_live_field_stack_graph() -> BabylonGraph:
+    """A raw engine-shaped graph carrying the field stack PLUS ``role`` on
+    every social_class node (unlike :func:`_graph_with_field_stack`, which
+    the bridge reads RAW and never round-trips through ``WorldState``, so
+    it never needed a required ``SocialClass.role``). Also stamps the
+    ``field_stack`` graph attr via the production builder, so this fixture
+    is exactly what ``FieldDerivativeSystem.step()`` would leave on a real
+    engine graph at the end of a tick.
+    """
+    from babylon.engine.systems.field_derivative import _build_field_stack
+    from babylon.models.enums import EdgeType, SocialRole
+
+    g = BabylonGraph()
+    g.graph["tick"] = 9
+    g.graph["principal_field"] = {
+        "field_name": "exploitation",
+        "max_abs_df_dt": 0.05,
+        "changed": True,
+    }
+    g.graph["dialectical_regime"] = {
+        "regime": "crisis",
+        "opposition": "capital_labor",
+        "rate": 0.12,
+    }
+    g.add_node(
+        "C002",
+        "social_class",
+        name="Suburban Petit-Bourgeois",
+        role=SocialRole.LABOR_ARISTOCRACY.value,
+        contradiction_fields={"exploitation": 0.6, "atomization": 0.2},
+        field_derivatives={
+            "exploitation": {"laplacian": 0.1, "df_dt": 0.02, "d2f_dt2": 0.001},
+            "atomization": {"laplacian": 0.0, "df_dt": None, "d2f_dt2": None},
+        },
+        fascist_alignment=0.4,
+    )
+    g.add_node(
+        "C001",
+        "social_class",
+        name="Detroit Proletariat",
+        role=SocialRole.INTERNAL_PROLETARIAT.value,
+        contradiction_fields={"exploitation": 0.8, "atomization": 0.2},
+        fascist_alignment=0.0,
+    )
+    g.add_node(
+        "C003",
+        "social_class",
+        name="Wayne County Bourgeoisie",
+        role=SocialRole.CORE_BOURGEOISIE.value,
+    )
+    g.add_edge(
+        "C001",
+        "C002",
+        EdgeType.EXPLOITATION.value,
+        field_gradients={"exploitation": -0.2, "atomization": 0.0},
+    )
+    g.graph["field_stack"] = _build_field_stack(g)
+    return g
+
+
 @pytest.mark.unit
 class TestGetFieldState:
     def test_nodes_honest_omission_of_absent_keys(self) -> None:
@@ -2288,6 +2348,56 @@ class TestGetFieldState:
 
         assert result["tick"] == 9
 
+    def test_populated_after_world_state_round_trip(self) -> None:
+        """Program 19/20 Wave 3 Round 1 facade fix: the field stack survives
+        a WorldState.from_graph(...).to_graph() round trip — the same
+        round trip ``resolve_tick`` performs every real tick — and
+        ``get_field_state`` on the ROUND-TRIPPED graph is populated exactly
+        like the class docstring's "Known altitude gap" described as
+        BROKEN before this carry landed. This test does not modify the
+        bridge: it proves the bridge already lights up once WorldState
+        carries the field stack.
+        """
+        from babylon.models.world_state import WorldState
+
+        live_graph = _build_live_field_stack_graph()
+
+        state = WorldState.from_graph(live_graph, tick=9)
+        roundtripped = state.to_graph()
+
+        mock_persistence = MagicMock()
+        mock_persistence.hydrate_graph.return_value = roundtripped
+        bridge = EngineBridge(mock_persistence)
+
+        result = bridge.get_field_state(_FIELD_STATE_SESSION)
+
+        by_id = {n["id"]: n for n in result["nodes"]}
+        # C003 never carried contradiction_fields/field_derivatives, so it
+        # honestly has no 'fields'/'laplacian'/'df_dt' keys — but unlike the
+        # raw-graph fixtures, a WorldState round trip stamps EVERY entity
+        # with fascist_alignment (a real, always-defaulted SocialClass
+        # field, per the registry's fascist_alignment row), so C003 DOES
+        # appear (fascist_alignment=0.0 is a real value, not a fabrication)
+        # while staying free of the three attrs that never survived before
+        # this carry.
+        assert by_id["C003"].keys() == {"id", "name", "fascist_alignment"}
+        assert "fields" not in by_id["C003"]
+        assert "laplacian" not in by_id["C003"]
+        assert "df_dt" not in by_id["C003"]
+        assert by_id["C001"]["fields"] == {"exploitation": 0.8, "atomization": 0.2}
+        assert by_id["C002"]["laplacian"] == {"exploitation": 0.1, "atomization": 0.0}
+        assert by_id["C002"]["df_dt"] == {"exploitation": 0.02}
+
+        edge_fields = {e["field"] for e in result["edges"]}
+        assert edge_fields == {"exploitation", "atomization"}
+
+        assert result["principal_field"] == "exploitation"
+        assert result["dialectical_regime"] == {
+            "regime": "crisis",
+            "opposition": "capital_labor",
+            "rate": 0.12,
+        }
+
 
 @pytest.mark.unit
 class TestGetFieldStateStubParity:
@@ -2375,3 +2485,135 @@ class TestGetFieldStateAPIView:
         response = client.get(url)
 
         assert response.status_code == 404
+
+
+# ---------------------------------------------------------------------- #
+# Program 17 Wave 1 W3R2 (Backend-W3R2aFix): UPRISING events anchor to a
+# territory so the storm-marker map layer (stormMarkers.ts) can place
+# them. ``_serialize_event`` resolves ``data.node_id`` (a social_class id)
+# -> territory via the same ``_class_to_territory(_tenancy_members_by_
+# territory(graph))`` inversion ``_build_field_state_edges`` already uses
+# to territory-anchor social_class nodes (see ``_graph_with_field_stack``
+# above). Constitution III.11: unresolvable is a real ``None``, never a
+# guessed territory.
+# ---------------------------------------------------------------------- #
+
+
+def _graph_with_tenancy(*, class_to_territory: dict[str, str | None]) -> BabylonGraph:
+    """A real BabylonGraph (not a MagicMock — see ``_graph_with_field_stack``'s
+    docstring for why) with social_class nodes TENANCY-linked to territories
+    per ``class_to_territory``. A ``None`` value adds the social_class node
+    with NO TENANCY edge at all (an unresolvable class)."""
+    g = BabylonGraph()
+    g.graph["tick"] = 1
+    seen_territories: set[str] = set()
+    for class_id, territory_id in class_to_territory.items():
+        g.add_node(class_id, "social_class", name=class_id)
+        if territory_id is None:
+            continue
+        if territory_id not in seen_territories:
+            g.add_node(territory_id, "territory", name=territory_id)
+            seen_territories.add(territory_id)
+        g.add_edge(class_id, territory_id, "TENANCY")
+    return g
+
+
+def _uprising_event(node_id: str, tick: int = 5) -> MagicMock:
+    event = MagicMock()
+    event.event_type = "uprising"
+    event.tick = tick
+    event.data = {"node_id": node_id, "trigger": "revolutionary_pressure"}
+    event.narrative = None
+    return event
+
+
+@pytest.mark.unit
+class TestSerializeEventUprisingTerritoryAnchoring:
+    """Backend-W3R2aFix: territory_id enrichment for UPRISING events."""
+
+    def test_uprising_gets_territory_id_when_class_has_tenancy_edge(self) -> None:
+        from game.engine_bridge import _serialize_event
+
+        graph = _graph_with_tenancy(class_to_territory={"C001": "T001"})
+        event = _uprising_event("C001")
+
+        result = _serialize_event(event, uuid.uuid4(), graph=graph)
+
+        assert result["data"]["territory_id"] == "T001"
+
+    def test_uprising_gets_null_territory_id_when_class_has_no_tenancy(self) -> None:
+        from game.engine_bridge import _serialize_event
+
+        graph = _graph_with_tenancy(class_to_territory={"C001": "T001", "C999": None})
+        event = _uprising_event("C999")  # not TENANCY-linked to any territory
+
+        result = _serialize_event(event, uuid.uuid4(), graph=graph)
+
+        assert "territory_id" in result["data"]
+        assert result["data"]["territory_id"] is None
+
+    def test_uprising_gets_null_territory_id_when_graph_absent(self) -> None:
+        from game.engine_bridge import _serialize_event
+
+        event = _uprising_event("C001")
+
+        result = _serialize_event(event, uuid.uuid4())
+
+        assert result["data"]["territory_id"] is None
+
+    def test_non_uprising_event_untouched(self) -> None:
+        from game.engine_bridge import _serialize_event
+
+        graph = _graph_with_tenancy(class_to_territory={"C001": "T001"})
+        event = MagicMock()
+        event.event_type = "wage_payment"
+        event.tick = 5
+        event.data = {"node_id": "C001", "amount": 10.0}
+        event.narrative = None
+
+        result = _serialize_event(event, uuid.uuid4(), graph=graph)
+
+        assert "territory_id" not in result["data"]
+        assert result["data"] == {"node_id": "C001", "amount": 10.0}
+
+    def test_deterministic_across_repeated_calls(self) -> None:
+        """Two classes in one territory + one class with zero TENANCY edges —
+        repeated serialization off the same graph must resolve identically
+        (Constitution III.7)."""
+        from game.engine_bridge import _serialize_event
+
+        graph = _graph_with_tenancy(
+            class_to_territory={"C001": "T001", "C002": "T001", "C003": None}
+        )
+        session_id = uuid.uuid4()
+
+        def _resolve(node_id: str) -> Any:
+            return _serialize_event(_uprising_event(node_id), session_id, graph=graph)["data"][
+                "territory_id"
+            ]
+
+        first = {node_id: _resolve(node_id) for node_id in ("C001", "C002", "C003")}
+        second = {node_id: _resolve(node_id) for node_id in ("C001", "C002", "C003")}
+
+        assert first == second == {"C001": "T001", "C002": "T001", "C003": None}
+
+    def test_state_to_snapshot_threads_graph_into_uprising_events(self) -> None:
+        """The bridge-wide enrichment point: ``_state_to_snapshot`` (called
+        from ``resolve_tick``, the inspectors, and ``get_snapshot``) passes
+        its ``graph`` argument through to ``_serialize_event`` so every
+        downstream consumer of ``snapshot["events"]`` (toasts, and via
+        ``_persist_tick_events_safe`` -> tick_event -> journal/ruptures)
+        sees the same territory_id."""
+        graph = _graph_with_tenancy(class_to_territory={"C001": "T001"})
+        mock_state = MagicMock()
+        mock_state.tick = 5
+        mock_state.territories = {}
+        mock_state.organizations = {}
+        mock_state.institutions = {}
+        mock_state.relationships = []
+        mock_state.economy = None
+        mock_state.events = [_uprising_event("C001")]
+
+        snapshot = _state_to_snapshot(mock_state, uuid.uuid4(), graph=graph)
+
+        assert snapshot["events"][0]["data"]["territory_id"] == "T001"

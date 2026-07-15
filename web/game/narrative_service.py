@@ -306,7 +306,14 @@ class NarrativeService:
         "``schedule()`` never raises" contract the thread pool relies on,
         so it is logged at ERROR (distinct from the WARNING already
         logged for the generation failure) and swallowed rather than
-        re-raised.
+        re-raised. Consequence for ``NarrationRecord`` readers: a
+        ``degraded=True`` in-memory :class:`NarrativeResult` (and hence a
+        ``degraded: true`` marker in ``augment_feed``'s output) does NOT
+        guarantee a corresponding persisted row exists — on this
+        double-failure path the durability failure is visible only in
+        ERROR logs today, so "no NarrationRecord for (session, tick)"
+        can mean quiet-tick OR failed-persist, distinguishable only via
+        the log stream.
         """
         tick = new_state.tick
         model_id = LLMConfig.CHAT_MODEL
@@ -352,6 +359,10 @@ class NarrativeService:
             try:
                 self._persist(result, session_id, tick)
             except Exception as persist_exc:  # noqa: BLE001 — see docstring above
+                # NOTE for NarrationRecord readers: after this swallow, the
+                # in-memory result is still cached degraded=True below, but NO
+                # row was persisted — durability failure on this path is
+                # visible only in this ERROR log (see docstring).
                 logger.error(
                     "NarrativeService degraded-beat persistence ALSO failed session=%s tick=%d: %s",
                     session_id,

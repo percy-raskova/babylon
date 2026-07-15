@@ -366,6 +366,7 @@ class TestScheduleDegradation:
 
 @pytest.mark.unit
 class TestScheduleNonBlocking:
+    @pytest.mark.django_db(transaction=True)
     def test_schedule_returns_before_generation_completes(
         self,
         monkeypatch: pytest.MonkeyPatch,
@@ -373,12 +374,22 @@ class TestScheduleNonBlocking:
         previous_state: WorldState,
         new_state_with_uprising: WorldState,
     ) -> None:
-        """schedule() must return immediately — narrative lands later."""
+        """schedule() must return immediately — narrative lands later.
+
+        ``transaction=True`` + a real GameSession row — see the docstring
+        on ``TestScheduleHappyPath.test_generates_dual_narrative_for_significant_event``
+        for why a background-thread persistence write needs both. Without
+        them, the task-B4 persistence step fails on the worker thread and
+        the outer degradation handler silently converts this HEALTHY
+        generation into ``degraded=True`` — so the final assertions pin
+        the healthy outcome explicitly rather than just ``is not None``.
+        """
         import threading
 
         from django.conf import settings as django_settings
 
         monkeypatch.setattr(django_settings, "BABYLON_LLM_NARRATOR", True, raising=False)
+        GameSession.objects.create(id=session_id, scenario="narrative-service-test")
 
         release = threading.Event()
 
@@ -407,7 +418,12 @@ class TestScheduleNonBlocking:
         release.set()
         future.result(timeout=5)
 
-        assert service.get_result(session_id, tick=1) is not None
+        result = service.get_result(session_id, tick=1)
+        assert result is not None
+        assert result.degraded is False, f"healthy generation degraded: {result.error}"
+        assert result.corporate == "delayed narrative"
+        assert result.liberated == "delayed narrative"
+        assert result.error is None
 
 
 # --------------------------------------------------------------------------- #

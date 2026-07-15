@@ -1,7 +1,9 @@
 """NarrationRecord persistence (program-20 Track B, task B4).
 
-Two layers:
+Three layers:
 
+* Pure-function (``TestSplitHeadlineBody``): the headline/body derivation
+  used by persistence — no Django, no DB.
 * Model-level (``TestNarrationRecordModel``): plain ORM roundtrip + the
   ``(session, tick, beat_id)`` uniqueness constraint — the brief's Step 1.
 * Wiring-level (``TestNarrativeServicePersistence``): ``NarrativeService``
@@ -29,6 +31,43 @@ import uuid
 import pytest
 
 from game.models import GameSession, NarrationRecord
+from game.narrative_service import _HEADLINE_MAX_CHARS, _split_headline_body
+
+
+@pytest.mark.unit
+class TestSplitHeadlineBody:
+    """``_split_headline_body`` is pure — no Django, no DB, no mocks."""
+
+    def test_multiline_headline_is_first_line_body_is_remainder(self) -> None:
+        headline, body = _split_headline_body("RENT EXTRACTED\nDetails line 1\nDetails line 2", 7)
+        assert headline == "RENT EXTRACTED"
+        assert body == "Details line 1\nDetails line 2"
+
+    def test_long_first_line_truncates_at_exactly_120_chars(self) -> None:
+        first_line = "H" * 150
+        headline, body = _split_headline_body(f"{first_line}\nthe body", 7)
+        assert _HEADLINE_MAX_CHARS == 120  # pin the budget the assertions below rely on
+        assert len(headline) == 120
+        assert headline == first_line[:120]
+        assert body == "the body"  # truncation never bleeds into the body
+
+    def test_exactly_120_char_first_line_is_kept_whole(self) -> None:
+        first_line = "H" * 120
+        headline, _body = _split_headline_body(f"{first_line}\nbody", 7)
+        assert headline == first_line  # boundary: 120 fits, no off-by-one cut
+
+    def test_single_line_falls_back_to_tick_headline(self) -> None:
+        headline, body = _split_headline_body("one line only", 7)
+        assert headline == "Tick 7"
+        assert body == "one line only"
+
+    def test_empty_string_falls_back_to_tick_headline_with_empty_body(self) -> None:
+        # Honest behavior: empty text has no headline to derive, so the
+        # generic "Tick {tick}" fallback applies and the body stays empty —
+        # the function does not invent content that was never generated.
+        headline, body = _split_headline_body("", 7)
+        assert headline == "Tick 7"
+        assert body == ""
 
 
 @pytest.mark.django_db

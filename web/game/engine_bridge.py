@@ -4122,7 +4122,10 @@ class EngineBridge:
         )
         # Spec-109 A1: fill the spec-037 snapshot tables + the tick_summary
         # aggregates that back get_game_timeseries (spec-061 FR-003 wire-up).
-        _persist_snapshots_safe(self._persistence, session_id, new_state)
+        # graph=new_graph (task #70): new_graph carries the tick_* rates
+        # _carry_tick_dynamics_flows just re-injected — without it the
+        # territory_snapshot rate columns persist NULL forever.
+        _persist_snapshots_safe(self._persistence, session_id, new_state, graph=new_graph)
         # Program 17 / Item 1c: the real EndgameDetector (run above, before
         # to_graph()) is the authoritative source now — not a literal-string
         # scan of event_type (EndgameEvent.event_type is ALWAYS
@@ -6226,7 +6229,11 @@ def _build_tick_summary(state: WorldState, organizations: list[dict[str, Any]]) 
 
 
 def _persist_snapshots_safe(
-    persistence: RuntimePersistence, session_id: UUID, state: WorldState
+    persistence: RuntimePersistence,
+    session_id: UUID,
+    state: WorldState,
+    *,
+    graph: Any = None,
 ) -> None:
     """Persist the spec-037 read-model snapshot tables for one tick (spec-109 A1).
 
@@ -6247,13 +6254,21 @@ def _persist_snapshots_safe(
         persistence: The RuntimePersistence instance.
         session_id: The game session UUID.
         state: The freshly stepped (or tick-0 seeded) WorldState.
+        graph: The post-tick graph, when the caller has one. Unlocks the
+            ``tick_*`` year-boundary rates ``_serialize_territory`` reads
+            (occ/imperial_rent/profit_rate/exploitation_rate) so
+            ``territory_snapshot`` history stops persisting NULL for them —
+            the R3 radar-loop finding (task #70): the live ``/map/`` path
+            passed the graph, this history path silently didn't. Bootstrap
+            call sites omit it (tick-0 has no TickDynamics output; honest
+            ``None``, never a fabricated 0.0).
     """
     full_tick_fn = getattr(persistence, "persist_full_tick", None)
     summary_fn = getattr(persistence, "persist_tick_summary", None)
     if not callable(full_tick_fn) or not callable(summary_fn):
         return
 
-    territories = [_serialize_territory(t) for t in state.territories.values()]
+    territories = [_serialize_territory(t, graph=graph) for t in state.territories.values()]
     organizations = [_serialize_organization(o) for o in state.organizations.values()]
     entities = [_serialize_entity(e) for e in state.entities.values()]
     edges = [_serialize_edge(rel) for rel in state.relationships]

@@ -2831,3 +2831,55 @@ class TestGetMapHistory:
 
         unknown = stub.get_map_history(uuid.uuid4(), metric="not_a_real_metric")
         assert unknown["error"] == "unknown_metric"
+
+
+@pytest.mark.unit
+class TestPersistSnapshotsGraphWiring:
+    """Task #70 (W3 R3 crown-finding fix): ``_persist_snapshots_safe`` must
+    thread ``graph=`` into ``_serialize_territory`` so ``territory_snapshot``'s
+    occ/imperial_rent/profit_rate/exploitation_rate columns stop persisting
+    NULL forever — the live ``/map/`` path already passes the graph; history
+    silently didn't (verified all-NULL by live SQL, R3 backend report)."""
+
+    def test_graph_kwarg_populates_territory_rate_columns(self) -> None:
+        """With ``graph=`` supplied, the ``tick_*`` year-boundary rates land
+        in the persisted territory rows instead of ``None``."""
+        from game.engine_bridge import _build_initial_state_for_scenario, _persist_snapshots_safe
+
+        state = _build_initial_state_for_scenario("wayne_county")
+        graph = state.to_graph()
+        territory_id = next(iter(state.territories))
+        graph.update_node(
+            territory_id,
+            tick_phi_hour=1.25,
+            tick_profit_rate=0.027,
+            tick_occ=138.6,
+            tick_exploitation_rate=3.79,
+        )
+        mock_persistence = MagicMock()
+
+        _persist_snapshots_safe(mock_persistence, uuid.uuid4(), state, graph=graph)
+
+        _, kwargs = mock_persistence.persist_full_tick.call_args
+        rows = kwargs["territories"]
+        assert rows, "wayne_county's county-keyed territory must produce a snapshot row"
+        row = rows[0]
+        assert row["profit_rate"] == 0.027
+        assert row["occ"] == 138.6
+        assert row["exploitation_rate"] == 3.79
+        assert row["imperial_rent"] == 1.25
+
+    def test_graph_omitted_stays_honest_none(self) -> None:
+        """Bootstrap call sites pass no graph — rates stay honest ``None``
+        (tick-0 has no TickDynamics output), never a fabricated 0.0."""
+        from game.engine_bridge import _build_initial_state_for_scenario, _persist_snapshots_safe
+
+        state = _build_initial_state_for_scenario("wayne_county")
+        mock_persistence = MagicMock()
+
+        _persist_snapshots_safe(mock_persistence, uuid.uuid4(), state)
+
+        _, kwargs = mock_persistence.persist_full_tick.call_args
+        row = kwargs["territories"][0]
+        assert row["profit_rate"] is None
+        assert row["occ"] is None

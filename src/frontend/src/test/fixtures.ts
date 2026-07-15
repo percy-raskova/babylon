@@ -53,6 +53,8 @@ import type {
   OrgNetworkNode,
   OrgNetworkEdge,
   OrgNetworkCentrality,
+  DoctrineTreePayload,
+  DoctrineNode,
 } from "@/types/game";
 
 export function makeTerritory(overrides?: Partial<TerritoryState>): TerritoryState {
@@ -896,6 +898,228 @@ export function makeOrgNetworkPayload(overrides?: Partial<OrgNetworkPayload>): O
     edges: [],
     centrality: {},
     percolation_ratio: null,
+    ...overrides,
+  };
+}
+
+// ---------------------------------------------------------------------------
+// Doctrine Tree canvas payload factories (GET /api/games/{id}/doctrine-tree/,
+// see `EngineBridge.get_doctrine_tree`). Unlike the org-network fixture
+// above, this one has no honest "empty" default — the real endpoint always
+// serves the full static 11-node MVP tree
+// (`src/babylon/data/game/doctrine_tree_mvp.json`), so
+// `makeDoctrineTreePayload()` transcribes that same corpus data byte-for-byte
+// rather than defaulting to `[]`.
+// ---------------------------------------------------------------------------
+
+/** The real 11-node MVP Doctrine Tree, transcribed from
+ *  `src/babylon/data/game/doctrine_tree_mvp.json` (single source of truth:
+ *  keep in sync if that file changes). */
+const DOCTRINE_TREE_NODES: DoctrineNode[] = [
+  {
+    id: "class_consciousness",
+    name: "Class Consciousness",
+    tier: 0,
+    parents: [],
+    description: "Recognition that society is divided into classes with opposing interests.",
+    tag_deltas: { class_analysis: 1 },
+    cost_tl: 0,
+    trunk: null,
+    unlocks: [],
+    warning: null,
+    is_trap: false,
+    trap_condition: null,
+    narrative: null,
+    is_goal: false,
+  },
+  {
+    id: "trade_unionism",
+    name: "Trade Unionism",
+    tier: 1,
+    parents: ["class_consciousness"],
+    description: "Organize workers at the point of production.",
+    tag_deltas: { mass_link: 2 },
+    cost_tl: 25,
+    trunk: null,
+    unlocks: ["electoral_socialism", "democratic_centralism", "armed_vanguard"],
+    warning: null,
+    is_trap: false,
+    trap_condition: null,
+    narrative: null,
+    is_goal: false,
+  },
+  {
+    id: "electoral_socialism",
+    name: "Electoral Socialism",
+    tier: 2,
+    parents: ["trade_unionism"],
+    description: "Win power through the ballot box.",
+    tag_deltas: { mass_link: 2, militancy: -2, class_analysis: -1 },
+    cost_tl: 50,
+    trunk: "reformist",
+    unlocks: ["coalition_politics"],
+    warning: "This path leads toward the Liberal Trap.",
+    is_trap: false,
+    trap_condition: null,
+    narrative: null,
+    is_goal: false,
+  },
+  {
+    id: "coalition_politics",
+    name: "Coalition Politics",
+    tier: 3,
+    parents: ["electoral_socialism"],
+    description: "Build broad alliances with liberals and progressives.",
+    tag_deltas: { mass_link: 3, class_analysis: -2 },
+    cost_tl: 75,
+    trunk: "reformist",
+    unlocks: ["liquidationism"],
+    warning: null,
+    is_trap: false,
+    trap_condition: null,
+    narrative: null,
+    is_goal: false,
+  },
+  {
+    id: "liquidationism",
+    name: "Liquidationism",
+    tier: 4,
+    parents: ["coalition_politics"],
+    description: "The revolutionary party dissolves into the mass movement.",
+    tag_deltas: { mass_link: 4, class_analysis: -3, militancy: -3 },
+    cost_tl: 0,
+    trunk: "reformist",
+    unlocks: [],
+    warning: null,
+    is_trap: true,
+    trap_condition: "CLASS_ANALYSIS <= 0 AND MILITANCY <= 0",
+    narrative:
+      '"ELECTORAL SOCIALISM: The Managed Decline"\n\nYou won the election. You hold power.\nAnd nothing changed.\n\nThe banks are still banks. The police still police.\nYou had power. You just couldn\'t use it.\n\nTHE APOCALYPSE CONTINUES, BUT NOW YOU MANAGE IT.',
+    is_goal: false,
+  },
+  {
+    id: "democratic_centralism",
+    name: "Democratic Centralism",
+    tier: 2,
+    parents: ["trade_unionism"],
+    description: "Freedom of discussion, unity of action.",
+    tag_deltas: { class_analysis: 2, mass_link: 1, militancy: 1 },
+    cost_tl: 75,
+    trunk: "scientific",
+    unlocks: ["mass_line"],
+    warning: null,
+    is_trap: false,
+    trap_condition: null,
+    narrative: null,
+    is_goal: false,
+  },
+  {
+    id: "mass_line",
+    name: "Mass Line",
+    tier: 3,
+    parents: ["democratic_centralism"],
+    description: "From the masses, to the masses.",
+    tag_deltas: { class_analysis: 1, mass_link: 2 },
+    cost_tl: 100,
+    trunk: "scientific",
+    unlocks: ["united_front"],
+    warning: null,
+    is_trap: false,
+    trap_condition: null,
+    narrative: null,
+    is_goal: false,
+  },
+  {
+    id: "united_front",
+    name: "United Front",
+    tier: 4,
+    parents: ["mass_line"],
+    description: "Unity with all progressive forces against the principal enemy.",
+    tag_deltas: { class_analysis: 2, mass_link: 2, militancy: 1 },
+    cost_tl: 150,
+    trunk: "scientific",
+    unlocks: [],
+    warning: null,
+    is_trap: false,
+    trap_condition: null,
+    narrative:
+      "The Scientific path is complete.\nAll actions receive +10% effectiveness.\nTraps are no longer accessible (CLASS_ANALYSIS too high).",
+    is_goal: true,
+  },
+  {
+    id: "armed_vanguard",
+    name: "Armed Vanguard",
+    tier: 2,
+    parents: ["trade_unionism"],
+    description: "The revolution will be armed or it will not be.",
+    tag_deltas: { militancy: 3, mass_link: -1 },
+    cost_tl: 50,
+    trunk: "insurrectionist",
+    unlocks: ["urban_guerrilla"],
+    warning: "This path leads toward isolation.",
+    is_trap: false,
+    trap_condition: null,
+    narrative: null,
+    is_goal: false,
+  },
+  {
+    id: "urban_guerrilla",
+    name: "Urban Guerrilla",
+    tier: 3,
+    parents: ["armed_vanguard"],
+    description: "The city is the battlefield.",
+    tag_deltas: { militancy: 3, mass_link: -2, class_analysis: -1 },
+    cost_tl: 75,
+    trunk: "insurrectionist",
+    unlocks: ["adventurism"],
+    warning: null,
+    is_trap: false,
+    trap_condition: null,
+    narrative: null,
+    is_goal: false,
+  },
+  {
+    id: "adventurism",
+    name: "Adventurism",
+    tier: 4,
+    parents: ["urban_guerrilla"],
+    description: "Actions become ends in themselves.",
+    tag_deltas: { militancy: 4, mass_link: -4, class_analysis: -2 },
+    cost_tl: 0,
+    trunk: "insurrectionist",
+    unlocks: [],
+    warning: null,
+    is_trap: true,
+    trap_condition: "MASS_LINK <= 0",
+    narrative:
+      '"PROPAGANDA OF THE DEED: The Spiral"\n\nYou struck. Again and again.\nAnd the people watched in horror.\n\nNot horror at the State. Horror at YOU.\nYour communiques went unread.\nThe State used your actions to justify everything.\n\nTHE REVOLUTION DIED SO YOUR WAR COULD CONTINUE.',
+    is_goal: false,
+  },
+];
+
+/** One Doctrine Tree node — defaults to the root (`class_consciousness`). */
+export function makeDoctrineNode(overrides?: Partial<DoctrineNode>): DoctrineNode {
+  return {
+    ...(DOCTRINE_TREE_NODES[0] as DoctrineNode),
+    ...overrides,
+  };
+}
+
+/**
+ * GET /api/games/{id}/doctrine-tree/ payload — defaults to the real 11-node
+ * MVP tree with an honest `acquired_ids: []` and the corpus's starting tag
+ * values (Constitution III.11 — no acquisition system is wired yet, so
+ * there is no honest "empty" state to default to; the tree itself is always
+ * fully present).
+ */
+export function makeDoctrineTreePayload(
+  overrides?: Partial<DoctrineTreePayload>,
+): DoctrineTreePayload {
+  return {
+    root_id: "class_consciousness",
+    nodes: DOCTRINE_TREE_NODES,
+    acquired_ids: [],
+    tags: { class_analysis: 1, mass_link: 1, militancy: 0 },
     ...overrides,
   };
 }

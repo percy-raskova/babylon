@@ -96,6 +96,10 @@ describe("ui slice", () => {
     expect(useStore.getState().ui.takeover.active).toBe("chronicle");
     useStore.getState().ui.openTakeover("dialectic");
     expect(useStore.getState().ui.takeover.active).toBe("dialectic");
+    useStore.getState().ui.openTakeover("network");
+    expect(useStore.getState().ui.takeover.active).toBe("network");
+    useStore.getState().ui.openTakeover("doctrine");
+    expect(useStore.getState().ui.takeover.active).toBe("doctrine");
     useStore.getState().ui.closeTakeover();
     expect(useStore.getState().ui.takeover.active).toBeNull();
   });

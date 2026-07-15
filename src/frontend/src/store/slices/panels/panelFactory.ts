@@ -94,5 +94,11 @@ export const TAKEOVER_PANEL_KEYS = [
   // one-shot fetch on takeover-open, refetched on every observed tick
   // change while the takeover stays open.
   "network",
+  // doctrineTree (the Doctrine Tree takeover, Epoch 3 Wave 6 Phase 0) — same
+  // mounted-only contract. The payload is static game-data today (no
+  // DoctrineSystem/acquisition wiring yet), so the tick refetch is a no-op
+  // in practice; keeping it on the same rail costs nothing and is already
+  // correct for the day acquired_ids becomes real per-session state.
+  "doctrineTree",
 ] as const;
 export type TakeoverPanelKey = (typeof TAKEOVER_PANEL_KEYS)[number];

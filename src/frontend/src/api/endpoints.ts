@@ -38,6 +38,7 @@ import type {
   OrgNetworkPayload,
   HypergraphPayload,
   InfrastructurePayload,
+  DoctrineTreePayload,
   ScenarioInfo,
   ActionPreviewResult,
   ClassHistoryPayload,
@@ -129,6 +130,9 @@ export const endpoints = {
   organizations: ep<Untyped>("/api/games/:id/organizations/"),
   edges: ep<EdgesDashboardPayload>("/api/games/:id/edges/"),
   stateApparatus: ep<StateApparatusDashboard>("/api/games/:id/state-apparatus/"),
+  // The read-only Doctrine Tree canvas (Epoch 3 Wave 6 Phase 0, the 5th
+  // takeover) — static game-data, same 11-node MVP tree for every session.
+  doctrineTree: ep<DoctrineTreePayload>("/api/games/:id/doctrine-tree/"),
   journal: ep<JournalPayload>("/api/games/:id/journal/"),
   alerts: ep<AlertsPayload>("/api/games/:id/alerts/"),
   wire: ep<WireFeed>("/api/games/:id/wire/"),

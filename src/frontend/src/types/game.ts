@@ -801,6 +801,69 @@ export interface InfrastructureEdge {
 }
 
 // ---------------------------------------------------------------------------
+// Doctrine Tree canvas (read-only) — Epoch 3 Wave 6 Phase 0, the 5th
+// takeover. GET /api/games/{id}/doctrine-tree/, see
+// `EngineBridge.get_doctrine_tree` (`web/game/engine_bridge.py`) for the
+// authoritative shape.
+// ---------------------------------------------------------------------------
+
+/** The 3 MVP doctrine tags — see `babylon.models.enums.doctrine.DoctrineTag`. */
+export type DoctrineTagKey = "class_analysis" | "mass_link" | "militancy";
+
+/** The 3 MVP strategic trunks — see `babylon.models.enums.doctrine.DoctrineTrunk`. */
+export type DoctrineTrunkKey = "reformist" | "scientific" | "insurrectionist";
+
+/**
+ * One node in the Doctrine Tree — field-for-field mirror of
+ * `babylon.models.entities.doctrine.DoctrineNode.model_dump(mode="json")`.
+ * `trunk` is `null` for the root and the shared tier-1 node
+ * (`trade_unionism`), which precede the branch split.
+ */
+export interface DoctrineNode {
+  id: string;
+  name: string;
+  tier: number;
+  parents: string[];
+  description: string;
+  tag_deltas: Partial<Record<DoctrineTagKey, number>>;
+  cost_tl: number;
+  trunk: DoctrineTrunkKey | null;
+  unlocks: string[];
+  warning: string | null;
+  is_trap: boolean;
+  trap_condition: string | null;
+  narrative: string | null;
+  is_goal: boolean;
+}
+
+/**
+ * GET /api/games/{id}/doctrine-tree/ payload. The tree itself is static
+ * game-data — identical for every session, since no `DoctrineSystem`/
+ * acquisition wiring exists yet (gated on six pending owner rulings, out of
+ * scope for this read-only canvas). `acquired_ids` is honestly `[]` until
+ * that lands (Constitution III.11 — never a fabricated partial-progress
+ * list); `tags` are the MVP corpus's declared starting values, the true
+ * current tag state while nothing has been acquired.
+ */
+export interface DoctrineTreePayload {
+  root_id: string;
+  nodes: DoctrineNode[];
+  acquired_ids: string[];
+  tags: Record<DoctrineTagKey, number>;
+}
+
+/** Empty-state default (Constitution III.11) — mirrors `EMPTY_ORG_NETWORK`'s
+ *  convention for a panel with no data fetched yet. The real endpoint is
+ *  never actually empty (always the 11-node MVP tree); this is a loading
+ *  placeholder only. */
+export const EMPTY_DOCTRINE_TREE: DoctrineTreePayload = {
+  root_id: "",
+  nodes: [],
+  acquired_ids: [],
+  tags: { class_analysis: 0, mass_link: 0, militancy: 0 },
+};
+
+// ---------------------------------------------------------------------------
 // Spec 110 B3 — cockpit dashboard payload shapes (spec-109 A4 endpoints)
 // ---------------------------------------------------------------------------
 

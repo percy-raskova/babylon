@@ -25,6 +25,7 @@ import type {
   StateApparatusDashboard,
   EdgesDashboardPayload,
   OrgNetworkPayload,
+  DoctrineTreePayload,
 } from "@/types/game";
 import type { FeatureCollection } from "geojson";
 import type { WireFeed } from "@/types/wire";
@@ -60,6 +61,8 @@ export interface PanelsSlice {
     narration: NarrationPanel;
     /** AW4-R2 — the Network takeover's org-network graph. */
     network: Panel<OrgNetworkPayload>;
+    /** The Doctrine Tree takeover's read-only canvas (Epoch 3 Wave 6 Phase 0). */
+    doctrineTree: Panel<DoctrineTreePayload>;
   };
 }
 
@@ -142,6 +145,12 @@ export const createPanelsSlice: StateCreator<RootState, [], [], PanelsSlice> = (
     (updater) => set((s) => ({ panels: { ...s.panels, network: updater(s.panels.network) } })),
     get,
   );
+  const doctrineTree = createPanel<DoctrineTreePayload>(
+    (gameId) => endpoints.doctrineTree.path({ id: gameId }),
+    (updater) =>
+      set((s) => ({ panels: { ...s.panels, doctrineTree: updater(s.panels.doctrineTree) } })),
+    get,
+  );
 
   return {
     panels: {
@@ -159,6 +168,7 @@ export const createPanelsSlice: StateCreator<RootState, [], [], PanelsSlice> = (
       tradeFlows,
       narration,
       network,
+      doctrineTree,
     },
   };
 };

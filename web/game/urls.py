@@ -47,6 +47,11 @@ urlpatterns: list[URLPattern] = [
         api.game_state_apparatus,
         name="game-state-apparatus",
     ),
+    path(
+        "games/<str:game_id>/doctrine-tree/",
+        api.game_doctrine_tree,
+        name="game-doctrine-tree",
+    ),
     path("games/<str:game_id>/journal/", api.game_journal, name="game-journal"),
     path("games/<str:game_id>/alerts/", api.game_alerts, name="game-alerts"),
     path("games/<str:game_id>/wire/", api.game_wire, name="game-wire"),

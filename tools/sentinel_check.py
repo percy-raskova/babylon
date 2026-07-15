@@ -21,10 +21,24 @@ from collections.abc import Callable
 from babylon.sentinels.coverage.checks import main as coverage_main
 from babylon.sentinels.seam.checks import main as seam_main
 
+
+def _partition_main(argv: list[str] | None) -> int:
+    """Route to the partition probe (Program 19, ADR070) — lazy import.
+
+    The partition sentinel's harness runs the engine, which the layer-0.5
+    package may not import, so it lives beside this file in ``tools/``
+    (``partition_probe.py``) and loads only when selected.
+    """
+    from partition_probe import main as partition_main  # type: ignore[import-not-found]
+
+    return partition_main(argv)
+
+
 #: Registered sentinels: name -> its ``main(argv)`` entry point.
 _SENSORS: dict[str, Callable[[list[str] | None], int]] = {
     "seam": seam_main,
     "coverage": coverage_main,
+    "partition": _partition_main,
 }
 
 

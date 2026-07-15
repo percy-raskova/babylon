@@ -49,6 +49,7 @@ from babylon.kernel.system_base import SystemBase
 from babylon.kernel.system_protocol import ContextType
 from babylon.models.entities.contradiction import Contradiction, ContradictionFrame
 from babylon.models.enums import ContradictionType, EdgeMode, EdgeType, EventType
+from babylon.sentinels.partition.registry import cell_name
 
 if TYPE_CHECKING:
     from babylon.domain.dialectics.core.opposition import OppositionRegistry, OppositionSpec
@@ -84,13 +85,11 @@ _SIGMA_NODE_ATTRS: dict[str, str] = {
     "wage": "sigma_wage",
 }
 
-#: Derived-cell vocabulary: pole-side names per principal axis. These are
-#: NOT SocialRole names — the crosswalk from derived cells to seeded roles
-#: is the partition sentinel's EVIDENCE, never an input here.
-_CELL_AXIS_NAMES: dict[str, dict[str, str]] = {
-    "capital_labor": {"a": "labor", "b": "capital"},
-    "wage": {"a": "exploited", "b": "bribed"},
-}
+#: The derived-cell vocabulary is NOT defined here: writer and sentinel share
+#: ONE source of truth — :mod:`babylon.sentinels.partition.registry` (layer
+#: 0.5, importable from the engine) — so the cell strings cannot drift from
+#: the sentinel's declared crosswalk. Cells are NOT SocialRole names; the
+#: crosswalk to seeded roles is the sentinel's EVIDENCE, never an input here.
 
 #: Below this rent_level a TENANCY edge carries no contradiction (rent-free).
 _RENT_EPSILON = 1e-9
@@ -345,17 +344,13 @@ class ContradictionSystem(SystemBase):
                     updates[attr] = axis_reading.sigma
                 elif (key, entity_id) in previous:
                     updates[attr] = None  # de-positioned: honest null, not stale
-            capital_labor = axes.get("capital_labor")
-            wage = axes.get("wage")
             had_cell = ("capital_labor", entity_id) in previous and (
                 "wage",
                 entity_id,
             ) in previous
-            if capital_labor is not None and wage is not None:
-                updates["derived_class_cell"] = (
-                    f"{_CELL_AXIS_NAMES['capital_labor'][capital_labor.side]}:"
-                    f"{_CELL_AXIS_NAMES['wage'][wage.side]}"
-                )
+            cell = cell_name({key: reading.side for key, reading in axes.items()})
+            if cell is not None:
+                updates["derived_class_cell"] = cell
             elif had_cell:
                 updates["derived_class_cell"] = None
             if updates:

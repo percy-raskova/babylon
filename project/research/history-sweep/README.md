@@ -64,6 +64,17 @@ briefs synthesize; regenerable but expensive (~8M subagent tokens).
    ⚠ Its anchor case (Minsaengdan, ~250× overkill) is single-source regime-memoir; Round 2
    verification below.
 
+## Terminology note (post-sweep rename, 2026-07-15)
+
+After this sweep ran, the owner renamed the reactionary Doctrine-Tree tag
+**`NATIONALISM` → `NATIONAL_CHAUVINISM`** (it is a stand-in for oppressor-nation chauvinism /
+white supremacy, not the national question in general; national *liberation* is a distinct
+progressive axis whose dialectical relation is `NATIONAL_CHAUVINISM ⟷ INTERNATIONALISM`). The
+authoritative design docs (`doctrine-tree.yaml`, `-mvp.yaml`, the proposal, `brief-dt-patsoc.md`)
+use the new name. **`findings.json` is left unchanged** as a point-in-time research corpus
+(immutability of history): where its `case`/`implication`/`theme` fields say "NATIONALISM" or
+"patsoc-nationalism," read `NATIONAL_CHAUVINISM`. See the proposal's "Tag rename" section.
+
 ## Corpus caveats (apply to every brief)
 
 - **ProleWiki Library stub rate ~21%** (71 of 338 Library files are empty bibliographic

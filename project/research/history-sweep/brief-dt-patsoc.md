@@ -1,7 +1,7 @@
 # Design Brief: DT — The PatSoc Pipeline
 
 **Theme:** National bolshevism, Strasserism, left-nationalist drift, the CLASS_ANALYSIS vs
-NATIONALISM tag axis, and the mechanically-triggered faction flip ("You are the fascist who
+NATIONAL_CHAUVINISM tag axis, and the mechanically-triggered faction flip ("You are the fascist who
 thought he was a communist").
 
 **Scope note on citations:** every claim carries the local corpus path it was extracted from.
@@ -45,7 +45,7 @@ East when these peoples, led by their great conquerors, advanced upon Europe"
 ### 1.2 Legitimate fusion vs. corrosive substitution — the African Blood Brotherhood as control case
 
 The African Blood Brotherhood's 1922 program is the cleanest instance of CLASS_ANALYSIS and
-NATIONALISM coexisting *stably* in one tag vector rather than one crowding out the other. It
+NATIONAL_CHAUVINISM coexisting *stably* in one tag vector rather than one crowding out the other. It
 fuses explicit class analysis (chattel-vs-wage-slavery framing, Third International alignment)
 with race-first liberation goals, and pairs an open Northern Federation with a secret Southern
 "Protective organization" modeled explicitly on Sinn Fein
@@ -211,7 +211,7 @@ found in §1.3–1.5, each node a specific, nameable substitution rather than a 
    Luther-to-Feder ~390-year recurrence showing this move needs no fresh theoretical
    investment (`.../blick/ch08.htm`). No historical number exists for a cost beyond this
    qualitative point; `TL_COST_NODE1 = 0` is design-law-grounded, not playtest-calibrated.
-2. **Council/Vocabulary Fusion** (Hamburg, §1.3): NATIONALISM tag rises while CLASS_ANALYSIS is
+2. **Council/Vocabulary Fusion** (Hamburg, §1.3): NATIONAL_CHAUVINISM tag rises while CLASS_ANALYSIS is
    *not yet* zeroed — both present, doctrine reads as legitimate fusion (matches the ABB
    control case, §1.2). This node must NOT auto-flag, since ABB shows the same co-occurrence
    can be stable for years. **Recommended check:** does the node retain an explicit
@@ -282,7 +282,7 @@ probability, per the historical requirement of both factors together. No source 
 At Baku (1920), a body that was 44.4% non-Communist/nationalist delegates
 (`history/international/comintern/baku/delegates.htm`) was treated as a legitimate united
 front, not a PatSoc drift instance. Recommend the tag-vector scoring NOT fire any
-PatSoc-pipeline warning purely from NATIONALISM-tag presence up to roughly this band
+PatSoc-pipeline warning purely from NATIONAL_CHAUVINISM-tag presence up to roughly this band
 (`PATSOC_SAFE_NATIONALISM_SHARE ≈ 0.44`) provided the `class_analysis_load_bearing` flag
 (§2.1 node 2) remains true — a single historical reference point, order-of-magnitude only.
 Separately, recommend naming pipeline nodes/flavor text from the Manifesto's own taxonomy —

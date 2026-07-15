@@ -18,8 +18,8 @@ spec-080 (dependencies 070/071 exist on disk; 072 does not).
 WILL BECOME." A DAG of doctrine nodes with mutually-exclusive splits, purchased with
 **Theoretical Labor** (`TL = Cadre_Count × Study_Allocation × Coherence_Factor` — an
 opportunity-cost draw on cadre time, not a free currency), summing to a **tag vector**
-(CLASS_ANALYSIS vs NATIONALISM is the load-bearing pair: "As long as CLASS_ANALYSIS >
-NATIONALISM, you are safe"), organized into **four trunks** (Reformist / Insurrectionist /
+(CLASS_ANALYSIS vs NATIONAL_CHAUVINISM is the load-bearing pair: "As long as CLASS_ANALYSIS >
+NATIONAL_CHAUVINISM, you are safe"), organized into **four trunks** (Reformist / Insurrectionist /
 Autonomist / Scientific), each with a mechanically-triggered trap ending (Liquidationism /
 Adventurism / Dissociation / Bureaucratic degeneration), plus the **PatSoc Pipeline**: a
 five-node drift chain ending in Strasserism with `resource_cost: 0` ("Falls into this,
@@ -55,6 +55,44 @@ are a distinct axis and remain in scope.
 6. **Trap escape**: MVP deliberately has none ("teaches the lesson hard"); full spec sells
    self_criticism at 300 TL. Which ships?
 
+## Tag rename + the Lawverian chauvinism⟷internationalism opposition (owner, 2026-07-15)
+
+The reactionary tag `NATIONALISM` was renamed to **`NATIONAL_CHAUVINISM`** across the spec
+(`doctrine-tree.yaml`, `-mvp.yaml`, this doc, `history-sweep/brief-dt-patsoc.md`) — docs-only,
+no runtime code exists yet. Rationale (owner): the tag is a stand-in for oppressor-nation
+chauvinism / white supremacy (Lenin's *great-nation chauvinism*; the CPUSA's own 1930s *white
+chauvinism* campaigns), **not** the national question in general. National **liberation** of
+oppressed nations is a distinct, progressive phenomenon this tag must never be confused with —
+the sweep's African Blood Brotherhood findings draw exactly this line ("bourgeois
+[left-]nationalism will betray the real interests of the Black and Latin toiling masses").
+Renaming also forced a coherence fix: the old tag's "moderate" effect sold it as *"useful in
+anti-imperial struggle"* — the precise conflation now removed (chauvinism is reactionary across
+its whole range).
+
+**Owner design direction (2026-07-15):** `NATIONAL_CHAUVINISM ⟷ INTERNATIONALISM` is a natural
+Lawverian dialectic `D = (A, Ā, w, T, σ)` — and its Ā pole is **already built**. Model it as a
+new `BoundOpposition` in `domain/dialectics/instances/catalog.py`, beside capital_labor / wage /
+tenancy / atomization / imperial:
+
+- **A = national-chauvinism, Ā = internationalism.** `OppositionSpec(pole_a="national-chauvinism",
+  pole_b="internationalism", level_name="class")`. The progressive pole is not "low chauvinism"
+  but a *positive* magnitude — proletarian internationalism, which the engine **already
+  computes**: the `SolidaritySystem` ("Proletarian Internationalism," `systems/solidarity.py`,
+  SOLIDARITY-edge transmission) is the live source for the Ā reading.
+- **w (balance)** = the load-bearing `CLASS_ANALYSIS`-vs-`NATIONAL_CHAUVINISM` safety condition,
+  reframed as the opposition's balance: chauvinism-dominant balance is the PatSoc drift gradient.
+- **T (gap)** = a `GapMeasure` over (chauvinism accumulation, solidarity/internationalism
+  incidence) — the same shape as the existing wealth-asymmetry `GapMeasure`.
+- **σ (sublation)** = the correction: a Party Congress `rectification`/`theoretical_offensive`
+  raising internationalism to re-close the gap (`aufhebung_of` lineage).
+- Ties the Doctrine Tree's tag layer to the ratified dialectics machinery (Amendment S:
+  "statics are derived, motion is primitive") — the tag vector becomes a *reading* of an
+  opposition's motion, not a free-floating counter. **Phase-1 candidate:** shadow-compute this
+  opposition's `PoleReading` (P19's `read_poles` shape) from chauvinism accrual + live
+  SOLIDARITY incidence, byte-identical-safe, before any tag UI. Decouples cleanly from Program
+  19 (different opposition, same registry). Needs an owner ruling at DT Phase 0: adopt the
+  dialectics-opposition modeling, or keep the tag vector as a flat counter?
+
 ## Constitutional guardrails
 
 - II.9/VIII.9: the Doctrine DAG should be its OWN small structure with its own owner
@@ -62,9 +100,9 @@ are a distinct axis and remain in scope.
   ideology relations.
 - II.5 + ADR034: trap conditions are boolean formulas over engine state, engine-evaluated,
   AI-narrated. No LLM ever grades theory, generates line-struggle adjudication, or decides
-  NATIONALISM > CLASS_ANALYSIS.
+  NATIONAL_CHAUVINISM > CLASS_ANALYSIS.
 - III.12: the PatSoc Pipeline's fully-numeric 5-phase trace (CLASS_ANALYSIS 3→1→0→−3,
-  NATIONALISM 0→2→5→7→9) is a ready-made golden baseline — seed `tests/baselines/` from it
+  NATIONAL_CHAUVINISM 0→2→5→7→9) is a ready-made golden baseline — seed `tests/baselines/` from it
   directly.
 - III.7: all corpus formulas are pure functions of committed state; keep it that way.
 
@@ -81,6 +119,6 @@ are a distinct axis and remain in scope.
 - **Phase 2** — trunk traps + PatSoc drift + (per ruling 2) the faction-flip mechanism.
 - **Phase 3** — the 5th takeover: the tree canvas (the corpus even ships an ASCII mockup —
   `[●]` acquired / `[○]` locked / `[!]` trap + live tag bars); DESIGN_BIBLE §9b/§11 bind.
-- Explicit dependency note: NATIONALISM-tag mechanics interact with spec-071
+- Explicit dependency note: NATIONAL_CHAUVINISM-tag mechanics interact with spec-071
   (reactionary-subject, on disk) and colonial_stance (spec-070, on disk) — both
   prerequisites already merged per the 05-catalog record.

@@ -1,15 +1,16 @@
 /**
- * BottomDrawer — "Trends"/"Economy"/"State Apparatus" drawer hosting
- * `TimeseriesChart`, `EconomyDashboard`, and `StateApparatusDashboard`
- * (architecture §1.2's `BottomStrip` disperse row; `EconomyDashboard` added
- * Wave 2 W2.2a, `StateApparatusDashboard` spec-111 C2). All three always
- * render (never JSX-conditional on `ui.chrome.bottomDrawer`) so they keep
- * `panels.timeseries`/`panels.economy`/`panels.stateApparatus`
- * tick-fanned-out even while the drawer is visually closed or on another
- * tab — the same always-mounted-while-hidden rule the legacy `BottomStrip`
- * enforced. `FloatingPanel`'s own `collapsed` prop (not a conditional
- * render) does the outer hiding; the in-panel tab row below does the
- * per-content hiding via CSS only, same idiom.
+ * BottomDrawer — "Trends"/"Economy"/"State Apparatus"/"Edges" drawer hosting
+ * `TimeseriesChart`, `EconomyDashboard`, `StateApparatusDashboard`, and
+ * `EdgesDashboard` (architecture §1.2's `BottomStrip` disperse row;
+ * `EconomyDashboard` added Wave 2 W2.2a, `StateApparatusDashboard` and
+ * `EdgesDashboard` spec-111 C2). All four always render (never
+ * JSX-conditional on `ui.chrome.bottomDrawer`) so they keep
+ * `panels.timeseries`/`panels.economy`/`panels.stateApparatus`/
+ * `panels.edges` tick-fanned-out even while the drawer is visually closed
+ * or on another tab — the same always-mounted-while-hidden rule the legacy
+ * `BottomStrip` enforced. `FloatingPanel`'s own `collapsed` prop (not a
+ * conditional render) does the outer hiding; the in-panel tab row below
+ * does the per-content hiding via CSS only, same idiom.
  *
  * `ui.chrome.bottomDrawer`'s "events" arm deliberately doesn't duplicate
  * `EventsFeed` (that lives in `EventTray`, architecture §1.2) — it's a
@@ -24,6 +25,7 @@ import { FloatingPanel } from "./FloatingPanel";
 import { TimeseriesChart } from "@/components/timeseries/TimeseriesChart";
 import { EconomyDashboard } from "@/components/economy/EconomyDashboard";
 import { StateApparatusDashboard } from "@/components/state-apparatus/StateApparatusDashboard";
+import { EdgesDashboard } from "@/components/edges/EdgesDashboard";
 import { keyButtonClass } from "./installerKit";
 import type { BottomDrawerState } from "@/store/slices/uiSlice";
 
@@ -38,6 +40,7 @@ const DRAWER_TITLE: Record<BottomDrawerState, string> = {
   events: "Trends",
   economy: "Economy",
   "state-apparatus": "State Apparatus",
+  edges: "Edges",
 };
 
 export function BottomDrawer({ gameId }: BottomDrawerProps): React.JSX.Element {
@@ -88,6 +91,16 @@ export function BottomDrawer({ gameId }: BottomDrawerProps): React.JSX.Element {
         >
           State Apparatus
         </button>
+        <button
+          type="button"
+          role="tab"
+          aria-selected={bottomDrawer === "edges"}
+          data-testid="bottomdrawer-tab-edges"
+          onClick={() => setBottomDrawer("edges")}
+          className={keyButtonClass(bottomDrawer === "edges", "px-2 py-0.5 text-[10px]")}
+        >
+          Edges
+        </button>
       </div>
 
       {/* h-48 (not h-full): the anchor="bottom" panel is shrink-to-fit (no
@@ -102,6 +115,9 @@ export function BottomDrawer({ gameId }: BottomDrawerProps): React.JSX.Element {
       </div>
       <div className={bottomDrawer === "state-apparatus" ? "h-48 overflow-y-auto" : "hidden"}>
         <StateApparatusDashboard gameId={gameId} />
+      </div>
+      <div className={bottomDrawer === "edges" ? "h-48 overflow-y-auto" : "hidden"}>
+        <EdgesDashboard gameId={gameId} />
       </div>
       {bottomDrawer === "events" && (
         <p className="p-3 text-[11px] italic text-ksbc-muted-2">

@@ -26,6 +26,7 @@ import {
   makeMapHistoryPayload,
   makeOrgNetworkPayload,
   makeStateApparatusDashboard,
+  makeEdgesDashboard,
 } from "./fixtures";
 import type { GameSnapshot } from "@/types/game";
 
@@ -218,6 +219,18 @@ export const handlers = [
     return HttpResponse.json({
       status: "ok",
       data: makeStateApparatusDashboard({ tick: mockSnapshot.tick }),
+    });
+  }),
+
+  // spec-111 C2 — the Edges/Tension dashboard ("where is the class war
+  // hottest"). Defaults mirror the real wayne_county contract (dense
+  // relationship graph, one seeded SOLIDARITY edge, no edge_mode yet);
+  // tests needing a specific payload override with server.use().
+  http.get("/api/games/:id/edges/", () => {
+    logRequest("GET edges");
+    return HttpResponse.json({
+      status: "ok",
+      data: makeEdgesDashboard({ tick: mockSnapshot.tick }),
     });
   }),
 

@@ -20,6 +20,7 @@ from babylon.intelligence.ai.llm_provider import LLMProvider, MockLLM
 from babylon.models import EdgeType, Relationship, SocialClass, SocialRole, WorldState
 from babylon.models.entity_registry import COMPRADOR_ID, PERIPHERY_WORKER_ID
 from babylon.models.events import TransmissionEvent, UprisingEvent
+from game.models import GameSession
 from game.narrative_service import (
     FEATURE_FLAG_ENV,
     PROMPT_VERSION,
@@ -219,6 +220,7 @@ class TestScheduleFlagOff:
 
 @pytest.mark.unit
 class TestScheduleHappyPath:
+    @pytest.mark.django_db(transaction=True)
     def test_generates_dual_narrative_for_significant_event(
         self,
         monkeypatch: pytest.MonkeyPatch,
@@ -226,9 +228,18 @@ class TestScheduleHappyPath:
         previous_state: WorldState,
         new_state_with_uprising: WorldState,
     ) -> None:
+        """``transaction=True``: ``schedule()`` runs generation (including
+        the task-B4 persistence step) on a background thread. pytest-django's
+        default rollback-based isolation leaves the row-creating transaction
+        open on the main thread's connection, which the worker thread's own
+        connection then sees as locked rather than committed — verified
+        empirically. ``transaction=True`` commits for real instead, which is
+        what a genuinely separate thread needs to see the row.
+        """
         from django.conf import settings as django_settings
 
         monkeypatch.setattr(django_settings, "BABYLON_LLM_NARRATOR", True, raising=False)
+        GameSession.objects.create(id=session_id, scenario="narrative-service-test")
         mock_llm = MockLLM(responses=["Corporate narrative", "Liberated narrative"])
         service = NarrativeService(llm=mock_llm)
 
@@ -415,6 +426,7 @@ class TestProviderFactoryWiring:
     NarrativeResult proves the factory is actually consulted.
     """
 
+    @pytest.mark.django_db(transaction=True)
     def test_unset_llm_resolves_via_factory(
         self,
         monkeypatch: pytest.MonkeyPatch,
@@ -422,10 +434,15 @@ class TestProviderFactoryWiring:
         previous_state: WorldState,
         new_state_with_uprising: WorldState,
     ) -> None:
+        """``transaction=True`` — see the docstring on
+        ``TestScheduleHappyPath.test_generates_dual_narrative_for_significant_event``
+        for why a background-thread persistence write needs it.
+        """
         from django.conf import settings as django_settings
 
         monkeypatch.setattr(django_settings, "BABYLON_LLM_NARRATOR", True, raising=False)
         monkeypatch.setattr(LLMConfig, "PROVIDER", "mock")
+        GameSession.objects.create(id=session_id, scenario="narrative-service-test")
         service = NarrativeService()  # deliberately NO llm= — exercises the factory path
 
         # Direct check: the lazily-resolved provider is the factory's MockLLM,

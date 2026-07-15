@@ -56,6 +56,7 @@ from uuid import UUID
 from babylon.config.llm_config import LLMConfig
 from babylon.intelligence.ai.director import NarrativeDirector
 from babylon.intelligence.ai.llm_provider import DeepSeekClient, LLMProvider
+from babylon.intelligence.ai.prompt_registry import get_prompt_registry
 
 if TYPE_CHECKING:
     from babylon.intelligence.rag.rag_pipeline import RagPipeline
@@ -70,9 +71,11 @@ logger = logging.getLogger(__name__)
 FEATURE_FLAG_ENV = "BABYLON_LLM_NARRATOR"
 
 # The prompt version pinned alongside every stored NarrativeResult
-# (Constitution III.6). Bump when CORPORATE_SYSTEM_PROMPT / LIBERATED_SYSTEM_PROMPT
-# in babylon.intelligence.ai.director change materially.
-PROMPT_VERSION = "v1"
+# (Constitution III.6). Auto-derived from the content hash of the narrator
+# prompt artifacts (babylon.intelligence.ai.prompt_registry) — manual bumps
+# are retired; editing CORPORATE_SYSTEM_PROMPT / LIBERATED_SYSTEM_PROMPT
+# (src/babylon/data/game/prompts/narrator/*.txt) changes this automatically.
+PROMPT_VERSION = get_prompt_registry().version()
 
 _TRUE_VALUES = frozenset({"1", "true", "yes", "on"})
 

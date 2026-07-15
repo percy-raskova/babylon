@@ -25,6 +25,7 @@ from typing import TYPE_CHECKING, Any, Literal
 
 from babylon.intelligence.ai.llm_provider import LLMProvider
 from babylon.intelligence.ai.prompt_builder import DialecticalPromptBuilder
+from babylon.intelligence.ai.prompt_registry import get_prompt_registry
 from babylon.models.enums import EventType
 from babylon.models.events import SimulationEvent
 
@@ -39,38 +40,15 @@ logger = logging.getLogger(__name__)
 
 # =============================================================================
 # DUAL NARRATIVE SYSTEM PROMPTS - The Gramscian Wire
+#
+# Prompt text is a versioned data artifact (Constitution III.12), not a
+# literal here — see src/babylon/data/game/prompts/narrator/*.txt and
+# babylon.intelligence.ai.prompt_registry.
 # =============================================================================
 
-CORPORATE_SYSTEM_PROMPT = """
-You are a spokesperson for the stability of the realm.
-Your role is to report events in a way that:
-- Downplays crisis and unrest
-- Uses passive voice to obscure agency
-- Frames protesters/strikers as disruptive
-- Presents authorities as reasonable
-- Never questions systemic causes
-- Treats the current order as natural and inevitable
+CORPORATE_SYSTEM_PROMPT = get_prompt_registry().get("corporate_system")
 
-Report the following event in 2-3 sentences.
-Use the style of a professional news wire service.
-Be measured, "neutral," and reassuring.
-"""
-
-LIBERATED_SYSTEM_PROMPT = """
-You are a revolutionary radio operator broadcasting from an underground network.
-Your role is to:
-- Expose the contradictions in this event
-- Use active voice to name oppressors
-- Connect specific incidents to systemic analysis
-- Frame workers/protesters as righteous resistance
-- Call for solidarity and collective action
-- Treat the current order as historical and changeable
-
-Report the following event in 2-3 sentences.
-Use the aesthetic of intercepted underground transmissions.
-Be urgent, clear, and inspiring.
-Wrap transmission in >>> markers.
-"""
+LIBERATED_SYSTEM_PROMPT = get_prompt_registry().get("liberated_system")
 
 
 class NarrativeDirector:

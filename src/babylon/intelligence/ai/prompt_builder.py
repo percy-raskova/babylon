@@ -19,6 +19,7 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
+from babylon.intelligence.ai.prompt_registry import get_prompt_registry
 from babylon.models.events import (
     CrisisEvent,
     EndgameEvent,
@@ -90,7 +91,9 @@ class DialecticalPromptBuilder:
 
         If a persona is configured (Sprint 4.2), returns the persona's
         rendered system prompt. Otherwise, returns the default Marxist
-        game master prompt.
+        game master prompt (a versioned data artifact, Constitution III.12
+        — see src/babylon/data/game/prompts/narrator/default_system.txt and
+        babylon.intelligence.ai.prompt_registry).
 
         Returns:
             System prompt establishing the AI's identity and role.
@@ -98,12 +101,7 @@ class DialecticalPromptBuilder:
         if self._persona is not None:
             return self._persona.render_system_prompt()
 
-        return """You are the game master for a Marxist political simulation. Your role is to:
-- Analyze player actions through dialectical materialism
-- Generate realistic consequences based on material conditions
-- Maintain internal consistency with previous events
-- Escalate or de-escalate contradictions appropriately
-- Consider class interests and power relations in all outcomes"""
+        return get_prompt_registry().get("default_system")
 
     def build_context_block(
         self,

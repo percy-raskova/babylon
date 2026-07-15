@@ -1,7 +1,10 @@
 # Program Proposal — The Epistemic Horizon (fog of war)
 
-**Status: PROPOSED, PENDING OWNER RATIFICATION** (drafted 2026-07-15 from a full corpus
-mine; audit Wave 5's "biggest net-new mechanic"). Sources: `ai/epochs/epoch3/fog-of-war.yaml`
+**Status: RATIFIED by owner 2026-07-15** (drafted 2026-07-15 from a full corpus
+mine; audit Wave 5's "biggest net-new mechanic"). **Historical grounding:** 50-agent
+Marxists.org/ProleWiki sweep, owner-directed at ratification —
+`project/research/history-sweep/` (`brief-eh-{mass-line,infiltration,receptivity}.md` +
+`addendum-eh-rulings.md` closes rulings 3+5 with recommendations; coefficient tables inside). Sources: `ai/epochs/epoch3/fog-of-war.yaml`
 (873 lines, SPEC_COMPLETE — the primary spec), `ai/brainstorms/network/percynotes2.md:190-198`
 (the OODA `intelligence`/`sensor_latency` articulation), CONSTITUTION.md Article V (the
 ratified Investigate sub-verbs), `reports/epochs-vision-gap-audit.md` §3b/§5 Wave 5.

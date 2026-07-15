@@ -1,7 +1,10 @@
 # Program Proposal — Doctrine Tree, Theoretical Labor & the Four Trunks
 
-**Status: PROPOSED, PENDING OWNER RATIFICATION** (drafted 2026-07-15 from a full corpus
-mine; audit Wave 6's "single largest coherent MISSING cluster"). Sources:
+**Status: RATIFIED by owner 2026-07-15** (drafted 2026-07-15 from a full corpus
+mine; audit Wave 6's "single largest coherent MISSING cluster"). **Historical grounding:**
+50-agent Marxists.org/ProleWiki sweep, owner-directed at ratification —
+`project/research/history-sweep/` (`brief-dt-{trunks,traps,patsoc,theoretical-labor}.md` +
+`addendum-dt-rulings.md` closes rulings 3-5 with recommendations; coefficient tables inside). Sources:
 `ai/epochs/epoch3/doctrine-tree.yaml` (1200 lines, PLANNED — the full spec),
 `ai/epochs/epoch3/doctrine-tree-mvp.yaml` (481 lines, SPEC_COMPLETE — 3-trunk/3-tag/15-node
 subset), `resource-sinks.yaml:240-280` (TL sinks/decay), `vanguard-economy.yaml` (Reading

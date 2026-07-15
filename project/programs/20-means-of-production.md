@@ -64,7 +64,7 @@ never touch the babylon-data drive (2026-07-14); Constitution Article X; III.6/I
 ADR071 charters the program: subrepo mechanism + `deploy/` absorption; Article X scoping
 clarification (X.1's "no Docker, no Nix" binds the production host, not dev/build tooling —
 recorded, with an optional one-line Amendment T if the owner wants it constitutional); notes the
-X.5 Woodpecker-vs-GitHub-Actions drift without fixing it. Constitution IX.1 lists
+X.4 Woodpecker-vs-GitHub-Actions drift without fixing it. Constitution IX.1 lists
 infrastructure/deployment change as an explicit ADR trigger — this satisfies it.
 
 ## Phases

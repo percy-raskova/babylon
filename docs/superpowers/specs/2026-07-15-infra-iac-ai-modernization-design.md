@@ -169,7 +169,7 @@ stays).
 One ADR charters the program: subrepo mechanism + `deploy/` absorption; Article X scoping
 clarification (X.1's "no Docker, no Nix" binds the **production host**, not dev/build tooling —
 recorded, with an optional one-line Amendment T if the owner wants it constitutional); notes the
-X.5 Woodpecker-vs-GitHub-Actions drift without fixing it. Constitution IX.1 lists
+X.4 Woodpecker-vs-GitHub-Actions drift without fixing it. Constitution IX.1 lists
 infrastructure/deployment change as an explicit ADR trigger — this satisfies it. Program doc
 registered under `project/programs/`; `ai/state.yaml` updated at close-out.
 

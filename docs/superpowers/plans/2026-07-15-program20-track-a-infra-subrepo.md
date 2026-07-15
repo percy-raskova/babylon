@@ -83,7 +83,7 @@ decision: |
      pre-commit battery. Accepted gap: infra validation is local-only until a remote exists.
 consequences: |
   - Parent repo loses deploy/ and .tflint.hcl (moved); hygiene allowlist updated.
-  - X.5 names Woodpecker for CI; reality is GitHub Actions — drift NOTED, not fixed here.
+  - X.4 names Woodpecker among supervised processes (X.5 assigns CI/CD to Hetzner); reality is GitHub Actions — drift NOTED, not fixed here.
   - AI narration stays flag-off per D3; Track B builds behind the flag (Mock Doctrine).
 supersedes: []
 related: [ADR063, ADR064, ADR069]

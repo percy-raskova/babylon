@@ -1360,43 +1360,109 @@ _MAP_HISTORY_METRICS: tuple[SeamEntry, ...] = (
     ),
 )
 
-# ---------------------------------------------------------------------------
-# KNOWN GAP (AW4-R1, audit Wave 4 "Topology & the Gramscian Wire",
-# 2026-07-15): ``EngineBridge.get_org_network`` / ``get_hypergraph_communities``
-# (``web/game/engine_bridge.py``, the ``OrgNetworkPayload``/``HypergraphPayload``
-# contracts) and their new ``centrality``/``percolation_ratio`` fields are
-# player-observable quantities crossing the seam with NO registry row here.
-#
-# This is not an oversight: :class:`SeamScope` (``sentinels/seam/types.py``)
-# has exactly seven members (MAP, TERRITORY, ECONOMY, ENDGAME, EVENT,
-# INSPECTOR, FIELD_STATE) and none of them honestly fits an org/institution/
-# territory topology graph, a permanently-empty hypergraph-community stub, or
-# graph-structural analytics (centrality/percolation). Filing these rows under
-# an existing scope (e.g. INSPECTOR, which is drill-down payloads, not a
-# graph-panel lens) would be the exact "classified dishonestly" failure mode
-# this registry exists to catch (see the module docstring above) — so no rows
-# were added rather than force a misfit one.
-#
-# AW4-R1's file scope was ``registry.py`` only (not ``types.py``), so adding
-# the fitting new member (e.g. ``SPATIAL`` or ``TOPOLOGY``) was out of reach
-# this pass. This comment is the documented placeholder so the gap is visible
-# to the next agent who touches this file, per this module's own "the
-# registry cannot silently rot" design intent — a scope-enum amendment is the
-# correct next step, then real ``SeamEntry`` rows for:
-#   - org_network.tick / .nodes / .edges (OrgNetworkPayload)
-#   - org_network.centrality (bridge-derived, per-node degree/betweenness/
-#     closeness — see ``_org_network_centrality``)
-#   - org_network.percolation_ratio (bridge-derived, reuses
-#     ``babylon.engine.topology_monitor.calculate_component_metrics`` —
-#     see ``_solidarity_percolation_ratio``)
-#   - hypergraph_communities.hyperedges (HypergraphPayload; permanently
-#     empty today — LivenessClass.STRUCTURALLY_IMPOSSIBLE, matching the
-#     ``hex_latest`` agitation/territory_type rows' precedent above)
-# Note also: Sensor 1's gating checks (``check_map_metrics`` /
-# ``check_tick_payloads_exist`` / ``check_severity_vocabulary``) do not scan
-# these surfaces, so this gap does NOT red ``mise run check:seams`` — it is a
-# silent-documentation gap, not a silent-behavior one.
-# ---------------------------------------------------------------------------
+# --- NETWORK scope (audit Wave 4; scope enum added post-AW4-R1, task #76) ---
+# AW4-R1 deliberately left these unregistered rather than misclassify them
+# under INSPECTOR/TERRITORY (its file scope excluded types.py). The
+# ``SeamScope.NETWORK`` member now exists; these rows retire that documented
+# gap. Sensor 1's gating checks do not scan this surface — rows are the
+# declarative contract, same as FIELD_STATE's.
+
+_ORG_NETWORK_EMITTERS: tuple[str, ...] = (
+    "web/game/engine_bridge.py::EngineBridge.get_org_network",
+    "web/game/engine_bridge.py::_build_org_network",
+)
+
+_NETWORK_METRICS: tuple[SeamEntry, ...] = (
+    SeamEntry(
+        payload="org_network_graph",
+        wire_keys=("nodes", "edges"),
+        scope=SeamScope.NETWORK,
+        owner_layer="bridge (derived read of the hydrated session graph)",
+        liveness_class=LivenessClass.DECLARED_CONDITIONAL,
+        dtype="json",
+        write_site=(
+            "engine scenario builders seed org/institution/territory nodes and "
+            "their edges; the bridge only reads (no write of its own)"
+        ),
+        read_paths=_ORG_NETWORK_EMITTERS,
+        derivation_site="web/game/engine_bridge.py::_build_org_network",
+        spec_ref="audit Wave 4 R1 (Topology & the Gramscian Wire) · commit c312e62d",
+        notes=(
+            "OrgNetworkPayload nodes/edges, deterministically sorted. "
+            "DECLARED_CONDITIONAL: live whenever the scenario seeds at least "
+            "one organization (wayne_county seeds ORG001+ORG002 since AW3.3); "
+            "an org-less synthetic scenario honestly serves empty lists. "
+            "Contract facts verified AW4-R1: OrgNetworkNode.type has NO "
+            "social_class member; MEMBERSHIP edges have zero production "
+            "writers; CLIENT_STATE is a class-to-class subsidy edge."
+        ),
+    ),
+    SeamEntry(
+        payload="centrality",
+        wire_keys=("centrality",),
+        scope=SeamScope.NETWORK,
+        owner_layer="bridge (pure topology analytics at bridge altitude)",
+        liveness_class=LivenessClass.DECLARED_CONDITIONAL,
+        dtype="json",
+        write_site=(
+            "none — computed per request from the hydrated graph "
+            "(babylon.topology.graph_algorithms degree/betweenness/closeness, "
+            "the sparrow.analyze_network guard idiom)"
+        ),
+        read_paths=_ORG_NETWORK_EMITTERS,
+        derivation_site="web/game/engine_bridge.py::_org_network_centrality",
+        spec_ref="audit Wave 4 R1 · commit c312e62d",
+        notes=(
+            "Per-node {degree, betweenness?, closeness?}; observability read, "
+            "never adjudication (Constitution: AI/presentation observes). "
+            "Empty dict when the network has no nodes — honest, not fabricated."
+        ),
+    ),
+    SeamEntry(
+        payload="percolation_ratio",
+        wire_keys=("percolation_ratio",),
+        scope=SeamScope.NETWORK,
+        owner_layer="bridge (pure topology analytics at bridge altitude)",
+        liveness_class=LivenessClass.DECLARED_CONDITIONAL,
+        dtype="float",
+        write_site=(
+            "none — computed per request via "
+            "babylon.engine.topology_monitor.extract_solidarity_subgraph + "
+            "calculate_component_metrics"
+        ),
+        read_paths=_ORG_NETWORK_EMITTERS,
+        derivation_site="web/game/engine_bridge.py::_solidarity_percolation_ratio",
+        spec_ref="audit Wave 4 R1 · commit c312e62d",
+        notes=(
+            "Solidarity-subgraph percolation ratio; honest null when no "
+            "SOLIDARITY edges exist (never a fabricated 0.0). Rendered by the "
+            "Network takeover's HUD chip as an em-dash on null (AW4-R2)."
+        ),
+    ),
+    SeamEntry(
+        payload="community_memberships",
+        wire_keys=("hyperedges",),
+        scope=SeamScope.NETWORK,
+        owner_layer="engine (CommunitySystem @6 — XGI hypergraph rebuild per tick)",
+        liveness_class=LivenessClass.STRUCTURALLY_IMPOSSIBLE,
+        dtype="json",
+        write_site=(
+            "src/babylon/engine/systems/community.py::CommunitySystem.step "
+            "(no-ops every tick: no scenario builder assigns "
+            "SocialClass.community_memberships anywhere in production)"
+        ),
+        read_paths=("web/game/engine_bridge.py::EngineBridge.get_hypergraph_communities",),
+        derivation_site="web/game/engine_bridge.py::EngineBridge.get_hypergraph_communities",
+        spec_ref="audit Wave 4 R1 · commit c312e62d (dead-route 500 fixed honestly)",
+        notes=(
+            "Permanently-empty hyperedges list until a data program seeds "
+            "community_memberships (the hull/organization-gauge prerequisite "
+            "deferred in reports/wave3-weather-implementation-map.md). "
+            "STRUCTURALLY_IMPOSSIBLE by the hex_latest precedent: no runtime "
+            "condition can light it — only a code/data change."
+        ),
+    ),
+)
 
 #: The declared observable-field contract. Populated per build phase.
 SEAM_REGISTRY: tuple[SeamEntry, ...] = (
@@ -1405,4 +1471,5 @@ SEAM_REGISTRY: tuple[SeamEntry, ...] = (
     + _INSPECTOR_METRICS
     + _FIELD_STATE_METRICS
     + _MAP_HISTORY_METRICS
+    + _NETWORK_METRICS
 )

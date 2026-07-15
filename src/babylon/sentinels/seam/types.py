@@ -63,6 +63,14 @@ class SeamScope(StrEnum):
         opposition-gap ``dialectical_regime`` read on ``/contradiction/`` —
         same graph attr, different observable surface, so scoping keeps them
         from colliding under :class:`SeamEntry`'s ``key``.
+    :cvar NETWORK: the graph-topology payloads
+        (``EngineBridge.get_org_network`` on ``/orgs/network/`` and
+        ``get_hypergraph_communities`` on ``/hypergraph/communities/``;
+        audit-Wave-4 R1) — org/institution/territory node-link data plus the
+        bridge-derived structural analytics (per-node centrality,
+        solidarity-subgraph ``percolation_ratio``). Added after AW4-R1
+        deliberately registered a documented scope gap rather than
+        misclassify these under :attr:`INSPECTOR`/:attr:`TERRITORY`.
     """
 
     MAP = "map"
@@ -72,6 +80,7 @@ class SeamScope(StrEnum):
     EVENT = "event"
     INSPECTOR = "inspector"
     FIELD_STATE = "field_state"
+    NETWORK = "network"
 
 
 class LivenessClass(StrEnum):

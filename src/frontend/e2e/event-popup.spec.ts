@@ -66,7 +66,15 @@ test.describe("event popup on tick advance (cockpit, spec-113 Lane G)", () => {
         ),
         stepButton.click(),
       ]);
-      await expect(page.getByTestId("time-status")).toHaveText("PAUSED", { timeout: 15000 });
+      // Resolution terminates in PAUSED — or AUTOPAUSED when the tick's
+      // events include a critical one (worldSlice calls time.autopause()
+      // for the HOI4 pause-on-crisis behavior). Both are valid terminal
+      // states; AUTOPAUSED is itself evidence an urgent event landed.
+      // (Written as plain PAUSED before 40ef3d81, when the persistence
+      // layer silently dropped events and autopause could never fire.)
+      await expect(page.getByTestId("time-status")).toHaveText(/^(PAUSED|AUTOPAUSED)$/, {
+        timeout: 15000,
+      });
 
       const toastCount = await toastContainer.locator("[data-testid^='toast-']").count();
       if (toastCount > 0) {
@@ -81,6 +89,17 @@ test.describe("event popup on tick advance (cockpit, spec-113 Lane G)", () => {
         "scenario's event cadence changed or eventsSlice.ingest's classification broke",
     ).toBe(true);
 
+    // A critical event also raises the CriticalEventModal (the autopause
+    // alertdialog) OVER the toast rail — its full-screen backdrop
+    // intercepts every toast click until acknowledged. Resume returns the
+    // time slice to plain "paused" (timeSlice.resume), so acknowledging
+    // here never sets the loop playing.
+    const criticalModal = page.getByTestId("critical-event-modal");
+    if (await criticalModal.isVisible()) {
+      await page.getByTestId("autopause-resume").click();
+      await expect(criticalModal).toHaveCount(0);
+    }
+
     // Whichever toast fired first, it carries the two-lifetime contract:
     // a persistent (critical) toast shows "Open Wire" + "Dismiss"; an
     // ephemeral (notable batch) toast shows only "Dismiss" (no per-event
@@ -88,13 +107,17 @@ test.describe("event popup on tick advance (cockpit, spec-113 Lane G)", () => {
     // channels", notable does not).
     const firstToast = toastContainer.locator("[data-testid^='toast-']").first();
     await expect(firstToast).toBeVisible();
+    // Pin the specific toast before dismissing: a live tick emits SEVERAL
+    // urgent events, so `.first()` re-resolves to the NEXT toast once this
+    // one is dismissed — assert on the captured id, not the live locator.
+    const firstToastId = await firstToast.getAttribute("data-testid");
     const dismissButton = firstToast.locator("[data-testid^='toast-dismiss-']");
     await expect(dismissButton).toBeVisible();
 
     // Dismiss moves it into the recoverable tray (HOI4-style — never
     // deleted), retrievable from EventTray's "Missed" section.
     await dismissButton.click();
-    await expect(firstToast).toHaveCount(0);
+    await expect(toastContainer.locator(`[data-testid="${firstToastId}"]`)).toHaveCount(0);
 
     await expect(page.getByTestId("event-tray")).toBeVisible({ timeout: 10000 });
     await expect(page.getByTestId("event-tray-dismissed")).toBeVisible({ timeout: 10000 });

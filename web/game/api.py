@@ -721,6 +721,9 @@ def game_narration(request: Request, game_id: str) -> JsonResponse:
     with records is ``"ready"`` — degraded beats (``NarrationRecord.degraded``)
     are included in the list, never filtered out; loud failure must stay
     visible in the beats a client actually renders.
+
+    A non-integer ``since_tick`` is a loud 400 (III.11), never coerced to 0;
+    a missing ``since_tick`` defaults to 0 (full history).
     """
     session = _get_session_or_none(game_id, request.user.id)
     if session is None:

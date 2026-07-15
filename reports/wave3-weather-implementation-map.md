@@ -55,7 +55,7 @@ These are data-free presentation policy; they go in `DESIGN_BIBLE` and govern ev
 ## Execution rounds (single-writer on engine_bridge.py; all agents Sonnet; TDD; qa:regression 5/5 or STOP)
 
 - **Round 0 — grammar + record (docs, cheap):** grammar laws into DESIGN_BIBLE §weather; census
-  corrections into this map (done); state.yaml.
+  corrections into this map (done); state.yaml. **✅ LANDED `36c7a419`** (DESIGN_BIBLE §11).
 - **Round 1 — light the field seam (backend, byte-identical-safe by construction):** serialize
   the System-19/20 stack under a **new, distinct name** (`field_state`, avoiding the
   `contradiction_field` System-18 collision): per-node `contradiction_fields` +
@@ -64,7 +64,26 @@ These are data-free presentation policy; they go in `DESIGN_BIBLE` and govern ev
   existing tenancy resolution (gradients live on class-class edges; the map needs
   territory-anchored arcs). Seam registry rows + coverage sentinel green. RUPTURE/UPRISING
   already cross via the W1.1 journal whitelist — verify, don't rebuild.
-- **Round 2 — the instruments (frontend):**
+  **✅ LANDED `6812cfc8`** — endpoint + stub parity + 7 seam rows (new `SeamScope.FIELD_STATE`),
+  670 scoped tests green, check:seams exit 0. qa:regression not required by construction (the 5
+  scenarios run headless_runner, which never imports web/game).
+  **⚡ CROWN FINDING → R1b:** the web bridge steps via the facade `step()` (WorldState
+  round-trip per tick), so the engine-mutated graph dies inside it — `contradiction_fields`/
+  `field_derivatives` are `SOCIAL_CLASS_COMPUTED_FIELDS`-excluded from reconstruction and
+  `principal_field`/`dialectical_regime` aren't in `to_graph()`'s whitelist. Only
+  `fascist_alignment` (real SocialClass field) arrives live; the other 5 registry rows are
+  honestly tiered STRUCTURALLY_IMPOSSIBLE. The engine reads its temporal history from
+  `persistent_data["contradiction_history"]`, never from these graph attrs, so a carry is
+  behavior-neutral. `ContradictionFrame` (rigid 2×2, extra=forbid) is NOT a usable container.
+  **R1b (task #66, engine-side, own session):** mirror the `opposition_states` pattern — a
+  WorldState-field channel written by the systems, carried by from_graph/to_graph (P19
+  `pole_readings` byte-safety precedent); flip the 5 rows live; qa:regression 5/5 MANDATORY.
+- **Round 2 — the instruments (frontend), SPLIT on the R1b dependency:**
+  **R2a (unblocked, task #67, in flight):** storm markers (uprising anchored via the
+  criticalPulse conventions; rupture is global — no fabricated anchor) + bifurcation gauge v1
+  (bifurcation_score + live fascist_alignment; honest "solidarity density" label) + the typed
+  `fieldState` endpoints.ts row. **R2b (task #63, blocked by R1b):** vector lens + front lines —
+  pointless until gradients/laplacian arrive live.
   - *Vector lens kind* — the grammar's first extensive citizen: animated flow along projected
     gradient arcs (LineLayer/TripsLayer + PathStyleExtension, zero new deps; follow
     `criticalPulse.ts` transitions + prefers-reduced-motion convention). New `kind` touches:

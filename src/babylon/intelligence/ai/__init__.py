@@ -25,7 +25,13 @@ Sprint 4.3: Added NarrativeCommissar for automated narrative evaluation.
 
 from babylon.intelligence.ai.director import NarrativeDirector
 from babylon.intelligence.ai.judge import JudgmentResult, MetaphorFamily, NarrativeCommissar
-from babylon.intelligence.ai.llm_provider import DeepSeekClient, LLMProvider, MockLLM
+from babylon.intelligence.ai.llm_provider import (
+    DeepSeekClient,
+    LLMProvider,
+    MockLLM,
+    WorkersAIClient,
+    build_llm_provider,
+)
 from babylon.intelligence.ai.persona import Persona, VoiceConfig
 from babylon.intelligence.ai.persona_loader import (
     PersonaLoadError,
@@ -40,6 +46,9 @@ __all__ = [
     "LLMProvider",
     "MockLLM",
     "DeepSeekClient",
+    # Program 20 Track B: Workers AI provider + factory (Program 07 Decision 3)
+    "WorkersAIClient",
+    "build_llm_provider",
     # Sprint 4.2: Persona system
     "Persona",
     "VoiceConfig",

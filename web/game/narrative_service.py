@@ -55,7 +55,7 @@ from uuid import UUID
 
 from babylon.config.llm_config import LLMConfig
 from babylon.intelligence.ai.director import NarrativeDirector
-from babylon.intelligence.ai.llm_provider import DeepSeekClient, LLMProvider
+from babylon.intelligence.ai.llm_provider import LLMProvider, build_llm_provider
 from babylon.intelligence.ai.prompt_registry import get_prompt_registry
 
 if TYPE_CHECKING:
@@ -199,9 +199,11 @@ class NarrativeService:
         """Initialize the service.
 
         Args:
-            llm: Optional LLMProvider. If None, a :class:`DeepSeekClient` is
-                constructed lazily on first use (reads DEEPSEEK_API_KEY from
-                the environment — never read/echoed by this module).
+            llm: Optional LLMProvider. If None, a provider is constructed
+                lazily on first use via
+                :func:`babylon.intelligence.ai.llm_provider.build_llm_provider`
+                (selects on ``LLMConfig.PROVIDER``; reads its credentials
+                from the environment — never read/echoed by this module).
             rag_pipeline: Optional RagPipeline for historical/theoretical
                 context retrieval. None disables RAG (matches
                 ``NarrativeDirector``'s own backward-compatible default).
@@ -218,7 +220,7 @@ class NarrativeService:
     def _resolve_llm(self) -> LLMProvider:
         if self._llm is not None:
             return self._llm
-        return DeepSeekClient()
+        return build_llm_provider()
 
     def schedule(
         self,

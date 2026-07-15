@@ -74,9 +74,10 @@ EXPECTED_DEFINES_PUBLIC: frozenset[str] = frozenset(
 
 EXPECTED_ENUMS_PUBLIC: frozenset[str] = frozenset(
     {
-        # 52 enum classes (45 + 7 Spec 070 balkanization: ClaimLegalStatus,
+        # 54 enum classes (45 + 7 Spec 070 balkanization: ClaimLegalStatus,
         # ColonialStance, ExtractionPolicy, FiscalStatus, PlayerMode,
-        # SovereigntyType, SupportType)
+        # SovereigntyType, SupportType + 2 Wave 6 Doctrine Tree: DoctrineTag,
+        # DoctrineTrunk)
         "ActionType",
         "ApparatusType",
         "BiocapacityType",
@@ -91,6 +92,8 @@ EXPECTED_ENUMS_PUBLIC: frozenset[str] = frozenset(
         "DecisionMode",
         "DisplacementPriorityMode",
         "DispossessionType",
+        "DoctrineTag",
+        "DoctrineTrunk",
         "EdgeMode",
         "EdgeType",
         "EventType",

@@ -69,6 +69,31 @@ it has built relationships. Mechanically:
 - III.12: the corpus's worked numeric examples (three `M_r` cases + the full Ambush Trap
   trace) seed golden baselines directly.
 
+## Relation to the Divergence Channel (ADR072)
+
+ADR072 (the Divergence Channel — the general "authored pole vs. material pole, shadow-first"
+facility) examined whether Epistemic Horizon is an instance. **It is not — and forcing it to
+be would misdescribe it.** EH is a **one-sided (material-only) partial instance**, scoped
+**OUT** of the Divergence Channel's Phase 1, honestly:
+
+- `M_r` / `I_c` / `vision_state` are a derived aggregate **VIEW** of already-material state
+  (`p_acquiescence`, `class_consciousness` — those two *are* the substrate). There is no
+  second, independently-tracked ground truth to audit a claim against, and no in-fiction
+  "declared belief" object to serve as the authored pole. A `sigma_authored` on EH would be a
+  costume, not a claim.
+- EH shares only the **honest-null shadow-attr writer discipline** the Divergence Channel
+  formalizes (III.11: absence is UNPOSITIONED, never a fabricated 0.0) — and it already writes
+  its shadow attrs that way. No behavioral change, no dependency.
+
+**Named forward seam (Phase 3, display layer — NOT this facility's authored pole).** EH's
+"Desert falsification" (`M_r < 0.2` ⇒ the server serves a *falsified* display `M_r` that
+diverges from the engine's *true* `M_r`) **is** a genuine authored↔material divergence — but it
+lives on the **display/render layer (server→client)**, not the dialectical-opposition layer.
+It is modeled as its own web-bridge mechanism, and its deliberate III.11 carve-out
+("plausible-but-false values with no UI tell" — ruling #2 above) is a **recorded exception**,
+folded into the divergence sentinel's *recorded-but-not-fixed* category, explicitly **not**
+retrofitted as a `sigma_authored` pole. Scoped out *now*, named as a seam *later*.
+
 ## Proposed phasing (post-ratification)
 
 - **Phase 0** — ADR + constitutional note (ruling 2) + this doc promoted to

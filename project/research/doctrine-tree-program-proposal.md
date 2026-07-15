@@ -69,29 +69,55 @@ Renaming also forced a coherence fix: the old tag's "moderate" effect sold it as
 anti-imperial struggle"* — the precise conflation now removed (chauvinism is reactionary across
 its whole range).
 
-**Owner design direction (2026-07-15):** `NATIONAL_CHAUVINISM ⟷ INTERNATIONALISM` is a natural
-Lawverian dialectic `D = (A, Ā, w, T, σ)` — and its Ā pole is **already built**. Model it as a
-new `BoundOpposition` in `domain/dialectics/instances/catalog.py`, beside capital_labor / wage /
-tenancy / atomization / imperial:
+**Owner ruling (2026-07-15): Option C — the Divergence Channel (ADR072).** The tag pair
+`NATIONAL_CHAUVINISM ⟷ INTERNATIONALISM` is modelled as **instance #2 of the Divergence
+Channel** — the general "authored pole checked against a material pole, shadow-first"
+facility ADR072 generalizes from P19's `read_poles` surface (owner directive: "abstract it
+enough to apply to whatever", scoped by the follow-on ruling "design general, build
+concrete"). It is a **shadow (`shadow=True`) asymmetric opposition** `chauvinism_internationalism`:
+read by `read_poles`, **never stepped**, so byte-identical-safe by construction.
 
-- **A = national-chauvinism, Ā = internationalism.** `OppositionSpec(pole_a="national-chauvinism",
-  pole_b="internationalism", level_name="class")`. The progressive pole is not "low chauvinism"
-  but a *positive* magnitude — proletarian internationalism, which the engine **already
-  computes**: the `SolidaritySystem` ("Proletarian Internationalism," `systems/solidarity.py`,
-  SOLIDARITY-edge transmission) is the live source for the Ā reading.
-- **w (balance)** = the load-bearing `CLASS_ANALYSIS`-vs-`NATIONAL_CHAUVINISM` safety condition,
-  reframed as the opposition's balance: chauvinism-dominant balance is the PatSoc drift gradient.
-- **T (gap)** = a `GapMeasure` over (chauvinism accumulation, solidarity/internationalism
-  incidence) — the same shape as the existing wealth-asymmetry `GapMeasure`.
-- **σ (sublation)** = the correction: a Party Congress `rectification`/`theoretical_offensive`
-  raising internationalism to re-close the gap (`aufhebung_of` lineage).
-- Ties the Doctrine Tree's tag layer to the ratified dialectics machinery (Amendment S:
-  "statics are derived, motion is primitive") — the tag vector becomes a *reading* of an
-  opposition's motion, not a free-floating counter. **Phase-1 candidate:** shadow-compute this
-  opposition's `PoleReading` (P19's `read_poles` shape) from chauvinism accrual + live
-  SOLIDARITY incidence, byte-identical-safe, before any tag UI. Decouples cleanly from Program
-  19 (different opposition, same registry). Needs an owner ruling at DT Phase 0: adopt the
-  dialectics-opposition modeling, or keep the tag vector as a flat counter?
+- **A (authored, off-graph)** = `normalize(CLASS_ANALYSIS − NATIONAL_CHAUVINISM)` read from a
+  `doctrine_tags` Mapping on `GraphInputs`, sourced from `DoctrineTree.calculate_tags()` — the
+  Doctrine-DAG's **own structure**, never a BabylonGraph morphism (II.9/VIII.9). `calculate_tags()`
+  stays **unchanged**: the authored accrual still drives the tag number, so the III.12 PatSoc
+  golden trace (`CLASS_ANALYSIS 3→1→0→−3`, `NATIONAL_CHAUVINISM 0→2→5→7→9`) stays pinnable. The
+  divergence rides *alongside*, reading the tags, never mutating them.
+- **Ā (material, from graph)** = a new `_chauvinism_internationalism_poles` pole_measure over
+  live SOLIDARITY-edge incidence per org (`SolidaritySystem` output — already computed).
+  **Honesty caveat (Aleksandrov):** raw SOLIDARITY is class-solidarity-*in-general*, **not** the
+  *inter*-national character (a reactionary national bloc has SOLIDARITY edges too). Phase 1
+  ships this proxy explicitly labelled **"solidarity proxy, internationalism-UNPROVEN"**, and the
+  divergence sentinel's *first* job is to measure whether the proxy tracks internationalism
+  before any promotion. Cross-border-restricted SOLIDARITY (only edges crossing a
+  sovereign/national boundary — genuinely inter-national) is the eventual target, dormant until
+  multi-sovereign / nationwide scenarios exist.
+- **The divergence** = a purpose-named `DivergenceReading(gap = |σ_authored − σ|/2,
+  claim = σ_authored, claim_side)` on `PoleReading` (**not** an overloaded `GapReading` —
+  ADR072 fix #3). The lie the mechanic surfaces: `claim_side == "b"` (the tag vector reads
+  "safe"/internationalist) while the material `side == "a"` (the base has collapsed), with a large
+  `gap`. Written per-org as `sigma_internationalism` / `divergence_chauvinism` behind a
+  **net-new** `ORGANIZATION_COMPUTED_FIELDS` gate (ADR072 fix #5).
+- **Amendment S, honestly.** A shadow binding never steps, so it has **no motion**; the divergence
+  is an *observational static* that adjudicates nothing — it is NOT claimed to be "a reading of
+  opposition motion" (ADR072 fix #2). The material σ stays the primitive; motion is untouched.
+- **σ as an authored channel** is proposed as **Amendment T** (Article VIII, observes-only) for
+  BD ratification at Phase-0 review — see ADR072.
+
+**Phasing (mirrors P19).** **Phase 0** = this ratification (ADR072, no code). **Phase 1** =
+shadow: `read_poles` writes the divergence to `pole_readings`; `qa:regression` byte-identical with
+UNMODIFIED baselines (conditional on P19 landing + the org gate built + the harness still
+excluding `pole_readings` — DoD requires an actual run); the divergence check advisory across the
+5 scenarios + wayne_county; PatSoc trace pinned unchanged. **Phase 2+** = promote to gating only on
+stable-divergence evidence with an R-PROOF doc. The `CLASS_ANALYSIS`-vs-`NATIONAL_CHAUVINISM`
+safety condition becomes the *documentary* interpretation of the reading (the opposition's
+`unity`/`w`); the fascism "wormhole" transition (`CLASS_ANALYSIS ≤ 0 AND NATIONAL_CHAUVINISM ≥ 5`)
+is the **named future promotion point** where the material proxy would corroborate the authored
+tag — until then the authored accrual alone drives it (III.12). **Deferred until a 2nd real
+authored↔material instance exists (rule of three):** the machine-checked `GATING_LEDGER`, the
+generalized `sentinels/divergence/` seventh sentinel, and the SHADOW→GATING lifecycle FSM.
+**Sequencing:** P19 must fold into the spine first (this extends its surface); `calculate_tags()`
+is unbuilt today (the DoctrineTree program must build it before the authored pole is real).
 
 ## Constitutional guardrails
 

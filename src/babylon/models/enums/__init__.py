@@ -37,6 +37,10 @@ from babylon.models.enums.consciousness import (
     ContradictionType,
     IntensityLevel,
 )
+from babylon.models.enums.doctrine import (
+    DoctrineTag,
+    DoctrineTrunk,
+)
 from babylon.models.enums.events import (
     EventType,
     GameOutcome,
@@ -102,6 +106,8 @@ __all__ = [
     "DecisionMode",
     "DisplacementPriorityMode",
     "DispossessionType",
+    "DoctrineTag",
+    "DoctrineTrunk",
     "EdgeMode",
     "EdgeType",
     "EventType",

@@ -26,6 +26,7 @@ from __future__ import annotations
 import re
 from collections.abc import Callable, Mapping
 
+from babylon.models.entities.doctrine import DoctrineTree
 from babylon.models.enums.doctrine import DoctrineTag
 
 
@@ -168,4 +169,87 @@ def evaluate_trap_condition(condition: str, tags: Mapping[DoctrineTag, int]) -> 
     return _Parser(_tokenize(condition), tags, condition).parse()
 
 
-__all__ = ["DoctrineExpressionError", "evaluate_trap_condition"]
+def can_acquire(
+    tree: DoctrineTree,
+    acquired_ids: tuple[str, ...],
+    node_id: str,
+    theoretical_labor: float,
+) -> bool:
+    """Report whether ``node_id`` may be deliberately acquired right now.
+
+    A node is acquirable iff it is (1) not already held, (2) not a trap (traps are
+    *fallen into* when their ``trap_condition`` fires, never chosen), (3) unlocked
+    — every parent already held (the free root has no parents, so it is always
+    unlocked), and (4) affordable — its ``cost_tl`` is within the org's current
+    theoretical labour.
+
+    :param tree: The doctrine tree.
+    :param acquired_ids: Node ids the org already holds.
+    :param node_id: The candidate node.
+    :param theoretical_labor: The org's current theoretical-labour balance.
+    :returns: ``True`` iff all four gates pass.
+    :raises KeyError: if ``node_id`` is not a node in ``tree`` (a caller bug, not
+        a "cannot acquire" answer — fail loud).
+    """
+    node = tree.nodes[node_id]
+    if node_id in acquired_ids:
+        return False
+    if node.is_trap:
+        return False
+    held = set(acquired_ids)
+    if not all(parent in held for parent in node.parents):
+        return False
+    return node.cost_tl <= theoretical_labor
+
+
+def acquire(acquired_ids: tuple[str, ...], node_id: str) -> tuple[str, ...]:
+    """Return ``acquired_ids`` with ``node_id`` appended (idempotent, order-stable).
+
+    Order is preserved (acquisition sequence is deterministic history); a repeat
+    acquisition is a no-op rather than a duplicate.
+    """
+    if node_id in acquired_ids:
+        return acquired_ids
+    return (*acquired_ids, node_id)
+
+
+def accrue_theoretical_labor(surplus: float, study_allocation: float) -> float:
+    """Theoretical labour gained this tick = ``max(0, surplus) × clamp(allocation)``.
+
+    :param surplus: The org's material surplus this tick (negative surplus accrues
+        nothing — you cannot study on an empty stomach).
+    :param study_allocation: Fraction of surplus routed to study; clamped to
+        ``[0, 1]`` so an out-of-band mod value degrades safely rather than
+        producing negative or super-unit labour.
+    :returns: The non-negative theoretical-labour increment.
+    """
+    if surplus <= 0.0:
+        return 0.0
+    allocation = min(1.0, max(0.0, study_allocation))
+    return surplus * allocation
+
+
+def decay_tags(tags: Mapping[DoctrineTag, float], decay_rate: float) -> dict[DoctrineTag, float]:
+    """Multiplicatively decay every accumulated tag strength by ``decay_rate``.
+
+    Doctrine tag strength is a decaying accumulator (owner ruling 3: 0.55%/tick),
+    not a pure sum — unexercised theory erodes. This is the per-tick erosion step;
+    acquisitions add ``tag_deltas`` on top elsewhere.
+
+    :param tags: Current per-tag float strengths.
+    :param decay_rate: Per-tick fractional decay (``0.0055`` = 0.55%); a rate of
+        ``0`` is the identity.
+    :returns: A new map with each strength scaled by ``(1 - decay_rate)``.
+    """
+    factor = 1.0 - decay_rate
+    return {tag: value * factor for tag, value in tags.items()}
+
+
+__all__ = [
+    "DoctrineExpressionError",
+    "accrue_theoretical_labor",
+    "acquire",
+    "can_acquire",
+    "decay_tags",
+    "evaluate_trap_condition",
+]

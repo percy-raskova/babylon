@@ -29,6 +29,7 @@ import type {
   ClassHistoryPoint,
   ClassHistoryPayload,
   FieldStateNode,
+  FieldStateEdge,
   FieldStatePayload,
 } from "@/types/game";
 import type { WireFeed, WireStoryIndex } from "@/types/wire";
@@ -450,6 +451,19 @@ export function makeFieldStateNode(overrides?: Partial<FieldStateNode>): FieldSt
   return {
     id: "C001",
     name: "Worker",
+    ...overrides,
+  };
+}
+
+/** One `edges[]` entry of GET /api/games/{id}/field_state/ (Wave 3 §11's gradient-wind lens). */
+export function makeFieldStateEdge(overrides?: Partial<FieldStateEdge>): FieldStateEdge {
+  return {
+    source: "C001",
+    target: "C002",
+    source_territory: "territory-downtown",
+    target_territory: "territory-suburbs",
+    field: "exploitation",
+    gradient: 0.3,
     ...overrides,
   };
 }

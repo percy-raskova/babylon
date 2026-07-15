@@ -93,6 +93,22 @@ function meanCentroid(h3Indexes: string[]): [number, number] | null {
 }
 
 /**
+ * The minimal territory shape `resolveEntityPosition` needs to resolve an
+ * id to a map position — a structural subset of `TerritoryState` (which
+ * satisfies this interface as-is, so every existing caller below is
+ * unaffected). Widened from a hardcoded `TerritoryState[]` parameter (Wave 3
+ * §11 R2b) so `components/map/layers/fieldFlow.ts`'s `resolveFlowSegments`
+ * can reuse this SAME resolver against `mapLensLayers.ts`'s narrower
+ * `LensTerritory[]` (which also structurally satisfies this shape) without
+ * either module importing the other's full territory type.
+ */
+export interface TerritoryPositionSource {
+  id: string;
+  h3_index: string | null;
+  county_fips?: string | null;
+}
+
+/**
  * Resolve a territory-linked id to a map `[lng, lat]`, or `null` when it has
  * no geography (Constitution III.11: a non-spatial id — e.g. an org-linked
  * one, or a `social_class` node id, which lives in a disjoint namespace from
@@ -110,7 +126,7 @@ function meanCentroid(h3Indexes: string[]): [number, number] | null {
  */
 export function resolveEntityPosition(
   id: string | null,
-  territories: TerritoryState[],
+  territories: TerritoryPositionSource[],
 ): [number, number] | null {
   if (!id) return null;
 

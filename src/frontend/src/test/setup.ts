@@ -57,6 +57,12 @@ vi.mock("@deck.gl/geo-layers", () => ({
   // files that don't locally override this mock (that pattern,
   // e.g. DeckGLMap.test.tsx, still takes precedence for its own file).
   H3ClusterLayer: vi.fn(),
+  // Wave 3 §11: DeckGLMap transitively imports fieldFlow.ts's TripsLayer
+  // (the gradient-wind lens's animated trail) on every render, regardless of
+  // the active lens — any test mounting a real DeckGLMap needs this stub,
+  // not just fieldFlow.test.ts's own local override (which additionally
+  // inspects `.id`/`.props`).
+  TripsLayer: vi.fn(),
 }));
 
 vi.mock("@deck.gl/layers", () => ({
@@ -67,6 +73,9 @@ vi.mock("@deck.gl/layers", () => ({
   // so any test mounting a real DeckGLMap needs this, not just political.test.ts's
   // own local override (which additionally inspects `.id`/`.props`).
   GeoJsonLayer: vi.fn(),
+  // Wave 3 §11: fieldFlow.ts's static dashed base layer — same reasoning as
+  // TripsLayer above.
+  PathLayer: vi.fn(),
 }));
 
 // ---------------------------------------------------------------------------

@@ -110,12 +110,24 @@ export type LensMode = (typeof LENS_MODES)[number];
  * `class_composition` is — it gets its own top-level kind (not a
  * `{kind:"metric"}` sub-select, which is numeric-only) and is territory-
  * local, never balkanization-derived.
+ *
+ * `field_flow` (Wave 3 §11's "gradient wind" — the first VECTOR lens kind,
+ * not a ramp or a categorical fill): `field` names which contradiction
+ * field's gradients to render (production computes exactly two today,
+ * `"exploitation"` and `"atomization"` — see `FieldStateNode`'s docstring in
+ * `types/game.ts`), so it's a plain `string` sub-select like `MapMetric`
+ * rather than a hardcoded conditional. Sourced from `GET /field_state/`'s
+ * per-class-pair `edges` (`components/map/layers/fieldFlow.ts`), NOT the
+ * `/map/` hex/territory payload every other lens reads — direction +
+ * magnitude render as animated flow geometry (width/opacity), never a fill
+ * ramp (`lensRampStops` returns `null`, like every categorical kind).
  */
 export type Lens =
   | { kind: LensMode }
   | { kind: "metric"; metric: MapMetric }
   | { kind: "class_composition" }
-  | { kind: "territory_type" };
+  | { kind: "territory_type" }
+  | { kind: "field_flow"; field: string };
 
 /**
  * DESIGN_BIBLE.md §9 amendment 1 (binding): the default lens is Imperial
@@ -131,6 +143,7 @@ export const DEFAULT_LENS: Lens = { kind: "metric", metric: "imperial_rent" };
 export function isSameLens(a: Lens, b: Lens): boolean {
   if (a.kind !== b.kind) return false;
   if (a.kind === "metric" && b.kind === "metric") return a.metric === b.metric;
+  if (a.kind === "field_flow" && b.kind === "field_flow") return a.field === b.field;
   return true;
 }
 
@@ -148,7 +161,9 @@ export function isBalkanizationLens(lens: Lens): boolean {
 
 /** Stable identity string — safe for React `key` props and deck.gl `updateTriggers` arrays. */
 export function lensKey(lens: Lens): string {
-  return lens.kind === "metric" ? `metric:${lens.metric}` : lens.kind;
+  if (lens.kind === "metric") return `metric:${lens.metric}`;
+  if (lens.kind === "field_flow") return `field_flow:${lens.field}`;
+  return lens.kind;
 }
 
 const MODE_LEGEND_LABELS: Record<LensMode, string> = {
@@ -173,11 +188,17 @@ const METRIC_LABELS: Record<MapMetric, string> = {
   agitation: "Agitation · Political Energy",
 };
 
+/** Title-cases a single word (`"exploitation"` -> `"Exploitation"`) — `field_flow`'s legend label only. */
+function titleCase(word: string): string {
+  return word.charAt(0).toUpperCase() + word.slice(1);
+}
+
 /** Human-readable legend text for a lens (mode label or metric name). */
 export function lensLegendLabel(lens: Lens): string {
   if (lens.kind === "metric") return METRIC_LABELS[lens.metric];
   if (lens.kind === "class_composition") return "Class Composition · Dominant Social Role";
   if (lens.kind === "territory_type") return "Territory Type · Settler-Colonial Hierarchy";
+  if (lens.kind === "field_flow") return `Gradient Wind · ${titleCase(lens.field)} Field`;
   return MODE_LEGEND_LABELS[lens.kind];
 }
 
@@ -202,7 +223,8 @@ function metricToMapLayer(metric: MapMetric): MapLayer | null {
  * Resolve the canon ramp (hex stops) for a lens, or `null` for the
  * categorical kinds (stance/faction/collapse/class_composition/
  * territory_type) whose fill is a discrete per-entity color, not a single
- * continuous ramp.
+ * continuous ramp — and for `field_flow`, whose direction/magnitude render
+ * as flow geometry (DESIGN_BIBLE.md §11 law 1), never a fill ramp at all.
  */
 export function lensRampStops(lens: Lens): string[] | null {
   switch (lens.kind) {
@@ -211,6 +233,7 @@ export function lensRampStops(lens: Lens): string[] | null {
     case "collapse":
     case "class_composition":
     case "territory_type":
+    case "field_flow":
       return null;
     case "habitability":
       return DATA_RAMPS.biocapacity;

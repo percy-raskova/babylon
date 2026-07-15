@@ -131,6 +131,27 @@ function stanceFill(properties: RegionFillProperties): RGBAColor | null {
     : null;
 }
 
+/** The `habitability` case: sampled directly (no domain division — see module docstring). Extracted (cognitive-complexity budget). */
+function habitabilityRegionFill(lens: Lens, properties: RegionFillProperties): RGBAColor | null {
+  const ramp = lensRampStops(lens);
+  if (ramp === null || !isPresent(properties.habitability)) {
+    return null;
+  }
+  return sampleRampStops(ramp, properties.habitability);
+}
+
+/** The `class_composition` case: `properties.dominant_class` via the shared `SOCIAL_ROLE_COLOR` palette. Extracted (cognitive-complexity budget). */
+function classCompositionRegionFill(properties: RegionFillProperties): RGBAColor | null {
+  const role = properties.dominant_class;
+  return role ? (SOCIAL_ROLE_COLOR[role] ?? null) : null;
+}
+
+/** The `territory_type` case: `properties.territory_type` via the shared `TERRITORY_TYPE_COLOR` palette. Extracted (cognitive-complexity budget). */
+function territoryTypeRegionFill(properties: RegionFillProperties): RGBAColor | null {
+  const type = properties.territory_type;
+  return type ? (TERRITORY_TYPE_COLOR[type] ?? null) : null;
+}
+
 /**
  * Resolve the fill color for one aggregated region feature under the
  * active lens, or `null` for an honest empty/neutral fill.
@@ -143,13 +164,8 @@ export function regionFillForLens(
   switch (lens.kind) {
     case "heat":
       return normalizedRampFill(lens, properties.heat, domain);
-    case "habitability": {
-      const ramp = lensRampStops(lens);
-      if (ramp === null || !isPresent(properties.habitability)) {
-        return null;
-      }
-      return sampleRampStops(ramp, properties.habitability);
-    }
+    case "habitability":
+      return habitabilityRegionFill(lens, properties);
     case "metric":
       return normalizedRampFill(lens, properties[lens.metric], domain);
     case "stance":
@@ -157,13 +173,14 @@ export function regionFillForLens(
     case "faction":
     case "collapse":
       return null;
-    case "class_composition": {
-      const role = properties.dominant_class;
-      return role ? (SOCIAL_ROLE_COLOR[role] ?? null) : null;
-    }
-    case "territory_type": {
-      const type = properties.territory_type;
-      return type ? (TERRITORY_TYPE_COLOR[type] ?? null) : null;
-    }
+    case "class_composition":
+      return classCompositionRegionFill(properties);
+    case "territory_type":
+      return territoryTypeRegionFill(properties);
+    case "field_flow":
+      // The gradient-wind vector overlay is the signal at every framing —
+      // no aggregated-region equivalent exists (it's per-class-pair, not a
+      // territory property), same reasoning as faction/collapse above.
+      return null;
   }
 }

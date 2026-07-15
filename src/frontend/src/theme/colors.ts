@@ -159,6 +159,19 @@ export function rampForLayer(layer: MapLayer): string[] {
   }
 }
 
+/**
+ * Gradient-wind vector lens (DESIGN_BIBLE.md §11, "the weather grammar" —
+ * law 1: extensive/flow visuals render as geometry, hue stays FIXED and
+ * subordinate, never a ramp). `DATA_RAMPS.rent`'s terminal stop (`#b8321f`)
+ * as a plain RGB triple — ties the wind's one fixed hue to the same
+ * extraction/violence family `imperial_rent`/`exploitation_rate` already
+ * render in, rather than inventing a new hex literal. Single source of
+ * truth shared by `components/map/layers/fieldFlow.ts` (the actual layer
+ * fill) and `lib/lenses/registry.ts` (the legend swatch) — never a second
+ * duplicated triple.
+ */
+export const FIELD_FLOW_COLOR: readonly [number, number, number] = [184, 50, 31];
+
 /** Convert RGBA to a CSS colour string for use in non-deck.gl contexts. */
 export function rgbaToCss(c: RGBAColor): string {
   return `rgba(${c[0]}, ${c[1]}, ${c[2]}, ${(c[3] / 255).toFixed(2)})`;

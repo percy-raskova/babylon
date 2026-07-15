@@ -44,6 +44,15 @@ describe("LENS_REGISTRY", () => {
     expect(LENS_REGISTRY.some((d) => d.id === "territory_type")).toBe(true);
   });
 
+  it("includes the field_flow_exploitation gradient-wind addition (Wave 3 §11)", () => {
+    const def = LENS_REGISTRY.find((d) => d.id === "field_flow_exploitation");
+    expect(def).toBeDefined();
+    expect(def?.group).toBe("struggle");
+    expect(def?.legend.kind).toBe("vector");
+    expect(def?.toLens()).toEqual({ kind: "field_flow", field: "exploitation" });
+    expect(def?.availableWhen({})).toBe(true);
+  });
+
   it("throughput_position and agitation are numeric (ramp legend); territory_type is categorical", () => {
     const throughput = LENS_REGISTRY.find((d) => d.id === "throughput_position");
     const agitation = LENS_REGISTRY.find((d) => d.id === "agitation");
@@ -79,6 +88,12 @@ describe("lensDefForLens", () => {
       "throughput_position",
     );
     expect(lensDefForLens({ kind: "metric", metric: "agitation" })?.id).toBe("agitation");
+  });
+
+  it("resolves field_flow back to its registry entry, keyed by field", () => {
+    expect(lensDefForLens({ kind: "field_flow", field: "exploitation" })?.id).toBe(
+      "field_flow_exploitation",
+    );
   });
 
   it("returns undefined for a lens with no registry entry (e.g. an unregistered metric)", () => {
@@ -219,6 +234,13 @@ describe("legend metadata", () => {
         "Concentration Camp",
       ]),
     );
+  });
+
+  it("field_flow_exploitation carries a vector legend with a color and a non-empty description", () => {
+    const def = LENS_REGISTRY.find((d) => d.id === "field_flow_exploitation");
+    if (def?.legend.kind !== "vector") throw new Error("expected a vector legend");
+    expect(def.legend.color).toHaveLength(4);
+    expect(def.legend.description.length).toBeGreaterThan(0);
   });
 
   it("throughput_position/agitation carry non-empty ramp stop lists", () => {

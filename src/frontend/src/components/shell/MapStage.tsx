@@ -5,8 +5,12 @@
  * former `MapPanel.tsx`, which this file replaces one-for-one — see
  * `Outliner.tsx`'s docstring for why there is exactly one owner).
  *
- * Keeps `data-testid="region-map"`. `DeckGLMap`'s props/interface are
- * unchanged — this is the Lane A/Lane B contract (architecture §3.3).
+ * Keeps `data-testid="region-map"`. `DeckGLMap`'s props/interface was frozen
+ * under the Lane A/Lane B contract (architecture §3.3) through spec-113; Wave
+ * 3 §11's gradient-wind lens is the first amendment to that freeze — it adds
+ * one optional `gameId` prop (MapStage already had it) so `DeckGLMap` can
+ * fetch `GET /field_state/` itself when the `field_flow` lens is active. No
+ * other prop changed.
  */
 
 import { useEffect } from "react";
@@ -53,6 +57,7 @@ export function MapStage({ gameId }: MapStageProps): React.JSX.Element {
         <DeckGLMap
           snapshot={snapshot}
           mapData={mapData as MapFeatureCollectionWithMetadata | null}
+          gameId={gameId}
           lens={lens}
           onLensChange={setLens}
           factionFilter={factionFilter}

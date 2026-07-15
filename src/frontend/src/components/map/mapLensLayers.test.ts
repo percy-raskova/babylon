@@ -517,6 +517,39 @@ describe("buildLensLayers", () => {
     });
   });
 
+  describe("field_flow lens (Wave 3 §11 addition — the gradient-wind vector lens)", () => {
+    it("fills every territory with the neutral/dim base tone (the wind rides ABOVE the base map)", () => {
+      const result = buildLensLayers({
+        territories: TERRITORIES,
+        balkanization: null,
+        lens: { kind: "field_flow", field: "exploitation" },
+      });
+      // Mirrors mapLensLayers.ts's private DESATURATED constant — the same
+      // low-influence dim tone the faction lens already desaturates to.
+      expect(result.getFillColor("T1")).toEqual([26, 31, 42, 140]);
+      expect(result.getFillColor("T2")).toEqual([26, 31, 42, 140]);
+    });
+
+    it("never requires balkanization data (territory-local base fill, like metric/class_composition lenses)", () => {
+      const result = buildLensLayers({
+        territories: TERRITORIES,
+        balkanization: null,
+        lens: { kind: "field_flow", field: "atomization" },
+      });
+      expect(result.legendLabel.toLowerCase()).toContain("gradient wind");
+    });
+
+    it("renders no rings/hulls (balkanization-only overlays)", () => {
+      const result = buildLensLayers({
+        territories: TERRITORIES,
+        balkanization: BALKANIZATION,
+        lens: { kind: "field_flow", field: "exploitation" },
+      });
+      expect(result.rings).toEqual([]);
+      expect(result.hulls).toEqual([]);
+    });
+  });
+
   it("VIII.9: BalkanizationBlock carries no hyperedge/community field for the hull builder to read", () => {
     // Runtime guarantee: even if a caller attaches extra hyperedge-shaped
     // data onto the object (bypassing the type system, e.g. from an

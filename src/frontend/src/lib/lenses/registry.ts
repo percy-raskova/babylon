@@ -20,12 +20,23 @@ import {
   TERRITORY_TYPE_LABELS,
   type BalkanizationBlock,
 } from "@/components/map/mapLensLayers";
-import { DATA_RAMPS, rampForLayer, type RGBAColor } from "@/theme/colors";
+import { DATA_RAMPS, FIELD_FLOW_COLOR, rampForLayer, type RGBAColor } from "@/theme/colors";
 import type { LensGroupId } from "./groups";
 
+/**
+ * `vector` (Wave 3 §11's gradient-wind addition — the first non-ramp,
+ * non-categorical legend kind): direction + magnitude render as flow
+ * GEOMETRY (width/opacity), not a color scale or a discrete swatch list, so
+ * neither `ramp` nor `categorical` honestly describes the encoding.
+ * `color` is the wind's one fixed hue (weather-grammar law 1: hue stays
+ * subordinate — the SAME triple `fieldFlow.ts`'s layers actually render,
+ * `theme/colors.ts`'s `FIELD_FLOW_COLOR`, never a second duplicated value);
+ * `description` is the direction/width key `MapLegend.tsx` renders verbatim.
+ */
 export type LensLegend =
   | { kind: "ramp"; stops: string[] }
   | { kind: "categorical"; entries: { label: string; color: RGBAColor }[] }
+  | { kind: "vector"; color: RGBAColor; description: string }
   | { kind: "none" };
 
 /**
@@ -102,6 +113,21 @@ const TERRITORY_TYPE_LEGEND: LensLegend = {
   })),
 };
 
+/** Fixed legend swatch alpha for the vector lens (matches the ramp swatches' `RAMP_ALPHA`-adjacent legibility). */
+const FIELD_FLOW_LEGEND_ALPHA = 220;
+
+/**
+ * `field_flow_exploitation`'s vector legend (Wave 3 §11). `color` reuses
+ * `theme/colors.ts`'s `FIELD_FLOW_COLOR` — the exact hue `fieldFlow.ts`
+ * renders the wind in — so the legend swatch never drifts from the map.
+ */
+const FIELD_FLOW_EXPLOITATION_LEGEND: LensLegend = {
+  kind: "vector",
+  color: [FIELD_FLOW_COLOR[0], FIELD_FLOW_COLOR[1], FIELD_FLOW_COLOR[2], FIELD_FLOW_LEGEND_ALPHA],
+  description:
+    "Width/opacity grade |Δexploitation|; arrow marks the value-transfer direction (source→target when the gradient is positive, reversed when negative).",
+};
+
 /**
  * The lens roster — DESIGN_BIBLE.md §3.2's table, filtered to lenses backed
  * by real data today (the "if a metric backs it" starred entries — wage
@@ -167,6 +193,29 @@ export const LENS_REGISTRY: readonly MapLensDef[] = [
     legend: { kind: "ramp", stops: DATA_RAMPS.consciousness },
     toLens: () => ({ kind: "metric", metric: "agitation" }),
     availableWhen: hasMetric("agitation"),
+  },
+  {
+    // Wave 3 §11's "gradient wind" — the first VECTOR lens kind. Struggle
+    // (not Extraction) group: the System-19/20 contradiction-field stack
+    // (exploitation/atomization) directly FEEDS StruggleSystem/Consciousness
+    // downstream — the same class-struggle-intensity family heat/
+    // solidarity_index/agitation already occupy — rather than Extraction,
+    // which reads material-throughput rates (profit_rate/imperial_rent),
+    // not contradiction-field dynamics. Sourced from GET /field_state/, not
+    // the /map/ payload every other lens reads — so `availableWhen` can't
+    // gate on `available_metrics` (that array never advertises field_state
+    // fields); the honest-empty degradation lives at render time instead
+    // (DeckGLMap's "— no data" legend suffix when the tick's edges are
+    // empty), matching how political lenses degrade (registry never hides
+    // them; NO_DATA fill + a legend suffix carries the signal).
+    id: "field_flow_exploitation",
+    group: "struggle",
+    label: "Gradient Wind · Exploitation",
+    tooltip:
+      "Contradiction-field gradient wind — direction + magnitude of exploitation-field transfer between classes (System 19/20)",
+    legend: FIELD_FLOW_EXPLOITATION_LEGEND,
+    toLens: () => ({ kind: "field_flow", field: "exploitation" }),
+    availableWhen: alwaysAvailable,
   },
   // --- Political -------------------------------------------------------
   {

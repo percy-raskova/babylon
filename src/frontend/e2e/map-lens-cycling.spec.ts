@@ -30,6 +30,14 @@
  * "undefined means available" rule (registry.ts) keeps all three visible
  * here regardless.
  *
+ * Wave 3 §11 adds a 13th entry — `field_flow_exploitation`, the first
+ * VECTOR lens kind ("gradient wind"). Its data source is `GET
+ * /field_state/`, not the `/map/` payload this file mocks, and it's
+ * `alwaysAvailable` (registry.ts) rather than `hasMetric`-gated, so it needs
+ * no new mock route here to render its button/legend — the "no data" state
+ * a real page would show without a `/field_state/` mock is exactly the
+ * honest-empty case `DeckGLMap.fieldFlow.test.tsx` covers at the unit level.
+ *
  * Needs only the cockpit Vite dev server — no live Django/Postgres, no
  * storageState — runs on the default "chromium" project.
  */
@@ -172,6 +180,7 @@ const LENSES = [
   { id: "heat", label: /heat/i },
   { id: "solidarity_index", label: /solidarity/i },
   { id: "agitation", label: /agitation/i },
+  { id: "field_flow_exploitation", label: /gradient wind/i },
   { id: "stance", label: /stance/i },
   { id: "faction", label: /faction/i },
   { id: "collapse", label: /collapse/i },

@@ -45,8 +45,20 @@ import {
 } from "@/components/map/mapLensLayers";
 import { hullPolygonForTerritories } from "@/components/map/mapLensGeometry";
 import { buildPoliticalLayers, type PolityClaim } from "@/components/map/layers/political";
-import { resolvePulseTargets, useCriticalPulses } from "@/components/map/layers/criticalPulse";
+import {
+  resolvePulseTargets,
+  useCriticalPulses,
+  prefersReducedMotion,
+} from "@/components/map/layers/criticalPulse";
 import { resolveStormTargets, buildStormMarkerLayers } from "@/components/map/layers/stormMarkers";
+import {
+  edgesForField,
+  resolveFlowSegments,
+  buildFieldFlowLayers,
+  useFlowAnimationClock,
+} from "@/components/map/layers/fieldFlow";
+import { get as apiGet } from "@/api/client";
+import { endpoints } from "@/api/endpoints";
 import { useStore } from "@/store";
 import {
   loadCountyTopology,
@@ -71,6 +83,8 @@ import type {
   GameSnapshot,
   TerritoryState,
   MapSnapshotMetadata,
+  FieldStateEdge,
+  FieldStatePayload,
 } from "@/types/game";
 import type { Feature, FeatureCollection } from "geojson";
 
@@ -100,6 +114,13 @@ const REGION_NO_DATA_FILL: RGBAColor = [58, 53, 48, 160];
 const EMPTY_FILL_DOMAIN: FillDomain = { min: 0, max: 0 };
 /** Structural gray border between adjacent regions. */
 const REGION_LINE_COLOR: RGBAColor = [130, 138, 150, 160];
+/**
+ * Stable empty `field_state` edges array (Wave 3 §11's gradient-wind lens) —
+ * module-level so `relevantFlowEdges`'s memo stays referentially stable
+ * while the active lens isn't `field_flow`, matching `EMPTY_FILL_DOMAIN`'s
+ * own reasoning (`DeckGLMap`'s `layers` referential-stability contract).
+ */
+const EMPTY_FIELD_FLOW_EDGES: FieldStateEdge[] = [];
 
 /**
  * Concentric influence rings (stance/collapse lenses only) — one
@@ -262,7 +283,8 @@ function currentValueForLens(
     lens.kind === "faction" ||
     lens.kind === "collapse" ||
     lens.kind === "class_composition" ||
-    lens.kind === "territory_type"
+    lens.kind === "territory_type" ||
+    lens.kind === "field_flow"
   ) {
     return null;
   }
@@ -335,6 +357,27 @@ function isRegionRampEmpty(
 }
 
 /**
+ * The `lens-legend-label` chip text, or `null` to hide it entirely.
+ * `field_flow`'s honest-empty hint (Constitution III.11) is layered on here
+ * rather than inside `buildLensLayers` — that function has no visibility
+ * into `field_state`'s edges (a different data source entirely, fetched by
+ * `DeckGLMap` itself) — mirroring the SAME "— no data" suffix convention
+ * `buildLensLayers` uses for an empty balkanization block. Extracted to a
+ * top-level function (cognitive-complexity budget) so this isn't a nested
+ * ternary inside `DeckGLMap`'s own render body.
+ */
+function resolveLegendStatusText(
+  showLensLegendLabel: boolean,
+  isFieldFlowLens: boolean,
+  flowSegmentCount: number,
+  legendLabel: string,
+): string | null {
+  if (!showLensLegendLabel) return null;
+  if (isFieldFlowLens && flowSegmentCount === 0) return `${legendLabel} — no data`;
+  return legendLabel;
+}
+
+/**
  * Region (county/cz/msa/bea_ea/state) fill layer — spec-112 C5. Reads real
  * polygons from each feature's `properties.member_h3` via `H3ClusterLayer`
  * (h3-js's `cellsToMultiPolygon` internally), since the backend ships
@@ -383,6 +426,15 @@ const INITIAL_VIEW_STATE = {
 
 interface DeckGLMapProps {
   snapshot: GameSnapshot;
+  /**
+   * The active game's id — needed ONLY to fetch `GET /field_state/` when the
+   * `field_flow` lens is active (Wave 3 §11's gradient-wind lens; every
+   * other lens's data already rides `snapshot`/`mapData`, so this is the
+   * ONE new fetch-triggering prop). Optional/omittable: every existing
+   * caller/test that doesn't pass it simply never fetches (the field_flow
+   * lens degrades to its honest-empty state, same as no data ever arriving).
+   */
+  gameId?: string;
   /**
    * The map-snapshot FeatureCollection from `GET /api/games/{id}/map/`
    * (the caller's `mapData`). Spec-093's balkanization block lives under
@@ -632,6 +684,42 @@ function usePoliticalLayers(
 }
 
 /**
+ * One-shot-per-tick fetch of `GET /field_state/`'s `edges[]` (Wave 3 §11's
+ * gradient-wind lens), gated on `active` (the `field_flow` lens actually
+ * being selected) — every OTHER lens fires zero requests, matching the task
+ * brief's "fetch field_state when the active lens is field_flow." Mirrors
+ * `BifurcationGauge.tsx`'s `useFieldStateOnce`/`EconomyDashboard.tsx`'s
+ * `useCrisisTimeline` cancellation idiom, but keyed on `[gameId, tick,
+ * active]` instead of firing once on mount — the wind re-fetches per tick
+ * (a hard cut between ticks: `resolveFlowSegments`/`buildFieldFlowLayers`
+ * never interpolate gradient VALUES, only the trail animation moves).
+ * `apiGet` never throws (errors normalize into its returned envelope), so a
+ * failed/absent fetch just holds the last-known (or initial empty) edges —
+ * an honest, un-fabricated degradation, never a crash.
+ */
+function useFieldFlowEdges(
+  gameId: string | undefined,
+  tick: number,
+  active: boolean,
+): FieldStateEdge[] {
+  const [edges, setEdges] = useState<FieldStateEdge[]>(EMPTY_FIELD_FLOW_EDGES);
+
+  useEffect(() => {
+    if (!active || !gameId) return undefined;
+    let cancelled = false;
+    apiGet<FieldStatePayload>(endpoints.fieldState.path({ id: gameId })).then((res) => {
+      if (cancelled) return;
+      setEdges(res.status === "ok" ? res.data.edges : EMPTY_FIELD_FLOW_EDGES);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [gameId, tick, active]);
+
+  return edges;
+}
+
+/**
  * Fixed per-lens ramp domain (DESIGN_BIBLE.md §3.2/§6: "no silent rescale
  * between ticks") + whether the CURRENT data would need a wider one (an
  * honest "flash" state, the same section's legend-flash requirement) —
@@ -806,6 +894,7 @@ export function DeckGLMap({
   onTerritoryClick,
   framing = "hex",
   onFramingChange,
+  gameId,
 }: DeckGLMapProps) {
   const [hoverInfo, setHoverInfo] = useState<HoverInfo | null>(null);
 
@@ -840,6 +929,36 @@ export function DeckGLMap({
     [criticalToasts, territories],
   );
   const stormLayers = useMemo(() => buildStormMarkerLayers(stormTargets), [stormTargets]);
+
+  // Gradient-wind vector lens (Wave 3 §11's "the weather grammar" — the
+  // first VECTOR lens kind). `useFieldFlowEdges` fetches GET /field_state/
+  // ONLY while `field_flow` is the active lens (gameId threaded down from
+  // MapStage solely for this fetch — see the `gameId` prop's docstring);
+  // `edgesForField`/`resolveFlowSegments` are the same pure pipeline
+  // `fieldFlow.test.ts` covers directly. The animation clock is paused
+  // (zero rAF, zero re-renders) whenever the lens isn't active OR reduced
+  // motion is requested, so this whole block is referentially inert for
+  // every other lens — the `layers` stability contract stays intact.
+  const isFieldFlowLens = lens.kind === "field_flow";
+  const fieldFlowEdges = useFieldFlowEdges(gameId, snapshot.tick, isFieldFlowLens);
+  const relevantFlowEdges = useMemo(
+    () =>
+      lens.kind === "field_flow"
+        ? edgesForField(fieldFlowEdges, lens.field)
+        : EMPTY_FIELD_FLOW_EDGES,
+    [fieldFlowEdges, lens],
+  );
+  const flowSegments = useMemo(
+    () => resolveFlowSegments(relevantFlowEdges, territories),
+    [relevantFlowEdges, territories],
+  );
+  const flowReducedMotion = prefersReducedMotion();
+  const flowClockTime = useFlowAnimationClock(!isFieldFlowLens || flowReducedMotion);
+  const fieldFlowLayers = useMemo(
+    () =>
+      buildFieldFlowLayers(flowSegments, { reducedMotion: flowReducedMotion, time: flowClockTime }),
+    [flowSegments, flowReducedMotion, flowClockTime],
+  );
 
   // Political cartography base layer (Lane Carto, spec-113 §7) — de jure
   // county hairlines + state borders, de facto polity fills — see
@@ -893,6 +1012,13 @@ export function DeckGLMap({
   const showLensLegendLabel =
     !BALKANIZATION_LENSES.has(lens.kind) ||
     !lensResult.legendLabel.toLowerCase().includes("no data");
+
+  const legendStatusText = resolveLegendStatusText(
+    showLensLegendLabel,
+    isFieldFlowLens,
+    flowSegments.length,
+    lensResult.legendLabel,
+  );
 
   const getColor = useCallback(
     (t: TerritoryState): RGBAColor => lensResult.getFillColor(t.id),
@@ -979,15 +1105,15 @@ export function DeckGLMap({
     politicalLayers,
   ]);
 
-  // Critical-event pulses and storm markers ride ABOVE the base map so
-  // neither cue is ever occluded by fills/hulls. Both are stable-empty
-  // arrays at rest (`useCriticalPulses`/the `stormLayers` memo), so this
-  // memo — and the deck.gl layer list it feeds — is referentially
-  // unchanged while nothing is rupturing/struggling (DeckGLMap's
-  // render/stability contract, architecture §3.3).
+  // Critical-event pulses, storm markers, and the gradient wind ride ABOVE
+  // the base map so none of these cues is ever occluded by fills/hulls. All
+  // three are stable-empty arrays at rest (`useCriticalPulses`/`stormLayers`/
+  // `fieldFlowLayers`), so this memo — and the deck.gl layer list it feeds —
+  // is referentially unchanged while nothing is rupturing/struggling/flowing
+  // (DeckGLMap's render/stability contract, architecture §3.3).
   const allLayers = useMemo(
-    () => [...layers, ...pulseLayers, ...stormLayers],
-    [layers, pulseLayers, stormLayers],
+    () => [...layers, ...pulseLayers, ...stormLayers, ...fieldFlowLayers],
+    [layers, pulseLayers, stormLayers, fieldFlowLayers],
   );
 
   return (
@@ -1003,7 +1129,7 @@ export function DeckGLMap({
         availability={{ balkanization, availableMetrics }}
         currentValue={currentValue}
         flash={legendFlash}
-        legendStatusText={showLensLegendLabel ? lensResult.legendLabel : null}
+        legendStatusText={legendStatusText}
         rampEmpty={rampEmpty}
       />
 

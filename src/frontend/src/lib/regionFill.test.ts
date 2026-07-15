@@ -97,6 +97,15 @@ describe("regionFillForLens", () => {
     });
   });
 
+  describe("field_flow lens (Wave 3 §11 addition)", () => {
+    it("always returns null (neutral fill; the gradient-wind overlay is per-class-pair, not a territory/region property)", () => {
+      const properties: RegionFillProperties = { heat: 1, habitability: 1, consciousness: 1 };
+      expect(
+        regionFillForLens({ kind: "field_flow", field: "exploitation" }, properties, DOMAIN),
+      ).toBeNull();
+    });
+  });
+
   describe("solidarity_index metric (spec-113 Lane B)", () => {
     it("samples the dedicated solidarity ramp, distinct from habitability's", () => {
       const properties: RegionFillProperties = { solidarity_index: 0.6 };

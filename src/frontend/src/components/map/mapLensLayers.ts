@@ -503,6 +503,14 @@ export function buildLensLayers(input: BuildLensLayersInput): LensLayerResult {
         return classCompositionFill(territory);
       case "territory_type":
         return territoryTypeFill(territory);
+      case "field_flow":
+        // Wave 3 §11's gradient-wind vector lens: the wind rides ABOVE the
+        // base map (components/map/layers/fieldFlow.ts), so the hex fill
+        // underneath is just a neutral/dim backdrop — reuses the same
+        // low-influence dim tone the faction lens desaturates unmeaningful
+        // territories to, never a fabricated ramp (there is no ramp; see
+        // lib/lens.ts's lensRampStops).
+        return DESATURATED;
     }
   };
 

@@ -122,6 +122,21 @@ describe("isSameLens", () => {
     ).toBe(false);
   });
 
+  it("treats field_flow lenses as equal only when the field matches too", () => {
+    expect(
+      isSameLens(
+        { kind: "field_flow", field: "exploitation" },
+        { kind: "field_flow", field: "exploitation" },
+      ),
+    ).toBe(true);
+    expect(
+      isSameLens(
+        { kind: "field_flow", field: "exploitation" },
+        { kind: "field_flow", field: "atomization" },
+      ),
+    ).toBe(false);
+  });
+
   it("a metric lens is never equal to a mode lens, even by name collision", () => {
     // metric:"heat" is not constructible via SELECTABLE_METRICS, but the
     // union type technically allows any MapMetric — verify the comparison
@@ -157,6 +172,10 @@ describe("isBalkanizationLens", () => {
   it("is false for territory_type (territory-local TerritoryType enum, not the balkanization block)", () => {
     expect(isBalkanizationLens({ kind: "territory_type" })).toBe(false);
   });
+
+  it("is false for field_flow (per-class-pair field_state edges, not the balkanization block)", () => {
+    expect(isBalkanizationLens({ kind: "field_flow", field: "exploitation" })).toBe(false);
+  });
 });
 
 describe("lensKey — stable identity for React keys / updateTriggers arrays", () => {
@@ -175,6 +194,16 @@ describe("lensKey — stable identity for React keys / updateTriggers arrays", (
     for (const metric of SELECTABLE_METRICS) {
       expect(modeKeys.has(lensKey({ kind: "metric", metric }))).toBe(false);
     }
+  });
+
+  it("field_flow keys differ per field, and never collide with a mode/metric key", () => {
+    const exploitation = lensKey({ kind: "field_flow", field: "exploitation" });
+    const atomization = lensKey({ kind: "field_flow", field: "atomization" });
+    expect(exploitation).not.toBe(atomization);
+    expect(LENS_MODES.map((kind) => lensKey({ kind }))).not.toContain(exploitation);
+    expect(SELECTABLE_METRICS.map((metric) => lensKey({ kind: "metric", metric }))).not.toContain(
+      exploitation,
+    );
   });
 });
 
@@ -206,6 +235,15 @@ describe("lensLegendLabel", () => {
     ).toContain("throughput");
     expect(lensLegendLabel({ kind: "metric", metric: "agitation" }).toLowerCase()).toContain(
       "agitation",
+    );
+  });
+
+  it("labels field_flow with 'Gradient Wind' plus the title-cased field name", () => {
+    expect(lensLegendLabel({ kind: "field_flow", field: "exploitation" })).toBe(
+      "Gradient Wind · Exploitation Field",
+    );
+    expect(lensLegendLabel({ kind: "field_flow", field: "atomization" })).toBe(
+      "Gradient Wind · Atomization Field",
     );
   });
 });
@@ -245,6 +283,10 @@ describe("lensRampStops — single ramp resolution shared by fill + legend", () 
     expect(lensRampStops({ kind: "collapse" })).toBeNull();
     expect(lensRampStops({ kind: "class_composition" })).toBeNull();
     expect(lensRampStops({ kind: "territory_type" })).toBeNull();
+  });
+
+  it("field_flow has no fill ramp — direction/magnitude render as flow geometry, never a color ramp (DESIGN_BIBLE.md §11 law 1)", () => {
+    expect(lensRampStops({ kind: "field_flow", field: "exploitation" })).toBeNull();
   });
 
   it("solidarity_index resolves to its own dedicated ramp, distinct from habitability's", () => {

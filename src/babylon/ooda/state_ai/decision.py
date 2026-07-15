@@ -246,6 +246,75 @@ def score_action(
 
 
 # ---------------------------------------------------------------------------
+# Target selection ("The Blind Giant" — reactive_doctrine)
+# ---------------------------------------------------------------------------
+
+#: Defensive fixed upper bound on the candidate scan (Power-of-10 rule 2).
+#: Matches the ``max_orgs``/``max_nodes`` convention used throughout
+#: ``engine/systems/ooda.py``.
+_MAX_TARGET_CANDIDATES = 1000
+
+
+def select_repress_target(
+    org_id: str,
+    candidates: list[tuple[str, float]],
+    visibility: float = 1.0,
+) -> str | None:
+    """Select the highest Heat x Visibility visible threat.
+
+    Implements the "reactive_doctrine" / "The Blind Giant" from
+    ``ai/epochs/epoch3/state-attention-economy.yaml`` (~L524-545): the
+    State AI sorts all visible threats by ``Heat * Visibility`` and acts
+    on the top one. It never anticipates and never targets itself.
+
+    ``visibility`` is an interim constant (default ``1.0`` for every
+    candidate) — the doctrine's real per-entity visibility comes from the
+    Panopticon/hegemony system (spec-077), which is still an unbuilt stub
+    as of this fix (verified: no per-entity ``visibility`` attribute
+    exists on any node type). Until that lands, this reduces to "sort
+    visible threats by heat." Callers should pass real per-candidate
+    visibility once spec-077 ships instead of relying on this default.
+
+    Args:
+        org_id: The acting state organization's own ID. Defensively
+            excluded from the candidate pool even if *candidates*
+            includes it — the state must never select itself as a
+            REPRESS target (Feature 039 self-targeting bug, task #73).
+        candidates: ``(entity_id, heat)`` pairs for every entity the
+            state can legally target this tick. Callers are responsible
+            for restricting this to entity kinds the downstream resolver
+            actually accepts — currently non-state ORGANIZATION nodes
+            only (see ``babylon.ooda.npc_stub._gather_repress_target_
+            candidates`` for why SocialClass nodes are excluded).
+        visibility: Uniform visibility multiplier applied to every
+            candidate (interim constant; see above).
+
+    Returns:
+        The ID of the highest-scoring candidate, or ``None`` if no
+        candidate has ``heat > 0`` (the Blind Giant sees nothing this
+        tick). Callers MUST treat ``None`` as an honest no-op — never a
+        self-targeting fallback.
+    """
+    eligible: list[tuple[str, float]] = []
+    max_candidates = min(len(candidates), _MAX_TARGET_CANDIDATES)
+    for idx in range(max_candidates):
+        candidate_id, candidate_heat = candidates[idx]
+        if candidate_id == org_id:
+            continue
+        if candidate_heat > 0.0:
+            eligible.append((candidate_id, candidate_heat))
+
+    if not eligible:
+        return None
+
+    # Descending Heat x Visibility, ascending id tiebreak — the
+    # established idiom (babylon.ooda.initiative.resolve_action_order:
+    # ``sorted(scores, key=lambda s: (-s.score, s.org_id))``).
+    winner_id, _winner_heat = min(eligible, key=lambda c: (-(c[1] * visibility), c[0]))
+    return winner_id
+
+
+# ---------------------------------------------------------------------------
 # Candidate action generation
 # ---------------------------------------------------------------------------
 
@@ -336,10 +405,14 @@ class RuleBasedStateAI:
     """Rule-based state AI implementing NPCDecisionStrategy protocol.
 
     Follows the OODA cycle each tick:
-    1. OBSERVE — read heat level and faction balance
-    2. ORIENT — assess threat, generate candidates, compute escalation scores
+    1. OBSERVE — read heat level, faction balance, and visible-threat candidates
+    2. ORIENT — select the top Heat x Visibility threat (see
+       :func:`select_repress_target`), generate action candidates, compute
+       escalation scores
     3. DECIDE — score candidates via factional objective + escalation affinity
-    4. ACT — select best action(s) within budget
+    4. ACT — select best action(s) within budget, all directed at the
+       resolved target (task #73 — never self, honest no-op if nothing
+       is visible)
 
     See Also:
         :class:`babylon.ooda.state_ai.protocols.NPCDecisionStrategy`
@@ -354,6 +427,8 @@ class RuleBasedStateAI:
         heat: float,
         defines: StateApparatusAIDefines,
         rng_seed: int | None = None,
+        target_candidates: list[tuple[str, float]] | None = None,
+        target_visibility: float = 1.0,
     ) -> list[StateAction]:
         """Select actions for one tick.
 
@@ -361,14 +436,41 @@ class RuleBasedStateAI:
             org_id: Organization node ID.
             faction_balance: Current FactionBalance weights.
             budget: Current StateBudget (available funds).
-            heat: Player threat level [0.0, 1.0].
+            heat: Player threat level [0.0, 1.0] — the state's own sense
+                of urgency (drives verb/escalation scoring). Distinct
+                from each *target_candidates* entry's own heat, which
+                drives WHO gets targeted.
             defines: State AI configuration.
             rng_seed: Optional RNG seed for determinism.
+            target_candidates: ``(entity_id, heat)`` pairs for every
+                entity the state can legally target this tick (see
+                :func:`select_repress_target`). ``None`` (the default)
+                preserves the legacy self-targeting behavior for callers
+                that don't do target discovery — this keeps the D-01..
+                D-06 behavioral contracts (which exercise verb/budget/
+                escalation selection in isolation, with no graph) intact.
+                Real dispatch (``babylon.ooda.npc_stub._try_state_ai_
+                dispatch``) always supplies a real (possibly empty) list,
+                so it can never hit the self-targeting fallback.
+            target_visibility: Uniform visibility multiplier forwarded to
+                :func:`select_repress_target` (interim constant; see its
+                docstring re: spec-077 Panopticon).
 
         Returns:
-            List of StateAction objects (at most ``defines.actions_per_tick``).
+            List of StateAction objects (at most ``defines.actions_per_tick``),
+            or an empty list if *target_candidates* was supplied but no
+            candidate has ``heat > 0`` — the Blind Giant sees no visible
+            threat this tick and takes no action (never self-targets).
         """
         rng = random.Random(rng_seed)
+
+        # Target selection ("The Blind Giant" — see select_repress_target).
+        if target_candidates is None:
+            resolved_target: str | None = org_id
+        else:
+            resolved_target = select_repress_target(org_id, target_candidates, target_visibility)
+            if resolved_target is None:
+                return []
 
         max_actions = defines.actions_per_tick
         available = budget.available
@@ -416,11 +518,13 @@ class RuleBasedStateAI:
 
             _score, candidate = scored[selection_idx]
             if candidate.budget_cost <= remaining_budget:
-                # Re-create with target_id
+                # Re-create with the resolved target (real threat, or
+                # self only when the caller opted out of target discovery
+                # entirely — see the target_candidates docstring above).
                 action = StateAction(
                     verb=candidate.verb,
                     sub_verb=candidate.sub_verb,
-                    target_id=org_id,
+                    target_id=resolved_target,
                     budget_cost=candidate.budget_cost,
                     thread_cost=candidate.thread_cost,
                     legitimacy_cost=candidate.legitimacy_cost,
@@ -491,5 +595,6 @@ __all__ = [
     "finance_capital_objective",
     "score_action",
     "security_state_objective",
+    "select_repress_target",
     "settler_populist_objective",
 ]

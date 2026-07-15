@@ -534,11 +534,15 @@ def _create_state_apparatus_org(policed_territory_ids: list[str]) -> StateAppara
     to OS-entropy-seeded ``random.Random(None)`` — a genuine Constitution
     III.7 determinism violation this scenario must not introduce.
 
-    Known limitation (not fixed here — out of this unlock's scope):
-    ``RuleBasedStateAI.select_action`` always sets ``target_id=org_id``
-    (itself, see ``babylon.ooda.state_ai.decision``) — Feature 039 never
-    wired real target selection, so this org's REPRESS/SURVEIL actions
-    self-target rather than pressuring a community or the player org.
+    Formerly a known limitation, FIXED by task #73:
+    ``RuleBasedStateAI.select_action`` used to always set
+    ``target_id=org_id`` (itself) — Feature 039 never wired real target
+    selection. It now sorts visible non-state-org threats by
+    ``Heat x Visibility`` (``babylon.ooda.state_ai.decision.
+    select_repress_target``, the epoch-3 "Blind Giant" doctrine) and
+    targets the top one; with zero visible threats (heat 0 everywhere,
+    e.g. right at scenario start before ORG001 has done anything to
+    attract attention) it honestly no-ops rather than self-targeting.
     """
     balance = FactionBalance(
         finance_capital=0.2,

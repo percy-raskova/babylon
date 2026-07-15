@@ -46,6 +46,7 @@ import type { ContradictionSnapshot, EndgameState, ObjectivesTracker } from "@/t
 import type { TradeFlowsPayload } from "@/types/trade";
 import type { WireFeed } from "@/types/wire";
 import type { ExplainResponse, InspectorNodeResponse } from "@/types/inspection";
+import type { NarrationFetchResult } from "@/lib/narration/client";
 import type { FeatureCollection } from "geojson";
 
 /**
@@ -129,6 +130,10 @@ export const endpoints = {
   journal: ep<JournalPayload>("/api/games/:id/journal/"),
   alerts: ep<AlertsPayload>("/api/games/:id/alerts/"),
   wire: ep<WireFeed>("/api/games/:id/wire/"),
+  // Program 20 Track B (task B5) — AI narration beats. `types/narration.ts`
+  // is the domain-state contract; `NarrationFetchResult` (client.ts) is the
+  // response envelope's `data` shape (`{status, beats}`).
+  narration: ep<NarrationFetchResult>("/api/games/:id/narration/"),
 
   // ---- Endgame / dialectic screen (spec-095) ---------------------------- //
   contradiction: ep<ContradictionSnapshot>("/api/games/:id/contradiction/"),

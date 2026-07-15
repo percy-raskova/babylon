@@ -50,6 +50,8 @@ urlpatterns: list[URLPattern] = [
     path("games/<str:game_id>/journal/", api.game_journal, name="game-journal"),
     path("games/<str:game_id>/alerts/", api.game_alerts, name="game-alerts"),
     path("games/<str:game_id>/wire/", api.game_wire, name="game-wire"),
+    # API: Program 20 Track B — AI narration beats (types/narration.ts)
+    path("games/<str:game_id>/narration/", api.game_narration, name="game-narration"),
     # API: Spec 095 — Endgame Chronicle + Journal + Dialectic screen
     path(
         "games/<str:game_id>/contradiction/",

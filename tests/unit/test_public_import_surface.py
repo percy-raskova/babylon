@@ -20,7 +20,8 @@ import pytest
 
 EXPECTED_DEFINES_PUBLIC: frozenset[str] = frozenset(
     {
-        # 42 child *Defines classes (41 from Spec 058 + 1 from Spec 057: LeontiefRentDefines)
+        # 43 child *Defines classes (41 from Spec 058 + 1 from Spec 057: LeontiefRentDefines
+        # + 1 from Epistemic Horizon Phase 1: EpistemicHorizonDefines)
         "AidDefines",
         "ArcGISDefines",
         "BehavioralDefines",
@@ -36,6 +37,7 @@ EXPECTED_DEFINES_PUBLIC: frozenset[str] = frozenset(
         "EconomyDefines",
         "EdgeTransitionDefines",
         "EndgameDefines",
+        "EpistemicHorizonDefines",
         "ExternalDataDefines",
         "InfraTerrainDefines",
         "InfrastructureDefines",

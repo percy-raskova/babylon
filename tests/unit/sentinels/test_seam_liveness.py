@@ -228,6 +228,13 @@ def test_must_be_live_scope_matches_registry() -> None:
         # than MUST_BE_LIVE — see registry.py's row-level reasoning.
         "mass_receptivity",
         "vision_state",
+        # Wave 6 labor-market lens pair (tasks #87/#88): wage_pressure
+        # (ReserveArmySystem) and dispossession_intensity (DispossessionEventSystem)
+        # write NO attr at all for a territory with no reserve-army pressure / no
+        # dispossession this tick — honest-null, so DECLARED_CONDITIONAL not
+        # MUST_BE_LIVE (see registry.py:385/411 row-level reasoning).
+        "wage_pressure",
+        "dispossession_intensity",
     }
     assert gated.isdisjoint(conditional)
 

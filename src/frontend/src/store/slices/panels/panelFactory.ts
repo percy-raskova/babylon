@@ -66,7 +66,7 @@ export const PANEL_KEYS = ["summary", "timeseries", "economy", "communities", "m
 export type PanelKey = (typeof PANEL_KEYS)[number];
 
 /**
- * The 5 tick-driven takeover/dock panels (spec-110 B5) — Wire, Dialectic,
+ * The tick-driven takeover/dock panels (spec-110 B5) — Wire, Dialectic,
  * Chronicle, Objectives, and the Wire Index tab's bloc-flow lines. Same
  * "only fetch what's mounted" contract as `PANEL_KEYS`, kept as a separate
  * list rather than merged into it since these mount on takeover-open /
@@ -82,5 +82,9 @@ export const TAKEOVER_PANEL_KEYS = [
   // contract; its fetch is cumulative (since_tick cursor) and degrades to
   // an honest "offline" state while the backend endpoint is contract-only.
   "narration",
+  // network (AW4-R2, the Network takeover) — same mounted-only contract:
+  // one-shot fetch on takeover-open, refetched on every observed tick
+  // change while the takeover stays open.
+  "network",
 ] as const;
 export type TakeoverPanelKey = (typeof TAKEOVER_PANEL_KEYS)[number];

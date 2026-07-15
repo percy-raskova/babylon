@@ -623,11 +623,32 @@ export interface ActionPreviewResult {
 // Multi-Scale Spatial Rendering Types
 // ---------------------------------------------------------------------------
 
-/** Org-network graph payload from /api/games/{id}/orgs/network/. */
+/**
+ * Org-network graph payload from /api/games/{id}/orgs/network/ — see
+ * `EngineBridge.get_org_network` (`web/game/engine_bridge.py`) for the
+ * authoritative shape. `centrality`/`percolation_ratio` (AW4-R2, verified
+ * against the bridge field-for-field) are bridge-derived analytics over
+ * THIS response's own node/edge set, additive to the original two-field
+ * contract.
+ */
 export interface OrgNetworkPayload {
   tick: number;
   nodes: OrgNetworkNode[];
   edges: OrgNetworkEdge[];
+  /** Per-node degree/betweenness/closeness, keyed by node id. `betweenness`/
+   *  `closeness` are honestly omitted (never 0.0-fabricated) when their
+   *  guard condition (>1 node, and connected for closeness) isn't met. */
+  centrality: Record<string, OrgNetworkCentrality>;
+  /** Real SOLIDARITY-network giant-component ratio (L_max / N), or `null`
+   *  when undefined (zero social_class nodes) — never a fabricated 0.0. */
+  percolation_ratio: number | null;
+}
+
+/** One node's entry in `OrgNetworkPayload.centrality`. */
+export interface OrgNetworkCentrality {
+  degree: number;
+  betweenness?: number;
+  closeness?: number;
 }
 
 /** Node in the org-network graph. */
@@ -644,6 +665,17 @@ export interface OrgNetworkEdge {
   mode: string;
   attributes: Record<string, unknown>;
 }
+
+/** Empty-state default (Constitution III.11) — an honestly empty network,
+ *  never fabricated nodes/edges. Mirrors `EMPTY_CONTRADICTION`/
+ *  `EMPTY_WIRE_FEED`'s convention. */
+export const EMPTY_ORG_NETWORK: OrgNetworkPayload = {
+  tick: 0,
+  nodes: [],
+  edges: [],
+  centrality: {},
+  percolation_ratio: null,
+};
 
 /** Hypergraph community payload from /api/games/{id}/hypergraph/communities/. */
 export interface HypergraphPayload {

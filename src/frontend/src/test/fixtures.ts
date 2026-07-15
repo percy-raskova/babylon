@@ -43,6 +43,12 @@ import type {
   ObjectivesTracker,
 } from "@/types/dialectic";
 import type { BlocFlowEntry, TradeFlowsPayload } from "@/types/trade";
+import type {
+  OrgNetworkPayload,
+  OrgNetworkNode,
+  OrgNetworkEdge,
+  OrgNetworkCentrality,
+} from "@/types/game";
 
 export function makeTerritory(overrides?: Partial<TerritoryState>): TerritoryState {
   return {
@@ -735,6 +741,62 @@ export function makeTradeFlowsPayload(overrides?: Partial<TradeFlowsPayload>): T
     tick: 5,
     has_data: true,
     blocs: [makeBlocFlowEntry()],
+    ...overrides,
+  };
+}
+
+// ---------------------------------------------------------------------------
+// AW4-R2 — Org-network takeover payload factories (GET
+// /api/games/{id}/orgs/network/, see `EngineBridge.get_org_network`).
+// ---------------------------------------------------------------------------
+
+/** One `nodes[]` entry. */
+export function makeOrgNetworkNode(overrides?: Partial<OrgNetworkNode>): OrgNetworkNode {
+  return {
+    id: "org-workers-union",
+    type: "organization",
+    attributes: { name: "Workers Union" },
+    ...overrides,
+  };
+}
+
+/** One `edges[]` entry. */
+export function makeOrgNetworkEdge(overrides?: Partial<OrgNetworkEdge>): OrgNetworkEdge {
+  return {
+    source: "org-workers-union",
+    target: "territory-downtown",
+    mode: "presence",
+    attributes: {},
+    ...overrides,
+  };
+}
+
+/** One `centrality[node_id]` entry. */
+export function makeOrgNetworkCentrality(
+  overrides?: Partial<OrgNetworkCentrality>,
+): OrgNetworkCentrality {
+  return {
+    degree: 0.5,
+    betweenness: 0.2,
+    closeness: 0.6,
+    ...overrides,
+  };
+}
+
+/**
+ * GET /api/games/{id}/orgs/network/ payload — defaults to the honest
+ * empty-but-well-formed shape (mirrors `makeFieldStatePayload`'s precedent:
+ * `nodes: []`, `edges: []`, `centrality: {}`, `percolation_ratio: null`).
+ * Tests needing a populated network pass real nodes/edges/centrality via
+ * overrides, or use `makeOrgNetworkPayload({ ...populated })`.
+ */
+export function makeOrgNetworkPayload(overrides?: Partial<OrgNetworkPayload>): OrgNetworkPayload {
+  return {
+    tick: 5,
+    nodes: [],
+    edges: [],
+    centrality: {},
+    percolation_ratio: null,
     ...overrides,
   };
 }

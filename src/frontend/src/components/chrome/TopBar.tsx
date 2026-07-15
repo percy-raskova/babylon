@@ -2,7 +2,7 @@
  * TopBar — Layer 1 chrome, the floating full-width strip (architecture
  * §1.1/§1.2's `StatusBar` → `TopBar` migrate row). Real `/summary/` fields
  * (tick, profit rate, imperial rent Φ, population, alert counts), the
- * takeover-open buttons (Wire / Dialectic / Chronicle), and `SpeedControls`
+ * takeover-open buttons (Wire / Dialectic / Chronicle / Network), and `SpeedControls`
  * (bible §5.1's identity/date/speed cluster). An instance of `FloatingPanel`
  * (anchor="top") per architecture §1.3 — no `title`/`onToggle` given, so
  * `FloatingPanel` renders no header and TopBar's own layout owns the whole
@@ -122,6 +122,7 @@ export function TopBar({ gameId }: TopBarProps): React.JSX.Element {
           <TakeoverButton kind="wire" label="Wire" onOpen={openTakeover} />
           <TakeoverButton kind="dialectic" label="Dialectic" onOpen={openTakeover} />
           <TakeoverButton kind="chronicle" label="Chronicle" onOpen={openTakeover} />
+          <TakeoverButton kind="network" label="Network" onOpen={openTakeover} />
         </div>
 
         {/* Cluster 4 — speed */}

@@ -65,6 +65,21 @@ vi.mock("@deck.gl/geo-layers", () => ({
   TripsLayer: vi.fn(),
 }));
 
+// AW4-R2: sigma.js renders to a real WebGL/canvas context sigma itself
+// creates on construction — jsdom has neither, so any test mounting a real
+// `NetworkGraphCanvas` needs this stub, mirroring the deck.gl mocks above.
+// `new Sigma(...)` only needs to yield an object with the instance methods
+// `NetworkGraphCanvas` actually calls (`kill` on unmount). The mock's
+// implementation must be a real `function` (not an arrow) — vitest can only
+// invoke a `vi.fn()` mock with `new` when its implementation is
+// constructor-capable (arrow functions aren't; see the vitest console hint
+// this throws without the `function` keyword here).
+vi.mock("sigma", () => ({
+  default: vi.fn(function SigmaMock() {
+    return { kill: vi.fn(), refresh: vi.fn() };
+  }),
+}));
+
 vi.mock("@deck.gl/layers", () => ({
   ScatterplotLayer: vi.fn(),
   PolygonLayer: vi.fn(),

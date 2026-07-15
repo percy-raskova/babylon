@@ -21,6 +21,7 @@ import type {
   TimeseriesPayload,
   EconomyDashboardPayload,
   CommunitiesDashboardPayload,
+  OrgNetworkPayload,
 } from "@/types/game";
 import type { FeatureCollection } from "geojson";
 import type { WireFeed } from "@/types/wire";
@@ -52,6 +53,8 @@ export interface PanelsSlice {
     objectives: Panel<ObjectivesTracker>;
     tradeFlows: Panel<TradeFlowsPayload>;
     narration: NarrationPanel;
+    /** AW4-R2 — the Network takeover's org-network graph. */
+    network: Panel<OrgNetworkPayload>;
   };
 }
 
@@ -116,6 +119,11 @@ export const createPanelsSlice: StateCreator<RootState, [], [], PanelsSlice> = (
     (updater) => set((s) => ({ panels: { ...s.panels, narration: updater(s.panels.narration) } })),
     () => get().panels.narration,
   );
+  const network = createPanel<OrgNetworkPayload>(
+    (gameId) => endpoints.orgNetwork.path({ id: gameId }),
+    (updater) => set((s) => ({ panels: { ...s.panels, network: updater(s.panels.network) } })),
+    get,
+  );
 
   return {
     panels: {
@@ -130,6 +138,7 @@ export const createPanelsSlice: StateCreator<RootState, [], [], PanelsSlice> = (
       objectives,
       tradeFlows,
       narration,
+      network,
     },
   };
 };

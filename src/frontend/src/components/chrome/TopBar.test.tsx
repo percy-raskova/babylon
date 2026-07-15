@@ -84,6 +84,9 @@ describe("TopBar", () => {
 
     await userEvent.click(screen.getByTestId("open-chronicle"));
     expect(useStore.getState().ui.takeover.active).toBe("chronicle");
+
+    await userEvent.click(screen.getByTestId("open-network"));
+    expect(useStore.getState().ui.takeover.active).toBe("network");
   });
 
   it("hosts SpeedControls (time-status testid survives the TimeControls → SpeedControls migration)", () => {

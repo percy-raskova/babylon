@@ -23,6 +23,7 @@ import {
   makeClassHistoryPayload,
   makeFieldStatePayload,
   makeMapHistoryPayload,
+  makeOrgNetworkPayload,
 } from "./fixtures";
 import type { GameSnapshot } from "@/types/game";
 
@@ -283,6 +284,14 @@ export const handlers = [
   http.get("/api/games/:id/trade-flows/", () => {
     logRequest("GET trade-flows");
     return HttpResponse.json({ status: "ok", data: makeTradeFlowsPayload() });
+  }),
+
+  // AW4-R2 — the Network takeover's org-network graph. Honest
+  // empty-but-well-formed by default (Constitution III.11: no fabricated
+  // nodes) — tests exercising real rendering override with server.use().
+  http.get("/api/games/:id/orgs/network/", () => {
+    logRequest("GET orgs:network");
+    return HttpResponse.json({ status: "ok", data: makeOrgNetworkPayload() });
   }),
 
   // ---- Action Composer: verb targets + submit --------------------------

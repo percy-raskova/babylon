@@ -93,6 +93,16 @@ class FieldDerivativeSystem(SystemBase):
         # ─── Phase 3: Principal contradiction identification ────────
         _identify_principal_contradiction(graph, field_names, persistent_data, services, tick)
 
+        # ─── Phase 4: Field-stack snapshot (facade round-trip carry) ─
+        # WorldState.to_graph()/from_graph() otherwise loses the per-node
+        # (contradiction_fields/field_derivatives) and per-edge
+        # (field_gradients) attrs this step just wrote, plus the
+        # graph-level principal_field/dialectical_regime attrs — the
+        # "altitude gap" get_field_state's docstring documents
+        # (web/game/engine_bridge.py). This ONE graph attr is the carrier
+        # WorldState round-trips and re-stamps from (Wave 3 Round 1).
+        graph.set_graph_attr("field_stack", _build_field_stack(graph))
+
 
 def _discover_field_names(graph: GraphProtocol) -> list[str]:
     """Union of contradiction-field names present on social_class nodes, sorted.
@@ -285,6 +295,78 @@ def _collect_neighbor_fields(
             weights.append(w)
 
     return result, weights
+
+
+def _build_field_stack(graph: GraphProtocol) -> dict[str, Any]:
+    """Compose this tick's field-stack snapshot for the graph-attr carry.
+
+    Reads back exactly what :func:`_compute_edge_gradients` and
+    :func:`_compute_node_derivatives` wrote onto the graph earlier this
+    same ``step()`` call (``contradiction_fields``/``field_derivatives`` on
+    social_class nodes, ``field_gradients`` on edges) and assembles ONE
+    deterministic graph-level snapshot. :meth:`WorldState.to_graph`/
+    ``from_graph`` (``babylon.models.world_state``) carry this attr across
+    the round trip the facade (``simulation_engine.step``) otherwise loses,
+    and re-stamp the node/edge attrs from it — closing the altitude gap
+    documented on ``EngineBridge.get_field_state``.
+
+    Honest omission (Constitution III.11): a node the engine did not
+    compute any field for this tick is OMITTED from ``nodes`` entirely
+    (never a fabricated empty entry); an edge with no gradients is
+    likewise omitted from ``edges``. All dict/list ordering is rebuilt
+    from ``sorted()`` iteration (Constitution III.7 determinism) regardless
+    of the upstream write order — e.g. the opposition-source path
+    (:meth:`ContradictionFieldSystem._step_from_oppositions`) inserts
+    ``contradiction_fields`` as ``{"exploitation": ..., "atomization": ...}``,
+    not alphabetically.
+
+    The per-node ``"fields"``/``"field_derivatives"`` sub-dicts are
+    verbatim copies (re-sorted, not reshaped) of the node's
+    ``contradiction_fields``/``field_derivatives`` attrs specifically so
+    :meth:`WorldState._restamp_field_stack` can re-stamp them onto a
+    reloaded graph with a plain merge — no reassembly.
+
+    Args:
+        graph: Graph with this tick's ``contradiction_fields``/
+            ``field_derivatives``/``field_gradients`` already written.
+
+    Returns:
+        ``{"nodes": {node_id: {"fields": {...}, "field_derivatives": {...}}},
+        "edges": [{"source", "target", "field", "gradient"}, ...]}``, both
+        collections present (possibly empty) whenever this system runs with
+        at least one registered field name.
+    """
+    raw_nodes: dict[str, dict[str, Any]] = {}
+    for node in graph.query_nodes(node_type="social_class"):
+        fields: dict[str, float] = node.attributes.get("contradiction_fields", {})
+        derivs: dict[str, dict[str, float | None]] = node.attributes.get("field_derivatives", {})
+        if not fields and not derivs:
+            continue
+        entry: dict[str, Any] = {}
+        if fields:
+            entry["fields"] = {name: fields[name] for name in sorted(fields)}
+        if derivs:
+            entry["field_derivatives"] = {name: derivs[name] for name in sorted(derivs)}
+        raw_nodes[node.id] = entry
+    nodes = {node_id: raw_nodes[node_id] for node_id in sorted(raw_nodes)}
+
+    edges: list[dict[str, Any]] = []
+    for edge in graph.query_edges():
+        gradients: dict[str, float] = edge.attributes.get("field_gradients", {})
+        if not gradients:
+            continue
+        for field_name in sorted(gradients):
+            edges.append(
+                {
+                    "source": edge.source_id,
+                    "target": edge.target_id,
+                    "field": field_name,
+                    "gradient": gradients[field_name],
+                }
+            )
+    edges.sort(key=lambda entry: (entry["source"], entry["target"], entry["field"]))
+
+    return {"nodes": nodes, "edges": edges}
 
 
 def _identify_principal_contradiction(

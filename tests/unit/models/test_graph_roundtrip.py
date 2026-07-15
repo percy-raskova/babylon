@@ -791,3 +791,165 @@ class TestFactionRoundTrip:
         payload = state.to_graph().edges[("C001", "C002")]
         for key in ("influence_level", "support_type", "control_level", "legal_status"):
             assert key not in payload
+
+
+class TestFieldStackRoundTrip:
+    """Program 19/20 Wave 3 Round 1: the field_stack facade carry.
+
+    ``field_stack``/``principal_field``/``dialectical_regime`` are graph
+    attrs FieldDerivativeSystem @20 / ContradictionSystem @18 write.
+    WorldState carries them across ``to_graph()``/``from_graph()`` (a
+    graph-attr idiom like ``opposition_states``, but actually round-tripped
+    — unlike ``opposition_states``, which is write-only by design) and
+    re-stamps the per-node/edge attrs the snapshot was built from, so a
+    persisted-then-reloaded graph matches what the live engine graph
+    carried.
+    """
+
+    def _two_class_state_with_field_stack(self) -> WorldState:
+        c001 = SocialClass(
+            id="C001", name="Workers", role=SocialRole.PERIPHERY_PROLETARIAT, population=100
+        )
+        c002 = SocialClass(
+            id="C002", name="Owners", role=SocialRole.CORE_BOURGEOISIE, population=10
+        )
+        rel = Relationship(source_id="C001", target_id="C002", edge_type=EdgeType.EXPLOITATION)
+        field_stack = {
+            "nodes": {
+                "C001": {
+                    "fields": {"atomization": 0.2, "exploitation": 0.8},
+                    "field_derivatives": {
+                        "exploitation": {"laplacian": 0.1, "df_dt": 0.02, "d2f_dt2": None},
+                    },
+                },
+                "C002": {"fields": {"atomization": 0.2, "exploitation": 0.6}},
+            },
+            "edges": [
+                {"source": "C001", "target": "C002", "field": "atomization", "gradient": 0.0},
+                {"source": "C001", "target": "C002", "field": "exploitation", "gradient": -0.2},
+            ],
+        }
+        principal_field = {"field_name": "exploitation", "max_abs_df_dt": 0.05, "changed": True}
+        dialectical_regime = {"regime": "crisis", "opposition": "capital_labor", "rate": 0.12}
+        return WorldState(
+            tick=9,
+            entities={"C001": c001, "C002": c002},
+            relationships=[rel],
+            field_stack=field_stack,
+            principal_field=principal_field,
+            dialectical_regime=dialectical_regime,
+        )
+
+    def test_graph_attrs_survive_round_trip_byte_equal(self) -> None:
+        state = self._two_class_state_with_field_stack()
+
+        graph = state.to_graph()
+        restored = WorldState.from_graph(graph, tick=9)
+
+        assert restored.field_stack == state.field_stack
+        assert restored.principal_field == state.principal_field
+        assert restored.dialectical_regime == state.dialectical_regime
+
+    def test_to_graph_restamps_node_attrs_from_field_stack(self) -> None:
+        state = self._two_class_state_with_field_stack()
+
+        graph = state.to_graph()
+
+        assert graph.nodes["C001"]["contradiction_fields"] == {
+            "atomization": 0.2,
+            "exploitation": 0.8,
+        }
+        assert graph.nodes["C001"]["field_derivatives"] == {
+            "exploitation": {"laplacian": 0.1, "df_dt": 0.02, "d2f_dt2": None},
+        }
+        assert graph.nodes["C002"]["contradiction_fields"] == {
+            "atomization": 0.2,
+            "exploitation": 0.6,
+        }
+        assert "field_derivatives" not in graph.nodes["C002"]
+
+    def test_to_graph_restamps_edge_attrs_from_field_stack(self) -> None:
+        state = self._two_class_state_with_field_stack()
+
+        graph = state.to_graph()
+
+        gradients = graph.edges["C001", "C002"]["field_gradients"]
+        assert gradients == {"atomization": 0.0, "exploitation": -0.2}
+
+    def test_restamp_skips_missing_node_without_error(self) -> None:
+        """A snapshot row naming a node no longer in entities (a
+        deactivated class) must not raise — the snapshot is stale, not an
+        error (Design B fail-soft)."""
+        base = self._two_class_state_with_field_stack()
+        state = base.model_copy(
+            update={
+                "entities": {
+                    "C001": SocialClass(
+                        id="C001",
+                        name="Workers",
+                        role=SocialRole.PERIPHERY_PROLETARIAT,
+                        population=100,
+                    )
+                },
+                "relationships": [],
+            }
+        )
+
+        graph = state.to_graph()  # must not raise
+
+        assert "C002" not in graph.nodes
+
+    def test_restamp_skips_missing_edge_without_error(self) -> None:
+        """A snapshot row naming an edge no longer in relationships must
+        not raise."""
+        base = self._two_class_state_with_field_stack()
+        state = base.model_copy(update={"relationships": []})
+
+        graph = state.to_graph()  # must not raise
+
+        assert not graph.has_edge("C001", "C002")
+
+    def test_absent_field_stack_stamps_no_attrs_no_error(self) -> None:
+        """A default WorldState (empty field_stack/principal_field/
+        dialectical_regime) writes no graph attrs and stamps nothing — the
+        round trip is a pure no-op for these three fields."""
+        worker = SocialClass(
+            id="C001", name="Workers", role=SocialRole.PERIPHERY_PROLETARIAT, population=100
+        )
+        state = WorldState(tick=0, entities={"C001": worker})
+
+        graph = state.to_graph()
+
+        assert "field_stack" not in graph.graph
+        assert "principal_field" not in graph.graph
+        assert "dialectical_regime" not in graph.graph
+        assert "contradiction_fields" not in graph.nodes["C001"]
+
+        restored = WorldState.from_graph(graph, tick=0)
+        assert restored.field_stack == {}
+        assert restored.principal_field == {}
+        assert restored.dialectical_regime == {}
+
+    def test_field_stack_round_trip_is_idempotent(self) -> None:
+        """to_graph(from_graph(g)) attrs == g attrs for the field-stack
+        carry — the round trip stabilizes rather than drifting."""
+        state = self._two_class_state_with_field_stack()
+        graph1 = state.to_graph()
+
+        restored = WorldState.from_graph(graph1, tick=9)
+        graph2 = restored.to_graph()
+
+        assert graph2.graph["field_stack"] == graph1.graph["field_stack"]
+        assert graph2.graph["principal_field"] == graph1.graph["principal_field"]
+        assert graph2.graph["dialectical_regime"] == graph1.graph["dialectical_regime"]
+        assert (
+            graph2.nodes["C001"]["contradiction_fields"]
+            == graph1.nodes["C001"]["contradiction_fields"]
+        )
+        assert (
+            graph2.nodes["C001"]["field_derivatives"] == graph1.nodes["C001"]["field_derivatives"]
+        )
+        assert (
+            graph2.edges["C001", "C002"]["field_gradients"]
+            == graph1.edges["C001", "C002"]["field_gradients"]
+        )

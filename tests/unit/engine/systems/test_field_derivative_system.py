@@ -402,3 +402,145 @@ class TestPrincipalContradiction:
         # On second tick, if principal changed, another event
         # We just verify the mechanism works
         assert isinstance(shift_events, list)
+
+
+@pytest.mark.unit
+class TestFieldStackSnapshot:
+    """Program 19/20 Wave 3 Round 1: the ``field_stack`` graph-attr carry.
+
+    FieldDerivativeSystem.step() composes ONE deterministic snapshot from
+    the node/edge attrs it (and ContradictionFieldSystem @19) just wrote,
+    so WorldState.to_graph()/from_graph() can carry the field stack across
+    the facade round trip (see field_derivative.py's ``_build_field_stack``).
+    """
+
+    def test_field_stack_written_with_nodes_and_edges(self) -> None:
+        """The snapshot has 'nodes' and 'edges' keys populated from the tick."""
+        graph = _make_two_node_graph()
+        persistent_data: dict[str, object] = {}
+        services = _run_field_system(graph, persistent_data)
+        context: dict[str, object] = {"tick": 1, "persistent_data": persistent_data}
+
+        FieldDerivativeSystem().step(graph, services, context)
+
+        field_stack = graph.graph["field_stack"]
+        assert set(field_stack.keys()) == {"nodes", "edges"}
+        assert "C001" in field_stack["nodes"]
+        assert "C002" in field_stack["nodes"]
+
+    def test_field_stack_node_fields_match_contradiction_fields_verbatim(self) -> None:
+        """A node's 'fields' sub-dict is a verbatim (sorted) copy of contradiction_fields."""
+        graph = _make_two_node_graph()
+        persistent_data: dict[str, object] = {}
+        services = _run_field_system(graph, persistent_data)
+        context: dict[str, object] = {"tick": 1, "persistent_data": persistent_data}
+
+        FieldDerivativeSystem().step(graph, services, context)
+
+        c001_fields = graph.nodes["C001"]["contradiction_fields"]
+        snapshot_fields = graph.graph["field_stack"]["nodes"]["C001"]["fields"]
+        assert snapshot_fields == c001_fields
+
+    def test_field_stack_node_field_derivatives_match_verbatim(self) -> None:
+        """A node's 'field_derivatives' sub-dict equals its field_derivatives attr exactly."""
+        graph = _make_two_node_graph()
+        persistent_data: dict[str, object] = {}
+        services = _run_field_system(graph, persistent_data)
+        context: dict[str, object] = {"tick": 1, "persistent_data": persistent_data}
+
+        FieldDerivativeSystem().step(graph, services, context)
+
+        c001_derivs = graph.nodes["C001"]["field_derivatives"]
+        snapshot_derivs = graph.graph["field_stack"]["nodes"]["C001"]["field_derivatives"]
+        assert snapshot_derivs == c001_derivs
+
+    def test_field_stack_honest_omission_of_fieldless_nodes(self) -> None:
+        """A node carrying no contradiction_fields/field_derivatives is omitted entirely."""
+        graph = BabylonGraph()
+        graph.add_node("T001", _node_type="territory", heat=0.5)
+
+        registry = DefaultFieldRegistry.with_defaults()
+        services = ServiceContainer.create(field_registry=registry)
+        context: dict[str, object] = {"tick": 1, "persistent_data": {}}
+
+        FieldDerivativeSystem().step(graph, services, context)
+
+        field_stack = graph.graph.get("field_stack")
+        assert field_stack is not None
+        assert "T001" not in field_stack["nodes"]
+
+    def test_field_stack_nodes_sorted_by_id_regardless_of_insertion_order(self) -> None:
+        """field_stack['nodes'] key order is sorted, independent of graph insertion order."""
+        graph = BabylonGraph()
+        graph.add_node(
+            "C002", _node_type="social_class", wealth=30.0, population=2000, unearned_increment=5.0
+        )
+        graph.add_node("C001", _node_type="social_class", wealth=5.0, population=1000)
+        graph.add_edge("C002", "C001", edge_type=EdgeType.EXPLOITATION, value_flow=10.0)
+
+        persistent_data: dict[str, object] = {}
+        services = _run_field_system(graph, persistent_data)
+        context: dict[str, object] = {"tick": 1, "persistent_data": persistent_data}
+
+        FieldDerivativeSystem().step(graph, services, context)
+
+        node_ids = list(graph.graph["field_stack"]["nodes"].keys())
+        assert node_ids == sorted(node_ids)
+
+    def test_field_stack_edges_present_with_gradients(self) -> None:
+        """field_stack['edges'] carries one entry per (source, target, field)."""
+        graph = _make_two_node_graph()
+        persistent_data: dict[str, object] = {}
+        services = _run_field_system(graph, persistent_data)
+        context: dict[str, object] = {"tick": 1, "persistent_data": persistent_data}
+
+        FieldDerivativeSystem().step(graph, services, context)
+
+        edges = graph.graph["field_stack"]["edges"]
+        gradients = graph.edges["C001", "C002"]["field_gradients"]
+        assert len(edges) == len(gradients)
+        for entry in edges:
+            assert entry["source"] == "C001"
+            assert entry["target"] == "C002"
+            assert entry["gradient"] == pytest.approx(gradients[entry["field"]])
+
+    def test_field_stack_edges_sorted_by_source_target_field(self) -> None:
+        """field_stack['edges'] is sorted by (source, target, field)."""
+        graph = _make_two_node_graph()
+        persistent_data: dict[str, object] = {}
+        services = _run_field_system(graph, persistent_data)
+        context: dict[str, object] = {"tick": 1, "persistent_data": persistent_data}
+
+        FieldDerivativeSystem().step(graph, services, context)
+
+        edges = graph.graph["field_stack"]["edges"]
+        keys = [(e["source"], e["target"], e["field"]) for e in edges]
+        assert keys == sorted(keys)
+
+    def test_field_stack_omits_edge_without_gradients(self) -> None:
+        """An edge whose endpoints lack contradiction_fields carries no gradients -> omitted."""
+        graph = BabylonGraph()
+        graph.add_node("C001", _node_type="social_class", wealth=5.0, population=1000)
+        graph.add_node("T001", _node_type="territory", heat=0.1)
+        graph.add_edge("C001", "T001", edge_type=EdgeType.TENANCY)
+
+        registry = DefaultFieldRegistry.with_defaults()
+        services = ServiceContainer.create(field_registry=registry)
+        context: dict[str, object] = {"tick": 1, "persistent_data": {}}
+
+        FieldDerivativeSystem().step(graph, services, context)
+
+        field_stack = graph.graph.get("field_stack")
+        assert field_stack is not None
+        assert field_stack["edges"] == []
+
+    def test_no_field_stack_when_no_field_names(self) -> None:
+        """E0 no-op case: no field_registry and no contradiction_fields anywhere
+        means the early return fires before the snapshot is ever written."""
+        graph = _make_two_node_graph()
+        services = ServiceContainer.create()  # no field_registry
+        context: dict[str, object] = {"tick": 1, "persistent_data": {}}
+
+        FieldDerivativeSystem().step(graph, services, context)
+
+        assert "field_stack" not in graph.graph

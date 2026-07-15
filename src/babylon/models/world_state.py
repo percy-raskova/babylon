@@ -447,6 +447,51 @@ class WorldState(BaseModel):
         ),
     )
 
+    field_stack: dict[str, Any] = Field(
+        default_factory=dict,
+        description=(
+            "Systems #19/#20 field-stack snapshot ({'nodes': {...}, 'edges': "
+            "[...]}, Program 19/20 Wave 3 Round 1 facade carry). "
+            "``to_graph`` copies it to the ``field_stack`` graph attribute "
+            "AND re-stamps the per-node (``contradiction_fields``/"
+            "``field_derivatives``) and per-edge (``field_gradients``) "
+            "attrs it was built from, so a persisted-then-reloaded graph "
+            "carries the SAME attrs a live engine graph would — closing "
+            "the altitude gap ``EngineBridge.get_field_state``'s docstring "
+            "documents. ``from_graph`` reads the graph attr verbatim; an "
+            "empty ``{}`` means the field stack was never computed this "
+            "tick (honest absence, Constitution III.11), not a fabricated "
+            "empty snapshot."
+        ),
+    )
+
+    principal_field: dict[str, Any] = Field(
+        default_factory=dict,
+        description=(
+            "FieldDerivativeSystem @20's ``principal_field`` graph attr "
+            "({'field_name', 'max_abs_df_dt', 'changed'}) — the field-"
+            "stack's fastest-developing contradiction FIELD, deliberately "
+            "distinct from ContradictionSystem @18's Maoist principal "
+            "OPPOSITION (E0 rename). Carried verbatim across the round "
+            "trip (graph-attr idiom like ``opposition_states``); an empty "
+            "``{}`` means absent (never computed this tick), not a "
+            "fabricated null ``field_name``."
+        ),
+    )
+
+    dialectical_regime: dict[str, Any] = Field(
+        default_factory=dict,
+        description=(
+            "ContradictionSystem @18's ``dialectical_regime`` graph attr "
+            "({'regime', 'opposition', 'rate'}) — the tick's fixed-point "
+            "regime classification (reproduction/crisis/sublation) for the "
+            "capital_labor opposition. Carried verbatim across the round "
+            "trip; an empty ``{}`` means absent (no capital_labor/"
+            "principal opposition state existed yet this tick), not a "
+            "fabricated 'reproduction' default."
+        ),
+    )
+
     # Organization Base Model (Feature 031)
     organizations: dict[str, OrganizationType] = Field(
         default_factory=dict,
@@ -507,6 +552,10 @@ class WorldState(BaseModel):
 
         Graph metadata (G.graph) contains:
         - economy: GlobalEconomy state (Sprint 3.4.4)
+        - field_stack/principal_field/dialectical_regime: Systems #19/#20
+          field-stack carry, re-emitted only when populated (Program 19/20
+          Wave 3 Round 1); also re-stamps the per-node/edge attrs the
+          snapshot was built from (see :meth:`_restamp_field_stack`).
 
         Returns:
             BabylonGraph with nodes and edges from this state.
@@ -560,6 +609,11 @@ class WorldState(BaseModel):
         # state_finances (Spec 055 lossless round-trip).
         G.graph["institution_relations"] = [r.model_dump() for r in self.institution_relations]
 
+        # Systems #19/#20 field-stack carry (Program 19/20 Wave 3 Round 1
+        # facade fix). The per-node/per-edge re-stamp happens later in this
+        # method, once nodes and edges exist on G.
+        self._write_field_stack_graph_attrs(G)
+
         # Add entity nodes with _node_type marker
         for entity_id, entity in self.entities.items():
             G.add_node(entity_id, _node_type="social_class", **entity.model_dump())
@@ -603,7 +657,9 @@ class WorldState(BaseModel):
         # collisions before BabylonGraph's add_edge merge can eat one.
         _assert_no_edge_type_collisions(self.relationships)
 
-        return self._add_relationship_edges(G)
+        G = self._add_relationship_edges(G)
+        self._restamp_field_stack(G)
+        return G
 
     def _add_political_nodes(self, G: BabylonGraph) -> None:
         """Emit sovereign + faction nodes (spec-070) with ``_node_type`` markers."""
@@ -622,6 +678,70 @@ class WorldState(BaseModel):
             G.add_edge(source, target, **edge_attrs)
 
         return G
+
+    def _write_field_stack_graph_attrs(self, G: BabylonGraph) -> None:
+        """Re-emit the field-stack graph attrs, only when populated.
+
+        An empty dict means "never computed this tick" — never a
+        fabricated attr (Constitution III.11). Split out of :meth:`to_graph`
+        to keep its cyclomatic complexity in bounds (ruff C901).
+
+        Args:
+            G: The graph under construction.
+        """
+        if self.field_stack:
+            G.graph["field_stack"] = dict(self.field_stack)
+        if self.principal_field:
+            G.graph["principal_field"] = dict(self.principal_field)
+        if self.dialectical_regime:
+            G.graph["dialectical_regime"] = dict(self.dialectical_regime)
+
+    def _restamp_field_stack(self, G: BabylonGraph) -> None:
+        """Re-stamp field-stack per-node/edge attrs from ``self.field_stack``.
+
+        A reloaded graph otherwise carries only the WorldState-level
+        ``field_stack`` snapshot (the round-trip carrier, written above);
+        this puts the ORIGINAL per-node (``contradiction_fields``/
+        ``field_derivatives``) and per-edge (``field_gradients``) attrs
+        back onto ``G`` so the existing web serializer — which reads node/
+        edge attrs, never the snapshot — lights up with zero bridge changes
+        (Program 19/20 Wave 3 Round 1 facade carry).
+
+        The re-stamp is a verbatim merge (:func:`_build_field_stack`,
+        ``babylon.engine.systems.field_derivative``, builds the snapshot's
+        ``"fields"``/``"field_derivatives"`` sub-dicts as plain copies of
+        the node's own attrs for exactly this reason — no reshaping here).
+
+        A snapshot row naming a node/edge no longer present on ``G`` (a
+        deactivated class, a dropped relationship) is skipped silently —
+        the snapshot is stale, not an error (Design B fail-soft).
+
+        Args:
+            G: The graph under construction, AFTER nodes and edges have
+                already been added (node/edge existence is required for
+                the skip-if-missing check to mean anything).
+        """
+        nodes_snapshot: dict[str, dict[str, Any]] = self.field_stack.get("nodes", {})
+        for node_id in sorted(nodes_snapshot):
+            if node_id not in G:
+                continue
+            entry = nodes_snapshot[node_id]
+            restamp: dict[str, Any] = {}
+            if "fields" in entry:
+                restamp["contradiction_fields"] = entry["fields"]
+            if "field_derivatives" in entry:
+                restamp["field_derivatives"] = entry["field_derivatives"]
+            if restamp:
+                G.add_node(node_id, **restamp)
+
+        gradients_by_edge: dict[tuple[str, str], dict[str, float]] = {}
+        for edge_entry in self.field_stack.get("edges", []):
+            key = (edge_entry["source"], edge_entry["target"])
+            gradients_by_edge.setdefault(key, {})[edge_entry["field"]] = edge_entry["gradient"]
+        for source, target in sorted(gradients_by_edge):
+            if not G.has_edge(source, target):
+                continue
+            G.add_edge(source, target, field_gradients=gradients_by_edge[(source, target)])
 
     @classmethod
     def from_graph(
@@ -667,6 +787,17 @@ class WorldState(BaseModel):
         # Reconstruct institution-org relations from graph metadata (Feature 040)
         ir_data = G.graph.get("institution_relations", [])
         institution_relations = [InstitutionOrgRelation(**data) for data in ir_data]
+
+        # Reconstruct the Systems #19/#20 field-stack carry (Program 19/20
+        # Wave 3 Round 1). Absent graph attr -> honest empty default,
+        # matching the "never computed this tick" sentinel documented on
+        # each field (Constitution III.11) — mirrors the ``list(...)``/
+        # ``dict(...)`` defensive-copy idiom used for event_log/events above
+        # (these are raw dicts, not reconstructed Pydantic models, so a
+        # frozen WorldState must not alias the graph's live attribute dict).
+        field_stack = dict(G.graph.get("field_stack", {}) or {})
+        principal_field = dict(G.graph.get("principal_field", {}) or {})
+        dialectical_regime = dict(G.graph.get("dialectical_regime", {}) or {})
 
         # Reconstruct events from graph metadata (Sprint 1.X D2: Lossless Round-Trip)
         # Only use graph metadata if events parameter was not explicitly provided
@@ -761,6 +892,9 @@ class WorldState(BaseModel):
             industries=industries_dict,
             sovereigns=sovereigns_dict,
             factions=factions_dict,
+            field_stack=field_stack,
+            principal_field=principal_field,
+            dialectical_regime=dialectical_regime,
         )
 
     # =========================================================================

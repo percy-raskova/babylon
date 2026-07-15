@@ -810,29 +810,31 @@ _INSPECTOR_METRICS: tuple[SeamEntry, ...] = (
 # graph-level ``dialectical_regime``; FascistFactionSystem writes per-node
 # ``fascist_alignment``.
 #
-# CROWN FINDING (discovered lighting this endpoint, Wave 3 Round 1): of the
-# five payloads below, only ``fascist_alignment`` is a genuine ``SocialClass``
-# Pydantic field (default=0.0) and so survives ``WorldState.to_graph()``/
-# ``from_graph()`` round-trips intact. The other four are LOST every
-# ``resolve_tick()`` call: ``contradiction_fields``/``field_derivatives`` are
-# explicitly excluded from ``SocialClass`` reconstruction
-# (``SOCIAL_CLASS_COMPUTED_FIELDS``, ``babylon.models.world_state``), and
-# ``dialectical_regime``/``principal_field`` are graph-level attrs
-# ``WorldState.to_graph()`` never re-emits onto ``G.graph`` (a fixed whitelist
-# — economy/state_finances/contradiction_frames/opposition_states/events/
-# event_log/institution_relations — that does not include either). Unlike the
-# territory ``tick_*`` family, which ``_carry_tick_dynamics_flows``
-# (``engine_bridge.py``) manually re-injects onto ``new_graph`` before every
-# ``persist_tick``, no analogous carry-forward exists for the field stack. So
-# on the CURRENT web bridge these four read empty/null on every real
-# ``resolve_tick`` despite the engine computing them every tick — the same
+# CARRY LANDED (Program 19/20 Wave 3 Round 1, Backend field-derivative facade
+# carry): FieldDerivativeSystem.step() now composes ONE graph-level
+# ``field_stack`` snapshot (``{"nodes": {...}, "edges": [...]}``) at the end
+# of every tick (``_build_field_stack``,
+# ``babylon.engine.systems.field_derivative``). ``WorldState.to_graph()``/
+# ``from_graph()`` carry this attr across the round trip ``resolve_tick``
+# performs every real tick, AND re-stamp the per-node
+# (``contradiction_fields``/``field_derivatives``) and per-edge
+# (``field_gradients``) attrs the snapshot was built from onto the
+# reconstructed graph (``WorldState._restamp_field_stack``) — closing the
 # "bridge altitude vs bare-engine altitude" gap Sensor 2 found for the
 # ``/map/`` ``MUST_BE_LIVE`` family (see ``test_seam_liveness.py``'s module
-# docstring). Classified ``STRUCTURALLY_IMPOSSIBLE``, not
-# ``DECLARED_CONDITIONAL``: there is no condition under which they are live on
-# today's bridge — only a future carry-forward fix (mirroring
-# ``_carry_tick_dynamics_flows``) would change that, at which point this tier
-# should be revisited.
+# docstring). Of the six payload/wire-key rows below: ``contradiction_fields``
+# (``fields``), ``field_derivatives`` (``laplacian``), and ``field_gradients``
+# (``gradient``) are unconditionally computed every tick for every applicable
+# node/edge, so they are promoted to ``MUST_BE_LIVE`` (alongside the
+# pre-existing ``fascist_alignment`` row). ``field_derivatives`` (``df_dt``),
+# ``principal_field``, and ``dialectical_regime`` remain
+# ``DECLARED_CONDITIONAL``: each has a genuine tick-history / opposition-state
+# dependency the carry does not remove (see each row's own
+# ``liveness_condition``) — ``df_dt`` additionally still needs a separate,
+# NOT-fixed-here ``resolve_tick`` ``persistent_context`` fix before it is live
+# on the WEB bridge specifically (it is unconditionally live on the headless
+# runner, which never round-trips the graph mid-run — see
+# ``headless_runner/runner.py::_run_tick_and_persist``).
 # ---------------------------------------------------------------------------
 
 _FIELD_STATE_NODE_EMITTERS: tuple[str, ...] = (
@@ -847,12 +849,37 @@ _FIELD_STATE_GRAPH_EMITTERS: tuple[str, ...] = (
     "web/game/engine_bridge.py::EngineBridge.get_field_state",
 )
 
-_ROUND_TRIP_EVAPORATION: str = (
-    "STRUCTURALLY_IMPOSSIBLE on today's bridge: the engine computes this every "
-    "tick, but WorldState.to_graph()/from_graph() drops it before "
-    "resolve_tick()'s persist_tick — no carry-forward re-injects it the way "
-    "_carry_tick_dynamics_flows does for the territory tick_* family. Reads "
-    "empty/null on every real game until that fix lands (Backend-W3R1 report)."
+_FIELD_STACK_CARRY: str = (
+    "LIVE as of Program 19/20 Wave 3 Round 1 (Backend field-derivative facade "
+    "carry): FieldDerivativeSystem.step() composes a graph-level "
+    "``field_stack`` snapshot every tick; WorldState.to_graph()/from_graph() "
+    "carry it across the round trip resolve_tick performs and re-stamp the "
+    "per-node/edge attrs it was built from "
+    "(babylon.models.world_state.WorldState._restamp_field_stack), so this "
+    "payload reads real on every real resolve_tick."
+)
+
+_DF_DT_CONDITION: str = (
+    f"{_FIELD_STACK_CARRY} Still DECLARED_CONDITIONAL, not MUST_BE_LIVE: needs "
+    ">= 2 ticks of contradiction_history (persistent_data), and "
+    "resolve_tick's persistent_context is a fresh {} per HTTP call today — a "
+    "separate, NOT-fixed-here gap (contradiction_history never accumulates "
+    "across web ticks), independent of the round-trip carry."
+)
+
+_PRINCIPAL_FIELD_CONDITION: str = (
+    f"{_FIELD_STACK_CARRY} The graph attr itself is now always present once "
+    "FieldDerivativeSystem runs, but its field_name is legitimately null "
+    "until >= 1 tick establishes a df/dt-derived principal (same history "
+    "dependency as field_derivatives' df_dt above) — DECLARED_CONDITIONAL, "
+    "not MUST_BE_LIVE."
+)
+
+_DIALECTICAL_REGIME_CONDITION: str = (
+    f"{_FIELD_STACK_CARRY} The graph attr is legitimately absent until a "
+    "capital_labor (or principal) OppositionState exists — "
+    "ContradictionSystem._classify_regime returns without writing it "
+    "otherwise — so this stays DECLARED_CONDITIONAL, not MUST_BE_LIVE."
 )
 
 _FIELD_STATE_METRICS: tuple[SeamEntry, ...] = (
@@ -863,8 +890,7 @@ _FIELD_STATE_METRICS: tuple[SeamEntry, ...] = (
         owner_layer=(
             "engine (ContradictionFieldSystem @19, babylon.engine.systems.contradiction_field)"
         ),
-        liveness_class=LivenessClass.STRUCTURALLY_IMPOSSIBLE,
-        liveness_condition=_ROUND_TRIP_EVAPORATION,
+        liveness_class=LivenessClass.MUST_BE_LIVE,
         dtype="json",
         write_site=(
             "src/babylon/engine/systems/contradiction_field.py::"
@@ -872,7 +898,7 @@ _FIELD_STATE_METRICS: tuple[SeamEntry, ...] = (
         ),
         read_paths=_FIELD_STATE_NODE_EMITTERS,
         derivation_site="web/game/engine_bridge.py::_build_field_state_nodes",
-        spec_ref="Program 19/20 · Wave 3 Round 1 (Backend-W3R1)",
+        spec_ref="Program 19/20 · Wave 3 Round 1 (Backend-W3R1 + field-derivative facade carry)",
         notes=(
             "Per-social_class {field_name: value}; production sources "
             "'exploitation' (mean fresh EXPLOITATION/WAGES/TENANCY edge tension) "
@@ -880,7 +906,11 @@ _FIELD_STATE_METRICS: tuple[SeamEntry, ...] = (
             "opposition-layer repoint, not a field_registry (dormant in "
             "production). Honest-omission: a node with no contradiction_fields "
             "at all is dropped from the nodes list entirely, never a fabricated "
-            "empty-fields entry."
+            "empty-fields entry. MUST_BE_LIVE: unconditionally computed for "
+            "every active social_class node every tick, and now survives the "
+            "WorldState round trip via the field_stack carry (this row's "
+            "liveness_class was STRUCTURALLY_IMPOSSIBLE before that carry "
+            "landed — see the FIELD_STATE scope comment above)."
         ),
     ),
     SeamEntry(
@@ -888,8 +918,7 @@ _FIELD_STATE_METRICS: tuple[SeamEntry, ...] = (
         wire_keys=("laplacian",),
         scope=SeamScope.FIELD_STATE,
         owner_layer=("engine (FieldDerivativeSystem @20, babylon.engine.systems.field_derivative)"),
-        liveness_class=LivenessClass.STRUCTURALLY_IMPOSSIBLE,
-        liveness_condition=_ROUND_TRIP_EVAPORATION,
+        liveness_class=LivenessClass.MUST_BE_LIVE,
         dtype="json",
         write_site=(
             "src/babylon/engine/systems/field_derivative.py::"
@@ -897,14 +926,19 @@ _FIELD_STATE_METRICS: tuple[SeamEntry, ...] = (
         ),
         read_paths=_FIELD_STATE_NODE_EMITTERS,
         derivation_site="web/game/engine_bridge.py::_build_field_state_nodes",
-        spec_ref="Program 19/20 · Wave 3 Round 1 (Backend-W3R1)",
+        spec_ref="Program 19/20 · Wave 3 Round 1 (Backend-W3R1 + field-derivative facade carry)",
         notes=(
             "Per-field weighted Laplacian sum_j(w_j * (f(j) - f(i))) over "
             "incident edges; 0.0 for an isolated node is a real value (EC-002), "
             "never a fabricated placeholder. Sibling row 'field_state.df_dt' "
             "shares this same engine write-site (field_derivatives is one dict "
             "with laplacian/df_dt/d2f_dt2 sub-keys); d2f_dt2 is deliberately NOT "
-            "part of this endpoint's declared contract (out of scope for W3R1)."
+            "part of this endpoint's declared contract (out of scope for W3R1). "
+            "MUST_BE_LIVE: computed unconditionally for every node carrying "
+            "contradiction_fields (isolated-node 0.0 counts as live, per "
+            "EC-002), and now survives the WorldState round trip via the "
+            "field_stack carry — unlike sibling 'df_dt' below, laplacian has "
+            "no additional history dependency."
         ),
     ),
     SeamEntry(
@@ -912,8 +946,8 @@ _FIELD_STATE_METRICS: tuple[SeamEntry, ...] = (
         wire_keys=("df_dt",),
         scope=SeamScope.FIELD_STATE,
         owner_layer=("engine (FieldDerivativeSystem @20, babylon.engine.systems.field_derivative)"),
-        liveness_class=LivenessClass.STRUCTURALLY_IMPOSSIBLE,
-        liveness_condition=_ROUND_TRIP_EVAPORATION,
+        liveness_class=LivenessClass.DECLARED_CONDITIONAL,
+        liveness_condition=_DF_DT_CONDITION,
         dtype="json",
         write_site=(
             "src/babylon/engine/systems/field_derivative.py::"
@@ -921,16 +955,18 @@ _FIELD_STATE_METRICS: tuple[SeamEntry, ...] = (
         ),
         read_paths=_FIELD_STATE_NODE_EMITTERS,
         derivation_site="web/game/engine_bridge.py::_build_field_state_nodes",
-        spec_ref="Program 19/20 · Wave 3 Round 1 (Backend-W3R1)",
+        spec_ref="Program 19/20 · Wave 3 Round 1 (Backend-W3R1 + field-derivative facade carry)",
         notes=(
             "Per-field temporal derivative f(t) - f(t-1) from the 3-tick "
             "rolling history in persistent_data; needs >= 2 history points or "
             "the field is None and honestly omitted from this dict (distinct "
             "from the field_derivatives container itself, which can be present "
-            "with only laplacian populated). Doubly conditional in the web "
-            "bridge even before the round-trip evaporation below: "
-            "resolve_tick's persistent_context is a fresh {} per HTTP call "
-            "today, so contradiction_history never accumulates across ticks."
+            "with only laplacian populated). The field_stack carry fixes the "
+            "round-trip evaporation, but this row stays DECLARED_CONDITIONAL: "
+            "resolve_tick's persistent_context is STILL a fresh {} per HTTP "
+            "call today, so contradiction_history never accumulates on the web "
+            "bridge specifically — a separate, NOT-fixed-here gap (see "
+            "liveness_condition)."
         ),
     ),
     SeamEntry(
@@ -961,8 +997,8 @@ _FIELD_STATE_METRICS: tuple[SeamEntry, ...] = (
         wire_keys=("principal_field",),
         scope=SeamScope.FIELD_STATE,
         owner_layer="engine (FieldDerivativeSystem._identify_principal_contradiction)",
-        liveness_class=LivenessClass.STRUCTURALLY_IMPOSSIBLE,
-        liveness_condition=_ROUND_TRIP_EVAPORATION,
+        liveness_class=LivenessClass.DECLARED_CONDITIONAL,
+        liveness_condition=_PRINCIPAL_FIELD_CONDITION,
         dtype="str",
         write_site=(
             "src/babylon/engine/systems/field_derivative.py::"
@@ -970,7 +1006,7 @@ _FIELD_STATE_METRICS: tuple[SeamEntry, ...] = (
         ),
         read_paths=_FIELD_STATE_GRAPH_EMITTERS,
         derivation_site="web/game/engine_bridge.py::EngineBridge.get_field_state",
-        spec_ref="Program 19/20 · Wave 3 Round 1 (Backend-W3R1)",
+        spec_ref="Program 19/20 · Wave 3 Round 1 (Backend-W3R1 + field-derivative facade carry)",
         notes=(
             "The engine graph attr is a dict ({field_name, max_abs_df_dt, "
             "changed}), NOT a bare string — the field-stack's "
@@ -979,7 +1015,10 @@ _FIELD_STATE_METRICS: tuple[SeamEntry, ...] = (
             "rename) so the two never fight. get_field_state extracts just "
             "field_name for the wire; a null field_name (no principal "
             "identified yet) is passed through as null, same as an absent "
-            "graph attr."
+            "graph attr. The field_stack carry fixes the round-trip "
+            "evaporation of the graph attr itself, but field_name inherits "
+            "field_derivatives.df_dt's history dependency (max |df/dt| is "
+            "undefined with < 2 ticks), so this row stays DECLARED_CONDITIONAL."
         ),
     ),
     SeamEntry(
@@ -990,15 +1029,15 @@ _FIELD_STATE_METRICS: tuple[SeamEntry, ...] = (
             "engine (ContradictionSystem._classify_regime @18, "
             "babylon.engine.systems.contradiction)"
         ),
-        liveness_class=LivenessClass.STRUCTURALLY_IMPOSSIBLE,
-        liveness_condition=_ROUND_TRIP_EVAPORATION,
+        liveness_class=LivenessClass.DECLARED_CONDITIONAL,
+        liveness_condition=_DIALECTICAL_REGIME_CONDITION,
         dtype="json",
         write_site=(
             "src/babylon/engine/systems/contradiction.py::"
             "ContradictionSystem._classify_regime (:359, graph.set_graph_attr)"
         ),
         read_paths=_FIELD_STATE_GRAPH_EMITTERS,
-        spec_ref="Program 19/20 · Wave 3 Round 1 (Backend-W3R1)",
+        spec_ref="Program 19/20 · Wave 3 Round 1 (Backend-W3R1 + field-derivative facade carry)",
         notes=(
             "Passed through verbatim ({regime, opposition, rate}). SAME graph "
             "attr as get_contradiction_snapshot/get_journal_objectives read "
@@ -1008,7 +1047,10 @@ _FIELD_STATE_METRICS: tuple[SeamEntry, ...] = (
             "sibling that passes null through instead of defaulting, per this "
             "endpoint's brief. The distinct FIELD_STATE scope keeps this row's "
             "key from colliding with a future registration of that other read "
-            "of the same graph attr."
+            "of the same graph attr. The field_stack carry fixes the "
+            "round-trip evaporation, but _classify_regime only writes the "
+            "attr once a capital_labor/principal OppositionState exists, so "
+            "this row stays DECLARED_CONDITIONAL, not MUST_BE_LIVE."
         ),
     ),
     SeamEntry(
@@ -1016,8 +1058,7 @@ _FIELD_STATE_METRICS: tuple[SeamEntry, ...] = (
         wire_keys=("gradient",),
         scope=SeamScope.FIELD_STATE,
         owner_layer=("engine (FieldDerivativeSystem @20, babylon.engine.systems.field_derivative)"),
-        liveness_class=LivenessClass.STRUCTURALLY_IMPOSSIBLE,
-        liveness_condition=_ROUND_TRIP_EVAPORATION,
+        liveness_class=LivenessClass.MUST_BE_LIVE,
         dtype="json",
         write_site=(
             "src/babylon/engine/systems/field_derivative.py::"
@@ -1025,7 +1066,7 @@ _FIELD_STATE_METRICS: tuple[SeamEntry, ...] = (
         ),
         read_paths=_FIELD_STATE_EDGE_EMITTERS,
         derivation_site="web/game/engine_bridge.py::_build_field_state_edges",
-        spec_ref="Program 19/20 · Wave 3 Round 1 (Backend-W3R1)",
+        spec_ref="Program 19/20 · Wave 3 Round 1 (Backend-W3R1 + field-derivative facade carry)",
         notes=(
             "gradient = f(target) - f(source) per field, on every edge whose "
             "two endpoints both carry contradiction_fields (in production, "
@@ -1036,7 +1077,13 @@ _FIELD_STATE_METRICS: tuple[SeamEntry, ...] = (
             "existing _tenancy_members_by_territory "
             "(source_territory/target_territory keep-key-use-null when "
             "unresolvable, matching _serialize_territory's "
-            "dominant_class/solidarity_index convention)."
+            "dominant_class/solidarity_index convention). MUST_BE_LIVE: "
+            "contradiction_fields is unconditionally computed for every "
+            "active social_class node, so every EXPLOITATION/WAGES/TENANCY "
+            "edge between two social_class nodes gets a gradient every tick, "
+            "and now survives the WorldState round trip via the field_stack "
+            "carry + WorldState._restamp_field_stack re-stamping "
+            "field_gradients back onto the edge."
         ),
     ),
 )

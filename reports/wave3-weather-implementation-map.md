@@ -133,7 +133,16 @@ These are data-free presentation policy; they go in `DESIGN_BIBLE` and govern ev
   **🐛 → task #70:** `_persist_snapshots_safe` calls `_serialize_territory` WITHOUT `graph=`,
   so `territory_snapshot`'s occ/imperial_rent/profit_rate/exploitation_rate columns are
   all-NULL in every session — the one-line fix later promotes occ/imperial_rent to replayable.
-  Frontend scrubber (RadarLoopPanel, 4 replayable lenses, county-grain override) in flight.
+  **✅ R3 frontend LANDED `800f0a40`** — RadarLoopPanel (right-column chrome, uiSlice toggle),
+  dedicated `mapReplaySlice` (enter/exit/scrub/step/liveTickAvailable), county-grain fill
+  override injected at DeckGLMap's two fill-input choke points (fill math untouched — replay
+  renders exactly as live data would), 333ms hard-cut frame-stepper (reduced-motion =
+  scrub-only), REPLAY badge + honest capped notice + non-replayable-lens hint. 1029 vitest.
+  Discovered gotcha worth keeping: region-framing fills are domain-NORMALIZED — a single-feature
+  collection has a degenerate [min,max] and always renders NO_DATA regardless of value.
+  **✅ task #70 FIXED `32ccd90c`** — `_persist_snapshots_safe` now threads `graph=new_graph`;
+  occ/imperial_rent become promotable to MAP_HISTORY_REPLAYABLE_METRICS once new sessions
+  accumulate history (no backfill — history honestly starts at the fix).
 - **Round 4 — forecast overlay (OWNER RULING NEEDED before build):** deterministic N-tick
   lookahead endpoint (deep-copy graph, run engine, discard — never persist), translucent future
   field + per-verb ensemble spread. Decisions: tick horizon, compute budget per request, cache

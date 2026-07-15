@@ -12,8 +12,8 @@ Defines tables across 10 layers:
 5. Trace (1): trace_log (UNLOGGED, partitioned by session_id)
 6. Semantic (1): document_chunk (pgvector)
 7. Game-Journal Domain (2): hex_map, game_defines_snapshot
-8. Game-Journal Snapshots (7): territory_snapshot, org_snapshot,
-   edge_snapshot, community_snapshot, hex_activity,
+8. Game-Journal Snapshots (8): territory_snapshot, org_snapshot,
+   class_snapshot, edge_snapshot, community_snapshot, hex_activity,
    economic_summary, tick_event
 8b. Multi-Resolution Hex Cache (2): hex_latest (R7 denormalized
     current-state cache), hex_substrate (R8 static terrain)
@@ -605,6 +605,46 @@ CREATE TABLE IF NOT EXISTS org_snapshot (
 )
 """
 
+CLASS_SNAPSHOT_DDL = """
+CREATE TABLE IF NOT EXISTS class_snapshot (
+    game_id       UUID NOT NULL REFERENCES game_session(id) ON DELETE CASCADE,
+    tick          INTEGER NOT NULL,
+    class_id      VARCHAR(64) NOT NULL,
+
+    -- Social position (Spec 002 SocialRole)
+    role          VARCHAR(32) NOT NULL,
+
+    -- Material conditions
+    wealth                 FLOAT,
+    subsistence_threshold  FLOAT,
+    population             INTEGER,
+    inequality             FLOAT,
+
+    -- Organization / repression
+    organization      FLOAT,
+    repression_faced   FLOAT,
+
+    -- Ideological profile (IdeologicalProfile)
+    class_consciousness  FLOAT,
+    national_identity    FLOAT,
+    agitation             FLOAT,
+
+    -- Survival Calculus (SurvivalSystem.step, survival.py:143):
+    -- P(S|A) vs P(S|R) — the survival-probability duel.
+    p_acquiescence  FLOAT,
+    p_revolution    FLOAT,
+
+    -- Lifecycle
+    active         BOOLEAN NOT NULL DEFAULT TRUE,
+
+    -- Full state dump
+    attributes     JSONB NOT NULL,
+
+    PRIMARY KEY (game_id, tick, class_id),
+    CONSTRAINT ck_class_tick_positive CHECK (tick >= 0)
+)
+"""
+
 EDGE_SNAPSHOT_DDL = """
 CREATE TABLE IF NOT EXISTS edge_snapshot (
     game_id       UUID NOT NULL REFERENCES game_session(id) ON DELETE CASCADE,
@@ -955,6 +995,10 @@ SPEC037_INDEXES_DDL: list[str] = [
     "CREATE INDEX IF NOT EXISTS ix_org_owner ON org_snapshot (game_id, tick, owner_type)",
     "CREATE INDEX IF NOT EXISTS ix_org_county ON org_snapshot (game_id, tick, home_county)",
     "CREATE INDEX IF NOT EXISTS ix_org_series ON org_snapshot (game_id, org_id, tick)",
+    # class_snapshot
+    "CREATE INDEX IF NOT EXISTS ix_class_tick ON class_snapshot (game_id, tick)",
+    "CREATE INDEX IF NOT EXISTS ix_class_role ON class_snapshot (game_id, tick, role)",
+    "CREATE INDEX IF NOT EXISTS ix_class_series ON class_snapshot (game_id, class_id, tick)",
     # edge_snapshot
     "CREATE INDEX IF NOT EXISTS ix_edge_snap_tick ON edge_snapshot (game_id, tick)",
     "CREATE INDEX IF NOT EXISTS ix_edge_snap_mode ON edge_snapshot (game_id, tick, edge_mode)",
@@ -1032,6 +1076,7 @@ POSTGRES_SCHEMA_DDL: list[str] = [
     # Layer 8: Spec 037 Snapshots (per-tick, append-only)
     TERRITORY_SNAPSHOT_DDL,
     ORG_SNAPSHOT_DDL,
+    CLASS_SNAPSHOT_DDL,
     EDGE_SNAPSHOT_DDL,
     COMMUNITY_SNAPSHOT_DDL,
     HEX_ACTIVITY_DDL,

@@ -105,6 +105,14 @@ urlpatterns: list[URLPattern] = [
         api.inspector_territory_history,
         name="inspector-territory-history",
     ),
+    # Wave 2 W2.5b (owner ruling 3): survival duel chart history — social_class
+    # has no dedicated inspector route (unlike org/territory), so this rides
+    # the generic /node/<id>/ URL shape.
+    path(
+        "games/<str:game_id>/node/<str:node_id>/history/",
+        api.inspector_node_history,
+        name="inspector-node-history",
+    ),
     # API: Spec-113 Lane D — formula/metric provenance (InspectionStack FormulaCard)
     path("games/<str:game_id>/explain/", api.game_explain, name="game-explain"),
     # API: Actions — utility endpoints (available, preview, pending list, cancel)

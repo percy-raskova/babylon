@@ -737,6 +737,41 @@ _INSPECTOR_METRICS: tuple[SeamEntry, ...] = (
         ),
     ),
     SeamEntry(
+        payload="survival_p_acquiescence",
+        wire_keys=("p_acquiescence",),
+        scope=SeamScope.INSPECTOR,
+        owner_layer="engine (SurvivalSystem.step, babylon.engine.systems.survival)",
+        liveness_class=LivenessClass.MUST_BE_LIVE,
+        dtype="float",
+        write_site="src/babylon/engine/systems/survival.py::SurvivalSystem.step (:143)",
+        read_paths=_INSPECTOR_EMITTERS,
+        spec_ref="Program 17 Wave 2 · W2.5b",
+        notes=(
+            "P(S|A) — Sigmoid(wealth_per_capita - subsistence). A required SocialClass "
+            "Probability field (default 0.0), so always present on a social_class node's "
+            "graph attrs; a legitimate 0.0 at tick 0 (not-yet-computed) is still real, never "
+            "fabricated — same status as agitation. The survival duel chart's P(S|A) series."
+        ),
+    ),
+    SeamEntry(
+        payload="survival_p_revolution",
+        wire_keys=("p_revolution",),
+        scope=SeamScope.INSPECTOR,
+        owner_layer="engine (SurvivalSystem.step, babylon.engine.systems.survival)",
+        liveness_class=LivenessClass.MUST_BE_LIVE,
+        dtype="float",
+        write_site="src/babylon/engine/systems/survival.py::SurvivalSystem.step (:143)",
+        read_paths=_INSPECTOR_EMITTERS,
+        spec_ref="Program 17 Wave 2 · W2.5b",
+        notes=(
+            "P(S|R) — effective_organization / repression. Rupture condition is "
+            "P(S|R) > P(S|A) (StruggleSystem, struggle.py:338); the crossing is only EVENTED "
+            "(UPRISING/revolutionary_pressure) for the two struggling roles "
+            "(PERIPHERY_PROLETARIAT/LUMPENPROLETARIAT) — this raw value is real for every "
+            "social_class node regardless. The survival duel chart's P(S|R) series."
+        ),
+    ),
+    SeamEntry(
         payload="circuit_flows",
         wire_keys=("circuit_flows",),
         scope=SeamScope.INSPECTOR,

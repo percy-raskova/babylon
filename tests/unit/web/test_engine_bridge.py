@@ -1954,3 +1954,150 @@ class TestResolveTickNarrativeServiceHook:
         result = bridge.resolve_tick(sid)
 
         assert result["tick"] == 1
+
+
+@pytest.mark.unit
+class TestClassSnapshotRows:
+    """Wave 2 W2.5b (owner ruling 3): ``_class_snapshot_rows`` projects
+    ``_serialize_entity`` dicts onto ``class_snapshot`` columns — mirrors
+    ``_org_snapshot_rows``/``_territory_snapshot_rows``."""
+
+    def test_maps_survival_calculus_and_material_fields(self) -> None:
+        from game.engine_bridge import _class_snapshot_rows
+
+        entities = [
+            {
+                "id": "C004",
+                "name": "Dearborn Industrial Workers",
+                "role": "periphery_proletariat",
+                "wealth": 0.35,
+                "consciousness": 0.1,
+                "national_identity": 0.6,
+                "agitation": 0.2,
+                "organization": 0.15,
+                "repression": 0.4,
+                "p_acquiescence": 0.6,
+                "p_revolution": 0.3,
+                "subsistence": 0.25,
+                "population": 300000,
+                "inequality": 0.5,
+                "active": True,
+            }
+        ]
+
+        rows = _class_snapshot_rows(entities)
+
+        assert len(rows) == 1
+        row = rows[0]
+        assert row["class_id"] == "C004"
+        assert row["role"] == "periphery_proletariat"
+        assert row["wealth"] == pytest.approx(0.35)
+        assert row["subsistence_threshold"] == pytest.approx(0.25)
+        assert row["organization"] == pytest.approx(0.15)
+        assert row["repression_faced"] == pytest.approx(0.4)
+        assert row["class_consciousness"] == pytest.approx(0.1)
+        assert row["national_identity"] == pytest.approx(0.6)
+        assert row["agitation"] == pytest.approx(0.2)
+        assert row["p_acquiescence"] == pytest.approx(0.6)
+        assert row["p_revolution"] == pytest.approx(0.3)
+        assert row["population"] == 300000
+        assert row["inequality"] == pytest.approx(0.5)
+        assert row["active"] is True
+        assert isinstance(row["attributes"], dict)
+
+    def test_skips_entities_missing_id_or_role(self) -> None:
+        from game.engine_bridge import _class_snapshot_rows
+
+        entities = [{"id": None, "role": "proletariat"}, {"id": "C001", "role": None}]
+
+        assert _class_snapshot_rows(entities) == []
+
+    def test_persist_snapshots_safe_wires_class_rows(self) -> None:
+        """``_persist_snapshots_safe`` must reactivate ``_serialize_entity``
+        (dead code, zero call sites pre-W2.5b) and pass ``classes=`` to
+        ``persist_full_tick`` alongside territories/orgs/edges — the exact
+        real ``wayne_county`` C001-C004 roster, DB-free via a MagicMock."""
+        from game.engine_bridge import _build_initial_state_for_scenario, _persist_snapshots_safe
+
+        state = _build_initial_state_for_scenario("wayne_county")
+        mock_persistence = MagicMock()
+
+        _persist_snapshots_safe(mock_persistence, uuid.uuid4(), state)
+
+        mock_persistence.persist_full_tick.assert_called_once()
+        _, kwargs = mock_persistence.persist_full_tick.call_args
+        assert "classes" in kwargs
+        class_ids = {row["class_id"] for row in kwargs["classes"]}
+        assert class_ids == {"C001", "C002", "C003", "C004"}
+
+
+@pytest.mark.unit
+class TestGetClassHistory:
+    """Wave 2 W2.5b (owner ruling 3): real ``class_snapshot`` history + the
+    honest UPRISING/revolutionary_pressure rupture markers — mirrors
+    ``get_org_history``/``get_territory_history``."""
+
+    def test_returns_empty_when_persistence_lacks_query_methods(self) -> None:
+        mock_persistence = _make_mock_persistence()
+        mock_persistence.query_class_snapshot_history = None  # simulate SQLite RuntimeDatabase
+        mock_persistence.query_node_uprising_events = None
+        bridge = EngineBridge(mock_persistence)
+
+        result = bridge.get_class_history(uuid.uuid4(), "C004")
+
+        assert result == {"class_id": "C004", "history": [], "ruptures": []}
+
+    def test_returns_history_rows_and_rupture_markers(self) -> None:
+        mock_persistence = _make_mock_persistence()
+        sid = uuid.uuid4()
+        mock_persistence.query_class_snapshot_history.return_value = [
+            {"tick": 0, "p_acquiescence": 0.7, "p_revolution": 0.1},
+            {"tick": 1, "p_acquiescence": 0.6, "p_revolution": 0.4},
+        ]
+        mock_persistence.query_node_uprising_events.return_value = [
+            {
+                "tick": 1,
+                "event_type": "uprising",
+                "severity": "critical",
+                "source_id": None,
+                "target_id": None,
+                "county_fips": None,
+                "h3_index": None,
+                "summary": "Uprising erupts",
+                "detail": {"node_id": "C004", "trigger": "revolutionary_pressure"},
+            }
+        ]
+        bridge = EngineBridge(mock_persistence)
+
+        result = bridge.get_class_history(sid, "C004")
+
+        assert result["class_id"] == "C004"
+        assert len(result["history"]) == 2
+        assert result["history"][0]["tick"] == 0
+        assert len(result["ruptures"]) == 1
+        rupture = result["ruptures"][0]
+        assert rupture["type"] == "uprising"
+        assert rupture["tick"] == 1
+        assert rupture["data"]["trigger"] == "revolutionary_pressure"
+        mock_persistence.query_class_snapshot_history.assert_called_once_with(sid, "C004")
+        mock_persistence.query_node_uprising_events.assert_called_once_with(sid, "C004")
+
+    def test_history_query_failure_degrades_to_empty(self) -> None:
+        mock_persistence = _make_mock_persistence()
+        mock_persistence.query_class_snapshot_history.side_effect = RuntimeError("boom")
+        mock_persistence.query_node_uprising_events.return_value = []
+        bridge = EngineBridge(mock_persistence)
+
+        result = bridge.get_class_history(uuid.uuid4(), "C004")
+
+        assert result["history"] == []
+
+    def test_rupture_query_failure_degrades_to_empty(self) -> None:
+        mock_persistence = _make_mock_persistence()
+        mock_persistence.query_class_snapshot_history.return_value = []
+        mock_persistence.query_node_uprising_events.side_effect = RuntimeError("boom")
+        bridge = EngineBridge(mock_persistence)
+
+        result = bridge.get_class_history(uuid.uuid4(), "C004")
+
+        assert result["ruptures"] == []

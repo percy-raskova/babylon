@@ -199,3 +199,20 @@ def test_cli_still_exits_zero_despite_advisories() -> None:
     assert result.returncode == 0
     assert "SEAM ADVISORY" in result.stderr  # advisories are being emitted
     assert "advisory findings above" in result.stdout  # and summarized, non-gating
+
+
+def test_survival_calculus_inspector_rows_are_registered() -> None:
+    """Wave 2 W2.5b (owner ruling 3): p_acquiescence/p_revolution
+    (SurvivalSystem.step, survival.py:143) get INSPECTOR-scope rows —
+    real every tick, so MUST_BE_LIVE (follows the W1.4 inspector-row
+    precedent)."""
+    inspector_wire_keys = {e.wire_keys[0] for e in SEAM_REGISTRY if e.scope is SeamScope.INSPECTOR}
+    assert {"p_acquiescence", "p_revolution"} <= inspector_wire_keys
+
+    entries = {
+        e.wire_keys[0]: e
+        for e in SEAM_REGISTRY
+        if e.scope is SeamScope.INSPECTOR and e.wire_keys[0] in ("p_acquiescence", "p_revolution")
+    }
+    for entry in entries.values():
+        assert entry.liveness_class is LivenessClass.MUST_BE_LIVE

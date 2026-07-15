@@ -908,6 +908,28 @@ def inspector_territory_history(request: Request, game_id: str, county_fips: str
     return _envelope(data, tick=session.current_tick, session_id=str(session.id))
 
 
+@api_view(["GET"])
+@permission_classes([IsAuthenticated])
+def inspector_node_history(request: Request, game_id: str, node_id: str) -> JsonResponse:
+    """GET /api/games/{id}/node/{node_id}/history/ - Survival duel chart
+    history (Program 17 Wave 2 W2.5b, owner ruling 3).
+
+    Rides the generic node-inspector URL shape (social_class has no
+    dedicated ``/class/`` route, unlike org/territory); the bridge always
+    resolves ``node_id`` against ``class_snapshot`` regardless of the
+    node's real type — an id that never had a class row simply returns an
+    honest empty history/ruptures pair, never a 404 (matches
+    ``inspector_org_history``/``inspector_territory_history``'s unknown-id
+    behavior).
+    """
+    session = _get_session_or_none(game_id, request.user.id)
+    if session is None:
+        return _error("Game not found", http_status=404)
+    bridge = _get_bridge()
+    data = bridge.get_class_history(uuid.UUID(str(session.id)), node_id)
+    return _envelope(data, tick=session.current_tick, session_id=str(session.id))
+
+
 def _explain_result_to_dict(result: Any) -> dict[str, Any]:
     """Project a :class:`game.provenance.ExplainResult` onto the
     ``/explain/`` response body (architecture.md §2.4)."""

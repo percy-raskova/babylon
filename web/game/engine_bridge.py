@@ -1536,6 +1536,10 @@ def _social_class_inspector_fields(
     ``class_position``/``class_position_mock`` placeholder row; and (W1.6) the
     graph-wide ``circuit_flows`` mini-Sankey data (:func:`_build_circuit_flows`)
     — the same block regardless of which social_class node was clicked.
+    Program 17 Wave 2 (W2.5b) adds ``p_acquiescence``/``p_revolution`` — the
+    Survival Calculus P(S|A)/P(S|R) duel (``SurvivalSystem.step``,
+    survival.py:143) — honest-null via :func:`_optional_float`, same as
+    ``organization``/``inequality``.
 
     Args:
         data: The raw graph node dict for a ``social_class`` node.
@@ -1582,6 +1586,8 @@ def _social_class_inspector_fields(
         "agitation": ideology.get("agitation"),
         "consciousness": _ternary_consciousness_or_none(ideology),
         "inequality": _optional_float(data.get("inequality")),
+        "p_acquiescence": _optional_float(data.get("p_acquiescence")),
+        "p_revolution": _optional_float(data.get("p_revolution")),
         "class_position": _CLASS_POSITION_MOCK_LABEL,
         "class_position_mock": True,
         "circuit_flows": _build_circuit_flows(graph),
@@ -2414,6 +2420,69 @@ class EngineBridge:
                 logger.exception("get_territory_history: query_territory_snapshot_history failed")
                 rows = []
         return {"county_fips": county_fips, "history": rows}
+
+    def get_class_history(self, session_id: UUID, node_id: str) -> dict[str, Any]:
+        """Return one social class's per-tick history + rupture markers.
+
+        Program 17 Wave 2 W2.5b (owner ruling 3): the survival-probability
+        duel chart's real backing history — replaces client-side
+        accumulation. ``class_snapshot`` carries one real row per ``(session,
+        tick, class_id)`` — see :func:`_class_snapshot_rows`. Served off the
+        SAME ``/node/<id>/history/`` URL as the generic node inspector
+        (social_class has no dedicated ``/class/`` inspector route, unlike
+        org/territory) — the response key is ``class_id`` (not ``id``/
+        ``node_id``) to match the org/territory history contract's
+        "named-after-what's-queried" convention despite the generic route.
+
+        Rupture markers (owner ruling 3): UPRISING events for this node
+        filtered to ``data.trigger == "revolutionary_pressure"`` — the
+        honest P(S|R) > P(S|A) crossing signal ``StruggleSystem`` emits ONLY
+        for the two struggling roles (PERIPHERY_PROLETARIAT/
+        LUMPENPROLETARIAT), agitation-gated (struggle.py:393). The raw
+        crossing is NOT evented for any other class, so a node with no
+        struggling role simply gets an honest empty ``ruptures`` list —
+        never a fabricated crossing.
+
+        Reads via the persistence layer's optional
+        ``query_class_snapshot_history(session_id, class_id, limit=...)``
+        and ``query_node_uprising_events(session_id, node_id, limit=...)``
+        capabilities — same optional-capability pattern as
+        :meth:`get_org_history`; SQLite-backed ``RuntimeDatabase`` has
+        neither and degrades to empty lists.
+
+        Args:
+            session_id: The game session UUID.
+            node_id: The social_class node id (e.g. ``"C004"``).
+
+        Returns:
+            ``{"class_id": node_id, "history": [{"tick": ..., ...}, ...],
+            "ruptures": [GameEvent, ...]}`` — ``history`` oldest-tick-first;
+            ``ruptures`` oldest-tick-first, each in the same shape as
+            ``get_journal_dashboard``'s events (id/type/tick/severity/title/
+            body/data). Both empty when the node has never been persisted or
+            never struggled (honest empty, Constitution III.11).
+        """
+        rows: list[dict[str, Any]] = []
+        query = getattr(self._persistence, "query_class_snapshot_history", None)
+        if callable(query):
+            try:
+                rows = query(session_id, node_id)
+            except Exception:  # noqa: BLE001 — diagnostic; never blocks the request
+                logger.exception("get_class_history: query_class_snapshot_history failed")
+                rows = []
+
+        ruptures: list[dict[str, Any]] = []
+        event_query = getattr(self._persistence, "query_node_uprising_events", None)
+        if callable(event_query):
+            try:
+                ruptures = [
+                    _game_event_from_tick_event_row(row) for row in event_query(session_id, node_id)
+                ]
+            except Exception:  # noqa: BLE001 — diagnostic; never blocks the request
+                logger.exception("get_class_history: query_node_uprising_events failed")
+                ruptures = []
+
+        return {"class_id": node_id, "history": rows, "ruptures": ruptures}
 
     # ------------------------------------------------------------------ #
     # Spec 061 US6 T091: inspector endpoints (FR-019)
@@ -5580,6 +5649,56 @@ def _org_snapshot_rows(organizations: list[dict[str, Any]]) -> list[dict[str, An
     return rows
 
 
+def _class_snapshot_rows(entities: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """Project :func:`_serialize_entity` dicts onto ``class_snapshot`` keys.
+
+    Wave 2 W2.5b (owner ruling 3): mirrors :func:`_org_snapshot_rows`.
+    Reactivates :func:`_serialize_entity` (previously dead code, zero call
+    sites) as this table's sole producer — its field set already carries
+    everything the survival duel + class card need, including
+    ``p_acquiescence``/``p_revolution`` (``SurvivalSystem.step``,
+    survival.py:143). ``consciousness``/``repression``/``subsistence`` map
+    onto the schema's ``class_consciousness``/``repression_faced``/
+    ``subsistence_threshold`` — deliberately renamed so this table's
+    ``consciousness`` column is never confused with the INSPECTOR-scope
+    ternary ``consciousness`` vector (:func:`_social_class_inspector_fields`)
+    — same wire-key-collision hazard the ``imperial_rent`` scope split
+    documents, resolved here by picking distinct column names.
+
+    Args:
+        entities: One dict per social class, from :func:`_serialize_entity`.
+
+    Returns:
+        Payload dicts accepted by ``PostgresRuntime.persist_class_snapshots``.
+    """
+    rows: list[dict[str, Any]] = []
+    for e in entities:
+        class_id = e.get("id")
+        role = e.get("role")
+        if not class_id or not role:
+            continue
+        rows.append(
+            {
+                "class_id": str(class_id),
+                "role": str(role),
+                "wealth": e.get("wealth"),
+                "subsistence_threshold": e.get("subsistence"),
+                "population": e.get("population"),
+                "inequality": e.get("inequality"),
+                "organization": e.get("organization"),
+                "repression_faced": e.get("repression"),
+                "class_consciousness": e.get("consciousness"),
+                "national_identity": e.get("national_identity"),
+                "agitation": e.get("agitation"),
+                "p_acquiescence": e.get("p_acquiescence"),
+                "p_revolution": e.get("p_revolution"),
+                "active": bool(e.get("active", True)),
+                "attributes": {"name": e.get("name")},
+            }
+        )
+    return rows
+
+
 def _edge_snapshot_rows(edges: list[dict[str, Any]]) -> list[dict[str, Any]]:
     """Project :func:`_serialize_edge` dicts onto ``edge_snapshot`` keys.
 
@@ -5665,10 +5784,11 @@ def _persist_snapshots_safe(
     """Persist the spec-037 read-model snapshot tables for one tick (spec-109 A1).
 
     The spec-061 FR-003 wire-up that never happened: fills
-    ``territory_snapshot``/``org_snapshot``/``edge_snapshot`` via
-    :meth:`PostgresRuntime.persist_full_tick` and the ``tick_summary``
-    aggregates behind :meth:`EngineBridge.get_game_timeseries` via
-    :meth:`PostgresRuntime.persist_tick_summary`.
+    ``territory_snapshot``/``org_snapshot``/``class_snapshot``/
+    ``edge_snapshot`` via :meth:`PostgresRuntime.persist_full_tick` and the
+    ``tick_summary`` aggregates behind :meth:`EngineBridge.get_game_timeseries`
+    via :meth:`PostgresRuntime.persist_tick_summary`. ``class_snapshot`` is
+    Wave 2 W2.5b (owner ruling 3) — the survival duel's real per-tick history.
 
     Best-effort like its ``_persist_*_safe`` siblings: a read-model write
     failure is logged loudly but never fails tick resolution. SQLite-backed
@@ -5688,6 +5808,7 @@ def _persist_snapshots_safe(
 
     territories = [_serialize_territory(t) for t in state.territories.values()]
     organizations = [_serialize_organization(o) for o in state.organizations.values()]
+    entities = [_serialize_entity(e) for e in state.entities.values()]
     edges = [_serialize_edge(rel) for rel in state.relationships]
 
     try:
@@ -5696,6 +5817,7 @@ def _persist_snapshots_safe(
             state.tick,
             territories=_territory_snapshot_rows(territories),
             orgs=_org_snapshot_rows(organizations),
+            classes=_class_snapshot_rows(entities),
             edges=_edge_snapshot_rows(edges),
         )
     except TickAlreadyResolved:

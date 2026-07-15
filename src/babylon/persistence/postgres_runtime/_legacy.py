@@ -1466,6 +1466,162 @@ class PostgresRuntime:
         with self._pool.connection() as conn, conn.cursor() as cur:
             cur.executemany(sql, rows)
 
+    def persist_class_snapshots(
+        self,
+        game_id: UUID,
+        tick: int,
+        classes: list[dict[str, Any]],
+        *,
+        _cursor: Any | None = None,
+    ) -> None:
+        """Bulk INSERT class_snapshot rows for one tick.
+
+        Wave 2 W2.5b (owner ruling 3): mirrors :meth:`persist_org_snapshots`.
+        ``ON CONFLICT (game_id, tick, class_id) DO NOTHING`` for retry safety
+        (spec 061 FR-004 pattern).
+
+        Args:
+            game_id: Game session UUID.
+            tick: Tick number.
+            classes: List of class dicts (:func:`_class_snapshot_rows` shape).
+            _cursor: Optional shared cursor for :meth:`persist_full_tick`.
+        """
+        if not classes:
+            return
+
+        rows = [
+            (
+                game_id,
+                tick,
+                c["class_id"],
+                c["role"],
+                c.get("wealth"),
+                c.get("subsistence_threshold"),
+                c.get("population"),
+                c.get("inequality"),
+                c.get("organization"),
+                c.get("repression_faced"),
+                c.get("class_consciousness"),
+                c.get("national_identity"),
+                c.get("agitation"),
+                c.get("p_acquiescence"),
+                c.get("p_revolution"),
+                c.get("active", True),
+                json.dumps(c.get("attributes", {}), default=_json_default),
+            )
+            for c in classes
+        ]
+        sql = """
+            INSERT INTO class_snapshot
+                (game_id, tick, class_id, role,
+                 wealth, subsistence_threshold, population, inequality,
+                 organization, repression_faced,
+                 class_consciousness, national_identity, agitation,
+                 p_acquiescence, p_revolution,
+                 active, attributes)
+            VALUES (%s, %s, %s, %s,
+                    %s, %s, %s, %s,
+                    %s, %s,
+                    %s, %s, %s,
+                    %s, %s,
+                    %s, %s)
+            ON CONFLICT (game_id, tick, class_id) DO NOTHING
+            """
+        if _cursor is not None:
+            _cursor.executemany(sql, rows)
+            return
+        with self._pool.connection() as conn, conn.cursor() as cur:
+            cur.executemany(sql, rows)
+
+    def query_class_snapshot_history(
+        self,
+        game_id: UUID,
+        class_id: str,
+        *,
+        limit: int = 1000,
+    ) -> list[dict[str, Any]]:
+        """Return ordered ``class_snapshot`` rows for one social class (W2.5b).
+
+        Powers the survival-probability duel chart and the class inspector's
+        history tab via ``EngineBridge.get_class_history``. Mirrors
+        :meth:`query_org_snapshot_history`. Oldest-tick-first, capped at
+        ``limit`` rows.
+
+        Args:
+            game_id: Game session UUID.
+            class_id: The social class's node id (e.g. ``"C004"``).
+            limit: Maximum rows to return.
+
+        Returns:
+            List of dicts with the ``class_snapshot`` column names as keys
+            (``attributes`` already parsed from JSONB by psycopg).
+        """
+        with self._pool.connection() as conn, conn.cursor(row_factory=dict_row) as cur:
+            cur.execute(
+                """
+                SELECT tick, role,
+                       wealth, subsistence_threshold, population, inequality,
+                       organization, repression_faced,
+                       class_consciousness, national_identity, agitation,
+                       p_acquiescence, p_revolution,
+                       active, attributes
+                FROM class_snapshot
+                WHERE game_id = %s AND class_id = %s
+                ORDER BY tick
+                LIMIT %s
+                """,
+                (game_id, class_id, limit),
+            )
+            return [dict(row) for row in cur.fetchall()]
+
+    def query_node_uprising_events(
+        self,
+        game_id: UUID,
+        node_id: str,
+        *,
+        limit: int = 1000,
+    ) -> list[dict[str, Any]]:
+        """Return the honest revolutionary-pressure UPRISING markers for one node.
+
+        Wave 2 W2.5b (owner ruling 3): the survival duel's rupture markers.
+        ``StruggleSystem.step`` (struggle.py:393) emits ``EventType.UPRISING``
+        with ``payload["trigger"] = "spark" if spark_occurred else
+        "revolutionary_pressure"`` — ONLY for the two struggling roles
+        (PERIPHERY_PROLETARIAT/LUMPENPROLETARIAT), agitation-gated. This reads
+        the same ``tick_event`` table :meth:`query_session_events`/
+        :meth:`query_tick_events` read, filtered in SQL on the persisted
+        ``detail`` JSONB payload's ``node_id``/``trigger`` keys — the raw
+        P(S|R) > P(S|A) crossing is NOT evented for any other class, so this
+        is never fabricated for a non-struggling node (it simply returns
+        empty).
+
+        Args:
+            game_id: Game session UUID.
+            node_id: The social_class node id to filter on.
+            limit: Maximum rows to return.
+
+        Returns:
+            List of ``tick_event`` row dicts, oldest-tick-first, restricted
+            to ``event_type='uprising'`` AND ``detail->>'node_id' = node_id``
+            AND ``detail->>'trigger' = 'revolutionary_pressure'``.
+        """
+        with self._pool.connection() as conn, conn.cursor(row_factory=dict_row) as cur:
+            cur.execute(
+                """
+                SELECT tick, event_type, severity, source_id, target_id,
+                       county_fips, h3_index, summary, detail
+                FROM tick_event
+                WHERE game_id = %s
+                  AND event_type = 'uprising'
+                  AND detail ->> 'node_id' = %s
+                  AND detail ->> 'trigger' = 'revolutionary_pressure'
+                ORDER BY tick
+                LIMIT %s
+                """,
+                (game_id, node_id, limit),
+            )
+            return [dict(row) for row in cur.fetchall()]
+
     def query_org_snapshot_history(
         self,
         game_id: UUID,
@@ -1872,6 +2028,7 @@ class PostgresRuntime:
         *,
         territories: list[dict[str, Any]] | None = None,
         orgs: list[dict[str, Any]] | None = None,
+        classes: list[dict[str, Any]] | None = None,
         edges: list[dict[str, Any]] | None = None,
         communities: list[dict[str, Any]] | None = None,
         hex_activities: list[dict[str, Any]] | None = None,
@@ -1902,7 +2059,7 @@ class PostgresRuntime:
             game_id: Game session UUID (corresponds to ``session_id`` in
                 ``tick_log``).
             tick: Tick number.
-            territories, orgs, edges, communities, hex_activities,
+            territories, orgs, classes, edges, communities, hex_activities,
                 economic_summary, events: Per-table snapshot payloads.
 
         Raises:
@@ -1931,6 +2088,7 @@ class PostgresRuntime:
             # transaction is a no-op (FR-004).
             self.persist_territory_snapshots(game_id, tick, territories or [], _cursor=cur)
             self.persist_org_snapshots(game_id, tick, orgs or [], _cursor=cur)
+            self.persist_class_snapshots(game_id, tick, classes or [], _cursor=cur)
             self.persist_edge_snapshots(game_id, tick, edges or [], _cursor=cur)
             self.persist_community_snapshots(game_id, tick, communities or [], _cursor=cur)
             self.persist_hex_activity(game_id, tick, hex_activities or [], _cursor=cur)

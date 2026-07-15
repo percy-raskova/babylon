@@ -218,6 +218,7 @@ _MODEL_DDL_MAP: dict[str, str] = {
     "HexState": "HEX_LATEST_DDL",
     "TerritorySnapshot": "TERRITORY_SNAPSHOT_DDL",
     "OrgSnapshot": "ORG_SNAPSHOT_DDL",
+    "ClassSnapshot": "CLASS_SNAPSHOT_DDL",
     "EdgeSnapshot": "EDGE_SNAPSHOT_DDL",
     "CommunitySnapshot": "COMMUNITY_SNAPSHOT_DDL",
     "EconomicSummary": "ECONOMIC_SUMMARY_DDL",

@@ -357,6 +357,59 @@ class OrgSnapshot(models.Model):
         return f"OrgSnapshot({self.game_id}, t={self.tick}, {self.org_id})"
 
 
+class ClassSnapshot(models.Model):
+    """Social class survival-calculus state per tick (append-only).
+
+    Wraps ``class_snapshot`` — powers the survival-probability duel chart
+    (P(S|A) vs P(S|R)) and the class inspector's history tab (Program 17
+    Wave 2 W2.5b, owner ruling 3).
+    """
+
+    game = models.ForeignKey(
+        GameSession,
+        on_delete=models.CASCADE,
+        db_column="game_id",
+    )
+    tick = models.IntegerField()
+    class_id = models.CharField(max_length=64, primary_key=True)
+    role = models.CharField(max_length=32)
+
+    # Material conditions
+    wealth = models.FloatField(null=True)
+    subsistence_threshold = models.FloatField(null=True)
+    population = models.IntegerField(null=True)
+    inequality = models.FloatField(null=True)
+
+    # Organization / repression
+    organization = models.FloatField(null=True)
+    repression_faced = models.FloatField(null=True)
+
+    # Ideological profile
+    class_consciousness = models.FloatField(null=True)
+    national_identity = models.FloatField(null=True)
+    agitation = models.FloatField(null=True)
+
+    # Survival Calculus (P(S|A) vs P(S|R))
+    p_acquiescence = models.FloatField(null=True)
+    p_revolution = models.FloatField(null=True)
+
+    active = models.BooleanField(default=True)
+    attributes = models.JSONField(default=dict)
+
+    class Meta:
+        managed = False
+        db_table = "class_snapshot"
+        constraints = [
+            models.UniqueConstraint(
+                fields=["game", "tick", "class_id"],
+                name="uq_class_snapshot",
+            ),
+        ]
+
+    def __str__(self) -> str:
+        return f"ClassSnapshot({self.game_id}, t={self.tick}, {self.class_id})"
+
+
 class EdgeSnapshot(models.Model):
     """Graph edge state per tick (append-only).
 

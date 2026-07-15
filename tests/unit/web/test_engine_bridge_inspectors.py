@@ -163,6 +163,48 @@ class TestGetInspectorNode:
         assert isinstance(result["class_position"], str)
         assert result["class_position"] != ""
 
+    def test_survival_calculus_is_exposed(self) -> None:
+        """Wave 2 W2.5b: p_acquiescence/p_revolution (SurvivalSystem.step,
+        survival.py:143) reach the inspector payload — wayne_county seeds
+        C002 at p_acquiescence=0.0/p_revolution=0.0 (a real, not-yet-computed
+        tick-0 default, honest per Constitution III.11 — same status as
+        agitation, never fabricated)."""
+        bridge, _graph = _wayne_bridge()
+
+        result = bridge.get_inspector_node(uuid.uuid4(), "C002")
+
+        assert result["p_acquiescence"] == pytest.approx(0.0)
+        assert result["p_revolution"] == pytest.approx(0.0)
+
+    def test_survival_calculus_reflects_survival_system_writes(self) -> None:
+        """A real post-tick SurvivalSystem value (not just the seed default)
+        round-trips onto the inspector payload."""
+        bridge, graph = _wayne_bridge()
+        graph.nodes["C002"]["p_acquiescence"] = 0.42
+        graph.nodes["C002"]["p_revolution"] = 0.17
+
+        result = bridge.get_inspector_node(uuid.uuid4(), "C002")
+
+        assert result["p_acquiescence"] == pytest.approx(0.42)
+        assert result["p_revolution"] == pytest.approx(0.17)
+
+    def test_survival_calculus_is_none_when_absent(self) -> None:
+        """Honest null (III.11): a synthetic social_class node carrying no
+        p_acquiescence/p_revolution attrs at all gets None, never a
+        fabricated 0.0 masquerading as a computed value."""
+        bridge, graph = _wayne_bridge()
+        graph.add_node(
+            "C999",
+            _node_type="social_class",
+            name="Synthetic No-Survival-Calculus Class",
+            wealth=0.0,
+        )
+
+        result = bridge.get_inspector_node(uuid.uuid4(), "C999")
+
+        assert result["p_acquiescence"] is None
+        assert result["p_revolution"] is None
+
 
 class TestGetInspectorNodeCircuitFlows:
     """Program 17 Wave 1 / W1.6: the 4-node imperial-circuit mini-Sankey data.

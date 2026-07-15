@@ -9,6 +9,10 @@ Postgres (same pattern as ``test_dashboards.py``) and assert the new
 ``get_org_history``/``get_territory_history`` methods surface real,
 per-tick, non-fabricated rows (Constitution III.11).
 
+Program 17 Wave 2 W2.5b (owner ruling 3) adds ``class_snapshot``/
+``get_class_history`` — the survival-probability duel chart's real
+backing history, mirroring the org/territory pattern exactly.
+
 Requires a running PostgreSQL instance. Skip with:
 ``pytest -m "not requires_postgres"``.
 """
@@ -33,6 +37,11 @@ _WAYNE_PLAYER_ORG_ID = "ORG001"
 # Every wayne_county web session stamps all 81 hex territories with this
 # real FIPS (see EngineBridge._seed_wayne_county_fips / WAYNE_COUNTY_FIPS).
 _WAYNE_COUNTY_FIPS = "26163"
+# Dearborn Industrial Workers — the sole PERIPHERY_PROLETARIAT (struggling)
+# role in wayne_county, so the only class that can ever produce a real
+# UPRISING/revolutionary_pressure rupture marker (see
+# babylon.engine.scenarios._legacy_wayne, struggle.py _STRUGGLING_ROLES).
+_DEARBORN_WORKERS_ID = "C004"
 
 
 @pytest.fixture
@@ -133,3 +142,45 @@ class TestTerritoryHistory:
 
         assert result["county_fips"] == "99999"
         assert result["history"] == []
+
+
+class TestClassHistory:
+    """get_class_history: real per-tick class_snapshot rows + rupture markers
+    (Program 17 Wave 2 W2.5b, owner ruling 3)."""
+
+    def test_class_history_grows_across_resolves(self, bridge: object) -> None:
+        session_id = _resolved_session(bridge, n_resolves=2)
+
+        result = bridge.get_class_history(session_id, _DEARBORN_WORKERS_ID)  # type: ignore[attr-defined]
+
+        assert result["class_id"] == _DEARBORN_WORKERS_ID
+        history = result["history"]
+        # One row per resolved tick (0, 1, 2) — persisted at create + each resolve.
+        assert len(history) == 3
+        ticks = [row["tick"] for row in history]
+        assert ticks == sorted(ticks)  # oldest-tick-first
+        assert ticks == [0, 1, 2]
+        # Real fields from _class_snapshot_rows: role is a required, never-null
+        # SocialClass field; p_acquiescence/p_revolution are the survival duel's
+        # two series — real (if legitimately 0.0-at-tick-0) SurvivalSystem output.
+        for row in history:
+            assert row["role"] == "periphery_proletariat"
+            assert row["p_acquiescence"] is not None
+            assert row["p_revolution"] is not None
+            assert isinstance(row["attributes"], dict)
+        # Ruptures: honest per Constitution III.11 — no assertion on count (a
+        # deterministic-but-stochastic-gated UPRISING may or may not fire in
+        # 2 resolves), only that the mechanism returns the real, typed shape.
+        assert isinstance(result["ruptures"], list)
+        for rupture in result["ruptures"]:
+            assert rupture["type"] == "uprising"
+            assert rupture["data"]["trigger"] == "revolutionary_pressure"
+
+    def test_class_history_unknown_class_id_is_honest_empty(self, bridge: object) -> None:
+        session_id = bridge.create_game(scenario="wayne_county", rng_seed=0)  # type: ignore[attr-defined]
+
+        result = bridge.get_class_history(session_id, "NOT_A_REAL_CLASS")  # type: ignore[attr-defined]
+
+        assert result["class_id"] == "NOT_A_REAL_CLASS"
+        assert result["history"] == []
+        assert result["ruptures"] == []

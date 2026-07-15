@@ -3144,7 +3144,7 @@ class EngineBridge:
 
     def get_doctrine_tree(
         self,
-        session_id: UUID,  # noqa: ARG002 — reserved for per-session acquired overlay; tree is static game-data today
+        session_id: UUID,
     ) -> dict[str, Any]:
         """Return the read-only Doctrine Tree canvas payload (the 5th takeover).
 
@@ -3185,12 +3185,52 @@ class EngineBridge:
         from babylon.domain.doctrine import load_doctrine_tree, starting_tags
 
         tree = load_doctrine_tree()
+        # Live per-org overlay (Unit 4 landed the DoctrineSystem, so acquired-doctrine
+        # state is now real): serve the player faction's acquired nodes / decaying tag
+        # accumulator / theoretical labour. Honest fallback (III.11): no player faction
+        # or a pre-tick session ⇒ the starting position, never fabricated progress.
+        acquired_ids: list[str] = []
+        tags: dict[str, float] = {tag.value: float(v) for tag, v in starting_tags().items()}
+        theoretical_labor = 0.0
+        player_org = self._player_doctrine_org(session_id)
+        if player_org is not None:
+            acquired_ids = list(player_org.acquired_doctrine_ids)
+            theoretical_labor = float(player_org.theoretical_labor)
+            if player_org.doctrine_tags:
+                tags = {tag.value: float(v) for tag, v in player_org.doctrine_tags.items()}
         return {
             "root_id": tree.root_id,
             "nodes": [node.model_dump(mode="json") for node in tree.nodes.values()],
-            "acquired_ids": [],
-            "tags": {tag.value: value for tag, value in starting_tags().items()},
+            "acquired_ids": acquired_ids,
+            "tags": tags,
+            "theoretical_labor": theoretical_labor,
         }
+
+    def _player_doctrine_org(self, session_id: UUID) -> Any:
+        """Return the player's doctrine-bearing organization, or ``None``.
+
+        Honest graceful degradation (Constitution III.11: infrastructure-layer
+        try/except): any hydration failure, a non-hydratable/mock session, or a
+        session with no player faction yields ``None`` — the canvas then shows the
+        starting position rather than fabricated progress. Prefers the
+        ``is_player`` faction; falls back to any org that has begun acquiring.
+
+        :param session_id: The game session UUID.
+        :returns: An ``Organization`` (with the doctrine fields) or ``None``.
+        """
+        try:
+            state, _graph = self.hydrate_state(session_id)
+            orgs = getattr(state, "organizations", None)
+            if not isinstance(orgs, dict):
+                return None
+            player = next((o for o in orgs.values() if getattr(o, "is_player", False)), None)
+            if player is not None:
+                return player
+            return next(
+                (o for o in orgs.values() if getattr(o, "acquired_doctrine_ids", None)), None
+            )
+        except (RuntimeError, ValueError, KeyError, AttributeError, TypeError):
+            return None
 
     # ------------------------------------------------------------------ #
     # AW4-R1 (audit Wave 4, "Topology & the Gramscian Wire"): Spatial

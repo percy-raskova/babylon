@@ -9,12 +9,13 @@
  * grid rather than literal connector lines (the spec's explicitly-permitted
  * "clean indented/columned tree" fallback).
  *
- * READ-ONLY: acquisition/TL-spend/Party Congress/DoctrineSystem engine
- * wiring is gated on six pending owner rulings and explicitly out of scope
- * here. Every node renders LOCKED with its cost — never a fake "acquire"
- * affordance (Constitution III.11). `acquired_ids` is always `[]` from the
- * backend today, so there is no "acquired" visual state to render; the
- * header note says so explicitly rather than staying silent about it.
+ * LIVE READ-ONLY: the DoctrineSystem now advances each faction's doctrine every
+ * tick, so this canvas overlays the player faction's REAL state — acquired nodes
+ * are lit (ring + "Acquired"), the theoretical-labour balance and the decaying tag
+ * accumulator are shown live. Player-DIRECTED acquisition (the Study action) is the
+ * remaining interactive piece; unacquired nodes still render LOCKED with their cost,
+ * never a fake affordance (Constitution III.11). A session with no player faction
+ * degrades honestly to the starting position.
  */
 
 import { useMemo } from "react";
@@ -89,14 +90,23 @@ function nodeBorderClass(node: DoctrineNode): string {
   return "border-ksbc-muted-1";
 }
 
-function NodeCard({ node }: { node: DoctrineNode }): React.JSX.Element {
-  const borderClass = nodeBorderClass(node);
+function NodeCard({
+  node,
+  acquired,
+}: {
+  node: DoctrineNode;
+  acquired: boolean;
+}): React.JSX.Element {
+  const borderClass = acquired && !node.is_trap ? "border-rupture" : nodeBorderClass(node);
   const tagEntries = Object.entries(node.tag_deltas) as [DoctrineTagKey, number][];
 
   return (
     <div
-      className={`flex flex-col gap-1 border-2 bg-plate p-2 ${borderClass}`}
+      className={`flex flex-col gap-1 border-2 bg-plate p-2 ${borderClass} ${
+        acquired ? "ring-1 ring-rupture" : ""
+      }`}
       data-testid={`doctrine-node-${node.id}`}
+      data-acquired={acquired}
     >
       <div className="flex items-center justify-between gap-2">
         <span className="font-mono text-[11px] font-semibold text-ink">{node.name}</span>
@@ -128,7 +138,11 @@ function NodeCard({ node }: { node: DoctrineNode }): React.JSX.Element {
         <p className="whitespace-pre-line text-[9px] italic text-ksbc-muted-2">{node.narrative}</p>
       )}
       <div className="mt-auto flex items-center justify-between pt-1 text-[9px]">
-        <span className="uppercase tracking-widest text-ksbc-muted-1">Locked</span>
+        <span
+          className={`uppercase tracking-widest ${acquired ? "text-rupture" : "text-ksbc-muted-1"}`}
+        >
+          {acquired ? "Acquired" : "Locked"}
+        </span>
         <span className="font-mono text-ksbc-muted-2">{costLabel(node)}</span>
       </div>
     </div>
@@ -153,7 +167,15 @@ function groupByTier(nodes: DoctrineNode[]): Map<number, DoctrineNode[]> {
  * 3-column grid, one card per trunk (a trunk with no node at this tier
  * renders an empty cell rather than a fabricated placeholder card).
  */
-function TierRow({ tier, nodes }: { tier: number; nodes: DoctrineNode[] }): React.JSX.Element {
+function TierRow({
+  tier,
+  nodes,
+  acquired,
+}: {
+  tier: number;
+  nodes: DoctrineNode[];
+  acquired: Set<string>;
+}): React.JSX.Element {
   const isShared = nodes.every((node) => node.trunk === null);
 
   return (
@@ -162,7 +184,7 @@ function TierRow({ tier, nodes }: { tier: number; nodes: DoctrineNode[] }): Reac
       {isShared ? (
         <div className="mx-auto mt-1 flex max-w-xs flex-col gap-2">
           {nodes.map((node) => (
-            <NodeCard key={node.id} node={node} />
+            <NodeCard key={node.id} node={node} acquired={acquired.has(node.id)} />
           ))}
         </div>
       ) : (
@@ -174,7 +196,7 @@ function TierRow({ tier, nodes }: { tier: number; nodes: DoctrineNode[] }): Reac
                 <span className="text-center text-[8px] uppercase tracking-widest text-ksbc-muted-1">
                   {TRUNK_LABEL[trunk]}
                 </span>
-                {node && <NodeCard node={node} />}
+                {node && <NodeCard node={node} acquired={acquired.has(node.id)} />}
               </div>
             );
           })}
@@ -196,16 +218,24 @@ export function DoctrineTakeover({ gameId }: Props): React.JSX.Element {
 
   const tagEntries = Object.entries(data.tags) as [DoctrineTagKey, number][];
   const isEmpty = data.nodes.length === 0;
+  const acquiredSet = useMemo(() => new Set(data.acquired_ids), [data.acquired_ids]);
 
   return (
     <div className="flex h-full w-full flex-col" data-testid="doctrine-takeover">
       <header className="flex flex-col gap-2 border-b-2 border-ksbc-muted-1 px-3 py-2">
         <p className="text-[10px] italic text-ksbc-muted-2" data-testid="doctrine-acquisition-note">
-          Doctrine acquisition unlocks with the Party (coming). This canvas is read-only.
+          The Party&rsquo;s live doctrine — acquired nodes are lit; theory decays without study.
+          Player-directed acquisition (the Study action) is coming.
         </p>
         <div className="flex flex-wrap items-center gap-4">
           <span className="font-mono text-[11px] uppercase tracking-widest text-ksbc-muted-2">
-            {data.nodes.length} nodes
+            {acquiredSet.size}/{data.nodes.length} acquired
+          </span>
+          <span
+            className="font-mono text-[11px] uppercase tracking-widest text-rupture"
+            data-testid="doctrine-theoretical-labor"
+          >
+            {data.theoretical_labor.toFixed(1)} TL
           </span>
           <div className="flex flex-wrap gap-3" data-testid="doctrine-tags">
             {tagEntries.map(([tagKey, value]) => (
@@ -230,7 +260,7 @@ export function DoctrineTakeover({ gameId }: Props): React.JSX.Element {
         {!isEmpty && (
           <div className="flex flex-col gap-4">
             {tiers.map(({ tier, nodes }) => (
-              <TierRow key={tier} tier={tier} nodes={nodes} />
+              <TierRow key={tier} tier={tier} nodes={nodes} acquired={acquiredSet} />
             ))}
           </div>
         )}

@@ -111,18 +111,43 @@ class TestGetDoctrineTreeEngineBridge:
         for node in result["nodes"]:
             assert set(node.keys()) == expected_keys
 
-    def test_does_not_touch_persistence(self) -> None:
-        """Static game-data — no hydrate_graph call, unlike every other
-        dashboard method (Constitution III.11: not fabricating session
-        derivation that doesn't exist)."""
+    def test_falls_back_to_starting_position_on_unhydratable_session(self) -> None:
+        """Now that the DoctrineSystem writes real per-org state, the bridge
+        DOES hydrate to overlay the player faction's acquired nodes / tags / TL.
+        A mock/unhydratable session degrades honestly (Constitution III.11) to the
+        starting position — empty acquired set, corpus starting tags, zero TL —
+        never fabricated progress."""
         from game.engine_bridge import EngineBridge
 
-        mock_persistence = MagicMock()
-        bridge = EngineBridge(mock_persistence)
+        bridge = EngineBridge(MagicMock())
+        result = bridge.get_doctrine_tree(uuid.uuid4())
 
-        bridge.get_doctrine_tree(uuid.uuid4())
+        assert result["acquired_ids"] == []
+        assert result["theoretical_labor"] == 0.0
+        assert result["tags"]  # starting tags present, not fabricated progress
 
-        mock_persistence.hydrate_graph.assert_not_called()
+    def test_serves_live_player_faction_doctrine_state(self) -> None:
+        """A player faction with acquired doctrine overlays its real acquired
+        nodes, decaying tag accumulator, and theoretical labour onto the tree."""
+        from types import SimpleNamespace
+        from unittest.mock import patch
+
+        from babylon.models.enums.doctrine import DoctrineTag
+        from game.engine_bridge import EngineBridge
+
+        bridge = EngineBridge(MagicMock())
+        faction = SimpleNamespace(
+            is_player=True,
+            acquired_doctrine_ids=("class_consciousness", "trade_unionism"),
+            theoretical_labor=42.5,
+            doctrine_tags={DoctrineTag.MILITANCY: 3.0},
+        )
+        with patch.object(bridge, "_player_doctrine_org", return_value=faction):
+            result = bridge.get_doctrine_tree(uuid.uuid4())
+
+        assert result["acquired_ids"] == ["class_consciousness", "trade_unionism"]
+        assert result["theoretical_labor"] == 42.5
+        assert result["tags"]["militancy"] == 3.0
 
 
 # --------------------------------------------------------------------- #

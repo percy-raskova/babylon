@@ -931,6 +931,7 @@ class StubEngineBridge:
             "nodes": [node.model_dump(mode="json") for node in tree.nodes.values()],
             "acquired_ids": [],
             "tags": {tag.value: value for tag, value in starting_tags().items()},
+            "theoretical_labor": 0.0,
         }
 
     def get_journal_dashboard(self, _session_id: UUID) -> dict[str, Any]:

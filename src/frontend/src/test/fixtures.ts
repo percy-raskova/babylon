@@ -1120,6 +1120,7 @@ export function makeDoctrineTreePayload(
     nodes: DOCTRINE_TREE_NODES,
     acquired_ids: [],
     tags: { class_analysis: 1, mass_link: 1, militancy: 0 },
+    theoretical_labor: 0,
     ...overrides,
   };
 }

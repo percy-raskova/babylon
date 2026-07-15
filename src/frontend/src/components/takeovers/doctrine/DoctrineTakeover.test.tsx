@@ -110,8 +110,33 @@ describe("DoctrineTakeover", () => {
 
     expect(screen.queryByRole("button", { name: /acquire/i })).not.toBeInTheDocument();
     expect(screen.getByTestId("doctrine-acquisition-note")).toHaveTextContent(
-      "Doctrine acquisition unlocks with the Party (coming)",
+      "Player-directed acquisition (the Study action) is coming",
     );
+  });
+
+  it("lights acquired nodes and shows the live theoretical-labour balance", async () => {
+    server.use(
+      http.get("/api/games/:id/doctrine-tree/", () =>
+        HttpResponse.json({
+          status: "ok",
+          data: makeDoctrineTreePayload({
+            acquired_ids: ["class_consciousness"],
+            theoretical_labor: 42.5,
+          }),
+        }),
+      ),
+    );
+    render(<DoctrineTakeover gameId={DEFAULT_GAME_ID} />);
+
+    const root = await screen.findByTestId("doctrine-node-class_consciousness");
+    expect(root).toHaveAttribute("data-acquired", "true");
+    expect(within(root).getByText("Acquired")).toBeInTheDocument();
+    expect(screen.getByTestId("doctrine-theoretical-labor")).toHaveTextContent("42.5 TL");
+
+    // A node the faction has not reached stays honestly locked.
+    const electoral = await screen.findByTestId("doctrine-node-electoral_socialism");
+    expect(electoral).toHaveAttribute("data-acquired", "false");
+    expect(within(electoral).getByText("Locked")).toBeInTheDocument();
   });
 
   it("shows a node's warning text when present", async () => {

@@ -2804,14 +2804,34 @@ class PostgresRuntime:
 
     @staticmethod
     def _make_serializable(attrs: dict[str, Any]) -> dict[str, Any]:
-        """Filter attributes to only JSON-serializable values."""
+        """Convert attributes to JSON-serializable values; drop loudly on failure.
+
+        ``WorldState.to_graph()`` stores ``events`` as python-mode
+        ``model_dump()`` payloads whose ``datetime`` timestamps fail bare
+        ``json.dumps``. The original silent ``continue`` dropped the key from
+        ``graph_metadata.extra`` on every tick that had events, so hydrated
+        snapshots always reconstructed ``events == []``. Second pass converts
+        via :func:`json_default` (the same fallback ``_persist_events``
+        trusts); only a value that BOTH passes reject is dropped, with a
+        WARNING (Constitution III.11 — never fail silently).
+        """
         result: dict[str, Any] = {}
         for k, v in attrs.items():
             try:
                 json.dumps(v)
                 result[k] = v
-            except (TypeError, ValueError):
                 continue
+            except (TypeError, ValueError):
+                pass
+            try:
+                result[k] = json.loads(json.dumps(v, default=_json_default))
+            except (TypeError, ValueError):
+                logger.warning(
+                    "graph_metadata: dropping non-JSON-serializable graph attr "
+                    "%r (type %s) — value will be absent after hydration",
+                    k,
+                    type(v).__name__,
+                )
         return result
 
 

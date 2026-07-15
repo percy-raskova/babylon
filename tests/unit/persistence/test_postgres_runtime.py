@@ -9,6 +9,7 @@ Phase 3 (T011-T013, T015-T024): State persistence and hydration tests.
 from __future__ import annotations
 
 import json
+import logging
 from contextlib import contextmanager
 from datetime import datetime
 from typing import Any
@@ -18,6 +19,10 @@ from uuid import UUID
 import networkx as nx
 import pytest
 
+from babylon.models.entity_registry import PERIPHERY_WORKER_ID
+from babylon.models.enums import EventType
+from babylon.models.events import UprisingEvent
+from babylon.models.world_state import WorldState
 from babylon.persistence.postgres_runtime import PostgresRuntime
 from babylon.topology.graph import BabylonGraph
 
@@ -1196,6 +1201,46 @@ class TestMakeSerializable:
         attrs = {"field": None}
         result = PostgresRuntime._make_serializable(attrs)
         assert result["field"] is None
+
+    # Task #83: ``WorldState.to_graph()`` stores events as python-mode
+    # ``model_dump()`` payloads whose ``datetime`` timestamps fail bare
+    # ``json.dumps``. The original silent drop emptied ``WorldState.events``
+    # on every hydrate — live ``GET /state/`` snapshots never saw an event
+    # (sibling of the P0 #6 datetime crash fixed in ``_persist_events``).
+
+    def test_events_survive_and_revalidate(self) -> None:
+        """Events with datetime timestamps survive into JSON-safe metadata."""
+        uprising = UprisingEvent(
+            tick=8,
+            node_id=PERIPHERY_WORKER_ID,
+            trigger="spark",
+            agitation=0.9,
+            repression=0.7,
+        )
+        state = WorldState(tick=10, events=[uprising])
+        graph = state.to_graph()
+
+        metadata = PostgresRuntime._make_serializable(dict(graph.graph))
+
+        assert "events" in metadata
+        json.dumps(metadata)  # the full extra payload must be JSON-native
+
+        # Full hydrate loop: mirror hydrate_graph's set_graph_attr restore,
+        # then prove from_graph re-validates the converted dicts into typed
+        # events (behavioral pin of persist -> hydrate -> from_graph).
+        graph.set_graph_attr("events", metadata["events"])
+        restored = WorldState.from_graph(graph, tick=10)
+        assert len(restored.events) == 1
+        assert restored.events[0].event_type == EventType.UPRISING
+        assert restored.events[0].tick == 8
+
+    def test_unconvertible_value_drops_loudly(self, caplog: pytest.LogCaptureFixture) -> None:
+        """A genuinely unserializable value is dropped with a WARNING, never silently."""
+        with caplog.at_level(logging.WARNING):
+            result = PostgresRuntime._make_serializable({"bad": object(), "ok": 1})
+
+        assert result == {"ok": 1}
+        assert "bad" in caplog.text
 
 
 # ══════════════════════════════════════════════════════════════════════

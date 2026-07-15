@@ -600,7 +600,14 @@ flowchart TD
 > markers + bifurcation gauge, field_flow vector lens (lens 13), radar-loop replay. Serves
 > epoch2-geo-viz + brainstorm-gui items; its deferred queue (front lines, forecast-ruling,
 > df_dt context carry) is task-tracked, not lost.
-> **Wave 3 (Vanguard Praxis) — IN EXECUTION 2026-07-15** (tasks #71-72).
+> **Wave 3 (Vanguard Praxis) ✅ COMPLETE 2026-07-15** (`d42da148` all 9 verbs live +
+> entitlement/volatility rendered + RED_BROWN_COUP bespoke narration; `70d6e3f2` the
+> never-executed RuleBasedStateAI cluster invoked via a seeded Detroit PD STATE_APPARATUS org,
+> qa:regression 5/5. Corrections vs the audit's claims: chauvinism is MEMBERSHIP-*edge* state,
+> no class scalar exists — honestly skipped; org heat was already rendered; reputation is a
+> VanguardResources persistence gap and reformist_drift's model is never constructed — both
+> unrelated to the invocation. New finding → task #73: RuleBasedStateAI self-targets,
+> Feature-039 target selection never wired).
 > Wave 4's sigma/graphology network takeover: note both libs remain installed-unused and
 > `get_hypergraph_communities` is confirmed a dead route (AttributeError 500) — the Gap-2a
 > rebuild claim verified 2026-07-14.

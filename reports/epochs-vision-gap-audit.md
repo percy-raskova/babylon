@@ -608,9 +608,15 @@ flowchart TD
 > VanguardResources persistence gap and reformist_drift's model is never constructed — both
 > unrelated to the invocation. New finding → task #73: RuleBasedStateAI self-targets,
 > Feature-039 target selection never wired).
-> Wave 4's sigma/graphology network takeover: note both libs remain installed-unused and
-> `get_hypergraph_communities` is confirmed a dead route (AttributeError 500) — the Gap-2a
-> rebuild claim verified 2026-07-14.
+> **Wave 4 (core) ✅ COMPLETE 2026-07-15** (`c312e62d` backend: get_org_network serving the
+> pre-typed contract + the dead hypergraph route fixed with an HONEST permanently-empty
+> payload (community_memberships never seeded) + centrality/percolation serialized;
+> `e6b47f3d` frontend: the Network takeover on sigma/graphology — first imports ever of the
+> scaffold-provisioned libs — deterministic circular layout, centrality-sized nodes,
+> percolation chip. Corrections vs the audit: OrgNetworkNode's typed contract has NO
+> social_class kind; MEMBERSHIP edges have zero production writers; CLIENT_STATE is a
+> class→class subsidy edge, not org-related. Stragglers → task #76: centrality MAP lens,
+> edge-history sparkline, SeamScope NETWORK enum extension).
 
 ### Wave 1 — Make the Spine Felt (P0, no new engine math)
 

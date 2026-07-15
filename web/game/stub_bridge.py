@@ -335,6 +335,9 @@ def _make_hex_features(tick: int, layer: str | None = None) -> list[dict[str, An
             # NOT the legacy URBAN/SUBURBAN/PERIURBAN vocabulary _make_territories()
             # uses for the (unrelated) territories snapshot list.
             "territory_type": "core" if r < 0.5 else "periphery",
+            # Audit Wave 4 straggler (task #76): deterministic per-cell
+            # degree-centrality, matching the real bridge's [0, 1] range.
+            "centrality": round(r, 3),
         }
 
         # Approximate hex boundary as a small polygon near Detroit
@@ -436,6 +439,9 @@ def _make_aggregated_features(zoom: str, tick: int) -> list[dict[str, Any]]:
                     "throughput_position": round(0.5 + r * 1.0, 3),
                     "agitation": round(r * 1.5, 3),
                     "territory_type": "core" if r < 0.5 else "periphery",
+                    # Audit Wave 4 straggler (task #76): same deterministic
+                    # per-group degree-centrality shape as above.
+                    "centrality": round(r, 3),
                 },
             }
         )
@@ -764,6 +770,8 @@ class StubEngineBridge:
                     "throughput_position",
                     "agitation",
                     "territory_type",
+                    # Audit Wave 4 straggler (task #76)
+                    "centrality",
                 ],
             },
             "features": features,

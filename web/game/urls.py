@@ -125,6 +125,14 @@ urlpatterns: list[URLPattern] = [
         api.inspector_node_history,
         name="inspector-node-history",
     ),
+    # Audit Wave 4 straggler (task #76): edge-weight history sparkline — rides
+    # the generic /edge/<edge_id>/ id scheme ("{source}->{target}") set by
+    # inspector-edge above.
+    path(
+        "games/<str:game_id>/edge/<str:edge_id>/history/",
+        api.inspector_edge_history,
+        name="inspector-edge-history",
+    ),
     # API: Spec-113 Lane D — formula/metric provenance (InspectionStack FormulaCard)
     path("games/<str:game_id>/explain/", api.game_explain, name="game-explain"),
     # API: Actions — utility endpoints (available, preview, pending list, cancel)

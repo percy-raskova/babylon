@@ -28,6 +28,8 @@ import type {
   JournalPayload,
   ClassHistoryPoint,
   ClassHistoryPayload,
+  EdgeHistoryPoint,
+  EdgeHistoryPayload,
   FieldStateNode,
   FieldStateEdge,
   FieldStatePayload,
@@ -450,6 +452,28 @@ export function makeClassHistoryPayload(
     class_id: "C002",
     history: [],
     ruptures: [],
+    ...overrides,
+  };
+}
+
+/** One `history[]` entry of GET /api/games/{id}/edge/{entityId}/history/ (audit Wave 4 straggler, task #76). */
+export function makeEdgeHistoryPoint(overrides?: Partial<EdgeHistoryPoint>): EdgeHistoryPoint {
+  return {
+    tick: 0,
+    weight: 1.0,
+    solidarity: null,
+    tension: 0.0,
+    ...overrides,
+  };
+}
+
+/** GET /api/games/{id}/edge/{entityId}/history/ payload (audit Wave 4 straggler, task #76). */
+export function makeEdgeHistoryPayload(
+  overrides?: Partial<EdgeHistoryPayload>,
+): EdgeHistoryPayload {
+  return {
+    edge_id: "C001->C004",
+    history: [],
     ...overrides,
   };
 }

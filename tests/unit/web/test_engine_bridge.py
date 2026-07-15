@@ -2146,6 +2146,120 @@ class TestGetClassHistory:
         assert result["ruptures"] == []
 
 
+@pytest.mark.unit
+class TestGetEdgeHistory:
+    """Audit Wave 4 straggler (task #76): the edge-weight history sparkline
+    — mirrors ``TestGetClassHistory``/``get_org_history``. ``edge_id`` uses
+    the same ``"{source}->{target}"`` scheme ``get_inspector_edge`` set."""
+
+    def test_returns_empty_when_persistence_lacks_query_method(self) -> None:
+        mock_persistence = _make_mock_persistence()
+        mock_persistence.query_edge_snapshot_history = None  # simulate SQLite RuntimeDatabase
+        bridge = EngineBridge(mock_persistence)
+
+        result = bridge.get_edge_history(uuid.uuid4(), "C001->C004")
+
+        assert result == {"edge_id": "C001->C004", "history": []}
+
+    def test_malformed_edge_id_without_arrow_is_honest_empty(self) -> None:
+        mock_persistence = _make_mock_persistence()
+        bridge = EngineBridge(mock_persistence)
+
+        result = bridge.get_edge_history(uuid.uuid4(), "not-an-edge-id")
+
+        assert result == {"edge_id": "not-an-edge-id", "history": []}
+        mock_persistence.query_edge_snapshot_history.assert_not_called()
+
+    def test_returns_history_rows_with_weight_from_value_flow(self) -> None:
+        mock_persistence = _make_mock_persistence()
+        sid = uuid.uuid4()
+        mock_persistence.query_edge_snapshot_history.return_value = [
+            {
+                "tick": 0,
+                "edge_type": "solidarity",
+                "edge_mode": None,
+                "value_flow": 1.5,
+                "solidarity": 0.4,
+                "tension": 0.1,
+                "attributes": {},
+            },
+            {
+                "tick": 1,
+                "edge_type": "solidarity",
+                "edge_mode": None,
+                "value_flow": 2.0,
+                "solidarity": 0.6,
+                "tension": 0.2,
+                "attributes": {},
+            },
+        ]
+        bridge = EngineBridge(mock_persistence)
+
+        result = bridge.get_edge_history(sid, "C001->C004")
+
+        assert result["edge_id"] == "C001->C004"
+        assert result["history"] == [
+            {"tick": 0, "weight": 1.5, "solidarity": 0.4, "tension": 0.1},
+            {"tick": 1, "weight": 2.0, "solidarity": 0.6, "tension": 0.2},
+        ]
+        mock_persistence.query_edge_snapshot_history.assert_called_once_with(sid, "C001", "C004")
+
+    def test_null_value_flow_is_an_honest_null_weight_not_zero(self) -> None:
+        mock_persistence = _make_mock_persistence()
+        mock_persistence.query_edge_snapshot_history.return_value = [
+            {
+                "tick": 0,
+                "edge_type": "presence",
+                "edge_mode": None,
+                "value_flow": None,
+                "solidarity": None,
+                "tension": None,
+                "attributes": {},
+            }
+        ]
+        bridge = EngineBridge(mock_persistence)
+
+        result = bridge.get_edge_history(uuid.uuid4(), "ORG001->T001")
+
+        assert result["history"] == [
+            {"tick": 0, "weight": None, "solidarity": None, "tension": None}
+        ]
+
+    def test_decimal_value_flow_is_cast_to_float(self) -> None:
+        """``value_flow`` is a Postgres NUMERIC column — psycopg returns
+        Decimal; must be cast so JSON serialization doesn't choke."""
+        from decimal import Decimal
+
+        mock_persistence = _make_mock_persistence()
+        mock_persistence.query_edge_snapshot_history.return_value = [
+            {
+                "tick": 0,
+                "edge_type": "tribute",
+                "edge_mode": None,
+                "value_flow": Decimal("3.25"),
+                "solidarity": None,
+                "tension": 0.0,
+                "attributes": {},
+            }
+        ]
+        bridge = EngineBridge(mock_persistence)
+
+        result = bridge.get_edge_history(uuid.uuid4(), "C001->C002")
+
+        weight = result["history"][0]["weight"]
+        assert isinstance(weight, float)
+        assert weight == pytest.approx(3.25)
+
+    def test_history_query_failure_degrades_to_empty(self) -> None:
+        mock_persistence = _make_mock_persistence()
+        mock_persistence.query_edge_snapshot_history.side_effect = RuntimeError("boom")
+        bridge = EngineBridge(mock_persistence)
+
+        result = bridge.get_edge_history(uuid.uuid4(), "C001->C004")
+
+        assert result["history"] == []
+
+
 # ---------------------------------------------------------------------- #
 # Program 19/20 (Wave 3 Round 1, Backend-W3R1): get_field_state serializes
 # the System-19/20 contradiction-field stack — honest omission (III.11) +

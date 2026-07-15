@@ -1908,6 +1908,64 @@ class PostgresRuntime:
         with self._pool.connection() as conn, conn.cursor() as cur:
             cur.executemany(sql, rows)
 
+    def query_edge_snapshot_history(
+        self,
+        game_id: UUID,
+        source_id: str,
+        target_id: str,
+        *,
+        limit: int = 128,
+    ) -> list[dict[str, Any]]:
+        """Return ordered ``edge_snapshot`` rows for one edge (audit Wave 4
+        straggler, task #76 — the edge-weight history sparkline).
+
+        Powers the edge inspector's history via
+        ``EngineBridge.get_edge_history``. Mirrors
+        :meth:`query_class_snapshot_history`'s shape but caps a TRAILING
+        window — the most recent ``limit`` ticks, re-ordered
+        oldest-first — matching the ``/map/history/`` 128 convention
+        (``_MAP_HISTORY_WINDOW_CAP``: ``resolved_from = requested_to -
+        CAP + 1``), NOT class/org history's leading ``ORDER BY tick
+        LIMIT 1000``: with a 128 cap a leading window would freeze the
+        sparkline at ticks 0-127 forever once a session outlives it (the
+        canonical run is past tick 900). Deliberately narrower than
+        class/org history's 1000 default: an edge's history is
+        sparkline-consumed (a compact strip), not table-consumed.
+
+        Filters by ``(source_id, target_id)`` only, not ``edge_type`` — the
+        same identity :meth:`EngineBridge.get_inspector_edge`'s
+        ``"{source}->{target}"`` id scheme uses (no canonical edge_id format
+        encodes edge_type either); a pair whose edge_type genuinely changed
+        tick to tick would still surface every real row, never silently
+        dropped.
+
+        Args:
+            game_id: Game session UUID.
+            source_id: The edge's source node id.
+            target_id: The edge's target node id.
+            limit: Maximum rows to return.
+
+        Returns:
+            List of dicts with the ``edge_snapshot`` column names as keys
+            (``attributes`` already parsed from JSONB by psycopg).
+        """
+        with self._pool.connection() as conn, conn.cursor(row_factory=dict_row) as cur:
+            cur.execute(
+                """
+                SELECT tick, edge_type, edge_mode, value_flow, solidarity, tension, attributes
+                FROM (
+                    SELECT tick, edge_type, edge_mode, value_flow, solidarity, tension, attributes
+                    FROM edge_snapshot
+                    WHERE game_id = %s AND source_id = %s AND target_id = %s
+                    ORDER BY tick DESC
+                    LIMIT %s
+                ) trailing_window
+                ORDER BY tick
+                """,
+                (game_id, source_id, target_id, limit),
+            )
+            return [dict(row) for row in cur.fetchall()]
+
     def persist_community_snapshots(
         self,
         game_id: UUID,

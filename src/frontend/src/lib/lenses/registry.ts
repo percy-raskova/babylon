@@ -185,6 +185,21 @@ export const LENS_REGISTRY: readonly MapLensDef[] = [
     availableWhen: hasMetric("solidarity_index"),
   },
   {
+    // Audit Wave 4 straggler (task #76, reports/epochs-vision-gap-audit.md
+    // "critical-nodes/centrality map lens" / "Topology legibility"). Placed
+    // next to solidarity_index — both are network-topology-derived
+    // (SOLIDARITY-edge density vs. org-network degree-centrality), distinct
+    // from agitation's per-class ideological scalar.
+    id: "centrality",
+    group: "struggle",
+    label: "Centrality",
+    tooltip:
+      "Structurally-critical territories — degree-centrality within the org-network topology (organizations/institutions linked by PRESENCE/HOUSES)",
+    legend: { kind: "ramp", stops: DATA_RAMPS.population },
+    toLens: () => ({ kind: "metric", metric: "centrality" }),
+    availableWhen: hasMetric("centrality"),
+  },
+  {
     id: "agitation",
     group: "struggle",
     label: "Agitation",

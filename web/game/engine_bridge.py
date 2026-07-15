@@ -1897,6 +1897,7 @@ class EngineBridge:
             agitation_by_territory=_agitation_index_by_territory(
                 initial_graph, initial_tenancy_members
             ),
+            centrality_by_territory=_centrality_by_territory(initial_state, initial_graph),
         )
         # Spec-109 A1: seed the tick-0 snapshot tables + summary row so
         # timeseries/history surfaces have a baseline point from creation.
@@ -1971,6 +1972,7 @@ class EngineBridge:
                     agitation_by_territory=_agitation_index_by_territory(
                         seeded_graph, seeded_tenancy_members
                     ),
+                    centrality_by_territory=_centrality_by_territory(seeded_state, seeded_graph),
                 )
                 # Spec-109 A1: same backfill for the snapshot/summary tables.
                 _persist_snapshots_safe(self._persistence, session_id, seeded_state)
@@ -2108,6 +2110,12 @@ class EngineBridge:
         :func:`_dominant_class_by_territory`/this function's own
         ``dominant_class`` already use, applied here for consistency, not
         because a tie is expected to occur often for a 2-value enum).
+
+        Audit Wave 4 straggler (task #76): ``centrality`` gets the same
+        partial-coverage-aware population-weighted mean as
+        ``habitability``/``solidarity_index``/``agitation`` — not every hex
+        is a node in the org network (see
+        :func:`_centrality_by_territory`).
         """
         from collections import defaultdict
 
@@ -2147,6 +2155,10 @@ class EngineBridge:
                 "throughput_position_pop": 0,
                 "agitation_sum": 0.0,
                 "agitation_pop": 0,
+                # Audit Wave 4 straggler (task #76): same partial-coverage
+                # pattern — not every hex is a node in the org network.
+                "centrality_sum": 0.0,
+                "centrality_pop": 0,
                 "count": 0,
             }
         )
@@ -2206,6 +2218,11 @@ class EngineBridge:
                 acc["agitation_sum"] += float(agitation) * pop
                 acc["agitation_pop"] += pop
 
+            centrality = attributes.get("centrality")
+            if centrality is not None:
+                acc["centrality_sum"] += float(centrality) * pop
+                acc["centrality_pop"] += pop
+
             territory_type = attributes.get("territory_type")
             if territory_type is not None:
                 territory_type_pop[key][territory_type] += pop
@@ -2225,6 +2242,7 @@ class EngineBridge:
             solidarity_index_pop = acc["solidarity_index_pop"]
             throughput_position_pop = acc["throughput_position_pop"]
             agitation_pop = acc["agitation_pop"]
+            centrality_pop = acc["centrality_pop"]
             role_votes = dominant_class_pop.get(key) or {}
             type_votes = territory_type_pop.get(key) or {}
             features.append(
@@ -2273,6 +2291,11 @@ class EngineBridge:
                         "agitation": (
                             round(acc["agitation_sum"] / agitation_pop, 4)
                             if agitation_pop
+                            else None
+                        ),
+                        "centrality": (
+                            round(acc["centrality_sum"] / centrality_pop, 4)
+                            if centrality_pop
                             else None
                         ),
                         "territory_type": (
@@ -2863,6 +2886,65 @@ class EngineBridge:
                 ruptures = []
 
         return {"class_id": node_id, "history": rows, "ruptures": ruptures}
+
+    def get_edge_history(self, session_id: UUID, edge_id: str) -> dict[str, Any]:
+        """Return one edge's per-tick weight history (audit Wave 4 straggler,
+        task #76 — the edge-weight history sparkline in InspectionStack).
+
+        ``edge_id`` uses the same ``"{source}->{target}"`` scheme
+        :meth:`get_inspector_edge` already established (no canonical
+        edge_id format existed before that method; reused here rather than
+        invented). Post-A1, ``edge_snapshot`` carries one real row per
+        ``(session, tick, source, target, edge_type)`` for EVERY edge type
+        (not just SOLIDARITY) — see :func:`_edge_snapshot_rows`. Reads it
+        via the persistence layer's optional
+        ``query_edge_snapshot_history(session_id, source, target,
+        limit=...)`` capability (SQLite-backed ``RuntimeDatabase`` has no
+        such table and degrades to an empty list, same optional-capability
+        pattern as :meth:`get_org_history`).
+
+        ``weight`` is ``value_flow`` — the one promoted numeric column
+        every edge type carries (SOLIDARITY/TRIBUTE/WAGES/PRESENCE/
+        TENANCY/ADJACENCY/EXPLOITATION alike); ``solidarity``/``tension``
+        ride alongside for the SOLIDARITY-specific treatment the audit
+        brief calls out ("distinct visual treatment for CLIENT_STATE/
+        SOLIDARITY edges") — ``solidarity`` is a real column-level
+        ``None`` (never a fabricated 0.0) for every non-SOLIDARITY edge
+        type.
+
+        Args:
+            session_id: The game session UUID.
+            edge_id: The edge id, ``"{source_id}->{target_id}"``.
+
+        Returns:
+            ``{"edge_id": edge_id, "history": [{"tick", "weight",
+            "solidarity", "tension"}, ...]}`` oldest-tick-first; empty
+            history for a malformed id (no ``"->"``) or an edge never
+            persisted (honest empty, Constitution III.11).
+        """
+        source, sep, target = edge_id.partition("->")
+        if not sep:
+            return {"edge_id": edge_id, "history": []}
+
+        rows: list[dict[str, Any]] = []
+        query = getattr(self._persistence, "query_edge_snapshot_history", None)
+        if callable(query):
+            try:
+                rows = query(session_id, source, target)
+            except Exception:  # noqa: BLE001 — diagnostic; never blocks the request
+                logger.exception("get_edge_history: query_edge_snapshot_history failed")
+                rows = []
+
+        history = [
+            {
+                "tick": row["tick"],
+                "weight": (float(row["value_flow"]) if row.get("value_flow") is not None else None),
+                "solidarity": row.get("solidarity"),
+                "tension": row.get("tension"),
+            }
+            for row in rows
+        ]
+        return {"edge_id": edge_id, "history": history}
 
     # ------------------------------------------------------------------ #
     # Spec 061 US6 T091: inspector endpoints (FR-019)
@@ -4279,7 +4361,8 @@ class EngineBridge:
         # real pre-step (`graph`) -> post-step (`new_graph`) diff. Spec-113
         # Lane D: dominant_class/solidarity_index from the post-step graph
         # (this tick's live TENANCY/SOLIDARITY topology). Wave 2 W2.4:
-        # agitation likewise from the post-step graph.
+        # agitation likewise from the post-step graph. Audit Wave 4
+        # straggler (task #76): centrality from the post-step org network.
         new_tenancy_members = _tenancy_members_by_territory(new_graph)
         _persist_hex_state_safe(
             session_id,
@@ -4296,6 +4379,7 @@ class EngineBridge:
                 new_graph, new_tenancy_members
             ),
             agitation_by_territory=_agitation_index_by_territory(new_graph, new_tenancy_members),
+            centrality_by_territory=_centrality_by_territory(new_state, new_graph),
         )
         # Spec-109 A1: fill the spec-037 snapshot tables + the tick_summary
         # aggregates that back get_game_timeseries (spec-061 FR-003 wire-up).
@@ -6524,9 +6608,11 @@ def _hex_feature_properties(state: Any) -> dict[str, Any]:
     ``pop_total``, ``habitability`` from the JSONB ``attributes`` column —
     Spec-109 A2; ``solidarity_index`` rides the same JSONB ``attributes``
     column — spec-113 Lane D; ``throughput_position``/``agitation``/
-    ``territory_type`` likewise ride ``attributes`` — Wave 2 W2.4) plus the
-    identity/context columns. Extracted from the ``get_map_snapshot`` loop so
-    the contract is unit-testable without a database.
+    ``territory_type`` likewise ride ``attributes`` — Wave 2 W2.4;
+    ``centrality`` rides ``attributes`` too — audit Wave 4 straggler, task
+    #76) plus the identity/context columns. Extracted from the
+    ``get_map_snapshot`` loop so the contract is unit-testable without a
+    database.
 
     Args:
         state: One ``HexState`` row (or any object carrying its columns).
@@ -6554,6 +6640,7 @@ def _hex_feature_properties(state: Any) -> dict[str, Any]:
         "throughput_position": attributes.get("throughput_position"),
         "agitation": attributes.get("agitation"),
         "territory_type": attributes.get("territory_type"),
+        "centrality": attributes.get("centrality"),
     }
 
 
@@ -6620,6 +6707,7 @@ def _hex_state_row(
     dominant_class: str | None = None,
     solidarity_index: float | None = None,
     agitation: float | None = None,
+    centrality: float | None = None,
 ) -> dict[str, Any] | None:
     """Project one :func:`_serialize_territory` dict onto ``hex_latest`` columns.
 
@@ -6686,6 +6774,13 @@ def _hex_state_row(
       required Territory field — always present, never fabricated); rides
       the JSONB ``attributes`` column since it is categorical, not a
       dedicated numeric column.
+    * ``attributes["centrality"]`` — audit Wave 4 straggler (task #76):
+      passed in by the caller (see :func:`_centrality_by_territory`), this
+      territory's own degree-centrality within the org-network topology;
+      ``None`` when the territory has no PRESENCE/HOUSES edge from any
+      organization/institution (sparse today — only ``wayne_county`` seeds
+      real ``Organization`` rows). Rides the JSONB ``attributes`` column
+      like ``agitation``/``solidarity_index``.
 
     Args:
         session_id: The game session UUID (``hex_latest.game_id``).
@@ -6706,6 +6801,11 @@ def _hex_state_row(
             ``ideology.agitation`` this tick (see
             :func:`_agitation_index_by_territory`); ``None`` when unknown
             (Wave 2 W2.4).
+        centrality: This territory's own degree-centrality within the
+            org-network topology this tick (see
+            :func:`_centrality_by_territory`); ``None`` when the territory
+            is absent from the org network (audit Wave 4 straggler, task
+            #76).
 
     Returns:
         Kwargs dict for the :class:`game.models.HexState` constructor, or None.
@@ -6736,6 +6836,8 @@ def _hex_state_row(
     territory_type = territory.get("territory_type")
     if territory_type is not None:
         attributes["territory_type"] = territory_type
+    if centrality is not None:
+        attributes["centrality"] = float(centrality)
 
     row: dict[str, Any] = {
         "game_id": session_id,
@@ -6785,6 +6887,7 @@ def _persist_hex_state_safe(
     dominant_class_by_territory: dict[str, str] | None = None,
     solidarity_index_by_territory: dict[str, float] | None = None,
     agitation_by_territory: dict[str, float] | None = None,
+    centrality_by_territory: dict[str, float] | None = None,
 ) -> None:
     """Best-effort projection of a tick's territories into ``hex_latest``.
 
@@ -6823,6 +6926,11 @@ def _persist_hex_state_safe(
             population-weighted mean agitation this tick (see
             :func:`_agitation_index_by_territory`, Wave 2 W2.4); missing
             entries default to ``None``.
+        centrality_by_territory: Optional map of territory id -> that
+            territory's own degree-centrality within the org-network
+            topology this tick (see :func:`_centrality_by_territory`,
+            audit Wave 4 straggler task #76); missing entries default to
+            ``None``.
     """
     if not serialized_territories:
         return
@@ -6831,6 +6939,7 @@ def _persist_hex_state_safe(
     dominant_class_by_territory = dominant_class_by_territory or {}
     solidarity_index_by_territory = solidarity_index_by_territory or {}
     agitation_by_territory = agitation_by_territory or {}
+    centrality_by_territory = centrality_by_territory or {}
     rows = [
         row
         for t in serialized_territories
@@ -6844,6 +6953,7 @@ def _persist_hex_state_safe(
                 dominant_class=dominant_class_by_territory.get(str(t.get("id"))),
                 solidarity_index=solidarity_index_by_territory.get(str(t.get("id"))),
                 agitation=agitation_by_territory.get(str(t.get("id"))),
+                centrality=centrality_by_territory.get(str(t.get("id"))),
             )
         )
         is not None
@@ -7366,6 +7476,56 @@ def _solidarity_percolation_ratio(state: WorldState, graph: Any) -> float | None
         solidarity_graph, total_social_classes
     )
     return round(percolation_ratio, 4)
+
+
+def _centrality_by_territory(state: WorldState, graph: Any) -> dict[str, float]:
+    """Per-territory degree-centrality within the org-network topology
+    (audit Wave 4 straggler, task #76 — the "critical-nodes/centrality map
+    lens").
+
+    Reuses :func:`_build_org_network`/:func:`_org_network_centrality`
+    UNFILTERED (the whole session's orgs/institutions/territories, not one
+    request's territory-scoped view) so a territory's centrality reading is
+    comparable across the entire map, then keeps only the ``degree``
+    reading for nodes whose ``type`` is ``"territory"`` — the projection
+    the audit brief calls for: territory nodes are literal nodes in the org
+    network (via PRESENCE/HOUSES edges), so they carry their own real
+    centrality directly. No TENANCY projection through social_class
+    members is needed (unlike :func:`_agitation_index_by_territory`/
+    :func:`_solidarity_index_by_territory`) — the org network's typed
+    contract excludes social_class nodes entirely (AW4-R1 verified
+    divergence), so there is nothing to project.
+
+    Verified non-degenerate on ``wayne_county`` (2026-07-15, the only
+    shipped scenario with real ``Organization`` rows —
+    ``_legacy_wayne.py``): its 3 PRESENCE-linked territories split
+    0.25/0.5/0.5 degree — the hub territory both ORG001 and ORG002 share
+    reads distinctly higher than the one only ORG002 touches, a real
+    structural signal, not a decorative constant. Every OTHER shipped
+    scenario (``us``, ``high_tension``, ``imperial_circuit``,
+    ``labor_aristocracy``, ``two_node``) seeds zero organizations, so the
+    org network — and this lens — is honestly empty there.
+
+    Args:
+        state: The hydrated WorldState (organizations/institutions/
+            territories model dicts) — passed straight to
+            :func:`_build_org_network`.
+        graph: The hydrated session graph (edges live only here).
+
+    Returns:
+        Map of territory node id -> degree centrality in [0, 1], rounded to
+        4 places. A territory absent from the org network (no
+        organization/institution has a PRESENCE edge there) is simply
+        absent — callers must treat a missing entry as ``None``, never a
+        fabricated 0.0 (Constitution III.11).
+    """
+    nodes, edges = _build_org_network(state, graph)
+    centrality = _org_network_centrality(nodes, edges)
+    return {
+        str(node["id"]): round(centrality[str(node["id"])]["degree"], 4)
+        for node in nodes
+        if node["type"] == "territory" and str(node["id"]) in centrality
+    }
 
 
 def _serialize_edge(rel: Any) -> dict[str, Any]:

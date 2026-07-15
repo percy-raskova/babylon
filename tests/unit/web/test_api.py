@@ -116,6 +116,17 @@ class TestURLRouting:
         )
         assert url == "/api/games/aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee/node/C004/history/"
 
+    # Audit Wave 4 straggler (task #76): edge-weight history sparkline.
+    # ">" is a reserved URL character — django's reverse() percent-encodes it
+    # (matches how any "source->target" edge_id round-trips through reverse();
+    # the pre-existing inspector-edge route has the identical quirk).
+    def test_inspector_edge_history_url(self) -> None:
+        url = reverse(
+            "game:inspector-edge-history",
+            kwargs={"game_id": "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee", "edge_id": "C001->C004"},
+        )
+        assert url == "/api/games/aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee/edge/C001-%3EC004/history/"
+
     # Spec 103: Trade surfaces URL routing
     def test_game_trade_flows_url(self) -> None:
         url = reverse(
@@ -168,6 +179,14 @@ class TestAuthEnforcement:
         from game.api import inspector_node_history
 
         response = inspector_node_history(request, game_id="some-uuid", node_id="C004")
+        assert response.status_code == 403
+
+    def test_inspector_edge_history_unauthenticated_returns_403(self) -> None:
+        factory = RequestFactory()
+        request = factory.get("/api/games/some-uuid/edge/C001->C004/history/")
+        from game.api import inspector_edge_history
+
+        response = inspector_edge_history(request, game_id="some-uuid", edge_id="C001->C004")
         assert response.status_code == 403
 
 

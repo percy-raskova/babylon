@@ -53,6 +53,13 @@ import type { MapLayer } from "@/types/game";
  * `"URBAN"/"SUBURBAN"/"PERIURBAN"` vocabulary), is categorical like
  * `dominant_class` and likewise excluded here; it drives the dedicated
  * `territory_type` `Lens` kind instead.
+ *
+ * Audit Wave 4 straggler (task #76, `reports/epochs-vision-gap-audit.md`
+ * "critical-nodes/centrality map lens"): `centrality` — a territory's own
+ * degree-centrality within the org-network topology
+ * (`_centrality_by_territory`/`_org_network_centrality`, bridge-derived,
+ * reusing the NETWORK-scope `get_org_network` centrality formula). Numeric
+ * like `agitation`, appended last.
  */
 export const MAP_METRICS = [
   "profit_rate",
@@ -66,6 +73,7 @@ export const MAP_METRICS = [
   "solidarity_index",
   "throughput_position",
   "agitation",
+  "centrality",
 ] as const;
 
 export type MapMetric = (typeof MAP_METRICS)[number];
@@ -186,6 +194,7 @@ const METRIC_LABELS: Record<MapMetric, string> = {
   solidarity_index: "Solidarity · SOLIDARITY-Edge Density",
   throughput_position: "Throughput Position · Circulation Intensity",
   agitation: "Agitation · Political Energy",
+  centrality: "Centrality · Org-Network Criticality",
 };
 
 /** Title-cases a single word (`"exploitation"` -> `"Exploitation"`) — `field_flow`'s legend label only. */
@@ -205,16 +214,18 @@ export function lensLegendLabel(lens: Lens): string {
 /**
  * The `MapLayer` a metric name reuses for its data ramp. `MapMetric` and
  * `MapLayer` overlap on every metric except `habitability`/`solidarity_index`
- * (spec-109 A2 / spec-113 Lane B additions) and, as of Wave 2 Round 2,
- * `throughput_position`/`agitation` — all four predate/sit outside
- * `MapLayer` and have no ramp of their own there — each resolves its real
- * ramp directly in `lensRampStops` instead of through `rampForLayer`.
+ * (spec-109 A2 / spec-113 Lane B additions), `throughput_position`/
+ * `agitation` (Wave 2 Round 2), and `centrality` (audit Wave 4 straggler,
+ * task #76) — all five predate/sit outside `MapLayer` and have no ramp of
+ * their own there — each resolves its real ramp directly in
+ * `lensRampStops` instead of through `rampForLayer`.
  */
 function metricToMapLayer(metric: MapMetric): MapLayer | null {
   return metric === "habitability" ||
     metric === "solidarity_index" ||
     metric === "throughput_position" ||
-    metric === "agitation"
+    metric === "agitation" ||
+    metric === "centrality"
     ? null
     : (metric as MapLayer);
 }
@@ -249,9 +260,16 @@ export function lensRampStops(lens: Lens): string[] | null {
       // uses — distinct from heat's alarm terminal and solidarity's green,
       // its nearest struggle-group cousins). Both are of the 3 canonical
       // ramps (consciousness/wealth/population) not yet bound to any
-      // REGISTERED lens before this round; population is left unclaimed.
+      // REGISTERED lens before this round; population was left unclaimed
+      // until the audit Wave 4 straggler below claimed it.
       if (lens.metric === "throughput_position") return DATA_RAMPS.wealth;
       if (lens.metric === "agitation") return DATA_RAMPS.consciousness;
+      // Audit Wave 4 straggler (task #76): centrality claims the population
+      // ramp — the one canonical ramp (of consciousness/wealth/population)
+      // no registered lens had bound yet, giving it a visual identity
+      // distinct from every existing metric lens rather than reusing
+      // agitation's/org_presence's consciousness ramp.
+      if (lens.metric === "centrality") return DATA_RAMPS.population;
       const layer = metricToMapLayer(lens.metric);
       return layer === null ? DATA_RAMPS.biocapacity : rampForLayer(layer);
     }
@@ -267,7 +285,7 @@ export function lensRampStops(lens: Lens): string[] | null {
  * Mirrors `web/game/map_contract.py`'s `MAP_HISTORY_REPLAYABLE_METRICS` in
  * lockstep — the same "single source of truth per side" convention
  * `MAP_METRICS` above follows for the backend's `MAP_METRIC_PROPERTIES`.
- * Only these 4 of the 11 `MAP_METRICS` have a genuine append-only per-tick
+ * Only these 4 of the 12 `MAP_METRICS` have a genuine append-only per-tick
  * historical store (`territory_snapshot`/`view_runtime_trace_emission`) the
  * `GET /api/games/{id}/map/history/` scrubber can replay; every other
  * metric exists only in the current-tick `hex_latest` cache and 422s

@@ -255,6 +255,34 @@ _MAP_METRICS: tuple[SeamEntry, ...] = (
             "(a different, pre-existing mock field on the unrelated territories snapshot list)."
         ),
     ),
+    # --- Audit Wave 4 straggler (task #76, 2026-07-15) ---
+    SeamEntry(
+        payload="org_network_centrality",
+        wire_keys=("centrality",),
+        scope=SeamScope.MAP,
+        owner_layer="bridge-derived (_centrality_by_territory / _org_network_centrality)",
+        liveness_class=LivenessClass.DECLARED_CONDITIONAL,
+        liveness_condition=(
+            "non-null only for a territory carrying a PRESENCE/HOUSES edge from at least one "
+            "organization/institution in the org network — sparse today: only wayne_county "
+            "seeds real Organization rows (_legacy_wayne.py), so every other shipped scenario "
+            "(us/high_tension/imperial_circuit/labor_aristocracy/two_node) is honestly empty "
+            "for this lens"
+        ),
+        dtype="float",
+        read_paths=_MAP_EMITTERS,
+        spec_ref="Epochs audit · Wave 4 · task #76",
+        notes=(
+            "A territory's own degree-centrality within the org-network topology — reuses the "
+            "NETWORK-scope 'centrality' entry's underlying _org_network_centrality formula, "
+            "computed unfiltered (whole-session org network, not one request's scoped view) so "
+            "readings are comparable across the map. Distinct from NETWORK-scope 'centrality' "
+            "(per-node dict keyed by scope.wire_key — SeamScope docstring): this MAP row is one "
+            "float per territory, rides hex_latest's JSONB attributes column like "
+            "agitation/solidarity_index. Verified non-degenerate on wayne_county's 3 "
+            "PRESENCE-linked territories (0.25/0.5/0.5 degree split)."
+        ),
+    ),
 )
 
 # ---------------------------------------------------------------------------

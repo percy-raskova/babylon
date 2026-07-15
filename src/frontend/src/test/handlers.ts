@@ -21,6 +21,7 @@ import {
   makeTradeFlowsPayload,
   makeJournalPayload,
   makeClassHistoryPayload,
+  makeEdgeHistoryPayload,
   makeFieldStatePayload,
   makeMapHistoryPayload,
   makeOrgNetworkPayload,
@@ -339,6 +340,18 @@ export const handlers = [
     return HttpResponse.json({
       status: "ok",
       data: makeClassHistoryPayload({ class_id: String(params.entityId) }),
+    });
+  }),
+
+  // Audit Wave 4 straggler (task #76) — GET /api/games/{id}/edge/{entityId}/history/:
+  // the edge-weight history sparkline. Registered ahead of the generic
+  // catch-all below for the same reason as node:history above. Empty by
+  // default; tests needing real weight points override with server.use().
+  http.get("/api/games/:id/edge/:entityId/history/", ({ params }) => {
+    logRequest("GET edge:history");
+    return HttpResponse.json({
+      status: "ok",
+      data: makeEdgeHistoryPayload({ edge_id: String(params.entityId) }),
     });
   }),
 

@@ -229,6 +229,8 @@ function hexPropsToMetrics(hexProps: HexMapFeatureProperties): LensTerritory["me
     // Wave 2 Round 2 additions.
     throughput_position: nullToUndefined(hexProps.throughput_position),
     agitation: nullToUndefined(hexProps.agitation),
+    // Audit Wave 4 straggler (task #76).
+    centrality: nullToUndefined(hexProps.centrality),
   };
 }
 

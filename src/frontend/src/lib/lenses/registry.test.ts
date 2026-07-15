@@ -64,6 +64,14 @@ describe("LENS_REGISTRY", () => {
     expect(agitation?.toLens()).toEqual({ kind: "metric", metric: "agitation" });
     expect(territoryType?.toLens()).toEqual({ kind: "territory_type" });
   });
+
+  it("includes the centrality addition (audit Wave 4 straggler, task #76)", () => {
+    const def = LENS_REGISTRY.find((d) => d.id === "centrality");
+    expect(def).toBeDefined();
+    expect(def?.group).toBe("struggle");
+    expect(def?.legend.kind).toBe("ramp");
+    expect(def?.toLens()).toEqual({ kind: "metric", metric: "centrality" });
+  });
 });
 
 describe("lensDefForLens", () => {
@@ -88,6 +96,10 @@ describe("lensDefForLens", () => {
       "throughput_position",
     );
     expect(lensDefForLens({ kind: "metric", metric: "agitation" })?.id).toBe("agitation");
+  });
+
+  it("resolves the centrality metric lens back to its registry entry", () => {
+    expect(lensDefForLens({ kind: "metric", metric: "centrality" })?.id).toBe("centrality");
   });
 
   it("resolves field_flow back to its registry entry, keyed by field", () => {
@@ -146,6 +158,16 @@ describe("availableWhen degradation (existing balkanization pattern)", () => {
     expect(available).toContain("throughput_position");
     expect(available).toContain("agitation");
     expect(available).toContain("territory_type");
+  });
+
+  it("centrality degrades honestly when absent from available_metrics (audit Wave 4 straggler, task #76)", () => {
+    const ctx = { availableMetrics: ["heat", "population"] };
+    expect(availableLensRegistry(ctx).map((d) => d.id)).not.toContain("centrality");
+  });
+
+  it("centrality is available once advertised in available_metrics", () => {
+    const ctx = { availableMetrics: ["centrality"] };
+    expect(availableLensRegistry(ctx).map((d) => d.id)).toContain("centrality");
   });
 
   it("heat and habitability are always available (no backend gate)", () => {
@@ -252,5 +274,21 @@ describe("legend metadata", () => {
     expect(throughput.legend.stops.length).toBeGreaterThan(1);
     expect(agitation.legend.stops.length).toBeGreaterThan(1);
     expect(throughput.legend.stops).not.toEqual(agitation.legend.stops);
+  });
+
+  it("centrality carries a non-empty ramp stop list distinct from agitation's/throughput_position's (audit Wave 4 straggler, task #76)", () => {
+    const centrality = LENS_REGISTRY.find((d) => d.id === "centrality");
+    const agitation = LENS_REGISTRY.find((d) => d.id === "agitation");
+    const throughput = LENS_REGISTRY.find((d) => d.id === "throughput_position");
+    if (
+      centrality?.legend.kind !== "ramp" ||
+      agitation?.legend.kind !== "ramp" ||
+      throughput?.legend.kind !== "ramp"
+    ) {
+      throw new Error("expected ramp legends");
+    }
+    expect(centrality.legend.stops.length).toBeGreaterThan(1);
+    expect(centrality.legend.stops).not.toEqual(agitation.legend.stops);
+    expect(centrality.legend.stops).not.toEqual(throughput.legend.stops);
   });
 });

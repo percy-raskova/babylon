@@ -38,6 +38,13 @@
  * a real page would show without a `/field_state/` mock is exactly the
  * honest-empty case `DeckGLMap.fieldFlow.test.tsx` covers at the unit level.
  *
+ * The audit Wave 4 straggler (task #76) adds a 14th entry — `centrality` (a
+ * territory's own degree-centrality within the org-network topology),
+ * bringing the roster to 14. `hasMetric`-gated like solidarity_index/
+ * agitation/throughput_position/territory_type/class_composition; this
+ * file's mock `/map/` response never sets `metadata.available_metrics`, so
+ * it renders here regardless, same as those four.
+ *
  * Needs only the cockpit Vite dev server — no live Django/Postgres, no
  * storageState — runs on the default "chromium" project.
  */
@@ -179,6 +186,7 @@ const LENSES = [
   { id: "throughput_position", label: /throughput/i },
   { id: "heat", label: /heat/i },
   { id: "solidarity_index", label: /solidarity/i },
+  { id: "centrality", label: /central/i },
   { id: "agitation", label: /agitation/i },
   { id: "field_flow_exploitation", label: /gradient wind/i },
   { id: "stance", label: /stance/i },
@@ -220,8 +228,8 @@ async function mockRoutes(page: import("@playwright/test").Page, mapData: unknow
 }
 
 test.describe("Map lens cycling (backend-free, spec-110 B6/spec-113 Lane B)", () => {
-  test("cycles all 12 registered lenses with no uncaught page error", async ({ page }) => {
-    // 12 sequential lens switches = 12 full deck.gl attribute rebuilds — an
+  test("cycles all 14 registered lenses with no uncaught page error", async ({ page }) => {
+    // 14 sequential lens switches = 14 full deck.gl attribute rebuilds — an
     // order of magnitude more GPU work than this file's other tests. Under
     // software GL (headless CI/SwiftShader) each rebuild costs seconds, so
     // this one legitimately needs Playwright's slow-test budget (3×).

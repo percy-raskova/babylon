@@ -68,6 +68,14 @@ export interface HexMapFeatureProperties {
    * `"URBAN"/"SUBURBAN"/"PERIURBAN"` vocabulary. Categorical.
    */
   territory_type?: string | null;
+  /**
+   * Audit Wave 4 straggler (task #76): a territory's own degree-centrality
+   * within the org-network topology (`_centrality_by_territory`). Honest
+   * null/absent for a territory with no PRESENCE/HOUSES edge from any
+   * organization/institution — sparse today (only `wayne_county` seeds
+   * real organizations).
+   */
+  centrality?: number | null;
   [key: string]: unknown;
 }
 

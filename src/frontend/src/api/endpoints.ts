@@ -39,6 +39,7 @@ import type {
   ScenarioInfo,
   ActionPreviewResult,
   ClassHistoryPayload,
+  EdgeHistoryPayload,
   FieldStatePayload,
   MapHistoryPayload,
 } from "@/types/game";
@@ -164,6 +165,10 @@ export const endpoints = {
   // routes above but, unlike them, has a real frontend consumer
   // (SurvivalDuelPanel) as of this row, hence typed rather than Untyped.
   inspectorNodeHistory: ep<ClassHistoryPayload>("/api/games/:id/node/:entityId/history/"),
+  // Audit Wave 4 straggler (task #76): edge-weight history sparkline — same
+  // "has a real frontend consumer" reasoning as inspectorNodeHistory above
+  // (the edge adapter's own `.history` row, not a dead punch-list row).
+  inspectorEdgeHistory: ep<EdgeHistoryPayload>("/api/games/:id/edge/:entityId/history/"),
 
   // ---- Formula/metric provenance (spec-113 Lane D) ---------------------- //
   explain: ep<ExplainResponse>("/api/games/:id/explain/"),

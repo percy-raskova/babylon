@@ -59,12 +59,26 @@ MAP_METRIC_PROPERTIES: tuple[str, ...] = (
     "throughput_position",
     "agitation",
     "territory_type",
+    # Audit Wave 4 straggler (task #76 — "critical-nodes/centrality map
+    # lens"): a territory's own degree-centrality within the org-network
+    # topology (organizations/institutions/territories linked by
+    # PRESENCE/HOUSES edges — see EngineBridge._org_network_centrality,
+    # AW4-R1 commit c312e62d). Territory nodes ARE literal nodes in that
+    # network, so this rides their own real reading — no TENANCY projection
+    # needed, unlike agitation/solidarity_index (which read social_class
+    # members that never enter the org network at all). Rides hex_latest's
+    # JSONB attributes column like habitability/agitation. Honest null for
+    # any territory absent from the org network (no org/institution has a
+    # PRESENCE edge there) — sparse today: only wayne_county seeds real
+    # Organization rows (_legacy_wayne.py), so every other shipped scenario
+    # is honestly empty for this lens.
+    "centrality",
 )
 
 # Backend-W3R3 (Program 17 Wave 3): the MAP_METRIC_PROPERTIES subset
 # genuinely backed by an append-only per-tick persisted store, so
 # ``GET /api/games/{id}/map/history/`` can replay it honestly (Constitution
-# III.11 — the other 9 exist only in ``hex_latest``, a current-tick-only
+# III.11 — the other 10 exist only in ``hex_latest``, a current-tick-only
 # cache overwritten every tick by ``_persist_hex_state_safe``, with no
 # historical table at all). Verified against a running canonical session
 # (2026-07-15, tick 987): ``heat``/``population`` off ``territory_snapshot``

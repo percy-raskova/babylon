@@ -399,6 +399,35 @@ export interface RuptureMarker {
   eventId: string;
 }
 
+/**
+ * One per-tick `edge_snapshot` reading (audit Wave 4 straggler, task #76 —
+ * the edge-weight history sparkline). `weight` is `value_flow` — the one
+ * promoted numeric column every edge type carries (SOLIDARITY/TRIBUTE/
+ * WAGES/PRESENCE/TENANCY/ADJACENCY/EXPLOITATION alike); `solidarity` is a
+ * real column-level `null` (never fabricated) for every non-SOLIDARITY
+ * edge type. Honest-null throughout (Constitution III.11): a tick the
+ * engine has not populated stays `null` rather than a fabricated value.
+ */
+export interface EdgeHistoryPoint {
+  tick: number;
+  weight: number | null;
+  solidarity: number | null;
+  tension: number | null;
+}
+
+/**
+ * `GET /api/games/:id/edge/:entityId/history/` response body (audit Wave 4
+ * straggler, task #76) — mirrors `get_org_history`'s `{org_id, history}`
+ * shape (`web/game/engine_bridge.py`). `edge_id` is the same
+ * `"{source}->{target}"` scheme `get_inspector_edge` established. Oldest-
+ * tick-first; an empty `history` is an honest "no ticks recorded yet",
+ * never a fabricated flat line.
+ */
+export interface EdgeHistoryPayload {
+  edge_id: string;
+  history: EdgeHistoryPoint[];
+}
+
 /** Spec 093 US5: GET /api/games/{id}/economy/?territory_id= — real
  *  per-territory economic summary for Territory Detail's economic panel.
  *  See `specs/093-territory-org-detail/contracts/economy.yaml`. */
@@ -881,6 +910,14 @@ export interface AdminFeatureProperties {
    * Categorical, like `dominant_class`.
    */
   territory_type?: string | null;
+  /**
+   * Audit Wave 4 straggler (task #76) — `_aggregate_hex_features`'s
+   * population-weighted mean of `centrality` (a territory's own
+   * degree-centrality within the org-network topology,
+   * `_centrality_by_territory`). Optional/nullable for the same
+   * partial-coverage reason as `throughput_position`/`agitation`.
+   */
+  centrality?: number | null;
 }
 
 // ---------------------------------------------------------------------------

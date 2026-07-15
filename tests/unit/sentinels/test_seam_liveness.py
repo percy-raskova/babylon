@@ -215,6 +215,10 @@ def test_must_be_live_scope_matches_registry() -> None:
         # family alongside the derived-rate/Φ group above.
         "throughput_position",
         "agitation",
+        # Audit Wave 4 straggler (task #76): centrality is non-null only for
+        # a territory carrying a PRESENCE/HOUSES edge from an org/institution
+        # in the (today sparse, wayne_county-only) org network.
+        "centrality",
     }
     assert gated.isdisjoint(conditional)
 

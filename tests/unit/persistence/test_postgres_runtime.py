@@ -1328,3 +1328,65 @@ class TestQueryCountyTraceMetricFrames:
         assert "entity_id AS county_fips" in sql
         assert "entity_kind" in sql
         assert params[:3] == (session_id, 986, 987)
+
+
+class TestQueryEdgeSnapshotHistory:
+    """Tests for PostgresRuntime.query_edge_snapshot_history (audit Wave 4
+    straggler, task #76 — the edge-weight history sparkline).
+
+    The cap must be a TRAILING window (most recent ``limit`` ticks,
+    re-ordered oldest-first) per the ``/map/history/`` 128 convention
+    (``_MAP_HISTORY_WINDOW_CAP``: ``resolved_from = requested_to - CAP + 1``)
+    — a plain ``ORDER BY tick LIMIT 128`` would freeze the sparkline at
+    ticks 0-127 forever once a session outlives the cap (the canonical run
+    is past tick 900)."""
+
+    def test_issues_trailing_window_query(
+        self,
+        runtime: PostgresRuntime,
+        session_id: UUID,
+        mock_cursor: MagicMock,
+    ) -> None:
+        mock_cursor.fetchall.return_value = [
+            {
+                "tick": 900,
+                "edge_type": "solidarity",
+                "edge_mode": None,
+                "value_flow": 1.5,
+                "solidarity": 0.4,
+                "tension": 0.1,
+                "attributes": {},
+            },
+            {
+                "tick": 901,
+                "edge_type": "solidarity",
+                "edge_mode": None,
+                "value_flow": 2.0,
+                "solidarity": 0.6,
+                "tension": 0.2,
+                "attributes": {},
+            },
+        ]
+
+        result = runtime.query_edge_snapshot_history(session_id, "C001", "C004")
+
+        assert result[0]["tick"] == 900
+        assert result[1]["value_flow"] == 2.0
+        sql = mock_cursor.execute.call_args[0][0]
+        params = mock_cursor.execute.call_args[0][1]
+        assert "edge_snapshot" in sql
+        # Trailing window: inner DESC-limited select, outer ascending re-order.
+        assert "DESC" in sql
+        assert sql.rindex("ORDER BY tick") > sql.index("DESC")
+        assert params == (session_id, "C001", "C004", 128)
+
+    def test_limit_kwarg_is_forwarded(
+        self,
+        runtime: PostgresRuntime,
+        session_id: UUID,
+        mock_cursor: MagicMock,
+    ) -> None:
+        runtime.query_edge_snapshot_history(session_id, "C001", "C004", limit=16)
+
+        params = mock_cursor.execute.call_args[0][1]
+        assert params[-1] == 16

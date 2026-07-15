@@ -43,11 +43,13 @@ import {
 import { DATA_RAMPS } from "@/theme/colors";
 
 describe("MAP_METRICS mirrors the backend's map_contract.py MAP_METRIC_PROPERTIES", () => {
-  it("has exactly the 11 numeric contract metric names, in contract order", () => {
+  it("has exactly the 12 numeric contract metric names, in contract order", () => {
     // Wave 2 Round 2 (reports/wave2-implementation-map.md): throughput_position
     // (ruling 1 — wired for real, no longer a frozen 1.0 constant) and
     // agitation (DECLARED_CONDITIONAL — legitimately 0.0 absent a crisis tick)
-    // join the numeric contract, appended after solidarity_index.
+    // join the numeric contract, appended after solidarity_index. Audit Wave 4
+    // straggler (task #76): centrality (a territory's own degree-centrality
+    // within the org-network topology) is appended after agitation.
     expect(MAP_METRICS).toEqual([
       "profit_rate",
       "exploitation_rate",
@@ -60,6 +62,7 @@ describe("MAP_METRICS mirrors the backend's map_contract.py MAP_METRIC_PROPERTIE
       "solidarity_index",
       "throughput_position",
       "agitation",
+      "centrality",
     ]);
   });
 
@@ -78,7 +81,7 @@ describe("SELECTABLE_METRICS excludes the metrics with a dedicated Lens kind", (
     expect(SELECTABLE_METRICS).not.toContain("habitability");
   });
 
-  it("keeps every other contract metric, including solidarity_index/throughput_position/agitation", () => {
+  it("keeps every other contract metric, including solidarity_index/throughput_position/agitation/centrality", () => {
     expect([...SELECTABLE_METRICS].sort()).toEqual(
       [
         "profit_rate",
@@ -90,6 +93,7 @@ describe("SELECTABLE_METRICS excludes the metrics with a dedicated Lens kind", (
         "solidarity_index",
         "throughput_position",
         "agitation",
+        "centrality",
       ].sort(),
     );
   });
@@ -241,6 +245,12 @@ describe("lensLegendLabel", () => {
     );
   });
 
+  it("labels the centrality metric lens with its own name (audit Wave 4 straggler, task #76)", () => {
+    expect(lensLegendLabel({ kind: "metric", metric: "centrality" }).toLowerCase()).toContain(
+      "central",
+    );
+  });
+
   it("labels field_flow with 'Gradient Wind' plus the title-cased field name", () => {
     expect(lensLegendLabel({ kind: "field_flow", field: "exploitation" })).toBe(
       "Gradient Wind · Exploitation Field",
@@ -316,6 +326,13 @@ describe("lensRampStops — single ramp resolution shared by fill + legend", () 
     const throughput = lensRampStops({ kind: "metric", metric: "throughput_position" });
     const agitation = lensRampStops({ kind: "metric", metric: "agitation" });
     expect(throughput).not.toEqual(agitation);
+  });
+
+  it("centrality resolves to the population ramp — the one canonical ramp no other registered lens had yet claimed (audit Wave 4 straggler, task #76)", () => {
+    const stops = lensRampStops({ kind: "metric", metric: "centrality" });
+    expect(stops).toEqual(DATA_RAMPS.population);
+    expect(stops).not.toEqual(DATA_RAMPS.consciousness);
+    expect(stops).not.toEqual(DATA_RAMPS.wealth);
   });
 });
 

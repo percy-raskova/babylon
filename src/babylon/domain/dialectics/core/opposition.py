@@ -83,6 +83,9 @@ __all__ = [
     "OppositionSpec",
     "OppositionState",
     "PoleBinding",
+    "PoleMeasure",
+    "PoleReading",
+    "PoleSample",
 ]
 
 
@@ -106,6 +109,56 @@ class GapMeasure[I](Protocol):
     def __call__(self, inputs: I) -> GapReading:
         """Return the current :class:`GapReading` for these inputs."""
         ...
+
+
+class PoleSample(BaseModel):
+    """One node's RAW signed position on one opposition's axis (ADR070).
+
+    Emitted by a :class:`PoleMeasure` only for nodes with at least one
+    contributing edge/attribute on that axis — a node absent from the
+    returned tuple is UNPOSITIONED, never a fabricated ``sigma=0.0``
+    stand-in (Constitution III.11: absence over fabrication). ``sigma``
+    reuses the aggregate ``balance`` convention: negative = pole A
+    dominant from this node's position, positive = pole B.
+
+    Example:
+        >>> PoleSample(entity_id="C001", sigma=-0.5).sigma
+        -0.5
+    """
+
+    entity_id: str = Field(..., min_length=1, description="Graph node id this sample reads")
+    sigma: Balance = Field(..., description="Signed per-node position; balance convention")
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+
+class PoleMeasure[I](Protocol):
+    """Measures an opposition's per-node pole samples against inputs of type ``I``."""
+
+    def __call__(self, inputs: I) -> tuple[PoleSample, ...]:
+        """Return one :class:`PoleSample` per positioned node (absent = unpositioned)."""
+        ...
+
+
+class PoleReading(BaseModel):
+    """One node's FINALIZED pole assignment on one opposition (ADR070).
+
+    The registry derives ``side`` centrally from the sample's sigma sign
+    with the SAME tie rule as the aggregate ``leading_pole``
+    (:meth:`OppositionRegistry._lead`): a pole persists until actually
+    overturned.
+
+    Example:
+        >>> PoleReading(opposition_key="wage", entity_id="C001", side="b", sigma=0.8).side
+        'b'
+    """
+
+    opposition_key: str = Field(..., min_length=1)
+    entity_id: str = Field(..., min_length=1)
+    side: Literal["a", "b"] = Field(..., description="Which pole this node sits on")
+    sigma: Balance = Field(..., description="Signed per-node position; balance convention")
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
 
 
 class PoleBinding(BaseModel):
@@ -201,10 +254,16 @@ class OppositionSpec(BaseModel):
 
 @dataclass(frozen=True)
 class BoundOpposition[I]:
-    """An :class:`OppositionSpec` bound to its :class:`GapMeasure`."""
+    """An :class:`OppositionSpec` bound to its :class:`GapMeasure`.
+
+    ``pole_measure`` is the optional per-node channel (ADR070): bindings
+    without one contribute nothing to :meth:`OppositionRegistry.read_poles`
+    — the channel ships inert by default.
+    """
 
     spec: OppositionSpec
     measure: GapMeasure[I]
+    pole_measure: PoleMeasure[I] | None = None
 
 
 class OppositionState(BaseModel):
@@ -450,6 +509,54 @@ class OppositionRegistry[I]:
             for draft in drafts
         )
 
+    def read_poles(
+        self,
+        inputs: I,
+        previous: Mapping[tuple[str, str], PoleReading] | None = None,
+    ) -> tuple[PoleReading, ...]:
+        """Per-node pole assignments for every binding carrying a ``pole_measure``.
+
+        The per-node sibling of :meth:`step` (ADR070): same inputs, same
+        tick, strictly additive — bindings without a ``pole_measure``
+        contribute nothing. ``side`` derives centrally from each sample's
+        sigma sign via the SAME tie rule as :meth:`_lead`: ``sigma == 0``
+        holds the previous side for that ``(opposition_key, entity_id)``
+        pair and defaults to ``"a"`` with no history — a pole persists
+        until actually overturned.
+
+        Args:
+            inputs: Live inputs handed to every bound pole measure.
+            previous: Last tick's readings keyed by
+                ``(opposition_key, entity_id)``, for tie inertia.
+
+        Returns:
+            One reading per (positioned node, measured opposition), sorted
+            by ``(opposition_key, entity_id)`` — a defensive sort, since a
+            measure may build its samples from an unordered accumulator.
+            Nodes with no contributing edge/attribute on an axis are
+            simply absent (UNPOSITIONED), never ``sigma=0.0``.
+        """
+        readings: list[PoleReading] = []
+        for binding in self._bindings:  # bounded by registered bindings
+            if binding.pole_measure is None:
+                continue
+            for sample in binding.pole_measure(inputs):  # bounded by nodes on this axis
+                prior = (
+                    previous.get((binding.spec.key, sample.entity_id))
+                    if previous is not None
+                    else None
+                )
+                readings.append(
+                    PoleReading(
+                        opposition_key=binding.spec.key,
+                        entity_id=sample.entity_id,
+                        side=self._pole_side(sample.sigma, prior),
+                        sigma=sample.sigma,
+                    )
+                )
+        readings.sort(key=lambda reading: (reading.opposition_key, reading.entity_id))
+        return tuple(readings)
+
     def _score(self, state: OppositionState) -> float:
         """Mao's principal-contradiction ranking: sharp AND fast-developing."""
         return state.gap * (1.0 + self._rate_weight * abs(state.rate))
@@ -480,3 +587,12 @@ class OppositionRegistry[I]:
         if balance > 0.0:
             return "b"
         return prior.leading_pole if prior is not None else "a"
+
+    @staticmethod
+    def _pole_side(sigma: float, prior: PoleReading | None) -> Literal["a", "b"]:
+        """Per-node :meth:`_lead`: sign selects the side; zero holds the previous."""
+        if sigma < 0.0:
+            return "a"
+        if sigma > 0.0:
+            return "b"
+        return prior.side if prior is not None else "a"

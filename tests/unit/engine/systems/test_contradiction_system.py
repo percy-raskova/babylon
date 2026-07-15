@@ -275,3 +275,46 @@ class TestWageValuePairsExtraction:
         graph.add_node("owner", wealth=30.0)
         graph.add_edge("worker", "owner", edge_type=EdgeType.EXPLOITATION)
         assert self._inputs(graph).wage_value_pairs == ()
+
+
+class TestGraphInputIdPairs:
+    """`_build_graph_inputs` carries node ids beside the float pairs (Program 19).
+
+    The id-carrying fields feed the per-node pole measures; they are built in
+    the SAME loops as the float pairs, so every skip rule (inactive endpoint,
+    missing attr) applies identically to both.
+    """
+
+    @staticmethod
+    def _inputs(graph: nx.DiGraph[str]):  # type: ignore[no-untyped-def]
+
+        return ContradictionSystem()._build_graph_inputs(graph)
+
+    def test_exploitation_id_pairs_carry_endpoint_ids(self) -> None:
+        graph = BabylonGraph()
+        graph.add_node("worker", wealth=10.0)
+        graph.add_node("owner", wealth=30.0)
+        graph.add_edge("worker", "owner", edge_type=EdgeType.EXPLOITATION)
+        assert self._inputs(graph).exploitation_id_pairs == (("worker", "owner", 10.0, 30.0),)
+
+    def test_wage_value_id_pairs_carry_node_id(self) -> None:
+        graph = BabylonGraph()
+        graph.add_node("c1", w_paid=6.0, v_produced=5.0)
+        assert self._inputs(graph).wage_value_id_pairs == (("c1", 6.0, 5.0),)
+
+    def test_tenancy_id_pairs_carry_endpoint_ids(self) -> None:
+        graph = BabylonGraph()
+        graph.add_node("tenant", wealth=10.0)
+        graph.add_node("land", node_type="territory", rent_level=4.0)
+        graph.add_edge("tenant", "land", edge_type=EdgeType.TENANCY)
+        assert self._inputs(graph).tenancy_id_pairs == (("tenant", "land", 10.0, 4.0),)
+
+    def test_id_pairs_respect_the_same_skip_rules(self) -> None:
+        graph = BabylonGraph()
+        graph.add_node("worker", wealth=10.0, active=False)
+        graph.add_node("owner", wealth=30.0)
+        graph.add_node("ghost", w_paid=6.0, v_produced=5.0, active=False)
+        graph.add_edge("worker", "owner", edge_type=EdgeType.EXPLOITATION)
+        inputs = self._inputs(graph)
+        assert inputs.exploitation_id_pairs == ()
+        assert inputs.wage_value_id_pairs == ()

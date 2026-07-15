@@ -182,31 +182,40 @@ class ContradictionSystem(SystemBase):
         return {key: OppositionState(**value) for key, value in raw.items()}
 
     def _build_graph_inputs(self, graph: GraphProtocol) -> GraphInputs:
-        """Pre-extract the per-tick views the catalog measures read."""
+        """Pre-extract the per-tick views the catalog measures read.
+
+        The ``*_id_pairs`` twins (ADR070) are built in the SAME loops as the
+        float pairs — identical skip rules, zero extra graph traversal —
+        feeding the per-node pole measures.
+        """
         exploitation: list[tuple[float, float]] = []
+        exploitation_ids: list[tuple[str, str, float, float]] = []
         for edge in graph.query_edges(edge_type=EdgeType.EXPLOITATION):
             pair = self._edge_wealths(graph, edge.source_id, edge.target_id)
             if pair is not None:  # (labor=source=A, capital=target=B)
                 exploitation.append(pair)
+                exploitation_ids.append((edge.source_id, edge.target_id, *pair))
 
         tenancy: list[tuple[float, float]] = []
+        tenancy_ids: list[tuple[str, str, float, float]] = []
         for edge in graph.query_edges(edge_type=EdgeType.TENANCY):
             src = graph.get_node(edge.source_id)
             tgt = graph.get_node(edge.target_id)
             if src is None or tgt is None:
                 continue
-            tenancy.append(
-                (
-                    float(src.attributes.get("wealth", 0.0)),
-                    float(tgt.attributes.get("rent_level", 0.0)),
-                )
+            pair = (
+                float(src.attributes.get("wealth", 0.0)),
+                float(tgt.attributes.get("rent_level", 0.0)),
             )
+            tenancy.append(pair)
+            tenancy_ids.append((edge.source_id, edge.target_id, *pair))
 
         # Phase D4: one (w_paid, v_produced) pair per paid worker class node.
         # Only the wages phase writes both attrs (on classes it actually paid),
         # so presence-of-both selects exactly those nodes without a node-type
         # filter; skip inactive nodes as the edge extractors do.
         wage_value: list[tuple[float, float]] = []
+        wage_value_ids: list[tuple[str, float, float]] = []
         for node in graph.query_nodes():
             attrs = node.attributes
             if not attrs.get("active", True):
@@ -214,12 +223,16 @@ class ContradictionSystem(SystemBase):
             if "w_paid" not in attrs or "v_produced" not in attrs:
                 continue
             wage_value.append((float(attrs["w_paid"]), float(attrs["v_produced"])))
+            wage_value_ids.append((node.id, float(attrs["w_paid"]), float(attrs["v_produced"])))
 
         return GraphInputs(
             exploitation_pairs=tuple(exploitation),
             wage_value_pairs=tuple(wage_value),
             tenancy_pairs=tuple(tenancy),
             solidarity_subgraph=extract_solidarity_subgraph(graph),
+            exploitation_id_pairs=tuple(exploitation_ids),
+            wage_value_id_pairs=tuple(wage_value_ids),
+            tenancy_id_pairs=tuple(tenancy_ids),
         )
 
     @staticmethod

@@ -6269,6 +6269,17 @@ _EVENT_SEVERITY: dict[str, str] = {
     "mass_awakening": "warning",
     "fascist_drift": "warning",
     "dispossession_cascade": "warning",
+    # Task #82 / AW3-R1: fascist-capture escalation siblings of the
+    # critical-tier "red_brown_coup" above (reactionary.py) — each is a
+    # threshold-cross precursor to that completed state-violation, not the
+    # violation itself: FASCIST_RECRUITMENT fires when a single node's
+    # fascist alignment crosses fascist_recruitment_threshold;
+    # ORGANIZATIONAL_FRACTURE fires per individual member defection, and
+    # only accumulates into RED_BROWN_COUP once defections exceed
+    # red_brown_coup_fraction of the org. Both were previously absent from
+    # this map entirely, silently defaulting to "informational".
+    "fascist_recruitment": "warning",
+    "organizational_fracture": "warning",
     # Informational: routine flow events
     "surplus_extraction": "informational",
     "imperial_subsidy": "informational",

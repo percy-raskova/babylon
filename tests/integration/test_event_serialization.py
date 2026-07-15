@@ -66,6 +66,16 @@ class TestSeveritySchema:
             "state_repression",
             "red_settler_trap_detected",
             "excessive_force",
+            # Task #82 / AW3-R1: fascist-capture escalation siblings of the
+            # critical-tier "red_brown_coup" (reactionary.py) — a single
+            # node's recruitment (fascist_recruitment_threshold cross) or a
+            # single member's defection (organizational_fracture) is the
+            # threshold-cross precursor; red_brown_coup only fires once
+            # defections exceed the majority fraction. Previously absent
+            # from _EVENT_SEVERITY entirely, silently defaulting to
+            # "informational".
+            "fascist_recruitment",
+            "organizational_fracture",
         ):
             assert _classify_event(event_type) == "warning", event_type
 

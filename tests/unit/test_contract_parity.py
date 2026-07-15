@@ -239,7 +239,11 @@ class TestBackendContractParity:
         assert wayne_county_state.tick == 0
         assert len(wayne_county_state.entities) == 4
         assert len(wayne_county_state.territories) > 50  # ~81 at res-6
-        assert len(wayne_county_state.organizations) == 1
+        # 2 since AW3-R2 item 3: player org (ORG001) + the seeded
+        # STATE_APPARATUS "Detroit Police Department" (ORG002) that
+        # activates RuleBasedStateAI (see
+        # tests/integration/test_state_ai_wayne_county.py).
+        assert len(wayne_county_state.organizations) == 2
         assert len(wayne_county_state.relationships) > 80  # 81 tenancy + 4 structural
 
     def test_vanguard_resources_computed_correctly(self, vanguard_resources) -> None:

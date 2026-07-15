@@ -203,17 +203,63 @@ with honest omission — the first re-keying targets onto `derived_class_cell`, 
 swap at those call sites. `_CLASS_ID_NAMES` (narrator) is pure display flavor and never needs
 to change. Wave 2 may extend these tables freely in the meantime; extensions are additive.
 
-## 8. Phase-1 findings (to be filled by the Phase-1 gate run)
+## 8. Phase-1 findings (first probe run, 2026-07-14, 52 ticks/scenario)
 
-*(agreement_rate / divergent_nodes / unpositioned_count / multi_occupancy / side_flip_count
-per scenario + wayne_county land here; they drive the §5 decision rules.)*
+`poetry run python tools/sentinel_check.py partition` (synthetics) — 9 advisory findings:
+
+| Scenario | agreement | cells formed | unpositioned (cl / wage) | flips |
+|---|---|---|---|---|
+| imperial_circuit | n/a | none at final tick | 4/6 · 5/6 | C001×1, C002×1 |
+| glut | n/a | none | 4/6 · 5/6 | C001×1, C002×1 |
+| fascist_bifurcation | n/a | none | 4/6 · 5/6 | C001×1, C002×1 |
+| starvation | n/a | none | 6/6 (all starved) · 5/6 | C001×1, C002×1 |
+| two_node | **0.000** (0/1) | `capital:bribed`×1 | 0/2 · 1/2 | — |
+| wayne_county (bare factory) | n/a | none | 5/5 · 5/5 @t52; 2/4 · 3/4 @t5 | — |
+
+**Reading of the evidence:**
+
+1. **The two_node divergence is the thesis made visible.** C001 is seeded
+   `periphery_proletariat` but derives `capital:bribed` at tick 52 — the documented
+   worker-overtakes-owner wealth crossover (~tick 8) means the seeded label has rotted while
+   the flows moved on. This is precisely the "nouns dictating to the verbs" defect the
+   program exists to fix, now measurable.
+2. **Final-tick cells are sparse in the synthetics.** Only 1-2 of 6 class nodes hold
+   EXPLOITATION edges, and by tick 52 the wages phase pays almost nobody (w_paid/v_produced
+   presence is per-payment, so a collapsed wage relation honestly de-positions the wage
+   axis). Cells likely form mid-run while wages still flow — a **windowed/any-tick cell
+   report** is a natural analyzer refinement before Phase 3 uses this evidence; noted, not
+   yet built.
+3. **No chattering.** Flip counts are exactly 1 per positioned node over 52 ticks — the
+   single genuine regime transition (the crossover), not oscillation. The §5 decision rule 2
+   gate is CLEAR on synthetic evidence so far.
+4. **wayne_county (bare factory) never forms a cell, at any tick.** The seed graph has 2
+   EXPLOITATION edges + 1 WAGES edge over 4 classes (verified directly); at tick 5 the
+   exploitation-positioned nodes and the wage-paid node are *different nodes*, so the
+   both-axes cell never exists; by tick 52 the bare run has deactivated every class
+   (decomposition adds a 5th node mid-run). Two consequences, feeding §5:
+   - **Decision rule 1 fires in a sharper form than anticipated**: it is not that the
+     wage/value proxy fails to *generalize* — the final-tick both-axes cell construction is
+     too strict to produce evidence on real scenarios at all. Escalation to owner (Phase 3
+     precondition): (a) add the **windowed/any-tick cell** analyzer refinement, and (b) run
+     the probe at the **bridged altitude** (the real wayne game runs through the web bridge
+     with DB hydration — same altitude-mismatch lesson as Seam Sensor-2); consider pulling
+     Program 10's data-grounded σ forward if the wage axis stays sparse even then.
+   - The 5/5-unpositioned report is itself the sentinel working as designed: absence over
+     fabrication — nothing pretended to be classified.
 
 ## 9. Next-actions checklist
 
-- [x] ADR070 + this document (Phase 0).
-- [ ] P19.1a — types + `read_poles` + GraphInputs ids + 2 pole_measures (TDD red first).
-- [ ] P19.1b — ContradictionSystem shadow write + `SOCIAL_CLASS_COMPUTED_FIELDS` (same commit).
-- [ ] P19.1c — partition sentinel + CLI subcommand (+ optional seam row).
-- [ ] P19.1d — gates; capture findings into §8; state.yaml + memory.
-- [ ] Resume Wave 2 Rounds 2-3 (owner ruling 2) once Phase 1 lands.
+- [x] ADR070 + this document (Phase 0). `a38771d5`
+- [x] P19.1a — types + `read_poles` + GraphInputs ids + 2 pole_measures (TDD red first). `1da23e94`
+- [x] P19.1b — ContradictionSystem shadow write + `SOCIAL_CLASS_COMPUTED_FIELDS` (same commit). `938396d8`
+- [x] P19.1c — partition sentinel + CLI subcommand. `7af30c74` (the optional
+      `derived_class_cell` seam/inspector row is DEFERRED to the Wave 2 Round 2/3 resumption:
+      with cells honestly sparse on every shipped scenario — §8.4 — an inspector row today
+      would be a dead payload the seam sweep itself would flag; it rides with the categorical
+      lens work where it renders something)
+- [x] P19.1d — gates (full check 9767 green; qa:regression 5/5 UNMODIFIED); §8 findings;
+      state.yaml + memory.
+- [ ] **NEXT (Phase 3 precondition, owner-visible):** windowed/any-tick cell analyzer +
+      bridged-altitude probe (§8.4); reassess Program-10 pull-forward after those.
+- [ ] Resume Wave 2 Rounds 2-3 (owner ruling 2 — Phase 1 has landed).
 - [ ] Schedule Phase 2 session (redundant cutover, diff harness).

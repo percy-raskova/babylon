@@ -318,3 +318,94 @@ class TestGraphInputIdPairs:
         inputs = self._inputs(graph)
         assert inputs.exploitation_id_pairs == ()
         assert inputs.wage_value_id_pairs == ()
+
+
+class TestShadowPartition:
+    """Program 19 Phase 1 (ADR070): the shadow partition node attrs + stash.
+
+    The system writes ``sigma_capital_labor``/``sigma_wage`` per positioned
+    node and ``derived_class_cell`` only when BOTH axes are positioned; the
+    full per-node channel (including ``imperial``) is stashed on the
+    ``pole_readings`` graph attribute — this tick's snapshot and next tick's
+    tie-inertia source. UNPOSITIONED nodes are untouched (III.11: absence
+    over fabrication); a node that LOSES its position gets honest ``None``.
+    Zero adjudication reads any of this in Phase 1 — shadow only.
+    """
+
+    @staticmethod
+    def _graph() -> BabylonGraph:
+        # worker: exploited (source, capital dominant) AND underpaid (w<v).
+        # owner: exploiter (target) AND overpaid (w>v) — the imperial bribe.
+        graph = BabylonGraph()
+        graph.add_node("worker", wealth=10.0, w_paid=2.0, v_produced=18.0)
+        graph.add_node("owner", wealth=30.0, w_paid=18.0, v_produced=2.0)
+        graph.add_edge("worker", "owner", edge_type=EdgeType.EXPLOITATION)
+        return graph
+
+    def test_sigma_attrs_written_per_positioned_axis(self) -> None:
+        graph = self._graph()
+        ContradictionSystem().step(graph, ServiceContainer.create(), {"tick": 1})
+        assert graph.nodes["worker"]["sigma_capital_labor"] == pytest.approx(-0.5)
+        assert graph.nodes["worker"]["sigma_wage"] == pytest.approx(-0.8)
+        assert graph.nodes["owner"]["sigma_capital_labor"] == pytest.approx(0.5)
+        assert graph.nodes["owner"]["sigma_wage"] == pytest.approx(0.8)
+
+    def test_derived_class_cell_requires_both_axes(self) -> None:
+        graph = self._graph()
+        ContradictionSystem().step(graph, ServiceContainer.create(), {"tick": 1})
+        assert graph.nodes["worker"]["derived_class_cell"] == "labor:exploited"
+        assert graph.nodes["owner"]["derived_class_cell"] == "capital:bribed"
+
+    def test_single_axis_node_gets_sigma_but_no_cell(self) -> None:
+        graph = BabylonGraph()
+        graph.add_node("solo", w_paid=18.0, v_produced=2.0)  # wage axis only
+        ContradictionSystem().step(graph, ServiceContainer.create(), {"tick": 1})
+        attrs = graph.nodes["solo"]
+        assert attrs["sigma_wage"] == pytest.approx(0.8)
+        assert "sigma_capital_labor" not in attrs
+        assert "derived_class_cell" not in attrs
+
+    def test_unpositioned_node_is_untouched(self) -> None:
+        graph = self._graph()
+        graph.add_node("bystander", wealth=5.0)
+        ContradictionSystem().step(graph, ServiceContainer.create(), {"tick": 1})
+        attrs = graph.nodes["bystander"]
+        assert "sigma_capital_labor" not in attrs
+        assert "sigma_wage" not in attrs
+        assert "derived_class_cell" not in attrs
+
+    def test_pole_readings_stashed_on_graph_attr(self) -> None:
+        graph = self._graph()
+        ContradictionSystem().step(graph, ServiceContainer.create(), {"tick": 1})
+        stash = graph.graph["pole_readings"]
+        assert set(stash) == {"capital_labor", "imperial", "wage"}
+        assert stash["capital_labor"]["worker"]["side"] == "a"
+        assert stash["imperial"]["owner"]["side"] == "b"  # core pole via the bribe
+        assert stash["wage"]["worker"]["sigma"] == pytest.approx(-0.8)
+
+    def test_zero_sigma_holds_previous_side_across_ticks(self) -> None:
+        graph = self._graph()
+        services = ServiceContainer.create()
+        system = ContradictionSystem()
+        system.step(graph, services, {"tick": 1})  # owner: capital side (b)
+
+        graph.update_node("worker", wealth=30.0)  # parity -> sigma 0.0 -> tie
+        system.step(graph, services, {"tick": 2})
+
+        stash = graph.graph["pole_readings"]
+        assert stash["capital_labor"]["owner"]["sigma"] == pytest.approx(0.0)
+        assert stash["capital_labor"]["owner"]["side"] == "b"  # held, not reset to a
+
+    def test_depositioned_node_gets_honest_none(self) -> None:
+        graph = self._graph()
+        services = ServiceContainer.create()
+        system = ContradictionSystem()
+        system.step(graph, services, {"tick": 1})
+
+        graph.update_node("worker", active=False)  # drops out of every axis
+        system.step(graph, services, {"tick": 2})
+
+        attrs = graph.nodes["worker"]
+        assert attrs["sigma_capital_labor"] is None
+        assert attrs["sigma_wage"] is None
+        assert attrs["derived_class_cell"] is None

@@ -38,7 +38,7 @@ from __future__ import annotations
 from typing import TYPE_CHECKING, Any, ClassVar
 
 from babylon.domain.dialectics.core.coupling import StanceIntervention, apply_interventions
-from babylon.domain.dialectics.core.opposition import OppositionState
+from babylon.domain.dialectics.core.opposition import OppositionState, PoleReading
 from babylon.domain.dialectics.core.regime import classify_regime
 from babylon.domain.dialectics.instances.catalog import GraphInputs
 from babylon.domain.dialectics.instances.levels import level_index_for, spatial_lattice_for_counties
@@ -69,6 +69,28 @@ _COUNTY_LEVEL_INDEX = 1
 #: tick. Written by verb/OODA systems (spec-071), read + CLEARED here
 #: (consumed-once). No producer writes it yet; unit tests set it directly.
 OPPOSITION_INTERVENTIONS_ATTR = "opposition_interventions"
+
+#: Graph attribute holding the per-node pole channel (Program 19, ADR070):
+#: ``{opposition_key: {entity_id: PoleReading.model_dump()}}`` — this tick's
+#: snapshot AND next tick's tie-inertia source, on the same cross-tick
+#: channel as ``opposition_states``.
+POLE_READINGS_ATTR = "pole_readings"
+
+#: The two principal axes whose sigma is written per node (Phase 1 shadow).
+#: ``imperial`` stays in the graph-attr channel only — its Phase-1 proxy
+#: sigma is identical to ``wage``'s by construction (the D5 shared defect).
+_SIGMA_NODE_ATTRS: dict[str, str] = {
+    "capital_labor": "sigma_capital_labor",
+    "wage": "sigma_wage",
+}
+
+#: Derived-cell vocabulary: pole-side names per principal axis. These are
+#: NOT SocialRole names — the crosswalk from derived cells to seeded roles
+#: is the partition sentinel's EVIDENCE, never an input here.
+_CELL_AXIS_NAMES: dict[str, dict[str, str]] = {
+    "capital_labor": {"a": "labor", "b": "capital"},
+    "wage": {"a": "exploited", "b": "bribed"},
+}
 
 #: Below this rent_level a TENANCY edge carries no contradiction (rent-free).
 _RENT_EPSILON = 1e-9
@@ -161,6 +183,7 @@ class ContradictionSystem(SystemBase):
         graph.set_graph_attr(
             OPPOSITION_STATES_ATTR, {state.key: state.model_dump() for state in states}
         )
+        self._step_pole_channel(graph, registry, inputs)
 
     @staticmethod
     def _apply_interventions(
@@ -250,6 +273,93 @@ class ContradictionSystem(SystemBase):
             float(src.attributes.get("wealth", 0.0)),
             float(tgt.attributes.get("wealth", 0.0)),
         )
+
+    # ------------------------------------------------------------------
+    # 2b. Per-node pole channel — the shadow partition (Program 19, ADR070)
+    # ------------------------------------------------------------------
+
+    def _step_pole_channel(
+        self,
+        graph: GraphProtocol,
+        registry: OppositionRegistry[GraphInputs],
+        inputs: GraphInputs,
+    ) -> None:
+        """Derive, stash, and shadow-write the per-node pole channel.
+
+        Phase 1 is SHADOW ONLY: nothing in the pipeline adjudicates on these
+        attrs — they exist so the seeded-vs-derived disagreement becomes
+        measurable (the partition sentinel reads them). Reuses the tick's
+        ``inputs`` snapshot (no second graph traversal); last tick's readings
+        come from :data:`POLE_READINGS_ATTR` for the σ=0 tie inertia.
+        """
+        previous = self._read_previous_poles(graph)
+        readings = registry.read_poles(inputs, previous)
+        self._write_pole_shadow(graph, readings, previous)
+        stash: dict[str, dict[str, dict[str, Any]]] = {}
+        for reading in readings:
+            stash.setdefault(reading.opposition_key, {})[reading.entity_id] = reading.model_dump()
+        graph.set_graph_attr(POLE_READINGS_ATTR, stash)
+
+    @staticmethod
+    def _read_previous_poles(graph: GraphProtocol) -> dict[tuple[str, str], PoleReading]:
+        """Reconstruct last tick's readings from :data:`POLE_READINGS_ATTR`."""
+        raw: dict[str, dict[str, dict[str, Any]]] = (
+            graph.get_graph_attr(POLE_READINGS_ATTR, {}) or {}
+        )
+        return {
+            (key, entity_id): PoleReading(**dump)
+            for key, per_entity in raw.items()
+            for entity_id, dump in per_entity.items()
+        }
+
+    @staticmethod
+    def _write_pole_shadow(
+        graph: GraphProtocol,
+        readings: tuple[PoleReading, ...],
+        previous: dict[tuple[str, str], PoleReading],
+    ) -> None:
+        """Write ``sigma_*`` per positioned node; the cell needs BOTH axes.
+
+        A node with no participation on an axis is left untouched — absence
+        over fabrication (Constitution III.11). A node that LOSES an axis it
+        held last tick gets an honest ``None`` (never a stale sigma), and
+        loses its cell the same way. Node ids are iterated sorted (the
+        readings are already sorted; the union with previously-written ids
+        re-sorts defensively).
+        """
+        current: dict[str, dict[str, PoleReading]] = {}
+        for reading in readings:
+            if reading.opposition_key in _SIGMA_NODE_ATTRS:
+                current.setdefault(reading.entity_id, {})[reading.opposition_key] = reading
+
+        previously_written = {entity_id for key, entity_id in previous if key in _SIGMA_NODE_ATTRS}
+
+        for entity_id in sorted(current.keys() | previously_written):
+            if graph.get_node(entity_id) is None:
+                continue
+            axes = current.get(entity_id, {})
+            updates: dict[str, Any] = {}
+            for key, attr in _SIGMA_NODE_ATTRS.items():
+                axis_reading = axes.get(key)
+                if axis_reading is not None:
+                    updates[attr] = axis_reading.sigma
+                elif (key, entity_id) in previous:
+                    updates[attr] = None  # de-positioned: honest null, not stale
+            capital_labor = axes.get("capital_labor")
+            wage = axes.get("wage")
+            had_cell = ("capital_labor", entity_id) in previous and (
+                "wage",
+                entity_id,
+            ) in previous
+            if capital_labor is not None and wage is not None:
+                updates["derived_class_cell"] = (
+                    f"{_CELL_AXIS_NAMES['capital_labor'][capital_labor.side]}:"
+                    f"{_CELL_AXIS_NAMES['wage'][wage.side]}"
+                )
+            elif had_cell:
+                updates["derived_class_cell"] = None
+            if updates:
+                graph.update_node(entity_id, **updates)
 
     def _write_frames(
         self,

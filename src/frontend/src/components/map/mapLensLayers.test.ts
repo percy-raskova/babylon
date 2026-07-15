@@ -629,6 +629,48 @@ describe("buildLensLayers", () => {
     });
   });
 
+  describe("Feature 021 lens pair (wage_pressure / dispossession_intensity metric lenses)", () => {
+    const TERRITORIES_WITH_FEATURE_021: LensTerritory[] = TERRITORIES.map((t, i) => ({
+      ...t,
+      metrics: { wage_pressure: 0.1 + i * 0.15, dispossession_intensity: 0.2 + i * 0.2 },
+    }));
+
+    it("fills by wage_pressure, varying with the underlying value", () => {
+      const result = buildLensLayers({
+        territories: TERRITORIES_WITH_FEATURE_021,
+        balkanization: null,
+        lens: { kind: "metric", metric: "wage_pressure" },
+      });
+      expect(result.getFillColor("T1")).not.toEqual(result.getFillColor("T3"));
+      expect(result.legendLabel.toLowerCase()).toContain("labor market pressure");
+    });
+
+    it("fills by dispossession_intensity, varying with the underlying value", () => {
+      const result = buildLensLayers({
+        territories: TERRITORIES_WITH_FEATURE_021,
+        balkanization: null,
+        lens: { kind: "metric", metric: "dispossession_intensity" },
+      });
+      expect(result.getFillColor("T1")).not.toEqual(result.getFillColor("T3"));
+      expect(result.legendLabel.toLowerCase()).toContain("dispossession intensity");
+    });
+
+    it("renders NO_DATA for a territory missing wage_pressure/dispossession_intensity (never a fabricated 0)", () => {
+      const wageResult = buildLensLayers({
+        territories: TERRITORIES, // no `metrics` bag at all
+        balkanization: null,
+        lens: { kind: "metric", metric: "wage_pressure" },
+      });
+      const dispossessionResult = buildLensLayers({
+        territories: TERRITORIES,
+        balkanization: null,
+        lens: { kind: "metric", metric: "dispossession_intensity" },
+      });
+      expect(wageResult.getFillColor("T1")).toEqual([58, 53, 48, 160]);
+      expect(dispossessionResult.getFillColor("T1")).toEqual([58, 53, 48, 160]);
+    });
+  });
+
   describe("field_flow lens (Wave 3 §11 addition — the gradient-wind vector lens)", () => {
     it("fills every territory with the neutral/dim base tone (the wind rides ABOVE the base map)", () => {
       const result = buildLensLayers({

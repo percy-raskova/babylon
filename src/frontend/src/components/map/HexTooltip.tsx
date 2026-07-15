@@ -39,6 +39,12 @@ const TERRITORY_METRICS: Record<string, (t: TerritoryState) => string> = {
   mass_receptivity: (t) => (t.mass_receptivity != null ? t.mass_receptivity.toFixed(2) : "—"),
   intel_confidence: (t) => (t.intel_confidence != null ? t.intel_confidence.toFixed(2) : "—"),
   vision_state: (t) => t.vision_state ?? "—",
+  // Feature 021 lens pair — em-dash for honest absence (the writing system
+  // found no reserve-army pressure / no dispossession activity this tick;
+  // Constitution III.11), never a fabricated 0.
+  wage_pressure: (t) => (t.wage_pressure != null ? t.wage_pressure.toFixed(2) : "—"),
+  dispossession_intensity: (t) =>
+    t.dispossession_intensity != null ? t.dispossession_intensity.toFixed(2) : "—",
 };
 
 const METRIC_LABELS: Record<string, string> = {
@@ -53,6 +59,8 @@ const METRIC_LABELS: Record<string, string> = {
   mass_receptivity: "Receptivity",
   intel_confidence: "Intel",
   vision_state: "Vision",
+  wage_pressure: "Wage Pressure",
+  dispossession_intensity: "Dispossession",
 };
 
 const DEFAULT_PRIORITY = [
@@ -105,6 +113,24 @@ const LENS_METRIC_PRIORITY: Record<string, string[]> = {
     "population",
     "heat",
     "rent_level",
+  ],
+  // Feature 021 lens pair: each lens leads with itself, then its sibling,
+  // then falls back to the material base.
+  "metric:wage_pressure": [
+    "wage_pressure",
+    "dispossession_intensity",
+    "population",
+    "heat",
+    "rent_level",
+    "biocapacity",
+  ],
+  "metric:dispossession_intensity": [
+    "dispossession_intensity",
+    "wage_pressure",
+    "population",
+    "heat",
+    "rent_level",
+    "biocapacity",
   ],
 };
 

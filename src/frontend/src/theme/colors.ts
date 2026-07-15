@@ -25,7 +25,9 @@ export type RampLayer =
   | "wealth"
   | "population"
   | "solidarity"
-  | "receptivity";
+  | "receptivity"
+  | "wage_pressure"
+  | "dispossession";
 
 /**
  * The six canonical data ramps.
@@ -75,6 +77,29 @@ export const DATA_RAMPS: Record<RampLayer, string[]> = {
   // either neighbor lens. Diverging like biocapacity — a ratified exception
   // class, not a rainbow (§9b harmony kept: muted body, one glow terminal).
   receptivity: ["#b8321f", "#7a3a30", "#7a4720", "#b8581f", "#1f6b62", "#3ecfb2"],
+  // Feature 021 lens pair (Reserve Army wage-discipline / dispossession
+  // carceral-eviction intensity, engine.systems.reserve_army /
+  // dispossession_events). Both built entirely from tokens already used
+  // by other canon ramps above — no new hexes invented.
+  //
+  // wage_pressure: a "cool calm labor market -> heating up under reserve-
+  // army pressure -> wage crisis" read. Stops 0/3/4/5 reuse the heat
+  // ramp's near-black base + amber body + laser alarm terminal; stops 1/2
+  // reuse the consciousness ramp's cool blue-slate body (the reserve army
+  // hasn't yet disciplined wages) — distinct from heat itself (which
+  // opens on a warm dark-gray, not cool blue) and from consciousness
+  // (which ends in spire-cyan, not alarm-red).
+  wage_pressure: ["#0d1016", "#1f2c3d", "#345670", "#7a4720", "#d97a2c", "#ff3344"],
+  // dispossession: a carceral/eviction intensity read — muted institutional
+  // gray body escalating through brick-red/magenta-red to the canon
+  // thermal/collapse-red terminal and the laser alarm at maximum severity.
+  // Stop 1 reuses the heat ramp's dark warm-gray (--babylon-rust);
+  // stop 2 reuses biocapacity's muted brick-red; stop 3 reuses rent's
+  // magenta-red; stop 4 is the canon --babylon-thermal collapse-red (shared
+  // with rent/biocapacity); stop 5 is the canon --babylon-laser alarm red.
+  // Distinct from rent (whose body passes through dark PLUM/purple, not
+  // gray/brick) despite sharing the same crimson family of terminals.
+  dispossession: ["#0d1016", "#3a3530", "#7a3525", "#a83a78", "#b8321f", "#ff3344"],
 };
 
 /** Fill alpha for deck.gl hex layers (near-opaque, as pre-090). */

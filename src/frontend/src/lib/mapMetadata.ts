@@ -87,6 +87,18 @@ export interface HexMapFeatureProperties {
    */
   mass_receptivity?: number | null;
   vision_state?: string | null;
+  /**
+   * Feature 021 lens pair (System #5 `ReserveArmySystem` / System #10
+   * `DispossessionEventSystem`): `wage_pressure` (the Reserve Army's
+   * bounded-sigmoid wage-discipline coefficient) and
+   * `dispossession_intensity` (`DispossessionIntensityCalculator`'s
+   * composite foreclosure/eviction/displacement/tax-sale/eminent-domain
+   * weighted intensity). Both honest null/absent whenever the writing
+   * system found no reserve-army pressure / no dispossession activity for
+   * that territory this tick (Constitution III.11 — never a fabricated 0).
+   */
+  wage_pressure?: number | null;
+  dispossession_intensity?: number | null;
   [key: string]: unknown;
 }
 

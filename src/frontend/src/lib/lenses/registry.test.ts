@@ -87,6 +87,20 @@ describe("LENS_REGISTRY", () => {
     expect(massReceptivity?.toLens()).toEqual({ kind: "metric", metric: "mass_receptivity" });
     expect(visionState?.toLens()).toEqual({ kind: "vision_state" });
   });
+
+  it("includes the Feature 021 lens pair (wage_pressure in extraction, dispossession_intensity in reproduction)", () => {
+    const wagePressure = LENS_REGISTRY.find((d) => d.id === "wage_pressure");
+    const dispossession = LENS_REGISTRY.find((d) => d.id === "dispossession_intensity");
+    // wage_pressure: labor-market/wage-hierarchy dynamic, same family as
+    // exploitation_rate. dispossession_intensity: housing-sphere material
+    // condition, same family as habitability (both reproduction group).
+    expect(wagePressure?.group).toBe("extraction");
+    expect(dispossession?.group).toBe("reproduction");
+    expect(wagePressure?.legend.kind).toBe("ramp");
+    expect(dispossession?.legend.kind).toBe("ramp");
+    expect(wagePressure?.toLens()).toEqual({ kind: "metric", metric: "wage_pressure" });
+    expect(dispossession?.toLens()).toEqual({ kind: "metric", metric: "dispossession_intensity" });
+  });
 });
 
 describe("lensDefForLens", () => {
@@ -122,6 +136,13 @@ describe("lensDefForLens", () => {
       "mass_receptivity",
     );
     expect(lensDefForLens({ kind: "vision_state" })?.id).toBe("vision_state");
+  });
+
+  it("resolves the Feature 021 lens pair back to their registry entries", () => {
+    expect(lensDefForLens({ kind: "metric", metric: "wage_pressure" })?.id).toBe("wage_pressure");
+    expect(lensDefForLens({ kind: "metric", metric: "dispossession_intensity" })?.id).toBe(
+      "dispossession_intensity",
+    );
   });
 
   it("resolves field_flow back to its registry entry, keyed by field", () => {
@@ -204,6 +225,20 @@ describe("availableWhen degradation (existing balkanization pattern)", () => {
     const available = availableLensRegistry(ctx).map((d) => d.id);
     expect(available).toContain("mass_receptivity");
     expect(available).toContain("vision_state");
+  });
+
+  it("wage_pressure/dispossession_intensity degrade honestly when absent from available_metrics (Feature 021)", () => {
+    const ctx = { availableMetrics: ["heat", "population"] };
+    const available = availableLensRegistry(ctx).map((d) => d.id);
+    expect(available).not.toContain("wage_pressure");
+    expect(available).not.toContain("dispossession_intensity");
+  });
+
+  it("wage_pressure/dispossession_intensity are available once advertised in available_metrics", () => {
+    const ctx = { availableMetrics: ["wage_pressure", "dispossession_intensity"] };
+    const available = availableLensRegistry(ctx).map((d) => d.id);
+    expect(available).toContain("wage_pressure");
+    expect(available).toContain("dispossession_intensity");
   });
 
   it("heat and habitability are always available (no backend gate)", () => {
@@ -353,5 +388,28 @@ describe("legend metadata", () => {
     expect(def.legend.entries).toHaveLength(3);
     const labels = def.legend.entries.map((e) => e.label);
     expect(labels).toEqual(expect.arrayContaining(["Desert", "Mud", "Water"]));
+  });
+
+  it("wage_pressure/dispossession_intensity each carry a non-empty ramp stop list, distinct from every sibling ramp (Feature 021)", () => {
+    const wagePressure = LENS_REGISTRY.find((d) => d.id === "wage_pressure");
+    const dispossession = LENS_REGISTRY.find((d) => d.id === "dispossession_intensity");
+    const heat = LENS_REGISTRY.find((d) => d.id === "heat");
+    const exploitationRate = LENS_REGISTRY.find((d) => d.id === "exploitation_rate");
+    const habitability = LENS_REGISTRY.find((d) => d.id === "habitability");
+    if (
+      wagePressure?.legend.kind !== "ramp" ||
+      dispossession?.legend.kind !== "ramp" ||
+      heat?.legend.kind !== "ramp" ||
+      exploitationRate?.legend.kind !== "ramp" ||
+      habitability?.legend.kind !== "ramp"
+    ) {
+      throw new Error("expected ramp legends");
+    }
+    expect(wagePressure.legend.stops.length).toBeGreaterThan(1);
+    expect(dispossession.legend.stops.length).toBeGreaterThan(1);
+    expect(wagePressure.legend.stops).not.toEqual(dispossession.legend.stops);
+    expect(wagePressure.legend.stops).not.toEqual(heat.legend.stops);
+    expect(dispossession.legend.stops).not.toEqual(exploitationRate.legend.stops);
+    expect(dispossession.legend.stops).not.toEqual(habitability.legend.stops);
   });
 });

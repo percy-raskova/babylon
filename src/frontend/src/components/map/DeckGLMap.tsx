@@ -234,6 +234,10 @@ function hexPropsToMetrics(hexProps: HexMapFeatureProperties): LensTerritory["me
     // Wave 5 receptivity pair (numeric half; vision_state is categorical
     // and rides territoryToLensTerritory's own visionState field instead).
     mass_receptivity: nullToUndefined(hexProps.mass_receptivity),
+    // Feature 021 lens pair (System #5 ReserveArmySystem / System #10
+    // DispossessionEventSystem).
+    wage_pressure: nullToUndefined(hexProps.wage_pressure),
+    dispossession_intensity: nullToUndefined(hexProps.dispossession_intensity),
   };
 }
 

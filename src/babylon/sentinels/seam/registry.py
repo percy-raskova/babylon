@@ -371,6 +371,64 @@ _MAP_METRICS: tuple[SeamEntry, ...] = (
             "structurally impossible."
         ),
     ),
+    # --- Feature 021 lens pair (System #5 ReserveArmySystem / System #10
+    # DispossessionEventSystem, registered 2026-07-15). Both are NATIVE
+    # per-territory graph attrs (like habitability/mass_receptivity), and
+    # both are presence-conditional in the SAME way org_network_centrality
+    # is: the writing system skips a territory entirely (writes no attr at
+    # all) rather than write a fabricated 0.0, so DECLARED_CONDITIONAL is
+    # about the ATTR'S PRESENCE, not merely its value being legitimately
+    # zero (contrast mass_receptivity, which is always written once a
+    # territory has TENANCY-linked tenants, but can be a real 0.0).
+    # ---------------------------------------------------------------------------
+    SeamEntry(
+        payload="wage_pressure",
+        wire_keys=("wage_pressure",),
+        scope=SeamScope.MAP,
+        owner_layer="engine (ReserveArmySystem, babylon.engine.systems.reserve_army)",
+        liveness_class=LivenessClass.DECLARED_CONDITIONAL,
+        liveness_condition=(
+            "non-null only for a territory whose reserve_ratio > 0.0 AND whose bounded-sigmoid "
+            "wage_pressure is itself > 0.0 this tick (reserve_army.py:69-76) — ReserveArmySystem "
+            "writes no wage_pressure attr at all for a territory with no reserve-army pressure, "
+            "never a fabricated 0.0"
+        ),
+        dtype="float",
+        write_site=(
+            "src/babylon/engine/systems/reserve_army.py::ReserveArmySystem.step "
+            "(protocol.update_node)"
+        ),
+        read_paths=_MAP_EMITTERS,
+        spec_ref="Feature 021 · System #5",
+        notes=(
+            "Reserve Army of Labor wage-discipline coefficient (DefaultWagePressureCalculator's "
+            "bounded sigmoid over reserve_ratio) — rides hex_latest's JSONB attributes column "
+            "like habitability/mass_receptivity. Population-weighted MEAN at county zoom, "
+            "partial-coverage-aware."
+        ),
+    ),
+    SeamEntry(
+        payload="dispossession_intensity",
+        wire_keys=("dispossession_intensity",),
+        scope=SeamScope.MAP,
+        owner_layer="engine (DispossessionEventSystem, babylon.engine.systems.dispossession_events)",
+        liveness_class=LivenessClass.DECLARED_CONDITIONAL,
+        liveness_condition=(
+            "non-null only for a territory with at least one of foreclosure_rate/eviction_rate/"
+            "displacement_rate > 0.0 this tick (dispossession_events.py:73-74) — "
+            "DispossessionEventSystem writes no dispossession_intensity attr at all absent any "
+            "dispossession activity, never a fabricated 0.0"
+        ),
+        dtype="float",
+        read_paths=_MAP_EMITTERS,
+        spec_ref="Feature 021 · System #10",
+        notes=(
+            "Composite carceral/eviction intensity (DispossessionIntensityCalculator's weighted "
+            "foreclosure/eviction/displacement/tax-sale/eminent-domain blend) — rides "
+            "hex_latest's JSONB attributes column like habitability/mass_receptivity. "
+            "Population-weighted MEAN at county zoom, partial-coverage-aware."
+        ),
+    ),
 )
 
 # ---------------------------------------------------------------------------
@@ -862,6 +920,59 @@ _TERRITORY_TICK_METRICS: tuple[SeamEntry, ...] = (
             "Read via _territory_graph_attr, same shape as mass_receptivity on this surface. "
             "None for a tenant-less territory or before the graph has ever been stepped this "
             "session."
+        ),
+    ),
+    # --- Feature 021 lens pair, territory-serializer rows (2026-07-15).
+    # wage_pressure/dispossession_intensity mirror their MAP-scope siblings
+    # above — same payload, same DECLARED_CONDITIONAL reasoning (presence-
+    # conditional, not merely value-conditional), different observable
+    # surface (_serialize_territory rather than the /map/ hex/county
+    # features).
+    SeamEntry(
+        payload="wage_pressure",
+        wire_keys=("wage_pressure",),
+        scope=SeamScope.TERRITORY,
+        owner_layer="engine (ReserveArmySystem, babylon.engine.systems.reserve_army)",
+        liveness_class=LivenessClass.DECLARED_CONDITIONAL,
+        liveness_condition=(
+            "same reserve_ratio > 0.0 gate as the MAP-scope 'map.wage_pressure' row; "
+            "ReserveArmySystem writes no attr at all for a territory with no reserve-army "
+            "pressure this tick"
+        ),
+        dtype="float",
+        write_site=(
+            "src/babylon/engine/systems/reserve_army.py::ReserveArmySystem.step "
+            "(protocol.update_node)"
+        ),
+        read_paths=_TERRITORY_EMITTERS,
+        spec_ref="Feature 021 · System #5",
+        notes=(
+            "Read via _territory_graph_attr, same shape as habitability/mass_receptivity on "
+            "this surface. None until ReserveArmySystem writes it (reserve_ratio > 0 this tick)."
+        ),
+    ),
+    SeamEntry(
+        payload="dispossession_intensity",
+        wire_keys=("dispossession_intensity",),
+        scope=SeamScope.TERRITORY,
+        owner_layer="engine (DispossessionEventSystem, babylon.engine.systems.dispossession_events)",
+        liveness_class=LivenessClass.DECLARED_CONDITIONAL,
+        liveness_condition=(
+            "same foreclosure/eviction/displacement-rate > 0.0 gate as the MAP-scope "
+            "'map.dispossession_intensity' row; DispossessionEventSystem writes no attr at all "
+            "absent any dispossession activity this tick"
+        ),
+        dtype="float",
+        write_site=(
+            "src/babylon/engine/systems/dispossession_events.py::DispossessionEventSystem.step "
+            "(protocol.update_node)"
+        ),
+        read_paths=_TERRITORY_EMITTERS,
+        spec_ref="Feature 021 · System #10",
+        notes=(
+            "Read via _territory_graph_attr, same shape as habitability/mass_receptivity on "
+            "this surface. None until DispossessionEventSystem writes it (some dispossession "
+            "rate > 0 this tick)."
         ),
     ),
 )

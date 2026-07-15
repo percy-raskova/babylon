@@ -184,6 +184,17 @@ export interface TerritoryState {
   mass_receptivity?: number | null;
   intel_confidence?: number | null;
   vision_state?: string | null;
+  /**
+   * Feature 021 lens pair (System #5 `ReserveArmySystem` / System #10
+   * `DispossessionEventSystem`): `_serialize_territory` emits both on every
+   * `/state/` snapshot territory row, read off the graph-only
+   * `wage_pressure`/`dispossession_intensity` attrs those systems write.
+   * Honest `null`/absent whenever the writing system found no reserve-army
+   * pressure / no dispossession activity for that territory this tick
+   * (Constitution III.11 — never a fabricated 0).
+   */
+  wage_pressure?: number | null;
+  dispossession_intensity?: number | null;
 }
 
 /** Ternary consciousness vector — always sums to 1.0 (Spec 052 §6). */
@@ -973,6 +984,18 @@ export interface AdminFeatureProperties {
    */
   mass_receptivity?: number | null;
   vision_state?: string | null;
+  /**
+   * Feature 021 lens pair — `_aggregate_hex_features`'s population-weighted
+   * mean of `wage_pressure` (the Reserve Army's bounded-sigmoid
+   * wage-discipline coefficient) and `dispossession_intensity`
+   * (`DispossessionIntensityCalculator`'s composite intensity).
+   * Optional/nullable for the same partial-coverage reason as
+   * `mass_receptivity` above — both are presence-conditional, not merely
+   * value-conditional (the writing system skips a territory entirely
+   * absent reserve-army pressure / dispossession activity this tick).
+   */
+  wage_pressure?: number | null;
+  dispossession_intensity?: number | null;
 }
 
 // ---------------------------------------------------------------------------

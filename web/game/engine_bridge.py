@@ -2126,8 +2126,31 @@ class EngineBridge:
         treatment as ``territory_type``, tracked in its own
         ``vision_state_pop`` accumulator with the identical
         lexicographically-greatest tie-break.
+
+        Feature 021 lens pair: ``wage_pressure``/``dispossession_intensity``
+        get the same partial-coverage-aware population-weighted mean as
+        ``mass_receptivity`` above — ``ReserveArmySystem``/
+        ``DispossessionEventSystem`` write no attr at all for a territory
+        with no reserve-army pressure this tick / no dispossession activity
+        this tick (Constitution III.11 honest-null).
         """
         from collections import defaultdict
+
+        # Numeric lenses aggregated as a population-weighted mean, each tracking
+        # its OWN coverage denominator (a partial-coverage group must never read
+        # as a fabricated 0.0 — Constitution III.11). Data-driven so a new lens
+        # is one tuple entry, not a new accumulation branch — the growth that
+        # repeatedly pushed this function over the C901 complexity limit.
+        weighted_mean_metrics = (
+            "habitability",
+            "solidarity_index",
+            "throughput_position",
+            "agitation",
+            "centrality",
+            "mass_receptivity",
+            "wage_pressure",
+            "dispossession_intensity",
+        )
 
         # Map zoom level to the grouping key
         group_key_map = {
@@ -2174,6 +2197,14 @@ class EngineBridge:
                 # positive population (Constitution III.11 honest-null).
                 "mass_receptivity_sum": 0.0,
                 "mass_receptivity_pop": 0,
+                # Feature 021 lens pair: same partial-coverage pattern —
+                # ReserveArmySystem/DispossessionEventSystem write no attr
+                # at all absent reserve-army pressure / dispossession
+                # activity this tick (Constitution III.11 honest-null).
+                "wage_pressure_sum": 0.0,
+                "wage_pressure_pop": 0,
+                "dispossession_intensity_sum": 0.0,
+                "dispossession_intensity_pop": 0,
                 "count": 0,
             }
         )
@@ -2216,40 +2247,23 @@ class EngineBridge:
             acc["count"] += 1
             member_h3[key].append(state.h3_index)
 
-            habitability = (getattr(state, "attributes", None) or {}).get("habitability")
-            if habitability is not None:
-                acc["habitability_sum"] += float(habitability) * pop
-                acc["habitability_pop"] += pop
-
-            solidarity_index = (getattr(state, "attributes", None) or {}).get("solidarity_index")
-            if solidarity_index is not None:
-                acc["solidarity_index_sum"] += float(solidarity_index) * pop
-                acc["solidarity_index_pop"] += pop
-
             attributes = getattr(state, "attributes", None) or {}
-            throughput_position = attributes.get("throughput_position")
-            if throughput_position is not None:
-                acc["throughput_position_sum"] += float(throughput_position) * pop
-                acc["throughput_position_pop"] += pop
+            # Numeric partial-coverage lenses (population-weighted mean, each
+            # with its own coverage denominator). One loop over
+            # ``weighted_mean_metrics`` instead of a branch per lens — identical
+            # arithmetic to the former explicit blocks, no new decision points
+            # as the lens set grows (habitability → … → dispossession_intensity).
+            for metric in weighted_mean_metrics:
+                value = attributes.get(metric)
+                if value is not None:
+                    acc[f"{metric}_sum"] += float(value) * pop
+                    acc[f"{metric}_pop"] += pop
 
-            agitation = attributes.get("agitation")
-            if agitation is not None:
-                acc["agitation_sum"] += float(agitation) * pop
-                acc["agitation_pop"] += pop
-
-            centrality = attributes.get("centrality")
-            if centrality is not None:
-                acc["centrality_sum"] += float(centrality) * pop
-                acc["centrality_pop"] += pop
-
+            # Categorical lenses: population-weighted mode, tracked in their own
+            # accumulators (distinct value type from the numeric sums above).
             territory_type = attributes.get("territory_type")
             if territory_type is not None:
                 territory_type_pop[key][territory_type] += pop
-
-            mass_receptivity = attributes.get("mass_receptivity")
-            if mass_receptivity is not None:
-                acc["mass_receptivity_sum"] += float(mass_receptivity) * pop
-                acc["mass_receptivity_pop"] += pop
 
             vision_state = attributes.get("vision_state")
             if vision_state is not None:
@@ -2272,6 +2286,8 @@ class EngineBridge:
             agitation_pop = acc["agitation_pop"]
             centrality_pop = acc["centrality_pop"]
             mass_receptivity_pop = acc["mass_receptivity_pop"]
+            wage_pressure_pop = acc["wage_pressure_pop"]
+            dispossession_intensity_pop = acc["dispossession_intensity_pop"]
             role_votes = dominant_class_pop.get(key) or {}
             type_votes = territory_type_pop.get(key) or {}
             vision_votes = vision_state_pop.get(key) or {}
@@ -2341,6 +2357,18 @@ class EngineBridge:
                         "vision_state": (
                             max(vision_votes.items(), key=lambda kv: (kv[1], kv[0]))[0]
                             if vision_votes
+                            else None
+                        ),
+                        "wage_pressure": (
+                            round(acc["wage_pressure_sum"] / wage_pressure_pop, 4)
+                            if wage_pressure_pop
+                            else None
+                        ),
+                        "dispossession_intensity": (
+                            round(
+                                acc["dispossession_intensity_sum"] / dispossession_intensity_pop, 4
+                            )
+                            if dispossession_intensity_pop
                             else None
                         ),
                     },
@@ -4363,6 +4391,14 @@ class EngineBridge:
         # TickDynamicsSystem (see _carry_epistemic_horizon's docstring for
         # why a recompute, not a persistent_context stash, is correct here).
         _carry_epistemic_horizon(new_graph, game_defines.epistemic_horizon)
+        # Feature 021 lens pair: re-inject ReserveArmySystem's wage_pressure and
+        # DispossessionEventSystem's dispossession_intensity — both are
+        # TERRITORY_EXCLUDED_FIELDS, so the WorldState round-trip drops them the
+        # same way it drops the receptivity attrs above (see
+        # _carry_reserve_army_dispossession's docstring). A recompute, not a
+        # stash; recomputes ONLY the coefficients, never the systems' wage/
+        # wealth side effects (already applied in-tick).
+        _carry_reserve_army_dispossession(new_graph, game_defines)
         events_as_dicts: list[dict[str, Any]] = [
             e.model_dump(mode="json") for e in new_state.events
         ]
@@ -6019,6 +6055,116 @@ def _carry_epistemic_horizon(new_graph: Any, defines: Any) -> None:
     compute_epistemic_horizon(new_graph, defines)
 
 
+def _nonneg_float(data: dict[str, Any], key: str) -> float:
+    """Non-negative float read of a graph-node attr (mirrors
+    ``babylon.engine.systems.dispossession_events._get_float``): a missing or
+    non-numeric value reads as ``0.0``, else ``max(float(value), 0.0)``. Keeps
+    :func:`_carry_reserve_army_dispossession` byte-identical to
+    ``DispossessionEventSystem.step``'s own rate reads."""
+    val = data.get(key, 0.0)
+    if isinstance(val, (int, float)):
+        return max(float(val), 0.0)
+    return 0.0
+
+
+def _carry_reserve_army_dispossession(new_graph: Any, defines: Any) -> None:
+    """Re-inject ``ReserveArmySystem``'s ``wage_pressure`` and
+    ``DispossessionEventSystem``'s ``dispossession_intensity`` onto
+    ``new_graph`` before it is persisted — the Feature-021 lens-pair
+    counterpart to :func:`_carry_epistemic_horizon`.
+
+    Same altitude gap. ``ReserveArmySystem`` (engine position 5) writes
+    ``wage_pressure`` and ``DispossessionEventSystem`` (position 10) writes
+    ``dispossession_intensity`` onto TERRITORY nodes during ``step()``'s
+    internal graph mutation, but both are ``TERRITORY_EXCLUDED_FIELDS``
+    (``babylon.models.world_state``) and not ``Territory`` model fields, so
+    ``from_graph()`` drops them before ``new_state.to_graph()`` (this
+    function's ``new_graph`` argument) ever re-emits them — without this carry
+    the two lenses render honestly-empty on EVERY resolved tick, not just past
+    tick 1.
+
+    Like :func:`_carry_epistemic_horizon` (and UNLIKE
+    :func:`_carry_tick_dynamics_flows`), this is a genuine RECOMPUTE, not a
+    ``persistent_context`` stash. Every input the two coefficients depend on is
+    a real ``Territory`` model field that survives the round trip untouched —
+    ``reserve_ratio`` for ``wage_pressure``; ``foreclosure_rate``/
+    ``eviction_rate``/``displacement_rate``/``concentrated_ownership``/
+    ``absentee_landlord_share`` for ``dispossession_intensity`` (verified: no
+    system mutates any of them after its producing system runs, and
+    :meth:`DispossessionIntensityCalculator.compute_intensity` reads only those
+    five rates, never ``fips_code``/``year``). Re-running the same pure
+    calculators against ``new_graph`` reproduces byte-identical output to the
+    engine's own in-tick computation (Constitution III.7).
+
+    Recomputes ONLY the two display coefficients — it does NOT re-apply either
+    system's side effect: ``ReserveArmySystem`` multiplicatively reduces
+    ``median_wage`` and ``DispossessionEventSystem`` transfers away territory
+    ``wealth`` (its ``creates_value=True`` mutation). Both already happened
+    in-tick and their results survive on ``new_graph`` as real fields; redoing
+    them here would double-count. Guards mirror each system's ``step`` exactly,
+    so a territory with no positive ``reserve_ratio`` (or no positive
+    dispossession rate) gets no attr (Constitution III.11: honest absence,
+    never a fabricated ``0.0``).
+
+    Only called from :meth:`EngineBridge.resolve_tick` (mirrors
+    ``_carry_epistemic_horizon``'s single call site) — NOT the tick-0/seeded
+    bootstrap paths, where neither system has run yet.
+
+    Args:
+        new_graph: ``new_state.to_graph()`` — about to be persisted; mutated in
+            place.
+        defines: This session's full ``GameDefines`` (its ``reserve_army`` and
+            ``dispossession`` sub-models).
+    """
+    from babylon.domain.economics.dispossession.intensity import (
+        DispossessionIntensityCalculator,
+    )
+    from babylon.domain.economics.dispossession.types import TerritoryDispossessionState
+    from babylon.domain.economics.reserve_army.calculator import (
+        DefaultWagePressureCalculator,
+    )
+
+    wage_calc = DefaultWagePressureCalculator(defines.reserve_army)
+    intensity_calc = DispossessionIntensityCalculator(defines.dispossession)
+
+    for node_id, data in new_graph.nodes(data=True):
+        if data.get("_node_type") != "territory":
+            continue
+
+        # wage_pressure — mirror ReserveArmySystem.step's guards exactly (skip
+        # non-numeric / non-positive reserve_ratio and a non-positive computed
+        # pressure), storing ONLY the coefficient — never the median_wage
+        # reduction the system also applies (already done in-tick, survives).
+        reserve_ratio = data.get("reserve_ratio", 0.0)
+        if isinstance(reserve_ratio, (int, float)):
+            reserve_ratio = float(reserve_ratio)
+            if reserve_ratio > 0.0:
+                wage_pressure = wage_calc.compute_wage_pressure(reserve_ratio)
+                if wage_pressure > 0.0:
+                    new_graph.update_node(node_id, wage_pressure=wage_pressure)
+
+        # dispossession_intensity — mirror DispossessionEventSystem.step's
+        # guards (skip when all three rates are non-positive), storing ONLY the
+        # intensity — never the wealth transfer the system also performs.
+        foreclosure_rate = _nonneg_float(data, "foreclosure_rate")
+        eviction_rate = _nonneg_float(data, "eviction_rate")
+        displacement_rate = _nonneg_float(data, "displacement_rate")
+        if foreclosure_rate <= 0.0 and eviction_rate <= 0.0 and displacement_rate <= 0.0:
+            continue
+        state = TerritoryDispossessionState(
+            fips_code=str(data.get("fips_code", "00000") or "00000")[:5].ljust(5, "0"),
+            year=int(data.get("year", 2010)),
+            foreclosure_rate=min(foreclosure_rate, 1.0),
+            eviction_rate=min(eviction_rate, 1.0),
+            displacement_rate=min(displacement_rate, 1.0),
+            concentrated_ownership=min(_nonneg_float(data, "concentrated_ownership"), 1.0),
+            absentee_landlord_share=min(_nonneg_float(data, "absentee_landlord_share"), 1.0),
+        )
+        new_graph.update_node(
+            node_id, dispossession_intensity=intensity_calc.compute_intensity(state)
+        )
+
+
 def _mean_territory_attr(graph: Any, key: str) -> float | None:
     """Mean of a non-null territory-node attr across the graph, or ``None``.
 
@@ -6732,7 +6878,8 @@ def _hex_feature_properties(state: Any) -> dict[str, Any]:
     ``territory_type`` likewise ride ``attributes`` — Wave 2 W2.4;
     ``centrality`` rides ``attributes`` too — audit Wave 4 straggler, task
     #76; ``mass_receptivity``/``vision_state`` ride ``attributes`` as well —
-    Wave 5 receptivity lens pair) plus the identity/context columns. Extracted from the
+    Wave 5 receptivity lens pair; ``wage_pressure``/``dispossession_intensity``
+    ride ``attributes`` too — Feature 021 lens pair) plus the identity/context columns. Extracted from the
     ``get_map_snapshot`` loop so the contract is unit-testable without a
     database.
 
@@ -6765,6 +6912,8 @@ def _hex_feature_properties(state: Any) -> dict[str, Any]:
         "centrality": attributes.get("centrality"),
         "mass_receptivity": attributes.get("mass_receptivity"),
         "vision_state": attributes.get("vision_state"),
+        "wage_pressure": attributes.get("wage_pressure"),
+        "dispossession_intensity": attributes.get("dispossession_intensity"),
     }
 
 
@@ -6837,9 +6986,9 @@ def _build_hex_state_attributes(
     both preserved exactly:
 
     * territory-dict keys (``habitability``/``throughput_position``/
-      ``territory_type``/``mass_receptivity``/``vision_state``) — native
-      per-territory values ``_serialize_territory`` already read off the
-      graph;
+      ``territory_type``/``mass_receptivity``/``vision_state``/
+      ``wage_pressure``/``dispossession_intensity``) — native per-territory
+      values ``_serialize_territory`` already read off the graph;
     * caller-computed aggregates (``solidarity_index``/``agitation``/
       ``centrality``) — TENANCY/network projections passed down from
       ``_persist_hex_state_safe``.
@@ -6880,6 +7029,12 @@ def _build_hex_state_attributes(
     vision_state = territory.get("vision_state")
     if vision_state is not None:
         attributes["vision_state"] = vision_state
+    wage_pressure = territory.get("wage_pressure")
+    if wage_pressure is not None:
+        attributes["wage_pressure"] = float(wage_pressure)
+    dispossession_intensity = territory.get("dispossession_intensity")
+    if dispossession_intensity is not None:
+        attributes["dispossession_intensity"] = float(dispossession_intensity)
     return attributes
 
 
@@ -6978,6 +7133,17 @@ def _hex_state_row(
       re-injects onto the graph. ``None``/absent for a tenant-less
       territory (Constitution III.11) or before the graph has ever been
       stepped.
+    * ``attributes["wage_pressure"]``/``attributes["dispossession_intensity"]``
+      — Feature 021 lens pair: read straight off ``territory``'s own key
+      (like ``mass_receptivity``/``throughput_position``, NOT a separate
+      caller arg like ``agitation``/``centrality``) — both are NATIVE
+      per-territory graph attrs written by ``ReserveArmySystem``/
+      ``DispossessionEventSystem``. Source: ``_serialize_territory``'s
+      ``wage_pressure``/``dispossession_intensity`` keys, off the
+      identically-named graph-only attrs (``_territory_graph_attr``).
+      ``None``/absent whenever the writing system found no reserve-army
+      pressure / no dispossession activity for that territory this tick
+      (Constitution III.11 — never a fabricated 0.0).
 
     Args:
         session_id: The game session UUID (``hex_latest.game_id``).

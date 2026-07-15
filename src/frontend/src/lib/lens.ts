@@ -73,6 +73,15 @@ import type { MapLayer } from "@/types/game";
  * kind instead. `intel_confidence` has NO lens at all (uniformly 0.1
  * today, C_p=0 everywhere — a flat lens would be decorative; it rides the
  * territory serializer/inspector payloads only).
+ *
+ * Feature 021 lens pair (System #5 `ReserveArmySystem` / System #10
+ * `DispossessionEventSystem`): `wage_pressure` (the Reserve Army's bounded-
+ * sigmoid wage-discipline coefficient over `reserve_ratio`) and
+ * `dispossession_intensity` (`DispossessionIntensityCalculator`'s composite
+ * foreclosure/eviction/displacement/tax-sale/eminent-domain weighted
+ * intensity). Both are NATIVE per-territory graph attrs (like
+ * `mass_receptivity`/`throughput_position`), numeric, appended last. Neither
+ * has a categorical companion.
  */
 export const MAP_METRICS = [
   "profit_rate",
@@ -88,6 +97,8 @@ export const MAP_METRICS = [
   "agitation",
   "centrality",
   "mass_receptivity",
+  "wage_pressure",
+  "dispossession_intensity",
 ] as const;
 
 export type MapMetric = (typeof MAP_METRICS)[number];
@@ -222,6 +233,8 @@ const METRIC_LABELS: Record<MapMetric, string> = {
   agitation: "Agitation · Political Energy",
   centrality: "Centrality · Org-Network Criticality",
   mass_receptivity: "Mass Receptivity · Epistemic Horizon",
+  wage_pressure: "Labor Market Pressure · Reserve Army",
+  dispossession_intensity: "Dispossession Intensity · Carceral / Eviction",
 };
 
 /** Title-cases a single word (`"exploitation"` -> `"Exploitation"`) — `field_flow`'s legend label only. */
@@ -244,8 +257,9 @@ export function lensLegendLabel(lens: Lens): string {
  * `MapLayer` overlap on every metric except `habitability`/`solidarity_index`
  * (spec-109 A2 / spec-113 Lane B additions), `throughput_position`/
  * `agitation` (Wave 2 Round 2), `centrality` (audit Wave 4 straggler,
- * task #76), and `mass_receptivity` (Wave 5 receptivity pair) — all six
- * predate/sit outside `MapLayer` and have no ramp of their own there —
+ * task #76), `mass_receptivity` (Wave 5 receptivity pair), and
+ * `wage_pressure`/`dispossession_intensity` (Feature 021 lens pair) — all
+ * eight predate/sit outside `MapLayer` and have no ramp of their own there —
  * each resolves its real ramp directly in `lensRampStops` instead of
  * through `rampForLayer`.
  */
@@ -255,7 +269,9 @@ function metricToMapLayer(metric: MapMetric): MapLayer | null {
     metric === "throughput_position" ||
     metric === "agitation" ||
     metric === "centrality" ||
-    metric === "mass_receptivity"
+    metric === "mass_receptivity" ||
+    metric === "wage_pressure" ||
+    metric === "dispossession_intensity"
     ? null
     : (metric as MapLayer);
 }
@@ -283,6 +299,15 @@ function metricToMapLayer(metric: MapMetric): MapLayer | null {
  * red<->green, but its green terminal aliases solidarity and reads
  * "ecology", not "fish in water"); the new ramp's stop positions align
  * with the EpistemicHorizonDefines thresholds by construction.
+ *
+ * Feature 021 lens pair: wage_pressure and dispossession_intensity each get
+ * their own dedicated ramp (theme/colors.ts) built entirely from tokens
+ * already used elsewhere in the canon palette — a "cool -> amber -> crimson"
+ * wage-discipline pressure gauge and a "muted gray -> crimson" carceral/
+ * eviction intensity read, respectively. Neither reuses an existing whole
+ * ramp verbatim (unlike throughput_position/agitation/centrality above)
+ * because neither direction — "labor market temperature" and "carceral
+ * severity" — is already encoded by an existing metric's ramp.
  */
 function metricRampStops(metric: MapMetric): string[] {
   if (metric === "solidarity_index") return DATA_RAMPS.solidarity;
@@ -290,6 +315,8 @@ function metricRampStops(metric: MapMetric): string[] {
   if (metric === "agitation") return DATA_RAMPS.consciousness;
   if (metric === "centrality") return DATA_RAMPS.population;
   if (metric === "mass_receptivity") return DATA_RAMPS.receptivity;
+  if (metric === "wage_pressure") return DATA_RAMPS.wage_pressure;
+  if (metric === "dispossession_intensity") return DATA_RAMPS.dispossession;
   const layer = metricToMapLayer(metric);
   return layer === null ? DATA_RAMPS.biocapacity : rampForLayer(layer);
 }
@@ -330,7 +357,7 @@ export function lensRampStops(lens: Lens): string[] | null {
  * Mirrors `web/game/map_contract.py`'s `MAP_HISTORY_REPLAYABLE_METRICS` in
  * lockstep — the same "single source of truth per side" convention
  * `MAP_METRICS` above follows for the backend's `MAP_METRIC_PROPERTIES`.
- * Only these 4 of the 12 `MAP_METRICS` have a genuine append-only per-tick
+ * Only these 4 of the 15 `MAP_METRICS` have a genuine append-only per-tick
  * historical store (`territory_snapshot`/`view_runtime_trace_emission`) the
  * `GET /api/games/{id}/map/history/` scrubber can replay; every other
  * metric exists only in the current-tick `hex_latest` cache and 422s

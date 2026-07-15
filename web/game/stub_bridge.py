@@ -344,6 +344,12 @@ def _make_hex_features(tick: int, layer: str | None = None) -> list[dict[str, An
             # the corpus's own thresholds, EpistemicHorizonDefines defaults).
             "mass_receptivity": round(r, 3),
             "vision_state": "desert" if r < 0.2 else ("water" if r >= 0.8 else "mud"),
+            # Feature 021 lens pair: deterministic per-cell wage-discipline
+            # coefficient (matching the real bridge's [0, wage_pressure_ceiling]
+            # range, default ceiling 0.5) and composite dispossession
+            # intensity (matching the real bridge's [0, 1] range).
+            "wage_pressure": round(r * 0.5, 3),
+            "dispossession_intensity": round(r, 3),
         }
 
         # Approximate hex boundary as a small polygon near Detroit
@@ -452,6 +458,11 @@ def _make_aggregated_features(zoom: str, tick: int) -> list[dict[str, Any]]:
                     # per-group M_r/vision_state shape as _make_hex_features.
                     "mass_receptivity": round(r, 3),
                     "vision_state": "desert" if r < 0.2 else ("water" if r >= 0.8 else "mud"),
+                    # Feature 021 lens pair: same deterministic per-group
+                    # wage_pressure/dispossession_intensity shape as
+                    # _make_hex_features.
+                    "wage_pressure": round(r * 0.5, 3),
+                    "dispossession_intensity": round(r, 3),
                 },
             }
         )
@@ -785,6 +796,9 @@ class StubEngineBridge:
                     # Wave 5 receptivity lens pair
                     "mass_receptivity",
                     "vision_state",
+                    # Feature 021 lens pair
+                    "wage_pressure",
+                    "dispossession_intensity",
                 ],
             },
             "features": features,

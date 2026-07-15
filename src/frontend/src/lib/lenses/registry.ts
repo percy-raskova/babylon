@@ -182,6 +182,20 @@ export const LENS_REGISTRY: readonly MapLensDef[] = [
     toLens: () => ({ kind: "metric", metric: "throughput_position" }),
     availableWhen: hasMetric("throughput_position"),
   },
+  {
+    // Feature 021 (System #5 ReserveArmySystem). Extraction group: the
+    // Reserve Army's wage discipline is a labor-market/wage-hierarchy
+    // dynamic, the same family as exploitation_rate above — a rising
+    // reserve_ratio disciplines median_wage downward via a bounded sigmoid.
+    id: "wage_pressure",
+    group: "extraction",
+    label: "Wage Pressure",
+    tooltip:
+      "Reserve Army wage discipline — bounded-sigmoid downward pressure on median_wage as reserve_ratio rises",
+    legend: { kind: "ramp", stops: DATA_RAMPS.wage_pressure },
+    toLens: () => ({ kind: "metric", metric: "wage_pressure" }),
+    availableWhen: hasMetric("wage_pressure"),
+  },
   // --- Struggle ------------------------------------------------------------
   {
     id: "heat",
@@ -337,6 +351,20 @@ export const LENS_REGISTRY: readonly MapLensDef[] = [
     legend: { kind: "ramp", stops: DATA_RAMPS.biocapacity },
     toLens: () => ({ kind: "habitability" }),
     availableWhen: alwaysAvailable,
+  },
+  {
+    // Feature 021 (System #10 DispossessionEventSystem). Reproduction
+    // group, next to habitability — eviction/foreclosure is the material
+    // condition of social reproduction under direct threat, the housing-
+    // sphere counterpart to habitability's ecological one.
+    id: "dispossession_intensity",
+    group: "reproduction",
+    label: "Dispossession Intensity",
+    tooltip:
+      "Composite carceral/eviction intensity — weighted foreclosure/eviction/displacement/tax-sale/eminent-domain blend",
+    legend: { kind: "ramp", stops: DATA_RAMPS.dispossession },
+    toLens: () => ({ kind: "metric", metric: "dispossession_intensity" }),
+    availableWhen: hasMetric("dispossession_intensity"),
   },
 ];
 

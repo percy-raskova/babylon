@@ -43,7 +43,7 @@ import {
 import { DATA_RAMPS } from "@/theme/colors";
 
 describe("MAP_METRICS mirrors the backend's map_contract.py MAP_METRIC_PROPERTIES", () => {
-  it("has exactly the 13 numeric contract metric names, in contract order", () => {
+  it("has exactly the 15 numeric contract metric names, in contract order", () => {
     // Wave 2 Round 2 (reports/wave2-implementation-map.md): throughput_position
     // (ruling 1 — wired for real, no longer a frozen 1.0 constant) and
     // agitation (DECLARED_CONDITIONAL — legitimately 0.0 absent a crisis tick)
@@ -53,7 +53,11 @@ describe("MAP_METRICS mirrors the backend's map_contract.py MAP_METRIC_PROPERTIE
     // receptivity pair: mass_receptivity (M_r, the Epistemic Horizon's
     // honest-display receptivity) is appended after centrality; its
     // categorical companion vision_state stays OUT of this numeric array
-    // (dedicated Lens kind, like territory_type).
+    // (dedicated Lens kind, like territory_type). Feature 021 lens pair:
+    // wage_pressure (Reserve Army wage-discipline coefficient) and
+    // dispossession_intensity (composite carceral/eviction intensity) are
+    // appended after mass_receptivity — both NATIVE per-territory graph
+    // attrs with no categorical companion.
     expect(MAP_METRICS).toEqual([
       "profit_rate",
       "exploitation_rate",
@@ -68,6 +72,8 @@ describe("MAP_METRICS mirrors the backend's map_contract.py MAP_METRIC_PROPERTIE
       "agitation",
       "centrality",
       "mass_receptivity",
+      "wage_pressure",
+      "dispossession_intensity",
     ]);
   });
 
@@ -90,7 +96,7 @@ describe("SELECTABLE_METRICS excludes the metrics with a dedicated Lens kind", (
     expect(SELECTABLE_METRICS).not.toContain("habitability");
   });
 
-  it("keeps every other contract metric, including solidarity_index/throughput_position/agitation/centrality/mass_receptivity", () => {
+  it("keeps every other contract metric, including solidarity_index/throughput_position/agitation/centrality/mass_receptivity/wage_pressure/dispossession_intensity", () => {
     expect([...SELECTABLE_METRICS].sort()).toEqual(
       [
         "profit_rate",
@@ -104,6 +110,8 @@ describe("SELECTABLE_METRICS excludes the metrics with a dedicated Lens kind", (
         "agitation",
         "centrality",
         "mass_receptivity",
+        "wage_pressure",
+        "dispossession_intensity",
       ].sort(),
     );
   });
@@ -261,6 +269,15 @@ describe("lensLegendLabel", () => {
     );
   });
 
+  it("labels the Feature 021 lens pair (wage_pressure/dispossession_intensity) with their own names", () => {
+    expect(lensLegendLabel({ kind: "metric", metric: "wage_pressure" }).toLowerCase()).toContain(
+      "labor market pressure",
+    );
+    expect(
+      lensLegendLabel({ kind: "metric", metric: "dispossession_intensity" }).toLowerCase(),
+    ).toContain("dispossession intensity");
+  });
+
   it("labels field_flow with 'Gradient Wind' plus the title-cased field name", () => {
     expect(lensLegendLabel({ kind: "field_flow", field: "exploitation" })).toBe(
       "Gradient Wind · Exploitation Field",
@@ -355,6 +372,26 @@ describe("lensRampStops — single ramp resolution shared by fill + legend", () 
   it("vision_state has no fill ramp (categorical, like territory_type)", () => {
     expect(lensRampStops({ kind: "vision_state" })).toBeNull();
   });
+
+  it("wage_pressure resolves to its own dedicated ramp (Feature 021 — cool->amber->crimson wage-discipline gauge), distinct from heat/consciousness", () => {
+    const stops = lensRampStops({ kind: "metric", metric: "wage_pressure" });
+    expect(stops).toEqual(DATA_RAMPS.wage_pressure);
+    expect(stops).not.toEqual(DATA_RAMPS.heat);
+    expect(stops).not.toEqual(DATA_RAMPS.consciousness);
+  });
+
+  it("dispossession_intensity resolves to its own dedicated ramp (Feature 021 — carceral/eviction intensity), distinct from rent/biocapacity", () => {
+    const stops = lensRampStops({ kind: "metric", metric: "dispossession_intensity" });
+    expect(stops).toEqual(DATA_RAMPS.dispossession);
+    expect(stops).not.toEqual(DATA_RAMPS.rent);
+    expect(stops).not.toEqual(DATA_RAMPS.biocapacity);
+  });
+
+  it("wage_pressure and dispossession_intensity resolve to two DISTINCT ramps from each other", () => {
+    const wagePressure = lensRampStops({ kind: "metric", metric: "wage_pressure" });
+    const dispossession = lensRampStops({ kind: "metric", metric: "dispossession_intensity" });
+    expect(wagePressure).not.toEqual(dispossession);
+  });
 });
 
 describe("MAP_HISTORY_REPLAYABLE_METRICS mirrors web/game/map_contract.py's tuple of the same name", () => {
@@ -422,5 +459,10 @@ describe("isReplayableLens — gates the RadarLoopPanel scrubber's availability"
 
   it("is false for the mass_receptivity metric (hex_latest-only, no append-only history — mirrors the backend tuple)", () => {
     expect(isReplayableLens({ kind: "metric", metric: "mass_receptivity" })).toBe(false);
+  });
+
+  it("is false for the Feature 021 lens pair (hex_latest-only, no append-only history)", () => {
+    expect(isReplayableLens({ kind: "metric", metric: "wage_pressure" })).toBe(false);
+    expect(isReplayableLens({ kind: "metric", metric: "dispossession_intensity" })).toBe(false);
   });
 });

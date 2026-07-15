@@ -97,6 +97,20 @@ MAP_METRIC_PROPERTIES: tuple[str, ...] = (
     # inspector payload only.
     "mass_receptivity",
     "vision_state",
+    # Feature 021 lens pair (System #5 ReserveArmySystem / System #10
+    # DispossessionEventSystem): wage_pressure (the Reserve Army's bounded-
+    # sigmoid wage-discipline coefficient — reserve_ratio pushes median_wage
+    # down) and dispossession_intensity (DispossessionIntensityCalculator's
+    # composite foreclosure/eviction/displacement/tax-sale/eminent-domain
+    # weighted intensity). Both are NATIVE per-territory graph attrs — same
+    # shape as habitability/mass_receptivity, no TENANCY-projection
+    # aggregation needed — rides straight off _serialize_territory's own
+    # key. Population-weighted MEAN at county zoom. Honest null (III.11):
+    # ReserveArmySystem/DispossessionEventSystem write no attr at all for a
+    # territory with no reserve-army pressure / no dispossession activity
+    # this tick (never a fabricated 0.0 standing in for "not computed").
+    "wage_pressure",
+    "dispossession_intensity",
 )
 
 # Backend-W3R3 (Program 17 Wave 3): the MAP_METRIC_PROPERTIES subset

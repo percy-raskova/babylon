@@ -211,6 +211,29 @@ describe("regionFillForLens", () => {
     });
   });
 
+  describe("wage_pressure / dispossession_intensity metric lenses (Feature 021 lens pair)", () => {
+    it("wage_pressure samples its own ramp like any other metric lens", () => {
+      const properties: RegionFillProperties = { wage_pressure: 0.3 };
+      const lens: Lens = { kind: "metric", metric: "wage_pressure" };
+      const result = regionFillForLens(lens, properties, DOMAIN);
+      expect(result).toEqual(sampleRampStops(lensRampStops(lens)!, 0.3));
+    });
+
+    it("dispossession_intensity samples its own ramp like any other metric lens", () => {
+      const properties: RegionFillProperties = { dispossession_intensity: 0.5 };
+      const lens: Lens = { kind: "metric", metric: "dispossession_intensity" };
+      const result = regionFillForLens(lens, properties, DOMAIN);
+      expect(result).toEqual(sampleRampStops(lensRampStops(lens)!, 0.5));
+    });
+
+    it("is null-honest (never a fabricated zero fill) when either is missing", () => {
+      const wagePressureLens: Lens = { kind: "metric", metric: "wage_pressure" };
+      const dispossessionLens: Lens = { kind: "metric", metric: "dispossession_intensity" };
+      expect(regionFillForLens(wagePressureLens, {}, DOMAIN)).toBeNull();
+      expect(regionFillForLens(dispossessionLens, {}, DOMAIN)).toBeNull();
+    });
+  });
+
   it("a degenerate (zero-dynamic-range) domain is null-honest, not a fabricated floor color", () => {
     // A ramp encodes RELATIVE position within the visible domain. When every
     // region shares one value (span === 0 — e.g. the static-economy case where

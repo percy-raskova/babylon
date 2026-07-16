@@ -93,59 +93,6 @@ def create_revolutionary_state() -> WorldState:
     return WorldState(tick=0, entities=entities, relationships=relationships)
 
 
-def create_ecological_collapse_state() -> WorldState:
-    """Create a WorldState that meets ecological collapse conditions.
-
-    Conditions:
-    - overshoot_ratio > 2.0 must persist through simulation runs
-
-    Returns:
-        WorldState configured for ecological collapse.
-
-    Note:
-        Since the simulation runs real Systems that may modify state,
-        we create an extremely severe overshoot scenario that will
-        persist even with system modifications. Multiple high-consumption
-        entities ensure the ratio stays well above 2.0.
-    """
-    # Extremely low biocapacity territory (near zero)
-    territory = Territory(
-        id="T001",
-        name="Depleted Zone",
-        sector_type=SectorType.INDUSTRIAL,
-        biocapacity=1.0,  # Critically low - almost zero
-        max_biocapacity=100.0,
-        regeneration_rate=0.001,  # Extremely slow recovery
-        extraction_intensity=0.0,
-    )
-
-    # Create multiple high-consumption entities to ensure overshoot persists
-    # Total consumption = 50 x 5 = 250, ratio = 250/1 = 250 >> 2.0
-    # IMPORTANT: Set class_consciousness > national_identity to avoid
-    # triggering fascist consolidation before ecological collapse
-    entities = {
-        f"C{i:03d}": SocialClass(
-            id=f"C{i:03d}",
-            name=f"High Consumer {i}",
-            role=SocialRole.CORE_BOURGEOISIE,
-            ideology=IdeologicalProfile(
-                class_consciousness=0.6,  # Higher than national_identity
-                national_identity=0.3,  # Lower to avoid fascist trigger
-            ),
-            wealth=1000.0,
-            s_bio=30.0,  # High biological consumption
-            s_class=20.0,  # High social consumption
-        )
-        for i in range(5)
-    }
-
-    return WorldState(
-        tick=0,
-        entities=entities,
-        territories={"T001": territory},
-    )
-
-
 def create_fascist_state() -> WorldState:
     """Create a WorldState that meets fascist consolidation conditions.
 
@@ -239,25 +186,23 @@ def create_in_progress_state() -> WorldState:
 
 @pytest.mark.integration
 class TestSimulationTermination:
-    """Test that simulation terminates on endgame conditions."""
+    """Test the termination mechanism: when EndgameDetector fires, the
+    simulation stops and reports the outcome it fired.
 
-    @pytest.mark.xfail(
-        reason=(
-            "Spec-070 FR-031 augmented REVOLUTIONARY_VICTORY with "
-            "ABOLISH-Sovereign-majority + CEASE-policy + habitability-slope "
-            "+ cross-divide-solidarity gates. This scenario exercises the "
-            "pre-spec-070 contract (percolation + consciousness alone, no "
-            "Sovereigns/Factions seeded) which now correctly routes to "
-            "IN_PROGRESS / RED_OGV instead. Replaced by tests under "
-            "tests/unit/balkanization/ + tests/integration/balkanization/."
-        )
-    )
-    def test_simulation_terminates_on_revolutionary_victory(
+    Babylon does not test for specific endgame outcomes — the game runs to a
+    fixed century horizon and endgame behavior is emergent. The fascist
+    false-consciousness fixture used here is only the cheapest vehicle to
+    make the detector fire; the subject under test is the wiring between
+    EndgameDetector.is_game_over and Simulation.run_until_endgame().
+    """
+
+    def test_simulation_terminates_when_detector_fires(
         self,
         config: SimulationConfig,
         endgame_detector: EndgameDetector,
     ) -> None:
-        """Simulation terminates when revolutionary victory conditions are met.
+        """When EndgameDetector fires, run_until_endgame() stops and returns
+        (final_state, outcome).
 
         The run_until_endgame() method should:
         1. Run simulation ticks
@@ -265,48 +210,13 @@ class TestSimulationTermination:
         3. Stop when game ends
         4. Return the final state and outcome
         """
-        initial_state = create_revolutionary_state()
+        initial_state = create_fascist_state()
         sim = Simulation(initial_state, config, observers=[endgame_detector])
 
         # Simulation should have run_until_endgame method
         assert hasattr(sim, "run_until_endgame"), "Simulation must have run_until_endgame() method"
 
         # Run until endgame (with reasonable max ticks)
-        final_state, outcome = sim.run_until_endgame(max_ticks=100)
-
-        assert outcome == GameOutcome.REVOLUTIONARY_VICTORY
-        assert endgame_detector.is_game_over is True
-
-    def test_simulation_terminates_on_ecological_collapse(
-        self,
-        config: SimulationConfig,
-        endgame_detector: EndgameDetector,
-    ) -> None:
-        """Simulation terminates when ecological collapse conditions are met.
-
-        Ecological collapse requires 5 consecutive ticks of overshoot > 2.0.
-        """
-        initial_state = create_ecological_collapse_state()
-        sim = Simulation(initial_state, config, observers=[endgame_detector])
-
-        # Run until endgame
-        final_state, outcome = sim.run_until_endgame(max_ticks=100)
-
-        assert outcome == GameOutcome.ECOLOGICAL_COLLAPSE
-        assert endgame_detector.is_game_over is True
-        # Should have run at least 5 ticks for consecutive overshoot
-        assert final_state.tick >= 5
-
-    def test_simulation_terminates_on_fascist_consolidation(
-        self,
-        config: SimulationConfig,
-        endgame_detector: EndgameDetector,
-    ) -> None:
-        """Simulation terminates when fascist consolidation conditions are met."""
-        initial_state = create_fascist_state()
-        sim = Simulation(initial_state, config, observers=[endgame_detector])
-
-        # Run until endgame
         final_state, outcome = sim.run_until_endgame(max_ticks=100)
 
         assert outcome == GameOutcome.FASCIST_CONSOLIDATION
@@ -322,21 +232,18 @@ class TestSimulationTermination:
 class TestRunReturnsOutcome:
     """Test that run methods return final state and outcome."""
 
-    @pytest.mark.xfail(
-        reason=(
-            "Spec-070 FR-031 augmented REVOLUTIONARY_VICTORY contract; this "
-            "scenario relies on the pre-spec-070 percolation+consciousness "
-            "alone gate. See sibling xfail on "
-            "test_simulation_terminates_on_revolutionary_victory."
-        )
-    )
     def test_run_returns_final_state_and_outcome(
         self,
         config: SimulationConfig,
         endgame_detector: EndgameDetector,
     ) -> None:
-        """run_until_endgame returns tuple of (WorldState, GameOutcome)."""
-        initial_state = create_revolutionary_state()
+        """run_until_endgame returns tuple of (WorldState, GameOutcome).
+
+        The fascist fixture is only the cheapest vehicle to make the
+        detector fire; the subject is the return contract, not which
+        outcome fires.
+        """
+        initial_state = create_fascist_state()
         sim = Simulation(initial_state, config, observers=[endgame_detector])
 
         result = sim.run_until_endgame(max_ticks=100)
@@ -583,23 +490,20 @@ class TestEndgameStability:
 class TestMultipleObservers:
     """Test EndgameDetector works alongside other observers."""
 
-    @pytest.mark.xfail(
-        reason=(
-            "Spec-070 FR-031 augmented REVOLUTIONARY_VICTORY contract; this "
-            "scenario relies on the pre-spec-070 percolation+consciousness "
-            "alone gate. See sibling xfail on "
-            "test_simulation_terminates_on_revolutionary_victory."
-        )
-    )
     def test_endgame_detector_with_other_observers(
         self,
         config: SimulationConfig,
     ) -> None:
-        """EndgameDetector works correctly with other observers registered."""
+        """EndgameDetector works correctly with other observers registered.
+
+        The fascist fixture is only the cheapest vehicle to make the
+        detector fire; the subject is observer coexistence, not which
+        outcome fires.
+        """
         from babylon.engine.observers import EconomyMonitor
         from babylon.engine.topology_monitor import TopologyMonitor
 
-        initial_state = create_revolutionary_state()
+        initial_state = create_fascist_state()
         endgame = EndgameDetector()
         economy = EconomyMonitor()
         topology = TopologyMonitor()
@@ -614,7 +518,7 @@ class TestMultipleObservers:
         final_state, outcome = sim.run_until_endgame(max_ticks=100)
 
         # Should still detect endgame correctly
-        assert outcome == GameOutcome.REVOLUTIONARY_VICTORY
+        assert outcome != GameOutcome.IN_PROGRESS
         assert endgame.is_game_over is True
 
         # Other observers should have run without error

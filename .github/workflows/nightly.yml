@@ -2,9 +2,9 @@ name: Nightly
 
 # Program 15 (The Gauntlet): scheduled deep coverage so the heavy legs never
 # lapse between promotions. Daily: the non-unit shard + security against dev
-# HEAD. Weekly (Sunday): the Python 3.13 forward-compat suite, simulation
-# trace/sweep artifacts, and mutation testing vs the committed baseline —
-# absorbing the retired extended-analysis.yml.
+# HEAD. Weekly (Sunday): the Python 3.13 forward-compat suite and simulation
+# trace/sweep artifacts — absorbing the retired extended-analysis.yml.
+# (Mutation testing was retired from CI 2026-07-16 — local-only, see below.)
 #
 # NOTE: scheduled workflows execute the workflow file from the DEFAULT branch,
 # so this file is inert until the first dev→main promotion (Phase 8). Every
@@ -172,10 +172,24 @@ jobs:
       # subset's rows satisfy the trace scenario is a data-coverage question
       # this step surfaces honestly instead of masking behind a missing file.
       - uses: ./.github/actions/fetch-reference-db
+      # …and the Postgres RUNTIME (spec-087: the headless runner writes its
+      # dynamic_* tables through a psycopg pool; _open_pool hard-requires
+      # BABYLON_PG_DSN/BABYLON_TEST_PG_DSN). Same provisioning trio as the
+      # postgres-integration job; DSN form matches test:int-pg's export.
+      - uses: ./.github/actions/postgres-up
+      - name: Babylon runtime schema bootstrap
+        run: mise run db:bootstrap
       - name: Simulation trace
+        env:
+          BABYLON_TEST_PG_DSN: "dbname=babylon_test host=localhost port=5433 user=test password=test"
         run: mise run sim:trace
       - name: Parameter sweep
+        env:
+          BABYLON_TEST_PG_DSN: "dbname=babylon_test host=localhost port=5433 user=test password=test"
         run: mise run sim:sweep
+      - name: Stop Postgres
+        if: always()
+        run: docker compose down -v
       - name: Upload results
         uses: actions/upload-artifact@v7
         with:
@@ -183,28 +197,8 @@ jobs:
           path: results/
           retention-days: 90
 
-  mutation:
-    # Advisory until the first calibrated run against the committed baseline
-    # proves the leg stable; then drop continue-on-error and the label.
-    name: Mutation Testing (advisory — calibrating vs baseline)
-    if: github.event.schedule == '0 4 * * 0' || github.event_name == 'workflow_dispatch'
-    runs-on: ubuntu-latest
-    timeout-minutes: 120
-    continue-on-error: true
-    steps:
-      - uses: actions/checkout@v7
-        with:
-          ref: dev
-      - uses: ./.github/actions/bootstrap-python
-        with:
-          gdal: "true"
-      # src/babylon_data is a committed absolute symlink into the dev box's
-      # babylon-data repo — always dangling on CI checkout, and mutmut's
-      # src/ -> mutants/src/ copytree raises shutil.Error on it. Nothing
-      # under mutation imports it (loader-land, not engine), so drop it.
-      - name: Drop dangling babylon-data symlink (mutmut copytree chokes on it)
-        run: rm -f src/babylon_data
-      - name: Run mutation testing (critical paths)
-        run: poetry run python tools/run_mutmut.py --critical
-      - name: Score vs committed baseline
-        run: poetry run python tools/mutmut_report.py report --diff
+  # Mutation testing RETIRED from CI (owner ruling 2026-07-16): the leg never
+  # completed on a hosted runner (dangling babylon-data symlink, then
+  # pytest-django's babylon_web scan inside mutmut's run context) and a
+  # 120-minute advisory job is the wrong place to calibrate it. It runs
+  # LOCALLY (tools/run_mutmut.py --critical) after the planned test refactor.

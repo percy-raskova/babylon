@@ -2,9 +2,30 @@
 # What exists vs what's planned - KEEP THIS UPDATED
 
 meta:
-  version: "2.33.0"  # 2.28.0 lives on feature/19-emergent-class-partition (Program 19 Phase 0+1)
-  updated: "2026-07-15"
+  version: "2.34.0"  # 2.28.0 lives on feature/19-emergent-class-partition (Program 19 Phase 0+1)
+  updated: "2026-07-16"
   truth_status: |
+    (2026-07-16 ~10:30am) WAVES 5+6 COMPLETE (PR #195, feature/eh-phase2-reveal-gating).
+    EH PHASE 2 EXECUTED per ruling 6 (owner chose WorldState.player_org_id, graph-metadata
+    channel): player-relative C_p; class-inspector reveal gate per the corpus visibility
+    table (Desert withholds + vision_masked, Mud quantizes to a 0.4 grid = the corpus's
+    ±0.2 margin with documented round-half-up, Water exact; presentation boundary only —
+    snapshots keep TRUE values; falsification = Phase 3); Investigate earns
+    Territory.investigation_intel (REAL model field — event-sourced accumulated state),
+    gated by corpus SOCIAL_INVESTIGATION M_r >= investigate_min_receptivity (0.3, auto-fail
+    below; cadre-presence gate deferred to Phase 3 — no verb creates PRESENCE edges yet).
+    A 27-agent adversarial verify (17 confirmed findings, all folded @ 61ab50ad) caught a
+    CRITICAL pre-ship: the shadow-attr intel crashed from_graph inside step() on first
+    player territory-investigate, and the bridge re-stamp read the pre-tick graph (intel
+    could never accumulate). WAVE 6 CLOSED: census wires C2 renter share + C3 bracket
+    ratio (B19001 top/bottom bands) + C4 CPI real-wage deflator (base 2015) on the D8
+    rails (3 worktree agents, serial integration; GOTCHA: auto-merge zippers both-appended
+    sibling blocks — graft, don't union, multi-hunk conflicts); ci-data-v4 published +
+    fetch-reference-db pin bumped (census tables FULL for nightly's reference-db leg).
+    Race dimension stays aggregate-only by ruling: NATIONAL-OPPRESSION AXIS ratified as
+    its own program (ADR + phased spec next session; seed =
+    project/research/national-oppression-axis-program-seed.md). Gates: check green
+    (10,328 unit), qa:regression 5/5 byte-identical UNMODIFIED (twice), tsc clean.
     (2026-07-15 ~8pm) DOCTRINESYSTEM BUILT + CONSOLIDATION VERIFIED + ADR073. After the ~6:30pm
     consolidation (PR #188 -> dev @ c191799d, all CI green, branch landscape collapsed to
     dev/main/archive + 2 owner-spared), the false "baseline-moving" gate dissolved (all 5

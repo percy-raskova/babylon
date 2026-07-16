@@ -53,6 +53,57 @@ class TestConsciousnessVerbs:
         assert result.consciousness_delta.collective_identity_delta != 0.0
 
 
+class TestEducateDoctrineStudy:
+    """Educate(Doctrine) sub-verb — the Study order (DoctrineSystem Unit 7b).
+
+    A ``doctrine_node_id`` param turns EDUCATE into a standing study order the
+    DoctrineSystem honors (save-toward-target instead of greedy). The Article V
+    roster is untouched — this is a target type of the existing Educate verb,
+    exactly as Investigate carries Territory/Org/Edge sub-verbs.
+    """
+
+    def test_study_order_sets_standing_target(self, verb_graph, services) -> None:
+        result = _dispatch(
+            verb_graph, services, ActionType.EDUCATE, ORG_ID, doctrine_node_id="trade_unionism"
+        )
+        assert result.success is True
+        assert result.direct_effects["study_target_id"] == "trade_unionism"
+        assert verb_graph.nodes[ORG_ID]["study_target_id"] == "trade_unionism"
+
+    def test_trap_target_refused_loudly(self, verb_graph, services) -> None:
+        result = _dispatch(
+            verb_graph, services, ActionType.EDUCATE, ORG_ID, doctrine_node_id="adventurism"
+        )
+        assert result.success is False
+        assert "trap" in (result.failure_reason or "").lower()
+        assert verb_graph.nodes[ORG_ID].get("study_target_id") is None
+
+    def test_unknown_node_refused_loudly(self, verb_graph, services) -> None:
+        result = _dispatch(
+            verb_graph, services, ActionType.EDUCATE, ORG_ID, doctrine_node_id="no_such_node"
+        )
+        assert result.success is False
+        assert "no_such_node" in (result.failure_reason or "")
+
+    def test_already_acquired_target_refused(self, verb_graph, services) -> None:
+        verb_graph.update_node(ORG_ID, acquired_doctrine_ids=("class_consciousness",))
+        result = _dispatch(
+            verb_graph,
+            services,
+            ActionType.EDUCATE,
+            ORG_ID,
+            doctrine_node_id="class_consciousness",
+        )
+        assert result.success is False
+        assert "already" in (result.failure_reason or "").lower()
+
+    def test_plain_educate_unchanged_by_the_sub_verb(self, verb_graph, services) -> None:
+        # No doctrine_node_id param → the classic consciousness path, untouched.
+        result = _dispatch(verb_graph, services, ActionType.EDUCATE, CLASS_ID)
+        assert result.success is True
+        assert result.consciousness_delta is not None
+
+
 class TestAidTransfer:
     """aid conserves value: org budget loss == target wealth gain × efficiency."""
 

@@ -137,10 +137,12 @@ class TestGetDoctrineTreeEngineBridge:
 
         bridge = EngineBridge(MagicMock())
         faction = SimpleNamespace(
+            id="vanguard",
             is_player=True,
             acquired_doctrine_ids=("class_consciousness", "trade_unionism"),
             theoretical_labor=42.5,
             doctrine_tags={DoctrineTag.MILITANCY: 3.0},
+            study_target_id="democratic_centralism",
         )
         with patch.object(bridge, "_player_doctrine_org", return_value=faction):
             result = bridge.get_doctrine_tree(uuid.uuid4())
@@ -148,6 +150,9 @@ class TestGetDoctrineTreeEngineBridge:
         assert result["acquired_ids"] == ["class_consciousness", "trade_unionism"]
         assert result["theoretical_labor"] == 42.5
         assert result["tags"]["militancy"] == 3.0
+        # Unit 7b: the canvas needs the acting faction + its standing order.
+        assert result["faction_id"] == "vanguard"
+        assert result["study_target_id"] == "democratic_centralism"
 
 
 # --------------------------------------------------------------------- #

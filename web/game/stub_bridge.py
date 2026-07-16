@@ -1004,6 +1004,10 @@ class StubEngineBridge:
             "acquired_ids": [],
             "tags": {tag.value: value for tag, value in starting_tags().items()},
             "theoretical_labor": 0.0,
+            # Unit 7b parity: no player faction in the stub world ⇒ honest
+            # nulls, same shape as the real bridge's no-faction fallback.
+            "faction_id": None,
+            "study_target_id": None,
         }
 
     def get_journal_dashboard(self, _session_id: UUID) -> dict[str, Any]:

@@ -3192,10 +3192,15 @@ class EngineBridge:
         acquired_ids: list[str] = []
         tags: dict[str, float] = {tag.value: float(v) for tag, v in starting_tags().items()}
         theoretical_labor = 0.0
+        faction_id: str | None = None
+        study_target_id: str | None = None
         player_org = self._player_doctrine_org(session_id)
         if player_org is not None:
             acquired_ids = list(player_org.acquired_doctrine_ids)
             theoretical_labor = float(player_org.theoretical_labor)
+            faction_id = str(player_org.id)
+            raw_target = getattr(player_org, "study_target_id", None)
+            study_target_id = str(raw_target) if raw_target else None
             if player_org.doctrine_tags:
                 tags = {tag.value: float(v) for tag, v in player_org.doctrine_tags.items()}
         return {
@@ -3204,6 +3209,12 @@ class EngineBridge:
             "acquired_ids": acquired_ids,
             "tags": tags,
             "theoretical_labor": theoretical_labor,
+            # Unit 7b (the Study order): the acting faction the canvas submits
+            # Educate(Doctrine) for, and its standing target. Honest nulls when
+            # no player faction exists (III.11) — the canvas then stays
+            # read-only rather than offering an unactionable affordance.
+            "faction_id": faction_id,
+            "study_target_id": study_target_id,
         }
 
     def _player_doctrine_org(self, session_id: UUID) -> Any:

@@ -221,6 +221,10 @@ class Organization(BaseModel):
         default_factory=dict,
         description="Tag state at the last Party Congress — the delta baseline for the next congress's purge odds (Ruling 5 / DT-5)",
     )
+    study_target_id: str | None = Field(
+        default=None,
+        description="Player-directed doctrine study order (Educate(Doctrine) sub-verb, Unit 7b): the DoctrineSystem saves TL toward this node instead of greedy-acquiring, and clears it on acquisition",
+    )
 
     @model_validator(mode="after")
     def _validate_constraints(self) -> Organization:

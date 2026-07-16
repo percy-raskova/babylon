@@ -80,10 +80,74 @@ class TestStepOrganization:
             json_native, tree, defines
         )
 
+    def test_study_target_suspends_greedy_and_saves(
+        self, tree: DoctrineTree, defines: DoctrineDefines
+    ) -> None:
+        # Unlocked (root held) but unaffordable target: the org SAVES — no
+        # greedy purchase happens even though cheaper nodes are affordable.
+        attrs = {
+            "cadre_level": 0.0,
+            "acquired_doctrine_ids": (tree.root_id, "trade_unionism"),
+            "theoretical_labor": 60.0,  # enough for a cheap greedy buy (50)
+            "study_target_id": "democratic_centralism",
+        }
+        cost = tree.nodes["democratic_centralism"].cost_tl
+        assert cost > 60.0, "fixture invalid: target must be unaffordable"
+        acquired, tl, _, _, target = step_organization(attrs, tree, defines)
+        assert acquired == (tree.root_id, "trade_unionism")  # nothing bought
+        assert tl == pytest.approx(60.0)  # nothing spent
+        assert target == "democratic_centralism"  # order stands
+
+    def test_study_target_acquired_when_affordable_then_cleared(
+        self, tree: DoctrineTree, defines: DoctrineDefines
+    ) -> None:
+        cost = tree.nodes["democratic_centralism"].cost_tl
+        attrs = {
+            "cadre_level": 0.0,
+            "acquired_doctrine_ids": (tree.root_id, "trade_unionism"),
+            "theoretical_labor": float(cost),
+            "study_target_id": "democratic_centralism",
+        }
+        acquired, tl, _, _, target = step_organization(attrs, tree, defines)
+        assert "democratic_centralism" in acquired
+        assert tl == pytest.approx(0.0)
+        assert target is None
+
+    def test_locked_study_target_keeps_greedy_running(
+        self, tree: DoctrineTree, defines: DoctrineDefines
+    ) -> None:
+        # Target's parents not held: greedy continues (builds toward it), the
+        # order stands — directed saving toward a locked node would deadlock.
+        attrs = {
+            "cadre_level": 0.0,
+            "acquired_doctrine_ids": (tree.root_id,),
+            "theoretical_labor": 1000.0,
+            "study_target_id": "urban_guerrilla",  # needs armed_vanguard first
+        }
+        assert not all(p in (tree.root_id,) for p in tree.nodes["urban_guerrilla"].parents), (
+            "fixture invalid: target must be locked"
+        )
+        acquired, _, _, _, target = step_organization(attrs, tree, defines)
+        assert len(acquired) > 1  # greedy bought something
+        assert target == "urban_guerrilla"
+
+    def test_invalid_or_trap_study_target_clears(
+        self, tree: DoctrineTree, defines: DoctrineDefines
+    ) -> None:
+        for bad in ("no_such_node", "adventurism", tree.root_id):
+            attrs = {
+                "cadre_level": 0.0,
+                "acquired_doctrine_ids": (tree.root_id,),
+                "theoretical_labor": 0.0,
+                "study_target_id": bad,
+            }
+            _, _, _, _, target = step_organization(attrs, tree, defines)
+            assert target is None, f"{bad!r} should clear the order"
+
     def test_bootstraps_the_free_root_and_accrues_labour(
         self, tree: DoctrineTree, defines: DoctrineDefines
     ) -> None:
-        acquired, tl, tags, sprung = step_organization({"cadre_level": 0.5}, tree, defines)
+        acquired, tl, tags, sprung, _ = step_organization({"cadre_level": 0.5}, tree, defines)
         assert tree.root_id in acquired
         # TL accrued = 0.5 (cadre) × 0.20 (midpoint allocation) = 0.10; root is free.
         assert tl == pytest.approx(0.10)
@@ -99,7 +163,7 @@ class TestStepOrganization:
             "theoretical_labor": 0.0,
             "doctrine_tags": {DoctrineTag.CLASS_ANALYSIS: 100.0},
         }
-        _, _, tags, _ = step_organization(attrs, tree, defines)
+        _, _, tags, _, _ = step_organization(attrs, tree, defines)
         assert tags[DoctrineTag.CLASS_ANALYSIS] == pytest.approx(99.45)  # 100 × (1 − 0.0055)
 
     def test_reachable_trap_fires_when_condition_holds(
@@ -112,7 +176,7 @@ class TestStepOrganization:
             "theoretical_labor": 0.0,
             "doctrine_tags": {DoctrineTag.MILITANCY: 5.0},  # MASS_LINK absent ⇒ 0
         }
-        acquired, _, _, sprung = step_organization(attrs, tree, defines)
+        acquired, _, _, sprung, _ = step_organization(attrs, tree, defines)
         assert "adventurism" in sprung
         assert "adventurism" in acquired
 
@@ -125,7 +189,7 @@ class TestStepOrganization:
             "theoretical_labor": 0.0,
             "doctrine_tags": {DoctrineTag.MASS_LINK: 5.0},  # MASS_LINK > 0 ⇒ safe
         }
-        _, _, _, sprung = step_organization(attrs, tree, defines)
+        _, _, _, sprung, _ = step_organization(attrs, tree, defines)
         assert sprung == []
 
 

@@ -111,16 +111,27 @@ def step_organization(
     attrs: dict[str, Any],
     tree: DoctrineTree,
     defines: DoctrineDefines,
-) -> tuple[tuple[str, ...], float, dict[DoctrineTag, float], list[str]]:
+) -> tuple[tuple[str, ...], float, dict[DoctrineTag, float], list[str], str | None]:
     """Advance one organization's doctrine state by one tick (pure).
 
+    A standing ``study_target_id`` (the player's Educate(Doctrine) order,
+    Unit 7b) redirects acquisition: while the target is UNLOCKED (parents
+    held) but unaffordable, the org SAVES its theoretical labor — greedy
+    auto-acquire is suspended (directed study is wallet discipline); once
+    affordable it is acquired and the order clears. While the target is
+    still LOCKED, greedy continues (building the tree toward it). An
+    invalid, trap, or already-held target clears the order.
+
     :param attrs: The org node's current attribute mapping.
-    :returns: ``(acquired_ids, theoretical_labor, doctrine_tags, sprung_trap_ids)``.
+    :returns: ``(acquired_ids, theoretical_labor, doctrine_tags,
+        sprung_trap_ids, study_target_id)``.
     """
     acquired: tuple[str, ...] = tuple(attrs.get("acquired_doctrine_ids", ()))
     tl = float(attrs.get("theoretical_labor", 0.0))
     tags = _read_tags(attrs.get("doctrine_tags"))
     cadre = float(attrs.get("cadre_level", 0.0))
+    raw_target = attrs.get("study_target_id")
+    study_target: str | None = str(raw_target) if raw_target else None
 
     tags = decay_tags(tags, defines.tag_decay_rate)
     study_allocation = (defines.study_allocation_min + defines.study_allocation_max) / 2.0
@@ -130,11 +141,28 @@ def step_organization(
         acquired = acquire(acquired, tree.root_id)
         tags = _apply_deltas(tags, tree.nodes[tree.root_id].tag_deltas)
 
-    candidate = _cheapest_acquirable(tree, acquired, tl)
-    if candidate is not None:
-        tl -= tree.nodes[candidate].cost_tl
-        acquired = acquire(acquired, candidate)
-        tags = _apply_deltas(tags, tree.nodes[candidate].tag_deltas)
+    target_node = tree.nodes.get(study_target) if study_target is not None else None
+    if study_target is not None and (
+        target_node is None or target_node.is_trap or study_target in acquired
+    ):
+        study_target = None
+        target_node = None
+
+    if target_node is not None and all(p in set(acquired) for p in target_node.parents):
+        # Directed study: acquire when affordable, otherwise save — no greedy.
+        if tl >= target_node.cost_tl:
+            tl -= target_node.cost_tl
+            acquired = acquire(acquired, target_node.id)
+            tags = _apply_deltas(tags, target_node.tag_deltas)
+            study_target = None
+    else:
+        candidate = _cheapest_acquirable(tree, acquired, tl)
+        if candidate is not None:
+            tl -= tree.nodes[candidate].cost_tl
+            acquired = acquire(acquired, candidate)
+            tags = _apply_deltas(tags, tree.nodes[candidate].tag_deltas)
+            if study_target == candidate:
+                study_target = None
 
     sprung: list[str] = []
     for trap in _reachable_traps(tree, acquired):
@@ -143,7 +171,7 @@ def step_organization(
             tags = _apply_deltas(tags, trap.tag_deltas)
             sprung.append(trap.id)
 
-    return acquired, tl, tags, sprung
+    return acquired, tl, tags, sprung, study_target
 
 
 def compute_doctrine(
@@ -200,11 +228,12 @@ def compute_doctrine(
                 kind = "escaped" if outcome.escaped else "purge_failed"
                 events.append((org_id, outcome.attempted_trap_id, kind))
 
-        acquired, tl, tags, sprung = step_organization(attrs, tree, defines)
+        acquired, tl, tags, sprung, study_target = step_organization(attrs, tree, defines)
         updates: dict[str, Any] = {
             "acquired_doctrine_ids": acquired,
             "theoretical_labor": tl,
             "doctrine_tags": tags,
+            "study_target_id": study_target,
         }
         if is_congress:
             updates["congress_tag_snapshot"] = attrs["congress_tag_snapshot"]

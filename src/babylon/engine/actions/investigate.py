@@ -8,18 +8,25 @@ revealed; the bridge/UI consumes it from the persisted result.
 
 EH Phase 2 (Wave 5): when the PLAYER org investigates a TERRITORY, the
 resolver additionally writes ``investigation_intel`` onto the territory node
-— information-layer state that ``compute_epistemic_horizon`` adds into
-``intel_confidence`` (the corpus's "Investigate is the tactical supplement;
-mass work is the strategic base"). The boost persists until Phase 3 lands
-intel decay (documented limitation, not an oversight). Non-player
-investigations reveal to their actor via ``direct_effects`` but never raise
-the PLAYER's I_c.
+(a real ``Territory`` model field — accumulated event-sourced state that
+survives the WorldState round trip) — information-layer state that
+``compute_epistemic_horizon`` adds into ``intel_confidence`` (the corpus's
+"Investigate is the tactical supplement; mass work is the strategic base").
+The player path is GATED by the corpus's SOCIAL_INVESTIGATION requirement
+(fog-of-war.yaml:458-485): the target's mass receptivity must satisfy
+``M_r >= investigate_min_receptivity`` — "cannot investigate if masses won't
+talk"; below it (or with no tenant masses) the action automatically fails.
+The boost persists until Phase 3 lands intel decay; cadre-presence gating is
+likewise Phase 3 (no verb can create PRESENCE edges yet). Non-player
+investigations keep the Phase-1 informational reveal via ``direct_effects``
+but never raise the PLAYER's I_c and are not receptivity-gated.
 """
 
 from __future__ import annotations
 
 from typing import TYPE_CHECKING, Any
 
+from babylon.engine.systems.epistemic_horizon import mass_receptivity_of
 from babylon.models.enums import EventType
 from babylon.ooda.types import ActionResult
 
@@ -76,7 +83,25 @@ def resolve_investigate(
     metadata = getattr(graph, "graph", None)
     player_org_id = metadata.get("player_org_id") if isinstance(metadata, dict) else None
     if node_type == "territory" and player_org_id is not None and action.org_id == player_org_id:
-        boost = services.defines.epistemic_horizon.investigate_intel_boost
+        eh_defines = services.defines.epistemic_horizon
+        # Corpus gate (fog-of-war.yaml:458-485 SOCIAL_INVESTIGATION): the
+        # masses are the intelligence network — "M_r >= 0.3 (cannot
+        # investigate if masses won't talk)"; below it (or with no tenant
+        # masses at all) "the action automatically fails". Evaluated against
+        # live graph state at resolution time (OODA position 14 — last
+        # tick's consolidated p_acquiescence/consciousness). Cadre-presence
+        # gating is Phase 3: no verb can create PRESENCE edges yet.
+        receptivity = mass_receptivity_of(graph, action.target_id, eh_defines)
+        if receptivity is None or receptivity < eh_defines.investigate_min_receptivity:
+            return ActionResult(
+                action=action,
+                success=False,
+                failure_reason=(
+                    "The investigation fails. The people do not trust you. "
+                    "You must first do mass work to earn their trust."
+                ),
+            )
+        boost = eh_defines.investigate_intel_boost
         existing = float(target_node.get("investigation_intel", 0.0))
         graph.update_node(
             action.target_id,

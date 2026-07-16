@@ -1034,3 +1034,54 @@ class TestPlayerOrgIdRoundTrip:
 
         assert "player_org_id" not in graph.graph
         assert WorldState.from_graph(graph, tick=1).player_org_id is None
+
+
+class TestInvestigationIntelRoundTrip:
+    """EH Phase 2: ``investigation_intel`` is event-sourced ACCUMULATED state
+    (``resolve_investigate`` writes it; Phase-3 decay will read it) — it must
+    survive the WorldState round trip as a real Territory field. It is NOT a
+    recomputable shadow attr like ``mass_receptivity``/``vision_state``, so
+    dropping it via ``TERRITORY_EXCLUDED_FIELDS`` would be a silent data loss
+    and leaving it unregistered crashes ``extra="forbid"`` reconstruction
+    (the 2026-07-16 adversarial-verify critical finding)."""
+
+    def test_investigation_intel_survives_round_trip(self) -> None:
+        from babylon.models.entities.territory import Territory
+        from babylon.models.enums import SectorType
+        from babylon.models.world_state import WorldState
+
+        territory = Territory(id="T001", name="Detroit", sector_type=SectorType.INDUSTRIAL)
+        state = WorldState(tick=1, territories={"T001": territory})
+        graph = state.to_graph()
+        # Exactly what resolve_investigate writes when the player investigates.
+        graph.update_node("T001", investigation_intel=0.4)
+
+        recovered = WorldState.from_graph(graph, tick=1)
+
+        assert recovered.territories["T001"].investigation_intel == 0.4
+
+    def test_defaults_to_zero_and_reemits(self) -> None:
+        from babylon.models.entities.territory import Territory
+        from babylon.models.enums import SectorType
+        from babylon.models.world_state import WorldState
+
+        territory = Territory(id="T001", name="Detroit", sector_type=SectorType.INDUSTRIAL)
+        assert territory.investigation_intel == 0.0
+
+        state = WorldState(tick=1, territories={"T001": territory})
+        recovered = WorldState.from_graph(state.to_graph(), tick=1)
+        assert recovered.territories["T001"].investigation_intel == 0.0
+
+
+class TestPlayerOrgIdMetadataGuard:
+    """2026-07-16 verify coverage: non-string garbage in graph metadata
+    (a mock, or corrupted persistence) must read back as honest None, not
+    crash validation or smuggle a non-str into the frozen model."""
+
+    def test_non_string_metadata_reads_as_none(self) -> None:
+        from babylon.models.world_state import WorldState
+
+        graph = WorldState(tick=1).to_graph()
+        graph.graph["player_org_id"] = 123
+
+        assert WorldState.from_graph(graph, tick=1).player_org_id is None

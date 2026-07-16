@@ -81,18 +81,86 @@ class TestApplyClassVisionGate:
         assert payload["wealth"] == 120.0
 
     def test_mud_quantizes_to_corpus_margin(self) -> None:
-        """Mud = ±0.2 margin (corpus): deterministic 0.2-bucket quantization."""
+        """Mud = ±0.2 margin (corpus fog-of-war.yaml:335). A bucket of width
+        W bounds displayed error to W/2, so the quantum is 0.4 — 0.2-wide
+        buckets would ship TWICE the precision the corpus allows."""
         from game.engine_bridge import _apply_class_vision_gate
 
         payload = _payload()
         _apply_class_vision_gate(payload, "mud")
 
-        assert payload["agitation"] == pytest.approx(0.6)  # 0.57 -> 0.6
+        assert payload["agitation"] == pytest.approx(0.4)  # 0.57 -> 0.4
         assert payload["class_consciousness"] == pytest.approx(0.8)  # 0.73 -> 0.8
+        assert payload["national_identity"] == pytest.approx(0.4)  # 0.41 -> 0.4
+        assert payload["organization"] == pytest.approx(0.8)  # 0.62 -> 0.8
         assert payload["p_revolution"] == pytest.approx(0.4)  # 0.33 -> 0.4
         assert payload["class_vision"] == "mud"
         assert "agitation" in payload["vision_approx"]
         assert payload["wealth"] == 120.0
+        # Every displayed value sits within the corpus margin of the truth.
+        for field, truth in (("agitation", 0.57), ("class_consciousness", 0.73)):
+            value = payload[field]
+            assert isinstance(value, float)
+            assert abs(value - truth) <= 0.2
+
+    def test_mud_quantizes_consciousness_ternary(self) -> None:
+        """The ternary dict is gated with the same documented round-half-up
+        rule — pinned because banker's round() flipped these boundaries by
+        IEEE-754 representation accident (the 2026-07-16 verify finding)."""
+        from game.engine_bridge import _apply_class_vision_gate
+
+        payload = _payload()
+        _apply_class_vision_gate(payload, "mud")
+
+        assert payload["consciousness"] == {
+            "revolutionary": pytest.approx(0.4),  # 0.5 -> 0.4 (half-up on 0.4-grid)
+            "liberal": pytest.approx(0.4),  # 0.3 -> 0.4
+            "fascist": pytest.approx(0.4),  # 0.2 -> 0.4
+        }
+        assert "consciousness" in payload["vision_approx"]
+
+    def test_mud_boundaries_are_deterministic_and_clamped(self) -> None:
+        """Round-half-up (floor(v/Q + 0.5)), clamped to [0, 1]: 1.0 must
+        display as 1.0 (not the 1.2 the raw grid would produce), 0.0 as 0.0."""
+        from game.engine_bridge import _apply_class_vision_gate
+
+        payload = _payload()
+        payload["agitation"] = 1.0
+        payload["organization"] = 0.0
+        payload["p_revolution"] = 0.2  # exact half -> rounds UP by rule
+        _apply_class_vision_gate(payload, "mud")
+
+        assert payload["agitation"] == pytest.approx(1.0)
+        assert payload["organization"] == pytest.approx(0.0)
+        assert payload["p_revolution"] == pytest.approx(0.4)
+
+    def test_mud_skips_honest_null_fields(self) -> None:
+        """A field that is None for honest data-absence reasons is neither
+        quantized nor claimed as vision-approximated."""
+        from game.engine_bridge import _apply_class_vision_gate
+
+        payload = _payload()
+        payload["agitation"] = None
+        _apply_class_vision_gate(payload, "mud")
+
+        assert payload["agitation"] is None
+        assert "agitation" not in payload["vision_approx"]
+
+    def test_desert_skips_honest_null_fields(self) -> None:
+        """Desert must not claim 'the fog hid this' for a field that never
+        held a value — vision_masked lists only fields the gate ACTUALLY
+        withheld (the 2026-07-16 verify finding: masking an already-None
+        field conflates missing data with withheld data)."""
+        from game.engine_bridge import _apply_class_vision_gate
+
+        payload = _payload()
+        payload["agitation"] = None
+        _apply_class_vision_gate(payload, "desert")
+
+        assert payload["agitation"] is None
+        assert "agitation" not in payload["vision_masked"]
+        assert "organization" in payload["vision_masked"]
+        assert payload["organization"] is None
 
     def test_water_is_exact_with_no_markers(self) -> None:
         from game.engine_bridge import _apply_class_vision_gate
@@ -115,3 +183,49 @@ class TestApplyClassVisionGate:
 
         assert payload["agitation"] == pytest.approx(0.57)
         assert "class_vision" not in payload
+
+
+class TestInspectorGateEndToEnd:
+    """The gate through the REAL payload builder (2026-07-16 verify finding:
+    hand-built-dict unit tests never proved ``_social_class_inspector_fields``
+    actually applies the gate to its own payload)."""
+
+    def _political_graph(self, vision_state: str) -> BabylonGraph:
+        graph = _graph_with_class_in(vision_state)
+        graph.update_node(
+            "C001",
+            wealth=50.0,
+            organization=0.6,
+            ideology={
+                "class_consciousness": 0.7,
+                "national_identity": 0.3,
+                "agitation": 0.5,
+            },
+        )
+        return graph
+
+    def test_desert_masks_through_real_inspector_payload(self) -> None:
+        from game.engine_bridge import _social_class_inspector_fields
+
+        graph = self._political_graph("desert")
+        payload = _social_class_inspector_fields(dict(graph.nodes["C001"]), 10.0, graph)
+
+        assert payload["class_vision"] == "desert"
+        assert payload["agitation"] is None
+        assert payload["organization"] is None
+        assert payload["consciousness"] is None
+        assert "agitation" in payload["vision_masked"]
+        # Material/public knowledge stays visible in every vision state.
+        assert payload["wealth"] == 50.0
+
+    def test_water_is_exact_through_real_inspector_payload(self) -> None:
+        from game.engine_bridge import _social_class_inspector_fields
+
+        graph = self._political_graph("water")
+        payload = _social_class_inspector_fields(dict(graph.nodes["C001"]), 10.0, graph)
+
+        assert payload["class_vision"] == "water"
+        assert payload["agitation"] == pytest.approx(0.5)
+        assert payload["organization"] == pytest.approx(0.6)
+        assert "vision_masked" not in payload
+        assert "vision_approx" not in payload

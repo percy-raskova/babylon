@@ -15,6 +15,7 @@ from __future__ import annotations
 
 import json
 import logging
+import math
 from itertools import pairwise
 from typing import TYPE_CHECKING, Any, Final
 from uuid import UUID
@@ -1722,10 +1723,26 @@ _VISION_GATED_CLASS_FIELDS: tuple[str, ...] = (
     "p_revolution",
 )
 
-#: Corpus Mud rule: "±0.2 margin of error" → deterministic 0.2-wide buckets
-#: (Constitution III.7: masking must be a deterministic function of
-#: committed state — quantization, not noise).
-_MUD_QUANTUM = 0.2
+#: Corpus Mud rule: "±0.2 margin of error" (fog-of-war.yaml:335). A bucket of
+#: width W bounds displayed error to W/2, so honoring a ±0.2 margin needs
+#: 0.4-wide buckets — a 0.2 quantum would ship TWICE the precision the corpus
+#: allows (the 2026-07-16 verify finding). Constitution III.7: masking must be
+#: a deterministic function of committed state — quantization, not noise.
+_MUD_QUANTUM = 0.4
+
+
+def _mud_quantize(value: float) -> float:
+    """One gated value onto the Mud grid: round-half-up (``floor(v/Q + 0.5)``),
+    clamped to [0, 1].
+
+    Explicit half-up, NOT Python's banker's ``round()``: half-to-even makes
+    grid boundaries flip direction by IEEE-754 representation accident
+    (0.3/0.2 evaluates to 1.4999…8 and rounds down while an exact 2.5 also
+    rounds down) — an undocumented rule the player could never learn. The
+    clamp keeps displayed values in the gated fields' [0, 1] domain (a raw
+    half-up grid would show 1.2 for a true 1.0).
+    """
+    return min(1.0, max(0.0, math.floor(value / _MUD_QUANTUM + 0.5) * _MUD_QUANTUM))
 
 
 def _class_vision_state(graph: Any, class_id: str) -> str | None:
@@ -1771,28 +1788,29 @@ def _apply_class_vision_gate(payload: dict[str, Any], vision: str | None) -> Non
     if vision == "water":
         return
     if vision == "desert":
+        # Mask only fields ACTUALLY holding a value: an already-None field is
+        # honest data-absence, and claiming "the fog hid this" for it would
+        # conflate missing data with withheld data (III.11).
         masked: list[str] = []
         for field in _VISION_GATED_CLASS_FIELDS:
-            if field in payload:
+            if payload.get(field) is not None:
                 payload[field] = None
                 masked.append(field)
-        if "consciousness" in payload:
+        if payload.get("consciousness") is not None:
             payload["consciousness"] = None
             masked.append("consciousness")
         payload["vision_masked"] = masked
         return
-    # mud — deterministic quantization
+    # mud — deterministic quantization (see _mud_quantize for the rule)
     approx: list[str] = []
     for field in _VISION_GATED_CLASS_FIELDS:
         value = payload.get(field)
         if isinstance(value, int | float):
-            payload[field] = round(float(value) / _MUD_QUANTUM) * _MUD_QUANTUM
+            payload[field] = _mud_quantize(float(value))
             approx.append(field)
     ternary = payload.get("consciousness")
     if isinstance(ternary, dict):
-        payload["consciousness"] = {
-            k: round(float(v) / _MUD_QUANTUM) * _MUD_QUANTUM for k, v in ternary.items()
-        }
+        payload["consciousness"] = {k: _mud_quantize(float(v)) for k, v in ternary.items()}
         approx.append("consciousness")
     payload["vision_approx"] = approx
 
@@ -4594,7 +4612,9 @@ class EngineBridge:
         # same class of round-trip loss the carry above fixes for
         # TickDynamicsSystem (see _carry_epistemic_horizon's docstring for
         # why a recompute, not a persistent_context stash, is correct here).
-        _carry_epistemic_horizon(new_graph, game_defines.epistemic_horizon, old_graph=graph)
+        # (investigation_intel needs no carry: it is a real Territory model
+        # field since the 2026-07-16 verify fold, so it rides the round trip.)
+        _carry_epistemic_horizon(new_graph, game_defines.epistemic_horizon)
         # Feature 021 lens pair: re-inject ReserveArmySystem's wage_pressure and
         # DispossessionEventSystem's dispossession_intensity — both are
         # TERRITORY_EXCLUDED_FIELDS, so the WorldState round-trip drops them the
@@ -6219,7 +6239,7 @@ def _carry_tick_dynamics_flows(
         )
 
 
-def _carry_epistemic_horizon(new_graph: Any, defines: Any, *, old_graph: Any = None) -> None:
+def _carry_epistemic_horizon(new_graph: Any, defines: Any) -> None:
     """Re-inject ``EpistemicHorizonSystem``'s shadow territory attrs onto
     ``new_graph`` before it is persisted — the Wave-5 receptivity-lens
     counterpart to :func:`_carry_tick_dynamics_flows`.
@@ -6265,20 +6285,6 @@ def _carry_epistemic_horizon(new_graph: Any, defines: Any, *, old_graph: Any = N
             (``game_defines.epistemic_horizon``).
     """
     from babylon.engine.systems.epistemic_horizon import compute_epistemic_horizon
-
-    # EH Phase 2: investigation_intel is EVENT-SOURCED (written by
-    # resolve_investigate during the tick), not derivable — unlike the three
-    # shadow attrs below it cannot be recomputed, so it must be re-stamped
-    # from the pre-round-trip engine graph BEFORE the recompute reads it.
-    # Same round-trip-loss class as the recompute itself; different fix
-    # (a stash-forward, like _carry_tick_dynamics_flows).
-    if old_graph is not None:
-        for territory_id, attrs in old_graph.nodes(data=True):
-            if attrs.get("_node_type") != "territory":
-                continue
-            intel = attrs.get("investigation_intel")
-            if intel is not None and territory_id in new_graph.nodes:
-                new_graph.update_node(territory_id, investigation_intel=float(intel))
 
     # EH ruling 6: new_graph is new_state.to_graph(), so the player-org
     # pointer (when the session's WorldState carries one) is already in the

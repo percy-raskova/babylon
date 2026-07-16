@@ -95,6 +95,17 @@ class EpistemicHorizonDefines(BaseModel):
             "supplement, mass work the strategic base). No decay until Phase 3."
         ),
     )
+    investigate_min_receptivity: float = Field(
+        default=0.3,
+        ge=0.0,
+        le=1.0,
+        description=(
+            "Phase 2: minimum target-territory M_r for the player's INVESTIGATE "
+            "to gather intel (fog-of-war.yaml:458-485 SOCIAL_INVESTIGATION — "
+            "'cannot investigate if masses won't talk'; below it the action "
+            "automatically fails). Cadre-presence gating is Phase 3."
+        ),
+    )
 
 
 __all__ = ["EpistemicHorizonDefines"]

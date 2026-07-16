@@ -469,3 +469,151 @@ class TestInvestigationIntel:
 
         boost = GameDefines().epistemic_horizon.investigate_intel_boost
         assert graph.nodes["T001"]["intel_confidence"] == pytest.approx(0.1 + boost)
+
+
+class TestInvestigateReceptivityGate:
+    """EH Phase 2 corpus gate (fog-of-war.yaml:458-485, SOCIAL_INVESTIGATION):
+    ``M_r >= 0.3`` is a REQUIREMENT — "cannot investigate if masses won't
+    talk"; below it "the action automatically fails". The player's Investigate
+    must consult the target's live mass receptivity before granting intel.
+    (Cadre-presence gating is Phase 3 — no verb can create PRESENCE edges yet.)
+    """
+
+    def _investigate(self, graph: BabylonGraph, org_id: str = "ORG001"):
+        from babylon.engine.actions.investigate import resolve_investigate
+        from babylon.models.enums import ActionType
+        from babylon.ooda.types import Action
+
+        action = Action(
+            org_id=org_id,
+            action_type=ActionType.MAP_NETWORK,
+            target_id="T001",
+            params={},
+        )
+        return resolve_investigate(action, {}, graph, ServiceContainer.create())
+
+    def _player_graph(self, *, class_consciousness: float, p_acquiescence: float) -> BabylonGraph:
+        graph = BabylonGraph()
+        _territory(graph, "T001")
+        _tenant(
+            graph,
+            "C001",
+            "T001",
+            role="periphery_proletariat",
+            population=1000.0,
+            p_acquiescence=p_acquiescence,
+            class_consciousness=class_consciousness,
+        )
+        graph.add_node("ORG001", _node_type="organization", id="ORG001", cohesion=0.5)
+        graph.graph["player_org_id"] = "ORG001"
+        return graph
+
+    def test_fails_below_receptivity_threshold(self) -> None:
+        """M_r = (1-0.5)·0.1·1.0 = 0.05 < 0.3 — the corpus auto-fail."""
+        graph = self._player_graph(class_consciousness=0.1, p_acquiescence=0.5)
+        result = self._investigate(graph)
+
+        assert result.success is False
+        assert result.failure_reason is not None
+        assert "trust" in result.failure_reason
+        assert "investigation_intel" not in graph.nodes["T001"]
+
+    def test_fails_with_no_tenant_masses(self) -> None:
+        """No tenant classes -> no masses to talk to -> honest fail, never an
+        implicit M_r=0 fabrication that would grant intel anyway."""
+        graph = BabylonGraph()
+        _territory(graph, "T001")
+        graph.add_node("ORG001", _node_type="organization", id="ORG001", cohesion=0.5)
+        graph.graph["player_org_id"] = "ORG001"
+        result = self._investigate(graph)
+
+        assert result.success is False
+        assert "investigation_intel" not in graph.nodes["T001"]
+
+    def test_succeeds_at_receptive_masses(self) -> None:
+        """M_r = (1-0.2)·0.7·1.0 = 0.56 >= 0.3 — intel granted."""
+        graph = self._player_graph(class_consciousness=0.7, p_acquiescence=0.2)
+        result = self._investigate(graph)
+
+        assert result.success is True
+        boost = GameDefines().epistemic_horizon.investigate_intel_boost
+        assert graph.nodes["T001"]["investigation_intel"] == pytest.approx(boost)
+
+    def test_npc_investigate_bypasses_gate(self) -> None:
+        """The gate is the PLAYER's corpus action; NPC MAP_NETWORK keeps the
+        Phase-1 informational reveal even over unreceptive masses (and still
+        never writes intel)."""
+        graph = self._player_graph(class_consciousness=0.1, p_acquiescence=0.5)
+        graph.add_node("ORG002", _node_type="organization", id="ORG002", cohesion=0.5)
+        result = self._investigate(graph, org_id="ORG002")
+
+        assert result.success is True
+        assert "investigation_intel" not in graph.nodes["T001"]
+
+    def test_threshold_is_a_define(self) -> None:
+        defines = GameDefines().epistemic_horizon
+        assert defines.investigate_min_receptivity == pytest.approx(0.3)
+
+
+class TestInvestigationIntelClamps:
+    """2026-07-16 verify coverage batch: the per-write clamp, the I_c-formula
+    clamp, and the non-territory no-write path."""
+
+    def _investigate(self, graph: BabylonGraph, target_id: str) -> None:
+        from babylon.engine.actions.investigate import resolve_investigate
+        from babylon.models.enums import ActionType
+        from babylon.ooda.types import Action
+
+        action = Action(
+            org_id="ORG001",
+            action_type=ActionType.MAP_NETWORK,
+            target_id=target_id,
+            params={},
+        )
+        resolve_investigate(action, {}, graph, ServiceContainer.create())
+
+    def _graph(self) -> BabylonGraph:
+        graph = BabylonGraph()
+        _territory(graph, "T001")
+        _tenant(
+            graph,
+            "C001",
+            "T001",
+            role="periphery_proletariat",
+            population=1000.0,
+            p_acquiescence=0.2,
+            class_consciousness=0.7,
+        )
+        graph.add_node("ORG001", _node_type="organization", id="ORG001", cohesion=0.5)
+        graph.graph["player_org_id"] = "ORG001"
+        return graph
+
+    def test_boost_accumulates_then_clamps_at_one(self) -> None:
+        """Six investigates at boost 0.2: 0.2 -> ... -> 1.0, never past it."""
+        graph = self._graph()
+        boost = GameDefines().epistemic_horizon.investigate_intel_boost
+
+        for i in range(1, 6):
+            self._investigate(graph, "T001")
+            expected = min(1.0, i * boost)
+            assert graph.nodes["T001"]["investigation_intel"] == pytest.approx(expected)
+
+        self._investigate(graph, "T001")
+        assert graph.nodes["T001"]["investigation_intel"] == pytest.approx(1.0)
+
+    def test_i_c_formula_clamps_at_one_with_max_intel(self) -> None:
+        """I_c = clamp(B_o + C_p*M_r + intel): 0.1 + 0 + 1.0 clamps to 1.0."""
+        graph = self._graph()
+        graph.update_node("T001", investigation_intel=1.0)
+        EpistemicHorizonSystem().step(graph, ServiceContainer.create(), {"tick": 1})
+
+        assert graph.nodes["T001"]["intel_confidence"] == pytest.approx(1.0)
+
+    def test_player_investigate_of_class_writes_no_intel(self) -> None:
+        """investigation_intel is a TERRITORY channel: the player mapping a
+        social_class network reveals informationally but earns no I_c."""
+        graph = self._graph()
+        self._investigate(graph, "C001")
+
+        assert "investigation_intel" not in graph.nodes["C001"]
+        assert "investigation_intel" not in graph.nodes["T001"]

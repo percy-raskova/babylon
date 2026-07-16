@@ -26,10 +26,13 @@ from babylon.persistence.postgres_initialization import (
 SQLITE_REF = Path("data/sqlite/marxist-data-3NF.sqlite")
 
 
-pytestmark = pytest.mark.skipif(
-    not SQLITE_REF.exists(),
-    reason=f"SQLite reference DB missing at {SQLITE_REF}",
-)
+pytestmark = [
+    pytest.mark.requires_reference_db,
+    pytest.mark.skipif(
+        not SQLITE_REF.exists(),
+        reason=f"SQLite reference DB missing at {SQLITE_REF}",
+    ),
+]
 
 
 def test_silent_proceed_within_window() -> None:

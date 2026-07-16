@@ -347,3 +347,125 @@ class TestDeterminism:
         assert a1["mass_receptivity"] == a2["mass_receptivity"]
         assert a1["intel_confidence"] == a2["intel_confidence"]
         assert a1["vision_state"] == a2["vision_state"]
+
+
+class TestPlayerOrgIdChannel:
+    """EH ruling 6 (owner 2026-07-16): C_p becomes player-relative via
+    ``WorldState.player_org_id`` riding graph metadata — no per-org flag
+    needed. The legacy ``is_player`` attr path stays honored (PoliticalFaction
+    already exposes it)."""
+
+    def _mud_tenant_graph(self) -> BabylonGraph:
+        graph = BabylonGraph()
+        _territory(graph, "T001")
+        _tenant(
+            graph,
+            "C001",
+            "T001",
+            role="periphery_proletariat",
+            population=1000.0,
+            p_acquiescence=0.2,
+            class_consciousness=0.7,
+        )
+        return graph
+
+    def test_player_org_id_metadata_grants_cadre_presence(self) -> None:
+        """An org WITHOUT is_player still counts as C_p=1 when it IS the
+        player org per graph metadata: I_c = 0.1 + 1.0*0.56 = 0.66."""
+        graph = self._mud_tenant_graph()
+        graph.add_node("ORG001", _node_type="organization", id="ORG001")
+        graph.add_edge("ORG001", "T001", edge_type=EdgeType.PRESENCE)
+        graph.graph["player_org_id"] = "ORG001"
+
+        EpistemicHorizonSystem().step(graph, ServiceContainer.create(), {"tick": 1})
+
+        assert graph.nodes["T001"]["intel_confidence"] == pytest.approx(0.66)
+
+    def test_non_player_org_presence_does_not_grant_cp(self) -> None:
+        """A different org's PRESENCE edge is not the player's eyes:
+        I_c stays at base_observation 0.1."""
+        graph = self._mud_tenant_graph()
+        graph.add_node("ORG002", _node_type="organization", id="ORG002")
+        graph.add_edge("ORG002", "T001", edge_type=EdgeType.PRESENCE)
+        graph.graph["player_org_id"] = "ORG001"
+
+        EpistemicHorizonSystem().step(graph, ServiceContainer.create(), {"tick": 1})
+
+        assert graph.nodes["T001"]["intel_confidence"] == pytest.approx(0.1)
+
+    def test_legacy_is_player_attr_still_honored(self) -> None:
+        """PoliticalFaction's is_player=True path keeps working with NO
+        metadata pointer set (backward compat with Phase 1)."""
+        graph = self._mud_tenant_graph()
+        _player_org_presence(graph, "ORG001", "T001", is_player=True)
+
+        EpistemicHorizonSystem().step(graph, ServiceContainer.create(), {"tick": 1})
+
+        assert graph.nodes["T001"]["intel_confidence"] == pytest.approx(0.66)
+
+
+class TestInvestigationIntel:
+    """EH Phase 2: Investigate finally raises I_c through its own channel.
+
+    ``resolve_investigate`` (player org only) writes ``investigation_intel``
+    onto the target territory; ``compute_epistemic_horizon`` adds it into
+    I_c (clamped). Decay is Phase 3 — the boost persists until then
+    (documented in the resolver).
+    """
+
+    def _graph(self) -> BabylonGraph:
+        graph = BabylonGraph()
+        _territory(graph, "T001")
+        _tenant(
+            graph,
+            "C001",
+            "T001",
+            role="periphery_proletariat",
+            population=1000.0,
+            p_acquiescence=0.2,
+            class_consciousness=0.7,
+        )
+        graph.add_node("ORG001", _node_type="organization", id="ORG001", cohesion=0.5)
+        graph.graph["player_org_id"] = "ORG001"
+        return graph
+
+    def _investigate(self, graph: BabylonGraph, org_id: str) -> None:
+        from babylon.engine.actions.investigate import resolve_investigate
+        from babylon.models.enums import ActionType
+        from babylon.ooda.types import Action
+
+        action = Action(
+            org_id=org_id,
+            action_type=ActionType.MAP_NETWORK,
+            target_id="T001",
+            params={},
+        )
+        resolve_investigate(action, {}, graph, ServiceContainer.create())
+
+    def test_player_investigate_writes_intel(self) -> None:
+        graph = self._graph()
+        self._investigate(graph, "ORG001")
+
+        boost = GameDefines().epistemic_horizon.investigate_intel_boost
+        assert graph.nodes["T001"]["investigation_intel"] == pytest.approx(boost)
+
+    def test_non_player_investigate_writes_nothing(self) -> None:
+        graph = self._graph()
+        graph.add_node("ORG002", _node_type="organization", id="ORG002", cohesion=0.5)
+        self._investigate(graph, "ORG002")
+
+        assert "investigation_intel" not in graph.nodes["T001"]
+
+    def test_intel_raises_i_c(self) -> None:
+        """No PRESENCE edge (C_p=0) => I_c = base 0.1; after a player
+        investigation I_c = 0.1 + boost."""
+        graph = self._graph()
+        system = EpistemicHorizonSystem()
+        system.step(graph, ServiceContainer.create(), {"tick": 1})
+        assert graph.nodes["T001"]["intel_confidence"] == pytest.approx(0.1)
+
+        self._investigate(graph, "ORG001")
+        system.step(graph, ServiceContainer.create(), {"tick": 2})
+
+        boost = GameDefines().epistemic_horizon.investigate_intel_boost
+        assert graph.nodes["T001"]["intel_confidence"] == pytest.approx(0.1 + boost)

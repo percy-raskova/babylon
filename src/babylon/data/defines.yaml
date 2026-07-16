@@ -911,6 +911,7 @@ epistemic_horizon:
   class_factor_petty_bourgeoisie: 0.3  # C_f for PETTY_BOURGEOISIE — corpus C_pb, hedges bets (fog-of-war.yaml:220-227). (>= 0.0, <= 1.0)
   class_factor_labor_aristocracy: 0.2  # C_f for LABOR_ARISTOCRACY — corpus C_la, informs to protect privilege (fog-of-war.yaml:229-236). (>= 0.0, <= 1.0)
   class_factor_default: 0.0  # C_f fallback for any SocialRole absent from the corpus's 4-entry table (explicit, never silent). (>= 0.0, <= 1.0)
+  investigate_intel_boost: 0.2  # Phase 2: I_c gained by the player org per INVESTIGATE of a territory (fog-of-war.yaml: intelligence is EARNED; Investigate is the tactical supplement, mass work the strategic base). No decay until Phase 3. (>= 0.05, <= 0.5)
 
 # ---------------------------------------------------------------------
 # doctrine — Tunable coefficients for the DoctrineSystem (owner-ratified 2026-07-15).

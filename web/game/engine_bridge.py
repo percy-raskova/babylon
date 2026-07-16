@@ -1707,6 +1707,96 @@ def _ternary_consciousness_or_none(ideology: dict[str, Any]) -> dict[str, float]
     return {"revolutionary": r, "liberal": l_, "fascist": f}
 
 
+#: Vision-state severity order for the max-fold in _class_vision_state.
+_VISION_ORDER: dict[str, int] = {"desert": 0, "mud": 1, "water": 2}
+
+#: Class-inspector fields the corpus gates by vision (fog-of-war.yaml
+#: §visibility: agitation / organization strength / allegiance are what the
+#: masses hold). Material/public fields (wealth, population, wages) are
+#: never gated — the corpus keeps public_info visible in every state.
+_VISION_GATED_CLASS_FIELDS: tuple[str, ...] = (
+    "agitation",
+    "class_consciousness",
+    "national_identity",
+    "organization",
+    "p_revolution",
+)
+
+#: Corpus Mud rule: "±0.2 margin of error" → deterministic 0.2-wide buckets
+#: (Constitution III.7: masking must be a deterministic function of
+#: committed state — quantization, not noise).
+_MUD_QUANTUM = 0.2
+
+
+def _class_vision_state(graph: Any, class_id: str) -> str | None:
+    """The player's best vision over a class: max vision_state across its
+    TENANCY-linked territories (EH Phase 2).
+
+    Max, not min: knowing a class through its best-organized community is
+    the corpus's mechanic — "the masses ARE your intelligence network."
+    ``None`` when no linked territory carries a computed ``vision_state``
+    (Constitution III.11: never gate on a fabricated default vision).
+    """
+    from babylon.models.enums import EdgeType
+
+    best: str | None = None
+    for edge in graph.query_edges(edge_type=EdgeType.TENANCY):
+        if edge.source_id != class_id:
+            continue
+        territory = graph.get_node(edge.target_id)
+        if territory is None:
+            continue
+        vision = territory.attributes.get("vision_state")
+        if not isinstance(vision, str) or vision not in _VISION_ORDER:
+            continue
+        if best is None or _VISION_ORDER[vision] > _VISION_ORDER[best]:
+            best = vision
+    return best
+
+
+def _apply_class_vision_gate(payload: dict[str, Any], vision: str | None) -> None:
+    """EH Phase 2 reveal gate — mutate a class-inspector payload in place.
+
+    Desert WITHHOLDS the political fields (``None`` + ``vision_masked``
+    marker list — falsification is Phase 3, gated on ruling 2); Mud shows
+    them quantized to the corpus's ±0.2 margin (+ ``vision_approx``); Water
+    is exact. ``vision=None`` (no computed vision) leaves the payload
+    untouched — the persisted snapshots upstream always keep TRUE values
+    (the DB is the engine's ledger, not the player's view); this gate runs
+    only at the player-facing inspector boundary.
+    """
+    if vision is None:
+        return
+    payload["class_vision"] = vision
+    if vision == "water":
+        return
+    if vision == "desert":
+        masked: list[str] = []
+        for field in _VISION_GATED_CLASS_FIELDS:
+            if field in payload:
+                payload[field] = None
+                masked.append(field)
+        if "consciousness" in payload:
+            payload["consciousness"] = None
+            masked.append("consciousness")
+        payload["vision_masked"] = masked
+        return
+    # mud — deterministic quantization
+    approx: list[str] = []
+    for field in _VISION_GATED_CLASS_FIELDS:
+        value = payload.get(field)
+        if isinstance(value, int | float):
+            payload[field] = round(float(value) / _MUD_QUANTUM) * _MUD_QUANTUM
+            approx.append(field)
+    ternary = payload.get("consciousness")
+    if isinstance(ternary, dict):
+        payload["consciousness"] = {
+            k: round(float(v) / _MUD_QUANTUM) * _MUD_QUANTUM for k, v in ternary.items()
+        }
+        approx.append("consciousness")
+    payload["vision_approx"] = approx
+
+
 def _social_class_inspector_fields(
     data: dict[str, Any], core_wages: float, graph: BabylonGraph
 ) -> dict[str, Any]:
@@ -1769,7 +1859,7 @@ def _social_class_inspector_fields(
             f"(gap={imperial_rent_gap:.4f})."
         )
 
-    return {
+    payload = {
         "role": _enum_val(data.get("role")) if data.get("role") is not None else None,
         "wealth": wealth,
         "core_wages": round(core_wages, 4),
@@ -1796,6 +1886,13 @@ def _social_class_inspector_fields(
         "apologist_claim": _APOLOGIST_CLAIM,
         "apologist_refutation": apologist_refutation,
     }
+    # EH Phase 2 reveal gate: political knowledge filtered by the player's
+    # vision over this class's territories (presentation boundary only —
+    # snapshots persisted upstream keep TRUE values).
+    class_id = data.get("id")
+    if isinstance(class_id, str):
+        _apply_class_vision_gate(payload, _class_vision_state(graph, class_id))
+    return payload
 
 
 class EngineBridge:
@@ -4497,7 +4594,7 @@ class EngineBridge:
         # same class of round-trip loss the carry above fixes for
         # TickDynamicsSystem (see _carry_epistemic_horizon's docstring for
         # why a recompute, not a persistent_context stash, is correct here).
-        _carry_epistemic_horizon(new_graph, game_defines.epistemic_horizon)
+        _carry_epistemic_horizon(new_graph, game_defines.epistemic_horizon, old_graph=graph)
         # Feature 021 lens pair: re-inject ReserveArmySystem's wage_pressure and
         # DispossessionEventSystem's dispossession_intensity — both are
         # TERRITORY_EXCLUDED_FIELDS, so the WorldState round-trip drops them the
@@ -6122,7 +6219,7 @@ def _carry_tick_dynamics_flows(
         )
 
 
-def _carry_epistemic_horizon(new_graph: Any, defines: Any) -> None:
+def _carry_epistemic_horizon(new_graph: Any, defines: Any, *, old_graph: Any = None) -> None:
     """Re-inject ``EpistemicHorizonSystem``'s shadow territory attrs onto
     ``new_graph`` before it is persisted — the Wave-5 receptivity-lens
     counterpart to :func:`_carry_tick_dynamics_flows`.
@@ -6169,7 +6266,27 @@ def _carry_epistemic_horizon(new_graph: Any, defines: Any) -> None:
     """
     from babylon.engine.systems.epistemic_horizon import compute_epistemic_horizon
 
-    compute_epistemic_horizon(new_graph, defines)
+    # EH Phase 2: investigation_intel is EVENT-SOURCED (written by
+    # resolve_investigate during the tick), not derivable — unlike the three
+    # shadow attrs below it cannot be recomputed, so it must be re-stamped
+    # from the pre-round-trip engine graph BEFORE the recompute reads it.
+    # Same round-trip-loss class as the recompute itself; different fix
+    # (a stash-forward, like _carry_tick_dynamics_flows).
+    if old_graph is not None:
+        for territory_id, attrs in old_graph.nodes(data=True):
+            if attrs.get("_node_type") != "territory":
+                continue
+            intel = attrs.get("investigation_intel")
+            if intel is not None and territory_id in new_graph.nodes:
+                new_graph.update_node(territory_id, investigation_intel=float(intel))
+
+    # EH ruling 6: new_graph is new_state.to_graph(), so the player-org
+    # pointer (when the session's WorldState carries one) is already in the
+    # graph metadata — pass it through so the recompute stays byte-identical
+    # to what the engine computed internally.
+    metadata = getattr(new_graph, "graph", None)
+    player_org_id = metadata.get("player_org_id") if isinstance(metadata, dict) else None
+    compute_epistemic_horizon(new_graph, defines, player_org_id=player_org_id)
 
 
 def _nonneg_float(data: dict[str, Any], key: str) -> float:

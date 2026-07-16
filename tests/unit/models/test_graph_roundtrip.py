@@ -1010,3 +1010,27 @@ class TestFieldStackRoundTrip:
             graph2.edges["C001", "C002"]["field_gradients"]
             == graph1.edges["C001", "C002"]["field_gradients"]
         )
+
+
+@pytest.mark.unit
+class TestPlayerOrgIdRoundTrip:
+    """EH ruling 6 (owner 2026-07-16): WorldState.player_org_id survives the
+    graph round trip — the engine-side channel for player-relative C_p."""
+
+    def test_player_org_id_round_trips(self) -> None:
+        from babylon.models.world_state import WorldState
+
+        state = WorldState(tick=1, player_org_id="ORG001")
+        recovered = WorldState.from_graph(state.to_graph(), tick=1)
+
+        assert recovered.player_org_id == "ORG001"
+
+    def test_default_none_round_trips_as_none(self) -> None:
+        """Synthetic scenarios never set it — None must stay None (byte-safety)."""
+        from babylon.models.world_state import WorldState
+
+        state = WorldState(tick=1)
+        graph = state.to_graph()
+
+        assert "player_org_id" not in graph.graph
+        assert WorldState.from_graph(graph, tick=1).player_org_id is None

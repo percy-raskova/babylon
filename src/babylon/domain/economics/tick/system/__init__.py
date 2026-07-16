@@ -434,6 +434,7 @@ class TickDynamicsSystem(SystemBase):
                     employment=data.get("tick_employment", 100_000.0),
                     class_distribution=dist,
                     phi_hour=data.get("tick_phi_hour", 0.0),
+                    bracket_ratio=data.get("tick_bracket_ratio", 0.0),
                 )
         return states
 
@@ -570,6 +571,29 @@ class TickDynamicsSystem(SystemBase):
                 renter_share = float(rs)
         return renter_share
 
+    @staticmethod
+    def _wired_bracket_ratio(
+        fips: str,
+        year: int,
+        prev: CountyEconomicState | None,
+        services: ServicesProtocol,
+    ) -> float:
+        """Wave 6 C3: bracket_ratio prefers a wired ACS B19001 income_source.
+
+        Extracted from :meth:`_compute_county_states` to keep that method's
+        cyclomatic complexity under the project's lint ceiling; same shape as
+        the inline ``unemployment_rate`` branch it mirrors (exogenous
+        per-county-year data, re-queried every tick — not seeded once like
+        the endogenous ``median_wage``). 0.0 remains the documented
+        unwired/absent-row not-computed default (Constitution III.11).
+        """
+        bracket_ratio = prev.bracket_ratio if prev else 0.0
+        if services.income_source is not None:
+            ratio = services.income_source.get_county_bracket_ratio(fips, year)
+            if ratio is not None and isinstance(ratio, (int, float)):
+                bracket_ratio = float(ratio)
+        return bracket_ratio
+
     def _compute_county_states(
         self,
         year: int,
@@ -649,6 +673,10 @@ class TickDynamicsSystem(SystemBase):
             phi_hour = prev.phi_hour if prev else 0.0
             crisis_state = prev.crisis_state if prev else CrisisState.normal()
 
+            # Wave 6 C3 (epochs audit item 167): bracket_ratio prefers a wired
+            # ACS B19001 income_source, same shape as unemployment_rate above.
+            bracket_ratio = self._wired_bracket_ratio(fips, year, prev, services)
+
             # Preserve class distribution
             if prev is not None:
                 class_dist = prev.class_distribution
@@ -690,6 +718,7 @@ class TickDynamicsSystem(SystemBase):
                 employment=employment,
                 class_distribution=class_dist,
                 phi_hour=phi_hour,
+                bracket_ratio=bracket_ratio,
                 crisis_state=crisis_state,
             )
 

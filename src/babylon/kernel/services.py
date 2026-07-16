@@ -56,6 +56,7 @@ class ServicesProtocol(Protocol):
     unemployment_source: Any
     housing_source: Any
     wage_source: Any
+    income_source: Any
     economics_fallbacks: Any
     community_hypergraph: Any
     turnover_profile_source: Any

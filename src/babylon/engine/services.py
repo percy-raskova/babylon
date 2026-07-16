@@ -180,6 +180,10 @@ class ServiceContainer:
     # keeps its documented 0.0 graceful-degradation default.
     housing_source: Any = field(default=None)
     wage_source: Any = field(default=None)
+    # Wave 6 C3 (epochs audit item 167): per-county income-bracket household
+    # ratio source (ACS B19001 top/bottom bands). None => the tick pipeline
+    # keeps bracket_ratio at its documented 0.0 not-computed default.
+    income_source: Any = field(default=None)
 
     # C.8 (spec 2.R): loud economics-fallback observability. A fresh tally per
     # container; TickDynamicsSystem records fallbacks + wired status into it,
@@ -260,6 +264,7 @@ class ServiceContainer:
         unemployment_source: Any = None,
         housing_source: Any = None,
         wage_source: Any = None,
+        income_source: Any = None,
         community_hypergraph: Any = None,
         turnover_profile_source: Any = None,
         inventory_data_source: Any = None,
@@ -354,6 +359,7 @@ class ServiceContainer:
             unemployment_source=unemployment_source,
             housing_source=housing_source,
             wage_source=wage_source,
+            income_source=income_source,
             community_hypergraph=community_hypergraph,
             turnover_profile_source=turnover_profile_source,
             inventory_data_source=inventory_data_source,

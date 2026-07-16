@@ -5987,6 +5987,7 @@ def _bridge_economics_overrides(fips_codes: tuple[str, ...] = ()) -> tuple[dict[
         SQLiteBEACountyGDPSource,
         SQLiteBLSUnemploymentSource,
         SQLiteCensusHousingSource,
+        SQLiteCensusIncomeSource,
         SQLiteQCEWCountyNAICSSource,
     )
     from babylon.domain.economics.throughput.calculator import DefaultThroughputCalculator
@@ -6025,6 +6026,12 @@ def _bridge_economics_overrides(fips_codes: tuple[str, ...] = ()) -> tuple[dict[
     # the unemployment wire above, honest None (=> carry/default) when the
     # county-year row is absent.
     overrides["housing_source"] = SQLiteCensusHousingSource(session_factory)
+    # Wave 6 C3 (epochs audit item 167): real per-county income-bracket
+    # household ratio (ACS B19001 top/bottom bands) replaces the frozen 0.0
+    # tick_bracket_ratio not-computed default — same rails as the LAUS wire
+    # above, honest None (=> carry/default) when the county-year row is
+    # absent.
+    overrides["income_source"] = SQLiteCensusIncomeSource(session_factory)
     # Item 60: real median-wage BOOTSTRAP (employment-weighted p50 across
     # QCEW 6-digit industry wages) — seeds only the initial county state;
     # wage-pressure dynamics own the trajectory after that. Same adapter
@@ -6193,6 +6200,10 @@ def _carry_tick_dynamics_flows(
                 # Wave 6 C2: ACS renter share, same evaporation-on-round-trip
                 # fix as Group A/B and unemployment_rate above.
                 tick_renter_share=county.renter_share,
+                # Wave 6 C3: bracket_ratio joins Group A/B's carry — same
+                # evaporation-on-round-trip fix, symmetric with
+                # tick_unemployment_rate immediately above.
+                tick_bracket_ratio=county.bracket_ratio,
                 # Wave 2 owner ruling 1: throughput_position/supply_chain_depth
                 # are real now that _bridge_economics_overrides wires a
                 # throughput_calculator — same evaporation-on-round-trip fix
@@ -6244,6 +6255,9 @@ def _carry_tick_dynamics_flows(
             # Wave 6 C2: annual (recomputed only at boundaries); carry forward
             # byte-identical between boundaries, same pattern as unemployment_rate.
             tick_renter_share=old_data.get("tick_renter_share"),
+            # Wave 6 C3: carry forward byte-identical between boundaries,
+            # same pattern as tick_unemployment_rate immediately above.
+            tick_bracket_ratio=old_data.get("tick_bracket_ratio"),
             # Wave 2 owner ruling 1: carry forward byte-identical between
             # boundaries, same pattern as the derived rates/Group A/B above.
             tick_throughput_position=old_data.get("tick_throughput_position"),
@@ -7752,6 +7766,13 @@ def _serialize_territory(t: Any, *, graph: Any = None) -> dict[str, Any]:
     year boundary has run; ``None`` before then (never the engine's frozen
     1.0/2.0 bootstrap defaults re-surfacing here as if they were live).
 
+    Wave 6 C3: ``bracket_ratio`` joins the same graph-attr family off
+    ``tick_bracket_ratio`` — the top/bottom ACS B19001 income-bracket
+    household ratio (epochs audit item 167), real once
+    ``_bridge_economics_overrides`` wires ``income_source`` AND a year
+    boundary has run; ``None`` before then, never the engine's 0.0
+    not-computed default re-surfacing here as if it were live.
+
     Wave 5 receptivity lenses: ``mass_receptivity``/``intel_confidence``/
     ``vision_state`` join the same graph-attr family off the identically-
     named ``EpistemicHorizonSystem`` shadow attrs (non-``tick_``-prefixed,
@@ -7808,6 +7829,7 @@ def _serialize_territory(t: Any, *, graph: Any = None) -> dict[str, Any]:
         "class_distribution": _territory_graph_attr(graph, territory_id, "tick_class_distribution"),
         "unemployment_rate": _territory_graph_attr(graph, territory_id, "tick_unemployment_rate"),
         "renter_share": _territory_graph_attr(graph, territory_id, "tick_renter_share"),
+        "bracket_ratio": _territory_graph_attr(graph, territory_id, "tick_bracket_ratio"),
         "tick_median_wage": _territory_graph_attr(graph, territory_id, "tick_median_wage"),
         "throughput_position": _territory_graph_attr(
             graph, territory_id, "tick_throughput_position"

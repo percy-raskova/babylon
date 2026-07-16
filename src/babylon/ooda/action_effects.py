@@ -103,13 +103,11 @@ def compute_consciousness_delta(
     if doctrine is not None:
         doctrine_tags = org_attrs.get("doctrine_tags") or {}
         class_analysis = float(
-            doctrine_tags.get(
-                DoctrineTag.CLASS_ANALYSIS, doctrine_tags.get("class_analysis", 0.0)
-            )
+            doctrine_tags.get(DoctrineTag.CLASS_ANALYSIS, doctrine_tags.get("class_analysis", 0.0))
         )
         if class_analysis > 0:
-            scaled_delta *= (
-                1.0 + doctrine.theory_bonus_per_class_analysis * min(class_analysis, 10.0)
+            scaled_delta *= 1.0 + doctrine.theory_bonus_per_class_analysis * min(
+                class_analysis, 10.0
             )
 
     # Step 8: Clamp to max per-tick delta

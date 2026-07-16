@@ -69,9 +69,7 @@ class TestDoctrineTheoryBonus:
         theorized = _dispatch(verb_graph, services, ActionType.EDUCATE, CLASS_ID)
         assert theorized.consciousness_delta is not None
 
-        expected_factor = (
-            1.0 + services.defines.doctrine.theory_bonus_per_class_analysis * 10.0
-        )
+        expected_factor = 1.0 + services.defines.doctrine.theory_bonus_per_class_analysis * 10.0
         assert theorized.consciousness_delta.collective_identity_delta == pytest.approx(
             plain.consciousness_delta.collective_identity_delta * expected_factor
         )

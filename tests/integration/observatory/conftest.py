@@ -113,7 +113,7 @@ def seeded_session(_sim_migrated: Any) -> Generator[SeededSession, None, None]:
     schedule = {h3_a: [5.0, 6.0, 6.0, 6.0], h3_b: [5.0, 5.0, 7.0, 7.0]}
 
     ensure_session_partitions(pool=pool, session_id=session)
-    _seed_spatial_map(pool, [h3_a, h3_b])
+    _seed_spatial_map(pool, session, [h3_a, h3_b])
     runtime = PostgresRuntime(pool=pool)
 
     last_emitted: dict[str, tuple[float, ...]] = {}
@@ -147,28 +147,39 @@ def seeded_session(_sim_migrated: Any) -> Generator[SeededSession, None, None]:
         with contextlib.suppress(Exception):
             drop_session_partitions(pool=pool, session_id=session)
         with contextlib.suppress(Exception):
-            _unseed_spatial_map(pool, [h3_a, h3_b])
+            _unseed_spatial_map(pool, session, [h3_a, h3_b])
 
 
-def _seed_spatial_map(pool: Any, h3s: list[str]) -> None:
-    """Insert the fixture's h3 -> county/state mapping (spec-088 source of truth)."""
+def _seed_spatial_map(pool: Any, session_id: Any, h3s: list[str]) -> None:
+    """Insert the fixture's h3 -> county/state mapping (spec-088 source of truth).
+
+    Session-scoped since migration 0028 (PK = session_id, h3_index): the
+    composition views join on BOTH columns, and a bare-h3 write dies with
+    InvalidColumnReference against the composite PK.
+    """
     with pool.connection() as conn:
         conn.autocommit = True
         for h3 in h3s:
             conn.execute(
-                "INSERT INTO hex_spatial_map (h3_index, county_fips, state_fips, region_id) "
-                "VALUES (%s, %s, %s, %s) "
-                "ON CONFLICT (h3_index) DO UPDATE SET "
+                "INSERT INTO hex_spatial_map "
+                "(session_id, h3_index, county_fips, state_fips, region_id) "
+                "VALUES (%s, %s, %s, %s, %s) "
+                "ON CONFLICT (session_id, h3_index) DO UPDATE SET "
                 "county_fips = EXCLUDED.county_fips, state_fips = EXCLUDED.state_fips, "
                 "region_id = EXCLUDED.region_id",
-                (h3, _COUNTY, _STATE, _REGION),
+                (session_id, h3, _COUNTY, _STATE, _REGION),
             )
 
 
-def _unseed_spatial_map(pool: Any, h3s: list[str]) -> None:
+def _unseed_spatial_map(pool: Any, session_id: Any, h3s: list[str]) -> None:
+    """Session-scoped delete: a bare h3 DELETE stomps concurrent sessions'
+    mapping rows under xdist (observed as runner county-resolution gaps)."""
     with pool.connection() as conn:
         conn.autocommit = True
-        conn.execute("DELETE FROM hex_spatial_map WHERE h3_index = ANY(%s)", (h3s,))
+        conn.execute(
+            "DELETE FROM hex_spatial_map WHERE session_id = %s AND h3_index = ANY(%s)",
+            (session_id, h3s),
+        )
 
 
 @pytest.fixture

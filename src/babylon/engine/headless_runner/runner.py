@@ -70,6 +70,7 @@ from babylon.engine.simulation_engine import _DEFAULT_SYSTEMS, SimulationEngine
 from babylon.kernel.event_bus import EventBus
 from babylon.kernel.services import ServicesProtocol
 from babylon.models.world_state import WorldState
+from babylon.persistence.postgres_schema import ensure_ddl_applied
 
 _LOG = logging.getLogger("babylon.engine.headless_runner")
 
@@ -271,8 +272,10 @@ def _apply_migrations(pool: Any) -> None:
         raise RunnerError(f"No migrations found at {migrations_dir} — refusing to run unmigrated")
     with pool.connection() as conn:
         conn.autocommit = True
-        for sql_file in sql_files:
-            conn.execute(sql_file.read_text())
+        # Digest-stamped + advisory-locked: an already-applied migration set
+        # is a pure SELECT (no DDL locks while tests/queries run); first
+        # apply is serialized against every other schema applier.
+        ensure_ddl_applied(conn, [sql_file.read_text() for sql_file in sql_files])
 
 
 def _validate_preflight(config: SimulationRunConfig) -> None:

@@ -79,22 +79,34 @@ def ensure_session_partitions(*, pool: Any, session_id: UUID) -> int:
     """
     created = 0
     with pool.connection() as conn:
+        # One transaction PER family: each CREATE takes an exclusive lock on
+        # its PARENT table, and a single transaction spanning all 9 families
+        # accumulates parent locks and deadlocks against concurrent
+        # multi-table readers/purges (observed under pytest-xdist
+        # 2026-07-16). Holding at most one parent lock at a time makes this
+        # loop deadlock-proof: it never holds one relation while waiting on
+        # another. (Not autocommit: psycopg_pool does not reset a leaked
+        # autocommit flag on return, so mutating it here would bleed into
+        # unrelated checkouts.)
         for table in PARTITIONED_TABLES:
-            if not _is_partitioned(conn, table):
-                _LOG.debug("Table %s not partitioned; skipping partition create", table)
-                continue
-            name = partition_name(table, session_id)
-            exists = conn.execute("SELECT to_regclass(%s)", (name,)).fetchone()
-            if exists is not None and exists[0] is not None:
-                continue
-            conn.execute(
-                sql.SQL("CREATE TABLE IF NOT EXISTS {} PARTITION OF {} FOR VALUES IN ({})").format(
-                    sql.Identifier(name),
-                    sql.Identifier(table),
-                    sql.Literal(str(session_id)),
+            with conn.transaction():
+                if not _is_partitioned(conn, table):
+                    _LOG.debug("Table %s not partitioned; skipping partition create", table)
+                    continue
+                name = partition_name(table, session_id)
+                exists = conn.execute("SELECT to_regclass(%s)", (name,)).fetchone()
+                if exists is not None and exists[0] is not None:
+                    continue
+                conn.execute(
+                    sql.SQL(
+                        "CREATE TABLE IF NOT EXISTS {} PARTITION OF {} FOR VALUES IN ({})"
+                    ).format(
+                        sql.Identifier(name),
+                        sql.Identifier(table),
+                        sql.Literal(str(session_id)),
+                    )
                 )
-            )
-            created += 1
+                created += 1
     if created:
         _LOG.info("Created %d session partitions for %s", created, session_id)
     return created
@@ -112,13 +124,18 @@ def drop_session_partitions(*, pool: Any, session_id: UUID) -> list[str]:
     """
     dropped: list[str] = []
     with pool.connection() as conn:
+        # One transaction PER family: DROP TABLE on a partition
+        # exclusive-locks its PARENT — see ensure_session_partitions. One
+        # lock at a time means a purge may WAIT behind a long reader but can
+        # no longer form a lock cycle with one.
         for table in PARTITIONED_TABLES:
-            name = partition_name(table, session_id)
-            exists = conn.execute("SELECT to_regclass(%s)", (name,)).fetchone()
-            if exists is None or exists[0] is None:
-                continue
-            conn.execute(sql.SQL("DROP TABLE {}").format(sql.Identifier(name)))
-            dropped.append(name)
+            with conn.transaction():
+                name = partition_name(table, session_id)
+                exists = conn.execute("SELECT to_regclass(%s)", (name,)).fetchone()
+                if exists is None or exists[0] is None:
+                    continue
+                conn.execute(sql.SQL("DROP TABLE {}").format(sql.Identifier(name)))
+                dropped.append(name)
     if dropped:
         _LOG.info("Dropped %d session partitions for %s", len(dropped), session_id)
     return dropped

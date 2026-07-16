@@ -49,10 +49,15 @@ MAX_ATTEMPTS = 2
 
 def _apply_all(pool: Any, sql_files: list[Path]) -> None:
     """Apply every file in ``sql_files`` in order, in one connection."""
+    from babylon.persistence.postgres_schema import ensure_ddl_applied
+
     with pool.connection() as conn:
         conn.autocommit = True
-        for sql_file in sql_files:
-            conn.execute(sql_file.read_text())
+        # Digest-stamped + advisory-locked: an already-applied migration set
+        # is a pure SELECT (no DDL locks while sibling workers' tests run);
+        # a failed/killed apply leaves no stamp, so the healing retry below
+        # re-applies the full sequence exactly when it should.
+        ensure_ddl_applied(conn, [sql_file.read_text() for sql_file in sql_files])
 
 
 def apply_migrations_healing(pool: Any, glob_pattern: str = "00*.sql") -> None:

@@ -27,6 +27,140 @@ TIMESTAMPTZ. No ``auth_user`` FK until Django auth module exists.
 
 from __future__ import annotations
 
+import hashlib
+from contextlib import contextmanager
+from typing import TYPE_CHECKING, Any
+
+if TYPE_CHECKING:
+    from collections.abc import Generator, Sequence
+
+#: Advisory-lock key serializing every schema/migration applier that targets
+#: the same database. ``CREATE TABLE/INDEX IF NOT EXISTS`` is idempotent but
+#: NOT concurrency-safe in PostgreSQL: two simultaneous appliers race the
+#: ``pg_class`` catalog and one dies with ``UniqueViolation
+#: (pg_class_relname_nsp_index)``, or the pair deadlocks on
+#: AccessExclusiveLock. Observed at scale under pytest-xdist 2026-07-16
+#: (46 setup failures + 7 deadlocks in one 4-worker run). Every DDL entry
+#: point (runner ``_apply_migrations``, ``init_schema``, test appliers) takes
+#: this session-level lock so appliers queue instead of corrupting each other.
+SCHEMA_ADVISORY_LOCK_KEY: int = 0xBAB1_0537
+
+
+@contextmanager
+def schema_apply_lock(conn: Any) -> Generator[None]:
+    """Serialize DDL application via a Postgres session-level advisory lock.
+
+    :param conn: An open psycopg connection (autocommit or not — session-level
+        advisory locks are transaction-independent).
+    :yields: Once the lock is held; released on exit even if DDL raises.
+    """
+    conn.execute("SELECT pg_advisory_lock(%s)", (SCHEMA_ADVISORY_LOCK_KEY,))
+    try:
+        yield
+    finally:
+        conn.execute("SELECT pg_advisory_unlock(%s)", (SCHEMA_ADVISORY_LOCK_KEY,))
+
+
+#: Stamp table recording which exact DDL sets have been applied to this
+#: database. The advisory lock alone is NOT enough: it serializes appliers
+#: against each other, but an applier re-executing view DDL (migration
+#: 0030_views_current.sql DROPs/CREATEs the canonical views on every run)
+#: takes AccessExclusiveLock on views that concurrently-running tests are
+#: reading — observed 2026-07-16 as a 12-strong ``DeadlockDetected`` family
+#: under pytest-xdist. The stamp makes every re-apply of an already-applied
+#: set a pure SELECT (zero DDL, zero locks), so DDL only ever executes while
+#: sibling appliers are parked on the advisory lock, not while tests run.
+SCHEMA_STAMP_TABLE: str = "_babylon_schema_stamp"
+
+_SCHEMA_STAMP_TABLE_DDL = f"""
+CREATE TABLE IF NOT EXISTS {SCHEMA_STAMP_TABLE} (
+    digest      VARCHAR(64) PRIMARY KEY,
+    applied_at  TIMESTAMPTZ NOT NULL DEFAULT now()
+)
+"""
+
+
+def ddl_digest(chunks: Sequence[str]) -> str:
+    """Order-sensitive SHA-256 digest of a DDL statement sequence.
+
+    Apply order matters (tables before their indexes, heals before their
+    consumers), so two permutations of the same statements are deliberately
+    distinct digests.
+
+    :param chunks: DDL statements or whole migration-file texts, in apply order.
+    :returns: 64-char hex digest identifying this exact DDL set.
+    """
+    hasher = hashlib.sha256()
+    for chunk in chunks:
+        hasher.update(chunk.encode("utf-8"))
+        hasher.update(b"\x00")
+    return hasher.hexdigest()
+
+
+def _stamp_present(conn: Any, digest: str) -> bool:
+    """Lock-free check whether ``digest`` is already stamped as applied.
+
+    Pure SELECTs only — this is the fast path that must never take a DDL
+    lock. A missing stamp table simply means nothing was ever stamped.
+    """
+    row = conn.execute("SELECT to_regclass(%s)", (SCHEMA_STAMP_TABLE,)).fetchone()
+    if row is None or row[0] is None:
+        return False
+    row = conn.execute(
+        f"SELECT 1 FROM {SCHEMA_STAMP_TABLE} WHERE digest = %s",  # noqa: S608 — table name is a module constant
+        (digest,),
+    ).fetchone()
+    return row is not None
+
+
+def ensure_ddl_applied(conn: Any, chunks: Sequence[str]) -> bool:
+    """Apply a DDL set exactly once per database (digest-stamped, advisory-locked).
+
+    Fast path: if this exact ``chunks`` sequence was already applied
+    successfully, a pure-SELECT stamp check returns without executing any
+    DDL — no locks taken, safe to call while other sessions run queries.
+
+    Slow path (first apply, or after any chunk changed): take
+    :func:`schema_apply_lock`, re-check the stamp (double-checked locking —
+    a sibling may have applied while this session waited), execute every
+    chunk in order, then write the stamp. The stamp is written only after
+    ALL chunks succeed, so a killed or failed apply leaves no stamp and the
+    next caller re-applies the full sequence (the self-heal contract of
+    ``tests/unit/persistence/conftest.py`` is preserved, sharpened even —
+    healing re-applies exactly when the last apply did not complete).
+
+    :param conn: An open psycopg connection with ``autocommit=True`` (every
+        existing applier already runs autocommit; migration files manage
+        their own transaction boundaries where needed).
+    :param chunks: DDL statements or migration-file texts, in apply order.
+    :returns: ``True`` if the DDL was executed, ``False`` if fast-pathed.
+    :raises psycopg.Error: from the failing chunk, with a note attributing
+        which chunk failed (autocommit means prior chunks remain applied).
+    """
+    import psycopg
+
+    digest = ddl_digest(chunks)
+    if _stamp_present(conn, digest):
+        return False
+    with schema_apply_lock(conn):
+        if _stamp_present(conn, digest):
+            return False
+        for index, chunk in enumerate(chunks):
+            try:
+                conn.execute(chunk)
+            except psycopg.Error as exc:
+                statement = " ".join(chunk.split())[:300]
+                exc.add_note(f"while applying DDL chunk {index + 1}/{len(chunks)}: {statement}")
+                raise
+        conn.execute(_SCHEMA_STAMP_TABLE_DDL)
+        conn.execute(
+            f"INSERT INTO {SCHEMA_STAMP_TABLE} (digest) VALUES (%s) "  # noqa: S608
+            "ON CONFLICT (digest) DO UPDATE SET applied_at = now()",
+            (digest,),
+        )
+    return True
+
+
 # SQL DDL statements executed via psycopg (not ORM)
 
 EXTENSIONS_DDL: list[str] = [
@@ -1112,5 +1246,10 @@ __all__ = [
     "CLASS_SNAPSHOT_INDEXES_DDL",
     "INDEXES_DDL",
     "POSTGRES_SCHEMA_DDL",
+    "SCHEMA_ADVISORY_LOCK_KEY",
+    "SCHEMA_STAMP_TABLE",
     "SPEC037_INDEXES_DDL",
+    "ddl_digest",
+    "ensure_ddl_applied",
+    "schema_apply_lock",
 ]

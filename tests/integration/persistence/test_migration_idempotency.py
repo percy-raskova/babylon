@@ -1,11 +1,15 @@
 """Migration hygiene gate (Loud Machine C.3).
 
-The headless runner re-applies EVERY file in
-``src/babylon/persistence/migrations/`` on every start (sorted glob, no
-version table — see :func:`babylon.engine.headless_runner.runner._apply_migrations`).
-Per-file idempotency is therefore the contract, and it must hold across the
-whole sequence: a later migration may change schema that an earlier one's
-re-run touches.
+The headless runner applies EVERY file in
+``src/babylon/persistence/migrations/`` as one digest-stamped set (sorted
+glob, no per-file version table — see
+:func:`babylon.engine.headless_runner.runner._apply_migrations` and
+:func:`babylon.persistence.postgres_schema.ensure_ddl_applied`). The stamp
+fast-paths an unchanged set, but any stamp miss — a changed/added migration,
+or a failed/killed prior apply — re-executes the FULL sequence over whatever
+schema state the database already carries. Per-file idempotency is therefore
+still the contract, and it must hold across the whole sequence: a later
+migration may change schema that an earlier one's re-run touches.
 
 This gate would have caught the 0027/0028 self-conflict that turned the unit
 suite red on 2026-07-07: 0027's backfill named ``ON CONFLICT (h3_index)``
@@ -100,10 +104,23 @@ def test_migrations_apply_twice_on_fresh_db(fresh_db_pool: Any) -> None:
     """Fresh DB + bootstrap, then the runner's applier twice — no error.
 
     The second pass is the load-bearing one: it exercises every migration
-    against the schema as later migrations have already reshaped it.
+    against the schema as later migrations have already reshaped it. The
+    digest stamp would fast-path an unchanged set, so it is dropped between
+    passes to force the second pass to genuinely re-execute every file —
+    exactly what a stamp miss (changed migration, failed prior apply) does
+    in production.
     """
+    from babylon.persistence.postgres_schema import SCHEMA_STAMP_TABLE
+
     _bootstrap_spec_037_schema(fresh_db_pool)
     _apply_migrations(fresh_db_pool)
+    with fresh_db_pool.connection() as conn:
+        conn.autocommit = True
+        stamped = conn.execute(f"SELECT count(*) FROM {SCHEMA_STAMP_TABLE}").fetchone()
+        assert stamped is not None and stamped[0] == 1, (
+            "first apply must write exactly one stamp row"
+        )
+        conn.execute(f"DROP TABLE {SCHEMA_STAMP_TABLE}")
     _apply_migrations(fresh_db_pool)
 
 
@@ -166,21 +183,39 @@ def test_migrations_dir_resolution_is_cwd_independent(tmp_path: Path, monkeypatc
     directory the runner was launched from, so a foreign CWD silently
     applied ZERO migrations. Post-fix, resolution is package-relative and
     an empty result raises RunnerError.
+
+    The fake connection speaks ``ensure_ddl_applied``'s protocol: every
+    ``execute`` returns a ``fetchone() -> None`` result, so the stamp
+    check reports nothing applied and the full migration set executes.
+    Migration texts are counted by their ``-- 0NNN_*.sql`` header line,
+    ignoring the applier's own lock/stamp statements.
     """
     from contextlib import contextmanager
-    from types import SimpleNamespace
 
     monkeypatch.chdir(tmp_path)
 
     executed: list[str] = []
 
+    class _FakeResult:
+        @staticmethod
+        def fetchone() -> None:
+            return None
+
+    class _FakeConn:
+        autocommit = False
+
+        def execute(self, query: str, params: Any = None) -> _FakeResult:
+            executed.append(query)
+            return _FakeResult()
+
     class _CountingPool:
         @contextmanager
         def connection(self) -> Any:
-            yield SimpleNamespace(autocommit=False, execute=executed.append)
+            yield _FakeConn()
 
     _apply_migrations(_CountingPool())
-    assert len(executed) >= 20, (
+    applied = [query for query in executed if query.lstrip().startswith("-- 0")]
+    assert len(applied) >= 20, (
         "silently applied zero migrations from a foreign CWD — the applier "
         "must resolve the migrations dir relative to the package, not the CWD"
     )

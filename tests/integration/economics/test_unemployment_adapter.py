@@ -56,3 +56,32 @@ class TestSQLiteBLSUnemploymentSource:
     ) -> None:
         """A FIPS with no dim_county row is an honest None."""
         assert unemployment_source.get_county_unemployment_rate("99999", TEST_YEAR) is None
+
+
+class TestQCEWMedianHourlyWage:
+    """Real-DB contract for the employment-weighted p50 hourly wage.
+
+    Owner-queue item 60: the estimator is the p50 of the county's
+    employment distribution sorted by 6-digit-industry mean wage — a
+    genuine median approximation (within-industry dispersion invisible),
+    unlike the raw QCEW mean it replaces as the bootstrap.
+    """
+
+    @pytest.fixture(scope="class")
+    def wage_source(self):  # type: ignore[no-untyped-def]
+        from babylon.domain.economics.throughput.adapters import SQLiteQCEWCountyNAICSSource
+
+        return SQLiteQCEWCountyNAICSSource(get_normalized_session_factory())
+
+    def test_wayne_2015_p50_is_plausible(self, wage_source) -> None:  # type: ignore[no-untyped-def]
+        """Wayne 2015 median hourly wage must exist and sit in a sane band."""
+        wage = wage_source.get_county_median_hourly_wage(WAYNE, TEST_YEAR)
+
+        assert wage is not None, "Wayne 2015 should have QCEW 6-digit leaves"
+        assert 5.0 < wage < 60.0, f"p50 hourly wage {wage} outside sanity band"
+
+    def test_unavailable_year_returns_none(self, wage_source) -> None:  # type: ignore[no-untyped-def]
+        assert wage_source.get_county_median_hourly_wage(WAYNE, 1900) is None
+
+    def test_unknown_county_returns_none(self, wage_source) -> None:  # type: ignore[no-untyped-def]
+        assert wage_source.get_county_median_hourly_wage("99999", TEST_YEAR) is None

@@ -590,7 +590,16 @@ class TickDynamicsSystem(SystemBase):
             u6_rate = prev.u6_rate if prev else 0.10
             pter_rate = prev.pter_rate if prev else 0.04
             nilf_rate = prev.nilf_rate if prev else 0.06
+            # median_wage is ENDOGENOUS (wage-pressure/compression move it
+            # tick over tick), so a wired wage_source seeds only the INITIAL
+            # condition — once prev exists the simulation owns the trajectory.
+            # The source is the employment-weighted p50 estimator (item 60);
+            # 21.0 remains the documented unwired/absent-row bootstrap.
             median_wage = prev.median_wage if prev else 21.0
+            if prev is None and services.wage_source is not None:
+                w50 = services.wage_source.get_county_median_hourly_wage(fips, year)
+                if w50 is not None and isinstance(w50, (int, float)) and w50 > 0.0:
+                    median_wage = float(w50)
             # Real per-county headcount from a wired employment_source (QCEW
             # county rollup), symmetric with capital_stock above; falls back to
             # the documented 100k default when unwired or the county-year is

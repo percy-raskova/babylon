@@ -71,6 +71,13 @@ class SeamScope(StrEnum):
         solidarity-subgraph ``percolation_ratio``). Added after AW4-R1
         deliberately registered a documented scope gap rather than
         misclassify these under :attr:`INSPECTOR`/:attr:`TERRITORY`.
+    :cvar DOCTRINE: the Doctrine Tree canvas payload
+        (``EngineBridge.get_doctrine_tree`` on ``/doctrine-tree/``; ADR073
+        Units 4-7) — the player faction's ``acquired_doctrine_ids`` /
+        ``doctrine_tags`` / ``theoretical_labor`` overlay written by
+        ``DoctrineSystem`` @14.7. Added after the 2026-07-16 copacetic audit
+        found the inverse of an orphan declaration: a real, wired,
+        player-observable surface with no SeamEntry at all.
     """
 
     MAP = "map"
@@ -81,6 +88,7 @@ class SeamScope(StrEnum):
     INSPECTOR = "inspector"
     FIELD_STATE = "field_state"
     NETWORK = "network"
+    DOCTRINE = "doctrine"
 
 
 class LivenessClass(StrEnum):

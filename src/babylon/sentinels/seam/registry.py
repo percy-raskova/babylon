@@ -1855,6 +1855,86 @@ _NETWORK_METRICS: tuple[SeamEntry, ...] = (
     ),
 )
 
+# --- DOCTRINE scope (ADR073 Units 4-7; scope enum added 2026-07-16) ---
+# The 2026-07-16 copacetic audit found the inverse of an orphan declaration:
+# get_doctrine_tree -> endpoints.ts doctrineTree -> DoctrineTakeover.tsx is a
+# real, wired, player-observable surface the Observatory never declared.
+# These rows retire that gap. Sensor 1's gating checks do not scan this
+# surface — rows are the declarative contract, same as NETWORK's.
+
+_DOCTRINE_EMITTERS: tuple[str, ...] = ("web/game/engine_bridge.py::EngineBridge.get_doctrine_tree",)
+
+_DOCTRINE_METRICS: tuple[SeamEntry, ...] = (
+    SeamEntry(
+        payload="acquired_doctrine_ids",
+        wire_keys=("acquired_ids",),
+        scope=SeamScope.DOCTRINE,
+        owner_layer="engine (DoctrineSystem @14.7 — Party Congress acquisitions)",
+        liveness_class=LivenessClass.DECLARED_CONDITIONAL,
+        dtype="json",
+        write_site=(
+            "src/babylon/engine/systems/doctrine.py::DoctrineSystem.step "
+            "(Unit 5 Party Congress: seeded-RNG acquisition weighted by tag "
+            "deltas; a real Organization model field, so it survives the "
+            "WorldState round trip — D2 snapshot->hydrate proof)"
+        ),
+        read_paths=_DOCTRINE_EMITTERS,
+        derivation_site="web/game/engine_bridge.py::EngineBridge.get_doctrine_tree",
+        spec_ref="ADR073 Doctrine Tree · Units 4-6 (PR #190)",
+        notes=(
+            "The player faction's acquired doctrine-node ids. "
+            "DECLARED_CONDITIONAL: live only when the scenario seeds a player "
+            "faction and a Congress has fired; honest [] before then "
+            "(never fabricated partial progress, Constitution III.11)."
+        ),
+    ),
+    SeamEntry(
+        payload="doctrine_tags",
+        wire_keys=("tags",),
+        scope=SeamScope.DOCTRINE,
+        owner_layer="engine (DoctrineSystem @14.7 — decaying tag accumulator)",
+        liveness_class=LivenessClass.DECLARED_CONDITIONAL,
+        dtype="json",
+        write_site=(
+            "src/babylon/engine/systems/doctrine.py::DoctrineSystem.step "
+            "(per-tick upkeep decay toward parent + acquisition tag_deltas)"
+        ),
+        read_paths=_DOCTRINE_EMITTERS,
+        derivation_site="web/game/engine_bridge.py::EngineBridge.get_doctrine_tree",
+        spec_ref="ADR073 Doctrine Tree · Units 4-6 (PR #190)",
+        notes=(
+            "The wire itself is never null — with no player faction the "
+            "bridge serves starting_tags() (the MVP corpus's declared "
+            "starting position, NOT compute_tags over an empty set). The "
+            "declared CONDITION governs when the values reflect live per-org "
+            "accumulator state instead of that static starting position."
+        ),
+    ),
+    SeamEntry(
+        payload="theoretical_labor",
+        wire_keys=("theoretical_labor", "study_target_id"),
+        scope=SeamScope.DOCTRINE,
+        owner_layer="engine (DoctrineSystem @14.7) + the Study verb (Unit 7b)",
+        liveness_class=LivenessClass.DECLARED_CONDITIONAL,
+        dtype="json",
+        write_site=(
+            "src/babylon/engine/systems/doctrine.py::DoctrineSystem.step "
+            "(accrue_theoretical_labor per tick); study_target_id is the "
+            "player's standing Educate(Doctrine) order set by the Unit 7b "
+            "study POST"
+        ),
+        read_paths=_DOCTRINE_EMITTERS,
+        derivation_site="web/game/engine_bridge.py::EngineBridge.get_doctrine_tree",
+        spec_ref="ADR073 Doctrine Tree · Units 4-7b (PR #190)",
+        notes=(
+            "TL accrues 0.0-up once a player faction exists; study_target_id "
+            "is an honest null until the player issues a Study order (the "
+            "canvas then stays read-only rather than offering an "
+            "unactionable affordance)."
+        ),
+    ),
+)
+
 #: The declared observable-field contract. Populated per build phase.
 SEAM_REGISTRY: tuple[SeamEntry, ...] = (
     _MAP_METRICS
@@ -1863,4 +1943,5 @@ SEAM_REGISTRY: tuple[SeamEntry, ...] = (
     + _FIELD_STATE_METRICS
     + _MAP_HISTORY_METRICS
     + _NETWORK_METRICS
+    + _DOCTRINE_METRICS
 )

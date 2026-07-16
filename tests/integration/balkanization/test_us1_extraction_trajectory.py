@@ -32,6 +32,8 @@ class _MetabolismDefines:
     entropy_factor: float = 0.5
     overshoot_threshold: float = 1.0
     max_overshoot_ratio: float = 10.0
+    # Epoch 1 hysteresis (PR #192): MetabolismSystem.step reads this every tick.
+    hysteresis_rate: float = 0.005
 
 
 @dataclass

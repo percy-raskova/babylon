@@ -6210,6 +6210,12 @@ def _carry_tick_dynamics_flows(
                 # evaporation-on-round-trip fix, symmetric with
                 # tick_unemployment_rate immediately above.
                 tick_bracket_ratio=county.bracket_ratio,
+                # Wave 6 C4: the CPI real-wage deflator rides the same carry —
+                # it was the one tick_* wire omitted here, so on the web path
+                # it evaporated every tick (real wage rendered None; the next
+                # rehydrate fell back to 1.0). Caught by the 2026-07-16
+                # copacetic verification sweep.
+                tick_real_wage_deflator=county.real_wage_deflator,
                 # Wave 2 owner ruling 1: throughput_position/supply_chain_depth
                 # are real now that _bridge_economics_overrides wires a
                 # throughput_calculator — same evaporation-on-round-trip fix
@@ -6264,6 +6270,9 @@ def _carry_tick_dynamics_flows(
             # Wave 6 C3: carry forward byte-identical between boundaries,
             # same pattern as tick_unemployment_rate immediately above.
             tick_bracket_ratio=old_data.get("tick_bracket_ratio"),
+            # Wave 6 C4: same annual carry as C2/C3 — honest None before the
+            # first year boundary, byte-identical between boundaries after.
+            tick_real_wage_deflator=old_data.get("tick_real_wage_deflator"),
             # Wave 2 owner ruling 1: carry forward byte-identical between
             # boundaries, same pattern as the derived rates/Group A/B above.
             tick_throughput_position=old_data.get("tick_throughput_position"),

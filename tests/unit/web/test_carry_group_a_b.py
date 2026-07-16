@@ -61,6 +61,7 @@ def _boundary_county_and_params() -> tuple[CountyEconomicState, NationalTickPara
         employment=500_000.0,
         class_distribution=dist,
         phi_hour=3.50,
+        real_wage_deflator=0.87,
         crisis_state=CrisisState(
             phase=CrisisPhase.DEEP,
             consecutive_below=6,
@@ -132,6 +133,10 @@ def test_carry_stamps_group_a_and_b_at_boundary() -> None:
         "lumpenproletariat": 0.20,
     }
     assert node["tick_unemployment_rate"] == pytest.approx(0.081)
+    # Wave 6 C4: the CPI deflator must ride the same carry as its C2/C3
+    # siblings — before this pin it was the ONE tick_* wire the boundary
+    # branch omitted, so it evaporated from every web-session graph.
+    assert node["tick_real_wage_deflator"] == pytest.approx(0.87)
 
 
 def test_carry_forwards_group_a_and_b_between_boundaries() -> None:
@@ -166,6 +171,7 @@ def test_carry_forwards_group_a_and_b_between_boundaries() -> None:
             "lumpenproletariat": 0.20,
         },
         tick_unemployment_rate=0.081,
+        tick_real_wage_deflator=0.87,
     )
     new_graph = _wayne_graph()
     ctx: dict[str, object] = {}  # no _tick_dynamics => not a boundary
@@ -185,3 +191,7 @@ def test_carry_forwards_group_a_and_b_between_boundaries() -> None:
         "lumpenproletariat": 0.20,
     }
     assert node["tick_unemployment_rate"] == pytest.approx(0.081)
+    # Wave 6 C4: carried forward byte-identical between boundaries, same
+    # pattern as tick_unemployment_rate — evaporation here silently reset
+    # the deflator to the rehydrate fallback (1.0) on the web path.
+    assert node["tick_real_wage_deflator"] == pytest.approx(0.87)

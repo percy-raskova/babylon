@@ -169,10 +169,15 @@ description = "CI unit shard (program 15): xdist -n4, max-verbosity output, full
 run = """
 set -e
 mkdir -p reports/test-results/unit-ci
+# timeout -s INT: a wedged run (2026-07-16 incident: worker crash + loadscope
+# stranded its queue -> scheduler futex-wait at 99%) self-salvages with a full
+# summary + junit instead of burning the job's timeout-minutes and dying mute.
+# --max-worker-restart=2: repeated worker death fails the session loudly.
+timeout --signal=INT --kill-after=120 15m \
 poetry run pytest tests/unit --ignore=tests/unit/ai \
   -o addopts="" -vv -ra -l --tb=long --durations=0 \
   -m 'not red_phase and not slow and not requires_reference_db' \
-  -n 4 \
+  -n 4 --max-worker-restart=2 \
   --cov=src/babylon \
   --cov-report=term-missing:skip-covered \
   --cov-report=xml:reports/test-results/unit-ci/coverage.xml \
@@ -196,16 +201,24 @@ description = "CI heavy shard (program 15): everything outside tests/unit except
 run = """
 set -e
 mkdir -p reports/test-results/rest-ci
+# timeout -s INT + --max-worker-restart=2: wedge/crash-loop guards (2026-07-16
+# incident — see test:unit-ci comment; loadscope does NOT redistribute a
+# crashed worker's queued scopes, so a crash can hang the scheduler forever).
+# CI sets the tight caps via env (sized under nightly's 35-min job budget);
+# local defaults are generous — the dev box runs this shard in ~50-90 min
+# (2026-07-16 benchmark) and the cap exists to kill WEDGES, not slowness.
+timeout --signal=INT --kill-after=120 "${BABYLON_REST_SHARD_TIMEOUT:-100m}" \
 poetry run pytest tests --ignore=tests/unit --ignore=tests/integration/web \
   -o addopts="" -vv -ra -l --tb=long --durations=0 \
   -m 'not red_phase and not requires_reference_db' \
-  -n 4 --dist loadscope \
+  -n 4 --dist loadscope --max-worker-restart=2 \
   --junit-xml=reports/test-results/rest-ci/junit.xml
 echo '=== slow-marked tests/unit tests (excluded from the test:unit-ci fast shard) ==='
+timeout --signal=INT --kill-after=120 "${BABYLON_SLOWUNIT_TIMEOUT:-30m}" \
 poetry run pytest tests/unit --ignore=tests/unit/ai \
   -o addopts="" -vv -ra -l --tb=long --durations=0 \
   -m 'slow and not red_phase and not requires_reference_db' \
-  -n 4 --dist loadscope \
+  -n 4 --dist loadscope --max-worker-restart=2 \
   --junit-xml=reports/test-results/rest-ci/junit-slow-unit.xml
 """
 

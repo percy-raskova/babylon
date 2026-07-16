@@ -38,6 +38,11 @@ jobs:
         with:
           gdal: "true"
       - name: Heavy shard (includes slow)
+        env:
+          # Self-salvage caps (2026-07-16 wedge incident): a hung shard SIGINTs
+          # itself inside the job budget and still uploads summary + junit.
+          BABYLON_REST_SHARD_TIMEOUT: 25m
+          BABYLON_SLOWUNIT_TIMEOUT: 8m
         run: mise run test:rest-ci
       - name: Upload test results + coverage
         if: always()

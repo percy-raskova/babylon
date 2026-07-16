@@ -1,6 +1,6 @@
 meta:
-  version: 1.21.0
-  updated: '2026-07-09'
+  version: 1.22.0
+  updated: '2026-07-16'
   description: Architecture Decision Records Index
   format: See individual ADR files in this directory
 decisions:
@@ -339,6 +339,11 @@ decisions:
     status: accepted
     date: '2026-07-15'
     file: ADR071_program20_means_of_production.yaml
+  ADR074_test_estate_sharpening:
+    title: 'Test-estate sharpening: tier discipline (dev fast/loud, main heavy), digest-stamped concurrent DDL, first-party deprecation-as-error, emergent-endgames testing corollary (outcomes = fixture vehicles, never asserted subjects), declared-synthetic-data sentinel, and the empirical-invariants program (WID/DFA/BEA laws as behavioral contracts, capitalist-mode conditionality — contrapositive at runtime)'
+    status: accepted
+    date: '2026-07-16'
+    file: ADR074_test_estate_sharpening.yaml
   ADR073_doctrine_system:
     title: 'The DoctrineSystem (Doctrine Tree, Wave 6 headline): per-org ideological development as the 28th engine system, owner-ratified 6-ruling slate executed shadow-first (Units 1-4 + 7a live canvas); recording ADR — org doctrine attrs are domain state fields, not new primitives (contrast Amendment T); Unit 6 wiring is BASELINE-MOVING with regenerate-and-document obligation; org-bearing determinism + Postgres-hydrate tests are pre-merge obligations from the 2026-07-15 adversarial review'
     status: accepted

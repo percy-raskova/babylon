@@ -1,13 +1,15 @@
 /**
  * DoctrineTakeover tests (Epoch 3 Wave 6 Phase 0, the 5th takeover) —
  * fetch-on-open gating, the full 11-node MVP tree rendering, trap/goal node
- * flagging, tag display, and the honest read-only/locked framing
- * (Constitution III.11 — no fake "acquire" affordance since acquisition
- * isn't wired yet).
+ * flagging, tag display, the honest read-only/locked framing when there is
+ * no player faction (Constitution III.11 — never a fake affordance), and
+ * (Unit 7b) the Study affordance: submitting the standing Study order
+ * through the existing educate verb and the resulting "Studying" badge.
  */
 
 import { describe, it, expect, beforeEach } from "vitest";
 import { render, screen, waitFor, within } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 import { DoctrineTakeover } from "./DoctrineTakeover";
 import { useStore } from "@/store";
 import { resetStore } from "@/test/resetStore";
@@ -110,7 +112,7 @@ describe("DoctrineTakeover", () => {
 
     expect(screen.queryByRole("button", { name: /acquire/i })).not.toBeInTheDocument();
     expect(screen.getByTestId("doctrine-acquisition-note")).toHaveTextContent(
-      "Player-directed acquisition (the Study action) is coming",
+      "Click Study on an unlocked node to direct the",
     );
   });
 
@@ -194,5 +196,131 @@ describe("DoctrineTakeover", () => {
     expect(within(tier1).getByText("Reformist")).toBeInTheDocument();
     expect(within(tier1).getByText("Scientific")).toBeInTheDocument();
     expect(within(tier1).getByText("Insurrectionist")).toBeInTheDocument();
+  });
+
+  // -------------------------------------------------------------------------
+  // Unit 7b — the Study affordance (faction_id / study_target_id).
+  // -------------------------------------------------------------------------
+
+  it("renders a Study button on every unacquired, non-trap node when the session has a player faction", async () => {
+    server.use(
+      http.get("/api/games/:id/doctrine-tree/", () =>
+        HttpResponse.json({
+          status: "ok",
+          data: makeDoctrineTreePayload({ faction_id: "faction-red" }),
+        }),
+      ),
+    );
+    render(<DoctrineTakeover gameId={DEFAULT_GAME_ID} />);
+
+    const electoral = await screen.findByTestId("doctrine-node-electoral_socialism");
+    expect(
+      within(electoral).getByRole("button", { name: "Study Electoral Socialism" }),
+    ).toBeInTheDocument();
+    expect(within(electoral).getByTestId("doctrine-study-electoral_socialism")).toBeInTheDocument();
+    expect(within(electoral).queryByText("Locked")).not.toBeInTheDocument();
+  });
+
+  it("renders zero Study buttons when the session has no player faction", async () => {
+    render(<DoctrineTakeover gameId={DEFAULT_GAME_ID} />);
+
+    await screen.findByTestId("doctrine-node-class_consciousness");
+    expect(screen.queryAllByTestId(/^doctrine-study-/)).toHaveLength(0);
+  });
+
+  it("never renders a Study button on an acquired node or a trap node, even with a player faction", async () => {
+    server.use(
+      http.get("/api/games/:id/doctrine-tree/", () =>
+        HttpResponse.json({
+          status: "ok",
+          data: makeDoctrineTreePayload({
+            faction_id: "faction-red",
+            acquired_ids: ["class_consciousness"],
+          }),
+        }),
+      ),
+    );
+    render(<DoctrineTakeover gameId={DEFAULT_GAME_ID} />);
+
+    const root = await screen.findByTestId("doctrine-node-class_consciousness");
+    expect(
+      within(root).queryByTestId("doctrine-study-class_consciousness"),
+    ).not.toBeInTheDocument();
+    expect(within(root).getByText("Acquired")).toBeInTheDocument();
+
+    const trap = await screen.findByTestId("doctrine-node-liquidationism");
+    expect(within(trap).queryByTestId("doctrine-study-liquidationism")).not.toBeInTheDocument();
+    expect(within(trap).getByText("Locked")).toBeInTheDocument();
+  });
+
+  it("renders a Studying badge and 'Study ordered' footer for the node matching study_target_id", async () => {
+    server.use(
+      http.get("/api/games/:id/doctrine-tree/", () =>
+        HttpResponse.json({
+          status: "ok",
+          data: makeDoctrineTreePayload({
+            faction_id: "faction-red",
+            study_target_id: "democratic_centralism",
+          }),
+        }),
+      ),
+    );
+    render(<DoctrineTakeover gameId={DEFAULT_GAME_ID} />);
+
+    const node = await screen.findByTestId("doctrine-node-democratic_centralism");
+    expect(within(node).getByText("Studying")).toBeInTheDocument();
+    expect(within(node).getByText("Study ordered")).toBeInTheDocument();
+    expect(
+      within(node).queryByTestId("doctrine-study-democratic_centralism"),
+    ).not.toBeInTheDocument();
+
+    // A sibling unstudied node keeps its ordinary Study button.
+    const sibling = await screen.findByTestId("doctrine-node-electoral_socialism");
+    expect(within(sibling).getByTestId("doctrine-study-electoral_socialism")).toBeInTheDocument();
+  });
+
+  it("clicking Study POSTs the exact educate submit body and, on refetch, flips the node to Studying", async () => {
+    let capturedBody: unknown;
+    let studyOrdered = false;
+    server.use(
+      http.get("/api/games/:id/doctrine-tree/", () =>
+        HttpResponse.json({
+          status: "ok",
+          data: makeDoctrineTreePayload({
+            faction_id: "faction-red",
+            study_target_id: studyOrdered ? "electoral_socialism" : null,
+          }),
+        }),
+      ),
+      http.post("/api/games/:id/actions/educate/", async ({ request }) => {
+        capturedBody = await request.json();
+        studyOrdered = true;
+        return HttpResponse.json(
+          { status: "ok", data: { action_id: "action-1" } },
+          { status: 201 },
+        );
+      }),
+    );
+    render(<DoctrineTakeover gameId={DEFAULT_GAME_ID} />);
+
+    const electoral = await screen.findByTestId("doctrine-node-electoral_socialism");
+    await userEvent.click(within(electoral).getByTestId("doctrine-study-electoral_socialism"));
+
+    await waitFor(() =>
+      expect(capturedBody).toEqual({
+        org_id: "faction-red",
+        target_community_id: "faction-red",
+        params: { doctrine_node_id: "electoral_socialism" },
+      }),
+    );
+
+    await waitFor(() => {
+      const refetched = screen.getByTestId("doctrine-node-electoral_socialism");
+      expect(within(refetched).getByText("Studying")).toBeInTheDocument();
+      expect(within(refetched).getByText("Study ordered")).toBeInTheDocument();
+      expect(
+        within(refetched).queryByTestId("doctrine-study-electoral_socialism"),
+      ).not.toBeInTheDocument();
+    });
   });
 });

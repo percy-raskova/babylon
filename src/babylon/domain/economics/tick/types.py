@@ -283,6 +283,7 @@ class CountyEconomicState(BaseModel):
         throughput_position: Pi = tau_through / tau_national (Feature 014).
         supply_chain_depth: Average supply chain depth D.
         unemployment_rate: County unemployment (U-3 proxy).
+        renter_share: ACS renter-occupied household share (Wave 6 C2).
         u6_rate: Broad unemployment (U-6).
         pter_rate: Part-time for economic reasons.
         nilf_rate: Not in labor force rate.
@@ -313,6 +314,9 @@ class CountyEconomicState(BaseModel):
     throughput_position: float = Field(..., gt=0, description="Pi = tau_through / tau_national")
     supply_chain_depth: float = Field(..., ge=0, le=5, description="Supply chain depth D")
     unemployment_rate: float = Field(..., ge=0, le=1, description="County unemployment (U-3)")
+    renter_share: float = Field(
+        default=0.0, ge=0.0, le=1.0, description="ACS renter-occupied household share (Wave 6 C2)"
+    )
     u6_rate: float = Field(..., ge=0, le=1, description="Broad unemployment (U-6)")
     pter_rate: float = Field(..., ge=0, le=1, description="Part-time for economic reasons")
     nilf_rate: float = Field(..., ge=0, le=1, description="Not in labor force rate")

@@ -426,6 +426,7 @@ class TickDynamicsSystem(SystemBase):
                     throughput_position=data.get("tick_throughput_position", 1.0),
                     supply_chain_depth=data.get("tick_supply_chain_depth", 2.0),
                     unemployment_rate=data.get("tick_unemployment_rate", 0.05),
+                    renter_share=data.get("tick_renter_share", 0.0),
                     u6_rate=data.get("tick_u6_rate", 0.10),
                     pter_rate=data.get("tick_pter_rate", 0.04),
                     nilf_rate=data.get("tick_nilf_rate", 0.06),
@@ -538,6 +539,37 @@ class TickDynamicsSystem(SystemBase):
             estimated=estimated,
         )
 
+    def _resolve_renter_share(
+        self,
+        prev: CountyEconomicState | None,
+        services: ServicesProtocol,
+        fips: str,
+        year: int,
+    ) -> float:
+        """Wave 6 C2: per-county ACS renter share via ``services.housing_source``.
+
+        Mirrors the ``unemployment_rate``/``employment`` wired-source pattern
+        in :meth:`_compute_county_states`: prev-carry ``0.0`` default unless a
+        ``housing_source`` is wired and returns a real value for this
+        county-year (Constitution III.11 — honest ``None`` never fabricates a
+        share).
+
+        Args:
+            prev: Previous county state, or ``None`` on the first tick.
+            services: ServicesProtocol carrying the optional ``housing_source``.
+            fips: County FIPS code.
+            year: Calendar year.
+
+        Returns:
+            The renter share to carry into this tick's ``CountyEconomicState``.
+        """
+        renter_share = prev.renter_share if prev else 0.0
+        if services.housing_source is not None:
+            rs = services.housing_source.get_county_renter_share(fips, year)
+            if rs is not None and isinstance(rs, (int, float)):
+                renter_share = float(rs)
+        return renter_share
+
     def _compute_county_states(
         self,
         year: int,
@@ -587,6 +619,11 @@ class TickDynamicsSystem(SystemBase):
                 u3 = services.unemployment_source.get_county_unemployment_rate(fips, year)
                 if u3 is not None and isinstance(u3, (int, float)):
                     unemployment_rate = float(u3)
+            # Real per-county ACS renter share (Wave 6 C2), symmetric with
+            # unemployment_rate above. Extracted to a helper (rather than
+            # inlined like unemployment_rate above) to keep this method's
+            # cyclomatic complexity under the C901 gate.
+            renter_share = self._resolve_renter_share(prev, services, fips, year)
             u6_rate = prev.u6_rate if prev else 0.10
             pter_rate = prev.pter_rate if prev else 0.04
             nilf_rate = prev.nilf_rate if prev else 0.06
@@ -645,6 +682,7 @@ class TickDynamicsSystem(SystemBase):
                 throughput_position=throughput_position,
                 supply_chain_depth=supply_chain_depth,
                 unemployment_rate=unemployment_rate,
+                renter_share=renter_share,
                 u6_rate=u6_rate,
                 pter_rate=pter_rate,
                 nilf_rate=nilf_rate,

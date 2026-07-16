@@ -175,6 +175,10 @@ class ServiceContainer:
     # keeps its documented 100k graceful-degradation default.
     employment_source: Any = field(default=None)
     unemployment_source: Any = field(default=None)
+    # Wave 6 C2: per-county ACS renter share (SQLiteCensusHousingSource),
+    # symmetric with unemployment_source above. None => the tick pipeline
+    # keeps its documented 0.0 graceful-degradation default.
+    housing_source: Any = field(default=None)
     wage_source: Any = field(default=None)
 
     # C.8 (spec 2.R): loud economics-fallback observability. A fresh tally per
@@ -254,6 +258,7 @@ class ServiceContainer:
         tensor_registry: Any = None,
         employment_source: Any = None,
         unemployment_source: Any = None,
+        housing_source: Any = None,
         wage_source: Any = None,
         community_hypergraph: Any = None,
         turnover_profile_source: Any = None,
@@ -347,6 +352,7 @@ class ServiceContainer:
             tensor_registry=tensor_registry,
             employment_source=employment_source,
             unemployment_source=unemployment_source,
+            housing_source=housing_source,
             wage_source=wage_source,
             community_hypergraph=community_hypergraph,
             turnover_profile_source=turnover_profile_source,

@@ -588,6 +588,22 @@ _TERRITORY_TICK_METRICS: tuple[SeamEntry, ...] = (
         ),
     ),
     SeamEntry(
+        payload="tick_renter_share",
+        wire_keys=("renter_share",),
+        scope=SeamScope.TERRITORY,
+        owner_layer="domain.economics.tick (SQLiteCensusHousingSource, ACS housing tenure)",
+        liveness_class=LivenessClass.DECLARED_CONDITIONAL,
+        liveness_condition=_YEAR_BOUNDARY,
+        dtype="float",
+        read_paths=_TERRITORY_EMITTERS,
+        spec_ref="Epochs audit · item 165 · Wave 6 C2",
+        notes=(
+            "Real ACS housing tenure via services.housing_source (wired in "
+            "_bridge_economics_overrides); honest 0.0 default when unwired or "
+            "the county-year row is absent — never a fabricated share."
+        ),
+    ),
+    SeamEntry(
         payload="tick_median_wage",
         wire_keys=("tick_median_wage",),
         scope=SeamScope.TERRITORY,

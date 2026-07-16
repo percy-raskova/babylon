@@ -85,3 +85,26 @@ class TestQCEWMedianHourlyWage:
 
     def test_unknown_county_returns_none(self, wage_source) -> None:  # type: ignore[no-untyped-def]
         assert wage_source.get_county_median_hourly_wage("99999", TEST_YEAR) is None
+
+
+class TestSQLiteCensusHousingSource:
+    """Real-DB contract for the county ACS renter-share read (Wave 6 C2)."""
+
+    @pytest.fixture(scope="class")
+    def housing_source(self):  # type: ignore[no-untyped-def]
+        from babylon.domain.economics.throughput.adapters import SQLiteCensusHousingSource
+
+        return SQLiteCensusHousingSource(get_normalized_session_factory())
+
+    def test_wayne_2015_renter_share_is_plausible(self, housing_source) -> None:  # type: ignore[no-untyped-def]
+        """Wayne County 2015 renter share must exist and sit in a sane band."""
+        share = housing_source.get_county_renter_share(WAYNE, TEST_YEAR)
+
+        assert share is not None, "Wayne 2015 should have ACS housing tenure rows"
+        assert 0.05 < share < 0.95, f"renter share {share} outside sanity band"
+
+    def test_unavailable_year_returns_none(self, housing_source) -> None:  # type: ignore[no-untyped-def]
+        assert housing_source.get_county_renter_share(WAYNE, 1900) is None
+
+    def test_unknown_county_returns_none(self, housing_source) -> None:  # type: ignore[no-untyped-def]
+        assert housing_source.get_county_renter_share("99999", TEST_YEAR) is None

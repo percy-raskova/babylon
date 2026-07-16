@@ -127,6 +127,20 @@ hash (``defines_hash``, ``tick_commit.determinism_hash``,
 worked examples, the three float-tolerance regimes, and documented
 discrepancies between hash naming/docstrings and actual behavior.
 
+Declared Synthetic Data (Constitution III.11 / VIII.12)
+---------------------------------------------------------
+
+.. toctree::
+   :maxdepth: 1
+
+   declared-synthetic-data
+
+The closed registry of every sanctioned synthetic/fallback data source on a
+production code path (``StubEngineBridge``, the economics graceful-degradation
+defaults and their fallback tally, and the deterministic seed scenarios):
+where each lives, what guards it, and the ``babylon.sentinels.synthetic``
+static coherence check that keeps the registry closed.
+
 Economic Data Sources
 ---------------------
 

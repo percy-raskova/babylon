@@ -1,272 +1,167 @@
-# Test Suite Documentation
+# Test Suite Reference
 
-This document establishes testing patterns and guidelines for the Babylon test suite.
+Reference documentation for the `tests/` tree — what exists, how it is tiered in CI, and
+the commands a contributor actually runs. For *why* the suite is split this way, see
+`ai/decisions/ADR008_test_separation.yaml`.
 
-## Directory Structure
+## Directory structure
 
 ```
 tests/
-├── conftest.py          # Root fixtures (db, mocks, random isolation)
-├── constants.py         # TestConstants from GameDefines (YAML-first)
-├── README.md            # This file
-├── unit/                # Fast, isolated unit tests
-│   ├── ai/              # LLM, narrative, persona tests
-│   ├── data/            # Data loader tests
-│   ├── engine/          # Simulation engine tests
-│   ├── formulas/        # Formula tests (math, property-based)
-│   ├── models/          # Pydantic model tests
-│   ├── rag/             # RAG retrieval tests
-│   └── ui/              # UI tests (mocked DearPyGui)
-├── integration/         # Multi-component integration tests
-├── scenarios/           # Full simulation scenario tests
-└── fixtures/            # Shared test data files
+├── conftest.py        # Root fixtures: BLAS pin, Hypothesis profiles, random-seed isolation,
+│                       # Django DB setup override, Postgres pool fixture, mock fixtures
+├── constants.py        # TestConstants — pulls from GameDefines (YAML-first)
+├── constants_063.py     # Spec-063 fixtures: Detroit tri-county H3 hex sets, port codes, FIPS sets
+├── assertions.py         # BabylonAssert fluent assertion library (domain-language assertions)
+├── test_simplex_invariants.py  # Root-level Hypothesis property tests (consciousness ternary simplex)
+├── unit/                 # Fast, isolated tests — the dev CI tier (see below)
+├── integration/           # Multi-component / DB-backed tests (Postgres, reference SQLite)
+├── property/               # Hypothesis property-based tests (circulation, dialectics, invariants)
+├── contract/                # Contract tests pinning cross-boundary interfaces
+├── scenarios/                 # Full multi-tick simulation scenario tests
+├── benchmark/                   # Performance/memory benchmarks for tensor operations
+├── baselines/                     # Committed golden JSON/CSV traces for qa:regression
+├── fixtures/                        # Shared static test data (qcew/, test_data/)
+├── factories/                         # DomainFactory — builds configured domain entities for tests
+├── mocks/                                # Hand-written test doubles (e.g. metrics_collector spy)
+├── _helpers/                               # Shared invariant-checking helpers (h3 round-trip, MELT
+│                                            # consistency, metamorphic, serialization, ...)
+└── scripts/                                  # Shell/Python one-off verification scripts, not pytest
 ```
 
-## Mock Patterns
+There is no `tests/unit/data/`, `tests/unit/ui/`, or `tests/e2e/`. Browser E2E tests
+(Playwright) live at `src/frontend/e2e/`, not under `tests/`.
 
-### Use `spec=` for Internal Classes
+`tests/unit/` mirrors `src/babylon/`'s top-level packages (`ai`, `balkanization`,
+`bifurcation`, `config`, `core`, `dialectics`, `domain`, `economics`, `engine`, `formulas`,
+`infrastructure`, `institution`, `kernel`, `ledger`, `metrics`, `models`, `observatory`,
+`ooda`, `organizations`, `persistence`, `protocols`, `reference`, `sentinels`, `state_ai`,
+`tools`, `topology`, `utils`, `web`) plus a handful of root-level guard tests
+(`test_blas_thread_cap.py`, `test_contract_parity.py`, `test_mise_tasks.py`,
+`test_public_import_surface.py`, ...).
 
-When mocking internal Babylon classes, ALWAYS use `spec=` to ensure type safety.
-This catches bugs where tests access attributes that don't exist on the real class.
+## Root `conftest.py`
 
-```python
-from unittest.mock import MagicMock
-from babylon.engine.simulation import Simulation
+- **BLAS/OpenMP thread pin** — sets `OMP_NUM_THREADS`, `OPENBLAS_NUM_THREADS`,
+  `MKL_NUM_THREADS`, `NUMEXPR_NUM_THREADS`, `RAYON_NUM_THREADS` to `1` before any
+  numpy/scipy/rustworkx import, and holds a `threadpoolctl` limiter alive for the session.
+  Prevents OpenBLAS/rayon thread oversubscription under `pytest-xdist`; also a determinism
+  win (fixes FP reduction order per Constitution III.7). See `test_blas_thread_cap.py`.
+- **Mutmut compatibility shim** — makes `multiprocessing.set_start_method` idempotent
+  (mutmut calls it at import time, conflicting with pytest-asyncio's context).
+- **Hypothesis profiles** — registers `mutmut`, `default`, and `slow` here; `dev`, `ci`, and
+  `nightly` are registered in `tests/property/conftest.py` (must run after this file per
+  Hypothesis's registration-before-load ordering). `HYPOTHESIS_PROFILE` env var selects the
+  active profile (defaults to `default`); see the table below.
+- **`_isolate_random_state`** (autouse) — seeds `random` with `42` before every test and
+  restores the prior state after, for reproducibility across test orderings.
+- **`enable_logging_propagation`** (autouse) — re-enables propagation on the `babylon`
+  logger so `caplog` captures it despite Django disabling propagation.
+- **`test_dir`** (session-scoped) — temp directory, owner-only permissions, cleaned up after
+  the session.
+- **`reference_sqlite_session_factory`** — function-scoped SQLAlchemy session factory backed
+  by a fresh in-memory `NormalizedBase` schema (same dialect as the production reference DB
+  at `data/sqlite/marxist-data-3NF.sqlite`).
+- **`metrics_collector`** — fresh `MetricsCollector` per test.
+- **`mock_llm_provider`** / **`mock_simulation`** — `MagicMock(spec=...)` fixtures for
+  `LLMProvider` and `Simulation`. These are the only mock fixtures the root conftest
+  provides; there are no ChromaDB mock fixtures (ChromaDB was removed in favor of pgvector —
+  see `tests/unit/rag/test_retrieval.py`).
+- **`django_db_setup`** override — replicates pytest-django's default fixture but excludes
+  the `"postgres"` alias, which `tests/integration/web/conftest.py` owns via an ephemeral
+  testcontainers PostGIS instance.
+- **`pg_dsn`** / **`pg_pool`** — session-scoped Postgres connection pool for integration
+  tests. Reads `BABYLON_TEST_PG_DSN` (defaults to the `mise run db:up` container: port 5433,
+  db `babylon_test`, user/password `test`/`test`). `pg_pool` calls `pytest.skip(...)` if the
+  database is unreachable — tests depending on it skip cleanly rather than error when
+  Postgres isn't running locally.
 
-# GOOD: spec= ensures mock follows Simulation interface
-mock_sim = MagicMock(spec=Simulation)
+## Hypothesis profiles
 
-# BAD: Plain mock allows any attribute access
-mock_sim = MagicMock()  # Don't do this for internal classes
-```
+| Profile   | Registered in                 | `max_examples` | `deadline` | Notes |
+| --------- | ------------------------------ | --------------- | ---------- | ----- |
+| `default` | `tests/conftest.py`             | 100             | `None`     | Active unless `HYPOTHESIS_PROFILE` is set |
+| `slow`    | `tests/conftest.py`             | 500             | `None`     | `derandomize=False` |
+| `mutmut`  | `tests/conftest.py`             | (Hypothesis default) | — | Suppresses `differing_executors` health check |
+| `dev`     | `tests/property/conftest.py`    | 20              | 1000ms     | |
+| `ci`      | `tests/property/conftest.py`    | 500             | 5000ms     | Default for `test:rest-ci` (the only shard running `tests/property`) |
+| `nightly` | `tests/property/conftest.py`    | 5000            | `None`     | |
 
-### Use Plain MagicMock for External Libraries
+Select with `HYPOTHESIS_PROFILE=slow poetry run pytest ...`.
 
-External library interfaces may change between versions. Using `spec=` on external
-libraries can cause false test failures. Use plain MagicMock instead.
+## Pytest markers
 
-```python
-from unittest.mock import MagicMock
+Declared in `pyproject.toml` `[tool.pytest.ini_options] markers` with `strict_markers = true`
+(an unrecognized marker fails collection):
 
-# GOOD: External library, no spec needed
-mock_response = MagicMock()
-mock_response.status_code = 200
-mock_response.choices = [MagicMock()]
+- `unit` — fast, isolated, no I/O, no AI
+- `math` — deterministic mathematical formulas
+- `ledger` — economic/political state tests
+- `topology` — graph/network operations
+- `integration` — database/Postgres tests (I/O bound)
+- `ai` — AI/RAG evaluation tests (slow, non-deterministic)
+- `red_phase` — intentionally-failing TDD RED phase tests
+- `slow` — long-running scenario tests (2000+ ticks, multi-minute runtime)
+- `scenario` — full simulation scenario tests (multi-tick arcs)
+- `theory_rent`, `theory_rift`, `theory_solidarity`, `theory` — Marxian-theory validation
+  domains (imperial rent, metabolic rift, solidarity/consciousness, Capital Vol. II schema)
+- `property` — Hypothesis property-based tests
+- `empirical` — requires real QCEW data
+- `benchmark` — performance/memory benchmarks
+- `requires_postgres` — needs a running PostgreSQL instance (skipped if unavailable)
+- `postgres` — uses a testcontainers ephemeral PostgreSQL (requires Docker)
+- `invariant` — Marx value-form and software metamorphic invariant tests
+- `cross_scale` — spec-062 cross-scale integration
+- `contract` — contract tests pinning cross-boundary interfaces (`tests/contract/`)
+- `requires_reference_db` — needs the reference SQLite DB
+  (`data/sqlite/marxist-data-3NF.sqlite`); excluded from the dev CI tier, run on the nightly
+  `refdata-tests` job against a pinned ci-data subset artifact
 
-# External libs where this applies:
-# - OpenAI/DeepSeek API responses
-# - ChromaDB clients/collections
-# - HTTP responses (requests, httpx)
-# - SQLAlchemy engines (but Session uses spec=, see data/conftest.py)
-```
+## CI tier model
 
-### Use `patch()` Context Manager (Not Decorators)
+- **Dev fast lane** (`.github/workflows/ci.yml`, push/PR to `dev` or `main`, ~8-10 min):
+  `check:hygiene`, `check:seams`, `check:coverage`, lint, `lint:imports`, format, `typecheck`,
+  then `test:unit-ci` and `qa:regression`, plus frontend/security/secret-scan jobs.
+  `test:unit-ci` runs `tests/unit` (excluding `tests/unit/ai`) under `xdist -n4`, deselecting
+  `red_phase`, `slow`, and `requires_reference_db`, and gates
+  `src/babylon/engine/systems` coverage at ≥80%.
+- **Main full pipeline** (`.github/workflows/main.yml`, push/PR to `main`): everything the
+  fast lane runs, plus `test:rest-ci` (the heavy shard) and a `postgres-integration` job
+  running `tests/integration/web/`.
+- **Nightly** (`.github/workflows/nightly.yml`, scheduled against `dev` HEAD): daily —
+  `test:rest-ci`, security audit, `postgres-integration`
+  (`tests/integration/web/`), and `refdata-tests` (`-m requires_reference_db`, excluding
+  `tests/integration/web`) against a pinned reference-DB artifact. Weekly (Sunday) — a Python
+  3.13 forward-compatibility suite and simulation trace/sweep artifact generation. Mutation
+  testing (mutmut) was retired from CI and is local-only; run `tools/run_mutmut.py` directly.
 
-Prefer context manager style for clarity and explicit scoping:
+`test:rest-ci` runs everything outside `tests/unit` except `tests/integration/web` (its own
+job), deselecting `red_phase` and `requires_reference_db`, then runs the `slow`-marked tests
+under `tests/unit` (which `test:unit-ci` excludes) as a second pass — this is the only shard
+that runs `tests/property`, defaulting `HYPOTHESIS_PROFILE` to `ci` unless the caller
+overrides it.
 
-```python
-from unittest.mock import patch
-
-# GOOD: Context manager - explicit scope
-def test_something():
-    with patch("babylon.config.base.BaseConfig.LOG_DIR", tmpdir):
-        # test code here
-        pass
-
-# AVOID: Decorator stacking (harder to read, implicit scope)
-@patch("module.thing")
-@patch("module.other")
-def test_something(mock_other, mock_thing):  # Order is reversed!
-    pass
-```
-
-### Available Shared Mock Fixtures
-
-The root `conftest.py` provides these fixtures:
-
-| Fixture                  | Type                          | Description                               |
-| ------------------------ | ----------------------------- | ----------------------------------------- |
-| `mock_llm_provider`      | `MagicMock(spec=LLMProvider)` | Pre-configured LLM mock with `generate()` |
-| `mock_chroma_client`     | `MagicMock`                   | ChromaDB client with query/add configured |
-| `mock_chroma_collection` | `MagicMock`                   | ChromaDB collection with empty results    |
-| `mock_simulation`        | `MagicMock(spec=Simulation)`  | Simulation mock for engine tests          |
-
-The `tests/unit/data/conftest.py` provides:
-
-| Fixture              | Type                      | Description                        |
-| -------------------- | ------------------------- | ---------------------------------- |
-| `mock_db_session`    | `MagicMock(spec=Session)` | SQLAlchemy session mock            |
-| `in_memory_db`       | `Engine`                  | In-memory SQLite for loader tests  |
-| `mock_http_response` | `MagicMock`               | HTTP response with status_code=200 |
-| `mock_httpx_client`  | `MagicMock`               | httpx.Client mock                  |
-
-**Example usage:**
-
-```python
-def test_narrative_generation(mock_llm_provider):
-    """Test NarrativeDirector uses LLM provider."""
-    mock_llm_provider.generate.return_value = "The workers rose up..."
-
-    director = NarrativeDirector(llm=mock_llm_provider)
-    result = director.narrate(state)
-
-    assert "workers" in result
-    mock_llm_provider.generate.assert_called_once()
-```
-
-## Test Constants (YAML-First)
-
-All domain constants should come from `TestConstants`, which pulls from `GameDefines`:
-
-```python
-from tests.constants import TestConstants
-TC = TestConstants
-
-# GOOD: Semantic constant from YAML source
-assert worker.wealth == TC.Wealth.WORKER_BASELINE
-
-# BAD: Magic number with no traceability
-assert worker.wealth == 10.0  # Where does this come from?
-```
-
-**Exception**: Type boundary values (0.0, 1.0 for Probability) are kept inline
-because they document the TYPE definition itself.
-
-## Pytest Markers
-
-```python
-@pytest.mark.math        # Deterministic formulas (fast, pure)
-@pytest.mark.ledger      # Economic/political state
-@pytest.mark.topology    # Graph/network operations
-@pytest.mark.integration # Database/ChromaDB (I/O bound)
-@pytest.mark.ai          # AI/RAG evaluation (slow, non-deterministic)
-@pytest.mark.unit        # Unit tests (default)
-@pytest.mark.slow        # Long-running tests (excluded from pre-commit)
-@pytest.mark.property    # Hypothesis property-based tests
-```
-
-**Running specific markers:**
+## Running tests
 
 ```bash
-poetry run pytest -m "not ai"        # Exclude AI tests (CI default)
-poetry run pytest -m "math"          # Only formula tests
-poetry run pytest -m "not slow"      # Exclude slow tests (pre-commit)
+mise run test:q -- tests/unit/formulas/       # quiet, scoped — the inner-loop default
+mise run test:failed                          # re-run only last test:q's failures
+mise run test:unit                            # tests/unit, deselecting red_phase + slow — what `mise run check` runs
+mise run qa:regression                        # 5-scenario byte-identical baseline gate
 ```
 
-## Property-Based Testing (Hypothesis)
-
-Formula tests use Hypothesis to verify properties across input domains:
-
-```python
-from hypothesis import given, strategies as st
-
-@pytest.mark.math
-class TestProbabilityBounds:
-    @given(
-        wealth=st.floats(min_value=0.0, max_value=1e6, allow_nan=False),
-        subsistence=st.floats(min_value=0.01, max_value=1e6, allow_nan=False),
-    )
-    def test_psa_is_valid_probability(self, wealth: float, subsistence: float):
-        """P(S|A) always returns value in [0, 1]."""
-        p_sa = calculate_acquiescence_probability(
-            wealth=Currency(wealth),
-            subsistence_threshold=Currency(subsistence),
-        )
-        assert 0.0 <= float(p_sa) <= 1.0
-```
-
-**Hypothesis configuration** (in `pyproject.toml`):
-
-- `deadline = 500` - Allow 500ms for complex formulas
-- `max_examples = 100` - Balance thoroughness vs speed
-
-## Writing Tests
-
-### TDD Flow
-
-1. **Red**: Write failing test first
-1. **Green**: Write minimal code to pass
-1. **Refactor**: Clean up while keeping tests green
-
-### Test Structure
-
-```python
-@pytest.mark.unit
-class TestSomething:
-    """Tests for Something functionality."""
-
-    def test_happy_path(self):
-        """Something does expected thing with valid input."""
-        result = something(valid_input)
-        assert result == expected
-
-    def test_edge_case(self):
-        """Something handles edge case gracefully."""
-        result = something(edge_input)
-        assert result == edge_expected
-
-    def test_error_case(self):
-        """Something raises appropriate error for invalid input."""
-        with pytest.raises(ValueError, match="expected message"):
-            something(invalid_input)
-```
-
-### Parametrization
-
-Use `pytest.mark.parametrize` for similar tests:
-
-```python
-@pytest.mark.parametrize(
-    "field,expected",
-    [
-        ("wealth", TC.Wealth.DEFAULT),
-        ("organization", TC.Probability.LOW),
-        ("repression_faced", TC.Probability.MIDPOINT),
-    ],
-)
-def test_social_class_defaults(field: str, expected: float):
-    """SocialClass has expected defaults from GameDefines."""
-    worker = SocialClass(id="C001", name="Test", role=SocialRole.PERIPHERY_PROLETARIAT)
-    assert getattr(worker, field) == expected
-```
-
-## Common Fixtures
-
-### Random State Isolation
-
-All tests automatically get deterministic random state (seed=42):
-
-```python
-# In root conftest.py - autouse=True
-@pytest.fixture(autouse=True)
-def _isolate_random_state():
-    random.seed(42)  # Reproducible across test orderings
-    # ... cleanup restores original state
-```
-
-### Temporary Directories
-
-```python
-def test_file_output(test_dir):
-    """Test writes to session-scoped temp directory."""
-    output_path = Path(test_dir) / "output.json"
-    write_output(output_path)
-    assert output_path.exists()
-```
-
-### In-Memory Database
-
-```python
-def test_loader(in_memory_db, mock_db_session):
-    """Test loader with mocked database."""
-    loader = MyLoader(session=mock_db_session)
-    loader.load(data)
-    mock_db_session.commit.assert_called_once()
-```
+`test:unit` (used by `mise run check`) is not identical to CI's `test:unit-ci`: it does not
+exclude `tests/unit/ai` or `requires_reference_db`, and carries no coverage gate. To
+reproduce the exact CI shards locally, run `mise run test:unit-ci` / `mise run test:rest-ci`
+(verbose, JUnit/coverage artifacts under `reports/test-results/`). `mise tasks` lists the
+full `test:*` namespace (`test:int`, `test:pg`, `test:scenario`, `test:doctest`, `test:ai`,
+`test:cov`, ...).
 
 ## References
 
-- **Test Constants**: `tests/constants.py`
+- **Test constants**: `tests/constants.py` (`TestConstants`, pulled from `GameDefines`)
 - **GameDefines (YAML source)**: `src/babylon/data/defines.yaml`
-- **ADR008 (Test Separation)**: `ai/decisions/ADR008_test_separation.yaml`
+- **Domain factory**: `tests/factories/domain.py` (`DomainFactory`)
+- **Fluent assertions**: `tests/assertions.py` (`Assert(...)`)
+- **ADR008 (test separation)**: `ai/decisions/ADR008_test_separation.yaml`
 - **Hypothesis docs**: https://hypothesis.readthedocs.io/

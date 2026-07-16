@@ -283,7 +283,10 @@ TABLE: dict[str, TablePolicy] = {
         "Found via verification grep beyond the original recon inventory: "
         "read directly by tests/integration/test_db_initialization_queries.py "
         "(Michigan-data assertion joining county_id -> dim_county.state_id). "
-        "168 of 6,570 rows are Michigan.",
+        "168 of 6,570 rows are Michigan. WARNING (2026-07-15, owner-queue "
+        "item 59): every numeric column is 0 in ALL rows, coverage 2010-2011 "
+        "only — a Feature-021 loader placeholder. Do NOT wire an engine "
+        "consumer to this table until real ownership data lands.",
         county_columns=("county_id",),
     ),
     "fact_lodes_commuter_flow": TablePolicy(

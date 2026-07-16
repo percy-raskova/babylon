@@ -48,6 +48,7 @@ from babylon.engine.systems.contradiction_field import ContradictionFieldSystem
 from babylon.engine.systems.control_ratio import ControlRatioSystem
 from babylon.engine.systems.decomposition import DecompositionSystem
 from babylon.engine.systems.dispossession_events import DispossessionEventSystem
+from babylon.engine.systems.doctrine import DoctrineSystem
 from babylon.engine.systems.economic import ImperialRentSystem
 from babylon.engine.systems.edge_transition import EdgeTransitionSystem
 from babylon.engine.systems.epistemic_horizon import EpistemicHorizonSystem
@@ -76,6 +77,9 @@ from babylon.models.events import (
     ClassDecompositionEvent,
     ControlRatioCrisisEvent,
     CrisisEvent,
+    DoctrinePurgeFailedEvent,
+    DoctrineTrapEscapedEvent,
+    DoctrineTrapSprungEvent,
     ExtractionEvent,
     MassAwakeningEvent,
     PhaseTransitionEvent,
@@ -390,6 +394,10 @@ _DEFAULT_SYSTEMS: list[System] = [
     # --- Action Phase (position 14) — Spec 056 F6=α reorder ---
     OODASystem(),  # 14. Organizations observe + act (Feature 032)
     FactionInfluenceSystem(),  # 14.5. Spec-070 FR-021 winning-Faction resolution
+    DoctrineSystem(),  # 14.7. Per-org Doctrine Tree state (owner-ratified 2026-07-15);
+    #        shadow: writes org doctrine state (acquire/decay/traps). Feedback into
+    #        bifurcation/consciousness is wired in Unit 6. Byte-safe: the qa:regression
+    #        scenarios carry no organization nodes, so this is a no-op there.
     # --- Consequences (positions 15–21) ---
     SurvivalSystem(),  # 15. Risk assessment
     StruggleSystem(),  # 16. Action/Revolt
@@ -445,6 +453,7 @@ CONSEQUENCE_SYSTEMS: Final[frozenset[type[System]]] = frozenset(
         FieldDerivativeSystem,
         EdgeTransitionSystem,
         EpistemicHorizonSystem,  # Epistemic Horizon Phase 1 shadow (observes consequences)
+        DoctrineSystem,  # Doctrine Tree per-org state (owner-ratified 2026-07-15)
     }
 )
 
@@ -497,6 +506,8 @@ def _convert_bus_event_to_pydantic(event: Event) -> SimulationEvent | None:  # n
     Sprint 3.1+: Supports all 10 EventTypes except SOLIDARITY_AWAKENING.
     Program 17 item 1b: widened to 34 of 79 EventTypes.
     Wave 1 item W1.1: widened to 44 of 79 EventTypes.
+    Unit 6a (ADR073): widened to 47 of 82 EventTypes (DOCTRINE_TRAP_SPRUNG /
+    DOCTRINE_TRAP_ESCAPED / DOCTRINE_PURGE_FAILED).
     """
     # Normalize event type (may be string or EventType enum)
     event_type = event.type
@@ -966,6 +977,31 @@ def _convert_bus_event_to_pydantic(event: Event) -> SimulationEvent | None:  # n
             overshoot_ratio=payload.get("overshoot_ratio", 0.0),
             total_consumption=payload.get("total_consumption", 0.0),
             total_biocapacity=payload.get("total_biocapacity", 0.0),
+        )
+
+    # ADR073 Doctrine Tree events (Unit 6a — doctrine.py::DoctrineSystem.step)
+    if event_type == EventType.DOCTRINE_TRAP_SPRUNG:
+        return DoctrineTrapSprungEvent(
+            tick=tick,
+            timestamp=timestamp,
+            org_id=payload.get("org_id", ""),
+            node_id=payload.get("node_id", ""),
+        )
+
+    if event_type == EventType.DOCTRINE_TRAP_ESCAPED:
+        return DoctrineTrapEscapedEvent(
+            tick=tick,
+            timestamp=timestamp,
+            org_id=payload.get("org_id", ""),
+            node_id=payload.get("node_id", ""),
+        )
+
+    if event_type == EventType.DOCTRINE_PURGE_FAILED:
+        return DoctrinePurgeFailedEvent(
+            tick=tick,
+            timestamp=timestamp,
+            org_id=payload.get("org_id", ""),
+            node_id=payload.get("node_id", ""),
         )
 
     # Feature 002 events (EDGE_MODE_TRANSITION, CO_OPTIVE_BREAKDOWN,

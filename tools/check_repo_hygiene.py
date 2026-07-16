@@ -118,11 +118,16 @@ MAX_GIT_OUTPUT_LINES: int = 100_000
 _SYMLINK_MODE: str = "120000"
 
 
-def _git_lines(args: list[str]) -> list[str]:
-    """Run a git subcommand and return its stdout lines (bounded).
+def _git_lines(args: list[str], *, nul_separated: bool = False) -> list[str]:
+    """Run a git subcommand and return its stdout entries (bounded).
 
-    :param args: Arguments after ``git`` (e.g. ``["ls-files"]``).
-    :returns: Non-empty stdout lines.
+    :param args: Arguments after ``git`` (e.g. ``["ls-files", "-z"]``).
+    :param nul_separated: Split on NUL instead of newlines. Callers listing
+        paths MUST pass ``-z`` in ``args`` and set this — without it git
+        C-quotes non-ASCII paths (``"ai/_inbox/Theory \\342\\200\\242.md"``),
+        and the quoted string's first segment masquerades as a bogus
+        top-level entry (broke the Fast Gate on 2026-07-15).
+    :returns: Non-empty stdout entries.
     :raises RuntimeError: If git exits non-zero or output exceeds the fixed
         line bound — both are loud infrastructure failures, never ignored.
     """
@@ -138,7 +143,8 @@ def _git_lines(args: list[str]) -> list[str]:
         raise RuntimeError(f"git {args[0]} failed: {exc.stderr.strip()}") from exc
     except subprocess.TimeoutExpired as exc:
         raise RuntimeError(f"git {args[0]} timed out after 120s") from exc
-    lines = [line for line in proc.stdout.splitlines() if line]
+    raw = proc.stdout.split("\0") if nul_separated else proc.stdout.splitlines()
+    lines = [line for line in raw if line]
     if len(lines) > MAX_GIT_OUTPUT_LINES:
         raise RuntimeError(
             f"git {args[0]} returned {len(lines)} lines (bound {MAX_GIT_OUTPUT_LINES})"
@@ -200,9 +206,11 @@ def main() -> int:
     :returns: 0 clean, 1 violations found, 2 git infrastructure failure.
     """
     try:
-        tracked = _git_lines(["ls-files"])
-        ignored_tracked = _git_lines(["ls-files", "-i", "-c", "--exclude-standard"])
-        tree_lines = _git_lines(["ls-tree", "-r", "-l", "HEAD"])
+        tracked = _git_lines(["ls-files", "-z"], nul_separated=True)
+        ignored_tracked = _git_lines(
+            ["ls-files", "-z", "-i", "-c", "--exclude-standard"], nul_separated=True
+        )
+        tree_lines = _git_lines(["ls-tree", "-r", "-l", "-z", "HEAD"], nul_separated=True)
     except RuntimeError as exc:
         print(f"HYGIENE GATE ERROR: {exc}", file=sys.stderr)
         return 2

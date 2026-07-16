@@ -1,24 +1,33 @@
 /**
- * DoctrineTakeover — the read-only Doctrine Tree canvas (Epoch 3 Wave 6
- * Phase 0, the 5th takeover). Renders the static 11-node MVP tree
- * (`useDoctrineTree`, one-shot-fetched on open, mirrors `useOrgNetwork`'s
- * mount/fetch idiom) by tier (0->4) and by strategic trunk (reformist /
- * scientific / insurrectionist columns) — matches
+ * DoctrineTakeover — the Doctrine Tree canvas (Epoch 3 Wave 6 Phase 0, the
+ * 5th takeover). Renders the static 11-node MVP tree (`useDoctrineTree`,
+ * one-shot-fetched on open, mirrors `useOrgNetwork`'s mount/fetch idiom) by
+ * tier (0->4) and by strategic trunk (reformist / scientific /
+ * insurrectionist columns) — matches
  * `ai/epochs/epoch3/doctrine-tree-mvp.yaml`'s
  * `ui_requirements.doctrine_panel.ascii_mockup` layout, as a tiered/trunked
  * grid rather than literal connector lines (the spec's explicitly-permitted
  * "clean indented/columned tree" fallback).
  *
- * READ-ONLY: acquisition/TL-spend/Party Congress/DoctrineSystem engine
- * wiring is gated on six pending owner rulings and explicitly out of scope
- * here. Every node renders LOCKED with its cost — never a fake "acquire"
- * affordance (Constitution III.11). `acquired_ids` is always `[]` from the
- * backend today, so there is no "acquired" visual state to render; the
- * header note says so explicitly rather than staying silent about it.
+ * LIVE + INTERACTIVE (Unit 7b): the DoctrineSystem now advances each faction's
+ * doctrine every tick, so this canvas overlays the player faction's REAL state —
+ * acquired nodes are lit (ring + "Acquired"), the theoretical-labour balance and
+ * the decaying tag accumulator are shown live. Unacquired, non-trap nodes render
+ * a Study affordance that submits the standing Study order through the existing
+ * educate verb (`POST /api/games/{id}/actions/educate/`, `educateConfig.buildPayload`)
+ * — it queues for the next tick, the DoctrineSystem honors the order on
+ * subsequent ticks rather than acquiring instantly. The ordered node shows a
+ * "Studying" badge and its footer reads "Study ordered" instead of a button.
+ * Acquired nodes, trap nodes, and — when the session has no player faction
+ * (`faction_id: null`) — every node render no button at all: honestly LOCKED
+ * with their real cost, never a fake affordance (Constitution III.11).
  */
 
-import { useMemo } from "react";
+import { useMemo, useState } from "react";
 import { useDoctrineTree } from "@/hooks/useDoctrineTree";
+import { post as apiPost } from "@/api/client";
+import { endpoints } from "@/api/endpoints";
+import { educateConfig } from "@/lib/verbs/educate";
 import type { DoctrineNode, DoctrineTagKey, DoctrineTrunkKey } from "@/types/game";
 
 interface Props {
@@ -89,14 +98,68 @@ function nodeBorderClass(node: DoctrineNode): string {
   return "border-ksbc-muted-1";
 }
 
-function NodeCard({ node }: { node: DoctrineNode }): React.JSX.Element {
-  const borderClass = nodeBorderClass(node);
+/** A node's Study affordance state — see `nodeStudyState`. */
+type StudyState = "none" | "studyable" | "ordered";
+
+/**
+ * Node action state, derived once per card. A node is a Study affordance
+ * only when the session has a player faction, the node isn't already
+ * acquired, and it isn't a trap (Constitution III.11 — never a fake or
+ * self-defeating affordance). The node currently under the standing Study
+ * order renders its "ordered" state instead of a button.
+ */
+function nodeStudyState(
+  node: DoctrineNode,
+  acquired: boolean,
+  factionId: string | null,
+  studyTargetId: string | null,
+): StudyState {
+  if (acquired || node.is_trap || factionId === null) return "none";
+  return node.id === studyTargetId ? "ordered" : "studyable";
+}
+
+/** Footer status text for a non-button card state — "Acquired" takes
+ *  priority (an acquired node is never mid-study), otherwise honest
+ *  "Study ordered" / "Locked". */
+function footerStatusText(acquired: boolean, studyState: StudyState): string {
+  if (acquired) return "Acquired";
+  if (studyState === "ordered") return "Study ordered";
+  return "Locked";
+}
+
+/** Footer status text color — mirrors `footerStatusText`'s priority. */
+function footerStatusClass(acquired: boolean, studyState: StudyState): string {
+  if (acquired) return "text-rupture";
+  if (studyState === "ordered") return "text-heat";
+  return "text-ksbc-muted-1";
+}
+
+function NodeCard({
+  node,
+  acquired,
+  factionId,
+  studyTargetId,
+  studySubmitting,
+  onStudy,
+}: {
+  node: DoctrineNode;
+  acquired: boolean;
+  factionId: string | null;
+  studyTargetId: string | null;
+  studySubmitting: boolean;
+  onStudy: (node: DoctrineNode) => void;
+}): React.JSX.Element {
+  const borderClass = acquired && !node.is_trap ? "border-rupture" : nodeBorderClass(node);
   const tagEntries = Object.entries(node.tag_deltas) as [DoctrineTagKey, number][];
+  const studyState = nodeStudyState(node, acquired, factionId, studyTargetId);
 
   return (
     <div
-      className={`flex flex-col gap-1 border-2 bg-plate p-2 ${borderClass}`}
+      className={`flex flex-col gap-1 border-2 bg-plate p-2 ${borderClass} ${
+        acquired ? "ring-1 ring-rupture" : ""
+      }`}
       data-testid={`doctrine-node-${node.id}`}
+      data-acquired={acquired}
     >
       <div className="flex items-center justify-between gap-2">
         <span className="font-mono text-[11px] font-semibold text-ink">{node.name}</span>
@@ -108,6 +171,11 @@ function NodeCard({ node }: { node: DoctrineNode }): React.JSX.Element {
         {node.is_goal && (
           <span className="border border-rupture px-1 text-[8px] uppercase tracking-widest text-rupture">
             Goal
+          </span>
+        )}
+        {studyState === "ordered" && (
+          <span className="border border-heat px-1 text-[8px] uppercase tracking-widest text-heat">
+            Studying
           </span>
         )}
       </div>
@@ -128,7 +196,21 @@ function NodeCard({ node }: { node: DoctrineNode }): React.JSX.Element {
         <p className="whitespace-pre-line text-[9px] italic text-ksbc-muted-2">{node.narrative}</p>
       )}
       <div className="mt-auto flex items-center justify-between pt-1 text-[9px]">
-        <span className="uppercase tracking-widest text-ksbc-muted-1">Locked</span>
+        {studyState === "studyable" ? (
+          <button
+            type="button"
+            onClick={() => onStudy(node)}
+            disabled={studySubmitting}
+            data-testid={`doctrine-study-${node.id}`}
+            className="bg-transparent p-0 uppercase tracking-widest text-heat underline decoration-dotted underline-offset-2 disabled:cursor-not-allowed disabled:opacity-40"
+          >
+            Study {node.name}
+          </button>
+        ) : (
+          <span className={`uppercase tracking-widest ${footerStatusClass(acquired, studyState)}`}>
+            {footerStatusText(acquired, studyState)}
+          </span>
+        )}
         <span className="font-mono text-ksbc-muted-2">{costLabel(node)}</span>
       </div>
     </div>
@@ -153,7 +235,23 @@ function groupByTier(nodes: DoctrineNode[]): Map<number, DoctrineNode[]> {
  * 3-column grid, one card per trunk (a trunk with no node at this tier
  * renders an empty cell rather than a fabricated placeholder card).
  */
-function TierRow({ tier, nodes }: { tier: number; nodes: DoctrineNode[] }): React.JSX.Element {
+function TierRow({
+  tier,
+  nodes,
+  acquired,
+  factionId,
+  studyTargetId,
+  studySubmitting,
+  onStudy,
+}: {
+  tier: number;
+  nodes: DoctrineNode[];
+  acquired: Set<string>;
+  factionId: string | null;
+  studyTargetId: string | null;
+  studySubmitting: boolean;
+  onStudy: (node: DoctrineNode) => void;
+}): React.JSX.Element {
   const isShared = nodes.every((node) => node.trunk === null);
 
   return (
@@ -162,7 +260,15 @@ function TierRow({ tier, nodes }: { tier: number; nodes: DoctrineNode[] }): Reac
       {isShared ? (
         <div className="mx-auto mt-1 flex max-w-xs flex-col gap-2">
           {nodes.map((node) => (
-            <NodeCard key={node.id} node={node} />
+            <NodeCard
+              key={node.id}
+              node={node}
+              acquired={acquired.has(node.id)}
+              factionId={factionId}
+              studyTargetId={studyTargetId}
+              studySubmitting={studySubmitting}
+              onStudy={onStudy}
+            />
           ))}
         </div>
       ) : (
@@ -174,7 +280,16 @@ function TierRow({ tier, nodes }: { tier: number; nodes: DoctrineNode[] }): Reac
                 <span className="text-center text-[8px] uppercase tracking-widest text-ksbc-muted-1">
                   {TRUNK_LABEL[trunk]}
                 </span>
-                {node && <NodeCard node={node} />}
+                {node && (
+                  <NodeCard
+                    node={node}
+                    acquired={acquired.has(node.id)}
+                    factionId={factionId}
+                    studyTargetId={studyTargetId}
+                    studySubmitting={studySubmitting}
+                    onStudy={onStudy}
+                  />
+                )}
               </div>
             );
           })}
@@ -185,7 +300,26 @@ function TierRow({ tier, nodes }: { tier: number; nodes: DoctrineNode[] }): Reac
 }
 
 export function DoctrineTakeover({ gameId }: Props): React.JSX.Element {
-  const { data, loading, error } = useDoctrineTree(gameId);
+  const { data, loading, error, refresh } = useDoctrineTree(gameId);
+  const [studySubmitting, setStudySubmitting] = useState(false);
+  const [studyError, setStudyError] = useState<string | null>(null);
+
+  async function handleStudy(node: DoctrineNode): Promise<void> {
+    const factionId = data.faction_id;
+    if (!factionId) return;
+    setStudySubmitting(true);
+    setStudyError(null);
+    const body = educateConfig.buildPayload(factionId, factionId, {
+      doctrine_node_id: node.id,
+    });
+    const res = await apiPost(endpoints.educateSubmit.path({ id: gameId }), body);
+    setStudySubmitting(false);
+    if (res.status === "ok") {
+      await refresh();
+    } else {
+      setStudyError(res.message ?? "Failed to submit the Study order");
+    }
+  }
 
   const tiers = useMemo(() => {
     const grouped = groupByTier(data.nodes);
@@ -196,16 +330,29 @@ export function DoctrineTakeover({ gameId }: Props): React.JSX.Element {
 
   const tagEntries = Object.entries(data.tags) as [DoctrineTagKey, number][];
   const isEmpty = data.nodes.length === 0;
+  const acquiredSet = useMemo(() => new Set(data.acquired_ids), [data.acquired_ids]);
 
   return (
     <div className="flex h-full w-full flex-col" data-testid="doctrine-takeover">
       <header className="flex flex-col gap-2 border-b-2 border-ksbc-muted-1 px-3 py-2">
         <p className="text-[10px] italic text-ksbc-muted-2" data-testid="doctrine-acquisition-note">
-          Doctrine acquisition unlocks with the Party (coming). This canvas is read-only.
+          The Party&rsquo;s live doctrine — acquired nodes are lit; theory decays without study.
+          Click Study on an unlocked node to direct the Party&rsquo;s theoretical labour.
         </p>
+        {studyError && (
+          <p role="alert" className="text-[10px] text-laser" data-testid="doctrine-study-error">
+            {studyError}
+          </p>
+        )}
         <div className="flex flex-wrap items-center gap-4">
           <span className="font-mono text-[11px] uppercase tracking-widest text-ksbc-muted-2">
-            {data.nodes.length} nodes
+            {acquiredSet.size}/{data.nodes.length} acquired
+          </span>
+          <span
+            className="font-mono text-[11px] uppercase tracking-widest text-rupture"
+            data-testid="doctrine-theoretical-labor"
+          >
+            {data.theoretical_labor.toFixed(1)} TL
           </span>
           <div className="flex flex-wrap gap-3" data-testid="doctrine-tags">
             {tagEntries.map(([tagKey, value]) => (
@@ -230,7 +377,16 @@ export function DoctrineTakeover({ gameId }: Props): React.JSX.Element {
         {!isEmpty && (
           <div className="flex flex-col gap-4">
             {tiers.map(({ tier, nodes }) => (
-              <TierRow key={tier} tier={tier} nodes={nodes} />
+              <TierRow
+                key={tier}
+                tier={tier}
+                nodes={nodes}
+                acquired={acquiredSet}
+                factionId={data.faction_id}
+                studyTargetId={data.study_target_id}
+                studySubmitting={studySubmitting}
+                onStudy={(node) => void handleStudy(node)}
+              />
             ))}
           </div>
         )}

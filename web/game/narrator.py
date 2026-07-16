@@ -197,8 +197,14 @@ def _subject_from_org_id(org_id: str, names: dict[str, str] | None = None) -> st
 #: affected org node id. RED_BROWN_COUP has no place to report; resolving
 #: through here keeps its narration honest instead of falling back to the
 #: hardcoded "Wayne County" default (see _location_from_event).
+#: ADR073 Doctrine Tree (Unit 6a): the three DoctrineSystem events are
+#: org-scoped the same way — a party's trap/congress outcome has no place,
+#: only the organization it happened to.
 _ORG_SCOPED_SUBJECT_FIELD: dict[str, str] = {
     "red_brown_coup": "org_id",
+    "doctrine_trap_sprung": "org_id",
+    "doctrine_trap_escaped": "org_id",
+    "doctrine_purge_failed": "org_id",
 }
 
 
@@ -1133,6 +1139,191 @@ _TEMPLATES: dict[str, dict[str, Any]] = {
             ],
             "refs": [],
             "distribution": "\u25ae\u25ae\u25ae\u25ae\u25ae\u25ae \u00b7 NOFORN",
+        },
+        "coverage": ["c", "l", "i"],
+    },
+    "doctrine_trap_sprung": {
+        # Org-scoped (see _ORG_SCOPED_SUBJECT_FIELD): {location} below fills
+        # with the affected organization's display name, not a place.
+        "slug": "DEVIATION \u00b7 {location}",
+        "hed": {
+            "c": "Internal Review Announced at {location}",
+            "l": "{location} FALLS INTO {node_id} // THE LINE BENDS",
+            "i": "IDEOLOGICAL DEVIATION // {location} // UNCONFIRMED",
+        },
+        "euphemisms": {
+            "review": {
+                "c": "internal review",
+                "l": "IDEOLOGICAL TRAP",
+                "filter": "ideology",
+                "note": "A doctrinal collapse reframed as routine self-assessment.",
+            },
+        },
+        "continental": {
+            "kicker": "NATIONAL \u00b7 EXTREMISM WATCH",
+            "dek": "Analysts describe an {euph:review} underway at {location} following a shift in stated aims.",
+            "byline": "By Continental Staff",
+            "paragraphs": [
+                [
+                    "{location} \u2014 The organization's line has drifted, sources say, following an {euph:review}. The practical consequences remain unclear.",
+                ],
+            ],
+            "bibliography": [],
+        },
+        "liberated": {
+            "pre": "[ BEGIN TRANSMISSION \u00b7 SELF-CRITICISM CALLED ]",
+            "post": "[ END TRANSMISSION \u00b7 THE LINE MUST BE CORRECTED ]",
+            "paragraphs": [
+                {
+                    "body": [
+                        "{location} HAS FALLEN INTO A DOCUMENTED DEVIATION. THE TAGS DON'T LIE \u2014 THE LINE BENT AND THE ORG BENT WITH IT.",
+                    ],
+                    "margin": {
+                        "ref": "CADRE BULLETIN",
+                        "chunk": "chunk_doctrine_001",
+                        "note": "trap condition confirmed against tag ledger",
+                    },
+                },
+            ],
+        },
+        "intel": {
+            "subj": "IDEOLOGICAL DEVIATION \u00b7 {location}",
+            "origin": "FIELD STATION",
+            "routing": ["DHS/I&A"],
+            "caveat": "DOMESTIC",
+            "fields": [
+                ["EVENT", "TRAP SPRUNG"],
+                ["ORGANIZATION", "{location}"],
+                ["TRAP", "{node_id}"],
+                ["CONFIDENCE", "CONFIRMED"],
+            ],
+            "assessment": [
+                "{location} met the conditions for the {node_id} deviation and fell into it involuntarily this tick.",
+            ],
+            "refs": [],
+            "distribution": "\u25ae\u25ae\u25ae\u25ae\u25ae\u25ae \u00b7 DOMESTIC",
+        },
+        "coverage": ["c", "l", "i"],
+    },
+    "doctrine_trap_escaped": {
+        "slug": "SELF-CRITICISM \u00b7 {location}",
+        "hed": {
+            "c": "Organization Reports Resolved Internal Dispute at {location}",
+            "l": "{location} BREAKS FREE OF {node_id} // CONGRESS WINS",
+            "i": "DOCTRINAL CORRECTION // {location} // RESOLVED",
+        },
+        "euphemisms": {
+            "dispute": {
+                "c": "internal dispute",
+                "l": "SELF-CRITICISM SESSION",
+                "filter": "ideology",
+                "note": "A Party Congress purge reframed as routine dispute resolution.",
+            },
+        },
+        "continental": {
+            "kicker": "NATIONAL \u00b7 EXTREMISM WATCH",
+            "dek": "Officials say a resolved {euph:dispute} at {location} restores the group's prior direction.",
+            "byline": "By Continental Staff",
+            "paragraphs": [
+                [
+                    "{location} \u2014 A period of internal disagreement concluded this week with what members called a {euph:dispute}. Leadership says the organization's aims are unchanged.",
+                ],
+            ],
+            "bibliography": [],
+        },
+        "liberated": {
+            "pre": "[ BEGIN TRANSMISSION \u00b7 THE LINE HOLDS ]",
+            "post": "[ END TRANSMISSION \u00b7 CRITICISM, SELF-CRITICISM ]",
+            "paragraphs": [
+                {
+                    "body": [
+                        "{location} FOUGHT ITS WAY OUT OF THE DEVIATION. THE CONGRESS SPOKE AND THE TRAP WAS CUT LOOSE.",
+                    ],
+                    "margin": {
+                        "ref": "CADRE BULLETIN",
+                        "chunk": "chunk_doctrine_002",
+                        "note": "congress purge roll succeeded",
+                    },
+                },
+            ],
+        },
+        "intel": {
+            "subj": "DOCTRINAL CORRECTION \u00b7 {location}",
+            "origin": "FIELD STATION",
+            "routing": ["DHS/I&A"],
+            "caveat": "DOMESTIC",
+            "fields": [
+                ["EVENT", "TRAP ESCAPED"],
+                ["ORGANIZATION", "{location}"],
+                ["TRAP", "{node_id}"],
+                ["CONFIDENCE", "CONFIRMED"],
+            ],
+            "assessment": [
+                "{location}'s Party Congress attempted self-criticism against the {node_id} deviation and succeeded.",
+            ],
+            "refs": [],
+            "distribution": "\u25ae\u25ae\u25ae\u25ae\u25ae\u25ae \u00b7 DOMESTIC",
+        },
+        "coverage": ["c", "l", "i"],
+    },
+    "doctrine_purge_failed": {
+        "slug": "CONGRESS \u00b7 {location}",
+        "hed": {
+            "c": "Organization Holds Inconclusive Internal Session at {location}",
+            "l": "{location} STAYS TRAPPED IN {node_id} // CONGRESS FALTERS",
+            "i": "DOCTRINAL CORRECTION // {location} // FAILED",
+        },
+        "euphemisms": {
+            "session": {
+                "c": "internal session",
+                "l": "FAILED SELF-CRITICISM",
+                "filter": "ideology",
+                "note": "An unsuccessful Party Congress purge reframed as an inconclusive meeting.",
+            },
+        },
+        "continental": {
+            "kicker": "NATIONAL \u00b7 EXTREMISM WATCH",
+            "dek": "An {euph:session} at {location} ended without a change in direction, members say.",
+            "byline": "By Continental Staff",
+            "paragraphs": [
+                [
+                    "{location} \u2014 An {euph:session} concluded without resolution this week. The organization's prior course remains in place.",
+                ],
+            ],
+            "bibliography": [],
+        },
+        "liberated": {
+            "pre": "[ BEGIN TRANSMISSION \u00b7 THE CONGRESS FALTERED ]",
+            "post": "[ END TRANSMISSION \u00b7 THE STRUGGLE CONTINUES ]",
+            "paragraphs": [
+                {
+                    "body": [
+                        "{location} TRIED TO BREAK FREE OF THE DEVIATION AND FAILED. THE LABOR WAS SPENT AND THE TRAP HOLDS.",
+                    ],
+                    "margin": {
+                        "ref": "CADRE BULLETIN",
+                        "chunk": "chunk_doctrine_003",
+                        "note": "congress purge roll failed",
+                    },
+                },
+            ],
+        },
+        "intel": {
+            "subj": "DOCTRINAL CORRECTION \u00b7 {location}",
+            "origin": "FIELD STATION",
+            "routing": ["DHS/I&A"],
+            "caveat": "DOMESTIC",
+            "fields": [
+                ["EVENT", "PURGE FAILED"],
+                ["ORGANIZATION", "{location}"],
+                ["TRAP", "{node_id}"],
+                ["CONFIDENCE", "CONFIRMED"],
+            ],
+            "assessment": [
+                "{location}'s Party Congress attempted self-criticism against the {node_id} deviation and failed; the trap remains held.",
+            ],
+            "refs": [],
+            "distribution": "\u25ae\u25ae\u25ae\u25ae\u25ae\u25ae \u00b7 DOMESTIC",
         },
         "coverage": ["c", "l", "i"],
     },

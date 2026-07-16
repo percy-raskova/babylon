@@ -32,6 +32,10 @@ from babylon.models.events._legacy import (
     ContradictionEvent,
     ControlRatioCrisisEvent,
     CrisisEvent,
+    DoctrineEvent,
+    DoctrinePurgeFailedEvent,
+    DoctrineTrapEscapedEvent,
+    DoctrineTrapSprungEvent,
     EconomicEvent,
     EndgameEvent,
     ExtractionEvent,
@@ -82,7 +86,7 @@ __all__ = [
     "StruggleEvent",
     "ContradictionEvent",
     "TopologyEvent",
-    # 19 leaf variants
+    # 22 leaf variants
     "ExtractionEvent",
     "SubsidyEvent",
     "CrisisEvent",
@@ -102,6 +106,11 @@ __all__ = [
     "AxiomViolationEvent",
     "QcewCarryForwardEvent",
     "PhiHourOutlierEvent",
+    # ADR073 Doctrine Tree (Unit 6a)
+    "DoctrineEvent",
+    "DoctrineTrapSprungEvent",
+    "DoctrineTrapEscapedEvent",
+    "DoctrinePurgeFailedEvent",
     # Discriminated union machinery
     "TickEvent",
     "TickEventAdapter",

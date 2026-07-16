@@ -19,9 +19,11 @@ from uuid import UUID
 import networkx as nx
 import pytest
 
+from babylon.models.entities.organization import PoliticalFaction
 from babylon.models.entity_registry import PERIPHERY_WORKER_ID
-from babylon.models.enums import EventType
-from babylon.models.events import UprisingEvent
+from babylon.models.enums import ClassCharacter, EventType, OrgType
+from babylon.models.enums.doctrine import DoctrineTag
+from babylon.models.events import DoctrineTrapSprungEvent, UprisingEvent
 from babylon.models.world_state import WorldState
 from babylon.persistence.postgres_runtime import PostgresRuntime
 from babylon.topology.graph import BabylonGraph
@@ -1234,6 +1236,28 @@ class TestMakeSerializable:
         assert restored.events[0].event_type == EventType.UPRISING
         assert restored.events[0].tick == 8
 
+    # ADR073 Unit 6a: DoctrineEvent mirrors UprisingEvent's serialize ->
+    # hydrate -> from_graph round-trip through the same _make_serializable
+    # path (task #83's fix covers every event kind, not just UPRISING).
+    def test_doctrine_event_survives_and_revalidate(self) -> None:
+        """DoctrineTrapSprungEvent (org_id/node_id) survives into JSON-safe metadata."""
+        sprung = DoctrineTrapSprungEvent(tick=12, org_id="vanguard", node_id="adventurism")
+        state = WorldState(tick=13, events=[sprung])
+        graph = state.to_graph()
+
+        metadata = PostgresRuntime._make_serializable(dict(graph.graph))
+
+        assert "events" in metadata
+        json.dumps(metadata)  # the full extra payload must be JSON-native
+
+        graph.set_graph_attr("events", metadata["events"])
+        restored = WorldState.from_graph(graph, tick=13)
+        assert len(restored.events) == 1
+        assert restored.events[0].event_type == EventType.DOCTRINE_TRAP_SPRUNG
+        assert restored.events[0].tick == 12
+        assert restored.events[0].org_id == "vanguard"
+        assert restored.events[0].node_id == "adventurism"
+
     def test_unconvertible_value_drops_loudly(self, caplog: pytest.LogCaptureFixture) -> None:
         """A genuinely unserializable value is dropped with a WARNING, never silently."""
         with caplog.at_level(logging.WARNING):
@@ -1241,6 +1265,76 @@ class TestMakeSerializable:
 
         assert result == {"ok": 1}
         assert "bad" in caplog.text
+
+
+class TestDoctrineStatePersistence:
+    """DoctrineSystem state (ADR073) through the node_state write -> hydrate cycle.
+
+    ``acquired_doctrine_ids`` / ``theoretical_labor`` / ``doctrine_tags`` are
+    cross-tick accumulators on the Organization node; ``doctrine_tags`` is
+    keyed by the ``DoctrineTag`` StrEnum. ``_persist_nodes`` stores
+    ``json.dumps(_make_serializable(attrs))`` and ``hydrate_graph`` re-adds
+    ``json.loads(...)`` plus ``_node_type`` — the same filter whose silent
+    drop emptied ``WorldState.events`` on every hydrate (task #83). This pins
+    the full cycle behaviorally: no doctrine key may be filtered, and
+    ``from_graph`` must re-validate the JSON-native values into typed fields
+    (list -> tuple, str keys -> DoctrineTag).
+    """
+
+    @staticmethod
+    def _faction() -> PoliticalFaction:
+        return PoliticalFaction(
+            id="vanguard",
+            name="Vanguard Party",
+            org_type=OrgType.POLITICAL_FACTION,
+            class_character=ClassCharacter.PROLETARIAN,
+            ideology="marxism-leninism",
+            acquired_doctrine_ids=("class_consciousness", "democratic_centralism"),
+            theoretical_labor=42.5,
+            doctrine_tags={DoctrineTag.CLASS_ANALYSIS: 1.7, DoctrineTag.MASS_LINK: 0.4},
+            congress_tag_snapshot={DoctrineTag.CLASS_ANALYSIS: 1.5},
+        )
+
+    def test_filter_keeps_every_doctrine_field(self) -> None:
+        """``_make_serializable`` must not drop any of the three doctrine attrs."""
+        faction = self._faction()
+        graph = WorldState(tick=3, organizations={faction.id: faction}).to_graph()
+        node_attrs = next(dict(attrs) for nid, attrs in graph.nodes(data=True) if nid == faction.id)
+
+        serializable = PostgresRuntime._make_serializable(node_attrs)
+
+        for key in (
+            "acquired_doctrine_ids",
+            "theoretical_labor",
+            "doctrine_tags",
+            "congress_tag_snapshot",
+        ):
+            assert key in serializable, f"{key} silently dropped by the storage filter"
+        json.dumps(serializable)  # the stored payload must be JSON-native end-to-end
+
+    def test_doctrine_fields_survive_write_hydrate_from_graph(self) -> None:
+        """Full behavioral pin: persist-shaped JSON -> hydrate-shaped node -> typed org."""
+        faction = self._faction()
+        graph = WorldState(tick=3, organizations={faction.id: faction}).to_graph()
+        node_attrs = next(dict(attrs) for nid, attrs in graph.nodes(data=True) if nid == faction.id)
+
+        # Mirror _persist_nodes' write exactly, then hydrate_graph's read exactly.
+        node_type = node_attrs.get("type", node_attrs.get("_node_type", "unknown"))
+        stored = json.dumps(PostgresRuntime._make_serializable(node_attrs))
+        restored_attrs = json.loads(stored)
+        restored_attrs["_node_type"] = node_type
+
+        hydrated = BabylonGraph()
+        hydrated.add_node(faction.id, **restored_attrs)
+        restored = WorldState.from_graph(hydrated, tick=3)
+
+        org = restored.organizations[faction.id]
+        assert org.acquired_doctrine_ids == ("class_consciousness", "democratic_centralism")
+        assert org.theoretical_labor == 42.5
+        assert org.doctrine_tags == {DoctrineTag.CLASS_ANALYSIS: 1.7, DoctrineTag.MASS_LINK: 0.4}
+        assert org.congress_tag_snapshot == {DoctrineTag.CLASS_ANALYSIS: 1.5}
+        # Enum-key lookup must work on the re-validated dict (StrEnum identity).
+        assert org.doctrine_tags[DoctrineTag.CLASS_ANALYSIS] == 1.7
 
 
 # ══════════════════════════════════════════════════════════════════════

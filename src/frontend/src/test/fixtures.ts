@@ -1110,7 +1110,8 @@ export function makeDoctrineNode(overrides?: Partial<DoctrineNode>): DoctrineNod
  * MVP tree with an honest `acquired_ids: []` and the corpus's starting tag
  * values (Constitution III.11 — no acquisition system is wired yet, so
  * there is no honest "empty" state to default to; the tree itself is always
- * fully present).
+ * fully present). Unit 7b: `faction_id`/`study_target_id` default to `null`
+ * (no player faction / no standing order) — overridable per-test.
  */
 export function makeDoctrineTreePayload(
   overrides?: Partial<DoctrineTreePayload>,
@@ -1120,6 +1121,9 @@ export function makeDoctrineTreePayload(
     nodes: DOCTRINE_TREE_NODES,
     acquired_ids: [],
     tags: { class_analysis: 1, mass_link: 1, militancy: 0 },
+    theoretical_labor: 0,
+    faction_id: null,
+    study_target_id: null,
     ...overrides,
   };
 }

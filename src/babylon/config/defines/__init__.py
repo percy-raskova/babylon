@@ -19,6 +19,7 @@ from babylon.config.defines.consciousness import (
     EdgeTransitionDefines,
     SolidarityDefines,
 )
+from babylon.config.defines.doctrine import DoctrineDefines
 from babylon.config.defines.economy_basic import (
     CrisisDefines,
     EconomyDefines,
@@ -95,6 +96,7 @@ __all__ = [
     "EconomyDefines",
     "EdgeTransitionDefines",
     "EndgameDefines",
+    "DoctrineDefines",
     "EpistemicHorizonDefines",
     "ExternalDataDefines",
     "GameDefines",

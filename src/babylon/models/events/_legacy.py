@@ -31,7 +31,11 @@ Event Hierarchy:
       |     |-- UprisingEvent (UPRISING)
       |     |-- SolidaritySpikeEvent (SOLIDARITY_SPIKE)
       |-- ContradictionEvent (adds edge)
-            |-- RuptureEvent (RUPTURE)
+      |     |-- RuptureEvent (RUPTURE)
+      |-- DoctrineEvent (adds org_id, node_id)
+            |-- DoctrineTrapSprungEvent (DOCTRINE_TRAP_SPRUNG)
+            |-- DoctrineTrapEscapedEvent (DOCTRINE_TRAP_ESCAPED)
+            |-- DoctrinePurgeFailedEvent (DOCTRINE_PURGE_FAILED)
 
 Usage:
 
@@ -1130,6 +1134,93 @@ class PhiHourOutlierEvent(SimulationEvent):
 
 
 # =============================================================================
+# Doctrine Tree Events (ADR073 Unit 6a — DoctrineSystem)
+# =============================================================================
+
+
+class DoctrineEvent(SimulationEvent):
+    """Base class for Doctrine Tree events (ADR073, DoctrineSystem).
+
+    Events from the per-org doctrine loop and Party Congress
+    (:func:`babylon.engine.systems.doctrine.compute_doctrine`): falling into
+    a reachable ideological trap, or a congress purge attempt against an
+    already-held trap resolving (escaped) or not (purge failed).
+
+    Attributes:
+        org_id: Organization whose doctrine state changed.
+        node_id: Doctrine Tree node id of the trap involved.
+    """
+
+    org_id: str = Field(
+        ...,
+        min_length=1,
+        description="Organization id whose doctrine state changed",
+    )
+    node_id: str = Field(
+        ...,
+        min_length=1,
+        description="Doctrine Tree node id of the trap involved",
+    )
+
+
+class DoctrineTrapSprungEvent(DoctrineEvent):
+    """Trap-sprung event (DOCTRINE_TRAP_SPRUNG).
+
+    Emitted when an organization's reachable trap's ``trap_condition``
+    fires against its current tag vector: the trap is fallen into
+    involuntarily (``doctrine.py::step_organization``).
+
+    Example:
+        >>> event = DoctrineTrapSprungEvent(
+        ...     tick=12,
+        ...     org_id="vanguard",
+        ...     node_id="adventurism",
+        ... )
+        >>> event.event_type
+        <EventType.DOCTRINE_TRAP_SPRUNG: 'doctrine_trap_sprung'>
+    """
+
+    kind: Literal["doctrine_trap_sprung"] = "doctrine_trap_sprung"
+
+    event_type: EventType = Field(
+        default=EventType.DOCTRINE_TRAP_SPRUNG,
+        description="Event type (always DOCTRINE_TRAP_SPRUNG)",
+    )
+
+
+class DoctrineTrapEscapedEvent(DoctrineEvent):
+    """Congress purge success event (DOCTRINE_TRAP_ESCAPED).
+
+    Emitted when a Party Congress (``congress.py::run_congress``) attempts
+    self-criticism against a held trap and the seeded roll succeeds: the
+    trap is removed and its tag contribution reversed.
+    """
+
+    kind: Literal["doctrine_trap_escaped"] = "doctrine_trap_escaped"
+
+    event_type: EventType = Field(
+        default=EventType.DOCTRINE_TRAP_ESCAPED,
+        description="Event type (always DOCTRINE_TRAP_ESCAPED)",
+    )
+
+
+class DoctrinePurgeFailedEvent(DoctrineEvent):
+    """Congress purge failure event (DOCTRINE_PURGE_FAILED).
+
+    Emitted when a Party Congress attempts self-criticism against a held
+    trap and the seeded roll fails: the trap remains held, TL is still
+    spent on the attempt.
+    """
+
+    kind: Literal["doctrine_purge_failed"] = "doctrine_purge_failed"
+
+    event_type: EventType = Field(
+        default=EventType.DOCTRINE_PURGE_FAILED,
+        description="Event type (always DOCTRINE_PURGE_FAILED)",
+    )
+
+
+# =============================================================================
 # Event Deserialization (Sprint 1.X Deliverable 2)
 # =============================================================================
 
@@ -1155,6 +1246,10 @@ EVENT_CLASS_MAP: dict[str, type[SimulationEvent]] = {
     EventType.CALIBRATION_AXIOM_VIOLATION.value: AxiomViolationEvent,
     EventType.CALIBRATION_QCEW_CARRY_FORWARD.value: QcewCarryForwardEvent,
     EventType.CALIBRATION_PHI_HOUR_OUTLIER.value: PhiHourOutlierEvent,
+    # ADR073 Doctrine Tree (Unit 6a)
+    EventType.DOCTRINE_TRAP_SPRUNG.value: DoctrineTrapSprungEvent,
+    EventType.DOCTRINE_TRAP_ESCAPED.value: DoctrineTrapEscapedEvent,
+    EventType.DOCTRINE_PURGE_FAILED.value: DoctrinePurgeFailedEvent,
 }
 
 
@@ -1172,7 +1267,7 @@ EVENT_CLASS_MAP: dict[str, type[SimulationEvent]] = {
 # TickEvent — Spec 059 US2 / ADR-004 (FR-004 + FR-005 + FR-006)
 # =============================================================================
 #
-# TickEvent is the canonical Pydantic 2 *discriminated* union over the 19 leaf
+# TickEvent is the canonical Pydantic 2 *discriminated* union over the 22 leaf
 # Event variants. Each leaf carries a unique ``kind: Literal["..."]`` field;
 # Pydantic's ``Field(discriminator="kind")`` dispatches automatically on the
 # kind value during validation.
@@ -1209,10 +1304,13 @@ TickEvent = Annotated[
     | EndgameEvent
     | AxiomViolationEvent
     | QcewCarryForwardEvent
-    | PhiHourOutlierEvent,
+    | PhiHourOutlierEvent
+    | DoctrineTrapSprungEvent
+    | DoctrineTrapEscapedEvent
+    | DoctrinePurgeFailedEvent,
     Field(discriminator="kind"),
 ]
-"""TickEvent: sum type for the 19 leaf Event variants. See block comment above."""
+"""TickEvent: sum type for the 22 leaf Event variants. See block comment above."""
 
 TickEventAdapter: TypeAdapter[TickEvent] = TypeAdapter(TickEvent)
 """TypeAdapter wrapping TickEvent for runtime validation against the Union."""

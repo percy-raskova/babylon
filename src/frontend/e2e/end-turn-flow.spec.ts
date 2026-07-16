@@ -17,26 +17,17 @@
  * `{"1":1, "2":2, "3":5}`, i.e. the THIRD key maps to the fifth-multiplier
  * button, not a "speed-3" testid).
  *
- * KNOWN DEFECT (spec-110 B6, found 2026-07-09): every test here needs the
- * "chromium-authenticated" project's storageState, which the "setup"
- * project can never produce — see auth.setup.ts's docstring (Django's
- * CSRF_TRUSTED_ORIGINS/CORS_ALLOWED_ORIGINS 403s any login origin but
- * 5173, including the cockpit's own 5174). Whole suite `fixme` until
- * that `web/` settings allowlist is fixed.
+ * HISTORY (spec-110 B6, found 2026-07-09, RESOLVED d5f270b2): this suite
+ * was once whole-suite `fixme` because Django's CSRF/CORS allowlist 403'd
+ * every login origin but 5173 — see auth.setup.ts's docstring for the fix.
+ * No `fixme` remains; the suite runs for real against the live stack.
  *
- * UNVERIFIED against a live backend (spec-113 Lane G handoff, 2026-07-11)
- * — see `real-loop.spec.ts`'s docstring for the same environment blocker
- * (no live Django/Postgres in this lane, and `/game/:id` independently
- * fails to load in the current dev-worktree environment). Rewritten
- * strictly against the real `SpeedControls.tsx`/`useSpeedShortcut.ts`
- * contracts — Phase V must run this live.
+ * The spec-113 Lane G "UNVERIFIED against a live backend" caveat is
+ * history — the authenticated suites have run against the live stack
+ * since (Step-resolve dispatch fixed 2026-07-15); written strictly
+ * against the real `SpeedControls.tsx`/`useSpeedShortcut.ts` contracts.
  */
-import {
-  expect,
-  test,
-  createWayneCountyGame,
-  acknowledgeAutopauseIfPresent,
-} from "./fixtures";
+import { expect, test, createWayneCountyGame, acknowledgeAutopauseIfPresent } from "./fixtures";
 
 let gameId = "";
 

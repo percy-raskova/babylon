@@ -9,11 +9,10 @@
  * "chromium-authenticated"). Requires the live stack: Django `:8000` +
  * the seeded admin/admin user.
  *
- * The three tests below that POST a real login are `fixme` — see
- * `auth.setup.ts`'s docstring for the exact defect (Django's
- * CSRF_TRUSTED_ORIGINS/CORS_ALLOWED_ORIGINS 403s any origin but 5173).
- * The two tests that never submit the form (page-load + unauthenticated
- * redirect) are unaffected and run for real.
+ * HISTORY: the three tests that POST a real login were once `fixme`
+ * behind Django's CSRF/CORS allowlist defect (403'd any origin but 5173)
+ * — RESOLVED d5f270b2, see `auth.setup.ts`'s docstring. No `fixme`
+ * remains; all five tests run for real.
  */
 import { test, expect } from "./fixtures";
 

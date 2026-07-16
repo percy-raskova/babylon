@@ -25,6 +25,7 @@ from babylon.models.enums import (
     ServiceType,
     StateFaction,
 )
+from babylon.models.enums.doctrine import DoctrineTag
 from babylon.models.types import Coefficient, Currency, Probability
 
 if TYPE_CHECKING:
@@ -197,6 +198,32 @@ class Organization(BaseModel):
     member_node_ids: list[str] = Field(
         default_factory=list,
         description="Individual key figures and cadre node IDs",
+    )
+    # Doctrine Tree state (DoctrineSystem, owner-ratified 2026-07-15). Empty for
+    # orgs that never study; the DoctrineSystem accumulates these across ticks.
+    # Stored on the model (not graph-only) so acquisitions + theoretical labour
+    # survive snapshots and WorldState round-trips — accumulated state, unlike
+    # the per-tick-recomputed shadow attrs of P19/EH.
+    acquired_doctrine_ids: tuple[str, ...] = Field(
+        default=(),
+        description="Doctrine node ids this organization has acquired, in acquisition order",
+    )
+    theoretical_labor: float = Field(
+        default=0.0,
+        ge=0.0,
+        description="Accumulated theoretical labour available to acquire doctrine nodes",
+    )
+    doctrine_tags: dict[DoctrineTag, float] = Field(
+        default_factory=dict,
+        description="Decaying per-tag doctrine strength accumulator (Ruling 3: 0.55%/tick decay)",
+    )
+    congress_tag_snapshot: dict[DoctrineTag, float] = Field(
+        default_factory=dict,
+        description="Tag state at the last Party Congress — the delta baseline for the next congress's purge odds (Ruling 5 / DT-5)",
+    )
+    study_target_id: str | None = Field(
+        default=None,
+        description="Player-directed doctrine study order (Educate(Doctrine) sub-verb, Unit 7b): the DoctrineSystem saves TL toward this node instead of greedy-acquiring, and clears it on acquisition",
     )
 
     @model_validator(mode="after")

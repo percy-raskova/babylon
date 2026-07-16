@@ -837,19 +837,27 @@ export interface DoctrineNode {
 }
 
 /**
- * GET /api/games/{id}/doctrine-tree/ payload. The tree itself is static
- * game-data — identical for every session, since no `DoctrineSystem`/
- * acquisition wiring exists yet (gated on six pending owner rulings, out of
- * scope for this read-only canvas). `acquired_ids` is honestly `[]` until
- * that lands (Constitution III.11 — never a fabricated partial-progress
- * list); `tags` are the MVP corpus's declared starting values, the true
- * current tag state while nothing has been acquired.
+ * GET /api/games/{id}/doctrine-tree/ payload. The tree structure (`nodes`) is
+ * static game-data, but `acquired_ids` / `tags` / `theoretical_labor` are now a
+ * LIVE overlay of the player faction's real doctrine state, computed each tick by
+ * the `DoctrineSystem`. A session with no player faction (or pre-tick) degrades
+ * honestly (Constitution III.11) to the starting position: `acquired_ids` `[]`,
+ * `tags` at the corpus starting values, `theoretical_labor` `0` — never a
+ * fabricated partial-progress list. `tags` are the decaying accumulator (floats).
+ *
+ * Unit 7b: `faction_id` is the player faction the canvas acts for (`null` when
+ * the session has no player faction — the canvas stays read-only) and
+ * `study_target_id` is the standing Study order (`null` when none is set), both
+ * landed alongside the DoctrineSystem's order-honoring behavior (commit d0ac6b1d).
  */
 export interface DoctrineTreePayload {
   root_id: string;
   nodes: DoctrineNode[];
   acquired_ids: string[];
   tags: Record<DoctrineTagKey, number>;
+  theoretical_labor: number;
+  faction_id: string | null;
+  study_target_id: string | null;
 }
 
 /** Empty-state default (Constitution III.11) — mirrors `EMPTY_ORG_NETWORK`'s
@@ -861,6 +869,9 @@ export const EMPTY_DOCTRINE_TREE: DoctrineTreePayload = {
   nodes: [],
   acquired_ids: [],
   tags: { class_analysis: 0, mass_link: 0, militancy: 0 },
+  theoretical_labor: 0,
+  faction_id: null,
+  study_target_id: null,
 };
 
 // ---------------------------------------------------------------------------

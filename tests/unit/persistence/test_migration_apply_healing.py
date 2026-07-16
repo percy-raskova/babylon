@@ -41,11 +41,27 @@ import pytest
 from tests.unit.persistence.conftest import MIGRATIONS_DIR, apply_migrations_healing
 
 
+class _FakeResult:
+    """Cursor-result double for ``ensure_ddl_applied``'s stamp SELECTs.
+
+    ``fetchone() -> None`` models a database with no stamp table, so the
+    applier always takes the slow (full-apply) path — exactly the healing
+    scenario under test.
+    """
+
+    def fetchone(self) -> None:
+        return None
+
+
 class _FlakyStubPool:
     """A fake pool that fails every statement for its first N attempts.
 
     Each ``.connection()`` entry models one full apply-pass — the same
     shape ``apply_migrations_healing`` drives (one connection per attempt).
+    ``executed_on_success`` records EVERY statement (advisory lock, stamp
+    bookkeeping, migration texts); :meth:`migration_chunks_applied` filters
+    to just the migration-file texts, which all open with a ``-- 0NNN``
+    header comment.
     """
 
     def __init__(self, fail_attempts: int) -> None:
@@ -53,15 +69,19 @@ class _FlakyStubPool:
         self.attempts = 0
         self.executed_on_success: list[str] = []
 
+    def migration_chunks_applied(self) -> list[str]:
+        return [sql for sql in self.executed_on_success if sql.lstrip().startswith("-- 0")]
+
     @contextmanager
     def connection(self) -> Iterator[Any]:
         self.attempts += 1
         attempt = self.attempts
 
-        def _execute(sql_text: str) -> None:
+        def _execute(sql_text: str, params: Any = None) -> _FakeResult:  # noqa: ARG001 — protocol shape
             if attempt <= self._fail_attempts:
                 raise psycopg.errors.UndefinedColumn("simulated dirty/mid-migration leftover state")
             self.executed_on_success.append(sql_text)
+            return _FakeResult()
 
         yield SimpleNamespace(autocommit=False, execute=_execute)
 
@@ -78,7 +98,7 @@ def test_heals_on_one_retry(caplog: pytest.LogCaptureFixture) -> None:
 
     assert pool.attempts == 2, "must retry exactly once, not loop unboundedly"
     sql_files = sorted(MIGRATIONS_DIR.glob("00*.sql"))
-    assert len(pool.executed_on_success) == len(sql_files), (
+    assert len(pool.migration_chunks_applied()) == len(sql_files), (
         "the healed retry must apply every migration file"
     )
     assert any(

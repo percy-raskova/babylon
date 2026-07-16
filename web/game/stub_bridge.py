@@ -675,11 +675,83 @@ def _stub_explain_response(metric: str, scope: str) -> dict[str, Any] | None:
     }
 
 
+def _stub_org_by_id(org_id: str) -> dict[str, Any] | None:
+    """Look up one mock organization dict by id from :func:`_make_organizations`.
+
+    Only ``ORG001`` exists in the stub's coherent Wayne County world — any
+    other id honestly resolves to ``None``, matching the real bridge's
+    "org absent from the graph" case.
+    """
+    for org in _make_organizations():
+        if org["id"] == org_id:
+            return org
+    return None
+
+
+def _stub_all_mock_nodes() -> list[dict[str, Any]]:
+    """Every mock node dict across the stub's coherent Wayne County world —
+    the same union :meth:`StubEngineBridge.get_snapshot` serves. Used only
+    for the graph-wide numeric averages ``EngineBridge`` derives from the
+    real hydrated graph (:func:`_stub_avg_attr`, consumed by
+    ``get_endgame_state``/``get_journal_objectives``).
+    """
+    return [
+        *_make_wayne_county_entities(),
+        *_make_territories(),
+        *_make_organizations(),
+        *_make_institutions(),
+    ]
+
+
+def _stub_avg_attr(attr: str) -> float:
+    """Mean of ``attr`` across every mock node that carries it.
+
+    Matches ``EngineBridge``'s ``_compute_avg_node_attr`` semantics: nodes
+    missing the attribute are skipped, and the mean is ``0.0`` when none
+    carry it — never a fabricated nonzero default.
+    """
+    values = [float(node[attr]) for node in _stub_all_mock_nodes() if node.get(attr) is not None]
+    return sum(values) / len(values) if values else 0.0
+
+
+def _stub_vanguard_resources(
+    *,
+    cadre_level: float,
+    cohesion: float,
+    budget: float,
+    heat: float,
+    territory_count: int,
+) -> dict[str, float]:
+    """Reimplements ``VanguardResources.from_organization``'s formula inline.
+
+    This module cannot import ``babylon.models.vanguard_resources`` —
+    ``tests/unit/web/test_import_boundary.py`` statically forbids any
+    ``babylon.models``/``babylon.config``/``babylon.engine``/``babylon.ooda``/
+    ``babylon.persistence`` import outside ``game/engine_bridge.py`` (+ a
+    couple of explicitly-listed exceptions the stub is deliberately not
+    one of — its whole point is zero engine-package dependency weight).
+    The formula itself (``CL_max = cadre_level * 10 * (1 - heat*0.5)``,
+    ``SL_max = cohesion * territory_count * 5 * (1 - heat*0.3)``,
+    ``CL = min(CL_max, budget/2)``, ``SL = min(SL_max, CL*2 + territory_count)``)
+    is copied verbatim from ``src/babylon/models/vanguard_resources.py`` —
+    real math, not invented, just duplicated across the import boundary.
+    """
+    heat_penalty_cl = 1.0 - heat * 0.5
+    heat_penalty_sl = 1.0 - heat * 0.3
+    max_cl = cadre_level * 10.0 * heat_penalty_cl
+    max_sl = cohesion * max(territory_count, 1) * 5.0 * heat_penalty_sl
+    cl = min(max_cl, budget / 2.0)
+    sl = min(max_sl, cl * 2.0 + territory_count * 1.0)
+    return {"cadre_labor": round(cl, 2), "sympathizer_labor": round(sl, 2), "budget": budget}
+
+
 class StubEngineBridge:
     """Mock bridge that returns correctly-shaped data without engine deps.
 
     All methods match the ``EngineBridge`` interface so they can be used
-    interchangeably in ``game.api._bridge_instance``.
+    interchangeably in ``game.api._bridge_instance``. Parity (every public
+    ``get_*`` method present with a compatible signature) is enforced by
+    ``tests/unit/web/test_stub_bridge_parity.py``.
     """
 
     def __init__(self) -> None:
@@ -1197,4 +1269,753 @@ class StubEngineBridge:
             "total_trade": 0.0,
             "blocs": [],
             "flow_types": [],
+        }
+
+    # ------------------------------------------------------------------ #
+    # Spec 111 C2 / audit Wave 4 straggler (task #76): per-tick history
+    # endpoints. The real bridge sources these from ``org_snapshot``/
+    # ``territory_snapshot``/``class_snapshot``/``edge_snapshot`` via the
+    # persistence layer's OPTIONAL ``query_*_history`` capability — a
+    # SQLite-backed ``RuntimeDatabase`` (dev/test, no such tables) already
+    # degrades to an empty list there. The stub persists nothing at all, so
+    # the same honest-empty shape is exactly right here too (Constitution
+    # III.11: never a fabricated history).
+    # ------------------------------------------------------------------ #
+
+    def get_org_history(self, _session_id: UUID, org_id: str) -> dict[str, Any]:
+        return {"org_id": org_id, "history": []}
+
+    def get_territory_history(self, _session_id: UUID, county_fips: str) -> dict[str, Any]:
+        return {"county_fips": county_fips, "history": []}
+
+    def get_class_history(self, _session_id: UUID, node_id: str) -> dict[str, Any]:
+        return {"class_id": node_id, "history": [], "ruptures": []}
+
+    def get_edge_history(self, _session_id: UUID, edge_id: str) -> dict[str, Any]:
+        return {"edge_id": edge_id, "history": []}
+
+    def get_economy(self, session_id: UUID, territory_id: str | None = None) -> dict[str, Any]:
+        """Spec 093 US5. No ``territory_id`` delegates to the (honest-empty)
+        economy dashboard, matching the real bridge's backward-compatible
+        fallback. A given ``territory_id`` gets an honest empty payload: the
+        stub's mock territories carry ``host_id``/``occupant_id``, not the
+        ``territory_ids`` back-reference the real aggregation reads off
+        social_class/organization nodes, so there is nothing to honestly sum.
+        """
+        if territory_id is None:
+            return self.get_economy_dashboard(session_id)
+        return {
+            "territory_id": territory_id,
+            "has_data": False,
+            "value_produced": 0.0,
+            "wage_share": None,
+            "rent_extracted": 0.0,
+            "exploitation_rate": None,
+            "extraction_intensity": 0.0,
+        }
+
+    # ------------------------------------------------------------------ #
+    # Spec 111 C2: infrastructure network overlay.
+    # ------------------------------------------------------------------ #
+
+    def get_infrastructure(self, session_id: UUID) -> dict[str, Any]:
+        """Honest empty ``InfrastructurePayload``.
+
+        Matches the real bridge's OWN current behavior, not just a stub
+        degradation: Amendment O's corridor build/degrade write path is
+        ``[RATIFIED · PENDING CODE]``, so every real session legitimately
+        gets ``edges: []`` too (see ``EngineBridge.get_infrastructure``'s
+        docstring) — this is one of the rare cases where stub and real
+        bridge are byte-identical by construction.
+        """
+        session = _stub_sessions.get(session_id, {"tick": 0})
+        return {"tick": session.get("tick", 0), "nodes": [], "edges": []}
+
+    # ------------------------------------------------------------------ #
+    # Spec 094: The Wire feed.
+    # ------------------------------------------------------------------ #
+
+    def get_wire_feed(self, session_id: UUID) -> dict[str, Any]:
+        """Run the same :class:`~game.narrator.DeterministicNarrator` the
+        real bridge uses over the stub's (always-empty) mock journal.
+
+        Deliberately skips the optional spec-111 ``NarrativeService``
+        augmentation layer: it is engine-adjacent (imports ``babylon.*``,
+        per its own module docstring) and gated behind
+        ``BABYLON_LLM_NARRATOR`` (default OFF); at that default the real
+        bridge's ``augment_feed`` is a no-op anyway, so skipping it keeps
+        this method byte-identical to the real bridge in the common
+        (flag-off) case while preserving ``game.narrator``'s
+        zero-``babylon.*``-import guarantee for this module too.
+        """
+        journal = self.get_journal_dashboard(session_id)
+        events = journal.get("events", [])
+        session = _stub_sessions.get(session_id, {"tick": 0})
+        tick = session.get("tick", 0)
+        meta = {
+            "tick": tick,
+            "session": str(session_id),
+            "operator": "RASKOVA-2",
+            "freq": "88.7 MHz",
+            "qth": "WAYNE CO / GRID EN82",
+            "classification": "TS//SI//NOFORN",
+            "cable_id": f"{tick:04d}-A",
+            "page_of": "001/001",
+            "timestamp_utc": "2026-05-12T08:47:22Z",
+            "class_names": {e["id"]: e["name"] for e in _make_wayne_county_entities()},
+            "org_names": {o["id"]: o["name"] for o in _make_organizations()},
+        }
+
+        from .narrator import DeterministicNarrator
+
+        return DeterministicNarrator().narrate(events, meta)
+
+    # ------------------------------------------------------------------ #
+    # Spec 095: Endgame Chronicle + Journal + Dialectic screen. No stub
+    # session ever runs ContradictionFieldSystem or reaches a terminal
+    # outcome (no engine, no endgame persistence) — every value below is
+    # either honestly empty/None or a real average over the stub's own
+    # mock entities/territories/organizations (never invented).
+    # ------------------------------------------------------------------ #
+
+    def get_contradiction_snapshot(self, session_id: UUID) -> dict[str, Any]:
+        session = _stub_sessions.get(session_id, {"tick": 0})
+        return {
+            "tick": session.get("tick", 0),
+            "regime": "reproduction",
+            "oppositions": [],
+            "principal_key": "",
+            "frame": {"principal": {}, "secondary": {}},
+        }
+
+    def get_endgame_state(self, session_id: UUID) -> dict[str, Any]:
+        session = _stub_sessions.get(session_id, {"tick": 0})
+        tick = session.get("tick", 0)
+        return {
+            "tick": tick,
+            "outcome": None,
+            "headline": "",
+            "summary": "",
+            "stats": {
+                "final_tick": tick,
+                "consciousness": _stub_avg_attr("consciousness"),
+                "solidarity_edges": 0,
+                "heat": _stub_avg_attr("heat"),
+            },
+        }
+
+    def get_journal_objectives(self, session_id: UUID) -> dict[str, Any]:
+        session = _stub_sessions.get(session_id, {"tick": 0})
+        tick = session.get("tick", 0)
+        consciousness_avg = _stub_avg_attr("consciousness")
+        heat_avg = _stub_avg_attr("heat")
+        principal_gap = 0.0  # No ContradictionFieldSystem has ever run here.
+
+        objectives = [
+            {
+                "id": "revolution",
+                "title": "Revolutionary Victory",
+                "description": (
+                    "Build mass class consciousness and solidarity edges to overthrow the empire."
+                ),
+                "progress": min(1.0, consciousness_avg),
+                "status": "active",
+                "category": "revolution",
+            },
+            {
+                "id": "ecological_collapse",
+                "title": "Ecological Collapse",
+                "description": "Biocapacity depletion forces a terminal retreat from extraction.",
+                "progress": min(1.0, heat_avg),
+                "status": "active",
+                "category": "collapse",
+            },
+            {
+                "id": "fascist_consolidation",
+                "title": "Fascist Consolidation",
+                "description": "False-consciousness bloc achieves a sovereign grip on the state.",
+                "progress": min(1.0, principal_gap),
+                "status": "active",
+                "category": "fascist",
+            },
+            {
+                "id": "red_ogv",
+                "title": "Red OGV Trap",
+                "description": (
+                    "Settler-socialist formation captures the movement without abolishing empire."
+                ),
+                "progress": min(1.0, principal_gap * 0.5),
+                "status": "active",
+                "category": "red_ogv",
+            },
+            {
+                "id": "fragmented_collapse",
+                "title": "Fragmented Collapse",
+                "description": "Balkanization — sovereign fragmentation outpaces solidarity.",
+                "progress": min(1.0, heat_avg * 0.5),
+                "status": "active",
+                "category": "fragmented",
+            },
+        ]
+        return {"tick": tick, "objectives": objectives}
+
+    # ------------------------------------------------------------------ #
+    # Org status + pending actions — internal-helper-style methods in the
+    # real bridge (called by the verb-target methods below), implemented
+    # here for the same reason.
+    # ------------------------------------------------------------------ #
+
+    def get_pending_actions(self, session_id: UUID, tick: int) -> list[dict[str, Any]]:
+        """Unresolved mock action queue for ``tick`` (mirrors the real
+        bridge's ``game_turn`` row shape — ``PendingAction``'s required
+        fields — via the stub's own ``_stub_actions`` queue)."""
+        return [
+            {
+                "id": action["turn_id"],
+                "org_id": action["org_id"],
+                "verb": action["verb"],
+                "target_id": action.get("target_id"),
+                "tick": action["tick"],
+            }
+            for action in _stub_actions.get(session_id, [])
+            if action["tick"] == tick
+        ]
+
+    def get_org_status(self, session_id: UUID, org_id: str) -> dict[str, Any]:
+        """Mock org status + OODA cycle info. Only ``ORG001`` (the stub's one
+        mock organization) resolves; any other id gets the same honest
+        ``{}`` the real bridge returns for an org absent from the graph.
+        """
+        org_data = _stub_org_by_id(org_id)
+        if org_data is None:
+            return {}
+
+        cadre = float(org_data.get("cadre_level", 0.0))
+        cohesion = float(org_data.get("cohesion", 0.0))
+        budget = float(org_data.get("budget", 0.0))
+        heat = float(org_data.get("heat", 0.0))
+        territory_ids = org_data.get("territory_ids", [])
+
+        resources = _stub_vanguard_resources(
+            cadre_level=cadre,
+            cohesion=cohesion,
+            budget=budget,
+            heat=heat,
+            territory_count=len(territory_ids),
+        )
+
+        session = _stub_sessions.get(session_id, {"tick": 0})
+        tick = session.get("tick", 0)
+        pending = self.get_pending_actions(session_id, tick)
+        ap_max = 3
+        ap_used = len([a for a in pending if a.get("org_id") == org_id])
+        ap_remaining = max(0, ap_max - ap_used)
+
+        return {
+            "id": org_id,
+            "name": org_data.get("name", org_id),
+            "type": str(org_data.get("org_type", "PoliticalFaction")),
+            "consciousness_strategy": str(org_data.get("consciousness_strategy", "revolutionary")),
+            "resources": {
+                "cadre_labor": resources["cadre_labor"],
+                "sympathizer_labor": resources["sympathizer_labor"],
+                "material": resources["budget"],
+            },
+            "ooda": {
+                "action_points_remaining": ap_remaining,
+                "action_points_max": ap_max,
+                "cycle_time": 2,
+            },
+            "cadre_level": cadre,
+            "cohesion": cohesion,
+        }
+
+    # ------------------------------------------------------------------ #
+    # Verb-target methods (specs 043/045-050). Each mirrors its verb's own
+    # response shape (they are NOT identical — educate/aid/mobilize/attack/
+    # reproduce/investigate/move/negotiate each nest ``targets`` differently
+    # in the real bridge, so no shared helper is faithful here). Dynamic
+    # parts reuse the stub's coherent mock world (ORG001, T001-T004,
+    # C001-C004, INST001); parts that are STATIC placeholders in the real
+    # bridge too (not derived from any graph — negotiate's targets/
+    # de_escalation_targets, investigate's targeted_scans/
+    # counter_intelligence/observe_capability) are copied verbatim for
+    # byte-for-byte parity.
+    # ------------------------------------------------------------------ #
+
+    def get_educate_targets(self, session_id: UUID, org_id: str) -> dict[str, Any]:
+        org_status = self.get_org_status(session_id, org_id)
+        if not org_status:
+            return {"status": "error", "error": "Org not found"}
+        session = _stub_sessions.get(session_id, {"tick": 0})
+        cadre_labor = org_status["resources"]["cadre_labor"]
+
+        def _target(
+            community_id: str,
+            territory_id: str,
+            territory_name: str,
+            agitation: float,
+        ) -> dict[str, Any]:
+            return {
+                "community_id": community_id,
+                "community_type": "PROLETARIAT",
+                "category": "social_class",
+                "territory_name": territory_name,
+                "territory_id": territory_id,
+                "credibility": org_status["cohesion"],
+                "credibility_explanation": (
+                    f"{int(org_status['cohesion'] * 100)}% org cohesion (mock — the "
+                    "stub has no per-community overlap metric)"
+                ),
+                "consciousness": {
+                    "r": 0.0,
+                    "l": 0.0,
+                    "f": 0.0,
+                    "dominant_tendency": "unknown",
+                    "collective_identity": None,
+                    "ideological_contestation": None,
+                    "note": (
+                        "TernaryConsciousness lives on XGI hypergraph communities, "
+                        "not modeled by the stub."
+                    ),
+                },
+                "material_readiness": {
+                    "avg_agitation": agitation,
+                    "readiness_score": min(1.0, agitation / 0.5) if agitation else 0.0,
+                    "readiness_explanation": (
+                        "Mock — matches this class's agitation in _make_wayne_county_entities()."
+                    ),
+                },
+                "education_pressure": {
+                    "current": 0.0,
+                    "projected_delta": None,
+                    "projected_new": None,
+                    "decay_per_tick": None,
+                    "note": (
+                        "education_pressure lives on XGI community hyperedges, "
+                        "not modeled by the stub."
+                    ),
+                },
+                "feedforward": {"note": "No per-tick routing-shift projection exists in the stub."},
+            }
+
+        return {
+            "status": "ok",
+            "tick": session.get("tick", 0),
+            "verb": "educate",
+            "acting_org": org_status,
+            "cost": {
+                "action_points": 1,
+                "cadre_labor": 3.0,
+                "sympathizer_labor": 0.0,
+                "material": 0.0,
+                "can_afford": cadre_labor >= 3.0,
+                "over_budget": False,
+                "over_budget_penalty": None,
+            },
+            "targets": [
+                _target("C001", "T001", "Downtown Detroit", 0.2),
+                _target("C004", "T002", "Dearborn", 0.15),
+            ],
+            "unavailable_communities": [],
+        }
+
+    def get_aid_targets(self, session_id: UUID, org_id: str) -> dict[str, Any]:
+        org_status = self.get_org_status(session_id, org_id)
+        if not org_status:
+            return {"status": "error", "error": "Org not found"}
+        session = _stub_sessions.get(session_id, {"tick": 0})
+        cadre_labor = org_status["resources"]["cadre_labor"]
+        no_edge = {"type": "NONE", "value_flow": 0.0, "tension": 0.0}
+
+        return {
+            "status": "ok",
+            "tick": session.get("tick", 0),
+            "verb": "aid",
+            "acting_org": org_status,
+            "cost": {
+                "action_points": 1,
+                "cadre_labor": 1.0,
+                "sympathizer_labor": 1.0,
+                "material": 0.0,
+                "can_afford": cadre_labor >= 1.0,
+                "over_budget": False,
+                "over_budget_penalty": None,
+            },
+            "population_targets": [
+                {
+                    "community_id": "C001",
+                    "community_name": "Detroit Proletariat",
+                    "population": 350000,
+                    "class_name": "PROLETARIAT",
+                    "material_conditions": {
+                        "v_value_produced": 15.0,
+                        "wage_received": None,
+                        "consumption_gap": None,
+                        "subsistence_level": 10.0,
+                        "agitation_level": 0.2,
+                    },
+                    "edge_status": no_edge,
+                    "feedforward": {
+                        "note": "No per-tick aid-effect projection exists in the stub."
+                    },
+                },
+                {
+                    "community_id": "C004",
+                    "community_name": "Downriver Workers",
+                    "population": 120000,
+                    "class_name": "PROLETARIAT",
+                    "material_conditions": {
+                        "v_value_produced": 20.0,
+                        "wage_received": None,
+                        "consumption_gap": None,
+                        "subsistence_level": 12.0,
+                        "agitation_level": 0.15,
+                    },
+                    "edge_status": no_edge,
+                    "feedforward": {
+                        "note": "No per-tick aid-effect projection exists in the stub."
+                    },
+                },
+            ],
+            "org_targets": [],
+            "unavailable_targets": [],
+        }
+
+    def get_mobilize_targets(self, session_id: UUID, org_id: str) -> dict[str, Any]:
+        """The stub's mock world has exactly one organization (ORG001, the
+        acting org itself) — real MOBILIZE targets are OTHER business/
+        civil_society orgs sharing a territory, so an honest empty list
+        beats fabricating a rival org that exists nowhere else in this
+        file's mock world."""
+        org_status = self.get_org_status(session_id, org_id)
+        if not org_status:
+            return {"status": "error", "error": "Org not found"}
+
+        return {
+            "entity_id": org_id,
+            "name": org_status.get("name", "Unknown Org"),
+            "available_sl": org_status["resources"]["sympathizer_labor"],
+            "available_cl": org_status["resources"]["cadre_labor"],
+            # GameDefines().mobilize.mobilize_cl_cost, src/babylon/data/
+            # defines.yaml:56 — a literal snapshot, not a live read: this
+            # module cannot import babylon.config.defines (import-boundary
+            # guard, tests/unit/web/test_import_boundary.py).
+            "mobilize_cost_cl": 0.2,
+            "targets": [],
+        }
+
+    def get_attack_targets(self, session_id: UUID, org_id: str) -> dict[str, Any]:
+        org_status = self.get_org_status(session_id, org_id)
+        if not org_status:
+            return {"status": "error", "error": "Org not found"}
+        session = _stub_sessions.get(session_id, {"tick": 0})
+        resources = org_status["resources"]
+
+        return {
+            "status": "ok",
+            "tick": session.get("tick", 0),
+            "verb": "attack",
+            "acting_org": org_status,
+            "cost": {
+                "action_points": 3,
+                "cadre_labor_if_targeted": 2.5,
+                "sympathizer_labor_if_mass": 25.0,
+                "material": 100.0,
+                "can_afford_targeted": resources["cadre_labor"] >= 2.5,
+                "can_afford_mass": resources["sympathizer_labor"] >= 25.0,
+                "over_budget_ap": False,
+                "cost_explanation": (
+                    "TARGETED attacks use dense cadre formations. MASS actions use "
+                    "diffused sympathizer labor. Both require AP and initial materials."
+                ),
+            },
+            "ultra_left_warning": {
+                "active": False,
+                "trap_score": 0.0,
+                "indicators": [],
+                "explanation": "No trap detection has run yet this session (requires a resolved tick).",
+            },
+            # C001/C004 are ORG001's mock territories' occupants (T001/T002);
+            # 0.72 is the real min of their two p_acquiescence values.
+            "warsaw_ghetto_flag": {
+                "active": False,
+                "population_p_acquiescence": 0.72,
+                "threshold": 0.05,
+                "explanation": (
+                    "If survival probabilities reach near absolute zero, mass base "
+                    "will endorse desperate measures regardless of military feasibility."
+                ),
+            },
+            "targets": {
+                "organizations": [],
+                "edges": [],
+                "institutions": [
+                    {
+                        "target_id": "INST001",
+                        "target_type": "INSTITUTION",
+                        "name": "Wayne County DPD",
+                        "factional_control": {
+                            "liberal_technocratic": 0.2,
+                            "revanchist_fascist": 0.3,
+                            "institutionalist_bonapartist": 0.5,
+                        },
+                    }
+                ],
+            },
+            "unavailable_targets": [],
+        }
+
+    def get_reproduce_targets(self, session_id: UUID, org_id: str) -> dict[str, Any]:
+        org_status = self.get_org_status(session_id, org_id)
+        if not org_status:
+            return {"status": "error", "error": "Org not found"}
+        session = _stub_sessions.get(session_id, {"tick": 0})
+        resources = org_status["resources"]
+        # C001 (T001, pop 350000) + C004 (T002, pop 120000) — ORG001's real
+        # mock territories' occupant populations.
+        base_population = 350_000 + 120_000
+
+        return {
+            "status": "ok",
+            "tick": session.get("tick", 0),
+            "verb": "reproduce",
+            "acting_org": org_status,
+            "cost": {
+                "action_points": 1,
+                "cadre_labor": 0.0,
+                "sympathizer_labor": 10.0,
+                "material": 0.0,
+                "can_afford": resources["sympathizer_labor"] >= 10.0,
+                "over_budget": False,
+                "over_budget_penalty": None,
+            },
+            "targets": [
+                {
+                    "target_id": org_id,
+                    "name": org_status.get("name", org_id),
+                    "type": "ORGANIZATION",
+                    "modes": {
+                        "cadre_training": {
+                            "resource_cost": {"sympathizer_labor": 10.0},
+                            "projected_effect": {
+                                "cadre_delta": 1.0,
+                                "cohesion_delta": 0.02,
+                                "agitation_delta": 0.0,
+                            },
+                            "recruitment_pool": {
+                                "sympathizers": int(resources["sympathizer_labor"])
+                            },
+                            "cooldown_applied": 0,
+                            "explanation": (
+                                "Converts 10 sympathizer labor into 1 cadre labor, "
+                                "increasing cohesion."
+                            ),
+                        },
+                        "mass_recruitment": {
+                            "resource_cost": {"cadre_labor": 2.0},
+                            "projected_effect": {
+                                "cadre_delta": 0.0,
+                                "cohesion_delta": -0.05,
+                                "agitation_delta": 0.1,
+                            },
+                            "recruitment_pool": {"base_population": base_population},
+                            "cooldown_applied": 1,
+                            "explanation": (
+                                "Spends cadre labor to prospect among the agitated "
+                                "base. Dilutes cohesion but gains sympathizers."
+                            ),
+                        },
+                    },
+                    "state_response": {"state_visibility": "LOW", "attention_diverted": 0.0},
+                }
+            ],
+        }
+
+    def get_investigate_targets(self, session_id: UUID, org_id: str) -> dict[str, Any]:
+        org_status = self.get_org_status(session_id, org_id)
+        if not org_status:
+            return {"status": "error", "error": "Org not found"}
+        session = _stub_sessions.get(session_id, {"tick": 0})
+        resources = org_status["resources"]
+
+        def _territory_scan(target_id: str, name: str, heat: float) -> dict[str, Any]:
+            return {
+                "target_id": target_id,
+                "name": name,
+                "target_type": "TERRITORY",
+                "heat": heat,
+                "current_knowledge": {
+                    "visibility_level": "SURFACE",
+                    "known_attributes": ["population"],
+                    "last_scanned_tick": None,
+                },
+                "resource_cost": {"sympathizer_labor": 5.0},
+                "projected_reveals": {
+                    "new_visibility_level": "TARGETED",
+                    "likely_reveals": ["material_readiness", "hidden_factions", "state_deployment"],
+                },
+            }
+
+        return {
+            "status": "ok",
+            "tick": session.get("tick", 0),
+            "verb": "investigate",
+            "acting_org": org_status,
+            "cost": {
+                "action_points": 1,
+                "cadre_labor": 2.0,
+                "sympathizer_labor": 0.0,
+                "material": 0.0,
+                "can_afford": resources["cadre_labor"] >= 2.0,
+                "over_budget": False,
+                "over_budget_penalty": None,
+            },
+            # observe_capability + targeted_scans + counter_intelligence are
+            # STATIC placeholders in the real bridge too (not graph-derived)
+            # — copied verbatim for byte-for-byte parity.
+            "observe_capability": {"intel_network_strength": 0.6, "max_scan_depth": "TARGETED"},
+            "targets": {
+                "territory_scans": [
+                    _territory_scan("T001", "Downtown Detroit", 0.45),
+                    _territory_scan("T002", "Dearborn", 0.20),
+                ],
+                "targeted_scans": [
+                    {
+                        "target_id": "org-police-union",
+                        "name": "Fraternal Order of Police",
+                        "target_type": "INSTITUTION",
+                        "current_knowledge": {
+                            "visibility_level": "NONE",
+                            "known_attributes": [],
+                            "last_scanned_tick": None,
+                        },
+                        "resource_cost": {"cadre_labor": 4.0},
+                        "projected_reveals": {
+                            "new_visibility_level": "SURFACE",
+                            "likely_reveals": ["factional_control", "defensive_capacity"],
+                        },
+                        "detection_risk": {
+                            "probability": 0.35,
+                            "consequence": "Increases organization heat by 0.15",
+                        },
+                    }
+                ],
+                "counter_intelligence": {
+                    "active_moles_suspected": 1,
+                    "resource_cost": {"cadre_labor": 5.0},
+                    "projected_reveals": {
+                        "new_visibility_level": "INTERNAL_AUDIT",
+                        "likely_reveals": ["mole_identities", "leaked_information_vectors"],
+                    },
+                },
+            },
+        }
+
+    def get_move_targets(self, session_id: UUID, org_id: str) -> dict[str, Any]:
+        org_status = self.get_org_status(session_id, org_id)
+        if not org_status:
+            return {"status": "error", "error": "Org not found"}
+        session = _stub_sessions.get(session_id, {"tick": 0})
+        resources = org_status["resources"]
+
+        return {
+            "status": "ok",
+            "tick": session.get("tick", 0),
+            "verb": "move",
+            "acting_org": org_status,
+            "cost": {
+                "action_points": 1,
+                "cadre_labor": 10.0,
+                "sympathizer_labor": 0.0,
+                "material": 0.0,
+                "can_afford": resources["cadre_labor"] >= 10.0,
+                "over_budget": False,
+                "over_budget_penalty": None,
+            },
+            "current_territories": ["T001", "T002"],
+            # T003 (Downriver) — one of the stub's mock territories ORG001
+            # does not yet occupy, per _make_territories().
+            "targets": [
+                {
+                    "id": "T003",
+                    "name": "Downriver",
+                    "community_reception": {"overlap_score": 0.45, "cross_community_penalty": 0.1},
+                    "strategic_assessment": {
+                        "value_circuit_position": {"type": "logistics_hub", "s_v_ratio": 1.2},
+                        "surveillance_evasion": 0.65,
+                    },
+                    "projected_outcomes": {
+                        "expand": {
+                            "presence_value": 0.5,
+                            "edges_at_risk": 2,
+                            "ticks_to_operational": 3,
+                        },
+                        "relocate": {
+                            "presence_value": 1.0,
+                            "edges_at_risk": 5,
+                            "ticks_to_operational": 1,
+                        },
+                    },
+                }
+            ],
+        }
+
+    def get_negotiate_targets(self, session_id: UUID, org_id: str) -> dict[str, Any]:
+        """The real bridge's ``targets``/``de_escalation_targets`` are STATIC
+        placeholders (not graph-derived — negotiate mechanics aren't wired to
+        the graph yet), so this copies the identical content verbatim for
+        byte-for-byte parity."""
+        org_status = self.get_org_status(session_id, org_id)
+        if not org_status:
+            return {"status": "error", "error": "Org not found"}
+        session = _stub_sessions.get(session_id, {"tick": 0})
+
+        return {
+            "status": "ok",
+            "tick": session.get("tick", 0),
+            "verb": "negotiate",
+            "acting_org": org_status,
+            "cost": {
+                "action_points": 1,
+                "cadre_labor": 0.0,
+                "sympathizer_labor": 0.0,
+                "material": 0.0,
+                "can_afford": True,
+                "over_budget": False,
+                "over_budget_penalty": None,
+            },
+            "org_leverage": 0.8,
+            "targets": [
+                {
+                    "id": "org-auto-union",
+                    "name": "Auto Workers Union",
+                    "type": "ORGANIZATION",
+                    "interest_alignment": {
+                        "score": 0.75,
+                        "shared_interests": ["wage_increases", "safety"],
+                        "divergent_interests": ["systemic_change"],
+                        "alliance_type": "tactical",
+                    },
+                    "negotiation_options": [
+                        {
+                            "proposal": "coordination_pact",
+                            "success_probability": 0.65,
+                            "edge_effect": "TRANSACTIONAL edge created",
+                            "state_response_prediction": "State may attempt CO-OPT:DIVIDE",
+                            "betrayal_risk": 0.3,
+                        }
+                    ],
+                    "betrayal_risk": 0.3,
+                    "existing_edge_state": None,
+                }
+            ],
+            "de_escalation_targets": [
+                {
+                    "target_id": "org-rival-faction",
+                    "name": "Rival Revolutionary Faction",
+                    "antagonism_cause": "ideological_divergence",
+                    "reconciliation_requirement": "joint_action_against_state",
+                }
+            ],
         }

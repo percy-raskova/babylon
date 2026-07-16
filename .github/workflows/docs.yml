@@ -22,6 +22,9 @@ jobs:
   build:
     name: Build Documentation
     runs-on: ubuntu-latest
+    # House rule (Constitution III.11, ci.yml header): every job carries
+    # timeout-minutes — a hang must die loudly, not run 360 min on the default.
+    timeout-minutes: 20
     steps:
       - uses: actions/checkout@v7
 
@@ -68,6 +71,7 @@ jobs:
       url: ${{ steps.deployment.outputs.page_url }}
     runs-on: ubuntu-latest
     needs: build
+    timeout-minutes: 10
     steps:
       - name: Deploy to GitHub Pages
         id: deployment

@@ -22,6 +22,8 @@ jobs:
   dependabot-automerge:
     name: Auto-merge Dependabot PRs
     runs-on: ubuntu-latest
+    # House rule (Constitution III.11): every job carries timeout-minutes.
+    timeout-minutes: 5
     if: github.actor == 'dependabot[bot]'
 
     steps:

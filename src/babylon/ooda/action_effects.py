@@ -12,10 +12,16 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING, Any
 
-from babylon.config.defines import OODADefines, OrganizationDefines, ReactionaryDefines
+from babylon.config.defines import (
+    DoctrineDefines,
+    OODADefines,
+    OrganizationDefines,
+    ReactionaryDefines,
+)
 from babylon.domain.organizations.consciousness import tendency_modifier
 from babylon.domain.organizations.types import ConsciousnessDelta
 from babylon.models.enums import ActionType, ConsciousnessTendency, EdgeType, EventType
+from babylon.models.enums.doctrine import DoctrineTag
 from babylon.ooda._helpers import _compute_membership_overlap
 from babylon.ooda.types import Action, ActionResult
 
@@ -37,6 +43,7 @@ def compute_consciousness_delta(
     graph: BabylonGraph,
     defines: OODADefines,
     org_defines: OrganizationDefines,
+    doctrine: DoctrineDefines | None = None,
 ) -> ConsciousnessDelta | None:
     """Compute consciousness effect of an action on a target community.
 
@@ -89,6 +96,22 @@ def compute_consciousness_delta(
         if contestation > defines.contestation_threshold:
             scaled_delta *= defines.agitation_educate_bonus
 
+    # Step 7.5 (DoctrineSystem Unit 6b, ADR073): the theory bonus — corpus:
+    # "High CLASS_ANALYSIS: correct prioritization, theory bonus". The org's
+    # accumulated class-analysis doctrine scales its consciousness-raising;
+    # tag capped at the corpus range ceiling (10).
+    if doctrine is not None:
+        doctrine_tags = org_attrs.get("doctrine_tags") or {}
+        class_analysis = float(
+            doctrine_tags.get(
+                DoctrineTag.CLASS_ANALYSIS, doctrine_tags.get("class_analysis", 0.0)
+            )
+        )
+        if class_analysis > 0:
+            scaled_delta *= (
+                1.0 + doctrine.theory_bonus_per_class_analysis * min(class_analysis, 10.0)
+            )
+
     # Step 8: Clamp to max per-tick delta
     scaled_delta = max(
         -defines.max_ci_delta_per_tick,
@@ -110,6 +133,7 @@ def resolve_action(
     defines: OODADefines,
     org_defines: OrganizationDefines,
     reactionary: ReactionaryDefines | None = None,
+    doctrine: DoctrineDefines | None = None,
 ) -> ActionResult:
     """Resolve a single action, computing effects.
 
@@ -151,6 +175,7 @@ def resolve_action(
         graph,
         defines,
         org_defines,
+        doctrine,
     )
 
     events: list[str] = [EventType.ORGANIZATIONAL_ACTION.value]

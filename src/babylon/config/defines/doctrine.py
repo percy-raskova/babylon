@@ -84,6 +84,16 @@ class DoctrineDefines(BaseModel):
         lt=0.5,
         description="Ruling 5 / DT-5: purge-success probability is clamped to [floor, 1-floor] — a nonzero contingent term stays live at ANY delta (Lushan 1959 / Gang of Four 1976: the decisive information was never in the observable state).",
     )
+    theory_bonus_per_class_analysis: float = Field(
+        default=0.02,
+        ge=0.0,
+        description="Unit 6b feedback: per-point CLASS_ANALYSIS multiplier on an org's consciousness-raising delta (corpus: 'High: correct prioritization, theory bonus'); tag capped at 10 => max +20% at default.",
+    )
+    mass_link_solidarity_bonus: float = Field(
+        default=0.05,
+        ge=0.0,
+        description="Unit 6b feedback: per-point MASS_LINK amplification of the solidarity_pressure an ORGANIZATION-source SOLIDARITY edge transmits into the bifurcation router (corpus: 'High: faster sympathizer generation; Low: isolated'); an org with MASS_LINK == 0 transmits nothing.",
+    )
 
 
 __all__ = ["DoctrineDefines"]

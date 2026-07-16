@@ -68,6 +68,7 @@ def resolve_educate(
         services.defines.ooda,
         services.defines.organization,
         services.defines.reactionary,
+        doctrine=services.defines.doctrine,
     )
 
 

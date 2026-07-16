@@ -175,9 +175,29 @@ class ConsciousnessSystem(SystemBase):
                     # Get solidarity_strength from edge
                     strength = edge.attributes.get("solidarity_strength", 0.0)
                     if strength > 0:
-                        # Only count if source has revolutionary consciousness
                         src_node = graph.get_node(edge.source_id)
                         src_attrs = src_node.attributes if src_node else {}
+                        # GraphNode strips _node_type OUT of .attributes (the
+                        # known round-trip gotcha) — read .node_type instead.
+                        src_type = str(src_node.node_type) if src_node else ""
+                        if src_type == "organization":
+                            # DoctrineSystem Unit 6b (ADR073): an organization
+                            # transmits solidarity through its MASS LINK — the
+                            # corpus's "connection to the broad masses". An
+                            # isolated org (MASS_LINK == 0) transmits nothing
+                            # ("Low: Isolated, actions seen as terrorism"). The
+                            # consciousness gate below is a class-node concept
+                            # and does not apply to org sources. StrEnum keys:
+                            # "mass_link" finds both enum- and str-keyed dicts.
+                            doctrine_tags = src_attrs.get("doctrine_tags") or {}
+                            mass_link = float(doctrine_tags.get("mass_link", 0.0))
+                            if mass_link > 0:
+                                bonus = services.defines.doctrine.mass_link_solidarity_bonus
+                                solidarity_pressure += strength * (
+                                    1.0 + bonus * min(mass_link, 10.0)
+                                )
+                            continue
+                        # Only count if source has revolutionary consciousness
                         source_profile = _get_ideology_profile_from_node(src_attrs)
                         source_consciousness = source_profile["class_consciousness"]
                         if source_consciousness > activation_threshold:

@@ -48,6 +48,7 @@ def resolve_campaign(
         services.defines.ooda,
         services.defines.organization,
         services.defines.reactionary,
+        doctrine=services.defines.doctrine,
     )
 
 

@@ -218,6 +218,57 @@ class TestConsciousnessSystemWealthTracking:
             "With solidarity, wealth extraction routes to revolution"
         )
 
+    def test_org_solidarity_transmits_through_mass_link(self) -> None:
+        """DoctrineSystem Unit 6b (ADR073): an ORGANIZATION-source SOLIDARITY
+        edge transmits solidarity_pressure through the org's MASS_LINK doctrine
+        tag — amplified when linked to the masses, NOTHING when isolated
+        (corpus: "Low: Isolated, actions seen as terrorism"). The class-node
+        consciousness gate does not apply to org sources.
+        """
+        from babylon.models.enums import EdgeType
+
+        for mass_link, expect_revolutionary in ((5.0, True), (0.0, False)):
+            graph = BabylonGraph()
+            graph.add_node(
+                PERIPHERY_WORKER_ID,
+                wealth=1.0,
+                ideology={
+                    "class_consciousness": 0.5,
+                    "national_identity": 0.5,
+                    "agitation": 0.0,
+                },
+                _node_type="social_class",
+            )
+            graph.add_node(
+                "vanguard",
+                _node_type="organization",
+                doctrine_tags={"mass_link": mass_link},
+            )
+            graph.add_edge(
+                "vanguard",
+                PERIPHERY_WORKER_ID,
+                edge_type=EdgeType.SOLIDARITY,
+                solidarity_strength=0.8,
+            )
+
+            services = ServiceContainer.create()
+            system = ConsciousnessSystem()
+            context: dict[str, object] = {"tick": 0}
+            system.step(graph, services, context)
+            graph.nodes[PERIPHERY_WORKER_ID]["wealth"] = 0.3  # extraction crisis
+            context["tick"] = 1
+            system.step(graph, services, context)
+
+            ideology = graph.nodes[PERIPHERY_WORKER_ID]["ideology"]
+            if expect_revolutionary:
+                assert ideology["class_consciousness"] > 0.5, (
+                    "a mass-linked org's solidarity must route agitation to revolution"
+                )
+            else:
+                assert ideology["class_consciousness"] <= 0.5, (
+                    "an isolated org (MASS_LINK == 0) must transmit no solidarity"
+                )
+
     def test_no_wealth_change_produces_no_new_agitation(self) -> None:
         """Stable wealth should not generate new agitation.
 

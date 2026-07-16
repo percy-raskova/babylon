@@ -53,6 +53,41 @@ class TestConsciousnessVerbs:
         assert result.consciousness_delta.collective_identity_delta != 0.0
 
 
+class TestDoctrineTheoryBonus:
+    """Unit 6b feedback: CLASS_ANALYSIS scales consciousness-raising.
+
+    Corpus (doctrine-tree-mvp.yaml tag effects): "High: Correct
+    prioritization, theory bonus." An org with accumulated class-analysis
+    doctrine raises consciousness faster than the same org without it.
+    """
+
+    def test_class_analysis_amplifies_educate_delta(self, verb_graph, services) -> None:
+        plain = _dispatch(verb_graph, services, ActionType.EDUCATE, CLASS_ID)
+        assert plain.consciousness_delta is not None
+
+        verb_graph.update_node(ORG_ID, doctrine_tags={"class_analysis": 10.0})
+        theorized = _dispatch(verb_graph, services, ActionType.EDUCATE, CLASS_ID)
+        assert theorized.consciousness_delta is not None
+
+        expected_factor = (
+            1.0 + services.defines.doctrine.theory_bonus_per_class_analysis * 10.0
+        )
+        assert theorized.consciousness_delta.collective_identity_delta == pytest.approx(
+            plain.consciousness_delta.collective_identity_delta * expected_factor
+        )
+
+    def test_zero_class_analysis_is_exactly_the_plain_delta(self, verb_graph, services) -> None:
+        plain = _dispatch(verb_graph, services, ActionType.EDUCATE, CLASS_ID)
+        verb_graph.update_node(ORG_ID, doctrine_tags={"class_analysis": 0.0})
+        untheorized = _dispatch(verb_graph, services, ActionType.EDUCATE, CLASS_ID)
+        assert untheorized.consciousness_delta is not None
+        assert plain.consciousness_delta is not None
+        assert (
+            untheorized.consciousness_delta.collective_identity_delta
+            == plain.consciousness_delta.collective_identity_delta
+        )
+
+
 class TestEducateDoctrineStudy:
     """Educate(Doctrine) sub-verb — the Study order (DoctrineSystem Unit 7b).
 

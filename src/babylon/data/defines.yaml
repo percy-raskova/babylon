@@ -263,6 +263,7 @@ metabolism:
   entropy_factor: 1.2  # Game design: extraction costs more than it yields (thermodynamic inefficiency). (> 1.0, <= 3.0)
   overshoot_threshold: 1.0  # Game design: consumption/biocapacity ratio triggering ECOLOGICAL_OVERSHOOT. (> 0.0, <= 2.0)
   max_overshoot_ratio: 999.0  # Engineering: overflow cap. Prevents division-by-near-zero when biocapacity approaches 0. (> 0.0)
+  hysteresis_rate: 0.005  # Epoch 1 hysteresis doctrine: fraction of raw extraction that PERMANENTLY damages max_biocapacity. Must be > 0 — zero is 'Eden Mode' (infinite regenerative capacity), which violates the Tragedy of Inevitability. (>= 0.001, <= 0.01)
 
 # ---------------------------------------------------------------------
 # struggle — Struggle dynamics coefficients (Agency Layer - "George Floyd" Dynamic).

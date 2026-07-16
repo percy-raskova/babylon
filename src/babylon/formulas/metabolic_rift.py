@@ -53,6 +53,40 @@ def calculate_biocapacity_delta(
     return delta
 
 
+def calculate_hysteresis_damage(
+    extraction_intensity: float,
+    current_biocapacity: float,
+    hysteresis_rate: float,
+) -> float:
+    """Permanent max-biocapacity damage from one tick of extraction: D = E × B × h.
+
+    Epoch 1 hysteresis doctrine ("The Earth Remembers",
+    ``ai/epochs/epoch1/metabolic-slice.yaml``): each extraction event
+    permanently lowers ``Territory.max_biocapacity`` — the earth cannot
+    recover its original ceiling even if extraction stops entirely. The
+    damage base is the same raw extraction amount that drives the
+    :func:`calculate_biocapacity_delta` entropy cost, scaled by the
+    hysteresis rate instead of the entropy factor.
+
+    Args:
+        extraction_intensity: Current extraction pressure [0, 1]
+        current_biocapacity: Current biocapacity stock
+        hysteresis_rate: Fraction of raw extraction that permanently
+            damages max capacity (``defines.metabolism.hysteresis_rate``)
+
+    Returns:
+        Permanent reduction to apply to max_biocapacity (>= 0)
+
+    Examples:
+        >>> calculate_hysteresis_damage(0.5, 100.0, 0.005)
+        0.25
+        >>> calculate_hysteresis_damage(0.0, 100.0, 0.005)  # Nothing extracted
+        0.0
+    """
+    raw_extraction = extraction_intensity * current_biocapacity
+    return raw_extraction * hysteresis_rate
+
+
 def calculate_overshoot_ratio(
     total_consumption: float,
     total_biocapacity: float,

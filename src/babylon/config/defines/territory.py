@@ -233,6 +233,16 @@ class MetabolismDefines(BaseModel):
         gt=0.0,
         description="Engineering: overflow cap. Prevents division-by-near-zero when biocapacity approaches 0.",
     )
+    hysteresis_rate: float = Field(
+        default=0.005,
+        ge=0.001,
+        le=0.01,
+        description=(
+            "Epoch 1 hysteresis doctrine: fraction of raw extraction that PERMANENTLY "
+            "damages max_biocapacity. Must be > 0 — zero is 'Eden Mode' (infinite "
+            "regenerative capacity), which violates the Tragedy of Inevitability."
+        ),
+    )
 
 
 class CarceralDefines(BaseModel):

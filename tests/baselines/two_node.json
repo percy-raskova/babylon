@@ -1,8 +1,8 @@
 {
   "scenario": "two_node",
   "description": "Minimal worker vs owner",
-  "generated_at": "2026-07-15T10:57:41+00:00",
-  "defines_hash": "6b350c487ed596fb",
+  "generated_at": "2026-07-16T02:21:05+00:00",
+  "defines_hash": "6b388e99a563127b",
   "max_ticks": 52,
   "checkpoints": [
     {
@@ -43,31 +43,31 @@
     },
     {
       "tick": 30,
-      "p_w_wealth": 0.891735,
+      "p_w_wealth": 0.891736,
       "p_c_wealth": 0.362624,
       "c_b_wealth": 0.0,
       "c_w_wealth": 0.0,
       "imperial_rent_pool": 94.328894,
-      "exploitation_tension": 0.421817,
+      "exploitation_tension": 0.421818,
       "p_w_consciousness": 0.0,
       "p_w_p_revolution": 0.2,
       "p_w_active": true
     },
     {
       "tick": 40,
-      "p_w_wealth": 1.004323,
+      "p_w_wealth": 1.004324,
       "p_c_wealth": 0.334819,
       "c_b_wealth": 0.0,
       "c_w_wealth": 0.0,
       "imperial_rent_pool": 92.530626,
-      "exploitation_tension": 0.49995,
+      "exploitation_tension": 0.499951,
       "p_w_consciousness": 0.0,
       "p_w_p_revolution": 0.2,
       "p_w_active": true
     },
     {
       "tick": 50,
-      "p_w_wealth": 1.109134,
+      "p_w_wealth": 1.109136,
       "p_c_wealth": 0.314794,
       "c_b_wealth": 0.0,
       "c_w_wealth": 0.0,
@@ -79,12 +79,12 @@
     },
     {
       "tick": 52,
-      "p_w_wealth": 1.12922,
+      "p_w_wealth": 1.129222,
       "p_c_wealth": 0.311665,
       "c_b_wealth": 0.0,
       "c_w_wealth": 0.0,
       "imperial_rent_pool": 90.429777,
-      "exploitation_tension": 0.567398,
+      "exploitation_tension": 0.567399,
       "p_w_consciousness": 0.0,
       "p_w_p_revolution": 0.2,
       "p_w_active": true

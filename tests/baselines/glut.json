@@ -1,8 +1,8 @@
 {
   "scenario": "glut",
   "description": "High extraction with metabolic overshoot",
-  "generated_at": "2026-07-15T10:57:41+00:00",
-  "defines_hash": "b0dfc1c97de22468",
+  "generated_at": "2026-07-16T02:21:06+00:00",
+  "defines_hash": "da2f3bb595b7eea1",
   "max_ticks": 52,
   "checkpoints": [
     {
@@ -22,9 +22,9 @@
       "p_w_wealth": 0.739449,
       "p_c_wealth": 0.416134,
       "c_b_wealth": 1.551831,
-      "c_w_wealth": 58.520231,
+      "c_w_wealth": 58.568372,
       "imperial_rent_pool": 98.760374,
-      "exploitation_tension": 0.966398,
+      "exploitation_tension": 0.966425,
       "p_w_consciousness": 0.0,
       "p_w_p_revolution": 0.2,
       "p_w_active": true
@@ -34,9 +34,9 @@
       "p_w_wealth": 0.870165,
       "p_c_wealth": 0.147904,
       "c_b_wealth": 1.722301,
-      "c_w_wealth": 94.293483,
+      "c_w_wealth": 94.353168,
       "imperial_rent_pool": 97.069911,
-      "exploitation_tension": 0.979012,
+      "exploitation_tension": 0.979025,
       "p_w_consciousness": 0.0,
       "p_w_p_revolution": 0.2,
       "p_w_active": true
@@ -46,9 +46,9 @@
       "p_w_wealth": 0.992791,
       "p_c_wealth": 0.059087,
       "c_b_wealth": 1.722597,
-      "c_w_wealth": 124.604387,
+      "c_w_wealth": 124.63919,
       "imperial_rent_pool": 95.244944,
-      "exploitation_tension": 0.984077,
+      "exploitation_tension": 0.984081,
       "p_w_consciousness": 0.0,
       "p_w_p_revolution": 0.2,
       "p_w_active": true
@@ -58,9 +58,9 @@
       "p_w_wealth": 1.107924,
       "p_c_wealth": 0.032482,
       "c_b_wealth": 1.668543,
-      "c_w_wealth": 153.122265,
+      "c_w_wealth": 153.107997,
       "imperial_rent_pool": 93.402497,
-      "exploitation_tension": 0.987023,
+      "exploitation_tension": 0.987022,
       "p_w_consciousness": 0.0,
       "p_w_p_revolution": 0.2,
       "p_w_active": true
@@ -70,9 +70,9 @@
       "p_w_wealth": 1.216119,
       "p_c_wealth": 0.027247,
       "c_b_wealth": 1.600154,
-      "c_w_wealth": 181.010083,
+      "c_w_wealth": 180.927421,
       "imperial_rent_pool": 91.582429,
-      "exploitation_tension": 0.989012,
+      "exploitation_tension": 0.989007,
       "p_w_consciousness": 0.0,
       "p_w_p_revolution": 0.2,
       "p_w_active": true
@@ -82,9 +82,9 @@
       "p_w_wealth": 1.236971,
       "p_c_wealth": 0.027293,
       "c_b_wealth": 1.586172,
-      "c_w_wealth": 186.553683,
+      "c_w_wealth": 186.455208,
       "imperial_rent_pool": 91.222467,
-      "exploitation_tension": 0.989336,
+      "exploitation_tension": 0.989331,
       "p_w_consciousness": 0.0,
       "p_w_p_revolution": 0.2,
       "p_w_active": true

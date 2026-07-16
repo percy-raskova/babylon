@@ -574,15 +574,17 @@ _TERRITORY_TICK_METRICS: tuple[SeamEntry, ...] = (
         payload="tick_unemployment_rate",
         wire_keys=("unemployment_rate",),
         scope=SeamScope.TERRITORY,
-        owner_layer="domain.economics.tick (CountyEconomicState bootstrap default)",
+        owner_layer="domain.economics.tick (SQLiteBLSUnemploymentSource, LAUS U-3)",
         liveness_class=LivenessClass.DECLARED_CONDITIONAL,
         liveness_condition=_YEAR_BOUNDARY,
         dtype="float",
         read_paths=_TERRITORY_EMITTERS,
-        spec_ref="Epochs audit · Wave 2 · Gap-1",
+        spec_ref="Epochs audit · Wave 2 · Gap-1 · Wave 6 D8",
         notes=(
-            "Real and non-null, but FROZEN at 0.05 — no unemployment data source is "
-            "wired (no reserve_army_data_source in _bridge_economics_overrides)."
+            "Wave 6 D8: per-county BLS LAUS U-3 via services.unemployment_source "
+            "(wired in _bridge_economics_overrides + headless "
+            "_build_economics_overrides); falls back to the 0.05 prev-carry "
+            "default only when the county/year row is absent (honest None)."
         ),
     ),
     SeamEntry(

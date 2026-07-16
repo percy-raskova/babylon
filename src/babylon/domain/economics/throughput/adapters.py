@@ -35,6 +35,7 @@ from babylon.reference.schema import (
     DimOwnership,
     DimTime,
     FactBEACountyGDP,
+    FactBLSUnemploymentDecomposition,
     FactQcewAnnual,
     FactQcewCountyRollup,
 )
@@ -509,6 +510,59 @@ class SQLiteQCEWCountyNAICSSource:
 
 __all__ = [
     "SQLiteBEACountyGDPSource",
+    "SQLiteBLSUnemploymentSource",
     "SQLiteQCEWCountyNAICSSource",
     "NAICS_2DIGIT_SECTORS",
 ]
+
+
+class SQLiteBLSUnemploymentSource:
+    """County U-3 unemployment rate from BLS LAUS (labor-data wire, 2026-07-15).
+
+    Mirrors :class:`SQLiteQCEWCountyNAICSSource`'s Fix-C pattern: real
+    per-county data behind an optional services override
+    (``services.unemployment_source``), consumed by the tick pipeline in
+    place of the frozen ``0.05`` placeholder. Honest ``None`` when the
+    county-year row is absent — never a fabricated rate (Constitution
+    III.11). Only the U-3 column is trustworthy in the reference DB (the
+    U-6/PTER/discouraged decomposition columns are all zero); this source
+    deliberately exposes U-3 alone.
+    """
+
+    def __init__(self, session_factory: Callable[[], Session]) -> None:
+        """Store the SQLAlchemy session factory (shared with the other adapters)."""
+        self._session_factory = session_factory
+
+    def get_county_unemployment_rate(self, fips: str, year: int) -> float | None:
+        """U-3 rate = ``unemployed_u3 / labor_force`` for a county-year.
+
+        Args:
+            fips: 5-character county FIPS code.
+            year: Calendar year.
+
+        Returns:
+            The U-3 unemployment rate in [0, 1], or ``None`` when the
+            county, year, or row is absent or the labor force is zero.
+        """
+        with self._session_factory() as session:
+            county = session.query(DimCounty).filter(DimCounty.fips == fips).first()
+            if county is None:
+                return None
+            time_dim = session.query(DimTime).filter(DimTime.year == year).first()
+            if time_dim is None:
+                return None
+
+            row = (
+                session.query(
+                    FactBLSUnemploymentDecomposition.unemployed_u3,
+                    FactBLSUnemploymentDecomposition.labor_force,
+                )
+                .filter(
+                    FactBLSUnemploymentDecomposition.county_id == county.county_id,
+                    FactBLSUnemploymentDecomposition.time_id == time_dim.time_id,
+                )
+                .first()
+            )
+            if row is None or row[1] is None or row[1] <= 0 or row[0] is None:
+                return None
+            return float(row[0]) / float(row[1])

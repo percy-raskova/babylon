@@ -283,7 +283,10 @@ TABLE: dict[str, TablePolicy] = {
         "Found via verification grep beyond the original recon inventory: "
         "read directly by tests/integration/test_db_initialization_queries.py "
         "(Michigan-data assertion joining county_id -> dim_county.state_id). "
-        "168 of 6,570 rows are Michigan.",
+        "168 of 6,570 rows are Michigan. WARNING (2026-07-15, owner-queue "
+        "item 59): every numeric column is 0 in ALL rows, coverage 2010-2011 "
+        "only — a Feature-021 loader placeholder. Do NOT wire an engine "
+        "consumer to this table until real ownership data lands.",
         county_columns=("county_id",),
     ),
     "fact_lodes_commuter_flow": TablePolicy(
@@ -359,6 +362,21 @@ TABLE: dict[str, TablePolicy] = {
         "National monthly trade series (joined dim_country) read by "
         "sqlite_hydrator.py; tiny (44,808 rows, 1.34 MB).",
     ),
+    "fact_hickel_drain": TablePolicy(
+        "full",
+        "Read unconditionally by sqlite_hydrator._copy_hickel_drain (same "
+        "hydration path as FAF — a missing table dies ENGINE_FAILURE in the "
+        "Determinism Bundle, per the ci-data-v1 proving-run lesson). The "
+        "table is EMPTY in the source (0 rows, schema-only; the Hickel "
+        "drain data never landed) so FULL costs nothing and keeps the "
+        "hydrator's SELECT alive.",
+    ),
+    "fact_ricci_unequal_exchange": TablePolicy(
+        "full",
+        "Read unconditionally by sqlite_hydrator._copy_ricci_unequal — same "
+        "missing-table ENGINE_FAILURE reasoning as fact_hickel_drain above; "
+        "also EMPTY in the source (0 rows, schema-only).",
+    ),
     "fact_fred_wealth_levels": TablePolicy(
         "full",
         "Found via verification grep beyond the original recon inventory: "
@@ -390,7 +408,14 @@ TABLE: dict[str, TablePolicy] = {
     # -- fact_* — default SKIP: not referenced by any src/ module or test. --
     "fact_atus_reproductive_labor": TablePolicy("skip", _UNREFERENCED_REASON),
     "fact_bls_productivity": TablePolicy("skip", _UNREFERENCED_REASON),
-    "fact_bls_unemployment_decomposition": TablePolicy("skip", _UNREFERENCED_REASON),
+    "fact_bls_unemployment_decomposition": TablePolicy(
+        "full",
+        "Wave 6 D8: read by SQLiteBLSUnemploymentSource "
+        "(domain/economics/throughput/adapters.py) — per-county BLS LAUS "
+        "U-3 wired into the tick pipeline's unemployment_rate via "
+        "services.unemployment_source (web bridge + headless runner); "
+        "tiny (51,404 rows, ~1 MB).",
+    ),
     "fact_census_commute": TablePolicy("skip", _UNREFERENCED_REASON),
     "fact_census_education": TablePolicy("skip", _UNREFERENCED_REASON),
     "fact_census_employment": TablePolicy("skip", _UNREFERENCED_REASON),

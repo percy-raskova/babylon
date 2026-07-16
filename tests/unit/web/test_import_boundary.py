@@ -33,6 +33,11 @@ ALLOWED_FILES = {
     # migrations remain forbidden.
     "game/migrations/0002_hex_states_schema.py",
     "game/migrations/0003_spec037_simulation_tables.py",
+    # heavy-tier fix: 0014 executes the engine-owned class_snapshot DDL
+    # (CLASS_SNAPSHOT_DDL + CLASS_SNAPSHOT_INDEXES_DDL) so a from-zero
+    # migrate creates the table 0015+ reference — same schema-DDL
+    # exception as 0002/0003. Data/logic imports remain forbidden.
+    "game/migrations/0014_classsnapshot.py",
     # spec-061 FR-009: /health/detail/ is a staff-gated diagnostic that
     # REPORTS engine configuration (babylon.config.llm_config); it never
     # invokes engine mechanics. Deliberate, read-only exception.

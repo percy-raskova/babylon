@@ -11,6 +11,7 @@ import pytest
 
 from babylon.persistence.postgres_schema import (
     CLASS_SNAPSHOT_DDL,
+    CLASS_SNAPSHOT_INDEXES_DDL,
     COMMUNITY_SNAPSHOT_DDL,
     ECONOMIC_SUMMARY_DDL,
     EDGE_SNAPSHOT_DDL,
@@ -182,9 +183,12 @@ class TestSpec037Indexes:
     """Spec 037 index declarations."""
 
     def test_index_count(self) -> None:
-        """28 indexes defined for the 12 tables (incl. hex_latest + hex_substrate;
-        Wave 2 W2.5b adds 3 for class_snapshot)."""
-        assert len(SPEC037_INDEXES_DDL) == 28
+        """25 indexes defined for the 12 tables (incl. hex_latest + hex_substrate).
+        The 3 class_snapshot indexes (Wave 2 W2.5b) live in
+        CLASS_SNAPSHOT_INDEXES_DDL so migration 0014 can ship table + indexes
+        together — the aggregate bootstrap list still includes both tuples."""
+        assert len(SPEC037_INDEXES_DDL) == 25
+        assert len(CLASS_SNAPSHOT_INDEXES_DDL) == 3
 
     def test_all_tables_have_tick_index(self) -> None:
         """Every snapshot table should have a game_id+tick index."""
@@ -231,4 +235,8 @@ class TestSpec037AggregatedDDL:
 
     def test_spec037_indexes_in_aggregate(self) -> None:
         for idx in SPEC037_INDEXES_DDL:
+            assert idx in POSTGRES_SCHEMA_DDL
+
+    def test_class_snapshot_indexes_in_aggregate(self) -> None:
+        for idx in CLASS_SNAPSHOT_INDEXES_DDL:
             assert idx in POSTGRES_SCHEMA_DDL

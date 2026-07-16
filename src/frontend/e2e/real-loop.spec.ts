@@ -31,21 +31,13 @@
  * submit against a reused session collides with that unique constraint;
  * a session created fresh by this spec avoids that.
  *
- * KNOWN DEFECT (spec-110 B6, found 2026-07-09): every test here needs the
- * "chromium-authenticated" project's storageState, which the "setup"
- * project can never produce — see auth.setup.ts's docstring (Django's
- * CSRF_TRUSTED_ORIGINS/CORS_ALLOWED_ORIGINS 403s any login origin but
- * 5173, including the cockpit's own 5174). Whole suite `fixme` until
- * that `web/` settings allowlist is fixed.
- *
- * UNVERIFIED against a live backend (spec-113 Lane G handoff, 2026-07-11):
- * this needs the live Django/Postgres stack this lane doesn't have, AND
- * the current dev-worktree environment independently fails to load ANY
- * `/game/:id` route at all (see `inspection-stack.spec.ts`'s docstring —
- * reproduced against `briefing-map-smoke.spec.ts`/`map-lens-cycling.spec.ts`
- * too, not a Lane G regression). Rewritten strictly against the real
- * testids/defaults confirmed by reading `ActionDock.tsx`/`EventTray.tsx`/
- * `BottomDrawer.tsx`/`uiSlice.ts` — Phase V must run this live.
+ * HISTORY (spec-110 B6, found 2026-07-09, RESOLVED d5f270b2): this suite
+ * was once whole-suite `fixme` because Django's CSRF/CORS allowlist 403'd
+ * every login origin but 5173 — see auth.setup.ts's docstring for the fix.
+ * The spec-113 Lane G "UNVERIFIED against a live backend" caveat is also
+ * history: the suite ran live 7/7 through the real UI on 2026-07-09
+ * (@30fb8241) and has run against the live stack since. No `fixme`
+ * remains.
  */
 import { expect, test } from "./fixtures";
 

@@ -12,12 +12,10 @@
  * Runs on the "chromium-authenticated" project (storageState from
  * auth.setup.ts) against its own fresh wayne_county session.
  *
- * KNOWN DEFECT (spec-110 B6, found 2026-07-09): every test here needs the
- * "chromium-authenticated" project's storageState, which the "setup"
- * project can never produce — see auth.setup.ts's docstring (Django's
- * CSRF_TRUSTED_ORIGINS/CORS_ALLOWED_ORIGINS 403s any login origin but
- * 5173, including the cockpit's own 5174). Whole suite `fixme` until
- * that `web/` settings allowlist is fixed.
+ * HISTORY (spec-110 B6, found 2026-07-09, RESOLVED d5f270b2): this suite
+ * was once whole-suite `fixme` because Django's CSRF/CORS allowlist 403'd
+ * every login origin but 5173 — see auth.setup.ts's docstring for the fix.
+ * No `fixme` remains; the suite runs for real against the live stack.
  */
 import { expect, test, createWayneCountyGame } from "./fixtures";
 

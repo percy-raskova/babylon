@@ -22,6 +22,7 @@ import pytest
 
 from babylon.domain.economics.melt.adapters import (
     SQLiteBEANationalGDPSource,
+    SQLiteCPISource,
     SQLiteQCEWNationalEmploymentSource,
 )
 from babylon.reference.database import get_normalized_session_factory
@@ -172,3 +173,32 @@ class TestSQLiteQCEWNationalEmploymentSourceCachesPerYear:
             "a second get_national_employment() call for an already-resolved "
             "year must not open another session"
         )
+
+
+class TestSQLiteCPISource:
+    """Integration tests for the Wave 6 C4 real-wage CPI deflation adapter.
+
+    ``fact_fred_national``/``dim_fred_series`` are already loaded full-table
+    (``tools/make_reference_subset.py`` policies) — CPIAUCSL is a real,
+    ~180-row monthly series in the reference DB.
+    """
+
+    def test_get_annual_cpi_returns_real_value(self, session_factory):
+        cpi_source = SQLiteCPISource(session_factory)
+
+        value = cpi_source.get_annual_cpi(2015)
+
+        assert value is not None
+        assert 100 < value < 400, f"CPIAUCSL(2015) {value} outside sanity bounds"
+
+    def test_get_cpi_deflator_at_base_year_is_one(self, session_factory):
+        cpi_source = SQLiteCPISource(session_factory)
+
+        deflator = cpi_source.get_cpi_deflator(2015)
+
+        assert deflator == pytest.approx(1.0)
+
+    def test_get_cpi_deflator_unavailable_year_returns_none(self, session_factory):
+        cpi_source = SQLiteCPISource(session_factory)
+
+        assert cpi_source.get_cpi_deflator(1800) is None

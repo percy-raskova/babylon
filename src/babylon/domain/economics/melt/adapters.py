@@ -39,10 +39,12 @@ from sqlalchemy import func
 
 from babylon.reference.schema import (
     DimBEAIndustry,
+    DimFredSeries,
     DimOwnership,
     DimTime,
     FactBEACountyGDP,
     FactBEANationalIndustry,
+    FactFredNational,
     FactQcewCountyRollup,
 )
 
@@ -253,7 +255,120 @@ class SQLiteQCEWNationalEmploymentSource:
             return None
 
 
+#: Default deflation base year for :meth:`SQLiteCPISource.get_cpi_deflator`.
+#: 2015 matches this codebase's de facto reference year (the example/seed year
+#: used throughout ``tick/types.py`` docstrings, ``initializer.py``'s example,
+#: and ``gamma/adapters.py``'s care-hours anchor) rather than introducing a new
+#: arbitrary base. Distinct from ``melt.data_sources.CPIDataSource``'s 2024
+#: ``CPI_BASE_YEAR`` (still unwired) — that protocol serves a different
+#: consumer (the $12/hr Census-poverty ``V_reproduction`` floor, anchored to
+#: *current* 2024 dollars); this one serves the real-wage series (Wave 6 C4).
+CPI_DEFLATOR_BASE_YEAR: int = 2015
+
+
+class SQLiteCPISource:
+    """SQLite adapter for CPIAUCSL-based real-wage deflation (Wave 6 C4).
+
+    Epochs audit Wave 6 item C4 ("Real-wage CPI deflation series — closes the
+    'wages never naked' gap"): every wage/wealth figure the tick pipeline has
+    produced so far is nominal-only. This adapter reads the FRED CPIAUCSL
+    series already loaded in ``fact_fred_national``/``dim_fred_series`` (see
+    ``sqlite_hydrator._copy_fred`` for the identical AVG-across-months-in-year
+    convention) and exposes a base-year deflator so a nominal county wage can
+    be converted to base-year real dollars: ``real = nominal * deflator``.
+
+    Distinct from ``babylon.domain.economics.melt.data_sources.CPIDataSource``
+    (a still-unwired protocol for the 2024-based ``V_reproduction`` subsistence
+    floor) — this class is the Wave 6 C4-specific, 2015-based real-wage series
+    consumer, wired via ``services.cpi_source``.
+
+    Usage:
+        >>> cpi = SQLiteCPISource(session_factory)
+        >>> cpi.get_annual_cpi(2015)
+        237.02  # CPIAUCSL index (base 1982-84=100), avg of monthly rows
+        >>> cpi.get_cpi_deflator(2011)
+        1.0876...  # multiply a 2011 nominal wage by this for 2015-real dollars
+    """
+
+    def __init__(self, session_factory: Callable[[], Session]) -> None:
+        """Initialize the adapter.
+
+        Args:
+            session_factory: Callable that returns a SQLAlchemy session.
+        """
+        self._session_factory = session_factory
+        # Per-year cache — mirrors SQLiteBEANationalGDPSource/
+        # SQLiteQCEWNationalEmploymentSource's caches above (2026-07-15 perf
+        # fix): get_cpi_deflator(year) queries both `year` and the base year
+        # every call, and the tick pipeline calls it once per county per
+        # year-boundary tick — an uncached adapter would re-run the identical
+        # AVG query for the base year on every county, every tick.
+        self._cpi_cache: dict[int, float | None] = {}
+
+    def get_annual_cpi(self, year: int) -> float | None:
+        """Get the annual-average CPIAUCSL index value for a given year.
+
+        Averages every ``fact_fred_national`` CPIAUCSL row joined to
+        ``dim_time.year == year`` — the same AVG-across-months convention
+        ``sqlite_hydrator._copy_fred`` uses to derive its annual MELT proxy.
+
+        Args:
+            year: Calendar year.
+
+        Returns:
+            The average CPIAUCSL index value for ``year``, or ``None`` when
+            no CPIAUCSL row exists for that year (honest absence, never a
+            fabricated index — Constitution III.11).
+        """
+        if year in self._cpi_cache:
+            return self._cpi_cache[year]
+
+        result = self._compute_annual_cpi(year)
+        self._cpi_cache[year] = result
+        return result
+
+    def _compute_annual_cpi(self, year: int) -> float | None:
+        """Uncached body of :meth:`get_annual_cpi` — see there for the query."""
+        with self._session_factory() as session:
+            avg_value = (
+                session.query(func.avg(FactFredNational.value))
+                .join(DimFredSeries, DimFredSeries.series_id == FactFredNational.series_id)
+                .join(DimTime, DimTime.time_id == FactFredNational.time_id)
+                .filter(DimFredSeries.series_code == "CPIAUCSL", DimTime.year == year)
+                .scalar()
+            )
+            if avg_value is None:
+                return None
+            return float(avg_value)
+
+    def get_cpi_deflator(self, year: int, base_year: int = CPI_DEFLATOR_BASE_YEAR) -> float | None:
+        """Get the base-year real-wage deflator for ``year``.
+
+        ``deflator = CPI(base_year) / CPI(year)`` — multiplying a nominal
+        ``year``-dollar wage by this converts it to ``base_year``-real dollars
+        (a wage that grew only with inflation carries a deflator of 1.0 at
+        every year once graphed against itself).
+
+        Args:
+            year: Calendar year to deflate.
+            base_year: Reference year real dollars are expressed in (default
+                :data:`CPI_DEFLATOR_BASE_YEAR`, 2015).
+
+        Returns:
+            The deflator ratio, or ``None`` when either year's CPI is
+            unavailable or ``CPI(year) == 0`` (division-by-zero guard) —
+            honest ``None``, never a fabricated ratio.
+        """
+        cpi_year = self.get_annual_cpi(year)
+        cpi_base = self.get_annual_cpi(base_year)
+        if cpi_year is None or cpi_base is None or cpi_year == 0:
+            return None
+        return cpi_base / cpi_year
+
+
 __all__ = [
+    "CPI_DEFLATOR_BASE_YEAR",
     "SQLiteBEANationalGDPSource",
+    "SQLiteCPISource",
     "SQLiteQCEWNationalEmploymentSource",
 ]

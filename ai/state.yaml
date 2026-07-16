@@ -2,9 +2,45 @@
 # What exists vs what's planned - KEEP THIS UPDATED
 
 meta:
-  version: "2.34.0"  # 2.28.0 lives on feature/19-emergent-class-partition (Program 19 Phase 0+1)
+  version: "2.35.0"  # 2.28.0 lives on feature/19-emergent-class-partition (Program 19 Phase 0+1)
   updated: "2026-07-16"
   truth_status: |
+    (2026-07-16 ~12:20pm) COPACETIC VERIFICATION COMPLETE (owner-invoked
+    verification-before-completion sweep over all six waves; PRs #196-#199 merged, stack
+    empty, dev @ a4a2bf10). Fresh gates: mise run check exit 0 (10,328 unit tests) +
+    qa:regression 5/5 byte-identical UNMODIFIED + seam/coverage/partition sentinel CLIs
+    exit 0 (registry 83 -> 88 observables) + web:check 1180/1180 vitest. A 10-stream
+    read-only ultracode audit re-verified the six waves claim-by-claim: 52 VERIFIED /
+    7 PARTIAL / 1 FAILED of 60 claims; every PARTIAL dispositioned, the FAILED fixed.
+    THREE REAL DEFECTS FOUND AND FIXED: (1) nightly stub red — two balkanization
+    _MetabolismDefines test stubs lacked hysteresis_rate (9 integration failures every
+    night since PR #192; integration tests run ONLY in nightly so fast gates were blind;
+    PR #196, Non-Unit leg green twice since); (2) C4 deflator evaporation —
+    _carry_tick_dynamics_flows re-injected every tick_* sibling EXCEPT
+    tick_real_wage_deflator, so the web path lost the CPI deflator on every round trip
+    (real wage None forever, rehydrate fell back to 1.0; headless unaffected = why unit
+    gates stayed green; red-green pinned in test_carry_group_a_b.py, PR #196); (3) the
+    doctrine tree was wired end-to-end (bridge -> endpoints.ts -> DoctrineTakeover) with
+    ZERO Seam Observatory rows — the INVERSE of an orphan declaration; SeamScope.DOCTRINE
+    + 5 rows (PR #196 + #197 folding Copilot's correct per-key-dtype review). NIGHTLY
+    TRUTH: manual dispatches exposed the workflow had NEVER had a green run — Postgres
+    Integration red since its 2026-07-12 maiden run (UndefinedTable node_state: the job
+    ran Django migrate but never db:bootstrap/POSTGRES_SCHEMA_DDL; fixed PR #198 ->
+    FIRST-EVER GREEN in run 29513812589). That run: ALL FOUR DAILY LEGS GREEN (Non-Unit,
+    Postgres Integration, Security, Reference-Data) — tonight's 06:00 UTC schedule should
+    be the first green scheduled Nightly. Weekly-only legs stay honest: sim-artifacts
+    fixed twice-over (#198 refdb fetch, #199 postgres provisioning) but UNPROVEN until
+    the Sunday leg; MUTATION RETIRED FROM CI by owner ruling (#199 — never completed on a
+    hosted runner; runs LOCALLY via tools/run_mutmut.py AFTER the owner-prompted test
+    refactor, do not start it unprompted); py3.13 = runner-shutdown flake x2 (~14 min in,
+    ZERO failing tests both times, suspect hosted-runner memory on the single-proc -vv
+    full suite; pre-existing since the maiden weekly run; left alone per the owner's
+    stop-fixing-CI ruling). Accepted residue (owner-triage): main.yml fast-gate lacks
+    ci.yml's check:seams step; actionsSlice.ts:62 + fetchVerbTargets.ts:44 hand-build
+    verb URLs off the endpoints manifest (verb-generic by design); W1.5 nuance — the
+    seed_sovereigns.json territory IDs were never fixed, the FR-040b SOV_EXTERIOR_NULL
+    fallback carries all claims (the literal-match pass is a documented no-op); a dead
+    '# Placeholder' at tick/system/__init__.py:1522 (financial_crisis_assessor unwired).
     (2026-07-16 ~10:30am) WAVES 5+6 COMPLETE (PR #195, feature/eh-phase2-reveal-gating).
     EH PHASE 2 EXECUTED per ruling 6 (owner chose WorldState.player_org_id, graph-metadata
     channel): player-relative C_p; class-inspector reveal gate per the corpus visibility

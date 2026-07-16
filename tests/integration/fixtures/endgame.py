@@ -1,11 +1,17 @@
 """End-game detector fixtures for spec-065 T060/T061/T062.
 
-Two detectors:
+Detectors:
 
 * :class:`ImperialCollapseAtTick250` — fires ``IMPERIAL_COLLAPSE`` on tick 250.
 * :class:`NeverFires` — returns None forever.
+* :class:`FireAtTick` — parameterized fire tick, for direct instantiation.
+* :class:`FireAtTick3` — fires ``IMPERIAL_COLLAPSE`` on tick 3; zero-arg
+  constructor so it is reachable via ``--endgame-detector``'s dotted-path
+  resolution (:meth:`WorldStateBridge.set_endgame_detector` instantiates
+  with no args, so the parameterized :class:`FireAtTick` cannot be aimed
+  at a non-default tick that way).
 
-Both implement the implicit ``check(world, tick) -> EndgameEvent | None``
+All implement the implicit ``check(world, tick) -> EndgameEvent | None``
 protocol used by :meth:`WorldStateBridge.poll_endgame`.
 """
 
@@ -44,6 +50,24 @@ class FireAtTick(ImperialCollapseAtTick250):
         if tick == self._fire_at:
             return {
                 "tick": self._fire_at,
+                "condition": "IMPERIAL_COLLAPSE",
+                "details": {"trigger": "test_fixture"},
+            }
+        return None
+
+
+class FireAtTick3:
+    """Detector that always fires IMPERIAL_COLLAPSE at tick 3.
+
+    Zero-arg constructor (unlike :class:`FireAtTick`) so it can be
+    resolved via the ``--endgame-detector`` dotted-path mechanism, which
+    instantiates the resolved class with no constructor arguments.
+    """
+
+    def check(self, world: Any, tick: int) -> dict[str, Any] | None:  # noqa: ARG002
+        if tick == 3:
+            return {
+                "tick": 3,
                 "condition": "IMPERIAL_COLLAPSE",
                 "details": {"trigger": "test_fixture"},
             }

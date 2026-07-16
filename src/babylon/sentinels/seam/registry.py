@@ -1912,25 +1912,67 @@ _DOCTRINE_METRICS: tuple[SeamEntry, ...] = (
     ),
     SeamEntry(
         payload="theoretical_labor",
-        wire_keys=("theoretical_labor", "study_target_id"),
+        wire_keys=("theoretical_labor",),
         scope=SeamScope.DOCTRINE,
-        owner_layer="engine (DoctrineSystem @14.7) + the Study verb (Unit 7b)",
+        owner_layer="engine (DoctrineSystem @14.7 — per-tick TL accrual)",
         liveness_class=LivenessClass.DECLARED_CONDITIONAL,
-        dtype="json",
+        dtype="float",
         write_site=(
             "src/babylon/engine/systems/doctrine.py::DoctrineSystem.step "
-            "(accrue_theoretical_labor per tick); study_target_id is the "
-            "player's standing Educate(Doctrine) order set by the Unit 7b "
-            "study POST"
+            "(accrue_theoretical_labor per tick from cadre + study allocation)"
         ),
         read_paths=_DOCTRINE_EMITTERS,
         derivation_site="web/game/engine_bridge.py::EngineBridge.get_doctrine_tree",
-        spec_ref="ADR073 Doctrine Tree · Units 4-7b (PR #190)",
+        spec_ref="ADR073 Doctrine Tree · Units 4-6 (PR #190)",
         notes=(
-            "TL accrues 0.0-up once a player faction exists; study_target_id "
-            "is an honest null until the player issues a Study order (the "
-            "canvas then stays read-only rather than offering an "
-            "unactionable affordance)."
+            "TL accrues 0.0-up once a player faction exists; 0.0 before then "
+            "(the honest starting position, never fabricated progress)."
+        ),
+    ),
+    SeamEntry(
+        payload="study_target_id",
+        wire_keys=("study_target_id",),
+        scope=SeamScope.DOCTRINE,
+        owner_layer="the Study verb (Unit 7b POST — player-set org state)",
+        liveness_class=LivenessClass.DECLARED_CONDITIONAL,
+        dtype="str",
+        write_site=(
+            "the Unit 7b study POST sets Organization.study_target_id (the "
+            "player's standing Educate(Doctrine) order); DoctrineSystem.step "
+            "reads it to direct TL accrual"
+        ),
+        read_paths=_DOCTRINE_EMITTERS,
+        derivation_site="web/game/engine_bridge.py::EngineBridge.get_doctrine_tree",
+        spec_ref="ADR073 Doctrine Tree · Unit 7b (PR #190)",
+        notes=(
+            "Honest null until the player issues a Study order (the canvas "
+            "then stays read-only rather than offering an unactionable "
+            "affordance). Split from the theoretical_labor row (PR #196 "
+            "Copilot review): one payload per wire key so each dtype is "
+            "declared honestly (str|null here, float there)."
+        ),
+    ),
+    SeamEntry(
+        payload="faction_id",
+        wire_keys=("faction_id",),
+        scope=SeamScope.DOCTRINE,
+        owner_layer="bridge (player-faction resolution at serialization time)",
+        liveness_class=LivenessClass.DECLARED_CONDITIONAL,
+        dtype="str",
+        write_site=(
+            "none — resolved per request by "
+            "EngineBridge._player_doctrine_org (prefers the is_player "
+            "faction; falls back to any org that has begun acquiring)"
+        ),
+        read_paths=_DOCTRINE_EMITTERS,
+        derivation_site="web/game/engine_bridge.py::EngineBridge._player_doctrine_org",
+        spec_ref="ADR073 Doctrine Tree · Unit 7b (PR #190)",
+        notes=(
+            "The acting faction the canvas submits Educate(Doctrine) for. "
+            "Honest null when no player faction exists (III.11). Declared "
+            "post-merge (PR #196 Copilot review): it is emitted by "
+            "get_doctrine_tree, so leaving it undeclared would recreate the "
+            "exact inverse-orphan gap this scope was added to close."
         ),
     ),
 )

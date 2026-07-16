@@ -85,3 +85,41 @@ class TestQCEWMedianHourlyWage:
 
     def test_unknown_county_returns_none(self, wage_source) -> None:  # type: ignore[no-untyped-def]
         assert wage_source.get_county_median_hourly_wage("99999", TEST_YEAR) is None
+
+
+class TestSQLiteCensusIncomeSource:
+    """Real-DB contract for the top/bottom ACS B19001 bracket-ratio read.
+
+    Wave 6 C3 (epochs audit item 167): ``fact_census_income`` had been
+    "collapsed to SUM" with no bracket-aware reader. This adapter's ratio is
+    a household-COUNT proxy (top-band households / bottom-band households),
+    not an income-level percentile ratio — see
+    ``SQLiteCensusIncomeSource``'s docstring for the exact band choice and
+    the race='Total' aggregation rationale.
+    """
+
+    @pytest.fixture(scope="class")
+    def income_source(self):  # type: ignore[no-untyped-def]
+        from babylon.domain.economics.throughput.adapters import SQLiteCensusIncomeSource
+
+        return SQLiteCensusIncomeSource(get_normalized_session_factory())
+
+    def test_wayne_2015_ratio_is_plausible(self, income_source) -> None:  # type: ignore[no-untyped-def]
+        """Wayne 2015 top/bottom bracket ratio must exist and be sane.
+
+        This is a wiring regression guard (bounds wide enough to tolerate a
+        county with either far more or far fewer high-income households than
+        low-income ones), not a data-accuracy assertion.
+        """
+        ratio = income_source.get_county_bracket_ratio(WAYNE, TEST_YEAR)
+
+        assert ratio is not None, "Wayne 2015 should have fact_census_income rows"
+        assert 0.0 < ratio < 1000.0, f"bracket ratio {ratio} outside sanity band"
+
+    def test_unavailable_year_returns_none(self, income_source) -> None:  # type: ignore[no-untyped-def]
+        """A year outside the loaded range is an honest None, never a ratio."""
+        assert income_source.get_county_bracket_ratio(WAYNE, 1900) is None
+
+    def test_unknown_county_returns_none(self, income_source) -> None:  # type: ignore[no-untyped-def]
+        """A FIPS with no dim_county row is an honest None."""
+        assert income_source.get_county_bracket_ratio("99999", TEST_YEAR) is None

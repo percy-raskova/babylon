@@ -588,6 +588,24 @@ _TERRITORY_TICK_METRICS: tuple[SeamEntry, ...] = (
         ),
     ),
     SeamEntry(
+        payload="tick_bracket_ratio",
+        wire_keys=("bracket_ratio",),
+        scope=SeamScope.TERRITORY,
+        owner_layer="domain.economics.tick (SQLiteCensusIncomeSource, ACS B19001)",
+        liveness_class=LivenessClass.DECLARED_CONDITIONAL,
+        liveness_condition=_YEAR_BOUNDARY,
+        dtype="float",
+        read_paths=_TERRITORY_EMITTERS,
+        spec_ref="Epochs audit · item 167 · Wave 6 C3",
+        notes=(
+            "Wave 6 C3: per-county top/bottom ACS B19001 income-bracket "
+            "household ratio via services.income_source (wired in "
+            "_bridge_economics_overrides); falls back to the 0.0 prev-carry "
+            "not-computed default only when the county/year row or the "
+            "race='Total' aggregate is absent (honest None)."
+        ),
+    ),
+    SeamEntry(
         payload="tick_median_wage",
         wire_keys=("tick_median_wage",),
         scope=SeamScope.TERRITORY,

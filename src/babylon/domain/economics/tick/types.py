@@ -292,6 +292,8 @@ class CountyEconomicState(BaseModel):
         phi_hour: Imperial rent per hour (Feature 013).
         crisis_state: Crisis lifecycle state (Feature 018).
         bifurcation_risk: Political trajectory indicator (Feature 018).
+        bracket_ratio: Top/bottom income-bracket household ratio (Wave 6 C3);
+            0.0 means not-computed (no wired ``income_source`` yet).
 
     Example:
         >>> state = CountyEconomicState(
@@ -320,6 +322,14 @@ class CountyEconomicState(BaseModel):
     employment: float = Field(..., ge=0, description="Total county employment")
     class_distribution: ClassDistribution = Field(..., description="Five-class share distribution")
     phi_hour: float = Field(..., ge=0, description="Imperial rent per hour")
+    bracket_ratio: float = Field(
+        default=0.0,
+        ge=0.0,
+        description=(
+            "Top/bottom income-bracket household ratio (Wave 6 C3, ACS B19001); "
+            "0.0 = not computed (no wired income_source)"
+        ),
+    )
     crisis_state: CrisisState = Field(
         default_factory=CrisisState.normal,
         description="Crisis lifecycle state for this county-year (Feature 018)",

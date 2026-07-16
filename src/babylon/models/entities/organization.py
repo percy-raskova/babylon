@@ -217,6 +217,10 @@ class Organization(BaseModel):
         default_factory=dict,
         description="Decaying per-tag doctrine strength accumulator (Ruling 3: 0.55%/tick decay)",
     )
+    congress_tag_snapshot: dict[DoctrineTag, float] = Field(
+        default_factory=dict,
+        description="Tag state at the last Party Congress — the delta baseline for the next congress's purge odds (Ruling 5 / DT-5)",
+    )
 
     @model_validator(mode="after")
     def _validate_constraints(self) -> Organization:

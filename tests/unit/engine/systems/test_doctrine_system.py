@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import random
 
 import pytest
 
@@ -152,6 +153,54 @@ class TestComputeDoctrineOverGraph:
         graph = state.to_graph()
         assert compute_doctrine(graph, defines, tree) == []
 
+    def test_congress_tick_purges_and_rebaselines(
+        self, tree: DoctrineTree, defines: DoctrineDefines
+    ) -> None:
+        class _AlwaysSucceed(random.Random):
+            def random(self) -> float:  # noqa: A003 - mirrors random.Random
+                return 0.0
+
+        trapped = _org(
+            acquired_doctrine_ids=("class_consciousness", "urban_guerrilla", "adventurism"),
+            theoretical_labor=400.0,
+            doctrine_tags={DoctrineTag.MILITANCY: 5.0},
+        )
+        state = WorldState(
+            tick=0,
+            entities={},
+            territories={},
+            relationships=[],
+            organizations={"vanguard": trapped},
+        )
+        graph = state.to_graph()
+        interval = defines.congress_interval_ticks
+        events = compute_doctrine(graph, defines, tree, tick=interval, rng=_AlwaysSucceed())
+
+        assert ("vanguard", "adventurism", "escaped") in events
+        node = graph.nodes["vanguard"]
+        assert "adventurism" not in node["acquired_doctrine_ids"]
+        # the congress re-baselined the snapshot for the next period
+        assert node["congress_tag_snapshot"]
+        # attempt cost spent, then the ordinary tick step ran on top
+        assert node["theoretical_labor"] < 400.0 - defines.trap_escape_tl + 1.0
+
+    def test_non_congress_tick_never_touches_the_snapshot(
+        self, tree: DoctrineTree, defines: DoctrineDefines
+    ) -> None:
+        state = WorldState(
+            tick=0,
+            entities={},
+            territories={},
+            relationships=[],
+            organizations={"vanguard": _org()},
+        )
+        graph = state.to_graph()
+        compute_doctrine(
+            graph, defines, tree, tick=defines.congress_interval_ticks - 1, rng=random.Random(0)
+        )
+        # model default is {} — a non-congress tick must not update it
+        assert graph.nodes["vanguard"]["congress_tag_snapshot"] == {}
+
 
 class TestDoctrineDeterminism:
     """Determinism-in-motion for the doctrine loop (2026-07-15 review, D1).
@@ -160,16 +209,22 @@ class TestDoctrineDeterminism:
     byte-identity gate proves the DoctrineSystem is a NO-OP there — not that
     it is deterministic when it actually runs. This harness is the org-bearing
     coverage: a 100-tick hash chain over every doctrine attr on a 3-org graph,
-    pinned as a golden. Doctrine math is pure IEEE-754 add/multiply (decay,
-    accrual — no libm transcendentals), so the chain is reproducible across
-    platforms; if it moves, doctrine behavior changed and the change must be
-    deliberate (regenerate the constant and say so in the commit, per the
-    Unit-6 regenerate-and-document obligation in ADR073).
+    pinned as a golden — including the tick-52/104 Party Congresses with a real
+    seeded purge roll (org_c starts inside the adventurism trap with the TL to
+    attempt self-criticism). Doctrine math is pure IEEE-754 add/multiply and
+    the roll comes from a fixed-seed ``random.Random``, so the chain is
+    reproducible across platforms; if it moves, doctrine behavior changed and
+    the change must be deliberate (regenerate the constant and say so in the
+    commit, per the Unit-6 regenerate-and-document obligation in ADR073).
+
+    GOLDEN_CHAIN history: 04b604d5… (Unit 4, congress-free) → regenerated for
+    Unit 5 (congress wired: tick/rng params + snapshot in the payload +
+    trapped org_c — a DELIBERATE, documented behavior change).
     """
 
     TICKS = 100
     # Regenerate: run _chain_digest() and paste; see class docstring.
-    GOLDEN_CHAIN = "04b604d543dd75af07cdc220dfa015e88f3b3a45beb056821a20e3bec246ede7"
+    GOLDEN_CHAIN = "8a5caa58a173dd6d0a251cdfb531302fd3cef8f5423d65d6f78a4b4095705c23"
 
     @staticmethod
     def _chain_digest() -> str:
@@ -180,24 +235,51 @@ class TestDoctrineDeterminism:
             relationships=[],
             organizations={
                 # Two orgs with IDENTICAL states exercise the (cost_tl, node_id)
-                # tie-break; the third's different cadre rate staggers acquisition.
+                # tie-break. org_c starts trapped + holding EVERY purchasable
+                # node — the greedy acquirer has nothing left to buy, so its
+                # 400 TL survives to tick 52 and the congress attempts a real
+                # purge (exercises the seeded roll path; an earlier fixture let
+                # greedy drain the wallet first and the roll never happened).
                 "org_a": _org(id="org_a", name="A", cadre_level=0.5),
                 "org_b": _org(id="org_b", name="B", cadre_level=0.5),
-                "org_c": _org(id="org_c", name="C", cadre_level=0.17),
+                "org_c": _org(
+                    id="org_c",
+                    name="C",
+                    cadre_level=0.17,
+                    acquired_doctrine_ids=(
+                        "class_consciousness",
+                        "trade_unionism",
+                        "electoral_socialism",
+                        "coalition_politics",
+                        "democratic_centralism",
+                        "mass_line",
+                        "united_front",
+                        "armed_vanguard",
+                        "urban_guerrilla",
+                        "adventurism",
+                    ),
+                    theoretical_labor=400.0,
+                    doctrine_tags={DoctrineTag.MILITANCY: 5.0},
+                ),
             },
         )
         graph = state.to_graph()
         defines = DoctrineDefines()
         tree = load_doctrine_tree()
+        rng = random.Random(0xD0C7)
         chain = hashlib.sha256()
-        for _ in range(TestDoctrineDeterminism.TICKS):
-            compute_doctrine(graph, defines, tree)
+        for i in range(TestDoctrineDeterminism.TICKS):
+            compute_doctrine(graph, defines, tree, tick=i + 1, rng=rng)
             payload = {
                 str(node.id): {
                     "acquired": list(node.attributes.get("acquired_doctrine_ids", ())),
                     "tl": repr(node.attributes.get("theoretical_labor", 0.0)),
                     "tags": {
                         str(k): repr(v) for k, v in node.attributes.get("doctrine_tags", {}).items()
+                    },
+                    "snapshot": {
+                        str(k): repr(v)
+                        for k, v in node.attributes.get("congress_tag_snapshot", {}).items()
                     },
                 }
                 for node in graph.query_nodes(node_type="organization")

@@ -73,6 +73,17 @@ class DoctrineDefines(BaseModel):
         default=False,
         description="Ruling 2: whether acquiring a node may flip a faction's allegiance/behaviour. OFF until Phase 2.",
     )
+    congress_delta_weight: float = Field(
+        default=0.15,
+        ge=0.0,
+        description="Ruling 5 / DT-5: linear weight of the tag-vector delta since the last congress on the purge-success probability (Yugoslavia-1948 pattern — sustained material divergence predicts direction).",
+    )
+    congress_contingency_floor: float = Field(
+        default=0.10,
+        gt=0.0,
+        lt=0.5,
+        description="Ruling 5 / DT-5: purge-success probability is clamped to [floor, 1-floor] — a nonzero contingent term stays live at ANY delta (Lushan 1959 / Gang of Four 1976: the decisive information was never in the observable state).",
+    )
 
 
 __all__ = ["DoctrineDefines"]

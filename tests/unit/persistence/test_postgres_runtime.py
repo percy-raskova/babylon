@@ -1270,6 +1270,7 @@ class TestDoctrineStatePersistence:
             acquired_doctrine_ids=("class_consciousness", "democratic_centralism"),
             theoretical_labor=42.5,
             doctrine_tags={DoctrineTag.CLASS_ANALYSIS: 1.7, DoctrineTag.MASS_LINK: 0.4},
+            congress_tag_snapshot={DoctrineTag.CLASS_ANALYSIS: 1.5},
         )
 
     def test_filter_keeps_every_doctrine_field(self) -> None:
@@ -1280,7 +1281,12 @@ class TestDoctrineStatePersistence:
 
         serializable = PostgresRuntime._make_serializable(node_attrs)
 
-        for key in ("acquired_doctrine_ids", "theoretical_labor", "doctrine_tags"):
+        for key in (
+            "acquired_doctrine_ids",
+            "theoretical_labor",
+            "doctrine_tags",
+            "congress_tag_snapshot",
+        ):
             assert key in serializable, f"{key} silently dropped by the storage filter"
         json.dumps(serializable)  # the stored payload must be JSON-native end-to-end
 
@@ -1304,6 +1310,7 @@ class TestDoctrineStatePersistence:
         assert org.acquired_doctrine_ids == ("class_consciousness", "democratic_centralism")
         assert org.theoretical_labor == 42.5
         assert org.doctrine_tags == {DoctrineTag.CLASS_ANALYSIS: 1.7, DoctrineTag.MASS_LINK: 0.4}
+        assert org.congress_tag_snapshot == {DoctrineTag.CLASS_ANALYSIS: 1.5}
         # Enum-key lookup must work on the re-validated dict (StrEnum identity).
         assert org.doctrine_tags[DoctrineTag.CLASS_ANALYSIS] == 1.7
 

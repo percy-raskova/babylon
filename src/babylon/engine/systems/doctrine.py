@@ -20,9 +20,18 @@ this system runs the deterministic doctrine loop built from the pure mechanics i
    ``trap_condition`` holds against the current tags is fallen into (acquired
    involuntarily, its deltas applied), and a ``DOCTRINE_TRAP_SPRUNG`` event fires.
 
-Determinism: no RNG (Constitution III.7) — every step is a pure function of the
-node's prior state. Byte-safe on the qa:regression goldens by construction: those
-five scenarios carry no organization nodes, so this system is a no-op there.
+Every ``congress_interval_ticks`` the **Party Congress** convenes first (Unit 5,
+Ruling 5 / DT-5, :mod:`babylon.domain.doctrine.congress`): one purge attempt
+against the first held trap, resolved by a weighted draw from the
+seed-deterministic tick RNG (:func:`~babylon.kernel.system_base.resolve_rng`,
+Constitution III.7 — same seed, same history), with tag deltas since the last
+congress biasing the odds inside a clamped contingency band.
+
+Determinism: the per-tick loop is RNG-free; the congress consumes the seeded
+tick RNG only when a purge is actually attempted (an org holds a trap AND can
+afford ``trap_escape_tl``). Byte-safe on the qa:regression goldens by
+construction: those five scenarios carry no organization nodes, so this system
+is a no-op — and draws nothing — there.
 """
 
 from __future__ import annotations
@@ -30,6 +39,7 @@ from __future__ import annotations
 from typing import TYPE_CHECKING, Any, ClassVar
 
 from babylon.domain.doctrine import evaluate_trap_condition, load_doctrine_tree
+from babylon.domain.doctrine.congress import held_sprung_traps, run_congress
 from babylon.domain.doctrine.mechanics import (
     accrue_theoretical_labor,
     acquire,
@@ -39,12 +49,14 @@ from babylon.domain.doctrine.mechanics import (
 from babylon.models.enums.doctrine import DoctrineTag
 
 if TYPE_CHECKING:
+    import random
+
     from babylon.config.defines.doctrine import DoctrineDefines
     from babylon.kernel.graph_protocol import GraphProtocol
     from babylon.kernel.services import ServicesProtocol
     from babylon.models.entities.doctrine import DoctrineNode, DoctrineTree
 
-from babylon.kernel.system_base import SystemBase
+from babylon.kernel.system_base import SystemBase, resolve_rng
 from babylon.kernel.system_protocol import ContextType
 
 
@@ -135,33 +147,80 @@ def step_organization(
 
 
 def compute_doctrine(
-    graph: GraphProtocol, defines: DoctrineDefines, tree: DoctrineTree
-) -> list[tuple[str, str]]:
+    graph: GraphProtocol,
+    defines: DoctrineDefines,
+    tree: DoctrineTree,
+    *,
+    tick: int = 0,
+    rng: random.Random | None = None,
+) -> list[tuple[str, str, str]]:
     """Run the doctrine loop over every organization node; write state back.
 
-    :returns: ``(org_id, trap_id)`` pairs for every trap sprung this tick (for a
-        later phase to emit as events; Unit 4 computes state only).
+    On a congress tick (``tick > 0`` and ``tick % congress_interval_ticks == 0``,
+    ``rng`` provided) the Party Congress convenes FIRST — it sums up the period
+    the org just lived through — then the ordinary per-tick step runs. The RNG
+    is drawn only when a purge is actually attempted, so org-less graphs (the
+    qa:regression goldens) never touch the stream.
+
+    :returns: ``(org_id, node_id, kind)`` triples — ``kind`` is ``"sprung"``
+        (trap fallen into), ``"escaped"`` (congress purge succeeded), or
+        ``"purge_failed"`` — for Unit 6 to emit as events.
     """
-    sprung_events: list[tuple[str, str]] = []
+    events: list[tuple[str, str, str]] = []
+    is_congress = tick > 0 and rng is not None and tick % defines.congress_interval_ticks == 0
     for node in graph.query_nodes(node_type="organization"):
         attrs = dict(node.attributes)
         org_id = str(attrs.get("id", node.id))
+
+        if is_congress and rng is not None:
+            acquired0 = tuple(attrs.get("acquired_doctrine_ids", ()))
+            tl0 = float(attrs.get("theoretical_labor", 0.0))
+            tags0 = _read_tags(attrs.get("doctrine_tags"))
+            snapshot0 = _read_tags(attrs.get("congress_tag_snapshot"))
+            # Same trap+affordability gate run_congress applies — the roll is
+            # drawn only when an attempt will actually consume it.
+            needs_roll = bool(held_sprung_traps(tree, acquired0)) and tl0 >= float(
+                defines.trap_escape_tl
+            )
+            roll = rng.random() if needs_roll else 0.0
+            outcome = run_congress(
+                acquired=acquired0,
+                theoretical_labor=tl0,
+                tags=tags0,
+                snapshot=snapshot0,
+                tree=tree,
+                defines=defines,
+                roll=roll,
+            )
+            attrs["acquired_doctrine_ids"] = outcome.acquired
+            attrs["theoretical_labor"] = outcome.theoretical_labor
+            attrs["doctrine_tags"] = outcome.doctrine_tags
+            attrs["congress_tag_snapshot"] = outcome.snapshot
+            if outcome.attempted_trap_id is not None:
+                kind = "escaped" if outcome.escaped else "purge_failed"
+                events.append((org_id, outcome.attempted_trap_id, kind))
+
         acquired, tl, tags, sprung = step_organization(attrs, tree, defines)
-        graph.update_node(
-            org_id,
-            acquired_doctrine_ids=acquired,
-            theoretical_labor=tl,
-            doctrine_tags=tags,
-        )
-        sprung_events.extend((org_id, trap_id) for trap_id in sprung)
-    return sprung_events
+        updates: dict[str, Any] = {
+            "acquired_doctrine_ids": acquired,
+            "theoretical_labor": tl,
+            "doctrine_tags": tags,
+        }
+        if is_congress:
+            updates["congress_tag_snapshot"] = attrs["congress_tag_snapshot"]
+        graph.update_node(org_id, **updates)
+        events.extend((org_id, trap_id, "sprung") for trap_id in sprung)
+    return events
 
 
 class DoctrineSystem(SystemBase):
     """Advances every organization's Doctrine Tree state each tick.
 
-    See the module docstring for the five-step per-org loop. Purely deterministic
-    (no RNG); byte-safe on the org-less qa:regression scenarios.
+    See the module docstring for the five-step per-org loop and the Party
+    Congress (Unit 5). Seed-deterministic: the only stochastic element is the
+    congress purge roll, drawn from :func:`resolve_rng` (Constitution III.7).
+    Byte-safe on the org-less qa:regression scenarios (no orgs, no writes,
+    no draws).
     """
 
     name: ClassVar[str] = "Doctrine"
@@ -179,11 +238,25 @@ class DoctrineSystem(SystemBase):
     ) -> None:
         """Run the doctrine loop over all organizations, writing per-org state.
 
-        Trap-sprung events are computed but not yet published — event emission +
-        the bridge whitelist are wired in Unit 6, alongside the behavioural
-        feedback into bifurcation/consciousness.
+        Doctrine events (trap sprung / congress escape / purge failed) are
+        computed but not yet published — event emission + the bridge whitelist
+        are wired in Unit 6, alongside the behavioural feedback into
+        bifurcation/consciousness.
         """
-        del context
+        tick = _extract_tick(context)
         if self._tree is None:
             self._tree = load_doctrine_tree()
-        compute_doctrine(graph, services.defines.doctrine, self._tree)
+        compute_doctrine(
+            graph,
+            services.defines.doctrine,
+            self._tree,
+            tick=tick,
+            rng=resolve_rng(services, tick),
+        )
+
+
+def _extract_tick(context: ContextType) -> int:
+    """Current tick from the step context (same idiom as FactionInfluence)."""
+    if isinstance(context, dict):
+        return int(context.get("tick", 0))
+    return int(getattr(context, "tick", 0))

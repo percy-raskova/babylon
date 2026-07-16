@@ -362,6 +362,21 @@ TABLE: dict[str, TablePolicy] = {
         "National monthly trade series (joined dim_country) read by "
         "sqlite_hydrator.py; tiny (44,808 rows, 1.34 MB).",
     ),
+    "fact_hickel_drain": TablePolicy(
+        "full",
+        "Read unconditionally by sqlite_hydrator._copy_hickel_drain (same "
+        "hydration path as FAF — a missing table dies ENGINE_FAILURE in the "
+        "Determinism Bundle, per the ci-data-v1 proving-run lesson). The "
+        "table is EMPTY in the source (0 rows, schema-only; the Hickel "
+        "drain data never landed) so FULL costs nothing and keeps the "
+        "hydrator's SELECT alive.",
+    ),
+    "fact_ricci_unequal_exchange": TablePolicy(
+        "full",
+        "Read unconditionally by sqlite_hydrator._copy_ricci_unequal — same "
+        "missing-table ENGINE_FAILURE reasoning as fact_hickel_drain above; "
+        "also EMPTY in the source (0 rows, schema-only).",
+    ),
     "fact_fred_wealth_levels": TablePolicy(
         "full",
         "Found via verification grep beyond the original recon inventory: "

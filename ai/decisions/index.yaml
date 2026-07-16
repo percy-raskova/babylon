@@ -339,3 +339,8 @@ decisions:
     status: accepted
     date: '2026-07-15'
     file: ADR071_program20_means_of_production.yaml
+  ADR073_doctrine_system:
+    title: 'The DoctrineSystem (Doctrine Tree, Wave 6 headline): per-org ideological development as the 28th engine system, owner-ratified 6-ruling slate executed shadow-first (Units 1-4 + 7a live canvas); recording ADR — org doctrine attrs are domain state fields, not new primitives (contrast Amendment T); Unit 6 wiring is BASELINE-MOVING with regenerate-and-document obligation; org-bearing determinism + Postgres-hydrate tests are pre-merge obligations from the 2026-07-15 adversarial review'
+    status: accepted
+    date: '2026-07-15'
+    file: ADR073_doctrine_system.yaml

@@ -59,11 +59,15 @@ export const investigateConfig: VerbConfig = {
   // Flat {action_points, cadre_labor, sympathizer_labor, material,
   // can_afford, ...} envelope (engine_bridge.py:3662-3670).
   parseCost: parseFlatCost,
-  // resolve_investigate (babylon/engine/actions/investigate.py) performs
-  // ZERO numeric graph mutation: it is purely informational (fog-of-war
-  // reveal — a `revealed` attribute-name list in direct_effects, no
-  // graph.update_node call at all). The live `/actions/preview/` chip
-  // (Program 17 Wave 1 item W1.2) is expected to show no delta for this
-  // verb — an honest reflection of the real engine effect, not a config
-  // omission to work around.
+  // resolve_investigate (babylon/engine/actions/investigate.py) is
+  // information-layer only for MATERIAL state (economy/consciousness
+  // untouched; a `revealed` attribute-name list in direct_effects). EH
+  // Phase 2 (Wave 5) added ONE information-layer graph write: when the
+  // PLAYER org investigates a TERRITORY whose masses are receptive
+  // (M_r >= investigate_min_receptivity — the corpus's "cannot investigate
+  // if masses won't talk" gate; below it the action fails with a mass-work
+  // message), it accumulates `investigation_intel` on the territory, which
+  // raises intel_confidence. The live `/actions/preview/` chip still shows
+  // no delta — previews report material deltas, and intel is earned at
+  // resolution, not previewed.
 };

@@ -56,6 +56,8 @@ class Territory(BaseModel):
         displacement_rate: Displacement rate [0, 1] (Feature 021)
         concentrated_ownership: Ownership concentration index [0, 1]
         absentee_landlord_share: Absentee landlord share of rentals [0, 1]
+        investigation_intel: Earned intel from player INVESTIGATE actions [0, 1]
+            (EH Phase 2; accumulated event-sourced state, no decay until Phase 3)
     """
 
     model_config = ConfigDict(
@@ -215,6 +217,19 @@ class Territory(BaseModel):
         ge=0.0,
         le=1.0,
         description="Absentee landlord share of rental stock [0, 1]",
+    )
+    investigation_intel: float = Field(
+        default=0.0,
+        ge=0.0,
+        le=1.0,
+        description=(
+            "EH Phase 2: earned intel from the player org's INVESTIGATE actions "
+            "[0, 1] (resolve_investigate accumulates it; compute_epistemic_horizon "
+            "adds it into I_c). Event-sourced ACCUMULATED state — a real model "
+            "field so it survives the WorldState round trip, unlike the "
+            "recomputable mass_receptivity/intel_confidence/vision_state shadow "
+            "attrs. No decay until EH Phase 3."
+        ),
     )
 
     @property

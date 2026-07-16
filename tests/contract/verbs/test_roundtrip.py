@@ -82,6 +82,41 @@ class TestRoundTripSurvives:
         _dispatch(verb_graph, services, ActionType.MAP_NETWORK, CLASS_ID)
         WorldState.from_graph(verb_graph, tick=1)
 
+    def test_player_investigate_territory_intel_roundtrips(self, services) -> None:
+        """EH Phase 2 crash class (2026-07-16 adversarial-verify critical):
+        the PLAYER org investigating a TERRITORY writes ``investigation_intel``
+        onto the territory node inside ``step()``'s internal graph — the same
+        graph ``from_graph()`` immediately reconstructs. Reconstruction must
+        not raise, and the earned intel must SURVIVE (it is accumulated
+        event-sourced state, not a recomputable shadow attr)."""
+        from tests.contract.verbs.conftest import build_verb_world
+
+        world = build_verb_world()
+        workers = world.entities[CLASS_ID]
+        receptive = workers.model_copy(
+            update={
+                "population": 1000,
+                "ideology": workers.ideology.model_copy(update={"class_consciousness": 0.8}),
+            }
+        )
+        world = world.model_copy(
+            update={
+                "player_org_id": ORG_ID,
+                "entities": {**world.entities, CLASS_ID: receptive},
+            }
+        )
+        graph = world.to_graph()
+        # Receptive masses in the target territory (M_r = (1-0)·0.8·1.0 = 0.8):
+        # the corpus gate ("cannot investigate if masses won't talk") is met.
+        graph.add_edge(CLASS_ID, HOME_TERRITORY, edge_type=EdgeType.TENANCY.value)
+
+        result = _dispatch(graph, services, ActionType.MAP_NETWORK, HOME_TERRITORY)
+        assert result.success
+
+        ws = WorldState.from_graph(graph, tick=1)  # must not raise
+        boost = services.defines.epistemic_horizon.investigate_intel_boost
+        assert ws.territories[HOME_TERRITORY].investigation_intel == pytest.approx(boost)
+
     def test_move_territory_ids_survive(self, verb_graph, services) -> None:
         _dispatch(verb_graph, services, ActionType.MOVE, OTHER_TERRITORY)
         ws = WorldState.from_graph(verb_graph, tick=1)

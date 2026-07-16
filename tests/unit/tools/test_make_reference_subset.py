@@ -813,7 +813,6 @@ class TestProductionPolicyShape:
     def test_known_michigan_tables(self) -> None:
         expected_michigan = {
             "fact_qcew_annual",
-            "fact_census_income",
             "fact_county_exposure_by_external",
             "fact_census_rent",
             "fact_coercive_infrastructure",
@@ -823,6 +822,13 @@ class TestProductionPolicyShape:
         }
         for name in expected_michigan:
             assert TABLE[name].scope == "michigan", f"{name} should be michigan-scoped"
+
+    def test_fact_census_income_is_full_not_michigan(self) -> None:
+        # Wave 6 C3: SQLiteCensusIncomeSource.get_county_bracket_ratio queries
+        # ANY county nationwide (Constitution Amendment R canonical scale), so
+        # a Michigan-only subset would silently starve every non-MI county —
+        # flipped to FULL, no longer in expected_michigan above.
+        assert TABLE["fact_census_income"].scope == "full"
 
     def test_all_dim_and_bridge_tables_classified_full_or_skip(self) -> None:
         for name, policy in TABLE.items():

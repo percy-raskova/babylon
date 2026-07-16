@@ -85,6 +85,27 @@ class EpistemicHorizonDefines(BaseModel):
         le=1.0,
         description="C_f fallback for any SocialRole absent from the corpus's 4-entry table (explicit, never silent).",
     )
+    investigate_intel_boost: float = Field(
+        default=0.2,
+        ge=0.05,
+        le=0.5,
+        description=(
+            "Phase 2: I_c gained by the player org per INVESTIGATE of a territory "
+            "(fog-of-war.yaml: intelligence is EARNED; Investigate is the tactical "
+            "supplement, mass work the strategic base). No decay until Phase 3."
+        ),
+    )
+    investigate_min_receptivity: float = Field(
+        default=0.3,
+        ge=0.0,
+        le=1.0,
+        description=(
+            "Phase 2: minimum target-territory M_r for the player's INVESTIGATE "
+            "to gather intel (fog-of-war.yaml:458-485 SOCIAL_INVESTIGATION — "
+            "'cannot investigate if masses won't talk'; below it the action "
+            "automatically fails). Cadre-presence gating is Phase 3."
+        ),
+    )
 
 
 __all__ = ["EpistemicHorizonDefines"]

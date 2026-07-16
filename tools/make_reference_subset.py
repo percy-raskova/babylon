@@ -236,6 +236,8 @@ TABLE: dict[str, TablePolicy] = {
     ),
     "bridge_naics_bea": TablePolicy("full", _DIM_BRIDGE_REASON),
     # -- fact_* — Michigan-scoped (county-linked, actually read). --
+    # (fact_census_income is the one exception below: FULL, not Michigan —
+    # see its own policy for why.)
     "fact_qcew_annual": TablePolicy(
         "michigan",
         "County-scoped QCEW employment/wages; read by "
@@ -251,10 +253,14 @@ TABLE: dict[str, TablePolicy] = {
         extra_fips=("01011",),
     ),
     "fact_census_income": TablePolicy(
-        "michigan",
-        "County-scoped Census income brackets; read by "
-        "reference_data_cache.py, county_aggregation.py, hex_hydrator.py.",
-        county_columns=("county_id",),
+        "full",
+        "Wave 6 C3: read by SQLiteCensusIncomeSource (bracket ratio), which "
+        "queries ANY county nationwide (Constitution Amendment R canonical "
+        "scale), not just Michigan — a 'michigan' scope would silently starve "
+        "get_county_bracket_ratio for every non-MI county. Also read by "
+        "reference_data_cache.py, county_aggregation.py, hex_hydrator.py. "
+        "7.2M rows — the largest census table; kept full anyway per the "
+        "nationwide-adapter requirement.",
     ),
     "fact_county_exposure_by_external": TablePolicy(
         "michigan",
@@ -421,7 +427,13 @@ TABLE: dict[str, TablePolicy] = {
     "fact_census_employment": TablePolicy("skip", _UNREFERENCED_REASON),
     "fact_census_gini": TablePolicy("skip", _UNREFERENCED_REASON),
     "fact_census_hours": TablePolicy("skip", _UNREFERENCED_REASON),
-    "fact_census_housing": TablePolicy("skip", _UNREFERENCED_REASON),
+    "fact_census_housing": TablePolicy(
+        "full",
+        "Wave 6 C2: read by SQLiteCensusHousingSource "
+        "(domain/economics/throughput/adapters.py) — per-county ACS housing "
+        "tenure (renter share) wired into the tick pipeline's renter_share "
+        "via services.housing_source (web bridge); 1.35M rows.",
+    ),
     "fact_census_income_sources": TablePolicy("skip", _UNREFERENCED_REASON),
     "fact_census_median_income": TablePolicy("skip", _UNREFERENCED_REASON),
     "fact_census_occupation": TablePolicy("skip", _UNREFERENCED_REASON),

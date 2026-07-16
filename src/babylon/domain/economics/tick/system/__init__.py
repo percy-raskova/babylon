@@ -426,6 +426,7 @@ class TickDynamicsSystem(SystemBase):
                     throughput_position=data.get("tick_throughput_position", 1.0),
                     supply_chain_depth=data.get("tick_supply_chain_depth", 2.0),
                     unemployment_rate=data.get("tick_unemployment_rate", 0.05),
+                    renter_share=data.get("tick_renter_share", 0.0),
                     u6_rate=data.get("tick_u6_rate", 0.10),
                     pter_rate=data.get("tick_pter_rate", 0.04),
                     nilf_rate=data.get("tick_nilf_rate", 0.06),
@@ -433,6 +434,8 @@ class TickDynamicsSystem(SystemBase):
                     employment=data.get("tick_employment", 100_000.0),
                     class_distribution=dist,
                     phi_hour=data.get("tick_phi_hour", 0.0),
+                    bracket_ratio=data.get("tick_bracket_ratio", 0.0),
+                    real_wage_deflator=data.get("tick_real_wage_deflator", 1.0),
                 )
         return states
 
@@ -538,6 +541,91 @@ class TickDynamicsSystem(SystemBase):
             estimated=estimated,
         )
 
+    def _resolve_renter_share(
+        self,
+        prev: CountyEconomicState | None,
+        services: ServicesProtocol,
+        fips: str,
+        year: int,
+    ) -> float:
+        """Wave 6 C2: per-county ACS renter share via ``services.housing_source``.
+
+        Mirrors the ``unemployment_rate``/``employment`` wired-source pattern
+        in :meth:`_compute_county_states`: prev-carry ``0.0`` default unless a
+        ``housing_source`` is wired and returns a real value for this
+        county-year (Constitution III.11 — honest ``None`` never fabricates a
+        share).
+
+        Args:
+            prev: Previous county state, or ``None`` on the first tick.
+            services: ServicesProtocol carrying the optional ``housing_source``.
+            fips: County FIPS code.
+            year: Calendar year.
+
+        Returns:
+            The renter share to carry into this tick's ``CountyEconomicState``.
+        """
+        renter_share = prev.renter_share if prev else 0.0
+        if services.housing_source is not None:
+            rs = services.housing_source.get_county_renter_share(fips, year)
+            if rs is not None and isinstance(rs, (int, float)):
+                renter_share = float(rs)
+        return renter_share
+
+    @staticmethod
+    def _wired_bracket_ratio(
+        fips: str,
+        year: int,
+        prev: CountyEconomicState | None,
+        services: ServicesProtocol,
+    ) -> float:
+        """Wave 6 C3: bracket_ratio prefers a wired ACS B19001 income_source.
+
+        Extracted from :meth:`_compute_county_states` to keep that method's
+        cyclomatic complexity under the project's lint ceiling; same shape as
+        the inline ``unemployment_rate`` branch it mirrors (exogenous
+        per-county-year data, re-queried every tick — not seeded once like
+        the endogenous ``median_wage``). 0.0 remains the documented
+        unwired/absent-row not-computed default (Constitution III.11).
+        """
+        bracket_ratio = prev.bracket_ratio if prev else 0.0
+        if services.income_source is not None:
+            ratio = services.income_source.get_county_bracket_ratio(fips, year)
+            if ratio is not None and isinstance(ratio, (int, float)):
+                bracket_ratio = float(ratio)
+        return bracket_ratio
+
+    def _resolve_real_wage_deflator(
+        self,
+        prev: CountyEconomicState | None,
+        services: ServicesProtocol,
+        year: int,
+    ) -> float:
+        """Read the CPI-based real-wage deflator for one county-year (Wave 6 C4).
+
+        Unlike ``median_wage`` (endogenous, source consulted only on
+        bootstrap), the deflator is re-read every tick: CPI is an external
+        national series, not a simulated trajectory the engine should own
+        after tick 1.
+
+        Args:
+            prev: Previous county state, if any (carries the prior deflator
+                forward when unwired).
+            services: ServicesProtocol with the optional ``cpi_source``.
+            year: Current year.
+
+        Returns:
+            The deflator, or 1.0 (nominal == real) when ``cpi_source`` is
+            unwired or returns honest ``None`` for this year (Constitution
+            III.11 graceful degradation).
+        """
+        real_wage_deflator = prev.real_wage_deflator if prev else 1.0
+        if services.cpi_source is not None:
+            deflator = services.cpi_source.get_cpi_deflator(year)
+            if deflator is not None and isinstance(deflator, (int, float)):
+                real_wage_deflator = float(deflator)
+        return real_wage_deflator
+
     def _compute_county_states(
         self,
         year: int,
@@ -587,6 +675,11 @@ class TickDynamicsSystem(SystemBase):
                 u3 = services.unemployment_source.get_county_unemployment_rate(fips, year)
                 if u3 is not None and isinstance(u3, (int, float)):
                     unemployment_rate = float(u3)
+            # Real per-county ACS renter share (Wave 6 C2), symmetric with
+            # unemployment_rate above. Extracted to a helper (rather than
+            # inlined like unemployment_rate above) to keep this method's
+            # cyclomatic complexity under the C901 gate.
+            renter_share = self._resolve_renter_share(prev, services, fips, year)
             u6_rate = prev.u6_rate if prev else 0.10
             pter_rate = prev.pter_rate if prev else 0.04
             nilf_rate = prev.nilf_rate if prev else 0.06
@@ -611,6 +704,11 @@ class TickDynamicsSystem(SystemBase):
                     employment = float(emp_result)
             phi_hour = prev.phi_hour if prev else 0.0
             crisis_state = prev.crisis_state if prev else CrisisState.normal()
+            real_wage_deflator = self._resolve_real_wage_deflator(prev, services, year)
+
+            # Wave 6 C3 (epochs audit item 167): bracket_ratio prefers a wired
+            # ACS B19001 income_source, same shape as unemployment_rate above.
+            bracket_ratio = self._wired_bracket_ratio(fips, year, prev, services)
 
             # Preserve class distribution
             if prev is not None:
@@ -645,6 +743,7 @@ class TickDynamicsSystem(SystemBase):
                 throughput_position=throughput_position,
                 supply_chain_depth=supply_chain_depth,
                 unemployment_rate=unemployment_rate,
+                renter_share=renter_share,
                 u6_rate=u6_rate,
                 pter_rate=pter_rate,
                 nilf_rate=nilf_rate,
@@ -652,7 +751,9 @@ class TickDynamicsSystem(SystemBase):
                 employment=employment,
                 class_distribution=class_dist,
                 phi_hour=phi_hour,
+                bracket_ratio=bracket_ratio,
                 crisis_state=crisis_state,
+                real_wage_deflator=real_wage_deflator,
             )
 
         return states

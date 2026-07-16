@@ -218,6 +218,17 @@ export interface InspectorNodeResponse {
    *  role-defaulted for the lumpenproletariat. Honest-null when the graph
    *  node carries no `volatility` attribute. */
   volatility?: number | null;
+  /** EH Phase 2 reveal gate (Wave 5): the player's best vision over this
+   *  class's territories. Absent when no vision has been computed (tick 0,
+   *  synthetic scenarios) — the payload is then ungated/exact. */
+  class_vision?: "desert" | "mud" | "water";
+  /** EH Phase 2: fields WITHHELD (null) because class_vision === "desert".
+   *  Falsification is Phase 3 — a masked field is honestly absent, never
+   *  a fabricated value. */
+  vision_masked?: string[];
+  /** EH Phase 2: fields quantized to the corpus's ±0.2 margin because
+   *  class_vision === "mud" (render with a "~" prefix per the corpus). */
+  vision_approx?: string[];
   class_position?: string;
   class_position_mock?: boolean;
   circuit_flows?: CircuitFlows;

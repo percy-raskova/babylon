@@ -124,10 +124,34 @@ retrofitted as a `sigma_authored` pole. Scoped out *now*, named as a seam *later
   computed values.
 - **Phase 2** — reveal gating: bridge serialization filters by vision state (Mud
   approximation with markers); Investigate wired to raise `I_c` (finally reading its own
-  `revealed` channel).
+  `revealed` channel). **EXECUTED 2026-07-16** (`feature/eh-phase2-reveal-gating`):
+  `WorldState.player_org_id` (ruling 6, owner-chosen option B) rides graph metadata;
+  class-inspector gate (`_apply_class_vision_gate` — Desert withholds + `vision_masked`,
+  Mud quantizes to a 0.4 grid = the corpus's ±0.2 margin with documented round-half-up,
+  Water exact); `Territory.investigation_intel` as a real model field (accumulated
+  event-sourced state; the shadow-attr version crashed `from_graph`, caught by the
+  27-agent adversarial verify); Investigate gated by the corpus's SOCIAL_INVESTIGATION
+  receptivity requirement (`M_r >= investigate_min_receptivity`, auto-fail below —
+  "the people do not trust you").
 - **Phase 3** — Desert falsification (needs ruling 2 executed) + contact networks +
   decay + the mass-line action wiring; frontend overlay (Water/Mud/Desert map treatment,
   DESIGN_BIBLE §11 laws apply — vision-state changes are hard cuts).
+  **Added scope from the 2026-07-16 adversarial verify (evidence on file):**
+  - **Territory/map-surface gating.** The corpus visibility table is per-TERRITORY, but
+    Phase 2 (per the "inspector boundary only" scoping ruling) gates only the derived
+    class-inspector surface — `_serialize_territory` and `_build_hex_state_attributes`
+    still ship true `heat`/`agitation`/`crisis_phase`/`unemployment_rate` alongside the
+    territory's own `vision_state`. Gating the primary map surface is a product-shaping
+    change (fog on the live map lenses) that belongs with Phase 3's frontend overlay —
+    NOT silently, and not before an owner look at the UX.
+  - **Cadre-presence gate on Investigate.** The corpus requires "Cadre present in
+    territory" alongside M_r ≥ 0.3; Phase 2 ships the M_r gate only, because NO verb or
+    scenario can create PRESENCE edges today — a hard cadre gate would permanently dead
+    the feature. Phase 3's contact-network/mass-line work must add the presence-
+    establishing verb and then arm the second gate.
+  - Naming note: the class-inspector marker is `class_vision` (a max-fold DERIVED view
+    over the class's territories), deliberately distinct from the territory's own
+    `vision_state` — two names, two semantics.
 - qa:regression gates every phase; masking is bridge/presentation-side until Phase 3's
   engine system, which regenerates no baselines by construction (new attrs invisible to
   dense goldens) — verified pattern from P19/W3.

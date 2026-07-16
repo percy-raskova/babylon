@@ -15,6 +15,7 @@ from __future__ import annotations
 
 import json
 import logging
+import math
 from itertools import pairwise
 from typing import TYPE_CHECKING, Any, Final
 from uuid import UUID
@@ -1707,6 +1708,113 @@ def _ternary_consciousness_or_none(ideology: dict[str, Any]) -> dict[str, float]
     return {"revolutionary": r, "liberal": l_, "fascist": f}
 
 
+#: Vision-state severity order for the max-fold in _class_vision_state.
+_VISION_ORDER: dict[str, int] = {"desert": 0, "mud": 1, "water": 2}
+
+#: Class-inspector fields the corpus gates by vision (fog-of-war.yaml
+#: §visibility: agitation / organization strength / allegiance are what the
+#: masses hold). Material/public fields (wealth, population, wages) are
+#: never gated — the corpus keeps public_info visible in every state.
+_VISION_GATED_CLASS_FIELDS: tuple[str, ...] = (
+    "agitation",
+    "class_consciousness",
+    "national_identity",
+    "organization",
+    "p_revolution",
+)
+
+#: Corpus Mud rule: "±0.2 margin of error" (fog-of-war.yaml:335). A bucket of
+#: width W bounds displayed error to W/2, so honoring a ±0.2 margin needs
+#: 0.4-wide buckets — a 0.2 quantum would ship TWICE the precision the corpus
+#: allows (the 2026-07-16 verify finding). Constitution III.7: masking must be
+#: a deterministic function of committed state — quantization, not noise.
+_MUD_QUANTUM = 0.4
+
+
+def _mud_quantize(value: float) -> float:
+    """One gated value onto the Mud grid: round-half-up (``floor(v/Q + 0.5)``),
+    clamped to [0, 1].
+
+    Explicit half-up, NOT Python's banker's ``round()``: half-to-even makes
+    grid boundaries flip direction by IEEE-754 representation accident
+    (0.3/0.2 evaluates to 1.4999…8 and rounds down while an exact 2.5 also
+    rounds down) — an undocumented rule the player could never learn. The
+    clamp keeps displayed values in the gated fields' [0, 1] domain (a raw
+    half-up grid would show 1.2 for a true 1.0).
+    """
+    return min(1.0, max(0.0, math.floor(value / _MUD_QUANTUM + 0.5) * _MUD_QUANTUM))
+
+
+def _class_vision_state(graph: Any, class_id: str) -> str | None:
+    """The player's best vision over a class: max vision_state across its
+    TENANCY-linked territories (EH Phase 2).
+
+    Max, not min: knowing a class through its best-organized community is
+    the corpus's mechanic — "the masses ARE your intelligence network."
+    ``None`` when no linked territory carries a computed ``vision_state``
+    (Constitution III.11: never gate on a fabricated default vision).
+    """
+    from babylon.models.enums import EdgeType
+
+    best: str | None = None
+    for edge in graph.query_edges(edge_type=EdgeType.TENANCY):
+        if edge.source_id != class_id:
+            continue
+        territory = graph.get_node(edge.target_id)
+        if territory is None:
+            continue
+        vision = territory.attributes.get("vision_state")
+        if not isinstance(vision, str) or vision not in _VISION_ORDER:
+            continue
+        if best is None or _VISION_ORDER[vision] > _VISION_ORDER[best]:
+            best = vision
+    return best
+
+
+def _apply_class_vision_gate(payload: dict[str, Any], vision: str | None) -> None:
+    """EH Phase 2 reveal gate — mutate a class-inspector payload in place.
+
+    Desert WITHHOLDS the political fields (``None`` + ``vision_masked``
+    marker list — falsification is Phase 3, gated on ruling 2); Mud shows
+    them quantized to the corpus's ±0.2 margin (+ ``vision_approx``); Water
+    is exact. ``vision=None`` (no computed vision) leaves the payload
+    untouched — the persisted snapshots upstream always keep TRUE values
+    (the DB is the engine's ledger, not the player's view); this gate runs
+    only at the player-facing inspector boundary.
+    """
+    if vision is None:
+        return
+    payload["class_vision"] = vision
+    if vision == "water":
+        return
+    if vision == "desert":
+        # Mask only fields ACTUALLY holding a value: an already-None field is
+        # honest data-absence, and claiming "the fog hid this" for it would
+        # conflate missing data with withheld data (III.11).
+        masked: list[str] = []
+        for field in _VISION_GATED_CLASS_FIELDS:
+            if payload.get(field) is not None:
+                payload[field] = None
+                masked.append(field)
+        if payload.get("consciousness") is not None:
+            payload["consciousness"] = None
+            masked.append("consciousness")
+        payload["vision_masked"] = masked
+        return
+    # mud — deterministic quantization (see _mud_quantize for the rule)
+    approx: list[str] = []
+    for field in _VISION_GATED_CLASS_FIELDS:
+        value = payload.get(field)
+        if isinstance(value, int | float):
+            payload[field] = _mud_quantize(float(value))
+            approx.append(field)
+    ternary = payload.get("consciousness")
+    if isinstance(ternary, dict):
+        payload["consciousness"] = {k: _mud_quantize(float(v)) for k, v in ternary.items()}
+        approx.append("consciousness")
+    payload["vision_approx"] = approx
+
+
 def _social_class_inspector_fields(
     data: dict[str, Any], core_wages: float, graph: BabylonGraph
 ) -> dict[str, Any]:
@@ -1769,7 +1877,7 @@ def _social_class_inspector_fields(
             f"(gap={imperial_rent_gap:.4f})."
         )
 
-    return {
+    payload = {
         "role": _enum_val(data.get("role")) if data.get("role") is not None else None,
         "wealth": wealth,
         "core_wages": round(core_wages, 4),
@@ -1796,6 +1904,13 @@ def _social_class_inspector_fields(
         "apologist_claim": _APOLOGIST_CLAIM,
         "apologist_refutation": apologist_refutation,
     }
+    # EH Phase 2 reveal gate: political knowledge filtered by the player's
+    # vision over this class's territories (presentation boundary only —
+    # snapshots persisted upstream keep TRUE values).
+    class_id = data.get("id")
+    if isinstance(class_id, str):
+        _apply_class_vision_gate(payload, _class_vision_state(graph, class_id))
+    return payload
 
 
 class EngineBridge:
@@ -4497,6 +4612,8 @@ class EngineBridge:
         # same class of round-trip loss the carry above fixes for
         # TickDynamicsSystem (see _carry_epistemic_horizon's docstring for
         # why a recompute, not a persistent_context stash, is correct here).
+        # (investigation_intel needs no carry: it is a real Territory model
+        # field since the 2026-07-16 verify fold, so it rides the round trip.)
         _carry_epistemic_horizon(new_graph, game_defines.epistemic_horizon)
         # Feature 021 lens pair: re-inject ReserveArmySystem's wage_pressure and
         # DispossessionEventSystem's dispossession_intensity — both are
@@ -5864,11 +5981,14 @@ def _bridge_economics_overrides(fips_codes: tuple[str, ...] = ()) -> tuple[dict[
     from babylon.domain.economics.melt import DefaultMELTCalculator
     from babylon.domain.economics.melt.adapters import (
         SQLiteBEANationalGDPSource,
+        SQLiteCPISource,
         SQLiteQCEWNationalEmploymentSource,
     )
     from babylon.domain.economics.throughput.adapters import (
         SQLiteBEACountyGDPSource,
         SQLiteBLSUnemploymentSource,
+        SQLiteCensusHousingSource,
+        SQLiteCensusIncomeSource,
         SQLiteQCEWCountyNAICSSource,
     )
     from babylon.domain.economics.throughput.calculator import DefaultThroughputCalculator
@@ -5902,11 +6022,27 @@ def _bridge_economics_overrides(fips_codes: tuple[str, ...] = ()) -> tuple[dict[
     # frozen 0.05 tick_unemployment_rate placeholder — same rails as Fix C,
     # honest None (=> carry/default) when the county-year row is absent.
     overrides["unemployment_source"] = SQLiteBLSUnemploymentSource(session_factory)
+    # Wave 6 C2 (epochs audit item 165): real per-county ACS renter share
+    # replaces the frozen 0.0 tick_renter_share placeholder — same rails as
+    # the unemployment wire above, honest None (=> carry/default) when the
+    # county-year row is absent.
+    overrides["housing_source"] = SQLiteCensusHousingSource(session_factory)
+    # Wave 6 C3 (epochs audit item 167): real per-county income-bracket
+    # household ratio (ACS B19001 top/bottom bands) replaces the frozen 0.0
+    # tick_bracket_ratio not-computed default — same rails as the LAUS wire
+    # above, honest None (=> carry/default) when the county-year row is
+    # absent.
+    overrides["income_source"] = SQLiteCensusIncomeSource(session_factory)
     # Item 60: real median-wage BOOTSTRAP (employment-weighted p50 across
     # QCEW 6-digit industry wages) — seeds only the initial county state;
     # wage-pressure dynamics own the trajectory after that. Same adapter
     # object as employment_source, second protocol role.
     overrides["wage_source"] = qcew_source
+    # Wave 6 C4 (Epochs audit, "wages never naked"): real CPIAUCSL-based
+    # real-wage deflation series over the same reference-DB session factory —
+    # so tick_real_median_wage on the territory payload is genuine deflated
+    # dollars, not the nominal-only figure every prior wage lens exposed.
+    overrides["cpi_source"] = SQLiteCPISource(session_factory)
     # Wave 2 owner ruling 1: wire a real throughput_calculator (Feature 014's
     # DefaultThroughputCalculator over the SAME reference-DB session factory Φ
     # and employment_source above already use — no new runtime dependency).
@@ -6067,6 +6203,13 @@ def _carry_tick_dynamics_flows(
                     "lumpenproletariat": county.class_distribution.lumpenproletariat_share,
                 },
                 tick_unemployment_rate=county.unemployment_rate,
+                # Wave 6 C2: ACS renter share, same evaporation-on-round-trip
+                # fix as Group A/B and unemployment_rate above.
+                tick_renter_share=county.renter_share,
+                # Wave 6 C3: bracket_ratio joins Group A/B's carry — same
+                # evaporation-on-round-trip fix, symmetric with
+                # tick_unemployment_rate immediately above.
+                tick_bracket_ratio=county.bracket_ratio,
                 # Wave 2 owner ruling 1: throughput_position/supply_chain_depth
                 # are real now that _bridge_economics_overrides wires a
                 # throughput_calculator — same evaporation-on-round-trip fix
@@ -6115,6 +6258,12 @@ def _carry_tick_dynamics_flows(
             tick_wage_compression=old_data.get("tick_wage_compression"),
             tick_class_distribution=old_data.get("tick_class_distribution"),
             tick_unemployment_rate=old_data.get("tick_unemployment_rate"),
+            # Wave 6 C2: annual (recomputed only at boundaries); carry forward
+            # byte-identical between boundaries, same pattern as unemployment_rate.
+            tick_renter_share=old_data.get("tick_renter_share"),
+            # Wave 6 C3: carry forward byte-identical between boundaries,
+            # same pattern as tick_unemployment_rate immediately above.
+            tick_bracket_ratio=old_data.get("tick_bracket_ratio"),
             # Wave 2 owner ruling 1: carry forward byte-identical between
             # boundaries, same pattern as the derived rates/Group A/B above.
             tick_throughput_position=old_data.get("tick_throughput_position"),
@@ -6169,7 +6318,13 @@ def _carry_epistemic_horizon(new_graph: Any, defines: Any) -> None:
     """
     from babylon.engine.systems.epistemic_horizon import compute_epistemic_horizon
 
-    compute_epistemic_horizon(new_graph, defines)
+    # EH ruling 6: new_graph is new_state.to_graph(), so the player-org
+    # pointer (when the session's WorldState carries one) is already in the
+    # graph metadata — pass it through so the recompute stays byte-identical
+    # to what the engine computed internally.
+    metadata = getattr(new_graph, "graph", None)
+    player_org_id = metadata.get("player_org_id") if isinstance(metadata, dict) else None
+    compute_epistemic_horizon(new_graph, defines, player_org_id=player_org_id)
 
 
 def _nonneg_float(data: dict[str, Any], key: str) -> float:
@@ -7570,6 +7725,31 @@ def _territory_graph_attr(graph: Any, territory_id: str, key: str) -> Any:
     return graph.nodes[territory_id].get(key)
 
 
+def _compute_real_median_wage(graph: Any, territory_id: str) -> float | None:
+    """Real median wage = ``tick_median_wage`` x ``tick_real_wage_deflator``.
+
+    Wave 6 C4 (Epochs audit, "wages never naked"): honest ``None``
+    (Constitution III.11) unless BOTH the nominal wage and the CPI deflator
+    are present on the graph — never fabricates a real wage from a missing
+    input. ``tick_real_wage_deflator`` is itself frozen at 1.0 (nominal ==
+    real) once ``services.cpi_source`` is unwired, but this composite stays
+    gated on ``tick_median_wage`` too since that key can be absent before the
+    first year-boundary tick.
+
+    Args:
+        graph: See :func:`_territory_graph_attr`.
+        territory_id: The territory's node id.
+
+    Returns:
+        The real median wage rounded to 4 decimal places, or ``None``.
+    """
+    wage = _territory_graph_attr(graph, territory_id, "tick_median_wage")
+    deflator = _territory_graph_attr(graph, territory_id, "tick_real_wage_deflator")
+    if wage is None or deflator is None:
+        return None
+    return round(float(wage) * float(deflator), 4)
+
+
 def _serialize_territory(t: Any, *, graph: Any = None) -> dict[str, Any]:
     """Serialize a Territory with all visualization-relevant fields.
 
@@ -7617,6 +7797,13 @@ def _serialize_territory(t: Any, *, graph: Any = None) -> dict[str, Any]:
     year boundary has run; ``None`` before then (never the engine's frozen
     1.0/2.0 bootstrap defaults re-surfacing here as if they were live).
 
+    Wave 6 C3: ``bracket_ratio`` joins the same graph-attr family off
+    ``tick_bracket_ratio`` — the top/bottom ACS B19001 income-bracket
+    household ratio (epochs audit item 167), real once
+    ``_bridge_economics_overrides`` wires ``income_source`` AND a year
+    boundary has run; ``None`` before then, never the engine's 0.0
+    not-computed default re-surfacing here as if it were live.
+
     Wave 5 receptivity lenses: ``mass_receptivity``/``intel_confidence``/
     ``vision_state`` join the same graph-attr family off the identically-
     named ``EpistemicHorizonSystem`` shadow attrs (non-``tick_``-prefixed,
@@ -7625,6 +7812,14 @@ def _serialize_territory(t: Any, *, graph: Any = None) -> dict[str, Any]:
     is called on a resolve_tick's ``new_graph``. ``None`` for a tenant-less
     territory (Constitution III.11) or before the graph has ever been
     stepped (this engine system runs only inside a tick).
+
+    Wave 6 C4 ("wages never naked"): ``real_wage_deflator`` joins the
+    ``tick_``-prefixed graph-attr family off ``tick_real_wage_deflator``
+    (real once ``_bridge_economics_overrides`` wires a ``cpi_source``;
+    otherwise frozen at 1.0, nominal == real). ``tick_real_median_wage`` is
+    the one bridge-derived (not graph-read) field in this payload — see
+    :func:`_compute_real_median_wage` — honest-``None`` unless both
+    ``tick_median_wage`` and the deflator are present.
     """
     territory_id = t.id
     return {
@@ -7672,7 +7867,11 @@ def _serialize_territory(t: Any, *, graph: Any = None) -> dict[str, Any]:
         "capital_stock": _territory_graph_attr(graph, territory_id, "tick_capital_stock"),
         "class_distribution": _territory_graph_attr(graph, territory_id, "tick_class_distribution"),
         "unemployment_rate": _territory_graph_attr(graph, territory_id, "tick_unemployment_rate"),
+        "renter_share": _territory_graph_attr(graph, territory_id, "tick_renter_share"),
+        "bracket_ratio": _territory_graph_attr(graph, territory_id, "tick_bracket_ratio"),
         "tick_median_wage": _territory_graph_attr(graph, territory_id, "tick_median_wage"),
+        "real_wage_deflator": _territory_graph_attr(graph, territory_id, "tick_real_wage_deflator"),
+        "tick_real_median_wage": _compute_real_median_wage(graph, territory_id),
         "throughput_position": _territory_graph_attr(
             graph, territory_id, "tick_throughput_position"
         ),

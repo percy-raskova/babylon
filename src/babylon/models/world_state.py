@@ -447,6 +447,18 @@ class WorldState(BaseModel):
         description="Map of scope ID to active ContradictionFrame (Feature: Fractal Contradictions)",
     )
 
+    player_org_id: str | None = Field(
+        default=None,
+        description=(
+            "The organization the player embodies (EH ruling 6, owner "
+            "2026-07-16). The Epistemic Horizon system reads this to compute "
+            "player-relative cadre presence (C_p) and intel confidence (I_c); "
+            "orgs stay symmetric — no per-org flag. None (synthetic scenarios, "
+            "headless sweeps) means no player-relative vision is computed, "
+            "preserving byte-identical goldens."
+        ),
+    )
+
     opposition_states: dict[str, Any] = Field(
         default_factory=dict,
         description=(
@@ -618,6 +630,11 @@ class WorldState(BaseModel):
         # Store events in graph metadata for lossless round-trip (Sprint 1.X D2)
         G.graph["events"] = [e.model_dump() for e in self.events]
         G.graph["event_log"] = list(self.event_log)
+
+        # EH ruling 6: the player-org pointer rides graph metadata, written
+        # only when set so synthetic/headless graphs stay byte-identical.
+        if self.player_org_id is not None:
+            G.graph["player_org_id"] = self.player_org_id
 
         # Store institution-org housing relations in graph metadata (Feature
         # 040). Relations are richer than the HOUSES edges to_graph derives
@@ -911,6 +928,13 @@ class WorldState(BaseModel):
             field_stack=field_stack,
             principal_field=principal_field,
             dialectical_regime=dialectical_regime,
+            # isinstance guard: a legacy/foreign graph may carry anything in
+            # metadata — a non-string pointer is ABSENT, never coerced.
+            player_org_id=(
+                G.graph.get("player_org_id")
+                if isinstance(G.graph.get("player_org_id"), str)
+                else None
+            ),
         )
 
     # =========================================================================

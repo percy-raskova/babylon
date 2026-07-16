@@ -31,11 +31,16 @@ from babylon.formulas.constants import HOURS_PER_YEAR, WEEKS_PER_YEAR
 from babylon.reference.schema import (
     DimBEAIndustry,
     DimCounty,
+    DimHousingTenure,
+    DimIncomeBracket,
     DimIndustry,
     DimOwnership,
+    DimRace,
     DimTime,
     FactBEACountyGDP,
     FactBLSUnemploymentDecomposition,
+    FactCensusHousing,
+    FactCensusIncome,
     FactQcewAnnual,
     FactQcewCountyRollup,
 )
@@ -567,6 +572,8 @@ class SQLiteQCEWCountyNAICSSource:
 __all__ = [
     "SQLiteBEACountyGDPSource",
     "SQLiteBLSUnemploymentSource",
+    "SQLiteCensusHousingSource",
+    "SQLiteCensusIncomeSource",
     "SQLiteQCEWCountyNAICSSource",
     "NAICS_2DIGIT_SECTORS",
 ]
@@ -622,3 +629,292 @@ class SQLiteBLSUnemploymentSource:
             if row is None or row[1] is None or row[1] <= 0 or row[0] is None:
                 return None
             return float(row[0]) / float(row[1])
+
+
+class SQLiteCensusHousingSource:
+    """County renter-occupied housing share from ACS housing tenure (Wave 6 C2).
+
+    Reads ``fact_census_housing`` (ACS 5-Year housing tenure by county/time/
+    tenure/race) via ``dim_housing_tenure`` + ``dim_race``. Symmetric with
+    :class:`SQLiteBLSUnemploymentSource`: an optional services override
+    (``services.housing_source``) supplies a real per-county value in place
+    of a frozen default; honest ``None`` when the county-year row is absent
+    (Constitution III.11) — never a fabricated share.
+
+    ``dim_housing_tenure`` carries three ``tenure_type`` codes:
+    ``total`` ("Total occupied housing units", ``is_owner=False`` — a
+    precomputed owner+renter rollup, NOT an independent occupancy category),
+    ``owner`` ("Owner-occupied housing units", ``is_owner=True``), and
+    ``renter`` ("Renter-occupied housing units", ``is_owner=False``). Note
+    ``is_owner`` alone cannot distinguish ``renter`` from ``total`` (both are
+    ``False``), so this adapter selects the ``renter``/``owner`` leaves by
+    their ``tenure_type`` label directly and never re-sums the ``total``
+    rollup alongside them (that would double-count).
+
+    ``dim_race`` breaks the same fact rows out by exclusive race categories
+    PLUS two overlapping ethnicity cross-cuts (``White alone, not Hispanic
+    or Latino`` and ``Hispanic or Latino``) that double-count against the
+    exclusive races — summing every ``race_id`` would over-count
+    households. Per the epochs audit (item 165: "no race modeling — that's
+    owner-gated"), this adapter deliberately reads only ``race_code='T'``
+    ("Total (all races)") to get the county's race-aggregate renter share.
+
+    Perf note: mirrors the 2026-07-15 QCEW fix in this same module — the SQL
+    filter stays to the highly-selective ``(county_id, time_id)`` pair (safe,
+    same shape as the sibling BLS/QCEW adapters); the low-cardinality
+    tenure/race selection happens in Python over the resulting small
+    (~30-row) set, sidestepping the SQLite planner's low-selectivity-index
+    hazard rather than filtering ``tenure_id``/``race_id`` in SQL.
+    """
+
+    def __init__(self, session_factory: Callable[[], Session]) -> None:
+        """Store the SQLAlchemy session factory (shared with the other adapters)."""
+        self._session_factory = session_factory
+        self._total_race_id: int | None = None
+        self._owner_tenure_id: int | None = None
+        self._renter_tenure_id: int | None = None
+
+    def _get_total_race_id(self, session: Session) -> int | None:
+        """Get ``dim_race.race_id`` for 'Total (all races)' (``race_code='T'``).
+
+        Caches the result for efficiency.
+        """
+        if self._total_race_id is None:
+            total_race = session.query(DimRace).filter(DimRace.race_code == "T").first()
+            if total_race:
+                self._total_race_id = total_race.race_id
+        return self._total_race_id
+
+    def _get_tenure_ids(self, session: Session) -> tuple[int | None, int | None]:
+        """Get ``(owner_tenure_id, renter_tenure_id)`` from ``dim_housing_tenure``.
+
+        Caches the result for efficiency.
+        """
+        if self._owner_tenure_id is None:
+            owner = (
+                session.query(DimHousingTenure)
+                .filter(DimHousingTenure.tenure_type == "owner")
+                .first()
+            )
+            if owner:
+                self._owner_tenure_id = owner.tenure_id
+        if self._renter_tenure_id is None:
+            renter = (
+                session.query(DimHousingTenure)
+                .filter(DimHousingTenure.tenure_type == "renter")
+                .first()
+            )
+            if renter:
+                self._renter_tenure_id = renter.tenure_id
+        return self._owner_tenure_id, self._renter_tenure_id
+
+    def get_county_renter_share(self, fips: str, year: int) -> float | None:
+        """Renter-occupied household share for a county-year.
+
+        ``renter_share = renter_households / (owner_households +
+        renter_households)``, aggregated across ``race_id`` by reading only
+        the ``race_code='T'`` ("Total (all races)") rows — see the class
+        docstring for why summing every race_id would double-count.
+
+        Args:
+            fips: 5-character county FIPS code.
+            year: Calendar year.
+
+        Returns:
+            The renter share in [0, 1], or ``None`` when the county, year,
+            or race="Total"/owner/renter rows are absent, or the
+            denominator is zero (honest ``None``, Constitution III.11).
+        """
+        with self._session_factory() as session:
+            total_race_id = self._get_total_race_id(session)
+            if total_race_id is None:
+                logger.warning("Census race 'Total (all races)' (race_code='T') not found")
+                return None
+            owner_tenure_id, renter_tenure_id = self._get_tenure_ids(session)
+            if owner_tenure_id is None or renter_tenure_id is None:
+                logger.warning("Census housing tenure 'owner'/'renter' rows not found")
+                return None
+
+            county = session.query(DimCounty).filter(DimCounty.fips == fips).first()
+            if county is None:
+                return None
+            time_dim = session.query(DimTime).filter(DimTime.year == year).first()
+            if time_dim is None:
+                return None
+
+            rows = (
+                session.query(
+                    FactCensusHousing.tenure_id,
+                    FactCensusHousing.race_id,
+                    FactCensusHousing.household_count,
+                )
+                .filter(
+                    FactCensusHousing.county_id == county.county_id,
+                    FactCensusHousing.time_id == time_dim.time_id,
+                )
+                .all()
+            )
+
+            renter_count: float | None = None
+            owner_count: float | None = None
+            for tenure_id, race_id, household_count in rows:
+                if race_id != total_race_id or household_count is None:
+                    continue
+                if tenure_id == renter_tenure_id:
+                    renter_count = float(household_count)
+                elif tenure_id == owner_tenure_id:
+                    owner_count = float(household_count)
+
+            if renter_count is None or owner_count is None:
+                return None
+            denominator = renter_count + owner_count
+            if denominator <= 0:
+                return None
+            return renter_count / denominator
+
+
+# Wave 6 C3 (epochs audit item 167): fact_census_income (ACS table B19001,
+# household income distribution) has 16 real brackets
+# (dim_income_bracket.bracket_order 1-16, fine-grained — no natural
+# top-decile/bottom-decile split) plus a 17th "NAM" ("Geographic Area Name")
+# metadata row that is never a household count. Per the audit's guidance for
+# fine-grained brackets, the ratio uses the top ~2 vs bottom ~2 bands — see
+# SQLiteCensusIncomeSource's docstring for the full rationale.
+_BOTTOM_BRACKET_ORDERS: tuple[int, ...] = (1, 2)  # "<$10,000", "$10,000-$14,999"
+_TOP_BRACKET_ORDERS: tuple[int, ...] = (15, 16)  # "$150,000-$199,999", "$200,000+"
+
+
+class SQLiteCensusIncomeSource:
+    """County top/bottom income-bracket household ratio from ACS B19001 (Wave 6 C3).
+
+    ``fact_census_income`` stores ACS household-income-distribution counts
+    per (county, bracket, year, race); the epochs audit (item 167) flagged
+    that this table had been "collapsed to SUM" with no bracket-aware reader.
+    This adapter computes an inequality PROXY: the ratio of households in the
+    TOP income band to households in the BOTTOM income band.
+
+    Band choice (documented per the audit's instruction to choose deliberately
+    when brackets are fine-grained):
+
+    - The reference DB carries 16 real brackets (``dim_income_bracket
+      .bracket_order`` 1-16, ACS table B19001) plus a 17th ``NAM``
+      ("Geographic Area Name") row that is metadata, not a household count —
+      excluded by construction since only orders 1/2/15/16 are ever queried.
+    - BOTTOM band = bracket_order ``{1, 2}``: "Less than $10,000" +
+      "$10,000 to $14,999".
+    - TOP band = bracket_order ``{15, 16}``: "$150,000 to $199,999" +
+      "$200,000 or more".
+    - 16 bands is too fine-grained for a natural top-decile/bottom-decile
+      split, so this reader takes the top ~2 / bottom ~2 bands (a symmetric
+      2-band window at each extreme) — wide enough that a single narrow
+      bracket doesn't dominate the ratio, narrow enough to stay a genuine
+      "extremes" comparison rather than a median-adjacent one.
+
+    Race handling: ``fact_census_income`` carries one row per ``dim_race``
+    category (10 total) per county-bracket-year. This adapter filters to
+    ``race_code='T'`` ("Total (all races, base table)" — the Census-provided
+    CROSS-RACE aggregate already computed upstream) rather than summing all
+    10 race rows: race_id 2-8 (the mutually-exclusive "alone" categories)
+    already sum to the Total, and race_id 9-10 (Hispanic-ethnicity-crossed
+    views) overlap 2-8, so a naive SUM over every race row would double- or
+    triple-count. This mirrors :class:`SQLiteQCEWCountyNAICSSource`'s own
+    convention of reading the designated "Total" dimension member
+    (``own_code='0'``) rather than summing every category.
+
+    Note: this is a household-COUNT ratio (relative population sizes in each
+    band), a distinct notion from an income-LEVEL percentile ratio (e.g.
+    P90/P10) — it answers "how many top-band households per bottom-band
+    household", not "how many times richer is the top decile than the
+    bottom". That is the audit's chosen proxy (item 167); flagged here
+    rather than silently presented as the latter.
+
+    Query shape: filters SQL-side only on ``county_id``/``time_id`` (both
+    individually indexed and, combined, narrow ``fact_census_income`` down to
+    ~170 rows — 17 brackets x 10 races) and filters ``race_id``/bracket band
+    in Python from that small fetched set. ``race_id`` is deliberately NOT a
+    SQL equality predicate: with only 10 distinct values across 7.2M rows
+    (the largest census table), it is exactly the low-selectivity-index
+    hazard :meth:`SQLiteQCEWCountyNAICSSource.get_county_naics_employment`
+    was fixed for (2026-07-15 perf regression: SQLite's planner favors a
+    low-selectivity single-column index over a more selective one when it
+    appears as an equality predicate) — a value like ``race_code='T'``
+    covers roughly 720k rows nationwide, the same order of magnitude as the
+    QCEW ``own_code`` hazard.
+    """
+
+    def __init__(self, session_factory: Callable[[], Session]) -> None:
+        """Store the SQLAlchemy session factory (shared with the other adapters)."""
+        self._session_factory = session_factory
+        self._total_race_id: int | None = None
+        self._bracket_order_by_id: dict[int, int] | None = None
+
+    def _get_total_race_id(self, session: Session) -> int | None:
+        """Get race_id for 'Total (all races)' (race_code='T'). Caches the result."""
+        if self._total_race_id is None:
+            race_total = session.query(DimRace).filter(DimRace.race_code == "T").first()
+            if race_total is not None:
+                self._total_race_id = race_total.race_id
+        return self._total_race_id
+
+    def _get_bracket_order_by_id(self, session: Session) -> dict[int, int]:
+        """Get the ``bracket_id -> bracket_order`` map. Caches the result."""
+        if self._bracket_order_by_id is None:
+            self._bracket_order_by_id = {
+                int(bracket_id): int(bracket_order)
+                for bracket_id, bracket_order in session.query(
+                    DimIncomeBracket.bracket_id, DimIncomeBracket.bracket_order
+                ).all()
+            }
+        return self._bracket_order_by_id
+
+    def get_county_bracket_ratio(self, fips: str, year: int) -> float | None:
+        """Top-band / bottom-band household ratio for a county-year.
+
+        Args:
+            fips: 5-character county FIPS code.
+            year: Calendar year.
+
+        Returns:
+            The top/bottom household-count ratio, or ``None`` when the
+            county, year, or race="Total" row is absent, or when the
+            bottom-band count is zero or absent (undefined ratio).
+        """
+        with self._session_factory() as session:
+            county = session.query(DimCounty).filter(DimCounty.fips == fips).first()
+            if county is None:
+                return None
+            time_dim = session.query(DimTime).filter(DimTime.year == year).first()
+            if time_dim is None:
+                return None
+            total_race_id = self._get_total_race_id(session)
+            if total_race_id is None:
+                return None
+            bracket_order_by_id = self._get_bracket_order_by_id(session)
+
+            rows = (
+                session.query(
+                    FactCensusIncome.race_id,
+                    FactCensusIncome.bracket_id,
+                    FactCensusIncome.household_count,
+                )
+                .filter(
+                    FactCensusIncome.county_id == county.county_id,
+                    FactCensusIncome.time_id == time_dim.time_id,
+                )
+                .all()
+            )
+
+        bottom = 0
+        top = 0
+        for race_id, bracket_id, household_count in rows:
+            if race_id != total_race_id or household_count is None:
+                continue
+            order = bracket_order_by_id.get(bracket_id)
+            if order in _BOTTOM_BRACKET_ORDERS:
+                bottom += int(household_count)
+            elif order in _TOP_BRACKET_ORDERS:
+                top += int(household_count)
+
+        if bottom <= 0:
+            return None
+        return float(top) / float(bottom)

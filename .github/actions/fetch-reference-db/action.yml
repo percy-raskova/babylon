@@ -18,15 +18,19 @@ inputs:
     # v3 (2026-07-15, Wave 6 data wires): + fact_bls_unemployment_decomposition
     # FULL (BLS LAUS U-3, read by SQLiteBLSUnemploymentSource) + hickel/ricci
     # schema-only tables (hydrator SELECTs them unconditionally).
-    default: ci-data-v3
+    # v4 (2026-07-16, Wave 6 census wires): + fact_census_housing FULL
+    # (skip -> full; SQLiteCensusHousingSource renter share) +
+    # fact_census_income FULL (michigan -> full; SQLiteCensusIncomeSource
+    # bracket ratio). tiger tarball unchanged from v3.
+    default: ci-data-v4
   asset:
     description: Asset filename within the release
     required: false
-    default: reference-subset-20260715.sqlite
+    default: reference-subset-20260716.sqlite
   sha256:
     description: Expected sha256 of the asset (pin — bump with the tag)
     required: false
-    default: 75bef16a654d1231e2c0469b430592c6cc20ac0e35aed022747a2a3f7f1b81b3
+    default: 7363f1d96f0e87db8feac84a116223b648b5c7592a5eb71ce0a497c33336401f
   tiger-asset:
     description: TIGER county-shapefile tarball within the release (the
       headless runner reads data/tiger/county/tl_2024_us_county.shp — proving

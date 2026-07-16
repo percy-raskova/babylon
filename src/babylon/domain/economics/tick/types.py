@@ -283,15 +283,19 @@ class CountyEconomicState(BaseModel):
         throughput_position: Pi = tau_through / tau_national (Feature 014).
         supply_chain_depth: Average supply chain depth D.
         unemployment_rate: County unemployment (U-3 proxy).
+        renter_share: ACS renter-occupied household share (Wave 6 C2).
         u6_rate: Broad unemployment (U-6).
         pter_rate: Part-time for economic reasons.
         nilf_rate: Not in labor force rate.
         median_wage: County median hourly wage.
         employment: Total county employment.
+        real_wage_deflator: CPI base-year real-wage deflator (Wave 6 C4).
         class_distribution: Five-class share distribution.
         phi_hour: Imperial rent per hour (Feature 013).
         crisis_state: Crisis lifecycle state (Feature 018).
         bifurcation_risk: Political trajectory indicator (Feature 018).
+        bracket_ratio: Top/bottom income-bracket household ratio (Wave 6 C3);
+            0.0 means not-computed (no wired ``income_source`` yet).
 
     Example:
         >>> state = CountyEconomicState(
@@ -313,13 +317,34 @@ class CountyEconomicState(BaseModel):
     throughput_position: float = Field(..., gt=0, description="Pi = tau_through / tau_national")
     supply_chain_depth: float = Field(..., ge=0, le=5, description="Supply chain depth D")
     unemployment_rate: float = Field(..., ge=0, le=1, description="County unemployment (U-3)")
+    renter_share: float = Field(
+        default=0.0, ge=0.0, le=1.0, description="ACS renter-occupied household share (Wave 6 C2)"
+    )
     u6_rate: float = Field(..., ge=0, le=1, description="Broad unemployment (U-6)")
     pter_rate: float = Field(..., ge=0, le=1, description="Part-time for economic reasons")
     nilf_rate: float = Field(..., ge=0, le=1, description="Not in labor force rate")
     median_wage: float = Field(..., ge=0, description="County median hourly wage")
     employment: float = Field(..., ge=0, description="Total county employment")
+    real_wage_deflator: float = Field(
+        default=1.0,
+        gt=0.0,
+        description=(
+            "CPI base-year real-wage deflator (Wave 6 C4): "
+            "real_wage = median_wage * real_wage_deflator. Frozen at 1.0 "
+            "(nominal == real) when cpi_source is unwired or the year's "
+            "CPI row is absent."
+        ),
+    )
     class_distribution: ClassDistribution = Field(..., description="Five-class share distribution")
     phi_hour: float = Field(..., ge=0, description="Imperial rent per hour")
+    bracket_ratio: float = Field(
+        default=0.0,
+        ge=0.0,
+        description=(
+            "Top/bottom income-bracket household ratio (Wave 6 C3, ACS B19001); "
+            "0.0 = not computed (no wired income_source)"
+        ),
+    )
     crisis_state: CrisisState = Field(
         default_factory=CrisisState.normal,
         description="Crisis lifecycle state for this county-year (Feature 018)",

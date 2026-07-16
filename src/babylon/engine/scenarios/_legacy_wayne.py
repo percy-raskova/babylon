@@ -622,6 +622,9 @@ def create_wayne_county_scenario(
         },
         relationships=relationships,
         event_log=[],
+        # EH ruling 6 (owner 2026-07-16): the engine-side player pointer —
+        # EpistemicHorizonSystem computes player-relative C_p/I_c from it.
+        player_org_id=_PLAYER_ORG_ID,
     )
 
     # Configuration

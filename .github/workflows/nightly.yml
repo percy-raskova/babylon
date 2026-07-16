@@ -82,6 +82,13 @@ jobs:
           POSTGRES_USER: test
           POSTGRES_PASSWORD: test
         run: poetry run python manage.py migrate
+      # The engine-runtime tables (node_state, edge_state, dynamic_*, …) are
+      # NOT Django's — locally test:int-pg applies POSTGRES_SCHEMA_DDL via
+      # db:bootstrap after db:up. This step was missing since the workflow's
+      # maiden run (2026-07-12), so every session-hydrating test failed with
+      # UndefinedTable: node_state (37 of 69 in run 29512575415).
+      - name: Babylon runtime schema bootstrap (node_state et al.)
+        run: mise run db:bootstrap
       - name: Run web integration suites
         env:
           POSTGRES_HOST: localhost
@@ -99,7 +106,7 @@ jobs:
   # dev unit shard and tests outside unit are excluded from test-rest by
   # the marker, so this job is their ONE home on the main tier.
   refdata-tests:
-    name: Reference-Data Tests (dev HEAD, ci-data-v1 subset)
+    name: Reference-Data Tests (dev HEAD, pinned ci-data subset)
     if: github.event.schedule != '0 4 * * 0' && vars.CI_REFDB_READY == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 25
@@ -158,6 +165,13 @@ jobs:
         with:
           ref: dev
       - uses: ./.github/actions/bootstrap-python
+      # sim:trace's headless runner requires the reference DB at
+      # data/sqlite/marxist-data-3NF.sqlite — exactly where this action
+      # installs the pinned ci-data subset. Without it the leg died at
+      # startup (ReferenceDataMissingError) on every dispatch. Whether the
+      # subset's rows satisfy the trace scenario is a data-coverage question
+      # this step surfaces honestly instead of masking behind a missing file.
+      - uses: ./.github/actions/fetch-reference-db
       - name: Simulation trace
         run: mise run sim:trace
       - name: Parameter sweep
@@ -184,6 +198,12 @@ jobs:
       - uses: ./.github/actions/bootstrap-python
         with:
           gdal: "true"
+      # src/babylon_data is a committed absolute symlink into the dev box's
+      # babylon-data repo — always dangling on CI checkout, and mutmut's
+      # src/ -> mutants/src/ copytree raises shutil.Error on it. Nothing
+      # under mutation imports it (loader-land, not engine), so drop it.
+      - name: Drop dangling babylon-data symlink (mutmut copytree chokes on it)
+        run: rm -f src/babylon_data
       - name: Run mutation testing (critical paths)
         run: poetry run python tools/run_mutmut.py --critical
       - name: Score vs committed baseline

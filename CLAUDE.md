@@ -70,7 +70,7 @@ order — **source of truth: `simulation_engine._DEFAULT_SYSTEMS`**; annotated o
    CollapseTransition, EdgeTransition, EpistemicHorizon (Phase 1 shadow — runs last, observes-only).
 
 Key modules: `engine/services.py` (concrete ServiceContainer; the DI *protocol* is
-`kernel/services.py`), `kernel/event_bus.py` (plain-str types; the `EventType` enum — 79 values —
+`kernel/services.py`), `kernel/event_bus.py` (plain-str types; the `EventType` enum — 82 values —
 is in `models/enums/events.py`), `engine/formula_registry.py` (23 hot-swappable formulas),
 `engine/observers/` (`SessionRecorder` black-box replay, `EndgameDetector` for the 5 terminal
 outcomes: REVOLUTIONARY_VICTORY, ECOLOGICAL_COLLAPSE, FASCIST_CONSOLIDATION, RED_OGV,

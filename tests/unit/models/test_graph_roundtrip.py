@@ -23,6 +23,7 @@ from babylon.models.entity_registry import (
 from babylon.models.enums import EventType, OperationalProfile, SectorType
 from babylon.models.events import (
     EVENT_CLASS_MAP,
+    DoctrineTrapSprungEvent,
     ExtractionEvent,
     SimulationEvent,
     UprisingEvent,
@@ -75,14 +76,26 @@ class TestEventsRoundTrip:
         assert restored.events[1].node_id == PERIPHERY_WORKER_ID
         assert restored.events[1].trigger == "spark"
 
+    def test_doctrine_trap_sprung_event_survives_round_trip(self) -> None:
+        """ADR073 Unit 6a: DoctrineTrapSprungEvent mirrors UprisingEvent's round-trip."""
+        sprung = DoctrineTrapSprungEvent(tick=12, org_id="vanguard", node_id="adventurism")
+        state = WorldState(tick=13, events=[sprung])
+
+        restored = WorldState.from_graph(state.to_graph(), tick=13)
+
+        assert len(restored.events) == 1
+        assert restored.events[0].event_type == EventType.DOCTRINE_TRAP_SPRUNG
+        assert restored.events[0].org_id == "vanguard"
+        assert restored.events[0].node_id == "adventurism"
+
 
 class TestNonUnionEventRoundTrip:
-    """Design B: EventType members outside the 19-leaf TickEvent union must
+    """Design B: EventType members outside the 22-leaf TickEvent union must
     replay as bare SimulationEvent instead of crashing (union_tag_invalid)."""
 
     def test_non_union_type_count_pin(self) -> None:
-        """Sanity-pin: exactly 19 EventType values are union-dispatchable."""
-        assert len(NON_UNION_TYPES) == len(EventType) - 19
+        """Sanity-pin: exactly 22 EventType values are union-dispatchable."""
+        assert len(NON_UNION_TYPES) == len(EventType) - 22
 
     @pytest.mark.parametrize("event_type", NON_UNION_TYPES, ids=str)
     def test_non_union_event_types_survive_round_trip(self, event_type: EventType) -> None:

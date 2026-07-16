@@ -22,6 +22,9 @@ from babylon.models.entity_registry import (
 from babylon.models.enums import EventType
 from babylon.models.events import (
     CrisisEvent,
+    DoctrinePurgeFailedEvent,
+    DoctrineTrapEscapedEvent,
+    DoctrineTrapSprungEvent,
     ExtractionEvent,
     MassAwakeningEvent,
     RuptureEvent,
@@ -1193,6 +1196,58 @@ class TestEcologicalOvershootEventConversion:
         assert result.overshoot_ratio == 1.3
         assert result.total_consumption == 500.0
         assert result.total_biocapacity == 385.0
+
+
+class TestDoctrineEventConversion:
+    """Tests for the ADR073 Unit 6a doctrine event conversions (doctrine.py::DoctrineSystem.step)."""
+
+    def test_converts_doctrine_trap_sprung_event(self) -> None:
+        """DOCTRINE_TRAP_SPRUNG events convert to DoctrineTrapSprungEvent."""
+        bus_event = Event(
+            type=EventType.DOCTRINE_TRAP_SPRUNG,
+            tick=12,
+            payload={"org_id": "vanguard", "node_id": "adventurism"},
+        )
+        result = _convert_bus_event_to_pydantic(bus_event)
+
+        assert result is not None
+        assert isinstance(result, DoctrineTrapSprungEvent)
+        assert result.event_type == EventType.DOCTRINE_TRAP_SPRUNG
+        assert result.tick == 12
+        assert result.org_id == "vanguard"
+        assert result.node_id == "adventurism"
+
+    def test_converts_doctrine_trap_escaped_event(self) -> None:
+        """DOCTRINE_TRAP_ESCAPED events convert to DoctrineTrapEscapedEvent."""
+        bus_event = Event(
+            type=EventType.DOCTRINE_TRAP_ESCAPED,
+            tick=52,
+            payload={"org_id": "vanguard", "node_id": "adventurism"},
+        )
+        result = _convert_bus_event_to_pydantic(bus_event)
+
+        assert result is not None
+        assert isinstance(result, DoctrineTrapEscapedEvent)
+        assert result.event_type == EventType.DOCTRINE_TRAP_ESCAPED
+        assert result.tick == 52
+        assert result.org_id == "vanguard"
+        assert result.node_id == "adventurism"
+
+    def test_converts_doctrine_purge_failed_event(self) -> None:
+        """DOCTRINE_PURGE_FAILED events convert to DoctrinePurgeFailedEvent."""
+        bus_event = Event(
+            type=EventType.DOCTRINE_PURGE_FAILED,
+            tick=104,
+            payload={"org_id": "vanguard", "node_id": "adventurism"},
+        )
+        result = _convert_bus_event_to_pydantic(bus_event)
+
+        assert result is not None
+        assert isinstance(result, DoctrinePurgeFailedEvent)
+        assert result.event_type == EventType.DOCTRINE_PURGE_FAILED
+        assert result.tick == 104
+        assert result.org_id == "vanguard"
+        assert result.node_id == "adventurism"
 
 
 class TestGracefulDegradation:

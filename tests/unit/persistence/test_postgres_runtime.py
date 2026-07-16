@@ -23,7 +23,7 @@ from babylon.models.entities.organization import PoliticalFaction
 from babylon.models.entity_registry import PERIPHERY_WORKER_ID
 from babylon.models.enums import ClassCharacter, EventType, OrgType
 from babylon.models.enums.doctrine import DoctrineTag
-from babylon.models.events import UprisingEvent
+from babylon.models.events import DoctrineTrapSprungEvent, UprisingEvent
 from babylon.models.world_state import WorldState
 from babylon.persistence.postgres_runtime import PostgresRuntime
 from babylon.topology.graph import BabylonGraph
@@ -1235,6 +1235,28 @@ class TestMakeSerializable:
         assert len(restored.events) == 1
         assert restored.events[0].event_type == EventType.UPRISING
         assert restored.events[0].tick == 8
+
+    # ADR073 Unit 6a: DoctrineEvent mirrors UprisingEvent's serialize ->
+    # hydrate -> from_graph round-trip through the same _make_serializable
+    # path (task #83's fix covers every event kind, not just UPRISING).
+    def test_doctrine_event_survives_and_revalidate(self) -> None:
+        """DoctrineTrapSprungEvent (org_id/node_id) survives into JSON-safe metadata."""
+        sprung = DoctrineTrapSprungEvent(tick=12, org_id="vanguard", node_id="adventurism")
+        state = WorldState(tick=13, events=[sprung])
+        graph = state.to_graph()
+
+        metadata = PostgresRuntime._make_serializable(dict(graph.graph))
+
+        assert "events" in metadata
+        json.dumps(metadata)  # the full extra payload must be JSON-native
+
+        graph.set_graph_attr("events", metadata["events"])
+        restored = WorldState.from_graph(graph, tick=13)
+        assert len(restored.events) == 1
+        assert restored.events[0].event_type == EventType.DOCTRINE_TRAP_SPRUNG
+        assert restored.events[0].tick == 12
+        assert restored.events[0].org_id == "vanguard"
+        assert restored.events[0].node_id == "adventurism"
 
     def test_unconvertible_value_drops_loudly(self, caplog: pytest.LogCaptureFixture) -> None:
         """A genuinely unserializable value is dropped with a WARNING, never silently."""

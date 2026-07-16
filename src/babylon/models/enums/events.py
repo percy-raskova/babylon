@@ -160,6 +160,10 @@ class EventType(StrEnum):
     LOCKOUT = "lockout"  # reactionary org action: employer withdraws wages/employment
     VIGILANTISM = "vigilantism"  # reactionary org action: extra-state local repression
     SPONTANEOUS_RIOT = "spontaneous_riot"  # L_u volatility-gated undirected disorder
+    # ADR073 Doctrine Tree (Unit 6a): DoctrineSystem's per-org trap/congress outcomes
+    DOCTRINE_TRAP_SPRUNG = "doctrine_trap_sprung"  # org fell into a reachable ideological trap
+    DOCTRINE_TRAP_ESCAPED = "doctrine_trap_escaped"  # Party Congress purge succeeded
+    DOCTRINE_PURGE_FAILED = "doctrine_purge_failed"  # Party Congress purge attempt failed
 
 
 class GameOutcome(StrEnum):

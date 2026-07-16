@@ -10,6 +10,7 @@ import pytest
 
 from babylon.config.defines.doctrine import DoctrineDefines
 from babylon.domain.doctrine import load_doctrine_tree
+from babylon.engine.services import ServiceContainer
 from babylon.engine.systems.doctrine import (
     DoctrineSystem,
     compute_doctrine,
@@ -20,6 +21,7 @@ from babylon.models.entities.organization import PoliticalFaction
 from babylon.models.enums import (
     ClassCharacter,
     ConsciousnessTendency,
+    EventType,
     LegalStanding,
     OrgType,
 )
@@ -375,3 +377,71 @@ class TestDoctrineSystemAdapter:
         services.defines.doctrine = DoctrineDefines()
         DoctrineSystem().step(graph, services, {})
         assert tree.root_id in graph.nodes["vanguard"]["acquired_doctrine_ids"]
+
+
+class TestDoctrineSystemEventPublication:
+    """ADR073 Unit 6a: DoctrineSystem.step publishes DoctrineEvents onto the
+    event bus the same way StruggleSystem publishes UPRISING (mirrors
+    tests/unit/engine/systems/test_struggle.py's event-bus subscription
+    pattern)."""
+
+    def test_sprung_trap_publishes_doctrine_trap_sprung_event(self) -> None:
+        # adventurism: parent urban_guerrilla, condition "MASS_LINK <= 0" —
+        # same fixture as TestStepOrganization.test_reachable_trap_fires_
+        # when_condition_holds, but driven through the real System + a real
+        # ServiceContainer's event bus instead of the pure function.
+        trapped = _org(
+            acquired_doctrine_ids=("class_consciousness", "urban_guerrilla"),
+            theoretical_labor=0.0,
+            doctrine_tags={DoctrineTag.MILITANCY: 5.0},
+        )
+        state = WorldState(
+            tick=0,
+            entities={},
+            territories={},
+            relationships=[],
+            organizations={"vanguard": trapped},
+        )
+        graph = state.to_graph()
+
+        services = ServiceContainer.create()
+        captured: list = []
+        services.event_bus.subscribe(
+            EventType.DOCTRINE_TRAP_SPRUNG,
+            lambda e: captured.append(e),
+        )
+        try:
+            DoctrineSystem().step(graph, services, {"tick": 1})
+        finally:
+            services.database.close()
+
+        assert len(captured) == 1
+        assert captured[0].payload["org_id"] == "vanguard"
+        assert captured[0].payload["node_id"] == "adventurism"
+        assert "adventurism" in graph.nodes["vanguard"]["acquired_doctrine_ids"]
+
+    def test_no_trap_publishes_no_doctrine_events(self) -> None:
+        """A fresh org (no reachable trap) publishes nothing — no false positives."""
+        state = WorldState(
+            tick=0,
+            entities={},
+            territories={},
+            relationships=[],
+            organizations={"vanguard": _org()},
+        )
+        graph = state.to_graph()
+
+        services = ServiceContainer.create()
+        captured: list = []
+        for kind in (
+            EventType.DOCTRINE_TRAP_SPRUNG,
+            EventType.DOCTRINE_TRAP_ESCAPED,
+            EventType.DOCTRINE_PURGE_FAILED,
+        ):
+            services.event_bus.subscribe(kind, lambda e: captured.append(e))
+        try:
+            DoctrineSystem().step(graph, services, {"tick": 1})
+        finally:
+            services.database.close()
+
+        assert captured == []

@@ -46,6 +46,8 @@ from babylon.domain.doctrine.mechanics import (
     can_acquire,
     decay_tags,
 )
+from babylon.kernel.event_bus import Event
+from babylon.models.enums import EventType
 from babylon.models.enums.doctrine import DoctrineTag
 
 if TYPE_CHECKING:
@@ -58,6 +60,17 @@ if TYPE_CHECKING:
 
 from babylon.kernel.system_base import SystemBase, resolve_rng
 from babylon.kernel.system_protocol import ContextType
+
+#: ``compute_doctrine``'s triple ``kind`` string -> the EventType it publishes
+#: as (ADR073 Unit 6a). Every kind ``compute_doctrine`` can return MUST have an
+#: entry here — a missing kind would silently drop an event (Constitution
+#: III.11), so ``DoctrineSystem.step`` indexes this dict directly (no
+#: ``.get()`` fallback) and a bad kind raises loudly instead.
+_KIND_TO_EVENT_TYPE: dict[str, EventType] = {
+    "sprung": EventType.DOCTRINE_TRAP_SPRUNG,
+    "escaped": EventType.DOCTRINE_TRAP_ESCAPED,
+    "purge_failed": EventType.DOCTRINE_PURGE_FAILED,
+}
 
 
 def _apply_deltas(tags: dict[DoctrineTag, float], deltas: object) -> dict[DoctrineTag, float]:
@@ -192,7 +205,8 @@ def compute_doctrine(
 
     :returns: ``(org_id, node_id, kind)`` triples — ``kind`` is ``"sprung"``
         (trap fallen into), ``"escaped"`` (congress purge succeeded), or
-        ``"purge_failed"`` — for Unit 6 to emit as events.
+        ``"purge_failed"`` — consumed by :meth:`DoctrineSystem.step` to
+        publish as ``DoctrineEvent`` instances (Unit 6a, ADR073).
     """
     events: list[tuple[str, str, str]] = []
     is_congress = tick > 0 and rng is not None and tick % defines.congress_interval_ticks == 0
@@ -268,20 +282,31 @@ class DoctrineSystem(SystemBase):
         """Run the doctrine loop over all organizations, writing per-org state.
 
         Doctrine events (trap sprung / congress escape / purge failed) are
-        computed but not yet published — event emission + the bridge whitelist
-        are wired in Unit 6, alongside the behavioural feedback into
-        bifurcation/consciousness.
+        published onto ``services.event_bus`` the same way StruggleSystem
+        publishes UPRISING (Unit 6a, ADR073): each ``(org_id, node_id, kind)``
+        triple from :func:`compute_doctrine` becomes one ``Event`` with the
+        matching :data:`_KIND_TO_EVENT_TYPE` EventType and a
+        ``{"org_id", "node_id"}`` payload. The behavioural feedback into
+        bifurcation/consciousness is Unit 6b, not this method.
         """
         tick = _extract_tick(context)
         if self._tree is None:
             self._tree = load_doctrine_tree()
-        compute_doctrine(
+        triples = compute_doctrine(
             graph,
             services.defines.doctrine,
             self._tree,
             tick=tick,
             rng=resolve_rng(services, tick),
         )
+        for org_id, node_id, kind in triples:
+            services.event_bus.publish(
+                Event(
+                    type=_KIND_TO_EVENT_TYPE[kind],
+                    tick=tick,
+                    payload={"org_id": org_id, "node_id": node_id},
+                )
+            )
 
 
 def _extract_tick(context: ContextType) -> int:

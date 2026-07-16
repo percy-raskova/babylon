@@ -77,6 +77,9 @@ from babylon.models.events import (
     ClassDecompositionEvent,
     ControlRatioCrisisEvent,
     CrisisEvent,
+    DoctrinePurgeFailedEvent,
+    DoctrineTrapEscapedEvent,
+    DoctrineTrapSprungEvent,
     ExtractionEvent,
     MassAwakeningEvent,
     PhaseTransitionEvent,
@@ -503,6 +506,8 @@ def _convert_bus_event_to_pydantic(event: Event) -> SimulationEvent | None:  # n
     Sprint 3.1+: Supports all 10 EventTypes except SOLIDARITY_AWAKENING.
     Program 17 item 1b: widened to 34 of 79 EventTypes.
     Wave 1 item W1.1: widened to 44 of 79 EventTypes.
+    Unit 6a (ADR073): widened to 47 of 82 EventTypes (DOCTRINE_TRAP_SPRUNG /
+    DOCTRINE_TRAP_ESCAPED / DOCTRINE_PURGE_FAILED).
     """
     # Normalize event type (may be string or EventType enum)
     event_type = event.type
@@ -972,6 +977,31 @@ def _convert_bus_event_to_pydantic(event: Event) -> SimulationEvent | None:  # n
             overshoot_ratio=payload.get("overshoot_ratio", 0.0),
             total_consumption=payload.get("total_consumption", 0.0),
             total_biocapacity=payload.get("total_biocapacity", 0.0),
+        )
+
+    # ADR073 Doctrine Tree events (Unit 6a — doctrine.py::DoctrineSystem.step)
+    if event_type == EventType.DOCTRINE_TRAP_SPRUNG:
+        return DoctrineTrapSprungEvent(
+            tick=tick,
+            timestamp=timestamp,
+            org_id=payload.get("org_id", ""),
+            node_id=payload.get("node_id", ""),
+        )
+
+    if event_type == EventType.DOCTRINE_TRAP_ESCAPED:
+        return DoctrineTrapEscapedEvent(
+            tick=tick,
+            timestamp=timestamp,
+            org_id=payload.get("org_id", ""),
+            node_id=payload.get("node_id", ""),
+        )
+
+    if event_type == EventType.DOCTRINE_PURGE_FAILED:
+        return DoctrinePurgeFailedEvent(
+            tick=tick,
+            timestamp=timestamp,
+            org_id=payload.get("org_id", ""),
+            node_id=payload.get("node_id", ""),
         )
 
     # Feature 002 events (EDGE_MODE_TRANSITION, CO_OPTIVE_BREAKDOWN,

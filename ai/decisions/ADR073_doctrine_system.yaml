@@ -97,15 +97,25 @@ ADR073_doctrine_system:
     (PoliticalFaction et al.), not class-held; greedy auto-acquire as the
     non-player default; position 14.7.
 
-    REMAINING UNITS (tracked, not drift): Unit 5 Party Congress
-    (seeded-RNG by tag deltas, every congress_interval_ticks); Unit 6 WIRE
-    — doctrine_tags feedback into bifurcation/consciousness +
-    DOCTRINE_TRAP_SPRUNG EventType + bridge whitelist. Unit 6 is
-    BASELINE-MOVING BY DESIGN on org-bearing scenarios; the ratified plan
-    is: land an org-bearing determinism harness FIRST, regenerate goldens
-    in a dedicated single-writer commit, and ship a divergence doc (the
-    R-PROOF convention) — regeneration is never silent. Unit 7b Study
-    verb (player-directed acquisition POST + frontend affordance).
+    REMAINING UNITS — ALL EXECUTED same-day (2026-07-15 evening), this
+    tracker updated post-hoc: Unit 5 Party Congress (415f54d0 — seeded-RNG
+    purge weighted by tag deltas per DT-5, congress_tag_snapshot field,
+    congress_delta_weight/congress_contingency_floor defines); Unit 6a
+    events (DOCTRINE_TRAP_SPRUNG/ESCAPED/PURGE_FAILED EventTypes 79->82,
+    DoctrineEvent family in the TickEvent discriminated union, bus
+    publication mirroring UPRISING, conversion + bridge severity whitelist
+    + narrator + frontend classifier); Unit 6b behavioural feedback
+    (9f7e942b — CLASS_ANALYSIS theory bonus on consciousness deltas,
+    MASS_LINK-gated org solidarity transmission into the bifurcation
+    router; both coefficients defines); Unit 7b Study order (d0ac6b1d +
+    12785996 — Educate(Doctrine) sub-verb through the action queue,
+    save-toward-target mechanics, canvas Study buttons + Studying badge).
+    The anticipated golden regeneration was NOT needed: all five
+    qa:regression scenarios are org-less, so every unit landed
+    byte-identical; the org-bearing determinism harness (the 100-tick
+    golden chain in test_doctrine_system.py) is the doctrine-motion
+    contract instead. Remaining DT scope beyond this ADR: Phase 2
+    faction-flip (ratified, faction_flip_enabled=False until then).
   consequences: |
     The engine's system count is 28; CLAUDE.md and ai/architecture.yaml
     must say so (staleness found and fixed in the 2026-07-15 review).

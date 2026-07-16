@@ -331,8 +331,22 @@ class TestEventType:
             EventType("random_event")
 
     def test_event_type_count(self) -> None:
-        """79 event types (71 prior + 8 Spec 071 reactionary: FASCIST_DRIFT, FASCIST_RECRUITMENT, ORGANIZATIONAL_FRACTURE, RED_BROWN_COUP, POGROM, LOCKOUT, VIGILANTISM, SPONTANEOUS_RIOT)."""
-        assert len(EventType) == 79
+        """82 event types (79 prior + 3 ADR073 Doctrine Tree: DOCTRINE_TRAP_SPRUNG, DOCTRINE_TRAP_ESCAPED, DOCTRINE_PURGE_FAILED)."""
+        assert len(EventType) == 82
+
+    def test_doctrine_event_types_exist(self) -> None:
+        """ADR073 Unit 6a: DoctrineSystem's per-org trap/congress outcome events.
+
+        - DOCTRINE_TRAP_SPRUNG: org fell into a reachable ideological trap
+        - DOCTRINE_TRAP_ESCAPED: Party Congress self-criticism purge succeeded
+        - DOCTRINE_PURGE_FAILED: Party Congress self-criticism purge attempt failed
+        """
+        assert hasattr(EventType, "DOCTRINE_TRAP_SPRUNG")
+        assert EventType.DOCTRINE_TRAP_SPRUNG.value == "doctrine_trap_sprung"
+        assert hasattr(EventType, "DOCTRINE_TRAP_ESCAPED")
+        assert EventType.DOCTRINE_TRAP_ESCAPED.value == "doctrine_trap_escaped"
+        assert hasattr(EventType, "DOCTRINE_PURGE_FAILED")
+        assert EventType.DOCTRINE_PURGE_FAILED.value == "doctrine_purge_failed"
 
     def test_terminal_crisis_event_types_exist(self) -> None:
         """Terminal Crisis Dynamics: Events for endgame arc.

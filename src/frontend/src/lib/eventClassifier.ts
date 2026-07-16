@@ -31,11 +31,15 @@ import type { GameEvent, ClassifiedEvent, EventSeverity } from "@/types/game";
  *   - SOLIDARITY_FORMED / SOLIDARITY_BROKEN → solidarity_awakening +
  *     solidarity_spike
  *
- * spec-113 Lane E: extended coverage to the rest of the 79-value EventType
+ * spec-113 Lane E: extended coverage to the rest of the 82-value EventType
  * enum (`src/babylon/models/enums/events.py`) so `classifyEvent`'s default
  * fallback ("informational") stops being the accidental answer for most of
  * the engine's real event vocabulary. The originally-tested nine keys above
  * keep their exact values — this only adds new keys.
+ *
+ * ADR073 Doctrine Tree (Unit 6a): doctrine_trap_sprung / doctrine_trap_escaped
+ * / doctrine_purge_failed added — DoctrineSystem's per-org trap/congress
+ * outcomes.
  */
 const EVENT_SEVERITY_MAP: Record<string, EventSeverity> = {
   // Critical — existential state changes
@@ -48,6 +52,7 @@ const EVENT_SEVERITY_MAP: Record<string, EventSeverity> = {
   red_ogv_endgame: "critical",
   fragmented_collapse_endgame: "critical",
   endgame_reached: "critical",
+  doctrine_trap_sprung: "critical",
 
   // Important — phase transitions and strategic shifts
   bifurcation_threshold: "important",
@@ -77,6 +82,8 @@ const EVENT_SEVERITY_MAP: Record<string, EventSeverity> = {
   lockout: "important",
   vigilantism: "important",
   spontaneous_riot: "important",
+  doctrine_trap_escaped: "important",
+  doctrine_purge_failed: "important",
   fascist_convergence: "important",
   legitimation_crisis: "important",
   crisis_phase_transition: "important",
@@ -288,6 +295,9 @@ const CATEGORY_MAP: Record<string, EventCategory> = {
   fascist_recruitment: "political",
   institution_reproduction: "political",
   institution_bonapartist_mode: "political",
+  doctrine_trap_sprung: "political",
+  doctrine_trap_escaped: "political",
+  doctrine_purge_failed: "political",
 
   // ecology — metabolic rift
   ecological_overshoot: "ecology",

@@ -6515,6 +6515,10 @@ _EVENT_SEVERITY: dict[str, str] = {
     # AW3-R1: a majority-LA-defection org capture is a state-violation event
     # on par with the rest of this critical tier, not routine flow.
     "red_brown_coup": "critical",
+    # ADR073 Doctrine Tree (Unit 6a): falling into a trap is a high-severity
+    # ideological deviation, on par with the other completed-state-violation
+    # events in this tier.
+    "doctrine_trap_sprung": "critical",
     # Warning: threshold-cross / repression events
     "state_repression": "warning",
     "red_settler_trap_detected": "warning",
@@ -6533,6 +6537,13 @@ _EVENT_SEVERITY: dict[str, str] = {
     # this map entirely, silently defaulting to "informational".
     "fascist_recruitment": "warning",
     "organizational_fracture": "warning",
+    # ADR073 Doctrine Tree (Unit 6a): a congress purge attempt resolving
+    # (either way) is a threshold-cross event, same tier as the trap
+    # detection/drift siblings above — escaping is the good outcome, a
+    # failed purge leaves the org still trapped, but both are congress
+    # ATTEMPTS rather than routine flow.
+    "doctrine_trap_escaped": "warning",
+    "doctrine_purge_failed": "warning",
     # Informational: routine flow events
     "surplus_extraction": "informational",
     "imperial_subsidy": "informational",

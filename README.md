@@ -135,7 +135,7 @@ annotations.
 | ----------------------------------------- | ---------------------------------------------------------- |
 | `src/babylon/engine/simulation_engine.py` | Orchestrates all Systems                                   |
 | `src/babylon/engine/services.py`          | ServiceContainer (dependency injection)                    |
-| `src/babylon/engine/event_bus.py`         | Publish/subscribe events (79 EventTypes)                   |
+| `src/babylon/engine/event_bus.py`         | Publish/subscribe events (82 EventTypes)                   |
 | `src/babylon/engine/formula_registry.py`  | Hot-swappable formula dispatch                             |
 | `src/babylon/engine/topology_monitor.py`  | Phase transition detection via percolation                 |
 | `src/babylon/engine/observers/`           | `SessionRecorder`, `EndgameDetector` (5 terminal outcomes) |

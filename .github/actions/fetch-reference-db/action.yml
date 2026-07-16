@@ -15,15 +15,18 @@ inputs:
     # v2 (2026-07-11): + fact_faf_commodity_flow FULL — the headless runner's
     # hydration path reads it (Determinism Bundle died without it on the v1
     # proving run).
-    default: ci-data-v2
+    # v3 (2026-07-15, Wave 6 data wires): + fact_bls_unemployment_decomposition
+    # FULL (BLS LAUS U-3, read by SQLiteBLSUnemploymentSource) + hickel/ricci
+    # schema-only tables (hydrator SELECTs them unconditionally).
+    default: ci-data-v3
   asset:
     description: Asset filename within the release
     required: false
-    default: reference-subset-20260711b.sqlite
+    default: reference-subset-20260715.sqlite
   sha256:
     description: Expected sha256 of the asset (pin — bump with the tag)
     required: false
-    default: 922b5a660306006d04ec1d322795d975c33638c59cb1278fbefb555db363b339
+    default: 75bef16a654d1231e2c0469b430592c6cc20ac0e35aed022747a2a3f7f1b81b3
   tiger-asset:
     description: TIGER county-shapefile tarball within the release (the
       headless runner reads data/tiger/county/tl_2024_us_county.shp — proving

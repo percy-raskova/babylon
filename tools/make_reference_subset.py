@@ -390,7 +390,14 @@ TABLE: dict[str, TablePolicy] = {
     # -- fact_* — default SKIP: not referenced by any src/ module or test. --
     "fact_atus_reproductive_labor": TablePolicy("skip", _UNREFERENCED_REASON),
     "fact_bls_productivity": TablePolicy("skip", _UNREFERENCED_REASON),
-    "fact_bls_unemployment_decomposition": TablePolicy("skip", _UNREFERENCED_REASON),
+    "fact_bls_unemployment_decomposition": TablePolicy(
+        "full",
+        "Wave 6 D8: read by SQLiteBLSUnemploymentSource "
+        "(domain/economics/throughput/adapters.py) — per-county BLS LAUS "
+        "U-3 wired into the tick pipeline's unemployment_rate via "
+        "services.unemployment_source (web bridge + headless runner); "
+        "tiny (51,404 rows, ~1 MB).",
+    ),
     "fact_census_commute": TablePolicy("skip", _UNREFERENCED_REASON),
     "fact_census_education": TablePolicy("skip", _UNREFERENCED_REASON),
     "fact_census_employment": TablePolicy("skip", _UNREFERENCED_REASON),

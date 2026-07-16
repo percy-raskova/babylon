@@ -925,7 +925,9 @@ def _build_economics_overrides(
     Args:
         session_factory: Optional SQLAlchemy session factory for the
             normalized reference DB. When provided, ``melt_calculator``
-            is wired (required to pass the TickDynamicsSystem gate).
+            is wired (required to pass the TickDynamicsSystem gate) and
+            ``unemployment_source`` is wired (Wave 6 D8: per-county BLS
+            LAUS U-3 instead of the frozen 0.05 prev-carry default).
             When ``None``, only the parameterless ``gamma_calculator``
             is wired.
         event_bus: Optional EventBus for the Leontief pipeline's
@@ -959,11 +961,17 @@ def _build_economics_overrides(
             SQLiteBEANationalGDPSource,
             SQLiteQCEWNationalEmploymentSource,
         )
+        from babylon.domain.economics.throughput.adapters import (
+            SQLiteBLSUnemploymentSource,
+        )
 
         bea_national = SQLiteBEANationalGDPSource(session_factory)
         qcew_national = SQLiteQCEWNationalEmploymentSource(session_factory)
         melt = DefaultMELTCalculator(bea_national, qcew_national)
         overrides["melt_calculator"] = melt
+        # Wave 6 D8: BLS LAUS U-3 per-county unemployment replaces the frozen
+        # 0.05 prev-carry default in the tick pipeline (honest-data ruling).
+        overrides["unemployment_source"] = SQLiteBLSUnemploymentSource(session_factory)
 
         if event_bus is not None and defines is not None:
             from babylon.domain.economics.factory import create_leontief_rent_services

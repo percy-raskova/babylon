@@ -578,8 +578,15 @@ class TickDynamicsSystem(SystemBase):
                     throughput_position = tp_result.pi
                     supply_chain_depth = tp_result.supply_chain_depth
 
-            # Preserve previous precarity/labor indicators
+            # Preserve previous precarity/labor indicators. unemployment_rate
+            # prefers a wired BLS LAUS U-3 source (labor-data wire 2026-07-15,
+            # symmetric with employment_source below); the 0.05 literal remains
+            # only as the documented unwired/absent-row degradation (III.11).
             unemployment_rate = prev.unemployment_rate if prev else 0.05
+            if services.unemployment_source is not None:
+                u3 = services.unemployment_source.get_county_unemployment_rate(fips, year)
+                if u3 is not None and isinstance(u3, (int, float)):
+                    unemployment_rate = float(u3)
             u6_rate = prev.u6_rate if prev else 0.10
             pter_rate = prev.pter_rate if prev else 0.04
             nilf_rate = prev.nilf_rate if prev else 0.06

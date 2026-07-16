@@ -5868,6 +5868,7 @@ def _bridge_economics_overrides(fips_codes: tuple[str, ...] = ()) -> tuple[dict[
     )
     from babylon.domain.economics.throughput.adapters import (
         SQLiteBEACountyGDPSource,
+        SQLiteBLSUnemploymentSource,
         SQLiteQCEWCountyNAICSSource,
     )
     from babylon.domain.economics.throughput.calculator import DefaultThroughputCalculator
@@ -5897,6 +5898,10 @@ def _bridge_economics_overrides(fips_codes: tuple[str, ...] = ()) -> tuple[dict[
     # per (fips, year); no upfront hydration, so wire it unconditionally.
     qcew_source = SQLiteQCEWCountyNAICSSource(session_factory)
     overrides["employment_source"] = qcew_source
+    # Labor-data wire (2026-07-15): real per-county BLS LAUS U-3 replaces the
+    # frozen 0.05 tick_unemployment_rate placeholder — same rails as Fix C,
+    # honest None (=> carry/default) when the county-year row is absent.
+    overrides["unemployment_source"] = SQLiteBLSUnemploymentSource(session_factory)
     # Wave 2 owner ruling 1: wire a real throughput_calculator (Feature 014's
     # DefaultThroughputCalculator over the SAME reference-DB session factory Φ
     # and employment_source above already use — no new runtime dependency).

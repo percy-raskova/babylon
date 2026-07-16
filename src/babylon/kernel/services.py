@@ -53,6 +53,7 @@ class ServicesProtocol(Protocol):
     transition_engine: Any
     tensor_registry: Any
     employment_source: Any
+    unemployment_source: Any
     economics_fallbacks: Any
     community_hypergraph: Any
     turnover_profile_source: Any

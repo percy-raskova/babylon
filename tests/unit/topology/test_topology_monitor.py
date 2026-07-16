@@ -294,17 +294,38 @@ class TestPurgeSimulation:
         assert result1.post_purge_max_component == result2.post_purge_max_component
         assert result1.is_resilient == result2.is_resilient
 
-    def test_different_seeds_can_differ(self, star_topology: BabylonGraph) -> None:
-        """Different seeds can produce different outcomes."""
+    def test_different_seeds_can_differ(
+        self, star_topology: BabylonGraph, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Removing the hub vs. a spoke yields different resilience outcomes.
+
+        Pins the RNG's node selection deterministically (rather than hoping a
+        handful of seeds happen to disagree): with the hub gone the star
+        collapses to 5 isolated nodes (L_max=1, below the 0.4 survival
+        threshold of the original L_max=6), while removing a spoke leaves a
+        4-spoke star intact (L_max=5, above threshold).
+        """
+        import babylon.engine.topology_monitor as tm
         from babylon.engine.topology_monitor import check_resilience
 
-        # Try seeds until we find two with different results
-        results = [check_resilience(star_topology, removal_rate=0.2, seed=i) for i in range(10)]
+        class _FixedSelectionRandom:
+            """Stand-in for random.Random that removes by seed, not chance."""
 
-        # At least some should differ (hub vs non-hub removal)
-        is_resilient_values = [r.is_resilient for r in results]
-        # Not all should be the same
-        assert not all(is_resilient_values) or all(is_resilient_values)
+            def __init__(self, seed: int | None) -> None:
+                self._seed = seed
+
+            def sample(self, population: list[str], k: int) -> list[str]:
+                if self._seed == 0:
+                    return [n for n in population if "HUB" in n][:k]
+                return [n for n in population if "HUB" not in n][:k]
+
+        monkeypatch.setattr(tm.random, "Random", _FixedSelectionRandom)
+
+        hub_removed = check_resilience(star_topology, removal_rate=0.2, seed=0)
+        spoke_removed = check_resilience(star_topology, removal_rate=0.2, seed=1)
+
+        assert hub_removed.is_resilient is False
+        assert spoke_removed.is_resilient is True
 
     def test_original_graph_unmodified(self, mesh_topology: BabylonGraph) -> None:
         """Purge operates on copy, original unchanged."""

@@ -20,6 +20,8 @@ from unittest.mock import patch
 
 import pytest
 from hypothesis import HealthCheck, given, settings
+from hypothesis import strategies as st
+from hypothesis.strategies import SearchStrategy
 
 from babylon.engine.context import TickContext
 from babylon.engine.services import ServiceContainer
@@ -31,6 +33,8 @@ from babylon.engine.simulation_engine import (
 from babylon.engine.systems import ooda as ooda_module
 from babylon.engine.systems.contradiction import ContradictionSystem
 from babylon.engine.systems.ooda import OODASystem
+from babylon.models.entities.organization import PoliticalFaction
+from babylon.models.enums import ClassCharacter
 from babylon.models.world_state import (
     SOCIAL_CLASS_COMPUTED_FIELDS,
     TERRITORY_EXCLUDED_FIELDS,
@@ -58,11 +62,57 @@ def _build_exclude_paths() -> dict:
     }
 
 
+def _political_faction_strategy(org_id: str) -> SearchStrategy[PoliticalFaction]:
+    """Generate a minimal, valid PoliticalFaction for a fixed org_id.
+
+    Only the fields with no Pydantic default are drawn; the rest
+    (cohesion, budget, heat, territory_ids, doctrine state, ...) keep
+    their Organization/PoliticalFaction defaults — the same shape
+    OODASystem sees for any freshly-created org in production.
+    """
+    return st.builds(
+        PoliticalFaction,
+        id=st.just(org_id),
+        name=st.text(min_size=1, max_size=30, alphabet=st.characters(categories=("L", "N"))).filter(
+            lambda s: bool(s.strip())
+        ),
+        class_character=st.sampled_from(list(ClassCharacter)),
+        ideology=st.text(min_size=1, max_size=20, alphabet=st.characters(categories=("L",))).filter(
+            lambda s: bool(s.strip())
+        ),
+    )
+
+
+def _org_bearing_worldstate_strategy() -> SearchStrategy[WorldState]:
+    """AS1-specific strategy: ``worldstate_strategy`` composed with 1-3 orgs.
+
+    ``worldstate_strategy`` (tests/property/strategies/worldstate.py) never
+    generates organization nodes, so quantifying AS1 over its raw output
+    was vacuous — ``OrganizationActionSpy`` recorded zero events every
+    example, and the postdate assertion never actually ran. This local
+    strategy layers 1-3 ``PoliticalFaction`` organizations onto the base
+    worldstate so at least one per-org action is always resolved. It is
+    deliberately NOT folded into the shared ``worldstate_strategy`` default
+    — other property files depend on that strategy's current org-less
+    shape — and lives only here, alongside it, per the Phase C repair scope.
+    """
+
+    @st.composite
+    def _build(draw: st.DrawFn) -> WorldState:
+        base = draw(worldstate_strategy(min_entities=2))
+        n_orgs = draw(st.integers(min_value=1, max_value=3))
+        org_ids = [f"ORG{i:03d}" for i in range(n_orgs)]
+        organizations = {org_id: draw(_political_faction_strategy(org_id)) for org_id in org_ids}
+        return base.model_copy(update={"organizations": organizations})
+
+    return _build()
+
+
 @pytest.mark.unit
 class TestConsequenceAfterActions:
     """INV-014: every Consequence System call_index > max OODA action timestamp."""
 
-    @given(state=worldstate_strategy(min_entities=2))
+    @given(state=_org_bearing_worldstate_strategy())
     @settings(
         max_examples=50,
         suppress_health_check=[HealthCheck.too_slow, HealthCheck.function_scoped_fixture],
@@ -74,9 +124,10 @@ class TestConsequenceAfterActions:
         """AS1: every Consequence System invocation postdates every
         per-organization action resolved this tick.
 
-        Note: with no organization nodes in the random WorldState,
-        the per-org spy may record zero events — in that case the
-        predicate is vacuously satisfied.
+        ``state`` always carries 1-3 organizations (see
+        ``_org_bearing_worldstate_strategy``), so the per-org spy is
+        guaranteed to record at least one event every example — the
+        non-vacuity guard below fails loud if that ever stops holding.
         """
         services = ServiceContainer.create()
         ctx = TickContext(tick=state.tick)
@@ -85,11 +136,15 @@ class TestConsequenceAfterActions:
         with SystemCallSpy(engine) as sys_spy, OrganizationActionSpy() as org_spy:
             engine.run_tick(state.to_graph(), services, ctx)
 
+        assert org_spy.events, (
+            "AS1 non-vacuity guard: no per-organization action was resolved "
+            "this tick despite the state carrying organization nodes — the "
+            "predicate would be vacuously true; check "
+            "_org_bearing_worldstate_strategy / OODASystem._collect_org_nodes"
+        )
+
         consequence_names = {cls.__name__ for cls in CONSEQUENCE_SYSTEMS}
         consequence_events = [e for e in sys_spy.events if e.system_class_name in consequence_names]
-
-        if not org_spy.events:
-            return  # vacuous — no organizations resolved this tick
 
         max_org_ts = max(e.monotonic_timestamp_ns for e in org_spy.events)
         for cs_event in consequence_events:

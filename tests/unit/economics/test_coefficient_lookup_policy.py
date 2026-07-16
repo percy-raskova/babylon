@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import warnings
+from unittest.mock import patch
 from uuid import uuid4
 
 import pytest
@@ -131,52 +132,55 @@ class TestFR016ClampToLastWarning:
 
 @pytest.mark.cross_scale
 class TestFR041ClampToEarliest:
-    """FR-041 (T038b): below-range fallback clamps to earliest year."""
+    """FR-041 (T038b): below-range fallback clamps to earliest year.
 
-    def test_below_range_returns_start_year_value(self, lookup: ImmutableReferenceLookup) -> None:
-        # Use a custom lookup that starts later than the simulated year.
-        bounded = ImmutableReferenceLookup(
-            runtime=_StubRuntime(),  # type: ignore[arg-type]
-            session_id=uuid4(),
-            start_year=2015,
-            end_year=2025,
-        )
-        # tick=0 with start_year=2015 → simulated_year=2015 (exact match);
-        # to force below-range we need the year to be < start_year, which
-        # happens when the series' own first year is later than the session
-        # start_year. We model this by using a smaller start_year on the
-        # lookup that REPRESENTS the SERIES coverage (not the session).
-        # For this test the lookup IS the series-coverage instance.
-        # So we set the lookup's start_year=2015 and simulated_year=2010:
-        result = bounded.get(
-            "hickel_drain",
-            tick=-260 + 260,  # placeholder; below uses negative-year math
-            policy="slowly_varying",
-            value_provider=_linear_provider,
-        )
-        # tick=0 → year = 2015 → exact, not clamped.
-        assert result.lookup_method == LookupMethod.EXACT_YEAR
+    ``simulated_year = start_year + (tick // 52)`` can never fall below
+    ``start_year`` for a valid (non-negative) tick — ``get()`` rejects
+    negative ticks outright — so the clamp-to-earliest branch is
+    unreachable through ``tick`` alone under the current session-level
+    coverage model (a real gap: per-series coverage narrower than the
+    session range isn't modeled yet, per FR-041's own doc comment). Each
+    test below stubs only the tick-to-year translation so the assertions
+    still exercise ``get()``'s real dispatch, clamp value, and one-shot
+    warning logic end to end, instead of calling the private clamp helper
+    directly.
+    """
 
-        # Build a fake-historical case directly by manipulating start_year:
-        backward = ImmutableReferenceLookup(
-            runtime=_StubRuntime(),  # type: ignore[arg-type]
-            session_id=uuid4(),
-            start_year=1995,
-            end_year=2025,
-        )
-        # Now ask for tick where simulated_year < start_year. simulated_year =
-        # backward.start_year + tick//52 = 1995 + tick//52. To get year=1990
-        # we need tick such that 1995 + tick//52 == 1990, i.e., tick//52 = -5.
-        # Negative tick is invalid, so we model the below-range case by
-        # constructing a lookup whose series coverage starts AFTER its
-        # constructor start_year. In production this happens when the
-        # series' first available year is later than the session's
-        # start_year (e.g., Hickel begins 1995 but scenario starts 1990).
-        # For the unit test, fall back to direct verification via the
-        # private method:
-        from_method = backward._clamped_to_earliest(
-            "hickel_drain", simulated_year=1990, value_provider=_linear_provider
-        )
-        assert from_method.lookup_method == LookupMethod.CLAMPED_TO_EARLIEST
-        assert from_method.value == 1995.0  # value at clamped year
-        assert from_method.bracketing_years == (1995,)
+    def test_first_below_range_emits_warning(self, lookup: ImmutableReferenceLookup) -> None:
+        with (
+            patch.object(lookup, "_tick_to_year_and_week", return_value=(2005, 0)),
+            warnings.catch_warnings(record=True) as w,
+        ):
+            warnings.simplefilter("always")
+            result = lookup.get(
+                "hickel_drain",
+                tick=0,
+                policy="slowly_varying",
+                value_provider=_linear_provider,
+            )
+        assert result.lookup_method == LookupMethod.CLAMPED_TO_EARLIEST
+        assert result.value == pytest.approx(2010.0)  # value at start_year=2010
+        assert result.bracketing_years == (2010,)
+        assert result.warning_emitted is True
+        assert len(w) == 1
+        assert "FR-041" in str(w[0].message)
+
+    def test_second_below_range_no_warning(self, lookup: ImmutableReferenceLookup) -> None:
+        with patch.object(lookup, "_tick_to_year_and_week", return_value=(2005, 0)):
+            lookup.get(
+                "hickel_drain",
+                tick=0,
+                policy="slowly_varying",
+                value_provider=_linear_provider,
+            )
+            with warnings.catch_warnings(record=True) as w:
+                warnings.simplefilter("always")
+                result = lookup.get(
+                    "hickel_drain",
+                    tick=0,
+                    policy="slowly_varying",
+                    value_provider=_linear_provider,
+                )
+        assert result.lookup_method == LookupMethod.CLAMPED_TO_EARLIEST
+        assert result.warning_emitted is False
+        assert len(w) == 0

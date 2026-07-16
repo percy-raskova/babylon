@@ -601,11 +601,20 @@ class TestComputeAxisTendency:
         assert result.lateral_edge_count == 0
 
     @pytest.mark.topology
-    def test_high_ci_communities_full_cross_weight(
+    def test_pure_hegemonic_source_collapses_weight_despite_high_target_ci(
         self,
         bifurcation_defines: BifurcationDefines,
     ) -> None:
-        """High-CI marginalized communities -> cross solidarity weighted near full."""
+        """A pure-hegemonic source stays near-zero even with a high-CI target.
+
+        settler_1 has no marginalized community membership, so its own
+        marginalized CI is 0 regardless of the SETTLER community-level
+        CI=0.3 set below. na_1's NEW_AFRIKAN CI=0.9 doesn't help either:
+        consciousness_weighted_solidarity takes min(source_ci, target_ci)
+        across each agent's MARGINALIZED memberships, so
+        min(0.0, 0.9) = 0.0 and the edge weight collapses to
+        1.0 * sigmoid(0.0) ~= 0.018 -- not "near full".
+        """
         agents = {
             "settler_1": {"wealth": 100.0},
             "na_1": {"wealth": 20.0},
@@ -637,11 +646,9 @@ class TestComputeAxisTendency:
             defines=bifurcation_defines,
         )
 
-        # settler_1 has no marginalized communities -> CI=0 -> sigmoid near 0
-        # na_1 has NEW_AFRIKAN CI=0.9 -> sigmoid near 1
-        # min(~0, ~1) = ~0 -> weighted near 0
-        # BUT this tests the ceiling weighting: assimilated agents reduce cross weight
         assert result.cross_edge_count == 1
+        # weight = solidarity_strength(1.0) * sigmoid(min(0.0, 0.9)=0.0, mid=0.4, k=10.0)
+        assert result.cross_solidarity_weighted == pytest.approx(0.017986, abs=1e-5)
 
     @pytest.mark.topology
     def test_low_ci_communities_near_zero_cross_weight(

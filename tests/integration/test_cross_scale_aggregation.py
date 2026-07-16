@@ -24,11 +24,16 @@ pytest.importorskip("psycopg_pool")
 
 @pytest.fixture
 def apply_062_migrations(pg_pool):  # type: ignore[no-untyped-def]
+    # Digest-stamped + advisory-locked (never a bare re-execute loop: view
+    # DDL vs concurrent readers deadlocked xdist runs, 2026-07-16; the raw
+    # loop here also burned ~230s of setup per module).
+    from babylon.persistence.postgres_schema import ensure_ddl_applied
+
     migrations_dir = Path("src/babylon/persistence/migrations").resolve()
+    sql_files = sorted(migrations_dir.glob("00*.sql"))
     with pg_pool.connection() as conn:
         conn.autocommit = True
-        for sql_file in sorted(migrations_dir.glob("00*.sql")):
-            conn.execute(sql_file.read_text())
+        ensure_ddl_applied(conn, [sql_file.read_text() for sql_file in sql_files])
 
 
 @pytest.fixture
@@ -36,6 +41,30 @@ def runtime(pg_pool, apply_062_migrations):  # type: ignore[no-untyped-def]
     from babylon.persistence import PostgresRuntime
 
     return PostgresRuntime(pool=pg_pool)
+
+
+def _seed_spatial_map(pg_pool, session_id, h3_indexes) -> None:  # type: ignore[no-untyped-def]
+    """Register the session's hex → county mapping in ``hex_spatial_map``.
+
+    Spec-088 S3 (FR-007): the per-tick writer stores NULL spatial keys in
+    ``dynamic_hex_state`` — the single stored copy is the session-scoped
+    ``hex_spatial_map`` row, which the aggregate views resolve via LEFT
+    JOIN + COALESCE. A test that seeds hex rows without this mapping gets
+    county_fips=NULL groups (and empty county/state view lookups).
+    """
+    with pg_pool.connection() as conn:
+        for h3_index in h3_indexes:
+            conn.execute(
+                "INSERT INTO hex_spatial_map "
+                "(session_id, h3_index, county_fips, state_fips, region_id) "
+                "VALUES (%s, %s, '26163', '26', 'east_north_central') "
+                "ON CONFLICT (session_id, h3_index) DO NOTHING",
+                (str(session_id), h3_index),
+            )
+        conn.commit()
+
+
+_SEED_H3S = [f"872d34a{i:02x}fffffff"[:15] for i in range(3)]
 
 
 def _hex_seed(session_id, tick: int = 0):  # type: ignore[no-untyped-def]
@@ -48,7 +77,7 @@ def _hex_seed(session_id, tick: int = 0):  # type: ignore[no-untyped-def]
         DynamicHexState(
             session_id=session_id,
             tick=tick,
-            h3_index=f"872d34a{i:02x}fffffff"[:15],
+            h3_index=_SEED_H3S[i],
             county_fips="26163",
             state_fips="26",
             region_id="east_north_central",
@@ -88,6 +117,7 @@ def _hex_seed(session_id, tick: int = 0):  # type: ignore[no-untyped-def]
 def test_county_view_sums_match_hex_python_sum(runtime, pg_pool):  # type: ignore[no-untyped-def]
     """SC-002: v_county_value_aggregate.c_sum == python sum(c) within ε."""
     sid = uuid4()
+    _seed_spatial_map(pg_pool, sid, _SEED_H3S)
     runtime.persist_tick_atomic(_hex_seed(sid))
 
     # Independent Python sum over the inserted hex rows.
@@ -112,6 +142,7 @@ def test_county_view_sums_match_hex_python_sum(runtime, pg_pool):  # type: ignor
 def test_state_view_aggregates_above_county(runtime, pg_pool):  # type: ignore[no-untyped-def]
     """State-level sum equals hex-level Python sum (state_fips=26)."""
     sid = uuid4()
+    _seed_spatial_map(pg_pool, sid, _SEED_H3S)
     runtime.persist_tick_atomic(_hex_seed(sid))
     with pg_pool.connection() as conn:
         row = conn.execute(
@@ -127,6 +158,7 @@ def test_state_view_aggregates_above_county(runtime, pg_pool):  # type: ignore[n
 def test_national_view_aggregates_above_state(runtime, pg_pool):  # type: ignore[no-untyped-def]
     """National-level row exists with the single-USA national_id."""
     sid = uuid4()
+    _seed_spatial_map(pg_pool, sid, _SEED_H3S)
     runtime.persist_tick_atomic(_hex_seed(sid))
     with pg_pool.connection() as conn:
         row = conn.execute(

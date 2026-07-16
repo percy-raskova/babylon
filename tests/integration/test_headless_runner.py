@@ -55,7 +55,10 @@ def _invoke_runner(tmp_out: Path, extra: list[str]) -> subprocess.CompletedProce
         capture_output=True,
         text=True,
         env=env,
-        timeout=180,
+        # A 5-tick run takes ~40s solo but 160-300s under 4-way xdist
+        # contention (observed 2026-07-16: 180.13s → TimeoutExpired at the
+        # old 180s cap while sibling runner tests passed at 166-250s).
+        timeout=600,
     )
 
 
@@ -124,10 +127,18 @@ def test_sigint_partial_artifacts(tmp_path: Path) -> None:
         text=True,
         env=env,
     )
-    # Give it a moment to enter the tick loop.
-    time.sleep(1.5)
+    # Wait for the runner to actually START before interrupting: the
+    # cooperative SIGINT handler installs first thing inside run()
+    # (runner.py _install_sigint_handler), strictly BEFORE any stderr
+    # output (init logging / tqdm). A fixed sleep raced module import —
+    # heavy imports took >1.5s and the default handler died with exit -2
+    # (observed 2026-07-16). First stderr byte ⇒ handler is installed.
+    assert proc.stderr is not None
+    first_output = proc.stderr.read(1)
+    assert first_output, "runner exited before emitting any output"
+    time.sleep(1.0)  # let it get into the tick loop proper
     proc.send_signal(signal.SIGINT)
-    stdout, stderr = proc.communicate(timeout=60)
+    stdout, stderr = proc.communicate(timeout=600)
     assert proc.returncode == 130, (
         f"expected exit 130 (USER_INTERRUPTED), got {proc.returncode}; stderr={stderr}"
     )
@@ -168,10 +179,18 @@ def test_conservation_violation_does_not_abort(tmp_path: Path) -> None:
     result = _invoke_runner(out, [])
     assert result.returncode == 0
     summary = json.loads((out / "summary.json").read_text())
-    # A clean MVP run should have zero violations (carry-forward is a no-op).
-    assert summary["conservation_audit"] == []
-    # The schema MUST include conservation_audit even when empty.
+    # The schema MUST include conservation_audit.
     assert "conservation_audit" in summary
+    # A clean run has zero VIOLATIONS. The auditor also records info-severity
+    # SUCCESS rows (e.g. imperial_rent_phi_week_distribution ≈ 1.0 checks) —
+    # those are the audit working, not violations; only warning-and-above
+    # severities count against a clean run.
+    violations = [
+        entry
+        for entry in summary["conservation_audit"]
+        if entry.get("severity") not in ("info", "ok")
+    ]
+    assert violations == [], f"unexpected conservation violations: {violations[:3]}"
 
 
 @pytest.mark.skipif(

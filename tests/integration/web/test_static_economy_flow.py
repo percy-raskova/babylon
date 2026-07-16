@@ -329,27 +329,42 @@ class TestWayneCountyFlowSurvivesWebResolve:
 
         assert after_tick_2["wage_accrued_this_year"] > after_tick_1["wage_accrued_this_year"]
 
-        # Byte-for-byte the same formula as TickDynamicsSystem._accrue_flows,
-        # applied to the engine's own bootstrap defaults (median_wage=21.0
-        # $/hr, employment=100_000.0 — CountyEconomicState's documented
-        # graceful-degradation defaults; Vol I's wage-pressure calculator
-        # and the Spec-057 imperial-rent pipeline are both unwired in this
-        # bridge, mirroring the headless runner).
-        annual_wage = 21.0 * HOURS_PER_YEAR * 100_000.0
-        assert after_tick_2["wage_accrued_this_year"] == pytest.approx(annual_wage / WEEKS_PER_YEAR)
+        # Since Program-17 Fix C (a2ab6e9e) the bridge wires REAL per-county
+        # QCEW employment, so the accrual is no longer the 100k-placeholder
+        # formula — pin that the placeholder is retired (the old value would
+        # be a regression back to fabricated employment) and that a real
+        # positive weekly slice accrued (median_wage=21.0 $/hr is still the
+        # documented frozen default; employment is data-driven).
+        placeholder_weekly = 21.0 * HOURS_PER_YEAR * 100_000.0 / WEEKS_PER_YEAR
+        accrued = after_tick_2["wage_accrued_this_year"]
+        assert accrued > 0.0
+        assert accrued != pytest.approx(placeholder_weekly)
 
-        # phi_hour stays 0.0 — the Leontief imperial-rent pipeline is
-        # unwired (out of scope; see _bridge_economics_overrides).
-        assert after_tick_2["phi_accrued_this_year"] == pytest.approx(0.0)
+        # phi accrual is DATA-DEPENDENT since Program 17 lit the per-county
+        # Leontief imperial-rent pipeline: non-zero when the reference DB
+        # carries fact_bea_io_coefficient IMPORT_USE rows (the local 5.7GB
+        # canonical DB does), 0.0 when they are absent (the ci-data subset,
+        # pending the ingest_bea_imports backfill — heavy-tier triage
+        # 2026-07-15). Never negative either way.
+        assert after_tick_2["phi_accrued_this_year"] >= 0.0
 
     def test_flow_keeps_accruing_across_a_third_resolve(self, bridge: object) -> None:
-        """Two full slices after tick 3 — the accrual is not a one-shot."""
+        """Two full slices after tick 3 — the accrual is not a one-shot.
+
+        The LINEARITY contract (TickDynamicsSystem._accrue_flows adds one
+        identical weekly slice per resolved tick) is pinned as a ratio, so
+        it survives real data-driven employment (Fix C) without hardcoding
+        a QCEW vintage: accrual(tick 3) == 2 x accrual(tick 2).
+        """
         session_id = bridge.create_game(scenario="wayne_county", rng_seed=0)
         bridge.resolve_tick(session_id)
         bridge.resolve_tick(session_id)
+        after_tick_2 = bridge.get_economy_dashboard(session_id)["county_flow"]
         third = bridge.resolve_tick(session_id)
         assert third["tick"] == 3
 
         flow = bridge.get_economy_dashboard(session_id)["county_flow"]
-        annual_wage = 21.0 * HOURS_PER_YEAR * 100_000.0
-        assert flow["wage_accrued_this_year"] == pytest.approx(2 * annual_wage / WEEKS_PER_YEAR)
+        assert after_tick_2["wage_accrued_this_year"] > 0.0
+        assert flow["wage_accrued_this_year"] == pytest.approx(
+            2 * after_tick_2["wage_accrued_this_year"]
+        )

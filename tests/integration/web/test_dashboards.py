@@ -172,20 +172,20 @@ class TestEdgesDashboard:
 class TestStateApparatusDashboard:
     """get_state_apparatus_dashboard: real state-org data (spec 111 C2)."""
 
-    def test_state_apparatus_dashboard_honest_empty_for_wayne_county(self, bridge: object) -> None:
-        """wayne_county's sole seeded org is CIVIL_SOCIETY (the player org) —
-        no scenario seeds a STATE_APPARATUS org or StateFinance record, so
-        this is an honest empty, not a fabricated placeholder (III.11)."""
+    def test_state_apparatus_dashboard_serves_seeded_org002(self, bridge: object) -> None:
+        """wayne_county seeds ORG002 (Detroit PD, STATE_APPARATUS) since
+        AW3.3 (70d6e3f2) invoked the orphaned state-AI cluster — the
+        dashboard must serve the REAL seeded apparatus at tick 0, not the
+        pre-AW3.3 honest-empty this test used to pin."""
         session_id = bridge.create_game(scenario="wayne_county", rng_seed=0)  # type: ignore[attr-defined]
 
         result = bridge.get_state_apparatus_dashboard(session_id)  # type: ignore[attr-defined]
 
         assert result["tick"] == 0
-        assert result["organizations"] == []
-        assert result["org_count"] == 0
-        assert result["total_repression_budget"] == 0.0
-        assert result["total_heat"] == 0.0
-        assert result["state_finances"] == {}
+        assert result["org_count"] == 1
+        org_ids = [org["id"] for org in result["organizations"]]
+        assert org_ids == ["ORG002"]
+        assert result["organizations"][0]["org_type"] == "state_apparatus"
         assert result["recent_actions"] == []
 
     def test_state_apparatus_dashboard_after_resolves(self, bridge: object) -> None:

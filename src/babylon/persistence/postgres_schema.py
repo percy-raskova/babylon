@@ -645,6 +645,15 @@ CREATE TABLE IF NOT EXISTS class_snapshot (
 )
 """
 
+#: class_snapshot indexes — executed WITH the table (migration 0014 +
+#: engine bootstrap), never from SPEC037_INDEXES_DDL (see note there).
+CLASS_SNAPSHOT_INDEXES_DDL: tuple[str, ...] = (
+    "CREATE INDEX IF NOT EXISTS ix_class_tick ON class_snapshot (game_id, tick)",
+    "CREATE INDEX IF NOT EXISTS ix_class_role ON class_snapshot (game_id, tick, role)",
+    "CREATE INDEX IF NOT EXISTS ix_class_series ON class_snapshot (game_id, class_id, tick)",
+)
+
+
 EDGE_SNAPSHOT_DDL = """
 CREATE TABLE IF NOT EXISTS edge_snapshot (
     game_id       UUID NOT NULL REFERENCES game_session(id) ON DELETE CASCADE,
@@ -995,10 +1004,11 @@ SPEC037_INDEXES_DDL: list[str] = [
     "CREATE INDEX IF NOT EXISTS ix_org_owner ON org_snapshot (game_id, tick, owner_type)",
     "CREATE INDEX IF NOT EXISTS ix_org_county ON org_snapshot (game_id, tick, home_county)",
     "CREATE INDEX IF NOT EXISTS ix_org_series ON org_snapshot (game_id, org_id, tick)",
-    # class_snapshot
-    "CREATE INDEX IF NOT EXISTS ix_class_tick ON class_snapshot (game_id, tick)",
-    "CREATE INDEX IF NOT EXISTS ix_class_role ON class_snapshot (game_id, tick, role)",
-    "CREATE INDEX IF NOT EXISTS ix_class_series ON class_snapshot (game_id, class_id, tick)",
+    # class_snapshot indexes live in CLASS_SNAPSHOT_INDEXES_DDL: Django
+    # migration 0003 executes THIS list on a fresh DB before anything has
+    # created class_snapshot (the table ships via migration 0014 /
+    # engine bootstrap), so indexing it from here crashed playwright-e2e
+    # (2026-07-15 heavy-tier triage).
     # edge_snapshot
     "CREATE INDEX IF NOT EXISTS ix_edge_snap_tick ON edge_snapshot (game_id, tick)",
     "CREATE INDEX IF NOT EXISTS ix_edge_snap_mode ON edge_snapshot (game_id, tick, edge_mode)",
@@ -1094,10 +1104,12 @@ POSTGRES_SCHEMA_DDL: list[str] = [
     # Indexes (legacy + spec 037)
     *INDEXES_DDL,
     *SPEC037_INDEXES_DDL,
+    *CLASS_SNAPSHOT_INDEXES_DDL,
 ]
 
 
 __all__ = [
+    "CLASS_SNAPSHOT_INDEXES_DDL",
     "INDEXES_DDL",
     "POSTGRES_SCHEMA_DDL",
     "SPEC037_INDEXES_DDL",

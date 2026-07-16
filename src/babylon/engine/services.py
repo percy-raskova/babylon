@@ -175,6 +175,7 @@ class ServiceContainer:
     # keeps its documented 100k graceful-degradation default.
     employment_source: Any = field(default=None)
     unemployment_source: Any = field(default=None)
+    wage_source: Any = field(default=None)
 
     # C.8 (spec 2.R): loud economics-fallback observability. A fresh tally per
     # container; TickDynamicsSystem records fallbacks + wired status into it,
@@ -253,6 +254,7 @@ class ServiceContainer:
         tensor_registry: Any = None,
         employment_source: Any = None,
         unemployment_source: Any = None,
+        wage_source: Any = None,
         community_hypergraph: Any = None,
         turnover_profile_source: Any = None,
         inventory_data_source: Any = None,
@@ -345,6 +347,7 @@ class ServiceContainer:
             tensor_registry=tensor_registry,
             employment_source=employment_source,
             unemployment_source=unemployment_source,
+            wage_source=wage_source,
             community_hypergraph=community_hypergraph,
             turnover_profile_source=turnover_profile_source,
             inventory_data_source=inventory_data_source,

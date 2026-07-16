@@ -963,6 +963,7 @@ def _build_economics_overrides(
         )
         from babylon.domain.economics.throughput.adapters import (
             SQLiteBLSUnemploymentSource,
+            SQLiteQCEWCountyNAICSSource,
         )
 
         bea_national = SQLiteBEANationalGDPSource(session_factory)
@@ -972,6 +973,9 @@ def _build_economics_overrides(
         # Wave 6 D8: BLS LAUS U-3 per-county unemployment replaces the frozen
         # 0.05 prev-carry default in the tick pipeline (honest-data ruling).
         overrides["unemployment_source"] = SQLiteBLSUnemploymentSource(session_factory)
+        # Item 60: real median-wage bootstrap (employment-weighted p50 over
+        # QCEW 6-digit leaves) — initial condition only; dynamics own the rest.
+        overrides["wage_source"] = SQLiteQCEWCountyNAICSSource(session_factory)
 
         if event_bus is not None and defines is not None:
             from babylon.domain.economics.factory import create_leontief_rent_services

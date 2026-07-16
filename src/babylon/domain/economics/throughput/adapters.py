@@ -27,7 +27,7 @@ import logging
 from collections.abc import Callable
 from typing import TYPE_CHECKING
 
-from babylon.formulas.constants import WEEKS_PER_YEAR
+from babylon.formulas.constants import HOURS_PER_YEAR, WEEKS_PER_YEAR
 from babylon.reference.schema import (
     DimBEAIndustry,
     DimCounty,
@@ -506,6 +506,62 @@ class SQLiteQCEWCountyNAICSSource:
         if wages is None or not employment:
             return None
         return float(wages) / float(employment) / WEEKS_PER_YEAR
+
+    def get_county_median_hourly_wage(self, fips: str, year: int) -> float | None:
+        """Employment-weighted median hourly wage across 6-digit industries.
+
+        Owner-queue item 60: the p50 of the county's employment distribution
+        sorted by industry mean wage — walk the QCEW leaves from
+        lowest-paid to highest-paid and take the industry where cumulative
+        employment crosses 50%. A genuine median ESTIMATOR (within-industry
+        dispersion is invisible; every worker is assigned their industry's
+        mean), the same p50 the class-shares hydration computes
+        (``engine.hydration.reference.hydrate_class_shares``) — unlike the
+        raw county mean, which is not a median at all.
+
+        Args:
+            fips: 5-character county FIPS code.
+            year: Calendar year.
+
+        Returns:
+            Median hourly wage ($/hr), or None when the county, year, or
+            usable leaves are absent (honest None, Constitution III.11).
+        """
+        with self._session_factory() as session:
+            county_id = self._get_county_id(session, fips)
+            if county_id is None:
+                return None
+
+            time_id = self._get_time_id(session, year)
+            if time_id is None:
+                return None
+
+            rows = (
+                session.query(
+                    FactQcewAnnual.total_wages_usd,
+                    FactQcewAnnual.employment,
+                )
+                .join(DimIndustry, DimIndustry.industry_id == FactQcewAnnual.industry_id)
+                .filter(
+                    FactQcewAnnual.county_id == county_id,
+                    FactQcewAnnual.time_id == time_id,
+                    DimIndustry.naics_level == 6,
+                    FactQcewAnnual.employment > 0,
+                    FactQcewAnnual.total_wages_usd.isnot(None),
+                )
+                .order_by((FactQcewAnnual.total_wages_usd / FactQcewAnnual.employment).asc())
+                .all()
+            )
+
+        total_emp = sum(float(e) for _w, e in rows)
+        if total_emp <= 0.0:
+            return None
+        cumulative = 0.0
+        for wages_usd, emp in rows:
+            cumulative += float(emp)
+            if cumulative / total_emp >= 0.5:
+                return float(wages_usd) / float(emp) / HOURS_PER_YEAR
+        return None
 
 
 __all__ = [

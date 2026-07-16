@@ -5902,6 +5902,11 @@ def _bridge_economics_overrides(fips_codes: tuple[str, ...] = ()) -> tuple[dict[
     # frozen 0.05 tick_unemployment_rate placeholder — same rails as Fix C,
     # honest None (=> carry/default) when the county-year row is absent.
     overrides["unemployment_source"] = SQLiteBLSUnemploymentSource(session_factory)
+    # Item 60: real median-wage BOOTSTRAP (employment-weighted p50 across
+    # QCEW 6-digit industry wages) — seeds only the initial county state;
+    # wage-pressure dynamics own the trajectory after that. Same adapter
+    # object as employment_source, second protocol role.
+    overrides["wage_source"] = qcew_source
     # Wave 2 owner ruling 1: wire a real throughput_calculator (Feature 014's
     # DefaultThroughputCalculator over the SAME reference-DB session factory Φ
     # and employment_source above already use — no new runtime dependency).

@@ -250,3 +250,46 @@ class TestOvershootRatio:
         assert ratio_1x == pytest.approx(1.0, abs=0.001)
         assert ratio_2x == pytest.approx(2.0, abs=0.001)
         assert ratio_3x == pytest.approx(3.0, abs=0.001)
+
+
+@pytest.mark.math
+class TestHysteresisDamage:
+    """Permanent max-capacity damage: D = E × B × h (Epoch 1 hysteresis doctrine).
+
+    "The Earth Remembers": extraction permanently degrades
+    Territory.max_biocapacity — even total cessation of extraction cannot
+    restore the original ceiling (ai/epochs/epoch1/metabolic-slice.yaml).
+    """
+
+    def test_damage_is_raw_extraction_times_rate(self) -> None:
+        """D = extraction_intensity × current_biocapacity × hysteresis_rate."""
+        from babylon.formulas import calculate_hysteresis_damage
+
+        damage = calculate_hysteresis_damage(
+            extraction_intensity=0.5,
+            current_biocapacity=100.0,
+            hysteresis_rate=0.005,
+        )
+
+        assert damage == pytest.approx(0.25, abs=1e-9)
+
+    def test_zero_extraction_zero_damage(self) -> None:
+        """No extraction → the ceiling is untouched."""
+        from babylon.formulas import calculate_hysteresis_damage
+
+        damage = calculate_hysteresis_damage(
+            extraction_intensity=0.0,
+            current_biocapacity=100.0,
+            hysteresis_rate=0.005,
+        )
+
+        assert damage == 0.0
+
+    def test_damage_scales_with_available_stock(self) -> None:
+        """Same intensity on a depleted territory does less absolute damage."""
+        from babylon.formulas import calculate_hysteresis_damage
+
+        rich = calculate_hysteresis_damage(0.5, 100.0, 0.005)
+        depleted = calculate_hysteresis_damage(0.5, 10.0, 0.005)
+
+        assert rich == pytest.approx(10.0 * depleted, abs=1e-9)

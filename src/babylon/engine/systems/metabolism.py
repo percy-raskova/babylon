@@ -17,6 +17,7 @@ from typing import TYPE_CHECKING, ClassVar
 
 from babylon.formulas import (
     calculate_biocapacity_delta,
+    calculate_hysteresis_damage,
     calculate_overshoot_ratio,
 )
 from babylon.kernel.event_bus import Event
@@ -68,6 +69,7 @@ class MetabolismSystem(SystemBase):
         # Get metabolism parameters from GameDefines
         entropy_factor = services.defines.metabolism.entropy_factor
         overshoot_threshold = services.defines.metabolism.overshoot_threshold
+        hysteresis_rate = services.defines.metabolism.hysteresis_rate
 
         # Spec-070 FR-043: apply Sovereign-driven metabolic_impact additive
         # term to territory.habitability BEFORE the biocapacity update.
@@ -98,12 +100,22 @@ class MetabolismSystem(SystemBase):
                 entropy_factor=entropy_factor,
             )
 
-            # Calculate new biocapacity with clamping
             current = attrs.get("biocapacity", 100.0)
             max_cap = attrs.get("max_biocapacity", 100.0)
-            new_biocapacity = max(0.0, min(max_cap, current + delta))
 
-            graph.update_node(node.id, biocapacity=new_biocapacity)
+            # Hysteresis ratchet (Epoch 1 "The Earth Remembers"): extraction
+            # PERMANENTLY lowers the ceiling — recovery clamps to the NEW max.
+            damage = calculate_hysteresis_damage(
+                extraction_intensity=attrs.get("extraction_intensity", 0.0),
+                current_biocapacity=current,
+                hysteresis_rate=hysteresis_rate,
+            )
+            new_max = max(0.0, max_cap - damage)
+
+            # Calculate new biocapacity with clamping to the ratcheted ceiling
+            new_biocapacity = max(0.0, min(new_max, current + delta))
+
+            graph.update_node(node.id, biocapacity=new_biocapacity, max_biocapacity=new_max)
 
         # Phase 2: Calculate global aggregates (after biocapacity updates)
         total_biocapacity = sum(

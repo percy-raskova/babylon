@@ -103,6 +103,7 @@ from babylon.formulas.lifecycle import (
 # Re-export Metabolic Rift formulas
 from babylon.formulas.metabolic_rift import (
     calculate_biocapacity_delta,
+    calculate_hysteresis_damage,
     calculate_overshoot_ratio,
 )
 
@@ -178,6 +179,7 @@ __all__ = [
     "calculate_bourgeoisie_decision",
     # Metabolic Rift
     "calculate_biocapacity_delta",
+    "calculate_hysteresis_damage",
     "calculate_overshoot_ratio",
     # TRPF (Marx, Capital Vol. 3)
     "calculate_rent_pool_decay",

@@ -752,3 +752,93 @@ class TestMetabolismPopulationScaling:
         events = services.event_bus.get_history()
         overshoot_events = [e for e in events if e.type == EventType.ECOLOGICAL_OVERSHOOT]
         assert len(overshoot_events) == 0
+
+
+@pytest.mark.unit
+class TestMetabolicHysteresis:
+    """Hysteresis ratchet: extraction PERMANENTLY reduces max_biocapacity.
+
+    Epoch 1 "Tragedy of Inevitability" doctrine
+    (ai/epochs/epoch1/metabolic-slice.yaml): on each extraction event,
+    ``max_biocapacity -= raw_extraction * hysteresis_rate``. The timeline is
+    finite by design — with any positive extraction and any positive
+    hysteresis rate, max_biocapacity monotonically approaches zero.
+    """
+
+    def test_extraction_permanently_reduces_max_biocapacity(self) -> None:
+        """raw_extraction = 0.5 × 100 = 50; damage = 50 × 0.005 = 0.25."""
+        graph = BabylonGraph()
+        graph.add_node(
+            "T001",
+            _node_type="territory",
+            biocapacity=100.0,
+            max_biocapacity=100.0,
+            regeneration_rate=0.1,
+            extraction_intensity=0.5,
+        )
+        services = ServiceContainer.create()
+        MetabolismSystem().step(graph, services, {"tick": 1})
+
+        assert graph.nodes["T001"]["max_biocapacity"] == pytest.approx(99.75, abs=1e-9)
+
+    def test_no_extraction_leaves_ceiling_untouched(self) -> None:
+        """Eden is only Eden while nothing is extracted."""
+        graph = BabylonGraph()
+        graph.add_node(
+            "T001",
+            _node_type="territory",
+            biocapacity=50.0,
+            max_biocapacity=100.0,
+            regeneration_rate=0.1,
+            extraction_intensity=0.0,
+        )
+        services = ServiceContainer.create()
+        MetabolismSystem().step(graph, services, {"tick": 1})
+
+        assert graph.nodes["T001"]["max_biocapacity"] == pytest.approx(100.0)
+
+    def test_regeneration_clamps_to_ratcheted_ceiling(self) -> None:
+        """Recovery is capped by the NEW (damaged) max, not the original.
+
+        bio=99, max=100, regen=0.5, extraction=0.1:
+        raw_extraction = 9.9 → damage = 0.0495 → new max = 99.9505.
+        delta = 50 − 9.9×1.2 = +38.12 → unclamped bio 137.12 → clamps to
+        the ratcheted 99.9505, never back to 100.
+        """
+        graph = BabylonGraph()
+        graph.add_node(
+            "T001",
+            _node_type="territory",
+            biocapacity=99.0,
+            max_biocapacity=100.0,
+            regeneration_rate=0.5,
+            extraction_intensity=0.1,
+        )
+        services = ServiceContainer.create()
+        MetabolismSystem().step(graph, services, {"tick": 1})
+
+        assert graph.nodes["T001"]["max_biocapacity"] == pytest.approx(99.9505, abs=1e-6)
+        assert graph.nodes["T001"]["biocapacity"] == pytest.approx(99.9505, abs=1e-6)
+
+    def test_ratchet_is_monotonic_across_ticks(self) -> None:
+        """max_biocapacity never recovers, tick after tick."""
+        graph = BabylonGraph()
+        graph.add_node(
+            "T001",
+            _node_type="territory",
+            biocapacity=100.0,
+            max_biocapacity=100.0,
+            regeneration_rate=0.1,
+            extraction_intensity=0.2,
+        )
+        services = ServiceContainer.create()
+        system = MetabolismSystem()
+
+        ceilings = []
+        for tick in range(1, 6):
+            system.step(graph, services, {"tick": tick})
+            ceilings.append(graph.nodes["T001"]["max_biocapacity"])
+
+        assert all(a > b for a, b in zip(ceilings[:-1], ceilings[1:], strict=True)), (
+            f"ceiling must strictly fall under sustained extraction: {ceilings}"
+        )

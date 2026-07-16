@@ -19,8 +19,10 @@ from uuid import UUID
 import networkx as nx
 import pytest
 
+from babylon.models.entities.organization import PoliticalFaction
 from babylon.models.entity_registry import PERIPHERY_WORKER_ID
-from babylon.models.enums import EventType
+from babylon.models.enums import ClassCharacter, EventType, OrgType
+from babylon.models.enums.doctrine import DoctrineTag
 from babylon.models.events import UprisingEvent
 from babylon.models.world_state import WorldState
 from babylon.persistence.postgres_runtime import PostgresRuntime
@@ -1241,6 +1243,69 @@ class TestMakeSerializable:
 
         assert result == {"ok": 1}
         assert "bad" in caplog.text
+
+
+class TestDoctrineStatePersistence:
+    """DoctrineSystem state (ADR073) through the node_state write -> hydrate cycle.
+
+    ``acquired_doctrine_ids`` / ``theoretical_labor`` / ``doctrine_tags`` are
+    cross-tick accumulators on the Organization node; ``doctrine_tags`` is
+    keyed by the ``DoctrineTag`` StrEnum. ``_persist_nodes`` stores
+    ``json.dumps(_make_serializable(attrs))`` and ``hydrate_graph`` re-adds
+    ``json.loads(...)`` plus ``_node_type`` — the same filter whose silent
+    drop emptied ``WorldState.events`` on every hydrate (task #83). This pins
+    the full cycle behaviorally: no doctrine key may be filtered, and
+    ``from_graph`` must re-validate the JSON-native values into typed fields
+    (list -> tuple, str keys -> DoctrineTag).
+    """
+
+    @staticmethod
+    def _faction() -> PoliticalFaction:
+        return PoliticalFaction(
+            id="vanguard",
+            name="Vanguard Party",
+            org_type=OrgType.POLITICAL_FACTION,
+            class_character=ClassCharacter.PROLETARIAN,
+            ideology="marxism-leninism",
+            acquired_doctrine_ids=("class_consciousness", "democratic_centralism"),
+            theoretical_labor=42.5,
+            doctrine_tags={DoctrineTag.CLASS_ANALYSIS: 1.7, DoctrineTag.MASS_LINK: 0.4},
+        )
+
+    def test_filter_keeps_every_doctrine_field(self) -> None:
+        """``_make_serializable`` must not drop any of the three doctrine attrs."""
+        faction = self._faction()
+        graph = WorldState(tick=3, organizations={faction.id: faction}).to_graph()
+        node_attrs = next(dict(attrs) for nid, attrs in graph.nodes(data=True) if nid == faction.id)
+
+        serializable = PostgresRuntime._make_serializable(node_attrs)
+
+        for key in ("acquired_doctrine_ids", "theoretical_labor", "doctrine_tags"):
+            assert key in serializable, f"{key} silently dropped by the storage filter"
+        json.dumps(serializable)  # the stored payload must be JSON-native end-to-end
+
+    def test_doctrine_fields_survive_write_hydrate_from_graph(self) -> None:
+        """Full behavioral pin: persist-shaped JSON -> hydrate-shaped node -> typed org."""
+        faction = self._faction()
+        graph = WorldState(tick=3, organizations={faction.id: faction}).to_graph()
+        node_attrs = next(dict(attrs) for nid, attrs in graph.nodes(data=True) if nid == faction.id)
+
+        # Mirror _persist_nodes' write exactly, then hydrate_graph's read exactly.
+        node_type = node_attrs.get("type", node_attrs.get("_node_type", "unknown"))
+        stored = json.dumps(PostgresRuntime._make_serializable(node_attrs))
+        restored_attrs = json.loads(stored)
+        restored_attrs["_node_type"] = node_type
+
+        hydrated = BabylonGraph()
+        hydrated.add_node(faction.id, **restored_attrs)
+        restored = WorldState.from_graph(hydrated, tick=3)
+
+        org = restored.organizations[faction.id]
+        assert org.acquired_doctrine_ids == ("class_consciousness", "democratic_centralism")
+        assert org.theoretical_labor == 42.5
+        assert org.doctrine_tags == {DoctrineTag.CLASS_ANALYSIS: 1.7, DoctrineTag.MASS_LINK: 0.4}
+        # Enum-key lookup must work on the re-validated dict (StrEnum identity).
+        assert org.doctrine_tags[DoctrineTag.CLASS_ANALYSIS] == 1.7
 
 
 # ══════════════════════════════════════════════════════════════════════

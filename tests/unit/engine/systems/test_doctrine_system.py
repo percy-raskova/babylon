@@ -2,6 +2,9 @@
 
 from __future__ import annotations
 
+import hashlib
+import json
+
 import pytest
 
 from babylon.config.defines.doctrine import DoctrineDefines
@@ -53,6 +56,29 @@ def _org(**overrides: object) -> PoliticalFaction:
 
 
 class TestStepOrganization:
+    def test_hydrated_json_native_attrs_step_identically(
+        self, tree: DoctrineTree, defines: DoctrineDefines
+    ) -> None:
+        # Mid-session resume: hydrate_graph yields JSON-native attrs (list ids,
+        # str-keyed tags) rather than the typed tuple/DoctrineTag forms
+        # to_graph writes. The doctrine loop must treat both identically or a
+        # resumed session would silently diverge from an unbroken one.
+        typed = {
+            "cadre_level": 0.5,
+            "acquired_doctrine_ids": ("class_consciousness",),
+            "theoretical_labor": 10.0,
+            "doctrine_tags": {DoctrineTag.CLASS_ANALYSIS: 1.2},
+        }
+        json_native = {
+            "cadre_level": 0.5,
+            "acquired_doctrine_ids": ["class_consciousness"],
+            "theoretical_labor": 10.0,
+            "doctrine_tags": {"class_analysis": 1.2},
+        }
+        assert step_organization(typed, tree, defines) == step_organization(
+            json_native, tree, defines
+        )
+
     def test_bootstraps_the_free_root_and_accrues_labour(
         self, tree: DoctrineTree, defines: DoctrineDefines
     ) -> None:
@@ -125,6 +151,66 @@ class TestComputeDoctrineOverGraph:
         state = WorldState(tick=0, entities={}, territories={}, relationships=[])
         graph = state.to_graph()
         assert compute_doctrine(graph, defines, tree) == []
+
+
+class TestDoctrineDeterminism:
+    """Determinism-in-motion for the doctrine loop (2026-07-15 review, D1).
+
+    The 5 qa:regression goldens carry zero organization nodes, so their
+    byte-identity gate proves the DoctrineSystem is a NO-OP there — not that
+    it is deterministic when it actually runs. This harness is the org-bearing
+    coverage: a 100-tick hash chain over every doctrine attr on a 3-org graph,
+    pinned as a golden. Doctrine math is pure IEEE-754 add/multiply (decay,
+    accrual — no libm transcendentals), so the chain is reproducible across
+    platforms; if it moves, doctrine behavior changed and the change must be
+    deliberate (regenerate the constant and say so in the commit, per the
+    Unit-6 regenerate-and-document obligation in ADR073).
+    """
+
+    TICKS = 100
+    # Regenerate: run _chain_digest() and paste; see class docstring.
+    GOLDEN_CHAIN = "04b604d543dd75af07cdc220dfa015e88f3b3a45beb056821a20e3bec246ede7"
+
+    @staticmethod
+    def _chain_digest() -> str:
+        state = WorldState(
+            tick=0,
+            entities={},
+            territories={},
+            relationships=[],
+            organizations={
+                # Two orgs with IDENTICAL states exercise the (cost_tl, node_id)
+                # tie-break; the third's different cadre rate staggers acquisition.
+                "org_a": _org(id="org_a", name="A", cadre_level=0.5),
+                "org_b": _org(id="org_b", name="B", cadre_level=0.5),
+                "org_c": _org(id="org_c", name="C", cadre_level=0.17),
+            },
+        )
+        graph = state.to_graph()
+        defines = DoctrineDefines()
+        tree = load_doctrine_tree()
+        chain = hashlib.sha256()
+        for _ in range(TestDoctrineDeterminism.TICKS):
+            compute_doctrine(graph, defines, tree)
+            payload = {
+                str(node.id): {
+                    "acquired": list(node.attributes.get("acquired_doctrine_ids", ())),
+                    "tl": repr(node.attributes.get("theoretical_labor", 0.0)),
+                    "tags": {
+                        str(k): repr(v) for k, v in node.attributes.get("doctrine_tags", {}).items()
+                    },
+                }
+                for node in graph.query_nodes(node_type="organization")
+            }
+            assert len(payload) == 3, "org filter broke — chain would be vacuously stable"
+            chain.update(json.dumps(payload, sort_keys=True).encode())
+        return chain.hexdigest()
+
+    def test_two_independent_runs_produce_identical_chains(self) -> None:
+        assert self._chain_digest() == self._chain_digest()
+
+    def test_chain_matches_pinned_golden(self) -> None:
+        assert self._chain_digest() == self.GOLDEN_CHAIN
 
 
 class TestDoctrineSystemAdapter:

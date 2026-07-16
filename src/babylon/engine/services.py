@@ -184,6 +184,10 @@ class ServiceContainer:
     # ratio source (ACS B19001 top/bottom bands). None => the tick pipeline
     # keeps bracket_ratio at its documented 0.0 not-computed default.
     income_source: Any = field(default=None)
+    # Wave 6 C4: real-wage CPI deflation series (SQLiteCPISource, CPIAUCSL).
+    # None => the tick pipeline keeps real_wage_deflator at its documented 1.0
+    # (nominal == real) graceful-degradation default.
+    cpi_source: Any = field(default=None)
 
     # C.8 (spec 2.R): loud economics-fallback observability. A fresh tally per
     # container; TickDynamicsSystem records fallbacks + wired status into it,
@@ -265,6 +269,7 @@ class ServiceContainer:
         housing_source: Any = None,
         wage_source: Any = None,
         income_source: Any = None,
+        cpi_source: Any = None,
         community_hypergraph: Any = None,
         turnover_profile_source: Any = None,
         inventory_data_source: Any = None,
@@ -360,6 +365,7 @@ class ServiceContainer:
             housing_source=housing_source,
             wage_source=wage_source,
             income_source=income_source,
+            cpi_source=cpi_source,
             community_hypergraph=community_hypergraph,
             turnover_profile_source=turnover_profile_source,
             inventory_data_source=inventory_data_source,

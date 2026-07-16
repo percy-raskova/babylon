@@ -120,6 +120,7 @@ def write_tick_state_to_graph(  # pragma: no mutate — data serialization
             tick_renter_share=county.renter_share,  # pragma: no mutate
             tick_median_wage=county.median_wage,  # pragma: no mutate
             tick_bracket_ratio=county.bracket_ratio,  # pragma: no mutate
+            tick_real_wage_deflator=county.real_wage_deflator,  # pragma: no mutate
             # Derived rates (computed per-county)
             tick_profit_rate=rates.profit_rate,  # pragma: no mutate
             tick_occ=rates.organic_composition,  # pragma: no mutate
@@ -259,6 +260,7 @@ def read_tick_state_from_graph(  # pragma: no mutate — data serialization
             nilf_rate=node_data.get("tick_nilf_rate", 0.06),  # pragma: no mutate
             median_wage=node_data.get("tick_median_wage", 21.0),  # pragma: no mutate
             employment=node_data.get("tick_employment", 100000.0),  # pragma: no mutate
+            real_wage_deflator=node_data.get("tick_real_wage_deflator", 1.0),  # pragma: no mutate
             class_distribution=class_dist,  # pragma: no mutate
             phi_hour=node_data.get("tick_phi_hour", 0.0),  # pragma: no mutate
             bracket_ratio=node_data.get("tick_bracket_ratio", 0.0),  # pragma: no mutate

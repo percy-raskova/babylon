@@ -289,6 +289,7 @@ class CountyEconomicState(BaseModel):
         nilf_rate: Not in labor force rate.
         median_wage: County median hourly wage.
         employment: Total county employment.
+        real_wage_deflator: CPI base-year real-wage deflator (Wave 6 C4).
         class_distribution: Five-class share distribution.
         phi_hour: Imperial rent per hour (Feature 013).
         crisis_state: Crisis lifecycle state (Feature 018).
@@ -324,6 +325,16 @@ class CountyEconomicState(BaseModel):
     nilf_rate: float = Field(..., ge=0, le=1, description="Not in labor force rate")
     median_wage: float = Field(..., ge=0, description="County median hourly wage")
     employment: float = Field(..., ge=0, description="Total county employment")
+    real_wage_deflator: float = Field(
+        default=1.0,
+        gt=0.0,
+        description=(
+            "CPI base-year real-wage deflator (Wave 6 C4): "
+            "real_wage = median_wage * real_wage_deflator. Frozen at 1.0 "
+            "(nominal == real) when cpi_source is unwired or the year's "
+            "CPI row is absent."
+        ),
+    )
     class_distribution: ClassDistribution = Field(..., description="Five-class share distribution")
     phi_hour: float = Field(..., ge=0, description="Imperial rent per hour")
     bracket_ratio: float = Field(

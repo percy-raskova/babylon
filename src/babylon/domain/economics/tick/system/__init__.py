@@ -435,6 +435,7 @@ class TickDynamicsSystem(SystemBase):
                     class_distribution=dist,
                     phi_hour=data.get("tick_phi_hour", 0.0),
                     bracket_ratio=data.get("tick_bracket_ratio", 0.0),
+                    real_wage_deflator=data.get("tick_real_wage_deflator", 1.0),
                 )
         return states
 
@@ -594,6 +595,37 @@ class TickDynamicsSystem(SystemBase):
                 bracket_ratio = float(ratio)
         return bracket_ratio
 
+    def _resolve_real_wage_deflator(
+        self,
+        prev: CountyEconomicState | None,
+        services: ServicesProtocol,
+        year: int,
+    ) -> float:
+        """Read the CPI-based real-wage deflator for one county-year (Wave 6 C4).
+
+        Unlike ``median_wage`` (endogenous, source consulted only on
+        bootstrap), the deflator is re-read every tick: CPI is an external
+        national series, not a simulated trajectory the engine should own
+        after tick 1.
+
+        Args:
+            prev: Previous county state, if any (carries the prior deflator
+                forward when unwired).
+            services: ServicesProtocol with the optional ``cpi_source``.
+            year: Current year.
+
+        Returns:
+            The deflator, or 1.0 (nominal == real) when ``cpi_source`` is
+            unwired or returns honest ``None`` for this year (Constitution
+            III.11 graceful degradation).
+        """
+        real_wage_deflator = prev.real_wage_deflator if prev else 1.0
+        if services.cpi_source is not None:
+            deflator = services.cpi_source.get_cpi_deflator(year)
+            if deflator is not None and isinstance(deflator, (int, float)):
+                real_wage_deflator = float(deflator)
+        return real_wage_deflator
+
     def _compute_county_states(
         self,
         year: int,
@@ -672,6 +704,7 @@ class TickDynamicsSystem(SystemBase):
                     employment = float(emp_result)
             phi_hour = prev.phi_hour if prev else 0.0
             crisis_state = prev.crisis_state if prev else CrisisState.normal()
+            real_wage_deflator = self._resolve_real_wage_deflator(prev, services, year)
 
             # Wave 6 C3 (epochs audit item 167): bracket_ratio prefers a wired
             # ACS B19001 income_source, same shape as unemployment_rate above.
@@ -720,6 +753,7 @@ class TickDynamicsSystem(SystemBase):
                 phi_hour=phi_hour,
                 bracket_ratio=bracket_ratio,
                 crisis_state=crisis_state,
+                real_wage_deflator=real_wage_deflator,
             )
 
         return states

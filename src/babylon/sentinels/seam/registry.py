@@ -644,6 +644,35 @@ _TERRITORY_TICK_METRICS: tuple[SeamEntry, ...] = (
             "(Feature 021) already on the same _serialize_territory payload."
         ),
     ),
+    SeamEntry(
+        payload="tick_real_wage_deflator",
+        wire_keys=("real_wage_deflator", "tick_real_median_wage"),
+        scope=SeamScope.TERRITORY,
+        owner_layer="domain.economics.melt (SQLiteCPISource, FRED CPIAUCSL)",
+        liveness_class=LivenessClass.DECLARED_CONDITIONAL,
+        liveness_condition=_YEAR_BOUNDARY,
+        dtype="float",
+        read_paths=_TERRITORY_EMITTERS,
+        derivation_site="web/game/engine_bridge.py::_compute_real_median_wage",
+        spec_ref="Epochs audit · Wave 6 C4 (wages never naked)",
+        notes=(
+            "Wave 6 C4 (2026-07-16): real-wage CPI deflation — every wage "
+            "figure this payload exposed before was nominal-only. "
+            "services.cpi_source.get_cpi_deflator(year) = CPI(2015)/CPI(year) "
+            "over the FRED CPIAUCSL series; 2015 matches this codebase's de "
+            "facto reference year (tick/types.py + initializer.py "
+            "examples/seed data), distinct from melt.data_sources."
+            "CPIDataSource's still-unwired 2024 V_reproduction base — a "
+            "different consumer of the same national series. "
+            "tick_real_wage_deflator (wire_keys[0], a genuine engine write "
+            "via graph_bridge.write_tick_state_to_graph) is FROZEN at 1.0 "
+            "(nominal == real) when cpi_source is unwired or the year's CPI "
+            "row is absent — never a fabricated ratio. tick_real_median_wage "
+            "(wire_keys[1]) is the bridge-derived composite "
+            "tick_median_wage x deflator, honest-None unless BOTH inputs "
+            "are present (Constitution III.11)."
+        ),
+    ),
     # --- Round 2 (owner ruling 1, 2026-07-14): throughput_position/
     # supply_chain_depth wired for real — genuinely live (not a Group-B frozen
     # constant) once a session has real county FIPS + throughput_calculator ---

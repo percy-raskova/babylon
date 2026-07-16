@@ -5981,6 +5981,7 @@ def _bridge_economics_overrides(fips_codes: tuple[str, ...] = ()) -> tuple[dict[
     from babylon.domain.economics.melt import DefaultMELTCalculator
     from babylon.domain.economics.melt.adapters import (
         SQLiteBEANationalGDPSource,
+        SQLiteCPISource,
         SQLiteQCEWNationalEmploymentSource,
     )
     from babylon.domain.economics.throughput.adapters import (
@@ -6037,6 +6038,11 @@ def _bridge_economics_overrides(fips_codes: tuple[str, ...] = ()) -> tuple[dict[
     # wage-pressure dynamics own the trajectory after that. Same adapter
     # object as employment_source, second protocol role.
     overrides["wage_source"] = qcew_source
+    # Wave 6 C4 (Epochs audit, "wages never naked"): real CPIAUCSL-based
+    # real-wage deflation series over the same reference-DB session factory —
+    # so tick_real_median_wage on the territory payload is genuine deflated
+    # dollars, not the nominal-only figure every prior wage lens exposed.
+    overrides["cpi_source"] = SQLiteCPISource(session_factory)
     # Wave 2 owner ruling 1: wire a real throughput_calculator (Feature 014's
     # DefaultThroughputCalculator over the SAME reference-DB session factory Φ
     # and employment_source above already use — no new runtime dependency).
@@ -7719,6 +7725,31 @@ def _territory_graph_attr(graph: Any, territory_id: str, key: str) -> Any:
     return graph.nodes[territory_id].get(key)
 
 
+def _compute_real_median_wage(graph: Any, territory_id: str) -> float | None:
+    """Real median wage = ``tick_median_wage`` x ``tick_real_wage_deflator``.
+
+    Wave 6 C4 (Epochs audit, "wages never naked"): honest ``None``
+    (Constitution III.11) unless BOTH the nominal wage and the CPI deflator
+    are present on the graph — never fabricates a real wage from a missing
+    input. ``tick_real_wage_deflator`` is itself frozen at 1.0 (nominal ==
+    real) once ``services.cpi_source`` is unwired, but this composite stays
+    gated on ``tick_median_wage`` too since that key can be absent before the
+    first year-boundary tick.
+
+    Args:
+        graph: See :func:`_territory_graph_attr`.
+        territory_id: The territory's node id.
+
+    Returns:
+        The real median wage rounded to 4 decimal places, or ``None``.
+    """
+    wage = _territory_graph_attr(graph, territory_id, "tick_median_wage")
+    deflator = _territory_graph_attr(graph, territory_id, "tick_real_wage_deflator")
+    if wage is None or deflator is None:
+        return None
+    return round(float(wage) * float(deflator), 4)
+
+
 def _serialize_territory(t: Any, *, graph: Any = None) -> dict[str, Any]:
     """Serialize a Territory with all visualization-relevant fields.
 
@@ -7781,6 +7812,14 @@ def _serialize_territory(t: Any, *, graph: Any = None) -> dict[str, Any]:
     is called on a resolve_tick's ``new_graph``. ``None`` for a tenant-less
     territory (Constitution III.11) or before the graph has ever been
     stepped (this engine system runs only inside a tick).
+
+    Wave 6 C4 ("wages never naked"): ``real_wage_deflator`` joins the
+    ``tick_``-prefixed graph-attr family off ``tick_real_wage_deflator``
+    (real once ``_bridge_economics_overrides`` wires a ``cpi_source``;
+    otherwise frozen at 1.0, nominal == real). ``tick_real_median_wage`` is
+    the one bridge-derived (not graph-read) field in this payload — see
+    :func:`_compute_real_median_wage` — honest-``None`` unless both
+    ``tick_median_wage`` and the deflator are present.
     """
     territory_id = t.id
     return {
@@ -7831,6 +7870,8 @@ def _serialize_territory(t: Any, *, graph: Any = None) -> dict[str, Any]:
         "renter_share": _territory_graph_attr(graph, territory_id, "tick_renter_share"),
         "bracket_ratio": _territory_graph_attr(graph, territory_id, "tick_bracket_ratio"),
         "tick_median_wage": _territory_graph_attr(graph, territory_id, "tick_median_wage"),
+        "real_wage_deflator": _territory_graph_attr(graph, territory_id, "tick_real_wage_deflator"),
+        "tick_real_median_wage": _compute_real_median_wage(graph, territory_id),
         "throughput_position": _territory_graph_attr(
             graph, territory_id, "tick_throughput_position"
         ),

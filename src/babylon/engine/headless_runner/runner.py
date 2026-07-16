@@ -928,8 +928,10 @@ def _build_economics_overrides(
             is wired (required to pass the TickDynamicsSystem gate) and
             ``unemployment_source`` is wired (Wave 6 D8: per-county BLS
             LAUS U-3 instead of the frozen 0.05 prev-carry default).
-            When ``None``, only the parameterless ``gamma_calculator``
-            is wired.
+            ``cpi_source`` is also wired (Wave 6 C4: real CPIAUCSL-based
+            real-wage deflation instead of the frozen 1.0 nominal==real
+            default). When ``None``, only the parameterless
+            ``gamma_calculator`` is wired.
         event_bus: Optional EventBus for the Leontief pipeline's
             calibration-warning emission. Required (with ``defines``) to
             wire the Leontief overrides.
@@ -959,6 +961,7 @@ def _build_economics_overrides(
         from babylon.domain.economics.melt import DefaultMELTCalculator
         from babylon.domain.economics.melt.adapters import (
             SQLiteBEANationalGDPSource,
+            SQLiteCPISource,
             SQLiteQCEWNationalEmploymentSource,
         )
         from babylon.domain.economics.throughput.adapters import (
@@ -976,6 +979,9 @@ def _build_economics_overrides(
         # Item 60: real median-wage bootstrap (employment-weighted p50 over
         # QCEW 6-digit leaves) — initial condition only; dynamics own the rest.
         overrides["wage_source"] = SQLiteQCEWCountyNAICSSource(session_factory)
+        # Wave 6 C4: real CPIAUCSL-based real-wage deflation series — closes
+        # the "wages never naked" gap (mirrors _bridge_economics_overrides).
+        overrides["cpi_source"] = SQLiteCPISource(session_factory)
 
         if event_bus is not None and defines is not None:
             from babylon.domain.economics.factory import create_leontief_rent_services

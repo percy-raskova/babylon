@@ -1,7 +1,10 @@
 {
   "permissions": {
     "allow": [
-      "Bash(sed:*)"
+      "Bash(sed:*)",
+      "Bash(gh pr merge:*)",
+      "Bash(gh pr create:*)",
+      "Bash(gh release create:*)"
     ]
   }
 }

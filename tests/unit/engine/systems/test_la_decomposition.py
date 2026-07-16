@@ -16,7 +16,6 @@ from __future__ import annotations
 
 from collections.abc import Generator
 
-import networkx as nx
 import pytest
 
 from babylon.engine.services import ServiceContainer
@@ -59,7 +58,7 @@ def _create_test_context(
     return context
 
 
-def _create_pre_crisis_circuit(graph: nx.DiGraph[str]) -> None:
+def _create_pre_crisis_circuit(graph: BabylonGraph) -> None:
     """Create circuit BEFORE LA decomposition.
 
     This simulates the moment after SUPERWAGE_CRISIS but before decomposition:

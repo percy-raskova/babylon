@@ -13,7 +13,6 @@ from __future__ import annotations
 
 from collections.abc import Generator
 
-import networkx as nx
 import pytest
 
 from babylon.engine.services import ServiceContainer
@@ -30,7 +29,7 @@ def services() -> Generator[ServiceContainer, None, None]:
     container.database.close()
 
 
-def _create_imperial_circuit(graph: nx.DiGraph[str]) -> None:
+def _create_imperial_circuit(graph: BabylonGraph) -> None:
     """Create a minimal imperial circuit with EXPLOITATION edges.
 
     Nodes:
@@ -259,7 +258,7 @@ def _create_minimal_struggle_graph(
     active: bool = True,
     solidarity_edges: int = 0,
     solidarity_strength: float = 0.0,
-) -> nx.DiGraph[str]:
+) -> BabylonGraph:
     """Create a minimal graph for testing StruggleSystem.step main loop.
 
     Creates a single target node with configurable attributes, and optionally

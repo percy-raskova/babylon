@@ -9,7 +9,6 @@ from __future__ import annotations
 
 from collections.abc import Callable, Iterator
 
-import networkx as nx
 import pytest
 
 from babylon.engine.field_registry import DefaultFieldRegistry
@@ -257,7 +256,7 @@ class TestContradictionFieldNoRegistry:
     """E0: with no field_registry, fields are sourced from the opposition layer."""
 
     @staticmethod
-    def _opposition_graph() -> nx.DiGraph[str]:
+    def _opposition_graph() -> BabylonGraph:
         """C001 with two incident tension edges (0.2, 0.8) + an atomization gap.
 
         The two edges let a mean-vs-max mutation be caught: mean(0.2, 0.8) = 0.5

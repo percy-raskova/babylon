@@ -17,7 +17,6 @@ tests pin:
 
 from __future__ import annotations
 
-import networkx as nx
 import pytest
 
 from babylon.config.defines import GameDefines
@@ -109,7 +108,7 @@ class TestRuptureGateSystem:
     capital_labor is the principal — isolating the condition-AND-level gate.
     """
 
-    def _graph(self, owner_wealth: float) -> nx.DiGraph[str]:
+    def _graph(self, owner_wealth: float) -> BabylonGraph:
         graph = BabylonGraph()
         graph.add_node("worker", wealth=1.0)
         graph.add_node("owner", wealth=owner_wealth)

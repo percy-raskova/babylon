@@ -9,7 +9,6 @@ from __future__ import annotations
 
 from typing import Any
 
-import networkx as nx
 import pytest
 
 from babylon.config.defines import OODADefines, OrganizationDefines
@@ -36,7 +35,7 @@ def _make_graph_with_org_and_community(
     *,
     add_membership: bool = False,
     member_ids: list[str] | None = None,
-) -> nx.DiGraph[str]:
+) -> BabylonGraph:
     """Build a minimal graph with one org and one community node."""
     graph = BabylonGraph()
     graph.add_node(org_id, **org_attrs)

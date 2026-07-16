@@ -8,7 +8,6 @@ from __future__ import annotations
 
 from typing import Any
 
-import networkx as nx
 import pytest
 
 from babylon.config.defines import OODADefines, OrganizationDefines
@@ -23,7 +22,7 @@ from babylon.topology.graph import BabylonGraph
 def _build_lifecycle_graph(
     org_id: str = "org_1",
     members: list[dict[str, Any]] | None = None,
-) -> nx.DiGraph[str]:
+) -> BabylonGraph:
     """Build a graph with an org and lifecycle-phased members."""
     graph = BabylonGraph()
     graph.add_node(

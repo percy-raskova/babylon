@@ -2,7 +2,6 @@ from __future__ import annotations
 
 from collections import defaultdict
 
-import networkx as nx
 import xgi
 
 from babylon.models.entities.community import (
@@ -41,9 +40,9 @@ def build_star_graph(
     num_spokes: int = 5,
     edge_type: EdgeType = EdgeType.SOLIDARITY,
     strength: float = 0.8,
-) -> nx.DiGraph:
+) -> BabylonGraph:
     """Build a star topology."""
-    G: nx.DiGraph = BabylonGraph()
+    G: BabylonGraph = BabylonGraph()
     G.add_node("C_HUB", _node_type="social_class", wealth=50.0)
     for i in range(num_spokes):
         node_id = f"C{i:03d}"
@@ -56,9 +55,9 @@ def build_mesh_graph(
     num_nodes: int = 5,
     edge_type: EdgeType = EdgeType.SOLIDARITY,
     strength: float = 0.8,
-) -> nx.DiGraph:
+) -> BabylonGraph:
     """Build a fully-connected mesh topology."""
-    G: nx.DiGraph = BabylonGraph()
+    G: BabylonGraph = BabylonGraph()
     node_ids = [f"C{i:03d}" for i in range(num_nodes)]
     for node_id in node_ids:
         G.add_node(node_id, _node_type="social_class", wealth=30.0)
@@ -70,11 +69,11 @@ def build_mesh_graph(
 
 def build_disconnected_graph(
     component_sizes: list[int] | None = None,
-) -> nx.DiGraph:
+) -> BabylonGraph:
     """Build a graph with disconnected components."""
     if component_sizes is None:
         component_sizes = [3, 2, 1]
-    G: nx.DiGraph = BabylonGraph()
+    G: BabylonGraph = BabylonGraph()
     node_counter = 0
     for comp_size in component_sizes:
         comp_nodes = []
@@ -125,7 +124,7 @@ def build_test_hypergraph(
 
 
 def collect_agent_memberships(
-    graph: nx.DiGraph,
+    graph: BabylonGraph,
 ) -> dict[str, set[CommunityType]]:
     """Extract agent community memberships from graph node attributes."""
     memberships: dict[str, set[CommunityType]] = {}
@@ -143,7 +142,7 @@ def collect_agent_memberships(
 
 
 def assign_communities_to_graph(
-    graph: nx.DiGraph,
+    graph: BabylonGraph,
     agent_memberships: dict[str, set[CommunityType]],
 ) -> None:
     """Set community_memberships attribute on graph nodes."""
@@ -158,9 +157,9 @@ def build_ceiling_test_graph(
     shared_exploiter: bool = False,
     node_a_id: str = "worker_a",
     node_b_id: str = "worker_b",
-) -> nx.DiGraph:
+) -> BabylonGraph:
     """Build a minimal graph for solidarity ceiling tests."""
-    graph: nx.DiGraph = BabylonGraph()
+    graph: BabylonGraph = BabylonGraph()
     graph.add_node(node_a_id, _node_type="social_class", wealth=wealth_a)
     graph.add_node(node_b_id, _node_type="social_class", wealth=wealth_b)
 

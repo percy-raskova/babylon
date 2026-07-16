@@ -8,7 +8,6 @@ from __future__ import annotations
 
 from typing import Any
 
-import networkx as nx
 import pytest
 
 from babylon.config.defines import OODADefines
@@ -26,7 +25,7 @@ def _build_graph(
     *,
     member_ids: list[str] | None = None,
     member_community_type: str = CommunityType.NEW_AFRIKAN.value,
-) -> nx.DiGraph[str]:
+) -> BabylonGraph:
     """Build a graph with an org, community, and optional membership edges."""
     graph = BabylonGraph()
 

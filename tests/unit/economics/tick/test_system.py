@@ -12,7 +12,6 @@ from __future__ import annotations
 
 from typing import Any
 
-import networkx as nx
 import pytest
 
 from babylon.domain.economics.dynamics.types import ClassDistribution
@@ -83,7 +82,7 @@ def _make_services(**kwargs: Any) -> ServiceContainer:
     return ServiceContainer.create(**defaults)
 
 
-def _make_graph_with_state(year: int = 2015) -> nx.DiGraph[str]:
+def _make_graph_with_state(year: int = 2015) -> BabylonGraph:
     """Build graph with tick dynamics state pre-loaded."""
     graph = build_territory_graph()
     dist = ClassDistribution(

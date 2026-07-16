@@ -13,7 +13,6 @@ from datetime import datetime
 from typing import Any
 from unittest.mock import MagicMock, patch
 
-import networkx as nx
 import pytest
 
 from babylon.models.enums import EventType
@@ -48,7 +47,7 @@ def _make_mock_persistence() -> MagicMock:
     return mock
 
 
-def _make_minimal_graph() -> nx.DiGraph[str]:
+def _make_minimal_graph() -> BabylonGraph:
     """Create a minimal graph for hydration tests."""
     G = BabylonGraph()
     G.graph["tick"] = 0

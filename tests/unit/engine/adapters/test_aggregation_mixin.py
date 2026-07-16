@@ -19,7 +19,6 @@ try:
 except ImportError:
     AggregationMixin = None  # type: ignore[misc, assignment]
 
-import networkx as nx
 
 from babylon.topology.graph import BabylonGraph
 
@@ -33,7 +32,7 @@ class TestAggregationMixinExists:
 
 
 @pytest.fixture
-def graph_with_data() -> nx.DiGraph[str]:
+def graph_with_data() -> BabylonGraph:
     """Create a test graph with nodes and edges."""
     g = BabylonGraph()
     # Add nodes with types and wealth
@@ -52,33 +51,33 @@ def graph_with_data() -> nx.DiGraph[str]:
 class TestAggregationMixinNodeAggregation:
     """Tests for node aggregation functionality."""
 
-    def test_aggregate_nodes_count_all(self, graph_with_data: nx.DiGraph[str]) -> None:
+    def test_aggregate_nodes_count_all(self, graph_with_data: BabylonGraph) -> None:
         """Count all nodes without grouping."""
 
         class TestAdapter(AggregationMixin):
-            def __init__(self, graph: nx.DiGraph[str]) -> None:
+            def __init__(self, graph: BabylonGraph) -> None:
                 self._graph = graph
 
         adapter = TestAdapter(graph_with_data)
         result = adapter.aggregate("nodes", agg_func="count")
         assert result == {"_all": 4.0}
 
-    def test_aggregate_nodes_count_by_type(self, graph_with_data: nx.DiGraph[str]) -> None:
+    def test_aggregate_nodes_count_by_type(self, graph_with_data: BabylonGraph) -> None:
         """Count nodes grouped by type."""
 
         class TestAdapter(AggregationMixin):
-            def __init__(self, graph: nx.DiGraph[str]) -> None:
+            def __init__(self, graph: BabylonGraph) -> None:
                 self._graph = graph
 
         adapter = TestAdapter(graph_with_data)
         result = adapter.aggregate("nodes", group_by="type", agg_func="count")
         assert result == {"social_class": 3.0, "territory": 1.0}
 
-    def test_aggregate_nodes_sum_wealth_by_type(self, graph_with_data: nx.DiGraph[str]) -> None:
+    def test_aggregate_nodes_sum_wealth_by_type(self, graph_with_data: BabylonGraph) -> None:
         """Sum wealth attribute grouped by type."""
 
         class TestAdapter(AggregationMixin):
-            def __init__(self, graph: nx.DiGraph[str]) -> None:
+            def __init__(self, graph: BabylonGraph) -> None:
                 self._graph = graph
 
         adapter = TestAdapter(graph_with_data)
@@ -86,11 +85,11 @@ class TestAggregationMixinNodeAggregation:
         assert result["social_class"] == 350.0  # 100 + 50 + 200
         assert result["territory"] == 0.0  # no wealth attr
 
-    def test_aggregate_nodes_avg_consciousness(self, graph_with_data: nx.DiGraph[str]) -> None:
+    def test_aggregate_nodes_avg_consciousness(self, graph_with_data: BabylonGraph) -> None:
         """Average consciousness across all social_class nodes."""
 
         class TestAdapter(AggregationMixin):
-            def __init__(self, graph: nx.DiGraph[str]) -> None:
+            def __init__(self, graph: BabylonGraph) -> None:
                 self._graph = graph
 
         adapter = TestAdapter(graph_with_data)
@@ -103,33 +102,33 @@ class TestAggregationMixinNodeAggregation:
 class TestAggregationMixinEdgeAggregation:
     """Tests for edge aggregation functionality."""
 
-    def test_aggregate_edges_count_all(self, graph_with_data: nx.DiGraph[str]) -> None:
+    def test_aggregate_edges_count_all(self, graph_with_data: BabylonGraph) -> None:
         """Count all edges without grouping."""
 
         class TestAdapter(AggregationMixin):
-            def __init__(self, graph: nx.DiGraph[str]) -> None:
+            def __init__(self, graph: BabylonGraph) -> None:
                 self._graph = graph
 
         adapter = TestAdapter(graph_with_data)
         result = adapter.aggregate("edges", agg_func="count")
         assert result == {"_all": 3.0}
 
-    def test_aggregate_edges_count_by_type(self, graph_with_data: nx.DiGraph[str]) -> None:
+    def test_aggregate_edges_count_by_type(self, graph_with_data: BabylonGraph) -> None:
         """Count edges grouped by type."""
 
         class TestAdapter(AggregationMixin):
-            def __init__(self, graph: nx.DiGraph[str]) -> None:
+            def __init__(self, graph: BabylonGraph) -> None:
                 self._graph = graph
 
         adapter = TestAdapter(graph_with_data)
         result = adapter.aggregate("edges", group_by="type", agg_func="count")
         assert result == {"SOLIDARITY": 1.0, "EXPLOITATION": 2.0}
 
-    def test_aggregate_edges_sum_weight_by_type(self, graph_with_data: nx.DiGraph[str]) -> None:
+    def test_aggregate_edges_sum_weight_by_type(self, graph_with_data: BabylonGraph) -> None:
         """Sum edge weights grouped by type."""
 
         class TestAdapter(AggregationMixin):
-            def __init__(self, graph: nx.DiGraph[str]) -> None:
+            def __init__(self, graph: BabylonGraph) -> None:
                 self._graph = graph
 
         adapter = TestAdapter(graph_with_data)
@@ -137,22 +136,22 @@ class TestAggregationMixinEdgeAggregation:
         assert result["SOLIDARITY"] == 0.8
         assert result["EXPLOITATION"] == 0.8  # 0.5 + 0.3
 
-    def test_aggregate_edges_max_weight(self, graph_with_data: nx.DiGraph[str]) -> None:
+    def test_aggregate_edges_max_weight(self, graph_with_data: BabylonGraph) -> None:
         """Find max weight across all edges."""
 
         class TestAdapter(AggregationMixin):
-            def __init__(self, graph: nx.DiGraph[str]) -> None:
+            def __init__(self, graph: BabylonGraph) -> None:
                 self._graph = graph
 
         adapter = TestAdapter(graph_with_data)
         result = adapter.aggregate("edges", agg_func="max", agg_attr="weight")
         assert result["_all"] == 0.8
 
-    def test_aggregate_edges_min_weight(self, graph_with_data: nx.DiGraph[str]) -> None:
+    def test_aggregate_edges_min_weight(self, graph_with_data: BabylonGraph) -> None:
         """Find min weight across all edges."""
 
         class TestAdapter(AggregationMixin):
-            def __init__(self, graph: nx.DiGraph[str]) -> None:
+            def __init__(self, graph: BabylonGraph) -> None:
                 self._graph = graph
 
         adapter = TestAdapter(graph_with_data)

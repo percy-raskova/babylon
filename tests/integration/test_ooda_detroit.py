@@ -7,7 +7,6 @@ FirstBaptist (LIBERAL/CONSENSUS), FordMotor (Business/AUTOCRATIC).
 
 from __future__ import annotations
 
-import networkx as nx
 import pytest
 
 from babylon.config.defines import OODADefines
@@ -35,7 +34,7 @@ from babylon.topology.graph import BabylonGraph
 # =========================================================================
 
 
-def _build_detroit_graph() -> nx.DiGraph[str]:
+def _build_detroit_graph() -> BabylonGraph:
     """Build a Detroit scenario graph with 4 orgs and a community.
 
     Organizations:
@@ -183,7 +182,7 @@ def _build_detroit_graph() -> nx.DiGraph[str]:
     return graph
 
 
-def _add_person(graph: nx.DiGraph[str], person_id: str, phase: str) -> None:
+def _add_person(graph: BabylonGraph, person_id: str, phase: str) -> None:
     """Add a person node to the graph."""
     graph.add_node(
         person_id,

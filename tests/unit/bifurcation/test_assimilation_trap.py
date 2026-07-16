@@ -9,7 +9,6 @@ TDD red phase: tests written BEFORE implementation.
 
 from __future__ import annotations
 
-import networkx as nx
 import pytest
 import xgi  # type: ignore[import-untyped]
 
@@ -45,7 +44,7 @@ def _build_solidarity_scenario(
     ci_marginalized: float,
     tendency: ConsciousnessTendency = ConsciousnessTendency.LIBERAL,
 ) -> tuple[
-    nx.DiGraph, xgi.Hypergraph, dict[CommunityType, CommunityState], dict[str, set[CommunityType]]
+    BabylonGraph, xgi.Hypergraph, dict[CommunityType, CommunityState], dict[str, set[CommunityType]]
 ]:
     """Build a graph with cross-line solidarity at given CI level.
 
@@ -60,7 +59,7 @@ def _build_solidarity_scenario(
     Returns:
         Tuple of (graph, hypergraph, community_states, agent_memberships).
     """
-    graph: nx.DiGraph = BabylonGraph()
+    graph: BabylonGraph = BabylonGraph()
 
     # Add agents
     for agent_id in ("A1", "A2", "A3", "A4"):
@@ -152,7 +151,7 @@ class TestCrisisFragileMarker:
 
     def test_mixed_r_edge_is_crisis_fragile(self) -> None:
         """If either endpoint has r < 0.3, edge is crisis-fragile (weakest link)."""
-        graph: nx.DiGraph = BabylonGraph()
+        graph: BabylonGraph = BabylonGraph()
         for agent_id in ("A1", "A2"):
             graph.add_node(agent_id, _node_type="social_class", wealth=30.0)
         graph.add_edge("A1", "A2", edge_type=EdgeType.SOLIDARITY, solidarity_strength=0.8)
@@ -263,7 +262,7 @@ class TestBifurcationResultAssimilationRatio:
         from babylon.domain.bifurcation.analysis import bifurcation_tendency
         from babylon.models.entities.consciousness import TernaryConsciousness
 
-        graph: nx.DiGraph = BabylonGraph()
+        graph: BabylonGraph = BabylonGraph()
         for agent_id in ("A1", "A2"):
             graph.add_node(agent_id, _node_type="social_class", wealth=30.0)
         graph.add_edge("A1", "A2", edge_type=EdgeType.SOLIDARITY, solidarity_strength=0.8)

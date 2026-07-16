@@ -10,7 +10,6 @@ from __future__ import annotations
 import time
 import uuid
 
-import networkx as nx
 import pytest
 
 from babylon.persistence.postgres_runtime import PostgresRuntime
@@ -38,7 +37,7 @@ def session_id(runtime: PostgresRuntime) -> uuid.UUID:
     )
 
 
-def build_large_graph(num_nodes: int = 1000) -> nx.DiGraph[str]:
+def build_large_graph(num_nodes: int = 1000) -> BabylonGraph:
     """Helper to build a large graph for throughput testing."""
     graph = BabylonGraph()
     for i in range(num_nodes):

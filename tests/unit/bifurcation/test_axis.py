@@ -8,7 +8,6 @@ Tests cover:
 
 from __future__ import annotations
 
-import networkx as nx
 import pytest
 from pydantic import ValidationError
 
@@ -62,7 +61,7 @@ patriarchal_contradiction = Contradiction(
 def _build_typed_graph(
     agents: dict[str, dict[str, float]],
     edges: list[tuple[str, str, EdgeType, dict[str, float]]],
-) -> nx.DiGraph:
+) -> BabylonGraph:
     """Build a DiGraph with typed edges.
 
     Args:
@@ -72,7 +71,7 @@ def _build_typed_graph(
     Returns:
         DiGraph with configured nodes and edges.
     """
-    G: nx.DiGraph = BabylonGraph()
+    G: BabylonGraph = BabylonGraph()
     for node_id, attrs in agents.items():
         G.add_node(node_id, _node_type="social_class", **attrs)
     for src, tgt, etype, extra in edges:
@@ -732,7 +731,7 @@ class TestComputeAxisTendency:
         bifurcation_defines: BifurcationDefines,
     ) -> None:
         """AxisTendency result is a frozen Pydantic model."""
-        graph: nx.DiGraph = BabylonGraph()
+        graph: BabylonGraph = BabylonGraph()
         graph.add_node("a", _node_type="social_class", wealth=50.0)
 
         memberships: dict[str, set[CommunityType]] = {"a": {CommunityType.SETTLER}}

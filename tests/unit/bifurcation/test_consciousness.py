@@ -11,7 +11,6 @@ from __future__ import annotations
 
 import math
 
-import networkx as nx
 import pytest
 
 from babylon.config.defines import BifurcationDefines
@@ -158,7 +157,7 @@ class TestConsciousnessSigmoid:
 def _build_solidarity_graph(
     agents: dict[str, dict[str, float]],
     edges: list[tuple[str, str, float]],
-) -> nx.DiGraph:
+) -> BabylonGraph:
     """Build a DiGraph with social_class nodes and SOLIDARITY edges.
 
     Args:
@@ -168,7 +167,7 @@ def _build_solidarity_graph(
     Returns:
         DiGraph with configured nodes and edges.
     """
-    G: nx.DiGraph = BabylonGraph()
+    G: BabylonGraph = BabylonGraph()
     for node_id, attrs in agents.items():
         G.add_node(node_id, _node_type="social_class", **attrs)
     for src, tgt, strength in edges:

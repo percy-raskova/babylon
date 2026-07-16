@@ -12,7 +12,6 @@ from __future__ import annotations
 
 from typing import Any
 
-import networkx as nx
 import pytest
 
 from babylon.engine.services import ServiceContainer
@@ -28,7 +27,7 @@ def _wages_graph(
     la_production: float = 5.0,
     *,
     worker_active: bool = True,
-) -> nx.DiGraph[str]:
+) -> BabylonGraph:
     graph = BabylonGraph()
     graph.add_node(
         "bourgeoisie", wealth=bourgeoisie_wealth, role=SocialRole.CORE_BOURGEOISIE, active=True

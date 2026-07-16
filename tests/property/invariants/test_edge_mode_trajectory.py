@@ -18,7 +18,6 @@ from __future__ import annotations
 
 from typing import Any
 
-import networkx as nx
 import pytest
 from hypothesis import HealthCheck, given, settings
 
@@ -42,7 +41,7 @@ from tests.property.strategies.worldstate import worldstate_strategy
 # separate test. Malformed string values raise ``ValueError`` immediately.
 
 
-def _build_two_node_graph(starting_mode: EdgeMode) -> nx.DiGraph[str]:
+def _build_two_node_graph(starting_mode: EdgeMode) -> BabylonGraph:
     """Build a 2-node graph with one edge carrying the starting edge_mode."""
     graph = BabylonGraph()
     graph.add_node(
@@ -68,7 +67,7 @@ def _build_two_node_graph(starting_mode: EdgeMode) -> nx.DiGraph[str]:
     return graph
 
 
-def _apply_event_to_graph(graph: nx.DiGraph[str], event: dict[str, Any]) -> None:
+def _apply_event_to_graph(graph: BabylonGraph, event: dict[str, Any]) -> None:
     """Write the event into the appropriate node's contradiction_fields/field_derivatives."""
     node_id = "src" if event["scope"] == "source" else "tgt"
     field = event["field"]
@@ -87,7 +86,7 @@ def _apply_event_to_graph(graph: nx.DiGraph[str], event: dict[str, Any]) -> None
         node_attrs["field_derivatives"] = fd
 
 
-def _read_edge_mode(graph: nx.DiGraph[str]) -> EdgeMode:
+def _read_edge_mode(graph: BabylonGraph) -> EdgeMode:
     """Read the single edge's edge_mode attribute and construct EdgeMode(value)."""
     edges = list(graph.edges(data=True))
     if not edges:
@@ -98,7 +97,7 @@ def _read_edge_mode(graph: nx.DiGraph[str]) -> EdgeMode:
 
 
 def _capture_edge_modes(
-    graph: nx.DiGraph[str],
+    graph: BabylonGraph,
 ) -> dict[tuple[str, str, str], EdgeMode]:
     """Return {(source, target, edge_type): EdgeMode} for every edge with edge_mode."""
     out: dict[tuple[str, str, str], EdgeMode] = {}

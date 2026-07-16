@@ -19,19 +19,17 @@ from __future__ import annotations
 
 from collections.abc import Callable, Sequence
 from dataclasses import dataclass
-from typing import TYPE_CHECKING, Literal
+from typing import Literal
 
 from babylon.engine.context import TickContext
 from babylon.engine.invariants import Invariant, InvariantResult
 from babylon.engine.services import ServiceContainer
 from babylon.kernel.system_protocol import System
 from babylon.models.world_state import WorldState
+from babylon.topology.graph import BabylonGraph
 
 from .bound_harness import HarnessResult
 from .system_registry import all_systems
-
-if TYPE_CHECKING:
-    import networkx as nx
 
 # Re-export HarnessResult so tests have a single import surface.
 __all__ = [
@@ -44,7 +42,7 @@ __all__ = [
 SystemRunner = Callable[..., None]
 
 
-def is_community_node(graph: nx.DiGraph[str], node_id: str) -> bool:
+def is_community_node(graph: BabylonGraph, node_id: str) -> bool:
     """Return True iff the node is marked as a community node.
 
     Single source of truth for spec-055 US2's hyperedges-not-pairwise
@@ -65,7 +63,7 @@ def is_community_node(graph: nx.DiGraph[str], node_id: str) -> bool:
     return graph.nodes[node_id].get("_node_type") == "community"
 
 
-def _inject_community_markers(graph: nx.DiGraph[str], community_node_ids: frozenset[str]) -> None:
+def _inject_community_markers(graph: BabylonGraph, community_node_ids: frozenset[str]) -> None:
     """Tag the named nodes with ``_node_type='community'`` on the live graph.
 
     Paired with ``is_community_node`` so injection and detection share a

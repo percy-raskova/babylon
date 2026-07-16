@@ -14,7 +14,6 @@ Tests bifurcation risk assessment during crisis:
 
 from __future__ import annotations
 
-import networkx as nx
 import pytest
 
 from babylon.domain.economics.crisis.bifurcation import BifurcationRiskCalculator
@@ -72,7 +71,7 @@ def _make_graph_with_solidarity(
     num_solidarity_edges: int = 4,
     total_possible: int = 6,
     mean_agitation: float = 0.3,
-) -> nx.DiGraph:
+) -> BabylonGraph:
     """Build a test graph with solidarity edges and ideology data.
 
     Creates social class nodes with different roles and SOLIDARITY edges
@@ -84,7 +83,7 @@ def _make_graph_with_solidarity(
         total_possible: Total possible cross-class edges (for density calc).
         mean_agitation: Average agitation across nodes.
     """
-    g: nx.DiGraph = BabylonGraph()
+    g: BabylonGraph = BabylonGraph()
 
     # Add territory node
     g.add_node(fips, _node_type="territory")
@@ -351,7 +350,7 @@ class TestBifurcationEdgeCases:
     def test_single_class_present(self) -> None:
         """Fewer than 2 class categories -> solidarity_density=0."""
         calc = BifurcationRiskCalculator()
-        g: nx.DiGraph = BabylonGraph()
+        g: BabylonGraph = BabylonGraph()
         g.add_node("26163", _node_type="territory")
         # Only one social class node
         g.add_node(

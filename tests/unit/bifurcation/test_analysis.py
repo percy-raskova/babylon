@@ -6,7 +6,6 @@ Critical validation: the assimilation trap test (high cross-line density
 
 from __future__ import annotations
 
-import networkx as nx
 import pytest
 import xgi
 from pydantic import ValidationError
@@ -67,7 +66,7 @@ def _build_analysis_scenario(
     community_states: dict[CommunityType, CommunityState],
     edges: list[tuple[str, str, EdgeType, float]],
     territories: list[dict[str, object]] | None = None,
-) -> tuple[nx.DiGraph, xgi.Hypergraph, dict[str, set[CommunityType]]]:
+) -> tuple[BabylonGraph, xgi.Hypergraph, dict[str, set[CommunityType]]]:
     """Build a complete scenario graph for bifurcation analysis.
 
     Args:
@@ -79,7 +78,7 @@ def _build_analysis_scenario(
     Returns:
         Tuple of (graph, hypergraph, agent_memberships).
     """
-    graph: nx.DiGraph = BabylonGraph()
+    graph: BabylonGraph = BabylonGraph()
 
     # Add agent nodes
     for agent_id in agent_communities:
@@ -382,7 +381,7 @@ class TestDegenerateCases:
         bifurcation_defines: BifurcationDefines,
     ) -> None:
         """Empty graph → indeterminate with zero metrics."""
-        graph: nx.DiGraph = BabylonGraph()
+        graph: BabylonGraph = BabylonGraph()
         H: xgi.Hypergraph = xgi.Hypergraph()
         states: dict[CommunityType, CommunityState] = {}
         memberships: dict[str, set[CommunityType]] = {}
@@ -439,7 +438,7 @@ class TestDegenerateCases:
         bifurcation_defines: BifurcationDefines,
     ) -> None:
         """Single agent, no edges → indeterminate."""
-        graph: nx.DiGraph = BabylonGraph()
+        graph: BabylonGraph = BabylonGraph()
         graph.add_node("lone_wolf", _node_type="social_class", wealth=50.0)
         H: xgi.Hypergraph = xgi.Hypergraph()
         states: dict[CommunityType, CommunityState] = {}

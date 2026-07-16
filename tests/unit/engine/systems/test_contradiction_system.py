@@ -19,7 +19,6 @@ pin the new contract:
 
 from __future__ import annotations
 
-import networkx as nx
 import pytest
 
 from babylon.domain.dialectics.core.coupling import StanceIntervention
@@ -139,7 +138,7 @@ class TestContradictionFrames:
 class TestRuptureGate:
     """RUPTURE = condition AND level: gap > threshold AND rate > 0."""
 
-    def _extreme_graph(self, owner_wealth: float) -> nx.DiGraph[str]:
+    def _extreme_graph(self, owner_wealth: float) -> BabylonGraph:
         graph = BabylonGraph()
         graph.add_node("worker", wealth=1.0)
         graph.add_node("owner", wealth=owner_wealth)
@@ -201,7 +200,7 @@ class TestRuptureGate:
 class TestStanceInterventions:
     """``opposition_interventions`` attr: applied post-step, consumed once."""
 
-    def _labor_dominant_graph(self) -> nx.DiGraph[str]:
+    def _labor_dominant_graph(self) -> BabylonGraph:
         # Worker richer than owner -> capital_labor balance < 0 -> leading_pole "a".
         graph = BabylonGraph()
         graph.add_node("worker", wealth=30.0)
@@ -248,7 +247,7 @@ class TestWageValuePairsExtraction:
     """`_build_graph_inputs` lifts (w_paid, v_produced) off paid class nodes (D4)."""
 
     @staticmethod
-    def _inputs(graph: nx.DiGraph[str]):  # type: ignore[no-untyped-def]
+    def _inputs(graph: BabylonGraph):  # type: ignore[no-untyped-def]
 
         return ContradictionSystem()._build_graph_inputs(graph)
 
@@ -286,7 +285,7 @@ class TestGraphInputIdPairs:
     """
 
     @staticmethod
-    def _inputs(graph: nx.DiGraph[str]):  # type: ignore[no-untyped-def]
+    def _inputs(graph: BabylonGraph):  # type: ignore[no-untyped-def]
 
         return ContradictionSystem()._build_graph_inputs(graph)
 

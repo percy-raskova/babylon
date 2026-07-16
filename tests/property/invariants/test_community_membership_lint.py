@@ -14,8 +14,6 @@ Three predicates:
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING
-
 import pytest
 from hypothesis import HealthCheck, given, settings
 
@@ -23,6 +21,7 @@ from babylon.engine.invariants import NoCommunityFanOut
 from babylon.engine.simulation_engine import SimulationEngine
 from babylon.models.enums import EdgeType
 from babylon.models.world_state import WorldState
+from babylon.topology.graph import BabylonGraph
 from tests.property.harness.system_registry import all_systems
 from tests.property.harness.topology_harness import (
     _inject_community_markers,
@@ -32,11 +31,8 @@ from tests.property.strategies.worldstate import (
     worldstate_with_community_node_strategy,
 )
 
-if TYPE_CHECKING:
-    import networkx as nx
 
-
-def _count_membership_edges(graph: nx.DiGraph[str], *, exclude_community_sources: bool) -> int:
+def _count_membership_edges(graph: BabylonGraph, *, exclude_community_sources: bool) -> int:
     """Count MEMBERSHIP edges in ``graph``.
 
     If ``exclude_community_sources`` is True, only counts edges whose

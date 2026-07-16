@@ -10,7 +10,6 @@ from __future__ import annotations
 
 from unittest.mock import MagicMock
 
-import networkx as nx
 import pytest
 
 from babylon.engine.systems.field_derivative import (
@@ -20,7 +19,7 @@ from babylon.engine.systems.field_derivative import (
 from babylon.topology.graph import BabylonGraph
 
 
-def _make_graph_protocol(g: nx.DiGraph) -> MagicMock:  # type: ignore[type-arg]
+def _make_graph_protocol(g: BabylonGraph) -> MagicMock:  # type: ignore[type-arg]
     """Wrap a NetworkX DiGraph in a minimal GraphProtocol mock."""
 
     return g
@@ -29,7 +28,7 @@ def _make_graph_protocol(g: nx.DiGraph) -> MagicMock:  # type: ignore[type-arg]
 def _make_triangle_graph(
     field_values: dict[str, float],
     edge_weights: dict[tuple[str, str], float] | None = None,
-) -> nx.DiGraph:  # type: ignore[type-arg]
+) -> BabylonGraph:  # type: ignore[type-arg]
     """Create a 3-node triangle graph with contradiction fields.
 
     Args:

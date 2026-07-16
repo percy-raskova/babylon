@@ -26,7 +26,6 @@ from typing import Any
 from unittest.mock import MagicMock
 from uuid import uuid4
 
-import networkx as nx
 import pytest
 
 from babylon.topology.graph import BabylonGraph
@@ -122,10 +121,10 @@ class TestFetchSessionRngSeedFromPool:
         assert seed == 0
 
 
-def _empty_state_and_graph() -> tuple[Any, nx.DiGraph]:
+def _empty_state_and_graph() -> tuple[Any, BabylonGraph]:
     from babylon.models.world_state import WorldState
 
-    graph: nx.DiGraph = BabylonGraph()
+    graph: BabylonGraph = BabylonGraph()
     graph.graph["tick"] = 0
     state = WorldState.from_graph(graph, tick=0)
     return state, graph

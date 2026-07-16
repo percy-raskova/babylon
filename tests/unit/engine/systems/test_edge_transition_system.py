@@ -8,7 +8,6 @@ Reference: specs/002-dialectical-field-topology/contracts/edge_transition_system
 
 from __future__ import annotations
 
-import networkx as nx
 import pytest
 
 from babylon.engine.field_registry import DefaultFieldRegistry
@@ -23,7 +22,7 @@ from babylon.models.enums import (
 from babylon.topology.graph import BabylonGraph
 
 
-def _make_graph_with_edge_mode() -> nx.DiGraph[str]:
+def _make_graph_with_edge_mode() -> BabylonGraph:
     """Create a graph with two nodes and an edge that has an edge_mode."""
     graph = BabylonGraph()
     graph.add_node(

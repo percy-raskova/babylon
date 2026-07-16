@@ -18,7 +18,6 @@ from __future__ import annotations
 
 from collections.abc import Generator
 
-import networkx as nx
 import pytest
 
 from babylon.engine.services import ServiceContainer
@@ -66,7 +65,7 @@ def _create_test_context(
     return context
 
 
-def _create_stable_carceral_state(graph: nx.DiGraph[str]) -> None:
+def _create_stable_carceral_state(graph: BabylonGraph) -> None:
     """Create a carceral state where enforcers control the population.
 
     With default control_capacity = 4 (from GameDefines):
@@ -107,7 +106,7 @@ def _create_stable_carceral_state(graph: nx.DiGraph[str]) -> None:
     )
 
 
-def _create_unstable_carceral_state(graph: nx.DiGraph[str]) -> None:
+def _create_unstable_carceral_state(graph: BabylonGraph) -> None:
     """Create a carceral state where prisoners exceed control capacity.
 
     With default control_capacity = 4 (from GameDefines):

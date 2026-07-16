@@ -14,7 +14,6 @@ from __future__ import annotations
 from typing import Any
 from unittest.mock import MagicMock
 
-import networkx as nx
 import pytest
 
 from babylon.engine.services import ServiceContainer
@@ -81,7 +80,7 @@ def _make_template(
     )
 
 
-def _make_graph(*nodes: tuple[str, dict[str, Any]]) -> nx.DiGraph[str]:
+def _make_graph(*nodes: tuple[str, dict[str, Any]]) -> BabylonGraph:
     g = BabylonGraph()
     for node_id, data in nodes:
         g.add_node(node_id, **data)

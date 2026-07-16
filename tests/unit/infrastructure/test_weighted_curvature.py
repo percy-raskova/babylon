@@ -8,7 +8,6 @@ Tests verify:
 
 from __future__ import annotations
 
-import networkx as nx
 import pytest
 
 from babylon.formulas.curvature import (
@@ -19,7 +18,7 @@ from babylon.formulas.curvature import (
 from babylon.topology.graph import BabylonUGraph
 
 
-def _make_weighted_graph() -> nx.Graph:  # type: ignore[type-arg]
+def _make_weighted_graph() -> BabylonUGraph:  # type: ignore[type-arg]
     """Create a small weighted graph for curvature tests."""
     g = BabylonUGraph()
     g.add_node("A")

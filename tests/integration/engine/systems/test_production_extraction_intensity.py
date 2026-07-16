@@ -11,7 +11,6 @@ from __future__ import annotations
 
 from collections.abc import Generator
 
-import networkx as nx
 import pytest
 
 from babylon.engine.services import ServiceContainer
@@ -33,7 +32,7 @@ def services() -> Generator[ServiceContainer, None, None]:
 
 
 def _create_worker_node(
-    graph: nx.DiGraph,
+    graph: BabylonGraph,
     node_id: str,
     role: SocialRole = SocialRole.PERIPHERY_PROLETARIAT,
     wealth: float = 0.0,
@@ -50,7 +49,7 @@ def _create_worker_node(
 
 
 def _create_territory_node(
-    graph: nx.DiGraph,
+    graph: BabylonGraph,
     node_id: str,
     biocapacity: float = 100.0,
     max_biocapacity: float = 100.0,
@@ -69,7 +68,7 @@ def _create_territory_node(
 
 
 def _create_tenancy_edge(
-    graph: nx.DiGraph,
+    graph: BabylonGraph,
     worker_id: str,
     territory_id: str,
 ) -> None:
@@ -91,7 +90,7 @@ class TestHumpShapeDecay:
         With sufficient workers, biocapacity should steadily decline
         over 100 ticks, demonstrating the metabolic rift dynamics.
         """
-        graph: nx.DiGraph = BabylonGraph()
+        graph: BabylonGraph = BabylonGraph()
 
         # Create enough workers for intensity > breakeven
         # Need ~87 workers for breakeven (0.0167 * 100 / 0.0192 ~ 87)
@@ -130,7 +129,7 @@ class TestHumpShapeDecay:
         The first 50 ticks should accumulate more wealth than
         the second 50 ticks due to biocapacity depletion.
         """
-        graph: nx.DiGraph = BabylonGraph()
+        graph: BabylonGraph = BabylonGraph()
         _create_worker_node(graph, "PERIPHERY_WORKER_ID", wealth=0.0)
 
         # Use high extraction to accelerate depletion for test

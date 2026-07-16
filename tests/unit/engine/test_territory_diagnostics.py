@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import math
 
-import networkx as nx
 import pytest
 
 from babylon.engine.systems.territory_diagnostics import (
@@ -16,7 +15,7 @@ from babylon.topology.graph import BabylonGraph
 
 
 def _add_hex(
-    g: nx.DiGraph[str],
+    g: BabylonGraph,
     h3: str,
     county: str,
     c: float = 1.0,

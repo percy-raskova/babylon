@@ -13,7 +13,6 @@ from __future__ import annotations
 import uuid
 from datetime import datetime
 
-import networkx as nx
 import pytest
 
 from babylon.persistence import MonotonicityViolationError
@@ -40,14 +39,14 @@ def session_id(runtime: PostgresRuntime) -> uuid.UUID:
     )
 
 
-def _payload_to_graph(marker: str, value: int) -> nx.DiGraph[str]:
+def _payload_to_graph(marker: str, value: int) -> BabylonGraph:
     """One-node graph with a distinguishing payload."""
     g = BabylonGraph()
     g.add_node("payload_node", type="Test", marker=marker, value=value)
     return g
 
 
-def _graph_payload(graph: nx.DiGraph) -> dict:
+def _graph_payload(graph: BabylonGraph) -> dict:
     """Extract the payload dict from a hydrated graph."""
     if "payload_node" not in graph.nodes:
         return {}

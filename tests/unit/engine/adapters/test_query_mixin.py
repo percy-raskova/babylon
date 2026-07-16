@@ -19,7 +19,6 @@ try:
 except ImportError:
     QueryMixin = None  # type: ignore[misc, assignment]
 
-import networkx as nx
 
 from babylon.topology.graph import BabylonGraph
 
@@ -33,7 +32,7 @@ class TestQueryMixinExists:
 
 
 @pytest.fixture
-def graph_with_data() -> nx.DiGraph[str]:
+def graph_with_data() -> BabylonGraph:
     """Create a test graph with nodes and edges."""
     g = BabylonGraph()
     # Add nodes with types and attributes
@@ -54,11 +53,11 @@ def graph_with_data() -> nx.DiGraph[str]:
 class TestQueryMixinNodeQueries:
     """Tests for node query functionality."""
 
-    def test_query_nodes_returns_iterator(self, graph_with_data: nx.DiGraph[str]) -> None:
+    def test_query_nodes_returns_iterator(self, graph_with_data: BabylonGraph) -> None:
         """query_nodes should return an iterator."""
 
         class TestAdapter(QueryMixin):
-            def __init__(self, graph: nx.DiGraph[str]) -> None:
+            def __init__(self, graph: BabylonGraph) -> None:
                 self._graph = graph
 
         adapter = TestAdapter(graph_with_data)
@@ -67,11 +66,11 @@ class TestQueryMixinNodeQueries:
         nodes = list(result)
         assert len(nodes) == 5
 
-    def test_query_nodes_filters_by_type(self, graph_with_data: nx.DiGraph[str]) -> None:
+    def test_query_nodes_filters_by_type(self, graph_with_data: BabylonGraph) -> None:
         """query_nodes should filter by node_type."""
 
         class TestAdapter(QueryMixin):
-            def __init__(self, graph: nx.DiGraph[str]) -> None:
+            def __init__(self, graph: BabylonGraph) -> None:
                 self._graph = graph
 
         adapter = TestAdapter(graph_with_data)
@@ -79,11 +78,11 @@ class TestQueryMixinNodeQueries:
         assert len(nodes) == 3
         assert all(n.node_type == "social_class" for n in nodes)
 
-    def test_query_nodes_filters_by_attributes(self, graph_with_data: nx.DiGraph[str]) -> None:
+    def test_query_nodes_filters_by_attributes(self, graph_with_data: BabylonGraph) -> None:
         """query_nodes should filter by attribute equality."""
 
         class TestAdapter(QueryMixin):
-            def __init__(self, graph: nx.DiGraph[str]) -> None:
+            def __init__(self, graph: BabylonGraph) -> None:
                 self._graph = graph
 
         adapter = TestAdapter(graph_with_data)
@@ -91,32 +90,32 @@ class TestQueryMixinNodeQueries:
         assert len(nodes) == 1
         assert nodes[0].id == PERIPHERY_WORKER_ID
 
-    def test_query_nodes_filters_by_predicate(self, graph_with_data: nx.DiGraph[str]) -> None:
+    def test_query_nodes_filters_by_predicate(self, graph_with_data: BabylonGraph) -> None:
         """query_nodes should filter by custom predicate."""
 
         class TestAdapter(QueryMixin):
-            def __init__(self, graph: nx.DiGraph[str]) -> None:
+            def __init__(self, graph: BabylonGraph) -> None:
                 self._graph = graph
 
         adapter = TestAdapter(graph_with_data)
         nodes = list(adapter.query_nodes(predicate=lambda n: n.attributes.get("wealth", 0) > 75))
         assert len(nodes) == 2  # C001 (100) and C003 (200)
 
-    def test_count_nodes_returns_total(self, graph_with_data: nx.DiGraph[str]) -> None:
+    def test_count_nodes_returns_total(self, graph_with_data: BabylonGraph) -> None:
         """count_nodes should return total node count."""
 
         class TestAdapter(QueryMixin):
-            def __init__(self, graph: nx.DiGraph[str]) -> None:
+            def __init__(self, graph: BabylonGraph) -> None:
                 self._graph = graph
 
         adapter = TestAdapter(graph_with_data)
         assert adapter.count_nodes() == 5
 
-    def test_count_nodes_filters_by_type(self, graph_with_data: nx.DiGraph[str]) -> None:
+    def test_count_nodes_filters_by_type(self, graph_with_data: BabylonGraph) -> None:
         """count_nodes should filter by node_type."""
 
         class TestAdapter(QueryMixin):
-            def __init__(self, graph: nx.DiGraph[str]) -> None:
+            def __init__(self, graph: BabylonGraph) -> None:
                 self._graph = graph
 
         adapter = TestAdapter(graph_with_data)
@@ -128,11 +127,11 @@ class TestQueryMixinNodeQueries:
 class TestQueryMixinEdgeQueries:
     """Tests for edge query functionality."""
 
-    def test_query_edges_returns_iterator(self, graph_with_data: nx.DiGraph[str]) -> None:
+    def test_query_edges_returns_iterator(self, graph_with_data: BabylonGraph) -> None:
         """query_edges should return an iterator."""
 
         class TestAdapter(QueryMixin):
-            def __init__(self, graph: nx.DiGraph[str]) -> None:
+            def __init__(self, graph: BabylonGraph) -> None:
                 self._graph = graph
 
         adapter = TestAdapter(graph_with_data)
@@ -141,11 +140,11 @@ class TestQueryMixinEdgeQueries:
         edges = list(result)
         assert len(edges) == 4
 
-    def test_query_edges_filters_by_type(self, graph_with_data: nx.DiGraph[str]) -> None:
+    def test_query_edges_filters_by_type(self, graph_with_data: BabylonGraph) -> None:
         """query_edges should filter by edge_type."""
 
         class TestAdapter(QueryMixin):
-            def __init__(self, graph: nx.DiGraph[str]) -> None:
+            def __init__(self, graph: BabylonGraph) -> None:
                 self._graph = graph
 
         adapter = TestAdapter(graph_with_data)
@@ -153,43 +152,43 @@ class TestQueryMixinEdgeQueries:
         assert len(edges) == 2
         assert all(e.edge_type == "EXPLOITATION" for e in edges)
 
-    def test_query_edges_filters_by_weight_range(self, graph_with_data: nx.DiGraph[str]) -> None:
+    def test_query_edges_filters_by_weight_range(self, graph_with_data: BabylonGraph) -> None:
         """query_edges should filter by weight range."""
 
         class TestAdapter(QueryMixin):
-            def __init__(self, graph: nx.DiGraph[str]) -> None:
+            def __init__(self, graph: BabylonGraph) -> None:
                 self._graph = graph
 
         adapter = TestAdapter(graph_with_data)
         edges = list(adapter.query_edges(min_weight=0.5, max_weight=0.9))
         assert len(edges) == 2  # SOLIDARITY (0.8) and EXPLOITATION (0.5)
 
-    def test_query_edges_filters_by_predicate(self, graph_with_data: nx.DiGraph[str]) -> None:
+    def test_query_edges_filters_by_predicate(self, graph_with_data: BabylonGraph) -> None:
         """query_edges should filter by custom predicate."""
 
         class TestAdapter(QueryMixin):
-            def __init__(self, graph: nx.DiGraph[str]) -> None:
+            def __init__(self, graph: BabylonGraph) -> None:
                 self._graph = graph
 
         adapter = TestAdapter(graph_with_data)
         edges = list(adapter.query_edges(predicate=lambda e: e.weight >= 1.0))
         assert len(edges) == 1  # ADJACENCY (1.0)
 
-    def test_count_edges_returns_total(self, graph_with_data: nx.DiGraph[str]) -> None:
+    def test_count_edges_returns_total(self, graph_with_data: BabylonGraph) -> None:
         """count_edges should return total edge count."""
 
         class TestAdapter(QueryMixin):
-            def __init__(self, graph: nx.DiGraph[str]) -> None:
+            def __init__(self, graph: BabylonGraph) -> None:
                 self._graph = graph
 
         adapter = TestAdapter(graph_with_data)
         assert adapter.count_edges() == 4
 
-    def test_count_edges_filters_by_type(self, graph_with_data: nx.DiGraph[str]) -> None:
+    def test_count_edges_filters_by_type(self, graph_with_data: BabylonGraph) -> None:
         """count_edges should filter by edge_type."""
 
         class TestAdapter(QueryMixin):
-            def __init__(self, graph: nx.DiGraph[str]) -> None:
+            def __init__(self, graph: BabylonGraph) -> None:
                 self._graph = graph
 
         adapter = TestAdapter(graph_with_data)

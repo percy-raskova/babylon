@@ -56,11 +56,9 @@ def _build_monitor_graph(
     Returns:
         Dict with 'agents', 'edges' keys suitable for building a test graph.
     """
-    import networkx as nx
-
     from .factories import assign_communities_to_graph
 
-    graph: nx.DiGraph = BabylonGraph()  # type: ignore[type-arg]
+    graph = BabylonGraph()
     for agent_id in agent_communities:
         graph.add_node(agent_id, _node_type="social_class", wealth=50.0)
     for src, tgt, edge_type, strength in edges:
@@ -313,9 +311,7 @@ class TestBifurcationMonitorEvents:
         # Now change to indeterminate
         store._states.clear()
 
-        import networkx as nx
-
-        empty_graph: nx.DiGraph = BabylonGraph()  # type: ignore[type-arg]
+        empty_graph = BabylonGraph()
         empty_H: xgi.Hypergraph = xgi.Hypergraph()
         empty_memberships: dict[str, set[CommunityType]] = {}
 

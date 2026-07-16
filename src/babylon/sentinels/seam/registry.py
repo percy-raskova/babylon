@@ -591,15 +591,20 @@ _TERRITORY_TICK_METRICS: tuple[SeamEntry, ...] = (
         payload="tick_median_wage",
         wire_keys=("tick_median_wage",),
         scope=SeamScope.TERRITORY,
-        owner_layer="domain.economics.tick (CountyEconomicState bootstrap default)",
+        owner_layer="domain.economics.tick (QCEW p50 bootstrap + wage-pressure dynamics)",
         liveness_class=LivenessClass.DECLARED_CONDITIONAL,
         liveness_condition=_YEAR_BOUNDARY,
         dtype="float",
         read_paths=_TERRITORY_EMITTERS,
-        spec_ref="Epochs audit · Wave 2 · Gap-1",
+        spec_ref="Epochs audit · Wave 2 · Gap-1 · owner item 60",
         notes=(
-            "Real and non-null, but FROZEN at 21.0 $/hr — no wage data source is "
-            "wired (DefaultWagePressureCalculator has no reserve_army_data_source). "
+            "Item 60 (2026-07-15): the bootstrap is now the employment-weighted "
+            "p50 estimator over QCEW 6-digit industry wages via "
+            "services.wage_source (a genuine median approximation — the raw "
+            "QCEW county mean was NOT wired precisely because it is a mean). "
+            "ENDOGENOUS after tick 1: wage-pressure/compression dynamics own "
+            "the trajectory; the source seeds only the initial condition. "
+            "21.0 $/hr remains the documented unwired/absent-row bootstrap. "
             "Wire key deliberately kept tick_-prefixed (not 'median_wage') to avoid "
             "colliding with the real, distinct Territory.median_wage field "
             "(Feature 021) already on the same _serialize_territory payload."

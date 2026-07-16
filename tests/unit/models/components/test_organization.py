@@ -14,12 +14,32 @@ All tests verify:
 6. Implements Component protocol
 """
 
+import warnings
+
 import pytest
 from pydantic import ValidationError
 
 from babylon.models.components.base import Component
-from babylon.models.components.organization import OrganizationComponent
 from tests.constants import TestConstants
+
+# OrganizationComponent is a deprecated shim (Feature 031); first-party
+# DeprecationWarnings are errors suite-wide (pyproject filterwarnings), so
+# this contract-test module — the shim's ONLY consumer — imports it with the
+# warning explicitly acknowledged. test_package_access_warns below pins the
+# warning itself as behavior.
+with warnings.catch_warnings():
+    warnings.simplefilter("ignore", DeprecationWarning)
+    from babylon.models.components.organization import OrganizationComponent
+
+
+def test_package_access_warns() -> None:
+    """Accessing the shim via the package must raise the deprecation."""
+    import babylon.models.components as components
+
+    with pytest.warns(DeprecationWarning, match="OrganizationComponent is deprecated"):
+        resolved = components.OrganizationComponent
+    assert resolved is OrganizationComponent
+
 
 TC = TestConstants
 

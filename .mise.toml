@@ -165,7 +165,7 @@ run = "poetry run ruff format --check ."
 #     enforced by a report-time --include filter on the same .coverage data —
 #     one pytest invocation, metrics and gate separated.
 [tasks."test:unit-ci"]
-description = "CI unit shard (program 15): xdist -n4, max-verbosity output, full-tree coverage artifacts, excludes ai/slow/red_phase/requires_reference_db, gates engine/systems cov >= 80"
+description = "CI unit shard (program 15): xdist -n4 loadscope, max-verbosity output, full-tree coverage artifacts, excludes slow/red_phase/requires_reference_db, gates engine/systems cov >= 80"
 run = """
 set -e
 mkdir -p reports/test-results/unit-ci
@@ -173,11 +173,14 @@ mkdir -p reports/test-results/unit-ci
 # stranded its queue -> scheduler futex-wait at 99%) self-salvages with a full
 # summary + junit instead of burning the job's timeout-minutes and dying mute.
 # --max-worker-restart=2: repeated worker death fails the session loudly.
+# tests/unit/ai is NOT ignored (2026-07-16 re-tier): all 217 tests there are
+# mock-based and run in ~3s — the `ai` marker on them is taxonomy, not an
+# LLM-server dependency; local test:unit always ran them, CI now matches.
 timeout --signal=INT --kill-after=120 15m \
-poetry run pytest tests/unit --ignore=tests/unit/ai \
+poetry run pytest tests/unit \
   -o addopts="" -vv -ra -l --tb=long --durations=0 \
   -m 'not red_phase and not slow and not requires_reference_db' \
-  -n 4 --max-worker-restart=2 \
+  -n 4 --dist loadscope --max-worker-restart=2 \
   --cov=src/babylon \
   --cov-report=term-missing:skip-covered \
   --cov-report=xml:reports/test-results/unit-ci/coverage.xml \
@@ -207,6 +210,9 @@ mkdir -p reports/test-results/rest-ci
 # CI sets the tight caps via env (sized under nightly's 35-min job budget);
 # local defaults are generous — the dev box runs this shard in ~50-90 min
 # (2026-07-16 benchmark) and the cap exists to kill WEDGES, not slowness.
+# HYPOTHESIS_PROFILE: this is the only shard running tests/property — default
+# to the registered 'ci' profile (500 examples); nightly overrides via env.
+export HYPOTHESIS_PROFILE="${HYPOTHESIS_PROFILE:-ci}"
 timeout --signal=INT --kill-after=120 "${BABYLON_REST_SHARD_TIMEOUT:-100m}" \
 poetry run pytest tests --ignore=tests/unit --ignore=tests/integration/web \
   -o addopts="" -vv -ra -l --tb=long --durations=0 \
@@ -273,6 +279,7 @@ description = "Unit tests (fast gate — excludes slow-marked; those run in test
 run = """
 mkdir -p reports/test-results/unit
 poetry run pytest tests/unit -m 'not red_phase and not slow' \
+  -n 4 --dist loadscope --max-worker-restart=2 \
   -vv --tb=long --showlocals --show-capture=all --capture=tee-sys -r aR --durations=25 \
   --junit-xml=reports/test-results/unit/junit.xml \
   --json-report --json-report-file=reports/test-results/unit/report.json --json-report-indent=2 \
@@ -305,7 +312,10 @@ poetry run pytest -m 'slow' \
 description = "Integration tests (mechanics & systems) → reports/test-results/int/"
 run = """
 mkdir -p reports/test-results/int
-poetry run pytest tests/integration \
+# -p no:randomly: shared-Postgres/state suites are order-sensitive by nature;
+# random shuffling here produces unreproducible cross-test interference
+# (audit Phase D — matches test:int-pg's existing setting).
+poetry run pytest tests/integration -p no:randomly \
   -vv --tb=long --showlocals --show-capture=all --capture=tee-sys -r aR --durations=25 \
   --junit-xml=reports/test-results/int/junit.xml \
   --json-report --json-report-file=reports/test-results/int/report.json --json-report-indent=2 \
@@ -378,7 +388,8 @@ poetry run pytest --doctest-modules src/babylon/formulas \
 description = "Postgres-backed contract tests (requires Docker) → reports/test-results/pg/"
 run = """
 mkdir -p reports/test-results/pg
-poetry run pytest tests/integration/web/test_pg_contract.py \
+# -p no:randomly: see test:int — shared-Postgres suites, order-sensitive.
+poetry run pytest tests/integration/web/test_pg_contract.py -p no:randomly \
   -vv --tb=long --showlocals --show-capture=all --capture=tee-sys -r aR --durations=25 \
   --junit-xml=reports/test-results/pg/junit.xml \
   --json-report --json-report-file=reports/test-results/pg/report.json --json-report-indent=2 \

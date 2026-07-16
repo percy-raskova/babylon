@@ -324,6 +324,17 @@ class DefaultWealthProxyCalculator(CachedSource[float]):
             DeprecationWarning,
             stacklevel=2,
         )
+        return self._estimate_la_share_unwarned(fips, year)
+
+    def _estimate_la_share_unwarned(self, fips: str, year: int) -> float:
+        """The :meth:`estimate_la_share` computation without the deprecation warning.
+
+        Internal callers (``get_class_distribution_estimate``) still need the
+        static ACS proxy until Feature 043's endogenous classification takes
+        over the tick loop; routing them here keeps the deprecation warning
+        pointed at EXTERNAL adopters without first-party code tripping it
+        (``filterwarnings = error::DeprecationWarning:babylon.*``).
+        """
         homeownership = self.get_homeownership_rate(fips, year)
 
         if homeownership is None:
@@ -483,7 +494,7 @@ class DefaultWealthProxyCalculator(CachedSource[float]):
         top_10 = bourgeoisie_share + petit_bourgeoisie_share
 
         # Get LA share from homeownership proxy (or national average)
-        la_share = self.estimate_la_share(fips, year)
+        la_share = self._estimate_la_share_unwarned(fips, year)
 
         # Bottom share = everyone not in top 10% or LA
         # This ensures distribution sums to 1.0

@@ -12,10 +12,13 @@ All game state flows through these validated types.
 # Sprint 1: Enums and Value Types
 # Sprint 3: Simulation Configuration
 # Component Models (Entity-Component architecture)
+# OrganizationComponent deliberately NOT re-exported: it is a deprecated
+# shim (Feature 031) reachable via babylon.models.components.__getattr__,
+# which warns on use — an eager import here made every `import
+# babylon.models` trip the deprecation.
 from babylon.models.components import (
     Component,
     MaterialComponent,
-    OrganizationComponent,
     SpatialComponent,
     VitalityComponent,
 )
@@ -147,7 +150,6 @@ __all__ = [
     "MaterialComponent",
     "VitalityComponent",
     "SpatialComponent",
-    "OrganizationComponent",
     # Sprint 3.1: Topology Metrics
     "TopologySnapshot",
     "ResilienceResult",

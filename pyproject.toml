@@ -185,6 +185,17 @@ markers = [
 # the working form — verified: unknown marker now fails collection (exit 2).
 strict_markers = true
 strict_config = true
+# strict_parametrization_ids (pytest 9): duplicate/ambiguous parametrize IDs
+# fail collection instead of silently renaming (audit Phase D, 2026-07-16).
+# strict_xfail deliberately NOT enabled yet: ~10 unmarked xfails (refdb leg)
+# need an XPASS census first — flipping it blind converts any XPASS to a red.
+strict_parametrization_ids = true
+# Loud Failure (Constitution III.11) for first-party deprecations: babylon
+# code calling deprecated babylon APIs is a bug, not a warning. Third-party
+# deprecations stay warnings (their upgrade cadence is not ours).
+filterwarnings = [
+    "error::DeprecationWarning:babylon.*",
+]
 addopts = [
     "-v",                      # Verbose output (already have)
     "--tb=short",              # Short traceback format (already have)
@@ -197,8 +208,9 @@ addopts = [
     "--cov-report=term-missing",  # Show lines missing coverage
     "--cov-report=html",          # Generate HTML coverage report
 
-    # Output control
-    "--color=yes",             # Force colored output
+    # Output control: no --color=yes — pytest's auto default already colors
+    # TTYs and honors NO_COLOR/agent-ergonomics envs; forcing yes overrode it
+    # (audit Phase D, 2026-07-16).
 
     # Debugging aids
     "-l",                      # Show locals (shorter alias)

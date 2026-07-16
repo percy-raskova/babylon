@@ -72,7 +72,7 @@ def _apply_spec_065_migrations(pool) -> None:
     mid-migration by a killed background pytest run is healed loudly with one
     retry instead of erroring fixture setup — see conftest.py docstring.
     """
-    from tests.unit.persistence.conftest import apply_migrations_healing
+    from tests.integration.persistence.migration_healing import apply_migrations_healing
 
     apply_migrations_healing(pool, glob_pattern="002[0-3]_*.sql")
 

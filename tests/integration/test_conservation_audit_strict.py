@@ -107,8 +107,10 @@ def inject_alarm_first_tick(monkeypatch):
     real_advance = runner_module._advance_tick
     bridge_session_holder: list[UUID] = []
 
-    def patched_advance(*, bridge, world, tick, determinism_hash):
-        # Capture session_id from the bridge.
+    def patched_advance(*, bridge, world, tick, determinism_hash, **extra):
+        # **extra forwards whatever keyword parameters _advance_tick grows
+        # (engine/services/graph today) — this shim intercepts, it must not
+        # pin the production signature (that drift broke it 2026-07-16).
         if not bridge_session_holder:
             bridge_session_holder.append(bridge._session_id)
         # Inject alarm at tick 1, BEFORE the bridge persist (so the
@@ -120,6 +122,7 @@ def inject_alarm_first_tick(monkeypatch):
             world=world,
             tick=tick,
             determinism_hash=determinism_hash,
+            **extra,
         )
 
     monkeypatch.setattr(runner_module, "_advance_tick", patched_advance)

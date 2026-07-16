@@ -163,13 +163,15 @@ def test_hex_spatial_map_is_session_scoped() -> None:
             assert cur.fetchone() is not None, "hex_spatial_map lacks session_id column"
 
             # Verify PK includes session_id
+            # unnest WITH ORDINALITY gives the PK column order; the old
+            # query ordered by a column pg_index does not have (k.n) and
+            # errored with UndefinedColumn on every run.
             cur.execute(
-                "SELECT array_agg(a.attname ORDER by k.n) "
+                "SELECT array_agg(a.attname ORDER BY k.n) "
                 "FROM pg_index i "
-                "JOIN pg_class c ON c.oid = i.indexrelid "
                 "JOIN pg_class t ON t.oid = i.indrelid "
-                "JOIN pg_index k ON k.indexrelid = c.oid "
-                "JOIN pg_attribute a ON a.attrelid = t.oid AND a.attnum = ANY(k.indkey) "
+                "CROSS JOIN LATERAL unnest(i.indkey) WITH ORDINALITY AS k(attnum, n) "
+                "JOIN pg_attribute a ON a.attrelid = t.oid AND a.attnum = k.attnum "
                 "WHERE t.relname = 'hex_spatial_map' AND i.indisprimary"
             )
             pk_row = cur.fetchone()

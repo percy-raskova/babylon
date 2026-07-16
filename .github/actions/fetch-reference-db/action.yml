@@ -22,15 +22,20 @@ inputs:
     # (skip -> full; SQLiteCensusHousingSource renter share) +
     # fact_census_income FULL (michigan -> full; SQLiteCensusIncomeSource
     # bracket ratio). tiger tarball unchanged from v3.
-    default: ci-data-v4
+    # v5 (2026-07-16, empirical-invariants program): + fact_fred_wealth_shares
+    # FULL (skip -> full; un-orphaned by test_fred_wealth_shares.py, the Fed
+    # DFA redundant-source leg) + fact_ricci_unequal_exchange now POPULATED
+    # (29 Ricci TOTAL transfer rows via tools/ingest/ricci_unequal.py + RICnn
+    # dim_country region rows). tiger tarball unchanged from v3.
+    default: ci-data-v5
   asset:
     description: Asset filename within the release
     required: false
-    default: reference-subset-20260716.sqlite
+    default: reference-subset-20260716-v5.sqlite
   sha256:
     description: Expected sha256 of the asset (pin — bump with the tag)
     required: false
-    default: 7363f1d96f0e87db8feac84a116223b648b5c7592a5eb71ce0a497c33336401f
+    default: 2e7920e27a8272016449e669b0c97b6cf442a1d887bf24666757df3de9d8d5c8
   tiger-asset:
     description: TIGER county-shapefile tarball within the release (the
       headless runner reads data/tiger/county/tl_2024_us_county.shp — proving

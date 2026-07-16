@@ -51,13 +51,18 @@ def apply_062_migrations(pg_pool):  # type: ignore[no-untyped-def]
     """
     from pathlib import Path
 
+    # Digest-stamped + advisory-locked — a bare re-execute loop races
+    # sibling appliers on the pg_class catalog (UniqueViolation on
+    # ix_hex_state_session_tick, observed 2026-07-16 the moment this file
+    # moved next to test_migration_idempotency).
+    from babylon.persistence.postgres_schema import ensure_ddl_applied
+
     migrations_dir = Path("src/babylon/persistence/migrations").resolve()
     sql_files = sorted(migrations_dir.glob("00*.sql"))
     assert sql_files, "Expected migrations 0010-0015 to exist"
     with pg_pool.connection() as conn:
         conn.autocommit = True
-        for sql_file in sql_files:
-            conn.execute(sql_file.read_text())
+        ensure_ddl_applied(conn, [sql_file.read_text() for sql_file in sql_files])
     return sql_files
 
 

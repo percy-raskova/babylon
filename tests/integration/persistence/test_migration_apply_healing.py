@@ -38,7 +38,7 @@ from typing import Any
 import psycopg
 import pytest
 
-from tests.unit.persistence.conftest import MIGRATIONS_DIR, apply_migrations_healing
+from tests.integration.persistence.migration_healing import MIGRATIONS_DIR, apply_migrations_healing
 
 
 class _FakeResult:

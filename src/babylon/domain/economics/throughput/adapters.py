@@ -31,11 +31,14 @@ from babylon.formulas.constants import HOURS_PER_YEAR, WEEKS_PER_YEAR
 from babylon.reference.schema import (
     DimBEAIndustry,
     DimCounty,
+    DimHousingTenure,
     DimIndustry,
     DimOwnership,
+    DimRace,
     DimTime,
     FactBEACountyGDP,
     FactBLSUnemploymentDecomposition,
+    FactCensusHousing,
     FactQcewAnnual,
     FactQcewCountyRollup,
 )
@@ -567,6 +570,7 @@ class SQLiteQCEWCountyNAICSSource:
 __all__ = [
     "SQLiteBEACountyGDPSource",
     "SQLiteBLSUnemploymentSource",
+    "SQLiteCensusHousingSource",
     "SQLiteQCEWCountyNAICSSource",
     "NAICS_2DIGIT_SECTORS",
 ]
@@ -622,3 +626,145 @@ class SQLiteBLSUnemploymentSource:
             if row is None or row[1] is None or row[1] <= 0 or row[0] is None:
                 return None
             return float(row[0]) / float(row[1])
+
+
+class SQLiteCensusHousingSource:
+    """County renter-occupied housing share from ACS housing tenure (Wave 6 C2).
+
+    Reads ``fact_census_housing`` (ACS 5-Year housing tenure by county/time/
+    tenure/race) via ``dim_housing_tenure`` + ``dim_race``. Symmetric with
+    :class:`SQLiteBLSUnemploymentSource`: an optional services override
+    (``services.housing_source``) supplies a real per-county value in place
+    of a frozen default; honest ``None`` when the county-year row is absent
+    (Constitution III.11) — never a fabricated share.
+
+    ``dim_housing_tenure`` carries three ``tenure_type`` codes:
+    ``total`` ("Total occupied housing units", ``is_owner=False`` — a
+    precomputed owner+renter rollup, NOT an independent occupancy category),
+    ``owner`` ("Owner-occupied housing units", ``is_owner=True``), and
+    ``renter`` ("Renter-occupied housing units", ``is_owner=False``). Note
+    ``is_owner`` alone cannot distinguish ``renter`` from ``total`` (both are
+    ``False``), so this adapter selects the ``renter``/``owner`` leaves by
+    their ``tenure_type`` label directly and never re-sums the ``total``
+    rollup alongside them (that would double-count).
+
+    ``dim_race`` breaks the same fact rows out by exclusive race categories
+    PLUS two overlapping ethnicity cross-cuts (``White alone, not Hispanic
+    or Latino`` and ``Hispanic or Latino``) that double-count against the
+    exclusive races — summing every ``race_id`` would over-count
+    households. Per the epochs audit (item 165: "no race modeling — that's
+    owner-gated"), this adapter deliberately reads only ``race_code='T'``
+    ("Total (all races)") to get the county's race-aggregate renter share.
+
+    Perf note: mirrors the 2026-07-15 QCEW fix in this same module — the SQL
+    filter stays to the highly-selective ``(county_id, time_id)`` pair (safe,
+    same shape as the sibling BLS/QCEW adapters); the low-cardinality
+    tenure/race selection happens in Python over the resulting small
+    (~30-row) set, sidestepping the SQLite planner's low-selectivity-index
+    hazard rather than filtering ``tenure_id``/``race_id`` in SQL.
+    """
+
+    def __init__(self, session_factory: Callable[[], Session]) -> None:
+        """Store the SQLAlchemy session factory (shared with the other adapters)."""
+        self._session_factory = session_factory
+        self._total_race_id: int | None = None
+        self._owner_tenure_id: int | None = None
+        self._renter_tenure_id: int | None = None
+
+    def _get_total_race_id(self, session: Session) -> int | None:
+        """Get ``dim_race.race_id`` for 'Total (all races)' (``race_code='T'``).
+
+        Caches the result for efficiency.
+        """
+        if self._total_race_id is None:
+            total_race = session.query(DimRace).filter(DimRace.race_code == "T").first()
+            if total_race:
+                self._total_race_id = total_race.race_id
+        return self._total_race_id
+
+    def _get_tenure_ids(self, session: Session) -> tuple[int | None, int | None]:
+        """Get ``(owner_tenure_id, renter_tenure_id)`` from ``dim_housing_tenure``.
+
+        Caches the result for efficiency.
+        """
+        if self._owner_tenure_id is None:
+            owner = (
+                session.query(DimHousingTenure)
+                .filter(DimHousingTenure.tenure_type == "owner")
+                .first()
+            )
+            if owner:
+                self._owner_tenure_id = owner.tenure_id
+        if self._renter_tenure_id is None:
+            renter = (
+                session.query(DimHousingTenure)
+                .filter(DimHousingTenure.tenure_type == "renter")
+                .first()
+            )
+            if renter:
+                self._renter_tenure_id = renter.tenure_id
+        return self._owner_tenure_id, self._renter_tenure_id
+
+    def get_county_renter_share(self, fips: str, year: int) -> float | None:
+        """Renter-occupied household share for a county-year.
+
+        ``renter_share = renter_households / (owner_households +
+        renter_households)``, aggregated across ``race_id`` by reading only
+        the ``race_code='T'`` ("Total (all races)") rows — see the class
+        docstring for why summing every race_id would double-count.
+
+        Args:
+            fips: 5-character county FIPS code.
+            year: Calendar year.
+
+        Returns:
+            The renter share in [0, 1], or ``None`` when the county, year,
+            or race="Total"/owner/renter rows are absent, or the
+            denominator is zero (honest ``None``, Constitution III.11).
+        """
+        with self._session_factory() as session:
+            total_race_id = self._get_total_race_id(session)
+            if total_race_id is None:
+                logger.warning("Census race 'Total (all races)' (race_code='T') not found")
+                return None
+            owner_tenure_id, renter_tenure_id = self._get_tenure_ids(session)
+            if owner_tenure_id is None or renter_tenure_id is None:
+                logger.warning("Census housing tenure 'owner'/'renter' rows not found")
+                return None
+
+            county = session.query(DimCounty).filter(DimCounty.fips == fips).first()
+            if county is None:
+                return None
+            time_dim = session.query(DimTime).filter(DimTime.year == year).first()
+            if time_dim is None:
+                return None
+
+            rows = (
+                session.query(
+                    FactCensusHousing.tenure_id,
+                    FactCensusHousing.race_id,
+                    FactCensusHousing.household_count,
+                )
+                .filter(
+                    FactCensusHousing.county_id == county.county_id,
+                    FactCensusHousing.time_id == time_dim.time_id,
+                )
+                .all()
+            )
+
+            renter_count: float | None = None
+            owner_count: float | None = None
+            for tenure_id, race_id, household_count in rows:
+                if race_id != total_race_id or household_count is None:
+                    continue
+                if tenure_id == renter_tenure_id:
+                    renter_count = float(household_count)
+                elif tenure_id == owner_tenure_id:
+                    owner_count = float(household_count)
+
+            if renter_count is None or owner_count is None:
+                return None
+            denominator = renter_count + owner_count
+            if denominator <= 0:
+                return None
+            return renter_count / denominator

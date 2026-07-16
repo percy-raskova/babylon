@@ -5986,6 +5986,7 @@ def _bridge_economics_overrides(fips_codes: tuple[str, ...] = ()) -> tuple[dict[
     from babylon.domain.economics.throughput.adapters import (
         SQLiteBEACountyGDPSource,
         SQLiteBLSUnemploymentSource,
+        SQLiteCensusHousingSource,
         SQLiteQCEWCountyNAICSSource,
     )
     from babylon.domain.economics.throughput.calculator import DefaultThroughputCalculator
@@ -6019,6 +6020,11 @@ def _bridge_economics_overrides(fips_codes: tuple[str, ...] = ()) -> tuple[dict[
     # frozen 0.05 tick_unemployment_rate placeholder — same rails as Fix C,
     # honest None (=> carry/default) when the county-year row is absent.
     overrides["unemployment_source"] = SQLiteBLSUnemploymentSource(session_factory)
+    # Wave 6 C2 (epochs audit item 165): real per-county ACS renter share
+    # replaces the frozen 0.0 tick_renter_share placeholder — same rails as
+    # the unemployment wire above, honest None (=> carry/default) when the
+    # county-year row is absent.
+    overrides["housing_source"] = SQLiteCensusHousingSource(session_factory)
     # Item 60: real median-wage BOOTSTRAP (employment-weighted p50 across
     # QCEW 6-digit industry wages) — seeds only the initial county state;
     # wage-pressure dynamics own the trajectory after that. Same adapter
@@ -6184,6 +6190,9 @@ def _carry_tick_dynamics_flows(
                     "lumpenproletariat": county.class_distribution.lumpenproletariat_share,
                 },
                 tick_unemployment_rate=county.unemployment_rate,
+                # Wave 6 C2: ACS renter share, same evaporation-on-round-trip
+                # fix as Group A/B and unemployment_rate above.
+                tick_renter_share=county.renter_share,
                 # Wave 2 owner ruling 1: throughput_position/supply_chain_depth
                 # are real now that _bridge_economics_overrides wires a
                 # throughput_calculator — same evaporation-on-round-trip fix
@@ -6232,6 +6241,9 @@ def _carry_tick_dynamics_flows(
             tick_wage_compression=old_data.get("tick_wage_compression"),
             tick_class_distribution=old_data.get("tick_class_distribution"),
             tick_unemployment_rate=old_data.get("tick_unemployment_rate"),
+            # Wave 6 C2: annual (recomputed only at boundaries); carry forward
+            # byte-identical between boundaries, same pattern as unemployment_rate.
+            tick_renter_share=old_data.get("tick_renter_share"),
             # Wave 2 owner ruling 1: carry forward byte-identical between
             # boundaries, same pattern as the derived rates/Group A/B above.
             tick_throughput_position=old_data.get("tick_throughput_position"),
@@ -7795,6 +7807,7 @@ def _serialize_territory(t: Any, *, graph: Any = None) -> dict[str, Any]:
         "capital_stock": _territory_graph_attr(graph, territory_id, "tick_capital_stock"),
         "class_distribution": _territory_graph_attr(graph, territory_id, "tick_class_distribution"),
         "unemployment_rate": _territory_graph_attr(graph, territory_id, "tick_unemployment_rate"),
+        "renter_share": _territory_graph_attr(graph, territory_id, "tick_renter_share"),
         "tick_median_wage": _territory_graph_attr(graph, territory_id, "tick_median_wage"),
         "throughput_position": _territory_graph_attr(
             graph, territory_id, "tick_throughput_position"

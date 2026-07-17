@@ -42,19 +42,29 @@ import type { GameEvent, ClassifiedEvent, EventSeverity } from "@/types/game";
  * outcomes.
  */
 const EVENT_SEVERITY_MAP: Record<string, EventSeverity> = {
-  // Critical — existential state changes
-  rupture: "critical",
-  terminal_decision: "critical",
-  control_ratio_crisis: "critical",
-  civil_war_declared: "critical",
-  red_brown_coup: "critical",
-  sovereign_collapse: "critical",
-  red_ogv_endgame: "critical",
-  fragmented_collapse_endgame: "critical",
+  // Critical — crimson is reserved for the ENDGAME alone (spec-116
+  // FR-116-2 salience re-tier; interface ledger 2026-07-17). Everything
+  // that used to sit here — rupture, coups, sovereign collapse, the
+  // endgame-adjacent pattern events — is real drama but not the horizon:
+  // it re-tiers to "important" (gold) so the crimson channel keeps its
+  // meaning across a 5200-tick campaign, and autopause (worldSlice fires
+  // it on critical severity only) stops interrupting mid-campaign churn.
   endgame_reached: "critical",
-  doctrine_trap_sprung: "critical",
 
-  // Important — phase transitions and strategic shifts
+  // Important — phase transitions, strategic shifts, and the nine former
+  // criticals demoted by the FR-116-2 re-tier. `pattern_shift` (Cluster A,
+  // ADR079: the recognizer's pattern changed) enters here — a warning-tier
+  // signal, deliberately never crimson and never autopausing.
+  rupture: "important",
+  terminal_decision: "important",
+  control_ratio_crisis: "important",
+  civil_war_declared: "important",
+  red_brown_coup: "important",
+  sovereign_collapse: "important",
+  red_ogv_endgame: "important",
+  fragmented_collapse_endgame: "important",
+  doctrine_trap_sprung: "important",
+  pattern_shift: "important",
   bifurcation_threshold: "important",
   bifurcation_tendency_change: "important",
   solidarity_awakening: "important",
@@ -323,6 +333,7 @@ const CATEGORY_MAP: Record<string, EventCategory> = {
   crisis_phase_transition: "system",
   infrastructure_change: "system",
   endgame_reached: "system",
+  pattern_shift: "system",
 };
 
 /** True for entries `EVENT_SEVERITY_MAP` (and by extension `CATEGORY_MAP`) actually defines. */

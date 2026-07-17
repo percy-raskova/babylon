@@ -113,16 +113,24 @@ describe("EventsFeed", () => {
       world: {
         ...s.world,
         snapshot: makeSnapshot({
-          events: [makeEvent({ id: "e1", type: "rupture", title: "Rupture", tick: 3, data: {} })],
+          events: [
+            makeEvent({
+              id: "e1",
+              type: "endgame_reached",
+              title: "The Horizon",
+              tick: 3,
+              data: {},
+            }),
+          ],
         }),
       },
       time: { ...s.time, autopauseEventIds: ["3-0"] },
     }));
     render(<EventsFeed />);
 
-    const button = screen.getByText("Rupture").closest("button");
+    const button = screen.getByText("The Horizon").closest("button");
     expect(button).not.toBeDisabled();
-    await userEvent.click(screen.getByText("Rupture"));
+    await userEvent.click(screen.getByText("The Horizon"));
     expect(useStore.getState().ui.takeover.active).toBe("chronicle");
   });
 });

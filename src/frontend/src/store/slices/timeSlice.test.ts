@@ -110,7 +110,7 @@ describe("time slice — autopause", () => {
             territories: [],
             hyperedges: [],
             edges: [],
-            events: [makeEvent({ type: "rupture", tick: 2 })],
+            events: [makeEvent({ type: "endgame_reached", tick: 2 })],
             derived: {
               value_tensor: {
                 departments: [],
@@ -176,7 +176,9 @@ describe("time slice — play (serialized loop)", () => {
             hyperedges: [],
             edges: [],
             events:
-              resolveCount >= 3 ? [makeEvent({ type: "rupture", tick: resolveCount + 1 })] : [],
+              resolveCount >= 3
+                ? [makeEvent({ type: "endgame_reached", tick: resolveCount + 1 })]
+                : [],
             derived: {
               value_tensor: {
                 departments: [],
@@ -385,7 +387,7 @@ describe("time slice — speed (spec-113 architecture §4.1)", () => {
             territories: [],
             hyperedges: [],
             edges: [],
-            events: [makeEvent({ type: "rupture", tick: 2 })],
+            events: [makeEvent({ type: "endgame_reached", tick: 2 })],
             derived: {
               value_tensor: {
                 departments: [],

@@ -140,7 +140,7 @@ describe("world slice — fetchState", () => {
   });
 
   it("autopauses the time slice when the newly-observed tick carries a critical event", async () => {
-    resetMockGameState({ events: [makeEvent({ type: "rupture", tick: 2 })] });
+    resetMockGameState({ events: [makeEvent({ type: "endgame_reached", tick: 2 })] });
 
     await useStore.getState().world.fetchState(DEFAULT_GAME_ID);
 

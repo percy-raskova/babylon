@@ -22,20 +22,16 @@ describe("events slice — ingest", () => {
     expect(useStore.getState().events.ingestedTicks).toEqual([1]);
   });
 
-  it("pops one persistent toast per critical event", () => {
+  it("pops a persistent toast for a critical event", () => {
     useStore
       .getState()
-      .events.ingest(1, [
-        makeEvent({ type: "rupture", tick: 1, id: "e1" }),
-        makeEvent({ type: "sovereign_collapse", tick: 1, id: "e2" }),
-      ]);
+      .events.ingest(1, [makeEvent({ type: "endgame_reached", tick: 1, id: "e1", data: {} })]);
 
     const { toasts } = useStore.getState().events;
-    expect(toasts).toHaveLength(2);
-    expect(toasts.every((t) => t.severity === "critical" && t.lifetime === "persistent")).toBe(
-      true,
-    );
-    expect(toasts.every((t) => t.events.length === 1)).toBe(true);
+    expect(toasts).toHaveLength(1);
+    expect(toasts[0]!.severity).toBe("critical");
+    expect(toasts[0]!.lifetime).toBe("persistent");
+    expect(toasts[0]!.events).toHaveLength(1);
   });
 
   it("batches same-tick notable events into one expandable ephemeral toast", () => {

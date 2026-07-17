@@ -25,7 +25,9 @@ describe("EventToasts", () => {
   });
 
   it("renders one persistent toast per critical event, with Open Wire + Dismiss CTAs", () => {
-    useStore.getState().events.ingest(1, [makeEvent({ type: "rupture", tick: 1, id: "e1" })]);
+    useStore
+      .getState()
+      .events.ingest(1, [makeEvent({ type: "endgame_reached", tick: 1, id: "e1" })]);
     render(<EventToasts gameId="game-1" />);
 
     const id = useStore.getState().events.toasts[0]!.id;
@@ -62,7 +64,9 @@ describe("EventToasts", () => {
   });
 
   it("Open Wire opens the wire takeover", async () => {
-    useStore.getState().events.ingest(1, [makeEvent({ type: "rupture", tick: 1, id: "e1" })]);
+    useStore
+      .getState()
+      .events.ingest(1, [makeEvent({ type: "endgame_reached", tick: 1, id: "e1" })]);
     render(<EventToasts gameId="game-1" />);
 
     const id = useStore.getState().events.toasts[0]!.id;
@@ -92,7 +96,7 @@ describe("EventToasts", () => {
     ]);
     render(<EventToasts gameId="game-1" />);
 
-    const id = useStore.getState().events.toasts[0]!.id;
+    const id = useStore.getState().events.toasts[0]!.events[0]!.id;
     // gap * (1 + 10 * |rate|) = 0.6 * (1 + 10 * 0.2) = 1.8
     expect(screen.getByTestId(`toast-rupture-score-${id}`)).toHaveTextContent("1.80");
   });
@@ -105,7 +109,7 @@ describe("EventToasts", () => {
       ]);
     render(<EventToasts gameId="game-1" />);
 
-    const id = useStore.getState().events.toasts[0]!.id;
+    const id = useStore.getState().events.toasts[0]!.events[0]!.id;
     expect(screen.queryByTestId(`toast-rupture-score-${id}`)).not.toBeInTheDocument();
   });
 
@@ -128,7 +132,9 @@ describe("EventToasts", () => {
   it("does NOT auto-dismiss a persistent (critical) toast", async () => {
     vi.useFakeTimers();
     try {
-      useStore.getState().events.ingest(1, [makeEvent({ type: "rupture", tick: 1, id: "e1" })]);
+      useStore
+        .getState()
+        .events.ingest(1, [makeEvent({ type: "endgame_reached", tick: 1, id: "e1" })]);
       render(<EventToasts gameId="game-1" />);
 
       await vi.advanceTimersByTimeAsync(60000);

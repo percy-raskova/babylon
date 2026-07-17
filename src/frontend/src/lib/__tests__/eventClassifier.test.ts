@@ -25,9 +25,19 @@ function makeEvent(type: string, overrides: Partial<GameEvent> = {}): GameEvent 
 }
 
 describe("classifyEvent — severity map keyed on lowercase EventType values", () => {
-  it("classifies a 'rupture' event as critical", () => {
+  it("classifies a 'rupture' event as important (spec-116 FR-116-2 — crimson is ENDGAME-only)", () => {
     const ce = classifyEvent(makeEvent("rupture"), 0);
+    expect(ce.severity).toBe("important");
+  });
+
+  it("classifies 'endgame_reached' as critical — the only crimson tier left", () => {
+    const ce = classifyEvent(makeEvent("endgame_reached"), 0);
     expect(ce.severity).toBe("critical");
+  });
+
+  it("classifies 'pattern_shift' as important (warning tier — never crimson, never autopauses)", () => {
+    const ce = classifyEvent(makeEvent("pattern_shift"), 0);
+    expect(ce.severity).toBe("important");
   });
 
   it("classifies an 'uprising' event as important", () => {
@@ -93,9 +103,16 @@ describe("classifyEvent — severity map keyed on lowercase EventType values", (
 });
 
 describe("classifyEventForStream — the two-stream toast/tray model (spec-113 §5.2)", () => {
-  it("maps critical severity to the urgent stream and 'critical' tier", () => {
-    const se = classifyEventForStream(makeEvent("rupture"), 0);
+  it("maps the sole critical severity (endgame_reached) to the urgent stream and 'critical' tier", () => {
+    const se = classifyEventForStream(makeEvent("endgame_reached"), 0);
     expect(se.severity).toBe("critical");
+    expect(se.stream).toBe("urgent");
+    expect(se.category).toBe("system");
+  });
+
+  it("maps a demoted former-critical (rupture) to 'notable'/urgent — gold, not crimson", () => {
+    const se = classifyEventForStream(makeEvent("rupture"), 0);
+    expect(se.severity).toBe("notable");
     expect(se.stream).toBe("urgent");
     expect(se.category).toBe("struggle");
   });
@@ -127,9 +144,9 @@ describe("classifyEventForStream — the two-stream toast/tray model (spec-113 �
     expect(se.category).toBe("solidarity");
   });
 
-  it("classifies a political-family event (sovereign_collapse) as critical/urgent/political", () => {
+  it("classifies a political-family event (sovereign_collapse) as notable/urgent/political", () => {
     const se = classifyEventForStream(makeEvent("sovereign_collapse"), 0);
-    expect(se.severity).toBe("critical");
+    expect(se.severity).toBe("notable");
     expect(se.stream).toBe("urgent");
     expect(se.category).toBe("political");
   });

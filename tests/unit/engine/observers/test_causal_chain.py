@@ -440,3 +440,115 @@ class TestJsonSchemaValidation:
         assert is_valid_narrative_frame(frame) is True
         errors = validate_narrative_frame(frame)
         assert errors == [], f"Schema validation errors: {errors}"
+
+
+# =============================================================================
+# TEST FRAME-CAPTURE API (spec-116 FR-4.1 — the Voice heartbeat)
+# =============================================================================
+
+
+@pytest.mark.unit
+class TestFrameCaptureApi:
+    """Frames must exit through an API, not only the log line.
+
+    Spec-116 FR-4.1: the web bridge needs a per-tick return path. ``latest_frames``
+    exposes what the MOST RECENT ``on_tick`` captured: one TICK_PULSE delta frame
+    every tick (the design-§6 heartbeat — never empty), plus a SHOCK_DOCTRINE
+    pattern frame on detection ticks, deduped across the rolling buffer.
+    """
+
+    def test_latest_frames_empty_before_any_tick(self) -> None:
+        from babylon.engine.observers.causal import CausalChainObserver
+
+        observer = CausalChainObserver()
+        observer.on_simulation_start(create_state(tick=0), SimulationConfig())
+        assert observer.latest_frames == ()
+
+    def test_pulse_frame_emitted_every_tick(self) -> None:
+        from babylon.engine.observers.causal import CausalChainObserver
+
+        observer = CausalChainObserver()
+        observer.on_simulation_start(
+            create_state(tick=0, pool=100.0, wage=0.20, p_rev=0.30), SimulationConfig()
+        )
+        observer.on_tick(
+            create_state(tick=0), create_state(tick=1, pool=90.0, wage=0.20, p_rev=0.35)
+        )
+
+        frames = observer.latest_frames
+        assert len(frames) == 1
+        assert frames[0]["pattern"] == "TICK_PULSE"
+        assert frames[0]["tick"] == 1
+        assert frames[0]["deltas"] == {
+            "pool": {"before": 100.0, "after": 90.0},
+            "wage": {"before": 0.20, "after": 0.20},
+            "p_rev": {"before": 0.30, "after": 0.35},
+        }
+
+    def test_frames_are_cleared_each_tick(self) -> None:
+        from babylon.engine.observers.causal import CausalChainObserver
+
+        observer = CausalChainObserver()
+        observer.on_simulation_start(create_state(tick=0, pool=100.0), SimulationConfig())
+        observer.on_tick(create_state(tick=0), create_state(tick=1, pool=95.0))
+        observer.on_tick(create_state(tick=1), create_state(tick=2, pool=92.0))
+
+        frames = observer.latest_frames
+        assert len(frames) == 1  # only tick 2's pulse — tick 1's was cleared
+        assert frames[0]["tick"] == 2
+        assert frames[0]["deltas"]["pool"] == {"before": 95.0, "after": 92.0}
+
+    def test_shock_frame_captured_alongside_pulse(self) -> None:
+        from babylon.engine.observers.causal import CausalChainObserver
+
+        observer = CausalChainObserver()
+        observer.on_simulation_start(
+            create_state(tick=10, pool=100.0, wage=0.20, p_rev=0.30), SimulationConfig()
+        )
+        observer.on_tick(
+            create_state(tick=10), create_state(tick=11, pool=70.0, wage=0.20, p_rev=0.30)
+        )
+        observer.on_tick(
+            create_state(tick=11), create_state(tick=12, pool=70.0, wage=0.15, p_rev=0.45)
+        )
+
+        patterns = [f["pattern"] for f in observer.latest_frames]
+        assert patterns == ["TICK_PULSE", "SHOCK_DOCTRINE"]
+
+    def test_shock_frame_not_reemitted_on_later_ticks(
+        self, caplog: pytest.LogCaptureFixture
+    ) -> None:
+        """The rolling buffer re-matches the SAME (crash, austerity, radical)
+        window for up to 3 more ticks — without a dedup key the same frame
+        re-emits every tick (the recon-identified re-emission bug)."""
+        from babylon.engine.observers.causal import CausalChainObserver
+
+        observer = CausalChainObserver()
+        observer.on_simulation_start(
+            create_state(tick=10, pool=100.0, wage=0.20, p_rev=0.30), SimulationConfig()
+        )
+        observer.on_tick(
+            create_state(tick=10), create_state(tick=11, pool=70.0, wage=0.20, p_rev=0.30)
+        )
+        with caplog.at_level(logging.WARNING):
+            observer.on_tick(
+                create_state(tick=11), create_state(tick=12, pool=70.0, wage=0.15, p_rev=0.45)
+            )
+            observer.on_tick(
+                create_state(tick=12), create_state(tick=13, pool=70.0, wage=0.15, p_rev=0.45)
+            )
+
+        assert caplog.text.count("[NARRATIVE_JSON]") == 1  # backward-compat log, once
+        patterns = [f["pattern"] for f in observer.latest_frames]
+        assert patterns == ["TICK_PULSE"]  # tick 13: pulse only, no shock re-emit
+
+    def test_on_simulation_start_resets_capture_state(self) -> None:
+        from babylon.engine.observers.causal import CausalChainObserver
+
+        observer = CausalChainObserver()
+        observer.on_simulation_start(create_state(tick=0, pool=100.0), SimulationConfig())
+        observer.on_tick(create_state(tick=0), create_state(tick=1, pool=95.0))
+        assert observer.latest_frames
+
+        observer.on_simulation_start(create_state(tick=0, pool=100.0), SimulationConfig())
+        assert observer.latest_frames == ()

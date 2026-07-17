@@ -21,3 +21,8 @@
 # environment reports zero known vulnerabilities, so the minimal passing policy
 # carries no [[ignore]] entries. Any new suppression added below must re-justify
 # itself and will trip the exact-pin test in tests/unit/tools/test_run_pip_audit.py.
+
+[[ignore]]
+id = "CVE-2026-11332"
+reason = "ansible-core 2.20.3 (transitive via ansible-dev-tools, dev tooling only — not a runtime dependency). As of 2026-07-16 the fix exists only in release candidates (2.20.7rc1 / 2.21.1rc1); pinning a prod lock to an rc is worse than a time-boxed suppression. Remove or renew when a stable ansible-core >= 2.20.7 lands."
+expires = "2026-08-15"

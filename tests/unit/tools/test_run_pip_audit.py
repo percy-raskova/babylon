@@ -304,17 +304,18 @@ class TestRealPolicyFile:
         assert main(["--check-only"]) == 0
 
     def test_real_policy_pins_the_item41_residue_exactly(self) -> None:
-        """The shipped policy carries no ignores — the item-41 residue is cleared.
+        """The shipped policy carries exactly one reviewed ignore.
 
-        The dependabot-wave-20260711 batch bumped sentence-transformers ^3.0 ->
-        ^5.6 (pulling transformers 5.13.1 and torch 2.13.0), which fixed every
-        entry the policy previously suppressed; a raw ``pip-audit`` now reports
-        zero vulnerabilities. This pin is intentionally empty: any new ignore
-        appearing without review must fail it.
+        The item-41 residue stayed cleared (dependabot-wave-20260711). The one
+        current entry is CVE-2026-11332 (ansible-core 2.20.3, transitive via
+        ansible-dev-tools, dev tooling only): as of 2026-07-16 the fix exists
+        only in release candidates, so a time-boxed suppression expiring
+        2026-08-15 carries it until a stable ansible-core >= 2.20.7 lands.
+        Any OTHER ignore appearing without review must fail this pin.
         """
         entries = get_ignore_entries(load_ignores_file(DEFAULT_IGNORES_FILE))
         ids = sorted(e["id"] for e in entries)
-        assert ids == []
+        assert ids == ["CVE-2026-11332"]
         for entry in entries:
             assert entry["reason"]
-            assert entry["expires"] == "2026-10-01"
+            assert entry["expires"] == "2026-08-15"

@@ -124,7 +124,7 @@ class TestGameDeleteAndArchive:
 
     @pytest.fixture(autouse=True)
     def _cascade_target_tables(self) -> None:
-        """Create the DELETE cascade's target tables, scoped to this class only.
+        """Create the DELETE cascade's target tables, function-scoped autouse.
 
         These ``managed=False`` snapshot tables (real schema:
         ``src/babylon/persistence/postgres_schema.py``; Django FK mirror:
@@ -135,7 +135,11 @@ class TestGameDeleteAndArchive:
         the Program-037 snapshot tables and was never exercised by a real
         cascade-delete test until now. Rather than widen that shared
         fixture's blast radius across the whole unit suite, the missing
-        tables are created here, scoped to this class. Django's delete
+        tables are created here. This fixture is pytest's default function
+        scope, applied per-test via ``autouse=True`` inside this class only
+        — each test's ``CREATE TABLE``s run inside that test's own
+        transaction (rolled back with the rest of ``django_db``), which is
+        safer than a true class-scoped fixture would be. Django's delete
         collector only needs the ``game_id`` column to issue
         ``DELETE FROM <table> WHERE game_id = ...`` against a table with
         zero related rows — no other columns are read.
@@ -165,10 +169,23 @@ class TestGameDeleteAndArchive:
         assert url == "/api/games/aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee/archive/"
 
     def test_delete_removes_the_session_row(self) -> None:
-        from game.models import GameSession
+        """DELETE must cascade, not just remove the session row.
+
+        Seeds a real ``PlayerAction`` (``game_turn``) row FK'd to the
+        session before deleting. Without the seeded child row, this test
+        would still pass even if the ``PlayerAction.session`` FK were
+        changed ``CASCADE`` -> ``PROTECT`` (or dropped) — ``PROTECT`` only
+        raises when the related set is non-empty. The pre-delete sanity
+        assert proves the row was actually seeded (not that the table was
+        empty all along); the post-delete absence assert is what would
+        catch a broken-cascade regression.
+        """
+        from game.models import GameSession, PlayerAction
 
         client, user_id = _login_client("deleter")
         session = GameSession.objects.create(player_id=user_id, scenario="wayne_county")
+        PlayerAction.objects.create(session=session, tick=1, org_id="test_org", verb="RECRUIT")
+        assert PlayerAction.objects.filter(session_id=session.id).exists()
 
         response = client.delete(f"/api/games/{session.id}/")
 
@@ -176,6 +193,7 @@ class TestGameDeleteAndArchive:
         body = json.loads(response.content)
         assert body["data"] == {"deleted": True}
         assert GameSession.objects.filter(id=session.id).count() == 0
+        assert not PlayerAction.objects.filter(session_id=session.id).exists()
 
     def test_delete_another_users_session_is_a_404(self) -> None:
         from game.models import GameSession

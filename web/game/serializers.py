@@ -327,6 +327,22 @@ class TrapDetectionResultSerializer(serializers.Serializer[dict[str, Any]]):
     game_over_trap = serializers.CharField(allow_null=True)
 
 
+class EndgameProgressSerializer(serializers.Serializer[dict[str, Any]]):
+    """Serialize the live endgame-progress HUD block (spec-116 Task 4/5).
+
+    ``axes`` maps each of the 5 ``EndgameDetector`` pattern keys to a 0..1
+    progress float; ``pattern``/``since_tick`` stay ``None`` until a
+    pattern is recognized. Matches ``src/frontend/src/types/game.ts``'s
+    ``EndgameProgress`` interface field-for-field.
+    """
+
+    axes = serializers.DictField(child=serializers.FloatField())
+    pattern = serializers.CharField(allow_null=True)
+    since_tick = serializers.IntegerField(allow_null=True)
+    horizon_tick = serializers.IntegerField()
+    locked = serializers.BooleanField()
+
+
 class DerivedBlockSerializer(serializers.Serializer[dict[str, Any]]):
     """Serialize the engine-computed derived block (Spec 052 §11).
 
@@ -358,6 +374,7 @@ class GameSnapshotSerializer(serializers.Serializer[dict[str, Any]]):
     edges = EdgeSerializer(many=True)
     events = EventSerializer(many=True)
     traps = TrapDetectionResultSerializer(required=False, allow_null=True)
+    endgame_progress = EndgameProgressSerializer(required=False, allow_null=True)
     derived = DerivedBlockSerializer()
 
 

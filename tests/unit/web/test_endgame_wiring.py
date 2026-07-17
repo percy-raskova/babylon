@@ -403,3 +403,62 @@ class TestObjectivesReadSnapshotProgress:
         # documented 3-value status contract (specs/095-endgame-chronicle/
         # contracts/objectives.yaml) is unaffected by the missing snapshot.
         assert all(o["status"] == "active" for o in objectives["objectives"])
+
+
+class TestGetSnapshotServesEndgameProgress:
+    """Task 5 Concern 2 (task-5-report.md): resolve_tick's own response
+    snapshot has carried ``endgame_progress`` since Task 4, but nothing in
+    the frontend ever reads that channel (``timeSlice.resolveOnce`` discards
+    the resolve-tick body) — the real UI hydrates from ``GET /state/``, i.e.
+    ``EngineBridge.get_snapshot`` -> ``_state_to_snapshot``. That path must
+    read the same persisted ``endgame_progress`` graph attr
+    ``get_journal_objectives`` already reads, FOLLOW-PATTERN
+    ``TestObjectivesReadSnapshotProgress`` above."""
+
+    def test_get_snapshot_reads_persisted_endgame_progress(self) -> None:
+        """``get_snapshot`` -> ``hydrate_state`` -> ``WorldState.from_graph``
+        needs a REAL ``BabylonGraph`` (unlike ``accept_outcome``/
+        ``get_journal_objectives``, which read ``_persistence.hydrate_graph``
+        straight off without ever reconstructing a WorldState) — so this
+        stashes the endgame_progress attr directly on a real graph via
+        ``set_graph_attr``, exactly as ``resolve_tick`` itself does."""
+        endgame_progress = {
+            "axes": {
+                "revolutionary_victory": 0.0,
+                "ecological_collapse": 0.0,
+                "fascist_consolidation": 1.0,
+                "red_ogv": 0.0,
+                "fragmented_collapse": 0.0,
+            },
+            "pattern": "fascist_consolidation",
+            "since_tick": 2,
+            "horizon_tick": 5200,
+            "locked": True,
+        }
+        graph = _fascist_state(3).to_graph()
+        graph.set_graph_attr("endgame_progress", endgame_progress)
+        mock_persistence = _make_mock_persistence()
+        mock_persistence.hydrate_graph.return_value = graph
+        bridge = EngineBridge(mock_persistence)
+
+        snapshot = bridge.get_snapshot(_SESSION)
+
+        assert snapshot["endgame_progress"] == endgame_progress
+        assert snapshot["endgame_progress"]["pattern"] == "fascist_consolidation"
+        assert snapshot["endgame_progress"]["locked"] is True
+
+    def test_get_snapshot_omits_endgame_progress_when_none_persisted_yet(self) -> None:
+        """No resolve_tick has ever run for this session — the hydrated
+        graph carries no endgame_progress attr. Honest absence: the key is
+        missing entirely (mirrors the pre-existing ``traps`` optional-block
+        contract in ``_state_to_snapshot`` — ``if traps_dict is not None:
+        snapshot["traps"] = traps_dict`` — never a fabricated all-zero
+        block; Constitution III.11)."""
+        mock_persistence = _make_mock_persistence()
+        seeded_graph = _healthy_state(0).to_graph()
+        mock_persistence.hydrate_graph.return_value = seeded_graph
+        bridge = EngineBridge(mock_persistence)
+
+        snapshot = bridge.get_snapshot(_SESSION)
+
+        assert "endgame_progress" not in snapshot

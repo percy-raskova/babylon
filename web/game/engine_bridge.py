@@ -8533,6 +8533,22 @@ def _state_to_snapshot(state: WorldState, session_id: UUID, *, graph: Any = None
     if traps_dict is not None:
         snapshot["traps"] = traps_dict
 
+    # Spec-116 Task 5 Concern 2 fix: carry the persisted endgame_progress
+    # graph attr through the GET-snapshot path, mirroring
+    # get_journal_objectives's read of the same channel (resolve_tick ->
+    # new_graph.set_graph_attr("endgame_progress", ...) -> persist_tick's
+    # graph_metadata.extra -> hydrate_graph's Design-B round-trip).
+    # resolve_tick already threads this onto its own response dict directly
+    # (see its docstring); this is the read path GET /state/ (and therefore
+    # world.snapshot) actually uses. Honest absence when no snapshot has
+    # ever been persisted yet — no key at all, matching the traps contract
+    # just above (Constitution III.11: never fabricate a progress block).
+    if graph is not None:
+        graph_attrs: dict[str, Any] = getattr(graph, "graph", {}) or {}
+        progress_block = graph_attrs.get("endgame_progress")
+        if isinstance(progress_block, dict):
+            snapshot["endgame_progress"] = progress_block
+
     return snapshot
 
 

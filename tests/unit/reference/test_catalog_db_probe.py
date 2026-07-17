@@ -12,6 +12,7 @@ is skipped wherever the DB is absent.
 
 from __future__ import annotations
 
+import sqlite3
 import subprocess
 import sys
 from pathlib import Path
@@ -65,12 +66,29 @@ class TestRealCatalogAgainstRealDb:
 class TestEfficacy:
     """Injected defects red; broken infrastructure raises (exit-2 class)."""
 
-    def test_empty_keep_view_reds_the_surplus_value_pathology(self) -> None:
-        # Regression contract: a KEEP view over the (still-empty)
-        # fact_productivity_annual must red. The shipped catalog carries the
-        # honest disposition instead; this synthetic row proves the guard
-        # would have caught the pathology the census found.
-        synthetic = CatalogTable(
+    def test_empty_keep_view_reds_the_surplus_value_pathology(self, tmp_path: Path) -> None:
+        # Regression contract: a KEEP view over an EMPTY base table must red —
+        # the exact pathology the 2026-07-16 census found shipping. The real
+        # fact_productivity_annual has been FILLED since (2026-07-17, ruling 1),
+        # so the scenario is reconstructed in a synthetic mini-DB: the guard
+        # must keep catching what the census caught, forever.
+        mini_db = tmp_path / "pathology.sqlite"
+        conn = sqlite3.connect(mini_db)
+        conn.execute("CREATE TABLE fact_productivity_annual (industry_id INTEGER)")
+        conn.execute(
+            "CREATE VIEW view_surplus_value AS SELECT industry_id FROM fact_productivity_annual"
+        )
+        conn.commit()
+        conn.close()
+        synthetic_base = CatalogTable(
+            name="fact_productivity_annual",
+            kind="table",
+            source="BLS_Productivity",
+            disposition="fill",  # declared debt — must NOT trip the keep-emptiness law itself
+            subset_policy="skip",
+            material_relation="empty base reconstructing the census pathology",
+        )
+        synthetic_view = CatalogTable(
             name="view_surplus_value",
             kind="view",
             source="derived",
@@ -79,7 +97,9 @@ class TestEfficacy:
             subset_policy="skip",
             material_relation="s/v rate of exploitation by industry",
         )
-        violations = check_catalog_db_reconciliation(catalog=(synthetic,))
+        violations = check_catalog_db_reconciliation(
+            catalog=(synthetic_base, synthetic_view), db_path=mini_db
+        )
         assert any("view_surplus_value" in v and "EMPTY" in v for v in violations), (
             f"expected the empty-base-table violation, got: {violations[:5]}"
         )

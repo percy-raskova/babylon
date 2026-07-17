@@ -1069,12 +1069,16 @@ tables:
     kind: table
     source: Census_ACS
     extractor: deleted @ 4ce7c96a^ (src/babylon/data/census/loader_3nf.py)
-    disposition: fill
-    subset_policy: skip
-    material_relation: ACS median-household-income-by-county rows — feeds the broken
-      view_rent_crisis rent-to-income ratio if repaired.
-    notes: "owner 2026-07-16: KEEP+FILL — pairs with fact_census_rent_burden to revive view_rent_crisis (housing
-      mechanics)"
+    tests:
+      - tests/unit/reference/test_marxian_views.py
+    disposition: keep
+    subset_policy: michigan
+    material_relation: ACS median-household-income-by-county rows — the rent-to-income
+      denominator in the repaired view_rent_crisis, and a Phase-2 wealth-axis local
+      observable (specs/114 per-county derived sections).
+    notes: "REVIVED 2026-07-17 (ruling 1): the pair's consumer view_rent_crisis was
+      repaired (full-key join) rather than refilled — the 314K rows were always
+      healthy, the view was broken."
   - name: fact_census_poverty
     kind: table
     source: Census_ACS
@@ -1099,12 +1103,15 @@ tables:
     kind: table
     source: Census_ACS
     extractor: deleted @ 4ce7c96a^ (src/babylon/data/census/loader_3nf.py:2037)
-    disposition: fill
-    subset_policy: skip
-    material_relation: ACS rent-burden-severity-by-county rows — pairs with fact_census_median_income
-      in the broken view_rent_crisis housing-precarity view.
-    notes: "owner 2026-07-16: KEEP+FILL — pairs with fact_census_median_income to revive view_rent_crisis (housing
-      mechanics)"
+    tests:
+      - tests/unit/reference/test_marxian_views.py
+    disposition: keep
+    subset_policy: michigan
+    material_relation: ACS rent-burden-severity-by-county rows — the cost-burdened
+      household counts in the repaired view_rent_crisis, and a Phase-2 wealth-axis
+      local observable (specs/114 per-county derived sections).
+    notes: "REVIVED 2026-07-17 (ruling 1): consumer view repaired (full-key join);
+      the 450K rows were always healthy."
   - name: fact_census_worker_class
     kind: table
     source: Census_ACS
@@ -1314,13 +1321,17 @@ tables:
   - name: fact_productivity_annual
     kind: table
     source: BLS_Productivity
-    disposition: fill
-    subset_policy: skip
+    extractor: tools/load_productivity_annual.py
+    tests:
+      - tests/unit/tools/test_load_productivity_annual.py
+      - tests/unit/reference/test_marxian_views.py
+    disposition: keep
+    subset_policy: full
     material_relation: labor-productivity-by-detailed-industry rows (labor compensation
       vs. sectoral output) — the direct W_c/V_c Fundamental-Theorem inputs view_imperial_rent
       and view_surplus_value need.
-    notes: "owner 2026-07-16: FILL — loader from staged labor-productivity xlsx;
-      view_surplus_value + view_imperial_rent come alive"
+    notes: "FILLED 2026-07-17 (ruling 1): 17,336 rows from the staged BLS workbook
+      (MachineReadable sheet, 1988-2024, 458 NAICS codes); both value views alive."
   - name: fact_qcew_annual
     kind: table
     source: QCEW
@@ -1446,13 +1457,15 @@ tables:
       - fact_productivity_annual
       - dim_industry
       - dim_time
-    disposition: fill
+    tests:
+      - tests/unit/reference/test_marxian_views.py
+    disposition: keep
     subset_policy: skip
     material_relation: computes imperial_rent_millions = wages_core - value_produced
       (Phi = W_c - V_c) per industry-year, directly implementing the Fundamental Theorem
       — the labor-aristocracy ratio surface.
-    notes: 'empty: base table fact_productivity_annual has 0 rows, no loader has ever
-      targeted it. View SQL sign-verified correct (not a formula bug).'
+    notes: "ALIVE 2026-07-17: base table filled (ruling 1); mining 2023 W_c/V_c =
+      0.161 — the empirical Fundamental-Theorem surface exists at last."
   - name: view_rent_crisis
     kind: view
     source: derived
@@ -1463,13 +1476,19 @@ tables:
       - dim_rent_burden
       - dim_county
       - dim_state
-    disposition: investigate
+      - dim_time
+      - dim_race
+    tests:
+      - tests/unit/reference/test_marxian_views.py
+      - tests/unit/tools/test_repair_rent_crisis_view.py
+    disposition: keep
     subset_policy: skip
-    material_relation: intends to surface county rent-to-income ratio and cost-burdened-household
-      counts from fact_census_rent/median_income/rent_burden.
-    notes: 'BROKEN: join omits time_id/race_id, producing a 200K+-row Cartesian explosion
-      per county that never completes (2x 180s timeouts). Needs an owner decision: fix
-      the join predicate or amputate the view.'
+    material_relation: county rent-to-income ratio and cost-burdened-household counts
+      per (year, race) slice — the housing-precarity surface; a Phase-2 wealth-axis
+      local observable (specs/114).
+    notes: "REPAIRED 2026-07-17 (tools/repair_rent_crisis_view.py, ruling 1): full-key
+      join (county, source, time, race) replaced the Cartesian county+source join;
+      12.0 forces real division (integer-affinity rent truncated ratios to 0)."
   - name: view_surplus_value
     kind: view
     source: derived
@@ -1477,13 +1496,15 @@ tables:
       - fact_productivity_annual
       - dim_industry
       - dim_time
-    disposition: fill
+    tests:
+      - tests/unit/reference/test_marxian_views.py
+    disposition: keep
     subset_policy: skip
     material_relation: computes surplus_value = gross_output - variable_capital and
       rate_of_exploitation per industry-year — the classical S/V Marxist surplus-value
       surface.
-    notes: empty for the same root cause as view_imperial_rent (fact_productivity_annual
-      unloaded); SQL sign-verified correct.
+    notes: "ALIVE 2026-07-17: base table filled (ruling 1); 17,336 industry-year
+      rows; the KEEP-emptiness sentinel law now guards it forever."
   - name: view_trade_annual
     kind: view
     source: derived

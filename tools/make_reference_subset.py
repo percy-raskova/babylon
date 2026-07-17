@@ -413,9 +413,23 @@ TABLE: dict[str, TablePolicy] = {
         "via services.housing_source (web bridge); 1.35M rows.",
     ),
     "fact_census_income_sources": TablePolicy("skip", _UNREFERENCED_REASON),
-    "fact_census_median_income": TablePolicy("skip", _UNREFERENCED_REASON),
+    "fact_census_median_income": TablePolicy(
+        "michigan",
+        "ADR075 ruling-1 FILL (2026-07-17): housing pair reviving the repaired "
+        "view_rent_crisis; refdb contracts in "
+        "tests/unit/reference/test_marxian_views.py pin Wayne County slices. "
+        "MI slice keeps the subset small (314K rows national).",
+        county_columns=("county_id",),
+    ),
     "fact_census_poverty": TablePolicy("skip", _UNREFERENCED_REASON),
-    "fact_census_rent_burden": TablePolicy("skip", _UNREFERENCED_REASON),
+    "fact_census_rent_burden": TablePolicy(
+        "michigan",
+        "ADR075 ruling-1 FILL (2026-07-17): housing pair reviving the repaired "
+        "view_rent_crisis (burden brackets aggregate to cost-burdened counts); "
+        "refdb contracts in tests/unit/reference/test_marxian_views.py. "
+        "MI slice keeps the subset small (450K rows national).",
+        county_columns=("county_id",),
+    ),
     "fact_census_worker_class": TablePolicy("skip", _UNREFERENCED_REASON),
     "fact_commodity_flow": TablePolicy(
         "skip",
@@ -441,7 +455,13 @@ TABLE: dict[str, TablePolicy] = {
     ),
     "fact_mineral_employment": TablePolicy("skip", _UNREFERENCED_REASON),
     "fact_mineral_production": TablePolicy("skip", _UNREFERENCED_REASON),
-    "fact_productivity_annual": TablePolicy("skip", _UNREFERENCED_REASON),
+    "fact_productivity_annual": TablePolicy(
+        "full",
+        "ADR075 ruling-1 FILL (2026-07-17): 17,336 (industry, year) rows via "
+        "tools/load_productivity_annual.py (BLS detailed industries) — the base "
+        "of view_surplus_value and view_imperial_rent; national coverage is the "
+        "point (Fundamental Theorem legs), and it is tiny.",
+    ),
     "fact_state_minerals": TablePolicy(
         "skip",
         "Only mentioned in a hex_hydrator.py comment ('fact_state_minerals "

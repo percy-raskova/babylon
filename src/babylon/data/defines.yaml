@@ -929,3 +929,19 @@ doctrine:
   congress_contingency_floor: 0.1  # Ruling 5 / DT-5: purge-success probability is clamped to [floor, 1-floor] — a nonzero contingent term stays live at ANY delta (Lushan 1959 / Gang of Four 1976: the decisive information was never in the observable state). (> 0.0, < 0.5)
   theory_bonus_per_class_analysis: 0.02  # Unit 6b feedback: per-point CLASS_ANALYSIS multiplier on an org's consciousness-raising delta (corpus: 'High: correct prioritization, theory bonus'); tag capped at 10 => max +20% at default. (>= 0.0)
   mass_link_solidarity_bonus: 0.05  # Unit 6b feedback: per-point MASS_LINK amplification of the solidarity_pressure an ORGANIZATION-source SOLIDARITY edge transmits into the bifurcation router (corpus: 'High: faster sympathizer generation; Low: isolated'); an org with MASS_LINK == 0 transmits nothing. (>= 0.0)
+
+# ---------------------------------------------------------------------
+# market — Price⟷value scissors dynamics coefficients (per-tick units).
+# ---------------------------------------------------------------------
+market:
+  price_reversion: 0.02  # Game design: law-of-value restoring stiffness on the log price-to-value ratio. Underdamped with price_damping=0.15 so prices oscillate around values (Capital Vol. III ch. 10). (>= 0.0, <= 1.0)
+  price_damping: 0.15  # Behavior-tuned: velocity damping on the price oscillator; keeps the discrete Euler step stable at dt = 1 tick. (>= 0.0, <= 2.0)
+  price_drive_sensitivity: 0.6  # Game design: how strongly relative value-output growth (demand pull) accelerates the price level. (>= 0.0, <= 5.0)
+  fictitious_reversion: 0.01  # Game design: gravity pulling fictitious capitalization back to real capitalization (surplus_ema / capitalization_rate); weaker than price_reversion — bubbles outlive price swings (Capital Vol. III part 5). (>= 0.0, <= 1.0)
+  fictitious_damping: 0.1  # Behavior-tuned: velocity damping on the fictitious-capital oscillator. (>= 0.0, <= 2.0)
+  fictitious_drive_sensitivity: 0.9  # Game design: how strongly realized-surplus growth (return-chasing) accelerates fictitious capitalization. (>= 0.0, <= 5.0)
+  momentum_coupling: 0.5  # Game design: speculation chases price momentum — the price oscillator's velocity feeds the fictitious drive (tension-on-tension). (>= 0.0, <= 5.0)
+  surplus_ema_alpha: 0.15  # Engineering: EMA smoothing for the surplus/value anchors; ~13-tick (one quarter) memory at 0.15. (> 0.0, <= 1.0)
+  scissors_balance_scale: 0.5  # Engineering: tanh scale mapping the log price-to-value ratio onto the opposition Balance in [-1, 1]; 0.5 saturates near a 65% price-over-value divergence. (> 0.0, <= 5.0)
+  max_abs_log: 2.0  # Engineering: hard clamp on both log ratios (e^2 ~ 7.4x divergence); momentum zeroes at the rail so the clamp cannot pump energy. (> 0.0, <= 5.0)
+  capitalization_rate: 0.05  # Game design: expected profit rate capitalizing surplus into real capitalization K = s_ema / r (Capital Vol. III ch. 29, interest-bearing capital). (> 0.0, <= 1.0)

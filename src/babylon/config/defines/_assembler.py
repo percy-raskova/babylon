@@ -45,6 +45,7 @@ from babylon.config.defines.external_data import (
     ExternalDataDefines,
     ServicesDefines,
 )
+from babylon.config.defines.market import MarketDefines
 from babylon.config.defines.ooda import OODADefines
 from babylon.config.defines.organizations import (
     CommunityDefines,
@@ -122,6 +123,7 @@ class GameDefines(BaseModel):
     - infrastructure: Infrastructure capacity and internet coefficients (Feature 036)
     - epistemic_horizon: Fog-of-war Phase 1 shadow coefficients (Epistemic Horizon program)
     - doctrine: DoctrineSystem mechanic coefficients (owner-ratified 2026-07-15)
+    - market: Price⟷value scissors dynamics (Program 23 Phase-1 shadow, ADR077)
     """
 
     model_config = ConfigDict(frozen=True)
@@ -184,6 +186,8 @@ class GameDefines(BaseModel):
     epistemic_horizon: EpistemicHorizonDefines = Field(default_factory=EpistemicHorizonDefines)
     # Doctrine Tree mechanics — DoctrineSystem coefficients (owner-ratified 2026-07-15)
     doctrine: DoctrineDefines = Field(default_factory=DoctrineDefines)
+    # Market Scissors — price/fictitious oscillators (Program 23 Phase-1 shadow, ADR077)
+    market: MarketDefines = Field(default_factory=MarketDefines)
 
     # Legacy flat attributes for backward compatibility
     # These delegate to the nested structure
@@ -311,6 +315,7 @@ class GameDefines(BaseModel):
             reactionary=ReactionaryDefines(**data.get("reactionary", {})),
             epistemic_horizon=EpistemicHorizonDefines(**data.get("epistemic_horizon", {})),
             doctrine=DoctrineDefines(**data.get("doctrine", {})),
+            market=MarketDefines(**data.get("market", {})),
         )
 
     @classmethod

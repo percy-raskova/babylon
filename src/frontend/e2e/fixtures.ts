@@ -71,38 +71,25 @@ export async function createWayneCountyGame(page: Page): Promise<string> {
 }
 
 /**
- * Acknowledge the CriticalEventModal if it is up. Since 40ef3d81 events
- * reach live snapshots, so loading (or stepping) a game whose current
- * tick carries a critical event AUTOPAUSES and raises the alertdialog —
- * its full-screen backdrop intercepts every pointer action until
- * acknowledged. `resume` returns the time slice to plain "paused"
- * (timeSlice.resume), so this never sets the loop playing.
+ * Acknowledge the CriticalEventModal if it is up. Loading (or stepping) a
+ * game whose current tick carries a critical event AUTOPAUSES and raises
+ * the alertdialog — its full-screen backdrop intercepts every pointer
+ * action until acknowledged. `resume` returns the time slice to plain
+ * "paused" (timeSlice.resume), so this never sets the loop playing.
+ *
+ * Since spec-116 FR-116-2 (autopause-once) the firing keys are recorded in
+ * `events.acknowledgedAutopauseKeys` BEFORE the pause lands, so a second
+ * in-flight fetch can never re-autopause on the same condition — a single
+ * Resume sticks. The short dwell below only covers the FIRST autopause
+ * landing late (worldSlice.onTickAdvanced awaits its panel fan-out before
+ * pausing); it no longer guards against re-fires. Bounds are fixed
+ * constants (statically provable per this repo's loop rule).
  */
 export async function acknowledgeAutopauseIfPresent(page: Page): Promise<void> {
-  // Settle on the status text rather than probing the modal: a one-shot
-  // isVisible() races the modal's mount frame (the snapshot ingest that
-  // triggers autopause may still be rendering when the caller lands here).
-  //
-  // Bounded retry: on initial load GameRoute.fetchState and the heartbeat
-  // can both run onTickAdvanced before world.lastTick is set (both see
-  // prevTick===null), and time.autopause has no per-event dedup guard —
-  // so a single resume can be immediately re-autopaused by the second
-  // in-flight fetch. Resume until PAUSED sticks (max ATTEMPTS — a fixed,
-  // statically-provable bound per this repo's loop rule). Owner-triage:
-  // the store-side double-autopause-on-load is minor real UX jank.
   const status = page.getByTestId("time-status");
   const modal = page.getByTestId("critical-event-modal");
-  // Dwell-confirmed with a LONG hold: worldSlice.onTickAdvanced awaits a
-  // Promise.all over every mounted panel BEFORE calling time.autopause, so
-  // under live load the autopause fires several seconds after the tick was
-  // observed — well after a naive resume. Require PAUSED *and* the modal
-  // DETACHED (the backdrop, not the status text, is what intercepts the
-  // caller's next click) to HOLD across a hold window that outlasts that
-  // delayed autopause; resume resets the counter each time it re-fires.
-  // Once the mount fan-out drains, steady-state heartbeats re-observe the
-  // same tick and skip onTickAdvanced, so it stays put. Fixed bound.
-  const ATTEMPTS = 30;
-  const HOLD = 8; // ~3.2s of continuous PAUSED + no modal
+  const ATTEMPTS = 6;
+  const HOLD = 3; // ~1.2s of continuous PAUSED + no modal
   let consecutivePaused = 0;
   for (let i = 0; i < ATTEMPTS; i++) {
     await expect(status).toHaveText(/^(PAUSED|AUTOPAUSED)$/, { timeout: 15000 });
@@ -110,7 +97,7 @@ export async function acknowledgeAutopauseIfPresent(page: Page): Promise<void> {
       consecutivePaused = 0;
       await page.getByTestId("autopause-resume").click();
     } else if ((await modal.count()) === 0 && ++consecutivePaused >= HOLD) {
-      return; // held clean long enough that the delayed autopause has fired.
+      return; // held clean long enough that a late first autopause would have landed.
     }
     await page.waitForTimeout(400);
   }

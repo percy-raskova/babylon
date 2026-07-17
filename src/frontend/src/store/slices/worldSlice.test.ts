@@ -139,13 +139,16 @@ describe("world slice — fetchState", () => {
     expect(useStore.getState().world.snapshot).toBe(firstSnapshot);
   });
 
-  it("autopauses the time slice when the newly-observed tick carries a critical event", async () => {
-    resetMockGameState({ events: [makeEvent({ type: "endgame_reached", tick: 2 })] });
+  it("autopauses the time slice with dedup keys when the newly-observed tick carries a critical event", async () => {
+    resetMockGameState({ events: [makeEvent({ type: "endgame_reached", tick: 2, data: {} })] });
 
     await useStore.getState().world.fetchState(DEFAULT_GAME_ID);
 
     expect(useStore.getState().time.status).toBe("autopaused");
-    expect(useStore.getState().time.autopauseEventIds).toEqual(["2-0"]);
+    expect(useStore.getState().time.autopauseEventKeys).toEqual(["endgame_reached:global"]);
+    expect(useStore.getState().events.acknowledgedAutopauseKeys).toEqual([
+      "endgame_reached:global@2",
+    ]);
   });
 
   it("does not autopause on non-critical events", async () => {
@@ -163,6 +166,56 @@ describe("world slice — fetchState", () => {
 
     expect(useStore.getState().events.ingestedTicks).toEqual([1]);
     expect(useStore.getState().events.toasts).toHaveLength(1);
+  });
+});
+
+describe("world slice — autopause-once (spec-116 FR-116-2 iii)", () => {
+  it("does not re-autopause when the same tick is re-observed after a reload-style reset", async () => {
+    resetMockGameState({ events: [makeEvent({ type: "endgame_reached", tick: 2, data: {} })] });
+    await useStore.getState().world.fetchState(DEFAULT_GAME_ID);
+    useStore.getState().time.resume();
+
+    // Reload: the world slice loses its tick memory; the session-scoped
+    // acknowledged set does not (same store instance, same session).
+    useStore.setState((s) => ({ world: { ...s.world, snapshot: null, lastTick: null } }));
+    await useStore.getState().world.fetchState(DEFAULT_GAME_ID);
+
+    expect(useStore.getState().time.status).toBe("paused");
+  });
+
+  it("does not double-autopause when two load fetches race (both see prevTick===null)", async () => {
+    resetMockGameState({ events: [makeEvent({ type: "endgame_reached", tick: 2, data: {} })] });
+
+    await Promise.all([
+      useStore.getState().world.fetchState(DEFAULT_GAME_ID),
+      useStore.getState().world.fetchState(DEFAULT_GAME_ID),
+    ]);
+
+    // Whichever racer won, exactly one acknowledgement exists and a single
+    // resume STICKS — the loser found the keys already acknowledged.
+    expect(useStore.getState().time.status).toBe("autopaused");
+    useStore.getState().time.resume();
+    expect(useStore.getState().time.status).toBe("paused");
+    expect(
+      useStore
+        .getState()
+        .events.acknowledgedAutopauseKeys.filter((k) => k === "endgame_reached:global@2"),
+    ).toHaveLength(1);
+  });
+
+  it("a NEW endgame occurrence on a later tick still autopauses (always-autopause)", async () => {
+    resetMockGameState({ events: [makeEvent({ type: "endgame_reached", tick: 2, data: {} })] });
+    await useStore.getState().world.fetchState(DEFAULT_GAME_ID);
+    useStore.getState().time.resume();
+
+    setMockSnapshot({
+      ...useStore.getState().world.snapshot!,
+      tick: 3,
+      events: [makeEvent({ type: "endgame_reached", tick: 3, data: {} })],
+    });
+    await useStore.getState().world.fetchState(DEFAULT_GAME_ID);
+
+    expect(useStore.getState().time.status).toBe("autopaused");
   });
 });
 

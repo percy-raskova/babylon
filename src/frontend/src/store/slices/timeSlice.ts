@@ -1,7 +1,7 @@
 /**
  * Time slice — the resolve state machine (spec-110 B4).
  *
- * States: paused | playing | resolving(prevTick) | autopaused(eventIds) |
+ * States: paused | playing | resolving(prevTick) | autopaused(eventKeys) |
  * error(message). `playIntent` is an internal flag (not itself an
  * observable `status`) that lets `pause()` register during an in-flight
  * resolve — the recursive `resolveOnce` loop checks it after every
@@ -57,8 +57,8 @@ export interface TimeSlice {
     status: TimeStatus;
     /** Tick in effect when the current/last resolve started. */
     prevTick: number | null;
-    /** Event ids that triggered the most recent autopause. */
-    autopauseEventIds: string[];
+    /** Dedup keys (`lib/eventDedup` `${type}:${subject}`) that fired the most recent autopause. */
+    autopauseEventKeys: string[];
     /** Loud failure message (III.11) — set on 5xx/network failures only. */
     errorMessage: string | null;
     /** Internal — whether the Play loop should keep scheduling resolves. */
@@ -74,8 +74,8 @@ export interface TimeSlice {
     pause: () => void;
     /** Acknowledge an `autopaused`/`error` state and return to `paused`. */
     resume: () => void;
-    /** Called by `worldSlice` when a newly-observed tick carries a critical event. */
-    autopause: (eventIds: string[]) => void;
+    /** Called by `worldSlice` when a newly-observed tick carries an unacknowledged critical event. */
+    autopause: (eventKeys: string[]) => void;
     /** Spacebar handler — paused → play, playing → pause, no-op otherwise. */
     toggleSpacebar: (gameId: string) => void;
     /** Set the auto-resolve speed. Valid in any status — takes effect on the next delay. */
@@ -152,7 +152,7 @@ export const createTimeSlice: StateCreator<RootState, [], [], TimeSlice> = (set,
     time: {
       status: "paused",
       prevTick: null,
-      autopauseEventIds: [],
+      autopauseEventKeys: [],
       errorMessage: null,
       playIntent: false,
       speed: 5,
@@ -182,13 +182,18 @@ export const createTimeSlice: StateCreator<RootState, [], [], TimeSlice> = (set,
         const status = get().time.status;
         if (status !== "autopaused" && status !== "error") return;
         set((s) => ({
-          time: { ...s.time, status: "paused", autopauseEventIds: [], errorMessage: null },
+          time: { ...s.time, status: "paused", autopauseEventKeys: [], errorMessage: null },
         }));
       },
 
-      autopause: (eventIds) =>
+      autopause: (eventKeys) =>
         set((s) => ({
-          time: { ...s.time, status: "autopaused", autopauseEventIds: eventIds, playIntent: false },
+          time: {
+            ...s.time,
+            status: "autopaused",
+            autopauseEventKeys: eventKeys,
+            playIntent: false,
+          },
         })),
 
       toggleSpacebar: (gameId) => {

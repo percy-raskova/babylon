@@ -153,3 +153,18 @@ describe("events slice — cross-tick salience dedup (spec-116 FR-116-2)", () =>
     expect(useStore.getState().events.tray[0]!.lastTick).toBe(2);
   });
 });
+
+describe("events slice — acknowledged autopause keys (autopause-once, FR-116-2 iii)", () => {
+  it("accumulates unique keys across calls (session-scoped, like mutes)", () => {
+    useStore.getState().events.acknowledgeAutopauseKeys(["uprising:n1", "uprising:n2"]);
+    useStore
+      .getState()
+      .events.acknowledgeAutopauseKeys(["uprising:n1", "endgame_reached:global@5"]);
+
+    expect(useStore.getState().events.acknowledgedAutopauseKeys).toEqual([
+      "uprising:n1",
+      "uprising:n2",
+      "endgame_reached:global@5",
+    ]);
+  });
+});

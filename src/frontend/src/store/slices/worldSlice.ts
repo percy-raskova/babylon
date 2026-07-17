@@ -14,6 +14,7 @@ import type { StateCreator } from "zustand";
 import { get as apiGet, post as apiPost } from "@/api/client";
 import { endpoints, type EndpointResponse } from "@/api/endpoints";
 import { classifyEvents } from "@/lib/eventClassifier";
+import { computeAutopauseDecision } from "@/lib/eventDedup";
 import type { GameSnapshot } from "@/types/game";
 import type { RootState } from "../types";
 import { PANEL_KEYS, TAKEOVER_PANEL_KEYS } from "./panels";
@@ -87,11 +88,20 @@ async function onTickAdvanced(
   // every observed tick, including the initial null -> first-snapshot load.
   get().events.ingest(snap.tick, snap.events);
 
-  const criticalIds = classifyEvents(snap.events)
+  // Autopause-once (spec-116 FR-116-2 iii): a distinct (event_type, subject)
+  // fires at most once per session; ENDGAME acknowledges per-occurrence
+  // (key@tick) so it always fires on a new occurrence. Mark-then-pause is
+  // a synchronous check-and-set, so the GameRoute-vs-heartbeat load race
+  // (both racers seeing prevTick===null) cannot double-fire — the loser
+  // finds the keys already acknowledged.
+  const criticalEvents = classifyEvents(snap.events)
     .filter((e) => e.severity === "critical")
-    .map((e) => e.id);
-  if (criticalIds.length > 0) {
-    get().time.autopause(criticalIds);
+    .map((e) => e.event);
+  const acknowledged = new Set(get().events.acknowledgedAutopauseKeys);
+  const decision = computeAutopauseDecision(criticalEvents, acknowledged);
+  if (decision.firingKeys.length > 0) {
+    get().events.acknowledgeAutopauseKeys(decision.acknowledgementKeys);
+    get().time.autopause(decision.firingKeys);
   }
 
   // Endgame auto-open (spec-113 §4.4 correction, owner item 37): the real

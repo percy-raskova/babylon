@@ -54,7 +54,7 @@ function inspectorKindForEvent(event: ClassifiedEvent): InspectorKind | null {
 
 export function EventsFeed(): React.JSX.Element {
   const events = useStore((s) => s.world.snapshot?.events);
-  const autopauseEventIds = useStore((s) => s.time.autopauseEventIds);
+  const autopauseEventKeys = useStore((s) => s.time.autopauseEventKeys);
   const setSelection = useStore((s) => s.map.setSelection);
   const openTakeover = useStore((s) => s.ui.openTakeover);
 
@@ -104,7 +104,7 @@ export function EventsFeed(): React.JSX.Element {
             onClick={() => handleClick(rep)}
             disabled={!rep.linkedEntityId && rep.severity !== "critical"}
             data-testid={`event-${rep.id}`}
-            data-autopause={autopauseEventIds.includes(rep.id) || undefined}
+            data-autopause={autopauseEventKeys.includes(card.key) || undefined}
             className="flex items-center gap-2 rounded px-1.5 py-1 text-left hover:bg-rebar disabled:cursor-default disabled:hover:bg-transparent"
           >
             <span className={`text-[10px] ${SEVERITY_COLOR[rep.severity]}`}>●</span>

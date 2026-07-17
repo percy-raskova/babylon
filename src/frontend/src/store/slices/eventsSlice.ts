@@ -71,6 +71,14 @@ export interface EventsSlice {
     tray: ToastEntry[];
     /** Categories the player has muted — filtered out of future toasts/tray. */
     mutedCategories: EventCategory[];
+    /**
+     * Salience keys (`${type}:${subject}`, or `key@tick` for always-autopause
+     * types) that have already fired an autopause this session — the
+     * autopause-once memory (spec-116 FR-116-2 iii). Session-scoped and
+     * in-memory, exactly like `mutedCategories` (this slice's mute
+     * machinery, which this extends): a page reload starts a fresh session.
+     */
+    acknowledgedAutopauseKeys: string[];
 
     /** Ingest a tick's raw events: classify, dedup, and enqueue new toasts. */
     ingest: (tick: number, rawEvents: GameEvent[]) => void;
@@ -80,6 +88,8 @@ export interface EventsSlice {
     restoreToast: (id: string) => void;
     /** Flip a category's mute state. */
     toggleMuteCategory: (category: EventCategory) => void;
+    /** Record autopause acknowledgement keys as fired (unique, append-order). */
+    acknowledgeAutopauseKeys: (keys: string[]) => void;
   };
 }
 
@@ -89,6 +99,7 @@ export const createEventsSlice: StateCreator<RootState, [], [], EventsSlice> = (
     toasts: [],
     tray: [],
     mutedCategories: [],
+    acknowledgedAutopauseKeys: [],
 
     ingest: (tick, rawEvents) => {
       if (get().events.ingestedTicks.includes(tick)) return;
@@ -195,6 +206,16 @@ export const createEventsSlice: StateCreator<RootState, [], [], EventsSlice> = (
           mutedCategories: s.events.mutedCategories.includes(category)
             ? s.events.mutedCategories.filter((c) => c !== category)
             : [...s.events.mutedCategories, category],
+        },
+      })),
+
+    acknowledgeAutopauseKeys: (keys) =>
+      set((s) => ({
+        events: {
+          ...s.events,
+          acknowledgedAutopauseKeys: Array.from(
+            new Set([...s.events.acknowledgedAutopauseKeys, ...keys]),
+          ),
         },
       })),
   },

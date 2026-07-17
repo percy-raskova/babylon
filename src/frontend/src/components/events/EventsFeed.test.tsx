@@ -59,7 +59,7 @@ describe("EventsFeed", () => {
           ],
         }),
       },
-      time: { ...s.time, autopauseEventIds: ["3-0"] },
+      time: { ...s.time, autopauseEventKeys: ["rupture:territory-downtown"] },
     }));
     render(<EventsFeed />);
 
@@ -124,7 +124,7 @@ describe("EventsFeed", () => {
           ],
         }),
       },
-      time: { ...s.time, autopauseEventIds: ["3-0"] },
+      time: { ...s.time, autopauseEventKeys: ["endgame_reached:global"] },
     }));
     render(<EventsFeed />);
 

@@ -1,6 +1,6 @@
 /**
  * Contract tests for the time slice (spec-110 B4) — the resolve state
- * machine: paused | playing | resolving(prevTick) | autopaused(eventIds) |
+ * machine: paused | playing | resolving(prevTick) | autopaused(eventKeys) |
  * error(message).
  */
 
@@ -110,7 +110,7 @@ describe("time slice — autopause", () => {
             territories: [],
             hyperedges: [],
             edges: [],
-            events: [makeEvent({ type: "endgame_reached", tick: 2 })],
+            events: [makeEvent({ type: "endgame_reached", tick: 2, data: {} })],
             derived: {
               value_tensor: {
                 departments: [],
@@ -137,7 +137,7 @@ describe("time slice — autopause", () => {
     await useStore.getState().time.step(DEFAULT_GAME_ID);
 
     expect(useStore.getState().time.status).toBe("autopaused");
-    expect(useStore.getState().time.autopauseEventIds).toEqual(["2-0"]);
+    expect(useStore.getState().time.autopauseEventKeys).toEqual(["endgame_reached:global"]);
   });
 
   it("resume() clears autopaused back to paused", async () => {
@@ -147,7 +147,7 @@ describe("time slice — autopause", () => {
     useStore.getState().time.resume();
 
     expect(useStore.getState().time.status).toBe("paused");
-    expect(useStore.getState().time.autopauseEventIds).toEqual([]);
+    expect(useStore.getState().time.autopauseEventKeys).toEqual([]);
   });
 });
 
@@ -387,7 +387,7 @@ describe("time slice — speed (spec-113 architecture §4.1)", () => {
             territories: [],
             hyperedges: [],
             edges: [],
-            events: [makeEvent({ type: "endgame_reached", tick: 2 })],
+            events: [makeEvent({ type: "endgame_reached", tick: 2, data: {} })],
             derived: {
               value_tensor: {
                 departments: [],
@@ -415,6 +415,6 @@ describe("time slice — speed (spec-113 architecture §4.1)", () => {
     await useStore.getState().time.step(DEFAULT_GAME_ID);
 
     expect(useStore.getState().time.status).toBe("autopaused");
-    expect(useStore.getState().time.autopauseEventIds).toEqual(["2-0"]);
+    expect(useStore.getState().time.autopauseEventKeys).toEqual(["endgame_reached:global"]);
   });
 });

@@ -28,17 +28,38 @@ describe("CriticalEventModal", () => {
     expect(screen.getByTestId("critical-event-modal")).toBeInTheDocument();
   });
 
-  it("lists the firing events resolved from time.autopauseEventIds against the current tick", () => {
-    const rupture = makeEvent({ type: "rupture", tick: 3, id: "rupture-id" });
+  it("lists the firing conditions resolved from time.autopauseEventKeys against the current tick", () => {
+    const rupture = makeEvent({ type: "rupture", tick: 3, id: "rupture-id", data: {} });
     useStore.setState((s) => ({
-      time: { ...s.time, status: "autopaused", autopauseEventIds: ["3-0"] },
+      time: { ...s.time, status: "autopaused", autopauseEventKeys: ["rupture:global"] },
       world: { ...s.world, snapshot: makeSnapshot({ tick: 3, events: [rupture] }) },
     }));
 
     render(<CriticalEventModal gameId="game-1" />);
 
-    expect(screen.getByTestId("autopause-event-3-0")).toBeInTheDocument();
-    expect(screen.getByTestId("autopause-event-3-0")).toHaveTextContent(rupture.title);
+    expect(screen.getByTestId("autopause-event-rupture:global")).toBeInTheDocument();
+    expect(screen.getByTestId("autopause-event-rupture:global")).toHaveTextContent(rupture.title);
+  });
+
+  it("collapses same-key repeats into one firing card with a count (FR-116-2)", () => {
+    useStore.setState((s) => ({
+      time: { ...s.time, status: "autopaused", autopauseEventKeys: ["rupture:global"] },
+      world: {
+        ...s.world,
+        snapshot: makeSnapshot({
+          tick: 3,
+          events: [
+            makeEvent({ type: "rupture", tick: 3, id: "r1", data: {} }),
+            makeEvent({ type: "rupture", tick: 3, id: "r2", data: {} }),
+          ],
+        }),
+      },
+    }));
+
+    render(<CriticalEventModal gameId="game-1" />);
+
+    expect(screen.getAllByTestId("autopause-event-rupture:global")).toHaveLength(1);
+    expect(screen.getByTestId("autopause-event-rupture:global")).toHaveTextContent("×2");
   });
 
   it("Open Wire opens the wire takeover", async () => {
@@ -52,7 +73,7 @@ describe("CriticalEventModal", () => {
 
   it("Resume clears the autopaused status back to paused", async () => {
     useStore.setState((s) => ({
-      time: { ...s.time, status: "autopaused", autopauseEventIds: ["e1"] },
+      time: { ...s.time, status: "autopaused", autopauseEventKeys: ["e1"] },
     }));
     render(<CriticalEventModal gameId="game-1" />);
 

@@ -74,10 +74,21 @@ player's own fast-forward-to-epilogue once a pattern locks (FR-116-5).
 
 ## Constraints
 
-- Engine determinism untouched: every change either observes (serialization boundary)
-  or is a defines-level recalibration executed as the one declared ceremony.
-- `mise run check` green per unit of work; `qa:regression` byte-identical **except** the
-  ceremony commit, which regenerates baselines with per-scenario drift declared.
+- Engine determinism untouched: every change either observes (serialization boundary),
+  is the defines-level pacing recalibration executed as declared ceremony #1, or is the
+  FR-116-4.7 event-converter widening — which may move event content in the baselines
+  and, if it does, is executed as its own declared regeneration (spine ceremony #2,
+  with the byte-identical fallback declared instead when no baseline scenario fires a
+  newly whitelisted event).
+- DEVIATION (planning discovery, 2026-07-17): the parent design §3 reserved "ceremony
+  #2" for Track 3 Unit 6; the whitelist widening's converter edit lives in
+  `simulation_engine.py` (bridge-side widening is impossible — dropped types never
+  reach `WorldState.events`), so its drift cannot ride ceremony #1. Owner-sanction
+  item in the PR body; if rejected, the converter widening defers to Track 3 Unit 6's
+  ceremony and FR-116-4.7 ships bridge/frontend-side only until then.
+- `mise run check` green per unit of work; `qa:regression` byte-identical **except**
+  the declared ceremony commits, which regenerate baselines with per-scenario drift
+  declared.
 - No MVP scoping — the numbered items above are dependency-ordered, not severable.
 - Coefficients live in `GameDefines`/`defines.yaml`; copy lives in data, not conditionals.
 

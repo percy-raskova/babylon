@@ -8,8 +8,9 @@ first session that explains itself, and nine evidence-backed wirings connecting 
 engine riches to existing UI surfaces.
 
 **Architecture:** Engine changes are confined to (a) one seeding-bug exemption, (b) the
-EndgameDetector's repurposing from adjudicator to pattern recognizer, and (c) a
-defines-level pacing recalibration executed as declared ceremony #1. Everything else lives
+EndgameDetector's repurposing from adjudicator to pattern recognizer, (c) a
+defines-level pacing recalibration executed as declared ceremony #1 (Task 6), and (d) the
+event-whitelist widening executed as declared ceremony #2 (Task 23). Everything else lives
 at the serialization boundary (bridge) or in the frontend — byte-safe by construction.
 
 **Tech Stack:** Python 3.11 / Pydantic frozen models / Django bridge (`web/game/`) /
@@ -27,7 +28,9 @@ React+TS+zustand cockpit (`src/frontend/`) / pytest + vitest + Playwright / mise
   `mise run check` green (includes `check:seams`).
 - `mise run qa:regression` must stay 5/5. `defines_hash` drift alone is advisory
   (WARNING) and passes; dense-CSV drift fails. Baselines are regenerated ONLY in the
-  declared ceremony commit (Task 6) with per-scenario drift declared in the commit body.
+  TWO declared ceremony commits — Task 6 Step 7 (pacing calibration, ceremony #1) and
+  Task 23 Step 8 (event-whitelist widening, ceremony #2) — each with per-scenario drift
+  declared in the commit body. Every other task leaves baselines byte-identical.
 - Every new bridge-serialized wire key gets a `SeamEntry` row in
   `src/babylon/sentinels/seam/registry.py` (otherwise `check:seams` reds the build).
 - New defines fields: edit `src/babylon/config/defines/*.py`, regenerate with
@@ -172,12 +175,21 @@ Run: `mise run qa:regression`
 Expected: `5 passed, 0 failed`. `defines_hash` WARNING lines are expected (schema grew)
 and pass; any dense-CSV diff is a STOP — no engine code changed yet, values cannot move.
 
+- [ ] **Step 7b: Seed ADR079 (spec header requires it in the FIRST commit batch)**
+
+Create `ai/decisions/ADR079_playability_spine.yaml` with `status: proposed`, the
+fixed-horizon owner ruling (100y / 5200 ticks, outcomes = recognized patterns), and
+placeholder sections for the ceremony drift tables; add its row to
+`ai/decisions/index.yaml` (FOLLOW-PATTERN: the ADR078 entry). Task 25 Step 5 flips it
+to `accepted` and completes it — do not wait for Task 25 to create the file.
+
 - [ ] **Step 8: Commit**
 
 ```bash
 git add src/babylon/config/defines/endgame.py src/babylon/config/defines/_assembler.py \
-  src/babylon/data/defines.yaml tests/unit/config/test_endgame_defines_spine.py
-git commit -m "feat(defines): campaign horizon, pattern lock, fascist fraction; compose balkanization (spec-116 FR-116-1)"
+  src/babylon/data/defines.yaml tests/unit/config/test_endgame_defines_spine.py \
+  ai/decisions/ADR079_playability_spine.yaml ai/decisions/index.yaml
+git commit -m "feat(defines): campaign horizon, pattern lock, fascist fraction; compose balkanization; seed ADR079 (spec-116 FR-116-1)"
 ```
 
 ---
@@ -419,8 +431,9 @@ git commit -m "refactor(engine): EndgameDetector -> pattern recognizer with real
 - Modify: `web/game/stub_bridge.py` (payload parity for `endgame_progress`)
 - Modify: `src/babylon/sentinels/seam/registry.py` (SeamEntry rows for the new wire keys)
 - Modify: `src/frontend/src/types/game.ts` (add `EndgameProgress` interface to the
-  snapshot type) + `src/frontend/src/lib/eventClassifier.ts` (`pattern_shift: "warning"`,
-  topic `"political"`)
+  snapshot type). Do NOT touch `eventClassifier.ts` here — the frontend classifier
+  entry for `pattern_shift` (`important` / category `system`) is owned by Task 7;
+  `"warning"` is not a member of the frontend `EventSeverity` union.
 - Test: `tests/unit/web/test_endgame_wiring.py` (extend), `tests/unit/web/test_engine_bridge.py`
 
 **Interfaces:**
@@ -554,8 +567,11 @@ keys 1:1 (`revolution → revolutionary_victory`, `ecological_collapse`,
 
 - [ ] **Step 6: Severity, classifier, types, seams, stub parity**
 
-- `_EVENT_SEVERITY` (engine_bridge.py ~6786): `EventType.PATTERN_SHIFT: "warning"`.
-- `eventClassifier.ts`: `pattern_shift: "warning"` (topic `political`).
+- `_EVENT_SEVERITY` (engine_bridge.py ~6786): add `"pattern_shift": "warning"` — a
+  STRING-literal key, matching the map's `dict[str, str]` declaration and every
+  existing entry (never an `EventType` member key). Backend/wire vocabulary only —
+  the frontend classifier entry is Task 7's, which maps `pattern_shift` to
+  `important` / category `system`; do not add it here.
 - `types/game.ts`: `interface EndgameProgress { axes: Record<string, number>;
   pattern: string | null; since_tick: number | null; horizon_tick: number;
   locked: boolean; }` and add `endgame_progress?: EndgameProgress` to the snapshot
@@ -579,7 +595,7 @@ Expected: green (check:seams passes with the new rows).
 ```bash
 git add src/babylon/models/enums/events.py src/babylon/models/events/ web/game/engine_bridge.py \
   web/game/stub_bridge.py src/babylon/sentinels/seam/registry.py \
-  src/frontend/src/types/game.ts src/frontend/src/lib/eventClassifier.ts tests/unit/web/
+  src/frontend/src/types/game.ts tests/unit/web/
 git commit -m "feat(bridge): fixed-horizon game-over, PATTERN_SHIFT events, per-tick endgame_progress, real objectives (spec-116 FR-116-1)"
 ```
 
@@ -628,15 +644,19 @@ raises `ValueError("outcome not locked")` unless `locked`; persists the ENDGAME 
 through the same tick_event path `resolve_tick` uses (FOLLOW-PATTERN: the persistence
 call feeding `_fetch_endgame_event_row`, engine_bridge.py:561-593) with
 `outcome = pattern` and payload `{"accepted_at_tick": tick}`; returns
-`{"outcome": pattern, "tick": tick, "accepted": True}`. Stub parity: `stub_bridge.py`
+`{"outcome": pattern.value, "tick": tick, "accepted": True}` — `.value`, never the
+raw `GameOutcome` enum, so the JSON contract (`outcome: str`) holds (same rule as
+Task 4's `(pattern or GameOutcome.UNRESOLVED).value`). Stub parity: `stub_bridge.py`
 raises the same ValueError (stub never locks).
 
 - [ ] **Step 4: API view + url**
 
 FOLLOW-PATTERN (`game_pause` at api.py:349-357): `accept_outcome` view POST-only,
 IsAuthenticated, `_get_session_or_none`, translate `ValueError` to `_error(...)`,
-envelope on success; url `games/<uuid:game_id>/accept-outcome/` in urls.py beside
-pause/resume.
+envelope on success; url `games/<str:game_id>/accept-outcome/` in urls.py beside
+pause/resume (`<str:>`, matching every sibling lifecycle route — game-pause,
+game-resume, game-recover all use `<str:game_id>`; the view signature takes
+`game_id: str`).
 
 - [ ] **Step 5: Green run (backend)**
 
@@ -719,6 +739,20 @@ Expected: FAIL — `CommandError: Unknown command: 'pacing_probe'`.
 RST module docstring with Usage block; argparse args `--scenario` (default `us`),
 `--ticks` (int, default 5200, argparse-validated `1 <= ticks <= 10000` — the loop bound
 is the validated arg, statically bounded), `--seed` (default 0), `--report` (path).
+Module constants (top of the command file, after imports):
+
+```python
+# The five recognizer axes — must equal EndgameDetector.axis_progress()'s key set
+# (pinned by the Step 1 test's set-equality assertion).
+AXES: tuple[str, ...] = (
+    "revolutionary_victory", "ecological_collapse", "fascist_consolidation",
+    "red_ogv", "fragmented_collapse",
+)
+SAMPLE_EVERY: int = 26  # curve sampling cadence in ticks (half a year); a reporting
+                        # choice — numerically equal to pattern_lock_ticks by
+                        # coincidence, deliberately NOT read from defines
+```
+
 Body (no DB access):
 
 ```python
@@ -741,7 +775,7 @@ Body (no DB access):
             pattern = detector.recognized_pattern
             if pattern is not None and first_recognition[pattern.value] is None:
                 first_recognition[pattern.value] = tick
-            if tick % 26 == 0 or tick == options["ticks"]:
+            if tick % SAMPLE_EVERY == 0 or tick == options["ticks"]:
                 for axis, value in progress.items():
                     curves[axis].append([tick, round(value, 4)])
 ```
@@ -5847,16 +5881,14 @@ Determinism: pure web-bridge serialization + a web-side data module — no engin
   )
   ```
 
+  Then APPEND `+ _ENDGAME_METRICS` as the last term of the existing `SEAM_REGISTRY`
+  sum expression — do NOT paste a full assembly block: earlier spine tasks (Task 4)
+  have already appended their own tuples to this sum, and later ones (Tasks 18/19)
+  will; the sum at execution time must retain every tuple already present. The
+  edit is one line:
+
   ```python
-  SEAM_REGISTRY: tuple[SeamEntry, ...] = (
-      _MAP_METRICS
-      + _TERRITORY_TICK_METRICS
-      + _INSPECTOR_METRICS
-      + _FIELD_STATE_METRICS
-      + _MAP_HISTORY_METRICS
-      + _NETWORK_METRICS
-      + _DOCTRINE_METRICS
-      + _ENDGAME_METRICS
+      + _ENDGAME_METRICS  # appended as the new final term; leave all prior terms
   )
   ```
 
@@ -7371,7 +7403,7 @@ Note: if a Cluster A task has already added `"unresolved"` to `TerminalOutcome`,
           src/frontend/src/lib/verbs/__tests__/verbs.test.ts
   mise run commit -- "feat(cockpit): per-target expected-delta chips in TargetPicker (spec-116 FR-116-4.4)"
   ```
-## Cluster D — Dark data (FR-116-4.5 + 4.6 + 4.9 + the Trends-empty bug)
+## Cluster E — Dark data (FR-116-4.5 + 4.6 + 4.9 + the Trends-empty bug)
 
 Binding facts from recon (they correct the spec's stale figures — cite these, not the audit):
 
@@ -8203,18 +8235,13 @@ _ECONOMY_SERIES_METRICS: tuple[SeamEntry, ...] = (
 )
 ```
 
-and the assembly becomes:
+and APPEND `+ _ECONOMY_SERIES_METRICS` as the last term of the existing
+`SEAM_REGISTRY` sum — do NOT paste a full assembly block: by this point the sum
+already carries Task 4's endgame_progress rows, Task 15's `_ENDGAME_METRICS`, and
+Task 18's `_ACTION_METRICS`; every prior term must be retained. The edit is one line:
 
 ```python
-SEAM_REGISTRY: tuple[SeamEntry, ...] = (
-    _MAP_METRICS
-    + _TERRITORY_TICK_METRICS
-    + _INSPECTOR_METRICS
-    + _FIELD_STATE_METRICS
-    + _MAP_HISTORY_METRICS
-    + _NETWORK_METRICS
-    + _DOCTRINE_METRICS
-    + _ECONOMY_SERIES_METRICS
+    + _ECONOMY_SERIES_METRICS  # appended as the new final term; leave all prior terms
 )
 ```
 
@@ -10149,8 +10176,9 @@ git commit  # via: mise run commit -- "feat(events): spec-116 4d.7 — POGROM/LO
   new `_EVENT_TITLE_OVERRIDES` dict + `_humanize_event_type` (:6850-6852)
 - Modify: `src/frontend/src/lib/eventClassifier.ts:44-132` (`EVENT_SEVERITY_MAP` +
   `market_correction`) and `:230-326` (`CATEGORY_MAP` + `market_correction`) — the
-  other 13 types already have entries (spec-113 Lane E); MARKET_CORRECTION is the 83rd
-  enum member added after Lane E and is missing from both maps
+  other 13 types already have entries (spec-113 Lane E); MARKET_CORRECTION (82nd
+  member, added by P23 after Lane E — PATTERN_SHIFT from Task 4 is the 83rd) is
+  missing from both maps
 - Test: `tests/unit/engine/test_event_conversion.py` (+7 test classes),
   `tests/unit/web/test_engine_bridge.py` (+1 severity/title class),
   `src/frontend/src/lib/__tests__/eventClassifier.test.ts` (+market_correction),
@@ -11091,12 +11119,12 @@ passes. (`check_severity_vocabulary` GATES on every `_EVENT_SEVERITY` key being 
 `mise run check:seams`, expected exit 0.)
 
 - [ ] **Step 7: Frontend classifier — market_correction (red then green).** The other
-      13 types already carry spec-113 Lane E entries; MARKET_CORRECTION (83rd member,
-      P23) is missing from both maps. Append to
+      13 types already carry spec-113 Lane E entries; MARKET_CORRECTION (82nd member,
+      P23 — post-Lane-E) is missing from both maps. Append to
       `src/frontend/src/lib/__tests__/eventClassifier.test.ts`:
 
 ```typescript
-describe("spec-116 4d.7 — market_correction joins the classifier (P23's 83rd member)", () => {
+describe("spec-116 4d.7 — market_correction joins the classifier (P23, post-Lane-E)", () => {
   it("classifies 'market_correction' as important", () => {
     expect(classifyEvent(makeEvent("market_correction"), 0).severity).toBe("important");
   });
@@ -11131,7 +11159,7 @@ and to `CATEGORY_MAP`'s economy block (after `reserve_army_pressure: "economy",`
 Re-run vitest — expected: all pass. Then `cd src/frontend && npm run check` (tsc +
 eslint + prettier + vitest) — expected green.
 
-- [ ] **Step 8: Ceremony — regression baselines.** Widening the converter changes
+- [ ] **Step 8: Ceremony #2 (declared) — regression baselines.** Widening the converter changes
       `WorldState.events` content wherever a newly whitelisted event fires (starvation
       scenario: ENTITY_DEATH/POPULATION_ATTRITION are near-certain; glut /
       fascist_bifurcation: MARKET_CORRECTION and the edge-transition family are
@@ -12297,17 +12325,46 @@ with `import type { GameSnapshot, PlayerVerb, VerbEligibilityEntry } from "@/typ
       )}
 ```
 
-(i) Rewrite `src/frontend/src/components/action/TargetPicker.tsx` in full:
+(i) Rewrite `src/frontend/src/components/action/TargetPicker.tsx` in full. CAUTION:
+Task 18 has ALREADY landed the `TargetDeltaChip` renderer + per-row chips in this file
+(FR-116-4.4) — this rewrite RETAINS them verbatim; only the empty state changes. Task
+18's `TargetPicker.test.tsx` must stay green after this step (it is in the Step 9 run
+below):
 
 ```tsx
 /**
  * Target picker — flat list of `VerbTarget`s, grouped when the config's
  * targets carry a `group` (e.g. Aid's Communities/Organizations split).
- * The empty state carries the verb's eligibility reason + remedy when
- * known (spec-116 FR-4.8) so an empty list is never a mute dead-end.
+ * Rows carry expected-delta chips (spec-116 FR-4.4). The empty state
+ * carries the verb's eligibility reason + remedy when known
+ * (spec-116 FR-4.8) so an empty list is never a mute dead-end.
  */
 
 import type { VerbTarget } from "@/lib/verbs";
+
+/** One compact ▲/▼ chip for a non-zero expected delta — null otherwise
+ *  (the same honest-null convention as VerbForm's preview DeltaChip). */
+function TargetDeltaChip({
+  value,
+  label,
+}: {
+  value: number | undefined;
+  label: string;
+}): React.JSX.Element | null {
+  if (value === undefined || !Number.isFinite(value) || value === 0) return null;
+  const up = value > 0;
+  return (
+    <span
+      data-testid="target-delta"
+      title={`${label}: ${up ? "+" : ""}${value}`}
+      className={`font-mono text-[9px] ${up ? "text-accent-gold" : "text-accent-crimson"}`}
+    >
+      {up ? "▲" : "▼"}
+      {label} {up ? "+" : "-"}
+      {parseFloat(Math.abs(value).toPrecision(3))}
+    </span>
+  );
+}
 
 interface TargetPickerProps {
   targets: VerbTarget[];
@@ -12359,7 +12416,11 @@ export function TargetPicker({
           }`}
         >
           <span className="truncate">{t.label}</span>
-          {t.group && <span className="ml-2 shrink-0 text-[9px] text-ash">{t.group}</span>}
+          <span className="ml-2 flex shrink-0 items-center gap-1.5">
+            <TargetDeltaChip value={t.expectedDeltas?.consciousness} label="CI" />
+            <TargetDeltaChip value={t.expectedDeltas?.heat} label="Heat" />
+            {t.group && <span className="text-[9px] text-ash">{t.group}</span>}
+          </span>
         </button>
       ))}
     </div>
@@ -12386,11 +12447,14 @@ export function TargetPicker({
 Run:
 
 ```bash
-cd src/frontend && npx vitest run src/components/action/ActionComposer.test.tsx src/components/action/VerbForm.test.tsx
+cd src/frontend && npx vitest run src/components/action/ActionComposer.test.tsx \
+    src/components/action/VerbForm.test.tsx src/components/action/TargetPicker.test.tsx
 cd src/frontend && npx vitest run
 ```
 
-Expected: the scoped run fully green (8 ActionComposer tests + VerbForm suite); then the whole suite green (`Test Files N passed`), proving no other component reds on the new fetch.
+Expected: the scoped run fully green (8 ActionComposer tests + VerbForm suite +
+Task 18's TargetPicker chip tests — proof the rewrite kept the chips); then the whole
+suite green (`Test Files N passed`), proving no other component reds on the new fetch.
 
 - [ ] **Step 10: E2E (tick-0 wayne_county dead-end → disabled-with-reason), gates, commit**
 
@@ -12490,7 +12554,9 @@ test("a fresh player reaches their first submitted action unaided", async ({ pag
   // 3. Verb grid: ineligible verbs are disabled WITH visible reasons (no dead ends).
   // 4. Pick an eligible verb → target picker rows show expected deltas →
   //    preview (cost + warnings) visible BEFORE submit → submit succeeds.
-  await expect(page.getByTestId("action-preview")).toBeVisible();
+  //    (The preview surfaces are Task 17's: probability line + verb cost.)
+  await expect(page.getByTestId("preview-probability")).toBeVisible();
+  await expect(page.getByTestId("verb-cost")).toBeVisible();
   // 5. Resolve two ticks: no two consecutive identical event cards; the critical-event
   //    modal appears at most once for the same (type, subject).
   // 6. endgame_progress axes render in the objectives tray (no 1.00-at-tick-1 bars).
@@ -12508,7 +12574,7 @@ holds).
 
 | Gate | Command / evidence |
 |---|---|
-| 1. Null-play horizon | `reports/pacing-calibration-2026-07-17.md` (Task 6) — first_recognition > 520 on `us`, ticks_completed 5200 |
+| 1. Null-play horizon | `reports/pacing-calibration-2026-07-17.md` (Task 6) — first_recognition > 520 on `us`, ticks_completed 5200; PLUS Task 2's tick-0 exemption test (no tick-0 Sovereign Collapse) and Task 3/4's horizon-only-termination tests (no terminator paths remain) |
 | 2. No consecutive identical cards | dedup vitest + e2e step 5 |
 | 3. Autopause ≤ 1 per distinct event | autopause-once vitest + e2e step 5 |
 | 4. Distinct epilogues | epilogue unit tests (6 outcomes, 6 distinct headline+body) |
@@ -12526,9 +12592,23 @@ Expected: all green. Any failure: STOP and fix before proceeding.
 
 - [ ] **Step 5: Governance artifacts**
 
-- `ai/decisions/ADR079_playability_spine.yaml`: status accepted; title covering
-  fixed-horizon ruling (100y/5200 ticks), recognizer conversion, ceremony #1 with
-  drift table pointer, salience/lobby/quick-win wiring set; add to `index.yaml`.
+- `ai/decisions/ADR079_playability_spine.yaml` (seeded `proposed` in Task 1 Step 7b —
+  UPDATE it, don't recreate): flip to `status: accepted`; complete it covering:
+  - fixed-horizon ruling (100y / 5200 ticks; outcomes = recognized patterns, never
+    terminators; accept-outcome is the only early exit);
+  - EndgameDetector → pattern-recognizer conversion (old `is_game_over` /
+    `outcome` / `_emit_endgame_event` API deleted);
+  - BOTH declared ceremonies with drift-table pointers: ceremony #1 (Task 6, pacing
+    calibration → `reports/pacing-calibration-2026-07-17.md`) and ceremony #2
+    (Task 23, event-whitelist widening → its commit-body drift list);
+  - **schema-ownership change (Task 19):** the web path now applies persistence
+    migrations on session bootstrap — previously the headless runner was the sole
+    schema owner; record the new ownership boundary and why;
+  - **MARKET_CORRECTION promoted to a discrete wire event** (scope extension over
+    Program 23's counter-only design) — record the rationale;
+  - salience re-tier (frontend-only vocabulary; bridge `_EVENT_SEVERITY` untouched
+    except additive entries), lobby/briefing, and the nine quick-win wirings.
+  Add the entry to `ai/decisions/index.yaml`.
 - `ai/state.yaml`: recently_completed entry for spec-116.
 - `specs/116-playability-spine/spec.md`: Status → EXECUTED, gates table filled.
 
@@ -12539,6 +12619,46 @@ git add src/frontend/e2e/first-session.spec.ts src/frontend/playwright.config.ts
   ai/decisions/ ai/state.yaml specs/116-playability-spine/spec.md
 git commit -m "feat(spine): first-session trunk e2e + acceptance gates + ADR079 (spec-116 complete)"
 git push -u origin feature/116-playability-spine
-gh pr create --base dev --title "feat: Playability Spine — spec-116 (Program 24)" --body "<gates table + ceremony drift declaration>"
+gh pr create --base dev --title "feat: Playability Spine — spec-116 (Program 24)" --body "<see below>"
 ```
+
+PR body MUST contain, in this order:
+1. The acceptance-gates table (Step 3) with evidence links.
+2. Ceremony declarations: ceremony #1 (Task 6) and ceremony #2 (Task 23) — per-scenario
+   drift lists copied from the two ceremony commit bodies.
+3. **Owner flags** (decisions Percy should ratify or overrule, none blocking merge):
+   - EDUCATE remains structurally ineligible in every reachable state (making it
+     eligible is an engine change, out of spine scope) — honest disabled-with-reason
+     copy shipped instead; needs an owner ruling on whether a future track fixes it.
+   - MARKET_CORRECTION promoted to a discrete wire event — scope extension vs
+     Program 23's counter-only design.
+   - Fascist verbs (POGROM/LOCKOUT/VIGILANTISM): Task 22 wires the resolver pipe, but
+     no live-loop emitter reaches them yet — reachability gap flagged, not fixed.
+   - Two-vocabulary severity seam: frontend salience re-tier vs bridge
+     `_EVENT_SEVERITY` are now deliberately different vocabularies; follow-up ruling
+     on whether to unify.
+   - Backend severity tiers for the 17 newly whitelisted/first-class event types are
+     drafter rulings on an open taste question (pogrom/lockout/vigilantism = warning,
+     secession_declared = critical, market_correction et al. = warning, rest
+     informational) — owner may re-tier any of them, one-line edits.
+   - Preview ruling: `!canAfford` warns loudly (crimson "insufficient") but does NOT
+     disable submit — deliberate; owner may flip to hard-disable.
+   - Schema-ownership change (Task 19): web path now applies persistence migrations
+     on session bootstrap (headless runner was previously sole schema owner) —
+     recorded in ADR079, surfaced here for BD sign-off.
+   - **Ceremony accounting deviation:** the spine carries a second declared
+     regeneration (Task 23, whitelist widening) — parent design §3 reserved
+     "ceremony #2" for Track 3 Unit 6. Sanction the extra spine ceremony, or the
+     converter widening defers to Track 3 (spec-116 §Constraints records the
+     deviation and the fallback).
+   - Pattern-lock does NOT autopause: after the salience re-tier, only
+     `endgame_reached` autopauses; `PATTERN_SHIFT`/lock is gold (`important`). The
+     spec's "first occurrence or escalation" could be read to include pattern-lock —
+     confirm the drafters' crimson-reserved-for-rupture reading, or promote
+     `pattern_shift` to critical (one-line classifier edit).
+   - Quick-win 5 is honest-partial: 5 aggregate series + 16 territory keys wired;
+     the remaining dead `tick_*` attrs stay declared-dark (write-site fallback
+     constants — serializing them would be dishonest chrome per III.11).
+4. The standard Claude Code attribution footer.
+
 Wait for CI green; merge per delegated authority; verify the merge commit's CI.

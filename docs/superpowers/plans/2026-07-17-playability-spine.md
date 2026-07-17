@@ -12671,6 +12671,14 @@ PR body MUST contain, in this order:
      violence), not a pooled mean — preserves pre-existing either-route recognition;
      recognition boundaries across all axes are now inclusive (>= / <=) per the
      plan's gate conventions. Confirm or re-rule the max-of-routes display.
+   - Ceremony #1 calibration outcome: `fascist_majority_fraction` default 0.75 → 0.9
+     — a DEFENSIVE granularity fix (6 archetypal entities quantize the fraction in
+     1/6 steps; at 0.9 only total 6/6 capture matches), zero baseline drift, but it
+     is a shipped balance value coupled to the current entity count — confirm 0.9.
+   - Null-play finding (engine follow-up, out of spine scope): all five recognizer
+     axes are FLAT for entire runs — archetypal class ideology never moves under
+     null play; "tension" is a static 0.74, not a building arc. Needs a
+     ConsciousnessSystem/SolidaritySystem investigation program.
 4. The standard Claude Code attribution footer.
 
 Wait for CI green; merge per delegated authority; verify the merge commit's CI.

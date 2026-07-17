@@ -89,17 +89,25 @@ async function onTickAdvanced(
   get().events.ingest(snap.tick, snap.events);
 
   // Autopause-once (spec-116 FR-116-2 iii): a distinct (event_type, subject)
-  // fires at most once per session; ENDGAME acknowledges per-occurrence
-  // (key@tick) so it always fires on a new occurrence. Mark-then-pause is
-  // a synchronous check-and-set, so the GameRoute-vs-heartbeat load race
-  // (both racers seeing prevTick===null) cannot double-fire — the loser
-  // finds the keys already acknowledged.
+  // autopauses at most once per session. The acknowledged-key set lives in
+  // the events slice (session-scoped), so it survives a world-slice reset —
+  // that is what makes re-observing the SAME occurrence a no-op: a GameRoute
+  // remount clears `lastTick`, a later fetch re-reads the same tick and
+  // re-enters here, but `computeAutopauseDecision` finds the key already
+  // acknowledged and returns no firing keys. ENDGAME acknowledges
+  // per-occurrence (key@tick) so a genuinely new occurrence on a later tick
+  // still fires. (Two *concurrent* `fetchState` calls never both reach here:
+  // `fetchState` reads-then-writes `lastTick` with no await between, so the
+  // second racer sees the advanced tick and its tick-guard skips
+  // `onTickAdvanced` — see the concurrency test in worldSlice.test.ts.)
   const criticalEvents = classifyEvents(snap.events)
     .filter((e) => e.severity === "critical")
     .map((e) => e.event);
   const acknowledged = new Set(get().events.acknowledgedAutopauseKeys);
   const decision = computeAutopauseDecision(criticalEvents, acknowledged);
   if (decision.firingKeys.length > 0) {
+    // Acknowledge before pausing so any synchronous re-entry would observe
+    // the mark; there is no such re-entry today, so the order is defensive.
     get().events.acknowledgeAutopauseKeys(decision.acknowledgementKeys);
     get().time.autopause(decision.firingKeys);
   }

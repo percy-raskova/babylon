@@ -176,14 +176,16 @@ describe("world slice — autopause-once (spec-116 FR-116-2 iii)", () => {
     useStore.getState().time.resume();
 
     // Reload: the world slice loses its tick memory; the session-scoped
-    // acknowledged set does not (same store instance, same session).
+    // acknowledged set does not (same store instance, same session). This is
+    // the real autopause-once guard — it fails if the acknowledged set is
+    // not consulted or does not persist across the world-slice reset.
     useStore.setState((s) => ({ world: { ...s.world, snapshot: null, lastTick: null } }));
     await useStore.getState().world.fetchState(DEFAULT_GAME_ID);
 
     expect(useStore.getState().time.status).toBe("paused");
   });
 
-  it("does not double-autopause when two load fetches race (both see prevTick===null)", async () => {
+  it("two concurrent fetches of the same tick autopause exactly once (fetchState serializes the advance)", async () => {
     resetMockGameState({ events: [makeEvent({ type: "endgame_reached", tick: 2, data: {} })] });
 
     await Promise.all([
@@ -191,8 +193,12 @@ describe("world slice — autopause-once (spec-116 FR-116-2 iii)", () => {
       useStore.getState().world.fetchState(DEFAULT_GAME_ID),
     ]);
 
-    // Whichever racer won, exactly one acknowledgement exists and a single
-    // resume STICKS — the loser found the keys already acknowledged.
+    // fetchState reads-then-writes `lastTick` atomically (no await between),
+    // so only the first racer's tick-guard passes and reaches onTickAdvanced;
+    // the second sees the advanced tick and skips it. Result: exactly one
+    // advance, one acknowledgement, and a single resume that STICKS. (The
+    // acknowledged-set re-observation guard is the reload-reset test above;
+    // this pins the serialization that stops concurrent fetches double-firing.)
     expect(useStore.getState().time.status).toBe("autopaused");
     useStore.getState().time.resume();
     expect(useStore.getState().time.status).toBe("paused");

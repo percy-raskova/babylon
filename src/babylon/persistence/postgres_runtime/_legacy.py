@@ -2168,6 +2168,7 @@ class PostgresRuntime:
         tick: int,
         events: list[dict[str, Any]],
         *,
+        replace: bool = True,
         _cursor: Any | None = None,
     ) -> None:
         """Bulk INSERT tick_event rows, idempotent per ``(game_id, tick)``.
@@ -2186,17 +2187,36 @@ class PostgresRuntime:
         a client retry) would otherwise insert a duplicate row set with
         no way to detect or collapse them (spec-092 review fix,
         idempotency #2). To make the method idempotent standalone, it
-        now deletes any existing rows for ``(game_id, tick)`` before
-        inserting the new batch, in the same transaction — "latest write
-        wins," matching the monotonic-idempotent spirit of
+        by default deletes any existing rows for ``(game_id, tick)``
+        before inserting the new batch, in the same transaction — "latest
+        write wins," matching the monotonic-idempotent spirit of
         :meth:`persist_tick`'s node/edge handling. This DELETE is a no-op
         the first time a tick is persisted (nothing to delete), so it's
         harmless for the :meth:`persist_full_tick` call path too.
+
+        ``replace=False`` switches to an append-only path that skips the
+        DELETE entirely (spec-116 FR-116-5 review fix). ``EngineBridge.
+        accept_outcome`` persists a single ENDGAME row at tick T *after*
+        tick T's full event batch has already been committed by
+        ``resolve_tick`` — the tick being accepted is, structurally,
+        always an already-resolved tick with a real committed batch, not
+        a fresh one. The default ``replace=True`` DELETE would destroy
+        that batch (journal/alerts/uprising rows that remain reachable
+        post-acceptance) instead of leaving it alone and merely appending
+        the ENDGAME row. Every other caller (``persist_full_tick``,
+        ``EngineBridge.resolve_tick`` via ``_persist_tick_events_safe``)
+        keeps the default ``replace=True`` delete-then-insert semantics
+        unchanged.
 
         Args:
             game_id: Game session UUID.
             tick: Tick number.
             events: List of event dicts.
+            replace: When True (default), DELETE any existing
+                ``(game_id, tick)`` rows before inserting — the
+                idempotent-retry semantics described above. When False,
+                skip the DELETE and append ``events`` to whatever rows
+                already exist for this tick.
             _cursor: Optional shared cursor for :meth:`persist_full_tick`.
         """
         delete_sql = "DELETE FROM tick_event WHERE game_id = %s AND tick = %s"
@@ -2224,12 +2244,14 @@ class PostgresRuntime:
             VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
             """
         if _cursor is not None:
-            _cursor.execute(delete_sql, (game_id, tick))
+            if replace:
+                _cursor.execute(delete_sql, (game_id, tick))
             if rows:
                 _cursor.executemany(sql, rows)
             return
         with self._pool.connection() as conn, conn.cursor() as cur:
-            cur.execute(delete_sql, (game_id, tick))
+            if replace:
+                cur.execute(delete_sql, (game_id, tick))
             if rows:
                 cur.executemany(sql, rows)
 

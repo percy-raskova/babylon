@@ -136,6 +136,32 @@ class TestAcceptOutcomeStampsDurableEndgame:
         assert row["detail"]["outcome"] == "fascist_consolidation"
         assert row["detail"]["accepted_at_tick"] == 12
 
+    def test_persists_in_append_mode_not_delete_then_insert(self) -> None:
+        """CONTRACT: accept_outcome must not delete tick T's already-
+        committed event batch. The real ``PostgresRuntime.persist_tick_events``
+        DELETEs existing ``(game_id, tick)`` rows before inserting
+        (idempotency #2, spec-092 review fix) — correct for
+        ``resolve_tick``, which always writes a tick's FIRST batch, but
+        wrong here: the tick ``accept_outcome`` stamps is always an
+        already-resolved tick whose full journal/alerts/uprising batch is
+        already committed (``resolve_tick`` ran first). Deleting it would
+        destroy that history even though it remains reachable after
+        acceptance (the chronicle takeover is dismissable). accept_outcome
+        must opt into the append-only path instead of the delete-then-
+        insert default `_persist_tick_events_safe`/`persist_tick_events`
+        use everywhere else."""
+        mock_persistence = self._locked_persistence()
+        bridge = EngineBridge(mock_persistence)
+
+        bridge.accept_outcome(_SESSION)
+
+        mock_persistence.persist_tick_events.assert_called_once()
+        call_kwargs = mock_persistence.persist_tick_events.call_args.kwargs
+        assert call_kwargs.get("replace") is False, (
+            "accept_outcome must call persist_tick_events with replace=False "
+            "(append-only) instead of the delete-then-insert default"
+        )
+
     def test_get_endgame_state_reads_back_the_accepted_outcome(self) -> None:
         """The durable-readback half: once accept_outcome's tick_event row
         exists, get_endgame_state (via _fetch_endgame_event_row's SELECT)

@@ -3878,6 +3878,16 @@ class EngineBridge:
         six-epilogue payload cites this key to distinguish a player-accepted
         fast-forward from a horizon termination).
 
+        Unlike :meth:`resolve_tick`, this call opts into
+        ``_persist_tick_events_safe``'s ``replace=False`` append-only path
+        (spec-116 FR-116-5 review fix). Tick ``tick`` here is always an
+        already-resolved tick whose full event batch ``resolve_tick``
+        already committed — the default ``replace=True`` delete-then-insert
+        semantics would delete that batch (journal/alerts/uprising rows
+        that remain reachable after acceptance) out from under itself
+        before inserting just the one ENDGAME row. ``replace=False`` skips
+        the DELETE and appends instead.
+
         Args:
             session_id: The game session UUID.
 
@@ -3901,7 +3911,7 @@ class EngineBridge:
         endgame_event = EndgameEvent(tick=tick, outcome=pattern)
         serialized = _serialize_event(endgame_event, session_id)
         serialized["data"] = {**serialized["data"], "accepted_at_tick": tick}
-        _persist_tick_events_safe(self._persistence, session_id, tick, [serialized])
+        _persist_tick_events_safe(self._persistence, session_id, tick, [serialized], replace=False)
 
         return {"outcome": pattern.value, "tick": tick, "accepted": True}
 
@@ -7333,6 +7343,8 @@ def _persist_tick_events_safe(
     session_id: UUID,
     tick: int,
     serialized_events: list[dict[str, Any]],
+    *,
+    replace: bool = True,
 ) -> None:
     """Best-effort write of a tick's events into the ``tick_event`` table.
 
@@ -7344,12 +7356,25 @@ def _persist_tick_events_safe(
     established SQLite fallback). Never raises: a journal-write failure
     must not fail tick resolution.
 
+    ``replace`` threads straight through to
+    :meth:`PostgresRuntime.persist_tick_events` (spec-116 FR-116-5 review
+    fix). Default ``True`` reproduces the historical delete-then-insert
+    idempotent-retry semantics used by :meth:`EngineBridge.resolve_tick`
+    — unchanged, byte-identical behavior. Pass ``replace=False`` only for
+    an append-only write: :meth:`EngineBridge.accept_outcome` persists its
+    single ENDGAME row at a tick that is always already-resolved, with its
+    full event batch already committed by ``resolve_tick`` — the default
+    DELETE would destroy that batch instead of merely appending to it.
+
     Args:
         persistence: The RuntimePersistence instance.
         session_id: The game session UUID.
         tick: The tick these events belong to.
         serialized_events: Output of ``_serialize_event`` for each event
             (i.e. ``snapshot["events"]``).
+        replace: Forwarded to ``persist_tick_events``. True (default)
+            deletes existing ``(session_id, tick)`` rows before inserting;
+            False appends without deleting.
     """
     if not serialized_events:
         return
@@ -7358,7 +7383,7 @@ def _persist_tick_events_safe(
         return
     rows = [_tick_event_row(e) for e in serialized_events]
     try:
-        persist_fn(session_id, tick, rows)
+        persist_fn(session_id, tick, rows, replace=replace)
     except Exception:  # noqa: BLE001 — diagnostic; never blocks tick resolution
         logger.exception("Failed to persist tick_event rows session=%s tick=%d", session_id, tick)
 

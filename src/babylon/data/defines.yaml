@@ -300,6 +300,47 @@ endgame:
   ecological_overshoot_threshold: 2.0  # Game design: overshoot ratio threshold for ecological collapse tracking. (> 0.0)
   ecological_sustained_ticks: 5  # Game design: consecutive ticks of overshoot before collapse triggers. (>= 1, <= 100)
   fascist_majority_threshold: 3  # Game design: minimum nodes with national_identity > class_consciousness. (>= 1, <= 100)
+  campaign_horizon_years: 100  # Game design: fixed campaign horizon in in-game years. The game ends only when tick >= horizon_years * timescale.weeks_per_year (owner ruling 2026-07-17: outcomes are recognized patterns, never terminators). (>= 1, <= 1000)
+  pattern_lock_ticks: 26  # Game design: consecutive ticks a recognized outcome pattern must hold before it is 'locked' and the Council may accept the outcome early. (>= 1, <= 520)
+  fascist_majority_fraction: 0.75  # Game design: fraction of social-class nodes with national_identity > class_consciousness required to recognize FASCIST_CONSOLIDATION (replaces the scenario-size-degenerate absolute count). (>= 0.5, <= 1.0)
+
+# ---------------------------------------------------------------------
+# balkanization — Tunable defaults for the spec-070 political-topology subsystem.
+# ---------------------------------------------------------------------
+balkanization:
+  metabolic_impact_intensify: -0.02  # FR-004 INTENSIFY metabolic_impact per tick.
+  metabolic_impact_continue: -0.005  # FR-004 CONTINUE metabolic_impact per tick.
+  metabolic_impact_cease: 0.01  # FR-004 CEASE metabolic_impact per tick.
+  stance_extraction_modifier:  # Faction extraction_modifier default by colonial_stance.
+    uphold: 1.5
+    ignore: 0.8
+    abolish: 0.0
+  stance_violence_modifier:  # Faction violence_modifier default by colonial_stance.
+    uphold: 2.0
+    ignore: 0.5
+    abolish: 0.3
+  stance_class_reduction:  # Faction class_reduction default by colonial_stance.
+    uphold: 0.0
+    ignore: 0.7
+    abolish: 0.5
+  stance_metabolic_reduction:  # Faction metabolic_reduction default by colonial_stance.
+    uphold: -0.5
+    ignore: 0.0
+    abolish: 0.8
+  secession_influence_threshold: 0.5  # FR-029a (2) per-hex influence_level floor. (>= 0.0, <= 1.0)
+  secession_hysteresis_ticks: 3  # FR-029c consecutive-ticks hysteresis window. (>= 1)
+  min_contiguous_hex_count: 12  # FR-029b minimum H3 res-7 hex count for a sub-region. (>= 1)
+  red_ogv_class_tension_floor: 0.3  # FR-032 class_tension upper bound. (>= 0.0, <= 1.0)
+  red_ogv_habitability_floor: 0.4  # FR-032 aggregate_habitability upper bound. (>= 0.0, <= 1.0)
+  red_ogv_slope_window_ticks: 10  # FR-032 rolling window for habitability slope. (>= 1)
+  fragmented_collapse_min_sovereigns: 3  # FR-032a minimum surviving Sovereign count. (>= 2)
+  fragmented_collapse_min_duration_ticks: 10  # FR-032a configuration persistence duration. (>= 1)
+  faction_victory_supermajority_threshold: 0.66  # FR-026 aggregate influence share threshold. (>= 0.5, <= 1.0)
+  initial_post_collapse_control_level: 0.8  # FR-024 step 4 starting control_level for new Sovereigns. (>= 0.0, <= 1.0)
+  red_settler_trap_class_reduction_threshold: 0.6  # FR-034 class_reduction floor that, combined with UPHOLD/IGNORE stance, fires the diagnostic event. (>= 0.0, <= 1.0)
+  revolutionary_victory_min_cross_divide_solidarity_edges: 5  # FR-031a minimum active SOLIDARITY edges between settler and non-settler entities required for REVOLUTIONARY_VICTORY. Below this count, an ABOLISH-majority + extraction-stopped + habitability-stabilizing run routes to RED_OGV (I.4 George Jackson Bifurcation). (>= 0)
+  liberal_imperial_influence_cap: 0.4  # FR-039 cap on FAC_LIBERAL_IMPERIAL initial per-hex influence. (>= 0.0, <= 1.0)
+  projected_habitability_horizon_ticks: 20  # FR-051 default horizon for SovereignProjection.projected_habitability. (>= 1)
 
 # ---------------------------------------------------------------------
 # initial — Initial condition coefficients.

@@ -13,6 +13,7 @@ from typing import Any
 import yaml
 from pydantic import BaseModel, ConfigDict, Field
 
+from babylon.config.defines.balkanization import BalkanizationDefines
 from babylon.config.defines.consciousness import (
     BifurcationDefines,
     ConsciousnessDefines,
@@ -107,6 +108,7 @@ class GameDefines(BaseModel):
     - struggle: Struggle dynamics (Agency Layer)
     - carceral: Carceral equilibrium (Terminal Crisis Dynamics)
     - endgame: Endgame detection thresholds
+    - balkanization: Sovereignty/collapse and RED_OGV/FRAGMENTED endgame thresholds
     - initial: Initial conditions
     - contradiction_field: Dialectical field topology (Feature 002)
     - reserve_army: Reserve army of labor coefficients (Feature 021)
@@ -143,6 +145,7 @@ class GameDefines(BaseModel):
     struggle: StruggleDefines = Field(default_factory=StruggleDefines)
     carceral: CarceralDefines = Field(default_factory=CarceralDefines)
     endgame: EndgameDefines = Field(default_factory=EndgameDefines)
+    balkanization: BalkanizationDefines = Field(default_factory=BalkanizationDefines)
     initial: InitialDefines = Field(default_factory=InitialDefines)
     precision: PrecisionDefines = Field(default_factory=PrecisionDefines)
     timescale: TimescaleDefines = Field(default_factory=TimescaleDefines)
@@ -289,6 +292,7 @@ class GameDefines(BaseModel):
             struggle=StruggleDefines(**data.get("struggle", {})),
             carceral=CarceralDefines(**data.get("carceral", {})),
             endgame=EndgameDefines(**data.get("endgame", {})),
+            balkanization=BalkanizationDefines(**data.get("balkanization", {})),
             initial=InitialDefines(**data.get("initial", {})),
             precision=PrecisionDefines(**data.get("precision", {})),
             timescale=TimescaleDefines(**data.get("timescale", {})),

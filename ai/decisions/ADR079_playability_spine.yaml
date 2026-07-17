@@ -1,0 +1,74 @@
+ADR079_playability_spine:
+  status: "proposed"
+  date: "2026-07-17"
+  title: "Program 24 sub-project 1 — The Playability Spine: fixed 100-year (5200-tick) campaign horizon replaces adjudicated endgame termination; the five terminal outcomes (REVOLUTIONARY_VICTORY, ECOLOGICAL_COLLAPSE, FASCIST_CONSOLIDATION, RED_OGV, FRAGMENTED_COLLAPSE) become recognized patterns the world can be in along the way, never terminators; event salience, lobby/briefing, and nine evidence-backed UI wirings connect existing engine riches to existing surfaces (spec-116, seeded with Task 1's defines; completed at Task 25)"
+  context: |
+    Seeded with spec-116 Task 1's first commit batch per the spec-116 header
+    requirement (ADR authored with the program's first commit batch). This
+    document is a SEED: `status: proposed` until Task 25 Step 5 flips it to
+    `accepted` and fills in the ceremony drift tables below, once all 25
+    tasks of `docs/superpowers/plans/2026-07-17-playability-spine.md` have
+    landed.
+
+    Owner ruling 2026-07-17 (post-design, supersedes the parent design's
+    "520-tick" framing, `docs/superpowers/specs/2026-07-17-viable-game-design.md`
+    §4):
+
+    > "The endgame: it's 100 years of in-game time, not a specific
+    > condition. The game ends when it ends; the scenario it's in is up to
+    > player actions and the economy."
+
+    At 1 tick = 1 week (`GameDefines.timescale.weeks_per_year: 52`), the
+    campaign horizon is 100 * 52 = 5200 ticks. This executes the
+    2026-07-14 emergent-endgames ruling (fixed horizon + recognized
+    patterns) which the live app had not yet implemented (it was showing
+    "Endgame Reached — tick 18"). Termination = horizon only, or the
+    player's own fast-forward-to-epilogue once a pattern locks (FR-116-5).
+  decision: |
+    1. DEFINES (Task 1 — this commit batch): three new `GameDefines.endgame`
+       fields — `campaign_horizon_years` (100, in-game years),
+       `pattern_lock_ticks` (26, consecutive ticks a recognized pattern
+       must hold before the Council may accept it early), and
+       `fascist_majority_fraction` (0.75, replaces the scenario-size-
+       degenerate absolute-count `fascist_majority_threshold`, which stays
+       until Task 3 deletes it with its last consumer). `BalkanizationDefines`
+       (spec-070, previously defined but never composed into `GameDefines`)
+       is now reachable as `GameDefines().balkanization` for the RED_OGV /
+       FRAGMENTED_COLLAPSE thresholds Task 3's pattern recognizer consumes.
+    2. PATTERN RECOGNITION (Task 2-3, pending): `CollapseTransition` exempts
+       the exterior null sovereign (fixes the tick-0 "Sovereign Collapse"
+       bug); `EndgameDetector` converts from adjudicator (ends the run) to
+       pattern recognizer (labels the run) — the same five outcomes, now
+       observed rather than enforced.
+    3. BRIDGE + MERCY (Task 4-6, pending): fixed-horizon game-over,
+       PATTERN_SHIFT event, `endgame_progress` payload with real objectives;
+       accept-outcome early-exit affordance (FR-116-5); pacing instrument +
+       one declared calibration ceremony (headless nationwide run, tick-of-
+       first-recognition per pattern + per-axis progress curves, single
+       defines-level recalibration until the null-play arc holds tension
+       across the horizon — Market Scissors promotion-ceremony pattern).
+    4. EVENT SALIENCE, LOBBY/BRIEFING, QUICK-WIN WIRINGS (Tasks 7-24,
+       pending): FR-116-2 through FR-116-4 per spec-116 — event dedup/
+       severity/autopause-once, operation codenames + Scenario Briefing,
+       and the nine evidence-backed connections (CausalChain->Wire/journal,
+       six epilogues, preview costs, per-target deltas, tick_* history
+       series, Economy dark-data fixes, reactionary event types, whitelist
+       sweep, verb dead-ends, PROFIT chip).
+  consequences: |
+    PLACEHOLDER — filled at Task 25 Step 5 (ceremony close-out).
+
+    Ceremony drift tables (per-scenario qa:regression baseline movement,
+    Market Scissors promotion-ceremony pattern): TBD.
+
+    Determinism gate re-verification: TBD.
+
+    Deferred items with reasons: TBD.
+
+    Known honest limitations: TBD.
+  evidence: |
+    src/babylon/config/defines/endgame.py, src/babylon/config/defines/_assembler.py,
+    src/babylon/config/defines/balkanization.py, src/babylon/data/defines.yaml,
+    tests/unit/config/test_endgame_defines_spine.py, specs/116-playability-spine/spec.md,
+    docs/superpowers/plans/2026-07-17-playability-spine.md,
+    docs/superpowers/specs/2026-07-17-viable-game-design.md (parent design §4).
+    Evidence list grows with each subsequent task's commit; Task 25 finalizes it.

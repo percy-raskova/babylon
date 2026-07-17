@@ -67,6 +67,35 @@ class EndgameDefines(BaseModel):
         le=100,
         description="Game design: minimum nodes with national_identity > class_consciousness.",
     )
+    campaign_horizon_years: int = Field(
+        default=100,
+        ge=1,
+        le=1000,
+        description=(
+            "Game design: fixed campaign horizon in in-game years. The game ends "
+            "only when tick >= horizon_years * timescale.weeks_per_year (owner "
+            "ruling 2026-07-17: outcomes are recognized patterns, never terminators)."
+        ),
+    )
+    pattern_lock_ticks: int = Field(
+        default=26,
+        ge=1,
+        le=520,
+        description=(
+            "Game design: consecutive ticks a recognized outcome pattern must hold "
+            "before it is 'locked' and the Council may accept the outcome early."
+        ),
+    )
+    fascist_majority_fraction: float = Field(
+        default=0.75,
+        ge=0.5,
+        le=1.0,
+        description=(
+            "Game design: fraction of social-class nodes with national_identity > "
+            "class_consciousness required to recognize FASCIST_CONSOLIDATION "
+            "(replaces the scenario-size-degenerate absolute count)."
+        ),
+    )
 
 
 class InitialDefines(BaseModel):

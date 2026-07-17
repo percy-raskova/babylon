@@ -483,7 +483,7 @@ Control simulation ending detection thresholds:
      - 5
      - Consecutive ticks before collapse triggers
    * - ``fascist_majority_fraction``
-     - 0.75
+     - 0.9
      - Fraction of ideology-bearing nodes with national_identity > class_consciousness
 
 Precision Parameters

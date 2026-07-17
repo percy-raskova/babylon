@@ -126,9 +126,10 @@ def _healthy_state(tick: int) -> WorldState:
 def _fascist_state(tick: int) -> WorldState:
     """A single-entity WorldState whose lone ideology-bearing node has
     national_identity > class_consciousness — fascist_fraction = 1/1 = 1.0,
-    comfortably clearing the default 0.75 fascist_majority_fraction, so the
-    FASCIST_CONSOLIDATION axis matches every tick this state is held.
-    Biocapacity is generous so ecological_collapse never also fires."""
+    comfortably clearing the default 0.9 fascist_majority_fraction (spec-116
+    Task 6 calibration, was 0.75), so the FASCIST_CONSOLIDATION axis matches
+    every tick this state is held. Biocapacity is generous so
+    ecological_collapse never also fires."""
     entity = SocialClass(
         id="C001",
         name="Workers",

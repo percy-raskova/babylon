@@ -10,7 +10,10 @@ def test_campaign_horizon_and_pattern_defines_exist() -> None:
     defines = GameDefines.load_default()
     assert defines.endgame.campaign_horizon_years == 100
     assert defines.endgame.pattern_lock_ticks == 26
-    assert defines.endgame.fascist_majority_fraction == 0.75
+    # Spec-116 Task 6 pacing calibration (2026-07-17): raised 0.75 -> 0.9 —
+    # see EndgameDefines.fascist_majority_fraction's docstring and
+    # reports/pacing-calibration-2026-07-17.md for the granularity rationale.
+    assert defines.endgame.fascist_majority_fraction == 0.9
 
 
 @pytest.mark.unit

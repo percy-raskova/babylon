@@ -301,7 +301,7 @@ endgame:
   ecological_sustained_ticks: 5  # Game design: consecutive ticks of overshoot before collapse triggers. (>= 1, <= 100)
   campaign_horizon_years: 100  # Game design: fixed campaign horizon in in-game years. The game ends only when tick >= horizon_years * timescale.weeks_per_year (owner ruling 2026-07-17: outcomes are recognized patterns, never terminators). (>= 1, <= 1000)
   pattern_lock_ticks: 26  # Game design: consecutive ticks a recognized outcome pattern must hold before it is 'locked' and the Council may accept the outcome early. (>= 1, <= 520)
-  fascist_majority_fraction: 0.75  # Game design: fraction of social-class nodes with national_identity > class_consciousness required to recognize FASCIST_CONSOLIDATION (replaces the scenario-size-degenerate absolute count). (>= 0.5, <= 1.0)
+  fascist_majority_fraction: 0.9  # Game design: fraction of social-class nodes with national_identity > class_consciousness required to recognize FASCIST_CONSOLIDATION (replaces the scenario-size-degenerate absolute count). Spec-116 Task 6 (2026-07-17): raised from 0.75 to 0.9 — with only 6 archetypal ideology-bearing entities, a single entity's ideology flip moves the fraction from 4/6=0.667 to 5/6=0.833, so 0.75 locked FASCIST_CONSOLIDATION almost immediately under null play; 0.9 requires all 6 entities to flip. (>= 0.5, <= 1.0)
 
 # ---------------------------------------------------------------------
 # balkanization — Tunable defaults for the spec-070 political-topology subsystem.

@@ -278,8 +278,12 @@ class TestPatternRecognition:
         assert detector.pattern_since_tick is None
 
     def test_fascist_axis_uses_fraction_not_count(self) -> None:
-        """6 ideology-bearing nodes, 4 fascist (0.667) => NOT matched at
-        fraction 0.75; flip a 5th (0.833) => matched."""
+        """6 ideology-bearing nodes, 4 fascist (0.667) => NOT matched; flip a
+        5th (0.833) => still NOT matched at the spec-116-calibrated fraction
+        0.9 (Task 6 pacing calibration: a single archetypal entity's ideology
+        flip must not cause an early FASCIST_CONSOLIDATION lock — see
+        ``EndgameDefines.fascist_majority_fraction``'s docstring); flip the
+        6th (1.0) => matched."""
         from babylon.models import WorldState
 
         detector = EndgameDetector()
@@ -296,6 +300,14 @@ class TestPatternRecognition:
         detector.on_tick(
             WorldState(tick=1, entities=four_of_six),
             WorldState(tick=2, entities=five_of_six),
+        )
+        assert detector.recognized_pattern is not GameOutcome.FASCIST_CONSOLIDATION
+        assert detector.axis_progress()["fascist_consolidation"] < 1.0
+
+        six_of_six = _fascist_entities(count=6, fascist_count=6)
+        detector.on_tick(
+            WorldState(tick=2, entities=five_of_six),
+            WorldState(tick=3, entities=six_of_six),
         )
         assert detector.recognized_pattern is GameOutcome.FASCIST_CONSOLIDATION
         assert detector.axis_progress()["fascist_consolidation"] == pytest.approx(1.0)

@@ -1,8 +1,8 @@
 {
   "scenario": "glut",
   "description": "High extraction with metabolic overshoot",
-  "generated_at": "2026-07-17T13:41:27+00:00",
-  "defines_hash": "7e3ef7047e23a87a",
+  "generated_at": "2026-07-17T21:17:25+00:00",
+  "defines_hash": "274bebe9c0e99115",
   "max_ticks": 52,
   "checkpoints": [
     {

@@ -413,6 +413,27 @@ def game_recover(request: Request, game_id: str) -> JsonResponse:
     return _envelope({"status": "active"}, session_id=str(session.id))
 
 
+@api_view(["POST"])
+@permission_classes([IsAuthenticated])
+def game_accept_outcome(request: Request, game_id: str) -> JsonResponse:
+    """POST /api/games/{id}/accept-outcome/ — the mercy affordance (spec-116 FR-116-5).
+
+    Ends the campaign now with the currently locked pattern, instead of
+    playing out the remaining ticks to the fixed century horizon. The
+    bridge raises ``ValueError`` when no pattern is currently locked, which
+    surfaces as the standard error envelope (never a 5xx).
+    """
+    session = _get_session_or_none(game_id, request.user.id)
+    if session is None:
+        return _error("Game not found", http_status=404)
+    bridge = _get_bridge()
+    try:
+        data = bridge.accept_outcome(uuid.UUID(str(session.id)))
+    except ValueError as exc:
+        return _error(str(exc))
+    return _envelope(data, tick=session.current_tick, session_id=str(session.id))
+
+
 # ---------------------------------------------------------------------- #
 # State endpoints
 # ---------------------------------------------------------------------- #

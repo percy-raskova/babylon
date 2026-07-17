@@ -1438,6 +1438,17 @@ class StubEngineBridge:
             },
         }
 
+    def accept_outcome(self, _session_id: UUID) -> dict[str, Any]:
+        """Mercy affordance stub (spec-116 FR-116-5).
+
+        The stub carries no ``EndgameDetector`` — ``get_snapshot``'s
+        ``endgame_progress`` block is a static-but-shape-true stand-in that
+        never locks (see its docstring). Always raising here matches the
+        real bridge's contract for the "nothing locked" case honestly,
+        rather than fabricating an accepted outcome (Constitution III.11).
+        """
+        raise ValueError("outcome not locked")
+
     def get_journal_objectives(self, session_id: UUID) -> dict[str, Any]:
         session = _stub_sessions.get(session_id, {"tick": 0})
         tick = session.get("tick", 0)

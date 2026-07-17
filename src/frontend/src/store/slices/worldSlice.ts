@@ -11,8 +11,8 @@
  */
 
 import type { StateCreator } from "zustand";
-import { get as apiGet } from "@/api/client";
-import { endpoints } from "@/api/endpoints";
+import { get as apiGet, post as apiPost } from "@/api/client";
+import { endpoints, type EndpointResponse } from "@/api/endpoints";
 import { classifyEvents } from "@/lib/eventClassifier";
 import type { GameSnapshot } from "@/types/game";
 import type { RootState } from "../types";
@@ -26,7 +26,32 @@ export interface WorldSlice {
     loading: boolean;
     error: string | null;
     fetchState: (gameId: string) => Promise<void>;
+    /**
+     * Spec-116 FR-116-5 — the mercy affordance: POST accept-outcome, then
+     * refetch the endgame panel so the pre-existing outcome watcher (below)
+     * opens the chronicle takeover on the same null -> non-null transition
+     * it already detects from `onTickAdvanced` (no new watcher).
+     */
+    acceptOutcome: (gameId: string) => Promise<void>;
   };
+}
+
+/**
+ * The endgame auto-open check (spec-113 §4.4 correction, owner item 37):
+ * fires the chronicle takeover exactly once, on `panels.endgame.data.outcome`
+ * transitioning null -> non-null. Shared by `onTickAdvanced`'s per-tick fan-out
+ * and `acceptOutcome`'s direct endgame refetch (spec-116 FR-116-5) — the same
+ * watcher, not a duplicate.
+ */
+function maybeOpenChronicleOnEndgame(
+  get: () => RootState,
+  prevEndgameOutcome: string | null,
+): void {
+  const newEndgameOutcome = get().panels.endgame.data?.outcome ?? null;
+  if (prevEndgameOutcome === null && newEndgameOutcome !== null) {
+    get().time.pause();
+    get().ui.openTakeover("chronicle");
+  }
 }
 
 async function onTickAdvanced(
@@ -74,11 +99,7 @@ async function onTickAdvanced(
   // null -> non-null, NOT `GameSnapshot.endgame` (a dead field with zero
   // readers). Firing only on that transition — never on an already-non-null
   // outcome staying non-null — is what makes this exactly-once per game.
-  const newEndgameOutcome = get().panels.endgame.data?.outcome ?? null;
-  if (prevEndgameOutcome === null && newEndgameOutcome !== null) {
-    get().time.pause();
-    get().ui.openTakeover("chronicle");
-  }
+  maybeOpenChronicleOnEndgame(get, prevEndgameOutcome);
 }
 
 export const createWorldSlice: StateCreator<RootState, [], [], WorldSlice> = (set, get) => ({
@@ -124,6 +145,17 @@ export const createWorldSlice: StateCreator<RootState, [], [], WorldSlice> = (se
       if (prevTick === null || snap.tick !== prevTick) {
         await onTickAdvanced(get, gameId, snap, prevTick !== null && snap.tick !== prevTick);
       }
+    },
+
+    acceptOutcome: async (gameId) => {
+      const prevEndgameOutcome = get().panels.endgame.data?.outcome ?? null;
+      const res = await apiPost<EndpointResponse<typeof endpoints.acceptOutcome>>(
+        endpoints.acceptOutcome.path({ id: gameId }),
+      );
+      if (res.status !== "ok") return;
+
+      await get().panels.endgame.fetch(gameId);
+      maybeOpenChronicleOnEndgame(get, prevEndgameOutcome);
     },
   },
 });

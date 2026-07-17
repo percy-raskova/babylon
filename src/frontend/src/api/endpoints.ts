@@ -114,6 +114,12 @@ export const endpoints = {
   gamePause: ep<Untyped>("/api/games/:id/pause/", "POST"),
   gameResume: ep<Untyped>("/api/games/:id/resume/", "POST"),
   gameRecover: ep<Untyped>("/api/games/:id/recover/", "POST"),
+  // Spec-116 FR-116-5 — the mercy affordance: end the campaign now with the
+  // locked pattern, visible only once `endgame_progress.locked` is true.
+  acceptOutcome: ep<{ outcome: string; tick: number; accepted: boolean }>(
+    "/api/games/:id/accept-outcome/",
+    "POST",
+  ),
 
   // ---- Core state + tick-driven panels ---------------------------------- //
   gameState: ep<GameSnapshot>("/api/games/:id/state/"),

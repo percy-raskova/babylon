@@ -211,3 +211,76 @@ describe("world slice — endgame auto-open (spec-113 §4.4 correction)", () => 
     expect(useStore.getState().ui.takeover.active).toBeNull();
   });
 });
+
+describe("world slice — acceptOutcome (spec-116 FR-116-5 mercy affordance)", () => {
+  const LOCKED_ENDGAME_RESPONSE = {
+    status: "ok" as const,
+    data: {
+      tick: 3,
+      outcome: "fascist_consolidation",
+      headline: "False consciousness has consolidated the state.",
+      summary: "",
+      stats: { final_tick: 3, consciousness: 0.2, solidarity_edges: 1, heat: 0.5 },
+    },
+  };
+
+  it("POSTs accept-outcome then refetches the endgame panel", async () => {
+    await useStore.getState().world.fetchState(DEFAULT_GAME_ID);
+    const endgameCallsBefore = requestLog.filter((r) => r === "GET endgame").length;
+
+    server.use(
+      http.post("/api/games/:id/accept-outcome/", () => {
+        requestLog.push("POST accept-outcome");
+        return HttpResponse.json({
+          status: "ok",
+          data: { outcome: "fascist_consolidation", tick: 3, accepted: true },
+        });
+      }),
+      http.get("/api/games/:id/endgame/", () => {
+        requestLog.push("GET endgame");
+        return HttpResponse.json(LOCKED_ENDGAME_RESPONSE);
+      }),
+    );
+
+    await useStore.getState().world.acceptOutcome(DEFAULT_GAME_ID);
+
+    expect(requestLog.filter((r) => r === "POST accept-outcome")).toHaveLength(1);
+    expect(requestLog.filter((r) => r === "GET endgame")).toHaveLength(endgameCallsBefore + 1);
+  });
+
+  it("opens the chronicle takeover + pauses when the outcome transitions null -> non-null", async () => {
+    await useStore.getState().world.fetchState(DEFAULT_GAME_ID);
+    expect(useStore.getState().ui.takeover.active).toBeNull();
+
+    server.use(
+      http.post("/api/games/:id/accept-outcome/", () =>
+        HttpResponse.json({
+          status: "ok",
+          data: { outcome: "fascist_consolidation", tick: 3, accepted: true },
+        }),
+      ),
+      http.get("/api/games/:id/endgame/", () => HttpResponse.json(LOCKED_ENDGAME_RESPONSE)),
+    );
+
+    await useStore.getState().world.acceptOutcome(DEFAULT_GAME_ID);
+
+    expect(useStore.getState().ui.takeover.active).toBe("chronicle");
+    expect(useStore.getState().time.status).toBe("paused");
+  });
+
+  it("does not refetch the endgame panel or open the takeover when the POST fails", async () => {
+    await useStore.getState().world.fetchState(DEFAULT_GAME_ID);
+    const endgameCallsBefore = requestLog.filter((r) => r === "GET endgame").length;
+
+    server.use(
+      http.post("/api/games/:id/accept-outcome/", () =>
+        HttpResponse.json({ status: "error", message: "outcome not locked" }, { status: 400 }),
+      ),
+    );
+
+    await useStore.getState().world.acceptOutcome(DEFAULT_GAME_ID);
+
+    expect(requestLog.filter((r) => r === "GET endgame")).toHaveLength(endgameCallsBefore);
+    expect(useStore.getState().ui.takeover.active).toBeNull();
+  });
+});

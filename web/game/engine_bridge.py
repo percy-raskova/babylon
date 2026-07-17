@@ -3857,6 +3857,54 @@ class EngineBridge:
             },
         }
 
+    def accept_outcome(self, session_id: UUID) -> dict[str, Any]:
+        """Mercy affordance: end the campaign now with the locked pattern.
+
+        Spec-116 FR-116-5. Once a recognized pattern has held long enough to
+        lock (``endgame_progress["locked"]`` — the same graph-attr block
+        :meth:`get_journal_objectives` reads via :meth:`hydrate_graph`), the
+        player may accept it immediately instead of playing out the
+        remaining ticks to the fixed century horizon (Task 4's
+        ``horizon_tick``). Raises ``ValueError`` when no pattern is
+        currently locked — the owner ruling is that this is the only early
+        exit; recognizing a pattern alone never ends the game.
+
+        Persists a durable ``ENDGAME`` (``EventType.ENDGAME_REACHED``)
+        ``tick_event`` row through the exact same channel :meth:`resolve_tick`
+        uses for its own ``EndgameEvent`` (:func:`_serialize_event` ->
+        :func:`_persist_tick_events_safe`), so :meth:`get_endgame_state`
+        immediately reflects the accepted outcome on its next read. The
+        payload additionally carries ``accepted_at_tick`` (Task 15's
+        six-epilogue payload cites this key to distinguish a player-accepted
+        fast-forward from a horizon termination).
+
+        Args:
+            session_id: The game session UUID.
+
+        Returns:
+            ``{"outcome": str, "tick": int, "accepted": True}`` — ``outcome``
+            is the ``GameOutcome`` value (``.value``), never the raw enum.
+
+        Raises:
+            ValueError: No pattern is currently locked.
+        """
+        graph = self._persistence.hydrate_graph(tick=None, session_id=session_id)
+        graph_attrs: dict[str, Any] = getattr(graph, "graph", {}) or {}
+        tick = int(graph_attrs.get("tick", 0))
+
+        progress_block = graph_attrs.get("endgame_progress")
+        locked = isinstance(progress_block, dict) and bool(progress_block.get("locked"))
+        if not locked:
+            raise ValueError("outcome not locked")
+
+        pattern = GameOutcome(progress_block["pattern"])
+        endgame_event = EndgameEvent(tick=tick, outcome=pattern)
+        serialized = _serialize_event(endgame_event, session_id)
+        serialized["data"] = {**serialized["data"], "accepted_at_tick": tick}
+        _persist_tick_events_safe(self._persistence, session_id, tick, [serialized])
+
+        return {"outcome": pattern.value, "tick": tick, "accepted": True}
+
     def get_journal_objectives(self, session_id: UUID) -> dict[str, Any]:
         """Return Vic3-style objectives derived from the current game state.
 

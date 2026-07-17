@@ -144,7 +144,6 @@ TABLE: dict[str, TablePolicy] = {
     # -- dim_* — ALL full (small; see _DIM_BRIDGE_REASON), a few with a more
     #    specific reason where a real test depends on their exact content. --
     "dim_asset_category": TablePolicy("full", _DIM_BRIDGE_REASON),
-    "dim_atus_activity_category": TablePolicy("full", _DIM_BRIDGE_REASON),
     "dim_bea_economic_area": TablePolicy(
         "full",
         "8 rows; tests/integration/test_michigan_reference_data.py asserts "
@@ -156,7 +155,6 @@ TABLE: dict[str, TablePolicy] = {
     "dim_coercive_type": TablePolicy("full", _DIM_BRIDGE_REASON),
     "dim_commodity": TablePolicy("full", _DIM_BRIDGE_REASON),
     "dim_commodity_metric": TablePolicy("full", _DIM_BRIDGE_REASON),
-    "dim_commute_mode": TablePolicy("full", _DIM_BRIDGE_REASON),
     "dim_country": TablePolicy(
         "full",
         "263 rows; needed for the bloc-id {1,7,9,12} filter in "
@@ -203,7 +201,6 @@ TABLE: dict[str, TablePolicy] = {
     "dim_race": TablePolicy("full", _DIM_BRIDGE_REASON),
     "dim_rent_burden": TablePolicy("full", _DIM_BRIDGE_REASON),
     "dim_sctg_commodity": TablePolicy("full", _DIM_BRIDGE_REASON),
-    "dim_sector": TablePolicy("full", "0 rows in source — trivially full."),
     "dim_state": TablePolicy(
         "full", "52 rows; resolves michigan_state_id in Michigan-scoped tests."
     ),
@@ -368,15 +365,6 @@ TABLE: dict[str, TablePolicy] = {
         "National monthly trade series (joined dim_country) read by "
         "sqlite_hydrator.py; tiny (44,808 rows, 1.34 MB).",
     ),
-    "fact_hickel_drain": TablePolicy(
-        "full",
-        "Read unconditionally by sqlite_hydrator._copy_hickel_drain (same "
-        "hydration path as FAF — a missing table dies ENGINE_FAILURE in the "
-        "Determinism Bundle, per the ci-data-v1 proving-run lesson). The "
-        "table is EMPTY in the source (0 rows, schema-only; the Hickel "
-        "drain data never landed) so FULL costs nothing and keeps the "
-        "hydrator's SELECT alive.",
-    ),
     "fact_ricci_unequal_exchange": TablePolicy(
         "full",
         "Populated 2026-07-16 by tools/ingest/ricci_unequal.py (29 region-"
@@ -405,18 +393,7 @@ TABLE: dict[str, TablePolicy] = {
         "bridge (bridge_cfs_county) is empty, so FAF-zone rows cannot be "
         "Michigan-scoped — FULL copy (~97 MiB, 2.49M rows).",
     ),
-    "fact_qcew_annual__pre_086": TablePolicy(
-        "skip",
-        "Legacy pre-086 QCEW table, superseded by fact_qcew_annual + "
-        "fact_qcew_county_rollup. Only referenced by "
-        "tests/integration/test_qcew_swap.py and "
-        "tests/unit/reference/qcew/test_cli.py, both of which build their "
-        "own synthetic qcew_orm_session fixture with literal row counts — "
-        "never read this table's real content. SKIP (522.0 MB removed).",
-    ),
     # -- fact_* — default SKIP: not referenced by any src/ module or test. --
-    "fact_atus_reproductive_labor": TablePolicy("skip", _UNREFERENCED_REASON),
-    "fact_bls_productivity": TablePolicy("skip", _UNREFERENCED_REASON),
     "fact_bls_unemployment_decomposition": TablePolicy(
         "full",
         "Wave 6 D8: read by SQLiteBLSUnemploymentSource "
@@ -425,10 +402,8 @@ TABLE: dict[str, TablePolicy] = {
         "services.unemployment_source (web bridge + headless runner); "
         "tiny (51,404 rows, ~1 MB).",
     ),
-    "fact_census_commute": TablePolicy("skip", _UNREFERENCED_REASON),
     "fact_census_education": TablePolicy("skip", _UNREFERENCED_REASON),
     "fact_census_employment": TablePolicy("skip", _UNREFERENCED_REASON),
-    "fact_census_gini": TablePolicy("skip", _UNREFERENCED_REASON),
     "fact_census_hours": TablePolicy("skip", _UNREFERENCED_REASON),
     "fact_census_housing": TablePolicy(
         "full",
@@ -439,7 +414,6 @@ TABLE: dict[str, TablePolicy] = {
     ),
     "fact_census_income_sources": TablePolicy("skip", _UNREFERENCED_REASON),
     "fact_census_median_income": TablePolicy("skip", _UNREFERENCED_REASON),
-    "fact_census_occupation": TablePolicy("skip", _UNREFERENCED_REASON),
     "fact_census_poverty": TablePolicy("skip", _UNREFERENCED_REASON),
     "fact_census_rent_burden": TablePolicy("skip", _UNREFERENCED_REASON),
     "fact_census_worker_class": TablePolicy("skip", _UNREFERENCED_REASON),
@@ -449,12 +423,9 @@ TABLE: dict[str, TablePolicy] = {
         "production ingestion + MagicMock-only tests — see that entry). " + _UNREFERENCED_REASON,
     ),
     "fact_commodity_observation": TablePolicy("skip", _UNREFERENCED_REASON),
-    "fact_employment_industry_annual": TablePolicy("skip", _UNREFERENCED_REASON),
     "fact_energy_annual": TablePolicy("skip", _UNREFERENCED_REASON),
     "fact_eviction_lab_filing": TablePolicy("skip", _UNREFERENCED_REASON),
     "fact_foreclosure_rate": TablePolicy("skip", _UNREFERENCED_REASON),
-    "fact_fred_industry_unemployment": TablePolicy("skip", _UNREFERENCED_REASON),
-    "fact_fred_state_unemployment": TablePolicy("skip", _UNREFERENCED_REASON),
     "fact_fred_wealth_shares": TablePolicy(
         "full",
         "Un-orphaned 2026-07-16: Fed DFA net-worth shares (SCF-benchmarked) "
@@ -471,8 +442,6 @@ TABLE: dict[str, TablePolicy] = {
     "fact_mineral_employment": TablePolicy("skip", _UNREFERENCED_REASON),
     "fact_mineral_production": TablePolicy("skip", _UNREFERENCED_REASON),
     "fact_productivity_annual": TablePolicy("skip", _UNREFERENCED_REASON),
-    "fact_qcew_metro_annual": TablePolicy("skip", _UNREFERENCED_REASON),
-    "fact_qcew_state_annual": TablePolicy("skip", _UNREFERENCED_REASON),
     "fact_state_minerals": TablePolicy(
         "skip",
         "Only mentioned in a hex_hydrator.py comment ('fact_state_minerals "

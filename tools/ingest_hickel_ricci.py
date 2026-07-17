@@ -1,8 +1,11 @@
 #!/usr/bin/env python3
-"""Ingest Hickel and Ricci Unequal Exchange calibration data.
+"""Ingest Ricci Unequal Exchange calibration data.
 
-Reads the final calibration CSVs and populates the 3NF database
-FactHickelDrain and FactRicciUnequalExchange tables.
+Reads the final calibration CSV and populates the 3NF database
+FactRicciUnequalExchange table. (The Hickel half of this tool was retired
+2026-07-17 with the ``fact_hickel_drain`` amputation — ADR075 ruling 1, A14;
+the spec-057 ERDI series in ``fact_hickel_erdi`` is a different table and is
+unaffected.)
 
 Usage:
     poetry run python tools/ingest_hickel_ricci.py
@@ -22,11 +25,9 @@ from babylon.reference.database import NormalizedBase
 from babylon.reference.schema import (
     DimCountry,
     DimTime,
-    FactHickelDrain,
     FactRicciUnequalExchange,
 )
 
-HICKEL_FILE = Path("/media/user/data/babylon-data/babylon_hickel_final.csv")
 RICCI_FILE = Path("/media/user/data/babylon-data/babylon_ricci_final.csv")
 DB_URL = "sqlite:///marxist-data-3NF.sqlite"
 
@@ -70,37 +71,6 @@ def get_or_create_country(session: Session, name: str, world_system_tier: str) -
     return country
 
 
-def ingest_hickel(session: Session) -> None:
-    """Ingest Hickel Drain data."""
-    if not HICKEL_FILE.exists():
-        print(f"Skipping Hickel: {HICKEL_FILE} not found.")
-        return
-
-    print(f"Ingesting Hickel data from {HICKEL_FILE}...")
-    count = 0
-    with HICKEL_FILE.open("r", encoding="utf-8") as f:
-        reader = csv.DictReader(f)
-        for row in reader:
-            year = int(row["year"])
-            drain_usd = float(row["annual_drain_usd_billions"])
-
-            time_entry = get_or_create_time(session, year)
-
-            # Map Hickel summary info
-            drain = FactHickelDrain(
-                time_id=time_entry.time_id,
-                drain_direction="South to North",
-                resource_type="TOTAL_AGGREGATE",
-                net_appropriation=drain_usd,
-                units="USD Billions",
-                monetary_value_billions=drain_usd,
-            )
-            session.add(drain)
-            count += 1
-
-    print(f"  Inserted {count} Hickel rows.")
-
-
 def ingest_ricci(session: Session) -> None:
     """Ingest Ricci Unequal Exchange data."""
     if not RICCI_FILE.exists():
@@ -138,7 +108,7 @@ def ingest_ricci(session: Session) -> None:
 
 
 def main(argv: list[str] | None = None) -> int:
-    parser = argparse.ArgumentParser(description="Ingest Hickel and Ricci data to 3NF DB")
+    parser = argparse.ArgumentParser(description="Ingest Ricci data to 3NF DB")
     parser.add_argument("--db-url", default=DB_URL, help="Database URL")
     args = parser.parse_args(argv)
 
@@ -147,7 +117,6 @@ def main(argv: list[str] | None = None) -> int:
 
     with Session(engine) as session:
         try:
-            ingest_hickel(session)
             ingest_ricci(session)
             session.commit()
             print("Successfully ingested all Unequal Exchange calibration data.")

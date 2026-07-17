@@ -29,6 +29,7 @@ from rest_framework.views import APIView
 
 from game.models import ActionResult, GameSession, PlayerAction
 
+from .codenames import operation_codename
 from .log_handler import log_game_event, sanitize_for_log
 from .map_contract import MAP_METRIC_PROPERTIES
 from .serializers import (
@@ -229,6 +230,7 @@ def game_list(request: Request) -> JsonResponse:
         session_data: list[dict[str, Any]] = [
             {
                 "id": s.id,
+                "codename": operation_codename(s.id),
                 "scenario": s.scenario,
                 "current_tick": s.current_tick,
                 "status": s.status,
@@ -326,16 +328,30 @@ def scenario_list(request: Request) -> JsonResponse:
     return _envelope(SCENARIO_CATALOG)
 
 
-@api_view(["GET"])
+@api_view(["GET", "DELETE"])
 @permission_classes([IsAuthenticated])
 def game_detail(request: Request, game_id: str) -> JsonResponse:
-    """GET /api/games/{id}/ — Get game session metadata."""
+    """GET /api/games/{id}/ — session metadata. DELETE — destroy the session.
+
+    DELETE is the permanent path (FR-116-3 "delete"): every child table
+    declares ``REFERENCES game_session(id) ON DELETE CASCADE``
+    (``postgres_schema.py``) and the Django FK models mirror
+    ``on_delete=CASCADE``, so turns/results/snapshots go with the session in
+    both the PG runtime and the SQLite test DB. The reversible alternative is
+    ``POST /api/games/{id}/archive/``.
+    """
     session = _get_session_or_none(game_id, request.user.id)
     if session is None:
         return _error("Game not found", http_status=404)
 
+    if request.method == "DELETE":
+        GameSession.objects.filter(id=session.id).delete()
+        logger.info("Game deleted session=%s user=%s", session.id, request.user.id)
+        return _envelope({"deleted": True}, session_id=str(session.id))
+
     data = {
         "id": str(session.id),
+        "codename": operation_codename(session.id),
         "scenario": session.scenario,
         "current_tick": session.current_tick,
         "status": session.status,
@@ -368,6 +384,24 @@ def game_resume(request: Request, game_id: str) -> JsonResponse:
         return _error(f"Cannot resume game in '{session.status}' status")
     GameSession.objects.filter(id=session.id).update(status="active", updated_at=timezone.now())
     return _envelope({"status": "active"}, session_id=str(session.id))
+
+
+@api_view(["POST"])
+@permission_classes([IsAuthenticated])
+def game_archive(request: Request, game_id: str) -> JsonResponse:
+    """POST /api/games/{id}/archive/ — archive a game (reversible soft delete).
+
+    Sets ``status='abandoned'`` — a status the frontend ``GameStatus`` union
+    already carries. Any live status may be archived; re-archiving is a loud
+    400, not a silent no-op (Constitution III.11).
+    """
+    session = _get_session_or_none(game_id, request.user.id)
+    if session is None:
+        return _error("Game not found", http_status=404)
+    if session.status == "abandoned":
+        return _error("Game is already archived")
+    GameSession.objects.filter(id=session.id).update(status="abandoned", updated_at=timezone.now())
+    return _envelope({"status": "abandoned"}, session_id=str(session.id))
 
 
 # C.13: a worker killed mid-resolve leaves status='resolving' with no

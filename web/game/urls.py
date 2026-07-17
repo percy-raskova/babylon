@@ -26,6 +26,7 @@ urlpatterns: list[URLPattern] = [
     path("games/<str:game_id>/pause/", api.game_pause, name="game-pause"),
     path("games/<str:game_id>/resume/", api.game_resume, name="game-resume"),
     path("games/<str:game_id>/recover/", api.game_recover, name="game-recover"),
+    path("games/<str:game_id>/archive/", api.game_archive, name="game-archive"),
     # API: Spec-116 FR-116-5 — the mercy affordance (end campaign at locked pattern)
     path(
         "games/<str:game_id>/accept-outcome/",

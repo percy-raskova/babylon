@@ -382,6 +382,7 @@ class GameSessionListSerializer(serializers.Serializer[dict[str, Any]]):
     """Serialize a game session for list views."""
 
     id = serializers.UUIDField()
+    codename = serializers.CharField()
     scenario = serializers.CharField()
     current_tick = serializers.IntegerField()
     status = serializers.CharField()

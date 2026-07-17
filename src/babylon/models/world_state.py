@@ -41,6 +41,7 @@ from babylon.models.entities.state_finance import StateFinance
 from babylon.models.entities.territory import Territory
 from babylon.models.enums import EdgeType, OperationalProfile, OrgType, SectorType
 from babylon.models.events import EVENT_CLASS_MAP, SimulationEvent, TickEventAdapter
+from babylon.models.market import MarketState
 from babylon.models.types import Currency
 from babylon.models.wealth_distribution import WealthDistribution
 
@@ -471,6 +472,17 @@ class WorldState(BaseModel):
         ),
     )
 
+    market: MarketState | None = Field(
+        default=None,
+        description=(
+            "National price⟷value scissors state (Program 23 Phase-1 shadow; "
+            "MarketScissorsSystem seeds and advances it). Rides graph "
+            "metadata like wealth_distribution, written only when set so "
+            "axis-less graphs stay byte-identical. None means the axis has "
+            "not been computed for this state."
+        ),
+    )
+
     opposition_states: dict[str, Any] = Field(
         default_factory=dict,
         description=(
@@ -643,15 +655,7 @@ class WorldState(BaseModel):
         G.graph["events"] = [e.model_dump() for e in self.events]
         G.graph["event_log"] = list(self.event_log)
 
-        # EH ruling 6: the player-org pointer rides graph metadata, written
-        # only when set so synthetic/headless graphs stay byte-identical.
-        if self.player_org_id is not None:
-            G.graph["player_org_id"] = self.player_org_id
-
-        # Program 21 Phase 1: the national wealth-share axis rides metadata,
-        # written only when set (same byte-safety contract as player_org_id).
-        if self.wealth_distribution is not None:
-            G.graph["wealth_distribution"] = self.wealth_distribution.model_dump()
+        self._write_optional_axes(G)
 
         # Store institution-org housing relations in graph metadata (Feature
         # 040). Relations are richer than the HOUSES edges to_graph derives
@@ -792,6 +796,21 @@ class WorldState(BaseModel):
             if not G.has_edge(source, target):
                 continue
             G.add_edge(source, target, field_gradients=gradients_by_edge[(source, target)])
+
+    def _write_optional_axes(self, G: BabylonGraph) -> None:
+        """Write the written-only-when-set metadata axes (byte-safety contract).
+
+        EH ruling 6 pattern: each optional axis rides graph metadata ONLY
+        when set, so synthetic/headless/axis-less graphs stay byte-identical.
+        Covers the player-org pointer, the Program 21 wealth-share axis, and
+        the Program 23 price⟷value scissors axis.
+        """
+        if self.player_org_id is not None:
+            G.graph["player_org_id"] = self.player_org_id
+        if self.wealth_distribution is not None:
+            G.graph["wealth_distribution"] = self.wealth_distribution.model_dump()
+        if self.market is not None:
+            G.graph["market"] = self.market.model_dump()
 
     @classmethod
     def from_graph(
@@ -957,6 +976,12 @@ class WorldState(BaseModel):
             wealth_distribution=(
                 WealthDistribution(**G.graph["wealth_distribution"])
                 if isinstance(G.graph.get("wealth_distribution"), dict)
+                else None
+            ),
+            # Program 23: same absent-axis contract as wealth_distribution.
+            market=(
+                MarketState(**G.graph["market"])
+                if isinstance(G.graph.get("market"), dict)
                 else None
             ),
         )

@@ -81,6 +81,7 @@ class TestMaterialistCausalityOrder:
             "field_derivative",  # 20. FieldDerivativeSystem (Feature 002)
             "CollapseTransition",  # 20.5. CollapseTransitionSystem (Spec 070 FR-023)
             "edge_transition",  # 21. EdgeTransitionSystem (Feature 002)
+            "Wealth Distribution",  # 21.5. WealthDistributionSystem (Program 21 Phase-1 shadow)
             "Epistemic Horizon",  # 22. EpistemicHorizonSystem (Epistemic Horizon Phase 1 shadow)
         ]
         actual_order = [s.name for s in _DEFAULT_SYSTEMS]
@@ -166,17 +167,18 @@ class TestMaterialistCausalityOrder:
             "ContradictionSystem must be registered"
         )
 
-    def test_all_twenty_eight_systems_present(self) -> None:
-        """All 28 systems must be registered.
+    def test_all_twenty_nine_systems_present(self) -> None:
+        """All 29 systems must be registered.
 
         13 core + 2 Volume I + 1 community + 1 lifecycle + 3 field topology
         + 1 OODA + 1 substrate (Spec 062 US7) + 3 Spec-070 systems
         (FactionInfluenceSystem at 14.5 + SovereigntySystem at 17.5 +
         CollapseTransitionSystem at 20.5) + 1 Spec-071 system
         (FascistFactionSystem at 17.4) + 1 DoctrineSystem at 14.7 (ADR073)
+        + 1 WealthDistributionSystem at 21.5 (Program 21 Phase-1 shadow, ADR075)
         + 1 Epistemic Horizon Phase 1 system (EpistemicHorizonSystem, last).
         """
-        assert len(_DEFAULT_SYSTEMS) == 28, f"Expected 28 systems, got {len(_DEFAULT_SYSTEMS)}"
+        assert len(_DEFAULT_SYSTEMS) == 29, f"Expected 29 systems, got {len(_DEFAULT_SYSTEMS)}"
 
     def test_epistemic_horizon_runs_last(self) -> None:
         """EpistemicHorizonSystem must be the LAST system in _DEFAULT_SYSTEMS.

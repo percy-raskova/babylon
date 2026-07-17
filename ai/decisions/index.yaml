@@ -1,9 +1,14 @@
 meta:
-  version: 1.25.0
+  version: 1.26.0
   updated: '2026-07-17'
   description: Architecture Decision Records Index
   format: See individual ADR files in this directory
 decisions:
+  ADR078_market_correction:
+    title: 'Program 23 Phase 2 — THE CORRECTION: price_value PROMOTED to canonical (crisis competes for principal contradiction); the snap fires on unserviceable fictitious overhang (serviceability = base + slope×profit_rate, honest-None fallback) into the material base — claim-holder wealth evaporation (ADR075 brackets 0/1), reserve-army influx where median_wage exists, conservation-preserving w1 velocity shock on the P21 wealth axis (spec-114 FR-114-4 form, same-tick stamp), MARKET_CORRECTION event (83rd); per-county scissors (market_county, observe-only) + price_divergence signed map lens; tick_summary.market_corrections (migration 0034) + correction chart markers + MELT-drift readout + diegetic MarketTicker in the Scissors tab; calibration behavioral contracts (envelope half-life, bubbles-outlive-price-swings, balanced-growth-never-fires); promotion ceremony executed — ALL qa baselines regenerated with per-scenario drift declared'
+    status: accepted
+    date: '2026-07-17'
+    file: ADR078_market_correction.yaml
   ADR077_market_scissors:
     title: 'Program 23 — Market Scissors: price⟷value as the sixth (first SHADOW) opposition on the generic BoundOpposition.shadow mechanism (the reusable ADR072 slice, Amendment T untouched); MarketScissorsSystem @17.8 (30th system) evolves national price/fictitious log-ratio oscillators from the realized w_paid/v_produced flow (reversion = law of value, honest-absent without a substrate); tick_summary price_log/fictitious_log (migration 0033) + timeseries value/surplus/profit_rate/price_index/fictitious_ratio + cockpit "The Scissors" chart vs the y=1 value baseline; qa:regression byte-identical throughout; Phase-2 correction feedback owner-gated'
     status: accepted

@@ -20,7 +20,8 @@ class EndgameDefines(BaseModel):
     2. ECOLOGICAL_COLLAPSE: overshoot_ratio > threshold for N consecutive ticks
        Sustained ecological overshoot leads to irreversible collapse.
 
-    3. FASCIST_CONSOLIDATION: national_identity > class_consciousness for M+ nodes
+    3. FASCIST_CONSOLIDATION: fraction of ideology-bearing nodes with
+       national_identity > class_consciousness reaches fascist_majority_fraction.
        Fascist ideology has captured the majority of the population.
 
     Attributes:
@@ -32,8 +33,9 @@ class EndgameDefines(BaseModel):
             ecological damage accumulates (2.0 = consuming 2x biocapacity).
         ecological_sustained_ticks: Number of consecutive ticks overshoot must
             persist before triggering ECOLOGICAL_COLLAPSE (5 ticks).
-        fascist_majority_threshold: Minimum number of nodes where national_identity
-            exceeds class_consciousness for FASCIST_CONSOLIDATION (3 nodes).
+        fascist_majority_fraction: Minimum fraction of ideology-bearing nodes where
+            national_identity exceeds class_consciousness for FASCIST_CONSOLIDATION
+            (0.75 = 75%; replaces the scenario-size-degenerate absolute count).
     """
 
     model_config = ConfigDict(frozen=True)
@@ -60,12 +62,6 @@ class EndgameDefines(BaseModel):
         ge=1,
         le=100,
         description="Game design: consecutive ticks of overshoot before collapse triggers.",
-    )
-    fascist_majority_threshold: int = Field(
-        default=3,
-        ge=1,
-        le=100,
-        description="Game design: minimum nodes with national_identity > class_consciousness.",
     )
     campaign_horizon_years: int = Field(
         default=100,

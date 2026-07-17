@@ -21,7 +21,7 @@ from uuid import UUID
 
 import pytest
 
-from babylon.models.entities.social_class import SocialClass
+from babylon.models.entities.social_class import IdeologicalProfile, SocialClass
 from babylon.models.entities.territory import Territory
 from babylon.models.enums import SectorType, SocialRole
 from babylon.models.world_state import WorldState
@@ -78,6 +78,13 @@ def _overshoot_state(tick: int) -> WorldState:
         role=SocialRole.PERIPHERY_PROLETARIAT,
         s_bio=1.0,
         s_class=1.0,
+        # Spec-116: fascist_consolidation now gates on a FRACTION of
+        # ideology-bearing nodes, not an absolute count — IdeologicalProfile's
+        # own defaults (national_identity=0.5 > class_consciousness=0.0) would
+        # make this single-entity fixture spuriously read as 100% fascist.
+        # Pin an explicitly non-fascist profile so this fixture only probes
+        # the ecological_collapse axis it's named for.
+        ideology=IdeologicalProfile(national_identity=0.1, class_consciousness=0.5),
     )
     territory = Territory(
         id="T001",
@@ -142,6 +149,10 @@ class TestResolveTickWiresRealEndgameDetector:
                 role=SocialRole.PERIPHERY_PROLETARIAT,
                 s_bio=0.01,
                 s_class=0.0,
+                # Spec-116: see _overshoot_state's comment above — pin a
+                # non-fascist profile so this fixture only probes "no axis
+                # ever fires" rather than spuriously reading as fascist.
+                ideology=IdeologicalProfile(national_identity=0.1, class_consciousness=0.5),
             )
             territory = Territory(
                 id="T001",

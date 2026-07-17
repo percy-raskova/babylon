@@ -482,9 +482,9 @@ Control simulation ending detection thresholds:
    * - ``ecological_sustained_ticks``
      - 5
      - Consecutive ticks before collapse triggers
-   * - ``fascist_majority_threshold``
-     - 3
-     - Nodes with national_identity > class_consciousness
+   * - ``fascist_majority_fraction``
+     - 0.75
+     - Fraction of ideology-bearing nodes with national_identity > class_consciousness
 
 Precision Parameters
 ~~~~~~~~~~~~~~~~~~~~

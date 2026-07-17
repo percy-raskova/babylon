@@ -7,9 +7,14 @@ version of this concern's tests mocked ``event.event_type = "RED_OGV"``
 directly on a fake event — a shape no real ``EndgameEvent`` ever has
 (``event_type`` is ALWAYS ``EventType.ENDGAME_REACHED``; the outcome lives
 in a separate typed ``outcome`` field). These tests now drive a
-monkeypatched ``EndgameDetector`` subclass (forcing one ``_check_*``
-predicate True) through ``resolve_tick`` and assert on the detector-driven
-snapshot block.
+monkeypatched ``EndgameDetector`` subclass (forcing one ``_axis_*``
+evaluator to report ``(1.0, True)``, the rest ``(0.0, False)``) through
+``resolve_tick`` and assert on the detector-driven snapshot block.
+
+Spec-116 FR-116-1: the detector's per-axis predicates were renamed from
+``_check_<axis>(state) -> bool`` to ``_axis_<axis>(state, graph) ->
+tuple[float, bool]`` (progress, matched) as part of the adjudicator ->
+recognizer rework; this fixture's forced-outcome technique follows suit.
 """
 
 from __future__ import annotations
@@ -82,27 +87,31 @@ def _make_mock_new_state(tick: int = 1) -> MagicMock:
 
 def _forced_outcome_detector_class(forced: str) -> type[EndgameDetector]:
     """Build an ``EndgameDetector`` subclass that forces exactly one
-    ``_check_*`` predicate True (the rest False), a predicate-isolation
-    technique. This drives ``resolve_tick``'s new detector wiring to a known
-    outcome without needing to construct real WorldState fixtures for every
-    one of the 5 endgames' (often mutually-contradictory) prerequisites.
+    ``_axis_*`` evaluator to report matched (the rest unmatched), a
+    predicate-isolation technique. This drives ``resolve_tick``'s new
+    detector wiring to a known outcome without needing to construct real
+    WorldState fixtures for every one of the 5 endgames' (often
+    mutually-contradictory) prerequisites.
     """
 
+    def _forced(name: str) -> tuple[float, bool]:
+        return (1.0, True) if forced == name else (0.0, False)
+
     class ForcedDetector(EndgameDetector):
-        def _check_red_ogv(self, state: Any) -> bool:
-            return forced == "red_ogv"
+        def _axis_red_ogv(self, state: Any, graph: Any) -> tuple[float, bool]:
+            return _forced("red_ogv")
 
-        def _check_fragmented_collapse(self, state: Any) -> bool:
-            return forced == "fragmented_collapse"
+        def _axis_fragmented_collapse(self, state: Any, graph: Any) -> tuple[float, bool]:
+            return _forced("fragmented_collapse")
 
-        def _check_ecological_collapse(self, state: Any) -> bool:
-            return forced == "ecological_collapse"
+        def _axis_ecological_collapse(self, state: Any, graph: Any) -> tuple[float, bool]:
+            return _forced("ecological_collapse")
 
-        def _check_fascist_consolidation(self, state: Any) -> bool:
-            return forced == "fascist_consolidation"
+        def _axis_fascist_consolidation(self, state: Any, graph: Any) -> tuple[float, bool]:
+            return _forced("fascist_consolidation")
 
-        def _check_revolutionary_victory(self, state: Any) -> bool:
-            return forced == "revolutionary_victory"
+        def _axis_revolutionary_victory(self, state: Any, graph: Any) -> tuple[float, bool]:
+            return _forced("revolutionary_victory")
 
     return ForcedDetector
 

@@ -4645,13 +4645,12 @@ class EngineBridge:
             detector = EndgameDetector(defines=game_defines)
             detector.on_simulation_start(state, sim_config)
             _session_endgame_detectors[session_id] = detector
-        if not detector.is_game_over:
-            detector.on_tick(state, new_state)
-            if detector.is_game_over:
-                endgame_event = EndgameEvent(tick=new_state.tick, outcome=detector.outcome)
-                new_state = new_state.model_copy(
-                    update={"events": [*new_state.events, endgame_event]}
-                )
+        previous_pattern = detector.recognized_pattern
+        detector.on_tick(state, new_state)
+        current_pattern = detector.recognized_pattern
+        if current_pattern is not None and current_pattern is not previous_pattern:
+            endgame_event = EndgameEvent(tick=new_state.tick, outcome=current_pattern)
+            new_state = new_state.model_copy(update={"events": [*new_state.events, endgame_event]})
 
         # Persist the new tick
         new_graph = new_state.to_graph()
@@ -4774,9 +4773,12 @@ class EngineBridge:
         # empty: the engine adjudicates, it does not narrate (Constitution)
         # — the async narrative_service call below is the correct place for
         # prose, not this synchronous path.
-        if detector.is_game_over:
+        # Spec-116 FR-116-1: EndgameDetector is now a pattern recognizer —
+        # recognized_pattern replaces outcome/is_game_over (Task 4 replaces
+        # this recognition-ends-game display with the fixed century horizon).
+        if current_pattern is not None:
             snapshot["endgame"] = {
-                "outcome": detector.outcome.value,
+                "outcome": current_pattern.value,
                 "tick": new_state.tick,
                 "summary": "",
             }

@@ -1,19 +1,24 @@
-"""Integration tests for endgame flow (Slice 1.6).
-
-TDD Red Phase: These tests verify end-to-end endgame detection and
-simulation termination. The tests WILL FAIL until implementations exist.
+"""Integration tests for endgame flow (Slice 1.6 / spec-116).
 
 Slice 1.6: Endgame Integration
 
 These tests verify that:
 1. EndgameDetector integrates with Simulation facade
-2. Simulation terminates when endgame is detected
-3. run() returns both final state and outcome
-4. Simulation continues while IN_PROGRESS
+2. Simulation (legacy facade) terminates run_until_endgame when a pattern
+   is recognized
+3. run_until_endgame() returns both final state and outcome
+4. Simulation continues while no pattern is recognized
 
 The integration ensures the full pipeline works:
     Simulation.step() -> Observer notification -> EndgameDetector.on_tick()
-    -> GameOutcome check -> Simulation termination
+    -> recognized_pattern check -> Simulation termination
+
+Spec-116 FR-116-1 (owner ruling 2026-07-17): EndgameDetector is a pattern
+RECOGNIZER, not an adjudicator — ``is_game_over``/``outcome`` are gone,
+replaced by ``recognized_pattern``/``pattern_since_tick``. The legacy
+``Simulation.run_until_endgame()``/``get_outcome()`` facade here still stops
+the loop on first recognition (Task 4 replaces this with the fixed century
+horizon; this suite only keeps the wiring honest for this task).
 
 NOTE: red_phase markers retired 2026-07-08 — the suite runs green.
 """
@@ -186,14 +191,15 @@ def create_in_progress_state() -> WorldState:
 
 @pytest.mark.integration
 class TestSimulationTermination:
-    """Test the termination mechanism: when EndgameDetector fires, the
-    simulation stops and reports the outcome it fired.
+    """Test the termination mechanism: when EndgameDetector recognizes a
+    pattern, the simulation stops and reports the pattern it recognized.
 
     Babylon does not test for specific endgame outcomes — the game runs to a
     fixed century horizon and endgame behavior is emergent. The fascist
     false-consciousness fixture used here is only the cheapest vehicle to
-    make the detector fire; the subject under test is the wiring between
-    EndgameDetector.is_game_over and Simulation.run_until_endgame().
+    make the detector recognize a pattern; the subject under test is the
+    wiring between EndgameDetector.recognized_pattern and
+    Simulation.run_until_endgame().
     """
 
     def test_simulation_terminates_when_detector_fires(
@@ -201,13 +207,13 @@ class TestSimulationTermination:
         config: SimulationConfig,
         endgame_detector: EndgameDetector,
     ) -> None:
-        """When EndgameDetector fires, run_until_endgame() stops and returns
-        (final_state, outcome).
+        """When EndgameDetector recognizes a pattern, run_until_endgame()
+        stops and returns (final_state, outcome).
 
         The run_until_endgame() method should:
         1. Run simulation ticks
-        2. Check EndgameDetector.is_game_over after each tick
-        3. Stop when game ends
+        2. Check EndgameDetector.recognized_pattern after each tick
+        3. Stop when a pattern is recognized
         4. Return the final state and outcome
         """
         initial_state = create_fascist_state()
@@ -220,7 +226,7 @@ class TestSimulationTermination:
         final_state, outcome = sim.run_until_endgame(max_ticks=100)
 
         assert outcome == GameOutcome.FASCIST_CONSOLIDATION
-        assert endgame_detector.is_game_over is True
+        assert endgame_detector.recognized_pattern is not None
 
 
 # =============================================================================
@@ -306,8 +312,7 @@ class TestSimulationContinues:
             sim.step()
 
         assert sim.current_state.tick == 10
-        assert endgame_detector.outcome == GameOutcome.IN_PROGRESS
-        assert endgame_detector.is_game_over is False
+        assert endgame_detector.recognized_pattern is None
 
     def test_get_outcome_method_on_simulation(
         self,
@@ -358,7 +363,7 @@ class TestObserverIntegration:
 
         # Detector should have processed ticks
         # We can verify by checking internal state or that no errors occurred
-        assert detector.outcome == GameOutcome.IN_PROGRESS
+        assert detector.recognized_pattern is None
 
     def test_endgame_detector_receives_start_notification(
         self,
@@ -373,7 +378,7 @@ class TestObserverIntegration:
         sim.step()
 
         # Detector should be initialized (no errors)
-        assert detector.outcome == GameOutcome.IN_PROGRESS
+        assert detector.recognized_pattern is None
 
     def test_endgame_detector_protocol_compatibility(self) -> None:
         """EndgameDetector satisfies SimulationObserver protocol."""
@@ -388,49 +393,36 @@ class TestObserverIntegration:
 
 @pytest.mark.integration
 class TestEndgameEvents:
-    """Test ENDGAME_REACHED events in simulation."""
+    """Test pattern recognition surfaces through the legacy Simulation facade.
+
+    Spec-116: EndgameDetector itself no longer self-emits an ENDGAME_REACHED
+    event via get_pending_events() (that was ``_emit_endgame_event``, deleted
+    with the recognizer rework) — event construction is now a caller's
+    responsibility (e.g. ``web/game/engine_bridge.py``'s resolve_tick, which
+    this legacy facade path does not exercise). This test now verifies only
+    the recognizer's own surface: recognized_pattern and run_until_endgame's
+    return contract.
+    """
 
     def test_endgame_event_in_final_state(
         self,
         config: SimulationConfig,
         endgame_detector: EndgameDetector,
     ) -> None:
-        """ENDGAME_REACHED event is retrievable from EndgameDetector when game ends.
-
-        The event is collected from EndgameDetector via get_pending_events().
-        Since Simulation collects events after each tick, we verify:
-        1. The detector has detected game end
-        2. The outcome matches what was detected
-        """
-        from babylon.models.enums import EventType
-
+        """recognized_pattern reflects the pattern run_until_endgame() reports."""
         initial_state = create_fascist_state()
         sim = Simulation(initial_state, config, observers=[endgame_detector])
 
         final_state, outcome = sim.run_until_endgame(max_ticks=100)
 
-        # Verify endgame was detected
-        assert endgame_detector.is_game_over, "EndgameDetector should detect game end"
+        # Verify a pattern was recognized
+        assert endgame_detector.recognized_pattern is not None, (
+            "EndgameDetector should recognize a pattern"
+        )
         assert outcome == GameOutcome.FASCIST_CONSOLIDATION
 
-        # Verify the ENDGAME_REACHED event was generated
-        # Note: Events are collected by Simulation during run_until_endgame()
         # The final state's tick should be >= 1 indicating simulation ran
         assert final_state.tick >= 1, "Simulation should have run at least one tick"
-
-        # Alternative verification: check the persistent context for collected events
-        # This verifies the observer pattern is working correctly
-        context = sim._persistent_context
-        if "_observer_events" in context:
-            observer_events = context["_observer_events"]
-            endgame_events = [
-                e
-                for e in observer_events
-                if getattr(e, "event_type", None) == EventType.ENDGAME_REACHED
-            ]
-            assert len(endgame_events) >= 1, (
-                f"ENDGAME_REACHED event not found in observer events: {observer_events}"
-            )
 
 
 # =============================================================================
@@ -477,8 +469,8 @@ class TestEndgameStability:
         sim.run(200)
 
         assert sim.current_state.tick == 200
-        # Should still be in progress (no endgame conditions)
-        assert detector.outcome == GameOutcome.IN_PROGRESS
+        # Should still have no recognized pattern (no endgame conditions)
+        assert detector.recognized_pattern is None
 
 
 # =============================================================================
@@ -519,7 +511,7 @@ class TestMultipleObservers:
 
         # Should still detect endgame correctly
         assert outcome != GameOutcome.IN_PROGRESS
-        assert endgame.is_game_over is True
+        assert endgame.recognized_pattern is not None
 
         # Other observers should have run without error
         # (TopologyMonitor has history we can check)

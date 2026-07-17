@@ -299,7 +299,6 @@ endgame:
   revolutionary_consciousness_threshold: 0.8  # Game design: average consciousness threshold for revolutionary victory (80%). (>= 0.0, <= 1.0)
   ecological_overshoot_threshold: 2.0  # Game design: overshoot ratio threshold for ecological collapse tracking. (> 0.0)
   ecological_sustained_ticks: 5  # Game design: consecutive ticks of overshoot before collapse triggers. (>= 1, <= 100)
-  fascist_majority_threshold: 3  # Game design: minimum nodes with national_identity > class_consciousness. (>= 1, <= 100)
   campaign_horizon_years: 100  # Game design: fixed campaign horizon in in-game years. The game ends only when tick >= horizon_years * timescale.weeks_per_year (owner ruling 2026-07-17: outcomes are recognized patterns, never terminators). (>= 1, <= 1000)
   pattern_lock_ticks: 26  # Game design: consecutive ticks a recognized outcome pattern must hold before it is 'locked' and the Council may accept the outcome early. (>= 1, <= 520)
   fascist_majority_fraction: 0.75  # Game design: fraction of social-class nodes with national_identity > class_consciousness required to recognize FASCIST_CONSOLIDATION (replaces the scenario-size-degenerate absolute count). (>= 0.5, <= 1.0)

@@ -56,13 +56,22 @@ class ClassDynamicsDefines(BaseModel):
         default=0.294,
         ge=0.0,
         le=1.0,
-        description="Target equilibrium wealth share for class 3 (proletariat)",
+        description=(
+            "Target equilibrium wealth share for class 3 (labor aristocracy — the "
+            "p50-90 stratum; owner ruling 2026-07-16 fixed the old 'proletariat' "
+            "mislabel: households holding ~29% of national wealth are the LA)"
+        ),
     )
     equilibrium_w4: float = Field(
         default=0.020,
         ge=0.0,
         le=1.0,
-        description="Target equilibrium wealth share for class 4 (lumpenproletariat)",
+        description=(
+            "Target equilibrium wealth share for class 4 (the proletariat, singular "
+            "— bottom 50%; owner ruling 2026-07-16 folded internal + periphery "
+            "proletariats and the lumpen into one bracket: migrant farm workers, "
+            "the $7.25 stratum)"
+        ),
     )
 
     # --- Extraction rates (FRED DFA-fitted, per quarter) ---

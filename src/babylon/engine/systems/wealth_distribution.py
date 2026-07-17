@@ -23,11 +23,17 @@ PHASE 1 SCOPE (binding, per the design brief): observe-only shadow.
 - Deterministic by construction: seeded from defines, iterated in sorted node
   order, no RNG (Constitution III.7).
 
-PROVISIONAL bracket mapping (owner ruling pending — the brief's §6 naming
-collision): the 8 ``SocialRole`` members fold onto the 4 wealth brackets by
-the Fed-DFA ``dim_wealth_class.babylon_class`` correspondence (LT01→core
-bourgeoisie, N09→petty bourgeoisie, N40→labor aristocracy, B50→internal
-proletariat) extended to the remaining roles by class position.
+Bracket mapping RATIFIED (owner ruling 2026-07-16, ADR075): the 8
+``SocialRole`` members fold onto the 4 wealth brackets by the Fed-DFA
+``dim_wealth_class.babylon_class`` correspondence. Two clarifications from
+the ruling: CARCERAL_ENFORCER is a *distinctive subclass of the labor
+aristocracy* (same w3 bracket, kept as its own role for the decomposition
+mechanics); INTERNAL_PROLETARIAT and PERIPHERY_PROLETARIAT read as ONE
+singular proletariat in w4 (migrant farm workers, the $7.25 stratum — the
+periphery-internal distinction is an extraction-channel fact, not a wealth-
+bracket fact). A possible future enum-level merge of the two proletariat
+roles is NOTED, not executed (the LA-decomposition mechanic references
+INTERNAL_PROLETARIAT specifically).
 """
 
 from __future__ import annotations
@@ -47,8 +53,8 @@ if TYPE_CHECKING:
     from babylon.kernel.graph_protocol import GraphProtocol
     from babylon.kernel.services import ServicesProtocol
 
-#: PROVISIONAL 8-role → 4-bracket fold (0=w1 top-1%, 1=w2 p90-99,
-#: 2=w3 p50-90, 3=w4 bottom-50). Owner ruling pending; see module docstring.
+#: RATIFIED 8-role → 4-bracket fold (0=w1 top-1%, 1=w2 p90-99,
+#: 2=w3 p50-90, 3=w4 bottom-50). Owner ruling 2026-07-16; see module docstring.
 _BRACKET_BY_ROLE: dict[SocialRole, int] = {
     SocialRole.CORE_BOURGEOISIE: 0,
     SocialRole.COMPRADOR_BOURGEOISIE: 0,

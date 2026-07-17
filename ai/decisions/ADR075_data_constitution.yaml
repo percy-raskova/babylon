@@ -79,6 +79,41 @@ ADR075_data_constitution:
       as a replay assertion over SessionRecorder history; it stays pending
       because the Phase-1 relaxation dynamics never leave the band — it
       lands with Phase-2 feedback (ruling 5c).
+  rulings_resolved: |
+    Owner ruled 2026-07-16 (same session, all four approved with amendments):
+    1. AMPUTATIONS: approved as proposed EXCEPT (a) fact_productivity_annual
+       -> FILL (build the loader from the staged labor-productivity xlsx;
+       view_surplus_value + view_imperial_rent come alive); (b) the
+       fact_census_median_income + fact_census_rent_burden pair -> FILL
+       ("find a place to fit those in" — view_rent_crisis housing mechanics);
+       (c) the minerals/commodity subtree (A15-A18 + dims + dim_commodity)
+       -> PROGRAM 22 "Resources & Raw Materials": three-altitude scheme —
+       ~90 USGS MCS minerals national / 42 SCTG flow classes on the Program
+       11 transport substrate (FAF5 2.49M rows already loaded) / per-hex
+       stocks already live in MetabolismSystem. "Realistic and detailed":
+       full resolution where data exists, honest class-aggregation where it
+       does not, never fabricated precision. R1-R5 artifact conversions
+       approved (ride the Parquet program). Net dispositions after flips:
+       keep 54 / fill 16 / amputate 16 (all APPROVED, execution pending) /
+       investigate 16 / artifact 5.
+    2. BRACKET FOLD: ratified as shipped. CARCERAL_ENFORCER = a distinctive
+       SUBCLASS of the labor aristocracy (same w3 bracket; role retained for
+       decomposition mechanics). INTERNAL_ + PERIPHERY_PROLETARIAT read as
+       ONE singular proletariat in w4 (migrant farm workers, the $7.25
+       stratum) — periphery stays IN the national fold; the periphery-
+       internal distinction is an extraction-channel fact, not a wealth-
+       bracket fact. Define labels fixed (w3 "proletariat" mislabel -> labor
+       aristocracy; w4 -> proletariat singular). Enum-level merge of the two
+       proletariat roles NOTED as future simplification, not executed.
+    3. PHASE-2 FEEDBACK: option (b) — authorized in principle, spec-first,
+       sequenced after the data work.
+    4. ALTITUDE: PER-COUNTY, via principled H3/sheaf downward projection —
+       "that's the point of the sheaf topology and the h3 structure: to be
+       able to disaggregate in a principled way." The national measured
+       vector remains the anchor; county/hex wealth distributions are
+       DERIVED sections conditioned on local observables (county income
+       distribution, housing, QCEW), labeled derived-not-measured. This is
+       a design directive for the Phase-2 spec, not a same-day build.
   evidence: |
     reports/data-constitution-triage-2026-07-16.md (99-table matrix);
     reports/data-constitution-catalog-sentinel-brief.md;

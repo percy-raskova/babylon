@@ -144,11 +144,6 @@ TABLE: dict[str, TablePolicy] = {
     # -- dim_* — ALL full (small; see _DIM_BRIDGE_REASON), a few with a more
     #    specific reason where a real test depends on their exact content. --
     "dim_asset_category": TablePolicy("full", _DIM_BRIDGE_REASON),
-    "dim_bea_economic_area": TablePolicy(
-        "full",
-        "8 rows; tests/integration/test_michigan_reference_data.py asserts "
-        "an exact count (BEA_EA_COUNT) — full by construction anyway.",
-    ),
     "dim_bea_industry": TablePolicy("full", _DIM_BRIDGE_REASON),
     "dim_bea_io_table_type": TablePolicy("full", _DIM_BRIDGE_REASON),
     "dim_cfs_area": TablePolicy("full", _DIM_BRIDGE_REASON),
@@ -177,8 +172,6 @@ TABLE: dict[str, TablePolicy] = {
     "dim_education_level": TablePolicy("full", _DIM_BRIDGE_REASON),
     "dim_employment_area": TablePolicy("full", _DIM_BRIDGE_REASON),
     "dim_employment_status": TablePolicy("full", _DIM_BRIDGE_REASON),
-    "dim_energy_series": TablePolicy("full", _DIM_BRIDGE_REASON),
-    "dim_energy_table": TablePolicy("full", _DIM_BRIDGE_REASON),
     "dim_fred_series": TablePolicy(
         "full", "41 rows; joined by fact_fred_national reads in sqlite_hydrator.py."
     ),
@@ -209,7 +202,6 @@ TABLE: dict[str, TablePolicy] = {
     "dim_worker_class": TablePolicy("full", _DIM_BRIDGE_REASON),
     # -- bridge_* — full except bridge_lodes_block (deviation, see reason). --
     "bridge_cfs_county": TablePolicy("full", "0 rows in source — trivially full."),
-    "bridge_county_bea_ea": TablePolicy("full", "83 rows, Michigan-only by construction already."),
     "bridge_county_h3": TablePolicy(
         "full",
         "OWNER'S CALL (documented per task): already 93.6% Michigan "
@@ -221,15 +213,6 @@ TABLE: dict[str, TablePolicy] = {
     ),
     "bridge_county_metro": TablePolicy(
         "full", "Small; feeds the Detroit-MSA test alongside dim_metro_area."
-    ),
-    "bridge_lodes_block": TablePolicy(
-        "skip",
-        "DEVIATION from the 'all bridge_* -> full' default (documented per "
-        "task): unreferenced by any src/ module or test (only an ORM "
-        "declaration in schema.py — verified via repo-wide grep), and at "
-        "109.7 MB it is not 'small' like every other bridge_* table (all "
-        "others are <=1.46 MB). No consumer exists to justify shipping a "
-        "109.7 MB table with zero test coverage — SKIP.",
     ),
     "bridge_naics_bea": TablePolicy("full", _DIM_BRIDGE_REASON),
     # -- fact_* — Michigan-scoped (county-linked, actually read). --
@@ -365,15 +348,6 @@ TABLE: dict[str, TablePolicy] = {
         "National monthly trade series (joined dim_country) read by "
         "sqlite_hydrator.py; tiny (44,808 rows, 1.34 MB).",
     ),
-    "fact_ricci_unequal_exchange": TablePolicy(
-        "full",
-        "Populated 2026-07-16 by tools/ingest/ricci_unequal.py (29 region-"
-        "level TOTAL transfer rows from the in-repo babylon_ricci_final.csv) "
-        "and pinned by tests/unit/reference/test_unequal_exchange_refdb_sync"
-        ".py (requires_reference_db lane); tiny. The hydrator note from the "
-        "schema-only era still applies: sqlite_hydrator names this table "
-        "unconditionally, so it must at least exist.",
-    ),
     "fact_fred_wealth_levels": TablePolicy(
         "full",
         "Found via verification grep beyond the original recon inventory: "
@@ -442,7 +416,6 @@ TABLE: dict[str, TablePolicy] = {
         "metrics, 2020-2024) via python -m babylon_data.materials; base of the "
         "KEEP view_critical_materials; tiny — ship complete.",
     ),
-    "fact_energy_annual": TablePolicy("skip", _UNREFERENCED_REASON),
     "fact_eviction_lab_filing": TablePolicy("skip", _UNREFERENCED_REASON),
     "fact_foreclosure_rate": TablePolicy("skip", _UNREFERENCED_REASON),
     "fact_fred_wealth_shares": TablePolicy(

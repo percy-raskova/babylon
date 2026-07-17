@@ -332,19 +332,6 @@ tables:
       of commodity-flow value.
     notes: 0 rows; no loader ever populated it (never separately implemented from the
       CFS family).
-  - name: bridge_county_bea_ea
-    kind: table
-    source: BEA_EA
-    extractor: deleted @ 4ce7c96a^ absent (scripts/load_bea_ea.py, deliberately retired
-      post-population)
-    tests:
-      - tests/integration/test_michigan_reference_data.py
-    disposition: artifact
-    subset_policy: full
-    material_relation: county-to-BEA-Economic-Area membership — the regional aggregation
-      key for BEA county-GDP redistribution/regional-multiplier analysis.
-    notes: one-shot loader deliberately removed after populating; target = checked-in
-      CSV artifact.
   - name: bridge_county_h3
     kind: table
     source: derived
@@ -369,15 +356,6 @@ tables:
     subset_policy: full
     material_relation: county-to-Metropolitan-Statistical-Area membership — the urban-agglomeration
       key for the MSA-tier zoom hierarchy (Detroit MSA tests).
-  - name: bridge_lodes_block
-    kind: table
-    source: LODES
-    extractor: deleted @ 4ce7c96a^ (src/babylon/data/lodes/loader_3nf.py)
-    disposition: artifact
-    subset_policy: skip
-    material_relation: census-block-to-county crosswalk for LODES commuter flows — enables
-      future hex-level commuter disaggregation below county grain.
-    notes: 1.15M rows, 109.7MB; zero code consumers; ARTIFACT_IZE target = parquet.
   - name: bridge_naics_bea
     kind: table
     source: BEA_NAICS_CONCORDANCE
@@ -409,17 +387,6 @@ tables:
     material_relation: asset-class taxonomy (real estate, equities, deposits...) for
       wealth-concentration decomposition — anchors which asset form embodies extracted
       surplus.
-  - name: dim_bea_economic_area
-    kind: table
-    source: BEA_EA
-    extractor: deleted @ 4ce7c96a^ absent (scripts/load_bea_ea.py, deliberately retired
-      post-population)
-    tests:
-      - tests/integration/test_michigan_reference_data.py
-    disposition: artifact
-    subset_policy: full
-    material_relation: BEA Economic Area definitions (8 Michigan-region EAs) — the regional
-      dimension bridge_county_bea_ea joins against.
   - name: dim_bea_industry
     kind: table
     source: BEA_IO_NATIONAL_SUPPLY
@@ -502,12 +469,12 @@ tables:
   - name: dim_country
     kind: table
     source: Comtrade
-    extractor: tools/ingest/ricci_unequal.py
+    extractor: "tools/ingest/ricci_unequal.py (retired 2026-07-17 with the R2 demotion;
+      country rows persist in the DB)"
     consumers:
       - src/babylon/persistence/postgres_initialization.py
       - src/babylon/persistence/sqlite_hydrator.py
       - src/babylon/domain/economics/melt/gamma_hydration.py
-      - tools/ingest/ricci_unequal.py
     tests:
       - tests/unit/reference/test_exposure_schema.py
       - tests/unit/economics/melt/test_gamma_hydration.py
@@ -604,22 +571,6 @@ tables:
     subset_policy: full
     material_relation: ACS employment-status taxonomy (employed/unemployed/not-in-labor-force)
       — the classification the Phase-5.1 gamma_III brief plans to join against fact_census_employment.
-  - name: dim_energy_series
-    kind: table
-    source: EIA
-    extractor: deleted @ 4ce7c96a^ (src/babylon/data/energy/loader_3nf.py)
-    disposition: investigate
-    subset_policy: full
-    material_relation: EIA energy-series metadata (production/consumption by fuel type)
-      — the series dimension for fact_energy_annual's metabolic-rift energy accounting.
-  - name: dim_energy_table
-    kind: table
-    source: EIA
-    extractor: deleted @ 4ce7c96a^ (src/babylon/data/energy/loader_3nf.py)
-    disposition: investigate
-    subset_policy: full
-    material_relation: EIA Monthly Energy Review table catalog — groups energy series
-      into their source-table/category for fact_energy_annual.
   - name: dim_fred_series
     kind: table
     source: FRED
@@ -821,9 +772,7 @@ tables:
       - tools/load_bea_io.py
       - tools/ingest_bea_imports.py
       - tools/ingest/bea_final_demand.py
-      - tools/ingest/ricci_unequal.py
       - tools/ingest/hickel_erdi.py
-      - tools/ingest_hickel_ricci.py
       - tools/validate_bea_io_against_shaikh.py
       - tools/normalize_qcew_rollups.py
     tests:
@@ -1177,16 +1126,6 @@ tables:
     subset_policy: michigan
     material_relation: per-county exposure-weight to external trade blocs — the derived
       product routing bloc-level Phi imperial rent down to individual counties.
-  - name: fact_energy_annual
-    kind: table
-    source: EIA
-    extractor: deleted @ 4ce7c96a^ (src/babylon/data/energy/loader_3nf.py + api_client.py)
-    disposition: artifact
-    subset_policy: skip
-    material_relation: EIA Monthly Energy Review production series (1949-2023) — the
-      metabolic-rift energy-throughput data view_energy_consumption surfaces.
-    notes: 'ARTIFACT_IZE target: parquet + catalog; superseded by fact_state_minerals
-      per spec-065.'
   - name: fact_eviction_lab_filing
     kind: table
     source: Eviction_Lab
@@ -1387,22 +1326,6 @@ tables:
     subset_policy: full
     material_relation: own_code='0' Total-Covered per-county employment rollup — the
       national employment total MELT's [100M,200M] sanity bound depends on.
-  - name: fact_ricci_unequal_exchange
-    kind: table
-    source: Ricci2021
-    extractor: tools/ingest/ricci_unequal.py
-    consumers:
-      - tools/ingest/ricci_unequal.py
-    tests:
-      - tests/unit/reference/test_unequal_exchange_artifacts.py
-      - tests/unit/reference/test_unequal_exchange_refdb_sync.py
-      - tests/integration/test_immutable_reference_readonly_at_runtime.py
-    disposition: artifact
-    subset_policy: full
-    material_relation: Ricci (2021) region-level unequal-exchange value-transfer totals
-      — a redundant-source corroboration series for the Hickel ERDI drain estimate.
-    notes: 'ARTIFACT_IZE: CSV (babylon_ricci_final.csv) already canonical; drop/demote
-      DB mirror.'
   - name: fact_state_minerals
     kind: table
     source: USGS_MCS
@@ -1456,20 +1379,6 @@ tables:
     subset_policy: skip
     material_relation: surfaces USGS MCS commodity observations restricted to is_critical=1
       — the strategic-materials extraction-dependency view.
-    notes: well-formed, real data; zero code consumers, ad hoc analytical query surface
-      only.
-  - name: view_energy_consumption
-    kind: view
-    source: derived
-    reads:
-      - fact_energy_annual
-      - dim_energy_series
-      - dim_energy_table
-      - dim_time
-    disposition: keep
-    subset_policy: skip
-    material_relation: aggregates EIA energy-series production data by table/series/year
-      — the metabolic-rift energy-throughput surface.
     notes: well-formed, real data; zero code consumers, ad hoc analytical query surface
       only.
   - name: view_imperial_rent

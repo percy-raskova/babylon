@@ -148,60 +148,6 @@ class BridgeCountyMetro(NormalizedBase):
     is_principal_city: Mapped[bool] = mapped_column(default=False)
 
 
-class DimBEAEconomicArea(NormalizedBase):
-    """BEA Economic Areas (2004 redefinition).
-
-    Bureau of Economic Analysis Economic Areas are functional economic
-    regions defined by commuting patterns and newspaper circulation.
-    Unlike MSAs (which cover ~85% of the population), BEA EAs provide
-    wall-to-wall coverage of the entire US, including rural areas.
-
-    The 2004 redefinition partitions CONUS into ~179 EAs, each anchored
-    by a node metropolitan area. Cross-state EAs are common (e.g.,
-    Chicago EA includes Berrien County MI, Toledo EA includes Monroe
-    County MI).
-
-    Data Source:
-        BEA Regional Economic Areas (REA) 2004 definitions
-        https://www.bea.gov/regional/
-
-    Use Cases:
-        - Mid-tier zoom aggregation in the map API (between state and county)
-        - Labor market boundary analysis
-        - Regional economic divergence tracking (Spec 040 Sub-Test B)
-    """
-
-    __tablename__ = "dim_bea_economic_area"
-
-    bea_ea_id: Mapped[int] = mapped_column(primary_key=True)
-    ea_code: Mapped[str] = mapped_column(String(10), unique=True, nullable=False)
-    ea_name: Mapped[str] = mapped_column(String(200), nullable=False)
-    node_metro_area: Mapped[str | None] = mapped_column(String(200))
-
-    __table_args__ = (Index("idx_bea_ea_code", "ea_code"),)
-
-
-class BridgeCountyBEAEA(NormalizedBase):
-    """County to BEA Economic Area mapping.
-
-    National-scope bridge table mapping all ~3,143 US counties to their
-    BEA Economic Area. Loaded nationally (not just Michigan) to correctly
-    handle cross-border EAs.
-
-    Cross-border examples relevant to Michigan:
-        - Berrien County (26021) → Chicago-Naperville EA
-        - Monroe County (26115) → Toledo OH EA
-        - Menominee County (26109) → Marinette WI-MI EA
-    """
-
-    __tablename__ = "bridge_county_bea_ea"
-
-    county_id: Mapped[int] = mapped_column(ForeignKey("dim_county.county_id"), primary_key=True)
-    bea_ea_id: Mapped[int] = mapped_column(
-        ForeignKey("dim_bea_economic_area.bea_ea_id"), primary_key=True
-    )
-
-
 class BridgeCountyH3(NormalizedBase):
     """H3 hexagon to county mapping for spatial aggregation.
 
@@ -627,31 +573,6 @@ class DimPovertyCategory(NormalizedBase):
 # =============================================================================
 
 
-class DimEnergyTable(NormalizedBase):
-    """Energy table metadata with Marxian interpretation."""
-
-    __tablename__ = "dim_energy_table"
-
-    table_id: Mapped[int] = mapped_column(primary_key=True)
-    table_code: Mapped[str] = mapped_column(String(20), unique=True, nullable=False)
-    title: Mapped[str] = mapped_column(String(300), nullable=False)
-    category: Mapped[str | None] = mapped_column(String(100))
-    marxian_interpretation: Mapped[str | None] = mapped_column(Text)
-
-
-class DimEnergySeries(NormalizedBase):
-    """Energy series dimension."""
-
-    __tablename__ = "dim_energy_series"
-
-    series_id: Mapped[int] = mapped_column(primary_key=True)
-    table_id: Mapped[int] = mapped_column(ForeignKey("dim_energy_table.table_id"), nullable=False)
-    series_code: Mapped[str] = mapped_column(String(50), unique=True, nullable=False)
-    series_name: Mapped[str] = mapped_column(String(200), nullable=False)
-    units: Mapped[str | None] = mapped_column(String(50))
-    column_index: Mapped[int | None] = mapped_column()
-
-
 # =============================================================================
 # FRED DIMENSION TABLES
 # =============================================================================
@@ -850,45 +771,6 @@ class IngestCheckpoint(NormalizedBase):
             name="uq_ingest_checkpoint",
         ),
         Index("idx_checkpoint_source_year", "source_code", "year"),
-    )
-
-
-class StagingArcGISFeature(NormalizedBase):
-    """Staging table for ArcGIS features pending county-level aggregation.
-
-    Enables resume capability for HIFLD/MIRTA loaders by streaming features
-    to database instead of holding all in memory. Features are deduplicated
-    by (source_code, object_id) and aggregated to FactCoerciveInfrastructure
-    after fetch phase completes.
-
-    Workflow:
-        1. Fetch phase: Stream features page-by-page with checkpoints
-        2. Aggregate phase: GROUP BY county_fips, type_code -> insert facts
-        3. Cleanup: Clear staging after successful aggregation
-
-    Note:
-        This is a temporary staging table, not a permanent dimension/fact.
-        Data is cleared after each successful load cycle.
-    """
-
-    __tablename__ = "staging_arcgis_feature"
-
-    feature_id: Mapped[int] = mapped_column(primary_key=True)
-    source_code: Mapped[str] = mapped_column(
-        String(50), nullable=False
-    )  # e.g., "hifld_police", "mirta"
-    object_id: Mapped[int] = mapped_column(nullable=False)  # ArcGIS OBJECTID
-    county_fips: Mapped[str | None] = mapped_column(String(5))  # 5-digit FIPS or NULL
-    type_code: Mapped[str] = mapped_column(
-        String(30), nullable=False
-    )  # e.g., "police_local", "prison_federal"
-    capacity: Mapped[int | None] = mapped_column()  # For prisons (bed count)
-
-    __table_args__ = (
-        # Unique on (source, object_id) for upsert/dedup on resume (UniqueConstraint required for ON CONFLICT)
-        UniqueConstraint("source_code", "object_id", name="uq_staging_source_objectid"),
-        # For aggregation queries
-        Index("idx_staging_county_type", "source_code", "county_fips", "type_code"),
     )
 
 
@@ -1432,18 +1314,6 @@ class FactBilateralTradeAnnual(NormalizedBase):
 # =============================================================================
 
 
-class FactEnergyAnnual(NormalizedBase):
-    """Annual energy consumption/production by series."""
-
-    __tablename__ = "fact_energy_annual"
-
-    series_id: Mapped[int] = mapped_column(
-        ForeignKey("dim_energy_series.series_id"), primary_key=True
-    )
-    time_id: Mapped[int] = mapped_column(ForeignKey("dim_time.time_id"), primary_key=True)
-    value: Mapped[Decimal | None] = mapped_column(Numeric(20, 6))
-
-
 # =============================================================================
 # FRED FACT TABLES
 # =============================================================================
@@ -1647,27 +1517,6 @@ class FactCommodityFlow(NormalizedBase):
 # =============================================================================
 # LODES CROSSWALK
 # =============================================================================
-
-
-class BridgeLodesBlock(NormalizedBase):
-    """Census block to county crosswalk from LEHD LODES.
-
-    Maps census block GEOIDs to counties, tracts, CBSAs, and ZIP codes.
-    Used for disaggregating employment data to sub-county levels.
-    """
-
-    __tablename__ = "bridge_lodes_block"
-
-    block_geoid: Mapped[str] = mapped_column(String(20), primary_key=True)
-    county_id: Mapped[int | None] = mapped_column(ForeignKey("dim_county.county_id"))
-    state_fips: Mapped[str | None] = mapped_column(String(2))
-    county_fips: Mapped[str | None] = mapped_column(String(3))
-    tract_geoid: Mapped[str | None] = mapped_column(String(11))
-    block_group: Mapped[str | None] = mapped_column(String(1))
-    cbsa_code: Mapped[str | None] = mapped_column(String(5))
-    zcta: Mapped[str | None] = mapped_column(String(5))
-    latitude: Mapped[Decimal | None] = mapped_column(Numeric(9, 6))
-    longitude: Mapped[Decimal | None] = mapped_column(Numeric(9, 6))
 
 
 class FactLodesCommuterFlow(NormalizedBase):
@@ -2142,29 +1991,6 @@ class FactBEAFinalDemandAnnual(NormalizedBase):
     )
 
 
-class FactRicciUnequalExchange(NormalizedBase):
-    """Ricci (2021) Unequal Exchange tracking metrics.
-
-    Tracks value transfers through unequal exchange related to labor value
-    and trade. Corresponds to final Ricci calibration CSVs.
-    """
-
-    __tablename__ = "fact_ricci_unequal_exchange"
-
-    id: Mapped[int] = mapped_column(primary_key=True)
-    time_id: Mapped[int] = mapped_column(ForeignKey("dim_time.time_id"), nullable=False)
-
-    country_id: Mapped[int] = mapped_column(ForeignKey("dim_country.country_id"), nullable=False)
-
-    trade_volume_billions: Mapped[float | None] = mapped_column(Float)
-    ue_transfer_billions: Mapped[float] = mapped_column(Float, nullable=False)
-
-    __table_args__ = (
-        Index("idx_ricci_time", "time_id"),
-        Index("idx_ricci_country", "country_id"),
-    )
-
-
 # =============================================================================
 # EXPORTS
 # =============================================================================
@@ -2175,8 +2001,6 @@ __all__ = [
     "DimCounty",
     "DimMetroArea",
     "BridgeCountyMetro",
-    "DimBEAEconomicArea",
-    "BridgeCountyBEAEA",
     "DimGeographicHierarchy",
     "DimCFSArea",
     "BridgeCFSCounty",
@@ -2199,8 +2023,6 @@ __all__ = [
     "DimRentBurden",
     "DimPovertyCategory",
     # Dimensions - Energy
-    "DimEnergyTable",
-    "DimEnergySeries",
     # Dimensions - FRED
     "DimWealthClass",
     "DimAssetCategory",
@@ -2215,7 +2037,6 @@ __all__ = [
     "DimRace",
     # Ingest Tracking
     "IngestCheckpoint",
-    "StagingArcGISFeature",
     # Dimensions - Coercive Infrastructure
     "DimCoerciveType",
     # Facts - Census
@@ -2239,7 +2060,6 @@ __all__ = [
     # Facts - Trade
     "FactTradeMonthly",
     # Facts - Energy
-    "FactEnergyAnnual",
     # Facts - FRED
     "FactFredNational",
     "FactFredWealthLevels",
@@ -2255,7 +2075,6 @@ __all__ = [
     "FactBroadbandCoverage",
     "FactCommodityFlow",
     # LODES Crosswalk
-    "BridgeLodesBlock",
     # Employment Industry
     "DimEmploymentArea",
     # DOT HPMS
@@ -2272,5 +2091,4 @@ __all__ = [
     "FactFAFCommodityFlow",
     "FactBEAFinalDemandAnnual",
     "FactHickelERDIAnnual",
-    "FactRicciUnequalExchange",
 ]

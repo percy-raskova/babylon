@@ -2,9 +2,45 @@
 # What exists vs what's planned - KEEP THIS UPDATED
 
 meta:
-  version: "2.37.0"  # 2.28.0 lives on feature/19-emergent-class-partition (Program 19 Phase 0+1)
-  updated: "2026-07-16"
+  version: "2.38.0"  # 2.28.0 lives on feature/19-emergent-class-partition (Program 19 Phase 0+1)
+  updated: "2026-07-17"
   truth_status: |
+    (2026-07-17 overnight) THE EXECUTION SLATE (branch feature/22-execution-slate;
+    /goal "complete all remaining open tasks"): every ADR075/ADR076 ruling
+    EXECUTED. (1) AMPUTATIONS: 16 objects dropped (A1 __pre_086 via the
+    spec-086 babylon_data CLI; 14 tables + view_labor_type via the new
+    tools/amputate_reference_tables.py — dry-run default, stray-reader guard,
+    quick_check, audit report). A21 dim_education_level DEFERRED (PK-FK
+    parent of living fact_census_education). (2) FILLS: fact_productivity_
+    annual filled (17,336 BLS rows via tools/load_productivity_annual.py) —
+    view_surplus_value + view_imperial_rent ALIVE (mining 2023: s/v 5.223,
+    W_c/V_c 0.161; the Fundamental Theorem's empirical legs exist at last);
+    view_rent_crisis REPAIRED (tools/repair_rent_crisis_view.py: full-key
+    join replaced the cross-time/race Cartesian explosion + 12.0 fixes the
+    integer-division ratio truncation) — housing pair revived as Phase-2
+    local observables. (3) PROGRAM 22 WAVE 1: materials loader revived under
+    babylon_data.materials (dead babylon.data.*/utils imports re-pointed;
+    caller-owned transactions; new aggregates.py + __main__ CLI); filled
+    dim_import_source 43 / fact_mineral_production 15 / fact_mineral_
+    employment 25 / fact_state_minerals 50; observations 3,788 -> 4,735
+    (2024 closed); is_critical re-derived from T4: 2 -> 30 flagged rows;
+    view_critical_materials alive (1,895 rows). fact_commodity_flow disagg
+    BLOCKED on bridge_cfs_county + dim_cfs_area (documented in charter).
+    (4) ADR076 EXECUTED: tools/make_data_artifacts.py + data-artifacts.yaml
+    successor registry; double-generation byte-identity PROVEN; 8 artifacts
+    (3 in-repo CSV + 5 dist parquet incl the R4 1,150,562-row spike); 9-object
+    demotion batch dropped (--batch demotion); fetch-reference-db gains a
+    manifest-driven parquet step; coverage sensor gains the artifact hash
+    check; DB-probe gains the skip-policy subset exemption (latent gap found
+    by running the probe against the v6 subset before CI ever did).
+    (5) CI-DATA-V6 RELEASED (subset 1.198GB/14.19M rows + 4 parquet assets;
+    action re-pinned). Reference DB 5.7G -> 4.2G. Catalog 107 -> 83 governed
+    rows (16 amputated, 8 demoted to the manifest). qa:regression 5/5
+    byte-identical after EVERY batch; both sentinel tiers clean vs full DB
+    AND v6 subset. specs/114 (wealth axis Phase 2: feedback + IPF per-county
+    derived sections + contrapositive replay) authored, spec-first per
+    ruling 3. Pre-surgery DB backup: /media/user/data/babylon-data/backups/.
+
     (2026-07-16 night) PROGRAM 21 — DATA CONSTITUTION (ADR075; owner ultracode
     "address the flowchart"; branch feature/21-data-constitution; PR #201 /
     ADR074 merged to dev @ 073e3b1e first, after healing two CI reds: the

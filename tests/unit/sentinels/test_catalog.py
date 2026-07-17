@@ -109,9 +109,10 @@ class TestRealCatalogInvariants:
 
     def test_catalog_loads_and_is_populated(self) -> None:
         rows = load_catalog_tables()
-        # 91 rows after the 2026-07-17 amputations (ADR075 ruling 1: 16 of the
-        # census's 107 governed rows dropped — 15 tables + view_labor_type).
-        assert len(rows) >= 91, "expected the post-amputation catalog (91 tables + views)"
+        # 83 rows after the 2026-07-17 surgeries: ADR075 ruling 1 dropped 16
+        # of the census's 107 governed rows; the ADR076 demotion moved 8 more
+        # to data-artifacts.yaml (their lineage successor registry).
+        assert len(rows) >= 83, "expected the post-demotion catalog (83 tables + views)"
         names = {r.name for r in rows}
         assert "fact_qcew_annual" in names
         assert "view_surplus_value" in names
@@ -179,4 +180,5 @@ class TestSubsetPolicyMap:
         policies = subset_policy_map()
         assert policies["dim_asset_category"] == "full"
         assert policies["fact_qcew_annual"] == "michigan"
-        assert len(policies) >= 82  # 82 after the ADR075 amputations (2026-07-17)
+        # 75 after the ADR075 amputations + ADR076 demotions (2026-07-17).
+        assert len(policies) >= 75

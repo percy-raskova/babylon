@@ -30,6 +30,8 @@ sys.path.insert(0, str(TOOLS_DIR))
 
 from amputate_reference_tables import (  # type: ignore[import-not-found]  # noqa: E402
     APPROVED_DROPS,
+    BATCHES,
+    DEMOTION_DROPS,
     AmputationError,
     find_stray_readers,
     main,
@@ -95,8 +97,23 @@ def fixture_db(tmp_path: Path) -> Path:
     return db_path
 
 
+#: The ADR076 demotion batch (rulings R1-R5): DB copies whose truth moved to
+#: hash-pinned artifacts in data-artifacts.yaml. Pinned like the ruling-1 list.
+_DEMOTION_RULED: tuple[tuple[str, str], ...] = (
+    ("view_energy_consumption", "view"),
+    ("bridge_county_bea_ea", "table"),
+    ("dim_bea_economic_area", "table"),
+    ("fact_ricci_unequal_exchange", "table"),
+    ("fact_energy_annual", "table"),
+    ("dim_energy_series", "table"),
+    ("dim_energy_table", "table"),
+    ("bridge_lodes_block", "table"),
+    ("staging_arcgis_feature", "table"),
+)
+
+
 class TestApprovedList:
-    """The module-level list IS the owner ruling — byte-pinned."""
+    """The module-level lists ARE the owner rulings — byte-pinned."""
 
     def test_approved_drops_match_the_ruling_exactly(self) -> None:
         assert set(APPROVED_DROPS) == set(_RULED_DROPS)
@@ -106,6 +123,13 @@ class TestApprovedList:
         names = {name for name, _ in APPROVED_DROPS}
         assert "dim_education_level" not in names  # deferred: FK parent of a living table
         assert "fact_qcew_annual__pre_086" not in names  # rides --drop-backup CLI
+
+    def test_demotion_drops_match_adr076_exactly(self) -> None:
+        assert set(DEMOTION_DROPS) == set(_DEMOTION_RULED)
+        assert len(DEMOTION_DROPS) == 9
+
+    def test_batches_expose_both_rulings(self) -> None:
+        assert BATCHES == {"ruling1": APPROVED_DROPS, "demotion": DEMOTION_DROPS}
 
 
 class TestVerification:
@@ -189,6 +213,34 @@ class TestDryRunAndExecute:
                 ]
             )
         assert _object_names(fixture_db) == before
+
+    def test_demotion_batch_drops_exactly_the_adr076_objects(self, tmp_path: Path) -> None:
+        db_path = tmp_path / "demotion.sqlite"
+        conn = sqlite3.connect(db_path)
+        for name, kind in _DEMOTION_RULED:
+            if kind == "table":
+                conn.execute(f'CREATE TABLE "{name}" (id INTEGER PRIMARY KEY)')
+        conn.execute("CREATE VIEW view_energy_consumption AS SELECT id FROM fact_energy_annual")
+        conn.execute("CREATE TABLE fact_survivor (id INTEGER PRIMARY KEY)")
+        conn.commit()
+        conn.close()
+        exit_code = main(
+            [
+                "--batch",
+                "demotion",
+                "--db",
+                str(db_path),
+                "--report-dir",
+                str(tmp_path / "reports"),
+                "--execute",
+            ]
+        )
+        assert exit_code == 0
+        remaining = _object_names(db_path)
+        assert {name for name, _ in _DEMOTION_RULED}.isdisjoint(remaining)
+        assert "fact_survivor" in remaining
+        reports = list((tmp_path / "reports").glob("amputation_demotion_*.md"))
+        assert len(reports) == 1
 
     def test_stray_reader_aborts_execute_and_drops_nothing(
         self, fixture_db: Path, tmp_path: Path

@@ -54,6 +54,31 @@ APPROVED_DROPS: tuple[tuple[str, str], ...] = (
     ("dim_sector", "table"),
 )
 
+#: The ADR076 demotion batch (rulings R1-R5, owner-approved 2026-07-16):
+#: tables whose truth now ships as hash-pinned artifacts registered in
+#: data-artifacts.yaml. Drop ONLY after the preservation tests are green
+#: (tests/unit/reference/test_data_artifacts.py) and the manifest check
+#: passes — the demotion handoff, ADR076 decision 4. view_energy_consumption
+#: retires WITH its base (a view over a dropped table is the exact pathology
+#: the KEEP-emptiness sentinel exists to prevent).
+DEMOTION_DROPS: tuple[tuple[str, str], ...] = (
+    ("view_energy_consumption", "view"),
+    ("bridge_county_bea_ea", "table"),
+    ("dim_bea_economic_area", "table"),
+    ("fact_ricci_unequal_exchange", "table"),
+    ("fact_energy_annual", "table"),
+    ("dim_energy_series", "table"),
+    ("dim_energy_table", "table"),
+    ("bridge_lodes_block", "table"),
+    ("staging_arcgis_feature", "table"),
+)
+
+#: CLI batch name -> drop list.
+BATCHES: dict[str, tuple[tuple[str, str], ...]] = {
+    "ruling1": APPROVED_DROPS,
+    "demotion": DEMOTION_DROPS,
+}
+
 #: Default DB location; the env override mirrors
 #: ``babylon.sentinels.coverage.db_probe._database_path`` (same contract,
 #: kept standalone so this one-shot tool needs no package import).
@@ -65,7 +90,9 @@ class AmputationError(Exception):
     """A pre-drop safety check failed; the database was not modified."""
 
 
-def verify_all_present(conn: sqlite3.Connection) -> list[str]:
+def verify_all_present(
+    conn: sqlite3.Connection, drops: tuple[tuple[str, str], ...] = APPROVED_DROPS
+) -> list[str]:
     """Return the approved objects missing from the database.
 
     :param conn: Open connection to the reference DB.
@@ -74,10 +101,12 @@ def verify_all_present(conn: sqlite3.Connection) -> list[str]:
     """
     rows = conn.execute("SELECT name FROM sqlite_master WHERE type IN ('table', 'view')").fetchall()
     present = {row[0] for row in rows}
-    return sorted(name for name, _ in APPROVED_DROPS if name not in present)
+    return sorted(name for name, _ in drops if name not in present)
 
 
-def find_stray_readers(conn: sqlite3.Connection) -> list[str]:
+def find_stray_readers(
+    conn: sqlite3.Connection, drops: tuple[tuple[str, str], ...] = APPROVED_DROPS
+) -> list[str]:
     """Return surviving views whose SQL still references a doomed object.
 
     A surviving reader means the triage missed a consumer; dropping its base
@@ -86,7 +115,7 @@ def find_stray_readers(conn: sqlite3.Connection) -> list[str]:
     :param conn: Open connection to the reference DB.
     :returns: Sorted names of non-doomed views referencing any doomed name.
     """
-    doomed = {name for name, _ in APPROVED_DROPS}
+    doomed = {name for name, _ in drops}
     rows = conn.execute(
         "SELECT name, sql FROM sqlite_master WHERE type = 'view' AND sql IS NOT NULL"
     ).fetchall()
@@ -96,10 +125,10 @@ def find_stray_readers(conn: sqlite3.Connection) -> list[str]:
     return sorted(strays)
 
 
-def _row_counts(conn: sqlite3.Connection) -> dict[str, int]:
+def _row_counts(conn: sqlite3.Connection, drops: tuple[tuple[str, str], ...]) -> dict[str, int]:
     """Count rows for each approved table (views excluded)."""
     counts: dict[str, int] = {}
-    for name, kind in APPROVED_DROPS:
+    for name, kind in drops:
         if kind != "table":
             continue
         cursor = conn.execute(f'SELECT COUNT(*) FROM "{name}"')  # noqa: S608 — fixed approved list
@@ -107,13 +136,19 @@ def _row_counts(conn: sqlite3.Connection) -> dict[str, int]:
     return counts
 
 
-def _write_report(report_dir: Path, counts: dict[str, int], integrity: str) -> Path:
+def _write_report(
+    report_dir: Path,
+    counts: dict[str, int],
+    integrity: str,
+    batch: str,
+    drops: tuple[tuple[str, str], ...],
+) -> Path:
     """Write the amputation audit report and return its path."""
     report_dir.mkdir(parents=True, exist_ok=True)
     stamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-    path = report_dir / f"amputation_{stamp}.md"
+    path = report_dir / f"amputation_{batch}_{stamp}.md"
     lines = [
-        "# Reference-DB amputation report (ADR075 ruling 1)",
+        f"# Reference-DB drop report — batch {batch} (ADR075 ruling 1 / ADR076)",
         "",
         f"Executed: {datetime.now().isoformat(timespec='seconds')}",
         f"Integrity (`PRAGMA quick_check`): {integrity}",
@@ -121,16 +156,16 @@ def _write_report(report_dir: Path, counts: dict[str, int], integrity: str) -> P
         "| object | kind | rows before drop |",
         "| --- | --- | --- |",
     ]
-    for name, kind in APPROVED_DROPS:
+    for name, kind in drops:
         rows = f"rows_before={counts[name]}" if name in counts else "view"
         lines.append(f"| {name} | {kind} | {rows} |")
     path.write_text("\n".join(lines) + "\n")
     return path
 
 
-def _execute_drops(conn: sqlite3.Connection) -> None:
+def _execute_drops(conn: sqlite3.Connection, drops: tuple[tuple[str, str], ...]) -> None:
     """Drop every approved object — views first, then tables."""
-    for name, kind in APPROVED_DROPS:
+    for name, kind in drops:
         statement = f'DROP {"VIEW" if kind == "view" else "TABLE"} "{name}"'
         conn.execute(statement)
     conn.commit()
@@ -151,6 +186,12 @@ def main(argv: list[str] | None = None) -> int:
         help="Path to the reference DB (default honors BABYLON_NORMALIZED_DB_PATH).",
     )
     parser.add_argument("--report-dir", type=Path, default=Path("reports"))
+    parser.add_argument(
+        "--batch",
+        choices=sorted(BATCHES),
+        default="ruling1",
+        help="Which owner-approved drop list to run (default: ruling1).",
+    )
     parser.add_argument("--execute", action="store_true", help="Actually drop (default: dry run).")
     parser.add_argument(
         "--vacuum", action="store_true", help="VACUUM after dropping (execute only)."
@@ -161,30 +202,31 @@ def main(argv: list[str] | None = None) -> int:
         msg = f"database not found: {args.db}"
         raise AmputationError(msg)
 
+    drops = BATCHES[args.batch]
     conn = sqlite3.connect(args.db)
     try:
-        missing = verify_all_present(conn)
+        missing = verify_all_present(conn, drops)
         if missing:
             msg = f"approved objects missing from DB (already dropped?): {missing}"
             raise AmputationError(msg)
-        strays = find_stray_readers(conn)
+        strays = find_stray_readers(conn, drops)
         if strays:
             msg = f"surviving views still read doomed tables: {strays}"
             raise AmputationError(msg)
-        counts = _row_counts(conn)
-        for name, kind in APPROVED_DROPS:
+        counts = _row_counts(conn, drops)
+        for name, kind in drops:
             detail = f"rows={counts[name]}" if name in counts else "view"
             print(f"[amputate] {'DROP' if args.execute else 'would drop'} {kind} {name} ({detail})")
         if not args.execute:
             print("[amputate] dry run — nothing dropped (pass --execute to proceed)")
             return 0
-        _execute_drops(conn)
+        _execute_drops(conn, drops)
         integrity = str(conn.execute("PRAGMA quick_check").fetchone()[0])
         if integrity != "ok":
             msg = f"post-drop quick_check failed: {integrity}"
             raise AmputationError(msg)
-        report = _write_report(args.report_dir, counts, integrity)
-        print(f"[amputate] dropped {len(APPROVED_DROPS)} objects; report at {report}")
+        report = _write_report(args.report_dir, counts, integrity, args.batch, drops)
+        print(f"[amputate] dropped {len(drops)} objects; report at {report}")
         if args.vacuum:
             print("[amputate] VACUUM (this can take minutes on the full DB) ...")
             conn.execute("VACUUM")

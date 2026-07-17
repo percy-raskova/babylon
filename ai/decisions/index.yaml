@@ -1,9 +1,14 @@
 meta:
-  version: 1.23.0
-  updated: '2026-07-16'
+  version: 1.24.0
+  updated: '2026-07-17'
   description: Architecture Decision Records Index
   format: See individual ADR files in this directory
 decisions:
+  ADR076_parquet_artifacts:
+    title: 'Parquet/CSV reference-data artifact program (rulings R1-R5 executed): per-table hashed artifacts with the repo-root data-artifacts.yaml successor registry (catalog->manifest atomic demotion handoff), tools/make_data_artifacts.py generator (natural-key sort, explicit arrow schema, single row group, pinned zstd; double-generation byte-identity PROVEN), R4 bridge_lodes_block spike (1,150,562 rows), manifest-driven parquet fetch in fetch-reference-db, coverage-sensor hash check in the fast gate; ci-data-v6 carries subset + 4 parquet assets'
+    status: accepted
+    date: '2026-07-17'
+    file: ADR076_parquet_artifacts.yaml
   ADR001_embedded_trinity:
     title: Three-layer local architecture (Ledger/Topology/Archive)
     status: accepted

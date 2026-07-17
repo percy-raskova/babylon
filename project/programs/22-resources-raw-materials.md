@@ -137,6 +137,8 @@ returns rows; qa:regression 5/5 untouched (reference-DB fills are invisible to t
       (BTS), fill `dim_cfs_area` + `bridge_cfs_county`, then design the disagg scope
       (SCTG classes × geography — a naive national county-pair expansion of 2.49M zone flows
       is combinatorially explosive; needs a scoping ruling).
-- [ ] Wave 1 close: ci-data release cut (batched with the Program 21 fills/amputations —
-      one v6 for the whole slate); catalog sentinel green (91/91, both tiers) recorded 2026-07-17.
+- [x] Wave 1 close (2026-07-17): **ci-data-v6 released** (subset 1.198GB / 14.19M rows kept,
+      + the four ADR076 parquet artifacts, tiger unchanged); fetch-reference-db re-pinned;
+      catalog sentinel green both tiers against BOTH the full DB (83/83) and the v6 subset;
+      qa:regression 5/5 byte-identical after every surgery batch.
 - [ ] Wave 2 spec (owner-gated): Φ coupling, geographic_flow wiring, substrate dynamics.

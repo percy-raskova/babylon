@@ -104,13 +104,65 @@ class TestEfficacy:
             f"expected the empty-base-table violation, got: {violations[:5]}"
         )
 
+    def test_skip_policy_table_absent_from_subset_env_is_exempt(self, tmp_path: Path) -> None:
+        # A skip-policy table is BY DESIGN absent from the ci-data subset
+        # (view-less DB). In a full environment (views present) the same
+        # absence IS a phantom. Both directions pinned.
+        skip_row = CatalogTable(
+            name="fact_hpms_road_segment",
+            kind="table",
+            source="HPMS",
+            disposition="investigate",
+            subset_policy="skip",
+            material_relation="efficacy probe: skip-policy subset absence",
+        )
+        subset_db = tmp_path / "subset.sqlite"
+        conn = sqlite3.connect(subset_db)
+        conn.execute("CREATE TABLE fact_present (id INTEGER)")  # no views => subset env
+        conn.commit()
+        conn.close()
+        present_row = CatalogTable(
+            name="fact_present",
+            kind="table",
+            source="internal",
+            disposition="investigate",
+            subset_policy="full",
+            material_relation="efficacy probe companion",
+        )
+        assert (
+            check_catalog_db_reconciliation(catalog=(skip_row, present_row), db_path=subset_db)
+            == []
+        )
+        full_db = tmp_path / "full.sqlite"
+        conn = sqlite3.connect(full_db)
+        conn.execute("CREATE TABLE fact_present (id INTEGER)")
+        conn.execute("CREATE VIEW view_marker AS SELECT id FROM fact_present")
+        conn.commit()
+        conn.close()
+        view_row = CatalogTable(
+            name="view_marker",
+            kind="view",
+            source="derived",
+            reads=("fact_present",),
+            disposition="investigate",
+            subset_policy="skip",
+            material_relation="efficacy probe view marker",
+        )
+        violations = check_catalog_db_reconciliation(
+            catalog=(skip_row, present_row, view_row), db_path=full_db
+        )
+        assert any("fact_hpms_road_segment" in v and "phantom" in v for v in violations)
+
     def test_phantom_row_reds(self) -> None:
+        # full-policy: a skip-policy absence is legitimately exempt in subset
+        # environments (see the dedicated test above), so the phantom probe
+        # must use a policy that promises presence everywhere.
         phantom = CatalogTable(
             name="fact_absolutely_not_a_table",
             kind="table",
             source="internal",
             disposition="investigate",
-            subset_policy="skip",
+            subset_policy="full",
             material_relation="efficacy probe",
         )
         violations = check_catalog_db_reconciliation(catalog=(phantom,))

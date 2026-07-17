@@ -14,13 +14,27 @@ that is signal rather than wallpaper, a first session that explains itself, and 
 evidence-backed wirings that connect existing engine riches to existing UI surfaces.
 This is connection-and-framing work — no new dynamical systems.
 
+## Owner ruling 2026-07-17 (post-design, supersedes the design's "520-tick" framing)
+
+> "The endgame: it's **100 years of in-game time**, not a specific condition. The game
+> ends when it ends; the scenario it's in is up to player actions and the economy."
+
+At 1 tick = 1 week (defines `tunables.weeks_per_year: 52`), the campaign horizon is
+**5200 ticks**. The five outcomes (REVOLUTIONARY_VICTORY, ECOLOGICAL_COLLAPSE,
+FASCIST_CONSOLIDATION, RED_OGV, FRAGMENTED_COLLAPSE) become **recognized patterns** the
+world is in along the way — never terminators. This executes the 2026-07-14
+emergent-endgames ruling (fixed horizon + recognized patterns) which the live app had
+not yet implemented ("Endgame Reached — tick 18"). Termination = horizon only, or the
+player's own fast-forward-to-epilogue once a pattern locks (FR-116-5).
+
 ## Scope (from the parent design, verbatim commitments)
 
 - **FR-116-1 · Campaign pacing (declared baseline ceremony #1).** Deterministic pacing
-  instrument first (headless nationwide run; tick-of-first-crossing per endgame axis +
-  per-axis progress curves), then a single defines-level recalibration until the
-  null-play arc holds tension across hundreds of ticks toward the 520-tick campaign.
-  Fix the tick-0 "Sovereign Collapse" threshold bug. One ceremony,
+  instrument first (headless nationwide run; tick-of-first-recognition per outcome
+  pattern + per-axis progress curves), then a single defines-level recalibration until
+  the null-play arc holds tension across the 100-year horizon. Convert EndgameDetector
+  from adjudicator to pattern recognizer; the campaign horizon (100 years → 5200 ticks)
+  lives in defines. Fix the tick-0 "Sovereign Collapse" threshold bug. One ceremony,
   instrument-first-tune-once, per-scenario drift declared (Market Scissors promotion
   pattern).
 - **FR-116-2 · Event salience.** (i) Consecutive same-type/same-subject events collapse
@@ -42,16 +56,19 @@ This is connection-and-framing work — no new dynamical systems.
   widened past 44/79 with POGROM/LOCKOUT/VIGILANTISM first-class (own EventType,
   severity, title, geographic anchor); (8) verb dead-ends become disabled-with-reason;
   (9) the permanent "PROFIT no data" chip wired or removed.
-- **FR-116-5 · Fast-forward-to-epilogue** (owner box-tick, taken YES): when an endgame
-  basin is locked in, the player may fast-forward to the epilogue instead of clicking
-  through doomed ticks.
+- **FR-116-5 · Fast-forward-to-epilogue** (owner box-tick, taken YES): when an outcome
+  pattern is locked in, the player may fast-forward to the horizon epilogue instead of
+  clicking through doomed ticks.
 
-## Acceptance gates (parent design §4, restated)
+## Acceptance gates (parent design §4, restated under the fixed-horizon ruling)
 
-1. Null-play nationwide run reaches a calibrated tick floor before any endgame.
+1. Null-play nationwide run recognizes no outcome pattern before a calibrated tick
+   floor, and the game terminates only at the 100-year horizon (no tick-0 events, no
+   early "Endgame Reached").
 2. No two consecutive identical event cards.
 3. Autopause ≤ 1 per distinct event.
-4. Every terminal outcome renders a distinct epilogue.
+4. Every recognized outcome renders a distinct epilogue at the horizon (or on
+   player-accepted fast-forward).
 5. Preview visible before every submit.
 6. A fresh player reaches their first submitted action unaided (scripted e2e trunk test).
 

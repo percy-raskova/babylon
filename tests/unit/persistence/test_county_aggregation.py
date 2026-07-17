@@ -333,6 +333,7 @@ class TestAggregateConsciousness:
 # ----------------------------------------------------------------------
 
 
+@pytest.mark.requires_reference_db
 @pytest.mark.skipif(
     not SQLITE_REF.exists(),
     reason=f"SQLite reference DB missing at {SQLITE_REF}",
@@ -375,6 +376,7 @@ class TestFetchPopulation:
 # ----------------------------------------------------------------------
 
 
+@pytest.mark.requires_reference_db
 @pytest.mark.skipif(
     not SQLITE_REF.exists(),
     reason=f"SQLite reference DB missing at {SQLITE_REF}",
@@ -418,6 +420,7 @@ class TestFetchEmploymentProxy:
 # ----------------------------------------------------------------------
 
 
+@pytest.mark.requires_reference_db
 @pytest.mark.skipif(
     not SQLITE_REF.exists(),
     reason=f"SQLite reference DB missing at {SQLITE_REF}",

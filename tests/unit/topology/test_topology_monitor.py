@@ -18,8 +18,9 @@ from __future__ import annotations
 
 import logging
 
-import networkx as nx
 import pytest
+
+from babylon.topology.graph import BabylonGraph
 
 # =============================================================================
 # TEST: SOLIDARITY SUBGRAPH EXTRACTION
@@ -30,7 +31,7 @@ import pytest
 class TestSolidaritySubgraphExtraction:
     """Tests for extracting SOLIDARITY subgraph from WorldState graph."""
 
-    def test_empty_graph_returns_empty_subgraph(self, empty_digraph: nx.DiGraph) -> None:
+    def test_empty_graph_returns_empty_subgraph(self, empty_digraph: BabylonGraph) -> None:
         """Graph with no nodes/edges returns empty subgraph."""
         from babylon.engine.topology_monitor import extract_solidarity_subgraph
 
@@ -39,7 +40,7 @@ class TestSolidaritySubgraphExtraction:
         assert result.number_of_nodes() == 0
         assert result.number_of_edges() == 0
 
-    def test_filters_non_solidarity_edges(self, mixed_edges_graph: nx.DiGraph) -> None:
+    def test_filters_non_solidarity_edges(self, mixed_edges_graph: BabylonGraph) -> None:
         """Only SOLIDARITY edges are included in subgraph."""
         from babylon.engine.topology_monitor import extract_solidarity_subgraph
 
@@ -49,7 +50,7 @@ class TestSolidaritySubgraphExtraction:
         assert result.number_of_edges() == 1
         assert result.has_edge("C001", "C002") or result.has_edge("C002", "C001")
 
-    def test_includes_all_social_class_nodes(self, two_isolated_nodes: nx.DiGraph) -> None:
+    def test_includes_all_social_class_nodes(self, two_isolated_nodes: BabylonGraph) -> None:
         """All social_class nodes included, even if isolated."""
         from babylon.engine.topology_monitor import extract_solidarity_subgraph
 
@@ -59,7 +60,7 @@ class TestSolidaritySubgraphExtraction:
         assert "C001" in result.nodes
         assert "C002" in result.nodes
 
-    def test_excludes_territory_nodes(self, territory_mixed_graph: nx.DiGraph) -> None:
+    def test_excludes_territory_nodes(self, territory_mixed_graph: BabylonGraph) -> None:
         """Territory nodes are NOT included in solidarity subgraph."""
         from babylon.engine.topology_monitor import extract_solidarity_subgraph
 
@@ -69,7 +70,7 @@ class TestSolidaritySubgraphExtraction:
         assert result.number_of_nodes() == 2
         assert "T001" not in result.nodes
 
-    def test_min_strength_filters_weak_edges(self, weak_strong_edges: nx.DiGraph) -> None:
+    def test_min_strength_filters_weak_edges(self, weak_strong_edges: BabylonGraph) -> None:
         """Edges below min_strength threshold are excluded."""
         from babylon.engine.topology_monitor import extract_solidarity_subgraph
 
@@ -80,7 +81,7 @@ class TestSolidaritySubgraphExtraction:
         assert result.number_of_edges() == 1
         assert result.has_edge("C002", "C003") or result.has_edge("C003", "C002")
 
-    def test_returns_undirected_graph(self, connected_pair: nx.DiGraph) -> None:
+    def test_returns_undirected_graph(self, connected_pair: BabylonGraph) -> None:
         """Result is undirected Graph (not DiGraph)."""
         from babylon.engine.topology_monitor import extract_solidarity_subgraph
 
@@ -101,7 +102,7 @@ class TestSolidaritySubgraphExtraction:
 class TestComponentMetrics:
     """Tests for connected component analysis."""
 
-    def test_single_component_graph(self, connected_pair: nx.DiGraph) -> None:
+    def test_single_component_graph(self, connected_pair: BabylonGraph) -> None:
         """Fully connected graph has num_components=1."""
         from babylon.engine.topology_monitor import (
             calculate_component_metrics,
@@ -115,7 +116,7 @@ class TestComponentMetrics:
         assert max_size == 2
         assert ratio == pytest.approx(1.0)
 
-    def test_disconnected_components(self, multi_component_graph: nx.DiGraph) -> None:
+    def test_disconnected_components(self, multi_component_graph: BabylonGraph) -> None:
         """Graph with gaps has correct num_components."""
         from babylon.engine.topology_monitor import (
             calculate_component_metrics,
@@ -128,7 +129,7 @@ class TestComponentMetrics:
         # 3 components: {C001,C002,C003}, {C004,C005}, {C006}
         assert num_components == 3
 
-    def test_max_component_size(self, multi_component_graph: nx.DiGraph) -> None:
+    def test_max_component_size(self, multi_component_graph: BabylonGraph) -> None:
         """L_max correctly identifies largest component."""
         from babylon.engine.topology_monitor import (
             calculate_component_metrics,
@@ -141,7 +142,7 @@ class TestComponentMetrics:
         # Largest component has 3 nodes (C001,C002,C003)
         assert max_size == 3
 
-    def test_percolation_ratio_calculation(self, multi_component_graph: nx.DiGraph) -> None:
+    def test_percolation_ratio_calculation(self, multi_component_graph: BabylonGraph) -> None:
         """percolation_ratio = L_max / N."""
         from babylon.engine.topology_monitor import (
             calculate_component_metrics,
@@ -154,7 +155,7 @@ class TestComponentMetrics:
         # L_max=3, N=6, ratio=0.5
         assert ratio == pytest.approx(0.5)
 
-    def test_isolated_nodes_count_as_components(self, two_isolated_nodes: nx.DiGraph) -> None:
+    def test_isolated_nodes_count_as_components(self, two_isolated_nodes: BabylonGraph) -> None:
         """Each isolated node is its own component."""
         from babylon.engine.topology_monitor import (
             calculate_component_metrics,
@@ -169,7 +170,7 @@ class TestComponentMetrics:
         assert max_size == 1
         assert ratio == pytest.approx(0.5)
 
-    def test_empty_graph_handling(self, empty_digraph: nx.DiGraph) -> None:
+    def test_empty_graph_handling(self, empty_digraph: BabylonGraph) -> None:
         """Empty graph returns zeros without division error."""
         from babylon.engine.topology_monitor import (
             calculate_component_metrics,
@@ -193,7 +194,7 @@ class TestComponentMetrics:
 class TestLiquidityMetrics:
     """Tests for strong vs. weak solidarity measurement."""
 
-    def test_potential_liquidity_threshold(self, weak_strong_edges: nx.DiGraph) -> None:
+    def test_potential_liquidity_threshold(self, weak_strong_edges: BabylonGraph) -> None:
         """Potential = edges with solidarity_strength > 0.1."""
         from babylon.engine.topology_monitor import calculate_liquidity
 
@@ -203,7 +204,7 @@ class TestLiquidityMetrics:
         # Potential = 2
         assert potential == 2
 
-    def test_actual_liquidity_threshold(self, weak_strong_edges: nx.DiGraph) -> None:
+    def test_actual_liquidity_threshold(self, weak_strong_edges: BabylonGraph) -> None:
         """Actual = edges with solidarity_strength > 0.5."""
         from babylon.engine.topology_monitor import calculate_liquidity
 
@@ -213,7 +214,7 @@ class TestLiquidityMetrics:
         # Actual = 1
         assert actual == 1
 
-    def test_actual_subset_of_potential(self, weak_strong_edges: nx.DiGraph) -> None:
+    def test_actual_subset_of_potential(self, weak_strong_edges: BabylonGraph) -> None:
         """All actual edges are also potential edges."""
         from babylon.engine.topology_monitor import calculate_liquidity
 
@@ -221,7 +222,7 @@ class TestLiquidityMetrics:
 
         assert actual <= potential
 
-    def test_zero_liquidity_on_empty_graph(self, empty_digraph: nx.DiGraph) -> None:
+    def test_zero_liquidity_on_empty_graph(self, empty_digraph: BabylonGraph) -> None:
         """Empty graph returns 0 for both metrics."""
         from babylon.engine.topology_monitor import calculate_liquidity
 
@@ -230,7 +231,7 @@ class TestLiquidityMetrics:
         assert potential == 0
         assert actual == 0
 
-    def test_all_strong_edges(self, mesh_topology: nx.DiGraph) -> None:
+    def test_all_strong_edges(self, mesh_topology: BabylonGraph) -> None:
         """Graph with all strong edges has equal potential and actual."""
         from babylon.engine.topology_monitor import calculate_liquidity
 
@@ -249,7 +250,7 @@ class TestLiquidityMetrics:
 class TestPurgeSimulation:
     """Tests for resilience testing via node removal."""
 
-    def test_removal_rate_percentage(self, mesh_topology: nx.DiGraph) -> None:
+    def test_removal_rate_percentage(self, mesh_topology: BabylonGraph) -> None:
         """20% of nodes removed on removal_rate=0.2."""
         from babylon.engine.topology_monitor import check_resilience
 
@@ -259,7 +260,7 @@ class TestPurgeSimulation:
         # The result contains the original and post-purge sizes
         assert result.removal_rate == pytest.approx(0.2)
 
-    def test_resilient_network_survives(self, mesh_topology: nx.DiGraph) -> None:
+    def test_resilient_network_survives(self, mesh_topology: BabylonGraph) -> None:
         """Robust network maintains L_max > 40% after purge."""
         from babylon.engine.topology_monitor import check_resilience
 
@@ -268,7 +269,7 @@ class TestPurgeSimulation:
         # Mesh topology should survive removal of any single node
         assert result.is_resilient is True
 
-    def test_fragile_network_collapses(self, star_topology: nx.DiGraph) -> None:
+    def test_fragile_network_collapses(self, star_topology: BabylonGraph) -> None:
         """Star topology collapses if hub removed."""
         from babylon.engine.topology_monitor import check_resilience
 
@@ -283,7 +284,7 @@ class TestPurgeSimulation:
         # For determinism, we check the structure
         assert result.original_max_component == 6  # All 6 nodes connected via hub
 
-    def test_seeded_rng_reproducibility(self, mesh_topology: nx.DiGraph) -> None:
+    def test_seeded_rng_reproducibility(self, mesh_topology: BabylonGraph) -> None:
         """Same seed produces same removal pattern."""
         from babylon.engine.topology_monitor import check_resilience
 
@@ -293,19 +294,40 @@ class TestPurgeSimulation:
         assert result1.post_purge_max_component == result2.post_purge_max_component
         assert result1.is_resilient == result2.is_resilient
 
-    def test_different_seeds_can_differ(self, star_topology: nx.DiGraph) -> None:
-        """Different seeds can produce different outcomes."""
+    def test_different_seeds_can_differ(
+        self, star_topology: BabylonGraph, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Removing the hub vs. a spoke yields different resilience outcomes.
+
+        Pins the RNG's node selection deterministically (rather than hoping a
+        handful of seeds happen to disagree): with the hub gone the star
+        collapses to 5 isolated nodes (L_max=1, below the 0.4 survival
+        threshold of the original L_max=6), while removing a spoke leaves a
+        4-spoke star intact (L_max=5, above threshold).
+        """
+        import babylon.engine.topology_monitor as tm
         from babylon.engine.topology_monitor import check_resilience
 
-        # Try seeds until we find two with different results
-        results = [check_resilience(star_topology, removal_rate=0.2, seed=i) for i in range(10)]
+        class _FixedSelectionRandom:
+            """Stand-in for random.Random that removes by seed, not chance."""
 
-        # At least some should differ (hub vs non-hub removal)
-        is_resilient_values = [r.is_resilient for r in results]
-        # Not all should be the same
-        assert not all(is_resilient_values) or all(is_resilient_values)
+            def __init__(self, seed: int | None) -> None:
+                self._seed = seed
 
-    def test_original_graph_unmodified(self, mesh_topology: nx.DiGraph) -> None:
+            def sample(self, population: list[str], k: int) -> list[str]:
+                if self._seed == 0:
+                    return [n for n in population if "HUB" in n][:k]
+                return [n for n in population if "HUB" not in n][:k]
+
+        monkeypatch.setattr(tm.random, "Random", _FixedSelectionRandom)
+
+        hub_removed = check_resilience(star_topology, removal_rate=0.2, seed=0)
+        spoke_removed = check_resilience(star_topology, removal_rate=0.2, seed=1)
+
+        assert hub_removed.is_resilient is False
+        assert spoke_removed.is_resilient is True
+
+    def test_original_graph_unmodified(self, mesh_topology: BabylonGraph) -> None:
         """Purge operates on copy, original unchanged."""
         from babylon.engine.topology_monitor import check_resilience
 

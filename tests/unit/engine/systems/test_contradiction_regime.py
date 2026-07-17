@@ -8,7 +8,6 @@ counties in one state (26) let the capital_labor spatial field be flat-per-state
 
 from __future__ import annotations
 
-import networkx as nx
 import pytest
 
 from babylon.engine.services import ServiceContainer
@@ -19,7 +18,7 @@ from babylon.topology.graph import BabylonGraph
 pytestmark = pytest.mark.unit
 
 
-def _two_county_graph() -> nx.DiGraph[str]:
+def _two_county_graph() -> BabylonGraph:
     """Two counties in state 26, each a worker(10)->owner(30) EXPLOITATION edge.
 
     Bare nodes (no ``_node_type``), following the Grundrisse-cycle fixture: with
@@ -34,7 +33,7 @@ def _two_county_graph() -> nx.DiGraph[str]:
     return graph
 
 
-def _regime(graph: nx.DiGraph[str]) -> str:
+def _regime(graph: BabylonGraph) -> str:
     return graph.graph["dialectical_regime"]["regime"]  # type: ignore[no-any-return]
 
 

@@ -7,7 +7,6 @@ analysis.
 
 from __future__ import annotations
 
-import networkx as nx
 import pytest
 
 from babylon.config.defines import BifurcationDefines
@@ -122,19 +121,19 @@ def very_high_ci_states() -> dict[CommunityType, CommunityState]:
 
 
 @pytest.fixture
-def empty_graph() -> nx.Graph:
+def empty_graph() -> BabylonUGraph:
     """Create an empty undirected graph (no nodes, no edges)."""
     return BabylonUGraph()
 
 
 @pytest.fixture
-def star_graph() -> nx.Graph:
+def star_graph() -> BabylonUGraph:
     """Create a star graph with 1 hub and 5 spokes (6 nodes, 5 edges).
 
     Topology: hub connects to each spoke; spokes are not connected
     to each other. Hub is an articulation point.
     """
-    G: nx.Graph = BabylonUGraph()
+    G: BabylonUGraph = BabylonUGraph()
     G.add_node("hub")
     for i in range(5):
         spoke = f"spoke_{i}"
@@ -144,13 +143,13 @@ def star_graph() -> nx.Graph:
 
 
 @pytest.fixture
-def complete_k5() -> nx.Graph:
+def complete_k5() -> BabylonUGraph:
     """Create a complete graph K5 (5 nodes, 10 edges).
 
     Every node connects to every other node. No articulation points.
     Highly resilient topology.
     """
-    G: nx.Graph = BabylonUGraph()
+    G: BabylonUGraph = BabylonUGraph()
     nodes = [f"n{i}" for i in range(5)]
     for node in nodes:
         G.add_node(node)
@@ -161,13 +160,13 @@ def complete_k5() -> nx.Graph:
 
 
 @pytest.fixture
-def ring_graph() -> nx.Graph:
+def ring_graph() -> BabylonUGraph:
     """Create a ring (cycle) graph with 5 nodes.
 
     Topology: n0-n1-n2-n3-n4-n0. One cycle, no articulation points.
     beta_0=1, beta_1=1.
     """
-    G: nx.Graph = BabylonUGraph()
+    G: BabylonUGraph = BabylonUGraph()
     nodes = [f"n{i}" for i in range(5)]
     for node in nodes:
         G.add_node(node)
@@ -177,12 +176,12 @@ def ring_graph() -> nx.Graph:
 
 
 @pytest.fixture
-def three_disconnected() -> nx.Graph:
+def three_disconnected() -> BabylonUGraph:
     """Create 3 disconnected single-node components.
 
     beta_0=3, beta_1=0.
     """
-    G: nx.Graph = BabylonUGraph()
+    G: BabylonUGraph = BabylonUGraph()
     G.add_node("a")
     G.add_node("b")
     G.add_node("c")
@@ -190,13 +189,13 @@ def three_disconnected() -> nx.Graph:
 
 
 @pytest.fixture
-def bridge_graph() -> nx.Graph:
+def bridge_graph() -> BabylonUGraph:
     """Create a graph with a bridge edge connecting two cliques.
 
     Topology: (a-b-c triangle) -- bridge edge (c-d) -- (d-e-f triangle).
     The bridge edge {c, d} is a minimum cut of size 1.
     """
-    G: nx.Graph = BabylonUGraph()
+    G: BabylonUGraph = BabylonUGraph()
     # Left clique
     G.add_node("a")
     G.add_node("b")

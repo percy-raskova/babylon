@@ -64,8 +64,6 @@ class TestNoDbIoDuringTick:
         test, no Hypothesis."""
         from typing import Any
 
-        import networkx as nx
-
         services = ServiceContainer.create()
         ctx = TickContext(tick=0)
 
@@ -78,7 +76,7 @@ class TestNoDbIoDuringTick:
 
             def step(
                 self,
-                graph: nx.DiGraph,
+                graph: BabylonGraph,
                 services_arg: Any,
                 context: Any,
             ) -> None:

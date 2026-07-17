@@ -8,7 +8,6 @@ Reference: US7 (Detroit empirical validation pattern)
 
 from __future__ import annotations
 
-import networkx as nx
 import pytest
 
 from babylon.engine.field_registry import DefaultFieldRegistry
@@ -20,7 +19,7 @@ from babylon.models.enums import ContradictionCharacter, EdgeMode, EdgeType
 from babylon.topology.graph import BabylonGraph
 
 
-def _make_detroit_metro_graph() -> nx.DiGraph[str]:
+def _make_detroit_metro_graph() -> BabylonGraph:
     """Create a stylized Detroit metro area graph.
 
     Wayne County (proletariat): high exploitation, declining wealth

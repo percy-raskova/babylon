@@ -6,6 +6,7 @@ Writes a CLAIMS-mutation audit row, reads it back, verifies the
 
 from __future__ import annotations
 
+import os
 from uuid import uuid4
 
 import pytest
@@ -16,6 +17,21 @@ from babylon.persistence.balkanization_history import (
     record_claims_mutation,
     record_influences_mutation,
 )
+
+PG_DSN_ENV = "BABYLON_TEST_PG_DSN"
+DEFAULT_DSN = "dbname=babylon_test host=localhost port=5433 user=test password=test"
+
+
+def _postgres_reachable() -> bool:
+    dsn = os.environ.get(PG_DSN_ENV, DEFAULT_DSN)
+    try:
+        import psycopg
+
+        psycopg.connect(dsn, connect_timeout=2).close()
+        return True
+    except Exception:
+        return False
+
 
 pytestmark = [pytest.mark.integration, pytest.mark.requires_postgres]
 
@@ -56,27 +72,72 @@ def test_influences_audit_dataclass_construction() -> None:
     assert row.observer_mutation is True
 
 
-def test_observer_flag_preserves_round_trip(pg_pool: object) -> None:  # type: ignore[empty-body]
-    """The observer_mutation boolean MUST round-trip through the
-    audit-log INSERT + SELECT (FR-049). Requires pg_pool fixture."""
+@pytest.fixture(scope="module")
+def apply_balkanization_migrations(pg_pool):  # type: ignore[no-untyped-def]
+    """Apply the full migration set so the spec-070 audit tables exist.
 
-    pytest.skip(
-        "pg_pool fixture not yet wired into balkanization integration "
-        "tests; the writer + dataclass shape are validated via static "
-        "construction tests above. End-to-end round-trip will land when "
-        "the spec-037 pg_pool fixture is generalized to this module."
+    Routes through the runner's canonical applier — digest-stamped +
+    advisory-locked (``ensure_ddl_applied``), package-relative paths — a
+    raw ``conn.execute`` loop here would be a fifth unprotected DDL entry
+    point re-opening the 2026-07-16 xdist race/deadlock family.
+    """
+    from babylon.engine.headless_runner.runner import _apply_migrations
+
+    _apply_migrations(pg_pool)
+
+
+@pytest.mark.skipif(not _postgres_reachable(), reason="Postgres test DB not reachable")
+def test_observer_flag_preserves_round_trip(  # type: ignore[no-untyped-def]
+    pg_pool, apply_balkanization_migrations
+) -> None:
+    """The observer_mutation boolean MUST round-trip through the
+    audit-log INSERT + SELECT (FR-049)."""
+
+    session_id = uuid4()
+    observer_row = ClaimsAuditRow(
+        session_id=session_id,
+        tick=0,
+        sovereign_id="SOV_TEST_ROUNDTRIP",
+        territory_id="HEX_RT_OBSERVER",
+        operation="CREATE",
+        control_level=1.0,
+        fiscal_status="taxed",
+        legal_status="de_jure",
+        recognition_level=1.0,
+        observer_mutation=True,
     )
-    # Sketch:
-    # row = ClaimsAuditRow(..., observer_mutation=True)
-    # record_claims_mutation(pg_pool, row)
-    # with pg_pool.connection() as conn, conn.cursor() as cur:
-    #     cur.execute(
-    #         "SELECT observer_mutation FROM balkanization_claims_audit "
-    #         "WHERE sovereign_id = %s AND territory_id = %s",
-    #         (row.sovereign_id, row.territory_id),
-    #     )
-    #     stored = cur.fetchone()
-    # assert stored == (True,)
+    system_row = ClaimsAuditRow(
+        session_id=session_id,
+        tick=0,
+        sovereign_id="SOV_TEST_ROUNDTRIP",
+        territory_id="HEX_RT_SYSTEM",
+        operation="CREATE",
+        control_level=1.0,
+        fiscal_status="taxed",
+        legal_status="de_jure",
+        recognition_level=1.0,
+        observer_mutation=False,
+    )
+    record_claims_mutation(pg_pool, observer_row)
+    record_claims_mutation(pg_pool, system_row)
+
+    with pg_pool.connection() as conn, conn.cursor() as cur:
+        cur.execute(
+            "SELECT territory_id, observer_mutation "
+            "FROM balkanization_claims_audit "
+            "WHERE session_id = %s AND sovereign_id = %s "
+            "ORDER BY territory_id",
+            (session_id, observer_row.sovereign_id),
+        )
+        rows = cur.fetchall()
+
+    # Both directions must round-trip: a writer bug that always forces
+    # True (or always defaults to the column's FALSE default) would
+    # surface as a mismatch on one of these two rows.
+    assert rows == [
+        (observer_row.territory_id, True),
+        (system_row.territory_id, False),
+    ]
 
 
 def test_writer_module_exports() -> None:

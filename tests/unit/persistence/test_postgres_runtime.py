@@ -16,7 +16,6 @@ from typing import Any
 from unittest.mock import MagicMock
 from uuid import UUID
 
-import networkx as nx
 import pytest
 
 from babylon.models.entities.organization import PoliticalFaction
@@ -87,7 +86,7 @@ def runtime(mock_pool: MagicMock) -> PostgresRuntime:
 def _build_graph(
     nodes: dict[str, dict[str, Any]] | None = None,
     edges: list[tuple[str, str, dict[str, Any]]] | None = None,
-) -> nx.DiGraph[str]:
+) -> BabylonGraph:
     """Build a test graph."""
     graph = BabylonGraph()
     if nodes:

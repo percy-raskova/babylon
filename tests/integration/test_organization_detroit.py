@@ -7,7 +7,6 @@ topology classification, key figure identification, and graph round-trip.
 
 from __future__ import annotations
 
-import networkx as nx
 import pytest
 from pydantic import ValidationError
 
@@ -310,7 +309,7 @@ class TestScenario8KeyFigures:
     """STAR topology identification and key figure analysis."""
 
     @pytest.fixture
-    def star_graph(self) -> nx.DiGraph[str]:
+    def star_graph(self) -> BabylonGraph:
         """Church COMMAND graph: pastor as hub, 3 deacons as leaves."""
         G = BabylonGraph()
         nodes = ["kf_pastor", "kf_deacon_1", "kf_deacon_2", "kf_deacon_3"]
@@ -322,13 +321,13 @@ class TestScenario8KeyFigures:
         return G
 
     @pytest.mark.integration
-    def test_star_topology_detected(self, star_graph: nx.DiGraph[str]) -> None:
+    def test_star_topology_detected(self, star_graph: BabylonGraph) -> None:
         members = ["kf_pastor", "kf_deacon_1", "kf_deacon_2", "kf_deacon_3"]
         topo = classify_topology("org_first_baptist", members, star_graph)
         assert topo.topology_type == TopologyType.STAR
 
     @pytest.mark.integration
-    def test_pastor_is_sole_key_figure(self, star_graph: nx.DiGraph[str]) -> None:
+    def test_pastor_is_sole_key_figure(self, star_graph: BabylonGraph) -> None:
         members = ["kf_pastor", "kf_deacon_1", "kf_deacon_2", "kf_deacon_3"]
         key_figs = identify_key_figures("org_first_baptist", members, star_graph)
         assert len(key_figs) == 1

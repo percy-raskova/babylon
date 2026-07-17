@@ -48,11 +48,15 @@ def pg_pool():  # type: ignore[no-untyped-def]
 
 @pytest.fixture
 def apply_migrations(pg_pool):  # type: ignore[no-untyped-def]
+    # Digest-stamped + advisory-locked — a bare re-execute loop takes view
+    # DDL locks against concurrent readers (xdist deadlock family, 2026-07-16).
+    from babylon.persistence.postgres_schema import ensure_ddl_applied
+
     migrations_dir = Path("src/babylon/persistence/migrations").resolve()
+    sql_files = sorted(migrations_dir.glob("00*.sql"))
     with pg_pool.connection() as conn:
         conn.autocommit = True
-        for sql_file in sorted(migrations_dir.glob("00*.sql")):
-            conn.execute(sql_file.read_text())
+        ensure_ddl_applied(conn, [sql_file.read_text() for sql_file in sql_files])
 
 
 @pytest.fixture
@@ -142,14 +146,22 @@ def test_hex_rows_satisfy_invariants(runtime) -> None:  # type: ignore[no-untype
         counties=DETROIT_TRI_COUNTY,
         hex_hydration_counties=DETROIT_TRI_COUNTY_SET,
     )
+    # Spec-088 S3 (FR-007): dynamic_hex_state stores NULL spatial keys —
+    # the single stored copy is the session-scoped hex_spatial_map row.
+    # Read the canonical join, exactly as the aggregate views resolve it.
     with runtime._pool.connection() as pg, pg.cursor() as cur:  # noqa: SLF001
         cur.execute(
             """
-            SELECT county_fips, state_fips, region_id, c, v, s, k,
-                   biocapacity_stock, energy_stock, raw_material_stock,
-                   internet_access_pct, surveillance_coupling
-            FROM dynamic_hex_state
-            WHERE session_id = %s AND tick = 0
+            SELECT COALESCE(m.county_fips, h.county_fips) AS county_fips,
+                   COALESCE(m.state_fips, h.state_fips) AS state_fips,
+                   COALESCE(m.region_id, h.region_id) AS region_id,
+                   h.c, h.v, h.s, h.k,
+                   h.biocapacity_stock, h.energy_stock, h.raw_material_stock,
+                   h.internet_access_pct, h.surveillance_coupling
+            FROM dynamic_hex_state h
+            LEFT JOIN hex_spatial_map m
+              ON m.session_id = h.session_id AND m.h3_index = h.h3_index
+            WHERE h.session_id = %s AND h.tick = 0
             """,
             (sid,),
         )

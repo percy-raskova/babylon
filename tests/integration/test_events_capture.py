@@ -106,7 +106,12 @@ def test_engine_emitted_event_visible_in_summary(monkeypatch) -> None:
         affected_entity_ids = ("26163",)
         severity = "warning"
 
-    def patched_advance(*, bridge: Any, world: Any, tick: int, determinism_hash: str) -> None:
+    def patched_advance(
+        *, bridge: Any, world: Any, tick: int, determinism_hash: str, **extra: Any
+    ) -> None:
+        # **extra forwards whatever keyword parameters _advance_tick grows
+        # (engine/services/graph today) — this shim intercepts, it must not
+        # pin the production signature (that drift broke it 2026-07-16).
         if tick == 2 and bridge.event_capture is not None:
             bridge.event_capture.on_event(_SyntheticEvent())
         return real_advance(
@@ -114,6 +119,7 @@ def test_engine_emitted_event_visible_in_summary(monkeypatch) -> None:
             world=world,
             tick=tick,
             determinism_hash=determinism_hash,
+            **extra,
         )
 
     monkeypatch.setattr(runner_module, "_advance_tick", patched_advance)

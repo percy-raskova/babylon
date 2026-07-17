@@ -20,7 +20,6 @@ from __future__ import annotations
 from collections.abc import Generator
 from typing import TYPE_CHECKING
 
-import networkx as nx
 import pytest
 
 from babylon.engine.services import ServiceContainer
@@ -45,7 +44,7 @@ def services() -> Generator[ServiceContainer, None, None]:
 
 
 def _create_entity_node(
-    graph: nx.DiGraph,
+    graph: BabylonGraph,
     node_id: str,
     role: SocialRole = SocialRole.PERIPHERY_PROLETARIAT,
     wealth: float = 1.0,
@@ -86,7 +85,7 @@ class TestPopulationScaledDrain:
         cost = 0.005 * 100 * 1.0 = 0.5
         wealth: 100.0 -> 99.5
         """
-        graph: nx.DiGraph = BabylonGraph()
+        graph: BabylonGraph = BabylonGraph()
         _create_entity_node(
             graph,
             "PERIPHERY_WORKER_ID",
@@ -113,7 +112,7 @@ class TestPopulationScaledDrain:
         With base_subsistence=0.005, multiplier=1.5, population=1:
         cost = 0.005 * 1 * 1.5 = 0.0075
         """
-        graph: nx.DiGraph = BabylonGraph()
+        graph: BabylonGraph = BabylonGraph()
         _create_entity_node(
             graph,
             "PERIPHERY_WORKER_ID",
@@ -140,7 +139,7 @@ class TestPopulationScaledDrain:
         cost = 0.005 * 50 * 20.0 = 5.0
         wealth: 100.0 -> 95.0
         """
-        graph: nx.DiGraph = BabylonGraph()
+        graph: BabylonGraph = BabylonGraph()
         _create_entity_node(
             graph,
             "PERIPHERY_WORKER_ID",
@@ -179,7 +178,7 @@ class TestCoverageRatioFormula:
         threshold = 1.0 + 0.0 = 1.0
         coverage >= threshold → 0 Deaths
         """
-        graph: nx.DiGraph = BabylonGraph()
+        graph: BabylonGraph = BabylonGraph()
         _create_entity_node(
             graph,
             "PERIPHERY_WORKER_ID",
@@ -210,7 +209,7 @@ class TestCoverageRatioFormula:
         attrition = 0.8 × (0.5 + 0.8) = 0.8 × 1.3 = 1.04 → clamped to 1.0
         deaths = 100 × 1.0 = 100 (full attrition)
         """
-        graph: nx.DiGraph = BabylonGraph()
+        graph: BabylonGraph = BabylonGraph()
         _create_entity_node(
             graph,
             "PERIPHERY_WORKER_ID",
@@ -240,7 +239,7 @@ class TestCoverageRatioFormula:
         coverage_ratio = 2.0, threshold = 1.8
         2.0 >= 1.8 → 0 deaths
         """
-        graph: nx.DiGraph = BabylonGraph()
+        graph: BabylonGraph = BabylonGraph()
         _create_entity_node(
             graph,
             "PERIPHERY_WORKER_ID",
@@ -271,7 +270,7 @@ class TestCoverageRatioFormula:
         attrition = 0.4 × 1.3 = 0.52
         deaths = floor(100 × 0.52) = 52
         """
-        graph: nx.DiGraph = BabylonGraph()
+        graph: BabylonGraph = BabylonGraph()
         _create_entity_node(
             graph,
             "PERIPHERY_WORKER_ID",
@@ -320,7 +319,7 @@ class TestMalthusianCorrection:
         deaths = 50, pop_after = 50
         per_capita_after = 100 / 50 = 2.0
         """
-        graph: nx.DiGraph = BabylonGraph()
+        graph: BabylonGraph = BabylonGraph()
         _create_entity_node(
             graph,
             "PERIPHERY_WORKER_ID",
@@ -358,7 +357,7 @@ class TestMalthusianCorrection:
         Tick 1: Many deaths (low per-capita wealth)
         Tick 2: Fewer deaths (higher per-capita wealth)
         """
-        graph: nx.DiGraph = BabylonGraph()
+        graph: BabylonGraph = BabylonGraph()
         _create_entity_node(
             graph,
             "PERIPHERY_WORKER_ID",
@@ -398,7 +397,7 @@ class TestAttritionEventPayload:
 
     def test_event_has_correct_type(self, services: ServiceContainer) -> None:
         """Event type should be POPULATION_ATTRITION, not POPULATION_DEATH."""
-        graph: nx.DiGraph = BabylonGraph()
+        graph: BabylonGraph = BabylonGraph()
         _create_entity_node(
             graph,
             "PERIPHERY_WORKER_ID",
@@ -424,7 +423,7 @@ class TestAttritionEventPayload:
 
     def test_payload_contains_required_fields(self, services: ServiceContainer) -> None:
         """POPULATION_ATTRITION payload: {entity_id, deaths, remaining_population, attrition_rate}."""
-        graph: nx.DiGraph = BabylonGraph()
+        graph: BabylonGraph = BabylonGraph()
         _create_entity_node(
             graph,
             "PERIPHERY_WORKER_ID",
@@ -464,7 +463,7 @@ class TestBackwardCompatibility:
 
         Wealthy single agent survives.
         """
-        graph: nx.DiGraph = BabylonGraph()
+        graph: BabylonGraph = BabylonGraph()
         _create_entity_node(
             graph,
             "PERIPHERY_WORKER_ID",
@@ -484,7 +483,7 @@ class TestBackwardCompatibility:
 
     def test_full_extinction_emits_entity_death(self, services: ServiceContainer) -> None:
         """When population=0 after attrition, ENTITY_DEATH is emitted."""
-        graph: nx.DiGraph = BabylonGraph()
+        graph: BabylonGraph = BabylonGraph()
         _create_entity_node(
             graph,
             "PERIPHERY_WORKER_ID",

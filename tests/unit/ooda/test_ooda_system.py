@@ -7,8 +7,6 @@ from __future__ import annotations
 
 from unittest.mock import MagicMock
 
-import networkx as nx
-
 from babylon.config.defines import GameDefines
 from babylon.engine.systems.ooda import OODASystem
 from babylon.models.enums import OrgType
@@ -23,7 +21,7 @@ def _make_services() -> MagicMock:
     return services
 
 
-def _make_graph_with_orgs() -> nx.DiGraph[str]:
+def _make_graph_with_orgs() -> BabylonGraph:
     """Create a graph with a mix of org types."""
     graph = BabylonGraph()
 

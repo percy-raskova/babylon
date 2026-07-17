@@ -8,7 +8,6 @@ from __future__ import annotations
 
 from typing import Any
 
-import networkx as nx
 import pytest
 
 from babylon.config.defines import EconomyDefines, GameDefines
@@ -27,7 +26,7 @@ def _make_wages_graph(
     worker_active: bool = True,
     edge_type: EdgeType = EdgeType.WAGES,
     la_production: float = 0.0,
-) -> nx.DiGraph[str]:
+) -> BabylonGraph:
     """Build a minimal graph with one WAGES edge."""
     graph = BabylonGraph()
     graph.add_node(

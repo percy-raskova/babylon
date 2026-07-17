@@ -58,6 +58,9 @@ jobs:
       - name: Seam continuity gate (Sensor 1 — VIII.12)
         run: mise run check:seams
 
+      - name: Data-coverage sentinel (static — declared sources exist)
+        run: mise run check:coverage
+
       - name: Lint (ruff check)
         run: mise run lint:check
 
@@ -93,6 +96,7 @@ jobs:
         with:
           name: unit-ci-results
           path: reports/test-results/unit-ci/
+          retention-days: 14
 
   qa-regression:
     name: Determinism Gate (byte-identical dense goldens)

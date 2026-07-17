@@ -22,6 +22,14 @@ real topological dependency resolution that ``SourceRegistry``'s
 deliberately as the audit trail for that learning; a future bundle may
 revisit the dep-graph refactor. See ``plan.md`` §R5 (corrected) for the
 full reasoning.
+
+``_factory_path()`` targeted the pre-Program-14 layout
+(``src/babylon/economics/factory.py``); the module now lives at
+``src/babylon/domain/economics/factory.py``. The stale path made
+``path.exists()`` false and the LOC assertion moot, so the xfail was
+firing on a phantom-file AssertionError rather than the genuine
+over-150-LOC condition its reason describes. Fixed to the post-Program-14
+path below; the test still xfails, now for the reason actually stated.
 """
 
 from __future__ import annotations
@@ -32,9 +40,9 @@ import pytest
 
 
 def _factory_path() -> Path:
-    """Resolve the absolute path to ``babylon/economics/factory.py``."""
+    """Resolve the absolute path to ``babylon/domain/economics/factory.py``."""
     here = Path(__file__).resolve()
-    return here.parents[3] / "src" / "babylon" / "economics" / "factory.py"
+    return here.parents[3] / "src" / "babylon" / "domain" / "economics" / "factory.py"
 
 
 @pytest.mark.unit
@@ -85,21 +93,26 @@ class TestFactoryShimsBacked:
 
     @pytest.mark.xfail(
         reason="SC-004 not-met-by-design (Spec 058 commit 6, plan.md §R5 corrected): "
-        "factory.py contains topological dependency resolution that SourceRegistry's "
-        "Callable[[], object] model does not replace. The <150 LOC target was based "
-        "on a misreading of factory.py as boilerplate. xfail retained deliberately as "
-        "the audit trail for the spec-vs-reality learning; a future bundle may revisit "
-        "the dep-graph refactor."
+        "domain/economics/factory.py contains topological dependency resolution "
+        "(3-level wiring across data-source adapters and calculators) that "
+        "SourceRegistry's Callable[[], object] model does not replace, so it sits "
+        "well over the <150 LOC target. The target was based on a misreading of "
+        "factory.py as boilerplate. xfail retained deliberately as the audit trail "
+        "for the spec-vs-reality learning; a future bundle may revisit the "
+        "dep-graph refactor."
     )
     def test_factory_loc_under_150(self) -> None:
-        """Item 13: SC-004 — `economics/factory.py` is under 150 LOC.
+        """Item 13: SC-004 — `domain/economics/factory.py` is under 150 LOC.
 
-        See class docstring for the not-met-by-design rationale.
+        See class docstring for the not-met-by-design rationale. The path
+        resolves to the post-Program-14 layout
+        (``src/babylon/domain/economics/factory.py``); the module exists and
+        the assertion below genuinely fails on LOC count, not on a missing file.
         """
         path = _factory_path()
         assert path.exists(), f"factory.py not found at {path}"
         loc = sum(1 for _ in path.read_text(encoding="utf-8").splitlines())
         assert loc < 150, (
-            f"Spec 058 / SC-004: economics/factory.py is {loc} LOC, "
+            f"Spec 058 / SC-004: domain/economics/factory.py is {loc} LOC, "
             f"must be under 150 (xfail per spec reformulation)."
         )

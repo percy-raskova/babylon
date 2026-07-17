@@ -20,7 +20,12 @@ import pytest
 _REPO_ROOT = Path(__file__).resolve().parents[2]
 _DB_PATH = _REPO_ROOT / "data" / "sqlite" / "marxist-data-3NF.sqlite"
 
-pytestmark = [pytest.mark.integration, pytest.mark.ledger, pytest.mark.empirical]
+pytestmark = [
+    pytest.mark.integration,
+    pytest.mark.ledger,
+    pytest.mark.empirical,
+    pytest.mark.requires_reference_db,
+]
 
 if not _DB_PATH.exists():  # pragma: no cover - environment guard
     pytest.skip("live reference DB absent", allow_module_level=True)

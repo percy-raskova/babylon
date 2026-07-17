@@ -16,7 +16,6 @@ import logging
 import uuid
 from typing import Any
 
-import networkx as nx
 import pytest
 
 from babylon.engine.services import ServiceContainer
@@ -47,7 +46,7 @@ class LoggingSystem(System):
 
     def step(
         self,
-        graph: nx.DiGraph[str],
+        graph: BabylonGraph,
         services: ServiceContainer,
         context: ContextType,
     ) -> None:
@@ -63,7 +62,7 @@ class NestedLoggingSystem(System):
 
     def step(
         self,
-        graph: nx.DiGraph[str],
+        graph: BabylonGraph,
         services: ServiceContainer,
         context: ContextType,
     ) -> None:

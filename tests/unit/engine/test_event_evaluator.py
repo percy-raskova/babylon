@@ -7,7 +7,6 @@ Sprint: Event Template System
 
 from __future__ import annotations
 
-import networkx as nx
 import pytest
 
 from babylon.engine.event_evaluator import (
@@ -43,9 +42,9 @@ from babylon.topology.graph import BabylonGraph
 
 
 @pytest.fixture
-def simple_graph() -> nx.DiGraph:
+def simple_graph() -> BabylonGraph:
     """Create a simple test graph with two social class nodes."""
-    g: nx.DiGraph = BabylonGraph()
+    g: BabylonGraph = BabylonGraph()
 
     g.add_node(
         PERIPHERY_WORKER_ID,
@@ -76,9 +75,9 @@ def simple_graph() -> nx.DiGraph:
 
 
 @pytest.fixture
-def solidarity_graph() -> nx.DiGraph:
+def solidarity_graph() -> BabylonGraph:
     """Create a graph with solidarity edges."""
-    g: nx.DiGraph = BabylonGraph()
+    g: BabylonGraph = BabylonGraph()
 
     g.add_node(
         PERIPHERY_WORKER_ID,
@@ -218,24 +217,24 @@ class TestAggregateAndCompare:
 class TestFilterNodes:
     """Tests for filter_nodes function."""
 
-    def test_no_filter_returns_all_nodes(self, simple_graph: nx.DiGraph) -> None:
+    def test_no_filter_returns_all_nodes(self, simple_graph: BabylonGraph) -> None:
         result = filter_nodes(simple_graph, None)
         assert len(result) == 2
         assert PERIPHERY_WORKER_ID in result
         assert COMPRADOR_ID in result
 
-    def test_filter_by_node_type(self, simple_graph: nx.DiGraph) -> None:
+    def test_filter_by_node_type(self, simple_graph: BabylonGraph) -> None:
         node_filter = NodeFilter(node_type="social_class")
         result = filter_nodes(simple_graph, node_filter)
         assert len(result) == 2
 
-    def test_filter_by_role(self, simple_graph: nx.DiGraph) -> None:
+    def test_filter_by_role(self, simple_graph: BabylonGraph) -> None:
         node_filter = NodeFilter(role=[SocialRole.PERIPHERY_PROLETARIAT])
         result = filter_nodes(simple_graph, node_filter)
         assert len(result) == 1
         assert PERIPHERY_WORKER_ID in result
 
-    def test_filter_by_id_pattern(self, simple_graph: nx.DiGraph) -> None:
+    def test_filter_by_id_pattern(self, simple_graph: BabylonGraph) -> None:
         node_filter = NodeFilter(id_pattern=r"^C001$")
         result = filter_nodes(simple_graph, node_filter)
         assert len(result) == 1
@@ -245,7 +244,7 @@ class TestFilterNodes:
 class TestEvaluateNodeCondition:
     """Tests for evaluate_node_condition function."""
 
-    def test_simple_condition_passes(self, simple_graph: nx.DiGraph) -> None:
+    def test_simple_condition_passes(self, simple_graph: BabylonGraph) -> None:
         condition = NodeCondition(
             path="ideology.agitation",
             operator=">=",
@@ -254,7 +253,7 @@ class TestEvaluateNodeCondition:
         )
         assert evaluate_node_condition(condition, simple_graph) is True
 
-    def test_simple_condition_fails(self, simple_graph: nx.DiGraph) -> None:
+    def test_simple_condition_fails(self, simple_graph: BabylonGraph) -> None:
         condition = NodeCondition(
             path="ideology.agitation",
             operator=">=",
@@ -263,7 +262,7 @@ class TestEvaluateNodeCondition:
         )
         assert evaluate_node_condition(condition, simple_graph) is False
 
-    def test_filtered_condition(self, simple_graph: nx.DiGraph) -> None:
+    def test_filtered_condition(self, simple_graph: BabylonGraph) -> None:
         condition = NodeCondition(
             path="wealth",
             operator=">=",
@@ -273,7 +272,7 @@ class TestEvaluateNodeCondition:
         )
         assert evaluate_node_condition(condition, simple_graph) is True
 
-    def test_all_aggregation_fails_when_one_doesnt_match(self, simple_graph: nx.DiGraph) -> None:
+    def test_all_aggregation_fails_when_one_doesnt_match(self, simple_graph: BabylonGraph) -> None:
         condition = NodeCondition(
             path="ideology.agitation",
             operator=">=",
@@ -287,7 +286,7 @@ class TestEvaluateNodeCondition:
 class TestEvaluateEdgeCondition:
     """Tests for evaluate_edge_condition function."""
 
-    def test_count_exploitation_edges(self, simple_graph: nx.DiGraph) -> None:
+    def test_count_exploitation_edges(self, simple_graph: BabylonGraph) -> None:
         condition = EdgeCondition(
             edge_type=EdgeType.EXPLOITATION,
             metric="count",
@@ -296,7 +295,7 @@ class TestEvaluateEdgeCondition:
         )
         assert evaluate_edge_condition(condition, simple_graph) is True
 
-    def test_count_missing_edge_type(self, simple_graph: nx.DiGraph) -> None:
+    def test_count_missing_edge_type(self, simple_graph: BabylonGraph) -> None:
         condition = EdgeCondition(
             edge_type=EdgeType.SOLIDARITY,
             metric="count",
@@ -305,7 +304,7 @@ class TestEvaluateEdgeCondition:
         )
         assert evaluate_edge_condition(condition, simple_graph) is False
 
-    def test_solidarity_strength_sum(self, solidarity_graph: nx.DiGraph) -> None:
+    def test_solidarity_strength_sum(self, solidarity_graph: BabylonGraph) -> None:
         condition = EdgeCondition(
             edge_type=EdgeType.SOLIDARITY,
             metric="sum_strength",
@@ -314,7 +313,7 @@ class TestEvaluateEdgeCondition:
         )
         assert evaluate_edge_condition(condition, solidarity_graph) is True
 
-    def test_solidarity_strength_avg(self, solidarity_graph: nx.DiGraph) -> None:
+    def test_solidarity_strength_avg(self, solidarity_graph: BabylonGraph) -> None:
         condition = EdgeCondition(
             edge_type=EdgeType.SOLIDARITY,
             metric="avg_strength",
@@ -327,7 +326,7 @@ class TestEvaluateEdgeCondition:
 class TestEvaluateGraphCondition:
     """Tests for evaluate_graph_condition function."""
 
-    def test_solidarity_density(self, solidarity_graph: nx.DiGraph) -> None:
+    def test_solidarity_density(self, solidarity_graph: BabylonGraph) -> None:
         condition = GraphCondition(
             metric="solidarity_density",
             operator=">",
@@ -335,7 +334,7 @@ class TestEvaluateGraphCondition:
         )
         assert evaluate_graph_condition(condition, solidarity_graph) is True
 
-    def test_total_wealth(self, simple_graph: nx.DiGraph) -> None:
+    def test_total_wealth(self, simple_graph: BabylonGraph) -> None:
         condition = GraphCondition(
             metric="total_wealth",
             operator=">=",
@@ -343,7 +342,7 @@ class TestEvaluateGraphCondition:
         )
         assert evaluate_graph_condition(condition, simple_graph) is True
 
-    def test_average_agitation(self, simple_graph: nx.DiGraph) -> None:
+    def test_average_agitation(self, simple_graph: BabylonGraph) -> None:
         condition = GraphCondition(
             metric="average_agitation",
             operator=">=",
@@ -355,16 +354,16 @@ class TestEvaluateGraphCondition:
 class TestCalculateGraphMetric:
     """Tests for calculate_graph_metric function."""
 
-    def test_solidarity_density_zero_for_no_solidarity(self, simple_graph: nx.DiGraph) -> None:
+    def test_solidarity_density_zero_for_no_solidarity(self, simple_graph: BabylonGraph) -> None:
         result = calculate_graph_metric(simple_graph, "solidarity_density")
         assert result == 0.0
 
-    def test_solidarity_density_nonzero(self, solidarity_graph: nx.DiGraph) -> None:
+    def test_solidarity_density_nonzero(self, solidarity_graph: BabylonGraph) -> None:
         result = calculate_graph_metric(solidarity_graph, "solidarity_density")
         # 2 solidarity edges, 3 nodes, max_edges = 6
         assert result == pytest.approx(2.0 / 6.0)
 
-    def test_average_consciousness(self, simple_graph: nx.DiGraph) -> None:
+    def test_average_consciousness(self, simple_graph: BabylonGraph) -> None:
         result = calculate_graph_metric(simple_graph, "average_consciousness")
         # (0.4 + 0.1) / 2 = 0.25
         assert result == pytest.approx(0.25)
@@ -373,11 +372,11 @@ class TestCalculateGraphMetric:
 class TestEvaluatePreconditions:
     """Tests for evaluate_preconditions function."""
 
-    def test_empty_preconditions_pass(self, simple_graph: nx.DiGraph) -> None:
+    def test_empty_preconditions_pass(self, simple_graph: BabylonGraph) -> None:
         preconditions = PreconditionSet()
         assert evaluate_preconditions(preconditions, simple_graph) is True
 
-    def test_all_logic_requires_all_conditions(self, simple_graph: nx.DiGraph) -> None:
+    def test_all_logic_requires_all_conditions(self, simple_graph: BabylonGraph) -> None:
         preconditions = PreconditionSet(
             node_conditions=[
                 NodeCondition(
@@ -397,7 +396,7 @@ class TestEvaluatePreconditions:
         )
         assert evaluate_preconditions(preconditions, simple_graph) is False
 
-    def test_any_logic_requires_one_condition(self, simple_graph: nx.DiGraph) -> None:
+    def test_any_logic_requires_one_condition(self, simple_graph: BabylonGraph) -> None:
         preconditions = PreconditionSet(
             node_conditions=[
                 NodeCondition(
@@ -422,7 +421,7 @@ class TestEvaluateTemplate:
     """Tests for evaluate_template function."""
 
     def test_template_with_met_preconditions_returns_first_resolution(
-        self, simple_graph: nx.DiGraph
+        self, simple_graph: BabylonGraph
     ) -> None:
         template = EventTemplate(
             id="EVT_test_template",
@@ -457,7 +456,9 @@ class TestEvaluateTemplate:
         assert result is not None
         assert result.id == "first_resolution"
 
-    def test_template_with_unmet_preconditions_returns_none(self, simple_graph: nx.DiGraph) -> None:
+    def test_template_with_unmet_preconditions_returns_none(
+        self, simple_graph: BabylonGraph
+    ) -> None:
         template = EventTemplate(
             id="EVT_test_template",
             name="Test Template",
@@ -490,7 +491,7 @@ class TestEvaluateTemplate:
         result = evaluate_template(template, simple_graph, current_tick=0)
         assert result is None
 
-    def test_template_on_cooldown_returns_none(self, simple_graph: nx.DiGraph) -> None:
+    def test_template_on_cooldown_returns_none(self, simple_graph: BabylonGraph) -> None:
         template = EventTemplate(
             id="EVT_test_template",
             name="Test Template",
@@ -522,7 +523,9 @@ class TestEvaluateTemplate:
         result = evaluate_template(template, simple_graph, current_tick=8)
         assert result is not None
 
-    def test_resolution_with_condition_selects_matching(self, solidarity_graph: nx.DiGraph) -> None:
+    def test_resolution_with_condition_selects_matching(
+        self, solidarity_graph: BabylonGraph
+    ) -> None:
         template = EventTemplate(
             id="EVT_bifurcation",
             name="Bifurcation",
@@ -590,7 +593,7 @@ class TestEvaluateTemplate:
 class TestGetMatchingNodesForResolution:
     """Tests for get_matching_nodes_for_resolution function."""
 
-    def test_returns_nodes_matching_conditions(self, simple_graph: nx.DiGraph) -> None:
+    def test_returns_nodes_matching_conditions(self, simple_graph: BabylonGraph) -> None:
         template = EventTemplate(
             id="EVT_test",
             name="Test",

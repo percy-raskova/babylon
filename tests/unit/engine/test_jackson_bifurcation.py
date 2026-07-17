@@ -18,7 +18,6 @@ import random
 from collections.abc import Generator
 from typing import TYPE_CHECKING
 
-import networkx as nx
 import pytest
 
 from babylon.config.defines import GameDefines, StruggleDefines
@@ -60,7 +59,7 @@ def _create_test_graph(
     include_core_worker: bool = True,
     c_w_national_identity: float = 0.3,
     c_w_p_acquiescence: float = 0.4,
-) -> nx.DiGraph:
+) -> BabylonGraph:
     """Create a test graph with Comprador, Periphery Proletariat, and optionally Core Worker.
 
     Args:
@@ -75,7 +74,7 @@ def _create_test_graph(
     Returns:
         NetworkX DiGraph with test entities.
     """
-    graph: nx.DiGraph = BabylonGraph()
+    graph: BabylonGraph = BabylonGraph()
 
     # Comprador Bourgeoisie (p_c)
     graph.add_node(
@@ -186,7 +185,7 @@ class TestPowerVacuumTrigger:
         self, services: ServiceContainer, seeded_random: None
     ) -> None:
         """No POWER_VACUUM when there is no Comprador entity."""
-        graph: nx.DiGraph = BabylonGraph()
+        graph: BabylonGraph = BabylonGraph()
         # Only add a periphery proletariat, no comprador
         graph.add_node(
             PERIPHERY_WORKER_ID,

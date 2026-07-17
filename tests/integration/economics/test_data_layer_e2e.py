@@ -48,6 +48,8 @@ MACOMB_FIPS: str = "26099"
 # Test year (QCEW data is populated for 2010-2019+)
 TEST_YEAR: int = 2015
 
+pytestmark = [pytest.mark.integration, pytest.mark.requires_reference_db]
+
 WEEKS_PER_YEAR: int = 52
 
 

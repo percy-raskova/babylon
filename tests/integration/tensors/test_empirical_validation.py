@@ -41,6 +41,8 @@ from .conftest import (
     WAYNE_FIPS,
 )
 
+pytestmark = [pytest.mark.integration, pytest.mark.requires_reference_db]
+
 # =============================================================================
 # ACCOUNTING IDENTITY TESTS
 # =============================================================================

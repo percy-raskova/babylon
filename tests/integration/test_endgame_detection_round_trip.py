@@ -5,7 +5,10 @@ T058: --endgame-detector argparse acceptance (already covered by
 T059: bridge.set_endgame_detector resolution unit (covered in
       test_bridge.py:TestBridgeUtilities; this module focuses on the
       end-to-end runner integration).
-T061: Inject ImperialCollapseAtTick250 → exit early at tick 250.
+T061: Inject FireAtTick3 → exit early at tick 3. (ImperialCollapseAtTick250,
+      the fixed-at-250 sibling detector, is exercised at the resolution-unit
+      layer in test_endgame_resolution.py; this end-to-end test uses the
+      fast-firing detector to keep the Postgres-backed round trip cheap.)
 T062: Without --endgame-detector → run to completion, no end_game_event.
 """
 
@@ -67,20 +70,20 @@ def _run(*, ticks: int, endgame_detector: str | None) -> object:
 
 def test_imperial_collapse_at_tick_3() -> None:
     """T061: detector firing at tick 3 → early termination at tick 4 (range)."""
-    # Use a small fire-at value so the test runs in a reasonable time.
-    # FireAtTick is parameterized but the runner takes a dotted path,
-    # so we use a fixed-tick fixture via ImperialCollapseAtTick250.
-    # Substitute a smaller fixture that fires earlier.
-    detector_path = "tests.integration.fixtures.endgame.ImperialCollapseAtTick250"
-    result = _run(ticks=300, endgame_detector=detector_path)
+    # FireAtTick3 has a zero-arg constructor (required by
+    # WorldStateBridge.set_endgame_detector's dotted-path instantiation,
+    # which passes no constructor args) and fires at tick 3, keeping this
+    # Postgres-backed round trip cheap instead of running out to tick 250.
+    detector_path = "tests.integration.fixtures.endgame.FireAtTick3"
+    result = _run(ticks=10, endgame_detector=detector_path)
 
     from babylon.engine.headless_runner.models import ExitReason
 
     assert result.exit_reason == ExitReason.EARLY_TERMINATED, (  # type: ignore[attr-defined]
         f"expected EARLY_TERMINATED, got {result.exit_reason}"  # type: ignore[attr-defined]
     )
-    # The detector fires at tick=250; ticks_completed = 251.
-    assert result.ticks_completed == 251  # type: ignore[attr-defined]
+    # The detector fires at tick=3; ticks_completed = 4.
+    assert result.ticks_completed == 4  # type: ignore[attr-defined]
 
     summary = json.loads(
         (result.artifact_dir / "summary.json").read_text()  # type: ignore[attr-defined]
@@ -88,7 +91,7 @@ def test_imperial_collapse_at_tick_3() -> None:
     assert summary["run_metadata"]["exit_reason"] == "early_terminated"
     end_game = summary.get("end_game_event")
     assert end_game is not None
-    assert end_game["tick"] == 250
+    assert end_game["tick"] == 3
     assert end_game["condition"] == "IMPERIAL_COLLAPSE"
 
 

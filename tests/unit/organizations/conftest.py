@@ -6,7 +6,6 @@ and edge helpers for all 5 organization edge types.
 
 from __future__ import annotations
 
-import networkx as nx
 import pytest
 
 from babylon.models.entities.organization import (
@@ -119,7 +118,7 @@ def org_graph(
     revolutionary_workers_party: PoliticalFaction,
     first_baptist_church: CivilSocietyOrg,
     sample_key_figure: KeyFigure,
-) -> nx.DiGraph:
+) -> BabylonGraph:
     """Graph with all 4 Detroit org subtypes, a key figure, and edges."""
     G = BabylonGraph()
 

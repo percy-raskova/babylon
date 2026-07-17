@@ -40,6 +40,22 @@ def _is_canonical_michigan(trace_csv: Path) -> bool:
         return sum(1 for _ in f) > _MIN_CANONICAL_ROWS
 
 
+def _input_hash(trace_csv: Path) -> str | None:
+    """The run's manifest ``reproducibility.input_hash``, or None if absent."""
+    import json
+
+    manifest = trace_csv.parent / "manifest.json"
+    if not manifest.exists():
+        return None
+    try:
+        payload = json.loads(manifest.read_text())
+    except json.JSONDecodeError:
+        return None
+    repro = payload.get("reproducibility", {})
+    value = repro.get("input_hash")
+    return str(value) if value else None
+
+
 def _recent_michigan_runs() -> tuple[Path, Path] | None:
     """Return (older, newer) trace.csv paths from the two most-recent
     *canonical* (520-tick) michigan-canada runs, or None if fewer than two."""
@@ -57,7 +73,14 @@ def _recent_michigan_runs() -> tuple[Path, Path] | None:
 
 
 def test_sc006_recent_regens_epsilon_deterministic() -> None:
-    """Two most-recent michigan-e2e regens agree within 10^-12 relative."""
+    """Two most-recent michigan-e2e regens agree within 10^-12 relative.
+
+    Only a SAME-INPUT pair is a determinism claim: runs whose manifest
+    ``input_hash`` differ (different seed, defines, data version, or code
+    era) legitimately diverge — comparing them measured code drift, not
+    non-determinism (observed 2026-07-16: 33% "error" across two runs from
+    different code eras). Such pairs SKIP with instructions to regenerate.
+    """
 
     pair = _recent_michigan_runs()
     if pair is None:
@@ -66,6 +89,16 @@ def test_sc006_recent_regens_epsilon_deterministic() -> None:
             "`mise run sim:e2e-michigan` twice with the same seed first"
         )
     older_path, newer_path = pair
+
+    older_hash = _input_hash(older_path)
+    newer_hash = _input_hash(newer_path)
+    if older_hash is None or newer_hash is None or older_hash != newer_hash:
+        pytest.skip(
+            f"most-recent canonical regens are not a same-input pair "
+            f"(input_hash {older_hash!r} vs {newer_hash!r}) — run "
+            "`mise run sim:e2e-michigan` twice consecutively on the same "
+            "code + seed to produce a determinism pair"
+        )
 
     with older_path.open() as f1, newer_path.open() as f2:
         older = list(csv.DictReader(f1))

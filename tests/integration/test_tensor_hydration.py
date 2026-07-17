@@ -31,6 +31,8 @@ if TYPE_CHECKING:
 
     from sqlalchemy import Engine
 
+pytestmark = [pytest.mark.integration, pytest.mark.requires_reference_db]
+
 
 # =============================================================================
 # DATABASE DISCOVERY

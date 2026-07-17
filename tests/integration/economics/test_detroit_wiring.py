@@ -19,6 +19,8 @@ import pytest
 # Skip entire module if database not available
 _DB_PATH = Path("data/sqlite/marxist-data-3NF.sqlite")
 
+pytestmark = [pytest.mark.integration, pytest.mark.requires_reference_db]
+
 
 @pytest.mark.integration
 class TestDetroitWiring:

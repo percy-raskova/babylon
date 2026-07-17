@@ -10,7 +10,6 @@ from __future__ import annotations
 
 from typing import Any
 
-import networkx as nx
 import pytest
 
 from babylon.domain.economics.dynamics.types import ClassDistribution, EconomicConditions
@@ -400,7 +399,7 @@ def sample_tick_state(
 
 def build_territory_graph(
     fips_codes: list[str] | None = None,
-) -> nx.DiGraph[str]:
+) -> BabylonGraph:
     """Build a test graph with Territory nodes.
 
     Args:

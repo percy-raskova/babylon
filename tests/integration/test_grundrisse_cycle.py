@@ -33,7 +33,6 @@ claims this suite pins (scope C1.7 D):
 
 from __future__ import annotations
 
-import networkx as nx
 import pytest
 
 from babylon.engine.services import ServiceContainer
@@ -52,7 +51,7 @@ _WAGES = ("employer", "worker2")  # source=employer, target=worker (re-oriented 
 _TENANCY = ("tenant", "land")  # source=tenant (pole A), target=territory rent_level (pole B)
 
 
-def _build_circuit_graph() -> nx.DiGraph[str]:
+def _build_circuit_graph() -> BabylonGraph:
     """A single-county circuit with the three live wealth-asymmetry edges.
 
     capital_labor starts as the dominant contradiction (gap 0.5); wage
@@ -72,12 +71,12 @@ def _build_circuit_graph() -> nx.DiGraph[str]:
     return graph
 
 
-def _cap_labor(graph: nx.DiGraph[str]) -> dict[str, object]:
+def _cap_labor(graph: BabylonGraph) -> dict[str, object]:
     """The capital_labor opposition state stashed after the latest step."""
     return graph.graph["opposition_states"]["capital_labor"]
 
 
-def _principal_key(graph: nx.DiGraph[str]) -> str:
+def _principal_key(graph: BabylonGraph) -> str:
     """Key of the opposition marked principal this tick."""
     states = graph.graph["opposition_states"]
     return next(key for key, state in states.items() if state["is_principal"])
@@ -275,7 +274,7 @@ class TestRuptureGating:
 # ---------------------------------------------------------------------------
 
 
-def _regime(graph: nx.DiGraph[str]) -> str:
+def _regime(graph: BabylonGraph) -> str:
     """The fixed-point regime ContradictionSystem stashed this tick."""
     return graph.graph["dialectical_regime"]["regime"]  # type: ignore[no-any-return]
 

@@ -38,6 +38,11 @@ jobs:
         with:
           gdal: "true"
       - name: Heavy shard (includes slow)
+        env:
+          # Self-salvage caps (2026-07-16 wedge incident): a hung shard SIGINTs
+          # itself inside the job budget and still uploads summary + junit.
+          BABYLON_REST_SHARD_TIMEOUT: 25m
+          BABYLON_SLOWUNIT_TIMEOUT: 8m
         run: mise run test:rest-ci
       - name: Upload test results + coverage
         if: always()
@@ -45,6 +50,7 @@ jobs:
         with:
           name: nightly-rest-results
           path: reports/test-results/rest-ci/
+          retention-days: 14
 
   security:
     name: Security Audit (pip-audit policy — blocking since item-41, dev HEAD)
@@ -97,6 +103,16 @@ jobs:
           POSTGRES_USER: test
           POSTGRES_PASSWORD: test
         run: poetry run pytest tests/integration/web/ -o addopts="" -vv -ra -l --tb=long --durations=0
+      # Audit 2026-07-16: qa:tick-budget (spec-104, ratified per-system wallclock
+      # budget) was built and wired into NO workflow — engine perf regressions
+      # were architecturally ungated. This job already has Postgres + the
+      # reference DB. Advisory first ("advisory" in the name = non-blocking per
+      # promote.sh convention); promote to blocking once noise is characterized.
+      - name: qa:tick-budget (advisory — per-system wallclock vs ratified budget)
+        continue-on-error: true
+        env:
+          BABYLON_TEST_PG_DSN: "dbname=babylon_test host=localhost port=5433 user=test password=test"
+        run: mise run qa:tick-budget
       - name: Stop Postgres
         if: always()
         run: docker compose down -v

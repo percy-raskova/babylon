@@ -8,7 +8,6 @@ Feature 033 — Bifurcation Topology Analysis.
 
 from __future__ import annotations
 
-import networkx as nx
 import pytest
 
 from babylon.config.defines import BifurcationDefines
@@ -180,7 +179,7 @@ class TestSolidarityCeilingExploitation:
     @pytest.mark.unit
     def test_separate_exploiters_no_bonus(self, bifurcation_defines: BifurcationDefines) -> None:
         """Different exploitation sources should NOT give bonus."""
-        graph: nx.DiGraph = BabylonGraph()
+        graph: BabylonGraph = BabylonGraph()
         graph.add_node("worker_a", _node_type="social_class", wealth=50.0)
         graph.add_node("worker_b", _node_type="social_class", wealth=40.0)
         graph.add_node("exploiter_1", _node_type="social_class", wealth=500.0)

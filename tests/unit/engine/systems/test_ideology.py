@@ -14,7 +14,6 @@ This enables periphery workers (who have no incoming WAGES edges)
 to develop consciousness from their material exploitation.
 """
 
-import networkx as nx
 import pytest
 
 from babylon.engine.services import ServiceContainer
@@ -386,7 +385,7 @@ class TestWageOppositionCrisisGate:
     """
 
     @staticmethod
-    def _graph_with_worker() -> "nx.DiGraph[str]":
+    def _graph_with_worker() -> "BabylonGraph":
         graph = BabylonGraph()
         graph.add_node(
             PERIPHERY_WORKER_ID,

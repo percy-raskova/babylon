@@ -73,24 +73,29 @@ class TestDerivedTensorImperialRent:
         assert tensor.imperial_rent == pytest.approx(-1800.0)
 
     def test_imperial_rent_zero_for_balanced_exchange(self) -> None:
-        """Balanced exchange: total_v == total_value => zero imperial rent."""
+        """Balanced exchange: total_v == total_value => zero imperial rent.
+
+        LaborHours cells are non-negative (c, v, s >= 0), so
+        total_value == total_c + total_v + total_s can only equal total_v
+        when total_c == 0 and total_s == 0: all value produced flows
+        directly to wages, with nothing appropriated as constant capital
+        or surplus.
+        """
         tensor = ValueTensor4x3(
             fips_code="26163",
             year=2022,
-            dept_I=DepartmentRow(c=100.0, v=100.0, s=50.0),
-            dept_IIa=DepartmentRow(c=100.0, v=100.0, s=50.0),
-            dept_IIb=DepartmentRow(c=100.0, v=100.0, s=50.0),
-            dept_III=DepartmentRow(c=100.0, v=100.0, s=50.0),
+            dept_I=DepartmentRow(c=0.0, v=100.0, s=0.0),
+            dept_IIa=DepartmentRow(c=0.0, v=0.0, s=0.0),
+            dept_IIb=DepartmentRow(c=0.0, v=0.0, s=0.0),
+            dept_III=DepartmentRow(c=0.0, v=0.0, s=0.0),
             naics_granularity=0.9,
             excluded_wages=0.0,
         )
 
-        # total_v = 400, total_value = 4 * (100+100+50) = 1000
-        # This doesn't balance naturally, so let's create one that does
-        # total_value = c + v + s = v when c + s = 0, which is impossible
-        # In practice, balanced exchange is rare
-
-        assert tensor.imperial_rent == pytest.approx(tensor.total_v - tensor.total_value)
+        # total_v = 100, total_c = 0, total_s = 0 => total_value = 0+100+0 = 100
+        assert tensor.total_v == pytest.approx(100.0)
+        assert tensor.total_value == pytest.approx(100.0)
+        assert tensor.imperial_rent == pytest.approx(0.0)
 
 
 class TestDerivedTensorProfitRate:

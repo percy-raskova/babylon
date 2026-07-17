@@ -6,7 +6,6 @@ Critical validation: the assimilation trap test (high cross-line density
 
 from __future__ import annotations
 
-import networkx as nx
 import pytest
 import xgi
 from pydantic import ValidationError
@@ -67,7 +66,7 @@ def _build_analysis_scenario(
     community_states: dict[CommunityType, CommunityState],
     edges: list[tuple[str, str, EdgeType, float]],
     territories: list[dict[str, object]] | None = None,
-) -> tuple[nx.DiGraph, xgi.Hypergraph, dict[str, set[CommunityType]]]:
+) -> tuple[BabylonGraph, xgi.Hypergraph, dict[str, set[CommunityType]]]:
     """Build a complete scenario graph for bifurcation analysis.
 
     Args:
@@ -79,7 +78,7 @@ def _build_analysis_scenario(
     Returns:
         Tuple of (graph, hypergraph, agent_memberships).
     """
-    graph: nx.DiGraph = BabylonGraph()
+    graph: BabylonGraph = BabylonGraph()
 
     # Add agent nodes
     for agent_id in agent_communities:
@@ -328,13 +327,22 @@ class TestRevolutionaryClassification:
 
 
 class TestIndeterminateClassification:
-    """Mixed signals → indeterminate."""
+    """Mixed signals: the assimilation trap fires even with balanced edges."""
 
     def test_mixed_solidarity_and_antagonism(
         self,
         bifurcation_defines: BifurcationDefines,
     ) -> None:
-        """Balanced solidarity and antagonism → indeterminate."""
+        """One solidarity edge + one exploitation edge → fascist.
+
+        settler_1 has no marginalized community membership, so its own
+        marginalized CI is 0 regardless of NEW_AFRIKAN's community-level
+        CI=0.5 -- consciousness_weighted_solidarity uses
+        min(source_ci, target_ci) across MARGINALIZED memberships only. The
+        single solidarity edge therefore collapses to weight ~0.009 (0.5 *
+        sigmoid(0.0)), well under consciousness_filter_threshold=0.2, so the
+        assimilation trap fires despite the seemingly balanced edge mix.
+        """
         # NetworkX DiGraph doesn't support parallel edges between same pair,
         # so use separate agents for solidarity vs exploitation edges.
         agents2 = {
@@ -362,11 +370,15 @@ class TestIndeterminateClassification:
             bifurcation_defines,
         )
 
-        # With balanced forces, result should be indeterminate
-        assert result.overall_tendency in ("indeterminate", "fascist", "revolutionary")
-        # Verify the metrics capture both
-        assert result.cross_line_solidarity_count >= 1
-        assert result.lateral_antagonism_count >= 0 or result.upward_antagonism_count >= 0
+        # Assimilation trap: cross-line solidarity exists but consciousness
+        # weighting collapses it below the filter threshold.
+        assert result.overall_tendency == "fascist"
+        # The single solidarity edge crosses the colonial axis; the
+        # exploitation edge runs hegemonic -> marginalized ("downward"),
+        # which contributes to neither lateral nor upward antagonism.
+        assert result.cross_line_solidarity_count == 1
+        assert result.lateral_antagonism_count == 0
+        assert result.upward_antagonism_count == 0
 
 
 # =============================================================================
@@ -382,7 +394,7 @@ class TestDegenerateCases:
         bifurcation_defines: BifurcationDefines,
     ) -> None:
         """Empty graph → indeterminate with zero metrics."""
-        graph: nx.DiGraph = BabylonGraph()
+        graph: BabylonGraph = BabylonGraph()
         H: xgi.Hypergraph = xgi.Hypergraph()
         states: dict[CommunityType, CommunityState] = {}
         memberships: dict[str, set[CommunityType]] = {}
@@ -439,7 +451,7 @@ class TestDegenerateCases:
         bifurcation_defines: BifurcationDefines,
     ) -> None:
         """Single agent, no edges → indeterminate."""
-        graph: nx.DiGraph = BabylonGraph()
+        graph: BabylonGraph = BabylonGraph()
         graph.add_node("lone_wolf", _node_type="social_class", wealth=50.0)
         H: xgi.Hypergraph = xgi.Hypergraph()
         states: dict[CommunityType, CommunityState] = {}

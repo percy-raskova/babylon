@@ -110,53 +110,42 @@ class TestFrozenDiscipline:
         assert_no_in_place_mutation(pre_state, post_state, pre_ids)
 
     def test_seeded_dunder_bypass_is_detected(self) -> None:
-        """Predicate C (Layer 3): a dunder-bypass mutation IS caught.
+        """Predicate C (Layer 3): assert_no_in_place_mutation raises on a
+        seeded dunder-bypass mutation.
 
-        Builds a pre-state, captures its model_dump and ids BEFORE the
-        mutation, then dunder-mutates an entity in place. The
-        ``assert_no_in_place_mutation`` helper compares each pre-tick
-        model_dump (captured pre-mutation) against the post-tick dump
-        (read AFTER mutation) — same Python id but different fields →
-        violation.
+        Simulates a System that holds onto the same entity object across a
+        tick instead of routing through ``model_copy``/graph reconstruction,
+        then bypasses ``frozen=True`` via a direct ``__dict__`` write.
+        ``pre_state`` is an independent deep copy taken before the bypass —
+        the ground truth a correctly-behaving caller retains — while
+        ``pre_ids`` (via ``snapshot_ids``) records the identity of the
+        live object that goes on to be mutated and reappear, same id but
+        field-different, in ``post_state``. This is the operational
+        signature ``assert_no_in_place_mutation`` exists to catch.
         """
         from babylon.models.entities.social_class import SocialClass
         from babylon.models.enums import SocialRole
 
-        worker = SocialClass(
+        live_worker = SocialClass(
             id="C001",
             name="Worker",
             role=SocialRole.PERIPHERY_PROLETARIAT,
             wealth=10.0,
         )
-        pre_state = WorldState(tick=0, entities={"C001": worker})
+        live_state = WorldState(tick=0, entities={"C001": live_worker})
+        pre_ids = snapshot_ids(live_state)
 
-        # Capture pre-mutation snapshot manually so we can simulate the
-        # full pre/post lifecycle: pre_dump is taken BEFORE the dunder
-        # bypass; pre_ids points at the same object that will be mutated.
-        pre_dump_snapshot = {"C001": pre_state.entities["C001"].model_dump()}
-        pre_ids = snapshot_ids(pre_state)
+        # Ground-truth pre-tick snapshot: a deep copy decoupled from
+        # `live_worker`, so it cannot be corrupted by the bypass below.
+        pre_state = WorldState(tick=0, entities={"C001": live_worker.model_copy(deep=True)})
 
-        # Dunder-bypass: same Python object with mutated __dict__.
-        pre_state.entities["C001"].__dict__["wealth"] = 999.0
+        # Dunder-bypass: mutate the live object in place instead of
+        # producing a fresh instance via model_copy(update=...).
+        live_worker.__dict__["wealth"] = 999.0
 
-        # Walk the post-state and assert the harness catches the violation.
-        # We invoke the comparison logic inline because the harness reads
-        # pre_state.model_dump() at call time — by then the entity is
-        # already mutated, masking the pre value. The realistic engine
-        # call site captures pre BEFORE mutation; for this seeded test
-        # we use the pre_dump_snapshot we captured earlier.
-        post_worker = pre_state.entities["C001"]
-        post_dump = post_worker.model_dump()
-        same_id = id(post_worker) == pre_ids["C001"]
-        fields_differ = post_dump != pre_dump_snapshot["C001"]
+        # post_state reports the SAME (now-mutated) object under the same
+        # id recorded in pre_ids.
+        post_state = WorldState(tick=1, entities={"C001": live_worker})
 
-        assert same_id and fields_differ, (
-            "Test setup invalid — could not produce the same-id-but-fields-differ "
-            "signature this test exists to catch"
-        )
-
-        # The harness is designed for engine flows where pre_state stays
-        # immutable across the tick. The dunder-bypass invalidates that
-        # contract for this seeded test, so we don't call the harness
-        # directly here — the assertion above is the operational test
-        # that the harness's signature-detection logic is correct.
+        with pytest.raises(AssertionError, match="In-place mutation detected"):
+            assert_no_in_place_mutation(pre_state, post_state, pre_ids)

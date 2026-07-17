@@ -19,6 +19,8 @@ Test Categories:
 from __future__ import annotations
 
 import asyncio
+import threading
+import time
 from unittest.mock import AsyncMock, Mock, patch
 
 import pytest
@@ -276,31 +278,38 @@ class TestStepOnce:
         self,
         mock_simulation: Mock,
     ) -> None:
-        """Concurrent step_once() calls are serialized via lock."""
+        """Concurrent step_once() calls never overlap simulation.step() execution."""
         from babylon.engine.runner import AsyncSimulationRunner
 
         runner = AsyncSimulationRunner(mock_simulation)
 
-        # Slow down step to ensure concurrency
-        original_step = mock_simulation.step.side_effect
+        active = 0
+        max_active = 0
+        guard = threading.Lock()
 
-        async def slow_step() -> WorldState:
-            await asyncio.sleep(0.01)
-            return original_step()
+        def tracking_step() -> WorldState:
+            nonlocal active, max_active
+            with guard:
+                active += 1
+                max_active = max(max_active, active)
+            time.sleep(0.05)
+            new_tick = mock_simulation.current_state.tick + 1
+            new_state = WorldState(tick=new_tick)
+            mock_simulation.current_state = new_state
+            with guard:
+                active -= 1
+            return new_state
 
-        # Use asyncio.to_thread mock that actually delays
-        with patch("asyncio.to_thread") as mock_to_thread:
-            mock_to_thread.side_effect = lambda func: (
-                asyncio.sleep(0.01).then(lambda _: func())
-                if hasattr(asyncio.sleep(0.01), "then")
-                else func()
-            )
+        mock_simulation.step = Mock(side_effect=tracking_step)
 
-            # Run concurrently (without the mock complexity, just check serialization)
-            pass  # Lock presence is sufficient
+        results = await asyncio.gather(
+            runner.step_once(),
+            runner.step_once(),
+            runner.step_once(),
+        )
 
-        # Simpler approach: verify lock exists
-        assert hasattr(runner, "_step_lock")
+        assert max_active == 1, "step() calls overlapped despite the serialization lock"
+        assert sorted(state.tick for state in results) == [1, 2, 3]
 
 
 # =============================================================================

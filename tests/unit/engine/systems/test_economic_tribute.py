@@ -6,7 +6,6 @@ zero-wealth guard, default value fallback, and value_flow recording.
 
 from __future__ import annotations
 
-import networkx as nx
 import pytest
 
 from babylon.engine.services import ServiceContainer
@@ -23,7 +22,7 @@ def _make_tribute_graph(
     target_active: bool = True,
     edge_type: EdgeType = EdgeType.TRIBUTE,
     target_role: SocialRole = SocialRole.CORE_BOURGEOISIE,
-) -> nx.DiGraph[str]:
+) -> BabylonGraph:
     """Build a minimal graph with one TRIBUTE edge."""
     graph = BabylonGraph()
     graph.add_node(

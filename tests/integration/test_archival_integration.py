@@ -44,10 +44,12 @@ def _seed_session(pool: Any, session_id: uuid.UUID, *, ticks: int = 3) -> None:
     with pool.connection() as conn:
         conn.execute(
             """
-            INSERT INTO hex_spatial_map (h3_index, county_fips, state_fips, region_id)
-            VALUES ('872a91055ffffff', '26163', '26', 'midwest')
-            ON CONFLICT (h3_index) DO NOTHING
-            """
+            INSERT INTO hex_spatial_map
+                (session_id, h3_index, county_fips, state_fips, region_id)
+            VALUES (%s, '872a91055ffffff', '26163', '26', 'midwest')
+            ON CONFLICT (session_id, h3_index) DO NOTHING
+            """,
+            (sid,),
         )
         for tick in range(ticks):
             conn.execute(

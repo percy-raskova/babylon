@@ -8,7 +8,6 @@ Reference: specs/002-dialectical-field-topology/contracts/field_derivative_syste
 
 from __future__ import annotations
 
-import networkx as nx
 import pytest
 
 from babylon.engine.field_registry import DefaultFieldRegistry
@@ -19,7 +18,7 @@ from babylon.models.enums import EdgeType, EventType
 from babylon.topology.graph import BabylonGraph
 
 
-def _make_two_node_graph() -> nx.DiGraph[str]:
+def _make_two_node_graph() -> BabylonGraph:
     """Create a minimal graph with two connected social_class nodes."""
     graph = BabylonGraph()
     graph.add_node(
@@ -50,7 +49,7 @@ def _make_two_node_graph() -> nx.DiGraph[str]:
 
 
 def _run_field_system(
-    graph: nx.DiGraph[str],
+    graph: BabylonGraph,
     persistent_data: dict[str, object],
 ) -> ServiceContainer:
     """Run ContradictionFieldSystem to populate fields on nodes."""

@@ -13,7 +13,6 @@ from __future__ import annotations
 
 from collections.abc import Generator
 
-import networkx as nx
 import pytest
 
 from babylon.engine.services import ServiceContainer
@@ -30,7 +29,7 @@ def services() -> Generator[ServiceContainer, None, None]:
     container.database.close()
 
 
-def _create_depleted_circuit(graph: nx.DiGraph[str]) -> None:
+def _create_depleted_circuit(graph: BabylonGraph) -> None:
     """Create an imperial circuit AFTER peripheral revolt cut off extraction.
 
     This simulates:
@@ -77,7 +76,7 @@ def _create_depleted_circuit(graph: nx.DiGraph[str]) -> None:
     )
 
 
-def _create_healthy_circuit(graph: nx.DiGraph[str]) -> None:
+def _create_healthy_circuit(graph: BabylonGraph) -> None:
     """Create a healthy imperial circuit with tribute flowing."""
     # Comprador with tribute to send
     graph.add_node(

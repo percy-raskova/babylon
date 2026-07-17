@@ -24,7 +24,6 @@ from __future__ import annotations
 from collections.abc import Callable
 from typing import Any
 
-import networkx as nx
 import pytest
 from hypothesis import HealthCheck, given, settings
 
@@ -42,7 +41,7 @@ def _make_runtime_database() -> RuntimeDatabase:
     return RuntimeDatabase(in_memory=True)
 
 
-def _payload_to_graph(payload: dict) -> nx.DiGraph[str]:
+def _payload_to_graph(payload: dict) -> BabylonGraph:
     """Materialize a Hypothesis-generated payload dict as a one-node graph.
 
     The payload is stored as the single node's attributes — this gives
@@ -54,7 +53,7 @@ def _payload_to_graph(payload: dict) -> nx.DiGraph[str]:
     return graph
 
 
-def _graph_payload(graph: nx.DiGraph) -> dict:
+def _graph_payload(graph: BabylonGraph) -> dict:
     """Extract the payload dict from a graph hydrated by hydrate_graph."""
     if "payload_node" not in graph.nodes:
         return {}

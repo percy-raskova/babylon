@@ -8,7 +8,6 @@ from __future__ import annotations
 
 from typing import Any
 
-import networkx as nx
 import pytest
 
 from babylon.config.defines import OODADefines
@@ -47,7 +46,7 @@ def _make_community_graph(
     heat: float = 0.0,
     infrastructure: float = 0.5,
     contestation: float = 0.2,
-) -> nx.DiGraph[str]:
+) -> BabylonGraph:
     """Create a graph with a community node."""
     graph = BabylonGraph()
     graph.add_node(

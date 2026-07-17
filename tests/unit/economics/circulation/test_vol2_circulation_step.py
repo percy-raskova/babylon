@@ -11,7 +11,6 @@ from __future__ import annotations
 
 from uuid import uuid4
 
-import networkx as nx
 import numpy as np
 import pytest
 import scipy.sparse as sp
@@ -94,7 +93,7 @@ def _build_2hex_matrix(
     )
 
 
-def _build_2hex_graph(v_a: float, v_b: float) -> nx.DiGraph[str]:
+def _build_2hex_graph(v_a: float, v_b: float) -> BabylonGraph:
     g = BabylonGraph()
     g.add_node("hex_A", _node_type="hex", v=v_a)
     g.add_node("hex_B", _node_type="hex", v=v_b)

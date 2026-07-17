@@ -29,7 +29,6 @@ from typing import Any
 from unittest.mock import MagicMock
 from uuid import uuid4
 
-import networkx as nx
 import pytest
 
 from babylon.topology.graph import BabylonGraph
@@ -37,7 +36,7 @@ from babylon.topology.graph import BabylonGraph
 pytestmark = pytest.mark.integration
 
 
-def _stub_state_and_graph() -> tuple[Any, nx.DiGraph]:
+def _stub_state_and_graph() -> tuple[Any, BabylonGraph]:
     """Build a tuple compatible with ``EngineBridge.hydrate_state``'s return.
 
     The graph is intentionally empty so ``_state_to_snapshot`` produces
@@ -46,7 +45,7 @@ def _stub_state_and_graph() -> tuple[Any, nx.DiGraph]:
     """
     from babylon.models.world_state import WorldState
 
-    graph: nx.DiGraph = BabylonGraph()
+    graph: BabylonGraph = BabylonGraph()
     graph.graph["tick"] = 0
     state = WorldState.from_graph(graph, tick=0)
     return state, graph

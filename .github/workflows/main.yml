@@ -51,6 +51,15 @@ jobs:
 
       - name: Repo hygiene gate
         run: mise run check:hygiene
+      # Drift fix 2026-07-16: ci.yml gained check:seams on 2026-07-12 (c4cf919f)
+      # and this "verbatim" copy never picked it up — the fast lane MUST stay
+      # byte-identical to ci.yml's until the two are factored into a reusable
+      # workflow (owner decision: workflow_call renames check contexts, which
+      # would break the branch-protection required-check names).
+      - name: Seam continuity gate (Sensor 1 — VIII.12)
+        run: mise run check:seams
+      - name: Data-coverage sentinel (static — declared sources exist)
+        run: mise run check:coverage
       - name: Lint (ruff check)
         run: mise run lint:check
       - name: Format (ruff format --check — blocking)
@@ -79,6 +88,7 @@ jobs:
         with:
           name: unit-ci-results
           path: reports/test-results/unit-ci/
+          retention-days: 14
 
   qa-regression:
     name: Determinism Gate (byte-identical dense goldens)
@@ -131,6 +141,11 @@ jobs:
         with:
           gdal: "true"
       - name: Heavy shard (includes slow; web-Postgres suites run in their own job)
+        env:
+          # Self-salvage caps (2026-07-16 wedge incident): a hung shard SIGINTs
+          # itself inside the 45-min job budget and still uploads summary + junit.
+          BABYLON_REST_SHARD_TIMEOUT: 32m
+          BABYLON_SLOWUNIT_TIMEOUT: 9m
         run: mise run test:rest-ci
       - name: Upload test results + coverage
         if: always()
@@ -138,6 +153,7 @@ jobs:
         with:
           name: rest-ci-results
           path: reports/test-results/rest-ci/
+          retention-days: 14
 
   # The web integration suites expect the Django schema AND reference-derived
   # seed data — item 40 territory until the subset artifact lands (Phase 6).
@@ -181,6 +197,28 @@ jobs:
           POSTGRES_USER: test
           POSTGRES_PASSWORD: test
         run: poetry run pytest tests/integration/web/ -o addopts="" -vv -ra -l --tb=long --durations=0
+      # Audit 2026-07-16: the non-web requires_postgres suites (balkanization,
+      # persistence, observatory, headless_runner) had NO Postgres-provisioned
+      # CI home — test-rest selects them but never starts Postgres, so their
+      # real assertions had never executed in CI. This job already has the
+      # container + reference DB. Advisory until the first green run proves the
+      # environment satisfies them ("advisory" in the name keeps promote.sh
+      # treating it as non-blocking).
+      - name: Non-web Postgres suites (advisory — first CI home)
+        continue-on-error: true
+        env:
+          BABYLON_TEST_PG_DSN: "dbname=babylon_test host=localhost port=5433 user=test password=test"
+          POSTGRES_HOST: localhost
+          POSTGRES_PORT: "5433"
+          POSTGRES_DB: babylon_test
+          POSTGRES_USER: test
+          POSTGRES_PASSWORD: test
+        run: >-
+          poetry run pytest
+          tests/integration/balkanization tests/integration/persistence
+          tests/integration/observatory tests/integration/engine
+          -m requires_postgres
+          -o addopts="" -vv -ra -l --tb=long --durations=0
       - name: Stop Postgres
         if: always()
         run: docker compose down -v
@@ -260,6 +298,11 @@ jobs:
       # --reporter=list,html: per-test lines in the log (agent-read) + the
       # html report artifact. --trace=retain-on-failure: full traces for
       # every failing test ride the artifact.
+      # Drive the whole testDir and let playwright.config.ts's project routing
+      # (AUTHENTICATED_SPECS / testIgnore) decide membership — the previous
+      # hand-listed spec set had silently drifted: event-popup.spec.ts and
+      # inspection-stack.spec.ts (backend-free route-mocked smokes) were never
+      # run by any CI job (audit 2026-07-16).
       - name: Run Playwright suite (Vite auto-started by webServer)
         working-directory: src/frontend
         env:
@@ -267,12 +310,6 @@ jobs:
         run: >-
           npx playwright test
           --reporter=list,html --trace=retain-on-failure
-          e2e/real-loop.spec.ts
-          e2e/end-turn-flow.spec.ts
-          e2e/verb-submit.spec.ts
-          e2e/auth.spec.ts
-          e2e/briefing-map-smoke.spec.ts
-          e2e/map-lens-cycling.spec.ts
       - name: Upload Playwright report + Django log
         if: always()
         uses: actions/upload-artifact@v7

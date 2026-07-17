@@ -13,3 +13,8 @@ tests/baselines/michigan-e2e.json filter=lfs diff=lfs merge=lfs -text
 # Dense regression goldens are BEHAVIORAL ARTIFACTS (Constitution III.12): small,
 # diffable, byte-compared plain text — never LFS pointers (program 13 item 2).
 tests/baselines/dense/*.csv -filter diff merge text
+
+# Empirical-invariant reference artifacts (ADR074 item 6) are the same class:
+# small derived series pinned by contract tests — an LFS pointer here fed the
+# unit tier a 3-line header+2-row "CSV" in CI (PR #201, 2026-07-16).
+src/babylon/data/reference/*.csv -filter diff merge text

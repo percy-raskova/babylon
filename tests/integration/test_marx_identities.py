@@ -103,33 +103,70 @@ def test_total_s_strictly_positive_5tick_tri_county() -> None:
     )
 
 
-def test_value_added_identity_per_county_per_tick() -> None:
-    """T016 / SC-004: |v + s - GDP/52| / (GDP/52) <= 0.05 for every county-tick row.
+def _county_gdp_per_week(fips_codes: set[str], year: int) -> dict[str, float]:
+    """GDP/52 per county from the reference DB — the hydrator's own source.
 
-    Derives GDP/52 from c via the hex_hydrator invariant
-    ``c = 0.5 * GDP/52``, so GDP/52 = 2*c.
+    Mirrors ``hex_hydrator._fetch_per_county_data`` step 2 (fact_bea_county_gdp,
+    All-industries row) so the identity is checked against the same ground
+    truth the runner hydrated from.
+    """
+    import sqlite3
+
+    from babylon.persistence.hex_hydrator import _BEA_ALL_INDUSTRIES_ID
+
+    placeholders = ",".join("?" for _ in fips_codes)
+    with sqlite3.connect(f"file:{SQLITE_REF}?mode=ro", uri=True) as conn:
+        rows = conn.execute(
+            f"""
+            SELECT dc.fips, fbg.gdp_millions
+            FROM fact_bea_county_gdp fbg
+            JOIN dim_county dc ON dc.county_id = fbg.county_id
+            JOIN dim_time t ON t.time_id = fbg.time_id
+            WHERE dc.fips IN ({placeholders})
+              AND t.year = ? AND fbg.bea_industry_id = ?
+            """,  # noqa: S608 — placeholders are bound '?' tokens only
+            (*sorted(fips_codes), year, _BEA_ALL_INDUSTRIES_ID),
+        ).fetchall()
+    return {str(fips): float(gdp_millions or 0) * 1e6 / 52.0 for fips, gdp_millions in rows}
+
+
+def test_value_added_identity_per_county_per_tick() -> None:
+    """T016 / SC-004: |​(v + s) − GDP/52| / (GDP/52) ≤ 0.05 for every county-tick row.
+
+    The value-added identity is **GDP = v + s** (spec-066 T018; Marx Vol I
+    Ch 9 + BEA accounting — c is intermediate-input pass-through, never
+    subtracted from value added). GDP comes from the reference DB's BEA
+    All-industries row, the hydrator's own source. The old proxy
+    ``GDP/52 = 2c`` died with spec-068: intermediate-input shares are now
+    per-county QCEW-weighted BEA concordance values, not the 0.5 constant
+    (observed Wayne 2010 share ≈ 0.38).
     """
     result = _run_runner(scope="detroit-tri-county", ticks=5)
     assert result.artifact_dir is not None
     with (result.artifact_dir / "trace.csv").open() as f:
         rows = list(csv.DictReader(f))
 
+    county_rows = [r for r in rows if r.get("entity_kind") == "county"]
+    assert county_rows, "trace.csv has no county rows"
+    gdp_per_week = _county_gdp_per_week({r["entity_id"] for r in county_rows}, year=2010)
+
     violations: list[tuple[str, str, float]] = []
-    for row in rows:
-        if row.get("entity_kind") != "county":
-            continue
-        c = float(row["c"] or 0)
+    for row in county_rows:
         v = float(row["v"] or 0)
         s = float(row["s"] or 0)
-        gdp_implied = 2 * c
-        if gdp_implied <= 0:
+        gdp_w = gdp_per_week.get(row["entity_id"], 0.0)
+        if gdp_w <= 0:
             continue
-        rel_err = abs((v + s) - gdp_implied) / gdp_implied
+        if s == 0.0 and v >= gdp_w:
+            # Hydrator clamp: s = max(0, GDP/52 − v). A wages-exceed-GDP
+            # county is flagged by its own s_residual_negative audit alarm.
+            continue
+        rel_err = abs((v + s) - gdp_w) / gdp_w
         if rel_err > 0.05:
             violations.append((row["entity_id"], row["tick"], rel_err))
 
     assert not violations, (
-        f"Spec-066 SC-004 FAILED: {len(violations)} rows violate v + s = GDP ± 5%. "
+        f"Spec-066 SC-004 FAILED: {len(violations)} rows violate v + s = GDP/52 ± 5%. "
         f"First 5: {violations[:5]}"
     )
 

@@ -13,7 +13,6 @@ Test Intent:
 - Heat spillover via ADJACENCY edges
 """
 
-import networkx as nx
 import pytest
 
 from babylon.config.defines import GameDefines, TerritoryDefines
@@ -998,7 +997,7 @@ class TestDisplacementPriorityModes:
     to model different historical phases of carceral capitalism.
     """
 
-    def _create_graph_with_all_sink_types(self) -> "nx.DiGraph[str]":
+    def _create_graph_with_all_sink_types(self) -> "BabylonGraph":
         """Create a test graph with source connected to all sink types."""
         graph = BabylonGraph()
         # Source territory (under eviction)

@@ -8,9 +8,6 @@ Tests verify:
 
 from __future__ import annotations
 
-from unittest.mock import MagicMock
-
-import networkx as nx
 import pytest
 
 from babylon.engine.systems.field_derivative import (
@@ -20,16 +17,10 @@ from babylon.engine.systems.field_derivative import (
 from babylon.topology.graph import BabylonGraph
 
 
-def _make_graph_protocol(g: nx.DiGraph) -> MagicMock:  # type: ignore[type-arg]
-    """Wrap a NetworkX DiGraph in a minimal GraphProtocol mock."""
-
-    return g
-
-
 def _make_triangle_graph(
     field_values: dict[str, float],
     edge_weights: dict[tuple[str, str], float] | None = None,
-) -> nx.DiGraph:  # type: ignore[type-arg]
+) -> BabylonGraph:
     """Create a 3-node triangle graph with contradiction fields.
 
     Args:
@@ -37,7 +28,7 @@ def _make_triangle_graph(
         edge_weights: (src, tgt) -> weight. If None, no weights.
 
     Returns:
-        NetworkX DiGraph.
+        BabylonGraph (satisfies GraphProtocol directly, Amendment L).
     """
     g = BabylonGraph()
     for node_id, val in field_values.items():
@@ -67,7 +58,7 @@ class TestWeightedLaplacian:
         """With edge_weight_attr=None, Laplacian is unweighted sum(f(j)-f(i))."""
         field_values = {"A": 1.0, "B": 2.0, "C": 3.0}
         g = _make_triangle_graph(field_values)
-        graph = _make_graph_protocol(g)
+        graph = g
         history: dict[str, dict[str, list[float]]] = {}
 
         _compute_node_derivatives(graph, ["exploitation"], history)
@@ -82,7 +73,7 @@ class TestWeightedLaplacian:
         """Laplacian of constant field is zero."""
         field_values = {"A": 5.0, "B": 5.0, "C": 5.0}
         g = _make_triangle_graph(field_values)
-        graph = _make_graph_protocol(g)
+        graph = g
         history: dict[str, dict[str, list[float]]] = {}
 
         _compute_node_derivatives(graph, ["exploitation"], history)
@@ -98,7 +89,7 @@ class TestWeightedLaplacian:
         field_values = {"A": 0.0, "B": 1.0, "C": 2.0}
         weights = {("A", "B"): 2.0, ("B", "C"): 3.0, ("A", "C"): 1.0}
         g = _make_triangle_graph(field_values, edge_weights=weights)
-        graph = _make_graph_protocol(g)
+        graph = g
         history: dict[str, dict[str, list[float]]] = {}
 
         _compute_node_derivatives(
@@ -119,7 +110,7 @@ class TestWeightedLaplacian:
         field_values = {"A": 0.0, "B": 10.0, "C": 10.0}
         weights = {("A", "B"): 0.0, ("B", "C"): 1.0, ("A", "C"): 0.0}
         g = _make_triangle_graph(field_values, edge_weights=weights)
-        graph = _make_graph_protocol(g)
+        graph = g
         history: dict[str, dict[str, list[float]]] = {}
 
         _compute_node_derivatives(
@@ -145,7 +136,7 @@ class TestCollectNeighborFields:
         field_values = {"A": 1.0, "B": 2.0, "C": 3.0}
         weights = {("A", "B"): 0.5, ("A", "C"): 1.5}
         g = _make_triangle_graph(field_values, edge_weights=weights)
-        graph = _make_graph_protocol(g)
+        graph = g
 
         fields, edge_weights = _collect_neighbor_fields(
             graph,
@@ -161,7 +152,7 @@ class TestCollectNeighborFields:
         """When edge_weight_attr is None, all weights are 1.0."""
         field_values = {"A": 1.0, "B": 2.0, "C": 3.0}
         g = _make_triangle_graph(field_values)
-        graph = _make_graph_protocol(g)
+        graph = g
 
         fields, edge_weights = _collect_neighbor_fields(
             graph,

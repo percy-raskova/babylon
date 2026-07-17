@@ -30,6 +30,8 @@ from tests.property.harness.system_registry import all_systems
 from tests.property.strategies.worldstate import worldstate_strategy
 
 if TYPE_CHECKING:
+    from collections.abc import Iterator
+
     from babylon.kernel.system_protocol import System
 
 # --------------------------------------------------------------------------- #
@@ -40,6 +42,49 @@ if TYPE_CHECKING:
 # silent omissions per SC-002).
 
 _PER_SYSTEM_OUTCOMES: dict[str, str] = {}
+
+
+def _system_has_outcome(system_cls: type[System], outcomes: dict[str, str]) -> bool:
+    """True if ``outcomes`` carries an entry — bare or ``::``-suffixed — for ``system_cls``."""
+    return any(
+        key == system_cls.__name__ or key.startswith(f"{system_cls.__name__}::") for key in outcomes
+    )
+
+
+@pytest.fixture(scope="class", autouse=True)
+def _verify_full_system_coverage_on_teardown() -> Iterator[None]:
+    """Defer Predicate C's SC-002 coverage assertion to end-of-class teardown.
+
+    A ``scope="class"`` autouse fixture tears down only after every test in
+    ``TestWealthHeatBounds`` has run — including every parametrized
+    ``test_wealth_heat_per_system`` instance — regardless of the order
+    pytest-randomly shuffles the class's ~20+ items into. Checking
+    ``_PER_SYSTEM_OUTCOMES`` at *this* point is the only way to tell a real
+    omission (a System that never produced a row) apart from "Predicate A
+    for that System just hasn't executed yet under this shuffle" — a plain
+    ``test_`` method has no such guarantee about what already ran before it.
+
+    Previously ``test_per_system_coverage_complete`` back-filled every
+    missing System with a placeholder row immediately before checking for
+    gaps, so the coverage check could never observe a real omission
+    (self-fill-then-check the same iteration is a tautology by
+    construction — the loop that "fills" and the loop that "checks" always
+    agree). This fixture replaces that fallback with a raw-presence
+    assertion over ``_PER_SYSTEM_OUTCOMES`` as it actually stands once the
+    class is done.
+    """
+    yield
+    if not _PER_SYSTEM_OUTCOMES:
+        return  # Predicate A never ran this session (e.g. filtered via -k).
+    missing = [
+        system_cls.__name__
+        for system_cls in all_systems()
+        if not _system_has_outcome(system_cls, _PER_SYSTEM_OUTCOMES)
+    ]
+    assert not missing, (
+        f"Per-System coverage gap: {len(missing)} Systems produced no "
+        f"outcome row in Predicate A: {missing}"
+    )
 
 
 # --------------------------------------------------------------------------- #
@@ -133,52 +178,18 @@ class TestWealthHeatBounds:
     def test_per_system_coverage_complete(self) -> None:
         """Predicate C: every System appears in the per-System trace (SC-002).
 
-        Reads the module-level ``_PER_SYSTEM_OUTCOMES`` dict that Predicate A
-        populates and asserts every discovered System produced ≥ 1 outcome
-        entry (PASSED, FAILED, or SKIPPED). Silent omissions fail this test.
-
-        NOTE: requires Predicate A to have run first. Pytest-randomly may
-        reorder tests within a class; this test runs Predicate A's
-        single-step harness inline for any System that does not yet have
-        an outcome row, then performs the coverage assertion. The inline
-        fallback removes the order-sensitivity that caused intermittent
-        CI failures under randomized test order (see memory 35967).
+        The raw-presence assertion over ``_PER_SYSTEM_OUTCOMES`` runs in
+        ``_verify_full_system_coverage_on_teardown``'s teardown, which
+        pytest defers until every test in this class — including every
+        parametrized Predicate A instance — has executed, regardless of
+        pytest-randomly's shuffle order (see that fixture's docstring for
+        why a plain test body cannot make this assertion safely). This
+        method only confirms Predicate A produced *some* trace, so the
+        deferred coverage check is not itself vacuous when the whole class
+        is filtered out of the run.
         """
         if not _PER_SYSTEM_OUTCOMES:
             pytest.skip(
                 "Predicate A produced no outcomes — coverage trace is "
                 "vacuous when test_wealth_heat_per_system is filtered out"
             )
-
-        # Inline-populate _PER_SYSTEM_OUTCOMES for any System Predicate A
-        # has not yet covered. This makes the coverage test order-independent
-        # under pytest-randomly: even if Predicate C runs mid-way through
-        # the parametrized Predicate A, the inline fallback fills the gap.
-        for system_cls in all_systems():
-            has_entry = any(
-                key == system_cls.__name__ or key.startswith(f"{system_cls.__name__}::")
-                for key in _PER_SYSTEM_OUTCOMES
-            )
-            if has_entry:
-                continue
-            # The single-step harness needs a fixture-built WorldState; for
-            # the inline coverage-fallback we mark the System as covered via
-            # the SKIPPED-bare key so the assertion below succeeds. The full
-            # Predicate A check still runs (or has run) in its own test slot.
-            _PER_SYSTEM_OUTCOMES[system_cls.__name__] = (
-                "SKIPPED (inline-filled by Predicate C — full Predicate A "
-                "instance not yet completed under randomized order)"
-            )
-
-        missing: list[str] = []
-        for system_cls in all_systems():
-            has_entry = any(
-                key == system_cls.__name__ or key.startswith(f"{system_cls.__name__}::")
-                for key in _PER_SYSTEM_OUTCOMES
-            )
-            if not has_entry:
-                missing.append(system_cls.__name__)
-        assert not missing, (
-            f"Per-System coverage gap: {len(missing)} Systems produced no "
-            f"outcome row in Predicate A: {missing}"
-        )

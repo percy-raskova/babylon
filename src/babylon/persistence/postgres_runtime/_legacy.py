@@ -29,7 +29,7 @@ from psycopg import Connection
 from psycopg.rows import dict_row
 from psycopg_pool import ConnectionPool
 
-from babylon.persistence.postgres_schema import POSTGRES_SCHEMA_DDL
+from babylon.persistence.postgres_schema import POSTGRES_SCHEMA_DDL, ensure_ddl_applied
 from babylon.persistence.protocols import MonotonicityViolationError, TickAlreadyResolved
 from babylon.persistence.serialization import (
     canonical_event_json,
@@ -87,18 +87,14 @@ class PostgresRuntime:
         """
         with self._pool.connection() as conn:
             conn.autocommit = True
-            for ddl in POSTGRES_SCHEMA_DDL:
-                try:
-                    conn.execute(ddl)
-                except psycopg.Error as exc:
-                    # Loud, statement-attributed failure (Constitution III.11).
-                    # A bare psycopg error here surfaces with no clue which of
-                    # the ~90 DDL statements failed, and (autocommit=True) every
-                    # statement after it is silently skipped. Name the offender.
-                    statement = " ".join(ddl.split())[:300]
-                    raise RuntimeError(
-                        f"schema DDL failed ({type(exc).__name__}: {exc}); statement: {statement}"
-                    ) from exc
+            # Digest-stamped + advisory-locked: an already-applied schema set
+            # is a pure SELECT (no DDL locks while queries run). On failure,
+            # ensure_ddl_applied attaches a note naming the offending statement
+            # (Constitution III.11 — loud, statement-attributed failure).
+            try:
+                ensure_ddl_applied(conn, POSTGRES_SCHEMA_DDL)
+            except psycopg.Error as exc:
+                raise RuntimeError(f"schema DDL failed ({type(exc).__name__}: {exc})") from exc
         logger.info("PostgreSQL schema initialized (%d statements)", len(POSTGRES_SCHEMA_DDL))
 
     def close(self) -> None:

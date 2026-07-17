@@ -379,9 +379,12 @@ TABLE: dict[str, TablePolicy] = {
     ),
     "fact_ricci_unequal_exchange": TablePolicy(
         "full",
-        "Read unconditionally by sqlite_hydrator._copy_ricci_unequal — same "
-        "missing-table ENGINE_FAILURE reasoning as fact_hickel_drain above; "
-        "also EMPTY in the source (0 rows, schema-only).",
+        "Populated 2026-07-16 by tools/ingest/ricci_unequal.py (29 region-"
+        "level TOTAL transfer rows from the in-repo babylon_ricci_final.csv) "
+        "and pinned by tests/unit/reference/test_unequal_exchange_refdb_sync"
+        ".py (requires_reference_db lane); tiny. The hydrator note from the "
+        "schema-only era still applies: sqlite_hydrator names this table "
+        "unconditionally, so it must at least exist.",
     ),
     "fact_fred_wealth_levels": TablePolicy(
         "full",
@@ -452,7 +455,14 @@ TABLE: dict[str, TablePolicy] = {
     "fact_foreclosure_rate": TablePolicy("skip", _UNREFERENCED_REASON),
     "fact_fred_industry_unemployment": TablePolicy("skip", _UNREFERENCED_REASON),
     "fact_fred_state_unemployment": TablePolicy("skip", _UNREFERENCED_REASON),
-    "fact_fred_wealth_shares": TablePolicy("skip", _UNREFERENCED_REASON),
+    "fact_fred_wealth_shares": TablePolicy(
+        "full",
+        "Un-orphaned 2026-07-16: Fed DFA net-worth shares (SCF-benchmarked) "
+        "are the redundant-source corroboration for the WID wealth-"
+        "distribution invariants — read by tests/unit/reference/"
+        "test_fred_wealth_shares.py (requires_reference_db lane); tiny "
+        "(240 net-worth rows + siblings, 2010Q1-2024Q4).",
+    ),
     "fact_hpms_road_segment": TablePolicy(
         "skip",
         "Transport Substrate (Program 11) staged data — not yet wired into "

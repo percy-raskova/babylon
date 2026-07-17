@@ -924,6 +924,13 @@ export interface TimeseriesPayload {
   heat: (number | null)[];
   wealth: (number | null)[];
   biocapacity: (number | null)[];
+  /** Program 23 (ADR077) — the scissors. Substance: Marxian aggregates. */
+  value_produced: (number | null)[];
+  surplus: (number | null)[];
+  profit_rate: (number | null)[];
+  /** Form: exp-mapped log ratios; 1.0 = price at value / claims at real K. */
+  price_index: (number | null)[];
+  fictitious_ratio: (number | null)[];
 }
 
 /**

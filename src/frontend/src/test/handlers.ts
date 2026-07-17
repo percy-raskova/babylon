@@ -171,6 +171,11 @@ export const handlers = [
         heat: [0.2, 0.25],
         wealth: [100, 105],
         biocapacity: [0.5, 0.5],
+        value_produced: [50, 52],
+        surplus: [12, 13],
+        profit_rate: [0.05, 0.049],
+        price_index: [1.0, 1.08],
+        fictitious_ratio: [1.0, 1.31],
       },
     });
   }),

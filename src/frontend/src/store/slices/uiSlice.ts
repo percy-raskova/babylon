@@ -22,7 +22,7 @@ export type TakeoverKind = "wire" | "chronicle" | "dialectic" | "network" | "doc
 
 /** `BottomDrawer`'s six states (architecture §1.4): closed, or one of its five contents. */
 export type BottomDrawerState =
-  "none" | "trends" | "events" | "economy" | "state-apparatus" | "edges";
+  "none" | "trends" | "scissors" | "events" | "economy" | "state-apparatus" | "edges";
 
 /**
  * Chrome panel open/collapsed state (architecture §1.4). One field per

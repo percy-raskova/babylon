@@ -856,8 +856,9 @@ class PostgresRuntime:
                      avg_consciousness, solidarity_edge_count,
                      antagonistic_edge_count, co_optive_edge_count,
                      org_count, player_org_count, uprising_count,
-                     repression_count, conservation_check)
-                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                     repression_count, conservation_check,
+                     price_log, fictitious_log)
+                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
                 ON CONFLICT (session_id, tick) DO UPDATE SET
                     year = EXCLUDED.year, total_c = EXCLUDED.total_c,
                     total_v = EXCLUDED.total_v, total_s = EXCLUDED.total_s,
@@ -872,7 +873,9 @@ class PostgresRuntime:
                     player_org_count = EXCLUDED.player_org_count,
                     uprising_count = EXCLUDED.uprising_count,
                     repression_count = EXCLUDED.repression_count,
-                    conservation_check = EXCLUDED.conservation_check
+                    conservation_check = EXCLUDED.conservation_check,
+                    price_log = EXCLUDED.price_log,
+                    fictitious_log = EXCLUDED.fictitious_log
                 """,
                 (
                     session_id,
@@ -893,6 +896,10 @@ class PostgresRuntime:
                     summary.get("uprising_count"),
                     summary.get("repression_count"),
                     summary.get("conservation_check"),
+                    # Program 23 (ADR077): NULL when the market axis is
+                    # absent that tick — honest absence, never 0.0.
+                    summary.get("price_log"),
+                    summary.get("fictitious_log"),
                 ),
             )
 
@@ -921,7 +928,8 @@ class PostgresRuntime:
                        avg_consciousness, solidarity_edge_count,
                        antagonistic_edge_count, co_optive_edge_count,
                        org_count, player_org_count, uprising_count,
-                       repression_count, conservation_check
+                       repression_count, conservation_check,
+                       price_log, fictitious_log
                 FROM tick_summary
                 WHERE session_id = %s
                 ORDER BY tick

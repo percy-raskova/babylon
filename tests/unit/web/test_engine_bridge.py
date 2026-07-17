@@ -3038,3 +3038,38 @@ class TestPersistSnapshotsGraphWiring:
         row = kwargs["territories"][0]
         assert row["profit_rate"] is None
         assert row["occ"] is None
+
+
+class TestBuildTickSummaryMarketAxis:
+    """Program 23 (ADR077): the scissors logs flow state.market → summary row."""
+
+    def test_market_axis_flows_into_summary_columns(self) -> None:
+        from web.game.engine_bridge import _build_tick_summary
+
+        from babylon.models.market import MarketState
+        from babylon.models.world_state import WorldState
+
+        state = WorldState(
+            tick=3,
+            market=MarketState(
+                price_log=0.25,
+                price_velocity=0.0,
+                fictitious_log=-0.1,
+                fictitious_velocity=0.0,
+                surplus_ema=1.0,
+                value_ema=4.0,
+                tick=3,
+            ),
+        )
+        summary = _build_tick_summary(state, organizations=[])
+        assert summary["price_log"] == pytest.approx(0.25)
+        assert summary["fictitious_log"] == pytest.approx(-0.1)
+
+    def test_absent_axis_is_honest_null(self) -> None:
+        from web.game.engine_bridge import _build_tick_summary
+
+        from babylon.models.world_state import WorldState
+
+        summary = _build_tick_summary(WorldState(tick=1), organizations=[])
+        assert summary["price_log"] is None
+        assert summary["fictitious_log"] is None

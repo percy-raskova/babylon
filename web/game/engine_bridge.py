@@ -2569,12 +2569,15 @@ class EngineBridge:
         """Return historical timeseries data for charting (spec 061 US3, FR-026).
 
         Reads the per-tick aggregates from the ``tick_summary`` table and
-        emits the six named arrays the v2 Briefing/Analysis pages chart:
+        emits the named arrays the v2 Briefing/Analysis pages chart:
         ``imperial_rent``, ``consciousness``, ``solidarity``, ``heat``,
-        ``wealth``, ``biocapacity``. Each array is parallel-indexed with
-        the ``ticks`` array (oldest tick first). Missing values become
-        ``None`` so the frontend can interpolate / hide gaps without a
-        backend round-trip.
+        ``wealth``, ``biocapacity``, plus the Program 23 scissors series
+        ``value_produced``/``surplus``/``profit_rate`` (real substrate) and
+        ``price_index``/``fictitious_ratio`` (the phenomenal form,
+        ``exp(log)``-mapped so 1.0 = price at value / claims at real
+        capitalization). Each array is parallel-indexed with the ``ticks``
+        array (oldest tick first). Missing values become ``None`` so the
+        frontend can interpolate / hide gaps without a backend round-trip.
 
         The persistence layer fronts this via
         :meth:`PostgresRuntime.query_tick_summary_series`. SQLite-backed
@@ -2597,6 +2600,11 @@ class EngineBridge:
         heat: list[float | None] = []
         wealth: list[float | None] = []
         biocapacity: list[float | None] = []
+        value_produced: list[float | None] = []
+        surplus: list[float | None] = []
+        profit_rate: list[float | None] = []
+        price_index: list[float | None] = []
+        fictitious_ratio: list[float | None] = []
         for row in rows:
             ticks.append(int(row.get("tick", 0)))
             imperial_rent.append(_optional_float(row.get("imperial_rent")))
@@ -2606,6 +2614,19 @@ class EngineBridge:
             heat.append(_optional_float(row.get("total_heat")))
             wealth.append(_optional_float(row.get("total_wealth")))
             biocapacity.append(_optional_float(row.get("total_biocapacity")))
+            # Program 23 (ADR077): the scissors. Substance columns come from
+            # tick_summary's Marxian aggregates; the form columns exp-map the
+            # persisted log ratios (1.0 = no divergence). None propagates —
+            # an absent axis charts as a gap, never a fabricated 1.0.
+            value_produced.append(_optional_float(row.get("total_v")))
+            surplus.append(_optional_float(row.get("total_s")))
+            profit_rate.append(_optional_float(row.get("profit_rate")))
+            price_log = _optional_float(row.get("price_log"))
+            fictitious_log = _optional_float(row.get("fictitious_log"))
+            price_index.append(math.exp(price_log) if price_log is not None else None)
+            fictitious_ratio.append(
+                math.exp(fictitious_log) if fictitious_log is not None else None
+            )
         return {
             "ticks": ticks,
             "imperial_rent": imperial_rent,
@@ -2614,6 +2635,11 @@ class EngineBridge:
             "heat": heat,
             "wealth": wealth,
             "biocapacity": biocapacity,
+            "value_produced": value_produced,
+            "surplus": surplus,
+            "profit_rate": profit_rate,
+            "price_index": price_index,
+            "fictitious_ratio": fictitious_ratio,
         }
 
     def get_economy_dashboard(self, session_id: UUID) -> dict[str, Any]:
@@ -7048,6 +7074,10 @@ def _build_tick_summary(state: WorldState, organizations: list[dict[str, Any]]) 
         "uprising_count": sum(1 for t in event_types if t == "uprising"),
         "repression_count": sum(1 for t in event_types if t == "state_repression"),
         "conservation_check": None,
+        # Program 23 (ADR077): the Market Scissors shadow axis. NULL when the
+        # axis is absent this tick (no value substrate yet) — honest absence.
+        "price_log": float(state.market.price_log) if state.market else None,
+        "fictitious_log": float(state.market.fictitious_log) if state.market else None,
     }
 
 

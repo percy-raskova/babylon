@@ -67,6 +67,11 @@ class CollapseTransitionSystem(SystemBase):
         winning = persistent.get("balkanization.winning_faction_by_territory", {})
         sovereign_ids = sorted(node.id for node in wrapped.query_nodes(node_type="sovereign"))
         for sovereign_id in sovereign_ids:
+            # The exterior null sovereign is the FR-040b boundary fallback —
+            # not a polity that can collapse. Mirrors the Phase-3
+            # orphan-cleanup exemption below.
+            if sovereign_id == "SOV_EXTERIOR_NULL":
+                continue
             sov_node = wrapped.get_node(sovereign_id)
             if sov_node is None:
                 continue

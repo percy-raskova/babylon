@@ -299,6 +299,7 @@ export function makeActionResult(overrides?: Partial<ActionResultData>): ActionR
 export function makeGameSummary(overrides?: Partial<GameSummary>): GameSummary {
   return {
     id: "game-001",
+    codename: "CRIMSON HARVEST",
     scenario: "default",
     current_tick: 5,
     status: "active",

@@ -20,6 +20,8 @@ export interface ApiResponse<T> {
 /** Game session summary (from GET /api/games/). */
 export interface GameSummary {
   id: string;
+  /** Deterministic operation codename derived server-side from the session UUID. */
+  codename: string;
   scenario: string;
   current_tick: number;
   status: GameStatus;

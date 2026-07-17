@@ -111,6 +111,8 @@ export const endpoints = {
   gameList: ep<GameSummary[]>("/api/games/"),
   gameCreate: ep<Untyped>("/api/games/", "POST"),
   gameDetail: ep<Untyped>("/api/games/:id/"),
+  gameDelete: ep<Untyped>("/api/games/:id/", "DELETE"),
+  gameArchive: ep<Untyped>("/api/games/:id/archive/", "POST"),
   gamePause: ep<Untyped>("/api/games/:id/pause/", "POST"),
   gameResume: ep<Untyped>("/api/games/:id/resume/", "POST"),
   gameRecover: ep<Untyped>("/api/games/:id/recover/", "POST"),

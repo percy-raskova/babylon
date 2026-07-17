@@ -105,13 +105,23 @@ export const handlers = [
   http.get("/api/games/", () =>
     HttpResponse.json({
       status: "ok",
-      data: [makeGameSummary({ id: DEFAULT_GAME_ID, current_tick: mockSnapshot.tick })],
+      data: [makeGameSummary({ id: DEFAULT_GAME_ID })],
     }),
   ),
 
   http.post("/api/games/", () =>
     HttpResponse.json({ status: "ok", data: { session_id: DEFAULT_GAME_ID } }, { status: 201 }),
   ),
+
+  http.delete("/api/games/:id/", () => {
+    logRequest("DELETE game");
+    return HttpResponse.json({ status: "ok", data: { deleted: true } });
+  }),
+
+  http.post("/api/games/:id/archive/", () => {
+    logRequest("POST archive");
+    return HttpResponse.json({ status: "ok", data: { status: "abandoned" } });
+  }),
 
   // ---- Game loop -----------------------------------------------------
 

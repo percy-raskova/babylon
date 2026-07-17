@@ -490,19 +490,22 @@ tables:
     kind: table
     source: USGS_MCS
     extractor: deleted @ 4ce7c96a^ (src/babylon/data/materials/loader_3nf.py + parser.py)
-    disposition: investigate
+    disposition: keep
     subset_policy: full
     material_relation: USGS Mineral Commodity Summaries commodity list (85 strategic
       materials) — anchors the critical-minerals/extraction-dependency subsystem (owner-ratified
       Prog-09 stretch).
+    notes: "owner 2026-07-16: Program 22 — 85 commodities with is_critical + marxian_interpretation; the Altitude-1
+      anchor"
   - name: dim_commodity_metric
     kind: table
     source: USGS_MCS
     extractor: deleted @ 4ce7c96a^ (src/babylon/data/materials/loader_3nf.py + parser.py)
-    disposition: amputate
+    disposition: keep
     subset_policy: full
     material_relation: USGS MCS per-commodity metric taxonomy (imports/exports/price/production)
       — the measurement-type dimension for fact_commodity_observation.
+    notes: "owner 2026-07-16: Program 22 — FK parent of fact_commodity_observation"
   - name: dim_commute_mode
     kind: table
     source: Census_ACS
@@ -1122,10 +1125,12 @@ tables:
     kind: table
     source: Census_ACS
     extractor: deleted @ 4ce7c96a^ (src/babylon/data/census/loader_3nf.py)
-    disposition: amputate
+    disposition: fill
     subset_policy: skip
     material_relation: ACS median-household-income-by-county rows — feeds the broken
       view_rent_crisis rent-to-income ratio if repaired.
+    notes: "owner 2026-07-16: KEEP+FILL — pairs with fact_census_rent_burden to revive view_rent_crisis (housing
+      mechanics)"
   - name: fact_census_occupation
     kind: table
     source: Census_ACS
@@ -1158,10 +1163,12 @@ tables:
     kind: table
     source: Census_ACS
     extractor: deleted @ 4ce7c96a^ (src/babylon/data/census/loader_3nf.py:2037)
-    disposition: amputate
+    disposition: fill
     subset_policy: skip
     material_relation: ACS rent-burden-severity-by-county rows — pairs with fact_census_median_income
       in the broken view_rent_crisis housing-precarity view.
+    notes: "owner 2026-07-16: KEEP+FILL — pairs with fact_census_median_income to revive view_rent_crisis (housing
+      mechanics)"
   - name: fact_census_worker_class
     kind: table
     source: Census_ACS
@@ -1188,19 +1195,21 @@ tables:
     kind: table
     source: CFS
     extractor: deleted @ 4ce7c96a^ (src/babylon/data/cfs/loader.py + api_client.py)
-    disposition: amputate
+    disposition: fill
     subset_policy: skip
     material_relation: county-level Commodity Flow Survey tonnage/value rows — never
       populated at county disaggregation grain.
-    notes: 0 rows; distinct from fact_faf_commodity_flow (KEEP).
+    notes: "owner 2026-07-16: Program 22 — DERIVED county disagg of FAF5 zone flows (employment-weighted; label
+      derived-not-measured)"
   - name: fact_commodity_observation
     kind: table
     source: USGS_MCS
     extractor: deleted @ 4ce7c96a^ (src/babylon/data/materials/loader_3nf.py + parser.py)
-    disposition: amputate
+    disposition: keep
     subset_policy: skip
     material_relation: per-commodity USGS MCS observations (imports/exports/price/production)
       — the strategic-materials extraction data view_critical_materials surfaces.
+    notes: "owner 2026-07-16: Program 22 — data-bearing (3.79K rows); view_critical_materials revives with the program"
   - name: fact_county_exposure_by_external
     kind: table
     source: derived
@@ -1398,21 +1407,21 @@ tables:
   - name: fact_mineral_production
     kind: table
     source: USGS_MCS
-    disposition: amputate
+    disposition: fill
     subset_policy: skip
     material_relation: national mineral-production-by-type volumes — never parsed at
       this grain despite raw USGS MCS files being staged.
-    notes: 0 rows.
+    notes: "owner 2026-07-16: Program 22 Resources & Raw Materials — USGS MCS loader (CSVs staged in trove)"
   - name: fact_productivity_annual
     kind: table
     source: BLS_Productivity
-    disposition: amputate
+    disposition: fill
     subset_policy: skip
     material_relation: labor-productivity-by-detailed-industry rows (labor compensation
       vs. sectoral output) — the direct W_c/V_c Fundamental-Theorem inputs view_imperial_rent
       and view_surplus_value need.
-    notes: 0 rows; no loader has EVER targeted this table in project history (distinct
-      from the unrelated, all-zero fact_bls_productivity).
+    notes: "owner 2026-07-16: FILL — loader from staged labor-productivity xlsx;
+      view_surplus_value + view_imperial_rent come alive"
   - name: fact_qcew_annual
     kind: table
     source: QCEW

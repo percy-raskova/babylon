@@ -486,8 +486,10 @@ tables:
     material_relation: USGS Mineral Commodity Summaries commodity list (85 strategic
       materials) — anchors the critical-minerals/extraction-dependency subsystem (owner-ratified
       Prog-09 stretch).
-    notes: "owner 2026-07-16: Program 22 — 85 commodities with is_critical + marxian_interpretation; the Altitude-1
-      anchor"
+    notes: "CRITICALITY RE-DERIVED 2026-07-17 (Program 22 Wave 1): 30/85 rows
+      flagged from the official T4 50-mineral list (REE/PGM fold onto family
+      rows; Cesium+Rubidium have no salient chapter); primary_applications
+      filled from T4. The legacy 13-name dict had matched only 2/85."
   - name: dim_commodity_metric
     kind: table
     source: USGS_MCS
@@ -666,13 +668,15 @@ tables:
   - name: dim_import_source
     kind: table
     source: USGS_MCS
-    disposition: fill
+    extractor: python -m babylon_data.materials (aggregates.load_import_sources)
+    tests:
+      - tests/unit/reference/test_minerals_tables.py
+    disposition: keep
     subset_policy: full
     material_relation: import-source-country dimension for critical-materials analysis
       — names which countries supply strategic minerals (import-dependency/unequal-exchange
       linkage).
-    notes: 0 rows; never instantiated by any loader in project history despite a real
-      deleted loader lineage and an extant staged CSV (MCS2025_Fig3).
+    notes: "FILLED 2026-07-17 (Program 22 Wave 1): 43 countries from MCS2025_Fig3."
   - name: dim_income_bracket
     kind: table
     source: Census_ACS
@@ -1142,17 +1146,23 @@ tables:
     subset_policy: skip
     material_relation: county-level Commodity Flow Survey tonnage/value rows — never
       populated at county disaggregation grain.
-    notes: "owner 2026-07-16: Program 22 — DERIVED county disagg of FAF5 zone flows (employment-weighted; label
-      derived-not-measured)"
+    notes: "owner 2026-07-16: Program 22 — DERIVED county disagg of FAF5 zone
+      flows (employment-weighted; label derived-not-measured). BLOCKED
+      2026-07-17: requires bridge_cfs_county (0 rows, investigate) and real
+      dim_cfs_area definitions (stub rows) — the FAF zone-to-county
+      equivalency is not yet staged in the trove; see Program 22 charter."
   - name: fact_commodity_observation
     kind: table
     source: USGS_MCS
     extractor: deleted @ 4ce7c96a^ (src/babylon/data/materials/loader_3nf.py + parser.py)
+    tests:
+      - tests/unit/reference/test_minerals_tables.py
     disposition: keep
-    subset_policy: skip
+    subset_policy: full
     material_relation: per-commodity USGS MCS observations (imports/exports/price/production)
       — the strategic-materials extraction data view_critical_materials surfaces.
-    notes: "owner 2026-07-16: Program 22 — data-bearing (3.79K rows); view_critical_materials revives with the program"
+    notes: "REFRESHED 2026-07-17 (Program 22 Wave 1): 4,735 rows, 2020-2024 (the
+      2024 gap closed); extractor revived as python -m babylon_data.materials."
   - name: fact_county_exposure_by_external
     kind: table
     source: derived
@@ -1304,20 +1314,26 @@ tables:
   - name: fact_mineral_employment
     kind: table
     source: USGS_MCS
-    disposition: fill
-    subset_policy: skip
-    material_relation: mining-sector employment by mineral/county — never populated;
-      a deferred Program-09 minerals stretch.
-    notes: 0 rows; real deleted loader + staged MCS2025_T1 CSV exist (FILL candidate
-      per triage).
+    extractor: python -m babylon_data.materials (aggregates.load_mineral_employment)
+    tests:
+      - tests/unit/reference/test_minerals_tables.py
+    disposition: keep
+    subset_policy: full
+    material_relation: mining-sector employment and weekly earnings by sector (annual,
+      T1 trends) — the variable-capital base of the extraction industries.
+    notes: "FILLED 2026-07-17 (Program 22 Wave 1): 25 rows (5 years x 5 sectors);
+      chemicals carries no T1 earnings series (honest NULL)."
   - name: fact_mineral_production
     kind: table
     source: USGS_MCS
-    disposition: fill
-    subset_policy: skip
-    material_relation: national mineral-production-by-type volumes — never parsed at
-      this grain despite raw USGS MCS files being staged.
-    notes: "owner 2026-07-16: Program 22 Resources & Raw Materials — USGS MCS loader (CSVs staged in trove)"
+    extractor: python -m babylon_data.materials (aggregates.load_mineral_production)
+    tests:
+      - tests/unit/reference/test_minerals_tables.py
+    disposition: keep
+    subset_policy: full
+    material_relation: national mineral-production-by-type volumes (metals/industrial/coal,
+      annual, USD millions) — the Altitude-1 national extraction aggregate.
+    notes: "FILLED 2026-07-17 (Program 22 Wave 1): 15 rows from MCS2025_T1."
   - name: fact_productivity_annual
     kind: table
     source: BLS_Productivity
@@ -1390,13 +1406,19 @@ tables:
   - name: fact_state_minerals
     kind: table
     source: USGS_MCS
+    extractor: python -m babylon_data.materials (aggregates.load_state_minerals)
     consumers:
       - src/babylon/persistence/hex_hydrator.py
-    disposition: fill
-    subset_policy: skip
+    tests:
+      - tests/unit/reference/test_minerals_tables.py
+    disposition: keep
+    subset_policy: full
     material_relation: state-by-state mineral production values — hex_hydrator explicitly
       branches on its emptiness pending a targeted USGS state-table pull (spec-065/ADR042).
-    notes: 0 rows.
+    notes: "FILLED 2026-07-17 (Program 22 Wave 1): 50 states from MCS2025_T3
+      (USGS 'Undistributed' remainder row skipped, reported). hex_hydrator only
+      MENTIONS this table in its docstring (stocks still use defines defaults);
+      per-county apportionment from it is Wave-2, baseline-moving."
   - name: fact_trade_monthly
     kind: table
     source: Census_Trade

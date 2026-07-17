@@ -436,7 +436,12 @@ TABLE: dict[str, TablePolicy] = {
         "Distinct from fact_faf_commodity_flow (which IS read, but only by "
         "production ingestion + MagicMock-only tests — see that entry). " + _UNREFERENCED_REASON,
     ),
-    "fact_commodity_observation": TablePolicy("skip", _UNREFERENCED_REASON),
+    "fact_commodity_observation": TablePolicy(
+        "full",
+        "Program 22 Wave 1 (2026-07-17): 4,735 EAV rows (85 commodities x 593 "
+        "metrics, 2020-2024) via python -m babylon_data.materials; base of the "
+        "KEEP view_critical_materials; tiny — ship complete.",
+    ),
     "fact_energy_annual": TablePolicy("skip", _UNREFERENCED_REASON),
     "fact_eviction_lab_filing": TablePolicy("skip", _UNREFERENCED_REASON),
     "fact_foreclosure_rate": TablePolicy("skip", _UNREFERENCED_REASON),
@@ -453,8 +458,16 @@ TABLE: dict[str, TablePolicy] = {
         "Transport Substrate (Program 11) staged data — not yet wired into "
         "any system as of this writing. " + _UNREFERENCED_REASON,
     ),
-    "fact_mineral_employment": TablePolicy("skip", _UNREFERENCED_REASON),
-    "fact_mineral_production": TablePolicy("skip", _UNREFERENCED_REASON),
+    "fact_mineral_employment": TablePolicy(
+        "full",
+        "Program 22 Wave 1 (2026-07-17): 25 rows (5 years x 5 sectors, T1 "
+        "trends) — mining-sector variable capital; trivially full.",
+    ),
+    "fact_mineral_production": TablePolicy(
+        "full",
+        "Program 22 Wave 1 (2026-07-17): 15 rows (5 years x metals/industrial/"
+        "coal, T1 trends); trivially full.",
+    ),
     "fact_productivity_annual": TablePolicy(
         "full",
         "ADR075 ruling-1 FILL (2026-07-17): 17,336 (industry, year) rows via "
@@ -463,10 +476,10 @@ TABLE: dict[str, TablePolicy] = {
         "point (Fundamental Theorem legs), and it is tiny.",
     ),
     "fact_state_minerals": TablePolicy(
-        "skip",
-        "Only mentioned in a hex_hydrator.py comment ('fact_state_minerals "
-        "is empty and dim_county...'), never queried; confirmed 0 rows in "
-        "source. " + _UNREFERENCED_REASON,
+        "full",
+        "Program 22 Wave 1 (2026-07-17): 50 rows (2024 state mineral value/"
+        "rank/principal commodities, T3) — territorial extraction geography; "
+        "trivially full.",
     ),
 }
 

@@ -59,6 +59,15 @@ if TYPE_CHECKING:
 #: Graph attribute holding ``{key: OppositionState.model_dump()}`` for the tick.
 OPPOSITION_STATES_ATTR = "opposition_states"
 
+#: Graph attribute holding ``{key: OppositionState.model_dump()}`` for SHADOW
+#: bindings (ADR077): measured every tick, adjudicating nothing. Kept apart
+#: from ``opposition_states`` so the pre-position-18 consumers and the frames/
+#: rupture/regime machinery never see a shadow key. Same cross-tick channel
+#: semantics (the graph persists in-place; the facade recomputes fresh each
+#: tick). Written only when shadow bindings are registered, so pre-ADR077
+#: graphs carry no new key.
+SHADOW_OPPOSITION_STATES_ATTR = "shadow_opposition_states"
+
 #: Graph attribute holding this tick's fixed-point regime (Phase E2):
 #: ``{"regime": <reproduction|crisis|sublation>, "principal": key, "rate": float}``.
 DIALECTICAL_REGIME_ATTR = "dialectical_regime"
@@ -176,12 +185,22 @@ class ContradictionSystem(SystemBase):
         # flip a leading pole, BEFORE frames/rupture/stash so downstream sees it.
         states = self._apply_interventions(graph, states)
 
-        self._write_frames(graph, services, registry, states)
-        self._maybe_rupture(services, states, tick)
-        self._classify_regime(graph, services, registry, states, tick)
+        shadow_keys = registry.shadow_keys
+        canonical = tuple(s for s in states if s.key not in shadow_keys)
+        shadow = tuple(s for s in states if s.key in shadow_keys)
+
+        if canonical:
+            self._write_frames(graph, services, registry, canonical)
+            self._maybe_rupture(services, canonical, tick)
+            self._classify_regime(graph, services, registry, canonical, tick)
         graph.set_graph_attr(
-            OPPOSITION_STATES_ATTR, {state.key: state.model_dump() for state in states}
+            OPPOSITION_STATES_ATTR, {state.key: state.model_dump() for state in canonical}
         )
+        if shadow:
+            graph.set_graph_attr(
+                SHADOW_OPPOSITION_STATES_ATTR,
+                {state.key: state.model_dump() for state in shadow},
+            )
         self._step_pole_channel(graph, registry, inputs)
 
     @staticmethod
@@ -199,8 +218,16 @@ class ContradictionSystem(SystemBase):
 
     @staticmethod
     def _read_previous(graph: GraphProtocol) -> dict[str, OppositionState]:
-        """Reconstruct last tick's states from the ``opposition_states`` attr."""
-        raw: dict[str, Any] = graph.get_graph_attr(OPPOSITION_STATES_ATTR, {}) or {}
+        """Reconstruct last tick's states from BOTH opposition attrs.
+
+        Shadow states (ADR077) live on ``shadow_opposition_states`` but need
+        the same rate/inertia continuity as canonical ones; registry keys are
+        unique, so the merge cannot collide.
+        """
+        raw: dict[str, Any] = {
+            **(graph.get_graph_attr(OPPOSITION_STATES_ATTR, {}) or {}),
+            **(graph.get_graph_attr(SHADOW_OPPOSITION_STATES_ATTR, {}) or {}),
+        }
         return {key: OppositionState(**value) for key, value in raw.items()}
 
     def _build_graph_inputs(self, graph: GraphProtocol) -> GraphInputs:

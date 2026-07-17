@@ -22,6 +22,13 @@ from __future__ import annotations
 import pytest
 
 from babylon.domain.dialectics.core.coupling import StanceIntervention
+from babylon.domain.dialectics.core.opposition import (
+    BoundOpposition,
+    GapReading,
+    OppositionRegistry,
+    OppositionSpec,
+)
+from babylon.domain.dialectics.instances.catalog import GraphInputs
 from babylon.engine.services import ServiceContainer
 from babylon.engine.systems.contradiction import (
     OPPOSITION_INTERVENTIONS_ATTR,
@@ -408,3 +415,73 @@ class TestShadowPartition:
         assert attrs["sigma_capital_labor"] is None
         assert attrs["sigma_wage"] is None
         assert attrs["derived_class_cell"] is None
+
+
+class TestShadowChannel:
+    """Shadow opposition states ride their own graph attr (ADR077, Program 23)."""
+
+    @staticmethod
+    def _registry_with_shadow() -> OppositionRegistry[GraphInputs]:
+        canon = BoundOpposition(
+            spec=OppositionSpec(key="canon", pole_a="a-pole", pole_b="b-pole"),
+            measure=lambda _inputs: GapReading(gap=0.4, balance=-0.2),
+        )
+        ghost = BoundOpposition(
+            spec=OppositionSpec(key="ghost", pole_a="a-pole", pole_b="b-pole"),
+            measure=lambda _inputs: GapReading(gap=0.9, balance=0.5),
+            shadow=True,
+        )
+        return OppositionRegistry(bindings=[canon, ghost])
+
+    def _services(self) -> ServiceContainer:
+        return ServiceContainer.create(opposition_registry=self._registry_with_shadow())
+
+    @staticmethod
+    def _graph() -> BabylonGraph:
+        graph = BabylonGraph()
+        graph.add_node("worker", wealth=10.0)
+        graph.add_node("owner", wealth=30.0)
+        graph.add_edge("worker", "owner", edge_type=EdgeType.EXPLOITATION)
+        return graph
+
+    def test_shadow_states_land_on_their_own_attr(self) -> None:
+        graph = self._graph()
+        ContradictionSystem().step(graph, self._services(), {"tick": 1})
+        assert set(graph.graph["opposition_states"]) == {"canon"}
+        assert set(graph.graph["shadow_opposition_states"]) == {"ghost"}
+        assert graph.graph["shadow_opposition_states"]["ghost"]["gap"] == pytest.approx(0.9)
+        assert graph.graph["shadow_opposition_states"]["ghost"]["is_principal"] is False
+
+    def test_shadow_rate_continuity_through_shadow_attr(self) -> None:
+        graph = self._graph()
+        services = self._services()
+        system = ContradictionSystem()
+        system.step(graph, services, {"tick": 1})
+        # Perturb the stashed shadow gap so tick 2's rate must read it back.
+        stash = dict(graph.graph["shadow_opposition_states"])
+        stash["ghost"] = {**stash["ghost"], "gap": 0.6}
+        graph.set_graph_attr("shadow_opposition_states", stash)
+        system.step(graph, services, {"tick": 2})
+        assert graph.graph["shadow_opposition_states"]["ghost"]["rate"] == pytest.approx(0.3)
+
+    def test_frames_never_name_a_shadow_key(self) -> None:
+        graph = self._graph()
+        ContradictionSystem().step(graph, self._services(), {"tick": 1})
+        frame = graph.graph["contradiction_frames"]["global"]
+        assert frame["principal"]["id"] == "canon"
+        assert frame["secondary"]["id"] == "canon"
+
+    def test_no_shadow_bindings_writes_no_shadow_attr(self) -> None:
+        """Pre-ADR077 graphs stay byte-identical: no key unless shadows exist."""
+        graph = self._graph()
+        canon_only = OppositionRegistry(
+            bindings=[
+                BoundOpposition(
+                    spec=OppositionSpec(key="canon", pole_a="a-pole", pole_b="b-pole"),
+                    measure=lambda _inputs: GapReading(gap=0.4, balance=-0.2),
+                )
+            ]
+        )
+        services = ServiceContainer.create(opposition_registry=canon_only)
+        ContradictionSystem().step(graph, services, {"tick": 1})
+        assert "shadow_opposition_states" not in graph.graph

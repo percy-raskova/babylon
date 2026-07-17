@@ -198,3 +198,25 @@ class TestPriceValue:
     def test_never_principal_even_at_full_gap(self) -> None:
         states = _states(GraphInputs(market_balance=1.0))
         assert states["price_value"].is_principal is False
+
+    def test_pole_measure_reads_the_labor_power_commodity(self) -> None:
+        """Per-node price⟷value position via the ONE commodity carrying both
+        a per-node price (w_paid) and value (v_produced): labor-power — the
+        D5 shared-defect precedent (``_imperial_poles``), ADR078."""
+        inputs = GraphInputs(
+            wage_value_id_pairs=(
+                ("bribed", 1.2, 1.0),  # wage above value: the price form leads
+                ("exploited", 0.8, 1.0),  # value above wage: the substance leads
+            )
+        )
+        readings = {
+            r.entity_id: r for r in _reg().read_poles(inputs) if r.opposition_key == "price_value"
+        }
+        assert readings["bribed"].sigma > 0.0  # pole B (price)
+        assert readings["exploited"].sigma < 0.0  # pole A (value)
+
+    def test_unpositioned_nodes_are_absent_from_the_pole_channel(self) -> None:
+        readings = [
+            r for r in _reg().read_poles(GraphInputs()) if r.opposition_key == "price_value"
+        ]
+        assert readings == []

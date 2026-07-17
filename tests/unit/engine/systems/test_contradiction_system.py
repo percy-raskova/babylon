@@ -384,7 +384,8 @@ class TestShadowPartition:
         graph = self._graph()
         ContradictionSystem().step(graph, ServiceContainer.create(), {"tick": 1})
         stash = graph.graph["pole_readings"]
-        assert set(stash) == {"capital_labor", "imperial", "wage"}
+        # price_value joined the shared-defect pole family in ADR078.
+        assert set(stash) == {"capital_labor", "imperial", "price_value", "wage"}
         assert stash["capital_labor"]["worker"]["side"] == "a"
         assert stash["imperial"]["owner"]["side"] == "b"  # core pole via the bribe
         assert stash["wage"]["worker"]["sigma"] == pytest.approx(-0.8)

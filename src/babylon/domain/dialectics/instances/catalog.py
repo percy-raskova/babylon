@@ -249,6 +249,16 @@ def _imperial_measure(inputs: GraphInputs) -> GapReading:
     return _wage_value_reading(inputs)
 
 
+#: ``price_value`` per-node positions read the IDENTICAL ``(w_paid,
+#: v_produced)`` defect as ``wage`` — labor-power is the ONE commodity
+#: carrying a per-node price AND value accounting, so the node's position in
+#: the price⟷value adjunction is observed there (the D5 shared-defect
+#: precedent, exactly as ``_imperial_poles``). A per-node claims/portfolio
+#: sigma (who HOLDS the fictitious paper) replaces this proxy when per-node
+#: financial data lands — every :class:`PoleReading` consumer unchanged.
+_price_value_poles = _wage_poles
+
+
 def _price_value_measure(inputs: GraphInputs) -> GapReading:
     """value (A) ⇄ price (B) — the scissors as a measured adjunction defect.
 
@@ -349,6 +359,7 @@ def build_default_registry(rate_weight: float = 10.0) -> OppositionRegistry[Grap
                 antagonistic=False,
             ),
             measure=_price_value_measure,
+            pole_measure=_price_value_poles,
             # SHADOW (ADR077): measured every tick, excluded from principal
             # scoring/frames/rupture; states ride shadow_opposition_states.
             shadow=True,
@@ -375,6 +386,9 @@ _DEFAULT_COUPLINGS: tuple[Coupling, ...] = (
     # wage and imperial read the SAME (w_paid, v_produced) defect (D5): the
     # per-class wage relation feeds the frame-level imperial-rent reading.
     Coupling(source="wage", target="imperial", kind="feeds"),
+    # the realized wage⇄value flow IS the scissors' drive term (ADR078): the
+    # market axis integrates what the wage relation produces each tick.
+    Coupling(source="wage", target="price_value", kind="feeds"),
 )
 
 

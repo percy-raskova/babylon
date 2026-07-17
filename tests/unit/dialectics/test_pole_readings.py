@@ -215,4 +215,6 @@ class TestCatalogPoleMeasures:
         inputs = GraphInputs(wage_value_id_pairs=(("solo", 18.0, 2.0),))
         readings = build_default_registry().read_poles(inputs)
         keys_for_solo = {r.opposition_key for r in readings if r.entity_id == "solo"}
-        assert keys_for_solo == {"imperial", "wage"}
+        # price_value joined the shared-defect family in ADR078 (labor-power is
+        # the one commodity with per-node price AND value accounting).
+        assert keys_for_solo == {"imperial", "price_value", "wage"}

@@ -4,7 +4,9 @@ Django test client + real ``NarrationRecord`` rows (B4), matching the
 established pattern in ``tests/unit/web/test_game_explain_view.py``
 (``django_db`` + SQLite in-memory, ``User``/``GameSession`` fixtures via a
 login helper). No bridge involved — this view reads straight off
-``session.narration_records`` and the ``BABYLON_LLM_NARRATOR`` flag.
+``session.narration_records``. Beats are served regardless of the
+BABYLON_LLM_NARRATOR flag (spec-116 FR-4.1); the flag gates only LLM
+generation.
 
 Contract (``src/frontend/src/types/narration.ts`` /
 ``src/frontend/src/lib/narration/client.ts``): the wire payload is
@@ -58,11 +60,17 @@ class TestURLRouting:
         assert url == "/api/games/aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee/narration/"
 
 
-class TestFlagOff:
-    """``BABYLON_LLM_NARRATOR`` off (the default) is an honest, labeled
-    'offline' — never a fake-empty 'ready' (III.11)."""
+class TestFlagIndependentReads:
+    """Spec-116 FR-4.1 (the Voice heartbeat): persisted beats are served
+    regardless of ``BABYLON_LLM_NARRATOR``. CONSCIOUS CONTRACT FLIP — the
+    pre-116 contract (flag off ⇒ ``"offline"`` + records hidden) asserted
+    the opposite; the deterministic causal voice writes records with the
+    flag off, so the flag now gates ONLY LLM generation
+    (``NarrativeService.schedule``), never the read path. Server-side
+    status is ``"ready"``/``"pending"`` only; ``"offline"`` survives as the
+    CLIENT's degradation state (``lib/narration/client.ts``)."""
 
-    def test_flag_off_returns_offline_with_no_beats(self) -> None:
+    def test_flag_off_with_no_records_is_pending(self) -> None:
         client, session = _login_client_with_session()
 
         response = client.get(_narration_url(session.id))
@@ -70,31 +78,34 @@ class TestFlagOff:
         assert response.status_code == 200
         body = json.loads(response.content)
         assert body["status"] == "ok"
-        assert body["data"] == {"status": "offline", "beats": []}
+        assert body["data"] == {"status": "pending", "beats": []}
 
-    def test_flag_off_ignores_existing_records(self) -> None:
-        """Even with rows already persisted, flag-off never surfaces them —
-        offline means "the narrator isn't on", not "no beats exist yet"."""
+    def test_flag_off_serves_existing_records(self) -> None:
+        """The heartbeat's whole point: deterministic beats reach the panel
+        with the LLM flag off (design §6 — never empty)."""
         from game.models import NarrationRecord
 
         client, session = _login_client_with_session()
         NarrationRecord.objects.create(
             session=session,
             tick=1,
-            beat_id="wire-1",
+            beat_id="causal-pulse-t1",
             scope="tick",
             subject_ref=None,
-            headline="H",
-            body="B",
+            headline="The week's ledger, tick 1.",
+            body="The imperial rent pool held at 100.00.",
             register="wire",
-            model_id="m",
-            prompt_version="v",
+            model_id="deterministic-causal-v1",
+            prompt_version="0" * 12,
         )
 
         response = client.get(_narration_url(session.id))
 
         data = json.loads(response.content)["data"]
-        assert data == {"status": "offline", "beats": []}
+        assert data["status"] == "ready"
+        assert [b["id"] for b in data["beats"]] == ["causal-pulse-t1"]
+        assert data["beats"][0]["register"] == "wire"
+        assert data["beats"][0]["scope"] == "tick"
 
 
 @pytest.fixture

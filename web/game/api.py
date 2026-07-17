@@ -798,37 +798,30 @@ def game_wire(request: Request, game_id: str) -> JsonResponse:
 @api_view(["GET"])
 @permission_classes([IsAuthenticated])
 def game_narration(request: Request, game_id: str) -> JsonResponse:
-    """GET /api/games/{id}/narration/?since_tick=N — AI narration beats.
+    """GET /api/games/{id}/narration/?since_tick=N — narration beats.
 
-    Program 20 Track B (task B5). Contract: ``src/frontend/src/types/narration.ts``
-    / ``src/frontend/src/lib/narration/client.ts``. Reads straight off
-    ``NarrationRecord`` (task B4) — no bridge/engine call, and no narrative
-    generation happens here (that's ``NarrativeService.schedule``, fired from
-    ``resolve_tick``).
+    Program 20 Track B (task B5), reworked by spec-116 FR-4.1 (the Voice
+    heartbeat): the deterministic causal voice (``game.causal_voice``,
+    written synchronously every tick by ``resolve_tick`` via
+    ``_persist_causal_beats_safe``) files ``NarrationRecord`` beats with or
+    without a model, so this view serves persisted records UNCONDITIONALLY.
+    ``BABYLON_LLM_NARRATOR`` now gates ONLY the LLM generation path
+    (``NarrativeService.schedule``), never the read path — absent a model,
+    templates render; nothing is ever empty (design §6).
 
-    Flag off (``BABYLON_LLM_NARRATOR``, default off) is an honest, labeled
-    ``"offline"`` — never an empty-but-"ready" fake (Constitution III.11).
-    Flag on with no records at/after ``since_tick`` is ``"pending"`` (the
-    narrator is live but nothing has landed yet for this range). Flag on
-    with records is ``"ready"`` — degraded beats (``NarrationRecord.degraded``)
-    are included in the list, never filtered out; loud failure must stay
-    visible in the beats a client actually renders.
+    ``"ready"`` when records exist at/after ``since_tick``; ``"pending"``
+    when none do yet (the narrator is live by construction, so the old
+    flag-off ``"offline"`` answer is retired server-side — ``"offline"``
+    remains the CLIENT's degradation state for failed requests, see
+    ``src/frontend/src/lib/narration/client.ts``). Degraded beats are
+    included, never filtered out (III.11).
 
-    A non-integer ``since_tick`` is a loud 400 (III.11), never coerced to 0;
-    a missing ``since_tick`` defaults to 0 (full history).
+    A non-integer ``since_tick`` is a loud 400 (III.11), never coerced to
+    0; a missing ``since_tick`` defaults to 0 (full history).
     """
     session = _get_session_or_none(game_id, request.user.id)
     if session is None:
         return _error("Game not found", http_status=404)
-
-    from .narrative_service import is_enabled
-
-    if not is_enabled():
-        return _envelope(
-            {"status": "offline", "beats": []},
-            tick=session.current_tick,
-            session_id=str(session.id),
-        )
 
     since_tick_query = request.query_params.get("since_tick")
     try:

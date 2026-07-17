@@ -133,4 +133,45 @@ describe("EventsFeed", () => {
     await userEvent.click(screen.getByText("The Horizon"));
     expect(useStore.getState().ui.takeover.active).toBe("chronicle");
   });
+
+  it("collapses consecutive same-(type,subject) events into one card with count and age (FR-116-2)", () => {
+    useStore.setState((s) => ({
+      world: {
+        ...s.world,
+        snapshot: makeSnapshot({
+          events: [
+            makeEvent({
+              id: "e1",
+              type: "dispossession_event",
+              title: "Dispossession",
+              tick: 5,
+              data: { territory: "26163" },
+            }),
+            makeEvent({
+              id: "e2",
+              type: "dispossession_event",
+              title: "Dispossession",
+              tick: 5,
+              data: { territory: "26163" },
+            }),
+            makeEvent({
+              id: "e3",
+              type: "dispossession_event",
+              title: "Dispossession",
+              tick: 5,
+              data: { territory: "26099" },
+            }),
+          ],
+        }),
+      },
+    }));
+    render(<EventsFeed />);
+
+    // The 26163 run collapses into one card; 26099 stays separate.
+    expect(screen.getAllByText("Dispossession")).toHaveLength(2);
+    expect(screen.getByTestId("event-count-5-0")).toHaveTextContent("×2");
+    expect(screen.queryByTestId("event-count-5-2")).not.toBeInTheDocument();
+    // Age label (per-tick feed: single tick).
+    expect(screen.getAllByText("t5")).toHaveLength(2);
+  });
 });

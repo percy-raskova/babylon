@@ -105,3 +105,51 @@ describe("events slice — per-category mute", () => {
     expect(useStore.getState().events.mutedCategories).toEqual([]);
   });
 });
+
+describe("events slice — cross-tick salience dedup (spec-116 FR-116-2)", () => {
+  it("collapses same-tick same-(type,subject) criticals into one toast with a count", () => {
+    useStore
+      .getState()
+      .events.ingest(1, [
+        makeEvent({ type: "endgame_reached", tick: 1, id: "e1", data: {} }),
+        makeEvent({ type: "endgame_reached", tick: 1, id: "e2", data: {} }),
+      ]);
+
+    const { toasts } = useStore.getState().events;
+    expect(toasts).toHaveLength(1);
+    expect(toasts[0]!.count).toBe(2);
+    expect(toasts[0]!.dedupKey).toBe("endgame_reached:global");
+  });
+
+  it("a persisting critical on the next tick updates the existing toast instead of stacking", () => {
+    useStore
+      .getState()
+      .events.ingest(1, [makeEvent({ type: "endgame_reached", tick: 1, data: {} })]);
+    useStore
+      .getState()
+      .events.ingest(2, [makeEvent({ type: "endgame_reached", tick: 2, data: {} })]);
+
+    const { toasts } = useStore.getState().events;
+    expect(toasts).toHaveLength(1);
+    expect(toasts[0]!.count).toBe(2);
+    expect(toasts[0]!.tick).toBe(1); // first occurrence
+    expect(toasts[0]!.lastTick).toBe(2); // still happening
+  });
+
+  it("a dismissed critical's key accumulates silently in the tray — never re-pops", () => {
+    useStore
+      .getState()
+      .events.ingest(1, [makeEvent({ type: "endgame_reached", tick: 1, data: {} })]);
+    const id = useStore.getState().events.toasts[0]!.id;
+    useStore.getState().events.dismissToast(id);
+
+    useStore
+      .getState()
+      .events.ingest(2, [makeEvent({ type: "endgame_reached", tick: 2, data: {} })]);
+
+    expect(useStore.getState().events.toasts).toHaveLength(0);
+    expect(useStore.getState().events.tray).toHaveLength(1);
+    expect(useStore.getState().events.tray[0]!.count).toBe(2);
+    expect(useStore.getState().events.tray[0]!.lastTick).toBe(2);
+  });
+});

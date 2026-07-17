@@ -49,7 +49,16 @@ function streamEvent(overrides: Partial<StreamEvent> = {}): StreamEvent {
 }
 
 function toast(severity: ToastEntry["severity"], events: StreamEvent[]): ToastEntry {
-  return { id: `t-${severity}`, tick: 5, severity, lifetime: "persistent", events };
+  return {
+    id: `t-${severity}`,
+    dedupKey: null,
+    tick: 5,
+    lastTick: 5,
+    count: events.length,
+    severity,
+    lifetime: "persistent",
+    events,
+  };
 }
 
 /** Props captured by the Nth (default last) `new ScatterplotLayer(props)` call. */

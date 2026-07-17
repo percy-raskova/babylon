@@ -98,4 +98,18 @@ describe("EventTray", () => {
     render(<EventTray gameId={DEFAULT_GAME_ID} />);
     expect(screen.queryByTestId("event-tray-dismissed")).not.toBeInTheDocument();
   });
+
+  it("shows the accumulated count on a dismissed critical in the Missed tray", async () => {
+    useStore
+      .getState()
+      .events.ingest(1, [makeEvent({ type: "endgame_reached", tick: 1, data: {} })]);
+    const id = useStore.getState().events.toasts[0]!.id;
+    useStore.getState().events.dismissToast(id);
+    useStore
+      .getState()
+      .events.ingest(2, [makeEvent({ type: "endgame_reached", tick: 2, data: {} })]);
+
+    render(<EventTray gameId={DEFAULT_GAME_ID} />);
+    expect(screen.getByTestId(`tray-restore-${id}`)).toHaveTextContent("×2");
+  });
 });

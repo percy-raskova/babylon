@@ -144,4 +144,17 @@ describe("EventToasts", () => {
       vi.useRealTimers();
     }
   });
+
+  it("shows a count badge with the latest tick on an accumulated critical toast", () => {
+    useStore
+      .getState()
+      .events.ingest(1, [makeEvent({ type: "endgame_reached", tick: 1, data: {} })]);
+    useStore
+      .getState()
+      .events.ingest(2, [makeEvent({ type: "endgame_reached", tick: 2, data: {} })]);
+    render(<EventToasts gameId="game-1" />);
+
+    const id = useStore.getState().events.toasts[0]!.id;
+    expect(screen.getByTestId(`toast-count-${id}`)).toHaveTextContent("×2 · through tick 2");
+  });
 });

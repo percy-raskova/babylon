@@ -36,13 +36,25 @@ import {
   type StreamEvent,
   type StreamSeverity,
 } from "@/lib/eventClassifier";
+import { dedupeEvents } from "@/lib/eventDedup";
 
 export type { EventCategory } from "@/lib/eventClassifier";
 
-/** One popped toast: a single critical event, or a same-tick batch of notable events. */
+/**
+ * One popped toast: a single critical *condition* (accumulating across
+ * ticks by salience key, spec-116 FR-116-2), or a same-tick batch of
+ * notable events.
+ */
 export interface ToastEntry {
   id: string;
+  /** Salience identity `${type}:${subject}` for critical toasts; `null` for notable batches. */
+  dedupKey: string | null;
+  /** Tick of FIRST occurrence. */
   tick: number;
+  /** Tick of the most recent occurrence (== tick until the condition persists). */
+  lastTick: number;
+  /** Raw events this card has absorbed (same-tick repeats + cross-tick recurrences). */
+  count: number;
   severity: StreamSeverity;
   /** Persistent-until-acted (critical/decision) vs ephemeral-with-generous-timing (flavor). */
   lifetime: "persistent" | "ephemeral";
@@ -86,15 +98,42 @@ export const createEventsSlice: StateCreator<RootState, [], [], EventsSlice> = (
         (e) => e.stream === "urgent" && !muted.has(e.category),
       );
 
-      const criticalToasts: ToastEntry[] = classified
-        .filter((e) => e.severity === "critical")
-        .map((e) => ({
-          id: e.id,
+      // Critical conditions collapse by (type,subject): same-tick repeats
+      // into one card, and a condition already toasted — or dismissed into
+      // the tray — on an earlier tick ACCUMULATES (count/lastTick) instead
+      // of stacking a duplicate (FR-116-2 / acceptance gate 2). A dismissed
+      // condition stays dismissed: silent accumulation, never a re-pop.
+      const toasts = [...get().events.toasts];
+      const tray = [...get().events.tray];
+      const fresh: ToastEntry[] = [];
+      for (const run of dedupeEvents(classified.filter((e) => e.severity === "critical"))) {
+        const bump = (t: ToastEntry): ToastEntry => ({
+          ...t,
+          count: t.count + run.count,
+          lastTick: tick,
+          events: run.events,
+        });
+        const active = toasts.find((t) => t.dedupKey === run.key);
+        if (active) {
+          toasts[toasts.indexOf(active)] = bump(active);
+          continue;
+        }
+        const trayed = tray.find((t) => t.dedupKey === run.key);
+        if (trayed) {
+          tray[tray.indexOf(trayed)] = bump(trayed);
+          continue;
+        }
+        fresh.push({
+          id: run.representative.id,
+          dedupKey: run.key,
           tick,
+          lastTick: tick,
+          count: run.count,
           severity: "critical" as const,
           lifetime: "persistent" as const,
-          events: [e],
-        }));
+          events: run.events,
+        });
+      }
 
       const notable = classified.filter((e) => e.severity === "notable");
       const batchToast: ToastEntry[] =
@@ -102,7 +141,10 @@ export const createEventsSlice: StateCreator<RootState, [], [], EventsSlice> = (
           ? [
               {
                 id: `batch-${tick}`,
+                dedupKey: null,
                 tick,
+                lastTick: tick,
+                count: notable.length,
                 severity: "notable" as const,
                 lifetime: "ephemeral" as const,
                 events: notable,
@@ -114,7 +156,8 @@ export const createEventsSlice: StateCreator<RootState, [], [], EventsSlice> = (
         events: {
           ...s.events,
           ingestedTicks: [...s.events.ingestedTicks, tick],
-          toasts: [...s.events.toasts, ...criticalToasts, ...batchToast],
+          toasts: [...toasts, ...fresh, ...batchToast],
+          tray,
         },
       }));
     },

@@ -35,8 +35,10 @@ class TestRegistryShape:
             "wage",
         )
 
-    def test_price_value_is_the_only_shadow(self) -> None:
-        assert _reg().shadow_keys == frozenset({"price_value"})
+    def test_no_shadow_bindings_after_the_promotion(self) -> None:
+        """ADR078: price_value is canonical; the shadow mechanism stays,
+        empty, as the Amendment T landing surface."""
+        assert _reg().shadow_keys == frozenset()
 
     def test_capital_labor_is_antagonistic(self) -> None:
         assert _reg().spec_for("capital_labor").antagonistic is True
@@ -195,9 +197,11 @@ class TestPriceValue:
         state = _states(GraphInputs(market_balance=1.7))["price_value"]
         assert state.balance == 1.0
 
-    def test_never_principal_even_at_full_gap(self) -> None:
+    def test_dominant_scissors_takes_the_principal_slot(self) -> None:
+        """ADR078 promotion: with every other gap at zero, a fully-opened
+        scissors IS the principal contradiction — crisis-as-principal."""
         states = _states(GraphInputs(market_balance=1.0))
-        assert states["price_value"].is_principal is False
+        assert states["price_value"].is_principal is True
 
     def test_pole_measure_reads_the_labor_power_commodity(self) -> None:
         """Per-node price⟷value position via the ONE commodity carrying both

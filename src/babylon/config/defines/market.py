@@ -121,12 +121,12 @@ class MarketDefines(BaseModel):
         ),
     )
     feedback_enabled: bool = Field(
-        default=False,
+        default=True,
         description=(
-            "Master gate on the Phase-2 correction feedback (ADR078). False "
-            "= observe-only shadow (Phase 1, byte-identical baselines); True "
-            "= the snap fires into the material base. Flipped in the "
-            "promotion-ceremony commit, the EH/Doctrine staging pattern."
+            "Master gate on the Phase-2 correction feedback (ADR078). True "
+            "= the snap fires into the material base (the shipped default "
+            "since the promotion ceremony); False restores Phase-1 "
+            "observe-only shadow behavior for byte-comparison runs."
         ),
     )
     correction_threshold_base: float = Field(

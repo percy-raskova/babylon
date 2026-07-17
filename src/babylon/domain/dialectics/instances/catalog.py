@@ -360,9 +360,11 @@ def build_default_registry(rate_weight: float = 10.0) -> OppositionRegistry[Grap
             ),
             measure=_price_value_measure,
             pole_measure=_price_value_poles,
-            # SHADOW (ADR077): measured every tick, excluded from principal
-            # scoring/frames/rupture; states ride shadow_opposition_states.
-            shadow=True,
+            # CANONICAL since ADR078 (the promotion ceremony): the scissors
+            # competes for principal contradiction — crisis-as-principal
+            # falls out of the frames/rupture/regime machinery. It was born
+            # shadow (ADR077) to prove byte-inertness first; the generic
+            # shadow mechanism remains for Amendment T's future bindings.
         ),
     ]
     return OppositionRegistry(bindings=bindings, rate_weight=rate_weight)

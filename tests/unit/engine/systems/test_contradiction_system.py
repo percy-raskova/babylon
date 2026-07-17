@@ -98,7 +98,16 @@ class TestRegistryStash:
         ContradictionSystem().step(graph, ServiceContainer.create(), {"tick": 3})
 
         states = graph.graph["opposition_states"]
-        assert set(states) == {"capital_labor", "wage", "tenancy", "atomization", "imperial"}
+        # price_value joined the canonical channel in ADR078 (zero-gap here:
+        # this graph carries no market axis).
+        assert set(states) == {
+            "capital_labor",
+            "wage",
+            "tenancy",
+            "atomization",
+            "imperial",
+            "price_value",
+        }
         assert states["capital_labor"]["gap"] == pytest.approx(0.5)
         assert states["capital_labor"]["tick"] == 3
         # capital_labor is the only non-zero gap -> it is the principal.
@@ -489,9 +498,9 @@ class TestShadowChannel:
 
 
 class TestPriceValueEndToEnd:
-    """Default registry + fresh market axis → shadow state (Program 23)."""
+    """Default registry + fresh market axis → CANONICAL state (ADR078)."""
 
-    def test_market_axis_feeds_the_shadow_opposition(self) -> None:
+    def test_market_axis_feeds_the_canonical_opposition(self) -> None:
         import math
 
         from babylon.config.defines import GameDefines
@@ -515,15 +524,17 @@ class TestPriceValueEndToEnd:
         ContradictionSystem().step(graph, ServiceContainer.create(), {"tick": 1})
 
         scale = GameDefines().market.scissors_balance_scale
-        shadow = graph.graph["shadow_opposition_states"]
-        assert set(shadow) == {"price_value"}
-        assert shadow["price_value"]["balance"] == pytest.approx(math.tanh(0.5 / scale))
-        assert shadow["price_value"]["is_principal"] is False
-        # The canonical channel still carries exactly the five originals.
-        assert set(graph.graph["opposition_states"]) == {
+        # Promotion (ADR078): price_value rides the CANONICAL channel — the
+        # sixth opposition, competing for principal. The empty shadow channel
+        # writes no attr at all (only-when-present contract).
+        states = graph.graph["opposition_states"]
+        assert set(states) == {
             "capital_labor",
             "wage",
             "tenancy",
             "atomization",
             "imperial",
+            "price_value",
         }
+        assert states["price_value"]["balance"] == pytest.approx(math.tanh(0.5 / scale))
+        assert "shadow_opposition_states" not in graph.graph

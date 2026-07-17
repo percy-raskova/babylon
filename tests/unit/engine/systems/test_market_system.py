@@ -320,9 +320,13 @@ class TestCorrection:
     """ADR078: the snap and its material-base consequences."""
 
     def test_disabled_gate_is_inert(self) -> None:
-        """feedback_enabled=False: the bubble advances but NOTHING fires."""
+        """feedback_enabled=False (explicit — the default is True since the
+        ADR078 ceremony): the bubble advances but NOTHING fires."""
         graph = _euphoric_graph()
-        _step(graph, ServiceContainer.create(), tick=10)
+        disabled = ServiceContainer.create(
+            defines=GameDefines(market=MarketDefines(feedback_enabled=False))
+        )
+        _step(graph, disabled, tick=10)
         state = graph.graph["market"]
         assert state["corrections"] == 0
         assert state["last_correction_tick"] is None

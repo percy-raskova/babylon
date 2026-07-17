@@ -429,6 +429,41 @@ _MAP_METRICS: tuple[SeamEntry, ...] = (
             "Population-weighted MEAN at county zoom, partial-coverage-aware."
         ),
     ),
+    # --- Program 23 Phase 2 (ADR078): the per-county scissors' map reading.
+    # NATIVE per-territory graph attr like wage_pressure, presence-
+    # conditional AND null-able: the projector writes the county's price_log
+    # when a county axis exists, an explicit None on de-positioning (the
+    # sigma-channel rule), and nothing at all for a territory whose county
+    # never carried a paid-worker value substrate.
+    # ---------------------------------------------------------------------------
+    SeamEntry(
+        payload="price_divergence",
+        wire_keys=("price_divergence",),
+        scope=SeamScope.MAP,
+        owner_layer="engine (MarketScissorsSystem, babylon.engine.systems.market_scissors)",
+        liveness_class=LivenessClass.DECLARED_CONDITIONAL,
+        liveness_condition=(
+            "non-null only for an active territory whose county_fips carries a market_county "
+            "axis this tick (market_scissors.py::_project_price_divergence) — the projector "
+            "writes the county price_log, an honest None on de-positioning, and no attr at all "
+            "for a county with no paid-worker (w_paid, v_produced) substrate, never a "
+            "fabricated 0.0"
+        ),
+        dtype="float",
+        write_site=(
+            "src/babylon/engine/systems/market_scissors.py::"
+            "MarketScissorsSystem._project_price_divergence (graph.update_node)"
+        ),
+        read_paths=_MAP_EMITTERS,
+        spec_ref="Program 23 Phase 2 · ADR078 · spec-115",
+        notes=(
+            "SIGNED log price-to-value ratio of the territory's county (range ±max_abs_log, "
+            "0 = prices at values) — the map lens uses a diverging ramp with a special "
+            "normalization branch in mapLensLayers.ts (raw range is [-2, 2], not [0, 1]). "
+            "Rides hex_latest's JSONB attributes column; population-weighted MEAN at county "
+            "zoom, partial-coverage-aware."
+        ),
+    ),
 )
 
 # ---------------------------------------------------------------------------

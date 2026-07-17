@@ -31,8 +31,8 @@ class TestPhase2Defaults:
         assert d.wealth_axis_kick_gain == 0.02
 
     def test_feedback_gate_default(self) -> None:
-        """Pre-ceremony: the gate lands False (inert), flipped in the promotion commit."""
-        assert MarketDefines().feedback_enabled is False
+        """Promotion ceremony (ADR078) flipped the gate: the correction is LIVE."""
+        assert MarketDefines().feedback_enabled is True
 
 
 class TestPhase2Bounds:

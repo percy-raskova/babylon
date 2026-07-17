@@ -369,6 +369,8 @@ jobs:
         with:
           gdal: "true"
       - uses: ./.github/actions/fetch-reference-db
+      - name: Catalog sentinel (DB probe — catalog↔DB reconciliation)
+        run: poetry run python tools/sentinel_check.py catalog --check
       - name: Run requires_reference_db suites
         run: >-
           poetry run pytest tests -m requires_reference_db

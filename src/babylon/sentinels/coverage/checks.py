@@ -31,6 +31,11 @@ import sys
 from pathlib import Path
 
 from babylon.sentinels.base import LabelledCheck, SentinelCheckError, run_sensor
+from babylon.sentinels.coverage.catalog import (
+    CatalogTable,
+    load_catalog_tables,
+    subset_policy_map,
+)
 from babylon.sentinels.coverage.registry import DATA_REQUIREMENTS, DataRequirement
 
 #: Repo root (this file is ``<root>/src/babylon/sentinels/coverage/checks.py``).
@@ -91,9 +96,76 @@ def check_source_classes_exist(
     return sorted(violations)
 
 
+def check_catalog_paths_exist(
+    catalog: tuple[CatalogTable, ...] | None = None,
+) -> list[str]:
+    """Every catalog row's declared consumer/test path must exist in the repo.
+
+    A ``consumers`` or ``tests`` entry pointing at a file the repo no longer
+    contains is a rotted lineage claim — the object it guards is either
+    orphaned or its consumer moved without the catalog following (the exact
+    drift Program 21 exists to make loud).
+
+    :param catalog: Rows to check (defaults to the real ``data-catalog.yaml``;
+        injectable so tests can supply a deliberately broken row).
+    :returns: Sorted violation strings (empty when every path exists).
+    :raises SentinelCheckError: If the catalog itself cannot be loaded.
+    """
+    rows = load_catalog_tables() if catalog is None else catalog
+    violations: list[str] = []
+    for row in rows:
+        for field_name, paths in (("consumers", row.consumers), ("tests", row.tests)):
+            for entry in paths:
+                if not (_REPO_ROOT / entry).is_file():
+                    violations.append(
+                        f"catalog row {row.name!r} declares {field_name} path {entry!r} "
+                        "which does not exist (moved/renamed/deleted? lineage rotted)"
+                    )
+    return sorted(violations)
+
+
+def check_subset_policy_parity(
+    catalog: tuple[CatalogTable, ...] | None = None,
+) -> list[str]:
+    """Every base table's ``subset_policy`` must equal the generator's scope.
+
+    ``data-catalog.yaml`` and ``tools/make_reference_subset.py``'s ``TABLE``
+    dict are two sources of truth for the same fact (which rows ship in the
+    ci-data subset); this check pins them together so neither can drift
+    silently. Views are exempt — the generator copies ``type='table'`` only,
+    and the model already forces views to declare ``skip``.
+
+    :param catalog: Rows to check (defaults to the real catalog; injectable).
+    :returns: Sorted violation strings (empty when the two SoTs agree).
+    :raises SentinelCheckError: If either source of truth cannot be parsed.
+    """
+    rows = load_catalog_tables() if catalog is None else catalog
+    policies = subset_policy_map()
+    violations: list[str] = []
+    for row in rows:
+        if row.kind != "table":
+            continue
+        scope = policies.get(row.name)
+        if scope is None:
+            violations.append(
+                f"catalog row {row.name!r} has no TablePolicy entry in "
+                "tools/make_reference_subset.py TABLE (new table without a "
+                "reviewed subset policy?)"
+            )
+        elif scope != row.subset_policy:
+            violations.append(
+                f"catalog row {row.name!r} declares subset_policy "
+                f"{row.subset_policy!r} but the generator's TABLE dict says "
+                f"{scope!r} — the two SoTs have drifted"
+            )
+    return sorted(violations)
+
+
 #: Gating checks: a violation reds the dev fast-gate (exit 1).
 _GATING_CHECKS: tuple[LabelledCheck, ...] = (
     ("declared reference-data source class does not exist", check_source_classes_exist),
+    ("catalog consumer/test path does not exist", check_catalog_paths_exist),
+    ("catalog subset_policy drifted from make_reference_subset.TABLE", check_subset_policy_parity),
 )
 
 #: No advisory tier yet — the reference-DB coverage probe is a nightly concern.
@@ -109,7 +181,9 @@ def _summary(advisory_count: int) -> str:
     """
     summary = (
         f"Data coverage (static): clean — {len(DATA_REQUIREMENTS)} reference-data "
-        f"requirements coherent (source classes exist)."
+        f"requirements coherent (source classes exist); "
+        f"{len(load_catalog_tables())} catalog rows coherent (paths exist, "
+        "subset policies in parity)."
     )
     if advisory_count:
         summary += f" ({advisory_count} advisory findings above.)"

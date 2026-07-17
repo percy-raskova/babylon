@@ -411,6 +411,7 @@ community:
 class_dynamics:
   alpha_21: 0.0006  # Extraction rate from petty bourgeoisie to bourgeoisie (quarterly) (>= 0.0, <= 0.01)
   gamma_3: 0.0057  # Imperial rent formation rate — superwages to core workers (quarterly) (>= 0.0, <= 0.1)
+  ticks_per_quarter: 13.0  # Engine ticks per calendar quarter (weekly ticks = 13). Converts the quarterly FRED-DFA ODE rates to a per-tick Euler step in WealthDistributionSystem (Program 21 Phase 1) (>= 1.0, <= 91.0)
   equilibrium_w1: 0.305  # Target equilibrium wealth share for class 1 (bourgeoisie) (>= 0.0, <= 1.0)
   equilibrium_w2: 0.382  # Target equilibrium wealth share for class 2 (petty bourgeoisie) (>= 0.0, <= 1.0)
   equilibrium_w3: 0.294  # Target equilibrium wealth share for class 3 (proletariat) (>= 0.0, <= 1.0)

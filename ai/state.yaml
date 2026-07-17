@@ -2,9 +2,35 @@
 # What exists vs what's planned - KEEP THIS UPDATED
 
 meta:
-  version: "2.36.0"  # 2.28.0 lives on feature/19-emergent-class-partition (Program 19 Phase 0+1)
+  version: "2.37.0"  # 2.28.0 lives on feature/19-emergent-class-partition (Program 19 Phase 0+1)
   updated: "2026-07-16"
   truth_status: |
+    (2026-07-16 night) PROGRAM 21 — DATA CONSTITUTION (ADR075; owner ultracode
+    "address the flowchart"; branch feature/21-data-constitution; PR #201 /
+    ADR074 merged to dev @ 073e3b1e first, after healing two CI reds: the
+    global *.csv LFS pattern had turned the five empirical-invariant
+    artifacts into pointers in CI checkouts — now exempted like the dense
+    goldens — and CVE-2026-11332 (ansible-core, fix rc-only) carried as a
+    time-boxed pip-audit ignore expiring 2026-08-15). Census: 56-agent
+    workflow profiled all 99 refdb tables + 10 views, 41 orphan/AMPUTATE
+    claims adversarially re-verified (11 overturned) -> triage KEEP 47 /
+    FILL 8 / ARTIFACT_IZE 6 / INVESTIGATE 15 / AMPUTATE 23 (proposals ONLY;
+    owner ruling required). data-catalog.yaml v2.7.0 gains the per-table
+    tables: registry, enforced by two sentinel tiers: static (paths exist +
+    subset_policy parity vs make_reference_subset.TABLE) in the coverage
+    fast-gate sensor, and the new `catalog` DB-probe sensor (refdata lane:
+    catalog<->DB bijection + KEEP-emptiness law — the view_surplus_value
+    empty-under-consumed-view pathology is its permanent regression
+    contract). WEALTH-SHARE AXIS PHASE 1 SHADOW LIVE (828cdc84):
+    WealthDistributionSystem @21.5 wires the orphaned class_dynamics ODE —
+    national 4-bracket vector on G.graph["wealth_distribution"] (written
+    only when set), wealth_share declared field on SocialClass, new
+    ticks_per_quarter define; qa:regression 5/5 with ZERO baseline movement
+    verified. OWNER RULINGS PENDING: 23 amputations; the 8-role->4-bracket
+    fold (provisional Fed-DFA mapping); Phase-2 feedback (moves all
+    baselines); wealth altitude national-vs-county. Evidence:
+    reports/data-constitution-{triage-2026-07-16,catalog-sentinel-brief,
+    wealth-axis-brief}.md.
     (2026-07-16 evening) TEST-ESTATE SHARPENING COMPLETE (ADR074; owner-invoked
     full review, branch refactor/test-suite-sharpening). Every red fixed or
     discarded: unit gate 10,316+ green under NEW strict config (-n4 loadscope,

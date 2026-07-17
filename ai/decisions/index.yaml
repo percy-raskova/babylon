@@ -1,5 +1,5 @@
 meta:
-  version: 1.22.0
+  version: 1.23.0
   updated: '2026-07-16'
   description: Architecture Decision Records Index
   format: See individual ADR files in this directory
@@ -339,6 +339,11 @@ decisions:
     status: accepted
     date: '2026-07-15'
     file: ADR071_program20_means_of_production.yaml
+  ADR075_data_constitution:
+    title: 'Program 21 — the Data Constitution: per-table lineage registry in data-catalog.yaml enforced by a two-tier catalog sentinel (static path/parity checks in the fast-gate; catalog<->DB bijection + KEEP-emptiness law in the refdata lane), the 99-table census triage (KEEP 47 / FILL 8 / ARTIFACT_IZE 6 / INVESTIGATE 15 / AMPUTATE 23 — amputations are proposals pending owner ruling), and the wealth-share axis Phase-1 shadow (WealthDistributionSystem @21.5 wiring the orphaned class_dynamics ODE; qa:regression untouched)'
+    status: accepted
+    date: '2026-07-16'
+    file: ADR075_data_constitution.yaml
   ADR074_test_estate_sharpening:
     title: 'Test-estate sharpening: tier discipline (dev fast/loud, main heavy), digest-stamped concurrent DDL, first-party deprecation-as-error, emergent-endgames testing corollary (outcomes = fixture vehicles, never asserted subjects), declared-synthetic-data sentinel, and the empirical-invariants program (WID/DFA/BEA laws as behavioral contracts, capitalist-mode conditionality — contrapositive at runtime)'
     status: accepted

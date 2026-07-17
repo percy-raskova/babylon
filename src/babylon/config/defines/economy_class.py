@@ -30,6 +30,16 @@ class ClassDynamicsDefines(BaseModel):
         le=0.1,
         description="Imperial rent formation rate — superwages to core workers (quarterly)",
     )
+    ticks_per_quarter: float = Field(
+        default=13.0,
+        ge=1.0,
+        le=91.0,
+        description=(
+            "Engine ticks per calendar quarter (weekly ticks = 13). Converts the "
+            "quarterly FRED-DFA ODE rates to a per-tick Euler step in "
+            "WealthDistributionSystem (Program 21 Phase 1)"
+        ),
+    )
     equilibrium_w1: float = Field(
         default=0.305,
         ge=0.0,

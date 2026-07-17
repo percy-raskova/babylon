@@ -23,6 +23,17 @@ from babylon.sentinels.seam.checks import main as seam_main
 from babylon.sentinels.synthetic.checks import main as synthetic_main
 
 
+def _catalog_main(argv: list[str] | None) -> int:
+    """Route to the catalog DB probe (Program 21) — lazy import.
+
+    The probe opens sqlite3 against the reference DB, which the fast-gate must
+    never do, so its module loads only when selected (refdata lane).
+    """
+    from babylon.sentinels.coverage.db_probe import main as catalog_main
+
+    return catalog_main(argv)
+
+
 def _partition_main(argv: list[str] | None) -> int:
     """Route to the partition probe (Program 19, ADR070) — lazy import.
 
@@ -41,6 +52,7 @@ _SENSORS: dict[str, Callable[[list[str] | None], int]] = {
     "coverage": coverage_main,
     "partition": _partition_main,
     "synthetic": synthetic_main,
+    "catalog": _catalog_main,
 }
 
 

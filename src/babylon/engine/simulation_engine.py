@@ -68,6 +68,7 @@ from babylon.engine.systems.substrate import SubstrateSystem
 from babylon.engine.systems.survival import SurvivalSystem
 from babylon.engine.systems.territory import TerritorySystem
 from babylon.engine.systems.vitality import VitalitySystem
+from babylon.engine.systems.wealth_distribution import WealthDistributionSystem
 from babylon.kernel.event_bus import Event
 from babylon.kernel.log import log_context_scope
 from babylon.kernel.system_protocol import ContextType, System
@@ -409,6 +410,7 @@ _DEFAULT_SYSTEMS: list[System] = [
     FieldDerivativeSystem(),  # 20. Spatial/temporal derivatives + principal (Feature 002)
     CollapseTransitionSystem(),  # 20.5. Spec-070 sovereign-collapse + territory partition
     EdgeTransitionSystem(),  # 21. Compound predicates + edge mode transitions (Feature 002)
+    WealthDistributionSystem(),  # 21.5. National wealth-share axis (Program 21 Phase-1 shadow; writes only its own axis)
     EpistemicHorizonSystem(),  # 22. Fog-of-war M_r/I_c shadow (Epistemic Horizon Phase 1) — LAST, observes fully-mutated tick
 ]
 
@@ -452,6 +454,7 @@ CONSEQUENCE_SYSTEMS: Final[frozenset[type[System]]] = frozenset(
         ContradictionFieldSystem,
         FieldDerivativeSystem,
         EdgeTransitionSystem,
+        WealthDistributionSystem,  # Program 21 Phase-1 shadow (national wealth-share axis)
         EpistemicHorizonSystem,  # Epistemic Horizon Phase 1 shadow (observes consequences)
         DoctrineSystem,  # Doctrine Tree per-org state (owner-ratified 2026-07-15)
     }

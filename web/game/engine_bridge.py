@@ -2254,6 +2254,13 @@ class EngineBridge:
         ``DispossessionEventSystem`` write no attr at all for a territory
         with no reserve-army pressure this tick / no dispossession activity
         this tick (Constitution III.11 honest-null).
+
+        Program 23 / ADR078: ``price_divergence`` gets the identical
+        partial-coverage-aware population-weighted mean — ``None`` for
+        territories with no county price⟷value axis this tick. UNLIKE every
+        other numeric lens in this family it is SIGNED (roughly
+        ``[-2.0, 2.0]``); the weighted-mean arithmetic below is agnostic to
+        sign, so no special-casing is needed.
         """
         from collections import defaultdict
 
@@ -2271,6 +2278,7 @@ class EngineBridge:
             "mass_receptivity",
             "wage_pressure",
             "dispossession_intensity",
+            "price_divergence",
         )
 
         # Map zoom level to the grouping key
@@ -2326,6 +2334,11 @@ class EngineBridge:
                 "wage_pressure_pop": 0,
                 "dispossession_intensity_sum": 0.0,
                 "dispossession_intensity_pop": 0,
+                # Program 23 / ADR078: same partial-coverage pattern —
+                # MarketScissorsSystem writes no attr (or an honest None)
+                # for a territory with no county price⟷value axis this tick.
+                "price_divergence_sum": 0.0,
+                "price_divergence_pop": 0,
                 "count": 0,
             }
         )
@@ -2409,6 +2422,7 @@ class EngineBridge:
             mass_receptivity_pop = acc["mass_receptivity_pop"]
             wage_pressure_pop = acc["wage_pressure_pop"]
             dispossession_intensity_pop = acc["dispossession_intensity_pop"]
+            price_divergence_pop = acc["price_divergence_pop"]
             role_votes = dominant_class_pop.get(key) or {}
             type_votes = territory_type_pop.get(key) or {}
             vision_votes = vision_state_pop.get(key) or {}
@@ -2492,6 +2506,11 @@ class EngineBridge:
                             if dispossession_intensity_pop
                             else None
                         ),
+                        "price_divergence": (
+                            round(acc["price_divergence_sum"] / price_divergence_pop, 4)
+                            if price_divergence_pop
+                            else None
+                        ),
                     },
                 }
             )
@@ -2569,12 +2588,15 @@ class EngineBridge:
         """Return historical timeseries data for charting (spec 061 US3, FR-026).
 
         Reads the per-tick aggregates from the ``tick_summary`` table and
-        emits the six named arrays the v2 Briefing/Analysis pages chart:
+        emits the named arrays the v2 Briefing/Analysis pages chart:
         ``imperial_rent``, ``consciousness``, ``solidarity``, ``heat``,
-        ``wealth``, ``biocapacity``. Each array is parallel-indexed with
-        the ``ticks`` array (oldest tick first). Missing values become
-        ``None`` so the frontend can interpolate / hide gaps without a
-        backend round-trip.
+        ``wealth``, ``biocapacity``, plus the Program 23 scissors series
+        ``value_produced``/``surplus``/``profit_rate`` (real substrate) and
+        ``price_index``/``fictitious_ratio`` (the phenomenal form,
+        ``exp(log)``-mapped so 1.0 = price at value / claims at real
+        capitalization). Each array is parallel-indexed with the ``ticks``
+        array (oldest tick first). Missing values become ``None`` so the
+        frontend can interpolate / hide gaps without a backend round-trip.
 
         The persistence layer fronts this via
         :meth:`PostgresRuntime.query_tick_summary_series`. SQLite-backed
@@ -2597,6 +2619,12 @@ class EngineBridge:
         heat: list[float | None] = []
         wealth: list[float | None] = []
         biocapacity: list[float | None] = []
+        value_produced: list[float | None] = []
+        surplus: list[float | None] = []
+        profit_rate: list[float | None] = []
+        price_index: list[float | None] = []
+        fictitious_ratio: list[float | None] = []
+        market_corrections: list[int | None] = []
         for row in rows:
             ticks.append(int(row.get("tick", 0)))
             imperial_rent.append(_optional_float(row.get("imperial_rent")))
@@ -2606,6 +2634,25 @@ class EngineBridge:
             heat.append(_optional_float(row.get("total_heat")))
             wealth.append(_optional_float(row.get("total_wealth")))
             biocapacity.append(_optional_float(row.get("total_biocapacity")))
+            # Program 23 (ADR077): the scissors. Substance columns come from
+            # tick_summary's Marxian aggregates; the form columns exp-map the
+            # persisted log ratios (1.0 = no divergence). None propagates —
+            # an absent axis charts as a gap, never a fabricated 1.0.
+            value_produced.append(_optional_float(row.get("total_v")))
+            surplus.append(_optional_float(row.get("total_s")))
+            profit_rate.append(_optional_float(row.get("profit_rate")))
+            price_log = _optional_float(row.get("price_log"))
+            fictitious_log = _optional_float(row.get("fictitious_log"))
+            price_index.append(math.exp(price_log) if price_log is not None else None)
+            fictitious_ratio.append(
+                math.exp(fictitious_log) if fictitious_log is not None else None
+            )
+            # ADR078: cumulative snap count; the cockpit derives correction
+            # ticks from increments. None = axis absent that tick.
+            raw_corrections = row.get("market_corrections")
+            market_corrections.append(
+                int(raw_corrections) if isinstance(raw_corrections, (int, float)) else None
+            )
         return {
             "ticks": ticks,
             "imperial_rent": imperial_rent,
@@ -2614,6 +2661,12 @@ class EngineBridge:
             "heat": heat,
             "wealth": wealth,
             "biocapacity": biocapacity,
+            "value_produced": value_produced,
+            "surplus": surplus,
+            "profit_rate": profit_rate,
+            "price_index": price_index,
+            "fictitious_ratio": fictitious_ratio,
+            "market_corrections": market_corrections,
         }
 
     def get_economy_dashboard(self, session_id: UUID) -> dict[str, Any]:
@@ -4623,6 +4676,12 @@ class EngineBridge:
         # stash; recomputes ONLY the coefficients, never the systems' wage/
         # wealth side effects (already applied in-tick).
         _carry_reserve_army_dispossession(new_graph, game_defines)
+        # Program 23 / ADR078: re-inject MarketScissorsSystem's
+        # price_divergence (territory's county price_log) — same
+        # TERRITORY_EXCLUDED_FIELDS round-trip loss as the carries above,
+        # but the source (new_state.market_county) is a REAL WorldState
+        # field, so this is a lookup, not a recompute.
+        _carry_price_divergence(new_graph, new_state.market_county)
         events_as_dicts: list[dict[str, Any]] = [
             e.model_dump(mode="json") for e in new_state.events
         ]
@@ -6446,6 +6505,57 @@ def _carry_reserve_army_dispossession(new_graph: Any, defines: Any) -> None:
         )
 
 
+def _carry_price_divergence(new_graph: Any, market_county: dict[str, Any] | None) -> None:
+    """Re-inject ``MarketScissorsSystem``'s ``price_divergence`` onto
+    ``new_graph`` before it is persisted — the Program 23 / ADR078
+    counterpart to :func:`_carry_reserve_army_dispossession`.
+
+    Same altitude gap. ``MarketScissorsSystem`` (engine position 17.8)
+    writes ``price_divergence`` onto TERRITORY nodes during ``step()``'s
+    internal graph mutation (``_project_price_divergence``, each
+    territory's county ``price_log``), but it is a
+    ``TERRITORY_EXCLUDED_FIELDS`` entry (``babylon.models.world_state``)
+    and not a ``Territory`` model field, so ``from_graph()`` drops it
+    before ``new_state.to_graph()`` (this function's ``new_graph``
+    argument) ever re-emits it — without this carry the lens renders
+    honestly-empty on EVERY resolved tick, not just past tick 1.
+
+    UNLIKE :func:`_carry_reserve_army_dispossession` (a genuine recompute
+    against pure calculators), this is a plain re-projection: the source of
+    truth — ``new_state.market_county`` (keyed by ``county_fips``) — is a
+    REAL ``WorldState`` field that round-trips untouched (Program 23 /
+    ADR078), so no calculator needs re-invoking, just a dict lookup. A
+    territory whose ``county_fips`` has no entry in ``market_county`` (no
+    county at all, or its county's wage/value substrate vanished this
+    tick — de-positioned) gets no attr — Constitution III.11 honest
+    absence, functionally equivalent to ``_project_price_divergence``'s own
+    de-positioning branch (which writes an explicit ``None`` — stripped
+    either way by ``TERRITORY_EXCLUDED_FIELDS``, so "absent" and "None"
+    read identically to every reader of this attr).
+
+    Only called from :meth:`EngineBridge.resolve_tick` (mirrors
+    ``_carry_reserve_army_dispossession``'s own single call site) — NOT the
+    tick-0/seeded bootstrap paths, where ``MarketScissorsSystem`` has never
+    run yet.
+
+    Args:
+        new_graph: ``new_state.to_graph()`` — about to be persisted;
+            mutated in place.
+        market_county: ``new_state.market_county`` — per-county
+            ``MarketState`` instances keyed by ``county_fips``, or ``None``
+            when no county axis exists this tick.
+    """
+    if not market_county:
+        return
+    for node_id, data in new_graph.nodes(data=True):
+        if data.get("_node_type") != "territory":
+            continue
+        fips = data.get("county_fips")
+        if not fips or fips not in market_county:
+            continue
+        new_graph.update_node(node_id, price_divergence=market_county[fips].price_log)
+
+
 def _mean_territory_attr(graph: Any, key: str) -> float | None:
     """Mean of a non-null territory-node attr across the graph, or ``None``.
 
@@ -7048,6 +7158,12 @@ def _build_tick_summary(state: WorldState, organizations: list[dict[str, Any]]) 
         "uprising_count": sum(1 for t in event_types if t == "uprising"),
         "repression_count": sum(1 for t in event_types if t == "state_repression"),
         "conservation_check": None,
+        # Program 23 (ADR077): the Market Scissors shadow axis. NULL when the
+        # axis is absent this tick (no value substrate yet) — honest absence.
+        "price_log": float(state.market.price_log) if state.market else None,
+        "fictitious_log": float(state.market.fictitious_log) if state.market else None,
+        # ADR078: cumulative correction-snap count, same NULL contract.
+        "market_corrections": int(state.market.corrections) if state.market else None,
     }
 
 
@@ -7171,7 +7287,8 @@ def _hex_feature_properties(state: Any) -> dict[str, Any]:
     ``centrality`` rides ``attributes`` too — audit Wave 4 straggler, task
     #76; ``mass_receptivity``/``vision_state`` ride ``attributes`` as well —
     Wave 5 receptivity lens pair; ``wage_pressure``/``dispossession_intensity``
-    ride ``attributes`` too — Feature 021 lens pair) plus the identity/context columns. Extracted from the
+    ride ``attributes`` too — Feature 021 lens pair; ``price_divergence``
+    rides ``attributes`` as well — Program 23 / ADR078) plus the identity/context columns. Extracted from the
     ``get_map_snapshot`` loop so the contract is unit-testable without a
     database.
 
@@ -7206,6 +7323,7 @@ def _hex_feature_properties(state: Any) -> dict[str, Any]:
         "vision_state": attributes.get("vision_state"),
         "wage_pressure": attributes.get("wage_pressure"),
         "dispossession_intensity": attributes.get("dispossession_intensity"),
+        "price_divergence": attributes.get("price_divergence"),
     }
 
 
@@ -7279,8 +7397,9 @@ def _build_hex_state_attributes(
 
     * territory-dict keys (``habitability``/``throughput_position``/
       ``territory_type``/``mass_receptivity``/``vision_state``/
-      ``wage_pressure``/``dispossession_intensity``) — native per-territory
-      values ``_serialize_territory`` already read off the graph;
+      ``wage_pressure``/``dispossession_intensity``/``price_divergence``) —
+      native per-territory values ``_serialize_territory`` already read off
+      the graph;
     * caller-computed aggregates (``solidarity_index``/``agitation``/
       ``centrality``) — TENANCY/network projections passed down from
       ``_persist_hex_state_safe``.
@@ -7327,6 +7446,11 @@ def _build_hex_state_attributes(
     dispossession_intensity = territory.get("dispossession_intensity")
     if dispossession_intensity is not None:
         attributes["dispossession_intensity"] = float(dispossession_intensity)
+    # Program 23 / ADR078: SIGNED — float() only, never abs()/max(0, ...);
+    # 0.0 is a real "prices at values" reading, not an absence.
+    price_divergence = territory.get("price_divergence")
+    if price_divergence is not None:
+        attributes["price_divergence"] = float(price_divergence)
     return attributes
 
 
@@ -7436,6 +7560,13 @@ def _hex_state_row(
       ``None``/absent whenever the writing system found no reserve-army
       pressure / no dispossession activity for that territory this tick
       (Constitution III.11 — never a fabricated 0.0).
+    * ``attributes["price_divergence"]`` — Program 23 / ADR078: same
+      native-per-territory-attr shape as ``wage_pressure`` immediately
+      above. Source: ``_serialize_territory``'s ``price_divergence`` key,
+      off the graph-only attr ``_carry_price_divergence`` re-injects onto
+      the graph (``MarketScissorsSystem``'s county ``price_log``
+      projection). SIGNED (roughly ``[-2.0, 2.0]``) — ``None``/absent for
+      a territory with no county axis, never coerced to ``0.0``.
 
     Args:
         session_id: The game session UUID (``hex_latest.game_id``).
@@ -7829,6 +7960,13 @@ def _serialize_territory(t: Any, *, graph: Any = None) -> dict[str, Any]:
     the one bridge-derived (not graph-read) field in this payload — see
     :func:`_compute_real_median_wage` — honest-``None`` unless both
     ``tick_median_wage`` and the deflator are present.
+
+    Program 23 / ADR078: ``price_divergence`` joins the graph-attr family
+    off the identically-named attr ``_carry_price_divergence`` re-injects
+    onto the graph (MarketScissorsSystem's county ``price_log``
+    projection) — same shape as ``wage_pressure``. SIGNED (roughly
+    ``[-2.0, 2.0]``): ``None`` for a territory with no county price⟷value
+    axis, never coerced to ``0.0``.
     """
     territory_id = t.id
     return {
@@ -7865,6 +8003,7 @@ def _serialize_territory(t: Any, *, graph: Any = None) -> dict[str, Any]:
             graph, territory_id, "dispossession_intensity"
         ),
         "wage_pressure": _territory_graph_attr(graph, territory_id, "wage_pressure"),
+        "price_divergence": _territory_graph_attr(graph, territory_id, "price_divergence"),
         "imperial_rent": _territory_graph_attr(graph, territory_id, "tick_phi_hour"),
         "profit_rate": _territory_graph_attr(graph, territory_id, "tick_profit_rate"),
         "occ": _territory_graph_attr(graph, territory_id, "tick_occ"),

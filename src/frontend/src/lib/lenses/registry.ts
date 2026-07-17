@@ -196,6 +196,20 @@ export const LENS_REGISTRY: readonly MapLensDef[] = [
     toLens: () => ({ kind: "metric", metric: "wage_pressure" }),
     availableWhen: hasMetric("wage_pressure"),
   },
+  {
+    // Program 23 / ADR078 (MarketScissorsSystem @17.8). Extraction group,
+    // next to wage_pressure — the price⟷value scissors is the OTHER half
+    // of the economic base's fictitious/real divergence, this time at the
+    // circulation (price) pole rather than the wage pole.
+    id: "price_divergence",
+    group: "extraction",
+    label: "Price–Value Divergence",
+    tooltip:
+      "The Scissors — county log price-to-value ratio; positive = price above value (bubble), negative = price below value",
+    legend: { kind: "ramp", stops: DATA_RAMPS.price_divergence },
+    toLens: () => ({ kind: "metric", metric: "price_divergence" }),
+    availableWhen: hasMetric("price_divergence"),
+  },
   // --- Struggle ------------------------------------------------------------
   {
     id: "heat",

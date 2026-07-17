@@ -25,8 +25,20 @@ def _states(inputs: GraphInputs, tick: int = 0):  # type: ignore[no-untyped-def]
 
 
 class TestRegistryShape:
-    def test_five_oppositions_bound(self) -> None:
-        assert _reg().keys == ("atomization", "capital_labor", "imperial", "tenancy", "wage")
+    def test_six_oppositions_bound(self) -> None:
+        assert _reg().keys == (
+            "atomization",
+            "capital_labor",
+            "imperial",
+            "price_value",
+            "tenancy",
+            "wage",
+        )
+
+    def test_no_shadow_bindings_after_the_promotion(self) -> None:
+        """ADR078: price_value is canonical; the shadow mechanism stays,
+        empty, as the Amendment T landing surface."""
+        assert _reg().shadow_keys == frozenset()
 
     def test_capital_labor_is_antagonistic(self) -> None:
         assert _reg().spec_for("capital_labor").antagonistic is True
@@ -155,4 +167,60 @@ class TestLevelPlacement:
             "tenancy": "county",
             "atomization": "class",
             "imperial": "bloc",
+            # Program 23: the national scissors sits on no county/bloc rung
+            # yet — unplaced by design (empty = unplaced, opposition.py).
+            "price_value": "",
         }
+
+
+class TestPriceValue:
+    """The scissors binding (Program 23, ADR077): value (A) ⇄ price (B)."""
+
+    def test_absent_market_axis_is_zero(self) -> None:
+        state = _states(GraphInputs())["price_value"]
+        assert state.gap == 0.0
+        assert state.balance == 0.0
+
+    def test_balance_passes_through_pre_derived_reading(self) -> None:
+        state = _states(GraphInputs(market_balance=0.6))["price_value"]
+        assert state.gap == pytest.approx(0.6)
+        assert state.balance == pytest.approx(0.6)
+        assert state.leading_pole == "b"  # price above value: the form pole leads
+
+    def test_negative_balance_is_value_pole(self) -> None:
+        state = _states(GraphInputs(market_balance=-0.3))["price_value"]
+        assert state.gap == pytest.approx(0.3)
+        assert state.balance == pytest.approx(-0.3)
+        assert state.leading_pole == "a"
+
+    def test_out_of_range_reading_is_clamped(self) -> None:
+        state = _states(GraphInputs(market_balance=1.7))["price_value"]
+        assert state.balance == 1.0
+
+    def test_dominant_scissors_takes_the_principal_slot(self) -> None:
+        """ADR078 promotion: with every other gap at zero, a fully-opened
+        scissors IS the principal contradiction — crisis-as-principal."""
+        states = _states(GraphInputs(market_balance=1.0))
+        assert states["price_value"].is_principal is True
+
+    def test_pole_measure_reads_the_labor_power_commodity(self) -> None:
+        """Per-node price⟷value position via the ONE commodity carrying both
+        a per-node price (w_paid) and value (v_produced): labor-power — the
+        D5 shared-defect precedent (``_imperial_poles``), ADR078."""
+        inputs = GraphInputs(
+            wage_value_id_pairs=(
+                ("bribed", 1.2, 1.0),  # wage above value: the price form leads
+                ("exploited", 0.8, 1.0),  # value above wage: the substance leads
+            )
+        )
+        readings = {
+            r.entity_id: r for r in _reg().read_poles(inputs) if r.opposition_key == "price_value"
+        }
+        assert readings["bribed"].sigma > 0.0  # pole B (price)
+        assert readings["exploited"].sigma < 0.0  # pole A (value)
+
+    def test_unpositioned_nodes_are_absent_from_the_pole_channel(self) -> None:
+        readings = [
+            r for r in _reg().read_poles(GraphInputs()) if r.opposition_key == "price_value"
+        ]
+        assert readings == []

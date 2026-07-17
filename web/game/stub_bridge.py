@@ -350,6 +350,10 @@ def _make_hex_features(tick: int, layer: str | None = None) -> list[dict[str, An
             # intensity (matching the real bridge's [0, 1] range).
             "wage_pressure": round(r * 0.5, 3),
             "dispossession_intensity": round(r, 3),
+            # Program 23 / ADR078: deterministic per-cell SIGNED
+            # price⟷value log-divergence (matching the real bridge's
+            # roughly [-2.0, 2.0] range, centered on 0 = prices at values).
+            "price_divergence": round((r - 0.5) * 1.0, 3),
         }
 
         # Approximate hex boundary as a small polygon near Detroit
@@ -463,6 +467,10 @@ def _make_aggregated_features(zoom: str, tick: int) -> list[dict[str, Any]]:
                     # _make_hex_features.
                     "wage_pressure": round(r * 0.5, 3),
                     "dispossession_intensity": round(r, 3),
+                    # Program 23 / ADR078: same deterministic per-group
+                    # SIGNED price⟷value log-divergence shape as
+                    # _make_hex_features.
+                    "price_divergence": round((r - 0.5) * 1.0, 3),
                 },
             }
         )
@@ -871,6 +879,8 @@ class StubEngineBridge:
                     # Feature 021 lens pair
                     "wage_pressure",
                     "dispossession_intensity",
+                    # Program 23 / ADR078
+                    "price_divergence",
                 ],
             },
             "features": features,

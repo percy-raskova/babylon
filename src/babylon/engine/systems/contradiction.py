@@ -44,6 +44,7 @@ from babylon.domain.dialectics.instances.catalog import GraphInputs
 from babylon.domain.dialectics.instances.levels import level_index_for, spatial_lattice_for_counties
 from babylon.engine.topology_monitor import extract_solidarity_subgraph
 from babylon.formulas.contradiction import calculate_wealth_asymmetry_gap
+from babylon.formulas.market import calculate_scissors_balance
 from babylon.kernel.event_bus import Event
 from babylon.kernel.system_base import SystemBase
 from babylon.kernel.system_protocol import ContextType
@@ -58,6 +59,15 @@ if TYPE_CHECKING:
 
 #: Graph attribute holding ``{key: OppositionState.model_dump()}`` for the tick.
 OPPOSITION_STATES_ATTR = "opposition_states"
+
+#: Graph attribute holding ``{key: OppositionState.model_dump()}`` for SHADOW
+#: bindings (ADR077): measured every tick, adjudicating nothing. Kept apart
+#: from ``opposition_states`` so the pre-position-18 consumers and the frames/
+#: rupture/regime machinery never see a shadow key. Same cross-tick channel
+#: semantics (the graph persists in-place; the facade recomputes fresh each
+#: tick). Written only when shadow bindings are registered, so pre-ADR077
+#: graphs carry no new key.
+SHADOW_OPPOSITION_STATES_ATTR = "shadow_opposition_states"
 
 #: Graph attribute holding this tick's fixed-point regime (Phase E2):
 #: ``{"regime": <reproduction|crisis|sublation>, "principal": key, "rate": float}``.
@@ -166,7 +176,7 @@ class ContradictionSystem(SystemBase):
             return
 
         previous = self._read_previous(graph)
-        inputs = self._build_graph_inputs(graph)
+        inputs = self._build_graph_inputs(graph, services)
         states = registry.step(inputs, tick, previous)
         if not states:
             return
@@ -176,12 +186,22 @@ class ContradictionSystem(SystemBase):
         # flip a leading pole, BEFORE frames/rupture/stash so downstream sees it.
         states = self._apply_interventions(graph, states)
 
-        self._write_frames(graph, services, registry, states)
-        self._maybe_rupture(services, states, tick)
-        self._classify_regime(graph, services, registry, states, tick)
+        shadow_keys = registry.shadow_keys
+        canonical = tuple(s for s in states if s.key not in shadow_keys)
+        shadow = tuple(s for s in states if s.key in shadow_keys)
+
+        if canonical:
+            self._write_frames(graph, services, registry, canonical)
+            self._maybe_rupture(services, canonical, tick)
+            self._classify_regime(graph, services, registry, canonical, tick)
         graph.set_graph_attr(
-            OPPOSITION_STATES_ATTR, {state.key: state.model_dump() for state in states}
+            OPPOSITION_STATES_ATTR, {state.key: state.model_dump() for state in canonical}
         )
+        if shadow:
+            graph.set_graph_attr(
+                SHADOW_OPPOSITION_STATES_ATTR,
+                {state.key: state.model_dump() for state in shadow},
+            )
         self._step_pole_channel(graph, registry, inputs)
 
     @staticmethod
@@ -199,16 +219,26 @@ class ContradictionSystem(SystemBase):
 
     @staticmethod
     def _read_previous(graph: GraphProtocol) -> dict[str, OppositionState]:
-        """Reconstruct last tick's states from the ``opposition_states`` attr."""
-        raw: dict[str, Any] = graph.get_graph_attr(OPPOSITION_STATES_ATTR, {}) or {}
+        """Reconstruct last tick's states from BOTH opposition attrs.
+
+        Shadow states (ADR077) live on ``shadow_opposition_states`` but need
+        the same rate/inertia continuity as canonical ones; registry keys are
+        unique, so the merge cannot collide.
+        """
+        raw: dict[str, Any] = {
+            **(graph.get_graph_attr(OPPOSITION_STATES_ATTR, {}) or {}),
+            **(graph.get_graph_attr(SHADOW_OPPOSITION_STATES_ATTR, {}) or {}),
+        }
         return {key: OppositionState(**value) for key, value in raw.items()}
 
-    def _build_graph_inputs(self, graph: GraphProtocol) -> GraphInputs:
+    def _build_graph_inputs(self, graph: GraphProtocol, services: ServicesProtocol) -> GraphInputs:
         """Pre-extract the per-tick views the catalog measures read.
 
         The ``*_id_pairs`` twins (ADR070) are built in the SAME loops as the
         float pairs — identical skip rules, zero extra graph traversal —
-        feeding the per-node pole measures.
+        feeding the per-node pole measures. The market Balance (Program 23)
+        is derived here from the fresh ``market`` axis (@17.8 runs first)
+        because the tanh scale is a define and the catalog stays defines-free.
         """
         exploitation: list[tuple[float, float]] = []
         exploitation_ids: list[tuple[str, str, float, float]] = []
@@ -247,6 +277,14 @@ class ContradictionSystem(SystemBase):
             wage_value.append((float(attrs["w_paid"]), float(attrs["v_produced"])))
             wage_value_ids.append((node.id, float(attrs["w_paid"]), float(attrs["v_produced"])))
 
+        market_balance: float | None = None
+        market_raw = graph.get_graph_attr("market", None)
+        if isinstance(market_raw, dict) and "price_log" in market_raw:
+            market_balance = calculate_scissors_balance(
+                float(market_raw["price_log"]),
+                scale=float(services.defines.market.scissors_balance_scale),
+            )
+
         return GraphInputs(
             exploitation_pairs=tuple(exploitation),
             wage_value_pairs=tuple(wage_value),
@@ -255,6 +293,7 @@ class ContradictionSystem(SystemBase):
             exploitation_id_pairs=tuple(exploitation_ids),
             wage_value_id_pairs=tuple(wage_value_ids),
             tenancy_id_pairs=tuple(tenancy_ids),
+            market_balance=market_balance,
         )
 
     @staticmethod

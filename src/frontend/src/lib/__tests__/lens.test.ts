@@ -43,7 +43,7 @@ import {
 import { DATA_RAMPS } from "@/theme/colors";
 
 describe("MAP_METRICS mirrors the backend's map_contract.py MAP_METRIC_PROPERTIES", () => {
-  it("has exactly the 15 numeric contract metric names, in contract order", () => {
+  it("has exactly the 16 numeric contract metric names, in contract order", () => {
     // Wave 2 Round 2 (reports/wave2-implementation-map.md): throughput_position
     // (ruling 1 — wired for real, no longer a frozen 1.0 constant) and
     // agitation (DECLARED_CONDITIONAL — legitimately 0.0 absent a crisis tick)
@@ -57,7 +57,9 @@ describe("MAP_METRICS mirrors the backend's map_contract.py MAP_METRIC_PROPERTIE
     // wage_pressure (Reserve Army wage-discipline coefficient) and
     // dispossession_intensity (composite carceral/eviction intensity) are
     // appended after mass_receptivity — both NATIVE per-territory graph
-    // attrs with no categorical companion.
+    // attrs with no categorical companion. Program 23 / ADR078:
+    // price_divergence (the territory's county-level log price-to-value
+    // ratio, SIGNED) is appended last, after dispossession_intensity.
     expect(MAP_METRICS).toEqual([
       "profit_rate",
       "exploitation_rate",
@@ -74,6 +76,7 @@ describe("MAP_METRICS mirrors the backend's map_contract.py MAP_METRIC_PROPERTIE
       "mass_receptivity",
       "wage_pressure",
       "dispossession_intensity",
+      "price_divergence",
     ]);
   });
 
@@ -96,7 +99,7 @@ describe("SELECTABLE_METRICS excludes the metrics with a dedicated Lens kind", (
     expect(SELECTABLE_METRICS).not.toContain("habitability");
   });
 
-  it("keeps every other contract metric, including solidarity_index/throughput_position/agitation/centrality/mass_receptivity/wage_pressure/dispossession_intensity", () => {
+  it("keeps every other contract metric, including solidarity_index/throughput_position/agitation/centrality/mass_receptivity/wage_pressure/dispossession_intensity/price_divergence", () => {
     expect([...SELECTABLE_METRICS].sort()).toEqual(
       [
         "profit_rate",
@@ -112,6 +115,7 @@ describe("SELECTABLE_METRICS excludes the metrics with a dedicated Lens kind", (
         "mass_receptivity",
         "wage_pressure",
         "dispossession_intensity",
+        "price_divergence",
       ].sort(),
     );
   });
@@ -278,6 +282,12 @@ describe("lensLegendLabel", () => {
     ).toContain("dispossession intensity");
   });
 
+  it("labels price_divergence with its own name (Program 23 / ADR078)", () => {
+    expect(lensLegendLabel({ kind: "metric", metric: "price_divergence" }).toLowerCase()).toContain(
+      "divergence",
+    );
+  });
+
   it("labels field_flow with 'Gradient Wind' plus the title-cased field name", () => {
     expect(lensLegendLabel({ kind: "field_flow", field: "exploitation" })).toBe(
       "Gradient Wind · Exploitation Field",
@@ -392,6 +402,14 @@ describe("lensRampStops — single ramp resolution shared by fill + legend", () 
     const dispossession = lensRampStops({ kind: "metric", metric: "dispossession_intensity" });
     expect(wagePressure).not.toEqual(dispossession);
   });
+
+  it("price_divergence resolves to its own dedicated DIVERGING ramp (Program 23 / ADR078 — cool undervaluation <-> near-black neutral <-> hot bubble), distinct from every sibling ramp", () => {
+    const stops = lensRampStops({ kind: "metric", metric: "price_divergence" });
+    expect(stops).toEqual(DATA_RAMPS.price_divergence);
+    expect(stops).not.toEqual(DATA_RAMPS.wage_pressure);
+    expect(stops).not.toEqual(DATA_RAMPS.dispossession);
+    expect(stops).not.toEqual(DATA_RAMPS.biocapacity);
+  });
 });
 
 describe("MAP_HISTORY_REPLAYABLE_METRICS mirrors web/game/map_contract.py's tuple of the same name", () => {
@@ -464,5 +482,9 @@ describe("isReplayableLens — gates the RadarLoopPanel scrubber's availability"
   it("is false for the Feature 021 lens pair (hex_latest-only, no append-only history)", () => {
     expect(isReplayableLens({ kind: "metric", metric: "wage_pressure" })).toBe(false);
     expect(isReplayableLens({ kind: "metric", metric: "dispossession_intensity" })).toBe(false);
+  });
+
+  it("is false for price_divergence (hex_latest-only, no append-only history — Program 23 / ADR078)", () => {
+    expect(isReplayableLens({ kind: "metric", metric: "price_divergence" })).toBe(false);
   });
 });

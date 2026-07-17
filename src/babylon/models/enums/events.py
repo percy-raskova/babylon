@@ -77,6 +77,7 @@ class EventType(StrEnum):
     )
     FASCIST_REVANCHISM = "fascist_revanchism"  # Jackson: Core reacts with nationalism
     RUPTURE = "rupture"  # Contradiction rupture - tension reached critical threshold
+    MARKET_CORRECTION = "market_correction"  # P23 Phase 2: fictitious/real divergence exceeded profit-rate serviceability — the scissors snapped
     PHASE_TRANSITION = "phase_transition"  # Topology: percolation threshold crossed
     ENDGAME_REACHED = "endgame_reached"  # Game ended (victory/defeat condition met)
     ENTITY_DEATH = "entity_death"  # Material Reality: Entity starved (wealth < consumption)

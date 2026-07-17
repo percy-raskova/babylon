@@ -22,6 +22,7 @@
 
 import { useStore } from "@/store";
 import { FloatingPanel } from "./FloatingPanel";
+import { ScissorsChart } from "@/components/timeseries/ScissorsChart";
 import { TimeseriesChart } from "@/components/timeseries/TimeseriesChart";
 import { EconomyDashboard } from "@/components/economy/EconomyDashboard";
 import { StateApparatusDashboard } from "@/components/state-apparatus/StateApparatusDashboard";
@@ -37,6 +38,7 @@ interface BottomDrawerProps {
 const DRAWER_TITLE: Record<BottomDrawerState, string> = {
   none: "Trends",
   trends: "Trends",
+  scissors: "The Scissors",
   events: "Trends",
   economy: "Economy",
   "state-apparatus": "State Apparatus",
@@ -70,6 +72,16 @@ export function BottomDrawer({ gameId }: BottomDrawerProps): React.JSX.Element {
           className={keyButtonClass(bottomDrawer === "trends", "px-2 py-0.5 text-[10px]")}
         >
           Trends
+        </button>
+        <button
+          type="button"
+          role="tab"
+          aria-selected={bottomDrawer === "scissors"}
+          data-testid="bottomdrawer-tab-scissors"
+          onClick={() => setBottomDrawer("scissors")}
+          className={keyButtonClass(bottomDrawer === "scissors", "px-2 py-0.5 text-[10px]")}
+        >
+          The Scissors
         </button>
         <button
           type="button"
@@ -109,6 +121,9 @@ export function BottomDrawer({ gameId }: BottomDrawerProps): React.JSX.Element {
           ResponsiveContainer something to measure (spec-113 Phase V). */}
       <div className={bottomDrawer === "trends" ? "h-48" : "hidden"}>
         <TimeseriesChart gameId={gameId} />
+      </div>
+      <div className={bottomDrawer === "scissors" ? "h-48" : "hidden"}>
+        <ScissorsChart gameId={gameId} />
       </div>
       <div className={bottomDrawer === "economy" ? "h-48 overflow-y-auto" : "hidden"}>
         <EconomyDashboard gameId={gameId} />

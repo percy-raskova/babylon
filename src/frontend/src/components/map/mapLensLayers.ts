@@ -407,17 +407,41 @@ function collapseFill(
 }
 
 /**
+ * `price_divergence`'s hard clamp (`MarketDefines.max_abs_log`, engine
+ * default 2.0) — the display-layer mirror needed to normalize its raw
+ * `[-max, max]` reading into `sampleRampStops`'s `[0, 1]` domain. Not
+ * itself defines-driven (this module has no engine/GameDefines import,
+ * spec-090's Django-import-weight boundary); a display-only echo of the
+ * engine constant, not a second source of truth for the clamp's ENFORCEMENT
+ * (the engine still owns that).
+ */
+const PRICE_DIVERGENCE_MAX_ABS = 2.0;
+
+/**
  * Metric-kind fill (the B2 lens-union addition): samples the metric's ramp
  * at the territory's `metrics[metric]` value. Missing data (no `metrics`
  * bag, or the specific metric absent) is a loud NO_DATA fill, not a
  * fabricated 0 (Constitution III.11 — an empty domain is not a failure,
  * but it must render as visibly distinct from a real 0.0).
+ *
+ * Program 23 / ADR078: every OTHER metric here is unsigned/[0,1]-ish and
+ * feeds `sampleRampStops` its raw value directly — `price_divergence` is
+ * the first SIGNED metric (roughly `[-2.0, 2.0]`), so it alone needs a
+ * pre-normalization step mapping that range onto `sampleRampStops`'s
+ * `[0, 1]` domain with 0 (prices at values) landing at the ramp's t=0.5
+ * center, matching the diverging ramp's construction (theme/colors.ts).
+ * Skipping this would clamp every negative reading to the ramp floor,
+ * losing the whole undervaluation half of the signal.
  */
 function metricFill(territory: LensTerritory | undefined, metric: MapMetric): RGBAColor {
   const value = territory?.metrics?.[metric];
   if (value === undefined) return NO_DATA;
   const stops = lensRampStops({ kind: "metric", metric });
   if (!stops) return NO_DATA;
+  if (metric === "price_divergence") {
+    const normalized = (value + PRICE_DIVERGENCE_MAX_ABS) / (2 * PRICE_DIVERGENCE_MAX_ABS);
+    return sampleRampStops(stops, normalized);
+  }
   return sampleRampStops(stops, value);
 }
 

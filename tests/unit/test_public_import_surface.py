@@ -47,6 +47,7 @@ EXPECTED_DEFINES_PUBLIC: frozenset[str] = frozenset(
         "InstitutionDefines",
         "LeontiefRentDefines",  # Spec 057 / FR-001
         "LifecycleDefines",
+        "MarketDefines",  # Program 23 / ADR077 (deliberate surface addition)
         "MetabolismDefines",
         "MobilizeDefines",
         "MoveDefines",

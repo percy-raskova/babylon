@@ -56,6 +56,7 @@ from babylon.engine.systems.faction_influence import FactionInfluenceSystem
 from babylon.engine.systems.field_derivative import FieldDerivativeSystem
 from babylon.engine.systems.ideology import ConsciousnessSystem
 from babylon.engine.systems.lifecycle import LifecycleSystem
+from babylon.engine.systems.market_scissors import MarketScissorsSystem
 from babylon.engine.systems.metabolism import MetabolismSystem
 from babylon.engine.systems.ooda import OODASystem
 from babylon.engine.systems.production import ProductionSystem
@@ -405,6 +406,8 @@ _DEFAULT_SYSTEMS: list[System] = [
     ConsciousnessSystem(),  # 17. Ideological drift
     FascistFactionSystem(),  # 17.4. Spec-071 reactionary drift + fascist capture + stance hook
     SovereigntySystem(),  # 17.5. Spec-070 sovereign metabolic_impact (FR-019, FR-043)
+    MarketScissorsSystem(),  # 17.8. Price⟷value scissors (Program 23 Phase-1 shadow;
+    #        writes only its own axis, runs just before the registry measures it)
     ContradictionSystem(),  # 18. Tension aggregation
     ContradictionFieldSystem(),  # 19. Contradiction field computation (Feature 002)
     FieldDerivativeSystem(),  # 20. Spatial/temporal derivatives + principal (Feature 002)
@@ -455,6 +458,7 @@ CONSEQUENCE_SYSTEMS: Final[frozenset[type[System]]] = frozenset(
         FieldDerivativeSystem,
         EdgeTransitionSystem,
         WealthDistributionSystem,  # Program 21 Phase-1 shadow (national wealth-share axis)
+        MarketScissorsSystem,  # Program 23 Phase-1 shadow (price⟷value scissors axis)
         EpistemicHorizonSystem,  # Epistemic Horizon Phase 1 shadow (observes consequences)
         DoctrineSystem,  # Doctrine Tree per-org state (owner-ratified 2026-07-15)
     }

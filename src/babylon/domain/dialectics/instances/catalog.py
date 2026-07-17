@@ -115,6 +115,10 @@ class GraphInputs:
             rent_level)`` per TENANCY edge — id-carrying twin of
             ``tenancy_pairs``; no pole measure reads it yet (a
             landlord/tenant axis is a natural later binding).
+        market_balance: pre-derived scissors ``Balance`` in [-1, 1] from the
+            Market Scissors axis (Program 23, ADR077) — the engine computes
+            ``tanh(price_log / scale)`` with the defines-owned scale so the
+            catalog stays defines-free; ``None`` = no market axis this tick.
     """
 
     exploitation_pairs: tuple[WealthPair, ...] = ()
@@ -124,6 +128,7 @@ class GraphInputs:
     exploitation_id_pairs: tuple[tuple[str, str, float, float], ...] = ()
     wage_value_id_pairs: tuple[tuple[str, float, float], ...] = ()
     tenancy_id_pairs: tuple[tuple[str, str, float, float], ...] = ()
+    market_balance: float | None = field(default=None)
 
 
 def _mean_asymmetry(pairs: Sequence[WealthPair]) -> GapReading:
@@ -244,6 +249,31 @@ def _imperial_measure(inputs: GraphInputs) -> GapReading:
     return _wage_value_reading(inputs)
 
 
+#: ``price_value`` per-node positions read the IDENTICAL ``(w_paid,
+#: v_produced)`` defect as ``wage`` — labor-power is the ONE commodity
+#: carrying a per-node price AND value accounting, so the node's position in
+#: the price⟷value adjunction is observed there (the D5 shared-defect
+#: precedent, exactly as ``_imperial_poles``). A per-node claims/portfolio
+#: sigma (who HOLDS the fictitious paper) replaces this proxy when per-node
+#: financial data lands — every :class:`PoleReading` consumer unchanged.
+_price_value_poles = _wage_poles
+
+
+def _price_value_measure(inputs: GraphInputs) -> GapReading:
+    """value (A) ⇄ price (B) — the scissors as a measured adjunction defect.
+
+    Reads the pre-derived Balance (the engine owns the tanh scale — see
+    ``GraphInputs.market_balance``). ``None`` → ``(0, 0)``: no market axis,
+    no contradiction (a phenomenal form cannot diverge from an absent
+    substance, Constitution III.11). Positive balance = price above value —
+    the form pole dominant, fictitious validation outrunning production.
+    """
+    if inputs.market_balance is None:
+        return GapReading(gap=0.0, balance=0.0)
+    balance = max(-1.0, min(1.0, inputs.market_balance))
+    return GapReading(gap=abs(balance), balance=balance)
+
+
 def build_default_registry(rate_weight: float = 10.0) -> OppositionRegistry[GraphInputs]:
     """Build the production five-opposition registry.
 
@@ -316,6 +346,26 @@ def build_default_registry(rate_weight: float = 10.0) -> OppositionRegistry[Grap
             measure=_imperial_measure,
             pole_measure=_imperial_poles,
         ),
+        BoundOpposition(
+            spec=OppositionSpec(
+                key="price_value",
+                pole_a="value",
+                pole_b="price",
+                unity="the price-form presupposes the value it expresses; MELT is the "
+                "unit of their adjunction and the scissors its measured defect "
+                "(Capital Vol. I ch. 1 §3 / Vol. III ch. 10) — Program 23, ADR077",
+                # level_name stays "" (unplaced): the national scissors sits
+                # on no county/bloc lattice rung yet.
+                antagonistic=False,
+            ),
+            measure=_price_value_measure,
+            pole_measure=_price_value_poles,
+            # CANONICAL since ADR078 (the promotion ceremony): the scissors
+            # competes for principal contradiction — crisis-as-principal
+            # falls out of the frames/rupture/regime machinery. It was born
+            # shadow (ADR077) to prove byte-inertness first; the generic
+            # shadow mechanism remains for Amendment T's future bindings.
+        ),
     ]
     return OppositionRegistry(bindings=bindings, rate_weight=rate_weight)
 
@@ -338,6 +388,9 @@ _DEFAULT_COUPLINGS: tuple[Coupling, ...] = (
     # wage and imperial read the SAME (w_paid, v_produced) defect (D5): the
     # per-class wage relation feeds the frame-level imperial-rent reading.
     Coupling(source="wage", target="imperial", kind="feeds"),
+    # the realized wage⇄value flow IS the scissors' drive term (ADR078): the
+    # market axis integrates what the wage relation produces each tick.
+    Coupling(source="wage", target="price_value", kind="feeds"),
 )
 
 

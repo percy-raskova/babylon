@@ -100,6 +100,17 @@ from babylon.formulas.lifecycle import (
     compute_shadow_subsidy,
 )
 
+# Re-export Market Scissors formulas (Program 23, ADR077)
+from babylon.formulas.market import (
+    calculate_correction_snap,
+    calculate_ema,
+    calculate_growth_drive,
+    calculate_overhang,
+    calculate_scissors_balance,
+    calculate_scissors_step,
+    calculate_serviceable_divergence,
+)
+
 # Re-export Metabolic Rift formulas
 from babylon.formulas.metabolic_rift import (
     calculate_biocapacity_delta,
@@ -195,6 +206,14 @@ __all__ = [
     "calculate_wealth_acceleration",
     "calculate_wealth_flow",
     "invert_wealth_to_population",
+    # Market Scissors (Program 23, ADR077)
+    "calculate_correction_snap",
+    "calculate_ema",
+    "calculate_growth_drive",
+    "calculate_overhang",
+    "calculate_scissors_balance",
+    "calculate_scissors_step",
+    "calculate_serviceable_divergence",
     # Curvature & Contradictions (Dialectical Field Topology)
     "compute_ollivier_ricci",
     "calculate_contradiction_intensity",

@@ -331,8 +331,8 @@ class TestEventType:
             EventType("random_event")
 
     def test_event_type_count(self) -> None:
-        """82 event types (79 prior + 3 ADR073 Doctrine Tree: DOCTRINE_TRAP_SPRUNG, DOCTRINE_TRAP_ESCAPED, DOCTRINE_PURGE_FAILED)."""
-        assert len(EventType) == 82
+        """83 event types (82 prior + MARKET_CORRECTION, Program 23 Phase 2 ADR078)."""
+        assert len(EventType) == 83
 
     def test_doctrine_event_types_exist(self) -> None:
         """ADR073 Unit 6a: DoctrineSystem's per-org trap/congress outcome events.

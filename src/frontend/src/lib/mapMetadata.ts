@@ -99,6 +99,15 @@ export interface HexMapFeatureProperties {
    */
   wage_pressure?: number | null;
   dispossession_intensity?: number | null;
+  /**
+   * Program 23 / ADR078: the territory's county-level log price-to-value
+   * ratio, written by `MarketScissorsSystem` and re-injected by
+   * `_carry_price_divergence`. SIGNED (roughly `[-2.0, 2.0]`) — 0 = prices
+   * at values, positive = price above value (bubble), negative = price
+   * below value. Honest null/absent for a territory with no county axis
+   * (Constitution III.11 — never coerced to a fabricated 0).
+   */
+  price_divergence?: number | null;
   [key: string]: unknown;
 }
 

@@ -139,4 +139,43 @@ describe("HexTooltip", () => {
     const values = screen.getAllByText("—");
     expect(values.length).toBeGreaterThan(0);
   });
+
+  it("prioritizes price divergence first for the price_divergence metric lens (Program 23 / ADR078), formatted with an explicit sign to 3 decimals", () => {
+    render(
+      <HexTooltip
+        territory={makeTerritory({ price_divergence: 0.354 })}
+        x={0}
+        y={0}
+        lens={{ kind: "metric", metric: "price_divergence" }}
+      />,
+    );
+    const stats = screen.getAllByTestId("hex-tooltip-stat-label");
+    expect(stats[0]).toHaveTextContent(/price.*divergence/i);
+    expect(screen.getByText("+0.354")).toBeInTheDocument();
+  });
+
+  it("shows a negative price_divergence with its minus sign, never coerced positive", () => {
+    render(
+      <HexTooltip
+        territory={makeTerritory({ price_divergence: -0.208 })}
+        x={0}
+        y={0}
+        lens={{ kind: "metric", metric: "price_divergence" }}
+      />,
+    );
+    expect(screen.getByText("-0.208")).toBeInTheDocument();
+  });
+
+  it("renders an honest em-dash for absent price_divergence, never a fabricated 0 (Constitution III.11)", () => {
+    render(
+      <HexTooltip
+        territory={makeTerritory({ price_divergence: null })}
+        x={0}
+        y={0}
+        lens={{ kind: "metric", metric: "price_divergence" }}
+      />,
+    );
+    const values = screen.getAllByText("—");
+    expect(values.length).toBeGreaterThan(0);
+  });
 });

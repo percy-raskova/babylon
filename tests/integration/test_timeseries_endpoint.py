@@ -92,3 +92,57 @@ class TestTimeseriesShape:
         bridge = EngineBridge(persistence=_NoQueryPersistence())  # type: ignore[arg-type]
         out = bridge.get_game_timeseries(uuid.uuid4())
         assert out["ticks"] == []
+
+
+class TestScissorsSeries:
+    """Program 23 (ADR077): the scissors arrays ride the same payload."""
+
+    def test_scissors_arrays_exp_map_the_persisted_logs(self) -> None:
+        import math
+
+        rows = [
+            {
+                "tick": 0,
+                "total_v": 10.0,
+                "total_s": 3.0,
+                "profit_rate": 0.05,
+                "price_log": 0.0,
+                "fictitious_log": 0.4,
+            },
+            {
+                "tick": 1,
+                "total_v": 11.0,
+                "total_s": 3.5,
+                "profit_rate": 0.048,
+                "price_log": 0.2,
+                "fictitious_log": 0.9,
+            },
+        ]
+        bridge = EngineBridge(persistence=_StubPersistence(rows))
+        out = bridge.get_game_timeseries(uuid.uuid4())
+
+        assert out["value_produced"] == [10.0, 11.0]
+        assert out["surplus"] == [3.0, 3.5]
+        assert out["profit_rate"] == [0.05, 0.048]
+        assert out["price_index"] == [pytest.approx(1.0), pytest.approx(math.exp(0.2))]
+        assert out["fictitious_ratio"][1] == pytest.approx(math.exp(0.9))
+
+    def test_absent_axis_charts_as_gap_not_fabricated_unity(self) -> None:
+        rows = [{"tick": 0, "price_log": None, "fictitious_log": None}]
+        bridge = EngineBridge(persistence=_StubPersistence(rows))
+        out = bridge.get_game_timeseries(uuid.uuid4())
+        assert out["price_index"] == [None]
+        assert out["fictitious_ratio"] == [None]
+        assert out["value_produced"] == [None]
+        assert out["market_corrections"] == [None]
+
+    def test_correction_ledger_rides_the_payload(self) -> None:
+        """ADR078: cumulative snap counts; the cockpit marks increments."""
+        rows = [
+            {"tick": 0, "market_corrections": 0},
+            {"tick": 1, "market_corrections": 1},
+            {"tick": 2, "market_corrections": 1},
+        ]
+        bridge = EngineBridge(persistence=_StubPersistence(rows))
+        out = bridge.get_game_timeseries(uuid.uuid4())
+        assert out["market_corrections"] == [0, 1, 1]

@@ -155,6 +155,52 @@ class TestDynamics:
         assert run() == run()
 
 
+class TestMarketShock:
+    """ADR078: the correction's evaporation impulse on the wealth axis.
+
+    ``MarketScissorsSystem`` @17.8 stamps ``market_correction_shock`` the tick
+    it snaps; this system @21.5 consumes it the SAME tick as a
+    conservation-preserving velocity impulse (the spec-114 FR-114-4 form,
+    crisis direction: top-bracket paper wealth deflates relative to the rest).
+    """
+
+    @staticmethod
+    def _run(stamp: bool) -> tuple[list[float], list[float], object]:
+        from babylon.engine.systems.wealth_distribution import MARKET_CORRECTION_SHOCK_ATTR
+
+        graph = _graph_with_classes()
+        services = _services()
+        system = WealthDistributionSystem()
+        system.step(graph, services, {"tick": 0})  # seed
+        if stamp:
+            graph.graph[MARKET_CORRECTION_SHOCK_ATTR] = {"tick": 1, "overhang": 1.0}
+        system.step(graph, services, {"tick": 1})
+        meta = graph.graph["wealth_distribution"]
+        return (
+            list(meta["shares"]),
+            list(meta["velocities"]),
+            graph.graph.get(MARKET_CORRECTION_SHOCK_ATTR),
+        )
+
+    def test_shock_deflates_the_top_bracket_velocity(self) -> None:
+        _shares_plain, velocities_plain, _ = self._run(stamp=False)
+        _shares_shocked, velocities_shocked, _ = self._run(stamp=True)
+        assert velocities_shocked[0] < velocities_plain[0]
+        for bracket in (1, 2, 3):
+            assert velocities_shocked[bracket] > velocities_plain[bracket]
+
+    def test_shock_conserves_the_whole(self) -> None:
+        shares, _velocities, _ = self._run(stamp=True)
+        assert sum(shares) == pytest.approx(1.0, abs=1e-9)
+
+    def test_stamp_is_consumed_once(self) -> None:
+        _shares, _velocities, leftover = self._run(stamp=True)
+        assert leftover is None
+
+    def test_no_stamp_is_phase1_identical(self) -> None:
+        assert self._run(stamp=False)[:2] == self._run(stamp=False)[:2]
+
+
 class TestRoundTrip:
     """The axis survives to_graph → from_graph (the extra='forbid' landmine)."""
 

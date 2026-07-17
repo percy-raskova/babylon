@@ -386,6 +386,13 @@ CREATE TABLE IF NOT EXISTS tick_summary (
     uprising_count  INTEGER,
     repression_count INTEGER,
     conservation_check BOOLEAN,
+    -- Program 23 (ADR077) Market Scissors shadow axis; NULL = axis absent
+    -- that tick (honest absence). Existing DBs: migrations/0033.
+    price_log       FLOAT,
+    fictitious_log  FLOAT,
+    -- Program 23 Phase 2 (ADR078): cumulative correction-snap count; NULL =
+    -- axis absent that tick. Existing DBs: migrations/0034.
+    market_corrections INT,
     PRIMARY KEY (session_id, tick)
 )
 """

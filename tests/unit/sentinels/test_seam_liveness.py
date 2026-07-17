@@ -235,6 +235,11 @@ def test_must_be_live_scope_matches_registry() -> None:
         # MUST_BE_LIVE (see registry.py:385/411 row-level reasoning).
         "wage_pressure",
         "dispossession_intensity",
+        # Program 23 Phase 2 (ADR078): the per-county scissors reading —
+        # non-null only where a county market axis exists (paid-worker
+        # substrate with county_fips); honest None on de-positioning, no
+        # attr at all otherwise (see registry.py's price_divergence row).
+        "price_divergence",
     }
     assert gated.isdisjoint(conditional)
 

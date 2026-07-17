@@ -27,7 +27,8 @@ export type RampLayer =
   | "solidarity"
   | "receptivity"
   | "wage_pressure"
-  | "dispossession";
+  | "dispossession"
+  | "price_divergence";
 
 /**
  * The six canonical data ramps.
@@ -100,6 +101,20 @@ export const DATA_RAMPS: Record<RampLayer, string[]> = {
   // Distinct from rent (whose body passes through dark PLUM/purple, not
   // gray/brick) despite sharing the same crimson family of terminals.
   dispossession: ["#0d1016", "#3a3530", "#7a3525", "#a83a78", "#b8321f", "#ff3344"],
+  // Program 23 / ADR078 (price⟷value scissors, engine.systems.market_scissors):
+  // the ONE diverging ramp in the numeric-lens family that isn't
+  // heat/rent-style monotonic — price_divergence is SIGNED (roughly
+  // [-2.0, 2.0]), so the ramp must diverge from a near-black neutral
+  // center, not climb from one alarm terminal to another. Stops 0/1 are a
+  // deep cool blue-teal for undervaluation (price below value); stop 2 is
+  // the canon near-black neutral (prices at values, the zero point every
+  // other ramp opens ON, here it sits in the MIDDLE); stops 3/4/5 climb
+  // through amber/gold to crimson for the bubble side (price above value —
+  // the scissors open upward). Cool/hot terminals are both NEW hexes
+  // (no existing ramp needs an undervaluation-blue or this exact gold), the
+  // center reuses the canon --babylon-void near-black every ramp above
+  // opens on.
+  price_divergence: ["#1d4e5f", "#173442", "#0d1016", "#3d2c14", "#a67729", "#e5484d"],
 };
 
 /** Fill alpha for deck.gl hex layers (near-opaque, as pre-090). */

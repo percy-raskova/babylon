@@ -259,11 +259,17 @@ class BoundOpposition[I]:
     ``pole_measure`` is the optional per-node channel (ADR070): bindings
     without one contribute nothing to :meth:`OppositionRegistry.read_poles`
     — the channel ships inert by default.
+
+    ``shadow`` (ADR077): a shadow binding is measured every tick but never
+    adjudicates — it is excluded from principal-contradiction scoring, and
+    the engine routes its states to ``shadow_opposition_states`` instead of
+    ``opposition_states`` (observes-only until an owner-gated promotion).
     """
 
     spec: OppositionSpec
     measure: GapMeasure[I]
     pole_measure: PoleMeasure[I] | None = None
+    shadow: bool = False
 
 
 class OppositionState(BaseModel):
@@ -441,6 +447,9 @@ class OppositionRegistry[I]:
         self._bindings: tuple[BoundOpposition[I], ...] = tuple(
             sorted(bindings, key=lambda binding: binding.spec.key)
         )
+        self._shadow_keys: frozenset[str] = frozenset(
+            binding.spec.key for binding in self._bindings if binding.shadow
+        )
         self._rate_weight = rate_weight
         _validate_nesting([binding.spec for binding in self._bindings])
         self._governance: dict[str, str] = dict(governance or {})
@@ -450,6 +459,11 @@ class OppositionRegistry[I]:
     def keys(self) -> tuple[str, ...]:
         """Registered opposition keys, lexicographically ordered."""
         return tuple(binding.spec.key for binding in self._bindings)
+
+    @property
+    def shadow_keys(self) -> frozenset[str]:
+        """Keys of shadow bindings: measured every tick, never principal (ADR077)."""
+        return self._shadow_keys
 
     def spec_for(self, key: str) -> OppositionSpec:
         """Look up a spec by key.
@@ -477,8 +491,10 @@ class OppositionRegistry[I]:
 
         Returns:
             One state per binding, lexicographic by key, with exactly one
-            ``is_principal=True`` (none if the registry is empty). Ties
-            in score break toward the lexicographically first key.
+            ``is_principal=True`` among non-shadow states (none if the
+            registry is empty or all-shadow — a shadow binding never leads,
+            ADR077). Ties in score break toward the lexicographically
+            first key.
         """
         drafts: list[OppositionState] = []
         for binding in self._bindings:
@@ -561,16 +577,22 @@ class OppositionRegistry[I]:
         """Mao's principal-contradiction ranking: sharp AND fast-developing."""
         return state.gap * (1.0 + self._rate_weight * abs(state.rate))
 
-    def _principal_key(self, drafts: Sequence[OppositionState]) -> str:
-        """Highest score wins; ties break to the lexicographically first key.
+    def _principal_key(self, drafts: Sequence[OppositionState]) -> str | None:
+        """Highest score among non-shadow drafts; ties break lexicographically.
 
-        Governed oppositions are excluded: a predecessor whose motion its
-        successor governs never leads, even carrying the largest score. The
-        fallback to all drafts is unreachable given acyclic governance (the
-        terminal successor is always ungoverned) but keeps the pool non-empty.
+        Shadow drafts never lead (ADR077) — an all-shadow registry has NO
+        principal (``None``). Governed oppositions are excluded next: a
+        predecessor whose motion its successor governs never leads, even
+        carrying the largest score. The fallback to all non-shadow drafts is
+        unreachable given acyclic governance (the terminal successor is
+        always ungoverned) but keeps the pool non-empty — and can never
+        resurrect a shadow, since shadows are removed first.
         """
+        candidates = [draft for draft in drafts if draft.key not in self._shadow_keys]
+        if not candidates:
+            return None
         governed = set(self._governance)
-        pool = [draft for draft in drafts if draft.key not in governed] or list(drafts)
+        pool = [draft for draft in candidates if draft.key not in governed] or candidates
         best = pool[0]
         best_score = self._score(best)
         for candidate in pool[1:]:

@@ -45,6 +45,7 @@ from babylon.config.defines.external_data import (
     ExternalDataDefines,
     ServicesDefines,
 )
+from babylon.config.defines.market import MarketDefines
 from babylon.config.defines.ooda import OODADefines
 from babylon.config.defines.organizations import (
     CommunityDefines,
@@ -106,6 +107,7 @@ __all__ = [
     "InstitutionDefines",
     "LeontiefRentDefines",
     "LifecycleDefines",
+    "MarketDefines",
     "MetabolismDefines",
     "MobilizeDefines",
     "MoveDefines",

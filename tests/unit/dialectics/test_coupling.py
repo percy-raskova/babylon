@@ -138,6 +138,7 @@ class TestDefaultCouplingGraph:
         triples = {_triple(c) for c in graph.couplings}
         assert ("wage", "capital_labor", "feeds") in triples
         assert ("wage", "imperial", "feeds") in triples  # Phase D5: shared defect
+        assert ("wage", "price_value", "feeds") in triples  # ADR078: the flow IS the drive
         assert ("capital_labor", "imperial", "antagonizes") in triples
         assert ("imperial", "capital_labor", "antagonizes") in triples  # symmetric
 
@@ -148,6 +149,7 @@ class TestDefaultCouplingGraph:
         assert non_contains == {
             ("wage", "capital_labor", "feeds"),
             ("wage", "imperial", "feeds"),
+            ("wage", "price_value", "feeds"),
             ("capital_labor", "imperial", "antagonizes"),
             ("imperial", "capital_labor", "antagonizes"),
         }

@@ -1,8 +1,8 @@
 {
   "scenario": "starvation",
   "description": "Low extraction efficiency stress",
-  "generated_at": "2026-07-16T02:21:06+00:00",
-  "defines_hash": "99e0ebf619def68c",
+  "generated_at": "2026-07-17T13:41:26+00:00",
+  "defines_hash": "96a153eeb470d3a3",
   "max_ticks": 52,
   "checkpoints": [
     {
@@ -57,7 +57,7 @@
       "tick": 40,
       "p_w_wealth": 1.330304,
       "p_c_wealth": 0.005664,
-      "c_b_wealth": 1.519101,
+      "c_b_wealth": 1.514106,
       "c_w_wealth": 153.106983,
       "imperial_rent_pool": 93.258055,
       "exploitation_tension": 0.987022,
@@ -69,7 +69,7 @@
       "tick": 50,
       "p_w_wealth": 1.515089,
       "p_c_wealth": 0.005664,
-      "c_b_wealth": 1.419101,
+      "c_b_wealth": 1.40116,
       "c_w_wealth": 180.926193,
       "imperial_rent_pool": 91.409591,
       "exploitation_tension": 0.989007,
@@ -81,7 +81,7 @@
       "tick": 52,
       "p_w_wealth": 1.552046,
       "p_c_wealth": 0.005664,
-      "c_b_wealth": 1.399101,
+      "c_b_wealth": 1.38116,
       "c_w_wealth": 186.453939,
       "imperial_rent_pool": 91.044318,
       "exploitation_tension": 0.989331,

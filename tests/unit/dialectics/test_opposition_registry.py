@@ -438,3 +438,84 @@ class TestGovernance:
                 bindings=[_measure_for(k) for k in ("a", "b", "c", "d", "e")],
                 governance={"a": "b", "b": "c", "c": "d", "d": "e"},
             )
+
+
+def _shadow_measure_for(key: str, *, shadow: bool = False) -> BoundOpposition[Inputs]:
+    """A binding like :func:`_measure_for` with an explicit shadow flag."""
+    spec = OppositionSpec(key=key, pole_a=f"{key}-A", pole_b=f"{key}-B")
+
+    def measure(inputs: Inputs) -> GapReading:
+        gap, balance = inputs.readings[key]
+        return GapReading(gap=gap, balance=balance)
+
+    return BoundOpposition(spec=spec, measure=measure, shadow=shadow)
+
+
+class TestShadowOppositions:
+    """Shadow bindings are measured but never adjudicate (ADR077, Program 23)."""
+
+    def test_shadow_defaults_off(self) -> None:
+        assert _measure_for("plain").shadow is False
+
+    def test_shadow_keys_property(self) -> None:
+        reg = OppositionRegistry(
+            bindings=[
+                _shadow_measure_for("canon"),
+                _shadow_measure_for("ghost", shadow=True),
+            ]
+        )
+        assert reg.shadow_keys == frozenset({"ghost"})
+
+    def test_shadow_never_principal_even_with_top_score(self) -> None:
+        reg = OppositionRegistry(
+            bindings=[
+                _shadow_measure_for("canon"),
+                _shadow_measure_for("ghost", shadow=True),
+            ]
+        )
+        states = _by_key(reg.step(Inputs({"canon": (0.1, 0.0), "ghost": (1.0, 0.5)}), tick=1))
+        assert states["ghost"].is_principal is False
+        assert states["canon"].is_principal is True
+
+    def test_all_shadow_registry_marks_no_principal(self) -> None:
+        reg = OppositionRegistry(bindings=[_shadow_measure_for("ghost", shadow=True)])
+        states = reg.step(Inputs({"ghost": (0.9, 0.0)}), tick=1)
+        assert all(not s.is_principal for s in states)
+
+    def test_shadow_state_still_measured_with_rate(self) -> None:
+        reg = OppositionRegistry(bindings=[_shadow_measure_for("ghost", shadow=True)])
+        first = reg.step(Inputs({"ghost": (0.6, 0.0)}), tick=1)
+        second = reg.step(Inputs({"ghost": (0.9, 0.0)}), tick=2, previous=_by_key(first))
+        assert second[0].gap == pytest.approx(0.9)
+        assert second[0].rate == pytest.approx(0.3)
+
+    def test_canonical_states_identical_with_and_without_shadow_sibling(self) -> None:
+        readings = Inputs({"canon": (0.4, -0.2), "ghost": (1.0, 0.9)})
+        lone = OppositionRegistry(bindings=[_shadow_measure_for("canon")]).step(readings, tick=3)
+        paired = tuple(
+            s
+            for s in OppositionRegistry(
+                bindings=[
+                    _shadow_measure_for("canon"),
+                    _shadow_measure_for("ghost", shadow=True),
+                ]
+            ).step(readings, tick=3)
+            if s.key == "canon"
+        )
+        assert lone == paired
+
+    def test_governed_fallback_never_resurrects_a_shadow(self) -> None:
+        """Every canonical key governed: the fallback pool is canonical-only."""
+        reg = OppositionRegistry(
+            bindings=[
+                _shadow_measure_for("old", shadow=False),
+                _shadow_measure_for("new", shadow=False),
+                _shadow_measure_for("ghost", shadow=True),
+            ],
+            governance={"old": "new"},
+        )
+        states = _by_key(
+            reg.step(Inputs({"old": (0.9, 0.0), "new": (0.1, 0.0), "ghost": (1.0, 0.0)}), tick=1)
+        )
+        assert states["ghost"].is_principal is False
+        assert states["new"].is_principal is True

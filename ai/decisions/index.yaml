@@ -1,9 +1,14 @@
 meta:
-  version: 1.24.0
+  version: 1.25.0
   updated: '2026-07-17'
   description: Architecture Decision Records Index
   format: See individual ADR files in this directory
 decisions:
+  ADR077_market_scissors:
+    title: 'Program 23 — Market Scissors: price⟷value as the sixth (first SHADOW) opposition on the generic BoundOpposition.shadow mechanism (the reusable ADR072 slice, Amendment T untouched); MarketScissorsSystem @17.8 (30th system) evolves national price/fictitious log-ratio oscillators from the realized w_paid/v_produced flow (reversion = law of value, honest-absent without a substrate); tick_summary price_log/fictitious_log (migration 0033) + timeseries value/surplus/profit_rate/price_index/fictitious_ratio + cockpit "The Scissors" chart vs the y=1 value baseline; qa:regression byte-identical throughout; Phase-2 correction feedback owner-gated'
+    status: accepted
+    date: '2026-07-17'
+    file: ADR077_market_scissors.yaml
   ADR076_parquet_artifacts:
     title: 'Parquet/CSV reference-data artifact program (rulings R1-R5 executed): per-table hashed artifacts with the repo-root data-artifacts.yaml successor registry (catalog->manifest atomic demotion handoff), tools/make_data_artifacts.py generator (natural-key sort, explicit arrow schema, single row group, pinned zstd; double-generation byte-identity PROVEN), R4 bridge_lodes_block spike (1,150,562 rows), manifest-driven parquet fetch in fetch-reference-db, coverage-sensor hash check in the fast gate; ci-data-v6 carries subset + 4 parquet assets'
     status: accepted

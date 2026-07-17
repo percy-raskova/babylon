@@ -161,11 +161,63 @@ def check_subset_policy_parity(
     return sorted(violations)
 
 
+def check_artifact_manifest(
+    manifest_path: Path | None = None,
+) -> list[str]:
+    """Every in-repo artifact in ``data-artifacts.yaml`` exists and hash-matches.
+
+    The manifest is the successor registry for demoted reference tables
+    (ADR076): once a table's DB copy is dropped, the hash-pinned artifact IS
+    the data. An in-repo entry whose file is missing or whose sha256 drifted
+    is silent data corruption — exactly what the demotion handoff forbids.
+    Release-tier entries (``dist/``) are pin-verified at fetch time in CI,
+    not here (the fast gate must not require the assets locally).
+
+    :param manifest_path: Manifest to check (defaults to the real
+        ``data-artifacts.yaml``; injectable for efficacy tests). A missing
+        manifest is fine — the program may not have landed on this branch.
+    :returns: Sorted violation strings.
+    :raises SentinelCheckError: If the manifest exists but cannot be parsed.
+    """
+    import hashlib
+
+    import yaml
+
+    target = _REPO_ROOT / "data-artifacts.yaml" if manifest_path is None else manifest_path
+    if not target.is_file():
+        return []
+    try:
+        manifest = yaml.safe_load(target.read_text())
+        entries = manifest["artifacts"]
+    except (yaml.YAMLError, KeyError, TypeError) as error:
+        msg = f"data-artifacts.yaml is unreadable/malformed: {error}"
+        raise SentinelCheckError(msg) from error
+    violations: list[str] = []
+    for entry in entries:
+        home = str(entry["home"])
+        if home.startswith("dist/"):
+            continue
+        artifact = (target.parent / home) if manifest_path is not None else (_REPO_ROOT / home)
+        if not artifact.is_file():
+            violations.append(
+                f"artifact {entry['name']!r} missing: {home} (manifest promises it in-repo)"
+            )
+            continue
+        digest = hashlib.sha256(artifact.read_bytes()).hexdigest()
+        if digest != entry["sha256"]:
+            violations.append(
+                f"artifact {entry['name']!r} drifted: sha256 {digest[:12]}... != "
+                f"manifest {str(entry['sha256'])[:12]}... ({home})"
+            )
+    return sorted(violations)
+
+
 #: Gating checks: a violation reds the dev fast-gate (exit 1).
 _GATING_CHECKS: tuple[LabelledCheck, ...] = (
     ("declared reference-data source class does not exist", check_source_classes_exist),
     ("catalog consumer/test path does not exist", check_catalog_paths_exist),
     ("catalog subset_policy drifted from make_reference_subset.TABLE", check_subset_policy_parity),
+    ("data-artifacts manifest entry missing or hash-drifted", check_artifact_manifest),
 )
 
 #: No advisory tier yet — the reference-DB coverage probe is a nightly concern.

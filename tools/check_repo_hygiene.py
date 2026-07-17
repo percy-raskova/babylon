@@ -83,6 +83,7 @@ ALLOWED_TOP_LEVEL_FILES: frozenset[str] = frozenset(
         "LICENSE",
         "README.md",
         "SETUP_GUIDE.md",
+        "data-artifacts.yaml",  # ADR076 successor registry for demoted reference tables
         "data-catalog.yaml",
         "logging.yaml",  # runtime logging config (src/babylon/config/logging_config.py)
         "poetry.lock",

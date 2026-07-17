@@ -173,3 +173,6 @@ deploy/ansible/.ansible/
 
 # program-20: local infra subrepo mount (becomes a submodule when it gets a remote)
 /infra/
+
+# ADR076 release-tier data artifacts (parquet; shipped via ci-data releases)
+/dist/

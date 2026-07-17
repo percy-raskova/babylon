@@ -399,9 +399,6 @@ Data Sources (3NF Schema)
    * - ``fact_census_institutional_ownership``
      - (county_id, time_id)
      - Housing tenure, institutional/absentee ownership, renter migration
-   * - ``fact_bls_productivity``
-     - (industry_id, time_id)
-     - Avg weekly hours, hourly earnings, output/hour, unit labor costs
 
 Event Types
 -----------

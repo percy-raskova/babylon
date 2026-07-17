@@ -127,6 +127,11 @@ def check_catalog_db_reconciliation(
             if row.name not in objects:
                 if row.kind == "view" and subset_env:
                     continue  # subset DBs carry no views — advisory tier's job
+                if row.kind == "table" and row.subset_policy == "skip" and subset_env:
+                    # skip-policy tables are BY DESIGN absent from the ci-data
+                    # subset (the generator drops them, documented in TABLE);
+                    # the full-DB probe still enforces their existence locally.
+                    continue
                 violations.append(
                     f"catalog row {row.name!r} names an object the DB does not "
                     "contain (phantom declaration)"

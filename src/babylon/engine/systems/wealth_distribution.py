@@ -68,6 +68,13 @@ _BRACKET_BY_ROLE: dict[SocialRole, int] = {
 
 _Vector = tuple[float, float, float, float]
 
+#: Graph-metadata stamp left by ``MarketScissorsSystem``'s correction snap
+#: (ADR078): ``{"tick": int, "overhang": float}``. Declared HERE (the
+#: consumer's inbox) because @17.8 already imports this module for the
+#: bracket fold — the reverse import would cycle. Consumed once per stamp:
+#: read + cleared before the Euler step, the spec-114 FR-114-4 impulse form.
+MARKET_CORRECTION_SHOCK_ATTR = "market_correction_shock"
+
 
 def bracket_of_role(role: SocialRole) -> int:
     """Return the wealth-bracket index (0..3) a social role folds into.
@@ -134,6 +141,32 @@ def _ode_params(defines: Any) -> tuple[ClassDynamicsParams, SecondOrderParams]:
         equilibrium=_seed_vector(defines),
     )
     return first, second
+
+
+def _consume_market_shock(
+    metadata: dict[str, Any], velocities: _Vector, kick_gain: float
+) -> _Vector:
+    """Apply + clear the correction's velocity impulse (ADR078).
+
+    The snap destroyed top-bracket paper wealth; relative shares must feel it:
+    ``w1`` velocity takes ``-kick`` and the other three brackets ``+kick/3``
+    each — Σ impulses = 0, so the Euler step's conservation is untouched.
+    A malformed stamp fails LOUD (III.11): the logic layer does not guess.
+
+    :param metadata: The graph-metadata dict (stamp popped when present).
+    :param velocities: The pre-step velocity vector.
+    :param kick_gain: ``GameDefines.market.wealth_axis_kick_gain``.
+    :returns: The (possibly) kicked velocity vector.
+    """
+    shock = metadata.pop(MARKET_CORRECTION_SHOCK_ATTR, None)
+    if shock is None:
+        return velocities
+    kick = kick_gain * float(shock["overhang"])
+    if kick == 0.0:
+        return velocities
+    v1, v2, v3, v4 = velocities
+    third = kick / 3.0
+    return (v1 - kick, v2 + third, v3 + third, v4 + third)
 
 
 def _bracket_resistances(graph: GraphProtocol) -> _Vector:
@@ -224,13 +257,15 @@ class WealthDistributionSystem(SystemBase):
         if not isinstance(metadata, dict):  # pragma: no cover — BabylonGraph always has it
             return
         prior = metadata.get("wealth_distribution")
+        kick_gain = float(services.defines.market.wealth_axis_kick_gain)
         if prior is None:
             shares = _seed_vector(defines)
-            velocities: _Vector = (0.0, 0.0, 0.0, 0.0)
+            velocities = _consume_market_shock(metadata, (0.0, 0.0, 0.0, 0.0), kick_gain)
         else:
+            shocked = _consume_market_shock(metadata, tuple(prior["velocities"]), kick_gain)
             shares, velocities = _advance(
                 tuple(prior["shares"]),
-                tuple(prior["velocities"]),
+                shocked,
                 _bracket_resistances(graph),
                 defines,
             )

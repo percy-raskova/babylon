@@ -27,7 +27,11 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING, ClassVar
 
-from babylon.engine.systems.wealth_distribution import _coerce_role, bracket_of_role
+from babylon.engine.systems.wealth_distribution import (
+    MARKET_CORRECTION_SHOCK_ATTR,
+    _coerce_role,
+    bracket_of_role,
+)
 from babylon.formulas.market import (
     calculate_correction_snap,
     calculate_ema,
@@ -49,12 +53,6 @@ if TYPE_CHECKING:
 
 #: Graph-metadata key carrying the axis (matches ``WorldState.market``).
 MARKET_ATTR = "market"
-
-#: Graph-metadata stamp the snap leaves for the wealth axis (ADR078):
-#: ``{"tick": int, "overhang": float}`` — written only when a correction
-#: fires, consumed (and cleared) by ``WealthDistributionSystem`` @21.5 the
-#: SAME tick (17.8 < 21.5), the spec-114 FR-114-4 impulse pattern.
-MARKET_CORRECTION_SHOCK_ATTR = "market_correction_shock"
 
 #: Wealth brackets holding the fictitious claims (ADR075 fold): 0 = top-1%
 #: bourgeoisies, 1 = petty bourgeoisie. Brackets 2/3 hold labor, not claims.

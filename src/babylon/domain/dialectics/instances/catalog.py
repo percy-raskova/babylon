@@ -115,6 +115,10 @@ class GraphInputs:
             rent_level)`` per TENANCY edge — id-carrying twin of
             ``tenancy_pairs``; no pole measure reads it yet (a
             landlord/tenant axis is a natural later binding).
+        market_balance: pre-derived scissors ``Balance`` in [-1, 1] from the
+            Market Scissors axis (Program 23, ADR077) — the engine computes
+            ``tanh(price_log / scale)`` with the defines-owned scale so the
+            catalog stays defines-free; ``None`` = no market axis this tick.
     """
 
     exploitation_pairs: tuple[WealthPair, ...] = ()
@@ -124,6 +128,7 @@ class GraphInputs:
     exploitation_id_pairs: tuple[tuple[str, str, float, float], ...] = ()
     wage_value_id_pairs: tuple[tuple[str, float, float], ...] = ()
     tenancy_id_pairs: tuple[tuple[str, str, float, float], ...] = ()
+    market_balance: float | None = field(default=None)
 
 
 def _mean_asymmetry(pairs: Sequence[WealthPair]) -> GapReading:
@@ -244,6 +249,21 @@ def _imperial_measure(inputs: GraphInputs) -> GapReading:
     return _wage_value_reading(inputs)
 
 
+def _price_value_measure(inputs: GraphInputs) -> GapReading:
+    """value (A) ⇄ price (B) — the scissors as a measured adjunction defect.
+
+    Reads the pre-derived Balance (the engine owns the tanh scale — see
+    ``GraphInputs.market_balance``). ``None`` → ``(0, 0)``: no market axis,
+    no contradiction (a phenomenal form cannot diverge from an absent
+    substance, Constitution III.11). Positive balance = price above value —
+    the form pole dominant, fictitious validation outrunning production.
+    """
+    if inputs.market_balance is None:
+        return GapReading(gap=0.0, balance=0.0)
+    balance = max(-1.0, min(1.0, inputs.market_balance))
+    return GapReading(gap=abs(balance), balance=balance)
+
+
 def build_default_registry(rate_weight: float = 10.0) -> OppositionRegistry[GraphInputs]:
     """Build the production five-opposition registry.
 
@@ -315,6 +335,23 @@ def build_default_registry(rate_weight: float = 10.0) -> OppositionRegistry[Grap
             ),
             measure=_imperial_measure,
             pole_measure=_imperial_poles,
+        ),
+        BoundOpposition(
+            spec=OppositionSpec(
+                key="price_value",
+                pole_a="value",
+                pole_b="price",
+                unity="the price-form presupposes the value it expresses; MELT is the "
+                "unit of their adjunction and the scissors its measured defect "
+                "(Capital Vol. I ch. 1 §3 / Vol. III ch. 10) — Program 23, ADR077",
+                # level_name stays "" (unplaced): the national scissors sits
+                # on no county/bloc lattice rung yet.
+                antagonistic=False,
+            ),
+            measure=_price_value_measure,
+            # SHADOW (ADR077): measured every tick, excluded from principal
+            # scoring/frames/rupture; states ride shadow_opposition_states.
+            shadow=True,
         ),
     ]
     return OppositionRegistry(bindings=bindings, rate_weight=rate_weight)

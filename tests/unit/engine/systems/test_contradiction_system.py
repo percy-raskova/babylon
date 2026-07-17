@@ -256,7 +256,7 @@ class TestWageValuePairsExtraction:
     @staticmethod
     def _inputs(graph: BabylonGraph):  # type: ignore[no-untyped-def]
 
-        return ContradictionSystem()._build_graph_inputs(graph)
+        return ContradictionSystem()._build_graph_inputs(graph, ServiceContainer.create())
 
     def test_pairs_extracted_from_nodes_carrying_both_attrs(self) -> None:
         graph = BabylonGraph()
@@ -294,7 +294,7 @@ class TestGraphInputIdPairs:
     @staticmethod
     def _inputs(graph: BabylonGraph):  # type: ignore[no-untyped-def]
 
-        return ContradictionSystem()._build_graph_inputs(graph)
+        return ContradictionSystem()._build_graph_inputs(graph, ServiceContainer.create())
 
     def test_exploitation_id_pairs_carry_endpoint_ids(self) -> None:
         graph = BabylonGraph()
@@ -485,3 +485,44 @@ class TestShadowChannel:
         services = ServiceContainer.create(opposition_registry=canon_only)
         ContradictionSystem().step(graph, services, {"tick": 1})
         assert "shadow_opposition_states" not in graph.graph
+
+
+class TestPriceValueEndToEnd:
+    """Default registry + fresh market axis → shadow state (Program 23)."""
+
+    def test_market_axis_feeds_the_shadow_opposition(self) -> None:
+        import math
+
+        from babylon.config.defines import GameDefines
+
+        graph = BabylonGraph()
+        graph.add_node("worker", wealth=10.0)
+        graph.add_node("owner", wealth=30.0)
+        graph.add_edge("worker", "owner", edge_type=EdgeType.EXPLOITATION)
+        graph.set_graph_attr(
+            "market",
+            {
+                "price_log": 0.5,
+                "price_velocity": 0.0,
+                "fictitious_log": 0.0,
+                "fictitious_velocity": 0.0,
+                "surplus_ema": 1.0,
+                "value_ema": 2.0,
+                "tick": 1,
+            },
+        )
+        ContradictionSystem().step(graph, ServiceContainer.create(), {"tick": 1})
+
+        scale = GameDefines().market.scissors_balance_scale
+        shadow = graph.graph["shadow_opposition_states"]
+        assert set(shadow) == {"price_value"}
+        assert shadow["price_value"]["balance"] == pytest.approx(math.tanh(0.5 / scale))
+        assert shadow["price_value"]["is_principal"] is False
+        # The canonical channel still carries exactly the five originals.
+        assert set(graph.graph["opposition_states"]) == {
+            "capital_labor",
+            "wage",
+            "tenancy",
+            "atomization",
+            "imperial",
+        }

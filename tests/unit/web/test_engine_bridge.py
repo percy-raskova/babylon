@@ -3129,3 +3129,89 @@ class TestBuildTickSummaryMarketAxis:
         assert summary["price_log"] is None
         assert summary["fictitious_log"] is None
         assert summary["market_corrections"] is None
+
+
+# ---------------------------------------------------------------------- #
+# Spec-116 FR-4.1: the Voice heartbeat — CausalChainObserver wiring
+# ---------------------------------------------------------------------- #
+
+
+@pytest.mark.unit
+class TestCausalHeartbeatWiring:
+    """resolve_tick runs the per-session CausalChainObserver and persists its
+    frames as deterministic NarrationRecord beats (spec-116 FR-4.1).
+    Observer-layer only: no state/graph mutation, outside the tick hash."""
+
+    _SID = uuid.UUID("dddddddd-bbbb-cccc-dddd-eeeeeeeeeeee")
+
+    @patch("game.engine_bridge.step")
+    def test_resolve_tick_caches_observer_per_session(self, mock_step: MagicMock) -> None:
+        from game.engine_bridge import _session_causal_observers
+
+        _session_causal_observers.clear()
+        mock_persistence = _make_mock_persistence()
+        mock_persistence.get_pending_turns.return_value = []
+        mock_step.return_value = _make_mock_new_state()
+
+        bridge = EngineBridge(mock_persistence)
+        bridge.resolve_tick(self._SID)
+        first = _session_causal_observers.get(self._SID)
+        assert first is not None, "resolve_tick must create the per-session observer"
+
+        bridge.resolve_tick(self._SID)
+        assert _session_causal_observers.get(self._SID) is first, (
+            "the SAME observer instance must survive across resolve_tick calls "
+            "(the 5-tick history buffer lives on it)"
+        )
+
+    def test_persist_causal_beats_safe_never_raises_without_db(self) -> None:
+        """Best-effort sibling contract (_persist_*_safe family): a DB failure
+        — here pytest-django blocking access (no django_db mark) — is
+        swallowed and logged, never fails tick resolution."""
+        from game.engine_bridge import _persist_causal_beats_safe
+
+        frame = {
+            "pattern": "TICK_PULSE",
+            "tick": 3,
+            "deltas": {
+                "pool": {"before": 100.0, "after": 90.0},
+                "wage": {"before": 0.2, "after": 0.2},
+                "p_rev": {"before": 0.3, "after": 0.3},
+            },
+        }
+        _persist_causal_beats_safe(self._SID, 3, (frame,))  # must not raise
+
+
+@pytest.mark.unit
+@pytest.mark.django_db
+class TestCausalHeartbeatPersistence:
+    """The pulse beat lands in narration_record on every resolved tick."""
+
+    _SID = uuid.UUID("eeeeeeee-bbbb-cccc-dddd-eeeeeeeeeeee")
+
+    @patch("game.engine_bridge.step")
+    def test_resolve_tick_persists_pulse_beat(self, mock_step: MagicMock) -> None:
+        from game.causal_voice import CAUSAL_MODEL_ID, CAUSAL_PROMPT_VERSION
+        from game.engine_bridge import _session_causal_observers
+        from game.models import GameSession, NarrationRecord
+
+        _session_causal_observers.clear()
+        GameSession.objects.create(
+            id=self._SID, scenario="default", current_tick=0, status="active"
+        )
+        mock_persistence = _make_mock_persistence()
+        mock_persistence.get_pending_turns.return_value = []
+        mock_step.return_value = _make_mock_new_state(tick=1)
+
+        bridge = EngineBridge(mock_persistence)
+        bridge.resolve_tick(self._SID)
+
+        record = NarrationRecord.objects.get(
+            session_id=self._SID, tick=1, beat_id="causal-pulse-t1"
+        )
+        assert record.scope == "tick"
+        assert record.register == "wire"
+        assert record.model_id == CAUSAL_MODEL_ID
+        assert record.prompt_version == CAUSAL_PROMPT_VERSION
+        assert record.degraded is False
+        assert record.headline == "The week's ledger, tick 1."

@@ -32,7 +32,7 @@ from babylon.config.defines import GameDefines
 from babylon.engine.formula_registry import (  # noqa: F401 — re-exported, see above
     FormulaRegistry as FormulaRegistry,
 )
-from babylon.engine.observers import EndgameDetector
+from babylon.engine.observers import CausalChainObserver, EndgameDetector
 from babylon.engine.scenarios import get_scenario, list_scenarios
 from babylon.engine.simulation_engine import step
 from babylon.engine.topology_monitor import calculate_component_metrics, extract_solidarity_subgraph
@@ -85,6 +85,15 @@ _session_trap_state: dict[UUID, TrapDetectionResult] = {}
 # Same known limitation as ``_session_trap_state`` above: per-process only,
 # lost on worker restart, not shared across horizontally-scaled replicas.
 _session_endgame_detectors: dict[UUID, EndgameDetector] = {}
+
+# Per-session CausalChainObserver instance (in-memory, not persisted).
+# Spec-116 FR-4.1 (the Voice heartbeat): the rolling 5-tick history buffer
+# must survive across separate ``resolve_tick`` HTTP calls, exactly like
+# ``_session_endgame_detectors`` above. Same known limitation: per-process
+# only, lost on worker restart (the buffer restarts empty and an in-flight
+# shock window spanning the restart is missed — accepted, as for the
+# detector), not shared across horizontally-scaled replicas.
+_session_causal_observers: dict[UUID, CausalChainObserver] = {}
 
 _ACTION_HISTORY_CAP = 50
 
@@ -4739,6 +4748,23 @@ class EngineBridge:
             ),
         }
 
+        # Spec-116 FR-4.1 (the Voice heartbeat): run the CausalChainObserver,
+        # cached per-session like the EndgameDetector above. It reads
+        # WorldState MODEL fields (economy.imperial_rent_pool,
+        # economy.current_super_wage_rate, entities[*].p_revolution), so it
+        # must run HERE on state/new_state, before to_graph(). Observer
+        # layer only — reads state, mutates nothing, outside the tick hash;
+        # its frames ride _persist_causal_beats_safe below, never
+        # new_state.events (frames are narration, not EventTypes — the
+        # _EVENT_SEVERITY seam sentinel enforces that boundary).
+        causal_observer = _session_causal_observers.get(session_id)
+        if causal_observer is None:
+            causal_observer = CausalChainObserver()
+            causal_observer.on_simulation_start(state, sim_config)
+            _session_causal_observers[session_id] = causal_observer
+        causal_observer.on_tick(state, new_state)
+        causal_frames = causal_observer.latest_frames
+
         # Persist the new tick
         new_graph = new_state.to_graph()
         # Owner item 30, point 1: re-apply TickDynamicsSystem's territory-node
@@ -4827,6 +4853,10 @@ class EngineBridge:
         # have real history to read back. Best-effort — a journal-write
         # failure must never fail tick resolution.
         _persist_tick_events_safe(self._persistence, session_id, new_state.tick, snapshot["events"])
+        # Spec-116 FR-4.1: land this tick's causal frames as deterministic
+        # NarrationRecord beats (the same table the LLM path writes and
+        # game_narration serves). Best-effort — never fails tick resolution.
+        _persist_causal_beats_safe(session_id, new_state.tick, causal_frames)
         # P0 #7: refresh the hex_latest map cache from this tick's territories
         # (sibling of the tick_event write above; best-effort, never raises).
         # Spec-109 A2: org_count from live territory_ids, heat_delta from the
@@ -7386,6 +7416,72 @@ def _persist_tick_events_safe(
         persist_fn(session_id, tick, rows, replace=replace)
     except Exception:  # noqa: BLE001 — diagnostic; never blocks tick resolution
         logger.exception("Failed to persist tick_event rows session=%s tick=%d", session_id, tick)
+
+
+def _persist_causal_beats_safe(
+    session_id: UUID,
+    tick: int,
+    frames: tuple[dict[str, Any], ...] | list[dict[str, Any]],
+) -> None:
+    """Best-effort write of a tick's causal frames as ``NarrationRecord`` beats.
+
+    Spec-116 FR-4.1 (the Voice heartbeat): renders the per-tick
+    ``CausalChainObserver`` frames through the deterministic templates in
+    :mod:`game.causal_voice` and lands them in ``narration_record`` — the
+    same table the LLM path writes (``NarrativeService._persist``) and
+    ``GET /api/games/{id}/narration/`` serves. A synchronous Django-ORM
+    write on the request thread (no background-thread machinery needed),
+    mirroring :func:`_persist_hex_state_safe`'s never-raise contract — a
+    narration-write failure must not fail tick resolution — and
+    ``NarrativeService._persist``'s idempotent ``update_or_create`` keyed
+    ``(session, tick, beat_id)``. Observer-layer only: outside the tick
+    hash, touches neither state nor graph.
+
+    Args:
+        session_id: The game session UUID.
+        tick: The tick the frames were captured on.
+        frames: ``CausalChainObserver.latest_frames`` for this tick.
+    """
+    if not frames:
+        return
+    try:
+        from django.db import transaction
+
+        from game.causal_voice import (
+            CAUSAL_MODEL_ID,
+            CAUSAL_PROMPT_VERSION,
+            render_frame_beats,
+        )
+        from game.models import GameSession, NarrationRecord
+
+        beats = render_frame_beats(frames)
+        if not beats:
+            return
+        with transaction.atomic():
+            session = GameSession.objects.get(pk=session_id)
+            for beat in beats:
+                NarrationRecord.objects.update_or_create(
+                    session=session,
+                    tick=tick,
+                    beat_id=beat.beat_id,
+                    defaults={
+                        "scope": NarrationRecord.Scope.TICK,
+                        "subject_ref": None,
+                        "headline": beat.headline,
+                        "body": beat.body,
+                        "register": beat.register,
+                        "model_id": CAUSAL_MODEL_ID,
+                        "prompt_version": CAUSAL_PROMPT_VERSION,
+                        "degraded": False,
+                        "error": "",
+                    },
+                )
+    except Exception:  # noqa: BLE001 — diagnostic; never blocks tick resolution
+        logger.exception(
+            "Failed to persist causal narration beats session=%s tick=%d",
+            session_id,
+            tick,
+        )
 
 
 def _hex_feature_properties(state: Any) -> dict[str, Any]:

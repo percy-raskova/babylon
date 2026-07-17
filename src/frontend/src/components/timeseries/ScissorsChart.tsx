@@ -24,6 +24,8 @@ import {
   XAxis,
   YAxis,
 } from "recharts";
+import { MarketTicker } from "@/components/timeseries/MarketTicker";
+import { deriveCorrectionTicks } from "@/lib/scissors";
 import { useStore } from "@/store";
 import type { TimeseriesPayload } from "@/types/game";
 
@@ -87,35 +89,50 @@ export function ScissorsChart({ gameId }: ScissorsChartProps): React.JSX.Element
     );
   }
 
+  const correctionTicks = deriveCorrectionTicks(data);
+
   return (
-    <div className="h-full p-2" data-testid="scissors-chart">
-      <ResponsiveContainer width="100%" height="100%">
-        <LineChart data={toScissorsRows(data)}>
-          <XAxis dataKey="tick" tick={{ fontSize: 9, fill: "var(--babylon-ash)" }} />
-          <YAxis tick={{ fontSize: 9, fill: "var(--babylon-ash)" }} domain={["auto", "auto"]} />
-          <Tooltip
-            contentStyle={{
-              background: "var(--babylon-concrete)",
-              border: "1px solid var(--babylon-rebar)",
-              fontSize: 11,
-            }}
-          />
-          {/* The substance baseline: price at value, claims at real K. */}
-          <ReferenceLine
-            y={1}
-            stroke="var(--babylon-ash)"
-            strokeDasharray="4 3"
-            label={{ value: "value", fontSize: 9, fill: "var(--babylon-ash)" }}
-          />
-          <Line type="monotone" dataKey="price_index" stroke="var(--babylon-rent)" dot={false} />
-          <Line
-            type="monotone"
-            dataKey="fictitious_ratio"
-            stroke="var(--babylon-heat)"
-            dot={false}
-          />
-        </LineChart>
-      </ResponsiveContainer>
+    <div className="flex h-full flex-col" data-testid="scissors-chart">
+      <MarketTicker payload={data} />
+      <div className="min-h-0 flex-1 p-2">
+        <ResponsiveContainer width="100%" height="100%">
+          <LineChart data={toScissorsRows(data)}>
+            <XAxis dataKey="tick" tick={{ fontSize: 9, fill: "var(--babylon-ash)" }} />
+            <YAxis tick={{ fontSize: 9, fill: "var(--babylon-ash)" }} domain={["auto", "auto"]} />
+            <Tooltip
+              contentStyle={{
+                background: "var(--babylon-concrete)",
+                border: "1px solid var(--babylon-rebar)",
+                fontSize: 11,
+              }}
+            />
+            {/* The substance baseline: price at value, claims at real K. */}
+            <ReferenceLine
+              y={1}
+              stroke="var(--babylon-ash)"
+              strokeDasharray="4 3"
+              label={{ value: "value", fontSize: 9, fill: "var(--babylon-ash)" }}
+            />
+            {/* ADR078: each snap tick — the correction made visible. */}
+            {correctionTicks.map((tick) => (
+              <ReferenceLine
+                key={`correction-${tick}`}
+                x={tick}
+                stroke="var(--babylon-laser)"
+                strokeDasharray="2 2"
+                label={{ value: "correction", fontSize: 8, fill: "var(--babylon-laser)" }}
+              />
+            ))}
+            <Line type="monotone" dataKey="price_index" stroke="var(--babylon-rent)" dot={false} />
+            <Line
+              type="monotone"
+              dataKey="fictitious_ratio"
+              stroke="var(--babylon-heat)"
+              dot={false}
+            />
+          </LineChart>
+        </ResponsiveContainer>
+      </div>
     </div>
   );
 }

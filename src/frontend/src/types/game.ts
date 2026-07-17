@@ -195,6 +195,17 @@ export interface TerritoryState {
    */
   wage_pressure?: number | null;
   dispossession_intensity?: number | null;
+  /**
+   * Program 23 / ADR078: `_serialize_territory` emits this on every
+   * `/state/` snapshot territory row, read off the graph-only
+   * `price_divergence` attr `MarketScissorsSystem` writes (the territory's
+   * county-level log price-to-value ratio) and `_carry_price_divergence`
+   * re-injects post-round-trip. SIGNED (roughly `[-2.0, 2.0]`) — 0 = prices
+   * at values, positive = price above value (bubble), negative = price
+   * below value. Honest `null`/absent for a territory with no county axis
+   * (Constitution III.11 — never coerced to a fabricated 0).
+   */
+  price_divergence?: number | null;
 }
 
 /** Ternary consciousness vector — always sums to 1.0 (Spec 052 §6). */
@@ -931,6 +942,12 @@ export interface TimeseriesPayload {
   /** Form: exp-mapped log ratios; 1.0 = price at value / claims at real K. */
   price_index: (number | null)[];
   fictitious_ratio: (number | null)[];
+  /**
+   * ADR078 — cumulative correction-snap count per tick; the chart marks the
+   * ticks where it increments. Optional: pre-Phase-2 backends omit it
+   * (rollout skew), which reads as "no corrections observable".
+   */
+  market_corrections?: (number | null)[];
 }
 
 /**
@@ -1155,6 +1172,15 @@ export interface AdminFeatureProperties {
    */
   wage_pressure?: number | null;
   dispossession_intensity?: number | null;
+  /**
+   * Program 23 / ADR078 — `_aggregate_hex_features`'s population-weighted
+   * mean of `price_divergence` (the territory's county-level log
+   * price-to-value ratio). SIGNED (roughly `[-2.0, 2.0]`) — unlike every
+   * other numeric lens above, the weighted mean itself can land negative;
+   * never coerce a `null`/absent reading to 0. Optional/nullable for the
+   * same partial-coverage reason as `wage_pressure` above.
+   */
+  price_divergence?: number | null;
 }
 
 // ---------------------------------------------------------------------------

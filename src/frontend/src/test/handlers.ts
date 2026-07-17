@@ -176,6 +176,7 @@ export const handlers = [
         profit_rate: [0.05, 0.049],
         price_index: [1.0, 1.08],
         fictitious_ratio: [1.0, 1.31],
+        market_corrections: [0, 0],
       },
     });
   }),

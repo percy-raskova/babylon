@@ -101,6 +101,15 @@ describe("LENS_REGISTRY", () => {
     expect(wagePressure?.toLens()).toEqual({ kind: "metric", metric: "wage_pressure" });
     expect(dispossession?.toLens()).toEqual({ kind: "metric", metric: "dispossession_intensity" });
   });
+
+  it("includes price_divergence in the extraction group (Program 23 / ADR078)", () => {
+    const priceDivergence = LENS_REGISTRY.find((d) => d.id === "price_divergence");
+    // Same family as wage_pressure — the economic base's fictitious/real
+    // divergence, this time at the circulation (price) pole.
+    expect(priceDivergence?.group).toBe("extraction");
+    expect(priceDivergence?.legend.kind).toBe("ramp");
+    expect(priceDivergence?.toLens()).toEqual({ kind: "metric", metric: "price_divergence" });
+  });
 });
 
 describe("lensDefForLens", () => {
@@ -142,6 +151,12 @@ describe("lensDefForLens", () => {
     expect(lensDefForLens({ kind: "metric", metric: "wage_pressure" })?.id).toBe("wage_pressure");
     expect(lensDefForLens({ kind: "metric", metric: "dispossession_intensity" })?.id).toBe(
       "dispossession_intensity",
+    );
+  });
+
+  it("resolves price_divergence back to its registry entry (Program 23 / ADR078)", () => {
+    expect(lensDefForLens({ kind: "metric", metric: "price_divergence" })?.id).toBe(
+      "price_divergence",
     );
   });
 
@@ -239,6 +254,18 @@ describe("availableWhen degradation (existing balkanization pattern)", () => {
     const available = availableLensRegistry(ctx).map((d) => d.id);
     expect(available).toContain("wage_pressure");
     expect(available).toContain("dispossession_intensity");
+  });
+
+  it("price_divergence degrades honestly when absent from available_metrics (Program 23 / ADR078)", () => {
+    const ctx = { availableMetrics: ["heat", "population"] };
+    const available = availableLensRegistry(ctx).map((d) => d.id);
+    expect(available).not.toContain("price_divergence");
+  });
+
+  it("price_divergence is available once advertised in available_metrics", () => {
+    const ctx = { availableMetrics: ["price_divergence"] };
+    const available = availableLensRegistry(ctx).map((d) => d.id);
+    expect(available).toContain("price_divergence");
   });
 
   it("heat and habitability are always available (no backend gate)", () => {
@@ -411,5 +438,21 @@ describe("legend metadata", () => {
     expect(wagePressure.legend.stops).not.toEqual(heat.legend.stops);
     expect(dispossession.legend.stops).not.toEqual(exploitationRate.legend.stops);
     expect(dispossession.legend.stops).not.toEqual(habitability.legend.stops);
+  });
+
+  it("price_divergence carries a non-empty ramp stop list, distinct from every sibling ramp (Program 23 / ADR078)", () => {
+    const priceDivergence = LENS_REGISTRY.find((d) => d.id === "price_divergence");
+    const wagePressure = LENS_REGISTRY.find((d) => d.id === "wage_pressure");
+    const habitability = LENS_REGISTRY.find((d) => d.id === "habitability");
+    if (
+      priceDivergence?.legend.kind !== "ramp" ||
+      wagePressure?.legend.kind !== "ramp" ||
+      habitability?.legend.kind !== "ramp"
+    ) {
+      throw new Error("expected ramp legends");
+    }
+    expect(priceDivergence.legend.stops.length).toBeGreaterThan(1);
+    expect(priceDivergence.legend.stops).not.toEqual(wagePressure.legend.stops);
+    expect(priceDivergence.legend.stops).not.toEqual(habitability.legend.stops);
   });
 });

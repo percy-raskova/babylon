@@ -238,6 +238,9 @@ function hexPropsToMetrics(hexProps: HexMapFeatureProperties): LensTerritory["me
     // DispossessionEventSystem).
     wage_pressure: nullToUndefined(hexProps.wage_pressure),
     dispossession_intensity: nullToUndefined(hexProps.dispossession_intensity),
+    // Program 23 / ADR078: SIGNED — nullToUndefined only, never coerced
+    // toward 0 (metricFill applies the [-2, 2] -> [0, 1] normalization).
+    price_divergence: nullToUndefined(hexProps.price_divergence),
   };
 }
 

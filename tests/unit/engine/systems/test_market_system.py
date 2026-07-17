@@ -306,6 +306,15 @@ class TestCountyAxis:
     def test_absent_county_axes_write_no_metadata_key(self) -> None:
         assert "market_county" not in WorldState(tick=1).to_graph().graph
 
+    def test_price_divergence_is_a_declared_transient_field(self) -> None:
+        """The projected attr must ride TERRITORY_EXCLUDED_FIELDS or the very
+        next from_graph hits the extra='forbid' landmine (the wage_pressure
+        precedent). The full-graph round-trip property test enforces the
+        general rule; this pins the membership."""
+        from babylon.models.world_state import TERRITORY_EXCLUDED_FIELDS
+
+        assert "price_divergence" in TERRITORY_EXCLUDED_FIELDS
+
 
 class TestCorrection:
     """ADR078: the snap and its material-base consequences."""

@@ -111,6 +111,21 @@ MAP_METRIC_PROPERTIES: tuple[str, ...] = (
     # this tick (never a fabricated 0.0 standing in for "not computed").
     "wage_pressure",
     "dispossession_intensity",
+    # Program 23 / ADR078: price_divergence is a NATIVE per-territory graph
+    # attr written by MarketScissorsSystem @17.8 (_project_price_divergence)
+    # — same shape as habitability/wage_pressure/mass_receptivity, no
+    # TENANCY-projection aggregation needed, rides straight off
+    # _serialize_territory's own key. It is the territory's county-level
+    # log price-to-value ratio (price_log): 0 = prices at values, positive
+    # = price above value (the scissors open upward — a bubble), negative
+    # = price below value; hard-clamped to roughly [-2.0, 2.0]
+    # (max_abs_log). UNLIKE every other numeric lens above, it is SIGNED —
+    # never coerce an absent/None reading to 0.0 (Constitution III.11).
+    # Population-weighted MEAN at county zoom. Honest null: a territory
+    # without a county axis (no county_fips, or its county's wage/value
+    # substrate vanished this tick — de-positioned) carries no attr or an
+    # explicit None.
+    "price_divergence",
 )
 
 # Backend-W3R3 (Program 17 Wave 3): the MAP_METRIC_PROPERTIES subset

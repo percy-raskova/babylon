@@ -857,8 +857,8 @@ class PostgresRuntime:
                      antagonistic_edge_count, co_optive_edge_count,
                      org_count, player_org_count, uprising_count,
                      repression_count, conservation_check,
-                     price_log, fictitious_log)
-                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                     price_log, fictitious_log, market_corrections)
+                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
                 ON CONFLICT (session_id, tick) DO UPDATE SET
                     year = EXCLUDED.year, total_c = EXCLUDED.total_c,
                     total_v = EXCLUDED.total_v, total_s = EXCLUDED.total_s,
@@ -875,7 +875,8 @@ class PostgresRuntime:
                     repression_count = EXCLUDED.repression_count,
                     conservation_check = EXCLUDED.conservation_check,
                     price_log = EXCLUDED.price_log,
-                    fictitious_log = EXCLUDED.fictitious_log
+                    fictitious_log = EXCLUDED.fictitious_log,
+                    market_corrections = EXCLUDED.market_corrections
                 """,
                 (
                     session_id,
@@ -900,6 +901,8 @@ class PostgresRuntime:
                     # absent that tick — honest absence, never 0.0.
                     summary.get("price_log"),
                     summary.get("fictitious_log"),
+                    # ADR078: cumulative snap count, same NULL contract.
+                    summary.get("market_corrections"),
                 ),
             )
 
@@ -929,7 +932,7 @@ class PostgresRuntime:
                        antagonistic_edge_count, co_optive_edge_count,
                        org_count, player_org_count, uprising_count,
                        repression_count, conservation_check,
-                       price_log, fictitious_log
+                       price_log, fictitious_log, market_corrections
                 FROM tick_summary
                 WHERE session_id = %s
                 ORDER BY tick

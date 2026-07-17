@@ -22,6 +22,17 @@ interface HexTooltipProps {
   lens: Lens;
 }
 
+/**
+ * SIGNED formatting for `price_divergence` (Program 23 / ADR078) — 3
+ * decimals with an explicit "+" for non-negative readings (`toFixed` alone
+ * omits it), so a positive (bubble) vs. negative (undervaluation) reading
+ * is never ambiguous in the tooltip.
+ */
+function formatSignedPriceDivergence(value: number): string {
+  const sign = value >= 0 ? "+" : "";
+  return `${sign}${value.toFixed(3)}`;
+}
+
 /** Metric extraction, keyed by the same names used in priority lists below. */
 const TERRITORY_METRICS: Record<string, (t: TerritoryState) => string> = {
   heat: (t) => t.heat.toFixed(2),
@@ -45,6 +56,12 @@ const TERRITORY_METRICS: Record<string, (t: TerritoryState) => string> = {
   wage_pressure: (t) => (t.wage_pressure != null ? t.wage_pressure.toFixed(2) : "—"),
   dispossession_intensity: (t) =>
     t.dispossession_intensity != null ? t.dispossession_intensity.toFixed(2) : "—",
+  // Program 23 / ADR078 — em-dash for honest absence (no county axis this
+  // tick; Constitution III.11), never a fabricated 0. SIGNED, so unlike
+  // every metric above the sign is shown explicitly (toFixed alone omits
+  // the "+" for positive readings).
+  price_divergence: (t) =>
+    t.price_divergence != null ? formatSignedPriceDivergence(t.price_divergence) : "—",
 };
 
 const METRIC_LABELS: Record<string, string> = {
@@ -61,6 +78,7 @@ const METRIC_LABELS: Record<string, string> = {
   vision_state: "Vision",
   wage_pressure: "Wage Pressure",
   dispossession_intensity: "Dispossession",
+  price_divergence: "Price–Value Divergence",
 };
 
 const DEFAULT_PRIORITY = [
@@ -131,6 +149,17 @@ const LENS_METRIC_PRIORITY: Record<string, string[]> = {
     "heat",
     "rent_level",
     "biocapacity",
+  ],
+  // Program 23 / ADR078: leads with itself, no sibling lens (a single
+  // metric, unlike the Feature 021 pair), then falls back to the material
+  // base — same shape as metric:profit_rate.
+  "metric:price_divergence": [
+    "price_divergence",
+    "population",
+    "heat",
+    "rent_level",
+    "biocapacity",
+    "sector_type",
   ],
 };
 

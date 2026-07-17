@@ -134,3 +134,15 @@ class TestScissorsSeries:
         assert out["price_index"] == [None]
         assert out["fictitious_ratio"] == [None]
         assert out["value_produced"] == [None]
+        assert out["market_corrections"] == [None]
+
+    def test_correction_ledger_rides_the_payload(self) -> None:
+        """ADR078: cumulative snap counts; the cockpit marks increments."""
+        rows = [
+            {"tick": 0, "market_corrections": 0},
+            {"tick": 1, "market_corrections": 1},
+            {"tick": 2, "market_corrections": 1},
+        ]
+        bridge = EngineBridge(persistence=_StubPersistence(rows))
+        out = bridge.get_game_timeseries(uuid.uuid4())
+        assert out["market_corrections"] == [0, 1, 1]

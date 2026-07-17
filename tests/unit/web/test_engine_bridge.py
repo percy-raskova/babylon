@@ -890,6 +890,9 @@ class TestSerializeTerritoryGraphThreading:
         assert result["habitability"] is None
         assert result["dispossession_intensity"] is None
         assert result["wage_pressure"] is None
+        # Program 23 / ADR078: same graph-only-attr shape, honest None
+        # without a graph.
+        assert result["price_divergence"] is None
         assert result["consciousness"] is None
         assert result["solidarity"] is None
         assert result["dominant_community"] is None
@@ -910,6 +913,17 @@ class TestSerializeTerritoryGraphThreading:
         result = _serialize_territory(territory, graph=graph)
 
         assert result["habitability"] == pytest.approx(0.61)
+
+    def test_graph_supplies_negative_price_divergence_when_written(self) -> None:
+        """Program 23 / ADR078: SIGNED — a negative reading (price below
+        value) must survive, never coerced toward 0.0."""
+        territory = self._make_territory()
+        graph = BabylonGraph()
+        graph.add_node("T001", node_type="territory", price_divergence=-0.37)
+
+        result = _serialize_territory(territory, graph=graph)
+
+        assert result["price_divergence"] == pytest.approx(-0.37)
 
     def test_real_territory_fields_are_never_fabricated(self) -> None:
         """wealth/median_wage/max_biocapacity are real Territory fields."""
@@ -3064,6 +3078,30 @@ class TestBuildTickSummaryMarketAxis:
         summary = _build_tick_summary(state, organizations=[])
         assert summary["price_log"] == pytest.approx(0.25)
         assert summary["fictitious_log"] == pytest.approx(-0.1)
+        assert summary["market_corrections"] == 0  # ledger present with the axis
+
+    def test_correction_ledger_flows_into_summary(self) -> None:
+        from web.game.engine_bridge import _build_tick_summary
+
+        from babylon.models.market import MarketState
+        from babylon.models.world_state import WorldState
+
+        state = WorldState(
+            tick=12,
+            market=MarketState(
+                price_log=0.1,
+                price_velocity=0.0,
+                fictitious_log=0.2,
+                fictitious_velocity=0.0,
+                surplus_ema=1.0,
+                value_ema=4.0,
+                tick=12,
+                corrections=2,
+                last_correction_tick=11,
+            ),
+        )
+        summary = _build_tick_summary(state, organizations=[])
+        assert summary["market_corrections"] == 2
 
     def test_absent_axis_is_honest_null(self) -> None:
         from web.game.engine_bridge import _build_tick_summary
@@ -3073,3 +3111,4 @@ class TestBuildTickSummaryMarketAxis:
         summary = _build_tick_summary(WorldState(tick=1), organizations=[])
         assert summary["price_log"] is None
         assert summary["fictitious_log"] is None
+        assert summary["market_corrections"] is None

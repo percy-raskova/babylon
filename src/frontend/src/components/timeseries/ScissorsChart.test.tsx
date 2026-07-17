@@ -37,4 +37,25 @@ describe("ScissorsChart", () => {
       ).toBeInTheDocument(),
     );
   });
+
+  it("mounts the diegetic ticker with the MELT drift readout (ADR078)", async () => {
+    render(<ScissorsChart gameId={DEFAULT_GAME_ID} />);
+    await waitFor(() => expect(screen.getByTestId("market-ticker")).toBeInTheDocument());
+    // Default handler payload: fictitious 1.31 → euphoria, price 1.08 → +8% drift.
+    expect(screen.getByTestId("ticker-headline")).toHaveTextContent(/THIS TIME IS DIFFERENT/);
+    expect(screen.getByTestId("melt-drift")).toHaveTextContent(/\+8\.0%/);
+  });
+
+  it("survives a pre-Phase-2 payload without market_corrections", async () => {
+    server.use(
+      http.get("/api/games/:id/timeseries/", () =>
+        HttpResponse.json({
+          status: "ok",
+          data: makeTimeseriesPayload({ market_corrections: undefined }),
+        }),
+      ),
+    );
+    render(<ScissorsChart gameId={DEFAULT_GAME_ID} />);
+    await waitFor(() => expect(screen.getByTestId("scissors-chart")).toBeInTheDocument());
+  });
 });

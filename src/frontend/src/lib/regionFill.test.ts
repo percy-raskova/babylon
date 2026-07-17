@@ -234,6 +234,35 @@ describe("regionFillForLens", () => {
     });
   });
 
+  describe("price_divergence metric lens (Program 23 / ADR078 — SIGNED)", () => {
+    // Unlike DOMAIN above, price_divergence's real range straddles 0
+    // (roughly [-2.0, 2.0] — MarketDefines.max_abs_log), so its domain must
+    // too; regionFillForLens's generic domain-normalize (regionFill.ts's
+    // `normalize`) handles the sign with no special-casing — only the
+    // caller-supplied domain needs to match the metric's real range.
+    const SIGNED_DOMAIN = { min: -2, max: 2 };
+
+    it("samples its own ramp like any other metric lens", () => {
+      const properties: RegionFillProperties = { price_divergence: 0.4 };
+      const lens: Lens = { kind: "metric", metric: "price_divergence" };
+      const result = regionFillForLens(lens, properties, SIGNED_DOMAIN);
+      // (0.4 - -2) / 4 = 0.6
+      expect(result).toEqual(sampleRampStops(lensRampStops(lens)!, 0.6));
+    });
+
+    it("a negative reading normalizes to a DIFFERENT color than its positive counterpart", () => {
+      const lens: Lens = { kind: "metric", metric: "price_divergence" };
+      const negative = regionFillForLens(lens, { price_divergence: -1.0 }, SIGNED_DOMAIN);
+      const positive = regionFillForLens(lens, { price_divergence: 1.0 }, SIGNED_DOMAIN);
+      expect(negative).not.toEqual(positive);
+    });
+
+    it("is null-honest (never a fabricated zero fill) when missing", () => {
+      const lens: Lens = { kind: "metric", metric: "price_divergence" };
+      expect(regionFillForLens(lens, {}, SIGNED_DOMAIN)).toBeNull();
+    });
+  });
+
   it("a degenerate (zero-dynamic-range) domain is null-honest, not a fabricated floor color", () => {
     // A ramp encodes RELATIVE position within the visible domain. When every
     // region shares one value (span === 0 — e.g. the static-economy case where

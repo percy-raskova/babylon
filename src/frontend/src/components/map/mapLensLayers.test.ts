@@ -671,6 +671,62 @@ describe("buildLensLayers", () => {
     });
   });
 
+  describe("price_divergence metric lens (Program 23 / ADR078 — SIGNED)", () => {
+    const TERRITORIES_WITH_PRICE_DIVERGENCE: LensTerritory[] = TERRITORIES.map((t, i) => ({
+      ...t,
+      metrics: { price_divergence: -1.0 + i * 1.0 },
+    }));
+
+    it("fills by price_divergence, varying with the underlying value", () => {
+      const result = buildLensLayers({
+        territories: TERRITORIES_WITH_PRICE_DIVERGENCE,
+        balkanization: null,
+        lens: { kind: "metric", metric: "price_divergence" },
+      });
+      expect(result.getFillColor("T1")).not.toEqual(result.getFillColor("T3"));
+      expect(result.legendLabel.toLowerCase()).toContain("price");
+    });
+
+    it("a negative reading and a positive reading of equal magnitude resolve to DIFFERENT colors (never both clamp to the same floor)", () => {
+      const territories: LensTerritory[] = [
+        { ...TERRITORIES[0]!, metrics: { price_divergence: -1.0 } },
+        { ...TERRITORIES[1]!, metrics: { price_divergence: 1.0 } },
+      ];
+      const result = buildLensLayers({
+        territories,
+        balkanization: null,
+        lens: { kind: "metric", metric: "price_divergence" },
+      });
+      expect(result.getFillColor("T1")).not.toEqual(result.getFillColor("T2"));
+    });
+
+    it("0 (prices at values) renders near the ramp's near-black center, not its coolest floor", () => {
+      const territories: LensTerritory[] = [
+        { ...TERRITORIES[0]!, metrics: { price_divergence: 0 } },
+      ];
+      const result = buildLensLayers({
+        territories,
+        balkanization: null,
+        lens: { kind: "metric", metric: "price_divergence" },
+      });
+      // 0 normalizes to t=0.5, which with 6 (even) stops falls exactly
+      // BETWEEN DATA_RAMPS.price_divergence[2] (#0d1016, 13/16/22) and [3]
+      // (#3d2c14, 61/44/20) — their midpoint, not stop [2] itself (an odd
+      // stop count, like biocapacity's 5, would land a value exactly ON
+      // its center stop; this ramp's even count does not).
+      expect(result.getFillColor("T1")).toEqual([37, 30, 21, 220]);
+    });
+
+    it("renders NO_DATA for a territory missing price_divergence (never a fabricated 0)", () => {
+      const result = buildLensLayers({
+        territories: TERRITORIES, // no `metrics` bag at all
+        balkanization: null,
+        lens: { kind: "metric", metric: "price_divergence" },
+      });
+      expect(result.getFillColor("T1")).toEqual([58, 53, 48, 160]);
+    });
+  });
+
   describe("field_flow lens (Wave 3 §11 addition — the gradient-wind vector lens)", () => {
     it("fills every territory with the neutral/dim base tone (the wind rides ABOVE the base map)", () => {
       const result = buildLensLayers({

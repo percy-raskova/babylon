@@ -129,6 +129,15 @@ TERRITORY_EXCLUDED_FIELDS: Final[frozenset[str]] = frozenset(
         "mass_receptivity",
         "intel_confidence",
         "vision_state",
+        # Program 23 ADR078: MarketScissorsSystem (position 17.8) projects
+        # each territory's county price⟷value log-ratio onto its node
+        # (``_project_price_divergence``) — same "transient per-tick
+        # computed attr, not a Territory model field" shape as the
+        # receptivity trio above, so it hits the identical extra="forbid"
+        # landmine and is dropped here (the map-lens bridge re-injects it
+        # post-round-trip from ``WorldState.market_county``, which DOES
+        # survive — see ``_carry_price_divergence`` in web/game/engine_bridge.py).
+        "price_divergence",
     }
 )
 

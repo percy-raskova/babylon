@@ -289,6 +289,13 @@ Recognition semantics: `on_tick` re-evaluates ALL five axes every tick (no early
 once recognized — patterns can dissolve). Each axis evaluates to
 `(progress: float, matched: bool)` where `progress` = mean of that axis's clamped gate
 ratios and `matched ⟺ every gate ratio clamps to 1.0` (so `matched ⟺ progress == 1.0`).
+DISJUNCTIVE-AXIS EXCEPTION (adjudicated at Task 3 review): FASCIST_CONSOLIDATION has
+two pre-existing independent routes (false-consciousness fraction OR the three-gate
+political-violence route); its `progress` = `max(route_a_mean, route_b_mean)` and
+`matched ⟺ either route saturates` — max, not a pooled mean, is the honest "how close"
+reading for an OR-gated axis, and preserves the engine's pre-existing either-route
+recognition semantics. The load-bearing invariants (value ∈ [0,1], matched ⟺
+progress == 1.0) hold for all five axes.
 The recognized pattern is the FIRST matched axis in the existing spec-070 priority order
 (RED_OGV → FRAGMENTED_COLLAPSE → ECOLOGICAL_COLLAPSE → FASCIST_CONSOLIDATION →
 REVOLUTIONARY_VICTORY); `pattern_since_tick` is set when `recognized_pattern` changes
@@ -12659,6 +12666,11 @@ PR body MUST contain, in this order:
    - Quick-win 5 is honest-partial: 5 aggregate series + 16 territory keys wired;
      the remaining dead `tick_*` attrs stay declared-dark (write-site fallback
      constants — serializing them would be dishonest chrome per III.11).
+   - Fascist-axis progress reading: the FASCIST_CONSOLIDATION HUD bar reports
+     `max` of its two route-progresses (false-consciousness fraction vs political
+     violence), not a pooled mean — preserves pre-existing either-route recognition;
+     recognition boundaries across all axes are now inclusive (>= / <=) per the
+     plan's gate conventions. Confirm or re-rule the max-of-routes display.
 4. The standard Claude Code attribution footer.
 
 Wait for CI green; merge per delegated authority; verify the merge commit's CI.

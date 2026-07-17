@@ -47,6 +47,12 @@ ALLOWED_FILES = {
     # babylon.config to drive NarrativeDirector. game/narrator.py itself
     # stays import-pure; this is the flagged upgrade layer above it.
     "game/narrative_service.py",
+    # Spec-116 Task 6: pacing_probe drives the real step() loop headlessly,
+    # entirely in-memory (no EngineBridge, no Postgres) — it IS an engine
+    # driver in its own right (like engine_bridge.py), not a bridge
+    # consumer, so it needs GameDefines/SimulationConfig/EndgameDetector/
+    # step() directly to instrument+calibrate EndgameDetector pacing.
+    "game/management/commands/pacing_probe.py",
 }
 
 

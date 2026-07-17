@@ -12581,7 +12581,7 @@ holds).
 
 | Gate | Command / evidence |
 |---|---|
-| 1. Null-play horizon | `reports/pacing-calibration-2026-07-17.md` (Task 6) — first_recognition > 520 on `us`, ticks_completed 5200; PLUS Task 2's tick-0 exemption test (no tick-0 Sovereign Collapse) and Task 3/4's horizon-only-termination tests (no terminator paths remain) |
+| 1. Null-play horizon | `reports/pacing-calibration-2026-07-17.md` (Task 6) — first_recognition all-null on `us`-260 and on the FULL 5200-tick `wayne_county` run; the full `us` century run was KILLED AND DEFERRED by owner ruling 2026-07-17 (report §4 addendum — "a lot of work to be done before I put that kind of work into it"); PLUS Task 2's tick-0 exemption test (no tick-0 Sovereign Collapse) and Task 3/4's horizon-only-termination tests (no terminator paths remain) |
 | 2. No consecutive identical cards | dedup vitest + e2e step 5 |
 | 3. Autopause ≤ 1 per distinct event | autopause-once vitest + e2e step 5 |
 | 4. Distinct epilogues | epilogue unit tests (6 outcomes, 6 distinct headline+body) |

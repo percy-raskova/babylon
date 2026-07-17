@@ -132,6 +132,16 @@ see §1 for the cost model that motivated it.
   appended to this report as an addendum; if not, the recorded PID/estimate stand as the
   documented follow-up.
 
+**ADDENDUM — OWNER RULING (2026-07-17, ~17:45 EDT): run KILLED and DEFERRED.** The owner
+stopped the full `us` 5200-tick run deliberately: "I don't want to complete a century run
+yet — there's a lot of work to be done before I put that kind of work into it." The
+evidence base for this ceremony therefore rests, by ruling, on the full 5200-tick
+`wayne_county` run + the 260-tick `us` sample + the §6 structural argument. The full `us`
+century run is deferred to a later validation pass (natural slot: after the engine
+per-tick cost follow-up, or as part of the program's final validation once the remaining
+tracks land). Spec-116 gate 1's literal "on `us`" full-horizon clause inherits this
+deferral and is owner-waived for the spine PR.
+
 ## 5. Event histogram (non-degeneracy check)
 
 `us`, 260 ticks (old threshold; unaffected by the defines edit — event counts are

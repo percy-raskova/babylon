@@ -200,6 +200,113 @@ def _euphoric_graph(fictitious_log: float = 1.5) -> BabylonGraph:
     return graph
 
 
+def _county_worker(
+    graph: BabylonGraph, node_id: str, fips: str, w_paid: float, v_produced: float
+) -> None:
+    graph.add_node(
+        node_id,
+        wealth=1.0,
+        active=True,
+        w_paid=w_paid,
+        v_produced=v_produced,
+        county_fips=fips,
+        _node_type="social_class",
+    )
+
+
+class TestCountyAxis:
+    """ADR078: per-county scissors — the axis under the map lens."""
+
+    @staticmethod
+    def _county_graph() -> BabylonGraph:
+        graph = BabylonGraph()
+        _county_worker(graph, "detroit_labor", "26163", w_paid=0.8, v_produced=1.0)
+        _county_worker(graph, "la_labor", "06037", w_paid=0.5, v_produced=1.0)
+        _paid_worker(graph, "placeless", w_paid=0.9, v_produced=1.0)  # national only
+        graph.add_node(
+            "t_wayne", active=True, county_fips="26163", median_wage=900.0, _node_type="territory"
+        )
+        graph.add_node("t_orphan", active=True, _node_type="territory")
+        return graph
+
+    def test_county_axes_seed_alongside_the_national(self) -> None:
+        graph = self._county_graph()
+        _step(graph, ServiceContainer.create(), tick=1)
+        county = graph.graph["market_county"]
+        assert set(county) == {"06037", "26163"}
+        assert county["26163"]["value_ema"] == pytest.approx(1.0)
+        assert county["26163"]["surplus_ema"] == pytest.approx(0.2)
+        # The national axis integrates ALL paid workers, placeless included.
+        assert graph.graph["market"]["value_ema"] == pytest.approx(3.0)
+
+    def test_no_county_data_writes_no_county_key(self) -> None:
+        graph = BabylonGraph()
+        _paid_worker(graph, "w1", w_paid=0.8, v_produced=1.0)
+        _step(graph, ServiceContainer.create(), tick=1)
+        assert "market_county" not in graph.graph
+
+    def test_territory_projection_carries_the_county_reading(self) -> None:
+        graph = self._county_graph()
+        services = ServiceContainer.create()
+        _step(graph, services, tick=1)
+        graph.update_node("detroit_labor", v_produced=1.1, w_paid=0.88)
+        _step(graph, services, tick=2)
+        wayne = graph.get_node("t_wayne")
+        assert wayne is not None
+        assert wayne.attributes["price_divergence"] == pytest.approx(
+            graph.graph["market_county"]["26163"]["price_log"]
+        )
+        orphan = graph.get_node("t_orphan")
+        assert orphan is not None
+        assert "price_divergence" not in orphan.attributes  # honest absence
+
+    def test_vanished_county_substrate_drops_its_axis(self) -> None:
+        graph = self._county_graph()
+        services = ServiceContainer.create()
+        _step(graph, services, tick=1)
+        graph.update_node("detroit_labor", active=False)
+        _step(graph, services, tick=2)
+        county = graph.graph["market_county"]
+        assert "26163" not in county
+        wayne = graph.get_node("t_wayne")
+        assert wayne is not None
+        assert wayne.attributes["price_divergence"] is None  # de-positioned: honest null
+
+    def test_county_axis_is_deterministic_under_permuted_insertion(self) -> None:
+        def run(reverse: bool) -> dict[str, dict[str, float]]:
+            graph = BabylonGraph()
+            entries = [
+                ("a", "26163", 0.8, 1.0),
+                ("b", "06037", 0.5, 1.0),
+                ("c", "36061", 0.7, 1.0),
+            ]
+            for node_id, fips, w, v in reversed(entries) if reverse else entries:
+                _county_worker(graph, node_id, fips, w_paid=w, v_produced=v)
+            services = ServiceContainer.create()
+            for tick in range(1, 6):  # fixed bound
+                _step(graph, services, tick)
+            return dict(graph.graph["market_county"])
+
+        assert run(reverse=False) == run(reverse=True)
+
+    def test_county_axes_round_trip_on_world_state(self) -> None:
+        axis = MarketState(
+            price_log=0.05,
+            price_velocity=0.0,
+            fictitious_log=0.1,
+            fictitious_velocity=0.0,
+            surplus_ema=0.2,
+            value_ema=1.0,
+            tick=3,
+        )
+        state = WorldState(tick=1, market_county={"26163": axis})
+        rebuilt = WorldState.from_graph(state.to_graph(), tick=1)
+        assert rebuilt.market_county == {"26163": axis}
+
+    def test_absent_county_axes_write_no_metadata_key(self) -> None:
+        assert "market_county" not in WorldState(tick=1).to_graph().graph
+
+
 class TestCorrection:
     """ADR078: the snap and its material-base consequences."""
 

@@ -58,6 +58,17 @@ MARKET_ATTR = "market"
 #: bourgeoisies, 1 = petty bourgeoisie. Brackets 2/3 hold labor, not claims.
 _CLAIM_HOLDER_BRACKETS = (0, 1)
 
+#: Graph-metadata key carrying the per-county axes (ADR078):
+#: ``{county_fips: MarketState dump}`` — matches ``WorldState.market_county``.
+#: Observe-only exposure: county oscillators integrate their county's own
+#: flow; the correction (one national credit system) does NOT snap them.
+MARKET_COUNTY_ATTR = "market_county"
+
+#: Territory node attr projecting its county's ``price_log`` (the map lens
+#: reading). De-positioned territories get an honest ``None``, never a stale
+#: value — the sigma-channel pattern (Constitution III.11).
+PRICE_DIVERGENCE_ATTR = "price_divergence"
+
 
 def _aggregate_wage_value(graph: GraphProtocol) -> tuple[float, float] | None:
     """``(Σ w_paid, Σ v_produced)`` over active paid-worker nodes, or ``None``.
@@ -80,6 +91,33 @@ def _aggregate_wage_value(graph: GraphProtocol) -> tuple[float, float] | None:
         value += float(attrs["v_produced"])
         found = True
     return (wages, value) if found else None
+
+
+def _aggregate_wage_value_by_county(graph: GraphProtocol) -> dict[str, tuple[float, float]]:
+    """Per-county ``(Σ w_paid, Σ v_produced)`` over active paid-worker nodes.
+
+    Same selection rule as :func:`_aggregate_wage_value`, additionally
+    requiring a ``county_fips`` — placeless nodes feed the national axis
+    only. Sorted-id iteration fixes the per-county float summation order
+    (III.7). Empty dict when no node carries a county — the qa scenarios'
+    synthetic single-county graphs stay axis-free (honest absence).
+    """
+    flows: dict[str, tuple[float, float]] = {}
+    for node in sorted(graph.query_nodes(), key=lambda n: n.id):
+        attrs = node.attributes
+        if not attrs.get("active", True):
+            continue
+        if "w_paid" not in attrs or "v_produced" not in attrs:
+            continue
+        fips = attrs.get("county_fips")
+        if fips is None:
+            continue
+        wages, value = flows.get(str(fips), (0.0, 0.0))
+        flows[str(fips)] = (
+            wages + float(attrs["w_paid"]),
+            value + float(attrs["v_produced"]),
+        )
+    return flows
 
 
 class MarketScissorsSystem(SystemBase):
@@ -122,6 +160,72 @@ class MarketScissorsSystem(SystemBase):
         if defines.feedback_enabled:
             state = self._maybe_correct(graph, services, state, defines, int(tick))
         metadata[MARKET_ATTR] = state.model_dump()
+        self._step_county_axes(graph, metadata, defines, int(tick))
+
+    def _step_county_axes(
+        self,
+        graph: GraphProtocol,
+        metadata: dict[str, object],
+        defines: MarketDefines,
+        tick: int,
+    ) -> None:
+        """Seed/advance the per-county axes and project the map reading.
+
+        Counties whose substrate vanished are DROPPED (no flow, no phenomenal
+        form — III.11), and their territories' ``price_divergence`` goes to an
+        honest ``None`` via :meth:`_project_price_divergence`. The correction
+        never snaps county oscillators — credit is one national system; a
+        county's exposure is its own flow history.
+        """
+        flows = _aggregate_wage_value_by_county(graph)
+        prior_raw = metadata.get(MARKET_COUNTY_ATTR)
+        priors = prior_raw if isinstance(prior_raw, dict) else {}
+        county_states: dict[str, dict[str, object]] = {}
+        for fips in sorted(flows):  # bounded by counties present this tick
+            wages, value = flows[fips]
+            surplus = max(value - wages, 0.0)
+            prior = priors.get(fips)
+            if isinstance(prior, dict):
+                state = self._advance(MarketState(**prior), surplus, value, defines, tick)
+            else:
+                state = MarketState(
+                    price_log=0.0,
+                    price_velocity=0.0,
+                    fictitious_log=0.0,
+                    fictitious_velocity=0.0,
+                    surplus_ema=surplus,
+                    value_ema=value,
+                    tick=tick,
+                )
+            county_states[fips] = state.model_dump()
+        if county_states:
+            metadata[MARKET_COUNTY_ATTR] = county_states
+        else:
+            metadata.pop(MARKET_COUNTY_ATTR, None)
+        if county_states or priors:
+            self._project_price_divergence(graph, county_states)
+
+    @staticmethod
+    def _project_price_divergence(
+        graph: GraphProtocol, county_states: dict[str, dict[str, object]]
+    ) -> None:
+        """Write each territory's county ``price_log`` (the map-lens reading).
+
+        Active territories whose county carries an axis get the value; a
+        territory that HELD the attr but lost its axis gets ``None`` (the
+        sigma de-positioning rule) — never a stale reading, never a
+        fabricated 0.0 for a county with no axis at all.
+        """
+        for node in sorted(graph.query_nodes(node_type="territory"), key=lambda n: n.id):
+            attrs = node.attributes
+            if not attrs.get("active", True):
+                continue
+            fips = attrs.get("county_fips")
+            axis = county_states.get(str(fips)) if fips is not None else None
+            if axis is not None:
+                graph.update_node(node.id, **{PRICE_DIVERGENCE_ATTR: float(axis["price_log"])})  # type: ignore[arg-type]
+            elif PRICE_DIVERGENCE_ATTR in attrs:
+                graph.update_node(node.id, **{PRICE_DIVERGENCE_ATTR: None})
 
     @staticmethod
     def _advance(

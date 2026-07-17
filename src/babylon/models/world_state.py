@@ -483,6 +483,16 @@ class WorldState(BaseModel):
         ),
     )
 
+    market_county: dict[str, MarketState] | None = Field(
+        default=None,
+        description=(
+            "Per-county scissors axes keyed by county_fips (ADR078; "
+            "MarketScissorsSystem advances them from each county's own "
+            "wage/value flow — the price_divergence map lens reads these). "
+            "Same absent-axis byte-safety contract as market."
+        ),
+    )
+
     opposition_states: dict[str, Any] = Field(
         default_factory=dict,
         description=(
@@ -811,6 +821,10 @@ class WorldState(BaseModel):
             G.graph["wealth_distribution"] = self.wealth_distribution.model_dump()
         if self.market is not None:
             G.graph["market"] = self.market.model_dump()
+        if self.market_county is not None:
+            G.graph["market_county"] = {
+                fips: axis.model_dump() for fips, axis in self.market_county.items()
+            }
 
     @classmethod
     def from_graph(
@@ -982,6 +996,11 @@ class WorldState(BaseModel):
             market=(
                 MarketState(**G.graph["market"])
                 if isinstance(G.graph.get("market"), dict)
+                else None
+            ),
+            market_county=(
+                {str(fips): MarketState(**axis) for fips, axis in G.graph["market_county"].items()}
+                if isinstance(G.graph.get("market_county"), dict)
                 else None
             ),
         )

@@ -19,7 +19,7 @@ React+TS+zustand cockpit (`src/frontend/`) / pytest + vitest + Playwright / mise
 ## Global Constraints
 
 - **Owner ruling (2026-07-17):** campaign = fixed horizon of 100 in-game years
-  (5200 ticks at `tunables.weeks_per_year: 52`); the five `GameOutcome` values are
+  (5200 ticks at `timescale.weeks_per_year: 52`); the five `GameOutcome` values are
   recognized patterns, never terminators; nothing ends a session early except the
   player's explicit accept-outcome.
 - Branch `feature/116-playability-spine`; conventional commits; commit after each task
@@ -94,7 +94,7 @@ def test_balkanization_is_composed_into_game_defines() -> None:
 @pytest.mark.unit
 def test_horizon_ticks_derivation() -> None:
     defines = GameDefines.load_default()
-    horizon = defines.endgame.campaign_horizon_years * defines.tunables.weeks_per_year
+    horizon = defines.endgame.campaign_horizon_years * defines.timescale.weeks_per_year
     assert horizon == 5200
 ```
 
@@ -116,7 +116,7 @@ In `src/babylon/config/defines/endgame.py`, inside `EndgameDefines` after
         le=1000,
         description=(
             "Game design: fixed campaign horizon in in-game years. The game ends "
-            "only when tick >= horizon_years * tunables.weeks_per_year (owner "
+            "only when tick >= horizon_years * timescale.weeks_per_year (owner "
             "ruling 2026-07-17: outcomes are recognized patterns, never terminators)."
         ),
     )
@@ -521,7 +521,7 @@ Replace the Task-3 interim block in `engine_bridge.py` with:
             )
         horizon_tick = (
             game_defines.endgame.campaign_horizon_years
-            * game_defines.tunables.weeks_per_year
+            * game_defines.timescale.weeks_per_year
         )
         game_over = new_state.tick >= horizon_tick
         if game_over:

@@ -19,7 +19,7 @@ This is connection-and-framing work — no new dynamical systems.
 > "The endgame: it's **100 years of in-game time**, not a specific condition. The game
 > ends when it ends; the scenario it's in is up to player actions and the economy."
 
-At 1 tick = 1 week (defines `tunables.weeks_per_year: 52`), the campaign horizon is
+At 1 tick = 1 week (defines `timescale.weeks_per_year: 52`), the campaign horizon is
 **5200 ticks**. The five outcomes (REVOLUTIONARY_VICTORY, ECOLOGICAL_COLLAPSE,
 FASCIST_CONSOLIDATION, RED_OGV, FRAGMENTED_COLLAPSE) become **recognized patterns** the
 world is in along the way — never terminators. This executes the 2026-07-14

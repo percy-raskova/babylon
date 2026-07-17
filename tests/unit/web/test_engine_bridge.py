@@ -19,9 +19,11 @@ from babylon.models.enums import EventType
 from babylon.models.events import SimulationEvent
 from babylon.topology.graph import BabylonGraph
 from game.engine_bridge import (
+    _EVENT_SEVERITY,
     _MAP_HISTORY_WINDOW_CAP,
     EngineBridge,
     _build_initial_state_for_scenario,
+    _classify_event,
     _heat_delta_by_territory,
     _hex_feature_properties,
     _hex_state_row,
@@ -596,6 +598,21 @@ class TestEndgameDetection:
         events = result.get("events", [])
         assert len(events) >= 1
         assert any(e.get("type") == "REVOLUTIONARY_VICTORY" for e in events)
+
+
+@pytest.mark.unit
+class TestPatternShiftSeverity:
+    """Spec-116 Task 4: pattern_shift is a real EventType, classified warning."""
+
+    def test_pattern_shift_is_a_string_literal_key(self) -> None:
+        """``_EVENT_SEVERITY`` is ``dict[str, str]`` — every key (including
+        this one) must be a plain string literal, never an EventType member,
+        matching every existing entry in the map."""
+        assert "pattern_shift" in _EVENT_SEVERITY
+        assert all(isinstance(key, str) for key in _EVENT_SEVERITY)
+
+    def test_pattern_shift_classified_as_warning(self) -> None:
+        assert _classify_event("pattern_shift") == "warning"
 
 
 # ---------------------------------------------------------------------- #

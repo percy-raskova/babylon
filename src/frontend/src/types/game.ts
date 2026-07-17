@@ -53,6 +53,8 @@ export interface GameSnapshot {
   events: GameEvent[];
   traps?: TrapDetectionResult;
   derived: DerivedBlock;
+  /** Spec-116 Task 4: only present on the `resolve_tick` (POST /resolve/) response. */
+  endgame_progress?: EndgameProgress;
 }
 
 /**
@@ -102,6 +104,27 @@ export interface TrapStatus {
   score: number;
   indicators: string[];
   ticks_at_moderate: number;
+}
+
+/**
+ * Per-tick endgame "how close" HUD signal (spec-116 Playability Spine, Task
+ * 4). Owner ruling 2026-07-17: the 5 endgame patterns are recognized, never
+ * adjudicated — the campaign runs a fixed century horizon
+ * (`endgame.campaign_horizon_years * timescale.weeks_per_year`) and
+ * recognizing a pattern does not end the game. `axes` carries exactly the 5
+ * `GameOutcome` keys (`revolutionary_victory`, `ecological_collapse`,
+ * `fascist_consolidation`, `red_ogv`, `fragmented_collapse`), each a
+ * progress ratio in `[0, 1]`. `pattern`/`since_tick` are null when no
+ * pattern is currently recognized. `locked` is true once the currently
+ * recognized pattern has held for `endgame.pattern_lock_ticks` consecutive
+ * ticks (`(tick - since_tick + 1) >= pattern_lock_ticks`).
+ */
+export interface EndgameProgress {
+  axes: Record<string, number>;
+  pattern: string | null;
+  since_tick: number | null;
+  horizon_tick: number;
+  locked: boolean;
 }
 
 /** Territory with full visualization fields (Spec 052 §8). */

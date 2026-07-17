@@ -331,8 +331,8 @@ class TestEventType:
             EventType("random_event")
 
     def test_event_type_count(self) -> None:
-        """83 event types (82 prior + MARKET_CORRECTION, Program 23 Phase 2 ADR078)."""
-        assert len(EventType) == 83
+        """84 event types (83 prior + PATTERN_SHIFT, spec-116 Playability Spine Task 4)."""
+        assert len(EventType) == 84
 
     def test_doctrine_event_types_exist(self) -> None:
         """ADR073 Unit 6a: DoctrineSystem's per-org trap/congress outcome events.

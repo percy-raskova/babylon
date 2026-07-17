@@ -40,6 +40,7 @@ from babylon.models.events._legacy import (
     EndgameEvent,
     ExtractionEvent,
     MassAwakeningEvent,
+    PatternShiftEvent,
     PhaseTransitionEvent,
     PhiHourOutlierEvent,
     QcewCarryForwardEvent,
@@ -86,7 +87,7 @@ __all__ = [
     "StruggleEvent",
     "ContradictionEvent",
     "TopologyEvent",
-    # 22 leaf variants
+    # 23 leaf variants
     "ExtractionEvent",
     "SubsidyEvent",
     "CrisisEvent",
@@ -103,6 +104,7 @@ __all__ = [
     "PhaseTransitionEvent",
     "BifurcationTendencyEvent",
     "EndgameEvent",
+    "PatternShiftEvent",
     "AxiomViolationEvent",
     "QcewCarryForwardEvent",
     "PhiHourOutlierEvent",

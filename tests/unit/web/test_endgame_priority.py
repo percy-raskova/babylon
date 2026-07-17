@@ -1,20 +1,29 @@
-"""Spec-095: bridge endgame-outcome coverage tests.
+"""Spec-095 / Spec-116 Task 4: bridge endgame-outcome coverage tests.
 
 **Bridge detector wiring (Program 17 / Item 1c)**: ``resolve_tick`` must run
 a REAL, per-session-cached ``EndgameDetector`` and surface whichever of the
-5 ``GameOutcome`` values it fires in ``snapshot['endgame']``. The old
-version of this concern's tests mocked ``event.event_type = "RED_OGV"``
-directly on a fake event — a shape no real ``EndgameEvent`` ever has
-(``event_type`` is ALWAYS ``EventType.ENDGAME_REACHED``; the outcome lives
-in a separate typed ``outcome`` field). These tests now drive a
-monkeypatched ``EndgameDetector`` subclass (forcing one ``_axis_*``
-evaluator to report ``(1.0, True)``, the rest ``(0.0, False)``) through
-``resolve_tick`` and assert on the detector-driven snapshot block.
+5 ``GameOutcome`` values it recognizes. The old version of this concern's
+tests mocked ``event.event_type = "RED_OGV"`` directly on a fake event — a
+shape no real ``EndgameEvent`` ever has (``event_type`` is ALWAYS
+``EventType.ENDGAME_REACHED``; the outcome lives in a separate typed
+``outcome`` field). These tests drive a monkeypatched ``EndgameDetector``
+subclass (forcing one ``_axis_*`` evaluator to report ``(1.0, True)``, the
+rest ``(0.0, False)``) through ``resolve_tick`` and assert on the
+detector-driven snapshot block.
 
 Spec-116 FR-116-1: the detector's per-axis predicates were renamed from
 ``_check_<axis>(state) -> bool`` to ``_axis_<axis>(state, graph) ->
 tuple[float, bool]`` (progress, matched) as part of the adjudicator ->
 recognizer rework; this fixture's forced-outcome technique follows suit.
+
+Spec-116 Task 4 (owner ruling 2026-07-17): recognizing a pattern no longer
+ends the game — it only populates ``snapshot['endgame_progress']['pattern']``
+(the live HUD signal). ``snapshot['endgame']`` appears only once the fixed
+century horizon is reached (``tick >= horizon_tick``), with ``outcome`` =
+the recognized pattern at that tick (or ``"unresolved"`` if none). The
+below-horizon tests in :class:`TestBridgeEndgameCoverage` assert on
+``endgame_progress``; :class:`TestHorizonReachedWithRecognizedPattern`
+closes the loop by forcing the SAME axis at a tick at/past the horizon.
 """
 
 from __future__ import annotations
@@ -117,17 +126,22 @@ def _forced_outcome_detector_class(forced: str) -> type[EndgameDetector]:
 
 
 class TestBridgeEndgameCoverage:
-    """FR-095-02: resolve_tick must recognize all 5 GameOutcome event types.
+    """FR-095-02: resolve_tick must recognize all 5 GameOutcome patterns.
 
     Program 17 / Item 1c: resolve_tick now runs a REAL EndgameDetector — these
     tests monkeypatch ``game.engine_bridge.EndgameDetector`` with a subclass
     that forces exactly one outcome (see
     :func:`_forced_outcome_detector_class`) and assert on the resulting
-    detector-driven ``snapshot['endgame']`` block.
+    detector-driven ``snapshot['endgame_progress']`` block.
+
+    Spec-116 Task 4: recognizing a pattern below the horizon (tick=1, the
+    default fixture tick) never populates ``snapshot['endgame']`` — see
+    :class:`TestHorizonReachedWithRecognizedPattern` for the horizon-reached
+    case using the same forced-detector technique.
     """
 
     def test_resolve_tick_surfaces_red_ogv_endgame(self, monkeypatch: pytest.MonkeyPatch) -> None:
-        """RED_OGV endgame must populate snapshot['endgame']."""
+        """RED_OGV must populate snapshot['endgame_progress']['pattern']."""
         monkeypatch.setattr(
             "game.engine_bridge.EndgameDetector", _forced_outcome_detector_class("red_ogv")
         )
@@ -137,13 +151,13 @@ class TestBridgeEndgameCoverage:
             bridge = EngineBridge(mock_persistence)
             result = bridge.resolve_tick(_SESSION)
 
-        assert "endgame" in result, "RED_OGV endgame must surface in snapshot"
-        assert result["endgame"]["outcome"] == GameOutcome.RED_OGV.value
+        assert "endgame" not in result, "recognition alone must not end the game (spec-116)"
+        assert result["endgame_progress"]["pattern"] == GameOutcome.RED_OGV.value
 
     def test_resolve_tick_surfaces_fragmented_collapse_endgame(
         self, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        """FRAGMENTED_COLLAPSE endgame must populate snapshot['endgame']."""
+        """FRAGMENTED_COLLAPSE must populate endgame_progress['pattern']."""
         monkeypatch.setattr(
             "game.engine_bridge.EndgameDetector",
             _forced_outcome_detector_class("fragmented_collapse"),
@@ -154,8 +168,8 @@ class TestBridgeEndgameCoverage:
             bridge = EngineBridge(mock_persistence)
             result = bridge.resolve_tick(_SESSION)
 
-        assert "endgame" in result
-        assert result["endgame"]["outcome"] == GameOutcome.FRAGMENTED_COLLAPSE.value
+        assert "endgame" not in result
+        assert result["endgame_progress"]["pattern"] == GameOutcome.FRAGMENTED_COLLAPSE.value
 
     def test_resolve_tick_surfaces_revolutionary_victory_endgame(
         self, monkeypatch: pytest.MonkeyPatch
@@ -172,5 +186,31 @@ class TestBridgeEndgameCoverage:
             bridge = EngineBridge(mock_persistence)
             result = bridge.resolve_tick(_SESSION)
 
-        assert "endgame" in result
-        assert result["endgame"]["outcome"] == GameOutcome.REVOLUTIONARY_VICTORY.value
+        assert "endgame" not in result
+        assert result["endgame_progress"]["pattern"] == GameOutcome.REVOLUTIONARY_VICTORY.value
+
+
+class TestHorizonReachedWithRecognizedPattern:
+    """Spec-116 Task 4: at/past the horizon tick, snapshot['endgame'] carries
+    whichever pattern the detector recognizes (falling back to
+    GameOutcome.UNRESOLVED when none does — covered in
+    tests/unit/web/test_endgame_wiring.py)."""
+
+    def test_horizon_reached_surfaces_ecological_collapse_outcome(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.setattr(
+            "game.engine_bridge.EndgameDetector",
+            _forced_outcome_detector_class("ecological_collapse"),
+        )
+        mock_persistence = _make_mock_persistence()
+        # Default GameDefines: campaign_horizon_years=100 * weeks_per_year=52
+        # => horizon_tick=5200.
+        mock_new_state = _make_mock_new_state(tick=5200)
+        with patch("game.engine_bridge.step", return_value=mock_new_state):
+            bridge = EngineBridge(mock_persistence)
+            result = bridge.resolve_tick(_SESSION)
+
+        assert result["endgame"]["outcome"] == GameOutcome.ECOLOGICAL_COLLAPSE.value
+        assert result["endgame"]["tick"] == 5200
+        assert result["endgame_progress"]["pattern"] == GameOutcome.ECOLOGICAL_COLLAPSE.value

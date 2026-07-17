@@ -76,6 +76,11 @@ class TestSeveritySchema:
             # "informational".
             "fascist_recruitment",
             "organizational_fracture",
+            # Spec-116 Task 4: a recognized-pattern change (including
+            # dissolving to None) is a threshold-cross signal on the
+            # endgame axes — it never ends the game (that's
+            # endgame_reached, critical, above).
+            "pattern_shift",
         ):
             assert _classify_event(event_type) == "warning", event_type
 

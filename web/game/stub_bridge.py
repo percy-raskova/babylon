@@ -822,6 +822,26 @@ class StubEngineBridge:
             },
             "events": _make_events(tick),
             "traps": _make_traps(),
+            # Spec-116 Task 4: payload parity with the real bridge's
+            # resolve_tick endgame_progress block. The stub carries no
+            # EndgameDetector, so this is a static-but-shape-true stand-in —
+            # all axes 0.0, no pattern recognized, never locked — not a
+            # fabricated progress signal (Constitution III.11). horizon_tick
+            # mirrors the real GameDefines defaults (100 years * 52
+            # weeks/year — endgame.campaign_horizon_years * timescale.weeks_per_year).
+            "endgame_progress": {
+                "axes": {
+                    "revolutionary_victory": 0.0,
+                    "ecological_collapse": 0.0,
+                    "fascist_consolidation": 0.0,
+                    "red_ogv": 0.0,
+                    "fragmented_collapse": 0.0,
+                },
+                "pattern": None,
+                "since_tick": None,
+                "horizon_tick": 5200,
+                "locked": False,
+            },
         }
 
     def get_map_snapshot(

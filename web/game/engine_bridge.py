@@ -41,7 +41,7 @@ from babylon.formulas.constants import HOURS_PER_YEAR, WEEKS_PER_YEAR
 from babylon.formulas.unequal_exchange import calculate_unequal_exchange_rate
 from babylon.models.config import SimulationConfig
 from babylon.models.enums import ActionType, EventType, GameOutcome, SocialRole
-from babylon.models.events import EndgameEvent
+from babylon.models.events import EndgameEvent, PatternShiftEvent
 from babylon.models.vanguard_resources import VanguardResources, check_can_afford
 from babylon.models.world_state import WorldState
 from babylon.ooda.npc_stub import select_npc_actions
@@ -3860,10 +3860,15 @@ class EngineBridge:
     def get_journal_objectives(self, session_id: UUID) -> dict[str, Any]:
         """Return Vic3-style objectives derived from the current game state.
 
-        Spec 095 FR-095-03. Each objective maps to one of the 5 endgame
-        conditions, with a progress bar (0–1) and status
-        (active/complete/failed). Progress is derived from material state
-        (class consciousness, contradiction gap, regime) — never invented.
+        Spec 095 FR-095-03 + Spec-116 Task 4: each objective maps 1:1 to one
+        of the 5 EndgameDetector axes. Progress is the persisted
+        ``endgame_progress["axes"]`` block (Task 4's per-tick snapshot,
+        stashed as a graph-level attribute by ``resolve_tick`` — see its
+        docstring) read straight off the latest hydrated graph, never the
+        in-process ``_session_endgame_detectors`` cache — so this survives a
+        worker restart. The old proxy math (``consciousness_avg``/
+        ``heat_avg``/``principal_gap`` standing in for real axis progress)
+        is gone.
 
         Args:
             session_id: The game session UUID.
@@ -3875,31 +3880,26 @@ class EngineBridge:
         graph = self._persistence.hydrate_graph(tick=None, session_id=session_id)
         graph_attrs: dict[str, Any] = getattr(graph, "graph", {}) or {}
         tick = int(graph_attrs.get("tick", 0))
-        regime = str(graph_attrs.get("dialectical_regime", "reproduction") or "reproduction")
-
-        consciousness_avg = _compute_avg_node_attr(graph, "class_consciousness", 0.0)
-        heat_avg = _compute_avg_node_attr(graph, "heat", 0.0)
-
-        frames_raw = graph_attrs.get("contradiction_frames", {}) or {}
-        global_frame = frames_raw.get("global", {}) if isinstance(frames_raw, dict) else {}
-        principal_aspect = (
-            global_frame.get("principal", {}) if isinstance(global_frame, dict) else {}
-        )
-        principal_gap = (
-            float(principal_aspect.get("intensity", 0.0))
-            if isinstance(principal_aspect, dict)
-            else 0.0
-        )
 
         row = _fetch_endgame_event_row(getattr(self._persistence, "_pool", None), session_id)
         outcome = _outcome_from_endgame_row(row)
+
+        progress_block = graph_attrs.get("endgame_progress")
+        axes: dict[str, Any] = (
+            progress_block.get("axes", {}) if isinstance(progress_block, dict) else {}
+        )
+
+        def _axis_progress(axis_key: str) -> float:
+            """Honest 0.0 when no endgame_progress snapshot exists yet."""
+            value = axes.get(axis_key, 0.0)
+            return float(value) if isinstance(value, (int, float)) else 0.0
 
         objectives: list[dict[str, Any]] = [
             {
                 "id": "revolution",
                 "title": "Revolutionary Victory",
                 "description": "Build mass class consciousness and solidarity edges to overthrow the empire.",
-                "progress": min(1.0, consciousness_avg),
+                "progress": _axis_progress("revolutionary_victory"),
                 "status": _objective_status("revolution", outcome),
                 "category": "revolution",
             },
@@ -3907,7 +3907,7 @@ class EngineBridge:
                 "id": "ecological_collapse",
                 "title": "Ecological Collapse",
                 "description": "Biocapacity depletion forces a terminal retreat from extraction.",
-                "progress": min(1.0, heat_avg),
+                "progress": _axis_progress("ecological_collapse"),
                 "status": _objective_status("collapse", outcome),
                 "category": "collapse",
             },
@@ -3915,7 +3915,7 @@ class EngineBridge:
                 "id": "fascist_consolidation",
                 "title": "Fascist Consolidation",
                 "description": "False-consciousness bloc achieves a sovereign grip on the state.",
-                "progress": min(1.0, principal_gap),
+                "progress": _axis_progress("fascist_consolidation"),
                 "status": _objective_status("fascist", outcome),
                 "category": "fascist",
             },
@@ -3923,7 +3923,7 @@ class EngineBridge:
                 "id": "red_ogv",
                 "title": "Red OGV Trap",
                 "description": "Settler-socialist formation captures the movement without abolishing empire.",
-                "progress": min(1.0, principal_gap * 0.5),
+                "progress": _axis_progress("red_ogv"),
                 "status": _objective_status("red_ogv", outcome),
                 "category": "red_ogv",
             },
@@ -3931,9 +3931,7 @@ class EngineBridge:
                 "id": "fragmented_collapse",
                 "title": "Fragmented Collapse",
                 "description": "Balkanization — sovereign fragmentation outpaces solidarity.",
-                "progress": min(1.0, principal_gap * 0.7)
-                if regime == "crisis"
-                else min(1.0, heat_avg * 0.5),
+                "progress": _axis_progress("fragmented_collapse"),
                 "status": _objective_status("fragmented", outcome),
                 "category": "fragmented",
             },
@@ -4631,15 +4629,21 @@ class EngineBridge:
             len(new_state.events),
         )
 
-        # Program 17 / Item 1c: run the real EndgameDetector observer, cached
-        # per-session (module-level _session_endgame_detectors) so its
-        # cross-tick counters (ECOLOGICAL_COLLAPSE's 5-consecutive-tick
-        # window, RED_OGV/FRAGMENTED_COLLAPSE's rolling windows) survive
-        # across separate resolve_tick HTTP calls — persistent_context does
-        # NOT survive between web requests (see module docstring above
-        # _session_endgame_detectors). On first detection, append a real
-        # EndgameEvent to new_state.events so it rides the existing
-        # tick_event persistence pipe below (_persist_tick_events_safe).
+        # Program 17 / Item 1c -> Spec-116 Task 4: run the real EndgameDetector
+        # observer, cached per-session (module-level _session_endgame_detectors)
+        # so its cross-tick counters (ECOLOGICAL_COLLAPSE's sustained-overshoot
+        # window, RED_OGV/FRAGMENTED_COLLAPSE's rolling windows) survive across
+        # separate resolve_tick HTTP calls — persistent_context does NOT
+        # survive between web requests (see module docstring above
+        # _session_endgame_detectors).
+        #
+        # Owner ruling 2026-07-17 (spec-116 "Playability Spine"): the five
+        # patterns are RECOGNIZED, never adjudicated — recognizing a pattern
+        # no longer ends the game (contrast the old is_game_over/outcome
+        # behavior this replaces). A PATTERN_SHIFT event fires exactly when
+        # the recognized pattern changes (including dissolving to None); the
+        # game only ends at the fixed century horizon (Task 1 defines), with
+        # GameOutcome.UNRESOLVED when no pattern is held at that tick.
         detector = _session_endgame_detectors.get(session_id)
         if detector is None:
             detector = EndgameDetector(defines=game_defines)
@@ -4647,10 +4651,35 @@ class EngineBridge:
             _session_endgame_detectors[session_id] = detector
         previous_pattern = detector.recognized_pattern
         detector.on_tick(state, new_state)
-        current_pattern = detector.recognized_pattern
-        if current_pattern is not None and current_pattern is not previous_pattern:
-            endgame_event = EndgameEvent(tick=new_state.tick, outcome=current_pattern)
+        pattern = detector.recognized_pattern
+        if pattern is not previous_pattern:
+            shift = PatternShiftEvent(
+                tick=new_state.tick,
+                pattern=pattern.value if pattern else None,
+                previous=previous_pattern.value if previous_pattern else None,
+                since_tick=detector.pattern_since_tick or new_state.tick,
+            )
+            new_state = new_state.model_copy(update={"events": [*new_state.events, shift]})
+        horizon_tick = (
+            game_defines.endgame.campaign_horizon_years * game_defines.timescale.weeks_per_year
+        )
+        game_over = new_state.tick >= horizon_tick
+        outcome = pattern or GameOutcome.UNRESOLVED
+        if game_over:
+            endgame_event = EndgameEvent(tick=new_state.tick, outcome=outcome)
             new_state = new_state.model_copy(update={"events": [*new_state.events, endgame_event]})
+        since = detector.pattern_since_tick
+        endgame_progress_payload: dict[str, Any] = {
+            "axes": detector.axis_progress(),
+            "pattern": pattern.value if pattern else None,
+            "since_tick": since,
+            "horizon_tick": horizon_tick,
+            "locked": (
+                pattern is not None
+                and since is not None
+                and (new_state.tick - since + 1) >= game_defines.endgame.pattern_lock_ticks
+            ),
+        }
 
         # Persist the new tick
         new_graph = new_state.to_graph()
@@ -4681,6 +4710,13 @@ class EngineBridge:
         # but the source (new_state.market_county) is a REAL WorldState
         # field, so this is a lookup, not a recompute.
         _carry_price_divergence(new_graph, new_state.market_county)
+        # Spec-116 Task 4: stash endgame_progress as a graph-level attribute —
+        # the same durable channel ContradictionSystem's contradiction_frames
+        # uses (graph.set_graph_attr -> persist_tick's graph_metadata.extra ->
+        # hydrate_graph's Design-B round-trip) — so get_journal_objectives can
+        # read the axes back after a worker restart instead of depending on
+        # the in-process _session_endgame_detectors cache.
+        new_graph.set_graph_attr("endgame_progress", endgame_progress_payload)
         events_as_dicts: list[dict[str, Any]] = [
             e.model_dump(mode="json") for e in new_state.events
         ]
@@ -4765,20 +4801,17 @@ class EngineBridge:
         # _carry_tick_dynamics_flows just re-injected — without it the
         # territory_snapshot rate columns persist NULL forever.
         _persist_snapshots_safe(self._persistence, session_id, new_state, graph=new_graph)
-        # Program 17 / Item 1c: the real EndgameDetector (run above, before
-        # to_graph()) is the authoritative source now — not a literal-string
-        # scan of event_type (EndgameEvent.event_type is ALWAYS
-        # EventType.ENDGAME_REACHED; the real GameOutcome lives in its
-        # separate `outcome` field, never in event_type). `summary` stays
-        # empty: the engine adjudicates, it does not narrate (Constitution)
-        # — the async narrative_service call below is the correct place for
-        # prose, not this synchronous path.
-        # Spec-116 FR-116-1: EndgameDetector is now a pattern recognizer —
-        # recognized_pattern replaces outcome/is_game_over (Task 4 replaces
-        # this recognition-ends-game display with the fixed century horizon).
-        if current_pattern is not None:
+        # Spec-116 Task 4: recognizing a pattern no longer ends the game — the
+        # fixed century horizon does (see the detector block above).
+        # endgame_progress is served every tick (the live "how close" HUD);
+        # `endgame` only appears once the horizon is actually reached.
+        # `summary` stays empty: the engine adjudicates, it does not narrate
+        # (Constitution) — the async narrative_service call below is the
+        # correct place for prose, not this synchronous path.
+        snapshot["endgame_progress"] = endgame_progress_payload
+        if game_over:
             snapshot["endgame"] = {
-                "outcome": current_pattern.value,
+                "outcome": outcome.value,
                 "tick": new_state.tick,
                 "summary": "",
             }
@@ -6830,6 +6863,11 @@ _EVENT_SEVERITY: dict[str, str] = {
     # ATTEMPTS rather than routine flow.
     "doctrine_trap_escaped": "warning",
     "doctrine_purge_failed": "warning",
+    # Spec-116 Task 4: a recognized-pattern change (including dissolving to
+    # None) is a threshold-cross signal on the endgame axes, same tier as
+    # the trap/drift siblings above — it never ends the game (that's
+    # endgame_reached, critical, above), so it does not belong in that tier.
+    "pattern_shift": "warning",
     # Informational: routine flow events
     "surplus_extraction": "informational",
     "imperial_subsidy": "informational",

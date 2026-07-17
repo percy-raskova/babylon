@@ -1021,6 +1021,56 @@ class EndgameEvent(SimulationEvent):
     )
 
 
+class PatternShiftEvent(SimulationEvent):
+    """Recognized endgame pattern changed (PATTERN_SHIFT, spec-116 Task 4).
+
+    Emitted whenever ``EndgameDetector.recognized_pattern`` changes value —
+    including a transition to ``None`` (the pattern dissolving). Owner ruling
+    2026-07-17 (spec-116 "Playability Spine"): the five endgame patterns are
+    RECOGNIZED, never adjudicated, so this event is purely informational and
+    never ends the simulation — contrast :class:`EndgameEvent`, which only
+    fires once, at the fixed century horizon.
+
+    Attributes:
+        event_type: Always PATTERN_SHIFT.
+        pattern: The newly recognized ``GameOutcome`` value, or ``None`` if
+            the pattern dissolved.
+        previous: The previously recognized ``GameOutcome`` value, or
+            ``None`` if no pattern was held before this tick.
+        since_tick: The tick at which ``pattern`` was first recognized (the
+            tick of this event itself when ``pattern`` is ``None``).
+
+    Example:
+        >>> event = PatternShiftEvent(
+        ...     tick=52,
+        ...     pattern="fascist_consolidation",
+        ...     previous=None,
+        ...     since_tick=52,
+        ... )
+        >>> event.event_type
+        <EventType.PATTERN_SHIFT: 'pattern_shift'>
+    """
+
+    kind: Literal["pattern_shift"] = "pattern_shift"
+
+    event_type: EventType = Field(
+        default=EventType.PATTERN_SHIFT,
+        description="Event type (always PATTERN_SHIFT)",
+    )
+    pattern: str | None = Field(
+        default=None,
+        description="Newly recognized GameOutcome value, or None if dissolved",
+    )
+    previous: str | None = Field(
+        default=None,
+        description="Previously recognized GameOutcome value, or None",
+    )
+    since_tick: int = Field(
+        ge=0,
+        description="Tick at which `pattern` was first recognized",
+    )
+
+
 # =============================================================================
 # Spec 057 — Leontief Imperial Rent Integration: CalibrationWarning event family
 # =============================================================================
@@ -1242,6 +1292,7 @@ EVENT_CLASS_MAP: dict[str, type[SimulationEvent]] = {
     EventType.PHASE_TRANSITION.value: PhaseTransitionEvent,
     EventType.BIFURCATION_TENDENCY_CHANGE.value: BifurcationTendencyEvent,
     EventType.ENDGAME_REACHED.value: EndgameEvent,
+    EventType.PATTERN_SHIFT.value: PatternShiftEvent,
     # Spec 057 — Leontief Imperial Rent Integration
     EventType.CALIBRATION_AXIOM_VIOLATION.value: AxiomViolationEvent,
     EventType.CALIBRATION_QCEW_CARRY_FORWARD.value: QcewCarryForwardEvent,
@@ -1267,7 +1318,7 @@ EVENT_CLASS_MAP: dict[str, type[SimulationEvent]] = {
 # TickEvent — Spec 059 US2 / ADR-004 (FR-004 + FR-005 + FR-006)
 # =============================================================================
 #
-# TickEvent is the canonical Pydantic 2 *discriminated* union over the 22 leaf
+# TickEvent is the canonical Pydantic 2 *discriminated* union over the 23 leaf
 # Event variants. Each leaf carries a unique ``kind: Literal["..."]`` field;
 # Pydantic's ``Field(discriminator="kind")`` dispatches automatically on the
 # kind value during validation.
@@ -1302,6 +1353,7 @@ TickEvent = Annotated[
     | PhaseTransitionEvent
     | BifurcationTendencyEvent
     | EndgameEvent
+    | PatternShiftEvent
     | AxiomViolationEvent
     | QcewCarryForwardEvent
     | PhiHourOutlierEvent
@@ -1310,7 +1362,7 @@ TickEvent = Annotated[
     | DoctrinePurgeFailedEvent,
     Field(discriminator="kind"),
 ]
-"""TickEvent: sum type for the 22 leaf Event variants. See block comment above."""
+"""TickEvent: sum type for the 23 leaf Event variants. See block comment above."""
 
 TickEventAdapter: TypeAdapter[TickEvent] = TypeAdapter(TickEvent)
 """TypeAdapter wrapping TickEvent for runtime validation against the Union."""

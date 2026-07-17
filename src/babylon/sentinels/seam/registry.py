@@ -20,6 +20,7 @@ runtime config, so it carries no round-trip/regeneration machinery.
 
 from __future__ import annotations
 
+from babylon.models.enums.events import EventType
 from babylon.sentinels.seam.types import LivenessClass, SeamEntry, SeamScope
 
 # ---------------------------------------------------------------------------
@@ -2012,6 +2013,90 @@ _DOCTRINE_METRICS: tuple[SeamEntry, ...] = (
     ),
 )
 
+# --- ENDGAME scope (spec-116 Playability Spine, Task 4) ---
+# The per-tick "how close" HUD signal: EndgameDetector's axis_progress() /
+# recognized_pattern / pattern_since_tick, composed with the bridge-derived
+# horizon_tick/locked into resolve_tick's snapshot['endgame_progress']. The
+# ENDGAME scope enum member predates this row (its docstring already named
+# `get_endgame_state`'s `outcome` field) — this is the first ENDGAME-scope
+# row actually registered; backfilling the rest of get_endgame_state's wire
+# keys is a separate, pre-existing gap (Seam Phase 3's remit), not this
+# task's scope.
+
+_ENDGAME_PROGRESS_EMITTERS: tuple[str, ...] = (
+    "web/game/engine_bridge.py::EngineBridge.resolve_tick (per-tick snapshot['endgame_progress'])",
+    "web/game/engine_bridge.py::EngineBridge.get_journal_objectives (axes read back off graph_attrs)",
+)
+
+_ENDGAME_METRICS: tuple[SeamEntry, ...] = (
+    SeamEntry(
+        payload="endgame_progress",
+        wire_keys=("endgame_progress",),
+        scope=SeamScope.ENDGAME,
+        owner_layer=(
+            "babylon.engine.observers.endgame_detector.EndgameDetector "
+            "(axis_progress/recognized_pattern/pattern_since_tick) + "
+            "bridge-derived horizon_tick/locked"
+        ),
+        liveness_class=LivenessClass.MUST_BE_LIVE,
+        dtype="json",
+        derivation_site=(
+            "web/game/engine_bridge.py::EngineBridge.resolve_tick (assembled "
+            "from the per-session-cached EndgameDetector, then stashed onto "
+            "new_graph as a graph-level attribute before persist_tick so it "
+            "survives worker restarts — same channel as "
+            "ContradictionSystem's contradiction_frames)"
+        ),
+        read_paths=_ENDGAME_PROGRESS_EMITTERS,
+        nullable=False,
+        spec_ref="spec-116 Playability Spine · Task 4 (FR-116-1)",
+        notes=(
+            "Every tick's {axes: {5 GameOutcome keys -> [0,1] progress}, "
+            "pattern, since_tick, horizon_tick, locked} block. Owner ruling "
+            "2026-07-17: patterns are recognized, never adjudicated — this "
+            "is the live 'how close' HUD signal. get_journal_objectives "
+            "reads these same persisted axes (not the in-process detector "
+            "cache), so objective progress survives a worker restart."
+        ),
+    ),
+)
+
+# --- EVENT scope (spec-116 Playability Spine, Task 4) ---
+# pattern_shift is the lone EVENT-scope row today: no other EventType member
+# is individually registered here yet (a pre-existing gap awaiting the Seam
+# Phase 3 bridge-serialization sweep). This row exists because Task 4
+# introduces the wire key, not because it retroactively closes that gap.
+
+_PATTERN_SHIFT_EMITTERS: tuple[str, ...] = (
+    "web/game/engine_bridge.py::EngineBridge.resolve_tick (PatternShiftEvent appended to new_state.events on a recognized-pattern change)",
+)
+
+_PATTERN_SHIFT_METRICS: tuple[SeamEntry, ...] = (
+    SeamEntry(
+        payload="pattern_shift",
+        wire_keys=("pattern_shift",),
+        scope=SeamScope.EVENT,
+        owner_layer=(
+            "bridge-derived (web/game/engine_bridge.py::EngineBridge.resolve_tick, "
+            "from EndgameDetector.recognized_pattern deltas)"
+        ),
+        liveness_class=LivenessClass.DECLARED_CONDITIONAL,
+        liveness_condition=(
+            "fires only on the tick the recognized pattern changes (including "
+            "dissolving to None); absent on every other tick"
+        ),
+        dtype="json",
+        event_type=EventType.PATTERN_SHIFT,
+        read_paths=_PATTERN_SHIFT_EMITTERS,
+        spec_ref="spec-116 Playability Spine · Task 4 (FR-116-1)",
+        notes=(
+            "PatternShiftEvent: pattern/previous/since_tick. Distinct from "
+            "EndgameEvent (endgame_reached), which fires once, at the fixed "
+            "century horizon — recognizing a pattern never ends the game."
+        ),
+    ),
+)
+
 #: The declared observable-field contract. Populated per build phase.
 SEAM_REGISTRY: tuple[SeamEntry, ...] = (
     _MAP_METRICS
@@ -2021,4 +2106,6 @@ SEAM_REGISTRY: tuple[SeamEntry, ...] = (
     + _MAP_HISTORY_METRICS
     + _NETWORK_METRICS
     + _DOCTRINE_METRICS
+    + _ENDGAME_METRICS
+    + _PATTERN_SHIFT_METRICS
 )

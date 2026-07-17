@@ -53,6 +53,25 @@ def _mock_graph_with_contradictions() -> MagicMock:
             }
         },
         "dialectical_regime": "crisis",
+        # Spec-116 Task 4: get_journal_objectives reads progress off this
+        # persisted graph attr (the same channel resolve_tick stashes it
+        # into) instead of the old consciousness/heat/principal_gap proxy
+        # math. A plausible mid-game block so
+        # TestGetJournalObjectives keeps exercising the real (non-fallback)
+        # "unknown"-free path.
+        "endgame_progress": {
+            "axes": {
+                "revolutionary_victory": 0.2,
+                "ecological_collapse": 0.1,
+                "fascist_consolidation": 0.71,
+                "red_ogv": 0.0,
+                "fragmented_collapse": 0.05,
+            },
+            "pattern": None,
+            "since_tick": None,
+            "horizon_tick": 5200,
+            "locked": False,
+        },
     }
     # nodes() and edges() return empty — only graph-level attrs matter here.
     graph.nodes.return_value = iter([])

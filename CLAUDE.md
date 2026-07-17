@@ -56,9 +56,9 @@ Three-layer local system, no external servers. Full map: `ai/architecture.yaml`.
 
 ## Engine
 
-`SimulationEngine.run_tick(graph, services, context)` runs 28 Systems in strict materialist-causality
-order — **source of truth: `simulation_engine._DEFAULT_SYSTEMS`**; annotated order in
-`ai/architecture.yaml`. The three phases:
+`SimulationEngine.run_tick(graph, services, context)` runs 30 Systems in strict materialist-causality
+order — **source of truth: `simulation_engine._DEFAULT_SYSTEMS`** (the `ai/architecture.yaml`
+systems annotation is stale, ADR032-era). The three phases:
 
 1. **Material Base** (positions 1–13, + Substrate @2.5): Vitality, Territory, Production, TickDynamics,
    ReserveArmy, Community, Lifecycle, Solidarity, ImperialRent, Dispossession, Decomposition,
@@ -66,8 +66,10 @@ order — **source of truth: `simulation_engine._DEFAULT_SYSTEMS`**; annotated o
 2. **Action** (@14): OODASystem — organizations observe + act.
 3. **Consequences** (14.5–22): FactionInfluence, Doctrine (@14.7 — per-org Doctrine Tree accumulator,
    ADR073; feedback into bifurcation/consciousness lands with DT Unit 6), Survival, Struggle,
-   Consciousness, FascistFaction, Sovereignty, Contradiction, ContradictionField, FieldDerivative,
-   CollapseTransition, EdgeTransition, EpistemicHorizon (Phase 1 shadow — runs last, observes-only).
+   Consciousness, FascistFaction, Sovereignty, MarketScissors (@17.8 — price⟷value shadow axis,
+   Program 23/ADR077, feeds the `price_value` shadow opposition), Contradiction, ContradictionField,
+   FieldDerivative, CollapseTransition, EdgeTransition, WealthDistribution (@21.5 — Program 21
+   Phase-1 shadow), EpistemicHorizon (Phase 1 shadow — runs last, observes-only).
 
 Key modules: `engine/services.py` (concrete ServiceContainer; the DI *protocol* is
 `kernel/services.py`), `kernel/event_bus.py` (plain-str types; the `EventType` enum — 82 values —

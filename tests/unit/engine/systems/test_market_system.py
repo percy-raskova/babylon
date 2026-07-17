@@ -11,10 +11,15 @@ from __future__ import annotations
 import pytest
 from pydantic import ValidationError
 
+from babylon.config.defines import GameDefines, MarketDefines
 from babylon.engine.services import ServiceContainer
 from babylon.engine.simulation_engine import _DEFAULT_SYSTEMS, CONSEQUENCE_SYSTEMS
 from babylon.engine.systems.contradiction import ContradictionSystem
-from babylon.engine.systems.market_scissors import MarketScissorsSystem
+from babylon.engine.systems.market_scissors import (
+    MARKET_CORRECTION_SHOCK_ATTR,
+    MarketScissorsSystem,
+)
+from babylon.models.enums import EventType, SocialRole
 from babylon.models.market import MarketState
 from babylon.models.world_state import WorldState
 from babylon.topology.graph import BabylonGraph
@@ -153,6 +158,141 @@ class TestRoundTrip:
         rebuilt = WorldState.from_graph(state.to_graph(), tick=1)
         assert rebuilt.market == axis
 
+
+def _enabled_services(**overrides: object) -> ServiceContainer:
+    """Services with the Phase-2 feedback gate open (ADR078)."""
+    market = MarketDefines(feedback_enabled=True, **overrides)  # type: ignore[arg-type]
+    return ServiceContainer.create(defines=GameDefines(market=market))
+
+
+def _euphoric_graph(fictitious_log: float = 1.5) -> BabylonGraph:
+    """A value substrate plus an already-opened fictitious bubble."""
+    graph = BabylonGraph()
+    _paid_worker(graph, "worker", w_paid=0.8, v_produced=1.0)
+    graph.add_node(
+        "bourgeois",
+        wealth=100.0,
+        active=True,
+        role=SocialRole.CORE_BOURGEOISIE.value,
+        _node_type="social_class",
+    )
+    graph.add_node(
+        "metropole",
+        active=True,
+        median_wage=1000.0,
+        _node_type="territory",
+    )
+    graph.add_node(
+        "hinterland",
+        active=True,
+        rent_level=0.0,
+        _node_type="territory",
+    )
+    graph.graph["market"] = MarketState(
+        price_log=0.3,
+        price_velocity=0.05,
+        fictitious_log=fictitious_log,
+        fictitious_velocity=0.05,
+        surplus_ema=0.2,
+        value_ema=1.0,
+        tick=9,
+    ).model_dump()
+    return graph
+
+
+class TestCorrection:
+    """ADR078: the snap and its material-base consequences."""
+
+    def test_disabled_gate_is_inert(self) -> None:
+        """feedback_enabled=False: the bubble advances but NOTHING fires."""
+        graph = _euphoric_graph()
+        _step(graph, ServiceContainer.create(), tick=10)
+        state = graph.graph["market"]
+        assert state["corrections"] == 0
+        assert state["last_correction_tick"] is None
+        assert graph.get_node("bourgeois").attributes["wealth"] == 100.0
+        assert "reserve_ratio" not in graph.get_node("metropole").attributes
+        assert MARKET_CORRECTION_SHOCK_ATTR not in graph.graph
+
+    def test_overhang_fires_the_snap(self) -> None:
+        graph = _euphoric_graph()
+        services = _enabled_services()
+        events: list[object] = []
+        services.event_bus.subscribe(EventType.MARKET_CORRECTION, events.append)
+        before = graph.graph["market"]["fictitious_log"]
+
+        _step(graph, services, tick=10)
+
+        state = graph.graph["market"]
+        assert state["corrections"] == 1
+        assert state["last_correction_tick"] == 10
+        assert state["fictitious_log"] < before * 0.5  # severity 0.6
+        assert len(events) == 1
+
+    def test_snap_evaporates_claim_holder_wealth_only(self) -> None:
+        graph = _euphoric_graph()
+        _step(graph, _enabled_services(), tick=10)
+        assert graph.get_node("bourgeois").attributes["wealth"] < 100.0
+        assert graph.get_node("worker").attributes["wealth"] == 1.0
+
+    def test_snap_swells_the_reserve_army_where_wages_exist(self) -> None:
+        graph = _euphoric_graph()
+        _step(graph, _enabled_services(), tick=10)
+        assert graph.get_node("metropole").attributes["reserve_ratio"] > 0.0
+        assert "reserve_ratio" not in graph.get_node("hinterland").attributes
+
+    def test_snap_stamps_the_wealth_axis_shock(self) -> None:
+        graph = _euphoric_graph()
+        _step(graph, _enabled_services(), tick=10)
+        stamp = graph.graph[MARKET_CORRECTION_SHOCK_ATTR]
+        assert stamp["tick"] == 10
+        assert stamp["overhang"] > 0.0
+
+    def test_cooldown_suppresses_the_second_snap(self) -> None:
+        graph = _euphoric_graph()
+        services = _enabled_services()
+        _step(graph, services, tick=10)
+        # Re-inflate the bubble immediately: still inside the cooldown window.
+        state = dict(graph.graph["market"])
+        state["fictitious_log"] = 1.5
+        graph.graph["market"] = state
+        _step(graph, services, tick=11)
+        assert graph.graph["market"]["corrections"] == 1
+
+    def test_cooldown_elapse_permits_the_next_snap(self) -> None:
+        graph = _euphoric_graph()
+        services = _enabled_services()
+        _step(graph, services, tick=10)
+        state = dict(graph.graph["market"])
+        state["fictitious_log"] = 1.5
+        graph.graph["market"] = state
+        _step(graph, services, tick=18)  # cooldown_ticks=8 elapsed
+        assert graph.graph["market"]["corrections"] == 2
+
+    def test_healthy_profit_rate_services_the_bubble(self) -> None:
+        """tick_profit_rate=0.3 → serviceable 0.55 + 4·0.3 = 1.75 > 1.5."""
+        graph = _euphoric_graph(fictitious_log=1.5)
+        graph.update_node("metropole", tick_profit_rate=0.3)
+        _step(graph, _enabled_services(), tick=10)
+        assert graph.graph["market"]["corrections"] == 0
+
+    def test_no_overhang_no_snap(self) -> None:
+        graph = _euphoric_graph(fictitious_log=0.3)
+        _step(graph, _enabled_services(), tick=10)
+        assert graph.graph["market"]["corrections"] == 0
+
+    def test_correction_is_deterministic(self) -> None:
+        def run() -> tuple[dict[str, object], float]:
+            graph = _euphoric_graph()
+            _step(graph, _enabled_services(), tick=10)
+            return dict(graph.graph["market"]), float(
+                graph.get_node("bourgeois").attributes["wealth"]
+            )
+
+        assert run() == run()
+
+
+class TestRoundTripFrozen:
     def test_market_state_is_frozen(self) -> None:
         axis = MarketState(
             price_log=0.0,

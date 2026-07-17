@@ -10,13 +10,71 @@ from __future__ import annotations
 import pytest
 
 from babylon.formulas.market import (
+    calculate_correction_snap,
     calculate_ema,
     calculate_growth_drive,
+    calculate_overhang,
     calculate_scissors_balance,
     calculate_scissors_step,
+    calculate_serviceable_divergence,
 )
 
 pytestmark = pytest.mark.math
+
+
+class TestServiceableDivergence:
+    """ADR078: what the rate of profit can service (Vol. III part 3 × part 5)."""
+
+    def test_zero_profit_serves_only_the_base(self) -> None:
+        assert calculate_serviceable_divergence(0.0, base=0.55, slope=4.0) == 0.55
+
+    def test_healthy_profit_extends_serviceability(self) -> None:
+        assert calculate_serviceable_divergence(0.1, base=0.55, slope=4.0) == pytest.approx(0.95)
+
+    def test_negative_profit_clamps_to_base(self) -> None:
+        """A loss-making economy services no more than the base — never less
+        (the floor is the credit system's intrinsic tolerance, not a debt)."""
+        assert calculate_serviceable_divergence(-0.2, base=0.55, slope=4.0) == 0.55
+
+    def test_absent_profit_rate_is_the_base(self) -> None:
+        """No profit observable → honest fallback to the base (III.11)."""
+        assert calculate_serviceable_divergence(None, base=0.55, slope=4.0) == 0.55
+
+
+class TestOverhang:
+    def test_within_serviceability_is_zero(self) -> None:
+        assert calculate_overhang(0.4, 0.55) == 0.0
+
+    def test_excess_is_the_difference(self) -> None:
+        assert calculate_overhang(0.9, 0.55) == pytest.approx(0.35)
+
+    def test_negative_fictitious_never_overhangs(self) -> None:
+        """Undervalued claims (fictitious below real) are no crisis trigger."""
+        assert calculate_overhang(-1.0, 0.55) == 0.0
+
+
+class TestCorrectionSnap:
+    def test_snap_closes_severity_fraction(self) -> None:
+        log, _vel = calculate_correction_snap(1.0, 0.2, severity=0.6)
+        assert log == pytest.approx(0.4)
+
+    def test_snap_kills_upward_momentum(self) -> None:
+        _log, vel = calculate_correction_snap(1.0, 0.2, severity=0.6)
+        assert vel == 0.0
+
+    def test_snap_preserves_downward_momentum(self) -> None:
+        """Panic overshoot is real: an already-falling series keeps falling."""
+        _log, vel = calculate_correction_snap(1.0, -0.1, severity=0.6)
+        assert vel == pytest.approx(-0.1)
+
+    def test_snap_is_antisymmetric(self) -> None:
+        """A negative log ratio snaps toward zero from below, same law."""
+        log, _vel = calculate_correction_snap(-1.0, 0.0, severity=0.6)
+        assert log == pytest.approx(-0.4)
+
+    def test_full_severity_reaches_par(self) -> None:
+        log, _vel = calculate_correction_snap(1.7, 0.5, severity=1.0)
+        assert log == 0.0
 
 
 class TestScissorsStep:

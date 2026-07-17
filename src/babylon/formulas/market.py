@@ -18,10 +18,13 @@ from __future__ import annotations
 import math
 
 __all__ = [
+    "calculate_correction_snap",
     "calculate_ema",
     "calculate_growth_drive",
+    "calculate_overhang",
     "calculate_scissors_balance",
     "calculate_scissors_step",
+    "calculate_serviceable_divergence",
 ]
 
 _GROWTH_EPSILON = 1e-9
@@ -100,3 +103,55 @@ def calculate_scissors_balance(log_ratio: float, *, scale: float) -> float:
         edge rounding.
     """
     return max(-1.0, min(1.0, math.tanh(log_ratio / scale)))
+
+
+def calculate_serviceable_divergence(
+    profit_rate: float | None, *, base: float, slope: float
+) -> float:
+    """Log fictitious/real divergence the rate of profit can service (ADR078).
+
+    ``base + slope * max(profit_rate, 0)``: a healthy rate of profit carries a
+    larger claims structure; its FALL is what turns an existing bubble into an
+    unpayable one — Vol. III part 3 (the falling rate) meeting part 5
+    (fictitious capital). A loss-making economy still services the base (the
+    credit system's intrinsic tolerance is a floor, not a debt).
+
+    :param profit_rate: Realized rate of profit, or ``None`` when no profit
+        observable exists this tick — the base alone is used (honest absence,
+        Constitution III.11; no rate is fabricated).
+    :param base: Serviceable log-divergence at zero profit (>= 0).
+    :param slope: Additional serviceable log-divergence per unit profit rate.
+    :returns: The serviceable log-divergence (>= base).
+    """
+    if profit_rate is None:
+        return base
+    return base + slope * max(profit_rate, 0.0)
+
+
+def calculate_overhang(fictitious_log: float, serviceable: float) -> float:
+    """Unserviceable excess of the fictitious log-ratio (the crisis trigger).
+
+    :param fictitious_log: ``ln(fictitious capitalization / real)``.
+    :param serviceable: Output of :func:`calculate_serviceable_divergence`.
+    :returns: ``max(fictitious_log - serviceable, 0)`` — undervalued claims
+        (a negative log) never overhang; only excess claims trigger the snap.
+    """
+    return max(fictitious_log - serviceable, 0.0)
+
+
+def calculate_correction_snap(
+    log_ratio: float, velocity: float, *, severity: float
+) -> tuple[float, float]:
+    """The correction: one violent re-identification of form with substance.
+
+    Closes ``severity`` of the log ratio toward par and kills UPWARD momentum;
+    downward momentum survives (panic overshoot is real — the crash does not
+    stop at equilibrium). Antisymmetric by construction: a negative ratio
+    snaps toward zero from below under the same law.
+
+    :param log_ratio: Current ``ln(form / substance)``.
+    :param velocity: Current d(log_ratio)/dt.
+    :param severity: Fraction of the ratio closed in one snap, in [0, 1].
+    :returns: ``(log_ratio * (1 - severity), min(velocity, 0.0))``.
+    """
+    return log_ratio * (1.0 - severity), min(velocity, 0.0)

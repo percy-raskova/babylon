@@ -30,6 +30,16 @@ export interface GameSummary {
 
 export type GameStatus = "active" | "paused" | "completed" | "abandoned";
 
+/** GET /api/games/:id/ response body (`game_detail`, web/game/api.py). */
+export interface GameDetailData {
+  id: string;
+  codename: string;
+  scenario: string;
+  current_tick: number;
+  status: GameStatus;
+  created_at: string | null;
+}
+
 /**
  * Crisis lifecycle phase (mirrors `CrisisPhase` StrEnum,
  * `domain/economics/tick/types.py`). The business-cycle progression a county

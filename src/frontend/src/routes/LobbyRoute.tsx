@@ -179,7 +179,7 @@ export function LobbyRoute(): React.JSX.Element {
       rng_seed: rollRngSeed(),
     });
     setCreating(false);
-    if (id) navigate(`/game/${id}`);
+    if (id) navigate(`/game/${id}/briefing`);
   }
 
   function handleDeleteClick(id: string): void {

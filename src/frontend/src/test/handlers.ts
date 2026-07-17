@@ -123,6 +123,21 @@ export const handlers = [
     return HttpResponse.json({ status: "ok", data: { status: "abandoned" } });
   }),
 
+  http.get("/api/games/:id/", ({ params }) => {
+    logRequest("GET game-detail");
+    return HttpResponse.json({
+      status: "ok",
+      data: {
+        id: String(params.id),
+        codename: "CRIMSON HARVEST",
+        scenario: "wayne_county",
+        current_tick: mockSnapshot.tick,
+        status: "active",
+        created_at: "2026-03-01T12:00:00Z",
+      },
+    });
+  }),
+
   // ---- Game loop -----------------------------------------------------
 
   http.get("/api/games/:id/state/", () => {

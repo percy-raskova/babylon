@@ -19,6 +19,7 @@ function renderLobby(): void {
     <MemoryRouter initialEntries={["/lobby"]}>
       <Routes>
         <Route path="/lobby" element={<LobbyRoute />} />
+        <Route path="/game/:id/briefing" element={<div>BRIEFING</div>} />
         <Route path="/game/:id" element={<div>GAME SHELL</div>} />
         <Route path="/login" element={<div>LOGIN</div>} />
       </Routes>
@@ -42,11 +43,11 @@ describe("LobbyRoute", () => {
     expect(screen.getByText("default · Tick 5 · ACTIVE · 2026-03-01")).toBeInTheDocument();
   });
 
-  it("creates a new game via the real /api/games/ POST and navigates to it", async () => {
+  it("creates a new game via the real /api/games/ POST and lands on the briefing", async () => {
     renderLobby();
     await waitFor(() => expect(screen.getByText("Wayne County Organizer")).toBeInTheDocument());
     await userEvent.click(screen.getByRole("button", { name: /new game/i }));
-    await waitFor(() => expect(screen.getByText("GAME SHELL")).toBeInTheDocument());
+    await waitFor(() => expect(screen.getByText("BRIEFING")).toBeInTheDocument());
   });
 
   it("create sends the selected curated difficulty preset and a rolled rng_seed", async () => {

@@ -23,6 +23,10 @@ class MarketState(BaseModel):
     :ivar surplus_ema: EMA of realized surplus ``max(Σv_produced − Σw_paid, 0)``.
     :ivar value_ema: EMA of realized value output ``Σv_produced``.
     :ivar tick: The tick this state was computed at.
+    :ivar corrections: Cumulative count of correction snaps (ADR078) — an
+        event-sourced accumulator carried as a REAL field, never a shadow attr.
+    :ivar last_correction_tick: Tick of the most recent snap (cooldown anchor),
+        ``None`` until the first correction fires.
     """
 
     model_config = ConfigDict(frozen=True, extra="forbid")
@@ -34,3 +38,5 @@ class MarketState(BaseModel):
     surplus_ema: float = Field(ge=0.0)
     value_ema: float = Field(ge=0.0)
     tick: int = Field(ge=0)
+    corrections: int = Field(default=0, ge=0)
+    last_correction_tick: int | None = Field(default=None)

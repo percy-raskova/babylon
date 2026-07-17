@@ -120,3 +120,94 @@ class MarketDefines(BaseModel):
             "interest-bearing capital)."
         ),
     )
+    feedback_enabled: bool = Field(
+        default=False,
+        description=(
+            "Master gate on the Phase-2 correction feedback (ADR078). False "
+            "= observe-only shadow (Phase 1, byte-identical baselines); True "
+            "= the snap fires into the material base. Flipped in the "
+            "promotion-ceremony commit, the EH/Doctrine staging pattern."
+        ),
+    )
+    correction_threshold_base: float = Field(
+        default=0.55,
+        ge=0.0,
+        le=2.0,
+        description=(
+            "Game design: log fictitious/real divergence serviceable at ZERO "
+            "profit — the credit system's intrinsic tolerance. 0.55 ~ 73% "
+            "excess claims before an unprofitable economy snaps."
+        ),
+    )
+    correction_profit_slope: float = Field(
+        default=4.0,
+        ge=0.0,
+        le=20.0,
+        description=(
+            "Game design: additional serviceable log-divergence per unit "
+            "profit rate — a healthy rate of profit services a larger claims "
+            "structure; its FALL is what makes a given bubble unpayable "
+            "(Capital Vol. III part 3 meeting part 5)."
+        ),
+    )
+    correction_severity: float = Field(
+        default=0.6,
+        ge=0.0,
+        le=1.0,
+        description=(
+            "Game design: fraction of the fictitious log-ratio closed by one "
+            "snap — the violent re-identification of claims with real "
+            "surplus. 1.0 = total wipeout to par in a single tick."
+        ),
+    )
+    correction_price_severity: float = Field(
+        default=0.3,
+        ge=0.0,
+        le=1.0,
+        description=(
+            "Game design: fraction of the PRICE log-ratio closed by the same "
+            "snap — credit tightening deflates prices toward values, less "
+            "violently than it deflates claims."
+        ),
+    )
+    correction_cooldown_ticks: int = Field(
+        default=8,
+        ge=1,
+        le=520,
+        description=(
+            "Engineering: minimum ticks between snaps — one correction per "
+            "crisis, not one per tick while the overhang drains."
+        ),
+    )
+    evaporation_gain: float = Field(
+        default=0.15,
+        ge=0.0,
+        le=0.5,
+        description=(
+            "Game design: claim-holder wealth fraction destroyed per unit "
+            "overhang — the fictitious wealth was counted as wealth; the "
+            "snap un-counts it. Applies to bracket-0/1 roles (the ADR075 "
+            "fold: bourgeoisies + petty bourgeoisie)."
+        ),
+    )
+    unemployment_gain: float = Field(
+        default=0.08,
+        ge=0.0,
+        le=0.5,
+        description=(
+            "Game design: reserve-army ratio influx per unit overhang on "
+            "territories carrying a wage relation (median_wage) — the "
+            "crisis disciplines labor through the reserve army."
+        ),
+    )
+    wealth_axis_kick_gain: float = Field(
+        default=0.02,
+        ge=0.0,
+        le=0.1,
+        description=(
+            "Game design: w1 velocity impulse per unit overhang on the "
+            "Program-21 wealth-share axis (conservation-preserving, the "
+            "spec-114 FR-114-4 impulse form) — top-bracket paper wealth "
+            "deflates relative to the whole."
+        ),
+    )

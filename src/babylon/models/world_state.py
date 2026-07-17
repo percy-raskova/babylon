@@ -42,6 +42,7 @@ from babylon.models.entities.territory import Territory
 from babylon.models.enums import EdgeType, OperationalProfile, OrgType, SectorType
 from babylon.models.events import EVENT_CLASS_MAP, SimulationEvent, TickEventAdapter
 from babylon.models.types import Currency
+from babylon.models.wealth_distribution import WealthDistribution
 
 if TYPE_CHECKING:
     from babylon.topology.graph import BabylonGraph
@@ -459,6 +460,17 @@ class WorldState(BaseModel):
         ),
     )
 
+    wealth_distribution: WealthDistribution | None = Field(
+        default=None,
+        description=(
+            "National 4-bracket wealth-share axis (Program 21 Phase-1 shadow; "
+            "WealthDistributionSystem seeds and advances it). Rides graph "
+            "metadata like economy/state_finances, written only when set so "
+            "axis-less graphs stay byte-identical (EH ruling-6 pattern). None "
+            "means the axis has not been computed for this state."
+        ),
+    )
+
     opposition_states: dict[str, Any] = Field(
         default_factory=dict,
         description=(
@@ -635,6 +647,11 @@ class WorldState(BaseModel):
         # only when set so synthetic/headless graphs stay byte-identical.
         if self.player_org_id is not None:
             G.graph["player_org_id"] = self.player_org_id
+
+        # Program 21 Phase 1: the national wealth-share axis rides metadata,
+        # written only when set (same byte-safety contract as player_org_id).
+        if self.wealth_distribution is not None:
+            G.graph["wealth_distribution"] = self.wealth_distribution.model_dump()
 
         # Store institution-org housing relations in graph metadata (Feature
         # 040). Relations are richer than the HOUSES edges to_graph derives
@@ -933,6 +950,13 @@ class WorldState(BaseModel):
             player_org_id=(
                 G.graph.get("player_org_id")
                 if isinstance(G.graph.get("player_org_id"), str)
+                else None
+            ),
+            # isinstance guard mirrors player_org_id: absent/foreign metadata
+            # means no axis, never a coerced default.
+            wealth_distribution=(
+                WealthDistribution(**G.graph["wealth_distribution"])
+                if isinstance(G.graph.get("wealth_distribution"), dict)
                 else None
             ),
         )

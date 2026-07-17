@@ -309,6 +309,17 @@ class SocialClass(BaseModel):
         default=10.0,
         description="Economic resources",
     )
+    wealth_share: Probability = Field(
+        default=0.0,
+        description=(
+            "National wealth-bracket share this class's role folds into "
+            "(Program 21 Phase-1 shadow axis; projected each tick by "
+            "WealthDistributionSystem from G.graph['wealth_distribution']). "
+            "A declared field so the projection survives the extra='forbid' "
+            "graph round-trip; nothing feeds back from it yet (Phase 2 is "
+            "owner-gated)."
+        ),
+    )
     ideology: IdeologicalProfile = Field(
         default_factory=IdeologicalProfile,
         description="Multi-dimensional ideological profile (Sprint 3.4.3). Float input auto-converts via model_validator.",

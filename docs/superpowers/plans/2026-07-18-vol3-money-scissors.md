@@ -16,8 +16,12 @@
 House rules — every task's requirements implicitly include all of these:
 
 - **TDD, no exceptions.** Red → green → refactor. A "red phase" means *an assertion fails because production code is wrong* — a missing file, a missing test-file import, or a collection error is **not** a red phase. Where a task's production code already landed in a prior task, inject the defect, prove the red, then `git checkout --` to restore.
+  - **Carve-out, added by pre-flight (M1):** for a task whose *deliverable is a new module*, no reachable state produces an assertion-level red — the honest options are a deferred in-function import (still not an assertion) or the collection error itself. Those tasks (U1.2, U3.1) may take the collection error as their red. Do **not** spend execution time manufacturing an artificial assertion. The strict rule holds, unchanged, for every task editing existing production code.
 - **Never run the full unit suite.** `mise run check` includes the xdist `test:unit` leg (~1 GB/worker). Use `mise run check:quick` + scoped `mise run test:q -- <path>`.
 - **Every commit** uses `mise run commit -- "type(scope): msg"`, conventional format, and ends with `Co-Authored-By: Claude Opus 4.8 (1M context) <noreply@anthropic.com>`.
+  - **Exception, added by pre-flight (M4):** where a commit requires an *exact, curated file list*, use plain `git add`/`git commit` — `mise run commit`'s re-staging sweep is documented to defeat deliberately partial staging. Conventional format and the trailer still apply. This exception exists for U8.5's ceremony commit; do not invoke it elsewhere.
+  - **Always verify HEAD moved** after committing (`git log --oneline -1`). The pre-commit hooks can rewrite staged files and abort while printing all-green.
+  - **This worktree's `.mise.toml` has been trusted.** If `mise` reports "Config files … are not trusted", run `mise trust` — do not work around it.
 - **Never commit an empty index.** If a task's Steps 1–4 modify no file, either produce a real artifact or delete the commit step.
 - **Determinism (III.7):** sorted iteration on every new graph/dict traversal; no RNG, no wall clock, no I/O in `domain/`; all mutation via `model_copy(update=…)` on frozen models.
 - **Honest absence (III.11):** `NoDataSentinel(fips=, year=, reason=)` with a *specific* reason. Never a fabricated zero, never a default substituted for missing data.
@@ -64,10 +68,13 @@ Binding interface contract — the authoritative names, verbatim:
 | `tick/types.py` | U2.1 | `NationalTickParameters` loses the `le=2040` ceiling (the live MELT-path crash) |
 | `tensor.py` | U2.2 | Adds `MODELED_YEAR_FLOOR`/`CEILING` + `year_within_modeled_range` |
 | `credit/interest.py`, `credit/fictitious_capital.py` | U2.2 | Year-window overruns degrade to `NoDataSentinel` instead of raising |
-| `credit/types.py` | U2.3 | `STAGNATION_CREDIT_GROWTH` reads `load_default()`, not a bare `GameDefines()` |
+| `credit/types.py` | U2.3 | `STAGNATION_CREDIT_GROWTH` becomes the defines-backed accessor `stagnation_credit_growth()` (was a `Final` off a bare `GameDefines()`) |
 | `distribution/calculator.py` | U2.2 | Same year-window guard |
 | `distribution/types.py` | U2.2, U2.3 | Year guard; `DEBT_SPIRAL_THRESHOLD`/`DISTRIBUTION_EPSILON` become defines-backed accessors |
 | `counter_tendencies/types.py` | U2.3 | `COUNTER_TENDENCY_WEIGHTS`/`IMPERIAL_RENT_REFERENCE_SCALE` become defines-backed accessors |
+| `distribution/__init__.py`, `counter_tendencies/__init__.py`, `credit/__init__.py` | U2.3 | Package re-exports + `__all__` carry the accessor names; the deleted constants would otherwise break package import |
+| `credit/credit_cycle.py` | U2.3 | Both stagnation transition guards call `stagnation_credit_growth()` |
+| `counter_tendencies/calculator.py` | U2.3 | Docstring `:data:` xref repointed to `:func:` (Sphinx `-W`) |
 | `factory.py` | U2.4, U3.4 | `create_financial_services` takes `defines`; exposes `credit_aggregate_source` |
 | `rent/types.py` | U2.7 | `RentCategory` marked DORMANT with a reason (no data source for the 3-way split) |
 | `monetary/anchor.py` *(create)* | U4.1–U4.5 | `fictitious_anchor` + `serviceability_anchor` — pure, honest-absence, engine-free |
@@ -857,6 +864,9 @@ Insert the new wiring block right after the Leontief block (after `overrides.upd
             from babylon.engine.hydration.reference import StubBEASource
             from babylon.reference.database import get_reference_session
 
+            # DELIBERATE TWIN: web/game/engine_bridge.py:_build_tensor_registry runs the
+            # near-identical hydration. Two by design — a shared factory would put
+            # reference-DB I/O in domain/, which the layering forbids. Change both.
             registry = TensorRegistry()
             naics_yaml = Path(economics_pkg.__file__).parent / "data" / "naics_to_dept.yaml"
             with get_reference_session() as ref_session:
@@ -1156,6 +1166,9 @@ def _build_tensor_registry(fips_codes: tuple[str, ...]) -> Any:
     from babylon.engine.hydration.reference import StubBEASource
     from babylon.reference.database import get_reference_session
 
+    # DELIBERATE TWIN: babylon/engine/headless_runner/runner.py:_build_economics_overrides
+    # runs the near-identical hydration. Two by design — a shared factory would put
+    # reference-DB I/O in domain/, which the layering forbids. Change both.
     registry = TensorRegistry()
     naics_yaml = Path(economics_pkg.__file__).parent / "data" / "naics_to_dept.yaml"
     with get_reference_session() as session:
@@ -1238,13 +1251,22 @@ Co-Authored-By: Claude Opus 4.8 (1M context) <noreply@anthropic.com>"
 
 **Files:**
 - Create: `tests/integration/economics/test_vol3_surplus_distribution_live.py`
+- Modify: `tests/integration/economics/conftest.py` — append one new section
+  (a `TYPE_CHECKING` import block + the `build_wayne_world_state()` builder).
+  No existing fixture in that file is touched.
 
 **Interfaces:**
 - Consumes: `_build_economics_overrides(session_factory=..., scope_fips=...)` (U1.6);
   `babylon.engine.simulation_engine.step`; `TICK_DYNAMICS_KEY`,
   `read_tick_state_from_graph` (`domain/economics/tick/graph_bridge.py`);
-  `DISTRIBUTION_EPSILON` (`distribution/types.py`).
-- Produces: the standing proof of U1's three acceptance criteria. Nothing consumes it.
+  `DISTRIBUTION_EPSILON` (`distribution/types.py`);
+  `create_wayne_county_scenario` (`babylon.engine.scenarios`, **existing** — it
+  already returns exactly the `(WorldState, SimulationConfig, GameDefines)`
+  triple this task needs; `_legacy_wayne.py:577`).
+- Produces: `build_wayne_world_state()` in `tests/integration/economics/conftest.py`
+  (Step 1b — a plain module-level function, deliberately **not** a pytest
+  fixture, so `_run_to_year_boundary` can import it by module path); plus the
+  standing proof of U1's three acceptance criteria. Nothing else consumes them.
 
 - [ ] **Step 1: Write the failing test**
 ```python
@@ -1352,16 +1374,121 @@ def test_tick_ground_rent_carries_a_non_zero_real_figure() -> None:
         "reach a real FRED B230RC0Q173SBEA-backed figure in a live run"
     )
 ```
+- [ ] **Step 1b: Add the Wayne world-state builder to the shared conftest**
+
+The test above imports `build_wayne_world_state` from
+`tests/integration/economics/conftest.py`. **That helper does not exist yet** — it
+must be written before Step 2, or the module raises `ImportError` at collection and
+Step 2's red is unreachable. It is a plain module-level function, not a pytest
+fixture, precisely so the test can import it by module path.
+
+Edit `tests/integration/economics/conftest.py` — add `TYPE_CHECKING` to the stdlib
+imports, immediately after the existing `from pathlib import Path`:
+```python
+from pathlib import Path
+from typing import TYPE_CHECKING
+```
+
+Then, immediately after the existing `from babylon.domain.economics.hydrator import
+MarxianHydrator` line (i.e. after the last top-level `babylon` import, before the
+`# ===` DATABASE PATH CANDIDATES banner), add the type-only import block:
+```python
+if TYPE_CHECKING:
+    from babylon.config.defines import GameDefines
+    from babylon.models.config import SimulationConfig
+    from babylon.models.world_state import WorldState
+```
+
+Then append this section to the END of the file (after the closing
+`# IMPERIAL RENT FIXTURES (REMOVED post-Spec 057)` comment block):
+```python
+# =============================================================================
+# WAYNE-SCOPED WORLD STATE (U1.9 acceptance — vol3-money-scissors)
+# =============================================================================
+
+#: Wayne County, Michigan. The single county U1's acceptance run computes over,
+#: and the FIPS U1.6 hydrates the ``TensorRegistry`` for.
+WAYNE_COUNTY_FIPS = "26163"
+
+
+def build_wayne_world_state() -> tuple[WorldState, SimulationConfig, GameDefines]:
+    """Build a Wayne-County-scoped world the engine can tick past a year boundary.
+
+    Reuse over recreation: :func:`babylon.engine.scenarios.create_wayne_county_scenario`
+    (``engine/scenarios/_legacy_wayne.py:577``) already returns exactly the
+    ``(WorldState, SimulationConfig, GameDefines)`` triple, already populated with
+    the H3 res-5 hex territories, social classes, relationships and the player /
+    state-apparatus organizations that the 30 systems need in order to run. This
+    helper does ONE thing on top of it, and that one thing is load-bearing for
+    U1: it stamps the real county identity onto every territory.
+
+    Why the stamp is required: ``TickDynamicsSystem._get_territory_fips``
+    (``domain/economics/tick/system/__init__.py:366-382``) derives the county key
+    from ``node.attributes.get("county_fips") or node.id``. The stock Wayne
+    scenario sets no ``county_fips`` at all, so every H3 cell id (``85...fffff``)
+    becomes its own pseudo-county. U1.6 hydrates the ``TensorRegistry`` for
+    ``"26163"`` and nothing else, so every one of those pseudo-counties would miss
+    the registry, ``_get_county_surplus`` would return ``None``, and
+    ``surplus_distribution`` would stay ``None`` — for a reason that has nothing
+    to do with the wiring this task exists to prove. That is exactly the
+    green-test-over-a-dead-feature trap the fixture-vocabulary rule warns about.
+
+    ``county_fips`` is a real ``Territory`` model field
+    (``models/entities/territory.py:75``), ``WorldState.to_graph`` writes it onto
+    the node via ``**territory.model_dump()``, and it is NOT in
+    ``TERRITORY_EXCLUDED_FIELDS`` — so it survives the ``to_graph``/``from_graph``
+    round trip that ``simulation_engine.step`` performs on every tick.
+
+    Tick 0 is deliberate: ``0 % WEEKS_PER_YEAR == 0``, so the very first ``step``
+    is a year-boundary tick that bootstraps county states at the default
+    ``base_year`` of 2010 (``_determine_year``, same module ``:350-364``); the
+    caller's 53-tick loop then crosses tick 52 and recomputes at 2011. Both years
+    sit inside U1.6's ``_TENSOR_HYDRATION_YEARS`` (2010-2024), so both find real
+    QCEW/FRED-backed data rather than a ``NoDataSentinel``.
+
+    Determinism (Constitution III.7): every input is fixed — the scenario's
+    default ``extraction_efficiency``/``repression_level``, the default
+    ``SimulationConfig`` (and therefore the default ``rng_seed``), and a
+    deterministic dict comprehension over ``state.territories``. Two calls
+    produce equal worlds.
+
+    Returns:
+        ``(state, config, defines)`` — a tick-0 ``WorldState`` whose every
+        territory carries ``county_fips == "26163"``, the scenario's
+        ``SimulationConfig``, and the scenario's ``GameDefines``.
+    """
+    from babylon.engine.scenarios import create_wayne_county_scenario
+
+    state, config, defines = create_wayne_county_scenario()
+
+    territories = {
+        territory_id: territory.model_copy(update={"county_fips": WAYNE_COUNTY_FIPS})
+        for territory_id, territory in state.territories.items()
+    }
+    # WorldState is frozen — mutate via model_copy, never assignment.
+    scoped_state = state.model_copy(update={"territories": territories, "tick": 0})
+    return scoped_state, config, defines
+```
 - [ ] **Step 2: Run test to verify it fails**
 Run: `mise run test:q -- tests/integration/economics/test_vol3_surplus_distribution_live.py`
-Expected: FAIL — `test_surplus_distribution_is_non_none_for_at_least_one_county_year`
-fails with `AssertionError: surplus_distribution is None for every county...` when run
-against a checkout WITHOUT U1.6/U1.7 (verify by `git stash`-ing those commits, running,
-then restoring). This is the characterization proof that the criterion was previously unmet.
+Expected: FAIL **at an assertion, not at collection** — Step 1b must already have
+landed, so the module imports cleanly and the 53-tick run genuinely executes.
+`test_surplus_distribution_is_non_none_for_at_least_one_county_year` fails with
+`AssertionError: surplus_distribution is None for every county after crossing a
+year boundary — the Vol III county layer is still dark (design §1.1)` when run
+against a checkout WITHOUT U1.6/U1.7 (verify by `git stash`-ing those two commits,
+running, then `git stash pop`). This is the characterization proof that the
+criterion was previously unmet.
+
+If you instead see `ImportError: cannot import name 'build_wayne_world_state' from
+'tests.integration.economics.conftest'`, Step 1b was skipped or its append landed
+in the wrong file. Go back and do Step 1b. Do NOT proceed, and do NOT "fix" it by
+deleting the import — a collection error is not a red phase.
 - [ ] **Step 3: Write minimal implementation**
-No new production code — U1.2–U1.8 supply every line. If any test here fails
-after U1.8 has landed, the defect is in U1.6/U1.7/U1.8's wiring, not in this test.
-Do NOT weaken an assertion to make it pass.
+No new production code — U1.2–U1.8 supply every line. (Step 1b's conftest builder
+is test-support scaffolding, not production code; it is already written.) If any
+test here fails after U1.8 has landed, the defect is in U1.6/U1.7/U1.8's wiring,
+not in this test. Do NOT weaken an assertion to make it pass.
 - [ ] **Step 4: Run test to verify it passes**
 Run: `mise run test:q -- tests/integration/economics/test_vol3_surplus_distribution_live.py`
 Expected: PASS (3 passed).
@@ -1842,28 +1969,63 @@ Co-Authored-By: Claude Opus 4.8 (1M context) <noreply@anthropic.com>"
 - Create: `src/babylon/config/defines/capital_vol3.py`
 - Modify: `src/babylon/config/defines/_assembler.py:16-83,97-129,193,320-323`
 - Modify: `src/babylon/config/defines/__init__.py:15-83`
-- Modify: `src/babylon/domain/economics/distribution/types.py:1-30`
-- Modify: `src/babylon/domain/economics/counter_tendencies/types.py:1-45`
+- Modify: `src/babylon/domain/economics/distribution/types.py:1-30,42,87`
+- Modify: `src/babylon/domain/economics/distribution/__init__.py:13-44`
+- Modify: `src/babylon/domain/economics/counter_tendencies/types.py:1-47,66,111-131`
+- Modify: `src/babylon/domain/economics/counter_tendencies/__init__.py:11-29`
+- Modify: `src/babylon/domain/economics/counter_tendencies/calculator.py:11`
 - Modify: `src/babylon/domain/economics/credit/types.py:13,95`
+- Modify: `src/babylon/domain/economics/credit/__init__.py:37-69`
+- Modify: `src/babylon/domain/economics/credit/credit_cycle.py:18-23,61-147`
 - Test: `tests/unit/config/test_capital_vol3_defines.py` (create)
 - Test: `tests/unit/economics/distribution/test_distribution_types.py` (append)
-- Test: `tests/unit/economics/counter_tendencies/test_types.py` (append)
+- Test: `tests/unit/economics/counter_tendencies/test_types.py` (rewrite module import + 4 existing tests + append)
+- Test: `tests/unit/economics/credit/test_credit_cycle.py` (rewrite import + 3 call sites)
+- Test: `tests/unit/economics/distribution/test_calculator.py:59` (docstring reference only)
+- Test: `tests/integration/economics/test_vol3_surplus_distribution_live.py` (U1.9's file — rewrite import + 2 call sites)
+
+**Blast radius — verified by `rg` over `src tests` before authoring, not assumed.** This task
+deletes five module-level names, and every one of them is re-exported from its package
+`__init__.py` and listed in that package's `__all__`. Deleting them without threading the
+packages breaks **package import**, not one call site: `from babylon.domain.economics.distribution
+import ...` then raises `ImportError` at collection for every test under that tree. Three of the
+five are also used *internally* by the module that declares them
+(`distribution/types.py:87`, `counter_tendencies/types.py:119,131`,
+`credit_cycle.py:126,143,145`), and four are used by already-shipped test files — including
+`tests/integration/economics/test_vol3_surplus_distribution_live.py`, which **Task U1.9 ships
+earlier in this same plan**. Every one of those sites is edited in Step 3 below.
 
 **Interfaces:**
 - Consumes: `GameDefines.load_default()` / `GameDefines.load_from_yaml()` (`babylon.config.defines`), the `_from_yaml_dict`/`build_yaml` auto-discovery over `GameDefines.model_fields` (`tools/generate_defines_config.py` — no changes needed there, it introspects the schema).
 - Produces: `GameDefines.capital_vol3: CapitalVolumeIIIDefines` with fields `debt_spiral_threshold`, `distribution_epsilon`, `counter_tendency_weights`, `imperial_rent_reference_scale`, `profit_rate_fallback`, `national_county_count`, `default_rate_estimate`, `housing_capitalization_rate_default` — Task U2.4 wires the last four into `tick/system/__init__.py` and `factory.py` via `services.defines.capital_vol3.*`.
+- Produces (renames): five module-level constants become defines-backed accessor **functions** —
+  `distribution.types.debt_spiral_threshold()`, `distribution.types.distribution_epsilon()`,
+  `counter_tendencies.types.counter_tendency_weights()`,
+  `counter_tendencies.types.imperial_rent_reference_scale()`,
+  `credit.types.stagnation_credit_growth()`. Each takes an optional `defines: GameDefines | None`
+  and falls back to the process-cached default. The ALL-CAPS names are **deleted**; the package
+  `__all__`s carry the lowercase names instead.
 
 - [ ] **Step 0: Enumerate every call site before editing**
-Run `rg -n "DEBT_SPIRAL_THRESHOLD|DISTRIBUTION_EPSILON|COUNTER_TENDENCY_WEIGHTS|IMPERIAL_RENT_REFERENCE_SCALE" src/babylon` and list every call site in this task's **Files** block before editing. The accessor conversion must thread each one; the plan as authored does not search for them.
+Run this sweep and reconcile its output against this task's **Files** block before editing a single
+line. Scope is `src tests` — **not** `src/babylon`: four of the call sites are in already-shipped
+test files, and one of those files is shipped by Task U1.9 of this same plan.
+```bash
+rg -n "DEBT_SPIRAL_THRESHOLD|DISTRIBUTION_EPSILON|COUNTER_TENDENCY_WEIGHTS|IMPERIAL_RENT_REFERENCE_SCALE|STAGNATION_CREDIT_GROWTH" src tests
+```
+Expected: 23 matches across 7 files at the time of authoring, plus the U1.9 integration test's 3.
+If the sweep reports a file that is **not** in the Files block, STOP and add it — the accessor
+conversion must thread every one, and an unthreaded package `__init__.py` is an `ImportError` at
+collection, not a localized failure.
 - [ ] **Step 1: Write the failing tests**
 ```python
 # --- tests/unit/config/test_capital_vol3_defines.py (create) ---
 """GameDefines.capital_vol3 contract — Volume III financial-claims coefficients.
 
 Honesty sweep (spec 2026-07-18 vol3-money-scissors-design, U2): pins the
-defaults migrated off module-level Final constants in distribution/types.py
-and counter_tendencies/types.py, and STAGNATION_CREDIT_GROWTH's fix to read
-GameDefines.load_default() (moddability, Constitution III.1).
+defaults migrated off module-level Final constants in distribution/types.py,
+counter_tendencies/types.py and credit/types.py — all five now defines-backed
+accessor functions (moddability, Constitution III.1).
 """
 
 from __future__ import annotations
@@ -1892,10 +2054,11 @@ class TestCapitalVolumeIIIDefaults:
         assert defines.capital_vol3.debt_spiral_threshold == pytest.approx(0.5)
 
 
-class TestStagnationCreditGrowthReadsLoadDefault:
-    def test_reads_load_default_not_bare_constructor(self) -> None:
-        """credit/types.py must call load_default(), not bare GameDefines() —
-        otherwise a defines.yaml override never reaches the constant.
+class TestStagnationCreditGrowthIsAnAccessor:
+    def test_no_import_time_snapshot_remains(self) -> None:
+        """credit/types.py must expose an accessor, not a module-level Final
+        snapshot — an import-time snapshot reads defines.yaml on every process
+        start and freezes the value before any runtime override can reach it.
 
         Pinned at source level rather than by importlib.reload: reloading a
         module other already-imported modules hold references to leaves them
@@ -1907,60 +2070,275 @@ class TestStagnationCreditGrowthReadsLoadDefault:
         import babylon.domain.economics.credit.types as credit_types
 
         source = Path(str(credit_types.__file__)).read_text(encoding="utf-8")
-        assert "GameDefines.load_default().crisis.stagnation_credit_growth" in source
+        assert "def stagnation_credit_growth(" in source
+        assert "STAGNATION_CREDIT_GROWTH" not in source
         assert "GameDefines().crisis.stagnation_credit_growth" not in source
 
     def test_value_matches_the_canonical_yaml(self) -> None:
-        from babylon.domain.economics.credit.types import STAGNATION_CREDIT_GROWTH
+        from babylon.domain.economics.credit.types import stagnation_credit_growth
 
-        assert STAGNATION_CREDIT_GROWTH == pytest.approx(
+        assert stagnation_credit_growth() == pytest.approx(
             GameDefines.load_default().crisis.stagnation_credit_growth
         )
 
+    def test_explicit_defines_override_is_honoured(self) -> None:
+        """The whole point of the accessor: a caller-supplied GameDefines wins."""
+        from babylon.domain.economics.credit.types import stagnation_credit_growth
+
+        base = GameDefines.load_default()
+        overridden = base.model_copy(
+            update={"crisis": base.crisis.model_copy(update={"stagnation_credit_growth": 0.123})}
+        )
+        assert stagnation_credit_growth(overridden) == pytest.approx(0.123)
+
 
 # --- tests/unit/economics/distribution/test_distribution_types.py (append) ---
-class TestConstantsAreGameDefinesBacked:
-    """Honesty sweep (U2): DEBT_SPIRAL_THRESHOLD/DISTRIBUTION_EPSILON now
-    read from GameDefines.capital_vol3, not a bare module-level literal."""
+class TestThresholdAccessorsAreGameDefinesBacked:
+    """Honesty sweep (U2): the DEBT_SPIRAL_THRESHOLD/DISTRIBUTION_EPSILON
+    Finals are gone; debt_spiral_threshold()/distribution_epsilon() read from
+    GameDefines.capital_vol3 at call time, not at import time."""
 
     def test_debt_spiral_threshold_matches_capital_vol3(self) -> None:
         from babylon.config.defines import GameDefines
-        from babylon.domain.economics.distribution.types import DEBT_SPIRAL_THRESHOLD
+        from babylon.domain.economics.distribution.types import debt_spiral_threshold
 
-        assert DEBT_SPIRAL_THRESHOLD == GameDefines.load_default().capital_vol3.debt_spiral_threshold
+        assert (
+            debt_spiral_threshold()
+            == GameDefines.load_default().capital_vol3.debt_spiral_threshold
+        )
 
     def test_distribution_epsilon_matches_capital_vol3(self) -> None:
         from babylon.config.defines import GameDefines
-        from babylon.domain.economics.distribution.types import DISTRIBUTION_EPSILON
+        from babylon.domain.economics.distribution.types import distribution_epsilon
 
-        assert DISTRIBUTION_EPSILON == GameDefines.load_default().capital_vol3.distribution_epsilon
+        assert (
+            distribution_epsilon()
+            == GameDefines.load_default().capital_vol3.distribution_epsilon
+        )
+
+    def test_explicit_defines_override_is_honoured(self) -> None:
+        """A caller-supplied GameDefines wins over the process default — the
+        behaviour the deleted module-level Finals made impossible."""
+        from babylon.config.defines import GameDefines
+        from babylon.domain.economics.distribution.types import (
+            debt_spiral_threshold,
+            distribution_epsilon,
+        )
+
+        base = GameDefines.load_default()
+        overridden = base.model_copy(
+            update={
+                "capital_vol3": base.capital_vol3.model_copy(
+                    update={"debt_spiral_threshold": 0.75, "distribution_epsilon": 1e-6}
+                )
+            }
+        )
+        assert debt_spiral_threshold(overridden) == pytest.approx(0.75)
+        assert distribution_epsilon(overridden) == pytest.approx(1e-6)
 
 
 # --- tests/unit/economics/counter_tendencies/test_types.py (append) ---
-class TestConstantsAreGameDefinesBacked:
-    """Honesty sweep (U2): COUNTER_TENDENCY_WEIGHTS/IMPERIAL_RENT_REFERENCE_SCALE
-    now read from GameDefines.capital_vol3, not a bare module-level literal."""
+class TestWeightAccessorsAreGameDefinesBacked:
+    """Honesty sweep (U2): the COUNTER_TENDENCY_WEIGHTS /
+    IMPERIAL_RENT_REFERENCE_SCALE Finals are gone; counter_tendency_weights()
+    and imperial_rent_reference_scale() read GameDefines.capital_vol3 at call
+    time, not at import time."""
 
     def test_counter_tendency_weights_match_capital_vol3(self) -> None:
         from babylon.config.defines import GameDefines
-        from babylon.domain.economics.counter_tendencies.types import COUNTER_TENDENCY_WEIGHTS
+        from babylon.domain.economics.counter_tendencies.types import counter_tendency_weights
 
-        assert COUNTER_TENDENCY_WEIGHTS == GameDefines.load_default().capital_vol3.counter_tendency_weights
+        assert (
+            counter_tendency_weights()
+            == GameDefines.load_default().capital_vol3.counter_tendency_weights
+        )
 
     def test_imperial_rent_reference_scale_matches_capital_vol3(self) -> None:
         from babylon.config.defines import GameDefines
         from babylon.domain.economics.counter_tendencies.types import (
-            IMPERIAL_RENT_REFERENCE_SCALE,
+            imperial_rent_reference_scale,
         )
 
         assert (
-            IMPERIAL_RENT_REFERENCE_SCALE
+            imperial_rent_reference_scale()
             == GameDefines.load_default().capital_vol3.imperial_rent_reference_scale
         )
+
+    def test_explicit_defines_override_is_honoured(self) -> None:
+        """A caller-supplied GameDefines wins over the process default."""
+        from babylon.config.defines import GameDefines
+        from babylon.domain.economics.counter_tendencies.types import (
+            counter_tendency_weights,
+            imperial_rent_reference_scale,
+        )
+
+        base = GameDefines.load_default()
+        overridden = base.model_copy(
+            update={
+                "capital_vol3": base.capital_vol3.model_copy(
+                    update={
+                        "counter_tendency_weights": [0.5, 0.1, 0.1, 0.1, 0.1, 0.1],
+                        "imperial_rent_reference_scale": 1_000.0,
+                    }
+                )
+            }
+        )
+        assert counter_tendency_weights(overridden) == [0.5, 0.1, 0.1, 0.1, 0.1, 0.1]
+        assert imperial_rent_reference_scale(overridden) == pytest.approx(1_000.0)
+```
+**Also rewrite the existing call sites in this file** — `test_types.py` imports
+`COUNTER_TENDENCY_WEIGHTS` at module level (line 16) and `IMPERIAL_RENT_REFERENCE_SCALE` inside two
+test bodies (lines 154, 202). Those names cease to exist in Step 3, so this file is part of the red
+phase, not a follow-up:
+```python
+# tests/unit/economics/counter_tendencies/test_types.py:15-18 — BEFORE:
+#     from babylon.domain.economics.counter_tendencies.types import (
+#         COUNTER_TENDENCY_WEIGHTS,
+#         CounterTendencyStrength,
+#     )
+# AFTER:
+from babylon.domain.economics.counter_tendencies.types import (
+    CounterTendencyStrength,
+    counter_tendency_weights,
+)
+
+# :113-119 — BEFORE:
+#     def test_weights_sum_to_one(self) -> None:
+#         """COUNTER_TENDENCY_WEIGHTS should sum to 1.0."""
+#         assert sum(COUNTER_TENDENCY_WEIGHTS) == pytest.approx(1.0)
+#
+#     def test_weights_length_six(self) -> None:
+#         """COUNTER_TENDENCY_WEIGHTS has exactly 6 elements."""
+#         assert len(COUNTER_TENDENCY_WEIGHTS) == 6
+# AFTER:
+    def test_weights_sum_to_one(self) -> None:
+        """counter_tendency_weights() should sum to 1.0."""
+        assert sum(counter_tendency_weights()) == pytest.approx(1.0)
+
+    def test_weights_length_six(self) -> None:
+        """counter_tendency_weights() has exactly 6 elements."""
+        assert len(counter_tendency_weights()) == 6
+
+# :152-175 — BEFORE the body used IMPERIAL_RENT_REFERENCE_SCALE and
+# COUNTER_TENDENCY_WEIGHTS; AFTER (only the four marked lines change):
+    def test_net_counter_tendency_weighted_sum(self) -> None:
+        """net_counter_tendency uses counter_tendency_weights() in correct order."""
+        from babylon.domain.economics.counter_tendencies.types import (
+            imperial_rent_reference_scale,
+        )
+
+        ct = CounterTendencyStrength(
+            year=2020,
+            exploitation_rate_change=0.1,
+            wage_suppression=0.01,
+            constant_capital_cheapening=-0.03,
+            reserve_army_size=0.08,
+            imperial_rent_flow=500_000_000_000.0,
+            fictitious_profit_share=0.25,
+        )
+        # Manual calculation of indicators:
+        # [0] exploitation_rate_change = 0.1
+        # [1] wage_suppression = 0.01
+        # [2] -constant_capital_cheapening = -(-0.03) = 0.03
+        # [3] reserve_army_size = 0.08
+        # [4] imperial_rent = min(500B / reference_scale, 1.0)
+        # [5] fictitious_profit_share = 0.25
+        imperial_norm = min(500_000_000_000.0 / imperial_rent_reference_scale(), 1.0)
+        indicators = [0.1, 0.01, 0.03, 0.08, imperial_norm, 0.25]
+        expected = sum(w * v for w, v in zip(indicators, counter_tendency_weights(), strict=True))
+        assert ct.net_counter_tendency == pytest.approx(expected)
+
+# :200-211 — BEFORE the body used IMPERIAL_RENT_REFERENCE_SCALE; AFTER:
+    def test_imperial_rent_caps_at_reference_scale(self) -> None:
+        """Imperial rent normalization caps at 1.0 at the reference scale."""
+        from babylon.domain.economics.counter_tendencies.types import (
+            imperial_rent_reference_scale,
+        )
+
+        ct_at_scale = CounterTendencyStrength(
+            year=2020,
+            imperial_rent_flow=imperial_rent_reference_scale(),
+        )
+        ct_above_scale = CounterTendencyStrength(
+            year=2020,
+            imperial_rent_flow=imperial_rent_reference_scale() * 2.0,
+        )
+        # Both should produce the same CT (capped at 1.0)
+        assert ct_at_scale.net_counter_tendency == pytest.approx(
+            ct_above_scale.net_counter_tendency
+        )
+```
+**And the two other already-shipped test files** — same reason, same red phase:
+```python
+# tests/unit/economics/credit/test_credit_cycle.py:16-21 — BEFORE:
+#     from babylon.domain.economics.credit.types import (
+#         OVEREXTENSION_DEFAULT_RATE,
+#         RECOVERY_CONSECUTIVE_PERIODS,
+#         STAGNATION_CREDIT_GROWTH,
+#         CreditCyclePhase,
+#     )
+# AFTER:
+from babylon.domain.economics.credit.types import (
+    OVEREXTENSION_DEFAULT_RATE,
+    RECOVERY_CONSECUTIVE_PERIODS,
+    CreditCyclePhase,
+    stagnation_credit_growth,
+)
+
+# :99  — BEFORE: credit_growth=STAGNATION_CREDIT_GROWTH / 2,  # Below threshold
+# AFTER:
+            credit_growth=stagnation_credit_growth() / 2,  # Below threshold
+
+# :181 — BEFORE: credit_growth=STAGNATION_CREDIT_GROWTH + 0.01,  # Above threshold
+# AFTER:
+            credit_growth=stagnation_credit_growth() + 0.01,  # Above threshold
+
+# :192 — BEFORE: credit_growth=STAGNATION_CREDIT_GROWTH / 2,  # Below threshold
+# AFTER:
+            credit_growth=stagnation_credit_growth() / 2,  # Below threshold
+
+
+# tests/integration/economics/test_vol3_surplus_distribution_live.py (shipped by
+# Task U1.9) — BEFORE:
+#     from babylon.domain.economics.distribution.types import DISTRIBUTION_EPSILON
+# AFTER:
+from babylon.domain.economics.distribution.types import distribution_epsilon
+
+# in test_sc001_identity_holds_for_one_hundred_percent_of_observations — BEFORE:
+#         if residual > DISTRIBUTION_EPSILON:
+#             violations.append((fips, residual))
+#     assert not violations, f"SC-001 violated (residual > {DISTRIBUTION_EPSILON}): {violations}"
+# AFTER (hoist one call out of the loop — the accessor is not free):
+    epsilon = distribution_epsilon()
+    violations: list[tuple[str, float]] = []
+    for fips, county in sorted(tick_state.county_states.items()):
+        d = county.surplus_distribution
+        if d is None:
+            continue
+        residual = abs(
+            d.total_surplus_produced
+            - (
+                d.profit_of_enterprise
+                + d.interest_payments
+                + d.ground_rent
+                + d.taxes_on_surplus
+            )
+        )
+        if residual > epsilon:
+            violations.append((fips, residual))
+    assert not violations, f"SC-001 violated (residual > {epsilon}): {violations}"
 ```
 - [ ] **Step 2: Run tests to verify they fail**
-Run: `mise run test:q -- tests/unit/config/test_capital_vol3_defines.py tests/unit/economics/distribution/test_distribution_types.py::TestConstantsAreGameDefinesBacked tests/unit/economics/counter_tendencies/test_types.py::TestConstantsAreGameDefinesBacked`
-Expected: FAIL — `ImportError: cannot import name 'CapitalVolumeIIIDefines' from 'babylon.config.defines'`; `AttributeError: 'GameDefines' object has no attribute 'capital_vol3'`.
+Run: `mise run test:q -- tests/unit/config/test_capital_vol3_defines.py tests/unit/economics/distribution/test_distribution_types.py tests/unit/economics/counter_tendencies/test_types.py tests/unit/economics/credit/test_credit_cycle.py`
+Expected: FAIL — `ImportError: cannot import name 'CapitalVolumeIIIDefines' from 'babylon.config.defines'`
+in the config file; `ImportError: cannot import name 'counter_tendency_weights' from
+'babylon.domain.economics.counter_tendencies.types'` and `ImportError: cannot import name
+'stagnation_credit_growth' from 'babylon.domain.economics.credit.types'` at collection for the
+rewritten sibling files. These are assertion-unreachable collection reds on files whose imports name
+symbols Step 3 creates — the same shape the Global Constraints carve out for a task that creates the
+name under test.
+`tests/integration/economics/test_vol3_surplus_distribution_live.py` is edited in the same red phase
+but is not run here (it needs the reference DB); it is covered by Step 4's full-file run below.
 - [ ] **Step 3: Write minimal implementation**
 ```python
 # src/babylon/config/defines/capital_vol3.py (create)
@@ -2103,11 +2481,14 @@ from babylon.config.defines.capital_vol3 import CapitalVolumeIIIDefines
     "CarceralDefines",
 
 
-# src/babylon/domain/economics/distribution/types.py:1-11 — add import
-# (NO module-level defines snapshot — see the accessor-function note below):
+# src/babylon/domain/economics/distribution/types.py:1-11 — add imports and
+# DROP `from typing import Final` (NO module-level defines snapshot — see the
+# accessor-function note below). Final was used ONLY by the two constants this
+# task deletes; leaving the import is an unused-import lint failure under
+# `mise run check`. U2.2 added `year_within_modeled_range`; it stays.
 from __future__ import annotations
 
-from typing import Final
+from functools import lru_cache
 
 from pydantic import BaseModel, ConfigDict, Field, computed_field
 
@@ -2119,6 +2500,25 @@ from babylon.domain.economics.tensor import year_within_modeled_range
 # snapshots: snapshotting at import time reads defines.yaml from disk on
 # every process start (including layer-0.5 sentinel processes) and freezes
 # the value before any runtime override can reach it.
+@lru_cache(maxsize=1)
+def _default_defines() -> GameDefines:
+    """Process-cached ``GameDefines.load_default()`` for the accessors below.
+
+    Cached because ``distribution_epsilon()`` is called from the
+    ``distribution_complete`` computed field, which is evaluated per county
+    per tick; an uncached ``load_default()`` re-parses ``defines.yaml`` from
+    disk on every one of those evaluations.
+
+    Cached on FIRST USE, not at import time — which is the whole point of the
+    migration. A process that never touches these accessors (layer-0.5
+    sentinels, the docs build) never reads the file, and any caller that holds
+    a real ``GameDefines`` passes it explicitly and bypasses the cache
+    entirely. Tests that need a different default call
+    ``_default_defines.cache_clear()``.
+    """
+    return GameDefines.load_default()
+
+
 def debt_spiral_threshold(defines: GameDefines | None = None) -> float:
     """Accumulated debt / annual surplus ratio triggering crisis flag.
 
@@ -2130,9 +2530,9 @@ def debt_spiral_threshold(defines: GameDefines | None = None) -> float:
     2026-07-18 honesty sweep — moddable via defines.yaml.
 
     Reads ``capital_vol3.debt_spiral_threshold`` from the passed
-    ``defines``, or from ``GameDefines.load_default()`` when omitted.
+    ``defines``, or from the process-cached default when omitted.
     """
-    resolved = defines if defines is not None else GameDefines.load_default()
+    resolved = defines if defines is not None else _default_defines()
     return resolved.capital_vol3.debt_spiral_threshold
 
 
@@ -2145,17 +2545,65 @@ def distribution_epsilon(defines: GameDefines | None = None) -> float:
     2026-07-18 honesty sweep.
 
     Reads ``capital_vol3.distribution_epsilon`` from the passed
-    ``defines``, or from ``GameDefines.load_default()`` when omitted.
+    ``defines``, or from the process-cached default when omitted.
     """
-    resolved = defines if defines is not None else GameDefines.load_default()
+    resolved = defines if defines is not None else _default_defines()
     return resolved.capital_vol3.distribution_epsilon
 
 
-# src/babylon/domain/economics/counter_tendencies/types.py:1-45 — add
+# distribution/types.py:42 — the class docstring's identity line names the
+# deleted constant; BEFORE:
+#     Identity: s = p + i + r + t (within DISTRIBUTION_EPSILON)
+# AFTER:
+    Identity: s = p + i + r + t (within :func:`distribution_epsilon`)
+
+# distribution/types.py:87 — the ONLY internal use of the deleted constant,
+# inside the `distribution_complete` computed field; BEFORE:
+#     return bool(abs(distributed - self.total_surplus_produced) < DISTRIBUTION_EPSILON)
+# AFTER:
+        return bool(abs(distributed - self.total_surplus_produced) < distribution_epsilon())
+
+
+# src/babylon/domain/economics/distribution/__init__.py — the package
+# re-exports both deleted names at module level AND lists them in __all__;
+# leaving either breaks `import babylon.domain.economics.distribution`.
+# :13-17 __all__ — BEFORE:
+#     __all__: list[str] = [
+#         # Types (types.py)
+#         "DEBT_SPIRAL_THRESHOLD",
+#         "DISTRIBUTION_EPSILON",
+#         "SurplusValueDistribution",
+# AFTER:
+__all__: list[str] = [
+    # Threshold accessors (types.py) — GameDefines-backed since the
+    # 2026-07-18 honesty sweep; these are functions, not constants.
+    "debt_spiral_threshold",
+    "distribution_epsilon",
+    "SurplusValueDistribution",
+
+# :39-44 import — BEFORE:
+#     from babylon.domain.economics.distribution.types import (
+#         DEBT_SPIRAL_THRESHOLD,
+#         DISTRIBUTION_EPSILON,
+#         DebtAccumulation,
+#         SurplusValueDistribution,
+#     )
+# AFTER:
+from babylon.domain.economics.distribution.types import (
+    DebtAccumulation,
+    SurplusValueDistribution,
+    debt_spiral_threshold,
+    distribution_epsilon,
+)
+
+
+# src/babylon/domain/economics/counter_tendencies/types.py:1-47 — add
 # import (NO module-level defines snapshot — see the accessor-function note
-# below); replace the two Final declarations:
+# below); replace the two Final declarations. `Final` STAYS here: it is still
+# used by `_IMPERIAL_RENT_EPSILON` at line 46.
 from __future__ import annotations
 
+from functools import lru_cache
 from typing import Final
 
 from pydantic import BaseModel, ConfigDict, Field, computed_field
@@ -2167,6 +2615,18 @@ from babylon.config.defines import GameDefines
 # snapshots: snapshotting at import time reads defines.yaml from disk on
 # every process start (including layer-0.5 sentinel processes) and freezes
 # the value before any runtime override can reach it.
+@lru_cache(maxsize=1)
+def _default_defines() -> GameDefines:
+    """Process-cached ``GameDefines.load_default()`` for the accessors below.
+
+    Same rationale as ``distribution.types._default_defines``: both accessors
+    are read from the ``net_counter_tendency`` computed field, evaluated on
+    every model access and every ``model_dump()``. Cached on FIRST USE, not at
+    import time; an explicit ``defines`` argument bypasses the cache.
+    """
+    return GameDefines.load_default()
+
+
 def counter_tendency_weights(defines: GameDefines | None = None) -> list[float]:
     """Weights for the six TRPF counter-tendencies in net strength computation.
 
@@ -2181,9 +2641,9 @@ def counter_tendency_weights(defines: GameDefines | None = None) -> list[float]:
     2026-07-18 honesty sweep.
 
     Reads ``capital_vol3.counter_tendency_weights`` from the passed
-    ``defines``, or from ``GameDefines.load_default()`` when omitted.
+    ``defines``, or from the process-cached default when omitted.
     """
-    resolved = defines if defines is not None else GameDefines.load_default()
+    resolved = defines if defines is not None else _default_defines()
     return resolved.capital_vol3.counter_tendency_weights
 
 
@@ -2201,35 +2661,258 @@ def imperial_rent_reference_scale(defines: GameDefines | None = None) -> float:
     honesty sweep.
 
     Reads ``capital_vol3.imperial_rent_reference_scale`` from the passed
-    ``defines``, or from ``GameDefines.load_default()`` when omitted.
+    ``defines``, or from the process-cached default when omitted.
     """
-    resolved = defines if defines is not None else GameDefines.load_default()
+    resolved = defines if defines is not None else _default_defines()
     return resolved.capital_vol3.imperial_rent_reference_scale
 
 
-# src/babylon/domain/economics/credit/types.py:95 — BEFORE:
-#     STAGNATION_CREDIT_GROWTH: Final[float] = GameDefines().crisis.stagnation_credit_growth
+# counter_tendencies/types.py:66 — class docstring cross-reference; BEFORE:
+#     :data:`COUNTER_TENDENCY_WEIGHTS`. Positive values indicate
+# AFTER (the target is a function now — a stale :data: role is a broken xref
+# under the Sphinx -W build):
+    :func:`counter_tendency_weights`. Positive values indicate
+
+# counter_tendencies/types.py:111-119 — the `net_counter_tendency` docstring
+# and its ONE internal use of the reference scale; BEFORE:
+#         - [4] imperial_rent_flow: linear normalization against
+#           ``IMPERIAL_RENT_REFERENCE_SCALE``, capped at 1.0.
+#           ...
+#         # Capped at 1.0 at the reference scale. Extensible: adjust
+#         # IMPERIAL_RENT_REFERENCE_SCALE to recalibrate.
+#         imperial_normalized = min(
+#             self.imperial_rent_flow / max(IMPERIAL_RENT_REFERENCE_SCALE, _IMPERIAL_RENT_EPSILON),
+#             1.0,
+#         )
 # AFTER:
-STAGNATION_CREDIT_GROWTH: Final[float] = GameDefines.load_default().crisis.stagnation_credit_growth
+        - [4] imperial_rent_flow: linear normalization against
+          :func:`imperial_rent_reference_scale`, capped at 1.0.
+          The *magnitude* of unequal exchange matters (Marx V3 Ch14 §V).
+        - [5] fictitious_profit_share: direct
+        """
+        # Magnitude-sensitive normalization: larger flows → stronger CT.
+        # Capped at 1.0 at the reference scale. Extensible: edit
+        # capital_vol3.imperial_rent_reference_scale in defines.yaml to
+        # recalibrate — no code change needed since the 2026-07-18 sweep.
+        imperial_normalized = min(
+            self.imperial_rent_flow
+            / max(imperial_rent_reference_scale(), _IMPERIAL_RENT_EPSILON),
+            1.0,
+        )
+
+# counter_tendencies/types.py:131 — the weighted sum; BEFORE:
+#         return sum(w * v for w, v in zip(indicators, COUNTER_TENDENCY_WEIGHTS, strict=True))
+# AFTER:
+        return sum(
+            w * v for w, v in zip(indicators, counter_tendency_weights(), strict=True)
+        )
+
+
+# src/babylon/domain/economics/counter_tendencies/__init__.py — same package
+# re-export problem as distribution. :11-29 — BEFORE the module imported
+# COUNTER_TENDENCY_WEIGHTS and listed it in __all__; AFTER:
+from babylon.domain.economics.counter_tendencies.calculator import (
+    CounterTendencyCalculator,
+    DefaultCounterTendencyCalculator,
+)
+from babylon.domain.economics.counter_tendencies.types import (
+    CounterTendencyStrength,
+    counter_tendency_weights,
+    imperial_rent_reference_scale,
+)
+
+__all__: list[str] = [
+    # Coefficient accessors (GameDefines-backed since the 2026-07-18
+    # honesty sweep; these are functions, not constants)
+    "counter_tendency_weights",
+    "imperial_rent_reference_scale",
+    # Types
+    "CounterTendencyStrength",
+    # Protocols
+    "CounterTendencyCalculator",
+    # Implementations
+    "DefaultCounterTendencyCalculator",
+]
+
+
+# src/babylon/domain/economics/counter_tendencies/calculator.py:11 — module
+# docstring cross-reference to a name that no longer exists; BEFORE:
+#     :data:`COUNTER_TENDENCY_WEIGHTS`: Weights for the six indicators.
+# AFTER:
+    :func:`babylon.domain.economics.counter_tendencies.types.counter_tendency_weights`:
+    Weights for the six indicators.
+
+
+# src/babylon/domain/economics/credit/types.py:95 — the fifth constant.
+# BEFORE:
+#     STAGNATION_CREDIT_GROWTH: Final[float] = GameDefines().crisis.stagnation_credit_growth
+#     """Credit expansion rate threshold for stagnation diagnosis. ..."""
+# AFTER — an accessor, for exactly the reason the four siblings above became
+# accessors. It reads `crisis`, not the new `capital_vol3` category (the value
+# already had a define; only the plumbing was broken), so no new field is
+# added — but leaving it as an import-time snapshot would enshrine in this
+# very task the anti-pattern the task exists to remove.
+@lru_cache(maxsize=1)
+def _default_defines() -> GameDefines:
+    """Process-cached ``GameDefines.load_default()``.
+
+    Same rationale as ``distribution.types._default_defines``: cached on
+    FIRST USE rather than at import time, and bypassed entirely when a
+    caller passes an explicit ``defines``.
+    """
+    return GameDefines.load_default()
+
+
+def stagnation_credit_growth(defines: GameDefines | None = None) -> float:
+    """Credit expansion rate threshold for stagnation diagnosis.
+
+    Traceability: FRED TCMDO YoY growth rate. When credit growth falls below
+    1% annually, the economy is in secular stagnation — insufficient credit
+    creation for expansion but insufficient defaults for crisis clearing.
+
+    Reads ``crisis.stagnation_credit_growth`` from the passed ``defines``, or
+    from the process-cached default when omitted. Was a module-level ``Final``
+    initialised from a bare ``GameDefines()`` — which read the dataclass
+    defaults and ignored ``defines.yaml`` entirely — until the 2026-07-18
+    honesty sweep.
+    """
+    resolved = defines if defines is not None else _default_defines()
+    return resolved.crisis.stagnation_credit_growth
+
+# credit/types.py:1-13 — add the `lru_cache` import. `Final` STAYS: seven other
+# threshold constants in this module still use it.
+from functools import lru_cache
+
+
+# src/babylon/domain/economics/credit/credit_cycle.py:18-23 — BEFORE the
+# module imported STAGNATION_CREDIT_GROWTH; AFTER:
+from babylon.domain.economics.credit.types import (
+    OVEREXTENSION_DEFAULT_RATE,
+    RECOVERY_CONSECUTIVE_PERIODS,
+    CreditCyclePhase,
+    stagnation_credit_growth,
+)
+
+# credit_cycle.py:61-69 — the class docstring names the constant three times;
+# BEFORE:
+#     - OVEREXTENSION -> STAGNATION: abs(credit_growth) < STAGNATION_CREDIT_GROWTH
+#     - CRISIS -> RECOVERY: profit_rate_trend > 0 for RECOVERY_CONSECUTIVE_PERIODS
+#     - RECOVERY -> EXPANSION: credit_growth > STAGNATION_CREDIT_GROWTH
+#     - RECOVERY -> STAGNATION: abs(credit_growth) < STAGNATION_CREDIT_GROWTH
+# AFTER:
+    - OVEREXTENSION -> STAGNATION: abs(credit_growth) < stagnation_credit_growth()
+    - CRISIS -> RECOVERY: profit_rate_trend > 0 for RECOVERY_CONSECUTIVE_PERIODS
+    - RECOVERY -> EXPANSION: credit_growth > stagnation_credit_growth()
+    - RECOVERY -> STAGNATION: abs(credit_growth) < stagnation_credit_growth()
+
+# credit_cycle.py:120-128 — BEFORE:
+#     def _evaluate_overextension(
+#         self, credit_growth: float, default_rate: float
+#     ) -> tuple[CreditCyclePhase, int]:
+#         """OVEREXTENSION -> CRISIS (high defaults) or STAGNATION (low growth)."""
+#         if default_rate > OVEREXTENSION_DEFAULT_RATE:
+#             return (CreditCyclePhase.CRISIS, 0)
+#         if abs(credit_growth) < STAGNATION_CREDIT_GROWTH:
+#             return (CreditCyclePhase.STAGNATION, 0)
+#         return (CreditCyclePhase.OVEREXTENSION, 0)
+# AFTER:
+    def _evaluate_overextension(
+        self, credit_growth: float, default_rate: float
+    ) -> tuple[CreditCyclePhase, int]:
+        """OVEREXTENSION -> CRISIS (high defaults) or STAGNATION (low growth)."""
+        if default_rate > OVEREXTENSION_DEFAULT_RATE:
+            return (CreditCyclePhase.CRISIS, 0)
+        if abs(credit_growth) < stagnation_credit_growth():
+            return (CreditCyclePhase.STAGNATION, 0)
+        return (CreditCyclePhase.OVEREXTENSION, 0)
+
+# credit_cycle.py:141-147 — BEFORE:
+#     def _evaluate_recovery(self, credit_growth: float) -> tuple[CreditCyclePhase, int]:
+#         """RECOVERY -> EXPANSION (credit resumes) or STAGNATION (stalls)."""
+#         if credit_growth > STAGNATION_CREDIT_GROWTH:
+#             return (CreditCyclePhase.EXPANSION, 0)
+#         if abs(credit_growth) < STAGNATION_CREDIT_GROWTH:
+#             return (CreditCyclePhase.STAGNATION, 0)
+#         return (CreditCyclePhase.RECOVERY, 0)
+# AFTER (one accessor call, not two — the two comparisons must see the same
+# value even if defines.yaml is swapped mid-process):
+    def _evaluate_recovery(self, credit_growth: float) -> tuple[CreditCyclePhase, int]:
+        """RECOVERY -> EXPANSION (credit resumes) or STAGNATION (stalls)."""
+        threshold = stagnation_credit_growth()
+        if credit_growth > threshold:
+            return (CreditCyclePhase.EXPANSION, 0)
+        if abs(credit_growth) < threshold:
+            return (CreditCyclePhase.STAGNATION, 0)
+        return (CreditCyclePhase.RECOVERY, 0)
+
+
+# src/babylon/domain/economics/credit/__init__.py:37-69 — the package
+# re-exports the deleted name. In the `from ...credit.types import (` block,
+# BEFORE: `    STAGNATION_CREDIT_GROWTH,` ; AFTER — delete that line and add
+# `    stagnation_credit_growth,` after `InterestRateState,` (the block sorts
+# ALL_CAPS, then CamelCase, then lowercase). In __all__, BEFORE:
+#     "CREDIT_FRAGILITY_THRESHOLD",
+#     "STAGNATION_CREDIT_GROWTH",
+#     "OVEREXTENSION_DEFAULT_RATE",
+# AFTER:
+    "CREDIT_FRAGILITY_THRESHOLD",
+    "stagnation_credit_growth",
+    "OVEREXTENSION_DEFAULT_RATE",
+
+
+# tests/unit/economics/distribution/test_calculator.py:59 — docstring
+# reference to the deleted name (no code use); BEFORE:
+#         """s = p + i + r + t holds within DISTRIBUTION_EPSILON."""
+# AFTER:
+        """s = p + i + r + t holds within distribution_epsilon()."""
 ```
 Also regenerate the canonical YAML:
 ```bash
 poetry run python tools/generate_defines_config.py
 ```
 - [ ] **Step 4: Run tests to verify they pass**
-Run: `mise run test:q -- tests/unit/config/test_capital_vol3_defines.py tests/unit/economics/distribution/test_distribution_types.py tests/unit/economics/counter_tendencies/test_types.py tests/unit/config/test_constants_sync.py::TestDefinesYamlSingleSourceOfTruth`
-Expected: PASS
+Run: `mise run test:q -- tests/unit/config/test_capital_vol3_defines.py tests/unit/economics/distribution/test_distribution_types.py tests/unit/economics/counter_tendencies/test_types.py tests/unit/economics/credit/test_credit_cycle.py tests/unit/economics/distribution/test_calculator.py tests/unit/config/test_constants_sync.py::TestDefinesYamlSingleSourceOfTruth`
+Expected: PASS — 5 in `test_capital_vol3_defines.py` (2 defaults + 3 stagnation), 19 in
+`test_distribution_types.py` (16 pre-existing + 3 appended), 21 in `test_types.py` (18 pre-existing,
+4 of them rewritten onto the accessors, + 3 appended), 17 in `test_credit_cycle.py` (all
+pre-existing, import + 3 call sites rewritten), plus `test_calculator.py` and the sync guard
+unchanged.
+- [ ] **Step 4b: Re-run U1.9's integration file — this task edited it**
+Run: `mise run test:q -- tests/integration/economics/test_vol3_surplus_distribution_live.py`
+Expected: PASS (3 passed) — the same 3 U1.9 turned green, now importing `distribution_epsilon`
+instead of the deleted `DISTRIBUTION_EPSILON`. If this errors at collection, the import rewrite in
+Step 1 was not applied; a green Step 4 does not cover it, because that file is in the integration
+tier and `test:unit` never collects it.
+- [ ] **Step 4c: Prove no deleted name survives anywhere**
+Run: `rg -n "DEBT_SPIRAL_THRESHOLD|DISTRIBUTION_EPSILON|COUNTER_TENDENCY_WEIGHTS|IMPERIAL_RENT_REFERENCE_SCALE|STAGNATION_CREDIT_GROWTH" src tests`
+Expected: **exactly one match** —
+`tests/unit/config/test_capital_vol3_defines.py`'s `assert "STAGNATION_CREDIT_GROWTH" not in source`,
+which is the string literal that pins the deletion and must survive. Any *other* hit is an
+unthreaded call site — an `ImportError` waiting for whichever suite collects that file next. Then
+run `mise run check:quick` to confirm the deleted `from typing import Final` in
+`distribution/types.py` left no unused-import lint failure and that the two `:func:` docstring
+xrefs resolve.
 - [ ] **Step 5: Commit**
 ```bash
-mise run commit -- "feat(config): add GameDefines.capital_vol3, fix STAGNATION_CREDIT_GROWTH moddability
+mise run commit -- "feat(config): add GameDefines.capital_vol3, migrate five Vol III constants to accessors
 
 DEBT_SPIRAL_THRESHOLD, DISTRIBUTION_EPSILON, COUNTER_TENDENCY_WEIGHTS,
 and IMPERIAL_RENT_REFERENCE_SCALE were module-level Finals a
 defines.yaml edit could never reach. Migrate them into a new
 GameDefines.capital_vol3 category (same default values, zero behavior
-change) and regenerate defines.yaml. Also fix credit/types.py:95's
-STAGNATION_CREDIT_GROWTH, which read bare GameDefines() instead of
-load_default() — a defines.yaml override silently had no effect.
+change) and regenerate defines.yaml. Each becomes a lowercase accessor
+function reading the defines at CALL time, with a first-use-cached
+process default; the ALL-CAPS names are deleted and every consumer is
+threaded — both package __init__.py re-exports, distribution/types.py's
+own distribution_complete field, counter_tendencies/types.py's
+net_counter_tendency, credit_cycle.py's two transition guards, and four
+already-shipped test files including U1.9's integration acceptance test.
+
+Also convert credit/types.py:95's STAGNATION_CREDIT_GROWTH, which read
+bare GameDefines() instead of load_default() — a defines.yaml override
+silently had no effect. It reads crisis, not capital_vol3, so no new
+field is added; leaving it as an import-time snapshot would have
+enshrined in this commit the exact anti-pattern the commit removes.
 
 Co-Authored-By: Claude Opus 4.8 (1M context) <noreply@anthropic.com>"
 ```
@@ -3153,7 +3836,11 @@ Co-Authored-By: Claude Opus 4.8 (1M context) <noreply@anthropic.com>"
 - Consumes: `SIM_EPOCH_YEAR`, `WEEKS_PER_YEAR` (`babylon.kernel.sim_clock`);
   `TickDynamicsSystem._compute_national_params` (U2.1);
   `DefaultInterestCalculator`/`DefaultFictitiousCapitalCalculator`/
-  `DefaultDistributionCalculator` (U2.2's guards).
+  `DefaultDistributionCalculator` (U2.2's guards);
+  `MockMELTCalculator` (`tests/unit/economics/tick/conftest.py:36`) and
+  `_make_services` (`tests/unit/economics/tick/test_system.py:59`) — **two different modules**.
+  `_make_services` is NOT in that package's `conftest.py`; importing it from there is an
+  `ImportError` at collection. U3.3 imports the same pair correctly; match its form.
 - Produces: the standing proof of U2's third acceptance criterion.
 
 - [ ] **Step 1: Write the failing test**
@@ -3174,7 +3861,8 @@ from babylon.domain.economics.credit.interest import DefaultInterestCalculator
 from babylon.domain.economics.tensor import NoDataSentinel
 from babylon.domain.economics.tick.system import TickDynamicsSystem
 from babylon.kernel.sim_clock import SIM_EPOCH_YEAR, WEEKS_PER_YEAR
-from tests.unit.economics.tick.conftest import MockMELTCalculator, _make_services
+from tests.unit.economics.tick.conftest import MockMELTCalculator
+from tests.unit.economics.tick.test_system import _make_services
 
 pytestmark = pytest.mark.unit
 
@@ -3223,7 +3911,14 @@ def test_vol3_layer_degrades_rather_than_raising_past_the_ceiling() -> None:
 Run: `mise run test:q -- tests/unit/economics/tick/test_year_ceiling_crossing.py`
 Expected against a pre-U2.1 checkout: `test_melt_path_survives_every_year_of_a_5200_tick_campaign`
 fails with `AssertionError: year 2041 was silently relabeled 2040 — the clamp is back`.
-Verify the red by temporarily restoring `clamped_year = min(max(year, 2007), 2040)`.
+Verify the red by temporarily restoring `clamped_year = min(max(year, 2007), 2040)` in
+`src/babylon/domain/economics/tick/system/__init__.py` (the line U2.1 removed), running the file,
+observing that exact assertion, and then **restoring the file immediately**:
+```bash
+git checkout -- src/babylon/domain/economics/tick/system/__init__.py
+```
+Do not proceed to Step 4 until `git status` reports that file clean. The injected clamp must never
+reach Step 5's commit.
 - [ ] **Step 3: Write minimal implementation**
 No new production code — U2.1 and U2.2 supply it. This task converts two
 isolated unit assertions into the campaign-horizon proof §4 asks for.
@@ -3939,7 +4634,10 @@ Co-Authored-By: Claude Opus 4.8 (1M context) <noreply@anthropic.com>"
 - Modify: `src/babylon/domain/economics/tick/system/__init__.py` (`_compute_national_financial_state`)
 - Modify: `src/babylon/domain/economics/factory.py` (`create_financial_services` return dict)
 - Modify: `src/babylon/kernel/services.py`, `src/babylon/engine/services.py` (new service key)
-- Test: `tests/unit/economics/tick/test_system.py` (append to `TestComputeNationalFinancialState`)
+- Test: `tests/unit/economics/tick/test_system.py` (append to `TestComputeNationalFinancialState`;
+  add `from tests.unit.economics.credit.conftest import MockCreditAggregateSource` to the
+  import block — that fixture lives in a sibling package's `conftest.py`, and pytest conftests
+  are not cross-package importable by name, so it needs an explicit module-path import)
 
 **Interfaces:**
 - Consumes: `CreditState` (`babylon.domain.economics.credit.types:148`, fields `year`,
@@ -3967,6 +4665,14 @@ Adjust Step 3's helper body to the REAL signatures. **Do not adjust the Step 1
 test's contract** — `credit_fragility == default_rate_estimate * baa_spread` is
 what the `credit` opposition measures, whatever plumbing supplies the inputs.
 - [ ] **Step 1: Write the failing test**
+`MockCreditAggregateSource` lives in `tests/unit/economics/credit/conftest.py`, a
+different package from this file — conftest fixtures are not cross-package
+importable by name. Add the explicit module-path import to this file's import
+block:
+```python
+from tests.unit.economics.credit.conftest import MockCreditAggregateSource
+```
+Then append these two tests to `TestComputeNationalFinancialState`:
 ```python
     def test_publishes_credit_state_with_a_real_fragility_index(self) -> None:
         """U3.4: the `credit` opposition (U5.2) measures default_rate * spread.
@@ -4011,7 +4717,11 @@ what the `credit` opposition measures, whatever plumbing supplies the inputs.
 ```
 - [ ] **Step 2: Run test to verify it fails**
 Run: `mise run test:q -- tests/unit/economics/tick/test_system.py::TestComputeNationalFinancialState`
-Expected: FAIL with `assert None is not None` (`published.credit_state` is never populated).
+Expected: 1 failed, the rest passed. `test_publishes_credit_state_with_a_real_fragility_index`
+fails with `assert None is not None` (`published.credit_state` is never populated).
+`test_credit_state_is_none_without_an_interest_state` passes already — `credit_state` defaults
+to `None` before Step 3's implementation exists, which is what that test asserts — so it is not
+part of this task's red phase.
 - [ ] **Step 3: Write minimal implementation**
 
 Add `CreditState` to the `credit.types` import block in
@@ -4957,7 +5667,7 @@ Run: `mise run check:quick`
 Expected: PASS — Ruff clean, formatting stable, MyPy strict clean on `anchor.py` (both functions carry explicit `float | NoDataSentinel` return types).
 - [ ] **Step 3: Run both anchor test files together**
 Run: `mise run test:q -- tests/unit/economics/monetary/test_anchor.py tests/property/invariants/test_monetary_anchor_absence.py`
-Expected: PASS (28 passed)
+Expected: PASS (29 passed)
 - [ ] **Step 4: Confirm the scissors is untouched**
 Run: `mise run qa:regression`
 Expected: byte-identical across all 5 scenarios. U4 adds a pure module with no engine consumer; any baseline movement here means something outside this unit changed and must be investigated before proceeding to U5.
@@ -6625,7 +7335,11 @@ In `src/babylon/engine/systems/contradiction.py`, add this method immediately af
 
         rate_weight = float(services.defines.tension.principal_rate_weight)
         eligible = sorted(
-            (state for state in states if state.key not in blocked),
+            (
+                state
+                for state in states
+                if state.key not in blocked and state.key not in absent
+            ),
             key=lambda state: (-self._score(state, rate_weight), state.key),
         )
         if not eligible:
@@ -7428,29 +8142,91 @@ Co-Authored-By: Claude Opus 4.8 (1M context) <noreply@anthropic.com>"
 ### Task U6.6: Wire the interest-burden term into the correction threshold
 
 **Files:**
-- Modify: `src/babylon/engine/systems/market_scissors.py` — add the `serviceability_anchor` import (C-5) and rewrite `_maybe_correct`
-- Test: `tests/unit/engine/systems/test_market_system.py`
+- Modify: `src/babylon/engine/systems/market_scissors.py` — add the four-line import block (`SurplusValueDistribution`, `serviceability_anchor` (C-5), `NoDataSentinel`, `TICK_DYNAMICS_KEY`), add two module-level helpers, rewrite `_maybe_correct`
+- Test: `tests/unit/engine/systems/test_market_system.py` — add four imports (`SurplusValueDistribution`, `ClassDistribution`, `TICK_DYNAMICS_KEY`, `CountyEconomicState`), the module-level `_county_with` helper, and one test
 
 **Interfaces:**
-- Consumes: `calculate_serviceable_divergence(..., interest_burden=..., interest_slope=...)` (U6.2), `defines.correction_interest_slope` (U6.5), per-territory `tick_interest_burden` (already stamped — raw interest-payments dollar figure, `graph_bridge.py`'s Feature-024 block) and `tick_capital_stock` (already stamped, `graph_bridge.py:104`).
+- Consumes: `calculate_serviceable_divergence(..., interest_burden=..., interest_slope=...)` (U6.2), `defines.correction_interest_slope` (U6.5), per-territory `tick_interest_burden` (already stamped — raw interest-payments dollar figure, `graph_bridge.py`'s Feature-024 block) and `tick_capital_stock` (already stamped, `graph_bridge.py:104`); `SurplusValueDistribution` (`babylon.domain.economics.distribution.types:38`; required fields `fips_code` (exactly 5 chars), `year` (ge=2007, le=2040), `total_surplus_produced`, `interest_payments`, `ground_rent`, `taxes_on_surplus`, all `ge=0`); `NoDataSentinel` (`babylon.domain.economics.tensor:45`); `TICK_DYNAMICS_KEY: str = "tick_dynamics"` (`babylon.domain.economics.tick.graph_bridge:38`) and the `"year"` entry the bridge writes into that dict alongside `"county_states"` (`graph_bridge.py:61` — the ONLY tick-year source available to this System; `MarketScissorsSystem` receives a `tick`, never a calendar year).
 - Produces: `_mean_ratio_to_capital(graph, numerator_attr) -> float | None` — a new module-level helper reused unchanged by Task U6.7 for the debt term.
 - Produces: `_national_serviceability(graph) -> float | None` — the production consumer of `serviceability_anchor`. `_mean_ratio_to_capital(graph, numerator_attr)` is RETAINED and reused by U6.7 for `tick_accumulated_debt`.
 
 - [ ] **Step 1: Write the failing test**
 
-Add to `tests/unit/engine/systems/test_market_system.py`, inside `class TestCorrection:` (after the test added in Task U6.1):
+First add the new imports to `tests/unit/engine/systems/test_market_system.py`, directly below the existing `from babylon.config.defines import GameDefines, MarketDefines` line and above `from babylon.engine.context import TickContext` (`babylon.config` < `babylon.domain` < `babylon.engine`; Ruff's isort will confirm):
+
+```python
+from babylon.domain.economics.distribution.types import SurplusValueDistribution
+from babylon.domain.economics.dynamics.types import ClassDistribution
+from babylon.domain.economics.tick.graph_bridge import TICK_DYNAMICS_KEY
+from babylon.domain.economics.tick.types import CountyEconomicState
+```
+
+Then add the `_county_with` helper at module level, placed directly after `_county_worker` (currently ending around line 216) and before `class TestCountyAxis:`. It is deliberately narrower than U5.7's `_county` in `tests/unit/dialectics/` — that one is a different file, and this task only needs the interest/surplus pair:
+
+```python
+def _county_with(*, surplus: float, interest: float) -> CountyEconomicState:
+    """A published county state carrying only the surplus/interest pair.
+
+    Every other field is a fixed, valid filler: this fixture exists to feed
+    `_national_serviceability`, which reads `surplus_distribution` alone.
+    `ClassDistribution` enforces sum-to-one within 0.001, so the five shares
+    are not free parameters.
+    """
+    return CountyEconomicState(
+        fips="26163",
+        year=2015,
+        capital_stock=1.0e9,
+        throughput_position=0.9,
+        supply_chain_depth=2.1,
+        unemployment_rate=0.05,
+        u6_rate=0.10,
+        pter_rate=0.04,
+        nilf_rate=0.06,
+        median_wage=21.0,
+        employment=500000.0,
+        class_distribution=ClassDistribution(
+            fips="26163",
+            year=2015,
+            bourgeoisie_share=0.01,
+            petit_bourgeoisie_share=0.09,
+            labor_aristocracy_share=0.40,
+            proletariat_share=0.35,
+            lumpenproletariat_share=0.15,
+        ),
+        phi_hour=3.5,
+        surplus_distribution=SurplusValueDistribution(
+            fips_code="26163",
+            year=2015,
+            total_surplus_produced=surplus,
+            interest_payments=interest,
+            ground_rent=0.0,
+            taxes_on_surplus=0.0,
+        ),
+    )
+```
+
+Then add the test to `tests/unit/engine/systems/test_market_system.py`, inside `class TestCorrection:` (after the test added in Task U6.1):
 
 ```python
     def test_interest_burden_tightens_the_threshold_into_a_snap(self) -> None:
         """A healthy 0.3 profit rate alone services the 1.5 overhang
         (0.55 + 4*0.3 = 1.75 > 1.5). A national interest burden of i/s = 0.6
         (serviceability_anchor, §3.3) drops serviceable to 1.75 - 2.0*0.6 =
-        0.55 < 1.5 and the snap fires — §3.5 item 1."""
+        0.55 < 1.5 and the snap fires — §3.5 item 1.
+
+        `year` is written alongside `county_states` because that is exactly
+        what `write_tick_state_to_graph` publishes (graph_bridge.py:61); the
+        aggregate distribution is stamped with the REAL tick year, never an
+        invented constant.
+        """
         graph = _euphoric_graph(fictitious_log=1.5)
         graph.update_node("metropole", tick_profit_rate=0.3, tick_capital_stock=10.0)
         graph.set_graph_attr(
             TICK_DYNAMICS_KEY,
-            {"county_states": {"26163": _county_with(surplus=100.0, interest=60.0)}},
+            {
+                "year": 2015,
+                "county_states": {"26163": _county_with(surplus=100.0, interest=60.0)},
+            },
         )
         _step(graph, _enabled_services(), tick=10)
         assert graph.graph["market"]["corrections"] == 1
@@ -7463,11 +8239,16 @@ Expected: FAIL — `assert 0 == 1` (serviceable is still `0.55 + 4*0.3 = 1.75 > 
 
 - [ ] **Step 3: Write minimal implementation**
 
-In `src/babylon/engine/systems/market_scissors.py`, add the import:
+In `src/babylon/engine/systems/market_scissors.py`, add this import block in full, placed directly above the existing `from babylon.engine.systems.wealth_distribution import (` line (`babylon.domain` sorts before `babylon.engine`; within it `distribution` < `monetary` < `tensor` < `tick`; Ruff's isort will confirm). All four symbols are used by the two helpers below — none of them is currently imported by this module:
 
 ```python
+from babylon.domain.economics.distribution.types import SurplusValueDistribution
 from babylon.domain.economics.monetary import serviceability_anchor
+from babylon.domain.economics.tensor import NoDataSentinel
+from babylon.domain.economics.tick.graph_bridge import TICK_DYNAMICS_KEY
 ```
+
+(`NoDataSentinel` lands HERE, not in Task U6.8 — U6.8's import block therefore no longer adds it. All four are `domain` imports from `engine`, which the layering rule permits; none of them imports `engine` back, so there is no cycle.)
 
 Add a new module-level helper, placed directly after `_mean_profit_rate` (added in Task U6.1):
 
@@ -7517,9 +8298,19 @@ def _national_serviceability(graph: GraphProtocol) -> float | None:
     honest-absence contract (§3.3 clause 1) is the single source of the
     absent/present decision; a ``NoDataSentinel`` resolves to ``None`` and the
     interest term drops out of ``calculate_serviceable_divergence`` entirely.
+
+    The aggregate is stamped with the REAL tick year, read from the same
+    ``tick_dynamics["year"]`` entry the bridge writes alongside
+    ``county_states``. No invented constant: a hardcoded year would be an
+    inline coefficient with no material referent (Aleksandrov Test), and a
+    wrong one would silently mislabel every sentinel this function emits.
+    A missing or non-integer year is honest absence, not a default.
     """
     tick_data = graph.get_graph_attr(TICK_DYNAMICS_KEY, None)
     if not isinstance(tick_data, dict):
+        return None
+    year = tick_data.get("year")
+    if not isinstance(year, int) or isinstance(year, bool):
         return None
     county_states = tick_data.get("county_states")
     if not isinstance(county_states, dict):
@@ -7537,8 +8328,11 @@ def _national_serviceability(graph: GraphProtocol) -> float | None:
     if not saw_any:
         return None
     aggregate = SurplusValueDistribution(
+        # "00000" is not a county: it is the reserved national-aggregate FIPS.
+        # `monetary.anchor.NATIONAL_FIPS` ("USA") cannot be used here —
+        # SurplusValueDistribution.fips_code is min_length=max_length=5.
         fips_code="00000",
-        year=NATIONAL_AGGREGATE_YEAR,
+        year=year,
         total_surplus_produced=total_surplus,
         interest_payments=total_interest,
         ground_rent=0.0,
@@ -7581,15 +8375,17 @@ with:
 - [ ] **Step 4: Run test to verify it passes**
 
 Run: `mise run test:q -- tests/unit/engine/systems/test_market_system.py::TestCorrection`
-Expected: PASS for the entire class, including the pre-existing `test_healthy_profit_rate_services_the_bubble` (unaffected: no territory carries `tick_interest_burden` there, so `interest_burden` is `None` and the term drops out).
+Expected: PASS for the entire class, including the pre-existing `test_healthy_profit_rate_services_the_bubble` (unaffected: those graphs publish no `tick_dynamics` attribute at all, so `_national_serviceability` returns `None` and the term drops out).
 
 - [ ] **Step 5: Commit**
 ```bash
 mise run commit -- "feat(market): wire the interest-burden term into the correction threshold
 
-A financialised county's interest burden (tick_interest_burden /
-tick_capital_stock, exactly aggregated) tightens the serviceable
-divergence independent of the profit rate.
+The national interest burden i/s — the share of produced surplus already
+spoken for, aggregated as a ratio of sums over the published county
+SurplusValueDistributions and resolved by serviceability_anchor — tightens
+the serviceable divergence independent of the profit rate. Not interest
+over capital stock: the claim is on surplus, not on capital.
 
 Co-Authored-By: Claude Opus 4.8 (1M context) <noreply@anthropic.com>"
 ```
@@ -7826,12 +8622,11 @@ In `src/babylon/engine/systems/market_scissors.py`, update the top-of-file impor
 
 ```python
 from babylon.domain.economics.monetary import fictitious_anchor
-from babylon.domain.economics.tensor import NoDataSentinel
 from babylon.domain.economics.tick.graph_bridge import NATIONAL_FINANCIAL_ATTR
 from babylon.domain.economics.tick.types import NationalFinancialParameters
 ```
 
-placed alphabetically before the existing `from babylon.engine.systems.wealth_distribution import (...)` line, and add `calculate_anchor_pull` to the existing `formulas.market` import block:
+`NoDataSentinel` is NOT re-added here — Task U6.6 already imported it into this module for `_national_serviceability`, and `fictitious_anchor` reuses that same binding. Merge `fictitious_anchor` into U6.6's existing `from babylon.domain.economics.monetary import serviceability_anchor` line (making it `from babylon.domain.economics.monetary import fictitious_anchor, serviceability_anchor`) and `NATIONAL_FINANCIAL_ATTR` into U6.6's existing `from babylon.domain.economics.tick.graph_bridge import TICK_DYNAMICS_KEY` line, rather than writing duplicate `from` statements; the remaining new line is placed alphabetically before the existing `from babylon.engine.systems.wealth_distribution import (...)` line, and add `calculate_anchor_pull` to the existing `formulas.market` import block:
 
 ```python
 from babylon.formulas.market import (
@@ -8876,13 +9671,26 @@ LIVENESS_ROWS: tuple[LivenessRow, ...] = (
     LivenessRow(
         name="debt_spiral_threshold",
         producer_file=f"{_ECON_DIST}/types.py",
-        producer_symbol="DEBT_SPIRAL_THRESHOLD",
+        # Post-U2.3 reality: the module-level ``Final[float]
+        # DEBT_SPIRAL_THRESHOLD`` no longer exists. U2.3 deletes it, moves the
+        # value into ``GameDefines.capital_vol3.debt_spiral_threshold``, and
+        # leaves a defines-backed accessor FUNCTION of the same lowercase name in
+        # ``distribution/types.py``. Naming the deleted ALL-CAPS symbol here
+        # would be a false claim inside a registry whose entire purpose is
+        # accurate claims about the code — and one nothing would red on, because
+        # neither liveness check validates ``producer_symbol`` against
+        # ``producer_file``. Recorded for the sentinel roadmap: the liveness
+        # registry can currently name a producer symbol that does not exist,
+        # which is the same class of unverified claim these sensors exist to
+        # catch.
+        producer_symbol="debt_spiral_threshold",
         output_symbol="debt_spiral_threshold",
         consumer_files=(f"{_ENGINE_SYSTEMS}/contradiction.py",),
         material_relation=(
             "The accumulated-debt-to-annual-surplus ratio at which the spiral is "
             "structurally self-reinforcing — the unity point of the debt_spiral "
-            "opposition (wired by U5.10; a dead constant for its whole prior life)."
+            "opposition (wired by U5.10; a dead constant for its whole prior "
+            "life, and a defines-backed accessor since U2.3)."
         ),
     ),
     LivenessRow(
@@ -9830,6 +10638,26 @@ Co-Authored-By: Claude Opus 4.8 (1M context) <noreply@anthropic.com>"
 - Consumes: the U5 opposition keys `surplus_distribution`, `debt_spiral`, `credit`, `financial` and the U5 `GraphInputs` fields `rentier_share`, `debt_ratio`, `credit_fragility`, `financialization_index`
 - Produces: `MeasurementDependency`, `MEASUREMENT_DEPENDENCIES: tuple[MeasurementDependency, ...]`, `dependency_for(key)` — consumed by U7.8.
 
+**DECLARED LIMITATION — direction B is inert on this registry as seeded.** All five rows below
+name the same `producer_file` (`_CONTRADICTION`), and U7.8's
+`check_real_dependencies_are_declared` skips every pair whose two rows share a producer file (a
+same-file pair mentions the sibling's symbols trivially, so a mention proves nothing). Every
+ordered pair of these five rows is therefore skipped, and
+`test_real_dependencies_are_all_declared` passes **vacuously** — it asserts `[]` against a loop
+body that never executes. This is the correct-but-inert error class appearing inside the very
+program that ships the correct-but-inert sensor, so it is declared here rather than discovered
+later: declared-and-deferred is acceptable, silently-inert is not.
+
+Direction B is retained, not deleted, because it is a **guard against future rows**: the moment
+one opposition's inputs are produced somewhere other than `contradiction.py` — U6's monetary
+anchor (`domain/economics/monetary/anchor.py`), a future `market_scissors.py`-produced field, any
+new System that computes a `GraphInputs` field — that row pairs against the five existing ones
+with a different `producer_file`, the skip no longer fires, and the check goes live with no code
+change. Its efficacy is proven today by U7.8's injected-fixture mutation tests, which supply rows
+with two different producer files; that is what keeps a currently-inert check from rotting into a
+broken one. What would make it live on the real registry: a second distinct `producer_file` among
+the declared rows.
+
 - [ ] **Step 1: Write the failing test**
 ```python
 """Tests for the declared measurement-dependency registry.
@@ -10010,6 +10838,20 @@ _CONTRADICTION = "src/babylon/engine/systems/contradiction.py"
 _SCISSORS = "src/babylon/engine/systems/market_scissors.py"
 
 #: The declared measurement dependencies of the money/value oppositions.
+#:
+#: DECLARED LIMITATION: every row below names ``_CONTRADICTION`` as its producer
+#: file, and ``check_real_dependencies_are_declared`` (direction B) skips any
+#: pair of rows sharing a producer file — a same-file pair mentions its
+#: sibling's symbols trivially, so a mention there proves nothing. Direction B
+#: is therefore INERT on this registry as seeded, and its invariant test passes
+#: vacuously. It is kept as a guard for future rows: the first opposition whose
+#: inputs are produced outside ``contradiction.py`` (the U6 monetary anchor, a
+#: ``market_scissors.py``-produced field, any new System computing a
+#: ``GraphInputs`` field) makes the check live with no code change. Its efficacy
+#: is proven meanwhile by the injected-fixture mutation tests in
+#: ``tests/unit/sentinels/test_coupling_sentinel.py``, which supply rows with two
+#: distinct producer files. Declared here rather than discovered later: this is
+#: the correct-but-inert class inside the program that ships its sensor.
 MEASUREMENT_DEPENDENCIES: tuple[MeasurementDependency, ...] = (
     MeasurementDependency(
         opposition_key="price_value",
@@ -10160,6 +11002,18 @@ def test_efficacy_reds_on_a_real_dependency_that_is_undeclared() -> None:
     ``market_scissors.py`` really does mention ``price_log``, so declaring it as
     the source's published symbol while declaring NO edge is exactly the
     ``momentum_coupling`` failure: a real dependency nobody wrote down.
+
+    The fixture is deliberately ONE-DIRECTIONAL. ``check_real_dependencies_are_declared``
+    loops every ORDERED pair, so the reverse pair (``phantom_financial ->
+    phantom_price``) is judged too, and it asks whether ``contradiction.py``
+    mentions ``phantom_financial``'s published symbols. ``fictitious_log`` would
+    fail that test: ``referenced_names`` collects string constants, and U5.7
+    writes the literal ``"fictitious_log"`` into ``contradiction.py`` to derive
+    ``financialization_index`` — so the reverse pair would fire a second finding
+    and this assertion would see 2. ``PRICE_DIVERGENCE_ATTR`` is a real
+    module-level constant in ``market_scissors.py`` that appears nowhere in
+    ``contradiction.py`` and is added to it by no task in this plan, so exactly
+    one direction is a real read and exactly one finding is produced.
     """
     source = MeasurementDependency(
         opposition_key="phantom_price",
@@ -10171,7 +11025,7 @@ def test_efficacy_reds_on_a_real_dependency_that_is_undeclared() -> None:
         opposition_key="phantom_financial",
         inputs_fields=("financialization_index",),
         producer_file="src/babylon/engine/systems/market_scissors.py",
-        produces_symbols=("fictitious_log",),
+        produces_symbols=("PRICE_DIVERGENCE_ATTR",),
     )
     findings = check_real_dependencies_are_declared(
         edges=(),
@@ -10185,7 +11039,13 @@ def test_efficacy_reds_on_a_real_dependency_that_is_undeclared() -> None:
 
 
 def test_declared_edge_silences_the_real_dependency_finding() -> None:
-    """Declaring the edge makes direction B clean — the two directions agree."""
+    """Declaring the edge makes direction B clean — the two directions agree.
+
+    Same one-directional fixture as the test above, for the same reason: the
+    reverse pair must contribute NO finding of its own, or ``== []`` would see
+    the reverse finding and fail for a reason that has nothing to do with the
+    declared edge.
+    """
     source = MeasurementDependency(
         opposition_key="phantom_price",
         inputs_fields=("market_balance",),
@@ -10196,7 +11056,7 @@ def test_declared_edge_silences_the_real_dependency_finding() -> None:
         opposition_key="phantom_financial",
         inputs_fields=("financialization_index",),
         producer_file="src/babylon/engine/systems/market_scissors.py",
-        produces_symbols=("fictitious_log",),
+        produces_symbols=("PRICE_DIVERGENCE_ATTR",),
     )
     assert (
         check_real_dependencies_are_declared(
@@ -11615,8 +12475,8 @@ Edit `reports/vol3-baseline-delta.md`'s final section (`git commit --amend` is n
 
 Baselines regenerated in commit `$CEREMONY_HASH` (substitute the real value).
 `mise run qa:regression`: 5 passed, 0 failed (green against the new
-baselines). `mise run qa:e2e-regression`: `<FILL: PASS UNCHANGED, or
-regenerated and now PASS>`.
+baselines). `mise run qa:e2e-regression`: `${E2E_CLAUSE}` (already computed
+in Step 6b above — substitute its resolved value, not the literal token).
 ```
 Then commit:
 ```bash
@@ -11702,6 +12562,25 @@ def test_state_yaml_records_the_vol3_ceremony() -> None:
         "state.yaml does not name the graph key U3 introduced"
     )
     assert "VOL III MONEY WIRED LIVE" in text
+
+
+def test_no_unfilled_placeholders_in_the_governance_records() -> None:
+    """Every <FILL> / <SUBSTITUTE> marker must be resolved before these land.
+
+    Unlike U8.3's `reports/vol3-baseline-delta.md` -- a draft evidence
+    artifact allowed placeholders everywhere but its Owner Approval Gate
+    until that gate is satisfied -- ADR083 and the new ai/state.yaml
+    paragraph are permanent governance history the moment this task
+    commits them. Zero tolerance, no carve-out.
+    """
+    adr_path = DECISIONS_DIR / f"{NEW_ADR_STEM}.yaml"
+    state_path = Path(__file__).resolve().parents[3] / "ai" / "state.yaml"
+    if not adr_path.exists():
+        return  # covered by test_new_adr_file_exists_with_matching_top_level_key
+    for path in (adr_path, state_path):
+        text = path.read_text()
+        assert "<FILL" not in text, f"{path} still has an unresolved <FILL marker"
+        assert "<SUBSTITUTE" not in text, f"{path} still has an unresolved <SUBSTITUTE marker"
 ```
 - [ ] **Step 3: Run test to verify it fails**
 Run: `mise run test:q -- tests/unit/decisions/test_adr083_vol3_money_scissors.py` (create the parent dir if `tests/unit/decisions/` doesn't yet exist — check first with `ls tests/unit/decisions/ 2>/dev/null`; if absent, this is a new test directory and needs no `__init__.py` beyond matching the sibling convention used elsewhere, e.g. `tests/unit/tools/__init__.py`)
@@ -11793,7 +12672,7 @@ ADR083_vol3_money_scissors:
     raising. CreditState gains its first production constructor (U3.4) and
     DEBT_SPIRAL_THRESHOLD its first consumer (U5.10) -- both were dead on
     arrival before this program. All 5 qa:regression baselines regenerated
-    in ceremony commit <SUBSTITUTE: U8.5 Step 8 hash>. Principal
+    in ceremony commit <SUBSTITUTE: U8.5 Step 7 hash>. Principal
     contradiction changed in <SUBSTITUTE: scenario list from
     reports/vol3-baseline-delta.md's per-scenario tables>.
     DEFERRED, explicitly: the three-way agricultural/resource/urban rent
@@ -11849,9 +12728,114 @@ Edit `ai/state.yaml`: change line 5 from `version: "2.38.0"  # ...` to `version:
     (reports/vol3-baseline-delta.md) per D3 -- see ADR083 for the full
     mechanism breakdown.
 ```
+- [ ] **Step 4b: Resolve the five placeholder markers Step 4 just wrote**
+Step 4 left five literal `<FILL:` / `<SUBSTITUTE:` markers behind: one in
+the ADR's `decision:` block, two in its `consequences:` block, and two in
+the `ai/state.yaml` paragraph. These two files are permanent governance
+records the moment Step 6 commits them — resolve every marker now, before
+Step 5's test is allowed to claim green. Do this as one shell session so
+the shell variables below survive to the edit commands that use them:
+```bash
+# Ceremony commit hash: read the value U8.5 Step 8 already recorded in
+# reports/vol3-baseline-delta.md's "Post-approval regeneration record"
+# section -- that is the one place the real hash was captured against the
+# actual ceremony commit, so read it rather than re-deriving it from git
+# log by commit-message text.
+CEREMONY_HASH=$(grep -oE 'commit `[0-9a-f]{7,40}`' reports/vol3-baseline-delta.md | grep -oE '[0-9a-f]{7,40}' | head -1)
+test -n "$CEREMONY_HASH" || {
+  echo "FAIL: could not extract the ceremony commit hash from reports/vol3-baseline-delta.md (U8.5 Step 8 must have run first)"
+  exit 1
+}
+echo "Ceremony hash: $CEREMONY_HASH"
+
+TODAY=$(date +%F)
+echo "Today: $TODAY"
+
+# Scenario list: any scenario whose "Principal contradiction at terminal
+# tick" row has a different Before/After value in the now-filled report.
+SCENARIO_LIST=$(python3 - <<'PY'
+import re
+from pathlib import Path
+
+text = Path("reports/vol3-baseline-delta.md").read_text()
+scenarios = ["imperial_circuit", "two_node", "starvation", "glut", "fascist_bifurcation"]
+pattern = re.compile(
+    r"^### (" + "|".join(scenarios) + r")\n(.*?)(?=^#{2,3} |\Z)",
+    re.MULTILINE | re.DOTALL,
+)
+sections = {m.group(1): m.group(2) for m in pattern.finditer(text)}
+changed = []
+for name in scenarios:
+    section = sections.get(name)
+    if section is None:
+        raise SystemExit(f"FAIL: no '### {name}' section found in reports/vol3-baseline-delta.md")
+    row = re.search(r"\|\s*Principal contradiction at terminal tick\s*\|(.*?)\|(.*?)\|", section)
+    if row is None:
+        raise SystemExit(f"FAIL: no principal-contradiction row found for {name}")
+    before, after = row.group(1).strip(), row.group(2).strip()
+    if before != after:
+        changed.append(name)
+print(", ".join(changed) if changed else "none")
+PY
+)
+test -n "$SCENARIO_LIST" || { echo "FAIL: SCENARIO_LIST resolution produced no output"; exit 1; }
+echo "Scenario list: $SCENARIO_LIST"
+
+export CEREMONY_HASH TODAY SCENARIO_LIST
+python3 - <<'PY'
+import os
+from pathlib import Path
+
+ceremony_hash = os.environ["CEREMONY_HASH"]
+today = os.environ["TODAY"]
+scenario_list = os.environ["SCENARIO_LIST"]
+
+adr_path = Path("ai/decisions/ADR083_vol3_money_scissors.yaml")
+text = adr_path.read_text()
+
+decision_marker = "commit `<FILL: the U8.5 Step 7 commit hash>`."
+assert decision_marker in text, "decision: marker not found -- Step 4's YAML text drifted"
+text = text.replace(decision_marker, f"commit `{ceremony_hash}`.")
+
+consequences_hash_marker = "ceremony commit <SUBSTITUTE: U8.5 Step 7 hash>."
+assert consequences_hash_marker in text, "consequences: hash marker not found"
+text = text.replace(consequences_hash_marker, f"ceremony commit {ceremony_hash}.")
+
+scenario_marker = (
+    "Principal\n    contradiction changed in <SUBSTITUTE: scenario list from\n"
+    "    reports/vol3-baseline-delta.md's per-scenario tables>."
+)
+assert scenario_marker in text, "consequences: scenario-list marker not found"
+text = text.replace(
+    scenario_marker,
+    f"Principal\n    contradiction changed in: {scenario_list}.",
+)
+
+adr_path.write_text(text)
+print("ADR083 markers resolved.")
+
+state_path = Path("ai/state.yaml")
+text = state_path.read_text()
+
+date_marker = "(<FILL: today's date>) VOL III MONEY WIRED LIVE"
+assert date_marker in text, "state.yaml date marker not found -- Step 4's paragraph drifted"
+text = text.replace(date_marker, f"({today}) VOL III MONEY WIRED LIVE")
+
+hash_marker = "Baselines regenerated `<FILL: ceremony commit hash>`"
+assert hash_marker in text, "state.yaml ceremony-hash marker not found"
+text = text.replace(hash_marker, f"Baselines regenerated `{ceremony_hash}`")
+
+state_path.write_text(text)
+print("state.yaml markers resolved.")
+PY
+
+grep -n '<FILL\|<SUBSTITUTE' ai/decisions/ADR083_vol3_money_scissors.yaml ai/state.yaml \
+  && { echo "FAIL: placeholder markers still present"; exit 1; } \
+  || echo "OK: no <FILL / <SUBSTITUTE markers remain in either file."
+```
 - [ ] **Step 5: Run test to verify it passes**
 Run: `mise run test:q -- tests/unit/decisions/test_adr083_vol3_money_scissors.py`
-Expected: PASS (3 passed).
+Expected: PASS (4 passed).
 - [ ] **Step 6: Commit**
 ```bash
 mise run commit -- "$(cat <<'EOF'

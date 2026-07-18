@@ -29,7 +29,6 @@ from typing import TYPE_CHECKING, ClassVar
 
 from babylon.engine.systems.wealth_distribution import (
     MARKET_CORRECTION_SHOCK_ATTR,
-    _coerce_role,
     bracket_of_role,
 )
 from babylon.formulas.market import (
@@ -43,7 +42,7 @@ from babylon.formulas.market import (
 from babylon.kernel.event_bus import Event
 from babylon.kernel.system_base import SystemBase
 from babylon.kernel.system_protocol import ContextType
-from babylon.models.enums import EventType
+from babylon.models.enums import EventType, SocialRole
 from babylon.models.market import MarketState
 
 if TYPE_CHECKING:
@@ -372,7 +371,7 @@ class MarketScissorsSystem(SystemBase):
         for node in sorted(graph.query_nodes(node_type="social_class"), key=lambda n: n.id):
             if not node.attributes.get("active", True):
                 continue
-            role = _coerce_role(node.attributes.get("role"))
+            role = SocialRole.coerce(node.attributes.get("role"))
             if role is None or bracket_of_role(role) not in _CLAIM_HOLDER_BRACKETS:
                 continue
             wealth = node.attributes.get("wealth")

@@ -37,6 +37,7 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING, Any, ClassVar
 
+from babylon.kernel.node_access import class_consciousness_from_node
 from babylon.models.enums import EdgeType, SocialRole
 
 if TYPE_CHECKING:
@@ -45,32 +46,6 @@ if TYPE_CHECKING:
 
 from babylon.kernel.system_base import SystemBase
 from babylon.kernel.system_protocol import ContextType
-
-
-def _coerce_role(raw: object) -> SocialRole | None:
-    """Coerce a graph-node ``role`` attr to ``SocialRole`` (mirrors
-    ``babylon.engine.systems.reactionary._coerce_role``'s convention: the
-    attr may be a live ``SocialRole`` enum member (fresh ``to_graph()``
-    output) or a plain string (post-persistence round trip)."""
-    if isinstance(raw, SocialRole):
-        return raw
-    if isinstance(raw, str):
-        try:
-            return SocialRole(raw)
-        except ValueError:
-            return None
-    return None
-
-
-def _class_consciousness_of(attrs: dict[str, Any]) -> float:
-    """Read ``class_consciousness`` from the ``ideology`` sub-dict (mirrors
-    ``babylon.engine.systems.ideology._get_ideology_profile_from_node``'s
-    read convention). Missing/malformed ``ideology`` -> the
-    ``IdeologicalProfile`` model's own default (0.0), not a fabricated value."""
-    ideology = attrs.get("ideology")
-    if isinstance(ideology, dict):
-        return float(ideology.get("class_consciousness", 0.0))
-    return 0.0
 
 
 def mass_receptivity_of(
@@ -117,8 +92,8 @@ def mass_receptivity_of(
             continue
 
         p_acquiescence = float(attrs.get("p_acquiescence", 0.0))
-        ideological_alignment = _class_consciousness_of(attrs)
-        role = _coerce_role(attrs.get("role"))
+        ideological_alignment = class_consciousness_from_node(attrs)
+        role = SocialRole.coerce(attrs.get("role"))
         class_factor = (
             defines.class_factor_default
             if role is None

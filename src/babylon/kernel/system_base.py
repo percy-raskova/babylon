@@ -148,6 +148,38 @@ class SystemBase(ABC):
         return attrs.get(key, default)
 
     @staticmethod
+    def _write_clamped(
+        graph: GraphProtocol,
+        node_id: str,
+        key: str,
+        value: float,
+        *,
+        lo: float = 0.0,
+        hi: float = 1.0,
+    ) -> float:
+        """Clamp ``value`` to ``[lo, hi]``, write it to one node attr, return it.
+
+        Consolidates the ``graph.update_node(id, k=max(lo, min(hi, v)))``
+        clamp-write pattern (spec-116 Phase 3) — e.g. TerritorySystem ``heat``
+        and MetabolismSystem ``habitability``, both bounded to ``[0, 1]``.
+        Returning the clamped value lets callers reuse it (event payloads,
+        further math) without recomputing the clamp. Bounds other than the
+        ``[0, 1]`` default are opt-in; ceil-only / floor-only writers keep
+        their local expression.
+
+        :param graph: The world graph (anything satisfying GraphProtocol).
+        :param node_id: The node to update.
+        :param key: The attribute to write.
+        :param value: The raw (unclamped) value.
+        :param lo: Lower bound (inclusive), default ``0.0``.
+        :param hi: Upper bound (inclusive), default ``1.0``.
+        :returns: The clamped value that was written.
+        """
+        clamped = max(lo, min(hi, value))
+        graph.update_node(node_id, **{key: clamped})
+        return clamped
+
+    @staticmethod
     def _publish(services: ServicesProtocol, event: Event) -> None:
         """Publish an event via ``services.event_bus``."""
         services.event_bus.publish(event)

@@ -129,8 +129,7 @@ class TerritorySystem(SystemBase):
                 # Low profile decays heat
                 new_heat = current_heat * (1.0 - heat_decay_rate)
 
-            # Clamp to [0, 1]
-            graph.update_node(node.id, heat=max(0.0, min(1.0, new_heat)))
+            self._write_clamped(graph, node.id, "heat", new_heat)
 
     def _find_sink_node(
         self,

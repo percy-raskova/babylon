@@ -81,8 +81,7 @@ class MetabolismSystem(SystemBase):
             if node is None:
                 continue
             current_hab = float(node.attributes.get("habitability", 1.0))
-            new_hab = max(0.0, min(1.0, current_hab + float(impact)))
-            graph.update_node(territory_id, habitability=new_hab)
+            self._write_clamped(graph, territory_id, "habitability", current_hab + float(impact))
 
         # Phase 1: Update each territory's biocapacity
         for node in graph.query_nodes(node_type="territory"):

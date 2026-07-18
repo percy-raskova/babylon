@@ -116,7 +116,7 @@ class FascistFactionSystem(SystemBase):
             attrs = node.attributes
             if not attrs.get("active", True):
                 continue
-            role = _coerce_role(attrs.get("role"))
+            role = SocialRole.coerce(attrs.get("role"))
             if role not in _ENTITLED_ROLES:
                 continue
 
@@ -242,7 +242,7 @@ class FascistFactionSystem(SystemBase):
             target = graph.get_node(edge.target_id)
             if target is None:
                 continue
-            if _coerce_role(target.attributes.get("role")) is not SocialRole.LABOR_ARISTOCRACY:
+            if SocialRole.coerce(target.attributes.get("role")) is not SocialRole.LABOR_ARISTOCRACY:
                 continue
             members_by_org.setdefault(edge.source_id, []).append(edge)
 
@@ -341,17 +341,6 @@ class FascistFactionSystem(SystemBase):
 # ----------------------------------------------------------------------
 # Module helpers (mirror the spec-070 system conventions)
 # ----------------------------------------------------------------------
-
-
-def _coerce_role(raw: object) -> SocialRole | None:
-    if isinstance(raw, SocialRole):
-        return raw
-    if isinstance(raw, str):
-        try:
-            return SocialRole(raw)
-        except ValueError:
-            return None
-    return None
 
 
 def _agitation_of(attrs: dict[str, Any]) -> float:

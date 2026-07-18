@@ -42,6 +42,27 @@ class SocialRole(StrEnum):
     INTERNAL_PROLETARIAT = "internal_proletariat"
     CARCERAL_ENFORCER = "carceral_enforcer"
 
+    @classmethod
+    def coerce(cls, raw: object) -> SocialRole | None:
+        """Coerce a graph-node ``role`` attribute to a :class:`SocialRole`.
+
+        The attribute may be a live ``SocialRole`` member (fresh
+        ``to_graph()`` output) or a plain string (post-persistence round
+        trip); anything else — or an unrecognized string — yields ``None``.
+        Consolidates three identical ``_coerce_role`` copies (spec-116 Phase 3).
+
+        :param raw: The raw ``role`` attribute value read off a graph node.
+        :returns: The matching :class:`SocialRole`, or ``None``.
+        """
+        if isinstance(raw, cls):
+            return raw
+        if isinstance(raw, str):
+            try:
+                return cls(raw)
+            except ValueError:
+                return None
+        return None
+
 
 class MembershipRole(StrEnum):
     """Agent integration level within a community.

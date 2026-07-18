@@ -85,18 +85,6 @@ def bracket_of_role(role: SocialRole) -> int:
     return _BRACKET_BY_ROLE[role]
 
 
-def _coerce_role(raw: object) -> SocialRole | None:
-    """Coerce a graph-node ``role`` attr to :class:`SocialRole` (or ``None``)."""
-    if isinstance(raw, SocialRole):
-        return raw
-    if isinstance(raw, str):
-        try:
-            return SocialRole(raw)
-        except ValueError:
-            return None
-    return None
-
-
 def _seed_vector(defines: Any) -> _Vector:
     """Seed the national vector from the calibration equilibria, normalized.
 
@@ -182,7 +170,7 @@ def _bracket_resistances(graph: GraphProtocol) -> _Vector:
     counts = [0, 0, 0, 0]
     nodes = sorted(graph.query_nodes(node_type="social_class"), key=lambda n: n.id)
     for node in nodes:
-        role = _coerce_role(node.attributes.get("role"))
+        role = SocialRole.coerce(node.attributes.get("role"))
         if role is None:
             continue
         bracket = _BRACKET_BY_ROLE[role]
@@ -276,7 +264,7 @@ class WealthDistributionSystem(SystemBase):
         }
         nodes = sorted(graph.query_nodes(node_type="social_class"), key=lambda n: n.id)
         for node in nodes:
-            role = _coerce_role(node.attributes.get("role"))
+            role = SocialRole.coerce(node.attributes.get("role"))
             if role is None:
                 continue  # honest absence: no role, no bracket, no projection
             graph.update_node(node.id, wealth_share=shares[_BRACKET_BY_ROLE[role]])

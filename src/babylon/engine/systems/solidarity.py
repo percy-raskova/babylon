@@ -30,6 +30,7 @@ from __future__ import annotations
 from typing import TYPE_CHECKING, Any, ClassVar
 
 from babylon.kernel.event_bus import Event
+from babylon.kernel.node_access import class_consciousness_from_node
 from babylon.models.enums import EdgeType, EventType
 
 if TYPE_CHECKING:
@@ -38,29 +39,6 @@ if TYPE_CHECKING:
 
 from babylon.kernel.system_base import SystemBase
 from babylon.kernel.system_protocol import ContextType
-
-
-def _get_class_consciousness_from_node(
-    node_data: dict[str, Any],
-) -> float:  # pragma: no mutate — graph accessor
-    """Extract class_consciousness from graph node data.
-
-    Args:
-        node_data: Graph node data dictionary
-
-    Returns:
-        Class consciousness value in [0, 1]
-    """
-    ideology = node_data.get("ideology")  # pragma: no mutate
-
-    if ideology is None:  # pragma: no mutate
-        return 0.0  # pragma: no mutate
-
-    if isinstance(ideology, dict):  # pragma: no mutate
-        # IdeologicalProfile format
-        return float(ideology.get("class_consciousness", 0.0))  # pragma: no mutate
-
-    return 0.0  # pragma: no mutate
 
 
 def _update_ideology_class_consciousness(  # pragma: no mutate — node updater (clamp + dict rebuild)
@@ -155,7 +133,7 @@ class SolidaritySystem(SystemBase):
 
             # Get source consciousness (from IdeologicalProfile)
             src_attrs = src_node.attributes if src_node else {}
-            source_consciousness = _get_class_consciousness_from_node(src_attrs)
+            source_consciousness = class_consciousness_from_node(src_attrs)
 
             # Check activation threshold
             if source_consciousness <= activation_threshold:
@@ -163,7 +141,7 @@ class SolidaritySystem(SystemBase):
 
             # Get target consciousness
             tgt_attrs = tgt_node.attributes if tgt_node else {}
-            target_consciousness = _get_class_consciousness_from_node(tgt_attrs)
+            target_consciousness = class_consciousness_from_node(tgt_attrs)
             old_consciousness = target_consciousness
 
             # Calculate transmission delta

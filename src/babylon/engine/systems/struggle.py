@@ -35,6 +35,7 @@ from typing import TYPE_CHECKING, Any, ClassVar
 
 from babylon.formulas.reactionary import calculate_spontaneous_riot_risk
 from babylon.kernel.event_bus import Event
+from babylon.kernel.node_access import class_consciousness_from_node
 from babylon.models.enums import EdgeType, EventType, SocialRole
 
 if TYPE_CHECKING:
@@ -71,28 +72,6 @@ def _get_agitation_from_node(
 
     if isinstance(ideology, dict):  # pragma: no mutate
         return float(ideology.get("agitation", 0.0))  # pragma: no mutate
-
-    return 0.0  # pragma: no mutate
-
-
-def _get_class_consciousness_from_node(
-    node_data: dict[str, Any],
-) -> float:  # pragma: no mutate — graph accessor
-    """Extract class_consciousness value from graph node data.
-
-    Args:
-        node_data: Graph node data dictionary
-
-    Returns:
-        Class consciousness value in [0, 1], defaults to 0.0
-    """
-    ideology = node_data.get("ideology")  # pragma: no mutate
-
-    if ideology is None:  # pragma: no mutate
-        return 0.0  # pragma: no mutate
-
-    if isinstance(ideology, dict):  # pragma: no mutate
-        return float(ideology.get("class_consciousness", 0.0))  # pragma: no mutate
 
     return 0.0  # pragma: no mutate
 
@@ -371,7 +350,7 @@ class StruggleSystem(SystemBase):
                 edges_updated += 1
 
             # Class consciousness boost from shared struggle
-            consciousness_before = _get_class_consciousness_from_node(attrs)
+            consciousness_before = class_consciousness_from_node(attrs)
             consciousness_boost = (
                 solidarity_gain * services.defines.struggle.consciousness_solidarity_boost
             )
@@ -381,7 +360,7 @@ class StruggleSystem(SystemBase):
             # Re-read updated node for consciousness_after
             updated_node = graph.get_node(node.id)
             updated_attrs = updated_node.attributes if updated_node else {}
-            consciousness_after = _get_class_consciousness_from_node(updated_attrs)
+            consciousness_after = class_consciousness_from_node(updated_attrs)
 
             # Emit UPRISING event
             services.event_bus.publish(
@@ -528,7 +507,7 @@ class StruggleSystem(SystemBase):
 
         p_w_id, p_w_data = p_w
         organization = p_w_data.get("organization", 0.1)
-        consciousness = _get_class_consciousness_from_node(p_w_data)
+        consciousness = class_consciousness_from_node(p_w_data)
 
         # Calculate revolutionary capacity
         revolutionary_capacity = organization * consciousness

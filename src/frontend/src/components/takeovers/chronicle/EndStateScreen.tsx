@@ -1,11 +1,17 @@
 /**
  * EndStateScreen - chronicle end-screen for terminal outcomes.
- * Spec 095 FR-095-09: ports EndState.jsx as fresh TypeScript.
+ * Spec 095 FR-095-09 + spec-116 FR-116-4.2 (six distinct epilogues).
  *
- * The `outcome` prop drives the palette (rupture = bronze-gold, defeat =
- * laser-red) and headline. REVOLUTIONARY_VICTORY → "BABYLON FALLS"; all
- * others → "THE BUNKER FAILS". Fed by useEndgame hook polling
- * GET /api/games/:id/endgame/.
+ * The backend payload drives everything: `headline`/`epilogue` come from
+ * web/game/epilogues.py (one distinct text per GameOutcome incl.
+ * "unresolved"), `palette` picks one of three palette families (rupture
+ * bronze-gold / defeat laser-red / unresolved spire-cyan), and
+ * `accepted_at_tick` frames a player-accepted fast-forward (FR-116-5).
+ * Fed by useEndgame polling GET /api/games/:id/endgame/.
+ *
+ * The deterministic epilogue is rendered separately from the "Last
+ * Dispatch" epitaph (the flag-off LLM narration channel) — deterministic
+ * copy must never masquerade as AI narration.
  *
  * Constitution III: pure read.
  */
@@ -50,6 +56,13 @@ function buildStats(state: EndgameState): StatCard[] {
   ];
 }
 
+/** Palette-keyed kickers — the one-line framing above the headline. */
+const KICKERS: Record<"rupture" | "defeat" | "unresolved", string> = {
+  rupture: "▸ Rupture Achieved",
+  defeat: "✕ Organizational Collapse",
+  unresolved: "◌ Horizon Reached — The Struggle Continues",
+};
+
 export function EndStateScreen({ gameId, onRestart }: Props) {
   const { data: state, loading, error } = useEndgame(gameId);
   const { status: narrationStatus, beats } = useNarration(gameId);
@@ -57,10 +70,13 @@ export function EndStateScreen({ gameId, onRestart }: Props) {
 
   const isRupture = state.outcome === "revolutionary_victory";
   let palette: string;
-  if (state.outcome) {
-    palette = isRupture ? "end-state--rupture" : "end-state--defeat";
-  } else {
+  if (!state.outcome) {
     palette = "end-state--pending";
+  } else if (state.palette !== "") {
+    palette = `end-state--${state.palette}`;
+  } else {
+    // Defensive fallback for a payload predating spec-116.
+    palette = isRupture ? "end-state--rupture" : "end-state--defeat";
   }
 
   if (!state.outcome) {
@@ -73,7 +89,7 @@ export function EndStateScreen({ gameId, onRestart }: Props) {
       pendingText = "Operation in progress — no terminal outcome yet.";
     }
     return (
-      <div className={`end-state ${palette}`}>
+      <div className={`end-state ${palette}`} data-testid="end-state" data-outcome="pending">
         <div className="end-state-scanlines" />
         <div className="end-state-content">
           <div className="end-state-pending-text">{pendingText}</div>
@@ -83,15 +99,28 @@ export function EndStateScreen({ gameId, onRestart }: Props) {
   }
 
   const stats = buildStats(state);
-  const kicker = isRupture ? "▸ Rupture Achieved" : "✕ Organizational Collapse";
+  let kicker: string;
+  if (state.palette !== "") {
+    kicker = KICKERS[state.palette];
+  } else {
+    kicker = isRupture ? KICKERS.rupture : KICKERS.defeat;
+  }
 
   return (
-    <div className={`end-state ${palette}`}>
+    <div className={`end-state ${palette}`} data-testid="end-state" data-outcome={state.outcome}>
       <div className="end-state-scanlines" />
       <div className="end-state-content">
         <div className="end-state-kicker">{kicker}</div>
         <h1 className="end-state-headline">{state.headline}</h1>
-        {state.summary && <p className="end-state-summary">{state.summary}</p>}
+        {state.accepted_at_tick !== null && (
+          <div className="end-state-accepted" data-testid="end-state-accepted">
+            ▸ Outcome accepted at tick {state.accepted_at_tick} — fast-forwarded to the epilogue.
+          </div>
+        )}
+        {/* Deterministic epilogue (spec-116 FR-116-4.2). The wire `summary`
+            field is degraded machine text ("Endgame Reached") — superseded
+            here, still on the wire for contract compat. */}
+        {state.epilogue && <p className="end-state-epilogue-body">{state.epilogue}</p>}
         <div className="end-state-stats">
           {stats.map((s) => (
             <div key={s.label} className="end-state-stat">

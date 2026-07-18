@@ -792,6 +792,9 @@ export function makeEndgameState(overrides?: Partial<EndgameState>): EndgameStat
     outcome: null,
     headline: "",
     summary: "",
+    epilogue: "",
+    palette: "",
+    accepted_at_tick: null,
     stats: { final_tick: 5, consciousness: 0.42, solidarity_edges: 3, heat: 0.31 },
     ...overrides,
   };

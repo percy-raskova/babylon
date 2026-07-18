@@ -239,3 +239,15 @@ fn test_edge_attrs_read() {
     assert_eq!(h.edge_attrs("e1").unwrap(), &serde_json::json!({"w": 5}));
     assert!(h.edge_attrs("nope").is_none());
 }
+
+#[test]
+fn test_graph_attrs_roundtrip() {
+    // XGI parity: H.graph dict.
+    let mut h: Hypergraph = Hypergraph::new();
+    assert!(h.graph_attr("name").is_none());
+    h.set_graph_attr("name", serde_json::json!("myhypergraph"));
+    assert_eq!(
+        h.graph_attr("name").unwrap(),
+        &serde_json::json!("myhypergraph")
+    );
+}

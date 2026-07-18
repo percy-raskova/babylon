@@ -3,7 +3,7 @@
 use rustworkx_core::petgraph::stable_graph::{NodeIndex, StableDiGraph};
 use indexmap::IndexMap;
 
-use super::error::{EdgeError, NodeError};
+use super::error::EdgeError;
 use super::kinds::{MembershipEdge, NodeKind};
 
 /// A hypergraph, represented as a bipartite graph.
@@ -105,6 +105,20 @@ impl<N, E, M> Hypergraph<N, E, M> {
             Some(NodeKind::Hyperedge(attrs)) => Some(attrs),
             _ => None,
         }
+    }
+
+    /// Read a graph-level attribute.
+    ///
+    /// XGI parity: `H.graph[key]`.
+    pub fn graph_attr(&self, key: &str) -> Option<&serde_json::Value> {
+        self.graph_attrs.get(key)
+    }
+
+    /// Set a graph-level attribute.
+    ///
+    /// XGI parity: `H.graph[key] = value`.
+    pub fn set_graph_attr(&mut self, key: &str, value: serde_json::Value) {
+        self.graph_attrs.insert(key.to_string(), value);
     }
 
     /// Check if a node exists in the hypergraph.

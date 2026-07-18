@@ -1,0 +1,12 @@
+# Pinned toolchain — the single source of truth for local dev AND CI.
+# rustup auto-selects this for every cargo/rustc invocation under
+# hypergraph-rs/; CI reads the same file (dtolnay/rust-toolchain reads
+# rust-toolchain.toml when given no explicit toolchain input).
+#
+# Bump deliberately: update `channel` here, run the full gate
+# (`mise run rust:check`), commit. The MSRV floor lives in
+# Cargo.toml's rust-version and is tested by `mise run rust:msrv`.
+[toolchain]
+channel = "1.91.1"
+components = ["rustfmt", "clippy"]
+targets = ["wasm32-unknown-unknown"]

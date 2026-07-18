@@ -145,3 +145,27 @@ fn test_members_returns_none_for_missing() {
     let h: Hypergraph = Hypergraph::new();
     assert!(h.members("nonexistent").is_none());
 }
+
+#[test]
+fn test_node_ids_insertion_order() {
+    let mut h: Hypergraph = Hypergraph::new();
+    h.add_node("c", serde_json::Value::Null);
+    h.add_node("a", serde_json::Value::Null);
+    h.add_node("b", serde_json::Value::Null);
+    assert_eq!(h.node_ids(), vec!["c", "a", "b"]);
+}
+
+#[test]
+fn test_edge_ids_insertion_order() {
+    let mut h: Hypergraph = Hypergraph::new();
+    h.add_edge(vec!["x".to_string()], Some("e3".to_string()), serde_json::Value::Null).unwrap();
+    h.add_edge(vec!["x".to_string()], Some("e1".to_string()), serde_json::Value::Null).unwrap();
+    h.add_edge(vec!["x".to_string()], Some("e2".to_string()), serde_json::Value::Null).unwrap();
+    assert_eq!(h.edge_ids(), vec!["e3", "e1", "e2"]);
+}
+
+#[test]
+fn test_node_ids_empty() {
+    let h: Hypergraph = Hypergraph::new();
+    assert!(h.node_ids().is_empty());
+}

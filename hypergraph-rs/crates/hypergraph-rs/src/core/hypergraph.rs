@@ -129,6 +129,18 @@ impl<N, E, M> Hypergraph<N, E, M> {
         Some(result)
     }
 
+    /// All node IDs in insertion order (III.7 determinism parity).
+    /// XGI parity: `list(H.nodes)`.
+    pub fn node_ids(&self) -> Vec<String> {
+        self.agent_ids.keys().cloned().collect()
+    }
+
+    /// All edge IDs in insertion order (III.7 determinism parity).
+    /// XGI parity: `list(H.edges)`.
+    pub fn edge_ids(&self) -> Vec<String> {
+        self.hyperedge_ids.keys().cloned().collect()
+    }
+
     /// Add a hyperedge connecting the given members.
     ///
     /// XGI parity: `H.add_edge(members, idx=id, **attr)`.

@@ -49,6 +49,7 @@ import { get as apiGet } from "@/api/client";
 import { endpoints } from "@/api/endpoints";
 import { useStore } from "@/store";
 import { FloatingPanel } from "./FloatingPanel";
+import { sparklinePoints } from "./sparkline";
 import type { FieldStateNode, FieldStatePayload, TerritoryState } from "@/types/game";
 
 interface BifurcationGaugeProps {
@@ -219,6 +220,11 @@ export function BifurcationGauge({ gameId }: BifurcationGaugeProps): React.JSX.E
   const fascistScore =
     fieldState.status === "ok" ? aggregateFascistAlignment(fieldState.nodes) : null;
 
+  // History (spec-116 4d.5): county-deduped bifurcation trajectory. Passive
+  // read of panels.timeseries — same contract as CrisisTimeline's strip.
+  const timeseries = useStore((s) => s.panels.timeseries.data);
+  const bifurcationHistory = sparklinePoints(timeseries?.bifurcation_score_mean ?? [], 176, 16);
+
   return (
     <FloatingPanel
       anchor="free"
@@ -230,6 +236,23 @@ export function BifurcationGauge({ gameId }: BifurcationGaugeProps): React.JSX.E
       <div className="flex flex-col gap-1 p-2">
         {(territoryScore !== null || fascistScore !== null) && (
           <BifurcationAxis territoryScore={territoryScore} fascistScore={fascistScore} />
+        )}
+        {bifurcationHistory !== null && (
+          <svg
+            width={AXIS_W}
+            height={16}
+            className="block"
+            data-testid="bifurcation-history-sparkline"
+            role="img"
+            aria-label="Bifurcation trajectory history: revolution down, fascism up (yearly points)"
+          >
+            <polyline
+              points={bifurcationHistory}
+              fill="none"
+              stroke="var(--babylon-solidarity)"
+              strokeWidth="1"
+            />
+          </svg>
         )}
         <p className="text-[9px] text-ksbc-muted-2" data-testid="bifurcation-territory-line">
           {territoryScore === null

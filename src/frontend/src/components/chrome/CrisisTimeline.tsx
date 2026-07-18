@@ -33,6 +33,7 @@
 import { useStore } from "@/store";
 import type { CrisisPhase, TerritoryState } from "@/types/game";
 import { FloatingPanel } from "./FloatingPanel";
+import { sparklinePoints } from "./sparkline";
 
 interface CrisisTimelineProps {
   gameId: string;
@@ -232,6 +233,13 @@ export function CrisisTimeline({ gameId: _gameId }: CrisisTimelineProps): React.
   const wageCompression = aggregateWageCompression(territories);
   const capital = aggregateCapitalStock(territories);
 
+  // History (spec-116 4d.5): the county-deduped crisis_pop_share series from
+  // panels.timeseries — populated by BottomDrawer's always-mounted
+  // TimeseriesChart + the per-tick fan-out. Read PASSIVELY: never touch
+  // panels.timeseries.setMounted from here (boolean, not a ref-count).
+  const timeseries = useStore((s) => s.panels.timeseries.data);
+  const crisisHistory = sparklinePoints(timeseries?.crisis_pop_share ?? [], 168, 16);
+
   const hasAnySignal =
     peak !== null || share !== null || wageCompression !== null || capital !== null;
 
@@ -267,6 +275,23 @@ export function CrisisTimeline({ gameId: _gameId }: CrisisTimelineProps): React.
                 : `Capital stock: ${formatCapital(capital)}`}
             </p>
           </>
+        )}
+        {crisisHistory !== null && (
+          <svg
+            width={168}
+            height={16}
+            className="block"
+            data-testid="crisis-history-sparkline"
+            role="img"
+            aria-label="Population-in-crisis history (yearly points, carried between boundaries)"
+          >
+            <polyline
+              points={crisisHistory}
+              fill="none"
+              stroke="var(--babylon-rupture)"
+              strokeWidth="1"
+            />
+          </svg>
         )}
       </div>
     </FloatingPanel>

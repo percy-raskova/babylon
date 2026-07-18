@@ -2546,9 +2546,11 @@ class EngineBridge:
         graph-wide analogue of :meth:`get_economy`, via
         :func:`_aggregate_graph_economy`), and the persisted ``tick_event``
         rows (spec 092) for the latest tick's severity counts.
-        ``profit_rate`` stays ``None`` — the engine computes no c/v/s
-        decomposition on the live graph (Constitution III.11: no invented
-        values).
+        ``profit_rate`` is the mean of every territory's year-boundary
+        ``tick_profit_rate`` (:func:`_mean_territory_attr` — the exact
+        :meth:`get_economy_dashboard` pattern, spec-116 4d.9): honest
+        ``None`` until the first year boundary this session stamps county
+        state, never a fabricated 0.0 (Constitution III.11).
 
         Args:
             session_id: The game session UUID.
@@ -2594,7 +2596,7 @@ class EngineBridge:
             "avg_consciousness": avg_consciousness,
             "population_total": population_total,
             "exploitation_rate": econ["exploitation_rate"],
-            "profit_rate": None,
+            "profit_rate": _mean_territory_attr(graph, "tick_profit_rate"),
             "org_count": len(state.organizations),
             "class_count": len(state.entities),
             "event_counts": event_counts,

@@ -200,3 +200,37 @@ def test_run_passes_gamma_calculator_to_service_container(
         "run() did not pass melt_calculator to ServiceContainer.create; "
         f"captured kwargs: {sorted(captured.keys())}"
     )
+
+
+def test_build_economics_overrides_wires_tensor_registry_and_financial_services() -> None:
+    """U1 (vol3-money-scissors): tensor_registry + Vol III financial
+    calculators are wired when scope_fips is provided alongside
+    session_factory.
+
+    Without this, `_get_county_surplus`/`_get_county_profit_rate`
+    (domain/economics/tick/system/__init__.py:1547,1599) read
+    `getattr(services, "tensor_registry", None)` as permanently None, so
+    `total_surplus` never exceeds 0 and `surplus_distribution` never
+    computes — even though `distribution_calculator` et al. are wired.
+    """
+    pytest.importorskip("sqlalchemy")
+    if not SQLITE_REF.exists():
+        pytest.skip(f"SQLite reference DB missing at {SQLITE_REF}")
+
+    from babylon.engine.headless_runner.runner import _build_economics_overrides
+    from babylon.reference.database import get_normalized_session_factory
+
+    session_factory = get_normalized_session_factory()
+    overrides, leontief_session = _build_economics_overrides(
+        session_factory=session_factory,
+        scope_fips=frozenset({"26163"}),
+    )
+    try:
+        assert overrides.get("tensor_registry") is not None
+        assert "26163" in overrides["tensor_registry"].all_fips()
+        assert overrides.get("distribution_calculator") is not None
+        assert overrides.get("interest_calculator") is not None
+        assert overrides.get("fictitious_capital_calculator") is not None
+    finally:
+        if leontief_session is not None:
+            leontief_session.close()

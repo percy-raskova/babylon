@@ -32,7 +32,7 @@ import sys
 import time
 from contextlib import suppress
 from pathlib import Path
-from typing import Any
+from typing import Any, Final
 from uuid import UUID, uuid4
 
 try:
@@ -85,6 +85,11 @@ _AUDIT_SEVERITY_MAP = {
     "warn": "warning",
     "alarm": "error",
 }
+
+#: Real Vol III FRED coverage horizon (design doc §1.4: all ten Vol III
+#: series terminate at 2024; GFDEBTN starts 2010). Mirrors
+#: web/game/engine_bridge.py's ``_CAPITAL_HYDRATION_YEARS``.
+_TENSOR_HYDRATION_YEARS: Final[tuple[int, ...]] = tuple(range(2010, 2025))
 
 
 class RunnerError(Exception):
@@ -907,6 +912,7 @@ def _build_economics_overrides(
     session_factory: Any = None,
     event_bus: Any = None,
     defines: Any = None,
+    scope_fips: frozenset[str] | None = None,
 ) -> tuple[dict[str, Any], Any]:
     """Construct economics calculator overrides for ``ServiceContainer.create``.
 
@@ -944,6 +950,17 @@ def _build_economics_overrides(
         defines: Optional ``GameDefines`` for the Leontief allocator's
             tunables (``defines.economy.leontief_rent``). Required (with
             ``event_bus``) to wire the Leontief overrides.
+        scope_fips: Optional set of county FIPS this run computes over. When
+            provided (with ``session_factory``), a ``TensorRegistry`` is
+            hydrated for these counties over
+            ``_TENSOR_HYDRATION_YEARS`` (2010-2024) and exposed as
+            ``overrides["tensor_registry"]``, and the Vol III financial
+            calculators (:func:`~babylon.domain.economics.factory.create_financial_services`)
+            are wired from the reference DB's FRED tables — so
+            ``surplus_distribution`` (s = p + i + r + t) genuinely computes
+            per county instead of staying permanently ``None``
+            (``services.tensor_registry is None`` gate,
+            ``domain/economics/tick/system/__init__.py:1547,1599,1599``).
 
     Returns:
         A ``(overrides, leontief_session)`` tuple: ``overrides`` is a dict
@@ -996,6 +1013,38 @@ def _build_economics_overrides(
                 session_factory, event_bus, defines
             )
             overrides.update(leontief_overrides)
+
+        if scope_fips:
+            import babylon.domain.economics as economics_pkg
+            from babylon.domain.economics.adapters import SQLiteQCEWSource
+            from babylon.domain.economics.department_mapper import DepartmentMapper
+            from babylon.domain.economics.factory import (
+                create_financial_services,
+                load_fred_series_from_db,
+            )
+            from babylon.domain.economics.hydrator import MarxianHydrator
+            from babylon.domain.economics.tensor_registry import TensorRegistry
+            from babylon.engine.hydration.reference import StubBEASource
+            from babylon.reference.database import get_reference_session
+
+            # DELIBERATE TWIN: web/game/engine_bridge.py:_build_tensor_registry runs the
+            # near-identical hydration. Two by design — a shared factory would put
+            # reference-DB I/O in domain/, which the layering forbids. Change both.
+            registry = TensorRegistry()
+            naics_yaml = Path(economics_pkg.__file__).parent / "data" / "naics_to_dept.yaml"
+            with get_reference_session() as ref_session:
+                hydrator = MarxianHydrator(
+                    SQLiteQCEWSource(ref_session),
+                    StubBEASource(),  # falls back to DepartmentMapper department ratios
+                    DepartmentMapper.from_yaml(naics_yaml),
+                )
+                registry.hydrate_counties(
+                    hydrator, sorted(scope_fips), list(_TENSOR_HYDRATION_YEARS)
+                )
+            overrides["tensor_registry"] = registry
+
+            fred_cache = load_fred_series_from_db(session_factory)
+            overrides.update(create_financial_services(fred_series_cache=fred_cache))
 
     return overrides, leontief_session
 

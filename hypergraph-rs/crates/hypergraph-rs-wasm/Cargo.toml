@@ -1,0 +1,16 @@
+[package]
+name = "hypergraph-rs-wasm"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+authors.workspace = true
+repository.workspace = true
+description = "WASM bindings for hypergraph-rs"
+
+[lib]
+crate-type = ["cdylib", "rlib"]
+
+[dependencies]
+hypergraph-rs = { path = "../hypergraph-rs" }
+wasm-bindgen = "0.2"

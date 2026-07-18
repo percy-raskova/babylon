@@ -1,0 +1,17 @@
+[package]
+name = "hypergraph-rs-cli"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+authors.workspace = true
+repository.workspace = true
+description = "CLI for hypergraph-rs"
+
+[[bin]]
+name = "hypergraph-rs"
+path = "src/main.rs"
+
+[dependencies]
+hypergraph-rs = { path = "../hypergraph-rs" }
+clap = { version = "4", features = ["derive"] }

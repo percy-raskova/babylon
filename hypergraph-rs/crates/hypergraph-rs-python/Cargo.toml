@@ -1,0 +1,17 @@
+[package]
+name = "hypergraph-rs-python"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+authors.workspace = true
+repository.workspace = true
+description = "PyO3 bindings for hypergraph-rs"
+
+[lib]
+name = "_hypergraph_rs_core"
+crate-type = ["cdylib"]
+
+[dependencies]
+hypergraph-rs = { path = "../hypergraph-rs" }
+pyo3 = { version = "0.22", features = ["extension-module"] }

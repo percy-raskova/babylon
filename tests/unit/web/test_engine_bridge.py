@@ -1527,6 +1527,12 @@ def _make_balkanization_graph() -> BabylonGraph:
         value_flow=118.9,
         tension=0.34,
     )
+    # TENANCY, sc-genesee-proles -> T1: the real Occupant -> Territory edge
+    # get_educate_targets resolves social_class targets through (Track 1 /
+    # Task 8) — additive alongside the `territory_ids` attr above, which
+    # other (out-of-scope) verb-target tests in this module still key off
+    # via `_nodes_in_territory`.
+    g.add_edge("sc-genesee-proles", "T1", "tenancy")
 
     g.add_node("FAC_A", "faction", colonial_stance="UPHOLD", is_settler_formation=True)
     g.add_node("FAC_B", "faction", colonial_stance="IGNORE", is_settler_formation=True)
@@ -1677,6 +1683,7 @@ class TestDefixturedVerbTargets:
             agitation=0.2,
             territory_ids=["T2"],
         )
+        graph.add_edge("sc-washtenaw-proles", "T2", "tenancy")
 
         with _patched_hydrate_state(bridge, graph):
             result = bridge.get_educate_targets(uuid.uuid4(), "org-player")
@@ -1821,6 +1828,83 @@ class TestDefixturedQueryCorrectness:
 
         target_ids = {t["id"] for t in result["targets"]}
         assert "org-civil-society" in target_ids
+
+
+@pytest.mark.unit
+class TestEducateTargetsResolveViaTenancy:
+    """Track 1 / Task 8 (2026-07-18): ``get_educate_targets`` must resolve
+    social_class targets via TENANCY edges (the real Occupant -> Territory
+    link ``_tenancy_members_by_territory`` already walks for
+    ``_dominant_class_by_territory``/``_solidarity_index_by_territory`` at
+    ``/map/``), not via ``territory_ids`` on the social_class node —
+    ``SocialClass`` has no such field in production (``to_graph`` dumps
+    model fields verbatim; only ``Organization``/``Institution`` carry
+    ``territory_ids``). The old ``_nodes_in_territory``-based lookup
+    structurally always returned ``[]`` for the social_class half of its
+    ``_node_type in ("social_class", "organization")`` check, so every
+    territory landed in ``unavailable_communities`` regardless of real
+    TENANCY data.
+    """
+
+    def _production_faithful_graph(self) -> BabylonGraph:
+        """A graph shaped exactly like a real hydrated session: the
+        social_class node carries NO ``territory_ids`` key at all (unlike
+        ``_make_balkanization_graph``'s ``sc-genesee-proles``, which still
+        carries the fictitious attribute for the other, out-of-scope
+        verb-target tests that key off it) — only a live TENANCY edge
+        connects it to its territory.
+        """
+        g = BabylonGraph()
+        g.graph["tick"] = 3
+        g.add_node(
+            "org-player",
+            "organization",
+            id="org-player",
+            name="Cell",
+            org_type="political_faction",
+            cadre_level=1.0,
+            cohesion=0.4,
+            budget=50.0,
+            heat=0.1,
+            territory_ids=["T1"],
+        )
+        g.add_node("T1", "territory", name="Genesee County")
+        g.add_node(
+            "sc-genesee-proles",
+            "social_class",
+            id="sc-genesee-proles",
+            name="Genesee Proletariat",
+            role="proletariat",
+            wealth=800.0,
+            agitation=0.5,
+        )
+        g.add_edge("sc-genesee-proles", "T1", "tenancy")
+        return g
+
+    def test_resolves_social_class_via_tenancy_edge_no_territory_ids_field(self) -> None:
+        mock_persistence = _make_mock_persistence()
+        bridge = EngineBridge(mock_persistence)
+        graph = self._production_faithful_graph()
+
+        with _patched_hydrate_state(bridge, graph):
+            result = bridge.get_educate_targets(uuid.uuid4(), "org-player")
+
+        target_ids = {t["community_id"] for t in result["targets"]}
+        assert "sc-genesee-proles" in target_ids
+        assert result["unavailable_communities"] == []
+
+    def test_territory_with_no_tenancy_members_is_honestly_unavailable(self) -> None:
+        mock_persistence = _make_mock_persistence()
+        bridge = EngineBridge(mock_persistence)
+        graph = self._production_faithful_graph()
+        graph.remove_edge("sc-genesee-proles", "T1")
+
+        with _patched_hydrate_state(bridge, graph):
+            result = bridge.get_educate_targets(uuid.uuid4(), "org-player")
+
+        assert result["targets"] == []
+        unavailable_ids = {u["community_id"] for u in result["unavailable_communities"]}
+        assert "community-unknown-T1" in unavailable_ids
 
 
 def _make_wayne_tick0_graph() -> BabylonGraph:

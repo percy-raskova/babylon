@@ -5614,6 +5614,32 @@ class EngineBridge:
 
         Matches the contract defined in spec 043, integrating actual
         consciousness and material readiness from the graph when available.
+
+        Track 1 / Task 8 (2026-07-18): social_class targets are resolved via
+        :func:`_tenancy_members_by_territory` — the real Occupant -> Territory
+        TENANCY edge, the same linkage ``_dominant_class_by_territory``/
+        ``_solidarity_index_by_territory`` already use for ``/map/`` — not
+        via ``_nodes_in_territory``'s ``territory_ids`` check.
+        ``SocialClass`` has no ``territory_ids`` field in production
+        (``to_graph`` dumps model fields verbatim; only
+        ``Organization``/``Institution`` carry that field), so the old
+        lookup structurally never found a social_class node and every
+        territory landed in ``unavailable_communities`` regardless of real
+        TENANCY data.
+
+        Fog note: this target list is NOT reach-gated. The classes returned
+        here are exactly ``org_id``'s own PRESENCE (territory_ids) + TENANCY
+        hop — the identical first two hops :func:`game.fog.reach.
+        organizing_reach` itself walks rooted at the player org. When
+        ``org_id`` is the resolved player org (the calling convention every
+        shipped caller uses — :class:`~game.api.EducateVerbView`), every
+        target here is, by construction, already inside that org's own
+        organizing reach; gating would be a no-op. Whether an arbitrary,
+        non-player ``org_id`` could be passed here is a pre-existing
+        authorization question shared by every ``get_*_targets`` method
+        (aid/mobilize/attack/reproduce/educate alike, none of which validate
+        ``org_id`` against the session's player org) — out of this task's
+        scope, which is the ``_nodes_in_territory`` -> tenancy swap only.
         """
         state, graph = self.hydrate_state(session_id)
         org_status = self.get_org_status(session_id, org_id)
@@ -5637,6 +5663,7 @@ class EngineBridge:
 
         org_data = graph.nodes.get(org_id, {})
         territory_ids = org_data.get("territory_ids", [])
+        tenancy_members = _tenancy_members_by_territory(graph)
         for tid in territory_ids:
             if tid not in graph.nodes:
                 continue
@@ -5644,9 +5671,9 @@ class EngineBridge:
             terr_name = terr_data.get("name", tid)
 
             social_classes = [
-                (nid, nd)
-                for nid, nd in _nodes_in_territory(graph, tid)
-                if nd.get("_node_type") == "social_class"
+                (sc_id, graph.nodes[sc_id])
+                for sc_id in tenancy_members.get(tid, [])
+                if sc_id in graph.nodes
             ]
             if not social_classes:
                 unavailable_communities.append(

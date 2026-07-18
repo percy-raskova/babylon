@@ -106,3 +106,42 @@ fn test_num_edges_counts_correctly() {
     h.add_edge(vec!["c".to_string()], Some("e3".to_string()), serde_json::Value::Null).unwrap();
     assert_eq!(h.num_edges(), 3);
 }
+
+#[test]
+fn test_memberships_returns_edge_ids() {
+    let mut h: Hypergraph = Hypergraph::new();
+    h.add_edge(vec!["a".to_string(), "b".to_string()], Some("e1".to_string()), serde_json::Value::Null).unwrap();
+    h.add_edge(vec!["a".to_string(), "c".to_string()], Some("e2".to_string()), serde_json::Value::Null).unwrap();
+    let mships = h.memberships("a").unwrap();
+    assert_eq!(mships.len(), 2);
+    assert!(mships.contains(&"e1".to_string()));
+    assert!(mships.contains(&"e2".to_string()));
+}
+
+#[test]
+fn test_memberships_returns_empty_for_isolate() {
+    let mut h: Hypergraph = Hypergraph::new();
+    h.add_node("lonely", serde_json::Value::Null);
+    assert!(h.memberships("lonely").unwrap().is_empty());
+}
+
+#[test]
+fn test_memberships_returns_none_for_missing() {
+    let h: Hypergraph = Hypergraph::new();
+    assert!(h.memberships("nonexistent").is_none());
+}
+
+#[test]
+fn test_members_returns_node_ids() {
+    let mut h: Hypergraph = Hypergraph::new();
+    h.add_edge(vec!["a".to_string(), "b".to_string(), "c".to_string()], Some("e1".to_string()), serde_json::Value::Null).unwrap();
+    let members = h.members("e1").unwrap();
+    assert_eq!(members.len(), 3);
+    assert!(members.contains(&"a".to_string()));
+}
+
+#[test]
+fn test_members_returns_none_for_missing() {
+    let h: Hypergraph = Hypergraph::new();
+    assert!(h.members("nonexistent").is_none());
+}

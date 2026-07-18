@@ -93,6 +93,42 @@ impl<N, E, M> Hypergraph<N, E, M> {
         self.hyperedge_ids.contains_key(edge_id)
     }
 
+    /// Get the edge IDs of which a node is a member.
+    /// XGI parity: `H.nodes.memberships(n)`.
+    pub fn memberships(&self, node_id: &str) -> Option<Vec<String>> {
+        let agent_idx = *self.agent_ids.get(node_id)?;
+        let mut result: Vec<String> = Vec::new();
+        for neighbor_idx in self.inner.neighbors(agent_idx) {
+            if let Some(NodeKind::Hyperedge(_)) = self.inner.node_weight(neighbor_idx) {
+                for (eid, &idx) in &self.hyperedge_ids {
+                    if idx == neighbor_idx {
+                        result.push(eid.clone());
+                        break;
+                    }
+                }
+            }
+        }
+        Some(result)
+    }
+
+    /// Get the node IDs that are members of an edge.
+    /// XGI parity: `H.edges.members(e)`.
+    pub fn members(&self, edge_id: &str) -> Option<Vec<String>> {
+        let he_idx = *self.hyperedge_ids.get(edge_id)?;
+        let mut result: Vec<String> = Vec::new();
+        for neighbor_idx in self.inner.neighbors(he_idx) {
+            if let Some(NodeKind::Agent(_)) = self.inner.node_weight(neighbor_idx) {
+                for (nid, &idx) in &self.agent_ids {
+                    if idx == neighbor_idx {
+                        result.push(nid.clone());
+                        break;
+                    }
+                }
+            }
+        }
+        Some(result)
+    }
+
     /// Add a hyperedge connecting the given members.
     ///
     /// XGI parity: `H.add_edge(members, idx=id, **attr)`.

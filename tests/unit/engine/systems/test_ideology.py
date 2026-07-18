@@ -446,15 +446,45 @@ class TestWageOppositionCrisisGate:
             "(wage below value, gap rising) is material deterioration"
         )
 
-    def test_gap_closing_is_quiet_on_either_side(self) -> None:
-        """rate < 0 (the relation de-sharpening) is never deterioration."""
-        for balance in (-0.3, 0.3):
-            graph = self._graph_with_worker()
-            graph.graph["opposition_states"] = {
-                "wage": self._wage_state(gap=0.3, balance=balance, rate=-0.05)
-            }
-            services = ServiceContainer.create()
-            system = ConsciousnessSystem()
-            system.step(graph, services, TickContext(tick=1))
-            ideology = graph.nodes[PERIPHERY_WORKER_ID]["ideology"]
-            assert ideology["agitation"] == pytest.approx(0.0)
+    def test_gap_closing_generates_no_rate_deterioration_when_bribe_growing(self) -> None:
+        """rate < 0 (the relation de-sharpening) with balance >= 0 (the bribe
+        side) is never deterioration -- neither the RATE term (this test)
+        NOR the Task 2 sustained LEVEL term (gated to balance < 0 only,
+        ``sustained_exploitation_agitation``) contribute here.
+        """
+        graph = self._graph_with_worker()
+        graph.graph["opposition_states"] = {
+            "wage": self._wage_state(gap=0.3, balance=0.3, rate=-0.05)
+        }
+        services = ServiceContainer.create()
+        system = ConsciousnessSystem()
+        system.step(graph, services, TickContext(tick=1))
+        ideology = graph.nodes[PERIPHERY_WORKER_ID]["ideology"]
+        assert ideology["agitation"] == pytest.approx(0.0)
+
+    def test_gap_closing_on_losing_side_is_quiet_on_the_rate_term_alone(self) -> None:
+        """rate < 0 (de-sharpening) with balance < 0 (labor still losing): the
+        RATE-gated ``wage_deterioration`` term stays silent (unchanged
+        pre-Task-2 behavior -- de-sharpening is never RATE deterioration).
+        But total agitation is now NON-ZERO because Task 2's sustained LEVEL
+        term (``sustained_exploitation_agitation``) reads ``balance`` alone,
+        independent of ``rate``: labor is still on the losing side even
+        while the relation improves, and that ongoing defect is exactly the
+        signal Task 2 adds. This intentionally supersedes the pre-Task-2
+        expectation (which asserted total agitation == 0 here) -- see
+        ``docs/superpowers/plans/2026-07-18-null-play-political-coupling.md``
+        Task 2.
+        """
+        graph = self._graph_with_worker()
+        defines = ServiceContainer.create().defines
+        sensitivity = defines.consciousness.sustained_exploitation_sensitivity
+        graph.graph["opposition_states"] = {
+            "wage": self._wage_state(gap=0.3, balance=-0.3, rate=-0.05)
+        }
+        services = ServiceContainer.create()
+        system = ConsciousnessSystem()
+        system.step(graph, services, TickContext(tick=1))
+        ideology = graph.nodes[PERIPHERY_WORKER_ID]["ideology"]
+        expected_raw = 0.3 * sensitivity  # -balance * sensitivity, rate term stays 0
+        decay_rate = defines.consciousness.agitation_decay_rate
+        assert ideology["agitation"] == pytest.approx(expected_raw * (1.0 - decay_rate))

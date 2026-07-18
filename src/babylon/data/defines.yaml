@@ -219,6 +219,7 @@ consciousness:
   educate_base_effect: 0.05  # Base education_pressure increase per EDUCATE verb invocation. (>= 0.0, <= 1.0)
   agitation_education_threshold: 0.3  # Agitation level at which EDUCATE reaches full effectiveness (practice-first gate). (>= 0.0, <= 1.0)
   education_pressure_decay: 0.1  # Per-tick exponential decay of education_pressure on community hyperedges. (>= 0.0, <= 1.0)
+  sustained_exploitation_sensitivity: 0.02  # PROVISIONAL (calibrated later via `mise run sim:pacing`, spec: 2026-07-18-null-play-political-coupling.md Task 10). opposition_states['wage']['balance'] -> agitation conversion (babylon.formulas.sustained_exploitation). balance is bounded [-1, 1] (a normalized ratio, not a currency scale), so this default is deliberately small: at balance=-1 (total wage/value collapse) the per-tick contribution is 0.02, well below routing_scale/agitation_consumption_rate, to avoid snapping consciousness to its 1.0 ceiling in a handful of ticks. (>= 0.0, <= 1.0)
 
 # ---------------------------------------------------------------------
 # territory — Territory dynamics coefficients.

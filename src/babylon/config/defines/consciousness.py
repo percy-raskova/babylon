@@ -142,6 +142,25 @@ class ConsciousnessDefines(BaseModel):
         description="Per-tick exponential decay of education_pressure on community hyperedges.",
     )
 
+    # ----- Task 2 (2026-07-18): sustained wage-value defect (level, not delta) -----
+
+    sustained_exploitation_sensitivity: float = Field(
+        default=0.02,
+        ge=0.0,
+        le=1.0,
+        description=(
+            "PROVISIONAL (calibrated later via `mise run sim:pacing`, spec: "
+            "2026-07-18-null-play-political-coupling.md Task 10). "
+            "opposition_states['wage']['balance'] -> agitation conversion "
+            "(babylon.formulas.sustained_exploitation). balance is bounded "
+            "[-1, 1] (a normalized ratio, not a currency scale), so this "
+            "default is deliberately small: at balance=-1 (total wage/value "
+            "collapse) the per-tick contribution is 0.02, well below "
+            "routing_scale/agitation_consumption_rate, to avoid snapping "
+            "consciousness to its 1.0 ceiling in a handful of ticks."
+        ),
+    )
+
 
 class ContradictionFieldDefines(BaseModel):
     """Contradiction field topology coefficients (Feature 002).

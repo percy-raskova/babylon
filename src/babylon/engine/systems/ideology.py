@@ -18,6 +18,7 @@ from babylon.formulas.consciousness_routing import (
     compute_reification_buffer,
     route_agitation_to_ternary,
 )
+from babylon.formulas.sustained_exploitation import sustained_exploitation_agitation
 from babylon.kernel.tick_partition import TickPartition
 from babylon.models.enums import EdgeType
 
@@ -123,6 +124,22 @@ class ConsciousnessSystem(SystemBase):
         _wage_balance = float(wage_state.get("balance", 0.0))
         wage_deterioration = max(0.0, _wage_rate) if _wage_balance < 0.0 else 0.0
 
+        # Task 2 (2026-07-18, sustained wage-value defect — B in the null-play
+        # political-coupling plan): ADDS a LEVEL term alongside the RATE term
+        # above. ``wage_deterioration`` only fires while the relation is
+        # actively sharpening (rate > 0); once the Imperial Circuit reaches
+        # steady state (rate -> 0) that term goes silent even if labor
+        # remains permanently on the losing side. ``sustained_exploitation_
+        # agitation`` reads the SAME ``_wage_balance`` as a magnitude, not a
+        # delta, so a persistent (non-worsening) defect still generates
+        # agitation every tick it holds. Same one-tick lag as above (reads
+        # LAST tick's ContradictionSystem @18.0 snapshot). See
+        # ``babylon.formulas.sustained_exploitation`` for the Volume III
+        # (spec-024) collision-boundary contract this reads through.
+        sustained_deterioration = sustained_exploitation_agitation(
+            _wage_balance, services.defines.consciousness.sustained_exploitation_sensitivity
+        )
+
         # Initialize or retrieve previous wages tracking from persistent storage
         if PREVIOUS_WAGES_KEY not in persistent:
             persistent[PREVIOUS_WAGES_KEY] = {}
@@ -214,7 +231,12 @@ class ConsciousnessSystem(SystemBase):
                 imperial_rent_delta=wealth_change,  # Wealth decline ~ rent decline
                 visibility_delta=0.0,  # g₃₃ changes handled in community system
             )
-            new_agitation = current_profile["agitation"] + agitation_increment + wage_deterioration
+            new_agitation = (
+                current_profile["agitation"]
+                + agitation_increment
+                + wage_deterioration
+                + sustained_deterioration
+            )
 
             # Route agitation through solidarity → class/nation split.
             # The ternary router (Spec 043) returns shifts in (revolutionary,

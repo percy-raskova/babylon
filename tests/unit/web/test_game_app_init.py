@@ -132,6 +132,23 @@ def test_ready_initializes_bridge_for_postgres(monkeypatch: pytest.MonkeyPatch) 
 
     monkeypatch.setattr(game_api, "init_bridge", _spy_init_bridge)
 
+    # Spec-116 Task 19 added _apply_runtime_migrations() to the postgres boot
+    # path (init_persistence): it opens a real pool.connection() to apply the
+    # packaged migrations — unfakeable in a pure unit test (no live DB). Spy it
+    # so this test still asserts boot APPLIES migrations to the pool, without a
+    # DB; the migration-heal behavior itself is covered by the
+    # ensure_ddl_applied tests, not here.
+    from game import engine_bridge as game_engine_bridge
+
+    migration_calls: dict[str, object] = {}
+
+    def _spy_apply_runtime_migrations(pool: object) -> None:
+        migration_calls["pool"] = pool
+
+    monkeypatch.setattr(
+        game_engine_bridge, "_apply_runtime_migrations", _spy_apply_runtime_migrations
+    )
+
     app_module = importlib.import_module("game")
     config = GameConfig("game", app_module)
     config.ready()
@@ -141,6 +158,8 @@ def test_ready_initializes_bridge_for_postgres(monkeypatch: pytest.MonkeyPatch) 
     assert isinstance(persistence, FakePostgresRuntime)
     assert persistence.schema_initialized is True
     assert "dbname=babylon" in persistence.pool.conninfo
+    # Boot applied migrations to the same pool the runtime wraps (spec-116 T19).
+    assert migration_calls.get("pool") is persistence.pool
 
 
 @pytest.mark.unit

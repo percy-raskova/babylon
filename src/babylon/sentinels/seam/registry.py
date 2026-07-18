@@ -557,6 +557,27 @@ _FINANCIAL_LIVENESS_CONDITION: str = (
     "_compute_county_financial_state via distribution_calculator)"
 )
 
+#: Task 21b (spec-116): _bridge_economics_overrides now wires a real
+#: reserve_army_data_source (domain.economics.factory.create_vol1_services)
+#: over the same reference-DB session_factory the rows above already use, so
+#: the `services.reserve_army_data_source is None` gate
+#: (domain/economics/tick/system/__init__.py:1100) no longer short-circuits
+#: `_compute_vol1_layer` unconditionally. Unlike Groups C/D, tick_median_wage
+#: was never NULL either side of this wiring (the QCEW wage_source bootstrap,
+#: Item 60, always seeds a real value) — what changes is whether that
+#: bootstrap is the WHOLE story or genuinely endogenous afterward, so this is
+#: a liveness_condition/notes correction on an already-DECLARED_CONDITIONAL
+#: row, not a liveness_class promotion.
+_WAGE_PRESSURE_LIVENESS_CONDITION: str = (
+    f"{_YEAR_BOUNDARY}; the bootstrap (QCEW p50, owner item 60) is live regardless — this "
+    "condition covers only whether the value is ALSO genuinely endogenous after tick 1: "
+    "requires _bridge_economics_overrides to have wired a reserve_army_data_source (Task 21b) "
+    "AND get_unemployment_decomposition(fips, year) to return non-None (UNRATE present for "
+    "the year in fact_fred_national, domain/economics/tick/system/__init__.py:1139) — a "
+    "territory outside that coverage carries the bootstrap-only value forward unadjusted, "
+    "never a fabricated compression (Constitution III.11)."
+)
+
 _TERRITORY_TICK_METRICS: tuple[SeamEntry, ...] = (
     # --- Group A: crisis-detector family (DECLARED_CONDITIONAL, year-boundary) ---
     SeamEntry(
@@ -699,19 +720,29 @@ _TERRITORY_TICK_METRICS: tuple[SeamEntry, ...] = (
         scope=SeamScope.TERRITORY,
         owner_layer="domain.economics.tick (QCEW p50 bootstrap + wage-pressure dynamics)",
         liveness_class=LivenessClass.DECLARED_CONDITIONAL,
-        liveness_condition=_YEAR_BOUNDARY,
+        liveness_condition=_WAGE_PRESSURE_LIVENESS_CONDITION,
         dtype="float",
         read_paths=_TERRITORY_EMITTERS,
-        spec_ref="Epochs audit · Wave 2 · Gap-1 · owner item 60",
+        spec_ref="Epochs audit · Wave 2 · Gap-1 · owner item 60 · spec-116 Task 21b",
         notes=(
             "Item 60 (2026-07-15): the bootstrap is now the employment-weighted "
             "p50 estimator over QCEW 6-digit industry wages via "
             "services.wage_source (a genuine median approximation — the raw "
             "QCEW county mean was NOT wired precisely because it is a mean). "
-            "ENDOGENOUS after tick 1: wage-pressure/compression dynamics own "
-            "the trajectory; the source seeds only the initial condition. "
-            "21.0 $/hr remains the documented unwired/absent-row bootstrap. "
-            "Wire key deliberately kept tick_-prefixed (not 'median_wage') to avoid "
+            "ENDOGENOUS after tick 1 (Task 21b, spec-116): wage-pressure/"
+            "compression dynamics now genuinely own the trajectory for a "
+            "county with UNRATE coverage for the year — "
+            "_bridge_economics_overrides wires a real reserve_army_data_source "
+            "(domain.economics.factory.create_vol1_services), opening the "
+            "`services.reserve_army_data_source is None` gate "
+            "(domain/economics/tick/system/__init__.py:1100). Before Task "
+            "21b this ENDOGENOUS claim was aspirational only: no runner ever "
+            "constructed that service, so the wage-pressure sigmoid never "
+            "fired in a web session and the QCEW bootstrap was the whole "
+            "story every tick. 21.0 $/hr remains the documented unwired/"
+            "absent-row bootstrap — never a fabricated compression when "
+            "UNRATE is absent for the year (Constitution III.11). Wire key "
+            "deliberately kept tick_-prefixed (not 'median_wage') to avoid "
             "colliding with the real, distinct Territory.median_wage field "
             "(Feature 021) already on the same _serialize_territory payload."
         ),

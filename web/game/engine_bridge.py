@@ -6197,13 +6197,18 @@ def _bridge_economics_overrides(fips_codes: tuple[str, ...] = ()) -> tuple[dict[
     so ``tick_phi_hour`` is genuinely computed per county for web sessions
     too, instead of staying at the permanent ``0.0`` stub (see
     ``babylon.domain.economics.tick.system.imperial_rent
-    ._spec_057_pipeline_wired``). ``median_wage``/``employment`` (Vol I's
-    ``DefaultWagePressureCalculator`` is ALSO unwired in both runners — no
-    ``reserve_army_data_source`` — so they stay at ``CountyEconomicState``'s
-    bootstrap defaults, 21.0 $/hr and 100,000 workers) are the
-    calculator-independent values that make ``flow_wage_accrued`` move
-    (Constitution III.11: these are the engine's own documented
-    graceful-degradation defaults, not a value this lane invents).
+    ._spec_057_pipeline_wired``). ``employment`` is already real per county
+    (``employment_source``/``wage_source`` below, QCEW) — 100,000 workers is
+    only the documented graceful-degradation fallback for an absent county-
+    year row (Constitution III.11), not a value this lane invents.
+    ``median_wage`` was, until spec-116 Task 21b, the one place that fallback
+    story still bit: Vol I's ``DefaultWagePressureCalculator`` needs a
+    ``reserve_army_data_source`` neither runner constructed, so
+    ``CountyEconomicState``'s 21.0 $/hr bootstrap never moved tick-over-tick
+    in a web session — only the QCEW p50 estimator that seeds it did. Task
+    21b wires the FRED-backed ``reserve_army_data_source`` (Feature 021's
+    ``create_vol1_services``) below, so unemployment-decomposition-driven
+    wage pressure now compresses ``median_wage`` at year boundaries here too.
 
     Wave 2 owner ruling 1: also wires ``throughput_calculator`` (Feature 014's
     ``DefaultThroughputCalculator``, BEA county GDP + QCEW NAICS employment
@@ -6344,6 +6349,41 @@ def _bridge_economics_overrides(fips_codes: tuple[str, ...] = ()) -> tuple[dict[
             fred_series_cache=fred_cache,
         )
     )
+
+    # Spec-116 Task 21b: wire the FRED-backed Vol I production layer
+    # (Feature 021 — reserve army, productivity, dispossession) the same way
+    # the headless runner does (Simulation.from_sqlite,
+    # engine/simulation/_legacy.py:305-316), so the
+    # ``services.reserve_army_data_source is None`` gate
+    # (domain/economics/tick/system/__init__.py:1100) no longer short-
+    # circuits ``_compute_vol1_layer`` unconditionally — FRED UNRATE/NROU
+    # unemployment decomposition now drives the wage-pressure sigmoid that
+    # compresses ``median_wage`` at year boundaries for web sessions too.
+    # Reuses the ``fred_cache`` Task 20b already loaded above (UNRATE lives
+    # in that same Vol III cache) — no second query.
+    # ``productivity_data_source``/``dispossession_data_source`` ride along
+    # in the same dict, mirroring the headless runner's
+    # ``.update(vol1_overrides)`` faithfully: ``productivity_data_source``
+    # has zero tick readers anywhere in ``src/`` (registered on
+    # ServicesProtocol, never called), so it is inert; ``dispossession_
+    # data_source`` IS read inside ``_simulate_transitions`` (:1757), but
+    # that whole method still no-ops unconditionally on its OWN, separate
+    # ``services.transition_engine is None`` gate (:1736) — no
+    # ``transition_engine`` is wired here — so it is equally inert today,
+    # not a newly-activated blast radius.
+    from babylon.domain.economics.factory import (
+        create_vol1_services,
+        load_vol1_series_from_db,
+    )
+
+    vol1_cache = load_vol1_series_from_db(session_factory)
+    overrides.update(
+        create_vol1_services(
+            vol1_series_cache=vol1_cache,
+            fred_series_cache=fred_cache,
+        )
+    )
+
     return overrides, leontief_session
 
 

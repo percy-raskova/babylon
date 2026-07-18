@@ -3737,3 +3737,55 @@ class TestBridgeEconomicsOverridesWiresCirculationAndFinancialServices:
         finally:
             if leontief_session is not None:
                 leontief_session.close()
+
+
+class TestBridgeEconomicsOverridesWiresVol1ReserveArmyServices:
+    """spec-116 Task 21b: wire the FRED-backed Vol I production layer
+    (Feature 021 — reserve army, productivity, dispossession) into
+    ``_bridge_economics_overrides``, mirroring the headless runner's
+    ``create_vol1_services``/``load_vol1_series_from_db`` wiring
+    (``engine/simulation/_legacy.py:305-316``).
+
+    Without ``reserve_army_data_source`` wired, ``domain/economics/tick/
+    system/__init__.py``'s ``_compute_vol1_layer`` (:1100) returns
+    ``county_states`` unchanged unconditionally, so the wage-pressure
+    sigmoid never compresses ``median_wage`` tick-over-tick in a web
+    session — only the QCEW bootstrap value it starts from is real.
+    ``create_vol1_services`` reads the same reference-DB ``session_factory``
+    already in scope for melt/gamma/leontief/throughput/circulation/
+    financial above — no new runtime dependency.
+    """
+
+    def test_overrides_include_a_reserve_army_data_source(self) -> None:
+        from game.engine_bridge import _bridge_economics_overrides
+
+        overrides, leontief_session = _bridge_economics_overrides(())
+        try:
+            source = overrides.get("reserve_army_data_source")
+            assert source is not None
+            assert hasattr(source, "get_unemployment_decomposition")
+            assert callable(source.get_unemployment_decomposition)
+        finally:
+            if leontief_session is not None:
+                leontief_session.close()
+
+    def test_overrides_include_productivity_and_dispossession_data_sources(self) -> None:
+        """The other two Vol I adapters ride the same wiring call (mirrors
+        the headless runner's ``.update(vol1_overrides)`` faithfully — see
+        the FLAG discussion in the Task 21b brief: ``productivity_data_source``
+        has zero tick readers anywhere in ``src/`` today, and
+        ``dispossession_data_source``'s one reader
+        (``_simulate_transitions``, :1757) is itself gated on an unwired
+        ``transition_engine`` (:1736), so both ride along inert — wiring the
+        whole bundle is faithful to the headless mirror without widening the
+        web session's live blast radius beyond reserve-army wage pressure.
+        """
+        from game.engine_bridge import _bridge_economics_overrides
+
+        overrides, leontief_session = _bridge_economics_overrides(())
+        try:
+            assert overrides.get("productivity_data_source") is not None
+            assert overrides.get("dispossession_data_source") is not None
+        finally:
+            if leontief_session is not None:
+                leontief_session.close()

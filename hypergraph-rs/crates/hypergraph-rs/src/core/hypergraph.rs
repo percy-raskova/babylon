@@ -319,4 +319,20 @@ impl<N, E, M> Hypergraph<N, E, M> {
         self.agent_ids.shift_remove(node_id);
         Ok(())
     }
+
+    /// Remove all nodes, edges, and attributes — node attrs, edge attrs,
+    /// and graph-level attrs (XGI's `remove_net_attr=True` default).
+    ///
+    /// Resets the auto-id counter: a cleared hypergraph behaves identically
+    /// to a fresh one (`clear() ≡ new()`; III.7 replay-from-empty
+    /// determinism). XGI continues its counter — divergence D8.
+    ///
+    /// XGI parity: `H.clear()`.
+    pub fn clear(&mut self) {
+        self.inner = StableDiGraph::new();
+        self.agent_ids.clear();
+        self.hyperedge_ids.clear();
+        self.edge_uid_counter = 0;
+        self.graph_attrs.clear();
+    }
 }

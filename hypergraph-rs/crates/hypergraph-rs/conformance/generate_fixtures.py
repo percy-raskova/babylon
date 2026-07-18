@@ -196,6 +196,28 @@ def v_node_attr_set_read() -> dict:
     return {"attrs": dict(H.nodes["a"])}
 
 
+def v_clear_all() -> dict:
+    H = xgi.Hypergraph()
+    H.add_edge(["a", "b"])  # auto id 0 — bumps XGI's uid counter
+    H.add_edge(["c", "d"], idx="e1", heat=0.5)
+    H.add_node("lonely", x=1)
+    H["name"] = "test"
+    H.clear()  # remove_net_attr=True is the XGI default
+    state = {
+        "num_nodes": H.num_nodes,
+        "num_edges": H.num_edges,
+        "node_ids": sorted(str(n) for n in H.nodes),
+        "edge_ids": _ids(H),
+        "net_attrs": dict(H._net_attr),
+    }
+    # XGI's clear() empties nodes/edges/attrs but does NOT reset the auto-id
+    # counter: the next auto id continues at 1. Pinned for divergence D8 —
+    # the Rust core resets its counter (clear() ≡ new()).
+    H.add_edge(["z"])
+    state["auto_ids_after_clear"] = _ids(H)
+    return state
+
+
 def main() -> None:
     vectors = {
         name.removeprefix("v_"): fn()

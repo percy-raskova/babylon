@@ -71,6 +71,16 @@
       },
       "num_nodes": 1
     },
+    "clear_all": {
+      "auto_ids_after_clear": [
+        1
+      ],
+      "edge_ids": [],
+      "net_attrs": {},
+      "node_ids": [],
+      "num_edges": 0,
+      "num_nodes": 0
+    },
     "node_attr_set_read": {
       "attrs": {
         "color": "red"

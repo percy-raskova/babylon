@@ -202,6 +202,49 @@ fn conform_node_attr_set_read() {
 }
 
 #[test]
+fn diverge_d8_clear_resets_uid_counter() {
+    // XGI's clear() (remove_net_attr=True default) empties all nodes, edges,
+    // node/edge attrs, and net attrs — the Rust core conforms on all of
+    // that. D8: XGI does NOT reset its auto-id counter (the next auto id
+    // continues at 1); the Rust core resets edge_uid_counter, so a cleared
+    // hypergraph behaves identically to a fresh one (clear() ≡ new();
+    // III.7 replay-from-empty determinism).
+    let gt = ground_truth();
+    let v = vector(&gt, "clear_all");
+    assert_eq!(v["num_nodes"], 0); // XGI truth, pinned
+    assert_eq!(v["num_edges"], 0);
+    assert_eq!(v["node_ids"], serde_json::json!([]));
+    assert_eq!(v["edge_ids"], serde_json::json!([]));
+    assert_eq!(v["net_attrs"], serde_json::json!({}));
+    assert_eq!(ids(&v["auto_ids_after_clear"]), vec!["1"]); // XGI truth, pinned
+
+    let mut h: Hypergraph = Hypergraph::new();
+    h.add_edge(vec!["a".into(), "b".into()], None, Value::Null)
+        .unwrap();
+    h.add_edge(
+        vec!["c".into(), "d".into()],
+        Some("e1".into()),
+        serde_json::json!({"heat": 0.5}),
+    )
+    .unwrap();
+    h.add_node("lonely", serde_json::json!({"x": 1}));
+    h.set_graph_attr("name", serde_json::json!("test"));
+    h.clear();
+
+    assert_eq!(h.num_nodes(), 0);
+    assert_eq!(h.num_edges(), 0);
+    assert!(h.node_ids().is_empty());
+    assert!(h.edge_ids().is_empty());
+    assert!(h.graph_attr("name").is_none());
+    assert!(h.node_attrs("lonely").is_none());
+    assert!(h.edge_attrs("e1").is_none());
+
+    // D8: Rust resets the counter — the post-clear auto id is "0", not "1".
+    let auto = h.add_edge(vec!["z".into()], None, Value::Null).unwrap();
+    assert_eq!(auto, "0"); // Rust divergence, deliberate
+}
+
+#[test]
 fn conform_remove_edge_basic() {
     let gt = ground_truth();
     let v = vector(&gt, "remove_edge_basic");

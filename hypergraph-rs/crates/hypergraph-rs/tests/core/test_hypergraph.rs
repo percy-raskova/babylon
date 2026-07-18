@@ -393,6 +393,33 @@ fn test_edge_attrs_missing_returns_none() {
 }
 
 #[test]
+fn test_graph_attr_overwrite() {
+    let mut h: Hypergraph = Hypergraph::new();
+    h.set_graph_attr("tick", serde_json::json!(1));
+    h.set_graph_attr("tick", serde_json::json!(99));
+    assert_eq!(h.graph_attr("tick"), Some(&serde_json::json!(99)));
+}
+
+#[test]
+fn test_clear_removes_everything() {
+    let mut h: Hypergraph = Hypergraph::new();
+    h.add_edge(
+        vec!["a".to_string(), "b".to_string()],
+        Some("e1".to_string()),
+        serde_json::json!({"heat": 0.5}),
+    )
+    .unwrap();
+    h.add_node("lonely", serde_json::json!({"x": 1}));
+    h.set_graph_attr("name", serde_json::json!("test"));
+    h.clear();
+    assert_eq!(h.num_nodes(), 0);
+    assert_eq!(h.num_edges(), 0);
+    assert!(h.node_ids().is_empty());
+    assert!(h.edge_ids().is_empty());
+    assert!(h.graph_attr("name").is_none());
+}
+
+#[test]
 fn test_remove_edge_basic() {
     let mut h: Hypergraph = Hypergraph::new();
     h.add_edge(

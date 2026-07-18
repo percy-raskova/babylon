@@ -1,7 +1,7 @@
 //! The core `Hypergraph` data structure.
 
-use rustworkx_core::petgraph::stable_graph::{NodeIndex, StableDiGraph};
 use indexmap::IndexMap;
+use rustworkx_core::petgraph::stable_graph::{NodeIndex, StableDiGraph};
 
 use super::error::EdgeError;
 use super::kinds::{MembershipEdge, NodeKind};
@@ -198,7 +198,9 @@ impl<N, E, M> Hypergraph<N, E, M> {
         let edge_id = match &idx {
             Some(id) => {
                 if self.hyperedge_ids.contains_key(id) {
-                    return Err(EdgeError::AlreadyExists { edge_id: id.clone() });
+                    return Err(EdgeError::AlreadyExists {
+                        edge_id: id.clone(),
+                    });
                 }
                 id.clone()
             }
@@ -233,7 +235,9 @@ impl<N, E, M> Hypergraph<N, E, M> {
 
         for member in &unique_members {
             let agent_idx = self.agent_ids[member];
-            let membership = MembershipEdge { member_data: M::default() };
+            let membership = MembershipEdge {
+                member_data: M::default(),
+            };
             self.inner.add_edge(agent_idx, he_idx, membership.clone());
             self.inner.add_edge(he_idx, agent_idx, membership);
         }

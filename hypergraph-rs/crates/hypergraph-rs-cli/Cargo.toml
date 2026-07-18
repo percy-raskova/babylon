@@ -8,8 +8,11 @@ authors.workspace = true
 repository.workspace = true
 description = "CLI for hypergraph-rs"
 
+# The binary is `hypergraph` (not `hypergraph-rs`): a bin named like the lib
+# crate collides in `cargo doc` output (cargo bug #6313) and trips the
+# rustdoc -D warnings gate.
 [[bin]]
-name = "hypergraph-rs"
+name = "hypergraph"
 path = "src/main.rs"
 
 [dependencies]

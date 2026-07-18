@@ -4,6 +4,11 @@ meta:
   description: Architecture Decision Records Index
   format: See individual ADR files in this directory
 decisions:
+  ADR082_consciousness_bifurcation_recoupling:
+    title: 'Consciousness recoupling: a positive wage-value balance redirects agitation to the CHAUVINIST pole instead of gating it to zero — balance SIGN drives bifurcation direction, |balance| drives intensity, with a deliberately non-monotonic Gaussian peaking at the precarious margin (MIM: the marginal labour aristocracy is the most reactionary); grounded in Emmanuel UE p.180 / MIM mim-lumpen.txt:206-217 / Amin LWV p.127, per-class reading licensed by Cope DWDC p.204; FIRST ceremony to genuinely move all 5 regression baselines — every drift lands in national_identity, none in class_consciousness'
+    status: accepted
+    date: '2026-07-18'
+    file: ADR082_consciousness_bifurcation_recoupling.yaml
   ADR081_declarative_system_ordering:
     title: 'spec-116 systems-dedup Phase 4 — Declarative tick ordering: each System declares partition/position ClassVars; simulation_engine DERIVES _DEFAULT_SYSTEMS + the three spec-056 partition frozensets from them (was a hand-ordered list + three hand-maintained sets held in sync by import-time assertions)'
     status: accepted

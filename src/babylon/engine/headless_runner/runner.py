@@ -267,7 +267,10 @@ def _apply_migrations(pool: Any) -> None:
     and silently apply zero migrations.
     """
     migrations_dir = Path(__file__).resolve().parents[2] / "persistence" / "migrations"
-    sql_files = sorted(migrations_dir.glob("00*.sql"))
+    # [0-9]*.sql (not 00*.sql): do not silently drop migrations 0100+ once
+    # numbering crosses 0099 (zero-padded 4-digit names sort lexicographically
+    # == numerically). Mirrors web/game/engine_bridge.py's applier.
+    sql_files = sorted(migrations_dir.glob("[0-9]*.sql"))
     if not sql_files:
         raise RunnerError(f"No migrations found at {migrations_dir} — refusing to run unmigrated")
     with pool.connection() as conn:

@@ -99,6 +99,76 @@ def _load_vol3_fred_fixture() -> dict[str, dict[int, float]]:
     }
 
 
+MELT_FIXTURE_PATH: Final[Path] = (
+    Path(__file__).parent.parent / "tests" / "fixtures" / "vol3_melt_national.json"
+)
+
+
+class _FixtureNationalGDPSource:
+    """Fixture-backed ``BEADataSource`` — hermetic twin of ``SQLiteBEANationalGDPSource``.
+
+    Returns ``None`` for an absent year, exactly as the SQLite adapter does
+    (Constitution III.11) — the fixture omits years the reference DB has no
+    row for rather than zero-filling them.
+    """
+
+    def __init__(self, gdp_by_year: dict[int, float]) -> None:
+        self._gdp_by_year = gdp_by_year
+
+    def get_gdp(self, year: int) -> float | None:
+        return self._gdp_by_year.get(year)
+
+
+class _FixtureNationalEmploymentSource:
+    """Fixture-backed ``QCEWDataSource`` — twin of ``SQLiteQCEWNationalEmploymentSource``."""
+
+    def __init__(self, employment_by_year: dict[int, int]) -> None:
+        self._employment_by_year = employment_by_year
+
+    def get_national_employment(self, year: int) -> int | None:
+        return self._employment_by_year.get(year)
+
+
+def _load_vol3_melt_fixture() -> tuple[dict[int, float], dict[int, int]]:
+    """Load the committed national MELT fixture (D4) — no DB, no drive.
+
+    JSON object keys are always strings; ``DefaultMELTCalculator`` indexes by
+    ``int`` year, so keys are converted back on load.
+
+    Returns:
+        ``(gdp_by_year, employment_by_year)`` — the two national annual series
+        ``DefaultMELTCalculator`` consumes, and nothing else.
+    """
+    raw: dict[str, dict[str, float]] = json.loads(MELT_FIXTURE_PATH.read_text())
+    gdp = {int(year): float(value) for year, value in raw["gdp"].items()}
+    employment = {int(year): int(value) for year, value in raw["employment"].items()}
+    return gdp, employment
+
+
+def _build_vol3_melt_calculator() -> Any:
+    """Build the fixture-backed ``melt_calculator`` for ``qa:regression``.
+
+    ``create_financial_services`` supplies every Vol III calculator EXCEPT this
+    one — it is built only by ``create_economics_services``, which needs a
+    SQLAlchemy session the hermetic harness forbids. Without it,
+    ``TickDynamicsSystem`` returns early on ``melt_calculator is None`` and the
+    entire annual economics pipeline (Steps 2-9, including the Step 5.5 Vol III
+    financial layer) is skipped — the gate runs, but sees nothing.
+
+    Deliberately NOT accompanied by a ``TensorRegistry``: ``get_melt`` does not
+    consume one, and the five regression scenarios carry no ``county_fips``, so
+    a real-FIPS-keyed registry is unreachable from them (county coverage is
+    Task U1.9's job, over the Wayne County scenario).
+    """
+    from babylon.domain.economics.melt import DefaultMELTCalculator
+
+    gdp_by_year, employment_by_year = _load_vol3_melt_fixture()
+    return DefaultMELTCalculator(
+        _FixtureNationalGDPSource(gdp_by_year),
+        _FixtureNationalEmploymentSource(employment_by_year),
+    )
+
+
 def _build_vol3_calculator_overrides() -> dict[str, Any]:
     """Build Vol III ``calculator_overrides`` from the committed FRED fixture.
 
@@ -107,7 +177,11 @@ def _build_vol3_calculator_overrides() -> dict[str, Any]:
     """
     from babylon.domain.economics.factory import create_financial_services
 
-    return create_financial_services(fred_series_cache=_load_vol3_fred_fixture())
+    overrides = create_financial_services(fred_series_cache=_load_vol3_fred_fixture())
+    # The one key create_financial_services does not supply, and the one that
+    # decides whether TickDynamicsSystem executes at all.
+    overrides["melt_calculator"] = _build_vol3_melt_calculator()
+    return overrides
 
 
 # Dense-trace per-entity/per-edge column contract (Program 13 item 2). Each

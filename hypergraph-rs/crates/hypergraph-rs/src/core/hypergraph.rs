@@ -85,4 +85,67 @@ impl<N, E, M> Hypergraph<N, E, M> {
     pub fn has_node(&self, node_id: &str) -> bool {
         self.agent_ids.contains_key(node_id)
     }
+
+    /// Add a hyperedge connecting the given members.
+    ///
+    /// XGI parity: `H.add_edge(members, idx=id, **attr)`.
+    pub fn add_edge(
+        &mut self,
+        members: Vec<String>,
+        idx: Option<String>,
+        attrs: E,
+    ) -> Result<String, EdgeError>
+    where
+        N: Default,
+        M: Default + Clone,
+    {
+        if members.is_empty() {
+            return Err(EdgeError::EmptyMembers);
+        }
+
+        let edge_id = match &idx {
+            Some(id) => {
+                if self.hyperedge_ids.contains_key(id) {
+                    return Err(EdgeError::AlreadyExists { edge_id: id.clone() });
+                }
+                id.clone()
+            }
+            None => self.edge_uid_counter.to_string(),
+        };
+
+        if let Some(id) = &idx {
+            if let Ok(n) = id.parse::<u64>() {
+                if n >= self.edge_uid_counter {
+                    self.edge_uid_counter = n + 1;
+                }
+            }
+        } else {
+            self.edge_uid_counter += 1;
+        }
+
+        let mut seen = std::collections::HashSet::new();
+        let unique_members: Vec<String> = members
+            .into_iter()
+            .filter(|m| seen.insert(m.clone()))
+            .collect();
+
+        for member in &unique_members {
+            if !self.agent_ids.contains_key(member) {
+                let nidx = self.inner.add_node(NodeKind::Agent(N::default()));
+                self.agent_ids.insert(member.clone(), nidx);
+            }
+        }
+
+        let he_idx = self.inner.add_node(NodeKind::Hyperedge(attrs));
+        self.hyperedge_ids.insert(edge_id.clone(), he_idx);
+
+        for member in &unique_members {
+            let agent_idx = self.agent_ids[member];
+            let membership = MembershipEdge { member_data: M::default() };
+            self.inner.add_edge(agent_idx, he_idx, membership.clone());
+            self.inner.add_edge(he_idx, agent_idx, membership);
+        }
+
+        Ok(edge_id)
+    }
 }

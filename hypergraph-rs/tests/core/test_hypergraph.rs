@@ -29,3 +29,58 @@ fn test_num_nodes_starts_at_zero() {
     let h: Hypergraph = Hypergraph::new();
     assert_eq!(h.num_nodes(), 0);
 }
+
+use hypergraph_rs::EdgeError;
+
+#[test]
+fn test_add_edge_with_explicit_idx() {
+    let mut h: Hypergraph = Hypergraph::new();
+    let edge_id = h.add_edge(
+        vec!["a".to_string(), "b".to_string(), "c".to_string()],
+        Some("myedge".to_string()),
+        serde_json::Value::Null,
+    ).unwrap();
+    assert_eq!(edge_id, "myedge");
+    assert_eq!(h.num_edges(), 1);
+    assert_eq!(h.num_nodes(), 3);
+}
+
+#[test]
+fn test_add_edge_auto_generates_id() {
+    let mut h: Hypergraph = Hypergraph::new();
+    let id1 = h.add_edge(vec!["a".to_string(), "b".to_string()], None, serde_json::Value::Null).unwrap();
+    assert_eq!(id1, "0");
+    let id2 = h.add_edge(vec!["c".to_string(), "d".to_string()], None, serde_json::Value::Null).unwrap();
+    assert_eq!(id2, "1");
+}
+
+#[test]
+fn test_add_edge_duplicate_idx_returns_error() {
+    let mut h: Hypergraph = Hypergraph::new();
+    h.add_edge(vec!["a".to_string()], Some("e1".to_string()), serde_json::Value::Null).unwrap();
+    let result = h.add_edge(vec!["b".to_string()], Some("e1".to_string()), serde_json::Value::Null);
+    assert!(matches!(result, Err(EdgeError::AlreadyExists { .. })));
+    assert_eq!(h.num_edges(), 1);
+}
+
+#[test]
+fn test_add_edge_deduplicates_members() {
+    let mut h: Hypergraph = Hypergraph::new();
+    h.add_edge(vec!["a".to_string(), "a".to_string(), "b".to_string()], Some("e1".to_string()), serde_json::Value::Null).unwrap();
+    assert_eq!(h.num_nodes(), 2);
+}
+
+#[test]
+fn test_add_edge_empty_members_returns_error() {
+    let mut h: Hypergraph = Hypergraph::new();
+    let result = h.add_edge(vec![], Some("e1".to_string()), serde_json::Value::Null);
+    assert!(matches!(result, Err(EdgeError::EmptyMembers)));
+}
+
+#[test]
+fn test_add_edge_auto_id_after_explicit_idx() {
+    let mut h: Hypergraph = Hypergraph::new();
+    h.add_edge(vec!["a".to_string()], Some("5".to_string()), serde_json::Value::Null).unwrap();
+    let next = h.add_edge(vec!["b".to_string()], None, serde_json::Value::Null).unwrap();
+    assert_eq!(next, "6");
+}

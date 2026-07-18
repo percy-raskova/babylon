@@ -6,6 +6,7 @@ DISTRIBUTION_EPSILON for 100% of observations, not merely on average.
 
 from __future__ import annotations
 
+import math
 from typing import TYPE_CHECKING
 
 import pytest
@@ -17,6 +18,7 @@ from babylon.domain.economics.tick.graph_bridge import (
 )
 
 if TYPE_CHECKING:
+    from babylon.domain.economics.tensor_registry import TensorRegistry
     from babylon.domain.economics.tick.types import SimulationTickState
     from babylon.topology.graph import BabylonGraph
 
@@ -28,9 +30,39 @@ WAYNE_FIPS = "26163"
 #: the NEXT boundary — the tick the capturing pass runs and observes (2011).
 _TICKS_BEFORE_CAPTURE = 52
 
+#: Relative tolerance for the SC-001 residual, applied on top of the absolute
+#: ``DISTRIBUTION_EPSILON`` floor.
+#:
+#: Derivation (Constitution III.12 / tolerance-policy rule): the residual is a
+#: sum-and-difference of four IEEE-754 binary64 magnitudes. Each term carries at
+#: most 0.5 ulp of representation error, and the four-term summation plus the
+#: outer subtraction accumulate at most ~5 roundings, so the worst-case residual
+#: is bounded by ~5 · 2^-53 · |s| ≈ 5.6e-16 · |s|. ``1e-12`` leaves ~3.5 orders
+#: of headroom over that bound, and remains far tighter than any real accounting
+#: breach: on Wayne's ~3.5e9 surplus it admits at most ~0.0035 units of slack,
+#: so a mis-distribution of even one unit is still caught.
+#:
+#: Why relative at all: ``DISTRIBUTION_EPSILON`` is an ABSOLUTE 1e-9, while
+#: Wayne's real 2011 surplus is ~3.5e9 labor-hours, where one ulp is ~4.8e-7 —
+#: 500x the epsilon. The current residual is exactly 0.0 only by fortuitous
+#: cancellation; as U3-U6 add counties and shift magnitudes, an absolute-only
+#: comparison would go red for pure floating-point reasons and report a
+#: non-existent accounting-identity breach.
+_SC001_RELATIVE_TOLERANCE = 1e-12
 
-def _run_to_year_boundary_capturing_graph() -> BabylonGraph:
+#: Tensor-year fallback window mirroring ``TickDynamicsSystem._get_best_tensor_year``
+#: (``domain/economics/tick/system/__init__.py``): the system reads the county
+#: surplus at the first of ``[year, year-1, year-2]`` the registry can serve.
+_TENSOR_YEAR_FALLBACK = (0, -1, -2)
+
+
+def _run_to_year_boundary_capturing_graph() -> tuple[BabylonGraph, TensorRegistry]:
     """Run a Wayne-scoped simulation to a year boundary; return the LIVE graph.
+
+    Returns the hydrated ``TensorRegistry`` alongside the graph so SC-001 can
+    cross-check the distributed surplus against the INDEPENDENT source that fed
+    it (``ValueTensor4x3.total_s``) rather than against a computed property's
+    own definition.
 
     The final tick is executed through the same three calls
     ``simulation_engine.step`` makes (`simulation_engine.py:519-537`) —
@@ -71,7 +103,15 @@ def _run_to_year_boundary_capturing_graph() -> BabylonGraph:
         services = ServiceContainer.create(sim_config, defines, **overrides)
         context = TickContext(tick=state.tick, persistent_data=dict(persistent))
         _DEFAULT_ENGINE.run_tick(graph, services, context)
-        return graph
+        tensor_registry = overrides["tensor_registry"]
+        assert tensor_registry is not None, (
+            "_build_economics_overrides wired no tensor_registry for "
+            f"{WAYNE_FIPS} — the county surplus source is absent, so SC-001 "
+            "cannot be cross-checked against production's input"
+        )
+        # The registry is an in-memory (fips, year) cache, so it stays readable
+        # after the Leontief session closes below.
+        return graph, tensor_registry
     finally:
         if leontief_session is not None:
             leontief_session.close()
@@ -99,7 +139,8 @@ def _tick_state_from(graph: BabylonGraph) -> SimulationTickState:
 
 def test_surplus_distribution_is_non_none_for_at_least_one_county_year() -> None:
     """The headline U1 criterion: the county financial layer actually fires."""
-    tick_state = _tick_state_from(_run_to_year_boundary_capturing_graph())
+    graph, _registry = _run_to_year_boundary_capturing_graph()
+    tick_state = _tick_state_from(graph)
     live = [
         county
         for county in tick_state.county_states.values()
@@ -111,13 +152,50 @@ def test_surplus_distribution_is_non_none_for_at_least_one_county_year() -> None
     )
 
 
+def _best_tensor_surplus(registry: TensorRegistry, fips: str, year: int) -> float | None:
+    """Independently re-read the county surplus production consumed.
+
+    Mirrors ``TickDynamicsSystem._get_best_tensor_year`` +
+    ``_get_county_surplus``: the first of ``[year, year-1, year-2]`` the
+    registry can serve, read as ``ValueTensor4x3.total_s``. This is the SOURCE
+    side of the SC-001 cross-check — deliberately reached without going through
+    the distribution object, so a fabricated or drifted surplus is detectable.
+    """
+    from babylon.domain.economics.tensor import NoDataSentinel
+
+    for offset in _TENSOR_YEAR_FALLBACK:
+        tensor = registry.get(fips, year + offset)
+        if isinstance(tensor, NoDataSentinel):
+            continue
+        total_s = getattr(tensor, "total_s", None)
+        if total_s is not None:
+            return float(total_s)
+    return None
+
+
 def test_sc001_identity_holds_for_one_hundred_percent_of_observations() -> None:
-    """SC-001: s = p + i + r + t within DISTRIBUTION_EPSILON, every observation.
+    """SC-001: s = p + i + r + t, every observation, against a real source.
 
     Asserted as a universal, not a sample statistic: one violating county-year
     is a violated accounting identity, however many others hold.
+
+    Three things are asserted, because the residual alone proves nothing.
+    ``profit_of_enterprise`` is a ``@computed_field`` defined as
+    ``s - i - r - t`` (``distribution/types.py``), so
+    ``s - (p + i + r + t)`` substitutes to ``s - ((s-i-r-t)+i+r+t)`` — an
+    algebraic tautology that is 0.0 for ANY inputs, including all-zero or
+    fabricated ones. So:
+
+    1. **Substance** — every distributed term is finite and strictly positive.
+       An all-zero or partially-dark distribution turns this red; the tautology
+       would not have noticed.
+    2. **Provenance** — ``total_surplus_produced`` is cross-checked against the
+       independently re-read ``ValueTensor4x3.total_s`` that fed it, so the
+       assertion pins production against source rather than against itself.
+    3. **Closure** — the residual, on a magnitude-scaled tolerance.
     """
-    tick_state = _tick_state_from(_run_to_year_boundary_capturing_graph())
+    graph, registry = _run_to_year_boundary_capturing_graph()
+    tick_state = _tick_state_from(graph)
     observed = 0
     violations: list[tuple[str, float]] = []
     for fips, county in sorted(tick_state.county_states.items()):
@@ -125,13 +203,52 @@ def test_sc001_identity_holds_for_one_hundred_percent_of_observations() -> None:
         if d is None:
             continue
         observed += 1
+
+        # (1) Substance: no term may be dark, fabricated-zero, or non-finite.
+        for name, value in (
+            ("total_surplus_produced", d.total_surplus_produced),
+            ("interest_payments", d.interest_payments),
+            ("ground_rent", d.ground_rent),
+            ("taxes_on_surplus", d.taxes_on_surplus),
+            ("profit_of_enterprise", d.profit_of_enterprise),
+        ):
+            assert math.isfinite(value), f"{fips}/{d.year}: {name} is not finite ({value})"
+            assert value > 0.0, (
+                f"{fips}/{d.year}: {name} is {value} — a distributed term is "
+                "dark or zero, so SC-001's identity is being satisfied "
+                "vacuously rather than by a real decomposition"
+            )
+
+        # (2) Provenance: the surplus being distributed is the surplus the
+        # tensor registry actually holds for this county-year.
+        source_surplus = _best_tensor_surplus(registry, fips, d.year)
+        assert source_surplus is not None, (
+            f"{fips}/{d.year}: the tensor registry serves no total_s for any "
+            "year in the [y, y-1, y-2] fallback window, yet a "
+            "surplus_distribution exists — its surplus has no source"
+        )
+        source_gap = abs(d.total_surplus_produced - source_surplus)
+        assert source_gap <= max(
+            DISTRIBUTION_EPSILON, abs(source_surplus) * _SC001_RELATIVE_TOLERANCE
+        ), (
+            f"{fips}/{d.year}: distributed surplus {d.total_surplus_produced} "
+            f"does not match the ValueTensor4x3 total_s {source_surplus} that "
+            f"fed it (gap {source_gap}) — the financial layer is distributing "
+            "a number the production layer never produced"
+        )
+
+        # (3) Closure, on a magnitude-scaled tolerance (see
+        # _SC001_RELATIVE_TOLERANCE for the derivation).
         residual = abs(
             d.total_surplus_produced
             - (d.profit_of_enterprise + d.interest_payments + d.ground_rent + d.taxes_on_surplus)
         )
-        if residual > DISTRIBUTION_EPSILON:
+        tolerance = max(
+            DISTRIBUTION_EPSILON, abs(d.total_surplus_produced) * _SC001_RELATIVE_TOLERANCE
+        )
+        if residual > tolerance:
             violations.append((fips, residual))
-    assert not violations, f"SC-001 violated (residual > {DISTRIBUTION_EPSILON}): {violations}"
+    assert not violations, f"SC-001 violated (residual exceeds tolerance): {violations}"
     # A universal over an empty domain is vacuously true — SC-001 is only
     # proven if the run actually produced distributions to check.
     assert observed > 0, (
@@ -148,7 +265,7 @@ def test_tick_ground_rent_carries_a_non_zero_real_figure() -> None:
     way back into a ``WorldState``, so a post-``step`` ``to_graph()`` would show
     ``0.0`` here for every territory regardless of U1.5.
     """
-    graph = _run_to_year_boundary_capturing_graph()
+    graph, _registry = _run_to_year_boundary_capturing_graph()
     rents = [
         graph.nodes[node_id].get("tick_ground_rent", 0.0)
         for node_id in graph.nodes

@@ -13,6 +13,7 @@ import { TakeoverOverlay } from "./TakeoverOverlay";
 import { useStore } from "@/store";
 import { resetStore } from "@/test/resetStore";
 import { resetMockGameState, DEFAULT_GAME_ID } from "@/test/handlers";
+import { CAUSAL_SHOCK_FIXTURE_BEAT } from "@/mocks/narration/fixtures";
 
 beforeEach(() => {
   resetStore();
@@ -135,5 +136,24 @@ describe("TakeoverOverlay", () => {
     useStore.getState().ui.closeTakeover();
     await waitFor(() => expect(screen.queryByTestId("takeover-overlay")).not.toBeInTheDocument());
     expect(useStore.getState().panels.doctrineTree.mounted).toBe(false);
+  });
+
+  it("renders the causal shock beat in the Wire narrator strip (spec-116 FR-4.1)", async () => {
+    useStore.setState((s) => ({
+      panels: {
+        ...s.panels,
+        narration: {
+          ...s.panels.narration,
+          status: "ready" as const,
+          beats: [CAUSAL_SHOCK_FIXTURE_BEAT],
+        },
+      },
+    }));
+    useStore.getState().ui.openTakeover("wire");
+    render(<TakeoverOverlay gameId={DEFAULT_GAME_ID} />);
+
+    const strip = await screen.findByTestId("wire-narrator-strip");
+    expect(strip).toHaveTextContent("Shock, austerity, radicalization — the causal chain closed.");
+    expect(strip.querySelector('[data-register="analysis"]')).not.toBeNull();
   });
 });

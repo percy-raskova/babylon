@@ -23,6 +23,7 @@ import {
   resetSimulatedNarrationStatus,
   setSimulatedNarrationStatus,
 } from "@/mocks/narration/handlers";
+import { CAUSAL_PULSE_FIXTURE_BEAT, CAUSAL_SHOCK_FIXTURE_BEAT } from "@/mocks/narration/fixtures";
 import { useNarration } from "./useNarration";
 
 beforeEach(() => {
@@ -88,5 +89,21 @@ describe("useNarration", () => {
     expect(result.current.status).toBe("offline");
     expect(result.current.beats).toEqual([]);
     expect(result.current.latest).toBeNull();
+  });
+
+  it("carries the deterministic causal heartbeat beats (spec-116 FR-4.1)", async () => {
+    const { result } = renderHook(() => useNarration(DEFAULT_GAME_ID));
+    await waitFor(() => {
+      expect(result.current.status).toBe("ready");
+    });
+
+    const causal = result.current.beats.filter((b) => b.id.startsWith("causal-"));
+    expect(causal.map((b) => b.id)).toEqual([
+      CAUSAL_PULSE_FIXTURE_BEAT.id,
+      CAUSAL_SHOCK_FIXTURE_BEAT.id,
+    ]);
+    // scope "tick" is what WireApp's narrator strip filters on
+    expect(causal.every((b) => b.scope === "tick")).toBe(true);
+    expect(causal.map((b) => b.register)).toEqual(["wire", "analysis"]);
   });
 });

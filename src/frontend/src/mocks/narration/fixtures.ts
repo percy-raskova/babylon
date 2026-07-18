@@ -19,6 +19,34 @@
 
 import type { NarrationBeat } from "@/types/narration";
 
+/**
+ * Spec-116 FR-4.1 — the deterministic causal voice (the Voice heartbeat).
+ * Text renders `web/game/causal_voice.py`'s templates byte-for-byte over
+ * the preview fiction's tick-102→104 rent-pool crash: a TICK_PULSE beat
+ * every tick (register "wire") and a SHOCK_DOCTRINE analysis beat on the
+ * detection tick, id keyed by the crash tick (`causal-shock-t102`, stable
+ * across refetches). Both scope "tick" — WireApp's narrator strip filter.
+ */
+export const CAUSAL_PULSE_FIXTURE_BEAT: NarrationBeat = {
+  id: "causal-pulse-t104",
+  tick: 104,
+  scope: "tick",
+  subjectRef: null,
+  headline: "The week's ledger, tick 104.",
+  body: "The imperial rent pool fell from 118.40 to 96.10. The super-wage rate fell from 0.1920 to 0.1840. Peak revolutionary probability rose from 0.310 to 0.335.",
+  register: "wire",
+};
+
+export const CAUSAL_SHOCK_FIXTURE_BEAT: NarrationBeat = {
+  id: "causal-shock-t102",
+  tick: 104,
+  scope: "tick",
+  subjectRef: null,
+  headline: "Shock, austerity, radicalization — the causal chain closed.",
+  body: "The rent pool crashed 21.4% at tick 102. In the aftermath the super-wage rate was cut from 0.1920 to 0.1840. Peak revolutionary probability climbed from 0.310 to 0.335 — the shock is being answered.",
+  register: "analysis",
+};
+
 export const NARRATION_FIXTURE_BEATS: NarrationBeat[] = [
   {
     id: "beat-wclf-strike-call",
@@ -128,6 +156,8 @@ export const NARRATION_FIXTURE_BEATS: NarrationBeat[] = [
     body: "Cadre discipline flagged a leak inside the organizing network, tick 110, days after county heat had spiked with no obvious external cause.",
     register: "wire",
   },
+  CAUSAL_PULSE_FIXTURE_BEAT,
+  CAUSAL_SHOCK_FIXTURE_BEAT,
   {
     id: "beat-endgame-dual-power",
     tick: 312,

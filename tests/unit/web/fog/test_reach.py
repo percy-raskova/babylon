@@ -1,17 +1,25 @@
-"""Track 1 / Task 2 (2026-07-18): the organizing-reach primitive.
+"""Track 1 / Task 2 (2026-07-18) + fix/null-play-coupling correction: the
+organizing-reach primitive.
 
-``organizing_reach`` wraps ``BabylonGraph.get_neighborhood`` — it must NOT
-reimplement BFS (that machinery is already tested at
+``organizing_reach`` wraps ``BabylonGraph.get_neighborhood``/``query_edges`` —
+it must NOT reimplement BFS (that machinery is already tested at
 ``tests/unit/topology/``). These tests exercise the wrapper's own contract:
-the PRESENCE ∪ SOLIDARITY edge-type filter, the radius bound, determinism,
-and the ``player_org_id is None`` sentinel (world_state.py:461-471 — a
-legitimate "no player org" state for synthetic scenarios/headless sweeps,
-not an error).
+the composed PRESENCE -> TENANCY -> SOLIDARITY traversal, the radius bound
+(which now governs only the SOLIDARITY hop depth), determinism, and the
+``player_org_id is None`` sentinel (world_state.py:461-471 — a legitimate
+"no player org" state for synthetic scenarios/headless sweeps, not an error).
 
-Graphs are built directly with ``BabylonGraph`` (same idiom as
-``tests/unit/web/test_player_org_identity.py``) rather than a full
-``WorldState``/scenario round-trip, so each test pins an exact, minimal
-topology instead of depending on scenario-data shape.
+**Why the fixture changed.** The original implementation was a single
+``get_neighborhood(player_org_id, edge_types={"presence", "solidarity"})``
+union call. That is provably wrong: SOLIDARITY edges connect ``social_class``
+to ``social_class`` only in every shipped scenario (see
+``TestSolidarityNeverTouchesAnOrganization`` below) — never an organization —
+so a BFS rooted at an org can never reach the SOLIDARITY half of that union
+except by an artificial org-to-class SOLIDARITY edge that does not exist in
+shipped data. The corrected primitive composes three explicit, differently-
+typed hops (PRESENCE, then TENANCY, then SOLIDARITY) instead. The fixture
+below now includes a TENANCY edge so the composed chain has something to
+walk in a minimal synthetic graph, matching the real topology's shape.
 """
 
 from __future__ import annotations
@@ -26,25 +34,28 @@ pytestmark = pytest.mark.unit
 
 def _graph() -> BabylonGraph:
     """Player org ORG1 (presence in T1 only) + rival ORG2 (presence in T2,
-    two hops from ORG1) + two social classes linked by SOLIDARITY.
+    structurally unreachable from ORG1 by any hop this primitive takes) +
+    a tenant class C1 in T1, allied to C2 by one SOLIDARITY hop and to C3
+    by a second.
 
     Topology (all edges undirected in effect via direction="both"):
 
-        ORG1 --presence--> T1
-        T1   <--presence-- ORG2 --presence--> T2
-        C1   --solidarity--> C2   (unconnected to ORG1/ORG2 by default)
+        ORG1 --presence--> T1 <--tenancy-- C1 --solidarity--> C2 --solidarity--> C3
+        ORG2 --presence--> T2   (unrelated; no path from ORG1 reaches it)
     """
     g = BabylonGraph()
     g.add_node("ORG1", NodeType.ORGANIZATION, name="Player Org")
     g.add_node("ORG2", NodeType.ORGANIZATION, name="Rival Org")
     g.add_node("T1", NodeType.TERRITORY, name="Home Territory")
     g.add_node("T2", NodeType.TERRITORY, name="Far Territory")
-    g.add_node("C1", NodeType.SOCIAL_CLASS, name="Class 1")
-    g.add_node("C2", NodeType.SOCIAL_CLASS, name="Class 2")
+    g.add_node("C1", NodeType.SOCIAL_CLASS, name="Class 1 (tenant of T1)")
+    g.add_node("C2", NodeType.SOCIAL_CLASS, name="Class 2 (ally of C1)")
+    g.add_node("C3", NodeType.SOCIAL_CLASS, name="Class 3 (ally of C2)")
     g.add_edge("ORG1", "T1", "presence")
-    g.add_edge("ORG2", "T1", "presence")
     g.add_edge("ORG2", "T2", "presence")
+    g.add_edge("C1", "T1", "tenancy")
     g.add_edge("C1", "C2", "solidarity", solidarity_strength=0.6)
+    g.add_edge("C2", "C3", "solidarity", solidarity_strength=0.3)
     return g
 
 
@@ -58,42 +69,42 @@ class TestOrganizingReach:
 
         assert "T1" in reach
 
-    def test_includes_solidarity_linked_node(self) -> None:
-        """A SOLIDARITY edge from the player org reaches its solidarity
-        partner — the union half of PRESENCE ∪ SOLIDARITY. (In the shipped
-        Wayne County scenario SOLIDARITY only ever links social_class to
-        social_class, never an organization, so this wires the edge
-        directly onto the org to exercise the primitive's actual contract;
-        see the module report for the scenario-topology finding.)
-        """
-        from game.fog.reach import organizing_reach
-
-        g = _graph()
-        g.add_edge("ORG1", "C1", "solidarity", solidarity_strength=0.4)
-
-        reach = organizing_reach(g, "ORG1", radius=1)
-
-        assert "C1" in reach
-
-    def test_excludes_nodes_beyond_radius(self) -> None:
-        """T2 is two PRESENCE-hops from ORG1 (ORG1->T1->ORG2->T2 is three
-        hops; even the closer ORG2 is 2 hops) — radius=1 must not reach it."""
+    def test_includes_tenancy_linked_class(self) -> None:
+        """The TENANCY hop (territory -> social_class) is structural and
+        always taken exactly once, regardless of ``radius``."""
         from game.fog.reach import organizing_reach
 
         reach = organizing_reach(_graph(), "ORG1", radius=1)
 
-        assert "T2" not in reach
-        assert "ORG2" not in reach
+        assert "C1" in reach
 
-    def test_radius_two_reaches_sibling_org_via_shared_territory(self) -> None:
-        """Sanity check that radius genuinely extends the search: ORG2
-        shares T1 with ORG1, so it is reachable at radius=2 but T2 (one hop
-        further) still is not."""
+    def test_includes_first_degree_solidarity_ally(self) -> None:
+        """``radius=1`` takes one SOLIDARITY hop from the tenant class."""
+        from game.fog.reach import organizing_reach
+
+        reach = organizing_reach(_graph(), "ORG1", radius=1)
+
+        assert "C2" in reach
+        assert "C3" not in reach
+
+    def test_radius_extends_solidarity_hops_only(self) -> None:
+        """``radius=2`` reaches the second-degree SOLIDARITY ally. This is
+        the ONLY hop radius controls — PRESENCE and TENANCY are always
+        exactly one hop regardless of ``radius``."""
         from game.fog.reach import organizing_reach
 
         reach = organizing_reach(_graph(), "ORG1", radius=2)
 
-        assert "ORG2" in reach
+        assert "C3" in reach
+
+    def test_excludes_unrelated_org_and_territory(self) -> None:
+        """ORG2/T2 share no PRESENCE/TENANCY/SOLIDARITY path with ORG1, at
+        any radius."""
+        from game.fog.reach import organizing_reach
+
+        reach = organizing_reach(_graph(), "ORG1", radius=5)
+
+        assert "ORG2" not in reach
         assert "T2" not in reach
 
     def test_deterministic_across_repeated_calls(self) -> None:
@@ -121,3 +132,91 @@ class TestOrganizingReach:
         reach = organizing_reach(_graph(), None, radius=5)
 
         assert reach == frozenset()
+
+    def test_includes_player_org_itself(self) -> None:
+        from game.fog.reach import organizing_reach
+
+        reach = organizing_reach(_graph(), "ORG1", radius=1)
+
+        assert "ORG1" in reach
+
+
+class TestOrganizingReachAgainstRealWayneCountyScenario:
+    """THE test that matters: against the REAL shipped
+    ``create_wayne_county_scenario()`` graph (not a synthetic fixture),
+    reach must include a ``social_class`` reached via the TENANCY hop AND
+    an allied class reached via the SOLIDARITY hop. The old
+    presence-union-solidarity implementation could never pass this — the
+    SOLIDARITY half of its union was unreachable from an org root by
+    construction.
+    """
+
+    def test_reach_includes_tenancy_and_solidarity_hops(self) -> None:
+        from babylon.engine.scenarios import create_wayne_county_scenario
+        from game.fog.reach import organizing_reach
+
+        state, _config, defines = create_wayne_county_scenario()
+        graph = state.to_graph()
+        assert state.player_org_id is not None
+
+        radius = defines.epistemic_horizon.organizing_reach_radius
+        reach = organizing_reach(graph, state.player_org_id, radius=radius)
+
+        # C001 (Detroit Proletariat) holds TENANCY over the player org's two
+        # starting territories in the shipped scenario data.
+        assert "C001" in reach, (
+            f"expected the TENANCY-reached tenant class in the reach set; got {sorted(reach)}"
+        )
+        # C004 (Dearborn Workers) is C001's sole SOLIDARITY ally in the
+        # shipped scenario ("Potential cross-community worker solidarity").
+        assert "C004" in reach, (
+            "expected the SOLIDARITY-reached allied class in the reach set "
+            "-- if this fails, the organizing front is EMPTY in the shipped "
+            f"scenario and needs an owner seeding decision; got {sorted(reach)}"
+        )
+
+
+class TestSolidarityNeverTouchesAnOrganization:
+    """Pins the structural fact that makes the composed-hop design
+    necessary: SOLIDARITY edges in the shipped scenarios connect
+    ``social_class`` to ``social_class`` ONLY, never an organization. If a
+    later scenario adds an org-level SOLIDARITY edge, THIS test must fail
+    loudly so ``organizing_reach``'s design gets revisited deliberately
+    rather than silently drifting.
+    """
+
+    def test_wayne_county_solidarity_edges_are_class_to_class(self) -> None:
+        from babylon.engine.scenarios import create_wayne_county_scenario
+
+        state, _config, _defines = create_wayne_county_scenario()
+        graph = state.to_graph()
+
+        solidarity_edges = list(graph.query_edges(edge_type="solidarity"))
+        assert solidarity_edges, "expected at least one SOLIDARITY edge to check"
+        for edge in solidarity_edges:
+            source_type = graph.get_node(edge.source_id).node_type  # type: ignore[union-attr]
+            target_type = graph.get_node(edge.target_id).node_type  # type: ignore[union-attr]
+            assert source_type == "social_class", (
+                f"SOLIDARITY source {edge.source_id!r} is {source_type!r}, "
+                "not social_class -- org-level SOLIDARITY now exists, "
+                "revisit organizing_reach's composed-hop design"
+            )
+            assert target_type == "social_class", (
+                f"SOLIDARITY target {edge.target_id!r} is {target_type!r}, "
+                "not social_class -- org-level SOLIDARITY now exists, "
+                "revisit organizing_reach's composed-hop design"
+            )
+
+    def test_imperial_circuit_solidarity_edges_are_class_to_class(self) -> None:
+        from babylon.engine.scenarios import create_imperial_circuit_scenario
+
+        state, _config, _defines = create_imperial_circuit_scenario(solidarity_strength=0.4)
+        graph = state.to_graph()
+
+        solidarity_edges = list(graph.query_edges(edge_type="solidarity"))
+        assert solidarity_edges, "expected at least one SOLIDARITY edge to check"
+        for edge in solidarity_edges:
+            source_type = graph.get_node(edge.source_id).node_type  # type: ignore[union-attr]
+            target_type = graph.get_node(edge.target_id).node_type  # type: ignore[union-attr]
+            assert source_type == "social_class"
+            assert target_type == "social_class"

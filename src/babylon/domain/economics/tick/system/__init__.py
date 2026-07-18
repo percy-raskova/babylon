@@ -108,6 +108,13 @@ class TickDynamicsSystem(SystemBase):
         self._precarity_deriver = PrecarityDeriver()
         self._smoother = CoefficientSmoother(alpha=0.3)
         self._rate_calculator = DerivedRateCalculator()
+        # Honesty sweep (spec 2026-07-18 vol3-money-scissors-design, U2.2
+        # fix): tracks the last year a Volume III financial-layer
+        # NoDataSentinel was logged, so a 3300-county tick logs the
+        # degradation ONCE per year boundary instead of once per county.
+        # The tally counter (services.economics_fallbacks) still records
+        # every occurrence — only the WARNING log is throttled.
+        self._vol3_sentinel_last_logged_year: int | None = None
 
     def step(
         self,
@@ -433,7 +440,9 @@ class TickDynamicsSystem(SystemBase):
                 )
                 states[fips] = CountyEconomicState(
                     fips=fips,
-                    year=min(max(year, 2007), 2040),
+                    # Honesty sweep (U2 fix): floor-only, no ceiling — see
+                    # CountyEconomicState.year docstring (tick/types.py).
+                    year=max(year, 2007),
                     capital_stock=data["tick_capital_stock"],
                     throughput_position=data.get("tick_throughput_position", 1.0),
                     supply_chain_depth=data.get("tick_supply_chain_depth", 2.0),
@@ -671,7 +680,14 @@ class TickDynamicsSystem(SystemBase):
             Dict of FIPS -> updated CountyEconomicState.
         """
         states: dict[str, CountyEconomicState] = {}
-        clamped_year = min(max(year, 2007), 2040)
+        # Honesty sweep (spec 2026-07-18 vol3-money-scissors-design, U2 fix):
+        # CountyEconomicState.year has no ceiling — only the floor is a
+        # genuine sanity bound (see tick/types.py docstring). ClassDistribution
+        # keeps its own separate [2007, 2030] window below (Feature 016's
+        # class dynamics engine — a distinct, still-bounded modeled range,
+        # out of this fix's scope), derived fresh from year_floor at each
+        # use site rather than from this (now-unbounded) year_floor directly.
+        year_floor = max(year, 2007)
 
         for fips in county_fips:
             prev = prev_county_states.get(fips) if prev_county_states else None
@@ -740,11 +756,11 @@ class TickDynamicsSystem(SystemBase):
             if prev is not None:
                 class_dist = prev.class_distribution
                 # Update year if different
-                if class_dist.year != clamped_year:
-                    clamped_dist_year = min(max(clamped_year, 2007), 2030)
+                dist_clamped_year = min(max(year_floor, 2007), 2030)
+                if class_dist.year != dist_clamped_year:
                     class_dist = ClassDistribution(
                         fips=fips,
-                        year=clamped_dist_year,
+                        year=dist_clamped_year,
                         bourgeoisie_share=class_dist.bourgeoisie_share,
                         petit_bourgeoisie_share=class_dist.petit_bourgeoisie_share,
                         labor_aristocracy_share=class_dist.labor_aristocracy_share,
@@ -754,7 +770,7 @@ class TickDynamicsSystem(SystemBase):
             else:
                 class_dist = ClassDistribution(
                     fips=fips,
-                    year=min(max(clamped_year, 2007), 2030),
+                    year=min(max(year_floor, 2007), 2030),
                     bourgeoisie_share=0.01,
                     petit_bourgeoisie_share=0.09,
                     labor_aristocracy_share=0.40,
@@ -764,7 +780,7 @@ class TickDynamicsSystem(SystemBase):
 
             states[fips] = CountyEconomicState(
                 fips=fips,
-                year=clamped_year,
+                year=year_floor,
                 capital_stock=capital_stock,
                 throughput_position=throughput_position,
                 supply_chain_depth=supply_chain_depth,
@@ -1416,6 +1432,26 @@ class TickDynamicsSystem(SystemBase):
 
         return updated
 
+    def _log_vol3_sentinel_once_per_year(self, year: int, reason: str) -> None:
+        """Log a Volume III NoDataSentinel degradation at WARNING, once per year.
+
+        The tally counter (recorded separately by the caller) counts every
+        occurrence; this only throttles the human-facing log line so a
+        3300-county tick does not emit thousands of near-identical
+        warnings for the same year boundary (Constitution III.11 — honest
+        absence must be observable, not spam).
+
+        Args:
+            year: Current simulation year.
+            reason: The sentinel's own ``.reason`` field (never a
+                hand-rolled message — preserves the specific cause,
+                whether that's the year-window guard or absent source data).
+        """
+        if self._vol3_sentinel_last_logged_year == year:
+            return
+        self._vol3_sentinel_last_logged_year = year
+        logger.warning("TickDynamics Step 5.5 (Volume III financial layer): %s", reason)
+
     def _compute_national_financial_state(
         self,
         services: ServicesProtocol,
@@ -1426,15 +1462,23 @@ class TickDynamicsSystem(SystemBase):
         Returns:
             Tuple of (national_interest_rate, fictitious_capital_or_none).
         """
-        interest_state = services.interest_calculator.compute_interest_rate_state(year)
-        if isinstance(interest_state, NoDataSentinel):
-            interest_state = None
+        fallbacks = services.economics_fallbacks
+        interest_result = services.interest_calculator.compute_interest_rate_state(year)
+        interest_state = None
+        if isinstance(interest_result, NoDataSentinel):
+            fallbacks.record_vol3_interest_sentinel()
+            self._log_vol3_sentinel_once_per_year(year, interest_result.reason)
+        else:
+            interest_state = interest_result
         national_rate = interest_state.effective_rate if interest_state is not None else 0.0
 
         fictitious = None
         if services.fictitious_capital_calculator is not None:
             fict_result = services.fictitious_capital_calculator.compute_fictitious_capital(year)
-            if not isinstance(fict_result, NoDataSentinel):
+            if isinstance(fict_result, NoDataSentinel):
+                fallbacks.record_vol3_fictitious_sentinel()
+                self._log_vol3_sentinel_once_per_year(year, fict_result.reason)
+            else:
                 fictitious = fict_result
 
         return national_rate, fictitious
@@ -1480,7 +1524,10 @@ class TickDynamicsSystem(SystemBase):
                     national_interest_rate=national_rate,
                     county_employment=county.employment,
                 )
-                if not isinstance(dist, NoDataSentinel):
+                if isinstance(dist, NoDataSentinel):
+                    services.economics_fallbacks.record_vol3_distribution_sentinel()
+                    self._log_vol3_sentinel_once_per_year(year, dist.reason)
+                else:
                     updates["surplus_distribution"] = dist
                     if county.debt_accumulation is not None:
                         from babylon.domain.economics.distribution.types import DebtAccumulation
@@ -1934,9 +1981,12 @@ class TickDynamicsSystem(SystemBase):
                 national_dist["proletariat"] += d.proletariat_share * weight
                 national_dist["lumpenproletariat"] += d.lumpenproletariat_share * weight
 
-        clamped_year = min(max(year, 2007), 2040)
+        # Honesty sweep (spec 2026-07-18 vol3-money-scissors-design, U2 fix):
+        # TickSummary.year has no ceiling — only the floor is a genuine
+        # sanity bound (see tick/types.py docstring; mirrors CountyEconomicState).
+        year_floor = max(year, 2007)
         return TickSummary(
-            year=clamped_year,
+            year=year_floor,
             counties_processed=len(county_states),
             phi_aggregate=phi_aggregate,
             national_melt=national_params.tau,

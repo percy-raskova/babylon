@@ -714,12 +714,30 @@ _CONTESTED_INFLUENCE_DELTA: float = 0.12
 _CONTESTED_DOMINANCE_FLOOR: float = 0.45
 
 
-def _nodes_in_territory(graph: BabylonGraph, territory_id: str) -> list[tuple[str, dict[str, Any]]]:
-    """Return (node_id, data) for every social_class/organization node whose
-    ``territory_ids`` includes ``territory_id``."""
+def _territory_id_bearing_nodes(
+    graph: BabylonGraph, territory_id: str
+) -> list[tuple[str, dict[str, Any]]]:
+    """Return (node_id, data) for every ``organization`` node whose own
+    ``territory_ids`` field lists ``territory_id``.
+
+    NAMING TRAP (fixed 2026-07-18, Track 1 Task 8c — this function used to
+    be called ``_nodes_in_territory``, which reads as "every node located
+    in this territory" and invited exactly the bug this rename fixes):
+    ``territory_ids`` is a real Pydantic field, but it exists ONLY on
+    ``Organization`` (``models/entities/organization.py``) and
+    ``Institution`` (``models/entities/institution.py``) — ``SocialClass``
+    NEVER carries it. A social class links to a territory via a real
+    TENANCY edge instead (``ProductionSystem``'s tenancy-assignment logic);
+    resolve that membership through :func:`_tenancy_members_by_territory`,
+    never through this helper. This helper additionally only recognizes
+    the ``organization`` node type — every real call site filters to it
+    explicitly already, and Institution's own ``territory_ids`` (real
+    though it is) has no consumer here; read ``inst.territory_ids``
+    directly if one is ever needed.
+    """
     found: list[tuple[str, dict[str, Any]]] = []
     for node_id, data in graph.nodes(data=True):
-        if data.get("_node_type") not in ("social_class", "organization"):
+        if data.get("_node_type") != "organization":
             continue
         if territory_id in data.get("territory_ids", []):
             found.append((node_id, data))
@@ -3009,6 +3027,18 @@ class EngineBridge:
         Without ``territory_id``, delegates to the dashboard-wide
         :meth:`get_economy_dashboard` (spec 109 A4) for backward
         compatibility with the existing ``/economy/`` route.
+
+        Track 1 / Task 8c (2026-07-18): social_class membership is resolved
+        via :func:`_tenancy_members_by_territory` (the real Occupant ->
+        Territory TENANCY edge), not :func:`_territory_id_bearing_nodes`'s
+        ``territory_ids`` check — ``SocialClass`` has no such field in
+        production, so the old code's node set (and therefore
+        ``value_produced``) structurally excluded every social class and
+        summed only organization wealth (which the engine never populates
+        — ``Organization`` carries no ``wealth`` field). Organization
+        membership stays through :func:`_territory_id_bearing_nodes` — its
+        genuinely correct use, since ``Organization`` does carry
+        ``territory_ids``.
         """
         if territory_id is None:
             return self.get_economy_dashboard(session_id)
@@ -3017,7 +3047,12 @@ class EngineBridge:
         if territory_id not in graph.nodes:
             return _empty_economy_payload(territory_id)
 
-        econ_nodes = _nodes_in_territory(graph, territory_id)
+        tenancy_members = _tenancy_members_by_territory(graph)
+        econ_nodes = [
+            (node_id, graph.nodes[node_id])
+            for node_id in tenancy_members.get(territory_id, [])
+            if node_id in graph.nodes
+        ] + _territory_id_bearing_nodes(graph, territory_id)
         node_ids = {node_id for node_id, _ in econ_nodes}
         value_produced = sum(float(data.get("wealth", 0.0)) for _, data in econ_nodes)
         terr_data = graph.nodes.get(territory_id, {})
@@ -4930,7 +4965,7 @@ class EngineBridge:
         territory_type_raw = data.get("territory_type")
         org_presence = sum(
             1
-            for _node_id, member_data in _nodes_in_territory(graph, territory_id)
+            for _node_id, member_data in _territory_id_bearing_nodes(graph, territory_id)
             if member_data.get("_node_type") == "organization"
         )
 
@@ -5626,7 +5661,7 @@ class EngineBridge:
         :func:`_tenancy_members_by_territory` — the real Occupant -> Territory
         TENANCY edge, the same linkage ``_dominant_class_by_territory``/
         ``_solidarity_index_by_territory`` already use for ``/map/`` — not
-        via ``_nodes_in_territory``'s ``territory_ids`` check.
+        via ``_territory_id_bearing_nodes``'s ``territory_ids`` check.
         ``SocialClass`` has no ``territory_ids`` field in production
         (``to_graph`` dumps model fields verbatim; only
         ``Organization``/``Institution`` carry that field), so the old
@@ -5646,7 +5681,7 @@ class EngineBridge:
         authorization question shared by every ``get_*_targets`` method
         (aid/mobilize/attack/reproduce/educate alike, none of which validate
         ``org_id`` against the session's player org) — out of this task's
-        scope, which is the ``_nodes_in_territory`` -> tenancy swap only.
+        scope, which is the ``_territory_id_bearing_nodes`` -> tenancy swap only.
         """
         state, graph = self.hydrate_state(session_id)
         org_status = self.get_org_status(session_id, org_id)
@@ -5782,7 +5817,7 @@ class EngineBridge:
         territory_ids = org_data.get("territory_ids", [])
         # Track 1 / Task 8b (2026-07-18): social_class targets resolve via
         # the real Occupant -> Territory TENANCY edge
-        # (_tenancy_members_by_territory), not _nodes_in_territory's
+        # (_tenancy_members_by_territory), not _territory_id_bearing_nodes's
         # territory_ids check -- SocialClass has no such field in
         # production (the same fix Task 8 applied to get_educate_targets).
         tenancy_members = _tenancy_members_by_territory(graph)
@@ -5829,7 +5864,7 @@ class EngineBridge:
                     }
                 )
 
-            for node_id, data in _nodes_in_territory(graph, tid):
+            for node_id, data in _territory_id_bearing_nodes(graph, tid):
                 if data.get("_node_type") != "organization" or node_id == org_id:
                     continue
                 found_any = True
@@ -5886,14 +5921,14 @@ class EngineBridge:
         for tid in territory_ids:
             if tid not in graph.nodes:
                 continue
-            for node_id, data in _nodes_in_territory(graph, tid):
+            for node_id, data in _territory_id_bearing_nodes(graph, tid):
                 if data.get("_node_type") != "organization" or node_id == org_id:
                     continue
                 if str(data.get("org_type", "")) not in ("business", "civil_society"):
                     continue
                 allies = [
                     {"id": ally_id, "name": graph.nodes[ally_id].get("name", ally_id)}
-                    for ally_id, ally_data in _nodes_in_territory(graph, tid)
+                    for ally_id, ally_data in _territory_id_bearing_nodes(graph, tid)
                     if ally_data.get("_node_type") == "organization"
                     and ally_id not in (org_id, node_id)
                 ]
@@ -6062,6 +6097,20 @@ class EngineBridge:
         """Return available reproduction modes for the REPRODUCE verb.
 
         Matches the contract defined in spec 048 for organizational reproduction.
+
+        Track 1 / Task 8c (2026-07-18): ``base_population`` filtered
+        ``_node_type == "social_class"`` over
+        :func:`_territory_id_bearing_nodes`, which resolves via the
+        ``territory_ids`` field — a field ``SocialClass`` never carries in
+        production (only ``Organization``/``Institution`` do). That
+        combination structurally never matched anything, so
+        ``base_population`` was always 0 against real data. Resolved via
+        :func:`_tenancy_members_by_territory` (the real Occupant ->
+        Territory TENANCY edge) instead, deduped across the org's own
+        territories: a county-scale social class commonly tenants many hex
+        territories the org also operates in, so summing per
+        territory-id without dedup would double- (or N-times-) count the
+        same class's population.
         """
         state, graph = self.hydrate_state(session_id)
         org_status = self.get_org_status(session_id, org_id)
@@ -6080,11 +6129,14 @@ class EngineBridge:
 
         org_data = graph.nodes.get(org_id, {})
         territory_ids = org_data.get("territory_ids", [])
+        tenancy_members = _tenancy_members_by_territory(graph)
+        base_population_class_ids: set[str] = set()
+        for tid in territory_ids:
+            base_population_class_ids.update(tenancy_members.get(tid, []))
         base_population = sum(
-            int(data.get("population", 0))
-            for tid in territory_ids
-            for node_id, data in _nodes_in_territory(graph, tid)
-            if data.get("_node_type") == "social_class"
+            int(graph.nodes[sc_id].get("population", 0))
+            for sc_id in base_population_class_ids
+            if sc_id in graph.nodes
         )
 
         targets = [

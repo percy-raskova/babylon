@@ -1609,6 +1609,46 @@ class TestGetEconomy:
 
         assert result == bridge.get_economy_dashboard(session_id)
 
+    def test_value_produced_includes_social_class_wealth_via_tenancy_not_territory_ids(
+        self,
+    ) -> None:
+        """Track 1 Task 8c: ``SocialClass`` never carries a ``territory_ids``
+        field in production (only ``Organization``/``Institution`` do) --
+        it links to a territory via a real TENANCY edge instead. A
+        territory with NO organization present but a social_class tenant
+        purely via TENANCY (no fabricated ``territory_ids`` stamp,
+        unlike the shared ``T1`` fixture) must still surface that class's
+        wealth in ``value_produced`` -- proving the resolution goes through
+        :func:`game.engine_bridge._tenancy_members_by_territory`, not the
+        territory_ids field no social_class node actually has.
+        """
+        mock_persistence = _make_mock_persistence()
+        bridge = EngineBridge(mock_persistence)
+        graph = _make_balkanization_graph()
+        graph.add_node(
+            "T3",
+            "territory",
+            name="Oakland County",
+            county_fips="26125",
+            heat=0.1,
+            population=3000,
+        )
+        graph.add_node(
+            "sc-oakland-proles",
+            "social_class",
+            name="Oakland Proletariat",
+            role="proletariat",
+            wealth=555.5,
+            agitation=0.1,
+        )
+        graph.add_edge("sc-oakland-proles", "T3", "tenancy")
+
+        with _patched_hydrate_state(bridge, graph):
+            result = bridge.get_economy(uuid.uuid4(), territory_id="T3")
+
+        assert result["has_data"] is True
+        assert result["value_produced"] == pytest.approx(555.5)
+
 
 @pytest.mark.unit
 class TestBalkanizationMapFields:
@@ -1755,6 +1795,73 @@ class TestDefixturedVerbTargets:
             result = bridge.get_reproduce_targets(uuid.uuid4(), "org-player")
 
         self._assert_no_fixture_literals(result)
+
+    def test_reproduce_targets_base_population_from_tenancy_not_territory_ids(
+        self,
+    ) -> None:
+        """Track 1 Task 8c: ``base_population`` filtered
+        ``_node_type == "social_class"`` over a helper (``_nodes_in_territory``)
+        that resolves via the ``territory_ids`` field -- a field
+        ``SocialClass`` never carries in production (only
+        ``Organization``/``Institution`` do). Structurally always 0 against
+        real data. A social_class tenant (real TENANCY edge, no fabricated
+        ``territory_ids``) to one of the org's own territories must
+        contribute its population.
+        """
+        mock_persistence = _make_mock_persistence()
+        bridge = EngineBridge(mock_persistence)
+        graph = _make_balkanization_graph()
+        graph.add_node(
+            "sc-real-tenancy",
+            "social_class",
+            name="Detroit Proletariat",
+            role="proletariat",
+            wealth=0.0,
+            population=250_000,
+        )
+        graph.add_edge("sc-real-tenancy", "T1", "tenancy")
+
+        with _patched_hydrate_state(bridge, graph):
+            result = bridge.get_reproduce_targets(uuid.uuid4(), "org-player")
+
+        base_population = result["targets"][0]["modes"]["mass_recruitment"]["recruitment_pool"][
+            "base_population"
+        ]
+        assert base_population >= 250_000
+
+    def test_reproduce_targets_base_population_dedups_class_across_org_territories(
+        self,
+    ) -> None:
+        """A county-scale social class commonly tenants many hex
+        territories the org also operates in -- summing per owned
+        territory-id without dedup would double- (or N-times-) count the
+        same class's population. org-player operates T1 and T2
+        (``_make_balkanization_graph``); tenant the same class to both and
+        assert it is counted exactly once.
+        """
+        mock_persistence = _make_mock_persistence()
+        bridge = EngineBridge(mock_persistence)
+        graph = _make_balkanization_graph()
+        graph.add_node(
+            "sc-real-tenancy",
+            "social_class",
+            name="Detroit Proletariat",
+            role="proletariat",
+            wealth=0.0,
+            population=250_000,
+        )
+        graph.add_edge("sc-real-tenancy", "T1", "tenancy")
+        graph.add_edge("sc-real-tenancy", "T2", "tenancy")
+
+        with _patched_hydrate_state(bridge, graph):
+            result = bridge.get_reproduce_targets(uuid.uuid4(), "org-player")
+
+        base_population = result["targets"][0]["modes"]["mass_recruitment"]["recruitment_pool"][
+            "base_population"
+        ]
+        # sc-genesee-proles (tenant to T1, population unset -> 0) +
+        # sc-real-tenancy (250_000, tenant to BOTH org territories, counted once).
+        assert base_population == 250_000
 
 
 @pytest.mark.unit

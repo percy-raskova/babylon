@@ -3306,3 +3306,146 @@ class TestExpectedDeltas:
         for row in [*org_rows, *inst_rows]:
             assert row["expected_deltas"]["heat_delta"] == heat_gain
             assert row["expected_deltas"]["consciousness_delta"] is None
+
+    def test_educate_row_includes_doctrine_theory_bonus_for_class_analysis_org(self) -> None:
+        """Task-18-review fix: EDUCATE's resolver (resolve_educate ->
+        resolve_action(..., doctrine=services.defines.doctrine)) applies the
+        Step-7.5 doctrine theory bonus (ADR073) when the acting org carries
+        CLASS_ANALYSIS doctrine tags. The bridge's per-target preview must
+        reproduce that exactly (preview == resolution) — this asserts
+        against an INDEPENDENT call to compute_consciousness_delta built to
+        mirror resolve_educate's own signature (doctrine passed), not
+        against _preview_consciousness_delta itself, so it would have FAILED
+        before the fix (the old preview omitted doctrine and understated the
+        delta)."""
+        from babylon.config.defines import GameDefines
+        from babylon.models.enums import ActionType
+        from babylon.ooda.action_effects import compute_consciousness_delta
+
+        mock_persistence = _make_mock_persistence()
+        bridge = EngineBridge(mock_persistence)
+        graph = _make_balkanization_graph()
+        graph.update_node("org-player", doctrine_tags={"class_analysis": 5.0})
+
+        with _patched_hydrate_state(bridge, graph):
+            result = bridge.get_educate_targets(uuid.uuid4(), "org-player")
+
+        target = result["targets"][0]
+        defines = GameDefines()
+        org_attrs = dict(graph.nodes["org-player"])
+
+        # Mirrors resolve_educate's own resolve_action(..., doctrine=...) call exactly.
+        with_doctrine = compute_consciousness_delta(
+            org_attrs,
+            "sc-genesee-proles",
+            ActionType.EDUCATE,
+            graph,
+            defines.ooda,
+            defines.organization,
+            defines.doctrine,
+        )
+        expected = round(float(with_doctrine.collective_identity_delta), 4)  # type: ignore[union-attr]
+
+        # Sanity: the bonus is actually engaged (not a coincidental equality) —
+        # the no-doctrine baseline must be strictly smaller in magnitude.
+        without_doctrine = compute_consciousness_delta(
+            org_attrs,
+            "sc-genesee-proles",
+            ActionType.EDUCATE,
+            graph,
+            defines.ooda,
+            defines.organization,
+        )
+        baseline = round(float(without_doctrine.collective_identity_delta), 4)  # type: ignore[union-attr]
+        assert abs(expected) > abs(baseline)
+
+        assert target["expected_deltas"]["consciousness_delta"] == expected
+
+    def test_aid_row_omits_theory_bonus_even_for_class_analysis_org(self) -> None:
+        """Guard against OVER-stating AID: resolve_aid calls
+        compute_consciousness_delta directly WITHOUT doctrine (it defaults to
+        None), so even an acting org with CLASS_ANALYSIS doctrine tags must
+        NOT receive the Step-7.5 bonus on its AID preview. Asserts against an
+        independent call mirroring resolve_aid's own (no-doctrine) signature."""
+        from babylon.config.defines import GameDefines
+        from babylon.models.enums import ActionType
+        from babylon.ooda.action_effects import compute_consciousness_delta
+
+        mock_persistence = _make_mock_persistence()
+        bridge = EngineBridge(mock_persistence)
+        graph = _make_balkanization_graph()
+        graph.update_node("org-player", doctrine_tags={"class_analysis": 5.0})
+
+        with _patched_hydrate_state(bridge, graph):
+            result = bridge.get_aid_targets(uuid.uuid4(), "org-player")
+
+        pop = result["population_targets"][0]
+        defines = GameDefines()
+        org_attrs = dict(graph.nodes["org-player"])
+
+        # Mirrors resolve_aid's own compute_consciousness_delta call exactly
+        # (no doctrine argument at all).
+        no_bonus = compute_consciousness_delta(
+            org_attrs,
+            pop["community_id"],
+            ActionType.PROVIDE_SERVICE,
+            graph,
+            defines.ooda,
+            defines.organization,
+        )
+        expected = round(float(no_bonus.collective_identity_delta), 4)  # type: ignore[union-attr]
+
+        assert pop["expected_deltas"]["consciousness_delta"] == expected
+
+    def test_preview_action_campaign_also_includes_doctrine_theory_bonus(self) -> None:
+        """Scope-extension discovered during the Task-18 review fix:
+        resolve_campaign (CAMPAIGN/PROPAGANDIZE) calls
+        resolve_action(..., doctrine=services.defines.doctrine) exactly like
+        resolve_educate, so the shared preview_action() endpoint (the third
+        _preview_consciousness_delta call site, gated on
+        ``verb in {"educate", "campaign", "aid"}``) must apply the same
+        Step-7.5 doctrine bonus for CAMPAIGN too — not just EDUCATE — or its
+        estimate would understate resolution identically to the reported
+        EDUCATE bug."""
+        from babylon.config.defines import GameDefines
+        from babylon.models.enums import ActionType
+        from babylon.ooda.action_effects import compute_consciousness_delta
+
+        mock_persistence = _make_mock_persistence()
+        bridge = EngineBridge(mock_persistence)
+        graph = _make_balkanization_graph()
+        graph.update_node("org-player", doctrine_tags={"class_analysis": 5.0})
+
+        with _patched_hydrate_state(bridge, graph):
+            result = bridge.preview_action(
+                uuid.uuid4(), "org-player", "campaign", "sc-genesee-proles"
+            )
+
+        defines = GameDefines()
+        org_attrs = dict(graph.nodes["org-player"])
+
+        # Mirrors resolve_campaign's own resolve_action(..., doctrine=...) call.
+        with_doctrine = compute_consciousness_delta(
+            org_attrs,
+            "sc-genesee-proles",
+            ActionType.PROPAGANDIZE,
+            graph,
+            defines.ooda,
+            defines.organization,
+            defines.doctrine,
+        )
+        # preview_action rounds its estimate to 4 places before returning.
+        expected = round(float(with_doctrine.collective_identity_delta), 4)  # type: ignore[union-attr]
+
+        without_doctrine = compute_consciousness_delta(
+            org_attrs,
+            "sc-genesee-proles",
+            ActionType.PROPAGANDIZE,
+            graph,
+            defines.ooda,
+            defines.organization,
+        )
+        baseline = round(float(without_doctrine.collective_identity_delta), 4)  # type: ignore[union-attr]
+        assert abs(expected) > abs(baseline)
+
+        assert result["estimated_consciousness_delta"] == expected

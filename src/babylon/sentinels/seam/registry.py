@@ -2209,17 +2209,24 @@ _ACTION_METRICS: tuple[SeamEntry, ...] = (
         liveness_class=LivenessClass.DECLARED_CONDITIONAL,
         liveness_condition=(
             "consciousness_delta live only on educate/aid population rows (the resolvers' "
-            "own CI math); heat_delta live only on attack rows (the resolver's self-heat "
-            "define); the opposite axis is an honest null, never a fabricated 0.0"
+            "own CI math, INCLUDING the Step-7.5 doctrine theory bonus (ADR073) on educate "
+            "rows — _preview_consciousness_delta mirrors resolve_educate's own "
+            "doctrine=services.defines.doctrine call; aid rows correctly omit the bonus, "
+            "matching resolve_aid which never passes doctrine); heat_delta live only on "
+            "attack rows (the resolver's self-heat define); the opposite axis is an honest "
+            "null, never a fabricated 0.0"
         ),
         dtype="json",
         read_paths=_ACTION_EMITTERS,
         derivation_site="web/game/engine_bridge.py::_preview_consciousness_delta",
         spec_ref="spec-116 FR-116-4.4",
         notes=(
-            "Rendered as TargetPicker per-row chips (no blind picks). Campaign rows are "
+            "Rendered as TargetPicker per-row chips (no blind picks). Campaign rows here are "
             "snapshot-sourced (its targets GET 405s) and carry none; investigate/move/"
-            "negotiate/reproduce rows carry none (no per-target resolver math)."
+            "negotiate/reproduce rows carry none (no per-target resolver math). Note: the "
+            "separate preview_action single-target endpoint (not in _ACTION_EMITTERS above) "
+            "shares _preview_consciousness_delta and DOES exercise the CAMPAIGN/PROPAGANDIZE "
+            "path there, which also mirrors resolve_campaign's doctrine= call."
         ),
     ),
 )

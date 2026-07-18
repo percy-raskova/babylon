@@ -8819,6 +8819,20 @@ def _preview_consciousness_delta(
     no mutation) so ``preview_action`` reports the same collective-identity delta
     the EDUCATE / CAMPAIGN / AID resolvers would produce.
 
+    ``compute_consciousness_delta``'s Step-7.5 doctrine theory bonus (ADR073)
+    is gated only on ``doctrine is not None`` — NOT on ``action_type`` — so it
+    must be threaded through exactly as each real resolver does, not passed
+    unconditionally:
+
+    - :func:`babylon.engine.actions.educate.resolve_educate` and
+      :func:`babylon.engine.actions.campaign.resolve_campaign` both call
+      ``resolve_action(..., doctrine=services.defines.doctrine)``, so EDUCATE
+      and CAMPAIGN previews include the bonus.
+    - :func:`babylon.engine.actions.aid.resolve_aid` calls
+      ``compute_consciousness_delta`` directly WITHOUT ``doctrine`` (defaults
+      to ``None``), so the AID preview must omit it too — passing it
+      unconditionally would OVER-state AID's estimate.
+
     Args:
         org_data: Acting org node attributes (live payload; not mutated).
         target_id: Target community/entity id.
@@ -8832,8 +8846,19 @@ def _preview_consciousness_delta(
     from babylon.ooda.action_effects import compute_consciousness_delta
 
     defines = GameDefines()
+    # Mirror each resolver's own call signature exactly (see docstring above):
+    # only EDUCATE/CAMPAIGN pass doctrine in production; AID never does.
+    doctrine = (
+        defines.doctrine if action_type in (ActionType.EDUCATE, ActionType.PROPAGANDIZE) else None
+    )
     delta = compute_consciousness_delta(
-        org_data, target_id, action_type, graph, defines.ooda, defines.organization
+        org_data,
+        target_id,
+        action_type,
+        graph,
+        defines.ooda,
+        defines.organization,
+        doctrine,
     )
     return float(delta.collective_identity_delta) if delta is not None else 0.0
 

@@ -487,9 +487,12 @@ class FeedforwardSerializer(serializers.Serializer[dict[str, Any]]):
 class ExpectedDeltasSerializer(serializers.Serializer[dict[str, Any]]):
     """Per-target expected deltas (spec-116 FR-116-4.4).
 
-    Bridge-derived from the resolvers' own math. An axis is null when no
-    per-target formula exists for that verb (honest absence, Constitution
-    III.11) — never a fabricated 0.0.
+    Bridge-derived from the resolvers' own math, including the Step-7.5
+    doctrine theory bonus (ADR073) for EDUCATE/CAMPAIGN rows when the acting
+    org carries CLASS_ANALYSIS doctrine tags — AID rows never carry the bonus
+    (its resolver never passes ``doctrine``), matching resolution exactly.
+    An axis is null when no per-target formula exists for that verb (honest
+    absence, Constitution III.11) — never a fabricated 0.0.
     """
 
     consciousness_delta = serializers.FloatField(allow_null=True)

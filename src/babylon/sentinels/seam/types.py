@@ -78,6 +78,10 @@ class SeamScope(StrEnum):
         ``DoctrineSystem`` @14.7. Added after the 2026-07-16 copacetic audit
         found the inverse of an orphan declaration: a real, wired,
         player-observable surface with no SeamEntry at all.
+    :cvar ACTION: the ActionComposer verb-target rows — the per-verb GET
+        ``.../actions/{verb}/targets/`` payloads' ``expected_deltas``
+        sub-object (spec-116 FR-116-4.4), bridge-derived resolver-parity
+        estimates rendered as TargetPicker row chips.
     """
 
     MAP = "map"
@@ -89,6 +93,7 @@ class SeamScope(StrEnum):
     FIELD_STATE = "field_state"
     NETWORK = "network"
     DOCTRINE = "doctrine"
+    ACTION = "action"
 
 
 class LivenessClass(StrEnum):

@@ -476,11 +476,24 @@ class FeedforwardRoutingShiftSerializer(serializers.Serializer[dict[str, Any]]):
 
 
 class FeedforwardSerializer(serializers.Serializer[dict[str, Any]]):
-    projected_routing_shift = FeedforwardRoutingShiftSerializer()
-    state_ai_visibility = serializers.CharField()
-    state_ai_likely_response = serializers.CharField()
-    turns_to_dominant_tendency_shift = serializers.IntegerField(allow_null=True)
-    turns_explanation = serializers.CharField()
+    projected_routing_shift = FeedforwardRoutingShiftSerializer(required=False)
+    state_ai_visibility = serializers.CharField(required=False)
+    state_ai_likely_response = serializers.CharField(required=False)
+    turns_to_dominant_tendency_shift = serializers.IntegerField(allow_null=True, required=False)
+    turns_explanation = serializers.CharField(required=False)
+    note = serializers.CharField(required=False)
+
+
+class ExpectedDeltasSerializer(serializers.Serializer[dict[str, Any]]):
+    """Per-target expected deltas (spec-116 FR-116-4.4).
+
+    Bridge-derived from the resolvers' own math. An axis is null when no
+    per-target formula exists for that verb (honest absence, Constitution
+    III.11) — never a fabricated 0.0.
+    """
+
+    consciousness_delta = serializers.FloatField(allow_null=True)
+    heat_delta = serializers.FloatField(allow_null=True)
 
 
 class EducateTargetSerializer(serializers.Serializer[dict[str, Any]]):
@@ -495,6 +508,7 @@ class EducateTargetSerializer(serializers.Serializer[dict[str, Any]]):
     material_readiness = MaterialReadinessSerializer()
     education_pressure = EducationPressureSerializer()
     feedforward = FeedforwardSerializer()
+    expected_deltas = ExpectedDeltasSerializer(required=False)
 
 
 class OrgOodaSerializer(serializers.Serializer[dict[str, Any]]):
@@ -596,10 +610,11 @@ class AidSubmitSerializer(serializers.Serializer[dict[str, Any]]):
 
 
 class AidProjectionSerializer(serializers.Serializer[dict[str, Any]]):
-    consumption_ratio_delta = serializers.FloatField()
-    agitation_delta = serializers.FloatField()
-    solidarity_added = serializers.FloatField()
-    economism_risk = serializers.CharField(allow_null=True)
+    consumption_ratio_delta = serializers.FloatField(required=False)
+    agitation_delta = serializers.FloatField(required=False)
+    solidarity_added = serializers.FloatField(required=False)
+    economism_risk = serializers.CharField(allow_null=True, required=False)
+    note = serializers.CharField(required=False)
 
 
 class PopulationAidTargetSerializer(serializers.Serializer[dict[str, Any]]):
@@ -610,6 +625,7 @@ class PopulationAidTargetSerializer(serializers.Serializer[dict[str, Any]]):
     material_conditions = serializers.DictField()
     edge_status = serializers.DictField()
     feedforward = AidProjectionSerializer()
+    expected_deltas = ExpectedDeltasSerializer(required=False)
 
 
 class OrgAidTargetSerializer(serializers.Serializer[dict[str, Any]]):
@@ -762,10 +778,11 @@ class AttackTargetOrgSerializer(serializers.Serializer[dict[str, Any]]):
     territory_name = serializers.CharField()
     territory_id = serializers.CharField()
     defensive_capacity = serializers.FloatField()
-    description = serializers.CharField()
+    description = serializers.CharField(required=False)
     value_tensor_role = ValueTensorRoleSerializer(allow_null=True, required=False)
     extractive_edges = ExtractiveEdgeSerializer(many=True, default=list)
-    attack_projection = AttackProjectionSerializer()
+    attack_projection = AttackProjectionSerializer(required=False)
+    expected_deltas = ExpectedDeltasSerializer(required=False)
 
 
 class AttackTargetEdgeModelSerializer(serializers.Serializer[dict[str, Any]]):
@@ -789,7 +806,8 @@ class AttackTargetInstitutionModelSerializer(serializers.Serializer[dict[str, An
     target_type = serializers.CharField()
     name = serializers.CharField()
     factional_control = FactionalControlSerializer(required=False)
-    attack_projection = AttackProjectionSerializer()
+    attack_projection = AttackProjectionSerializer(required=False)
+    expected_deltas = ExpectedDeltasSerializer(required=False)
 
 
 class AttackAvailableTargetsSerializer(serializers.Serializer[dict[str, Any]]):

@@ -2185,6 +2185,45 @@ _ENDGAME_EPILOGUE_METRICS: tuple[SeamEntry, ...] = (
     ),
 )
 
+# ---------------------------------------------------------------------------
+# ACTION scope — per-target expected deltas on the verb-target rows
+# (spec-116 FR-116-4.4). One row for the shared sub-object across its three
+# emitters; the axis a verb has no formula for is an honest null.
+# ---------------------------------------------------------------------------
+
+_ACTION_EMITTERS: tuple[str, ...] = (
+    "web/game/engine_bridge.py::EngineBridge.get_educate_targets",
+    "web/game/engine_bridge.py::EngineBridge.get_aid_targets (population_targets)",
+    "web/game/engine_bridge.py::EngineBridge.get_attack_targets (organizations+institutions)",
+)
+
+_ACTION_METRICS: tuple[SeamEntry, ...] = (
+    SeamEntry(
+        payload="verb_target_expected_deltas",
+        wire_keys=("expected_deltas", "consciousness_delta", "heat_delta"),
+        scope=SeamScope.ACTION,
+        owner_layer=(
+            "bridge-derived (babylon.ooda.action_effects.compute_consciousness_delta via "
+            "_preview_consciousness_delta; OODADefines.attack_self_heat_gain)"
+        ),
+        liveness_class=LivenessClass.DECLARED_CONDITIONAL,
+        liveness_condition=(
+            "consciousness_delta live only on educate/aid population rows (the resolvers' "
+            "own CI math); heat_delta live only on attack rows (the resolver's self-heat "
+            "define); the opposite axis is an honest null, never a fabricated 0.0"
+        ),
+        dtype="json",
+        read_paths=_ACTION_EMITTERS,
+        derivation_site="web/game/engine_bridge.py::_preview_consciousness_delta",
+        spec_ref="spec-116 FR-116-4.4",
+        notes=(
+            "Rendered as TargetPicker per-row chips (no blind picks). Campaign rows are "
+            "snapshot-sourced (its targets GET 405s) and carry none; investigate/move/"
+            "negotiate/reproduce rows carry none (no per-target resolver math)."
+        ),
+    ),
+)
+
 #: The declared observable-field contract. Populated per build phase.
 SEAM_REGISTRY: tuple[SeamEntry, ...] = (
     _MAP_METRICS
@@ -2197,4 +2236,5 @@ SEAM_REGISTRY: tuple[SeamEntry, ...] = (
     + _ENDGAME_METRICS
     + _PATTERN_SHIFT_METRICS
     + _ENDGAME_EPILOGUE_METRICS  # spec-116 FR-116-4.2: epilogue/palette/accepted_at_tick
+    + _ACTION_METRICS  # spec-116 FR-116-4.4: per-target expected_deltas
 )

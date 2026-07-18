@@ -5213,6 +5213,15 @@ class EngineBridge:
                         "feedforward": {
                             "note": "No per-tick routing-shift projection exists in the engine yet.",
                         },
+                        "expected_deltas": {
+                            "consciousness_delta": round(
+                                _preview_consciousness_delta(
+                                    org_data, sc_id, ActionType.EDUCATE, graph
+                                ),
+                                4,
+                            ),
+                            "heat_delta": None,
+                        },
                     }
                 )
 
@@ -5283,6 +5292,15 @@ class EngineBridge:
                             "edge_status": _edge_status_between(graph, org_id, node_id),
                             "feedforward": {
                                 "note": "No per-tick aid-effect projection exists in the engine yet."
+                            },
+                            "expected_deltas": {
+                                "consciousness_delta": round(
+                                    _preview_consciousness_delta(
+                                        org_data, node_id, ActionType.PROVIDE_SERVICE, graph
+                                    ),
+                                    4,
+                                ),
+                                "heat_delta": None,
                             },
                         }
                     )
@@ -5417,6 +5435,11 @@ class EngineBridge:
             }
 
         org_data = graph.nodes.get(org_id, {})
+        # Resolver-parity heat estimate: the ATTACK resolver's own self-heat
+        # coefficient. Same GameDefines() construction _preview_consciousness_delta
+        # uses (schema defaults; test_constants_sync guards them identical to
+        # defines.yaml) — one source of truth, per the Step-3 promotion.
+        attack_heat_gain = round(GameDefines().ooda.attack_self_heat_gain, 4)
         territory_ids = org_data.get("territory_ids", [])
 
         organizations: list[dict[str, Any]] = []
@@ -5453,6 +5476,10 @@ class EngineBridge:
                             "territory_id": str(tid),
                             "defensive_capacity": float(data.get("budget", 0.0)),
                             "extractive_edges": extractive_edges,
+                            "expected_deltas": {
+                                "consciousness_delta": None,
+                                "heat_delta": attack_heat_gain,
+                            },
                         }
                     )
                 elif node_type == "institution" and tid in data.get("territory_ids", []):
@@ -5463,6 +5490,10 @@ class EngineBridge:
                             "target_type": "INSTITUTION",
                             "name": data.get("name", node_id),
                             "factional_control": dict(data.get("factional_composition", {})),
+                            "expected_deltas": {
+                                "consciousness_delta": None,
+                                "heat_delta": attack_heat_gain,
+                            },
                         }
                     )
 

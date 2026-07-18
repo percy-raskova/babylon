@@ -1473,6 +1473,7 @@ def _make_balkanization_graph() -> BabylonGraph:
     g.add_node(
         "org-player",
         "organization",
+        id="org-player",
         name="Vanguard Cell",
         org_type="political_faction",
         cadre_level=5.0,
@@ -3215,3 +3216,93 @@ class TestCausalHeartbeatPersistence:
         assert record.prompt_version == CAUSAL_PROMPT_VERSION
         assert record.degraded is False
         assert record.headline == "The week's ledger, tick 1."
+
+
+@pytest.mark.unit
+class TestExpectedDeltas:
+    """Spec-116 FR-116-4.4: per-target expected_deltas on verb-target rows,
+    sourced from the resolvers' own math (preview == resolution). The axis a
+    verb has no per-target formula for is an honest None, never 0.0."""
+
+    def test_educate_rows_carry_resolver_parity_consciousness_delta(self) -> None:
+        from babylon.models.enums import ActionType
+        from game.engine_bridge import _preview_consciousness_delta
+
+        mock_persistence = _make_mock_persistence()
+        bridge = EngineBridge(mock_persistence)
+        graph = _make_balkanization_graph()
+
+        with _patched_hydrate_state(bridge, graph):
+            result = bridge.get_educate_targets(uuid.uuid4(), "org-player")
+
+        target = result["targets"][0]
+        expected = round(
+            _preview_consciousness_delta(
+                dict(graph.nodes["org-player"]),
+                "sc-genesee-proles",
+                ActionType.EDUCATE,
+                graph,
+            ),
+            4,
+        )
+        assert target["expected_deltas"]["consciousness_delta"] == expected
+        assert target["expected_deltas"]["heat_delta"] is None
+
+    def test_aid_population_rows_carry_deltas_and_org_rows_do_not(self) -> None:
+        from babylon.models.enums import ActionType
+        from game.engine_bridge import _preview_consciousness_delta
+
+        mock_persistence = _make_mock_persistence()
+        bridge = EngineBridge(mock_persistence)
+        graph = _make_balkanization_graph()
+
+        with _patched_hydrate_state(bridge, graph):
+            result = bridge.get_aid_targets(uuid.uuid4(), "org-player")
+
+        pop = result["population_targets"][0]
+        expected = round(
+            _preview_consciousness_delta(
+                dict(graph.nodes["org-player"]),
+                pop["community_id"],
+                ActionType.PROVIDE_SERVICE,
+                graph,
+            ),
+            4,
+        )
+        assert pop["expected_deltas"]["consciousness_delta"] == expected
+        assert pop["expected_deltas"]["heat_delta"] is None
+        for org_row in result["org_targets"]:
+            assert "expected_deltas" not in org_row
+
+    def test_attack_rows_carry_defines_driven_heat_delta(self) -> None:
+        from babylon.config.defines import GameDefines
+
+        mock_persistence = _make_mock_persistence()
+        bridge = EngineBridge(mock_persistence)
+        graph = _make_balkanization_graph()
+        graph.add_node(
+            "org-rivals",
+            "organization",
+            name="Citizens Council",
+            org_type="business",
+            budget=340.0,
+            territory_ids=["T1"],
+        )
+        graph.add_node(
+            "inst-court",
+            "institution",
+            name="County Court",
+            factional_composition={"security_state": 0.6},
+            territory_ids=["T1"],
+        )
+
+        with _patched_hydrate_state(bridge, graph):
+            result = bridge.get_attack_targets(uuid.uuid4(), "org-player")
+
+        heat_gain = round(GameDefines().ooda.attack_self_heat_gain, 4)
+        org_rows = result["targets"]["organizations"]
+        inst_rows = result["targets"]["institutions"]
+        assert len(org_rows) >= 1 and len(inst_rows) >= 1
+        for row in [*org_rows, *inst_rows]:
+            assert row["expected_deltas"]["heat_delta"] == heat_gain
+            assert row["expected_deltas"]["consciousness_delta"] is None

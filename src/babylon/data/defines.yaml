@@ -97,6 +97,8 @@ economy:
   bribery_tension_threshold: 0.7  # Maximum capital_labor opposition gap for bribery policy (C1.5). (>= 0.0, <= 1.0)
   iron_fist_tension_threshold: 0.5  # Minimum capital_labor opposition gap for iron fist policy (C1.5). (>= 0.0, <= 1.0)
   trpf_efficiency_floor: 0.1  # Minimum extraction efficiency after TRPF decay (>= 0.0, <= 1.0)
+  gamma_basket_default: 0.68  # Modelled national-average basket visibility used when basket_calculator is unwired (~32% consumption subsidy, alpha=0.25/gamma_import=0.35 per A-004). (> 0.0, <= 1.0)
+  gamma_iii_default: 0.33  # Modelled national-average Department III (reproductive labor) visibility used when gamma_calculator is unwired. (> 0.0, <= 1.0)
   leontief_rent:  # Tunables for the Leontief imperial-rent integration (Spec 057)
     qcew_carry_forward_max_years: 5  # Maximum look-back window in years for the QCEW carry-forward fallback in the industry-to-county allocator; 0 disables carry-forward (strict no-data semantics). (>= 0, <= 20)
     phi_hour_outlier_threshold_low: -1000.0  # Per-county phi_hour values below this trigger a PhiHourOutlierEvent via EventBus (Spec 057 / FR-008). Pre-clamp negative values cannot reach phi_hour because of the two-layer axiom enforcement (research.md §R5); this threshold is defense-in-depth and validation only.

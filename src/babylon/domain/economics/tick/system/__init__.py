@@ -487,7 +487,7 @@ class TickDynamicsSystem(SystemBase):
         tau = float(tau_result)
 
         # Get gamma_basket from BasketVisibilityCalculator
-        gamma_basket_raw: float = 0.68
+        gamma_basket_raw: float = services.defines.economy.gamma_basket_default
         estimated: bool = True
         if services.basket_calculator is not None:
             gb_result = services.basket_calculator.get_gamma_basket(year)
@@ -495,15 +495,16 @@ class TickDynamicsSystem(SystemBase):
             estimated = gb_result[1]
         else:
             logger.warning(
-                "TickDynamics Step 2: basket_calculator not wired; "
-                "using fallback gamma_basket=%.2f for year %d",
+                "TickDynamics Step 2: using GameDefines modelled default "
+                "gamma_basket=%.2f for year %d (basket_calculator unwired "
+                "for this run)",
                 gamma_basket_raw,
                 year,
             )
             fallbacks.record_gamma_basket_calculator_none()
 
         # Get gamma_III from GammaIIICalculator
-        gamma_III_raw: float = 0.33
+        gamma_III_raw: float = services.defines.economy.gamma_iii_default
         if services.gamma_calculator is not None:
             g3_result = services.gamma_calculator.compute(year)
             if g3_result and not isinstance(g3_result, type(None)):
@@ -518,8 +519,9 @@ class TickDynamicsSystem(SystemBase):
                 fallbacks.record_gamma_iii_returned_none()
         else:
             logger.warning(
-                "TickDynamics Step 2: gamma_III calculator not wired; "
-                "using fallback gamma_III=%.2f for year %d",
+                "TickDynamics Step 2: using GameDefines modelled default "
+                "gamma_III=%.2f for year %d (gamma_calculator unwired "
+                "for this run)",
                 gamma_III_raw,
                 year,
             )

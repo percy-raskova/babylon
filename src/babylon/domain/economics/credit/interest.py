@@ -17,7 +17,12 @@ from typing import Protocol
 
 from babylon.domain.economics.credit.data_sources import InterestRateSource
 from babylon.domain.economics.credit.types import InterestRateState
-from babylon.domain.economics.tensor import NoDataSentinel
+from babylon.domain.economics.tensor import (
+    MODELED_YEAR_CEILING,
+    MODELED_YEAR_FLOOR,
+    NoDataSentinel,
+    year_within_modeled_range,
+)
 
 
 class InterestCalculator(Protocol):
@@ -74,6 +79,16 @@ class DefaultInterestCalculator:
             InterestRateState with FRED values, or NoDataSentinel
             with distinct reason string per missing field.
         """
+        if not year_within_modeled_range(year):
+            return NoDataSentinel(
+                fips="USA",
+                year=year,
+                reason=(
+                    f"Year {year} outside Volume III modeled financial-data "
+                    f"window [{MODELED_YEAR_FLOOR}, {MODELED_YEAR_CEILING}]"
+                ),
+            )
+
         fed_funds = self._rate_source.get_federal_funds_rate(year)
         if fed_funds is None:
             return NoDataSentinel(

@@ -9,6 +9,8 @@ from typing import Final
 
 from pydantic import BaseModel, ConfigDict, Field, computed_field
 
+from babylon.domain.economics.tensor import year_within_modeled_range
+
 # ============================================================================
 # THRESHOLD CONSTANTS (Module-Level)
 # ============================================================================
@@ -168,14 +170,25 @@ class DebtAccumulation(BaseModel):
         If profit < 0: debt increases by |profit|, deficit ticks increment.
         If profit >= 0: debt decreases by min(profit, debt), deficit ticks reset.
 
+        Honest absence (Constitution III.11): if ``new_year`` falls outside
+        Volume III's modeled financial-data window
+        (:func:`babylon.domain.economics.tensor.year_within_modeled_range`),
+        ``current`` is returned UNCHANGED — the debt state carries forward
+        rather than raising a year-range ``ValidationError`` or fabricating
+        a value for an unmodeled year (spec 2026-07-18
+        vol3-money-scissors-design, D1's "endogenous thereafter" principle).
+
         Args:
             current: Current debt state.
             enterprise_profit: Enterprise profit for the period (may be negative).
             new_year: Calendar year for the new state.
 
         Returns:
-            New DebtAccumulation reflecting the update.
+            New DebtAccumulation reflecting the update, or ``current``
+            unchanged if ``new_year`` is outside the modeled window.
         """
+        if not year_within_modeled_range(new_year):
+            return current
         if enterprise_profit < 0:
             new_debt = current.accumulated_debt + abs(enterprise_profit)
             new_ticks = current.consecutive_deficit_ticks + 1

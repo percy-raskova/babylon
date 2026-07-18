@@ -25,7 +25,12 @@ from babylon.domain.economics.distribution.types import (
     DebtAccumulation,
     SurplusValueDistribution,
 )
-from babylon.domain.economics.tensor import NoDataSentinel
+from babylon.domain.economics.tensor import (
+    MODELED_YEAR_CEILING,
+    MODELED_YEAR_FLOOR,
+    NoDataSentinel,
+    year_within_modeled_range,
+)
 
 
 @runtime_checkable
@@ -128,6 +133,16 @@ class DefaultDistributionCalculator:
         Returns:
             SurplusValueDistribution if all data available, NoDataSentinel otherwise.
         """
+        if not year_within_modeled_range(year):
+            return NoDataSentinel(
+                fips=fips,
+                year=year,
+                reason=(
+                    f"Year {year} outside Volume III modeled financial-data "
+                    f"window [{MODELED_YEAR_FLOOR}, {MODELED_YEAR_CEILING}]"
+                ),
+            )
+
         # Zero surplus -> all-zero distribution (no data source queries needed)
         if total_surplus == 0.0:
             return SurplusValueDistribution(

@@ -14,6 +14,8 @@ from typing import Any
 
 import pytest
 
+from babylon.config.defines import GameDefines
+from babylon.config.defines.economy_basic import EconomyDefines
 from babylon.domain.economics.dynamics.types import ClassDistribution
 from babylon.domain.economics.reserve_army.types import ReserveArmyState
 from babylon.domain.economics.tick.system import (
@@ -1951,6 +1953,78 @@ class TestEconomicsFallbackInstrumentation:
             "gamma_iii_returned_none",
         }
         assert payload["gamma_basket_calculator_none"] == 1
+
+
+# =============================================================================
+# Honesty sweep (U2.2 additional work): gamma fallback constants must be
+# GameDefines-backed (III.1), and the "calculator unwired" log must read as
+# a modelled default, not an implied wiring bug.
+# =============================================================================
+
+
+class TestGammaFallbackHonestySweep:
+    """gamma_basket/gamma_III unwired-calculator fallbacks are GameDefines
+    fields, actually consumed (not merely coincidentally matching), with a
+    log message that names the modelled default rather than implying a gap.
+    """
+
+    def test_gamma_basket_fallback_reads_from_defines_not_hardcoded(self) -> None:
+        """Changing GameDefines.economy.gamma_basket_default changes the
+        fallback value actually used — proves the value is wired to
+        defines, not still a coincidentally-matching inline literal.
+        """
+        system = TickDynamicsSystem()
+        defines = GameDefines(economy=EconomyDefines(gamma_basket_default=0.55))
+        services = _make_services(basket_calculator=None, defines=defines)
+
+        result = system._compute_national_params(2015, services, prev_coefficients=None)
+
+        assert result is not None
+        assert result.gamma_basket_raw == pytest.approx(0.55)
+
+    def test_gamma_iii_fallback_reads_from_defines_not_hardcoded(self) -> None:
+        """Changing GameDefines.economy.gamma_iii_default changes the
+        fallback value actually used — proves the value is wired to
+        defines, not still a coincidentally-matching inline literal.
+        """
+        system = TickDynamicsSystem()
+        defines = GameDefines(economy=EconomyDefines(gamma_iii_default=0.21))
+        services = _make_services(gamma_calculator=None, defines=defines)
+
+        result = system._compute_national_params(2015, services, prev_coefficients=None)
+
+        assert result is not None
+        assert result.gamma_III_raw == pytest.approx(0.21)
+
+    def test_basket_unwired_log_names_modelled_default_not_a_gap(
+        self, caplog: pytest.LogCaptureFixture
+    ) -> None:
+        """The unwired-basket-calculator log reads as a deliberate modelled
+        default, not as an implied wiring bug."""
+        system = TickDynamicsSystem()
+        services = _make_services(basket_calculator=None)
+
+        with caplog.at_level("WARNING"):
+            system._compute_national_params(2015, services, prev_coefficients=None)
+
+        messages = [r.getMessage() for r in caplog.records]
+        assert any("modelled default" in m.lower() for m in messages)
+        assert not any("basket_calculator not wired; using fallback" in m for m in messages)
+
+    def test_gamma_iii_unwired_log_names_modelled_default_not_a_gap(
+        self, caplog: pytest.LogCaptureFixture
+    ) -> None:
+        """The unwired-gamma-calculator log reads as a deliberate modelled
+        default, not as an implied wiring bug."""
+        system = TickDynamicsSystem()
+        services = _make_services(gamma_calculator=None)
+
+        with caplog.at_level("WARNING"):
+            system._compute_national_params(2015, services, prev_coefficients=None)
+
+        messages = [r.getMessage() for r in caplog.records]
+        assert any("modelled default" in m.lower() for m in messages)
+        assert not any("gamma_III calculator not wired; using fallback" in m for m in messages)
 
 
 # =============================================================================

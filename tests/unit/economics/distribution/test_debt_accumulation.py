@@ -130,3 +130,18 @@ class TestDebtAccumulationUpdatePositiveProfit:
         updated = DebtAccumulation.update(current, enterprise_profit=-100.0, new_year=2021)
         assert updated.year == 2021
         assert updated.fips_code == "26163"
+
+
+@pytest.mark.unit
+class TestDebtAccumulationYearOutOfRange:
+    """Honest carry-forward (D1's "endogenous thereafter" principle), not a crash."""
+
+    def test_out_of_range_new_year_returns_current_unchanged(self) -> None:
+        current = DebtAccumulation(
+            fips_code="26163",
+            year=2024,
+            accumulated_debt=750.0,
+            consecutive_deficit_ticks=2,
+        )
+        updated = DebtAccumulation.update(current, enterprise_profit=-500.0, new_year=2050)
+        assert updated is current

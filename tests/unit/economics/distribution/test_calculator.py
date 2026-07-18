@@ -166,6 +166,47 @@ class TestComputeDistributionNoData:
         assert isinstance(result, NoDataSentinel)
         assert "interest" in result.reason.lower()
 
+    def test_year_outside_modeled_range_returns_sentinel_even_with_real_data(
+        self,
+    ) -> None:
+        """Guard fires BEFORE any data lookup — proven by giving 2050 real data."""
+        rental_source = MockRentalIncomeSource(data={("26163", 2050): 3_000_000_000.0})
+        tax_source = MockTaxOnSurplusSource(data={("26163", 2050): 1_500_000_000.0})
+        interest_source = MockInterestIncomeSource(data={2050: 3_500_000_000_000.0})
+        calc = DefaultDistributionCalculator(
+            rental_source=rental_source, tax_source=tax_source, interest_source=interest_source
+        )
+        result = calc.compute_distribution(
+            fips="26163",
+            year=2050,
+            total_surplus=10_000_000_000.0,
+            county_profit_rate=0.05,
+            national_interest_rate=0.04,
+        )
+        assert isinstance(result, NoDataSentinel)
+        assert "modeled" in result.reason.lower()
+
+    def test_zero_surplus_still_honors_year_guard(
+        self,
+        mock_rental_source: MockRentalIncomeSource,
+        mock_tax_source: MockTaxOnSurplusSource,
+        mock_interest_source: MockInterestIncomeSource,
+    ) -> None:
+        """The zero-surplus bypass branch must NOT skip the year-range check."""
+        calc = DefaultDistributionCalculator(
+            rental_source=mock_rental_source,
+            tax_source=mock_tax_source,
+            interest_source=mock_interest_source,
+        )
+        result = calc.compute_distribution(
+            fips="26163",
+            year=2050,
+            total_surplus=0.0,
+            county_profit_rate=0.05,
+            national_interest_rate=0.04,
+        )
+        assert isinstance(result, NoDataSentinel)
+
 
 @pytest.mark.unit
 class TestUpdateDebtAccumulation:

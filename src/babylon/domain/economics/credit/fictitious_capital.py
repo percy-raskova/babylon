@@ -20,7 +20,12 @@ from babylon.domain.economics.credit.data_sources import (
     Z1FinancialAccountsSource,
 )
 from babylon.domain.economics.credit.types import FINANCIALIZATION_BUBBLE, FictitiousCapitalStock
-from babylon.domain.economics.tensor import NoDataSentinel
+from babylon.domain.economics.tensor import (
+    MODELED_YEAR_CEILING,
+    MODELED_YEAR_FLOOR,
+    NoDataSentinel,
+    year_within_modeled_range,
+)
 
 
 class FictitiousCapitalCalculator(Protocol):
@@ -98,6 +103,16 @@ class DefaultFictitiousCapitalCalculator:
             FictitiousCapitalStock if all required data available,
             NoDataSentinel with reason otherwise.
         """
+        if not year_within_modeled_range(year):
+            return NoDataSentinel(
+                fips="USA",
+                year=year,
+                reason=(
+                    f"Year {year} outside Volume III modeled financial-data "
+                    f"window [{MODELED_YEAR_FLOOR}, {MODELED_YEAR_CEILING}]"
+                ),
+            )
+
         govt_debt = self._credit_source.get_government_debt(year)
         if govt_debt is None:
             return NoDataSentinel(

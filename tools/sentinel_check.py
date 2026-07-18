@@ -20,8 +20,10 @@ from collections.abc import Callable
 
 from babylon.sentinels.coverage.checks import main as coverage_main
 from babylon.sentinels.inert.checks import main as inert_main
+from babylon.sentinels.masked_arithmetic.checks import main as masked_arithmetic_main
 from babylon.sentinels.seam.checks import main as seam_main
 from babylon.sentinels.synthetic.checks import main as synthetic_main
+from babylon.sentinels.unconsumed.checks import main as unconsumed_main
 from babylon.sentinels.vocabulary.checks import main as vocabulary_main
 
 
@@ -34,6 +36,35 @@ def _catalog_main(argv: list[str] | None) -> int:
     from babylon.sentinels.coverage.db_probe import main as catalog_main
 
     return catalog_main(argv)
+
+
+def _aggregation_main(argv: list[str] | None) -> int:
+    """Route to the aggregation-symmetry probe (Track 1 Task 10) — lazy import.
+
+    The probe imports ``web.game.engine_bridge`` (a Django app layered above
+    ``babylon.*``), which ``babylon.sentinels`` may not import, so it lives
+    beside this file in ``tools/`` (``aggregation_symmetry_probe.py``) and
+    loads only when selected — the same split ``_partition_main`` uses for
+    the engine.
+    """
+    from aggregation_symmetry_probe import (
+        main as aggregation_main,  # type: ignore[import-not-found]
+    )
+
+    return aggregation_main(argv)
+
+
+def _fog_main(argv: list[str] | None) -> int:
+    """Route to the fog-containment Hypothesis probe (Track 1 Task 10) — lazy import.
+
+    The probe imports ``game.fog.filter``/``game.fog.ledger`` (``web.game.*``
+    modules), which ``babylon.sentinels`` may not import, so it lives beside
+    this file in ``tools/`` (``fog_containment_probe.py``) and loads only
+    when selected.
+    """
+    from fog_containment_probe import main as fog_main  # type: ignore[import-not-found]
+
+    return fog_main(argv)
 
 
 def _partition_main(argv: list[str] | None) -> int:
@@ -57,6 +88,10 @@ _SENSORS: dict[str, Callable[[list[str] | None], int]] = {
     "catalog": _catalog_main,
     "vocabulary": vocabulary_main,
     "inert": inert_main,
+    "unconsumed": unconsumed_main,
+    "masked_arithmetic": masked_arithmetic_main,
+    "aggregation": _aggregation_main,
+    "fog": _fog_main,
 }
 
 

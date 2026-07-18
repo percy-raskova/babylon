@@ -111,12 +111,21 @@ class EpistemicHorizonDefines(BaseModel):
         ge=1,
         le=5,
         description=(
-            "Track 1 Task 2 (2026-07-18, spec-117 §5a): hop radius for "
-            "``web.game.fog.reach.organizing_reach``'s PRESENCE ∪ SOLIDARITY "
-            "BFS from the player org. Default 1 mirrors the design text's "
-            "direct reading — 'visible only within organizing reach: where "
-            "the org has presence or solidarity connection' — a single hop, "
-            "not a transitive chain."
+            "Track 1 Task 2 (2026-07-18, spec-117 §5a): depth of the SOLIDARITY "
+            "hop ONLY, in ``web.game.fog.reach.organizing_reach``. Reach is a "
+            "composed, alternating traversal — org --PRESENCE--> territory "
+            "--TENANCY--> class --SOLIDARITY--> class — NOT a union BFS over an "
+            "edge-type set. The PRESENCE and TENANCY hops are structural facts "
+            "(an org's operational footprint; a territory's occupant) and are "
+            "always exactly one hop regardless of this value; only the "
+            "SOLIDARITY front extends. Default 1 mirrors the design text — "
+            "'visible only within organizing reach: where the org has presence "
+            "or solidarity connection' — one ally deep, not a transitive chain. "
+            "A union over {PRESENCE, SOLIDARITY} rooted at the org would be "
+            "SILENTLY PRESENCE-ONLY: SOLIDARITY edges connect social_class to "
+            "social_class and never touch an organization (verified in both "
+            "shipped scenarios, ``_legacy_wayne.py:427-429`` and "
+            "``_legacy.py:433-435``)."
         ),
     )
     intel_staleness_ticks: int = Field(

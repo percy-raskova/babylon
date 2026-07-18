@@ -16,10 +16,22 @@ from typing import Any
 
 import pytest
 
+from babylon.domain.economics.tick.system import TickDynamicsSystem
+
 TOOLS_DIR = Path(__file__).resolve().parents[3] / "tools"
 sys.path.insert(0, str(TOOLS_DIR))
 
 import regression_test as rt  # type: ignore[import-not-found]  # noqa: E402
+
+# Derived from the same expression TickDynamicsSystem._determine_year uses
+# (base_year + tick // WEEKS_PER_YEAR), rather than a hardcoded literal, so
+# this test cannot drift from the engine again. context.tick == state.tick
+# (see engine/simulation_engine.py step()) and _run_scenario_ticks' loop
+# advances state starting from tick 0, so the first (and, given
+# DEFAULT_MAX_TICKS == WEEKS_PER_YEAR == 52, only) year-boundary evaluation
+# happens at tick 0 -> year 2010, never tick 52 (context.tick only ever
+# reaches 0..max_ticks-1 == 0..51).
+EXPECTED_YEAR: int = TickDynamicsSystem()._determine_year(0)
 
 
 def test_regression_run_actually_invokes_the_vol3_financial_layer(
@@ -56,9 +68,13 @@ def test_regression_run_actually_invokes_the_vol3_financial_layer(
         "financial layer, class transitions, bifurcation risk, derived rates — never "
         "execute. qa:regression remains blind to the whole economics estate."
     )
-    # base_year 2010 + tick 52 // 52 == 2011: the single year boundary in a 52-tick run.
-    assert observed_years == [2011], (
-        f"expected exactly one year-boundary evaluation at year 2011, got {observed_years}"
+    # context.tick == state.tick and the harness loop starts state.tick at 0,
+    # so the sole year boundary in a DEFAULT_MAX_TICKS == 52 run is context.tick
+    # 0 -> EXPECTED_YEAR (2010), never context.tick 52 (that value is never
+    # reached; the loop's 52nd iteration passes context.tick == 51).
+    assert observed_years == [EXPECTED_YEAR], (
+        f"expected exactly one year-boundary evaluation at year {EXPECTED_YEAR}, "
+        f"got {observed_years}"
     )
 
 
@@ -71,10 +87,10 @@ def test_committed_melt_fixture_yields_a_real_tau_not_a_sentinel() -> None:
     """
     calculator = rt._build_vol3_melt_calculator()
 
-    tau = calculator.get_melt(2011)
+    tau = calculator.get_melt(EXPECTED_YEAR)
 
     assert isinstance(tau, float), (
-        f"MELT for 2011 resolved to {tau!r} — the committed MELT fixture is "
+        f"MELT for {EXPECTED_YEAR} resolved to {tau!r} — the committed MELT fixture is "
         "missing GDP and/or employment for the only year qa:regression computes"
     )
     valid, message = calculator.validate_melt(tau)

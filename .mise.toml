@@ -131,6 +131,22 @@ run = "poetry run python tools/sentinel_check.py vocabulary --check"
 description = "Inert-construct sentinel: every declared store's writer and every declared producer has a real production caller (static gate)"
 run = "poetry run python tools/sentinel_check.py inert --check"
 
+[tasks."check:unconsumed"]
+description = "Unconsumed-value sentinel: every declared computed dict key has a real production reader (static gate)"
+run = "poetry run python tools/sentinel_check.py unconsumed --check"
+
+[tasks."check:masked-arithmetic"]
+description = "Masked-arithmetic sentinel: no unguarded arithmetic on a fog-masked political field (static gate)"
+run = "poetry run python tools/sentinel_check.py masked_arithmetic --check"
+
+[tasks."check:aggregation"]
+description = "Aggregation-symmetry sentinel: all-masked group input must yield None, never a fabricated 0.0 (dynamic gate)"
+run = "poetry run python tools/sentinel_check.py aggregation --check"
+
+[tasks."check:fog"]
+description = "Fog-containment sentinel: Hypothesis property — no political field escapes an out-of-reach mask (dynamic gate)"
+run = "poetry run python tools/sentinel_check.py fog --check"
+
 [tasks.cap]
 description = "Run a command under a HARD memory+CPU cgroup cap (can't freeze the machine). Use for any heavy run: mise run cap -- mise run test:unit"
 run = "tools/capped.sh"

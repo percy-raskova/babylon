@@ -177,9 +177,13 @@ def test_narrator_vocabulary_advisory_flags_unreachable_templates() -> None:
 
 
 def test_event_coverage_advisory_reports_converter_gap() -> None:
-    """The coverage advisory reports EventTypes dropped before the wire."""
+    """The coverage advisory reports EventTypes dropped before the wire.
+
+    Phase 2 moved the converter's if/elif chain into ``EVENT_BUILDERS``; the
+    advisory now names the registry as the coverage source.
+    """
     findings = sensor1.check_event_coverage()
-    assert any("_convert_bus_event_to_pydantic" in f and "drop to None" in f for f in findings)
+    assert any("EVENT_BUILDERS" in f and "drop to None" in f for f in findings)
 
 
 def test_dict_keys_helper_reads_narrator_templates() -> None:

@@ -135,15 +135,16 @@ def tick_write_set(path: Path) -> set[str]:
     return keys
 
 
-def eventtype_names_in_func(path: Path, func_name: str) -> set[str]:
-    """Collect the ``EventType.<NAME>`` members referenced inside a function.
+def eventtype_names_in_module(path: Path) -> set[str]:
+    """Collect every ``EventType.<NAME>`` member referenced in a module.
 
-    Used to measure how many ``EventType`` members a dispatcher (e.g.
-    ``_convert_bus_event_to_pydantic``) actually handles — the rest fall through
-    to a silent default.
+    Used to measure builder-registry coverage: an ``EventType`` absent from
+    ``event_builders.EVENT_BUILDERS`` drops that event to ``None`` at the
+    bus->pydantic boundary. The registry module's only ``EventType.<NAME>``
+    references are its builder keys (the builders reference event *classes*, and
+    the ``EventType`` import is an ``ImportFrom``, not an ``Attribute``).
 
     :param path: The source file to parse.
-    :param func_name: The function whose body to scan.
     :returns: The set of referenced ``EventType`` member names.
     :raises SentinelCheckError: If the source is missing or unparseable.
     """
@@ -156,12 +157,10 @@ def eventtype_names_in_func(path: Path, func_name: str) -> set[str]:
 
     names: set[str] = set()
     for node in ast.walk(tree):
-        if isinstance(node, ast.FunctionDef) and node.name == func_name:
-            for sub in ast.walk(node):
-                if (
-                    isinstance(sub, ast.Attribute)
-                    and isinstance(sub.value, ast.Name)
-                    and sub.value.id == "EventType"
-                ):
-                    names.add(sub.attr)
+        if (
+            isinstance(node, ast.Attribute)
+            and isinstance(node.value, ast.Name)
+            and node.value.id == "EventType"
+        ):
+            names.add(node.attr)
     return names

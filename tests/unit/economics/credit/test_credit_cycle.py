@@ -10,6 +10,9 @@ STAGNATION is terminal (no exits).
 
 from __future__ import annotations
 
+from collections.abc import Callable
+from pathlib import Path
+
 import pytest
 
 from babylon.domain.economics.credit.credit_cycle import DefaultCreditCycleDetector
@@ -289,3 +292,49 @@ class TestInvalidTransitions:
             current_phase=CreditCyclePhase.EXPANSION,
         )
         assert new_phase == CreditCyclePhase.EXPANSION
+
+
+@pytest.mark.unit
+class TestProductionConsumesTheStagnationAccessor:
+    """The state machine must READ ``stagnation_credit_growth()`` per call.
+
+    Every other test in this file derives its inputs from the same accessor
+    production calls, so all of them pass identically against a hardcoded
+    ``0.01``. This drives an OVERRIDDEN ``defines.yaml`` through
+    ``DefaultCreditCycleDetector.evaluate`` and asserts the PHASE VERDICT
+    changes for one fixed input — which only a live read can do.
+    """
+
+    def test_recovery_verdict_follows_the_yaml_threshold(
+        self,
+        detector: DefaultCreditCycleDetector,
+        divergent_defines_yaml: Callable[..., Path],
+    ) -> None:
+        from babylon.domain.economics.credit import types as credit_types
+
+        # credit_growth 0.03 sits ABOVE the shipped 0.01 threshold …
+        phase_shipped, _ = detector.evaluate(
+            profit_rate=0.05,
+            profit_rate_trend=0.0,
+            credit_growth=0.03,
+            default_rate=0.01,
+            current_phase=CreditCyclePhase.RECOVERY,
+        )
+        assert phase_shipped == CreditCyclePhase.EXPANSION
+
+        # … and BELOW an overridden 0.05, which must flip the verdict.
+        divergent_defines_yaml(
+            {"crisis": {"stagnation_credit_growth": 0.05}},
+            credit_types._default_defines,
+        )
+        phase_overridden, _ = detector.evaluate(
+            profit_rate=0.05,
+            profit_rate_trend=0.0,
+            credit_growth=0.03,
+            default_rate=0.01,
+            current_phase=CreditCyclePhase.RECOVERY,
+        )
+        assert phase_overridden == CreditCyclePhase.STAGNATION, (
+            "the RECOVERY transition ignored the overridden "
+            "crisis.stagnation_credit_growth — it is reading a hardcoded literal"
+        )

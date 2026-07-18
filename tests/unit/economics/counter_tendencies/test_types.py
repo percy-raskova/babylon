@@ -9,6 +9,9 @@ with computed net_counter_tendency (weighted sum).
 
 from __future__ import annotations
 
+from collections.abc import Callable
+from pathlib import Path
+
 import pytest
 from pydantic import ValidationError
 
@@ -265,3 +268,57 @@ class TestWeightAccessorsAreGameDefinesBacked:
         )
         assert counter_tendency_weights(overridden) == [0.5, 0.1, 0.1, 0.1, 0.1, 0.1]
         assert imperial_rent_reference_scale(overridden) == pytest.approx(1_000.0)
+
+
+@pytest.mark.unit
+class TestProductionConsumesTheWeightAccessors:
+    """``net_counter_tendency`` must READ the accessors, not mirror their values.
+
+    ``test_net_counter_tendency_weighted_sum`` computes its expectation by
+    calling the same accessors production calls, so it passes identically if
+    production hardcodes the same six literals. These tests drive an
+    OVERRIDDEN ``defines.yaml`` through the computed field and assert against
+    a hand-computed expectation implied by the OVERRIDE — which a hardcoded
+    literal cannot produce. Each override moves exactly one coefficient, so
+    the two hardcode mutations are killed independently.
+    """
+
+    @staticmethod
+    def _sample() -> CounterTendencyStrength:
+        return CounterTendencyStrength(
+            year=2020,
+            exploitation_rate_change=0.1,
+            wage_suppression=0.01,
+            constant_capital_cheapening=-0.03,
+            reserve_army_size=0.08,
+            imperial_rent_flow=500.0,
+            fictitious_profit_share=0.25,
+        )
+
+    def test_weights_override_moves_the_computed_field(
+        self, divergent_defines_yaml: Callable[..., Path]
+    ) -> None:
+        from babylon.domain.economics.counter_tendencies import types as ct_types
+
+        divergent_defines_yaml(
+            {"capital_vol3": {"counter_tendency_weights": [0.5, 0.1, 0.1, 0.1, 0.1, 0.1]}},
+            ct_types._default_defines,
+        )
+        # indicators = [0.1, 0.01, 0.03, 0.08, 500/500e9, 0.25]
+        # weighted by the OVERRIDE [0.5, 0.1, 0.1, 0.1, 0.1, 0.1]:
+        expected = 0.5 * 0.1 + 0.1 * 0.01 + 0.1 * 0.03 + 0.1 * 0.08 + 0.1 * 1e-9 + 0.1 * 0.25
+        assert self._sample().net_counter_tendency == pytest.approx(expected)
+
+    def test_reference_scale_override_moves_the_computed_field(
+        self, divergent_defines_yaml: Callable[..., Path]
+    ) -> None:
+        from babylon.domain.economics.counter_tendencies import types as ct_types
+
+        divergent_defines_yaml(
+            {"capital_vol3": {"imperial_rent_reference_scale": 1_000.0}},
+            ct_types._default_defines,
+        )
+        # imperial_rent_flow 500 / OVERRIDDEN scale 1000 = 0.5 (was ~1e-9),
+        # weighted by the shipped 0.20:
+        expected = 0.2 * 0.1 + 0.15 * 0.01 + 0.15 * 0.03 + 0.15 * 0.08 + 0.2 * 0.5 + 0.15 * 0.25
+        assert self._sample().net_counter_tendency == pytest.approx(expected)

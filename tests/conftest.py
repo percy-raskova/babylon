@@ -74,11 +74,13 @@ import random
 import shutil
 import tempfile
 import time
-from collections.abc import Generator
-from typing import TYPE_CHECKING
+from collections.abc import Callable, Generator
+from pathlib import Path
+from typing import TYPE_CHECKING, Any, Protocol
 from unittest.mock import MagicMock
 
 import pytest
+import yaml
 from hypothesis import HealthCheck, settings
 
 if TYPE_CHECKING:
@@ -385,3 +387,74 @@ def pg_pool(pg_dsn: str) -> Generator["ConnectionPool", None, None]:
 
     yield pool
     pool.close()
+
+
+# =============================================================================
+# DEFINES-LOADER DISCRIMINATION (U2.3 review fix; generalized as a sentinel in U7)
+# =============================================================================
+
+
+class _CacheClearable(Protocol):
+    """Anything exposing ``lru_cache``'s ``cache_clear()`` (the accessor caches)."""
+
+    def cache_clear(self) -> None:
+        """Drop the memoized value so the next call reloads."""
+        ...
+
+
+@pytest.fixture
+def divergent_defines_yaml(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> Generator[Callable[..., Path], None, None]:
+    """Point ``GameDefines.load_default()`` at a YAML that DISAGREES with the schema.
+
+    ``src/babylon/data/defines.yaml`` is *generated* from the schema, so every
+    shipped value equals its field default by construction — and
+    ``tests/unit/config/test_constants_sync.py::TestDefinesYamlSingleSourceOfTruth``
+    enforces ``GameDefines.load_default() == GameDefines()`` on every run. That
+    makes any assertion of the form ``accessor() == GameDefines.load_default().x``
+    provably blind to the difference between "reads the YAML" and "reads the
+    dataclass defaults" — which is the precise defect the Volume III honesty
+    sweep (U2) exists to remove, and which a source-string grep cannot pin.
+
+    This fixture writes a *partial* ``defines.yaml`` into ``tmp_path`` whose
+    values diverge from the defaults, repoints
+    :meth:`GameDefines.default_yaml_path` at it, and clears the caller's
+    module-level ``_default_defines`` caches so the next no-arg accessor call
+    reloads through the loader. Every cache handed in is cleared again on
+    teardown, so xdist siblings never observe the override.
+
+    Usage::
+
+        from babylon.domain.economics.distribution import types
+
+        divergent_defines_yaml(
+            {"capital_vol3": {"debt_spiral_threshold": 0.77}},
+            types._default_defines,
+        )
+        assert types.debt_spiral_threshold() == 0.77
+
+    Yields:
+        Callable taking ``(sections, *caches)`` and returning the YAML path.
+    """
+    from babylon.config.defines import GameDefines
+
+    cleared: list[_CacheClearable] = []
+
+    def _install(sections: dict[str, dict[str, Any]], *caches: _CacheClearable) -> Path:
+        path = tmp_path / "defines.yaml"
+        path.write_text(yaml.safe_dump(sections, sort_keys=True), encoding="utf-8")
+        monkeypatch.setattr(
+            GameDefines,
+            "default_yaml_path",
+            classmethod(lambda cls: path),  # noqa: ARG005
+        )
+        for cache in caches:
+            cache.cache_clear()
+            cleared.append(cache)
+        return path
+
+    yield _install
+
+    for cache in cleared:
+        cache.cache_clear()

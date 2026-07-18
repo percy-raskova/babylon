@@ -8,7 +8,11 @@ accessor functions (moddability, Constitution III.1).
 
 from __future__ import annotations
 
+from collections.abc import Callable
+from pathlib import Path
+
 import pytest
+from pydantic import ValidationError
 
 from babylon.config.defines import CapitalVolumeIIIDefines, GameDefines
 
@@ -68,3 +72,106 @@ class TestStagnationCreditGrowthIsAnAccessor:
             update={"crisis": base.crisis.model_copy(update={"stagnation_credit_growth": 0.123})}
         )
         assert stagnation_credit_growth(overridden) == pytest.approx(0.123)
+
+
+class TestCounterTendencyWeightsAreConstrainedAtTheSchemaBoundary:
+    """Migrating the weights off a module-level ``Final`` made them
+    player-editable — and therefore able to be *wrong*.
+
+    The sole consumer zips them against a fixed six-element indicator list with
+    ``strict=True`` inside a ``@computed_field``, so a wrong-length list from
+    ``defines.yaml`` used to surface as an opaque ``ValueError: zip() argument
+    2 is shorter than argument 1`` on every attribute access and every
+    ``model_dump()`` mid-tick, and a list summing to anything other than 1.0
+    silently rescaled the whole TRPF counter-tendency signal with no diagnostic
+    at all. Both now fail loudly at config-load time (Constitution III.11).
+    """
+
+    def test_short_weight_list_is_rejected(self) -> None:
+        with pytest.raises(ValidationError, match="counter_tendency_weights"):
+            CapitalVolumeIIIDefines(counter_tendency_weights=[0.2, 0.2, 0.2, 0.2, 0.2])
+
+    def test_long_weight_list_is_rejected(self) -> None:
+        with pytest.raises(ValidationError, match="counter_tendency_weights"):
+            CapitalVolumeIIIDefines(
+                counter_tendency_weights=[0.15, 0.15, 0.15, 0.15, 0.15, 0.15, 0.10]
+            )
+
+    def test_weights_not_summing_to_one_are_rejected(self) -> None:
+        with pytest.raises(ValidationError, match="must sum to 1.0"):
+            CapitalVolumeIIIDefines(counter_tendency_weights=[0.9, 0.9, 0.9, 0.9, 0.9, 0.9])
+
+    def test_error_names_the_yaml_key_and_the_observed_sum(self) -> None:
+        """A modder needs to know WHICH key and WHAT it summed to."""
+        with pytest.raises(ValidationError) as excinfo:
+            CapitalVolumeIIIDefines(counter_tendency_weights=[0.25, 0.25, 0.25, 0.25, 0.25, 0.25])
+        message = str(excinfo.value)
+        assert "capital_vol3.counter_tendency_weights" in message
+        assert "1.5" in message
+
+    def test_shipped_default_survives_the_constraint(self) -> None:
+        """The migrated default must not be rejected by its own validator."""
+        assert CapitalVolumeIIIDefines().counter_tendency_weights == [
+            0.20,
+            0.15,
+            0.15,
+            0.15,
+            0.20,
+            0.15,
+        ]
+
+
+class TestAccessorsReadTheYamlNotTheDataclassDefaults:
+    """``defines.yaml`` is GENERATED from the schema, so every shipped value
+    equals its field default by construction — and ``test_constants_sync.py``
+    enforces ``GameDefines.load_default() == GameDefines()`` on every run.
+
+    Every other assertion in this estate compares an accessor to
+    ``GameDefines.load_default().<field>``, which is therefore blind to the
+    difference between reading the YAML and reading the dataclass defaults:
+    respelling ``load_default()`` as a bare ``GameDefines()`` — the exact
+    import-time-defaults defect U2.3 removed from
+    ``credit/types.py`` — leaves the whole suite green. These tests make the
+    YAML and the defaults DISAGREE, so only the loader path passes.
+    """
+
+    def test_credit_accessor_reads_the_yaml(
+        self, divergent_defines_yaml: Callable[..., Path]
+    ) -> None:
+        from babylon.domain.economics.credit import types as credit_types
+
+        divergent_defines_yaml(
+            {"crisis": {"stagnation_credit_growth": 0.077}},
+            credit_types._default_defines,
+        )
+        assert credit_types.stagnation_credit_growth() == pytest.approx(0.077)
+        assert GameDefines().crisis.stagnation_credit_growth == pytest.approx(0.01)
+
+    def test_distribution_accessors_read_the_yaml(
+        self, divergent_defines_yaml: Callable[..., Path]
+    ) -> None:
+        from babylon.domain.economics.distribution import types as distribution_types
+
+        divergent_defines_yaml(
+            {"capital_vol3": {"debt_spiral_threshold": 0.77, "distribution_epsilon": 1e-6}},
+            distribution_types._default_defines,
+        )
+        assert distribution_types.debt_spiral_threshold() == pytest.approx(0.77)
+        assert distribution_types.distribution_epsilon() == pytest.approx(1e-6)
+
+    def test_counter_tendency_accessors_read_the_yaml(
+        self, divergent_defines_yaml: Callable[..., Path]
+    ) -> None:
+        from babylon.domain.economics.counter_tendencies import types as ct_types
+
+        divergent_defines_yaml(
+            {
+                "capital_vol3": {
+                    "counter_tendency_weights": [0.5, 0.1, 0.1, 0.1, 0.1, 0.1],
+                    "imperial_rent_reference_scale": 1_000.0,
+                }
+            },
+            ct_types._default_defines,
+        )
+        assert ct_types.counter_tendency_weights() == [0.5, 0.1, 0.1, 0.1, 0.1, 0.1]
+        assert ct_types.imperial_rent_reference_scale() == pytest.approx(1_000.0)

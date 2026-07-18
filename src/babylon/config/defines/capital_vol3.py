@@ -9,7 +9,21 @@ actually take effect (Constitution III.1).
 
 from __future__ import annotations
 
-from pydantic import BaseModel, ConfigDict, Field
+import math
+
+from pydantic import BaseModel, ConfigDict, Field, field_validator
+
+COUNTER_TENDENCY_COUNT: int = 6
+"""Number of TRPF counter-tendencies (Marx, *Capital* Vol. III Ch. 14).
+
+The weight list is indexed positionally against a six-element indicator list
+zipped with ``strict=True`` in ``CounterTendencyStrength.net_counter_tendency``
+(``babylon.domain.economics.counter_tendencies.types``), so the length is a
+hard structural requirement, not a convention.
+"""
+
+_WEIGHT_SUM_TOLERANCE: float = 1e-9
+"""Absolute tolerance for the weights-sum-to-1.0 invariant (IEEE-754 slack)."""
 
 
 class CapitalVolumeIIIDefines(BaseModel):
@@ -39,6 +53,8 @@ class CapitalVolumeIIIDefines(BaseModel):
     )
     counter_tendency_weights: list[float] = Field(
         default=[0.20, 0.15, 0.15, 0.15, 0.20, 0.15],
+        min_length=COUNTER_TENDENCY_COUNT,
+        max_length=COUNTER_TENDENCY_COUNT,
         description=(
             "Weights for the six TRPF counter-tendencies "
             "(exploitation_rate, wage_suppression, capital_cheapening, "
@@ -99,3 +115,39 @@ class CapitalVolumeIIIDefines(BaseModel):
             "live per-tick rate)."
         ),
     )
+
+    @field_validator("counter_tendency_weights")
+    @classmethod
+    def verify_weights_sum_to_one(cls, weights: list[float]) -> list[float]:
+        """Reject a weight vector that does not sum to 1.0.
+
+        ``net_counter_tendency`` is a plain weighted sum with no
+        normalization, so a vector summing to anything other than 1.0
+        rescales the entire TRPF counter-tendency signal silently — no
+        exception, no diagnostic, just a wrong number propagating through
+        the crisis layer. Since the 2026-07-18 honesty sweep moved this
+        coefficient out of a module-level ``Final`` and into player-editable
+        ``defines.yaml``, that state is reachable by a plausible edit, so it
+        fails loudly at config-load time instead (Constitution III.11).
+
+        The length is enforced separately by the field's ``min_length`` /
+        ``max_length``, which run before this validator.
+
+        Args:
+            weights: Candidate counter-tendency weight vector.
+
+        Returns:
+            The weights unchanged, when they sum to 1.0.
+
+        Raises:
+            ValueError: If the weights do not sum to 1.0 within
+                ``_WEIGHT_SUM_TOLERANCE``.
+        """
+        total = math.fsum(weights)
+        if not math.isclose(total, 1.0, abs_tol=_WEIGHT_SUM_TOLERANCE):
+            raise ValueError(
+                f"capital_vol3.counter_tendency_weights must sum to 1.0, "
+                f"got {total!r} from {weights!r} — check the "
+                f"capital_vol3.counter_tendency_weights list in defines.yaml"
+            )
+        return weights

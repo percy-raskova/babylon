@@ -173,5 +173,16 @@ describe("EventsFeed", () => {
     expect(screen.queryByTestId("event-count-5-2")).not.toBeInTheDocument();
     // Age label (per-tick feed: single tick).
     expect(screen.getAllByText("t5")).toHaveLength(2);
+
+    // The card exposes its `${type}:${subject}` dedup key as data-dedup-key —
+    // the affordance the first-session gate-2 e2e asserts adjacency on. These
+    // two ADJACENT dispossession cards (26163 collapsed, 26099 separate) carry
+    // the SAME type but DIFFERENT keys: exactly the case a type-only adjacency
+    // check would false-fail, and the reason gate 2 must key on (type,subject).
+    const key26163 = screen.getByTestId("event-5-0").getAttribute("data-dedup-key");
+    const key26099 = screen.getByTestId("event-5-2").getAttribute("data-dedup-key");
+    expect(key26163).toMatch(/^dispossession_event:/);
+    expect(key26099).toMatch(/^dispossession_event:/);
+    expect(key26163).not.toBe(key26099);
   });
 });

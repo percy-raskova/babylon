@@ -214,24 +214,31 @@ test.describe("first session — fresh player trunk (spec-116 acceptance gate 6)
     await expect(feed).toBeVisible({ timeout: 10000 });
     await expect(feed).not.toBeEmpty({ timeout: 5000 });
 
-    // Acceptance gate 2, exercised live against the real dedup output: no
-    // two CONSECUTIVE rendered cards carry the same event type (dedupeEvents
-    // collapses same-(type,subject) runs into one card + count badge — see
-    // EventsFeed.tsx). wayne_county's 81 territories mean lifecycle_transition/
-    // inheritance_transfer fire once PER TERRITORY per tick (a real, large
-    // card count — see reports/pacing-calibration-2026-07-17.md §5), so this
-    // reads every card's type in ONE batched call (allTextContents) rather
-    // than an N-await loop, which timed out against the real event volume
-    // when first written. MAX_CARDS is still a static upper bound on the
-    // array this iterates (repo loop-bound rule) — the comparison itself is
-    // synchronous JS, not per-item network round trips.
-    const typeTexts = (
-      await feed.locator('[data-testid^="event-"] > span:nth-child(2)').allTextContents()
+    // Acceptance gate 2, exercised live against the real dedup output: no two
+    // CONSECUTIVE rendered cards share the same dedup KEY `${type}:${subject}`
+    // (dedupeEvents collapses same-(type,subject) runs into one card + count —
+    // see eventDedup.ts + EventsFeed.tsx's data-dedup-key). This is the ACTUAL
+    // contract: two adjacent same-TYPE / different-SUBJECT cards (e.g.
+    // dispossession in county 26163 then 26099) are CORRECT and expected — the
+    // sibling unit test EventsFeed.test.tsx pins exactly that — so asserting on
+    // type alone would false-fail on any real multi-territory feed. wayne_county's
+    // 81 territories fire lifecycle/inheritance events once PER TERRITORY per
+    // tick (a real, large card count — reports/pacing-calibration-2026-07-17.md
+    // §5), so this reads every card's key in ONE batched call rather than an
+    // N-await loop (which timed out against the real event volume). The slice is
+    // a static upper bound on the iterated array (repo loop-bound rule); the
+    // comparison is synchronous JS, not per-item network round trips.
+    const dedupKeys = (
+      await feed
+        .locator("[data-dedup-key]")
+        .evaluateAll((els) => els.map((el) => el.getAttribute("data-dedup-key") ?? ""))
     ).slice(0, 1000);
-    for (let i = 1; i < typeTexts.length; i++) {
-      expect(typeTexts[i], "no two consecutive identical event cards (acceptance gate 2)").not.toBe(
-        typeTexts[i - 1],
-      );
+    expect(dedupKeys.length, "the live feed rendered real event cards").toBeGreaterThan(0);
+    for (let i = 1; i < dedupKeys.length; i++) {
+      expect(
+        dedupKeys[i],
+        "no two consecutive cards share a ${type}:${subject} dedup key (acceptance gate 2)",
+      ).not.toBe(dedupKeys[i - 1]);
     }
 
     // Acceptance gate 6's last leg: endgame_progress axes render in the

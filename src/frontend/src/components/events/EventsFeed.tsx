@@ -104,6 +104,7 @@ export function EventsFeed(): React.JSX.Element {
             onClick={() => handleClick(rep)}
             disabled={!rep.linkedEntityId && rep.severity !== "critical"}
             data-testid={`event-${rep.id}`}
+            data-dedup-key={card.key}
             data-autopause={autopauseEventKeys.includes(card.key) || undefined}
             className="flex items-center gap-2 rounded px-1.5 py-1 text-left hover:bg-rebar disabled:cursor-default disabled:hover:bg-transparent"
           >

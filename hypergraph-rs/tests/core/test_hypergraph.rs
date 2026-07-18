@@ -71,10 +71,27 @@ fn test_add_edge_deduplicates_members() {
 }
 
 #[test]
-fn test_add_edge_empty_members_returns_error() {
+fn test_add_edge_empty_members_creates_empty_edge() {
+    // XGI v0.10.2 ground truth (verified against the runtime, not the
+    // docstring — the docstring claims XGIError, the behavior creates an
+    // empty edge; XGI's own test_add_edge asserts sizes {0: 0, 1: 0, 2: 0}).
+    // The conformance gate is behavioral. Divergence register D1.
     let mut h: Hypergraph = Hypergraph::new();
-    let result = h.add_edge(vec![], Some("e1".to_string()), serde_json::Value::Null);
-    assert!(matches!(result, Err(EdgeError::EmptyMembers)));
+    let id = h.add_edge(vec![], None, serde_json::Value::Null).unwrap();
+    assert_eq!(id, "0");
+    assert_eq!(h.num_edges(), 1);
+    assert_eq!(h.num_nodes(), 0);
+    assert!(h.members(&id).unwrap().is_empty());
+}
+
+#[test]
+fn test_add_edge_three_empty_edges_get_auto_ids() {
+    let mut h: Hypergraph = Hypergraph::new();
+    for expected in ["0", "1", "2"] {
+        let id = h.add_edge(vec![], None, serde_json::Value::Null).unwrap();
+        assert_eq!(id, expected);
+    }
+    assert_eq!(h.num_edges(), 3);
 }
 
 #[test]

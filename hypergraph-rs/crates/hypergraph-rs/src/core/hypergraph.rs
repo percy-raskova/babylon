@@ -143,7 +143,10 @@ impl<N, E, M> Hypergraph<N, E, M> {
 
     /// Add a hyperedge connecting the given members.
     ///
-    /// XGI parity: `H.add_edge(members, idx=id, **attr)`.
+    /// XGI parity: `H.add_edge(members, idx=id, **attr)`. An empty `members`
+    /// creates an empty hyperedge — XGI v0.10.2 behavior verified against
+    /// the runtime (its docstring claims XGIError; the docstring is wrong,
+    /// and XGI's own test_add_edge asserts empty edges). Divergence D1.
     pub fn add_edge(
         &mut self,
         members: Vec<String>,
@@ -154,10 +157,6 @@ impl<N, E, M> Hypergraph<N, E, M> {
         N: Default,
         M: Default + Clone,
     {
-        if members.is_empty() {
-            return Err(EdgeError::EmptyMembers);
-        }
-
         let edge_id = match &idx {
             Some(id) => {
                 if self.hyperedge_ids.contains_key(id) {

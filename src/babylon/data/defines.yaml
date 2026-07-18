@@ -599,6 +599,7 @@ ooda:
   agitation_contestation_delta: 0.1  # [A] = consciousness.agitation_decay_rate: equilibrium requires continuous agitation. (>= 0, <= 1.0)
   agitation_educate_bonus: 1.5  # [B] = territory.rent_spike_multiplier: crisis amplification factor (same as eviction premium). (>= 1.0)
   contestation_threshold: 0.3  # [B] = solidarity.activation_threshold: same tipping point for political engagement. (>= 0, <= 1.0)
+  attack_self_heat_gain: 0.1  # State attention (heat) the acting org draws on itself when an ATTACK_INFRASTRUCTURE action resolves. Promoted from the engine.actions.attack module literal so the resolver and the web preview/target rows share one source of truth. (>= 0.0, <= 1.0)
   elder_legitimacy_multiplier: 1.3  # [C] = 1 + lifecycle.ideology_institutional_weight: elder institutional moral authority. (>= 1.0)
   counter_intel_increment: 0.1  # [C] = λ: network disruption rate matches consciousness entropy (Sparrow). (>= 0, <= 1.0)
   base_cost_recruit: 2  # AP cost: RECRUIT (>= 1)

@@ -1,0 +1,249 @@
+/**
+ * First-session trunk e2e (spec-116 Task 25 — acceptance gate 6: "a fresh
+ * player reaches their first submitted action unaided"). This is the
+ * spine's own acceptance evidence, not a focused unit gate — it walks
+ * EVERY surface the parent design's six gates touch, end-to-end, against
+ * the live stack, in the order a real first session hits them:
+ *
+ *   lobby codenames -> create (scenario + curated difficulty) -> Scenario
+ *   Briefing (cadre-council framing, five patterns, win condition named,
+ *   fixed-horizon copy) -> Begin -> cockpit at tick 0 -> disabled-with-
+ *   reason verb grid (no dead ends) -> eligible verb (Campaign) -> preview
+ *   (probability + cost) visible BEFORE submit -> submit succeeds ->
+ *   resolve two ticks (dedup + autopause-once exercised live) ->
+ *   endgame_progress axes rendered honestly in the objectives tray.
+ *
+ * FOLLOW-PATTERN: `real-loop.spec.ts` (shared-session serial suite shape)
+ * + `lobby-briefing.spec.ts` (the real create->briefing->begin flow) +
+ * `verb-submit.spec.ts` (the real VerbGrid/TargetPicker/preview contracts).
+ * Every testid/selector below is read off the actual component source
+ * (`BriefingRoute.tsx`, `VerbGrid.tsx`, `VerbForm.tsx`, `TargetPicker.tsx`,
+ * `EventsFeed.tsx`, `ObjectivesTracker.tsx`), not invented — this spec
+ * intentionally does NOT assert a `scenario-briefing` testid (the task
+ * brief's illustrative pseudocode used that name, but no such testid
+ * exists anywhere in the frontend; `BriefingRoute` exposes
+ * `briefing-codename`/`briefing-pattern-*`/`briefing-win-badge`/
+ * `briefing-horizon`/`briefing-begin` instead — those are the real
+ * contract this test pins).
+ *
+ * Runs on "chromium-authenticated" (registered in AUTHENTICATED_SPECS,
+ * storageState from auth.setup.ts) against its OWN fresh wayne_county/
+ * cadre session — never shared across spec files (game_turn enforces one
+ * queued action per (session, tick, org)).
+ *
+ * Honest-null notes carried from verb-submit.spec.ts: Campaign is
+ * snapshot-sourced (its targets are territories/hyperedges, not a live
+ * endpoint response), so its TargetPicker rows never carry expected-delta
+ * chips (`TargetDeltaChip` is honest-null for undefined/zero deltas) — this
+ * spec does not assert delta chips are visible for that reason, matching
+ * the literal acceptance-gate code in the task brief (which asserts only
+ * `preview-probability` + `verb-cost`, not target-delta chips).
+ */
+import { expect, test, acknowledgeAutopauseIfPresent } from "./fixtures";
+
+/** Session id created by the "creating an operation" test. */
+let gameId = "";
+
+test.describe("first session — fresh player trunk (spec-116 acceptance gate 6)", () => {
+  test.describe.configure({ mode: "serial" });
+
+  test("lobby shows generated operation codenames — no unnamed rows", async ({ page }) => {
+    await page.goto("/lobby");
+    await expect(page.getByText("New Operation")).toBeVisible({ timeout: 10000 });
+
+    // Every listed operation row's label is the server-derived codename
+    // (LobbyRoute.tsx: `label: g.codename`, two uppercase words) — never
+    // blank/"undefined". Bounded by whatever the lobby actually lists
+    // (statically capped so the loop is provably finite either way).
+    const rows = page.locator('[data-testid^="game-option-"]');
+    const rowCount = await rows.count();
+    const MAX_ROWS = 200;
+    for (let i = 0; i < Math.min(rowCount, MAX_ROWS); i++) {
+      const label = (await rows.nth(i).locator("span").first().textContent())?.trim();
+      expect(label, `lobby row ${i} must carry a real codename, not blank/undefined`).toBeTruthy();
+      expect(label).not.toBe("undefined");
+    }
+  });
+
+  test("creating an operation lands on the Scenario Briefing (cadre-council framing, five patterns, win condition, fixed horizon)", async ({
+    page,
+  }) => {
+    await page.goto("/lobby");
+    await page.getByTestId("scenario-option-wayne_county").click();
+    await page.getByTestId("difficulty-option-cadre").click();
+
+    const [createResp] = await Promise.all([
+      page.waitForResponse(
+        (r) => r.url().includes("/api/games/") && r.request().method() === "POST",
+        { timeout: 60000 },
+      ),
+      page.getByRole("button", { name: /new game/i }).click(),
+    ]);
+    expect(createResp.status()).toBe(201);
+    const body = (await createResp.json()) as { data?: { session_id?: string } };
+    gameId = body.data?.session_id ?? "";
+    expect(gameId, "create response must carry data.session_id").toBeTruthy();
+
+    await expect(page).toHaveURL(new RegExp(`/game/${gameId}/briefing`), { timeout: 15000 });
+
+    // Codename + cadre-council framing.
+    await expect(page.getByTestId("briefing-codename")).toHaveText(/^OPERATION [A-Z]+ [A-Z]+$/, {
+      timeout: 15000,
+    });
+    await expect(page.getByText(/Cadre Council/)).toBeVisible();
+
+    // Five real patterns (get_journal_objectives), win condition named.
+    await expect(page.locator('[data-testid^="briefing-pattern-"]')).toHaveCount(5, {
+      timeout: 15000,
+    });
+    await expect(page.getByTestId("briefing-win-badge")).toBeVisible();
+
+    // Fixed-horizon framing (owner ruling): a century, not a termination condition.
+    await expect(page.getByTestId("briefing-horizon")).toContainText("100 years");
+
+    // "Begin" enters the cockpit at tick 0.
+    await page.getByTestId("briefing-begin").click();
+    await expect(page).toHaveURL(new RegExp(`/game/${gameId}$`), { timeout: 15000 });
+    await expect(page.getByTestId("tick-value")).toHaveText("0", { timeout: 15000 });
+  });
+
+  test("verb grid: ineligible verbs disabled with visible reasons, no dead ends", async ({
+    page,
+  }) => {
+    expect(gameId, "briefing test ran first").toBeTruthy();
+    await page.goto(`/game/${gameId}`);
+    await expect(page.getByTestId("action-composer")).toBeVisible({ timeout: 15000 });
+
+    const verbGrid = page.getByTestId("verb-grid");
+    await expect(verbGrid).toBeVisible();
+    // Article V: flat 9-verb grid, nothing hidden.
+    await expect(verbGrid.getByRole("button")).toHaveCount(9);
+
+    // Tick-0 wayne_county: EDUCATE is structurally ineligible (no
+    // organized community in the player's territories yet) — disabled
+    // WITH a visible reason, never a dead-end click (spec-116 FR-4.8).
+    const educate = verbGrid.getByRole("button", { name: /educate/i });
+    await expect(educate).toBeDisabled({ timeout: 15000 });
+    await expect(educate).toHaveAttribute("title", /no eligible targets yet:/);
+
+    const reasons = page.getByTestId("verb-ineligible-reasons");
+    await expect(reasons).toBeVisible();
+    await expect(reasons).toContainText(/no eligible targets yet:/);
+
+    // Campaign (the verb this trunk test submits below) stays enabled —
+    // disabled-with-reason never blocks a live verb.
+    await expect(verbGrid.getByRole("button", { name: /campaign/i })).toBeEnabled();
+  });
+
+  test("Campaign: target picker renders, preview visible before submit, submit succeeds", async ({
+    page,
+  }) => {
+    expect(gameId, "briefing test ran first").toBeTruthy();
+    await page.goto(`/game/${gameId}`);
+
+    await page
+      .getByTestId("verb-grid")
+      .getByRole("button", { name: /campaign/i })
+      .click();
+
+    const targetPicker = page.getByTestId("target-picker");
+    await expect(targetPicker).toBeVisible({ timeout: 10000 });
+    await targetPicker.getByRole("button").first().click();
+
+    // Acceptance gate 5 (spec-116): preview visible BEFORE every submit —
+    // the probability line and cost line (Task 17's surfaces). Campaign's
+    // per-target delta chips are honest-null at tick 0 (see file header),
+    // so they are deliberately not asserted here.
+    await expect(page.getByTestId("preview-probability")).toBeVisible({ timeout: 10000 });
+    await expect(page.getByTestId("verb-cost")).toBeVisible();
+    await expect(page.getByTestId("verb-cost")).toContainText("AP");
+
+    const submitButton = page.getByRole("button", { name: /submit campaign/i });
+    await expect(submitButton).toBeEnabled({ timeout: 10000 });
+    const [submitResp] = await Promise.all([
+      page.waitForResponse(
+        (r) =>
+          r.url().includes(`/api/games/${gameId}/actions/campaign/`) &&
+          r.request().method() === "POST",
+        { timeout: 20000 },
+      ),
+      submitButton.click(),
+    ]);
+    expect(submitResp.status()).toBe(201);
+    await expect(page.getByTestId("pending-actions")).toBeVisible({ timeout: 10000 });
+  });
+
+  test("resolving two ticks: no consecutive identical event cards, autopause handled cleanly, endgame_progress axes render honestly", async ({
+    page,
+  }) => {
+    expect(gameId, "submit test ran first").toBeTruthy();
+    await page.goto(`/game/${gameId}`);
+    await expect(page.getByTestId("tick-value")).toHaveText("0", { timeout: 15000 });
+
+    // Resolve tick 0 -> 1.
+    const stepButton = page.getByRole("button", { name: "Step" });
+    await expect(stepButton).toBeEnabled({ timeout: 10000 });
+    await Promise.all([
+      page.waitForResponse(
+        (r) => r.url().includes(`/api/games/${gameId}/resolve/`) && r.request().method() === "POST",
+        { timeout: 30000 },
+      ),
+      stepButton.click(),
+    ]);
+    await expect(page.getByTestId("tick-value")).toHaveText("1", { timeout: 15000 });
+    // Acceptance gate 3 exercised live: at most one autopause per distinct
+    // event — acknowledgeAutopauseIfPresent resumes past it if the tick's
+    // events triggered one, and never re-fires for the same key.
+    await acknowledgeAutopauseIfPresent(page);
+
+    // Resolve tick 1 -> 2.
+    await expect(stepButton).toBeEnabled({ timeout: 10000 });
+    await Promise.all([
+      page.waitForResponse(
+        (r) => r.url().includes(`/api/games/${gameId}/resolve/`) && r.request().method() === "POST",
+        { timeout: 30000 },
+      ),
+      stepButton.click(),
+    ]);
+    await expect(page.getByTestId("tick-value")).toHaveText("2", { timeout: 15000 });
+    await acknowledgeAutopauseIfPresent(page);
+
+    // EventTray/EventsFeed: never blank (honest empty copy or real cards).
+    await expect(page.getByTestId("event-tray")).toBeVisible({ timeout: 15000 });
+    const feed = page.getByTestId("events-feed");
+    await expect(feed).toBeVisible({ timeout: 10000 });
+    await expect(feed).not.toBeEmpty({ timeout: 5000 });
+
+    // Acceptance gate 2, exercised live against the real dedup output: no
+    // two CONSECUTIVE rendered cards carry the same event type (dedupeEvents
+    // collapses same-(type,subject) runs into one card + count badge — see
+    // EventsFeed.tsx). wayne_county's 81 territories mean lifecycle_transition/
+    // inheritance_transfer fire once PER TERRITORY per tick (a real, large
+    // card count — see reports/pacing-calibration-2026-07-17.md §5), so this
+    // reads every card's type in ONE batched call (allTextContents) rather
+    // than an N-await loop, which timed out against the real event volume
+    // when first written. MAX_CARDS is still a static upper bound on the
+    // array this iterates (repo loop-bound rule) — the comparison itself is
+    // synchronous JS, not per-item network round trips.
+    const typeTexts = (
+      await feed.locator('[data-testid^="event-"] > span:nth-child(2)').allTextContents()
+    ).slice(0, 1000);
+    for (let i = 1; i < typeTexts.length; i++) {
+      expect(typeTexts[i], "no two consecutive identical event cards (acceptance gate 2)").not.toBe(
+        typeTexts[i - 1],
+      );
+    }
+
+    // Acceptance gate 6's last leg: endgame_progress axes render in the
+    // objectives tray (always mounted in AppShell) as five real objective
+    // cards fed by get_journal_objectives — never pinned at a fabricated
+    // 1.00 two ticks in.
+    await expect(page.getByTestId("objectives-tray")).toBeVisible({ timeout: 10000 });
+    const progressValues = page.locator(".objective-progress-value");
+    await expect(progressValues).toHaveCount(5, { timeout: 10000 });
+    const values = await progressValues.allTextContents();
+    for (const v of values) {
+      expect(v, "no endgame_progress axis may be pinned at 1.00 two ticks in").not.toBe("1.00");
+    }
+  });
+});

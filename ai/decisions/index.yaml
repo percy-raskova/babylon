@@ -10,8 +10,8 @@ decisions:
     date: '2026-07-17'
     file: ADR080_redogv_domestic_sovereign_fallback.yaml
   ADR079_playability_spine:
-    title: 'Program 24 sub-project 1 — The Playability Spine: fixed 100-year (5200-tick) campaign horizon replaces adjudicated endgame termination; the five terminal outcomes (REVOLUTIONARY_VICTORY, ECOLOGICAL_COLLAPSE, FASCIST_CONSOLIDATION, RED_OGV, FRAGMENTED_COLLAPSE) become recognized patterns the world can be in along the way, never terminators; event salience, lobby/briefing, and nine evidence-backed UI wirings connect existing engine riches to existing surfaces (spec-116, seeded with Task 1''s defines; completed at Task 25)'
-    status: proposed
+    title: 'Program 24 sub-project 1 — The Playability Spine: fixed 100-year (5200-tick) campaign horizon replaces adjudicated endgame termination; the five terminal outcomes (REVOLUTIONARY_VICTORY, ECOLOGICAL_COLLAPSE, FASCIST_CONSOLIDATION, RED_OGV, FRAGMENTED_COLLAPSE) become recognized patterns the world can be in along the way, never terminators; event salience, lobby/briefing, and nine evidence-backed UI wirings connect existing engine riches to existing surfaces, plus a real-data ACQUIRE wave (FRED circulation/financial/Vol-I services) completing the economy cluster (spec-116, seeded with Task 1''s defines; EXECUTED at Task 25 — first-session trunk e2e, 6/6 acceptance gates met)'
+    status: accepted
     date: '2026-07-17'
     file: ADR079_playability_spine.yaml
   ADR078_market_correction:

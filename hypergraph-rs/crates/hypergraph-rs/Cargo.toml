@@ -10,7 +10,6 @@ description = "A Rust port of XGI — hypergraph library built on rustworkx-core
 
 [dependencies]
 rustworkx-core.workspace = true
-petgraph.workspace = true
 indexmap.workspace = true
 serde.workspace = true
 serde_json.workspace = true

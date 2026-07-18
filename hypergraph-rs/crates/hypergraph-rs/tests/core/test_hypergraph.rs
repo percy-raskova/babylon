@@ -1011,3 +1011,49 @@ fn test_copy_of_frozen_is_frozen() {
     let cp = h.copy();
     assert!(cp.is_frozen());
 }
+
+#[test]
+fn test_debug_format_matches_xgi_repr() {
+    let mut h: Hypergraph = Hypergraph::new();
+    h.add_edge(
+        vec!["a".to_string(), "b".to_string(), "c".to_string()],
+        None,
+        serde_json::Value::Null,
+    )
+    .unwrap();
+    h.add_edge(
+        vec!["b".to_string(), "c".to_string()],
+        None,
+        serde_json::Value::Null,
+    )
+    .unwrap();
+    let repr = format!("{:?}", h);
+    // XGI __repr__ returns: Hypergraph([{a, b, c}, {b, c}])
+    // Our Debug should include the class name and edge members
+    assert!(repr.contains("Hypergraph"));
+    assert!(repr.contains("a"));
+    assert!(repr.contains("b"));
+    assert!(repr.contains("c"));
+    // Exact format: XGI parity shape, edges and members insertion-ordered
+    // (divergence D5 — deterministic where XGI's sets are unordered).
+    assert_eq!(repr, "Hypergraph([{a, b, c}, {b, c}])");
+}
+
+#[test]
+fn test_debug_format_empty() {
+    let h: Hypergraph = Hypergraph::new();
+    let repr = format!("{:?}", h);
+    assert!(repr.contains("Hypergraph"));
+    assert_eq!(repr, "Hypergraph([])");
+}
+
+#[test]
+fn test_debug_format_empty_edge_and_lonely_node() {
+    // An empty edge formats as "{}" (XGI's Python-set artifact "set()" is
+    // not reproduced — same D5 class); a lonely node never appears (XGI
+    // parity — the repr lists only edges' members).
+    let mut h: Hypergraph = Hypergraph::new();
+    h.add_edge(vec![], None, serde_json::Value::Null).unwrap();
+    h.add_node("lonely", serde_json::Value::Null);
+    assert_eq!(format!("{:?}", h), "Hypergraph([{}])");
+}

@@ -426,6 +426,22 @@
       "num_edges": 2,
       "num_nodes": 3
     },
+    "repr_format": {
+      "members_sorted": [
+        [
+          "a",
+          "b",
+          "c"
+        ],
+        [
+          "b",
+          "c"
+        ]
+      ],
+      "repr_empty": "Hypergraph([])",
+      "repr_lone_empty_edge": "Hypergraph([set()])",
+      "repr_prefix": "Hypergraph("
+    },
     "set_edge_attributes_bulk": {
       "attrs_e1": {
         "heat": 0.5,

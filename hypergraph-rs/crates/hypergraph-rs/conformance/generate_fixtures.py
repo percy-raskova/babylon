@@ -539,6 +539,37 @@ def v_freeze_blocks_mutation() -> dict:
     }
 
 
+def v_repr_format() -> dict:
+    # XGI's __repr__ is f"{cls}({self.edges.members()})" — the class name
+    # wrapping the Python repr of the edge-members LIST. Edge order in the
+    # list is insertion order (stable); member order INSIDE each set is
+    # set-iteration order — unstable across runs for string ids (hash
+    # randomization: one graph reprs as Hypergraph([{'a', 'b', 'c'}, ...])
+    # on one invocation and Hypergraph([{'b', 'c', 'a'}, ...]) on the
+    # next). The members are therefore recorded SORTED per edge; the
+    # replay asserts the Rust Debug's INSERTION-ordered members (cited
+    # divergence D5: XGI returns unordered sets — Rust is strictly more
+    # defined). Lonely nodes never appear (only edges' members do).
+    H = xgi.Hypergraph()
+    H.add_edge(["a", "b", "c"])
+    H.add_edge(["b", "c"], idx="e1")
+    H.add_node("lonely")
+    empty = xgi.Hypergraph()
+    lone_empty_edge = xgi.Hypergraph()
+    lone_empty_edge.add_edge([])
+    return {
+        # Stable projections only — the raw member-bearing repr string is
+        # unrecordable (set-order nondeterminism would break regeneration
+        # determinism).
+        "repr_prefix": repr(H)[:11],  # "Hypergraph("
+        "members_sorted": [sorted(str(n) for n in H.edges.members(e)) for e in H.edges],
+        "repr_empty": repr(empty),  # "Hypergraph([])"
+        # XGI renders an empty member set with Python's set() artifact;
+        # the Rust core formats braces uniformly ("{}") — same D5 class.
+        "repr_lone_empty_edge": repr(lone_empty_edge),  # "Hypergraph([set()])"
+    }
+
+
 def main() -> None:
     vectors = {
         name.removeprefix("v_"): fn()

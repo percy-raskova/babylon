@@ -55,11 +55,25 @@ impl<N, E, M> Default for Hypergraph<N, E, M> {
 }
 
 impl<N, E, M> std::fmt::Debug for Hypergraph<N, E, M> {
+    /// XGI parity: `__repr__` is `f"{cls}({self.edges.members()}")"` — the
+    /// class name wrapping the edge-members list, e.g.
+    /// `Hypergraph([{a, b, c}, {b, c}])`. Edges list in insertion order;
+    /// members format insertion-ordered (divergence D5: XGI's member sets
+    /// are unordered — their repr order is hash-randomized across runs —
+    /// we are strictly more defined). Member id strings are unquoted
+    /// (Rust-idiomatic, not Python's `{'a', 'b'}`), an empty edge formats
+    /// as `{}` (Python's `set()` artifact is not reproduced), and lonely
+    /// nodes never appear (the repr lists only edges' members).
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.debug_struct("Hypergraph")
-            .field("nodes", &self.agent_ids.keys().collect::<Vec<_>>())
-            .field("edges", &self.hyperedge_ids.keys().collect::<Vec<_>>())
-            .finish()
+        write!(f, "Hypergraph([")?;
+        for (i, eid) in self.hyperedge_ids.keys().enumerate() {
+            if i > 0 {
+                write!(f, ", ")?;
+            }
+            let members = self.members(eid).unwrap_or_default();
+            write!(f, "{{{}}}", members.join(", "))?;
+        }
+        write!(f, "])")
     }
 }
 

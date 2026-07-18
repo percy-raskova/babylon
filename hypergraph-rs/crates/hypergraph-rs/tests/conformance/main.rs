@@ -1012,3 +1012,53 @@ fn diverge_d2_add_edges_from_dup_errors_continues() {
         assert_eq!(got, ids(expected));
     }
 }
+
+#[test]
+fn conform_repr_format() {
+    // XGI's __repr__ is f"{cls}({self.edges.members()})" — the class name
+    // wrapping the edge-members list. The Rust core's Debug produces the
+    // same SHAPE (Hypergraph([{...}, ...])) with members in INSERTION
+    // order — cited divergence D5 (XGI's member sets are unordered; their
+    // repr order is hash-randomized across runs, so the fixture records
+    // members SORTED and the stable projections only). Rust is strictly
+    // more defined: deterministic where XGI is set-ordered. No new
+    // D-number — the D5 row's "strictly more defined" rationale covers
+    // the repr surface, including rendering an empty edge as "{}" where
+    // Python must say "set()".
+    let gt = ground_truth();
+    let v = vector(&gt, "repr_format");
+    assert_eq!(v["repr_prefix"], "Hypergraph("); // XGI truth, pinned
+    assert_eq!(v["repr_empty"], "Hypergraph([])"); // XGI truth, pinned
+    assert_eq!(v["repr_lone_empty_edge"], "Hypergraph([set()])"); // pinned
+    assert_eq!(
+        v["members_sorted"],
+        serde_json::json!([["a", "b", "c"], ["b", "c"]])
+    ); // XGI truth (sorted), pinned
+
+    // Same graph in Rust: members format insertion-ordered (D5), lonely
+    // nodes absent (XGI parity — only edges' members appear).
+    let mut h: Hypergraph = Hypergraph::new();
+    h.add_edge(vec!["a".into(), "b".into(), "c".into()], None, Value::Null)
+        .unwrap();
+    h.add_edge(vec!["b".into(), "c".into()], Some("e1".into()), Value::Null)
+        .unwrap();
+    h.add_node("lonely", Value::Null);
+    let repr = format!("{h:?}");
+    assert!(repr.starts_with(v["repr_prefix"].as_str().unwrap()));
+    assert_eq!(repr, "Hypergraph([{a, b, c}, {b, c}])");
+    // Every fixture-recorded (sorted) member set matches the Rust set.
+    for (i, eid) in ["0", "e1"].iter().enumerate() {
+        let mut got = h.members(eid).unwrap();
+        got.sort();
+        assert_eq!(got, ids(&v["members_sorted"][i]));
+    }
+
+    let empty: Hypergraph = Hypergraph::new();
+    assert_eq!(format!("{empty:?}"), v["repr_empty"].as_str().unwrap());
+
+    // Empty edge: XGI's Python-set artifact "set()" is pinned as truth;
+    // Rust formats braces uniformly — "{}" (same D5 class).
+    let mut lone_empty: Hypergraph = Hypergraph::new();
+    lone_empty.add_edge(vec![], None, Value::Null).unwrap();
+    assert_eq!(format!("{lone_empty:?}"), "Hypergraph([{}])");
+}

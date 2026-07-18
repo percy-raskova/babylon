@@ -3684,3 +3684,56 @@ class TestSpineWhitelistSeverityAndTitles:
         from game.engine_bridge import _humanize_event_type
 
         assert _humanize_event_type(event_type) == expected
+
+
+@pytest.mark.requires_reference_db
+class TestBridgeEconomicsOverridesWiresCirculationAndFinancialServices:
+    """spec-116 Task 20b: wire the FRED-backed circulation + financial services
+    into ``_bridge_economics_overrides``, mirroring the
+    ``throughput_calculator`` wiring pattern (``test_throughput_wiring.py``).
+
+    Without ``turnover_profile_source``/``interest_calculator`` wired,
+    ``domain/economics/tick/system/__init__.py``'s ``_compute_circulation_layer``
+    (:1167) and ``_compute_financial_layer`` (:1365) no-op unconditionally, so
+    the Group C (7 fields) and Group D (9 fields) territory attrs stay at their
+    write-site fallback constants forever. Both factories
+    (``create_circulation_services``/``create_financial_services``) read the
+    same reference-DB ``session_factory`` already in scope for melt/gamma/
+    leontief/throughput above — no new runtime dependency.
+    """
+
+    def test_overrides_include_a_real_turnover_profile_source(self) -> None:
+        from babylon.domain.economics.circulation.turnover import DefaultTurnoverProfileSource
+        from game.engine_bridge import _bridge_economics_overrides
+
+        overrides, leontief_session = _bridge_economics_overrides(())
+        try:
+            assert "turnover_profile_source" in overrides
+            assert isinstance(overrides["turnover_profile_source"], DefaultTurnoverProfileSource)
+        finally:
+            if leontief_session is not None:
+                leontief_session.close()
+
+    def test_overrides_include_a_real_interest_calculator(self) -> None:
+        from babylon.domain.economics.credit.interest import DefaultInterestCalculator
+        from game.engine_bridge import _bridge_economics_overrides
+
+        overrides, leontief_session = _bridge_economics_overrides(())
+        try:
+            assert "interest_calculator" in overrides
+            assert isinstance(overrides["interest_calculator"], DefaultInterestCalculator)
+        finally:
+            if leontief_session is not None:
+                leontief_session.close()
+
+    def test_overrides_include_inventory_and_depreciation_data_sources(self) -> None:
+        """Group C's other two circulation adapters ride the same wiring call."""
+        from game.engine_bridge import _bridge_economics_overrides
+
+        overrides, leontief_session = _bridge_economics_overrides(())
+        try:
+            assert overrides.get("inventory_data_source") is not None
+            assert overrides.get("depreciation_data_source") is not None
+        finally:
+            if leontief_session is not None:
+                leontief_session.close()

@@ -6317,6 +6317,33 @@ def _bridge_economics_overrides(fips_codes: tuple[str, ...] = ()) -> tuple[dict[
     # hydrate — a bare call (no FIPS) leaves K at the engine's 0.0 default.
     if fips_codes:
         overrides["capital_calculator"] = _build_capital_calculator(fips_codes)
+
+    # Spec-116 Task 20b: wire the FRED-backed circulation (Feature 023) +
+    # financial (Feature 024) services the same way the headless runner does
+    # (Simulation.from_sqlite, engine/simulation/_legacy.py:273-303), so the
+    # Group C (7 fields, gated on turnover_profile_source at
+    # economics/tick/system/__init__.py:1167) and Group D (9 fields, gated on
+    # interest_calculator at :1365) territory attrs stop evaporating to the
+    # write-site fallback constants and become genuinely computed for web
+    # sessions too. Both loaders run raw SQL against the same reference-DB
+    # session_factory already in scope above — no new drive dependency.
+    from babylon.domain.economics.factory import (
+        create_circulation_services,
+        create_financial_services,
+        load_circulation_series_from_db,
+        load_fred_series_from_db,
+    )
+
+    fred_cache = load_fred_series_from_db(session_factory)
+    overrides.update(create_financial_services(fred_series_cache=fred_cache))
+
+    circulation_cache = load_circulation_series_from_db(session_factory)
+    overrides.update(
+        create_circulation_services(
+            circulation_series_cache=circulation_cache,
+            fred_series_cache=fred_cache,
+        )
+    )
     return overrides, leontief_session
 
 

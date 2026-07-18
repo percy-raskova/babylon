@@ -84,3 +84,25 @@ fn test_add_edge_auto_id_after_explicit_idx() {
     let next = h.add_edge(vec!["b".to_string()], None, serde_json::Value::Null).unwrap();
     assert_eq!(next, "6");
 }
+
+#[test]
+fn test_has_edge_returns_true_for_existing() {
+    let mut h: Hypergraph = Hypergraph::new();
+    h.add_edge(vec!["a".to_string(), "b".to_string()], Some("e1".to_string()), serde_json::Value::Null).unwrap();
+    assert!(h.has_edge("e1"));
+}
+
+#[test]
+fn test_has_edge_returns_false_for_missing() {
+    let h: Hypergraph = Hypergraph::new();
+    assert!(!h.has_edge("nonexistent"));
+}
+
+#[test]
+fn test_num_edges_counts_correctly() {
+    let mut h: Hypergraph = Hypergraph::new();
+    h.add_edge(vec!["a".to_string()], Some("e1".to_string()), serde_json::Value::Null).unwrap();
+    h.add_edge(vec!["b".to_string()], Some("e2".to_string()), serde_json::Value::Null).unwrap();
+    h.add_edge(vec!["c".to_string()], Some("e3".to_string()), serde_json::Value::Null).unwrap();
+    assert_eq!(h.num_edges(), 3);
+}

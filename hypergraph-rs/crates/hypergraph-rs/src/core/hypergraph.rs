@@ -65,4 +65,24 @@ impl<N, E, M> Hypergraph<N, E, M> {
     pub fn num_edges(&self) -> usize {
         self.hyperedge_ids.len()
     }
+
+    /// Add a node with attributes. Returns `true` if a new node was created,
+    /// `false` if it already existed.
+    ///
+    /// XGI parity: `H.add_node(node, **attr)`.
+    pub fn add_node(&mut self, node_id: &str, attrs: N) -> bool {
+        if self.agent_ids.contains_key(node_id) {
+            return false;
+        }
+        let idx = self.inner.add_node(NodeKind::Agent(attrs));
+        self.agent_ids.insert(node_id.to_string(), idx);
+        true
+    }
+
+    /// Check if a node exists in the hypergraph.
+    ///
+    /// XGI parity: `n in H` / `H.has_node(n)`.
+    pub fn has_node(&self, node_id: &str) -> bool {
+        self.agent_ids.contains_key(node_id)
+    }
 }

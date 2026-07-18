@@ -14,3 +14,7 @@ indexmap.workspace = true
 serde.workspace = true
 serde_json.workspace = true
 thiserror.workspace = true
+
+[[test]]
+name = "test_hypergraph"
+path = "../../tests/core/test_hypergraph.rs"

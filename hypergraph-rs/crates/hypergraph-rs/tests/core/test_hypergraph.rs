@@ -709,3 +709,97 @@ fn test_eq_both_empty() {
     let h2: Hypergraph = Hypergraph::new();
     assert_eq!(h1, h2);
 }
+
+#[test]
+fn test_add_node_to_edge_existing_edge() {
+    let mut h: Hypergraph = Hypergraph::new();
+    h.add_edge(
+        vec!["a".to_string(), "b".to_string()],
+        Some("e1".to_string()),
+        serde_json::Value::Null,
+    )
+    .unwrap();
+    h.add_node_to_edge("e1", "c").unwrap();
+    let members = h.members("e1").unwrap();
+    assert!(members.contains(&"c".to_string()));
+    assert_eq!(members.len(), 3);
+}
+
+#[test]
+fn test_add_node_to_edge_auto_creates_edge_and_node() {
+    let mut h: Hypergraph = Hypergraph::new();
+    // Neither edge "new_edge" nor node "new_node" exist
+    h.add_node_to_edge("new_edge", "new_node").unwrap();
+    assert!(h.has_edge("new_edge"));
+    assert!(h.has_node("new_node"));
+    let members = h.members("new_edge").unwrap();
+    assert_eq!(members, vec!["new_node"]);
+}
+
+#[test]
+fn test_remove_node_from_edge_basic() {
+    let mut h: Hypergraph = Hypergraph::new();
+    h.add_edge(
+        vec!["a".to_string(), "b".to_string(), "c".to_string()],
+        Some("e1".to_string()),
+        serde_json::Value::Null,
+    )
+    .unwrap();
+    h.remove_node_from_edge("e1", "b", true).unwrap();
+    let members = h.members("e1").unwrap();
+    assert!(!members.contains(&"b".to_string()));
+    assert_eq!(members.len(), 2);
+    // Node b still exists (just not in e1 anymore)
+    assert!(h.has_node("b"));
+}
+
+#[test]
+fn test_remove_node_from_edge_removes_empty_edge() {
+    let mut h: Hypergraph = Hypergraph::new();
+    h.add_edge(
+        vec!["a".to_string()],
+        Some("e1".to_string()),
+        serde_json::Value::Null,
+    )
+    .unwrap();
+    h.remove_node_from_edge("e1", "a", true).unwrap();
+    // e1 was a singleton, now empty — should be removed
+    assert!(!h.has_edge("e1"));
+    assert!(h.has_node("a"));
+}
+
+#[test]
+fn test_remove_node_from_edge_keep_empty() {
+    let mut h: Hypergraph = Hypergraph::new();
+    h.add_edge(
+        vec!["a".to_string()],
+        Some("e1".to_string()),
+        serde_json::Value::Null,
+    )
+    .unwrap();
+    h.remove_node_from_edge("e1", "a", false).unwrap();
+    // remove_empty=false: edge stays (now empty)
+    assert!(h.has_edge("e1"));
+    assert!(h.members("e1").unwrap().is_empty());
+}
+
+#[test]
+fn test_remove_node_from_edge_missing_edge_returns_error() {
+    let mut h: Hypergraph = Hypergraph::new();
+    let result = h.remove_node_from_edge("nonexistent", "a", true);
+    assert!(result.is_err());
+}
+
+#[test]
+fn test_remove_node_from_edge_node_not_in_edge_returns_error() {
+    let mut h: Hypergraph = Hypergraph::new();
+    h.add_edge(
+        vec!["a".to_string()],
+        Some("e1".to_string()),
+        serde_json::Value::Null,
+    )
+    .unwrap();
+    h.add_node("b", serde_json::Value::Null);
+    let result = h.remove_node_from_edge("e1", "b", true);
+    assert!(result.is_err());
+}

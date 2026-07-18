@@ -567,6 +567,172 @@ fn conform_copy_counter_preserved() {
 }
 
 #[test]
+fn conform_add_node_to_edge_autocreate() {
+    // XGI's add_node_to_edge auto-creates a missing edge AND a missing node
+    // (runtime-verified), returns None, is idempotent on re-add (set
+    // semantics), and preserves existing edge attrs. The Rust core conforms
+    // on every channel.
+    let gt = ground_truth();
+    let v = vector(&gt, "add_node_to_edge_autocreate");
+    assert_eq!(v["return_create"], Value::Null); // XGI truth, pinned
+    assert_eq!(v["return_readd"], Value::Null); // XGI truth, pinned
+
+    let mut h: Hypergraph = Hypergraph::new();
+    h.add_node_to_edge("new_edge", "new_node").unwrap(); // both missing
+    h.add_edge(
+        vec!["a".into(), "b".into()],
+        Some("e1".into()),
+        serde_json::json!({"heat": 0.5}),
+    )
+    .unwrap();
+    h.add_node_to_edge("e1", "c").unwrap(); // existing edge, new node
+    h.add_node_to_edge("e1", "c").unwrap(); // idempotent re-add
+    h.add_node_to_edge("e1", "a").unwrap(); // existing node into existing edge
+
+    assert_eq!(h.edge_ids(), ids(&v["edge_ids"]));
+    assert_eq!(h.num_edges(), v["num_edges"].as_u64().unwrap() as usize);
+    assert_eq!(h.num_nodes(), v["num_nodes"].as_u64().unwrap() as usize);
+    let mut rust_nodes = h.node_ids();
+    rust_nodes.sort();
+    assert_eq!(rust_nodes, ids(&v["node_ids"]));
+    for (eid, expected) in v["members"].as_object().unwrap() {
+        let mut got = h.members(eid).unwrap();
+        got.sort();
+        assert_eq!(got, ids(expected));
+    }
+    for (nid, expected) in v["memberships"].as_object().unwrap() {
+        let mut got = h.memberships(nid).unwrap();
+        got.sort();
+        assert_eq!(got, ids(expected));
+    }
+    assert_eq!(h.edge_attrs("e1").unwrap(), &v["edge_attrs_e1"]);
+}
+
+#[test]
+fn diverge_d11_add_node_to_edge_numeric_bumps_counter() {
+    // D11: XGI's add_node_to_edge NEVER touches _edge_uid — auto-creating a
+    // numeric edge id does not bump the counter, so the next auto id is 0
+    // (and XGI's add_edge does not existence-check its auto id: the same
+    // sequence with id 0 silently OVERWRITES that edge's members in XGI).
+    // The Rust core bumps iff `edge_id.parse::<u64>()` succeeds — the D3
+    // rule extended to this method — foreclosing the collision class.
+    let gt = ground_truth();
+    let v = vector(&gt, "add_node_to_edge_numeric_id_no_bump");
+    assert_eq!(ids(&v["edge_ids"]), vec!["5", "0"]); // XGI truth, pinned
+
+    let mut h: Hypergraph = Hypergraph::new();
+    h.add_node_to_edge("5", "x").unwrap();
+    let auto = h.add_edge(vec!["y".into()], None, Value::Null).unwrap();
+    assert_eq!(auto, "6"); // Rust divergence, deliberate
+    assert_eq!(h.members("5").unwrap(), vec!["x"]);
+    assert_eq!(h.members("6").unwrap(), vec!["y"]);
+}
+
+#[test]
+fn conform_remove_node_from_edge_keep_empty() {
+    // remove_empty=False: the emptied edge SURVIVES (empty member set);
+    // the node survives too. The Rust core conforms.
+    let gt = ground_truth();
+    let v = vector(&gt, "remove_node_from_edge_keep_empty");
+    assert_eq!(ids(&v["edge_ids"]), vec!["e1"]); // XGI truth, pinned
+
+    let mut h: Hypergraph = Hypergraph::new();
+    h.add_edge(vec!["a".into()], Some("e1".into()), Value::Null)
+        .unwrap();
+    h.remove_node_from_edge("e1", "a", false).unwrap();
+
+    assert_eq!(h.edge_ids(), ids(&v["edge_ids"]));
+    assert_eq!(h.num_edges(), v["num_edges"].as_u64().unwrap() as usize);
+    assert_eq!(h.num_nodes(), v["num_nodes"].as_u64().unwrap() as usize);
+    assert!(h.has_node("a"));
+    for (eid, expected) in v["members"].as_object().unwrap() {
+        let mut got = h.members(eid).unwrap();
+        got.sort();
+        assert_eq!(got, ids(expected));
+    }
+    for (nid, expected) in v["memberships"].as_object().unwrap() {
+        let mut got = h.memberships(nid).unwrap();
+        got.sort();
+        assert_eq!(got, ids(expected));
+    }
+}
+
+#[test]
+fn conform_remove_node_from_edge_drop_empty() {
+    // remove_empty=True (the XGI default): an edge left empty is removed;
+    // the node survives (still a member of e1). The Rust core conforms.
+    let gt = ground_truth();
+    let v = vector(&gt, "remove_node_from_edge_drop_empty");
+    assert_eq!(ids(&v["edge_ids"]), vec!["e1"]); // XGI truth, pinned
+
+    let mut h: Hypergraph = Hypergraph::new();
+    h.add_edge(vec!["a".into(), "b".into()], Some("e1".into()), Value::Null)
+        .unwrap();
+    h.add_edge(vec!["b".into()], Some("e2".into()), Value::Null)
+        .unwrap();
+    h.remove_node_from_edge("e2", "b", true).unwrap();
+
+    assert_eq!(h.edge_ids(), ids(&v["edge_ids"]));
+    assert_eq!(h.num_edges(), v["num_edges"].as_u64().unwrap() as usize);
+    assert_eq!(h.num_nodes(), v["num_nodes"].as_u64().unwrap() as usize);
+    let mut rust_nodes = h.node_ids();
+    rust_nodes.sort();
+    assert_eq!(rust_nodes, ids(&v["node_ids"]));
+    for (eid, expected) in v["members"].as_object().unwrap() {
+        let mut got = h.members(eid).unwrap();
+        got.sort();
+        assert_eq!(got, ids(expected));
+    }
+    for (nid, expected) in v["memberships"].as_object().unwrap() {
+        let mut got = h.memberships(nid).unwrap();
+        got.sort();
+        assert_eq!(got, ids(expected));
+    }
+}
+
+#[test]
+fn diverge_d2_remove_node_from_edge_missing_errors() {
+    // Same error-channel class as D2: XGI signals all three failure branches
+    // (missing edge, missing node, node not in edge) by raising XGIError;
+    // the Rust core returns Err(NodeError::NotFound) and the PyO3 binding
+    // translates Err → raise. No new divergence number.
+    let gt = ground_truth();
+    let v = vector(&gt, "remove_node_from_edge_missing_raises");
+    assert_eq!(v["missing_edge"]["exception"], "XGIError"); // XGI truth, pinned
+    assert_eq!(
+        v["missing_edge"]["message"],
+        "Edge noedge not in the hypergraph"
+    );
+    assert_eq!(v["missing_node"]["exception"], "XGIError"); // XGI truth, pinned
+    assert_eq!(
+        v["missing_node"]["message"],
+        "Node ghost not in the hypergraph"
+    );
+    assert_eq!(v["not_in_edge"]["exception"], "XGIError"); // XGI truth, pinned
+    assert_eq!(
+        v["not_in_edge"]["message"],
+        "Edge e1 does not contain node b"
+    );
+
+    let mut h: Hypergraph = Hypergraph::new();
+    let err = h.remove_node_from_edge("noedge", "a", true);
+    assert!(matches!(err, Err(NodeError::NotFound { .. })));
+
+    let mut h2: Hypergraph = Hypergraph::new();
+    h2.add_edge(vec!["a".into()], Some("e1".into()), Value::Null)
+        .unwrap();
+    let err = h2.remove_node_from_edge("e1", "ghost", true);
+    assert!(matches!(err, Err(NodeError::NotFound { .. })));
+
+    let mut h3: Hypergraph = Hypergraph::new();
+    h3.add_edge(vec!["a".into()], Some("e1".into()), Value::Null)
+        .unwrap();
+    h3.add_node("b", Value::Null);
+    let err = h3.remove_node_from_edge("e1", "b", true);
+    assert!(matches!(err, Err(NodeError::NotFound { .. })));
+}
+
+#[test]
 fn diverge_d2_add_edges_from_dup_errors_continues() {
     // XGI's add_edges_from warns + skips a duplicate idx and CONTINUES with
     // the rest (["b"]/"e1" dropped — its member "b" is never added; ["c"]/

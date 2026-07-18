@@ -309,6 +309,99 @@ def v_copy_independence() -> dict:
     }
 
 
+def v_add_node_to_edge_autocreate() -> dict:
+    # XGI's add_node_to_edge auto-creates a missing edge AND a missing node
+    # (runtime-verified, matching its docstring), returns None, is idempotent
+    # on re-add (set semantics), and preserves existing edge attrs.
+    H = xgi.Hypergraph()
+    ret_create = H.add_node_to_edge("new_edge", "new_node")  # both missing
+    H.add_edge(["a", "b"], idx="e1", heat=0.5)
+    H.add_node_to_edge("e1", "c")  # existing edge, new node
+    ret_readd = H.add_node_to_edge("e1", "c")  # idempotent re-add
+    H.add_node_to_edge("e1", "a")  # existing node into existing edge
+    return {
+        "return_create": ret_create,
+        "return_readd": ret_readd,
+        "edge_ids": _ids(H),
+        "num_edges": H.num_edges,
+        "num_nodes": H.num_nodes,
+        "node_ids": sorted(str(n) for n in H.nodes),
+        "members": _members_sorted(H),
+        "memberships": {str(n): sorted(str(e) for e in H.nodes.memberships(n)) for n in H.nodes},
+        "edge_attrs_e1": dict(H.edges["e1"]),
+    }
+
+
+def v_add_node_to_edge_numeric_id_no_bump() -> dict:
+    # XGI's add_node_to_edge NEVER touches _edge_uid — only add_edge calls
+    # next(). Auto-creating a NUMERIC edge id via add_node_to_edge does not
+    # bump the counter: the next auto id is 0, not 6. (And XGI's add_edge
+    # does not existence-check its auto id, so add_node_to_edge(0, ...) then
+    # add_edge(...) silently OVERWRITES edge 0's members in XGI — the Rust
+    # core's D11 bump exists to foreclose exactly this collision class.)
+    H = xgi.Hypergraph()
+    H.add_node_to_edge(5, "x")
+    H.add_edge(["y"])  # auto id — XGI counter untouched by add_node_to_edge
+    return {"edge_ids": _ids(H), "members": _members_sorted(H)}
+
+
+def v_remove_node_from_edge_keep_empty() -> dict:
+    # remove_empty=False: the emptied edge SURVIVES (empty member set);
+    # the node survives too.
+    H = xgi.Hypergraph()
+    H.add_edge(["a"], idx="e1")
+    H.remove_node_from_edge("e1", "a", remove_empty=False)
+    return {
+        "edge_ids": _ids(H),
+        "num_edges": H.num_edges,
+        "num_nodes": H.num_nodes,
+        "members": _members_sorted(H),
+        "memberships": {str(n): sorted(str(e) for e in H.nodes.memberships(n)) for n in H.nodes},
+    }
+
+
+def v_remove_node_from_edge_drop_empty() -> dict:
+    # remove_empty=True (the XGI default): an edge left empty is removed;
+    # the node survives (here still a member of e1).
+    H = xgi.Hypergraph()
+    H.add_edge(["a", "b"], idx="e1")
+    H.add_edge(["b"], idx="e2")
+    H.remove_node_from_edge("e2", "b")
+    return {
+        "edge_ids": _ids(H),
+        "num_edges": H.num_edges,
+        "num_nodes": H.num_nodes,
+        "node_ids": sorted(str(n) for n in H.nodes),
+        "members": _members_sorted(H),
+        "memberships": {str(n): sorted(str(e) for e in H.nodes.memberships(n)) for n in H.nodes},
+    }
+
+
+def v_remove_node_from_edge_missing_raises() -> dict:
+    # All three error branches raise XGIError (the D2 error-channel class):
+    # missing edge, missing node, node not in edge.
+    out = {}
+    H = xgi.Hypergraph()
+    try:
+        H.remove_node_from_edge("noedge", "a")
+    except Exception as exc:  # recording the observed type IS the vector
+        out["missing_edge"] = {"exception": type(exc).__name__, "message": str(exc)}
+    H2 = xgi.Hypergraph()
+    H2.add_edge(["a"], idx="e1")
+    try:
+        H2.remove_node_from_edge("e1", "ghost")
+    except Exception as exc:
+        out["missing_node"] = {"exception": type(exc).__name__, "message": str(exc)}
+    H3 = xgi.Hypergraph()
+    H3.add_edge(["a"], idx="e1")
+    H3.add_node("b")
+    try:
+        H3.remove_node_from_edge("e1", "b")
+    except Exception as exc:
+        out["not_in_edge"] = {"exception": type(exc).__name__, "message": str(exc)}
+    return out
+
+
 def main() -> None:
     vectors = {
         name.removeprefix("v_"): fn()

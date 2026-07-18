@@ -399,6 +399,104 @@ impl<N, E, M> Hypergraph<N, E, M> {
         }
     }
 
+    /// Add a node to an existing edge. Auto-creates both if missing;
+    /// idempotent on re-add (set semantics).
+    ///
+    /// XGI parity: `H.add_node_to_edge(edge, node)`. XGI never touches its
+    /// uid counter here — auto-creating a numeric edge id does not bump
+    /// `_edge_uid` (and XGI's auto-id add_edge does not existence-check, so
+    /// the same sequence with id 0 silently overwrites that edge's members
+    /// in XGI). The Rust core bumps iff `edge_id.parse::<u64>()` succeeds —
+    /// the D3 rule extended to this method — foreclosing the collision
+    /// class. Divergence D11.
+    pub fn add_node_to_edge(&mut self, edge_id: &str, node_id: &str) -> Result<(), EdgeError>
+    where
+        N: Default,
+        E: Default,
+        M: Default + Clone,
+    {
+        // Auto-create edge if missing
+        if !self.hyperedge_ids.contains_key(edge_id) {
+            let he_idx = self.inner.add_node(NodeKind::Hyperedge(E::default()));
+            self.hyperedge_ids.insert(edge_id.to_string(), he_idx);
+            // D11: bump the uid counter if edge_id is numeric (XGI does not)
+            if let Ok(n) = edge_id.parse::<u64>() {
+                if n >= self.edge_uid_counter {
+                    self.edge_uid_counter = n + 1;
+                }
+            }
+        }
+        // Auto-create node if missing
+        if !self.agent_ids.contains_key(node_id) {
+            let nidx = self.inner.add_node(NodeKind::Agent(N::default()));
+            self.agent_ids.insert(node_id.to_string(), nidx);
+        }
+        // Add the membership edges (both directions for undirected)
+        let agent_idx = self.agent_ids[node_id];
+        let he_idx = self.hyperedge_ids[edge_id];
+        // Set semantics: re-adding an existing membership is a no-op
+        if self.inner.find_edge(agent_idx, he_idx).is_none() {
+            let membership = MembershipEdge {
+                member_data: M::default(),
+            };
+            self.inner.add_edge(agent_idx, he_idx, membership.clone());
+            self.inner.add_edge(he_idx, agent_idx, membership);
+        }
+        Ok(())
+    }
+
+    /// Remove a node from an existing edge; the node itself survives.
+    /// `remove_empty` drops the edge if it is left empty (XGI default
+    /// `remove_empty=True`).
+    ///
+    /// XGI parity: `H.remove_node_from_edge(edge, node, remove_empty=True)`.
+    /// XGI raises XGIError for a missing edge, a missing node, or a node
+    /// not in the edge; the Rust core returns `Err(NodeError::NotFound)`
+    /// and the PyO3 binding translates Err -> raise (D2 error channel).
+    pub fn remove_node_from_edge(
+        &mut self,
+        edge_id: &str,
+        node_id: &str,
+        remove_empty: bool,
+    ) -> Result<(), NodeError> {
+        let he_idx = *self.hyperedge_ids.get(edge_id).ok_or(NodeError::NotFound {
+            node_id: edge_id.to_string(),
+        })?;
+        let agent_idx = *self.agent_ids.get(node_id).ok_or(NodeError::NotFound {
+            node_id: node_id.to_string(),
+        })?;
+
+        // Check if the node is actually in the edge
+        let edge_to_he = self.inner.find_edge(agent_idx, he_idx);
+        let edge_from_he = self.inner.find_edge(he_idx, agent_idx);
+        if edge_to_he.is_none() {
+            return Err(NodeError::NotFound {
+                node_id: format!("node {node_id} not in edge {edge_id}"),
+            });
+        }
+
+        // Remove the bipartite membership edges
+        if let Some(e) = edge_to_he {
+            self.inner.remove_edge(e);
+        }
+        if let Some(e) = edge_from_he {
+            self.inner.remove_edge(e);
+        }
+
+        // Drop the edge if it was left empty and removal was requested
+        if remove_empty {
+            let has_members = self
+                .inner
+                .neighbors(he_idx)
+                .any(|n| matches!(self.inner.node_weight(n), Some(NodeKind::Agent(_))));
+            if !has_members {
+                self.inner.remove_node(he_idx);
+                self.hyperedge_ids.shift_remove(edge_id);
+            }
+        }
+        Ok(())
+    }
+
     /// Add multiple nodes. XGI parity: `H.add_nodes_from(nodes_for_adding)`.
     pub fn add_nodes_from(&mut self, nodes: impl IntoIterator<Item = (String, N)>) {
         for (node_id, attrs) in nodes {

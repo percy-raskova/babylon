@@ -90,6 +90,63 @@
       },
       "num_nodes": 1
     },
+    "add_node_to_edge_autocreate": {
+      "edge_attrs_e1": {
+        "heat": 0.5
+      },
+      "edge_ids": [
+        "new_edge",
+        "e1"
+      ],
+      "members": {
+        "e1": [
+          "a",
+          "b",
+          "c"
+        ],
+        "new_edge": [
+          "new_node"
+        ]
+      },
+      "memberships": {
+        "a": [
+          "e1"
+        ],
+        "b": [
+          "e1"
+        ],
+        "c": [
+          "e1"
+        ],
+        "new_node": [
+          "new_edge"
+        ]
+      },
+      "node_ids": [
+        "a",
+        "b",
+        "c",
+        "new_node"
+      ],
+      "num_edges": 2,
+      "num_nodes": 4,
+      "return_create": null,
+      "return_readd": null
+    },
+    "add_node_to_edge_numeric_id_no_bump": {
+      "edge_ids": [
+        5,
+        0
+      ],
+      "members": {
+        "0": [
+          "y"
+        ],
+        "5": [
+          "x"
+        ]
+      }
+    },
     "clear_all": {
       "auto_ids_after_clear": [
         1
@@ -191,6 +248,58 @@
       "num_edges": 2,
       "num_nodes": 4,
       "return": null
+    },
+    "remove_node_from_edge_drop_empty": {
+      "edge_ids": [
+        "e1"
+      ],
+      "members": {
+        "e1": [
+          "a",
+          "b"
+        ]
+      },
+      "memberships": {
+        "a": [
+          "e1"
+        ],
+        "b": [
+          "e1"
+        ]
+      },
+      "node_ids": [
+        "a",
+        "b"
+      ],
+      "num_edges": 1,
+      "num_nodes": 2
+    },
+    "remove_node_from_edge_keep_empty": {
+      "edge_ids": [
+        "e1"
+      ],
+      "members": {
+        "e1": []
+      },
+      "memberships": {
+        "a": []
+      },
+      "num_edges": 1,
+      "num_nodes": 1
+    },
+    "remove_node_from_edge_missing_raises": {
+      "missing_edge": {
+        "exception": "XGIError",
+        "message": "Edge noedge not in the hypergraph"
+      },
+      "missing_node": {
+        "exception": "XGIError",
+        "message": "Node ghost not in the hypergraph"
+      },
+      "not_in_edge": {
+        "exception": "XGIError",
+        "message": "Edge e1 does not contain node b"
+      }
     },
     "remove_node_missing_raises": {
       "exception": "IDNotFound",

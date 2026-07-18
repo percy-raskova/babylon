@@ -500,16 +500,21 @@ def build_wayne_world_state() -> tuple[WorldState, SimulationConfig, GameDefines
     helper does ONE thing on top of it, and that one thing is load-bearing for
     U1: it stamps the real county identity onto every territory.
 
-    Why the stamp is required: ``TickDynamicsSystem._get_territory_fips``
-    (``domain/economics/tick/system/__init__.py:366-382``) derives the county key
-    from ``node.attributes.get("county_fips") or node.id``. The stock Wayne
-    scenario sets no ``county_fips`` at all, so every H3 cell id (``85...fffff``)
-    becomes its own pseudo-county. U1.6 hydrates the ``TensorRegistry`` for
-    ``"26163"`` and nothing else, so every one of those pseudo-counties would miss
-    the registry, ``_get_county_surplus`` would return ``None``, and
-    ``surplus_distribution`` would stay ``None`` — for a reason that has nothing
-    to do with the wiring this task exists to prove. That is exactly the
+    Why the stamp is required: ``TickDynamicsSystem`` resolves a territory's
+    county key from ``county_fips`` and nothing else — see
+    ``domain/economics/tick/graph_bridge.resolve_county_identity``. The stock
+    Wayne scenario sets no ``county_fips`` at all, so without this stamp every
+    H3 territory is an EMPTY DOMAIN and the county pipeline computes over ZERO
+    counties: ``_get_county_surplus`` is never reached and
+    ``surplus_distribution`` stays ``None`` — for a reason that has nothing to
+    do with the wiring this task exists to prove. That is exactly the
     green-test-over-a-dead-feature trap the fixture-vocabulary rule warns about.
+
+    (Before 2026-07-18 the engine instead fabricated a pseudo-county per H3 id
+    via a ``county_fips or node.id`` fallback; those pseudo-counties missed
+    U1.6's ``"26163"``-keyed ``TensorRegistry`` just the same. The stamp was
+    required then and is required now — only the failure mode changed, from a
+    fabricated identifier to honest absence.)
 
     ``county_fips`` is a real ``Territory`` model field
     (``models/entities/territory.py:75``), ``WorldState.to_graph`` writes it onto

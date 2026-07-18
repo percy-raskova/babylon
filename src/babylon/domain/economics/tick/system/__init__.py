@@ -50,6 +50,7 @@ from babylon.domain.economics.tick.crisis_detector import (
 from babylon.domain.economics.tick.derived_rates import DerivedRateCalculator
 from babylon.domain.economics.tick.graph_bridge import (
     read_tick_state_from_graph,
+    resolve_county_identity,
     write_tick_state_to_graph,
 )
 from babylon.domain.economics.tick.precarity import PrecarityDeriver
@@ -364,21 +365,29 @@ class TickDynamicsSystem(SystemBase):
         return base_year + tick // WEEKS_PER_YEAR
 
     def _get_territory_fips(self, graph: GraphProtocol) -> list[str]:
-        """Extract FIPS codes from territory nodes in graph.
+        """Extract real county FIPS codes from territory nodes in graph.
+
+        Territories with no ``county_fips`` are an empty domain (III.11) and
+        are omitted — see
+        :func:`~babylon.domain.economics.tick.graph_bridge.resolve_county_identity`.
+        The result can legitimately be empty (the abstract 2/4-node dialectic
+        scenarios have no county layer at all); callers must handle that
+        explicitly rather than assume a non-empty list.
 
         Args:
             graph: NetworkX graph or GraphProtocol.
 
         Returns:
-            List of FIPS codes for territory nodes.
+            List of real county FIPS codes; empty when no territory has one.
         """
         fips_list: list[str] = []
         for node in graph.query_nodes():
-            if node.node_type == "territory":
-                # Node id is a graph-local label (e.g. bridge-minted 'T001'); the
-                # real county identity lives in county_fips. Fall back to the id for
-                # abstract territories with no FIPS (byte-identical legacy path).
-                fips_list.append(str(node.attributes.get("county_fips") or node.id))
+            if node.node_type != "territory":
+                continue
+            identity = resolve_county_identity(node)
+            if identity is None:
+                continue  # empty domain: abstract territory, no county identity
+            fips_list.append(identity)
         return fips_list
 
     def _bootstrap_county_states(
@@ -388,21 +397,26 @@ class TickDynamicsSystem(SystemBase):
     ) -> dict[str, CountyEconomicState]:
         """Bootstrap county states from graph territory nodes.
 
+        Territories with no ``county_fips`` are skipped — an abstract territory
+        has no county economic identity to bootstrap (Constitution III.11; see
+        :func:`~babylon.domain.economics.tick.graph_bridge.resolve_county_identity`).
+
         Args:
             graph: NetworkX graph or GraphProtocol with territory nodes.
             year: Current year.
 
         Returns:
-            Dict of FIPS -> CountyEconomicState with defaults.
+            Dict of FIPS -> CountyEconomicState with defaults; empty when no
+            territory carries a real county identity.
         """
         states: dict[str, CountyEconomicState] = {}
         for node in graph.query_nodes():
             if node.node_type != "territory":
                 continue
+            fips = resolve_county_identity(node)
+            if fips is None:
+                continue  # empty domain: nothing to bootstrap for this node
             data = node.attributes
-            # Prefer the real county FIPS (owner item 25); node id may be a
-            # graph-local label ('T001'). Fall back to id for abstract territories.
-            fips = str(data.get("county_fips") or node.id)
 
             # Read existing tick_ attributes if present
             if "tick_capital_stock" in data:

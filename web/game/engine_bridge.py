@@ -6149,15 +6149,17 @@ def _seed_wayne_county_fips(state: WorldState) -> WorldState:
     all of them (not one arbitrarily "designated" hex) is the honest
     choice, not a shortcut.
 
-    It is also the only crash-safe choice bridge-only. ``county_fips`` on
-    a *subset* of territories would leave the other hexes' 15-char H3 ids
-    as ``TickDynamicsSystem._get_territory_fips``'s per-node fallback
-    (``county_fips or node.id``) — and ``CountyEconomicState.fips`` is a
-    hard ``min_length=5, max_length=5`` Pydantic constraint, so a mix of
-    one real 5-digit fips plus 80 fifteen-char H3 ids would raise
-    ``ValidationError`` the moment the annual pipeline runs. Giving every
-    territory the *identical* real fips avoids that without touching the
-    engine: ``_compute_county_states`` computes into a ``dict[fips, ...]``,
+    It is also what makes the county layer *reachable* at all. Since
+    2026-07-18 the engine resolves a territory's county identity from
+    ``county_fips`` and nothing else
+    (:func:`~babylon.domain.economics.tick.graph_bridge.resolve_county_identity`);
+    a territory without one is an EMPTY DOMAIN and is skipped, rather than
+    being fabricated into a pseudo-county named after its 15-char H3 id.
+    So stamping only a *subset* would no longer crash — it would silently
+    compute the county pipeline over just that subset, which is a worse
+    failure mode than the old ``ValidationError`` because it is quiet.
+    Giving every territory the *identical* real fips keeps the whole county
+    in scope: ``_compute_county_states`` computes into a ``dict[fips, ...]``,
     so 81 identical keys collapse to exactly ONE ``CountyEconomicState`` —
     "computed once per fips, no double-counting" holds structurally, not
     just as documentation.

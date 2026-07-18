@@ -402,16 +402,24 @@ def build_territory_graph(
 ) -> BabylonGraph:
     """Build a test graph with Territory nodes.
 
+    The county identity is stamped as an explicit ``county_fips`` attribute —
+    the ONLY place a territory carries one. Keying the node BY its FIPS is a
+    fixture convenience; production territory ids are constrained to
+    ``^(T[0-9]{3,}|[0-9a-f]{15})$`` and are never FIPS codes, so a fixture that
+    left the identity implicit in the node id would model a graph shape
+    production cannot emit (the fixture-vocabulary trap).
+
     Args:
         fips_codes: FIPS codes for territory nodes. Defaults to Wayne County.
 
     Returns:
-        DiGraph with territory nodes having _node_type="territory".
+        DiGraph with territory nodes having _node_type="territory" and a real
+        ``county_fips``.
     """
     if fips_codes is None:
         fips_codes = [WAYNE_FIPS]
 
     graph = BabylonGraph()
     for fips in fips_codes:
-        graph.add_node(fips, _node_type="territory")
+        graph.add_node(fips, _node_type="territory", county_fips=fips)
     return graph

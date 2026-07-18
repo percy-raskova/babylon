@@ -347,6 +347,30 @@ class TestSimulationTickState:
         with pytest.raises(ValidationError):
             sample_tick_state.year = 2016  # type: ignore[misc]
 
+    def test_year_has_no_upper_bound(
+        self,
+        sample_national_params: NationalTickParameters,
+        sample_county_state: CountyEconomicState,
+        sample_coefficients: SmoothedCoefficients,
+    ) -> None:
+        """Honesty sweep (spec 2026-07-18 vol3-money-scissors-design, U2):
+
+        SimulationTickState is the outermost, always-executed assembly at
+        the end of TickDynamicsSystem.step()'s annual pipeline, fed the
+        raw unclamped ``year`` local directly (system/__init__.py). A
+        stale ``le=2040`` bound here crashes any campaign that reaches
+        year 2041 (tick ~1612 of a 5200-tick / 100-year campaign) even
+        though the U2.1 fix already removed the equivalent ceiling from
+        NationalTickParameters.year, which feeds this same construction.
+        """
+        state = SimulationTickState(
+            year=2109,
+            national_params=sample_national_params,
+            county_states={"26163": sample_county_state},
+            coefficients=sample_coefficients,
+        )
+        assert state.year == 2109
+
 
 class TestCrisisPhase:
     """Tests for CrisisPhase StrEnum (Feature 018, T014)."""

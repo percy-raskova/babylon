@@ -517,7 +517,15 @@ class SimulationTickState(BaseModel):
 
     model_config = ConfigDict(frozen=True)
 
-    year: int = Field(..., ge=2007, le=2040, description="Current simulation year")
+    # Honesty sweep (spec 2026-07-18 vol3-money-scissors-design, U2):
+    # SimulationTickState is the outermost, always-executed assembly at
+    # the end of TickDynamicsSystem.step()'s annual pipeline and is fed
+    # the raw, unclamped ``year`` local directly (system/__init__.py) —
+    # the same value U2.1 stopped clamping to 2040 for
+    # NationalTickParameters.year. Only the floor is a genuine sanity
+    # bound; the ceiling silently crashed every tick past year 2040
+    # (~85% of a 5200-tick campaign).
+    year: int = Field(..., ge=2007, description="Current simulation year")
     national_params: NationalTickParameters = Field(..., description="National context")
     county_states: dict[str, CountyEconomicState] = Field(
         ..., description="Per-county snapshots keyed by FIPS"

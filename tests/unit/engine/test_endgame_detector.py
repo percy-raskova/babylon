@@ -28,7 +28,7 @@ import pytest
 
 from babylon.engine.observer import SimulationObserver
 from babylon.engine.observers.endgame_detector import EndgameDetector
-from babylon.models.enums import GameOutcome
+from babylon.models.enums import GameOutcome, NodeType
 
 if TYPE_CHECKING:
     from babylon.models.config import SimulationConfig
@@ -409,7 +409,7 @@ def _build_ignore_majority_graph(territory_ids: list[str]) -> object:
     graph = BabylonGraph()
     graph.add_node(
         "FAC_TEST_IGNORE",
-        "balkanization_faction",
+        NodeType.FACTION,
         colonial_stance="ignore",
         class_reduction=0.7,
     )

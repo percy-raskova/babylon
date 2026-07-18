@@ -192,6 +192,10 @@ system backstop). Owner ruling 2026-07-14:
   `WHERE tick = N` on the raw table; `MAX(tick)` ≠ last committed tick (that's `tick_commit`).
 - **`WorldState` is frozen** — mutate via `model_copy(update={...})`, never assignment.
 - **Inject dependencies explicitly**, don't discover them at runtime.
+- **Never hand-stamp `_node_type` with a raw string — use `NodeType.*`** (`models/enums/topology.py`),
+  in fixtures too. A fixture stamping a type production never emits gives a green test over a dead
+  feature: `balkanization_faction` vs `faction` silently disabled RED_SETTLER_TRAP, secession
+  enumeration and FASCIST_RECRUITMENT. `mise run check:vocabulary` enforces it.
 
 ## Maintaining this file
 

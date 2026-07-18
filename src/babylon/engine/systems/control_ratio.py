@@ -19,7 +19,7 @@ from typing import TYPE_CHECKING, Any, ClassVar
 
 from babylon.kernel.event_bus import Event
 from babylon.kernel.tick_partition import TickPartition
-from babylon.models.enums import EventType, SocialRole
+from babylon.models.enums import EventType, NodeType, SocialRole
 
 if TYPE_CHECKING:
     from babylon.kernel.graph_protocol import GraphProtocol
@@ -53,7 +53,7 @@ def _get_role(data: dict[str, Any]) -> SocialRole | None:
 def _count_enforcer_population(graph: GraphProtocol) -> int:
     """Count total population of active CARCERAL_ENFORCER entities."""
     total = 0
-    for node in graph.query_nodes(node_type="social_class"):
+    for node in graph.query_nodes(node_type=NodeType.SOCIAL_CLASS):
         attrs = node.attributes
         if not attrs.get("active", True):
             continue
@@ -73,7 +73,7 @@ def _count_prisoner_population_and_org(
     """
     total_pop = 0
     org_sum = 0.0
-    for node in graph.query_nodes(node_type="social_class"):
+    for node in graph.query_nodes(node_type=NodeType.SOCIAL_CLASS):
         attrs = node.attributes
         if not attrs.get("active", True):
             continue

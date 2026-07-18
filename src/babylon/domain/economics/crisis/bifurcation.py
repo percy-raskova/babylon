@@ -30,7 +30,7 @@ from babylon.domain.economics.tick.types import (
     CrisisPhase,
     CrisisState,
 )
-from babylon.models.enums import EdgeType
+from babylon.models.enums import EdgeType, NodeType
 
 if TYPE_CHECKING:
     from babylon.domain.economics.dynamics.types import ClassDistribution
@@ -98,7 +98,7 @@ class BifurcationRiskCalculator:
 
         # Read lifecycle legitimation from territory node if available (Feature 030)
         lifecycle_legit: float | None = None
-        for node in graph.query_nodes(node_type="territory"):
+        for node in graph.query_nodes(node_type=NodeType.TERRITORY):
             if node.id == fips:
                 lifecycle_legit = node.attributes.get("legitimation_index")
                 break

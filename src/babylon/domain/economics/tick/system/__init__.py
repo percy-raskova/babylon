@@ -67,6 +67,7 @@ from babylon.domain.economics.tick.types import (
 from babylon.formulas.constants import HOURS_PER_YEAR, WEEKS_PER_YEAR
 from babylon.kernel.system_base import SystemBase
 from babylon.kernel.tick_partition import TickPartition
+from babylon.models.enums import NodeType
 
 if TYPE_CHECKING:
     from babylon.kernel.graph_protocol import GraphProtocol
@@ -274,7 +275,7 @@ class TickDynamicsSystem(SystemBase):
         Args:
             graph: Mutable GraphProtocol (territory nodes updated in-place).
         """
-        for node in graph.query_nodes(node_type="territory"):
+        for node in graph.query_nodes(node_type=NodeType.TERRITORY):
             data = node.attributes
             phi_hour = data.get("tick_phi_hour")
             if phi_hour is None:
@@ -307,7 +308,7 @@ class TickDynamicsSystem(SystemBase):
         Args:
             graph: Mutable GraphProtocol (territory nodes updated in-place).
         """
-        for node in graph.query_nodes(node_type="territory"):
+        for node in graph.query_nodes(node_type=NodeType.TERRITORY):
             if node.attributes.get("tick_phi_hour") is None:
                 continue  # empty domain — nothing was accrued, nothing to reset
             graph.update_node(node.id, flow_phi_accrued=0.0, flow_wage_accrued=0.0)

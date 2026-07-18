@@ -9,6 +9,69 @@ from __future__ import annotations
 from enum import StrEnum
 
 
+class NodeType(StrEnum):
+    """The closed vocabulary of graph node ``_node_type`` markers.
+
+    **Single source of truth.** ``_node_type`` MUST NEVER be hand-stamped with a
+    raw string — in production code *or in a test fixture*. Always use
+    ``NodeType.*``. A fixture that stamps a type production never emits, then
+    queries with that same string, matches its own fixture and passes: a green
+    test over a dead feature, a closed loop with no external referent. This
+    happened — ``"balkanization_faction"`` vs the canonical ``"faction"``
+    silently disabled ``RED_SETTLER_TRAP_DETECTED``, secession enumeration, and
+    ``FASCIST_RECRUITMENT`` (fixed 2026-07-18, commit ``3b60dcfe``).
+
+    Enforced by the vocabulary sentinel (:mod:`babylon.sentinels.vocabulary`),
+    which AST-scans ``src/``, ``web/`` and ``tests/`` and gates on two rules:
+    every node-type literal is a member of this enum, and every type queried by
+    production is stamped by production.
+
+    **Production-stamped** — emitted by ``WorldState.to_graph()`` and the
+    systems that mint nodes at runtime (``decomposition``, ``collapse_transition``):
+
+        TERRITORY:    Spatial substrate node (immutable; claims are overlays).
+        SOCIAL_CLASS: A class position — the primary economic actor.
+        ORGANIZATION: A collective actor that observes and acts (OODA).
+        KEY_FIGURE:   A named individual inside an organization's hierarchy.
+        INSTITUTION:  A durable apparatus housing organizations.
+        INDUSTRY:     A branch of production.
+        SOVEREIGN:    A political authority claiming territories (spec-070).
+        FACTION:      A ``BalkanizationFaction`` (spec-070). The canonical stamp
+                      is ``"faction"``, NOT ``"balkanization_faction"``.
+
+    **Declared but NOT production-stamped** — real vocabulary that only test
+    fixtures currently emit. Queries against these match nothing at runtime; see
+    the sentinel's ``UNSTAMPED_QUERY_ALLOWLIST`` for the open decisions:
+
+        HEX:       H3 res-7 economic substrate cell. Production carries hex state
+                   on TERRITORY nodes via ``substrate/hex_graph_bridge.py``; no
+                   code path stamps a ``hex`` node onto the engine graph.
+        COMMUNITY: Community membership lives in the XGI *hypergraph*
+                   (``engine/systems/community.py``), not the main graph.
+        PERSON:    OODA fixture vocabulary for MEMBERSHIP-edge targets.
+        ENTITY:    Generic fixture node for type-agnostic graph analysis.
+        EXTERNAL:  Fixture negative control — a node that is deliberately not a hex.
+        COUNTY:    Fixture negative control — an aggregate that is not a hex.
+    """
+
+    # -- Production-stamped ------------------------------------------------
+    TERRITORY = "territory"
+    SOCIAL_CLASS = "social_class"
+    ORGANIZATION = "organization"
+    KEY_FIGURE = "key_figure"
+    INSTITUTION = "institution"
+    INDUSTRY = "industry"
+    SOVEREIGN = "sovereign"
+    FACTION = "faction"
+    # -- Declared, not production-stamped (see class docstring) ------------
+    HEX = "hex"
+    COMMUNITY = "community"
+    PERSON = "person"
+    ENTITY = "entity"
+    EXTERNAL = "external"
+    COUNTY = "county"
+
+
 class EdgeType(StrEnum):
     """Nature of relationships between entities.
 

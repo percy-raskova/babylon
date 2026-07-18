@@ -37,7 +37,7 @@ from typing import TYPE_CHECKING, Any, ClassVar
 from babylon.formulas import calculate_mortality_rate
 from babylon.kernel.event_bus import Event
 from babylon.kernel.tick_partition import TickPartition
-from babylon.models.enums import EventType
+from babylon.models.enums import EventType, NodeType
 
 if TYPE_CHECKING:
     from babylon.kernel.graph_protocol import GraphProtocol
@@ -99,7 +99,7 @@ class VitalitySystem(SystemBase):
         tick: int = context.get("tick", 0)
         base_subsistence = services.defines.economy.base_subsistence
 
-        for node in graph.query_nodes(node_type="social_class"):
+        for node in graph.query_nodes(node_type=NodeType.SOCIAL_CLASS):
             attrs = node.attributes
 
             # Skip already-dead entities

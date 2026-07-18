@@ -12,7 +12,7 @@ from babylon.kernel.event_bus import Event
 from babylon.kernel.node_access import class_consciousness_from_node
 from babylon.kernel.tick_partition import TickPartition
 from babylon.models.entities.economy import GlobalEconomy
-from babylon.models.enums import EdgeType, EventType, SocialRole
+from babylon.models.enums import EdgeType, EventType, NodeType, SocialRole
 
 if TYPE_CHECKING:
     from babylon.kernel.graph_protocol import GraphProtocol
@@ -209,7 +209,7 @@ class ImperialRentSystem(SystemBase):
         if base_subsistence <= 0:
             return  # No operational costs configured
 
-        for node in graph.query_nodes(node_type="social_class"):
+        for node in graph.query_nodes(node_type=NodeType.SOCIAL_CLASS):
             attrs = node.attributes
 
             # Skip inactive (dead) entities

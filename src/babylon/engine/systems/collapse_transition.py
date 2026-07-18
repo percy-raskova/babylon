@@ -39,7 +39,7 @@ from typing import TYPE_CHECKING, Any, ClassVar
 from babylon.kernel.event_bus import Event
 from babylon.kernel.system_base import SystemBase
 from babylon.kernel.tick_partition import TickPartition
-from babylon.models.enums import EventType
+from babylon.models.enums import EventType, NodeType
 
 if TYPE_CHECKING:  # pragma: no cover
     from babylon.kernel.graph_protocol import GraphProtocol
@@ -69,7 +69,9 @@ class CollapseTransitionSystem(SystemBase):
         # Phase 1: Collapse-driven path (FR-023, FR-024).
         triggers = persistent.get("balkanization.collapse_triggers", {})
         winning = persistent.get("balkanization.winning_faction_by_territory", {})
-        sovereign_ids = sorted(node.id for node in wrapped.query_nodes(node_type="sovereign"))
+        sovereign_ids = sorted(
+            node.id for node in wrapped.query_nodes(node_type=NodeType.SOVEREIGN)
+        )
         for sovereign_id in sovereign_ids:
             # The exterior null sovereign is the FR-040b boundary fallback —
             # not a polity that can collapse. Mirrors the Phase-3
@@ -275,7 +277,7 @@ class CollapseTransitionSystem(SystemBase):
         """Delete any Sovereign with zero remaining CLAIMS edges, plus
         the corresponding ADMINISTERS edges."""
 
-        sovereign_ids = [node.id for node in wrapped.query_nodes(node_type="sovereign")]
+        sovereign_ids = [node.id for node in wrapped.query_nodes(node_type=NodeType.SOVEREIGN)]
         for sovereign_id in sovereign_ids:
             claims = wrapped.query_sovereign_claims(sovereign_id)
             if claims:

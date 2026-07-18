@@ -43,7 +43,7 @@ from babylon.formulas.reactionary import (
 from babylon.kernel.event_bus import Event
 from babylon.kernel.system_base import SystemBase, resolve_rng
 from babylon.kernel.tick_partition import TickPartition
-from babylon.models.enums import EdgeType, EventType, SocialRole
+from babylon.models.enums import EdgeType, EventType, NodeType, SocialRole
 
 if TYPE_CHECKING:  # pragma: no cover
     from babylon.kernel.graph_protocol import GraphProtocol
@@ -116,7 +116,7 @@ class FascistFactionSystem(SystemBase):
         fascist_faction_id: str | None,
         opposition_known: bool,
     ) -> None:
-        for node in sorted(graph.query_nodes(node_type="social_class"), key=lambda n: n.id):
+        for node in sorted(graph.query_nodes(node_type=NodeType.SOCIAL_CLASS), key=lambda n: n.id):
             attrs = node.attributes
             if not attrs.get("active", True):
                 continue
@@ -215,7 +215,7 @@ class FascistFactionSystem(SystemBase):
     def _find_fascist_faction(self, graph: GraphProtocol) -> str | None:
         """Lowest-id BalkanizationFaction that is fascist (D2 predicate)."""
         candidates: list[str] = []
-        for node in graph.query_nodes(node_type="faction"):
+        for node in graph.query_nodes(node_type=NodeType.FACTION):
             attrs = node.attributes
             settler_uphold = bool(attrs.get("is_settler_formation")) and (
                 str(attrs.get("colonial_stance", "")).lower() == "uphold"

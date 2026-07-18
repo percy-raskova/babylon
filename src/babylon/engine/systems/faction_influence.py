@@ -34,7 +34,7 @@ from babylon.formulas.balkanization import (
 from babylon.kernel.event_bus import Event
 from babylon.kernel.system_base import SystemBase, resolve_rng
 from babylon.kernel.tick_partition import TickPartition
-from babylon.models.enums import ColonialStance, EventType
+from babylon.models.enums import ColonialStance, EventType, NodeType
 
 if TYPE_CHECKING:  # pragma: no cover
     from babylon.kernel.graph_protocol import GraphProtocol
@@ -88,7 +88,9 @@ class FactionInfluenceSystem(SystemBase):
     ) -> dict[str, str]:
         previous: dict[str, str] = persistent.get(_PREV_WINNING, {})
         winning: dict[str, str] = {}
-        territory_ids = sorted(node.id for node in wrapped.query_nodes(node_type="territory"))
+        territory_ids = sorted(
+            node.id for node in wrapped.query_nodes(node_type=NodeType.TERRITORY)
+        )
         for territory_id in territory_ids:
             incumbent = previous.get(territory_id)
             winner = winning_faction_for_territory(wrapped, territory_id, incumbent, rng)
@@ -162,7 +164,7 @@ class FactionInfluenceSystem(SystemBase):
         services: ServicesProtocol,
     ) -> None:
         for node in sorted(
-            wrapped.query_nodes(node_type="faction"),
+            wrapped.query_nodes(node_type=NodeType.FACTION),
             key=lambda n: n.id,
         ):
             attrs = node.attributes
@@ -197,8 +199,10 @@ class FactionInfluenceSystem(SystemBase):
     ) -> None:
         hysteresis: dict[str, int] = persistent.get(_HYSTERESIS, {})
         eligible: list[dict[str, Any]] = []
-        faction_ids = sorted(node.id for node in wrapped.query_nodes(node_type="faction"))
-        sovereign_ids = sorted(node.id for node in wrapped.query_nodes(node_type="sovereign"))
+        faction_ids = sorted(node.id for node in wrapped.query_nodes(node_type=NodeType.FACTION))
+        sovereign_ids = sorted(
+            node.id for node in wrapped.query_nodes(node_type=NodeType.SOVEREIGN)
+        )
         seen: set[str] = set()
         for sovereign_id in sovereign_ids:
             sov_node = wrapped.get_node(sovereign_id)

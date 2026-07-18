@@ -117,6 +117,9 @@ EXPECTED_ENUMS_PUBLIC: frozenset[str] = frozenset(
         "LifecyclePhase",
         "LocalityClass",
         "MembershipRole",
+        # Added 2026-07-18 (Task 1b): the closed graph node-type vocabulary,
+        # beside EdgeType. Deliberate public-surface addition, not drift.
+        "NodeType",
         "OperationalProfile",
         "OrgType",
         "PlayerMode",

@@ -48,7 +48,7 @@ from babylon.domain.doctrine.mechanics import (
 )
 from babylon.kernel.event_bus import Event
 from babylon.kernel.tick_partition import TickPartition
-from babylon.models.enums import EventType
+from babylon.models.enums import EventType, NodeType
 from babylon.models.enums.doctrine import DoctrineTag
 
 if TYPE_CHECKING:
@@ -211,7 +211,7 @@ def compute_doctrine(
     """
     events: list[tuple[str, str, str]] = []
     is_congress = tick > 0 and rng is not None and tick % defines.congress_interval_ticks == 0
-    for node in graph.query_nodes(node_type="organization"):
+    for node in graph.query_nodes(node_type=NodeType.ORGANIZATION):
         attrs = dict(node.attributes)
         org_id = str(attrs.get("id", node.id))
 

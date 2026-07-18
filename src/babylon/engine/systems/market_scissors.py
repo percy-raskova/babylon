@@ -43,7 +43,7 @@ from babylon.kernel.event_bus import Event
 from babylon.kernel.system_base import SystemBase
 from babylon.kernel.system_protocol import ContextType
 from babylon.kernel.tick_partition import TickPartition
-from babylon.models.enums import EventType, SocialRole
+from babylon.models.enums import EventType, NodeType, SocialRole
 from babylon.models.market import MarketState
 
 if TYPE_CHECKING:
@@ -219,7 +219,7 @@ class MarketScissorsSystem(SystemBase):
         sigma de-positioning rule) — never a stale reading, never a
         fabricated 0.0 for a county with no axis at all.
         """
-        for node in sorted(graph.query_nodes(node_type="territory"), key=lambda n: n.id):
+        for node in sorted(graph.query_nodes(node_type=NodeType.TERRITORY), key=lambda n: n.id):
             attrs = node.attributes
             if not attrs.get("active", True):
                 continue
@@ -372,7 +372,7 @@ class MarketScissorsSystem(SystemBase):
         fraction = min(defines.evaporation_gain * overhang, 1.0)
         if fraction <= 0.0:
             return
-        for node in sorted(graph.query_nodes(node_type="social_class"), key=lambda n: n.id):
+        for node in sorted(graph.query_nodes(node_type=NodeType.SOCIAL_CLASS), key=lambda n: n.id):
             if not node.attributes.get("active", True):
                 continue
             role = SocialRole.coerce(node.attributes.get("role"))
@@ -396,7 +396,7 @@ class MarketScissorsSystem(SystemBase):
         influx = defines.unemployment_gain * overhang
         if influx <= 0.0:
             return
-        for node in sorted(graph.query_nodes(node_type="territory"), key=lambda n: n.id):
+        for node in sorted(graph.query_nodes(node_type=NodeType.TERRITORY), key=lambda n: n.id):
             attrs = node.attributes
             if not attrs.get("active", True):
                 continue
@@ -418,7 +418,7 @@ def _mean_profit_rate(graph: GraphProtocol) -> float | None:
     """
     total = 0.0
     count = 0
-    for node in sorted(graph.query_nodes(node_type="territory"), key=lambda n: n.id):
+    for node in sorted(graph.query_nodes(node_type=NodeType.TERRITORY), key=lambda n: n.id):
         attrs = node.attributes
         if not attrs.get("active", True):
             continue

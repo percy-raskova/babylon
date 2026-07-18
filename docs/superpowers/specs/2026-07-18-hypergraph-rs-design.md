@@ -386,6 +386,7 @@ deliberate behavior, so drift on either side fails loudly.
 | D8 | `add_edge` returns `None` | Returns `Ok(edge_id)` | binding discards, returns `None` |
 | D9 | `remove_node(n, strong=False, remove_empty=True)` — three-mode | `remove_node(id, strong)`; weak mode always removes emptied edges (XGI default). `remove_empty=False` is unimplemented (Phase 2 task) | expose `remove_empty` when implemented |
 | D10 | `H.clear()` empties everything but does NOT reset the auto-id counter (next auto id continues, e.g. `1`) | `clear()` resets `edge_uid_counter` — a cleared hypergraph ≡ `new()` (III.7 replay-from-empty determinism) | pass-through (documented) |
+| D11 | `add_node_to_edge` never bumps `_edge_uid` — auto-creating numeric edge `5` leaves the next auto id at `0`; combined with XGI's auto-id `add_edge` not existence-checking, the sequence **silently overwrites** an existing edge's members | Bumps iff `edge_id.parse::<u64>()` succeeds (D3 rule extended) — forecloses XGI's silent-overwrite class | pass-through (XGI's footgun is not preserved) |
 
 The register is append-only: new deliberate divergences get the next
 number, a conformance vector, and a row here — never an undocumented

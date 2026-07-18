@@ -157,6 +157,29 @@
       "num_edges": 0,
       "num_nodes": 0
     },
+    "clear_edges_keeps_nodes_counter": {
+      "auto_ids_after_clear_edges": [
+        1
+      ],
+      "edge_ids": [],
+      "lonely_attrs": {
+        "x": 1
+      },
+      "memberships_a": [],
+      "net_attrs": {
+        "name": "test"
+      },
+      "node_ids": [
+        "a",
+        "b",
+        "c",
+        "d",
+        "lonely"
+      ],
+      "num_edges": 0,
+      "num_nodes": 5,
+      "return": null
+    },
     "copy_counter_preserved": {
       "cp_edge_ids": [
         0,
@@ -189,6 +212,44 @@
       "lonely_same": true,
       "member_order_insignificant": true,
       "same": true
+    },
+    "freeze_blocks_mutation": {
+      "copy_of_frozen_is_frozen": false,
+      "guarded": {
+        "add_edge": {
+          "exception": "XGIError",
+          "message": "Frozen higher-order network can't be modified"
+        },
+        "add_node": {
+          "exception": "XGIError",
+          "message": "Frozen higher-order network can't be modified"
+        },
+        "add_node_to_edge": {
+          "exception": "XGIError",
+          "message": "Frozen higher-order network can't be modified"
+        },
+        "clear": {
+          "exception": "XGIError",
+          "message": "Frozen higher-order network can't be modified"
+        },
+        "clear_edges": null,
+        "remove_edge": {
+          "exception": "XGIError",
+          "message": "Frozen higher-order network can't be modified"
+        },
+        "remove_node": {
+          "exception": "XGIError",
+          "message": "Frozen higher-order network can't be modified"
+        },
+        "remove_node_from_edge": {
+          "exception": "XGIError",
+          "message": "Frozen higher-order network can't be modified"
+        },
+        "set_edge_attributes": null,
+        "set_node_attributes": null
+      },
+      "is_frozen_after": true,
+      "is_frozen_before": false
     },
     "node_attr_set_read": {
       "attrs": {

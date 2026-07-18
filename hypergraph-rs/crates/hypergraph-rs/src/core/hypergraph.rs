@@ -36,6 +36,16 @@ pub struct Hypergraph<N = serde_json::Value, E = serde_json::Value, M = serde_js
 
     /// Graph-level attributes (XGI's `H.graph` dict).
     graph_attrs: serde_json::Map<String, serde_json::Value>,
+
+    /// Frozen flag: when set, every structural mutator panics (XGI's
+    /// `freeze()` monkey-patches a fixed method list with a raiser; the
+    /// flag is the data-oriented equivalent). The attr-dict channel is
+    /// NOT guarded — XGI parity (XGI leaves set_node_attributes /
+    /// set_edge_attributes / net-attr set / private-dict writes open on
+    /// frozen networks; node_attrs_mut / edge_attrs_mut cannot be
+    /// guarded — they return &mut, the same hole shape as XGI's
+    /// private-dict access).
+    frozen: bool,
 }
 
 impl<N, E, M> Default for Hypergraph<N, E, M> {
@@ -100,6 +110,19 @@ impl<N, E, M> Hypergraph<N, E, M> {
             hyperedge_ids: IndexMap::new(),
             edge_uid_counter: 0,
             graph_attrs: serde_json::Map::new(),
+            frozen: false,
+        }
+    }
+
+    /// Panic if the hypergraph is frozen. XGI parity: every method XGI's
+    /// `freeze()` guards raises `XGIError("Frozen higher-order network
+    /// can't be modified")`; the core panics and the PyO3 binding
+    /// converts (panic ≡ raise — the D2 error-channel class). Divergence
+    /// D12: the guard also covers [`Self::clear_edges`], which XGI's
+    /// monkey-patch list omits.
+    fn assert_not_frozen(&self) {
+        if self.frozen {
+            panic!("Frozen hypergraph can't be modified");
         }
     }
 
@@ -121,6 +144,7 @@ impl<N, E, M> Hypergraph<N, E, M> {
     ///
     /// XGI parity: `H.add_node(node, **attr)`.
     pub fn add_node(&mut self, node_id: &str, attrs: N) -> bool {
+        self.assert_not_frozen();
         if let Some(&idx) = self.agent_ids.get(node_id) {
             if let Some(NodeKind::Agent(w)) = self.inner.node_weight_mut(idx) {
                 *w = attrs;
@@ -266,6 +290,7 @@ impl<N, E, M> Hypergraph<N, E, M> {
         N: Default,
         M: Default + Clone,
     {
+        self.assert_not_frozen();
         let edge_id = match &idx {
             Some(id) => {
                 if self.hyperedge_ids.contains_key(id) {
@@ -319,6 +344,7 @@ impl<N, E, M> Hypergraph<N, E, M> {
     /// Remove a hyperedge from the hypergraph.
     /// XGI parity: `H.remove_edge(e)`.
     pub fn remove_edge(&mut self, edge_id: &str) -> Result<(), EdgeError> {
+        self.assert_not_frozen();
         let he_idx = *self.hyperedge_ids.get(edge_id).ok_or(EdgeError::NotFound {
             edge_id: edge_id.to_string(),
         })?;
@@ -330,6 +356,7 @@ impl<N, E, M> Hypergraph<N, E, M> {
     /// Remove a node from the hypergraph.
     /// XGI parity: `H.remove_node(n, strong=False, remove_empty=True)`.
     pub fn remove_node(&mut self, node_id: &str, strong: bool) -> Result<(), NodeError> {
+        self.assert_not_frozen();
         let agent_idx = *self.agent_ids.get(node_id).ok_or(NodeError::NotFound {
             node_id: node_id.to_string(),
         })?;
@@ -374,16 +401,58 @@ impl<N, E, M> Hypergraph<N, E, M> {
     /// to a fresh one (`clear() ≡ new()`; III.7 replay-from-empty
     /// determinism). XGI continues its counter — divergence D10.
     ///
-    /// XGI parity: `H.clear()`.
+    /// XGI parity: `H.clear()`. Guarded by freeze (XGI monkey-patches
+    /// `clear` too); the `frozen = false` reset runs only when the guard
+    /// passes, documenting that a cleared hypergraph is unfrozen.
     pub fn clear(&mut self) {
+        self.assert_not_frozen();
         self.inner = StableDiGraph::new();
         self.agent_ids.clear();
         self.hyperedge_ids.clear();
         self.edge_uid_counter = 0;
         self.graph_attrs.clear();
+        self.frozen = false;
+    }
+
+    /// Remove all edges, keeping every node, all node attrs, and all
+    /// graph-level attrs.
+    ///
+    /// XGI parity: `H.clear_edges()` ("Remove all edges from the graph
+    /// without altering any nodes"). CONFORMS on the uid counter: XGI
+    /// does NOT reset it here, and neither does the core — unlike
+    /// `clear()` (D10) there is no "cleared ≡ fresh" reading (the node
+    /// state survives), so counter continuity matches state continuity.
+    /// Guarded by freeze — divergence D12 (XGI's freeze monkey-patch
+    /// list omits `clear_edges`, so a frozen XGI network can still have
+    /// every edge deleted; a freeze that permits wholesale edge deletion
+    /// is not a freeze).
+    pub fn clear_edges(&mut self) {
+        self.assert_not_frozen();
+        let he_indices: Vec<NodeIndex> = self.hyperedge_ids.values().copied().collect();
+        for he_idx in he_indices {
+            self.inner.remove_node(he_idx);
+        }
+        self.hyperedge_ids.clear();
+    }
+
+    /// Freeze the hypergraph, preventing structural modification.
+    /// Idempotent (re-freezing is a no-op). XGI parity: `H.freeze()`.
+    pub fn freeze(&mut self) {
+        self.frozen = true;
+    }
+
+    /// Check if the hypergraph is frozen. XGI parity: `H.is_frozen`.
+    pub fn is_frozen(&self) -> bool {
+        self.frozen
     }
 
     /// Return an independent deep copy. XGI parity: `H.copy()`.
+    /// Divergence D13: the `frozen` flag carries — XGI's freeze is
+    /// per-instance method-swizzling, so `copy()` of a frozen XGI
+    /// network is NOT frozen (the fresh instance never gets the patch —
+    /// an implementation artifact, not semantics). Here `frozen` is
+    /// data, and a deep clone of data carries it; a clone that silently
+    /// drops immutability is a footgun the core declines to reproduce.
     pub fn copy(&self) -> Self
     where
         N: Clone,
@@ -396,6 +465,7 @@ impl<N, E, M> Hypergraph<N, E, M> {
             hyperedge_ids: self.hyperedge_ids.clone(),
             edge_uid_counter: self.edge_uid_counter,
             graph_attrs: self.graph_attrs.clone(),
+            frozen: self.frozen,
         }
     }
 
@@ -415,6 +485,7 @@ impl<N, E, M> Hypergraph<N, E, M> {
         E: Default,
         M: Default + Clone,
     {
+        self.assert_not_frozen();
         // Auto-create edge if missing
         if !self.hyperedge_ids.contains_key(edge_id) {
             let he_idx = self.inner.add_node(NodeKind::Hyperedge(E::default()));
@@ -459,6 +530,7 @@ impl<N, E, M> Hypergraph<N, E, M> {
         node_id: &str,
         remove_empty: bool,
     ) -> Result<(), NodeError> {
+        self.assert_not_frozen();
         let he_idx = *self.hyperedge_ids.get(edge_id).ok_or(NodeError::NotFound {
             node_id: edge_id.to_string(),
         })?;
@@ -499,6 +571,7 @@ impl<N, E, M> Hypergraph<N, E, M> {
 
     /// Add multiple nodes. XGI parity: `H.add_nodes_from(nodes_for_adding)`.
     pub fn add_nodes_from(&mut self, nodes: impl IntoIterator<Item = (String, N)>) {
+        self.assert_not_frozen();
         for (node_id, attrs) in nodes {
             self.add_node(&node_id, attrs);
         }
@@ -513,6 +586,7 @@ impl<N, E, M> Hypergraph<N, E, M> {
         N: Default,
         M: Default + Clone,
     {
+        self.assert_not_frozen();
         edges
             .into_iter()
             .map(|(m, i, a)| self.add_edge(m, i, a))

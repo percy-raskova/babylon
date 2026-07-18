@@ -806,6 +806,175 @@ fn conform_set_edge_attributes_bulk() {
 }
 
 #[test]
+fn conform_clear_edges_keeps_nodes_counter() {
+    // XGI's clear_edges(): "Remove all edges from the graph without
+    // altering any nodes." Nodes, node attrs, and net attrs survive;
+    // memberships empty; returns None. Like clear() (D10) it does NOT
+    // reset the uid counter — but unlike D10 there is no "cleared ≡
+    // fresh" reading (the node state is preserved), so counter continuity
+    // matches state continuity and the Rust core CONFORMS: no reset.
+    let gt = ground_truth();
+    let v = vector(&gt, "clear_edges_keeps_nodes_counter");
+    assert_eq!(v["return"], Value::Null); // XGI truth, pinned
+    assert_eq!(ids(&v["auto_ids_after_clear_edges"]), vec!["1"]); // XGI truth
+
+    let mut h: Hypergraph = Hypergraph::new();
+    h.add_edge(vec!["a".into(), "b".into()], None, Value::Null)
+        .unwrap();
+    h.add_edge(
+        vec!["c".into(), "d".into()],
+        Some("e1".into()),
+        serde_json::json!({"heat": 0.5}),
+    )
+    .unwrap();
+    h.add_node("lonely", serde_json::json!({"x": 1}));
+    h.set_graph_attr("name", serde_json::json!("test"));
+    h.clear_edges();
+
+    assert_eq!(h.num_nodes(), v["num_nodes"].as_u64().unwrap() as usize);
+    assert_eq!(h.num_edges(), 0);
+    let mut rust_nodes = h.node_ids();
+    rust_nodes.sort();
+    assert_eq!(rust_nodes, ids(&v["node_ids"]));
+    assert_eq!(h.node_attrs("lonely").unwrap(), &v["lonely_attrs"]);
+    assert_eq!(
+        h.graph_attr("name"),
+        Some(&v["net_attrs"]["name"]),
+        "net attrs survive clear_edges"
+    );
+    assert!(h.memberships("a").unwrap().is_empty());
+    assert!(h.edge_ids().is_empty());
+
+    // CONFORM (no D-number): the counter continues — next auto id "1".
+    let auto = h.add_edge(vec!["z".into()], None, Value::Null).unwrap();
+    assert_eq!(auto, "1");
+    assert_eq!(vec![auto], ids(&v["auto_ids_after_clear_edges"]));
+}
+
+#[test]
+fn conform_freeze_blocks_mutation() {
+    // XGI's freeze() guards add_node(s)_from, remove_node(s)_from,
+    // add_edge(s)_from, remove_edge(s)_from, add_node_to_edge,
+    // remove_node_from_edge, and clear by monkey-patching each with a
+    // raiser (`XGIError: Frozen higher-order network can't be modified`);
+    // is_frozen reads the `frozen` attribute. The Rust core panics on the
+    // same structural mutators (panic ≡ raise at the core; the binding
+    // converts — D2 error-channel class). XGI leaves the attr-dict
+    // channel OPEN on frozen networks (set_node_attributes /
+    // set_edge_attributes / net-attr set / private-dict writes all
+    // unguarded) — the Rust core matches: no guard on the attr setters
+    // (and node_attrs_mut/edge_attrs_mut cannot be guarded — they return
+    // &mut; same hole shape as XGI's private-dict access).
+    let gt = ground_truth();
+    let v = vector(&gt, "freeze_blocks_mutation");
+    assert_eq!(v["is_frozen_before"], false); // XGI truth, pinned
+    assert_eq!(v["is_frozen_after"], true); // XGI truth, pinned
+    for method in [
+        "add_node",
+        "add_edge",
+        "remove_node",
+        "remove_edge",
+        "add_node_to_edge",
+        "remove_node_from_edge",
+        "clear",
+    ] {
+        assert_eq!(v["guarded"][method]["exception"], "XGIError"); // pinned
+        assert_eq!(
+            v["guarded"][method]["message"],
+            "Frozen higher-order network can't be modified"
+        );
+    }
+    // The attr-dict channel is NOT guarded in XGI — pinned as truth.
+    assert_eq!(v["guarded"]["set_node_attributes"], Value::Null);
+    assert_eq!(v["guarded"]["set_edge_attributes"], Value::Null);
+
+    let mut h: Hypergraph = Hypergraph::new();
+    h.add_edge(
+        vec!["a".into(), "b".into()],
+        Some("e1".into()),
+        serde_json::json!({"w": 1}),
+    )
+    .unwrap();
+    assert!(!h.is_frozen());
+    h.freeze();
+    assert!(h.is_frozen());
+
+    // Every XGI-guarded structural mutator panics in the Rust core. The
+    // guards fire before any mutation, so one frozen graph serves every
+    // probe.
+    let mut panics = |f: &mut dyn FnMut(&mut Hypergraph)| {
+        std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| f(&mut h))).is_err()
+    };
+    assert!(panics(&mut |h| {
+        h.add_node("z", Value::Null);
+    }));
+    assert!(panics(&mut |h| {
+        h.add_edge(vec!["a".into()], None, Value::Null).unwrap();
+    }));
+    assert!(panics(&mut |h| h.remove_node("a", false).unwrap()));
+    assert!(panics(&mut |h| h.remove_edge("e1").unwrap()));
+    assert!(panics(&mut |h| h.add_node_to_edge("e1", "c").unwrap()));
+    assert!(panics(&mut |h| h
+        .remove_node_from_edge("e1", "a", true)
+        .unwrap()));
+    assert!(panics(&mut |h| h.clear()));
+
+    // XGI parity: the attr-dict channel stays OPEN on a frozen graph.
+    let mut attrs = serde_json::Map::new();
+    attrs.insert("k".to_string(), serde_json::json!(1));
+    h.set_node_attributes(vec![("a".to_string(), attrs.clone())]);
+    h.set_edge_attributes(vec![("e1".to_string(), attrs)]);
+    assert_eq!(h.node_attrs("a").unwrap()["k"], 1);
+    assert_eq!(h.edge_attrs("e1").unwrap()["k"], 1);
+}
+
+#[test]
+fn diverge_d12_freeze_guards_clear_edges() {
+    // D12: XGI's freeze monkey-patch list omits clear_edges — a FROZEN
+    // XGI network can still have every edge deleted (probed live:
+    // guarded["clear_edges"] is None = no raise). XGI's omission is an
+    // artifact of freeze-by-method-swizzling, not a designed semantic; a
+    // freeze that permits wholesale edge deletion is not a freeze. The
+    // Rust core's frozen flag guards ALL structural mutators uniformly,
+    // clear_edges included.
+    let gt = ground_truth();
+    let v = vector(&gt, "freeze_blocks_mutation");
+    assert_eq!(v["guarded"]["clear_edges"], Value::Null); // XGI truth, pinned
+
+    let mut h: Hypergraph = Hypergraph::new();
+    h.add_edge(vec!["a".into(), "b".into()], Some("e1".into()), Value::Null)
+        .unwrap();
+    h.freeze();
+    let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| h.clear_edges()));
+    assert!(
+        result.is_err(),
+        "Rust divergence: clear_edges panics when frozen"
+    );
+    // The panic fired BEFORE any mutation: the original is untouched.
+    assert_eq!(h.num_edges(), 1);
+}
+
+#[test]
+fn diverge_d13_copy_carries_frozen() {
+    // D13: XGI's freeze is per-instance method-swizzling — copy() builds a
+    // fresh instance that never gets the patch, so a copy of a frozen XGI
+    // network is NOT frozen (an implementation artifact, not semantics).
+    // The Rust core's frozen flag is data; copy() is a deep clone of data
+    // and carries it — a clone that silently drops immutability is a
+    // footgun the core declines to reproduce.
+    let gt = ground_truth();
+    let v = vector(&gt, "freeze_blocks_mutation");
+    assert_eq!(v["copy_of_frozen_is_frozen"], false); // XGI truth, pinned
+
+    let mut h: Hypergraph = Hypergraph::new();
+    h.add_edge(vec!["a".into()], Some("e1".into()), Value::Null)
+        .unwrap();
+    h.freeze();
+    let cp = h.copy();
+    assert!(cp.is_frozen(), "Rust divergence: copy of frozen is frozen");
+}
+
+#[test]
 fn diverge_d2_add_edges_from_dup_errors_continues() {
     // XGI's add_edges_from warns + skips a duplicate idx and CONTINUES with
     // the rest (["b"]/"e1" dropped — its member "b" is never added; ["c"]/

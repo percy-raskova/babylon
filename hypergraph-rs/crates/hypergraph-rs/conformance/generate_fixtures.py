@@ -455,6 +455,90 @@ def v_set_edge_attributes_bulk() -> dict:
     }
 
 
+def v_clear_edges_keeps_nodes_counter() -> dict:
+    # XGI's clear_edges(): "Remove all edges from the graph without
+    # altering any nodes." It clears _edge/_edge_attr and empties every
+    # node's membership set; nodes, node attrs, and net attrs survive;
+    # returns None. Like clear() (D10) it does NOT touch _edge_uid — the
+    # next auto id continues the sequence (unlike D10 there is no
+    # "cleared ≡ fresh" reading: the node state is preserved, so counter
+    # continuity matches state continuity; the Rust core CONFORMS here).
+    H = xgi.Hypergraph()
+    H.add_edge(["a", "b"])  # auto id 0 — bumps XGI's uid counter to 1
+    H.add_edge(["c", "d"], idx="e1", heat=0.5)
+    H.add_node("lonely", x=1)
+    H["name"] = "test"
+    ret = H.clear_edges()
+    state = {
+        "return": ret,
+        "num_nodes": H.num_nodes,
+        "num_edges": H.num_edges,
+        "node_ids": sorted(str(n) for n in H.nodes),
+        "edge_ids": _ids(H),
+        "lonely_attrs": dict(H.nodes["lonely"]),
+        "net_attrs": dict(H._net_attr),
+        "memberships_a": sorted(str(e) for e in H.nodes.memberships("a")),
+    }
+    # Counter NOT reset: the next auto id is 1, continuing the sequence.
+    H.add_edge(["z"])
+    state["auto_ids_after_clear_edges"] = _ids(H)
+    return state
+
+
+def v_freeze_blocks_mutation() -> dict:
+    # XGI's freeze() monkey-patches a fixed method list with a raiser
+    # (`XGIError: Frozen higher-order network can't be modified`) and sets
+    # `frozen = True`; is_frozen is a property over that attribute. The
+    # guarded list: add_node(s)_from, remove_node(s)_from, add_edge(s)_from,
+    # add_weighted_edges_from, remove_edge(s)_from, add_node_to_edge,
+    # remove_node_from_edge, clear. NOT guarded (holes, probed live):
+    # clear_edges (deletes every edge on a FROZEN network — divergence
+    # D12, the Rust core guards it), set_node_attributes /
+    # set_edge_attributes / net-attr set / private attr-dict writes (the
+    # attr-dict channel — the Rust core matches XGI and leaves it open).
+    # And because the freeze is per-instance swizzling, copy() of a frozen
+    # network is NOT frozen (the fresh instance never gets the patch —
+    # divergence D13; the Rust core's frozen flag is data and copy()
+    # carries it).
+    H = xgi.Hypergraph()
+    H.add_edge(["a", "b"], idx="e1", w=1)
+    was_frozen = H.is_frozen
+    H.freeze()
+    probes = [
+        ("add_node", lambda: H.add_node("z")),
+        ("add_edge", lambda: H.add_edge(["a"])),
+        ("remove_node", lambda: H.remove_node("a")),
+        ("remove_edge", lambda: H.remove_edge("e1")),
+        ("add_node_to_edge", lambda: H.add_node_to_edge("e1", "c")),
+        ("remove_node_from_edge", lambda: H.remove_node_from_edge("e1", "a")),
+        ("clear", lambda: H.clear()),
+        ("set_node_attributes", lambda: H.set_node_attributes({"a": {"k": 1}})),
+        ("set_edge_attributes", lambda: H.set_edge_attributes({"e1": {"k": 1}})),
+        # LAST: unguarded in XGI — it really does clear the frozen graph's
+        # edges, so every probe above must run before it.
+        ("clear_edges", lambda: H.clear_edges()),
+    ]
+    guarded = {}
+    for name, fn in probes:
+        try:
+            with warnings.catch_warnings():
+                warnings.simplefilter("ignore")
+                fn()
+            guarded[name] = None  # no raise — NOT guarded
+        except Exception as exc:  # recording the observed type IS the vector
+            guarded[name] = {"exception": type(exc).__name__, "message": str(exc)}
+
+    H2 = xgi.Hypergraph()
+    H2.add_edge(["a"], idx="e1")
+    H2.freeze()
+    return {
+        "is_frozen_before": was_frozen,
+        "is_frozen_after": H.is_frozen,
+        "guarded": guarded,
+        "copy_of_frozen_is_frozen": H2.copy().is_frozen,
+    }
+
+
 def main() -> None:
     vectors = {
         name.removeprefix("v_"): fn()

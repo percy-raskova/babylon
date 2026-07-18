@@ -15,6 +15,8 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
+from babylon.models.entities.institution import InternalBalanceOfForces
+from babylon.models.entities.social_class import IdeologicalProfile
 from babylon.models.enums import ActionType, EventType
 from babylon.models.events import SimulationEvent
 from babylon.topology.graph import BabylonGraph
@@ -1516,8 +1518,19 @@ def _make_balkanization_graph() -> BabylonGraph:
         name="Genesee Proletariat",
         role="proletariat",
         wealth=812.4,
-        agitation=0.62,
-        territory_ids=["T1"],
+        # Real shape: agitation lives under ideology.agitation (nested, per
+        # SocialClass.model_dump()) -- production never emits a flat
+        # top-level "agitation" key. A flat stamp here would silently mask
+        # the get_educate_targets/get_aid_targets bug it once did.
+        ideology=IdeologicalProfile(agitation=0.62).model_dump(),
+        # Deliberately NO territory_ids -- SocialClass has no such field in
+        # production (only Organization/Institution do). The TENANCY edge
+        # below is the real Occupant -> Territory link every verb-target
+        # method resolves through now (Track 1 Task 8c renamed the old
+        # organization-or-territory_ids helper to
+        # `_territory_id_bearing_nodes` and scoped it to `organization`
+        # nodes only -- a fabricated territory_ids here would be inert at
+        # best and a task #45 vocabulary-sentinel violation at worst).
     )
     g.add_edge(
         "org-player",
@@ -1527,11 +1540,6 @@ def _make_balkanization_graph() -> BabylonGraph:
         value_flow=118.9,
         tension=0.34,
     )
-    # TENANCY, sc-genesee-proles -> T1: the real Occupant -> Territory edge
-    # get_educate_targets resolves social_class targets through (Track 1 /
-    # Task 8) — additive alongside the `territory_ids` attr above, which
-    # other (out-of-scope) verb-target tests in this module still key off
-    # via `_nodes_in_territory`.
     g.add_edge("sc-genesee-proles", "T1", "tenancy")
 
     g.add_node("FAC_A", "faction", colonial_stance="UPHOLD", is_settler_formation=True)
@@ -1639,7 +1647,7 @@ class TestGetEconomy:
             name="Oakland Proletariat",
             role="proletariat",
             wealth=555.5,
-            agitation=0.1,
+            ideology=IdeologicalProfile(agitation=0.1).model_dump(),
         )
         graph.add_edge("sc-oakland-proles", "T3", "tenancy")
 
@@ -1720,8 +1728,10 @@ class TestDefixturedVerbTargets:
             name="Washtenaw Proletariat",
             role="proletariat",
             wealth=200.0,
-            agitation=0.2,
-            territory_ids=["T2"],
+            ideology=IdeologicalProfile(agitation=0.2).model_dump(),
+            # No territory_ids -- SocialClass has no such field in production;
+            # the TENANCY edge below is the real link (see the comment on
+            # sc-genesee-proles in _make_balkanization_graph above).
         )
         graph.add_edge("sc-washtenaw-proles", "T2", "tenancy")
 
@@ -1753,6 +1763,28 @@ class TestDefixturedVerbTargets:
         assert result["status"] == "ok"
         self._assert_no_fixture_literals(result)
         assert len(result["population_targets"]) >= 1
+
+    def test_aid_targets_agitation_level_reads_real_ideology_agitation(self) -> None:
+        """Track 1 audit (task #45): ``get_aid_targets`` read a flat
+        top-level ``agitation`` key off social_class node data, but
+        ``SocialClass.model_dump()`` (what ``WorldState.to_graph()`` stamps)
+        nests it under ``ideology.agitation`` -- no production graph ever
+        carries a flat ``agitation`` key, so every real game's
+        ``agitation_level`` was silently ``0.0``. This had NO prior test
+        coverage at all (unlike ``get_educate_targets``'s ``avg_agitation``,
+        which a fixture that mirrored the same flat shape had masked).
+        """
+        mock_persistence = _make_mock_persistence()
+        bridge = EngineBridge(mock_persistence)
+        graph = _make_balkanization_graph()
+
+        with _patched_hydrate_state(bridge, graph):
+            result = bridge.get_aid_targets(uuid.uuid4(), "org-player")
+
+        target = next(
+            t for t in result["population_targets"] if t["community_id"] == "sc-genesee-proles"
+        )
+        assert target["material_conditions"]["agitation_level"] == pytest.approx(0.62)
 
     def test_aid_targets_empty_when_org_has_no_territories(self) -> None:
         mock_persistence = _make_mock_persistence()
@@ -1983,7 +2015,7 @@ class TestEducateTargetsResolveViaTenancy:
             name="Genesee Proletariat",
             role="proletariat",
             wealth=800.0,
-            agitation=0.5,
+            ideology=IdeologicalProfile(agitation=0.5).model_dump(),
         )
         g.add_edge("sc-genesee-proles", "T1", "tenancy")
         return g
@@ -2056,7 +2088,7 @@ def _make_wayne_tick0_graph() -> BabylonGraph:
         name="Detroit Proletariat",
         role="proletariat",
         wealth=15.0,
-        agitation=0.2,
+        ideology=IdeologicalProfile(agitation=0.2).model_dump(),
     )
     return g
 
@@ -4184,7 +4216,15 @@ class TestExpectedDeltas:
             "inst-court",
             "institution",
             name="County Court",
-            factional_composition={"security_state": 0.6},
+            # Real shape: production carries factional weights under
+            # internal_balance (Institution.model_dump()'s nested
+            # InternalBalanceOfForces) -- no production graph ever emits a
+            # flat "factional_composition" key (Track 1 audit, task #45).
+            internal_balance=InternalBalanceOfForces(
+                liberal_technocratic=0.6,
+                revanchist_fascist=0.3,
+                institutionalist_bonapartist=0.1,
+            ).model_dump(),
             territory_ids=["T1"],
         )
 
@@ -4198,6 +4238,12 @@ class TestExpectedDeltas:
         for row in [*org_rows, *inst_rows]:
             assert row["expected_deltas"]["heat_delta"] == heat_gain
             assert row["expected_deltas"]["consciousness_delta"] is None
+        court_row = next(r for r in inst_rows if r["target_id"] == "inst-court")
+        assert court_row["factional_control"] == {
+            "liberal_technocratic": 0.6,
+            "revanchist_fascist": 0.3,
+            "institutionalist_bonapartist": 0.1,
+        }
 
     def test_educate_row_includes_doctrine_theory_bonus_for_class_analysis_org(self) -> None:
         """Task-18-review fix: EDUCATE's resolver (resolve_educate ->

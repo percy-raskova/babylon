@@ -209,3 +209,33 @@ fn test_memberships_insertion_order() {
     h.add_edge(vec!["a".to_string(), "z".to_string()], Some("e3".to_string()), serde_json::Value::Null).unwrap();
     assert_eq!(h.memberships("a").unwrap(), vec!["e1", "e2", "e3"]);
 }
+
+#[test]
+fn test_add_node_existing_replaces_attrs() {
+    // XGI: "If node is already in the hypergraph, its attributes are still
+    // updated." Core semantics replace (a generic N cannot merge; the PyO3
+    // layer merges dicts before calling). Divergence D6.
+    let mut h: Hypergraph = Hypergraph::new();
+    assert!(h.add_node("a", serde_json::json!({"x": 1})));
+    assert!(!h.add_node("a", serde_json::json!({"y": 2})));
+    assert_eq!(h.node_attrs("a").unwrap(), &serde_json::json!({"y": 2}));
+    assert_eq!(h.num_nodes(), 1);
+}
+
+#[test]
+fn test_node_attrs_missing_returns_none() {
+    let h: Hypergraph = Hypergraph::new();
+    assert!(h.node_attrs("nonexistent").is_none());
+}
+
+#[test]
+fn test_edge_attrs_read() {
+    let mut h: Hypergraph = Hypergraph::new();
+    h.add_edge(
+        vec!["a".to_string()],
+        Some("e1".to_string()),
+        serde_json::json!({"w": 5}),
+    ).unwrap();
+    assert_eq!(h.edge_attrs("e1").unwrap(), &serde_json::json!({"w": 5}));
+    assert!(h.edge_attrs("nope").is_none());
+}

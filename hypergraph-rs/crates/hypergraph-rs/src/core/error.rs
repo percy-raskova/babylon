@@ -3,7 +3,7 @@
 use thiserror::Error;
 
 /// Error raised when a node operation fails.
-#[derive(Debug, Clone, Error)]
+#[derive(Debug, Clone, Error, PartialEq)]
 pub enum NodeError {
     /// The node ID was not found in the hypergraph.
     #[error("node {node_id} does not exist")]

@@ -67,16 +67,44 @@ impl<N, E, M> Hypergraph<N, E, M> {
     }
 
     /// Add a node with attributes. Returns `true` if a new node was created,
-    /// `false` if it already existed.
+    /// `false` if it already existed. On an existing node the attributes are
+    /// REPLACED (XGI: "If node is already in the hypergraph, its attributes
+    /// are still updated"; a generic `N` cannot merge dicts — the PyO3
+    /// binding merges before calling. Divergence D6).
     ///
     /// XGI parity: `H.add_node(node, **attr)`.
     pub fn add_node(&mut self, node_id: &str, attrs: N) -> bool {
-        if self.agent_ids.contains_key(node_id) {
+        if let Some(&idx) = self.agent_ids.get(node_id) {
+            if let Some(NodeKind::Agent(w)) = self.inner.node_weight_mut(idx) {
+                *w = attrs;
+            }
             return false;
         }
         let idx = self.inner.add_node(NodeKind::Agent(attrs));
         self.agent_ids.insert(node_id.to_string(), idx);
         true
+    }
+
+    /// Read a node's attributes.
+    ///
+    /// XGI parity: `H.nodes[node_id]`.
+    pub fn node_attrs(&self, node_id: &str) -> Option<&N> {
+        let idx = *self.agent_ids.get(node_id)?;
+        match self.inner.node_weight(idx) {
+            Some(NodeKind::Agent(attrs)) => Some(attrs),
+            _ => None,
+        }
+    }
+
+    /// Read an edge's attributes.
+    ///
+    /// XGI parity: `H.edges[edge_id]`.
+    pub fn edge_attrs(&self, edge_id: &str) -> Option<&E> {
+        let idx = *self.hyperedge_ids.get(edge_id)?;
+        match self.inner.node_weight(idx) {
+            Some(NodeKind::Hyperedge(attrs)) => Some(attrs),
+            _ => None,
+        }
     }
 
     /// Check if a node exists in the hypergraph.

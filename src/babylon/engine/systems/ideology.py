@@ -18,6 +18,7 @@ from babylon.formulas.consciousness_routing import (
     compute_reification_buffer,
     route_agitation_to_ternary,
 )
+from babylon.formulas.contradiction import calculate_wealth_asymmetry_balance
 from babylon.formulas.sustained_exploitation import sustained_exploitation_agitation
 from babylon.kernel.tick_partition import TickPartition
 from babylon.models.enums import EdgeType
@@ -130,15 +131,25 @@ class ConsciousnessSystem(SystemBase):
         # actively sharpening (rate > 0); once the Imperial Circuit reaches
         # steady state (rate -> 0) that term goes silent even if labor
         # remains permanently on the losing side. ``sustained_exploitation_
-        # agitation`` reads the SAME ``_wage_balance`` as a magnitude, not a
-        # delta, so a persistent (non-worsening) defect still generates
-        # agitation every tick it holds. Same one-tick lag as above (reads
-        # LAST tick's ContradictionSystem @18.0 snapshot). See
+        # agitation`` reads a magnitude, not a delta, so a persistent
+        # (non-worsening) defect still generates agitation every tick it
+        # holds.
+        #
+        # Defect fix (fix/null-play-coupling, post-948e46ad): this MUST NOT
+        # read the global ``_wage_balance`` above. That value is
+        # ``_mean_asymmetry`` (catalog.py:134-145) — an unweighted arithmetic
+        # mean of an INTENSIVE quantity ((w-v)/(w+v), bounded [-1, 1]) over
+        # ALL classes. Averaging intensives without share-weighting is a
+        # variance error, AND class_consciousness is PER-CLASS while the
+        # global mean is class-independent: a bribed labor aristocracy
+        # (balance > 0) folded together with an exploited periphery worker
+        # keeps the mean >= 0, so the ``balance < 0`` gate never opens and
+        # every class radicalizes (or doesn't) identically — erasing the
+        # theory this engine models. Each class's OWN balance is computed
+        # per-iteration below, from that class's OWN ``w_paid`` /
+        # ``v_produced`` (see the loop). See
         # ``babylon.formulas.sustained_exploitation`` for the Volume III
         # (spec-024) collision-boundary contract this reads through.
-        sustained_deterioration = sustained_exploitation_agitation(
-            _wage_balance, services.defines.consciousness.sustained_exploitation_sensitivity
-        )
 
         # Initialize or retrieve previous wages tracking from persistent storage
         if PREVIOUS_WAGES_KEY not in persistent:
@@ -161,6 +172,32 @@ class ConsciousnessSystem(SystemBase):
             # Skip inactive (dead) entities - dead can't develop consciousness
             if not attrs.get("active", True):
                 continue
+
+            # Per-class sustained wage-value defect (fix/null-play-coupling):
+            # ``w_paid``/``v_produced`` are written directly onto THIS node's
+            # attributes by EconomicSystem (engine/systems/economic.py:
+            # 501-502) on ticks it actually paid this class — same
+            # presence-of-both selector ContradictionSystem uses
+            # (engine/systems/contradiction.py:279) to build the (unrelated
+            # here) global mean. Absent either field means no wage-value
+            # transaction was recorded for this class THIS tick (e.g. the
+            # class is the payer itself, or its employer had zero wealth) —
+            # not a bug, so no sentinel-masking ``.get(field, 0.0)``: an
+            # explicit presence check, with an explicit documented fallback
+            # of "no defect this tick" (balance 0.0, same as the catalog's
+            # own empty-pairs contract, catalog.py:22-24).
+            node_w_paid = attrs.get("w_paid")
+            node_v_produced = attrs.get("v_produced")
+            if node_w_paid is not None and node_v_produced is not None:
+                class_wage_balance = calculate_wealth_asymmetry_balance(
+                    float(node_v_produced), float(node_w_paid)
+                )
+            else:
+                class_wage_balance = 0.0
+            sustained_deterioration = sustained_exploitation_agitation(
+                class_wage_balance,
+                services.defines.consciousness.sustained_exploitation_sensitivity,
+            )
 
             # Calculate wages received (sum of incoming WAGES edges)
             core_wages = 0.0

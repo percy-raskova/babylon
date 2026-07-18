@@ -1,24 +1,30 @@
 """System-level test for the Task 2 (B) sustained wage-value defect term.
 
-TDD Red Phase: ``ConsciousnessSystem`` does not yet read
-``GameDefines.consciousness.sustained_exploitation_sensitivity`` or fold
-:func:`~babylon.formulas.sustained_exploitation.
-sustained_exploitation_agitation` into ``new_agitation`` (``ideology.py``).
+Defect fix (branch ``fix/null-play-coupling``, 948e46ad follow-up): the term
+originally read the GLOBAL ``opposition_states["wage"]["balance"]`` -- an
+unweighted arithmetic mean of an intensive quantity over ALL classes -- and
+broadcast the identical value to every node's agitation. That both (1) is a
+variance error under this repo's own type theorem ("intensives restrict but
+never sum") and (2) erases the theory: a bribed labor aristocracy (balance >
+0) and an exploited periphery worker (balance < 0) radicalized at identical
+rates, and since the mean folds them together it also never went negative in
+practice, leaving the term permanently inert.
+
+The fix computes EACH CLASS's OWN balance from that class's OWN ``w_paid`` /
+``v_produced`` node attributes (written by ``EconomicSystem``,
+``engine/systems/economic.py:501-502``, on ticks it actually paid that class)
+via the SAME :func:`~babylon.formulas.contradiction.
+calculate_wealth_asymmetry_balance` the catalog uses -- no mean, no
+aggregation, so the class differential survives into ``class_consciousness``.
 
 The property under test is exactly the bug named in the spec
 (``docs/superpowers/plans/2026-07-18-null-play-political-coupling.md``):
 today, once wage/wealth/opposition deltas all reach zero (a material steady
 state), ``agitation`` decays to zero and ``class_consciousness`` freezes
-forever -- EVEN IF the wage-value defect (``opposition_states["wage"]
-["balance"]``) stays persistently negative (labor permanently on the losing
-side). This test builds exactly that steady state and asserts consciousness
-keeps moving tick over tick.
-
-One-tick lag: ``ConsciousnessSystem`` (@17.0) reads the wage snapshot
-``ContradictionSystem`` (@18.0) wrote LAST tick. The test injects
-``opposition_states`` directly onto the graph before each ``step()`` call
-(as :class:`TestWageOppositionCrisisGate` in ``test_ideology.py`` already
-does), which is the correct way to exercise this read given that lag.
+forever -- EVEN IF a class's own wage-value defect stays persistently
+negative (that class permanently on the losing side). This test builds
+exactly that steady state and asserts consciousness keeps moving tick over
+tick -- and that it does so ONLY for the losing class, not the bribed one.
 """
 
 from __future__ import annotations
@@ -33,8 +39,24 @@ from babylon.models.entity_registry import LABOR_ARISTOCRACY_ID, PERIPHERY_WORKE
 from babylon.models.enums import EdgeType
 from babylon.topology.graph import BabylonGraph
 
+# Steady-state (w_paid, v_produced) positions used throughout this module.
+# PERIPHERY_WORKER: wage BELOW value produced -> negative balance -> losing.
+# LABOR_ARISTOCRACY: wage ABOVE value produced -> positive balance -> the
+# imperial bribe -> must contribute ZERO sustained agitation (Cope's
+# crisis-gating, ideology.py:108-120). The magnitudes are chosen so the
+# UNWEIGHTED MEAN of the two classes' balances is itself >= 0 -- reproducing
+# the exact old global-mean bug (a bribed core large enough to fold an
+# exploited periphery's negative balance back above zero, keeping the
+# ``balance < 0`` gate permanently closed under a mean) -- see
+# ``TestPerClassSustainedTermDifferentiation.
+# test_same_global_mean_would_have_masked_this_but_per_class_does_not``.
+_EXPLOITED_W_PAID = 50.0
+_EXPLOITED_V_PRODUCED = 100.0
+_BRIBED_W_PAID = 300.0
+_BRIBED_V_PRODUCED = 100.0
 
-def _graph_with_worker() -> BabylonGraph:
+
+def _graph_with_worker(*, stamp_wage_value: bool = True) -> BabylonGraph:
     """A periphery worker with an incoming SOLIDARITY edge from an already-
     revolutionary source (as ``TestConsciousnessSystemWealthTracking.
     test_wealth_extraction_routes_to_fascism_without_solidarity``'s sibling
@@ -42,8 +64,17 @@ def _graph_with_worker() -> BabylonGraph:
     entirely to ``national_identity`` (the fascist path, ``solidarity_
     pressure == 0``) and ``class_consciousness`` cannot move at all,
     regardless of how much agitation is generated.
+
+    ``stamp_wage_value``: when True (default), both nodes carry ``w_paid``/
+    ``v_produced`` positioning the worker as exploited (losing) and the
+    labor aristocracy as bribed -- the per-class fields the fixed code reads.
     """
     graph = BabylonGraph()
+    worker_extra: dict[str, float] = {}
+    aristocracy_extra: dict[str, float] = {}
+    if stamp_wage_value:
+        worker_extra = {"w_paid": _EXPLOITED_W_PAID, "v_produced": _EXPLOITED_V_PRODUCED}
+        aristocracy_extra = {"w_paid": _BRIBED_W_PAID, "v_produced": _BRIBED_V_PRODUCED}
     graph.add_node(
         PERIPHERY_WORKER_ID,
         wealth=1.0,
@@ -53,6 +84,7 @@ def _graph_with_worker() -> BabylonGraph:
             "agitation": 0.0,
         },
         _node_type="social_class",
+        **worker_extra,
     )
     graph.add_node(
         LABOR_ARISTOCRACY_ID,
@@ -63,6 +95,7 @@ def _graph_with_worker() -> BabylonGraph:
             "agitation": 0.0,
         },
         _node_type="social_class",
+        **aristocracy_extra,
     )
     graph.add_edge(
         LABOR_ARISTOCRACY_ID,
@@ -74,10 +107,14 @@ def _graph_with_worker() -> BabylonGraph:
 
 
 def _steady_state_losing_wage_state() -> dict[str, object]:
-    """A persistent, UNCHANGING wage defect: rate == 0.0 (no delta), balance
-    < 0.0 (labor permanently on the losing side). Under the pre-Task-2
-    formula this generates ZERO agitation every tick (the bug); Task 2's
-    level term must generate non-zero agitation from ``balance`` alone.
+    """A GLOBAL wage-opposition snapshot with rate == 0.0 (no delta).
+
+    This now exercises ONLY the pre-existing, unchanged ``wage_deterioration``
+    RATE-gated term (``ideology.py:125``), which stays silent at ``rate ==
+    0.0`` regardless of sign -- it is injected here purely to prove that
+    term is NOT what's driving agitation in these tests. The per-class
+    sustained term is driven by ``w_paid``/``v_produced`` node attributes
+    (see ``_graph_with_worker``), not by this global snapshot.
     """
     return {
         "key": "wage",
@@ -168,4 +205,68 @@ class TestSustainedWageDefectDrivesAgitation:
             "with sensitivity=0.0 the new term contributes nothing, and "
             "rate=0.0 keeps the existing wage_deterioration term silent too "
             "-- so agitation must be exactly zero, matching pre-Task-2 behavior"
+        )
+
+
+@pytest.mark.unit
+class TestPerClassSustainedTermDifferentiation:
+    """The property the GLOBAL-mean wiring could never express: two classes
+    in the SAME graph, with DIFFERENT wage/value positions, must radicalize
+    at DIFFERENT rates. A class with wage below value produced (exploited)
+    gains sustained agitation; a class with wage above value (the bribed
+    labor aristocracy) gains none -- even in the same tick, same graph.
+    """
+
+    def test_exploited_class_radicalizes_while_bribed_class_does_not(self) -> None:
+        graph = _graph_with_worker()
+        defines = GameDefines()
+        assert defines.consciousness.sustained_exploitation_sensitivity > 0.0
+        services = ServiceContainer.create(defines=defines)
+        system = ConsciousnessSystem()
+        system.step(graph, services, TickContext(tick=1))
+
+        exploited_ideology = graph.nodes[PERIPHERY_WORKER_ID]["ideology"]
+        bribed_ideology = graph.nodes[LABOR_ARISTOCRACY_ID]["ideology"]
+
+        assert exploited_ideology["agitation"] > 0.0, (
+            "the exploited class (w_paid < v_produced, negative per-class "
+            "balance) must generate sustained agitation from its OWN wage-"
+            "value position"
+        )
+        assert bribed_ideology["agitation"] == pytest.approx(0.0), (
+            "the bribed class (w_paid > v_produced, positive per-class "
+            "balance -- the imperial bribe) must generate ZERO sustained "
+            "agitation -- Cope's crisis-gating (ideology.py:108-120)"
+        )
+
+    def test_same_global_mean_would_have_masked_this_but_per_class_does_not(self) -> None:
+        """Sanity check on the fixture: the two classes' balances average to
+        something >= 0 (the old global-mean bug's exact failure mode -- the
+        bribed core folds the exploited periphery's negative balance back
+        toward/above zero, so the ``balance < 0`` gate never opens under a
+        mean). The per-class fix must still differentiate them despite that.
+        """
+        from babylon.formulas.contradiction import calculate_wealth_asymmetry_balance
+
+        exploited_balance = calculate_wealth_asymmetry_balance(
+            _EXPLOITED_V_PRODUCED, _EXPLOITED_W_PAID
+        )
+        bribed_balance = calculate_wealth_asymmetry_balance(_BRIBED_V_PRODUCED, _BRIBED_W_PAID)
+        mean_balance = (exploited_balance + bribed_balance) / 2.0
+        assert mean_balance >= 0.0, (
+            "fixture must reproduce the exact global-mean failure mode this "
+            "fix eliminates -- if this fails, the fixture no longer "
+            "demonstrates the defect and should be recalibrated"
+        )
+
+        graph = _graph_with_worker()
+        defines = GameDefines()
+        services = ServiceContainer.create(defines=defines)
+        system = ConsciousnessSystem()
+        system.step(graph, services, TickContext(tick=1))
+
+        assert graph.nodes[PERIPHERY_WORKER_ID]["ideology"]["agitation"] > 0.0, (
+            "despite the global mean being >= 0 (which would have kept the "
+            "old wiring's gate permanently closed), the per-class fix still "
+            "generates agitation for the exploited class"
         )

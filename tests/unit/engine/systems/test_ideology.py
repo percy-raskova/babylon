@@ -474,8 +474,20 @@ class TestWageOppositionCrisisGate:
         expectation (which asserted total agitation == 0 here) -- see
         ``docs/superpowers/plans/2026-07-18-null-play-political-coupling.md``
         Task 2.
+
+        Defect fix (fix/null-play-coupling, post-948e46ad): the sustained
+        term now reads THIS class's OWN ``w_paid``/``v_produced`` (see
+        ``ideology.py``'s per-node loop), not the global
+        ``opposition_states["wage"]["balance"]`` injected above (that
+        injection now exercises ONLY the RATE-gated term this test's name
+        refers to). ``w_paid=0.35, v_produced=0.65`` reproduces the exact
+        same ``balance == -0.3`` the global snapshot used to carry, via
+        ``calculate_wealth_asymmetry_balance(v_produced, w_paid) ==
+        (0.35-0.65)/(0.35+0.65) == -0.3``, so ``expected_raw`` below is
+        unchanged.
         """
         graph = self._graph_with_worker()
+        graph.update_node(PERIPHERY_WORKER_ID, w_paid=0.35, v_produced=0.65)
         defines = ServiceContainer.create().defines
         sensitivity = defines.consciousness.sustained_exploitation_sensitivity
         graph.graph["opposition_states"] = {

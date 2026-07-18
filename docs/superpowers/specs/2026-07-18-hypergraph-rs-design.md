@@ -386,7 +386,7 @@ deliberate behavior, so drift on either side fails loudly.
 | D8 | `add_edge` returns `None` | Returns `Ok(edge_id)` | binding discards, returns `None` |
 | D9 | `remove_node(n, strong=False, remove_empty=True)` — three-mode | `remove_node(id, strong)`; weak mode always removes emptied edges (XGI default). `remove_empty=False` is unimplemented (Phase 2 task) | expose `remove_empty` when implemented |
 | D10 | `H.clear()` empties everything but does NOT reset the auto-id counter (next auto id continues, e.g. `1`) | `clear()` resets `edge_uid_counter` — a cleared hypergraph ≡ `new()` (III.7 replay-from-empty determinism) | pass-through (documented) |
-| D11 | `add_node_to_edge` never bumps `_edge_uid` — auto-creating numeric edge `5` leaves the next auto id at `0`; combined with XGI's auto-id `add_edge` not existence-checking, the sequence **silently overwrites** an existing edge's members | Bumps iff `edge_id.parse::<u64>()` succeeds (D3 rule extended) — forecloses XGI's silent-overwrite class | pass-through (XGI's footgun is not preserved) |
+| D11 | `add_node_to_edge` never bumps `_edge_uid` — auto-creating numeric edge `5` leaves the next auto id at `0`; combined with XGI's auto-id `add_edge` not existence-checking, the sequence **silently overwrites** an existing edge's members and leaves XGI internally inconsistent (stale `_node` entry) | Bumps iff `edge_id.parse::<u64>()` succeeds (D3 rule extended) — forecloses XGI's silent-overwrite class | pass-through (XGI's footgun is not preserved) |
 
 The register is append-only: new deliberate divergences get the next
 number, a conformance vector, and a row here — never an undocumented
@@ -1181,6 +1181,7 @@ The user chose "Full port first, then swap." Phased breakdown:
 - `DiHypergraph` (directed membership edges)
 - `SimplicialComplex` (hypergraph + face lattice cache)
 - `NodeView`, `EdgeView` proxy objects (Rust side; PyO3 side in Phase 7)
+- **Error-variant hardening (deferred from Phase 1 review):** `remove_node_from_edge`'s missing-edge/not-in-edge branches currently reuse `NodeError::NotFound` with synthetic ids (brief-specified, behavior-correct, Display-garbled). Design the proper membership-error family (dedicated `MembershipError` or new variants) once, for all membership ops, BEFORE the Phase 7 binding ossifies the synthetic strings into Python-visible messages.
 - **Conformance:** `test_dihypergraph.py`, `test_simplicialcomplex.py`,
   `test_views.py`, `test_globalviews.py` pass
 

@@ -8954,6 +8954,42 @@ def _persist_action_result(persistence: RuntimePersistence, result_data: dict[st
 _pool: Any = None
 
 
+def _apply_runtime_migrations(pool: Any) -> None:
+    """Apply every packaged runtime migration to the web database.
+
+    Playability Spine Task 19 (spec-116, the Trends-empty root cause): the
+    headless runner has applied ``persistence/migrations/00*.sql`` on every
+    start (``headless_runner.runner._apply_migrations``), but the web path
+    only ever ran ``init_schema`` — whose ``CREATE TABLE IF NOT EXISTS``
+    no-ops on a pre-existing table, so ALTER-bearing migrations (0033/0034's
+    ``tick_summary`` columns) never reached the live DB and both
+    ``persist_tick_summary`` and ``query_tick_summary_series`` raised
+    ``UndefinedColumn`` into their best-effort catches forever.
+
+    Mirrors the runner exactly: package-relative glob (never the process
+    CWD), sorted apply order, and :func:`ensure_ddl_applied` — digest-stamped
+    and advisory-locked, NEVER a bare loop over migration files (ADR074 law;
+    the no-stamp-on-failure semantics are what the test-conftest self-heal
+    contract depends on).
+
+    :param pool: An open ``psycopg_pool.ConnectionPool`` for the web DB.
+    :raises RuntimeError: If the packaged migrations directory is empty or
+        missing — refusing to run unmigrated is louder than degrading.
+    """
+    from pathlib import Path
+
+    import babylon.persistence as _persistence_pkg
+    from babylon.persistence.postgres_schema import ensure_ddl_applied
+
+    migrations_dir = Path(_persistence_pkg.__file__).resolve().parent / "migrations"
+    sql_files = sorted(migrations_dir.glob("00*.sql"))
+    if not sql_files:
+        raise RuntimeError(f"No migrations found at {migrations_dir} — refusing to run unmigrated")
+    with pool.connection() as conn:
+        conn.autocommit = True
+        ensure_ddl_applied(conn, [sql_file.read_text() for sql_file in sql_files])
+
+
 def init_persistence(db_config: dict[str, Any]) -> RuntimePersistence:
     """Create a PostgresRuntime persistence layer from Django DB settings.
 
@@ -8983,6 +9019,10 @@ def init_persistence(db_config: dict[str, Any]) -> RuntimePersistence:
     persistence = PostgresRuntime(_pool)
     try:
         persistence.init_schema()
+        # Playability Spine Task 19 (spec-116): the web DB must also receive
+        # the ALTER-bearing migration files — init_schema alone left the live
+        # tick_summary missing the 0033/0034 columns (the Trends-empty bug).
+        _apply_runtime_migrations(_pool)
     except (psycopg.Error, RuntimeError) as exc:
         # Schema init is infra-layer, so we catch to keep the web app bootable
         # rather than hard-crash on a partial-schema hiccup — but LOUDLY

@@ -13,7 +13,12 @@
 
 import { useEffect, useState } from "react";
 import type { LiveVerbCost, VerbConfig } from "@/lib/verbs";
-import type { ActionPreviewResult, GameSnapshot, PlayerVerb } from "@/types/game";
+import type {
+  ActionPreviewResult,
+  GameSnapshot,
+  PlayerVerb,
+  VerbEligibilityEntry,
+} from "@/types/game";
 import { TargetPicker } from "./TargetPicker";
 import { ParamFields } from "./ParamFields";
 import { useVerbTargets } from "./useVerbTargets";
@@ -31,6 +36,10 @@ interface VerbFormProps {
    *  resolves, so the selected verb's button can show it instead of the
    *  static cost_label hint. */
   onCostChange?: (cost: LiveVerbCost | null) => void;
+  /** The verb's eligibility row (spec-116 FR-4.8) — feeds the reason-
+   *  bearing empty state in TargetPicker; null/absent falls back to the
+   *  legacy bare line. */
+  eligibility?: VerbEligibilityEntry | null;
 }
 
 function defaultParamVals(config: VerbConfig): Record<string, unknown> {
@@ -86,6 +95,14 @@ function costLineContent(
   return { text, insufficient };
 }
 
+/** Compose the empty-state reason + remedy line for an ineligible verb
+ *  (spec-116 FR-4.8) — null when eligible/unknown, same
+ *  complexity-budget rationale as `costLineContent` above. */
+function emptyReasonFor(eligibility: VerbEligibilityEntry | null | undefined): string | null {
+  if (!eligibility || eligibility.eligible !== false) return null;
+  return [eligibility.reason, eligibility.remedy].filter(Boolean).join(" ");
+}
+
 export function VerbForm({
   gameId,
   orgId,
@@ -95,6 +112,7 @@ export function VerbForm({
   submitting,
   onSubmit,
   onCostChange,
+  eligibility,
 }: VerbFormProps): React.JSX.Element {
   const [targetId, setTargetId] = useState<string | null>(null);
   const [paramVals, setParamVals] = useState<Record<string, unknown>>(() =>
@@ -111,6 +129,7 @@ export function VerbForm({
   const showPicker = !(targetRequired === false && targets.length === 0 && !loading);
   const { preview } = useActionPreview(gameId, orgId, verb, config, targetId);
   const costLine = costLineContent(cost, preview);
+  const emptyReason = emptyReasonFor(eligibility);
 
   return (
     <>
@@ -121,6 +140,7 @@ export function VerbForm({
           error={error}
           selectedId={targetId}
           onSelect={setTargetId}
+          emptyReason={emptyReason}
         />
       )}
 

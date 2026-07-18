@@ -22,8 +22,6 @@ from typing import Literal
 
 from pydantic import BaseModel, ConfigDict
 
-from babylon.models.enums import GameOutcome
-
 
 class Epilogue(BaseModel):
     """One terminal outcome's end-screen copy.
@@ -42,11 +40,16 @@ class Epilogue(BaseModel):
     palette: Literal["rupture", "defeat", "unresolved"]
 
 
-#: The six terminal texts, keyed by lowercase ``GameOutcome.value`` — the same
-#: case ``_outcome_from_endgame_row`` returns and the frontend compares,
-#: eliminating the old ``_OUTCOME_HEADLINES`` ``.upper()`` case split.
+#: The six terminal texts, keyed by the literal lowercase ``GameOutcome.value``
+#: strings — the same case ``_outcome_from_endgame_row`` returns and the frontend
+#: compares, eliminating the old ``_OUTCOME_HEADLINES`` ``.upper()`` case split.
+#: Keys are string literals (not ``GameOutcome.X.value``) so this leaf module honors
+#: the web import boundary — only ``engine_bridge`` may import engine code
+#: (``tests/unit/web/test_import_boundary.py``). Drift against the enum is caught by
+#: ``tests/unit/web/test_epilogues.py::TestEpiloguesCoverage`` (a test may import the
+#: enum), which pins these keys to ``{o.value for o in GameOutcome} - {IN_PROGRESS}``.
 EPILOGUES: dict[str, Epilogue] = {
-    GameOutcome.REVOLUTIONARY_VICTORY.value: Epilogue(
+    "revolutionary_victory": Epilogue(
         headline="BABYLON FALLS",
         body=(
             "The regime change is real: not a transfer of management but the "
@@ -58,7 +61,7 @@ EPILOGUES: dict[str, Epilogue] = {
         ),
         palette="rupture",
     ),
-    GameOutcome.ECOLOGICAL_COLLAPSE.value: Epilogue(
+    "ecological_collapse": Epilogue(
         headline="THE EARTH BETRAYED",
         body=(
             "The crisis was never a surprise; it was a business plan running "
@@ -70,7 +73,7 @@ EPILOGUES: dict[str, Epilogue] = {
         ),
         palette="defeat",
     ),
-    GameOutcome.FASCIST_CONSOLIDATION.value: Epilogue(
+    "fascist_consolidation": Epilogue(
         headline="ORDER IS RESTORED",
         body=(
             "That is what the wire calls it: order, restored. Wages fell, and "
@@ -82,7 +85,7 @@ EPILOGUES: dict[str, Epilogue] = {
         ),
         palette="defeat",
     ),
-    GameOutcome.RED_OGV.value: Epilogue(
+    "red_ogv": Epilogue(
         headline="RED FLAGS OVER EMPIRE",
         body=(
             "A socialist government now administers an unbroken imperial "
@@ -94,7 +97,7 @@ EPILOGUES: dict[str, Epilogue] = {
         ),
         palette="defeat",
     ),
-    GameOutcome.FRAGMENTED_COLLAPSE.value: Epilogue(
+    "fragmented_collapse": Epilogue(
         headline="THE MAP SHATTERS",
         body=(
             "The center failed and nothing organized enough replaced it. "
@@ -106,7 +109,7 @@ EPILOGUES: dict[str, Epilogue] = {
         ),
         palette="defeat",
     ),
-    GameOutcome.UNRESOLVED.value: Epilogue(
+    "unresolved": Epilogue(
         headline="THE STRUGGLE CONTINUES",
         body=(
             "One hundred years, and no verdict. The contradiction did not "

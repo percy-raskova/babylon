@@ -13,12 +13,29 @@ import { useState } from "react";
 import { useStore } from "@/store";
 import { VERB_REGISTRY } from "@/lib/verbs";
 import type { LiveVerbCost } from "@/lib/verbs";
-import type { PlayerVerb } from "@/types/game";
+import type { GameSnapshot, PlayerVerb, VerbEligibilityEntry } from "@/types/game";
 import { VerbGrid } from "./VerbGrid";
 import { VerbForm } from "./VerbForm";
+import { useVerbEligibility, type VerbEligibilityMap } from "./useVerbEligibility";
 
 interface ActionComposerProps {
   gameId: string;
+}
+
+/** Extracted so the tick-derivation branch doesn't count against
+ *  ActionComposer's own complexity budget. */
+function tickOf(snapshot: GameSnapshot | null): number | null {
+  return snapshot ? snapshot.tick : null;
+}
+
+/** Extracted for the same reason — the selected verb's eligibility row,
+ *  or null when no verb is selected yet or eligibility hasn't resolved. */
+function eligibilityForVerb(
+  map: VerbEligibilityMap | null,
+  verb: PlayerVerb | null,
+): VerbEligibilityEntry | null {
+  if (!verb || !map) return null;
+  return map[verb] ?? null;
 }
 
 export function ActionComposer({ gameId }: ActionComposerProps): React.JSX.Element {
@@ -34,6 +51,7 @@ export function ActionComposer({ gameId }: ActionComposerProps): React.JSX.Eleme
   const [verb, setVerb] = useState<PlayerVerb | null>(null);
   const config = verb ? VERB_REGISTRY[verb] : undefined;
   const [liveCost, setLiveCost] = useState<LiveVerbCost | null>(null);
+  const eligibility = useVerbEligibility(gameId, activeOrgId, tickOf(snapshot));
 
   function handleFormSubmit(targetId: string | null, params: Record<string, unknown>): void {
     if (!config || !verb || !activeOrgId) return;
@@ -54,7 +72,12 @@ export function ActionComposer({ gameId }: ActionComposerProps): React.JSX.Eleme
             <OrgSelect orgs={playerOrgs} value={activeOrgId} onChange={setOrgId} />
           )}
 
-          <VerbGrid selectedVerb={verb} onSelect={setVerb} liveCost={verb ? liveCost : null} />
+          <VerbGrid
+            selectedVerb={verb}
+            onSelect={setVerb}
+            liveCost={verb ? liveCost : null}
+            eligibility={eligibility}
+          />
 
           {config && verb && (
             <VerbForm
@@ -67,6 +90,7 @@ export function ActionComposer({ gameId }: ActionComposerProps): React.JSX.Eleme
               submitting={submitting}
               onSubmit={handleFormSubmit}
               onCostChange={setLiveCost}
+              eligibility={eligibilityForVerb(eligibility, verb)}
             />
           )}
 

@@ -21,6 +21,7 @@ from babylon.topology.graph import BabylonGraph
 from game.engine_bridge import (
     _EVENT_SEVERITY,
     _MAP_HISTORY_WINDOW_CAP,
+    VERB_TO_ACTION_TYPE,
     EngineBridge,
     _build_initial_state_for_scenario,
     _classify_event,
@@ -33,6 +34,7 @@ from game.engine_bridge import (
     _state_to_snapshot,
     resolve_scenario,
 )
+from game.verb_copy import VERB_INELIGIBILITY_COPY
 
 
 def _make_mock_persistence() -> MagicMock:
@@ -1816,6 +1818,128 @@ class TestDefixturedQueryCorrectness:
 
         target_ids = {t["id"] for t in result["targets"]}
         assert "org-civil-society" in target_ids
+
+
+def _make_wayne_tick0_graph() -> BabylonGraph:
+    """Tick-0 wayne_county-shaped graph for eligibility tests.
+
+    ORG001 (civil_society, the player) and ORG002 (state_apparatus,
+    Detroit PD) share hex-1/hex-2, mirroring ``_legacy_wayne.py``. The
+    social_class node is production-faithful: NO ``territory_ids``
+    (``SocialClass`` has no such field; ``to_graph`` dumps model fields
+    verbatim), so EDUCATE is structurally ineligible — the exact tick-0
+    dead-end FR-116-4.8 converts into disabled-with-reason.
+    """
+    g = BabylonGraph()
+    g.graph["tick"] = 0
+    g.add_node(
+        "ORG001",
+        "organization",
+        name="Wayne County Organizing Committee",
+        org_type="civil_society",
+        cadre_level=0.1,
+        cohesion=0.5,
+        budget=100.0,
+        heat=0.0,
+        territory_ids=["hex-1", "hex-2"],
+    )
+    g.add_node(
+        "ORG002",
+        "organization",
+        name="Detroit Police Department",
+        org_type="state_apparatus",
+        cadre_level=5.0,
+        cohesion=0.8,
+        budget=5000.0,
+        heat=0.3,
+        territory_ids=["hex-1", "hex-2", "hex-3"],
+    )
+    g.add_node("hex-1", "territory", name="Downtown Detroit", heat=0.2, population=5000)
+    g.add_node("hex-2", "territory", name="Dearborn", heat=0.1, population=4000)
+    g.add_node(
+        "C001",
+        "social_class",
+        name="Detroit Proletariat",
+        role="proletariat",
+        wealth=15.0,
+        agitation=0.2,
+    )
+    return g
+
+
+@pytest.mark.unit
+class TestVerbEligibility:
+    """Spec-116 FR-4.8: get_verb_eligibility derives per-verb eligibility
+    from the SAME predicates that empty the per-verb target lists, on ONE
+    shared hydration, with the server-side reason/remedy copy table."""
+
+    def _eligibility(self, graph: BabylonGraph) -> tuple[dict[str, Any], MagicMock]:
+        mock_persistence = _make_mock_persistence()
+        bridge = EngineBridge(mock_persistence)
+        with _patched_hydrate_state(bridge, graph, tick=0) as mock_hydrate:
+            result = bridge.get_verb_eligibility(uuid.uuid4(), "ORG001")
+        return result, mock_hydrate
+
+    def test_all_nine_verbs_present_with_full_row_shape(self) -> None:
+        result, _ = self._eligibility(_make_wayne_tick0_graph())
+        assert result["org_id"] == "ORG001"
+        assert result["tick"] == 0
+        assert {v["verb"] for v in result["verbs"]} == set(VERB_TO_ACTION_TYPE)
+        for row in result["verbs"]:
+            assert set(row) == {
+                "verb",
+                "eligible",
+                "reason",
+                "remedy",
+                "can_afford",
+                "afford_note",
+            }
+
+    def test_tick0_wayne_educate_ineligible_with_reason_and_remedy(self) -> None:
+        result, _ = self._eligibility(_make_wayne_tick0_graph())
+        by_verb = {v["verb"]: v for v in result["verbs"]}
+        assert by_verb["educate"]["eligible"] is False
+        assert by_verb["educate"]["reason"] == "No organized community in your territories yet."
+        assert by_verb["educate"]["remedy"] == VERB_INELIGIBILITY_COPY["educate"][1]
+
+    def test_tick0_wayne_mobilize_ineligible_state_apparatus_does_not_count(self) -> None:
+        result, _ = self._eligibility(_make_wayne_tick0_graph())
+        by_verb = {v["verb"]: v for v in result["verbs"]}
+        assert by_verb["mobilize"]["eligible"] is False
+        assert by_verb["mobilize"]["reason"] == VERB_INELIGIBILITY_COPY["mobilize"][0]
+        assert by_verb["mobilize"]["remedy"] == VERB_INELIGIBILITY_COPY["mobilize"][1]
+
+    def test_tick0_wayne_eligible_verbs_carry_null_copy(self) -> None:
+        result, _ = self._eligibility(_make_wayne_tick0_graph())
+        by_verb = {v["verb"]: v for v in result["verbs"]}
+        # ORG002 shares hex-1/hex-2 -> aid (org arm), attack, negotiate.
+        # Territory nodes exist -> campaign, move. Own territories -> investigate.
+        for verb in ("aid", "attack", "negotiate", "campaign", "move", "investigate", "reproduce"):
+            assert by_verb[verb]["eligible"] is True, verb
+            assert by_verb[verb]["reason"] is None, verb
+            assert by_verb[verb]["remedy"] is None, verb
+
+    def test_educate_flips_eligible_when_social_class_shares_territory(self) -> None:
+        graph = _make_wayne_tick0_graph()
+        graph.update_node("C001", territory_ids=["hex-1"])
+        result, _ = self._eligibility(graph)
+        by_verb = {v["verb"]: v for v in result["verbs"]}
+        assert by_verb["educate"]["eligible"] is True
+        assert by_verb["educate"]["reason"] is None
+
+    def test_exactly_one_hydration(self) -> None:
+        _result, mock_hydrate = self._eligibility(_make_wayne_tick0_graph())
+        assert mock_hydrate.call_count == 1, (
+            "get_verb_eligibility must evaluate all nine predicates on ONE "
+            "shared hydration (the 9x get_*_targets loop would cost ~18)"
+        )
+
+    def test_org_not_found_is_honest_error(self) -> None:
+        mock_persistence = _make_mock_persistence()
+        bridge = EngineBridge(mock_persistence)
+        with _patched_hydrate_state(bridge, _make_wayne_tick0_graph(), tick=0):
+            result = bridge.get_verb_eligibility(uuid.uuid4(), "NOT-AN-ORG")
+        assert result == {"status": "error", "error": "Org not found"}
 
 
 @pytest.mark.unit
@@ -3684,3 +3808,109 @@ class TestSpineWhitelistSeverityAndTitles:
         from game.engine_bridge import _humanize_event_type
 
         assert _humanize_event_type(event_type) == expected
+
+
+@pytest.mark.requires_reference_db
+class TestBridgeEconomicsOverridesWiresCirculationAndFinancialServices:
+    """spec-116 Task 20b: wire the FRED-backed circulation + financial services
+    into ``_bridge_economics_overrides``, mirroring the
+    ``throughput_calculator`` wiring pattern (``test_throughput_wiring.py``).
+
+    Without ``turnover_profile_source``/``interest_calculator`` wired,
+    ``domain/economics/tick/system/__init__.py``'s ``_compute_circulation_layer``
+    (:1167) and ``_compute_financial_layer`` (:1365) no-op unconditionally, so
+    the Group C (7 fields) and Group D (9 fields) territory attrs stay at their
+    write-site fallback constants forever. Both factories
+    (``create_circulation_services``/``create_financial_services``) read the
+    same reference-DB ``session_factory`` already in scope for melt/gamma/
+    leontief/throughput above — no new runtime dependency.
+    """
+
+    def test_overrides_include_a_real_turnover_profile_source(self) -> None:
+        from babylon.domain.economics.circulation.turnover import DefaultTurnoverProfileSource
+        from game.engine_bridge import _bridge_economics_overrides
+
+        overrides, leontief_session = _bridge_economics_overrides(())
+        try:
+            assert "turnover_profile_source" in overrides
+            assert isinstance(overrides["turnover_profile_source"], DefaultTurnoverProfileSource)
+        finally:
+            if leontief_session is not None:
+                leontief_session.close()
+
+    def test_overrides_include_a_real_interest_calculator(self) -> None:
+        from babylon.domain.economics.credit.interest import DefaultInterestCalculator
+        from game.engine_bridge import _bridge_economics_overrides
+
+        overrides, leontief_session = _bridge_economics_overrides(())
+        try:
+            assert "interest_calculator" in overrides
+            assert isinstance(overrides["interest_calculator"], DefaultInterestCalculator)
+        finally:
+            if leontief_session is not None:
+                leontief_session.close()
+
+    def test_overrides_include_inventory_and_depreciation_data_sources(self) -> None:
+        """Group C's other two circulation adapters ride the same wiring call."""
+        from game.engine_bridge import _bridge_economics_overrides
+
+        overrides, leontief_session = _bridge_economics_overrides(())
+        try:
+            assert overrides.get("inventory_data_source") is not None
+            assert overrides.get("depreciation_data_source") is not None
+        finally:
+            if leontief_session is not None:
+                leontief_session.close()
+
+
+@pytest.mark.requires_reference_db
+class TestBridgeEconomicsOverridesWiresVol1ReserveArmyServices:
+    """spec-116 Task 21b: wire the FRED-backed Vol I production layer
+    (Feature 021 — reserve army, productivity, dispossession) into
+    ``_bridge_economics_overrides``, mirroring the headless runner's
+    ``create_vol1_services``/``load_vol1_series_from_db`` wiring
+    (``engine/simulation/_legacy.py:305-316``).
+
+    Without ``reserve_army_data_source`` wired, ``domain/economics/tick/
+    system/__init__.py``'s ``_compute_vol1_layer`` (:1100) returns
+    ``county_states`` unchanged unconditionally, so the wage-pressure
+    sigmoid never compresses ``median_wage`` tick-over-tick in a web
+    session — only the QCEW bootstrap value it starts from is real.
+    ``create_vol1_services`` reads the same reference-DB ``session_factory``
+    already in scope for melt/gamma/leontief/throughput/circulation/
+    financial above — no new runtime dependency.
+    """
+
+    def test_overrides_include_a_reserve_army_data_source(self) -> None:
+        from game.engine_bridge import _bridge_economics_overrides
+
+        overrides, leontief_session = _bridge_economics_overrides(())
+        try:
+            source = overrides.get("reserve_army_data_source")
+            assert source is not None
+            assert hasattr(source, "get_unemployment_decomposition")
+            assert callable(source.get_unemployment_decomposition)
+        finally:
+            if leontief_session is not None:
+                leontief_session.close()
+
+    def test_overrides_include_productivity_and_dispossession_data_sources(self) -> None:
+        """The other two Vol I adapters ride the same wiring call (mirrors
+        the headless runner's ``.update(vol1_overrides)`` faithfully — see
+        the FLAG discussion in the Task 21b brief: ``productivity_data_source``
+        has zero tick readers anywhere in ``src/`` today, and
+        ``dispossession_data_source``'s one reader
+        (``_simulate_transitions``, :1757) is itself gated on an unwired
+        ``transition_engine`` (:1736), so both ride along inert — wiring the
+        whole bundle is faithful to the headless mirror without widening the
+        web session's live blast radius beyond reserve-army wage pressure.
+        """
+        from game.engine_bridge import _bridge_economics_overrides
+
+        overrides, leontief_session = _bridge_economics_overrides(())
+        try:
+            assert overrides.get("productivity_data_source") is not None
+            assert overrides.get("dispossession_data_source") is not None
+        finally:
+            if leontief_session is not None:
+                leontief_session.close()

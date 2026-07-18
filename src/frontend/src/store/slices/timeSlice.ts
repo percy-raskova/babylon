@@ -200,7 +200,15 @@ export const createTimeSlice: StateCreator<RootState, [], [], TimeSlice> = (set,
         const status = get().time.status;
         if (status === "paused") {
           get().time.play(gameId);
-        } else if (status === "playing") {
+        } else if (status === "playing" || status === "resolving") {
+          // "resolving" counts as running: a real tick resolve (~15-19s live)
+          // dwarfs the sub-second inter-resolve delay, so the loop sits in
+          // "resolving" almost the whole time and a single Space press nearly
+          // always lands there. `pause()` sets playIntent=false and the
+          // serialized loop halts once the in-flight resolve settles — the
+          // exact behavior the Pause button already had from any status, so
+          // the spacebar and the button now agree instead of the spacebar
+          // silently dropping presses mid-resolve.
           get().time.pause();
         }
       },

@@ -63,6 +63,7 @@ from babylon.topology.graph_algorithms import (
 from .epilogues import EPILOGUES
 from .log_handler import sanitize_for_log
 from .map_contract import MAP_HISTORY_REPLAYABLE_METRICS, MAP_METRIC_PROPERTIES
+from .verb_copy import VERB_INELIGIBILITY_COPY
 
 if TYPE_CHECKING:
     from game.narrative_service import NarrativeService
@@ -5009,6 +5010,107 @@ class EngineBridge:
             "actions": org_actions,
         }
 
+    def get_verb_eligibility(self, session_id: UUID, org_id: str) -> dict[str, Any]:
+        """Per-verb eligibility for the acting org (spec-116 FR-4.8).
+
+        Evaluates, on ONE shared hydration, the same target-existence
+        predicate each ``get_<verb>_targets`` method applies — so a verb
+        is marked ineligible exactly when its target list would come back
+        empty — and pairs every ineligible verb with the player-facing
+        ``(reason, remedy)`` copy from :mod:`game.verb_copy`.
+        Affordability rides along per verb via :func:`check_can_afford`
+        (the same function that gates ``submit_action``, so the note can
+        never disagree with a submit rejection); the UI disables on
+        ``eligible`` only, never on ``can_afford``.
+
+        MOVE/NEGOTIATE/INVESTIGATE honesty note: their eligibility comes
+        from real graph predicates (a territory node exists / another org
+        exists / own territories non-empty) even though their target
+        lists are partly hardcoded fixtures today — eligibility must
+        never launder a fixture into ``eligible: true``.
+
+        :param session_id: The game session UUID.
+        :param org_id: The acting organization id.
+        :returns: ``{"session_id", "tick", "org_id", "verbs"}`` where
+            ``verbs`` holds one ``{"verb", "eligible", "reason",
+            "remedy", "can_afford", "afford_note"}`` dict per canonical
+            verb in ``VERB_TO_ACTION_TYPE`` order, or
+            ``{"status": "error", "error": "Org not found"}``.
+        """
+        state, graph = self.hydrate_state(session_id)
+        if org_id not in graph.nodes:
+            return {"status": "error", "error": "Org not found"}
+
+        org_data = graph.nodes[org_id]
+        own_tids = {str(t) for t in org_data.get("territory_ids", [])}
+
+        # One bounded pass over the graph gathers every predicate input.
+        has_social_class = False  # educate; aid (population arm)
+        has_org_in_reach = False  # aid (org arm); attack (org arm)
+        has_mobilizable_org = False  # mobilize (business/civil_society)
+        has_institution_in_reach = False  # attack (institution arm)
+        has_other_org = False  # negotiate (anywhere in the graph)
+        has_territory_node = False  # campaign; move
+        for node_id, data in graph.nodes(data=True):
+            node_type = data.get("_node_type")
+            if node_type == "territory":
+                has_territory_node = True
+                continue
+            node_tids = {str(t) for t in data.get("territory_ids", [])}
+            if node_type == "organization" and node_id != org_id:
+                has_other_org = True
+                if node_tids & own_tids:
+                    has_org_in_reach = True
+                    if str(data.get("org_type", "")) in ("business", "civil_society"):
+                        has_mobilizable_org = True
+            elif node_type == "social_class" and node_tids & own_tids:
+                has_social_class = True
+            elif node_type == "institution" and node_tids & own_tids:
+                has_institution_in_reach = True
+
+        eligible_by_verb: dict[str, bool] = {
+            "educate": has_social_class,
+            "aid": has_social_class or has_org_in_reach,
+            "attack": has_org_in_reach or has_institution_in_reach,
+            "mobilize": has_mobilizable_org,
+            "campaign": has_territory_node,
+            "move": has_territory_node,
+            "investigate": bool(own_tids),
+            "reproduce": True,  # always targets the acting org itself
+            "negotiate": has_other_org,
+        }
+
+        resources = VanguardResources.from_organization(
+            cadre_level=float(org_data.get("cadre_level", 0.0)),
+            cohesion=float(org_data.get("cohesion", 0.0)),
+            budget=float(org_data.get("budget", 0.0)),
+            heat=float(org_data.get("heat", 0.0)),
+            territory_count=len(own_tids),
+        )
+
+        verbs: list[dict[str, Any]] = []
+        for verb in VERB_TO_ACTION_TYPE:
+            eligible = eligible_by_verb[verb]
+            reason, remedy = (None, None) if eligible else VERB_INELIGIBILITY_COPY[verb]
+            can_afford, afford_reason = check_can_afford(resources, verb)
+            verbs.append(
+                {
+                    "verb": verb,
+                    "eligible": eligible,
+                    "reason": reason,
+                    "remedy": remedy,
+                    "can_afford": can_afford,
+                    "afford_note": None if can_afford else afford_reason,
+                }
+            )
+
+        return {
+            "session_id": str(session_id),
+            "tick": state.tick,
+            "org_id": org_id,
+            "verbs": verbs,
+        }
+
     def submit_action(
         self,
         session_id: UUID,
@@ -6197,13 +6299,18 @@ def _bridge_economics_overrides(fips_codes: tuple[str, ...] = ()) -> tuple[dict[
     so ``tick_phi_hour`` is genuinely computed per county for web sessions
     too, instead of staying at the permanent ``0.0`` stub (see
     ``babylon.domain.economics.tick.system.imperial_rent
-    ._spec_057_pipeline_wired``). ``median_wage``/``employment`` (Vol I's
-    ``DefaultWagePressureCalculator`` is ALSO unwired in both runners — no
-    ``reserve_army_data_source`` — so they stay at ``CountyEconomicState``'s
-    bootstrap defaults, 21.0 $/hr and 100,000 workers) are the
-    calculator-independent values that make ``flow_wage_accrued`` move
-    (Constitution III.11: these are the engine's own documented
-    graceful-degradation defaults, not a value this lane invents).
+    ._spec_057_pipeline_wired``). ``employment`` is already real per county
+    (``employment_source``/``wage_source`` below, QCEW) — 100,000 workers is
+    only the documented graceful-degradation fallback for an absent county-
+    year row (Constitution III.11), not a value this lane invents.
+    ``median_wage`` was, until spec-116 Task 21b, the one place that fallback
+    story still bit: Vol I's ``DefaultWagePressureCalculator`` needs a
+    ``reserve_army_data_source`` neither runner constructed, so
+    ``CountyEconomicState``'s 21.0 $/hr bootstrap never moved tick-over-tick
+    in a web session — only the QCEW p50 estimator that seeds it did. Task
+    21b wires the FRED-backed ``reserve_army_data_source`` (Feature 021's
+    ``create_vol1_services``) below, so unemployment-decomposition-driven
+    wage pressure now compresses ``median_wage`` at year boundaries here too.
 
     Wave 2 owner ruling 1: also wires ``throughput_calculator`` (Feature 014's
     ``DefaultThroughputCalculator``, BEA county GDP + QCEW NAICS employment
@@ -6317,6 +6424,68 @@ def _bridge_economics_overrides(fips_codes: tuple[str, ...] = ()) -> tuple[dict[
     # hydrate — a bare call (no FIPS) leaves K at the engine's 0.0 default.
     if fips_codes:
         overrides["capital_calculator"] = _build_capital_calculator(fips_codes)
+
+    # Spec-116 Task 20b: wire the FRED-backed circulation (Feature 023) +
+    # financial (Feature 024) services the same way the headless runner does
+    # (Simulation.from_sqlite, engine/simulation/_legacy.py:273-303), so the
+    # Group C (7 fields, gated on turnover_profile_source at
+    # economics/tick/system/__init__.py:1167) and Group D (9 fields, gated on
+    # interest_calculator at :1365) territory attrs stop evaporating to the
+    # write-site fallback constants and become genuinely computed for web
+    # sessions too. Both loaders run raw SQL against the same reference-DB
+    # session_factory already in scope above — no new drive dependency.
+    from babylon.domain.economics.factory import (
+        create_circulation_services,
+        create_financial_services,
+        load_circulation_series_from_db,
+        load_fred_series_from_db,
+    )
+
+    fred_cache = load_fred_series_from_db(session_factory)
+    overrides.update(create_financial_services(fred_series_cache=fred_cache))
+
+    circulation_cache = load_circulation_series_from_db(session_factory)
+    overrides.update(
+        create_circulation_services(
+            circulation_series_cache=circulation_cache,
+            fred_series_cache=fred_cache,
+        )
+    )
+
+    # Spec-116 Task 21b: wire the FRED-backed Vol I production layer
+    # (Feature 021 — reserve army, productivity, dispossession) the same way
+    # the headless runner does (Simulation.from_sqlite,
+    # engine/simulation/_legacy.py:305-316), so the
+    # ``services.reserve_army_data_source is None`` gate
+    # (domain/economics/tick/system/__init__.py:1100) no longer short-
+    # circuits ``_compute_vol1_layer`` unconditionally — FRED UNRATE/NROU
+    # unemployment decomposition now drives the wage-pressure sigmoid that
+    # compresses ``median_wage`` at year boundaries for web sessions too.
+    # Reuses the ``fred_cache`` Task 20b already loaded above (UNRATE lives
+    # in that same Vol III cache) — no second query.
+    # ``productivity_data_source``/``dispossession_data_source`` ride along
+    # in the same dict, mirroring the headless runner's
+    # ``.update(vol1_overrides)`` faithfully: ``productivity_data_source``
+    # has zero tick readers anywhere in ``src/`` (registered on
+    # ServicesProtocol, never called), so it is inert; ``dispossession_
+    # data_source`` IS read inside ``_simulate_transitions`` (:1757), but
+    # that whole method still no-ops unconditionally on its OWN, separate
+    # ``services.transition_engine is None`` gate (:1736) — no
+    # ``transition_engine`` is wired here — so it is equally inert today,
+    # not a newly-activated blast radius.
+    from babylon.domain.economics.factory import (
+        create_vol1_services,
+        load_vol1_series_from_db,
+    )
+
+    vol1_cache = load_vol1_series_from_db(session_factory)
+    overrides.update(
+        create_vol1_services(
+            vol1_series_cache=vol1_cache,
+            fred_series_cache=fred_cache,
+        )
+    )
+
     return overrides, leontief_session
 
 

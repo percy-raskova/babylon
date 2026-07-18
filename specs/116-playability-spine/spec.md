@@ -1,9 +1,11 @@
 # Spec 116 — The Playability Spine (Program 24, sub-project 1)
 
-**Status:** PLANNED 2026-07-17 (owner approved the parent design and authorized
-implementation the same day) · **Branch:** `feature/116-playability-spine`
+**Status:** EXECUTED 2026-07-17 (all 25 tasks landed; acceptance sweep complete,
+6/6 gates met — see §Acceptance gate results below) · **Branch:**
+`feature/116-playability-spine`
 **Parent design:** `docs/superpowers/specs/2026-07-17-viable-game-design.md` (§4)
-**ADR:** ADR079 (authored with this program's first commit batch)
+**ADR:** ADR079 (seeded `proposed` with Task 1's first commit batch; flipped to
+`accepted` at Task 25)
 
 ## Thesis
 
@@ -71,6 +73,23 @@ player's own fast-forward-to-epilogue once a pattern locks (FR-116-5).
    player-accepted fast-forward).
 5. Preview visible before every submit.
 6. A fresh player reaches their first submitted action unaided (scripted e2e trunk test).
+
+## Acceptance gate results (Task 25 sweep, 2026-07-17)
+
+| # | Gate | Result | Evidence |
+|---|---|---|---|
+| 1 | Null-play nationwide horizon | MET (with an owner-sanctioned deferral) | `reports/pacing-calibration-2026-07-17.md` — `first_recognition` all-null on the `us` 260-tick sample AND the FULL 5200-tick `wayne_county` run; the full `us` 5200-tick century run was launched then KILLED AND DEFERRED by owner ruling 2026-07-17 (report §4 addendum: "a lot of work to be done before I put that kind of work into it"); Task 2's tick-0 `SOV_EXTERIOR_NULL` exemption test + Tasks 3/4's horizon-only-termination tests confirm no terminator code paths remain |
+| 2 | No two consecutive identical event cards | MET | `src/frontend/src/lib/__tests__/eventDedup.test.ts` (unit) + `src/frontend/e2e/first-session.spec.ts`'s live two-tick resolve step (exercises the real dedup output against `wayne_county`'s actual ~160-card-per-tick event volume — no two adjacent cards share a type) |
+| 3 | Autopause ≤ 1 per distinct event | MET | `src/frontend/src/store/slices/worldSlice.test.ts`'s "autopause-once" describe block (unit) + `first-session.spec.ts`'s live two-resolve step, handled via `acknowledgeAutopauseIfPresent` |
+| 4 | Every recognized outcome renders a distinct epilogue | MET | `tests/unit/web/test_epilogues.py` — 6 outcomes (5 patterns + UNRESOLVED), pairwise-distinct headline+body, "THE BUNKER FAILS" ×4 duplicate proven dead |
+| 5 | Preview visible before every submit | MET | `first-session.spec.ts` + `e2e/verb-submit.spec.ts` — `preview-probability`/`verb-cost` testids visible before the submit click resolves |
+| 6 | A fresh player reaches their first submitted action unaided | MET | `src/frontend/e2e/first-session.spec.ts` (new, this task) — full lobby → briefing → disabled-with-reason verb grid → preview → submit → two-tick resolve → honest `endgame_progress` trunk, driven against the live stack; 5/5 tests pass |
+
+Full verification battery (Task 25 Step 4): `mise run check` green, `mise run
+qa:regression` 5/5 byte-identical, `npm run check` green (frontend
+lint+types+vitest). Full authenticated e2e suite: 36/37 non-setup specs green;
+one pre-existing, unrelated failure found and reported (not fixed here) — see
+ADR079's "Known honest limitations".
 
 ## Constraints
 

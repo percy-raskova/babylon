@@ -302,3 +302,37 @@ class TestSmokeTheTwentyRestoredMethods:
         assert "meta" in result
         assert "index" in result
         assert "story" in result
+
+
+class TestVerbEligibilityStub:
+    """Spec-116 FR-4.8 twin: coherent with the stub's own target methods
+    (mobilize honestly empty; negotiate ineligible because ORG001 is the
+    stub world's only organization)."""
+
+    def test_shape_and_world_coherence(self) -> None:
+        bridge, session_id = _stub_session()
+        result = bridge.get_verb_eligibility(session_id, _ORG_ID)
+        assert len(result["verbs"]) == 9
+        by_verb = {v["verb"]: v for v in result["verbs"]}
+        assert by_verb["mobilize"]["eligible"] is False
+        assert by_verb["mobilize"]["reason"]
+        assert by_verb["mobilize"]["remedy"]
+        assert by_verb["negotiate"]["eligible"] is False
+        assert by_verb["educate"]["eligible"] is True
+        assert by_verb["educate"]["reason"] is None
+        for row in result["verbs"]:
+            assert set(row) == {
+                "verb",
+                "eligible",
+                "reason",
+                "remedy",
+                "can_afford",
+                "afford_note",
+            }
+
+    def test_unknown_org_is_honest_error(self) -> None:
+        bridge, session_id = _stub_session()
+        assert bridge.get_verb_eligibility(session_id, "NOT-AN-ORG") == {
+            "status": "error",
+            "error": "Org not found",
+        }

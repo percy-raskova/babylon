@@ -1,6 +1,6 @@
 """Vocabulary-sentinel checks: the node-type vocabulary must stay closed.
 
-Two gating rules, both read statically from source (no engine import, no
+Three gating rules, all read statically from source (no engine import, no
 Django, no DB — cheap enough for the always-on fast gate):
 
 **(a) No invented strings.** Every node-type literal stamped or queried
@@ -13,6 +13,25 @@ production *stamps*. A query for a type nothing produces is dead by
 construction: it iterates the empty set forever. Test stamps deliberately do
 not satisfy this rule (see
 :data:`~babylon.sentinels.vocabulary.registry.PRODUCTION_ROOTS`).
+
+**(c) Shape closure.** Every attribute a real ``add_node(id, TYPE, **kwargs)``
+call stamps onto a KNOWN, production-stamped node type must be either a field
+the corresponding Pydantic model actually declares, a documented graph-only
+attribute a real production writer stamps (see
+:data:`~babylon.sentinels.vocabulary.registry.EXTRA_STAMPABLE_ATTRIBUTES`), or
+an explicit, reasoned exemption (see
+:data:`~babylon.sentinels.vocabulary.registry.ATTRIBUTE_EXEMPTIONS`). This is
+the rule that kills a fixture-fabricated SHAPE — task #45's audit
+(2026-07-18) found ``territory_ids`` stamped on ``social_class`` nodes
+(``SocialClass`` has no such field) plus five more live instances
+(``agitation``/``factional_composition`` reading a flat key nested one level
+deeper in production; ``class_consciousness``/``ooda_profile``/
+``counter_intel_score`` never seeded at all). Deliberately scoped to REAL
+``add_node`` calls whose node type resolves to a single literal (see
+:func:`~babylon.sentinels._ast.add_node_attribute_stamps`) — ``update_node``
+calls and duck-typed/attribute-agnostic utility tests are out of scope by
+design, not by oversight (full reasoning: the audit report + the exemption
+registry's own comments).
 
 Failure messages are written for an agent with no other context: each names the
 offending ``file:line``, the offending string, the allowed set, the nearest
@@ -29,16 +48,31 @@ from pathlib import Path
 from typing import Final
 
 from babylon.models.enums.topology import NodeType
-from babylon.sentinels._ast import node_type_uses
+from babylon.sentinels._ast import add_node_attribute_stamps, node_type_uses
 from babylon.sentinels.base import LabelledCheck, SentinelCheckError, run_sensor
 from babylon.sentinels.vocabulary.registry import (
+    ATTRIBUTE_EXEMPTIONS,
+    EXTRA_STAMPABLE_ATTRIBUTES,
     LITERAL_EXEMPTIONS,
+    MODEL_FIELDS_BY_NODE_TYPE,
     PRODUCTION_ROOTS,
     SCAN_ROOTS,
+    TICK_PREFIXED_NODE_TYPES,
     UNSTAMPED_QUERY_ALLOWLIST,
 )
 
-__all__ = ["invented_node_types", "main", "unstamped_queried_node_types"]
+__all__ = [
+    "fabricated_node_attributes",
+    "invented_node_types",
+    "main",
+    "unstamped_queried_node_types",
+]
+
+#: Attribute keys every node carries that are never a model "field" in the
+#: shape-closure sense -- ``id`` selects/echoes the node's own identifier
+#: (redundant with the positional arg, a common authoring idiom), not a
+#: declared attribute of the entity it represents.
+_ALWAYS_OK_ATTRIBUTES: Final[frozenset[str]] = frozenset({"id"})
 
 _REPO_ROOT: Final[Path] = Path(__file__).resolve().parents[4]
 
@@ -60,6 +94,18 @@ _WHY_UNSTAMPED: Final[str] = (
     "producer is missing (wire it) or the query is dead (delete it). A fixture "
     "that stamps the type does NOT make it real -- that is precisely how this "
     "class of bug stays invisible."
+)
+
+_WHY_FABRICATED: Final[str] = (
+    "WHY THIS FAILS: an attribute the entity's own Pydantic model does not "
+    "declare, and no production writer stamps either, exists ONLY in the "
+    "fixture that wrote it. A production reader keying off this exact name "
+    "matches ZERO real nodes forever, so the test goes green while the "
+    "feature it covers is dead. This is not hypothetical: a fixture stamping "
+    "'territory_ids' on a social_class node (SocialClass has no such field) "
+    "gave six tests a green bar over four live bugs (educate targets, verb "
+    "eligibility, aid population targets, base_population, and the "
+    "per-territory economy panel)."
 )
 
 
@@ -157,11 +203,73 @@ def unstamped_queried_node_types() -> list[str]:
     return violations
 
 
-#: Both rules gate: an invented type and a producerless query are each a live
-#: defect, not an observation.
+def _suggest_attribute(node_type: str, offender: str) -> str:
+    """Nearest legal field name for a rejected attribute, ready to paste.
+
+    Mirrors :func:`_suggest`'s containment-then-fuzzy-match order (the real
+    offenders so far are a canonical field wearing a different name --
+    ``factional_composition`` for ``internal_balance`` -- rather than a
+    typo), scoped to the one node type's declared fields.
+    """
+    allowed = MODEL_FIELDS_BY_NODE_TYPE.get(node_type, frozenset())
+    fallback = difflib.get_close_matches(offender, sorted(allowed), n=1, cutoff=0.3)
+    if not fallback:
+        return (
+            "no close match on the declared model -- if this is real graph-only "
+            "shape a production writer stamps, add it to "
+            "EXTRA_STAMPABLE_ATTRIBUTES; if a test needs an arbitrary "
+            "attribute-agnostic name, add an ATTRIBUTE_EXEMPTIONS row."
+        )
+    return f'did you mean "{fallback[0]}"?'
+
+
+def fabricated_node_attributes() -> list[str]:
+    """Rule (c): every stamped node attribute must be real shape.
+
+    :returns: One violation string per fabricated ``(file, node_type,
+        attribute)``, sorted by location.
+    :raises SentinelCheckError: If a scan root is missing or a file is
+        unparseable (exit 2 — infrastructure failure, never a silent pass).
+    """
+    violations: list[str] = []
+    for path in _python_files(SCAN_ROOTS):
+        rel = path.relative_to(_REPO_ROOT)
+        rel_posix = rel.as_posix()
+        for lineno, node_type, attr in add_node_attribute_stamps(path):
+            model_fields = MODEL_FIELDS_BY_NODE_TYPE.get(node_type)
+            if model_fields is None:
+                # Not one of the 8 production-stamped types (or an invented
+                # string) -- rules (a)/(b) police the vocabulary itself;
+                # shape-closure only applies where a real model exists.
+                continue
+            if attr in _ALWAYS_OK_ATTRIBUTES or attr in model_fields:
+                continue
+            if attr in EXTRA_STAMPABLE_ATTRIBUTES.get(node_type, frozenset()):
+                continue
+            if node_type in TICK_PREFIXED_NODE_TYPES and attr.startswith("tick_"):
+                continue
+            if (rel_posix, node_type, attr) in ATTRIBUTE_EXEMPTIONS:
+                continue
+            violations.append(
+                f'{rel}:{lineno} stamps attribute "{attr}" on a "{node_type}" node, '
+                f"which its model does not declare and no production writer stamps.\n"
+                f"    {_suggest_attribute(node_type, attr)}\n"
+                f"    declared fields: {', '.join(sorted(model_fields))}\n"
+                f"    fix: use a real declared field, or -- if this is genuine "
+                f"graph-only shape a\n"
+                f"         production system writes -- add it to "
+                f"EXTRA_STAMPABLE_ATTRIBUTES with a citation.\n"
+                f"    {_WHY_FABRICATED}"
+            )
+    return violations
+
+
+#: All three rules gate: an invented type, a producerless query, and a
+#: fabricated shape are each a live defect, not an observation.
 _GATING_CHECKS: Final[tuple[LabelledCheck, ...]] = (
     ("invented-node-type", invented_node_types),
     ("unstamped-queried-node-type", unstamped_queried_node_types),
+    ("fabricated-node-attribute", fabricated_node_attributes),
 )
 
 
@@ -170,8 +278,9 @@ def _summary(advisory_count: int) -> str:
     _ = advisory_count  # This sentinel declares no advisory tier.
     return (
         f"VOCABULARY clean: {len(_ALLOWED)} declared node types; "
-        f"every literal in {'/, '.join(SCAN_ROOTS)}/ is a NodeType member and "
-        f"every production query has a production producer."
+        f"every literal in {'/, '.join(SCAN_ROOTS)}/ is a NodeType member, "
+        f"every production query has a production producer, and every "
+        f"stamped attribute on a production-stamped node type is real shape."
     )
 
 

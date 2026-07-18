@@ -540,9 +540,21 @@ class TickDynamicsSystem(SystemBase):
 
         tau_effective = tau * gamma_basket
 
-        clamped_year = min(max(year, 2007), 2040)
+        # Honesty sweep (spec 2026-07-18 vol3-money-scissors-design, U2):
+        # NationalTickParameters carries MELT/gamma — quantities computed
+        # for the WHOLE campaign horizon (SIM_EPOCH_YEAR + up to ~100
+        # years), unlike Volume III's financial models whose FRED/Z.1 data
+        # legitimately stops around 2024-2040. The prior
+        # `min(max(year, 2007), 2040)` ceiling silently fabricated
+        # year=2040 for every tick past 2040 (~85% of a 5200-tick
+        # campaign) instead of reporting the real year (Constitution
+        # III.11) — and the `le=2040` Field constraint it was masking
+        # raised ValidationError the moment this clamp was ever bypassed.
+        # Only the floor is a genuine sanity bound (SIM_EPOCH_YEAR=2010
+        # can never produce year < 2007); the ceiling is simply gone.
+        floor_year = max(year, 2007)
         return NationalTickParameters(
-            year=clamped_year,
+            year=floor_year,
             tau=tau,
             gamma_basket=gamma_basket,
             gamma_basket_raw=gamma_basket_raw,

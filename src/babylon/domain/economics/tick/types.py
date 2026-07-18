@@ -225,7 +225,7 @@ class NationalTickParameters(BaseModel):
 
     model_config = ConfigDict(frozen=True)
 
-    year: int = Field(..., ge=2007, le=2040, description="Parameter year")
+    year: int = Field(..., ge=2007, description="Parameter year")
     tau: float = Field(..., gt=0, description="National MELT ($/labor-hour)")
     gamma_basket: float = Field(..., gt=0, le=1, description="Basket visibility (smoothed)")
     gamma_basket_raw: float = Field(..., gt=0, le=1, description="Basket visibility (raw)")

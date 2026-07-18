@@ -59,8 +59,8 @@ class TestNationalTickParameters:
         with pytest.raises(ValidationError):
             params.tau = 65.0  # type: ignore[misc]
 
-    def test_year_bounds(self) -> None:
-        """Verify year constraint ge=2007, le=2040."""
+    def test_year_floor_bound(self) -> None:
+        """Verify year floor ge=2007 (no upper bound — MELT runs the whole campaign)."""
         with pytest.raises(ValidationError, match="year"):
             NationalTickParameters(
                 year=2006,
@@ -72,17 +72,26 @@ class TestNationalTickParameters:
                 tau_effective=42.16,
                 v_reproduction=12.0,
             )
-        with pytest.raises(ValidationError, match="year"):
-            NationalTickParameters(
-                year=2041,
-                tau=62.0,
-                gamma_basket=0.68,
-                gamma_basket_raw=0.68,
-                gamma_III=0.33,
-                gamma_III_raw=0.33,
-                tau_effective=42.16,
-                v_reproduction=12.0,
-            )
+
+    def test_year_has_no_upper_bound(self) -> None:
+        """Honesty sweep (spec 2026-07-18 vol3-money-scissors-design, U2):
+
+        MELT/gamma_basket/gamma_III are computed for the WHOLE campaign
+        horizon (SIM_EPOCH_YEAR=2010 .. +100yr), unlike Volume III's
+        FRED-bound financial models — so this model must accept a real
+        late-campaign year instead of the caller clamping/fabricating one.
+        """
+        params = NationalTickParameters(
+            year=2109,
+            tau=62.0,
+            gamma_basket=0.68,
+            gamma_basket_raw=0.68,
+            gamma_III=0.33,
+            gamma_III_raw=0.33,
+            tau_effective=42.16,
+            v_reproduction=12.0,
+        )
+        assert params.year == 2109
 
     def test_tau_must_be_positive(self) -> None:
         """Verify tau gt=0 constraint."""

@@ -1787,8 +1787,11 @@ class TestComputeNationalParams:
         assert result is not None
         assert result.gamma_III_raw == pytest.approx(0.33)
 
-    def test_year_clamping_to_2040(self) -> None:
-        """Year > 2040 clamped to 2040."""
+    def test_year_passes_through_unclamped_above_2040(self) -> None:
+        """Honesty sweep: year > 2040 is NOT clamped/fabricated to 2040 — it
+        flows through as the real simulation year (NationalTickParameters
+        has no upper year bound; MELT/gamma compute for the whole campaign).
+        """
         system = TickDynamicsSystem()
         melt = MockMELTCalculator(tau=62.0, accept_any_year=True)
         services = _make_services(melt_calculator=melt)
@@ -1796,7 +1799,7 @@ class TestComputeNationalParams:
         result = system._compute_national_params(2050, services, prev_coefficients=None)
 
         assert result is not None
-        assert result.year == 2040
+        assert result.year == 2050
 
     def test_year_clamping_to_2007(self) -> None:
         """Year < 2007 clamped to 2007."""

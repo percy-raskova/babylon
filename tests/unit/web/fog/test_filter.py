@@ -1,0 +1,475 @@
+"""Track 1 / Task 4 (2026-07-18): ``apply_fog`` — the fog filter itself.
+
+Two-layer model (spec-117 §5a): the MATERIAL layer (production, wages,
+rent, demographics, territory) is public record, always visible, never
+gated. The POLITICAL layer (:data:`game.fog.filter.POLITICAL_FIELDS`) is
+visible only within organizing ``reach``, or via a session
+:class:`~game.fog.ledger.IntelLedger` entry (which ages exact -> approximate
+-> unknown per :func:`game.fog.ledger.read_intel` — this module never
+re-derives that aging, it only calls it).
+
+Mirrors ``engine_bridge._apply_class_vision_gate``'s three-tier shape
+(desert/mud/water -> masked/approximate/exact), generalized to any node
+type and payload rather than social_class specifically.
+"""
+
+from __future__ import annotations
+
+import pytest
+
+pytestmark = pytest.mark.unit
+
+STALENESS_TICKS = 5
+UNKNOWN_TICKS = 20
+
+
+def _territory_payload() -> dict[str, object]:
+    """A ``_serialize_territory``-shaped payload with every political field
+    carrying a REAL (non-None) value — including the three fields that are
+    hardcoded ``None`` in the shipped serializer today (``consciousness``/
+    ``solidarity``/``dominant_community``, the "accidental null trap") —
+    so masking behavior is exercised uniformly across the whole set."""
+    return {
+        "id": "T1",
+        "name": "Home Territory",
+        "population": 50_000,
+        "wealth": 1234.5,
+        "rent_level": 0.4,
+        "heat": 0.62,
+        "agitation": 0.51,
+        "solidarity_index": 0.33,
+        "dominant_class": "core_proletariat",
+        "consciousness": 0.77,
+        "solidarity": 0.44,
+        "dominant_community": "detroit_proletariat",
+    }
+
+
+class TestInsideReachIsExact:
+    def test_political_fields_untouched_and_vision_lists_empty(self) -> None:
+        from game.fog.filter import apply_fog
+        from game.fog.ledger import IntelLedger
+
+        payload = _territory_payload()
+        result = apply_fog(
+            payload,
+            node_type="territory",
+            node_id="T1",
+            reach=frozenset({"T1"}),
+            ledger=IntelLedger(),
+            tick=100,
+            staleness_ticks=STALENESS_TICKS,
+            unknown_ticks=UNKNOWN_TICKS,
+        )
+
+        assert result["heat"] == 0.62
+        assert result["agitation"] == 0.51
+        assert result["solidarity_index"] == 0.33
+        assert result["dominant_class"] == "core_proletariat"
+        assert result["consciousness"] == 0.77
+        assert result["solidarity"] == 0.44
+        assert result["dominant_community"] == "detroit_proletariat"
+        assert result["vision_masked"] == []
+        assert result["vision_approx"] == []
+
+    def test_material_fields_untouched(self) -> None:
+        from game.fog.filter import apply_fog
+        from game.fog.ledger import IntelLedger
+
+        payload = _territory_payload()
+        result = apply_fog(
+            payload,
+            node_type="territory",
+            node_id="T1",
+            reach=frozenset({"T1"}),
+            ledger=IntelLedger(),
+            tick=100,
+            staleness_ticks=STALENESS_TICKS,
+            unknown_ticks=UNKNOWN_TICKS,
+        )
+
+        assert result["population"] == 50_000
+        assert result["wealth"] == 1234.5
+        assert result["rent_level"] == 0.4
+
+    def test_reach_wins_even_with_a_stale_ledger_present(self) -> None:
+        """Reach is checked BEFORE the ledger — a node the org can see
+        directly is exact regardless of what stale intel might say."""
+        from game.fog.filter import apply_fog
+        from game.fog.ledger import IntelEntry, IntelLedger
+
+        payload = _territory_payload()
+        stale_ledger = IntelLedger().append(
+            IntelEntry(
+                node_id="T1",
+                field_group="territory:political",
+                tick_observed=0,
+                value_snapshot={"heat": 0.01},
+            )
+        )
+        result = apply_fog(
+            payload,
+            node_type="territory",
+            node_id="T1",
+            reach=frozenset({"T1"}),
+            ledger=stale_ledger,
+            tick=1000,
+            staleness_ticks=STALENESS_TICKS,
+            unknown_ticks=UNKNOWN_TICKS,
+        )
+
+        assert result["heat"] == 0.62
+
+
+class TestOutsideReachNoLedgerIsMasked:
+    def test_every_political_field_is_null_and_listed(self) -> None:
+        from game.fog.filter import apply_fog
+        from game.fog.ledger import IntelLedger
+
+        payload = _territory_payload()
+        result = apply_fog(
+            payload,
+            node_type="territory",
+            node_id="T1",
+            reach=frozenset(),  # T1 not in reach
+            ledger=IntelLedger(),
+            tick=100,
+            staleness_ticks=STALENESS_TICKS,
+            unknown_ticks=UNKNOWN_TICKS,
+        )
+
+        political_fields = (
+            "heat",
+            "agitation",
+            "solidarity_index",
+            "dominant_class",
+            "consciousness",
+            "solidarity",
+            "dominant_community",
+        )
+        for field in political_fields:
+            assert result[field] is None, field
+        assert set(result["vision_masked"]) == set(political_fields)
+        assert result["vision_approx"] == []
+
+    def test_material_fields_untouched_and_exact(self) -> None:
+        from game.fog.filter import apply_fog
+        from game.fog.ledger import IntelLedger
+
+        payload = _territory_payload()
+        result = apply_fog(
+            payload,
+            node_type="territory",
+            node_id="T1",
+            reach=frozenset(),
+            ledger=IntelLedger(),
+            tick=100,
+            staleness_ticks=STALENESS_TICKS,
+            unknown_ticks=UNKNOWN_TICKS,
+        )
+
+        assert result["population"] == 50_000
+        assert result["wealth"] == 1234.5
+        assert result["rent_level"] == 0.4
+        assert result["id"] == "T1"
+        assert result["name"] == "Home Territory"
+
+    def test_already_none_political_fields_are_not_listed_as_masked(self) -> None:
+        """Honest absence is not the same as withheld data (mirrors
+        ``_apply_class_vision_gate``'s "already-None isn't masked" rule) —
+        a field that was never populated must not be claimed as hidden."""
+        from game.fog.filter import apply_fog
+        from game.fog.ledger import IntelLedger
+
+        payload = {"id": "T2", "heat": 0.5, "consciousness": None}
+        result = apply_fog(
+            payload,
+            node_type="territory",
+            node_id="T2",
+            reach=frozenset(),
+            ledger=IntelLedger(),
+            tick=100,
+            staleness_ticks=STALENESS_TICKS,
+            unknown_ticks=UNKNOWN_TICKS,
+        )
+
+        assert result["consciousness"] is None
+        assert "consciousness" not in result["vision_masked"]
+        assert result["vision_masked"] == ["heat"]
+
+
+class TestAccidentalNullFieldsGetGatedOnceReal:
+    """The trap: ``consciousness``/``solidarity``/``dominant_community`` are
+    hardcoded ``None`` in ``_serialize_territory`` TODAY — honest by
+    accident, not by gating. This pins that once real values arrive, the
+    SAME gate already redacts them outside reach; it must not need to be
+    re-added later."""
+
+    def test_real_values_outside_reach_are_redacted(self) -> None:
+        from game.fog.filter import apply_fog
+        from game.fog.ledger import IntelLedger
+
+        payload = {
+            "id": "T1",
+            "consciousness": 0.9,
+            "solidarity": 0.8,
+            "dominant_community": "detroit_proletariat",
+        }
+        result = apply_fog(
+            payload,
+            node_type="territory",
+            node_id="T1",
+            reach=frozenset(),
+            ledger=IntelLedger(),
+            tick=100,
+            staleness_ticks=STALENESS_TICKS,
+            unknown_ticks=UNKNOWN_TICKS,
+        )
+
+        assert result["consciousness"] is None
+        assert result["solidarity"] is None
+        assert result["dominant_community"] is None
+        assert set(result["vision_masked"]) == {
+            "consciousness",
+            "solidarity",
+            "dominant_community",
+        }
+
+
+class TestOutsideReachWithFreshLedgerIsExact:
+    def test_fresh_ledger_entry_serves_its_snapshot_verbatim(self) -> None:
+        from game.fog.filter import apply_fog
+        from game.fog.ledger import IntelEntry, IntelLedger
+
+        payload = _territory_payload()
+        ledger = IntelLedger().append(
+            IntelEntry(
+                node_id="T1",
+                field_group="territory:political",
+                tick_observed=95,  # age 5 <= STALENESS_TICKS at tick=100
+                value_snapshot={
+                    "heat": 0.734,
+                    "agitation": 0.21,
+                    "solidarity_index": 0.5,
+                    "dominant_class": "lumpenproletariat",
+                    "consciousness": 0.6,
+                    "solidarity": 0.3,
+                    "dominant_community": "dearborn_workers",
+                },
+            )
+        )
+
+        result = apply_fog(
+            payload,
+            node_type="territory",
+            node_id="T1",
+            reach=frozenset(),
+            ledger=ledger,
+            tick=100,
+            staleness_ticks=STALENESS_TICKS,
+            unknown_ticks=UNKNOWN_TICKS,
+        )
+
+        assert result["heat"] == 0.734
+        assert result["dominant_class"] == "lumpenproletariat"
+        assert result["dominant_community"] == "dearborn_workers"
+        assert result["vision_masked"] == []
+        assert result["vision_approx"] == []
+
+    def test_ledger_field_not_captured_by_the_snapshot_is_still_masked(self) -> None:
+        """One INVESTIGATE resolution need not capture every political
+        field; whatever it didn't observe stays honestly unknown even
+        though the field_group's aging clock is fresh."""
+        from game.fog.filter import apply_fog
+        from game.fog.ledger import IntelEntry, IntelLedger
+
+        payload = _territory_payload()
+        ledger = IntelLedger().append(
+            IntelEntry(
+                node_id="T1",
+                field_group="territory:political",
+                tick_observed=100,
+                value_snapshot={"heat": 0.734},  # only heat observed
+            )
+        )
+
+        result = apply_fog(
+            payload,
+            node_type="territory",
+            node_id="T1",
+            reach=frozenset(),
+            ledger=ledger,
+            tick=100,
+            staleness_ticks=STALENESS_TICKS,
+            unknown_ticks=UNKNOWN_TICKS,
+        )
+
+        assert result["heat"] == 0.734
+        assert "heat" not in result["vision_masked"]
+        assert result["dominant_class"] is None
+        assert "dominant_class" in result["vision_masked"]
+
+
+class TestOutsideReachWithAgedLedgerIsApproximate:
+    def test_aged_entry_renders_quantized_and_marked_approx(self) -> None:
+        from game.fog.filter import apply_fog
+        from game.fog.ledger import IntelEntry, IntelLedger
+
+        payload = _territory_payload()
+        ledger = IntelLedger().append(
+            IntelEntry(
+                node_id="T1",
+                field_group="territory:political",
+                tick_observed=100,
+                value_snapshot={"heat": 0.734, "dominant_class": "core_proletariat"},
+            )
+        )
+
+        result = apply_fog(
+            payload,
+            node_type="territory",
+            node_id="T1",
+            reach=frozenset(),
+            ledger=ledger,
+            tick=100 + STALENESS_TICKS + 1,  # aged past exact, still <= unknown
+            staleness_ticks=STALENESS_TICKS,
+            unknown_ticks=UNKNOWN_TICKS,
+        )
+
+        assert result["heat"] != 0.734
+        assert isinstance(result["heat"], float)
+        assert result["dominant_class"] == "core_proletariat"  # non-numeric passes through
+        assert "heat" in result["vision_approx"]
+
+
+class TestOutsideReachWithStaleLedgerIsUnknown:
+    def test_stale_entry_is_masked_like_no_entry_at_all(self) -> None:
+        from game.fog.filter import apply_fog
+        from game.fog.ledger import IntelEntry, IntelLedger
+
+        payload = _territory_payload()
+        ledger = IntelLedger().append(
+            IntelEntry(
+                node_id="T1",
+                field_group="territory:political",
+                tick_observed=0,
+                value_snapshot={"heat": 0.734},
+            )
+        )
+
+        result = apply_fog(
+            payload,
+            node_type="territory",
+            node_id="T1",
+            reach=frozenset(),
+            ledger=ledger,
+            tick=0 + UNKNOWN_TICKS + 1,
+            staleness_ticks=STALENESS_TICKS,
+            unknown_ticks=UNKNOWN_TICKS,
+        )
+
+        assert result["heat"] is None
+        assert "heat" in result["vision_masked"]
+
+
+class TestPurity:
+    def test_same_inputs_yield_equal_outputs_every_time(self) -> None:
+        from game.fog.filter import apply_fog
+        from game.fog.ledger import IntelEntry, IntelLedger
+
+        payload = _territory_payload()
+        ledger = IntelLedger().append(
+            IntelEntry(
+                node_id="T1",
+                field_group="territory:political",
+                tick_observed=90,
+                value_snapshot={"heat": 0.5},
+            )
+        )
+        reach = frozenset({"OTHER"})
+
+        first = apply_fog(
+            payload,
+            node_type="territory",
+            node_id="T1",
+            reach=reach,
+            ledger=ledger,
+            tick=100,
+            staleness_ticks=STALENESS_TICKS,
+            unknown_ticks=UNKNOWN_TICKS,
+        )
+        second = apply_fog(
+            payload,
+            node_type="territory",
+            node_id="T1",
+            reach=reach,
+            ledger=ledger,
+            tick=100,
+            staleness_ticks=STALENESS_TICKS,
+            unknown_ticks=UNKNOWN_TICKS,
+        )
+
+        assert first == second
+
+    def test_input_payload_is_never_mutated(self) -> None:
+        from game.fog.filter import apply_fog
+        from game.fog.ledger import IntelLedger
+
+        payload = _territory_payload()
+        original = dict(payload)
+
+        result = apply_fog(
+            payload,
+            node_type="territory",
+            node_id="T1",
+            reach=frozenset(),
+            ledger=IntelLedger(),
+            tick=100,
+            staleness_ticks=STALENESS_TICKS,
+            unknown_ticks=UNKNOWN_TICKS,
+        )
+
+        assert payload == original
+        assert result is not payload
+
+    def test_never_reads_module_level_session_globals(self) -> None:
+        """Static sentinel: ``game.fog.filter`` must never reference the
+        four forbidden per-process session dicts
+        (``_session_action_history``/``_session_trap_state``/
+        ``_session_endgame_detectors``/``_session_causal_observers``) —
+        determinism requires it be a pure function of its explicit args."""
+        import inspect
+
+        from game.fog import filter as fog_filter
+
+        source = inspect.getsource(fog_filter)
+        for forbidden in (
+            "_session_action_history",
+            "_session_trap_state",
+            "_session_endgame_detectors",
+            "_session_causal_observers",
+        ):
+            assert forbidden not in source
+
+
+class TestFieldsAbsentFromPayloadAreIgnored:
+    def test_a_political_field_the_composer_never_produced_is_not_invented(self) -> None:
+        from game.fog.filter import apply_fog
+        from game.fog.ledger import IntelLedger
+
+        payload = {"id": "ORG1", "budget": 100.0, "heat": 0.4}
+        result = apply_fog(
+            payload,
+            node_type="organization",
+            node_id="ORG1",
+            reach=frozenset(),
+            ledger=IntelLedger(),
+            tick=100,
+            staleness_ticks=STALENESS_TICKS,
+            unknown_ticks=UNKNOWN_TICKS,
+        )
+
+        assert "dominant_class" not in result
+        assert "consciousness" not in result
+        assert result["heat"] is None
+        assert result["vision_masked"] == ["heat"]

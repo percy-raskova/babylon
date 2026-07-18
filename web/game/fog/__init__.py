@@ -10,6 +10,11 @@ bridge/session layer and never fed back into the simulation. See
 - :mod:`game.fog.ledger` — the intel ledger (Task 3): a session-scoped,
   append-only, event-sourced record of INVESTIGATE resolutions, and the
   pure aging function that renders a snapshot exact/approximate/unknown.
+- :mod:`game.fog.filter` — ``apply_fog`` (Task 4): redacts a composer's
+  political fields outside ``reach``/uncovered by the ledger, always
+  returning a new dict. ``engine_bridge.py`` wires this into
+  ``_serialize_territory``/``_state_to_snapshot``/``_build_org_network``
+  and ``get_inspector_node``/``get_inspector_org`` — never the reverse.
 
 Both modules are deliberately free of any ``babylon.engine`` /
 ``babylon.models`` / ``babylon.config`` import — the web import-boundary

@@ -61,6 +61,9 @@ from babylon.topology.graph_algorithms import (
 )
 
 from .epilogues import EPILOGUES
+from .fog.filter import apply_fog
+from .fog.ledger import IntelLedger
+from .fog.reach import organizing_reach
 from .log_handler import sanitize_for_log
 from .map_contract import MAP_HISTORY_REPLAYABLE_METRICS, MAP_METRIC_PROPERTIES
 from .verb_copy import VERB_INELIGIBILITY_COPY
@@ -4414,6 +4417,19 @@ class EngineBridge:
         other node type gets an honest generic dump of its real fields,
         enum-normalized (matches ``EventsFeed.tsx``'s documented "node is
         the generic fallback" contract).
+
+        Track 1 / Task 4: the generic (non-``social_class``) branch is a
+        RAW dump of the node's own graph attrs — the one path in this
+        method that can surface a political field (e.g. ``heat`` on a
+        territory/organization node, ``colonial_stance`` on a faction node)
+        completely unfiltered, since it bypasses every other composer
+        (:func:`_serialize_territory`, ``get_inspector_org``, ...). It gets
+        the SAME :func:`~game.fog.filter.apply_fog` gate those composers
+        do. The ``social_class`` branch is deliberately left alone — it
+        already runs through ``_apply_class_vision_gate``
+        (:func:`_social_class_inspector_fields`), a pre-existing, narrower
+        gate this task does not fold into ``apply_fog`` (see the Task 4
+        report's assessment of that as a future correctness hazard).
         """
         graph = self._persistence.hydrate_graph(tick=None, session_id=session_id)
         if node_id not in graph.nodes:
@@ -4428,11 +4444,21 @@ class EngineBridge:
         if node_type == "social_class":
             core_wages = _incoming_wages_flow(graph, node_id)
             payload.update(_social_class_inspector_fields(data, core_wages, graph))
-        else:
-            payload.update(
-                _enum_normalized({k: v for k, v in data.items() if k not in ("_node_type", "name")})
-            )
-        return payload
+            return payload
+        payload.update(
+            _enum_normalized({k: v for k, v in data.items() if k not in ("_node_type", "name")})
+        )
+        staleness_ticks, unknown_ticks = _current_intel_aging_ticks()
+        return apply_fog(
+            payload,
+            node_type,
+            node_id,
+            _current_organizing_reach(graph),
+            _EMPTY_INTEL_LEDGER,
+            _graph_tick(graph),
+            staleness_ticks=staleness_ticks,
+            unknown_ticks=unknown_ticks,
+        )
 
     def get_inspector_org(self, session_id: UUID, org_id: str) -> dict[str, Any]:
         """Return real Organization fields for a drill-down (spec-113).
@@ -4453,6 +4479,11 @@ class EngineBridge:
         Player-org status is resolved from ``WorldState.player_org_id``
         (via :func:`_resolve_player_org_id` / :func:`_is_player_org`), not
         a structural guess — Track 1 / Task 1 (2026-07-18).
+
+        Track 1 / Task 4: ``heat`` is the one political field this payload
+        carries (the player org's own node is always in its own reach, so
+        its ``heat`` stays exact; a rival org's is masked unless a ledger
+        entry covers it — see :func:`~game.fog.filter.apply_fog`).
         """
         graph = self._persistence.hydrate_graph(tick=None, session_id=session_id)
         if org_id not in graph.nodes or graph.nodes[org_id].get("_node_type") != "organization":
@@ -4497,7 +4528,7 @@ class EngineBridge:
                 world_state = WorldState.from_graph(graph, tick=_graph_tick(graph))
                 traps = _compute_traps(world_state, session_id, persist=False)
 
-        return {
+        payload: dict[str, Any] = {
             "id": org_id,
             "name": data.get("name", org_id),
             "class_character": enums["class_character"],
@@ -4512,6 +4543,17 @@ class EngineBridge:
             "vanguard": vanguard,
             "traps": traps,
         }
+        staleness_ticks, unknown_ticks = _current_intel_aging_ticks()
+        return apply_fog(
+            payload,
+            "organization",
+            org_id,
+            _current_organizing_reach(graph),
+            _EMPTY_INTEL_LEDGER,
+            _graph_tick(graph),
+            staleness_ticks=staleness_ticks,
+            unknown_ticks=unknown_ticks,
+        )
 
     def get_inspector_community(self, session_id: UUID, hyperedge_id: str) -> dict[str, Any]:
         """Return one ``/communities/`` entry by id.
@@ -6132,6 +6174,55 @@ def _is_player_org(org_id: str, player_org_id: str | None) -> bool:
             ``False`` in that case, never a fallback guess.
     """
     return player_org_id is not None and org_id == player_org_id
+
+
+#: Track 1 / Task 4: no INVESTIGATE-resolution wiring exists yet (Task 9) to
+#: populate a real per-session :class:`IntelLedger` — every fog call site
+#: below reads this shared EMPTY ledger, an honest "nothing observed yet"
+#: (every political field outside reach reads "unknown" until Task 9 wires a
+#: real writer). Sharing one instance is safe: :class:`IntelLedger` is frozen
+#: and this one can never accumulate entries, unlike the four forbidden
+#: per-process session dicts (``_session_action_history`` et al.) — it is an
+#: immutable empty VALUE, not mutable session state.
+_EMPTY_INTEL_LEDGER: Final[IntelLedger] = IntelLedger()
+
+
+def _current_organizing_reach(graph: Any) -> frozenset[str]:
+    """:func:`game.fog.reach.organizing_reach` for this graph's own player
+    org, using the DEFAULT (not session-persisted) ``GameDefines`` reach-
+    radius coefficient — the same ad hoc ``GameDefines()`` read this module
+    already uses for other single-coefficient lookups from a plain function
+    with no ``session_id``/persistence handle in scope (e.g. line ~4982,
+    ~5521, ~9445). Empty when ``graph`` is ``None``, carries no
+    ``player_org_id`` (:func:`_resolve_player_org_id`), or the id names no
+    live node (a dissolved/never-materialized player org — verified real:
+    ``WorldState.organizations`` can be emptied via ``model_copy`` while
+    graph metadata still names the old id, e.g.
+    ``tests/unit/web/test_aw4_centrality_lens.py::test_org_less_scenario_is_honestly_empty``) —
+    Constitution III.11: none of these are a crash-worthy corrupt-data case
+    from THIS caller's perspective, they just mean reach cannot be
+    established, so this defaults to deny (fully fogged), never a
+    fabricated full-visibility reach. ``organizing_reach`` itself still
+    raises loud for a caller that hands it a genuinely-invalid id directly
+    (Task 2's own contract, unchanged) — this wrapper only pre-empts that
+    for the "stale metadata, no live node" case specifically.
+    """
+    if graph is None:
+        return frozenset()
+    player_org_id = _resolve_player_org_id(graph)
+    if player_org_id is not None and player_org_id not in graph.nodes:
+        return frozenset()
+    radius = GameDefines().epistemic_horizon.organizing_reach_radius
+    return organizing_reach(graph, player_org_id, radius)
+
+
+def _current_intel_aging_ticks() -> tuple[int, int]:
+    """``(intel_staleness_ticks, intel_unknown_ticks)`` off the default
+    ``GameDefines.epistemic_horizon`` — see :func:`_current_organizing_reach`
+    for why this reads the DEFAULT rather than a session-persisted
+    ``GameDefines`` (same precedent, same reason)."""
+    eh = GameDefines().epistemic_horizon
+    return eh.intel_staleness_ticks, eh.intel_unknown_ticks
 
 
 # Aliases accepted at the API/CLI boundary, mapped to canonical names in the
@@ -8684,8 +8775,30 @@ def _compute_real_median_wage(graph: Any, territory_id: str) -> float | None:
     return round(float(wage) * float(deflator), 4)
 
 
-def _serialize_territory(t: Any, *, graph: Any = None) -> dict[str, Any]:
+def _serialize_territory(
+    t: Any,
+    *,
+    graph: Any = None,
+    reach: frozenset[str] | None = None,
+    ledger: IntelLedger | None = None,
+    tick: int | None = None,
+) -> dict[str, Any]:
     """Serialize a Territory with all visualization-relevant fields.
+
+    Track 1 / Task 4: ``reach``/``ledger``/``tick`` are OPTIONAL and default
+    to ``None`` — every pre-existing call site (internal persistence paths
+    like ``_persist_hex_state_safe``'s territory-snapshot rows, and
+    ``territory_snapshot`` history via ``_persist_snapshots_safe``) keeps
+    reading the TRUE, ungated payload this function has always returned,
+    unchanged. Fog is opt-in: a caller building a genuinely PLAYER-FACING
+    view (``_state_to_snapshot``, ``_build_org_network``) passes a non-
+    ``None`` ``reach`` (even an empty ``frozenset()`` counts — that is
+    "reach computed, node not in it", not "fog not requested"), which runs
+    the built payload through :func:`game.fog.filter.apply_fog` before
+    returning. Persisting a fogged value would be a real bug (the DB read
+    models are the engine's own ledger of TRUE state, never the player's
+    view) — this is exactly why fog is bolted on here as an opt-in
+    postprocessing step rather than baked into the field-building above.
 
     Spec 061 US6 FR-013 (T095) originally stubbed ``consciousness`` /
     ``solidarity`` / ``dominant_community`` with fabricated 0.0/"" defaults.
@@ -8776,7 +8889,7 @@ def _serialize_territory(t: Any, *, graph: Any = None) -> dict[str, Any]:
     relabeled live).
     """
     territory_id = t.id
-    return {
+    payload = {
         "id": t.id,
         "name": t.name,
         "h3_index": t.h3_index,
@@ -8879,6 +8992,19 @@ def _serialize_territory(t: Any, *, graph: Any = None) -> dict[str, Any]:
             graph, territory_id, "tick_financial_crisis_signals"
         ),
     }
+    if reach is None:
+        return payload
+    staleness_ticks, unknown_ticks = _current_intel_aging_ticks()
+    return apply_fog(
+        payload,
+        "territory",
+        territory_id,
+        reach,
+        ledger if ledger is not None else _EMPTY_INTEL_LEDGER,
+        tick if tick is not None else 0,
+        staleness_ticks=staleness_ticks,
+        unknown_ticks=unknown_ticks,
+    )
 
 
 _OODA_PHASE_ORDER: tuple[str, ...] = ("observe", "orient", "decide", "act")
@@ -9042,6 +9168,10 @@ def _build_org_network(
     orgs = state.organizations
     institutions = state.institutions
     territories = state.territories
+    # Track 1 / Task 4: this IS a player-facing view (spec-113 Multi-Scale
+    # Spatial Rendering, served via EngineBridge.get_org_network) — its
+    # territory nodes get the same fog gate _state_to_snapshot applies.
+    reach = _current_organizing_reach(graph)
 
     if territory_filter is not None:
         org_ids = sorted(oid for oid, o in orgs.items() if territory_filter in o.territory_ids)
@@ -9078,7 +9208,13 @@ def _build_org_network(
         {
             "id": tid,
             "type": "territory",
-            "attributes": _serialize_territory(territories[tid], graph=graph),
+            "attributes": _serialize_territory(
+                territories[tid],
+                graph=graph,
+                reach=reach,
+                ledger=_EMPTY_INTEL_LEDGER,
+                tick=_graph_tick(graph),
+            ),
         }
         for tid in territory_ids
     )
@@ -9274,8 +9410,26 @@ def _state_to_snapshot(state: WorldState, session_id: UUID, *, graph: Any = None
 
     Returns:
         Flat dict suitable for JSON encoding.
+
+    Track 1 / Task 4: this is THE primary player-facing full-state view —
+    every one of its 7 call sites (:meth:`EngineBridge.get_snapshot`,
+    ``inspect_node``/``inspect_org``/``inspect_edge``/``inspect_hex``,
+    ``get_organizations_dashboard``, and ``resolve_tick``'s response) reads
+    through here, so its ``territories`` block is the fog gate's main
+    surface — see :func:`_current_organizing_reach`/
+    :func:`_serialize_territory`. The one caller that omits ``graph``
+    (:meth:`EngineBridge.get_organizations_dashboard`, which only needs
+    ``organizations``) gets an empty reach for its (unused) territories —
+    honest deny, never a fabricated full-visibility default (Constitution
+    III.11).
     """
-    territories = [_serialize_territory(t, graph=graph) for t in state.territories.values()]
+    reach = _current_organizing_reach(graph)
+    ledger = _EMPTY_INTEL_LEDGER
+    tick = state.tick
+    territories = [
+        _serialize_territory(t, graph=graph, reach=reach, ledger=ledger, tick=tick)
+        for t in state.territories.values()
+    ]
     organizations = [
         _serialize_organization(o, player_org_id=state.player_org_id)
         for o in state.organizations.values()

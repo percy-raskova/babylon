@@ -211,7 +211,7 @@ def v_clear_all() -> dict:
         "net_attrs": dict(H._net_attr),
     }
     # XGI's clear() empties nodes/edges/attrs but does NOT reset the auto-id
-    # counter: the next auto id continues at 1. Pinned for divergence D8 —
+    # counter: the next auto id continues at 1. Pinned for divergence D10 —
     # the Rust core resets its counter (clear() ≡ new()).
     H.add_edge(["z"])
     state["auto_ids_after_clear"] = _ids(H)

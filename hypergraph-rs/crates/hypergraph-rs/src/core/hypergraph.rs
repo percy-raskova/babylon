@@ -325,7 +325,7 @@ impl<N, E, M> Hypergraph<N, E, M> {
     ///
     /// Resets the auto-id counter: a cleared hypergraph behaves identically
     /// to a fresh one (`clear() ≡ new()`; III.7 replay-from-empty
-    /// determinism). XGI continues its counter — divergence D8.
+    /// determinism). XGI continues its counter — divergence D10.
     ///
     /// XGI parity: `H.clear()`.
     pub fn clear(&mut self) {

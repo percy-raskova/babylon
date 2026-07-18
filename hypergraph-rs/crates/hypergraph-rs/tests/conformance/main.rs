@@ -239,7 +239,7 @@ fn diverge_d10_clear_resets_uid_counter() {
     assert!(h.node_attrs("lonely").is_none());
     assert!(h.edge_attrs("e1").is_none());
 
-    // D8: Rust resets the counter — the post-clear auto id is "0", not "1".
+    // D10: Rust resets the counter — the post-clear auto id is "0", not "1".
     let auto = h.add_edge(vec!["z".into()], None, Value::Null).unwrap();
     assert_eq!(auto, "0"); // Rust divergence, deliberate
 }

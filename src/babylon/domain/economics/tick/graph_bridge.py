@@ -156,8 +156,8 @@ def write_tick_state_to_graph(  # pragma: no mutate — data serialization
                 else 0.0  # pragma: no mutate
             ),  # pragma: no mutate
             tick_ground_rent=(  # pragma: no mutate
-                county.rent_extraction.total_rent  # pragma: no mutate
-                if county.rent_extraction is not None  # pragma: no mutate
+                county.surplus_distribution.ground_rent  # pragma: no mutate
+                if county.surplus_distribution is not None  # pragma: no mutate
                 else 0.0  # pragma: no mutate
             ),  # pragma: no mutate
             tick_rentier_share=(  # pragma: no mutate

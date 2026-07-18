@@ -1863,6 +1863,190 @@ class TestDefixturedVerbTargets:
         # sc-real-tenancy (250_000, tenant to BOTH org territories, counted once).
         assert base_population == 250_000
 
+    def test_attack_targets_p_acquiescence_resolves_via_tenancy_not_territory_ids(
+        self,
+    ) -> None:
+        """Track 1 Task 9: ``get_attack_targets``'s inline ``p_acquiescence``
+        collection filtered ``_node_type == "social_class"`` AND
+        ``tid in data.get("territory_ids", [])`` -- the same root-cause bug
+        Tasks 8/8b/8c fixed elsewhere. ``SocialClass`` has no
+        ``territory_ids`` field in production, so that condition
+        structurally never matched, and ``warsaw_ghetto_flag`` was
+        permanently inert (``population_p_acquiescence`` always ``None``,
+        ``active`` always ``False``) regardless of real survival-probability
+        data. A social_class tenant (real TENANCY edge, no fabricated
+        ``territory_ids``) with ``p_acquiescence`` at/below the Warsaw
+        Ghetto threshold must trip the flag.
+        """
+        mock_persistence = _make_mock_persistence()
+        bridge = EngineBridge(mock_persistence)
+        graph = _make_balkanization_graph()
+        graph.add_node(
+            "sc-desperate-tenancy",
+            "social_class",
+            name="Desperate Detroit Proletariat",
+            role="proletariat",
+            wealth=0.0,
+            p_acquiescence=0.02,
+        )
+        graph.add_edge("sc-desperate-tenancy", "T1", "tenancy")
+
+        with _patched_hydrate_state(bridge, graph):
+            result = bridge.get_attack_targets(uuid.uuid4(), "org-player")
+
+        assert result["warsaw_ghetto_flag"]["population_p_acquiescence"] == pytest.approx(0.02)
+        assert result["warsaw_ghetto_flag"]["active"] is True
+
+
+@pytest.mark.unit
+class TestInvestigateTargetsDemocked:
+    """Track 1 Task 9 (2026-07-18): ``get_investigate_targets`` de-mock.
+
+    The grounding audit found: a hardcoded ``observe_capability``, a literal
+    ``"org-police-union"`` target, a hardcoded ``active_moles_suspected=1``.
+    Only ``territory_scans``' ``target_id``/``name``/``heat`` read the real
+    graph before this task.
+    """
+
+    def test_observe_capability_honest_null_before_any_engine_tick(self) -> None:
+        """A fresh graph with no EH shadow attrs (no engine tick has run
+        EpistemicHorizonSystem yet) must NOT fabricate the old 0.6/TARGETED
+        constant -- honest absence instead."""
+        mock_persistence = _make_mock_persistence()
+        bridge = EngineBridge(mock_persistence)
+        graph = _make_balkanization_graph()
+
+        with _patched_hydrate_state(bridge, graph):
+            result = bridge.get_investigate_targets(uuid.uuid4(), "org-player")
+
+        assert result["observe_capability"] == {
+            "intel_network_strength": None,
+            "max_scan_depth": "UNKNOWN",
+        }
+
+    def test_observe_capability_reads_real_eh_shadow_attrs(self) -> None:
+        """Once EH shadow attrs exist on the org's own territories (written
+        by ``compute_epistemic_horizon``/``_carry_epistemic_horizon`` at
+        tick-resolution time), ``observe_capability`` must reflect them."""
+        mock_persistence = _make_mock_persistence()
+        bridge = EngineBridge(mock_persistence)
+        graph = _make_balkanization_graph()
+        graph.update_node("T1", intel_confidence=0.4, vision_state="mud")
+        graph.update_node("T2", intel_confidence=0.6, vision_state="water")
+
+        with _patched_hydrate_state(bridge, graph):
+            result = bridge.get_investigate_targets(uuid.uuid4(), "org-player")
+
+        assert result["observe_capability"]["intel_network_strength"] == pytest.approx(0.5)
+        assert result["observe_capability"]["max_scan_depth"] == "DEEP"
+
+    def test_targeted_scans_reads_real_organization_not_fixture_literal(self) -> None:
+        """The prior hardcoded ``"org-police-union"``/``"Fraternal Order of
+        Police"`` literal named a node that never existed in any scenario.
+        A real hostile organization sharing the player's territory must
+        appear instead, and the fixture literal must never appear."""
+        mock_persistence = _make_mock_persistence()
+        bridge = EngineBridge(mock_persistence)
+        graph = _make_balkanization_graph()
+        graph.add_node(
+            "org-state-police",
+            "organization",
+            name="Genesee County Sheriff",
+            org_type="state_apparatus",
+            budget=500.0,
+            territory_ids=["T1"],
+        )
+
+        with _patched_hydrate_state(bridge, graph):
+            result = bridge.get_investigate_targets(uuid.uuid4(), "org-player")
+
+        target_ids = {t["target_id"] for t in result["targets"]["targeted_scans"]}
+        assert "org-state-police" in target_ids
+        assert "org-police-union" not in target_ids
+        payload_text = str(result)
+        assert "Fraternal Order of Police" not in payload_text
+
+    def test_targeted_scans_empty_when_no_hostile_org_present(self) -> None:
+        """Constitution III.11: no hostile organization/institution in the
+        org's own territories means an honestly empty list, never a
+        fabricated placeholder target."""
+        mock_persistence = _make_mock_persistence()
+        bridge = EngineBridge(mock_persistence)
+        graph = _make_balkanization_graph()
+
+        with _patched_hydrate_state(bridge, graph):
+            result = bridge.get_investigate_targets(uuid.uuid4(), "org-player")
+
+        assert result["targets"]["targeted_scans"] == []
+
+    def test_counter_intelligence_active_moles_suspected_is_honest_none(self) -> None:
+        """No engine path ever writes an infiltration/mole record anywhere
+        the bridge can read (``resolve_infiltrate`` has zero non-test call
+        sites) -- the prior ``1`` was fabricated. Must be ``None``, not a
+        fabricated count."""
+        mock_persistence = _make_mock_persistence()
+        bridge = EngineBridge(mock_persistence)
+        graph = _make_balkanization_graph()
+
+        with _patched_hydrate_state(bridge, graph):
+            result = bridge.get_investigate_targets(uuid.uuid4(), "org-player")
+
+        assert result["targets"]["counter_intelligence"]["active_moles_suspected"] is None
+
+    def test_territory_scans_likely_reveals_matches_real_resolver_reveal_table(self) -> None:
+        """The prior hardcoded ``likely_reveals`` (``material_readiness``/
+        ``hidden_factions``/``state_deployment``) did not match a single
+        field ``resolve_investigate`` actually reveals for a territory
+        (``heat``/``rent_level``/``population``/``under_eviction``). Must
+        reuse the resolver's own reveal table, not a hand-written list that
+        can silently drift from it."""
+        mock_persistence = _make_mock_persistence()
+        bridge = EngineBridge(mock_persistence)
+        graph = _make_balkanization_graph()
+
+        with _patched_hydrate_state(bridge, graph):
+            result = bridge.get_investigate_targets(uuid.uuid4(), "org-player")
+
+        scan = result["targets"]["territory_scans"][0]
+        assert set(scan["projected_reveals"]["likely_reveals"]) == {
+            "heat",
+            "rent_level",
+            "population",
+            "under_eviction",
+        }
+
+    def test_targets_bounded_to_own_territories_within_organizing_reach(self) -> None:
+        """Fog decision (Track 1 Task 9): this target list is NOT
+        reach-gated, because every target here is already bounded to
+        org_id's own PRESENCE territories -- exactly organizing_reach's
+        first hop. Pin that property directly: every scan target id is
+        inside the org's own organizing reach.
+
+        ``organizing_reach``'s PRESENCE hop walks real PRESENCE edges, not
+        the ``territory_ids`` attribute directly (``Organization.
+        territory_ids`` is materialized as PRESENCE edges by the real
+        engine's ``WorldState.to_graph()`` -- ``game.fog.reach``'s module
+        docstring) -- ``_make_balkanization_graph`` is hand-built and
+        predates that materialization, so this test adds the PRESENCE edges
+        explicitly to exercise the real property rather than an
+        accidentally-empty reach.
+        """
+        from game.engine_bridge import _current_organizing_reach
+
+        mock_persistence = _make_mock_persistence()
+        bridge = EngineBridge(mock_persistence)
+        graph = _make_balkanization_graph()
+        graph.set_graph_attr("player_org_id", "org-player")
+        graph.add_edge("org-player", "T1", "presence")
+        graph.add_edge("org-player", "T2", "presence")
+
+        with _patched_hydrate_state(bridge, graph):
+            result = bridge.get_investigate_targets(uuid.uuid4(), "org-player")
+            reach = _current_organizing_reach(graph)
+
+        for scan in result["targets"]["territory_scans"]:
+            assert scan["target_id"] in reach
+
 
 @pytest.mark.unit
 class TestDefixturedQueryCorrectness:
@@ -2211,6 +2395,41 @@ class TestVerbEligibilityAgreesWithTargetsRealWayneCounty:
             "get_aid_targets population arm returned no targets for ORG001 despite "
             "real TENANCY-linked social_class C001 in its own territories"
         )
+
+    def test_attack_targets_p_acquiescence_resolves_via_tenancy_real_wayne_county(
+        self,
+    ) -> None:
+        """Track 1 Task 9: confirmed empirically against the real
+        ``wayne_county`` scenario -- ``C001`` (real ``p_acquiescence=0.0``)
+        tenants ORG001's own territory via TENANCY, but the pre-fix inline
+        loop's ``tid in data.get("territory_ids", [])`` check on
+        social_class nodes never matched (SocialClass carries no
+        ``territory_ids`` in production), so ``p_acquiescence_values`` was
+        always ``[]`` and ``warsaw_ghetto_flag.population_p_acquiescence``
+        was always ``None``. After the fix it must surface the real value.
+        """
+        bridge, graph = self._bridge_with_real_wayne_graph()
+        with _patched_hydrate_state(bridge, graph, tick=0):
+            result = bridge.get_attack_targets(uuid.uuid4(), "ORG001")
+
+        assert result["warsaw_ghetto_flag"]["population_p_acquiescence"] is not None
+
+    def test_investigate_targeted_scans_finds_real_state_apparatus_real_wayne_county(
+        self,
+    ) -> None:
+        """Track 1 Task 9: ``ORG002`` (Detroit Police Department,
+        ``org_type=state_apparatus``) shares territory
+        ``862ab21b7ffffff``/``862ab2c57ffffff`` with ``ORG001`` in the real
+        ``wayne_county`` scenario. The pre-fix ``targeted_scans`` always
+        returned the fictional literal ``"org-police-union"`` regardless;
+        after the fix it must surface the real ORG002 node instead."""
+        bridge, graph = self._bridge_with_real_wayne_graph()
+        with _patched_hydrate_state(bridge, graph, tick=0):
+            result = bridge.get_investigate_targets(uuid.uuid4(), "ORG001")
+
+        target_ids = {t["target_id"] for t in result["targets"]["targeted_scans"]}
+        assert "ORG002" in target_ids
+        assert "org-police-union" not in target_ids
 
 
 @pytest.mark.unit

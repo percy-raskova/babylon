@@ -23,6 +23,10 @@ from uuid import UUID
 import psycopg
 
 from babylon.config.defines import GameDefines
+from babylon.engine.actions.investigate import (
+    _REVEAL_BY_NODE_TYPE as _INVESTIGATE_REVEAL_BY_NODE_TYPE,
+)
+from babylon.engine.actions.investigate import _REVEAL_DEFAULT as _INVESTIGATE_REVEAL_DEFAULT
 
 # Spec-113 Lane D: re-exported (not otherwise used in this module) so
 # game/provenance.py can build METRIC_PROVENANCE without its own direct
@@ -62,7 +66,7 @@ from babylon.topology.graph_algorithms import (
 
 from .epilogues import EPILOGUES
 from .fog.filter import ORG_POLITICAL_FIELDS, POLITICAL_FIELDS, apply_fog, political_field_group
-from .fog.ledger import IntelLedger, ledger_from_events
+from .fog.ledger import IntelLedger, ledger_from_events, read_intel
 from .fog.reach import organizing_reach
 from .log_handler import sanitize_for_log
 from .map_contract import MAP_HISTORY_REPLAYABLE_METRICS, MAP_METRIC_PROPERTIES
@@ -6003,6 +6007,15 @@ class EngineBridge:
         # defines.yaml) — one source of truth, per the Step-3 promotion.
         attack_heat_gain = round(GameDefines().ooda.attack_self_heat_gain, 4)
         territory_ids = org_data.get("territory_ids", [])
+        # Track 1 / Task 9 (2026-07-18): social_class membership for the
+        # Warsaw Ghetto p_acquiescence check resolved via the real Occupant
+        # -> Territory TENANCY edge (_tenancy_members_by_territory), not the
+        # nonexistent territory_ids field on social_class nodes -- the same
+        # root-cause bug Tasks 8/8b/8c fixed elsewhere. Confirmed empirically
+        # against the real wayne_county scenario: p_acquiescence_values was
+        # always [] (warsaw_ghetto_flag permanently inert) despite C001
+        # (real p_acquiescence=0.0) tenanting ORG001's own territory.
+        tenancy_members = _tenancy_members_by_territory(graph)
 
         organizations: list[dict[str, Any]] = []
         institutions: list[dict[str, Any]] = []
@@ -6016,12 +6029,13 @@ class EngineBridge:
             terr_name = terr_data.get("name", tid)
             found_any = False
 
+            for sc_id in tenancy_members.get(tid, []):
+                sc_data = graph.nodes.get(sc_id)
+                if sc_data is not None and "p_acquiescence" in sc_data:
+                    p_acquiescence_values.append(float(sc_data["p_acquiescence"]))
+
             for node_id, data in graph.nodes(data=True):
                 node_type = data.get("_node_type")
-                if node_type == "social_class" and tid in data.get("territory_ids", []):
-                    if "p_acquiescence" in data:
-                        p_acquiescence_values.append(float(data["p_acquiescence"]))
-                    continue
                 if (
                     node_type == "organization"
                     and node_id != org_id
@@ -6189,6 +6203,76 @@ class EngineBridge:
         """Return available investigation targets for the INVESTIGATE verb.
 
         Matches the contract defined in spec 048 for intel-gathering.
+
+        Track 1 / Task 9 (2026-07-18) de-mock. The grounding audit found a
+        hardcoded ``observe_capability``, a literal ``"org-police-union"``
+        target, and a hardcoded ``active_moles_suspected=1`` — only
+        ``territory_scans``' ``target_id``/``name``/``heat`` read the real
+        graph. Real sources now:
+
+        - ``observe_capability`` (:func:`_investigate_observe_capability`):
+          the org's own territories' real EH shadow attrs
+          (``intel_confidence``/``vision_state``, written by
+          :func:`~babylon.engine.systems.epistemic_horizon.compute_epistemic_horizon`
+          via ``_carry_epistemic_horizon`` at tick-resolution time). Honestly
+          ``None``/``"UNKNOWN"`` before the first real engine tick runs
+          (``EpistemicHorizonSystem`` is position 22 of 30 — a fresh tick-0
+          scenario has no shadow attrs yet), never the prior fabricated
+          ``0.6``/``"TARGETED"``.
+        - ``targets.targeted_scans`` (:func:`_hostile_org_and_institution_targets`):
+          real ``organization``/``institution`` nodes present in the org's
+          own territories — the SAME ``territory_ids`` resolution
+          :meth:`get_attack_targets` already uses (a field
+          ``Organization``/``Institution`` genuinely carry) — not the
+          literal ``"org-police-union"``, which named a node that has never
+          existed in any shipped scenario (confirmed empirically against
+          the real ``wayne_county`` scenario: it surfaces ``ORG002``,
+          Detroit Police Department, instead). Deduplicated by node id — a
+          targeted scan targets an ENTITY, not an entity-per-territory row
+          (unlike :meth:`get_attack_targets`'s intentional per-territory
+          duplication).
+        - ``current_knowledge`` on both scan arms
+          (:func:`_investigate_current_knowledge`): reads this session's
+          real :class:`~game.fog.ledger.IntelLedger` (Track 1 / Task 3),
+          instead of an identical hardcoded literal for every target
+          regardless of INVESTIGATE history.
+        - ``likely_reveals``: reuses
+          :data:`babylon.engine.actions.investigate._REVEAL_BY_NODE_TYPE` —
+          the resolver's OWN reveal table — instead of a hand-written list
+          that did not match what a real INVESTIGATE resolution actually
+          reveals (the prior literal named ``"material_readiness"``/
+          ``"hidden_factions"``/``"state_deployment"``, none of which
+          ``resolve_investigate`` ever reveals for a territory).
+        - ``counter_intelligence.active_moles_suspected``: still MOCKED —
+          ``None``, not the fabricated ``1``. No engine path ever writes an
+          infiltration/mole record anywhere the bridge can read:
+          ``resolve_infiltrate``/``check_audit``
+          (``babylon/ooda/state_ai/repress_effects.py``/
+          ``administer_effects.py``) are real, unit-tested functions, but
+          ``StateActionType.INFILTRATE`` is only ever SCORED in
+          ``babylon/ooda/state_ai/decision.py``'s action-selection weights
+          and never dispatched to a resolver anywhere in ``src/`` — grep
+          confirms ``resolve_infiltrate`` has zero non-test call sites.
+          There is no persisted infiltration state anywhere for this field
+          to read. Fixing it honestly requires wiring
+          ``StateActionType.INFILTRATE`` through to ``resolve_infiltrate``
+          and persisting the resulting records somewhere queryable
+          (mirroring how ``_derive_intel_ledger`` reads persisted
+          ``action_result`` rows) — an engine-adjacent wiring task, out of
+          this bridge-layer task's scope.
+
+        Fog note: this target list is NOT reach-gated (same precedent and
+        reasoning as Task 8's ``get_educate_targets``). Every territory/org/
+        institution enumerated here is already bounded to ``org_id``'s own
+        PRESENCE territories — exactly ``organizing_reach``'s first
+        (PRESENCE) hop — so gating would be a no-op for the calling
+        convention every shipped caller uses (``org_id`` == the session's
+        resolved player org). Gating would also be actively harmful here:
+        INVESTIGATE is the verb that EARNS intel (writes
+        ``investigation_intel``/ledger entries that expand what is knowable
+        elsewhere) — hiding investigation targets behind reach would make
+        reach permanently unexpandable from outside itself, a deadlock this
+        verb specifically exists to break.
         """
         state, graph = self.hydrate_state(session_id)
         org_status = self.get_org_status(session_id, org_id)
@@ -6205,54 +6289,82 @@ class EngineBridge:
             "over_budget_penalty": None,
         }
 
-        observe_capability = {"intel_network_strength": 0.6, "max_scan_depth": "TARGETED"}
-
         org_data = graph.nodes.get(org_id, {})
+        territory_ids = org_data.get("territory_ids", [])
+
+        observe_capability = _investigate_observe_capability(graph, territory_ids)
+
+        ledger = _derive_intel_ledger(session_id)
+        staleness_ticks, unknown_ticks = _current_intel_aging_ticks()
+
         territory_scans = [
             {
                 "target_id": str(tid),
                 "name": graph.nodes[tid].get("name", tid),
                 "target_type": "TERRITORY",
                 "heat": float(graph.nodes[tid].get("heat", 0.0)),
-                "current_knowledge": {
-                    "visibility_level": "SURFACE",
-                    "known_attributes": ["population"],
-                    "last_scanned_tick": None,
-                },
+                "current_knowledge": _investigate_current_knowledge(
+                    ledger,
+                    "territory",
+                    tid,
+                    state.tick,
+                    staleness_ticks,
+                    unknown_ticks,
+                    always_known=("population",),
+                ),
                 "resource_cost": {"sympathizer_labor": 5.0},
                 "projected_reveals": {
                     "new_visibility_level": "TARGETED",
-                    "likely_reveals": ["material_readiness", "hidden_factions", "state_deployment"],
+                    "likely_reveals": list(
+                        _INVESTIGATE_REVEAL_BY_NODE_TYPE.get(
+                            "territory", _INVESTIGATE_REVEAL_DEFAULT
+                        )
+                    ),
                 },
             }
-            for tid in org_data.get("territory_ids", [])
+            for tid in territory_ids
             if tid in graph.nodes
         ]
 
+        hostile_targets = _hostile_org_and_institution_targets(graph, org_id, territory_ids)
         targeted_scans = [
             {
-                "target_id": "org-police-union",
-                "name": "Fraternal Order of Police",
-                "target_type": "INSTITUTION",
-                "current_knowledge": {
-                    "visibility_level": "NONE",
-                    "known_attributes": [],
-                    "last_scanned_tick": None,
-                },
+                "target_id": node_id,
+                "name": data.get("name", node_id),
+                "target_type": (
+                    "INSTITUTION"
+                    if data.get("_node_type") == "institution"
+                    else str(data.get("org_type", "UNKNOWN")).upper()
+                ),
+                "current_knowledge": _investigate_current_knowledge(
+                    ledger,
+                    str(data.get("_node_type")),
+                    node_id,
+                    state.tick,
+                    staleness_ticks,
+                    unknown_ticks,
+                ),
                 "resource_cost": {"cadre_labor": 4.0},
                 "projected_reveals": {
-                    "new_visibility_level": "SURFACE",
-                    "likely_reveals": ["factional_control", "defensive_capacity"],
+                    "new_visibility_level": "TARGETED",
+                    "likely_reveals": list(
+                        _INVESTIGATE_REVEAL_BY_NODE_TYPE.get(
+                            str(data.get("_node_type")), _INVESTIGATE_REVEAL_DEFAULT
+                        )
+                    ),
                 },
                 "detection_risk": {
                     "probability": 0.35,
                     "consequence": "Increases organization heat by 0.15",
                 },
             }
+            for node_id, data in sorted(hostile_targets.items())
         ]
 
         counter_intelligence = {
-            "active_moles_suspected": 1,
+            # MOCKED: no engine path ever writes an infiltration/mole record
+            # anywhere this bridge can read — see this method's docstring.
+            "active_moles_suspected": None,
             "resource_cost": {"cadre_labor": 5.0},
             "projected_reveals": {
                 "new_visibility_level": "INTERNAL_AUDIT",
@@ -6634,6 +6746,159 @@ def _current_intel_aging_ticks() -> tuple[int, int]:
     ``GameDefines`` (same precedent, same reason)."""
     eh = GameDefines().epistemic_horizon
     return eh.intel_staleness_ticks, eh.intel_unknown_ticks
+
+
+#: Ordinal ranking of the real EH ``vision_state`` vocabulary
+#: (desert/mud/water — :func:`~babylon.engine.systems.epistemic_horizon.compute_epistemic_horizon`),
+#: used by :func:`_investigate_observe_capability` to find the BEST vision
+#: state among an org's territories (higher = the masses talk more).
+_VISION_STATE_RANK: dict[str, int] = {"desert": 0, "mud": 1, "water": 2}
+
+#: Track 1 / Task 9 (2026-07-18): an explicit INTERPRETATION mapping the
+#: real EH ``vision_state`` vocabulary onto this file's pre-existing
+#: NONE/SURFACE/TARGETED/DEEP scan-depth vocabulary (already used elsewhere
+#: in ``get_investigate_targets``) — flagged as a design call, not a
+#: certainty, mirroring ``game.fog.filter``'s own ``colonial_stance``
+#: interpretation note.
+_VISION_STATE_TO_SCAN_DEPTH: dict[str, str] = {
+    "desert": "SURFACE",
+    "mud": "TARGETED",
+    "water": "DEEP",
+}
+
+
+def _investigate_observe_capability(
+    graph: BabylonGraph, territory_ids: list[Any]
+) -> dict[str, Any]:
+    """The INVESTIGATE verb's real ``observe_capability`` — Track 1 / Task 9.
+
+    ``intel_network_strength``: mean real ``intel_confidence`` across the
+    org's own territories that carry the attr (written onto TERRITORY nodes
+    by :func:`~babylon.engine.systems.epistemic_horizon.compute_epistemic_horizon`
+    via ``_carry_epistemic_horizon`` at tick-resolution time) — the corpus's
+    own "the masses ARE the intelligence network" measure of how well this
+    org currently perceives its own ground, not a fabricated constant.
+
+    ``max_scan_depth``: :data:`_VISION_STATE_TO_SCAN_DEPTH` applied to the
+    highest-ranked real ``vision_state`` (:data:`_VISION_STATE_RANK`) among
+    those same territories.
+
+    Honest-null (Constitution III.11): before ``EpistemicHorizonSystem``
+    (position 22 of 30) has run a single real engine tick, no territory
+    carries these shadow attrs at all — this returns
+    ``{"intel_network_strength": None, "max_scan_depth": "UNKNOWN"}``,
+    never the prior fabricated ``{"intel_network_strength": 0.6,
+    "max_scan_depth": "TARGETED"}``.
+    """
+    confidences: list[float] = []
+    best_vision: str | None = None
+    best_rank = -1
+    for tid in territory_ids:
+        data = graph.nodes.get(tid)
+        if data is None:
+            continue
+        confidence = data.get("intel_confidence")
+        if confidence is not None:
+            confidences.append(float(confidence))
+        vision = data.get("vision_state")
+        rank = _VISION_STATE_RANK.get(vision, -1) if isinstance(vision, str) else -1
+        if rank > best_rank:
+            best_rank = rank
+            best_vision = vision
+    intel_network_strength = round(sum(confidences) / len(confidences), 4) if confidences else None
+    max_scan_depth = (
+        _VISION_STATE_TO_SCAN_DEPTH.get(best_vision, "UNKNOWN") if best_vision else "UNKNOWN"
+    )
+    return {"intel_network_strength": intel_network_strength, "max_scan_depth": max_scan_depth}
+
+
+#: Track 1 / Task 9: maps :class:`~game.fog.ledger.IntelReading`'s
+#: ``tier`` onto this file's pre-existing NONE/SURFACE/TARGETED vocabulary.
+_INVESTIGATE_VISIBILITY_BY_TIER: dict[str, str] = {
+    "exact": "TARGETED",
+    "approximate": "SURFACE",
+    "unknown": "NONE",
+}
+
+
+def _investigate_current_knowledge(
+    ledger: IntelLedger,
+    node_type: str,
+    node_id: str,
+    tick: int,
+    staleness_ticks: int,
+    unknown_ticks: int,
+    *,
+    always_known: tuple[str, ...] = (),
+) -> dict[str, Any]:
+    """The INVESTIGATE target list's ``current_knowledge`` block for one
+    node — Track 1 / Task 9. Reads this session's real
+    :class:`~game.fog.ledger.IntelLedger` (Track 1 / Task 3's
+    :func:`_derive_intel_ledger`) via :func:`~game.fog.ledger.read_intel`,
+    instead of the prior identical hardcoded literal for every target
+    regardless of INVESTIGATE history.
+
+    Args:
+        always_known: field names that are MATERIAL, not POLITICAL (never
+            gated anywhere else in this bridge — e.g. ``population`` is not
+            a member of :data:`~game.fog.filter.POLITICAL_FIELDS`), so they
+            are always known independent of ledger history. Empty for
+            organization/institution targets, which have no such baseline.
+    """
+    reading = read_intel(
+        ledger,
+        node_id,
+        political_field_group(node_type),
+        tick,
+        staleness_ticks=staleness_ticks,
+        unknown_ticks=unknown_ticks,
+    )
+    known_attributes = sorted({*always_known, *(reading.value_snapshot or {}).keys()})
+    return {
+        "visibility_level": _INVESTIGATE_VISIBILITY_BY_TIER[reading.tier],
+        "known_attributes": known_attributes,
+        "last_scanned_tick": reading.tick_observed,
+    }
+
+
+def _hostile_org_and_institution_targets(
+    graph: BabylonGraph, org_id: str, territory_ids: list[Any]
+) -> dict[str, dict[str, Any]]:
+    """Real ``organization``/``institution`` nodes present in ``org_id``'s
+    own territories, excluding ``org_id`` itself — Track 1 / Task 9.
+
+    Mirrors :meth:`EngineBridge.get_attack_targets`'s identical
+    ``territory_ids`` resolution (a field ``Organization``/``Institution``
+    genuinely carry in production, unlike ``SocialClass`` — see this
+    file's TENANCY-vs-``territory_ids`` gotcha). Deduplicated by node id
+    (first territory seen wins) rather than one row per (org, territory)
+    pair: a targeted INVESTIGATE scan targets an ENTITY, not an entity's
+    presence in one specific territory (unlike ``get_attack_targets``,
+    which intentionally lists one row per territory an org can be attacked
+    from).
+
+    Args:
+        graph: The hydrated session graph.
+        org_id: The acting org — excluded from its own results.
+        territory_ids: The acting org's own territory ids.
+
+    Returns:
+        Map of node id -> node attrs, for real hostile organization/
+        institution nodes. Empty when none exist yet (Constitution III.11 —
+        no fabricated placeholder target).
+    """
+    found: dict[str, dict[str, Any]] = {}
+    for tid in territory_ids:
+        if tid not in graph.nodes:
+            continue
+        for node_id, data in graph.nodes(data=True):
+            if node_id == org_id or node_id in found:
+                continue
+            if data.get("_node_type") not in ("organization", "institution"):
+                continue
+            if tid in data.get("territory_ids", []):
+                found[node_id] = data
+    return found
 
 
 def _query_investigate_action_results(session_id: UUID) -> list[dict[str, Any]]:

@@ -237,21 +237,59 @@ description = "pip-audit through the expiring-ignores policy wrapper (program 15
 run = "poetry run python tools/run_pip_audit.py"
 
 [tasks.commit]
-description = "Hook-safe commit: pre-run hooks on staged files, re-stage their fixes, commit, verify HEAD moved"
-usage = 'arg "<message>" help="Conventional commit message"'
+description = "Hook-safe commit: pre-run hooks, re-stage fixes, retry on hook-rewrite, VERIFY HEAD moved. Pass - to read the message from stdin (multi-line bodies)."
+usage = 'arg "<message>" help="Conventional commit message, or - to read from stdin"'
 run = '''
-set -e
+set -euo pipefail
 if git diff --cached --quiet; then
-  echo "nothing staged — git add first"; exit 1
+  echo "[commit] nothing staged — git add first"; exit 1
 fi
-# First pass absorbs the 'files were modified by this hook' abort;
-# re-stage hook fixes for EXACTLY the staged set (not the whole tree);
-# the commit itself re-runs hooks and must pass.
+
+# Capture the EXACT staged set and the pre-commit HEAD up front.
+STAGED="$(git diff --cached --name-only)"
+BEFORE="$(git rev-parse HEAD)"
+
+# Message: literal arg, or stdin when "-" (the only way to pass a body with
+# blank lines — a single `git commit -m` cannot, which is why callers used to
+# bypass this task entirely and lose the HEAD verification below).
+MSGFILE="$(mktemp)"
+trap 'rm -f "$MSGFILE"' EXIT
+if [ "$usage_message" = "-" ]; then
+  cat > "$MSGFILE"
+else
+  printf '%s\n' "$usage_message" > "$MSGFILE"
+fi
+
+# Re-stage hook fixes for EXACTLY the staged set — never the whole tree,
+# which would sweep up unrelated working-tree changes.
+restage() {
+  for f in $STAGED; do
+    if [ -e "$f" ]; then git add -- "$f"; fi
+  done
+  true
+}
+
+# First pass absorbs the "files were modified by this hook" abort.
 poetry run pre-commit run || true
-for f in $(git diff --cached --name-only); do
-  if [ -e "$f" ]; then git add -- "$f"; fi
-done
-git commit -m "$usage_message"
+restage
+
+# The commit re-runs hooks. If a hook rewrites a staged file DURING this run,
+# git aborts while every hook prints Passed and HEAD silently does not move.
+# Retry once after re-staging — the rewrite has already been applied by then.
+if ! git commit -F "$MSGFILE"; then
+  echo "[commit] first attempt aborted (hook rewrote a staged file) — re-staging and retrying"
+  restage
+  git commit -F "$MSGFILE"
+fi
+
+# THE ACTUAL VERIFICATION. Printing `git log` is not a check; comparing is.
+AFTER="$(git rev-parse HEAD)"
+if [ "$BEFORE" = "$AFTER" ]; then
+  echo "[commit] FAILED: HEAD did not move ($(git rev-parse --short "$BEFORE")). NOTHING WAS COMMITTED."
+  echo "[commit] Inspect 'git status --short' for MM entries (staged AND modified = hook rewrite)."
+  exit 1
+fi
+echo "[commit] OK: HEAD $(git rev-parse --short "$BEFORE") -> $(git rev-parse --short "$AFTER")"
 git log --oneline -1
 git status --short | grep -v "^??" || true
 '''

@@ -182,3 +182,62 @@ describe("Param fields", () => {
     expect(VERB_REGISTRY.educate!.paramFields).toHaveLength(0);
   });
 });
+
+describe("expected_deltas mapping (spec-116 FR-116-4.4)", () => {
+  it("educate.parseTargets maps expected_deltas and drops null axes", () => {
+    const config = VERB_REGISTRY.educate!;
+    const targets = config.parseTargets({
+      targets: [
+        {
+          community_id: "sc-1",
+          territory_name: "Genesee",
+          category: "social_class",
+          credibility: 0.6,
+          expected_deltas: { consciousness_delta: 0.0123, heat_delta: null },
+        },
+      ],
+    });
+    expect(targets[0]!.expectedDeltas).toEqual({ consciousness: 0.0123 });
+  });
+
+  it("attack.parseTargets maps the heat axis on org and institution rows", () => {
+    const config = VERB_REGISTRY.attack!;
+    const targets = config.parseTargets({
+      targets: {
+        organizations: [
+          {
+            target_id: "o1",
+            name: "Citizens Council",
+            expected_deltas: { consciousness_delta: null, heat_delta: 0.1 },
+          },
+        ],
+        institutions: [
+          {
+            target_id: "i1",
+            name: "County Court",
+            expected_deltas: { consciousness_delta: null, heat_delta: 0.1 },
+          },
+        ],
+        edges: [],
+      },
+    });
+    expect(targets[0]!.expectedDeltas).toEqual({ heat: 0.1 });
+    expect(targets[1]!.expectedDeltas).toEqual({ heat: 0.1 });
+  });
+
+  it("aid.parseTargets maps population rows; org rows honestly carry none", () => {
+    const config = VERB_REGISTRY.aid!;
+    const targets = config.parseTargets({
+      population_targets: [
+        {
+          community_id: "sc-1",
+          community_name: "Genesee Proles",
+          expected_deltas: { consciousness_delta: 0.004, heat_delta: null },
+        },
+      ],
+      org_targets: [{ org_id: "o2", org_name: "Tenants Union" }],
+    });
+    expect(targets[0]!.expectedDeltas).toEqual({ consciousness: 0.004 });
+    expect(targets[1]!.expectedDeltas).toBeUndefined();
+  });
+});

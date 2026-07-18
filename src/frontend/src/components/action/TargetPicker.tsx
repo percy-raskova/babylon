@@ -1,6 +1,9 @@
 /**
  * Target picker — flat list of `VerbTarget`s, grouped when the config's
  * targets carry a `group` (e.g. Aid's Communities/Organizations split).
+ *
+ * FR-116-4.4: rows also render per-target expected-delta chips when the
+ * backend produced real resolver-parity numbers for this target.
  */
 
 import type { VerbTarget } from "@/lib/verbs";
@@ -11,6 +14,30 @@ interface TargetPickerProps {
   error: string | null;
   selectedId: string | null;
   onSelect: (id: string) => void;
+}
+
+/** One compact ▲/▼ chip for a non-zero expected delta — null otherwise
+ *  (the same honest-null convention as VerbForm's preview DeltaChip). */
+function TargetDeltaChip({
+  value,
+  label,
+}: {
+  value: number | undefined;
+  label: string;
+}): React.JSX.Element | null {
+  if (value === undefined || !Number.isFinite(value) || value === 0) return null;
+  const up = value > 0;
+  return (
+    <span
+      data-testid="target-delta"
+      title={`${label}: ${up ? "+" : ""}${value}`}
+      className={`font-mono text-[9px] ${up ? "text-accent-gold" : "text-accent-crimson"}`}
+    >
+      {up ? "▲" : "▼"}
+      {label} {up ? "+" : "-"}
+      {parseFloat(Math.abs(value).toPrecision(3))}
+    </span>
+  );
 }
 
 export function TargetPicker({
@@ -47,7 +74,11 @@ export function TargetPicker({
           }`}
         >
           <span className="truncate">{t.label}</span>
-          {t.group && <span className="ml-2 shrink-0 text-[9px] text-ash">{t.group}</span>}
+          <span className="ml-2 flex shrink-0 items-center gap-1.5">
+            <TargetDeltaChip value={t.expectedDeltas?.consciousness} label="CI" />
+            <TargetDeltaChip value={t.expectedDeltas?.heat} label="Heat" />
+            {t.group && <span className="text-[9px] text-ash">{t.group}</span>}
+          </span>
         </button>
       ))}
     </div>

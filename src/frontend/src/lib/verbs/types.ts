@@ -10,6 +10,17 @@ export interface VerbTarget {
   label: string;
   /** Optional group name for <optgroup> rendering. */
   group?: string;
+  /**
+   * Per-target expected deltas parsed from the row's `expected_deltas`
+   * wire object (spec-116 FR-116-4.4). An axis is present only when the
+   * backend produced a real number for it — a null wire axis means "no
+   * per-target formula exists for this verb" and is dropped, never
+   * coerced to 0 (honest absence, Constitution III.11).
+   */
+  expectedDeltas?: {
+    consciousness?: number;
+    heat?: number;
+  };
 }
 
 /**

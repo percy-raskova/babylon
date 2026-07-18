@@ -132,8 +132,8 @@ ADR079_playability_spine:
        (6) EconomyDashboard phantom-chip fixes against real fields (folded
            into item 5's commits);
        (7) event whitelist widened 34 -> 64 of 84 EventTypes with POGROM/
-           LOCKOUT/VIGILANTISM first-class (137724ac, 44->50/83) then the
-           ceremony #2 sweep (29ca28ab, 50->64/83 — own EventType, severity,
+           LOCKOUT/VIGILANTISM first-class (137724ac, 44->50/84) then the
+           ceremony #2 sweep (29ca28ab, 50->64/84 — own EventType, severity,
            title, geographic anchor per new type; see "Ceremony #2" below);
        (8) verb dead-ends -> disabled-with-reason (f9a1efe7 + b4612190,
            spec-116 FR-4.8): `get_verb_eligibility` + `/actions/eligibility/`
@@ -250,7 +250,7 @@ ADR079_playability_spine:
       tick loop). `mise run qa:regression`: 5 passed, 0 failed. Full report:
       `reports/pacing-calibration-2026-07-17.md` §7.
 
-      Ceremony #2 (Task 23, event-whitelist widening 50->64/83 handled
+      Ceremony #2 (Task 23, event-whitelist widening 50->64/84 handled
       types): BYTE-IDENTICAL, NO baseline regeneration needed — `mise run
       qa:regression` passed 5/5 on the first run after implementation.
       Verified not a false negative by inspecting `tools/regression_test.py`'s
@@ -326,7 +326,7 @@ ADR079_playability_spine:
   evidence: |
     src/babylon/config/defines/endgame.py, src/babylon/config/defines/balkanization.py,
     src/babylon/config/defines/_assembler.py, src/babylon/data/defines.yaml,
-    src/babylon/engine/systems/collapse_transition.py, src/babylon/engine/endgame_detector.py,
+    src/babylon/engine/systems/collapse_transition.py, src/babylon/engine/observers/endgame_detector.py,
     web/game/engine_bridge.py (get_journal_objectives, accept_outcome, _apply_runtime_migrations),
     web/game/epilogues.py, web/game/api.py,
     src/frontend/src/lib/eventDedup.ts, src/frontend/src/lib/eventClassifier.ts,

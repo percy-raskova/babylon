@@ -63,6 +63,11 @@ export interface UiSlice {
     toggleCrisisTimeline: () => void;
     toggleRadarLoop: () => void;
     toggleComposer: () => void;
+    /** Unconditionally opens the composer (Track 1 Task 7) — unlike
+     *  `toggleComposer`, never closes it. A deliberate CTA (e.g. a fogged
+     *  field's "Investigate" link) must show the composer, not risk
+     *  toggling it shut when it was already open. */
+    openComposer: () => void;
     setBottomDrawer: (state: BottomDrawerState) => void;
     setFocusedPanel: (id: string | null) => void;
     openTakeover: (kind: TakeoverKind) => void;
@@ -116,6 +121,8 @@ export const createUiSlice: StateCreator<RootState, [], [], UiSlice> = (set) => 
       set((s) => ({
         ui: { ...s.ui, chrome: { ...s.ui.chrome, composerOpen: !s.ui.chrome.composerOpen } },
       })),
+    openComposer: () =>
+      set((s) => ({ ui: { ...s.ui, chrome: { ...s.ui.chrome, composerOpen: true } } })),
     setBottomDrawer: (state) =>
       set((s) => ({ ui: { ...s.ui, chrome: { ...s.ui.chrome, bottomDrawer: state } } })),
     setFocusedPanel: (id) => set((s) => ({ ui: { ...s.ui, focusedPanelId: id } })),

@@ -14,9 +14,15 @@
 
 import type { ConsciousnessVector } from "@/types/game";
 
-/** What an `InspectionRef` points at — one resolver per kind (Lane C). */
+/** What an `InspectionRef` points at — one resolver per kind (Lane C).
+ *
+ * `"fog"` (Track 1 Task 7, 2026-07-18): a masked (`vision_masked`) political
+ * field's explanation frame — WHAT it is, WHY it's unknown, HOW to learn it.
+ * Resolved synchronously from `ref.inline` (no fetch — the pusher already
+ * knows everything: `{field, nodeType, nodeId, nodeName}`), mirroring the
+ * existing inline-resolution path hex clicks use (see `resolvers.ts`). */
 export type InspectionRefKind =
-  "hex" | "org" | "node" | "edge" | "community" | "metric" | "formula";
+  "hex" | "org" | "node" | "edge" | "community" | "metric" | "formula" | "fog";
 
 /**
  * A pointer to something inspectable. `scope` disambiguates instance data

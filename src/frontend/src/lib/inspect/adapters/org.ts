@@ -25,7 +25,14 @@ import type {
   InspectionSection,
 } from "@/types/inspection";
 import { explainRefFor } from "../provenance";
-import { readConsciousness, readNumberField, readStringField, type RawEntity } from "./fields";
+import { fogRefFor } from "../fogFields";
+import {
+  readConsciousness,
+  readNumberField,
+  readStringField,
+  readVisionMasked,
+  type RawEntity,
+} from "./fields";
 
 const CONSCIOUSNESS_COLORS = {
   revolutionary: "text-laser",
@@ -167,6 +174,12 @@ export function adaptOrg(ref: InspectionRef, data: RawEntity): InspectionNode {
   const scope = `org:${ref.id}`;
   const name = readStringField(data, "name");
   const consciousness = readConsciousness(data);
+  // Track 1 Task 7: Heat/Cohesion are org-internal-state fields
+  // `ORG_POLITICAL_FIELDS` gates for every non-player org — a fog ref turns
+  // their masked "no data" into a clickable explanation rather than a dead
+  // end, but ONLY for a field the bridge actually withheld (never for one
+  // that's simply absent for an unrelated reason).
+  const maskedFields = readVisionMasked(data);
 
   const rows: InspectionRow[] = [
     {
@@ -179,8 +192,18 @@ export function adaptOrg(ref: InspectionRef, data: RawEntity): InspectionNode {
       value: readNumberField(data, "budget") ?? readNumberField(data, "funds"),
       format: "decimal2",
     },
-    { label: "Cohesion", value: readNumberField(data, "cohesion"), format: "decimal2" },
-    { label: "Heat", value: readNumberField(data, "heat"), format: "decimal2" },
+    {
+      label: "Cohesion",
+      value: readNumberField(data, "cohesion"),
+      format: "decimal2",
+      ref: fogRefFor("cohesion", maskedFields, "organization", ref.id, name),
+    },
+    {
+      label: "Heat",
+      value: readNumberField(data, "heat"),
+      format: "decimal2",
+      ref: fogRefFor("heat", maskedFields, "organization", ref.id, name),
+    },
     {
       label: "Consciousness",
       value: null,

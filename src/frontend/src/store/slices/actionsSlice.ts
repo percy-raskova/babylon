@@ -32,12 +32,27 @@ export interface PendingActionEntry {
   submittedAtTick: number;
 }
 
+/**
+ * A pending composer preset (Track 1 Task 7, 2026-07-18) — set by
+ * `presetInvestigate` when a fogged field's card is clicked, consumed once
+ * by `ActionComposer` to seed its verb/target selection, never re-applied.
+ * INVESTIGATE-only today (the one verb Task 7 needs); a future verb would
+ * add its own `presetX` action rather than widen this shape speculatively.
+ */
+export interface ActionPreset {
+  verb: PlayerVerb;
+  targetId: string;
+  targetLabel: string;
+}
+
 export interface ActionsSlice {
   actions: {
     pending: PendingActionEntry[];
     submitting: boolean;
     /** Loud failure message (III.11) — set on a non-ok submit response. */
     error: string | null;
+    /** A composer preset awaiting consumption, or `null` — see `ActionPreset`. */
+    preset: ActionPreset | null;
 
     /**
      * POST /api/games/{id}/actions/{verb}/ with `body` verbatim. On success,
@@ -48,6 +63,13 @@ export interface ActionsSlice {
     submit: (gameId: string, verb: PlayerVerb, body: VerbSubmitBody) => Promise<boolean>;
     /** Drop every queued entry — called on tick advance. */
     clearPending: () => void;
+    /** Queue an INVESTIGATE preset naming `targetId` (real graph node id —
+     *  `resolve_investigate` reads it directly, with no allow-list against
+     *  the (still-mocked, Task 9) target-discovery endpoint) + `targetLabel`
+     *  for display. `ActionComposer` consumes it once. */
+    presetInvestigate: (targetId: string, targetLabel: string) => void;
+    /** Clear the pending preset — called once `ActionComposer` has applied it. */
+    consumePreset: () => void;
   };
 }
 
@@ -56,6 +78,7 @@ export const createActionsSlice: StateCreator<RootState, [], [], ActionsSlice> =
     pending: [],
     submitting: false,
     error: null,
+    preset: null,
 
     submit: async (gameId, verb, body) => {
       set((s) => ({ actions: { ...s.actions, submitting: true, error: null } }));
@@ -87,5 +110,12 @@ export const createActionsSlice: StateCreator<RootState, [], [], ActionsSlice> =
     },
 
     clearPending: () => set((s) => ({ actions: { ...s.actions, pending: [] } })),
+
+    presetInvestigate: (targetId, targetLabel) =>
+      set((s) => ({
+        actions: { ...s.actions, preset: { verb: "investigate", targetId, targetLabel } },
+      })),
+
+    consumePreset: () => set((s) => ({ actions: { ...s.actions, preset: null } })),
   },
 });

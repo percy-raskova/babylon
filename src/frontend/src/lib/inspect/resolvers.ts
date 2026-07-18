@@ -16,6 +16,7 @@ import { adaptNode } from "./adapters/node";
 import { adaptEdge } from "./adapters/edge";
 import { adaptCommunity } from "./adapters/community";
 import { adaptMetric } from "./adapters/metric";
+import { adaptFog } from "./adapters/fog";
 import type { RawEntity } from "./adapters/fields";
 
 /** Stable cache/comparison key for an `InspectionRef` — kind+id+scope (label excluded: it's presentational, not identity). */
@@ -111,5 +112,11 @@ export async function resolveRef(gameId: string, ref: InspectionRef): Promise<In
       // "formula" ref (should one ever be pushed independently of a
       // metric) resolves identically.
       return resolveMetricRef(gameId, ref);
+    case "fog":
+      // No fetch — the pusher (a masked field's row ref, see
+      // `../fogFields.ts::fogRefFor`) already knows everything this frame
+      // needs via `ref.inline`, same "inline, no round-trip" idiom the hex
+      // click path established.
+      return Promise.resolve(adaptFog(ref, ref.inline ?? {}));
   }
 }

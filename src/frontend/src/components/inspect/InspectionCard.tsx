@@ -6,11 +6,21 @@
  * links to the verb that changes it").
  *
  * The "act" link is deliberately minimal: it opens the ActionDock's
- * composer (`ui.toggleComposer`) without pre-selecting an org/target. A
- * fuller deep-link needs a store action to preset the composer's acting
- * org / target (e.g. `actions.presetTarget(kind, id)`) — out of this
- * lane's ownership (`components/action/*` composer internals are frozen
- * per architecture.md §5 Lane F) and not built here.
+ * composer (`ui.toggleComposer`) without pre-selecting an org/target.
+ *
+ * Track 1 Task 7 (2026-07-18) built the fuller deep-link this docstring
+ * used to defer: a resolved `fog`-kind frame (a masked political field's
+ * "no fogged dead ends" explanation, see `lib/inspect/adapters/fog.ts`)
+ * renders a dedicated "Investigate" CTA — `actions.presetInvestigate` +
+ * `ui.openComposer` (unconditional open, never a toggle-shut surprise) —
+ * genuinely pre-targeting the composer's INVESTIGATE verb at the masked
+ * node. This is real end-to-end: `resolve_investigate`
+ * (`src/babylon/engine/actions/investigate.py`) reads `target_id` directly
+ * off the graph with no allow-list against the target-discovery endpoint
+ * (`get_investigate_targets`, still substantially mocked — Task 9), so a
+ * target this CTA presets works even though it likely won't appear
+ * highlighted in that endpoint's convenience list — `VerbForm`'s
+ * `preset-target-note` is exactly the honesty measure for that gap.
  *
  * Wave 2 W2.5a addition: for a resolved `social_class` node (detected via
  * `hasSurvivalCalculus` — the adapted node carries a "Survival Calculus"
@@ -44,6 +54,38 @@ function survivalDuelSlot(
   return <SurvivalDuelPanel gameId={gameId} classId={frame.ref.id} />;
 }
 
+/** The "HOW to learn it" CTA for a `fog`-kind frame — null for every other
+ *  kind, or when the ref's own `inline.nodeId` is missing (honest absence,
+ *  never a button that silently has no target). Reads `nodeId`/`nodeName`
+ *  straight off `ref.inline` (the same payload `adaptFog` resolved from),
+ *  not from `frame.data`, so the CTA works even while a slow resolve is
+ *  still loading/erroring. */
+function fogInvestigateSlot(
+  frame: InspectionFrame,
+  presetInvestigate: (targetId: string, targetLabel: string) => void,
+  openComposer: () => void,
+): React.JSX.Element | null {
+  if (frame.ref.kind !== "fog") return null;
+  const inline = frame.ref.inline ?? {};
+  const nodeId = typeof inline.nodeId === "string" ? inline.nodeId : null;
+  if (nodeId === null) return null;
+  const nodeName = typeof inline.nodeName === "string" ? inline.nodeName : nodeId;
+
+  return (
+    <button
+      type="button"
+      onClick={() => {
+        presetInvestigate(nodeId, nodeName);
+        openComposer();
+      }}
+      data-testid="fog-investigate-link"
+      className="self-start rounded border border-rebar px-1.5 py-0.5 text-[9px] uppercase tracking-widest text-fog hover:border-spire hover:text-spire"
+    >
+      Investigate &rsaquo;
+    </button>
+  );
+}
+
 interface InspectionCardProps {
   frame: InspectionFrame;
   canDrill: boolean;
@@ -64,6 +106,8 @@ export function InspectionCard({
   gameId,
 }: InspectionCardProps): React.JSX.Element {
   const toggleComposer = useStore((s) => s.ui.toggleComposer);
+  const presetInvestigate = useStore((s) => s.actions.presetInvestigate);
+  const openComposer = useStore((s) => s.ui.openComposer);
   const title = frame.data?.title ?? frame.ref.label ?? frame.ref.id;
 
   return (
@@ -114,6 +158,7 @@ export function InspectionCard({
       )}
 
       {survivalDuelSlot(frame, gameId)}
+      {fogInvestigateSlot(frame, presetInvestigate, openComposer)}
 
       {!canDrill && (
         <p className="text-[10px] italic text-shroud" data-testid="depth-limit-notice">

@@ -13,6 +13,7 @@ from collections.abc import Generator
 
 import pytest
 
+from babylon.engine.context import TickContext
 from babylon.engine.services import ServiceContainer
 from babylon.engine.systems.decomposition import DecompositionSystem, _find_entity_by_role
 from babylon.models.enums import EventType, SocialRole
@@ -57,7 +58,7 @@ class TestEnforcerCreation:
         services.event_bus.subscribe(
             EventType.CLASS_DECOMPOSITION.value, lambda e: events.append(e)
         )
-        DecompositionSystem().step(g, services, {"tick": 5, "persistent_data": {}})
+        DecompositionSystem().step(g, services, TickContext(tick=5, persistent_data={}))
 
         enforcer = _find_entity_by_role(g, SocialRole.CARCERAL_ENFORCER, include_inactive=True)
         internal = _find_entity_by_role(g, SocialRole.INTERNAL_PROLETARIAT, include_inactive=True)
@@ -77,7 +78,7 @@ class TestEnforcerCreation:
 
         g = BabylonGraph()
         _add_dying_la(g)
-        DecompositionSystem().step(g, services, {"tick": 5, "persistent_data": {}})
+        DecompositionSystem().step(g, services, TickContext(tick=5, persistent_data={}))
         enforcer = _find_entity_by_role(g, SocialRole.CARCERAL_ENFORCER, include_inactive=True)
         internal = _find_entity_by_role(g, SocialRole.INTERNAL_PROLETARIAT, include_inactive=True)
         assert re.fullmatch(r"C[0-9]{3}", enforcer[0])
@@ -110,7 +111,7 @@ class TestEnforcerCreation:
         state = WorldState(tick=5, entities={"C001": la})
         graph = state.to_graph()
 
-        DecompositionSystem().step(graph, services, {"tick": 5, "persistent_data": {}})
+        DecompositionSystem().step(graph, services, TickContext(tick=5, persistent_data={}))
 
         restored = WorldState.from_graph(graph, tick=6)  # must not raise
         created = {eid: e for eid, e in restored.entities.items() if eid != "C001"}

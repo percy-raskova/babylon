@@ -11,6 +11,7 @@ from collections.abc import Callable, Iterator
 
 import pytest
 
+from babylon.engine.context import TickContext
 from babylon.engine.field_registry import DefaultFieldRegistry
 from babylon.engine.services import ServiceContainer
 from babylon.engine.systems.contradiction_field import _FIELD_EDGE_TYPES, ContradictionFieldSystem
@@ -43,7 +44,7 @@ class TestContradictionFieldSystemBasic:
 
         registry = DefaultFieldRegistry.with_defaults()
         services = ServiceContainer.create(field_registry=registry)
-        context: dict[str, object] = {"tick": 1, "persistent_data": {}}
+        context = TickContext(tick=1, persistent_data={})
         system = ContradictionFieldSystem()
 
         system.step(graph, services, context)
@@ -71,7 +72,7 @@ class TestContradictionFieldSystemBasic:
 
         registry = DefaultFieldRegistry.with_defaults()
         services = ServiceContainer.create(field_registry=registry)
-        context: dict[str, object] = {"tick": 1, "persistent_data": {}}
+        context = TickContext(tick=1, persistent_data={})
         system = ContradictionFieldSystem()
 
         system.step(graph, services, context)
@@ -96,7 +97,7 @@ class TestContradictionFieldSystemBasic:
 
         registry = DefaultFieldRegistry.with_defaults()
         services = ServiceContainer.create(field_registry=registry)
-        context: dict[str, object] = {"tick": 1, "persistent_data": {}}
+        context = TickContext(tick=1, persistent_data={})
         system = ContradictionFieldSystem()
 
         system.step(graph, services, context)
@@ -124,8 +125,11 @@ class TestContradictionFieldHistory:
 
         registry = DefaultFieldRegistry.with_defaults()
         services = ServiceContainer.create(field_registry=registry)
-        persistent_data: dict[str, object] = {}
-        context: dict[str, object] = {"tick": 1, "persistent_data": persistent_data}
+        # Bind to the context's own dict: TickContext copies the dict on
+        # construction, so the system mutates context.persistent_data, not the
+        # literal we passed in.
+        context = TickContext(tick=1, persistent_data={})
+        persistent_data: dict[str, object] = context.persistent_data
         system = ContradictionFieldSystem()
 
         system.step(graph, services, context)
@@ -152,17 +156,17 @@ class TestContradictionFieldHistory:
 
         registry = DefaultFieldRegistry.with_defaults()
         services = ServiceContainer.create(field_registry=registry)
-        persistent_data: dict[str, object] = {}
 
         system = ContradictionFieldSystem()
 
-        # Run 5 ticks to test window
+        # Run 5 ticks to test window. Reuse ONE context so the rolling history
+        # accumulates in its persistent_data — TickContext copies the dict on
+        # construction, so a fresh context per tick would reset the window.
+        context = TickContext(tick=0, persistent_data={})
+        persistent_data: dict[str, object] = context.persistent_data
         max_ticks = 5
         for tick in range(max_ticks):
-            context: dict[str, object] = {
-                "tick": tick,
-                "persistent_data": persistent_data,
-            }
+            context.tick = tick
             system.step(graph, services, context)
 
         history = persistent_data["contradiction_history"]
@@ -185,18 +189,19 @@ class TestContradictionFieldHistory:
 
         registry = DefaultFieldRegistry.with_defaults()
         services = ServiceContainer.create(field_registry=registry)
-        persistent_data: dict[str, object] = {}
 
         system = ContradictionFieldSystem()
 
-        # Tick 1: wealth=20
-        context1: dict[str, object] = {"tick": 1, "persistent_data": persistent_data}
-        system.step(graph, services, context1)
+        # Reuse ONE context so the system's _previous_wealth injection from
+        # tick 1 is visible in tick 2 — TickContext copies the dict on
+        # construction, so a fresh context per tick would drop tick-1 state.
+        context = TickContext(tick=1, persistent_data={})
+        system.step(graph, services, context)
 
         # Change wealth for tick 2
         graph.nodes["C001"]["wealth"] = 10.0
-        context2: dict[str, object] = {"tick": 2, "persistent_data": persistent_data}
-        system.step(graph, services, context2)
+        context.tick = 2
+        system.step(graph, services, context)
 
         # Immiseration should be positive (wealth dropped from 20 to 10)
         fields = graph.nodes["C001"]["contradiction_fields"]
@@ -217,7 +222,7 @@ class TestContradictionFieldHistory:
 
         registry = DefaultFieldRegistry.with_defaults()
         services = ServiceContainer.create(field_registry=registry)
-        context: dict[str, object] = {"tick": 1, "persistent_data": {}}
+        context = TickContext(tick=1, persistent_data={})
         system = ContradictionFieldSystem()
 
         system.step(graph, services, context)
@@ -241,7 +246,7 @@ class TestContradictionFieldHistory:
 
         registry = DefaultFieldRegistry.with_defaults()
         services = ServiceContainer.create(field_registry=registry)
-        context: dict[str, object] = {"tick": 1, "persistent_data": {}}
+        context = TickContext(tick=1, persistent_data={})
         system = ContradictionFieldSystem()
 
         system.step(graph, services, context)
@@ -274,7 +279,7 @@ class TestContradictionFieldNoRegistry:
         """exploitation = MEAN of incident edge tensions (kills the max mutant)."""
         graph = self._opposition_graph()
         services = ServiceContainer.create()  # no field_registry
-        context: dict[str, object] = {"tick": 1, "persistent_data": {}}
+        context = TickContext(tick=1, persistent_data={})
 
         ContradictionFieldSystem().step(graph, services, context)
 
@@ -285,7 +290,7 @@ class TestContradictionFieldNoRegistry:
         """atomization = the global atomization opposition gap from @18's snapshot."""
         graph = self._opposition_graph()
         services = ServiceContainer.create()
-        context: dict[str, object] = {"tick": 1, "persistent_data": {}}
+        context = TickContext(tick=1, persistent_data={})
 
         ContradictionFieldSystem().step(graph, services, context)
 
@@ -295,10 +300,14 @@ class TestContradictionFieldNoRegistry:
         """The 3-tick rolling history is written on the opposition-source path too."""
         graph = self._opposition_graph()
         services = ServiceContainer.create()
-        persistent: dict[str, object] = {}
+        # Reuse ONE context so the 3-tick history accumulates — TickContext
+        # copies the dict on construction, so a fresh context per tick would
+        # reset the window and the external dict would never be written.
+        ctx = TickContext(tick=1, persistent_data={})
+        persistent: dict[str, object] = ctx.persistent_data
 
         for tick in (1, 2):
-            ctx: dict[str, object] = {"tick": tick, "persistent_data": persistent}
+            ctx.tick = tick
             ContradictionFieldSystem().step(graph, services, ctx)
 
         history = persistent["contradiction_history"]["C001"]
@@ -309,7 +318,7 @@ class TestContradictionFieldNoRegistry:
         graph = BabylonGraph()
         graph.add_node("C001", _node_type="social_class", wealth=10.0, population=1000)
         services = ServiceContainer.create()
-        context: dict[str, object] = {"tick": 1, "persistent_data": {}}
+        context = TickContext(tick=1, persistent_data={})
 
         ContradictionFieldSystem().step(graph, services, context)
 
@@ -356,7 +365,7 @@ class TestContradictionFieldTensionIndex:
         graph = BabylonGraph()
         self._populate_field_graph(graph)
         services = ServiceContainer.create()
-        context: dict[str, object] = {"tick": 1, "persistent_data": {}}
+        context = TickContext(tick=1, persistent_data={})
 
         ContradictionFieldSystem().step(graph, services, context)
 
@@ -382,7 +391,7 @@ class TestContradictionFieldTensionIndex:
         graph = _QueryEdgesCountingGraph()
         self._populate_field_graph(graph)
         services = ServiceContainer.create()
-        context: dict[str, object] = {"tick": 1, "persistent_data": {}}
+        context = TickContext(tick=1, persistent_data={})
 
         ContradictionFieldSystem().step(graph, services, context)
 

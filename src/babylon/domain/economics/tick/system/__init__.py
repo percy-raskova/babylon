@@ -118,13 +118,7 @@ class TickDynamicsSystem(SystemBase):
             context: TickContext or dict with tick number.
         """
         # Extract tick number
-        tick: int
-        if hasattr(context, "tick"):
-            tick = context.tick
-        elif isinstance(context, dict):
-            tick = context.get("tick", 0)
-        else:
-            tick = 0
+        tick: int = context.tick
 
         # Gate: the annual pipeline below executes only on year boundaries
         # (FR-024) — unchanged. Spec-109 A7 (owner item 25 pt. 2): between

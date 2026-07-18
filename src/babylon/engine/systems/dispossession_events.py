@@ -8,19 +8,17 @@ VALUE_TRANSFER events via the event bus.
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Any, ClassVar, Union
+from typing import TYPE_CHECKING, Any, ClassVar
 
 from babylon.domain.economics.dispossession.intensity import DispossessionIntensityCalculator
 from babylon.kernel.event_bus import Event
 from babylon.kernel.system_base import SystemBase
+from babylon.kernel.system_protocol import ContextType
 from babylon.models.enums import EventType
 
 if TYPE_CHECKING:
-    from babylon.engine.context import TickContext
     from babylon.kernel.graph_protocol import GraphProtocol
     from babylon.kernel.services import ServicesProtocol
-
-ContextType = Union[dict[str, Any], "TickContext"]
 
 
 class DispossessionEventSystem(SystemBase):
@@ -54,7 +52,7 @@ class DispossessionEventSystem(SystemBase):
             context: Tick context with current tick number.
         """
         protocol = self._wrap_graph(graph)
-        tick = context["tick"] if isinstance(context, dict) else context.tick
+        tick = context.tick
         defines = services.defines.dispossession
         calculator = DispossessionIntensityCalculator(defines)
 

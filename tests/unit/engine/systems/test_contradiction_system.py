@@ -29,6 +29,7 @@ from babylon.domain.dialectics.core.opposition import (
     OppositionSpec,
 )
 from babylon.domain.dialectics.instances.catalog import GraphInputs
+from babylon.engine.context import TickContext
 from babylon.engine.services import ServiceContainer
 from babylon.engine.systems.contradiction import (
     OPPOSITION_INTERVENTIONS_ATTR,
@@ -53,7 +54,7 @@ class TestFreshEdgeTension:
         graph.add_node("owner", wealth=30.0)
         graph.add_edge("worker", "owner", edge_type=EdgeType.EXPLOITATION, tension=0.0)
 
-        ContradictionSystem().step(graph, ServiceContainer.create(), {"tick": 1})
+        ContradictionSystem().step(graph, ServiceContainer.create(), TickContext(tick=1))
 
         # |30 - 10| / (10 + 30) = 0.5, fresh (not the 0.0 it started at).
         assert graph["worker"]["owner"]["tension"] == pytest.approx(0.5)
@@ -66,9 +67,9 @@ class TestFreshEdgeTension:
         services = ServiceContainer.create()
         system = ContradictionSystem()
 
-        system.step(graph, services, {"tick": 1})
+        system.step(graph, services, TickContext(tick=1))
         first = graph["worker"]["owner"]["tension"]
-        system.step(graph, services, {"tick": 2})
+        system.step(graph, services, TickContext(tick=2))
         second = graph["worker"]["owner"]["tension"]
 
         # Static graph -> identical gap both ticks (no add-only accumulation).
@@ -81,7 +82,7 @@ class TestFreshEdgeTension:
         graph.add_node("land", node_type="territory", rent_level=0.0)
         graph.add_edge("tenant", "land", edge_type=EdgeType.TENANCY, tension=0.0)
 
-        ContradictionSystem().step(graph, ServiceContainer.create(), {"tick": 1})
+        ContradictionSystem().step(graph, ServiceContainer.create(), TickContext(tick=1))
 
         assert graph["tenant"]["land"]["tension"] == pytest.approx(0.0)
 
@@ -95,7 +96,7 @@ class TestRegistryStash:
         graph.add_node("owner", wealth=30.0)
         graph.add_edge("worker", "owner", edge_type=EdgeType.EXPLOITATION)
 
-        ContradictionSystem().step(graph, ServiceContainer.create(), {"tick": 3})
+        ContradictionSystem().step(graph, ServiceContainer.create(), TickContext(tick=3))
 
         states = graph.graph["opposition_states"]
         # price_value joined the canonical channel in ADR078 (zero-gap here:
@@ -121,12 +122,12 @@ class TestRegistryStash:
         services = ServiceContainer.create()
         system = ContradictionSystem()
 
-        system.step(graph, services, {"tick": 1})
+        system.step(graph, services, TickContext(tick=1))
         assert graph.graph["opposition_states"]["capital_labor"]["rate"] == pytest.approx(0.0)
 
         # Widen the gap: owner richer -> gap rises -> rate > 0.
         graph.nodes["owner"]["wealth"] = 90.0
-        system.step(graph, services, {"tick": 2})
+        system.step(graph, services, TickContext(tick=2))
         cap = graph.graph["opposition_states"]["capital_labor"]
         assert cap["gap"] == pytest.approx(80.0 / 100.0)  # |90-10|/100 = 0.8
         assert cap["rate"] == pytest.approx(0.8 - 0.5)  # rose by 0.3
@@ -141,7 +142,7 @@ class TestContradictionFrames:
         graph.add_node("owner", wealth=30.0)
         graph.add_edge("worker", "owner", edge_type=EdgeType.EXPLOITATION)
 
-        ContradictionSystem().step(graph, ServiceContainer.create(), {"tick": 1})
+        ContradictionSystem().step(graph, ServiceContainer.create(), TickContext(tick=1))
 
         frame = graph.graph["contradiction_frames"]["global"]
         principal = frame["principal"]
@@ -166,19 +167,19 @@ class TestRuptureGate:
         graph = self._extreme_graph(100.0)
         services = ServiceContainer.create()
         system = ContradictionSystem()
-        system.step(graph, services, {"tick": 1})
-        system.step(graph, services, {"tick": 2})
+        system.step(graph, services, TickContext(tick=1))
+        system.step(graph, services, TickContext(tick=2))
         assert _rupture_events(services) == []
 
     def test_rupture_fires_when_gap_high_and_rising(self) -> None:
         services = ServiceContainer.create()
         system = ContradictionSystem()
         graph = self._extreme_graph(50.0)  # gap = 49/51 ~ 0.96 (rate 0 on tick 1)
-        system.step(graph, services, {"tick": 1})
+        system.step(graph, services, TickContext(tick=1))
         assert _rupture_events(services) == []  # rising gate not yet satisfied
 
         graph.nodes["owner"]["wealth"] = 200.0  # gap = 199/201 ~ 0.99, rate > 0
-        system.step(graph, services, {"tick": 2})
+        system.step(graph, services, TickContext(tick=2))
         ruptures = _rupture_events(services)
         assert len(ruptures) == 1
         assert ruptures[0].payload["opposition"] == "capital_labor"
@@ -189,9 +190,9 @@ class TestRuptureGate:
         services = ServiceContainer.create()
         system = ContradictionSystem()
         graph = self._extreme_graph(200.0)  # gap ~ 0.99
-        system.step(graph, services, {"tick": 1})
+        system.step(graph, services, TickContext(tick=1))
         graph.nodes["owner"]["wealth"] = 100.0  # gap ~ 0.98, falling -> rate < 0
-        system.step(graph, services, {"tick": 2})
+        system.step(graph, services, TickContext(tick=2))
         assert _rupture_events(services) == []
 
     def test_no_rupture_when_gap_low_but_rising(self) -> None:
@@ -204,9 +205,9 @@ class TestRuptureGate:
         graph.add_node("worker", wealth=10.0)
         graph.add_node("owner", wealth=12.0)
         graph.add_edge("worker", "owner", edge_type=EdgeType.EXPLOITATION)
-        system.step(graph, services, {"tick": 1})
+        system.step(graph, services, TickContext(tick=1))
         graph.nodes["owner"]["wealth"] = 14.0  # gap 0.09 -> 0.17: rising, far below 0.9
-        system.step(graph, services, {"tick": 2})
+        system.step(graph, services, TickContext(tick=2))
         cap = graph.graph["opposition_states"]["capital_labor"]
         assert cap["rate"] > 0.0  # the rising precondition really holds
         assert cap["gap"] < float(services.defines.tension.rupture_gap_threshold)
@@ -231,14 +232,14 @@ class TestStanceInterventions:
 
     def test_no_intervention_leaves_the_natural_measure(self) -> None:
         graph = self._labor_dominant_graph()
-        ContradictionSystem().step(graph, ServiceContainer.create(), {"tick": 1})
+        ContradictionSystem().step(graph, ServiceContainer.create(), TickContext(tick=1))
         assert graph.graph["opposition_states"]["capital_labor"]["leading_pole"] == "a"
 
     def test_intervention_flips_leading_pole_through_the_system(self) -> None:
         graph = self._labor_dominant_graph()
         graph.graph[OPPOSITION_INTERVENTIONS_ATTR] = [self._dump(1.0)]
 
-        ContradictionSystem().step(graph, ServiceContainer.create(), {"tick": 1})
+        ContradictionSystem().step(graph, ServiceContainer.create(), TickContext(tick=1))
 
         cap = graph.graph["opposition_states"]["capital_labor"]
         assert cap["leading_pole"] == "b"  # flipped from "a" by the +1.0 shove
@@ -250,12 +251,12 @@ class TestStanceInterventions:
         system = ContradictionSystem()
         graph.graph[OPPOSITION_INTERVENTIONS_ATTR] = [self._dump(1.0)]
 
-        system.step(graph, services, {"tick": 1})
+        system.step(graph, services, TickContext(tick=1))
         assert graph.graph["opposition_states"]["capital_labor"]["leading_pole"] == "b"
         assert graph.graph[OPPOSITION_INTERVENTIONS_ATTR] == []  # cleared after use
 
         # Tick 2 with no fresh interventions: fresh measure only, NOT re-applied.
-        system.step(graph, services, {"tick": 2})
+        system.step(graph, services, TickContext(tick=2))
         assert graph.graph["opposition_states"]["capital_labor"]["leading_pole"] == "a"
 
 
@@ -359,7 +360,7 @@ class TestShadowPartition:
 
     def test_sigma_attrs_written_per_positioned_axis(self) -> None:
         graph = self._graph()
-        ContradictionSystem().step(graph, ServiceContainer.create(), {"tick": 1})
+        ContradictionSystem().step(graph, ServiceContainer.create(), TickContext(tick=1))
         assert graph.nodes["worker"]["sigma_capital_labor"] == pytest.approx(-0.5)
         assert graph.nodes["worker"]["sigma_wage"] == pytest.approx(-0.8)
         assert graph.nodes["owner"]["sigma_capital_labor"] == pytest.approx(0.5)
@@ -367,14 +368,14 @@ class TestShadowPartition:
 
     def test_derived_class_cell_requires_both_axes(self) -> None:
         graph = self._graph()
-        ContradictionSystem().step(graph, ServiceContainer.create(), {"tick": 1})
+        ContradictionSystem().step(graph, ServiceContainer.create(), TickContext(tick=1))
         assert graph.nodes["worker"]["derived_class_cell"] == "labor:exploited"
         assert graph.nodes["owner"]["derived_class_cell"] == "capital:bribed"
 
     def test_single_axis_node_gets_sigma_but_no_cell(self) -> None:
         graph = BabylonGraph()
         graph.add_node("solo", w_paid=18.0, v_produced=2.0)  # wage axis only
-        ContradictionSystem().step(graph, ServiceContainer.create(), {"tick": 1})
+        ContradictionSystem().step(graph, ServiceContainer.create(), TickContext(tick=1))
         attrs = graph.nodes["solo"]
         assert attrs["sigma_wage"] == pytest.approx(0.8)
         assert "sigma_capital_labor" not in attrs
@@ -383,7 +384,7 @@ class TestShadowPartition:
     def test_unpositioned_node_is_untouched(self) -> None:
         graph = self._graph()
         graph.add_node("bystander", wealth=5.0)
-        ContradictionSystem().step(graph, ServiceContainer.create(), {"tick": 1})
+        ContradictionSystem().step(graph, ServiceContainer.create(), TickContext(tick=1))
         attrs = graph.nodes["bystander"]
         assert "sigma_capital_labor" not in attrs
         assert "sigma_wage" not in attrs
@@ -391,7 +392,7 @@ class TestShadowPartition:
 
     def test_pole_readings_stashed_on_graph_attr(self) -> None:
         graph = self._graph()
-        ContradictionSystem().step(graph, ServiceContainer.create(), {"tick": 1})
+        ContradictionSystem().step(graph, ServiceContainer.create(), TickContext(tick=1))
         stash = graph.graph["pole_readings"]
         # price_value joined the shared-defect pole family in ADR078.
         assert set(stash) == {"capital_labor", "imperial", "price_value", "wage"}
@@ -403,10 +404,10 @@ class TestShadowPartition:
         graph = self._graph()
         services = ServiceContainer.create()
         system = ContradictionSystem()
-        system.step(graph, services, {"tick": 1})  # owner: capital side (b)
+        system.step(graph, services, TickContext(tick=1))  # owner: capital side (b)
 
         graph.update_node("worker", wealth=30.0)  # parity -> sigma 0.0 -> tie
-        system.step(graph, services, {"tick": 2})
+        system.step(graph, services, TickContext(tick=2))
 
         stash = graph.graph["pole_readings"]
         assert stash["capital_labor"]["owner"]["sigma"] == pytest.approx(0.0)
@@ -416,10 +417,10 @@ class TestShadowPartition:
         graph = self._graph()
         services = ServiceContainer.create()
         system = ContradictionSystem()
-        system.step(graph, services, {"tick": 1})
+        system.step(graph, services, TickContext(tick=1))
 
         graph.update_node("worker", active=False)  # drops out of every axis
-        system.step(graph, services, {"tick": 2})
+        system.step(graph, services, TickContext(tick=2))
 
         attrs = graph.nodes["worker"]
         assert attrs["sigma_capital_labor"] is None
@@ -456,7 +457,7 @@ class TestShadowChannel:
 
     def test_shadow_states_land_on_their_own_attr(self) -> None:
         graph = self._graph()
-        ContradictionSystem().step(graph, self._services(), {"tick": 1})
+        ContradictionSystem().step(graph, self._services(), TickContext(tick=1))
         assert set(graph.graph["opposition_states"]) == {"canon"}
         assert set(graph.graph["shadow_opposition_states"]) == {"ghost"}
         assert graph.graph["shadow_opposition_states"]["ghost"]["gap"] == pytest.approx(0.9)
@@ -466,17 +467,17 @@ class TestShadowChannel:
         graph = self._graph()
         services = self._services()
         system = ContradictionSystem()
-        system.step(graph, services, {"tick": 1})
+        system.step(graph, services, TickContext(tick=1))
         # Perturb the stashed shadow gap so tick 2's rate must read it back.
         stash = dict(graph.graph["shadow_opposition_states"])
         stash["ghost"] = {**stash["ghost"], "gap": 0.6}
         graph.set_graph_attr("shadow_opposition_states", stash)
-        system.step(graph, services, {"tick": 2})
+        system.step(graph, services, TickContext(tick=2))
         assert graph.graph["shadow_opposition_states"]["ghost"]["rate"] == pytest.approx(0.3)
 
     def test_frames_never_name_a_shadow_key(self) -> None:
         graph = self._graph()
-        ContradictionSystem().step(graph, self._services(), {"tick": 1})
+        ContradictionSystem().step(graph, self._services(), TickContext(tick=1))
         frame = graph.graph["contradiction_frames"]["global"]
         assert frame["principal"]["id"] == "canon"
         assert frame["secondary"]["id"] == "canon"
@@ -493,7 +494,7 @@ class TestShadowChannel:
             ]
         )
         services = ServiceContainer.create(opposition_registry=canon_only)
-        ContradictionSystem().step(graph, services, {"tick": 1})
+        ContradictionSystem().step(graph, services, TickContext(tick=1))
         assert "shadow_opposition_states" not in graph.graph
 
 
@@ -521,7 +522,7 @@ class TestPriceValueEndToEnd:
                 "tick": 1,
             },
         )
-        ContradictionSystem().step(graph, ServiceContainer.create(), {"tick": 1})
+        ContradictionSystem().step(graph, ServiceContainer.create(), TickContext(tick=1))
 
         scale = GameDefines().market.scissors_balance_scale
         # Promotion (ADR078): price_value rides the CANONICAL channel — the

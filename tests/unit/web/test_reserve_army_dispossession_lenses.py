@@ -31,6 +31,8 @@ from typing import Any
 
 import pytest
 
+from babylon.engine.context import TickContext
+
 pytestmark = pytest.mark.unit
 
 
@@ -134,8 +136,8 @@ class TestCarryReserveArmyDispossession:
 
         services = ServiceContainer.create()
         engine_graph = _territory_graph()
-        ReserveArmySystem().step(engine_graph, services, {"tick": 1})
-        DispossessionEventSystem().step(engine_graph, services, {"tick": 1})
+        ReserveArmySystem().step(engine_graph, services, TickContext(tick=1))
+        DispossessionEventSystem().step(engine_graph, services, TickContext(tick=1))
         expected = dict(engine_graph.nodes["T1"])
 
         bridge_graph = _territory_graph()

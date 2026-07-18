@@ -116,13 +116,7 @@ class ProductionSystem(SystemBase):
         # (``base_year + tick // weeks_per_year``) — reconciled here rather
         # than centralized, since those two call sites don't take a
         # ServicesProtocol/weeks_per_year the same way this one does.
-        tick: int
-        if hasattr(context, "tick"):
-            tick = context.tick
-        elif isinstance(context, dict):
-            tick = context.get("tick", 0)
-        else:
-            tick = 0
+        tick: int = context.tick
 
         # Track production per territory for extraction_intensity
         territory_production: dict[str, float] = {}

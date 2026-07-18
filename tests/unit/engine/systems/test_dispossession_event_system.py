@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from babylon.engine.context import TickContext
 from babylon.engine.services import ServiceContainer
 from babylon.engine.systems.dispossession_events import DispossessionEventSystem
 from babylon.kernel.event_bus import Event
@@ -66,7 +67,7 @@ class TestDispossessionEventSystem:
         services = _make_services()
         system = DispossessionEventSystem()
 
-        system.step(graph, services, {"tick": 1})
+        system.step(graph, services, TickContext(tick=1))
 
         assert "dispossession_intensity" in graph.nodes["T001"]
         assert graph.nodes["T001"]["dispossession_intensity"] > 0.0
@@ -92,7 +93,7 @@ class TestDispossessionEventSystem:
             lambda e: events.append(e),
         )
 
-        system.step(graph, services, {"tick": 1})
+        system.step(graph, services, TickContext(tick=1))
 
         assert len(events) == 0
 
@@ -111,7 +112,7 @@ class TestDispossessionEventSystem:
         services = _make_services()
         system = DispossessionEventSystem()
 
-        system.step(graph, services, {"tick": 1})
+        system.step(graph, services, TickContext(tick=1))
 
         assert graph.nodes["T001"]["wealth"] < 1_000_000.0
 
@@ -130,7 +131,7 @@ class TestDispossessionEventSystem:
         services = _make_services()
         system = DispossessionEventSystem()
 
-        system.step(graph, services, {"tick": 1})
+        system.step(graph, services, TickContext(tick=1))
 
         assert graph.nodes["T001"]["wealth"] >= 0.0
 
@@ -154,7 +155,7 @@ class TestDispossessionEventSystem:
             lambda e: events.append(e),
         )
 
-        system.step(graph, services, {"tick": 1})
+        system.step(graph, services, TickContext(tick=1))
 
         assert len(events) == 1
 
@@ -178,7 +179,7 @@ class TestDispossessionEventSystem:
             lambda e: events.append(e),
         )
 
-        system.step(graph, services, {"tick": 1})
+        system.step(graph, services, TickContext(tick=1))
 
         assert len(events) == 1
         assert events[0].payload["total_transferred"] > 0.0
@@ -205,7 +206,7 @@ class TestDispossessionEventSystem:
         services = _make_services()
         system = DispossessionEventSystem()
 
-        system.step(graph, services, {"tick": 1})
+        system.step(graph, services, TickContext(tick=1))
 
         assert graph.nodes["C001"]["wealth"] == 500.0
 
@@ -228,7 +229,7 @@ class TestDispossessionEventSystem:
         services = _make_services()
         system = DispossessionEventSystem()
 
-        system.step(graph, services, {"tick": 1})
+        system.step(graph, services, TickContext(tick=1))
 
         assert "dispossession_intensity" in graph.nodes["T001"]
         assert "dispossession_intensity" in graph.nodes["T002"]
@@ -263,7 +264,7 @@ class TestDispossessionEventSystem:
             lambda e: disp_events.append(e),
         )
 
-        system.step(graph, services, {"tick": 1})
+        system.step(graph, services, TickContext(tick=1))
 
         assert len(transfer_events) == 0
         assert len(disp_events) == 1

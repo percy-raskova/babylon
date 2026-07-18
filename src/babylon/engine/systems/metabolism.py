@@ -74,10 +74,7 @@ class MetabolismSystem(SystemBase):
         # Spec-070 FR-043: apply Sovereign-driven metabolic_impact additive
         # term to territory.habitability BEFORE the biocapacity update.
         # Read-only from SovereigntySystem's persistent_data write.
-        if isinstance(context, dict):
-            persistent = context.get("persistent_data", {})
-        else:
-            persistent = getattr(context, "persistent_data", {}) or {}
+        persistent = getattr(context, "persistent_data", {}) or {}
         sovereign_impact = persistent.get("balkanization.metabolic_impact_by_territory", {})
         for territory_id, impact in sovereign_impact.items():
             node = graph.get_node(territory_id)
@@ -139,7 +136,7 @@ class MetabolismSystem(SystemBase):
         )
 
         if ratio > overshoot_threshold:
-            tick = context.get("tick", 0) if isinstance(context, dict) else context.tick
+            tick = context.tick
             services.event_bus.publish(
                 Event(
                     type=EventType.ECOLOGICAL_OVERSHOOT,

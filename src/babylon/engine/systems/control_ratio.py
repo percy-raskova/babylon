@@ -114,10 +114,7 @@ class ControlRatioSystem(SystemBase):
 
         tick = context.get("tick", 0)
         # Handle both TickContext (with persistent_data) and raw dict
-        if hasattr(context, "persistent_data"):
-            persistent: dict[str, Any] = context.persistent_data
-        else:
-            persistent = context
+        persistent: dict[str, Any] = context.persistent_data
 
         # Check if terminal decision already made (one-time event)
         if persistent.get("_terminal_decision_emitted"):

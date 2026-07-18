@@ -18,6 +18,7 @@ from __future__ import annotations
 import pytest
 
 from babylon.config.defines import GameDefines
+from babylon.engine.context import TickContext
 from babylon.engine.services import ServiceContainer
 from babylon.engine.systems.epistemic_horizon import EpistemicHorizonSystem
 from babylon.models.enums import EdgeType
@@ -99,7 +100,7 @@ class TestMassReceptivityWorkedExamples:
             class_consciousness=0.7,
         )
         services = ServiceContainer.create()
-        EpistemicHorizonSystem().step(graph, services, {})
+        EpistemicHorizonSystem().step(graph, services, TickContext())
 
         attrs = graph.get_node("T001").attributes
         assert attrs["mass_receptivity"] == pytest.approx(0.56)
@@ -119,7 +120,7 @@ class TestMassReceptivityWorkedExamples:
             class_consciousness=0.3,
         )
         services = ServiceContainer.create()
-        EpistemicHorizonSystem().step(graph, services, {})
+        EpistemicHorizonSystem().step(graph, services, TickContext())
 
         attrs = graph.get_node("T001").attributes
         assert attrs["mass_receptivity"] == pytest.approx(0.006)
@@ -147,7 +148,7 @@ class TestMassReceptivityWorkedExamples:
             class_consciousness=0.95,
         )
         services = ServiceContainer.create()
-        EpistemicHorizonSystem().step(graph, services, {})
+        EpistemicHorizonSystem().step(graph, services, TickContext())
 
         attrs = graph.get_node("T001").attributes
         assert attrs["mass_receptivity"] == pytest.approx(0.665)
@@ -172,7 +173,7 @@ class TestIntelConfidence:
         _player_org_presence(graph, "ORG001", "T001", is_player=True)
 
         services = ServiceContainer.create()
-        EpistemicHorizonSystem().step(graph, services, {})
+        EpistemicHorizonSystem().step(graph, services, TickContext())
 
         attrs = graph.get_node("T001").attributes
         assert attrs["intel_confidence"] == pytest.approx(0.1 + 0.56)
@@ -191,7 +192,7 @@ class TestIntelConfidence:
         )
 
         services = ServiceContainer.create()
-        EpistemicHorizonSystem().step(graph, services, {})
+        EpistemicHorizonSystem().step(graph, services, TickContext())
 
         attrs = graph.get_node("T001").attributes
         assert attrs["intel_confidence"] == pytest.approx(0.1)
@@ -213,7 +214,7 @@ class TestIntelConfidence:
         _player_org_presence(graph, "ORG002", "T001", is_player=False)
 
         services = ServiceContainer.create()
-        EpistemicHorizonSystem().step(graph, services, {})
+        EpistemicHorizonSystem().step(graph, services, TickContext())
 
         attrs = graph.get_node("T001").attributes
         assert attrs["intel_confidence"] == pytest.approx(0.1)
@@ -227,7 +228,7 @@ class TestHonestAbsence:
         _territory(graph, "T001")
 
         services = ServiceContainer.create()
-        EpistemicHorizonSystem().step(graph, services, {})
+        EpistemicHorizonSystem().step(graph, services, TickContext())
 
         attrs = graph.get_node("T001").attributes
         assert "mass_receptivity" not in attrs
@@ -248,7 +249,7 @@ class TestHonestAbsence:
         )
 
         services = ServiceContainer.create()
-        EpistemicHorizonSystem().step(graph, services, {})
+        EpistemicHorizonSystem().step(graph, services, TickContext())
 
         attrs = graph.get_node("T001").attributes
         assert "mass_receptivity" not in attrs
@@ -275,7 +276,7 @@ class TestClassFactorDefault:
         )
 
         services = ServiceContainer.create()
-        EpistemicHorizonSystem().step(graph, services, {})
+        EpistemicHorizonSystem().step(graph, services, TickContext())
 
         attrs = graph.get_node("T001").attributes
         assert attrs["mass_receptivity"] == pytest.approx(0.0)
@@ -310,7 +311,7 @@ class TestPopulationWeighting:
         )
 
         services = ServiceContainer.create()
-        EpistemicHorizonSystem().step(graph, services, {})
+        EpistemicHorizonSystem().step(graph, services, TickContext())
 
         attrs = graph.get_node("T001").attributes
         # (1.0*100 + 0.0*300) / 400 = 0.25
@@ -338,9 +339,9 @@ class TestDeterminism:
 
         services = ServiceContainer.create()
         g1 = build()
-        EpistemicHorizonSystem().step(g1, services, {})
+        EpistemicHorizonSystem().step(g1, services, TickContext())
         g2 = build()
-        EpistemicHorizonSystem().step(g2, services, {})
+        EpistemicHorizonSystem().step(g2, services, TickContext())
 
         a1 = g1.get_node("T001").attributes
         a2 = g2.get_node("T001").attributes
@@ -377,7 +378,7 @@ class TestPlayerOrgIdChannel:
         graph.add_edge("ORG001", "T001", edge_type=EdgeType.PRESENCE)
         graph.graph["player_org_id"] = "ORG001"
 
-        EpistemicHorizonSystem().step(graph, ServiceContainer.create(), {"tick": 1})
+        EpistemicHorizonSystem().step(graph, ServiceContainer.create(), TickContext(tick=1))
 
         assert graph.nodes["T001"]["intel_confidence"] == pytest.approx(0.66)
 
@@ -389,7 +390,7 @@ class TestPlayerOrgIdChannel:
         graph.add_edge("ORG002", "T001", edge_type=EdgeType.PRESENCE)
         graph.graph["player_org_id"] = "ORG001"
 
-        EpistemicHorizonSystem().step(graph, ServiceContainer.create(), {"tick": 1})
+        EpistemicHorizonSystem().step(graph, ServiceContainer.create(), TickContext(tick=1))
 
         assert graph.nodes["T001"]["intel_confidence"] == pytest.approx(0.1)
 
@@ -399,7 +400,7 @@ class TestPlayerOrgIdChannel:
         graph = self._mud_tenant_graph()
         _player_org_presence(graph, "ORG001", "T001", is_player=True)
 
-        EpistemicHorizonSystem().step(graph, ServiceContainer.create(), {"tick": 1})
+        EpistemicHorizonSystem().step(graph, ServiceContainer.create(), TickContext(tick=1))
 
         assert graph.nodes["T001"]["intel_confidence"] == pytest.approx(0.66)
 
@@ -461,11 +462,11 @@ class TestInvestigationIntel:
         investigation I_c = 0.1 + boost."""
         graph = self._graph()
         system = EpistemicHorizonSystem()
-        system.step(graph, ServiceContainer.create(), {"tick": 1})
+        system.step(graph, ServiceContainer.create(), TickContext(tick=1))
         assert graph.nodes["T001"]["intel_confidence"] == pytest.approx(0.1)
 
         self._investigate(graph, "ORG001")
-        system.step(graph, ServiceContainer.create(), {"tick": 2})
+        system.step(graph, ServiceContainer.create(), TickContext(tick=2))
 
         boost = GameDefines().epistemic_horizon.investigate_intel_boost
         assert graph.nodes["T001"]["intel_confidence"] == pytest.approx(0.1 + boost)
@@ -605,7 +606,7 @@ class TestInvestigationIntelClamps:
         """I_c = clamp(B_o + C_p*M_r + intel): 0.1 + 0 + 1.0 clamps to 1.0."""
         graph = self._graph()
         graph.update_node("T001", investigation_intel=1.0)
-        EpistemicHorizonSystem().step(graph, ServiceContainer.create(), {"tick": 1})
+        EpistemicHorizonSystem().step(graph, ServiceContainer.create(), TickContext(tick=1))
 
         assert graph.nodes["T001"]["intel_confidence"] == pytest.approx(1.0)
 

@@ -84,7 +84,7 @@ class FascistFactionSystem(SystemBase):
         context: ContextType,
     ) -> None:
         wrapped = self._wrap_graph(graph)
-        tick = _extract_tick(context)
+        tick = context.tick
         defines = services.defines.reactionary
         regime = self._read_regime(wrapped)
 
@@ -341,10 +341,6 @@ class FascistFactionSystem(SystemBase):
 # ----------------------------------------------------------------------
 # Module helpers (mirror the spec-070 system conventions)
 # ----------------------------------------------------------------------
-
-
-def _extract_tick(context: ContextType) -> int:
-    return int(context.get("tick", 0) if isinstance(context, dict) else getattr(context, "tick", 0))
 
 
 def _coerce_role(raw: object) -> SocialRole | None:

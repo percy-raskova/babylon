@@ -18,6 +18,7 @@ class TestInvariantHarness:
     @settings(max_examples=20, deadline=5000)
     def test_production_system_preserves_invariants(self, state: object) -> None:
         """ProductionSystem preserves its declared invariants on random state."""
+        from babylon.engine.context import TickContext
         from babylon.engine.invariants import Invariant
         from babylon.engine.systems.production import ProductionSystem
         from babylon.models.world_state import WorldState
@@ -38,7 +39,7 @@ class TestInvariantHarness:
         from babylon.engine.services import ServiceContainer
 
         services = ServiceContainer.create()
-        context = {"tick": pre.tick}
+        context = TickContext(tick=pre.tick)
 
         system.step(graph, services, context)
 

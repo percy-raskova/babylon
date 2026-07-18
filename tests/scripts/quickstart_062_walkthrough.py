@@ -27,6 +27,7 @@ import warnings
 from pathlib import Path
 from uuid import uuid4
 
+from babylon.engine.context import TickContext
 from babylon.topology.graph import BabylonGraph
 
 DETROIT_TRI_COUNTY = ["26163", "26125", "26099"]
@@ -139,7 +140,7 @@ def main() -> int:
         engine = SimulationEngine(systems=[SubstrateSystem()], auditor=auditor)
 
         services = type("S", (), {"event_bus": None})()
-        ctx: dict[str, object] = {"tick": 1, "session_id": sid}
+        ctx = TickContext(tick=1, session_id=sid)
         engine.run_tick(graph, services, ctx)
 
         # Persist a hex_state row + the audit row

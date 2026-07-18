@@ -590,12 +590,7 @@ class EdgeTransitionSystem(SystemBase):
         # E0: predicates read node/edge attrs (populated by Systems #19/#20),
         # not the dormant field_registry — so no registry gate. The 17-transition
         # table is unchanged; a run with no edge_mode-bearing edges is a no-op.
-        tick: int = 0
-        if hasattr(context, "tick"):
-            tick = context.tick
-        elif isinstance(context, dict):
-            tick_val = context.get("tick", 0)
-            tick = int(tick_val) if tick_val is not None else 0
+        tick: int = context.tick
 
         # Access persistent_data for latent contradictions
         persistent_data = self._get_persistent_data(context)

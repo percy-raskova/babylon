@@ -13,6 +13,7 @@ from collections.abc import Generator
 
 import pytest
 
+from babylon.engine.context import TickContext
 from babylon.engine.services import ServiceContainer
 from babylon.engine.systems.metabolism import MetabolismSystem
 from babylon.engine.systems.production import ProductionSystem
@@ -112,8 +113,8 @@ class TestHumpShapeDecay:
         metabolism = MetabolismSystem()
 
         for tick in range(100):
-            production.step(graph, services, {"tick": tick})
-            metabolism.step(graph, services, {"tick": tick})
+            production.step(graph, services, TickContext(tick=tick))
+            metabolism.step(graph, services, TickContext(tick=tick))
 
         final_biocapacity = graph.nodes["T001"]["biocapacity"]
 
@@ -149,15 +150,15 @@ class TestHumpShapeDecay:
         # Run first 50 ticks and record wealth gained
         wealth_at_start = graph.nodes["PERIPHERY_WORKER_ID"]["wealth"]
         for tick in range(50):
-            production.step(graph, services, {"tick": tick})
-            metabolism.step(graph, services, {"tick": tick})
+            production.step(graph, services, TickContext(tick=tick))
+            metabolism.step(graph, services, TickContext(tick=tick))
         wealth_at_50 = graph.nodes["PERIPHERY_WORKER_ID"]["wealth"]
         first_half_gain = wealth_at_50 - wealth_at_start
 
         # Run next 50 ticks
         for tick in range(50, 100):
-            production.step(graph, services, {"tick": tick})
-            metabolism.step(graph, services, {"tick": tick})
+            production.step(graph, services, TickContext(tick=tick))
+            metabolism.step(graph, services, TickContext(tick=tick))
         wealth_at_100 = graph.nodes["PERIPHERY_WORKER_ID"]["wealth"]
         second_half_gain = wealth_at_100 - wealth_at_50
 

@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import pytest
 
+from babylon.engine.context import TickContext
 from babylon.engine.field_registry import DefaultFieldRegistry
 from babylon.engine.services import ServiceContainer
 from babylon.engine.systems.edge_transition import EdgeTransitionSystem
@@ -84,7 +85,7 @@ class TestEdgeTransitionSystemBasic:
         """
         graph = _make_graph_with_edge_mode()
         services = ServiceContainer.create()  # no field_registry
-        context: dict[str, object] = {"tick": 1, "persistent_data": {}}
+        context = TickContext(tick=1, persistent_data={})
 
         EdgeTransitionSystem().step(graph, services, context)
 
@@ -100,7 +101,7 @@ class TestEdgeTransitionSystemBasic:
 
         registry = DefaultFieldRegistry.with_defaults()
         services = ServiceContainer.create(field_registry=registry)
-        context: dict[str, object] = {"tick": 1, "persistent_data": {}}
+        context = TickContext(tick=1, persistent_data={})
 
         # Should not raise
         EdgeTransitionSystem().step(graph, services, context)
@@ -116,7 +117,7 @@ class TestEdgeTransitionStateMachine:
         # Source node has high exploitation (8.0) and positive df/dt (2.0)
         registry = DefaultFieldRegistry.with_defaults()
         services = ServiceContainer.create(field_registry=registry)
-        context: dict[str, object] = {"tick": 1, "persistent_data": {}}
+        context = TickContext(tick=1, persistent_data={})
 
         EdgeTransitionSystem().step(graph, services, context)
 
@@ -132,7 +133,7 @@ class TestEdgeTransitionStateMachine:
         graph = _make_graph_with_edge_mode()
         registry = DefaultFieldRegistry.with_defaults()
         services = ServiceContainer.create(field_registry=registry)
-        context: dict[str, object] = {"tick": 1, "persistent_data": {}}
+        context = TickContext(tick=1, persistent_data={})
 
         EdgeTransitionSystem().step(graph, services, context)
 
@@ -166,7 +167,7 @@ class TestEdgeTransitionStateMachine:
 
         registry = DefaultFieldRegistry.with_defaults()
         services = ServiceContainer.create(field_registry=registry)
-        context: dict[str, object] = {"tick": 1, "persistent_data": {}}
+        context = TickContext(tick=1, persistent_data={})
 
         EdgeTransitionSystem().step(graph, services, context)
 
@@ -185,7 +186,7 @@ class TestContradictionCharacterFlag:
 
         registry = DefaultFieldRegistry.with_defaults()
         services = ServiceContainer.create(field_registry=registry)
-        context: dict[str, object] = {"tick": 1, "persistent_data": {}}
+        context = TickContext(tick=1, persistent_data={})
 
         EdgeTransitionSystem().step(graph, services, context)
 
@@ -221,7 +222,7 @@ class TestContradictionCharacterFlag:
 
         registry = DefaultFieldRegistry.with_defaults()
         services = ServiceContainer.create(field_registry=registry)
-        context: dict[str, object] = {"tick": 1, "persistent_data": {}}
+        context = TickContext(tick=1, persistent_data={})
 
         EdgeTransitionSystem().step(graph, services, context)
 
@@ -266,7 +267,7 @@ class TestAspectReversal:
         graph.nodes["C001"]["wealth"] = 50.0
         graph.nodes["C002"]["wealth"] = 5.0
 
-        context: dict[str, object] = {"tick": 1, "persistent_data": {}}
+        context = TickContext(tick=1, persistent_data={})
         EdgeTransitionSystem().step(graph, services, context)
 
         events = services.event_bus.get_history()
@@ -315,7 +316,7 @@ class TestCoOptiveMechanics:
         registry = DefaultFieldRegistry.with_defaults()
         services = ServiceContainer.create(field_registry=registry)
         persistent_data: dict[str, object] = {}
-        context: dict[str, object] = {"tick": 1, "persistent_data": persistent_data}
+        context = TickContext(tick=1, persistent_data=persistent_data)
 
         EdgeTransitionSystem().step(graph, services, context)
 
@@ -357,7 +358,7 @@ class TestCoOptiveMechanics:
                 "C001": {"exploitation": 5.0},
             }
         }
-        context: dict[str, object] = {"tick": 2, "persistent_data": persistent_data}
+        context = TickContext(tick=2, persistent_data=persistent_data)
 
         EdgeTransitionSystem().step(graph, services, context)
 

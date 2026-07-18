@@ -35,6 +35,7 @@ from __future__ import annotations
 
 import pytest
 
+from babylon.engine.context import TickContext
 from babylon.engine.services import ServiceContainer
 from babylon.engine.systems.contradiction import ContradictionSystem
 from babylon.models.enums import EdgeType, EventType
@@ -115,7 +116,7 @@ class TestGrundrisseArc:
         for tick, (dw, do) in enumerate(_GRUNDRISSE_DELTAS, start=1):
             graph.nodes["worker"]["wealth"] += dw
             graph.nodes["owner"]["wealth"] += do
-            system.step(graph, services, {"tick": tick})
+            system.step(graph, services, TickContext(tick=tick))
 
             states = graph.graph["opposition_states"]
             assert set(states) == {
@@ -140,7 +141,7 @@ class TestGrundrisseArc:
         for tick, (dw, do) in enumerate(_GRUNDRISSE_DELTAS, start=1):
             graph.nodes["worker"]["wealth"] += dw
             graph.nodes["owner"]["wealth"] += do
-            system.step(graph, services, {"tick": tick})
+            system.step(graph, services, TickContext(tick=tick))
             seen.append(_cap_labor(graph)["gap"])  # type: ignore[arg-type]
 
         assert max(seen) < 1.0  # never saturates (the old accumulator pinned here)
@@ -158,19 +159,19 @@ class TestNonRatchetAndPreviousReading:
 
         # Baseline moment (10, 30) -> gap 0.5; first step establishes the
         # snapshot the following ticks read for their rate.
-        system.step(graph, services, {"tick": 1})
+        system.step(graph, services, TickContext(tick=1))
         assert _cap_labor(graph)["gap"] == pytest.approx(0.5)
 
         # Production moment: capital gains, gap widens, rate > 0.
         graph.nodes["owner"]["wealth"] += 10.0  # (10, 40) -> 0.6
-        system.step(graph, services, {"tick": 2})
+        system.step(graph, services, TickContext(tick=2))
         after_production = _cap_labor(graph)["gap"]
         assert after_production == pytest.approx(0.6)
         assert _cap_labor(graph)["rate"] == pytest.approx(0.1)  # 0.6 - 0.5
 
         # Distribution moment: wages flow to labor, gap FALLS, rate < 0.
         graph.nodes["worker"]["wealth"] += 20.0  # (30, 40) -> 1/7
-        system.step(graph, services, {"tick": 3})
+        system.step(graph, services, TickContext(tick=3))
         assert _cap_labor(graph)["gap"] < after_production  # not a ratchet
         assert _cap_labor(graph)["rate"] < 0.0
 
@@ -180,12 +181,12 @@ class TestNonRatchetAndPreviousReading:
         services = ServiceContainer.create()
         system = ContradictionSystem()
 
-        system.step(graph, services, {"tick": 1})  # (10, 30) -> gap 0.5, rate 0
+        system.step(graph, services, TickContext(tick=1))  # (10, 30) -> gap 0.5, rate 0
         assert _cap_labor(graph)["gap"] == pytest.approx(0.5)
         assert _cap_labor(graph)["rate"] == pytest.approx(0.0)
 
         graph.nodes["owner"]["wealth"] = 90.0  # (10, 90) -> gap 0.8
-        system.step(graph, services, {"tick": 2})
+        system.step(graph, services, TickContext(tick=2))
         assert _cap_labor(graph)["gap"] == pytest.approx(0.8)
         assert _cap_labor(graph)["rate"] == pytest.approx(0.3)  # 0.8 - 0.5
 
@@ -209,7 +210,7 @@ class TestPrincipalSelection:
         # defect starts small: w_paid 21 vs v_produced 19 -> |21-19|/40 = 0.05.
         graph.nodes["worker2"]["w_paid"] = 21.0
         graph.nodes["worker2"]["v_produced"] = 19.0
-        system.step(graph, services, {"tick": 1})
+        system.step(graph, services, TickContext(tick=1))
         assert _principal_key(graph) == "capital_labor"
 
         # Tick 2: the wage defect jumps 0.05 -> 0.45 (rate 0.40) while
@@ -217,7 +218,7 @@ class TestPrincipalSelection:
         # 2.25 beats capital_labor 0.5 -> the fast-developing defect leads.
         graph.nodes["worker2"]["w_paid"] = 29.0
         graph.nodes["worker2"]["v_produced"] = 11.0  # |29-11|/40 = 0.45
-        system.step(graph, services, {"tick": 2})
+        system.step(graph, services, TickContext(tick=2))
         wage = graph.graph["opposition_states"]["wage"]
         assert wage["gap"] == pytest.approx(0.45)
         assert wage["rate"] == pytest.approx(0.40)
@@ -225,7 +226,7 @@ class TestPrincipalSelection:
 
         # Tick 3: the defect holds (rate -> 0), its static gap 0.45 < 0.5
         # -> the principal role returns to capital_labor.
-        system.step(graph, services, {"tick": 3})
+        system.step(graph, services, TickContext(tick=3))
         assert graph.graph["opposition_states"]["wage"]["rate"] == pytest.approx(0.0)
         assert _principal_key(graph) == "capital_labor"
 
@@ -240,7 +241,7 @@ class TestRuptureGating:
         for tick, (dw, do) in enumerate(_GRUNDRISSE_DELTAS, start=1):
             graph.nodes["worker"]["wealth"] += dw
             graph.nodes["owner"]["wealth"] += do
-            system.step(graph, services, {"tick": tick})
+            system.step(graph, services, TickContext(tick=tick))
         # Hegemony holds: the pacified circuit never crosses the 0.9 gate.
         assert _ruptures(services) == []
 
@@ -250,13 +251,13 @@ class TestRuptureGating:
         system = ContradictionSystem()
 
         # Two benign ticks (gap ~0.5) — below threshold, no rupture.
-        system.step(graph, services, {"tick": 1})
-        system.step(graph, services, {"tick": 2})
+        system.step(graph, services, TickContext(tick=1))
+        system.step(graph, services, TickContext(tick=2))
         assert _ruptures(services) == []
 
         # Crisis: capital seizes almost everything -> gap 0.98, rising -> RUPTURE.
         graph.nodes["owner"]["wealth"] = 1000.0
-        system.step(graph, services, {"tick": 3})
+        system.step(graph, services, TickContext(tick=3))
         ruptures = _ruptures(services)
         assert len(ruptures) == 1
         assert ruptures[0].payload["opposition"] == "capital_labor"
@@ -265,7 +266,7 @@ class TestRuptureGating:
 
         # Hold the extreme gap static (rate 0): the LEVEL is high but the
         # CONDITION (rising) is not met -> no NEW rupture.
-        system.step(graph, services, {"tick": 4})
+        system.step(graph, services, TickContext(tick=4))
         assert len(_ruptures(services)) == 1
 
 
@@ -304,7 +305,7 @@ class TestFixedPointReading:
             for moment, (dw, do) in enumerate(_SIMPLE_REPRODUCTION):
                 graph.nodes["worker"]["wealth"] += dw
                 graph.nodes["owner"]["wealth"] += do
-                system.step(graph, services, {"tick": turn * 4 + moment + 1})
+                system.step(graph, services, TickContext(tick=turn * 4 + moment + 1))
                 if moment == 0:  # the Production moment
                     after_production.append(_cap_labor(graph)["gap"])  # type: ignore[arg-type]
 
@@ -318,8 +319,8 @@ class TestFixedPointReading:
         services = ServiceContainer.create()
         system = ContradictionSystem()
 
-        system.step(graph, services, {"tick": 1})  # establish the snapshot
-        system.step(graph, services, {"tick": 2})  # no wealth change -> rate ~ 0
+        system.step(graph, services, TickContext(tick=1))  # establish the snapshot
+        system.step(graph, services, TickContext(tick=2))  # no wealth change -> rate ~ 0
         assert _cap_labor(graph)["rate"] == pytest.approx(0.0)
         assert _regime(graph) == "reproduction"
 
@@ -329,10 +330,10 @@ class TestFixedPointReading:
         services = ServiceContainer.create()
         system = ContradictionSystem()
 
-        system.step(graph, services, {"tick": 1})
+        system.step(graph, services, TickContext(tick=1))
         assert _regime(graph) == "reproduction"
 
         graph.nodes["owner"]["wealth"] = 90.0  # (10, 90) -> gap 0.8, rising
-        system.step(graph, services, {"tick": 2})
+        system.step(graph, services, TickContext(tick=2))
         assert _cap_labor(graph)["rate"] > 0.0
         assert _regime(graph) == "crisis"

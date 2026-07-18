@@ -92,7 +92,7 @@ class OODASystem(SystemBase):
             context: TickContext or dict with 'tick'.
         """
         defines = services.defines.ooda
-        tick = context.get("tick", 0) if isinstance(context, dict) else getattr(context, "tick", 0)
+        tick = context.tick
 
         # Amendment L transition: subsystem helpers (layer0/layer3/effects)
         # still speak the nx-compat payload surface; narrow once here.
@@ -147,11 +147,8 @@ class OODASystem(SystemBase):
 
         # Get player actions from context
         player_actions: dict[str, Any] = {}
-        if isinstance(context, dict):
-            player_actions = context.get("persistent_data", {}).get("player_actions", {})
-        else:
-            pd = getattr(context, "persistent_data", {})
-            player_actions = pd.get("player_actions", {}) if isinstance(pd, dict) else {}
+        pd = getattr(context, "persistent_data", {})
+        player_actions = pd.get("player_actions", {}) if isinstance(pd, dict) else {}
 
         # Lift org_data_lookup outside the loop (was reconstructed per-iteration
         # in the original inline loop body; identical result, smaller alloc).
@@ -188,10 +185,7 @@ class OODASystem(SystemBase):
             layer3_effects=layer3_effects,
         )
         resolution_payload = resolution.model_dump(mode="json")
-        if isinstance(context, dict):
-            context.setdefault("persistent_data", {})["turn_resolution"] = resolution_payload
-        else:
-            context.persistent_data["turn_resolution"] = resolution_payload
+        context.persistent_data["turn_resolution"] = resolution_payload
 
         # Emit events
         if services.event_bus:

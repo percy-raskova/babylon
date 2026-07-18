@@ -10,6 +10,7 @@ import pytest
 
 from babylon.config.defines.doctrine import DoctrineDefines
 from babylon.domain.doctrine import load_doctrine_tree
+from babylon.engine.context import TickContext
 from babylon.engine.services import ServiceContainer
 from babylon.engine.systems.doctrine import (
     DoctrineSystem,
@@ -375,7 +376,7 @@ class TestDoctrineSystemAdapter:
         graph = state.to_graph()
         services = MagicMock()
         services.defines.doctrine = DoctrineDefines()
-        DoctrineSystem().step(graph, services, {})
+        DoctrineSystem().step(graph, services, TickContext())
         assert tree.root_id in graph.nodes["vanguard"]["acquired_doctrine_ids"]
 
 
@@ -411,7 +412,7 @@ class TestDoctrineSystemEventPublication:
             lambda e: captured.append(e),
         )
         try:
-            DoctrineSystem().step(graph, services, {"tick": 1})
+            DoctrineSystem().step(graph, services, TickContext(tick=1))
         finally:
             services.database.close()
 
@@ -440,7 +441,7 @@ class TestDoctrineSystemEventPublication:
         ):
             services.event_bus.subscribe(kind, lambda e: captured.append(e))
         try:
-            DoctrineSystem().step(graph, services, {"tick": 1})
+            DoctrineSystem().step(graph, services, TickContext(tick=1))
         finally:
             services.database.close()
 

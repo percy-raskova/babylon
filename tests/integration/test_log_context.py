@@ -14,10 +14,10 @@ from __future__ import annotations
 
 import logging
 import uuid
-from typing import Any
 
 import pytest
 
+from babylon.engine.context import TickContext
 from babylon.engine.services import ServiceContainer
 from babylon.engine.simulation_engine import SimulationEngine
 from babylon.kernel.system_protocol import ContextType, System
@@ -118,7 +118,7 @@ class TestLogContextInRunTick:
         graph = BabylonGraph()
 
         # Run tick with tick=5
-        context: dict[str, Any] = {"tick": 5}
+        context = TickContext(tick=5)
         engine.run_tick(graph, services, context)
 
         # Verify log records have tick attribute
@@ -137,7 +137,7 @@ class TestLogContextInRunTick:
         engine = SimulationEngine([LoggingSystem(test_logger)])
         graph = BabylonGraph()
 
-        context: dict[str, Any] = {"tick": 1}
+        context = TickContext(tick=1)
         engine.run_tick(graph, services, context)
 
         assert len(handler.records) >= 1
@@ -161,12 +161,12 @@ class TestLogContextInRunTick:
         graph = BabylonGraph()
 
         # Run two ticks
-        context1: dict[str, Any] = {"tick": 1}
+        context1 = TickContext(tick=1)
         engine.run_tick(graph, services, context1)
         tick1_records = list(handler.records)
         handler.clear()
 
-        context2: dict[str, Any] = {"tick": 2}
+        context2 = TickContext(tick=2)
         engine.run_tick(graph, services, context2)
         tick2_records = list(handler.records)
 
@@ -193,7 +193,7 @@ class TestLogContextInRunTick:
         engine = SimulationEngine([NestedLoggingSystem(test_logger)])
         graph = BabylonGraph()
 
-        context: dict[str, Any] = {"tick": 10}
+        context = TickContext(tick=10)
         engine.run_tick(graph, services, context)
 
         # Should have 2 log records (outer and inner)

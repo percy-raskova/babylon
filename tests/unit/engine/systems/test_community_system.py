@@ -10,6 +10,7 @@ from typing import Any
 
 import pytest
 
+from babylon.engine.context import TickContext
 from babylon.models.entities.community import (
     CommunityMembership,
     CommunityState,
@@ -299,7 +300,7 @@ class TestCommunitySystemStep:
             community_hypergraph={"community_states": community_states},
         )
 
-        context: dict[str, object] = {"tick": 1}
+        context = TickContext(tick=1)
 
         system = CommunitySystem()
         system.step(graph, services, context)
@@ -340,7 +341,7 @@ class TestCommunitySystemStep:
             community_hypergraph={"community_states": community_states},
         )
 
-        context: dict[str, object] = {"tick": 1}
+        context = TickContext(tick=1)
 
         system = CommunitySystem()
         system.step(graph, services, context)

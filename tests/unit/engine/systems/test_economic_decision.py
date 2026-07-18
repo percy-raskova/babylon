@@ -22,6 +22,7 @@ from typing import Any
 import pytest
 
 from babylon.config.defines import EconomyDefines, GameDefines
+from babylon.engine.context import TickContext
 from babylon.engine.services import ServiceContainer
 from babylon.engine.systems.economic import ImperialRentSystem
 from babylon.models.enums import EventType
@@ -64,7 +65,9 @@ class TestPoolRatioCalculation:
         initial_pool = 100.0
 
         # Act
-        system._process_decision_phase(graph, services, {"tick": 1}, tick_context, initial_pool)
+        system._process_decision_phase(
+            graph, services, TickContext(tick=1), tick_context, initial_pool
+        )
 
         # Assert: With pool_ratio=0.7 (at high threshold), no change expected
         # (exact behavior depends on tension, but this confirms ratio calculation)
@@ -101,7 +104,7 @@ class TestPoolRatioCalculation:
         system = ImperialRentSystem()
 
         # Act - should not raise
-        system._process_decision_phase(graph, services, {"tick": 1}, tick_context, 0.0)
+        system._process_decision_phase(graph, services, TickContext(tick=1), tick_context, 0.0)
 
         # Assert: pool_ratio = 0.0, which triggers CRISIS (< critical threshold)
         # CRISIS: wages go to minimum, repression +20%
@@ -211,7 +214,7 @@ class TestDecisionClamping:
         system = ImperialRentSystem()
 
         # Act
-        system._process_decision_phase(graph, services, {"tick": 1}, tick_context, 100.0)
+        system._process_decision_phase(graph, services, TickContext(tick=1), tick_context, 100.0)
 
         # Assert: Wage rate clamped at max (0.35)
         assert tick_context["wage_rate"] == pytest.approx(0.35, rel=1e-6)
@@ -248,7 +251,7 @@ class TestDecisionClamping:
         system = ImperialRentSystem()
 
         # Act
-        system._process_decision_phase(graph, services, {"tick": 1}, tick_context, 100.0)
+        system._process_decision_phase(graph, services, TickContext(tick=1), tick_context, 100.0)
 
         # Assert: Wage rate clamped at min (0.05)
         # AUSTERITY: -0.05, so 0.06 - 0.05 = 0.01, but clamped to 0.05
@@ -288,7 +291,7 @@ class TestDecisionClamping:
         system = ImperialRentSystem()
 
         # Act
-        system._process_decision_phase(graph, services, {"tick": 1}, tick_context, 100.0)
+        system._process_decision_phase(graph, services, TickContext(tick=1), tick_context, 100.0)
 
         # Assert: Repression clamped at 1.0
         # IRON_FIST: +0.10, so 0.95 + 0.10 = 1.05, but clamped to 1.0
@@ -325,7 +328,7 @@ class TestDecisionClamping:
         system = ImperialRentSystem()
 
         # Act
-        system._process_decision_phase(graph, services, {"tick": 1}, tick_context, 100.0)
+        system._process_decision_phase(graph, services, TickContext(tick=1), tick_context, 100.0)
 
         # Assert: Repression stays at 0.0
         assert tick_context["repression_level"] == pytest.approx(0.0, rel=1e-6)
@@ -363,7 +366,7 @@ class TestDecisionLogic:
         system = ImperialRentSystem()
 
         # Act
-        system._process_decision_phase(graph, services, {"tick": 1}, tick_context, 100.0)
+        system._process_decision_phase(graph, services, TickContext(tick=1), tick_context, 100.0)
 
         # Assert: BRIBERY -> wages +5%
         assert tick_context["wage_rate"] == pytest.approx(0.25, rel=1e-6)
@@ -397,7 +400,7 @@ class TestDecisionLogic:
         system = ImperialRentSystem()
 
         # Act
-        system._process_decision_phase(graph, services, {"tick": 1}, tick_context, 100.0)
+        system._process_decision_phase(graph, services, TickContext(tick=1), tick_context, 100.0)
 
         # Assert: AUSTERITY -> wages -5%
         assert tick_context["wage_rate"] == pytest.approx(0.15, rel=1e-6)
@@ -433,7 +436,7 @@ class TestDecisionLogic:
         system = ImperialRentSystem()
 
         # Act
-        system._process_decision_phase(graph, services, {"tick": 1}, tick_context, 100.0)
+        system._process_decision_phase(graph, services, TickContext(tick=1), tick_context, 100.0)
 
         # Assert: IRON_FIST -> repression +10%
         assert tick_context["wage_rate"] == pytest.approx(0.20, rel=1e-6)
@@ -468,7 +471,7 @@ class TestDecisionLogic:
         system = ImperialRentSystem()
 
         # Act
-        system._process_decision_phase(graph, services, {"tick": 1}, tick_context, 100.0)
+        system._process_decision_phase(graph, services, TickContext(tick=1), tick_context, 100.0)
 
         # Assert: CRISIS -> wages -15% (to min), repression +20%
         # wage: 0.20 - 0.15 = 0.05 (happens to equal min, so OK)
@@ -503,7 +506,7 @@ class TestDecisionLogic:
         system = ImperialRentSystem()
 
         # Act
-        system._process_decision_phase(graph, services, {"tick": 1}, tick_context, 100.0)
+        system._process_decision_phase(graph, services, TickContext(tick=1), tick_context, 100.0)
 
         # Assert: NO_CHANGE -> no deltas
         assert tick_context["wage_rate"] == pytest.approx(0.20, rel=1e-6)
@@ -542,7 +545,7 @@ class TestCrisisEventEmission:
         system = ImperialRentSystem()
 
         # Act
-        system._process_decision_phase(graph, services, {"tick": 10}, tick_context, 100.0)
+        system._process_decision_phase(graph, services, TickContext(tick=10), tick_context, 100.0)
 
         # Assert: Event emitted
         events = services.event_bus.get_history()
@@ -586,7 +589,7 @@ class TestCrisisEventEmission:
         system = ImperialRentSystem()
 
         # Act
-        system._process_decision_phase(graph, services, {"tick": 1}, tick_context, 100.0)
+        system._process_decision_phase(graph, services, TickContext(tick=1), tick_context, 100.0)
 
         # Assert: No event emitted
         events = services.event_bus.get_history()
@@ -623,7 +626,7 @@ class TestDecisionEdgeCases:
         system = ImperialRentSystem()
 
         # Act
-        system._process_decision_phase(graph, services, {"tick": 1}, tick_context, 100.0)
+        system._process_decision_phase(graph, services, TickContext(tick=1), tick_context, 100.0)
 
         # Assert: BRIBERY triggered (>= high threshold)
         assert tick_context["wage_rate"] == pytest.approx(0.25, rel=1e-6)
@@ -657,7 +660,7 @@ class TestDecisionEdgeCases:
         system = ImperialRentSystem()
 
         # Act
-        system._process_decision_phase(graph, services, {"tick": 1}, tick_context, 100.0)
+        system._process_decision_phase(graph, services, TickContext(tick=1), tick_context, 100.0)
 
         # Assert: NO_CHANGE (not below low threshold)
         assert tick_context["wage_rate"] == pytest.approx(0.20, rel=1e-6)
@@ -694,7 +697,7 @@ class TestDecisionEdgeCases:
         system = ImperialRentSystem()
 
         # Act
-        system._process_decision_phase(graph, services, {"tick": 1}, tick_context, 100.0)
+        system._process_decision_phase(graph, services, TickContext(tick=1), tick_context, 100.0)
 
         # Assert: AUSTERITY (tension <= 0.5)
         assert tick_context["wage_rate"] == pytest.approx(0.15, rel=1e-6)

@@ -257,18 +257,12 @@ class SimulationEngine:
         Args:
             graph: NetworkX graph (mutated in place by systems)
             services: ServicesProtocol with config, formulas, event_bus, database, metrics
-            context: TickContext or dict passed to all systems
+            context: TickContext passed to all systems
 
         Spec 008: Logs within run_tick() include tick and correlation_id.
         """
-        # T025: Extract tick number from context with fallback to 0
-        tick: int
-        if hasattr(context, "tick"):
-            tick = context.tick  # TickContext has .tick attribute
-        elif isinstance(context, dict):
-            tick = context.get("tick", 0)
-        else:
-            tick = 0
+        # T025: Extract the tick number from the TickContext.
+        tick = context.tick
 
         # T026: Generate per-tick UUID correlation_id
         correlation_id = str(uuid4())
@@ -307,11 +301,7 @@ class SimulationEngine:
         engine bridge) compute the actual residuals.
         """
         _ = services  # Reserved: future evaluators may consume services.
-        session_id = (
-            context.session_id
-            if hasattr(context, "session_id")
-            else (context.get("session_id") if isinstance(context, dict) else None)
-        )
+        session_id = context.session_id if hasattr(context, "session_id") else None
         if session_id is None:
             # Without a session_id the auditor cannot tag rows; skip silently.
             return
@@ -321,7 +311,9 @@ class SimulationEngine:
         hex_rows = [
             attrs for _node, attrs in graph.nodes(data=True) if attrs.get("_node_type") == "hex"
         ]
-        action_list = context.get("actions") if isinstance(context, dict) else None
+        # Legacy dict contexts could carry an "actions" list; the TickContext
+        # path never populated one, so this stays None (byte-identical).
+        action_list = None
 
         rows, alarms = self._auditor.evaluate(
             session_id=session_id,
@@ -331,9 +323,12 @@ class SimulationEngine:
             action_list=action_list,
         )
 
-        # Stash rows on the context so the envelope builder can pick them up.
-        if isinstance(context, dict):
-            context.setdefault("audit_rows", []).extend(rows)
+        # Stash rows on the context's persistent_data so the envelope builder
+        # (and the run_tick auditor tests) can pick them up via
+        # ``context.get("audit_rows")`` — TickContext routes non-field bracket
+        # keys through persistent_data. Production's headless bridge calls the
+        # auditor directly; this exposes rows on the run_tick path.
+        context.persistent_data.setdefault("audit_rows", []).extend(rows)
 
         # Emit alarms onto the event bus per FR-047 / Clarification Q3.
         # The bus expects a frozen Event(type=str, tick=int, payload=dict);

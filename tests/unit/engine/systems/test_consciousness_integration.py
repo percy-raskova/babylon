@@ -18,6 +18,7 @@ from unittest.mock import MagicMock
 import pytest
 
 from babylon.config.defines import GameDefines
+from babylon.engine.context import TickContext
 from babylon.models.enums import EdgeType
 from babylon.topology.graph import BabylonGraph
 
@@ -31,7 +32,7 @@ class TestConsciousnessSystemMaterialBuffer:
         *,
         wage_change: float = -20.0,
         solidarity: float = 0.0,
-    ) -> tuple[Any, Any, dict[str, Any]]:
+    ) -> tuple[Any, Any, TickContext]:
         """Build a minimal graph + services for ConsciousnessSystem testing."""
 
         # Build a real GraphProtocol via the adapter
@@ -86,10 +87,12 @@ class TestConsciousnessSystemMaterialBuffer:
         services.defines = defines
 
         # Context with previous wages stored
-        context = {
-            "previous_wages": {"worker_1": initial_wage},
-            "previous_wealth": {"worker_1": 100.0},
-        }
+        context = TickContext(
+            persistent_data={
+                "previous_wages": {"worker_1": initial_wage},
+                "previous_wealth": {"worker_1": 100.0},
+            }
+        )
 
         return graph, services, context
 

@@ -58,8 +58,8 @@ class FactionInfluenceSystem(SystemBase):
         context: ContextType,
     ) -> None:
         wrapped = self._wrap_graph(graph)
-        tick = _extract_tick(context)
-        persistent = _extract_persistent(context)
+        tick = context.tick
+        persistent = context.persistent_data
         defines = _resolve_defines(services)
         rng = resolve_rng(services, tick)
 
@@ -73,11 +73,8 @@ class FactionInfluenceSystem(SystemBase):
         self._emit_red_settler_trap_events(wrapped, defines, tick, services)
         self._update_secession_eligibility(wrapped, persistent, defines, tick, services)
 
-        if isinstance(context, dict):
-            context["persistent_data"] = persistent
-        else:
-            with contextlib.suppress(AttributeError):
-                context.persistent_data = persistent
+        with contextlib.suppress(AttributeError):
+            context.persistent_data = persistent
 
     def _resolve_winning_factions(
         self,
@@ -246,23 +243,6 @@ class FactionInfluenceSystem(SystemBase):
                 del hysteresis[stale_key]
         persistent[_HYSTERESIS] = hysteresis
         persistent["balkanization.secession_eligible"] = eligible
-
-
-def _extract_tick(context: ContextType) -> int:
-    return int(context.get("tick", 0) if isinstance(context, dict) else getattr(context, "tick", 0))
-
-
-def _extract_persistent(context: ContextType) -> dict[str, Any]:
-    if isinstance(context, dict):
-        persistent = context.get("persistent_data")
-        if persistent is None:
-            persistent = {}
-            context["persistent_data"] = persistent
-        return persistent if isinstance(persistent, dict) else dict(persistent)
-    existing = getattr(context, "persistent_data", None)
-    if existing is None:
-        return {}
-    return existing if isinstance(existing, dict) else dict(existing)
 
 
 def _resolve_defines(services: ServicesProtocol) -> BalkanizationDefines:

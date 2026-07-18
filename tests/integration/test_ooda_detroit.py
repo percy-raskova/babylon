@@ -10,6 +10,7 @@ from __future__ import annotations
 import pytest
 
 from babylon.config.defines import OODADefines
+from babylon.engine.context import TickContext
 from babylon.engine.services import ServiceContainer
 from babylon.engine.systems.ooda import OODASystem
 from babylon.models.enums import (
@@ -276,7 +277,7 @@ class TestOODASystemExecution:
         services = ServiceContainer.create()
         system = OODASystem()
 
-        system.step(graph, services, {"tick": 0})
+        system.step(graph, services, TickContext(tick=0))
 
         # Verify ford_motor is a Business org and was handled
         assert graph.nodes["ford_motor"]["org_type"] == OrgType.BUSINESS.value
@@ -290,7 +291,7 @@ class TestOODASystemExecution:
         # Run multiple ticks — NPC stub selects EDUCATE first for factions
         max_ticks = 5
         for tick in range(max_ticks):
-            system.step(graph, services, {"tick": tick})
+            system.step(graph, services, TickContext(tick=tick))
 
         # With a REVOLUTIONARY org doing EDUCATE, CI should generally increase
         # (effect depends on membership overlap + consciousness formula)
@@ -314,7 +315,7 @@ class TestOODASystemExecution:
         # Add FBI targeting comm_detroit by making it the fallback target
         graph.nodes["fbi"]["territory_ids"] = ["comm_detroit"]
 
-        system.step(graph, services, {"tick": 0})
+        system.step(graph, services, TickContext(tick=0))
 
         final_heat = float(graph.nodes["comm_detroit"]["heat"])
         assert final_heat > initial_heat
@@ -325,7 +326,7 @@ class TestOODASystemExecution:
         services = ServiceContainer.create()
         system = OODASystem()
 
-        system.step(graph, services, {"tick": 0})
+        system.step(graph, services, TickContext(tick=0))
 
     def test_multiple_ticks_stable(self) -> None:
         """Running 10 ticks doesn't crash or produce invalid state."""
@@ -335,7 +336,7 @@ class TestOODASystemExecution:
 
         max_ticks = 10
         for tick in range(max_ticks):
-            system.step(graph, services, {"tick": tick})
+            system.step(graph, services, TickContext(tick=tick))
 
         # All community properties remain in valid bounds
         ci = float(graph.nodes["comm_detroit"]["collective_identity"])
@@ -360,7 +361,7 @@ class TestLayerIntegration:
         system = OODASystem()
 
         # Should not crash — EMPLOY has no consciousness/heat effects
-        system.step(graph, services, {"tick": 0})
+        system.step(graph, services, TickContext(tick=0))
 
         # Infrastructure should remain at initial value
         # (EMPLOY doesn't trigger infrastructure sub-processor)

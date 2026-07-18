@@ -154,18 +154,6 @@ class SystemBase(ABC):
 
     @staticmethod
     def _get_persistent_data(context: ContextType) -> dict[str, Any]:
-        """Extract persistent_data from context (TickContext or dict).
-
-        Args:
-            context: TickContext or dict with persistent_data key.
-
-        Returns:
-            Mutable persistent_data dict.
-        """
-        if hasattr(context, "persistent_data"):
-            result: dict[str, Any] = context.persistent_data
-            return result
-        if isinstance(context, dict):
-            data: dict[str, Any] = context.setdefault("persistent_data", {})
-            return data
-        return {}
+        """Return the mutable ``persistent_data`` dict from a TickContext."""
+        result: dict[str, Any] = context.persistent_data
+        return result

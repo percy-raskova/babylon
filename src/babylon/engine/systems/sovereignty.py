@@ -23,7 +23,7 @@ Determinism notes (III.7):
 from __future__ import annotations
 
 import contextlib
-from typing import TYPE_CHECKING, Any, ClassVar
+from typing import TYPE_CHECKING, ClassVar
 
 from babylon.formulas.balkanization import calculate_metabolic_impact
 from babylon.kernel.event_bus import Event
@@ -71,8 +71,8 @@ class SovereigntySystem(SystemBase):
         context: ContextType,
     ) -> None:
         wrapped = self._wrap_graph(graph)
-        tick = self._extract_tick(context)
-        persistent = self._extract_persistent(context)
+        tick = context.tick
+        persistent = context.persistent_data
 
         # Resolve effective controller + metabolic_impact per Territory.
         impact_by_territory: dict[str, float] = {}
@@ -114,12 +114,8 @@ class SovereigntySystem(SystemBase):
 
         # Re-attach persistent_data into context (in case context.persistent_data
         # was None before).
-        if isinstance(context, dict):
-            context.setdefault("persistent_data", persistent)
-            context["persistent_data"] = persistent
-        else:
-            with contextlib.suppress(AttributeError):
-                context.persistent_data = persistent
+        with contextlib.suppress(AttributeError):
+            context.persistent_data = persistent
 
         # Emit DUAL_POWER_ACTIVE events in sorted-territory order.
         for territory_id, competing, control_sum in dual_power_territories:
@@ -135,26 +131,6 @@ class SovereigntySystem(SystemBase):
                     },
                 ),
             )
-
-    @staticmethod
-    def _extract_tick(context: ContextType) -> int:
-        tick = context.get("tick", 0) if isinstance(context, dict) else getattr(context, "tick", 0)
-        return int(tick)
-
-    @staticmethod
-    def _extract_persistent(context: ContextType) -> dict[str, Any]:
-        if isinstance(context, dict):
-            persistent = context.get("persistent_data")
-            if persistent is None:
-                persistent = {}
-                context["persistent_data"] = persistent
-            return dict(persistent) if not isinstance(persistent, dict) else persistent
-        existing = getattr(context, "persistent_data", None)
-        if existing is None:
-            return {}
-        if isinstance(existing, dict):
-            return existing
-        return dict(existing)
 
     @staticmethod
     def _coerce_policy(raw: object) -> ExtractionPolicy | None:

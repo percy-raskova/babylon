@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from babylon.engine.context import TickContext
 from babylon.engine.services import ServiceContainer
 from babylon.engine.systems.reserve_army import ReserveArmySystem
 from babylon.models.entities.social_class import SocialClass
@@ -58,7 +59,7 @@ class TestReserveArmySystem:
         services = _make_services()
         system = ReserveArmySystem()
 
-        system.step(graph, services, {"tick": 1})
+        system.step(graph, services, TickContext(tick=1))
 
         # Median wage should be reduced
         assert graph.nodes["T001"]["median_wage"] < 1000.0
@@ -79,8 +80,8 @@ class TestReserveArmySystem:
         services = _make_services()
         system = ReserveArmySystem()
 
-        system.step(graph_high, services, {"tick": 1})
-        system.step(graph_low, services, {"tick": 1})
+        system.step(graph_high, services, TickContext(tick=1))
+        system.step(graph_low, services, TickContext(tick=1))
 
         assert graph_high.nodes["T001"]["median_wage"] < graph_low.nodes["T002"]["median_wage"]
 
@@ -94,7 +95,7 @@ class TestReserveArmySystem:
         services = _make_services()
         system = ReserveArmySystem()
 
-        system.step(graph, services, {"tick": 1})
+        system.step(graph, services, TickContext(tick=1))
 
         assert graph.nodes["T002"]["median_wage"] == 1000.0
 
@@ -108,7 +109,7 @@ class TestReserveArmySystem:
         services = _make_services()
         system = ReserveArmySystem()
 
-        system.step(graph, services, {"tick": 1})
+        system.step(graph, services, TickContext(tick=1))
 
         assert graph.nodes["T003"]["median_wage"] == 1000.0
 
@@ -132,7 +133,7 @@ class TestReserveArmySystem:
         services = _make_services()
         system = ReserveArmySystem()
 
-        system.step(graph, services, {"tick": 1})
+        system.step(graph, services, TickContext(tick=1))
 
         # Should not have been modified
         assert graph.nodes["C001"]["median_wage"] == 500.0
@@ -147,7 +148,7 @@ class TestReserveArmySystem:
         services = _make_services()
         system = ReserveArmySystem()
 
-        system.step(graph, services, {"tick": 1})
+        system.step(graph, services, TickContext(tick=1))
 
         assert "wage_pressure" in graph.nodes["T001"]
         assert graph.nodes["T001"]["wage_pressure"] > 0.0
@@ -168,7 +169,7 @@ class TestReserveArmySystem:
             lambda e: events_received.append(e),
         )
 
-        system.step(graph, services, {"tick": 1})
+        system.step(graph, services, TickContext(tick=1))
 
         assert len(events_received) == 1
 
@@ -188,7 +189,7 @@ class TestReserveArmySystem:
             lambda e: events_received.append(e),
         )
 
-        system.step(graph, services, {"tick": 1})
+        system.step(graph, services, TickContext(tick=1))
 
         assert len(events_received) == 0
 
@@ -204,7 +205,7 @@ class TestReserveArmySystem:
         services = _make_services()
         system = ReserveArmySystem()
 
-        system.step(graph, services, {"tick": 1})
+        system.step(graph, services, TickContext(tick=1))
 
         # All territories should have wage_pressure set
         for node_id in ["T001", "T002", "T003"]:
@@ -220,7 +221,7 @@ class TestReserveArmySystem:
         services = _make_services()
         system = ReserveArmySystem()
 
-        system.step(graph, services, {"tick": 1})
+        system.step(graph, services, TickContext(tick=1))
 
         # Even at extreme ratio, wage should remain positive
         assert graph.nodes["T001"]["median_wage"] > 0.0

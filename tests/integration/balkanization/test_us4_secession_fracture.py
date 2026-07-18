@@ -10,6 +10,7 @@ from unittest.mock import MagicMock
 
 import pytest
 
+from babylon.engine.context import TickContext
 from babylon.engine.systems.collapse_transition import CollapseTransitionSystem
 from babylon.models.enums import EventType
 from babylon.topology.graph import BabylonGraph
@@ -84,9 +85,9 @@ def test_secession_creates_new_sovereign_via_bulk_partition(services: Any) -> No
     adapter = BabylonGraph()
     _build_parent_with_n_claims(adapter, 100)
     seceding = {f"HEX_{i:05d}" for i in range(30)}
-    context: dict[str, Any] = {
-        "tick": 15,
-        "persistent_data": {
+    context = TickContext(
+        tick=15,
+        persistent_data={
             "balkanization.secession_eligible": [
                 {
                     "secessionist_faction_id": "FAC_DECOLONIAL",
@@ -95,7 +96,7 @@ def test_secession_creates_new_sovereign_via_bulk_partition(services: Any) -> No
                 }
             ],
         },
-    }
+    )
 
     CollapseTransitionSystem().step(adapter, services, context)
 
@@ -118,9 +119,9 @@ def test_civil_war_declared_event_emitted_with_contested_count(
     adapter = BabylonGraph()
     _build_parent_with_n_claims(adapter, 50)
     seceding = {f"HEX_{i:05d}" for i in range(20)}
-    context: dict[str, Any] = {
-        "tick": 8,
-        "persistent_data": {
+    context = TickContext(
+        tick=8,
+        persistent_data={
             "balkanization.secession_eligible": [
                 {
                     "secessionist_faction_id": "FAC_DECOLONIAL",
@@ -129,7 +130,7 @@ def test_civil_war_declared_event_emitted_with_contested_count(
                 }
             ],
         },
-    }
+    )
 
     CollapseTransitionSystem().step(adapter, services, context)
 
@@ -151,9 +152,9 @@ def test_orphaned_sovereign_pruned_when_all_territories_secede(
     adapter = BabylonGraph()
     _build_parent_with_n_claims(adapter, 5)
     seceding = {f"HEX_{i:05d}" for i in range(5)}  # All of them.
-    context: dict[str, Any] = {
-        "tick": 1,
-        "persistent_data": {
+    context = TickContext(
+        tick=1,
+        persistent_data={
             "balkanization.secession_eligible": [
                 {
                     "secessionist_faction_id": "FAC_DECOLONIAL",
@@ -162,7 +163,7 @@ def test_orphaned_sovereign_pruned_when_all_territories_secede(
                 }
             ],
         },
-    }
+    )
 
     CollapseTransitionSystem().step(adapter, services, context)
 
@@ -187,7 +188,7 @@ def test_sov_exterior_null_never_orphan_pruned(services: Any) -> None:
         extraction_policy="continue",
         founded_tick=0,
     )
-    context: dict[str, Any] = {"tick": 5, "persistent_data": {}}
+    context = TickContext(tick=5, persistent_data={})
 
     CollapseTransitionSystem().step(adapter, services, context)
 
@@ -244,10 +245,10 @@ def test_collapse_with_winning_factions_creates_successor_sovereigns(
         "HEX_002": "FAC_WORKERS_CONGRESS",
         "HEX_003": "FAC_WORKERS_CONGRESS",
     }
-    context: dict[str, Any] = {
-        "tick": 10,
-        "persistent_data": {"balkanization.winning_faction_by_territory": winning},
-    }
+    context = TickContext(
+        tick=10,
+        persistent_data={"balkanization.winning_faction_by_territory": winning},
+    )
 
     CollapseTransitionSystem().step(adapter, services, context)
 

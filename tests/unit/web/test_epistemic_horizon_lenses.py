@@ -31,6 +31,7 @@ from unittest.mock import MagicMock
 import pytest
 
 from babylon.config.defines import GameDefines
+from babylon.engine.context import TickContext
 from babylon.models.enums import EdgeType
 from babylon.topology.graph import BabylonGraph
 
@@ -97,7 +98,7 @@ class TestCarryEpistemicHorizon:
 
         engine_graph = _graph_with_tenant()
         services = ServiceContainer.create()
-        EpistemicHorizonSystem().step(engine_graph, services, {})
+        EpistemicHorizonSystem().step(engine_graph, services, TickContext())
         expected = dict(engine_graph.nodes["T1"])
 
         bridge_graph = _graph_with_tenant()

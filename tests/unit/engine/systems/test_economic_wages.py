@@ -11,6 +11,7 @@ from typing import Any
 import pytest
 
 from babylon.config.defines import EconomyDefines, GameDefines
+from babylon.engine.context import TickContext
 from babylon.engine.services import ServiceContainer
 from babylon.engine.systems.economic import ImperialRentSystem
 from babylon.kernel.event_bus import Event
@@ -79,7 +80,7 @@ class TestWagesPhaseMutationKillers:
             tribute_inflow=100.0, current_pool=100.0, wage_rate=0.52
         )
 
-        system._process_wages_phase(graph, services, {"tick": 1}, tick_ctx)
+        system._process_wages_phase(graph, services, TickContext(tick=1), tick_ctx)
 
         # super_wage_rate = 0.52 / 52 = 0.01
         # max_bonus = tribute_inflow * 0.01 = 100 * 0.01 = 1.0
@@ -102,7 +103,7 @@ class TestWagesPhaseMutationKillers:
         system = ImperialRentSystem()
         tick_ctx = _make_wages_tick_context(tribute_inflow=100.0, current_pool=100.0)
 
-        system._process_wages_phase(graph, services, {"tick": 1}, tick_ctx)
+        system._process_wages_phase(graph, services, TickContext(tick=1), tick_ctx)
 
         assert graph.nodes["worker"]["ppp_multiplier"] == pytest.approx(expected_ppp)
 
@@ -113,7 +114,7 @@ class TestWagesPhaseMutationKillers:
         system = ImperialRentSystem()
         tick_ctx = _make_wages_tick_context(tribute_inflow=100.0, current_pool=100.0)
 
-        system._process_wages_phase(graph, services, {"tick": 1}, tick_ctx)
+        system._process_wages_phase(graph, services, TickContext(tick=1), tick_ctx)
 
         # Worker gets at most bourgeoisie's wealth
         assert graph.nodes["worker"]["wealth"] == pytest.approx(0.5)
@@ -126,7 +127,7 @@ class TestWagesPhaseMutationKillers:
         system = ImperialRentSystem()
         tick_ctx = _make_wages_tick_context()
 
-        system._process_wages_phase(graph, services, {"tick": 1}, tick_ctx)
+        system._process_wages_phase(graph, services, TickContext(tick=1), tick_ctx)
 
         assert graph.nodes["worker"]["wealth"] == 0.0  # No transfer
         assert graph.nodes["bourgeoisie"]["wealth"] == 1000.0  # Unchanged
@@ -138,7 +139,7 @@ class TestWagesPhaseMutationKillers:
         system = ImperialRentSystem()
         tick_ctx = _make_wages_tick_context()
 
-        system._process_wages_phase(graph, services, {"tick": 1}, tick_ctx)
+        system._process_wages_phase(graph, services, TickContext(tick=1), tick_ctx)
 
         assert graph.nodes["bourgeoisie"]["wealth"] == 1000.0  # Unchanged
 
@@ -149,7 +150,7 @@ class TestWagesPhaseMutationKillers:
         system = ImperialRentSystem()
         tick_ctx = _make_wages_tick_context()
 
-        system._process_wages_phase(graph, services, {"tick": 1}, tick_ctx)
+        system._process_wages_phase(graph, services, TickContext(tick=1), tick_ctx)
 
         assert graph.nodes["worker"]["wealth"] == 0.0  # No transfer
 
@@ -176,7 +177,7 @@ class TestWagesPhaseMutationKillers:
         # Small pool: total bonus demand will exceed pool
         tick_ctx = _make_wages_tick_context(tribute_inflow=100.0, current_pool=0.5, wage_rate=0.52)
 
-        system._process_wages_phase(graph, services, {"tick": 1}, tick_ctx)
+        system._process_wages_phase(graph, services, TickContext(tick=1), tick_ctx)
 
         # Pool should be depleted (≤ initial)
         assert tick_ctx["current_pool"] <= 0.5
@@ -199,7 +200,7 @@ class TestWagesPhaseMutationKillers:
         system = ImperialRentSystem()
         tick_ctx = _make_wages_tick_context(tribute_inflow=0.0, current_pool=0.0, wage_rate=0.52)
 
-        system._process_wages_phase(graph, services, {"tick": 1}, tick_ctx)
+        system._process_wages_phase(graph, services, TickContext(tick=1), tick_ctx)
 
         crisis_events = [e for e in events_published if e.type == EventType.SUPERWAGE_CRISIS]
         assert len(crisis_events) >= 1
@@ -216,7 +217,7 @@ class TestWagesPhaseMutationKillers:
         tick_ctx = _make_wages_tick_context(tribute_inflow=100.0, current_pool=100.0)
 
         initial_bourg = graph.nodes["bourgeoisie"]["wealth"]
-        system._process_wages_phase(graph, services, {"tick": 1}, tick_ctx)
+        system._process_wages_phase(graph, services, TickContext(tick=1), tick_ctx)
 
         worker_gained = graph.nodes["worker"]["wealth"] - 10.0
         bourg_lost = initial_bourg - graph.nodes["bourgeoisie"]["wealth"]
@@ -231,7 +232,7 @@ class TestWagesPhaseMutationKillers:
         system = ImperialRentSystem()
         tick_ctx = _make_wages_tick_context(tribute_inflow=100.0, current_pool=100.0)
 
-        system._process_wages_phase(graph, services, {"tick": 1}, tick_ctx)
+        system._process_wages_phase(graph, services, TickContext(tick=1), tick_ctx)
 
         assert graph.nodes["worker"]["ppp_multiplier"] == pytest.approx(1.0)
         # Unearned increment should be 0
@@ -244,7 +245,7 @@ class TestWagesPhaseMutationKillers:
         system = ImperialRentSystem()
         tick_ctx = _make_wages_tick_context(tribute_inflow=100.0, current_pool=100.0)
 
-        system._process_wages_phase(graph, services, {"tick": 1}, tick_ctx)
+        system._process_wages_phase(graph, services, TickContext(tick=1), tick_ctx)
 
         nominal = graph.nodes["worker"]["wealth"]
         effective = graph.nodes["worker"]["effective_wealth"]
@@ -260,6 +261,6 @@ class TestWagesPhaseMutationKillers:
         system = ImperialRentSystem()
         tick_ctx = _make_wages_tick_context()
 
-        system._process_wages_phase(graph, services, {"tick": 1}, tick_ctx)
+        system._process_wages_phase(graph, services, TickContext(tick=1), tick_ctx)
 
         assert graph.nodes["worker"]["wealth"] == 5.0  # Unchanged

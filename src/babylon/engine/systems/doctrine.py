@@ -289,7 +289,7 @@ class DoctrineSystem(SystemBase):
         ``{"org_id", "node_id"}`` payload. The behavioural feedback into
         bifurcation/consciousness is Unit 6b, not this method.
         """
-        tick = _extract_tick(context)
+        tick = context.tick
         if self._tree is None:
             self._tree = load_doctrine_tree()
         triples = compute_doctrine(
@@ -307,10 +307,3 @@ class DoctrineSystem(SystemBase):
                     payload={"org_id": org_id, "node_id": node_id},
                 )
             )
-
-
-def _extract_tick(context: ContextType) -> int:
-    """Current tick from the step context (same idiom as FactionInfluence)."""
-    if isinstance(context, dict):
-        return int(context.get("tick", 0))
-    return int(getattr(context, "tick", 0))

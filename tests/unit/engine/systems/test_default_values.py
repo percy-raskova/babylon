@@ -22,6 +22,7 @@ from babylon.config.defines import (
     SurvivalDefines,
     TensionDefines,
 )
+from babylon.engine.context import TickContext
 from babylon.engine.services import ServiceContainer
 from babylon.engine.systems.contradiction import ContradictionSystem
 from babylon.engine.systems.economic import ImperialRentSystem
@@ -62,7 +63,7 @@ class TestMissingWealthDefaultsToZero:
         initial_owner_wealth = graph.nodes["owner"]["wealth"]
 
         # Act
-        system._process_extraction_phase(graph, services, {"tick": 1}, tick_context)
+        system._process_extraction_phase(graph, services, TickContext(tick=1), tick_context)
 
         # Assert: No rent extracted (worker wealth defaulted to 0)
         # Owner wealth unchanged
@@ -90,7 +91,7 @@ class TestMissingWealthDefaultsToZero:
         system = SurvivalSystem()
 
         # Act
-        system.step(graph, services, {"tick": 1})
+        system.step(graph, services, TickContext(tick=1))
 
         # Assert: p_acquiescence should be calculated using wealth=0
         # Sigmoid at (0.0 - 0.3) * k should give low P(S|A)
@@ -113,7 +114,7 @@ class TestMissingWealthDefaultsToZero:
         system = ContradictionSystem()
 
         # Act
-        system.step(graph, services, {"tick": 1})
+        system.step(graph, services, TickContext(tick=1))
 
         # Assert: Tension should be calculated based on wealth gap
         # gap = |0.0 - 10.0| = 10.0, normalized and added to tension
@@ -152,7 +153,7 @@ class TestMissingSubsistenceUsesDefinesDefault:
         system = SurvivalSystem()
 
         # Act
-        system.step(graph, services, {"tick": 1})
+        system.step(graph, services, TickContext(tick=1))
 
         # Assert: P(S|A) should be ~0.5 (at threshold)
         assert "p_acquiescence" in graph.nodes["worker"]
@@ -204,7 +205,7 @@ class TestMissingSubsistenceUsesDefinesDefault:
         system = ImperialRentSystem()
 
         # Act - should not raise, uses default subsistence
-        system._process_subsidy_phase(graph, services, {"tick": 1}, tick_context)
+        system._process_subsidy_phase(graph, services, TickContext(tick=1), tick_context)
 
         # Assert: Method ran without error
         # At wealth=subsistence, P(S|A)~0.5, with org=0.5, repression=0.5,
@@ -258,7 +259,7 @@ class TestMissingTensionDefaultsToZero:
         system = ContradictionSystem()
 
         # Act
-        system.step(graph, services, {"tick": 1})
+        system.step(graph, services, TickContext(tick=1))
 
         # Assert: Tension accumulated from 0.0
         assert "tension" in graph.edges["worker", "owner"]
@@ -296,7 +297,7 @@ class TestMissingOrganizationUsesDefault:
         system = SurvivalSystem()
 
         # Act
-        system.step(graph, services, {"tick": 1})
+        system.step(graph, services, TickContext(tick=1))
 
         # Assert: P(S|R) should use default organization
         # P(S|R) = 0.2 / 0.5 = 0.4
@@ -334,7 +335,7 @@ class TestMissingRepressionUsesDefault:
         system = SurvivalSystem()
 
         # Act
-        system.step(graph, services, {"tick": 1})
+        system.step(graph, services, TickContext(tick=1))
 
         # Assert: P(S|R) should use default repression
         # With org=0.4 (specified), repression=0.4 (default), P(S|R) = 0.4/0.4 = 1.0
@@ -386,7 +387,7 @@ class TestMissingRepressionUsesDefault:
         system = ImperialRentSystem()
 
         # Act - should not raise, uses default repression
-        system._process_subsidy_phase(graph, services, {"tick": 1}, tick_context)
+        system._process_subsidy_phase(graph, services, TickContext(tick=1), tick_context)
 
         # Assert: Method ran and subsidy was processed
         # With org=0.8, default repression=0.5, P(S|R) = 0.8/0.5 = 1.6 (capped at 1.0)
@@ -427,7 +428,7 @@ class TestMissingEdgeFlowDefaults:
         system = ImperialRentSystem()
 
         # Act - use tick=0 so TRPF multiplier is 1.0
-        system._process_extraction_phase(graph, services, {"tick": 0}, tick_context)
+        system._process_extraction_phase(graph, services, TickContext(tick=0), tick_context)
 
         # Assert: value_flow should now exist on edge
         assert "value_flow" in graph.edges["worker", "owner"]

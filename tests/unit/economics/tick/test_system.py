@@ -1217,28 +1217,6 @@ class TestStepContextExtraction:
 
         assert graph.graph["tick_dynamics"]["year"] == 2016
 
-    def test_dict_context_extracts_tick(self) -> None:
-        """Dict with 'tick' key is extracted correctly."""
-        system = TickDynamicsSystem()
-        services = _make_services()
-        graph = _make_graph_with_state()
-        context = {"tick": 52}
-        system.step(graph, services, context)
-
-        assert graph.graph["tick_dynamics"]["year"] == 2016
-
-    def test_unknown_context_defaults_to_zero(self) -> None:
-        """Unknown context type → tick=0 (year boundary, pipeline runs)."""
-        system = TickDynamicsSystem()
-        services = _make_services()
-        # No existing state → fresh graph (first tick at tick=0)
-        graph = build_territory_graph()
-        context: Any = 42  # Not TickContext or dict
-        system.step(graph, services, context)
-
-        # tick=0 is year boundary, pipeline should execute
-        assert "tick_dynamics" in graph.graph
-
     def test_no_melt_calculator_returns_early(self) -> None:
         """services.melt_calculator=None causes early return."""
         system = TickDynamicsSystem()

@@ -8,6 +8,7 @@ from __future__ import annotations
 from unittest.mock import MagicMock, patch
 
 from babylon.config.defines import GameDefines
+from babylon.engine.context import TickContext
 from babylon.engine.systems.ooda import OODASystem
 from babylon.models.enums import ActionType, EventType, OrgType
 from babylon.ooda.types import Action, ActionResult
@@ -68,14 +69,6 @@ class TestOODASystemProperties:
         system = OODASystem()
         assert system.name == "ooda"
 
-    def test_step_accepts_dict_context(self) -> None:
-        system = OODASystem()
-        graph = _make_graph_with_orgs()
-        services = _make_services()
-        context = {"tick": 0}
-        # Should not raise
-        system.step(graph, services, context)
-
 
 class TestThreePhaseOrchestration:
     """Verify Layer 0 → Action Phase → Layer 3 execution."""
@@ -85,7 +78,7 @@ class TestThreePhaseOrchestration:
         system = OODASystem()
         graph = _make_graph_with_orgs()
         services = _make_services()
-        context = {"tick": 1}
+        context = TickContext(tick=1)
         system.step(graph, services, context)
 
         # Event bus should have been called at least once
@@ -96,7 +89,7 @@ class TestThreePhaseOrchestration:
         system = OODASystem()
         graph = _make_graph_with_orgs()
         services = _make_services()
-        context = {"tick": 1}
+        context = TickContext(tick=1)
         system.step(graph, services, context)
 
         # Verify event was published with action counts
@@ -109,7 +102,7 @@ class TestThreePhaseOrchestration:
         system = OODASystem()
         graph = BabylonGraph()
         services = _make_services()
-        context = {"tick": 0}
+        context = TickContext(tick=0)
         system.step(graph, services, context)
 
 
@@ -153,10 +146,10 @@ class TestPlayerActionDispatch:
     """
 
     @staticmethod
-    def _player_context(action_type: str) -> dict:
-        return {
-            "tick": 1,
-            "persistent_data": {
+    def _player_context(action_type: str) -> TickContext:
+        return TickContext(
+            tick=1,
+            persistent_data={
                 "player_actions": {
                     "rev_workers": [
                         {
@@ -168,10 +161,10 @@ class TestPlayerActionDispatch:
                     ]
                 }
             },
-        }
+        )
 
-    def _results_for(self, context: dict) -> list[dict]:
-        resolution = context["persistent_data"]["turn_resolution"]
+    def _results_for(self, context: TickContext) -> list[dict]:
+        resolution = context.persistent_data["turn_resolution"]
         return [
             r for r in resolution["action_phase_results"] if r["action"]["org_id"] == "rev_workers"
         ]
@@ -183,8 +176,8 @@ class TestPlayerActionDispatch:
         context = self._player_context("educate")
         system.step(graph, services, context)
 
-        assert "turn_resolution" in context["persistent_data"]
-        resolution = context["persistent_data"]["turn_resolution"]
+        assert "turn_resolution" in context.persistent_data
+        resolution = context.persistent_data["turn_resolution"]
         assert resolution["action_phase_results"]
 
     def test_known_verb_dispatches_to_resolver(self) -> None:
@@ -283,7 +276,7 @@ class TestFirstClassReactionaryVerbPublish:
             {"repression_increment": 0.15, "wealth_destroyed": 12.5},
         )
         with patch.object(OODASystem, "_resolve_for_organization", return_value=[result]):
-            system.step(self._graph_single_faction(), services, {"tick": 3})
+            system.step(self._graph_single_faction(), services, TickContext(tick=3))
 
         pogroms = [e for e in self._published(services) if e.type == EventType.POGROM]
         assert len(pogroms) == 1
@@ -309,7 +302,7 @@ class TestFirstClassReactionaryVerbPublish:
             ),
         ]
         with patch.object(OODASystem, "_resolve_for_organization", return_value=results):
-            system.step(self._graph_single_faction(), services, {"tick": 4})
+            system.step(self._graph_single_faction(), services, TickContext(tick=4))
 
         types = [e.type for e in self._published(services)]
         assert types.count(EventType.LOCKOUT) == 1
@@ -324,7 +317,7 @@ class TestFirstClassReactionaryVerbPublish:
             events_generated=[EventType.ORGANIZATIONAL_ACTION.value],
         )
         with patch.object(OODASystem, "_resolve_for_organization", return_value=[plain]):
-            system.step(self._graph_single_faction(), services, {"tick": 5})
+            system.step(self._graph_single_faction(), services, TickContext(tick=5))
 
         published = self._published(services)
         summaries = [e for e in published if e.type == EventType.ORGANIZATIONAL_ACTION]

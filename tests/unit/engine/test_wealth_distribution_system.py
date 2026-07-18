@@ -26,6 +26,7 @@ from types import SimpleNamespace
 import pytest
 
 from babylon.config.defines import GameDefines
+from babylon.engine.context import TickContext
 from babylon.engine.simulation_engine import _DEFAULT_SYSTEMS, CONSEQUENCE_SYSTEMS
 from babylon.engine.systems.wealth_distribution import (
     WealthDistributionSystem,
@@ -87,7 +88,7 @@ class TestSeeding:
     def test_seed_matches_equilibrium_defines(self) -> None:
         graph = _graph_with_classes()
         services = _services()
-        WealthDistributionSystem().step(graph, services, {"tick": 0})
+        WealthDistributionSystem().step(graph, services, TickContext(tick=0))
         meta = graph.graph["wealth_distribution"]
         cd = services.defines.class_dynamics
         expected = (cd.equilibrium_w1, cd.equilibrium_w2, cd.equilibrium_w3, cd.equilibrium_w4)
@@ -99,7 +100,7 @@ class TestSeeding:
 
     def test_nodes_get_bracket_projection(self) -> None:
         graph = _graph_with_classes()
-        WealthDistributionSystem().step(graph, _services(), {"tick": 0})
+        WealthDistributionSystem().step(graph, _services(), TickContext(tick=0))
         shares = graph.graph["wealth_distribution"]["shares"]
         node = graph.get_node("c1")
         assert node is not None
@@ -117,7 +118,7 @@ class TestDynamics:
         services = _services()
         system = WealthDistributionSystem()
         for tick in range(20):
-            system.step(graph, services, {"tick": tick})
+            system.step(graph, services, TickContext(tick=tick))
             assert sum(graph.graph["wealth_distribution"]["shares"]) == pytest.approx(1.0, abs=1e-9)
 
     def test_perturbation_mean_reverts(self) -> None:
@@ -126,7 +127,7 @@ class TestDynamics:
         graph = _graph_with_classes()
         services = _services()
         system = WealthDistributionSystem()
-        system.step(graph, services, {"tick": 0})
+        system.step(graph, services, TickContext(tick=0))
         # Perturb off-equilibrium (shift 5 points from w3 to w1).
         meta = graph.graph["wealth_distribution"]
         shares = list(meta["shares"])
@@ -135,7 +136,7 @@ class TestDynamics:
         graph.graph["wealth_distribution"] = {**meta, "shares": shares}
         d0 = calculate_equilibrium_deviation(tuple(shares))
         for tick in range(1, 60):
-            system.step(graph, services, {"tick": tick})
+            system.step(graph, services, TickContext(tick=tick))
         d_final = calculate_equilibrium_deviation(
             tuple(graph.graph["wealth_distribution"]["shares"])
         )
@@ -148,7 +149,7 @@ class TestDynamics:
             system = WealthDistributionSystem()
             out = []
             for tick in range(10):
-                system.step(graph, services, {"tick": tick})
+                system.step(graph, services, TickContext(tick=tick))
                 out.append(list(graph.graph["wealth_distribution"]["shares"]))
             return out
 
@@ -171,10 +172,10 @@ class TestMarketShock:
         graph = _graph_with_classes()
         services = _services()
         system = WealthDistributionSystem()
-        system.step(graph, services, {"tick": 0})  # seed
+        system.step(graph, services, TickContext(tick=0))  # seed
         if stamp:
             graph.graph[MARKET_CORRECTION_SHOCK_ATTR] = {"tick": 1, "overhang": 1.0}
-        system.step(graph, services, {"tick": 1})
+        system.step(graph, services, TickContext(tick=1))
         meta = graph.graph["wealth_distribution"]
         return (
             list(meta["shares"]),

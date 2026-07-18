@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import pytest
 
+from babylon.engine.context import TickContext
 from babylon.engine.services import ServiceContainer
 from babylon.engine.systems.contradiction import ContradictionSystem
 from babylon.models.enums import EdgeType, EventType
@@ -45,7 +46,7 @@ class TestRegimeClassification:
     def test_stable_first_tick_is_reproduction(self) -> None:
         graph = _two_county_graph()
         services = ServiceContainer.create()
-        ContradictionSystem().step(graph, services, {"tick": 1})
+        ContradictionSystem().step(graph, services, TickContext(tick=1))
         assert _regime(graph) == "reproduction"
         assert graph.graph["dialectical_regime"]["opposition"] == "capital_labor"
 
@@ -54,12 +55,12 @@ class TestRegimeClassification:
         services = ServiceContainer.create()
         system = ContradictionSystem()
 
-        system.step(graph, services, {"tick": 1})  # baseline, both gaps 0.5
+        system.step(graph, services, TickContext(tick=1))  # baseline, both gaps 0.5
         # Raise BOTH owners equally: both county gaps rise to 0.8 -> the field is
         # flat within state 26 -> resolved at state -> sublation.
         graph.nodes["o1"]["wealth"] = 90.0
         graph.nodes["o2"]["wealth"] = 90.0
-        system.step(graph, services, {"tick": 2})
+        system.step(graph, services, TickContext(tick=2))
 
         assert _regime(graph) == "sublation"
         transitions = _level_transitions(services)
@@ -74,11 +75,11 @@ class TestRegimeClassification:
         services = ServiceContainer.create()
         system = ContradictionSystem()
 
-        system.step(graph, services, {"tick": 1})  # baseline
+        system.step(graph, services, TickContext(tick=1))  # baseline
         # Raise only ONE owner: county gaps diverge (0.8 vs 0.5) within state 26
         # -> NOT resolved at any higher level -> crisis.
         graph.nodes["o1"]["wealth"] = 90.0
-        system.step(graph, services, {"tick": 2})
+        system.step(graph, services, TickContext(tick=2))
 
         assert _regime(graph) == "crisis"
         assert _level_transitions(services) == []

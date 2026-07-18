@@ -19,6 +19,7 @@ from unittest.mock import MagicMock
 
 import pytest
 
+from babylon.engine.context import TickContext
 from babylon.engine.systems.metabolism import MetabolismSystem
 from babylon.engine.systems.sovereignty import SovereigntySystem
 from babylon.models.enums import ExtractionPolicy
@@ -95,9 +96,13 @@ def _tick_pipeline(
     """Run the spec-070 portion of one tick: SovereigntySystem writes
     metabolic_impact, MetabolismSystem applies it to habitability."""
 
-    context: dict[str, Any] = {"tick": tick, "persistent_data": persistent}
+    # TickContext copies the dict on construction; write mutations back into
+    # the caller's persistent dict so state accumulates across ticks.
+    context = TickContext(tick=tick, persistent_data=persistent)
     SovereigntySystem().step(adapter, services, context)
     MetabolismSystem().step(adapter, services, context)
+    persistent.clear()
+    persistent.update(context.persistent_data)
 
 
 def _habitability(adapter: BabylonGraph, territory_id: str) -> float:

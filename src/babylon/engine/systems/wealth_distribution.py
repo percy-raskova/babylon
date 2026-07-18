@@ -252,7 +252,7 @@ class WealthDistributionSystem(SystemBase):
         :func:`~babylon.formulas.class_dynamics.calculate_full_dynamics`.
         """
         defines = services.defines.class_dynamics
-        tick = context.get("tick", 0) if isinstance(context, dict) else getattr(context, "tick", 0)
+        tick = context.tick
         metadata = getattr(graph, "graph", None)
         if not isinstance(metadata, dict):  # pragma: no cover — BabylonGraph always has it
             return

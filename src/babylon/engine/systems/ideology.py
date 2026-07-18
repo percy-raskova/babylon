@@ -98,10 +98,7 @@ class ConsciousnessSystem(SystemBase):
         # Handle both TickContext (with persistent_data) and raw dict
         # TickContext stores persistent data in .persistent_data attribute
         # Raw dict stores persistent data directly
-        if hasattr(context, "persistent_data"):
-            persistent: dict[str, Any] = context.persistent_data
-        else:
-            persistent = context
+        persistent: dict[str, Any] = context.persistent_data
 
         # Lawverian wage-opposition deterioration (C1.5, signed in the Phase D
         # review). ContradictionSystem (position 18) stashes the registry

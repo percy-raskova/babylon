@@ -14,6 +14,7 @@ from uuid import uuid4
 
 import pytest
 
+from babylon.engine.context import TickContext
 from babylon.topology.graph import BabylonGraph
 
 pytestmark = [pytest.mark.cross_scale, pytest.mark.integration]
@@ -69,7 +70,7 @@ def test_substrate_runs_in_default_pipeline_with_live_pool(runtime, caplog):  # 
     engine = SimulationEngine(systems=[SubstrateSystem()])
     services = type("S", (), {"event_bus": None})()
     with caplog.at_level(logging.DEBUG):
-        engine.run_tick(graph, services, {"tick": 1})
+        engine.run_tick(graph, services, TickContext(tick=1))
 
     # Substrate is pass-through: zero stays zero.
     assert graph.nodes["872d34a89ffffff"]["raw_material_stock"] == 0.0
@@ -116,7 +117,7 @@ def test_engine_with_auditor_persists_audit_row_to_live_pool(runtime, pg_pool): 
         raw_material_stock=5.0,
     )
     services = type("S", (), {"event_bus": None})()
-    context: dict[str, object] = {"tick": 0, "session_id": sid}
+    context = TickContext(tick=0, session_id=sid)
     engine.run_tick(graph, services, context)
 
     # Auditor stashed audit_rows into context. Persist them.

@@ -77,12 +77,7 @@ class FieldDerivativeSystem(SystemBase):
         )
 
         # Extract tick for event emission
-        tick: int = 0
-        if hasattr(context, "tick"):
-            tick = context.tick
-        elif isinstance(context, dict):
-            tick_val = context.get("tick", 0)
-            tick = int(tick_val) if tick_val is not None else 0
+        tick: int = context.tick
 
         # ─── Phase 1: Spatial gradients on edges ────────────────────
         _compute_edge_gradients(graph, field_names)

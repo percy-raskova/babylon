@@ -76,6 +76,7 @@ from babylon.kernel.system_protocol import ContextType, System
 from babylon.models.config import SimulationConfig
 from babylon.models.enums import EventType
 from babylon.models.events import (
+    AxiomViolationEvent,
     ClassDecompositionEvent,
     ControlRatioCrisisEvent,
     CrisisEvent,
@@ -85,6 +86,8 @@ from babylon.models.events import (
     ExtractionEvent,
     MassAwakeningEvent,
     PhaseTransitionEvent,
+    PhiHourOutlierEvent,
+    QcewCarryForwardEvent,
     RuptureEvent,
     SimulationEvent,
     SolidaritySpikeEvent,
@@ -100,6 +103,7 @@ from babylon.models.events.balkanization_payloads import (
     DualPowerActivePayload,
     FactionVictoryPayload,
     RedSettlerTrapDetectedPayload,
+    SecessionDeclaredPayload,
     SovereignCollapsePayload,
     TerritoryTransitionPayload,
 )
@@ -134,6 +138,18 @@ from babylon.models.events.reactionary_payloads import (
     PogromEvent,
     RedBrownCoupEvent,
     VigilantismEvent,
+)
+from babylon.models.events.spine_payloads import (
+    AspectReversalEvent,
+    BifurcationThresholdEvent,
+    CoOptiveBreakdownEvent,
+    CrisisPhaseTransitionEvent,
+    EdgeModeTransitionEvent,
+    EntityDeathEvent,
+    LatentContradictionReleaseEvent,
+    LevelTransitionEvent,
+    MarketCorrectionEvent,
+    PopulationAttritionEvent,
 )
 from babylon.models.events.struggle_payloads import (
     FascistRevanchismEvent,
@@ -520,6 +536,12 @@ def _convert_bus_event_to_pydantic(event: Event) -> SimulationEvent | None:  # n
     DOCTRINE_TRAP_ESCAPED / DOCTRINE_PURGE_FAILED).
     Spec-116 FR-116-4.7 (Playability Spine): widened to 50 of 83 EventTypes
     (POGROM / LOCKOUT / VIGILANTISM first-class).
+    Spec-116 FR-116-4.7 sweep: widened to 64 of 84 EventTypes — every
+    EventType with a live bus publisher now converts; the 20 remaining are
+    dead enum values (no publisher) or injected pre-typed outside this
+    function (ENDGAME_REACHED, PATTERN_SHIFT). (The "83" in the line above
+    predates PATTERN_SHIFT's addition to the enum — a pre-existing
+    off-by-one this sweep did not introduce.)
     """
     # Normalize event type (may be string or EventType enum)
     event_type = event.type
@@ -1046,9 +1068,173 @@ def _convert_bus_event_to_pydantic(event: Event) -> SimulationEvent | None:  # n
             node_id=payload.get("node_id", ""),
         )
 
-    # Feature 002 events (EDGE_MODE_TRANSITION, CO_OPTIVE_BREAKDOWN,
-    # LATENT_CONTRADICTION_RELEASE, ASPECT_REVERSAL) and other unsupported
-    # event types - graceful degradation
+    # Spec-116 FR-116-4.7 sweep: every remaining EventType with a live bus
+    # publisher. Payload shapes mirror the publish sites named on each class.
+    if event_type == EventType.MARKET_CORRECTION:
+        return MarketCorrectionEvent(
+            tick=tick,
+            timestamp=timestamp,
+            overhang=payload.get("overhang", 0.0),
+            serviceable=payload.get("serviceable", 0.0),
+            profit_rate=payload.get("profit_rate"),
+            fictitious_log_before=payload.get("fictitious_log_before", 0.0),
+            fictitious_log_after=payload.get("fictitious_log_after", 0.0),
+            price_log_before=payload.get("price_log_before", 0.0),
+            price_log_after=payload.get("price_log_after", 0.0),
+        )
+
+    if event_type == EventType.ENTITY_DEATH:
+        return EntityDeathEvent(
+            tick=tick,
+            timestamp=timestamp,
+            entity_id=payload.get("entity_id", ""),
+            wealth=payload.get("wealth", 0.0),
+            consumption_needs=payload.get("consumption_needs", 0.0),
+            s_bio=payload.get("s_bio", 0.0),
+            s_class=payload.get("s_class", 0.0),
+            cause=payload.get("cause", "unknown"),
+        )
+
+    if event_type == EventType.POPULATION_ATTRITION:
+        return PopulationAttritionEvent(
+            tick=tick,
+            timestamp=timestamp,
+            entity_id=payload.get("entity_id", ""),
+            deaths=payload.get("deaths", 0),
+            remaining_population=payload.get("remaining_population", 0),
+            attrition_rate=payload.get("attrition_rate", 0.0),
+        )
+
+    if event_type == EventType.CRISIS_PHASE_TRANSITION:
+        return CrisisPhaseTransitionEvent(
+            tick=tick,
+            timestamp=timestamp,
+            fips=payload.get("fips", ""),
+            previous_phase=payload.get("previous_phase", ""),
+            new_phase=payload.get("new_phase", ""),
+            profit_rate=payload.get("profit_rate"),
+            crisis_duration=payload.get("crisis_duration", 0),
+        )
+
+    if event_type == EventType.BIFURCATION_THRESHOLD:
+        return BifurcationThresholdEvent(
+            tick=tick,
+            timestamp=timestamp,
+            fips=payload.get("fips", ""),
+            score=payload.get("score", 0.0),
+            direction=payload.get("direction", ""),
+            solidarity_density=payload.get("solidarity_density", 0.0),
+            legitimation=payload.get("legitimation", 0.0),
+            class_burden_ratio=payload.get("class_burden_ratio", 0.0),
+            threshold=payload.get("threshold", 0.0),
+        )
+
+    if event_type == EventType.EDGE_MODE_TRANSITION:
+        return EdgeModeTransitionEvent(
+            tick=tick,
+            timestamp=timestamp,
+            source_id=payload.get("source_id", ""),
+            target_id=payload.get("target_id", ""),
+            from_mode=str(payload.get("from_mode", "")),
+            to_mode=str(payload.get("to_mode", "")),
+            predicate=payload.get("predicate", ""),
+            description=payload.get("description", ""),
+        )
+
+    if event_type == EventType.CO_OPTIVE_BREAKDOWN:
+        return CoOptiveBreakdownEvent(
+            tick=tick,
+            timestamp=timestamp,
+            source_id=payload.get("source_id", ""),
+            target_id=payload.get("target_id", ""),
+            latent_released=dict(payload.get("latent_released", {})),
+            multiplier=payload.get("multiplier", 0.0),
+        )
+
+    if event_type == EventType.LATENT_CONTRADICTION_RELEASE:
+        return LatentContradictionReleaseEvent(
+            tick=tick,
+            timestamp=timestamp,
+            node_id=payload.get("node_id", ""),
+            released_fields=dict(payload.get("released_fields", {})),
+        )
+
+    if event_type == EventType.ASPECT_REVERSAL:
+        return AspectReversalEvent(
+            tick=tick,
+            timestamp=timestamp,
+            source_id=payload.get("source_id", ""),
+            target_id=payload.get("target_id", ""),
+            previous_dominant=payload.get("previous_dominant", ""),
+            new_dominant=payload.get("new_dominant", ""),
+        )
+
+    if event_type == EventType.LEVEL_TRANSITION:
+        return LevelTransitionEvent(
+            tick=tick,
+            timestamp=timestamp,
+            opposition=payload.get("opposition", ""),
+            from_level=payload.get("from_level", ""),
+            to_level=payload.get("to_level", ""),
+            gap=payload.get("gap", 0.0),
+            rate=payload.get("rate", 0.0),
+        )
+
+    if event_type == EventType.SECESSION_DECLARED:
+        return SecessionDeclaredPayload(
+            tick=tick,
+            timestamp=timestamp,
+            secessionist_faction_id=payload.get("secessionist_faction_id", ""),
+            parent_sovereign_id=payload.get("parent_sovereign_id", ""),
+            contiguous_territory_ids=tuple(payload.get("contiguous_territory_ids", ())),
+            observer_triggered=payload.get("observer_triggered", False),
+        )
+
+    # Calibration-warning trio: bus payloads are model_dump()s of the typed
+    # events themselves (leontief_rent emitters), republished here typed.
+    if event_type == EventType.CALIBRATION_AXIOM_VIOLATION:
+        return AxiomViolationEvent(
+            tick=tick,
+            timestamp=timestamp,
+            industry=payload.get("industry", ""),
+            year=payload.get("year", 0),
+            ratio=payload.get("ratio", 0.0),
+            threshold=payload.get("threshold", 1.0),
+        )
+
+    if event_type == EventType.CALIBRATION_QCEW_CARRY_FORWARD:
+        return QcewCarryForwardEvent(
+            tick=tick,
+            timestamp=timestamp,
+            county_fips=payload.get("county_fips", ""),
+            year=payload.get("year", 0),
+            look_back_year=payload.get("look_back_year", 0),
+            look_back_distance=payload.get("look_back_distance", 0),
+        )
+
+    if event_type == EventType.CALIBRATION_PHI_HOUR_OUTLIER:
+        return PhiHourOutlierEvent(
+            tick=tick,
+            timestamp=timestamp,
+            county_fips=payload.get("county_fips", ""),
+            phi_hour=payload.get("phi_hour", 0.0),
+            threshold_low=payload.get("threshold_low", -1000.0),
+            threshold_high=payload.get("threshold_high", 1000.0),
+        )
+
+    # Dead enum values (no live bus publisher) stay dropped — graceful
+    # degradation: SOLIDARITY_AWAKENING, POPULATION_DEATH,
+    # EXPLOITATION_MODE_SHIFT, DUAL_CIRCUIT_INTERFERENCE, CONSCIOUSNESS_SHIFT,
+    # INITIATIVE_CONTESTED, INFRASTRUCTURE_CHANGE, CALIBRATION_DISAGREEMENT,
+    # STATE_ACTION_EXECUTED, FASCIST_CONVERGENCE, FACTION_SHIFT,
+    # THREAD_ESCALATION, LEGAL_FRAMEWORK_ENACTED, LEGAL_FRAMEWORK_REVOKED,
+    # INSTITUTION_REPRODUCTION, BIFURCATION_TENDENCY_CHANGE, RED_OGV_ENDGAME,
+    # FRAGMENTED_COLLAPSE_ENDGAME. ENDGAME_REACHED and PATTERN_SHIFT are
+    # deliberately absent: EndgameDetector injects an already-typed
+    # EndgameEvent via persistent_context["_observer_events"], and
+    # EngineBridge.resolve_tick appends an already-typed PatternShiftEvent
+    # straight onto new_state.events — neither ever crosses this bus-Event
+    # boundary, so a branch here would double-deliver it.
     return None
 
 

@@ -3632,3 +3632,55 @@ class TestEconomyDashboardChipContract:
             "EconomyDashboardPayload drifted — update types/game.ts, the "
             "chips, and this pin in the SAME commit (no phantoms, no orphans)"
         )
+
+
+@pytest.mark.unit
+class TestSpineWhitelistSeverityAndTitles:
+    """spec-116 FR-116-4.7 sweep: severity tiers + humanized titles for the
+    14 newly wired types (FR-116-2 reserves critical for genuine
+    rupture/endgame proximity; secession IS fragmented-collapse proximity)."""
+
+    @pytest.mark.parametrize(
+        ("event_type", "expected"),
+        [
+            ("market_correction", "warning"),
+            ("entity_death", "warning"),
+            ("population_attrition", "informational"),
+            ("crisis_phase_transition", "warning"),
+            ("bifurcation_threshold", "warning"),
+            ("edge_mode_transition", "informational"),
+            ("co_optive_breakdown", "warning"),
+            ("latent_contradiction_release", "informational"),
+            ("aspect_reversal", "informational"),
+            ("level_transition", "warning"),
+            ("secession_declared", "critical"),
+            ("calibration_warning.axiom_violation", "informational"),
+            ("calibration_warning.qcew_carry_forward", "informational"),
+            ("calibration_warning.phi_hour_outlier", "informational"),
+        ],
+    )
+    def test_severity(self, event_type: str, expected: str) -> None:
+        from game.engine_bridge import _classify_event
+
+        assert _classify_event(event_type) == expected
+
+    @pytest.mark.parametrize(
+        ("event_type", "expected"),
+        [
+            # Overrides — dotted/hyphenated values the naive title() mangles,
+            # plus the one player-facing rename.
+            ("co_optive_breakdown", "Co-optive Breakdown"),
+            ("calibration_warning.axiom_violation", "Calibration: Axiom Violation"),
+            ("calibration_warning.qcew_carry_forward", "Calibration: QCEW Carry-Forward"),
+            ("calibration_warning.phi_hour_outlier", "Calibration: Phi-Hour Outlier"),
+            ("entity_death", "Class Extinction"),
+            # Default humanization still applies to everything else.
+            ("market_correction", "Market Correction"),
+            ("secession_declared", "Secession Declared"),
+            ("pogrom", "Pogrom"),
+        ],
+    )
+    def test_humanized_titles(self, event_type: str, expected: str) -> None:
+        from game.engine_bridge import _humanize_event_type
+
+        assert _humanize_event_type(event_type) == expected

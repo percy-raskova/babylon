@@ -163,3 +163,16 @@ describe("spec-116 4d.7 — first-class reactionary verb events", () => {
     },
   );
 });
+
+describe("spec-116 4d.7 — market_correction joins the classifier (P23, post-Lane-E)", () => {
+  it("classifies 'market_correction' as important", () => {
+    expect(classifyEvent(makeEvent("market_correction"), 0).severity).toBe("important");
+  });
+
+  it("streams 'market_correction' as notable / urgent / economy", () => {
+    const se = classifyEventForStream(makeEvent("market_correction"), 0);
+    expect(se.severity).toBe("notable");
+    expect(se.stream).toBe("urgent");
+    expect(se.category).toBe("economy");
+  });
+});

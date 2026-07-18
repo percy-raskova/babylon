@@ -97,6 +97,9 @@ const EVENT_SEVERITY_MAP: Record<string, EventSeverity> = {
   fascist_convergence: "important",
   legitimation_crisis: "important",
   crisis_phase_transition: "important",
+  // spec-116 4d.7: P23's MARKET_CORRECTION promoted to a discrete wire event
+  // (the aggregate market_corrections timeseries counter is unchanged).
+  market_correction: "important",
   dispossession_cascade: "important",
   co_optive_breakdown: "important",
   latent_contradiction_release: "important",
@@ -278,6 +281,7 @@ const CATEGORY_MAP: Record<string, EventCategory> = {
   dispossession_cascade: "economy",
   value_transfer: "economy",
   reserve_army_pressure: "economy",
+  market_correction: "economy",
   exploitation_mode_shift: "economy",
   calibration_disagreement: "economy",
   "calibration_warning.axiom_violation": "economy",

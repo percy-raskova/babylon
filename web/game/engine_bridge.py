@@ -7191,6 +7191,9 @@ _EVENT_SEVERITY: dict[str, str] = {
     # ideological deviation, on par with the other completed-state-violation
     # events in this tier.
     "doctrine_trap_sprung": "critical",
+    # spec-116 FR-116-4.7 sweep: a declared secession is fragmented-collapse
+    # proximity — genuine rupture, peer of power_vacuum.
+    "secession_declared": "critical",
     # Warning: threshold-cross / repression events
     "state_repression": "warning",
     "red_settler_trap_detected": "warning",
@@ -7224,6 +7227,13 @@ _EVENT_SEVERITY: dict[str, str] = {
     "pogrom": "warning",
     "lockout": "warning",
     "vigilantism": "warning",
+    # spec-116 FR-116-4.7 sweep: threshold-cross tier.
+    "market_correction": "warning",
+    "entity_death": "warning",
+    "crisis_phase_transition": "warning",
+    "bifurcation_threshold": "warning",
+    "co_optive_breakdown": "warning",
+    "level_transition": "warning",
     # Spec-116 Task 4: a recognized-pattern change (including dissolving to
     # None) is a threshold-cross signal on the endgame axes, same tier as
     # the trap/drift siblings above — it never ends the game (that's
@@ -7236,6 +7246,15 @@ _EVENT_SEVERITY: dict[str, str] = {
     "dispossession_event": "informational",
     "value_transfer": "informational",
     "reserve_army_pressure": "informational",
+    # spec-116 FR-116-4.7 sweep: routine-flow tier (edge/aspect churn is
+    # high-volume per tick; calibration warnings are data-quality signals).
+    "population_attrition": "informational",
+    "edge_mode_transition": "informational",
+    "latent_contradiction_release": "informational",
+    "aspect_reversal": "informational",
+    "calibration_warning.axiom_violation": "informational",
+    "calibration_warning.qcew_carry_forward": "informational",
+    "calibration_warning.phi_hour_outlier": "informational",
 }
 
 
@@ -7254,9 +7273,26 @@ def _classify_event(event_type_str: str) -> str:
     return _EVENT_SEVERITY.get(event_type_str.lower(), "informational")
 
 
+#: spec-116 FR-116-4.7: title overrides where the naive ``title()`` humanization
+#: mangles the value (dotted calibration values, hyphenated co-optive) or where
+#: the player-facing name should say what the event MEANS (entity_death is a
+#: social class dying out). Copy lives in data, not conditionals.
+_EVENT_TITLE_OVERRIDES: dict[str, str] = {
+    "co_optive_breakdown": "Co-optive Breakdown",
+    "calibration_warning.axiom_violation": "Calibration: Axiom Violation",
+    "calibration_warning.qcew_carry_forward": "Calibration: QCEW Carry-Forward",
+    "calibration_warning.phi_hour_outlier": "Calibration: Phi-Hour Outlier",
+    "entity_death": "Class Extinction",
+}
+
+
 def _humanize_event_type(event_type_str: str) -> str:
-    """Convert ``"economic_crisis"`` to ``"Economic Crisis"`` for UI titles."""
-    return event_type_str.replace("_", " ").title()
+    """Convert ``"economic_crisis"`` to ``"Economic Crisis"`` for UI titles.
+
+    spec-116 FR-116-4.7: ``_EVENT_TITLE_OVERRIDES`` wins where the naive
+    underscore-to-space humanization would mangle the value.
+    """
+    return _EVENT_TITLE_OVERRIDES.get(event_type_str, event_type_str.replace("_", " ").title())
 
 
 def _serialize_event(event: Any, session_id: UUID, *, graph: Any = None) -> dict[str, Any]:

@@ -959,6 +959,9 @@ epistemic_horizon:
   class_factor_default: 0.0  # C_f fallback for any SocialRole absent from the corpus's 4-entry table (explicit, never silent). (>= 0.0, <= 1.0)
   investigate_intel_boost: 0.2  # Phase 2: I_c gained by the player org per INVESTIGATE of a territory (fog-of-war.yaml: intelligence is EARNED; Investigate is the tactical supplement, mass work the strategic base). No decay until Phase 3. (>= 0.05, <= 0.5)
   investigate_min_receptivity: 0.3  # Phase 2: minimum target-territory M_r for the player's INVESTIGATE to gather intel (fog-of-war.yaml:458-485 SOCIAL_INVESTIGATION — 'cannot investigate if masses won't talk'; below it the action automatically fails). Cadre-presence gating is Phase 3. (>= 0.0, <= 1.0)
+  organizing_reach_radius: 1  # Track 1 Task 2 (2026-07-18, spec-117 §5a): hop radius for ``web.game.fog.reach.organizing_reach``'s PRESENCE ∪ SOLIDARITY BFS from the player org. Default 1 mirrors the design text's direct reading — 'visible only within organizing reach: where the org has presence or solidarity connection' — a single hop, not a transitive chain. (>= 1, <= 5)
+  intel_staleness_ticks: 5  # Track 1 Task 3 (2026-07-18): a fog-ledger entry no older than this many ticks renders EXACT. Older renders approximate (quantized), then unknown past ``intel_unknown_ticks``. Intel ages visibly — this is NOT a decay simulation, just a pure function of (ledger, current tick). (>= 1)
+  intel_unknown_ticks: 20  # Track 1 Task 3 (2026-07-18): a fog-ledger entry older than this many ticks renders UNKNOWN rather than approximate. Must exceed ``intel_staleness_ticks`` — enforced by ``EpistemicHorizonDefines.check_intel_tick_ordering``. (>= 1)
 
 # ---------------------------------------------------------------------
 # doctrine — Tunable coefficients for the DoctrineSystem (owner-ratified 2026-07-15).

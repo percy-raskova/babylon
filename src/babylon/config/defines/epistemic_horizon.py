@@ -18,7 +18,7 @@ Re-exported via :mod:`babylon.config.defines.__init__`; composed into
 
 from __future__ import annotations
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 
 class EpistemicHorizonDefines(BaseModel):
@@ -106,6 +106,58 @@ class EpistemicHorizonDefines(BaseModel):
             "automatically fails). Cadre-presence gating is Phase 3."
         ),
     )
+    organizing_reach_radius: int = Field(
+        default=1,
+        ge=1,
+        le=5,
+        description=(
+            "Track 1 Task 2 (2026-07-18, spec-117 §5a): hop radius for "
+            "``web.game.fog.reach.organizing_reach``'s PRESENCE ∪ SOLIDARITY "
+            "BFS from the player org. Default 1 mirrors the design text's "
+            "direct reading — 'visible only within organizing reach: where "
+            "the org has presence or solidarity connection' — a single hop, "
+            "not a transitive chain."
+        ),
+    )
+    intel_staleness_ticks: int = Field(
+        default=5,
+        ge=1,
+        description=(
+            "Track 1 Task 3 (2026-07-18): a fog-ledger entry no older than "
+            "this many ticks renders EXACT. Older renders approximate "
+            "(quantized), then unknown past ``intel_unknown_ticks``. Intel "
+            "ages visibly — this is NOT a decay simulation, just a pure "
+            "function of (ledger, current tick)."
+        ),
+    )
+    intel_unknown_ticks: int = Field(
+        default=20,
+        ge=1,
+        description=(
+            "Track 1 Task 3 (2026-07-18): a fog-ledger entry older than this "
+            "many ticks renders UNKNOWN rather than approximate. Must exceed "
+            "``intel_staleness_ticks`` — enforced by "
+            "``EpistemicHorizonDefines.check_intel_tick_ordering``."
+        ),
+    )
+
+    @model_validator(mode="after")
+    def check_intel_tick_ordering(self) -> EpistemicHorizonDefines:
+        """Fail loud on a misconfigured fog-ledger tier ordering.
+
+        ``intel_unknown_ticks`` must strictly exceed ``intel_staleness_ticks``
+        — otherwise the "approximate" tier is empty or inverted, silently
+        collapsing a 3-tier reveal gate into 2 (Constitution III.11: a
+        misconfigured coefficient must fail loud, not degrade quietly).
+        """
+        if self.intel_unknown_ticks <= self.intel_staleness_ticks:
+            raise ValueError(
+                "intel_unknown_ticks "
+                f"({self.intel_unknown_ticks}) must exceed intel_staleness_ticks "
+                f"({self.intel_staleness_ticks}) or the 'approximate' fog tier "
+                "is empty/inverted"
+            )
+        return self
 
 
 __all__ = ["EpistemicHorizonDefines"]

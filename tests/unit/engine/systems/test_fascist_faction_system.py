@@ -92,7 +92,7 @@ def _add_la(
 def _add_fascist_faction(g: BabylonGraph, fid: str = "FAC_SETTLER") -> None:
     g.add_node(
         fid,
-        "balkanization_faction",
+        "faction",
         is_settler_formation=True,
         colonial_stance="uphold",
         ideology="settler-restorationism",

@@ -162,7 +162,7 @@ class FactionInfluenceSystem(SystemBase):
         services: ServicesProtocol,
     ) -> None:
         for node in sorted(
-            wrapped.query_nodes(node_type="balkanization_faction"),
+            wrapped.query_nodes(node_type="faction"),
             key=lambda n: n.id,
         ):
             attrs = node.attributes
@@ -197,9 +197,7 @@ class FactionInfluenceSystem(SystemBase):
     ) -> None:
         hysteresis: dict[str, int] = persistent.get(_HYSTERESIS, {})
         eligible: list[dict[str, Any]] = []
-        faction_ids = sorted(
-            node.id for node in wrapped.query_nodes(node_type="balkanization_faction")
-        )
+        faction_ids = sorted(node.id for node in wrapped.query_nodes(node_type="faction"))
         sovereign_ids = sorted(node.id for node in wrapped.query_nodes(node_type="sovereign"))
         seen: set[str] = set()
         for sovereign_id in sovereign_ids:

@@ -186,13 +186,13 @@ def test_red_settler_trap_event_emits_for_high_class_reduction_ignore(
     adapter = BabylonGraph()
     adapter.add_node(
         "FAC_TRAP",
-        "balkanization_faction",
+        "faction",
         colonial_stance="ignore",
         class_reduction=0.7,
     )
     adapter.add_node(
         "FAC_SAFE",
-        "balkanization_faction",
+        "faction",
         colonial_stance="abolish",
         class_reduction=0.7,  # ABOLISH skips trap.
     )

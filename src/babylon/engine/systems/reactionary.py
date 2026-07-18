@@ -215,7 +215,7 @@ class FascistFactionSystem(SystemBase):
     def _find_fascist_faction(self, graph: GraphProtocol) -> str | None:
         """Lowest-id BalkanizationFaction that is fascist (D2 predicate)."""
         candidates: list[str] = []
-        for node in graph.query_nodes(node_type="balkanization_faction"):
+        for node in graph.query_nodes(node_type="faction"):
             attrs = node.attributes
             settler_uphold = bool(attrs.get("is_settler_formation")) and (
                 str(attrs.get("colonial_stance", "")).lower() == "uphold"

@@ -185,3 +185,49 @@ fn diverge_d6_add_node_replaces_instead_of_merging() {
     assert_eq!(h.node_attrs("a").unwrap(), &serde_json::json!({"y": 2}));
     assert_eq!(h.num_nodes(), 1);
 }
+
+#[test]
+fn conform_remove_edge_basic() {
+    let gt = ground_truth();
+    let v = vector(&gt, "remove_edge_basic");
+
+    let mut h: Hypergraph = Hypergraph::new();
+    h.add_edge(vec!["a".into(), "b".into()], Some("e1".into()), Value::Null)
+        .unwrap();
+    h.add_edge(vec!["a".into(), "c".into()], Some("e2".into()), Value::Null)
+        .unwrap();
+    h.remove_edge("e1").unwrap();
+
+    assert_eq!(h.edge_ids(), ids(&v["edge_ids"]));
+    assert_eq!(h.num_edges(), v["num_edges"].as_u64().unwrap() as usize);
+    assert_eq!(h.num_nodes(), v["num_nodes"].as_u64().unwrap() as usize);
+    // Nodes survive edge removal (XGI parity).
+    let mut rust_nodes = h.node_ids();
+    rust_nodes.sort();
+    assert_eq!(rust_nodes, ids(&v["node_ids"]));
+    // Surviving edge keeps its members.
+    let mut rust_members = h.members("e2").unwrap();
+    rust_members.sort();
+    assert_eq!(rust_members, ids(&v["members"]["e2"]));
+    // Every surviving node's memberships reflect the removal.
+    for (nid, expected) in v["memberships"].as_object().unwrap() {
+        let mut got = h.memberships(nid).unwrap();
+        got.sort();
+        assert_eq!(got, ids(expected));
+    }
+}
+
+#[test]
+fn diverge_d2_remove_edge_missing_errors() {
+    // Same error-channel class as D2: XGI signals a missing edge by raising
+    // IDNotFound; the Rust core returns Err(EdgeError::NotFound) and the
+    // PyO3 binding translates Err → raise. No new divergence number.
+    let gt = ground_truth();
+    let v = vector(&gt, "remove_edge_missing_raises");
+    assert_eq!(v["exception"], "IDNotFound"); // XGI truth, pinned
+    assert_eq!(v["message"], "'ID nonexistent not found'");
+
+    let mut h: Hypergraph = Hypergraph::new();
+    let err = h.remove_edge("nonexistent");
+    assert!(matches!(err, Err(EdgeError::NotFound { .. })));
+}

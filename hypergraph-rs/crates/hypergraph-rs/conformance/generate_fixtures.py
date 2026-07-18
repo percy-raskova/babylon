@@ -108,6 +108,30 @@ def v_add_edge_auto_ids_sequence() -> dict:
     return {"edge_ids": _ids(H)}
 
 
+def v_remove_edge_basic() -> dict:
+    H = xgi.Hypergraph()
+    H.add_edge(["a", "b"], idx="e1")
+    H.add_edge(["a", "c"], idx="e2")
+    H.remove_edge("e1")
+    return {
+        "edge_ids": _ids(H),
+        "num_edges": H.num_edges,
+        "num_nodes": H.num_nodes,
+        "node_ids": sorted(str(n) for n in H.nodes),
+        "members": _members_sorted(H),
+        "memberships": {str(n): sorted(str(e) for e in H.nodes.memberships(n)) for n in H.nodes},
+    }
+
+
+def v_remove_edge_missing_raises() -> dict:
+    H = xgi.Hypergraph()
+    try:
+        H.remove_edge("nonexistent")
+    except Exception as exc:  # recording the observed type IS the vector
+        return {"exception": type(exc).__name__, "message": str(exc)}
+    return {"exception": None, "message": None}
+
+
 def main() -> None:
     vectors = {
         name.removeprefix("v_"): fn()

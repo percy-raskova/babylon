@@ -358,3 +358,73 @@ fn test_graph_attrs_roundtrip() {
         &serde_json::json!("myhypergraph")
     );
 }
+
+#[test]
+fn test_remove_edge_basic() {
+    let mut h: Hypergraph = Hypergraph::new();
+    h.add_edge(
+        vec!["a".to_string(), "b".to_string()],
+        Some("e1".to_string()),
+        serde_json::Value::Null,
+    )
+    .unwrap();
+    h.remove_edge("e1").unwrap();
+    assert!(!h.has_edge("e1"));
+    assert_eq!(h.num_edges(), 0);
+    assert!(h.has_node("a"));
+    assert!(h.has_node("b"));
+    assert!(h.memberships("a").unwrap().is_empty());
+}
+
+#[test]
+fn test_remove_edge_missing_returns_error() {
+    let mut h: Hypergraph = Hypergraph::new();
+    let result = h.remove_edge("nonexistent");
+    assert!(matches!(result, Err(EdgeError::NotFound { .. })));
+}
+
+#[test]
+fn test_remove_edge_preserves_other_edges() {
+    let mut h: Hypergraph = Hypergraph::new();
+    h.add_edge(
+        vec!["a".to_string(), "b".to_string()],
+        Some("e1".to_string()),
+        serde_json::Value::Null,
+    )
+    .unwrap();
+    h.add_edge(
+        vec!["a".to_string(), "c".to_string()],
+        Some("e2".to_string()),
+        serde_json::Value::Null,
+    )
+    .unwrap();
+    h.remove_edge("e1").unwrap();
+    assert!(!h.has_edge("e1"));
+    assert!(h.has_edge("e2"));
+    assert_eq!(h.memberships("a").unwrap(), vec!["e2"]);
+}
+
+#[test]
+fn test_remove_edge_preserves_insertion_order() {
+    let mut h: Hypergraph = Hypergraph::new();
+    h.add_edge(
+        vec!["a".to_string()],
+        Some("e1".to_string()),
+        serde_json::Value::Null,
+    )
+    .unwrap();
+    h.add_edge(
+        vec!["a".to_string()],
+        Some("e2".to_string()),
+        serde_json::Value::Null,
+    )
+    .unwrap();
+    h.add_edge(
+        vec!["a".to_string()],
+        Some("e3".to_string()),
+        serde_json::Value::Null,
+    )
+    .unwrap();
+    h.remove_edge("e2").unwrap();
+    assert_eq!(h.edge_ids(), vec!["e1", "e3"]);
+}

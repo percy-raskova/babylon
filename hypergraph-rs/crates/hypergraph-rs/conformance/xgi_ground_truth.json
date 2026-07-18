@@ -70,6 +70,37 @@
         "y": 2
       },
       "num_nodes": 1
+    },
+    "remove_edge_basic": {
+      "edge_ids": [
+        "e2"
+      ],
+      "members": {
+        "e2": [
+          "a",
+          "c"
+        ]
+      },
+      "memberships": {
+        "a": [
+          "e2"
+        ],
+        "b": [],
+        "c": [
+          "e2"
+        ]
+      },
+      "node_ids": [
+        "a",
+        "b",
+        "c"
+      ],
+      "num_edges": 1,
+      "num_nodes": 3
+    },
+    "remove_edge_missing_raises": {
+      "exception": "IDNotFound",
+      "message": "'ID nonexistent not found'"
     }
   },
   "xgi_version": "0.10.2"

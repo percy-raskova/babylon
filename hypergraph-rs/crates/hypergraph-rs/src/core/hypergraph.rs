@@ -244,4 +244,15 @@ impl<N, E, M> Hypergraph<N, E, M> {
 
         Ok(edge_id)
     }
+
+    /// Remove a hyperedge from the hypergraph.
+    /// XGI parity: `H.remove_edge(e)`.
+    pub fn remove_edge(&mut self, edge_id: &str) -> Result<(), EdgeError> {
+        let he_idx = *self.hyperedge_ids.get(edge_id).ok_or(EdgeError::NotFound {
+            edge_id: edge_id.to_string(),
+        })?;
+        self.inner.remove_node(he_idx);
+        self.hyperedge_ids.shift_remove(edge_id);
+        Ok(())
+    }
 }

@@ -10,7 +10,7 @@
 //! the fixture with `mise run rust:fixtures`; a fixture diff is news —
 //! investigate before committing.
 
-use hypergraph_rs::{EdgeError, Hypergraph};
+use hypergraph_rs::{EdgeError, Hypergraph, NodeError};
 use serde_json::Value;
 
 fn ground_truth() -> Value {
@@ -230,4 +230,130 @@ fn diverge_d2_remove_edge_missing_errors() {
     let mut h: Hypergraph = Hypergraph::new();
     let err = h.remove_edge("nonexistent");
     assert!(matches!(err, Err(EdgeError::NotFound { .. })));
+}
+
+#[test]
+fn conform_remove_node_weak() {
+    // Weak removal (XGI defaults strong=False, remove_empty=True): the node
+    // is dropped from every containing edge; an edge it leaves EMPTY is
+    // removed (e3 was the singleton ["b"]). Other nodes and edges survive.
+    let gt = ground_truth();
+    let v = vector(&gt, "remove_node_weak");
+
+    let mut h: Hypergraph = Hypergraph::new();
+    h.add_edge(
+        vec!["a".into(), "b".into(), "c".into()],
+        Some("e1".into()),
+        Value::Null,
+    )
+    .unwrap();
+    h.add_edge(vec!["b".into(), "d".into()], Some("e2".into()), Value::Null)
+        .unwrap();
+    h.add_edge(vec!["b".into()], Some("e3".into()), Value::Null)
+        .unwrap();
+    h.remove_node("b", false).unwrap();
+
+    assert_eq!(h.edge_ids(), ids(&v["edge_ids"])); // e3 emptied -> removed
+    assert_eq!(h.num_edges(), v["num_edges"].as_u64().unwrap() as usize);
+    assert_eq!(h.num_nodes(), v["num_nodes"].as_u64().unwrap() as usize);
+    let mut rust_nodes = h.node_ids();
+    rust_nodes.sort();
+    assert_eq!(rust_nodes, ids(&v["node_ids"]));
+    for (eid, expected) in v["members"].as_object().unwrap() {
+        let mut got = h.members(eid).unwrap();
+        got.sort();
+        assert_eq!(got, ids(expected));
+    }
+    for (nid, expected) in v["memberships"].as_object().unwrap() {
+        let mut got = h.memberships(nid).unwrap();
+        got.sort();
+        assert_eq!(got, ids(expected));
+    }
+}
+
+#[test]
+fn conform_remove_node_strong() {
+    // Strong removal: EVERY edge containing the node is removed (e1, e2);
+    // edges not containing it survive (e4), as do the other nodes.
+    let gt = ground_truth();
+    let v = vector(&gt, "remove_node_strong");
+
+    let mut h: Hypergraph = Hypergraph::new();
+    h.add_edge(vec!["a".into(), "b".into()], Some("e1".into()), Value::Null)
+        .unwrap();
+    h.add_edge(
+        vec!["a".into(), "c".into(), "d".into()],
+        Some("e2".into()),
+        Value::Null,
+    )
+    .unwrap();
+    h.add_edge(vec!["c".into(), "d".into()], Some("e4".into()), Value::Null)
+        .unwrap();
+    h.remove_node("a", true).unwrap();
+
+    assert_eq!(h.edge_ids(), ids(&v["edge_ids"]));
+    assert_eq!(h.num_edges(), v["num_edges"].as_u64().unwrap() as usize);
+    assert_eq!(h.num_nodes(), v["num_nodes"].as_u64().unwrap() as usize);
+    let mut rust_nodes = h.node_ids();
+    rust_nodes.sort();
+    assert_eq!(rust_nodes, ids(&v["node_ids"]));
+    for (eid, expected) in v["members"].as_object().unwrap() {
+        let mut got = h.members(eid).unwrap();
+        got.sort();
+        assert_eq!(got, ids(expected));
+    }
+    for (nid, expected) in v["memberships"].as_object().unwrap() {
+        let mut got = h.memberships(nid).unwrap();
+        got.sort();
+        assert_eq!(got, ids(expected));
+    }
+}
+
+#[test]
+fn diverge_d2_remove_node_missing_errors() {
+    // Same error-channel class as D2: XGI signals a missing node by raising
+    // IDNotFound; the Rust core returns Err(NodeError::NotFound) and the
+    // PyO3 binding translates Err → raise. No new divergence number.
+    let gt = ground_truth();
+    let v = vector(&gt, "remove_node_missing_raises");
+    assert_eq!(v["exception"], "IDNotFound"); // XGI truth, pinned
+    assert_eq!(v["message"], "'ID nonexistent not found'");
+
+    let mut h: Hypergraph = Hypergraph::new();
+    let err = h.remove_node("nonexistent", false);
+    assert!(matches!(err, Err(NodeError::NotFound { .. })));
+}
+
+#[test]
+fn conform_remove_edge_then_readd() {
+    // Reviewer insurance: removing an edge must not leave residue. A re-added
+    // idx gets FRESH members (a/b do not resurrect into "e1"), and XGI's uid
+    // counter does not reuse the removed id — string idx "e1" never bumped
+    // the counter, so the next auto id is 0 (recorded as int in the fixture).
+    let gt = ground_truth();
+    let v = vector(&gt, "remove_edge_then_readd");
+    assert_eq!(v["return"], Value::Null); // XGI add_edge returns None, pinned
+
+    let mut h: Hypergraph = Hypergraph::new();
+    h.add_edge(vec!["a".into(), "b".into()], Some("e1".into()), Value::Null)
+        .unwrap();
+    h.remove_edge("e1").unwrap();
+    h.add_edge(vec!["c".into()], Some("e1".into()), Value::Null)
+        .unwrap();
+    let auto = h.add_edge(vec!["d".into()], None, Value::Null).unwrap();
+
+    // Fresh members for the re-added idx — no resurrection of a/b.
+    assert_eq!(h.members("e1").unwrap(), vec!["c"]);
+    assert_eq!(auto, "0");
+    assert_eq!(h.edge_ids(), ids(&v["edge_ids"]));
+    assert_eq!(h.num_edges(), v["num_edges"].as_u64().unwrap() as usize);
+    assert_eq!(h.num_nodes(), v["num_nodes"].as_u64().unwrap() as usize);
+    let mut rust_nodes = h.node_ids();
+    rust_nodes.sort();
+    assert_eq!(rust_nodes, ids(&v["node_ids"]));
+    for (eid, expected) in v["members"].as_object().unwrap() {
+        let mut got = h.members(eid).unwrap();
+        got.sort();
+        assert_eq!(got, ids(expected));
+    }
 }

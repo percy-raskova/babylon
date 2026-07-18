@@ -3,7 +3,7 @@
 use indexmap::IndexMap;
 use rustworkx_core::petgraph::stable_graph::{NodeIndex, StableDiGraph};
 
-use super::error::EdgeError;
+use super::error::{EdgeError, NodeError};
 use super::kinds::{MembershipEdge, NodeKind};
 
 /// A hypergraph, represented as a bipartite graph.
@@ -253,6 +253,46 @@ impl<N, E, M> Hypergraph<N, E, M> {
         })?;
         self.inner.remove_node(he_idx);
         self.hyperedge_ids.shift_remove(edge_id);
+        Ok(())
+    }
+
+    /// Remove a node from the hypergraph.
+    /// XGI parity: `H.remove_node(n, strong=False, remove_empty=True)`.
+    pub fn remove_node(&mut self, node_id: &str, strong: bool) -> Result<(), NodeError> {
+        let agent_idx = *self.agent_ids.get(node_id).ok_or(NodeError::NotFound {
+            node_id: node_id.to_string(),
+        })?;
+
+        let edge_ids: Vec<String> = self.memberships(node_id).unwrap_or_default();
+
+        if strong {
+            for eid in edge_ids {
+                self.remove_edge(&eid).map_err(|_| NodeError::NotFound {
+                    node_id: node_id.to_string(),
+                })?;
+            }
+        } else {
+            for eid in &edge_ids {
+                let he_idx = self.hyperedge_ids[eid];
+                if let Some(e) = self.inner.find_edge(agent_idx, he_idx) {
+                    self.inner.remove_edge(e);
+                }
+                if let Some(e) = self.inner.find_edge(he_idx, agent_idx) {
+                    self.inner.remove_edge(e);
+                }
+                let has_members = self
+                    .inner
+                    .neighbors(he_idx)
+                    .any(|n| matches!(self.inner.node_weight(n), Some(NodeKind::Agent(_))));
+                if !has_members {
+                    self.inner.remove_node(he_idx);
+                    self.hyperedge_ids.shift_remove(eid);
+                }
+            }
+        }
+
+        self.inner.remove_node(agent_idx);
+        self.agent_ids.shift_remove(node_id);
         Ok(())
     }
 }

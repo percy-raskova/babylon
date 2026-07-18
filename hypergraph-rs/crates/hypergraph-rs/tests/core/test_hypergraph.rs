@@ -428,3 +428,76 @@ fn test_remove_edge_preserves_insertion_order() {
     h.remove_edge("e2").unwrap();
     assert_eq!(h.edge_ids(), vec!["e1", "e3"]);
 }
+
+use hypergraph_rs::NodeError;
+
+#[test]
+fn test_remove_node_weak_removes_from_edges() {
+    let mut h: Hypergraph = Hypergraph::new();
+    h.add_edge(
+        vec!["a".to_string(), "b".to_string(), "c".to_string()],
+        Some("e1".to_string()),
+        serde_json::Value::Null,
+    )
+    .unwrap();
+    h.remove_node("b", false).unwrap();
+    assert!(!h.has_node("b"));
+    assert!(h.has_edge("e1"));
+    let members = h.members("e1").unwrap();
+    assert!(!members.contains(&"b".to_string()));
+    assert!(members.contains(&"a".to_string()));
+}
+
+#[test]
+fn test_remove_node_weak_removes_singleton_edges() {
+    let mut h: Hypergraph = Hypergraph::new();
+    h.add_edge(
+        vec!["a".to_string()],
+        Some("e1".to_string()),
+        serde_json::Value::Null,
+    )
+    .unwrap();
+    h.remove_node("a", false).unwrap();
+    assert!(!h.has_node("a"));
+    assert!(!h.has_edge("e1"));
+}
+
+#[test]
+fn test_remove_node_strong_removes_all_containing_edges() {
+    let mut h: Hypergraph = Hypergraph::new();
+    h.add_edge(
+        vec!["a".to_string(), "b".to_string()],
+        Some("e1".to_string()),
+        serde_json::Value::Null,
+    )
+    .unwrap();
+    h.add_edge(
+        vec!["a".to_string(), "c".to_string(), "d".to_string()],
+        Some("e2".to_string()),
+        serde_json::Value::Null,
+    )
+    .unwrap();
+    h.remove_node("a", true).unwrap();
+    assert!(!h.has_node("a"));
+    assert!(!h.has_edge("e1"));
+    assert!(!h.has_edge("e2"));
+    assert!(h.has_node("b"));
+    assert!(h.has_node("c"));
+}
+
+#[test]
+fn test_remove_node_missing_returns_error() {
+    let mut h: Hypergraph = Hypergraph::new();
+    let result = h.remove_node("nonexistent", false);
+    assert!(matches!(result, Err(NodeError::NotFound { .. })));
+}
+
+#[test]
+fn test_remove_node_preserves_insertion_order() {
+    let mut h: Hypergraph = Hypergraph::new();
+    h.add_node("a", serde_json::Value::Null);
+    h.add_node("b", serde_json::Value::Null);
+    h.add_node("c", serde_json::Value::Null);
+    h.remove_node("b", false).unwrap();
+    assert_eq!(h.node_ids(), vec!["a", "c"]);
+}

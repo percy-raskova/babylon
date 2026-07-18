@@ -9501,7 +9501,12 @@ def _apply_runtime_migrations(pool: Any) -> None:
     from babylon.persistence.postgres_schema import ensure_ddl_applied
 
     migrations_dir = Path(_persistence_pkg.__file__).resolve().parent / "migrations"
-    sql_files = sorted(migrations_dir.glob("00*.sql"))
+    # [0-9]*.sql (not 00*.sql): match every numeric-prefixed migration so the
+    # set does not silently truncate once numbering crosses 0099 — a 00* glob
+    # would drop 0100+ and re-open the "empty Trends / UndefinedColumn" silent
+    # degradation this boot-time applier exists to prevent. Zero-padded 4-digit
+    # names sort lexicographically == numerically.
+    sql_files = sorted(migrations_dir.glob("[0-9]*.sql"))
     if not sql_files:
         raise RuntimeError(f"No migrations found at {migrations_dir} — refusing to run unmigrated")
     with pool.connection() as conn:

@@ -74,7 +74,7 @@ systems annotation is stale, ADR032-era). The three phases:
    shadow — runs last, observes-only).
 
 Key modules: `engine/services.py` (concrete ServiceContainer; the DI *protocol* is
-`kernel/services.py`), `kernel/event_bus.py` (plain-str types; the `EventType` enum — 82 values —
+`kernel/services.py`), `kernel/event_bus.py` (plain-str types; the `EventType` enum — 84 values —
 is in `models/enums/events.py`), `engine/formula_registry.py` (23 hot-swappable formulas),
 `engine/observers/` (`SessionRecorder` black-box replay, `EndgameDetector` for the 5 terminal
 outcomes: REVOLUTIONARY_VICTORY, ECOLOGICAL_COLLAPSE, FASCIST_CONSOLIDATION, RED_OGV,

@@ -20,6 +20,8 @@ RECOGNIZER, not an adjudicator. ``is_game_over``/``outcome`` are gone;
 
 from __future__ import annotations
 
+import math
+from types import SimpleNamespace
 from typing import TYPE_CHECKING
 
 import pytest
@@ -365,3 +367,145 @@ class TestPatternRecognition:
         )
 
         assert call_count["n"] == 1
+
+
+# =============================================================================
+# TEST RED_OGV AXIS REACHABILITY (Task R, spec-116 — owner ruling 2026-07-17)
+# =============================================================================
+
+
+def _red_ogv_ready_state(territory_ids: list[str]) -> object:
+    """Build a duck-typed WorldState stand-in with low class tension and
+    low aggregate habitability, the two non-stance RED_OGV gates (FR-032).
+
+    ``_aggregate_habitability`` reads ``getattr(t, "habitability", 1.0)``
+    off ``state.territories`` values — but ``habitability`` is a graph-only
+    transient attribute (``TERRITORY_EXCLUDED_FIELDS``; written onto graph
+    nodes by ``MetabolismSystem``, never round-tripped onto the Territory
+    model). The frozen ``Territory`` model (``extra="forbid"``) can never
+    carry a ``habitability`` attribute, so a real ``Territory`` instance
+    always falls through to the 1.0 default and could never drive this
+    gate below its floor. ``_axis_red_ogv`` only reads ``.entities`` /
+    ``.territories`` off ``state`` (via ``getattr``/duck-typing), so a
+    lightweight stand-in is the correct — not merely convenient — fixture
+    here.
+    """
+    entities = _fascist_entities(count=4)  # mean class_consciousness = 0.1
+    territories = {tid: SimpleNamespace(habitability=0.1) for tid in territory_ids}
+    return SimpleNamespace(entities=entities, territories=territories)
+
+
+def _build_ignore_majority_graph(territory_ids: list[str]) -> object:
+    """One IGNORE-aligned Sovereign (ruling Faction ``colonial_stance ==
+    "ignore"``) holding CLAIMS to ``ceil(N/2)`` Territories — an IGNORE
+    stance majority per ``_has_stance_majority``."""
+    from babylon.topology.graph import BabylonGraph
+
+    graph = BabylonGraph()
+    graph.add_node(
+        "FAC_TEST_IGNORE",
+        "balkanization_faction",
+        colonial_stance="ignore",
+        class_reduction=0.7,
+    )
+    graph.add_node(
+        "SOV_TEST_IGNORE",
+        "sovereign",
+        sovereignty_type="recognized_state",
+        legitimacy=0.85,
+        color_hex="#bf6b1f",
+        ruling_faction_id="FAC_TEST_IGNORE",
+        extraction_policy="continue",
+        founded_tick=0,
+    )
+    for territory_id in territory_ids:
+        graph.add_node(territory_id, "territory")
+    claim_count = math.ceil(len(territory_ids) / 2)
+    for territory_id in territory_ids[:claim_count]:
+        graph.add_edge(
+            "SOV_TEST_IGNORE",
+            territory_id,
+            "claims",
+            control_level=1.0,
+            legal_status="de_jure",
+        )
+    return graph
+
+
+def _build_null_only_graph(territory_ids: list[str]) -> object:
+    """The exact pre-repair topology: ``SOV_EXTERIOR_NULL``
+    (``ruling_faction_id`` None) holds every CLAIMS edge, so no Sovereign
+    resolves to ANY stance."""
+    from babylon.topology.graph import BabylonGraph
+
+    graph = BabylonGraph()
+    graph.add_node(
+        "SOV_EXTERIOR_NULL",
+        "sovereign",
+        sovereignty_type="provisional",
+        legitimacy=0.0,
+        color_hex="#404040",
+        ruling_faction_id=None,
+        extraction_policy="continue",
+        founded_tick=0,
+    )
+    for territory_id in territory_ids:
+        graph.add_node(territory_id, "territory")
+        graph.add_edge(
+            "SOV_EXTERIOR_NULL",
+            territory_id,
+            "claims",
+            control_level=1.0,
+            legal_status="de_jure",
+        )
+    return graph
+
+
+@pytest.mark.unit
+class TestRedOgvAxisReachability:
+    """Task R (owner ruling 2026-07-17, "connected, wired, repaired,
+    seeded, deterministic"): pins RED_OGV structural reachability.
+
+    Root cause: before the FR-040b fallback fix, every web session's
+    Territories fell to ``SOV_EXTERIOR_NULL`` (``ruling_faction_id``
+    null), so ``_has_stance_majority`` could never resolve ANY stance and
+    the ``stance_gate`` was permanently 0.0 — RED_OGV (and
+    REVOLUTIONARY_VICTORY / the UPHOLD route) were structurally
+    unreachable in every web session. These are pure recognizer-predicate
+    tests against a hand-built graph — the emergent-endgames
+    outcome-as-fixture-vehicle pattern (ADR074) — NOT a long canonical
+    run asserting the outcome as subject.
+    """
+
+    def test_red_ogv_axis_matches_with_ignore_stance_majority(self) -> None:
+        """An IGNORE-aligned Sovereign CLAIMS majority + low class tension
+        + low habitability + a declining habitability slope must saturate
+        all four RED_OGV gates (progress == 1.0, matched is True)."""
+        territory_ids = [f"HEX_{i:05d}" for i in range(4)]
+        state = _red_ogv_ready_state(territory_ids)
+        graph = _build_ignore_majority_graph(territory_ids)
+
+        detector = EndgameDetector()
+        detector._habitability_history = [0.9, 0.6, 0.3]  # negative slope
+
+        progress, matched = detector._axis_red_ogv(state, graph)
+
+        assert matched is True
+        assert progress == pytest.approx(1.0)
+
+    def test_red_ogv_axis_blocked_when_only_sovereign_is_exterior_null(self) -> None:
+        """Companion pinning the pre-repair block: with IDENTICAL state
+        (same low tension/habitability/declining slope) but the old
+        null-only CLAIMS topology, no Sovereign resolves to ANY stance —
+        stance_gate is stuck at 0.0 and the axis cannot match."""
+        territory_ids = [f"HEX_{i:05d}" for i in range(4)]
+        state = _red_ogv_ready_state(territory_ids)
+        graph = _build_null_only_graph(territory_ids)
+
+        detector = EndgameDetector()
+        detector._habitability_history = [0.9, 0.6, 0.3]
+
+        progress, matched = detector._axis_red_ogv(state, graph)
+
+        assert matched is False
+        assert progress == pytest.approx(0.75)  # stance_gate 0.0; other 3 gates saturate

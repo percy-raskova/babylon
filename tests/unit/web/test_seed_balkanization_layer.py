@@ -19,7 +19,7 @@ from __future__ import annotations
 
 import pytest
 
-from babylon.engine.scenarios._legacy import create_imperial_circuit_scenario
+from babylon.engine.scenarios._legacy_wayne import create_wayne_county_scenario
 from babylon.models.enums import EdgeType
 from game.engine_bridge import _seed_balkanization_layer
 
@@ -27,7 +27,9 @@ pytestmark = pytest.mark.unit
 
 
 def _build_state():
-    state, _config, _defines = create_imperial_circuit_scenario()
+    # wayne_county: a real, entirely domestic-interior H3 scenario (no
+    # exterior nodes) — the shape the FR-040b domestic fallback assumes.
+    state, _config, _defines = create_wayne_county_scenario()
     return state
 
 
@@ -60,16 +62,25 @@ class TestSeedBalkanizationLayerClaims:
                 f"sovereigns (expected exactly 1): {claimants}"
             )
 
-    def test_otherwise_unclaimed_territories_go_to_sov_exterior_null(self) -> None:
-        """Neither ``canada`` nor ``rest_of_usa`` (the seed file's literal
-        initial_claims territory_ids) are real territory keys in this
-        scenario, so every territory falls to the FR-040b fallback."""
+    def test_otherwise_unclaimed_territories_go_to_sov_usa_fed(self) -> None:
+        """Task R / ADR080: neither ``canada`` nor ``rest_of_usa`` (the seed
+        file's literal initial_claims territory_ids) are real territory
+        keys in this scenario, so every territory falls to the FR-040b
+        fallback — which now routes to the domestic federal sovereign
+        ``SOV_USA_FED`` (every Territory in ``state.territories`` is a
+        domestic interior H3 cell), never the provisional exterior-null
+        sovereign. Zero CLAIMS may source from SOV_EXTERIOR_NULL, and
+        SOV_USA_FED must hold a CLAIMS majority (in this all-fallback
+        scenario, all of it) of the interior Territories."""
         state = _build_state()
 
         seeded = _seed_balkanization_layer(state)
 
         claims = [r for r in seeded.relationships if r.edge_type == EdgeType.CLAIMS]
-        claimant_by_territory = {r.target_id: r.source_id for r in claims}
+        null_claims = [r for r in claims if r.source_id == "SOV_EXTERIOR_NULL"]
+        assert null_claims == [], (
+            f"SOV_EXTERIOR_NULL must not claim domestic interior Territories: {null_claims}"
+        )
 
-        for territory_id in seeded.territories:
-            assert claimant_by_territory.get(territory_id) == "SOV_EXTERIOR_NULL"
+        usa_fed_claims = [r for r in claims if r.source_id == "SOV_USA_FED"]
+        assert len(usa_fed_claims) / len(seeded.territories) >= 0.5

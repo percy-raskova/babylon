@@ -6782,11 +6782,17 @@ def _seed_balkanization_layer(state: WorldState) -> WorldState:
     literally matches a scenario Territory key (the shipped seed file's
     ``canada`` / ``rest_of_usa`` are :mod:`persistence.external_node`
     IDs, never scenario Territory keys, so this pass is currently a
-    no-op in every scenario). Per FR-040b (spec-070), every Territory
-    the literal pass doesn't claim falls to ``SOV_EXTERIOR_NULL`` — the
-    documented provisional fallback sovereign — so CLAIMS coverage is
-    total: every Territory in ``state.territories`` ends up claimed by
-    exactly one Sovereign.
+    no-op in every scenario). Per FR-040b (spec-070, reinterpreted by
+    Task R / ADR080): every Territory the literal pass doesn't claim
+    falls to ``SOV_USA_FED`` — the domestic federal sovereign — because
+    every Territory in ``state.territories`` is a domestic interior H3
+    cell; ``SOV_EXTERIOR_NULL`` (``ruling_faction_id`` null) remains
+    reserved for genuinely external nodes, which are never scenario
+    Territory keys. This preserves total CLAIMS coverage (SC-017) while
+    making every Territory's sovereign stance-attributable from tick 0
+    (SOV_USA_FED's ruling Faction is UPHOLD-aligned), which is what makes
+    the IGNORE/ABOLISH endgame routes (RED_OGV, REVOLUTIONARY_VICTORY)
+    reachable at all as the dynamics play out.
 
     Args:
         state: The scenario-built tick-0 WorldState.
@@ -6859,17 +6865,22 @@ def _seed_balkanization_layer(state: WorldState) -> WorldState:
             )
             claimed_territory_ids.add(territory_id)
 
-    # FR-040b fallback (spec-070): SOV_EXTERIOR_NULL claims every
-    # Territory the literal pass above left unclaimed, so the SC-017
-    # coverage invariant (every Territory influenced or claimed) holds
-    # even when the seed file's initial_claims don't resolve to real
-    # Territory keys. Deterministic iteration order per III.7.
+    # FR-040b fallback (spec-070, reinterpreted by Task R / ADR080):
+    # SOV_USA_FED claims every Territory the literal pass above left
+    # unclaimed, so the SC-017 coverage invariant (every Territory
+    # influenced or claimed) holds even when the seed file's
+    # initial_claims don't resolve to real Territory keys. Every
+    # Territory in state.territories is a domestic interior H3 cell, so
+    # its default sovereign is the domestic federal sovereign, not the
+    # provisional exterior-null sovereign (SOV_EXTERIOR_NULL stays
+    # reserved for genuinely external nodes). Deterministic iteration
+    # order per III.7.
     for territory_id in sorted(state.territories):
         if territory_id in claimed_territory_ids:
             continue
         new_relationships.append(
             Relationship(
-                source_id="SOV_EXTERIOR_NULL",
+                source_id="SOV_USA_FED",
                 target_id=territory_id,
                 edge_type=EdgeType.CLAIMS,
                 control_level=1.0,

@@ -21,6 +21,7 @@ from typing import TYPE_CHECKING
 import pytest
 
 from babylon.config.defines import GameDefines, StruggleDefines
+from babylon.engine.context import TickContext
 from babylon.engine.services import ServiceContainer
 from babylon.engine.systems.struggle import StruggleSystem
 from babylon.models.entity_registry import (
@@ -143,7 +144,7 @@ class TestPowerVacuumTrigger:
             p_w_organization=0.5,
             p_w_class_consciousness=0.5,
         )
-        context = {"tick": 1}
+        context = TickContext(tick=1)
 
         # Collect events
         events: list[Event] = []
@@ -169,7 +170,7 @@ class TestPowerVacuumTrigger:
             comprador_wealth=10.0,
             comprador_subsistence=5.0,
         )
-        context = {"tick": 1}
+        context = TickContext(tick=1)
 
         events: list[Event] = []
         services.event_bus.subscribe(EventType.POWER_VACUUM, events.append)
@@ -197,7 +198,7 @@ class TestPowerVacuumTrigger:
             _node_type="entity",
         )
 
-        context = {"tick": 1}
+        context = TickContext(tick=1)
 
         events: list[Event] = []
         services.event_bus.subscribe(EventType.POWER_VACUUM, events.append)
@@ -223,7 +224,7 @@ class TestRevolutionaryOffensive:
             p_w_organization=0.8,
             p_w_class_consciousness=0.6,
         )
-        context = {"tick": 1}
+        context = TickContext(tick=1)
 
         events: list[Event] = []
         services.event_bus.subscribe(EventType.REVOLUTIONARY_OFFENSIVE, events.append)
@@ -250,7 +251,7 @@ class TestRevolutionaryOffensive:
             p_w_organization=0.8,
             p_w_class_consciousness=0.6,
         )
-        context = {"tick": 1}
+        context = TickContext(tick=1)
 
         # Verify initial state
         assert graph.nodes[PERIPHERY_WORKER_ID]["p_revolution"] == 0.2
@@ -273,7 +274,7 @@ class TestRevolutionaryOffensive:
             p_w_organization=0.8,
             p_w_class_consciousness=0.6,
         )
-        context = {"tick": 1}
+        context = TickContext(tick=1)
 
         initial_agitation = graph.nodes[PERIPHERY_WORKER_ID]["ideology"]["agitation"]
 
@@ -297,7 +298,7 @@ class TestRevolutionaryOffensive:
             p_w_organization=0.8,
             p_w_class_consciousness=0.5,
         )
-        context = {"tick": 1}
+        context = TickContext(tick=1)
 
         revolutionary_events: list[Event] = []
         fascist_events: list[Event] = []
@@ -330,7 +331,7 @@ class TestFascistRevanchism:
             c_w_national_identity=0.3,
             c_w_p_acquiescence=0.4,
         )
-        context = {"tick": 1}
+        context = TickContext(tick=1)
 
         events: list[Event] = []
         services.event_bus.subscribe(EventType.FASCIST_REVANCHISM, events.append)
@@ -358,7 +359,7 @@ class TestFascistRevanchism:
             p_w_class_consciousness=0.3,
             c_w_national_identity=0.3,
         )
-        context = {"tick": 1}
+        context = TickContext(tick=1)
 
         initial_identity = graph.nodes[LABOR_ARISTOCRACY_ID]["ideology"]["national_identity"]
 
@@ -383,7 +384,7 @@ class TestFascistRevanchism:
             p_w_class_consciousness=0.3,
             c_w_p_acquiescence=0.4,
         )
-        context = {"tick": 1}
+        context = TickContext(tick=1)
 
         initial_acquiescence = graph.nodes[LABOR_ARISTOCRACY_ID]["p_acquiescence"]
 
@@ -408,7 +409,7 @@ class TestFascistRevanchism:
             p_w_class_consciousness=0.3,
             include_core_worker=False,
         )
-        context = {"tick": 1}
+        context = TickContext(tick=1)
 
         events: list[Event] = []
         services.event_bus.subscribe(EventType.FASCIST_REVANCHISM, events.append)
@@ -433,7 +434,7 @@ class TestFascistRevanchism:
             p_w_class_consciousness=0.3,
             c_w_national_identity=0.95,  # Near max
         )
-        context = {"tick": 1}
+        context = TickContext(tick=1)
 
         # Act
         system = StruggleSystem()
@@ -454,7 +455,7 @@ class TestFascistRevanchism:
             p_w_class_consciousness=0.3,
             c_w_p_acquiescence=0.95,  # Near max
         )
-        context = {"tick": 1}
+        context = TickContext(tick=1)
 
         # Act
         system = StruggleSystem()
@@ -480,7 +481,7 @@ class TestConfigurationOverrides:
             p_w_class_consciousness=0.3,
         )
         svc = _create_services_with_defines(defines=custom_defines)
-        context = {"tick": 1}
+        context = TickContext(tick=1)
 
         revolutionary_events: list[Event] = []
         svc.event_bus.subscribe(EventType.REVOLUTIONARY_OFFENSIVE, revolutionary_events.append)
@@ -508,7 +509,7 @@ class TestConfigurationOverrides:
             p_w_class_consciousness=0.6,
         )
         svc = _create_services_with_defines(defines=custom_defines)
-        context = {"tick": 1}
+        context = TickContext(tick=1)
 
         initial_agitation = graph.nodes[PERIPHERY_WORKER_ID]["ideology"]["agitation"]
 

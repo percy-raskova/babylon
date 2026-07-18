@@ -18,6 +18,7 @@ from collections.abc import Generator
 
 import pytest
 
+from babylon.engine.context import TickContext
 from babylon.engine.services import ServiceContainer
 from babylon.engine.systems.decomposition import DecompositionSystem
 from babylon.kernel.event_bus import Event
@@ -37,7 +38,7 @@ def _create_test_context(
     tick: int = 1,
     *,
     include_superwage_tick: bool = True,
-) -> dict[str, object]:
+) -> TickContext:
     """Create a test context with required persistent data.
 
     The DecompositionSystem requires _superwage_crisis_tick to know when
@@ -51,11 +52,11 @@ def _create_test_context(
             decomposition fires immediately. Set False to test behavior
             when no crisis has occurred.
     """
-    context: dict[str, object] = {"tick": tick}
+    persistent_data: dict[str, object] = {}
     if include_superwage_tick:
         # Crisis happened 100 ticks ago, well past the 52-tick delay
-        context["_superwage_crisis_tick"] = tick - 100
-    return context
+        persistent_data["_superwage_crisis_tick"] = tick - 100
+    return TickContext(tick=tick, persistent_data=persistent_data)
 
 
 def _create_pre_crisis_circuit(graph: BabylonGraph) -> None:
@@ -317,10 +318,10 @@ class TestDecompositionDelayAndTrigger:
         delay = services.defines.carceral.decomposition_delay  # 52 ticks default
 
         # Set crisis tick to 10, current tick to exactly 10 + delay = 62
-        context: dict[str, object] = {
-            "tick": 10 + delay,
-            "_superwage_crisis_tick": 10,
-        }
+        context = TickContext(
+            tick=10 + delay,
+            persistent_data={"_superwage_crisis_tick": 10},
+        )
 
         system.step(graph, services, context)
 
@@ -336,10 +337,10 @@ class TestDecompositionDelayAndTrigger:
         delay = services.defines.carceral.decomposition_delay
 
         # One tick short of delay
-        context: dict[str, object] = {
-            "tick": 10 + delay - 1,
-            "_superwage_crisis_tick": 10,
-        }
+        context = TickContext(
+            tick=10 + delay - 1,
+            persistent_data={"_superwage_crisis_tick": 10},
+        )
 
         system.step(graph, services, context)
 
@@ -359,10 +360,10 @@ class TestDecompositionDelayAndTrigger:
         zero_delay_services = ServiceContainer.create(defines=zero_delay_defines)
 
         system = DecompositionSystem()
-        context: dict[str, object] = {
-            "tick": 5,
-            "_superwage_crisis_tick": 5,
-        }
+        context = TickContext(
+            tick=5,
+            persistent_data={"_superwage_crisis_tick": 5},
+        )
 
         system.step(graph, zero_delay_services, context)
 
@@ -389,7 +390,7 @@ class TestDecompositionDelayAndTrigger:
 
         system = DecompositionSystem()
         # No prior crisis in context
-        context: dict[str, object] = {"tick": 5}
+        context = TickContext(tick=5)
 
         system.step(graph, services, context)
 
@@ -414,7 +415,7 @@ class TestDecompositionDelayAndTrigger:
         )
 
         system = DecompositionSystem()
-        context: dict[str, object] = {"tick": 5}
+        context = TickContext(tick=5)
 
         system.step(graph, services, context)
 
@@ -436,7 +437,7 @@ class TestDecompositionDelayAndTrigger:
 
         system = DecompositionSystem()
         # No prior crisis, and delay hasn't elapsed
-        context: dict[str, object] = {"tick": 5}
+        context = TickContext(tick=5)
 
         system.step(graph, services, context)
 
@@ -489,10 +490,10 @@ class TestDecompositionDelayAndTrigger:
 
         system = DecompositionSystem()
         # Crisis detected but delay NOT elapsed (tick 11, crisis at 10, delay=52)
-        context: dict[str, object] = {
-            "tick": 11,
-            "_superwage_crisis_tick": 10,
-        }
+        context = TickContext(
+            tick=11,
+            persistent_data={"_superwage_crisis_tick": 10},
+        )
 
         system.step(graph, services, context)
 
@@ -505,11 +506,13 @@ class TestDecompositionDelayAndTrigger:
         _create_pre_crisis_circuit(graph)
 
         system = DecompositionSystem()
-        context: dict[str, object] = {
-            "tick": 200,
-            "_superwage_crisis_tick": 10,
-            "_decomposition_complete": True,  # Already done
-        }
+        context = TickContext(
+            tick=200,
+            persistent_data={
+                "_superwage_crisis_tick": 10,
+                "_decomposition_complete": True,  # Already done
+            },
+        )
 
         system.step(graph, services, context)
 

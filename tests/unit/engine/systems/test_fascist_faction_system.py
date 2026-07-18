@@ -15,6 +15,7 @@ from unittest.mock import MagicMock
 import pytest
 
 from babylon.config.defines import GameDefines
+from babylon.engine.context import TickContext
 from babylon.engine.systems.reactionary import FascistFactionSystem
 from babylon.models.enums import EdgeType, EventType
 from babylon.topology.graph import BabylonGraph
@@ -103,7 +104,7 @@ class TestFascistDrift:
         g = BabylonGraph()
         _add_la(g, agitation=1.0, entitlement=0.8)  # pull = 1.0 * 0.8/0.1 = 8.0 > 1.0
         services = _services()
-        FascistFactionSystem().step(g, services, {"tick": 5})
+        FascistFactionSystem().step(g, services, TickContext(tick=5))
         node = g.get_node("C001")
         assert node is not None
         step = services.defines.reactionary.fascist_drift_step
@@ -114,7 +115,7 @@ class TestFascistDrift:
         g = BabylonGraph()
         _add_la(g, agitation=0.0, entitlement=0.8)
         services = _services()
-        FascistFactionSystem().step(g, services, {"tick": 5})
+        FascistFactionSystem().step(g, services, TickContext(tick=5))
         assert g.get_node("C001").attributes["fascist_alignment"] == 0.0
         assert _events_of(services, EventType.FASCIST_DRIFT) == []
 
@@ -125,7 +126,7 @@ class TestFascistDrift:
         g.add_node("C900", "social_class", role="periphery_proletariat", active=True)
         g.add_edge("C900", "C001", "solidarity", solidarity_strength=0.9)
         services = _services()
-        FascistFactionSystem().step(g, services, {"tick": 5})
+        FascistFactionSystem().step(g, services, TickContext(tick=5))
         assert g.get_node("C001").attributes["fascist_alignment"] == 0.0
         assert _events_of(services, EventType.FASCIST_DRIFT) == []
 
@@ -143,7 +144,7 @@ class TestFascistDrift:
             ideology={"class_consciousness": 0.1, "national_identity": 0.5, "agitation": 1.0},
         )
         services = _services()
-        FascistFactionSystem().step(g, services, {"tick": 5})
+        FascistFactionSystem().step(g, services, TickContext(tick=5))
         assert g.get_node("C002").attributes["fascist_alignment"] > 0.0
 
 
@@ -153,7 +154,7 @@ class TestFascistCapture:
         _add_la(g, agitation=0.0, fascist_alignment=1.0)  # already saturated
         _add_fascist_faction(g)
         services = _services()
-        FascistFactionSystem().step(g, services, {"tick": 5})
+        FascistFactionSystem().step(g, services, TickContext(tick=5))
         node = g.get_node("C001")
         assert node.attributes["aligned_faction_id"] == "FAC_SETTLER"
         assert len(_events_of(services, EventType.FASCIST_RECRUITMENT)) == 1
@@ -163,14 +164,14 @@ class TestFascistCapture:
         _add_la(g, agitation=0.0, fascist_alignment=1.0, aligned_faction_id="FAC_SETTLER")
         _add_fascist_faction(g)
         services = _services()
-        FascistFactionSystem().step(g, services, {"tick": 5})
+        FascistFactionSystem().step(g, services, TickContext(tick=5))
         assert _events_of(services, EventType.FASCIST_RECRUITMENT) == []
 
     def test_no_capture_without_fascist_faction(self) -> None:
         g = BabylonGraph()
         _add_la(g, agitation=0.0, fascist_alignment=1.0)  # saturated, but no faction
         services = _services()
-        FascistFactionSystem().step(g, services, {"tick": 5})
+        FascistFactionSystem().step(g, services, TickContext(tick=5))
         node = g.get_node("C001")
         assert node.attributes["aligned_faction_id"] is None
         assert _events_of(services, EventType.FASCIST_RECRUITMENT) == []
@@ -183,7 +184,7 @@ class TestStanceInterventionHook:
         # capital_labor opposition must be known for the intervention to be written.
         g.set_graph_attr("opposition_states", {"capital_labor": {"key": "capital_labor"}})
         services = _services()
-        FascistFactionSystem().step(g, services, {"tick": 5})
+        FascistFactionSystem().step(g, services, TickContext(tick=5))
         interventions = g.get_graph_attr("opposition_interventions", [])
         assert len(interventions) == 1
         assert interventions[0]["target_key"] == "capital_labor"
@@ -194,7 +195,7 @@ class TestStanceInterventionHook:
         g = BabylonGraph()
         _add_la(g, agitation=1.0, entitlement=0.8)
         services = _services()
-        FascistFactionSystem().step(g, services, {"tick": 5})
+        FascistFactionSystem().step(g, services, TickContext(tick=5))
         assert g.get_graph_attr("opposition_interventions", []) == []
 
 
@@ -221,7 +222,7 @@ class TestChauvinism:
         g = BabylonGraph()
         _add_org_with_la_members(g, "ORG1", ["C001"])
         services = _services()
-        FascistFactionSystem().step(g, services, {"tick": 5})
+        FascistFactionSystem().step(g, services, TickContext(tick=5))
         edge = g.get_edge("ORG1", "C001", EdgeType.MEMBERSHIP)
         base = services.defines.reactionary.chauvinism_base_rate
         assert edge.attributes["chauvinism"] == pytest.approx(base)
@@ -233,7 +234,7 @@ class TestChauvinism:
         g.add_node("C500", "social_class", role="core_bourgeoisie", active=True)
         g.add_edge("C500", "C001", "wages", super_wage_bonus=0.5)
         services = _services()
-        FascistFactionSystem().step(g, services, {"tick": 5})
+        FascistFactionSystem().step(g, services, TickContext(tick=5))
         edge = g.get_edge("ORG1", "C001", EdgeType.MEMBERSHIP)
         r = services.defines.reactionary
         assert edge.attributes["chauvinism"] == pytest.approx(
@@ -256,7 +257,7 @@ class TestDefectionAndCoup:
         # pre-load high chauvinism so p_defect is high
         g.update_edge("ORG1", "C001", EdgeType.MEMBERSHIP, chauvinism=0.99)
         services = self._crisis_services(_AlwaysDefect())
-        FascistFactionSystem().step(g, services, {"tick": 5})
+        FascistFactionSystem().step(g, services, TickContext(tick=5))
         assert len(_events_of(services, EventType.ORGANIZATIONAL_FRACTURE)) == 1
 
     def test_no_defection_without_crisis(self) -> None:
@@ -265,7 +266,7 @@ class TestDefectionAndCoup:
         g.update_edge("ORG1", "C001", EdgeType.MEMBERSHIP, chauvinism=0.99)
         services = _services()
         services.rng = _AlwaysDefect()  # would defect IF crisis, but no crisis event
-        FascistFactionSystem().step(g, services, {"tick": 5})
+        FascistFactionSystem().step(g, services, TickContext(tick=5))
         assert _events_of(services, EventType.ORGANIZATIONAL_FRACTURE) == []
 
     def test_majority_defection_fires_red_brown_coup(self) -> None:
@@ -274,7 +275,7 @@ class TestDefectionAndCoup:
         for mid in ("C001", "C002", "C003"):
             g.update_edge("ORG1", mid, EdgeType.MEMBERSHIP, chauvinism=0.99)
         services = self._crisis_services(_AlwaysDefect())
-        FascistFactionSystem().step(g, services, {"tick": 5})
+        FascistFactionSystem().step(g, services, TickContext(tick=5))
         assert len(_events_of(services, EventType.RED_BROWN_COUP)) == 1
         assert len(_events_of(services, EventType.ORGANIZATIONAL_FRACTURE)) == 3
 
@@ -282,7 +283,7 @@ class TestDefectionAndCoup:
         g = BabylonGraph()
         _add_org_with_la_members(g, "ORG1", ["C001", "C002"])
         services = self._crisis_services(_NeverDefect())
-        FascistFactionSystem().step(g, services, {"tick": 5})
+        FascistFactionSystem().step(g, services, TickContext(tick=5))
         assert _events_of(services, EventType.RED_BROWN_COUP) == []
 
     def test_defection_is_deterministic(self) -> None:
@@ -293,7 +294,7 @@ class TestDefectionAndCoup:
             for mid in ("C001", "C002"):
                 g.update_edge("ORG1", mid, EdgeType.MEMBERSHIP, chauvinism=0.6)
             services = self._crisis_services(random.Random(1234))
-            FascistFactionSystem().step(g, services, {"tick": 5})
+            FascistFactionSystem().step(g, services, TickContext(tick=5))
             results.append(len(_events_of(services, EventType.ORGANIZATIONAL_FRACTURE)))
         assert results[0] == results[1]
 
@@ -306,7 +307,7 @@ class TestRegimeRead:
             "dialectical_regime", {"regime": "crisis", "opposition": "capital_labor", "rate": 0.2}
         )
         services = _services()
-        FascistFactionSystem().step(g, services, {"tick": 5})
+        FascistFactionSystem().step(g, services, TickContext(tick=5))
         drift = _events_of(services, EventType.FASCIST_DRIFT)
         assert len(drift) == 1
         assert drift[0].payload.get("regime") == "crisis"

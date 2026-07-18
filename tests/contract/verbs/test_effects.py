@@ -196,6 +196,29 @@ class TestAttack:
         assert summary["infrastructure_updates"] == 1
         assert float(verb_graph.nodes[HOME_TERRITORY]["infrastructure"]) < 0.5
 
+    def test_attack_self_heat_gain_is_defines_driven(self, verb_graph) -> None:
+        """The self-heat coefficient is OODADefines.attack_self_heat_gain, not a literal.
+
+        spec-116 FR-116-4.4 promotes the old ``_ATTACK_SELF_HEAT_GAIN = 0.1``
+        module literal into GameDefines so the web bridge's per-target heat
+        estimate and the resolver share one source of truth.
+        """
+        from babylon.config.defines import GameDefines
+        from babylon.engine.services import ServiceContainer
+
+        defines = GameDefines()
+        modded = defines.model_copy(
+            update={"ooda": defines.ooda.model_copy(update={"attack_self_heat_gain": 0.25})}
+        )
+        services = ServiceContainer.create(defines=modded)
+
+        heat_before = float(verb_graph.nodes[ORG_ID]["heat"])
+        result = _dispatch(verb_graph, services, ActionType.ATTACK_INFRASTRUCTURE, HOME_TERRITORY)
+
+        assert result.success is True
+        assert float(verb_graph.nodes[ORG_ID]["heat"]) == pytest.approx(heat_before + 0.25)
+        assert result.direct_effects["heat_self_delta"] == pytest.approx(0.25)
+
 
 class TestMobilize:
     """mobilize routes agitation into a class target, heat into a territory."""

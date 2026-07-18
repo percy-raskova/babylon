@@ -32,6 +32,8 @@ const AUTHENTICATED_SPECS = [
   "end-turn-flow.spec.ts",
   "verb-submit.spec.ts",
   "event-popup.spec.ts",
+  "lobby-briefing.spec.ts",
+  "first-session.spec.ts",
 ];
 
 export default defineConfig({

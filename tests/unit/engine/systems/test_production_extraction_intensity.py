@@ -32,6 +32,7 @@ from collections.abc import Generator
 
 import pytest
 
+from babylon.engine.context import TickContext
 from babylon.engine.services import ServiceContainer
 from babylon.engine.systems.metabolism import MetabolismSystem
 from babylon.engine.systems.production import ProductionSystem
@@ -126,7 +127,7 @@ class TestProductionSetsExtractionIntensity:
         _create_tenancy_edge(graph, "PERIPHERY_WORKER_ID", "T001")
 
         system = ProductionSystem()
-        system.step(graph, services, {"tick": 1})
+        system.step(graph, services, TickContext(tick=1))
 
         # Calculate expected intensity
         weekly_labor_power = services.defines.economy.base_labor_power / 52
@@ -152,7 +153,7 @@ class TestProductionSetsExtractionIntensity:
         _create_tenancy_edge(graph, "COMPRADOR_ID", "T001")
 
         system = ProductionSystem()
-        system.step(graph, services, {"tick": 1})
+        system.step(graph, services, TickContext(tick=1))
 
         weekly_labor_power = services.defines.economy.base_labor_power / 52
         expected_intensity = (2 * weekly_labor_power) / 100.0  # ~0.000385
@@ -186,7 +187,7 @@ class TestProductionSetsExtractionIntensity:
         _create_territory_node(graph, "T001", biocapacity=0.01, max_biocapacity=0.01)
 
         system = ProductionSystem()
-        system.step(graph, services, {"tick": 1})
+        system.step(graph, services, TickContext(tick=1))
 
         intensity = graph.nodes["T001"].get("extraction_intensity", 0.0)
         assert intensity <= 1.0, f"Intensity must be capped at 1.0, got {intensity:.4f}"
@@ -208,7 +209,7 @@ class TestProductionSetsExtractionIntensity:
         # No workers
 
         system = ProductionSystem()
-        system.step(graph, services, {"tick": 1})
+        system.step(graph, services, TickContext(tick=1))
 
         intensity = graph.nodes["T001"].get("extraction_intensity", 0.0)
         assert intensity == 0.0, (
@@ -227,7 +228,7 @@ class TestProductionSetsExtractionIntensity:
         _create_tenancy_edge(graph, "PERIPHERY_WORKER_ID", "T001")
 
         system = ProductionSystem()
-        system.step(graph, services, {"tick": 1})
+        system.step(graph, services, TickContext(tick=1))
 
         intensity = graph.nodes["T001"].get("extraction_intensity", 0.0)
         assert intensity == 0.0, f"Dead worker should not contribute: got {intensity:.4f}"
@@ -244,7 +245,7 @@ class TestProductionSetsExtractionIntensity:
         _create_tenancy_edge(graph, "PERIPHERY_WORKER_ID", "T001")
 
         system = ProductionSystem()
-        system.step(graph, services, {"tick": 1})
+        system.step(graph, services, TickContext(tick=1))
 
         weekly_labor_power = services.defines.economy.base_labor_power / 52
         expected_production = weekly_labor_power * 0.5  # Half biocapacity ratio
@@ -269,7 +270,7 @@ class TestProductionSetsExtractionIntensity:
         _create_tenancy_edge(graph, "COMPRADOR_ID", "T002")
 
         system = ProductionSystem()
-        system.step(graph, services, {"tick": 1})
+        system.step(graph, services, TickContext(tick=1))
 
         weekly_labor_power = services.defines.economy.base_labor_power / 52
         expected_intensity = weekly_labor_power / 100.0
@@ -330,11 +331,11 @@ class TestExtractionIntensityCausesDepletion:
 
         # Run Production to set extraction_intensity
         production = ProductionSystem()
-        production.step(graph, services, {"tick": 1})
+        production.step(graph, services, TickContext(tick=1))
 
         # Run Metabolism to apply biocapacity change
         metabolism = MetabolismSystem()
-        metabolism.step(graph, services, {"tick": 1})
+        metabolism.step(graph, services, TickContext(tick=1))
 
         final_biocapacity = graph.nodes["T001"]["biocapacity"]
 
@@ -361,8 +362,8 @@ class TestExtractionIntensityCausesDepletion:
         _create_tenancy_edge(full_graph, "PERIPHERY_WORKER_ID", "T001")
 
         system = ProductionSystem()
-        system.step(graph, services, {"tick": 1})
-        system.step(full_graph, services, {"tick": 1})
+        system.step(graph, services, TickContext(tick=1))
+        system.step(full_graph, services, TickContext(tick=1))
 
         depleted_production = graph.nodes["PERIPHERY_WORKER_ID"]["wealth"]
         full_production = full_graph.nodes["PERIPHERY_WORKER_ID"]["wealth"]

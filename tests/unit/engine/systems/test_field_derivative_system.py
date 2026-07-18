@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import pytest
 
+from babylon.engine.context import TickContext
 from babylon.engine.field_registry import DefaultFieldRegistry
 from babylon.engine.services import ServiceContainer
 from babylon.engine.systems.contradiction_field import ContradictionFieldSystem
@@ -55,7 +56,7 @@ def _run_field_system(
     """Run ContradictionFieldSystem to populate fields on nodes."""
     registry = DefaultFieldRegistry.with_defaults()
     services = ServiceContainer.create(field_registry=registry)
-    context: dict[str, object] = {"tick": 1, "persistent_data": persistent_data}
+    context = TickContext(tick=1, persistent_data=persistent_data)
     ContradictionFieldSystem().step(graph, services, context)
     return services
 
@@ -69,7 +70,7 @@ class TestFieldDerivativeGradient:
         graph = _make_two_node_graph()
         persistent_data: dict[str, object] = {}
         services = _run_field_system(graph, persistent_data)
-        context: dict[str, object] = {"tick": 1, "persistent_data": persistent_data}
+        context = TickContext(tick=1, persistent_data=persistent_data)
 
         FieldDerivativeSystem().step(graph, services, context)
 
@@ -82,7 +83,7 @@ class TestFieldDerivativeGradient:
         graph = _make_two_node_graph()
         persistent_data: dict[str, object] = {}
         services = _run_field_system(graph, persistent_data)
-        context: dict[str, object] = {"tick": 1, "persistent_data": persistent_data}
+        context = TickContext(tick=1, persistent_data=persistent_data)
 
         FieldDerivativeSystem().step(graph, services, context)
 
@@ -106,7 +107,7 @@ class TestFieldDerivativeLaplacian:
         graph = _make_two_node_graph()
         persistent_data: dict[str, object] = {}
         services = _run_field_system(graph, persistent_data)
-        context: dict[str, object] = {"tick": 1, "persistent_data": persistent_data}
+        context = TickContext(tick=1, persistent_data=persistent_data)
 
         FieldDerivativeSystem().step(graph, services, context)
 
@@ -121,7 +122,7 @@ class TestFieldDerivativeLaplacian:
         graph = _make_two_node_graph()
         persistent_data: dict[str, object] = {}
         services = _run_field_system(graph, persistent_data)
-        context: dict[str, object] = {"tick": 1, "persistent_data": persistent_data}
+        context = TickContext(tick=1, persistent_data=persistent_data)
 
         FieldDerivativeSystem().step(graph, services, context)
 
@@ -149,7 +150,7 @@ class TestFieldDerivativeLaplacian:
 
         persistent_data: dict[str, object] = {}
         services = _run_field_system(graph, persistent_data)
-        context: dict[str, object] = {"tick": 1, "persistent_data": persistent_data}
+        context = TickContext(tick=1, persistent_data=persistent_data)
 
         FieldDerivativeSystem().step(graph, services, context)
 
@@ -167,7 +168,7 @@ class TestFieldDerivativeTemporal:
         graph = _make_two_node_graph()
         persistent_data: dict[str, object] = {}
         services = _run_field_system(graph, persistent_data)
-        context: dict[str, object] = {"tick": 1, "persistent_data": persistent_data}
+        context = TickContext(tick=1, persistent_data=persistent_data)
 
         FieldDerivativeSystem().step(graph, services, context)
 
@@ -184,11 +185,12 @@ class TestFieldDerivativeTemporal:
         services = ServiceContainer.create(field_registry=registry)
 
         # Tick 1
-        ctx1: dict[str, object] = {"tick": 1, "persistent_data": persistent_data}
+        ctx1 = TickContext(tick=1, persistent_data=persistent_data)
         ContradictionFieldSystem().step(graph, services, ctx1)
 
-        # Tick 2
-        ctx2: dict[str, object] = {"tick": 2, "persistent_data": persistent_data}
+        # Tick 2 (same persistent_data carried forward from ctx1)
+        ctx2 = ctx1
+        ctx2["tick"] = 2
         ContradictionFieldSystem().step(graph, services, ctx2)
         FieldDerivativeSystem().step(graph, services, ctx2)
 
@@ -208,14 +210,15 @@ class TestFieldDerivativeTemporal:
         services = ServiceContainer.create(field_registry=registry)
 
         # Tick 1: wealth=5
-        ctx1: dict[str, object] = {"tick": 1, "persistent_data": persistent_data}
+        ctx1 = TickContext(tick=1, persistent_data=persistent_data)
         ContradictionFieldSystem().step(graph, services, ctx1)
 
         # Change wealth for tick 2 to cause field change
         graph.nodes["C001"]["wealth"] = 0.0
 
-        # Tick 2: wealth=0 (higher exploitation)
-        ctx2: dict[str, object] = {"tick": 2, "persistent_data": persistent_data}
+        # Tick 2: wealth=0 (higher exploitation); same persistent_data carried forward from ctx1
+        ctx2 = ctx1
+        ctx2["tick"] = 2
         ContradictionFieldSystem().step(graph, services, ctx2)
         FieldDerivativeSystem().step(graph, services, ctx2)
 
@@ -232,14 +235,15 @@ class TestFieldDerivativeTemporal:
         registry = DefaultFieldRegistry.with_defaults()
         services = ServiceContainer.create(field_registry=registry)
 
-        # Three ticks with changing wealth
+        # Three ticks with changing wealth (single context, persistent_data carried forward)
+        ctx = TickContext(persistent_data=persistent_data)
         for tick, wealth in [(1, 10.0), (2, 5.0), (3, 0.0)]:
             graph.nodes["C001"]["wealth"] = wealth
-            ctx: dict[str, object] = {"tick": tick, "persistent_data": persistent_data}
+            ctx["tick"] = tick
             ContradictionFieldSystem().step(graph, services, ctx)
 
         # Run derivative system on tick 3
-        ctx3: dict[str, object] = {"tick": 3, "persistent_data": persistent_data}
+        ctx3 = ctx
         FieldDerivativeSystem().step(graph, services, ctx3)
 
         derivs = graph.nodes["C001"]["field_derivatives"]
@@ -265,7 +269,7 @@ class TestFieldDerivativeSystemBasic:
         """
         graph = _make_two_node_graph()  # nodes carry no contradiction_fields
         services = ServiceContainer.create()  # no field_registry
-        context: dict[str, object] = {"tick": 1, "persistent_data": {}}
+        context = TickContext(tick=1, persistent_data={})
 
         FieldDerivativeSystem().step(graph, services, context)
 
@@ -286,10 +290,11 @@ class TestFieldDerivativeSystemBasic:
         services = ServiceContainer.create()  # no field_registry
         persistent: dict[str, object] = {}
 
-        ctx1: dict[str, object] = {"tick": 1, "persistent_data": persistent}
+        ctx1 = TickContext(tick=1, persistent_data=persistent)
         ContradictionFieldSystem().step(graph, services, ctx1)
         graph.edges["C001", "C002"]["tension"] = 0.6  # exploitation 0.2 -> 0.6
-        ctx2: dict[str, object] = {"tick": 2, "persistent_data": persistent}
+        ctx2 = ctx1
+        ctx2["tick"] = 2
         ContradictionFieldSystem().step(graph, services, ctx2)
         FieldDerivativeSystem().step(graph, services, ctx2)
 
@@ -303,7 +308,7 @@ class TestFieldDerivativeSystemBasic:
 
         registry = DefaultFieldRegistry.with_defaults()
         services = ServiceContainer.create(field_registry=registry)
-        context: dict[str, object] = {"tick": 1, "persistent_data": {}}
+        context = TickContext(tick=1, persistent_data={})
 
         FieldDerivativeSystem().step(graph, services, context)
 
@@ -322,12 +327,13 @@ class TestPrincipalContradiction:
         registry = DefaultFieldRegistry.with_defaults()
         services = ServiceContainer.create(field_registry=registry)
 
-        # Need at least 2 ticks for df/dt
+        # Need at least 2 ticks for df/dt (single context, persistent_data carried forward)
+        ctx = TickContext(persistent_data=persistent_data)
         for tick in [1, 2]:
-            ctx: dict[str, object] = {"tick": tick, "persistent_data": persistent_data}
+            ctx["tick"] = tick
             ContradictionFieldSystem().step(graph, services, ctx)
 
-        ctx2: dict[str, object] = {"tick": 2, "persistent_data": persistent_data}
+        ctx2 = ctx
         FieldDerivativeSystem().step(graph, services, ctx2)
 
         # Check graph attr
@@ -345,12 +351,13 @@ class TestPrincipalContradiction:
         services = ServiceContainer.create(field_registry=registry)
 
         # Tick 1: baseline
-        ctx1: dict[str, object] = {"tick": 1, "persistent_data": persistent_data}
+        ctx1 = TickContext(tick=1, persistent_data=persistent_data)
         ContradictionFieldSystem().step(graph, services, ctx1)
 
         # Tick 2: drastically reduce wealth to spike exploitation
         graph.nodes["C001"]["wealth"] = 0.0
-        ctx2: dict[str, object] = {"tick": 2, "persistent_data": persistent_data}
+        ctx2 = ctx1
+        ctx2["tick"] = 2
         ContradictionFieldSystem().step(graph, services, ctx2)
         FieldDerivativeSystem().step(graph, services, ctx2)
 
@@ -365,7 +372,7 @@ class TestPrincipalContradiction:
         graph = _make_two_node_graph()
         persistent_data: dict[str, object] = {}
         services = _run_field_system(graph, persistent_data)
-        context: dict[str, object] = {"tick": 1, "persistent_data": persistent_data}
+        context = TickContext(tick=1, persistent_data=persistent_data)
 
         FieldDerivativeSystem().step(graph, services, context)
 
@@ -383,13 +390,14 @@ class TestPrincipalContradiction:
         services = ServiceContainer.create(field_registry=registry)
 
         # Tick 1
-        ctx1: dict[str, object] = {"tick": 1, "persistent_data": persistent_data}
+        ctx1 = TickContext(tick=1, persistent_data=persistent_data)
         ContradictionFieldSystem().step(graph, services, ctx1)
         FieldDerivativeSystem().step(graph, services, ctx1)
 
         # Tick 2: change conditions significantly
         graph.nodes["C001"]["wealth"] = 0.0
-        ctx2: dict[str, object] = {"tick": 2, "persistent_data": persistent_data}
+        ctx2 = ctx1
+        ctx2["tick"] = 2
         ContradictionFieldSystem().step(graph, services, ctx2)
         FieldDerivativeSystem().step(graph, services, ctx2)
 
@@ -418,7 +426,7 @@ class TestFieldStackSnapshot:
         graph = _make_two_node_graph()
         persistent_data: dict[str, object] = {}
         services = _run_field_system(graph, persistent_data)
-        context: dict[str, object] = {"tick": 1, "persistent_data": persistent_data}
+        context = TickContext(tick=1, persistent_data=persistent_data)
 
         FieldDerivativeSystem().step(graph, services, context)
 
@@ -432,7 +440,7 @@ class TestFieldStackSnapshot:
         graph = _make_two_node_graph()
         persistent_data: dict[str, object] = {}
         services = _run_field_system(graph, persistent_data)
-        context: dict[str, object] = {"tick": 1, "persistent_data": persistent_data}
+        context = TickContext(tick=1, persistent_data=persistent_data)
 
         FieldDerivativeSystem().step(graph, services, context)
 
@@ -445,7 +453,7 @@ class TestFieldStackSnapshot:
         graph = _make_two_node_graph()
         persistent_data: dict[str, object] = {}
         services = _run_field_system(graph, persistent_data)
-        context: dict[str, object] = {"tick": 1, "persistent_data": persistent_data}
+        context = TickContext(tick=1, persistent_data=persistent_data)
 
         FieldDerivativeSystem().step(graph, services, context)
 
@@ -460,7 +468,7 @@ class TestFieldStackSnapshot:
 
         registry = DefaultFieldRegistry.with_defaults()
         services = ServiceContainer.create(field_registry=registry)
-        context: dict[str, object] = {"tick": 1, "persistent_data": {}}
+        context = TickContext(tick=1, persistent_data={})
 
         FieldDerivativeSystem().step(graph, services, context)
 
@@ -479,7 +487,7 @@ class TestFieldStackSnapshot:
 
         persistent_data: dict[str, object] = {}
         services = _run_field_system(graph, persistent_data)
-        context: dict[str, object] = {"tick": 1, "persistent_data": persistent_data}
+        context = TickContext(tick=1, persistent_data=persistent_data)
 
         FieldDerivativeSystem().step(graph, services, context)
 
@@ -491,7 +499,7 @@ class TestFieldStackSnapshot:
         graph = _make_two_node_graph()
         persistent_data: dict[str, object] = {}
         services = _run_field_system(graph, persistent_data)
-        context: dict[str, object] = {"tick": 1, "persistent_data": persistent_data}
+        context = TickContext(tick=1, persistent_data=persistent_data)
 
         FieldDerivativeSystem().step(graph, services, context)
 
@@ -508,7 +516,7 @@ class TestFieldStackSnapshot:
         graph = _make_two_node_graph()
         persistent_data: dict[str, object] = {}
         services = _run_field_system(graph, persistent_data)
-        context: dict[str, object] = {"tick": 1, "persistent_data": persistent_data}
+        context = TickContext(tick=1, persistent_data=persistent_data)
 
         FieldDerivativeSystem().step(graph, services, context)
 
@@ -525,7 +533,7 @@ class TestFieldStackSnapshot:
 
         registry = DefaultFieldRegistry.with_defaults()
         services = ServiceContainer.create(field_registry=registry)
-        context: dict[str, object] = {"tick": 1, "persistent_data": {}}
+        context = TickContext(tick=1, persistent_data={})
 
         FieldDerivativeSystem().step(graph, services, context)
 
@@ -538,7 +546,7 @@ class TestFieldStackSnapshot:
         means the early return fires before the snapshot is ever written."""
         graph = _make_two_node_graph()
         services = ServiceContainer.create()  # no field_registry
-        context: dict[str, object] = {"tick": 1, "persistent_data": {}}
+        context = TickContext(tick=1, persistent_data={})
 
         FieldDerivativeSystem().step(graph, services, context)
 

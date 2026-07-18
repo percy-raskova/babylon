@@ -11,6 +11,7 @@ from unittest.mock import MagicMock
 import pytest
 
 from babylon.config.defines.balkanization import BalkanizationDefines
+from babylon.engine.context import TickContext
 from babylon.engine.systems.faction_influence import FactionInfluenceSystem
 from babylon.models.enums import EventType
 from babylon.topology.graph import BabylonGraph
@@ -86,11 +87,11 @@ def test_winning_faction_resolution_writes_persistent_snapshot(
 ) -> None:
     adapter = BabylonGraph()
     _seed_two_factions_one_territory(adapter)
-    context: dict[str, Any] = {"tick": 0, "persistent_data": {}}
+    context = TickContext(tick=0, persistent_data={})
 
     FactionInfluenceSystem().step(adapter, services, context)
 
-    winning = context["persistent_data"]["balkanization.winning_faction_by_territory"]
+    winning = context.persistent_data["balkanization.winning_faction_by_territory"]
     assert winning == {"HEX_001": "FAC_B"}
 
 
@@ -100,8 +101,7 @@ def test_territory_transition_emits_on_flip(services: Any) -> None:
 
     adapter = BabylonGraph()
     _seed_two_factions_one_territory(adapter)
-    persistent: dict[str, Any] = {}
-    context: dict[str, Any] = {"tick": 0, "persistent_data": persistent}
+    context = TickContext(tick=0, persistent_data={})
 
     FactionInfluenceSystem().step(adapter, services, context)
     # No prior winner ⇒ event fires with from=None.
@@ -111,8 +111,8 @@ def test_territory_transition_emits_on_flip(services: Any) -> None:
 
     # Now FLIP the influence: FAC_A becomes the winner.
     adapter.update_edge("FAC_A", "HEX_001", "influences", influence_level=0.9)
-    context2: dict[str, Any] = {"tick": 1, "persistent_data": persistent}
-    FactionInfluenceSystem().step(adapter, services, context2)
+    context.tick = 1
+    FactionInfluenceSystem().step(adapter, services, context)
     transitions = _events_of(services.event_bus, EventType.TERRITORY_TRANSITION)
     assert len(transitions) == 2
     assert transitions[1].payload["from_winning_faction_id"] == "FAC_B"
@@ -122,14 +122,13 @@ def test_territory_transition_emits_on_flip(services: Any) -> None:
 def test_no_transition_when_winner_unchanged(services: Any) -> None:
     adapter = BabylonGraph()
     _seed_two_factions_one_territory(adapter)
-    persistent: dict[str, Any] = {}
-    context: dict[str, Any] = {"tick": 0, "persistent_data": persistent}
+    context = TickContext(tick=0, persistent_data={})
     FactionInfluenceSystem().step(adapter, services, context)
     bus: _RecordingEventBus = services.event_bus
     transitions_before = len(_events_of(bus, EventType.TERRITORY_TRANSITION))
     # Re-tick with no graph mutation — winning faction unchanged.
-    context2: dict[str, Any] = {"tick": 1, "persistent_data": persistent}
-    FactionInfluenceSystem().step(adapter, services, context2)
+    context.tick = 1
+    FactionInfluenceSystem().step(adapter, services, context)
     transitions_after = len(_events_of(bus, EventType.TERRITORY_TRANSITION))
     assert transitions_after == transitions_before
 
@@ -170,7 +169,7 @@ def test_faction_victory_fires_on_supermajority(services: Any) -> None:
         influence_level=0.9,
         support_type="ideological",
     )
-    context: dict[str, Any] = {"tick": 0, "persistent_data": {}}
+    context = TickContext(tick=0, persistent_data={})
 
     FactionInfluenceSystem().step(adapter, services, context)
 
@@ -197,7 +196,7 @@ def test_red_settler_trap_event_emits_for_high_class_reduction_ignore(
         colonial_stance="abolish",
         class_reduction=0.7,  # ABOLISH skips trap.
     )
-    context: dict[str, Any] = {"tick": 0, "persistent_data": {}}
+    context = TickContext(tick=0, persistent_data={})
 
     FactionInfluenceSystem().step(adapter, services, context)
 
@@ -212,9 +211,9 @@ def test_winning_faction_for_unclaimed_territory_returns_no_entry(
 ) -> None:
     adapter = BabylonGraph()
     adapter.add_node("HEX_ORPHAN", "territory")
-    context: dict[str, Any] = {"tick": 0, "persistent_data": {}}
+    context = TickContext(tick=0, persistent_data={})
 
     FactionInfluenceSystem().step(adapter, services, context)
 
-    winning = context["persistent_data"]["balkanization.winning_faction_by_territory"]
+    winning = context.persistent_data["balkanization.winning_faction_by_territory"]
     assert "HEX_ORPHAN" not in winning

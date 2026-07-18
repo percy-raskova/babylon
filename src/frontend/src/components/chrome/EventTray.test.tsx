@@ -12,6 +12,7 @@ import { useStore } from "@/store";
 import { resetStore } from "@/test/resetStore";
 import { resetMockGameState, DEFAULT_GAME_ID } from "@/test/handlers";
 import { makeEvent } from "@/test/fixtures";
+import { CAUSAL_PULSE_FIXTURE_BEAT } from "@/mocks/narration/fixtures";
 
 beforeEach(() => {
   resetStore();
@@ -97,5 +98,38 @@ describe("EventTray", () => {
   it("omits the dismissed-tray section entirely when nothing has been dismissed", () => {
     render(<EventTray gameId={DEFAULT_GAME_ID} />);
     expect(screen.queryByTestId("event-tray-dismissed")).not.toBeInTheDocument();
+  });
+
+  it("shows the accumulated count on a dismissed critical in the Missed tray", async () => {
+    useStore
+      .getState()
+      .events.ingest(1, [makeEvent({ type: "endgame_reached", tick: 1, data: {} })]);
+    const id = useStore.getState().events.toasts[0]!.id;
+    useStore.getState().events.dismissToast(id);
+    useStore
+      .getState()
+      .events.ingest(2, [makeEvent({ type: "endgame_reached", tick: 2, data: {} })]);
+
+    render(<EventTray gameId={DEFAULT_GAME_ID} />);
+    expect(screen.getByTestId(`tray-restore-${id}`)).toHaveTextContent("×2");
+  });
+
+  it("renders the causal heartbeat in the narrator slot (spec-116 FR-4.1)", () => {
+    useStore.setState((s) => ({
+      panels: {
+        ...s.panels,
+        narration: {
+          ...s.panels.narration,
+          status: "ready" as const,
+          beats: [CAUSAL_PULSE_FIXTURE_BEAT],
+        },
+      },
+    }));
+
+    render(<EventTray gameId={DEFAULT_GAME_ID} />);
+
+    const slot = screen.getByTestId("event-tray-narration");
+    expect(slot).toHaveTextContent("The week's ledger, tick 104.");
+    expect(screen.getByTestId("narration-block")).toHaveAttribute("data-register", "wire");
   });
 });

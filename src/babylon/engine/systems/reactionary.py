@@ -42,6 +42,7 @@ from babylon.formulas.reactionary import (
 )
 from babylon.kernel.event_bus import Event
 from babylon.kernel.system_base import SystemBase, resolve_rng
+from babylon.kernel.tick_partition import TickPartition
 from babylon.models.enums import EdgeType, EventType, SocialRole
 
 if TYPE_CHECKING:  # pragma: no cover
@@ -73,6 +74,9 @@ _FASCIST_IDEOLOGY_TOKENS: tuple[str, ...] = ("fascist", "reaction", "revanch", "
 class FascistFactionSystem(SystemBase):
     """Consequence-phase system for the reactionary subject (spec-071)."""
 
+    partition: ClassVar[TickPartition] = TickPartition.CONSEQUENCE
+    position: ClassVar[float] = 17.4
+
     name: ClassVar[str] = "Fascist Faction"
     # Chauvinism/defection mutate org + edge state, not hex c+v+s (Spec 053 INV-001).
     creates_value: ClassVar[bool] = False
@@ -84,7 +88,7 @@ class FascistFactionSystem(SystemBase):
         context: ContextType,
     ) -> None:
         wrapped = self._wrap_graph(graph)
-        tick = _extract_tick(context)
+        tick = context.tick
         defines = services.defines.reactionary
         regime = self._read_regime(wrapped)
 
@@ -116,7 +120,7 @@ class FascistFactionSystem(SystemBase):
             attrs = node.attributes
             if not attrs.get("active", True):
                 continue
-            role = _coerce_role(attrs.get("role"))
+            role = SocialRole.coerce(attrs.get("role"))
             if role not in _ENTITLED_ROLES:
                 continue
 
@@ -242,7 +246,7 @@ class FascistFactionSystem(SystemBase):
             target = graph.get_node(edge.target_id)
             if target is None:
                 continue
-            if _coerce_role(target.attributes.get("role")) is not SocialRole.LABOR_ARISTOCRACY:
+            if SocialRole.coerce(target.attributes.get("role")) is not SocialRole.LABOR_ARISTOCRACY:
                 continue
             members_by_org.setdefault(edge.source_id, []).append(edge)
 
@@ -341,21 +345,6 @@ class FascistFactionSystem(SystemBase):
 # ----------------------------------------------------------------------
 # Module helpers (mirror the spec-070 system conventions)
 # ----------------------------------------------------------------------
-
-
-def _extract_tick(context: ContextType) -> int:
-    return int(context.get("tick", 0) if isinstance(context, dict) else getattr(context, "tick", 0))
-
-
-def _coerce_role(raw: object) -> SocialRole | None:
-    if isinstance(raw, SocialRole):
-        return raw
-    if isinstance(raw, str):
-        try:
-            return SocialRole(raw)
-        except ValueError:
-            return None
-    return None
 
 
 def _agitation_of(attrs: dict[str, Any]) -> float:

@@ -393,6 +393,14 @@ CREATE TABLE IF NOT EXISTS tick_summary (
     -- Program 23 Phase 2 (ADR078): cumulative correction-snap count; NULL =
     -- axis absent that tick. Existing DBs: migrations/0034.
     market_corrections INT,
+    -- Playability Spine Task 19 (spec-116 4d.5): county-deduped crisis/
+    -- bifurcation history; NULL = no county boundary state that tick.
+    -- Existing DBs: migrations/0035.
+    crisis_pop_share FLOAT,
+    bifurcation_score_mean FLOAT,
+    wage_compression_mean FLOAT,
+    capital_stock_total FLOAT,
+    unemployment_rate_mean FLOAT,
     PRIMARY KEY (session_id, tick)
 )
 """

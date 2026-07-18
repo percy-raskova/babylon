@@ -22,6 +22,7 @@ from typing import TYPE_CHECKING
 
 import pytest
 
+from babylon.engine.context import TickContext
 from babylon.engine.services import ServiceContainer
 from babylon.engine.systems.vitality import VitalitySystem
 from babylon.models.enums import EventType, SocialRole
@@ -96,7 +97,7 @@ class TestPopulationScaledDrain:
         )
 
         system = VitalitySystem()
-        system.step(graph, services, {"tick": 1})
+        system.step(graph, services, TickContext(tick=1))
 
         # Assert: Population-scaled burn
         base_sub = services.defines.economy.base_subsistence
@@ -123,7 +124,7 @@ class TestPopulationScaledDrain:
         )
 
         system = VitalitySystem()
-        system.step(graph, services, {"tick": 1})
+        system.step(graph, services, TickContext(tick=1))
 
         base_sub = services.defines.economy.base_subsistence
         expected_cost = base_sub * 1 * 1.5
@@ -150,7 +151,7 @@ class TestPopulationScaledDrain:
         )
 
         system = VitalitySystem()
-        system.step(graph, services, {"tick": 1})
+        system.step(graph, services, TickContext(tick=1))
 
         base_sub = services.defines.economy.base_subsistence
         expected_cost = base_sub * 50 * 20.0
@@ -194,7 +195,7 @@ class TestCoverageRatioFormula:
         services.event_bus.subscribe(EventType.POPULATION_ATTRITION, events.append)
 
         system = VitalitySystem()
-        system.step(graph, services, {"tick": 1})
+        system.step(graph, services, TickContext(tick=1))
 
         # Assert: No deaths, population unchanged
         assert graph.nodes["PERIPHERY_WORKER_ID"]["population"] == TC.POP_100
@@ -225,7 +226,7 @@ class TestCoverageRatioFormula:
         services.event_bus.subscribe(EventType.POPULATION_ATTRITION, events.append)
 
         system = VitalitySystem()
-        system.step(graph, services, {"tick": 1})
+        system.step(graph, services, TickContext(tick=1))
 
         # Assert: Full attrition due to high inequality
         assert graph.nodes["PERIPHERY_WORKER_ID"]["population"] == 0
@@ -255,7 +256,7 @@ class TestCoverageRatioFormula:
         services.event_bus.subscribe(EventType.POPULATION_ATTRITION, events.append)
 
         system = VitalitySystem()
-        system.step(graph, services, {"tick": 1})
+        system.step(graph, services, TickContext(tick=1))
 
         # Assert: No deaths when coverage exceeds threshold
         assert graph.nodes["PERIPHERY_WORKER_ID"]["population"] == TC.POP_100
@@ -286,7 +287,7 @@ class TestCoverageRatioFormula:
         services.event_bus.subscribe(EventType.POPULATION_ATTRITION, events.append)
 
         system = VitalitySystem()
-        system.step(graph, services, {"tick": 1})
+        system.step(graph, services, TickContext(tick=1))
 
         # Assert: Partial attrition
         # deficit = 0.4, attrition = 0.4 * 1.3 = 0.52
@@ -336,7 +337,7 @@ class TestMalthusianCorrection:
         initial_per_capita = initial_wealth / initial_pop
 
         system = VitalitySystem()
-        system.step(graph, services, {"tick": 1})
+        system.step(graph, services, TickContext(tick=1))
 
         final_wealth = graph.nodes["PERIPHERY_WORKER_ID"]["wealth"]
         final_pop = graph.nodes["PERIPHERY_WORKER_ID"]["population"]
@@ -373,7 +374,7 @@ class TestMalthusianCorrection:
 
         # Tick 1
         pop_before_tick_1 = graph.nodes["PERIPHERY_WORKER_ID"]["population"]
-        system.step(graph, services, {"tick": 1})
+        system.step(graph, services, TickContext(tick=1))
         pop_after_tick_1 = graph.nodes["PERIPHERY_WORKER_ID"]["population"]
         deaths_tick_1 = pop_before_tick_1 - pop_after_tick_1
 
@@ -383,7 +384,7 @@ class TestMalthusianCorrection:
 
         # Tick 2
         pop_before_tick_2 = graph.nodes["PERIPHERY_WORKER_ID"]["population"]
-        system.step(graph, services, {"tick": 2})
+        system.step(graph, services, TickContext(tick=2))
         pop_after_tick_2 = graph.nodes["PERIPHERY_WORKER_ID"]["population"]
         deaths_tick_2 = pop_before_tick_2 - pop_after_tick_2
 
@@ -414,7 +415,7 @@ class TestAttritionEventPayload:
         services.event_bus.subscribe(EventType.POPULATION_DEATH, death_events.append)
 
         system = VitalitySystem()
-        system.step(graph, services, {"tick": 1})
+        system.step(graph, services, TickContext(tick=1))
 
         # Assert: POPULATION_ATTRITION emitted, not POPULATION_DEATH
         assert len(attrition_events) >= 1
@@ -438,7 +439,7 @@ class TestAttritionEventPayload:
         services.event_bus.subscribe(EventType.POPULATION_ATTRITION, events.append)
 
         system = VitalitySystem()
-        system.step(graph, services, {"tick": 1})
+        system.step(graph, services, TickContext(tick=1))
 
         assert len(events) == 1
         payload = events[0].payload
@@ -475,7 +476,7 @@ class TestBackwardCompatibility:
         )
 
         system = VitalitySystem()
-        system.step(graph, services, {"tick": 1})
+        system.step(graph, services, TickContext(tick=1))
 
         # Assert: Single agent survives with sufficient wealth
         assert graph.nodes["PERIPHERY_WORKER_ID"]["population"] == 1
@@ -498,7 +499,7 @@ class TestBackwardCompatibility:
         services.event_bus.subscribe(EventType.ENTITY_DEATH, entity_death_events.append)
 
         system = VitalitySystem()
-        system.step(graph, services, {"tick": 1})
+        system.step(graph, services, TickContext(tick=1))
 
         # Assert: Full extinction triggers ENTITY_DEATH
         assert graph.nodes["PERIPHERY_WORKER_ID"]["active"] is False

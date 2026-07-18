@@ -23,6 +23,7 @@ from __future__ import annotations
 import pytest
 
 from babylon.config.defines import GameDefines
+from babylon.engine.context import TickContext
 from babylon.engine.services import ServiceContainer
 from babylon.engine.systems.economic import ImperialRentSystem
 from babylon.models.enums import EdgeType, SocialRole
@@ -90,7 +91,7 @@ class TestWeeklyConversion:
         }
 
         # Act
-        system._process_wages_phase(graph, services, {"tick": 1}, tick_context)
+        system._process_wages_phase(graph, services, TickContext(tick=1), tick_context)
 
         # Assert: Worker should receive 1% of tribute (0.01), not 52%
         worker_wealth = graph.nodes["worker"]["wealth"]
@@ -148,7 +149,7 @@ class TestWeeklyConversion:
             # Track wages before this tick
             worker_wealth_before = graph.nodes["worker"]["wealth"]
 
-            system._process_wages_phase(graph, services, {"tick": tick}, tick_context)
+            system._process_wages_phase(graph, services, TickContext(tick=tick), tick_context)
 
             # Calculate wages paid this tick
             worker_wealth_after = graph.nodes["worker"]["wealth"]
@@ -187,7 +188,7 @@ class TestWeeklyConversion:
         system = ImperialRentSystem()
 
         # Act
-        system._process_extraction_phase(graph, services, {"tick": 1})
+        system._process_extraction_phase(graph, services, TickContext(tick=1))
 
         # Assert: Extraction should be 1/52 of annual rate
         # If annual extraction_efficiency is 0.8, per-tick is 0.8/52 = 0.0154

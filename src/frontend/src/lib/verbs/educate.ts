@@ -1,11 +1,13 @@
 import type { VerbConfig, VerbTarget } from "./types";
 import { parseFlatCost } from "./cost";
+import { parseExpectedDeltas, type WireExpectedDeltas } from "./expectedDeltas";
 
 interface EducateTarget {
   community_id: string;
   territory_name: string;
   category: string;
   credibility: number;
+  expected_deltas?: WireExpectedDeltas;
 }
 
 export const educateConfig: VerbConfig = {
@@ -19,6 +21,7 @@ export const educateConfig: VerbConfig = {
     return targets.map((t) => ({
       id: t.community_id,
       label: `${t.territory_name} (${t.category} — Credibility: ${t.credibility})`,
+      expectedDeltas: parseExpectedDeltas(t.expected_deltas),
     }));
   },
   paramFields: [],

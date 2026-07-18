@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import pytest
 
+from babylon.engine.context import TickContext
 from babylon.engine.simulation_engine import _DEFAULT_SYSTEMS
 from babylon.engine.systems.substrate import SubstrateSystem
 from babylon.topology.graph import BabylonGraph
@@ -94,7 +95,7 @@ class TestSubstrateZeroPropagation:
             energy_stock=10.0,
             biocapacity_stock=20.0,
         )
-        SubstrateSystem().step(graph, services=object(), context={})  # type: ignore[arg-type]
+        SubstrateSystem().step(graph, services=object(), context=TickContext())  # type: ignore[arg-type]
         assert graph.nodes["872d34a89ffffff"]["raw_material_stock"] == 0.0
 
     def test_substrate_fills_missing_stock_attrs(self) -> None:
@@ -102,7 +103,7 @@ class TestSubstrateZeroPropagation:
 
         graph = BabylonGraph()
         graph.add_node("872d34a89ffffff", _node_type="hex")
-        SubstrateSystem().step(graph, services=object(), context={})  # type: ignore[arg-type]
+        SubstrateSystem().step(graph, services=object(), context=TickContext())  # type: ignore[arg-type]
         attrs = graph.nodes["872d34a89ffffff"]
         for key in ("raw_material_stock", "energy_stock", "biocapacity_stock"):
             assert key in attrs
@@ -113,5 +114,5 @@ class TestSubstrateZeroPropagation:
 
         graph = BabylonGraph()
         graph.add_node("canada", _node_type="external")
-        SubstrateSystem().step(graph, services=object(), context={})  # type: ignore[arg-type]
+        SubstrateSystem().step(graph, services=object(), context=TickContext())  # type: ignore[arg-type]
         assert "raw_material_stock" not in graph.nodes["canada"]

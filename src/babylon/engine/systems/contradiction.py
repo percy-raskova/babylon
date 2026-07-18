@@ -48,6 +48,7 @@ from babylon.formulas.market import calculate_scissors_balance
 from babylon.kernel.event_bus import Event
 from babylon.kernel.system_base import SystemBase
 from babylon.kernel.system_protocol import ContextType
+from babylon.kernel.tick_partition import TickPartition
 from babylon.models.entities.contradiction import Contradiction, ContradictionFrame
 from babylon.models.enums import ContradictionType, EdgeMode, EdgeType, EventType
 from babylon.sentinels.partition.registry import cell_name
@@ -114,6 +115,9 @@ _TENSION_EDGE_TYPES: tuple[EdgeType, ...] = (
 
 class ContradictionSystem(SystemBase):
     """Phase 18: fresh-gap tension + opposition-registry contradiction frames."""
+
+    partition: ClassVar[TickPartition] = TickPartition.CONSEQUENCE
+    position: ClassVar[float] = 18.0
 
     name: ClassVar[str] = "Contradiction Tension"
     # Spec 053 INV-001: does not mutate hex c+v+s; opted in by default-deny.

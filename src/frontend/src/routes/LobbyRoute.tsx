@@ -17,6 +17,7 @@
 import { useEffect, useState, type KeyboardEvent } from "react";
 import { useNavigate } from "react-router";
 import { useStore } from "@/store";
+import { DIFFICULTY_PRESETS, rollRngSeed } from "@/lib/difficulty";
 
 const FIELD = "var(--ksbc-field)";
 const CRIMSON = "var(--ksbc-accent-crimson)";
@@ -31,6 +32,10 @@ interface SelectionItem {
   key: string;
   label: string;
   sublabel?: string;
+  /** Right-aligned extra content (per-row actions); its buttons must stopPropagation. */
+  trailing?: React.JSX.Element;
+  /** Render at reduced opacity (archived operations). */
+  dimmed?: boolean;
 }
 
 /**
@@ -103,14 +108,18 @@ function SelectionList({
             style={{
               background: active ? GOLD : FIELD,
               color: active ? SHADOW : INK,
+              opacity: item.dimmed ? 0.55 : 1,
             }}
           >
             <span className="font-semibold">{item.label}</span>
-            {item.sublabel && (
-              <span className="font-mono text-[11px]" style={{ opacity: active ? 0.85 : 0.7 }}>
-                {item.sublabel}
-              </span>
-            )}
+            <span className="flex items-center gap-3">
+              {item.sublabel && (
+                <span className="font-mono text-[11px]" style={{ opacity: active ? 0.85 : 0.7 }}>
+                  {item.sublabel}
+                </span>
+              )}
+              {item.trailing}
+            </span>
           </div>
         );
       })}
@@ -127,6 +136,8 @@ export function LobbyRoute(): React.JSX.Element {
   const fetchGames = useStore((s) => s.session.fetchGames);
   const fetchScenarios = useStore((s) => s.session.fetchScenarios);
   const createGame = useStore((s) => s.session.createGame);
+  const deleteGame = useStore((s) => s.session.deleteGame);
+  const archiveGame = useStore((s) => s.session.archiveGame);
   const logout = useStore((s) => s.session.logout);
   const navigate = useNavigate();
 
@@ -137,6 +148,16 @@ export function LobbyRoute(): React.JSX.Element {
   const [selectedScenario, setSelectedScenario] = useState("");
   const [creating, setCreating] = useState(false);
   const effectiveScenario = selectedScenario || (scenarios[0]?.key ?? "");
+
+  // Curated difficulty (spec-116 FR-116-3): vetted preset keys only,
+  // never raw defines. "cadre" = schema defaults.
+  const [selectedDifficulty, setSelectedDifficulty] = useState("cadre");
+
+  // Arm-to-confirm for the permanent delete: first click arms, second fires.
+  const [pendingDeleteId, setPendingDeleteId] = useState("");
+
+  // Human scenario names live in the catalog; rows fall back to the raw key.
+  const scenarioNames = new Map(scenarios.map((s) => [s.key, s.name]));
 
   // Same "no explicit pick yet" pattern for the games listbox's keyboard
   // highlight — arrow keys move it, click/Enter navigate.
@@ -150,10 +171,24 @@ export function LobbyRoute(): React.JSX.Element {
 
   async function handleCreate(): Promise<void> {
     if (!effectiveScenario) return;
+    const preset = DIFFICULTY_PRESETS.find((p) => p.key === selectedDifficulty);
     setCreating(true);
-    const id = await createGame({ scenario: effectiveScenario });
+    const id = await createGame({
+      scenario: effectiveScenario,
+      defines: preset?.defines ?? {},
+      rng_seed: rollRngSeed(),
+    });
     setCreating(false);
-    if (id) navigate(`/game/${id}`);
+    if (id) navigate(`/game/${id}/briefing`);
+  }
+
+  function handleDeleteClick(id: string): void {
+    if (pendingDeleteId === id) {
+      setPendingDeleteId("");
+      void deleteGame(id);
+    } else {
+      setPendingDeleteId(id);
+    }
   }
 
   async function handleLogout(): Promise<void> {
@@ -207,6 +242,26 @@ export function LobbyRoute(): React.JSX.Element {
               testIdPrefix="scenario-option"
               emptyText="No scenarios available."
             />
+            <div>
+              <p
+                className="mb-1 text-[10px] uppercase tracking-[0.2em]"
+                style={{ color: MUTED_LIGHT }}
+              >
+                Difficulty
+              </p>
+              <SelectionList
+                items={DIFFICULTY_PRESETS.map((p) => ({
+                  key: p.key,
+                  label: p.label,
+                  sublabel: p.description,
+                }))}
+                activeKey={selectedDifficulty}
+                onSelect={setSelectedDifficulty}
+                onActivate={setSelectedDifficulty}
+                testIdPrefix="difficulty-option"
+                emptyText="No presets."
+              />
+            </div>
             <button
               onClick={() => void handleCreate()}
               disabled={creating || !effectiveScenario}
@@ -255,8 +310,47 @@ export function LobbyRoute(): React.JSX.Element {
               <SelectionList
                 items={games.map((g) => ({
                   key: g.id,
-                  label: g.scenario,
-                  sublabel: `Tick ${g.current_tick}`,
+                  label: g.codename,
+                  sublabel: `${scenarioNames.get(g.scenario) ?? g.scenario} · Tick ${g.current_tick} · ${g.status.toUpperCase()} · ${g.created_at.slice(0, 10)}`,
+                  dimmed: g.status === "abandoned",
+                  trailing: (
+                    <span className="flex items-center gap-2">
+                      {g.status !== "abandoned" && (
+                        <button
+                          data-testid={`game-archive-${g.id}`}
+                          title="Archive operation (reversible)"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            void archiveGame(g.id);
+                          }}
+                          className="border px-1.5 text-[10px] uppercase tracking-[0.1em]"
+                          style={{
+                            borderColor: MUTED,
+                            color: MUTED_LIGHT,
+                            background: "transparent",
+                          }}
+                        >
+                          archive
+                        </button>
+                      )}
+                      <button
+                        data-testid={`game-delete-${g.id}`}
+                        title="Delete operation (permanent)"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          handleDeleteClick(g.id);
+                        }}
+                        className="border px-1.5 text-[10px] font-bold uppercase tracking-[0.1em]"
+                        style={{
+                          borderColor: CRIMSON,
+                          color: pendingDeleteId === g.id ? SHADOW : CRIMSON,
+                          background: pendingDeleteId === g.id ? CRIMSON : "transparent",
+                        }}
+                      >
+                        {pendingDeleteId === g.id ? "confirm" : "×"}
+                      </button>
+                    </span>
+                  ),
                 }))}
                 activeKey={effectiveGameId}
                 onSelect={setFocusedGameId}

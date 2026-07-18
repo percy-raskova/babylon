@@ -600,6 +600,10 @@ run = "watch -n 30 mise run sim:status"
 description = "Single-county Postgres tick probe; use: mise run sim:probe -- --county 26163 --ticks 3"
 run = "poetry run python tools/tick_probe.py"
 
+[tasks."sim:pacing"]
+description = "Headless null-play pacing probe on the web scenario path (spec-116 ceremony instrument)"
+run = "cd web && poetry run python manage.py pacing_probe"
+
 [tasks."sim:archive"]
 description = "Archive sessions to local Parquet + purge Postgres (spec-088); use: mise run sim:archive -- list | archive --all | archive --session <uuid>"
 run = "poetry run python tools/archive_sessions.py"

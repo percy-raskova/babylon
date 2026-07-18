@@ -20,6 +20,7 @@ from collections.abc import Generator
 
 import pytest
 
+from babylon.engine.context import TickContext
 from babylon.engine.services import ServiceContainer
 from babylon.engine.systems.control_ratio import ControlRatioSystem
 from babylon.kernel.event_bus import Event
@@ -39,12 +40,12 @@ def _create_test_context(
     tick: int = 1,
     *,
     include_crisis_tick: bool = False,
-) -> dict[str, object]:
+) -> TickContext:
     """Create a test context with required persistent data.
 
     The ControlRatioSystem requires _class_decomposition_tick to know when
-    to start checking the control ratio. For raw dict contexts, persistent
-    data is stored directly in the dict (not nested).
+    to start checking the control ratio. Persistent data is stored in the
+    context's persistent_data dict.
 
     We set _class_decomposition_tick to a tick in the past so the system
     runs immediately (control_ratio_delay default is 52).
@@ -54,15 +55,14 @@ def _create_test_context(
         include_crisis_tick: If True, also set _control_ratio_crisis_tick
             so TERMINAL_DECISION fires immediately.
     """
-    context: dict[str, object] = {
-        "tick": tick,
+    persistent_data: dict[str, object] = {
         "_class_decomposition_tick": tick - 100,  # Decomposition happened 100 ticks ago
     }
     if include_crisis_tick:
         # Crisis happened in the past, so terminal decision can fire now
-        context["_control_ratio_crisis_tick"] = tick - 10
-        context["_control_crisis_emitted"] = True  # Prevent re-emitting crisis
-    return context
+        persistent_data["_control_ratio_crisis_tick"] = tick - 10
+        persistent_data["_control_crisis_emitted"] = True  # Prevent re-emitting crisis
+    return TickContext(tick=tick, persistent_data=persistent_data)
 
 
 def _create_stable_carceral_state(graph: BabylonGraph) -> None:
@@ -555,10 +555,10 @@ class TestControlRatioMutationKillers:
 
         delay = services.defines.carceral.control_ratio_delay  # 52
         # decomp at tick 10, delay=52, so need tick >= 62 to process
-        context: dict[str, object] = {
-            "tick": 10 + delay - 1,  # tick=61, just before threshold
-            "_class_decomposition_tick": 10,
-        }
+        context = TickContext(
+            tick=10 + delay - 1,  # tick=61, just before threshold
+            persistent_data={"_class_decomposition_tick": 10},
+        )
 
         system = ControlRatioSystem()
         system.step(graph, services, context)
@@ -574,10 +574,10 @@ class TestControlRatioMutationKillers:
         services.event_bus.subscribe(EventType.CONTROL_RATIO_CRISIS, lambda e: captured.append(e))
 
         delay = services.defines.carceral.control_ratio_delay  # 52
-        context: dict[str, object] = {
-            "tick": 10 + delay,  # tick=62, exactly at threshold
-            "_class_decomposition_tick": 10,
-        }
+        context = TickContext(
+            tick=10 + delay,  # tick=62, exactly at threshold
+            persistent_data={"_class_decomposition_tick": 10},
+        )
 
         system = ControlRatioSystem()
         system.step(graph, services, context)
@@ -595,12 +595,14 @@ class TestControlRatioMutationKillers:
         )
 
         tick = 100
-        context: dict[str, object] = {
-            "tick": tick,
-            "_class_decomposition_tick": tick - 100,
-            "_control_ratio_crisis_tick": tick,  # Crisis just happened
-            "_control_crisis_emitted": True,
-        }
+        context = TickContext(
+            tick=tick,
+            persistent_data={
+                "_class_decomposition_tick": tick - 100,
+                "_control_ratio_crisis_tick": tick,  # Crisis just happened
+                "_control_crisis_emitted": True,
+            },
+        )
 
         system = ControlRatioSystem()
         system.step(graph, services, context)
@@ -620,12 +622,14 @@ class TestControlRatioMutationKillers:
 
         terminal_delay = services.defines.carceral.terminal_decision_delay  # 1
         crisis_tick = 100
-        context: dict[str, object] = {
-            "tick": crisis_tick + terminal_delay,  # tick=101
-            "_class_decomposition_tick": 0,
-            "_control_ratio_crisis_tick": crisis_tick,
-            "_control_crisis_emitted": True,
-        }
+        context = TickContext(
+            tick=crisis_tick + terminal_delay,  # tick=101
+            persistent_data={
+                "_class_decomposition_tick": 0,
+                "_control_ratio_crisis_tick": crisis_tick,
+                "_control_crisis_emitted": True,
+            },
+        )
 
         system = ControlRatioSystem()
         system.step(graph, services, context)
@@ -664,11 +668,13 @@ class TestControlRatioMutationKillers:
             EventType.TERMINAL_DECISION, lambda e: terminal_events.append(e)
         )
 
-        context: dict[str, object] = {
-            "tick": 200,
-            "_class_decomposition_tick": 0,
-            "_terminal_decision_emitted": True,  # Already fired
-        }
+        context = TickContext(
+            tick=200,
+            persistent_data={
+                "_class_decomposition_tick": 0,
+                "_terminal_decision_emitted": True,  # Already fired
+            },
+        )
 
         system = ControlRatioSystem()
         system.step(graph, services, context)

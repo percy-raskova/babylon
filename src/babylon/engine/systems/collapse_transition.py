@@ -38,6 +38,7 @@ from typing import TYPE_CHECKING, Any, ClassVar
 
 from babylon.kernel.event_bus import Event
 from babylon.kernel.system_base import SystemBase
+from babylon.kernel.tick_partition import TickPartition
 from babylon.models.enums import EventType
 
 if TYPE_CHECKING:  # pragma: no cover
@@ -49,6 +50,9 @@ if TYPE_CHECKING:  # pragma: no cover
 class CollapseTransitionSystem(SystemBase):
     """Detects collapsing Sovereigns + emits transition events."""
 
+    partition: ClassVar[TickPartition] = TickPartition.CONSEQUENCE
+    position: ClassVar[float] = 20.5
+
     name: ClassVar[str] = "CollapseTransition"
     creates_value: ClassVar[bool] = False
 
@@ -59,14 +63,19 @@ class CollapseTransitionSystem(SystemBase):
         context: ContextType,
     ) -> None:
         wrapped = self._wrap_graph(graph)
-        tick = _extract_tick(context)
-        persistent = _extract_persistent(context)
+        tick = context.tick
+        persistent = context.persistent_data
 
         # Phase 1: Collapse-driven path (FR-023, FR-024).
         triggers = persistent.get("balkanization.collapse_triggers", {})
         winning = persistent.get("balkanization.winning_faction_by_territory", {})
         sovereign_ids = sorted(node.id for node in wrapped.query_nodes(node_type="sovereign"))
         for sovereign_id in sovereign_ids:
+            # The exterior null sovereign is the FR-040b boundary fallback —
+            # not a polity that can collapse. Mirrors the Phase-3
+            # orphan-cleanup exemption below.
+            if sovereign_id == "SOV_EXTERIOR_NULL":
+                continue
             sov_node = wrapped.get_node(sovereign_id)
             if sov_node is None:
                 continue
@@ -89,11 +98,8 @@ class CollapseTransitionSystem(SystemBase):
         # Clear processed inputs (single-shot per tick).
         persistent["balkanization.collapse_triggers"] = {}
         persistent["balkanization.secession_eligible"] = []
-        if isinstance(context, dict):
-            context["persistent_data"] = persistent
-        else:
-            with contextlib.suppress(AttributeError):
-                context.persistent_data = persistent
+        with contextlib.suppress(AttributeError):
+            context.persistent_data = persistent
 
     def _collapse_sovereign(
         self,
@@ -280,23 +286,6 @@ class CollapseTransitionSystem(SystemBase):
                 continue
             with contextlib.suppress(KeyError):
                 wrapped.remove_node(sovereign_id)
-
-
-def _extract_tick(context: ContextType) -> int:
-    return int(context.get("tick", 0) if isinstance(context, dict) else getattr(context, "tick", 0))
-
-
-def _extract_persistent(context: ContextType) -> dict[str, Any]:
-    if isinstance(context, dict):
-        persistent = context.get("persistent_data")
-        if persistent is None:
-            persistent = {}
-            context["persistent_data"] = persistent
-        return persistent if isinstance(persistent, dict) else dict(persistent)
-    existing = getattr(context, "persistent_data", None)
-    if existing is None:
-        return {}
-    return existing if isinstance(existing, dict) else dict(existing)
 
 
 def _extraction_policy_for_faction(wrapped: GraphProtocol, faction_id: str) -> str:

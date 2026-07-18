@@ -20,6 +20,7 @@ from unittest.mock import MagicMock
 import pytest
 
 from babylon.config.defines.balkanization import BalkanizationDefines
+from babylon.engine.context import TickContext
 from babylon.engine.systems.collapse_transition import CollapseTransitionSystem
 from babylon.engine.systems.faction_influence import FactionInfluenceSystem
 from babylon.engine.systems.metabolism import MetabolismSystem
@@ -163,15 +164,18 @@ def _run_10_ticks(seed_id: str) -> tuple[dict[str, Any], list[_CapturedEvent]]:
 
     adapter = _build_initial_graph(seed_id)
     services = _services()
-    persistent: dict[str, Any] = {}
     pipeline = [
         FactionInfluenceSystem(),
         SovereigntySystem(),
         MetabolismSystem(),
         CollapseTransitionSystem(),
     ]
+    # Reuse ONE context so persistent_data accumulates across ticks —
+    # TickContext copies the dict on construction, so a fresh context per tick
+    # would reset cross-tick bookkeeping (e.g. FactionInfluence flip tracking).
+    context = TickContext(tick=0, persistent_data={})
     for tick in range(10):
-        context: dict[str, Any] = {"tick": tick, "persistent_data": persistent}
+        context.tick = tick
         for system in pipeline:
             system.step(adapter, services, context)
     # Snapshot final state as a deterministic dict.

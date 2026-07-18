@@ -105,4 +105,36 @@ describe("EconomyDashboard", () => {
     render(<EconomyDashboard gameId={DEFAULT_GAME_ID} />);
     await waitFor(() => expect(screen.getByTestId("crisis-timeline-empty")).toBeInTheDocument());
   });
+
+  it("renders every chip live from a fully-populated payload — no phantoms (spec-116 4d.6)", async () => {
+    server.use(
+      http.get("/api/games/:id/economy/", () =>
+        HttpResponse.json({
+          status: "ok",
+          data: makeEconomyDashboardPayload({ profit_rate: 0.153, occ: 2.4 }),
+        }),
+      ),
+    );
+    render(<EconomyDashboard gameId={DEFAULT_GAME_ID} />);
+    await waitFor(() => expect(screen.getByTestId("economy-stat-chips")).toBeInTheDocument());
+
+    expect(screen.getByTestId("stat-profit rate")).toHaveTextContent("0.153");
+    expect(screen.getByTestId("stat-occ")).toHaveTextContent("2.40");
+    // With a full payload, no chip in the row may fall back to "no data" —
+    // that would be a phantom (a TS-declared field the backend never sent).
+    expect(screen.getByTestId("economy-stat-chips")).not.toHaveTextContent("no data");
+  });
+
+  it("keeps honest 'no data' on exactly the year-boundary chips pre-boundary (spec-116 4d.6)", async () => {
+    // Default fixture: profit_rate/occ null (pre-tick-52 cadence honesty).
+    render(<EconomyDashboard gameId={DEFAULT_GAME_ID} />);
+    await waitFor(() => expect(screen.getByTestId("economy-stat-chips")).toBeInTheDocument());
+
+    expect(screen.getByTestId("stat-profit rate")).toHaveTextContent("no data");
+    expect(screen.getByTestId("stat-occ")).toHaveTextContent("no data");
+    // Every other chip stays live — tick-26 "all dead" can never recur.
+    expect(screen.getByTestId("stat-value produced")).not.toHaveTextContent("no data");
+    expect(screen.getByTestId("stat-rent pool")).not.toHaveTextContent("no data");
+    expect(screen.getByTestId("stat-wage flow")).not.toHaveTextContent("no data");
+  });
 });

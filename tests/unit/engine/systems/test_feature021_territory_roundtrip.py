@@ -17,6 +17,7 @@ from __future__ import annotations
 
 import pytest
 
+from babylon.engine.context import TickContext
 from babylon.engine.services import ServiceContainer
 from babylon.engine.systems.dispossession_events import DispossessionEventSystem
 from babylon.engine.systems.reserve_army import ReserveArmySystem
@@ -65,7 +66,7 @@ class TestReserveArmyOnProductionGraph:
     def test_mutates_to_graph_shaped_territory(self) -> None:
         """The system matches lowercase ``_node_type='territory'`` nodes."""
         graph = _wayne_state().to_graph()
-        ReserveArmySystem().step(graph, ServiceContainer.create(), {"tick": 1})
+        ReserveArmySystem().step(graph, ServiceContainer.create(), TickContext(tick=1))
 
         assert graph.nodes["T001"]["median_wage"] < 45000.0
         assert graph.nodes["T001"]["wage_pressure"] > 0.0
@@ -73,7 +74,7 @@ class TestReserveArmyOnProductionGraph:
     def test_round_trip_survives_and_persists_wage(self) -> None:
         """from_graph neither crashes nor loses the mutated wage."""
         graph = _wayne_state().to_graph()
-        ReserveArmySystem().step(graph, ServiceContainer.create(), {"tick": 1})
+        ReserveArmySystem().step(graph, ServiceContainer.create(), TickContext(tick=1))
 
         state = WorldState.from_graph(graph, tick=1)  # must NOT raise
         assert state.territories["T001"].median_wage < 45000.0
@@ -87,7 +88,7 @@ class TestDispossessionOnProductionGraph:
     def test_mutates_to_graph_shaped_territory(self) -> None:
         """The system matches lowercase ``_node_type='territory'`` nodes."""
         graph = _wayne_state().to_graph()
-        DispossessionEventSystem().step(graph, ServiceContainer.create(), {"tick": 1})
+        DispossessionEventSystem().step(graph, ServiceContainer.create(), TickContext(tick=1))
 
         assert graph.nodes["T001"]["wealth"] < 500_000_000.0
         assert graph.nodes["T001"]["dispossession_intensity"] > 0.0
@@ -95,7 +96,7 @@ class TestDispossessionOnProductionGraph:
     def test_round_trip_survives_and_persists_wealth(self) -> None:
         """from_graph neither crashes nor loses the mutated wealth."""
         graph = _wayne_state().to_graph()
-        DispossessionEventSystem().step(graph, ServiceContainer.create(), {"tick": 1})
+        DispossessionEventSystem().step(graph, ServiceContainer.create(), TickContext(tick=1))
 
         state = WorldState.from_graph(graph, tick=1)  # must NOT raise
         assert state.territories["T001"].wealth < 500_000_000.0

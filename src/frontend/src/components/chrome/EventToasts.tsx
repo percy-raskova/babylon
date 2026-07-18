@@ -15,6 +15,7 @@ import { useEffect, useState } from "react";
 import { useStore } from "@/store";
 import type { ToastEntry } from "@/store/slices/eventsSlice";
 import type { EventCategory, StreamEvent } from "@/lib/eventClassifier";
+import { dedupeEvents } from "@/lib/eventDedup";
 import { keyButtonClass } from "./installerKit";
 import { maoScore } from "@/components/map/layers/stormMarkers";
 
@@ -58,14 +59,22 @@ function ruptureScoreCopy(event: StreamEvent): string | null {
   return `Principal-contradiction score ≈ ${maoScore(gap, rate).toFixed(2)}`;
 }
 
-function EventLine({ event }: { event: StreamEvent }): React.JSX.Element {
+function EventLine({
+  event,
+  count = 1,
+}: {
+  event: StreamEvent;
+  count?: number;
+}): React.JSX.Element {
   // "Headlines lead with actor + action + tick" (DESIGN_BIBLE §7).
   const headline = event.event.title || event.event.type;
   const scoreCopy = ruptureScoreCopy(event);
   return (
     <div className="flex flex-col gap-0.5">
       <span className="text-[11px] text-ink">
-        {headline} <span className="text-ksbc-muted-2">— tick {event.tick}</span>
+        {headline}
+        {count > 1 && <span className="text-accent-gold"> ×{count}</span>}
+        <span className="text-ksbc-muted-2"> — tick {event.tick}</span>
       </span>
       {event.event.body && (
         <span className="text-[10px] text-ksbc-muted-2">{event.event.body}</span>
@@ -117,10 +126,19 @@ function ToastCard({
         </button>
       ) : (
         <div className="flex flex-col gap-1.5">
-          {toast.events.map((e) => (
-            <EventLine key={e.id} event={e} />
+          {dedupeEvents(toast.events).map((run) => (
+            <EventLine key={run.representative.id} event={run.representative} count={run.count} />
           ))}
         </div>
+      )}
+
+      {toast.dedupKey !== null && toast.count > 1 && (
+        <span
+          data-testid={`toast-count-${toast.id}`}
+          className="mt-1 inline-block font-mono text-[9px] text-accent-gold"
+        >
+          ×{toast.count} · through tick {toast.lastTick}
+        </span>
       )}
 
       <div className="mt-1.5 flex items-center justify-between gap-2">

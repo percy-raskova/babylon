@@ -67,6 +67,12 @@ test.describe("end turn -> tick resolution (cockpit, spec-110 B6)", () => {
   });
 
   test("Play advances the tick automatically; Pause halts the loop", async ({ page }) => {
+    // Live budget: a stop-request landing mid-resolve must wait out the full
+    // in-flight engine tick (a real resolve runs 15-19s — the Step test above
+    // allots 30s for one) before the serialized loop settles to PAUSED. The
+    // default 30s TEST budget can truncate that tail, so lift it (matches the
+    // 2x-speed sibling below, same stop-request-mid-resolve semantics).
+    test.setTimeout(120_000);
     expect(gameId, "session-creation test ran first").toBeTruthy();
     await page.goto(`/game/${gameId}`);
     await expect(page.getByTestId("tick-value")).toHaveText("1", { timeout: 15000 });
@@ -93,12 +99,24 @@ test.describe("end turn -> tick resolution (cockpit, spec-110 B6)", () => {
     // Pause only if the loop is still running; either halt path stops it.
     await page.waitForTimeout(1500);
     const status = page.getByTestId("time-status");
-    const stillPlaying = /^(PLAYING|RESOLVING)$/.test((await status.textContent()) ?? "");
+    // Unanchored (matches line 81): the resolving label renders as "RESOLVING…"
+    // (trailing ellipsis, TimeControls STATUS_LABEL), so an anchored
+    // /^RESOLVING$/ never matched it — under a live engine the loop sits in
+    // "resolving" ~99% of the time, so the anchored form skipped the Pause
+    // click on almost every run and only "passed" when the 1500ms sample
+    // happened to catch the sub-100ms exact-"PLAYING" window (the true source
+    // of this test's long-standing flake — not engine latency).
+    const stillPlaying = /PLAYING|RESOLVING/.test((await status.textContent()) ?? "");
     if (stillPlaying) {
       await page.getByRole("button", { name: "Pause" }).click();
     }
+    // 45s (not 20s): when Pause lands at the START of a resolve, the loop can
+    // only halt after that entire ~15-19s tick settles (pause() defers to the
+    // in-flight resolve by design — it never aborts the request). 20s left no
+    // margin and flaked when a resolve ran long; the 2x-speed sibling below
+    // already uses 45s for the identical mid-resolve stop-request.
     await expect(status).toHaveText(/^(PAUSED|AUTOPAUSED)$/, {
-      timeout: 20000,
+      timeout: 45000,
     });
 
     const endTick = Number((await page.getByTestId("tick-value").textContent()) ?? "0");

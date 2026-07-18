@@ -20,6 +20,7 @@ runtime config, so it carries no round-trip/regeneration machinery.
 
 from __future__ import annotations
 
+from babylon.models.enums.events import EventType
 from babylon.sentinels.seam.types import LivenessClass, SeamEntry, SeamScope
 
 # ---------------------------------------------------------------------------
@@ -479,11 +480,23 @@ _MAP_METRICS: tuple[SeamEntry, ...] = (
 # * Group B (3, DECLARED_CONDITIONAL) — real, non-null, but FROZEN at their
 #   ``CountyEconomicState``/seed bootstrap constants until the named
 #   calculator is wired (never silently relabeled as "live" data).
-# * Group C (7, STRUCTURALLY_IMPOSSIBLE) — the circulation layer, dead until
-#   ``turnover_profile_source`` is wired (gate:
-#   ``domain/economics/tick/system/__init__.py:1050``).
-# * Group D (9, STRUCTURALLY_IMPOSSIBLE) — the financial-distribution layer,
-#   dead until ``interest_calculator`` is wired (gate: same file, :1248).
+# * Group C (7, DECLARED_CONDITIONAL) — the circulation layer, now genuinely
+#   live: Task 20b (spec-116) wires a real ``turnover_profile_source`` service
+#   (gate: ``domain/economics/tick/system/__init__.py:1167``) into
+#   ``_bridge_economics_overrides``. Before this, registered
+#   ``NOT_YET_COMPUTED`` by the Task 20 de-mock correction (and, before THAT,
+#   a false ``STRUCTURALLY_IMPOSSIBLE`` ruling) while the FRED-backed sibling
+#   implementation (``DefaultTurnoverProfileSource``,
+#   ``domain/economics/factory.py``) existed but sat unwired.
+# * Group D (9 total; 8 DECLARED_CONDITIONAL + 1 still NOT_YET_COMPUTED) — the
+#   financial-distribution layer. Task 20b also wires a real
+#   ``interest_calculator`` service (gate: same file, :1365), lighting 8 of
+#   the 9 attrs the same way. ``tick_ground_rent`` is the lone holdout: it
+#   stays ``NOT_YET_COMPUTED`` on a SECOND, independent gate —
+#   ``_DefaultCountyRentalAdapter`` (``domain/economics/factory.py``)
+#   unconditionally returns ``None`` for agricultural/resource/urban rent, an
+#   honest data-absence (no county rental series in the reference DB), not a
+#   mock to launder (Constitution III.11).
 #
 # ``tick_throughput_position``/``tick_supply_chain_depth`` were deliberately
 # EXCLUDED from this Round-1 list — owner ruling 1 wires them for real in
@@ -497,27 +510,72 @@ _MAP_METRICS: tuple[SeamEntry, ...] = (
 
 _TERRITORY_EMITTERS: tuple[str, ...] = ("web/game/engine_bridge.py::_serialize_territory (:6218)",)
 
-#: Groups C/D reach no serializer — that is the point (STRUCTURALLY_IMPOSSIBLE).
-#: ``read_paths`` honestly cites the one place these attrs exist at all: the
-#: engine's own write-site, not a bridge/serializer read call that doesn't exist.
+#: Groups C/D ride the same two emitters regardless of liveness: the write
+#: site stamps a value (real or fallback) at every year boundary, and
+#: ``_serialize_territory`` reads it through unmodified. Task 20b (spec-116)
+#: wires the gating services for 15 of the 16 rows below (``_CIRCULATION_LIVE``/
+#: ``_FINANCIAL_LIVE``), leaving only ``tick_ground_rent`` genuinely dark on a
+#: second, independent gate.
 _TICK_WRITE_SITE: tuple[str, ...] = (
     "src/babylon/domain/economics/tick/graph_bridge.py::write_tick_state_to_graph "
     "(year-boundary graph.update_node call, :102-195)",
 )
 
-_TURNOVER_GATE: str = (
-    "STRUCTURALLY_IMPOSSIBLE: gated on the unwired `turnover_profile_source` service "
-    "(domain/economics/tick/system/__init__.py:1050) — the circulation layer never "
-    "computes this without a real turnover-profile source. Reaches no serializer; "
-    "the observatory tells the truth about the gap instead of carrying silent debt."
+_TICK_DARK_EMITTERS: tuple[str, ...] = _TICK_WRITE_SITE + _TERRITORY_EMITTERS
+
+_CIRCULATION_LIVE: str = (
+    "Genuinely live (Task 20b, spec-116): _bridge_economics_overrides wires a real "
+    "turnover_profile_source (domain.economics.factory.create_circulation_services) over "
+    "the same reference-DB session_factory melt/gamma/leontief/throughput above already "
+    "use, so the `services.turnover_profile_source is None` gate "
+    "(domain/economics/tick/system/__init__.py:1167) no longer holds. Distinct from this "
+    "attr's prior NOT_YET_COMPUTED state (Task 20 de-mock correction) — that gap was pure "
+    "engineering (the calculator was never constructed), now fixed."
 )
 
-_INTEREST_GATE: str = (
-    "STRUCTURALLY_IMPOSSIBLE: gated on the unwired `interest_calculator` service "
-    "(domain/economics/tick/system/__init__.py:1248) — the financial distribution "
-    "layer never computes this without a real interest calculator. Reaches no "
-    "serializer; the observatory tells the truth about the gap instead of carrying "
-    "silent debt."
+_FINANCIAL_LIVE: str = (
+    "Genuinely live (Task 20b, spec-116): _bridge_economics_overrides wires a real "
+    "interest_calculator (domain.economics.factory.create_financial_services) over the "
+    "same reference-DB session_factory melt/gamma/leontief/throughput above already use, "
+    "so the `services.interest_calculator is None` gate "
+    "(domain/economics/tick/system/__init__.py:1365) no longer holds. Distinct from this "
+    "attr's prior NOT_YET_COMPUTED state (Task 20 de-mock correction) — that gap was pure "
+    "engineering (the calculator was never constructed), now fixed."
+)
+
+_CIRCULATION_LIVENESS_CONDITION: str = (
+    f"{_YEAR_BOUNDARY}; also requires _bridge_economics_overrides to have wired a "
+    "turnover_profile_source (Task 20b) AND the county to carry capital_stock > 0 "
+    "(domain/economics/tick/system/__init__.py:1260, inside "
+    "_compute_county_circulation_state)"
+)
+
+_FINANCIAL_LIVENESS_CONDITION: str = (
+    f"{_YEAR_BOUNDARY}; also requires _bridge_economics_overrides to have wired an "
+    "interest_calculator (Task 20b) AND the county's tensor-derived total_surplus > 0 "
+    "(domain/economics/tick/system/__init__.py:1448, inside "
+    "_compute_county_financial_state via distribution_calculator)"
+)
+
+#: Task 21b (spec-116): _bridge_economics_overrides now wires a real
+#: reserve_army_data_source (domain.economics.factory.create_vol1_services)
+#: over the same reference-DB session_factory the rows above already use, so
+#: the `services.reserve_army_data_source is None` gate
+#: (domain/economics/tick/system/__init__.py:1100) no longer short-circuits
+#: `_compute_vol1_layer` unconditionally. Unlike Groups C/D, tick_median_wage
+#: was never NULL either side of this wiring (the QCEW wage_source bootstrap,
+#: Item 60, always seeds a real value) — what changes is whether that
+#: bootstrap is the WHOLE story or genuinely endogenous afterward, so this is
+#: a liveness_condition/notes correction on an already-DECLARED_CONDITIONAL
+#: row, not a liveness_class promotion.
+_WAGE_PRESSURE_LIVENESS_CONDITION: str = (
+    f"{_YEAR_BOUNDARY}; the bootstrap (QCEW p50, owner item 60) is live regardless — this "
+    "condition covers only whether the value is ALSO genuinely endogenous after tick 1: "
+    "requires _bridge_economics_overrides to have wired a reserve_army_data_source (Task 21b) "
+    "AND get_unemployment_decomposition(fips, year) to return non-None (UNRATE present for "
+    "the year in fact_fred_national, domain/economics/tick/system/__init__.py:1139) — a "
+    "territory outside that coverage carries the bootstrap-only value forward unadjusted, "
+    "never a fabricated compression (Constitution III.11)."
 )
 
 _TERRITORY_TICK_METRICS: tuple[SeamEntry, ...] = (
@@ -662,19 +720,29 @@ _TERRITORY_TICK_METRICS: tuple[SeamEntry, ...] = (
         scope=SeamScope.TERRITORY,
         owner_layer="domain.economics.tick (QCEW p50 bootstrap + wage-pressure dynamics)",
         liveness_class=LivenessClass.DECLARED_CONDITIONAL,
-        liveness_condition=_YEAR_BOUNDARY,
+        liveness_condition=_WAGE_PRESSURE_LIVENESS_CONDITION,
         dtype="float",
         read_paths=_TERRITORY_EMITTERS,
-        spec_ref="Epochs audit · Wave 2 · Gap-1 · owner item 60",
+        spec_ref="Epochs audit · Wave 2 · Gap-1 · owner item 60 · spec-116 Task 21b",
         notes=(
             "Item 60 (2026-07-15): the bootstrap is now the employment-weighted "
             "p50 estimator over QCEW 6-digit industry wages via "
             "services.wage_source (a genuine median approximation — the raw "
             "QCEW county mean was NOT wired precisely because it is a mean). "
-            "ENDOGENOUS after tick 1: wage-pressure/compression dynamics own "
-            "the trajectory; the source seeds only the initial condition. "
-            "21.0 $/hr remains the documented unwired/absent-row bootstrap. "
-            "Wire key deliberately kept tick_-prefixed (not 'median_wage') to avoid "
+            "ENDOGENOUS after tick 1 (Task 21b, spec-116): wage-pressure/"
+            "compression dynamics now genuinely own the trajectory for a "
+            "county with UNRATE coverage for the year — "
+            "_bridge_economics_overrides wires a real reserve_army_data_source "
+            "(domain.economics.factory.create_vol1_services), opening the "
+            "`services.reserve_army_data_source is None` gate "
+            "(domain/economics/tick/system/__init__.py:1100). Before Task "
+            "21b this ENDOGENOUS claim was aspirational only: no runner ever "
+            "constructed that service, so the wage-pressure sigmoid never "
+            "fired in a web session and the QCEW bootstrap was the whole "
+            "story every tick. 21.0 $/hr remains the documented unwired/"
+            "absent-row bootstrap — never a fabricated compression when "
+            "UNRATE is absent for the year (Constitution III.11). Wire key "
+            "deliberately kept tick_-prefixed (not 'median_wage') to avoid "
             "colliding with the real, distinct Territory.median_wage field "
             "(Feature 021) already on the same _serialize_territory payload."
         ),
@@ -745,108 +813,126 @@ _TERRITORY_TICK_METRICS: tuple[SeamEntry, ...] = (
         spec_ref="Epochs audit · Wave 2 · owner ruling 1",
         notes="D, employment-weighted NAICS supply-chain depth (0-5 scale), Feature 014.",
     ),
-    # --- Group C: circulation layer, gated on turnover_profile_source (:1050) ---
+    # --- Group C: circulation layer, gated on turnover_profile_source (:1167)
+    # — LIT by Task 20b (spec-116): _bridge_economics_overrides now wires a
+    # real turnover_profile_source, so all 7 rows move from NOT_YET_COMPUTED
+    # to DECLARED_CONDITIONAL. ---
     SeamEntry(
         payload="tick_liquidity_ratio",
         wire_keys=("tick_liquidity_ratio",),
         scope=SeamScope.TERRITORY,
         owner_layer="domain.economics.tick (CirculationState.circuit_state)",
-        liveness_class=LivenessClass.STRUCTURALLY_IMPOSSIBLE,
+        liveness_class=LivenessClass.DECLARED_CONDITIONAL,
+        liveness_condition=_CIRCULATION_LIVENESS_CONDITION,
         dtype="float",
-        read_paths=_TICK_WRITE_SITE,
-        spec_ref="Epochs audit · Wave 2 · Gap-1",
-        notes=_TURNOVER_GATE,
+        read_paths=_TICK_DARK_EMITTERS,
+        spec_ref="Epochs audit · Wave 2 · Gap-1 · spec-116 Task 20b",
+        notes=_CIRCULATION_LIVE,
     ),
     SeamEntry(
         payload="tick_commodity_overhang",
         wire_keys=("tick_commodity_overhang",),
         scope=SeamScope.TERRITORY,
         owner_layer="domain.economics.tick (CirculationState.circuit_state)",
-        liveness_class=LivenessClass.STRUCTURALLY_IMPOSSIBLE,
+        liveness_class=LivenessClass.DECLARED_CONDITIONAL,
+        liveness_condition=_CIRCULATION_LIVENESS_CONDITION,
         dtype="float",
-        read_paths=_TICK_WRITE_SITE,
-        spec_ref="Epochs audit · Wave 2 · Gap-1",
-        notes=_TURNOVER_GATE,
+        read_paths=_TICK_DARK_EMITTERS,
+        spec_ref="Epochs audit · Wave 2 · Gap-1 · spec-116 Task 20b",
+        notes=_CIRCULATION_LIVE,
     ),
     SeamEntry(
         payload="tick_replacement_cycle",
         wire_keys=("tick_replacement_cycle",),
         scope=SeamScope.TERRITORY,
         owner_layer="domain.economics.tick (DepreciationFundState.replacement_cycle_position)",
-        liveness_class=LivenessClass.STRUCTURALLY_IMPOSSIBLE,
+        liveness_class=LivenessClass.DECLARED_CONDITIONAL,
+        liveness_condition=_CIRCULATION_LIVENESS_CONDITION,
         dtype="enum:ReplacementCyclePosition",
-        read_paths=_TICK_WRITE_SITE,
-        spec_ref="Epochs audit · Wave 2 · Gap-1",
-        notes=_TURNOVER_GATE,
+        read_paths=_TICK_DARK_EMITTERS,
+        spec_ref="Epochs audit · Wave 2 · Gap-1 · spec-116 Task 20b",
+        notes=_CIRCULATION_LIVE,
     ),
     SeamEntry(
         payload="tick_inventory_diagnosis",
         wire_keys=("tick_inventory_diagnosis",),
         scope=SeamScope.TERRITORY,
         owner_layer="domain.economics.tick (InventoryState.inventory_problem)",
-        liveness_class=LivenessClass.STRUCTURALLY_IMPOSSIBLE,
+        liveness_class=LivenessClass.DECLARED_CONDITIONAL,
+        liveness_condition=_CIRCULATION_LIVENESS_CONDITION,
         dtype="enum:InventoryDiagnosis",
-        read_paths=_TICK_WRITE_SITE,
-        spec_ref="Epochs audit · Wave 2 · Gap-1",
-        notes=_TURNOVER_GATE,
+        read_paths=_TICK_DARK_EMITTERS,
+        spec_ref="Epochs audit · Wave 2 · Gap-1 · spec-116 Task 20b",
+        notes=_CIRCULATION_LIVE,
     ),
     SeamEntry(
         payload="tick_realization_crisis",
         wire_keys=("tick_realization_crisis",),
         scope=SeamScope.TERRITORY,
         owner_layer="domain.economics.tick (CirculationAssessment)",
-        liveness_class=LivenessClass.STRUCTURALLY_IMPOSSIBLE,
+        liveness_class=LivenessClass.DECLARED_CONDITIONAL,
+        liveness_condition=_CIRCULATION_LIVENESS_CONDITION,
         dtype="bool",
-        read_paths=_TICK_WRITE_SITE,
-        spec_ref="Epochs audit · Wave 2 · Gap-1",
-        notes=_TURNOVER_GATE,
+        read_paths=_TICK_DARK_EMITTERS,
+        spec_ref="Epochs audit · Wave 2 · Gap-1 · spec-116 Task 20b",
+        notes=_CIRCULATION_LIVE,
     ),
     SeamEntry(
         payload="tick_turnover_crisis",
         wire_keys=("tick_turnover_crisis",),
         scope=SeamScope.TERRITORY,
         owner_layer="domain.economics.tick (CirculationAssessment)",
-        liveness_class=LivenessClass.STRUCTURALLY_IMPOSSIBLE,
+        liveness_class=LivenessClass.DECLARED_CONDITIONAL,
+        liveness_condition=_CIRCULATION_LIVENESS_CONDITION,
         dtype="bool",
-        read_paths=_TICK_WRITE_SITE,
-        spec_ref="Epochs audit · Wave 2 · Gap-1",
-        notes=_TURNOVER_GATE,
+        read_paths=_TICK_DARK_EMITTERS,
+        spec_ref="Epochs audit · Wave 2 · Gap-1 · spec-116 Task 20b",
+        notes=_CIRCULATION_LIVE,
     ),
     SeamEntry(
         payload="tick_reproduction_crisis",
         wire_keys=("tick_reproduction_crisis",),
         scope=SeamScope.TERRITORY,
         owner_layer="domain.economics.tick (CirculationAssessment)",
-        liveness_class=LivenessClass.STRUCTURALLY_IMPOSSIBLE,
+        liveness_class=LivenessClass.DECLARED_CONDITIONAL,
+        liveness_condition=_CIRCULATION_LIVENESS_CONDITION,
         dtype="bool",
-        read_paths=_TICK_WRITE_SITE,
-        spec_ref="Epochs audit · Wave 2 · Gap-1",
-        notes=_TURNOVER_GATE,
+        read_paths=_TICK_DARK_EMITTERS,
+        spec_ref="Epochs audit · Wave 2 · Gap-1 · spec-116 Task 20b",
+        notes=_CIRCULATION_LIVE,
     ),
-    # --- Group D: financial distribution, gated on interest_calculator (:1248) ---
+    # --- Group D: financial distribution, gated on interest_calculator (:1365)
+    # — LIT by Task 20b (spec-116): _bridge_economics_overrides now wires a
+    # real interest_calculator, so 8 of 9 rows move from NOT_YET_COMPUTED to
+    # DECLARED_CONDITIONAL. tick_ground_rent is the exception: it STAYS
+    # NOT_YET_COMPUTED — a second, independent gate (_DefaultCountyRentalAdapter
+    # unconditionally returning None) still keeps it dark. ---
     SeamEntry(
         payload="tick_interest_burden",
         wire_keys=("tick_interest_burden",),
         scope=SeamScope.TERRITORY,
         owner_layer="domain.economics.tick (SurplusDistribution.interest_payments)",
-        liveness_class=LivenessClass.STRUCTURALLY_IMPOSSIBLE,
+        liveness_class=LivenessClass.DECLARED_CONDITIONAL,
+        liveness_condition=_FINANCIAL_LIVENESS_CONDITION,
         dtype="float",
-        read_paths=_TICK_WRITE_SITE,
-        spec_ref="Epochs audit · Wave 2 · Gap-1",
-        notes=_INTEREST_GATE,
+        read_paths=_TICK_DARK_EMITTERS,
+        spec_ref="Epochs audit · Wave 2 · Gap-1 · spec-116 Task 20b",
+        notes=_FINANCIAL_LIVE,
     ),
     SeamEntry(
         payload="tick_ground_rent",
         wire_keys=("tick_ground_rent",),
         scope=SeamScope.TERRITORY,
         owner_layer="domain.economics.tick (RentExtraction.total_rent)",
-        liveness_class=LivenessClass.STRUCTURALLY_IMPOSSIBLE,
+        liveness_class=LivenessClass.NOT_YET_COMPUTED,
         dtype="float",
-        read_paths=_TICK_WRITE_SITE,
-        spec_ref="Epochs audit · Wave 2 · Gap-1",
+        read_paths=_TICK_DARK_EMITTERS,
+        spec_ref="Epochs audit · Wave 2 · Gap-1 · spec-116 Task 20b",
         notes=(
-            f"{_INTEREST_GATE} Second wall even if wired: _DefaultCountyRentalAdapter "
-            "returns None, so this stays dark past the interest_calculator gate too."
+            "STILL NOT_YET_COMPUTED after Task 20b: gated on "
+            "`_DefaultCountyRentalAdapter` returning None — no county rental series "
+            "in the reference DB; interest_calculator is now wired but ground rent "
+            "needs a real rental data source (future data-acquisition task)."
         ),
     ),
     SeamEntry(
@@ -854,24 +940,26 @@ _TERRITORY_TICK_METRICS: tuple[SeamEntry, ...] = (
         wire_keys=("tick_rentier_share",),
         scope=SeamScope.TERRITORY,
         owner_layer="domain.economics.tick (SurplusDistribution.rentier_share)",
-        liveness_class=LivenessClass.STRUCTURALLY_IMPOSSIBLE,
+        liveness_class=LivenessClass.DECLARED_CONDITIONAL,
+        liveness_condition=_FINANCIAL_LIVENESS_CONDITION,
         dtype="float",
-        read_paths=_TICK_WRITE_SITE,
-        spec_ref="Epochs audit · Wave 2 · Gap-1",
-        notes=_INTEREST_GATE,
+        read_paths=_TICK_DARK_EMITTERS,
+        spec_ref="Epochs audit · Wave 2 · Gap-1 · spec-116 Task 20b",
+        notes=_FINANCIAL_LIVE,
     ),
     SeamEntry(
         payload="tick_profit_of_enterprise",
         wire_keys=("tick_profit_of_enterprise",),
         scope=SeamScope.TERRITORY,
         owner_layer="domain.economics.tick (SurplusDistribution.profit_of_enterprise)",
-        liveness_class=LivenessClass.STRUCTURALLY_IMPOSSIBLE,
+        liveness_class=LivenessClass.DECLARED_CONDITIONAL,
+        liveness_condition=_FINANCIAL_LIVENESS_CONDITION,
         dtype="float",
-        read_paths=_TICK_WRITE_SITE,
-        spec_ref="Epochs audit · Wave 2 · Gap-1",
+        read_paths=_TICK_DARK_EMITTERS,
+        spec_ref="Epochs audit · Wave 2 · Gap-1 · spec-116 Task 20b",
         notes=(
-            f"{_INTEREST_GATE} Can be negative (a debt-spiral signal) once wired — "
-            "never clamp to 0 if this is ever lit."
+            f"{_FINANCIAL_LIVE} Can be negative (a debt-spiral signal) — never clamp "
+            "to 0 now that this is genuinely lit."
         ),
     ),
     SeamEntry(
@@ -879,45 +967,49 @@ _TERRITORY_TICK_METRICS: tuple[SeamEntry, ...] = (
         wire_keys=("tick_financialization_share",),
         scope=SeamScope.TERRITORY,
         owner_layer="domain.economics.tick (SurplusDistribution.financialization_share)",
-        liveness_class=LivenessClass.STRUCTURALLY_IMPOSSIBLE,
+        liveness_class=LivenessClass.DECLARED_CONDITIONAL,
+        liveness_condition=_FINANCIAL_LIVENESS_CONDITION,
         dtype="float",
-        read_paths=_TICK_WRITE_SITE,
-        spec_ref="Epochs audit · Wave 2 · Gap-1",
-        notes=_INTEREST_GATE,
+        read_paths=_TICK_DARK_EMITTERS,
+        spec_ref="Epochs audit · Wave 2 · Gap-1 · spec-116 Task 20b",
+        notes=_FINANCIAL_LIVE,
     ),
     SeamEntry(
         payload="tick_accumulated_debt",
         wire_keys=("tick_accumulated_debt",),
         scope=SeamScope.TERRITORY,
         owner_layer="domain.economics.tick (DebtAccumulation.accumulated_debt)",
-        liveness_class=LivenessClass.STRUCTURALLY_IMPOSSIBLE,
+        liveness_class=LivenessClass.DECLARED_CONDITIONAL,
+        liveness_condition=_FINANCIAL_LIVENESS_CONDITION,
         dtype="float",
-        read_paths=_TICK_WRITE_SITE,
-        spec_ref="Epochs audit · Wave 2 · Gap-1",
-        notes=_INTEREST_GATE,
+        read_paths=_TICK_DARK_EMITTERS,
+        spec_ref="Epochs audit · Wave 2 · Gap-1 · spec-116 Task 20b",
+        notes=_FINANCIAL_LIVE,
     ),
     SeamEntry(
         payload="tick_claims_exceed_surplus",
         wire_keys=("tick_claims_exceed_surplus",),
         scope=SeamScope.TERRITORY,
         owner_layer="domain.economics.tick (SurplusDistribution.claims_exceed_surplus)",
-        liveness_class=LivenessClass.STRUCTURALLY_IMPOSSIBLE,
+        liveness_class=LivenessClass.DECLARED_CONDITIONAL,
+        liveness_condition=_FINANCIAL_LIVENESS_CONDITION,
         dtype="bool",
-        read_paths=_TICK_WRITE_SITE,
-        spec_ref="Epochs audit · Wave 2 · Gap-1",
-        notes=_INTEREST_GATE,
+        read_paths=_TICK_DARK_EMITTERS,
+        spec_ref="Epochs audit · Wave 2 · Gap-1 · spec-116 Task 20b",
+        notes=_FINANCIAL_LIVE,
     ),
     SeamEntry(
         payload="tick_housing_fictitious_fraction",
         wire_keys=("tick_housing_fictitious_fraction",),
         scope=SeamScope.TERRITORY,
         owner_layer="domain.economics.tick (HousingValueDecomposition.fictitious_fraction)",
-        liveness_class=LivenessClass.STRUCTURALLY_IMPOSSIBLE,
+        liveness_class=LivenessClass.DECLARED_CONDITIONAL,
+        liveness_condition=_FINANCIAL_LIVENESS_CONDITION,
         dtype="float",
-        read_paths=_TICK_WRITE_SITE,
-        spec_ref="Epochs audit · Wave 2 · Gap-1",
+        read_paths=_TICK_DARK_EMITTERS,
+        spec_ref="Epochs audit · Wave 2 · Gap-1 · spec-116 Task 20b",
         notes=(
-            f"{_INTEREST_GATE} The only Group D attr with an honest None write-side "
+            f"{_FINANCIAL_LIVE} The only Group D attr with an honest None write-side "
             "fallback (graph_bridge.py already writes None, not 0.0, when "
             "housing_decomposition is absent)."
         ),
@@ -927,11 +1019,12 @@ _TERRITORY_TICK_METRICS: tuple[SeamEntry, ...] = (
         wire_keys=("tick_financial_crisis_signals",),
         scope=SeamScope.TERRITORY,
         owner_layer="domain.economics.tick (FinancialCrisisSignals.active_signals)",
-        liveness_class=LivenessClass.STRUCTURALLY_IMPOSSIBLE,
+        liveness_class=LivenessClass.DECLARED_CONDITIONAL,
+        liveness_condition=_FINANCIAL_LIVENESS_CONDITION,
         dtype="int",
-        read_paths=_TICK_WRITE_SITE,
-        spec_ref="Epochs audit · Wave 2 · Gap-1",
-        notes=f"{_INTEREST_GATE} Count of active signals, int in [0, 4].",
+        read_paths=_TICK_DARK_EMITTERS,
+        spec_ref="Epochs audit · Wave 2 · Gap-1 · spec-116 Task 20b",
+        notes=f"{_FINANCIAL_LIVE} Count of active signals, int in [0, 4].",
     ),
     # --- Wave 5 receptivity lens pair, territory-serializer/inspector rows
     # (2026-07-15). mass_receptivity/vision_state mirror their MAP-scope
@@ -2012,6 +2105,334 @@ _DOCTRINE_METRICS: tuple[SeamEntry, ...] = (
     ),
 )
 
+# --- ENDGAME scope (spec-116 Playability Spine, Task 4) ---
+# The per-tick "how close" HUD signal: EndgameDetector's axis_progress() /
+# recognized_pattern / pattern_since_tick, composed with the bridge-derived
+# horizon_tick/locked into resolve_tick's snapshot['endgame_progress']. The
+# ENDGAME scope enum member predates this row (its docstring already named
+# `get_endgame_state`'s `outcome` field) — this is the first ENDGAME-scope
+# row actually registered; backfilling the rest of get_endgame_state's wire
+# keys is a separate, pre-existing gap (Seam Phase 3's remit), not this
+# task's scope.
+
+_ENDGAME_PROGRESS_EMITTERS: tuple[str, ...] = (
+    "web/game/engine_bridge.py::EngineBridge.resolve_tick (per-tick snapshot['endgame_progress'])",
+    "web/game/engine_bridge.py::EngineBridge.get_journal_objectives (axes read back off graph_attrs)",
+)
+
+_ENDGAME_METRICS: tuple[SeamEntry, ...] = (
+    SeamEntry(
+        payload="endgame_progress",
+        wire_keys=("endgame_progress",),
+        scope=SeamScope.ENDGAME,
+        owner_layer=(
+            "babylon.engine.observers.endgame_detector.EndgameDetector "
+            "(axis_progress/recognized_pattern/pattern_since_tick) + "
+            "bridge-derived horizon_tick/locked"
+        ),
+        liveness_class=LivenessClass.MUST_BE_LIVE,
+        dtype="json",
+        derivation_site=(
+            "web/game/engine_bridge.py::EngineBridge.resolve_tick (assembled "
+            "from the per-session-cached EndgameDetector, then stashed onto "
+            "new_graph as a graph-level attribute before persist_tick so it "
+            "survives worker restarts — same channel as "
+            "ContradictionSystem's contradiction_frames)"
+        ),
+        read_paths=_ENDGAME_PROGRESS_EMITTERS,
+        nullable=False,
+        spec_ref="spec-116 Playability Spine · Task 4 (FR-116-1)",
+        notes=(
+            "Every tick's {axes: {5 GameOutcome keys -> [0,1] progress}, "
+            "pattern, since_tick, horizon_tick, locked} block. Owner ruling "
+            "2026-07-17: patterns are recognized, never adjudicated — this "
+            "is the live 'how close' HUD signal. get_journal_objectives "
+            "reads these same persisted axes (not the in-process detector "
+            "cache), so objective progress survives a worker restart."
+        ),
+    ),
+)
+
+# --- EVENT scope (spec-116 Playability Spine, Task 4) ---
+# pattern_shift is the lone EVENT-scope row today: no other EventType member
+# is individually registered here yet (a pre-existing gap awaiting the Seam
+# Phase 3 bridge-serialization sweep). This row exists because Task 4
+# introduces the wire key, not because it retroactively closes that gap.
+
+_PATTERN_SHIFT_EMITTERS: tuple[str, ...] = (
+    "web/game/engine_bridge.py::EngineBridge.resolve_tick (PatternShiftEvent appended to new_state.events on a recognized-pattern change)",
+)
+
+_PATTERN_SHIFT_METRICS: tuple[SeamEntry, ...] = (
+    SeamEntry(
+        payload="pattern_shift",
+        wire_keys=("pattern_shift",),
+        scope=SeamScope.EVENT,
+        owner_layer=(
+            "bridge-derived (web/game/engine_bridge.py::EngineBridge.resolve_tick, "
+            "from EndgameDetector.recognized_pattern deltas)"
+        ),
+        liveness_class=LivenessClass.DECLARED_CONDITIONAL,
+        liveness_condition=(
+            "fires only on the tick the recognized pattern changes (including "
+            "dissolving to None); absent on every other tick"
+        ),
+        dtype="json",
+        event_type=EventType.PATTERN_SHIFT,
+        read_paths=_PATTERN_SHIFT_EMITTERS,
+        spec_ref="spec-116 Playability Spine · Task 4 (FR-116-1)",
+        notes=(
+            "PatternShiftEvent: pattern/previous/since_tick. Distinct from "
+            "EndgameEvent (endgame_reached), which fires once, at the fixed "
+            "century horizon — recognizing a pattern never ends the game."
+        ),
+    ),
+)
+
+# ---------------------------------------------------------------------------
+# ENDGAME scope — spec-116 FR-116-4.2 epilogue keys on the
+# ``get_endgame_state`` payload (GET /api/games/{id}/endgame/).
+# Pre-existing keys (tick/outcome/headline/summary/stats) predate the
+# registry; only the Playability Spine's NEW wire keys are declared here.
+#
+# NOTE: named ``_ENDGAME_EPILOGUE_METRICS`` (not ``_ENDGAME_METRICS``) — Task
+# 4 already claimed the ``_ENDGAME_METRICS`` Python name above for the
+# ``endgame_progress`` row. Reusing that name here would silently rebind it
+# and drop Task 4's row out of the ``SEAM_REGISTRY`` sum (Python module-level
+# names, not the SeamEntry ``key`` property, are what collide); this section
+# is summed in under its own distinct name instead.
+# ---------------------------------------------------------------------------
+
+_ENDGAME_EPILOGUE_READ_PATHS: tuple[str, ...] = (
+    "web/game/engine_bridge.py::EngineBridge.get_endgame_state",
+    "src/frontend/src/components/takeovers/chronicle/EndStateScreen.tsx",
+)
+
+_ENDGAME_EPILOGUE_METRICS: tuple[SeamEntry, ...] = (
+    SeamEntry(
+        payload="epilogue",
+        wire_keys=("epilogue",),
+        scope=SeamScope.ENDGAME,
+        owner_layer="web bridge (game.epilogues data module)",
+        liveness_class=LivenessClass.DECLARED_CONDITIONAL,
+        liveness_condition=(
+            "non-empty only once the durable ENDGAME tick_event row exists "
+            "(horizon or player-accept); '' while the campaign runs"
+        ),
+        dtype="str",
+        write_site="web/game/epilogues.py::EPILOGUES (data module, render-time lookup)",
+        derivation_site="web/game/engine_bridge.py::EngineBridge.get_endgame_state",
+        read_paths=_ENDGAME_EPILOGUE_READ_PATHS,
+        nullable=False,
+        spec_ref="specs/116-playability-spine/spec.md · FR-116-4.2",
+        notes=(
+            "Deterministic 2-4 sentence epilogue body, pairwise distinct across "
+            "all six GameOutcome values incl. 'unresolved'. Deliberately separate "
+            "from the LLM epitaph channel (NarrationRecord Scope.ENDGAME): the "
+            "engine adjudicates, copy is data, AI narrates."
+        ),
+    ),
+    SeamEntry(
+        payload="palette",
+        wire_keys=("palette",),
+        scope=SeamScope.ENDGAME,
+        owner_layer="web bridge (game.epilogues data module)",
+        liveness_class=LivenessClass.DECLARED_CONDITIONAL,
+        liveness_condition=(
+            "same durable-ENDGAME-row gate as 'endgame.epilogue'; '' while the campaign runs"
+        ),
+        dtype="enum:EpiloguePalette",
+        write_site="web/game/epilogues.py::EPILOGUES (data module, render-time lookup)",
+        derivation_site="web/game/engine_bridge.py::EngineBridge.get_endgame_state",
+        read_paths=_ENDGAME_EPILOGUE_READ_PATHS,
+        nullable=False,
+        spec_ref="specs/116-playability-spine/spec.md · FR-116-4.2",
+        notes=(
+            "One of 'rupture' | 'defeat' | 'unresolved' — drives the three "
+            "end-screen palette families (six texts, three palettes)."
+        ),
+    ),
+    SeamEntry(
+        payload="accepted_at_tick",
+        wire_keys=("accepted_at_tick",),
+        scope=SeamScope.ENDGAME,
+        owner_layer="web bridge (accept-outcome endpoint stamp)",
+        liveness_class=LivenessClass.DECLARED_CONDITIONAL,
+        liveness_condition=(
+            "present only when the player accepted a locked pattern via "
+            "POST /api/games/{id}/accept-outcome/ (FR-116-5); null for horizon "
+            "termination and while in progress"
+        ),
+        dtype="int",
+        write_site=(
+            "web/game/api.py::game_accept_outcome (calls "
+            "EngineBridge.accept_outcome, which stamps "
+            "detail['accepted_at_tick'])"
+        ),
+        derivation_site="web/game/engine_bridge.py::_accepted_tick_from_endgame_row",
+        read_paths=_ENDGAME_EPILOGUE_READ_PATHS,
+        nullable=True,
+        spec_ref="specs/116-playability-spine/spec.md · FR-116-5",
+        notes="Accepted-at-tick framing on the end screen for player-accepted outcomes.",
+    ),
+)
+
+# ---------------------------------------------------------------------------
+# ACTION scope — per-target expected deltas on the verb-target rows
+# (spec-116 FR-116-4.4). One row for the shared sub-object across its three
+# emitters; the axis a verb has no formula for is an honest null.
+# ---------------------------------------------------------------------------
+
+_ACTION_EMITTERS: tuple[str, ...] = (
+    "web/game/engine_bridge.py::EngineBridge.get_educate_targets",
+    "web/game/engine_bridge.py::EngineBridge.get_aid_targets (population_targets)",
+    "web/game/engine_bridge.py::EngineBridge.get_attack_targets (organizations+institutions)",
+)
+
+_ACTION_METRICS: tuple[SeamEntry, ...] = (
+    SeamEntry(
+        payload="verb_target_expected_deltas",
+        wire_keys=("expected_deltas", "consciousness_delta", "heat_delta"),
+        scope=SeamScope.ACTION,
+        owner_layer=(
+            "bridge-derived (babylon.ooda.action_effects.compute_consciousness_delta via "
+            "_preview_consciousness_delta; OODADefines.attack_self_heat_gain)"
+        ),
+        liveness_class=LivenessClass.DECLARED_CONDITIONAL,
+        liveness_condition=(
+            "consciousness_delta live only on educate/aid population rows (the resolvers' "
+            "own CI math, INCLUDING the Step-7.5 doctrine theory bonus (ADR073) on educate "
+            "rows — _preview_consciousness_delta mirrors resolve_educate's own "
+            "doctrine=services.defines.doctrine call; aid rows correctly omit the bonus, "
+            "matching resolve_aid which never passes doctrine); heat_delta live only on "
+            "attack rows (the resolver's self-heat define); the opposite axis is an honest "
+            "null, never a fabricated 0.0"
+        ),
+        dtype="json",
+        read_paths=_ACTION_EMITTERS,
+        derivation_site="web/game/engine_bridge.py::_preview_consciousness_delta",
+        spec_ref="spec-116 FR-116-4.4",
+        notes=(
+            "Rendered as TargetPicker per-row chips (no blind picks). Campaign rows here are "
+            "snapshot-sourced (its targets GET 405s) and carry none; investigate/move/"
+            "negotiate/reproduce rows carry none (no per-target resolver math). Note: the "
+            "separate preview_action single-target endpoint (not in _ACTION_EMITTERS above) "
+            "shares _preview_consciousness_delta and DOES exercise the CAMPAIGN/PROPAGANDIZE "
+            "path there, which also mirrors resolve_campaign's doctrine= call."
+        ),
+    ),
+)
+
+# ---------------------------------------------------------------------------
+# ECONOMY scope — the ``tick_summary`` history series behind ``/timeseries/``
+# (Playability Spine Task 19, spec-116 4d.5). Wire keys are the parallel
+# arrays ``EngineBridge.get_game_timeseries`` emits; each is a county-deduped
+# aggregate ``_build_tick_summary`` persists per tick. First use of the
+# ECONOMY scope.
+# ---------------------------------------------------------------------------
+
+_TIMESERIES_EMITTERS: tuple[str, ...] = (
+    "web/game/engine_bridge.py::EngineBridge.get_game_timeseries",
+    "src/frontend/src/components/chrome/CrisisTimeline.tsx (history sparkline)",
+    "src/frontend/src/components/chrome/BifurcationGauge.tsx (history sparkline)",
+)
+
+_SERIES_CADENCE: str = (
+    "non-null only for ticks persisted after the first year boundary this "
+    "session stamped county tick_* state; carried forward between boundaries "
+    "— a step-function series with a NULL head (weekly campaign = yearly "
+    "points; honest sparse, never smoothed; Constitution III.11)"
+)
+
+_ECONOMY_SERIES_METRICS: tuple[SeamEntry, ...] = (
+    SeamEntry(
+        payload="crisis_pop_share",
+        wire_keys=("crisis_pop_share",),
+        scope=SeamScope.ECONOMY,
+        owner_layer="bridge (county-deduped aggregate of tick_crisis_phase)",
+        liveness_class=LivenessClass.DECLARED_CONDITIONAL,
+        liveness_condition=_SERIES_CADENCE,
+        dtype="float",
+        write_site=(
+            "web/game/engine_bridge.py::_county_tick_series_aggregates "
+            "-> tick_summary.crisis_pop_share"
+        ),
+        read_paths=_TIMESERIES_EMITTERS,
+        spec_ref="spec-116 4d.5 · ADR079",
+        notes="Population share [0, 1] of counties in an active crisis phase (onset/early/deep).",
+    ),
+    SeamEntry(
+        payload="bifurcation_score_mean",
+        wire_keys=("bifurcation_score_mean",),
+        scope=SeamScope.ECONOMY,
+        owner_layer="bridge (county-deduped aggregate of tick_bifurcation_score)",
+        liveness_class=LivenessClass.DECLARED_CONDITIONAL,
+        liveness_condition=_SERIES_CADENCE,
+        dtype="float",
+        write_site=(
+            "web/game/engine_bridge.py::_county_tick_series_aggregates "
+            "-> tick_summary.bifurcation_score_mean"
+        ),
+        read_paths=_TIMESERIES_EMITTERS,
+        spec_ref="spec-116 4d.5 · ADR079",
+        notes=(
+            "Population-weighted county mean of the political trajectory "
+            "[-1 revolutionary, +1 fascist] (Feature 018 FR-011)."
+        ),
+    ),
+    SeamEntry(
+        payload="wage_compression_mean",
+        wire_keys=("wage_compression_mean",),
+        scope=SeamScope.ECONOMY,
+        owner_layer="bridge (county-deduped aggregate of tick_wage_compression)",
+        liveness_class=LivenessClass.DECLARED_CONDITIONAL,
+        liveness_condition=_SERIES_CADENCE,
+        dtype="float",
+        write_site=(
+            "web/game/engine_bridge.py::_county_tick_series_aggregates "
+            "-> tick_summary.wage_compression_mean"
+        ),
+        read_paths=_TIMESERIES_EMITTERS,
+        spec_ref="spec-116 4d.5 · ADR079",
+        notes="Population-weighted county mean of cumulative wage compression [0, 1].",
+    ),
+    SeamEntry(
+        payload="capital_stock_total",
+        wire_keys=("capital_stock_total",),
+        scope=SeamScope.ECONOMY,
+        owner_layer="bridge (county-deduped SUM of tick_capital_stock)",
+        liveness_class=LivenessClass.DECLARED_CONDITIONAL,
+        liveness_condition=_SERIES_CADENCE,
+        dtype="float",
+        write_site=(
+            "web/game/engine_bridge.py::_county_tick_series_aggregates "
+            "-> tick_summary.capital_stock_total"
+        ),
+        read_paths=_TIMESERIES_EMITTERS,
+        spec_ref="spec-116 4d.5 · ADR079",
+        notes=(
+            "EXTENSIVE: one term per county (never per territory — the "
+            "_county_flow_snapshot N-fold hazard); a falling total is devaluation."
+        ),
+    ),
+    SeamEntry(
+        payload="unemployment_rate_mean",
+        wire_keys=("unemployment_rate_mean",),
+        scope=SeamScope.ECONOMY,
+        owner_layer="bridge (county-deduped aggregate of tick_unemployment_rate)",
+        liveness_class=LivenessClass.DECLARED_CONDITIONAL,
+        liveness_condition=_SERIES_CADENCE,
+        dtype="float",
+        write_site=(
+            "web/game/engine_bridge.py::_county_tick_series_aggregates "
+            "-> tick_summary.unemployment_rate_mean"
+        ),
+        read_paths=_TIMESERIES_EMITTERS,
+        spec_ref="spec-116 4d.5 · ADR079",
+        notes="Population-weighted county mean of the BLS LAUS unemployment rate.",
+    ),
+)
+
 #: The declared observable-field contract. Populated per build phase.
 SEAM_REGISTRY: tuple[SeamEntry, ...] = (
     _MAP_METRICS
@@ -2021,4 +2442,9 @@ SEAM_REGISTRY: tuple[SeamEntry, ...] = (
     + _MAP_HISTORY_METRICS
     + _NETWORK_METRICS
     + _DOCTRINE_METRICS
+    + _ENDGAME_METRICS
+    + _PATTERN_SHIFT_METRICS
+    + _ENDGAME_EPILOGUE_METRICS  # spec-116 FR-116-4.2: epilogue/palette/accepted_at_tick
+    + _ACTION_METRICS  # spec-116 FR-116-4.4: per-target expected_deltas
+    + _ECONOMY_SERIES_METRICS  # appended as the new final term; leave all prior terms
 )

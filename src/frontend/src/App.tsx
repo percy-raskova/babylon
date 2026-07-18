@@ -9,6 +9,7 @@ import { Routes, Route, Navigate } from "react-router";
 import { useStore } from "@/store";
 import { LoginRoute } from "@/routes/LoginRoute";
 import { LobbyRoute } from "@/routes/LobbyRoute";
+import { BriefingRoute } from "@/routes/BriefingRoute";
 import { GameRoute } from "@/routes/GameRoute";
 import { ObservatoryRoute } from "@/observatory/ObservatoryRoute";
 
@@ -31,6 +32,10 @@ export default function App(): React.JSX.Element {
     <Routes>
       <Route path="/login" element={isAuthed ? <Navigate to="/lobby" replace /> : <LoginRoute />} />
       <Route path="/lobby" element={isAuthed ? <LobbyRoute /> : <Navigate to="/login" replace />} />
+      <Route
+        path="/game/:id/briefing"
+        element={isAuthed ? <BriefingRoute /> : <Navigate to="/login" replace />}
+      />
       <Route
         path="/game/:id"
         element={isAuthed ? <GameRoute /> : <Navigate to="/login" replace />}

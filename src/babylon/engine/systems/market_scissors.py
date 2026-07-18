@@ -29,7 +29,6 @@ from typing import TYPE_CHECKING, ClassVar
 
 from babylon.engine.systems.wealth_distribution import (
     MARKET_CORRECTION_SHOCK_ATTR,
-    _coerce_role,
     bracket_of_role,
 )
 from babylon.formulas.market import (
@@ -43,7 +42,8 @@ from babylon.formulas.market import (
 from babylon.kernel.event_bus import Event
 from babylon.kernel.system_base import SystemBase
 from babylon.kernel.system_protocol import ContextType
-from babylon.models.enums import EventType
+from babylon.kernel.tick_partition import TickPartition
+from babylon.models.enums import EventType, SocialRole
 from babylon.models.market import MarketState
 
 if TYPE_CHECKING:
@@ -123,6 +123,9 @@ def _aggregate_wage_value_by_county(graph: GraphProtocol) -> dict[str, tuple[flo
 class MarketScissorsSystem(SystemBase):
     """Phase 1 SHADOW: the national price⟷value scissors axis."""
 
+    partition: ClassVar[TickPartition] = TickPartition.CONSEQUENCE
+    position: ClassVar[float] = 17.8
+
     name: ClassVar[str] = "Market Scissors"
     # Spec 053 INV-001: does not mutate hex c+v+s; opted in by default-deny.
     creates_value: ClassVar[bool] = False
@@ -135,7 +138,7 @@ class MarketScissorsSystem(SystemBase):
     ) -> None:
         """Seed (first observation) or advance the scissors oscillators."""
         defines = services.defines.market
-        tick = context.get("tick", 0) if isinstance(context, dict) else getattr(context, "tick", 0)
+        tick = context.tick
         metadata = getattr(graph, "graph", None)
         if not isinstance(metadata, dict):  # pragma: no cover — BabylonGraph always has it
             return
@@ -372,7 +375,7 @@ class MarketScissorsSystem(SystemBase):
         for node in sorted(graph.query_nodes(node_type="social_class"), key=lambda n: n.id):
             if not node.attributes.get("active", True):
                 continue
-            role = _coerce_role(node.attributes.get("role"))
+            role = SocialRole.coerce(node.attributes.get("role"))
             if role is None or bracket_of_role(role) not in _CLAIM_HOLDER_BRACKETS:
                 continue
             wealth = node.attributes.get("wealth")

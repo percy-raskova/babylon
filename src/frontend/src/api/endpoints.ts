@@ -41,6 +41,7 @@ import type {
   DoctrineTreePayload,
   ScenarioInfo,
   ActionPreviewResult,
+  VerbEligibilityPayload,
   ClassHistoryPayload,
   EdgeHistoryPayload,
   FieldStatePayload,
@@ -111,9 +112,17 @@ export const endpoints = {
   gameList: ep<GameSummary[]>("/api/games/"),
   gameCreate: ep<Untyped>("/api/games/", "POST"),
   gameDetail: ep<Untyped>("/api/games/:id/"),
+  gameDelete: ep<Untyped>("/api/games/:id/", "DELETE"),
+  gameArchive: ep<Untyped>("/api/games/:id/archive/", "POST"),
   gamePause: ep<Untyped>("/api/games/:id/pause/", "POST"),
   gameResume: ep<Untyped>("/api/games/:id/resume/", "POST"),
   gameRecover: ep<Untyped>("/api/games/:id/recover/", "POST"),
+  // Spec-116 FR-116-5 — the mercy affordance: end the campaign now with the
+  // locked pattern, visible only once `endgame_progress.locked` is true.
+  acceptOutcome: ep<{ outcome: string; tick: number; accepted: boolean }>(
+    "/api/games/:id/accept-outcome/",
+    "POST",
+  ),
 
   // ---- Core state + tick-driven panels ---------------------------------- //
   gameState: ep<GameSnapshot>("/api/games/:id/state/"),
@@ -186,6 +195,8 @@ export const endpoints = {
 
   // ---- Action utilities ------------------------------------------------- //
   actionsAvailable: ep<Untyped>("/api/games/:id/actions/available/"),
+  // Spec-116 FR-4.8: per-verb eligibility (VerbGrid disabled-with-reason).
+  verbEligibility: ep<VerbEligibilityPayload>("/api/games/:id/actions/eligibility/"),
   actionsPreview: ep<ActionPreviewResult>("/api/games/:id/actions/preview/", "POST"),
   actionDelete: ep<Untyped>("/api/games/:id/actions/:actionId/", "DELETE"),
   actionsList: ep<Untyped>("/api/games/:id/actions/"),

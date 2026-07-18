@@ -18,6 +18,7 @@ import { DEFAULT_GAME_ID } from "@/test/handlers";
 import { makeSnapshot } from "@/test/fixtures";
 import type { ActionPreviewResult } from "@/types/game";
 import type { VerbConfig, VerbTarget } from "@/lib/verbs";
+import { parseFlatCost } from "@/lib/verbs/cost";
 import { VerbForm } from "./VerbForm";
 
 interface RawTarget {
@@ -186,5 +187,107 @@ describe("VerbForm action preview", () => {
     expect(screen.queryByTestId("predicted-delta")).not.toBeInTheDocument();
     expect(screen.queryByTestId("preview-probability")).not.toBeInTheDocument();
     expect(screen.queryByTestId("preview-warnings")).not.toBeInTheDocument();
+  });
+});
+
+function stubTargetsWithCost(canAfford = true): void {
+  server.use(
+    http.get("/api/games/:id/actions/educate/targets/", () =>
+      HttpResponse.json({
+        targets: [{ community_id: "comm-1", territory_name: "Downtown" }],
+        cost: {
+          action_points: 1,
+          cadre_labor: 3.0,
+          sympathizer_labor: 0.0,
+          material: 0.0,
+          can_afford: canAfford,
+          over_budget: false,
+          over_budget_penalty: null,
+        },
+      }),
+    ),
+  );
+}
+
+describe("VerbForm pre-submit cost line (spec-116 FR-116-4.3)", () => {
+  it("shows the live resource cost before any target is selected", async () => {
+    stubTargetsWithCost();
+    stubPreview();
+    renderForm(makeConfig({ parseCost: parseFlatCost }));
+
+    await waitFor(() => expect(screen.getByTestId("target-picker")).toBeInTheDocument());
+
+    const costLine = await screen.findByTestId("verb-cost");
+    expect(costLine).toHaveTextContent("3 CL");
+    // Preview not composable yet (no target): no AP segment, no fabrication.
+    expect(costLine).not.toHaveTextContent("AP");
+  });
+
+  it("appends the preview's AP cost once a target is selected", async () => {
+    stubTargetsWithCost();
+    stubPreview();
+    renderForm(makeConfig({ parseCost: parseFlatCost }));
+
+    await selectDowntown();
+
+    await waitFor(() => expect(screen.getByTestId("verb-cost")).toHaveTextContent("3 CL · 1 AP"));
+  });
+
+  it("flags an unaffordable cost in crimson but never disables submit", async () => {
+    stubTargetsWithCost(false);
+    stubPreview();
+    renderForm(makeConfig({ parseCost: parseFlatCost }));
+
+    await selectDowntown();
+
+    const costLine = screen.getByTestId("verb-cost");
+    expect(costLine).toHaveTextContent("insufficient");
+    expect(costLine.className).toContain("text-accent-crimson");
+    expect(screen.getByRole("button", { name: /submit educate/i })).toBeEnabled();
+  });
+
+  it("renders no cost line for a cost-less verb until the preview lands (honest null)", async () => {
+    stubTargets(); // no cost envelope, config has no parseCost (campaign-shaped)
+    stubPreview();
+    renderForm(makeConfig());
+
+    await waitFor(() => expect(screen.getByTestId("target-picker")).toBeInTheDocument());
+    expect(screen.queryByTestId("verb-cost")).not.toBeInTheDocument();
+
+    await selectDowntown();
+    await waitFor(() => expect(screen.getByTestId("verb-cost")).toHaveTextContent("1 AP"));
+  });
+});
+
+describe("VerbForm ineligible empty state (spec-116 FR-4.8)", () => {
+  it("renders reason + remedy in the empty state when the verb is ineligible (spec-116 FR-4.8)", async () => {
+    server.use(
+      http.get("/api/games/:id/actions/educate/targets/", () => HttpResponse.json({ targets: [] })),
+    );
+    render(
+      <VerbForm
+        gameId={DEFAULT_GAME_ID}
+        orgId="org-1"
+        verb="educate"
+        config={makeConfig()}
+        snapshot={makeSnapshot()}
+        submitting={false}
+        onSubmit={vi.fn()}
+        eligibility={{
+          verb: "educate",
+          eligible: false,
+          reason: "No organized community in your territories yet.",
+          remedy:
+            "No action can organize a community yet — political education unlocks the moment an organized class appears where you operate.",
+          can_afford: true,
+          afford_note: null,
+        }}
+      />,
+    );
+    const empty = await screen.findByTestId("targets-empty");
+    expect(empty).toHaveTextContent(
+      "No eligible targets yet: No organized community in your territories yet.",
+    );
+    expect(empty).toHaveTextContent(/political education unlocks/);
   });
 });

@@ -19,9 +19,24 @@ import { EVENT_CATEGORIES } from "@/lib/eventClassifier";
 import { NarrationBlock } from "@/components/narration/NarrationBlock";
 import { useNarration } from "@/hooks/useNarration";
 import { keyButtonClass } from "./installerKit";
+import type { ToastEntry } from "@/store/slices/eventsSlice";
 
 interface EventTrayProps {
   gameId: string;
+}
+
+/**
+ * The Missed-tray label: a multi-event same-tick batch names its size and
+ * tick; a single accumulated critical condition (spec-116 FR-116-2) leads
+ * with its `×count` prefix when it has recurred.
+ */
+function trayLabel(toast: ToastEntry): string {
+  if (toast.events.length > 1) {
+    return `${toast.events.length} developments — tick ${toast.tick}`;
+  }
+  const prefix = toast.count > 1 ? `×${toast.count} ` : "";
+  const title = toast.events[0]?.event.title ?? toast.events[0]?.event.type ?? "";
+  return `${prefix}${title}`;
 }
 
 export function EventTray({ gameId }: EventTrayProps): React.JSX.Element {
@@ -112,11 +127,7 @@ export function EventTray({ gameId }: EventTrayProps): React.JSX.Element {
                   data-testid={`tray-restore-${toast.id}`}
                   className="flex items-center justify-between border border-ksbc-muted-3 bg-plate px-1 py-0.5 text-left text-[10px] text-ink hover:border-accent-gold hover:text-accent-gold"
                 >
-                  <span className="truncate">
-                    {toast.events.length > 1
-                      ? `${toast.events.length} developments — tick ${toast.tick}`
-                      : (toast.events[0]?.event.title ?? toast.events[0]?.event.type)}
-                  </span>
+                  <span className="truncate">{trayLabel(toast)}</span>
                   <span className="text-ksbc-muted-2">restore</span>
                 </button>
               ))}

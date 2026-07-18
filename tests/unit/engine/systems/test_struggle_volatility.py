@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import pytest
 
+from babylon.engine.context import TickContext
 from babylon.engine.services import ServiceContainer
 from babylon.engine.systems.struggle import StruggleSystem
 from babylon.models.enums import EdgeType, EventType
@@ -46,7 +47,7 @@ class TestSpontaneousRiot:
     def test_high_volatility_low_discipline_riots(self, services: ServiceContainer) -> None:
         g = BabylonGraph()
         _add_lumpen(g, volatility=0.8, organization=0.0)  # risk = 0.8 > threshold 0.5
-        StruggleSystem().step(g, services, {"tick": 3})
+        StruggleSystem().step(g, services, TickContext(tick=3))
         riots = _events(services, EventType.SPONTANEOUS_RIOT)
         assert len(riots) == 1
         # Riot destroys wealth ...
@@ -60,13 +61,13 @@ class TestSpontaneousRiot:
     def test_high_discipline_suppresses_riot(self, services: ServiceContainer) -> None:
         g = BabylonGraph()
         _add_lumpen(g, volatility=0.8, organization=1.0)  # risk = 0.0 -> never fires
-        StruggleSystem().step(g, services, {"tick": 3})
+        StruggleSystem().step(g, services, TickContext(tick=3))
         assert _events(services, EventType.SPONTANEOUS_RIOT) == []
 
     def test_zero_volatility_no_riot(self, services: ServiceContainer) -> None:
         g = BabylonGraph()
         _add_lumpen(g, volatility=0.0, organization=0.0)
-        StruggleSystem().step(g, services, {"tick": 3})
+        StruggleSystem().step(g, services, TickContext(tick=3))
         assert _events(services, EventType.SPONTANEOUS_RIOT) == []
 
     def test_determinism_same_tick_same_outcome(self, services: ServiceContainer) -> None:
@@ -75,6 +76,6 @@ class TestSpontaneousRiot:
             svc = ServiceContainer.create()
             g = BabylonGraph()
             _add_lumpen(g, volatility=0.8, organization=0.0)
-            StruggleSystem().step(g, svc, {"tick": 3})
+            StruggleSystem().step(g, svc, TickContext(tick=3))
             outcomes.append(len(_events(svc, EventType.SPONTANEOUS_RIOT)))
         assert outcomes[0] == outcomes[1]

@@ -14,6 +14,7 @@ from typing import TYPE_CHECKING
 
 import pytest
 
+from babylon.engine.context import TickContext
 from babylon.engine.services import ServiceContainer
 from babylon.engine.systems.vitality import VitalitySystem
 from babylon.models.enums import EventType, SocialRole
@@ -91,7 +92,7 @@ class TestVitalitySystem:
         services.event_bus.subscribe(EventType.ENTITY_DEATH, events.append)
 
         system = VitalitySystem()
-        system.step(graph, services, {"tick": 1})
+        system.step(graph, services, TickContext(tick=1))
 
         # Assert: Entity is now dead
         assert graph.nodes["PERIPHERY_WORKER_ID"]["active"] is False
@@ -119,7 +120,7 @@ class TestVitalitySystem:
         services.event_bus.subscribe(EventType.ENTITY_DEATH, events.append)
 
         system = VitalitySystem()
-        system.step(graph, services, {"tick": 1})
+        system.step(graph, services, TickContext(tick=1))
 
         # Assert: Entity survives
         assert graph.nodes["PERIPHERY_WORKER_ID"]["active"] is True
@@ -148,7 +149,7 @@ class TestVitalitySystem:
         services.event_bus.subscribe(EventType.ENTITY_DEATH, events.append)
 
         system = VitalitySystem()
-        system.step(graph, services, {"tick": 1})
+        system.step(graph, services, TickContext(tick=1))
 
         # Assert: Only COMPRADOR_ID died
         assert graph.nodes["PERIPHERY_WORKER_ID"]["active"] is True
@@ -174,7 +175,7 @@ class TestVitalitySystem:
         services.event_bus.subscribe(EventType.ENTITY_DEATH, events.append)
 
         system = VitalitySystem()
-        system.step(graph, services, {"tick": 1})
+        system.step(graph, services, TickContext(tick=1))
 
         # Assert: No death event (already dead)
         assert len(events) == 0
@@ -198,7 +199,7 @@ class TestVitalitySystem:
         services.event_bus.subscribe(EventType.ENTITY_DEATH, events.append)
 
         system = VitalitySystem()
-        system.step(graph, services, {"tick": 1})
+        system.step(graph, services, TickContext(tick=1))
 
         # Assert: Only entity died, territory unchanged
         assert graph.nodes["PERIPHERY_WORKER_ID"]["active"] is False
@@ -221,7 +222,7 @@ class TestVitalitySystem:
         )
 
         system = VitalitySystem()
-        system.step(graph, services, {"tick": 1})
+        system.step(graph, services, TickContext(tick=1))
 
         # Assert: Entity died despite having some wealth
         assert graph.nodes["PERIPHERY_WORKER_ID"]["active"] is False
@@ -262,7 +263,7 @@ class TestVitalitySubsistenceBurn:
 
         # Note: base_subsistence comes from services.defines.economy
         system = VitalitySystem()
-        system.step(graph, services, {"tick": 1})
+        system.step(graph, services, TickContext(tick=1))
 
         # Assert: Linear deduction using actual base_subsistence from defines
         base_sub = services.defines.economy.base_subsistence
@@ -290,7 +291,7 @@ class TestVitalitySubsistenceBurn:
         graph.nodes["CORE_BOURGEOISIE_ID"]["subsistence_multiplier"] = 20.0
 
         system = VitalitySystem()
-        system.step(graph, services, {"tick": 1})
+        system.step(graph, services, TickContext(tick=1))
 
         # Assert: Core bourgeoisie burns faster (use actual base_subsistence from defines)
         base_sub = services.defines.economy.base_subsistence
@@ -328,7 +329,7 @@ class TestVitalitySubsistenceBurn:
         services.event_bus.subscribe(EventType.ENTITY_DEATH, events.append)
 
         system = VitalitySystem()
-        system.step(graph, services, {"tick": 1})
+        system.step(graph, services, TickContext(tick=1))
 
         # Burn happened first: 0.01 - 0.0075 = 0.0025
         # Then death check: 0.0025 < 0.01 → DEAD
@@ -347,7 +348,7 @@ class TestVitalitySubsistenceBurn:
         graph.nodes["PERIPHERY_WORKER_ID"]["subsistence_multiplier"] = 1.5
 
         system = VitalitySystem()
-        system.step(graph, services, {"tick": 1})
+        system.step(graph, services, TickContext(tick=1))
 
         # Assert: Wealth unchanged (no burn for dead entities)
         assert graph.nodes["PERIPHERY_WORKER_ID"]["wealth"] == pytest.approx(1.0)
@@ -369,7 +370,7 @@ class TestVitalitySubsistenceBurn:
         # With base_subsistence=0.0, no burn should occur
         # (This requires modifying defines in GREEN phase)
         system = VitalitySystem()
-        system.step(graph, services, {"tick": 1})
+        system.step(graph, services, TickContext(tick=1))
 
         # For this test to pass, VitalitySystem must check if base_subsistence > 0
         # and skip burn when it's zero
@@ -392,7 +393,7 @@ class TestVitalitySubsistenceBurn:
         )
 
         system = VitalitySystem()
-        system.step(graph, services, {"tick": 1})
+        system.step(graph, services, TickContext(tick=1))
 
         # Assert: Wealth clamped to 0, not negative
         assert graph.nodes["PERIPHERY_WORKER_ID"]["wealth"] >= 0.0
@@ -435,7 +436,7 @@ class TestGrindingAttrition:
         services.event_bus.subscribe(EventType.POPULATION_ATTRITION, events.append)
 
         system = VitalitySystem()
-        system.step(graph, services, {"tick": 1})
+        system.step(graph, services, TickContext(tick=1))
 
         # Assert: No deaths, population unchanged
         assert graph.nodes["PERIPHERY_WORKER_ID"]["population"] == 1000
@@ -469,7 +470,7 @@ class TestGrindingAttrition:
         services.event_bus.subscribe(EventType.POPULATION_ATTRITION, events.append)
 
         system = VitalitySystem()
-        system.step(graph, services, {"tick": 1})
+        system.step(graph, services, TickContext(tick=1))
 
         # Assert: Deaths occurred due to inequality (coverage < threshold)
         assert graph.nodes["PERIPHERY_WORKER_ID"]["population"] < 1000
@@ -494,7 +495,7 @@ class TestGrindingAttrition:
         graph.nodes["PERIPHERY_WORKER_ID"]["subsistence_multiplier"] = 1.0
 
         system = VitalitySystem()
-        system.step(graph, services, {"tick": 1})
+        system.step(graph, services, TickContext(tick=1))
 
         # Assert: Single agent survives with sufficient wealth
         assert graph.nodes["PERIPHERY_WORKER_ID"]["population"] == 1
@@ -520,7 +521,7 @@ class TestGrindingAttrition:
         services.event_bus.subscribe(EventType.ENTITY_DEATH, entity_death_events.append)
 
         system = VitalitySystem()
-        system.step(graph, services, {"tick": 1})
+        system.step(graph, services, TickContext(tick=1))
 
         # Assert: Entity is extinct (active=False)
         assert graph.nodes["PERIPHERY_WORKER_ID"]["active"] is False
@@ -547,7 +548,7 @@ class TestGrindingAttrition:
         graph.nodes["PERIPHERY_WORKER_ID"]["subsistence_multiplier"] = 1.0
 
         system = VitalitySystem()
-        system.step(graph, services, {"tick": 1})
+        system.step(graph, services, TickContext(tick=1))
 
         pop_after_tick_1 = graph.nodes["PERIPHERY_WORKER_ID"]["population"]
         deaths_tick_1 = 100 - pop_after_tick_1
@@ -556,7 +557,7 @@ class TestGrindingAttrition:
         if deaths_tick_1 == 0:
             pytest.skip("No deaths in tick 1; adjust test parameters")
 
-        system.step(graph, services, {"tick": 2})
+        system.step(graph, services, TickContext(tick=2))
 
         pop_after_tick_2 = graph.nodes["PERIPHERY_WORKER_ID"]["population"]
         deaths_tick_2 = pop_after_tick_1 - pop_after_tick_2
@@ -588,7 +589,7 @@ class TestGrindingAttrition:
         services.event_bus.subscribe(EventType.POPULATION_ATTRITION, events.append)
 
         system = VitalitySystem()
-        system.step(graph, services, {"tick": 1})
+        system.step(graph, services, TickContext(tick=1))
 
         # Assert: Event payload has required fields
         assert len(events) == 1
@@ -618,7 +619,7 @@ class TestVitalityMutationKillers:
         services.event_bus.subscribe(EventType.ENTITY_DEATH, events.append)
 
         system = VitalitySystem()
-        system.step(graph, services, {"tick": 1})
+        system.step(graph, services, TickContext(tick=1))
 
         # No events - entity with pop=0 is skipped entirely
         assert len(events) == 0
@@ -633,7 +634,7 @@ class TestVitalityMutationKillers:
         services.event_bus.subscribe(EventType.ENTITY_DEATH, events.append)
 
         system = VitalitySystem()
-        system.step(graph, services, {"tick": 1})
+        system.step(graph, services, TickContext(tick=1))
 
         assert len(events) == 0
         assert graph.nodes["entity"]["wealth"] == 100.0
@@ -646,7 +647,7 @@ class TestVitalityMutationKillers:
 
         base_sub = services.defines.economy.base_subsistence
         system = VitalitySystem()
-        system.step(graph, services, {"tick": 1})
+        system.step(graph, services, TickContext(tick=1))
 
         expected_cost = (base_sub * 100) * 1.5
         expected_wealth = 10.0 - expected_cost
@@ -659,7 +660,7 @@ class TestVitalityMutationKillers:
         graph.nodes["entity"]["subsistence_multiplier"] = 100.0
 
         system = VitalitySystem()
-        system.step(graph, services, {"tick": 1})
+        system.step(graph, services, TickContext(tick=1))
 
         assert graph.nodes["entity"]["wealth"] == 0.0
 
@@ -681,7 +682,7 @@ class TestVitalityMutationKillers:
         services.event_bus.subscribe(EventType.ENTITY_DEATH, events.append)
 
         system = VitalitySystem()
-        system.step(graph, services, {"tick": 1})
+        system.step(graph, services, TickContext(tick=1))
 
         assert graph.nodes["entity"]["active"] is False
         assert len(events) == 1
@@ -703,7 +704,7 @@ class TestVitalityMutationKillers:
         services.event_bus.subscribe(EventType.ENTITY_DEATH, events.append)
 
         system = VitalitySystem()
-        system.step(graph, services, {"tick": 1})
+        system.step(graph, services, TickContext(tick=1))
 
         assert graph.nodes["entity"]["active"] is False
         assert graph.nodes["entity"]["population"] == 0
@@ -729,7 +730,7 @@ class TestVitalityMutationKillers:
         services.event_bus.subscribe(EventType.ENTITY_DEATH, events.append)
 
         system = VitalitySystem()
-        system.step(graph, services, {"tick": 1})
+        system.step(graph, services, TickContext(tick=1))
 
         assert graph.nodes["entity"]["active"] is False
         assert graph.nodes["entity"]["population"] == 0
@@ -755,7 +756,7 @@ class TestVitalityMutationKillers:
         services.event_bus.subscribe(EventType.ENTITY_DEATH, events.append)
 
         system = VitalitySystem()
-        system.step(graph, services, {"tick": 1})
+        system.step(graph, services, TickContext(tick=1))
 
         assert graph.nodes["entity"]["active"] is True
         assert graph.nodes["entity"]["population"] == 1
@@ -783,7 +784,7 @@ class TestVitalityMutationKillers:
         initial_wealth = 0.05
 
         system = VitalitySystem()
-        system.step(graph, services, {"tick": 1})
+        system.step(graph, services, TickContext(tick=1))
 
         # Phase 1: Drain reduced wealth
         # Wealth should reflect drain (approximately)
@@ -801,7 +802,7 @@ class TestVitalityMutationKillers:
         graph.nodes["entity"]["subsistence_multiplier"] = 100.0
 
         system = VitalitySystem()
-        system.step(graph, custom_services, {"tick": 1})
+        system.step(graph, custom_services, TickContext(tick=1))
 
         # No drain when base_subsistence=0
         assert graph.nodes["entity"]["wealth"] == 1.0
@@ -825,7 +826,7 @@ class TestVitalityMutationKillers:
         services.event_bus.subscribe(EventType.POPULATION_ATTRITION, events.append)
 
         system = VitalitySystem()
-        system.step(graph, services, {"tick": 1})
+        system.step(graph, services, TickContext(tick=1))
 
         assert graph.nodes["entity"]["population"] == 100
         assert len(events) == 0

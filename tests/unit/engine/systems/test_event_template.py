@@ -16,6 +16,7 @@ from unittest.mock import MagicMock
 
 import pytest
 
+from babylon.engine.context import TickContext
 from babylon.engine.services import ServiceContainer
 from babylon.engine.systems.event_template import EventTemplateSystem
 from babylon.kernel.event_bus import Event, EventBus
@@ -152,7 +153,7 @@ class TestStepEvaluation:
         system = EventTemplateSystem(templates=[_make_template()])
         services = ServiceContainer.create()
 
-        system.step(graph, services, {"tick": 1})
+        system.step(graph, services, TickContext(tick=1))
 
         assert graph.nodes["worker"]["wealth"] == 15.0
 
@@ -174,7 +175,7 @@ class TestStepEvaluation:
         system = EventTemplateSystem(templates=[_make_template()])
         services = ServiceContainer.create()
 
-        system.step(graph, services, {})
+        system.step(graph, services, TickContext())
 
         assert graph.nodes["worker"]["wealth"] == 10.0
 
@@ -203,7 +204,7 @@ class TestStepEvaluation:
         system = EventTemplateSystem(templates=[low, high])
         services = ServiceContainer.create()
 
-        system.step(graph, services, {"tick": 1})
+        system.step(graph, services, TickContext(tick=1))
 
         # High runs first (set 100), then low (increase 10) → 110
         assert graph.nodes["worker"]["wealth"] == pytest.approx(110.0)
@@ -219,7 +220,7 @@ class TestStepEvaluation:
         system = EventTemplateSystem(templates=[t])
         services = ServiceContainer.create()
 
-        system.step(graph, services, {"tick": 5})
+        system.step(graph, services, TickContext(tick=5))
 
         assert system.templates[0].last_triggered_tick == 5
 
@@ -236,7 +237,7 @@ class TestStepEvaluation:
         system = EventTemplateSystem(templates=[t])
         services = ServiceContainer.create()
 
-        system.step(graph, services, {"tick": 3})
+        system.step(graph, services, TickContext(tick=3))
 
         # tick 3 - last_triggered 1 = 2 < 3 (cooldown), so not triggered
         assert graph.nodes["worker"]["wealth"] == 0.0
@@ -250,7 +251,7 @@ class TestStepEvaluation:
         system = EventTemplateSystem(templates=[t])
         services = ServiceContainer.create()
 
-        system.step(graph, services, {"tick": 4})
+        system.step(graph, services, TickContext(tick=4))
 
         # tick 4 - last_triggered 1 = 3 >= 3, cooldown expired
         assert graph.nodes["worker"]["wealth"] == 10.0
@@ -261,7 +262,7 @@ class TestStepEvaluation:
         system = EventTemplateSystem()
         services = ServiceContainer.create()
 
-        system.step(graph, services, {"tick": 1})
+        system.step(graph, services, TickContext(tick=1))
 
         assert graph.nodes["worker"]["wealth"] == 5.0
 
@@ -276,7 +277,7 @@ class TestStepEvaluation:
         system = EventTemplateSystem(templates=[t])
         services = ServiceContainer.create()
 
-        system.step(graph, services, {"tick": 1})
+        system.step(graph, services, TickContext(tick=1))
 
         assert graph.nodes["worker"]["wealth"] == 5.0
 
@@ -307,7 +308,7 @@ class TestApplyResolution:
 
         graph = _make_graph(("worker", {"wealth": 0.0}))
         system = EventTemplateSystem(templates=[template])
-        system.step(graph, services, {"tick": 7})
+        system.step(graph, services, TickContext(tick=7))
 
         assert len(received) == 1
         assert received[0].type == "TEST_EVENT"
@@ -330,7 +331,7 @@ class TestApplyResolution:
 
         graph = _make_graph(("worker", {"wealth": 0.0}))
         system = EventTemplateSystem(templates=[template])
-        system.step(graph, services, {"tick": 1})
+        system.step(graph, services, TickContext(tick=1))
 
         assert len(received) == 0
 
@@ -349,7 +350,7 @@ class TestApplyResolution:
         system = EventTemplateSystem(templates=[template])
         services = ServiceContainer.create()
 
-        system.step(graph, services, {"tick": 1})
+        system.step(graph, services, TickContext(tick=1))
 
         assert graph.nodes["worker"]["wealth"] == pytest.approx(15.0)
         assert graph.nodes["worker"]["agitation"] == pytest.approx(0.9)
@@ -385,7 +386,7 @@ class TestApplyEffect:
         system = EventTemplateSystem(templates=[template])
         services = ServiceContainer.create()
 
-        system.step(graph, services, {"tick": 1})
+        system.step(graph, services, TickContext(tick=1))
 
         assert graph.nodes["worker_a"]["wealth"] == pytest.approx(15.0)
         assert graph.nodes["worker_b"]["wealth"] == pytest.approx(25.0)
@@ -408,7 +409,7 @@ class TestApplyEffect:
         system = EventTemplateSystem(templates=[template])
         services = ServiceContainer.create()
 
-        system.step(graph, services, {"tick": 1})
+        system.step(graph, services, TickContext(tick=1))
 
         assert graph.nodes["worker_a"]["wealth"] == pytest.approx(15.0)
         assert graph.nodes["worker_b"]["wealth"] == pytest.approx(20.0)
@@ -428,7 +429,7 @@ class TestApplyEffect:
         system = EventTemplateSystem(templates=[template])
         services = ServiceContainer.create()
 
-        system.step(graph, services, {"tick": 1})
+        system.step(graph, services, TickContext(tick=1))
 
         assert graph.nodes["worker"]["wealth"] == 10.0
 
@@ -450,7 +451,7 @@ class TestApplyEffectToNode:
         graph = _make_graph(("worker", {"wealth": 10.0}))
         system = EventTemplateSystem(templates=[template])
         services = ServiceContainer.create()
-        system.step(graph, services, {"tick": 1})
+        system.step(graph, services, TickContext(tick=1))
 
         assert graph.nodes["worker"]["wealth"] == pytest.approx(17.5)
 
@@ -463,7 +464,7 @@ class TestApplyEffectToNode:
         graph = _make_graph(("worker", {"wealth": 10.0}))
         system = EventTemplateSystem(templates=[template])
         services = ServiceContainer.create()
-        system.step(graph, services, {"tick": 1})
+        system.step(graph, services, TickContext(tick=1))
 
         assert graph.nodes["worker"]["wealth"] == pytest.approx(7.0)
 
@@ -476,7 +477,7 @@ class TestApplyEffectToNode:
         graph = _make_graph(("worker", {"wealth": 10.0}))
         system = EventTemplateSystem(templates=[template])
         services = ServiceContainer.create()
-        system.step(graph, services, {"tick": 1})
+        system.step(graph, services, TickContext(tick=1))
 
         assert graph.nodes["worker"]["wealth"] == pytest.approx(42.0)
 
@@ -489,7 +490,7 @@ class TestApplyEffectToNode:
         graph = _make_graph(("worker", {"wealth": 10.0}))
         system = EventTemplateSystem(templates=[template])
         services = ServiceContainer.create()
-        system.step(graph, services, {"tick": 1})
+        system.step(graph, services, TickContext(tick=1))
 
         assert graph.nodes["worker"]["wealth"] == pytest.approx(25.0)
 
@@ -507,7 +508,7 @@ class TestApplyEffectToNode:
         graph = _make_graph(("worker", {"wealth": 10.0}))
         system = EventTemplateSystem(templates=[template])
         services = ServiceContainer.create()
-        system.step(graph, services, {"tick": 1})
+        system.step(graph, services, TickContext(tick=1))
 
         assert graph.nodes["worker"]["agitation"] == pytest.approx(0.5)
 
@@ -534,7 +535,7 @@ class TestNestedAttributePaths:
         graph = _make_graph(("worker", {"ideology": {"agitation": 0.5}}))
         system = EventTemplateSystem(templates=[template])
         services = ServiceContainer.create()
-        system.step(graph, services, {"tick": 1})
+        system.step(graph, services, TickContext(tick=1))
 
         assert graph.nodes["worker"]["ideology"]["agitation"] == pytest.approx(0.8)
 
@@ -552,7 +553,7 @@ class TestNestedAttributePaths:
         graph = _make_graph(("worker", {"wealth": 10.0}))
         system = EventTemplateSystem(templates=[template])
         services = ServiceContainer.create()
-        system.step(graph, services, {"tick": 1})
+        system.step(graph, services, TickContext(tick=1))
 
         assert graph.nodes["worker"]["ideology"]["agitation"] == pytest.approx(0.9)
 
@@ -570,7 +571,7 @@ class TestNestedAttributePaths:
         graph = _make_graph(("worker", {"state": {"mood": {"anger": 0.1}}}))
         system = EventTemplateSystem(templates=[template])
         services = ServiceContainer.create()
-        system.step(graph, services, {"tick": 1})
+        system.step(graph, services, TickContext(tick=1))
 
         assert graph.nodes["worker"]["state"]["mood"]["anger"] == pytest.approx(0.7)
 
@@ -589,7 +590,7 @@ class TestNestedAttributePaths:
         graph = _make_graph(("worker", {"wealth": 10.0}))
         system = EventTemplateSystem(templates=[template])
         services = ServiceContainer.create()
-        system.step(graph, services, {"tick": 1})
+        system.step(graph, services, TickContext(tick=1))
 
         # wealth remains unchanged — sub_field can't be set on a float
         assert graph.nodes["worker"]["wealth"] == 10.0
@@ -608,7 +609,7 @@ class TestNestedAttributePaths:
         graph = _make_graph(("worker", {"ideology": {"agitation": 0.5}}))
         system = EventTemplateSystem(templates=[template])
         services = ServiceContainer.create()
-        system.step(graph, services, {"tick": 1})
+        system.step(graph, services, TickContext(tick=1))
 
         assert graph.nodes["worker"]["ideology"]["new_field"] == pytest.approx(0.4)
 

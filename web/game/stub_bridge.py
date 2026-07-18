@@ -20,6 +20,7 @@ from typing import Any
 from uuid import UUID, uuid4
 
 from .map_contract import MAP_HISTORY_REPLAYABLE_METRICS, MAP_METRIC_PROPERTIES
+from .verb_copy import VERB_INELIGIBILITY_COPY
 
 logger = logging.getLogger(__name__)
 
@@ -822,6 +823,26 @@ class StubEngineBridge:
             },
             "events": _make_events(tick),
             "traps": _make_traps(),
+            # Spec-116 Task 4: payload parity with the real bridge's
+            # resolve_tick endgame_progress block. The stub carries no
+            # EndgameDetector, so this is a static-but-shape-true stand-in —
+            # all axes 0.0, no pattern recognized, never locked — not a
+            # fabricated progress signal (Constitution III.11). horizon_tick
+            # mirrors the real GameDefines defaults (100 years * 52
+            # weeks/year — endgame.campaign_horizon_years * timescale.weeks_per_year).
+            "endgame_progress": {
+                "axes": {
+                    "revolutionary_victory": 0.0,
+                    "ecological_collapse": 0.0,
+                    "fascist_consolidation": 0.0,
+                    "red_ogv": 0.0,
+                    "fragmented_collapse": 0.0,
+                },
+                "pattern": None,
+                "since_tick": None,
+                "horizon_tick": 5200,
+                "locked": False,
+            },
         }
 
     def get_map_snapshot(
@@ -975,7 +996,27 @@ class StubEngineBridge:
         }
 
     def get_game_timeseries(self, _session_id: UUID) -> dict[str, Any]:
-        return {"data": []}
+        """Empty-but-real-shaped timeseries payload (parity with EngineBridge)."""
+        return {
+            "ticks": [],
+            "imperial_rent": [],
+            "consciousness": [],
+            "solidarity": [],
+            "heat": [],
+            "wealth": [],
+            "biocapacity": [],
+            "value_produced": [],
+            "surplus": [],
+            "profit_rate": [],
+            "price_index": [],
+            "fictitious_ratio": [],
+            "market_corrections": [],
+            "crisis_pop_share": [],
+            "bifurcation_score_mean": [],
+            "wage_compression_mean": [],
+            "capital_stock_total": [],
+            "unemployment_rate_mean": [],
+        }
 
     def get_economy_dashboard(self, _session_id: UUID) -> dict[str, Any]:
         return {}
@@ -1410,6 +1451,9 @@ class StubEngineBridge:
             "outcome": None,
             "headline": "",
             "summary": "",
+            "epilogue": "",
+            "palette": "",
+            "accepted_at_tick": None,
             "stats": {
                 "final_tick": tick,
                 "consciousness": _stub_avg_attr("consciousness"),
@@ -1417,6 +1461,17 @@ class StubEngineBridge:
                 "heat": _stub_avg_attr("heat"),
             },
         }
+
+    def accept_outcome(self, _session_id: UUID) -> dict[str, Any]:
+        """Mercy affordance stub (spec-116 FR-116-5).
+
+        The stub carries no ``EndgameDetector`` — ``get_snapshot``'s
+        ``endgame_progress`` block is a static-but-shape-true stand-in that
+        never locks (see its docstring). Always raising here matches the
+        real bridge's contract for the "nothing locked" case honestly,
+        rather than fabricating an accepted outcome (Constitution III.11).
+        """
+        raise ValueError("outcome not locked")
 
     def get_journal_objectives(self, session_id: UUID) -> dict[str, Any]:
         session = _stub_sessions.get(session_id, {"tick": 0})
@@ -1542,6 +1597,93 @@ class StubEngineBridge:
             },
             "cadre_level": cadre,
             "cohesion": cohesion,
+        }
+
+    def get_verb_eligibility(self, session_id: UUID, org_id: str) -> dict[str, Any]:
+        """Per-verb eligibility (spec-116 FR-4.8) mirroring the real
+        bridge's exact row shape, derived honestly from the stub's own
+        mock world: ORG001 is the ONLY organization, so MOBILIZE (needs
+        another business/civil-society org — matching
+        ``get_mobilize_targets``' honest empty list) and NEGOTIATE (needs
+        any other org) are ineligible; every other verb's stub target
+        list is non-empty. Copy comes from the shared ``verb_copy`` table
+        so stub and engine can never disagree on player-facing text.
+        """
+        org_status = self.get_org_status(session_id, org_id)
+        if not org_status:
+            return {"status": "error", "error": "Org not found"}
+        session = _stub_sessions.get(session_id, {"tick": 0})
+        resources = org_status["resources"]
+
+        # ACTION_COSTS literal snapshot (babylon/models/vanguard_resources
+        # .py:139-152) — this module cannot import babylon.models
+        # (import-boundary guard, tests/unit/web/test_import_boundary.py);
+        # same documented pattern as get_mobilize_targets' mobilize_cost_cl.
+        costs: dict[str, tuple[float, float, float]] = {
+            "educate": (2.0, 0.5, 5.0),
+            "reproduce": (1.5, 1.0, 10.0),
+            "attack": (1.0, 3.0, 15.0),
+            "mobilize": (0.5, 4.0, 8.0),
+            "campaign": (1.0, 3.0, 20.0),
+            "aid": (0.5, 1.0, 25.0),
+            "investigate": (3.0, 0.0, 2.0),
+            "move": (1.0, 0.5, 5.0),
+            "negotiate": (2.0, 0.0, 10.0),
+        }
+        eligible_by_verb: dict[str, bool] = {
+            "educate": True,  # get_educate_targets: C001/C004
+            "reproduce": True,  # the acting org itself
+            "attack": True,  # get_attack_targets: INST001
+            "mobilize": False,  # honest empty list — only ORG001 exists
+            "campaign": True,  # T001-T004 territories
+            "aid": True,  # population targets C001/C004
+            "investigate": True,  # ORG001 territory scans
+            "move": True,  # territories exist
+            "negotiate": False,  # no other organization in the stub world
+        }
+
+        verbs: list[dict[str, Any]] = []
+        for verb in (
+            "educate",
+            "reproduce",
+            "attack",
+            "mobilize",
+            "campaign",
+            "aid",
+            "investigate",
+            "move",
+            "negotiate",
+        ):
+            cl_cost, sl_cost, budget_cost = costs[verb]
+            eligible = eligible_by_verb[verb]
+            reason, remedy = (None, None) if eligible else VERB_INELIGIBILITY_COPY[verb]
+            cl = float(resources["cadre_labor"])
+            sl = float(resources["sympathizer_labor"])
+            budget = float(resources["material"])
+            if cl < cl_cost:
+                can_afford, afford_note = False, f"Need {cl_cost} CL, have {cl:.1f}"
+            elif sl < sl_cost:
+                can_afford, afford_note = False, f"Need {sl_cost} SL, have {sl:.1f}"
+            elif budget < budget_cost:
+                can_afford, afford_note = False, f"Need ${budget_cost}, have ${budget:.1f}"
+            else:
+                can_afford, afford_note = True, None
+            verbs.append(
+                {
+                    "verb": verb,
+                    "eligible": eligible,
+                    "reason": reason,
+                    "remedy": remedy,
+                    "can_afford": can_afford,
+                    "afford_note": afford_note,
+                }
+            )
+
+        return {
+            "session_id": str(session_id),
+            "tick": session.get("tick", 0),
+            "org_id": org_id,
+            "verbs": verbs,
         }
 
     # ------------------------------------------------------------------ #

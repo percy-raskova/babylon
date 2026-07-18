@@ -783,11 +783,15 @@ class Simulation:
             self._started = False
 
     def get_outcome(self) -> GameOutcome:
-        """Return current game outcome from EndgameDetector if present.
+        """Return the current recognized pattern from EndgameDetector if present.
 
         Searches registered observers for an EndgameDetector and returns
-        its current outcome. If no EndgameDetector is registered, returns
-        IN_PROGRESS.
+        its currently recognized pattern. If no EndgameDetector is
+        registered, or none has recognized a pattern, returns IN_PROGRESS.
+
+        Spec-116 FR-116-1: EndgameDetector is a pattern recognizer, not an
+        adjudicator — this maps ``recognized_pattern is None`` to
+        ``GameOutcome.IN_PROGRESS`` for this legacy facade's return contract.
 
         Returns:
             GameOutcome enum value indicating current game state.
@@ -803,7 +807,7 @@ class Simulation:
 
         for observer in self._observers:
             if isinstance(observer, EndgameDetector):
-                return observer.outcome
+                return observer.recognized_pattern or GameOutcome.IN_PROGRESS
 
         return GameOutcome.IN_PROGRESS
 
@@ -1007,11 +1011,16 @@ class Simulation:
         self,
         max_ticks: int = 1000,
     ) -> tuple[WorldState, GameOutcome]:
-        """Run simulation until an endgame condition is met or max_ticks reached.
+        """Run simulation until a pattern is recognized or max_ticks reached.
 
         This method runs the simulation step by step, checking after each tick
-        whether the EndgameDetector has detected a game ending condition.
-        It terminates early if an endgame is reached.
+        whether the EndgameDetector has recognized an endgame pattern.
+        It terminates early once a pattern is recognized.
+
+        Spec-116 FR-116-1: EndgameDetector is a pattern recognizer, not an
+        adjudicator (Task 4 replaces this recognition-ends-the-loop behavior
+        with the fixed century horizon; this legacy facade keeps the
+        pre-existing early-stop behavior for this task).
 
         Args:
             max_ticks: Maximum number of ticks to run before returning.
@@ -1021,7 +1030,7 @@ class Simulation:
             Tuple of (final_state, outcome):
             - final_state: The WorldState when simulation stopped
             - outcome: GameOutcome indicating why simulation stopped
-              (may be IN_PROGRESS if max_ticks reached without endgame)
+              (may be IN_PROGRESS if max_ticks reached without recognition)
 
         Raises:
             ValueError: If max_ticks is negative.
@@ -1052,10 +1061,12 @@ class Simulation:
             self.step()
             tick_count += 1
 
-            # Check if game ended
-            if detector is not None and detector.is_game_over:
+            # Check if a pattern was recognized
+            if detector is not None and detector.recognized_pattern is not None:
                 break
 
         # Return final state and outcome
-        outcome = detector.outcome if detector is not None else GameOutcome.IN_PROGRESS
+        outcome = (
+            detector.recognized_pattern if detector is not None else None
+        ) or GameOutcome.IN_PROGRESS
         return (self._current_state, outcome)

@@ -27,15 +27,12 @@ if TYPE_CHECKING:
     from babylon.ooda.types import Action
     from babylon.topology.graph import BabylonGraph
 
-#: State attention the acting org draws for a sabotage action.
-_ATTACK_SELF_HEAT_GAIN = 0.1
-
 
 def resolve_attack(
     action: Action,
     org_attrs: dict[str, Any],  # noqa: ARG001 — heat read live from the graph
     graph: BabylonGraph,
-    services: ServicesProtocol,  # noqa: ARG001 — layer3 owns the infra delta
+    services: ServicesProtocol,
 ) -> ActionResult:
     """Resolve a player ATTACK action: acting-org heat + layer-3 infra decay.
 
@@ -44,17 +41,18 @@ def resolve_attack(
         org_attrs: Acting organization's node attributes (unused; heat is read
             live from the graph so concurrent same-tick writes are respected).
         graph: World graph (mutated in place on the acting org node).
-        services: ServicesProtocol (unused; layer 3 sources the infra delta).
+        services: ServicesProtocol — supplies OODADefines.attack_self_heat_gain.
 
     Returns:
         :class:`~babylon.ooda.types.ActionResult` carrying the ATTACK action so
         layer 3 applies the infrastructure decrement to the target.
     """
+    heat_gain = float(services.defines.ooda.attack_self_heat_gain)
     org_node = graph.nodes.get(action.org_id)
     heat_self_delta = 0.0
     if org_node is not None and org_node.get("_node_type") == "organization":
         heat = float(org_node.get("heat", 0.0))
-        new_heat = min(1.0, heat + _ATTACK_SELF_HEAT_GAIN)
+        new_heat = min(1.0, heat + heat_gain)
         graph.update_node(action.org_id, heat=new_heat)
         heat_self_delta = new_heat - heat
 

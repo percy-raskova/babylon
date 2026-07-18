@@ -21,12 +21,15 @@ from babylon.models.entity_registry import (
 )
 from babylon.models.enums import EventType
 from babylon.models.events import (
+    AxiomViolationEvent,
     CrisisEvent,
     DoctrinePurgeFailedEvent,
     DoctrineTrapEscapedEvent,
     DoctrineTrapSprungEvent,
     ExtractionEvent,
     MassAwakeningEvent,
+    PhiHourOutlierEvent,
+    QcewCarryForwardEvent,
     RuptureEvent,
     SolidaritySpikeEvent,
     SparkEvent,
@@ -39,6 +42,7 @@ from babylon.models.events.balkanization_payloads import (
     DualPowerActivePayload,
     FactionVictoryPayload,
     RedSettlerTrapDetectedPayload,
+    SecessionDeclaredPayload,
     SovereignCollapsePayload,
     TerritoryTransitionPayload,
 )
@@ -68,8 +72,23 @@ from babylon.models.events.ooda_payloads import (
 from babylon.models.events.reactionary_payloads import (
     FascistDriftEvent,
     FascistRecruitmentEvent,
+    LockoutEvent,
     OrganizationalFractureEvent,
+    PogromEvent,
     RedBrownCoupEvent,
+    VigilantismEvent,
+)
+from babylon.models.events.spine_payloads import (
+    AspectReversalEvent,
+    BifurcationThresholdEvent,
+    CoOptiveBreakdownEvent,
+    CrisisPhaseTransitionEvent,
+    EdgeModeTransitionEvent,
+    EntityDeathEvent,
+    LatentContradictionReleaseEvent,
+    LevelTransitionEvent,
+    MarketCorrectionEvent,
+    PopulationAttritionEvent,
 )
 from babylon.models.events.struggle_payloads import (
     FascistRevanchismEvent,
@@ -1291,3 +1310,465 @@ class TestGracefulDegradation:
 
         assert result is not None
         assert result.timestamp == timestamp
+
+
+class TestPogromEventConversion:
+    """spec-116 FR-116-4.7: POGROM converts first-class (mandatory RED-phase test)."""
+
+    def test_converts_pogrom_event(self) -> None:
+        """POGROM events convert to PogromEvent with the resolver's effects."""
+        bus_event = Event(
+            type=EventType.POGROM,
+            tick=11,
+            payload={
+                "org_id": "ORG_FASH",
+                "target_id": PERIPHERY_WORKER_ID,
+                "repression_increment": 0.15,
+                "wealth_destroyed": 12.5,
+            },
+        )
+        result = _convert_bus_event_to_pydantic(bus_event)
+
+        assert result is not None
+        assert isinstance(result, PogromEvent)
+        assert result.event_type == EventType.POGROM
+        assert result.tick == 11
+        assert result.org_id == "ORG_FASH"
+        assert result.target_id == PERIPHERY_WORKER_ID
+        assert result.repression_increment == 0.15
+        assert result.wealth_destroyed == 12.5
+
+    def test_pogrom_with_string_event_type_and_absent_effects(self) -> None:
+        """The events_generated string form converts; missing effects default 0.0
+        (target node absent in _resolve_fascist_verb -> empty effects dict)."""
+        bus_event = Event(
+            type="pogrom",  # type: ignore[arg-type]
+            tick=2,
+            payload={"org_id": "ORG_FASH", "target_id": PERIPHERY_WORKER_ID},
+        )
+        result = _convert_bus_event_to_pydantic(bus_event)
+
+        assert isinstance(result, PogromEvent)
+        assert result.repression_increment == 0.0
+        assert result.wealth_destroyed == 0.0
+
+
+class TestLockoutEventConversion:
+    """spec-116 FR-116-4.7: LOCKOUT converts first-class."""
+
+    def test_converts_lockout_event(self) -> None:
+        """LOCKOUT events convert to LockoutEvent."""
+        bus_event = Event(
+            type=EventType.LOCKOUT,
+            tick=12,
+            payload={
+                "org_id": "ORG_EMPLOYER",
+                "target_id": LABOR_ARISTOCRACY_ID,
+                "wage_attenuation": 0.3,
+            },
+        )
+        result = _convert_bus_event_to_pydantic(bus_event)
+
+        assert result is not None
+        assert isinstance(result, LockoutEvent)
+        assert result.event_type == EventType.LOCKOUT
+        assert result.tick == 12
+        assert result.org_id == "ORG_EMPLOYER"
+        assert result.target_id == LABOR_ARISTOCRACY_ID
+        assert result.wage_attenuation == 0.3
+
+
+class TestVigilantismEventConversion:
+    """spec-116 FR-116-4.7: VIGILANTISM converts first-class."""
+
+    def test_converts_vigilantism_event(self) -> None:
+        """VIGILANTISM events convert to VigilantismEvent."""
+        bus_event = Event(
+            type=EventType.VIGILANTISM,
+            tick=13,
+            payload={
+                "org_id": "ORG_FASH",
+                "target_id": PERIPHERY_WORKER_ID,
+                "repression_increment": 0.1,
+            },
+        )
+        result = _convert_bus_event_to_pydantic(bus_event)
+
+        assert result is not None
+        assert isinstance(result, VigilantismEvent)
+        assert result.event_type == EventType.VIGILANTISM
+        assert result.tick == 13
+        assert result.org_id == "ORG_FASH"
+        assert result.target_id == PERIPHERY_WORKER_ID
+        assert result.repression_increment == 0.1
+
+
+class TestMarketCorrectionEventConversion:
+    """spec-116 FR-116-4.7 sweep: MARKET_CORRECTION (market_scissors.py:342-356)."""
+
+    def test_converts_market_correction_event(self) -> None:
+        bus_event = Event(
+            type=EventType.MARKET_CORRECTION,
+            tick=40,
+            payload={
+                "overhang": 1.8,
+                "serviceable": 1.2,
+                "profit_rate": 0.05,
+                "fictitious_log_before": 2.4,
+                "fictitious_log_after": 0.96,
+                "price_log_before": 1.1,
+                "price_log_after": 0.7,
+            },
+        )
+        result = _convert_bus_event_to_pydantic(bus_event)
+
+        assert result is not None
+        assert isinstance(result, MarketCorrectionEvent)
+        assert result.event_type == EventType.MARKET_CORRECTION
+        assert result.tick == 40
+        assert result.overhang == 1.8
+        assert result.serviceable == 1.2
+        assert result.profit_rate == 0.05
+        assert result.fictitious_log_before == 2.4
+        assert result.fictitious_log_after == 0.96
+        assert result.price_log_before == 1.1
+        assert result.price_log_after == 0.7
+
+    def test_market_correction_none_profit_rate(self) -> None:
+        """_mean_profit_rate (market_scissors.py:408) returns None when no
+        territory carries tick_profit_rate that tick — the live publisher
+        forwards that None unchanged (III.11: no rate is fabricated), so
+        the payload must accept it rather than crashing Pydantic validation
+        (regression: qa:regression's ceremony run hit this on a real tick)."""
+        bus_event = Event(
+            type=EventType.MARKET_CORRECTION,
+            tick=41,
+            payload={
+                "overhang": 1.8,
+                "serviceable": 1.2,
+                "profit_rate": None,
+                "fictitious_log_before": 2.4,
+                "fictitious_log_after": 0.96,
+                "price_log_before": 1.1,
+                "price_log_after": 0.7,
+            },
+        )
+        result = _convert_bus_event_to_pydantic(bus_event)
+
+        assert isinstance(result, MarketCorrectionEvent)
+        assert result.profit_rate is None
+
+
+class TestVitalityEventConversion:
+    """spec-116 FR-116-4.7 sweep: ENTITY_DEATH + POPULATION_ATTRITION (vitality.py)."""
+
+    def test_converts_entity_death_event(self) -> None:
+        bus_event = Event(
+            type=EventType.ENTITY_DEATH,
+            tick=30,
+            payload={
+                "entity_id": PERIPHERY_WORKER_ID,
+                "wealth": 0.4,
+                "consumption_needs": 2.0,
+                "s_bio": 1.5,
+                "s_class": 0.5,
+                "cause": "starvation",
+            },
+        )
+        result = _convert_bus_event_to_pydantic(bus_event)
+
+        assert result is not None
+        assert isinstance(result, EntityDeathEvent)
+        assert result.event_type == EventType.ENTITY_DEATH
+        assert result.tick == 30
+        assert result.entity_id == PERIPHERY_WORKER_ID
+        assert result.wealth == 0.4
+        assert result.consumption_needs == 2.0
+        assert result.s_bio == 1.5
+        assert result.s_class == 0.5
+        assert result.cause == "starvation"
+
+    def test_converts_population_attrition_event(self) -> None:
+        bus_event = Event(
+            type=EventType.POPULATION_ATTRITION,
+            tick=29,
+            payload={
+                "entity_id": PERIPHERY_WORKER_ID,
+                "deaths": 42,
+                "remaining_population": 958,
+                "attrition_rate": 0.042,
+            },
+        )
+        result = _convert_bus_event_to_pydantic(bus_event)
+
+        assert result is not None
+        assert isinstance(result, PopulationAttritionEvent)
+        assert result.event_type == EventType.POPULATION_ATTRITION
+        assert result.entity_id == PERIPHERY_WORKER_ID
+        assert result.deaths == 42
+        assert result.remaining_population == 958
+        assert result.attrition_rate == 0.042
+
+
+class TestCountyCrisisSignalConversion:
+    """spec-116 FR-116-4.7 sweep: CRISIS_PHASE_TRANSITION + BIFURCATION_THRESHOLD.
+
+    Both publishers pass ``.value`` STRINGS (tick/system/__init__.py:996, :1703),
+    so these tests exercise the string-normalization path deliberately."""
+
+    def test_converts_crisis_phase_transition_event(self) -> None:
+        bus_event = Event(
+            type="crisis_phase_transition",  # type: ignore[arg-type]
+            tick=12,
+            payload={
+                "fips": "26163",
+                "previous_phase": "normal",
+                "new_phase": "onset",
+                "profit_rate": 0.08,
+                "crisis_duration": 0,
+            },
+        )
+        result = _convert_bus_event_to_pydantic(bus_event)
+
+        assert result is not None
+        assert isinstance(result, CrisisPhaseTransitionEvent)
+        assert result.event_type == EventType.CRISIS_PHASE_TRANSITION
+        assert result.fips == "26163"
+        assert result.previous_phase == "normal"
+        assert result.new_phase == "onset"
+        assert result.profit_rate == 0.08
+        assert result.crisis_duration == 0
+
+    def test_crisis_phase_transition_none_profit_rate(self) -> None:
+        bus_event = Event(
+            type="crisis_phase_transition",  # type: ignore[arg-type]
+            tick=12,
+            payload={"fips": "26163", "previous_phase": "onset", "new_phase": "acute"},
+        )
+        result = _convert_bus_event_to_pydantic(bus_event)
+
+        assert isinstance(result, CrisisPhaseTransitionEvent)
+        assert result.profit_rate is None
+
+    def test_converts_bifurcation_threshold_event(self) -> None:
+        bus_event = Event(
+            type="bifurcation_threshold",  # type: ignore[arg-type]
+            tick=13,
+            payload={
+                "fips": "26163",
+                "score": -0.41,
+                "direction": "revolutionary",
+                "solidarity_density": 0.3,
+                "legitimation": 0.55,
+                "class_burden_ratio": 1.2,
+                "threshold": 0.35,
+            },
+        )
+        result = _convert_bus_event_to_pydantic(bus_event)
+
+        assert result is not None
+        assert isinstance(result, BifurcationThresholdEvent)
+        assert result.event_type == EventType.BIFURCATION_THRESHOLD
+        assert result.fips == "26163"
+        assert result.score == -0.41
+        assert result.direction == "revolutionary"
+        assert result.solidarity_density == 0.3
+        assert result.legitimation == 0.55
+        assert result.class_burden_ratio == 1.2
+        assert result.threshold == 0.35
+
+
+class TestEdgeTransitionFamilyConversion:
+    """spec-116 FR-116-4.7 sweep: the Feature-002 family the drop comment named
+    (edge_transition/_legacy.py:666-679, :772-795, :848-859)."""
+
+    def test_converts_edge_mode_transition_event(self) -> None:
+        bus_event = Event(
+            type=EventType.EDGE_MODE_TRANSITION,
+            tick=8,
+            payload={
+                "source_id": CORE_BOURGEOISIE_ID,
+                "target_id": LABOR_ARISTOCRACY_ID,
+                "from_mode": "co-optive",
+                "to_mode": "antagonistic",
+                "predicate": "TENSION_THRESHOLD",
+                "description": "Co-optation exhausted",
+            },
+        )
+        result = _convert_bus_event_to_pydantic(bus_event)
+
+        assert result is not None
+        assert isinstance(result, EdgeModeTransitionEvent)
+        assert result.event_type == EventType.EDGE_MODE_TRANSITION
+        assert result.source_id == CORE_BOURGEOISIE_ID
+        assert result.target_id == LABOR_ARISTOCRACY_ID
+        assert result.from_mode == "co-optive"
+        assert result.to_mode == "antagonistic"
+        assert result.predicate == "TENSION_THRESHOLD"
+        assert result.description == "Co-optation exhausted"
+
+    def test_converts_co_optive_breakdown_event(self) -> None:
+        bus_event = Event(
+            type=EventType.CO_OPTIVE_BREAKDOWN,
+            tick=9,
+            payload={
+                "source_id": CORE_BOURGEOISIE_ID,
+                "target_id": LABOR_ARISTOCRACY_ID,
+                "latent_released": {"class_tension": 0.4},
+                "multiplier": 1.5,
+            },
+        )
+        result = _convert_bus_event_to_pydantic(bus_event)
+
+        assert result is not None
+        assert isinstance(result, CoOptiveBreakdownEvent)
+        assert result.latent_released == {"class_tension": 0.4}
+        assert result.multiplier == 1.5
+
+    def test_converts_latent_contradiction_release_event(self) -> None:
+        bus_event = Event(
+            type=EventType.LATENT_CONTRADICTION_RELEASE,
+            tick=9,
+            payload={
+                "node_id": CORE_BOURGEOISIE_ID,
+                "released_fields": {"class_tension": 0.6},
+            },
+        )
+        result = _convert_bus_event_to_pydantic(bus_event)
+
+        assert result is not None
+        assert isinstance(result, LatentContradictionReleaseEvent)
+        assert result.node_id == CORE_BOURGEOISIE_ID
+        assert result.released_fields == {"class_tension": 0.6}
+
+    def test_converts_aspect_reversal_event(self) -> None:
+        bus_event = Event(
+            type=EventType.ASPECT_REVERSAL,
+            tick=10,
+            payload={
+                "source_id": PERIPHERY_WORKER_ID,
+                "target_id": COMPRADOR_ID,
+                "previous_dominant": COMPRADOR_ID,
+                "new_dominant": PERIPHERY_WORKER_ID,
+            },
+        )
+        result = _convert_bus_event_to_pydantic(bus_event)
+
+        assert result is not None
+        assert isinstance(result, AspectReversalEvent)
+        assert result.previous_dominant == COMPRADOR_ID
+        assert result.new_dominant == PERIPHERY_WORKER_ID
+
+
+class TestLevelTransitionEventConversion:
+    """spec-116 FR-116-4.7 sweep: LEVEL_TRANSITION (contradiction.py:524-536)."""
+
+    def test_converts_level_transition_event(self) -> None:
+        bus_event = Event(
+            type=EventType.LEVEL_TRANSITION,
+            tick=15,
+            payload={
+                "opposition": "price_value",
+                "from_level": "county",
+                "to_level": "national",
+                "gap": 0.2,
+                "rate": 0.01,
+            },
+        )
+        result = _convert_bus_event_to_pydantic(bus_event)
+
+        assert result is not None
+        assert isinstance(result, LevelTransitionEvent)
+        assert result.opposition == "price_value"
+        assert result.from_level == "county"
+        assert result.to_level == "national"
+        assert result.gap == 0.2
+        assert result.rate == 0.01
+
+
+class TestSecessionDeclaredEventConversion:
+    """spec-116 FR-116-4.7 sweep: SECESSION_DECLARED reuses the spec-070
+    SecessionDeclaredPayload (faction_influence.py:229-240)."""
+
+    def test_converts_secession_declared_event(self) -> None:
+        bus_event = Event(
+            type=EventType.SECESSION_DECLARED,
+            tick=200,
+            payload={
+                "secessionist_faction_id": "FAC_RED_STATE",
+                "parent_sovereign_id": "SOV_USA",
+                "contiguous_territory_ids": ("T001", "T002"),
+                "observer_triggered": False,
+            },
+        )
+        result = _convert_bus_event_to_pydantic(bus_event)
+
+        assert result is not None
+        assert isinstance(result, SecessionDeclaredPayload)
+        assert result.event_type == EventType.SECESSION_DECLARED
+        assert result.secessionist_faction_id == "FAC_RED_STATE"
+        assert result.parent_sovereign_id == "SOV_USA"
+        assert result.contiguous_territory_ids == ("T001", "T002")
+        assert result.observer_triggered is False
+
+
+class TestCalibrationWarningConversion:
+    """spec-116 FR-116-4.7 sweep: the dotted-value calibration trio. Publishers
+    pass ``.value`` strings and payload = the typed event's model_dump()
+    (periphery_labor_coefficients.py:222-238, industry_to_county_allocator.py:269-305)."""
+
+    def test_converts_axiom_violation_event(self) -> None:
+        bus_event = Event(
+            type="calibration_warning.axiom_violation",  # type: ignore[arg-type]
+            tick=0,
+            payload={"industry": "334", "year": 2019, "ratio": 0.87, "threshold": 1.0},
+        )
+        result = _convert_bus_event_to_pydantic(bus_event)
+
+        assert result is not None
+        assert isinstance(result, AxiomViolationEvent)
+        assert result.event_type == EventType.CALIBRATION_AXIOM_VIOLATION
+        assert result.industry == "334"
+        assert result.year == 2019
+        assert result.ratio == 0.87
+        assert result.threshold == 1.0
+
+    def test_converts_qcew_carry_forward_event(self) -> None:
+        bus_event = Event(
+            type="calibration_warning.qcew_carry_forward",  # type: ignore[arg-type]
+            tick=0,
+            payload={
+                "county_fips": "26163",
+                "year": 2020,
+                "look_back_year": 2018,
+                "look_back_distance": 2,
+            },
+        )
+        result = _convert_bus_event_to_pydantic(bus_event)
+
+        assert result is not None
+        assert isinstance(result, QcewCarryForwardEvent)
+        assert result.county_fips == "26163"
+        assert result.year == 2020
+        assert result.look_back_year == 2018
+        assert result.look_back_distance == 2
+
+    def test_converts_phi_hour_outlier_event(self) -> None:
+        bus_event = Event(
+            type="calibration_warning.phi_hour_outlier",  # type: ignore[arg-type]
+            tick=0,
+            payload={
+                "county_fips": "26163",
+                "phi_hour": 1500.0,
+                "threshold_low": -1000.0,
+                "threshold_high": 1000.0,
+            },
+        )
+        result = _convert_bus_event_to_pydantic(bus_event)
+
+        assert result is not None
+        assert isinstance(result, PhiHourOutlierEvent)
+        assert result.county_fips == "26163"
+        assert result.phi_hour == 1500.0
+        assert result.threshold_low == -1000.0
+        assert result.threshold_high == 1000.0

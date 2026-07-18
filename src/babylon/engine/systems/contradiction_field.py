@@ -27,6 +27,7 @@ if TYPE_CHECKING:
 
 from babylon.kernel.system_base import SystemBase
 from babylon.kernel.system_protocol import ContextType
+from babylon.kernel.tick_partition import TickPartition
 from babylon.models.enums import EdgeType
 
 logger = logging.getLogger(__name__)
@@ -57,6 +58,9 @@ class ContradictionFieldSystem(SystemBase):
     history window in persistent_data for temporal derivative computation by
     System #20.
     """
+
+    partition: ClassVar[TickPartition] = TickPartition.CONSEQUENCE
+    position: ClassVar[float] = 19.0
 
     name = "contradiction_field"
 

@@ -1,8 +1,10 @@
 import type { LiveVerbCost, VerbConfig, VerbTarget } from "./types";
+import { parseExpectedDeltas, type WireExpectedDeltas } from "./expectedDeltas";
 
 interface AttackTargetEntry {
   target_id: string;
   name: string;
+  expected_deltas?: WireExpectedDeltas;
 }
 
 interface AttackEdgeEntry {
@@ -52,11 +54,13 @@ export const attackConfig: VerbConfig = {
         id: t.target_id,
         label: t.name,
         group: "Organizations",
+        expectedDeltas: parseExpectedDeltas(t.expected_deltas),
       })),
       ...(groups.institutions ?? []).map((t) => ({
         id: t.target_id,
         label: t.name,
         group: "Institutions",
+        expectedDeltas: parseExpectedDeltas(t.expected_deltas),
       })),
       ...(groups.edges ?? []).map((t) => ({
         id: t.target_id,

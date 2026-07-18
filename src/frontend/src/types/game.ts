@@ -20,6 +20,8 @@ export interface ApiResponse<T> {
 /** Game session summary (from GET /api/games/). */
 export interface GameSummary {
   id: string;
+  /** Deterministic operation codename derived server-side from the session UUID. */
+  codename: string;
   scenario: string;
   current_tick: number;
   status: GameStatus;
@@ -27,6 +29,16 @@ export interface GameSummary {
 }
 
 export type GameStatus = "active" | "paused" | "completed" | "abandoned";
+
+/** GET /api/games/:id/ response body (`game_detail`, web/game/api.py). */
+export interface GameDetailData {
+  id: string;
+  codename: string;
+  scenario: string;
+  current_tick: number;
+  status: GameStatus;
+  created_at: string | null;
+}
 
 /**
  * Crisis lifecycle phase (mirrors `CrisisPhase` StrEnum,
@@ -53,6 +65,8 @@ export interface GameSnapshot {
   events: GameEvent[];
   traps?: TrapDetectionResult;
   derived: DerivedBlock;
+  /** Spec-116 Task 4: only present on the `resolve_tick` (POST /resolve/) response. */
+  endgame_progress?: EndgameProgress;
 }
 
 /**
@@ -102,6 +116,27 @@ export interface TrapStatus {
   score: number;
   indicators: string[];
   ticks_at_moderate: number;
+}
+
+/**
+ * Per-tick endgame "how close" HUD signal (spec-116 Playability Spine, Task
+ * 4). Owner ruling 2026-07-17: the 5 endgame patterns are recognized, never
+ * adjudicated — the campaign runs a fixed century horizon
+ * (`endgame.campaign_horizon_years * timescale.weeks_per_year`) and
+ * recognizing a pattern does not end the game. `axes` carries exactly the 5
+ * `GameOutcome` keys (`revolutionary_victory`, `ecological_collapse`,
+ * `fascist_consolidation`, `red_ogv`, `fragmented_collapse`), each a
+ * progress ratio in `[0, 1]`. `pattern`/`since_tick` are null when no
+ * pattern is currently recognized. `locked` is true once the currently
+ * recognized pattern has held for `endgame.pattern_lock_ticks` consecutive
+ * ticks (`(tick - since_tick + 1) >= pattern_lock_ticks`).
+ */
+export interface EndgameProgress {
+  axes: Record<string, number>;
+  pattern: string | null;
+  since_tick: number | null;
+  horizon_tick: number;
+  locked: boolean;
 }
 
 /** Territory with full visualization fields (Spec 052 §8). */
@@ -206,6 +241,33 @@ export interface TerritoryState {
    * (Constitution III.11 — never coerced to a fabricated 0).
    */
   price_divergence?: number | null;
+  /**
+   * Playability Spine Task 20 (spec-116 4d.5): the Feature-023 circulation +
+   * Feature-024 financial-distribution families, serialized DECLARED-DARK.
+   * The engine's gating services (`turnover_profile_source` /
+   * `interest_calculator`) are unwired, so post-boundary values are the
+   * write-site fallback constants (0.0 / false / 0; the housing fraction's
+   * honest `null`) and `null` before the first year boundary. Do NOT build
+   * player-facing chrome on these until the SEAM_REGISTRY rows leave
+   * NOT_YET_COMPUTED — a chip of frozen constants is dishonest.
+   * Wire keys keep the `tick_` prefix (registry `wire_keys`).
+   */
+  tick_liquidity_ratio?: number | null;
+  tick_commodity_overhang?: number | null;
+  tick_replacement_cycle?: string | null;
+  tick_inventory_diagnosis?: string | null;
+  tick_realization_crisis?: boolean | null;
+  tick_turnover_crisis?: boolean | null;
+  tick_reproduction_crisis?: boolean | null;
+  tick_interest_burden?: number | null;
+  tick_ground_rent?: number | null;
+  tick_rentier_share?: number | null;
+  tick_profit_of_enterprise?: number | null;
+  tick_financialization_share?: number | null;
+  tick_accumulated_debt?: number | null;
+  tick_claims_exceed_surplus?: boolean | null;
+  tick_housing_fictitious_fraction?: number | null;
+  tick_financial_crisis_signals?: number | null;
 }
 
 /** Ternary consciousness vector — always sums to 1.0 (Spec 052 §6). */
@@ -716,6 +778,28 @@ export interface ActionPreviewResult {
   warnings: string[];
 }
 
+/** One verb's row from GET /actions/eligibility/ (spec-116 FR-4.8). */
+export interface VerbEligibilityEntry {
+  verb: string;
+  eligible: boolean;
+  /** Player-facing reason the verb has no eligible targets; null when eligible. */
+  reason: string | null;
+  /** What the player can do about it; null when eligible. */
+  remedy: string | null;
+  /** From the same check_can_afford that gates submit — advisory only;
+   *  the UI never disables on affordability. */
+  can_afford: boolean;
+  afford_note: string | null;
+}
+
+/** Response payload of GET /api/games/{id}/actions/eligibility/. */
+export interface VerbEligibilityPayload {
+  session_id: string;
+  tick: number;
+  org_id: string;
+  verbs: VerbEligibilityEntry[];
+}
+
 // ---------------------------------------------------------------------------
 // Multi-Scale Spatial Rendering Types
 // ---------------------------------------------------------------------------
@@ -948,6 +1032,19 @@ export interface TimeseriesPayload {
    * (rollout skew), which reads as "no corrections observable".
    */
   market_corrections?: (number | null)[];
+  /**
+   * Playability Spine Task 19 (spec-116 4d.5) — county-deduped crisis/
+   * bifurcation history off the year-boundary `tick_*` attrs. Step-function
+   * series: `null` until the first year boundary (~tick 52 at weekly
+   * cadence), then the last boundary's value carried forward — honest
+   * sparse, never smoothed. Optional: pre-spine backends omit them
+   * (rollout skew, the `market_corrections` precedent).
+   */
+  crisis_pop_share?: (number | null)[];
+  bifurcation_score_mean?: (number | null)[];
+  wage_compression_mean?: (number | null)[];
+  capital_stock_total?: (number | null)[];
+  unemployment_rate_mean?: (number | null)[];
 }
 
 /**

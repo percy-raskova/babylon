@@ -26,6 +26,13 @@ urlpatterns: list[URLPattern] = [
     path("games/<str:game_id>/pause/", api.game_pause, name="game-pause"),
     path("games/<str:game_id>/resume/", api.game_resume, name="game-resume"),
     path("games/<str:game_id>/recover/", api.game_recover, name="game-recover"),
+    path("games/<str:game_id>/archive/", api.game_archive, name="game-archive"),
+    # API: Spec-116 FR-116-5 — the mercy affordance (end campaign at locked pattern)
+    path(
+        "games/<str:game_id>/accept-outcome/",
+        api.game_accept_outcome,
+        name="game-accept-outcome",
+    ),
     # API: State
     path("games/<str:game_id>/state/", api.game_state, name="game-state"),
     path("games/<str:game_id>/summary/", api.game_summary, name="game-summary"),
@@ -147,6 +154,12 @@ urlpatterns: list[URLPattern] = [
         "games/<str:game_id>/actions/available/",
         api.actions_available,
         name="actions-available",
+    ),
+    # API: Spec-116 FR-4.8 — per-verb eligibility (VerbGrid disabled-with-reason)
+    path(
+        "games/<str:game_id>/actions/eligibility/",
+        api.verb_eligibility,
+        name="actions-eligibility",
     ),
     path(
         "games/<str:game_id>/actions/preview/",

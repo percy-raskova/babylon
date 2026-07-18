@@ -30,6 +30,7 @@ from __future__ import annotations
 
 import pytest
 
+from babylon.engine.context import TickContext
 from babylon.engine.services import ServiceContainer
 from babylon.engine.systems.metabolism import MetabolismSystem  # Will fail - doesn't exist
 from babylon.models.enums import EventType
@@ -68,7 +69,7 @@ class TestMetabolismSystemBasic:
         )
 
         services = ServiceContainer.create()
-        context: dict[str, int] = {"tick": 1}
+        context = TickContext(tick=1)
         system = MetabolismSystem()
 
         # Act
@@ -101,7 +102,7 @@ class TestMetabolismSystemBasic:
         )
 
         services = ServiceContainer.create()
-        context: dict[str, int] = {"tick": 1}
+        context = TickContext(tick=1)
         system = MetabolismSystem()
 
         # Act
@@ -134,7 +135,7 @@ class TestMetabolismSystemBasic:
         )
 
         services = ServiceContainer.create()
-        context: dict[str, int] = {"tick": 1}
+        context = TickContext(tick=1)
         system = MetabolismSystem()
 
         # Act
@@ -165,7 +166,7 @@ class TestMetabolismSystemBasic:
         )
 
         services = ServiceContainer.create()
-        context: dict[str, int] = {"tick": 1}
+        context = TickContext(tick=1)
         system = MetabolismSystem()
 
         # Act
@@ -215,7 +216,7 @@ class TestMetabolismSystemEvents:
         )
 
         services = ServiceContainer.create()
-        context: dict[str, int] = {"tick": 5}
+        context = TickContext(tick=5)
         system = MetabolismSystem()
 
         # Act
@@ -264,7 +265,7 @@ class TestMetabolismSystemEvents:
         )
 
         services = ServiceContainer.create()
-        context: dict[str, int] = {"tick": 1}
+        context = TickContext(tick=1)
         system = MetabolismSystem()
 
         # Act
@@ -301,7 +302,7 @@ class TestMetabolismSystemEvents:
         )
 
         services = ServiceContainer.create()
-        context: dict[str, int] = {"tick": 1}
+        context = TickContext(tick=1)
         system = MetabolismSystem()
 
         # Act
@@ -356,7 +357,7 @@ class TestMetabolismSystemAggregation:
         )
 
         services = ServiceContainer.create()
-        context: dict[str, int] = {"tick": 1}
+        context = TickContext(tick=1)
         system = MetabolismSystem()
 
         # Act
@@ -406,7 +407,7 @@ class TestMetabolismSystemAggregation:
         )
 
         services = ServiceContainer.create()
-        context: dict[str, int] = {"tick": 10}
+        context = TickContext(tick=10)
         system = MetabolismSystem()
 
         # Act
@@ -445,7 +446,7 @@ class TestMetabolismSystemEdgeCases:
         )
 
         services = ServiceContainer.create()
-        context: dict[str, int] = {"tick": 1}
+        context = TickContext(tick=1)
         system = MetabolismSystem()
 
         # Act - should not raise
@@ -471,7 +472,7 @@ class TestMetabolismSystemEdgeCases:
         )
 
         services = ServiceContainer.create()
-        context: dict[str, int] = {"tick": 1}
+        context = TickContext(tick=1)
         system = MetabolismSystem()
 
         # Act
@@ -503,7 +504,7 @@ class TestMetabolismSystemEdgeCases:
         )
 
         services = ServiceContainer.create()
-        context: dict[str, int] = {"tick": 1}
+        context = TickContext(tick=1)
         system = MetabolismSystem()
 
         # Act
@@ -550,7 +551,7 @@ class TestMetabolismSystemEdgeCases:
         )
 
         services = ServiceContainer.create()
-        context: dict[str, int] = {"tick": 1}
+        context = TickContext(tick=1)
         system = MetabolismSystem()
 
         # Act
@@ -603,7 +604,7 @@ class TestMetabolismSystemEdgeCases:
         )
 
         services = ServiceContainer.create()
-        context: dict[str, int] = {"tick": 1}
+        context = TickContext(tick=1)
         system = MetabolismSystem()
 
         # Act
@@ -649,7 +650,7 @@ class TestMetabolismPopulationScaling:
         )
 
         services = ServiceContainer.create()
-        context: dict[str, int] = {"tick": 1}
+        context = TickContext(tick=1)
         system = MetabolismSystem()
 
         # Act
@@ -692,7 +693,7 @@ class TestMetabolismPopulationScaling:
         )
 
         services = ServiceContainer.create()
-        context: dict[str, int] = {"tick": 1}
+        context = TickContext(tick=1)
         system = MetabolismSystem()
 
         # Act
@@ -742,7 +743,7 @@ class TestMetabolismPopulationScaling:
         )
 
         services = ServiceContainer.create()
-        context: dict[str, int] = {"tick": 1}
+        context = TickContext(tick=1)
         system = MetabolismSystem()
 
         # Act
@@ -777,7 +778,7 @@ class TestMetabolicHysteresis:
             extraction_intensity=0.5,
         )
         services = ServiceContainer.create()
-        MetabolismSystem().step(graph, services, {"tick": 1})
+        MetabolismSystem().step(graph, services, TickContext(tick=1))
 
         assert graph.nodes["T001"]["max_biocapacity"] == pytest.approx(99.75, abs=1e-9)
 
@@ -793,7 +794,7 @@ class TestMetabolicHysteresis:
             extraction_intensity=0.0,
         )
         services = ServiceContainer.create()
-        MetabolismSystem().step(graph, services, {"tick": 1})
+        MetabolismSystem().step(graph, services, TickContext(tick=1))
 
         assert graph.nodes["T001"]["max_biocapacity"] == pytest.approx(100.0)
 
@@ -815,7 +816,7 @@ class TestMetabolicHysteresis:
             extraction_intensity=0.1,
         )
         services = ServiceContainer.create()
-        MetabolismSystem().step(graph, services, {"tick": 1})
+        MetabolismSystem().step(graph, services, TickContext(tick=1))
 
         assert graph.nodes["T001"]["max_biocapacity"] == pytest.approx(99.9505, abs=1e-6)
         assert graph.nodes["T001"]["biocapacity"] == pytest.approx(99.9505, abs=1e-6)
@@ -836,7 +837,7 @@ class TestMetabolicHysteresis:
 
         ceilings = []
         for tick in range(1, 6):
-            system.step(graph, services, {"tick": tick})
+            system.step(graph, services, TickContext(tick=tick))
             ceilings.append(graph.nodes["T001"]["max_biocapacity"])
 
         assert all(a > b for a, b in zip(ceilings[:-1], ceilings[1:], strict=True)), (

@@ -15,6 +15,7 @@
 
 import { useStore } from "@/store";
 import { classifyEvents } from "@/lib/eventClassifier";
+import { dedupeEvents } from "@/lib/eventDedup";
 import type { InspectorKind } from "@/store";
 import type { ClassifiedEvent, EventSeverity } from "@/types/game";
 
@@ -53,11 +54,14 @@ function inspectorKindForEvent(event: ClassifiedEvent): InspectorKind | null {
 
 export function EventsFeed(): React.JSX.Element {
   const events = useStore((s) => s.world.snapshot?.events);
-  const autopauseEventIds = useStore((s) => s.time.autopauseEventIds);
+  const autopauseEventKeys = useStore((s) => s.time.autopauseEventKeys);
   const setSelection = useStore((s) => s.map.setSelection);
   const openTakeover = useStore((s) => s.ui.openTakeover);
 
-  const classified = classifyEvents(events ?? []);
+  // Consecutive same-(type,subject) events collapse into one card with a
+  // count badge and age (spec-116 FR-116-2 / acceptance gate 2) — the
+  // run's FIRST event carries the card's id, severity, and deep-link.
+  const cards = dedupeEvents(classifyEvents(events ?? []));
 
   // The honest empty states carry the same testid as the populated feed —
   // "renders classified events OR the honest empty copy" is one surface
@@ -71,7 +75,7 @@ export function EventsFeed(): React.JSX.Element {
       </div>
     );
   }
-  if (classified.length === 0) {
+  if (cards.length === 0) {
     return (
       <div className="flex flex-col gap-1 p-2" data-testid="events-feed">
         <p className="p-3 text-[11px] italic text-shroud">The wire is quiet this tick.</p>
@@ -92,24 +96,41 @@ export function EventsFeed(): React.JSX.Element {
 
   return (
     <div className="flex flex-col gap-1 p-2" data-testid="events-feed">
-      {classified.map((e) => (
-        <button
-          key={e.id}
-          onClick={() => handleClick(e)}
-          disabled={!e.linkedEntityId && e.severity !== "critical"}
-          data-testid={`event-${e.id}`}
-          data-autopause={autopauseEventIds.includes(e.id) || undefined}
-          className="flex items-center gap-2 rounded px-1.5 py-1 text-left hover:bg-rebar disabled:cursor-default disabled:hover:bg-transparent"
-        >
-          <span className={`text-[10px] ${SEVERITY_COLOR[e.severity]}`}>●</span>
-          <span className="min-w-[90px] font-mono text-[9px] uppercase tracking-widest text-ash">
-            {e.event.type}
-          </span>
-          <span className="flex-1 truncate text-[11px] text-bone">
-            {e.event.title || e.event.body || e.event.type}
-          </span>
-        </button>
-      ))}
+      {cards.map((card) => {
+        const rep = card.representative;
+        return (
+          <button
+            key={rep.id}
+            onClick={() => handleClick(rep)}
+            disabled={!rep.linkedEntityId && rep.severity !== "critical"}
+            data-testid={`event-${rep.id}`}
+            data-dedup-key={card.key}
+            data-autopause={autopauseEventKeys.includes(card.key) || undefined}
+            className="flex items-center gap-2 rounded px-1.5 py-1 text-left hover:bg-rebar disabled:cursor-default disabled:hover:bg-transparent"
+          >
+            <span className={`text-[10px] ${SEVERITY_COLOR[rep.severity]}`}>●</span>
+            <span className="min-w-[90px] font-mono text-[9px] uppercase tracking-widest text-ash">
+              {rep.event.type}
+            </span>
+            <span className="flex-1 truncate text-[11px] text-bone">
+              {rep.event.title || rep.event.body || rep.event.type}
+            </span>
+            {card.count > 1 && (
+              <span
+                data-testid={`event-count-${rep.id}`}
+                className="border border-accent-gold px-1 font-mono text-[9px] text-accent-gold"
+              >
+                ×{card.count}
+              </span>
+            )}
+            <span className="font-mono text-[9px] text-ksbc-muted-2">
+              {card.firstTick === card.lastTick
+                ? `t${card.firstTick}`
+                : `t${card.firstTick}–${card.lastTick}`}
+            </span>
+          </button>
+        );
+      })}
     </div>
   );
 }

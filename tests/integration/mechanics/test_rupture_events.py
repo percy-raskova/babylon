@@ -20,6 +20,7 @@ from __future__ import annotations
 import pytest
 
 from babylon.config.defines import GameDefines
+from babylon.engine.context import TickContext
 from babylon.engine.factories import (
     create_bourgeoisie,
     create_labor_aristocracy,
@@ -120,11 +121,11 @@ class TestRuptureGateSystem:
         system = ContradictionSystem()
         graph = self._graph(50.0)  # gap ~0.96 (rate 0 on the first tick)
 
-        system.step(graph, services, {"tick": 1})
+        system.step(graph, services, TickContext(tick=1))
         assert _rupture_events(services) == []  # high but not yet rising
 
         graph.nodes["owner"]["wealth"] = 400.0  # gap ~0.995, rising -> rate > 0
-        system.step(graph, services, {"tick": 2})
+        system.step(graph, services, TickContext(tick=2))
 
         ruptures = _rupture_events(services)
         assert len(ruptures) == 1
@@ -138,11 +139,11 @@ class TestRuptureGateSystem:
         system = ContradictionSystem()
         graph = self._graph(400.0)  # gap ~0.995
 
-        system.step(graph, services, {"tick": 1})
+        system.step(graph, services, TickContext(tick=1))
         graph.nodes["owner"]["wealth"] = 100.0  # gap falls -> rate < 0
-        system.step(graph, services, {"tick": 2})
+        system.step(graph, services, TickContext(tick=2))
         graph.nodes["owner"]["wealth"] = 60.0  # still falling
-        system.step(graph, services, {"tick": 3})
+        system.step(graph, services, TickContext(tick=3))
 
         assert _rupture_events(services) == []
 
@@ -160,9 +161,9 @@ class TestRuptureIsPerPrincipal:
         graph.add_edge("w1", "owner", edge_type=EdgeType.EXPLOITATION)
         graph.add_edge("w2", "owner", edge_type=EdgeType.EXPLOITATION)
 
-        system.step(graph, services, {"tick": 1})
+        system.step(graph, services, TickContext(tick=1))
         graph.nodes["owner"]["wealth"] = 500.0  # widen both -> mean gap rises
-        system.step(graph, services, {"tick": 2})
+        system.step(graph, services, TickContext(tick=2))
 
         ruptures = _rupture_events(services)
         assert len(ruptures) == 1  # one frame-level rupture, not one-per-edge

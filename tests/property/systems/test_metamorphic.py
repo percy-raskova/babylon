@@ -88,6 +88,7 @@ class TestLaborHomogeneity:
     @settings(max_examples=20, deadline=5000)
     def test_zero_population_produces_zero_output(self, state: object) -> None:
         """Zeroing every producer's population leaves wealth unchanged."""
+        from babylon.engine.context import TickContext
         from babylon.engine.services import ServiceContainer
         from babylon.engine.systems.production import ProductionSystem
         from babylon.models.world_state import WorldState
@@ -106,7 +107,7 @@ class TestLaborHomogeneity:
 
         system = ProductionSystem()
         services = ServiceContainer.create()
-        system.step(graph, services, {"tick": 0})
+        system.step(graph, services, TickContext(tick=0))
         post = WorldState.from_graph(graph, tick=1)
 
         for entity_id, pre_entity in connected.entities.items():
@@ -161,6 +162,7 @@ class TestProductionMonotonicity:
     @settings(max_examples=15, deadline=10000)
     def test_double_step_never_decreases_total_wealth(self, state: object) -> None:
         """Total wealth after a second ProductionSystem step is >= after the first."""
+        from babylon.engine.context import TickContext
         from babylon.engine.services import ServiceContainer
         from babylon.engine.systems.production import ProductionSystem
         from babylon.models.world_state import WorldState
@@ -173,13 +175,13 @@ class TestProductionMonotonicity:
         system = ProductionSystem()
         services = ServiceContainer.create()
 
-        system.step(graph1, services, {"tick": 0})
+        system.step(graph1, services, TickContext(tick=0))
         post1 = WorldState.from_graph(graph1, tick=1)
         total1 = sum(e.wealth for e in post1.entities.values())
         assert total1 >= pre_total, "First production step decreased total wealth"
 
         graph2 = post1.to_graph()
-        system.step(graph2, services, {"tick": 1})
+        system.step(graph2, services, TickContext(tick=1))
         post2 = WorldState.from_graph(graph2, tick=2)
         total2 = sum(e.wealth for e in post2.entities.values())
         assert total2 >= total1, "Second production step decreased total wealth"
@@ -202,6 +204,7 @@ class TestConservationUnderComposition:
     @settings(max_examples=20, deadline=5000)
     def test_no_entity_wealth_decreases_after_production(self, state: object) -> None:
         """Every entity's wealth after ProductionSystem is >= its wealth before."""
+        from babylon.engine.context import TickContext
         from babylon.engine.services import ServiceContainer
         from babylon.engine.systems.production import ProductionSystem
         from babylon.models.world_state import WorldState
@@ -212,7 +215,7 @@ class TestConservationUnderComposition:
 
         system = ProductionSystem()
         services = ServiceContainer.create()
-        system.step(graph, services, {"tick": 0})
+        system.step(graph, services, TickContext(tick=0))
         post = WorldState.from_graph(graph, tick=1)
 
         for entity_id, pre_entity in connected.entities.items():

@@ -59,6 +59,105 @@ class TestPerVerbURLRouting:
         assert "/actions/" in url
 
 
+@pytest.mark.unit
+class TestVerbEligibilityRouting:
+    """Spec-116 FR-4.8: the aggregate eligibility endpoint resolves."""
+
+    def test_eligibility_url_resolves(self) -> None:
+        url = reverse("game:actions-eligibility", kwargs={"game_id": GAME_ID})
+        assert "/actions/eligibility/" in url
+
+
+@pytest.mark.unit
+@pytest.mark.django_db
+class TestVerbEligibilityView:
+    """GET /api/games/{id}/actions/eligibility/ (spec-116 FR-4.8)."""
+
+    _PAYLOAD = {
+        "session_id": GAME_ID,
+        "tick": 0,
+        "org_id": "ORG001",
+        "verbs": [
+            {
+                "verb": "educate",
+                "eligible": False,
+                "reason": "No organized community in your territories yet.",
+                "remedy": (
+                    "No action can organize a community yet — political "
+                    "education unlocks the moment an organized class "
+                    "appears where you operate."
+                ),
+                "can_afford": False,
+                "afford_note": "Need 2.0 CL, have 0.3",
+            }
+        ],
+    }
+
+    def _setup(self) -> tuple:
+        from unittest.mock import MagicMock
+
+        from django.contrib.auth.models import User
+
+        from game.models import GameSession
+
+        user = User.objects.create_user(  # type: ignore[no-untyped-call]
+            username=f"elig_user_{uuid_mod.uuid4().hex[:8]}",
+            password="testpass123",
+        )
+        client = Client()
+        client.login(username=user.username, password="testpass123")
+
+        session = GameSession.objects.create(
+            id=uuid_mod.uuid4(),
+            player_id=user.id,
+            scenario="wayne_county",
+            current_tick=0,
+            status="active",
+        )
+
+        mock_bridge = MagicMock()
+        mock_bridge.get_verb_eligibility.return_value = self._PAYLOAD
+
+        import game.api
+
+        game.api._bridge_instance = mock_bridge
+        return client, session, mock_bridge
+
+    def test_get_requires_org_id(self) -> None:
+        client, session, _mock = self._setup()
+        url = reverse("game:actions-eligibility", kwargs={"game_id": str(session.id)})
+        response = client.get(url)
+        assert response.status_code == 400
+
+    def test_get_returns_envelope_with_verb_rows(self) -> None:
+        client, session, mock_bridge = self._setup()
+        url = reverse("game:actions-eligibility", kwargs={"game_id": str(session.id)})
+        response = client.get(url, {"org_id": "ORG001"})
+        assert response.status_code == 200
+        body = json.loads(response.content)
+        assert body["status"] == "ok"
+        assert body["data"]["verbs"][0]["verb"] == "educate"
+        assert body["data"]["verbs"][0]["eligible"] is False
+        assert body["data"]["verbs"][0]["remedy"]
+        mock_bridge.get_verb_eligibility.assert_called_once()
+
+    def test_get_unknown_game_404s(self) -> None:
+        client, _session, _mock = self._setup()
+        url = reverse("game:actions-eligibility", kwargs={"game_id": str(uuid_mod.uuid4())})
+        response = client.get(url, {"org_id": "ORG001"})
+        assert response.status_code == 404
+
+    def test_bridge_error_maps_to_400(self) -> None:
+        client, session, mock_bridge = self._setup()
+        mock_bridge.get_verb_eligibility.return_value = {
+            "status": "error",
+            "error": "Org not found",
+        }
+        url = reverse("game:actions-eligibility", kwargs={"game_id": str(session.id)})
+        response = client.get(url, {"org_id": "NOPE"})
+        assert response.status_code == 400
+
+
 # ---------------------------------------------------------------------- #
 # Per-Verb View Integration Tests
 # ---------------------------------------------------------------------- #
@@ -600,3 +699,204 @@ class TestAttackVerbView:
         assert body["status"] == "ok"
         assert body["action_id"] == 43
         mock_bridge.submit_action.assert_called_once()
+
+
+_ORG_SUMMARY: dict = {
+    "id": "org_1",
+    "name": "Vanguard Cell",
+    "type": "political_faction",
+    "consciousness_strategy": "REVOLUTIONARY",
+    "resources": {"cadre_labor": 5.0, "sympathizer_labor": 10.0, "material": 100.0},
+    "ooda": {"action_points_remaining": 3, "action_points_max": 3, "cycle_time": 2},
+    "cadre_level": 5.0,
+    "cohesion": 0.6,
+}
+
+_FLAT_COST: dict = {
+    "action_points": 1,
+    "cadre_labor": 3.0,
+    "sympathizer_labor": 0.0,
+    "material": 0.0,
+    "can_afford": True,
+    "over_budget": False,
+    "over_budget_penalty": None,
+}
+
+
+@pytest.mark.unit
+@pytest.mark.django_db
+class TestTargetRowSerialization:
+    """Spec-116 FR-116-4.4: POPULATED target rows serialize through the GET
+    targets endpoints (today only empty-row payloads are pinned, which hid a
+    500 on every populated educate/aid/attack row), including expected_deltas."""
+
+    def _setup(self) -> tuple:
+        from unittest.mock import MagicMock
+
+        from django.contrib.auth.models import User
+
+        from game.models import GameSession
+
+        user = User.objects.create_user(  # type: ignore[no-untyped-call]
+            username=f"rowser_user_{uuid_mod.uuid4().hex[:8]}",
+            password="testpass123",
+        )
+        client = Client()
+        client.login(username=user.username, password="testpass123")
+        session = GameSession.objects.create(
+            id=uuid_mod.uuid4(),
+            player_id=user.id,
+            scenario="two_node",
+            current_tick=0,
+            status="active",
+        )
+        mock_bridge = MagicMock()
+
+        import game.api
+
+        game.api._bridge_instance = mock_bridge
+        return client, session, mock_bridge
+
+    def test_educate_targets_get_serializes_populated_rows(self) -> None:
+        client, session, mock_bridge = self._setup()
+        mock_bridge.get_educate_targets.return_value = {
+            "status": "ok",
+            "tick": 0,
+            "verb": "educate",
+            "acting_org": _ORG_SUMMARY,
+            "cost": _FLAT_COST,
+            "targets": [
+                {
+                    "community_id": "sc-1",
+                    "community_type": "PROLETARIAT",
+                    "category": "social_class",
+                    "territory_name": "Genesee County",
+                    "territory_id": "T1",
+                    "credibility": 0.6,
+                    "credibility_explanation": "60% org cohesion",
+                    "consciousness": {
+                        "r": 0.0,
+                        "l": 0.0,
+                        "f": 0.0,
+                        "dominant_tendency": "unknown",
+                        "collective_identity": None,
+                        "ideological_contestation": None,
+                    },
+                    "material_readiness": {
+                        "avg_agitation": 0.62,
+                        "readiness_score": 1.0,
+                        "readiness_explanation": "Real SocialClass.agitation.",
+                    },
+                    "education_pressure": {
+                        "current": 0.0,
+                        "projected_delta": None,
+                        "projected_new": None,
+                        "decay_per_tick": None,
+                    },
+                    "feedforward": {"note": "No per-tick routing-shift projection yet."},
+                    "expected_deltas": {"consciousness_delta": 0.0123, "heat_delta": None},
+                }
+            ],
+            "unavailable_communities": [],
+        }
+        url = reverse("game:verb-educate-targets", kwargs={"game_id": str(session.id)})
+        response = client.get(url, {"org_id": "org_1"})
+        assert response.status_code == 200, response.content
+        row = json.loads(response.content)["targets"][0]
+        assert row["expected_deltas"] == {"consciousness_delta": 0.0123, "heat_delta": None}
+
+    def test_attack_targets_get_serializes_populated_org_and_institution_rows(self) -> None:
+        client, session, mock_bridge = self._setup()
+        mock_bridge.get_attack_targets.return_value = {
+            "status": "ok",
+            "tick": 0,
+            "verb": "attack",
+            "acting_org": _ORG_SUMMARY,
+            "cost": {
+                "action_points": 3,
+                "cadre_labor_if_targeted": 2.5,
+                "sympathizer_labor_if_mass": 25.0,
+                "material": 100.0,
+                "can_afford_targeted": True,
+                "can_afford_mass": False,
+                "over_budget_ap": False,
+                "cost_explanation": "TARGETED uses cadre; MASS uses sympathizers.",
+            },
+            "ultra_left_warning": {
+                "active": False,
+                "trap_score": 0.0,
+                "indicators": [],
+                "explanation": "No trap detection has run yet this session.",
+            },
+            "warsaw_ghetto_flag": {
+                "active": False,
+                "population_p_acquiescence": None,
+                "threshold": 0.05,
+                "explanation": "Desperation endorsement threshold.",
+            },
+            "targets": {
+                "organizations": [
+                    {
+                        # NOTE: no "description", no "attack_projection" — the
+                        # bridge never produces them (engine_bridge.py:5305-5315);
+                        # this row 500s against today's serializer.
+                        "target_id": "org-rivals",
+                        "target_type": "BUSINESS",
+                        "name": "Citizens Council",
+                        "territory_name": "Genesee County",
+                        "territory_id": "T1",
+                        "defensive_capacity": 340.0,
+                        "extractive_edges": [],
+                        "expected_deltas": {"consciousness_delta": None, "heat_delta": 0.1},
+                    }
+                ],
+                "edges": [],
+                "institutions": [
+                    {
+                        "target_id": "inst-court",
+                        "target_type": "INSTITUTION",
+                        "name": "County Court",
+                        "factional_control": {"security_state": 0.6},
+                        "expected_deltas": {"consciousness_delta": None, "heat_delta": 0.1},
+                    }
+                ],
+            },
+            "unavailable_targets": [],
+        }
+        url = reverse("game:verb-attack-targets", kwargs={"game_id": str(session.id)})
+        response = client.get(url, {"org_id": "org_1"})
+        assert response.status_code == 200, response.content
+        body = json.loads(response.content)
+        assert body["targets"]["organizations"][0]["expected_deltas"]["heat_delta"] == 0.1
+        assert body["targets"]["institutions"][0]["expected_deltas"]["heat_delta"] == 0.1
+
+    def test_aid_targets_get_serializes_populated_population_rows(self) -> None:
+        client, session, mock_bridge = self._setup()
+        mock_bridge.get_aid_targets.return_value = {
+            "status": "ok",
+            "tick": 0,
+            "verb": "aid",
+            "acting_org": _ORG_SUMMARY,
+            "cost": _FLAT_COST,
+            "population_targets": [
+                {
+                    "community_id": "sc-1",
+                    "community_name": "Genesee Proletariat",
+                    "population": 5000,
+                    "class_name": "PROLETARIAT",
+                    "material_conditions": {"v_value_produced": 812.4},
+                    "edge_status": {},
+                    # note-only feedforward — exactly what the bridge emits
+                    # (engine_bridge.py:5142-5144); 500s against today's serializer.
+                    "feedforward": {"note": "No per-tick aid-effect projection yet."},
+                    "expected_deltas": {"consciousness_delta": 0.004, "heat_delta": None},
+                }
+            ],
+            "org_targets": [],
+            "unavailable_targets": [],
+        }
+        url = reverse("game:verb-aid-targets", kwargs={"game_id": str(session.id)})
+        response = client.get(url, {"org_id": "org_1"})
+        assert response.status_code == 200, response.content
+        row = json.loads(response.content)["population_targets"][0]
+        assert row["expected_deltas"] == {"consciousness_delta": 0.004, "heat_delta": None}

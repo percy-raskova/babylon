@@ -1,6 +1,6 @@
 /**
  * Contract tests for the time slice (spec-110 B4) — the resolve state
- * machine: paused | playing | resolving(prevTick) | autopaused(eventIds) |
+ * machine: paused | playing | resolving(prevTick) | autopaused(eventKeys) |
  * error(message).
  */
 
@@ -110,7 +110,7 @@ describe("time slice — autopause", () => {
             territories: [],
             hyperedges: [],
             edges: [],
-            events: [makeEvent({ type: "rupture", tick: 2 })],
+            events: [makeEvent({ type: "endgame_reached", tick: 2, data: {} })],
             derived: {
               value_tensor: {
                 departments: [],
@@ -137,7 +137,7 @@ describe("time slice — autopause", () => {
     await useStore.getState().time.step(DEFAULT_GAME_ID);
 
     expect(useStore.getState().time.status).toBe("autopaused");
-    expect(useStore.getState().time.autopauseEventIds).toEqual(["2-0"]);
+    expect(useStore.getState().time.autopauseEventKeys).toEqual(["endgame_reached:global"]);
   });
 
   it("resume() clears autopaused back to paused", async () => {
@@ -147,7 +147,7 @@ describe("time slice — autopause", () => {
     useStore.getState().time.resume();
 
     expect(useStore.getState().time.status).toBe("paused");
-    expect(useStore.getState().time.autopauseEventIds).toEqual([]);
+    expect(useStore.getState().time.autopauseEventKeys).toEqual([]);
   });
 });
 
@@ -176,7 +176,9 @@ describe("time slice — play (serialized loop)", () => {
             hyperedges: [],
             edges: [],
             events:
-              resolveCount >= 3 ? [makeEvent({ type: "rupture", tick: resolveCount + 1 })] : [],
+              resolveCount >= 3
+                ? [makeEvent({ type: "endgame_reached", tick: resolveCount + 1 })]
+                : [],
             derived: {
               value_tensor: {
                 departments: [],
@@ -280,11 +282,42 @@ describe("time slice — spacebar", () => {
     expect(pauseSpy).toHaveBeenCalled();
   });
 
-  it("does nothing while resolving/autopaused/error", () => {
+  it("resolving -> dispatches pause() (a resolve is almost always in flight live)", () => {
+    // Under a live engine a real tick resolve (~15-19s) dwarfs the sub-second
+    // inter-resolve delay, so the loop sits in "resolving" nearly the whole
+    // time and is "playing" only during that brief delay window. A single
+    // Space press therefore almost always lands during "resolving"; dropping
+    // it there made spacebar-pause effectively dead live (the Pause BUTTON,
+    // which calls pause() from any status, kept working — the two affordances
+    // diverged). "resolving" means the loop is running, so Space must stop it:
+    // pause() sets playIntent=false and the serialized loop halts once the
+    // in-flight resolve settles — identical to the Pause button.
+    const playSpy = vi.fn();
+    const pauseSpy = vi.fn();
+    useStore.setState((s) => ({
+      time: { ...s.time, status: "resolving", play: playSpy, pause: pauseSpy },
+    }));
+
+    useStore.getState().time.toggleSpacebar(DEFAULT_GAME_ID);
+
+    expect(pauseSpy).toHaveBeenCalled();
+    expect(playSpy).not.toHaveBeenCalled();
+  });
+
+  it("does nothing while autopaused/error (Space is not an acknowledgement)", () => {
     const playSpy = vi.fn();
     const pauseSpy = vi.fn();
     useStore.setState((s) => ({
       time: { ...s.time, status: "autopaused", play: playSpy, pause: pauseSpy },
+    }));
+
+    useStore.getState().time.toggleSpacebar(DEFAULT_GAME_ID);
+
+    expect(playSpy).not.toHaveBeenCalled();
+    expect(pauseSpy).not.toHaveBeenCalled();
+
+    useStore.setState((s) => ({
+      time: { ...s.time, status: "error", play: playSpy, pause: pauseSpy },
     }));
 
     useStore.getState().time.toggleSpacebar(DEFAULT_GAME_ID);
@@ -385,7 +418,7 @@ describe("time slice — speed (spec-113 architecture §4.1)", () => {
             territories: [],
             hyperedges: [],
             edges: [],
-            events: [makeEvent({ type: "rupture", tick: 2 })],
+            events: [makeEvent({ type: "endgame_reached", tick: 2, data: {} })],
             derived: {
               value_tensor: {
                 departments: [],
@@ -413,6 +446,6 @@ describe("time slice — speed (spec-113 architecture §4.1)", () => {
     await useStore.getState().time.step(DEFAULT_GAME_ID);
 
     expect(useStore.getState().time.status).toBe("autopaused");
-    expect(useStore.getState().time.autopauseEventIds).toEqual(["2-0"]);
+    expect(useStore.getState().time.autopauseEventKeys).toEqual(["endgame_reached:global"]);
   });
 });

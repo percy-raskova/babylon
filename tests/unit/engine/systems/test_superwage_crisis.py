@@ -15,6 +15,7 @@ from collections.abc import Generator
 
 import pytest
 
+from babylon.engine.context import TickContext
 from babylon.engine.services import ServiceContainer
 from babylon.engine.systems.economic import ImperialRentSystem
 from babylon.models.enums import EdgeType, EventType, SocialRole
@@ -164,7 +165,7 @@ class TestSuperwageCrisis:
         )
 
         system = ImperialRentSystem()
-        system.step(graph, services, {"tick": 1})
+        system.step(graph, services, TickContext(tick=1))
 
         assert len(captured_events) == 1, "Should emit SUPERWAGE_CRISIS"
         event = captured_events[0]
@@ -184,7 +185,7 @@ class TestSuperwageCrisis:
         )
 
         system = ImperialRentSystem()
-        system.step(graph, services, {"tick": 1})
+        system.step(graph, services, TickContext(tick=1))
 
         # Should NOT emit crisis - wages were paid
         superwage_crises = [e for e in captured_events if e.type == EventType.SUPERWAGE_CRISIS]
@@ -202,7 +203,7 @@ class TestSuperwageCrisis:
         )
 
         system = ImperialRentSystem()
-        system.step(graph, services, {"tick": 1})
+        system.step(graph, services, TickContext(tick=1))
 
         assert len(captured_events) == 1
         event = captured_events[0]

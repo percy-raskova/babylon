@@ -29,6 +29,7 @@ from rest_framework.views import APIView
 
 from game.models import ActionResult, GameSession, PlayerAction
 
+from .codenames import operation_codename
 from .log_handler import log_game_event, sanitize_for_log
 from .map_contract import MAP_METRIC_PROPERTIES
 from .serializers import (
@@ -229,6 +230,7 @@ def game_list(request: Request) -> JsonResponse:
         session_data: list[dict[str, Any]] = [
             {
                 "id": s.id,
+                "codename": operation_codename(s.id),
                 "scenario": s.scenario,
                 "current_tick": s.current_tick,
                 "status": s.status,
@@ -326,16 +328,30 @@ def scenario_list(request: Request) -> JsonResponse:
     return _envelope(SCENARIO_CATALOG)
 
 
-@api_view(["GET"])
+@api_view(["GET", "DELETE"])
 @permission_classes([IsAuthenticated])
 def game_detail(request: Request, game_id: str) -> JsonResponse:
-    """GET /api/games/{id}/ — Get game session metadata."""
+    """GET /api/games/{id}/ — session metadata. DELETE — destroy the session.
+
+    DELETE is the permanent path (FR-116-3 "delete"): every child table
+    declares ``REFERENCES game_session(id) ON DELETE CASCADE``
+    (``postgres_schema.py``) and the Django FK models mirror
+    ``on_delete=CASCADE``, so turns/results/snapshots go with the session in
+    both the PG runtime and the SQLite test DB. The reversible alternative is
+    ``POST /api/games/{id}/archive/``.
+    """
     session = _get_session_or_none(game_id, request.user.id)
     if session is None:
         return _error("Game not found", http_status=404)
 
+    if request.method == "DELETE":
+        GameSession.objects.filter(id=session.id).delete()
+        logger.info("Game deleted session=%s user=%s", session.id, request.user.id)
+        return _envelope({"deleted": True}, session_id=str(session.id))
+
     data = {
         "id": str(session.id),
+        "codename": operation_codename(session.id),
         "scenario": session.scenario,
         "current_tick": session.current_tick,
         "status": session.status,
@@ -368,6 +384,24 @@ def game_resume(request: Request, game_id: str) -> JsonResponse:
         return _error(f"Cannot resume game in '{session.status}' status")
     GameSession.objects.filter(id=session.id).update(status="active", updated_at=timezone.now())
     return _envelope({"status": "active"}, session_id=str(session.id))
+
+
+@api_view(["POST"])
+@permission_classes([IsAuthenticated])
+def game_archive(request: Request, game_id: str) -> JsonResponse:
+    """POST /api/games/{id}/archive/ — archive a game (reversible soft delete).
+
+    Sets ``status='abandoned'`` — a status the frontend ``GameStatus`` union
+    already carries. Any live status may be archived; re-archiving is a loud
+    400, not a silent no-op (Constitution III.11).
+    """
+    session = _get_session_or_none(game_id, request.user.id)
+    if session is None:
+        return _error("Game not found", http_status=404)
+    if session.status == "abandoned":
+        return _error("Game is already archived")
+    GameSession.objects.filter(id=session.id).update(status="abandoned", updated_at=timezone.now())
+    return _envelope({"status": "abandoned"}, session_id=str(session.id))
 
 
 # C.13: a worker killed mid-resolve leaves status='resolving' with no
@@ -411,6 +445,27 @@ def game_recover(request: Request, game_id: str) -> JsonResponse:
         correlation_id=getattr(request, "correlation_id", None),
     )
     return _envelope({"status": "active"}, session_id=str(session.id))
+
+
+@api_view(["POST"])
+@permission_classes([IsAuthenticated])
+def game_accept_outcome(request: Request, game_id: str) -> JsonResponse:
+    """POST /api/games/{id}/accept-outcome/ — the mercy affordance (spec-116 FR-116-5).
+
+    Ends the campaign now with the currently locked pattern, instead of
+    playing out the remaining ticks to the fixed century horizon. The
+    bridge raises ``ValueError`` when no pattern is currently locked, which
+    surfaces as the standard error envelope (never a 5xx).
+    """
+    session = _get_session_or_none(game_id, request.user.id)
+    if session is None:
+        return _error("Game not found", http_status=404)
+    bridge = _get_bridge()
+    try:
+        data = bridge.accept_outcome(uuid.UUID(str(session.id)))
+    except ValueError as exc:
+        return _error(str(exc))
+    return _envelope(data, tick=session.current_tick, session_id=str(session.id))
 
 
 # ---------------------------------------------------------------------- #
@@ -743,37 +798,30 @@ def game_wire(request: Request, game_id: str) -> JsonResponse:
 @api_view(["GET"])
 @permission_classes([IsAuthenticated])
 def game_narration(request: Request, game_id: str) -> JsonResponse:
-    """GET /api/games/{id}/narration/?since_tick=N — AI narration beats.
+    """GET /api/games/{id}/narration/?since_tick=N — narration beats.
 
-    Program 20 Track B (task B5). Contract: ``src/frontend/src/types/narration.ts``
-    / ``src/frontend/src/lib/narration/client.ts``. Reads straight off
-    ``NarrationRecord`` (task B4) — no bridge/engine call, and no narrative
-    generation happens here (that's ``NarrativeService.schedule``, fired from
-    ``resolve_tick``).
+    Program 20 Track B (task B5), reworked by spec-116 FR-4.1 (the Voice
+    heartbeat): the deterministic causal voice (``game.causal_voice``,
+    written synchronously every tick by ``resolve_tick`` via
+    ``_persist_causal_beats_safe``) files ``NarrationRecord`` beats with or
+    without a model, so this view serves persisted records UNCONDITIONALLY.
+    ``BABYLON_LLM_NARRATOR`` now gates ONLY the LLM generation path
+    (``NarrativeService.schedule``), never the read path — absent a model,
+    templates render; nothing is ever empty (design §6).
 
-    Flag off (``BABYLON_LLM_NARRATOR``, default off) is an honest, labeled
-    ``"offline"`` — never an empty-but-"ready" fake (Constitution III.11).
-    Flag on with no records at/after ``since_tick`` is ``"pending"`` (the
-    narrator is live but nothing has landed yet for this range). Flag on
-    with records is ``"ready"`` — degraded beats (``NarrationRecord.degraded``)
-    are included in the list, never filtered out; loud failure must stay
-    visible in the beats a client actually renders.
+    ``"ready"`` when records exist at/after ``since_tick``; ``"pending"``
+    when none do yet (the narrator is live by construction, so the old
+    flag-off ``"offline"`` answer is retired server-side — ``"offline"``
+    remains the CLIENT's degradation state for failed requests, see
+    ``src/frontend/src/lib/narration/client.ts``). Degraded beats are
+    included, never filtered out (III.11).
 
-    A non-integer ``since_tick`` is a loud 400 (III.11), never coerced to 0;
-    a missing ``since_tick`` defaults to 0 (full history).
+    A non-integer ``since_tick`` is a loud 400 (III.11), never coerced to
+    0; a missing ``since_tick`` defaults to 0 (full history).
     """
     session = _get_session_or_none(game_id, request.user.id)
     if session is None:
         return _error("Game not found", http_status=404)
-
-    from .narrative_service import is_enabled
-
-    if not is_enabled():
-        return _envelope(
-            {"status": "offline", "beats": []},
-            tick=session.current_tick,
-            session_id=str(session.id),
-        )
 
     since_tick_query = request.query_params.get("since_tick")
     try:
@@ -1261,6 +1309,34 @@ def actions_available(request: Request, game_id: str) -> JsonResponse:
         tick=session.current_tick,
         session_id=str(session.id),
     )
+
+
+@api_view(["GET"])
+@permission_classes([IsAuthenticated])
+def verb_eligibility(request: Request, game_id: str) -> JsonResponse:
+    """GET /api/games/{id}/actions/eligibility/ — per-verb eligibility.
+
+    Spec-116 FR-4.8: one row per canonical verb — ``{verb, eligible,
+    reason, remedy, can_afford, afford_note}`` — derived from the SAME
+    predicates that yield the per-verb empty target lists, so the
+    VerbGrid can disable dead-end verbs with the reason and remedy
+    visible instead of offering a click into "No eligible targets."
+    Requires ``?org_id=`` like the per-verb target GETs.
+    """
+    session = _get_session_or_none(game_id, request.user.id)
+    if session is None:
+        return _error("Game not found", http_status=404)
+
+    org_id = request.query_params.get("org_id")
+    if not org_id:
+        return _error("org_id query parameter is required")
+
+    bridge = _get_bridge()
+    data = bridge.get_verb_eligibility(uuid.UUID(str(session.id)), org_id)
+    if data.get("status") == "error":
+        return _error(str(data.get("error", "Verb eligibility unavailable")))
+
+    return _envelope(data, tick=session.current_tick, session_id=str(session.id))
 
 
 @api_view(["POST"])

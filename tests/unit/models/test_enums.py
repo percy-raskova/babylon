@@ -331,8 +331,8 @@ class TestEventType:
             EventType("random_event")
 
     def test_event_type_count(self) -> None:
-        """83 event types (82 prior + MARKET_CORRECTION, Program 23 Phase 2 ADR078)."""
-        assert len(EventType) == 83
+        """84 event types (83 prior + PATTERN_SHIFT, spec-116 Playability Spine Task 4)."""
+        assert len(EventType) == 84
 
     def test_doctrine_event_types_exist(self) -> None:
         """ADR073 Unit 6a: DoctrineSystem's per-org trap/congress outcome events.
@@ -490,3 +490,26 @@ class TestSectorType:
     def test_sector_type_count(self) -> None:
         """Exactly 6 sector types defined."""
         assert len(SectorType) == 6
+
+
+class TestSocialRoleCoerce:
+    """SocialRole.coerce: a graph-node ``role`` attr -> SocialRole | None.
+
+    Consolidates three identical ``_coerce_role`` copies (spec-116 Phase 3):
+    the attr may be a live member (fresh ``to_graph()``) or a plain string
+    (post-persistence); anything else, or an unknown string, yields ``None``.
+    """
+
+    def test_passthrough_member(self) -> None:
+        assert SocialRole.coerce(SocialRole.LABOR_ARISTOCRACY) is SocialRole.LABOR_ARISTOCRACY
+
+    def test_valid_string(self) -> None:
+        assert SocialRole.coerce("labor_aristocracy") is SocialRole.LABOR_ARISTOCRACY
+
+    def test_unknown_string_is_none(self) -> None:
+        assert SocialRole.coerce("not_a_role") is None
+
+    def test_non_string_is_none(self) -> None:
+        assert SocialRole.coerce(42) is None
+        assert SocialRole.coerce(None) is None
+        assert SocialRole.coerce(["labor_aristocracy"]) is None

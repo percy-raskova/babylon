@@ -16,6 +16,7 @@ Test Intent:
 import pytest
 
 from babylon.config.defines import GameDefines, TerritoryDefines
+from babylon.engine.context import TickContext
 from babylon.engine.services import ServiceContainer
 from babylon.engine.systems.territory import TerritorySystem
 from babylon.models.enums import EdgeType, OperationalProfile, SectorType, TerritoryType
@@ -48,7 +49,7 @@ class TestTerritorySystemBasic:
         )
 
         services = ServiceContainer.create()
-        context: dict[str, int] = {"tick": 1}
+        context = TickContext(tick=1)
         system = TerritorySystem()
 
         # Act
@@ -89,7 +90,7 @@ class TestTerritoryHeatDynamics:
         )
 
         services = ServiceContainer.create()
-        context: dict[str, int] = {"tick": 1}
+        context = TickContext(tick=1)
         system = TerritorySystem()
 
         # Act
@@ -120,7 +121,7 @@ class TestTerritoryHeatDynamics:
         )
 
         services = ServiceContainer.create()
-        context: dict[str, int] = {"tick": 1}
+        context = TickContext(tick=1)
         system = TerritorySystem()
 
         # Act
@@ -147,7 +148,7 @@ class TestTerritoryHeatDynamics:
         )
 
         services = ServiceContainer.create()
-        context: dict[str, int] = {"tick": 1}
+        context = TickContext(tick=1)
         system = TerritorySystem()
 
         # Act
@@ -174,7 +175,7 @@ class TestTerritoryHeatDynamics:
         )
 
         services = ServiceContainer.create()
-        context: dict[str, int] = {"tick": 1}
+        context = TickContext(tick=1)
         system = TerritorySystem()
 
         # Act
@@ -214,7 +215,7 @@ class TestTerritoryEvictionPipeline:
         )
 
         services = ServiceContainer.create()
-        context: dict[str, int] = {"tick": 1}
+        context = TickContext(tick=1)
         system = TerritorySystem()
 
         # Act
@@ -241,7 +242,7 @@ class TestTerritoryEvictionPipeline:
         )
 
         services = ServiceContainer.create()
-        context: dict[str, int] = {"tick": 1}
+        context = TickContext(tick=1)
         system = TerritorySystem()
 
         # Act
@@ -272,7 +273,7 @@ class TestTerritoryEvictionPipeline:
         )
 
         services = ServiceContainer.create()
-        context: dict[str, int] = {"tick": 1}
+        context = TickContext(tick=1)
         system = TerritorySystem()
 
         # Act
@@ -303,7 +304,7 @@ class TestTerritoryEvictionPipeline:
         )
 
         services = ServiceContainer.create()
-        context: dict[str, int] = {"tick": 1}
+        context = TickContext(tick=1)
         system = TerritorySystem()
 
         # Act
@@ -360,7 +361,7 @@ class TestTerritoryHeatSpillover:
         graph.add_edge("T001", "T002", edge_type=EdgeType.ADJACENCY)
 
         services = ServiceContainer.create()
-        context: dict[str, int] = {"tick": 1}
+        context = TickContext(tick=1)
         system = TerritorySystem()
 
         # Act
@@ -407,7 +408,7 @@ class TestTerritoryHeatSpillover:
         # No ADJACENCY edge between them
 
         services = ServiceContainer.create()
-        context: dict[str, int] = {"tick": 1}
+        context = TickContext(tick=1)
         system = TerritorySystem()
 
         # Act
@@ -447,7 +448,7 @@ class TestTerritoryHeatSpillover:
         graph.add_edge("T001", "T002", edge_type=EdgeType.ADJACENCY)
 
         services = ServiceContainer.create()
-        context: dict[str, int] = {"tick": 1}
+        context = TickContext(tick=1)
         system = TerritorySystem()
 
         # Act
@@ -485,7 +486,7 @@ class TestTerritorySystemConfig:
 
         defines = GameDefines(territory=TerritoryDefines(high_profile_heat_gain=0.25))
         services = ServiceContainer.create(defines=defines)
-        context: dict[str, int] = {"tick": 1}
+        context = TickContext(tick=1)
         system = TerritorySystem()
 
         # Act
@@ -513,7 +514,7 @@ class TestTerritorySystemConfig:
 
         defines = GameDefines(territory=TerritoryDefines(eviction_heat_threshold=0.6))
         services = ServiceContainer.create(defines=defines)
-        context: dict[str, int] = {"tick": 1}
+        context = TickContext(tick=1)
         system = TerritorySystem()
 
         # Act
@@ -541,7 +542,7 @@ class TestTerritorySystemConfig:
 
         defines = GameDefines(territory=TerritoryDefines(rent_spike_multiplier=2.0))
         services = ServiceContainer.create(defines=defines)
-        context: dict[str, int] = {"tick": 1}
+        context = TickContext(tick=1)
         system = TerritorySystem()
 
         # Act
@@ -818,7 +819,7 @@ class TestEvictionPopulationTransfer:
         graph.add_edge("T001", "T002", edge_type=EdgeType.ADJACENCY)
 
         services = ServiceContainer.create()  # Default displacement_rate=0.1
-        context: dict[str, int] = {"tick": 1}
+        context = TickContext(tick=1)
         system = TerritorySystem()
 
         # Act
@@ -866,7 +867,7 @@ class TestEvictionPopulationTransfer:
         graph.add_edge("T001", "T002", edge_type=EdgeType.ADJACENCY)
 
         services = ServiceContainer.create()
-        context: dict[str, int] = {"tick": 1}
+        context = TickContext(tick=1)
         system = TerritorySystem()
 
         # Act
@@ -918,7 +919,7 @@ class TestNecropolitics:
         )
 
         services = ServiceContainer.create()
-        context: dict[str, int] = {"tick": 1}
+        context = TickContext(tick=1)
         system = TerritorySystem()
 
         # Act
@@ -964,7 +965,7 @@ class TestNecropolitics:
         graph.add_edge("PERIPHERY_WORKER_ID", "T001", edge_type=EdgeType.TENANCY)
 
         services = ServiceContainer.create()
-        context: dict[str, int] = {"tick": 1}
+        context = TickContext(tick=1)
         system = TerritorySystem()
 
         # Act
@@ -1120,7 +1121,7 @@ class TestDisplacementPriorityModes:
         # Arrange
         graph = self._create_graph_with_all_sink_types()
         services = ServiceContainer.create()
-        context: dict[str, object] = {"tick": 1}  # No displacement_mode set
+        context = TickContext(tick=1)  # No displacement_mode set
         system = TerritorySystem()
 
         # Act
@@ -1142,10 +1143,10 @@ class TestDisplacementPriorityModes:
         # Arrange
         graph = self._create_graph_with_all_sink_types()
         services = ServiceContainer.create()
-        context: dict[str, object] = {
-            "tick": 1,
-            "displacement_mode": DisplacementPriorityMode.ELIMINATION,
-        }
+        context = TickContext(
+            tick=1,
+            displacement_mode=DisplacementPriorityMode.ELIMINATION,
+        )
         system = TerritorySystem()
 
         # Act

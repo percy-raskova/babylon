@@ -12,6 +12,7 @@ import { server } from "@/test/server";
 import { resetStore } from "@/test/resetStore";
 import { resetMockGameState, DEFAULT_GAME_ID } from "@/test/handlers";
 import { useStore } from "@/store";
+import { makeGameSummary } from "@/test/fixtures";
 
 beforeEach(() => {
   resetStore();
@@ -121,5 +122,76 @@ describe("session slice — lobby", () => {
     expect(useStore.getState().session.activeGameId).toBe("g-42");
     useStore.getState().session.setActiveGame(null);
     expect(useStore.getState().session.activeGameId).toBeNull();
+  });
+});
+
+describe("session slice — delete/archive (spec-116 FR-116-3)", () => {
+  it("deleteGame issues DELETE /api/games/:id/ and refreshes the list", async () => {
+    let deleted = false;
+    server.use(
+      http.delete("/api/games/:id/", () => {
+        deleted = true;
+        return HttpResponse.json({ status: "ok", data: { deleted: true } });
+      }),
+      http.get("/api/games/", () =>
+        HttpResponse.json({ status: "ok", data: deleted ? [] : [makeGameSummary()] }),
+      ),
+    );
+
+    const ok = await useStore.getState().session.deleteGame(DEFAULT_GAME_ID);
+
+    expect(ok).toBe(true);
+    expect(deleted).toBe(true);
+    expect(useStore.getState().session.games).toEqual([]);
+  });
+
+  it("deleteGame failure records the error and returns false", async () => {
+    server.use(
+      http.delete("/api/games/:id/", () =>
+        HttpResponse.json({ status: "error", message: "Game not found" }, { status: 404 }),
+      ),
+    );
+
+    const ok = await useStore.getState().session.deleteGame(DEFAULT_GAME_ID);
+
+    expect(ok).toBe(false);
+    expect(useStore.getState().session.error).toBe("Game not found");
+  });
+
+  it("archiveGame POSTs /archive/ and refreshes the list", async () => {
+    let archived = false;
+    server.use(
+      http.post("/api/games/:id/archive/", () => {
+        archived = true;
+        return HttpResponse.json({ status: "ok", data: { status: "abandoned" } });
+      }),
+      http.get("/api/games/", () =>
+        HttpResponse.json({
+          status: "ok",
+          data: [makeGameSummary({ status: archived ? "abandoned" : "active" })],
+        }),
+      ),
+    );
+
+    const ok = await useStore.getState().session.archiveGame(DEFAULT_GAME_ID);
+
+    expect(ok).toBe(true);
+    expect(useStore.getState().session.games[0]?.status).toBe("abandoned");
+  });
+
+  it("archiveGame failure records the error and returns false", async () => {
+    server.use(
+      http.post("/api/games/:id/archive/", () =>
+        HttpResponse.json(
+          { status: "error", message: "Game is already archived" },
+          { status: 400 },
+        ),
+      ),
+    );
+
+    const ok = await useStore.getState().session.archiveGame(DEFAULT_GAME_ID);
+
+    expect(ok).toBe(false);
+    expect(useStore.getState().session.error).toBe("Game is already archived");
   });
 });

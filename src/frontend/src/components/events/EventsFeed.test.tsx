@@ -59,7 +59,7 @@ describe("EventsFeed", () => {
           ],
         }),
       },
-      time: { ...s.time, autopauseEventIds: ["3-0"] },
+      time: { ...s.time, autopauseEventKeys: ["rupture:territory-downtown"] },
     }));
     render(<EventsFeed />);
 
@@ -113,16 +113,76 @@ describe("EventsFeed", () => {
       world: {
         ...s.world,
         snapshot: makeSnapshot({
-          events: [makeEvent({ id: "e1", type: "rupture", title: "Rupture", tick: 3, data: {} })],
+          events: [
+            makeEvent({
+              id: "e1",
+              type: "endgame_reached",
+              title: "The Horizon",
+              tick: 3,
+              data: {},
+            }),
+          ],
         }),
       },
-      time: { ...s.time, autopauseEventIds: ["3-0"] },
+      time: { ...s.time, autopauseEventKeys: ["endgame_reached:global"] },
     }));
     render(<EventsFeed />);
 
-    const button = screen.getByText("Rupture").closest("button");
+    const button = screen.getByText("The Horizon").closest("button");
     expect(button).not.toBeDisabled();
-    await userEvent.click(screen.getByText("Rupture"));
+    await userEvent.click(screen.getByText("The Horizon"));
     expect(useStore.getState().ui.takeover.active).toBe("chronicle");
+  });
+
+  it("collapses consecutive same-(type,subject) events into one card with count and age (FR-116-2)", () => {
+    useStore.setState((s) => ({
+      world: {
+        ...s.world,
+        snapshot: makeSnapshot({
+          events: [
+            makeEvent({
+              id: "e1",
+              type: "dispossession_event",
+              title: "Dispossession",
+              tick: 5,
+              data: { territory: "26163" },
+            }),
+            makeEvent({
+              id: "e2",
+              type: "dispossession_event",
+              title: "Dispossession",
+              tick: 5,
+              data: { territory: "26163" },
+            }),
+            makeEvent({
+              id: "e3",
+              type: "dispossession_event",
+              title: "Dispossession",
+              tick: 5,
+              data: { territory: "26099" },
+            }),
+          ],
+        }),
+      },
+    }));
+    render(<EventsFeed />);
+
+    // The 26163 run collapses into one card; 26099 stays separate.
+    expect(screen.getAllByText("Dispossession")).toHaveLength(2);
+    expect(screen.getByTestId("event-count-5-0")).toHaveTextContent("×2");
+    expect(screen.queryByTestId("event-count-5-2")).not.toBeInTheDocument();
+    // Age label (per-tick feed: single tick).
+    expect(screen.getAllByText("t5")).toHaveLength(2);
+
+    // The card exposes its `${type}:${subject}` dedup key as data-dedup-key —
+    // the affordance the first-session gate-2 e2e asserts adjacency on. These
+    // two ADJACENT dispossession cards (26163 collapsed, 26099 separate) carry
+    // the SAME type but DIFFERENT keys: exactly the case a type-only adjacency
+    // check would false-fail, and the reason gate 2 must key on (type,subject).
+    const key26163 = screen.getByTestId("event-5-0").getAttribute("data-dedup-key");
+    const key26099 = screen.getByTestId("event-5-2").getAttribute("data-dedup-key");
+    expect(key26163).toMatch(/^dispossession_event:/);
+    expect(key26099).toMatch(/^dispossession_event:/);
+    expect(key26163).not.toBe(key26099);
   });
 });

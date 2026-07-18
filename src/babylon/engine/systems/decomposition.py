@@ -15,6 +15,7 @@ from __future__ import annotations
 from typing import TYPE_CHECKING, Any, ClassVar
 
 from babylon.kernel.event_bus import Event
+from babylon.kernel.tick_partition import TickPartition
 from babylon.models.entity_registry import CORE_BOURGEOISIE_ID
 from babylon.models.enums import EventType, SocialRole
 
@@ -97,6 +98,9 @@ class DecompositionSystem(SystemBase):
     Must run AFTER ImperialRentSystem (which emits SUPERWAGE_CRISIS).
     """
 
+    partition: ClassVar[TickPartition] = TickPartition.MATERIAL_BASE
+    position: ClassVar[float] = 11.0
+
     name: ClassVar[str] = "Decomposition"
     # Spec 053 INV-001: DecompositionSystem transfers wealth proportionally
     # during LA decomposition. Default-deny while audit pending; flip to
@@ -118,10 +122,7 @@ class DecompositionSystem(SystemBase):
 
         tick = context.get("tick", 0)
         # Handle both TickContext (with persistent_data) and raw dict
-        if hasattr(context, "persistent_data"):
-            persistent: dict[str, Any] = context.persistent_data
-        else:
-            persistent = context
+        persistent: dict[str, Any] = context.persistent_data
 
         # Check if already decomposed (one-time event)
         if persistent.get("_decomposition_complete"):

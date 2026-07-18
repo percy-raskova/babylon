@@ -10,6 +10,7 @@ from unittest.mock import MagicMock
 
 import pytest
 
+from babylon.engine.context import TickContext
 from babylon.engine.systems.sovereignty import SovereigntySystem
 from babylon.models.enums import EventType
 from babylon.topology.graph import BabylonGraph
@@ -58,11 +59,11 @@ def _seed_single_sovereign(adapter: BabylonGraph) -> None:
 def test_sovereignty_writes_metabolic_impact_per_territory(services: Any) -> None:
     adapter = BabylonGraph()
     _seed_single_sovereign(adapter)
-    context: dict[str, Any] = {"tick": 0, "persistent_data": {}}
+    context = TickContext(tick=0, persistent_data={})
 
     SovereigntySystem().step(adapter, services, context)
 
-    impact = context["persistent_data"]["balkanization.metabolic_impact_by_territory"]
+    impact = context.persistent_data["balkanization.metabolic_impact_by_territory"]
     assert impact == {"HEX_001": pytest.approx(-0.02)}
 
 
@@ -71,11 +72,11 @@ def test_sovereignty_writes_effective_controller_per_territory(
 ) -> None:
     adapter = BabylonGraph()
     _seed_single_sovereign(adapter)
-    context: dict[str, Any] = {"tick": 0, "persistent_data": {}}
+    context = TickContext(tick=0, persistent_data={})
 
     SovereigntySystem().step(adapter, services, context)
 
-    controllers = context["persistent_data"]["balkanization.effective_controller_by_territory"]
+    controllers = context.persistent_data["balkanization.effective_controller_by_territory"]
     assert controllers == {"HEX_001": "SOV_USA_FED"}
 
 
@@ -89,14 +90,14 @@ def test_sovereignty_dual_power_tiebreak_only_highest_wins(services: Any) -> Non
     adapter.add_node("HEX_001", "territory", habitability=0.8)
     adapter.add_edge("SOV_A", "HEX_001", "claims", control_level=0.3, legal_status="de_facto")
     adapter.add_edge("SOV_B", "HEX_001", "claims", control_level=0.7, legal_status="de_facto")
-    context: dict[str, Any] = {"tick": 0, "persistent_data": {}}
+    context = TickContext(tick=0, persistent_data={})
 
     SovereigntySystem().step(adapter, services, context)
 
     # SOV_B (higher control) wins; its INTENSIFY policy yields -0.02.
-    impact = context["persistent_data"]["balkanization.metabolic_impact_by_territory"]
+    impact = context.persistent_data["balkanization.metabolic_impact_by_territory"]
     assert impact["HEX_001"] == pytest.approx(-0.02)
-    controllers = context["persistent_data"]["balkanization.effective_controller_by_territory"]
+    controllers = context.persistent_data["balkanization.effective_controller_by_territory"]
     assert controllers["HEX_001"] == "SOV_B"
 
 
@@ -110,7 +111,7 @@ def test_sovereignty_emits_dual_power_active_event(services: Any) -> None:
     adapter.add_node("HEX_001", "territory", habitability=0.8)
     adapter.add_edge("SOV_A", "HEX_001", "claims", control_level=0.3, legal_status="de_facto")
     adapter.add_edge("SOV_B", "HEX_001", "claims", control_level=0.7, legal_status="de_facto")
-    context: dict[str, Any] = {"tick": 7, "persistent_data": {}}
+    context = TickContext(tick=7, persistent_data={})
 
     SovereigntySystem().step(adapter, services, context)
 
@@ -127,7 +128,7 @@ def test_sovereignty_emits_dual_power_active_event(services: Any) -> None:
 def test_sovereignty_no_dual_power_for_single_claimant(services: Any) -> None:
     adapter = BabylonGraph()
     _seed_single_sovereign(adapter)
-    context: dict[str, Any] = {"tick": 0, "persistent_data": {}}
+    context = TickContext(tick=0, persistent_data={})
 
     SovereigntySystem().step(adapter, services, context)
 
@@ -139,9 +140,9 @@ def test_sovereignty_no_dual_power_for_single_claimant(services: Any) -> None:
 def test_sovereignty_skips_territories_with_no_claims(services: Any) -> None:
     adapter = BabylonGraph()
     adapter.add_node("HEX_ORPHAN", "territory", habitability=0.8)
-    context: dict[str, Any] = {"tick": 0, "persistent_data": {}}
+    context = TickContext(tick=0, persistent_data={})
 
     SovereigntySystem().step(adapter, services, context)
 
-    impact = context["persistent_data"]["balkanization.metabolic_impact_by_territory"]
+    impact = context.persistent_data["balkanization.metabolic_impact_by_territory"]
     assert "HEX_ORPHAN" not in impact

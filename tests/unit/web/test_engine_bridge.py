@@ -19,9 +19,12 @@ from babylon.models.enums import EventType
 from babylon.models.events import SimulationEvent
 from babylon.topology.graph import BabylonGraph
 from game.engine_bridge import (
+    _EVENT_SEVERITY,
     _MAP_HISTORY_WINDOW_CAP,
+    VERB_TO_ACTION_TYPE,
     EngineBridge,
     _build_initial_state_for_scenario,
+    _classify_event,
     _heat_delta_by_territory,
     _hex_feature_properties,
     _hex_state_row,
@@ -31,6 +34,7 @@ from game.engine_bridge import (
     _state_to_snapshot,
     resolve_scenario,
 )
+from game.verb_copy import VERB_INELIGIBILITY_COPY
 
 
 def _make_mock_persistence() -> MagicMock:
@@ -596,6 +600,21 @@ class TestEndgameDetection:
         events = result.get("events", [])
         assert len(events) >= 1
         assert any(e.get("type") == "REVOLUTIONARY_VICTORY" for e in events)
+
+
+@pytest.mark.unit
+class TestPatternShiftSeverity:
+    """Spec-116 Task 4: pattern_shift is a real EventType, classified warning."""
+
+    def test_pattern_shift_is_a_string_literal_key(self) -> None:
+        """``_EVENT_SEVERITY`` is ``dict[str, str]`` — every key (including
+        this one) must be a plain string literal, never an EventType member,
+        matching every existing entry in the map."""
+        assert "pattern_shift" in _EVENT_SEVERITY
+        assert all(isinstance(key, str) for key in _EVENT_SEVERITY)
+
+    def test_pattern_shift_classified_as_warning(self) -> None:
+        assert _classify_event("pattern_shift") == "warning"
 
 
 # ---------------------------------------------------------------------- #
@@ -1456,6 +1475,7 @@ def _make_balkanization_graph() -> BabylonGraph:
     g.add_node(
         "org-player",
         "organization",
+        id="org-player",
         name="Vanguard Cell",
         org_type="political_faction",
         cadre_level=5.0,
@@ -1798,6 +1818,128 @@ class TestDefixturedQueryCorrectness:
 
         target_ids = {t["id"] for t in result["targets"]}
         assert "org-civil-society" in target_ids
+
+
+def _make_wayne_tick0_graph() -> BabylonGraph:
+    """Tick-0 wayne_county-shaped graph for eligibility tests.
+
+    ORG001 (civil_society, the player) and ORG002 (state_apparatus,
+    Detroit PD) share hex-1/hex-2, mirroring ``_legacy_wayne.py``. The
+    social_class node is production-faithful: NO ``territory_ids``
+    (``SocialClass`` has no such field; ``to_graph`` dumps model fields
+    verbatim), so EDUCATE is structurally ineligible — the exact tick-0
+    dead-end FR-116-4.8 converts into disabled-with-reason.
+    """
+    g = BabylonGraph()
+    g.graph["tick"] = 0
+    g.add_node(
+        "ORG001",
+        "organization",
+        name="Wayne County Organizing Committee",
+        org_type="civil_society",
+        cadre_level=0.1,
+        cohesion=0.5,
+        budget=100.0,
+        heat=0.0,
+        territory_ids=["hex-1", "hex-2"],
+    )
+    g.add_node(
+        "ORG002",
+        "organization",
+        name="Detroit Police Department",
+        org_type="state_apparatus",
+        cadre_level=5.0,
+        cohesion=0.8,
+        budget=5000.0,
+        heat=0.3,
+        territory_ids=["hex-1", "hex-2", "hex-3"],
+    )
+    g.add_node("hex-1", "territory", name="Downtown Detroit", heat=0.2, population=5000)
+    g.add_node("hex-2", "territory", name="Dearborn", heat=0.1, population=4000)
+    g.add_node(
+        "C001",
+        "social_class",
+        name="Detroit Proletariat",
+        role="proletariat",
+        wealth=15.0,
+        agitation=0.2,
+    )
+    return g
+
+
+@pytest.mark.unit
+class TestVerbEligibility:
+    """Spec-116 FR-4.8: get_verb_eligibility derives per-verb eligibility
+    from the SAME predicates that empty the per-verb target lists, on ONE
+    shared hydration, with the server-side reason/remedy copy table."""
+
+    def _eligibility(self, graph: BabylonGraph) -> tuple[dict[str, Any], MagicMock]:
+        mock_persistence = _make_mock_persistence()
+        bridge = EngineBridge(mock_persistence)
+        with _patched_hydrate_state(bridge, graph, tick=0) as mock_hydrate:
+            result = bridge.get_verb_eligibility(uuid.uuid4(), "ORG001")
+        return result, mock_hydrate
+
+    def test_all_nine_verbs_present_with_full_row_shape(self) -> None:
+        result, _ = self._eligibility(_make_wayne_tick0_graph())
+        assert result["org_id"] == "ORG001"
+        assert result["tick"] == 0
+        assert {v["verb"] for v in result["verbs"]} == set(VERB_TO_ACTION_TYPE)
+        for row in result["verbs"]:
+            assert set(row) == {
+                "verb",
+                "eligible",
+                "reason",
+                "remedy",
+                "can_afford",
+                "afford_note",
+            }
+
+    def test_tick0_wayne_educate_ineligible_with_reason_and_remedy(self) -> None:
+        result, _ = self._eligibility(_make_wayne_tick0_graph())
+        by_verb = {v["verb"]: v for v in result["verbs"]}
+        assert by_verb["educate"]["eligible"] is False
+        assert by_verb["educate"]["reason"] == "No organized community in your territories yet."
+        assert by_verb["educate"]["remedy"] == VERB_INELIGIBILITY_COPY["educate"][1]
+
+    def test_tick0_wayne_mobilize_ineligible_state_apparatus_does_not_count(self) -> None:
+        result, _ = self._eligibility(_make_wayne_tick0_graph())
+        by_verb = {v["verb"]: v for v in result["verbs"]}
+        assert by_verb["mobilize"]["eligible"] is False
+        assert by_verb["mobilize"]["reason"] == VERB_INELIGIBILITY_COPY["mobilize"][0]
+        assert by_verb["mobilize"]["remedy"] == VERB_INELIGIBILITY_COPY["mobilize"][1]
+
+    def test_tick0_wayne_eligible_verbs_carry_null_copy(self) -> None:
+        result, _ = self._eligibility(_make_wayne_tick0_graph())
+        by_verb = {v["verb"]: v for v in result["verbs"]}
+        # ORG002 shares hex-1/hex-2 -> aid (org arm), attack, negotiate.
+        # Territory nodes exist -> campaign, move. Own territories -> investigate.
+        for verb in ("aid", "attack", "negotiate", "campaign", "move", "investigate", "reproduce"):
+            assert by_verb[verb]["eligible"] is True, verb
+            assert by_verb[verb]["reason"] is None, verb
+            assert by_verb[verb]["remedy"] is None, verb
+
+    def test_educate_flips_eligible_when_social_class_shares_territory(self) -> None:
+        graph = _make_wayne_tick0_graph()
+        graph.update_node("C001", territory_ids=["hex-1"])
+        result, _ = self._eligibility(graph)
+        by_verb = {v["verb"]: v for v in result["verbs"]}
+        assert by_verb["educate"]["eligible"] is True
+        assert by_verb["educate"]["reason"] is None
+
+    def test_exactly_one_hydration(self) -> None:
+        _result, mock_hydrate = self._eligibility(_make_wayne_tick0_graph())
+        assert mock_hydrate.call_count == 1, (
+            "get_verb_eligibility must evaluate all nine predicates on ONE "
+            "shared hydration (the 9x get_*_targets loop would cost ~18)"
+        )
+
+    def test_org_not_found_is_honest_error(self) -> None:
+        mock_persistence = _make_mock_persistence()
+        bridge = EngineBridge(mock_persistence)
+        with _patched_hydrate_state(bridge, _make_wayne_tick0_graph(), tick=0):
+            result = bridge.get_verb_eligibility(uuid.uuid4(), "NOT-AN-ORG")
+        assert result == {"status": "error", "error": "Org not found"}
 
 
 @pytest.mark.unit
@@ -2789,6 +2931,66 @@ class TestSerializeEventUprisingTerritoryAnchoring:
         assert snapshot["events"][0]["data"]["territory_id"] == "T001"
 
 
+@pytest.mark.unit
+class TestReactionaryVerbSeverityAndAnchoring:
+    """spec-116 FR-116-4.7: pogrom/lockout/vigilantism severity tier +
+    uprising-pattern territory anchoring on the TARGET community id."""
+
+    @staticmethod
+    def _verb_event(event_type: str, target_id: str) -> MagicMock:
+        event = MagicMock()
+        event.event_type = event_type
+        event.tick = 5
+        event.data = {
+            "org_id": "ORG_FASH",
+            "target_id": target_id,
+            "repression_increment": 0.15,
+        }
+        event.narrative = None
+        return event
+
+    def test_verbs_classify_as_warning(self) -> None:
+        from game.engine_bridge import _classify_event
+
+        assert _classify_event("pogrom") == "warning"
+        assert _classify_event("lockout") == "warning"
+        assert _classify_event("vigilantism") == "warning"
+
+    def test_pogrom_anchors_to_target_territory(self) -> None:
+        from game.engine_bridge import _serialize_event
+
+        graph = _graph_with_tenancy(class_to_territory={"C001": "T001"})
+        result = _serialize_event(self._verb_event("pogrom", "C001"), uuid.uuid4(), graph=graph)
+
+        assert result["data"]["territory_id"] == "T001"
+
+    def test_lockout_and_vigilantism_anchor_too(self) -> None:
+        from game.engine_bridge import _serialize_event
+
+        graph = _graph_with_tenancy(class_to_territory={"C001": "T001"})
+        for verb in ("lockout", "vigilantism"):
+            result = _serialize_event(self._verb_event(verb, "C001"), uuid.uuid4(), graph=graph)
+            assert result["data"]["territory_id"] == "T001"
+
+    def test_unresolvable_target_yields_honest_none(self) -> None:
+        from game.engine_bridge import _serialize_event
+
+        graph = _graph_with_tenancy(class_to_territory={"C001": "T001", "C999": None})
+        result = _serialize_event(
+            self._verb_event("vigilantism", "C999"), uuid.uuid4(), graph=graph
+        )
+
+        assert "territory_id" in result["data"]
+        assert result["data"]["territory_id"] is None
+
+    def test_absent_graph_yields_none_never_guessed(self) -> None:
+        from game.engine_bridge import _serialize_event
+
+        result = _serialize_event(self._verb_event("pogrom", "C001"), uuid.uuid4())
+
+        assert result["data"]["territory_id"] is None
+
+
 # ══════════════════════════════════════════════════════════════════════
 # Backend-W3R3 (Program 17 Wave 3): GET /api/games/{id}/map/history/.
 # Verified against a running canonical session (2026-07-15, tick 987):
@@ -3112,3 +3314,603 @@ class TestBuildTickSummaryMarketAxis:
         assert summary["price_log"] is None
         assert summary["fictitious_log"] is None
         assert summary["market_corrections"] is None
+
+
+@pytest.mark.unit
+class TestBuildTickSummarySeriesAggregates:
+    """Task 19 (spec-116 4d.5): county-deduped tick_* aggregates ride tick_summary.
+
+    The series is HONEST-SPARSE by design: tick_* attrs stamp at year
+    boundaries only (weekly campaign => yearly points) and are carried
+    forward between boundaries — NULL before the first boundary, a step
+    function after, never fabricated smoothing (Constitution III.11).
+    """
+
+    _SERIES_KEYS = (
+        "crisis_pop_share",
+        "bifurcation_score_mean",
+        "wage_compression_mean",
+        "capital_stock_total",
+        "unemployment_rate_mean",
+    )
+
+    @staticmethod
+    def _graph_with_two_counties() -> BabylonGraph:
+        graph = BabylonGraph()
+        # T1/T2 share one county and carry IDENTICAL county-level stamps —
+        # they must count ONCE (the _county_flow_snapshot N-fold-inflation
+        # hazard), never once per territory.
+        graph.add_node(
+            "T1",
+            node_type="territory",
+            county_fips="26163",
+            population=1_000_000,
+            tick_crisis_phase="deep",
+            tick_bifurcation_score=-0.5,
+            tick_wage_compression=0.2,
+            tick_capital_stock=1e9,
+            tick_unemployment_rate=0.10,
+        )
+        graph.add_node(
+            "T2",
+            node_type="territory",
+            county_fips="26163",
+            population=500_000,
+            tick_crisis_phase="deep",
+            tick_bifurcation_score=-0.5,
+            tick_wage_compression=0.2,
+            tick_capital_stock=1e9,
+            tick_unemployment_rate=0.10,
+        )
+        graph.add_node(
+            "T3",
+            node_type="territory",
+            county_fips="26125",
+            population=500_000,
+            tick_crisis_phase="normal",
+            tick_bifurcation_score=0.3,
+            tick_wage_compression=0.0,
+            tick_capital_stock=2e9,
+            tick_unemployment_rate=0.05,
+        )
+        return graph
+
+    def test_aggregates_are_county_deduped_and_population_weighted(self) -> None:
+        from babylon.models.world_state import WorldState
+        from game.engine_bridge import _build_tick_summary
+
+        summary = _build_tick_summary(
+            WorldState(tick=52), organizations=[], graph=self._graph_with_two_counties()
+        )
+
+        # Wayne pop 1.5M (deep) vs 26125 pop 0.5M (normal): 1.5/2.0.
+        assert summary["crisis_pop_share"] == pytest.approx(0.75)
+        # Weighted over COUNTIES: (-0.5 * 1.5e6 + 0.3 * 0.5e6) / 2e6.
+        assert summary["bifurcation_score_mean"] == pytest.approx(-0.3)
+        assert summary["wage_compression_mean"] == pytest.approx(0.15)
+        # Extensive sum, ONE term per county: 1e9 + 2e9 — never 1e9*2 + 2e9.
+        assert summary["capital_stock_total"] == pytest.approx(3e9)
+        assert summary["unemployment_rate_mean"] == pytest.approx(0.0875)
+
+    def test_no_graph_or_no_boundary_yet_is_honest_null(self) -> None:
+        from babylon.models.world_state import WorldState
+        from game.engine_bridge import _build_tick_summary
+
+        no_graph = _build_tick_summary(WorldState(tick=1), organizations=[])
+        bare_graph = BabylonGraph()
+        bare_graph.add_node("T1", node_type="territory", county_fips="26163", population=10)
+        pre_boundary = _build_tick_summary(WorldState(tick=1), organizations=[], graph=bare_graph)
+
+        for key in self._SERIES_KEYS:
+            assert no_graph[key] is None, f"{key} must be NULL without a graph"
+            assert pre_boundary[key] is None, f"{key} must be NULL before the first boundary"
+
+
+# ---------------------------------------------------------------------- #
+# Spec-116 FR-4.1: the Voice heartbeat — CausalChainObserver wiring
+# ---------------------------------------------------------------------- #
+
+
+@pytest.mark.unit
+class TestCausalHeartbeatWiring:
+    """resolve_tick runs the per-session CausalChainObserver and persists its
+    frames as deterministic NarrationRecord beats (spec-116 FR-4.1).
+    Observer-layer only: no state/graph mutation, outside the tick hash."""
+
+    _SID = uuid.UUID("dddddddd-bbbb-cccc-dddd-eeeeeeeeeeee")
+
+    @patch("game.engine_bridge.step")
+    def test_resolve_tick_caches_observer_per_session(self, mock_step: MagicMock) -> None:
+        from game.engine_bridge import _session_causal_observers
+
+        _session_causal_observers.clear()
+        mock_persistence = _make_mock_persistence()
+        mock_persistence.get_pending_turns.return_value = []
+        mock_step.return_value = _make_mock_new_state()
+
+        bridge = EngineBridge(mock_persistence)
+        bridge.resolve_tick(self._SID)
+        first = _session_causal_observers.get(self._SID)
+        assert first is not None, "resolve_tick must create the per-session observer"
+
+        bridge.resolve_tick(self._SID)
+        assert _session_causal_observers.get(self._SID) is first, (
+            "the SAME observer instance must survive across resolve_tick calls "
+            "(the 5-tick history buffer lives on it)"
+        )
+
+    def test_persist_causal_beats_safe_never_raises_without_db(self) -> None:
+        """Best-effort sibling contract (_persist_*_safe family): a DB failure
+        — here pytest-django blocking access (no django_db mark) — is
+        swallowed and logged, never fails tick resolution."""
+        from game.engine_bridge import _persist_causal_beats_safe
+
+        frame = {
+            "pattern": "TICK_PULSE",
+            "tick": 3,
+            "deltas": {
+                "pool": {"before": 100.0, "after": 90.0},
+                "wage": {"before": 0.2, "after": 0.2},
+                "p_rev": {"before": 0.3, "after": 0.3},
+            },
+        }
+        _persist_causal_beats_safe(self._SID, 3, (frame,))  # must not raise
+
+
+@pytest.mark.unit
+@pytest.mark.django_db
+class TestCausalHeartbeatPersistence:
+    """The pulse beat lands in narration_record on every resolved tick."""
+
+    _SID = uuid.UUID("eeeeeeee-bbbb-cccc-dddd-eeeeeeeeeeee")
+
+    @patch("game.engine_bridge.step")
+    def test_resolve_tick_persists_pulse_beat(self, mock_step: MagicMock) -> None:
+        from game.causal_voice import CAUSAL_MODEL_ID, CAUSAL_PROMPT_VERSION
+        from game.engine_bridge import _session_causal_observers
+        from game.models import GameSession, NarrationRecord
+
+        _session_causal_observers.clear()
+        GameSession.objects.create(
+            id=self._SID, scenario="default", current_tick=0, status="active"
+        )
+        mock_persistence = _make_mock_persistence()
+        mock_persistence.get_pending_turns.return_value = []
+        mock_step.return_value = _make_mock_new_state(tick=1)
+
+        bridge = EngineBridge(mock_persistence)
+        bridge.resolve_tick(self._SID)
+
+        record = NarrationRecord.objects.get(
+            session_id=self._SID, tick=1, beat_id="causal-pulse-t1"
+        )
+        assert record.scope == "tick"
+        assert record.register == "wire"
+        assert record.model_id == CAUSAL_MODEL_ID
+        assert record.prompt_version == CAUSAL_PROMPT_VERSION
+        assert record.degraded is False
+        assert record.headline == "The week's ledger, tick 1."
+
+
+@pytest.mark.unit
+class TestExpectedDeltas:
+    """Spec-116 FR-116-4.4: per-target expected_deltas on verb-target rows,
+    sourced from the resolvers' own math (preview == resolution). The axis a
+    verb has no per-target formula for is an honest None, never 0.0."""
+
+    def test_educate_rows_carry_resolver_parity_consciousness_delta(self) -> None:
+        from babylon.models.enums import ActionType
+        from game.engine_bridge import _preview_consciousness_delta
+
+        mock_persistence = _make_mock_persistence()
+        bridge = EngineBridge(mock_persistence)
+        graph = _make_balkanization_graph()
+
+        with _patched_hydrate_state(bridge, graph):
+            result = bridge.get_educate_targets(uuid.uuid4(), "org-player")
+
+        target = result["targets"][0]
+        expected = round(
+            _preview_consciousness_delta(
+                dict(graph.nodes["org-player"]),
+                "sc-genesee-proles",
+                ActionType.EDUCATE,
+                graph,
+            ),
+            4,
+        )
+        assert target["expected_deltas"]["consciousness_delta"] == expected
+        assert target["expected_deltas"]["heat_delta"] is None
+
+    def test_aid_population_rows_carry_deltas_and_org_rows_do_not(self) -> None:
+        from babylon.models.enums import ActionType
+        from game.engine_bridge import _preview_consciousness_delta
+
+        mock_persistence = _make_mock_persistence()
+        bridge = EngineBridge(mock_persistence)
+        graph = _make_balkanization_graph()
+
+        with _patched_hydrate_state(bridge, graph):
+            result = bridge.get_aid_targets(uuid.uuid4(), "org-player")
+
+        pop = result["population_targets"][0]
+        expected = round(
+            _preview_consciousness_delta(
+                dict(graph.nodes["org-player"]),
+                pop["community_id"],
+                ActionType.PROVIDE_SERVICE,
+                graph,
+            ),
+            4,
+        )
+        assert pop["expected_deltas"]["consciousness_delta"] == expected
+        assert pop["expected_deltas"]["heat_delta"] is None
+        for org_row in result["org_targets"]:
+            assert "expected_deltas" not in org_row
+
+    def test_attack_rows_carry_defines_driven_heat_delta(self) -> None:
+        from babylon.config.defines import GameDefines
+
+        mock_persistence = _make_mock_persistence()
+        bridge = EngineBridge(mock_persistence)
+        graph = _make_balkanization_graph()
+        graph.add_node(
+            "org-rivals",
+            "organization",
+            name="Citizens Council",
+            org_type="business",
+            budget=340.0,
+            territory_ids=["T1"],
+        )
+        graph.add_node(
+            "inst-court",
+            "institution",
+            name="County Court",
+            factional_composition={"security_state": 0.6},
+            territory_ids=["T1"],
+        )
+
+        with _patched_hydrate_state(bridge, graph):
+            result = bridge.get_attack_targets(uuid.uuid4(), "org-player")
+
+        heat_gain = round(GameDefines().ooda.attack_self_heat_gain, 4)
+        org_rows = result["targets"]["organizations"]
+        inst_rows = result["targets"]["institutions"]
+        assert len(org_rows) >= 1 and len(inst_rows) >= 1
+        for row in [*org_rows, *inst_rows]:
+            assert row["expected_deltas"]["heat_delta"] == heat_gain
+            assert row["expected_deltas"]["consciousness_delta"] is None
+
+    def test_educate_row_includes_doctrine_theory_bonus_for_class_analysis_org(self) -> None:
+        """Task-18-review fix: EDUCATE's resolver (resolve_educate ->
+        resolve_action(..., doctrine=services.defines.doctrine)) applies the
+        Step-7.5 doctrine theory bonus (ADR073) when the acting org carries
+        CLASS_ANALYSIS doctrine tags. The bridge's per-target preview must
+        reproduce that exactly (preview == resolution) — this asserts
+        against an INDEPENDENT call to compute_consciousness_delta built to
+        mirror resolve_educate's own signature (doctrine passed), not
+        against _preview_consciousness_delta itself, so it would have FAILED
+        before the fix (the old preview omitted doctrine and understated the
+        delta)."""
+        from babylon.config.defines import GameDefines
+        from babylon.models.enums import ActionType
+        from babylon.ooda.action_effects import compute_consciousness_delta
+
+        mock_persistence = _make_mock_persistence()
+        bridge = EngineBridge(mock_persistence)
+        graph = _make_balkanization_graph()
+        graph.update_node("org-player", doctrine_tags={"class_analysis": 5.0})
+
+        with _patched_hydrate_state(bridge, graph):
+            result = bridge.get_educate_targets(uuid.uuid4(), "org-player")
+
+        target = result["targets"][0]
+        defines = GameDefines()
+        org_attrs = dict(graph.nodes["org-player"])
+
+        # Mirrors resolve_educate's own resolve_action(..., doctrine=...) call exactly.
+        with_doctrine = compute_consciousness_delta(
+            org_attrs,
+            "sc-genesee-proles",
+            ActionType.EDUCATE,
+            graph,
+            defines.ooda,
+            defines.organization,
+            defines.doctrine,
+        )
+        expected = round(float(with_doctrine.collective_identity_delta), 4)  # type: ignore[union-attr]
+
+        # Sanity: the bonus is actually engaged (not a coincidental equality) —
+        # the no-doctrine baseline must be strictly smaller in magnitude.
+        without_doctrine = compute_consciousness_delta(
+            org_attrs,
+            "sc-genesee-proles",
+            ActionType.EDUCATE,
+            graph,
+            defines.ooda,
+            defines.organization,
+        )
+        baseline = round(float(without_doctrine.collective_identity_delta), 4)  # type: ignore[union-attr]
+        assert abs(expected) > abs(baseline)
+
+        assert target["expected_deltas"]["consciousness_delta"] == expected
+
+    def test_aid_row_omits_theory_bonus_even_for_class_analysis_org(self) -> None:
+        """Guard against OVER-stating AID: resolve_aid calls
+        compute_consciousness_delta directly WITHOUT doctrine (it defaults to
+        None), so even an acting org with CLASS_ANALYSIS doctrine tags must
+        NOT receive the Step-7.5 bonus on its AID preview. Asserts against an
+        independent call mirroring resolve_aid's own (no-doctrine) signature."""
+        from babylon.config.defines import GameDefines
+        from babylon.models.enums import ActionType
+        from babylon.ooda.action_effects import compute_consciousness_delta
+
+        mock_persistence = _make_mock_persistence()
+        bridge = EngineBridge(mock_persistence)
+        graph = _make_balkanization_graph()
+        graph.update_node("org-player", doctrine_tags={"class_analysis": 5.0})
+
+        with _patched_hydrate_state(bridge, graph):
+            result = bridge.get_aid_targets(uuid.uuid4(), "org-player")
+
+        pop = result["population_targets"][0]
+        defines = GameDefines()
+        org_attrs = dict(graph.nodes["org-player"])
+
+        # Mirrors resolve_aid's own compute_consciousness_delta call exactly
+        # (no doctrine argument at all).
+        no_bonus = compute_consciousness_delta(
+            org_attrs,
+            pop["community_id"],
+            ActionType.PROVIDE_SERVICE,
+            graph,
+            defines.ooda,
+            defines.organization,
+        )
+        expected = round(float(no_bonus.collective_identity_delta), 4)  # type: ignore[union-attr]
+
+        assert pop["expected_deltas"]["consciousness_delta"] == expected
+
+    def test_preview_action_campaign_also_includes_doctrine_theory_bonus(self) -> None:
+        """Scope-extension discovered during the Task-18 review fix:
+        resolve_campaign (CAMPAIGN/PROPAGANDIZE) calls
+        resolve_action(..., doctrine=services.defines.doctrine) exactly like
+        resolve_educate, so the shared preview_action() endpoint (the third
+        _preview_consciousness_delta call site, gated on
+        ``verb in {"educate", "campaign", "aid"}``) must apply the same
+        Step-7.5 doctrine bonus for CAMPAIGN too — not just EDUCATE — or its
+        estimate would understate resolution identically to the reported
+        EDUCATE bug."""
+        from babylon.config.defines import GameDefines
+        from babylon.models.enums import ActionType
+        from babylon.ooda.action_effects import compute_consciousness_delta
+
+        mock_persistence = _make_mock_persistence()
+        bridge = EngineBridge(mock_persistence)
+        graph = _make_balkanization_graph()
+        graph.update_node("org-player", doctrine_tags={"class_analysis": 5.0})
+
+        with _patched_hydrate_state(bridge, graph):
+            result = bridge.preview_action(
+                uuid.uuid4(), "org-player", "campaign", "sc-genesee-proles"
+            )
+
+        defines = GameDefines()
+        org_attrs = dict(graph.nodes["org-player"])
+
+        # Mirrors resolve_campaign's own resolve_action(..., doctrine=...) call.
+        with_doctrine = compute_consciousness_delta(
+            org_attrs,
+            "sc-genesee-proles",
+            ActionType.PROPAGANDIZE,
+            graph,
+            defines.ooda,
+            defines.organization,
+            defines.doctrine,
+        )
+        # preview_action rounds its estimate to 4 places before returning.
+        expected = round(float(with_doctrine.collective_identity_delta), 4)  # type: ignore[union-attr]
+
+        without_doctrine = compute_consciousness_delta(
+            org_attrs,
+            "sc-genesee-proles",
+            ActionType.PROPAGANDIZE,
+            graph,
+            defines.ooda,
+            defines.organization,
+        )
+        baseline = round(float(without_doctrine.collective_identity_delta), 4)  # type: ignore[union-attr]
+        assert abs(expected) > abs(baseline)
+
+        assert result["estimated_consciousness_delta"] == expected
+
+
+@pytest.mark.unit
+class TestEconomyDashboardChipContract:
+    """spec-116 4d.6: the payload key set is PINNED so a phantom chip
+    (TS-declared, never-emitted) can never return. Corrected audit figures:
+    all fields are emitted today; the tick-26 dead chips were pre-boundary
+    honesty (profit_rate/occ) on an un-migrated DB, not phantoms."""
+
+    def test_dashboard_emits_exactly_the_declared_key_set(self) -> None:
+        mock_persistence = _make_mock_persistence()
+        bridge = EngineBridge(mock_persistence)
+
+        result = bridge.get_economy_dashboard(uuid.uuid4())
+
+        assert set(result.keys()) == {
+            "tick",
+            "has_data",
+            "value_produced",
+            "rent_extracted",
+            "exploitation_rate",
+            "profit_rate",
+            "occ",
+            "imperial_rent_pool",
+            "current_super_wage_rate",
+            "wage_flow_total",
+            "tribute_flow_total",
+            "wealth_by_class_role",
+            "county_flow",
+        }, (
+            "EconomyDashboardPayload drifted — update types/game.ts, the "
+            "chips, and this pin in the SAME commit (no phantoms, no orphans)"
+        )
+
+
+@pytest.mark.unit
+class TestSpineWhitelistSeverityAndTitles:
+    """spec-116 FR-116-4.7 sweep: severity tiers + humanized titles for the
+    14 newly wired types (FR-116-2 reserves critical for genuine
+    rupture/endgame proximity; secession IS fragmented-collapse proximity)."""
+
+    @pytest.mark.parametrize(
+        ("event_type", "expected"),
+        [
+            ("market_correction", "warning"),
+            ("entity_death", "warning"),
+            ("population_attrition", "informational"),
+            ("crisis_phase_transition", "warning"),
+            ("bifurcation_threshold", "warning"),
+            ("edge_mode_transition", "informational"),
+            ("co_optive_breakdown", "warning"),
+            ("latent_contradiction_release", "informational"),
+            ("aspect_reversal", "informational"),
+            ("level_transition", "warning"),
+            ("secession_declared", "critical"),
+            ("calibration_warning.axiom_violation", "informational"),
+            ("calibration_warning.qcew_carry_forward", "informational"),
+            ("calibration_warning.phi_hour_outlier", "informational"),
+        ],
+    )
+    def test_severity(self, event_type: str, expected: str) -> None:
+        from game.engine_bridge import _classify_event
+
+        assert _classify_event(event_type) == expected
+
+    @pytest.mark.parametrize(
+        ("event_type", "expected"),
+        [
+            # Overrides — dotted/hyphenated values the naive title() mangles,
+            # plus the one player-facing rename.
+            ("co_optive_breakdown", "Co-optive Breakdown"),
+            ("calibration_warning.axiom_violation", "Calibration: Axiom Violation"),
+            ("calibration_warning.qcew_carry_forward", "Calibration: QCEW Carry-Forward"),
+            ("calibration_warning.phi_hour_outlier", "Calibration: Phi-Hour Outlier"),
+            ("entity_death", "Class Extinction"),
+            # Default humanization still applies to everything else.
+            ("market_correction", "Market Correction"),
+            ("secession_declared", "Secession Declared"),
+            ("pogrom", "Pogrom"),
+        ],
+    )
+    def test_humanized_titles(self, event_type: str, expected: str) -> None:
+        from game.engine_bridge import _humanize_event_type
+
+        assert _humanize_event_type(event_type) == expected
+
+
+@pytest.mark.requires_reference_db
+class TestBridgeEconomicsOverridesWiresCirculationAndFinancialServices:
+    """spec-116 Task 20b: wire the FRED-backed circulation + financial services
+    into ``_bridge_economics_overrides``, mirroring the
+    ``throughput_calculator`` wiring pattern (``test_throughput_wiring.py``).
+
+    Without ``turnover_profile_source``/``interest_calculator`` wired,
+    ``domain/economics/tick/system/__init__.py``'s ``_compute_circulation_layer``
+    (:1167) and ``_compute_financial_layer`` (:1365) no-op unconditionally, so
+    the Group C (7 fields) and Group D (9 fields) territory attrs stay at their
+    write-site fallback constants forever. Both factories
+    (``create_circulation_services``/``create_financial_services``) read the
+    same reference-DB ``session_factory`` already in scope for melt/gamma/
+    leontief/throughput above — no new runtime dependency.
+    """
+
+    def test_overrides_include_a_real_turnover_profile_source(self) -> None:
+        from babylon.domain.economics.circulation.turnover import DefaultTurnoverProfileSource
+        from game.engine_bridge import _bridge_economics_overrides
+
+        overrides, leontief_session = _bridge_economics_overrides(())
+        try:
+            assert "turnover_profile_source" in overrides
+            assert isinstance(overrides["turnover_profile_source"], DefaultTurnoverProfileSource)
+        finally:
+            if leontief_session is not None:
+                leontief_session.close()
+
+    def test_overrides_include_a_real_interest_calculator(self) -> None:
+        from babylon.domain.economics.credit.interest import DefaultInterestCalculator
+        from game.engine_bridge import _bridge_economics_overrides
+
+        overrides, leontief_session = _bridge_economics_overrides(())
+        try:
+            assert "interest_calculator" in overrides
+            assert isinstance(overrides["interest_calculator"], DefaultInterestCalculator)
+        finally:
+            if leontief_session is not None:
+                leontief_session.close()
+
+    def test_overrides_include_inventory_and_depreciation_data_sources(self) -> None:
+        """Group C's other two circulation adapters ride the same wiring call."""
+        from game.engine_bridge import _bridge_economics_overrides
+
+        overrides, leontief_session = _bridge_economics_overrides(())
+        try:
+            assert overrides.get("inventory_data_source") is not None
+            assert overrides.get("depreciation_data_source") is not None
+        finally:
+            if leontief_session is not None:
+                leontief_session.close()
+
+
+@pytest.mark.requires_reference_db
+class TestBridgeEconomicsOverridesWiresVol1ReserveArmyServices:
+    """spec-116 Task 21b: wire the FRED-backed Vol I production layer
+    (Feature 021 — reserve army, productivity, dispossession) into
+    ``_bridge_economics_overrides``, mirroring the headless runner's
+    ``create_vol1_services``/``load_vol1_series_from_db`` wiring
+    (``engine/simulation/_legacy.py:305-316``).
+
+    Without ``reserve_army_data_source`` wired, ``domain/economics/tick/
+    system/__init__.py``'s ``_compute_vol1_layer`` (:1100) returns
+    ``county_states`` unchanged unconditionally, so the wage-pressure
+    sigmoid never compresses ``median_wage`` tick-over-tick in a web
+    session — only the QCEW bootstrap value it starts from is real.
+    ``create_vol1_services`` reads the same reference-DB ``session_factory``
+    already in scope for melt/gamma/leontief/throughput/circulation/
+    financial above — no new runtime dependency.
+    """
+
+    def test_overrides_include_a_reserve_army_data_source(self) -> None:
+        from game.engine_bridge import _bridge_economics_overrides
+
+        overrides, leontief_session = _bridge_economics_overrides(())
+        try:
+            source = overrides.get("reserve_army_data_source")
+            assert source is not None
+            assert hasattr(source, "get_unemployment_decomposition")
+            assert callable(source.get_unemployment_decomposition)
+        finally:
+            if leontief_session is not None:
+                leontief_session.close()
+
+    def test_overrides_include_productivity_and_dispossession_data_sources(self) -> None:
+        """The other two Vol I adapters ride the same wiring call (mirrors
+        the headless runner's ``.update(vol1_overrides)`` faithfully — see
+        the FLAG discussion in the Task 21b brief: ``productivity_data_source``
+        has zero tick readers anywhere in ``src/`` today, and
+        ``dispossession_data_source``'s one reader
+        (``_simulate_transitions``, :1757) is itself gated on an unwired
+        ``transition_engine`` (:1736), so both ride along inert — wiring the
+        whole bundle is faithful to the headless mirror without widening the
+        web session's live blast radius beyond reserve-army wage pressure.
+        """
+        from game.engine_bridge import _bridge_economics_overrides
+
+        overrides, leontief_session = _bridge_economics_overrides(())
+        try:
+            assert overrides.get("productivity_data_source") is not None
+            assert overrides.get("dispossession_data_source") is not None
+        finally:
+            if leontief_session is not None:
+                leontief_session.close()

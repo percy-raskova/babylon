@@ -90,12 +90,12 @@ class TestEventsRoundTrip:
 
 
 class TestNonUnionEventRoundTrip:
-    """Design B: EventType members outside the 22-leaf TickEvent union must
+    """Design B: EventType members outside the 23-leaf TickEvent union must
     replay as bare SimulationEvent instead of crashing (union_tag_invalid)."""
 
     def test_non_union_type_count_pin(self) -> None:
-        """Sanity-pin: exactly 22 EventType values are union-dispatchable."""
-        assert len(NON_UNION_TYPES) == len(EventType) - 22
+        """Sanity-pin: exactly 23 EventType values are union-dispatchable."""
+        assert len(NON_UNION_TYPES) == len(EventType) - 23
 
     @pytest.mark.parametrize("event_type", NON_UNION_TYPES, ids=str)
     def test_non_union_event_types_survive_round_trip(self, event_type: EventType) -> None:

@@ -32,7 +32,7 @@ from babylon.config.defines import GameDefines
 from babylon.engine.formula_registry import (  # noqa: F401 — re-exported, see above
     FormulaRegistry as FormulaRegistry,
 )
-from babylon.engine.observers import EndgameDetector
+from babylon.engine.observers import CausalChainObserver, EndgameDetector
 from babylon.engine.scenarios import get_scenario, list_scenarios
 from babylon.engine.simulation_engine import step
 from babylon.engine.topology_monitor import calculate_component_metrics, extract_solidarity_subgraph
@@ -41,7 +41,7 @@ from babylon.formulas.constants import HOURS_PER_YEAR, WEEKS_PER_YEAR
 from babylon.formulas.unequal_exchange import calculate_unequal_exchange_rate
 from babylon.models.config import SimulationConfig
 from babylon.models.enums import ActionType, EventType, GameOutcome, SocialRole
-from babylon.models.events import EndgameEvent
+from babylon.models.events import EndgameEvent, PatternShiftEvent
 from babylon.models.vanguard_resources import VanguardResources, check_can_afford
 from babylon.models.world_state import WorldState
 from babylon.ooda.npc_stub import select_npc_actions
@@ -60,8 +60,10 @@ from babylon.topology.graph_algorithms import (
     is_connected,
 )
 
+from .epilogues import EPILOGUES
 from .log_handler import sanitize_for_log
 from .map_contract import MAP_HISTORY_REPLAYABLE_METRICS, MAP_METRIC_PROPERTIES
+from .verb_copy import VERB_INELIGIBILITY_COPY
 
 if TYPE_CHECKING:
     from game.narrative_service import NarrativeService
@@ -85,6 +87,15 @@ _session_trap_state: dict[UUID, TrapDetectionResult] = {}
 # Same known limitation as ``_session_trap_state`` above: per-process only,
 # lost on worker restart, not shared across horizontally-scaled replicas.
 _session_endgame_detectors: dict[UUID, EndgameDetector] = {}
+
+# Per-session CausalChainObserver instance (in-memory, not persisted).
+# Spec-116 FR-4.1 (the Voice heartbeat): the rolling 5-tick history buffer
+# must survive across separate ``resolve_tick`` HTTP calls, exactly like
+# ``_session_endgame_detectors`` above. Same known limitation: per-process
+# only, lost on worker restart (the buffer restarts empty and an in-flight
+# shock window spanning the restart is missed — accepted, as for the
+# detector), not shared across horizontally-scaled replicas.
+_session_causal_observers: dict[UUID, CausalChainObserver] = {}
 
 _ACTION_HISTORY_CAP = 50
 
@@ -122,17 +133,6 @@ _MAP_HISTORY_COUNTY_TRACE_METRICS: dict[str, str] = {
 # Severities surfaced by get_alerts_dashboard — "informational" is routine
 # flow, not an alert (matches _EVENT_SEVERITY's three-bucket taxonomy).
 _ALERT_SEVERITIES = frozenset({"critical", "warning"})
-
-# Spec 095: canonical headlines for the chronicle end-screen (FR-095-09).
-# REVOLUTIONARY_VICTORY → rupture palette ("BABYLON FALLS"); all others →
-# defeat palette ("THE BUNKER FAILS"). Matches the EndState.jsx mockup.
-_OUTCOME_HEADLINES: dict[str, str] = {
-    "REVOLUTIONARY_VICTORY": "BABYLON FALLS",
-    "ECOLOGICAL_COLLAPSE": "THE BUNKER FAILS",
-    "FASCIST_CONSOLIDATION": "THE BUNKER FAILS",
-    "RED_OGV": "THE BUNKER FAILS",
-    "FRAGMENTED_COLLAPSE": "THE BUNKER FAILS",
-}
 
 # ---------------------------------------------------------------------- #
 # Verb-to-ActionType mapping (9 canonical player verbs → engine ActionType)
@@ -606,6 +606,23 @@ def _outcome_from_endgame_row(row: dict[str, Any] | None) -> str | None:
         return GameOutcome(raw_outcome).value
     except ValueError:
         return str(raw_outcome).lower()
+
+
+def _accepted_tick_from_endgame_row(row: dict[str, Any] | None) -> int | None:
+    """Extract the player-accept tick from an endgame row's ``detail`` blob.
+
+    Spec-116 FR-116-5: ``POST /api/games/{id}/accept-outcome/`` stamps
+    ``detail["accepted_at_tick"]`` when the player fast-forwards to the
+    epilogue; a horizon-terminated game has no such key. ``bool`` is rejected
+    explicitly (``True`` is an ``int`` in Python) rather than coerced.
+    """
+    if row is None:
+        return None
+    detail = row.get("detail")
+    raw = detail.get("accepted_at_tick") if isinstance(detail, dict) else None
+    if isinstance(raw, bool) or not isinstance(raw, int):
+        return None
+    return raw
 
 
 def _compute_avg_node_attr(graph: Any, attr: str, default: float = 0.0) -> float:
@@ -2530,9 +2547,11 @@ class EngineBridge:
         graph-wide analogue of :meth:`get_economy`, via
         :func:`_aggregate_graph_economy`), and the persisted ``tick_event``
         rows (spec 092) for the latest tick's severity counts.
-        ``profit_rate`` stays ``None`` — the engine computes no c/v/s
-        decomposition on the live graph (Constitution III.11: no invented
-        values).
+        ``profit_rate`` is the mean of every territory's year-boundary
+        ``tick_profit_rate`` (:func:`_mean_territory_attr` — the exact
+        :meth:`get_economy_dashboard` pattern, spec-116 4d.9): honest
+        ``None`` until the first year boundary this session stamps county
+        state, never a fabricated 0.0 (Constitution III.11).
 
         Args:
             session_id: The game session UUID.
@@ -2578,7 +2597,7 @@ class EngineBridge:
             "avg_consciousness": avg_consciousness,
             "population_total": population_total,
             "exploitation_rate": econ["exploitation_rate"],
-            "profit_rate": None,
+            "profit_rate": _mean_territory_attr(graph, "tick_profit_rate"),
             "org_count": len(state.organizations),
             "class_count": len(state.entities),
             "event_counts": event_counts,
@@ -2625,6 +2644,11 @@ class EngineBridge:
         price_index: list[float | None] = []
         fictitious_ratio: list[float | None] = []
         market_corrections: list[int | None] = []
+        crisis_pop_share: list[float | None] = []
+        bifurcation_score_mean: list[float | None] = []
+        wage_compression_mean: list[float | None] = []
+        capital_stock_total: list[float | None] = []
+        unemployment_rate_mean: list[float | None] = []
         for row in rows:
             ticks.append(int(row.get("tick", 0)))
             imperial_rent.append(_optional_float(row.get("imperial_rent")))
@@ -2653,6 +2677,13 @@ class EngineBridge:
             market_corrections.append(
                 int(raw_corrections) if isinstance(raw_corrections, (int, float)) else None
             )
+            # Task 19 (spec-116 4d.5): county-deduped crisis history — a
+            # year-boundary step function; missing columns stay None (gaps).
+            crisis_pop_share.append(_optional_float(row.get("crisis_pop_share")))
+            bifurcation_score_mean.append(_optional_float(row.get("bifurcation_score_mean")))
+            wage_compression_mean.append(_optional_float(row.get("wage_compression_mean")))
+            capital_stock_total.append(_optional_float(row.get("capital_stock_total")))
+            unemployment_rate_mean.append(_optional_float(row.get("unemployment_rate_mean")))
         return {
             "ticks": ticks,
             "imperial_rent": imperial_rent,
@@ -2667,6 +2698,11 @@ class EngineBridge:
             "price_index": price_index,
             "fictitious_ratio": fictitious_ratio,
             "market_corrections": market_corrections,
+            "crisis_pop_share": crisis_pop_share,
+            "bifurcation_score_mean": bifurcation_score_mean,
+            "wage_compression_mean": wage_compression_mean,
+            "capital_stock_total": capital_stock_total,
+            "unemployment_rate_mean": unemployment_rate_mean,
         }
 
     def get_economy_dashboard(self, session_id: UUID) -> dict[str, Any]:
@@ -3811,11 +3847,12 @@ class EngineBridge:
         }
 
     def get_endgame_state(self, session_id: UUID) -> dict[str, Any]:
-        """Return the terminal outcome + chronicle stat cards.
+        """Return the terminal outcome + epilogue + chronicle stat cards.
 
-        Spec 095 FR-095-02. Reads the latest snapshot's endgame block. All 5
-        GameOutcome terminal types are recognized (FR-095-02 fix). Returns
-        ``outcome: None`` when the game is still in progress.
+        Spec 095 FR-095-02 + spec-116 FR-116-4.2. All six GameOutcome values
+        (incl. the fixed-horizon ``unresolved``) resolve to a distinct
+        epilogue from ``web/game/epilogues.py``. Returns ``outcome: None``
+        (and empty copy — Constitution III.11) while the game is in progress.
 
         Args:
             session_id: The game session UUID.
@@ -3838,7 +3875,15 @@ class EngineBridge:
         if row is not None and outcome:
             tick = int(row["tick"])
 
-        headline = _OUTCOME_HEADLINES.get((outcome or "").upper(), "") if outcome else ""
+        # Spec-116 FR-116-4.2: EPILOGUES is keyed by lowercase GameOutcome
+        # values — the same case _outcome_from_endgame_row returns — so no
+        # .upper() case split. An unrecognized outcome string degrades to
+        # empty copy rather than fabricated copy (III.11).
+        entry = EPILOGUES.get(outcome) if outcome else None
+        headline = entry.headline if entry is not None else ""
+        epilogue = entry.body if entry is not None else ""
+        palette: str = entry.palette if entry is not None else ""
+        accepted_at_tick = _accepted_tick_from_endgame_row(row) if outcome else None
 
         consciousness_avg = _compute_avg_node_attr(graph, "class_consciousness", 0.0)
         heat_avg = _compute_avg_node_attr(graph, "heat", 0.0)
@@ -3849,6 +3894,9 @@ class EngineBridge:
             "outcome": outcome,
             "headline": headline,
             "summary": summary,
+            "epilogue": epilogue,
+            "palette": palette,
+            "accepted_at_tick": accepted_at_tick,
             "stats": {
                 "final_tick": tick,
                 "consciousness": consciousness_avg,
@@ -3857,13 +3905,76 @@ class EngineBridge:
             },
         }
 
+    def accept_outcome(self, session_id: UUID) -> dict[str, Any]:
+        """Mercy affordance: end the campaign now with the locked pattern.
+
+        Spec-116 FR-116-5. Once a recognized pattern has held long enough to
+        lock (``endgame_progress["locked"]`` — the same graph-attr block
+        :meth:`get_journal_objectives` reads via :meth:`hydrate_graph`), the
+        player may accept it immediately instead of playing out the
+        remaining ticks to the fixed century horizon (Task 4's
+        ``horizon_tick``). Raises ``ValueError`` when no pattern is
+        currently locked — the owner ruling is that this is the only early
+        exit; recognizing a pattern alone never ends the game.
+
+        Persists a durable ``ENDGAME`` (``EventType.ENDGAME_REACHED``)
+        ``tick_event`` row through the exact same channel :meth:`resolve_tick`
+        uses for its own ``EndgameEvent`` (:func:`_serialize_event` ->
+        :func:`_persist_tick_events_safe`), so :meth:`get_endgame_state`
+        immediately reflects the accepted outcome on its next read. The
+        payload additionally carries ``accepted_at_tick`` (Task 15's
+        six-epilogue payload cites this key to distinguish a player-accepted
+        fast-forward from a horizon termination).
+
+        Unlike :meth:`resolve_tick`, this call opts into
+        ``_persist_tick_events_safe``'s ``replace=False`` append-only path
+        (spec-116 FR-116-5 review fix). Tick ``tick`` here is always an
+        already-resolved tick whose full event batch ``resolve_tick``
+        already committed — the default ``replace=True`` delete-then-insert
+        semantics would delete that batch (journal/alerts/uprising rows
+        that remain reachable after acceptance) out from under itself
+        before inserting just the one ENDGAME row. ``replace=False`` skips
+        the DELETE and appends instead.
+
+        Args:
+            session_id: The game session UUID.
+
+        Returns:
+            ``{"outcome": str, "tick": int, "accepted": True}`` — ``outcome``
+            is the ``GameOutcome`` value (``.value``), never the raw enum.
+
+        Raises:
+            ValueError: No pattern is currently locked.
+        """
+        graph = self._persistence.hydrate_graph(tick=None, session_id=session_id)
+        graph_attrs: dict[str, Any] = getattr(graph, "graph", {}) or {}
+        tick = int(graph_attrs.get("tick", 0))
+
+        progress_block = graph_attrs.get("endgame_progress")
+        locked = isinstance(progress_block, dict) and bool(progress_block.get("locked"))
+        if not locked:
+            raise ValueError("outcome not locked")
+
+        pattern = GameOutcome(progress_block["pattern"])
+        endgame_event = EndgameEvent(tick=tick, outcome=pattern)
+        serialized = _serialize_event(endgame_event, session_id)
+        serialized["data"] = {**serialized["data"], "accepted_at_tick": tick}
+        _persist_tick_events_safe(self._persistence, session_id, tick, [serialized], replace=False)
+
+        return {"outcome": pattern.value, "tick": tick, "accepted": True}
+
     def get_journal_objectives(self, session_id: UUID) -> dict[str, Any]:
         """Return Vic3-style objectives derived from the current game state.
 
-        Spec 095 FR-095-03. Each objective maps to one of the 5 endgame
-        conditions, with a progress bar (0–1) and status
-        (active/complete/failed). Progress is derived from material state
-        (class consciousness, contradiction gap, regime) — never invented.
+        Spec 095 FR-095-03 + Spec-116 Task 4: each objective maps 1:1 to one
+        of the 5 EndgameDetector axes. Progress is the persisted
+        ``endgame_progress["axes"]`` block (Task 4's per-tick snapshot,
+        stashed as a graph-level attribute by ``resolve_tick`` — see its
+        docstring) read straight off the latest hydrated graph, never the
+        in-process ``_session_endgame_detectors`` cache — so this survives a
+        worker restart. The old proxy math (``consciousness_avg``/
+        ``heat_avg``/``principal_gap`` standing in for real axis progress)
+        is gone.
 
         Args:
             session_id: The game session UUID.
@@ -3875,31 +3986,26 @@ class EngineBridge:
         graph = self._persistence.hydrate_graph(tick=None, session_id=session_id)
         graph_attrs: dict[str, Any] = getattr(graph, "graph", {}) or {}
         tick = int(graph_attrs.get("tick", 0))
-        regime = str(graph_attrs.get("dialectical_regime", "reproduction") or "reproduction")
-
-        consciousness_avg = _compute_avg_node_attr(graph, "class_consciousness", 0.0)
-        heat_avg = _compute_avg_node_attr(graph, "heat", 0.0)
-
-        frames_raw = graph_attrs.get("contradiction_frames", {}) or {}
-        global_frame = frames_raw.get("global", {}) if isinstance(frames_raw, dict) else {}
-        principal_aspect = (
-            global_frame.get("principal", {}) if isinstance(global_frame, dict) else {}
-        )
-        principal_gap = (
-            float(principal_aspect.get("intensity", 0.0))
-            if isinstance(principal_aspect, dict)
-            else 0.0
-        )
 
         row = _fetch_endgame_event_row(getattr(self._persistence, "_pool", None), session_id)
         outcome = _outcome_from_endgame_row(row)
+
+        progress_block = graph_attrs.get("endgame_progress")
+        axes: dict[str, Any] = (
+            progress_block.get("axes", {}) if isinstance(progress_block, dict) else {}
+        )
+
+        def _axis_progress(axis_key: str) -> float:
+            """Honest 0.0 when no endgame_progress snapshot exists yet."""
+            value = axes.get(axis_key, 0.0)
+            return float(value) if isinstance(value, (int, float)) else 0.0
 
         objectives: list[dict[str, Any]] = [
             {
                 "id": "revolution",
                 "title": "Revolutionary Victory",
                 "description": "Build mass class consciousness and solidarity edges to overthrow the empire.",
-                "progress": min(1.0, consciousness_avg),
+                "progress": _axis_progress("revolutionary_victory"),
                 "status": _objective_status("revolution", outcome),
                 "category": "revolution",
             },
@@ -3907,7 +4013,7 @@ class EngineBridge:
                 "id": "ecological_collapse",
                 "title": "Ecological Collapse",
                 "description": "Biocapacity depletion forces a terminal retreat from extraction.",
-                "progress": min(1.0, heat_avg),
+                "progress": _axis_progress("ecological_collapse"),
                 "status": _objective_status("collapse", outcome),
                 "category": "collapse",
             },
@@ -3915,7 +4021,7 @@ class EngineBridge:
                 "id": "fascist_consolidation",
                 "title": "Fascist Consolidation",
                 "description": "False-consciousness bloc achieves a sovereign grip on the state.",
-                "progress": min(1.0, principal_gap),
+                "progress": _axis_progress("fascist_consolidation"),
                 "status": _objective_status("fascist", outcome),
                 "category": "fascist",
             },
@@ -3923,7 +4029,7 @@ class EngineBridge:
                 "id": "red_ogv",
                 "title": "Red OGV Trap",
                 "description": "Settler-socialist formation captures the movement without abolishing empire.",
-                "progress": min(1.0, principal_gap * 0.5),
+                "progress": _axis_progress("red_ogv"),
                 "status": _objective_status("red_ogv", outcome),
                 "category": "red_ogv",
             },
@@ -3931,9 +4037,7 @@ class EngineBridge:
                 "id": "fragmented_collapse",
                 "title": "Fragmented Collapse",
                 "description": "Balkanization — sovereign fragmentation outpaces solidarity.",
-                "progress": min(1.0, principal_gap * 0.7)
-                if regime == "crisis"
-                else min(1.0, heat_avg * 0.5),
+                "progress": _axis_progress("fragmented_collapse"),
                 "status": _objective_status("fragmented", outcome),
                 "category": "fragmented",
             },
@@ -4631,27 +4735,74 @@ class EngineBridge:
             len(new_state.events),
         )
 
-        # Program 17 / Item 1c: run the real EndgameDetector observer, cached
-        # per-session (module-level _session_endgame_detectors) so its
-        # cross-tick counters (ECOLOGICAL_COLLAPSE's 5-consecutive-tick
-        # window, RED_OGV/FRAGMENTED_COLLAPSE's rolling windows) survive
-        # across separate resolve_tick HTTP calls — persistent_context does
-        # NOT survive between web requests (see module docstring above
-        # _session_endgame_detectors). On first detection, append a real
-        # EndgameEvent to new_state.events so it rides the existing
-        # tick_event persistence pipe below (_persist_tick_events_safe).
+        # Program 17 / Item 1c -> Spec-116 Task 4: run the real EndgameDetector
+        # observer, cached per-session (module-level _session_endgame_detectors)
+        # so its cross-tick counters (ECOLOGICAL_COLLAPSE's sustained-overshoot
+        # window, RED_OGV/FRAGMENTED_COLLAPSE's rolling windows) survive across
+        # separate resolve_tick HTTP calls — persistent_context does NOT
+        # survive between web requests (see module docstring above
+        # _session_endgame_detectors).
+        #
+        # Owner ruling 2026-07-17 (spec-116 "Playability Spine"): the five
+        # patterns are RECOGNIZED, never adjudicated — recognizing a pattern
+        # no longer ends the game (contrast the old is_game_over/outcome
+        # behavior this replaces). A PATTERN_SHIFT event fires exactly when
+        # the recognized pattern changes (including dissolving to None); the
+        # game only ends at the fixed century horizon (Task 1 defines), with
+        # GameOutcome.UNRESOLVED when no pattern is held at that tick.
         detector = _session_endgame_detectors.get(session_id)
         if detector is None:
             detector = EndgameDetector(defines=game_defines)
             detector.on_simulation_start(state, sim_config)
             _session_endgame_detectors[session_id] = detector
-        if not detector.is_game_over:
-            detector.on_tick(state, new_state)
-            if detector.is_game_over:
-                endgame_event = EndgameEvent(tick=new_state.tick, outcome=detector.outcome)
-                new_state = new_state.model_copy(
-                    update={"events": [*new_state.events, endgame_event]}
-                )
+        previous_pattern = detector.recognized_pattern
+        detector.on_tick(state, new_state)
+        pattern = detector.recognized_pattern
+        if pattern is not previous_pattern:
+            shift = PatternShiftEvent(
+                tick=new_state.tick,
+                pattern=pattern.value if pattern else None,
+                previous=previous_pattern.value if previous_pattern else None,
+                since_tick=detector.pattern_since_tick or new_state.tick,
+            )
+            new_state = new_state.model_copy(update={"events": [*new_state.events, shift]})
+        horizon_tick = (
+            game_defines.endgame.campaign_horizon_years * game_defines.timescale.weeks_per_year
+        )
+        game_over = new_state.tick >= horizon_tick
+        outcome = pattern or GameOutcome.UNRESOLVED
+        if game_over:
+            endgame_event = EndgameEvent(tick=new_state.tick, outcome=outcome)
+            new_state = new_state.model_copy(update={"events": [*new_state.events, endgame_event]})
+        since = detector.pattern_since_tick
+        endgame_progress_payload: dict[str, Any] = {
+            "axes": detector.axis_progress(),
+            "pattern": pattern.value if pattern else None,
+            "since_tick": since,
+            "horizon_tick": horizon_tick,
+            "locked": (
+                pattern is not None
+                and since is not None
+                and (new_state.tick - since + 1) >= game_defines.endgame.pattern_lock_ticks
+            ),
+        }
+
+        # Spec-116 FR-4.1 (the Voice heartbeat): run the CausalChainObserver,
+        # cached per-session like the EndgameDetector above. It reads
+        # WorldState MODEL fields (economy.imperial_rent_pool,
+        # economy.current_super_wage_rate, entities[*].p_revolution), so it
+        # must run HERE on state/new_state, before to_graph(). Observer
+        # layer only — reads state, mutates nothing, outside the tick hash;
+        # its frames ride _persist_causal_beats_safe below, never
+        # new_state.events (frames are narration, not EventTypes — the
+        # _EVENT_SEVERITY seam sentinel enforces that boundary).
+        causal_observer = _session_causal_observers.get(session_id)
+        if causal_observer is None:
+            causal_observer = CausalChainObserver()
+            causal_observer.on_simulation_start(state, sim_config)
+            _session_causal_observers[session_id] = causal_observer
+        causal_observer.on_tick(state, new_state)
+        causal_frames = causal_observer.latest_frames
 
         # Persist the new tick
         new_graph = new_state.to_graph()
@@ -4682,6 +4833,13 @@ class EngineBridge:
         # but the source (new_state.market_county) is a REAL WorldState
         # field, so this is a lookup, not a recompute.
         _carry_price_divergence(new_graph, new_state.market_county)
+        # Spec-116 Task 4: stash endgame_progress as a graph-level attribute —
+        # the same durable channel ContradictionSystem's contradiction_frames
+        # uses (graph.set_graph_attr -> persist_tick's graph_metadata.extra ->
+        # hydrate_graph's Design-B round-trip) — so get_journal_objectives can
+        # read the axes back after a worker restart instead of depending on
+        # the in-process _session_endgame_detectors cache.
+        new_graph.set_graph_attr("endgame_progress", endgame_progress_payload)
         events_as_dicts: list[dict[str, Any]] = [
             e.model_dump(mode="json") for e in new_state.events
         ]
@@ -4734,6 +4892,10 @@ class EngineBridge:
         # have real history to read back. Best-effort — a journal-write
         # failure must never fail tick resolution.
         _persist_tick_events_safe(self._persistence, session_id, new_state.tick, snapshot["events"])
+        # Spec-116 FR-4.1: land this tick's causal frames as deterministic
+        # NarrationRecord beats (the same table the LLM path writes and
+        # game_narration serves). Best-effort — never fails tick resolution.
+        _persist_causal_beats_safe(session_id, new_state.tick, causal_frames)
         # P0 #7: refresh the hex_latest map cache from this tick's territories
         # (sibling of the tick_event write above; best-effort, never raises).
         # Spec-109 A2: org_count from live territory_ids, heat_delta from the
@@ -4766,17 +4928,17 @@ class EngineBridge:
         # _carry_tick_dynamics_flows just re-injected — without it the
         # territory_snapshot rate columns persist NULL forever.
         _persist_snapshots_safe(self._persistence, session_id, new_state, graph=new_graph)
-        # Program 17 / Item 1c: the real EndgameDetector (run above, before
-        # to_graph()) is the authoritative source now — not a literal-string
-        # scan of event_type (EndgameEvent.event_type is ALWAYS
-        # EventType.ENDGAME_REACHED; the real GameOutcome lives in its
-        # separate `outcome` field, never in event_type). `summary` stays
-        # empty: the engine adjudicates, it does not narrate (Constitution)
-        # — the async narrative_service call below is the correct place for
-        # prose, not this synchronous path.
-        if detector.is_game_over:
+        # Spec-116 Task 4: recognizing a pattern no longer ends the game — the
+        # fixed century horizon does (see the detector block above).
+        # endgame_progress is served every tick (the live "how close" HUD);
+        # `endgame` only appears once the horizon is actually reached.
+        # `summary` stays empty: the engine adjudicates, it does not narrate
+        # (Constitution) — the async narrative_service call below is the
+        # correct place for prose, not this synchronous path.
+        snapshot["endgame_progress"] = endgame_progress_payload
+        if game_over:
             snapshot["endgame"] = {
-                "outcome": detector.outcome.value,
+                "outcome": outcome.value,
                 "tick": new_state.tick,
                 "summary": "",
             }
@@ -4846,6 +5008,107 @@ class EngineBridge:
             "session_id": str(session_id),
             "tick": state.tick,
             "actions": org_actions,
+        }
+
+    def get_verb_eligibility(self, session_id: UUID, org_id: str) -> dict[str, Any]:
+        """Per-verb eligibility for the acting org (spec-116 FR-4.8).
+
+        Evaluates, on ONE shared hydration, the same target-existence
+        predicate each ``get_<verb>_targets`` method applies — so a verb
+        is marked ineligible exactly when its target list would come back
+        empty — and pairs every ineligible verb with the player-facing
+        ``(reason, remedy)`` copy from :mod:`game.verb_copy`.
+        Affordability rides along per verb via :func:`check_can_afford`
+        (the same function that gates ``submit_action``, so the note can
+        never disagree with a submit rejection); the UI disables on
+        ``eligible`` only, never on ``can_afford``.
+
+        MOVE/NEGOTIATE/INVESTIGATE honesty note: their eligibility comes
+        from real graph predicates (a territory node exists / another org
+        exists / own territories non-empty) even though their target
+        lists are partly hardcoded fixtures today — eligibility must
+        never launder a fixture into ``eligible: true``.
+
+        :param session_id: The game session UUID.
+        :param org_id: The acting organization id.
+        :returns: ``{"session_id", "tick", "org_id", "verbs"}`` where
+            ``verbs`` holds one ``{"verb", "eligible", "reason",
+            "remedy", "can_afford", "afford_note"}`` dict per canonical
+            verb in ``VERB_TO_ACTION_TYPE`` order, or
+            ``{"status": "error", "error": "Org not found"}``.
+        """
+        state, graph = self.hydrate_state(session_id)
+        if org_id not in graph.nodes:
+            return {"status": "error", "error": "Org not found"}
+
+        org_data = graph.nodes[org_id]
+        own_tids = {str(t) for t in org_data.get("territory_ids", [])}
+
+        # One bounded pass over the graph gathers every predicate input.
+        has_social_class = False  # educate; aid (population arm)
+        has_org_in_reach = False  # aid (org arm); attack (org arm)
+        has_mobilizable_org = False  # mobilize (business/civil_society)
+        has_institution_in_reach = False  # attack (institution arm)
+        has_other_org = False  # negotiate (anywhere in the graph)
+        has_territory_node = False  # campaign; move
+        for node_id, data in graph.nodes(data=True):
+            node_type = data.get("_node_type")
+            if node_type == "territory":
+                has_territory_node = True
+                continue
+            node_tids = {str(t) for t in data.get("territory_ids", [])}
+            if node_type == "organization" and node_id != org_id:
+                has_other_org = True
+                if node_tids & own_tids:
+                    has_org_in_reach = True
+                    if str(data.get("org_type", "")) in ("business", "civil_society"):
+                        has_mobilizable_org = True
+            elif node_type == "social_class" and node_tids & own_tids:
+                has_social_class = True
+            elif node_type == "institution" and node_tids & own_tids:
+                has_institution_in_reach = True
+
+        eligible_by_verb: dict[str, bool] = {
+            "educate": has_social_class,
+            "aid": has_social_class or has_org_in_reach,
+            "attack": has_org_in_reach or has_institution_in_reach,
+            "mobilize": has_mobilizable_org,
+            "campaign": has_territory_node,
+            "move": has_territory_node,
+            "investigate": bool(own_tids),
+            "reproduce": True,  # always targets the acting org itself
+            "negotiate": has_other_org,
+        }
+
+        resources = VanguardResources.from_organization(
+            cadre_level=float(org_data.get("cadre_level", 0.0)),
+            cohesion=float(org_data.get("cohesion", 0.0)),
+            budget=float(org_data.get("budget", 0.0)),
+            heat=float(org_data.get("heat", 0.0)),
+            territory_count=len(own_tids),
+        )
+
+        verbs: list[dict[str, Any]] = []
+        for verb in VERB_TO_ACTION_TYPE:
+            eligible = eligible_by_verb[verb]
+            reason, remedy = (None, None) if eligible else VERB_INELIGIBILITY_COPY[verb]
+            can_afford, afford_reason = check_can_afford(resources, verb)
+            verbs.append(
+                {
+                    "verb": verb,
+                    "eligible": eligible,
+                    "reason": reason,
+                    "remedy": remedy,
+                    "can_afford": can_afford,
+                    "afford_note": None if can_afford else afford_reason,
+                }
+            )
+
+        return {
+            "session_id": str(session_id),
+            "tick": state.tick,
+            "org_id": org_id,
+            "verbs": verbs,
         }
 
     def submit_action(
@@ -5071,6 +5334,15 @@ class EngineBridge:
                         "feedforward": {
                             "note": "No per-tick routing-shift projection exists in the engine yet.",
                         },
+                        "expected_deltas": {
+                            "consciousness_delta": round(
+                                _preview_consciousness_delta(
+                                    org_data, sc_id, ActionType.EDUCATE, graph
+                                ),
+                                4,
+                            ),
+                            "heat_delta": None,
+                        },
                     }
                 )
 
@@ -5141,6 +5413,15 @@ class EngineBridge:
                             "edge_status": _edge_status_between(graph, org_id, node_id),
                             "feedforward": {
                                 "note": "No per-tick aid-effect projection exists in the engine yet."
+                            },
+                            "expected_deltas": {
+                                "consciousness_delta": round(
+                                    _preview_consciousness_delta(
+                                        org_data, node_id, ActionType.PROVIDE_SERVICE, graph
+                                    ),
+                                    4,
+                                ),
+                                "heat_delta": None,
                             },
                         }
                     )
@@ -5275,6 +5556,11 @@ class EngineBridge:
             }
 
         org_data = graph.nodes.get(org_id, {})
+        # Resolver-parity heat estimate: the ATTACK resolver's own self-heat
+        # coefficient. Same GameDefines() construction _preview_consciousness_delta
+        # uses (schema defaults; test_constants_sync guards them identical to
+        # defines.yaml) — one source of truth, per the Step-3 promotion.
+        attack_heat_gain = round(GameDefines().ooda.attack_self_heat_gain, 4)
         territory_ids = org_data.get("territory_ids", [])
 
         organizations: list[dict[str, Any]] = []
@@ -5311,6 +5597,10 @@ class EngineBridge:
                             "territory_id": str(tid),
                             "defensive_capacity": float(data.get("budget", 0.0)),
                             "extractive_edges": extractive_edges,
+                            "expected_deltas": {
+                                "consciousness_delta": None,
+                                "heat_delta": attack_heat_gain,
+                            },
                         }
                     )
                 elif node_type == "institution" and tid in data.get("territory_ids", []):
@@ -5321,6 +5611,10 @@ class EngineBridge:
                             "target_type": "INSTITUTION",
                             "name": data.get("name", node_id),
                             "factional_control": dict(data.get("factional_composition", {})),
+                            "expected_deltas": {
+                                "consciousness_delta": None,
+                                "heat_delta": attack_heat_gain,
+                            },
                         }
                     )
 
@@ -6005,13 +6299,18 @@ def _bridge_economics_overrides(fips_codes: tuple[str, ...] = ()) -> tuple[dict[
     so ``tick_phi_hour`` is genuinely computed per county for web sessions
     too, instead of staying at the permanent ``0.0`` stub (see
     ``babylon.domain.economics.tick.system.imperial_rent
-    ._spec_057_pipeline_wired``). ``median_wage``/``employment`` (Vol I's
-    ``DefaultWagePressureCalculator`` is ALSO unwired in both runners — no
-    ``reserve_army_data_source`` — so they stay at ``CountyEconomicState``'s
-    bootstrap defaults, 21.0 $/hr and 100,000 workers) are the
-    calculator-independent values that make ``flow_wage_accrued`` move
-    (Constitution III.11: these are the engine's own documented
-    graceful-degradation defaults, not a value this lane invents).
+    ._spec_057_pipeline_wired``). ``employment`` is already real per county
+    (``employment_source``/``wage_source`` below, QCEW) — 100,000 workers is
+    only the documented graceful-degradation fallback for an absent county-
+    year row (Constitution III.11), not a value this lane invents.
+    ``median_wage`` was, until spec-116 Task 21b, the one place that fallback
+    story still bit: Vol I's ``DefaultWagePressureCalculator`` needs a
+    ``reserve_army_data_source`` neither runner constructed, so
+    ``CountyEconomicState``'s 21.0 $/hr bootstrap never moved tick-over-tick
+    in a web session — only the QCEW p50 estimator that seeds it did. Task
+    21b wires the FRED-backed ``reserve_army_data_source`` (Feature 021's
+    ``create_vol1_services``) below, so unemployment-decomposition-driven
+    wage pressure now compresses ``median_wage`` at year boundaries here too.
 
     Wave 2 owner ruling 1: also wires ``throughput_calculator`` (Feature 014's
     ``DefaultThroughputCalculator``, BEA county GDP + QCEW NAICS employment
@@ -6125,6 +6424,68 @@ def _bridge_economics_overrides(fips_codes: tuple[str, ...] = ()) -> tuple[dict[
     # hydrate — a bare call (no FIPS) leaves K at the engine's 0.0 default.
     if fips_codes:
         overrides["capital_calculator"] = _build_capital_calculator(fips_codes)
+
+    # Spec-116 Task 20b: wire the FRED-backed circulation (Feature 023) +
+    # financial (Feature 024) services the same way the headless runner does
+    # (Simulation.from_sqlite, engine/simulation/_legacy.py:273-303), so the
+    # Group C (7 fields, gated on turnover_profile_source at
+    # economics/tick/system/__init__.py:1167) and Group D (9 fields, gated on
+    # interest_calculator at :1365) territory attrs stop evaporating to the
+    # write-site fallback constants and become genuinely computed for web
+    # sessions too. Both loaders run raw SQL against the same reference-DB
+    # session_factory already in scope above — no new drive dependency.
+    from babylon.domain.economics.factory import (
+        create_circulation_services,
+        create_financial_services,
+        load_circulation_series_from_db,
+        load_fred_series_from_db,
+    )
+
+    fred_cache = load_fred_series_from_db(session_factory)
+    overrides.update(create_financial_services(fred_series_cache=fred_cache))
+
+    circulation_cache = load_circulation_series_from_db(session_factory)
+    overrides.update(
+        create_circulation_services(
+            circulation_series_cache=circulation_cache,
+            fred_series_cache=fred_cache,
+        )
+    )
+
+    # Spec-116 Task 21b: wire the FRED-backed Vol I production layer
+    # (Feature 021 — reserve army, productivity, dispossession) the same way
+    # the headless runner does (Simulation.from_sqlite,
+    # engine/simulation/_legacy.py:305-316), so the
+    # ``services.reserve_army_data_source is None`` gate
+    # (domain/economics/tick/system/__init__.py:1100) no longer short-
+    # circuits ``_compute_vol1_layer`` unconditionally — FRED UNRATE/NROU
+    # unemployment decomposition now drives the wage-pressure sigmoid that
+    # compresses ``median_wage`` at year boundaries for web sessions too.
+    # Reuses the ``fred_cache`` Task 20b already loaded above (UNRATE lives
+    # in that same Vol III cache) — no second query.
+    # ``productivity_data_source``/``dispossession_data_source`` ride along
+    # in the same dict, mirroring the headless runner's
+    # ``.update(vol1_overrides)`` faithfully: ``productivity_data_source``
+    # has zero tick readers anywhere in ``src/`` (registered on
+    # ServicesProtocol, never called), so it is inert; ``dispossession_
+    # data_source`` IS read inside ``_simulate_transitions`` (:1757), but
+    # that whole method still no-ops unconditionally on its OWN, separate
+    # ``services.transition_engine is None`` gate (:1736) — no
+    # ``transition_engine`` is wired here — so it is equally inert today,
+    # not a newly-activated blast radius.
+    from babylon.domain.economics.factory import (
+        create_vol1_services,
+        load_vol1_series_from_db,
+    )
+
+    vol1_cache = load_vol1_series_from_db(session_factory)
+    overrides.update(
+        create_vol1_services(
+            vol1_series_cache=vol1_cache,
+            fred_series_cache=fred_cache,
+        )
+    )
+
     return overrides, leontief_session
 
 
@@ -6281,6 +6642,80 @@ def _carry_tick_dynamics_flows(
                 # as Group A/B above, no longer excluded from the carry.
                 tick_throughput_position=county.throughput_position,
                 tick_supply_chain_depth=county.supply_chain_depth,
+                # Playability Spine Task 20 (spec-116 4d.5): Group C
+                # (circulation, Feature 023) + Group D (financial
+                # distribution, Feature 024) join the carry — the write-site
+                # expressions from graph_bridge.py:128-197 mirrored
+                # byte-for-byte, fallback constants included. DECLARED-DARK:
+                # both gating services are unwired, so these are the frozen
+                # fallbacks until then (SEAM_REGISTRY rows stay
+                # NOT_YET_COMPUTED — never relabeled live).
+                tick_liquidity_ratio=county.circulation_state.circuit_state.liquidity_ratio,
+                tick_commodity_overhang=(county.circulation_state.circuit_state.commodity_overhang),
+                tick_replacement_cycle=(
+                    county.circulation_state.depreciation_fund.replacement_cycle_position.value
+                ),
+                tick_inventory_diagnosis=(
+                    county.circulation_state.inventory_state.inventory_problem.value
+                ),
+                tick_realization_crisis=(
+                    county.circulation_state.latest_assessment.realization_crisis
+                    if county.circulation_state.latest_assessment is not None
+                    else False
+                ),
+                tick_turnover_crisis=(
+                    county.circulation_state.latest_assessment.turnover_crisis
+                    if county.circulation_state.latest_assessment is not None
+                    else False
+                ),
+                tick_reproduction_crisis=(
+                    county.circulation_state.latest_assessment.reproduction_crisis
+                    if county.circulation_state.latest_assessment is not None
+                    else False
+                ),
+                tick_interest_burden=(
+                    county.surplus_distribution.interest_payments
+                    if county.surplus_distribution is not None
+                    else 0.0
+                ),
+                tick_ground_rent=(
+                    county.rent_extraction.total_rent if county.rent_extraction is not None else 0.0
+                ),
+                tick_rentier_share=(
+                    county.surplus_distribution.rentier_share
+                    if county.surplus_distribution is not None
+                    else 0.0
+                ),
+                tick_profit_of_enterprise=(
+                    county.surplus_distribution.profit_of_enterprise
+                    if county.surplus_distribution is not None
+                    else 0.0
+                ),
+                tick_financialization_share=(
+                    county.surplus_distribution.financialization_share
+                    if county.surplus_distribution is not None
+                    else 0.0
+                ),
+                tick_accumulated_debt=(
+                    county.debt_accumulation.accumulated_debt
+                    if county.debt_accumulation is not None
+                    else 0.0
+                ),
+                tick_claims_exceed_surplus=(
+                    county.surplus_distribution.claims_exceed_surplus
+                    if county.surplus_distribution is not None
+                    else False
+                ),
+                tick_housing_fictitious_fraction=(
+                    county.housing_decomposition.fictitious_fraction
+                    if county.housing_decomposition is not None
+                    else None
+                ),
+                tick_financial_crisis_signals=(
+                    county.financial_crisis.active_signals
+                    if county.financial_crisis is not None
+                    else 0
+                ),
                 **rate_updates,
             )
             continue
@@ -6336,6 +6771,26 @@ def _carry_tick_dynamics_flows(
             # boundaries, same pattern as the derived rates/Group A/B above.
             tick_throughput_position=old_data.get("tick_throughput_position"),
             tick_supply_chain_depth=old_data.get("tick_supply_chain_depth"),
+            # Task 20 (spec-116 4d.5): Groups C/D are annual too — carry the
+            # last boundary's values forward byte-identical, same pattern as
+            # Group A/B above (a serialized attr missing from EITHER arm is a
+            # flickering lens: present on boundary ticks, None on the other 51).
+            tick_liquidity_ratio=old_data.get("tick_liquidity_ratio"),
+            tick_commodity_overhang=old_data.get("tick_commodity_overhang"),
+            tick_replacement_cycle=old_data.get("tick_replacement_cycle"),
+            tick_inventory_diagnosis=old_data.get("tick_inventory_diagnosis"),
+            tick_realization_crisis=old_data.get("tick_realization_crisis"),
+            tick_turnover_crisis=old_data.get("tick_turnover_crisis"),
+            tick_reproduction_crisis=old_data.get("tick_reproduction_crisis"),
+            tick_interest_burden=old_data.get("tick_interest_burden"),
+            tick_ground_rent=old_data.get("tick_ground_rent"),
+            tick_rentier_share=old_data.get("tick_rentier_share"),
+            tick_profit_of_enterprise=old_data.get("tick_profit_of_enterprise"),
+            tick_financialization_share=old_data.get("tick_financialization_share"),
+            tick_accumulated_debt=old_data.get("tick_accumulated_debt"),
+            tick_claims_exceed_surplus=old_data.get("tick_claims_exceed_surplus"),
+            tick_housing_fictitious_fraction=old_data.get("tick_housing_fictitious_fraction"),
+            tick_financial_crisis_signals=old_data.get("tick_financial_crisis_signals"),
         )
 
 
@@ -6618,6 +7073,97 @@ def _county_flow_snapshot(graph: Any) -> dict[str, Any]:
     return {"year": None, "phi_accrued_this_year": None, "wage_accrued_this_year": None}
 
 
+#: Crisis phases that count as "in crisis" for the summary series — mirrors
+#: the frontend strip's CRISIS_IN_PROGRESS_PHASES (CrisisTimeline.tsx).
+_CRISIS_ACTIVE_PHASES: frozenset[str] = frozenset({"onset", "early", "deep"})
+
+
+def _county_tick_series_aggregates(graph: Any) -> dict[str, float | None]:
+    """County-deduped aggregates of the year-boundary ``tick_*`` attrs.
+
+    Playability Spine Task 19 (spec-116 4d.5): the ``tick_summary`` history
+    columns behind the CrisisTimeline / BifurcationGauge sparklines. Every
+    territory in a county carries the SAME county-level ``tick_*`` stamps
+    (:func:`_carry_tick_dynamics_flows`), so aggregating per TERRITORY would
+    inflate every county quantity N-fold — the documented
+    :func:`_county_flow_snapshot` hazard. This dedupes to one representative
+    value per ``county_fips`` (first non-``None`` seen per attr), weights the
+    intensive means by summed county population (plain mean when no weight),
+    and sums the extensive capital stock.
+
+    Honest-sparse by construction (Constitution III.11): ``tick_*`` attrs
+    stamp at year boundaries only and carry forward between them, so every
+    aggregate is ``None`` before the first boundary this session and a step
+    function after — never a fabricated 0.0, never smoothed.
+
+    :param graph: A live post-tick graph whose territory nodes may carry the
+        ``tick_*`` attrs.
+    :returns: Dict with ``crisis_pop_share`` / ``bifurcation_score_mean`` /
+        ``wage_compression_mean`` / ``capital_stock_total`` /
+        ``unemployment_rate_mean``, each ``float | None``.
+    """
+    pops: dict[str, float] = {}
+    reps: dict[str, dict[str, Any]] = {}
+    for _node_id, data in graph.nodes(data=True):
+        if data.get("_node_type") != "territory":
+            continue
+        fips = data.get("county_fips")
+        if not fips:
+            continue
+        pops[fips] = pops.get(fips, 0.0) + max(0.0, float(data.get("population") or 0))
+        rep = reps.setdefault(fips, {})
+        for key in (
+            "tick_crisis_phase",
+            "tick_bifurcation_score",
+            "tick_wage_compression",
+            "tick_capital_stock",
+            "tick_unemployment_rate",
+        ):
+            if rep.get(key) is None and data.get(key) is not None:
+                rep[key] = data[key]
+
+    def weighted_mean(key: str) -> float | None:
+        rows = [
+            (float(rep[key]), pops[fips]) for fips, rep in reps.items() if rep.get(key) is not None
+        ]
+        if not rows:
+            return None
+        total_weight = sum(weight for _value, weight in rows)
+        if total_weight > 0:
+            return sum(value * weight for value, weight in rows) / total_weight
+        return sum(value for value, _weight in rows) / len(rows)
+
+    phased = [
+        (rep["tick_crisis_phase"], pops[fips])
+        for fips, rep in reps.items()
+        if rep.get("tick_crisis_phase") is not None
+    ]
+    crisis_pop_share: float | None = None
+    if phased:
+        total = sum(weight for _phase, weight in phased)
+        if total > 0:
+            crisis_pop_share = (
+                sum(weight for phase, weight in phased if phase in _CRISIS_ACTIVE_PHASES) / total
+            )
+        else:
+            crisis_pop_share = sum(
+                1 for phase, _weight in phased if phase in _CRISIS_ACTIVE_PHASES
+            ) / len(phased)
+
+    capitals = [
+        float(rep["tick_capital_stock"])
+        for rep in reps.values()
+        if rep.get("tick_capital_stock") is not None
+    ]
+    return {
+        "crisis_pop_share": crisis_pop_share,
+        "bifurcation_score_mean": weighted_mean("tick_bifurcation_score"),
+        "wage_compression_mean": weighted_mean("tick_wage_compression"),
+        "capital_stock_total": sum(capitals) if capitals else None,
+        "unemployment_rate_mean": weighted_mean("tick_unemployment_rate"),
+    }
+
+
 def _seed_balkanization_layer(state: WorldState) -> WorldState:
     """Seed the spec-070 political layer into a web session's initial state.
 
@@ -6640,11 +7186,17 @@ def _seed_balkanization_layer(state: WorldState) -> WorldState:
     literally matches a scenario Territory key (the shipped seed file's
     ``canada`` / ``rest_of_usa`` are :mod:`persistence.external_node`
     IDs, never scenario Territory keys, so this pass is currently a
-    no-op in every scenario). Per FR-040b (spec-070), every Territory
-    the literal pass doesn't claim falls to ``SOV_EXTERIOR_NULL`` — the
-    documented provisional fallback sovereign — so CLAIMS coverage is
-    total: every Territory in ``state.territories`` ends up claimed by
-    exactly one Sovereign.
+    no-op in every scenario). Per FR-040b (spec-070, reinterpreted by
+    Task R / ADR080): every Territory the literal pass doesn't claim
+    falls to ``SOV_USA_FED`` — the domestic federal sovereign — because
+    every Territory in ``state.territories`` is a domestic interior H3
+    cell; ``SOV_EXTERIOR_NULL`` (``ruling_faction_id`` null) remains
+    reserved for genuinely external nodes, which are never scenario
+    Territory keys. This preserves total CLAIMS coverage (SC-017) while
+    making every Territory's sovereign stance-attributable from tick 0
+    (SOV_USA_FED's ruling Faction is UPHOLD-aligned), which is what makes
+    the IGNORE/ABOLISH endgame routes (RED_OGV, REVOLUTIONARY_VICTORY)
+    reachable at all as the dynamics play out.
 
     Args:
         state: The scenario-built tick-0 WorldState.
@@ -6717,17 +7269,22 @@ def _seed_balkanization_layer(state: WorldState) -> WorldState:
             )
             claimed_territory_ids.add(territory_id)
 
-    # FR-040b fallback (spec-070): SOV_EXTERIOR_NULL claims every
-    # Territory the literal pass above left unclaimed, so the SC-017
-    # coverage invariant (every Territory influenced or claimed) holds
-    # even when the seed file's initial_claims don't resolve to real
-    # Territory keys. Deterministic iteration order per III.7.
+    # FR-040b fallback (spec-070, reinterpreted by Task R / ADR080):
+    # SOV_USA_FED claims every Territory the literal pass above left
+    # unclaimed, so the SC-017 coverage invariant (every Territory
+    # influenced or claimed) holds even when the seed file's
+    # initial_claims don't resolve to real Territory keys. Every
+    # Territory in state.territories is a domestic interior H3 cell, so
+    # its default sovereign is the domestic federal sovereign, not the
+    # provisional exterior-null sovereign (SOV_EXTERIOR_NULL stays
+    # reserved for genuinely external nodes). Deterministic iteration
+    # order per III.7.
     for territory_id in sorted(state.territories):
         if territory_id in claimed_territory_ids:
             continue
         new_relationships.append(
             Relationship(
-                source_id="SOV_EXTERIOR_NULL",
+                source_id="SOV_USA_FED",
                 target_id=territory_id,
                 edge_type=EdgeType.CLAIMS,
                 control_level=1.0,
@@ -6803,6 +7360,9 @@ _EVENT_SEVERITY: dict[str, str] = {
     # ideological deviation, on par with the other completed-state-violation
     # events in this tier.
     "doctrine_trap_sprung": "critical",
+    # spec-116 FR-116-4.7 sweep: a declared secession is fragmented-collapse
+    # proximity — genuine rupture, peer of power_vacuum.
+    "secession_declared": "critical",
     # Warning: threshold-cross / repression events
     "state_repression": "warning",
     "red_settler_trap_detected": "warning",
@@ -6828,6 +7388,26 @@ _EVENT_SEVERITY: dict[str, str] = {
     # ATTEMPTS rather than routine flow.
     "doctrine_trap_escaped": "warning",
     "doctrine_purge_failed": "warning",
+    # spec-116 FR-116-4.7: first-class reactionary verb events (OODASystem
+    # per-action publish). Repression-family tier — peers of state_repression
+    # / excessive_force; FR-116-2 reserves the critical tier for genuine
+    # rupture/endgame proximity, so targeted reactionary violence tiers as
+    # warning, not crimson.
+    "pogrom": "warning",
+    "lockout": "warning",
+    "vigilantism": "warning",
+    # spec-116 FR-116-4.7 sweep: threshold-cross tier.
+    "market_correction": "warning",
+    "entity_death": "warning",
+    "crisis_phase_transition": "warning",
+    "bifurcation_threshold": "warning",
+    "co_optive_breakdown": "warning",
+    "level_transition": "warning",
+    # Spec-116 Task 4: a recognized-pattern change (including dissolving to
+    # None) is a threshold-cross signal on the endgame axes, same tier as
+    # the trap/drift siblings above — it never ends the game (that's
+    # endgame_reached, critical, above), so it does not belong in that tier.
+    "pattern_shift": "warning",
     # Informational: routine flow events
     "surplus_extraction": "informational",
     "imperial_subsidy": "informational",
@@ -6835,7 +7415,22 @@ _EVENT_SEVERITY: dict[str, str] = {
     "dispossession_event": "informational",
     "value_transfer": "informational",
     "reserve_army_pressure": "informational",
+    # spec-116 FR-116-4.7 sweep: routine-flow tier (edge/aspect churn is
+    # high-volume per tick; calibration warnings are data-quality signals).
+    "population_attrition": "informational",
+    "edge_mode_transition": "informational",
+    "latent_contradiction_release": "informational",
+    "aspect_reversal": "informational",
+    "calibration_warning.axiom_violation": "informational",
+    "calibration_warning.qcew_carry_forward": "informational",
+    "calibration_warning.phi_hour_outlier": "informational",
 }
+
+
+#: spec-116 FR-116-4.7: reactionary verb events anchor to the TARGET
+#: community's territory via the same TENANCY inversion as "uprising"
+#: (their payload subject is ``target_id``, a social_class id).
+_TERRITORY_ANCHORED_VERB_EVENTS: frozenset[str] = frozenset({"pogrom", "lockout", "vigilantism"})
 
 
 def _classify_event(event_type_str: str) -> str:
@@ -6847,9 +7442,26 @@ def _classify_event(event_type_str: str) -> str:
     return _EVENT_SEVERITY.get(event_type_str.lower(), "informational")
 
 
+#: spec-116 FR-116-4.7: title overrides where the naive ``title()`` humanization
+#: mangles the value (dotted calibration values, hyphenated co-optive) or where
+#: the player-facing name should say what the event MEANS (entity_death is a
+#: social class dying out). Copy lives in data, not conditionals.
+_EVENT_TITLE_OVERRIDES: dict[str, str] = {
+    "co_optive_breakdown": "Co-optive Breakdown",
+    "calibration_warning.axiom_violation": "Calibration: Axiom Violation",
+    "calibration_warning.qcew_carry_forward": "Calibration: QCEW Carry-Forward",
+    "calibration_warning.phi_hour_outlier": "Calibration: Phi-Hour Outlier",
+    "entity_death": "Class Extinction",
+}
+
+
 def _humanize_event_type(event_type_str: str) -> str:
-    """Convert ``"economic_crisis"`` to ``"Economic Crisis"`` for UI titles."""
-    return event_type_str.replace("_", " ").title()
+    """Convert ``"economic_crisis"`` to ``"Economic Crisis"`` for UI titles.
+
+    spec-116 FR-116-4.7: ``_EVENT_TITLE_OVERRIDES`` wins where the naive
+    underscore-to-space humanization would mangle the value.
+    """
+    return _EVENT_TITLE_OVERRIDES.get(event_type_str, event_type_str.replace("_", " ").title())
 
 
 def _serialize_event(event: Any, session_id: UUID, *, graph: Any = None) -> dict[str, Any]:
@@ -6907,6 +7519,14 @@ def _serialize_event(event: Any, session_id: UUID, *, graph: Any = None) -> dict
         territory_id = None
         if graph is not None and node_id is not None:
             territory_id = _class_to_territory(_tenancy_members_by_territory(graph)).get(node_id)
+        data = {**data, "territory_id": territory_id}
+    elif event_type_str in _TERRITORY_ANCHORED_VERB_EVENTS:
+        # spec-116 FR-116-4.7: same TENANCY inversion, subject is target_id.
+        # Unresolvable/absent graph honestly yields None, never a guess (III.11).
+        target_id = data.get("target_id")
+        territory_id = None
+        if graph is not None and target_id is not None:
+            territory_id = _class_to_territory(_tenancy_members_by_territory(graph)).get(target_id)
         data = {**data, "territory_id": territory_id}
 
     deterministic_seed = json.dumps(
@@ -7112,7 +7732,12 @@ def _edge_snapshot_rows(edges: list[dict[str, Any]]) -> list[dict[str, Any]]:
     return rows
 
 
-def _build_tick_summary(state: WorldState, organizations: list[dict[str, Any]]) -> dict[str, Any]:
+def _build_tick_summary(
+    state: WorldState,
+    organizations: list[dict[str, Any]],
+    *,
+    graph: Any = None,
+) -> dict[str, Any]:
     """Aggregate one tick's ``tick_summary`` row from live state.
 
     Only values the engine actually computes are aggregated; everything else
@@ -7124,9 +7749,17 @@ def _build_tick_summary(state: WorldState, organizations: list[dict[str, Any]]) 
     exact ``EventType`` value; the player flag from the serializer's
     ``player_controlled`` (the engine model carries no such field).
 
+    Playability Spine Task 19 (spec-116 4d.5): when ``graph`` is supplied
+    (the resolve path), five county-deduped year-boundary aggregates ride
+    the row via :func:`_county_tick_series_aggregates`; without a graph
+    (bootstrap call sites) they are honest ``None`` — tick-0 has no
+    TickDynamics output.
+
     Args:
         state: The freshly stepped (or seeded) WorldState.
         organizations: ``_serialize_organization`` output for ``state``.
+        graph: Optional live post-tick graph unlocking the five series
+            aggregates.
 
     Returns:
         Kwargs dict for ``PostgresRuntime.persist_tick_summary``.
@@ -7164,6 +7797,20 @@ def _build_tick_summary(state: WorldState, organizations: list[dict[str, Any]]) 
         "fictitious_log": float(state.market.fictitious_log) if state.market else None,
         # ADR078: cumulative correction-snap count, same NULL contract.
         "market_corrections": int(state.market.corrections) if state.market else None,
+        # Playability Spine Task 19 (spec-116 4d.5): county-deduped crisis/
+        # bifurcation history. NULL without a graph or before the first year
+        # boundary — honest sparse (step function), never smoothed.
+        **(
+            _county_tick_series_aggregates(graph)
+            if graph is not None
+            else {
+                "crisis_pop_share": None,
+                "bifurcation_score_mean": None,
+                "wage_compression_mean": None,
+                "capital_stock_total": None,
+                "unemployment_rate_mean": None,
+            }
+        ),
     }
 
 
@@ -7233,7 +7880,11 @@ def _persist_snapshots_safe(
         )
 
     try:
-        summary_fn(state.tick, _build_tick_summary(state, organizations), session_id=session_id)
+        summary_fn(
+            state.tick,
+            _build_tick_summary(state, organizations, graph=graph),
+            session_id=session_id,
+        )
     except Exception:  # noqa: BLE001 — diagnostic; never blocks tick resolution
         logger.exception(
             "Failed to persist tick_summary session=%s tick=%d", session_id, state.tick
@@ -7245,6 +7896,8 @@ def _persist_tick_events_safe(
     session_id: UUID,
     tick: int,
     serialized_events: list[dict[str, Any]],
+    *,
+    replace: bool = True,
 ) -> None:
     """Best-effort write of a tick's events into the ``tick_event`` table.
 
@@ -7256,12 +7909,25 @@ def _persist_tick_events_safe(
     established SQLite fallback). Never raises: a journal-write failure
     must not fail tick resolution.
 
+    ``replace`` threads straight through to
+    :meth:`PostgresRuntime.persist_tick_events` (spec-116 FR-116-5 review
+    fix). Default ``True`` reproduces the historical delete-then-insert
+    idempotent-retry semantics used by :meth:`EngineBridge.resolve_tick`
+    — unchanged, byte-identical behavior. Pass ``replace=False`` only for
+    an append-only write: :meth:`EngineBridge.accept_outcome` persists its
+    single ENDGAME row at a tick that is always already-resolved, with its
+    full event batch already committed by ``resolve_tick`` — the default
+    DELETE would destroy that batch instead of merely appending to it.
+
     Args:
         persistence: The RuntimePersistence instance.
         session_id: The game session UUID.
         tick: The tick these events belong to.
         serialized_events: Output of ``_serialize_event`` for each event
             (i.e. ``snapshot["events"]``).
+        replace: Forwarded to ``persist_tick_events``. True (default)
+            deletes existing ``(session_id, tick)`` rows before inserting;
+            False appends without deleting.
     """
     if not serialized_events:
         return
@@ -7270,9 +7936,75 @@ def _persist_tick_events_safe(
         return
     rows = [_tick_event_row(e) for e in serialized_events]
     try:
-        persist_fn(session_id, tick, rows)
+        persist_fn(session_id, tick, rows, replace=replace)
     except Exception:  # noqa: BLE001 — diagnostic; never blocks tick resolution
         logger.exception("Failed to persist tick_event rows session=%s tick=%d", session_id, tick)
+
+
+def _persist_causal_beats_safe(
+    session_id: UUID,
+    tick: int,
+    frames: tuple[dict[str, Any], ...] | list[dict[str, Any]],
+) -> None:
+    """Best-effort write of a tick's causal frames as ``NarrationRecord`` beats.
+
+    Spec-116 FR-4.1 (the Voice heartbeat): renders the per-tick
+    ``CausalChainObserver`` frames through the deterministic templates in
+    :mod:`game.causal_voice` and lands them in ``narration_record`` — the
+    same table the LLM path writes (``NarrativeService._persist``) and
+    ``GET /api/games/{id}/narration/`` serves. A synchronous Django-ORM
+    write on the request thread (no background-thread machinery needed),
+    mirroring :func:`_persist_hex_state_safe`'s never-raise contract — a
+    narration-write failure must not fail tick resolution — and
+    ``NarrativeService._persist``'s idempotent ``update_or_create`` keyed
+    ``(session, tick, beat_id)``. Observer-layer only: outside the tick
+    hash, touches neither state nor graph.
+
+    Args:
+        session_id: The game session UUID.
+        tick: The tick the frames were captured on.
+        frames: ``CausalChainObserver.latest_frames`` for this tick.
+    """
+    if not frames:
+        return
+    try:
+        from django.db import transaction
+
+        from game.causal_voice import (
+            CAUSAL_MODEL_ID,
+            CAUSAL_PROMPT_VERSION,
+            render_frame_beats,
+        )
+        from game.models import GameSession, NarrationRecord
+
+        beats = render_frame_beats(frames)
+        if not beats:
+            return
+        with transaction.atomic():
+            session = GameSession.objects.get(pk=session_id)
+            for beat in beats:
+                NarrationRecord.objects.update_or_create(
+                    session=session,
+                    tick=tick,
+                    beat_id=beat.beat_id,
+                    defaults={
+                        "scope": NarrationRecord.Scope.TICK,
+                        "subject_ref": None,
+                        "headline": beat.headline,
+                        "body": beat.body,
+                        "register": beat.register,
+                        "model_id": CAUSAL_MODEL_ID,
+                        "prompt_version": CAUSAL_PROMPT_VERSION,
+                        "degraded": False,
+                        "error": "",
+                    },
+                )
+    except Exception:  # noqa: BLE001 — diagnostic; never blocks tick resolution
+        logger.exception(
+            "Failed to persist causal narration beats session=%s tick=%d",
+            session_id,
+            tick,
+        )
 
 
 def _hex_feature_properties(state: Any) -> dict[str, Any]:
@@ -7967,6 +8699,19 @@ def _serialize_territory(t: Any, *, graph: Any = None) -> dict[str, Any]:
     projection) — same shape as ``wage_pressure``. SIGNED (roughly
     ``[-2.0, 2.0]``): ``None`` for a territory with no county price⟷value
     axis, never coerced to ``0.0``.
+
+    Playability Spine Task 20 (spec-116 4d.5): the Feature-023 circulation
+    family and Feature-024 financial-distribution family join the same
+    ``tick_``-prefixed graph-attr pattern, serialized DECLARED-DARK — the
+    gating services (``turnover_profile_source``/``interest_calculator``)
+    are unwired, so post-boundary values are the engine's fallback constants
+    (0.0/False/0, plus ``tick_housing_fictitious_fraction``'s honest
+    ``None``). The wire keys keep their ``tick_`` prefix (registry
+    ``wire_keys``) — none collides with an existing payload key or Territory
+    model field. SEAM_REGISTRY rows: Groups C/D, ``NOT_YET_COMPUTED`` (a
+    FRED-backed sibling implementation exists but is not wired into this
+    pipeline — computable, just not yet wired; frozen constants are never
+    relabeled live).
     """
     territory_id = t.id
     return {
@@ -8027,6 +8772,50 @@ def _serialize_territory(t: Any, *, graph: Any = None) -> dict[str, Any]:
         "mass_receptivity": _territory_graph_attr(graph, territory_id, "mass_receptivity"),
         "intel_confidence": _territory_graph_attr(graph, territory_id, "intel_confidence"),
         "vision_state": _territory_graph_attr(graph, territory_id, "vision_state"),
+        # Playability Spine Task 20 (spec-116 4d.5): Group C (circulation,
+        # Feature 023) + Group D (financial distribution, Feature 024),
+        # serialized DECLARED-DARK under their registry wire keys (tick_
+        # prefix kept — the tick_median_wage collision precedent). Values are
+        # the engine's fallback constants until turnover_profile_source /
+        # interest_calculator are wired; None before the first boundary.
+        "tick_liquidity_ratio": _territory_graph_attr(graph, territory_id, "tick_liquidity_ratio"),
+        "tick_commodity_overhang": _territory_graph_attr(
+            graph, territory_id, "tick_commodity_overhang"
+        ),
+        "tick_replacement_cycle": _territory_graph_attr(
+            graph, territory_id, "tick_replacement_cycle"
+        ),
+        "tick_inventory_diagnosis": _territory_graph_attr(
+            graph, territory_id, "tick_inventory_diagnosis"
+        ),
+        "tick_realization_crisis": _territory_graph_attr(
+            graph, territory_id, "tick_realization_crisis"
+        ),
+        "tick_turnover_crisis": _territory_graph_attr(graph, territory_id, "tick_turnover_crisis"),
+        "tick_reproduction_crisis": _territory_graph_attr(
+            graph, territory_id, "tick_reproduction_crisis"
+        ),
+        "tick_interest_burden": _territory_graph_attr(graph, territory_id, "tick_interest_burden"),
+        "tick_ground_rent": _territory_graph_attr(graph, territory_id, "tick_ground_rent"),
+        "tick_rentier_share": _territory_graph_attr(graph, territory_id, "tick_rentier_share"),
+        "tick_profit_of_enterprise": _territory_graph_attr(
+            graph, territory_id, "tick_profit_of_enterprise"
+        ),
+        "tick_financialization_share": _territory_graph_attr(
+            graph, territory_id, "tick_financialization_share"
+        ),
+        "tick_accumulated_debt": _territory_graph_attr(
+            graph, territory_id, "tick_accumulated_debt"
+        ),
+        "tick_claims_exceed_surplus": _territory_graph_attr(
+            graph, territory_id, "tick_claims_exceed_surplus"
+        ),
+        "tick_housing_fictitious_fraction": _territory_graph_attr(
+            graph, territory_id, "tick_housing_fictitious_fraction"
+        ),
+        "tick_financial_crisis_signals": _territory_graph_attr(
+            graph, territory_id, "tick_financial_crisis_signals"
+        ),
     }
 
 
@@ -8445,6 +9234,22 @@ def _state_to_snapshot(state: WorldState, session_id: UUID, *, graph: Any = None
     if traps_dict is not None:
         snapshot["traps"] = traps_dict
 
+    # Spec-116 Task 5 Concern 2 fix: carry the persisted endgame_progress
+    # graph attr through the GET-snapshot path, mirroring
+    # get_journal_objectives's read of the same channel (resolve_tick ->
+    # new_graph.set_graph_attr("endgame_progress", ...) -> persist_tick's
+    # graph_metadata.extra -> hydrate_graph's Design-B round-trip).
+    # resolve_tick already threads this onto its own response dict directly
+    # (see its docstring); this is the read path GET /state/ (and therefore
+    # world.snapshot) actually uses. Honest absence when no snapshot has
+    # ever been persisted yet — no key at all, matching the traps contract
+    # just above (Constitution III.11: never fabricate a progress block).
+    if graph is not None:
+        graph_attrs: dict[str, Any] = getattr(graph, "graph", {}) or {}
+        progress_block = graph_attrs.get("endgame_progress")
+        if isinstance(progress_block, dict):
+            snapshot["endgame_progress"] = progress_block
+
     return snapshot
 
 
@@ -8533,6 +9338,20 @@ def _preview_consciousness_delta(
     no mutation) so ``preview_action`` reports the same collective-identity delta
     the EDUCATE / CAMPAIGN / AID resolvers would produce.
 
+    ``compute_consciousness_delta``'s Step-7.5 doctrine theory bonus (ADR073)
+    is gated only on ``doctrine is not None`` — NOT on ``action_type`` — so it
+    must be threaded through exactly as each real resolver does, not passed
+    unconditionally:
+
+    - :func:`babylon.engine.actions.educate.resolve_educate` and
+      :func:`babylon.engine.actions.campaign.resolve_campaign` both call
+      ``resolve_action(..., doctrine=services.defines.doctrine)``, so EDUCATE
+      and CAMPAIGN previews include the bonus.
+    - :func:`babylon.engine.actions.aid.resolve_aid` calls
+      ``compute_consciousness_delta`` directly WITHOUT ``doctrine`` (defaults
+      to ``None``), so the AID preview must omit it too — passing it
+      unconditionally would OVER-state AID's estimate.
+
     Args:
         org_data: Acting org node attributes (live payload; not mutated).
         target_id: Target community/entity id.
@@ -8546,8 +9365,19 @@ def _preview_consciousness_delta(
     from babylon.ooda.action_effects import compute_consciousness_delta
 
     defines = GameDefines()
+    # Mirror each resolver's own call signature exactly (see docstring above):
+    # only EDUCATE/CAMPAIGN pass doctrine in production; AID never does.
+    doctrine = (
+        defines.doctrine if action_type in (ActionType.EDUCATE, ActionType.PROPAGANDIZE) else None
+    )
     delta = compute_consciousness_delta(
-        org_data, target_id, action_type, graph, defines.ooda, defines.organization
+        org_data,
+        target_id,
+        action_type,
+        graph,
+        defines.ooda,
+        defines.organization,
+        doctrine,
     )
     return float(delta.collective_identity_delta) if delta is not None else 0.0
 
@@ -8643,6 +9473,42 @@ def _persist_action_result(persistence: RuntimePersistence, result_data: dict[st
 _pool: Any = None
 
 
+def _apply_runtime_migrations(pool: Any) -> None:
+    """Apply every packaged runtime migration to the web database.
+
+    Playability Spine Task 19 (spec-116, the Trends-empty root cause): the
+    headless runner has applied ``persistence/migrations/00*.sql`` on every
+    start (``headless_runner.runner._apply_migrations``), but the web path
+    only ever ran ``init_schema`` — whose ``CREATE TABLE IF NOT EXISTS``
+    no-ops on a pre-existing table, so ALTER-bearing migrations (0033/0034's
+    ``tick_summary`` columns) never reached the live DB and both
+    ``persist_tick_summary`` and ``query_tick_summary_series`` raised
+    ``UndefinedColumn`` into their best-effort catches forever.
+
+    Mirrors the runner exactly: package-relative glob (never the process
+    CWD), sorted apply order, and :func:`ensure_ddl_applied` — digest-stamped
+    and advisory-locked, NEVER a bare loop over migration files (ADR074 law;
+    the no-stamp-on-failure semantics are what the test-conftest self-heal
+    contract depends on).
+
+    :param pool: An open ``psycopg_pool.ConnectionPool`` for the web DB.
+    :raises RuntimeError: If the packaged migrations directory is empty or
+        missing — refusing to run unmigrated is louder than degrading.
+    """
+    from pathlib import Path
+
+    import babylon.persistence as _persistence_pkg
+    from babylon.persistence.postgres_schema import ensure_ddl_applied
+
+    migrations_dir = Path(_persistence_pkg.__file__).resolve().parent / "migrations"
+    sql_files = sorted(migrations_dir.glob("00*.sql"))
+    if not sql_files:
+        raise RuntimeError(f"No migrations found at {migrations_dir} — refusing to run unmigrated")
+    with pool.connection() as conn:
+        conn.autocommit = True
+        ensure_ddl_applied(conn, [sql_file.read_text() for sql_file in sql_files])
+
+
 def init_persistence(db_config: dict[str, Any]) -> RuntimePersistence:
     """Create a PostgresRuntime persistence layer from Django DB settings.
 
@@ -8672,6 +9538,10 @@ def init_persistence(db_config: dict[str, Any]) -> RuntimePersistence:
     persistence = PostgresRuntime(_pool)
     try:
         persistence.init_schema()
+        # Playability Spine Task 19 (spec-116): the web DB must also receive
+        # the ALTER-bearing migration files — init_schema alone left the live
+        # tick_summary missing the 0033/0034 columns (the Trends-empty bug).
+        _apply_runtime_migrations(_pool)
     except (psycopg.Error, RuntimeError) as exc:
         # Schema init is infra-layer, so we catch to keep the web app bootable
         # rather than hard-crash on a partial-schema hiccup — but LOUDLY

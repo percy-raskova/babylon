@@ -23,6 +23,7 @@ import {
   makeTerritory,
   makeFieldStatePayload,
   makeFieldStateNode,
+  makeTimeseriesPayload,
 } from "@/test/fixtures";
 
 beforeEach(() => {
@@ -149,5 +150,28 @@ describe("aggregateFascistAlignment", () => {
 
   it("returns null when no node carries fascist_alignment", () => {
     expect(aggregateFascistAlignment([makeFieldStateNode()])).toBeNull();
+  });
+});
+
+describe("BifurcationGauge history sparkline (spec-116 4d.5)", () => {
+  beforeEach(() => {
+    resetStore();
+  });
+
+  it("renders the trajectory sparkline when the series has two real points", () => {
+    useStore.setState((s) => ({
+      panels: {
+        ...s.panels,
+        timeseries: {
+          ...s.panels.timeseries,
+          data: makeTimeseriesPayload({
+            ticks: [0, 52, 104],
+            bifurcation_score_mean: [null, -0.2, -0.5],
+          }),
+        },
+      },
+    }));
+    render(<BifurcationGauge gameId="g1" />);
+    expect(screen.getByTestId("bifurcation-history-sparkline")).toBeInTheDocument();
   });
 });

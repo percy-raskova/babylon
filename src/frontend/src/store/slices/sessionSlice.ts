@@ -9,7 +9,12 @@
  */
 
 import type { StateCreator } from "zustand";
-import { get as apiGet, post as apiPost, postForm as apiPostForm } from "@/api/client";
+import {
+  get as apiGet,
+  post as apiPost,
+  postForm as apiPostForm,
+  del as apiDel,
+} from "@/api/client";
 import { endpoints } from "@/api/endpoints";
 import type { AuthState, GameSummary, ScenarioInfo, CreateGameParams } from "@/types/game";
 import type { RootState } from "../types";
@@ -33,6 +38,10 @@ export interface SessionSlice {
     fetchScenarios: () => Promise<void>;
     /** Returns the new session id on success, or null on failure. */
     createGame: (params: CreateGameParams) => Promise<string | null>;
+    /** Permanently deletes the session server-side. True on success. */
+    deleteGame: (id: string) => Promise<boolean>;
+    /** Archives the session (status='abandoned', reversible). True on success. */
+    archiveGame: (id: string) => Promise<boolean>;
     setActiveGame: (id: string | null) => void;
   };
 }
@@ -125,6 +134,26 @@ export const createSessionSlice: StateCreator<RootState, [], [], SessionSlice> =
       }
       set((s) => ({ session: { ...s.session, error: res.message ?? "Failed to create game" } }));
       return null;
+    },
+
+    deleteGame: async (id) => {
+      const res = await apiDel(endpoints.gameDelete.path({ id }));
+      if (res.status === "ok") {
+        await get().session.fetchGames();
+        return true;
+      }
+      set((s) => ({ session: { ...s.session, error: res.message ?? "Failed to delete game" } }));
+      return false;
+    },
+
+    archiveGame: async (id) => {
+      const res = await apiPost(endpoints.gameArchive.path({ id }));
+      if (res.status === "ok") {
+        await get().session.fetchGames();
+        return true;
+      }
+      set((s) => ({ session: { ...s.session, error: res.message ?? "Failed to archive game" } }));
+      return false;
     },
 
     setActiveGame: (id) => set((s) => ({ session: { ...s.session, activeGameId: id } })),

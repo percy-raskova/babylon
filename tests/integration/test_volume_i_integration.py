@@ -10,6 +10,7 @@ from __future__ import annotations
 
 from babylon.domain.economics.working_day.classifier import DefaultWorkingDayClassifier
 from babylon.domain.economics.working_day.types import WorkingDayState
+from babylon.engine.context import TickContext
 from babylon.engine.services import ServiceContainer
 from babylon.engine.systems.dispossession_events import DispossessionEventSystem
 from babylon.engine.systems.reserve_army import ReserveArmySystem
@@ -91,7 +92,7 @@ class TestReserveArmyWageFeedback:
         wayne_wage_before = graph.nodes["T001"]["median_wage"]
         oakland_wage_before = graph.nodes["T002"]["median_wage"]
 
-        system.step(graph, services, {"tick": 1})
+        system.step(graph, services, TickContext(tick=1))
 
         wayne_wage_after = graph.nodes["T001"]["median_wage"]
         oakland_wage_after = graph.nodes["T002"]["median_wage"]
@@ -112,10 +113,10 @@ class TestReserveArmyWageFeedback:
 
         initial_wage = graph.nodes["T001"]["median_wage"]
 
-        system.step(graph, services, {"tick": 1})
+        system.step(graph, services, TickContext(tick=1))
         after_tick_1 = graph.nodes["T001"]["median_wage"]
 
-        system.step(graph, services, {"tick": 2})
+        system.step(graph, services, TickContext(tick=2))
         after_tick_2 = graph.nodes["T001"]["median_wage"]
 
         assert initial_wage > after_tick_1 > after_tick_2
@@ -127,7 +128,7 @@ class TestReserveArmyWageFeedback:
         services = ServiceContainer.create()
         system = ReserveArmySystem()
 
-        system.step(graph, services, {"tick": 1})
+        system.step(graph, services, TickContext(tick=1))
 
         for node_id in ["T001", "T002", "T003"]:
             assert "wage_pressure" in graph.nodes[node_id]
@@ -146,7 +147,7 @@ class TestDispossessionValueTransfer:
         wayne_wealth_before = graph.nodes["T001"]["wealth"]
         oakland_wealth_before = graph.nodes["T002"]["wealth"]
 
-        system.step(graph, services, {"tick": 1})
+        system.step(graph, services, TickContext(tick=1))
 
         wayne_loss = wayne_wealth_before - graph.nodes["T001"]["wealth"]
         oakland_loss = oakland_wealth_before - graph.nodes["T002"]["wealth"]
@@ -161,7 +162,7 @@ class TestDispossessionValueTransfer:
         services = ServiceContainer.create()
         system = DispossessionEventSystem()
 
-        system.step(graph, services, {"tick": 1})
+        system.step(graph, services, TickContext(tick=1))
 
         assert (
             graph.nodes["T001"]["dispossession_intensity"]
@@ -177,7 +178,7 @@ class TestDispossessionValueTransfer:
         events: list[Event] = []
         services.event_bus.subscribe(EventType.VALUE_TRANSFER, lambda e: events.append(e))
 
-        system.step(graph, services, {"tick": 1})
+        system.step(graph, services, TickContext(tick=1))
 
         # All three have dispossession rates > 0 and wealth > 0
         assert len(events) == 3
@@ -239,11 +240,11 @@ class TestCombinedFeedbackLoop:
         initial_wealth = graph.nodes["T001"]["wealth"]
 
         # Reserve army suppresses wages
-        reserve_system.step(graph, services, {"tick": 1})
+        reserve_system.step(graph, services, TickContext(tick=1))
         assert graph.nodes["T001"]["median_wage"] < initial_wage
 
         # Dispossession transfers wealth
-        dispossession_system.step(graph, services, {"tick": 1})
+        dispossession_system.step(graph, services, TickContext(tick=1))
         assert graph.nodes["T001"]["wealth"] < initial_wealth
 
     def test_five_tick_simulation(self) -> None:
@@ -257,8 +258,8 @@ class TestCombinedFeedbackLoop:
         initial_wealth = graph.nodes["T001"]["wealth"]
 
         for tick in range(5):
-            reserve_system.step(graph, services, {"tick": tick})
-            dispossession_system.step(graph, services, {"tick": tick})
+            reserve_system.step(graph, services, TickContext(tick=tick))
+            dispossession_system.step(graph, services, TickContext(tick=tick))
 
         assert graph.nodes["T001"]["median_wage"] < initial_wage
         assert graph.nodes["T001"]["wealth"] < initial_wealth

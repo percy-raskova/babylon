@@ -19,6 +19,7 @@ from typing import TYPE_CHECKING, Any, ClassVar
 import xgi  # type: ignore[import-untyped, unused-ignore]
 
 from babylon.kernel.system_base import SystemBase
+from babylon.kernel.tick_partition import TickPartition
 from babylon.models.entities.community import (
     LEGAL_STATUS_MULTIPLIERS,
     ROLE_STRENGTH_WEIGHTS,
@@ -307,6 +308,9 @@ class CommunitySystem(SystemBase):
     reproduction cost modification. Runs before SolidaritySystem in the
     engine pipeline (position 6).
     """
+
+    partition: ClassVar[TickPartition] = TickPartition.MATERIAL_BASE
+    position: ClassVar[float] = 6.0
 
     name: ClassVar[str] = "community"
     # Spec 053 INV-001: does not mutate hex c+v+s; opted in by default-deny.

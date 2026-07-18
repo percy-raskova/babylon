@@ -9,6 +9,8 @@ from typing import TYPE_CHECKING, Any, ClassVar
 
 from babylon.formulas import BourgeoisieDecision
 from babylon.kernel.event_bus import Event
+from babylon.kernel.node_access import class_consciousness_from_node
+from babylon.kernel.tick_partition import TickPartition
 from babylon.models.entities.economy import GlobalEconomy
 from babylon.models.enums import EdgeType, EventType, SocialRole
 
@@ -20,27 +22,6 @@ from babylon.kernel.system_base import SystemBase
 from babylon.kernel.system_protocol import ContextType
 
 
-def _get_class_consciousness_from_node(node_data: dict[str, Any]) -> float:
-    """Extract class_consciousness from graph node data.
-
-    Args:
-        node_data: Graph node data dictionary
-
-    Returns:
-        Class consciousness value in [0, 1]
-    """
-    ideology = node_data.get("ideology")
-
-    if ideology is None:
-        return 0.0
-
-    if isinstance(ideology, dict):
-        # IdeologicalProfile format
-        return float(ideology.get("class_consciousness", 0.0))
-
-    return 0.0
-
-
 class ImperialRentSystem(SystemBase):
     """5-phase Imperial Circuit: Extraction → Tribute → Wages → Subsidy → Decision.
 
@@ -50,6 +31,9 @@ class ImperialRentSystem(SystemBase):
     Pool tracks finite resources (inflow from tribute, outflow to wages/subsidy).
     See :doc:`/reference/systems` for full theory.
     """
+
+    partition: ClassVar[TickPartition] = TickPartition.MATERIAL_BASE
+    position: ClassVar[float] = 9.0
 
     name = "Imperial Rent"
     # Spec 053 INV-001: ImperialRentSystem mutates `wealth` via extraction
@@ -290,7 +274,7 @@ class ImperialRentSystem(SystemBase):
             worker_wealth = worker_attrs.get("wealth", 0.0)
 
             # Extract class consciousness (handles both IdeologicalProfile and legacy)
-            consciousness = _get_class_consciousness_from_node(worker_attrs)
+            consciousness = class_consciousness_from_node(worker_attrs)
 
             # Calculate imperial rent extracted from this worker
             rent = extraction_efficiency * worker_wealth * (1.0 - consciousness)

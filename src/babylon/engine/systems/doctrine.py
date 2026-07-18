@@ -47,6 +47,7 @@ from babylon.domain.doctrine.mechanics import (
     decay_tags,
 )
 from babylon.kernel.event_bus import Event
+from babylon.kernel.tick_partition import TickPartition
 from babylon.models.enums import EventType
 from babylon.models.enums.doctrine import DoctrineTag
 
@@ -266,6 +267,9 @@ class DoctrineSystem(SystemBase):
     no draws).
     """
 
+    partition: ClassVar[TickPartition] = TickPartition.CONSEQUENCE
+    position: ClassVar[float] = 14.7
+
     name: ClassVar[str] = "Doctrine"
     creates_value: ClassVar[bool] = False
 
@@ -289,7 +293,7 @@ class DoctrineSystem(SystemBase):
         ``{"org_id", "node_id"}`` payload. The behavioural feedback into
         bifurcation/consciousness is Unit 6b, not this method.
         """
-        tick = _extract_tick(context)
+        tick = context.tick
         if self._tree is None:
             self._tree = load_doctrine_tree()
         triples = compute_doctrine(
@@ -307,10 +311,3 @@ class DoctrineSystem(SystemBase):
                     payload={"org_id": org_id, "node_id": node_id},
                 )
             )
-
-
-def _extract_tick(context: ContextType) -> int:
-    """Current tick from the step context (same idiom as FactionInfluence)."""
-    if isinstance(context, dict):
-        return int(context.get("tick", 0))
-    return int(getattr(context, "tick", 0))

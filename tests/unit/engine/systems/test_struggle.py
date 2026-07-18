@@ -15,6 +15,7 @@ from collections.abc import Generator
 
 import pytest
 
+from babylon.engine.context import TickContext
 from babylon.engine.services import ServiceContainer
 from babylon.engine.systems.struggle import StruggleSystem
 from babylon.models.enums import EdgeType, EventType, SocialRole
@@ -125,7 +126,7 @@ class TestPeripheralRevolt:
         assert len(exploitation_edges_before) == 2, "Should have 2 EXPLOITATION edges"
 
         system = StruggleSystem()
-        system.step(graph, services, {"tick": 1})
+        system.step(graph, services, TickContext(tick=1))
 
         # After revolt: EXPLOITATION edges from P_w should be severed
         exploitation_edges_after = [
@@ -148,7 +149,7 @@ class TestPeripheralRevolt:
         graph.nodes["P_w"]["p_revolution"] = 0.2  # Low org, high repression
 
         system = StruggleSystem()
-        system.step(graph, services, {"tick": 1})
+        system.step(graph, services, TickContext(tick=1))
 
         # EXPLOITATION edges should remain intact
         exploitation_edges = [
@@ -170,7 +171,7 @@ class TestPeripheralRevolt:
         )
 
         system = StruggleSystem()
-        system.step(graph, services, {"tick": 1})
+        system.step(graph, services, TickContext(tick=1))
 
         assert len(captured_events) == 1, "Should emit exactly one PERIPHERAL_REVOLT"
         event = captured_events[0]
@@ -198,7 +199,7 @@ class TestPeripheralRevolt:
         )
 
         system = StruggleSystem()
-        system.step(graph, services, {"tick": 1})
+        system.step(graph, services, TickContext(tick=1))
 
         # SOLIDARITY edge should remain
         solidarity_edges = [
@@ -217,7 +218,7 @@ class TestPeripheralRevolt:
         graph.nodes["P_w"]["active"] = False
 
         system = StruggleSystem()
-        system.step(graph, services, {"tick": 1})
+        system.step(graph, services, TickContext(tick=1))
 
         # Edges should remain (dead can't revolt)
         exploitation_edges = [
@@ -237,7 +238,7 @@ class TestPeripheralRevolt:
         graph.nodes["P_w"]["p_revolution"] = 0.5
 
         system = StruggleSystem()
-        system.step(graph, services, {"tick": 1})
+        system.step(graph, services, TickContext(tick=1))
 
         exploitation_edges = [
             (u, v)
@@ -324,7 +325,7 @@ class TestStruggleSystemStep:
             captured: list = []
             svc.event_bus.subscribe(EventType.EXCESSIVE_FORCE, lambda e, c=captured: c.append(e))
             global_rng.seed(seed)
-            StruggleSystem().step(graph, svc, {"tick": 1})
+            StruggleSystem().step(graph, svc, TickContext(tick=1))
             outcomes.append(len(captured))
             svc.database.close()
 
@@ -343,7 +344,7 @@ class TestStruggleSystemStep:
         system = StruggleSystem()
         # Run multiple times to confirm determinism
         for tick in range(20):
-            system.step(graph, services, {"tick": tick})
+            system.step(graph, services, TickContext(tick=tick))
 
         assert len(captured) == 0, "Zero repression should never produce a spark"
 
@@ -365,7 +366,7 @@ class TestStruggleSystemStep:
         )
 
         system = StruggleSystem()
-        system.step(graph, custom_services, {"tick": 1})
+        system.step(graph, custom_services, TickContext(tick=1))
 
         assert len(captured) == 1, "Spark probability >= 1.0 should always fire"
         custom_services.database.close()
@@ -388,7 +389,7 @@ class TestStruggleSystemStep:
         )
 
         system = StruggleSystem()
-        system.step(graph, services, {"tick": 1})
+        system.step(graph, services, TickContext(tick=1))
 
         assert expected_roll > 0.05
         assert len(captured) == 0
@@ -413,7 +414,7 @@ class TestStruggleSystemStep:
         )
 
         system = StruggleSystem()
-        system.step(graph, svc, {"tick": 1})
+        system.step(graph, svc, TickContext(tick=1))
 
         # agitation == threshold → strict > means NO uprising
         assert len(captured_uprisings) == 0
@@ -436,7 +437,7 @@ class TestStruggleSystemStep:
         )
 
         system = StruggleSystem()
-        system.step(graph, services, {"tick": 1})
+        system.step(graph, services, TickContext(tick=1))
 
         assert len(captured_uprisings) == 1
         assert captured_uprisings[0].payload["trigger"] == "revolutionary_pressure"
@@ -459,7 +460,7 @@ class TestStruggleSystemStep:
         svc.event_bus.subscribe(EventType.UPRISING, lambda e: captured_uprisings.append(e))
 
         system = StruggleSystem()
-        system.step(graph, svc, {"tick": 1})
+        system.step(graph, svc, TickContext(tick=1))
 
         assert len(captured_sparks) == 1, "Spark should fire"
         assert len(captured_uprisings) == 0, "No uprising without agitation"
@@ -478,7 +479,7 @@ class TestStruggleSystemStep:
         services.event_bus.subscribe(EventType.UPRISING, lambda e: captured_uprisings.append(e))
 
         system = StruggleSystem()
-        system.step(graph, services, {"tick": 1})
+        system.step(graph, services, TickContext(tick=1))
 
         assert len(captured_uprisings) == 0
 
@@ -498,7 +499,7 @@ class TestStruggleSystemStep:
         svc.event_bus.subscribe(EventType.UPRISING, lambda e: captured_uprisings.append(e))
 
         system = StruggleSystem()
-        system.step(graph, svc, {"tick": 1})
+        system.step(graph, svc, TickContext(tick=1))
 
         assert len(captured_uprisings) == 1
         assert captured_uprisings[0].payload["trigger"] == "spark"
@@ -516,7 +517,7 @@ class TestStruggleSystemStep:
         svc = ServiceContainer.create(defines=GameDefines(struggle=custom))
 
         system = StruggleSystem()
-        system.step(graph, svc, {"tick": 1})
+        system.step(graph, svc, TickContext(tick=1))
 
         # 100 * (1 - 0.3) = 70
         assert graph.nodes["target"]["wealth"] == pytest.approx(70.0)
@@ -532,7 +533,7 @@ class TestStruggleSystemStep:
         svc = ServiceContainer.create(defines=GameDefines(struggle=custom))
 
         system = StruggleSystem()
-        system.step(graph, svc, {"tick": 1})
+        system.step(graph, svc, TickContext(tick=1))
 
         assert graph.nodes["target"]["wealth"] == pytest.approx(100.0)
         svc.database.close()
@@ -547,7 +548,7 @@ class TestStruggleSystemStep:
         svc = ServiceContainer.create(defines=GameDefines(struggle=custom))
 
         system = StruggleSystem()
-        system.step(graph, svc, {"tick": 1})
+        system.step(graph, svc, TickContext(tick=1))
 
         assert graph.nodes["target"]["wealth"] == pytest.approx(0.0)
         svc.database.close()
@@ -569,7 +570,7 @@ class TestStruggleSystemStep:
         svc = ServiceContainer.create(defines=GameDefines(struggle=custom))
 
         system = StruggleSystem()
-        system.step(graph, svc, {"tick": 1})
+        system.step(graph, svc, TickContext(tick=1))
 
         # Check solidarity edge strength: 0.3 + 0.2 = 0.5
         edge_data = graph.edges["solidarity_source_0", "target"]
@@ -591,7 +592,7 @@ class TestStruggleSystemStep:
         svc = ServiceContainer.create(defines=GameDefines(struggle=custom))
 
         system = StruggleSystem()
-        system.step(graph, svc, {"tick": 1})
+        system.step(graph, svc, TickContext(tick=1))
 
         # 0.9 + 0.2 = 1.1 → clamped to 1.0
         edge_data = graph.edges["solidarity_source_0", "target"]
@@ -610,7 +611,7 @@ class TestStruggleSystemStep:
         svc = ServiceContainer.create(defines=GameDefines(struggle=custom))
 
         system = StruggleSystem()
-        system.step(graph, svc, {"tick": 1})
+        system.step(graph, svc, TickContext(tick=1))
 
         # Initial consciousness = 0.0, boost = 0.4 * 0.5 = 0.2
         ideology = graph.nodes["target"]["ideology"]
@@ -637,7 +638,7 @@ class TestStruggleSystemStep:
         svc.event_bus.subscribe(EventType.UPRISING, lambda e: captured.append(e))
 
         system = StruggleSystem()
-        system.step(graph, svc, {"tick": 1})
+        system.step(graph, svc, TickContext(tick=1))
 
         assert len(captured) == 0, "Non-struggling roles should produce no events"
         svc.database.close()
@@ -660,7 +661,7 @@ class TestStruggleSystemStep:
         svc.event_bus.subscribe(EventType.UPRISING, lambda e: captured.append(e))
 
         system = StruggleSystem()
-        system.step(graph, svc, {"tick": 1})
+        system.step(graph, svc, TickContext(tick=1))
 
         assert len(captured) == 0, "Inactive entities should produce no events"
         svc.database.close()

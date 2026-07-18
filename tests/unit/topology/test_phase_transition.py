@@ -41,8 +41,8 @@ class TestPhaseTransitionEventType:
         assert EventType("phase_transition") == EventType.PHASE_TRANSITION
 
     def test_event_type_count_updated(self) -> None:
-        """EventType count includes Terminal Crisis + Features 018/002/021/032/033/038/039/040 + Spec 057 CalibrationWarning + Spec 070 balkanization + Phase E LEVEL_TRANSITION + ADR073 Doctrine Tree + ADR078 MARKET_CORRECTION."""
-        assert len(EventType) == 83
+        """EventType count includes Terminal Crisis + Features 018/002/021/032/033/038/039/040 + Spec 057 CalibrationWarning + Spec 070 balkanization + Phase E LEVEL_TRANSITION + ADR073 Doctrine Tree + ADR078 MARKET_CORRECTION + spec-116 PATTERN_SHIFT."""
+        assert len(EventType) == 84
 
 
 # =============================================================================

@@ -80,6 +80,9 @@ class EventType(StrEnum):
     MARKET_CORRECTION = "market_correction"  # P23 Phase 2: fictitious/real divergence exceeded profit-rate serviceability — the scissors snapped
     PHASE_TRANSITION = "phase_transition"  # Topology: percolation threshold crossed
     ENDGAME_REACHED = "endgame_reached"  # Game ended (victory/defeat condition met)
+    PATTERN_SHIFT = (
+        "pattern_shift"  # spec-116: recognized endgame pattern changed (never terminates)
+    )
     ENTITY_DEATH = "entity_death"  # Material Reality: Entity starved (wealth < consumption)
     POPULATION_DEATH = "population_death"  # Mass Line: Probabilistic mortality from inequality
     POPULATION_ATTRITION = "population_attrition"  # Mass Line Phase 3: Coverage deficit deaths
@@ -187,6 +190,10 @@ class GameOutcome(StrEnum):
             - national_identity > class_consciousness for 3+ nodes
             (False consciousness prevents class-based organization)
 
+        UNRESOLVED: The fixed campaign horizon (spec-116) was reached with no
+            pattern recognized (or a dissolved one) — the game ends without a
+            recognized outcome.
+
     Priority when multiple conditions are met:
         REVOLUTIONARY_VICTORY > ECOLOGICAL_COLLAPSE > FASCIST_CONSOLIDATION
     """
@@ -198,6 +205,9 @@ class GameOutcome(StrEnum):
     # Spec-070 Balkanization endgames
     RED_OGV = "red_ogv"  # FR-031: settler-socialist trap (IGNORE-majority + class-tension-down)
     FRAGMENTED_COLLAPSE = "fragmented_collapse"  # FR-032a: no-majority + ≥3 sovereigns
+    # Spec-116 Playability Spine: owner ruling 2026-07-17 — the fixed century
+    # horizon ends the game even when no pattern is recognized at that tick.
+    UNRESOLVED = "unresolved"
 
 
 __all__ = [

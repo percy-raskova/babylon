@@ -121,3 +121,40 @@ class TestProtocolStructuralTyping:
                 pass
 
         assert isinstance(DuckTypedStub(), System)
+
+
+class TestWriteClamped:
+    """_write_clamped: clamp a scalar to [lo, hi], write one node attr, return it.
+
+    Consolidates the ``update_node(id, k=max(lo, min(hi, v)))`` clamp-write
+    (spec-116 Phase 3) — e.g. TerritorySystem heat and MetabolismSystem
+    habitability, both clamped to [0, 1].
+    """
+
+    def test_clamps_above_hi_and_writes(self) -> None:
+        g = BabylonGraph()
+        g.add_node("N1", _node_type="territory", heat=0.5)
+        result = SystemBase._write_clamped(g, "N1", "heat", 1.7)
+        assert result == 1.0
+        assert g.nodes["N1"]["heat"] == 1.0
+
+    def test_clamps_below_lo_and_writes(self) -> None:
+        g = BabylonGraph()
+        g.add_node("N1", _node_type="territory", heat=0.5)
+        result = SystemBase._write_clamped(g, "N1", "heat", -0.3)
+        assert result == 0.0
+        assert g.nodes["N1"]["heat"] == 0.0
+
+    def test_in_range_value_unchanged(self) -> None:
+        g = BabylonGraph()
+        g.add_node("N1", _node_type="territory", heat=0.5)
+        result = SystemBase._write_clamped(g, "N1", "heat", 0.42)
+        assert result == pytest.approx(0.42)
+        assert g.nodes["N1"]["heat"] == pytest.approx(0.42)
+
+    def test_custom_bounds(self) -> None:
+        g = BabylonGraph()
+        g.add_node("N1", _node_type="social_class", wage=0.0)
+        result = SystemBase._write_clamped(g, "N1", "wage", 50.0, lo=10.0, hi=30.0)
+        assert result == 30.0
+        assert g.nodes["N1"]["wage"] == 30.0

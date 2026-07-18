@@ -139,13 +139,16 @@ describe("world slice — fetchState", () => {
     expect(useStore.getState().world.snapshot).toBe(firstSnapshot);
   });
 
-  it("autopauses the time slice when the newly-observed tick carries a critical event", async () => {
-    resetMockGameState({ events: [makeEvent({ type: "rupture", tick: 2 })] });
+  it("autopauses the time slice with dedup keys when the newly-observed tick carries a critical event", async () => {
+    resetMockGameState({ events: [makeEvent({ type: "endgame_reached", tick: 2, data: {} })] });
 
     await useStore.getState().world.fetchState(DEFAULT_GAME_ID);
 
     expect(useStore.getState().time.status).toBe("autopaused");
-    expect(useStore.getState().time.autopauseEventIds).toEqual(["2-0"]);
+    expect(useStore.getState().time.autopauseEventKeys).toEqual(["endgame_reached:global"]);
+    expect(useStore.getState().events.acknowledgedAutopauseKeys).toEqual([
+      "endgame_reached:global@2",
+    ]);
   });
 
   it("does not autopause on non-critical events", async () => {
@@ -163,6 +166,62 @@ describe("world slice — fetchState", () => {
 
     expect(useStore.getState().events.ingestedTicks).toEqual([1]);
     expect(useStore.getState().events.toasts).toHaveLength(1);
+  });
+});
+
+describe("world slice — autopause-once (spec-116 FR-116-2 iii)", () => {
+  it("does not re-autopause when the same tick is re-observed after a reload-style reset", async () => {
+    resetMockGameState({ events: [makeEvent({ type: "endgame_reached", tick: 2, data: {} })] });
+    await useStore.getState().world.fetchState(DEFAULT_GAME_ID);
+    useStore.getState().time.resume();
+
+    // Reload: the world slice loses its tick memory; the session-scoped
+    // acknowledged set does not (same store instance, same session). This is
+    // the real autopause-once guard — it fails if the acknowledged set is
+    // not consulted or does not persist across the world-slice reset.
+    useStore.setState((s) => ({ world: { ...s.world, snapshot: null, lastTick: null } }));
+    await useStore.getState().world.fetchState(DEFAULT_GAME_ID);
+
+    expect(useStore.getState().time.status).toBe("paused");
+  });
+
+  it("two concurrent fetches of the same tick autopause exactly once (fetchState serializes the advance)", async () => {
+    resetMockGameState({ events: [makeEvent({ type: "endgame_reached", tick: 2, data: {} })] });
+
+    await Promise.all([
+      useStore.getState().world.fetchState(DEFAULT_GAME_ID),
+      useStore.getState().world.fetchState(DEFAULT_GAME_ID),
+    ]);
+
+    // fetchState reads-then-writes `lastTick` atomically (no await between),
+    // so only the first racer's tick-guard passes and reaches onTickAdvanced;
+    // the second sees the advanced tick and skips it. Result: exactly one
+    // advance, one acknowledgement, and a single resume that STICKS. (The
+    // acknowledged-set re-observation guard is the reload-reset test above;
+    // this pins the serialization that stops concurrent fetches double-firing.)
+    expect(useStore.getState().time.status).toBe("autopaused");
+    useStore.getState().time.resume();
+    expect(useStore.getState().time.status).toBe("paused");
+    expect(
+      useStore
+        .getState()
+        .events.acknowledgedAutopauseKeys.filter((k) => k === "endgame_reached:global@2"),
+    ).toHaveLength(1);
+  });
+
+  it("a NEW endgame occurrence on a later tick still autopauses (always-autopause)", async () => {
+    resetMockGameState({ events: [makeEvent({ type: "endgame_reached", tick: 2, data: {} })] });
+    await useStore.getState().world.fetchState(DEFAULT_GAME_ID);
+    useStore.getState().time.resume();
+
+    setMockSnapshot({
+      ...useStore.getState().world.snapshot!,
+      tick: 3,
+      events: [makeEvent({ type: "endgame_reached", tick: 3, data: {} })],
+    });
+    await useStore.getState().world.fetchState(DEFAULT_GAME_ID);
+
+    expect(useStore.getState().time.status).toBe("autopaused");
   });
 });
 
@@ -208,6 +267,79 @@ describe("world slice — endgame auto-open (spec-113 §4.4 correction)", () => 
     setMockSnapshot({ ...useStore.getState().world.snapshot!, tick: 2 });
     await useStore.getState().world.fetchState(DEFAULT_GAME_ID);
 
+    expect(useStore.getState().ui.takeover.active).toBeNull();
+  });
+});
+
+describe("world slice — acceptOutcome (spec-116 FR-116-5 mercy affordance)", () => {
+  const LOCKED_ENDGAME_RESPONSE = {
+    status: "ok" as const,
+    data: {
+      tick: 3,
+      outcome: "fascist_consolidation",
+      headline: "False consciousness has consolidated the state.",
+      summary: "",
+      stats: { final_tick: 3, consciousness: 0.2, solidarity_edges: 1, heat: 0.5 },
+    },
+  };
+
+  it("POSTs accept-outcome then refetches the endgame panel", async () => {
+    await useStore.getState().world.fetchState(DEFAULT_GAME_ID);
+    const endgameCallsBefore = requestLog.filter((r) => r === "GET endgame").length;
+
+    server.use(
+      http.post("/api/games/:id/accept-outcome/", () => {
+        requestLog.push("POST accept-outcome");
+        return HttpResponse.json({
+          status: "ok",
+          data: { outcome: "fascist_consolidation", tick: 3, accepted: true },
+        });
+      }),
+      http.get("/api/games/:id/endgame/", () => {
+        requestLog.push("GET endgame");
+        return HttpResponse.json(LOCKED_ENDGAME_RESPONSE);
+      }),
+    );
+
+    await useStore.getState().world.acceptOutcome(DEFAULT_GAME_ID);
+
+    expect(requestLog.filter((r) => r === "POST accept-outcome")).toHaveLength(1);
+    expect(requestLog.filter((r) => r === "GET endgame")).toHaveLength(endgameCallsBefore + 1);
+  });
+
+  it("opens the chronicle takeover + pauses when the outcome transitions null -> non-null", async () => {
+    await useStore.getState().world.fetchState(DEFAULT_GAME_ID);
+    expect(useStore.getState().ui.takeover.active).toBeNull();
+
+    server.use(
+      http.post("/api/games/:id/accept-outcome/", () =>
+        HttpResponse.json({
+          status: "ok",
+          data: { outcome: "fascist_consolidation", tick: 3, accepted: true },
+        }),
+      ),
+      http.get("/api/games/:id/endgame/", () => HttpResponse.json(LOCKED_ENDGAME_RESPONSE)),
+    );
+
+    await useStore.getState().world.acceptOutcome(DEFAULT_GAME_ID);
+
+    expect(useStore.getState().ui.takeover.active).toBe("chronicle");
+    expect(useStore.getState().time.status).toBe("paused");
+  });
+
+  it("does not refetch the endgame panel or open the takeover when the POST fails", async () => {
+    await useStore.getState().world.fetchState(DEFAULT_GAME_ID);
+    const endgameCallsBefore = requestLog.filter((r) => r === "GET endgame").length;
+
+    server.use(
+      http.post("/api/games/:id/accept-outcome/", () =>
+        HttpResponse.json({ status: "error", message: "outcome not locked" }, { status: 400 }),
+      ),
+    );
+
+    await useStore.getState().world.acceptOutcome(DEFAULT_GAME_ID);
+
+    expect(requestLog.filter((r) => r === "GET endgame")).toHaveLength(endgameCallsBefore);
     expect(useStore.getState().ui.takeover.active).toBeNull();
   });
 });

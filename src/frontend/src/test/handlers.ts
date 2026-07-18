@@ -105,13 +105,38 @@ export const handlers = [
   http.get("/api/games/", () =>
     HttpResponse.json({
       status: "ok",
-      data: [makeGameSummary({ id: DEFAULT_GAME_ID, current_tick: mockSnapshot.tick })],
+      data: [makeGameSummary({ id: DEFAULT_GAME_ID })],
     }),
   ),
 
   http.post("/api/games/", () =>
     HttpResponse.json({ status: "ok", data: { session_id: DEFAULT_GAME_ID } }, { status: 201 }),
   ),
+
+  http.delete("/api/games/:id/", () => {
+    logRequest("DELETE game");
+    return HttpResponse.json({ status: "ok", data: { deleted: true } });
+  }),
+
+  http.post("/api/games/:id/archive/", () => {
+    logRequest("POST archive");
+    return HttpResponse.json({ status: "ok", data: { status: "abandoned" } });
+  }),
+
+  http.get("/api/games/:id/", ({ params }) => {
+    logRequest("GET game-detail");
+    return HttpResponse.json({
+      status: "ok",
+      data: {
+        id: String(params.id),
+        codename: "CRIMSON HARVEST",
+        scenario: "wayne_county",
+        current_tick: mockSnapshot.tick,
+        status: "active",
+        created_at: "2026-03-01T12:00:00Z",
+      },
+    });
+  }),
 
   // ---- Game loop -----------------------------------------------------
 
@@ -177,6 +202,11 @@ export const handlers = [
         price_index: [1.0, 1.08],
         fictitious_ratio: [1.0, 1.31],
         market_corrections: [0, 0],
+        crisis_pop_share: [null, 0.75],
+        bifurcation_score_mean: [null, -0.3],
+        wage_compression_mean: [null, 0.15],
+        capital_stock_total: [null, 3e9],
+        unemployment_rate_mean: [null, 0.0875],
       },
     });
   }),
@@ -343,6 +373,18 @@ export const handlers = [
     // quirk (see fetchVerbTargets's docstring). Empty by default; tests
     // that need real targets override with server.use().
     return HttpResponse.json({ targets: [] });
+  }),
+
+  // ---- Spec-116 FR-4.8: per-verb eligibility (VerbGrid disabled-with-
+  // reason). Default: empty verbs list — the honest-null path (nothing
+  // disabled). Tests that need real rows override with server.use().
+  http.get("/api/games/:id/actions/eligibility/", ({ request }) => {
+    logRequest("GET actions:eligibility");
+    const orgId = new URL(request.url).searchParams.get("org_id") ?? "";
+    return HttpResponse.json({
+      status: "ok",
+      data: { session_id: DEFAULT_GAME_ID, tick: 1, org_id: orgId, verbs: [] },
+    });
   }),
 
   http.post("/api/games/:id/actions/:verb/", ({ params }) => {

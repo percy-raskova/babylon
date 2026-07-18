@@ -7,19 +7,18 @@ Publishes RESERVE_ARMY_PRESSURE events via the event bus.
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Any, ClassVar, Union
+from typing import TYPE_CHECKING, Any, ClassVar
 
 from babylon.domain.economics.reserve_army.calculator import DefaultWagePressureCalculator
 from babylon.kernel.event_bus import Event
 from babylon.kernel.system_base import SystemBase
+from babylon.kernel.system_protocol import ContextType
+from babylon.kernel.tick_partition import TickPartition
 from babylon.models.enums import EventType
 
 if TYPE_CHECKING:
-    from babylon.engine.context import TickContext
     from babylon.kernel.graph_protocol import GraphProtocol
     from babylon.kernel.services import ServicesProtocol
-
-ContextType = Union[dict[str, Any], "TickContext"]
 
 
 class ReserveArmySystem(SystemBase):
@@ -32,6 +31,9 @@ class ReserveArmySystem(SystemBase):
 
     Position: #5 in _DEFAULT_SYSTEMS (after TickDynamicsSystem).
     """
+
+    partition: ClassVar[TickPartition] = TickPartition.MATERIAL_BASE
+    position: ClassVar[float] = 5.0
 
     # Spec 053 INV-001: does not mutate hex c+v+s; opted in by default-deny.
     creates_value: ClassVar[bool] = False
@@ -52,7 +54,7 @@ class ReserveArmySystem(SystemBase):
             context: Tick context with current tick number.
         """
         protocol = self._wrap_graph(graph)
-        tick = context["tick"] if isinstance(context, dict) else context.tick
+        tick = context.tick
         defines = services.defines.reserve_army
         calculator = DefaultWagePressureCalculator(defines)
 

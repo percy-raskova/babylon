@@ -40,8 +40,7 @@ wayne_county, so this seeding is safe from that determinism gate.
 
 from __future__ import annotations
 
-from typing import Any
-
+from babylon.engine.context import TickContext
 from babylon.engine.scenarios_wayne_county import create_wayne_county_scenario
 from babylon.engine.services import ServiceContainer
 from babylon.engine.systems.ooda import OODASystem
@@ -96,10 +95,10 @@ class TestStateAIExecutesInWayneCounty:
         fired_ticks: list[int] = []
         max_ticks = 5
         for tick in range(max_ticks):
-            context: dict[str, Any] = {"tick": tick}
+            context = TickContext(tick=tick)
             system.step(graph, services, context)
 
-            resolution = context["persistent_data"]["turn_resolution"]
+            resolution = context.persistent_data["turn_resolution"]
             for result in resolution["action_phase_results"]:
                 action = result["action"]
                 if action["org_id"] == _STATE_APPARATUS_ID and action["budget_cost"] > 0.0:
@@ -119,10 +118,10 @@ class TestStateAIExecutesInWayneCounty:
         services = ServiceContainer.create(defines=defines)
         system = OODASystem()
 
-        context: dict[str, Any] = {"tick": 0}
+        context = TickContext(tick=0)
         system.step(graph, services, context)
 
-        resolution = context["persistent_data"]["turn_resolution"]
+        resolution = context.persistent_data["turn_resolution"]
         player_org_actions = [
             r["action"]
             for r in resolution["action_phase_results"]
@@ -155,10 +154,10 @@ class TestStateAINoLongerSelfTargets:
         state_apparatus_target_ids: list[str] = []
         max_ticks = 5
         for tick in range(max_ticks):
-            context: dict[str, Any] = {"tick": tick}
+            context = TickContext(tick=tick)
             system.step(graph, services, context)
 
-            resolution = context["persistent_data"]["turn_resolution"]
+            resolution = context.persistent_data["turn_resolution"]
             for result in resolution["action_phase_results"]:
                 action = result["action"]
                 if action["org_id"] == _STATE_APPARATUS_ID:
@@ -193,10 +192,10 @@ class TestStateAINoLongerSelfTargets:
 
         initial_state_apparatus_heat = graph.nodes[_STATE_APPARATUS_ID]["heat"]
 
-        context: dict[str, Any] = {"tick": 0}
+        context = TickContext(tick=0)
         system.step(graph, services, context)
 
-        resolution = context["persistent_data"]["turn_resolution"]
+        resolution = context.persistent_data["turn_resolution"]
         state_apparatus_actions = [
             r["action"]
             for r in resolution["action_phase_results"]
@@ -224,9 +223,9 @@ class TestStateAINoLongerSelfTargets:
 
             stream: list[tuple[str, str, float]] = []
             for tick in range(max_ticks):
-                context: dict[str, Any] = {"tick": tick}
+                context = TickContext(tick=tick)
                 system.step(graph, services, context)
-                resolution = context["persistent_data"]["turn_resolution"]
+                resolution = context.persistent_data["turn_resolution"]
                 for result in resolution["action_phase_results"]:
                     action = result["action"]
                     if action["org_id"] == _STATE_APPARATUS_ID:

@@ -1,18 +1,18 @@
 /**
  * CriticalEventModal — Paradox-style modal for `time.status === "autopaused"`
  * (architecture §4.2). Gives the existing autopause machinery its missing
- * face: lists the critical events that fired the autopause
- * (`time.autopauseEventIds`, resolved against the current tick's events via
- * `classifyEvents` — the same id scheme `worldSlice` used to pick them),
- * with "Open Wire" (`ui.openTakeover("wire")`) and "Resume" CTAs. `Resume`
- * is the bounded default action (CK3: "an ignored popup never stalls the
- * game") — it's also reachable via `time.resume()` directly from
+ * face: lists the critical events that fired the autopause, resolved from
+ * `time.autopauseEventKeys`, joined by salience key (lib/eventDedup) —
+ * tick-independent, so a persisting condition stays listed after the tick
+ * advances — with "Open Wire" (`ui.openTakeover("wire")`) and "Resume" CTAs.
+ * `Resume` is the bounded default action (CK3: "an ignored popup never
+ * stalls the game") — it's also reachable via `time.resume()` directly from
  * `TimeControls`.
  */
 
 import { useStore } from "@/store";
 import { classifyEvents } from "@/lib/eventClassifier";
-import type { ClassifiedEvent } from "@/types/game";
+import { dedupKey, dedupeEvents } from "@/lib/eventDedup";
 import { keyButtonClass, TITLE_TAB } from "./installerKit";
 import { KeyHints } from "./KeyHints";
 
@@ -22,15 +22,19 @@ interface CriticalEventModalProps {
 
 export function CriticalEventModal(_props: CriticalEventModalProps): React.JSX.Element | null {
   const status = useStore((s) => s.time.status);
-  const autopauseEventIds = useStore((s) => s.time.autopauseEventIds);
+  const autopauseEventKeys = useStore((s) => s.time.autopauseEventKeys);
   const events = useStore((s) => s.world.snapshot?.events);
   const resume = useStore((s) => s.time.resume);
   const openTakeover = useStore((s) => s.ui.openTakeover);
 
   if (status !== "autopaused") return null;
 
-  const firing: ClassifiedEvent[] = classifyEvents(events ?? []).filter((e) =>
-    autopauseEventIds.includes(e.id),
+  // Key join is tick-independent: if the tick advanced but the condition
+  // persists, the modal still finds it. Same-key repeats collapse into one
+  // card with a count (FR-116-2). The zero-match fallback below stays —
+  // an honestly empty record is still possible (Constitution III.11).
+  const firing = dedupeEvents(
+    classifyEvents(events ?? []).filter((e) => autopauseEventKeys.includes(dedupKey(e.event))),
   );
 
   return (
@@ -52,11 +56,24 @@ export function CriticalEventModal(_props: CriticalEventModalProps): React.JSX.E
                 The firing events are no longer on this tick's record.
               </p>
             ) : (
-              firing.map((e) => (
-                <div key={e.id} data-testid={`autopause-event-${e.id}`} className="text-[11px]">
-                  <span className="text-ink">{e.event.title || e.event.type}</span>
-                  <span className="text-ksbc-muted-2"> — tick {e.tick}</span>
-                  {e.event.body && <p className="text-[10px] text-ksbc-muted-2">{e.event.body}</p>}
+              firing.map((run) => (
+                <div
+                  key={run.key}
+                  data-testid={`autopause-event-${run.key}`}
+                  className="text-[11px]"
+                >
+                  <span className="text-ink">
+                    {run.representative.event.title || run.representative.event.type}
+                  </span>
+                  {run.count > 1 && <span className="text-accent-gold"> ×{run.count}</span>}
+                  <span className="text-ksbc-muted-2">
+                    {" "}
+                    — tick {run.firstTick}
+                    {run.lastTick !== run.firstTick ? `–${run.lastTick}` : ""}
+                  </span>
+                  {run.representative.event.body && (
+                    <p className="text-[10px] text-ksbc-muted-2">{run.representative.event.body}</p>
+                  )}
                 </div>
               ))
             )}

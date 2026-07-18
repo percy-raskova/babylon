@@ -14,6 +14,7 @@ from typing import Any
 
 import pytest
 
+from babylon.engine.context import TickContext
 from babylon.engine.services import ServiceContainer
 from babylon.engine.systems.economic import ImperialRentSystem
 from babylon.models.enums import EdgeType, SocialRole
@@ -56,7 +57,7 @@ class TestWageAccountingAttrs:
     def test_w_paid_and_v_produced_written(self) -> None:
         graph = _wages_graph(la_production=5.0)
         ImperialRentSystem()._process_wages_phase(
-            graph, ServiceContainer.create(), {"tick": 1}, _tick_context()
+            graph, ServiceContainer.create(), TickContext(tick=1), _tick_context()
         )
         # productivity 5.0 + bonus 1.0 = total wages 6.0.
         assert graph.nodes["worker"]["w_paid"] == pytest.approx(6.0)
@@ -66,7 +67,7 @@ class TestWageAccountingAttrs:
         # w_paid is the accounting mirror of the wage transfer (== value_flow).
         graph = _wages_graph(la_production=5.0)
         ImperialRentSystem()._process_wages_phase(
-            graph, ServiceContainer.create(), {"tick": 1}, _tick_context()
+            graph, ServiceContainer.create(), TickContext(tick=1), _tick_context()
         )
         assert graph.nodes["worker"]["w_paid"] == pytest.approx(graph.nodes["worker"]["wealth"])
 
@@ -74,7 +75,7 @@ class TestWageAccountingAttrs:
         # The super-wage bonus is the imperial bribe: W > V (Fundamental Theorem).
         graph = _wages_graph(la_production=5.0)
         ImperialRentSystem()._process_wages_phase(
-            graph, ServiceContainer.create(), {"tick": 1}, _tick_context()
+            graph, ServiceContainer.create(), TickContext(tick=1), _tick_context()
         )
         assert graph.nodes["worker"]["w_paid"] > graph.nodes["worker"]["v_produced"]
 
@@ -83,7 +84,7 @@ class TestWageAccountingAttrs:
         # but v_produced stays the full productivity (100.0).
         graph = _wages_graph(bourgeoisie_wealth=0.5, la_production=100.0)
         ImperialRentSystem()._process_wages_phase(
-            graph, ServiceContainer.create(), {"tick": 1}, _tick_context()
+            graph, ServiceContainer.create(), TickContext(tick=1), _tick_context()
         )
         assert graph.nodes["worker"]["w_paid"] == pytest.approx(0.5)
         assert graph.nodes["worker"]["v_produced"] == pytest.approx(100.0)
@@ -92,7 +93,7 @@ class TestWageAccountingAttrs:
         # A worker who is not paid (inactive) carries no (w_paid, v_produced).
         graph = _wages_graph(la_production=5.0, worker_active=False)
         ImperialRentSystem()._process_wages_phase(
-            graph, ServiceContainer.create(), {"tick": 1}, _tick_context()
+            graph, ServiceContainer.create(), TickContext(tick=1), _tick_context()
         )
         assert "w_paid" not in graph.nodes["worker"]
         assert "v_produced" not in graph.nodes["worker"]
@@ -102,7 +103,9 @@ class TestWageAccountingAttrs:
         # this commit is bookkeeping only.
         graph = _wages_graph(la_production=5.0)
         services = ServiceContainer.create()
-        ImperialRentSystem()._process_wages_phase(graph, services, {"tick": 1}, _tick_context())
+        ImperialRentSystem()._process_wages_phase(
+            graph, services, TickContext(tick=1), _tick_context()
+        )
         ppp = graph.nodes["worker"]["ppp_multiplier"]
         nominal = graph.nodes["worker"]["wealth"]
         assert graph.nodes["worker"]["effective_wealth"] == pytest.approx(

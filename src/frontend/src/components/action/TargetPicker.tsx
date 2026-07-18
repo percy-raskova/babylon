@@ -1,9 +1,36 @@
 /**
  * Target picker — flat list of `VerbTarget`s, grouped when the config's
  * targets carry a `group` (e.g. Aid's Communities/Organizations split).
+ * Rows carry expected-delta chips (spec-116 FR-4.4). The empty state
+ * carries the verb's eligibility reason + remedy when known
+ * (spec-116 FR-4.8) so an empty list is never a mute dead-end.
  */
 
 import type { VerbTarget } from "@/lib/verbs";
+
+/** One compact ▲/▼ chip for a non-zero expected delta — null otherwise
+ *  (the same honest-null convention as VerbForm's preview DeltaChip). */
+function TargetDeltaChip({
+  value,
+  label,
+}: {
+  value: number | undefined;
+  label: string;
+}): React.JSX.Element | null {
+  if (value === undefined || !Number.isFinite(value) || value === 0) return null;
+  const up = value > 0;
+  return (
+    <span
+      data-testid="target-delta"
+      title={`${label}: ${up ? "+" : ""}${value}`}
+      className={`font-mono text-[9px] ${up ? "text-accent-gold" : "text-accent-crimson"}`}
+    >
+      {up ? "▲" : "▼"}
+      {label} {up ? "+" : "-"}
+      {parseFloat(Math.abs(value).toPrecision(3))}
+    </span>
+  );
+}
 
 interface TargetPickerProps {
   targets: VerbTarget[];
@@ -11,6 +38,9 @@ interface TargetPickerProps {
   error: string | null;
   selectedId: string | null;
   onSelect: (id: string) => void;
+  /** Reason + remedy for an empty list; null falls back to the bare
+   *  legacy line (honest-null — never fabricate a reason). */
+  emptyReason?: string | null;
 }
 
 export function TargetPicker({
@@ -19,6 +49,7 @@ export function TargetPicker({
   error,
   selectedId,
   onSelect,
+  emptyReason,
 }: TargetPickerProps): React.JSX.Element {
   if (loading) {
     return <p className="text-[11px] text-ash">Loading targets…</p>;
@@ -31,7 +62,11 @@ export function TargetPicker({
     );
   }
   if (targets.length === 0) {
-    return <p className="text-[11px] italic text-shroud">No eligible targets.</p>;
+    return (
+      <p className="text-[11px] italic text-shroud" data-testid="targets-empty">
+        {emptyReason ? `No eligible targets yet: ${emptyReason}` : "No eligible targets."}
+      </p>
+    );
   }
 
   return (
@@ -47,7 +82,11 @@ export function TargetPicker({
           }`}
         >
           <span className="truncate">{t.label}</span>
-          {t.group && <span className="ml-2 shrink-0 text-[9px] text-ash">{t.group}</span>}
+          <span className="ml-2 flex shrink-0 items-center gap-1.5">
+            <TargetDeltaChip value={t.expectedDeltas?.consciousness} label="CI" />
+            <TargetDeltaChip value={t.expectedDeltas?.heat} label="Heat" />
+            {t.group && <span className="text-[9px] text-ash">{t.group}</span>}
+          </span>
         </button>
       ))}
     </div>

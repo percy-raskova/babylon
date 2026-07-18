@@ -1,9 +1,11 @@
 import type { VerbConfig, VerbTarget } from "./types";
 import { parseFlatCost } from "./cost";
+import { parseExpectedDeltas, type WireExpectedDeltas } from "./expectedDeltas";
 
 interface AidPopTarget {
   community_id: string;
   community_name: string;
+  expected_deltas?: WireExpectedDeltas;
 }
 
 interface AidOrgTarget {
@@ -23,6 +25,7 @@ export const aidConfig: VerbConfig = {
         id: t.community_id,
         label: t.community_name,
         group: "Communities",
+        expectedDeltas: parseExpectedDeltas(t.expected_deltas),
       })),
       ...orgTargets.map((t) => ({
         id: t.org_id,

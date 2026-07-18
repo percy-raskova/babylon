@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import pytest
 
+from babylon.engine.context import TickContext
 from babylon.engine.services import ServiceContainer
 from babylon.engine.systems.economic import ImperialRentSystem
 from babylon.models.enums import EdgeType, SocialRole
@@ -66,7 +67,7 @@ class TestTributePhaseMutationKillers:
         system = ImperialRentSystem()
         tick_ctx = _make_tick_context()
 
-        system._process_tribute_phase(graph, services, {"tick": 1}, tick_ctx)
+        system._process_tribute_phase(graph, services, TickContext(tick=1), tick_ctx)
 
         assert graph.nodes["comprador"]["wealth"] == pytest.approx(100.0 * cut)
         expected_tribute = 100.0 - (100.0 * cut)
@@ -79,7 +80,7 @@ class TestTributePhaseMutationKillers:
         system = ImperialRentSystem()
         tick_ctx = _make_tick_context()
 
-        system._process_tribute_phase(graph, services, {"tick": 1}, tick_ctx)
+        system._process_tribute_phase(graph, services, TickContext(tick=1), tick_ctx)
 
         assert graph.nodes["comprador"]["wealth"] == 0.0
         assert graph.nodes["core_bourg"]["wealth"] == 50.0  # Unchanged
@@ -91,7 +92,7 @@ class TestTributePhaseMutationKillers:
         system = ImperialRentSystem()
         tick_ctx = _make_tick_context()
 
-        system._process_tribute_phase(graph, services, {"tick": 1}, tick_ctx)
+        system._process_tribute_phase(graph, services, TickContext(tick=1), tick_ctx)
 
         assert graph.nodes["comprador"]["wealth"] == -5.0  # Unchanged
         assert graph.nodes["core_bourg"]["wealth"] == 50.0  # Unchanged
@@ -103,7 +104,7 @@ class TestTributePhaseMutationKillers:
         system = ImperialRentSystem()
         tick_ctx = _make_tick_context()
 
-        system._process_tribute_phase(graph, services, {"tick": 1}, tick_ctx)
+        system._process_tribute_phase(graph, services, TickContext(tick=1), tick_ctx)
 
         assert graph.nodes["comprador"]["wealth"] == 100.0  # Unchanged
         assert graph.nodes["core_bourg"]["wealth"] == 0.0  # Unchanged
@@ -115,7 +116,7 @@ class TestTributePhaseMutationKillers:
         system = ImperialRentSystem()
         tick_ctx = _make_tick_context()
 
-        system._process_tribute_phase(graph, services, {"tick": 1}, tick_ctx)
+        system._process_tribute_phase(graph, services, TickContext(tick=1), tick_ctx)
 
         assert graph.nodes["core_bourg"]["wealth"] == 0.0  # Unchanged
 
@@ -129,7 +130,7 @@ class TestTributePhaseMutationKillers:
         system = ImperialRentSystem()
         tick_ctx = _make_tick_context()
 
-        system._process_tribute_phase(graph, services, {"tick": 1}, tick_ctx)
+        system._process_tribute_phase(graph, services, TickContext(tick=1), tick_ctx)
 
         assert graph.nodes["comprador"]["wealth"] == 100.0  # Unchanged
 
@@ -155,7 +156,7 @@ class TestTributePhaseMutationKillers:
         cut = services.defines.economy.comprador_cut
         tick_ctx = _make_tick_context()
 
-        system._process_tribute_phase(graph, services, {"tick": 1}, tick_ctx)
+        system._process_tribute_phase(graph, services, TickContext(tick=1), tick_ctx)
 
         expected_tribute = 100.0 - (100.0 * cut)
         assert graph.nodes["core_bourg"]["wealth"] == pytest.approx(expected_tribute)
@@ -179,7 +180,7 @@ class TestTributePhaseMutationKillers:
         cut = services.defines.economy.comprador_cut
         tick_ctx = _make_tick_context()
 
-        system._process_tribute_phase(graph, services, {"tick": 1}, tick_ctx)
+        system._process_tribute_phase(graph, services, TickContext(tick=1), tick_ctx)
 
         tribute_per = 100.0 - (100.0 * cut)
         # Core bourgeoisie receives tribute from all 3
@@ -198,7 +199,7 @@ class TestTributePhaseMutationKillers:
         system = ImperialRentSystem()
         tick_ctx = _make_tick_context()
 
-        system._process_tribute_phase(graph, services, {"tick": 1}, tick_ctx)
+        system._process_tribute_phase(graph, services, TickContext(tick=1), tick_ctx)
 
         assert graph.nodes["comprador"]["wealth"] == pytest.approx(0.0)
         assert graph.nodes["core_bourg"]["wealth"] == pytest.approx(100.0)
@@ -211,7 +212,7 @@ class TestTributePhaseMutationKillers:
         cut = services.defines.economy.comprador_cut
         tick_ctx = _make_tick_context()
 
-        system._process_tribute_phase(graph, services, {"tick": 1}, tick_ctx)
+        system._process_tribute_phase(graph, services, TickContext(tick=1), tick_ctx)
 
         expected_tribute = 100.0 - (100.0 * cut)
         edge_data = graph.edges["comprador", "core_bourg"]

@@ -40,6 +40,7 @@ from uuid import uuid4
 from babylon.config.defines import GameDefines
 from babylon.domain.economics.tick.system import TickDynamicsSystem
 from babylon.engine.context import TickContext
+from babylon.engine.event_builders import EVENT_BUILDERS
 from babylon.engine.services import ServiceContainer
 from babylon.engine.systems.collapse_transition import CollapseTransitionSystem
 from babylon.engine.systems.community import CommunitySystem
@@ -72,72 +73,13 @@ from babylon.engine.systems.vitality import VitalitySystem
 from babylon.engine.systems.wealth_distribution import WealthDistributionSystem
 from babylon.kernel.event_bus import Event
 from babylon.kernel.log import log_context_scope
+from babylon.kernel.system_base import SystemBase
 from babylon.kernel.system_protocol import ContextType, System
+from babylon.kernel.tick_partition import TickPartition
 from babylon.models.config import SimulationConfig
 from babylon.models.enums import EventType
 from babylon.models.events import (
-    ClassDecompositionEvent,
-    ControlRatioCrisisEvent,
-    CrisisEvent,
-    DoctrinePurgeFailedEvent,
-    DoctrineTrapEscapedEvent,
-    DoctrineTrapSprungEvent,
-    ExtractionEvent,
-    MassAwakeningEvent,
-    PhaseTransitionEvent,
-    RuptureEvent,
     SimulationEvent,
-    SolidaritySpikeEvent,
-    SparkEvent,
-    SubsidyEvent,
-    SuperwageCrisisEvent,
-    TerminalDecisionEvent,
-    TransmissionEvent,
-    UprisingEvent,
-)
-from babylon.models.events.balkanization_payloads import (
-    CivilWarDeclaredPayload,
-    DualPowerActivePayload,
-    FactionVictoryPayload,
-    RedSettlerTrapDetectedPayload,
-    SovereignCollapsePayload,
-    TerritoryTransitionPayload,
-)
-from babylon.models.events.dispossession_payloads import (
-    DispossessionCascadeEvent,
-    DispossessionEvent,
-    EcologicalOvershootEvent,
-    ReserveArmyPressureEvent,
-    ValueTransferEvent,
-)
-from babylon.models.events.field_payloads import PrincipalContradictionShiftEvent
-from babylon.models.events.institution_payloads import (
-    InstitutionBonapartistModeEvent,
-    InstitutionFactionShiftEvent,
-)
-from babylon.models.events.lifecycle_payloads import (
-    InheritanceTransferEvent,
-    LegitimationCrisisEvent,
-    LegitimationRecoveryEvent,
-    LifecycleTransitionEvent,
-)
-from babylon.models.events.ooda_payloads import (
-    OrganizationalActionEvent,
-    StateRepressionEvent,
-    StateSurveillanceEvent,
-)
-from babylon.models.events.reactionary_payloads import (
-    FascistDriftEvent,
-    FascistRecruitmentEvent,
-    OrganizationalFractureEvent,
-    RedBrownCoupEvent,
-)
-from babylon.models.events.struggle_payloads import (
-    FascistRevanchismEvent,
-    PeripheralRevoltEvent,
-    PowerVacuumEvent,
-    RevolutionaryOffensiveEvent,
-    SpontaneousRiotEvent,
 )
 from babylon.models.world_state import WorldState
 
@@ -238,18 +180,12 @@ class SimulationEngine:
         Args:
             graph: NetworkX graph (mutated in place by systems)
             services: ServicesProtocol with config, formulas, event_bus, database, metrics
-            context: TickContext or dict passed to all systems
+            context: TickContext passed to all systems
 
         Spec 008: Logs within run_tick() include tick and correlation_id.
         """
-        # T025: Extract tick number from context with fallback to 0
-        tick: int
-        if hasattr(context, "tick"):
-            tick = context.tick  # TickContext has .tick attribute
-        elif isinstance(context, dict):
-            tick = context.get("tick", 0)
-        else:
-            tick = 0
+        # T025: Extract the tick number from the TickContext.
+        tick = context.tick
 
         # T026: Generate per-tick UUID correlation_id
         correlation_id = str(uuid4())
@@ -288,11 +224,7 @@ class SimulationEngine:
         engine bridge) compute the actual residuals.
         """
         _ = services  # Reserved: future evaluators may consume services.
-        session_id = (
-            context.session_id
-            if hasattr(context, "session_id")
-            else (context.get("session_id") if isinstance(context, dict) else None)
-        )
+        session_id = context.session_id if hasattr(context, "session_id") else None
         if session_id is None:
             # Without a session_id the auditor cannot tag rows; skip silently.
             return
@@ -302,7 +234,9 @@ class SimulationEngine:
         hex_rows = [
             attrs for _node, attrs in graph.nodes(data=True) if attrs.get("_node_type") == "hex"
         ]
-        action_list = context.get("actions") if isinstance(context, dict) else None
+        # Legacy dict contexts could carry an "actions" list; the TickContext
+        # path never populated one, so this stays None (byte-identical).
+        action_list = None
 
         rows, alarms = self._auditor.evaluate(
             session_id=session_id,
@@ -312,9 +246,12 @@ class SimulationEngine:
             action_list=action_list,
         )
 
-        # Stash rows on the context so the envelope builder can pick them up.
-        if isinstance(context, dict):
-            context.setdefault("audit_rows", []).extend(rows)
+        # Stash rows on the context's persistent_data so the envelope builder
+        # (and the run_tick auditor tests) can pick them up via
+        # ``context.get("audit_rows")`` — TickContext routes non-field bracket
+        # keys through persistent_data. Production's headless bridge calls the
+        # auditor directly; this exposes rows on the run_tick path.
+        context.persistent_data.setdefault("audit_rows", []).extend(rows)
 
         # Emit alarms onto the event bus per FR-047 / Clarification Q3.
         # The bus expects a frozen Event(type=str, tick=int, payload=dict);
@@ -377,644 +314,115 @@ class SimulationEngine:
 #     runs LAST because it observes the fully-mutated tick (reads this tick's
 #     p_acquiescence/class_consciousness, not last tick's stale values) and
 #     writes read-only shadow attrs nothing else in the engine consumes yet.
+#: The engine's System registry — MEMBERSHIP only. The tick ORDER and the three
+#: partition frozensets below are DERIVED from each System's ``position`` /
+#: ``partition`` ClassVars (spec-116 Phase 4 / ADR081), so a System's ordering
+#: metadata lives on the System rather than being restated in a hand-ordered
+#: list plus three hand-maintained sets. Adding a System: append its class here
+#: and declare the two ClassVars on it — everything below follows. (The
+#: canonical order + rationale is the comment block above.)
+_SYSTEM_CLASSES: Final[tuple[type[SystemBase], ...]] = (
+    VitalitySystem,
+    TerritorySystem,
+    SubstrateSystem,
+    ProductionSystem,
+    TickDynamicsSystem,
+    ReserveArmySystem,
+    CommunitySystem,
+    LifecycleSystem,
+    SolidaritySystem,
+    ImperialRentSystem,
+    DispossessionEventSystem,
+    DecompositionSystem,
+    ControlRatioSystem,
+    MetabolismSystem,
+    OODASystem,
+    FactionInfluenceSystem,
+    DoctrineSystem,
+    SurvivalSystem,
+    StruggleSystem,
+    ConsciousnessSystem,
+    FascistFactionSystem,
+    SovereigntySystem,
+    MarketScissorsSystem,
+    ContradictionSystem,
+    ContradictionFieldSystem,
+    FieldDerivativeSystem,
+    CollapseTransitionSystem,
+    EdgeTransitionSystem,
+    WealthDistributionSystem,
+    EpistemicHorizonSystem,
+)
+
+# Distinct positions => a stable, unambiguous total order (Constitution III.7).
+_SYSTEM_POSITIONS: Final[list[float]] = [cls.position for cls in _SYSTEM_CLASSES]
+if len(set(_SYSTEM_POSITIONS)) != len(_SYSTEM_POSITIONS):
+    _dupe_positions = sorted({p for p in _SYSTEM_POSITIONS if _SYSTEM_POSITIONS.count(p) > 1})
+    raise RuntimeError(
+        f"Duplicate System position(s) {_dupe_positions}: the tick order would "
+        f"be ambiguous. Give each registered System a distinct `position`."
+    )
+
+#: The Systems in strict materialist-causality order (ADR032), DERIVED by sorting
+#: the registry on each System's `position` ClassVar.
 _DEFAULT_SYSTEMS: list[System] = [
-    # --- Material Base (positions 1–13, plus Substrate at 2.5) ---
-    VitalitySystem(),  # 1. Biological cost + death
-    TerritorySystem(),  # 2. Land state updates
-    SubstrateSystem(),  # 2.5. Substrate stocks (Spec 062, US7, FR-050)
-    ProductionSystem(),  # 3. Value creation
-    TickDynamicsSystem(),  # 4. Tick dynamics (Feature 017)
-    ReserveArmySystem(),  # 5. Reserve army wage pressure (Feature 021)
-    CommunitySystem(),  # 6. Community hypergraph layer (Feature 022)
-    LifecycleSystem(),  # 7. D-P-D' lifecycle circuit (Feature 030)
-    SolidaritySystem(),  # 8. Organization calculation
-    ImperialRentSystem(),  # 9. Value extraction
-    DispossessionEventSystem(),  # 10. Dispossession events (Feature 021)
-    DecompositionSystem(),  # 11. LA decomposition
-    ControlRatioSystem(),  # 12. Guard:prisoner ratio
-    MetabolismSystem(),  # 13. Environmental degradation
-    # --- Action Phase (position 14) — Spec 056 F6=α reorder ---
-    OODASystem(),  # 14. Organizations observe + act (Feature 032)
-    FactionInfluenceSystem(),  # 14.5. Spec-070 FR-021 winning-Faction resolution
-    DoctrineSystem(),  # 14.7. Per-org Doctrine Tree state (owner-ratified 2026-07-15);
-    #        shadow: writes org doctrine state (acquire/decay/traps). Feedback into
-    #        bifurcation/consciousness is wired in Unit 6. Byte-safe: the qa:regression
-    #        scenarios carry no organization nodes, so this is a no-op there.
-    # --- Consequences (positions 15–21) ---
-    SurvivalSystem(),  # 15. Risk assessment
-    StruggleSystem(),  # 16. Action/Revolt
-    ConsciousnessSystem(),  # 17. Ideological drift
-    FascistFactionSystem(),  # 17.4. Spec-071 reactionary drift + fascist capture + stance hook
-    SovereigntySystem(),  # 17.5. Spec-070 sovereign metabolic_impact (FR-019, FR-043)
-    MarketScissorsSystem(),  # 17.8. Price⟷value scissors (Program 23 Phase-1 shadow;
-    #        writes only its own axis, runs just before the registry measures it)
-    ContradictionSystem(),  # 18. Tension aggregation
-    ContradictionFieldSystem(),  # 19. Contradiction field computation (Feature 002)
-    FieldDerivativeSystem(),  # 20. Spatial/temporal derivatives + principal (Feature 002)
-    CollapseTransitionSystem(),  # 20.5. Spec-070 sovereign-collapse + territory partition
-    EdgeTransitionSystem(),  # 21. Compound predicates + edge mode transitions (Feature 002)
-    WealthDistributionSystem(),  # 21.5. National wealth-share axis (Program 21 Phase-1 shadow; writes only its own axis)
-    EpistemicHorizonSystem(),  # 22. Fog-of-war M_r/I_c shadow (Epistemic Horizon Phase 1) — LAST, observes fully-mutated tick
+    cls() for cls in sorted(_SYSTEM_CLASSES, key=lambda c: c.position)
 ]
 
 
-# Spec 056 (FR-002): three canonical sets partitioning _DEFAULT_SYSTEMS
-# into Material Base / Action Phase / Consequences. Single source of
-# truth for spec-056 US1 + US2 invariants. Adding a new System to
-# _DEFAULT_SYSTEMS MUST also add it to exactly one of these sets;
-# the import-time assertion below catches drift.
-MATERIAL_BASE_SYSTEMS: Final[frozenset[type[System]]] = frozenset(
-    {
-        VitalitySystem,
-        TerritorySystem,
-        SubstrateSystem,  # Spec 062, US7: physical substrate stocks
-        ProductionSystem,
-        TickDynamicsSystem,
-        ReserveArmySystem,
-        CommunitySystem,
-        LifecycleSystem,
-        SolidaritySystem,
-        ImperialRentSystem,
-        DispossessionEventSystem,
-        DecompositionSystem,
-        ControlRatioSystem,
-        MetabolismSystem,
-    }
+def _partition_members(partition: TickPartition) -> frozenset[type[System]]:
+    """Registry classes declaring ``partition`` (the spec-056 FR-002 sets)."""
+    return frozenset(cls for cls in _SYSTEM_CLASSES if cls.partition is partition)
+
+
+# Spec 056 (FR-002): the three canonical sets partitioning the tick — now DERIVED
+# from the per-System `partition` ClassVar (were three hand-maintained frozensets
+# kept in sync with `_DEFAULT_SYSTEMS` by import-time assertions). By construction
+# they partition `_SYSTEM_CLASSES` exactly and are pairwise disjoint (each System
+# declares exactly one partition), so the old drift/overlap assertions are obsolete.
+MATERIAL_BASE_SYSTEMS: Final[frozenset[type[System]]] = _partition_members(
+    TickPartition.MATERIAL_BASE
 )
+ACTION_PHASE_SYSTEMS: Final[frozenset[type[System]]] = _partition_members(TickPartition.ACTION)
+CONSEQUENCE_SYSTEMS: Final[frozenset[type[System]]] = _partition_members(TickPartition.CONSEQUENCE)
 
-ACTION_PHASE_SYSTEMS: Final[frozenset[type[System]]] = frozenset({OODASystem})
-
-CONSEQUENCE_SYSTEMS: Final[frozenset[type[System]]] = frozenset(
-    {
-        SurvivalSystem,
-        StruggleSystem,
-        ConsciousnessSystem,
-        FascistFactionSystem,  # Spec-071 reactionary subject (position 17.4)
-        FactionInfluenceSystem,  # Spec-070 FR-042 (research.md R-003)
-        SovereigntySystem,  # Spec-070 FR-042
-        CollapseTransitionSystem,  # Spec-070 FR-042
-        ContradictionSystem,
-        ContradictionFieldSystem,
-        FieldDerivativeSystem,
-        EdgeTransitionSystem,
-        WealthDistributionSystem,  # Program 21 Phase-1 shadow (national wealth-share axis)
-        MarketScissorsSystem,  # Program 23 Phase-1 shadow (price⟷value scissors axis)
-        EpistemicHorizonSystem,  # Epistemic Horizon Phase 1 shadow (observes consequences)
-        DoctrineSystem,  # Doctrine Tree per-org state (owner-ratified 2026-07-15)
-    }
+# Belt-and-suspenders: every registered System landed in exactly one partition.
+_PARTITIONED_COUNT: Final[int] = (
+    len(MATERIAL_BASE_SYSTEMS) + len(ACTION_PHASE_SYSTEMS) + len(CONSEQUENCE_SYSTEMS)
 )
-
-
-# T005: import-time partition integrity assertion.
-# A new System added to _DEFAULT_SYSTEMS without classification raises
-# AssertionError on the next test collection.
-_ALL_PARTITIONED: Final[frozenset[type[System]]] = (
-    MATERIAL_BASE_SYSTEMS | ACTION_PHASE_SYSTEMS | CONSEQUENCE_SYSTEMS
-)
-_DEFAULT_SYSTEM_TYPES: Final[frozenset[type[System]]] = frozenset(type(s) for s in _DEFAULT_SYSTEMS)
-if _ALL_PARTITIONED != _DEFAULT_SYSTEM_TYPES:
+if len(_SYSTEM_CLASSES) != _PARTITIONED_COUNT:  # pragma: no cover — TickPartition has 3 members
     raise RuntimeError(
-        f"Spec 056 partition drift: System(s) "
-        f"{_DEFAULT_SYSTEM_TYPES ^ _ALL_PARTITIONED} are in _DEFAULT_SYSTEMS "
-        f"but not classified into MATERIAL_BASE_SYSTEMS / ACTION_PHASE_SYSTEMS "
-        f"/ CONSEQUENCE_SYSTEMS (or vice versa). Add the new System(s) to "
-        f"exactly one of the three sets in simulation_engine.py."
-    )
-if not MATERIAL_BASE_SYSTEMS.isdisjoint(ACTION_PHASE_SYSTEMS):
-    raise RuntimeError(
-        "Spec 056 partition violation: MATERIAL_BASE_SYSTEMS and ACTION_PHASE_SYSTEMS overlap"
-    )
-if not MATERIAL_BASE_SYSTEMS.isdisjoint(CONSEQUENCE_SYSTEMS):
-    raise RuntimeError(
-        "Spec 056 partition violation: MATERIAL_BASE_SYSTEMS and CONSEQUENCE_SYSTEMS overlap"
-    )
-if not ACTION_PHASE_SYSTEMS.isdisjoint(CONSEQUENCE_SYSTEMS):
-    raise RuntimeError(
-        "Spec 056 partition violation: ACTION_PHASE_SYSTEMS and CONSEQUENCE_SYSTEMS overlap"
+        "TickPartition coverage gap: a registered System declares a partition "
+        "outside MATERIAL_BASE / ACTION / CONSEQUENCE."
     )
 
 _DEFAULT_ENGINE = SimulationEngine(_DEFAULT_SYSTEMS)
 
 
-def _convert_bus_event_to_pydantic(event: Event) -> SimulationEvent | None:  # noqa: C901
-    """Convert EventBus Event to typed Pydantic SimulationEvent.
+def _convert_bus_event_to_pydantic(event: Event) -> SimulationEvent | None:
+    """Convert an EventBus Event to a typed Pydantic SimulationEvent.
 
-    Args:
-        event: The EventBus Event dataclass with type, tick, payload.
+    Thin dispatcher over :data:`babylon.engine.event_builders.EVENT_BUILDERS`.
+    Unsupported or unregistered EventTypes return ``None`` (graceful
+    degradation — callers filter ``None``); an unknown event-type string
+    returns ``None`` too. The per-EventType construction logic lives in
+    :mod:`babylon.engine.event_builders`.
 
-    Returns:
-        A typed SimulationEvent subclass, or None if unsupported event type.
-
-    Note:
-        This function handles graceful degradation - unsupported event types
-        return None rather than raising an error. The caller should filter
-        out None values.
-
-    Sprint 3.1+: Supports all 10 EventTypes except SOLIDARITY_AWAKENING.
-    Program 17 item 1b: widened to 34 of 79 EventTypes.
-    Wave 1 item W1.1: widened to 44 of 79 EventTypes.
-    Unit 6a (ADR073): widened to 47 of 82 EventTypes (DOCTRINE_TRAP_SPRUNG /
-    DOCTRINE_TRAP_ESCAPED / DOCTRINE_PURGE_FAILED).
+    :param event: The EventBus Event dataclass with type, tick, payload.
+    :returns: A typed SimulationEvent subclass, or ``None`` if unconvertible.
     """
-    # Normalize event type (may be string or EventType enum)
-    event_type = event.type
-    if isinstance(event_type, str):
+    raw_type = event.type
+    if isinstance(raw_type, EventType):
+        event_type = raw_type
+    else:
         try:
-            event_type = EventType(event_type)
+            event_type = EventType(raw_type)
         except ValueError:
             return None
-
-    tick = event.tick
-    timestamp = event.timestamp
-    payload = event.payload
-
-    # Economic Events
-    if event_type == EventType.SURPLUS_EXTRACTION:
-        return ExtractionEvent(
-            tick=tick,
-            timestamp=timestamp,
-            source_id=payload.get("source_id", ""),
-            target_id=payload.get("target_id", ""),
-            amount=payload.get("amount", 0.0),
-            mechanism=payload.get("mechanism", "imperial_rent"),
-        )
-
-    if event_type == EventType.IMPERIAL_SUBSIDY:
-        return SubsidyEvent(
-            tick=tick,
-            timestamp=timestamp,
-            source_id=payload.get("source_id", ""),
-            target_id=payload.get("target_id", ""),
-            amount=payload.get("amount", 0.0),
-            repression_boost=payload.get("repression_boost", 0.0),
-        )
-
-    if event_type == EventType.ECONOMIC_CRISIS:
-        return CrisisEvent(
-            tick=tick,
-            timestamp=timestamp,
-            pool_ratio=payload.get("pool_ratio", 0.0),
-            aggregate_tension=payload.get("aggregate_tension", 0.0),
-            decision=payload.get("decision", "UNKNOWN"),
-            wage_delta=payload.get("wage_delta", 0.0),
-        )
-
-    # Consciousness Events
-    if event_type == EventType.CONSCIOUSNESS_TRANSMISSION:
-        return TransmissionEvent(
-            tick=tick,
-            timestamp=timestamp,
-            source_id=payload.get("source_id", ""),
-            target_id=payload.get("target_id", ""),
-            delta=payload.get("delta", 0.0),
-            solidarity_strength=payload.get("solidarity_strength", 0.0),
-        )
-
-    if event_type == EventType.MASS_AWAKENING:
-        return MassAwakeningEvent(
-            tick=tick,
-            timestamp=timestamp,
-            target_id=payload.get("target_id", ""),
-            old_consciousness=payload.get("old_consciousness", 0.0),
-            new_consciousness=payload.get("new_consciousness", 0.0),
-            triggering_source=payload.get("triggering_source", ""),
-        )
-
-    # Struggle Events (Agency Layer - George Floyd Dynamic)
-    if event_type == EventType.EXCESSIVE_FORCE:
-        return SparkEvent(
-            tick=tick,
-            timestamp=timestamp,
-            node_id=payload.get("node_id", ""),
-            repression=payload.get("repression", 0.0),
-            spark_probability=payload.get("spark_probability", 0.0),
-        )
-
-    if event_type == EventType.UPRISING:
-        return UprisingEvent(
-            tick=tick,
-            timestamp=timestamp,
-            node_id=payload.get("node_id", ""),
-            trigger=payload.get("trigger", "unknown"),
-            agitation=payload.get("agitation", 0.0),
-            repression=payload.get("repression", 0.0),
-        )
-
-    if event_type == EventType.SOLIDARITY_SPIKE:
-        return SolidaritySpikeEvent(
-            tick=tick,
-            timestamp=timestamp,
-            node_id=payload.get("node_id", ""),
-            solidarity_gained=payload.get("solidarity_gained", 0.0),
-            edges_affected=payload.get("edges_affected", 0),
-            triggered_by=payload.get("triggered_by", "unknown"),
-        )
-
-    # Contradiction Events
-    if event_type == EventType.RUPTURE:
-        # Lawverian (Phase C1): frame-level payload {opposition, gap, rate};
-        # ``edge`` retained (default "") for older per-edge callers.
-        return RuptureEvent(
-            tick=tick,
-            timestamp=timestamp,
-            edge=payload.get("edge", ""),
-            opposition=payload.get("opposition", ""),
-            gap=payload.get("gap", 0.0),
-            rate=payload.get("rate", 0.0),
-        )
-
-    # Topology Events (Sprint 3.3)
-    if event_type == EventType.PHASE_TRANSITION:
-        return PhaseTransitionEvent(
-            tick=tick,
-            timestamp=timestamp,
-            previous_state=payload.get("previous_state", ""),
-            new_state=payload.get("new_state", ""),
-            percolation_ratio=payload.get("percolation_ratio", 0.0),
-            num_components=payload.get("num_components", 0),
-            largest_component_size=payload.get("largest_component_size", 0),
-            cadre_density=payload.get("cadre_density", 0.0),
-            is_resilient=payload.get("is_resilient"),
-        )
-
-    # Carceral Equilibrium Events (Sprint 3.4+)
-    if event_type == EventType.SUPERWAGE_CRISIS:
-        return SuperwageCrisisEvent(
-            tick=tick,
-            timestamp=timestamp,
-            payer_id=payload.get("payer_id", ""),
-            receiver_id=payload.get("receiver_id", ""),
-            desired_wages=payload.get("desired_wages", 0.0),
-            available_pool=payload.get("available_pool", 0.0),
-        )
-
-    if event_type == EventType.CLASS_DECOMPOSITION:
-        return ClassDecompositionEvent(
-            tick=tick,
-            timestamp=timestamp,
-            original_id=payload.get("source_class", ""),  # Field name from decomposition.py
-            enforcer_fraction=payload.get("enforcer_fraction", 0.3),
-            proletariat_fraction=payload.get("proletariat_fraction", 0.7),
-        )
-
-    if event_type == EventType.CONTROL_RATIO_CRISIS:
-        return ControlRatioCrisisEvent(
-            tick=tick,
-            timestamp=timestamp,
-            prisoner_population=payload.get("prisoner_population", 0),
-            enforcer_population=payload.get("enforcer_population", 0),
-            control_ratio=payload.get("control_ratio", 0.0),
-            capacity_threshold=payload.get("capacity_threshold", 0.0),
-        )
-
-    if event_type == EventType.TERMINAL_DECISION:
-        return TerminalDecisionEvent(
-            tick=tick,
-            timestamp=timestamp,
-            outcome=payload.get("outcome", "genocide"),
-            avg_organization=payload.get("avg_organization", 0.0),
-            revolution_threshold=payload.get("revolution_threshold", 0.0),
-        )
-
-    # Spec-070 Balkanization events (Program 17 item 1b)
-    if event_type == EventType.SOVEREIGN_COLLAPSE:
-        return SovereignCollapsePayload(
-            tick=tick,
-            timestamp=timestamp,
-            sovereign_id=payload.get("sovereign_id", ""),
-            trigger=payload.get("trigger", "legitimacy_zero"),
-            claimed_territories_count=payload.get("claimed_territories_count", 0),
-        )
-
-    if event_type == EventType.TERRITORY_TRANSITION:
-        return TerritoryTransitionPayload(
-            tick=tick,
-            timestamp=timestamp,
-            territory_id=payload.get("territory_id", ""),
-            from_sovereign_id=payload.get("from_sovereign_id"),
-            to_sovereign_id=payload.get("to_sovereign_id"),
-            from_winning_faction_id=payload.get("from_winning_faction_id"),
-            to_winning_faction_id=payload.get("to_winning_faction_id"),
-            reason=payload.get("reason", "influence_flip"),
-        )
-
-    if event_type == EventType.FACTION_VICTORY:
-        return FactionVictoryPayload(
-            tick=tick,
-            timestamp=timestamp,
-            faction_id=payload.get("faction_id", ""),
-            aggregate_influence_share=payload.get("aggregate_influence_share", 0.0),
-        )
-
-    if event_type == EventType.CIVIL_WAR_DECLARED:
-        return CivilWarDeclaredPayload(
-            tick=tick,
-            timestamp=timestamp,
-            parent_sovereign_id=payload.get("parent_sovereign_id", ""),
-            secessionist_faction_id=payload.get("secessionist_faction_id", ""),
-            contested_territory_count=payload.get("contested_territory_count", 0),
-        )
-
-    if event_type == EventType.RED_SETTLER_TRAP_DETECTED:
-        return RedSettlerTrapDetectedPayload(
-            tick=tick,
-            timestamp=timestamp,
-            faction_id=payload.get("faction_id", ""),
-            class_reduction=payload.get("class_reduction", 0.0),
-            colonial_stance=payload.get("colonial_stance", "uphold"),
-        )
-
-    if event_type == EventType.DUAL_POWER_ACTIVE:
-        return DualPowerActivePayload(
-            tick=tick,
-            timestamp=timestamp,
-            territory_id=payload.get("territory_id", ""),
-            competing_sovereign_ids=tuple(payload.get("competing_sovereign_ids", ())),
-            control_level_sum=payload.get("control_level_sum", 0.0),
-        )
-
-    # Spec-071 reactionary/fascist-drift events (Program 17 item 1b)
-    if event_type == EventType.FASCIST_DRIFT:
-        return FascistDriftEvent(
-            tick=tick,
-            timestamp=timestamp,
-            node_id=payload.get("node_id", ""),
-            fascist_pull=payload.get("fascist_pull", 0.0),
-            fascist_alignment=payload.get("fascist_alignment", 0.0),
-            entitlement=payload.get("entitlement", 0.0),
-            solidarity=payload.get("solidarity", 0.0),
-            regime=payload.get("regime"),
-        )
-
-    if event_type == EventType.FASCIST_RECRUITMENT:
-        return FascistRecruitmentEvent(
-            tick=tick,
-            timestamp=timestamp,
-            node_id=payload.get("node_id", ""),
-            faction_id=payload.get("faction_id", ""),
-            fascist_alignment=payload.get("fascist_alignment", 0.0),
-        )
-
-    if event_type == EventType.ORGANIZATIONAL_FRACTURE:
-        return OrganizationalFractureEvent(
-            tick=tick,
-            timestamp=timestamp,
-            org_id=payload.get("org_id", ""),
-            member_id=payload.get("member_id", ""),
-            chauvinism=payload.get("chauvinism", 0.0),
-            defection_probability=payload.get("defection_probability", 0.0),
-        )
-
-    if event_type == EventType.RED_BROWN_COUP:
-        return RedBrownCoupEvent(
-            tick=tick,
-            timestamp=timestamp,
-            org_id=payload.get("org_id", ""),
-            defections=payload.get("defections", 0),
-            member_count=payload.get("member_count", 0),
-        )
-
-    # Feature-030 lifecycle/legitimation/inheritance events (Program 17 item 1b)
-    if event_type == EventType.LIFECYCLE_TRANSITION:
-        return LifecycleTransitionEvent(
-            tick=tick,
-            timestamp=timestamp,
-            territory_id=payload.get("territory_id", ""),
-            pop_d=payload.get("pop_d", 0.0),
-            pop_p=payload.get("pop_p", 0.0),
-            pop_d_prime=payload.get("pop_d_prime", 0.0),
-            dependency_ratio=payload.get("dependency_ratio", 0.0),
-        )
-
-    if event_type == EventType.LEGITIMATION_CRISIS:
-        return LegitimationCrisisEvent(
-            tick=tick,
-            timestamp=timestamp,
-            territory_id=payload.get("territory_id", ""),
-            legitimation_index=payload.get("legitimation_index", 0.0),
-        )
-
-    if event_type == EventType.LEGITIMATION_RECOVERY:
-        return LegitimationRecoveryEvent(
-            tick=tick,
-            timestamp=timestamp,
-            territory_id=payload.get("territory_id", ""),
-            legitimation_index=payload.get("legitimation_index", 0.0),
-        )
-
-    if event_type == EventType.INHERITANCE_TRANSFER:
-        return InheritanceTransferEvent(
-            tick=tick,
-            timestamp=timestamp,
-            territory_id=payload.get("territory_id", ""),
-            total_transferred=payload.get("total_transferred", 0.0),
-            care_consumed=payload.get("care_consumed", 0.0),
-            net_inheritance=payload.get("net_inheritance", 0.0),
-            inheritance_gini=payload.get("inheritance_gini", 0.0),
-        )
-
-    # Feature-040 institution events (Program 17 item 1b) - dead-until-wired,
-    # see institution_payloads.py module docstring.
-    if event_type == EventType.INSTITUTION_FACTION_SHIFT:
-        return InstitutionFactionShiftEvent(
-            tick=tick,
-            timestamp=timestamp,
-            institution_id=payload.get("institution_id", ""),
-            old_fraction=payload.get("old_fraction", ""),
-            new_fraction=payload.get("new_fraction", ""),
-            weights=payload.get("weights", {}),
-        )
-
-    if event_type == EventType.INSTITUTION_BONAPARTIST_MODE:
-        return InstitutionBonapartistModeEvent(
-            tick=tick,
-            timestamp=timestamp,
-            institution_id=payload.get("institution_id", ""),
-            bonapartist_weight=payload.get("bonapartist_weight", 0.0),
-        )
-
-    # Feature-002 contradiction-field event (Program 17 item 1b)
-    if event_type == EventType.PRINCIPAL_CONTRADICTION_SHIFT:
-        return PrincipalContradictionShiftEvent(
-            tick=tick,
-            timestamp=timestamp,
-            previous_field=payload.get("previous_field"),
-            new_field=payload.get("new_field", ""),
-            max_abs_df_dt=payload.get("max_abs_df_dt", 0.0),
-        )
-
-    # Feature-032 OODA events (Program 17 item 1b) - STATE_REPRESSION/
-    # STATE_SURVEILLANCE are speculative, see ooda_payloads.py module docstring.
-    if event_type == EventType.ORGANIZATIONAL_ACTION:
-        return OrganizationalActionEvent(
-            tick=tick,
-            timestamp=timestamp,
-            layer0_count=payload.get("layer0_count", 0),
-            action_count=payload.get("action_count", 0),
-            org_count=payload.get("org_count", 0),
-        )
-
-    if event_type == EventType.STATE_REPRESSION:
-        return StateRepressionEvent(
-            tick=tick,
-            timestamp=timestamp,
-            org_id=payload.get("org_id", ""),
-            target_id=payload.get("target_id", ""),
-            backfire_delta=payload.get("backfire_delta", 0.0),
-        )
-
-    if event_type == EventType.STATE_SURVEILLANCE:
-        return StateSurveillanceEvent(
-            tick=tick,
-            timestamp=timestamp,
-            org_id=payload.get("org_id", ""),
-            target_id=payload.get("target_id", ""),
-            backfire_delta=payload.get("backfire_delta", 0.0),
-        )
-
-    # Wave 1 item W1.1 struggle-system events (Program 17 / struggle.py)
-    if event_type == EventType.POWER_VACUUM:
-        return PowerVacuumEvent(
-            tick=tick,
-            timestamp=timestamp,
-            comprador_id=payload.get("comprador_id", ""),
-            comprador_wealth=payload.get("comprador_wealth", 0.0),
-            subsistence_threshold=payload.get("subsistence_threshold", 0.0),
-            revolutionary_capacity=payload.get("revolutionary_capacity", 0.0),
-            jackson_threshold=payload.get("jackson_threshold", 0.0),
-        )
-
-    if event_type == EventType.REVOLUTIONARY_OFFENSIVE:
-        return RevolutionaryOffensiveEvent(
-            tick=tick,
-            timestamp=timestamp,
-            periphery_id=payload.get("periphery_id", ""),
-            revolutionary_capacity=payload.get("revolutionary_capacity", 0.0),
-            agitation_boost=payload.get("agitation_boost", 0.0),
-            narrative_hint=payload.get("narrative_hint", ""),
-        )
-
-    if event_type == EventType.FASCIST_REVANCHISM:
-        return FascistRevanchismEvent(
-            tick=tick,
-            timestamp=timestamp,
-            core_worker_id=payload.get("core_worker_id"),
-            revolutionary_capacity=payload.get("revolutionary_capacity", 0.0),
-            identity_boost=payload.get("identity_boost", 0.0),
-            acquiescence_boost=payload.get("acquiescence_boost", 0.0),
-            narrative_hint=payload.get("narrative_hint", ""),
-        )
-
-    if event_type == EventType.SPONTANEOUS_RIOT:
-        return SpontaneousRiotEvent(
-            tick=tick,
-            timestamp=timestamp,
-            node_id=payload.get("node_id", ""),
-            volatility=payload.get("volatility", 0.0),
-            organizational_discipline=payload.get("organizational_discipline", 0.0),
-            riot_risk=payload.get("riot_risk", 0.0),
-            wealth_before=payload.get("wealth_before", 0.0),
-            wealth_after=payload.get("wealth_after", 0.0),
-            narrative_hint=payload.get("narrative_hint", ""),
-        )
-
-    if event_type == EventType.PERIPHERAL_REVOLT:
-        return PeripheralRevoltEvent(
-            tick=tick,
-            timestamp=timestamp,
-            node_id=payload.get("node_id", ""),
-            edges_severed=payload.get("edges_severed", 0),
-            p_acquiescence=payload.get("p_acquiescence", 0.0),
-            p_revolution=payload.get("p_revolution", 0.0),
-            capital_labor_gap=payload.get("capital_labor_gap", 0.0),
-            narrative_hint=payload.get("narrative_hint", ""),
-        )
-
-    # Wave 1 item W1.1 dispossession/reserve-army/metabolism events
-    if event_type == EventType.DISPOSSESSION_EVENT:
-        return DispossessionEvent(
-            tick=tick,
-            timestamp=timestamp,
-            territory=payload.get("territory", ""),
-            intensity=payload.get("intensity", 0.0),
-            foreclosure_rate=payload.get("foreclosure_rate", 0.0),
-            eviction_rate=payload.get("eviction_rate", 0.0),
-            displacement_rate=payload.get("displacement_rate", 0.0),
-        )
-
-    if event_type == EventType.VALUE_TRANSFER:
-        return ValueTransferEvent(
-            tick=tick,
-            timestamp=timestamp,
-            territory=payload.get("territory", ""),
-            total_transferred=payload.get("total_transferred", 0.0),
-            net_received=payload.get("net_received", 0.0),
-            deadweight_loss=payload.get("deadweight_loss", 0.0),
-        )
-
-    if event_type == EventType.RESERVE_ARMY_PRESSURE:
-        return ReserveArmyPressureEvent(
-            tick=tick,
-            timestamp=timestamp,
-            territory=payload.get("territory", ""),
-            reserve_ratio=payload.get("reserve_ratio", 0.0),
-            wage_pressure=payload.get("wage_pressure", 0.0),
-            median_wage=payload.get("median_wage", 0.0),
-        )
-
-    # DISPOSSESSION_CASCADE's live publish site (TickDynamicsSystem) emits
-    # ``EventType.DISPOSSESSION_CASCADE.value`` (a string), not the enum
-    # member; the isinstance(str) normalization at the top of this function
-    # already converts it back to the enum before this comparison runs.
-    if event_type == EventType.DISPOSSESSION_CASCADE:
-        return DispossessionCascadeEvent(
-            tick=tick,
-            timestamp=timestamp,
-            fips=payload.get("fips", ""),
-            cumulative_la_decline=payload.get("cumulative_la_decline", 0.0),
-            milestone_crossed=payload.get("milestone_crossed", 0.0),
-            current_la_share=payload.get("current_la_share", 0.0),
-            baseline_la_share=payload.get("baseline_la_share", 0.0),
-        )
-
-    if event_type == EventType.ECOLOGICAL_OVERSHOOT:
-        return EcologicalOvershootEvent(
-            tick=tick,
-            timestamp=timestamp,
-            overshoot_ratio=payload.get("overshoot_ratio", 0.0),
-            total_consumption=payload.get("total_consumption", 0.0),
-            total_biocapacity=payload.get("total_biocapacity", 0.0),
-        )
-
-    # ADR073 Doctrine Tree events (Unit 6a — doctrine.py::DoctrineSystem.step)
-    if event_type == EventType.DOCTRINE_TRAP_SPRUNG:
-        return DoctrineTrapSprungEvent(
-            tick=tick,
-            timestamp=timestamp,
-            org_id=payload.get("org_id", ""),
-            node_id=payload.get("node_id", ""),
-        )
-
-    if event_type == EventType.DOCTRINE_TRAP_ESCAPED:
-        return DoctrineTrapEscapedEvent(
-            tick=tick,
-            timestamp=timestamp,
-            org_id=payload.get("org_id", ""),
-            node_id=payload.get("node_id", ""),
-        )
-
-    if event_type == EventType.DOCTRINE_PURGE_FAILED:
-        return DoctrinePurgeFailedEvent(
-            tick=tick,
-            timestamp=timestamp,
-            org_id=payload.get("org_id", ""),
-            node_id=payload.get("node_id", ""),
-        )
-
-    # Feature 002 events (EDGE_MODE_TRANSITION, CO_OPTIVE_BREAKDOWN,
-    # LATENT_CONTRADICTION_RELEASE, ASPECT_REVERSAL) and other unsupported
-    # event types - graceful degradation
-    return None
+    builder = EVENT_BUILDERS.get(event_type)
+    if builder is None:
+        return None
+    return builder(event.tick, event.timestamp, event.payload)
 
 
 def _restore_graph_context(

@@ -96,4 +96,17 @@ describe("TopBar", () => {
     render(<TopBar gameId={DEFAULT_GAME_ID} />);
     expect(screen.getByTestId("time-status")).toBeInTheDocument();
   });
+
+  it("renders a real profit rate once the year boundary lands (spec-116 4d.9)", async () => {
+    server.use(
+      http.get("/api/games/:id/summary/", () =>
+        HttpResponse.json({
+          status: "ok",
+          data: makeGameSummaryPayload({ profit_rate: 0.153 }),
+        }),
+      ),
+    );
+    render(<TopBar gameId={DEFAULT_GAME_ID} />);
+    await waitFor(() => expect(screen.getByTestId("stat-profit")).toHaveTextContent("0.153"));
+  });
 });

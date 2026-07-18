@@ -162,3 +162,34 @@
   letter-spacing: 0.22em;
   text-transform: uppercase;
 }
+
+/* Spec-116 FR-116-4.2 — six distinct epilogues, three palettes. Additive:
+   the ratified end-state-* rules above are unchanged. */
+.end-state--unresolved {
+  background: radial-gradient(ellipse at center, #0a1418 0%, var(--babylon-void) 75%);
+}
+
+.end-state--unresolved .end-state-kicker {
+  color: var(--babylon-spire);
+  text-shadow: 0 0 16px rgba(77, 217, 230, 0.4);
+}
+
+.end-state--unresolved .end-state-headline {
+  color: var(--babylon-bone);
+}
+
+.end-state-accepted {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  letter-spacing: 0.22em;
+  text-transform: uppercase;
+  color: var(--babylon-ash);
+  margin-bottom: 16px;
+}
+
+.end-state-epilogue-body {
+  font-size: 16px;
+  color: var(--babylon-bone);
+  line-height: 1.7;
+  margin-bottom: 36px;
+}

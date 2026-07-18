@@ -16,6 +16,7 @@ to develop consciousness from their material exploitation.
 
 import pytest
 
+from babylon.engine.context import TickContext
 from babylon.engine.services import ServiceContainer
 from babylon.engine.systems.ideology import ConsciousnessSystem
 from babylon.models.entity_registry import (
@@ -58,7 +59,7 @@ class TestConsciousnessSystemWealthTracking:
         services = ServiceContainer.create()
         system = ConsciousnessSystem()
         # When using dict context, system stores directly in the dict (not nested)
-        context: dict[str, object] = {"tick": 0}
+        context = TickContext(tick=0)
 
         # Act: First tick establishes baseline
         system.step(graph, services, context)
@@ -93,7 +94,7 @@ class TestConsciousnessSystemWealthTracking:
 
         services = ServiceContainer.create()
         system = ConsciousnessSystem()
-        context: dict[str, object] = {"tick": 0}
+        context = TickContext(tick=0)
 
         # First tick: establishes baseline wealth
         system.step(graph, services, context)
@@ -135,7 +136,7 @@ class TestConsciousnessSystemWealthTracking:
 
         services = ServiceContainer.create()
         system = ConsciousnessSystem()
-        context: dict[str, object] = {"tick": 0}
+        context = TickContext(tick=0)
 
         # First tick
         system.step(graph, services, context)
@@ -199,7 +200,7 @@ class TestConsciousnessSystemWealthTracking:
 
         services = ServiceContainer.create()
         system = ConsciousnessSystem()
-        context: dict[str, object] = {"tick": 0}
+        context = TickContext(tick=0)
 
         # First tick
         system.step(graph, services, context)
@@ -252,7 +253,7 @@ class TestConsciousnessSystemWealthTracking:
 
             services = ServiceContainer.create()
             system = ConsciousnessSystem()
-            context: dict[str, object] = {"tick": 0}
+            context = TickContext(tick=0)
             system.step(graph, services, context)
             graph.nodes[PERIPHERY_WORKER_ID]["wealth"] = 0.3  # extraction crisis
             context["tick"] = 1
@@ -289,7 +290,7 @@ class TestConsciousnessSystemWealthTracking:
 
         services = ServiceContainer.create()
         system = ConsciousnessSystem()
-        context: dict[str, object] = {"tick": 0}
+        context = TickContext(tick=0)
 
         # First tick
         system.step(graph, services, context)
@@ -361,7 +362,7 @@ class TestConsciousnessSystemPersistentContext:
 
         services = ServiceContainer.create()
         system = ConsciousnessSystem()
-        context: dict[str, object] = {"tick": 0}
+        context = TickContext(tick=0)
 
         # Act: Should not raise
         system.step(graph, services, context)
@@ -419,7 +420,7 @@ class TestWageOppositionCrisisGate:
         }
         services = ServiceContainer.create()
         system = ConsciousnessSystem()
-        system.step(graph, services, {"tick": 1})
+        system.step(graph, services, TickContext(tick=1))
 
         ideology = graph.nodes[PERIPHERY_WORKER_ID]["ideology"]
         assert ideology["agitation"] == pytest.approx(0.0), (
@@ -437,7 +438,7 @@ class TestWageOppositionCrisisGate:
         }
         services = ServiceContainer.create()
         system = ConsciousnessSystem()
-        system.step(graph, services, {"tick": 1})
+        system.step(graph, services, TickContext(tick=1))
 
         ideology = graph.nodes[PERIPHERY_WORKER_ID]["ideology"]
         assert ideology["agitation"] > 0.0, (
@@ -454,6 +455,6 @@ class TestWageOppositionCrisisGate:
             }
             services = ServiceContainer.create()
             system = ConsciousnessSystem()
-            system.step(graph, services, {"tick": 1})
+            system.step(graph, services, TickContext(tick=1))
             ideology = graph.nodes[PERIPHERY_WORKER_ID]["ideology"]
             assert ideology["agitation"] == pytest.approx(0.0)

@@ -66,6 +66,7 @@ from babylon.domain.economics.tick.types import (
 )
 from babylon.formulas.constants import HOURS_PER_YEAR, WEEKS_PER_YEAR
 from babylon.kernel.system_base import SystemBase
+from babylon.kernel.tick_partition import TickPartition
 
 if TYPE_CHECKING:
     from babylon.kernel.graph_protocol import GraphProtocol
@@ -94,6 +95,9 @@ class TickDynamicsSystem(SystemBase):
         >>> system.step(graph, services, context)
     """
 
+    partition: ClassVar[TickPartition] = TickPartition.MATERIAL_BASE
+    position: ClassVar[float] = 4.0
+
     name: ClassVar[str] = "tick_dynamics"
 
     def __init__(self) -> None:
@@ -118,13 +122,7 @@ class TickDynamicsSystem(SystemBase):
             context: TickContext or dict with tick number.
         """
         # Extract tick number
-        tick: int
-        if hasattr(context, "tick"):
-            tick = context.tick
-        elif isinstance(context, dict):
-            tick = context.get("tick", 0)
-        else:
-            tick = 0
+        tick: int = context.tick
 
         # Gate: the annual pipeline below executes only on year boundaries
         # (FR-024) — unchanged. Spec-109 A7 (owner item 25 pt. 2): between

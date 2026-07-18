@@ -18,6 +18,7 @@ from babylon.formulas.consciousness_routing import (
     compute_reification_buffer,
     route_agitation_to_ternary,
 )
+from babylon.kernel.tick_partition import TickPartition
 from babylon.models.enums import EdgeType
 
 if TYPE_CHECKING:
@@ -83,6 +84,9 @@ class ConsciousnessSystem(SystemBase):
     - Routes agitation to either class_consciousness or national_identity
     """
 
+    partition: ClassVar[TickPartition] = TickPartition.CONSEQUENCE
+    position: ClassVar[float] = 17.0
+
     name: ClassVar[str] = "Consciousness Drift"
     # Spec 053 INV-001: does not mutate hex c+v+s; opted in by default-deny.
     creates_value: ClassVar[bool] = False
@@ -98,10 +102,7 @@ class ConsciousnessSystem(SystemBase):
         # Handle both TickContext (with persistent_data) and raw dict
         # TickContext stores persistent data in .persistent_data attribute
         # Raw dict stores persistent data directly
-        if hasattr(context, "persistent_data"):
-            persistent: dict[str, Any] = context.persistent_data
-        else:
-            persistent = context
+        persistent: dict[str, Any] = context.persistent_data
 
         # Lawverian wage-opposition deterioration (C1.5, signed in the Phase D
         # review). ContradictionSystem (position 18) stashes the registry

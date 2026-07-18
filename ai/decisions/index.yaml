@@ -1,9 +1,24 @@
 meta:
-  version: 1.26.0
-  updated: '2026-07-17'
+  version: 1.29.0
+  updated: '2026-07-18'
   description: Architecture Decision Records Index
   format: See individual ADR files in this directory
 decisions:
+  ADR081_declarative_system_ordering:
+    title: 'spec-116 systems-dedup Phase 4 — Declarative tick ordering: each System declares partition/position ClassVars; simulation_engine DERIVES _DEFAULT_SYSTEMS + the three spec-056 partition frozensets from them (was a hand-ordered list + three hand-maintained sets held in sync by import-time assertions)'
+    status: accepted
+    date: '2026-07-18'
+    file: ADR081_declarative_system_ordering.yaml
+  ADR080_redogv_domestic_sovereign_fallback:
+    title: 'Task R — RED_OGV seed repair: FR-040b domestic-sovereign fallback narrows SOV_EXTERIOR_NULL to genuine exterior nodes, unblocking the inert web-session sovereignty layer (RED_OGV / REVOLUTIONARY_VICTORY / UPHOLD reachability)'
+    status: accepted
+    date: '2026-07-17'
+    file: ADR080_redogv_domestic_sovereign_fallback.yaml
+  ADR079_playability_spine:
+    title: 'Program 24 sub-project 1 — The Playability Spine: fixed 100-year (5200-tick) campaign horizon replaces adjudicated endgame termination; the five terminal outcomes (REVOLUTIONARY_VICTORY, ECOLOGICAL_COLLAPSE, FASCIST_CONSOLIDATION, RED_OGV, FRAGMENTED_COLLAPSE) become recognized patterns the world can be in along the way, never terminators; event salience, lobby/briefing, and nine evidence-backed UI wirings connect existing engine riches to existing surfaces, plus a real-data ACQUIRE wave (FRED circulation/financial/Vol-I services) completing the economy cluster (spec-116, seeded with Task 1''s defines; EXECUTED at Task 25 — first-session trunk e2e, 6/6 acceptance gates met)'
+    status: accepted
+    date: '2026-07-17'
+    file: ADR079_playability_spine.yaml
   ADR078_market_correction:
     title: 'Program 23 Phase 2 — THE CORRECTION: price_value PROMOTED to canonical (crisis competes for principal contradiction); the snap fires on unserviceable fictitious overhang (serviceability = base + slope×profit_rate, honest-None fallback) into the material base — claim-holder wealth evaporation (ADR075 brackets 0/1), reserve-army influx where median_wage exists, conservation-preserving w1 velocity shock on the P21 wealth axis (spec-114 FR-114-4 form, same-tick stamp), MARKET_CORRECTION event (83rd); per-county scissors (market_county, observe-only) + price_divergence signed map lens; tick_summary.market_corrections (migration 0034) + correction chart markers + MELT-drift readout + diegetic MarketTicker in the Scissors tab; calibration behavioral contracts (envelope half-life, bubbles-outlive-price-swings, balanced-growth-never-fires); promotion ceremony executed — ALL qa baselines regenerated with per-scenario drift declared'
     status: accepted

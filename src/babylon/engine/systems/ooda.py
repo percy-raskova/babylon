@@ -16,6 +16,7 @@ from typing import TYPE_CHECKING, Any, ClassVar
 
 from babylon.kernel.system_base import SystemBase
 from babylon.kernel.system_protocol import ContextType
+from babylon.kernel.tick_partition import TickPartition
 from babylon.models.enums import EventType, OrgType
 from babylon.ooda.cycle_time import compute_cycle_time
 from babylon.ooda.initiative import (
@@ -32,6 +33,17 @@ if TYPE_CHECKING:
     from babylon.kernel.graph_protocol import GraphProtocol
     from babylon.kernel.services import ServicesProtocol
     from babylon.topology.graph import BabylonGraph
+
+
+#: spec-116 FR-116-4.7: ``ActionResult.events_generated`` values that surface
+#: as their own first-class bus events (payload = org/target + the resolver's
+#: ``direct_effects``) instead of drowning in the ORGANIZATIONAL_ACTION
+#: summary. Only the spec-071 reactionary verbs — STATE_REPRESSION /
+#: STATE_SURVEILLANCE keep their existing converter-only path so nothing
+#: double-delivers if a bus publisher lands for them later.
+_FIRST_CLASS_ACTION_EVENTS: frozenset[str] = frozenset(
+    {EventType.POGROM.value, EventType.LOCKOUT.value, EventType.VIGILANTISM.value}
+)
 
 
 def _compat_graph(graph: GraphProtocol) -> BabylonGraph:
@@ -62,6 +74,9 @@ class OODASystem(SystemBase):
     3. Layer 3 — consequence propagation
     """
 
+    partition: ClassVar[TickPartition] = TickPartition.ACTION
+    position: ClassVar[float] = 14.0
+
     # Spec 053 INV-001: does not mutate hex c+v+s; opted in by default-deny.
     creates_value: ClassVar[bool] = False
 
@@ -81,7 +96,7 @@ class OODASystem(SystemBase):
             context: TickContext or dict with 'tick'.
         """
         defines = services.defines.ooda
-        tick = context.get("tick", 0) if isinstance(context, dict) else getattr(context, "tick", 0)
+        tick = context.tick
 
         # Amendment L transition: subsystem helpers (layer0/layer3/effects)
         # still speak the nx-compat payload surface; narrow once here.
@@ -136,11 +151,8 @@ class OODASystem(SystemBase):
 
         # Get player actions from context
         player_actions: dict[str, Any] = {}
-        if isinstance(context, dict):
-            player_actions = context.get("persistent_data", {}).get("player_actions", {})
-        else:
-            pd = getattr(context, "persistent_data", {})
-            player_actions = pd.get("player_actions", {}) if isinstance(pd, dict) else {}
+        pd = getattr(context, "persistent_data", {})
+        player_actions = pd.get("player_actions", {}) if isinstance(pd, dict) else {}
 
         # Lift org_data_lookup outside the loop (was reconstructed per-iteration
         # in the original inline loop body; identical result, smaller alloc).
@@ -177,15 +189,33 @@ class OODASystem(SystemBase):
             layer3_effects=layer3_effects,
         )
         resolution_payload = resolution.model_dump(mode="json")
-        if isinstance(context, dict):
-            context.setdefault("persistent_data", {})["turn_resolution"] = resolution_payload
-        else:
-            context.persistent_data["turn_resolution"] = resolution_payload
+        context.persistent_data["turn_resolution"] = resolution_payload
 
-        # Emit summary event
+        # Emit events
         if services.event_bus:
             from babylon.kernel.event_bus import Event
 
+            # spec-116 FR-116-4.7: first-class reactionary verb events.
+            # Deterministic order (III.7): action_phase_results is
+            # initiative-ordered; events_generated iterates in list order.
+            for result in action_phase_results:
+                for event_value in result.events_generated:
+                    if event_value not in _FIRST_CLASS_ACTION_EVENTS:
+                        continue
+                    services.event_bus.publish(
+                        Event(
+                            type=EventType(event_value),
+                            tick=tick,
+                            payload={
+                                "org_id": result.action.org_id,
+                                "target_id": result.action.target_id,
+                                **result.direct_effects,
+                            },
+                        )
+                    )
+
+            # Emit summary event (unchanged — OrganizationalActionEvent
+            # consumers expect the aggregate counts payload)
             services.event_bus.publish(
                 Event(
                     type=EventType.ORGANIZATIONAL_ACTION,

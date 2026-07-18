@@ -146,3 +146,43 @@ class TestScissorsSeries:
         bridge = EngineBridge(persistence=_StubPersistence(rows))
         out = bridge.get_game_timeseries(uuid.uuid4())
         assert out["market_corrections"] == [0, 1, 1]
+
+
+class TestCrisisSeries:
+    """Task 19 (spec-116 4d.5): the crisis/bifurcation history arrays."""
+
+    def test_series_arrays_ride_the_payload(self) -> None:
+        rows = [
+            {
+                "tick": 0,
+                "crisis_pop_share": None,
+                "bifurcation_score_mean": None,
+                "wage_compression_mean": None,
+                "capital_stock_total": None,
+                "unemployment_rate_mean": None,
+            },
+            {
+                "tick": 1,
+                "crisis_pop_share": 0.75,
+                "bifurcation_score_mean": -0.3,
+                "wage_compression_mean": 0.15,
+                "capital_stock_total": 3e9,
+                "unemployment_rate_mean": 0.0875,
+            },
+        ]
+        bridge = EngineBridge(persistence=_StubPersistence(rows))
+        out = bridge.get_game_timeseries(uuid.uuid4())
+
+        assert out["crisis_pop_share"] == [None, 0.75]
+        assert out["bifurcation_score_mean"] == [None, -0.3]
+        assert out["wage_compression_mean"] == [None, 0.15]
+        assert out["capital_stock_total"] == [None, 3e9]
+        assert out["unemployment_rate_mean"] == [None, 0.0875]
+
+    def test_rows_without_series_columns_chart_as_gaps(self) -> None:
+        """Pre-0035 rows (rollout skew) become None slots, never 0.0."""
+        rows = [{"tick": 0, "imperial_rent": 1.0}]
+        bridge = EngineBridge(persistence=_StubPersistence(rows))
+        out = bridge.get_game_timeseries(uuid.uuid4())
+        assert out["crisis_pop_share"] == [None]
+        assert out["unemployment_rate_mean"] == [None]

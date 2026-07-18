@@ -27,6 +27,7 @@ from babylon.domain.economics.lifecycle.types import (
 from babylon.kernel.event_bus import Event
 from babylon.kernel.system_base import SystemBase
 from babylon.kernel.system_protocol import ContextType
+from babylon.kernel.tick_partition import TickPartition
 from babylon.models.enums import EventType, LegitimationClassification
 
 if TYPE_CHECKING:
@@ -45,6 +46,9 @@ class LifecycleSystem(SystemBase):
 
     Turn position: After CommunitySystem, before SolidaritySystem.
     """
+
+    partition: ClassVar[TickPartition] = TickPartition.MATERIAL_BASE
+    position: ClassVar[float] = 7.0
 
     name: ClassVar[str] = "Lifecycle Circuit"
     # Spec 053 INV-001: does not mutate hex c+v+s; opted in by default-deny.

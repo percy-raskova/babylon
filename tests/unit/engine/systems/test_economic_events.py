@@ -17,6 +17,7 @@ PPP Model Tests (Sprint PPP):
 
 import pytest
 
+from babylon.engine.context import TickContext
 from babylon.engine.services import ServiceContainer
 from babylon.engine.simulation_engine import step
 from babylon.engine.systems.economic import ImperialRentSystem
@@ -45,7 +46,7 @@ class TestImperialRentSystemEvents:
         graph.add_edge("worker", "owner", edge_type=EdgeType.EXPLOITATION)
 
         services = ServiceContainer.create()
-        context: dict[str, int] = {"tick": 5}
+        context = TickContext(tick=5)
         system = ImperialRentSystem()
 
         # Act
@@ -72,7 +73,7 @@ class TestImperialRentSystemEvents:
         graph.add_edge("worker", "owner", edge_type=EdgeType.EXPLOITATION)
 
         services = ServiceContainer.create()
-        context: dict[str, int] = {"tick": 1}
+        context = TickContext(tick=1)
         system = ImperialRentSystem()
 
         # Act
@@ -123,7 +124,7 @@ class TestPPPWagesModel:
             super_wage_rate=0.2,
         )
         services = ServiceContainer.create(config=high_sw_config)
-        context: dict[str, int] = {"tick": 1}
+        context = TickContext(tick=1)
         system = ImperialRentSystem()
 
         # Initialize tick_context with economy defaults
@@ -175,7 +176,7 @@ class TestPPPWagesModel:
             super_wage_rate=0.2,
         )
         services = ServiceContainer.create(config=low_sw_config)
-        context: dict[str, int] = {"tick": 1}
+        context = TickContext(tick=1)
         system = ImperialRentSystem()
 
         # BUG FIX: Wages come from tribute_inflow, not accumulated wealth

@@ -4,11 +4,21 @@
  * or the selected verb resets `targetId`/`paramVals` via a clean remount
  * rather than an effect that re-derives state from a changed prop (see
  * `useVerbTargets.ts`'s docstring for why that pattern is avoided here).
+ *
+ * FR-116-4.3: the live per-verb cost (`useVerbTargets` cost envelope) and
+ * the preview's AP cost render as a visible line above the submit button —
+ * previously the only cost surface was VerbGrid's hover tooltip. Honest
+ * null: the line renders only once a real cost or preview has resolved.
  */
 
 import { useEffect, useState } from "react";
 import type { LiveVerbCost, VerbConfig } from "@/lib/verbs";
-import type { GameSnapshot, PlayerVerb } from "@/types/game";
+import type {
+  ActionPreviewResult,
+  GameSnapshot,
+  PlayerVerb,
+  VerbEligibilityEntry,
+} from "@/types/game";
 import { TargetPicker } from "./TargetPicker";
 import { ParamFields } from "./ParamFields";
 import { useVerbTargets } from "./useVerbTargets";
@@ -26,6 +36,10 @@ interface VerbFormProps {
    *  resolves, so the selected verb's button can show it instead of the
    *  static cost_label hint. */
   onCostChange?: (cost: LiveVerbCost | null) => void;
+  /** The verb's eligibility row (spec-116 FR-4.8) — feeds the reason-
+   *  bearing empty state in TargetPicker; null/absent falls back to the
+   *  legacy bare line. */
+  eligibility?: VerbEligibilityEntry | null;
 }
 
 function defaultParamVals(config: VerbConfig): Record<string, unknown> {
@@ -60,6 +74,35 @@ function DeltaChip({ value, label }: { value: number; label: string }): React.JS
   );
 }
 
+/** Compose the pre-submit cost line's text and afford-state from the live
+ *  per-verb cost and/or the preview's AP cost. Null iff neither has
+ *  resolved yet (honest null, Constitution III.11) — factored out of
+ *  `VerbForm` to keep that component's cyclomatic complexity under the
+ *  repo's lint ceiling. */
+function costLineContent(
+  cost: LiveVerbCost | null,
+  preview: ActionPreviewResult | null,
+): { text: string; insufficient: boolean } | null {
+  if (cost === null && preview === null) return null;
+  const insufficient = cost !== null && !cost.canAfford;
+  const text = [
+    cost?.label,
+    preview ? `${preview.action_point_cost} AP` : null,
+    insufficient ? "insufficient" : null,
+  ]
+    .filter(Boolean)
+    .join(" · ");
+  return { text, insufficient };
+}
+
+/** Compose the empty-state reason + remedy line for an ineligible verb
+ *  (spec-116 FR-4.8) — null when eligible/unknown, same
+ *  complexity-budget rationale as `costLineContent` above. */
+function emptyReasonFor(eligibility: VerbEligibilityEntry | null | undefined): string | null {
+  if (!eligibility || eligibility.eligible !== false) return null;
+  return [eligibility.reason, eligibility.remedy].filter(Boolean).join(" ");
+}
+
 export function VerbForm({
   gameId,
   orgId,
@@ -69,6 +112,7 @@ export function VerbForm({
   submitting,
   onSubmit,
   onCostChange,
+  eligibility,
 }: VerbFormProps): React.JSX.Element {
   const [targetId, setTargetId] = useState<string | null>(null);
   const [paramVals, setParamVals] = useState<Record<string, unknown>>(() =>
@@ -84,6 +128,8 @@ export function VerbForm({
   const canSubmit = Boolean(orgId && (targetId || !targetRequired) && !submitting);
   const showPicker = !(targetRequired === false && targets.length === 0 && !loading);
   const { preview } = useActionPreview(gameId, orgId, verb, config, targetId);
+  const costLine = costLineContent(cost, preview);
+  const emptyReason = emptyReasonFor(eligibility);
 
   return (
     <>
@@ -94,6 +140,7 @@ export function VerbForm({
           error={error}
           selectedId={targetId}
           onSelect={setTargetId}
+          emptyReason={emptyReason}
         />
       )}
 
@@ -126,6 +173,17 @@ export function VerbForm({
             </ul>
           )}
         </div>
+      )}
+
+      {costLine && (
+        <p
+          data-testid="verb-cost"
+          className={`font-mono text-[10px] uppercase tracking-widest ${
+            costLine.insufficient ? "text-accent-crimson" : "text-fog"
+          }`}
+        >
+          {costLine.text}
+        </p>
       )}
 
       <button

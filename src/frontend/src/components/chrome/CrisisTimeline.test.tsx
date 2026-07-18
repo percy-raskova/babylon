@@ -1,7 +1,12 @@
-import { describe, expect, it } from "vitest";
+import { beforeEach, describe, expect, it } from "vitest";
+import { render, screen } from "@testing-library/react";
 import type { CrisisPhase, TerritoryState } from "@/types/game";
+import { useStore } from "@/store";
+import { resetStore } from "@/test/resetStore";
+import { makeTimeseriesPayload } from "@/test/fixtures";
 import {
   CRISIS_IN_PROGRESS_PHASES,
+  CrisisTimeline,
   aggregateCapitalStock,
   aggregateWageCompression,
   crisisPopulationShare,
@@ -142,5 +147,42 @@ describe("aggregateCapitalStock", () => {
       terr({ capital_stock: Number.NaN }),
     ];
     expect(aggregateCapitalStock(territories)).toBe(42);
+  });
+});
+
+describe("CrisisTimeline history sparkline (spec-116 4d.5)", () => {
+  beforeEach(() => {
+    resetStore();
+  });
+
+  it("renders the history sparkline when the series has two real points", () => {
+    useStore.setState((s) => ({
+      panels: {
+        ...s.panels,
+        timeseries: {
+          ...s.panels.timeseries,
+          data: makeTimeseriesPayload({
+            ticks: [0, 52, 104],
+            crisis_pop_share: [null, 0.4, 0.75],
+          }),
+        },
+      },
+    }));
+    render(<CrisisTimeline gameId="g1" />);
+    expect(screen.getByTestId("crisis-history-sparkline")).toBeInTheDocument();
+  });
+
+  it("renders no sparkline before the first year boundary (honest sparse)", () => {
+    useStore.setState((s) => ({
+      panels: {
+        ...s.panels,
+        timeseries: {
+          ...s.panels.timeseries,
+          data: makeTimeseriesPayload({ ticks: [0, 1], crisis_pop_share: [null, null] }),
+        },
+      },
+    }));
+    render(<CrisisTimeline gameId="g1" />);
+    expect(screen.queryByTestId("crisis-history-sparkline")).not.toBeInTheDocument();
   });
 });

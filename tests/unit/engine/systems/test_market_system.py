@@ -12,6 +12,7 @@ import pytest
 from pydantic import ValidationError
 
 from babylon.config.defines import GameDefines, MarketDefines
+from babylon.engine.context import TickContext
 from babylon.engine.services import ServiceContainer
 from babylon.engine.simulation_engine import _DEFAULT_SYSTEMS, CONSEQUENCE_SYSTEMS
 from babylon.engine.systems.contradiction import ContradictionSystem
@@ -39,7 +40,7 @@ def _paid_worker(graph: BabylonGraph, node_id: str, w_paid: float, v_produced: f
 
 
 def _step(graph: BabylonGraph, services: ServiceContainer, tick: int) -> None:
-    MarketScissorsSystem().step(graph, services, {"tick": tick})
+    MarketScissorsSystem().step(graph, services, TickContext(tick=tick))
 
 
 class TestWiring:

@@ -17,6 +17,7 @@ from unittest.mock import MagicMock
 import pytest
 
 from babylon.domain.economics.tensor import DepartmentRow, NoDataSentinel, ValueTensor4x3
+from babylon.engine.context import TickContext
 from babylon.engine.services import ServiceContainer
 from babylon.engine.systems.production import ProductionSystem
 from babylon.models.enums import EdgeType, SocialRole
@@ -96,7 +97,7 @@ class TestProductionSystem:
         _create_tenancy_edge(graph, "PERIPHERY_WORKER_ID", "T001")
 
         system = ProductionSystem()
-        system.step(graph, services, {"tick": 1})
+        system.step(graph, services, TickContext(tick=1))
 
         # base_labor_power is annual, converted to weekly
         annual_labor_power = services.defines.economy.base_labor_power
@@ -117,7 +118,7 @@ class TestProductionSystem:
         _create_tenancy_edge(graph, "PERIPHERY_WORKER_ID", "T001")
 
         system = ProductionSystem()
-        system.step(graph, services, {"tick": 1})
+        system.step(graph, services, TickContext(tick=1))
 
         annual_labor_power = services.defines.economy.base_labor_power
         weeks_per_year = services.defines.timescale.weeks_per_year
@@ -135,7 +136,7 @@ class TestProductionSystem:
         _create_tenancy_edge(graph, "PERIPHERY_WORKER_ID", "T001")
 
         system = ProductionSystem()
-        system.step(graph, services, {"tick": 1})
+        system.step(graph, services, TickContext(tick=1))
 
         # Wealth unchanged (no production)
         assert graph.nodes["PERIPHERY_WORKER_ID"]["wealth"] == pytest.approx(5.0)
@@ -147,7 +148,7 @@ class TestProductionSystem:
         # No territory, no tenancy edge
 
         system = ProductionSystem()
-        system.step(graph, services, {"tick": 1})
+        system.step(graph, services, TickContext(tick=1))
 
         # Wealth unchanged
         assert graph.nodes["PERIPHERY_WORKER_ID"]["wealth"] == pytest.approx(5.0)
@@ -160,7 +161,7 @@ class TestProductionSystem:
         _create_tenancy_edge(graph, "PERIPHERY_WORKER_ID", "T001")
 
         system = ProductionSystem()
-        system.step(graph, services, {"tick": 1})
+        system.step(graph, services, TickContext(tick=1))
 
         # Wealth unchanged (dead worker can't work)
         assert graph.nodes["PERIPHERY_WORKER_ID"]["wealth"] == pytest.approx(0.0)
@@ -175,7 +176,7 @@ class TestProductionSystem:
         _create_tenancy_edge(graph, "PERIPHERY_WORKER_ID", "T001")
 
         system = ProductionSystem()
-        system.step(graph, services, {"tick": 1})
+        system.step(graph, services, TickContext(tick=1))
 
         # Wealth unchanged (bourgeoisie doesn't produce)
         assert graph.nodes["PERIPHERY_WORKER_ID"]["wealth"] == pytest.approx(100.0)
@@ -190,7 +191,7 @@ class TestProductionSystem:
         _create_tenancy_edge(graph, "PERIPHERY_WORKER_ID", "T001")
 
         system = ProductionSystem()
-        system.step(graph, services, {"tick": 1})
+        system.step(graph, services, TickContext(tick=1))
 
         # Wealth unchanged
         assert graph.nodes["PERIPHERY_WORKER_ID"]["wealth"] == pytest.approx(50.0)
@@ -205,7 +206,7 @@ class TestProductionSystem:
         _create_tenancy_edge(graph, "PERIPHERY_WORKER_ID", "T001")
 
         system = ProductionSystem()
-        system.step(graph, services, {"tick": 1})
+        system.step(graph, services, TickContext(tick=1))
 
         annual_labor_power = services.defines.economy.base_labor_power
         weeks_per_year = services.defines.timescale.weeks_per_year
@@ -222,7 +223,7 @@ class TestProductionSystem:
         _create_tenancy_edge(graph, "PERIPHERY_WORKER_ID", "T001")
 
         system = ProductionSystem()
-        system.step(graph, services, {"tick": 1})
+        system.step(graph, services, TickContext(tick=1))
 
         annual_labor_power = services.defines.economy.base_labor_power
         weeks_per_year = services.defines.timescale.weeks_per_year
@@ -237,7 +238,7 @@ class TestProductionSystem:
         _create_tenancy_edge(graph, "PERIPHERY_WORKER_ID", "T001")
 
         system = ProductionSystem()
-        system.step(graph, services, {"tick": 1})
+        system.step(graph, services, TickContext(tick=1))
 
         annual_labor_power = services.defines.economy.base_labor_power
         weeks_per_year = services.defines.timescale.weeks_per_year
@@ -266,7 +267,7 @@ class TestProductionPopulationScaling:
         _create_tenancy_edge(graph, "PERIPHERY_WORKER_ID", "T001")
 
         system = ProductionSystem()
-        system.step(graph, services, {"tick": 1})
+        system.step(graph, services, TickContext(tick=1))
 
         # Expected: (base_labor_power / weeks_per_year) * population * bio_ratio
         annual_labor_power = services.defines.economy.base_labor_power
@@ -285,7 +286,7 @@ class TestProductionPopulationScaling:
         _create_tenancy_edge(graph, "PERIPHERY_WORKER_ID", "T001")
 
         system = ProductionSystem()
-        system.step(graph, services, {"tick": 1})
+        system.step(graph, services, TickContext(tick=1))
 
         annual_labor_power = services.defines.economy.base_labor_power
         weeks_per_year = services.defines.timescale.weeks_per_year
@@ -303,7 +304,7 @@ class TestProductionPopulationScaling:
         _create_tenancy_edge(graph, "PERIPHERY_WORKER_ID", "T001")
 
         system = ProductionSystem()
-        system.step(graph, services, {"tick": 1})
+        system.step(graph, services, TickContext(tick=1))
 
         # Wealth unchanged (0 population = 0 production)
         assert graph.nodes["PERIPHERY_WORKER_ID"]["wealth"] == pytest.approx(5.0)
@@ -350,7 +351,7 @@ class TestTensorAwareProduction:
         _create_tenancy_edge(graph, "W1", "T1")
 
         system = ProductionSystem()
-        system.step(graph, services, {"tick": 0})
+        system.step(graph, services, TickContext(tick=0))
 
         expected = (total_v / weeks_per_year) * 1.0  # population=1, bio_ratio=1.0
         assert graph.nodes["W1"]["wealth"] == pytest.approx(expected)
@@ -373,7 +374,7 @@ class TestTensorAwareProduction:
         _create_tenancy_edge(graph, "W1", "T1")
 
         system = ProductionSystem()
-        system.step(graph, services, {"tick": 0})
+        system.step(graph, services, TickContext(tick=0))
 
         expected = (annual_labor_power / weeks_per_year) * 1.0
         assert graph.nodes["W1"]["wealth"] == pytest.approx(expected)
@@ -391,7 +392,7 @@ class TestTensorAwareProduction:
         _create_tenancy_edge(graph, "W1", "T1")
 
         system = ProductionSystem()
-        system.step(graph, services, {"tick": 0})
+        system.step(graph, services, TickContext(tick=0))
 
         expected = (annual_labor_power / weeks_per_year) * 1.0
         assert graph.nodes["W1"]["wealth"] == pytest.approx(expected)
@@ -428,7 +429,7 @@ class TestTensorAwareProduction:
         _create_tenancy_edge(graph, "W2", "T2")
 
         system = ProductionSystem()
-        system.step(graph, services, {"tick": 0})
+        system.step(graph, services, TickContext(tick=0))
 
         assert graph.nodes["W1"]["wealth"] == pytest.approx(520000.0 / weeks_per_year)
         assert graph.nodes["W2"]["wealth"] == pytest.approx(260000.0 / weeks_per_year)
@@ -461,7 +462,7 @@ class TestTensorAwareProduction:
         system = ProductionSystem()
         # A tick two full years past base_year — the year passed to the
         # tensor registry must be base_year + 2, not the pinned base_year.
-        system.step(graph, services, {"tick": 2 * weeks_per_year})
+        system.step(graph, services, TickContext(tick=2 * weeks_per_year))
 
         mock_registry.get.assert_called_once_with("26163", 2024)
         services.database.close()
@@ -483,7 +484,7 @@ class TestTensorAwareProduction:
         _create_tenancy_edge(graph, "W1", "T1")
 
         system = ProductionSystem()
-        system.step(graph, services, {"tick": 5})
+        system.step(graph, services, TickContext(tick=5))
 
         mock_registry.get.assert_called_once_with("26163", 2022)
         services.database.close()

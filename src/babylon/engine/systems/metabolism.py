@@ -24,6 +24,7 @@ from babylon.kernel.event_bus import Event
 from babylon.kernel.services import ServicesProtocol
 from babylon.kernel.system_base import SystemBase
 from babylon.kernel.system_protocol import ContextType
+from babylon.kernel.tick_partition import TickPartition
 from babylon.models.enums import EventType
 
 if TYPE_CHECKING:
@@ -44,6 +45,9 @@ class MetabolismSystem(SystemBase):
     Events emitted:
     - ECOLOGICAL_OVERSHOOT: When overshoot_ratio > 1.0
     """
+
+    partition: ClassVar[TickPartition] = TickPartition.MATERIAL_BASE
+    position: ClassVar[float] = 13.0
 
     name: ClassVar[str] = "Metabolism"
     # Spec 053 INV-001: does not mutate hex c+v+s; opted in by default-deny.
@@ -74,18 +78,14 @@ class MetabolismSystem(SystemBase):
         # Spec-070 FR-043: apply Sovereign-driven metabolic_impact additive
         # term to territory.habitability BEFORE the biocapacity update.
         # Read-only from SovereigntySystem's persistent_data write.
-        if isinstance(context, dict):
-            persistent = context.get("persistent_data", {})
-        else:
-            persistent = getattr(context, "persistent_data", {}) or {}
+        persistent = getattr(context, "persistent_data", {}) or {}
         sovereign_impact = persistent.get("balkanization.metabolic_impact_by_territory", {})
         for territory_id, impact in sovereign_impact.items():
             node = graph.get_node(territory_id)
             if node is None:
                 continue
             current_hab = float(node.attributes.get("habitability", 1.0))
-            new_hab = max(0.0, min(1.0, current_hab + float(impact)))
-            graph.update_node(territory_id, habitability=new_hab)
+            self._write_clamped(graph, territory_id, "habitability", current_hab + float(impact))
 
         # Phase 1: Update each territory's biocapacity
         for node in graph.query_nodes(node_type="territory"):
@@ -139,7 +139,7 @@ class MetabolismSystem(SystemBase):
         )
 
         if ratio > overshoot_threshold:
-            tick = context.get("tick", 0) if isinstance(context, dict) else context.tick
+            tick = context.tick
             services.event_bus.publish(
                 Event(
                     type=EventType.ECOLOGICAL_OVERSHOOT,

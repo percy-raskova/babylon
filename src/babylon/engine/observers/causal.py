@@ -91,6 +91,15 @@ class CausalChainObserver:
         """
         self._logger: logging.Logger = logger or logging.getLogger(__name__)
         self._history: deque[TickSnapshot] = deque(maxlen=self.BUFFER_SIZE)
+        # Spec-116 FR-4.1: frames captured by the MOST RECENT on_tick call
+        # (rebound, not mutated, each tick — a previously returned tuple
+        # stays valid), plus the emitted-window dedup set. The rolling
+        # buffer re-matches the same 3-tick window for up to BUFFER_SIZE-3
+        # further ticks; keying emissions by the window's crash tick (one
+        # snapshot per tick => a window is fully identified by it) stops
+        # cross-tick re-emission.
+        self._tick_frames: list[dict[str, object]] = []
+        self._emitted_crash_ticks: set[int] = set()
 
     @property
     def name(self) -> str:
@@ -101,6 +110,21 @@ class CausalChainObserver:
         """
         return "CausalChainObserver"
 
+    @property
+    def latest_frames(self) -> tuple[dict[str, object], ...]:
+        """Frames captured during the most recent ``on_tick`` call.
+
+        One ``TICK_PULSE`` delta frame per tick (from the second recorded
+        snapshot onward — the spec-116 §6 heartbeat), plus a
+        ``SHOCK_DOCTRINE`` frame on the tick a new pattern window is
+        detected. Empty before the first tick and immediately after
+        ``on_simulation_start``.
+
+        Returns:
+            Immutable snapshot of this tick's frames (possibly empty).
+        """
+        return tuple(self._tick_frames)
+
     def on_simulation_start(
         self,
         initial_state: WorldState,
@@ -108,13 +132,16 @@ class CausalChainObserver:
     ) -> None:
         """Called when simulation begins.
 
-        Clears the history buffer and records the initial state as baseline.
+        Clears the history buffer, the captured frames, and the
+        emitted-window dedup set, then records the initial state as baseline.
 
         Args:
             initial_state: WorldState at tick 0.
             config: SimulationConfig for this run (unused).
         """
         self._history.clear()
+        self._tick_frames = []
+        self._emitted_crash_ticks.clear()
         self._record_snapshot(initial_state)
 
     def on_tick(
@@ -124,15 +151,47 @@ class CausalChainObserver:
     ) -> None:
         """Called after each tick completes with both states for delta analysis.
 
-        Records the new state and checks for the Shock Doctrine pattern.
-        If detected, outputs a JSON NarrativeFrame.
+        Records the new state, captures this tick's pulse frame, and checks
+        for the Shock Doctrine pattern. Detected frames are appended to
+        ``latest_frames`` (and the shock frame is still logged with the
+        ``[NARRATIVE_JSON]`` prefix for backward compatibility).
 
         Args:
             previous_state: WorldState before the tick (unused, history is internal).
             new_state: WorldState after the tick.
         """
+        self._tick_frames = []
         self._record_snapshot(new_state)
+        self._capture_pulse_frame()
         self._detect_shock_doctrine()
+        self._prune_emitted_windows()
+
+    def _capture_pulse_frame(self) -> None:
+        """Append the per-tick TICK_PULSE delta frame (needs >= 2 snapshots)."""
+        if len(self._history) < 2:
+            return
+        self._tick_frames.append(self._build_pulse_frame(self._history[-2], self._history[-1]))
+
+    def _build_pulse_frame(self, prev: TickSnapshot, cur: TickSnapshot) -> dict[str, object]:
+        """Build the TICK_PULSE frame from two consecutive snapshots.
+
+        Args:
+            prev: The prior tick's snapshot.
+            cur: This tick's snapshot.
+
+        Returns:
+            ``{"pattern": "TICK_PULSE", "tick": int, "deltas": {...}}`` with
+            before/after pairs for pool, wage, and peak p_revolution.
+        """
+        return {
+            "pattern": "TICK_PULSE",
+            "tick": cur.tick,
+            "deltas": {
+                "pool": {"before": prev.pool, "after": cur.pool},
+                "wage": {"before": prev.wage, "after": cur.wage},
+                "p_rev": {"before": prev.p_rev, "after": cur.p_rev},
+            },
+        }
 
     def on_simulation_end(self, final_state: WorldState) -> None:
         """Called when simulation ends.
@@ -179,13 +238,15 @@ class CausalChainObserver:
         2. AUSTERITY_RESPONSE: Wage decreases in subsequent tick
         3. RADICALIZATION: P(Revolution) increases in subsequent tick
 
-        If pattern detected, logs JSON NarrativeFrame at WARNING level.
+        A detected frame is logged at WARNING level (``[NARRATIVE_JSON]``,
+        backward compat) AND appended to ``latest_frames``. Each 3-tick
+        window emits at most once across its lifetime in the rolling buffer
+        (dedup keyed by crash tick).
         """
         # Need at least 3 snapshots to detect the pattern
         if len(self._history) < 3:
             return
 
-        # Get the last 3 snapshots for pattern checking
         history_list = list(self._history)
 
         # Check all possible 3-tick windows in the buffer
@@ -195,11 +256,28 @@ class CausalChainObserver:
             snapshot_n1 = history_list[i + 1]
             snapshot_n2 = history_list[i + 2]
 
+            if snapshot_n.tick in self._emitted_crash_ticks:
+                continue  # this window already emitted on an earlier tick
+
             # Check for pattern
             if self._is_shock_doctrine_pattern(snapshot_n, snapshot_n1, snapshot_n2):
                 frame = self._build_frame(snapshot_n, snapshot_n1, snapshot_n2)
                 self._logger.warning("[NARRATIVE_JSON] %s", json.dumps(frame))
+                self._tick_frames.append(frame)
+                self._emitted_crash_ticks.add(snapshot_n.tick)
                 return  # Only emit once per detection
+
+    def _prune_emitted_windows(self) -> None:
+        """Drop dedup keys older than the buffer window (bounded memory).
+
+        Once a crash tick has scrolled out of the rolling buffer it can
+        never re-match, so its key is dead weight — over a 5200-tick
+        campaign the set would otherwise grow without bound.
+        """
+        if not self._history:
+            return
+        oldest = self._history[0].tick
+        self._emitted_crash_ticks = {t for t in self._emitted_crash_ticks if t >= oldest}
 
     def _is_shock_doctrine_pattern(
         self,

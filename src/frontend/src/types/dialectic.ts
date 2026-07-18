@@ -56,7 +56,11 @@ export type TerminalOutcome =
   | "ecological_collapse"
   | "fascist_consolidation"
   | "red_ogv"
-  | "fragmented_collapse";
+  | "fragmented_collapse"
+  | "unresolved";
+
+/** End-screen palette family (spec-116 FR-116-4.2): six texts, three palettes. */
+export type EpiloguePalette = "rupture" | "defeat" | "unresolved";
 
 /** Chroncile stat cards — final-tick material summary. */
 export interface EndgameStats {
@@ -71,7 +75,14 @@ export interface EndgameState {
   tick: number;
   outcome: TerminalOutcome | null;
   headline: string;
+  /** Degraded tick_event machine text — kept on the wire, no longer rendered. */
   summary: string;
+  /** Deterministic per-outcome epilogue body (spec-116 FR-116-4.2); "" in progress. */
+  epilogue: string;
+  /** "" while in progress. */
+  palette: EpiloguePalette | "";
+  /** Tick of player-accepted fast-forward (FR-116-5); null at horizon / in progress. */
+  accepted_at_tick: number | null;
   stats: EndgameStats;
 }
 
@@ -126,6 +137,9 @@ export const EMPTY_ENDGAME: EndgameState = {
   outcome: null,
   headline: "",
   summary: "",
+  epilogue: "",
+  palette: "",
+  accepted_at_tick: null,
   stats: {
     final_tick: 0,
     consciousness: 0,

@@ -105,6 +105,11 @@ export async function post<T>(url: string, data?: unknown): Promise<ApiResponse<
   });
 }
 
+/** DELETE request. */
+export async function del<T>(url: string): Promise<ApiResponse<T>> {
+  return request<T>(url, { method: "DELETE" });
+}
+
 /** POST form-encoded data (for Django login). */
 export async function postForm<T>(
   url: string,

@@ -299,6 +299,7 @@ export function makeActionResult(overrides?: Partial<ActionResultData>): ActionR
 export function makeGameSummary(overrides?: Partial<GameSummary>): GameSummary {
   return {
     id: "game-001",
+    codename: "CRIMSON HARVEST",
     scenario: "default",
     current_tick: 5,
     status: "active",
@@ -410,6 +411,11 @@ export function makeTimeseriesPayload(overrides?: Partial<TimeseriesPayload>): T
     price_index: [1.0, 1.08],
     fictitious_ratio: [1.0, 1.31],
     market_corrections: [0, 0],
+    crisis_pop_share: [null, 0.75],
+    bifurcation_score_mean: [null, -0.3],
+    wage_compression_mean: [null, 0.15],
+    capital_stock_total: [null, 3e9],
+    unemployment_rate_mean: [null, 0.0875],
     ...overrides,
   };
 }
@@ -791,6 +797,9 @@ export function makeEndgameState(overrides?: Partial<EndgameState>): EndgameStat
     outcome: null,
     headline: "",
     summary: "",
+    epilogue: "",
+    palette: "",
+    accepted_at_tick: null,
     stats: { final_tick: 5, consciousness: 0.42, solidarity_edges: 3, heat: 0.31 },
     ...overrides,
   };

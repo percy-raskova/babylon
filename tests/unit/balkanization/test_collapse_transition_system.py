@@ -8,6 +8,7 @@ from unittest.mock import MagicMock
 
 import pytest
 
+from babylon.engine.context import TickContext
 from babylon.engine.systems.collapse_transition import CollapseTransitionSystem
 from babylon.models.enums import EventType
 from babylon.topology.graph import BabylonGraph
@@ -54,7 +55,7 @@ def test_legitimacy_zero_triggers_sovereign_collapse(services: Any) -> None:
         control_level=1.0,
         legal_status="de_jure",
     )
-    context: dict[str, Any] = {"tick": 7, "persistent_data": {}}
+    context = TickContext(tick=7, persistent_data={})
 
     CollapseTransitionSystem().step(adapter, services, context)
 
@@ -81,7 +82,7 @@ def test_territory_transition_per_claimed_territory(services: Any) -> None:
             control_level=1.0,
             legal_status="de_jure",
         )
-    context: dict[str, Any] = {"tick": 7, "persistent_data": {}}
+    context = TickContext(tick=7, persistent_data={})
 
     CollapseTransitionSystem().step(adapter, services, context)
 
@@ -105,7 +106,7 @@ def test_collapse_removes_claims_edges(services: Any) -> None:
         control_level=1.0,
         legal_status="de_jure",
     )
-    context: dict[str, Any] = {"tick": 7, "persistent_data": {}}
+    context = TickContext(tick=7, persistent_data={})
 
     CollapseTransitionSystem().step(adapter, services, context)
 
@@ -127,14 +128,14 @@ def test_external_trigger_via_persistent_data(services: Any) -> None:
         control_level=1.0,
         legal_status="de_jure",
     )
-    context: dict[str, Any] = {
-        "tick": 11,
-        "persistent_data": {
+    context = TickContext(
+        tick=11,
+        persistent_data={
             "balkanization.collapse_triggers": {
                 "SOV_DOOMED": "ecological_overshoot",
             }
         },
-    }
+    )
 
     CollapseTransitionSystem().step(adapter, services, context)
 
@@ -146,7 +147,7 @@ def test_external_trigger_via_persistent_data(services: Any) -> None:
 def test_healthy_sovereign_does_not_collapse(services: Any) -> None:
     adapter = BabylonGraph()
     adapter.add_node("SOV_USA_FED", "sovereign", legitimacy=1.0)
-    context: dict[str, Any] = {"tick": 0, "persistent_data": {}}
+    context = TickContext(tick=0, persistent_data={})
 
     CollapseTransitionSystem().step(adapter, services, context)
 
@@ -160,11 +161,66 @@ def test_triggers_cleared_after_processing(services: Any) -> None:
     adapter = BabylonGraph()
     adapter.add_node("SOV_DOOMED", "sovereign", legitimacy=0.9)
     triggers = {"SOV_DOOMED": "ecological_overshoot"}
-    context: dict[str, Any] = {
-        "tick": 11,
-        "persistent_data": {"balkanization.collapse_triggers": triggers},
-    }
+    context = TickContext(
+        tick=11,
+        persistent_data={"balkanization.collapse_triggers": triggers},
+    )
 
     CollapseTransitionSystem().step(adapter, services, context)
 
-    assert context["persistent_data"]["balkanization.collapse_triggers"] == {}
+    assert context.persistent_data["balkanization.collapse_triggers"] == {}
+
+
+@pytest.mark.unit
+def test_exterior_null_sovereign_never_collapses(services: Any) -> None:
+    """FR-040b boundary fallback / spec-116 FR-116-1: SOV_EXTERIOR_NULL is
+    exempt from the Phase-1 collapse predicate even at legitimacy 0.0 — it
+    is the exterior fallback, not a polity that can collapse. A regular
+    sovereign at legitimacy 0.0 still collapses (the predicate itself is
+    unchanged)."""
+
+    adapter = BabylonGraph()
+    adapter.add_node("SOV_EXTERIOR_NULL", "sovereign", legitimacy=0.0)
+    adapter.add_node("HEX_EXT_001", "territory")
+    adapter.add_node("HEX_EXT_002", "territory")
+    adapter.add_edge(
+        "SOV_EXTERIOR_NULL",
+        "HEX_EXT_001",
+        "claims",
+        control_level=1.0,
+        legal_status="de_jure",
+    )
+    adapter.add_edge(
+        "SOV_EXTERIOR_NULL",
+        "HEX_EXT_002",
+        "claims",
+        control_level=1.0,
+        legal_status="de_jure",
+    )
+
+    adapter.add_node("SOV_TEST", "sovereign", legitimacy=0.0)
+    adapter.add_node("HEX_TEST_001", "territory")
+    adapter.add_edge(
+        "SOV_TEST",
+        "HEX_TEST_001",
+        "claims",
+        control_level=1.0,
+        legal_status="de_jure",
+    )
+
+    context = TickContext(tick=0, persistent_data={})
+
+    CollapseTransitionSystem().step(adapter, services, context)
+
+    collapse_event_subjects = {
+        e.payload["sovereign_id"]
+        for e in _events_of(services.event_bus, EventType.SOVEREIGN_COLLAPSE)
+    }
+
+    null_sovereign_still_has_claims = (
+        adapter.get_edge("SOV_EXTERIOR_NULL", "HEX_EXT_001", "claims") is not None
+        and adapter.get_edge("SOV_EXTERIOR_NULL", "HEX_EXT_002", "claims") is not None
+    )
+    assert null_sovereign_still_has_claims
+    assert "SOV_EXTERIOR_NULL" not in collapse_event_subjects
+    assert "SOV_TEST" in collapse_event_subjects

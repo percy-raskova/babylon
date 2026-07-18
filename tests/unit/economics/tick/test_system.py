@@ -15,6 +15,7 @@ from typing import Any
 import pytest
 
 from babylon.domain.economics.dynamics.types import ClassDistribution
+from babylon.domain.economics.reserve_army.types import ReserveArmyState
 from babylon.domain.economics.tick.system import (
     DEFAULT_V_REPRODUCTION,
     WEEKS_PER_YEAR,
@@ -322,6 +323,71 @@ class TestCountyStateComputation:
         system.step(graph, services, context)
 
         assert graph.nodes[WAYNE_FIPS]["tick_throughput_position"] == pytest.approx(1.10)
+
+
+class _StubReserveArmyDataSource:
+    """Minimal stand-in for the FRED-backed ``_FredReserveArmyAdapter``
+    (``domain/economics/factory.py``) — a fixed ``reserve_ratio`` via
+    ``floating_reserve``, no DB/network involved.
+    """
+
+    def __init__(self, reserve_ratio: float) -> None:
+        self._reserve_ratio = reserve_ratio
+
+    def get_unemployment_decomposition(self, fips: str, year: int) -> ReserveArmyState | None:
+        labor_force = 1_000_000
+        return ReserveArmyState(
+            fips_code=fips,
+            year=min(max(year, 2005), 2030),
+            floating_reserve=int(labor_force * self._reserve_ratio),
+            latent_reserve=0,
+            stagnant_reserve=0,
+            pauperized=0,
+            labor_force=labor_force,
+        )
+
+
+class TestComputeVol1Layer:
+    """spec-116 Task 21b: Step 3.5 — Vol I reserve-army wage-pressure gate.
+
+    ``_compute_vol1_layer`` (domain/economics/tick/system/__init__.py:1079)
+    no-ops unconditionally when ``services.reserve_army_data_source`` is
+    None (:1100) — the gate ``_bridge_economics_overrides``/the headless
+    runner's ``create_vol1_services`` wiring open by injecting a real
+    FRED-backed adapter. The sigmoid math itself
+    (``DefaultWagePressureCalculator.compute_wage_pressure``) is already
+    exhaustively unit-tested in
+    ``tests/unit/economics/reserve_army/test_calculator.py`` — these two
+    tests assert only that the WIRING is reachable end-to-end through
+    ``TickDynamicsSystem.step``, not the sigmoid's shape (do not duplicate
+    that coverage here).
+    """
+
+    def test_gate_closed_leaves_median_wage_at_bootstrap(self) -> None:
+        """Default services (no reserve_army_data_source) never adjust median_wage."""
+        system = TickDynamicsSystem()
+        services = _make_services()
+        graph = _make_graph_with_state()
+        context = TickContext(tick=52)
+
+        system.step(graph, services, context)
+
+        county_states = graph.graph["tick_dynamics"]["county_states"]
+        assert county_states[WAYNE_FIPS].median_wage == pytest.approx(21.0)
+
+    def test_gate_open_applies_wage_pressure(self) -> None:
+        """A wired reserve_army_data_source with reserve_ratio > 0 compresses median_wage."""
+        system = TickDynamicsSystem()
+        services = _make_services(
+            reserve_army_data_source=_StubReserveArmyDataSource(reserve_ratio=0.18)
+        )
+        graph = _make_graph_with_state()
+        context = TickContext(tick=52)
+
+        system.step(graph, services, context)
+
+        county_states = graph.graph["tick_dynamics"]["county_states"]
+        assert county_states[WAYNE_FIPS].median_wage < 21.0
 
 
 # =============================================================================
@@ -1216,28 +1282,6 @@ class TestStepContextExtraction:
         system.step(graph, services, context)
 
         assert graph.graph["tick_dynamics"]["year"] == 2016
-
-    def test_dict_context_extracts_tick(self) -> None:
-        """Dict with 'tick' key is extracted correctly."""
-        system = TickDynamicsSystem()
-        services = _make_services()
-        graph = _make_graph_with_state()
-        context = {"tick": 52}
-        system.step(graph, services, context)
-
-        assert graph.graph["tick_dynamics"]["year"] == 2016
-
-    def test_unknown_context_defaults_to_zero(self) -> None:
-        """Unknown context type → tick=0 (year boundary, pipeline runs)."""
-        system = TickDynamicsSystem()
-        services = _make_services()
-        # No existing state → fresh graph (first tick at tick=0)
-        graph = build_territory_graph()
-        context: Any = 42  # Not TickContext or dict
-        system.step(graph, services, context)
-
-        # tick=0 is year boundary, pipeline should execute
-        assert "tick_dynamics" in graph.graph
 
     def test_no_melt_calculator_returns_early(self) -> None:
         """services.melt_calculator=None causes early return."""

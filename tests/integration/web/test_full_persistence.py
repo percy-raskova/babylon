@@ -129,3 +129,67 @@ class TestFullTickPersistence:
         _persist_snapshots_safe(persistence, session_id, state)  # must not raise
 
         assert _table_count(persistence, "tick_summary", session_id) == before
+
+
+class TestWebPathMigrations:
+    """Playability Spine Task 19 — the Trends-empty root cause (spec-116).
+
+    The live web DB was created before migrations 0033/0034, and the web path
+    never applies ``persistence/migrations/00*.sql`` — ``init_schema``'s
+    ``CREATE TABLE IF NOT EXISTS`` no-ops on the pre-existing ``tick_summary``,
+    so ``persist_tick_summary``/``query_tick_summary_series`` raised
+    ``UndefinedColumn`` on every call and BOTH legs were swallowed by their
+    best-effort catches (``logger.exception``) — the permanent "No timeseries
+    data yet" Trends tab. Assert on ROWS/COLUMNS, never on the absence of
+    exceptions (both failure legs are silent by design).
+    """
+
+    def test_apply_runtime_migrations_heals_pre_0033_tick_summary(self, bridge: object) -> None:
+        """Simulate the pre-0033 web DB, then prove the web applier heals it."""
+        from game.engine_bridge import _apply_runtime_migrations
+
+        persistence = bridge._persistence  # noqa: SLF001
+        pool = persistence._pool  # noqa: SLF001
+        dropped = (
+            "price_log",
+            "fictitious_log",
+            "market_corrections",
+            "crisis_pop_share",
+            "bifurcation_score_mean",
+            "wage_compression_mean",
+            "capital_stock_total",
+            "unemployment_rate_mean",
+        )
+        with pool.connection() as conn:
+            conn.autocommit = True
+            for column in dropped:
+                conn.execute(f"ALTER TABLE tick_summary DROP COLUMN IF EXISTS {column}")
+            # ensure_ddl_applied is digest-stamped: clear the stamps so the
+            # applier cannot fast-path past the freshly-broken table. Guarded
+            # DDL makes the later re-apply idempotent for sibling tests.
+            conn.execute("DELETE FROM _babylon_schema_stamp")
+
+        _apply_runtime_migrations(pool)
+
+        with pool.connection() as conn:
+            rows = conn.execute(
+                "SELECT column_name FROM information_schema.columns "
+                "WHERE table_name = 'tick_summary'"
+            ).fetchall()
+        columns = {row[0] for row in rows}
+        for column in dropped:
+            assert column in columns, f"migration did not restore tick_summary.{column}"
+
+    def test_summary_write_and_series_read_round_trip_on_healed_schema(
+        self, bridge: object
+    ) -> None:
+        """The exact write/read pair that failed silently on the live 5432 DB."""
+        session_id = bridge.create_game(scenario="wayne_county", rng_seed=0)
+        bridge.resolve_tick(session_id)
+
+        ts = bridge.get_game_timeseries(session_id)
+
+        assert ts["ticks"] == [0, 1], (
+            "tick_summary rows must exist and be readable — a swallowed "
+            "UndefinedColumn on either leg yields [] here"
+        )

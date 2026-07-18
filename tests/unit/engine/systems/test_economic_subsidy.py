@@ -26,6 +26,7 @@ from typing import Any
 import pytest
 
 from babylon.config.defines import EconomyDefines, GameDefines, SurvivalDefines
+from babylon.engine.context import TickContext
 from babylon.engine.services import ServiceContainer
 from babylon.engine.systems.economic import ImperialRentSystem
 from babylon.models.enums import EdgeType, EventType
@@ -94,7 +95,7 @@ class TestSubsidyTriggerLogic:
         initial_target_repression = graph.nodes["client_state"]["repression_faced"]
 
         # Act
-        system._process_subsidy_phase(graph, services, {"tick": 1}, tick_context)
+        system._process_subsidy_phase(graph, services, TickContext(tick=1), tick_context)
 
         # Assert: No subsidy should have been sent
         # Source wealth unchanged
@@ -161,7 +162,7 @@ class TestSubsidyTriggerLogic:
         initial_target_repression = graph.nodes["client_state"]["repression_faced"]
 
         # Act
-        system._process_subsidy_phase(graph, services, {"tick": 1}, tick_context)
+        system._process_subsidy_phase(graph, services, TickContext(tick=1), tick_context)
 
         # Assert: Subsidy should have been sent
         # Source wealth decreased
@@ -224,7 +225,7 @@ class TestSubsidyTriggerLogic:
         initial_source_wealth = graph.nodes["core_bourgeoisie"]["wealth"]
 
         # Act
-        system._process_subsidy_phase(graph, services, {"tick": 1}, tick_context)
+        system._process_subsidy_phase(graph, services, TickContext(tick=1), tick_context)
 
         # Assert: Crisis subsidy should have been sent
         assert graph.nodes["core_bourgeoisie"]["wealth"] < initial_source_wealth
@@ -279,7 +280,7 @@ class TestSubsidyTriggerLogic:
         initial_source_wealth = graph.nodes["core_bourgeoisie"]["wealth"]
 
         # Act
-        system._process_subsidy_phase(graph, services, {"tick": 1}, tick_context)
+        system._process_subsidy_phase(graph, services, TickContext(tick=1), tick_context)
 
         # Assert: No subsidy because stability_ratio = 0 < threshold
         assert graph.nodes["core_bourgeoisie"]["wealth"] == pytest.approx(
@@ -335,7 +336,7 @@ class TestSubsidyAmountCalculation:
         system = ImperialRentSystem()
 
         # Act
-        system._process_subsidy_phase(graph, services, {"tick": 1}, tick_context)
+        system._process_subsidy_phase(graph, services, TickContext(tick=1), tick_context)
 
         # Assert: Subsidy capped at 0.5 (subsidy_cap)
         assert tick_context["subsidy_outflow"] == pytest.approx(0.5, rel=1e-6)
@@ -382,7 +383,7 @@ class TestSubsidyAmountCalculation:
         system = ImperialRentSystem()
 
         # Act
-        system._process_subsidy_phase(graph, services, {"tick": 1}, tick_context)
+        system._process_subsidy_phase(graph, services, TickContext(tick=1), tick_context)
 
         # Assert: Subsidy capped at source wealth (0.3)
         assert tick_context["subsidy_outflow"] == pytest.approx(0.3, rel=1e-6)
@@ -431,7 +432,7 @@ class TestSubsidyAmountCalculation:
         system = ImperialRentSystem()
 
         # Act
-        system._process_subsidy_phase(graph, services, {"tick": 1}, tick_context)
+        system._process_subsidy_phase(graph, services, TickContext(tick=1), tick_context)
 
         # Assert: Subsidy capped at available pool (0.2)
         assert tick_context["subsidy_outflow"] == pytest.approx(0.2, rel=1e-6)
@@ -480,7 +481,7 @@ class TestSubsidyAmountCalculation:
         initial_wealth = graph.nodes["core_bourgeoisie"]["wealth"]
 
         # Act
-        system._process_subsidy_phase(graph, services, {"tick": 1}, tick_context)
+        system._process_subsidy_phase(graph, services, TickContext(tick=1), tick_context)
 
         # Assert: No subsidy (negligible amount)
         assert graph.nodes["core_bourgeoisie"]["wealth"] == pytest.approx(initial_wealth, rel=1e-6)
@@ -535,7 +536,7 @@ class TestRepressionBoostApplication:
         system = ImperialRentSystem()
 
         # Act
-        system._process_subsidy_phase(graph, services, {"tick": 1}, tick_context)
+        system._process_subsidy_phase(graph, services, TickContext(tick=1), tick_context)
 
         # Assert: Repression increased
         # max_subsidy = min(10.0, 50.0 * 0.1) = 5.0
@@ -586,7 +587,7 @@ class TestRepressionBoostApplication:
         system = ImperialRentSystem()
 
         # Act
-        system._process_subsidy_phase(graph, services, {"tick": 1}, tick_context)
+        system._process_subsidy_phase(graph, services, TickContext(tick=1), tick_context)
 
         # Assert: Repression capped at 1.0
         # max_subsidy = min(50.0, 50.0 * 0.5) = 25.0
@@ -638,7 +639,7 @@ class TestSubsidyEventEmission:
         system = ImperialRentSystem()
 
         # Act
-        system._process_subsidy_phase(graph, services, {"tick": 5}, tick_context)
+        system._process_subsidy_phase(graph, services, TickContext(tick=5), tick_context)
 
         # Assert: Event emitted
         events = services.event_bus.get_history()
@@ -699,7 +700,7 @@ class TestSubsidyEdgeCases:
         initial_wealth = graph.nodes["core_bourgeoisie"]["wealth"]
 
         # Act
-        system._process_subsidy_phase(graph, services, {"tick": 1}, tick_context)
+        system._process_subsidy_phase(graph, services, TickContext(tick=1), tick_context)
 
         # Assert: No subsidy processed
         assert graph.nodes["core_bourgeoisie"]["wealth"] == pytest.approx(initial_wealth, rel=1e-6)
@@ -745,7 +746,7 @@ class TestSubsidyEdgeCases:
         system = ImperialRentSystem()
 
         # Act
-        system._process_subsidy_phase(graph, services, {"tick": 1}, tick_context)
+        system._process_subsidy_phase(graph, services, TickContext(tick=1), tick_context)
 
         # Assert: Subsidy processed (string was converted)
         assert tick_context["subsidy_outflow"] > 0.0
@@ -790,7 +791,7 @@ class TestSubsidyEdgeCases:
         system = ImperialRentSystem()
 
         # Act
-        system._process_subsidy_phase(graph, services, {"tick": 1}, tick_context)
+        system._process_subsidy_phase(graph, services, TickContext(tick=1), tick_context)
 
         # Assert: No subsidy (cap defaults to 0.0)
         assert tick_context["subsidy_outflow"] == pytest.approx(0.0, abs=0.01)
@@ -839,7 +840,7 @@ class TestSubsidyEdgeCases:
         system = ImperialRentSystem()
 
         # Act - should not raise, uses defaults
-        system._process_subsidy_phase(graph, services, {"tick": 1}, tick_context)
+        system._process_subsidy_phase(graph, services, TickContext(tick=1), tick_context)
 
         # Assert: Method ran without error, defaults were used
         # With default org=0.5, repression=0.3, P(S|R) = 0.5/0.3 ~ 1.67

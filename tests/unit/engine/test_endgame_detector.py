@@ -1,32 +1,34 @@
-"""Tests for EndgameDetector observer and GameOutcome enum (Slice 1.6).
+"""Tests for EndgameDetector observer and GameOutcome enum (Slice 1.6 / spec-116).
 
-Covers the EndgameDetector as a SimulationObserver:
+Covers the EndgameDetector as a SimulationObserver and pattern recognizer
+(spec-116 FR-116-1):
 - GameOutcome enum values
 - SimulationObserver protocol compliance
-- Initial state (IN_PROGRESS, is_game_over False)
-- ENDGAME_REACHED event emission mechanics (emitted once, via get_pending_events())
+- Initial state (no recognized pattern)
 - Lifecycle hooks (on_simulation_start reset, on_simulation_end)
+- Pattern recognition: recognized_pattern / pattern_since_tick / axis_progress()
 
 Outcome-adjudication doctrine (which conditions trigger which GameOutcome) is
 out of scope here per owner ruling 2026-07-16 — the game runs a fixed century
 horizon and endgame behavior is emergent; outcomes are used only as fixture
-vehicles to trigger detector machinery.
+vehicles to trigger detector machinery (ADR074).
 
-NOTE: red_phase markers retired 2026-07-08 — the suite runs green.
+Spec-116 FR-116-1 (owner ruling 2026-07-17): EndgameDetector is a pattern
+RECOGNIZER, not an adjudicator. ``is_game_over``/``outcome`` are gone;
+``on_tick`` re-evaluates every axis every tick and patterns can dissolve.
 """
 
 from __future__ import annotations
 
+import math
+from types import SimpleNamespace
 from typing import TYPE_CHECKING
 
 import pytest
 
-# These imports will fail until implementation exists - that's the RED phase
 from babylon.engine.observer import SimulationObserver
 from babylon.engine.observers.endgame_detector import EndgameDetector
-from babylon.models.enums import EventType, GameOutcome
-
-# TDD GREEN phase - tests now pass with implementation
+from babylon.models.enums import GameOutcome
 
 if TYPE_CHECKING:
     from babylon.models.config import SimulationConfig
@@ -58,6 +60,29 @@ def create_minimal_state(tick: int = 0) -> WorldState:
     from babylon.models import WorldState
 
     return WorldState(tick=tick)
+
+
+def _fascist_entities(count: int = 5, fascist_count: int | None = None) -> dict[str, object]:
+    """Build a dict of SocialClass entities, ``fascist_count`` of which have
+    national_identity > class_consciousness (defaults to all of them)."""
+    from babylon.models.entities.social_class import IdeologicalProfile, SocialClass
+    from babylon.models.enums import SocialRole
+
+    if fascist_count is None:
+        fascist_count = count
+    entities: dict[str, object] = {}
+    for i in range(count):
+        if i < fascist_count:
+            ideology = IdeologicalProfile(national_identity=0.9, class_consciousness=0.1)
+        else:
+            ideology = IdeologicalProfile(national_identity=0.1, class_consciousness=0.9)
+        entities[f"C{i:03d}"] = SocialClass(
+            id=f"C{i:03d}",
+            name=f"Node {i}",
+            role=SocialRole.LABOR_ARISTOCRACY,
+            ideology=ideology,
+        )
+    return entities
 
 
 # =============================================================================
@@ -100,8 +125,9 @@ class TestGameOutcomeEnum:
     def test_game_outcome_enum_has_fascist_consolidation(self) -> None:
         """GameOutcome must have FASCIST_CONSOLIDATION value.
 
-        Represents fascist victory when:
-        - national_identity > class_consciousness for 3+ nodes
+        Represents fascist victory when the fraction of ideology-bearing
+        nodes with national_identity > class_consciousness reaches
+        fascist_majority_fraction.
         """
         assert hasattr(GameOutcome, "FASCIST_CONSOLIDATION")
         assert GameOutcome.FASCIST_CONSOLIDATION.value == "fascist_consolidation"
@@ -138,138 +164,20 @@ class TestEndgameDetectorProtocol:
 
 @pytest.mark.unit
 class TestEndgameDetectorInitialState:
-    """Test EndgameDetector initial state."""
+    """Test EndgameDetector initial state (spec-116: recognizer, not adjudicator)."""
 
-    def test_endgame_detector_starts_in_progress(self) -> None:
-        """EndgameDetector starts with outcome = IN_PROGRESS.
+    def test_endgame_detector_starts_with_no_recognized_pattern(self) -> None:
+        """EndgameDetector starts with recognized_pattern None.
 
-        Before any state is analyzed, the game is assumed to be ongoing.
+        Before any state is analyzed, no pattern is recognized.
         """
         detector = EndgameDetector()
-        assert detector.outcome == GameOutcome.IN_PROGRESS
+        assert detector.recognized_pattern is None
 
-    def test_endgame_detector_is_game_over_false_initially(self) -> None:
-        """EndgameDetector.is_game_over is False initially.
-
-        Convenience property to check if game has ended.
-        """
+    def test_endgame_detector_starts_with_no_pattern_since_tick(self) -> None:
+        """EndgameDetector.pattern_since_tick is None initially."""
         detector = EndgameDetector()
-        assert detector.is_game_over is False
-
-
-# =============================================================================
-# TEST EVENT EMISSION
-# =============================================================================
-
-
-@pytest.mark.unit
-class TestEndgameEventEmission:
-    """Test that EndgameDetector emits ENDGAME_REACHED event."""
-
-    def test_endgame_detector_emits_endgame_reached_event(
-        self,
-        config: SimulationConfig,
-    ) -> None:
-        """EndgameDetector emits ENDGAME_REACHED event when game ends.
-
-        The event should be retrievable via get_pending_events() similar
-        to TopologyMonitor's PHASE_TRANSITION events.
-        """
-        from babylon.models import WorldState
-        from babylon.models.entities.social_class import IdeologicalProfile, SocialClass
-        from babylon.models.enums import SocialRole
-
-        # Trigger fascist consolidation (quickest to set up)
-        entities = {
-            f"C{i:03d}": SocialClass(
-                id=f"C{i:03d}",
-                name=f"Fascist {i}",
-                role=SocialRole.LABOR_ARISTOCRACY,
-                ideology=IdeologicalProfile(
-                    national_identity=0.9,
-                    class_consciousness=0.1,
-                ),
-            )
-            for i in range(5)
-        }
-
-        prev_state = WorldState(tick=0, entities=entities)
-        new_state = WorldState(tick=1, entities=entities)
-
-        detector = EndgameDetector()
-        detector.on_simulation_start(prev_state, config)
-        detector.on_tick(prev_state, new_state)
-
-        # Get pending events
-        events = detector.get_pending_events()
-
-        # Should have exactly one ENDGAME_REACHED event
-        assert len(events) == 1
-        event = events[0]
-        assert event.event_type == EventType.ENDGAME_REACHED
-        assert event.outcome == GameOutcome.FASCIST_CONSOLIDATION
-
-    def test_no_event_when_game_continues(
-        self,
-        config: SimulationConfig,
-    ) -> None:
-        """No ENDGAME_REACHED event when game is still IN_PROGRESS."""
-        from babylon.models import WorldState
-
-        prev_state = WorldState(tick=0)
-        new_state = WorldState(tick=1)
-
-        detector = EndgameDetector()
-        detector.on_simulation_start(prev_state, config)
-        detector.on_tick(prev_state, new_state)
-
-        events = detector.get_pending_events()
-        assert len(events) == 0
-
-    def test_event_only_emitted_once(
-        self,
-        config: SimulationConfig,
-    ) -> None:
-        """ENDGAME_REACHED event is emitted only once when game ends.
-
-        Subsequent ticks should not emit additional events.
-        """
-        from babylon.models import WorldState
-        from babylon.models.entities.social_class import IdeologicalProfile, SocialClass
-        from babylon.models.enums import SocialRole
-
-        entities = {
-            f"C{i:03d}": SocialClass(
-                id=f"C{i:03d}",
-                name=f"Fascist {i}",
-                role=SocialRole.LABOR_ARISTOCRACY,
-                ideology=IdeologicalProfile(
-                    national_identity=0.9,
-                    class_consciousness=0.1,
-                ),
-            )
-            for i in range(5)
-        }
-
-        detector = EndgameDetector()
-        initial_state = WorldState(tick=0, entities=entities)
-        detector.on_simulation_start(initial_state, config)
-
-        # First tick - should emit event
-        detector.on_tick(
-            WorldState(tick=0, entities=entities),
-            WorldState(tick=1, entities=entities),
-        )
-        events1 = detector.get_pending_events()
-        assert len(events1) == 1
-
-        # Second tick - should NOT emit again
-        detector.on_tick(
-            WorldState(tick=1, entities=entities),
-            WorldState(tick=2, entities=entities),
-        )
-        events2 = detector.get_pending_events()
-        assert len(events2) == 0
+        assert detector.pattern_since_tick is None
 
 
 # =============================================================================
@@ -290,42 +198,29 @@ class TestEndgameDetectorLifecycle:
         Allows reuse of detector across multiple simulation runs.
         """
         from babylon.models import WorldState
-        from babylon.models.entities.social_class import IdeologicalProfile, SocialClass
-        from babylon.models.enums import SocialRole
 
-        entities = {
-            f"C{i:03d}": SocialClass(
-                id=f"C{i:03d}",
-                name=f"Fascist {i}",
-                role=SocialRole.LABOR_ARISTOCRACY,
-                ideology=IdeologicalProfile(
-                    national_identity=0.9,
-                    class_consciousness=0.1,
-                ),
-            )
-            for i in range(5)
-        }
+        entities = _fascist_entities(count=5)
 
         detector = EndgameDetector()
 
-        # First run - ends in fascism
+        # First run - recognizes fascist consolidation.
         detector.on_simulation_start(WorldState(tick=0, entities=entities), config)
         detector.on_tick(
             WorldState(tick=0, entities=entities),
             WorldState(tick=1, entities=entities),
         )
-        assert detector.outcome == GameOutcome.FASCIST_CONSOLIDATION
+        assert detector.recognized_pattern is GameOutcome.FASCIST_CONSOLIDATION
 
-        # Reset with new simulation start
+        # Reset with new simulation start.
         detector.on_simulation_start(WorldState(tick=0), config)
 
-        # Should be back to IN_PROGRESS
-        assert detector.outcome == GameOutcome.IN_PROGRESS
-        assert detector.is_game_over is False
+        # Should be back to no recognized pattern.
+        assert detector.recognized_pattern is None
+        assert detector.pattern_since_tick is None
 
     def test_on_simulation_end_no_crash(
         self,
-        config: SimulationConfig,
+        config: SimulationConfig,  # noqa: ARG002
     ) -> None:
         """on_simulation_end does not crash."""
         detector = EndgameDetector()
@@ -333,3 +228,301 @@ class TestEndgameDetectorLifecycle:
 
         # Should not raise
         detector.on_simulation_end(final_state)
+
+
+# =============================================================================
+# TEST PATTERN RECOGNITION (spec-116 FR-116-1)
+# =============================================================================
+
+
+@pytest.mark.unit
+class TestPatternRecognition:
+    """Normative spec-116 FR-116-1 recognizer tests."""
+
+    def test_recognition_sets_pattern_and_since_tick(self) -> None:
+        """Fixture drives the fascist axis to matched at tick N; recognized_pattern
+        and pattern_since_tick both reflect the transition tick."""
+        from babylon.models import WorldState
+
+        entities = _fascist_entities(count=5)
+        detector = EndgameDetector()
+
+        detector.on_tick(
+            WorldState(tick=0, entities=entities),
+            WorldState(tick=1, entities=entities),
+        )
+
+        assert detector.recognized_pattern is GameOutcome.FASCIST_CONSOLIDATION
+        assert detector.pattern_since_tick == 1
+
+    def test_pattern_dissolves_when_conditions_recede(self) -> None:
+        """Same fixture, then consciousness recovers below the fraction —
+        recognized_pattern and pattern_since_tick both revert to None."""
+        from babylon.models import WorldState
+
+        fascist_entities = _fascist_entities(count=5)
+        detector = EndgameDetector()
+
+        detector.on_tick(
+            WorldState(tick=0, entities=fascist_entities),
+            WorldState(tick=1, entities=fascist_entities),
+        )
+        assert detector.recognized_pattern is GameOutcome.FASCIST_CONSOLIDATION
+
+        # Consciousness recovers: 0 of 5 nodes fascist now.
+        recovered_entities = _fascist_entities(count=5, fascist_count=0)
+        detector.on_tick(
+            WorldState(tick=1, entities=fascist_entities),
+            WorldState(tick=2, entities=recovered_entities),
+        )
+
+        assert detector.recognized_pattern is None
+        assert detector.pattern_since_tick is None
+
+    def test_fascist_axis_uses_fraction_not_count(self) -> None:
+        """6 ideology-bearing nodes, 4 fascist (0.667) => NOT matched; flip a
+        5th (0.833) => still NOT matched at the spec-116-calibrated fraction
+        0.9 (Task 6 pacing calibration: a single archetypal entity's ideology
+        flip must not cause an early FASCIST_CONSOLIDATION lock — see
+        ``EndgameDefines.fascist_majority_fraction``'s docstring); flip the
+        6th (1.0) => matched."""
+        from babylon.models import WorldState
+
+        detector = EndgameDetector()
+
+        four_of_six = _fascist_entities(count=6, fascist_count=4)
+        detector.on_tick(
+            WorldState(tick=0, entities=four_of_six),
+            WorldState(tick=1, entities=four_of_six),
+        )
+        assert detector.recognized_pattern is not GameOutcome.FASCIST_CONSOLIDATION
+        assert detector.axis_progress()["fascist_consolidation"] < 1.0
+
+        five_of_six = _fascist_entities(count=6, fascist_count=5)
+        detector.on_tick(
+            WorldState(tick=1, entities=four_of_six),
+            WorldState(tick=2, entities=five_of_six),
+        )
+        assert detector.recognized_pattern is not GameOutcome.FASCIST_CONSOLIDATION
+        assert detector.axis_progress()["fascist_consolidation"] < 1.0
+
+        six_of_six = _fascist_entities(count=6, fascist_count=6)
+        detector.on_tick(
+            WorldState(tick=2, entities=five_of_six),
+            WorldState(tick=3, entities=six_of_six),
+        )
+        assert detector.recognized_pattern is GameOutcome.FASCIST_CONSOLIDATION
+        assert detector.axis_progress()["fascist_consolidation"] == pytest.approx(1.0)
+
+    def test_axis_progress_keys_and_bounds(self) -> None:
+        """axis_progress() returns exactly the 5 canonical keys, each in [0, 1]."""
+        detector = EndgameDetector()
+        progress = detector.axis_progress()
+
+        assert set(progress) == {
+            "revolutionary_victory",
+            "ecological_collapse",
+            "fascist_consolidation",
+            "red_ogv",
+            "fragmented_collapse",
+        }
+        assert all(0.0 <= v <= 1.0 for v in progress.values())
+
+    def test_matched_iff_progress_saturates(self) -> None:
+        """Whenever recognized_pattern == P, axis_progress()[P.value] == 1.0."""
+        from babylon.models import WorldState
+
+        entities = _fascist_entities(count=5)
+        detector = EndgameDetector()
+
+        detector.on_tick(
+            WorldState(tick=0, entities=entities),
+            WorldState(tick=1, entities=entities),
+        )
+
+        pattern = detector.recognized_pattern
+        assert pattern is not None
+        assert detector.axis_progress()[pattern.value] == pytest.approx(1.0)
+
+    def test_on_tick_serializes_graph_once(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        """on_tick must build exactly ONE graph and thread it through all
+        five axis evaluators (not re-serialize per axis)."""
+        from babylon.models import WorldState
+        from babylon.models.world_state import WorldState as WorldStateClass
+
+        call_count = {"n": 0}
+        original_to_graph = WorldStateClass.to_graph
+
+        def counting_to_graph(self: WorldStateClass) -> object:
+            call_count["n"] += 1
+            return original_to_graph(self)
+
+        monkeypatch.setattr(WorldStateClass, "to_graph", counting_to_graph)
+
+        entities = _fascist_entities(count=5)
+        detector = EndgameDetector()
+        detector.on_tick(
+            WorldState(tick=0, entities=entities),
+            WorldState(tick=1, entities=entities),
+        )
+
+        assert call_count["n"] == 1
+
+
+# =============================================================================
+# TEST RED_OGV AXIS REACHABILITY (Task R, spec-116 — owner ruling 2026-07-17)
+# =============================================================================
+
+
+def _red_ogv_ready_state(territory_ids: list[str]) -> object:
+    """Build a duck-typed WorldState stand-in with low class tension —
+    the one non-stance/non-habitability RED_OGV gate still read off
+    ``state`` (via ``_class_tension``, FR-032).
+
+    Used only by the companion "blocked" test below (which pins the
+    pre-repair stance-gate behavior and is agnostic to which source
+    supplies habitability). The ``territories`` stand-in is retained here
+    — not because ``_aggregate_habitability`` reads it any more (Task R2:
+    it now reads the GRAPH exclusively, see ``_build_null_only_graph``),
+    but so the companion's low-habitability condition holds under BOTH
+    the pre-fix (state-read) and post-fix (graph-read) code paths without
+    needing two different fixtures for a test that isn't exercising the
+    habitability-source question in the first place. The RED_OGV
+    *reachability* test below no longer uses this helper — it builds a
+    state with NO ``territories`` attribute at all, to prove habitability
+    is genuinely sourced from the graph.
+    """
+    entities = _fascist_entities(count=4)  # mean class_consciousness = 0.1
+    territories = {tid: SimpleNamespace(habitability=0.1) for tid in territory_ids}
+    return SimpleNamespace(entities=entities, territories=territories)
+
+
+def _build_ignore_majority_graph(territory_ids: list[str]) -> object:
+    """One IGNORE-aligned Sovereign (ruling Faction ``colonial_stance ==
+    "ignore"``) holding CLAIMS to ``ceil(N/2)`` Territories — an IGNORE
+    stance majority per ``_has_stance_majority``. Territory nodes carry
+    ``habitability`` directly (Task R2: the real graph-only source
+    ``_aggregate_habitability`` now reads), at/below
+    ``red_ogv_habitability_floor`` (default 0.4)."""
+    from babylon.topology.graph import BabylonGraph
+
+    graph = BabylonGraph()
+    graph.add_node(
+        "FAC_TEST_IGNORE",
+        "balkanization_faction",
+        colonial_stance="ignore",
+        class_reduction=0.7,
+    )
+    graph.add_node(
+        "SOV_TEST_IGNORE",
+        "sovereign",
+        sovereignty_type="recognized_state",
+        legitimacy=0.85,
+        color_hex="#bf6b1f",
+        ruling_faction_id="FAC_TEST_IGNORE",
+        extraction_policy="continue",
+        founded_tick=0,
+    )
+    for territory_id in territory_ids:
+        graph.add_node(territory_id, "territory", habitability=0.1)
+    claim_count = math.ceil(len(territory_ids) / 2)
+    for territory_id in territory_ids[:claim_count]:
+        graph.add_edge(
+            "SOV_TEST_IGNORE",
+            territory_id,
+            "claims",
+            control_level=1.0,
+            legal_status="de_jure",
+        )
+    return graph
+
+
+def _build_null_only_graph(territory_ids: list[str]) -> object:
+    """The exact pre-repair topology: ``SOV_EXTERIOR_NULL``
+    (``ruling_faction_id`` None) holds every CLAIMS edge, so no Sovereign
+    resolves to ANY stance. Territory nodes also carry a low
+    ``habitability`` (Task R2) so this companion's non-stance gates keep
+    saturating post-fix exactly as they did pre-fix via
+    ``_red_ogv_ready_state``'s ``state.territories`` stand-in."""
+    from babylon.topology.graph import BabylonGraph
+
+    graph = BabylonGraph()
+    graph.add_node(
+        "SOV_EXTERIOR_NULL",
+        "sovereign",
+        sovereignty_type="provisional",
+        legitimacy=0.0,
+        color_hex="#404040",
+        ruling_faction_id=None,
+        extraction_policy="continue",
+        founded_tick=0,
+    )
+    for territory_id in territory_ids:
+        graph.add_node(territory_id, "territory", habitability=0.1)
+        graph.add_edge(
+            "SOV_EXTERIOR_NULL",
+            territory_id,
+            "claims",
+            control_level=1.0,
+            legal_status="de_jure",
+        )
+    return graph
+
+
+@pytest.mark.unit
+class TestRedOgvAxisReachability:
+    """Task R (owner ruling 2026-07-17, "connected, wired, repaired,
+    seeded, deterministic"): pins RED_OGV structural reachability.
+
+    Root cause: before the FR-040b fallback fix, every web session's
+    Territories fell to ``SOV_EXTERIOR_NULL`` (``ruling_faction_id``
+    null), so ``_has_stance_majority`` could never resolve ANY stance and
+    the ``stance_gate`` was permanently 0.0 — RED_OGV (and
+    REVOLUTIONARY_VICTORY / the UPHOLD route) were structurally
+    unreachable in every web session. These are pure recognizer-predicate
+    tests against a hand-built graph — the emergent-endgames
+    outcome-as-fixture-vehicle pattern (ADR074) — NOT a long canonical
+    run asserting the outcome as subject.
+    """
+
+    def test_red_ogv_axis_matches_with_ignore_stance_majority(self) -> None:
+        """An IGNORE-aligned Sovereign CLAIMS majority + low class tension
+        + low habitability + a declining habitability slope must saturate
+        all four RED_OGV gates (progress == 1.0, matched is True).
+
+        Task R2: ``state`` deliberately carries NO ``territories`` attribute
+        — aggregate habitability must come exclusively from the GRAPH's
+        territory-node ``habitability`` attributes (``_build_ignore_
+        majority_graph``), proving RED_OGV is reachable through the real
+        graph-habitability path, not a model stand-in.
+        """
+        territory_ids = [f"HEX_{i:05d}" for i in range(4)]
+        state = SimpleNamespace(
+            entities=_fascist_entities(count=4)
+        )  # mean class_consciousness = 0.1
+        graph = _build_ignore_majority_graph(territory_ids)
+
+        detector = EndgameDetector()
+        detector._habitability_history = [0.9, 0.6, 0.3]  # negative slope
+
+        progress, matched = detector._axis_red_ogv(state, graph)
+
+        assert matched is True
+        assert progress == pytest.approx(1.0)
+
+    def test_red_ogv_axis_blocked_when_only_sovereign_is_exterior_null(self) -> None:
+        """Companion pinning the pre-repair block: with IDENTICAL state
+        (same low tension/habitability/declining slope) but the old
+        null-only CLAIMS topology, no Sovereign resolves to ANY stance —
+        stance_gate is stuck at 0.0 and the axis cannot match."""
+        territory_ids = [f"HEX_{i:05d}" for i in range(4)]
+        state = _red_ogv_ready_state(territory_ids)
+        graph = _build_null_only_graph(territory_ids)
+
+        detector = EndgameDetector()
+        detector._habitability_history = [0.9, 0.6, 0.3]
+
+        progress, matched = detector._axis_red_ogv(state, graph)
+
+        assert matched is False
+        assert progress == pytest.approx(0.75)  # stance_gate 0.0; other 3 gates saturate

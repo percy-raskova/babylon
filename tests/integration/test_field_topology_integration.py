@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import pytest
 
+from babylon.engine.context import TickContext
 from babylon.engine.field_registry import DefaultFieldRegistry
 from babylon.engine.services import ServiceContainer
 from babylon.engine.systems.contradiction_field import ContradictionFieldSystem
@@ -73,15 +74,16 @@ class TestFieldTopologyMultiTick:
         graph = _make_detroit_metro_graph()
         registry = DefaultFieldRegistry.with_defaults()
         services = ServiceContainer.create(field_registry=registry)
-        persistent_data: dict[str, object] = {}
-
         field_sys = ContradictionFieldSystem()
         deriv_sys = FieldDerivativeSystem()
         edge_sys = EdgeTransitionSystem()
 
+        # Reuse ONE context so field history accumulates across ticks —
+        # TickContext copies the dict on construction.
+        ctx = TickContext(tick=1, persistent_data={})
         max_ticks = 3
         for tick in range(1, max_ticks + 1):
-            ctx: dict[str, object] = {"tick": tick, "persistent_data": persistent_data}
+            ctx.tick = tick
             field_sys.step(graph, services, ctx)
             deriv_sys.step(graph, services, ctx)
             edge_sys.step(graph, services, ctx)
@@ -105,19 +107,19 @@ class TestFieldTopologyMultiTick:
         graph = _make_detroit_metro_graph()
         registry = DefaultFieldRegistry.with_defaults()
         services = ServiceContainer.create(field_registry=registry)
-        persistent_data: dict[str, object] = {}
-
         field_sys = ContradictionFieldSystem()
 
+        # Reuse ONE context so the system's tick-1 _previous_wealth persists
+        # into tick 2 (TickContext copies the dict on construction).
+        ctx = TickContext(tick=1, persistent_data={})
         # Tick 1: baseline
-        ctx1: dict[str, object] = {"tick": 1, "persistent_data": persistent_data}
-        field_sys.step(graph, services, ctx1)
+        field_sys.step(graph, services, ctx)
 
         # Decline wealth for tick 2
         graph.nodes["wayne_proletariat"]["wealth"] = 3.0
 
-        ctx2: dict[str, object] = {"tick": 2, "persistent_data": persistent_data}
-        field_sys.step(graph, services, ctx2)
+        ctx.tick = 2
+        field_sys.step(graph, services, ctx)
 
         fields = graph.nodes["wayne_proletariat"]["contradiction_fields"]
         assert fields["immiseration"] > 0.0
@@ -127,22 +129,22 @@ class TestFieldTopologyMultiTick:
         graph = _make_detroit_metro_graph()
         registry = DefaultFieldRegistry.with_defaults()
         services = ServiceContainer.create(field_registry=registry)
-        persistent_data: dict[str, object] = {}
-
         field_sys = ContradictionFieldSystem()
         deriv_sys = FieldDerivativeSystem()
 
+        # Reuse ONE context so field history accumulates into tick 2
+        # (TickContext copies the dict on construction).
+        ctx = TickContext(tick=1, persistent_data={})
         # Tick 1
-        ctx1: dict[str, object] = {"tick": 1, "persistent_data": persistent_data}
-        field_sys.step(graph, services, ctx1)
-        deriv_sys.step(graph, services, ctx1)
+        field_sys.step(graph, services, ctx)
+        deriv_sys.step(graph, services, ctx)
 
         # Change conditions for tick 2
         graph.nodes["wayne_proletariat"]["wealth"] = 1.0
 
-        ctx2: dict[str, object] = {"tick": 2, "persistent_data": persistent_data}
-        field_sys.step(graph, services, ctx2)
-        deriv_sys.step(graph, services, ctx2)
+        ctx.tick = 2
+        field_sys.step(graph, services, ctx)
+        deriv_sys.step(graph, services, ctx)
 
         pc = graph.graph.get("principal_field")
         assert pc is not None
@@ -153,9 +155,7 @@ class TestFieldTopologyMultiTick:
         graph = _make_detroit_metro_graph()
         registry = DefaultFieldRegistry.with_defaults()
         services = ServiceContainer.create(field_registry=registry)
-        persistent_data: dict[str, object] = {}
-
-        ctx: dict[str, object] = {"tick": 1, "persistent_data": persistent_data}
+        ctx = TickContext(tick=1, persistent_data={})
         ContradictionFieldSystem().step(graph, services, ctx)
         FieldDerivativeSystem().step(graph, services, ctx)
 

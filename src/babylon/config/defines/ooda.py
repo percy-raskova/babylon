@@ -260,6 +260,19 @@ class OODADefines(BaseModel):
         description="[B] = solidarity.activation_threshold: same tipping point for political engagement.",
     )
 
+    # --- Attack resolver effects (spec-116 FR-116-4.4) ---
+    attack_self_heat_gain: float = Field(
+        default=0.1,
+        ge=0.0,
+        le=1.0,
+        description=(
+            "State attention (heat) the acting org draws on itself when an "
+            "ATTACK_INFRASTRUCTURE action resolves. Promoted from the "
+            "engine.actions.attack module literal so the resolver and the "
+            "web preview/target rows share one source of truth."
+        ),
+    )
+
     # --- Lifecycle modifiers ---
     elder_legitimacy_multiplier: float = Field(
         default=1.3,

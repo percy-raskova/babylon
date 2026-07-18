@@ -19,6 +19,7 @@ from typing import TYPE_CHECKING
 
 import pytest
 
+from babylon.engine.context import TickContext
 from babylon.engine.services import ServiceContainer
 from babylon.engine.systems.survival import SurvivalSystem
 from babylon.models.enums import SocialRole
@@ -114,7 +115,7 @@ class TestPopulationNormalization:
         )
 
         system = SurvivalSystem()
-        system.step(graph, services, {"tick": 1})
+        system.step(graph, services, TickContext(tick=1))
 
         p_acq_single = graph.nodes["single_worker"]["p_acquiescence"]
         p_acq_block = graph.nodes["block_workers"]["p_acquiescence"]
@@ -155,7 +156,7 @@ class TestPopulationNormalization:
         )
 
         system = SurvivalSystem()
-        system.step(graph, services, {"tick": 1})
+        system.step(graph, services, TickContext(tick=1))
 
         p_acq_wealthy = graph.nodes["wealthy"]["p_acquiescence"]
         p_acq_poor = graph.nodes["poor"]["p_acquiescence"]
@@ -188,7 +189,7 @@ class TestPopulationNormalization:
         graph.nodes["dead_block"]["p_acquiescence"] = 0.999
 
         system = SurvivalSystem()
-        system.step(graph, services, {"tick": 1})
+        system.step(graph, services, TickContext(tick=1))
 
         # P(S|A) should remain unchanged (not recalculated)
         assert graph.nodes["dead_block"]["p_acquiescence"] == 0.999
@@ -212,7 +213,7 @@ class TestPopulationNormalization:
 
         system = SurvivalSystem()
         # Should not raise ZeroDivisionError
-        system.step(graph, services, {"tick": 1})
+        system.step(graph, services, TickContext(tick=1))
 
         # With zero population, P(S|A) should be 0 or very low
         p_acq = graph.nodes["empty_block"]["p_acquiescence"]
@@ -242,7 +243,7 @@ class TestPopulationNormalization:
         )
 
         system = SurvivalSystem()
-        system.step(graph, services, {"tick": 1})
+        system.step(graph, services, TickContext(tick=1))
 
         p_acq_small = graph.nodes["small_block"]["p_acquiescence"]
         p_acq_large = graph.nodes["large_block"]["p_acquiescence"]

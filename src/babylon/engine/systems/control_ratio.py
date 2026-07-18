@@ -18,6 +18,7 @@ from __future__ import annotations
 from typing import TYPE_CHECKING, Any, ClassVar
 
 from babylon.kernel.event_bus import Event
+from babylon.kernel.tick_partition import TickPartition
 from babylon.models.enums import EventType, SocialRole
 
 if TYPE_CHECKING:
@@ -93,6 +94,9 @@ class ControlRatioSystem(SystemBase):
     - Low org (< 0.5): Genocide - system eliminates surplus population
     """
 
+    partition: ClassVar[TickPartition] = TickPartition.MATERIAL_BASE
+    position: ClassVar[float] = 12.0
+
     name = "ControlRatio"
 
     # Spec 053 INV-001: does not mutate hex c+v+s; opted in by default-deny.
@@ -114,10 +118,7 @@ class ControlRatioSystem(SystemBase):
 
         tick = context.get("tick", 0)
         # Handle both TickContext (with persistent_data) and raw dict
-        if hasattr(context, "persistent_data"):
-            persistent: dict[str, Any] = context.persistent_data
-        else:
-            persistent = context
+        persistent: dict[str, Any] = context.persistent_data
 
         # Check if terminal decision already made (one-time event)
         if persistent.get("_terminal_decision_emitted"):

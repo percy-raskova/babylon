@@ -47,6 +47,7 @@ from babylon.formulas.class_dynamics import (
 )
 from babylon.kernel.system_base import SystemBase
 from babylon.kernel.system_protocol import ContextType
+from babylon.kernel.tick_partition import TickPartition
 from babylon.models.enums import SocialRole
 
 if TYPE_CHECKING:
@@ -83,18 +84,6 @@ def bracket_of_role(role: SocialRole) -> int:
     :returns: The bracket index under the PROVISIONAL mapping.
     """
     return _BRACKET_BY_ROLE[role]
-
-
-def _coerce_role(raw: object) -> SocialRole | None:
-    """Coerce a graph-node ``role`` attr to :class:`SocialRole` (or ``None``)."""
-    if isinstance(raw, SocialRole):
-        return raw
-    if isinstance(raw, str):
-        try:
-            return SocialRole(raw)
-        except ValueError:
-            return None
-    return None
 
 
 def _seed_vector(defines: Any) -> _Vector:
@@ -182,7 +171,7 @@ def _bracket_resistances(graph: GraphProtocol) -> _Vector:
     counts = [0, 0, 0, 0]
     nodes = sorted(graph.query_nodes(node_type="social_class"), key=lambda n: n.id)
     for node in nodes:
-        role = _coerce_role(node.attributes.get("role"))
+        role = SocialRole.coerce(node.attributes.get("role"))
         if role is None:
             continue
         bracket = _BRACKET_BY_ROLE[role]
@@ -236,6 +225,9 @@ class WealthDistributionSystem(SystemBase):
     ``social_class`` nodes. Nothing consumes either yet (Phase 2 owner-gated).
     """
 
+    partition: ClassVar[TickPartition] = TickPartition.CONSEQUENCE
+    position: ClassVar[float] = 21.5
+
     name: ClassVar[str] = "Wealth Distribution"
     creates_value: ClassVar[bool] = False
 
@@ -252,7 +244,7 @@ class WealthDistributionSystem(SystemBase):
         :func:`~babylon.formulas.class_dynamics.calculate_full_dynamics`.
         """
         defines = services.defines.class_dynamics
-        tick = context.get("tick", 0) if isinstance(context, dict) else getattr(context, "tick", 0)
+        tick = context.tick
         metadata = getattr(graph, "graph", None)
         if not isinstance(metadata, dict):  # pragma: no cover — BabylonGraph always has it
             return
@@ -276,7 +268,7 @@ class WealthDistributionSystem(SystemBase):
         }
         nodes = sorted(graph.query_nodes(node_type="social_class"), key=lambda n: n.id)
         for node in nodes:
-            role = _coerce_role(node.attributes.get("role"))
+            role = SocialRole.coerce(node.attributes.get("role"))
             if role is None:
                 continue  # honest absence: no role, no bracket, no projection
             graph.update_node(node.id, wealth_share=shares[_BRACKET_BY_ROLE[role]])

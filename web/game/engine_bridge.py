@@ -63,6 +63,7 @@ from babylon.topology.graph_algorithms import (
 from .epilogues import EPILOGUES
 from .log_handler import sanitize_for_log
 from .map_contract import MAP_HISTORY_REPLAYABLE_METRICS, MAP_METRIC_PROPERTIES
+from .verb_copy import VERB_INELIGIBILITY_COPY
 
 if TYPE_CHECKING:
     from game.narrative_service import NarrativeService
@@ -5007,6 +5008,107 @@ class EngineBridge:
             "session_id": str(session_id),
             "tick": state.tick,
             "actions": org_actions,
+        }
+
+    def get_verb_eligibility(self, session_id: UUID, org_id: str) -> dict[str, Any]:
+        """Per-verb eligibility for the acting org (spec-116 FR-4.8).
+
+        Evaluates, on ONE shared hydration, the same target-existence
+        predicate each ``get_<verb>_targets`` method applies — so a verb
+        is marked ineligible exactly when its target list would come back
+        empty — and pairs every ineligible verb with the player-facing
+        ``(reason, remedy)`` copy from :mod:`game.verb_copy`.
+        Affordability rides along per verb via :func:`check_can_afford`
+        (the same function that gates ``submit_action``, so the note can
+        never disagree with a submit rejection); the UI disables on
+        ``eligible`` only, never on ``can_afford``.
+
+        MOVE/NEGOTIATE/INVESTIGATE honesty note: their eligibility comes
+        from real graph predicates (a territory node exists / another org
+        exists / own territories non-empty) even though their target
+        lists are partly hardcoded fixtures today — eligibility must
+        never launder a fixture into ``eligible: true``.
+
+        :param session_id: The game session UUID.
+        :param org_id: The acting organization id.
+        :returns: ``{"session_id", "tick", "org_id", "verbs"}`` where
+            ``verbs`` holds one ``{"verb", "eligible", "reason",
+            "remedy", "can_afford", "afford_note"}`` dict per canonical
+            verb in ``VERB_TO_ACTION_TYPE`` order, or
+            ``{"status": "error", "error": "Org not found"}``.
+        """
+        state, graph = self.hydrate_state(session_id)
+        if org_id not in graph.nodes:
+            return {"status": "error", "error": "Org not found"}
+
+        org_data = graph.nodes[org_id]
+        own_tids = {str(t) for t in org_data.get("territory_ids", [])}
+
+        # One bounded pass over the graph gathers every predicate input.
+        has_social_class = False  # educate; aid (population arm)
+        has_org_in_reach = False  # aid (org arm); attack (org arm)
+        has_mobilizable_org = False  # mobilize (business/civil_society)
+        has_institution_in_reach = False  # attack (institution arm)
+        has_other_org = False  # negotiate (anywhere in the graph)
+        has_territory_node = False  # campaign; move
+        for node_id, data in graph.nodes(data=True):
+            node_type = data.get("_node_type")
+            if node_type == "territory":
+                has_territory_node = True
+                continue
+            node_tids = {str(t) for t in data.get("territory_ids", [])}
+            if node_type == "organization" and node_id != org_id:
+                has_other_org = True
+                if node_tids & own_tids:
+                    has_org_in_reach = True
+                    if str(data.get("org_type", "")) in ("business", "civil_society"):
+                        has_mobilizable_org = True
+            elif node_type == "social_class" and node_tids & own_tids:
+                has_social_class = True
+            elif node_type == "institution" and node_tids & own_tids:
+                has_institution_in_reach = True
+
+        eligible_by_verb: dict[str, bool] = {
+            "educate": has_social_class,
+            "aid": has_social_class or has_org_in_reach,
+            "attack": has_org_in_reach or has_institution_in_reach,
+            "mobilize": has_mobilizable_org,
+            "campaign": has_territory_node,
+            "move": has_territory_node,
+            "investigate": bool(own_tids),
+            "reproduce": True,  # always targets the acting org itself
+            "negotiate": has_other_org,
+        }
+
+        resources = VanguardResources.from_organization(
+            cadre_level=float(org_data.get("cadre_level", 0.0)),
+            cohesion=float(org_data.get("cohesion", 0.0)),
+            budget=float(org_data.get("budget", 0.0)),
+            heat=float(org_data.get("heat", 0.0)),
+            territory_count=len(own_tids),
+        )
+
+        verbs: list[dict[str, Any]] = []
+        for verb in VERB_TO_ACTION_TYPE:
+            eligible = eligible_by_verb[verb]
+            reason, remedy = (None, None) if eligible else VERB_INELIGIBILITY_COPY[verb]
+            can_afford, afford_reason = check_can_afford(resources, verb)
+            verbs.append(
+                {
+                    "verb": verb,
+                    "eligible": eligible,
+                    "reason": reason,
+                    "remedy": remedy,
+                    "can_afford": can_afford,
+                    "afford_note": None if can_afford else afford_reason,
+                }
+            )
+
+        return {
+            "session_id": str(session_id),
+            "tick": state.tick,
+            "org_id": org_id,
+            "verbs": verbs,
         }
 
     def submit_action(

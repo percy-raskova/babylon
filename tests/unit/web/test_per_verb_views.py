@@ -59,6 +59,105 @@ class TestPerVerbURLRouting:
         assert "/actions/" in url
 
 
+@pytest.mark.unit
+class TestVerbEligibilityRouting:
+    """Spec-116 FR-4.8: the aggregate eligibility endpoint resolves."""
+
+    def test_eligibility_url_resolves(self) -> None:
+        url = reverse("game:actions-eligibility", kwargs={"game_id": GAME_ID})
+        assert "/actions/eligibility/" in url
+
+
+@pytest.mark.unit
+@pytest.mark.django_db
+class TestVerbEligibilityView:
+    """GET /api/games/{id}/actions/eligibility/ (spec-116 FR-4.8)."""
+
+    _PAYLOAD = {
+        "session_id": GAME_ID,
+        "tick": 0,
+        "org_id": "ORG001",
+        "verbs": [
+            {
+                "verb": "educate",
+                "eligible": False,
+                "reason": "No organized community in your territories yet.",
+                "remedy": (
+                    "No action can organize a community yet — political "
+                    "education unlocks the moment an organized class "
+                    "appears where you operate."
+                ),
+                "can_afford": False,
+                "afford_note": "Need 2.0 CL, have 0.3",
+            }
+        ],
+    }
+
+    def _setup(self) -> tuple:
+        from unittest.mock import MagicMock
+
+        from django.contrib.auth.models import User
+
+        from game.models import GameSession
+
+        user = User.objects.create_user(  # type: ignore[no-untyped-call]
+            username=f"elig_user_{uuid_mod.uuid4().hex[:8]}",
+            password="testpass123",
+        )
+        client = Client()
+        client.login(username=user.username, password="testpass123")
+
+        session = GameSession.objects.create(
+            id=uuid_mod.uuid4(),
+            player_id=user.id,
+            scenario="wayne_county",
+            current_tick=0,
+            status="active",
+        )
+
+        mock_bridge = MagicMock()
+        mock_bridge.get_verb_eligibility.return_value = self._PAYLOAD
+
+        import game.api
+
+        game.api._bridge_instance = mock_bridge
+        return client, session, mock_bridge
+
+    def test_get_requires_org_id(self) -> None:
+        client, session, _mock = self._setup()
+        url = reverse("game:actions-eligibility", kwargs={"game_id": str(session.id)})
+        response = client.get(url)
+        assert response.status_code == 400
+
+    def test_get_returns_envelope_with_verb_rows(self) -> None:
+        client, session, mock_bridge = self._setup()
+        url = reverse("game:actions-eligibility", kwargs={"game_id": str(session.id)})
+        response = client.get(url, {"org_id": "ORG001"})
+        assert response.status_code == 200
+        body = json.loads(response.content)
+        assert body["status"] == "ok"
+        assert body["data"]["verbs"][0]["verb"] == "educate"
+        assert body["data"]["verbs"][0]["eligible"] is False
+        assert body["data"]["verbs"][0]["remedy"]
+        mock_bridge.get_verb_eligibility.assert_called_once()
+
+    def test_get_unknown_game_404s(self) -> None:
+        client, _session, _mock = self._setup()
+        url = reverse("game:actions-eligibility", kwargs={"game_id": str(uuid_mod.uuid4())})
+        response = client.get(url, {"org_id": "ORG001"})
+        assert response.status_code == 404
+
+    def test_bridge_error_maps_to_400(self) -> None:
+        client, session, mock_bridge = self._setup()
+        mock_bridge.get_verb_eligibility.return_value = {
+            "status": "error",
+            "error": "Org not found",
+        }
+        url = reverse("game:actions-eligibility", kwargs={"game_id": str(session.id)})
+        response = client.get(url, {"org_id": "NOPE"})
+        assert response.status_code == 400
+
+
 # ---------------------------------------------------------------------- #
 # Per-Verb View Integration Tests
 # ---------------------------------------------------------------------- #

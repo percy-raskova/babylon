@@ -1311,6 +1311,34 @@ def actions_available(request: Request, game_id: str) -> JsonResponse:
     )
 
 
+@api_view(["GET"])
+@permission_classes([IsAuthenticated])
+def verb_eligibility(request: Request, game_id: str) -> JsonResponse:
+    """GET /api/games/{id}/actions/eligibility/ — per-verb eligibility.
+
+    Spec-116 FR-4.8: one row per canonical verb — ``{verb, eligible,
+    reason, remedy, can_afford, afford_note}`` — derived from the SAME
+    predicates that yield the per-verb empty target lists, so the
+    VerbGrid can disable dead-end verbs with the reason and remedy
+    visible instead of offering a click into "No eligible targets."
+    Requires ``?org_id=`` like the per-verb target GETs.
+    """
+    session = _get_session_or_none(game_id, request.user.id)
+    if session is None:
+        return _error("Game not found", http_status=404)
+
+    org_id = request.query_params.get("org_id")
+    if not org_id:
+        return _error("org_id query parameter is required")
+
+    bridge = _get_bridge()
+    data = bridge.get_verb_eligibility(uuid.UUID(str(session.id)), org_id)
+    if data.get("status") == "error":
+        return _error(str(data.get("error", "Verb eligibility unavailable")))
+
+    return _envelope(data, tick=session.current_tick, session_id=str(session.id))
+
+
 @api_view(["POST"])
 @permission_classes([IsAuthenticated])
 def actions_preview(request: Request, game_id: str) -> JsonResponse:

@@ -155,6 +155,12 @@ urlpatterns: list[URLPattern] = [
         api.actions_available,
         name="actions-available",
     ),
+    # API: Spec-116 FR-4.8 — per-verb eligibility (VerbGrid disabled-with-reason)
+    path(
+        "games/<str:game_id>/actions/eligibility/",
+        api.verb_eligibility,
+        name="actions-eligibility",
+    ),
     path(
         "games/<str:game_id>/actions/preview/",
         api.actions_preview,

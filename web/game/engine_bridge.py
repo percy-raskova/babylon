@@ -2016,7 +2016,10 @@ class EngineBridge:
         # A2: org_count is real at tick 0 (scenario-seeded orgs); heat_delta
         # has no prior tick to diff against, so it stays at the column
         # default (0.0).
-        initial_orgs = [_serialize_organization(o) for o in initial_state.organizations.values()]
+        initial_orgs = [
+            _serialize_organization(o, player_org_id=initial_state.player_org_id)
+            for o in initial_state.organizations.values()
+        ]
         initial_tenancy_members = _tenancy_members_by_territory(initial_graph)
         _persist_hex_state_safe(
             session_id,
@@ -2090,7 +2093,8 @@ class EngineBridge:
                 # pre-fix games gain a map on first hydrate. Spec-109 A2:
                 # org_count is real; heat_delta has no prior tick.
                 seeded_orgs = [
-                    _serialize_organization(o) for o in seeded_state.organizations.values()
+                    _serialize_organization(o, player_org_id=seeded_state.player_org_id)
+                    for o in seeded_state.organizations.values()
                 ]
                 seeded_tenancy_members = _tenancy_members_by_territory(seeded_graph)
                 _persist_hex_state_safe(
@@ -3328,7 +3332,10 @@ class EngineBridge:
             Dict per :func:`_build_state_apparatus_dashboard`.
         """
         state, _graph = self.hydrate_state(session_id)
-        organizations = [_serialize_organization(o) for o in state.organizations.values()]
+        organizations = [
+            _serialize_organization(o, player_org_id=state.player_org_id)
+            for o in state.organizations.values()
+        ]
 
         rows: list[dict[str, Any]] = []
         query = getattr(self._persistence, "query_session_events", None)
@@ -4442,6 +4449,10 @@ class EngineBridge:
         :func:`_compute_traps` code path the main snapshot uses — never
         duplicated) — both only for the player org; non-player orgs get
         ``None`` for each rather than an empty-shell section.
+
+        Player-org status is resolved from ``WorldState.player_org_id``
+        (via :func:`_resolve_player_org_id` / :func:`_is_player_org`), not
+        a structural guess — Track 1 / Task 1 (2026-07-18).
         """
         graph = self._persistence.hydrate_graph(tick=None, session_id=session_id)
         if org_id not in graph.nodes or graph.nodes[org_id].get("_node_type") != "organization":
@@ -4455,9 +4466,7 @@ class EngineBridge:
                 "consciousness_tendency": data.get("consciousness_tendency"),
             }
         )
-        is_player_org = (
-            enums["class_character"] == "proletarian" and enums["org_type"] == "civil_society"
-        )
+        is_player_org = _is_player_org(org_id, _resolve_player_org_id(graph))
 
         vanguard: dict[str, Any] | None = None
         traps: dict[str, Any] | None = None
@@ -6073,6 +6082,56 @@ class EngineBridge:
 def _graph_tick(graph: BabylonGraph) -> int:
     """Extract the tick from graph-level metadata, defaulting to 0."""
     return int(graph.graph.get("tick", 0))
+
+
+def _resolve_player_org_id(graph: BabylonGraph) -> str | None:
+    """Resolve the canonical player-organization id from graph metadata.
+
+    ``WorldState.player_org_id`` (``src/babylon/models/world_state.py:461``)
+    is the single source of truth for "the organization the player
+    embodies" — already relied on engine-side by ``EpistemicHorizonSystem``
+    and ``DoctrineSystem``. It rides graph metadata only when set
+    (``WorldState._write_optional_axes``, world_state.py:827-828) and is
+    read back with this exact ``isinstance`` guard by
+    ``WorldState.from_graph`` (world_state.py:992-996). The same idiom is
+    mirrored here (and in ``engine/systems/epistemic_horizon.py:239-240``)
+    so bridge callers that only hold a ``BabylonGraph`` — not a
+    reconstructed ``WorldState`` — don't pay to build one just to answer
+    "is this the player org?".
+
+    Returns ``None`` when absent. This is not a failure: sessions with no
+    player org set (synthetic scenarios, headless sweeps — documented at
+    world_state.py:467-469) legitimately have no player-relative vision,
+    and every org must resolve to "not player-controlled" rather than
+    falling back to a structural guess.
+    """
+    raw = graph.graph.get("player_org_id")
+    return raw if isinstance(raw, str) else None
+
+
+def _is_player_org(org_id: str, player_org_id: str | None) -> bool:
+    """Whether ``org_id`` is the session's canonical player organization.
+
+    Single source of truth for "is this the player org", replacing the
+    ``class_character == "proletarian" and org_type == "civil_society"``
+    structural heuristic that used to live duplicated, verbatim, in
+    ``_serialize_organization`` and ``get_inspector_org`` — a stopgap for
+    the missing engine-side ``controlling_player_id`` link (see the retired
+    docstring note that used to sit on ``_serialize_organization``) that
+    could silently diverge from ``WorldState.player_org_id``: an org could
+    match the heuristic without being the real player org, or the real
+    player org could fail to match it (e.g. a non-civil_society or non-
+    proletarian player faction). Track 1 / Task 1 (2026-07-18) retires the
+    heuristic in favor of this single comparison.
+
+    Args:
+        org_id: The organization id being classified.
+        player_org_id: The session's ``WorldState.player_org_id``, or
+            ``None`` for sessions with no player org set (see
+            :func:`_resolve_player_org_id`) — every org resolves to
+            ``False`` in that case, never a fallback guess.
+    """
+    return player_org_id is not None and org_id == player_org_id
 
 
 # Aliases accepted at the API/CLI boundary, mapped to canonical names in the
@@ -7855,7 +7914,10 @@ def _persist_snapshots_safe(
         return
 
     territories = [_serialize_territory(t, graph=graph) for t in state.territories.values()]
-    organizations = [_serialize_organization(o) for o in state.organizations.values()]
+    organizations = [
+        _serialize_organization(o, player_org_id=state.player_org_id)
+        for o in state.organizations.values()
+    ]
     entities = [_serialize_entity(e) for e in state.entities.values()]
     edges = [_serialize_edge(rel) for rel in state.relationships]
 
@@ -8848,7 +8910,7 @@ def _derive_short_name(name: str) -> str:
     return name[:15] + "…"
 
 
-def _serialize_organization(o: Any) -> dict[str, Any]:
+def _serialize_organization(o: Any, *, player_org_id: str | None) -> dict[str, Any]:
     """Serialize an Organization with all visualization-relevant fields.
 
     Spec 061 US4 (T067, T068): adds ``short_name`` / ``player_controlled``
@@ -8856,18 +8918,26 @@ def _serialize_organization(o: Any) -> dict[str, Any]:
 
     Note on ``player_controlled``: the engine model does not yet carry an
     explicit ``controlling_player_id`` linking an Organization to a
-    Django auth user. Until that link is added by a follow-up spec, we
-    fall back on the existing class_character + org_type heuristic that
-    also gates VanguardResources attachment — proletarian civil-society
-    orgs are treated as player-controlled.
+    Django auth user. ``WorldState.player_org_id`` fills that role
+    (:func:`_is_player_org`) — Track 1 / Task 1 (2026-07-18) retired the
+    ``class_character == "proletarian" and org_type == "civil_society"``
+    structural heuristic this used to fall back on, which could silently
+    diverge from the canonical field already used engine-side by
+    ``EpistemicHorizonSystem``/``DoctrineSystem``.
 
     For player organizations, computes and attaches VanguardResources
     as the ``vanguard`` field.
+
+    Args:
+        o: The Organization to serialize.
+        player_org_id: The session's ``WorldState.player_org_id`` (see
+            :func:`_resolve_player_org_id`), or ``None`` for sessions with
+            no player org set. Required (not defaulted) so no call site can
+            forget to thread it and silently render every org as
+            non-player-controlled.
     """
     name = str(o.name)
-    is_player_org = (
-        _enum_val(o.class_character) == "proletarian" and _enum_val(o.org_type) == "civil_society"
-    )
+    is_player_org = _is_player_org(o.id, player_org_id)
 
     # Spec 061 FR-011: surface OODA phase as a deterministic enum.
     ooda_profile: dict[str, float] = {
@@ -8993,7 +9063,11 @@ def _build_org_network(
         )
 
     nodes: list[dict[str, Any]] = [
-        {"id": oid, "type": "organization", "attributes": _serialize_organization(orgs[oid])}
+        {
+            "id": oid,
+            "type": "organization",
+            "attributes": _serialize_organization(orgs[oid], player_org_id=state.player_org_id),
+        }
         for oid in org_ids
     ]
     nodes.extend(
@@ -9202,7 +9276,10 @@ def _state_to_snapshot(state: WorldState, session_id: UUID, *, graph: Any = None
         Flat dict suitable for JSON encoding.
     """
     territories = [_serialize_territory(t, graph=graph) for t in state.territories.values()]
-    organizations = [_serialize_organization(o) for o in state.organizations.values()]
+    organizations = [
+        _serialize_organization(o, player_org_id=state.player_org_id)
+        for o in state.organizations.values()
+    ]
     institutions = [_serialize_institution(inst) for inst in state.institutions.values()]
     edges = [_serialize_edge(rel) for rel in state.relationships]
     events_list: list[dict[str, Any]] = [

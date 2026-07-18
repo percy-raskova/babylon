@@ -28,7 +28,10 @@ def _wayne_dashboard() -> dict[str, object]:
     )
 
     state = _build_initial_state_for_scenario("wayne_county")
-    organizations = [_serialize_organization(o) for o in state.organizations.values()]
+    organizations = [
+        _serialize_organization(o, player_org_id=state.player_org_id)
+        for o in state.organizations.values()
+    ]
     return _build_state_apparatus_dashboard(state, organizations, recent_actions=[])
 
 

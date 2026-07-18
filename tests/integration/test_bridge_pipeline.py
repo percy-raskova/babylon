@@ -129,9 +129,9 @@ class TestBridgeVanguardResources:
     """Verify VanguardResources is injected into org serialization."""
 
     def test_player_org_has_vanguard(self, wayne_state) -> None:
-        """The player org (proletarian civil_society) gets vanguard resources."""
+        """The player org (wayne_state.player_org_id, ORG001) gets vanguard resources."""
         org = list(wayne_state.organizations.values())[0]
-        org_dict = _serialize_organization(org)
+        org_dict = _serialize_organization(org, player_org_id=wayne_state.player_org_id)
 
         assert org_dict["vanguard"] is not None
         v = org_dict["vanguard"]
@@ -151,7 +151,7 @@ class TestBridgeVanguardResources:
     def test_vanguard_values_are_correct(self, wayne_state) -> None:
         """VanguardResources values match expected computation."""
         org = list(wayne_state.organizations.values())[0]
-        org_dict = _serialize_organization(org)
+        org_dict = _serialize_organization(org, player_org_id=wayne_state.player_org_id)
         v = org_dict["vanguard"]
 
         # cadre_level=0.1, cohesion=0.5, budget=100, heat=0.0, territory_count=2

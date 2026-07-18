@@ -98,6 +98,18 @@ hypergraph-rs/                          # top-level workspace, external dep
 
 ## 3. Core data structure — bipartite rustworkx graph (Approach B)
 
+The bipartite representation is the textbook one: Bretto, *Hypergraph
+Theory: An Introduction* (Springer 2013, §2 — reference copy at
+`sources/bretto_hypergraph-theory.pdf` with a `pdftotext` extraction
+alongside) defines the **incidence graph** `IG(H)` as the bipartite graph
+on `V ⊔ E` with `x ∈ V` adjacent to `e ∈ E` iff `x ∈ e`. Two consequences
+the design exploits: the **incidence matrix** `A` (n×m, `a_ij = 1 iff
+v_i ∈ e_j`, Bretto §1.3) is exactly the bipartite adjacency matrix, and the
+**dual hypergraph** `H*` (incidence matrix `A^t`) is the same substrate
+with the `NodeKind` roles swapped — `dual()` is a view, not a rebuild.
+(Classical convention caveat: Bretto §1.1 excludes empty hyperedges by
+default; XGI permits them. XGI parity wins — divergence D1.)
+
 The hypergraph IS a `rustworkx_core::petgraph::Graph` with two node kinds.
 This is what makes it a genuine rustworkx plugin — we extend petgraph's data
 structure with n-ary semantics.
@@ -364,7 +376,7 @@ deliberate behavior, so drift on either side fails loudly.
 
 | # | XGI v0.10.2 behavior (verified) | Rust core behavior | Binding contract (Phase 2) |
 |---|---|---|---|
-| D1 | `add_edge([])` creates an empty edge (docstring lies) | Same — creates it | pass-through |
+| D1 | `add_edge([])` creates an empty edge (docstring lies). Classical theory excludes empty hyperedges by convention (Bretto §1.1) — XGI parity wins | Same — creates it | pass-through |
 | D2 | Duplicate `idx` → `UserWarning` + no-op, returns `None` | `Err(EdgeError::AlreadyExists)` | translate to `warnings.warn(...)` + `None` |
 | D3 | String idx `"5"` does NOT bump the uid counter (only int/float idx do) | Bumps iff `idx.parse::<u64>()` succeeds (`"5"` → next auto `"6"`). Rationale: the ID boundary is stringly-typed (D7); XGI's int-idx behavior is the common case | pass-through; XGI's str-idx no-bump is pathological, not preserved |
 | D4 | Float idx `5.0` bumps (`float.is_integer()`) | No bump (`"5.0"` fails `parse::<u64>`) — the D3 rule is exact | pass-through |

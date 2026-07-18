@@ -1488,6 +1488,60 @@ def _class_to_territory(tenancy_members: dict[str, list[str]]) -> dict[str, str]
     return mapping
 
 
+def _build_solidarity_edge_lines(
+    graph: BabylonGraph, reach: frozenset[str], class_territory: dict[str, str]
+) -> list[dict[str, Any]]:
+    """Territory-anchored SOLIDARITY edges for the cockpit map layer (Track 1
+    / Task 6) — the ``get_map_snapshot`` metadata block's data source for
+    drawing solidarity as literal lines on the geographic map.
+
+    Reuses :func:`_collect_solidarity_edges` (the same edge walk
+    ``/communities/`` uses) and territory-anchors each endpoint via
+    :func:`_class_to_territory`, the identical pattern
+    :func:`_build_field_state_edges` already established for gradient
+    edges — not a new resolution mechanism.
+
+    **Fog gate: BOTH endpoints must be in ``reach``**, same rule and same
+    reasoning as :func:`_filter_edges_by_reach` (this is the map-layer
+    twin of that gate, over the graph's raw SOLIDARITY edges rather than
+    already-serialized ``WorldState.relationships`` dicts — two data
+    sources feeding the same edge family, one shared visibility rule).
+    An edge failing the check is OMITTED, never emitted with a null
+    ``source_territory``/``target_territory`` stub.
+
+    Args:
+        graph: The hydrated session graph.
+        reach: :func:`_current_organizing_reach`'s result.
+        class_territory: Output of :func:`_class_to_territory` (built from
+            :func:`_tenancy_members_by_territory`) — the caller's own, so
+            this function does not re-derive it (mirrors
+            :func:`_build_field_state_edges`'s signature).
+
+    Returns:
+        One dict per visible edge: ``source``/``target`` (social_class node
+        ids), ``source_territory``/``target_territory`` (territory node id,
+        or ``None`` when that class holds no live TENANCY edge — honest
+        absence, not a fabricated territory), ``solidarity_strength``.
+        Sorted by ``(source, target)`` for determinism, independent of
+        graph iteration order.
+    """
+    lines: list[dict[str, Any]] = []
+    for source, target, strength in _collect_solidarity_edges(graph):
+        if source not in reach or target not in reach:
+            continue
+        lines.append(
+            {
+                "source": source,
+                "target": target,
+                "source_territory": class_territory.get(source),
+                "target_territory": class_territory.get(target),
+                "solidarity_strength": round(strength, 4),
+            }
+        )
+    lines.sort(key=lambda line: (line["source"], line["target"]))
+    return lines
+
+
 def _build_field_state_nodes(graph: Any) -> list[dict[str, Any]]:
     """Serialize the Systems #19/#20 field stack per social_class node.
 
@@ -2274,6 +2328,22 @@ class EngineBridge:
                 metadata["balkanization"] = _build_balkanization_block(graph)
             except Exception:  # noqa: BLE001 — optional block, never fails the map
                 logger.exception("Failed to build balkanization block for session %s", session_id)
+
+            # Track 1 / Task 6: SOLIDARITY edges as literal lines — the
+            # cockpit map layer's data source. Territory-anchored via the
+            # same TENANCY resolution h3_to_territory above already needed
+            # (_tenancy_members_by_territory), fog-gated by the SAME reach
+            # this whole snapshot already computed — see
+            # _build_solidarity_edge_lines's docstring for the BOTH-endpoints
+            # rule.
+            try:
+                tenancy_members = _tenancy_members_by_territory(graph)
+                class_territory = _class_to_territory(tenancy_members)
+                metadata["solidarity_edges"] = _build_solidarity_edge_lines(
+                    graph, reach, class_territory
+                )
+            except Exception:  # noqa: BLE001 — optional block, never fails the map
+                logger.exception("Failed to build solidarity edge lines for session %s", session_id)
 
         return {
             "type": "FeatureCollection",
@@ -9721,6 +9791,66 @@ def _serialize_edge(rel: Any) -> dict[str, Any]:
     }
 
 
+#: EdgeType.SOLIDARITY.value, mirrors ``_serialize_edge``'s ``"mode"`` wire
+#: value (``_enum_val(rel.edge_type)``) — the one edge type this module's
+#: fog gate treats as political existence, not just political fields.
+_SOLIDARITY_EDGE_MODE: Final[str] = "solidarity"
+
+
+def _filter_edges_by_reach(
+    edges: list[dict[str, Any]], reach: frozenset[str] | None = None
+) -> list[dict[str, Any]]:
+    """Omit out-of-reach SOLIDARITY edges from an already-serialized edge
+    list entirely — never mask their fields to ``None`` (Track 1 / Task 6).
+
+    Unlike every other Track 1 fog surface, a SOLIDARITY edge's very
+    EXISTENCE is political information: an org's territory/field payload
+    stays present-with-masked-fields outside reach, but there is no
+    equivalent "masked edge" shape here — an edge either belongs in the
+    payload or it does not. So the gate is list membership, not
+    :func:`game.fog.filter.apply_fog`'s per-field redaction.
+
+    **Design decision: BOTH endpoints must be in reach for the edge to
+    survive.** See this module's :func:`test_solidarity_edge_fog` docstring
+    (``tests/unit/web/test_solidarity_edge_fog.py``) for the full reasoning;
+    in short, "either endpoint in reach" would let a near, organized class
+    leak the existence of a far, unorganized solidarity partner merely by
+    the edge's presence — exactly what the fog protects. ``both`` accepts
+    the map looking severed at the reach boundary as the safe failure mode.
+
+    Only edges whose ``"mode"`` is :data:`_SOLIDARITY_EDGE_MODE` are ever
+    gated — every other edge type (EXPLOITATION/WAGES/TENANCY/TRIBUTE/
+    ADJACENCY/...) is MATERIAL (``game.fog.filter.POLITICAL_FIELDS`` lists
+    only ``"solidarity"``, no other edge-type name) and always passes
+    through, regardless of reach.
+
+    Args:
+        edges: ``_serialize_edge`` output dicts (``source_id``/``target_id``/
+            ``mode`` keys read here).
+        reach: :func:`_current_organizing_reach`'s result. ``None`` (the
+            default) means "fog not requested" — every pre-existing caller
+            of ``_serialize_edge`` that never threads ``reach`` (e.g.
+            ``_persist_snapshots_safe``, an internal persistence path that
+            MUST keep writing TRUE state) is unaffected: this function is
+            opt-in, exactly like ``_serialize_territory``'s own ``reach``
+            parameter.
+
+    Returns:
+        A NEW list — ``edges`` is never mutated. Order is preserved for the
+        surviving entries.
+    """
+    if reach is None:
+        return edges
+    visible: list[dict[str, Any]] = []
+    for edge in edges:
+        if edge.get("mode") != _SOLIDARITY_EDGE_MODE:
+            visible.append(edge)
+            continue
+        if edge.get("source_id") in reach and edge.get("target_id") in reach:
+            visible.append(edge)
+    return visible
+
+
 def _state_to_snapshot(state: WorldState, session_id: UUID, *, graph: Any = None) -> dict[str, Any]:
     """Convert a WorldState to a JSON-serializable dict for API responses.
 
@@ -9768,7 +9898,11 @@ def _state_to_snapshot(state: WorldState, session_id: UUID, *, graph: Any = None
         for o in state.organizations.values()
     ]
     institutions = [_serialize_institution(inst) for inst in state.institutions.values()]
-    edges = [_serialize_edge(rel) for rel in state.relationships]
+    # Track 1 / Task 6: the SAME reach that gates territory/org political
+    # fields above also gates SOLIDARITY edge EXISTENCE here — an
+    # out-of-reach SOLIDARITY edge is omitted from the list entirely, never
+    # emitted with masked fields (see _filter_edges_by_reach's docstring).
+    edges = _filter_edges_by_reach([_serialize_edge(rel) for rel in state.relationships], reach)
     events_list: list[dict[str, Any]] = [
         _serialize_event(e, session_id, graph=graph) for e in state.events
     ]

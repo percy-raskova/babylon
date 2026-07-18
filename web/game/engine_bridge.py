@@ -9335,20 +9335,21 @@ def _compute_traps(
 ) -> dict[str, Any] | None:
     """Run trap detection for a session, computing scores from action history.
 
-    Returns None if no player org is found (non-Wayne County scenarios).
+    Returns None if the state carries no ``player_org_id`` (synthetic
+    scenarios, headless sweeps) or if that id names no known organization.
     ``persist=False`` computes without writing ``_session_trap_state`` —
     for read-only callers (the org inspector) that must never advance the
     ``ticks_at_moderate`` escalation carried tick-to-tick.
+
+    Player identity comes from :attr:`WorldState.player_org_id`, the canonical
+    source (see :func:`_resolve_player_org_id`). This function previously
+    re-derived it from the retired structural heuristic
+    ``class_character == "proletarian" and org_type == "civil_society"`` — a
+    third, independent copy of a definition nothing enforced agreement on, so
+    trap detection could silently target a different organization than the
+    inspector and serializer did.
     """
-    # Find the player org
-    player_org = None
-    for org in state.organizations.values():
-        if (
-            _enum_val(org.class_character) == "proletarian"
-            and _enum_val(org.org_type) == "civil_society"
-        ):
-            player_org = org
-            break
+    player_org = state.organizations.get(state.player_org_id) if state.player_org_id else None
 
     if player_org is None:
         return None

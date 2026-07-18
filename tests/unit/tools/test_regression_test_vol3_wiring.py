@@ -45,3 +45,26 @@ def test_run_scenario_passes_vol3_calculator_overrides_to_step(
     assert overrides.get("distribution_calculator") is not None
     assert overrides.get("interest_calculator") is not None
     assert overrides.get("fictitious_capital_calculator") is not None
+
+
+def test_regression_test_module_stays_hermetic_no_db_no_drive() -> None:
+    """D4: qa:regression's in-memory harness must never gain a DB/drive
+    dependency. create_financial_services() itself is DB-free (it only
+    builds calculator objects from an in-memory cache dict); the forbidden
+    tokens below are specifically the DB-touching entry points."""
+    source = Path(rt.__file__).read_text()
+    forbidden = (
+        "import sqlalchemy",
+        "get_normalized_session_factory",
+        "get_reference_session",
+        "load_fred_series_from_db(",
+    )
+    violations = [token for token in forbidden if token in source]
+    assert not violations, (
+        f"tools/regression_test.py references {violations} — the qa:regression "
+        "harness is no longer hermetic (D4 requires fixture-only, no DB, no drive)"
+    )
+    assert "FRED_FIXTURE_PATH" in source, (
+        "tools/regression_test.py does not load the committed Vol III FRED "
+        "fixture — the gate is hermetic but blind (D4 requires both)"
+    )

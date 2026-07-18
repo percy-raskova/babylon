@@ -282,11 +282,42 @@ describe("time slice — spacebar", () => {
     expect(pauseSpy).toHaveBeenCalled();
   });
 
-  it("does nothing while resolving/autopaused/error", () => {
+  it("resolving -> dispatches pause() (a resolve is almost always in flight live)", () => {
+    // Under a live engine a real tick resolve (~15-19s) dwarfs the sub-second
+    // inter-resolve delay, so the loop sits in "resolving" nearly the whole
+    // time and is "playing" only during that brief delay window. A single
+    // Space press therefore almost always lands during "resolving"; dropping
+    // it there made spacebar-pause effectively dead live (the Pause BUTTON,
+    // which calls pause() from any status, kept working — the two affordances
+    // diverged). "resolving" means the loop is running, so Space must stop it:
+    // pause() sets playIntent=false and the serialized loop halts once the
+    // in-flight resolve settles — identical to the Pause button.
+    const playSpy = vi.fn();
+    const pauseSpy = vi.fn();
+    useStore.setState((s) => ({
+      time: { ...s.time, status: "resolving", play: playSpy, pause: pauseSpy },
+    }));
+
+    useStore.getState().time.toggleSpacebar(DEFAULT_GAME_ID);
+
+    expect(pauseSpy).toHaveBeenCalled();
+    expect(playSpy).not.toHaveBeenCalled();
+  });
+
+  it("does nothing while autopaused/error (Space is not an acknowledgement)", () => {
     const playSpy = vi.fn();
     const pauseSpy = vi.fn();
     useStore.setState((s) => ({
       time: { ...s.time, status: "autopaused", play: playSpy, pause: pauseSpy },
+    }));
+
+    useStore.getState().time.toggleSpacebar(DEFAULT_GAME_ID);
+
+    expect(playSpy).not.toHaveBeenCalled();
+    expect(pauseSpy).not.toHaveBeenCalled();
+
+    useStore.setState((s) => ({
+      time: { ...s.time, status: "error", play: playSpy, pause: pauseSpy },
     }));
 
     useStore.getState().time.toggleSpacebar(DEFAULT_GAME_ID);

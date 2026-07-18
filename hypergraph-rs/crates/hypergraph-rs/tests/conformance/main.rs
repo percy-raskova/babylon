@@ -202,10 +202,10 @@ fn conform_node_attr_set_read() {
 }
 
 #[test]
-fn diverge_d8_clear_resets_uid_counter() {
+fn diverge_d10_clear_resets_uid_counter() {
     // XGI's clear() (remove_net_attr=True default) empties all nodes, edges,
     // node/edge attrs, and net attrs — the Rust core conforms on all of
-    // that. D8: XGI does NOT reset its auto-id counter (the next auto id
+    // that. D10: XGI does NOT reset its auto-id counter (the next auto id
     // continues at 1); the Rust core resets edge_uid_counter, so a cleared
     // hypergraph behaves identically to a fresh one (clear() ≡ new();
     // III.7 replay-from-empty determinism).

@@ -385,6 +385,7 @@ deliberate behavior, so drift on either side fails loudly.
 | D7 | Ids are typed hashables (auto-ids are `int`; explicit ids arbitrary) | All ids are `String` at the core boundary | PyO3 converts: `int` ↔ `String` losslessly for integer-like ids; non-string hashables via `str()` (documented) |
 | D8 | `add_edge` returns `None` | Returns `Ok(edge_id)` | binding discards, returns `None` |
 | D9 | `remove_node(n, strong=False, remove_empty=True)` — three-mode | `remove_node(id, strong)`; weak mode always removes emptied edges (XGI default). `remove_empty=False` is unimplemented (Phase 2 task) | expose `remove_empty` when implemented |
+| D10 | `H.clear()` empties everything but does NOT reset the auto-id counter (next auto id continues, e.g. `1`) | `clear()` resets `edge_uid_counter` — a cleared hypergraph ≡ `new()` (III.7 replay-from-empty determinism) | pass-through (documented) |
 
 The register is append-only: new deliberate divergences get the next
 number, a conformance vector, and a row here — never an undocumented

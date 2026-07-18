@@ -335,4 +335,20 @@ impl<N, E, M> Hypergraph<N, E, M> {
         self.edge_uid_counter = 0;
         self.graph_attrs.clear();
     }
+
+    /// Return an independent deep copy. XGI parity: `H.copy()`.
+    pub fn copy(&self) -> Self
+    where
+        N: Clone,
+        E: Clone,
+        M: Clone,
+    {
+        Self {
+            inner: self.inner.clone(),
+            agent_ids: self.agent_ids.clone(),
+            hyperedge_ids: self.hyperedge_ids.clone(),
+            edge_uid_counter: self.edge_uid_counter,
+            graph_attrs: self.graph_attrs.clone(),
+        }
+    }
 }

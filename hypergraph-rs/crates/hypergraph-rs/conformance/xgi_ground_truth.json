@@ -81,6 +81,18 @@
       "num_edges": 0,
       "num_nodes": 0
     },
+    "copy_independence": {
+      "edge_attrs": {
+        "heat": 0.5
+      },
+      "has_c": false,
+      "net_name": "test",
+      "node_attrs": {
+        "color": "red"
+      },
+      "num_edges": 1,
+      "num_nodes": 2
+    },
     "node_attr_set_read": {
       "attrs": {
         "color": "red"

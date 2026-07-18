@@ -415,3 +415,39 @@ fn conform_remove_edge_then_readd() {
         assert_eq!(got, ids(expected));
     }
 }
+
+#[test]
+fn conform_copy_independence() {
+    // XGI's H.copy() is a DEEP, independent clone: mutating the original in
+    // any channel (node attrs, edge attrs, net attrs, membership) leaves
+    // the copy untouched. The Rust core conforms — clone() is deep on every
+    // channel (serde_json::Value attrs clone by value).
+    let gt = ground_truth();
+    let v = vector(&gt, "copy_independence");
+
+    let mut h: Hypergraph = Hypergraph::new();
+    h.add_node("a", serde_json::json!({"color": "red"}));
+    h.add_edge(
+        vec!["a".into(), "b".into()],
+        Some("e1".into()),
+        serde_json::json!({"heat": 0.5}),
+    )
+    .unwrap();
+    h.set_graph_attr("name", serde_json::json!("test"));
+
+    let c = h.copy();
+
+    // Mutate the original in every channel.
+    h.node_attrs_mut("a").unwrap()["color"] = serde_json::json!("blue");
+    h.edge_attrs_mut("e1").unwrap()["heat"] = serde_json::json!(0.9);
+    h.set_graph_attr("name", serde_json::json!("modified"));
+    h.add_node("c", Value::Null);
+
+    // The copy is untouched — XGI's recorded truth.
+    assert_eq!(c.node_attrs("a").unwrap(), &v["node_attrs"]);
+    assert_eq!(c.edge_attrs("e1").unwrap(), &v["edge_attrs"]);
+    assert_eq!(c.graph_attr("name"), Some(&v["net_name"]));
+    assert_eq!(c.num_nodes(), v["num_nodes"].as_u64().unwrap() as usize);
+    assert_eq!(c.num_edges(), v["num_edges"].as_u64().unwrap() as usize);
+    assert_eq!(c.has_node("c"), v["has_c"].as_bool().unwrap());
+}

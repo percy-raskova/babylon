@@ -218,6 +218,29 @@ def v_clear_all() -> dict:
     return state
 
 
+def v_copy_independence() -> dict:
+    H = xgi.Hypergraph()
+    H.add_node("a", color="red")
+    H.add_edge(["a", "b"], idx="e1", heat=0.5)
+    H["name"] = "test"
+    C = H.copy()
+    # Mutate the ORIGINAL in every channel — node attrs, edge attrs, net
+    # attrs, membership. H.copy() is a deep, independent clone: the copy
+    # must be untouched by all of it.
+    H.nodes["a"]["color"] = "blue"
+    H.edges["e1"]["heat"] = 0.9
+    H["name"] = "modified"
+    H.add_node("c")
+    return {
+        "node_attrs": dict(C.nodes["a"]),
+        "edge_attrs": dict(C.edges["e1"]),
+        "net_name": C["name"],
+        "num_nodes": C.num_nodes,
+        "num_edges": C.num_edges,
+        "has_c": "c" in C,
+    }
+
+
 def main() -> None:
     vectors = {
         name.removeprefix("v_"): fn()

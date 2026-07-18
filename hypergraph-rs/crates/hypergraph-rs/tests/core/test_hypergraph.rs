@@ -561,3 +561,34 @@ fn test_remove_node_preserves_insertion_order() {
     h.remove_node("b", false).unwrap();
     assert_eq!(h.node_ids(), vec!["a", "c"]);
 }
+
+#[test]
+fn test_copy_produces_independent_clone() {
+    let mut h: Hypergraph = Hypergraph::new();
+    h.add_edge(
+        vec!["a".to_string(), "b".to_string()],
+        Some("e1".to_string()),
+        serde_json::json!({"heat": 0.5}),
+    )
+    .unwrap();
+    h.set_graph_attr("name", serde_json::json!("test"));
+
+    let mut h2 = h.copy();
+    assert_eq!(h2.num_nodes(), 2);
+    assert_eq!(h2.num_edges(), 1);
+    assert_eq!(h2.edge_attrs("e1").unwrap()["heat"], 0.5);
+
+    h2.add_node("c", serde_json::Value::Null);
+    h2.set_graph_attr("name", serde_json::json!("modified"));
+    assert_eq!(h.num_nodes(), 2);
+    assert!(!h.has_node("c"));
+    assert_eq!(h.graph_attr("name"), Some(&serde_json::json!("test")));
+}
+
+#[test]
+fn test_copy_of_empty() {
+    let h: Hypergraph = Hypergraph::new();
+    let h2 = h.copy();
+    assert_eq!(h2.num_nodes(), 0);
+    assert_eq!(h2.num_edges(), 0);
+}

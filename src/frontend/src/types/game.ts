@@ -98,7 +98,36 @@ export interface MapSnapshotMetadata {
    * lenses honestly before/without a given backend property).
    */
   available_metrics?: string[];
+  /**
+   * Track 1 / Task 6: territory-anchored SOLIDARITY edges — the cockpit map
+   * layer's data source for drawing solidarity as literal lines
+   * (`EngineBridge.get_map_snapshot`, `_build_solidarity_edge_lines`,
+   * `web/game/engine_bridge.py`). Fog-gated server-side: BOTH endpoints must
+   * be in the viewer's organizing reach or the edge is OMITTED entirely (an
+   * edge's existence is itself political information) — never present with
+   * a null/placeholder endpoint. Absent when the optional metadata block
+   * failed to build (best-effort — never fails the map); an empty array is
+   * the honest "no visible solidarity yet" state, not an error.
+   */
+  solidarity_edges?: SolidarityEdgeLine[];
   [key: string]: unknown;
+}
+
+/**
+ * One `metadata.solidarity_edges[]` entry (`_build_solidarity_edge_lines`) —
+ * a single visible SOLIDARITY edge between two `social_class` nodes,
+ * territory-anchored via the bridge's existing TENANCY resolution. Mirrors
+ * `FieldStateEdge`'s `source_territory`/`target_territory` convention:
+ * `null` (key present, never omitted) when that endpoint class has no
+ * resolvable TENANCY territory — honest absence, not a fabricated one.
+ */
+export interface SolidarityEdgeLine {
+  source: string;
+  target: string;
+  source_territory: string | null;
+  target_territory: string | null;
+  /** `SolidaritySystem`/`StruggleSystem`-mutated edge strength, real not inert. */
+  solidarity_strength: number;
 }
 
 /** Trap detection output from the engine. */

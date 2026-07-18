@@ -7,7 +7,7 @@
  */
 
 import type { FeatureCollection } from "geojson";
-import type { MapSnapshotMetadata } from "@/types/game";
+import type { MapSnapshotMetadata, SolidarityEdgeLine } from "@/types/game";
 import type { FactionSummary } from "@/components/map/mapLensLayers";
 
 export type MapFeatureCollectionWithMetadata = FeatureCollection & {
@@ -24,6 +24,31 @@ export function factionsFromMapData(data: FeatureCollection | null): FactionSumm
 export function availableMetricsFromMapData(data: FeatureCollection | null): string[] | undefined {
   const withMeta = data as MapFeatureCollectionWithMetadata | null;
   return withMeta?.metadata?.available_metrics;
+}
+
+/**
+ * Stable empty solidarity-edge array (Track 1 / Task 6) — module-level so
+ * `solidarityEdgesFromMapData` returns the SAME reference every time
+ * `metadata.solidarity_edges` is absent, matching `DeckGLMap`'s
+ * referential-stability contract for its `layers` memo (mirrors
+ * `DeckGLMap.tsx`'s own `EMPTY_FIELD_FLOW_EDGES`).
+ */
+const EMPTY_SOLIDARITY_EDGES: SolidarityEdgeLine[] = [];
+
+/**
+ * Read `metadata.solidarity_edges` off a fetched map panel's data — the
+ * cockpit map layer's data source for drawing SOLIDARITY edges as literal
+ * lines (`_build_solidarity_edge_lines`, `web/game/engine_bridge.py`).
+ * Extracted (rather than inlined in `DeckGLMap.tsx`) to keep that
+ * component's cyclomatic complexity under its cap, mirroring
+ * `availableMetricsFromMapData` above. Returns the stable empty array when
+ * absent — never a fabricated edge (Constitution III.11).
+ */
+export function solidarityEdgesFromMapData(
+  data: FeatureCollection | null | undefined,
+): SolidarityEdgeLine[] {
+  const withMeta = data as MapFeatureCollectionWithMetadata | null | undefined;
+  return withMeta?.metadata?.solidarity_edges ?? EMPTY_SOLIDARITY_EDGES;
 }
 
 /**

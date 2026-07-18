@@ -236,6 +236,17 @@ export function rampForLayer(layer: MapLayer): string[] {
  */
 export const FIELD_FLOW_COLOR: readonly [number, number, number] = [184, 50, 31];
 
+/**
+ * Solidarity-line map layer (Track 1 / Task 6, `components/map/layers/
+ * solidarityLines.ts`) — a fixed hue, mirroring `FIELD_FLOW_COLOR`'s
+ * pattern: line WEIGHT (not hue) carries `solidarity_strength`. Reuses the
+ * exact canon `--babylon-solidarity` green (`DATA_RAMPS.solidarity`'s
+ * terminal stop, `#5fbf7a`) as a plain RGBA tuple — the same token
+ * `mapLensLayers.ts`'s `STANCE_COLOR.ABOLISH` already renders — rather than
+ * inventing a new hex literal.
+ */
+export const SOLIDARITY_LINE_COLOR: RGBAColor = [95, 191, 122, 220];
+
 /** Convert RGBA to a CSS colour string for use in non-deck.gl contexts. */
 export function rgbaToCss(c: RGBAColor): string {
   return `rgba(${c[0]}, ${c[1]}, ${c[2]}, ${(c[3] / 255).toFixed(2)})`;

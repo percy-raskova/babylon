@@ -1054,11 +1054,41 @@ Co-Authored-By: Claude Opus 4.8 (1M context) <noreply@anthropic.com>"
 ### Task U1.8: Extract `_build_tensor_registry` + wire `tensor_registry` into `engine_bridge._bridge_economics_overrides`
 
 **Files:**
-- Modify: `web/game/engine_bridge.py:6223-6280` (cache + `_build_capital_calculator`), `:6422-6426` (usage inside `_bridge_economics_overrides`)
+- Modify: `web/game/engine_bridge.py` — the `_CAPITAL_CALCULATOR_CACHE` / `_build_capital_calculator` block, and the `if fips_codes:` block inside `_bridge_economics_overrides`. **Located by quoted anchor, not line number** (see the base note below).
 - Test: `tests/unit/web/test_tensor_registry_wiring.py`
 
+> **BASE NOTE (deconfliction, 2026-07-18) — anchors are base-agnostic.**
+> A sibling branch, `fix/null-play-coupling` (fog-of-war / player-vision), also edits
+> `web/game/engine_bridge.py` and is **not yet merged to `dev`**. It inserts ~699 lines
+> *above* this task's edit region, which shifts every line number here by roughly **+439**.
+> **Every textual anchor this task uses is byte-identical on `dev` and on
+> `fix/null-play-coupling`**, verified by `grep -F` (exactly one hit on each ref) plus a
+> full-block byte diff. That is why the line numbers were removed: the quoted anchors below
+> locate the edit correctly on *either* base, so this task does not care which branch lands first.
+>
+> *How to tell which base you are on:* `grep -c '_resolve_player_org_id' web/game/engine_bridge.py`
+> → `0` means the sibling has **not** landed (you are on plain `dev`); `1` means it **has**.
+> Either way, proceed unchanged.
+>
+> *Merge safety (verified, not assumed):* the sibling's nearest insertion
+> (`_current_intel_aging_ticks`) ends ~130 lines above this edit region — far outside
+> three-way-merge context. A `git merge-file` simulation of this exact edit against
+> `fix/null-play-coupling` produced **0 conflicts**, with `_build_tensor_registry` and their
+> `_resolve_player_org_id`/fog helpers coexisting intact.
+>
+> *If an anchor below is NOT found verbatim:* *STOP — do not improvise a nearby line.* It means
+> the sibling (or `dev`) has since edited this specific region, which is new information the plan
+> does not cover. Re-verify with
+> `git show dev:web/game/engine_bridge.py | grep -F '<anchor>'` and the same against
+> `fix/null-play-coupling`, then escalate with which ref lost the anchor.
+>
+> *Deliberately NOT adopted:* the sibling extracts `_resolve_player_org_id` / `_is_player_org`
+> helpers. They are genuinely good, but they serve **their** fog feature — this branch calls the
+> player-org heuristic nowhere. Copying them here would manufacture a duplicate-definition
+> conflict at merge time in a region where we currently conflict **zero**. Let their branch own them.
+
 **Interfaces:**
-- Consumes: nothing new — reuses the exact `TensorRegistry`/`MarxianHydrator`/`SQLiteQCEWSource`/`DepartmentMapper`/`StubBEASource`/`get_reference_session` construction already in `_build_capital_calculator` (`web/game/engine_bridge.py:6257-6276`).
+- Consumes: nothing new — reuses the exact `TensorRegistry`/`MarxianHydrator`/`SQLiteQCEWSource`/`DepartmentMapper`/`StubBEASource`/`get_reference_session` construction already in `_build_capital_calculator` (the `registry = TensorRegistry()` … `registry.hydrate_counties(...)` body of that function).
 - Produces: `_build_tensor_registry(fips_codes: tuple[str, ...]) -> Any` (new, cached, module-level) — `_build_capital_calculator` now calls it instead of duplicating hydration; `_bridge_economics_overrides` gains `overrides["tensor_registry"]` under the same `if fips_codes:` gate as `capital_calculator`, so every real web session finally exposes `services.tensor_registry` (design doc §1.1: "no — built :6268, consumed only by CapitalStockCalculator").
 
 - [ ] **Step 1: Write the failing test**
@@ -1119,7 +1149,19 @@ Run: `mise run test:q -- tests/unit/web/test_tensor_registry_wiring.py::TestBrid
 Expected: FAIL with `assert "tensor_registry" in overrides` -> `AssertionError: assert 'tensor_registry' in {...}` (key absent)
 - [ ] **Step 3: Write minimal implementation**
 
-Edit `web/game/engine_bridge.py:6223-6280` — split `_build_capital_calculator` into a shared registry builder plus a thin capital-calculator wrapper:
+Edit `web/game/engine_bridge.py` — split `_build_capital_calculator` into a shared registry builder plus a thin capital-calculator wrapper.
+
+**Replace the contiguous block** that begins with this line:
+```python
+_CAPITAL_CALCULATOR_CACHE: dict[frozenset[str], Any] = {}
+```
+and ends with the closing lines of `_build_capital_calculator`:
+```python
+    calculator = CapitalStockCalculator(registry)
+    _CAPITAL_CALCULATOR_CACHE[key] = calculator
+    return calculator
+```
+(that whole block is ~58 lines and is byte-identical on `dev` and on `fix/null-play-coupling`), with:
 ```python
 _TENSOR_REGISTRY_CACHE: dict[frozenset[str], Any] = {}
 _CAPITAL_CALCULATOR_CACHE: dict[frozenset[str], Any] = {}
@@ -1217,7 +1259,11 @@ def _build_capital_calculator(fips_codes: tuple[str, ...]) -> Any:
     return calculator
 ```
 
-Edit `_bridge_economics_overrides` at `web/game/engine_bridge.py:6422-6426`:
+Edit `_bridge_economics_overrides`. **Locate by this anchor** (one hit on both `dev` and `fix/null-play-coupling`):
+```python
+    # Owner item 25 / Fix B: wire a real per-county capital_calculator (cached) so
+```
+Replace that comment and the two lines following it (`if fips_codes:` / `overrides["capital_calculator"] = ...`) with:
 ```python
     # Owner item 25 / Fix B: wire a real per-county capital_calculator (cached) so
     # occ and profit_rate are non-degenerate. Only when we know which counties to
@@ -3648,10 +3694,44 @@ Co-Authored-By: Claude Opus 4.8 (1M context) <noreply@anthropic.com>"
 ### Task U2.6: Correct the stale Group C/D + market_scissors docstrings
 
 **Files:**
-- Modify: `web/game/engine_bridge.py:6644-6652,8703-8714,8775-8780`
-- Modify: `src/babylon/engine/systems/market_scissors.py:1,13-19,124`
+- Modify: `web/game/engine_bridge.py` — three comment/docstring blocks (in `_carry_tick_dynamics_flows` and `_serialize_territory`), **located by the quoted BEFORE blocks in Step 3, not by line number** (see the base note below).
+- Modify: `src/babylon/engine/systems/market_scissors.py` — module docstring line 1, the `PHASE 1 SCOPE` section, and the `MarketScissorsSystem` class docstring; again located by quoted BEFORE blocks.
 - Test: `tests/unit/web/test_engine_bridge.py` (append)
 - Test: `tests/unit/engine/systems/test_market_system.py` (append)
+
+> **BASE NOTE (deconfliction, 2026-07-18) — this task is still necessary, and base-agnostic.**
+> The sibling branch `fix/null-play-coupling` (fog-of-war, unmerged) touches **both** files this
+> task edits. Checked explicitly: it did **not** fix these stale docstrings — the
+> `both gating services are unwired` / `NOT_YET_COMPUTED — never relabeled live` /
+> `Phase 1 SHADOW ONLY` text is still present verbatim, exactly once, on `dev` **and** on
+> `fix/null-play-coupling`. So U2.6 is not redundant and must still run.
+>
+> All six BEFORE blocks below are byte-identical across the two refs, so they locate correctly on
+> either base. Line numbers were removed because the sibling shifts `engine_bridge.py` by ~+439/+517.
+>
+> *How to tell which base you are on:* `grep -c '_resolve_player_org_id' web/game/engine_bridge.py`
+> → `0` = sibling not landed (plain `dev`); `1` = landed. Proceed unchanged either way.
+>
+> *One tight spot, verified safe.* On `fix/null-play-coupling`, `_serialize_territory` ends
+> `payload = {` where `dev` has `return {` (they post-process through `apply_fog`). That line sits
+> **two lines below** the docstring this task rewrites — close, but the intervening
+> `territory_id = t.id` plus the retained `"""` give three-way merge enough common context: a
+> `git merge-file` simulation of this exact edit against their branch produced **0 conflicts**,
+> preserving both their `payload = {` and our `CORRECTED 2026-07-18` text. Do **not** extend the
+> replacement past the closing `"""` — including `return {` in the edit is what would break it.
+>
+> *`market_scissors.py` has real concurrent edits.* The sibling swapped four raw
+> `node_type="territory"` / `"social_class"` strings for `NodeType.TERRITORY` / `NodeType.SOCIAL_CLASS`
+> (the `_node_type` vocabulary rule in CLAUDE.md). Those hunks are at unrelated lines and merge
+> clean with this task's three docstring edits (simulated: 0 conflicts, `NodeType.*` and the
+> ADR078 wording both survive). Nothing to do — just do not "helpfully" revert them if you see
+> them post-merge; the enum form is correct.
+>
+> *If a BEFORE block is NOT found verbatim:* *STOP — do not pattern-match a near approximation.*
+> Re-verify against both refs
+> (`git show dev:<file> | grep -F '<anchor>'`, same for `fix/null-play-coupling`) and escalate
+> with which ref lost it. A docstring this task claims is stale may have been corrected by
+> someone else, in which case the right move is to *shrink* this task, not to re-fix it.
 
 **Interfaces:**
 - Consumes: `_carry_tick_dynamics_flows`, `_serialize_territory` (`game.engine_bridge`); `MarketScissorsSystem`, module docstring (`babylon.engine.systems.market_scissors`).
@@ -3713,7 +3793,9 @@ Run: `mise run test:q -- tests/unit/web/test_engine_bridge.py::TestGroupCDDocstr
 Expected: FAIL — all `assert ... not in ...` / `assert ... in ...` checks fail against the current stale text.
 - [ ] **Step 3: Write minimal implementation**
 ```python
-# web/game/engine_bridge.py:6645-6652 — BEFORE:
+# web/game/engine_bridge.py, inside `_carry_tick_dynamics_flows` — BEFORE
+# (locate by the line "# both gating services are unwired, so these are the frozen";
+#  one hit on dev AND on fix/null-play-coupling):
 #                 # Playability Spine Task 20 (spec-116 4d.5): Group C
 #                 # (circulation, Feature 023) + Group D (financial
 #                 # distribution, Feature 024) join the carry — the write-site
@@ -3734,7 +3816,11 @@ Expected: FAIL — all `assert ... not in ...` / `assert ... in ...` checks fail
                 # SEAM_REGISTRY is the authoritative per-row wiring status,
                 # not this comment.
 
-# web/game/engine_bridge.py:8703-8714 — BEFORE:
+# web/game/engine_bridge.py, the `_serialize_territory` DOCSTRING — BEFORE
+# (locate by "are unwired, so post-boundary values are the engine's fallback constants";
+#  one hit on dev AND on fix/null-play-coupling). The replacement ENDS at the closing
+# `"""` — do NOT absorb the following `territory_id = t.id` / `return {` (`payload = {`
+# on the sibling branch); see the base note:
 #     Playability Spine Task 20 (spec-116 4d.5): the Feature-023 circulation
 #     family and Feature-024 financial-distribution family join the same
 #     ``tick_``-prefixed graph-attr pattern, serialized DECLARED-DARK — the
@@ -3763,7 +3849,9 @@ Expected: FAIL — all `assert ... not in ...` / `assert ... in ...` checks fail
     SPECIFIC gating service is unwired on this path, not the whole family.
     """
 
-# web/game/engine_bridge.py:8775-8780 — BEFORE:
+# web/game/engine_bridge.py, the inline comment above the Group C/D payload keys — BEFORE
+# (locate by "# the engine's fallback constants until turnover_profile_source /";
+#  one hit on dev AND on fix/null-play-coupling):
 #         # Playability Spine Task 20 (spec-116 4d.5): Group C (circulation,
 #         # Feature 023) + Group D (financial distribution, Feature 024),
 #         # serialized DECLARED-DARK under their registry wire keys (tick_
@@ -3787,32 +3875,42 @@ Expected: FAIL — all `assert ... not in ...` / `assert ... in ...` checks fail
 # price_value bullet.
 
 
-# src/babylon/engine/systems/market_scissors.py:1 — BEFORE:
-#     """Market-scissors system — Phase 1 SHADOW ONLY (Program 23, ADR077).
-# AFTER:
-    """Market-scissors system (Program 23, ADR077/ADR078 — correction feedback LIVE).
+# src/babylon/engine/systems/market_scissors.py, MODULE docstring first line — BEFORE
+# (locate by "Phase 1 SHADOW ONLY"; one hit on dev AND on fix/null-play-coupling).
+# INDENTATION: this is a MODULE docstring — it starts at COLUMN 0, not indented.
+# BEFORE:
+# """Market-scissors system — Phase 1 SHADOW ONLY (Program 23, ADR077).
+# AFTER (column 0):
+"""Market-scissors system (Program 23, ADR077/ADR078 — correction feedback LIVE).
 
-# market_scissors.py:13-19 — BEFORE:
-#     PHASE 1 SCOPE (binding): observe-only shadow.
+# market_scissors.py, the PHASE 1 SCOPE section of the same MODULE docstring — BEFORE
+# (locate by "PHASE 1 SCOPE (binding): observe-only shadow."; one hit on both refs).
+# INDENTATION: still inside the module docstring — COLUMN 0, with 2-space bullet
+# continuations. (Corrected 2026-07-18: an earlier draft of this plan indented these
+# AFTER lines by 4 spaces, which would have silently mangled the module docstring.)
+# BEFORE:
+# PHASE 1 SCOPE (binding): observe-only shadow.
 #
-#     - State home: ``G.graph["market"]`` metadata (the ``wealth_distribution``
-#       round-trip pattern; ``WorldState.market`` carries it across facade ticks).
-#     - Nothing reads it to change tick outputs: no correction feedback into
-#       wealth, credit, or the reserve army (Phase 2, owner-gated), so the sampled
-#       qa:regression checkpoints stay byte-identical.
-# AFTER:
-    PHASE 2 SCOPE (current, ADR078 promotion ceremony): the correction
-    feeds back into the material base by default
-    (``GameDefines.market.feedback_enabled``).
+# - State home: ``G.graph["market"]`` metadata (the ``wealth_distribution``
+#   round-trip pattern; ``WorldState.market`` carries it across facade ticks).
+# - Nothing reads it to change tick outputs: no correction feedback into
+#   wealth, credit, or the reserve army (Phase 2, owner-gated), so the sampled
+#   qa:regression checkpoints stay byte-identical.
+# AFTER (column 0):
+PHASE 2 SCOPE (current, ADR078 promotion ceremony): the correction feeds
+back into the material base by default (``GameDefines.market.feedback_enabled``).
 
-    - State home: ``G.graph["market"]`` metadata (the ``wealth_distribution``
-      round-trip pattern; ``WorldState.market`` carries it across facade ticks).
-    - The correction snap DOES change tick outputs: it evaporates
-      claim-holder wealth, swells the reserve army, and publishes
-      ``MARKET_CORRECTION`` (``feedback_enabled=False`` restores the old
-      Phase-1 observe-only behavior for byte-comparison runs).
+- State home: ``G.graph["market"]`` metadata (the ``wealth_distribution``
+  round-trip pattern; ``WorldState.market`` carries it across facade ticks).
+- The correction snap DOES change tick outputs: it evaporates claim-holder
+  wealth, swells the reserve army, and publishes ``MARKET_CORRECTION``
+  (``feedback_enabled=False`` restores the old Phase-1 observe-only
+  behavior for byte-comparison runs).
 
-# market_scissors.py:124 — BEFORE:
+# market_scissors.py, the MarketScissorsSystem CLASS docstring — BEFORE
+# (locate by "Phase 1 SHADOW: the national"; one hit on both refs).
+# INDENTATION: class docstring — 4 spaces, as written below.
+# BEFORE:
 #     """Phase 1 SHADOW: the national price⟷value scissors axis."""
 # AFTER:
     """The national price⟷value scissors axis (Phase 2: correction feedback live by default)."""

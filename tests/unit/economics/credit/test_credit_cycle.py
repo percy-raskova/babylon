@@ -16,8 +16,8 @@ from babylon.domain.economics.credit.credit_cycle import DefaultCreditCycleDetec
 from babylon.domain.economics.credit.types import (
     OVEREXTENSION_DEFAULT_RATE,
     RECOVERY_CONSECUTIVE_PERIODS,
-    STAGNATION_CREDIT_GROWTH,
     CreditCyclePhase,
+    stagnation_credit_growth,
 )
 
 
@@ -96,7 +96,7 @@ class TestOverextensionTransitions:
         new_phase, count = detector.evaluate(
             profit_rate=0.02,
             profit_rate_trend=-0.005,
-            credit_growth=STAGNATION_CREDIT_GROWTH / 2,  # Below threshold
+            credit_growth=stagnation_credit_growth() / 2,  # Below threshold
             default_rate=OVEREXTENSION_DEFAULT_RATE / 2,  # Below crisis threshold
             current_phase=CreditCyclePhase.OVEREXTENSION,
         )
@@ -178,7 +178,7 @@ class TestRecoveryTransitions:
         new_phase, count = detector.evaluate(
             profit_rate=0.04,
             profit_rate_trend=0.01,
-            credit_growth=STAGNATION_CREDIT_GROWTH + 0.01,  # Above threshold
+            credit_growth=stagnation_credit_growth() + 0.01,  # Above threshold
             default_rate=0.01,
             current_phase=CreditCyclePhase.RECOVERY,
         )
@@ -189,7 +189,7 @@ class TestRecoveryTransitions:
         new_phase, count = detector.evaluate(
             profit_rate=0.03,
             profit_rate_trend=0.005,
-            credit_growth=STAGNATION_CREDIT_GROWTH / 2,  # Below threshold
+            credit_growth=stagnation_credit_growth() / 2,  # Below threshold
             default_rate=0.01,
             current_phase=CreditCyclePhase.RECOVERY,
         )

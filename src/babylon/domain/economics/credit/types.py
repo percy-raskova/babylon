@@ -6,6 +6,7 @@ Feature: 024-capital-volume-iii (US2, US3)
 from __future__ import annotations
 
 from enum import StrEnum
+from functools import lru_cache
 from typing import Final
 
 from pydantic import BaseModel, ConfigDict, Field, computed_field
@@ -92,13 +93,34 @@ Traceability: FRED BAA-AAA spread * Moody's default rate product. During
 (~4%) exceeded 0.02. Below this threshold, credit system is stable.
 """
 
-STAGNATION_CREDIT_GROWTH: Final[float] = GameDefines().crisis.stagnation_credit_growth
-"""Credit expansion rate threshold for stagnation diagnosis.
 
-Traceability: FRED TCMDO YoY growth rate. When credit growth falls below
-1% annually, the economy is in secular stagnation — insufficient credit
-creation for expansion but insufficient defaults for crisis clearing.
-"""
+@lru_cache(maxsize=1)
+def _default_defines() -> GameDefines:
+    """Process-cached ``GameDefines.load_default()``.
+
+    Same rationale as ``distribution.types._default_defines``: cached on
+    FIRST USE rather than at import time, and bypassed entirely when a
+    caller passes an explicit ``defines``.
+    """
+    return GameDefines.load_default()
+
+
+def stagnation_credit_growth(defines: GameDefines | None = None) -> float:
+    """Credit expansion rate threshold for stagnation diagnosis.
+
+    Traceability: FRED TCMDO YoY growth rate. When credit growth falls below
+    1% annually, the economy is in secular stagnation — insufficient credit
+    creation for expansion but insufficient defaults for crisis clearing.
+
+    Reads ``crisis.stagnation_credit_growth`` from the passed ``defines``, or
+    from the process-cached default when omitted. Was a module-level ``Final``
+    initialised from a bare ``GameDefines()`` — which read the dataclass
+    defaults and ignored ``defines.yaml`` entirely — until the 2026-07-18
+    honesty sweep.
+    """
+    resolved = defines if defines is not None else _default_defines()
+    return resolved.crisis.stagnation_credit_growth
+
 
 OVEREXTENSION_DEFAULT_RATE: Final[float] = 0.03
 """Default rate threshold triggering transition from OVEREXTENSION to CRISIS.

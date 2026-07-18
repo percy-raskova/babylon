@@ -254,3 +254,46 @@ class TestFieldValidation:
                 ground_rent=0.0,
                 taxes_on_surplus=0.0,
             )
+
+
+@pytest.mark.unit
+class TestThresholdAccessorsAreGameDefinesBacked:
+    """Honesty sweep (U2): the DEBT_SPIRAL_THRESHOLD/DISTRIBUTION_EPSILON
+    Finals are gone; debt_spiral_threshold()/distribution_epsilon() read from
+    GameDefines.capital_vol3 at call time, not at import time."""
+
+    def test_debt_spiral_threshold_matches_capital_vol3(self) -> None:
+        from babylon.config.defines import GameDefines
+        from babylon.domain.economics.distribution.types import debt_spiral_threshold
+
+        assert (
+            debt_spiral_threshold() == GameDefines.load_default().capital_vol3.debt_spiral_threshold
+        )
+
+    def test_distribution_epsilon_matches_capital_vol3(self) -> None:
+        from babylon.config.defines import GameDefines
+        from babylon.domain.economics.distribution.types import distribution_epsilon
+
+        assert (
+            distribution_epsilon() == GameDefines.load_default().capital_vol3.distribution_epsilon
+        )
+
+    def test_explicit_defines_override_is_honoured(self) -> None:
+        """A caller-supplied GameDefines wins over the process default — the
+        behaviour the deleted module-level Finals made impossible."""
+        from babylon.config.defines import GameDefines
+        from babylon.domain.economics.distribution.types import (
+            debt_spiral_threshold,
+            distribution_epsilon,
+        )
+
+        base = GameDefines.load_default()
+        overridden = base.model_copy(
+            update={
+                "capital_vol3": base.capital_vol3.model_copy(
+                    update={"debt_spiral_threshold": 0.75, "distribution_epsilon": 1e-6}
+                )
+            }
+        )
+        assert debt_spiral_threshold(overridden) == pytest.approx(0.75)
+        assert distribution_epsilon(overridden) == pytest.approx(1e-6)

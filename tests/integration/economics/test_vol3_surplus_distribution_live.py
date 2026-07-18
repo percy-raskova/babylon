@@ -1,7 +1,7 @@
 """U1 acceptance (design §4): `s = p + i + r + t` has NEVER evaluated in a
 shipped run. This is the first test that makes it do so end-to-end, over the
 real reference DB, and pins SC-001 — the identity holds within
-DISTRIBUTION_EPSILON for 100% of observations, not merely on average.
+``distribution_epsilon()`` for 100% of observations, not merely on average.
 """
 
 from __future__ import annotations
@@ -11,7 +11,7 @@ from typing import TYPE_CHECKING
 
 import pytest
 
-from babylon.domain.economics.distribution.types import DISTRIBUTION_EPSILON
+from babylon.domain.economics.distribution.types import distribution_epsilon
 from babylon.domain.economics.tick.graph_bridge import (
     TICK_DYNAMICS_KEY,
     _reconstruct_tick_state,
@@ -31,7 +31,7 @@ WAYNE_FIPS = "26163"
 _TICKS_BEFORE_CAPTURE = 52
 
 #: Relative tolerance for the SC-001 residual, applied on top of the absolute
-#: ``DISTRIBUTION_EPSILON`` floor.
+#: ``distribution_epsilon()`` floor.
 #:
 #: Derivation (Constitution III.12 / tolerance-policy rule): the residual is a
 #: sum-and-difference of four IEEE-754 binary64 magnitudes. Each term carries at
@@ -42,7 +42,7 @@ _TICKS_BEFORE_CAPTURE = 52
 #: breach: on Wayne's ~3.5e9 surplus it admits at most ~0.0035 units of slack,
 #: so a mis-distribution of even one unit is still caught.
 #:
-#: Why relative at all: ``DISTRIBUTION_EPSILON`` is an ABSOLUTE 1e-9, while
+#: Why relative at all: ``distribution_epsilon()`` is an ABSOLUTE 1e-9, while
 #: Wayne's real 2011 surplus is ~3.5e9 labor-hours, where one ulp is ~4.8e-7 —
 #: 500x the epsilon. The current residual is exactly 0.0 only by fortuitous
 #: cancellation; as U3-U6 add counties and shift magnitudes, an absolute-only
@@ -201,6 +201,9 @@ def test_sc001_identity_holds_for_one_hundred_percent_of_observations() -> None:
     """
     graph, registry = _run_to_year_boundary_capturing_graph()
     tick_state = _tick_state_from(graph)
+    # Hoisted out of the loop: the accessor is not free (it resolves
+    # GameDefines), and both tolerance floors below must see the same value.
+    epsilon = distribution_epsilon()
     observed = 0
     violations: list[tuple[str, float]] = []
     for fips, county in sorted(tick_state.county_states.items()):
@@ -247,9 +250,7 @@ def test_sc001_identity_holds_for_one_hundred_percent_of_observations() -> None:
             "surplus_distribution exists — its surplus has no source"
         )
         source_gap = abs(d.total_surplus_produced - source_surplus)
-        assert source_gap <= max(
-            DISTRIBUTION_EPSILON, abs(source_surplus) * _SC001_RELATIVE_TOLERANCE
-        ), (
+        assert source_gap <= max(epsilon, abs(source_surplus) * _SC001_RELATIVE_TOLERANCE), (
             f"{fips}/{d.year}: distributed surplus {d.total_surplus_produced} "
             f"does not match the ValueTensor4x3 total_s {source_surplus} that "
             f"fed it (gap {source_gap}) — the financial layer is distributing "
@@ -262,9 +263,7 @@ def test_sc001_identity_holds_for_one_hundred_percent_of_observations() -> None:
             d.total_surplus_produced
             - (d.profit_of_enterprise + d.interest_payments + d.ground_rent + d.taxes_on_surplus)
         )
-        tolerance = max(
-            DISTRIBUTION_EPSILON, abs(d.total_surplus_produced) * _SC001_RELATIVE_TOLERANCE
-        )
+        tolerance = max(epsilon, abs(d.total_surplus_produced) * _SC001_RELATIVE_TOLERANCE)
         if residual > tolerance:
             violations.append((fips, residual))
     assert not violations, f"SC-001 violated (residual exceeds tolerance): {violations}"

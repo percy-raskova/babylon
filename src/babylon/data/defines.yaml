@@ -997,3 +997,22 @@ market:
   evaporation_gain: 0.15  # Game design: claim-holder wealth fraction destroyed per unit overhang — the fictitious wealth was counted as wealth; the snap un-counts it. Applies to bracket-0/1 roles (the ADR075 fold: bourgeoisies + petty bourgeoisie). (>= 0.0, <= 0.5)
   unemployment_gain: 0.08  # Game design: reserve-army ratio influx per unit overhang on territories carrying a wage relation (median_wage) — the crisis disciplines labor through the reserve army. (>= 0.0, <= 0.5)
   wealth_axis_kick_gain: 0.02  # Game design: w1 velocity impulse per unit overhang on the Program-21 wealth-share axis (conservation-preserving, the spec-114 FR-114-4 impulse form) — top-bracket paper wealth deflates relative to the whole. (>= 0.0, <= 0.1)
+
+# ---------------------------------------------------------------------
+# capital_vol3 — Volume III (surplus distribution / credit / counter-tendency) coefficients.
+# ---------------------------------------------------------------------
+capital_vol3:
+  debt_spiral_threshold: 0.5  # Accumulated debt / annual surplus ratio triggering the debt-spiral crisis flag (NBER 2001/2008 corporate debt-to-earnings recession analysis). (>= 0.0, <= 1.0)
+  distribution_epsilon: 1.0e-09  # Floating-point tolerance for the surplus distribution accounting identity s = p + i + r + t (IEEE 754 double tolerance). (> 0.0, <= 0.001)
+  counter_tendency_weights:  # Weights for the six TRPF counter-tendencies (exploitation_rate, wage_suppression, capital_cheapening, reserve_army, imperial_rent, fictitious_profits); must sum to 1.0.
+  - 0.2
+  - 0.15
+  - 0.15
+  - 0.15
+  - 0.2
+  - 0.15
+  imperial_rent_reference_scale: 500000000000.0  # Reference scale (dollars) normalizing imperial rent flow into the counter-tendency weight; Cope (2012) annual Global South-to-North transfer estimate. (> 0.0)
+  profit_rate_fallback: 0.05  # County profit rate used for the surplus-distribution interest calculation when the tensor registry has no profit_rate for this county-year. (>= 0.0, <= 1.0)
+  national_county_count: 3300  # Approximate US county count used to scale a single county's surplus up to a national proxy for the financialization ratio (FictitiousCapitalStock.ratio_to_real denominator). (>= 1, <= 5000)
+  default_rate_estimate: 0.02  # Loan default-rate estimate feeding credit_fragility. No FRED charge-off-rate series is wired for this (D4's fixture list has none) — a documented estimate, not live data; see spec 2026-07-18 vol3-money-scissors-design Table 3.6. (>= 0.0, <= 1.0)
+  housing_capitalization_rate_default: 0.05  # Fallback interest rate for housing ground-rent capitalization (construction-time snapshot; DefaultHousingDecompositionCalculator does not re-read a live per-tick rate). (>= 0.0, <= 1.0)

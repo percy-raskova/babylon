@@ -56,7 +56,7 @@ class TestComputeDistribution:
         mock_tax_source: MockTaxOnSurplusSource,
         mock_interest_source: MockInterestIncomeSource,
     ) -> None:
-        """s = p + i + r + t holds within DISTRIBUTION_EPSILON."""
+        """s = p + i + r + t holds within distribution_epsilon()."""
         calc = DefaultDistributionCalculator(
             rental_source=mock_rental_source,
             tax_source=mock_tax_source,

@@ -13,8 +13,8 @@ import pytest
 from pydantic import ValidationError
 
 from babylon.domain.economics.counter_tendencies.types import (
-    COUNTER_TENDENCY_WEIGHTS,
     CounterTendencyStrength,
+    counter_tendency_weights,
 )
 
 # =============================================================================
@@ -111,12 +111,12 @@ class TestCounterTendencyStrengthComputed:
     """CounterTendencyStrength computed net_counter_tendency."""
 
     def test_weights_sum_to_one(self) -> None:
-        """COUNTER_TENDENCY_WEIGHTS should sum to 1.0."""
-        assert sum(COUNTER_TENDENCY_WEIGHTS) == pytest.approx(1.0)
+        """counter_tendency_weights() should sum to 1.0."""
+        assert sum(counter_tendency_weights()) == pytest.approx(1.0)
 
     def test_weights_length_six(self) -> None:
-        """COUNTER_TENDENCY_WEIGHTS has exactly 6 elements."""
-        assert len(COUNTER_TENDENCY_WEIGHTS) == 6
+        """counter_tendency_weights() has exactly 6 elements."""
+        assert len(counter_tendency_weights()) == 6
 
     def test_net_counter_tendency_all_zero(self) -> None:
         """Net counter-tendency is 0.0 when all indicators are zero."""
@@ -150,8 +150,10 @@ class TestCounterTendencyStrengthComputed:
         assert ct.net_counter_tendency < 0.0
 
     def test_net_counter_tendency_weighted_sum(self) -> None:
-        """net_counter_tendency uses COUNTER_TENDENCY_WEIGHTS in correct order."""
-        from babylon.domain.economics.counter_tendencies.types import IMPERIAL_RENT_REFERENCE_SCALE
+        """net_counter_tendency uses counter_tendency_weights() in correct order."""
+        from babylon.domain.economics.counter_tendencies.types import (
+            imperial_rent_reference_scale,
+        )
 
         ct = CounterTendencyStrength(
             year=2020,
@@ -169,9 +171,9 @@ class TestCounterTendencyStrengthComputed:
         # [3] reserve_army_size = 0.08
         # [4] imperial_rent = min(500B / reference_scale, 1.0)
         # [5] fictitious_profit_share = 0.25
-        imperial_norm = min(500_000_000_000.0 / IMPERIAL_RENT_REFERENCE_SCALE, 1.0)
+        imperial_norm = min(500_000_000_000.0 / imperial_rent_reference_scale(), 1.0)
         indicators = [0.1, 0.01, 0.03, 0.08, imperial_norm, 0.25]
-        expected = sum(w * v for w, v in zip(indicators, COUNTER_TENDENCY_WEIGHTS, strict=True))
+        expected = sum(w * v for w, v in zip(indicators, counter_tendency_weights(), strict=True))
         assert ct.net_counter_tendency == pytest.approx(expected)
 
     def test_imperial_rent_magnitude_sensitive(self) -> None:
@@ -199,17 +201,67 @@ class TestCounterTendencyStrengthComputed:
 
     def test_imperial_rent_caps_at_reference_scale(self) -> None:
         """Imperial rent normalization caps at 1.0 at the reference scale."""
-        from babylon.domain.economics.counter_tendencies.types import IMPERIAL_RENT_REFERENCE_SCALE
+        from babylon.domain.economics.counter_tendencies.types import (
+            imperial_rent_reference_scale,
+        )
 
         ct_at_scale = CounterTendencyStrength(
             year=2020,
-            imperial_rent_flow=IMPERIAL_RENT_REFERENCE_SCALE,
+            imperial_rent_flow=imperial_rent_reference_scale(),
         )
         ct_above_scale = CounterTendencyStrength(
             year=2020,
-            imperial_rent_flow=IMPERIAL_RENT_REFERENCE_SCALE * 2.0,
+            imperial_rent_flow=imperial_rent_reference_scale() * 2.0,
         )
         # Both should produce the same CT (capped at 1.0)
         assert ct_at_scale.net_counter_tendency == pytest.approx(
             ct_above_scale.net_counter_tendency
         )
+
+
+@pytest.mark.unit
+class TestWeightAccessorsAreGameDefinesBacked:
+    """Honesty sweep (U2): the COUNTER_TENDENCY_WEIGHTS /
+    IMPERIAL_RENT_REFERENCE_SCALE Finals are gone; counter_tendency_weights()
+    and imperial_rent_reference_scale() read GameDefines.capital_vol3 at call
+    time, not at import time."""
+
+    def test_counter_tendency_weights_match_capital_vol3(self) -> None:
+        from babylon.config.defines import GameDefines
+
+        assert (
+            counter_tendency_weights()
+            == GameDefines.load_default().capital_vol3.counter_tendency_weights
+        )
+
+    def test_imperial_rent_reference_scale_matches_capital_vol3(self) -> None:
+        from babylon.config.defines import GameDefines
+        from babylon.domain.economics.counter_tendencies.types import (
+            imperial_rent_reference_scale,
+        )
+
+        assert (
+            imperial_rent_reference_scale()
+            == GameDefines.load_default().capital_vol3.imperial_rent_reference_scale
+        )
+
+    def test_explicit_defines_override_is_honoured(self) -> None:
+        """A caller-supplied GameDefines wins over the process default."""
+        from babylon.config.defines import GameDefines
+        from babylon.domain.economics.counter_tendencies.types import (
+            imperial_rent_reference_scale,
+        )
+
+        base = GameDefines.load_default()
+        overridden = base.model_copy(
+            update={
+                "capital_vol3": base.capital_vol3.model_copy(
+                    update={
+                        "counter_tendency_weights": [0.5, 0.1, 0.1, 0.1, 0.1, 0.1],
+                        "imperial_rent_reference_scale": 1_000.0,
+                    }
+                )
+            }
+        )
+        assert counter_tendency_weights(overridden) == [0.5, 0.1, 0.1, 0.1, 0.1, 0.1]
+        assert imperial_rent_reference_scale(overridden) == pytest.approx(1_000.0)

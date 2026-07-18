@@ -11,9 +11,11 @@ See Also:
 """
 
 __all__: list[str] = [
+    # Threshold accessors (types.py) — GameDefines-backed since the
+    # 2026-07-18 honesty sweep; these are functions, not constants.
+    "debt_spiral_threshold",
+    "distribution_epsilon",
     # Types (types.py)
-    "DEBT_SPIRAL_THRESHOLD",
-    "DISTRIBUTION_EPSILON",
     "SurplusValueDistribution",
     "DebtAccumulation",
     # Calculator (calculator.py)
@@ -37,10 +39,10 @@ from babylon.domain.economics.distribution.data_sources import (
     TaxOnSurplusSource,
 )
 from babylon.domain.economics.distribution.types import (
-    DEBT_SPIRAL_THRESHOLD,
-    DISTRIBUTION_EPSILON,
     DebtAccumulation,
     SurplusValueDistribution,
+    debt_spiral_threshold,
+    distribution_epsilon,
 )
 from babylon.domain.economics.distribution.validation import (
     validate_rentier_share,

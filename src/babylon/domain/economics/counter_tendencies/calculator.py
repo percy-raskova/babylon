@@ -8,7 +8,8 @@ observed profit rate trends.
 
 See Also:
     :class:`CounterTendencyStrength`: Data model for counter-tendency indicators.
-    :data:`COUNTER_TENDENCY_WEIGHTS`: Weights for the six indicators.
+    :func:`babylon.domain.economics.counter_tendencies.types.counter_tendency_weights`:
+    Weights for the six indicators.
 """
 
 from __future__ import annotations

@@ -5,31 +5,67 @@ Feature: 024-capital-volume-iii (US1)
 
 from __future__ import annotations
 
-from typing import Final
+from functools import lru_cache
 
 from pydantic import BaseModel, ConfigDict, Field, computed_field
 
+from babylon.config.defines import GameDefines
 from babylon.domain.economics.tensor import year_within_modeled_range
 
 # ============================================================================
-# THRESHOLD CONSTANTS (Module-Level)
+# THRESHOLD ACCESSORS (GameDefines-backed)
 # ============================================================================
 
-DEBT_SPIRAL_THRESHOLD: Final[float] = 0.5
-"""Accumulated debt / annual surplus ratio triggering crisis flag.
 
-Traceability: When cumulative enterprise losses (accumulated debt)
-exceed 50% of a county's annual surplus value, the debt spiral is
-structurally self-reinforcing. Derived from NBER recession analysis
-of corporate debt-to-earnings ratios during 2001 and 2008 recessions.
-"""
+@lru_cache(maxsize=1)
+def _default_defines() -> GameDefines:
+    """Process-cached ``GameDefines.load_default()`` for the accessors below.
 
-DISTRIBUTION_EPSILON: Final[float] = 1e-9
-"""Floating-point tolerance for surplus distribution accounting identity.
+    Cached because ``distribution_epsilon()`` is called from the
+    ``distribution_complete`` computed field, which is evaluated per county
+    per tick; an uncached ``load_default()`` re-parses ``defines.yaml`` from
+    disk on every one of those evaluations.
 
-The identity s = p + i + r + t must hold within this epsilon.
-Standard IEEE 754 double-precision tolerance for financial accounting.
-"""
+    Cached on FIRST USE, not at import time — which is the whole point of the
+    migration. A process that never touches these accessors (layer-0.5
+    sentinels, the docs build) never reads the file, and any caller that holds
+    a real ``GameDefines`` passes it explicitly and bypasses the cache
+    entirely. Tests that need a different default call
+    ``_default_defines.cache_clear()``.
+    """
+    return GameDefines.load_default()
+
+
+def debt_spiral_threshold(defines: GameDefines | None = None) -> float:
+    """Accumulated debt / annual surplus ratio triggering crisis flag.
+
+    Traceability: When cumulative enterprise losses (accumulated debt)
+    exceed 50% of a county's annual surplus value, the debt spiral is
+    structurally self-reinforcing. Derived from NBER recession analysis
+    of corporate debt-to-earnings ratios during 2001 and 2008 recessions.
+    GameDefines-backed (``capital_vol3.debt_spiral_threshold``) since the
+    2026-07-18 honesty sweep — moddable via defines.yaml.
+
+    Reads ``capital_vol3.debt_spiral_threshold`` from the passed
+    ``defines``, or from the process-cached default when omitted.
+    """
+    resolved = defines if defines is not None else _default_defines()
+    return resolved.capital_vol3.debt_spiral_threshold
+
+
+def distribution_epsilon(defines: GameDefines | None = None) -> float:
+    """Floating-point tolerance for surplus distribution accounting identity.
+
+    The identity s = p + i + r + t must hold within this epsilon.
+    Standard IEEE 754 double-precision tolerance for financial accounting.
+    GameDefines-backed (``capital_vol3.distribution_epsilon``) since the
+    2026-07-18 honesty sweep.
+
+    Reads ``capital_vol3.distribution_epsilon`` from the passed
+    ``defines``, or from the process-cached default when omitted.
+    """
+    resolved = defines if defines is not None else _default_defines()
+    return resolved.capital_vol3.distribution_epsilon
 
 
 # ============================================================================
@@ -41,7 +77,7 @@ class SurplusValueDistribution(BaseModel):
     """Decomposition of surplus value into competing claims.
 
     Feature: 024-capital-volume-iii (FR-001)
-    Identity: s = p + i + r + t (within DISTRIBUTION_EPSILON)
+    Identity: s = p + i + r + t (within :func:`distribution_epsilon`)
 
     Profit of enterprise is the residual after interest, rent, and taxes
     are deducted from total surplus. It may go negative when claims exceed
@@ -86,7 +122,7 @@ class SurplusValueDistribution(BaseModel):
             + self.taxes_on_surplus
             + self.profit_of_enterprise
         )
-        return bool(abs(distributed - self.total_surplus_produced) < DISTRIBUTION_EPSILON)
+        return bool(abs(distributed - self.total_surplus_produced) < distribution_epsilon())
 
     @computed_field  # type: ignore[prop-decorator]
     @property

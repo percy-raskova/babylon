@@ -40,12 +40,12 @@ from babylon.domain.economics.credit.types import (
     INTEREST_BURDEN_SQUEEZE,
     OVEREXTENSION_DEFAULT_RATE,
     RECOVERY_CONSECUTIVE_PERIODS,
-    STAGNATION_CREDIT_GROWTH,
     VALID_CREDIT_TRANSITIONS,
     CreditCyclePhase,
     CreditState,
     FictitiousCapitalStock,
     InterestRateState,
+    stagnation_credit_growth,
 )
 from babylon.domain.economics.credit.validation import (
     validate_financialization_index,
@@ -64,7 +64,7 @@ __all__: list[str] = [
     "INTEREST_BURDEN_SQUEEZE",
     "FINANCIALIZATION_BUBBLE",
     "CREDIT_FRAGILITY_THRESHOLD",
-    "STAGNATION_CREDIT_GROWTH",
+    "stagnation_credit_growth",
     "OVEREXTENSION_DEFAULT_RATE",
     "RECOVERY_CONSECUTIVE_PERIODS",
     # Interest calculation

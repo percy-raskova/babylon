@@ -68,8 +68,11 @@ from babylon.models.events.ooda_payloads import (
 from babylon.models.events.reactionary_payloads import (
     FascistDriftEvent,
     FascistRecruitmentEvent,
+    LockoutEvent,
     OrganizationalFractureEvent,
+    PogromEvent,
     RedBrownCoupEvent,
+    VigilantismEvent,
 )
 from babylon.models.events.struggle_payloads import (
     FascistRevanchismEvent,
@@ -1291,3 +1294,94 @@ class TestGracefulDegradation:
 
         assert result is not None
         assert result.timestamp == timestamp
+
+
+class TestPogromEventConversion:
+    """spec-116 FR-116-4.7: POGROM converts first-class (mandatory RED-phase test)."""
+
+    def test_converts_pogrom_event(self) -> None:
+        """POGROM events convert to PogromEvent with the resolver's effects."""
+        bus_event = Event(
+            type=EventType.POGROM,
+            tick=11,
+            payload={
+                "org_id": "ORG_FASH",
+                "target_id": PERIPHERY_WORKER_ID,
+                "repression_increment": 0.15,
+                "wealth_destroyed": 12.5,
+            },
+        )
+        result = _convert_bus_event_to_pydantic(bus_event)
+
+        assert result is not None
+        assert isinstance(result, PogromEvent)
+        assert result.event_type == EventType.POGROM
+        assert result.tick == 11
+        assert result.org_id == "ORG_FASH"
+        assert result.target_id == PERIPHERY_WORKER_ID
+        assert result.repression_increment == 0.15
+        assert result.wealth_destroyed == 12.5
+
+    def test_pogrom_with_string_event_type_and_absent_effects(self) -> None:
+        """The events_generated string form converts; missing effects default 0.0
+        (target node absent in _resolve_fascist_verb -> empty effects dict)."""
+        bus_event = Event(
+            type="pogrom",  # type: ignore[arg-type]
+            tick=2,
+            payload={"org_id": "ORG_FASH", "target_id": PERIPHERY_WORKER_ID},
+        )
+        result = _convert_bus_event_to_pydantic(bus_event)
+
+        assert isinstance(result, PogromEvent)
+        assert result.repression_increment == 0.0
+        assert result.wealth_destroyed == 0.0
+
+
+class TestLockoutEventConversion:
+    """spec-116 FR-116-4.7: LOCKOUT converts first-class."""
+
+    def test_converts_lockout_event(self) -> None:
+        """LOCKOUT events convert to LockoutEvent."""
+        bus_event = Event(
+            type=EventType.LOCKOUT,
+            tick=12,
+            payload={
+                "org_id": "ORG_EMPLOYER",
+                "target_id": LABOR_ARISTOCRACY_ID,
+                "wage_attenuation": 0.3,
+            },
+        )
+        result = _convert_bus_event_to_pydantic(bus_event)
+
+        assert result is not None
+        assert isinstance(result, LockoutEvent)
+        assert result.event_type == EventType.LOCKOUT
+        assert result.tick == 12
+        assert result.org_id == "ORG_EMPLOYER"
+        assert result.target_id == LABOR_ARISTOCRACY_ID
+        assert result.wage_attenuation == 0.3
+
+
+class TestVigilantismEventConversion:
+    """spec-116 FR-116-4.7: VIGILANTISM converts first-class."""
+
+    def test_converts_vigilantism_event(self) -> None:
+        """VIGILANTISM events convert to VigilantismEvent."""
+        bus_event = Event(
+            type=EventType.VIGILANTISM,
+            tick=13,
+            payload={
+                "org_id": "ORG_FASH",
+                "target_id": PERIPHERY_WORKER_ID,
+                "repression_increment": 0.1,
+            },
+        )
+        result = _convert_bus_event_to_pydantic(bus_event)
+
+        assert result is not None
+        assert isinstance(result, VigilantismEvent)
+        assert result.event_type == EventType.VIGILANTISM
+        assert result.tick == 13
+        assert result.org_id == "ORG_FASH"
+        assert result.target_id == PERIPHERY_WORKER_ID
+        assert result.repression_increment == 0.1

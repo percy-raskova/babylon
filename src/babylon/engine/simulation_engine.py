@@ -129,8 +129,11 @@ from babylon.models.events.ooda_payloads import (
 from babylon.models.events.reactionary_payloads import (
     FascistDriftEvent,
     FascistRecruitmentEvent,
+    LockoutEvent,
     OrganizationalFractureEvent,
+    PogromEvent,
     RedBrownCoupEvent,
+    VigilantismEvent,
 )
 from babylon.models.events.struggle_payloads import (
     FascistRevanchismEvent,
@@ -515,6 +518,8 @@ def _convert_bus_event_to_pydantic(event: Event) -> SimulationEvent | None:  # n
     Wave 1 item W1.1: widened to 44 of 79 EventTypes.
     Unit 6a (ADR073): widened to 47 of 82 EventTypes (DOCTRINE_TRAP_SPRUNG /
     DOCTRINE_TRAP_ESCAPED / DOCTRINE_PURGE_FAILED).
+    Spec-116 FR-116-4.7 (Playability Spine): widened to 50 of 83 EventTypes
+    (POGROM / LOCKOUT / VIGILANTISM first-class).
     """
     # Normalize event type (may be string or EventType enum)
     event_type = event.type
@@ -772,6 +777,36 @@ def _convert_bus_event_to_pydantic(event: Event) -> SimulationEvent | None:  # n
             org_id=payload.get("org_id", ""),
             defections=payload.get("defections", 0),
             member_count=payload.get("member_count", 0),
+        )
+
+    # Spec-116 FR-116-4.7: first-class reactionary verb events (OODASystem
+    # per-action publish; payload = org/target + the resolver's direct_effects).
+    if event_type == EventType.POGROM:
+        return PogromEvent(
+            tick=tick,
+            timestamp=timestamp,
+            org_id=payload.get("org_id", ""),
+            target_id=payload.get("target_id", ""),
+            repression_increment=payload.get("repression_increment", 0.0),
+            wealth_destroyed=payload.get("wealth_destroyed", 0.0),
+        )
+
+    if event_type == EventType.LOCKOUT:
+        return LockoutEvent(
+            tick=tick,
+            timestamp=timestamp,
+            org_id=payload.get("org_id", ""),
+            target_id=payload.get("target_id", ""),
+            wage_attenuation=payload.get("wage_attenuation", 0.0),
+        )
+
+    if event_type == EventType.VIGILANTISM:
+        return VigilantismEvent(
+            tick=tick,
+            timestamp=timestamp,
+            org_id=payload.get("org_id", ""),
+            target_id=payload.get("target_id", ""),
+            repression_increment=payload.get("repression_increment", 0.0),
         )
 
     # Feature-030 lifecycle/legitimation/inheritance events (Program 17 item 1b)

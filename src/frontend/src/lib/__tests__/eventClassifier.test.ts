@@ -151,3 +151,15 @@ describe("classifyEventForStream — the two-stream toast/tray model (spec-113 �
     expect(se.category).toBe("political");
   });
 });
+
+describe("spec-116 4d.7 — first-class reactionary verb events", () => {
+  it.each(["pogrom", "lockout", "vigilantism"])(
+    "classifies '%s' as important / struggle / urgent",
+    (type) => {
+      expect(classifyEvent(makeEvent(type), 0).severity).toBe("important");
+      const se = classifyEventForStream(makeEvent(type), 0);
+      expect(se.category).toBe("struggle");
+      expect(se.stream).toBe("urgent");
+    },
+  );
+});

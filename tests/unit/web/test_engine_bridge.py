@@ -2807,6 +2807,66 @@ class TestSerializeEventUprisingTerritoryAnchoring:
         assert snapshot["events"][0]["data"]["territory_id"] == "T001"
 
 
+@pytest.mark.unit
+class TestReactionaryVerbSeverityAndAnchoring:
+    """spec-116 FR-116-4.7: pogrom/lockout/vigilantism severity tier +
+    uprising-pattern territory anchoring on the TARGET community id."""
+
+    @staticmethod
+    def _verb_event(event_type: str, target_id: str) -> MagicMock:
+        event = MagicMock()
+        event.event_type = event_type
+        event.tick = 5
+        event.data = {
+            "org_id": "ORG_FASH",
+            "target_id": target_id,
+            "repression_increment": 0.15,
+        }
+        event.narrative = None
+        return event
+
+    def test_verbs_classify_as_warning(self) -> None:
+        from game.engine_bridge import _classify_event
+
+        assert _classify_event("pogrom") == "warning"
+        assert _classify_event("lockout") == "warning"
+        assert _classify_event("vigilantism") == "warning"
+
+    def test_pogrom_anchors_to_target_territory(self) -> None:
+        from game.engine_bridge import _serialize_event
+
+        graph = _graph_with_tenancy(class_to_territory={"C001": "T001"})
+        result = _serialize_event(self._verb_event("pogrom", "C001"), uuid.uuid4(), graph=graph)
+
+        assert result["data"]["territory_id"] == "T001"
+
+    def test_lockout_and_vigilantism_anchor_too(self) -> None:
+        from game.engine_bridge import _serialize_event
+
+        graph = _graph_with_tenancy(class_to_territory={"C001": "T001"})
+        for verb in ("lockout", "vigilantism"):
+            result = _serialize_event(self._verb_event(verb, "C001"), uuid.uuid4(), graph=graph)
+            assert result["data"]["territory_id"] == "T001"
+
+    def test_unresolvable_target_yields_honest_none(self) -> None:
+        from game.engine_bridge import _serialize_event
+
+        graph = _graph_with_tenancy(class_to_territory={"C001": "T001", "C999": None})
+        result = _serialize_event(
+            self._verb_event("vigilantism", "C999"), uuid.uuid4(), graph=graph
+        )
+
+        assert "territory_id" in result["data"]
+        assert result["data"]["territory_id"] is None
+
+    def test_absent_graph_yields_none_never_guessed(self) -> None:
+        from game.engine_bridge import _serialize_event
+
+        result = _serialize_event(self._verb_event("pogrom", "C001"), uuid.uuid4())
+
+        assert result["data"]["territory_id"] is None
+
+
 # ══════════════════════════════════════════════════════════════════════
 # Backend-W3R3 (Program 17 Wave 3): GET /api/games/{id}/map/history/.
 # Verified against a running canonical session (2026-07-15, tick 987):

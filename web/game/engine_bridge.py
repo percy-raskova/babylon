@@ -7216,6 +7216,14 @@ _EVENT_SEVERITY: dict[str, str] = {
     # ATTEMPTS rather than routine flow.
     "doctrine_trap_escaped": "warning",
     "doctrine_purge_failed": "warning",
+    # spec-116 FR-116-4.7: first-class reactionary verb events (OODASystem
+    # per-action publish). Repression-family tier — peers of state_repression
+    # / excessive_force; FR-116-2 reserves the critical tier for genuine
+    # rupture/endgame proximity, so targeted reactionary violence tiers as
+    # warning, not crimson.
+    "pogrom": "warning",
+    "lockout": "warning",
+    "vigilantism": "warning",
     # Spec-116 Task 4: a recognized-pattern change (including dissolving to
     # None) is a threshold-cross signal on the endgame axes, same tier as
     # the trap/drift siblings above — it never ends the game (that's
@@ -7229,6 +7237,12 @@ _EVENT_SEVERITY: dict[str, str] = {
     "value_transfer": "informational",
     "reserve_army_pressure": "informational",
 }
+
+
+#: spec-116 FR-116-4.7: reactionary verb events anchor to the TARGET
+#: community's territory via the same TENANCY inversion as "uprising"
+#: (their payload subject is ``target_id``, a social_class id).
+_TERRITORY_ANCHORED_VERB_EVENTS: frozenset[str] = frozenset({"pogrom", "lockout", "vigilantism"})
 
 
 def _classify_event(event_type_str: str) -> str:
@@ -7300,6 +7314,14 @@ def _serialize_event(event: Any, session_id: UUID, *, graph: Any = None) -> dict
         territory_id = None
         if graph is not None and node_id is not None:
             territory_id = _class_to_territory(_tenancy_members_by_territory(graph)).get(node_id)
+        data = {**data, "territory_id": territory_id}
+    elif event_type_str in _TERRITORY_ANCHORED_VERB_EVENTS:
+        # spec-116 FR-116-4.7: same TENANCY inversion, subject is target_id.
+        # Unresolvable/absent graph honestly yields None, never a guess (III.11).
+        target_id = data.get("target_id")
+        territory_id = None
+        if graph is not None and target_id is not None:
+            territory_id = _class_to_territory(_tenancy_members_by_territory(graph)).get(target_id)
         data = {**data, "territory_id": territory_id}
 
     deterministic_seed = json.dumps(

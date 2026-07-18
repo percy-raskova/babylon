@@ -34,6 +34,17 @@ if TYPE_CHECKING:
     from babylon.topology.graph import BabylonGraph
 
 
+#: spec-116 FR-116-4.7: ``ActionResult.events_generated`` values that surface
+#: as their own first-class bus events (payload = org/target + the resolver's
+#: ``direct_effects``) instead of drowning in the ORGANIZATIONAL_ACTION
+#: summary. Only the spec-071 reactionary verbs — STATE_REPRESSION /
+#: STATE_SURVEILLANCE keep their existing converter-only path so nothing
+#: double-delivers if a bus publisher lands for them later.
+_FIRST_CLASS_ACTION_EVENTS: frozenset[str] = frozenset(
+    {EventType.POGROM.value, EventType.LOCKOUT.value, EventType.VIGILANTISM.value}
+)
+
+
 def _compat_graph(graph: GraphProtocol) -> BabylonGraph:
     """Narrow a ``step()`` graph argument to the nx-compat world surface.
 
@@ -182,10 +193,31 @@ class OODASystem(SystemBase):
         else:
             context.persistent_data["turn_resolution"] = resolution_payload
 
-        # Emit summary event
+        # Emit events
         if services.event_bus:
             from babylon.kernel.event_bus import Event
 
+            # spec-116 FR-116-4.7: first-class reactionary verb events.
+            # Deterministic order (III.7): action_phase_results is
+            # initiative-ordered; events_generated iterates in list order.
+            for result in action_phase_results:
+                for event_value in result.events_generated:
+                    if event_value not in _FIRST_CLASS_ACTION_EVENTS:
+                        continue
+                    services.event_bus.publish(
+                        Event(
+                            type=EventType(event_value),
+                            tick=tick,
+                            payload={
+                                "org_id": result.action.org_id,
+                                "target_id": result.action.target_id,
+                                **result.direct_effects,
+                            },
+                        )
+                    )
+
+            # Emit summary event (unchanged — OrganizationalActionEvent
+            # consumers expect the aggregate counts payload)
             services.event_bus.publish(
                 Event(
                     type=EventType.ORGANIZATIONAL_ACTION,

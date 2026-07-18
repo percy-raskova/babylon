@@ -74,9 +74,54 @@ class RedBrownCoupEvent(SimulationEvent):
     member_count: int
 
 
+class PogromEvent(SimulationEvent):
+    """POGROM event payload (spec-116 FR-116-4.7; publish site ooda.py step).
+
+    First-class reactionary verb event: targeted communal violence. Payload
+    mirrors ``{org_id, target_id, **direct_effects}`` built from the
+    ``_resolve_fascist_verb`` ActionResult (action_effects.py:211-226) —
+    effect fields default 0.0 when the target node was absent at resolution.
+    """
+
+    event_type: EventType = Field(default=EventType.POGROM)
+    org_id: str
+    target_id: str
+    repression_increment: float = 0.0
+    wealth_destroyed: float = 0.0
+
+
+class LockoutEvent(SimulationEvent):
+    """LOCKOUT event payload (spec-116 FR-116-4.7; publish site ooda.py step).
+
+    First-class reactionary verb event: the employer withdraws wages —
+    incoming WAGES value_flow attenuated (action_effects.py:228-239).
+    """
+
+    event_type: EventType = Field(default=EventType.LOCKOUT)
+    org_id: str
+    target_id: str
+    wage_attenuation: float = 0.0
+
+
+class VigilantismEvent(SimulationEvent):
+    """VIGILANTISM event payload (spec-116 FR-116-4.7; publish site ooda.py step).
+
+    First-class reactionary verb event: extra-state local repression —
+    target's ``repression_faced`` raised (action_effects.py:211-221).
+    """
+
+    event_type: EventType = Field(default=EventType.VIGILANTISM)
+    org_id: str
+    target_id: str
+    repression_increment: float = 0.0
+
+
 __all__ = [
     "FascistDriftEvent",
     "FascistRecruitmentEvent",
+    "LockoutEvent",
     "OrganizationalFractureEvent",
+    "PogromEvent",
     "RedBrownCoupEvent",
+    "VigilantismEvent",
 ]

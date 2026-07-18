@@ -103,7 +103,7 @@ This is what makes it a genuine rustworkx plugin — we extend petgraph's data
 structure with n-ary semantics.
 
 ```rust
-use rustworkx_core::petgraph::graph::{DiGraph, NodeIndex};
+use rustworkx_core::petgraph::stable_graph::{NodeIndex, StableDiGraph};
 use indexmap::IndexMap;
 
 /// The two roles in the bipartite structure.
@@ -125,9 +125,9 @@ pub struct MembershipEdge<M> {
 /// The hypergraph. One field. Everything else is views over it.
 pub struct Hypergraph<N = serde_json::Value, E = serde_json::Value, M = serde_json::Value> {
     /// Bipartite: Agent nodes + Hyperedge nodes + membership edges.
-    /// Insertion-ordered (petgraph::graph::DiGraph preserves insertion order
-    /// for both nodes and edges — required for III.7 determinism parity).
-    inner: DiGraph<NodeKind<N, E>, MembershipEdge<M>>,
+    /// Index-stable under removal (StableDiGraph leaves holes — required
+    /// for III.7 determinism parity; see §3.5).
+    inner: StableDiGraph<NodeKind<N, E>, MembershipEdge<M>>,
 
     /// Insertion-ordered bimaps for O(1) id-based lookup (mirrors
     /// BabylonGraph's `_ids` / `_index_to_id` pattern from ADR052).
@@ -147,8 +147,8 @@ pub struct Hypergraph<N = serde_json::Value, E = serde_json::Value, M = serde_js
 | `H.add_edge(members, idx=id, **attrs)` | Insert `NodeKind::Hyperedge(attrs)`; for each member insert a `MembershipEdge` agent→hyperedge (and reverse for undirected) | O(\|members\|) |
 | `H.nodes` | Iterate `agent_ids` keys in insertion order | O(\|agents\|) |
 | `H.edges` | Iterate `hyperedge_ids` keys in insertion order | O(\|edges\|) |
-| `H.nodes.memberships(agent_id)` | Look up `NodeIndex`, iterate out-neighbors that are `NodeKind::Hyperedge`, return their ids | O(degree) |
-| `H.edges.members(edge_id)` | Look up `NodeIndex`, iterate in-neighbors that are `NodeKind::Agent`, return their ids | O(\|members\|) |
+| `H.nodes.memberships(agent_id)` | Bimap-filter: iterate `hyperedge_ids`, keep `contains_edge(agent, he)` — insertion-ordered (§3.5) | O(\|edges\|·deg) |
+| `H.edges.members(edge_id)` | Bimap-filter: iterate `agent_ids`, keep `contains_edge(agent, he)` — insertion-ordered (§3.5) | O(\|agents\|·deg) |
 | `H.edges[id]` (attrs) | Look up `NodeIndex`, read `NodeKind::Hyperedge` payload | O(1) |
 | `H.nodes[id]` (attrs) | Look up `NodeIndex`, read `NodeKind::Agent` payload | O(1) |
 | `xgi.incidence_matrix(H)` | The bipartite adjacency matrix — `sprs::CsMat` directly from `inner` | O(\|edges\|·\|agents\|) nnz |
@@ -191,16 +191,32 @@ pub struct SimplicialComplex<N, E, M> {
 
 ### 3.5 Determinism (III.7 parity)
 
-`petgraph::graph::DiGraph` preserves insertion order for both nodes and edges
-(unlike rustworkx's `PyDiGraph` which reuses indices — the exact issue ADR052
-had to work around). So the bipartite substrate is *naturally* insertion
-ordered, no mirror dicts needed for ordering. The `agent_ids` /
-`hyperedge_ids` IndexMaps are for O(1) id lookup only, not ordering.
+The substrate is `petgraph::stable_graph::StableDiGraph` (an earlier draft
+of this section named `petgraph::graph::DiGraph` — wrong on two counts:
+`Graph` compacts indices on removal, scrambling insertion order; only the
+`Stable*` family preserves index stability under removal, which the
+insertion-order contract requires).
 
-`petgraph::graph::DiGraph` removes nodes by leaving a hole (the index is
-marked removed, not reused) — better for determinism than `PyDiGraph`.
-Iteration via `inner.node_indices()` skips holes automatically. The bimaps
-hide this entirely from the public API.
+`StableDiGraph` removes nodes by leaving a hole (the index is marked
+removed, not reused) — better for determinism than rustworkx's
+`PyDiGraph` (the exact issue ADR052 worked around). Re-added nodes reuse
+the hole's `NodeIndex`; because all id→index resolution goes through the
+bimaps, holes are invisible to the public API.
+
+Two hard-won clarifications (post-implementation review):
+
+- **The bimaps ARE the ordering mechanism.** This section originally
+  claimed "the bipartite substrate is naturally insertion ordered, no
+  mirror dicts needed for ordering" — false. `inner.node_indices()`
+  iteration order after removals does not match id-insertion order, and
+  `neighbors()` yields **reverse** (LIFO) insertion order. The
+  `agent_ids` / `hyperedge_ids` IndexMaps provide both O(1) id lookup
+  AND the insertion-ordered iteration contract (`node_ids`, `edge_ids`).
+- **Membership queries are bimap-filtered, not neighbor-iterated.**
+  `members()` / `memberships()` iterate the opposite bimap and filter by
+  `inner.contains_edge(...)`, which is insertion-ordered by construction
+  (XGI returns unordered sets — divergence D5; we are strictly more
+  defined).
 
 ---
 
@@ -217,17 +233,18 @@ impl<N, E, M> Hypergraph<N, E, M> {
     // Constructors
     pub fn new() -> Self;
     pub fn from_memberships(memberships: Vec<(String, Vec<String>)>) -> Self;
-    pub fn from_bipartite_graph(g: petgraph::graph::DiGraph<N, E>) -> Self;
+    pub fn from_bipartite_graph(g: rustworkx_core::petgraph::stable_graph::StableDiGraph<NodeKind<N, E>, MembershipEdge<M>>) -> Self;
 
     // Node CRUD
     pub fn add_node(&mut self, node_id: &str, attrs: N) -> bool;
     pub fn add_nodes_from(&mut self, nodes: impl IntoIterator<Item = (String, N)>);
-    pub fn remove_node(&mut self, node_id: &str) -> Result<(), NodeError>;
+    pub fn remove_node(&mut self, node_id: &str, strong: bool) -> Result<(), NodeError>;
     pub fn has_node(&self, node_id: &str) -> bool;
     pub fn num_nodes(&self) -> usize;
 
-    // Edge CRUD — XGI uses `idx=` for the edge ID (v0.9 breaking change, pinned)
-    pub fn add_edge(&mut self, members: Vec<String>, idx: Option<String>, attrs: E) -> String;
+    // Edge CRUD — XGI uses `idx=` for the edge ID (v0.9 breaking change, pinned).
+    // Fallible: duplicate idx returns Err(AlreadyExists) — divergence D2.
+    pub fn add_edge(&mut self, members: Vec<String>, idx: Option<String>, attrs: E) -> Result<String, EdgeError>;
     pub fn add_edges_from(&mut self, edges: impl IntoIterator<Item = (Vec<String>, Option<String>, E)>);
     pub fn remove_edge(&mut self, edge_id: &str) -> Result<(), EdgeError>;
     pub fn has_edge(&self, edge_id: &str) -> bool;
@@ -251,11 +268,13 @@ impl<N, E, M> Hypergraph<N, E, M> {
 
     // 1-skeleton and bipartite projections (rustworkx-native algorithms run on these)
     pub fn skeleton(&self) -> rustworkx_core::petgraph::graph::Graph<String, f64>;
-    pub fn bipartite_graph(&self) -> &rustworkx_core::petgraph::graph::DiGraph<NodeKind<N,E>, MembershipEdge<M>>;
+    pub fn bipartite_graph(&self) -> &rustworkx_core::petgraph::stable_graph::StableDiGraph<NodeKind<N, E>, MembershipEdge<M>>;
 
-    // Iteration (insertion-ordered, III.7 parity)
-    pub fn node_ids(&self) -> impl Iterator<Item = &str>;
-    pub fn edge_ids(&self) -> impl Iterator<Item = &str>;
+    // Iteration (insertion-ordered, III.7 parity — eager Vec, not lazy
+    // iterator: the borrow would hold the bimap for the iterator's life,
+    // which fights callers; cloning ids is cheap at our scale)
+    pub fn node_ids(&self) -> Vec<String>;
+    pub fn edge_ids(&self) -> Vec<String>;
 }
 ```
 
@@ -327,11 +346,37 @@ all generator functions, all algorithms, etc. The 164 symbols.
 ### 4.6 Determinism contract (Constitution III.7 parity)
 
 XGI's iteration order is insertion order (Python dicts). Our
-`petgraph::graph::DiGraph` + `IndexMap` combo is insertion-ordered by
-construction. The conformance gate (XGI tests) will catch any order drift.
-We add a property-based test (like ADR052's `test_graph_iteration_order.py`)
-that differential-tests against the real XGI oracle on random hypergraph
-operation sequences.
+`StableDiGraph` + `IndexMap` combo is insertion-ordered by construction
+(bimap iteration, §3.5). The conformance gate (XGI tests) will catch any
+order drift. We add a property-based test (like ADR052's
+`test_graph_iteration_order.py`) that differential-tests against the real
+XGI oracle on random hypergraph operation sequences.
+
+### 4.7 Divergence register — behavioral truth, binding contracts
+
+Ground rule: **parity claims are made against the XGI runtime, never its
+docstrings.** D1 below exists because the plan initially trusted
+`add_edge`'s docstring ("Raises XGIError") over its behavior (creates an
+empty edge — XGI's own test suite asserts it). The conformance harness
+(`crates/hypergraph-rs/conformance/`) encodes this register
+**executably**: each divergence pins both XGI's recorded truth and Rust's
+deliberate behavior, so drift on either side fails loudly.
+
+| # | XGI v0.10.2 behavior (verified) | Rust core behavior | Binding contract (Phase 2) |
+|---|---|---|---|
+| D1 | `add_edge([])` creates an empty edge (docstring lies) | Same — creates it | pass-through |
+| D2 | Duplicate `idx` → `UserWarning` + no-op, returns `None` | `Err(EdgeError::AlreadyExists)` | translate to `warnings.warn(...)` + `None` |
+| D3 | String idx `"5"` does NOT bump the uid counter (only int/float idx do) | Bumps iff `idx.parse::<u64>()` succeeds (`"5"` → next auto `"6"`). Rationale: the ID boundary is stringly-typed (D7); XGI's int-idx behavior is the common case | pass-through; XGI's str-idx no-bump is pathological, not preserved |
+| D4 | Float idx `5.0` bumps (`float.is_integer()`) | No bump (`"5.0"` fails `parse::<u64>`) — the D3 rule is exact | pass-through |
+| D5 | `members()`/`memberships()` return unordered sets | Insertion-ordered `Vec` (strictly more defined) | convert to `set` at the boundary if a test asserts set semantics |
+| D6 | `add_node` on existing node merges attrs (`{x:1}` then `{y:2}` → both) | Replaces attrs (a generic `N` cannot merge) | merge dicts before calling core |
+| D7 | Ids are typed hashables (auto-ids are `int`; explicit ids arbitrary) | All ids are `String` at the core boundary | PyO3 converts: `int` ↔ `String` losslessly for integer-like ids; non-string hashables via `str()` (documented) |
+| D8 | `add_edge` returns `None` | Returns `Ok(edge_id)` | binding discards, returns `None` |
+| D9 | `remove_node(n, strong=False, remove_empty=True)` — three-mode | `remove_node(id, strong)`; weak mode always removes emptied edges (XGI default). `remove_empty=False` is unimplemented (Phase 2 task) | expose `remove_empty` when implemented |
+
+The register is append-only: new deliberate divergences get the next
+number, a conformance vector, and a row here — never an undocumented
+behavioral delta.
 
 ---
 
@@ -1110,7 +1155,7 @@ The user chose "Full port first, then swap." Phased breakdown:
 - Verify `cargo build` on all 4 crates passes
 
 #### Phase 1: Core data structure + minimal API (1-2 weeks)
-- `Hypergraph<N, E, M>` struct (bipartite `petgraph::graph::DiGraph`)
+- `Hypergraph<N, E, M>` struct (bipartite `StableDiGraph`)
 - `add_node`, `add_edge`, `remove_node`, `remove_edge`, `memberships`,
   `members`, `num_nodes`, `num_edges`
 - `agent_ids` / `hyperedge_ids` IndexMap bimaps

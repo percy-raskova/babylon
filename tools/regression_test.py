@@ -75,6 +75,41 @@ DEFAULT_MAX_TICKS: Final[int] = 52
 CHECKPOINT_INTERVAL: Final[int] = 10
 TOLERANCE: Final[float] = 1e-5
 
+FRED_FIXTURE_PATH: Final[Path] = (
+    Path(__file__).parent.parent / "tests" / "fixtures" / "vol3_fred_series.json"
+)
+
+
+def _load_vol3_fred_fixture() -> dict[str, dict[int, float]]:
+    """Load the committed Vol III FRED fixture (D4) — no DB, no drive.
+
+    The JSON on disk stores year as a string (JSON object keys are always
+    strings); the Vol III adapters (``FredInterestRateAdapter`` et al.) index
+    by ``int`` year, so keys are converted back on load.
+
+    Returns:
+        ``{series_id: {year: value}}`` matching
+        :func:`babylon.domain.economics.factory.load_fred_series_from_db`'s
+        return shape.
+    """
+    raw: dict[str, dict[str, float]] = json.loads(FRED_FIXTURE_PATH.read_text())
+    return {
+        series_id: {int(year): value for year, value in years.items()}
+        for series_id, years in raw.items()
+    }
+
+
+def _build_vol3_calculator_overrides() -> dict[str, Any]:
+    """Build Vol III ``calculator_overrides`` from the committed FRED fixture.
+
+    D4: gives ``qa:regression`` real (2010-2024) money data without touching
+    the babylon-data drive — the harness reads only the committed fixture.
+    """
+    from babylon.domain.economics.factory import create_financial_services
+
+    return create_financial_services(fred_series_cache=_load_vol3_fred_fixture())
+
+
 # Dense-trace per-entity/per-edge column contract (Program 13 item 2). Each
 # entry is (column-name suffix, getter). Declared once so the CSV header and
 # every row are built from the exact same ordered list and can never drift
@@ -565,6 +600,12 @@ def _run_scenario_ticks(
     state, sim_config, defines = create_scenario(name)
     config_info = SCENARIOS[name]
     persistent_context: dict[str, Any] = {}
+    # D4: Vol III calculator_overrides built ONCE per scenario run — the
+    # calculators are stateless/reused across ticks, mirroring the cadence
+    # _legacy.py's Simulation already uses (one calculator_overrides dict
+    # persists across the whole run, rebuilt only per ServiceContainer.create
+    # call inside step() itself).
+    calculator_overrides = _build_vol3_calculator_overrides()
 
     checkpoints: list[CheckpointData] = []
     ticks_survived = 0
@@ -582,7 +623,13 @@ def _run_scenario_ticks(
         dense_rows.append(_dense_row(state, 0, entity_ids, edge_keys))
 
     for tick in range(1, max_ticks + 1):
-        state = step(state, sim_config, persistent_context, defines)
+        state = step(
+            state,
+            sim_config,
+            persistent_context,
+            defines,
+            calculator_overrides=calculator_overrides,
+        )
         ticks_survived = tick
 
         # Checkpoint at intervals

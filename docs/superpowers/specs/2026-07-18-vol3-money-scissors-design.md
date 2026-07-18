@@ -305,19 +305,36 @@ would corrupt principal-contradiction ranking.
 Each `unity` string must satisfy the Aleksandrov Test — naming the concrete material
 relation, not the formalism.
 
-**Coupling edges:**
+**Coupling edges — derived, not authored.**
 
-```
-surplus_distribution --transforms--> debt_spiral   [reserved, now live]
-credit               --transforms--> financial     [reserved, now live]
-financial            --feeds-->      price_value   [NEW]
-```
+Owner ruling (2026-07-18) on the open question of which edge enters `price_value`: *do
+whatever is healthiest long-run; do it right.* The right answer is not to pick an edge by
+theory. `coupling.py:45-46` gives the five kinds precise operational definitions —
+`feeds` = "the target's step reads the source's observation"; `constrains` = "the source
+limits the target's reachable state space"; `transforms` = "the source's output becomes the
+target's input prices". Against those definitions the edge set is **read off the code**, and
+each edge carries its citation:
 
-*Deliberate divergence from the approved sketch.* The option preview at decision time drew
-`credit --feeds--> price_value`. `financial → price_value` is the tighter claim: it is the
-fictitious/real divergence, not credit conditions as such, that `fictitious_log` measures.
-Chaining `credit → financial → price_value` also preserves the reserved edge's meaning rather
-than routing around it. Flagged rather than changed silently; the owner may overrule.
+| edge | kind | code evidence |
+|---|---|---|
+| `surplus_distribution → debt_spiral` | `transforms` | reserved; `DebtAccumulation.update` consumes `profit_of_enterprise`, the distribution residual (`tick/system/__init__.py:1460-1464`) |
+| `credit → financial` | `transforms` | reserved; credit conditions become fictitious accumulation's input |
+| `price_value → financial` | `feeds` | `fictitious_drive` includes `momentum_coupling * price_velocity` (`market_scissors.py:259-264`) *(verified)* |
+| `financial → price_value` | `feeds` | the correction snaps `price_log` from `fictitious_log` overhang (`market_scissors.py:313`, `:327-331`) *(verified)* |
+| `surplus_distribution → financial` | `constrains` | the interest burden sets `serviceable_divergence` — the ceiling on `fictitious_log` before the snap (`:308-313`, after U6) |
+
+Both my earlier candidates (`credit → price_value` in the approved sketch,
+`financial → price_value` in the first draft) were under-specified. The honest structure is
+**mutual `feeds` between `price_value` and `financial` at different moments of the cycle** —
+in expansion, price momentum drives speculation; in correction, the bubble snaps prices — plus
+a `constrains` edge nobody had considered. Nothing in `CouplingGraph` requires acyclicity
+(`coupling.py:108-133`), so the reciprocal pair is legal and is the truthful record.
+
+**The governing principle, and the reason this matters beyond four edges:** the coupling graph
+is a claim *about the code*. A hand-authored graph drifts from the dependencies it describes
+the moment either side changes — which is exactly how the four reserved edges came to sit
+dormant and undetected for months. So the graph must be **verified against real measurement
+dependencies**, not merely declared. That gate is specified in U8.
 
 **`CouplingGraph` activation.** A `coupling_graph` field on `ServiceContainer` (protocol +
 concrete), built beside the registry. Per Constitution III.10, it must not ship as
@@ -369,6 +386,24 @@ verification pass; the thirteenth was correct in substance with a drifted citati
 | `catalog.py` docstring says "five bound contradictions" and omits `price_value`, canonical since ADR078 | `catalog.py:1,12,16-38` | stale docs |
 | `market_scissors.py` docstrings still say "Phase 1 SHADOW ONLY … no correction feedback", but Phase 2 is wired and firing | `market_scissors.py:1,13-19,124` | stale docs |
 | `RentCategory` exported with zero behavioural consumers | `rent/types.py:13-30` | dead export |
+| `_mean_profit_rate` takes an **unweighted mean of an intensive across space** — `total/count` over territory `tick_profit_rate`. The aggregate profit rate is `Σs / Σ(c+v)`, not `mean(rᵢ)`; the unweighted form lets a tiny county swing the national serviceability line as hard as Wayne. `tick_capital_stock` is already stamped (`graph_bridge.py:104`), so a capital-weighted mean is available with no new data | `market_scissors.py:411-429` | **intensive-aggregation variance error** (named class) |
+
+### 3.7 Sentinels — the error classes this work discovered
+
+Standing rule (owner, 2026-07-18): every phase ships a gate preventing the class it
+discovered, agent-legible, validated by mutation. This work surfaced five classes, four of
+which are already on the owed list:
+
+| Class | What it looks like here | Gate |
+|---|---|---|
+| **correct-but-inert** | The entire Vol III estate computes correctly and changes nothing | A System/service that runs but whose outputs have no consumer is reported |
+| **computed-but-never-consumed** | Path A `ground_rent`; `FictitiousCapitalStock`; `DEBT_SPIRAL_THRESHOLD`; `pole_readings` (a live producer with zero readers) | Every declared output has ≥1 production reader, or is declared dormant with a reason |
+| **gate-blindness** | `qa:regression` nominally guards the engine but injects no economics calculators at all | The DoD gate's executed-code set is compared against the estate it claims to guard |
+| **intensive-aggregation** | `_mean_profit_rate` (§3.6, last row) | No unweighted mean of a rate/ratio/balance across space or class |
+| **undeclared-coupling** (new) | Four reserved edges sat dormant for months; `momentum_coupling` was a real dependency nobody had declared | Every declared coupling edge maps to a real measurement dependency, and every real dependency is declared |
+
+The last one is the direct consequence of §3.4's governing principle and is the novel
+contribution here. The other four pay down existing debt.
 
 ---
 
@@ -414,7 +449,16 @@ corrected.
 *Acceptance:* rising interest burden measurably tightens the correction threshold; every new
 coefficient is player-editable.
 
-**U7 — Baseline delta + ceremony.** Run `qa:regression`, expect red. Write
+**U7 — Sentinels.** §3.7, five gates. Each is agent-legible (names the class, points at the
+offending symbol, states the remedy) and validated by mutation: introduce the defect the gate
+exists to catch and prove the gate fails. Per standing owner ruling, sentinels are advisory
+and local/on-demand — no nightly CI plumbing. The `undeclared-coupling` gate carries the
+§3.4 principle: it walks each declared edge to a real dependency and flags declared-but-absent
+and present-but-undeclared in both directions.
+*Acceptance:* each gate red on an injected defect, green on `dev`; the four owed classes are
+struck from the owed list or explicitly narrowed with a reason.
+
+**U8 — Baseline delta + ceremony.** Run `qa:regression`, expect red. Write
 `reports/vol3-baseline-delta.md`: per scenario, which tick moved, which correction fired
 differently, which principal contradiction changed, and why each is materially correct.
 **Owner reads and approves before any baseline is regenerated.** Then regenerate in a
@@ -470,14 +514,29 @@ Non-negotiable (III.7). Specific hazards:
 
 ---
 
-## 8. Open items for the owner
+## 8. Resolved items
 
-1. **`financial → price_value` vs `credit → price_value`** (§3.4). Design chose the former;
-   the approved sketch drew the latter. Reasoning stated; owner may overrule.
-2. **`CouplingGraph`'s earn-its-keep duty** (§3.4). The proposed first consumer constrains
-   principal ranking by coupling direction. This is a genuine behavioural change to
-   contradiction ranking and the one place this design alters existing semantics rather than
-   filling absence — it deserves explicit sign-off.
-3. **The year-ceiling crash is not ours** (§1.4, §3.6). Fixing `NationalTickParameters.year`
-   touches the live MELT path and is arguably its own bugfix branch. Included in U2 here
-   because a 5200-tick Vol III run cannot be proven without it; say if it should be split.
+All three open items were decided by the owner on 2026-07-18. Recorded here rather than
+deleted, because the reasoning is load-bearing for U5 and U7.
+
+1. **Which edge enters `price_value`** — RESOLVED, delegated to the implementer with the
+   instruction "do whatever is healthiest long-run; do it right." Answer: neither candidate.
+   The edge set is *derived from code* against `coupling.py`'s operational definitions of the
+   five kinds, yielding five edges including a reciprocal `feeds` pair and a `constrains`
+   edge nobody had considered (§3.4). The generalisation — that a coupling graph is a claim
+   about code and must be verified against it — became U7's `undeclared-coupling` sentinel.
+2. **`CouplingGraph`'s earn-its-keep duty** — APPROVED. `ContradictionSystem` consumes the
+   graph to constrain principal-contradiction ranking by coupling direction. This is the one
+   place the design alters existing semantics rather than filling absence, and U8's delta
+   analysis reports principal-contradiction changes per scenario as a result.
+3. **The `le=2040` year ceiling** — FIX HERE, not on a separate branch. It stays in U2 and is
+   its highest-priority row: it is a live `ValidationError` on the already-wired MELT path at
+   tick ≈1612 of 5200, so it is a production bug this work happens to have found, not a Vol III
+   prerequisite.
+
+## 9. Setup note
+
+The worktree has no `data/` directory — the symlink farm to `/media/user/data/babylon-data/`
+is untracked and exists only in the main checkout *(verified)*. U1's FRED fixture export
+reads the reference DB, so the farm must be recreated in the worktree first
+(`mise run doctor` step 3b catches this).

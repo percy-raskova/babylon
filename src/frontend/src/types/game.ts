@@ -778,6 +778,28 @@ export interface ActionPreviewResult {
   warnings: string[];
 }
 
+/** One verb's row from GET /actions/eligibility/ (spec-116 FR-4.8). */
+export interface VerbEligibilityEntry {
+  verb: string;
+  eligible: boolean;
+  /** Player-facing reason the verb has no eligible targets; null when eligible. */
+  reason: string | null;
+  /** What the player can do about it; null when eligible. */
+  remedy: string | null;
+  /** From the same check_can_afford that gates submit — advisory only;
+   *  the UI never disables on affordability. */
+  can_afford: boolean;
+  afford_note: string | null;
+}
+
+/** Response payload of GET /api/games/{id}/actions/eligibility/. */
+export interface VerbEligibilityPayload {
+  session_id: string;
+  tick: number;
+  org_id: string;
+  verbs: VerbEligibilityEntry[];
+}
+
 // ---------------------------------------------------------------------------
 // Multi-Scale Spatial Rendering Types
 // ---------------------------------------------------------------------------

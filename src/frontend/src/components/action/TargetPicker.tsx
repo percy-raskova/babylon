@@ -1,20 +1,12 @@
 /**
  * Target picker — flat list of `VerbTarget`s, grouped when the config's
  * targets carry a `group` (e.g. Aid's Communities/Organizations split).
- *
- * FR-116-4.4: rows also render per-target expected-delta chips when the
- * backend produced real resolver-parity numbers for this target.
+ * Rows carry expected-delta chips (spec-116 FR-4.4). The empty state
+ * carries the verb's eligibility reason + remedy when known
+ * (spec-116 FR-4.8) so an empty list is never a mute dead-end.
  */
 
 import type { VerbTarget } from "@/lib/verbs";
-
-interface TargetPickerProps {
-  targets: VerbTarget[];
-  loading: boolean;
-  error: string | null;
-  selectedId: string | null;
-  onSelect: (id: string) => void;
-}
 
 /** One compact ▲/▼ chip for a non-zero expected delta — null otherwise
  *  (the same honest-null convention as VerbForm's preview DeltaChip). */
@@ -40,12 +32,24 @@ function TargetDeltaChip({
   );
 }
 
+interface TargetPickerProps {
+  targets: VerbTarget[];
+  loading: boolean;
+  error: string | null;
+  selectedId: string | null;
+  onSelect: (id: string) => void;
+  /** Reason + remedy for an empty list; null falls back to the bare
+   *  legacy line (honest-null — never fabricate a reason). */
+  emptyReason?: string | null;
+}
+
 export function TargetPicker({
   targets,
   loading,
   error,
   selectedId,
   onSelect,
+  emptyReason,
 }: TargetPickerProps): React.JSX.Element {
   if (loading) {
     return <p className="text-[11px] text-ash">Loading targets…</p>;
@@ -58,7 +62,11 @@ export function TargetPicker({
     );
   }
   if (targets.length === 0) {
-    return <p className="text-[11px] italic text-shroud">No eligible targets.</p>;
+    return (
+      <p className="text-[11px] italic text-shroud" data-testid="targets-empty">
+        {emptyReason ? `No eligible targets yet: ${emptyReason}` : "No eligible targets."}
+      </p>
+    );
   }
 
   return (

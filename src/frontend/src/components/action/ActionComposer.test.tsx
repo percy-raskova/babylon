@@ -41,13 +41,91 @@ describe("ActionComposer", () => {
     ).toBeInTheDocument();
   });
 
-  it("renders the flat 9-verb grid with every verb enabled (AW3-R1: all 9 have real engine handlers)", () => {
+  it("renders the flat 9-verb grid all-enabled while eligibility is unresolved (honest-null, spec-116 FR-4.8)", async () => {
     seedPlayerOrg();
     render(<ActionComposer gameId={DEFAULT_GAME_ID} />);
     const grid = screen.getByTestId("verb-grid");
     expect(grid.querySelectorAll("button")).toHaveLength(9);
     expect(screen.getByRole("button", { name: /investigate/i })).toBeEnabled();
-    expect(screen.getByRole("button", { name: /educate/i })).toBeEnabled();
+    // Settle the eligibility fetch (default handler: empty verbs list).
+    await waitFor(() => expect(screen.getByRole("button", { name: /educate/i })).toBeEnabled());
+    expect(screen.queryByTestId("verb-ineligible-reasons")).not.toBeInTheDocument();
+  });
+
+  it("disables an ineligible verb with reason + remedy visible (spec-116 FR-4.8)", async () => {
+    server.use(
+      http.get("/api/games/:id/actions/eligibility/", () =>
+        HttpResponse.json({
+          status: "ok",
+          data: {
+            session_id: DEFAULT_GAME_ID,
+            tick: 1,
+            org_id: "org-1",
+            verbs: [
+              {
+                verb: "educate",
+                eligible: false,
+                reason: "No organized community in your territories yet.",
+                remedy:
+                  "No action can organize a community yet — political education unlocks the moment an organized class appears where you operate.",
+                can_afford: true,
+                afford_note: null,
+              },
+              {
+                verb: "mobilize",
+                eligible: false,
+                reason:
+                  "No business or civil-society organization within your territories to mobilize against.",
+                remedy:
+                  "Expand toward workplaces and civil society (MOVE), or wait for new organizations to emerge.",
+                can_afford: true,
+                afford_note: null,
+              },
+              {
+                verb: "attack",
+                eligible: true,
+                reason: null,
+                remedy: null,
+                can_afford: true,
+                afford_note: null,
+              },
+            ],
+          },
+        }),
+      ),
+    );
+    seedPlayerOrg();
+    render(<ActionComposer gameId={DEFAULT_GAME_ID} />);
+
+    const educate = screen.getByRole("button", { name: /educate/i });
+    await waitFor(() => expect(educate).toBeDisabled());
+    expect(educate).toHaveAttribute(
+      "title",
+      expect.stringContaining("no eligible targets yet: No organized community"),
+    );
+    expect(screen.getByRole("button", { name: /mobilize/i })).toBeDisabled();
+
+    // Reason + remedy VISIBLE (not tooltip-only), per FR-116-4.8.
+    const reasons = screen.getByTestId("verb-ineligible-reasons");
+    expect(reasons).toHaveTextContent(/educate/i);
+    expect(reasons).toHaveTextContent("No organized community in your territories yet.");
+    expect(reasons).toHaveTextContent(/political education unlocks/);
+
+    // Article V: eligible verbs stay enabled; nothing is ever hidden.
+    expect(screen.getByRole("button", { name: /attack/i })).toBeEnabled();
+    expect(screen.getByTestId("verb-grid").querySelectorAll("button")).toHaveLength(9);
+  });
+
+  it("keeps all verbs enabled when the eligibility fetch fails (honest-null)", async () => {
+    server.use(
+      http.get("/api/games/:id/actions/eligibility/", () =>
+        HttpResponse.json({ status: "error", message: "boom" }, { status: 500 }),
+      ),
+    );
+    seedPlayerOrg();
+    render(<ActionComposer gameId={DEFAULT_GAME_ID} />);
+    await waitFor(() => expect(screen.getByRole("button", { name: /educate/i })).toBeEnabled());
+    expect(screen.queryByTestId("verb-ineligible-reasons")).not.toBeInTheDocument();
   });
 
   it("selecting a verb fetches live targets and renders them", async () => {

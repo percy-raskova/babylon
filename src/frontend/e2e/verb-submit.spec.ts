@@ -3,11 +3,12 @@
  * (spec-110 B6, cockpit equivalent of web/frontend/e2e/verb-submit.spec.ts).
  * real-loop.spec.ts also drives campaign once as part of the full loop;
  * this spec is the focused ActionComposer/VerbGrid/TargetPicker gate:
- * the flat 9-verb grid (Article V — all 9 verbs enabled as of AW3-R1
- * 2026-07-15; investigate/move/negotiate's Spec 061 FR-025 disabling was
- * stale — all 9 have real engine resolvers, see
- * `babylon.engine.actions.VERB_RESOLVERS`), the live snapshot-sourced
- * target picker, and a full submit→201→pending-list round trip.
+ * the flat 9-verb grid (Article V — all 9 verbs have real engine
+ * resolvers, see `babylon.engine.actions.VERB_RESOLVERS`, but at tick 0
+ * EDUCATE and MOBILIZE render disabled-with-reason per spec-116 FR-4.8 —
+ * a structural dead-end honestly surfaced, not a missing handler), the
+ * live snapshot-sourced target picker, and a full submit→201→pending-list
+ * round trip.
  *
  * Runs on the "chromium-authenticated" project (storageState from
  * auth.setup.ts) against its own fresh wayne_county session.
@@ -30,18 +31,37 @@ test.describe("Verb submit — live engine (cockpit, spec-110 B6)", () => {
     expect(gameId, "session creation must return a session_id").toBeTruthy();
   });
 
-  test("ActionComposer renders the 9-verb grid; all 9 verbs are enabled", async ({ page }) => {
+  test("VerbGrid tick-0 eligibility: EDUCATE and MOBILIZE disabled with visible reason, no dead-end clicks (spec-116 FR-4.8)", async ({
+    page,
+  }) => {
     expect(gameId, "session-creation test ran first").toBeTruthy();
     await page.goto(`/game/${gameId}`);
     await expect(page.getByTestId("action-composer")).toBeVisible({ timeout: 15000 });
     const verbGrid = page.getByTestId("verb-grid");
     await expect(verbGrid).toBeVisible();
 
+    // Tick-0 wayne_county: no social_class node carries the org's
+    // territories (structural — SocialClass has no territory_ids field)
+    // and the only co-located org is the state apparatus, so EDUCATE and
+    // MOBILIZE are disabled-with-reason instead of dead-ending into
+    // "No eligible targets."
+    const educate = verbGrid.getByRole("button", { name: /educate/i });
+    await expect(educate).toBeDisabled({ timeout: 15000 });
+    await expect(educate).toHaveAttribute(
+      "title",
+      /no eligible targets yet: No organized community/,
+    );
+    await expect(verbGrid.getByRole("button", { name: /mobilize/i })).toBeDisabled();
+
+    // Reason + remedy are VISIBLE, not tooltip-only.
+    const reasons = page.getByTestId("verb-ineligible-reasons");
+    await expect(reasons).toContainText("No organized community in your territories yet.");
+    await expect(reasons).toContainText("political education unlocks");
+
+    // Article V: the other seven verbs stay enabled; nothing is hidden.
     for (const verb of [
-      "Educate",
       "Aid",
       "Attack",
-      "Mobilize",
       "Campaign",
       "Move",
       "Investigate",
@@ -50,6 +70,7 @@ test.describe("Verb submit — live engine (cockpit, spec-110 B6)", () => {
     ]) {
       await expect(verbGrid.getByRole("button", { name: new RegExp(verb, "i") })).toBeEnabled();
     }
+    await expect(verbGrid.getByRole("button")).toHaveCount(9);
   });
 
   test("selecting Campaign renders the live snapshot-sourced target picker", async ({ page }) => {

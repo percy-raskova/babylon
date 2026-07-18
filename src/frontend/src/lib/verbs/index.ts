@@ -8,3 +8,5 @@ export { fetchVerbTargets } from "./fetchVerbTargets";
 export type { VerbTargetsResult } from "./fetchVerbTargets";
 export { fetchActionPreview } from "./fetchActionPreview";
 export type { ActionPreviewFetchResult } from "./fetchActionPreview";
+export { fetchVerbEligibility } from "./fetchVerbEligibility";
+export type { VerbEligibilityFetchResult } from "./fetchVerbEligibility";

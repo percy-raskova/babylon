@@ -375,6 +375,18 @@ export const handlers = [
     return HttpResponse.json({ targets: [] });
   }),
 
+  // ---- Spec-116 FR-4.8: per-verb eligibility (VerbGrid disabled-with-
+  // reason). Default: empty verbs list — the honest-null path (nothing
+  // disabled). Tests that need real rows override with server.use().
+  http.get("/api/games/:id/actions/eligibility/", ({ request }) => {
+    logRequest("GET actions:eligibility");
+    const orgId = new URL(request.url).searchParams.get("org_id") ?? "";
+    return HttpResponse.json({
+      status: "ok",
+      data: { session_id: DEFAULT_GAME_ID, tick: 1, org_id: orgId, verbs: [] },
+    });
+  }),
+
   http.post("/api/games/:id/actions/:verb/", ({ params }) => {
     logRequest(`POST actions:${String(params.verb)}`);
     return HttpResponse.json({ status: "ok", data: null });

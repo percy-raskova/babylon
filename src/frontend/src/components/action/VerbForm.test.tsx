@@ -258,3 +258,36 @@ describe("VerbForm pre-submit cost line (spec-116 FR-116-4.3)", () => {
     await waitFor(() => expect(screen.getByTestId("verb-cost")).toHaveTextContent("1 AP"));
   });
 });
+
+describe("VerbForm ineligible empty state (spec-116 FR-4.8)", () => {
+  it("renders reason + remedy in the empty state when the verb is ineligible (spec-116 FR-4.8)", async () => {
+    server.use(
+      http.get("/api/games/:id/actions/educate/targets/", () => HttpResponse.json({ targets: [] })),
+    );
+    render(
+      <VerbForm
+        gameId={DEFAULT_GAME_ID}
+        orgId="org-1"
+        verb="educate"
+        config={makeConfig()}
+        snapshot={makeSnapshot()}
+        submitting={false}
+        onSubmit={vi.fn()}
+        eligibility={{
+          verb: "educate",
+          eligible: false,
+          reason: "No organized community in your territories yet.",
+          remedy:
+            "No action can organize a community yet — political education unlocks the moment an organized class appears where you operate.",
+          can_afford: true,
+          afford_note: null,
+        }}
+      />,
+    );
+    const empty = await screen.findByTestId("targets-empty");
+    expect(empty).toHaveTextContent(
+      "No eligible targets yet: No organized community in your territories yet.",
+    );
+    expect(empty).toHaveTextContent(/political education unlocks/);
+  });
+});

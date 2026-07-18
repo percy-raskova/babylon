@@ -41,6 +41,7 @@ import type {
   DoctrineTreePayload,
   ScenarioInfo,
   ActionPreviewResult,
+  VerbEligibilityPayload,
   ClassHistoryPayload,
   EdgeHistoryPayload,
   FieldStatePayload,
@@ -194,6 +195,8 @@ export const endpoints = {
 
   // ---- Action utilities ------------------------------------------------- //
   actionsAvailable: ep<Untyped>("/api/games/:id/actions/available/"),
+  // Spec-116 FR-4.8: per-verb eligibility (VerbGrid disabled-with-reason).
+  verbEligibility: ep<VerbEligibilityPayload>("/api/games/:id/actions/eligibility/"),
   actionsPreview: ep<ActionPreviewResult>("/api/games/:id/actions/preview/", "POST"),
   actionDelete: ep<Untyped>("/api/games/:id/actions/:actionId/", "DELETE"),
   actionsList: ep<Untyped>("/api/games/:id/actions/"),

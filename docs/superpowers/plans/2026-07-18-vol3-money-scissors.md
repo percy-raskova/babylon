@@ -1257,16 +1257,57 @@ Co-Authored-By: Claude Opus 4.8 (1M context) <noreply@anthropic.com>"
 
 **Interfaces:**
 - Consumes: `_build_economics_overrides(session_factory=..., scope_fips=...)` (U1.6);
-  `babylon.engine.simulation_engine.step`; `TICK_DYNAMICS_KEY`,
-  `read_tick_state_from_graph` (`domain/economics/tick/graph_bridge.py`);
+  `babylon.engine.simulation_engine.step`, `_restore_graph_context`, `_DEFAULT_ENGINE`;
+  `babylon.engine.services.ServiceContainer`; `babylon.engine.context.TickContext`;
+  `TICK_DYNAMICS_KEY`, `_reconstruct_tick_state`
+  (`domain/economics/tick/graph_bridge.py`, both in that module's `__all__`);
   `DISTRIBUTION_EPSILON` (`distribution/types.py`);
   `create_wayne_county_scenario` (`babylon.engine.scenarios`, **existing** — it
   already returns exactly the `(WorldState, SimulationConfig, GameDefines)`
   triple this task needs; `_legacy_wayne.py:577`).
 - Produces: `build_wayne_world_state()` in `tests/integration/economics/conftest.py`
   (Step 1b — a plain module-level function, deliberately **not** a pytest
-  fixture, so `_run_to_year_boundary` can import it by module path); plus the
-  standing proof of U1's three acceptance criteria. Nothing else consumes them.
+  fixture, so `_run_to_year_boundary_capturing_graph` can import it by module
+  path); plus the standing proof of U1's three acceptance criteria. Nothing else
+  consumes them.
+
+> **Observation-point note (read before writing Step 1 — it is why this test does
+> NOT call `read_tick_state_from_graph` on a post-`step` `WorldState`).**
+> Three separate mechanisms destroy the quantities this task must observe if the
+> tests read them off `step(...)`'s returned `WorldState`:
+>
+> 1. **`tick_dynamics` is not a `WorldState` field.** `WorldState.to_graph`
+>    (`models/world_state.py:608`) stamps `economy`, `state_finances`,
+>    `contradiction_frames`, `opposition_states`, `events`, `event_log`,
+>    `institution_relations`, the field stack, `player_org_id`,
+>    `wealth_distribution`, `market`, `market_county` — and nothing else.
+>    `graph.graph["tick_dynamics"]` lives only inside a tick; it is ferried
+>    across the boundary in `persistent_context["_tick_dynamics"]` by
+>    `_save_graph_context` (`engine/simulation_engine.py:446-464`) and replayed by
+>    `_restore_graph_context` (`:428-443`). So
+>    `read_tick_state_from_graph(returned_state.to_graph())` reads
+>    `get_graph_attr("tick_dynamics")` → `None` → returns `None`.
+> 2. **`tick_`-prefixed node attrs do not survive `from_graph`.**
+>    `_reconstruct_territory` (`models/world_state.py:232-252`) filters out every
+>    key that `startswith(("tick_", "flow_"))`, so a `Territory` carries no
+>    `tick_ground_rent` and `to_graph` cannot re-emit one.
+> 3. **`read_tick_state_from_graph` drops the Vol III payload even on a live
+>    graph.** Its per-territory reconstruction
+>    (`domain/economics/tick/graph_bridge.py:201-290`) builds each
+>    `CountyEconomicState` from an explicit field list that contains **no**
+>    `surplus_distribution` and **no** `rent_extraction`. Its `county_states`
+>    fallback fires only when *no* territory node carries `tick_capital_stock` —
+>    which is exactly not the case on a freshly-ticked graph. Reading through it
+>    would report "the Vol III county layer is still dark" against perfectly
+>    correct U1 wiring.
+>
+> The honest observation point is therefore the **live post-tick graph's**
+> `tick_dynamics` attribute, whose `"county_states"` entry holds the real
+> `CountyEconomicState` objects `write_tick_state_to_graph` put there
+> (`graph_bridge.py:57-68`), reconstructed with `_reconstruct_tick_state`
+> (`graph_bridge.py:292-325`) — the same helper `Simulation.get_time_series()`
+> uses. `_run_to_year_boundary_capturing_graph()` below returns that graph.
+> **Do not "simplify" it back to `_run_to_year_boundary().to_graph()`.**
 
 - [ ] **Step 1: Write the failing test**
 ```python
@@ -1278,25 +1319,50 @@ DISTRIBUTION_EPSILON for 100% of observations, not merely on average.
 
 from __future__ import annotations
 
+from typing import TYPE_CHECKING
+
 import pytest
 
 from babylon.domain.economics.distribution.types import DISTRIBUTION_EPSILON
 from babylon.domain.economics.tick.graph_bridge import (
     TICK_DYNAMICS_KEY,
-    read_tick_state_from_graph,
+    _reconstruct_tick_state,
 )
+
+if TYPE_CHECKING:
+    from babylon.domain.economics.tick.types import SimulationTickState
+    from babylon.topology.graph import BabylonGraph
 
 pytestmark = [pytest.mark.integration, pytest.mark.requires_reference_db]
 
 WAYNE_FIPS = "26163"
-#: One tick past a 52-tick year boundary — the financial layer's cadence.
-_YEAR_BOUNDARY_TICKS = 53
+#: Ticks driven through ``step`` before the capturing pass. Tick 0 is itself a
+#: year boundary (bootstraps 2010); after 52 calls ``state.tick == 52``, which is
+#: the NEXT boundary — the tick the capturing pass runs and observes (2011).
+_TICKS_BEFORE_CAPTURE = 52
 
 
-def _run_to_year_boundary():  # type: ignore[no-untyped-def]
-    """Run a Wayne-scoped simulation past one 52-tick year boundary."""
+def _run_to_year_boundary_capturing_graph() -> BabylonGraph:
+    """Run a Wayne-scoped simulation to a year boundary; return the LIVE graph.
+
+    The final tick is executed through the same three calls
+    ``simulation_engine.step`` makes (`simulation_engine.py:519-537`) —
+    ``to_graph`` → ``_restore_graph_context`` → ``_DEFAULT_ENGINE.run_tick`` —
+    rather than through ``step`` itself, for one reason only: ``step`` discards
+    the graph and returns a ``WorldState``, and the round trip that produces that
+    ``WorldState`` destroys every quantity this task exists to observe (see the
+    observation-point note in the plan). Same engine, same systems, same order;
+    the only difference is that the graph the systems wrote is handed back
+    instead of thrown away.
+    """
+    from babylon.engine.context import TickContext
     from babylon.engine.headless_runner.runner import _build_economics_overrides
-    from babylon.engine.simulation_engine import step
+    from babylon.engine.services import ServiceContainer
+    from babylon.engine.simulation_engine import (
+        _DEFAULT_ENGINE,
+        _restore_graph_context,
+        step,
+    )
     from babylon.reference.database import get_normalized_session_factory
     from tests.integration.economics.conftest import build_wayne_world_state
 
@@ -1307,21 +1373,48 @@ def _run_to_year_boundary():  # type: ignore[no-untyped-def]
     try:
         state, sim_config, defines = build_wayne_world_state()
         persistent: dict[str, object] = {}
-        for _ in range(_YEAR_BOUNDARY_TICKS):
+        for _ in range(_TICKS_BEFORE_CAPTURE):
             state = step(
                 state, sim_config, persistent, defines, calculator_overrides=overrides
             )
-        return state
+        assert state.tick == _TICKS_BEFORE_CAPTURE, (
+            f"expected tick {_TICKS_BEFORE_CAPTURE} before the capturing pass, "
+            f"got {state.tick} — the capturing pass must land on a year boundary"
+        )
+        graph = state.to_graph()
+        _restore_graph_context(graph, persistent)
+        services = ServiceContainer.create(sim_config, defines, **overrides)
+        context = TickContext(tick=state.tick, persistent_data=dict(persistent))
+        _DEFAULT_ENGINE.run_tick(graph, services, context)
+        return graph
     finally:
         if leontief_session is not None:
             leontief_session.close()
 
 
+def _tick_state_from(graph: BabylonGraph) -> SimulationTickState:
+    """Read the published tick state off a LIVE post-tick graph.
+
+    Deliberately NOT ``read_tick_state_from_graph``: that function rebuilds each
+    ``CountyEconomicState`` from ``tick_``-prefixed territory-node attrs using a
+    field list that carries neither ``surplus_distribution`` nor
+    ``rent_extraction`` (`graph_bridge.py:201-290`), so it would report a dark
+    Vol III layer no matter how correct U1's wiring is. ``_reconstruct_tick_state``
+    reads the real objects straight out of the graph attribute.
+    """
+    tick_data = graph.get_graph_attr(TICK_DYNAMICS_KEY)
+    assert tick_data is not None, (
+        f"{TICK_DYNAMICS_KEY} was never published onto the graph — "
+        "TickDynamicsSystem did not complete a year-boundary pass"
+    )
+    tick_state = _reconstruct_tick_state(tick_data)
+    assert tick_state is not None, f"{TICK_DYNAMICS_KEY} published an empty payload"
+    return tick_state
+
+
 def test_surplus_distribution_is_non_none_for_at_least_one_county_year() -> None:
     """The headline U1 criterion: the county financial layer actually fires."""
-    graph = _run_to_year_boundary().to_graph()
-    tick_state = read_tick_state_from_graph(graph)
-    assert tick_state is not None, f"{TICK_DYNAMICS_KEY} was never published"
+    tick_state = _tick_state_from(_run_to_year_boundary_capturing_graph())
     live = [
         county
         for county in tick_state.county_states.values()
@@ -1339,14 +1432,14 @@ def test_sc001_identity_holds_for_one_hundred_percent_of_observations() -> None:
     Asserted as a universal, not a sample statistic: one violating county-year
     is a violated accounting identity, however many others hold.
     """
-    graph = _run_to_year_boundary().to_graph()
-    tick_state = read_tick_state_from_graph(graph)
-    assert tick_state is not None
+    tick_state = _tick_state_from(_run_to_year_boundary_capturing_graph())
+    observed = 0
     violations: list[tuple[str, float]] = []
     for fips, county in sorted(tick_state.county_states.items()):
         d = county.surplus_distribution
         if d is None:
             continue
+        observed += 1
         residual = abs(
             d.total_surplus_produced
             - (
@@ -1359,16 +1452,29 @@ def test_sc001_identity_holds_for_one_hundred_percent_of_observations() -> None:
         if residual > DISTRIBUTION_EPSILON:
             violations.append((fips, residual))
     assert not violations, f"SC-001 violated (residual > {DISTRIBUTION_EPSILON}): {violations}"
+    # A universal over an empty domain is vacuously true — SC-001 is only
+    # proven if the run actually produced distributions to check.
+    assert observed > 0, (
+        "SC-001 checked zero observations: no county-year carried a "
+        "surplus_distribution, so the identity was never exercised"
+    )
 
 
 def test_tick_ground_rent_carries_a_non_zero_real_figure() -> None:
-    """U1.5's repoint proved in a real run, not against a hand-built model."""
-    graph = _run_to_year_boundary().to_graph()
+    """U1.5's repoint proved in a real run, not against a hand-built model.
+
+    Read off the LIVE post-tick graph: ``_reconstruct_territory``
+    (`models/world_state.py:232-252`) strips every ``tick_``-prefixed attr on the
+    way back into a ``WorldState``, so a post-``step`` ``to_graph()`` would show
+    ``0.0`` here for every territory regardless of U1.5.
+    """
+    graph = _run_to_year_boundary_capturing_graph()
     rents = [
         graph.nodes[node_id].get("tick_ground_rent", 0.0)
         for node_id in graph.nodes
         if graph.nodes[node_id].get("_node_type") == "territory"
     ]
+    assert rents, "no territory nodes on the graph — the run built no counties"
     assert any(rent > 0.0 for rent in rents), (
         "every tick_ground_rent is 0.0 — the Path A repoint (U1.5) did not "
         "reach a real FRED B230RC0Q173SBEA-backed figure in a live run"
@@ -1442,7 +1548,8 @@ def build_wayne_world_state() -> tuple[WorldState, SimulationConfig, GameDefines
     Tick 0 is deliberate: ``0 % WEEKS_PER_YEAR == 0``, so the very first ``step``
     is a year-boundary tick that bootstraps county states at the default
     ``base_year`` of 2010 (``_determine_year``, same module ``:350-364``); the
-    caller's 53-tick loop then crosses tick 52 and recomputes at 2011. Both years
+    caller then drives 52 ``step`` calls (ticks 0-51) and executes tick 52 — the
+    next boundary — as its capturing pass, recomputing at 2011. Both years
     sit inside U1.6's ``_TENSOR_HYDRATION_YEARS`` (2010-2024), so both find real
     QCEW/FRED-backed data rather than a ``NoDataSentinel``.
 
@@ -1472,7 +1579,8 @@ def build_wayne_world_state() -> tuple[WorldState, SimulationConfig, GameDefines
 - [ ] **Step 2: Run test to verify it fails**
 Run: `mise run test:q -- tests/integration/economics/test_vol3_surplus_distribution_live.py`
 Expected: FAIL **at an assertion, not at collection** — Step 1b must already have
-landed, so the module imports cleanly and the 53-tick run genuinely executes.
+landed, so the module imports cleanly and the 52 `step` calls plus the capturing
+pass genuinely execute.
 `test_surplus_distribution_is_non_none_for_at_least_one_county_year` fails with
 `AssertionError: surplus_distribution is None for every county after crossing a
 year boundary — the Vol III county layer is still dark (design §1.1)` when run
@@ -2308,13 +2416,18 @@ from babylon.domain.economics.distribution.types import distribution_epsilon
 #         if residual > DISTRIBUTION_EPSILON:
 #             violations.append((fips, residual))
 #     assert not violations, f"SC-001 violated (residual > {DISTRIBUTION_EPSILON}): {violations}"
-# AFTER (hoist one call out of the loop — the accessor is not free):
+# AFTER (hoist one call out of the loop — the accessor is not free).
+# NOTE: `observed` and its trailing non-vacuity assertion are U1.9's; carry them
+# through this rewrite unchanged — dropping them would let SC-001 pass over an
+# empty domain.
     epsilon = distribution_epsilon()
+    observed = 0
     violations: list[tuple[str, float]] = []
     for fips, county in sorted(tick_state.county_states.items()):
         d = county.surplus_distribution
         if d is None:
             continue
+        observed += 1
         residual = abs(
             d.total_surplus_produced
             - (
@@ -2327,6 +2440,12 @@ from babylon.domain.economics.distribution.types import distribution_epsilon
         if residual > epsilon:
             violations.append((fips, residual))
     assert not violations, f"SC-001 violated (residual > {epsilon}): {violations}"
+    # A universal over an empty domain is vacuously true — SC-001 is only
+    # proven if the run actually produced distributions to check.
+    assert observed > 0, (
+        "SC-001 checked zero observations: no county-year carried a "
+        "surplus_distribution, so the identity was never exercised"
+    )
 ```
 - [ ] **Step 2: Run tests to verify they fail**
 Run: `mise run test:q -- tests/unit/config/test_capital_vol3_defines.py tests/unit/economics/distribution/test_distribution_types.py tests/unit/economics/counter_tendencies/test_types.py tests/unit/economics/credit/test_credit_cycle.py`

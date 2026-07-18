@@ -186,9 +186,14 @@ def test_sc001_identity_holds_for_one_hundred_percent_of_observations() -> None:
     algebraic tautology that is 0.0 for ANY inputs, including all-zero or
     fabricated ones. So:
 
-    1. **Substance** — every distributed term is finite and strictly positive.
-       An all-zero or partially-dark distribution turns this red; the tautology
-       would not have noticed.
+    1. **Substance** — every term is finite, and the four *claim* terms
+       (surplus, interest, rent, taxes) are strictly positive. An all-zero or
+       partially-dark distribution turns this red; the tautology would not
+       have noticed. ``profit_of_enterprise`` is exempted from the
+       positivity requirement: it is the modeled residual p = s - i - r - t
+       and MAY legitimately be negative (the debt-spiral state
+       ``DebtAccumulation.update`` exists to track) — asserting it positive
+       would fail on any correct debt-spiral county-year, not just a dark one.
     2. **Provenance** — ``total_surplus_produced`` is cross-checked against the
        independently re-read ``ValueTensor4x3.total_s`` that fed it, so the
        assertion pins production against source rather than against itself.
@@ -205,6 +210,18 @@ def test_sc001_identity_holds_for_one_hundred_percent_of_observations() -> None:
         observed += 1
 
         # (1) Substance: no term may be dark, fabricated-zero, or non-finite.
+        # ``profit_of_enterprise`` is excluded from the strict-positivity
+        # requirement: it is the modeled residual p = s - i - r - t
+        # (``distribution/types.py``), which the domain documents as "may be
+        # negative" and which ``DebtAccumulation.update`` exists specifically
+        # to track (accumulating |profit| as debt on a deficit tick). A
+        # negative profit is the correct debt-spiral outcome when
+        # i + r + t > s (``claims_exceed_surplus``), not a wiring defect — so
+        # it must stay finite, like every other term, but not positive. The
+        # other four terms (total surplus, interest, rent, taxes) already
+        # prove non-vacuity on their own; a zeroed-out profit_of_enterprise
+        # would still be caught by the finite check plus the residual/
+        # provenance checks below.
         for name, value in (
             ("total_surplus_produced", d.total_surplus_produced),
             ("interest_payments", d.interest_payments),
@@ -213,6 +230,8 @@ def test_sc001_identity_holds_for_one_hundred_percent_of_observations() -> None:
             ("profit_of_enterprise", d.profit_of_enterprise),
         ):
             assert math.isfinite(value), f"{fips}/{d.year}: {name} is not finite ({value})"
+            if name == "profit_of_enterprise":
+                continue
             assert value > 0.0, (
                 f"{fips}/{d.year}: {name} is {value} — a distributed term is "
                 "dark or zero, so SC-001's identity is being satisfied "

@@ -733,6 +733,79 @@ fn diverge_d2_remove_node_from_edge_missing_errors() {
 }
 
 #[test]
+fn conform_set_node_attributes_bulk() {
+    // XGI's set_node_attributes(values, name=None) takes a dict-of-dicts:
+    // it MERGES into each existing node's attr dict, and a missing node is
+    // warned about ("Node ghost does not exist!") + SKIPPED — never
+    // auto-created, never raises. A list-of-pairs input raises XGIError at
+    // the Python boundary (XGI is dict-of-dicts only; the Rust core takes
+    // pairs and the binding converts — D7 class). The warn channel is a
+    // binding concern (the core never warns — D2 channel class); the core
+    // is outcome-conformant on every recorded channel.
+    let gt = ground_truth();
+    let v = vector(&gt, "set_node_attributes_bulk");
+    assert_eq!(v["return"], Value::Null); // XGI truth, pinned
+    assert_eq!(v["warned"], true); // XGI truth, pinned
+    assert_eq!(v["warning_message"], "Node ghost does not exist!");
+    assert_eq!(v["pairs_exception"], "XGIError"); // XGI truth, pinned
+    assert_eq!(v["pairs_message"], "Must pass a dictionary of dictionaries");
+    assert_eq!(v["attrs_a"], serde_json::json!({"x": 1, "color": "red"})); // merge
+
+    let mut h: Hypergraph = Hypergraph::new();
+    h.add_node("a", serde_json::json!({"x": 1}));
+    h.add_node("b", serde_json::json!({}));
+    let color = |c: &str| {
+        let mut m = serde_json::Map::new();
+        m.insert("color".to_string(), serde_json::json!(c));
+        m
+    };
+    h.set_node_attributes(vec![
+        ("a".to_string(), color("red")),
+        ("b".to_string(), color("blue")),
+        ("ghost".to_string(), color("green")),
+    ]);
+
+    // Existing nodes MERGED; ghost silently skipped, never auto-created.
+    assert_eq!(h.node_attrs("a").unwrap(), &v["attrs_a"]);
+    assert_eq!(h.node_attrs("b").unwrap(), &v["attrs_b"]);
+    assert!(!h.has_node("ghost"));
+    assert_eq!(h.num_nodes(), v["num_nodes"].as_u64().unwrap() as usize);
+}
+
+#[test]
+fn conform_set_edge_attributes_bulk() {
+    // Edge twin of the above: merge into existing edge attr dicts; a
+    // missing edge id warns ("Edge ghost does not exist!") + skips; edge
+    // count and membership untouched. The Rust core conforms on outcome.
+    let gt = ground_truth();
+    let v = vector(&gt, "set_edge_attributes_bulk");
+    assert_eq!(v["return"], Value::Null); // XGI truth, pinned
+    assert_eq!(v["warned"], true); // XGI truth, pinned
+    assert_eq!(v["warning_message"], "Edge ghost does not exist!");
+    assert_eq!(v["attrs_e1"], serde_json::json!({"w": 1, "heat": 0.5})); // merge
+
+    let mut h: Hypergraph = Hypergraph::new();
+    h.add_edge(
+        vec!["a".into()],
+        Some("e1".into()),
+        serde_json::json!({"w": 1}),
+    )
+    .unwrap();
+    h.add_edge(vec!["b".into()], Some("e2".into()), serde_json::json!({}))
+        .unwrap();
+    let mut heat = serde_json::Map::new();
+    heat.insert("heat".to_string(), serde_json::json!(0.5));
+    let mut x = serde_json::Map::new();
+    x.insert("x".to_string(), serde_json::json!(1));
+    h.set_edge_attributes(vec![("e1".to_string(), heat), ("ghost".to_string(), x)]);
+
+    assert_eq!(h.edge_attrs("e1").unwrap(), &v["attrs_e1"]);
+    assert_eq!(h.edge_attrs("e2").unwrap(), &v["attrs_e2"]);
+    assert!(!h.has_edge("ghost"));
+    assert_eq!(h.num_edges(), v["num_edges"].as_u64().unwrap() as usize);
+}
+
+#[test]
 fn diverge_d2_add_edges_from_dup_errors_continues() {
     // XGI's add_edges_from warns + skips a duplicate idx and CONTINUES with
     // the rest (["b"]/"e1" dropped — its member "b" is never added; ["c"]/

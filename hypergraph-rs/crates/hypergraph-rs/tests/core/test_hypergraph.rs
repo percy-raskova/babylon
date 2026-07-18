@@ -803,3 +803,68 @@ fn test_remove_node_from_edge_node_not_in_edge_returns_error() {
     let result = h.remove_node_from_edge("e1", "b", true);
     assert!(result.is_err());
 }
+
+#[test]
+fn test_set_node_attributes_from_pairs() {
+    let mut h: Hypergraph = Hypergraph::new();
+    h.add_node("a", serde_json::Value::Null);
+    h.add_node("b", serde_json::Value::Null);
+
+    let mut attrs_a = serde_json::Map::new();
+    attrs_a.insert("color".to_string(), serde_json::json!("red"));
+    let mut attrs_b = serde_json::Map::new();
+    attrs_b.insert("color".to_string(), serde_json::json!("blue"));
+
+    h.set_node_attributes(vec![("a".to_string(), attrs_a), ("b".to_string(), attrs_b)]);
+
+    assert_eq!(h.node_attrs("a").unwrap()["color"], "red");
+    assert_eq!(h.node_attrs("b").unwrap()["color"], "blue");
+}
+
+#[test]
+fn test_set_node_attributes_skips_missing() {
+    let mut h: Hypergraph = Hypergraph::new();
+    h.add_node("a", serde_json::Value::Null);
+
+    let mut attrs = serde_json::Map::new();
+    attrs.insert("x".to_string(), serde_json::json!(1));
+
+    h.set_node_attributes(vec![
+        ("a".to_string(), attrs.clone()),
+        ("nonexistent".to_string(), attrs),
+    ]);
+
+    // "a" got the attribute, "nonexistent" was silently skipped
+    assert_eq!(h.node_attrs("a").unwrap()["x"], 1);
+    assert!(!h.has_node("nonexistent"));
+}
+
+#[test]
+fn test_set_edge_attributes_from_pairs() {
+    let mut h: Hypergraph = Hypergraph::new();
+    h.add_edge(
+        vec!["a".to_string()],
+        Some("e1".to_string()),
+        serde_json::Value::Null,
+    )
+    .unwrap();
+    h.add_edge(
+        vec!["b".to_string()],
+        Some("e2".to_string()),
+        serde_json::Value::Null,
+    )
+    .unwrap();
+
+    let mut attrs_e1 = serde_json::Map::new();
+    attrs_e1.insert("weight".to_string(), serde_json::json!(5));
+    let mut attrs_e2 = serde_json::Map::new();
+    attrs_e2.insert("weight".to_string(), serde_json::json!(10));
+
+    h.set_edge_attributes(vec![
+        ("e1".to_string(), attrs_e1),
+        ("e2".to_string(), attrs_e2),
+    ]);
+
+    assert_eq!(h.edge_attrs("e1").unwrap()["weight"], 5);
+    assert_eq!(h.edge_attrs("e2").unwrap()["weight"], 10);
+}

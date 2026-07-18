@@ -519,3 +519,61 @@ impl<N, E, M> Hypergraph<N, E, M> {
             .collect()
     }
 }
+
+/// Bulk attribute setters, available when the node/edge attribute
+/// channels are `serde_json::Value` (the default). XGI's attr slots are
+/// always dicts; a generic `N`/`E` cannot merge maps, so Babylon can
+/// later specialize typed setters over these.
+impl<M> Hypergraph<serde_json::Value, serde_json::Value, M> {
+    /// Set node attributes from (id, attr_map) pairs.
+    ///
+    /// XGI parity: `H.set_node_attributes(values, name=None)` — XGI takes
+    /// a dict-of-dicts (pairs raise XGIError at its Python boundary; the
+    /// core takes pairs and the PyO3 binding converts — D7 class). Attrs
+    /// are MERGED into each existing node's dict. A non-object attr slot
+    /// (e.g. `Null`, the core's empty-attrs placeholder ≈ XGI's `{}`) is
+    /// REPLACED by the incoming map. Missing node ids are silently
+    /// skipped — XGI warns ("Node X does not exist!"); the warn channel
+    /// is a binding concern (D2 channel class).
+    pub fn set_node_attributes(
+        &mut self,
+        values: impl IntoIterator<Item = (String, serde_json::Map<String, serde_json::Value>)>,
+    ) {
+        for (node_id, attrs) in values {
+            if let Some(node_attrs) = self.node_attrs_mut(&node_id) {
+                match node_attrs.as_object_mut() {
+                    Some(obj) => {
+                        for (k, v) in attrs {
+                            obj.insert(k, v);
+                        }
+                    }
+                    None => *node_attrs = serde_json::Value::Object(attrs.into_iter().collect()),
+                }
+            }
+        }
+    }
+
+    /// Set edge attributes from (id, attr_map) pairs.
+    ///
+    /// XGI parity: `H.set_edge_attributes(values, name=None)`. Same
+    /// semantics as [`Self::set_node_attributes`]: merge into object
+    /// slots, replace non-object slots, silently skip missing edge ids
+    /// (XGI warns — binding concern).
+    pub fn set_edge_attributes(
+        &mut self,
+        values: impl IntoIterator<Item = (String, serde_json::Map<String, serde_json::Value>)>,
+    ) {
+        for (edge_id, attrs) in values {
+            if let Some(edge_attrs) = self.edge_attrs_mut(&edge_id) {
+                match edge_attrs.as_object_mut() {
+                    Some(obj) => {
+                        for (k, v) in attrs {
+                            obj.insert(k, v);
+                        }
+                    }
+                    None => *edge_attrs = serde_json::Value::Object(attrs.into_iter().collect()),
+                }
+            }
+        }
+    }
+}

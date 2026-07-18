@@ -402,6 +402,59 @@ def v_remove_node_from_edge_missing_raises() -> dict:
     return out
 
 
+def v_set_node_attributes_bulk() -> dict:
+    # XGI's set_node_attributes(values, name=None) with a dict-of-dicts:
+    # MERGES into each existing node's attr dict, and a missing node is
+    # WARNED about ("Node ghost does not exist!") + SKIPPED — never
+    # auto-created, never raises. A list-of-pairs input raises XGIError
+    # ("Must pass a dictionary of dictionaries") — XGI is dict-of-dicts
+    # only at the Python boundary (the Rust core takes pairs; D7 class).
+    H = xgi.Hypergraph()
+    H.add_node("a", x=1)
+    H.add_node("b")
+    with warnings.catch_warnings(record=True) as caught:
+        warnings.simplefilter("always")
+        ret = H.set_node_attributes(
+            {"a": {"color": "red"}, "b": {"color": "blue"}, "ghost": {"color": "green"}}
+        )
+    out = {
+        "return": ret,
+        "warned": len(caught) > 0,
+        "warning_message": str(caught[0].message) if caught else None,
+        "attrs_a": dict(H.nodes["a"]),  # merged: x survives, color added
+        "attrs_b": dict(H.nodes["b"]),
+        "num_nodes": H.num_nodes,  # ghost NOT auto-created
+    }
+    H2 = xgi.Hypergraph()
+    H2.add_node("a")
+    try:
+        H2.set_node_attributes([("a", {"k": "v"})])
+    except Exception as exc:  # recording the observed type IS the vector
+        out["pairs_exception"] = type(exc).__name__
+        out["pairs_message"] = str(exc)
+    return out
+
+
+def v_set_edge_attributes_bulk() -> dict:
+    # Same shape for edges: merge into existing edge attr dicts; a missing
+    # edge id warns ("Edge ghost does not exist!") + skips; edge count and
+    # membership untouched.
+    H = xgi.Hypergraph()
+    H.add_edge(["a"], idx="e1", w=1)
+    H.add_edge(["b"], idx="e2")
+    with warnings.catch_warnings(record=True) as caught:
+        warnings.simplefilter("always")
+        ret = H.set_edge_attributes({"e1": {"heat": 0.5}, "ghost": {"x": 1}})
+    return {
+        "return": ret,
+        "warned": len(caught) > 0,
+        "warning_message": str(caught[0].message) if caught else None,
+        "attrs_e1": dict(H.edges["e1"]),  # merged: w survives, heat added
+        "attrs_e2": dict(H.edges["e2"]),
+        "num_edges": H.num_edges,
+    }
+
+
 def main() -> None:
     vectors = {
         name.removeprefix("v_"): fn()

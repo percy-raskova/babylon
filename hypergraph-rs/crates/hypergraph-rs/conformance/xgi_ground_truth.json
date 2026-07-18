@@ -1,0 +1,76 @@
+{
+  "generated_by": "conformance/generate_fixtures.py",
+  "vectors": {
+    "add_edge_auto_ids_sequence": {
+      "edge_ids": [
+        0,
+        1
+      ]
+    },
+    "add_edge_dedups_members": {
+      "members": {
+        "e1": [
+          "a",
+          "b"
+        ]
+      },
+      "num_nodes": 2
+    },
+    "add_edge_dup_idx_warns_noop": {
+      "members": {
+        "e1": [
+          "a"
+        ]
+      },
+      "num_edges": 1,
+      "return": null,
+      "warned": true,
+      "warning_prefix": "uid e1 already exists,"
+    },
+    "add_edge_empty_creates_edge": {
+      "edge_ids": [
+        0
+      ],
+      "members": {
+        "0": []
+      },
+      "num_edges": 1,
+      "num_nodes": 0,
+      "return": null
+    },
+    "add_edge_float_idx_bumps": {
+      "edge_ids": [
+        5.0,
+        6
+      ]
+    },
+    "add_edge_int_idx_bumps_counter": {
+      "edge_ids": [
+        5,
+        6
+      ]
+    },
+    "add_edge_str_idx_no_bump": {
+      "edge_ids": [
+        "5",
+        0
+      ]
+    },
+    "add_edge_three_empty_auto_ids": {
+      "edge_ids": [
+        0,
+        1,
+        2
+      ],
+      "num_edges": 3
+    },
+    "add_node_existing_updates_attrs": {
+      "attrs": {
+        "x": 1,
+        "y": 2
+      },
+      "num_nodes": 1
+    }
+  },
+  "xgi_version": "0.10.2"
+}

@@ -5406,8 +5406,17 @@ class EngineBridge:
         org_data = graph.nodes[org_id]
         own_tids = {str(t) for t in org_data.get("territory_ids", [])}
 
-        # One bounded pass over the graph gathers every predicate input.
-        has_social_class = False  # educate; aid (population arm)
+        # Track 1 / Task 8b (2026-07-18): social_class <-> territory is
+        # resolved via the real Occupant -> Territory TENANCY edge
+        # (:func:`_tenancy_members_by_territory`), not the nonexistent
+        # `territory_ids` field on social_class nodes -- the same fix
+        # Task 8 applied to get_educate_targets. This predicate MUST agree
+        # with get_educate_targets/get_aid_targets's population arm, or
+        # `educate`/`aid` can report ineligible while real targets exist.
+        tenancy_members = _tenancy_members_by_territory(graph)
+        has_social_class = any(tid in tenancy_members for tid in own_tids)
+
+        # One bounded pass over the graph gathers every remaining predicate input.
         has_org_in_reach = False  # aid (org arm); attack (org arm)
         has_mobilizable_org = False  # mobilize (business/civil_society)
         has_institution_in_reach = False  # attack (institution arm)
@@ -5425,8 +5434,6 @@ class EngineBridge:
                     has_org_in_reach = True
                     if str(data.get("org_type", "")) in ("business", "civil_society"):
                         has_mobilizable_org = True
-            elif node_type == "social_class" and node_tids & own_tids:
-                has_social_class = True
             elif node_type == "institution" and node_tids & own_tids:
                 has_institution_in_reach = True
 
@@ -5773,6 +5780,12 @@ class EngineBridge:
 
         org_data = graph.nodes.get(org_id, {})
         territory_ids = org_data.get("territory_ids", [])
+        # Track 1 / Task 8b (2026-07-18): social_class targets resolve via
+        # the real Occupant -> Territory TENANCY edge
+        # (_tenancy_members_by_territory), not _nodes_in_territory's
+        # territory_ids check -- SocialClass has no such field in
+        # production (the same fix Task 8 applied to get_educate_targets).
+        tenancy_members = _tenancy_members_by_territory(graph)
 
         for tid in territory_ids:
             if tid not in graph.nodes:
@@ -5780,54 +5793,58 @@ class EngineBridge:
             terr_data = graph.nodes[tid]
             terr_name = terr_data.get("name", tid)
 
-            econ_nodes = _nodes_in_territory(graph, tid)
             found_any = False
-            for node_id, data in econ_nodes:
-                node_type = data.get("_node_type")
-                if node_type == "social_class":
-                    found_any = True
-                    population_targets.append(
-                        {
-                            "community_id": node_id,
-                            "community_name": data.get("name", node_id),
-                            "population": data.get("population"),
-                            "class_name": str(data.get("role", "UNKNOWN")).upper(),
-                            "material_conditions": {
-                                "v_value_produced": float(data.get("wealth", 0.0)),
-                                "wage_received": None,
-                                "consumption_gap": None,
-                                "subsistence_level": data.get("subsistence_threshold"),
-                                "agitation_level": float(data.get("agitation", 0.0)),
-                            },
-                            "edge_status": _edge_status_between(graph, org_id, node_id),
-                            "feedforward": {
-                                "note": "No per-tick aid-effect projection exists in the engine yet."
-                            },
-                            "expected_deltas": {
-                                "consciousness_delta": round(
-                                    _preview_consciousness_delta(
-                                        org_data, node_id, ActionType.PROVIDE_SERVICE, graph
-                                    ),
-                                    4,
+
+            for node_id in tenancy_members.get(tid, []):
+                data = graph.nodes.get(node_id)
+                if data is None:
+                    continue
+                found_any = True
+                population_targets.append(
+                    {
+                        "community_id": node_id,
+                        "community_name": data.get("name", node_id),
+                        "population": data.get("population"),
+                        "class_name": str(data.get("role", "UNKNOWN")).upper(),
+                        "material_conditions": {
+                            "v_value_produced": float(data.get("wealth", 0.0)),
+                            "wage_received": None,
+                            "consumption_gap": None,
+                            "subsistence_level": data.get("subsistence_threshold"),
+                            "agitation_level": float(data.get("agitation", 0.0)),
+                        },
+                        "edge_status": _edge_status_between(graph, org_id, node_id),
+                        "feedforward": {
+                            "note": "No per-tick aid-effect projection exists in the engine yet."
+                        },
+                        "expected_deltas": {
+                            "consciousness_delta": round(
+                                _preview_consciousness_delta(
+                                    org_data, node_id, ActionType.PROVIDE_SERVICE, graph
                                 ),
-                                "heat_delta": None,
-                            },
-                        }
-                    )
-                elif node_type == "organization" and node_id != org_id:
-                    found_any = True
-                    org_targets.append(
-                        {
-                            "org_id": node_id,
-                            "org_name": data.get("name", node_id),
-                            "org_type": str(data.get("org_type", "UNKNOWN")),
-                            "material_stock": float(data.get("budget", 0.0)),
-                            "edge_status": _edge_status_between(graph, org_id, node_id),
-                            "feedforward": {
-                                "note": "No per-tick aid-effect projection exists in the engine yet."
-                            },
-                        }
-                    )
+                                4,
+                            ),
+                            "heat_delta": None,
+                        },
+                    }
+                )
+
+            for node_id, data in _nodes_in_territory(graph, tid):
+                if data.get("_node_type") != "organization" or node_id == org_id:
+                    continue
+                found_any = True
+                org_targets.append(
+                    {
+                        "org_id": node_id,
+                        "org_name": data.get("name", node_id),
+                        "org_type": str(data.get("org_type", "UNKNOWN")),
+                        "material_stock": float(data.get("budget", 0.0)),
+                        "edge_status": _edge_status_between(graph, org_id, node_id),
+                        "feedforward": {
+                            "note": "No per-tick aid-effect projection exists in the engine yet."
+                        },
+                    }
+                )
 
             if not found_any:
                 unavailable_targets.append(

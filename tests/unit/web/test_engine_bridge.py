@@ -2007,8 +2007,11 @@ class TestVerbEligibility:
             assert by_verb[verb]["remedy"] is None, verb
 
     def test_educate_flips_eligible_when_social_class_shares_territory(self) -> None:
+        # A live TENANCY edge (the real Occupant -> Territory link), not a
+        # fabricated `territory_ids` stamp on the social_class node --
+        # SocialClass has no such field in production (Task 8 / Task 8b).
         graph = _make_wayne_tick0_graph()
-        graph.update_node("C001", territory_ids=["hex-1"])
+        graph.add_edge("C001", "hex-1", "tenancy")
         result, _ = self._eligibility(graph)
         by_verb = {v["verb"]: v for v in result["verbs"]}
         assert by_verb["educate"]["eligible"] is True
@@ -2027,6 +2030,80 @@ class TestVerbEligibility:
         with _patched_hydrate_state(bridge, _make_wayne_tick0_graph(), tick=0):
             result = bridge.get_verb_eligibility(uuid.uuid4(), "NOT-AN-ORG")
         assert result == {"status": "error", "error": "Org not found"}
+
+
+@pytest.mark.unit
+class TestVerbEligibilityAgreesWithTargetsRealWayneCounty:
+    """Track 1 / Task 8b (2026-07-18): ``get_verb_eligibility`` must agree,
+    verb-by-verb, with whatever the corresponding ``get_*_targets`` method
+    actually returns -- on the REAL ``wayne_county`` scenario graph, not a
+    hand-built fixture.
+
+    This is the exact class of contradiction Task 8 left behind:
+    ``get_educate_targets`` was fixed to resolve social_class targets via
+    TENANCY (:func:`_tenancy_members_by_territory`), but
+    ``get_verb_eligibility``'s ``has_social_class`` predicate still checked
+    the nonexistent ``territory_ids`` field on social_class nodes, so
+    ``educate`` could report ineligible while real targets existed. Pinning
+    eligibility against the target list directly -- rather than testing
+    either side alone -- is what would have caught it.
+    """
+
+    @staticmethod
+    def _bridge_with_real_wayne_graph() -> tuple[EngineBridge, BabylonGraph]:
+        state = _build_initial_state_for_scenario("wayne_county")
+        graph = state.to_graph()
+        mock_persistence = _make_mock_persistence()
+        bridge = EngineBridge(mock_persistence)
+        return bridge, graph
+
+    @pytest.mark.parametrize("org_id", ["ORG001", "ORG002"])
+    def test_educate_eligibility_agrees_with_educate_targets(self, org_id: str) -> None:
+        bridge, graph = self._bridge_with_real_wayne_graph()
+        with _patched_hydrate_state(bridge, graph, tick=0):
+            targets = bridge.get_educate_targets(uuid.uuid4(), org_id)
+            eligibility = bridge.get_verb_eligibility(uuid.uuid4(), org_id)
+
+        by_verb = {v["verb"]: v for v in eligibility["verbs"]}
+        assert by_verb["educate"]["eligible"] == bool(targets["targets"]), (
+            f"educate eligible={by_verb['educate']['eligible']!r} disagrees with "
+            f"get_educate_targets returning {len(targets['targets'])} targets for {org_id}"
+        )
+
+    @pytest.mark.parametrize("org_id", ["ORG001", "ORG002"])
+    def test_aid_eligibility_agrees_with_aid_targets(self, org_id: str) -> None:
+        bridge, graph = self._bridge_with_real_wayne_graph()
+        with _patched_hydrate_state(bridge, graph, tick=0):
+            targets = bridge.get_aid_targets(uuid.uuid4(), org_id)
+            eligibility = bridge.get_verb_eligibility(uuid.uuid4(), org_id)
+
+        by_verb = {v["verb"]: v for v in eligibility["verbs"]}
+        has_any_target = bool(targets["population_targets"]) or bool(targets["org_targets"])
+        assert by_verb["aid"]["eligible"] == has_any_target, (
+            f"aid eligible={by_verb['aid']['eligible']!r} disagrees with get_aid_targets "
+            f"returning {len(targets['population_targets'])} population + "
+            f"{len(targets['org_targets'])} org targets for {org_id}"
+        )
+
+    def test_aid_population_targets_resolves_via_tenancy_real_wayne_county(self) -> None:
+        """``get_aid_targets``'s population arm has the SAME
+        ``_nodes_in_territory``/``territory_ids`` root-cause bug as
+        pre-fix ``get_educate_targets`` -- ``ORG001``'s own territories
+        (``862ab21b7ffffff``, ``862ab2c57ffffff``) are real TENANCY homes
+        for ``C001`` in the ``wayne_county`` scenario, so the population
+        arm must not come back empty. The ``aid`` eligibility bit alone
+        does not catch this: ``has_org_in_reach`` (ORG001/ORG002 share
+        territory) keeps ``aid`` eligible regardless, masking a fully
+        empty population arm -- hence this direct assertion.
+        """
+        bridge, graph = self._bridge_with_real_wayne_graph()
+        with _patched_hydrate_state(bridge, graph, tick=0):
+            targets = bridge.get_aid_targets(uuid.uuid4(), "ORG001")
+
+        assert targets["population_targets"], (
+            "get_aid_targets population arm returned no targets for ORG001 despite "
+            "real TENANCY-linked social_class C001 in its own territories"
+        )
 
 
 @pytest.mark.unit

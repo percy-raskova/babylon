@@ -217,6 +217,7 @@ def test_build_economics_overrides_wires_tensor_registry_and_financial_services(
     if not SQLITE_REF.exists():
         pytest.skip(f"SQLite reference DB missing at {SQLITE_REF}")
 
+    from babylon.domain.economics.factory import load_fred_series_from_db
     from babylon.engine.headless_runner.runner import _build_economics_overrides
     from babylon.reference.database import get_normalized_session_factory
 
@@ -227,10 +228,51 @@ def test_build_economics_overrides_wires_tensor_registry_and_financial_services(
     )
     try:
         assert overrides.get("tensor_registry") is not None
-        assert "26163" in overrides["tensor_registry"].all_fips()
+        registry = overrides["tensor_registry"]
+        assert "26163" in registry.all_fips()
+        # `all_fips()` only proves hydrate_counties() was CALLED for this
+        # FIPS — TensorRegistry.hydrate_counties() catches per-county-year
+        # failures and writes a (falsy) NoDataSentinel into the same cache
+        # dict all_fips() iterates, so key presence survives even total
+        # hydration failure. Prove real tensor content landed instead.
+        hydrated_years = registry.available_years("26163")
+        assert len(hydrated_years) == 15, (
+            "expected all 15 hydration years (2010-2024) to have been "
+            f"attempted for 26163, got {sorted(hydrated_years)}"
+        )
+        tensor_2020 = registry.get("26163", 2020)
+        assert tensor_2020, (
+            "26163/2020 hydrated to a falsy NoDataSentinel "
+            f"(reason={getattr(tensor_2020, 'reason', None)!r}) — registry "
+            "key presence does not imply real tensor data"
+        )
+
+        # Same class of gap on the financial-calculator side:
+        # create_financial_services() always returns non-None calculator
+        # objects even when fred_series_cache is empty (e.g. the reference
+        # DB is missing fact_fred_national/dim_fred_series) — the
+        # calculators just resolve to NoDataSentinel forever. Prove the
+        # FRED cache actually has data and that it reaches a calculator.
+        fred_cache = load_fred_series_from_db(session_factory)
+        assert {"FEDFUNDS", "GFDEBTN"} <= set(fred_cache), (
+            f"expected FEDFUNDS and GFDEBTN in the FRED cache, got {sorted(fred_cache)}"
+        )
+        assert fred_cache["FEDFUNDS"].get(2020) is not None, (
+            "FEDFUNDS/2020 missing from the FRED cache — financial "
+            "calculators would be wired to an empty series"
+        )
+
         assert overrides.get("distribution_calculator") is not None
         assert overrides.get("interest_calculator") is not None
         assert overrides.get("fictitious_capital_calculator") is not None
+
+        interest_state_2020 = overrides["interest_calculator"].compute_interest_rate_state(2020)
+        assert interest_state_2020, (
+            "interest_calculator.compute_interest_rate_state(2020) returned a "
+            f"falsy NoDataSentinel (reason={getattr(interest_state_2020, 'reason', None)!r}) "
+            "— a non-None calculator object does not imply real FRED data reached it"
+        )
+        assert interest_state_2020.base_rate is not None
     finally:
         if leontief_session is not None:
             leontief_session.close()

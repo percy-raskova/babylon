@@ -117,7 +117,7 @@ ADR080_redogv_domestic_sovereign_fallback:
       independent of which sovereign the real seeding pipeline picks. It
       passed unchanged before and after.
 
-    Known honest limitation: `EndgameDetector._aggregate_habitability`
+    Known honest limitation (Task R): `EndgameDetector._aggregate_habitability`
     reads `getattr(territory, "habitability", 1.0)` off
     `state.territories` values, but `habitability` is a graph-only
     transient attribute (`TERRITORY_EXCLUDED_FIELDS`, written onto graph
@@ -130,6 +130,22 @@ ADR080_redogv_domestic_sovereign_fallback:
     are read by the axis) rather than papering over it; the underlying
     gap (aggregate_habitability's data source) is out of scope for Task R
     and is flagged here for a future task, not silently fixed in passing.
+
+    RESOLVED (Task R2, same day): `_aggregate_habitability` now takes the
+    serialized `BabylonGraph`, not `WorldState`, and averages
+    `habitability` off the graph's `territory`-typed nodes (mirroring the
+    `balkanization_projections.py::observe_sovereign` idiom). `on_tick`'s
+    `graph = new_state.to_graph()` was hoisted above the habitability-
+    history update so the same single per-tick graph feeds it (no extra
+    serialization). RED_OGV's habitability gate is now genuinely reachable
+    against real `WorldState`/`Territory` data, not only the recognizer's
+    hand-built `BabylonGraph` fixtures. The reachability test's duck-typed
+    `state` stand-in for habitability was removed (its `state` now carries
+    only `.entities`, for `_class_tension`); the companion "blocked" test's
+    stand-in was kept (it isn't testing the habitability source) with a
+    matching low `habitability` added to its own hand-built graph so it
+    stays green under both the pre-fix and post-fix code paths.
+    `mise run qa:regression` reconfirmed 5/5 byte-identical.
   evidence: |
     web/game/engine_bridge.py (`_seed_balkanization_layer` FR-040b
     fallback + docstring), tests/unit/web/test_seed_balkanization_layer.py,

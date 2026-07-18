@@ -260,13 +260,17 @@ class EndgameDetector:
             previous_state: WorldState before the tick (unused).
             new_state: WorldState after the tick.
         """
-        # Maintain habitability rolling window for RED_OGV slope check.
-        self._update_habitability_history(new_state)
-
         # Single graph serialization threaded through every axis evaluator
         # (previously each _check_* re-serialized independently — up to ~6
-        # to_graph() calls/tick, a real cost at ~1100 territories).
+        # to_graph() calls/tick, a real cost at ~1100 territories). Hoisted
+        # above the habitability-history update (Task R2) so the real
+        # graph-sourced habitability feeds the RED_OGV slope window too —
+        # pure serialization, no side effects, so the reorder changes
+        # nothing observable.
         graph = new_state.to_graph()
+
+        # Maintain habitability rolling window for RED_OGV slope check.
+        self._update_habitability_history(graph)
 
         red_ogv_progress, red_ogv_matched = self._axis_red_ogv(new_state, graph)
         fragmented_progress, fragmented_matched = self._axis_fragmented_collapse(new_state, graph)
@@ -567,7 +571,7 @@ class EndgameDetector:
             self._class_tension(state), self._balkanization.red_ogv_class_tension_floor
         )
         habitability_gate = self._gate_floor(
-            self._aggregate_habitability(state), self._balkanization.red_ogv_habitability_floor
+            self._aggregate_habitability(graph), self._balkanization.red_ogv_habitability_floor
         )
         slope_gate = self._gate_binary(self._habitability_slope() < 0)
 
@@ -641,8 +645,8 @@ class EndgameDetector:
     # Spec-070 helpers (FR-031 / FR-031a / FR-032 / FR-032a)
     # ─────────────────────────────────────────────────────────────────
 
-    def _update_habitability_history(self, state: WorldState) -> None:
-        habitability = self._aggregate_habitability(state)
+    def _update_habitability_history(self, graph: BabylonGraph) -> None:
+        habitability = self._aggregate_habitability(graph)
         self._habitability_history.append(habitability)
         window = self._balkanization.red_ogv_slope_window_ticks
         if len(self._habitability_history) > window:
@@ -658,12 +662,23 @@ class EndgameDetector:
         return history[-1] - history[0]
 
     @staticmethod
-    def _aggregate_habitability(state: WorldState) -> float:
-        territories = list(state.territories.values()) if hasattr(state, "territories") else []
-        if not territories:
+    def _aggregate_habitability(graph: BabylonGraph) -> float:
+        """Mean ``habitability`` across the graph's ``territory`` nodes.
+
+        ``habitability`` is a graph-only transient attribute (written by
+        MetabolismSystem, excluded from the frozen ``Territory`` model's
+        graph round-trip — see ``TERRITORY_EXCLUDED_FIELDS`` in
+        ``world_state.py``), so it must be read here, not off
+        ``state.territories`` (mirrors the graph-territory-node idiom in
+        ``balkanization_projections.py``'s ``observe_sovereign``)."""
+        habitability_values = [
+            float(data.get("habitability", 1.0))
+            for _node_id, data in graph.nodes(data=True)
+            if data.get("_node_type") == "territory"
+        ]
+        if not habitability_values:
             return 1.0
-        total = sum(float(getattr(t, "habitability", 1.0)) for t in territories)
-        return total / len(territories)
+        return sum(habitability_values) / len(habitability_values)
 
     @staticmethod
     def _class_tension(state: WorldState) -> float:

@@ -375,20 +375,22 @@ class TestPatternRecognition:
 
 
 def _red_ogv_ready_state(territory_ids: list[str]) -> object:
-    """Build a duck-typed WorldState stand-in with low class tension and
-    low aggregate habitability, the two non-stance RED_OGV gates (FR-032).
+    """Build a duck-typed WorldState stand-in with low class tension —
+    the one non-stance/non-habitability RED_OGV gate still read off
+    ``state`` (via ``_class_tension``, FR-032).
 
-    ``_aggregate_habitability`` reads ``getattr(t, "habitability", 1.0)``
-    off ``state.territories`` values — but ``habitability`` is a graph-only
-    transient attribute (``TERRITORY_EXCLUDED_FIELDS``; written onto graph
-    nodes by ``MetabolismSystem``, never round-tripped onto the Territory
-    model). The frozen ``Territory`` model (``extra="forbid"``) can never
-    carry a ``habitability`` attribute, so a real ``Territory`` instance
-    always falls through to the 1.0 default and could never drive this
-    gate below its floor. ``_axis_red_ogv`` only reads ``.entities`` /
-    ``.territories`` off ``state`` (via ``getattr``/duck-typing), so a
-    lightweight stand-in is the correct — not merely convenient — fixture
-    here.
+    Used only by the companion "blocked" test below (which pins the
+    pre-repair stance-gate behavior and is agnostic to which source
+    supplies habitability). The ``territories`` stand-in is retained here
+    — not because ``_aggregate_habitability`` reads it any more (Task R2:
+    it now reads the GRAPH exclusively, see ``_build_null_only_graph``),
+    but so the companion's low-habitability condition holds under BOTH
+    the pre-fix (state-read) and post-fix (graph-read) code paths without
+    needing two different fixtures for a test that isn't exercising the
+    habitability-source question in the first place. The RED_OGV
+    *reachability* test below no longer uses this helper — it builds a
+    state with NO ``territories`` attribute at all, to prove habitability
+    is genuinely sourced from the graph.
     """
     entities = _fascist_entities(count=4)  # mean class_consciousness = 0.1
     territories = {tid: SimpleNamespace(habitability=0.1) for tid in territory_ids}
@@ -398,7 +400,10 @@ def _red_ogv_ready_state(territory_ids: list[str]) -> object:
 def _build_ignore_majority_graph(territory_ids: list[str]) -> object:
     """One IGNORE-aligned Sovereign (ruling Faction ``colonial_stance ==
     "ignore"``) holding CLAIMS to ``ceil(N/2)`` Territories — an IGNORE
-    stance majority per ``_has_stance_majority``."""
+    stance majority per ``_has_stance_majority``. Territory nodes carry
+    ``habitability`` directly (Task R2: the real graph-only source
+    ``_aggregate_habitability`` now reads), at/below
+    ``red_ogv_habitability_floor`` (default 0.4)."""
     from babylon.topology.graph import BabylonGraph
 
     graph = BabylonGraph()
@@ -419,7 +424,7 @@ def _build_ignore_majority_graph(territory_ids: list[str]) -> object:
         founded_tick=0,
     )
     for territory_id in territory_ids:
-        graph.add_node(territory_id, "territory")
+        graph.add_node(territory_id, "territory", habitability=0.1)
     claim_count = math.ceil(len(territory_ids) / 2)
     for territory_id in territory_ids[:claim_count]:
         graph.add_edge(
@@ -435,7 +440,10 @@ def _build_ignore_majority_graph(territory_ids: list[str]) -> object:
 def _build_null_only_graph(territory_ids: list[str]) -> object:
     """The exact pre-repair topology: ``SOV_EXTERIOR_NULL``
     (``ruling_faction_id`` None) holds every CLAIMS edge, so no Sovereign
-    resolves to ANY stance."""
+    resolves to ANY stance. Territory nodes also carry a low
+    ``habitability`` (Task R2) so this companion's non-stance gates keep
+    saturating post-fix exactly as they did pre-fix via
+    ``_red_ogv_ready_state``'s ``state.territories`` stand-in."""
     from babylon.topology.graph import BabylonGraph
 
     graph = BabylonGraph()
@@ -450,7 +458,7 @@ def _build_null_only_graph(territory_ids: list[str]) -> object:
         founded_tick=0,
     )
     for territory_id in territory_ids:
-        graph.add_node(territory_id, "territory")
+        graph.add_node(territory_id, "territory", habitability=0.1)
         graph.add_edge(
             "SOV_EXTERIOR_NULL",
             territory_id,
@@ -480,9 +488,18 @@ class TestRedOgvAxisReachability:
     def test_red_ogv_axis_matches_with_ignore_stance_majority(self) -> None:
         """An IGNORE-aligned Sovereign CLAIMS majority + low class tension
         + low habitability + a declining habitability slope must saturate
-        all four RED_OGV gates (progress == 1.0, matched is True)."""
+        all four RED_OGV gates (progress == 1.0, matched is True).
+
+        Task R2: ``state`` deliberately carries NO ``territories`` attribute
+        — aggregate habitability must come exclusively from the GRAPH's
+        territory-node ``habitability`` attributes (``_build_ignore_
+        majority_graph``), proving RED_OGV is reachable through the real
+        graph-habitability path, not a model stand-in.
+        """
         territory_ids = [f"HEX_{i:05d}" for i in range(4)]
-        state = _red_ogv_ready_state(territory_ids)
+        state = SimpleNamespace(
+            entities=_fascist_entities(count=4)
+        )  # mean class_consciousness = 0.1
         graph = _build_ignore_majority_graph(territory_ids)
 
         detector = EndgameDetector()

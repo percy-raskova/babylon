@@ -186,3 +186,26 @@ fn test_node_ids_empty() {
     let h: Hypergraph = Hypergraph::new();
     assert!(h.node_ids().is_empty());
 }
+
+#[test]
+fn test_members_insertion_order() {
+    // III.7 parity: member iteration is insertion-ordered, not petgraph's
+    // LIFO neighbor order. Divergence register D5 (XGI returns unordered
+    // sets; we are strictly more defined).
+    let mut h: Hypergraph = Hypergraph::new();
+    h.add_edge(
+        vec!["a".to_string(), "b".to_string(), "c".to_string(), "d".to_string()],
+        Some("e1".to_string()),
+        serde_json::Value::Null,
+    ).unwrap();
+    assert_eq!(h.members("e1").unwrap(), vec!["a", "b", "c", "d"]);
+}
+
+#[test]
+fn test_memberships_insertion_order() {
+    let mut h: Hypergraph = Hypergraph::new();
+    h.add_edge(vec!["a".to_string(), "x".to_string()], Some("e1".to_string()), serde_json::Value::Null).unwrap();
+    h.add_edge(vec!["a".to_string(), "y".to_string()], Some("e2".to_string()), serde_json::Value::Null).unwrap();
+    h.add_edge(vec!["a".to_string(), "z".to_string()], Some("e3".to_string()), serde_json::Value::Null).unwrap();
+    assert_eq!(h.memberships("a").unwrap(), vec!["e1", "e2", "e3"]);
+}

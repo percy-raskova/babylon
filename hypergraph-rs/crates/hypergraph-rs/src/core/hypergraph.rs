@@ -93,39 +93,35 @@ impl<N, E, M> Hypergraph<N, E, M> {
         self.hyperedge_ids.contains_key(edge_id)
     }
 
-    /// Get the edge IDs of which a node is a member.
+    /// Get the edge IDs of which a node is a member, in edge-insertion
+    /// order (III.7 determinism parity; XGI returns an unordered set —
+    /// divergence D5, we are strictly more defined).
+    ///
     /// XGI parity: `H.nodes.memberships(n)`.
     pub fn memberships(&self, node_id: &str) -> Option<Vec<String>> {
         let agent_idx = *self.agent_ids.get(node_id)?;
-        let mut result: Vec<String> = Vec::new();
-        for neighbor_idx in self.inner.neighbors(agent_idx) {
-            if let Some(NodeKind::Hyperedge(_)) = self.inner.node_weight(neighbor_idx) {
-                for (eid, &idx) in &self.hyperedge_ids {
-                    if idx == neighbor_idx {
-                        result.push(eid.clone());
-                        break;
-                    }
-                }
-            }
-        }
+        let result = self
+            .hyperedge_ids
+            .iter()
+            .filter(|(_, he_idx)| self.inner.contains_edge(agent_idx, **he_idx))
+            .map(|(eid, _)| eid.clone())
+            .collect();
         Some(result)
     }
 
-    /// Get the node IDs that are members of an edge.
+    /// Get the node IDs that are members of an edge, in node-insertion
+    /// order (III.7 determinism parity; XGI returns an unordered set —
+    /// divergence D5, we are strictly more defined).
+    ///
     /// XGI parity: `H.edges.members(e)`.
     pub fn members(&self, edge_id: &str) -> Option<Vec<String>> {
         let he_idx = *self.hyperedge_ids.get(edge_id)?;
-        let mut result: Vec<String> = Vec::new();
-        for neighbor_idx in self.inner.neighbors(he_idx) {
-            if let Some(NodeKind::Agent(_)) = self.inner.node_weight(neighbor_idx) {
-                for (nid, &idx) in &self.agent_ids {
-                    if idx == neighbor_idx {
-                        result.push(nid.clone());
-                        break;
-                    }
-                }
-            }
-        }
+        let result = self
+            .agent_ids
+            .iter()
+            .filter(|(_, agent_idx)| self.inner.contains_edge(**agent_idx, he_idx))
+            .map(|(nid, _)| nid.clone())
+            .collect();
         Some(result)
     }
 

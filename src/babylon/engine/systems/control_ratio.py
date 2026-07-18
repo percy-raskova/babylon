@@ -18,6 +18,7 @@ from __future__ import annotations
 from typing import TYPE_CHECKING, Any, ClassVar
 
 from babylon.kernel.event_bus import Event
+from babylon.kernel.tick_partition import TickPartition
 from babylon.models.enums import EventType, SocialRole
 
 if TYPE_CHECKING:
@@ -92,6 +93,9 @@ class ControlRatioSystem(SystemBase):
     - High org (>= 0.5): Revolution - prisoners and guards unite
     - Low org (< 0.5): Genocide - system eliminates surplus population
     """
+
+    partition: ClassVar[TickPartition] = TickPartition.MATERIAL_BASE
+    position: ClassVar[float] = 12.0
 
     name = "ControlRatio"
 

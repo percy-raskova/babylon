@@ -14,6 +14,7 @@ from babylon.domain.economics.dispossession.intensity import DispossessionIntens
 from babylon.kernel.event_bus import Event
 from babylon.kernel.system_base import SystemBase
 from babylon.kernel.system_protocol import ContextType
+from babylon.kernel.tick_partition import TickPartition
 from babylon.models.enums import EventType
 
 if TYPE_CHECKING:
@@ -30,6 +31,9 @@ class DispossessionEventSystem(SystemBase):
 
     Position: #10 in _DEFAULT_SYSTEMS (after ImperialRentSystem).
     """
+
+    partition: ClassVar[TickPartition] = TickPartition.MATERIAL_BASE
+    position: ClassVar[float] = 10.0
 
     # Spec 053 INV-001: DispossessionEventSystem mutates territory wealth via
     # value-transfer clamping (`territory_wealth - transfer_amount`).

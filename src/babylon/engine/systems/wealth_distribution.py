@@ -47,6 +47,7 @@ from babylon.formulas.class_dynamics import (
 )
 from babylon.kernel.system_base import SystemBase
 from babylon.kernel.system_protocol import ContextType
+from babylon.kernel.tick_partition import TickPartition
 from babylon.models.enums import SocialRole
 
 if TYPE_CHECKING:
@@ -223,6 +224,9 @@ class WealthDistributionSystem(SystemBase):
     graph metadata and the ``wealth_share`` bracket projection onto
     ``social_class`` nodes. Nothing consumes either yet (Phase 2 owner-gated).
     """
+
+    partition: ClassVar[TickPartition] = TickPartition.CONSEQUENCE
+    position: ClassVar[float] = 21.5
 
     name: ClassVar[str] = "Wealth Distribution"
     creates_value: ClassVar[bool] = False

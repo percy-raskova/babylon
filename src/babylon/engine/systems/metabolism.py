@@ -24,6 +24,7 @@ from babylon.kernel.event_bus import Event
 from babylon.kernel.services import ServicesProtocol
 from babylon.kernel.system_base import SystemBase
 from babylon.kernel.system_protocol import ContextType
+from babylon.kernel.tick_partition import TickPartition
 from babylon.models.enums import EventType
 
 if TYPE_CHECKING:
@@ -44,6 +45,9 @@ class MetabolismSystem(SystemBase):
     Events emitted:
     - ECOLOGICAL_OVERSHOOT: When overshoot_ratio > 1.0
     """
+
+    partition: ClassVar[TickPartition] = TickPartition.MATERIAL_BASE
+    position: ClassVar[float] = 13.0
 
     name: ClassVar[str] = "Metabolism"
     # Spec 053 INV-001: does not mutate hex c+v+s; opted in by default-deny.

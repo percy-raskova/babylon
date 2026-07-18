@@ -30,6 +30,7 @@ import logging
 from typing import TYPE_CHECKING, ClassVar
 
 from babylon.domain.economics.tensor import NoDataSentinel
+from babylon.kernel.tick_partition import TickPartition
 from babylon.models.enums import EdgeType, SocialRole
 
 if TYPE_CHECKING:
@@ -62,6 +63,9 @@ class ProductionSystem(SystemBase):
     Only active workers with TENANCY edges to territories can produce.
     Bourgeoisie classes extract value but do not produce it.
     """
+
+    partition: ClassVar[TickPartition] = TickPartition.MATERIAL_BASE
+    position: ClassVar[float] = 3.0
 
     # Spec 053 INV-001: ProductionSystem observes already-hydrated value-in-hours
     # from capital stocks rather than generating fresh value. Opted in to per-system

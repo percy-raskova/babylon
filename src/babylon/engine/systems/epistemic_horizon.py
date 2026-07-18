@@ -38,6 +38,7 @@ from __future__ import annotations
 from typing import TYPE_CHECKING, Any, ClassVar
 
 from babylon.kernel.node_access import class_consciousness_from_node
+from babylon.kernel.tick_partition import TickPartition
 from babylon.models.enums import EdgeType, SocialRole
 
 if TYPE_CHECKING:
@@ -214,6 +215,9 @@ class EpistemicHorizonSystem(SystemBase):
     See :func:`compute_epistemic_horizon` for the formula/algorithm — this
     class is now a thin ``SystemBase`` adapter over that pure function.
     """
+
+    partition: ClassVar[TickPartition] = TickPartition.CONSEQUENCE
+    position: ClassVar[float] = 22.0
 
     name: ClassVar[str] = "Epistemic Horizon"
     # Spec 053 INV-001: does not mutate hex c+v+s; opted in by default-deny.

@@ -10,6 +10,7 @@ from typing import TYPE_CHECKING, Any, ClassVar
 from babylon.formulas import BourgeoisieDecision
 from babylon.kernel.event_bus import Event
 from babylon.kernel.node_access import class_consciousness_from_node
+from babylon.kernel.tick_partition import TickPartition
 from babylon.models.entities.economy import GlobalEconomy
 from babylon.models.enums import EdgeType, EventType, SocialRole
 
@@ -30,6 +31,9 @@ class ImperialRentSystem(SystemBase):
     Pool tracks finite resources (inflow from tribute, outflow to wages/subsidy).
     See :doc:`/reference/systems` for full theory.
     """
+
+    partition: ClassVar[TickPartition] = TickPartition.MATERIAL_BASE
+    position: ClassVar[float] = 9.0
 
     name = "Imperial Rent"
     # Spec 053 INV-001: ImperialRentSystem mutates `wealth` via extraction

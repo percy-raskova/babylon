@@ -36,6 +36,7 @@ from typing import TYPE_CHECKING, Any, ClassVar
 
 from babylon.formulas import calculate_mortality_rate
 from babylon.kernel.event_bus import Event
+from babylon.kernel.tick_partition import TickPartition
 from babylon.models.enums import EventType
 
 if TYPE_CHECKING:
@@ -74,6 +75,9 @@ class VitalitySystem(SystemBase):
         ENTITY_DEATH: Full extinction of a demographic block.
             payload: {entity_id, wealth, consumption_needs, cause, tick}
     """
+
+    partition: ClassVar[TickPartition] = TickPartition.MATERIAL_BASE
+    position: ClassVar[float] = 1.0
 
     name: ClassVar[str] = "vitality"
     # Spec 053 INV-001: does not mutate hex c+v+s; opted in by default-deny.

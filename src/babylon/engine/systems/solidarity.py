@@ -31,6 +31,7 @@ from typing import TYPE_CHECKING, Any, ClassVar
 
 from babylon.kernel.event_bus import Event
 from babylon.kernel.node_access import class_consciousness_from_node
+from babylon.kernel.tick_partition import TickPartition
 from babylon.models.enums import EdgeType, EventType
 
 if TYPE_CHECKING:
@@ -85,6 +86,9 @@ class SolidaritySystem(SystemBase):
     Sprint 3.4.3: Updated to work with IdeologicalProfile, affecting
     only the class_consciousness dimension.
     """
+
+    partition: ClassVar[TickPartition] = TickPartition.MATERIAL_BASE
+    position: ClassVar[float] = 8.0
 
     name: ClassVar[str] = "Solidarity"
     # Spec 053 INV-001: does not mutate hex c+v+s; opted in by default-deny.

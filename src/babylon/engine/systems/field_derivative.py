@@ -27,6 +27,7 @@ if TYPE_CHECKING:
 from babylon.kernel.event_bus import Event
 from babylon.kernel.system_base import SystemBase
 from babylon.kernel.system_protocol import ContextType
+from babylon.kernel.tick_partition import TickPartition
 from babylon.models.enums import EventType
 
 logger = logging.getLogger(__name__)
@@ -41,6 +42,9 @@ class FieldDerivativeSystem(SystemBase):
     computes gradients on edges, Laplacian at nodes, and temporal
     derivatives from the rolling history in persistent_data.
     """
+
+    partition: ClassVar[TickPartition] = TickPartition.CONSEQUENCE
+    position: ClassVar[float] = 20.0
 
     name: ClassVar[str] = "field_derivative"
     # Spec 053 INV-001: does not mutate hex c+v+s; opted in by default-deny.

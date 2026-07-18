@@ -73,7 +73,9 @@ from babylon.engine.systems.vitality import VitalitySystem
 from babylon.engine.systems.wealth_distribution import WealthDistributionSystem
 from babylon.kernel.event_bus import Event
 from babylon.kernel.log import log_context_scope
+from babylon.kernel.system_base import SystemBase
 from babylon.kernel.system_protocol import ContextType, System
+from babylon.kernel.tick_partition import TickPartition
 from babylon.models.config import SimulationConfig
 from babylon.models.enums import EventType
 from babylon.models.events import (
@@ -312,120 +314,86 @@ class SimulationEngine:
 #     runs LAST because it observes the fully-mutated tick (reads this tick's
 #     p_acquiescence/class_consciousness, not last tick's stale values) and
 #     writes read-only shadow attrs nothing else in the engine consumes yet.
+#: The engine's System registry — MEMBERSHIP only. The tick ORDER and the three
+#: partition frozensets below are DERIVED from each System's ``position`` /
+#: ``partition`` ClassVars (spec-116 Phase 4 / ADR081), so a System's ordering
+#: metadata lives on the System rather than being restated in a hand-ordered
+#: list plus three hand-maintained sets. Adding a System: append its class here
+#: and declare the two ClassVars on it — everything below follows. (The
+#: canonical order + rationale is the comment block above.)
+_SYSTEM_CLASSES: Final[tuple[type[SystemBase], ...]] = (
+    VitalitySystem,
+    TerritorySystem,
+    SubstrateSystem,
+    ProductionSystem,
+    TickDynamicsSystem,
+    ReserveArmySystem,
+    CommunitySystem,
+    LifecycleSystem,
+    SolidaritySystem,
+    ImperialRentSystem,
+    DispossessionEventSystem,
+    DecompositionSystem,
+    ControlRatioSystem,
+    MetabolismSystem,
+    OODASystem,
+    FactionInfluenceSystem,
+    DoctrineSystem,
+    SurvivalSystem,
+    StruggleSystem,
+    ConsciousnessSystem,
+    FascistFactionSystem,
+    SovereigntySystem,
+    MarketScissorsSystem,
+    ContradictionSystem,
+    ContradictionFieldSystem,
+    FieldDerivativeSystem,
+    CollapseTransitionSystem,
+    EdgeTransitionSystem,
+    WealthDistributionSystem,
+    EpistemicHorizonSystem,
+)
+
+# Distinct positions => a stable, unambiguous total order (Constitution III.7).
+_SYSTEM_POSITIONS: Final[list[float]] = [cls.position for cls in _SYSTEM_CLASSES]
+if len(set(_SYSTEM_POSITIONS)) != len(_SYSTEM_POSITIONS):
+    _dupe_positions = sorted({p for p in _SYSTEM_POSITIONS if _SYSTEM_POSITIONS.count(p) > 1})
+    raise RuntimeError(
+        f"Duplicate System position(s) {_dupe_positions}: the tick order would "
+        f"be ambiguous. Give each registered System a distinct `position`."
+    )
+
+#: The Systems in strict materialist-causality order (ADR032), DERIVED by sorting
+#: the registry on each System's `position` ClassVar.
 _DEFAULT_SYSTEMS: list[System] = [
-    # --- Material Base (positions 1–13, plus Substrate at 2.5) ---
-    VitalitySystem(),  # 1. Biological cost + death
-    TerritorySystem(),  # 2. Land state updates
-    SubstrateSystem(),  # 2.5. Substrate stocks (Spec 062, US7, FR-050)
-    ProductionSystem(),  # 3. Value creation
-    TickDynamicsSystem(),  # 4. Tick dynamics (Feature 017)
-    ReserveArmySystem(),  # 5. Reserve army wage pressure (Feature 021)
-    CommunitySystem(),  # 6. Community hypergraph layer (Feature 022)
-    LifecycleSystem(),  # 7. D-P-D' lifecycle circuit (Feature 030)
-    SolidaritySystem(),  # 8. Organization calculation
-    ImperialRentSystem(),  # 9. Value extraction
-    DispossessionEventSystem(),  # 10. Dispossession events (Feature 021)
-    DecompositionSystem(),  # 11. LA decomposition
-    ControlRatioSystem(),  # 12. Guard:prisoner ratio
-    MetabolismSystem(),  # 13. Environmental degradation
-    # --- Action Phase (position 14) — Spec 056 F6=α reorder ---
-    OODASystem(),  # 14. Organizations observe + act (Feature 032)
-    FactionInfluenceSystem(),  # 14.5. Spec-070 FR-021 winning-Faction resolution
-    DoctrineSystem(),  # 14.7. Per-org Doctrine Tree state (owner-ratified 2026-07-15);
-    #        shadow: writes org doctrine state (acquire/decay/traps). Feedback into
-    #        bifurcation/consciousness is wired in Unit 6. Byte-safe: the qa:regression
-    #        scenarios carry no organization nodes, so this is a no-op there.
-    # --- Consequences (positions 15–21) ---
-    SurvivalSystem(),  # 15. Risk assessment
-    StruggleSystem(),  # 16. Action/Revolt
-    ConsciousnessSystem(),  # 17. Ideological drift
-    FascistFactionSystem(),  # 17.4. Spec-071 reactionary drift + fascist capture + stance hook
-    SovereigntySystem(),  # 17.5. Spec-070 sovereign metabolic_impact (FR-019, FR-043)
-    MarketScissorsSystem(),  # 17.8. Price⟷value scissors (Program 23 Phase-1 shadow;
-    #        writes only its own axis, runs just before the registry measures it)
-    ContradictionSystem(),  # 18. Tension aggregation
-    ContradictionFieldSystem(),  # 19. Contradiction field computation (Feature 002)
-    FieldDerivativeSystem(),  # 20. Spatial/temporal derivatives + principal (Feature 002)
-    CollapseTransitionSystem(),  # 20.5. Spec-070 sovereign-collapse + territory partition
-    EdgeTransitionSystem(),  # 21. Compound predicates + edge mode transitions (Feature 002)
-    WealthDistributionSystem(),  # 21.5. National wealth-share axis (Program 21 Phase-1 shadow; writes only its own axis)
-    EpistemicHorizonSystem(),  # 22. Fog-of-war M_r/I_c shadow (Epistemic Horizon Phase 1) — LAST, observes fully-mutated tick
+    cls() for cls in sorted(_SYSTEM_CLASSES, key=lambda c: c.position)
 ]
 
 
-# Spec 056 (FR-002): three canonical sets partitioning _DEFAULT_SYSTEMS
-# into Material Base / Action Phase / Consequences. Single source of
-# truth for spec-056 US1 + US2 invariants. Adding a new System to
-# _DEFAULT_SYSTEMS MUST also add it to exactly one of these sets;
-# the import-time assertion below catches drift.
-MATERIAL_BASE_SYSTEMS: Final[frozenset[type[System]]] = frozenset(
-    {
-        VitalitySystem,
-        TerritorySystem,
-        SubstrateSystem,  # Spec 062, US7: physical substrate stocks
-        ProductionSystem,
-        TickDynamicsSystem,
-        ReserveArmySystem,
-        CommunitySystem,
-        LifecycleSystem,
-        SolidaritySystem,
-        ImperialRentSystem,
-        DispossessionEventSystem,
-        DecompositionSystem,
-        ControlRatioSystem,
-        MetabolismSystem,
-    }
+def _partition_members(partition: TickPartition) -> frozenset[type[System]]:
+    """Registry classes declaring ``partition`` (the spec-056 FR-002 sets)."""
+    return frozenset(cls for cls in _SYSTEM_CLASSES if cls.partition is partition)
+
+
+# Spec 056 (FR-002): the three canonical sets partitioning the tick — now DERIVED
+# from the per-System `partition` ClassVar (were three hand-maintained frozensets
+# kept in sync with `_DEFAULT_SYSTEMS` by import-time assertions). By construction
+# they partition `_SYSTEM_CLASSES` exactly and are pairwise disjoint (each System
+# declares exactly one partition), so the old drift/overlap assertions are obsolete.
+MATERIAL_BASE_SYSTEMS: Final[frozenset[type[System]]] = _partition_members(
+    TickPartition.MATERIAL_BASE
 )
+ACTION_PHASE_SYSTEMS: Final[frozenset[type[System]]] = _partition_members(TickPartition.ACTION)
+CONSEQUENCE_SYSTEMS: Final[frozenset[type[System]]] = _partition_members(TickPartition.CONSEQUENCE)
 
-ACTION_PHASE_SYSTEMS: Final[frozenset[type[System]]] = frozenset({OODASystem})
-
-CONSEQUENCE_SYSTEMS: Final[frozenset[type[System]]] = frozenset(
-    {
-        SurvivalSystem,
-        StruggleSystem,
-        ConsciousnessSystem,
-        FascistFactionSystem,  # Spec-071 reactionary subject (position 17.4)
-        FactionInfluenceSystem,  # Spec-070 FR-042 (research.md R-003)
-        SovereigntySystem,  # Spec-070 FR-042
-        CollapseTransitionSystem,  # Spec-070 FR-042
-        ContradictionSystem,
-        ContradictionFieldSystem,
-        FieldDerivativeSystem,
-        EdgeTransitionSystem,
-        WealthDistributionSystem,  # Program 21 Phase-1 shadow (national wealth-share axis)
-        MarketScissorsSystem,  # Program 23 Phase-1 shadow (price⟷value scissors axis)
-        EpistemicHorizonSystem,  # Epistemic Horizon Phase 1 shadow (observes consequences)
-        DoctrineSystem,  # Doctrine Tree per-org state (owner-ratified 2026-07-15)
-    }
+# Belt-and-suspenders: every registered System landed in exactly one partition.
+_PARTITIONED_COUNT: Final[int] = (
+    len(MATERIAL_BASE_SYSTEMS) + len(ACTION_PHASE_SYSTEMS) + len(CONSEQUENCE_SYSTEMS)
 )
-
-
-# T005: import-time partition integrity assertion.
-# A new System added to _DEFAULT_SYSTEMS without classification raises
-# AssertionError on the next test collection.
-_ALL_PARTITIONED: Final[frozenset[type[System]]] = (
-    MATERIAL_BASE_SYSTEMS | ACTION_PHASE_SYSTEMS | CONSEQUENCE_SYSTEMS
-)
-_DEFAULT_SYSTEM_TYPES: Final[frozenset[type[System]]] = frozenset(type(s) for s in _DEFAULT_SYSTEMS)
-if _ALL_PARTITIONED != _DEFAULT_SYSTEM_TYPES:
+if len(_SYSTEM_CLASSES) != _PARTITIONED_COUNT:  # pragma: no cover — TickPartition has 3 members
     raise RuntimeError(
-        f"Spec 056 partition drift: System(s) "
-        f"{_DEFAULT_SYSTEM_TYPES ^ _ALL_PARTITIONED} are in _DEFAULT_SYSTEMS "
-        f"but not classified into MATERIAL_BASE_SYSTEMS / ACTION_PHASE_SYSTEMS "
-        f"/ CONSEQUENCE_SYSTEMS (or vice versa). Add the new System(s) to "
-        f"exactly one of the three sets in simulation_engine.py."
-    )
-if not MATERIAL_BASE_SYSTEMS.isdisjoint(ACTION_PHASE_SYSTEMS):
-    raise RuntimeError(
-        "Spec 056 partition violation: MATERIAL_BASE_SYSTEMS and ACTION_PHASE_SYSTEMS overlap"
-    )
-if not MATERIAL_BASE_SYSTEMS.isdisjoint(CONSEQUENCE_SYSTEMS):
-    raise RuntimeError(
-        "Spec 056 partition violation: MATERIAL_BASE_SYSTEMS and CONSEQUENCE_SYSTEMS overlap"
-    )
-if not ACTION_PHASE_SYSTEMS.isdisjoint(CONSEQUENCE_SYSTEMS):
-    raise RuntimeError(
-        "Spec 056 partition violation: ACTION_PHASE_SYSTEMS and CONSEQUENCE_SYSTEMS overlap"
+        "TickPartition coverage gap: a registered System declares a partition "
+        "outside MATERIAL_BASE / ACTION / CONSEQUENCE."
     )
 
 _DEFAULT_ENGINE = SimulationEngine(_DEFAULT_SYSTEMS)

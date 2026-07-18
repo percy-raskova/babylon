@@ -13,6 +13,7 @@ from babylon.domain.economics.reserve_army.calculator import DefaultWagePressure
 from babylon.kernel.event_bus import Event
 from babylon.kernel.system_base import SystemBase
 from babylon.kernel.system_protocol import ContextType
+from babylon.kernel.tick_partition import TickPartition
 from babylon.models.enums import EventType
 
 if TYPE_CHECKING:
@@ -30,6 +31,9 @@ class ReserveArmySystem(SystemBase):
 
     Position: #5 in _DEFAULT_SYSTEMS (after TickDynamicsSystem).
     """
+
+    partition: ClassVar[TickPartition] = TickPartition.MATERIAL_BASE
+    position: ClassVar[float] = 5.0
 
     # Spec 053 INV-001: does not mutate hex c+v+s; opted in by default-deny.
     creates_value: ClassVar[bool] = False

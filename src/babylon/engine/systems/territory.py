@@ -20,6 +20,7 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING, ClassVar
 
+from babylon.kernel.tick_partition import TickPartition
 from babylon.models.enums import (
     DisplacementPriorityMode,
     EdgeType,
@@ -52,6 +53,9 @@ class TerritorySystem(SystemBase):
     - CONCENTRATION_CAMP population decay (elimination)
     - PENAL_COLONY organization suppression (atomization)
     """
+
+    partition: ClassVar[TickPartition] = TickPartition.MATERIAL_BASE
+    position: ClassVar[float] = 2.0
 
     name: ClassVar[str] = "Territory"
     # Spec 053 INV-001: does not mutate hex c+v+s; opted in by default-deny.

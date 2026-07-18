@@ -14,6 +14,7 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING, ClassVar
 
+from babylon.kernel.tick_partition import TickPartition
 from babylon.models.enums import EdgeType
 
 if TYPE_CHECKING:
@@ -71,6 +72,9 @@ class SurvivalSystem(SystemBase):
     Where solidarity_bonus = sum of incoming SOLIDARITY edge weights.
     This ensures that High Solidarity scenarios produce higher P(S|R).
     """
+
+    partition: ClassVar[TickPartition] = TickPartition.CONSEQUENCE
+    position: ClassVar[float] = 15.0
 
     name: ClassVar[str] = "Survival Calculus"
     # Spec 053 INV-001: does not mutate hex c+v+s; opted in by default-deny.

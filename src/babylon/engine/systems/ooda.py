@@ -16,6 +16,7 @@ from typing import TYPE_CHECKING, Any, ClassVar
 
 from babylon.kernel.system_base import SystemBase
 from babylon.kernel.system_protocol import ContextType
+from babylon.kernel.tick_partition import TickPartition
 from babylon.models.enums import EventType, OrgType
 from babylon.ooda.cycle_time import compute_cycle_time
 from babylon.ooda.initiative import (
@@ -72,6 +73,9 @@ class OODASystem(SystemBase):
     2. Action Phase — initiative-ordered actions for all orgs
     3. Layer 3 — consequence propagation
     """
+
+    partition: ClassVar[TickPartition] = TickPartition.ACTION
+    position: ClassVar[float] = 14.0
 
     # Spec 053 INV-001: does not mutate hex c+v+s; opted in by default-deny.
     creates_value: ClassVar[bool] = False

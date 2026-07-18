@@ -42,6 +42,7 @@ from babylon.formulas.market import (
 from babylon.kernel.event_bus import Event
 from babylon.kernel.system_base import SystemBase
 from babylon.kernel.system_protocol import ContextType
+from babylon.kernel.tick_partition import TickPartition
 from babylon.models.enums import EventType, SocialRole
 from babylon.models.market import MarketState
 
@@ -121,6 +122,9 @@ def _aggregate_wage_value_by_county(graph: GraphProtocol) -> dict[str, tuple[flo
 
 class MarketScissorsSystem(SystemBase):
     """Phase 1 SHADOW: the national price⟷value scissors axis."""
+
+    partition: ClassVar[TickPartition] = TickPartition.CONSEQUENCE
+    position: ClassVar[float] = 17.8
 
     name: ClassVar[str] = "Market Scissors"
     # Spec 053 INV-001: does not mutate hex c+v+s; opted in by default-deny.

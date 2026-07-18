@@ -22,6 +22,7 @@ import logging
 from typing import TYPE_CHECKING, ClassVar
 
 from babylon.kernel.system_base import SystemBase
+from babylon.kernel.tick_partition import TickPartition
 
 if TYPE_CHECKING:
     from babylon.kernel.graph_protocol import GraphProtocol
@@ -45,6 +46,9 @@ class SubstrateSystem(SystemBase):
     Production hex-locality: this system does NOT cross hex boundaries.
     All depletion/regeneration is in-place per hex.
     """
+
+    partition: ClassVar[TickPartition] = TickPartition.MATERIAL_BASE
+    position: ClassVar[float] = 2.5
 
     name: ClassVar[str] = "substrate"
 

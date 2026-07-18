@@ -18,6 +18,7 @@ from babylon.formulas.consciousness_routing import (
     compute_reification_buffer,
     route_agitation_to_ternary,
 )
+from babylon.kernel.tick_partition import TickPartition
 from babylon.models.enums import EdgeType
 
 if TYPE_CHECKING:
@@ -82,6 +83,9 @@ class ConsciousnessSystem(SystemBase):
     - Tracks wage changes between ticks to detect crisis conditions
     - Routes agitation to either class_consciousness or national_identity
     """
+
+    partition: ClassVar[TickPartition] = TickPartition.CONSEQUENCE
+    position: ClassVar[float] = 17.0
 
     name: ClassVar[str] = "Consciousness Drift"
     # Spec 053 INV-001: does not mutate hex c+v+s; opted in by default-deny.

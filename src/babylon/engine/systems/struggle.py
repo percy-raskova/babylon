@@ -36,6 +36,7 @@ from typing import TYPE_CHECKING, Any, ClassVar
 from babylon.formulas.reactionary import calculate_spontaneous_riot_risk
 from babylon.kernel.event_bus import Event
 from babylon.kernel.node_access import class_consciousness_from_node
+from babylon.kernel.tick_partition import TickPartition
 from babylon.models.enums import EdgeType, EventType, SocialRole
 
 if TYPE_CHECKING:
@@ -229,6 +230,9 @@ class StruggleSystem(SystemBase):
 
     The solidarity built in Tick N enables SolidaritySystem transmission in Tick N+1.
     """
+
+    partition: ClassVar[TickPartition] = TickPartition.CONSEQUENCE
+    position: ClassVar[float] = 16.0
 
     name: ClassVar[str] = "Struggle"
     # Spec 053 INV-001: StruggleSystem destroys wealth during uprisings

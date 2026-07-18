@@ -47,6 +47,7 @@ from babylon.domain.doctrine.mechanics import (
     decay_tags,
 )
 from babylon.kernel.event_bus import Event
+from babylon.kernel.tick_partition import TickPartition
 from babylon.models.enums import EventType
 from babylon.models.enums.doctrine import DoctrineTag
 
@@ -265,6 +266,9 @@ class DoctrineSystem(SystemBase):
     Byte-safe on the org-less qa:regression scenarios (no orgs, no writes,
     no draws).
     """
+
+    partition: ClassVar[TickPartition] = TickPartition.CONSEQUENCE
+    position: ClassVar[float] = 14.7
 
     name: ClassVar[str] = "Doctrine"
     creates_value: ClassVar[bool] = False

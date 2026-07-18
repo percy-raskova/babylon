@@ -19,6 +19,8 @@ import random
 from abc import ABC, abstractmethod
 from typing import TYPE_CHECKING, Any, ClassVar, Final
 
+from babylon.kernel.tick_partition import TickPartition
+
 if TYPE_CHECKING:
     from babylon.kernel.event_bus import Event
     from babylon.kernel.graph_protocol import GraphProtocol
@@ -68,6 +70,15 @@ class SystemBase(ABC):
 
     name: ClassVar[str]
     creates_value: ClassVar[bool] = False
+    #: Which tick partition this System runs in (spec-116 Phase 4 / ADR081).
+    #: Declared (no default) so ``_DEFAULT_SYSTEMS``-registered Systems that
+    #: omit it fail LOUD at import (the derivation reads it); ad-hoc test stubs
+    #: outside the registry never touch it.
+    partition: ClassVar[TickPartition]
+    #: Ordinal within the tick (fractional slots encode historical insertions,
+    #: e.g. 2.5, 14.5, 17.8). ``simulation_engine`` sorts the registry by this
+    #: to derive ``_DEFAULT_SYSTEMS``.
+    position: ClassVar[float]
 
     @abstractmethod
     def step(

@@ -19,7 +19,14 @@ from __future__ import annotations
 
 import pytest
 
-from babylon.engine.simulation_engine import _DEFAULT_SYSTEMS
+from babylon.engine.simulation_engine import (
+    _DEFAULT_SYSTEMS,
+    _SYSTEM_CLASSES,
+    ACTION_PHASE_SYSTEMS,
+    CONSEQUENCE_SYSTEMS,
+    MATERIAL_BASE_SYSTEMS,
+)
+from babylon.kernel.tick_partition import TickPartition
 
 
 @pytest.mark.unit
@@ -199,3 +206,83 @@ class TestMaterialistCausalityOrder:
             "tick (this tick's p_acquiescence/class_consciousness), not last "
             "tick's stale values."
         )
+
+
+@pytest.mark.unit
+class TestDeclarativeDerivation:
+    """The order + partitions are DERIVED from per-System ClassVars (ADR081).
+
+    Complements ``test_system_order_is_materialist`` (which pins the golden
+    order by ``.name``) with the Phase-4 declarative-machinery invariants: the
+    ClassVars are complete, drive a stable order, and the three frozensets are
+    derived from them — so a partition/position edit propagates automatically
+    (no hand-maintained list + sets to drift apart).
+    """
+
+    _EXPECTED_MATERIAL_BASE = {
+        "VitalitySystem",
+        "TerritorySystem",
+        "SubstrateSystem",
+        "ProductionSystem",
+        "TickDynamicsSystem",
+        "ReserveArmySystem",
+        "CommunitySystem",
+        "LifecycleSystem",
+        "SolidaritySystem",
+        "ImperialRentSystem",
+        "DispossessionEventSystem",
+        "DecompositionSystem",
+        "ControlRatioSystem",
+        "MetabolismSystem",
+    }
+    _EXPECTED_ACTION = {"OODASystem"}
+    _EXPECTED_CONSEQUENCE = {
+        "FactionInfluenceSystem",
+        "DoctrineSystem",
+        "SurvivalSystem",
+        "StruggleSystem",
+        "ConsciousnessSystem",
+        "FascistFactionSystem",
+        "SovereigntySystem",
+        "MarketScissorsSystem",
+        "ContradictionSystem",
+        "ContradictionFieldSystem",
+        "FieldDerivativeSystem",
+        "CollapseTransitionSystem",
+        "EdgeTransitionSystem",
+        "WealthDistributionSystem",
+        "EpistemicHorizonSystem",
+    }
+
+    def test_every_system_declares_both_classvars(self) -> None:
+        for cls in _SYSTEM_CLASSES:
+            assert isinstance(cls.partition, TickPartition), f"{cls.__name__} missing partition"
+            assert isinstance(cls.position, (int, float)), f"{cls.__name__} missing position"
+
+    def test_positions_are_distinct(self) -> None:
+        positions = [c.position for c in _SYSTEM_CLASSES]
+        assert len(set(positions)) == len(positions), "duplicate position => ambiguous order"
+
+    def test_order_equals_position_sort(self) -> None:
+        derived = [type(s).__name__ for s in _DEFAULT_SYSTEMS]
+        by_position = [c.__name__ for c in sorted(_SYSTEM_CLASSES, key=lambda c: c.position)]
+        assert derived == by_position
+
+    def test_partition_membership_is_derived(self) -> None:
+        assert {c.__name__ for c in MATERIAL_BASE_SYSTEMS} == self._EXPECTED_MATERIAL_BASE
+        assert {c.__name__ for c in ACTION_PHASE_SYSTEMS} == self._EXPECTED_ACTION
+        assert {c.__name__ for c in CONSEQUENCE_SYSTEMS} == self._EXPECTED_CONSEQUENCE
+
+    def test_partitions_cover_and_are_disjoint(self) -> None:
+        registry = set(_SYSTEM_CLASSES)
+        assert registry == MATERIAL_BASE_SYSTEMS | ACTION_PHASE_SYSTEMS | CONSEQUENCE_SYSTEMS
+        assert MATERIAL_BASE_SYSTEMS.isdisjoint(ACTION_PHASE_SYSTEMS)
+        assert MATERIAL_BASE_SYSTEMS.isdisjoint(CONSEQUENCE_SYSTEMS)
+        assert ACTION_PHASE_SYSTEMS.isdisjoint(CONSEQUENCE_SYSTEMS)
+
+    def test_partitions_are_contiguous_blocks(self) -> None:
+        """Materialist causality: all MATERIAL_BASE precede ACTION precede CONSEQUENCE."""
+        max_base = max(c.position for c in MATERIAL_BASE_SYSTEMS)
+        action_pos = next(iter(ACTION_PHASE_SYSTEMS)).position
+        min_consequence = min(c.position for c in CONSEQUENCE_SYSTEMS)
+        assert max_base < action_pos < min_consequence

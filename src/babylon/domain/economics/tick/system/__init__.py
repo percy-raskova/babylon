@@ -66,6 +66,7 @@ from babylon.domain.economics.tick.types import (
 )
 from babylon.formulas.constants import HOURS_PER_YEAR, WEEKS_PER_YEAR
 from babylon.kernel.system_base import SystemBase
+from babylon.kernel.tick_partition import TickPartition
 
 if TYPE_CHECKING:
     from babylon.kernel.graph_protocol import GraphProtocol
@@ -93,6 +94,9 @@ class TickDynamicsSystem(SystemBase):
         >>> system = TickDynamicsSystem()
         >>> system.step(graph, services, context)
     """
+
+    partition: ClassVar[TickPartition] = TickPartition.MATERIAL_BASE
+    position: ClassVar[float] = 4.0
 
     name: ClassVar[str] = "tick_dynamics"
 

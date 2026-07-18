@@ -1,9 +1,14 @@
 meta:
-  version: 1.28.0
-  updated: '2026-07-17'
+  version: 1.29.0
+  updated: '2026-07-18'
   description: Architecture Decision Records Index
   format: See individual ADR files in this directory
 decisions:
+  ADR081_declarative_system_ordering:
+    title: 'spec-116 systems-dedup Phase 4 — Declarative tick ordering: each System declares partition/position ClassVars; simulation_engine DERIVES _DEFAULT_SYSTEMS + the three spec-056 partition frozensets from them (was a hand-ordered list + three hand-maintained sets held in sync by import-time assertions)'
+    status: accepted
+    date: '2026-07-18'
+    file: ADR081_declarative_system_ordering.yaml
   ADR080_redogv_domestic_sovereign_fallback:
     title: 'Task R — RED_OGV seed repair: FR-040b domestic-sovereign fallback narrows SOV_EXTERIOR_NULL to genuine exterior nodes, unblocking the inert web-session sovereignty layer (RED_OGV / REVOLUTIONARY_VICTORY / UPHOLD reachability)'
     status: accepted

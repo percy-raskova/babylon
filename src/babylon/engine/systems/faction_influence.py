@@ -33,6 +33,7 @@ from babylon.formulas.balkanization import (
 )
 from babylon.kernel.event_bus import Event
 from babylon.kernel.system_base import SystemBase, resolve_rng
+from babylon.kernel.tick_partition import TickPartition
 from babylon.models.enums import ColonialStance, EventType
 
 if TYPE_CHECKING:  # pragma: no cover
@@ -47,6 +48,9 @@ _HYSTERESIS = "balkanization.hysteresis_buffer"
 
 class FactionInfluenceSystem(SystemBase):
     """Resolve per-Territory winning Faction + secession eligibility."""
+
+    partition: ClassVar[TickPartition] = TickPartition.CONSEQUENCE
+    position: ClassVar[float] = 14.5
 
     name: ClassVar[str] = "FactionInfluence"
     creates_value: ClassVar[bool] = False

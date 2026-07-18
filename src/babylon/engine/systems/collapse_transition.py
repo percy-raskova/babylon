@@ -38,6 +38,7 @@ from typing import TYPE_CHECKING, Any, ClassVar
 
 from babylon.kernel.event_bus import Event
 from babylon.kernel.system_base import SystemBase
+from babylon.kernel.tick_partition import TickPartition
 from babylon.models.enums import EventType
 
 if TYPE_CHECKING:  # pragma: no cover
@@ -48,6 +49,9 @@ if TYPE_CHECKING:  # pragma: no cover
 
 class CollapseTransitionSystem(SystemBase):
     """Detects collapsing Sovereigns + emits transition events."""
+
+    partition: ClassVar[TickPartition] = TickPartition.CONSEQUENCE
+    position: ClassVar[float] = 20.5
 
     name: ClassVar[str] = "CollapseTransition"
     creates_value: ClassVar[bool] = False

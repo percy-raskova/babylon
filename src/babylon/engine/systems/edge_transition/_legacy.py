@@ -25,6 +25,7 @@ if TYPE_CHECKING:
 from babylon.kernel.event_bus import Event
 from babylon.kernel.system_base import SystemBase
 from babylon.kernel.system_protocol import ContextType
+from babylon.kernel.tick_partition import TickPartition
 from babylon.models.enums import ContradictionCharacter, EdgeMode, EventType
 
 logger = logging.getLogger(__name__)
@@ -568,6 +569,9 @@ class EdgeTransitionSystem(SystemBase):
     from the current mode. If a predicate fires, transitions to the
     new mode. Priority ordering resolves multiple eligible transitions.
     """
+
+    partition: ClassVar[TickPartition] = TickPartition.CONSEQUENCE
+    position: ClassVar[float] = 21.0
 
     name: ClassVar[str] = "edge_transition"
     # Spec 053 INV-001: does not mutate hex c+v+s; opted in by default-deny.

@@ -28,6 +28,7 @@ from typing import TYPE_CHECKING, ClassVar
 from babylon.formulas.balkanization import calculate_metabolic_impact
 from babylon.kernel.event_bus import Event
 from babylon.kernel.system_base import SystemBase
+from babylon.kernel.tick_partition import TickPartition
 from babylon.models.enums import EventType, ExtractionPolicy
 
 if TYPE_CHECKING:  # pragma: no cover
@@ -60,6 +61,9 @@ class SovereigntySystem(SystemBase):
         - ``DUAL_POWER_ACTIVE`` per Territory where ≥2 CLAIMS edges
           have ``control_level > 0.0`` (FR-035).
     """
+
+    partition: ClassVar[TickPartition] = TickPartition.CONSEQUENCE
+    position: ClassVar[float] = 17.5
 
     name: ClassVar[str] = "Sovereignty"
     creates_value: ClassVar[bool] = False

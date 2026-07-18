@@ -42,6 +42,7 @@ from babylon.formulas.reactionary import (
 )
 from babylon.kernel.event_bus import Event
 from babylon.kernel.system_base import SystemBase, resolve_rng
+from babylon.kernel.tick_partition import TickPartition
 from babylon.models.enums import EdgeType, EventType, SocialRole
 
 if TYPE_CHECKING:  # pragma: no cover
@@ -72,6 +73,9 @@ _FASCIST_IDEOLOGY_TOKENS: tuple[str, ...] = ("fascist", "reaction", "revanch", "
 
 class FascistFactionSystem(SystemBase):
     """Consequence-phase system for the reactionary subject (spec-071)."""
+
+    partition: ClassVar[TickPartition] = TickPartition.CONSEQUENCE
+    position: ClassVar[float] = 17.4
 
     name: ClassVar[str] = "Fascist Faction"
     # Chauvinism/defection mutate org + edge state, not hex c+v+s (Spec 053 INV-001).

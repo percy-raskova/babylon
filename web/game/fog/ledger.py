@@ -206,4 +206,75 @@ def read_intel(
     return IntelReading(tier="unknown", tick_observed=None, value_snapshot=None)
 
 
-__all__ = ["IntelEntry", "IntelLedger", "IntelReading", "VisibilityTier", "read_intel"]
+def ledger_from_events(rows: list[dict[str, Any]]) -> IntelLedger:
+    """Fold persisted INVESTIGATE-resolution rows into an :class:`IntelLedger`.
+
+    Track 1 / Task 3 (2026-07-18): THE ledger's writer — before this
+    function existed, ``IntelLedger`` was constructed exactly once, empty,
+    as a module constant (``engine_bridge._EMPTY_INTEL_LEDGER``), and never
+    appended to. Pure fold, no I/O, no globals, no ``babylon.*`` import (see
+    the module docstring's import-boundary note) — ``rows`` are plain
+    dicts the caller (``engine_bridge.py``) has ALREADY queried from the
+    persisted ``action_result`` table and ALREADY filtered to successful
+    ``ActionType.MAP_NETWORK`` (INVESTIGATE) resolutions; this module never
+    performs that filter itself; it would need ``ActionType`` to do so).
+
+    Each row must supply:
+
+    * ``tick`` (int) — the tick the INVESTIGATE resolved at, becomes
+      ``IntelEntry.tick_observed``.
+    * ``target_id`` (str) — the investigated node's id, becomes
+      ``IntelEntry.node_id``.
+    * ``field_group`` (str) — MUST equal
+      ``game.fog.filter.political_field_group(node_type)`` for the
+      target's real ``_node_type`` (e.g. ``"territory:political"``) — the
+      exact key :func:`apply_fog`'s ``read_intel`` call derives. A
+      mismatched group silently makes the entry unreachable, which is why
+      the writer (``engine_bridge._investigate_field_snapshot``) derives
+      it with that SAME helper rather than formatting the string itself.
+    * ``value_snapshot`` (dict) — the revealed fields' TRUE values as of
+      ``tick``, captured by the writer off the live post-tick graph at
+      resolution time (never recomputed later — that is what lets a stale
+      reading show what the player actually learned, not the current
+      truth).
+
+    A row missing any of these (or with an empty ``value_snapshot``) is
+    skipped — Constitution III.11: a partial/malformed persisted row never
+    fabricates a fake observation. Row order does not matter:
+    :meth:`IntelLedger.latest` reduces by ``tick_observed`` regardless of
+    append order, so out-of-order rows (e.g. a non-chronological DB read)
+    still resolve correctly.
+
+    Args:
+        rows: Already-filtered persisted INVESTIGATE-resolution rows.
+
+    Returns:
+        A new :class:`IntelLedger` with one entry per valid row.
+    """
+    ledger = IntelLedger()
+    for row in rows:
+        target_id = row.get("target_id")
+        field_group = row.get("field_group")
+        tick_observed = row.get("tick")
+        value_snapshot = row.get("value_snapshot")
+        if not target_id or not field_group or tick_observed is None or not value_snapshot:
+            continue
+        ledger = ledger.append(
+            IntelEntry(
+                node_id=str(target_id),
+                field_group=str(field_group),
+                tick_observed=int(tick_observed),
+                value_snapshot=dict(value_snapshot),
+            )
+        )
+    return ledger
+
+
+__all__ = [
+    "IntelEntry",
+    "IntelLedger",
+    "IntelReading",
+    "VisibilityTier",
+    "ledger_from_events",
+    "read_intel",
+]

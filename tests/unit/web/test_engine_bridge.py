@@ -15,7 +15,7 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from babylon.models.enums import EventType
+from babylon.models.enums import ActionType, EventType
 from babylon.models.events import SimulationEvent
 from babylon.topology.graph import BabylonGraph
 from game.engine_bridge import (
@@ -25,11 +25,14 @@ from game.engine_bridge import (
     EngineBridge,
     _build_initial_state_for_scenario,
     _classify_event,
+    _derive_intel_ledger,
     _heat_delta_by_territory,
     _hex_feature_properties,
     _hex_state_row,
+    _investigate_field_snapshot,
     _mean_territory_attr,
     _org_count_by_territory,
+    _query_investigate_action_results,
     _serialize_territory,
     _state_to_snapshot,
     resolve_scenario,
@@ -2075,6 +2078,353 @@ class TestResolveTickConsumesEngineResults:
         kwargs = mock_persistence.persist_action_result.call_args.kwargs
         assert kwargs["success"] is False
         assert kwargs["details"]["failure_reason"] is not None
+
+
+# ---------------------------------------------------------------------- #
+# Track 1 / Task 3 (2026-07-18): the intel ledger's writer
+# ---------------------------------------------------------------------- #
+
+
+@pytest.mark.unit
+class TestInvestigateFieldSnapshot:
+    """``_investigate_field_snapshot`` is the write-side half of the intel
+    ledger (``game.fog.ledger.IntelLedger``): it freezes the fields an
+    INVESTIGATE resolution named as revealed (field NAMES only —
+    ``resolve_investigate``'s ``direct_effects`` carries no values) off the
+    live post-tick graph, so a later fog read shows the TRUE value as of
+    that tick, never a recomputation."""
+
+    def _graph_with_territory(self, **attrs: Any) -> BabylonGraph:
+        graph = BabylonGraph()
+        graph.add_node("T1", _node_type="territory", **attrs)
+        return graph
+
+    def test_non_investigate_action_yields_none(self) -> None:
+        graph = self._graph_with_territory(heat=0.42)
+        result = _investigate_field_snapshot(
+            ActionType.EDUCATE, "T1", {"revealed": {"T1": ["heat"]}}, graph
+        )
+        assert result is None
+
+    def test_no_action_type_yields_none(self) -> None:
+        graph = self._graph_with_territory(heat=0.42)
+        result = _investigate_field_snapshot(None, "T1", {"revealed": {"T1": ["heat"]}}, graph)
+        assert result is None
+
+    def test_missing_target_id_yields_none(self) -> None:
+        graph = self._graph_with_territory(heat=0.42)
+        result = _investigate_field_snapshot(
+            ActionType.MAP_NETWORK, None, {"revealed": {"T1": ["heat"]}}, graph
+        )
+        assert result is None
+
+    def test_target_not_in_graph_yields_none(self) -> None:
+        graph = self._graph_with_territory(heat=0.42)
+        result = _investigate_field_snapshot(
+            ActionType.MAP_NETWORK, "T-GONE", {"revealed": {"T-GONE": ["heat"]}}, graph
+        )
+        assert result is None
+
+    def test_no_revealed_fields_for_target_yields_none(self) -> None:
+        graph = self._graph_with_territory(heat=0.42)
+        result = _investigate_field_snapshot(ActionType.MAP_NETWORK, "T1", {"revealed": {}}, graph)
+        assert result is None
+
+    def test_failed_investigate_with_empty_direct_effects_yields_none(self) -> None:
+        """A failed INVESTIGATE (mass-receptivity gate) carries no
+        ``revealed`` key at all — honest absence, not a crash."""
+        graph = self._graph_with_territory(heat=0.42)
+        result = _investigate_field_snapshot(ActionType.MAP_NETWORK, "T1", {}, graph)
+        assert result is None
+
+    def test_successful_investigate_captures_the_real_graph_values(self) -> None:
+        graph = self._graph_with_territory(heat=0.42, rent_level=0.1, population=500)
+        result = _investigate_field_snapshot(
+            ActionType.MAP_NETWORK,
+            "T1",
+            {"scan_type": "territory_scan", "revealed": {"T1": ["heat", "population"]}},
+            graph,
+        )
+        assert result == {
+            "field_group": "territory:political",
+            "value_snapshot": {"heat": 0.42, "population": 500},
+        }
+
+    def test_field_group_matches_apply_fogs_own_derivation(self) -> None:
+        """Written under apply_fog's EXACT field_group format
+        (``game.fog.filter.political_field_group``) — a mismatch would make
+        the entry silently unreachable at read time."""
+        from game.fog.filter import political_field_group
+
+        graph = self._graph_with_territory(heat=0.42)
+        result = _investigate_field_snapshot(
+            ActionType.MAP_NETWORK, "T1", {"revealed": {"T1": ["heat"]}}, graph
+        )
+        assert result is not None
+        assert result["field_group"] == political_field_group("territory")
+
+    def test_revealed_field_absent_from_the_node_is_not_fabricated(self) -> None:
+        """``resolve_investigate``'s default revealed-field list can name a
+        field the node doesn't actually carry — never invent a value."""
+        graph = self._graph_with_territory(heat=0.42)  # no rent_level attr
+        result = _investigate_field_snapshot(
+            ActionType.MAP_NETWORK, "T1", {"revealed": {"T1": ["heat", "rent_level"]}}, graph
+        )
+        assert result == {
+            "field_group": "territory:political",
+            "value_snapshot": {"heat": 0.42},
+        }
+
+
+@pytest.mark.unit
+class TestResolveTickPersistsInvestigateSnapshot:
+    """End-to-end (mocked persistence): resolve_tick's per-action loop
+    stashes the intel snapshot onto the persisted ``action_result`` row for
+    a successful INVESTIGATE — the enrichment ``_derive_intel_ledger``
+    later reads back."""
+
+    _SID = uuid.UUID("aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee")
+
+    @patch("game.engine_bridge.step")
+    def test_investigate_action_result_carries_the_intel_snapshot(
+        self, mock_step: MagicMock
+    ) -> None:
+        mock_persistence = _make_mock_persistence()
+        mock_persistence.get_pending_turns.return_value = [
+            {"org_id": "pf1", "verb": "investigate", "target_id": "T1"},
+        ]
+
+        def fake_step(*_args: Any, **kwargs: Any) -> MagicMock:
+            ctx = kwargs.get("persistent_context")
+            assert ctx is not None
+            ctx["turn_resolution"] = {
+                "action_phase_results": [
+                    {
+                        "action": {
+                            "org_id": "pf1",
+                            "action_type": "map_network",
+                            "target_id": "T1",
+                        },
+                        "success": True,
+                        "consciousness_delta": None,
+                        "direct_effects": {
+                            "scan_type": "territory_scan",
+                            "revealed": {"T1": ["heat"]},
+                        },
+                        "failure_reason": None,
+                    }
+                ]
+            }
+            new_state = _make_mock_new_state()
+            graph = _make_minimal_graph()
+            graph.add_node("T1", _node_type="territory", heat=0.734)
+            new_state.to_graph.return_value = graph
+            return new_state
+
+        mock_step.side_effect = fake_step
+        bridge = EngineBridge(mock_persistence)
+        bridge.resolve_tick(self._SID)
+
+        mock_persistence.persist_action_result.assert_called_once()
+        kwargs = mock_persistence.persist_action_result.call_args.kwargs
+        assert kwargs["details"]["intel_field_group"] == "territory:political"
+        assert kwargs["details"]["intel_value_snapshot"] == {"heat": 0.734}
+
+    @patch("game.engine_bridge.step")
+    def test_non_investigate_action_carries_no_intel_snapshot(self, mock_step: MagicMock) -> None:
+        mock_persistence = _make_mock_persistence()
+        mock_persistence.get_pending_turns.return_value = [
+            {"org_id": "pf1", "verb": "educate", "target_id": "T1"},
+        ]
+
+        def fake_step(*_args: Any, **kwargs: Any) -> MagicMock:
+            ctx = kwargs.get("persistent_context")
+            assert ctx is not None
+            ctx["turn_resolution"] = {
+                "action_phase_results": [
+                    {
+                        "action": {"org_id": "pf1", "action_type": "educate", "target_id": "T1"},
+                        "success": True,
+                        "consciousness_delta": None,
+                        "direct_effects": {"note": "irrelevant"},
+                        "failure_reason": None,
+                    }
+                ]
+            }
+            return _make_mock_new_state()
+
+        mock_step.side_effect = fake_step
+        bridge = EngineBridge(mock_persistence)
+        bridge.resolve_tick(self._SID)
+
+        kwargs = mock_persistence.persist_action_result.call_args.kwargs
+        assert "intel_field_group" not in kwargs["details"]
+        assert "intel_value_snapshot" not in kwargs["details"]
+
+
+@pytest.mark.unit
+@pytest.mark.django_db
+class TestDeriveIntelLedger:
+    """Track 1 / Task 3: ``_derive_intel_ledger`` reads back persisted
+    ``action_result`` rows and folds them via ``ledger_from_events`` — the
+    real write-then-read loop, exercised against a real (test) database
+    rather than a mock."""
+
+    def _make_session(self) -> uuid.UUID:
+        from game.models import GameSession
+
+        sid = uuid.uuid4()
+        GameSession.objects.create(id=sid, scenario="default", current_tick=0)
+        return sid
+
+    def test_fresh_session_yields_an_empty_ledger(self) -> None:
+        sid = self._make_session()
+        ledger = _derive_intel_ledger(sid)
+        assert ledger.entries == ()
+
+    def test_enriched_investigate_row_becomes_a_reachable_ledger_entry(self) -> None:
+        from game.fog.ledger import read_intel
+        from game.models import ActionResult
+
+        sid = self._make_session()
+        ActionResult.objects.create(
+            session_id=sid,
+            tick=10,
+            org_id="PLAYER_ORG",
+            action_type=ActionType.MAP_NETWORK.value,
+            target_id="T1",
+            initiative_score=0.0,
+            action_cost=1.0,
+            success=True,
+            details={
+                "direct_effects": {
+                    "scan_type": "territory_scan",
+                    "revealed": {"T1": ["heat"]},
+                },
+                "failure_reason": None,
+                "intel_field_group": "territory:political",
+                "intel_value_snapshot": {"heat": 0.734},
+            },
+        )
+
+        ledger = _derive_intel_ledger(sid)
+
+        reading = read_intel(
+            ledger,
+            node_id="T1",
+            field_group="territory:political",
+            tick=12,
+            staleness_ticks=5,
+            unknown_ticks=20,
+        )
+        assert reading.tier == "exact"
+        assert reading.value_snapshot == {"heat": 0.734}
+
+    def test_failed_investigate_row_is_excluded(self) -> None:
+        """``success=False`` rows never reach the ledger (excluded by the
+        query filter itself) — a failed INVESTIGATE (mass-receptivity gate)
+        revealed nothing."""
+        from game.models import ActionResult
+
+        sid = self._make_session()
+        ActionResult.objects.create(
+            session_id=sid,
+            tick=10,
+            org_id="PLAYER_ORG",
+            action_type=ActionType.MAP_NETWORK.value,
+            target_id="T1",
+            initiative_score=0.0,
+            action_cost=1.0,
+            success=False,
+            details={"direct_effects": {}, "failure_reason": "masses do not trust you"},
+        )
+
+        ledger = _derive_intel_ledger(sid)
+        assert ledger.entries == ()
+
+    def test_row_without_the_enrichment_keys_is_excluded(self) -> None:
+        """An ``action_result`` row with no ``intel_field_group``/
+        ``intel_value_snapshot`` (e.g. any row persisted before this task
+        shipped) is skipped, never fabricated (Constitution III.11)."""
+        from game.models import ActionResult
+
+        sid = self._make_session()
+        ActionResult.objects.create(
+            session_id=sid,
+            tick=10,
+            org_id="PLAYER_ORG",
+            action_type=ActionType.MAP_NETWORK.value,
+            target_id="T1",
+            initiative_score=0.0,
+            action_cost=1.0,
+            success=True,
+            details={"direct_effects": {"revealed": {"T1": ["heat"]}}, "failure_reason": None},
+        )
+
+        ledger = _derive_intel_ledger(sid)
+        assert ledger.entries == ()
+
+    def test_non_investigate_action_result_rows_are_excluded(self) -> None:
+        from game.models import ActionResult
+
+        sid = self._make_session()
+        ActionResult.objects.create(
+            session_id=sid,
+            tick=10,
+            org_id="PLAYER_ORG",
+            action_type="educate",
+            target_id="T1",
+            initiative_score=0.0,
+            action_cost=1.0,
+            success=True,
+            details={
+                "direct_effects": {},
+                "failure_reason": None,
+                "intel_field_group": "territory:political",
+                "intel_value_snapshot": {"heat": 0.1},
+            },
+        )
+
+        ledger = _derive_intel_ledger(sid)
+        assert ledger.entries == ()
+
+    def test_query_helper_returns_plain_dicts_with_the_expected_keys(self) -> None:
+        from game.models import ActionResult
+
+        sid = self._make_session()
+        ActionResult.objects.create(
+            session_id=sid,
+            tick=3,
+            org_id="PLAYER_ORG",
+            action_type=ActionType.MAP_NETWORK.value,
+            target_id="T1",
+            initiative_score=0.0,
+            action_cost=1.0,
+            success=True,
+            details={
+                "intel_field_group": "territory:political",
+                "intel_value_snapshot": {"heat": 0.1},
+            },
+        )
+
+        rows = _query_investigate_action_results(sid)
+
+        assert len(rows) == 1
+        assert rows[0]["tick"] == 3
+        assert rows[0]["target_id"] == "T1"
+
+
+@pytest.mark.unit
+class TestDeriveIntelLedgerWithoutDjangoDb:
+    """No ``@pytest.mark.django_db`` here on purpose: proves the best-effort
+    fallback actually engages when the ORM query is blocked (pytest-django
+    forbids DB access without the marker) — the same failure mode a
+    headless/non-web context hits — rather than crashing every
+    player-facing view that now calls ``_derive_intel_ledger``."""
+
+    def test_blocked_db_access_yields_an_empty_ledger_not_a_crash(self) -> None:
+        ledger = _derive_intel_ledger(uuid.uuid4())
+        assert ledger.entries == ()
 
 
 # ---------------------------------------------------------------------- #

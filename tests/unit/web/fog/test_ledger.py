@@ -216,6 +216,115 @@ class TestAppendOnlyNoMutation:
             ledger.entries = (_entry(),)  # type: ignore[misc]
 
 
+class TestLedgerFromEvents:
+    """Track 1 / Task 3 (2026-07-18): :func:`~game.fog.ledger.ledger_from_events`
+    — the ledger's actual writer. Folds persisted, ALREADY-FILTERED
+    INVESTIGATE-resolution rows (the caller, ``engine_bridge.py``, owns the
+    ``action_type == ActionType.MAP_NETWORK`` filter and every ``babylon.*``
+    import that requires) into an :class:`~game.fog.ledger.IntelLedger`.
+    Pure — no I/O, no globals — so these rows are plain dicts, never a real
+    persistence handle."""
+
+    def _row(
+        self,
+        tick: int = 10,
+        target_id: str = "T1",
+        field_group: str = "territory:political",
+        value_snapshot: dict[str, object] | None = None,
+    ) -> dict[str, object]:
+        return {
+            "tick": tick,
+            "target_id": target_id,
+            "field_group": field_group,
+            "value_snapshot": value_snapshot or {"heat": 0.734},
+        }
+
+    def test_one_row_becomes_one_reachable_entry(self) -> None:
+        from game.fog.ledger import ledger_from_events, read_intel
+
+        ledger = ledger_from_events([self._row()])
+
+        reading = read_intel(
+            ledger,
+            node_id="T1",
+            field_group="territory:political",
+            tick=12,
+            staleness_ticks=STALENESS_TICKS,
+            unknown_ticks=UNKNOWN_TICKS,
+        )
+        assert reading.tier == "exact"
+        assert reading.value_snapshot == {"heat": 0.734}
+        assert reading.tick_observed == 10
+
+    def test_empty_rows_yields_an_empty_ledger(self) -> None:
+        from game.fog.ledger import IntelLedger, ledger_from_events
+
+        assert ledger_from_events([]) == IntelLedger()
+
+    def test_most_recent_row_wins_on_read(self) -> None:
+        from game.fog.ledger import ledger_from_events, read_intel
+
+        rows = [
+            self._row(tick=1, value_snapshot={"heat": 0.1}),
+            self._row(tick=10, value_snapshot={"heat": 0.9}),
+        ]
+        ledger = ledger_from_events(rows)
+
+        reading = read_intel(
+            ledger,
+            node_id="T1",
+            field_group="territory:political",
+            tick=12,
+            staleness_ticks=STALENESS_TICKS,
+            unknown_ticks=UNKNOWN_TICKS,
+        )
+        assert reading.tick_observed == 10
+        assert reading.value_snapshot == {"heat": 0.9}
+
+    def test_row_missing_target_id_is_skipped(self) -> None:
+        """A partial row never fabricates a fake entry (Constitution III.11)."""
+        from game.fog.ledger import ledger_from_events
+
+        row = self._row()
+        del row["target_id"]
+        ledger = ledger_from_events([row])
+
+        assert ledger.entries == ()
+
+    def test_row_missing_value_snapshot_is_skipped(self) -> None:
+        from game.fog.ledger import ledger_from_events
+
+        row = self._row()
+        row["value_snapshot"] = {}
+        ledger = ledger_from_events([row])
+
+        assert ledger.entries == ()
+
+    def test_row_missing_field_group_is_skipped(self) -> None:
+        from game.fog.ledger import ledger_from_events
+
+        row = self._row()
+        del row["field_group"]
+        ledger = ledger_from_events([row])
+
+        assert ledger.entries == ()
+
+    def test_distinct_targets_produce_distinct_entries(self) -> None:
+        from game.fog.ledger import ledger_from_events
+
+        rows = [
+            self._row(target_id="T1", value_snapshot={"heat": 0.1}),
+            self._row(target_id="T2", value_snapshot={"heat": 0.2}),
+        ]
+        ledger = ledger_from_events(rows)
+
+        assert ledger.latest("T1", "territory:political") is not None
+        assert ledger.latest("T2", "territory:political") is not None
+        assert ledger.latest("T1", "territory:political") != ledger.latest(
+            "T2", "territory:political"
+        )
+
+
 class TestFutureDatedEntryFailsLoud:
     def test_tick_before_observation_raises(self) -> None:
         """An entry observed AFTER the query tick is a determinism bug (or

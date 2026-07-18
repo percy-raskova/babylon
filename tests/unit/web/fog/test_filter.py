@@ -560,6 +560,48 @@ class TestOrgPoliticalFields:
         assert result["vision_masked"] == []
 
 
+class TestLedgerFromEventsEndToEnd:
+    """Track 1 / Task 3 (2026-07-18): proves the APPROXIMATE tier is
+    reachable through the REAL production writer
+    (:func:`game.fog.ledger.ledger_from_events`), not just via a
+    hand-built :class:`~game.fog.ledger.IntelEntry` fixture. Before this
+    task ``IntelLedger`` had no writer at all, so this tier had never once
+    fired in production — every prior ``apply_fog`` test that reached
+    ``"approximate"`` constructed the ledger entry directly."""
+
+    def test_a_persisted_investigate_row_aged_into_the_approximate_window_quantizes(
+        self,
+    ) -> None:
+        from game.fog.filter import apply_fog
+        from game.fog.ledger import ledger_from_events
+
+        row = {
+            "tick": 100,
+            "target_id": "T1",
+            "field_group": "territory:political",
+            "value_snapshot": {"heat": 0.734, "dominant_class": "core_proletariat"},
+        }
+        ledger = ledger_from_events([row])
+
+        result = apply_fog(
+            _territory_payload(),
+            node_type="territory",
+            node_id="T1",
+            reach=frozenset(),  # out of reach — the ledger is the only source
+            ledger=ledger,
+            tick=100 + STALENESS_TICKS + 1,  # aged past exact, still <= unknown
+            staleness_ticks=STALENESS_TICKS,
+            unknown_ticks=UNKNOWN_TICKS,
+        )
+
+        assert result["heat"] != 0.734  # quantized, not the raw observed value
+        assert result["heat"] is not None  # not masked either
+        assert isinstance(result["heat"], float)
+        assert "heat" in result["vision_approx"]
+        assert "heat" not in result["vision_masked"]
+        assert result["dominant_class"] == "core_proletariat"  # non-numeric passes through
+
+
 class TestFieldsAbsentFromPayloadAreIgnored:
     def test_a_political_field_the_composer_never_produced_is_not_invented(self) -> None:
         from game.fog.filter import apply_fog

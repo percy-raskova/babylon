@@ -90,6 +90,20 @@ ORG_INTERNAL_STATE_FIELDS: tuple[str, ...] = (
 ORG_POLITICAL_FIELDS: tuple[str, ...] = POLITICAL_FIELDS + ORG_INTERNAL_STATE_FIELDS
 
 
+def political_field_group(node_type: str) -> str:
+    """The :class:`~game.fog.ledger.IntelLedger` ``field_group`` key for a
+    node type's whole political-field family.
+
+    Track 1 / Task 3 (2026-07-18): single source of truth for the
+    ``f"{node_type}:political"`` format — :func:`apply_fog` (the READER,
+    below) and ``engine_bridge``'s INVESTIGATE-resolution ledger derivation
+    (the WRITER) both call this rather than each formatting the string
+    independently, so an entry can never be written under a group
+    :func:`apply_fog` doesn't look for.
+    """
+    return f"{node_type}:political"
+
+
 def apply_fog(
     payload: dict[str, Any],
     node_type: str,
@@ -179,7 +193,7 @@ def apply_fog(
     reading = read_intel(
         ledger,
         node_id,
-        f"{node_type}:political",
+        political_field_group(node_type),
         tick,
         staleness_ticks=staleness_ticks,
         unknown_ticks=unknown_ticks,
@@ -214,4 +228,5 @@ __all__ = [
     "ORG_POLITICAL_FIELDS",
     "POLITICAL_FIELDS",
     "apply_fog",
+    "political_field_group",
 ]

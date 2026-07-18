@@ -61,8 +61,8 @@ from babylon.topology.graph_algorithms import (
 )
 
 from .epilogues import EPILOGUES
-from .fog.filter import ORG_POLITICAL_FIELDS, POLITICAL_FIELDS, apply_fog
-from .fog.ledger import IntelLedger
+from .fog.filter import ORG_POLITICAL_FIELDS, POLITICAL_FIELDS, apply_fog, political_field_group
+from .fog.ledger import IntelLedger, ledger_from_events
 from .fog.reach import organizing_reach
 from .log_handler import sanitize_for_log
 from .map_contract import MAP_HISTORY_REPLAYABLE_METRICS, MAP_METRIC_PROPERTIES
@@ -2262,7 +2262,7 @@ class EngineBridge:
             logger.exception("Failed to hydrate graph for map fog for session %s", session_id)
 
         reach = _current_organizing_reach(graph)
-        ledger = _EMPTY_INTEL_LEDGER
+        ledger = _derive_intel_ledger(session_id)
         staleness_ticks, unknown_ticks = _current_intel_aging_ticks()
         h3_to_territory: dict[str, str] = (
             {
@@ -3571,7 +3571,7 @@ class EngineBridge:
         """
         state, graph = self.hydrate_state(session_id)
         reach = _current_organizing_reach(graph)
-        ledger = _EMPTY_INTEL_LEDGER
+        ledger = _derive_intel_ledger(session_id)
         tick = state.tick
         organizations = [
             _serialize_organization(
@@ -3784,7 +3784,12 @@ class EngineBridge:
             target, mode) — Constitution III.7.
         """
         state, graph = self.hydrate_state(session_id)
-        nodes, edges = _build_org_network(state, graph, territory_filter=territory_filter)
+        nodes, edges = _build_org_network(
+            state,
+            graph,
+            territory_filter=territory_filter,
+            ledger=_derive_intel_ledger(session_id),
+        )
         return {
             "tick": state.tick,
             "nodes": nodes,
@@ -4707,7 +4712,7 @@ class EngineBridge:
             node_type,
             node_id,
             _current_organizing_reach(graph),
-            _EMPTY_INTEL_LEDGER,
+            _derive_intel_ledger(session_id),
             _graph_tick(graph),
             staleness_ticks=staleness_ticks,
             unknown_ticks=unknown_ticks,
@@ -4818,7 +4823,7 @@ class EngineBridge:
             "organization",
             org_id,
             _current_organizing_reach(graph),
-            _EMPTY_INTEL_LEDGER,
+            _derive_intel_ledger(session_id),
             _graph_tick(graph),
             staleness_ticks=staleness_ticks,
             unknown_ticks=unknown_ticks,
@@ -4960,7 +4965,7 @@ class EngineBridge:
             "territory",
             territory_id,
             _current_organizing_reach(graph),
-            _EMPTY_INTEL_LEDGER,
+            _derive_intel_ledger(session_id),
             _graph_tick(graph),
             staleness_ticks=staleness_ticks,
             unknown_ticks=unknown_ticks,
@@ -5209,6 +5214,23 @@ class EngineBridge:
             engine_result = _pop_engine_result(results_by_org, action["org_id"])
             success, failure_reason, ci_delta, direct_effects = _engine_result_fields(engine_result)
 
+            details: dict[str, Any] = {
+                "direct_effects": direct_effects,
+                "failure_reason": failure_reason,
+            }
+            # Track 1 / Task 3: for a successful INVESTIGATE, stash the
+            # revealed fields' TRUE values off new_graph (already in scope)
+            # onto this row's details — the write half of the intel ledger
+            # (game.fog.ledger.ledger_from_events reads these two keys back
+            # via _derive_intel_ledger). See _investigate_field_snapshot's
+            # docstring for why this must happen HERE, not at fog-read time.
+            intel_snapshot = _investigate_field_snapshot(
+                action_type_enum, tid, direct_effects, new_graph
+            )
+            if intel_snapshot is not None:
+                details["intel_field_group"] = intel_snapshot["field_group"]
+                details["intel_value_snapshot"] = intel_snapshot["value_snapshot"]
+
             result_data = {
                 "session_id": session_id,
                 "tick": new_state.tick,
@@ -5221,7 +5243,7 @@ class EngineBridge:
                 "success": success,
                 "consciousness_delta": ci_delta,
                 "heat_delta": post_heat - pre.get("heat", 0.0),
-                "details": {"direct_effects": direct_effects, "failure_reason": failure_reason},
+                "details": details,
             }
             _persist_action_result(self._persistence, result_data)
 
@@ -6465,14 +6487,18 @@ def _is_player_org(org_id: str, player_org_id: str | None) -> bool:
     return player_org_id is not None and org_id == player_org_id
 
 
-#: Track 1 / Task 4: no INVESTIGATE-resolution wiring exists yet (Task 9) to
-#: populate a real per-session :class:`IntelLedger` — every fog call site
-#: below reads this shared EMPTY ledger, an honest "nothing observed yet"
-#: (every political field outside reach reads "unknown" until Task 9 wires a
-#: real writer). Sharing one instance is safe: :class:`IntelLedger` is frozen
-#: and this one can never accumulate entries, unlike the four forbidden
-#: per-process session dicts (``_session_action_history`` et al.) — it is an
-#: immutable empty VALUE, not mutable session state.
+#: Track 1 / Task 3 (2026-07-18): the honest fallback once INVESTIGATE
+#: resolutions ARE event-sourced (:func:`_derive_intel_ledger`, below) —
+#: "nothing observed yet" for a fresh session (no persisted
+#: ``action_result`` rows to fold) or a non-session context
+#: (``_centrality_by_territory``'s :func:`_build_org_network` call, which
+#: has no ``session_id`` and only needs the resulting centrality numbers,
+#: never the fogged payload). Every genuinely PLAYER-FACING call site now
+#: derives a REAL ledger instead of reading this constant directly. Sharing
+#: one instance is safe: :class:`IntelLedger` is frozen and this one can
+#: never accumulate entries, unlike the four forbidden per-process session
+#: dicts (``_session_action_history`` et al.) — it is an immutable empty
+#: VALUE, not mutable session state.
 _EMPTY_INTEL_LEDGER: Final[IntelLedger] = IntelLedger()
 
 
@@ -6512,6 +6538,91 @@ def _current_intel_aging_ticks() -> tuple[int, int]:
     ``GameDefines`` (same precedent, same reason)."""
     eh = GameDefines().epistemic_horizon
     return eh.intel_staleness_ticks, eh.intel_unknown_ticks
+
+
+def _query_investigate_action_results(session_id: UUID) -> list[dict[str, Any]]:
+    """Fetch this session's persisted, successful INVESTIGATE action_result rows.
+
+    Track 1 / Task 3: the read half of :func:`_investigate_field_snapshot`'s
+    write-time enrichment. Queries the Django ORM ``ActionResult`` model
+    directly (mirrors ``_persist_action_result``'s own ORM fallback and
+    ``get_map_snapshot``'s ``GameSession``/``HexState`` reads elsewhere in
+    this file) — ``action_result`` has no protocol-level query method
+    (``RuntimePersistence`` only declares the WRITE side,
+    ``persist_action_results``), so there is no ``getattr``-based
+    persistence indirection available to reuse here.
+
+    Best-effort like this file's other ``game.models`` read paths: any
+    failure (Django not configured, e.g. a non-``django_db`` unit test; a
+    genuinely absent table) yields an empty list — the caller
+    (:func:`_derive_intel_ledger`) folds that into an honestly empty
+    ledger, never a crash on a read-only convenience path.
+
+    Args:
+        session_id: The game session UUID.
+
+    Returns:
+        Dicts with ``tick``/``target_id``/``details`` keys, one per
+        persisted successful ``ActionType.MAP_NETWORK`` (INVESTIGATE)
+        ``action_result`` row.
+    """
+    from game.models import ActionResult
+
+    try:
+        rows = ActionResult.objects.filter(
+            session_id=session_id,
+            action_type=ActionType.MAP_NETWORK.value,
+            success=True,
+        ).values("tick", "target_id", "details")
+        return [dict(row) for row in rows]
+    except Exception:  # noqa: BLE001 — best-effort read; empty ledger is honest
+        logger.exception(
+            "Failed to query INVESTIGATE action_result rows for session %s", session_id
+        )
+        return []
+
+
+def _derive_intel_ledger(session_id: UUID) -> IntelLedger:
+    """Derive this session's real :class:`IntelLedger` from persisted history.
+
+    Track 1 / Task 3 (2026-07-18): replaces :data:`_EMPTY_INTEL_LEDGER` at
+    every PLAYER-FACING fog call site. Deterministic and replayable — built
+    entirely from the ``action_result`` table (never one of the forbidden
+    per-process session globals), so a worker restart mid-session
+    reconstructs the exact same ledger a live process would have, and two
+    concurrent readers of the same session always agree.
+
+    Rows lacking the ``intel_field_group``/``intel_value_snapshot`` details
+    keys (any ``action_result`` row that isn't a Track-1/Task-3-enriched
+    INVESTIGATE — including every row persisted before this task shipped)
+    are skipped by :func:`~game.fog.ledger.ledger_from_events`, which never
+    fabricates an entry from a partial row (Constitution III.11).
+
+    Args:
+        session_id: The game session UUID.
+
+    Returns:
+        A new :class:`IntelLedger` — :data:`_EMPTY_INTEL_LEDGER`-equivalent
+        (zero entries) for a fresh session or one with no recoverable
+        INVESTIGATE history.
+    """
+    rows = _query_investigate_action_results(session_id)
+    ledger_rows: list[dict[str, Any]] = []
+    for row in rows:
+        details = row.get("details") or {}
+        field_group = details.get("intel_field_group")
+        value_snapshot = details.get("intel_value_snapshot")
+        if not field_group or not value_snapshot:
+            continue
+        ledger_rows.append(
+            {
+                "tick": row.get("tick"),
+                "target_id": row.get("target_id"),
+                "field_group": field_group,
+                "value_snapshot": value_snapshot,
+            }
+        )
+    return ledger_from_events(ledger_rows)
 
 
 # Aliases accepted at the API/CLI boundary, mapped to canonical names in the
@@ -9533,7 +9644,11 @@ def _serialize_institution(inst: Any) -> dict[str, Any]:
 
 
 def _build_org_network(
-    state: WorldState, graph: Any, *, territory_filter: str | None = None
+    state: WorldState,
+    graph: Any,
+    *,
+    territory_filter: str | None = None,
+    ledger: IntelLedger | None = None,
 ) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
     """Build the org-network nodes/edges for :meth:`EngineBridge.get_org_network`.
 
@@ -9548,12 +9663,20 @@ def _build_org_network(
         graph: The hydrated session graph (edges live only here — orgs
             carry no edge collection on their Pydantic model).
         territory_filter: Optional territory id restricting the node set.
+        ledger: Track 1 / Task 3: the session's real
+            :class:`~game.fog.ledger.IntelLedger`
+            (:func:`_derive_intel_ledger`), or ``None`` to fall back to
+            :data:`_EMPTY_INTEL_LEDGER` — the caller with no ``session_id``
+            in scope (:func:`_centrality_by_territory`, which discards
+            every fogged field and keeps only centrality numbers) passes
+            nothing rather than paying for a lookup it can't use.
 
     Returns:
         ``(nodes, edges)`` — both sorted deterministically
         (Constitution III.7): nodes by id, edges by
         ``(source, target, mode)``.
     """
+    resolved_ledger = ledger if ledger is not None else _EMPTY_INTEL_LEDGER
     orgs = state.organizations
     institutions = state.institutions
     territories = state.territories
@@ -9591,7 +9714,7 @@ def _build_org_network(
                 orgs[oid],
                 player_org_id=state.player_org_id,
                 reach=reach,
-                ledger=_EMPTY_INTEL_LEDGER,
+                ledger=resolved_ledger,
                 tick=_graph_tick(graph),
             ),
         }
@@ -9609,7 +9732,7 @@ def _build_org_network(
                 territories[tid],
                 graph=graph,
                 reach=reach,
-                ledger=_EMPTY_INTEL_LEDGER,
+                ledger=resolved_ledger,
                 tick=_graph_tick(graph),
             ),
         }
@@ -9879,9 +10002,18 @@ def _state_to_snapshot(state: WorldState, session_id: UUID, *, graph: Any = None
     ``organizations``) gets an empty reach for its (unused) territories —
     honest deny, never a fabricated full-visibility default (Constitution
     III.11).
+
+    Track 1 / Task 3: ``ledger`` is derived HERE (:func:`_derive_intel_ledger`)
+    rather than threaded in as a parameter — every one of the 7 call sites
+    already carries ``session_id``, so deriving internally fixes every
+    caller in one place instead of requiring each to remember to pass a
+    real ledger. A non-``django_db`` unit test with no real
+    ``action_result`` table (or a fresh session with no persisted
+    INVESTIGATE history) safely yields the honestly-empty ledger via
+    :func:`_derive_intel_ledger`'s own best-effort fallback.
     """
     reach = _current_organizing_reach(graph)
-    ledger = _EMPTY_INTEL_LEDGER
+    ledger = _derive_intel_ledger(session_id)
     tick = state.tick
     territories = [
         _serialize_territory(t, graph=graph, reach=reach, ledger=ledger, tick=tick)
@@ -10139,6 +10271,67 @@ def _engine_result_fields(
     ci_delta = float(ci["collective_identity_delta"]) if ci else 0.0
     direct_effects = engine_result.get("direct_effects") or {}
     return success, failure_reason, ci_delta, direct_effects
+
+
+def _investigate_field_snapshot(
+    action_type_enum: ActionType | None,
+    target_id: str | None,
+    direct_effects: dict[str, Any],
+    graph: Any,
+) -> dict[str, Any] | None:
+    """Freeze an INVESTIGATE resolution's revealed fields off the live graph.
+
+    Track 1 / Task 3 (2026-07-18): the write-side half of the intel ledger
+    (``game.fog.ledger.IntelLedger``/``ledger_from_events``). The engine's
+    ``resolve_investigate`` (``src/babylon/engine/actions/investigate.py``)
+    names WHICH fields were revealed (``direct_effects["revealed"]`` —
+    field NAMES only, e.g. ``["heat", "rent_level", ...]``) but carries no
+    VALUES — this bridge-layer function is what supplies them, reading the
+    live post-tick ``graph`` at the exact moment ``resolve_tick`` already
+    has it in scope, so the captured snapshot is the TRUE value as of this
+    tick, frozen forever after (never recomputed at a later fog read — see
+    ``game.fog.ledger.IntelEntry``'s docstring for why that distinction is
+    the whole point of the staleness/quantization tiers). This is bridge
+    code, not engine code: no ``src/babylon/engine/*`` file changes.
+
+    Returns ``None`` unless this was a successful ``ActionType.MAP_NETWORK``
+    (INVESTIGATE) resolution naming a non-empty revealed-fields list for a
+    ``target_id`` still present on ``graph`` — any other action, a failed
+    INVESTIGATE (``direct_effects`` absent/empty), or a since-removed target
+    yields no snapshot (Constitution III.11: no fabricated entry).
+
+    Args:
+        action_type_enum: The resolved action's :class:`ActionType`, or
+            ``None`` (unrecognized verb).
+        target_id: The action's target node id.
+        direct_effects: ``ActionResult.direct_effects`` from the engine
+            result (``{"scan_type": ..., "revealed": {target_id: [...]}}``
+            for a successful INVESTIGATE).
+        graph: The post-tick graph (``resolve_tick``'s ``new_graph``).
+
+    Returns:
+        ``{"field_group": ..., "value_snapshot": ...}`` ready to stash onto
+        the persisted ``action_result`` row's ``details``, or ``None``.
+    """
+    if action_type_enum is not ActionType.MAP_NETWORK or not target_id:
+        return None
+    revealed_by_target = direct_effects.get("revealed")
+    if not isinstance(revealed_by_target, dict):
+        return None
+    fields = revealed_by_target.get(target_id)
+    if not fields or target_id not in graph.nodes:
+        return None
+    node_data = graph.nodes[target_id]
+    node_type = node_data.get("_node_type")
+    if not node_type:
+        return None
+    value_snapshot = {field: node_data[field] for field in fields if field in node_data}
+    if not value_snapshot:
+        return None
+    return {
+        "field_group": political_field_group(str(node_type)),
+        "value_snapshot": value_snapshot,
+    }
 
 
 def _persist_action_result(persistence: RuntimePersistence, result_data: dict[str, Any]) -> None:

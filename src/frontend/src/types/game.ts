@@ -241,6 +241,33 @@ export interface TerritoryState {
    * (Constitution III.11 — never coerced to a fabricated 0).
    */
   price_divergence?: number | null;
+  /**
+   * Playability Spine Task 20 (spec-116 4d.5): the Feature-023 circulation +
+   * Feature-024 financial-distribution families, serialized DECLARED-DARK.
+   * The engine's gating services (`turnover_profile_source` /
+   * `interest_calculator`) are unwired, so post-boundary values are the
+   * write-site fallback constants (0.0 / false / 0; the housing fraction's
+   * honest `null`) and `null` before the first year boundary. Do NOT build
+   * player-facing chrome on these until the SEAM_REGISTRY rows leave
+   * NOT_YET_COMPUTED — a chip of frozen constants is dishonest.
+   * Wire keys keep the `tick_` prefix (registry `wire_keys`).
+   */
+  tick_liquidity_ratio?: number | null;
+  tick_commodity_overhang?: number | null;
+  tick_replacement_cycle?: string | null;
+  tick_inventory_diagnosis?: string | null;
+  tick_realization_crisis?: boolean | null;
+  tick_turnover_crisis?: boolean | null;
+  tick_reproduction_crisis?: boolean | null;
+  tick_interest_burden?: number | null;
+  tick_ground_rent?: number | null;
+  tick_rentier_share?: number | null;
+  tick_profit_of_enterprise?: number | null;
+  tick_financialization_share?: number | null;
+  tick_accumulated_debt?: number | null;
+  tick_claims_exceed_surplus?: boolean | null;
+  tick_housing_fictitious_fraction?: number | null;
+  tick_financial_crisis_signals?: number | null;
 }
 
 /** Ternary consciousness vector — always sums to 1.0 (Spec 052 §6). */

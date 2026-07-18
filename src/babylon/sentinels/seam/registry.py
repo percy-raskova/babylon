@@ -480,11 +480,19 @@ _MAP_METRICS: tuple[SeamEntry, ...] = (
 # * Group B (3, DECLARED_CONDITIONAL) — real, non-null, but FROZEN at their
 #   ``CountyEconomicState``/seed bootstrap constants until the named
 #   calculator is wired (never silently relabeled as "live" data).
-# * Group C (7, STRUCTURALLY_IMPOSSIBLE) — the circulation layer, dead until
-#   ``turnover_profile_source`` is wired (gate:
-#   ``domain/economics/tick/system/__init__.py:1050``).
-# * Group D (9, STRUCTURALLY_IMPOSSIBLE) — the financial-distribution layer,
-#   dead until ``interest_calculator`` is wired (gate: same file, :1248).
+# * Group C (7, NOT_YET_COMPUTED) — the circulation layer, gated on the
+#   unwired ``turnover_profile_source`` service (gate:
+#   ``domain/economics/tick/system/__init__.py:1050``). Serialized
+#   declared-dark since Playability Spine Task 20 (spec-116 4d.5): a
+#   FRED-backed sibling implementation (``DefaultTurnoverProfileSource``,
+#   ``domain/economics/factory.py``) exists — it is computable, just not
+#   wired into this pipeline — so ``STRUCTURALLY_IMPOSSIBLE`` ("cannot be
+#   computed with today's graph shape") was a false liveness ruling; relabeled
+#   ``NOT_YET_COMPUTED`` by the Task 20 de-mock correction.
+# * Group D (9, NOT_YET_COMPUTED) — the financial-distribution layer, gated on
+#   the unwired ``interest_calculator`` service (gate: same file, :1248).
+#   Same Task 20 relabel: a FRED-backed sibling (``DefaultInterestCalculator``,
+#   ``domain/economics/factory.py``) exists, unwired here only.
 #
 # ``tick_throughput_position``/``tick_supply_chain_depth`` were deliberately
 # EXCLUDED from this Round-1 list — owner ruling 1 wires them for real in
@@ -498,27 +506,41 @@ _MAP_METRICS: tuple[SeamEntry, ...] = (
 
 _TERRITORY_EMITTERS: tuple[str, ...] = ("web/game/engine_bridge.py::_serialize_territory (:6218)",)
 
-#: Groups C/D reach no serializer — that is the point (STRUCTURALLY_IMPOSSIBLE).
-#: ``read_paths`` honestly cites the one place these attrs exist at all: the
-#: engine's own write-site, not a bridge/serializer read call that doesn't exist.
+#: Groups C/D are SERIALIZED since spec-116 4d.5 (declared-dark): the write
+#: site emits fallback constants until the gating services are wired, and
+#: ``_serialize_territory`` faithfully carries those constants (or ``None``
+#: before the first boundary). ``read_paths`` cites BOTH ends of the wire;
+#: the liveness class is NOT_YET_COMPUTED — the registry's core honesty rule:
+#: frozen constants are never relabeled as live data, but a merely-unwired
+#: (not structurally impossible) service is not mislabeled "impossible" either.
 _TICK_WRITE_SITE: tuple[str, ...] = (
     "src/babylon/domain/economics/tick/graph_bridge.py::write_tick_state_to_graph "
     "(year-boundary graph.update_node call, :102-195)",
 )
 
+_TICK_DARK_EMITTERS: tuple[str, ...] = _TICK_WRITE_SITE + _TERRITORY_EMITTERS
+
 _TURNOVER_GATE: str = (
-    "STRUCTURALLY_IMPOSSIBLE: gated on the unwired `turnover_profile_source` service "
-    "(domain/economics/tick/system/__init__.py:1050) — the circulation layer never "
-    "computes this without a real turnover-profile source. Reaches no serializer; "
-    "the observatory tells the truth about the gap instead of carrying silent debt."
+    "NOT_YET_COMPUTED: gated on the unwired `turnover_profile_source` service "
+    "(domain/economics/tick/system/__init__.py:1050) — a FRED-backed sibling "
+    "implementation (`DefaultTurnoverProfileSource`, domain/economics/factory.py) "
+    "exists but is not wired into this pipeline, so the circulation layer never "
+    "computes a live value without it. Serialized declared-dark since spec-116 "
+    "4d.5: the wire carries the write-site fallback constant (or None pre-boundary), "
+    "never relabeled as live until that wiring lands (Task 20 de-mock correction: "
+    "this was STRUCTURALLY_IMPOSSIBLE, a false 'cannot be computed' ruling)."
 )
 
 _INTEREST_GATE: str = (
-    "STRUCTURALLY_IMPOSSIBLE: gated on the unwired `interest_calculator` service "
-    "(domain/economics/tick/system/__init__.py:1248) — the financial distribution "
-    "layer never computes this without a real interest calculator. Reaches no "
-    "serializer; the observatory tells the truth about the gap instead of carrying "
-    "silent debt."
+    "NOT_YET_COMPUTED: gated on the unwired `interest_calculator` service "
+    "(domain/economics/tick/system/__init__.py:1248) — a FRED-backed sibling "
+    "implementation (`DefaultInterestCalculator`, domain/economics/factory.py) "
+    "exists but is not wired into this pipeline, so the financial distribution "
+    "layer never computes a live value without it. Serialized declared-dark since "
+    "spec-116 4d.5: the wire carries the write-site fallback constant (or None "
+    "pre-boundary), never relabeled as live until that wiring lands (Task 20 "
+    "de-mock correction: this was STRUCTURALLY_IMPOSSIBLE, a false 'cannot be "
+    "computed' ruling)."
 )
 
 _TERRITORY_TICK_METRICS: tuple[SeamEntry, ...] = (
@@ -752,9 +774,9 @@ _TERRITORY_TICK_METRICS: tuple[SeamEntry, ...] = (
         wire_keys=("tick_liquidity_ratio",),
         scope=SeamScope.TERRITORY,
         owner_layer="domain.economics.tick (CirculationState.circuit_state)",
-        liveness_class=LivenessClass.STRUCTURALLY_IMPOSSIBLE,
+        liveness_class=LivenessClass.NOT_YET_COMPUTED,
         dtype="float",
-        read_paths=_TICK_WRITE_SITE,
+        read_paths=_TICK_DARK_EMITTERS,
         spec_ref="Epochs audit · Wave 2 · Gap-1",
         notes=_TURNOVER_GATE,
     ),
@@ -763,9 +785,9 @@ _TERRITORY_TICK_METRICS: tuple[SeamEntry, ...] = (
         wire_keys=("tick_commodity_overhang",),
         scope=SeamScope.TERRITORY,
         owner_layer="domain.economics.tick (CirculationState.circuit_state)",
-        liveness_class=LivenessClass.STRUCTURALLY_IMPOSSIBLE,
+        liveness_class=LivenessClass.NOT_YET_COMPUTED,
         dtype="float",
-        read_paths=_TICK_WRITE_SITE,
+        read_paths=_TICK_DARK_EMITTERS,
         spec_ref="Epochs audit · Wave 2 · Gap-1",
         notes=_TURNOVER_GATE,
     ),
@@ -774,9 +796,9 @@ _TERRITORY_TICK_METRICS: tuple[SeamEntry, ...] = (
         wire_keys=("tick_replacement_cycle",),
         scope=SeamScope.TERRITORY,
         owner_layer="domain.economics.tick (DepreciationFundState.replacement_cycle_position)",
-        liveness_class=LivenessClass.STRUCTURALLY_IMPOSSIBLE,
+        liveness_class=LivenessClass.NOT_YET_COMPUTED,
         dtype="enum:ReplacementCyclePosition",
-        read_paths=_TICK_WRITE_SITE,
+        read_paths=_TICK_DARK_EMITTERS,
         spec_ref="Epochs audit · Wave 2 · Gap-1",
         notes=_TURNOVER_GATE,
     ),
@@ -785,9 +807,9 @@ _TERRITORY_TICK_METRICS: tuple[SeamEntry, ...] = (
         wire_keys=("tick_inventory_diagnosis",),
         scope=SeamScope.TERRITORY,
         owner_layer="domain.economics.tick (InventoryState.inventory_problem)",
-        liveness_class=LivenessClass.STRUCTURALLY_IMPOSSIBLE,
+        liveness_class=LivenessClass.NOT_YET_COMPUTED,
         dtype="enum:InventoryDiagnosis",
-        read_paths=_TICK_WRITE_SITE,
+        read_paths=_TICK_DARK_EMITTERS,
         spec_ref="Epochs audit · Wave 2 · Gap-1",
         notes=_TURNOVER_GATE,
     ),
@@ -796,9 +818,9 @@ _TERRITORY_TICK_METRICS: tuple[SeamEntry, ...] = (
         wire_keys=("tick_realization_crisis",),
         scope=SeamScope.TERRITORY,
         owner_layer="domain.economics.tick (CirculationAssessment)",
-        liveness_class=LivenessClass.STRUCTURALLY_IMPOSSIBLE,
+        liveness_class=LivenessClass.NOT_YET_COMPUTED,
         dtype="bool",
-        read_paths=_TICK_WRITE_SITE,
+        read_paths=_TICK_DARK_EMITTERS,
         spec_ref="Epochs audit · Wave 2 · Gap-1",
         notes=_TURNOVER_GATE,
     ),
@@ -807,9 +829,9 @@ _TERRITORY_TICK_METRICS: tuple[SeamEntry, ...] = (
         wire_keys=("tick_turnover_crisis",),
         scope=SeamScope.TERRITORY,
         owner_layer="domain.economics.tick (CirculationAssessment)",
-        liveness_class=LivenessClass.STRUCTURALLY_IMPOSSIBLE,
+        liveness_class=LivenessClass.NOT_YET_COMPUTED,
         dtype="bool",
-        read_paths=_TICK_WRITE_SITE,
+        read_paths=_TICK_DARK_EMITTERS,
         spec_ref="Epochs audit · Wave 2 · Gap-1",
         notes=_TURNOVER_GATE,
     ),
@@ -818,9 +840,9 @@ _TERRITORY_TICK_METRICS: tuple[SeamEntry, ...] = (
         wire_keys=("tick_reproduction_crisis",),
         scope=SeamScope.TERRITORY,
         owner_layer="domain.economics.tick (CirculationAssessment)",
-        liveness_class=LivenessClass.STRUCTURALLY_IMPOSSIBLE,
+        liveness_class=LivenessClass.NOT_YET_COMPUTED,
         dtype="bool",
-        read_paths=_TICK_WRITE_SITE,
+        read_paths=_TICK_DARK_EMITTERS,
         spec_ref="Epochs audit · Wave 2 · Gap-1",
         notes=_TURNOVER_GATE,
     ),
@@ -830,9 +852,9 @@ _TERRITORY_TICK_METRICS: tuple[SeamEntry, ...] = (
         wire_keys=("tick_interest_burden",),
         scope=SeamScope.TERRITORY,
         owner_layer="domain.economics.tick (SurplusDistribution.interest_payments)",
-        liveness_class=LivenessClass.STRUCTURALLY_IMPOSSIBLE,
+        liveness_class=LivenessClass.NOT_YET_COMPUTED,
         dtype="float",
-        read_paths=_TICK_WRITE_SITE,
+        read_paths=_TICK_DARK_EMITTERS,
         spec_ref="Epochs audit · Wave 2 · Gap-1",
         notes=_INTEREST_GATE,
     ),
@@ -841,9 +863,9 @@ _TERRITORY_TICK_METRICS: tuple[SeamEntry, ...] = (
         wire_keys=("tick_ground_rent",),
         scope=SeamScope.TERRITORY,
         owner_layer="domain.economics.tick (RentExtraction.total_rent)",
-        liveness_class=LivenessClass.STRUCTURALLY_IMPOSSIBLE,
+        liveness_class=LivenessClass.NOT_YET_COMPUTED,
         dtype="float",
-        read_paths=_TICK_WRITE_SITE,
+        read_paths=_TICK_DARK_EMITTERS,
         spec_ref="Epochs audit · Wave 2 · Gap-1",
         notes=(
             f"{_INTEREST_GATE} Second wall even if wired: _DefaultCountyRentalAdapter "
@@ -855,9 +877,9 @@ _TERRITORY_TICK_METRICS: tuple[SeamEntry, ...] = (
         wire_keys=("tick_rentier_share",),
         scope=SeamScope.TERRITORY,
         owner_layer="domain.economics.tick (SurplusDistribution.rentier_share)",
-        liveness_class=LivenessClass.STRUCTURALLY_IMPOSSIBLE,
+        liveness_class=LivenessClass.NOT_YET_COMPUTED,
         dtype="float",
-        read_paths=_TICK_WRITE_SITE,
+        read_paths=_TICK_DARK_EMITTERS,
         spec_ref="Epochs audit · Wave 2 · Gap-1",
         notes=_INTEREST_GATE,
     ),
@@ -866,9 +888,9 @@ _TERRITORY_TICK_METRICS: tuple[SeamEntry, ...] = (
         wire_keys=("tick_profit_of_enterprise",),
         scope=SeamScope.TERRITORY,
         owner_layer="domain.economics.tick (SurplusDistribution.profit_of_enterprise)",
-        liveness_class=LivenessClass.STRUCTURALLY_IMPOSSIBLE,
+        liveness_class=LivenessClass.NOT_YET_COMPUTED,
         dtype="float",
-        read_paths=_TICK_WRITE_SITE,
+        read_paths=_TICK_DARK_EMITTERS,
         spec_ref="Epochs audit · Wave 2 · Gap-1",
         notes=(
             f"{_INTEREST_GATE} Can be negative (a debt-spiral signal) once wired — "
@@ -880,9 +902,9 @@ _TERRITORY_TICK_METRICS: tuple[SeamEntry, ...] = (
         wire_keys=("tick_financialization_share",),
         scope=SeamScope.TERRITORY,
         owner_layer="domain.economics.tick (SurplusDistribution.financialization_share)",
-        liveness_class=LivenessClass.STRUCTURALLY_IMPOSSIBLE,
+        liveness_class=LivenessClass.NOT_YET_COMPUTED,
         dtype="float",
-        read_paths=_TICK_WRITE_SITE,
+        read_paths=_TICK_DARK_EMITTERS,
         spec_ref="Epochs audit · Wave 2 · Gap-1",
         notes=_INTEREST_GATE,
     ),
@@ -891,9 +913,9 @@ _TERRITORY_TICK_METRICS: tuple[SeamEntry, ...] = (
         wire_keys=("tick_accumulated_debt",),
         scope=SeamScope.TERRITORY,
         owner_layer="domain.economics.tick (DebtAccumulation.accumulated_debt)",
-        liveness_class=LivenessClass.STRUCTURALLY_IMPOSSIBLE,
+        liveness_class=LivenessClass.NOT_YET_COMPUTED,
         dtype="float",
-        read_paths=_TICK_WRITE_SITE,
+        read_paths=_TICK_DARK_EMITTERS,
         spec_ref="Epochs audit · Wave 2 · Gap-1",
         notes=_INTEREST_GATE,
     ),
@@ -902,9 +924,9 @@ _TERRITORY_TICK_METRICS: tuple[SeamEntry, ...] = (
         wire_keys=("tick_claims_exceed_surplus",),
         scope=SeamScope.TERRITORY,
         owner_layer="domain.economics.tick (SurplusDistribution.claims_exceed_surplus)",
-        liveness_class=LivenessClass.STRUCTURALLY_IMPOSSIBLE,
+        liveness_class=LivenessClass.NOT_YET_COMPUTED,
         dtype="bool",
-        read_paths=_TICK_WRITE_SITE,
+        read_paths=_TICK_DARK_EMITTERS,
         spec_ref="Epochs audit · Wave 2 · Gap-1",
         notes=_INTEREST_GATE,
     ),
@@ -913,9 +935,9 @@ _TERRITORY_TICK_METRICS: tuple[SeamEntry, ...] = (
         wire_keys=("tick_housing_fictitious_fraction",),
         scope=SeamScope.TERRITORY,
         owner_layer="domain.economics.tick (HousingValueDecomposition.fictitious_fraction)",
-        liveness_class=LivenessClass.STRUCTURALLY_IMPOSSIBLE,
+        liveness_class=LivenessClass.NOT_YET_COMPUTED,
         dtype="float",
-        read_paths=_TICK_WRITE_SITE,
+        read_paths=_TICK_DARK_EMITTERS,
         spec_ref="Epochs audit · Wave 2 · Gap-1",
         notes=(
             f"{_INTEREST_GATE} The only Group D attr with an honest None write-side "
@@ -928,9 +950,9 @@ _TERRITORY_TICK_METRICS: tuple[SeamEntry, ...] = (
         wire_keys=("tick_financial_crisis_signals",),
         scope=SeamScope.TERRITORY,
         owner_layer="domain.economics.tick (FinancialCrisisSignals.active_signals)",
-        liveness_class=LivenessClass.STRUCTURALLY_IMPOSSIBLE,
+        liveness_class=LivenessClass.NOT_YET_COMPUTED,
         dtype="int",
-        read_paths=_TICK_WRITE_SITE,
+        read_paths=_TICK_DARK_EMITTERS,
         spec_ref="Epochs audit · Wave 2 · Gap-1",
         notes=f"{_INTEREST_GATE} Count of active signals, int in [0, 4].",
     ),

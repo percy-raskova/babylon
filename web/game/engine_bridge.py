@@ -6471,6 +6471,80 @@ def _carry_tick_dynamics_flows(
                 # as Group A/B above, no longer excluded from the carry.
                 tick_throughput_position=county.throughput_position,
                 tick_supply_chain_depth=county.supply_chain_depth,
+                # Playability Spine Task 20 (spec-116 4d.5): Group C
+                # (circulation, Feature 023) + Group D (financial
+                # distribution, Feature 024) join the carry — the write-site
+                # expressions from graph_bridge.py:128-197 mirrored
+                # byte-for-byte, fallback constants included. DECLARED-DARK:
+                # both gating services are unwired, so these are the frozen
+                # fallbacks until then (SEAM_REGISTRY rows stay
+                # NOT_YET_COMPUTED — never relabeled live).
+                tick_liquidity_ratio=county.circulation_state.circuit_state.liquidity_ratio,
+                tick_commodity_overhang=(county.circulation_state.circuit_state.commodity_overhang),
+                tick_replacement_cycle=(
+                    county.circulation_state.depreciation_fund.replacement_cycle_position.value
+                ),
+                tick_inventory_diagnosis=(
+                    county.circulation_state.inventory_state.inventory_problem.value
+                ),
+                tick_realization_crisis=(
+                    county.circulation_state.latest_assessment.realization_crisis
+                    if county.circulation_state.latest_assessment is not None
+                    else False
+                ),
+                tick_turnover_crisis=(
+                    county.circulation_state.latest_assessment.turnover_crisis
+                    if county.circulation_state.latest_assessment is not None
+                    else False
+                ),
+                tick_reproduction_crisis=(
+                    county.circulation_state.latest_assessment.reproduction_crisis
+                    if county.circulation_state.latest_assessment is not None
+                    else False
+                ),
+                tick_interest_burden=(
+                    county.surplus_distribution.interest_payments
+                    if county.surplus_distribution is not None
+                    else 0.0
+                ),
+                tick_ground_rent=(
+                    county.rent_extraction.total_rent if county.rent_extraction is not None else 0.0
+                ),
+                tick_rentier_share=(
+                    county.surplus_distribution.rentier_share
+                    if county.surplus_distribution is not None
+                    else 0.0
+                ),
+                tick_profit_of_enterprise=(
+                    county.surplus_distribution.profit_of_enterprise
+                    if county.surplus_distribution is not None
+                    else 0.0
+                ),
+                tick_financialization_share=(
+                    county.surplus_distribution.financialization_share
+                    if county.surplus_distribution is not None
+                    else 0.0
+                ),
+                tick_accumulated_debt=(
+                    county.debt_accumulation.accumulated_debt
+                    if county.debt_accumulation is not None
+                    else 0.0
+                ),
+                tick_claims_exceed_surplus=(
+                    county.surplus_distribution.claims_exceed_surplus
+                    if county.surplus_distribution is not None
+                    else False
+                ),
+                tick_housing_fictitious_fraction=(
+                    county.housing_decomposition.fictitious_fraction
+                    if county.housing_decomposition is not None
+                    else None
+                ),
+                tick_financial_crisis_signals=(
+                    county.financial_crisis.active_signals
+                    if county.financial_crisis is not None
+                    else 0
+                ),
                 **rate_updates,
             )
             continue
@@ -6526,6 +6600,26 @@ def _carry_tick_dynamics_flows(
             # boundaries, same pattern as the derived rates/Group A/B above.
             tick_throughput_position=old_data.get("tick_throughput_position"),
             tick_supply_chain_depth=old_data.get("tick_supply_chain_depth"),
+            # Task 20 (spec-116 4d.5): Groups C/D are annual too — carry the
+            # last boundary's values forward byte-identical, same pattern as
+            # Group A/B above (a serialized attr missing from EITHER arm is a
+            # flickering lens: present on boundary ticks, None on the other 51).
+            tick_liquidity_ratio=old_data.get("tick_liquidity_ratio"),
+            tick_commodity_overhang=old_data.get("tick_commodity_overhang"),
+            tick_replacement_cycle=old_data.get("tick_replacement_cycle"),
+            tick_inventory_diagnosis=old_data.get("tick_inventory_diagnosis"),
+            tick_realization_crisis=old_data.get("tick_realization_crisis"),
+            tick_turnover_crisis=old_data.get("tick_turnover_crisis"),
+            tick_reproduction_crisis=old_data.get("tick_reproduction_crisis"),
+            tick_interest_burden=old_data.get("tick_interest_burden"),
+            tick_ground_rent=old_data.get("tick_ground_rent"),
+            tick_rentier_share=old_data.get("tick_rentier_share"),
+            tick_profit_of_enterprise=old_data.get("tick_profit_of_enterprise"),
+            tick_financialization_share=old_data.get("tick_financialization_share"),
+            tick_accumulated_debt=old_data.get("tick_accumulated_debt"),
+            tick_claims_exceed_surplus=old_data.get("tick_claims_exceed_surplus"),
+            tick_housing_fictitious_fraction=old_data.get("tick_housing_fictitious_fraction"),
+            tick_financial_crisis_signals=old_data.get("tick_financial_crisis_signals"),
         )
 
 
@@ -8376,6 +8470,19 @@ def _serialize_territory(t: Any, *, graph: Any = None) -> dict[str, Any]:
     projection) — same shape as ``wage_pressure``. SIGNED (roughly
     ``[-2.0, 2.0]``): ``None`` for a territory with no county price⟷value
     axis, never coerced to ``0.0``.
+
+    Playability Spine Task 20 (spec-116 4d.5): the Feature-023 circulation
+    family and Feature-024 financial-distribution family join the same
+    ``tick_``-prefixed graph-attr pattern, serialized DECLARED-DARK — the
+    gating services (``turnover_profile_source``/``interest_calculator``)
+    are unwired, so post-boundary values are the engine's fallback constants
+    (0.0/False/0, plus ``tick_housing_fictitious_fraction``'s honest
+    ``None``). The wire keys keep their ``tick_`` prefix (registry
+    ``wire_keys``) — none collides with an existing payload key or Territory
+    model field. SEAM_REGISTRY rows: Groups C/D, ``NOT_YET_COMPUTED`` (a
+    FRED-backed sibling implementation exists but is not wired into this
+    pipeline — computable, just not yet wired; frozen constants are never
+    relabeled live).
     """
     territory_id = t.id
     return {
@@ -8436,6 +8543,50 @@ def _serialize_territory(t: Any, *, graph: Any = None) -> dict[str, Any]:
         "mass_receptivity": _territory_graph_attr(graph, territory_id, "mass_receptivity"),
         "intel_confidence": _territory_graph_attr(graph, territory_id, "intel_confidence"),
         "vision_state": _territory_graph_attr(graph, territory_id, "vision_state"),
+        # Playability Spine Task 20 (spec-116 4d.5): Group C (circulation,
+        # Feature 023) + Group D (financial distribution, Feature 024),
+        # serialized DECLARED-DARK under their registry wire keys (tick_
+        # prefix kept — the tick_median_wage collision precedent). Values are
+        # the engine's fallback constants until turnover_profile_source /
+        # interest_calculator are wired; None before the first boundary.
+        "tick_liquidity_ratio": _territory_graph_attr(graph, territory_id, "tick_liquidity_ratio"),
+        "tick_commodity_overhang": _territory_graph_attr(
+            graph, territory_id, "tick_commodity_overhang"
+        ),
+        "tick_replacement_cycle": _territory_graph_attr(
+            graph, territory_id, "tick_replacement_cycle"
+        ),
+        "tick_inventory_diagnosis": _territory_graph_attr(
+            graph, territory_id, "tick_inventory_diagnosis"
+        ),
+        "tick_realization_crisis": _territory_graph_attr(
+            graph, territory_id, "tick_realization_crisis"
+        ),
+        "tick_turnover_crisis": _territory_graph_attr(graph, territory_id, "tick_turnover_crisis"),
+        "tick_reproduction_crisis": _territory_graph_attr(
+            graph, territory_id, "tick_reproduction_crisis"
+        ),
+        "tick_interest_burden": _territory_graph_attr(graph, territory_id, "tick_interest_burden"),
+        "tick_ground_rent": _territory_graph_attr(graph, territory_id, "tick_ground_rent"),
+        "tick_rentier_share": _territory_graph_attr(graph, territory_id, "tick_rentier_share"),
+        "tick_profit_of_enterprise": _territory_graph_attr(
+            graph, territory_id, "tick_profit_of_enterprise"
+        ),
+        "tick_financialization_share": _territory_graph_attr(
+            graph, territory_id, "tick_financialization_share"
+        ),
+        "tick_accumulated_debt": _territory_graph_attr(
+            graph, territory_id, "tick_accumulated_debt"
+        ),
+        "tick_claims_exceed_surplus": _territory_graph_attr(
+            graph, territory_id, "tick_claims_exceed_surplus"
+        ),
+        "tick_housing_fictitious_fraction": _territory_graph_attr(
+            graph, territory_id, "tick_housing_fictitious_fraction"
+        ),
+        "tick_financial_crisis_signals": _territory_graph_attr(
+            graph, territory_id, "tick_financial_crisis_signals"
+        ),
     }
 
 

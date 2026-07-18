@@ -3539,3 +3539,36 @@ class TestExpectedDeltas:
         assert abs(expected) > abs(baseline)
 
         assert result["estimated_consciousness_delta"] == expected
+
+
+@pytest.mark.unit
+class TestEconomyDashboardChipContract:
+    """spec-116 4d.6: the payload key set is PINNED so a phantom chip
+    (TS-declared, never-emitted) can never return. Corrected audit figures:
+    all fields are emitted today; the tick-26 dead chips were pre-boundary
+    honesty (profit_rate/occ) on an un-migrated DB, not phantoms."""
+
+    def test_dashboard_emits_exactly_the_declared_key_set(self) -> None:
+        mock_persistence = _make_mock_persistence()
+        bridge = EngineBridge(mock_persistence)
+
+        result = bridge.get_economy_dashboard(uuid.uuid4())
+
+        assert set(result.keys()) == {
+            "tick",
+            "has_data",
+            "value_produced",
+            "rent_extracted",
+            "exploitation_rate",
+            "profit_rate",
+            "occ",
+            "imperial_rent_pool",
+            "current_super_wage_rate",
+            "wage_flow_total",
+            "tribute_flow_total",
+            "wealth_by_class_role",
+            "county_flow",
+        }, (
+            "EconomyDashboardPayload drifted — update types/game.ts, the "
+            "chips, and this pin in the SAME commit (no phantoms, no orphans)"
+        )

@@ -3739,6 +3739,7 @@ class TestBridgeEconomicsOverridesWiresCirculationAndFinancialServices:
                 leontief_session.close()
 
 
+@pytest.mark.requires_reference_db
 class TestBridgeEconomicsOverridesWiresVol1ReserveArmyServices:
     """spec-116 Task 21b: wire the FRED-backed Vol I production layer
     (Feature 021 — reserve army, productivity, dispossession) into

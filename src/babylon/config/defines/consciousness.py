@@ -161,6 +161,63 @@ class ConsciousnessDefines(BaseModel):
         ),
     )
 
+    # ----- Consciousness Recoupling (2026-07-18-consciousness-recoupling-design.md) -----
+    # Aleksandrov trace: a positive wage-value balance is the imperial bribe
+    # (Amin, LWV p.127 -- the social-democratic compromise is the political
+    # form of the bribe). It does not suppress political energy, it
+    # redirects it toward the chauvinist/fascist pole (Emmanuel, UE p.180;
+    # MIM mim-lumpen.txt:206-217). The two coefficients below shape THAT
+    # redirection; see babylon.formulas.sustained_exploitation.
+    # sustained_exploitation_magnitude for the curve they parametrize.
+
+    chauvinist_peak_location: float = Field(
+        default=0.1,
+        ge=0.0,
+        le=1.0,
+        description=(
+            "PROVISIONAL (spec: 2026-07-18-consciousness-recoupling-design.md "
+            "§5.4/§6, calibration gap pending Cope's Divided World Divided "
+            "Class acquisition). balance value at which sustained_exploitation_"
+            "magnitude's positive branch PEAKS -- MIM mim-internal-colonies."
+            "txt:521-525: the MARGINAL labor aristocracy (a small, precarious "
+            "wage-value margin, 'scrambling for crumbs') is 'the most "
+            "reactionary of all', not the securely bribed one. A small "
+            "positive default (not 0.0, not close to 1.0) is deliberate: it "
+            "must sit strictly inside (0, 1) so the curve is genuinely "
+            "non-monotonic across the whole positive domain, per §5.4's "
+            "sentinel."
+        ),
+    )
+    chauvinist_peak_falloff: float = Field(
+        default=0.3,
+        gt=0.0,
+        le=1.0,
+        description=(
+            "PROVISIONAL (same calibration gap as chauvinist_peak_location). "
+            "Gaussian half-width controlling how fast sustained_exploitation_"
+            "magnitude's positive branch decays as balance rises past the "
+            "peak toward a SECURE bribe (balance -> 1). At the default 0.3, "
+            "a securely bribed class (balance ~0.9) sits at ~3% of peak "
+            "intensity -- complacent, per Emmanuel UE p.180's contrast "
+            "between the marginal and the secure labor aristocracy."
+        ),
+    )
+    chauvinist_pressure_scale: float = Field(
+        default=1.0,
+        ge=0.0,
+        le=1.0,
+        description=(
+            "Positive wage-value balance -> chauvinist_pressure passed into "
+            "route_agitation_to_ternary, biasing the bifurcation split "
+            "toward the fascist pole (Emmanuel UE p.180; MIM mim-lumpen."
+            "txt:206-217 -- falling status + settler consciousness routes "
+            "to fascism as the rule). balance is already a normalized "
+            "[-1, 1] ratio matching effective_solidarity's [0, 1] domain, "
+            "so the default 1.0 is a direct pass-through of the positive "
+            "part of balance, absent evidence for damping it further."
+        ),
+    )
+
 
 class ContradictionFieldDefines(BaseModel):
     """Contradiction field topology coefficients (Feature 002).

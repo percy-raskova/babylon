@@ -162,6 +162,7 @@ def route_agitation_to_ternary(
     solidarity_factor: float,
     education_pressure: float,
     defines: ConsciousnessDefines | None = None,
+    chauvinist_pressure: float = 0.0,
 ) -> tuple[float, float, float]:
     """Route accumulated agitation into ternary consciousness shifts.
 
@@ -172,12 +173,24 @@ def route_agitation_to_ternary(
        Without solidarity, agitation routes to f (fascism).
     2. **Education pressure** biases the split toward revolutionary.
        This is the mechanized effect of the EDUCATE verb.
-    3. **Liberal drain** absorbs a fraction as liberal drift.
+    3. **Chauvinist pressure** biases the split toward fascist (Consciousness
+       Recoupling correction, ``docs/superpowers/specs/
+       2026-07-18-consciousness-recoupling-design.md``, §2 Change 2): a
+       positive wage-value balance is the imperial bribe, and per Emmanuel
+       (*Unequal Exchange* p.180) and MIM (``mim-lumpen.txt:206-217``) it
+       routes political energy toward chauvinism/fascism rather than
+       suppressing it. Callers derive this from POSITIVE ``balance`` only
+       (``ideology.py``) — negative balance contributes zero. Default
+       ``0.0`` makes every existing caller unaffected (backward compatible).
+    4. **Liberal drain** absorbs a fraction as liberal drift.
 
     Formula::
 
         consumed = agitation × consumption_rate
-        effective_solidarity = min(1.0, solidarity + education_pressure)
+        effective_solidarity = clamp(
+            min(1.0, solidarity + education_pressure) - chauvinist_pressure,
+            0.0, 1.0,
+        )
         Δr = consumed × effective_solidarity × routing_scale
         Δf = consumed × (1 - effective_solidarity) × routing_scale
         Δl = -(Δr + Δf) × liberal_backpressure
@@ -187,6 +200,10 @@ def route_agitation_to_ternary(
         solidarity_factor: Incoming SOLIDARITY edge strength [0, 1].
         education_pressure: Education pressure on community [0, 1].
         defines: Optional custom coefficients.
+        chauvinist_pressure: Bias toward the fascist pole, derived from a
+            positive wage-value balance [0, ∞) — clamped into the
+            solidarity computation, not required to be pre-bounded by the
+            caller. Default ``0.0`` (no bias, pre-Recoupling behavior).
 
     Returns:
         Tuple of (Δr, Δl, Δf) — directional shifts in ternary space.
@@ -200,8 +217,12 @@ def route_agitation_to_ternary(
     # Consume fraction of agitation for routing
     consumed = agitation * d.agitation_consumption_rate
 
-    # Education pressure biases toward revolutionary
+    # Education pressure biases toward revolutionary; chauvinist pressure
+    # (a positive wage-value balance) biases toward fascist. Clamp AFTER
+    # the subtraction so a large chauvinist_pressure floors at 0.0 rather
+    # than going negative and inverting the (1 - effective_solidarity) term.
     effective_solidarity = min(1.0, solidarity_factor + education_pressure)
+    effective_solidarity = max(0.0, min(1.0, effective_solidarity - chauvinist_pressure))
 
     # Scale factor for conversion
     scale = d.routing_scale

@@ -217,7 +217,15 @@ class TestPerClassSustainedTermDifferentiation:
     labor aristocracy) gains none -- even in the same tick, same graph.
     """
 
-    def test_exploited_class_radicalizes_while_bribed_class_does_not(self) -> None:
+    def test_exploited_class_radicalizes_while_bribed_class_routes_to_nation(self) -> None:
+        """Superseded by the Consciousness Recoupling correction
+        (``docs/superpowers/specs/2026-07-18-consciousness-recoupling-design.md``,
+        branch ``fix/null-play-coupling``): a positive balance no longer
+        generates ZERO agitation -- it generates agitation that routes to
+        the fascist pole (``national_identity``) instead of the
+        revolutionary one. See ``test_ideology_chauvinist_recoupling.py``
+        for the dedicated direction-flip/steady-state tests.
+        """
         graph = _graph_with_worker()
         defines = GameDefines()
         assert defines.consciousness.sustained_exploitation_sensitivity > 0.0
@@ -233,10 +241,22 @@ class TestPerClassSustainedTermDifferentiation:
             "balance) must generate sustained agitation from its OWN wage-"
             "value position"
         )
-        assert bribed_ideology["agitation"] == pytest.approx(0.0), (
+        assert bribed_ideology["agitation"] > 0.0, (
             "the bribed class (w_paid > v_produced, positive per-class "
-            "balance -- the imperial bribe) must generate ZERO sustained "
-            "agitation -- Cope's crisis-gating (ideology.py:108-120)"
+            "balance -- the imperial bribe) must now generate NONZERO "
+            "sustained agitation (Consciousness Recoupling correction): a "
+            "positive balance redirects agitation to the fascist pole, it "
+            "does not suppress it"
+        )
+        assert bribed_ideology["national_identity"] > 0.0, (
+            "the bribed class's agitation must route toward national_identity "
+            "(fascist), not class_consciousness (no incoming solidarity edge "
+            "on the labor-aristocracy node itself in this fixture)"
+        )
+        assert bribed_ideology["class_consciousness"] == pytest.approx(0.9), (
+            "with zero incoming solidarity on the bribed node, "
+            "effective_solidarity is already 0 -- class_consciousness must "
+            "stay at its baseline, unaffected by chauvinist_pressure clamping"
         )
 
     def test_same_global_mean_would_have_masked_this_but_per_class_does_not(self) -> None:

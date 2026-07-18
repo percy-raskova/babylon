@@ -19,7 +19,7 @@ from babylon.formulas.consciousness_routing import (
     route_agitation_to_ternary,
 )
 from babylon.formulas.contradiction import calculate_wealth_asymmetry_balance
-from babylon.formulas.sustained_exploitation import sustained_exploitation_agitation
+from babylon.formulas.sustained_exploitation import sustained_exploitation_magnitude
 from babylon.kernel.tick_partition import TickPartition
 from babylon.models.enums import EdgeType
 
@@ -181,23 +181,49 @@ class ConsciousnessSystem(SystemBase):
             # (engine/systems/contradiction.py:279) to build the (unrelated
             # here) global mean. Absent either field means no wage-value
             # transaction was recorded for this class THIS tick (e.g. the
-            # class is the payer itself, or its employer had zero wealth) —
-            # not a bug, so no sentinel-masking ``.get(field, 0.0)``: an
-            # explicit presence check, with an explicit documented fallback
-            # of "no defect this tick" (balance 0.0, same as the catalog's
-            # own empty-pairs contract, catalog.py:22-24).
+            # class is the payer itself, or its employer had zero wealth).
+            #
+            # Consciousness Recoupling correction (docs/superpowers/specs/
+            # 2026-07-18-consciousness-recoupling-design.md, §2): the OLD
+            # sign-gated formula (sustained_exploitation_agitation) mapped
+            # "no data this tick" and "balance == 0.0 exactly" to the SAME
+            # safe output (0.0), because its gate was `balance >= 0 -> 0.0`.
+            # sustained_exploitation_magnitude's positive branch does NOT
+            # have that property — it PEAKS near balance == 0 — so an
+            # absent-data fallback of `class_wage_balance = 0.0` would now
+            # silently fabricate near-peak chauvinist agitation for classes
+            # with no recorded wage-value transaction at all. This is
+            # exactly the silent `.get(field, 0.0)` masking the project
+            # forbids: the presence check below gates the WHOLE computation
+            # (magnitude AND chauvinist_pressure), not just the balance
+            # value, so "no data" reads as an explicit, documented zero
+            # contribution — not a data point on the curve.
             node_w_paid = attrs.get("w_paid")
             node_v_produced = attrs.get("v_produced")
             if node_w_paid is not None and node_v_produced is not None:
                 class_wage_balance = calculate_wealth_asymmetry_balance(
                     float(node_v_produced), float(node_w_paid)
                 )
+                sustained_deterioration = sustained_exploitation_magnitude(
+                    class_wage_balance,
+                    services.defines.consciousness.sustained_exploitation_sensitivity,
+                    services.defines.consciousness.chauvinist_peak_location,
+                    services.defines.consciousness.chauvinist_peak_falloff,
+                )
+                # Balance sign determines bifurcation DIRECTION (spec §2):
+                # only a POSITIVE balance (the imperial bribe) biases
+                # routing toward the fascist pole. A negative balance
+                # (labor losing) contributes zero chauvinist pressure —
+                # its direction is instead the revolutionary pull already
+                # carried by solidarity_pressure below.
+                chauvinist_pressure = (
+                    max(0.0, class_wage_balance)
+                    * services.defines.consciousness.chauvinist_pressure_scale
+                )
             else:
                 class_wage_balance = 0.0
-            sustained_deterioration = sustained_exploitation_agitation(
-                class_wage_balance,
-                services.defines.consciousness.sustained_exploitation_sensitivity,
-            )
+                sustained_deterioration = 0.0
+                chauvinist_pressure = 0.0
 
             # Calculate wages received (sum of incoming WAGES edges)
             core_wages = 0.0
@@ -291,6 +317,7 @@ class ConsciousnessSystem(SystemBase):
                 agitation=new_agitation,
                 solidarity_factor=min(1.0, solidarity_pressure),
                 education_pressure=0.0,  # Education pressure handled in community system
+                chauvinist_pressure=chauvinist_pressure,
             )
             new_class = min(1.0, current_profile["class_consciousness"] + delta_r)
             new_nation = min(1.0, current_profile["national_identity"] + delta_f)

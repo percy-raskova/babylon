@@ -222,7 +222,85 @@ confirm the gate catches it. An unmutated gate is an unproven gate.
    regenerated once (ADR078 pattern).
 7. No coefficient without an Aleksandrov trace.
 
-## 10. Open questions for the owner
+## 9a. Most of this already exists — it is delta-gated or unconsumed
+
+Discovered while starting implementation. `formulas/consciousness_routing.py`
+already contains most of §4 and §5's machinery:
+
+| Exists | State |
+|---|---|
+| `rent_component = max(0.0, -imperial_rent_delta) * rent_decline_sensitivity` (`:83`) — "Only negative ΔΦ generates agitation (losing the bribe)" | **LIVE but delta-gated.** Reads ΔΦ, a first difference, so it dies at steady state exactly as `agitation` did. De-delta it: add a LEVEL term on Φ itself. |
+| `visibility = s/v / (s/v + Φ × opacity + ε)` (`:104`) — core/periphery false-consciousness asymmetry | Documented; `visibility_delta` is **hardcoded `0.0`** at the ideology call site. Computed nowhere, consumed nowhere. |
+| `compute_reification_buffer` (`:130`) — commodity-fetishism dampening keyed to \|Φ\| | **ZERO production consumers.** Fully implemented, fully unit-tested, never called. |
+
+**Consequence for scope:** the Φ-gate is largely a *de-delta-ing and wiring*
+job, not new construction. This is the sixth instance in one session of the
+repo's dominant failure mode — machinery built to spec, tested in isolation,
+never connected. It strengthens the case for §7.1 (the correct-but-inert
+sentinel) as the highest-value gate in this spec.
+
+## 10. Owner rulings (2026-07-18)
+
+**1. Gender axis — DECLARED AND DEFERRED.** MIM treats it as a third
+independent oppression with its own material basis (leisure time,
+`mim-basics.txt:46-49`; "we define men as those who are oppressors in leisure
+time," `mim-gender.txt:8-11`). Not in scope now. It is *declared* rather than
+ignored: the parallel-aristocracy schema
+(`mim-three-oppressions.txt:207-209` — labor, national, and gender
+aristocracies) means whatever abstraction §5.2 builds for the national axis
+must be **instantiable a third time without redesign**. Build the axis
+mechanism generically; instantiate two.
+
+**2. Segmentation source of truth — RULED: "most theoretically rigorous and
+well architected."** My determination:
+
+*Segmentation is a property of the RELATION between two labor pools, not an
+attribute of a class in isolation.* Emmanuel's criterion is explicitly
+relational — pools are noncompeting *with respect to each other*, walled off
+from wage-equalizing competition across a specific boundary (UE pp.64-65,
+121-123). A boolean `is_segmented` field on `SocialClass` would be a category
+error of exactly the kind §3 warns about: it would let a class be "segmented"
+with no statement of *from what*.
+
+Therefore: **model segmentation as an opposition in the `OppositionRegistry`,
+not as a node attribute.** This satisfies Amendment S (it is a dialectic
+`D = (A, Ā, w, T, σ)`, not a new primitive), reuses the existing catalog
+machinery, and makes the boundary inspectable and per-pair. The sovereignty/
+nation layer supplies the *material grounding* for where a boundary exists
+(Aleksandrov trace: the boundary is a real institutional/political wall — the
+internal-colony relation), so it is derived, not declared — with a consistency
+sentinel asserting that every segmentation opposition traces to a sovereignty/
+national boundary and that no class-pair is silently unsegmented.
+
+Rejected alternatives: per-class declaration (unfalsifiable, no material
+trace); pure sovereignty derivation with no registry entry (invisible to the
+dialectic layer, fails III.10 earn-its-keep).
+
+**3. Periphery representation — an international trade system is OWED, and is
+explicitly NOT built here.** Owner: "There's supposed to be an international
+trade system to simulate international trade as various blocs based upon
+distribution of natural resources and raw materials, as well as geopolitical
+alignment. **we do not have to develop that entire system here** but it should
+be noted that's something we need."
+
+Recorded as a required future subsystem. For *this* spec: the canonical
+scenarios already carry an explicit core/periphery class split — periphery
+proletariat (`P001`) vs labor aristocracy (`C_w`), with the WAGES edge
+documented "super-wages to labor aristocracy, NOT periphery!"
+(`engine/scenarios/_legacy.py:269`). That is sufficient substrate for §5.5 and
+§5.6. Amin's rising-rate-of-exploitation mechanism (UD pp.360-361) and the
+"Southern awakening" exogenous shock (LWV pp.110, 126-128) are implemented
+against those existing nodes. **Blocs, resource distribution, and geopolitical
+alignment are OUT OF SCOPE and tracked separately.**
+
+**4. Cope — RULED: read it.** *Divided World Divided Class* is already on disk
+at `ai/_inbox/babylon_books/DividedWorldDividedClass_ZakCope.pdf` (no download
+needed). Read in progress; §6's provisional coefficients are replaced by
+Cope-grounded ones with page citations before the ceremony commit. Any
+coefficient that survives as provisional must be declared provisional in the
+ADR, not silently shipped.
+
+## 10a. Superseded open questions
 
 1. **Gender axis.** MIM treats it as a third independent oppression with its own
    material basis (leisure time, `mim-basics.txt:46-49`). In scope now, or

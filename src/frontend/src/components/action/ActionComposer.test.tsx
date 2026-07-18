@@ -167,6 +167,10 @@ describe("ActionComposer", () => {
     expect(screen.getByRole("button", { name: /submit educate/i })).toBeEnabled();
     const delta = await screen.findByTestId("predicted-delta");
     expect(delta).toHaveTextContent("▲ Consciousness");
+
+    // FR-116-4.3: the cost line is visible before submit. This educate stub
+    // returns no cost envelope, so the line carries the preview's AP cost.
+    expect(screen.getByTestId("verb-cost")).toHaveTextContent("1 AP");
   });
 
   it("shows a loud submit error when the backend rejects the action", async () => {

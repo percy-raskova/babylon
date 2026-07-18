@@ -74,6 +74,15 @@ test.describe("Verb submit — live engine (cockpit, spec-110 B6)", () => {
       .click();
     await page.getByTestId("target-picker").getByRole("button").first().click();
 
+    // Spine acceptance gate #5 (spec-116): preview visible BEFORE every
+    // submit. Campaign deltas can be zero (DeltaChip is honest-null), so the
+    // guaranteed pre-submit surfaces are the probability line and the cost
+    // line (campaign has no live cost envelope — GET 405s — so the line
+    // carries the preview's AP cost).
+    await expect(page.getByTestId("preview-probability")).toBeVisible({ timeout: 10000 });
+    await expect(page.getByTestId("verb-cost")).toBeVisible();
+    await expect(page.getByTestId("verb-cost")).toContainText("AP");
+
     const submitButton = page.getByRole("button", { name: /submit campaign/i });
     await expect(submitButton).toBeEnabled({ timeout: 10000 });
     const [submitResp] = await Promise.all([

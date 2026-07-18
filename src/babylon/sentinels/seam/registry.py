@@ -2231,6 +2231,116 @@ _ACTION_METRICS: tuple[SeamEntry, ...] = (
     ),
 )
 
+# ---------------------------------------------------------------------------
+# ECONOMY scope — the ``tick_summary`` history series behind ``/timeseries/``
+# (Playability Spine Task 19, spec-116 4d.5). Wire keys are the parallel
+# arrays ``EngineBridge.get_game_timeseries`` emits; each is a county-deduped
+# aggregate ``_build_tick_summary`` persists per tick. First use of the
+# ECONOMY scope.
+# ---------------------------------------------------------------------------
+
+_TIMESERIES_EMITTERS: tuple[str, ...] = (
+    "web/game/engine_bridge.py::EngineBridge.get_game_timeseries",
+    "src/frontend/src/components/chrome/CrisisTimeline.tsx (history sparkline)",
+    "src/frontend/src/components/chrome/BifurcationGauge.tsx (history sparkline)",
+)
+
+_SERIES_CADENCE: str = (
+    "non-null only for ticks persisted after the first year boundary this "
+    "session stamped county tick_* state; carried forward between boundaries "
+    "— a step-function series with a NULL head (weekly campaign = yearly "
+    "points; honest sparse, never smoothed; Constitution III.11)"
+)
+
+_ECONOMY_SERIES_METRICS: tuple[SeamEntry, ...] = (
+    SeamEntry(
+        payload="crisis_pop_share",
+        wire_keys=("crisis_pop_share",),
+        scope=SeamScope.ECONOMY,
+        owner_layer="bridge (county-deduped aggregate of tick_crisis_phase)",
+        liveness_class=LivenessClass.DECLARED_CONDITIONAL,
+        liveness_condition=_SERIES_CADENCE,
+        dtype="float",
+        write_site=(
+            "web/game/engine_bridge.py::_county_tick_series_aggregates "
+            "-> tick_summary.crisis_pop_share"
+        ),
+        read_paths=_TIMESERIES_EMITTERS,
+        spec_ref="spec-116 4d.5 · ADR079",
+        notes="Population share [0, 1] of counties in an active crisis phase (onset/early/deep).",
+    ),
+    SeamEntry(
+        payload="bifurcation_score_mean",
+        wire_keys=("bifurcation_score_mean",),
+        scope=SeamScope.ECONOMY,
+        owner_layer="bridge (county-deduped aggregate of tick_bifurcation_score)",
+        liveness_class=LivenessClass.DECLARED_CONDITIONAL,
+        liveness_condition=_SERIES_CADENCE,
+        dtype="float",
+        write_site=(
+            "web/game/engine_bridge.py::_county_tick_series_aggregates "
+            "-> tick_summary.bifurcation_score_mean"
+        ),
+        read_paths=_TIMESERIES_EMITTERS,
+        spec_ref="spec-116 4d.5 · ADR079",
+        notes=(
+            "Population-weighted county mean of the political trajectory "
+            "[-1 revolutionary, +1 fascist] (Feature 018 FR-011)."
+        ),
+    ),
+    SeamEntry(
+        payload="wage_compression_mean",
+        wire_keys=("wage_compression_mean",),
+        scope=SeamScope.ECONOMY,
+        owner_layer="bridge (county-deduped aggregate of tick_wage_compression)",
+        liveness_class=LivenessClass.DECLARED_CONDITIONAL,
+        liveness_condition=_SERIES_CADENCE,
+        dtype="float",
+        write_site=(
+            "web/game/engine_bridge.py::_county_tick_series_aggregates "
+            "-> tick_summary.wage_compression_mean"
+        ),
+        read_paths=_TIMESERIES_EMITTERS,
+        spec_ref="spec-116 4d.5 · ADR079",
+        notes="Population-weighted county mean of cumulative wage compression [0, 1].",
+    ),
+    SeamEntry(
+        payload="capital_stock_total",
+        wire_keys=("capital_stock_total",),
+        scope=SeamScope.ECONOMY,
+        owner_layer="bridge (county-deduped SUM of tick_capital_stock)",
+        liveness_class=LivenessClass.DECLARED_CONDITIONAL,
+        liveness_condition=_SERIES_CADENCE,
+        dtype="float",
+        write_site=(
+            "web/game/engine_bridge.py::_county_tick_series_aggregates "
+            "-> tick_summary.capital_stock_total"
+        ),
+        read_paths=_TIMESERIES_EMITTERS,
+        spec_ref="spec-116 4d.5 · ADR079",
+        notes=(
+            "EXTENSIVE: one term per county (never per territory — the "
+            "_county_flow_snapshot N-fold hazard); a falling total is devaluation."
+        ),
+    ),
+    SeamEntry(
+        payload="unemployment_rate_mean",
+        wire_keys=("unemployment_rate_mean",),
+        scope=SeamScope.ECONOMY,
+        owner_layer="bridge (county-deduped aggregate of tick_unemployment_rate)",
+        liveness_class=LivenessClass.DECLARED_CONDITIONAL,
+        liveness_condition=_SERIES_CADENCE,
+        dtype="float",
+        write_site=(
+            "web/game/engine_bridge.py::_county_tick_series_aggregates "
+            "-> tick_summary.unemployment_rate_mean"
+        ),
+        read_paths=_TIMESERIES_EMITTERS,
+        spec_ref="spec-116 4d.5 · ADR079",
+        notes="Population-weighted county mean of the BLS LAUS unemployment rate.",
+    ),
+)
+
 #: The declared observable-field contract. Populated per build phase.
 SEAM_REGISTRY: tuple[SeamEntry, ...] = (
     _MAP_METRICS
@@ -2244,4 +2354,5 @@ SEAM_REGISTRY: tuple[SeamEntry, ...] = (
     + _PATTERN_SHIFT_METRICS
     + _ENDGAME_EPILOGUE_METRICS  # spec-116 FR-116-4.2: epilogue/palette/accepted_at_tick
     + _ACTION_METRICS  # spec-116 FR-116-4.4: per-target expected_deltas
+    + _ECONOMY_SERIES_METRICS  # appended as the new final term; leave all prior terms
 )

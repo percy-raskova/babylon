@@ -3132,6 +3132,96 @@ class TestBuildTickSummaryMarketAxis:
         assert summary["market_corrections"] is None
 
 
+@pytest.mark.unit
+class TestBuildTickSummarySeriesAggregates:
+    """Task 19 (spec-116 4d.5): county-deduped tick_* aggregates ride tick_summary.
+
+    The series is HONEST-SPARSE by design: tick_* attrs stamp at year
+    boundaries only (weekly campaign => yearly points) and are carried
+    forward between boundaries — NULL before the first boundary, a step
+    function after, never fabricated smoothing (Constitution III.11).
+    """
+
+    _SERIES_KEYS = (
+        "crisis_pop_share",
+        "bifurcation_score_mean",
+        "wage_compression_mean",
+        "capital_stock_total",
+        "unemployment_rate_mean",
+    )
+
+    @staticmethod
+    def _graph_with_two_counties() -> BabylonGraph:
+        graph = BabylonGraph()
+        # T1/T2 share one county and carry IDENTICAL county-level stamps —
+        # they must count ONCE (the _county_flow_snapshot N-fold-inflation
+        # hazard), never once per territory.
+        graph.add_node(
+            "T1",
+            node_type="territory",
+            county_fips="26163",
+            population=1_000_000,
+            tick_crisis_phase="deep",
+            tick_bifurcation_score=-0.5,
+            tick_wage_compression=0.2,
+            tick_capital_stock=1e9,
+            tick_unemployment_rate=0.10,
+        )
+        graph.add_node(
+            "T2",
+            node_type="territory",
+            county_fips="26163",
+            population=500_000,
+            tick_crisis_phase="deep",
+            tick_bifurcation_score=-0.5,
+            tick_wage_compression=0.2,
+            tick_capital_stock=1e9,
+            tick_unemployment_rate=0.10,
+        )
+        graph.add_node(
+            "T3",
+            node_type="territory",
+            county_fips="26125",
+            population=500_000,
+            tick_crisis_phase="normal",
+            tick_bifurcation_score=0.3,
+            tick_wage_compression=0.0,
+            tick_capital_stock=2e9,
+            tick_unemployment_rate=0.05,
+        )
+        return graph
+
+    def test_aggregates_are_county_deduped_and_population_weighted(self) -> None:
+        from babylon.models.world_state import WorldState
+        from game.engine_bridge import _build_tick_summary
+
+        summary = _build_tick_summary(
+            WorldState(tick=52), organizations=[], graph=self._graph_with_two_counties()
+        )
+
+        # Wayne pop 1.5M (deep) vs 26125 pop 0.5M (normal): 1.5/2.0.
+        assert summary["crisis_pop_share"] == pytest.approx(0.75)
+        # Weighted over COUNTIES: (-0.5 * 1.5e6 + 0.3 * 0.5e6) / 2e6.
+        assert summary["bifurcation_score_mean"] == pytest.approx(-0.3)
+        assert summary["wage_compression_mean"] == pytest.approx(0.15)
+        # Extensive sum, ONE term per county: 1e9 + 2e9 — never 1e9*2 + 2e9.
+        assert summary["capital_stock_total"] == pytest.approx(3e9)
+        assert summary["unemployment_rate_mean"] == pytest.approx(0.0875)
+
+    def test_no_graph_or_no_boundary_yet_is_honest_null(self) -> None:
+        from babylon.models.world_state import WorldState
+        from game.engine_bridge import _build_tick_summary
+
+        no_graph = _build_tick_summary(WorldState(tick=1), organizations=[])
+        bare_graph = BabylonGraph()
+        bare_graph.add_node("T1", node_type="territory", county_fips="26163", population=10)
+        pre_boundary = _build_tick_summary(WorldState(tick=1), organizations=[], graph=bare_graph)
+
+        for key in self._SERIES_KEYS:
+            assert no_graph[key] is None, f"{key} must be NULL without a graph"
+            assert pre_boundary[key] is None, f"{key} must be NULL before the first boundary"
+
+
 # ---------------------------------------------------------------------- #
 # Spec-116 FR-4.1: the Voice heartbeat — CausalChainObserver wiring
 # ---------------------------------------------------------------------- #

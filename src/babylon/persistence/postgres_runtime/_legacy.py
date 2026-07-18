@@ -857,8 +857,12 @@ class PostgresRuntime:
                      antagonistic_edge_count, co_optive_edge_count,
                      org_count, player_org_count, uprising_count,
                      repression_count, conservation_check,
-                     price_log, fictitious_log, market_corrections)
-                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                     price_log, fictitious_log, market_corrections,
+                     crisis_pop_share, bifurcation_score_mean,
+                     wage_compression_mean, capital_stock_total,
+                     unemployment_rate_mean)
+                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s,
+                        %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
                 ON CONFLICT (session_id, tick) DO UPDATE SET
                     year = EXCLUDED.year, total_c = EXCLUDED.total_c,
                     total_v = EXCLUDED.total_v, total_s = EXCLUDED.total_s,
@@ -876,7 +880,12 @@ class PostgresRuntime:
                     conservation_check = EXCLUDED.conservation_check,
                     price_log = EXCLUDED.price_log,
                     fictitious_log = EXCLUDED.fictitious_log,
-                    market_corrections = EXCLUDED.market_corrections
+                    market_corrections = EXCLUDED.market_corrections,
+                    crisis_pop_share = EXCLUDED.crisis_pop_share,
+                    bifurcation_score_mean = EXCLUDED.bifurcation_score_mean,
+                    wage_compression_mean = EXCLUDED.wage_compression_mean,
+                    capital_stock_total = EXCLUDED.capital_stock_total,
+                    unemployment_rate_mean = EXCLUDED.unemployment_rate_mean
                 """,
                 (
                     session_id,
@@ -903,6 +912,13 @@ class PostgresRuntime:
                     summary.get("fictitious_log"),
                     # ADR078: cumulative snap count, same NULL contract.
                     summary.get("market_corrections"),
+                    # Playability Spine Task 19 (spec-116 4d.5): county-
+                    # deduped year-boundary aggregates, same NULL contract.
+                    summary.get("crisis_pop_share"),
+                    summary.get("bifurcation_score_mean"),
+                    summary.get("wage_compression_mean"),
+                    summary.get("capital_stock_total"),
+                    summary.get("unemployment_rate_mean"),
                 ),
             )
 
@@ -932,7 +948,10 @@ class PostgresRuntime:
                        antagonistic_edge_count, co_optive_edge_count,
                        org_count, player_org_count, uprising_count,
                        repression_count, conservation_check,
-                       price_log, fictitious_log, market_corrections
+                       price_log, fictitious_log, market_corrections,
+                       crisis_pop_share, bifurcation_score_mean,
+                       wage_compression_mean, capital_stock_total,
+                       unemployment_rate_mean
                 FROM tick_summary
                 WHERE session_id = %s
                 ORDER BY tick

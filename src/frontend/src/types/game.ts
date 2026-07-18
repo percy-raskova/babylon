@@ -983,6 +983,19 @@ export interface TimeseriesPayload {
    * (rollout skew), which reads as "no corrections observable".
    */
   market_corrections?: (number | null)[];
+  /**
+   * Playability Spine Task 19 (spec-116 4d.5) — county-deduped crisis/
+   * bifurcation history off the year-boundary `tick_*` attrs. Step-function
+   * series: `null` until the first year boundary (~tick 52 at weekly
+   * cadence), then the last boundary's value carried forward — honest
+   * sparse, never smoothed. Optional: pre-spine backends omit them
+   * (rollout skew, the `market_corrections` precedent).
+   */
+  crisis_pop_share?: (number | null)[];
+  bifurcation_score_mean?: (number | null)[];
+  wage_compression_mean?: (number | null)[];
+  capital_stock_total?: (number | null)[];
+  unemployment_rate_mean?: (number | null)[];
 }
 
 /**

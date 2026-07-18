@@ -411,6 +411,11 @@ export function makeTimeseriesPayload(overrides?: Partial<TimeseriesPayload>): T
     price_index: [1.0, 1.08],
     fictitious_ratio: [1.0, 1.31],
     market_corrections: [0, 0],
+    crisis_pop_share: [null, 0.75],
+    bifurcation_score_mean: [null, -0.3],
+    wage_compression_mean: [null, 0.15],
+    capital_stock_total: [null, 3e9],
+    unemployment_rate_mean: [null, 0.0875],
     ...overrides,
   };
 }

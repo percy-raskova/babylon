@@ -150,7 +150,16 @@ class TestWebPathMigrations:
 
         persistence = bridge._persistence  # noqa: SLF001
         pool = persistence._pool  # noqa: SLF001
-        dropped = ("price_log", "fictitious_log", "market_corrections")
+        dropped = (
+            "price_log",
+            "fictitious_log",
+            "market_corrections",
+            "crisis_pop_share",
+            "bifurcation_score_mean",
+            "wage_compression_mean",
+            "capital_stock_total",
+            "unemployment_rate_mean",
+        )
         with pool.connection() as conn:
             conn.autocommit = True
             for column in dropped:

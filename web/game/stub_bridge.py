@@ -995,7 +995,27 @@ class StubEngineBridge:
         }
 
     def get_game_timeseries(self, _session_id: UUID) -> dict[str, Any]:
-        return {"data": []}
+        """Empty-but-real-shaped timeseries payload (parity with EngineBridge)."""
+        return {
+            "ticks": [],
+            "imperial_rent": [],
+            "consciousness": [],
+            "solidarity": [],
+            "heat": [],
+            "wealth": [],
+            "biocapacity": [],
+            "value_produced": [],
+            "surplus": [],
+            "profit_rate": [],
+            "price_index": [],
+            "fictitious_ratio": [],
+            "market_corrections": [],
+            "crisis_pop_share": [],
+            "bifurcation_score_mean": [],
+            "wage_compression_mean": [],
+            "capital_stock_total": [],
+            "unemployment_rate_mean": [],
+        }
 
     def get_economy_dashboard(self, _session_id: UUID) -> dict[str, Any]:
         return {}

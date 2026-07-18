@@ -2641,6 +2641,11 @@ class EngineBridge:
         price_index: list[float | None] = []
         fictitious_ratio: list[float | None] = []
         market_corrections: list[int | None] = []
+        crisis_pop_share: list[float | None] = []
+        bifurcation_score_mean: list[float | None] = []
+        wage_compression_mean: list[float | None] = []
+        capital_stock_total: list[float | None] = []
+        unemployment_rate_mean: list[float | None] = []
         for row in rows:
             ticks.append(int(row.get("tick", 0)))
             imperial_rent.append(_optional_float(row.get("imperial_rent")))
@@ -2669,6 +2674,13 @@ class EngineBridge:
             market_corrections.append(
                 int(raw_corrections) if isinstance(raw_corrections, (int, float)) else None
             )
+            # Task 19 (spec-116 4d.5): county-deduped crisis history — a
+            # year-boundary step function; missing columns stay None (gaps).
+            crisis_pop_share.append(_optional_float(row.get("crisis_pop_share")))
+            bifurcation_score_mean.append(_optional_float(row.get("bifurcation_score_mean")))
+            wage_compression_mean.append(_optional_float(row.get("wage_compression_mean")))
+            capital_stock_total.append(_optional_float(row.get("capital_stock_total")))
+            unemployment_rate_mean.append(_optional_float(row.get("unemployment_rate_mean")))
         return {
             "ticks": ticks,
             "imperial_rent": imperial_rent,
@@ -2683,6 +2695,11 @@ class EngineBridge:
             "price_index": price_index,
             "fictitious_ratio": fictitious_ratio,
             "market_corrections": market_corrections,
+            "crisis_pop_share": crisis_pop_share,
+            "bifurcation_score_mean": bifurcation_score_mean,
+            "wage_compression_mean": wage_compression_mean,
+            "capital_stock_total": capital_stock_total,
+            "unemployment_rate_mean": unemployment_rate_mean,
         }
 
     def get_economy_dashboard(self, session_id: UUID) -> dict[str, Any]:
@@ -6791,6 +6808,97 @@ def _county_flow_snapshot(graph: Any) -> dict[str, Any]:
     return {"year": None, "phi_accrued_this_year": None, "wage_accrued_this_year": None}
 
 
+#: Crisis phases that count as "in crisis" for the summary series — mirrors
+#: the frontend strip's CRISIS_IN_PROGRESS_PHASES (CrisisTimeline.tsx).
+_CRISIS_ACTIVE_PHASES: frozenset[str] = frozenset({"onset", "early", "deep"})
+
+
+def _county_tick_series_aggregates(graph: Any) -> dict[str, float | None]:
+    """County-deduped aggregates of the year-boundary ``tick_*`` attrs.
+
+    Playability Spine Task 19 (spec-116 4d.5): the ``tick_summary`` history
+    columns behind the CrisisTimeline / BifurcationGauge sparklines. Every
+    territory in a county carries the SAME county-level ``tick_*`` stamps
+    (:func:`_carry_tick_dynamics_flows`), so aggregating per TERRITORY would
+    inflate every county quantity N-fold — the documented
+    :func:`_county_flow_snapshot` hazard. This dedupes to one representative
+    value per ``county_fips`` (first non-``None`` seen per attr), weights the
+    intensive means by summed county population (plain mean when no weight),
+    and sums the extensive capital stock.
+
+    Honest-sparse by construction (Constitution III.11): ``tick_*`` attrs
+    stamp at year boundaries only and carry forward between them, so every
+    aggregate is ``None`` before the first boundary this session and a step
+    function after — never a fabricated 0.0, never smoothed.
+
+    :param graph: A live post-tick graph whose territory nodes may carry the
+        ``tick_*`` attrs.
+    :returns: Dict with ``crisis_pop_share`` / ``bifurcation_score_mean`` /
+        ``wage_compression_mean`` / ``capital_stock_total`` /
+        ``unemployment_rate_mean``, each ``float | None``.
+    """
+    pops: dict[str, float] = {}
+    reps: dict[str, dict[str, Any]] = {}
+    for _node_id, data in graph.nodes(data=True):
+        if data.get("_node_type") != "territory":
+            continue
+        fips = data.get("county_fips")
+        if not fips:
+            continue
+        pops[fips] = pops.get(fips, 0.0) + max(0.0, float(data.get("population") or 0))
+        rep = reps.setdefault(fips, {})
+        for key in (
+            "tick_crisis_phase",
+            "tick_bifurcation_score",
+            "tick_wage_compression",
+            "tick_capital_stock",
+            "tick_unemployment_rate",
+        ):
+            if rep.get(key) is None and data.get(key) is not None:
+                rep[key] = data[key]
+
+    def weighted_mean(key: str) -> float | None:
+        rows = [
+            (float(rep[key]), pops[fips]) for fips, rep in reps.items() if rep.get(key) is not None
+        ]
+        if not rows:
+            return None
+        total_weight = sum(weight for _value, weight in rows)
+        if total_weight > 0:
+            return sum(value * weight for value, weight in rows) / total_weight
+        return sum(value for value, _weight in rows) / len(rows)
+
+    phased = [
+        (rep["tick_crisis_phase"], pops[fips])
+        for fips, rep in reps.items()
+        if rep.get("tick_crisis_phase") is not None
+    ]
+    crisis_pop_share: float | None = None
+    if phased:
+        total = sum(weight for _phase, weight in phased)
+        if total > 0:
+            crisis_pop_share = (
+                sum(weight for phase, weight in phased if phase in _CRISIS_ACTIVE_PHASES) / total
+            )
+        else:
+            crisis_pop_share = sum(
+                1 for phase, _weight in phased if phase in _CRISIS_ACTIVE_PHASES
+            ) / len(phased)
+
+    capitals = [
+        float(rep["tick_capital_stock"])
+        for rep in reps.values()
+        if rep.get("tick_capital_stock") is not None
+    ]
+    return {
+        "crisis_pop_share": crisis_pop_share,
+        "bifurcation_score_mean": weighted_mean("tick_bifurcation_score"),
+        "wage_compression_mean": weighted_mean("tick_wage_compression"),
+        "capital_stock_total": sum(capitals) if capitals else None,
+        "unemployment_rate_mean": weighted_mean("tick_unemployment_rate"),
+    }
+
+
 def _seed_balkanization_layer(state: WorldState) -> WorldState:
     """Seed the spec-070 political layer into a web session's initial state.
 
@@ -7301,7 +7409,12 @@ def _edge_snapshot_rows(edges: list[dict[str, Any]]) -> list[dict[str, Any]]:
     return rows
 
 
-def _build_tick_summary(state: WorldState, organizations: list[dict[str, Any]]) -> dict[str, Any]:
+def _build_tick_summary(
+    state: WorldState,
+    organizations: list[dict[str, Any]],
+    *,
+    graph: Any = None,
+) -> dict[str, Any]:
     """Aggregate one tick's ``tick_summary`` row from live state.
 
     Only values the engine actually computes are aggregated; everything else
@@ -7313,9 +7426,17 @@ def _build_tick_summary(state: WorldState, organizations: list[dict[str, Any]]) 
     exact ``EventType`` value; the player flag from the serializer's
     ``player_controlled`` (the engine model carries no such field).
 
+    Playability Spine Task 19 (spec-116 4d.5): when ``graph`` is supplied
+    (the resolve path), five county-deduped year-boundary aggregates ride
+    the row via :func:`_county_tick_series_aggregates`; without a graph
+    (bootstrap call sites) they are honest ``None`` — tick-0 has no
+    TickDynamics output.
+
     Args:
         state: The freshly stepped (or seeded) WorldState.
         organizations: ``_serialize_organization`` output for ``state``.
+        graph: Optional live post-tick graph unlocking the five series
+            aggregates.
 
     Returns:
         Kwargs dict for ``PostgresRuntime.persist_tick_summary``.
@@ -7353,6 +7474,20 @@ def _build_tick_summary(state: WorldState, organizations: list[dict[str, Any]]) 
         "fictitious_log": float(state.market.fictitious_log) if state.market else None,
         # ADR078: cumulative correction-snap count, same NULL contract.
         "market_corrections": int(state.market.corrections) if state.market else None,
+        # Playability Spine Task 19 (spec-116 4d.5): county-deduped crisis/
+        # bifurcation history. NULL without a graph or before the first year
+        # boundary — honest sparse (step function), never smoothed.
+        **(
+            _county_tick_series_aggregates(graph)
+            if graph is not None
+            else {
+                "crisis_pop_share": None,
+                "bifurcation_score_mean": None,
+                "wage_compression_mean": None,
+                "capital_stock_total": None,
+                "unemployment_rate_mean": None,
+            }
+        ),
     }
 
 
@@ -7422,7 +7557,11 @@ def _persist_snapshots_safe(
         )
 
     try:
-        summary_fn(state.tick, _build_tick_summary(state, organizations), session_id=session_id)
+        summary_fn(
+            state.tick,
+            _build_tick_summary(state, organizations, graph=graph),
+            session_id=session_id,
+        )
     except Exception:  # noqa: BLE001 — diagnostic; never blocks tick resolution
         logger.exception(
             "Failed to persist tick_summary session=%s tick=%d", session_id, state.tick

@@ -122,7 +122,7 @@ impl<N, E, M> Hypergraph<N, E, M> {
     /// monkey-patch list omits.
     fn assert_not_frozen(&self) {
         if self.frozen {
-            panic!("Frozen hypergraph can't be modified");
+            panic!("Frozen higher-order network can't be modified");
         }
     }
 

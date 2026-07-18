@@ -351,4 +351,26 @@ impl<N, E, M> Hypergraph<N, E, M> {
             graph_attrs: self.graph_attrs.clone(),
         }
     }
+
+    /// Add multiple nodes. XGI parity: `H.add_nodes_from(nodes_for_adding)`.
+    pub fn add_nodes_from(&mut self, nodes: impl IntoIterator<Item = (String, N)>) {
+        for (node_id, attrs) in nodes {
+            self.add_node(&node_id, attrs);
+        }
+    }
+
+    /// Add multiple edges. Returns a result per edge.
+    pub fn add_edges_from(
+        &mut self,
+        edges: impl IntoIterator<Item = (Vec<String>, Option<String>, E)>,
+    ) -> Vec<Result<String, EdgeError>>
+    where
+        N: Default,
+        M: Default + Clone,
+    {
+        edges
+            .into_iter()
+            .map(|(m, i, a)| self.add_edge(m, i, a))
+            .collect()
+    }
 }

@@ -451,3 +451,42 @@ fn conform_copy_independence() {
     assert_eq!(c.num_edges(), v["num_edges"].as_u64().unwrap() as usize);
     assert_eq!(c.has_node("c"), v["has_c"].as_bool().unwrap());
 }
+
+#[test]
+fn diverge_d2_add_edges_from_dup_errors_continues() {
+    // XGI's add_edges_from warns + skips a duplicate idx and CONTINUES with
+    // the rest (["b"]/"e1" dropped — its member "b" is never added; ["c"]/
+    // "e2" kept). Same D2 error-channel class: the Rust core surfaces the
+    // dup as Err(AlreadyExists) in the per-edge Vec<Result> and still
+    // continues — no new divergence number. The PyO3 binding translates
+    // Err → UserWarning + skip for conformance.
+    let gt = ground_truth();
+    let v = vector(&gt, "add_edges_from_dup_warns_continues");
+    assert_eq!(v["return"], Value::Null); // XGI truth, pinned
+    assert_eq!(v["warned"], true); // XGI truth, pinned
+    assert!(v["warning_prefix"]
+        .as_str()
+        .unwrap()
+        .starts_with("uid e1 already exists"));
+
+    let mut h: Hypergraph = Hypergraph::new();
+    let results = h.add_edges_from(vec![
+        (vec!["a".into()], Some("e1".into()), Value::Null),
+        (vec!["b".into()], Some("e1".into()), Value::Null),
+        (vec!["c".into()], Some("e2".into()), Value::Null),
+    ]);
+    assert_eq!(results.len(), 3);
+    assert!(results[0].is_ok());
+    assert!(matches!(results[1], Err(EdgeError::AlreadyExists { .. })));
+    assert!(results[2].is_ok());
+
+    // Dup skipped, the rest kept — XGI's recorded final state.
+    assert_eq!(h.edge_ids(), ids(&v["edge_ids"]));
+    assert_eq!(h.num_edges(), v["num_edges"].as_u64().unwrap() as usize);
+    assert_eq!(h.num_nodes(), v["num_nodes"].as_u64().unwrap() as usize);
+    for (eid, expected) in v["members"].as_object().unwrap() {
+        let mut got = h.members(eid).unwrap();
+        got.sort();
+        assert_eq!(got, ids(expected));
+    }
+}

@@ -64,6 +64,25 @@
       ],
       "num_edges": 3
     },
+    "add_edges_from_dup_warns_continues": {
+      "edge_ids": [
+        "e1",
+        "e2"
+      ],
+      "members": {
+        "e1": [
+          "a"
+        ],
+        "e2": [
+          "c"
+        ]
+      },
+      "num_edges": 2,
+      "num_nodes": 2,
+      "return": null,
+      "warned": true,
+      "warning_prefix": "uid e1 already exists,"
+    },
     "add_node_existing_updates_attrs": {
       "attrs": {
         "x": 1,

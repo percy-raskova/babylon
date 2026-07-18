@@ -592,3 +592,56 @@ fn test_copy_of_empty() {
     assert_eq!(h2.num_nodes(), 0);
     assert_eq!(h2.num_edges(), 0);
 }
+
+#[test]
+fn test_add_nodes_from_bulk() {
+    let mut h: Hypergraph = Hypergraph::new();
+    h.add_nodes_from(vec![
+        ("a".to_string(), serde_json::json!({"x": 1})),
+        ("b".to_string(), serde_json::json!({"x": 2})),
+    ]);
+    assert_eq!(h.num_nodes(), 2);
+    assert_eq!(h.node_attrs("a").unwrap()["x"], 1);
+}
+
+#[test]
+fn test_add_edges_from_bulk() {
+    let mut h: Hypergraph = Hypergraph::new();
+    let results = h.add_edges_from(vec![
+        (
+            vec!["a".to_string(), "b".to_string()],
+            Some("e1".to_string()),
+            serde_json::json!({"w": 1}),
+        ),
+        (
+            vec!["b".to_string(), "c".to_string()],
+            None,
+            serde_json::Value::Null,
+        ),
+    ]);
+    assert_eq!(results.len(), 2);
+    assert!(results.iter().all(|r| r.is_ok()));
+    assert_eq!(h.num_edges(), 2);
+    assert_eq!(h.num_nodes(), 3);
+    assert_eq!(h.edge_ids(), vec!["e1", "0"]);
+}
+
+#[test]
+fn test_add_edges_from_with_duplicate_idx() {
+    let mut h: Hypergraph = Hypergraph::new();
+    let results = h.add_edges_from(vec![
+        (
+            vec!["a".to_string()],
+            Some("e1".to_string()),
+            serde_json::Value::Null,
+        ),
+        (
+            vec!["b".to_string()],
+            Some("e1".to_string()),
+            serde_json::Value::Null,
+        ),
+    ]);
+    assert!(results[0].is_ok());
+    assert!(results[1].is_err());
+    assert_eq!(h.num_edges(), 1);
+}

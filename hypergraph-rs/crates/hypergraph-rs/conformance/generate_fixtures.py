@@ -218,6 +218,25 @@ def v_clear_all() -> dict:
     return state
 
 
+def v_add_edges_from_dup_warns_continues() -> dict:
+    H = xgi.Hypergraph()
+    with warnings.catch_warnings(record=True) as caught:
+        warnings.simplefilter("always")
+        ret = H.add_edges_from([(["a"], "e1"), (["b"], "e1"), (["c"], "e2")])
+    # XGI warns + skips the duplicate idx and CONTINUES with the rest; the
+    # dup's members ("b") are never added (the no-op precedes member
+    # insertion, as in v_add_edge_dup_idx_warns_noop).
+    return {
+        "return": ret,
+        "warned": len(caught) > 0,
+        "warning_prefix": str(caught[0].message)[:22] if caught else None,
+        "edge_ids": _ids(H),
+        "num_edges": H.num_edges,
+        "num_nodes": H.num_nodes,
+        "members": _members_sorted(H),
+    }
+
+
 def v_copy_independence() -> dict:
     H = xgi.Hypergraph()
     H.add_node("a", color="red")

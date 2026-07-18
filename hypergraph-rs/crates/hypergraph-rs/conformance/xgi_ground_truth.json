@@ -71,6 +71,11 @@
       },
       "num_nodes": 1
     },
+    "node_attr_set_read": {
+      "attrs": {
+        "color": "red"
+      }
+    },
     "remove_edge_basic": {
       "edge_ids": [
         "e2"

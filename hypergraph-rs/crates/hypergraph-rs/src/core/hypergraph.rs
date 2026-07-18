@@ -107,6 +107,30 @@ impl<N, E, M> Hypergraph<N, E, M> {
         }
     }
 
+    /// Mutably access a node's attributes.
+    ///
+    /// XGI parity: `H.nodes[node_id][key] = value` (in-place attr-dict
+    /// mutation).
+    pub fn node_attrs_mut(&mut self, node_id: &str) -> Option<&mut N> {
+        let idx = *self.agent_ids.get(node_id)?;
+        match self.inner.node_weight_mut(idx) {
+            Some(NodeKind::Agent(attrs)) => Some(attrs),
+            _ => None,
+        }
+    }
+
+    /// Mutably access an edge's attributes.
+    ///
+    /// XGI parity: `H.edges[edge_id][key] = value` (in-place attr-dict
+    /// mutation).
+    pub fn edge_attrs_mut(&mut self, edge_id: &str) -> Option<&mut E> {
+        let idx = *self.hyperedge_ids.get(edge_id)?;
+        match self.inner.node_weight_mut(idx) {
+            Some(NodeKind::Hyperedge(attrs)) => Some(attrs),
+            _ => None,
+        }
+    }
+
     /// Read a graph-level attribute.
     ///
     /// XGI parity: `H.graph[key]`.

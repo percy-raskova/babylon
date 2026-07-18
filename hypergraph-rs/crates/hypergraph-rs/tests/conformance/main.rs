@@ -187,6 +187,21 @@ fn diverge_d6_add_node_replaces_instead_of_merging() {
 }
 
 #[test]
+fn conform_node_attr_set_read() {
+    // XGI-facing mutation: H.nodes["a"]["color"] = "red" mutates the node's
+    // attr dict in place. The Rust core exposes the same write path via
+    // node_attrs_mut; reading it back matches XGI's recorded dict.
+    let gt = ground_truth();
+    let v = vector(&gt, "node_attr_set_read");
+    assert_eq!(v["attrs"], serde_json::json!({"color": "red"})); // XGI truth
+
+    let mut h: Hypergraph = Hypergraph::new();
+    h.add_node("a", serde_json::json!({}));
+    h.node_attrs_mut("a").unwrap()["color"] = serde_json::json!("red");
+    assert_eq!(h.node_attrs("a").unwrap(), &v["attrs"]);
+}
+
+#[test]
 fn conform_remove_edge_basic() {
     let gt = ground_truth();
     let v = vector(&gt, "remove_edge_basic");

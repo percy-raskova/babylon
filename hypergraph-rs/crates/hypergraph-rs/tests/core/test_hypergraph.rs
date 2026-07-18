@@ -360,6 +360,39 @@ fn test_graph_attrs_roundtrip() {
 }
 
 #[test]
+fn test_node_attrs_mut() {
+    let mut h: Hypergraph = Hypergraph::new();
+    h.add_node("a", serde_json::json!({"count": 0}));
+    {
+        let attrs = h.node_attrs_mut("a").unwrap();
+        attrs["count"] = serde_json::json!(5);
+    }
+    assert_eq!(h.node_attrs("a").unwrap()["count"], 5);
+}
+
+#[test]
+fn test_edge_attrs_mut() {
+    let mut h: Hypergraph = Hypergraph::new();
+    h.add_edge(
+        vec!["a".to_string()],
+        Some("e1".to_string()),
+        serde_json::json!({"heat": 0.3}),
+    )
+    .unwrap();
+    {
+        let attrs = h.edge_attrs_mut("e1").unwrap();
+        attrs["heat"] = serde_json::json!(0.9);
+    }
+    assert_eq!(h.edge_attrs("e1").unwrap()["heat"], 0.9);
+}
+
+#[test]
+fn test_edge_attrs_missing_returns_none() {
+    let h: Hypergraph = Hypergraph::new();
+    assert!(h.edge_attrs("nonexistent").is_none());
+}
+
+#[test]
 fn test_remove_edge_basic() {
     let mut h: Hypergraph = Hypergraph::new();
     h.add_edge(

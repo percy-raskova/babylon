@@ -189,6 +189,13 @@ def v_remove_edge_then_readd() -> dict:
     }
 
 
+def v_node_attr_set_read() -> dict:
+    H = xgi.Hypergraph()
+    H.add_node("a")
+    H.nodes["a"]["color"] = "red"  # in-place attr-dict mutation (XGI-facing)
+    return {"attrs": dict(H.nodes["a"])}
+
+
 def main() -> None:
     vectors = {
         name.removeprefix("v_"): fn()

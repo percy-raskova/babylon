@@ -254,6 +254,134 @@ class TestGetInspectorOrgOrgPoliticalFields:
         assert result["vision_masked"] == []
 
 
+class TestBuildStateApparatusDashboardHeatFog:
+    """Task 5b (2026-07-18): ``get_state_apparatus_dashboard`` used to discard
+    its hydrated graph and call ``_serialize_organization`` without ``reach``,
+    leaving the whole state-apparatus screen unfogged. Once ``reach`` is
+    threaded, a masked org's ``heat`` is ``None`` (key present, value
+    ``None`` — the naive ``float(o.get("heat", 0.0))`` sum crashes on that).
+    Owner ruling: partial aggregate + masked count — ``total_heat`` sums
+    ONLY visible-heat orgs, never a fabricated 0.0 for an all-masked group
+    (Constitution III.11). ``budget`` is MATERIAL, never gated, so
+    ``total_repression_budget`` is unaffected in every case here.
+    """
+
+    @staticmethod
+    def _state_org(
+        *, org_id: str, heat: float, reach: frozenset[str], budget: float = 500.0
+    ) -> dict[str, Any]:
+        from game.engine_bridge import _serialize_organization
+        from game.fog.ledger import IntelLedger
+
+        org = _StubOrg(id=org_id, heat=heat, budget=budget, org_type="state_apparatus")
+        return _serialize_organization(
+            org,
+            player_org_id="ORG-PLAYER",
+            reach=reach,
+            ledger=IntelLedger(),
+            tick=10,
+        )
+
+    def test_masked_state_org_heat_is_none_and_counted_masked(self) -> None:
+        from babylon.models.world_state import WorldState
+        from game.engine_bridge import _build_state_apparatus_dashboard
+
+        org = self._state_org(org_id="ORG-STATE", heat=0.7, reach=frozenset())
+        assert org["heat"] is None
+
+        dashboard = _build_state_apparatus_dashboard(WorldState(), [org], recent_actions=[])
+
+        assert dashboard["heat_orgs_masked"] == 1
+        assert dashboard["heat_orgs_visible"] == 0
+        assert dashboard["total_heat"] is None
+
+    def test_mixed_visible_and_masked_sums_only_visible(self) -> None:
+        from babylon.models.world_state import WorldState
+        from game.engine_bridge import _build_state_apparatus_dashboard
+
+        visible = self._state_org(org_id="ORG-VISIBLE", heat=0.3, reach=frozenset({"ORG-VISIBLE"}))
+        masked = self._state_org(org_id="ORG-MASKED", heat=0.9, reach=frozenset({"ORG-VISIBLE"}))
+        assert visible["heat"] == pytest.approx(0.3)
+        assert masked["heat"] is None
+
+        dashboard = _build_state_apparatus_dashboard(
+            WorldState(), [visible, masked], recent_actions=[]
+        )
+
+        assert dashboard["total_heat"] == pytest.approx(0.3)
+        assert dashboard["heat_orgs_visible"] == 1
+        assert dashboard["heat_orgs_masked"] == 1
+
+    def test_all_masked_total_heat_is_none_not_zero(self) -> None:
+        from babylon.models.world_state import WorldState
+        from game.engine_bridge import _build_state_apparatus_dashboard
+
+        org_a = self._state_org(org_id="ORG-A", heat=0.4, reach=frozenset())
+        org_b = self._state_org(org_id="ORG-B", heat=0.6, reach=frozenset())
+
+        dashboard = _build_state_apparatus_dashboard(
+            WorldState(), [org_a, org_b], recent_actions=[]
+        )
+
+        assert dashboard["total_heat"] is None
+        assert dashboard["heat_orgs_visible"] == 0
+        assert dashboard["heat_orgs_masked"] == 2
+
+    def test_no_reach_threaded_is_backward_compatible(self) -> None:
+        """Existing/unfogged callers (``reach`` never threaded through
+        ``_serialize_organization``) keep summing every state org's real
+        heat, byte-identical to before this task."""
+        from babylon.models.world_state import WorldState
+        from game.engine_bridge import _serialize_organization
+
+        org_a = _StubOrg(id="ORG-A", heat=0.4, org_type="state_apparatus")
+        org_b = _StubOrg(id="ORG-B", heat=0.6, org_type="state_apparatus")
+        organizations = [
+            _serialize_organization(o, player_org_id="ORG-PLAYER") for o in (org_a, org_b)
+        ]
+
+        from game.engine_bridge import _build_state_apparatus_dashboard
+
+        dashboard = _build_state_apparatus_dashboard(WorldState(), organizations, recent_actions=[])
+
+        assert dashboard["total_heat"] == pytest.approx(1.0)
+        assert dashboard["heat_orgs_visible"] == 2
+        assert dashboard["heat_orgs_masked"] == 0
+
+    def test_total_repression_budget_unaffected_by_fog_in_every_case(self) -> None:
+        """budget is MATERIAL (never in ORG_POLITICAL_FIELDS) — every case
+        above must still sum the real budget regardless of heat masking."""
+        from babylon.models.world_state import WorldState
+        from game.engine_bridge import _build_state_apparatus_dashboard
+
+        all_masked = [
+            self._state_org(org_id="ORG-A", heat=0.4, reach=frozenset(), budget=100.0),
+            self._state_org(org_id="ORG-B", heat=0.6, reach=frozenset(), budget=200.0),
+        ]
+        mixed = [
+            self._state_org(
+                org_id="ORG-VISIBLE",
+                heat=0.3,
+                reach=frozenset({"ORG-VISIBLE"}),
+                budget=150.0,
+            ),
+            self._state_org(
+                org_id="ORG-MASKED",
+                heat=0.9,
+                reach=frozenset({"ORG-VISIBLE"}),
+                budget=250.0,
+            ),
+        ]
+
+        all_masked_dashboard = _build_state_apparatus_dashboard(
+            WorldState(), all_masked, recent_actions=[]
+        )
+        mixed_dashboard = _build_state_apparatus_dashboard(WorldState(), mixed, recent_actions=[])
+
+        assert all_masked_dashboard["total_repression_budget"] == pytest.approx(300.0)
+        assert mixed_dashboard["total_repression_budget"] == pytest.approx(400.0)
+
+
 class TestGetInspectorNodeOrgPoliticalFields:
     """The generic fallback branch (organization clicked via the raw graph
     dump, not through ``get_inspector_org``) must gate the same way."""

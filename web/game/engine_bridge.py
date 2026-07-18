@@ -1187,12 +1187,27 @@ def _build_state_apparatus_dashboard(
 
     Returns:
         Dict with ``tick``/``organizations``/``org_count``/
-        ``total_repression_budget``/``total_heat``/``state_finances``/
-        ``recent_actions``.
+        ``total_repression_budget``/``total_heat``/``heat_orgs_visible``/
+        ``heat_orgs_masked``/``state_finances``/``recent_actions``.
+
+    Task 5b (2026-07-18): ``organizations`` may now carry fogged
+    ``_serialize_organization`` output — a masked org's ``heat`` is
+    ``None`` (key present, value ``None``), never a fabricated 0.0. ``budget``
+    is MATERIAL (never in ``ORG_POLITICAL_FIELDS``), so
+    ``total_repression_budget`` sums it unconditionally, unaffected by fog.
+    ``total_heat`` sums ONLY orgs whose ``heat`` is visible (owner ruling:
+    partial aggregate + masked count, mirroring ``_aggregate_hex_features``'s
+    ``heat_pop`` partial-coverage denominator) — when every state org's heat
+    is masked, ``total_heat`` is ``None`` (honest unknown), never ``0.0``,
+    which would misread as "the police are under no pressure" (Constitution
+    III.11).
     """
     state_orgs = [o for o in organizations if o.get("org_type") == "state_apparatus"]
     total_repression_budget = round(sum(float(o.get("budget", 0.0)) for o in state_orgs), 4)
-    total_heat = round(sum(float(o.get("heat", 0.0)) for o in state_orgs), 4)
+    visible_heats = [float(o["heat"]) for o in state_orgs if o.get("heat") is not None]
+    heat_orgs_visible = len(visible_heats)
+    heat_orgs_masked = len(state_orgs) - heat_orgs_visible
+    total_heat = round(sum(visible_heats), 4) if visible_heats else None
     state_finances = {
         state_id: finance.model_dump(mode="json")
         for state_id, finance in state.state_finances.items()
@@ -1203,6 +1218,8 @@ def _build_state_apparatus_dashboard(
         "org_count": len(state_orgs),
         "total_repression_budget": total_repression_budget,
         "total_heat": total_heat,
+        "heat_orgs_visible": heat_orgs_visible,
+        "heat_orgs_masked": heat_orgs_masked,
         "state_finances": state_finances,
         "recent_actions": recent_actions,
     }
@@ -3476,10 +3493,20 @@ class EngineBridge:
 
         Returns:
             Dict per :func:`_build_state_apparatus_dashboard`.
+
+        Task 5b (2026-07-18): this is player-facing, so it must thread the
+        SAME reach/ledger/tick fog gate :func:`_state_to_snapshot` uses,
+        instead of discarding the hydrated graph and calling
+        :func:`_serialize_organization` unfogged — the fix Task 5 left open.
         """
-        state, _graph = self.hydrate_state(session_id)
+        state, graph = self.hydrate_state(session_id)
+        reach = _current_organizing_reach(graph)
+        ledger = _EMPTY_INTEL_LEDGER
+        tick = state.tick
         organizations = [
-            _serialize_organization(o, player_org_id=state.player_org_id)
+            _serialize_organization(
+                o, player_org_id=state.player_org_id, reach=reach, ledger=ledger, tick=tick
+            )
             for o in state.organizations.values()
         ]
 

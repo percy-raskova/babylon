@@ -6220,6 +6220,7 @@ def _has_county_resolution_territory(state: WorldState) -> bool:
 #: :func:`_bridge_economics_overrides` is called on EVERY ``resolve_tick`` — so
 #: rebuilding it per tick would re-query the reference DB ~15x per county every
 #: tick. Keyed by ``frozenset`` so distinct scenarios don't collide.
+_TENSOR_REGISTRY_CACHE: dict[frozenset[str], Any] = {}
 _CAPITAL_CALCULATOR_CACHE: dict[frozenset[str], Any] = {}
 
 #: QCEW county coverage runs 2010–2024; hydrate the full span once so the
@@ -6227,18 +6228,71 @@ _CAPITAL_CALCULATOR_CACHE: dict[frozenset[str], Any] = {}
 _CAPITAL_HYDRATION_YEARS: Final[tuple[int, ...]] = tuple(range(2010, 2025))
 
 
+def _build_tensor_registry(fips_codes: tuple[str, ...]) -> Any:
+    """Build (and cache) a hydrated ``TensorRegistry`` for the given counties.
+
+    Spec-116 U1 (vol3-money-scissors): factored out of
+    ``_build_capital_calculator`` so BOTH ``capital_calculator`` and
+    ``services.tensor_registry`` share ONE hydration pass over the reference
+    DB instead of two. Before this split, the web bridge built a
+    ``TensorRegistry`` only to wrap it in a ``CapitalStockCalculator`` and
+    discard the registry itself — the county financial layer's
+    ``_get_county_surplus``/``_get_county_profit_rate``
+    (``domain/economics/tick/system/__init__.py:1547,1599``) read
+    ``getattr(services, "tensor_registry", None)``, which was always
+    ``None`` for web sessions, so ``surplus_distribution`` never computed
+    (design doc §1.1).
+
+    Args:
+        fips_codes: The county FIPS this session computes over (non-empty).
+
+    Returns:
+        A hydrated ``TensorRegistry`` covering ``_CAPITAL_HYDRATION_YEARS``
+        for every FIPS in ``fips_codes``.
+    """
+    key = frozenset(fips_codes)
+    cached = _TENSOR_REGISTRY_CACHE.get(key)
+    if cached is not None:
+        return cached
+
+    from pathlib import Path
+
+    import babylon.domain.economics as economics_pkg
+    from babylon.domain.economics.adapters import SQLiteQCEWSource
+    from babylon.domain.economics.department_mapper import DepartmentMapper
+    from babylon.domain.economics.hydrator import MarxianHydrator
+    from babylon.domain.economics.tensor_registry import TensorRegistry
+    from babylon.engine.hydration.reference import StubBEASource
+    from babylon.reference.database import get_reference_session
+
+    # DELIBERATE TWIN: babylon/engine/headless_runner/runner.py:_build_economics_overrides
+    # runs the near-identical hydration. Two by design — a shared factory would put
+    # reference-DB I/O in domain/, which the layering forbids. Change both.
+    registry = TensorRegistry()
+    naics_yaml = Path(economics_pkg.__file__).parent / "data" / "naics_to_dept.yaml"
+    with get_reference_session() as session:
+        hydrator = MarxianHydrator(
+            SQLiteQCEWSource(session),
+            StubBEASource(),  # falls back to DepartmentMapper department ratios
+            DepartmentMapper.from_yaml(naics_yaml),
+        )
+        # sorted: fixes hydration/summation order across sessions (III.7, §5 hazard 1)
+        registry.hydrate_counties(hydrator, sorted(fips_codes), list(_CAPITAL_HYDRATION_YEARS))
+
+    _TENSOR_REGISTRY_CACHE[key] = registry
+    return registry
+
+
 def _build_capital_calculator(fips_codes: tuple[str, ...]) -> Any:
-    """Build (and cache) a ``CapitalStockCalculator`` with a hydrated registry.
+    """Build (and cache) a ``CapitalStockCalculator`` over a shared TensorRegistry.
 
     Owner item 25 / Fix B (owner-ruled 2026-07-12): give the web session a REAL
     per-county capital stock K instead of the engine's ``0.0`` default, so
     ``occ = K/v`` is non-zero and ``profit_rate = s/(K+v)`` separates from
     ``exploitation_rate = s/v`` — with K=0 the two are identical, a degenerate,
-    dishonest tie. Mirrors the ``TensorRegistry`` hydration in
-    :meth:`babylon.engine.simulation._legacy.Simulation.from_sqlite`, and reads
-    the SAME reference DB the Leontief rent path already opens (no new runtime
-    dependency). Cached per FIPS-set because hydration hits the DB once per
-    ``(county, year)``.
+    dishonest tie. As of U1 (vol3-money-scissors), the underlying
+    ``TensorRegistry`` hydration is shared with ``services.tensor_registry``
+    via :func:`_build_tensor_registry` — one DB round-trip, two consumers.
 
     Args:
         fips_codes: The county FIPS this session computes over (non-empty).
@@ -6254,27 +6308,9 @@ def _build_capital_calculator(fips_codes: tuple[str, ...]) -> Any:
     if cached is not None:
         return cached
 
-    from pathlib import Path
-
-    import babylon.domain.economics as economics_pkg
-    from babylon.domain.economics.adapters import SQLiteQCEWSource
     from babylon.domain.economics.capital_stock import CapitalStockCalculator
-    from babylon.domain.economics.department_mapper import DepartmentMapper
-    from babylon.domain.economics.hydrator import MarxianHydrator
-    from babylon.domain.economics.tensor_registry import TensorRegistry
-    from babylon.engine.hydration.reference import StubBEASource
-    from babylon.reference.database import get_reference_session
 
-    registry = TensorRegistry()
-    naics_yaml = Path(economics_pkg.__file__).parent / "data" / "naics_to_dept.yaml"
-    with get_reference_session() as session:
-        hydrator = MarxianHydrator(
-            SQLiteQCEWSource(session),
-            StubBEASource(),  # falls back to DepartmentMapper department ratios
-            DepartmentMapper.from_yaml(naics_yaml),
-        )
-        registry.hydrate_counties(hydrator, list(fips_codes), list(_CAPITAL_HYDRATION_YEARS))
-
+    registry = _build_tensor_registry(fips_codes)
     calculator = CapitalStockCalculator(registry)
     _CAPITAL_CALCULATOR_CACHE[key] = calculator
     return calculator
@@ -6422,8 +6458,14 @@ def _bridge_economics_overrides(fips_codes: tuple[str, ...] = ()) -> tuple[dict[
     # Owner item 25 / Fix B: wire a real per-county capital_calculator (cached) so
     # occ and profit_rate are non-degenerate. Only when we know which counties to
     # hydrate — a bare call (no FIPS) leaves K at the engine's 0.0 default.
+    # U1 (vol3-money-scissors): also wire the SAME hydrated TensorRegistry as
+    # services.tensor_registry — the missing piece that kept the county
+    # financial layer (surplus_distribution, s = p + i + r + t) permanently
+    # dark for web sessions even though distribution_calculator/interest_
+    # calculator/fictitious_capital_calculator etc. were already wired below.
     if fips_codes:
         overrides["capital_calculator"] = _build_capital_calculator(fips_codes)
+        overrides["tensor_registry"] = _build_tensor_registry(fips_codes)
 
     # Spec-116 Task 20b: wire the FRED-backed circulation (Feature 023) +
     # financial (Feature 024) services the same way the headless runner does

@@ -1430,6 +1430,9 @@ class StubEngineBridge:
             "outcome": None,
             "headline": "",
             "summary": "",
+            "epilogue": "",
+            "palette": "",
+            "accepted_at_tick": None,
             "stats": {
                 "final_tick": tick,
                 "consciousness": _stub_avg_attr("consciousness"),

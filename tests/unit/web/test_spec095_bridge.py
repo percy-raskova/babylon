@@ -7,12 +7,15 @@ Dialectic screen, chronicle end-screen, and Vic3-style objectives tracker.
 
 from __future__ import annotations
 
+from typing import Any
 from unittest.mock import MagicMock
 from uuid import UUID
 
 import pytest
 
+from babylon.models.enums import GameOutcome
 from game.engine_bridge import EngineBridge
+from game.epilogues import EPILOGUES
 
 pytestmark = pytest.mark.unit
 
@@ -248,6 +251,97 @@ class TestGetEndgameState:
         assert "consciousness" in stats
         assert "solidarity_edges" in stats
         assert "heat" in stats
+
+
+def _mock_persistence_with_endgame_row(
+    detail: dict[str, Any], tick: int = 5200, summary: str = "Endgame Reached"
+) -> MagicMock:
+    """A mock persistence whose pool serves one durable endgame tick_event row.
+
+    Same cursor-mock shape as ``test_returns_outcome_when_endgame_fires``:
+    ``fetchone`` returns the positional ``(tick, detail, summary)`` tuple
+    ``_fetch_endgame_event_row`` expects.
+    """
+    mock_persistence = MagicMock()
+    mock_persistence.get_metadata.return_value = None
+    mock_persistence.hydrate_graph.return_value = _mock_graph_with_contradictions()
+    mock_persistence._pool = MagicMock()
+    cursor = MagicMock()
+    cursor.fetchone.return_value = (tick, detail, summary)
+    cursor.__enter__ = MagicMock(return_value=cursor)
+    cursor.__exit__ = MagicMock(return_value=False)
+    conn = MagicMock()
+    conn.cursor.return_value = cursor
+    conn.__enter__ = MagicMock(return_value=conn)
+    conn.__exit__ = MagicMock(return_value=False)
+    mock_persistence._pool.connection.return_value = conn
+    return mock_persistence
+
+
+class TestEndgameEpilogues:
+    """Spec-116 FR-116-4.2: get_endgame_state serves the six distinct epilogues."""
+
+    @pytest.mark.parametrize(
+        "outcome",
+        sorted({o.value for o in GameOutcome} - {GameOutcome.IN_PROGRESS.value}),
+    )
+    def test_each_outcome_serves_its_own_epilogue(self, outcome: str) -> None:
+        mock_persistence = _mock_persistence_with_endgame_row(
+            {"kind": "endgame_reached", "outcome": outcome}
+        )
+        bridge = EngineBridge(mock_persistence)
+
+        result = bridge.get_endgame_state(_SESSION)
+
+        assert result["outcome"] == outcome
+        assert result["headline"] == EPILOGUES[outcome].headline
+        assert result["epilogue"] == EPILOGUES[outcome].body
+        assert result["palette"] == EPILOGUES[outcome].palette
+
+    def test_accepted_at_tick_surfaces_from_detail(self) -> None:
+        # FR-116-5: the accept-outcome endpoint stamps accepted_at_tick.
+        mock_persistence = _mock_persistence_with_endgame_row(
+            {
+                "kind": "endgame_reached",
+                "outcome": "fascist_consolidation",
+                "accepted_at_tick": 3120,
+            }
+        )
+        bridge = EngineBridge(mock_persistence)
+
+        result = bridge.get_endgame_state(_SESSION)
+
+        assert result["accepted_at_tick"] == 3120
+
+    def test_accepted_at_tick_is_none_without_player_accept(self) -> None:
+        mock_persistence = _mock_persistence_with_endgame_row(
+            {"kind": "endgame_reached", "outcome": "revolutionary_victory"}
+        )
+        bridge = EngineBridge(mock_persistence)
+
+        result = bridge.get_endgame_state(_SESSION)
+
+        assert result["accepted_at_tick"] is None
+
+    def test_in_progress_serves_no_fabricated_copy(self) -> None:
+        # Constitution III.11: a running game has no epilogue — never fabricate.
+        mock_persistence = MagicMock()
+        mock_persistence.get_metadata.return_value = None
+        mock_persistence.hydrate_graph.return_value = _mock_graph_with_contradictions()
+        bridge = EngineBridge(mock_persistence)
+
+        result = bridge.get_endgame_state(_SESSION)
+
+        assert result["headline"] == ""
+        assert result["epilogue"] == ""
+        assert result["palette"] == ""
+        assert result["accepted_at_tick"] is None
+
+    def test_outcome_headlines_dict_is_deleted(self) -> None:
+        # FR-116-4.2 kills the x4 duplicate at its source, not around it.
+        import game.engine_bridge as engine_bridge_module
+
+        assert not hasattr(engine_bridge_module, "_OUTCOME_HEADLINES")
 
 
 # ---------------------------------------------------------------------- #

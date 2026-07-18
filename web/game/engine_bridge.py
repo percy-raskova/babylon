@@ -60,6 +60,7 @@ from babylon.topology.graph_algorithms import (
     is_connected,
 )
 
+from .epilogues import EPILOGUES
 from .log_handler import sanitize_for_log
 from .map_contract import MAP_HISTORY_REPLAYABLE_METRICS, MAP_METRIC_PROPERTIES
 
@@ -131,17 +132,6 @@ _MAP_HISTORY_COUNTY_TRACE_METRICS: dict[str, str] = {
 # Severities surfaced by get_alerts_dashboard — "informational" is routine
 # flow, not an alert (matches _EVENT_SEVERITY's three-bucket taxonomy).
 _ALERT_SEVERITIES = frozenset({"critical", "warning"})
-
-# Spec 095: canonical headlines for the chronicle end-screen (FR-095-09).
-# REVOLUTIONARY_VICTORY → rupture palette ("BABYLON FALLS"); all others →
-# defeat palette ("THE BUNKER FAILS"). Matches the EndState.jsx mockup.
-_OUTCOME_HEADLINES: dict[str, str] = {
-    "REVOLUTIONARY_VICTORY": "BABYLON FALLS",
-    "ECOLOGICAL_COLLAPSE": "THE BUNKER FAILS",
-    "FASCIST_CONSOLIDATION": "THE BUNKER FAILS",
-    "RED_OGV": "THE BUNKER FAILS",
-    "FRAGMENTED_COLLAPSE": "THE BUNKER FAILS",
-}
 
 # ---------------------------------------------------------------------- #
 # Verb-to-ActionType mapping (9 canonical player verbs → engine ActionType)
@@ -615,6 +605,23 @@ def _outcome_from_endgame_row(row: dict[str, Any] | None) -> str | None:
         return GameOutcome(raw_outcome).value
     except ValueError:
         return str(raw_outcome).lower()
+
+
+def _accepted_tick_from_endgame_row(row: dict[str, Any] | None) -> int | None:
+    """Extract the player-accept tick from an endgame row's ``detail`` blob.
+
+    Spec-116 FR-116-5: ``POST /api/games/{id}/accept-outcome/`` stamps
+    ``detail["accepted_at_tick"]`` when the player fast-forwards to the
+    epilogue; a horizon-terminated game has no such key. ``bool`` is rejected
+    explicitly (``True`` is an ``int`` in Python) rather than coerced.
+    """
+    if row is None:
+        return None
+    detail = row.get("detail")
+    raw = detail.get("accepted_at_tick") if isinstance(detail, dict) else None
+    if isinstance(raw, bool) or not isinstance(raw, int):
+        return None
+    return raw
 
 
 def _compute_avg_node_attr(graph: Any, attr: str, default: float = 0.0) -> float:
@@ -3820,11 +3827,12 @@ class EngineBridge:
         }
 
     def get_endgame_state(self, session_id: UUID) -> dict[str, Any]:
-        """Return the terminal outcome + chronicle stat cards.
+        """Return the terminal outcome + epilogue + chronicle stat cards.
 
-        Spec 095 FR-095-02. Reads the latest snapshot's endgame block. All 5
-        GameOutcome terminal types are recognized (FR-095-02 fix). Returns
-        ``outcome: None`` when the game is still in progress.
+        Spec 095 FR-095-02 + spec-116 FR-116-4.2. All six GameOutcome values
+        (incl. the fixed-horizon ``unresolved``) resolve to a distinct
+        epilogue from ``web/game/epilogues.py``. Returns ``outcome: None``
+        (and empty copy — Constitution III.11) while the game is in progress.
 
         Args:
             session_id: The game session UUID.
@@ -3847,7 +3855,15 @@ class EngineBridge:
         if row is not None and outcome:
             tick = int(row["tick"])
 
-        headline = _OUTCOME_HEADLINES.get((outcome or "").upper(), "") if outcome else ""
+        # Spec-116 FR-116-4.2: EPILOGUES is keyed by lowercase GameOutcome
+        # values — the same case _outcome_from_endgame_row returns — so no
+        # .upper() case split. An unrecognized outcome string degrades to
+        # empty copy rather than fabricated copy (III.11).
+        entry = EPILOGUES.get(outcome) if outcome else None
+        headline = entry.headline if entry is not None else ""
+        epilogue = entry.body if entry is not None else ""
+        palette: str = entry.palette if entry is not None else ""
+        accepted_at_tick = _accepted_tick_from_endgame_row(row) if outcome else None
 
         consciousness_avg = _compute_avg_node_attr(graph, "class_consciousness", 0.0)
         heat_avg = _compute_avg_node_attr(graph, "heat", 0.0)
@@ -3858,6 +3874,9 @@ class EngineBridge:
             "outcome": outcome,
             "headline": headline,
             "summary": summary,
+            "epilogue": epilogue,
+            "palette": palette,
+            "accepted_at_tick": accepted_at_tick,
             "stats": {
                 "final_tick": tick,
                 "consciousness": consciousness_avg,

@@ -221,6 +221,10 @@ class TestSmokeTheTwentyRestoredMethods:
         result = bridge.get_endgame_state(session_id)
         assert result["outcome"] is None
         assert "final_tick" in result["stats"]
+        # Spec-116 FR-116-4.2 parity: the epilogue keys exist and are honest.
+        assert result["epilogue"] == ""
+        assert result["palette"] == ""
+        assert result["accepted_at_tick"] is None
 
     def test_get_infrastructure(self) -> None:
         bridge, session_id = _stub_session()

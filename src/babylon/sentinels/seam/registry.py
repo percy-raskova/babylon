@@ -2097,6 +2097,94 @@ _PATTERN_SHIFT_METRICS: tuple[SeamEntry, ...] = (
     ),
 )
 
+# ---------------------------------------------------------------------------
+# ENDGAME scope — spec-116 FR-116-4.2 epilogue keys on the
+# ``get_endgame_state`` payload (GET /api/games/{id}/endgame/).
+# Pre-existing keys (tick/outcome/headline/summary/stats) predate the
+# registry; only the Playability Spine's NEW wire keys are declared here.
+#
+# NOTE: named ``_ENDGAME_EPILOGUE_METRICS`` (not ``_ENDGAME_METRICS``) — Task
+# 4 already claimed the ``_ENDGAME_METRICS`` Python name above for the
+# ``endgame_progress`` row. Reusing that name here would silently rebind it
+# and drop Task 4's row out of the ``SEAM_REGISTRY`` sum (Python module-level
+# names, not the SeamEntry ``key`` property, are what collide); this section
+# is summed in under its own distinct name instead.
+# ---------------------------------------------------------------------------
+
+_ENDGAME_EPILOGUE_READ_PATHS: tuple[str, ...] = (
+    "web/game/engine_bridge.py::EngineBridge.get_endgame_state",
+    "src/frontend/src/components/takeovers/chronicle/EndStateScreen.tsx",
+)
+
+_ENDGAME_EPILOGUE_METRICS: tuple[SeamEntry, ...] = (
+    SeamEntry(
+        payload="epilogue",
+        wire_keys=("epilogue",),
+        scope=SeamScope.ENDGAME,
+        owner_layer="web bridge (game.epilogues data module)",
+        liveness_class=LivenessClass.DECLARED_CONDITIONAL,
+        liveness_condition=(
+            "non-empty only once the durable ENDGAME tick_event row exists "
+            "(horizon or player-accept); '' while the campaign runs"
+        ),
+        dtype="str",
+        write_site="web/game/epilogues.py::EPILOGUES (data module, render-time lookup)",
+        derivation_site="web/game/engine_bridge.py::EngineBridge.get_endgame_state",
+        read_paths=_ENDGAME_EPILOGUE_READ_PATHS,
+        nullable=False,
+        spec_ref="specs/116-playability-spine/spec.md · FR-116-4.2",
+        notes=(
+            "Deterministic 2-4 sentence epilogue body, pairwise distinct across "
+            "all six GameOutcome values incl. 'unresolved'. Deliberately separate "
+            "from the LLM epitaph channel (NarrationRecord Scope.ENDGAME): the "
+            "engine adjudicates, copy is data, AI narrates."
+        ),
+    ),
+    SeamEntry(
+        payload="palette",
+        wire_keys=("palette",),
+        scope=SeamScope.ENDGAME,
+        owner_layer="web bridge (game.epilogues data module)",
+        liveness_class=LivenessClass.DECLARED_CONDITIONAL,
+        liveness_condition=(
+            "same durable-ENDGAME-row gate as 'endgame.epilogue'; '' while the campaign runs"
+        ),
+        dtype="enum:EpiloguePalette",
+        write_site="web/game/epilogues.py::EPILOGUES (data module, render-time lookup)",
+        derivation_site="web/game/engine_bridge.py::EngineBridge.get_endgame_state",
+        read_paths=_ENDGAME_EPILOGUE_READ_PATHS,
+        nullable=False,
+        spec_ref="specs/116-playability-spine/spec.md · FR-116-4.2",
+        notes=(
+            "One of 'rupture' | 'defeat' | 'unresolved' — drives the three "
+            "end-screen palette families (six texts, three palettes)."
+        ),
+    ),
+    SeamEntry(
+        payload="accepted_at_tick",
+        wire_keys=("accepted_at_tick",),
+        scope=SeamScope.ENDGAME,
+        owner_layer="web bridge (accept-outcome endpoint stamp)",
+        liveness_class=LivenessClass.DECLARED_CONDITIONAL,
+        liveness_condition=(
+            "present only when the player accepted a locked pattern via "
+            "POST /api/games/{id}/accept-outcome/ (FR-116-5); null for horizon "
+            "termination and while in progress"
+        ),
+        dtype="int",
+        write_site=(
+            "web/game/api.py::game_accept_outcome (calls "
+            "EngineBridge.accept_outcome, which stamps "
+            "detail['accepted_at_tick'])"
+        ),
+        derivation_site="web/game/engine_bridge.py::_accepted_tick_from_endgame_row",
+        read_paths=_ENDGAME_EPILOGUE_READ_PATHS,
+        nullable=True,
+        spec_ref="specs/116-playability-spine/spec.md · FR-116-5",
+        notes="Accepted-at-tick framing on the end screen for player-accepted outcomes.",
+    ),
+)
+
 #: The declared observable-field contract. Populated per build phase.
 SEAM_REGISTRY: tuple[SeamEntry, ...] = (
     _MAP_METRICS
@@ -2108,4 +2196,5 @@ SEAM_REGISTRY: tuple[SeamEntry, ...] = (
     + _DOCTRINE_METRICS
     + _ENDGAME_METRICS
     + _PATTERN_SHIFT_METRICS
+    + _ENDGAME_EPILOGUE_METRICS  # spec-116 FR-116-4.2: epilogue/palette/accepted_at_tick
 )

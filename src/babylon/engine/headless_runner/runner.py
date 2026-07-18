@@ -1192,6 +1192,7 @@ def run(config: SimulationRunConfig) -> SimulationRunResult:
             session_factory=calc_session_factory,
             event_bus=event_bus,
             defines=defines,
+            scope_fips=config.scope_fips,
         )
         services = ServiceContainer.create(
             defines=defines,

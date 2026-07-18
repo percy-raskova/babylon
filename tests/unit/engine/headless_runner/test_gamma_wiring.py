@@ -101,13 +101,18 @@ def test_run_passes_gamma_calculator_to_service_container(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
 ) -> None:
-    """RED→GREEN: run() must pass gamma_calculator to ServiceContainer.create.
+    """RED->GREEN: run() must pass gamma_calculator AND tensor_registry to
+    ServiceContainer.create.
 
     Before E101 wiring: ``ServiceContainer.create(defines=defines)`` is
-    called with no ``gamma_calculator`` kwarg → assertion fails (RED).
+    called with no ``gamma_calculator`` kwarg -> assertion fails (RED).
     After wiring: ``_build_economics_overrides()`` is called and its
     return dict is unpacked into ``ServiceContainer.create(**overrides)``,
     so ``gamma_calculator`` is present and non-None (GREEN).
+
+    U1 (vol3-money-scissors) additionally threads ``scope_fips=config.scope_fips``
+    into that same call, so ``tensor_registry`` (and the Vol III financial
+    calculators) must ALSO be present in the captured kwargs.
 
     The Postgres / hydration / bridge layer is stubbed so we reach the
     ``ServiceContainer.create`` call site without a live database. A
@@ -198,6 +203,14 @@ def test_run_passes_gamma_calculator_to_service_container(
     )
     assert captured.get("melt_calculator") is not None, (
         "run() did not pass melt_calculator to ServiceContainer.create; "
+        f"captured kwargs: {sorted(captured.keys())}"
+    )
+    assert captured.get("tensor_registry") is not None, (
+        "run() did not pass tensor_registry to ServiceContainer.create; "
+        f"captured kwargs: {sorted(captured.keys())}"
+    )
+    assert captured.get("distribution_calculator") is not None, (
+        "run() did not pass distribution_calculator to ServiceContainer.create; "
         f"captured kwargs: {sorted(captured.keys())}"
     )
 

@@ -367,8 +367,8 @@ via `tools/generate_defines_config.py`. Zero inline constants (III.1).
 
 ### 3.6 Layer 5 — Honesty sweep
 
-Defects found during investigation. Twelve of thirteen rows were confirmed verbatim by the
-verification pass; the thirteenth was correct in substance with a drifted citation.
+Defects found during investigation. Fourteen of the fifteen rows were confirmed verbatim by the
+verification pass; the fifteenth was correct in substance with a drifted citation.
 
 | Defect | Location | Nature |
 |---|---|---|

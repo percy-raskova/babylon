@@ -61,7 +61,7 @@ from babylon.topology.graph_algorithms import (
 )
 
 from .epilogues import EPILOGUES
-from .fog.filter import apply_fog
+from .fog.filter import ORG_POLITICAL_FIELDS, POLITICAL_FIELDS, apply_fog
 from .fog.ledger import IntelLedger
 from .fog.reach import organizing_reach
 from .log_handler import sanitize_for_log
@@ -2158,6 +2158,18 @@ class EngineBridge:
 
         Returns:
             GeoJSON dict matching the HexMap frontend contract.
+
+        Track 1 / Task 5: the graph is now hydrated ONCE, up front (it used
+        to be hydrated a second time, later, only for the balkanization
+        block) — the SAME ``reach``/``h3_to_territory`` map gates BOTH the
+        hex-zoom composer (:func:`_hex_feature_properties`) and every
+        aggregated zoom (:meth:`_aggregate_hex_features`), one fogging
+        decision feeding both, never two independently-derived ones. A
+        hydration failure defaults ``graph`` to ``None`` ->
+        ``reach=frozenset()`` (:func:`_current_organizing_reach`'s own
+        None-graph handling) — fully fogged, never a crash or a fabricated
+        full-visibility default; the balkanization block is simply omitted,
+        same as before this task.
         """
         import h3
 
@@ -2172,6 +2184,25 @@ class EngineBridge:
 
         hex_states = HexState.objects.filter(game=session, tick=target_tick)
 
+        graph = None
+        try:
+            graph = self._persistence.hydrate_graph(tick=target_tick, session_id=session_id)
+        except Exception:  # noqa: BLE001 — best-effort; map still renders, fully fogged
+            logger.exception("Failed to hydrate graph for map fog for session %s", session_id)
+
+        reach = _current_organizing_reach(graph)
+        ledger = _EMPTY_INTEL_LEDGER
+        staleness_ticks, unknown_ticks = _current_intel_aging_ticks()
+        h3_to_territory: dict[str, str] = (
+            {
+                node_data["h3_index"]: node_id
+                for node_id, node_data in graph.nodes(data=True)
+                if node_data.get("_node_type") == "territory" and node_data.get("h3_index")
+            }
+            if graph is not None
+            else {}
+        )
+
         if zoom == "hex":
             # Full hex-level detail — no aggregation
             features = []
@@ -2184,12 +2215,29 @@ class EngineBridge:
                     "type": "Feature",
                     "id": state.h3_index,
                     "geometry": {"type": "Polygon", "coordinates": [coordinates]},
-                    "properties": _hex_feature_properties(state),
+                    "properties": _hex_feature_properties(
+                        state,
+                        territory_id=h3_to_territory.get(state.h3_index),
+                        reach=reach,
+                        ledger=ledger,
+                        tick=target_tick,
+                        staleness_ticks=staleness_ticks,
+                        unknown_ticks=unknown_ticks,
+                    ),
                 }
                 features.append(feature)
         else:
             # Aggregated zoom level — group by dimension column
-            features = self._aggregate_hex_features(hex_states, zoom)
+            features = self._aggregate_hex_features(
+                hex_states,
+                zoom,
+                reach=reach,
+                ledger=ledger,
+                tick=target_tick,
+                staleness_ticks=staleness_ticks,
+                unknown_ticks=unknown_ticks,
+                h3_to_territory=h3_to_territory,
+            )
 
         metadata: dict[str, Any] = {
             "tick": target_tick,
@@ -2202,12 +2250,13 @@ class EngineBridge:
         # Spec 093 US3: balkanization block for the map lens set. Reads the
         # raw graph directly (see _build_balkanization_block docstring for
         # why WorldState.from_graph() must be avoided here). Best-effort —
-        # a hydration failure must not break the rest of the map snapshot.
-        try:
-            graph = self._persistence.hydrate_graph(tick=target_tick, session_id=session_id)
-            metadata["balkanization"] = _build_balkanization_block(graph)
-        except Exception:  # noqa: BLE001 — optional block, never fails the map
-            logger.exception("Failed to build balkanization block for session %s", session_id)
+        # reuses the graph already hydrated above rather than hydrating a
+        # second time.
+        if graph is not None:
+            try:
+                metadata["balkanization"] = _build_balkanization_block(graph)
+            except Exception:  # noqa: BLE001 — optional block, never fails the map
+                logger.exception("Failed to build balkanization block for session %s", session_id)
 
         return {
             "type": "FeatureCollection",
@@ -2219,6 +2268,13 @@ class EngineBridge:
     def _aggregate_hex_features(
         hex_states: Any,
         zoom: str,
+        *,
+        reach: frozenset[str] | None = None,
+        ledger: IntelLedger | None = None,
+        tick: int = 0,
+        staleness_ticks: int = 0,
+        unknown_ticks: int = 0,
+        h3_to_territory: dict[str, str] | None = None,
     ) -> list[dict[str, Any]]:
         """Aggregate hex-level data to a higher zoom tier.
 
@@ -2285,6 +2341,31 @@ class EngineBridge:
         other numeric lens in this family it is SIGNED (roughly
         ``[-2.0, 2.0]``); the weighted-mean arithmetic below is agnostic to
         sign, so no special-casing is needed.
+
+        Track 1 / Task 5: ``reach``/``ledger``/``tick``/``staleness_ticks``/
+        ``unknown_ticks``/``h3_to_territory`` are OPTIONAL and default to
+        ``None``/``0`` — every pre-existing direct call (every test in
+        ``tests/unit/web/test_map_aggregation.py`` and
+        ``test_map_dominant_class_solidarity.py`` calls this with just
+        ``(hex_states, zoom)``) keeps getting the unfogged aggregate,
+        byte-identical. When ``reach`` is supplied,
+        ``heat``/``dominant_class``/``solidarity_index``/``agitation`` are
+        gated PER HEX, through the exact same
+        :func:`~game.fog.filter.apply_fog` call
+        :func:`_hex_feature_properties` uses on the hex zoom, BEFORE that
+        hex's value is folded into any accumulator below — this is the
+        "filtered-then-aggregated" pipeline: aggregation math never changes,
+        it just never sees an out-of-reach hex's real political value.
+        ``heat`` gets its own partial-coverage denominator (``heat_pop``,
+        alongside ``habitability_pop`` et al.) for exactly this reason — a
+        masked hex's heat must be EXCLUDED from the mean, never silently
+        read as ``0.0`` (Constitution III.11); when nothing is masked
+        (``reach=None``, or every hex in the group is in reach)
+        ``heat_pop == population_sum`` always, so the unfogged case is
+        unaffected. ``dominant_class``/``solidarity_index``/``agitation``
+        already had partial-coverage handling (a hex simply not reporting
+        the field) — a masked hex now takes that SAME "didn't report it"
+        path, no new accumulator needed for those three.
         """
         from collections import defaultdict
 
@@ -2321,7 +2402,14 @@ class EngineBridge:
                 "exploitation_rate_sum": 0.0,
                 "occ_sum": 0.0,
                 "imperial_rent_sum": 0.0,
+                # Track 1 / Task 5: heat gets its OWN partial-coverage
+                # denominator (like habitability_pop below), not
+                # population_sum — a fogged hex's heat must be EXCLUDED from
+                # the mean, never silently read as 0.0. When nothing is
+                # masked, heat_pop == population_sum always (no behavior
+                # change for the unfogged case).
                 "heat_sum": 0.0,
+                "heat_pop": 0,
                 "org_presence_sum": 0,
                 "population_sum": 0,
                 # Spec-109 A2: habitability isn't emitted by every hex (only
@@ -2388,6 +2476,54 @@ class EngineBridge:
                 key = "unknown"
             acc = groups[key]
             pop = state.pop_total or 0
+            attributes = getattr(state, "attributes", None) or {}
+
+            # Track 1 / Task 5: gate this hex's political fields ONCE, before
+            # any accumulator below sees them — the "filtered-then-aggregated"
+            # pipeline. ``reach is None`` (every pre-existing direct call)
+            # skips the gate entirely and reads the raw values, byte-identical
+            # to before this task. The SAME apply_fog gate
+            # ``_hex_feature_properties`` calls for the hex zoom; a
+            # territory_id this map can't resolve (``h3_to_territory`` empty
+            # or missing this h3_index) deny-by-defaults to "" (never in
+            # reach, never a ledger hit) rather than crashing or leaking.
+            heat_value = state.heat
+            dominant_class_value = getattr(state, "dominant_class", None)
+            solidarity_index_value = attributes.get("solidarity_index")
+            agitation_value = attributes.get("agitation")
+            if reach is not None:
+                territory_id = (h3_to_territory or {}).get(state.h3_index, "")
+                gated_political = apply_fog(
+                    {
+                        "heat": heat_value,
+                        "dominant_class": dominant_class_value,
+                        "solidarity_index": solidarity_index_value,
+                        "agitation": agitation_value,
+                    },
+                    "territory",
+                    territory_id,
+                    reach,
+                    ledger if ledger is not None else _EMPTY_INTEL_LEDGER,
+                    tick,
+                    staleness_ticks=staleness_ticks,
+                    unknown_ticks=unknown_ticks,
+                )
+                heat_value = gated_political["heat"]
+                dominant_class_value = gated_political["dominant_class"]
+                solidarity_index_value = gated_political["solidarity_index"]
+                agitation_value = gated_political["agitation"]
+                # Fold the (possibly masked) values back into a shadow copy of
+                # ``attributes`` so the generic weighted_mean_metrics loop
+                # below (which reads solidarity_index/agitation off
+                # ``attributes``) sees the gated values without any special
+                # casing — the same partial-coverage bookkeeping it already
+                # does for a hex that simply never reported the field.
+                attributes = {
+                    **attributes,
+                    "solidarity_index": solidarity_index_value,
+                    "agitation": agitation_value,
+                }
+
             # These five are Postgres NUMERIC columns (psycopg → Decimal) once
             # populated; the accumulators are float-seeded (line 1691+), and
             # ``float += Decimal`` raises TypeError. Cast at the read boundary —
@@ -2399,13 +2535,14 @@ class EngineBridge:
             acc["exploitation_rate_sum"] += float(state.exploitation_rate or 0) * pop
             acc["occ_sum"] += float(state.occ or 0) * pop
             acc["imperial_rent_sum"] += float(state.imperial_rent or 0)
-            acc["heat_sum"] += float(state.heat or 0) * pop
+            if heat_value is not None:
+                acc["heat_sum"] += float(heat_value) * pop
+                acc["heat_pop"] += pop
             acc["org_presence_sum"] += state.org_count or 0
             acc["population_sum"] += pop
             acc["count"] += 1
             member_h3[key].append(state.h3_index)
 
-            attributes = getattr(state, "attributes", None) or {}
             # Numeric partial-coverage lenses (population-weighted mean, each
             # with its own coverage denominator). One loop over
             # ``weighted_mean_metrics`` instead of a branch per lens — identical
@@ -2427,7 +2564,7 @@ class EngineBridge:
             if vision_state is not None:
                 vision_state_pop[key][vision_state] += pop
 
-            dominant_class = getattr(state, "dominant_class", None)
+            dominant_class = dominant_class_value
             if dominant_class is not None:
                 dominant_class_pop[key][dominant_class] += pop
 
@@ -2438,6 +2575,7 @@ class EngineBridge:
         features: list[dict[str, Any]] = []
         for key, acc in groups.items():
             total_pop = acc["population_sum"] or 1  # avoid div-by-zero
+            heat_pop = acc["heat_pop"]
             habitability_pop = acc["habitability_pop"]
             solidarity_index_pop = acc["solidarity_index_pop"]
             throughput_position_pop = acc["throughput_position_pop"]
@@ -2470,7 +2608,12 @@ class EngineBridge:
                         # blank even though the value is non-zero. Match the
                         # profit_rate precision above.
                         "imperial_rent": round(acc["imperial_rent_sum"], 6),
-                        "heat": round(acc["heat_sum"] / total_pop, 4),
+                        # Track 1 / Task 5: heat_pop (not total_pop) — a
+                        # partial-coverage denominator like habitability
+                        # below, so a masked hex's heat is excluded from the
+                        # mean rather than silently read as 0.0. Unfogged,
+                        # heat_pop == total_pop always (no behavior change).
+                        "heat": (round(acc["heat_sum"] / heat_pop, 4) if heat_pop else None),
                         "org_presence": acc["org_presence_sum"],
                         "population": acc["population_sum"],
                         "habitability": (
@@ -4430,6 +4573,15 @@ class EngineBridge:
         (:func:`_social_class_inspector_fields`), a pre-existing, narrower
         gate this task does not fold into ``apply_fog`` (see the Task 4
         report's assessment of that as a future correctness hazard).
+
+        Track 1 / Task 5 §B: when ``node_type == "organization"`` this uses
+        :data:`~game.fog.filter.ORG_POLITICAL_FIELDS` instead of the default
+        :data:`~game.fog.filter.POLITICAL_FIELDS` — so an org node clicked
+        through the generic fallback (not ``get_inspector_org``) gates
+        ``consciousness_tendency``/``cohesion``/``cadre_level`` the same way
+        ``heat`` already was. The player's own org is exempt (full
+        visibility of your own organization) via an explicit bypass, not an
+        emergent property of reach.
         """
         graph = self._persistence.hydrate_graph(tick=None, session_id=session_id)
         if node_id not in graph.nodes:
@@ -4448,6 +4600,10 @@ class EngineBridge:
         payload.update(
             _enum_normalized({k: v for k, v in data.items() if k not in ("_node_type", "name")})
         )
+        if node_type == "organization" and _is_player_org(node_id, _resolve_player_org_id(graph)):
+            payload["vision_masked"] = []
+            payload["vision_approx"] = []
+            return payload
         staleness_ticks, unknown_ticks = _current_intel_aging_ticks()
         return apply_fog(
             payload,
@@ -4458,6 +4614,9 @@ class EngineBridge:
             _graph_tick(graph),
             staleness_ticks=staleness_ticks,
             unknown_ticks=unknown_ticks,
+            political_fields=ORG_POLITICAL_FIELDS
+            if node_type == "organization"
+            else POLITICAL_FIELDS,
         )
 
     def get_inspector_org(self, session_id: UUID, org_id: str) -> dict[str, Any]:
@@ -4484,6 +4643,15 @@ class EngineBridge:
         carries (the player org's own node is always in its own reach, so
         its ``heat`` stays exact; a rival org's is masked unless a ledger
         entry covers it — see :func:`~game.fog.filter.apply_fog`).
+
+        Track 1 / Task 5 §B: ``consciousness_tendency``/``cohesion``/
+        ``cadre_level`` join ``heat`` as gated org-internal-state fields
+        (:data:`~game.fog.filter.ORG_POLITICAL_FIELDS`) — an org's
+        existence/territory_ids/budget stay material (always visible); its
+        internal state is political for every NON-PLAYER org. The player's
+        own org is exempt via an EXPLICIT bypass (not merely relying on it
+        being trivially in its own reach) — full visibility of your own
+        organization is a hard guarantee, not an emergent property.
         """
         graph = self._persistence.hydrate_graph(tick=None, session_id=session_id)
         if org_id not in graph.nodes or graph.nodes[org_id].get("_node_type") != "organization":
@@ -4543,6 +4711,10 @@ class EngineBridge:
             "vanguard": vanguard,
             "traps": traps,
         }
+        if is_player_org:
+            payload["vision_masked"] = []
+            payload["vision_approx"] = []
+            return payload
         staleness_ticks, unknown_ticks = _current_intel_aging_ticks()
         return apply_fog(
             payload,
@@ -4553,6 +4725,7 @@ class EngineBridge:
             _graph_tick(graph),
             staleness_ticks=staleness_ticks,
             unknown_ticks=unknown_ticks,
+            political_fields=ORG_POLITICAL_FIELDS,
         )
 
     def get_inspector_community(self, session_id: UUID, hyperedge_id: str) -> dict[str, Any]:
@@ -4626,6 +4799,14 @@ class EngineBridge:
         executes only inside a tick — this drill-down reads whatever
         ``hydrate_graph`` last persisted) or for a tenant-less territory
         (Constitution III.11).
+
+        Track 1 / Task 5: ``dominant_class``/``solidarity_index``/
+        ``agitation`` are the three :data:`~game.fog.filter.POLITICAL_FIELDS`
+        names this payload carries — gated through the same
+        :func:`~game.fog.filter.apply_fog` call ``_serialize_territory``/
+        ``get_inspector_org``/``get_inspector_node`` already use (Task 4),
+        never a second gate. Before this task the hex inspector was the one
+        drill-down surface that skipped fogging entirely.
         """
         graph = self._persistence.hydrate_graph(tick=None, session_id=session_id)
         territory_id: str | None = None
@@ -4651,7 +4832,7 @@ class EngineBridge:
             if member_data.get("_node_type") == "organization"
         )
 
-        return {
+        payload: dict[str, Any] = {
             "id": territory_id,
             "h3_index": h3_index,
             "name": data.get("name", territory_id),
@@ -4676,6 +4857,17 @@ class EngineBridge:
             "intel_confidence": _territory_graph_attr(graph, territory_id, "intel_confidence"),
             "vision_state": _territory_graph_attr(graph, territory_id, "vision_state"),
         }
+        staleness_ticks, unknown_ticks = _current_intel_aging_ticks()
+        return apply_fog(
+            payload,
+            "territory",
+            territory_id,
+            _current_organizing_reach(graph),
+            _EMPTY_INTEL_LEDGER,
+            _graph_tick(graph),
+            staleness_ticks=staleness_ticks,
+            unknown_ticks=unknown_ticks,
+        )
 
     # ------------------------------------------------------------------ #
     # Tick resolution
@@ -8160,7 +8352,16 @@ def _persist_causal_beats_safe(
         )
 
 
-def _hex_feature_properties(state: Any) -> dict[str, Any]:
+def _hex_feature_properties(
+    state: Any,
+    *,
+    territory_id: str | None = None,
+    reach: frozenset[str] | None = None,
+    ledger: IntelLedger | None = None,
+    tick: int = 0,
+    staleness_ticks: int = 0,
+    unknown_ticks: int = 0,
+) -> dict[str, Any]:
     """Project one ``hex_latest`` row onto hex-zoom ``/map/`` feature properties.
 
     Emits every :data:`MAP_METRIC_PROPERTIES` key (the spec-109 A3 contract —
@@ -8177,14 +8378,48 @@ def _hex_feature_properties(state: Any) -> dict[str, Any]:
     ``get_map_snapshot`` loop so the contract is unit-testable without a
     database.
 
+    Track 1 / Task 5: ``territory_id``/``reach``/``ledger``/``tick``/
+    ``staleness_ticks``/``unknown_ticks`` are OPTIONAL and default to
+    ``None``/``0`` — mirrors ``_serialize_territory``'s exact opt-in fog
+    pattern (Task 4). ``reach is None`` means "fog not requested" (every
+    direct unit-test call site that predates this task keeps getting the
+    unfogged dict, byte-identical); a caller building the real player-facing
+    ``/map/`` hex zoom (``EngineBridge.get_map_snapshot``) always supplies a
+    real ``reach``, gating this dict's political fields
+    (``heat``/``dominant_class``/``solidarity_index``/``agitation`` — the
+    four names :data:`~game.fog.filter.POLITICAL_FIELDS` shares with this
+    surface) through the SAME :func:`~game.fog.filter.apply_fog` gate
+    ``_serialize_territory``/``get_inspector_*`` already use — not a second,
+    independently-derived one. ``_aggregate_hex_features`` gates the
+    identical four fields the same way, on every state it folds into a
+    group, BEFORE any aggregation math runs — this function and that one
+    are the two halves of ONE filtered-then-aggregated pipeline, never two
+    independent gates.
+
     Args:
         state: One ``HexState`` row (or any object carrying its columns).
+        territory_id: The territory node id this hex's ``h3_index``
+            resolves to (the caller's own ``h3_index -> territory_id``
+            map), or ``None`` when it cannot be resolved — coerced to
+            ``""`` before the fog gate, which can never be a member of
+            ``reach`` or a ledger entry, so it deny-by-defaults to fully
+            fogged (mirrors ``_current_organizing_reach``'s own
+            deny-on-ambiguity rule) rather than crashing or fabricating
+            visibility.
+        reach: :func:`game.fog.reach.organizing_reach`'s result, or
+            ``None`` to skip fogging entirely (opt-in, see above).
+        ledger: The session's :class:`~game.fog.ledger.IntelLedger`;
+            defaults to the shared empty ledger when ``reach`` is given but
+            this is omitted.
+        tick: The current simulation tick.
+        staleness_ticks: ``GameDefines.epistemic_horizon.intel_staleness_ticks``.
+        unknown_ticks: ``GameDefines.epistemic_horizon.intel_unknown_ticks``.
 
     Returns:
         The feature ``properties`` dict.
     """
     attributes = getattr(state, "attributes", None) or {}
-    return {
+    properties: dict[str, Any] = {
         "h3_index": state.h3_index,
         "county_fips": state.county_fips,
         "county_name": state.county_name,
@@ -8210,6 +8445,18 @@ def _hex_feature_properties(state: Any) -> dict[str, Any]:
         "dispossession_intensity": attributes.get("dispossession_intensity"),
         "price_divergence": attributes.get("price_divergence"),
     }
+    if reach is None:
+        return properties
+    return apply_fog(
+        properties,
+        "territory",
+        territory_id or "",
+        reach,
+        ledger if ledger is not None else _EMPTY_INTEL_LEDGER,
+        tick,
+        staleness_ticks=staleness_ticks,
+        unknown_ticks=unknown_ticks,
+    )
 
 
 def _org_count_by_territory(organizations: list[dict[str, Any]]) -> dict[str, int]:
@@ -9036,7 +9283,14 @@ def _derive_short_name(name: str) -> str:
     return name[:15] + "…"
 
 
-def _serialize_organization(o: Any, *, player_org_id: str | None) -> dict[str, Any]:
+def _serialize_organization(
+    o: Any,
+    *,
+    player_org_id: str | None,
+    reach: frozenset[str] | None = None,
+    ledger: IntelLedger | None = None,
+    tick: int | None = None,
+) -> dict[str, Any]:
     """Serialize an Organization with all visualization-relevant fields.
 
     Spec 061 US4 (T067, T068): adds ``short_name`` / ``player_controlled``
@@ -9054,6 +9308,20 @@ def _serialize_organization(o: Any, *, player_org_id: str | None) -> dict[str, A
     For player organizations, computes and attaches VanguardResources
     as the ``vanguard`` field.
 
+    Track 1 / Task 5 §B: ``reach``/``ledger``/``tick`` are OPTIONAL and
+    default to ``None`` — mirrors ``_serialize_territory``'s exact opt-in
+    fog pattern (Task 4). ``reach is None`` (every internal/persistence call
+    site: hex-state seed backfill, ``_persist_snapshots_safe``) keeps
+    reading the TRUE, ungated payload, unchanged. A caller building a
+    genuinely PLAYER-FACING view (``_state_to_snapshot``,
+    ``_build_org_network``) passes a real ``reach``, gating
+    ``consciousness_tendency``/``cohesion``/``cadre_level``/``heat``
+    (:data:`~game.fog.filter.ORG_POLITICAL_FIELDS`) for every NON-PLAYER
+    org — an org's existence/``territory_ids``/``budget`` stay material,
+    never gated. The player's own org is exempt via an EXPLICIT bypass, a
+    hard guarantee rather than an emergent property of ``is_player_org ==
+    (o.id == player_org_id)`` happening to also satisfy ``o.id in reach``.
+
     Args:
         o: The Organization to serialize.
         player_org_id: The session's ``WorldState.player_org_id`` (see
@@ -9061,6 +9329,13 @@ def _serialize_organization(o: Any, *, player_org_id: str | None) -> dict[str, A
             no player org set. Required (not defaulted) so no call site can
             forget to thread it and silently render every org as
             non-player-controlled.
+        reach: :func:`game.fog.reach.organizing_reach`'s result, or ``None``
+            to skip fogging entirely (opt-in, see above).
+        ledger: The session's :class:`~game.fog.ledger.IntelLedger`;
+            defaults to the shared empty ledger when ``reach`` is given but
+            this is omitted.
+        tick: The current simulation tick; defaults to ``0`` under the same
+            condition.
     """
     name = str(o.name)
     is_player_org = _is_player_org(o.id, player_org_id)
@@ -9119,7 +9394,24 @@ def _serialize_organization(o: Any, *, player_org_id: str | None) -> dict[str, A
         )
         result["vanguard"] = vanguard.model_dump()
 
-    return result
+    if reach is None:
+        return result
+    if is_player_org:
+        result["vision_masked"] = []
+        result["vision_approx"] = []
+        return result
+    staleness_ticks, unknown_ticks = _current_intel_aging_ticks()
+    return apply_fog(
+        result,
+        "organization",
+        o.id,
+        reach,
+        ledger if ledger is not None else _EMPTY_INTEL_LEDGER,
+        tick if tick is not None else 0,
+        staleness_ticks=staleness_ticks,
+        unknown_ticks=unknown_ticks,
+        political_fields=ORG_POLITICAL_FIELDS,
+    )
 
 
 def _serialize_institution(inst: Any) -> dict[str, Any]:
@@ -9196,7 +9488,15 @@ def _build_org_network(
         {
             "id": oid,
             "type": "organization",
-            "attributes": _serialize_organization(orgs[oid], player_org_id=state.player_org_id),
+            # Track 1 / Task 5 §B: the same reach that gates territory nodes
+            # below also gates this org's internal state for non-player orgs.
+            "attributes": _serialize_organization(
+                orgs[oid],
+                player_org_id=state.player_org_id,
+                reach=reach,
+                ledger=_EMPTY_INTEL_LEDGER,
+                tick=_graph_tick(graph),
+            ),
         }
         for oid in org_ids
     ]
@@ -9430,8 +9730,14 @@ def _state_to_snapshot(state: WorldState, session_id: UUID, *, graph: Any = None
         _serialize_territory(t, graph=graph, reach=reach, ledger=ledger, tick=tick)
         for t in state.territories.values()
     ]
+    # Track 1 / Task 5 §B: the SAME reach/ledger/tick that gates territories
+    # above also gates each non-player org's internal state
+    # (consciousness_tendency/cohesion/cadre_level/heat) — one fog
+    # computation feeding both, not two independently derived ones.
     organizations = [
-        _serialize_organization(o, player_org_id=state.player_org_id)
+        _serialize_organization(
+            o, player_org_id=state.player_org_id, reach=reach, ledger=ledger, tick=tick
+        )
         for o in state.organizations.values()
     ]
     institutions = [_serialize_institution(inst) for inst in state.institutions.values()]

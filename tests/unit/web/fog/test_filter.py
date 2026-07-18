@@ -452,6 +452,114 @@ class TestPurity:
             assert forbidden not in source
 
 
+class TestOrgPoliticalFields:
+    """Track 1 / Task 5 §B: an organization's internal state
+    (``consciousness_tendency``/``cohesion``/``cadre_level``, plus the
+    shared ``heat``) gates through the SAME ``apply_fog`` primitive as
+    territory political fields — just with a wider ``political_fields``
+    tuple, never a forked gate or a second copied field list."""
+
+    def _org_payload(self) -> dict[str, object]:
+        return {
+            "id": "ORG1",
+            "name": "Rival Committee",
+            "budget": 500.0,
+            "territory_ids": ["T1", "T2"],
+            "heat": 0.42,
+            "cohesion": 0.6,
+            "cadre_level": 0.3,
+            "consciousness_tendency": "reformist",
+        }
+
+    def test_org_internal_fields_are_in_the_org_political_set(self) -> None:
+        from game.fog.filter import ORG_POLITICAL_FIELDS, POLITICAL_FIELDS
+
+        for field in ("consciousness_tendency", "cohesion", "cadre_level", "heat"):
+            assert field in ORG_POLITICAL_FIELDS
+        # heat is shared with POLITICAL_FIELDS, not duplicated in the org-only tuple.
+        assert "heat" in POLITICAL_FIELDS
+
+    def test_default_apply_fog_call_does_not_gate_org_internal_fields(self) -> None:
+        """Without political_fields=ORG_POLITICAL_FIELDS, cohesion/cadre_level/
+        consciousness_tendency are outside the default POLITICAL_FIELDS set
+        and pass through untouched — proving the org tuple is what does the
+        gating, not some implicit behavior."""
+        from game.fog.filter import apply_fog
+        from game.fog.ledger import IntelLedger
+
+        payload = self._org_payload()
+        result = apply_fog(
+            payload,
+            node_type="organization",
+            node_id="ORG1",
+            reach=frozenset(),
+            ledger=IntelLedger(),
+            tick=100,
+            staleness_ticks=STALENESS_TICKS,
+            unknown_ticks=UNKNOWN_TICKS,
+        )
+
+        assert result["cohesion"] == 0.6
+        assert result["cadre_level"] == 0.3
+        assert result["consciousness_tendency"] == "reformist"
+        # heat IS in the default POLITICAL_FIELDS, so it's masked either way.
+        assert result["heat"] is None
+
+    def test_org_political_fields_masks_internal_state_outside_reach(self) -> None:
+        from game.fog.filter import ORG_POLITICAL_FIELDS, apply_fog
+        from game.fog.ledger import IntelLedger
+
+        payload = self._org_payload()
+        result = apply_fog(
+            payload,
+            node_type="organization",
+            node_id="ORG1",
+            reach=frozenset(),  # ORG1 not in reach -> rival org
+            ledger=IntelLedger(),
+            tick=100,
+            staleness_ticks=STALENESS_TICKS,
+            unknown_ticks=UNKNOWN_TICKS,
+            political_fields=ORG_POLITICAL_FIELDS,
+        )
+
+        assert result["heat"] is None
+        assert result["cohesion"] is None
+        assert result["cadre_level"] is None
+        assert result["consciousness_tendency"] is None
+        assert set(result["vision_masked"]) == {
+            "heat",
+            "cohesion",
+            "cadre_level",
+            "consciousness_tendency",
+        }
+        # Material fields untouched.
+        assert result["budget"] == 500.0
+        assert result["territory_ids"] == ["T1", "T2"]
+
+    def test_org_political_fields_exact_inside_reach(self) -> None:
+        from game.fog.filter import ORG_POLITICAL_FIELDS, apply_fog
+        from game.fog.ledger import IntelLedger
+
+        payload = self._org_payload()
+        result = apply_fog(
+            payload,
+            node_type="organization",
+            node_id="ORG1",
+            reach=frozenset({"ORG1"}),  # e.g. the player's own org
+            ledger=IntelLedger(),
+            tick=100,
+            staleness_ticks=STALENESS_TICKS,
+            unknown_ticks=UNKNOWN_TICKS,
+            political_fields=ORG_POLITICAL_FIELDS,
+        )
+
+        assert result["heat"] == 0.42
+        assert result["cohesion"] == 0.6
+        assert result["cadre_level"] == 0.3
+        assert result["consciousness_tendency"] == "reformist"
+        assert result["vision_masked"] == []
+
+
 class TestFieldsAbsentFromPayloadAreIgnored:
     def test_a_political_field_the_composer_never_produced_is_not_invented(self) -> None:
         from game.fog.filter import apply_fog

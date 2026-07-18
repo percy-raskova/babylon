@@ -67,6 +67,28 @@ POLITICAL_FIELDS: tuple[str, ...] = (
     "colonial_stance",
 )
 
+#: Track 1 / Task 5 §B (owner-level ruling, 2026-07-18): an organization's
+#: EXISTENCE, public activity, and territorial presence are material (public
+#: record — always visible, never gated: not touched by this module at
+#: all). Its INTERNAL state is political, gated for every NON-PLAYER org
+#: (the player's own org stays fully visible — see ``engine_bridge``'s
+#: explicit ``is_player_org`` bypass at each org-payload call site, not a
+#: rule enforced here). These three are net-new; ``heat`` (already in
+#: :data:`POLITICAL_FIELDS`) is the fourth org-internal field the ruling
+#: names — shared with territory heat, not duplicated.
+ORG_INTERNAL_STATE_FIELDS: tuple[str, ...] = (
+    "consciousness_tendency",
+    "cohesion",
+    "cadre_level",
+)
+
+#: The full political field set for an ORGANIZATION payload: the shared
+#: :data:`POLITICAL_FIELDS` union :data:`ORG_INTERNAL_STATE_FIELDS`. ONE
+#: source of truth — an org composer passes THIS to :func:`apply_fog`'s
+#: ``political_fields`` argument, never a second, independently-copied
+#: field list.
+ORG_POLITICAL_FIELDS: tuple[str, ...] = POLITICAL_FIELDS + ORG_INTERNAL_STATE_FIELDS
+
 
 def apply_fog(
     payload: dict[str, Any],
@@ -78,6 +100,7 @@ def apply_fog(
     *,
     staleness_ticks: int,
     unknown_ticks: int,
+    political_fields: tuple[str, ...] = POLITICAL_FIELDS,
 ) -> dict[str, Any]:
     """Redact the political layer of ``payload`` outside organizing reach.
 
@@ -134,6 +157,13 @@ def apply_fog(
             :func:`~game.fog.ledger.read_intel`).
         staleness_ticks: ``GameDefines.epistemic_horizon.intel_staleness_ticks``.
         unknown_ticks: ``GameDefines.epistemic_horizon.intel_unknown_ticks``.
+        political_fields: The field set this call gates — defaults to
+            :data:`POLITICAL_FIELDS` (territory/generic-node shape). Track 1
+            / Task 5 §B: an organization composer passes
+            :data:`ORG_POLITICAL_FIELDS` instead, so an org's internal-state
+            fields (``consciousness_tendency``/``cohesion``/``cadre_level``,
+            plus the shared ``heat``) are gated the same way, through the
+            SAME gate, rather than a forked field list or a second function.
 
     Returns:
         A new dict — ``payload`` plus a gated political layer plus
@@ -157,7 +187,7 @@ def apply_fog(
 
     masked: list[str] = []
     approx: list[str] = []
-    for field in POLITICAL_FIELDS:
+    for field in political_fields:
         if field not in result:
             continue
 
@@ -179,4 +209,9 @@ def apply_fog(
     return result
 
 
-__all__ = ["POLITICAL_FIELDS", "apply_fog"]
+__all__ = [
+    "ORG_INTERNAL_STATE_FIELDS",
+    "ORG_POLITICAL_FIELDS",
+    "POLITICAL_FIELDS",
+    "apply_fog",
+]

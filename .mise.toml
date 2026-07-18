@@ -127,6 +127,10 @@ run = "poetry run python tools/sentinel_check.py coverage --check"
 description = "Node-type vocabulary sentinel: no invented _node_type strings; every production query has a producer"
 run = "poetry run python tools/sentinel_check.py vocabulary --check"
 
+[tasks."check:inert"]
+description = "Inert-construct sentinel: every declared store's writer and every declared producer has a real production caller (static gate)"
+run = "poetry run python tools/sentinel_check.py inert --check"
+
 [tasks.cap]
 description = "Run a command under a HARD memory+CPU cgroup cap (can't freeze the machine). Use for any heavy run: mise run cap -- mise run test:unit"
 run = "tools/capped.sh"

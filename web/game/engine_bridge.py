@@ -1438,6 +1438,59 @@ def _solidarity_index_by_territory(
     return index
 
 
+def _class_node_agitation(node_data: dict[str, Any]) -> float | None:
+    """A single social_class node's ``ideology.agitation``, or ``None`` if absent.
+
+    ``SocialClass.model_dump()`` (what ``WorldState.to_graph()`` stamps onto
+    every social_class node) nests ``agitation`` under ``ideology`` -- there is
+    no flat top-level ``agitation`` key in production. Track 1 audit (task #45)
+    found two verb-target methods (``get_educate_targets``/``get_aid_targets``)
+    reading a flat ``"agitation"`` key that no production graph ever carries,
+    always silently returning 0.0; fixture stamps that mirrored the same flat
+    shape masked it. This is the one honest reader — extracted out of
+    :func:`_agitation_index_by_territory` so both call sites share it.
+
+    :param node_data: A social_class node's raw attribute dict.
+    :returns: The class's current agitation, or ``None`` when no ``ideology``
+        dict (or no ``agitation`` key within it) is present.
+    """
+    ideology = node_data.get("ideology")
+    agitation = ideology.get("agitation") if isinstance(ideology, dict) else None
+    return None if agitation is None else float(agitation)
+
+
+#: The three named ``InternalBalanceOfForces`` weight fields, in the exact
+#: order ``_serialize_institution`` (the typed-Institution serializer)
+#: reports them -- kept here as the single list both readers share.
+_FACTIONAL_WEIGHT_KEYS: Final[tuple[str, str, str]] = (
+    "liberal_technocratic",
+    "revanchist_fascist",
+    "institutionalist_bonapartist",
+)
+
+
+def _institution_factional_control(node_data: dict[str, Any]) -> dict[str, float]:
+    """An institution node's factional weights, keyed like ``_serialize_institution``.
+
+    ``Institution.model_dump()`` (what ``WorldState.to_graph()`` stamps onto
+    every institution node) nests the three ruling-class-fraction weights
+    under ``internal_balance`` -- no production graph ever carries a flat
+    ``"factional_composition"`` key (Track 1 audit, task #45: ``get_attack_targets``
+    read that non-existent key and always returned ``{}``). Only the three
+    named weights are extracted (not a raw passthrough of ``internal_balance``)
+    because its full dump also carries the computed ``hegemonic_fraction``
+    enum member, which is not JSON-safe.
+
+    :param node_data: An institution node's raw attribute dict.
+    :returns: The three faction weights, or all-zero if ``internal_balance``
+        is absent (never a fabricated non-zero default).
+    """
+    balance = node_data.get("internal_balance")
+    if not isinstance(balance, dict):
+        return dict.fromkeys(_FACTIONAL_WEIGHT_KEYS, 0.0)
+    return {key: float(balance.get(key, 0.0)) for key in _FACTIONAL_WEIGHT_KEYS}
+
+
 def _agitation_index_by_territory(
     graph: BabylonGraph, tenancy_members: dict[str, list[str]]
 ) -> dict[str, float]:
@@ -1471,12 +1524,11 @@ def _agitation_index_by_territory(
         total_population = 0.0
         for member_id in member_ids:
             node_data = graph.nodes.get(member_id, {})
-            ideology = node_data.get("ideology")
-            agitation = ideology.get("agitation") if isinstance(ideology, dict) else None
+            agitation = _class_node_agitation(node_data)
             if agitation is None:
                 continue
             population = float(node_data.get("population") or 0)
-            weighted_sum += float(agitation) * population
+            weighted_sum += agitation * population
             total_population += population
         if total_population:
             index[territory_id] = round(weighted_sum / total_population, 4)
@@ -5733,7 +5785,7 @@ class EngineBridge:
                 continue
 
             for sc_id, sc_data in social_classes:
-                agitation = float(sc_data.get("agitation", 0.0))
+                agitation = _class_node_agitation(sc_data) or 0.0
                 cohesion = float(org_status.get("cohesion", 0.0))
 
                 targets.append(
@@ -5850,7 +5902,7 @@ class EngineBridge:
                             "wage_received": None,
                             "consumption_gap": None,
                             "subsistence_level": data.get("subsistence_threshold"),
-                            "agitation_level": float(data.get("agitation", 0.0)),
+                            "agitation_level": _class_node_agitation(data) or 0.0,
                         },
                         "edge_status": _edge_status_between(graph, org_id, node_id),
                         "feedforward": {
@@ -6065,7 +6117,7 @@ class EngineBridge:
                             "target_id": node_id,
                             "target_type": "INSTITUTION",
                             "name": data.get("name", node_id),
-                            "factional_control": dict(data.get("factional_composition", {})),
+                            "factional_control": _institution_factional_control(data),
                             "expected_deltas": {
                                 "consciousness_delta": None,
                                 "heat_delta": attack_heat_gain,

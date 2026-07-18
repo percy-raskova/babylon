@@ -316,3 +316,110 @@ def node_type_uses(path: Path) -> list[NodeTypeUse]:
             uses += _uses_from_compare(node)
 
     return sorted(set(uses))
+
+
+#: One node-attribute stamp found in source: ``(lineno, node_type, attribute)``
+#: -- a keyword (or dict-literal key) passed to a real ``add_node(id, TYPE,
+#: **kwargs)`` call whose node type resolved to a single literal.
+NodeAttributeStamp = tuple[int, str, str]
+
+#: Keyword names that select the node's TYPE, not a field stamped ON it.
+_NODE_TYPE_KEYS = (_TYPE_KEY, "node_type")
+
+
+def _dict_literal_shape(dict_node: ast.Dict) -> tuple[str | None, list[str]]:
+    """``**{"_node_type": ..., "attr": ...}`` -- split its keys into
+    (node type, other attribute names)."""
+    node_type: str | None = None
+    attrs: list[str] = []
+    for key_node, value_node in zip(dict_node.keys, dict_node.values, strict=True):
+        if not (isinstance(key_node, ast.Constant) and isinstance(key_node.value, str)):
+            continue
+        if key_node.value in _NODE_TYPE_KEYS:
+            leaf = _leaf_value(value_node)
+            if leaf is not None:
+                node_type = leaf
+        else:
+            attrs.append(key_node.value)
+    return node_type, attrs
+
+
+def _add_node_call_shape(call: ast.Call) -> tuple[str | None, list[str]]:
+    """One ``add_node(id, TYPE, **kwargs)`` call's (node type, other attrs).
+
+    ``node type`` is ``None`` when unresolvable (a variable, or absent) --
+    callers must treat that as "contributes nothing", never a guess.
+    """
+    node_type: str | None = None
+    if len(call.args) >= 2:
+        resolved = _string_constants(call.args[1])
+        node_type = resolved[0] if len(resolved) == 1 else None
+
+    attrs: list[str] = []
+    for kw in call.keywords:
+        if kw.arg is None:
+            if isinstance(kw.value, ast.Dict):
+                dict_type, dict_attrs = _dict_literal_shape(kw.value)
+                node_type = dict_type if dict_type is not None else node_type
+                attrs += dict_attrs
+            continue
+        if kw.arg in _NODE_TYPE_KEYS:
+            leaf = _leaf_value(kw.value)
+            node_type = leaf if leaf is not None else node_type
+            continue
+        attrs.append(kw.arg)
+
+    return node_type, attrs
+
+
+def add_node_attribute_stamps(path: Path) -> list[NodeAttributeStamp]:
+    """Extract every keyword attribute a real ``add_node(...)`` call stamps.
+
+    The vocabulary sentinel's shape-closure eye (Rule c): pairs each stamped
+    node type with every OTHER keyword the same call passes, so a caller can
+    check the pair against the real model's declared fields.
+
+    Scoped deliberately narrow (Constitution III.11: honest absence over a
+    guess):
+
+    * Only calls whose node type resolves to a SINGLE literal string or
+      ``NodeType.MEMBER`` are considered -- a call whose node type is a
+      variable (unresolvable statically) contributes nothing, rather than a
+      wrong guess.
+    * ``**payload`` unpacking only contributes attributes when ``payload`` is
+      a dict LITERAL (mirrors :func:`node_type_uses`'s own dict-literal
+      handling) -- a variable payload contributes nothing.
+    * ``update_node(...)`` calls are OUT OF SCOPE entirely: they carry no
+      co-located node type, and inferring one would require dataflow
+      analysis this static scanner does not do (see the vocabulary
+      sentinel's module docstring for the audit that established this
+      boundary -- task #45).
+
+    :param path: Source file to parse.
+    :returns: ``(lineno, node_type, attribute)`` triples, sorted, one per
+        keyword (or dict-literal key) the call passes alongside a resolved
+        node type. ``_node_type``/``node_type`` themselves are never
+        reported (they select the type, not a field on it).
+    :raises SentinelCheckError: If the file is missing or unparseable.
+    """
+    try:
+        tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
+    except OSError as exc:
+        raise SentinelCheckError(f"cannot read {path}: {exc}") from exc
+    except SyntaxError as exc:
+        raise SentinelCheckError(f"cannot parse {path}: {exc}") from exc
+
+    stamps: list[NodeAttributeStamp] = []
+    for call_node in ast.walk(tree):
+        if not (
+            isinstance(call_node, ast.Call)
+            and isinstance(call_node.func, ast.Attribute)
+            and call_node.func.attr == "add_node"
+        ):
+            continue
+        node_type, attrs = _add_node_call_shape(call_node)
+        if node_type is None:
+            continue
+        stamps += [(call_node.lineno, node_type, attr) for attr in attrs]
+
+    return sorted(set(stamps))

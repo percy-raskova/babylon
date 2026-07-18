@@ -100,6 +100,17 @@
       "num_edges": 0,
       "num_nodes": 0
     },
+    "copy_counter_preserved": {
+      "cp_edge_ids": [
+        0,
+        1
+      ],
+      "cp_num_edges": 2,
+      "h_edge_ids": [
+        0
+      ],
+      "h_num_edges": 1
+    },
     "copy_independence": {
       "edge_attrs": {
         "heat": 0.5
@@ -111,6 +122,16 @@
       },
       "num_edges": 1,
       "num_nodes": 2
+    },
+    "eq_structural": {
+      "diff_edge_attr": false,
+      "diff_edge_id": false,
+      "diff_members": false,
+      "diff_net_attr": false,
+      "diff_node_attr": false,
+      "lonely_same": true,
+      "member_order_insignificant": true,
+      "same": true
     },
     "node_attr_set_read": {
       "attrs": {

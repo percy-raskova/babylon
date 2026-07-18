@@ -453,6 +453,120 @@ fn conform_copy_independence() {
 }
 
 #[test]
+fn conform_eq_structural() {
+    // XGI's Hypergraph.__eq__ delegates to xgi.algorithms.equal with the
+    // defaults (compare_edge_ids=True, compare_attrs=True): edge-id ->
+    // members mapping, node attrs, edge attrs, and net attrs are all
+    // significant; insertion/member order is not. The Rust core's PartialEq
+    // matches every recorded verdict.
+    let gt = ground_truth();
+    let v = vector(&gt, "eq_structural");
+    // XGI truth, pinned.
+    assert_eq!(v["same"], true);
+    assert_eq!(v["diff_edge_attr"], false);
+    assert_eq!(v["diff_members"], false);
+    assert_eq!(v["diff_edge_id"], false);
+    assert_eq!(v["diff_net_attr"], false);
+    assert_eq!(v["member_order_insignificant"], true);
+    assert_eq!(v["lonely_same"], true);
+    assert_eq!(v["diff_node_attr"], false);
+
+    let build = |members: &[&str],
+                 idx: &str,
+                 edge_attr: Value,
+                 solo: Option<(&str, Value)>,
+                 net: Option<(&str, Value)>| {
+        let mut h: Hypergraph = Hypergraph::new();
+        h.add_edge(
+            members.iter().map(|m| m.to_string()).collect(),
+            Some(idx.into()),
+            edge_attr,
+        )
+        .unwrap();
+        if let Some((n, attrs)) = solo {
+            h.add_node(n, attrs);
+        }
+        if let Some((k, val)) = net {
+            h.set_graph_attr(k, val);
+        }
+        h
+    };
+    let a = build(&["a", "b"], "e1", serde_json::json!({"w": 1}), None, None);
+    assert_eq!(
+        a,
+        build(&["a", "b"], "e1", serde_json::json!({"w": 1}), None, None)
+    );
+    assert_ne!(
+        a,
+        build(&["a", "b"], "e1", serde_json::json!({"w": 2}), None, None)
+    );
+    assert_ne!(a, build(&["a", "c"], "e1", Value::Null, None, None));
+    assert_ne!(a, build(&["a", "b"], "e2", Value::Null, None, None));
+    assert_ne!(
+        a,
+        build(
+            &["a", "b"],
+            "e1",
+            serde_json::json!({"w": 1}),
+            None,
+            Some(("name", serde_json::json!("x")))
+        )
+    );
+    assert_eq!(
+        a,
+        build(&["b", "a"], "e1", serde_json::json!({"w": 1}), None, None)
+    );
+    let l1 = build(
+        &[],
+        "e1",
+        Value::Null,
+        Some(("solo", serde_json::json!({"color": "red"}))),
+        None,
+    );
+    let l2 = build(
+        &[],
+        "e1",
+        Value::Null,
+        Some(("solo", serde_json::json!({"color": "red"}))),
+        None,
+    );
+    let l3 = build(
+        &[],
+        "e1",
+        Value::Null,
+        Some(("solo", serde_json::json!({"color": "blue"}))),
+        None,
+    );
+    assert_eq!(l1, l2);
+    assert_ne!(l1, l3);
+}
+
+#[test]
+fn conform_copy_counter_preserved() {
+    // Reviewer insurance (S3-1): XGI's copy() carries the auto-id counter
+    // (`cp._edge_uid = copy(self._edge_uid)`) — an auto edge added to the
+    // copy gets the NEXT counter value, it does not restart at 0. The Rust
+    // core conforms: copy() clones edge_uid_counter.
+    let gt = ground_truth();
+    let v = vector(&gt, "copy_counter_preserved");
+    assert_eq!(ids(&v["h_edge_ids"]), vec!["0"]); // XGI truth, pinned
+    assert_eq!(ids(&v["cp_edge_ids"]), vec!["0", "1"]); // XGI truth, pinned
+
+    let mut h: Hypergraph = Hypergraph::new();
+    assert_eq!(
+        h.add_edge(vec!["a".into()], None, Value::Null).unwrap(),
+        "0"
+    );
+    let mut cp = h.copy();
+    let auto = cp.add_edge(vec!["b".into()], None, Value::Null).unwrap();
+    assert_eq!(auto, "1");
+    assert_eq!(h.edge_ids(), ids(&v["h_edge_ids"]));
+    assert_eq!(cp.edge_ids(), ids(&v["cp_edge_ids"]));
+    assert_eq!(h.num_edges(), v["h_num_edges"].as_u64().unwrap() as usize);
+    assert_eq!(cp.num_edges(), v["cp_num_edges"].as_u64().unwrap() as usize);
+}
+
+#[test]
 fn diverge_d2_add_edges_from_dup_errors_continues() {
     // XGI's add_edges_from warns + skips a duplicate idx and CONTINUES with
     // the rest (["b"]/"e1" dropped — its member "b" is never added; ["c"]/

@@ -645,3 +645,67 @@ fn test_add_edges_from_with_duplicate_idx() {
     assert!(results[1].is_err());
     assert_eq!(h.num_edges(), 1);
 }
+
+#[test]
+fn test_eq_same_structure() {
+    let mut h1: Hypergraph = Hypergraph::new();
+    h1.add_edge(
+        vec!["a".to_string(), "b".to_string()],
+        Some("e1".to_string()),
+        serde_json::json!({"w": 1}),
+    )
+    .unwrap();
+    let mut h2: Hypergraph = Hypergraph::new();
+    h2.add_edge(
+        vec!["a".to_string(), "b".to_string()],
+        Some("e1".to_string()),
+        serde_json::json!({"w": 1}),
+    )
+    .unwrap();
+    assert_eq!(h1, h2);
+}
+
+#[test]
+fn test_eq_different_edge_attrs() {
+    let mut h1: Hypergraph = Hypergraph::new();
+    h1.add_edge(
+        vec!["a".to_string()],
+        Some("e1".to_string()),
+        serde_json::json!({"w": 1}),
+    )
+    .unwrap();
+    let mut h2: Hypergraph = Hypergraph::new();
+    h2.add_edge(
+        vec!["a".to_string()],
+        Some("e1".to_string()),
+        serde_json::json!({"w": 2}),
+    )
+    .unwrap();
+    assert_ne!(h1, h2);
+}
+
+#[test]
+fn test_eq_different_members() {
+    let mut h1: Hypergraph = Hypergraph::new();
+    h1.add_edge(
+        vec!["a".to_string(), "b".to_string()],
+        Some("e1".to_string()),
+        serde_json::Value::Null,
+    )
+    .unwrap();
+    let mut h2: Hypergraph = Hypergraph::new();
+    h2.add_edge(
+        vec!["a".to_string(), "c".to_string()],
+        Some("e1".to_string()),
+        serde_json::Value::Null,
+    )
+    .unwrap();
+    assert_ne!(h1, h2);
+}
+
+#[test]
+fn test_eq_both_empty() {
+    let h1: Hypergraph = Hypergraph::new();
+    let h2: Hypergraph = Hypergraph::new();
+    assert_eq!(h1, h2);
+}

@@ -44,6 +44,53 @@ impl<N, E, M> Default for Hypergraph<N, E, M> {
     }
 }
 
+impl<N, E, M> std::fmt::Debug for Hypergraph<N, E, M> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("Hypergraph")
+            .field("nodes", &self.agent_ids.keys().collect::<Vec<_>>())
+            .field("edges", &self.hyperedge_ids.keys().collect::<Vec<_>>())
+            .finish()
+    }
+}
+
+impl<N: PartialEq, E: PartialEq, M: PartialEq> PartialEq for Hypergraph<N, E, M> {
+    /// Two hypergraphs are equal if they have the same nodes, edges,
+    /// memberships, and attributes. XGI parity: `H1 == H2` (XGI delegates
+    /// to `xgi.algorithms.equal` with the defaults compare_edge_ids=True,
+    /// compare_attrs=True): the edge-id -> members mapping, node attrs,
+    /// edge attrs, and net attrs are all significant; insertion/member
+    /// order is not. Membership (M) attrs are not compared — XGI's
+    /// undirected Hypergraph has no per-membership attr channel.
+    fn eq(&self, other: &Self) -> bool {
+        if self.agent_ids.len() != other.agent_ids.len() {
+            return false;
+        }
+        for (nid, _) in &self.agent_ids {
+            match (self.node_attrs(nid), other.node_attrs(nid)) {
+                (Some(a), Some(b)) if a == b => {}
+                _ => return false,
+            }
+        }
+        if self.hyperedge_ids.len() != other.hyperedge_ids.len() {
+            return false;
+        }
+        for (eid, _) in &self.hyperedge_ids {
+            match (self.edge_attrs(eid), other.edge_attrs(eid)) {
+                (Some(a), Some(b)) if a == b => {}
+                _ => return false,
+            }
+            let mut m1 = self.members(eid).unwrap_or_default();
+            let mut m2 = other.members(eid).unwrap_or_default();
+            m1.sort();
+            m2.sort();
+            if m1 != m2 {
+                return false;
+            }
+        }
+        self.graph_attrs == other.graph_attrs
+    }
+}
+
 impl<N, E, M> Hypergraph<N, E, M> {
     /// Create an empty hypergraph.
     pub fn new() -> Self {

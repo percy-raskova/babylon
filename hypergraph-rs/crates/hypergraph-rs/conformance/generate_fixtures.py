@@ -237,6 +237,55 @@ def v_add_edges_from_dup_warns_continues() -> dict:
     }
 
 
+def v_eq_structural() -> dict:
+    # XGI's Hypergraph.__eq__ delegates to xgi.algorithms.equal with the
+    # defaults (compare_edge_ids=True, compare_attrs=True): equal iff the
+    # edge-id -> members mapping, node attrs, edge attrs, and net attrs are
+    # all equal. Insertion/member order is INSIGNIFICANT (sets); edge IDs
+    # and every attr channel are SIGNIFICANT.
+    def build(members, idx, edge_attr=None, node_attrs=None, net=None):
+        H = xgi.Hypergraph()
+        H.add_edge(list(members), idx=idx, **(edge_attr or {}))
+        for n, a in (node_attrs or {}).items():
+            if n in H:
+                H.nodes[n].update(a)
+            else:
+                H.add_node(n, **a)
+        for k, val in (net or {}).items():
+            H[k] = val
+        return H
+
+    A = build(["a", "b"], "e1", {"w": 1})
+    return {
+        "same": build(["a", "b"], "e1", {"w": 1}) == A,
+        "diff_edge_attr": build(["a", "b"], "e1", {"w": 2}) == A,
+        "diff_members": build(["a", "c"], "e1") == A,
+        "diff_edge_id": build(["a", "b"], "e2") == A,
+        "diff_net_attr": build(["a", "b"], "e1", {"w": 1}, net={"name": "x"}) == A,
+        "member_order_insignificant": build(["b", "a"], "e1", {"w": 1}) == A,
+        "lonely_same": build([], "e1", node_attrs={"solo": {"color": "red"}})
+        == build([], "e1", node_attrs={"solo": {"color": "red"}}),
+        "diff_node_attr": build([], "e1", node_attrs={"solo": {"color": "red"}})
+        == build([], "e1", node_attrs={"solo": {"color": "blue"}}),
+    }
+
+
+def v_copy_counter_preserved() -> dict:
+    # Reviewer insurance: XGI's copy() carries the auto-id counter
+    # (`cp._edge_uid = copy(self._edge_uid)`) — an auto edge added to the
+    # copy gets the NEXT counter value, it does not restart at 0.
+    H = xgi.Hypergraph()
+    H.add_edge(["a"])  # auto id 0 — counter now at 1
+    cp = H.copy()
+    cp.add_edge(["b"])  # must get the next counter value, not 0
+    return {
+        "h_edge_ids": _ids(H),
+        "cp_edge_ids": _ids(cp),
+        "h_num_edges": H.num_edges,
+        "cp_num_edges": cp.num_edges,
+    }
+
+
 def v_copy_independence() -> dict:
     H = xgi.Hypergraph()
     H.add_node("a", color="red")

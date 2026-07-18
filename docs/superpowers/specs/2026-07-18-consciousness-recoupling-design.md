@@ -139,8 +139,85 @@ Bifurcation refinement: routing to the revolutionary pole requires
 **cross-national** adjacency (MIM `mim-lumpen.txt:190-193`). A same-nation
 SOLIDARITY edge must not flip the sign.
 
-## 6. Coefficients — grounding available
+## 5a. The per-class reading is licensed by COPE, not by Amin or Emmanuel
 
+§3 left a real tension: Amin puts core wages tracking productivity "more or less
+parallel" (LWV p.92) and Emmanuel's transfer is irreducibly international
+(UE pp.162-164). Neither licenses a per-worker `balance > 0`.
+
+**Cope does, explicitly, and it is his distinguishing thesis:**
+
+> "[If] you can secure more surplus-value for your wages than you have created,
+> you are not being exploited, but you are exploiting." — DWDC p.174
+
+> "In such a case, **value-added (s+v) is less than wages (v)** and profits
+> derive only from the exploited nations whilst wages are subsidised by
+> superprofits. If all or most of the profits made in the OECD can be accounted
+> for by superprofits emanating from the non-OECD countries, then none or few of
+> the workers in the OECD are exploited." — DWDC p.204
+
+> "the OECD working class *tout court* receives the full value of its labour and
+> is, to that extent, a bourgeois working class." — DWDC p.207
+
+He grounds the "exploiting" verb in political agency rather than capital
+ownership (p.174: "it is the political agency of the labour aristocracy which
+validates the use of the verb"), which is exactly why the balance must drive
+*bifurcation direction* (§2) rather than a mere magnitude.
+
+**Citation discipline:** cite **Cope** for the per-class balance. Cite Amin and
+Emmanuel for the transfer mechanism and the segmentation criterion (§3) only.
+Do not attribute the per-worker reading to them — they decline it.
+
+## 6. Coefficients — GROUNDED (Cope) + remaining gaps
+
+### The primary coefficient — core-worker resting balance ≈ **+0.13**
+
+Cope DWDC p.240 (his own Table V, productivity-adjusted, deliberately
+conservative): average OECD annual wage **$28,536**, of which **$6,666** is
+subvention out of non-OECD surplus-value — *"nearly one quarter of the average
+working wage in the OECD consists of superprofits"* (**23%**).
+
+Derivation to the engine's bounded ratio:
+
+```
+transfer share       = 0.23
+v_produced           = (1 − 0.23) · w = 0.77 w
+balance = (w − v)/(w + v) = (w − 0.77w)/(w + 0.77w) = 0.23/1.77 ≈ +0.13
+```
+
+**`core_worker_resting_balance = 0.13`** — Aleksandrov trace: the share of the
+OECD wage funded by non-OECD surplus-value transfer, Cope's own wage
+decomposition. This is a derived empirical constant, not a tuned knob.
+
+**Load-bearing caveats — do not bury these in the ADR:**
+
+1. **The magnitude depends on rejecting PPP.** Cope uses nominal FX rates
+   (11:1 core:periphery wage ratio); under PPP the ratio is ~3.4:1 and the whole
+   estimate shrinks by roughly a factor of three. He defends this explicitly
+   ("it is primarily foreign exchange rates that attract foreign investors",
+   p.164) but it is a disputable methodological choice that sets the order of
+   magnitude. Model it as a declared assumption with the PPP variant available.
+2. **Cope's five methods measure DIFFERENT mechanisms and must not be summed
+   into one Φ.** Trade-price unequal exchange (A: $2.8tr; B: $4.9tr), FX
+   misvaluation (D, Köhler method: $6.9tr), and capital-export tribute
+   ($2.6tr) are analytically distinct. Cope sums two of them for headline
+   effect ($6.5tr) — the engine must not. **Decide explicitly which mechanism Φ
+   represents before wiring any dollar figure.**
+3. **The "entire working class" claim is Cope's most contested.** It departs
+   from Lenin/Hobsbawm's narrow-stratum usage. It is consistent with the
+   ratified late-MIM(P) line, but flag it as a modeling choice, not settled
+   fact.
+
+### Supporting magnitudes
+
+- Transfer as share of periphery GDP: **37%** (DWDC p.206) — better than a raw
+  dollar constant for per-territory Φ scaling
+- Ratio of unpaid non-OECD workers per OECD worker: **1.5 : 1** (p.206)
+- OECD/non-OECD labour-productivity ratio: **2.9** (pp.194-197) — a floor, built
+  on assumptions Cope flags as biased against Southern productivity
+- Global top:bottom quintile income ratio over time: **30:1 (1960) → 60:1 (1990)
+  → 74:1 (1997)** (pp.209, 332) — the ONLY genuinely time-indexed series in the
+  literature reviewed; candidate for a century-scale drift parameter
 - Core:periphery wage ratio **20-40×** (UE p.66); Bettelheim **20-30×** (p.385)
 - Wage dispersion amplitude "multiplied tenfold on the global scale" (LWV p.84)
 - Profit rates **15-22%** Latin America vs **11-14%** US (UD p.162)

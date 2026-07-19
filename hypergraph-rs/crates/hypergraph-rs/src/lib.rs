@@ -11,3 +11,4 @@ pub use core::dihypergraph::DiHypergraph;
 pub use core::error::{EdgeError, MembershipError, NodeError};
 pub use core::hypergraph::Hypergraph;
 pub use core::kinds::{Direction, MembershipEdge, NodeKind};
+pub use core::simplicialcomplex::SimplicialComplex;

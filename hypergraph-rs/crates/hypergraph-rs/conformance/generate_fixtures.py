@@ -1339,6 +1339,186 @@ def v_di_clear_freeze() -> dict:
     return out
 
 
+def _sc_members_sorted(S: xgi.SimplicialComplex) -> dict:
+    return {str(e): sorted(str(n) for n in S.edges.members(e)) for e in S.edges}
+
+
+def v_sc_add_simplex_closure() -> dict:
+    # PROBE (2026-07-18, xgi 0.10.2): add_simplex([1,2,3]) creates the
+    # top simplex FIRST (auto id 0), then its subfaces — EXACTLY the
+    # proper non-empty subsets of sizes 2..n-1 (NO singletons, per the
+    # doctest and runtime) — consuming auto ids in set(faces) iteration
+    # order. That order is deterministic for INT members (pinned here)
+    # but hash-dependent for str members; the Rust core enumerates
+    # combinations in a canonical order (sizes n-1 down to 2,
+    # lexicographic by member position) — the face-id -> member-set
+    # mapping therefore differs from XGI's while the face SET is
+    # identical (D5 class: strictly more defined). A 4-simplex yields
+    # 1 + C(4,3) + C(4,2) = 11 edges. A 2-simplex adds NO subfaces.
+    # An explicit str idx does not bump the counter (faces take 0,1,2);
+    # an int idx bumps (faces take 11,12,13 after idx=10) — D3 parity:
+    # the Rust core bumps iff the id parses as u64. add_simplex returns
+    # None in every branch (D8 class).
+    out = {}
+    S = xgi.SimplicialComplex()
+    ret = S.add_simplex([1, 2, 3])
+    out["three"] = {
+        "return": ret,
+        "edge_ids": list(S.edges),
+        "members": _sc_members_sorted(S),
+    }
+    S = xgi.SimplicialComplex()
+    S.add_simplex([1, 2, 3, 4])
+    out["four"] = {"edge_ids": list(S.edges), "members": _sc_members_sorted(S)}
+    S = xgi.SimplicialComplex()
+    S.add_simplex([1, 2])
+    out["two"] = {"edge_ids": list(S.edges), "members": _sc_members_sorted(S)}
+    S = xgi.SimplicialComplex()
+    S.add_simplex([1, 2, 3], idx="top")
+    out["str_idx_no_bump"] = {
+        "edge_ids": list(S.edges),
+        "members": _sc_members_sorted(S),
+    }
+    S = xgi.SimplicialComplex()
+    S.add_simplex([1, 2, 3], idx=10)
+    out["int_idx_bumps"] = {"edge_ids": list(S.edges), "members": _sc_members_sorted(S)}
+    return out
+
+
+def v_sc_redundant_simplex() -> dict:
+    # PROBE (2026-07-18, xgi 0.10.2): re-adding the same member SET is a
+    # SILENT no-op — no warning, returns None, num_edges unchanged. The
+    # has_simplex member-set check precedes the dup-idx check, so even a
+    # NEW explicit idx on an existing member set is silently discarded
+    # (the idx is NOT consumed). Adding an existing subface ([1,2] after
+    # [1,2,3]) is likewise a silent no-op. The Rust core returns
+    # Ok(id-of-existing-edge) — the D8 return-channel class (XGI's None
+    # cannot report the id).
+    S = xgi.SimplicialComplex()
+    S.add_simplex([1, 2, 3])
+    out: dict = {"num_edges_before": S.num_edges}
+    with warnings.catch_warnings(record=True) as caught:
+        warnings.simplefilter("always")
+        ret = S.add_simplex([3, 2, 1])
+    out["reorder"] = {
+        "return": ret,
+        "warned": len(caught) > 0,
+        "num_edges": S.num_edges,
+        "edge_ids": list(S.edges),
+    }
+    with warnings.catch_warnings(record=True) as caught:
+        warnings.simplefilter("always")
+        ret = S.add_simplex([3, 2, 1], idx="newid")
+    out["reorder_new_idx"] = {
+        "return": ret,
+        "warned": len(caught) > 0,
+        "num_edges": S.num_edges,
+        "edge_ids": list(S.edges),
+    }
+    with warnings.catch_warnings(record=True) as caught:
+        warnings.simplefilter("always")
+        ret = S.add_simplex([1, 2])
+    out["existing_face"] = {
+        "return": ret,
+        "warned": len(caught) > 0,
+        "num_edges": S.num_edges,
+        "edge_ids": list(S.edges),
+    }
+    return out
+
+
+def v_sc_dup_idx() -> dict:
+    # PROBE (2026-07-18, xgi 0.10.2): a dup idx with DIFFERENT members
+    # warns ("uid s1 already exists, cannot add simplex frozenset({4,
+    # 5})") + no-ops, returns None — the D2 class; the dup's members are
+    # never added. (Contrast v_sc_redundant_simplex: same member set
+    # short-circuits BEFORE the idx check, silently.)
+    S = xgi.SimplicialComplex()
+    S.add_simplex([1, 2, 3], idx="s1")
+    with warnings.catch_warnings(record=True) as caught:
+        warnings.simplefilter("always")
+        ret = S.add_simplex([4, 5], idx="s1")
+    return {
+        "return": ret,
+        "warned": len(caught) > 0,
+        "warning_prefix": str(caught[0].message)[:22] if caught else None,
+        "edge_ids": list(S.edges),
+        "num_nodes": S.num_nodes,
+        "num_edges": S.num_edges,
+        "members": _sc_members_sorted(S),
+    }
+
+
+def v_sc_empty_simplex() -> dict:
+    # PROBE (2026-07-18, xgi 0.10.2): the Notes claim "currently cannot
+    # add empty simplices" — the runtime CREATES an empty simplex (auto
+    # id 0, no members; num_nodes 0, num_edges 1). A second
+    # add_simplex([]) is a silent no-op (has_simplex([]) becomes True
+    # once the empty edge exists). D1-class docstring lie — the Rust
+    # core conforms to the runtime.
+    S = xgi.SimplicialComplex()
+    ret = S.add_simplex([])
+    out = {
+        "return": ret,
+        "edge_ids": list(S.edges),
+        "num_nodes": S.num_nodes,
+        "num_edges": S.num_edges,
+        "members": _sc_members_sorted(S),
+        "has_empty": S.has_simplex([]),
+    }
+    ret2 = S.add_simplex([])
+    out["again"] = {"return": ret2, "num_edges": S.num_edges, "edge_ids": list(S.edges)}
+    return out
+
+
+def v_sc_attrs_no_propagate() -> dict:
+    # PROBE (2026-07-18, xgi 0.10.2): simplex attrs land ONLY on the top
+    # simplex; every subface gets the empty attr dict (the docstring's
+    # "attributes do not propagate to the subfaces" is runtime-true).
+    # The Rust core gives faces E::default() — for the Value channel
+    # that is Null, the core's empty-attrs placeholder ≈ XGI's {} (the
+    # same convention as auto-created nodes; D7 class).
+    S = xgi.SimplicialComplex()
+    S.add_simplex([1, 2, 3], color="red")
+    return {"attrs": {str(e): dict(S.edges[e]) for e in S.edges}}
+
+
+def v_sc_has_simplex() -> dict:
+    # PROBE (2026-07-18, xgi 0.10.2): member-SET comparison — [2,1]
+    # matches {1,2}; a face added by closure matches; a non-member set
+    # does not. (Note the constructor's closure: the [2,3,4] simplex
+    # added faces [2,3], [2,4], [3,4] but NOT singletons.)
+    S = xgi.SimplicialComplex([[1, 2], [2, 3, 4]])
+    return {
+        "reordered": S.has_simplex([2, 1]),
+        "missing_set": S.has_simplex({1, 3}),
+        "top": S.has_simplex([2, 3, 4]),
+        "closure_face": S.has_simplex([2, 3]),
+        "no_singletons": S.has_simplex([2]),
+    }
+
+
+def v_sc_falsy_idx_is_auto() -> dict:
+    # PROBE (2026-07-18, xgi 0.10.2): add_simplex's idx handling is
+    # `next(_edge_uid) if not idx else idx` — a FALSY idx (0, "") is
+    # treated as ABSENT and replaced by an auto id (unique to
+    # SimplicialComplex: Hypergraph and DiHypergraph test `idx is
+    # None`). Divergence D17: the Rust core's Option<String> is exact —
+    # Some("0") is an explicit id, None is auto. After add_simplex([1,
+    # 2, 3], idx=5) the counter is 9 (top 5, faces 6..8), so a
+    # subsequent add_simplex([4, 5], idx=0) landing at id 9 proves the
+    # auto replacement.
+    S = xgi.SimplicialComplex()
+    S.add_simplex([1, 2, 3], idx=5)
+    out = {"after_int_idx": list(S.edges)}
+    S.add_simplex([4, 5], idx=0)
+    out["zero_idx_edges"] = list(S.edges)
+    S2 = xgi.SimplicialComplex()
+    S2.add_simplex([1, 2], idx="")
+    out["empty_str_idx_edges"] = list(S2.edges)
+    return out
+
+
 def main() -> None:
     vectors = {
         name.removeprefix("v_"): fn()

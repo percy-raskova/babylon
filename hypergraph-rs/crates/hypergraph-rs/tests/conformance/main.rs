@@ -10,7 +10,9 @@
 //! the fixture with `mise run rust:fixtures`; a fixture diff is news —
 //! investigate before committing.
 
-use hypergraph_rs::{DiHypergraph, Direction, EdgeError, Hypergraph, MembershipError, NodeError};
+use hypergraph_rs::{
+    DiHypergraph, Direction, EdgeError, Hypergraph, MembershipError, NodeError, SimplicialComplex,
+};
 use serde_json::Value;
 
 fn ground_truth() -> Value {
@@ -2585,4 +2587,317 @@ fn diverge_d13_di_copy_carries_frozen() {
     h.freeze();
     let cp = h.copy();
     assert!(cp.is_frozen(), "Rust divergence: copy of frozen is frozen");
+}
+
+// ---------------------------------------------------------------------------
+// SimplicialComplex (Phase 2 Task 6+)
+// ---------------------------------------------------------------------------
+
+/// The SET of member-sets (sorted for comparison) across all edges —
+/// the face-id -> member-set MAPPING differs between XGI (hash-ordered
+/// `set(faces)` iteration) and the Rust core (canonical combination
+/// order, D5 class), so closure vectors compare the multiset, not the
+/// mapping; XGI's exact mapping is pinned separately as truth.
+fn member_set_multiset(members: &Value) -> Vec<Vec<String>> {
+    let mut sets: Vec<Vec<String>> = members.as_object().unwrap().values().map(ids).collect();
+    sets.sort();
+    sets
+}
+
+fn sc_member_multiset(s: &SimplicialComplex) -> Vec<Vec<String>> {
+    let mut sets: Vec<Vec<String>> = s
+        .edge_ids()
+        .iter()
+        .map(|eid| {
+            let mut m = s.members(eid).unwrap();
+            m.sort();
+            m
+        })
+        .collect();
+    sets.sort();
+    sets
+}
+
+#[test]
+fn conform_sc_add_simplex_closure() {
+    // XGI's add_simplex creates the top simplex FIRST (auto id 0), then
+    // the subfaces — EXACTLY the proper non-empty subsets of sizes
+    // 2..n-1 (NO singletons) — consuming auto ids in set(faces)
+    // iteration order (deterministic for int members, hash-dependent
+    // for str). The Rust core enumerates combinations canonically
+    // (sizes n-1 down to 2, lexicographic by member position): the face
+    // SET is identical, the face-id -> member-set mapping differs —
+    // D5-class "strictly more defined". XGI's mapping is pinned as
+    // truth; the multiset and every structural fact are asserted.
+    let gt = ground_truth();
+    let v = vector(&gt, "sc_add_simplex_closure");
+    assert_eq!(v["three"]["return"], Value::Null); // XGI truth, pinned
+                                                   // XGI's exact id -> members mapping for the 3-simplex, pinned.
+    assert_eq!(
+        v["three"]["members"],
+        serde_json::json!({"0": ["1", "2", "3"], "1": ["2", "3"], "2": ["1", "2"], "3": ["1", "3"]})
+    );
+    assert_eq!(
+        v["str_idx_no_bump"]["edge_ids"],
+        serde_json::json!(["top", 0, 1, 2])
+    ); // pinned
+    assert_eq!(
+        v["int_idx_bumps"]["edge_ids"],
+        serde_json::json!([10, 11, 12, 13])
+    ); // pinned
+
+    // 3-simplex: top at "0", faces [1,2]/[1,3]/[2,3] at 1/2/3
+    // (canonical order), no singletons.
+    let mut s: SimplicialComplex = SimplicialComplex::new();
+    let top = s
+        .add_simplex(vec!["1".into(), "2".into(), "3".into()], None, Value::Null)
+        .unwrap();
+    assert_eq!(top, "0");
+    assert_eq!(s.num_edges(), 4);
+    assert_eq!(
+        sc_member_multiset(&s),
+        member_set_multiset(&v["three"]["members"])
+    );
+    assert_eq!(s.members("0").unwrap(), vec!["1", "2", "3"]);
+    for eid in s.edge_ids() {
+        assert_ne!(s.members(&eid).unwrap().len(), 1, "no singleton faces");
+    }
+
+    // 4-simplex: 11 edges — top + 4 size-3 + 6 size-2.
+    let mut s4: SimplicialComplex = SimplicialComplex::new();
+    s4.add_simplex(
+        vec!["1".into(), "2".into(), "3".into(), "4".into()],
+        None,
+        Value::Null,
+    )
+    .unwrap();
+    assert_eq!(s4.num_edges(), 11);
+    assert_eq!(
+        sc_member_multiset(&s4),
+        member_set_multiset(&v["four"]["members"])
+    );
+
+    // 2-simplex: no subfaces.
+    let mut s2: SimplicialComplex = SimplicialComplex::new();
+    s2.add_simplex(vec!["1".into(), "2".into()], None, Value::Null)
+        .unwrap();
+    assert_eq!(s2.num_edges(), 1);
+    assert_eq!(
+        sc_member_multiset(&s2),
+        member_set_multiset(&v["two"]["members"])
+    );
+
+    // str idx: no bump — faces take auto ids 0, 1, 2 (XGI parity).
+    let mut s3: SimplicialComplex = SimplicialComplex::new();
+    s3.add_simplex(
+        vec!["1".into(), "2".into(), "3".into()],
+        Some("top".into()),
+        Value::Null,
+    )
+    .unwrap();
+    assert_eq!(s3.edge_ids(), ids(&v["str_idx_no_bump"]["edge_ids"]));
+    assert_eq!(
+        sc_member_multiset(&s3),
+        member_set_multiset(&v["str_idx_no_bump"]["members"])
+    );
+
+    // Numeric idx "10": the D3 rule bumps — faces take 11, 12, 13.
+    // XGI's int-idx outcome is identical (conform).
+    let mut s5: SimplicialComplex = SimplicialComplex::new();
+    s5.add_simplex(
+        vec!["1".into(), "2".into(), "3".into()],
+        Some("10".into()),
+        Value::Null,
+    )
+    .unwrap();
+    assert_eq!(s5.edge_ids(), ids(&v["int_idx_bumps"]["edge_ids"]));
+    assert_eq!(
+        sc_member_multiset(&s5),
+        member_set_multiset(&v["int_idx_bumps"]["members"])
+    );
+}
+
+#[test]
+fn conform_sc_redundant_simplex() {
+    // Re-adding the same member SET is a SILENT no-op in XGI (no
+    // warning, returns None, num_edges unchanged) — even with a NEW
+    // explicit idx (the member-set check precedes the idx check; the
+    // idx is NOT consumed), and for an existing subface. The Rust core
+    // conforms on state and returns Ok(id of the EXISTING edge) — the
+    // D8 return-channel class (XGI's None cannot report the id).
+    let gt = ground_truth();
+    let v = vector(&gt, "sc_redundant_simplex");
+    assert_eq!(v["reorder"]["return"], Value::Null); // XGI truth, pinned
+    assert_eq!(v["reorder"]["warned"], false); // pinned: SILENT, no warning
+    assert_eq!(v["reorder_new_idx"]["warned"], false); // pinned
+    assert_eq!(v["existing_face"]["warned"], false); // pinned
+    assert_eq!(v["num_edges_before"], 4); // pinned
+
+    let mut s: SimplicialComplex = SimplicialComplex::new();
+    s.add_simplex(vec!["1".into(), "2".into(), "3".into()], None, Value::Null)
+        .unwrap();
+    let again = s
+        .add_simplex(vec!["3".into(), "2".into(), "1".into()], None, Value::Null)
+        .unwrap();
+    assert_eq!(again, "0"); // existing edge's id
+    assert_eq!(
+        s.num_edges(),
+        v["reorder"]["num_edges"].as_u64().unwrap() as usize
+    );
+    assert_eq!(s.edge_ids(), ids(&v["reorder"]["edge_ids"]));
+
+    let again2 = s
+        .add_simplex(
+            vec!["3".into(), "2".into(), "1".into()],
+            Some("newid".into()),
+            Value::Null,
+        )
+        .unwrap();
+    assert_eq!(again2, "0");
+    assert_eq!(s.edge_ids(), ids(&v["reorder_new_idx"]["edge_ids"])); // no "newid"
+
+    let face = s
+        .add_simplex(vec!["1".into(), "2".into()], None, Value::Null)
+        .unwrap();
+    assert_eq!(face, "1"); // the existing face's id
+    assert_eq!(
+        s.num_edges(),
+        v["existing_face"]["num_edges"].as_u64().unwrap() as usize
+    );
+}
+
+#[test]
+fn diverge_d2_sc_dup_idx_errors_instead_of_warn_noop() {
+    // Same D2 error-channel class: XGI warns + no-ops on a dup idx with
+    // DIFFERENT members; the Rust core returns Err(AlreadyExists) and
+    // the binding translates back to UserWarning + None.
+    let gt = ground_truth();
+    let v = vector(&gt, "sc_dup_idx");
+    assert_eq!(v["return"], Value::Null); // XGI truth, pinned
+    assert_eq!(v["warned"], true); // XGI truth, pinned
+    assert!(v["warning_prefix"]
+        .as_str()
+        .unwrap()
+        .starts_with("uid s1 already exists"));
+
+    let mut s: SimplicialComplex = SimplicialComplex::new();
+    s.add_simplex(
+        vec!["1".into(), "2".into(), "3".into()],
+        Some("s1".into()),
+        Value::Null,
+    )
+    .unwrap();
+    let err = s.add_simplex(vec!["4".into(), "5".into()], Some("s1".into()), Value::Null);
+    assert!(matches!(err, Err(EdgeError::AlreadyExists { .. })));
+    assert_eq!(s.num_edges(), v["num_edges"].as_u64().unwrap() as usize);
+    assert_eq!(s.num_nodes(), v["num_nodes"].as_u64().unwrap() as usize);
+    assert_eq!(s.edge_ids(), ids(&v["edge_ids"]));
+    assert_eq!(sc_member_multiset(&s), member_set_multiset(&v["members"]));
+}
+
+#[test]
+fn conform_sc_empty_simplex() {
+    // D1-class docstring lie: XGI's Notes claim "currently cannot add
+    // empty simplices"; the runtime CREATES an empty simplex (auto id
+    // 0, no members). A second add_simplex([]) is a silent no-op
+    // (has_simplex([]) becomes True). The Rust core conforms.
+    let gt = ground_truth();
+    let v = vector(&gt, "sc_empty_simplex");
+    assert_eq!(v["return"], Value::Null); // XGI truth, pinned
+    assert_eq!(v["num_nodes"], 0); // pinned
+    assert_eq!(v["num_edges"], 1); // pinned
+    assert_eq!(v["has_empty"], true); // pinned
+    assert_eq!(v["again"]["num_edges"], 1); // pinned
+
+    let mut s: SimplicialComplex = SimplicialComplex::new();
+    let id = s.add_simplex(vec![], None, Value::Null).unwrap();
+    assert_eq!(id, id_str(&v["edge_ids"][0]));
+    assert_eq!(s.num_edges(), 1);
+    assert_eq!(s.num_nodes(), 0);
+    assert!(s.members(&id).unwrap().is_empty());
+    assert!(s.has_simplex(&[]));
+    let again = s.add_simplex(vec![], None, Value::Null).unwrap();
+    assert_eq!(again, "0");
+    assert_eq!(s.num_edges(), 1);
+}
+
+#[test]
+fn conform_sc_attrs_no_propagate() {
+    // Simplex attrs land ONLY on the top simplex; every subface gets
+    // XGI's empty attr dict {} — the core's Null placeholder ≈ {} (the
+    // D7-class convention shared with auto-created nodes).
+    let gt = ground_truth();
+    let v = vector(&gt, "sc_attrs_no_propagate");
+    assert_eq!(v["attrs"]["0"], serde_json::json!({"color": "red"})); // pinned
+    assert_eq!(v["attrs"]["1"], serde_json::json!({})); // XGI truth, pinned
+    assert_eq!(v["attrs"]["2"], serde_json::json!({})); // pinned
+    assert_eq!(v["attrs"]["3"], serde_json::json!({})); // pinned
+
+    let mut s: SimplicialComplex = SimplicialComplex::new();
+    s.add_simplex(
+        vec!["1".into(), "2".into(), "3".into()],
+        None,
+        serde_json::json!({"color": "red"}),
+    )
+    .unwrap();
+    assert_eq!(s.edge_attrs("0").unwrap(), &v["attrs"]["0"]);
+    for eid in ["1", "2", "3"] {
+        assert_eq!(
+            s.edge_attrs(eid).unwrap(),
+            &Value::Null,
+            "faces get the default"
+        );
+    }
+}
+
+#[test]
+fn conform_sc_has_simplex() {
+    // Member-SET comparison: a reordered query matches; a closure-added
+    // face matches; a non-member set and singletons do not.
+    let gt = ground_truth();
+    let v = vector(&gt, "sc_has_simplex");
+    assert_eq!(v["reordered"], true); // XGI truth, pinned
+    assert_eq!(v["missing_set"], false); // pinned
+    assert_eq!(v["top"], true); // pinned
+    assert_eq!(v["closure_face"], true); // pinned
+    assert_eq!(v["no_singletons"], false); // pinned
+
+    let mut s: SimplicialComplex = SimplicialComplex::new();
+    s.add_simplex(vec!["1".into(), "2".into()], None, Value::Null)
+        .unwrap();
+    s.add_simplex(vec!["2".into(), "3".into(), "4".into()], None, Value::Null)
+        .unwrap();
+    assert!(s.has_simplex(&["2".to_string(), "1".to_string()]));
+    assert!(!s.has_simplex(&["1".to_string(), "3".to_string()]));
+    assert!(s.has_simplex(&["2".to_string(), "3".into(), "4".into()]));
+    assert!(s.has_simplex(&["2".to_string(), "3".to_string()]));
+    assert!(!s.has_simplex(&["2".to_string()]));
+}
+
+#[test]
+fn diverge_d17_sc_falsy_idx_is_explicit() {
+    // D17: XGI's add_simplex computes `next(_edge_uid) if not idx else
+    // idx` — a FALSY idx (0, "") is replaced by an AUTO id (unique to
+    // SimplicialComplex: Hypergraph/DiHypergraph test `idx is None`).
+    // The Rust core's Option<String> is exact: Some("0") is an explicit
+    // id, None is auto.
+    let gt = ground_truth();
+    let v = vector(&gt, "sc_falsy_idx_is_auto");
+    assert_eq!(v["after_int_idx"], serde_json::json!([5, 6, 7, 8])); // pinned
+                                                                     // XGI truth: idx=0 was REPLACED by auto id 9.
+    assert_eq!(v["zero_idx_edges"], serde_json::json!([5, 6, 7, 8, 9])); // pinned
+    assert_eq!(v["empty_str_idx_edges"], serde_json::json!([0])); // pinned
+
+    let mut s: SimplicialComplex = SimplicialComplex::new();
+    s.add_simplex(
+        vec!["1".into(), "2".into(), "3".into()],
+        Some("5".into()),
+        Value::Null,
+    )
+    .unwrap();
+    let id = s
+        .add_simplex(vec!["4".into(), "5".into()], Some("0".into()), Value::Null)
+        .unwrap();
+    assert_eq!(id, "0"); // Rust divergence, deliberate: explicit, not auto
+    assert_eq!(s.edge_ids(), vec!["5", "6", "7", "8", "0"]);
 }

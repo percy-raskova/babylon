@@ -4,3 +4,4 @@
 
 mod test_dihypergraph;
 mod test_hypergraph;
+mod test_simplicialcomplex;

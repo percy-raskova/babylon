@@ -57,6 +57,74 @@ impl<N, E, M> Default for DiHypergraph<N, E, M> {
     }
 }
 
+impl<N, E, M> std::fmt::Debug for DiHypergraph<N, E, M> {
+    /// XGI parity: `__repr__` is `f"{cls}({self.edges.dimembers()})"` —
+    /// the class name wrapping the edge-dimembers list, one
+    /// `(tail, head)` tuple per edge, e.g.
+    /// `DiHypergraph([({a, b, c}, {b, d}), ({a}, {})])`. Edges list in
+    /// insertion order; both sides format insertion-ordered (divergence
+    /// D5: XGI's member sets are unordered — their repr order is
+    /// hash-randomized across runs — we are strictly more defined).
+    /// Member id strings are unquoted, an empty side formats as `{}`
+    /// (Python's `set()` artifact is not reproduced), and lonely nodes
+    /// never appear (the repr lists only edges' members).
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "DiHypergraph([")?;
+        for (i, eid) in self.hyperedge_ids.keys().enumerate() {
+            if i > 0 {
+                write!(f, ", ")?;
+            }
+            let tail = self.tail(eid).unwrap_or_default();
+            let head = self.head(eid).unwrap_or_default();
+            write!(f, "({{{}}}, {{{}}})", tail.join(", "), head.join(", "))?;
+        }
+        write!(f, "])")
+    }
+}
+
+impl<N: PartialEq, E: PartialEq, M: PartialEq> PartialEq for DiHypergraph<N, E, M> {
+    /// Two dihypergraphs are equal if they have the same nodes, edges,
+    /// directed memberships, and attributes. XGI parity: `DH1 == DH2`
+    /// (XGI delegates to `xgi.algorithms.equal` with the defaults
+    /// compare_edge_ids=True, compare_attrs=True): the edge-id ->
+    /// `{"in": tail, "out": head}` mapping, node attrs, edge attrs, and
+    /// net attrs are all significant; insertion/member order is not.
+    /// DIRECTION IS SIGNIFICANT (probed v0.10.2: the same nodes with
+    /// tail/head swapped are NOT equal; a both-directions member differs
+    /// from a tail-only one). Membership (M) attrs are not compared —
+    /// matching the undirected core.
+    fn eq(&self, other: &Self) -> bool {
+        if self.agent_ids.len() != other.agent_ids.len() {
+            return false;
+        }
+        for (nid, _) in &self.agent_ids {
+            match (self.node_attrs(nid), other.node_attrs(nid)) {
+                (Some(a), Some(b)) if a == b => {}
+                _ => return false,
+            }
+        }
+        if self.hyperedge_ids.len() != other.hyperedge_ids.len() {
+            return false;
+        }
+        for (eid, _) in &self.hyperedge_ids {
+            match (self.edge_attrs(eid), other.edge_attrs(eid)) {
+                (Some(a), Some(b)) if a == b => {}
+                _ => return false,
+            }
+            let (mut t1, mut h1) = self.dimembers(eid).unwrap_or_default();
+            let (mut t2, mut h2) = other.dimembers(eid).unwrap_or_default();
+            t1.sort();
+            t2.sort();
+            h1.sort();
+            h2.sort();
+            if t1 != t2 || h1 != h2 {
+                return false;
+            }
+        }
+        self.graph_attrs == other.graph_attrs
+    }
+}
+
 impl<N, E, M> DiHypergraph<N, E, M> {
     /// Create an empty directed hypergraph.
     pub fn new() -> Self {
@@ -633,5 +701,198 @@ impl<N, E, M> DiHypergraph<N, E, M> {
             .into_iter()
             .map(|n| self.remove_node(&n, strong, remove_empty))
             .collect()
+    }
+
+    /// Add multiple directed edges, returning a result per edge.
+    ///
+    /// XGI parity: `DH.add_edges_from(ebunch, **attr)` — XGI accepts
+    /// members-only / (members, idx) / (members, attrdict) /
+    /// (members, idx, attrdict) / dict bunches plus a `**attr`
+    /// broadcast; the core takes uniform `(tail, head, idx, attrs)`
+    /// quadruples, so format detection and broadcast merging are binding
+    /// concerns (D7 class). A duplicate idx warns + skips + CONTINUES in
+    /// XGI; the core records `Err(EdgeError::AlreadyExists)` per item and
+    /// continues — the D2-class channel translation. An empty
+    /// `(tail, head)` pair creates an empty edge (probed: XGI's Notes
+    /// claim empty edges are skipped — the runtime creates them; the
+    /// D1-class docstring lie).
+    pub fn add_edges_from(
+        &mut self,
+        edges: impl IntoIterator<Item = (Vec<String>, Vec<String>, Option<String>, E)>,
+    ) -> Vec<Result<String, EdgeError>>
+    where
+        N: Default,
+        M: Default + Clone,
+    {
+        self.assert_not_frozen();
+        edges
+            .into_iter()
+            .map(|(tail, head, idx, attrs)| self.add_edge((tail, head), idx, attrs))
+            .collect()
+    }
+
+    /// Mutably access a node's attributes.
+    ///
+    /// XGI parity: `DH.nodes[node_id][key] = value` (in-place attr-dict
+    /// mutation).
+    pub fn node_attrs_mut(&mut self, node_id: &str) -> Option<&mut N> {
+        let idx = *self.agent_ids.get(node_id)?;
+        match self.inner.node_weight_mut(idx) {
+            Some(NodeKind::Agent(attrs)) => Some(attrs),
+            _ => None,
+        }
+    }
+
+    /// Mutably access an edge's attributes.
+    ///
+    /// XGI parity: `DH.edges[edge_id][key] = value` (in-place attr-dict
+    /// mutation).
+    pub fn edge_attrs_mut(&mut self, edge_id: &str) -> Option<&mut E> {
+        let idx = *self.hyperedge_ids.get(edge_id)?;
+        match self.inner.node_weight_mut(idx) {
+            Some(NodeKind::Hyperedge(attrs)) => Some(attrs),
+            _ => None,
+        }
+    }
+
+    /// Remove all nodes, edges, and attributes — node attrs, edge attrs,
+    /// and graph-level attrs.
+    ///
+    /// Resets the auto-id counter: a cleared dihypergraph behaves
+    /// identically to a fresh one (`clear() ≡ new()`; III.7
+    /// replay-from-empty determinism). XGI's DiHypergraph.clear()
+    /// continues its counter (probed v0.10.2: the next auto id is 1) —
+    /// divergence D10, extended to DiHypergraph.
+    ///
+    /// XGI parity: `DH.clear()`. Guarded by freeze; the `frozen = false`
+    /// reset runs only when the guard passes, documenting that a cleared
+    /// dihypergraph is unfrozen.
+    pub fn clear(&mut self) {
+        self.assert_not_frozen();
+        self.inner = StableDiGraph::new();
+        self.agent_ids.clear();
+        self.hyperedge_ids.clear();
+        self.edge_uid_counter = 0;
+        self.graph_attrs.clear();
+        self.frozen = false;
+    }
+
+    /// Remove all edges, keeping every node, all node attrs, and all
+    /// graph-level attrs.
+    ///
+    /// Divergence D16: XGI's DiHypergraph HAS NO `clear_edges` (probed
+    /// v0.10.2: `AttributeError` via XGI's `__getattr__` stat fallback).
+    /// The core provides it for API uniformity with
+    /// [`super::hypergraph::Hypergraph::clear_edges`], with the same
+    /// semantics: nodes, node attrs, and net attrs survive, and the uid
+    /// counter is NOT reset (no "cleared ≡ fresh" reading — the node
+    /// state survives, so counter continuity matches state continuity).
+    /// Guarded by freeze — the D12 uniform-guard rationale.
+    pub fn clear_edges(&mut self) {
+        self.assert_not_frozen();
+        let he_indices: Vec<NodeIndex> = self.hyperedge_ids.values().copied().collect();
+        for he_idx in he_indices {
+            self.inner.remove_node(he_idx);
+        }
+        self.hyperedge_ids.clear();
+    }
+
+    /// Freeze the dihypergraph, preventing structural modification.
+    /// Idempotent (re-freezing is a no-op). XGI parity: `DH.freeze()`.
+    ///
+    /// The guard covers ALL structural mutators uniformly — divergence
+    /// D12, extended: XGI's DiHypergraph freeze list omits
+    /// `add_node_to_edge` AND `remove_node_from_edge` (unlike the
+    /// undirected class, which guards both — probed v0.10.2: both mutate
+    /// a FROZEN DiHypergraph unimpeded); `clear_edges` does not exist in
+    /// XGI at all (D16). A freeze that permits membership surgery or
+    /// wholesale edge deletion is not a freeze. The attr-dict channel
+    /// (set_*_attributes, attrs_mut) stays open — XGI parity.
+    pub fn freeze(&mut self) {
+        self.frozen = true;
+    }
+
+    /// Check if the dihypergraph is frozen. XGI parity: `DH.is_frozen`.
+    pub fn is_frozen(&self) -> bool {
+        self.frozen
+    }
+
+    /// Return an independent deep copy. XGI parity: `DH.copy()`.
+    /// Divergence D13 (DiHypergraph parity): the `frozen` flag carries —
+    /// XGI's freeze is per-instance method-swizzling, so `copy()` of a
+    /// frozen XGI network is NOT frozen (probed); here `frozen` is data,
+    /// and a deep clone of data carries it.
+    pub fn copy(&self) -> Self
+    where
+        N: Clone,
+        E: Clone,
+        M: Clone,
+    {
+        Self {
+            inner: self.inner.clone(),
+            agent_ids: self.agent_ids.clone(),
+            hyperedge_ids: self.hyperedge_ids.clone(),
+            edge_uid_counter: self.edge_uid_counter,
+            graph_attrs: self.graph_attrs.clone(),
+            frozen: self.frozen,
+        }
+    }
+}
+
+/// Bulk attribute setters, available when the node/edge attribute
+/// channels are `serde_json::Value` (the default). Mirrors the
+/// undirected core's bounded block: XGI's attr slots are always dicts; a
+/// generic `N`/`E` cannot merge maps.
+impl<M> DiHypergraph<serde_json::Value, serde_json::Value, M> {
+    /// Set node attributes from (id, attr_map) pairs.
+    ///
+    /// XGI parity: `DH.set_node_attributes(values, name=None)` — XGI
+    /// takes a dict-of-dicts (pairs raise XGIError at its Python
+    /// boundary; the core takes pairs and the binding converts — D7
+    /// class; the scalar / dict-of-scalars `name=` forms are binding
+    /// sugar). Attrs are MERGED into each existing node's dict; a
+    /// non-object attr slot is REPLACED by the incoming map. Missing
+    /// node ids are silently skipped — XGI warns ("Node X does not
+    /// exist!"); the warn channel is a binding concern (D2 class).
+    pub fn set_node_attributes(
+        &mut self,
+        values: impl IntoIterator<Item = (String, serde_json::Map<String, serde_json::Value>)>,
+    ) {
+        for (node_id, attrs) in values {
+            if let Some(node_attrs) = self.node_attrs_mut(&node_id) {
+                match node_attrs.as_object_mut() {
+                    Some(obj) => {
+                        for (k, v) in attrs {
+                            obj.insert(k, v);
+                        }
+                    }
+                    None => *node_attrs = serde_json::Value::Object(attrs.into_iter().collect()),
+                }
+            }
+        }
+    }
+
+    /// Set edge attributes from (id, attr_map) pairs.
+    ///
+    /// XGI parity: `DH.set_edge_attributes(values, name=None)`. Same
+    /// semantics as [`Self::set_node_attributes`]: merge into object
+    /// slots, replace non-object slots, silently skip missing edge ids
+    /// (XGI warns — binding concern).
+    pub fn set_edge_attributes(
+        &mut self,
+        values: impl IntoIterator<Item = (String, serde_json::Map<String, serde_json::Value>)>,
+    ) {
+        for (edge_id, attrs) in values {
+            if let Some(edge_attrs) = self.edge_attrs_mut(&edge_id) {
+                match edge_attrs.as_object_mut() {
+                    Some(obj) => {
+                        for (k, v) in attrs {
+                            obj.insert(k, v);
+                        }
+                    }
+                    None => *edge_attrs = serde_json::Value::Object(attrs.into_iter().collect()),
+                }
+            }
+        }
     }
 }

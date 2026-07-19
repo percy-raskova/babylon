@@ -282,6 +282,120 @@
       "num_nodes": 4,
       "return": null
     },
+    "di_add_edges_from": {
+      "broadcast": {
+        "0": {
+          "color": "red",
+          "size": 10
+        }
+      },
+      "dup_warns_continues": {
+        "dimembers": {
+          "e1": {
+            "head": [
+              "b"
+            ],
+            "tail": [
+              "a"
+            ]
+          },
+          "e2": {
+            "head": [
+              "f"
+            ],
+            "tail": [
+              "e"
+            ]
+          }
+        },
+        "edge_ids": [
+          "e1",
+          "e2"
+        ],
+        "num_nodes": 4,
+        "return": null,
+        "warned": true,
+        "warning_prefix": "uid e1 already exists,"
+      },
+      "empty_created": {
+        "dimembers": {
+          "0": {
+            "head": [],
+            "tail": []
+          },
+          "1": {
+            "head": [
+              "b"
+            ],
+            "tail": [
+              "a"
+            ]
+          }
+        },
+        "edge_ids": [
+          0,
+          1
+        ]
+      },
+      "members_only": {
+        "dimembers": {
+          "0": {
+            "head": [
+              "c"
+            ],
+            "tail": [
+              "a",
+              "b"
+            ]
+          },
+          "1": {
+            "head": [
+              "e",
+              "f"
+            ],
+            "tail": [
+              "d"
+            ]
+          }
+        },
+        "edge_ids": [
+          0,
+          1
+        ],
+        "return": null
+      },
+      "with_idx_attrs": {
+        "attrs": {
+          "one": {
+            "color": "red"
+          },
+          "two": {
+            "age": 40,
+            "color": "blue"
+          }
+        },
+        "dimembers": {
+          "one": {
+            "head": [
+              "b"
+            ],
+            "tail": [
+              "a"
+            ]
+          },
+          "two": {
+            "head": [],
+            "tail": [
+              "c"
+            ]
+          }
+        },
+        "edge_ids": [
+          "one",
+          "two"
+        ]
+      }
+    },
     "di_add_node_to_edge": {
       "dimembers": {
         "e1": {
@@ -415,6 +529,69 @@
       },
       "num_nodes": 3
     },
+    "di_clear_freeze": {
+      "clear": {
+        "auto_ids_after_clear": [
+          1
+        ],
+        "edge_ids": [],
+        "net_attrs": {},
+        "node_ids": [],
+        "num_edges": 0,
+        "num_nodes": 0
+      },
+      "freeze": {
+        "copy_of_frozen_is_frozen": false,
+        "guarded": {
+          "add_edge": {
+            "exception": "XGIError",
+            "message": "Frozen higher-order network can't be modified"
+          },
+          "add_edges_from": {
+            "exception": "XGIError",
+            "message": "Frozen higher-order network can't be modified"
+          },
+          "add_node": {
+            "exception": "XGIError",
+            "message": "Frozen higher-order network can't be modified"
+          },
+          "add_node_to_edge": null,
+          "add_nodes_from": {
+            "exception": "XGIError",
+            "message": "Frozen higher-order network can't be modified"
+          },
+          "clear": {
+            "exception": "XGIError",
+            "message": "Frozen higher-order network can't be modified"
+          },
+          "clear_edges": {
+            "exception": "AttributeError",
+            "message": "clear_edges is not a method of DiHypergraph or a recognized DiNodeStat or DiEdgeStat"
+          },
+          "remove_edge": {
+            "exception": "XGIError",
+            "message": "Frozen higher-order network can't be modified"
+          },
+          "remove_edges_from": {
+            "exception": "XGIError",
+            "message": "Frozen higher-order network can't be modified"
+          },
+          "remove_node": {
+            "exception": "XGIError",
+            "message": "Frozen higher-order network can't be modified"
+          },
+          "remove_node_from_edge": null,
+          "remove_nodes_from": {
+            "exception": "XGIError",
+            "message": "Frozen higher-order network can't be modified"
+          },
+          "set_edge_attributes": null,
+          "set_node_attributes": null
+        },
+        "is_frozen_after": true,
+        "is_frozen_before": false
+      }
+    },
     "di_dup_idx": {
       "dimembers": {
         "e1": {
@@ -470,6 +647,19 @@
           }
         }
       }
+    },
+    "di_eq": {
+      "both_vs_tail_only": false,
+      "diff_edge_attr": false,
+      "diff_edge_id": false,
+      "diff_net_attr": false,
+      "diff_node_attr": false,
+      "direction_flipped": false,
+      "empty_attr_lonely_vs_absent": false,
+      "lonely_missing": false,
+      "lonely_same": true,
+      "member_order_insignificant": true,
+      "same": true
     },
     "di_members_must_be_pair": {
       "int_list_members": {
@@ -693,6 +883,74 @@
           "5"
         ],
         "return": null
+      }
+    },
+    "di_repr": {
+      "dimembers_sorted": [
+        [
+          [
+            "a",
+            "b",
+            "c"
+          ],
+          [
+            "b",
+            "d"
+          ]
+        ],
+        [
+          [
+            "a"
+          ],
+          []
+        ]
+      ],
+      "repr_both_empty_edge": "DiHypergraph([(set(), set())])",
+      "repr_empty": "DiHypergraph([])",
+      "repr_prefix": "DiHypergraph("
+    },
+    "di_set_attrs": {
+      "edge_dict_of_dicts": {
+        "attrs_e1": {
+          "heat": 0.5,
+          "w": 1
+        },
+        "attrs_e2": {},
+        "num_edges": 2,
+        "return": null,
+        "warned": true,
+        "warning_message": "Edge ghost does not exist!"
+      },
+      "node_dict_of_dicts": {
+        "attrs_a": {
+          "color": "red",
+          "x": 1
+        },
+        "attrs_b": {
+          "color": "blue"
+        },
+        "num_nodes": 3,
+        "return": null,
+        "warned": true,
+        "warning_message": "Node ghost does not exist!"
+      },
+      "node_dict_of_scalars": {
+        "attrs_a": {
+          "color": "red"
+        },
+        "attrs_b": {},
+        "warned": true,
+        "warning_message": "Node ghost does not exist!"
+      },
+      "node_pairs_exception": "XGIError",
+      "node_pairs_message": "Must pass a dictionary of dictionaries",
+      "node_scalar_broadcast": {
+        "attrs_a": {
+          "color": "red"
+        },
+        "attrs_c": {
+          "color": "red"
+        }
       }
     },
     "di_uid_counter": {

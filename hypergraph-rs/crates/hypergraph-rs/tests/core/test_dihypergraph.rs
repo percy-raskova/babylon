@@ -600,3 +600,385 @@ fn remove_nodes_from_per_item_continues_past_missing() {
         (Vec::<String>::new(), vec!["c".to_string()])
     );
 }
+
+// ---------------------------------------------------------------------------
+// Bulk add, attributes, copy/clear/freeze, Debug, PartialEq (Phase 2 Task 5)
+// ---------------------------------------------------------------------------
+
+#[test]
+fn add_edges_from_bulk_and_auto_ids() {
+    let mut h: DiHypergraph = DiHypergraph::new();
+    let results = h.add_edges_from(vec![
+        (
+            vec!["a".into(), "b".into()],
+            vec!["c".into()],
+            None,
+            Value::Null,
+        ),
+        (
+            vec!["d".into()],
+            vec![],
+            Some("named".into()),
+            serde_json::json!({"w": 1}),
+        ),
+        (vec!["e".into()], vec!["f".into()], None, Value::Null),
+    ]);
+    assert_eq!(results.len(), 3);
+    assert_eq!(results[0].as_ref().unwrap(), "0");
+    assert_eq!(results[1].as_ref().unwrap(), "named");
+    assert_eq!(results[2].as_ref().unwrap(), "1");
+    assert_eq!(h.edge_ids(), vec!["0", "named", "1"]);
+    assert_eq!(h.tail("0").unwrap(), vec!["a", "b"]);
+    assert_eq!(h.head("0").unwrap(), vec!["c"]);
+    assert_eq!(h.edge_attrs("named").unwrap(), &serde_json::json!({"w": 1}));
+}
+
+#[test]
+fn add_edges_from_dup_errors_and_continues() {
+    // D2-class: the dup surfaces as Err(AlreadyExists); the bunch
+    // continues; the dup's members are never added.
+    let mut h: DiHypergraph = DiHypergraph::new();
+    let results = h.add_edges_from(vec![
+        (
+            vec!["a".into()],
+            vec!["b".into()],
+            Some("e1".into()),
+            Value::Null,
+        ),
+        (
+            vec!["c".into()],
+            vec!["d".into()],
+            Some("e1".into()),
+            Value::Null,
+        ),
+        (
+            vec!["e".into()],
+            vec!["f".into()],
+            Some("e2".into()),
+            Value::Null,
+        ),
+    ]);
+    assert!(results[0].is_ok());
+    assert!(matches!(results[1], Err(EdgeError::AlreadyExists { .. })));
+    assert!(results[2].is_ok());
+    assert_eq!(h.edge_ids(), vec!["e1", "e2"]);
+    assert!(!h.has_node("c"));
+}
+
+#[test]
+fn add_edges_from_creates_empty_edge() {
+    // D1-class parity: ([], []) inside a bulk add creates an empty edge.
+    let mut h: DiHypergraph = DiHypergraph::new();
+    let results = h.add_edges_from(vec![
+        (vec![], vec![], None, Value::Null),
+        (vec!["a".into()], vec!["b".into()], None, Value::Null),
+    ]);
+    assert!(results.iter().all(|r| r.is_ok()));
+    assert_eq!(h.num_edges(), 2);
+    assert_eq!(
+        h.dimembers("0").unwrap(),
+        (Vec::<String>::new(), Vec::<String>::new())
+    );
+}
+
+#[test]
+fn attrs_mut_write_through() {
+    let mut h: DiHypergraph = DiHypergraph::new();
+    h.add_node("a", serde_json::json!({}));
+    h.add_edge(
+        (vec!["a".into()], vec![]),
+        Some("e1".into()),
+        serde_json::json!({}),
+    )
+    .unwrap();
+    h.node_attrs_mut("a").unwrap()["color"] = serde_json::json!("red");
+    h.edge_attrs_mut("e1").unwrap()["heat"] = serde_json::json!(0.5);
+    assert_eq!(h.node_attrs("a").unwrap()["color"], "red");
+    assert_eq!(h.edge_attrs("e1").unwrap()["heat"], 0.5);
+    assert!(h.node_attrs_mut("ghost").is_none());
+    assert!(h.edge_attrs_mut("ghost").is_none());
+}
+
+#[test]
+fn set_node_attributes_merges_skips_missing() {
+    let mut h: DiHypergraph = DiHypergraph::new();
+    h.add_node("a", serde_json::json!({"x": 1}));
+    h.add_node("b", Value::Null); // non-object slot -> REPLACED
+    let color = |c: &str| {
+        let mut m = serde_json::Map::new();
+        m.insert("color".to_string(), serde_json::json!(c));
+        m
+    };
+    h.set_node_attributes(vec![
+        ("a".to_string(), color("red")),
+        ("b".to_string(), color("blue")),
+        ("ghost".to_string(), color("green")),
+    ]);
+    assert_eq!(
+        h.node_attrs("a").unwrap(),
+        &serde_json::json!({"x": 1, "color": "red"})
+    );
+    assert_eq!(
+        h.node_attrs("b").unwrap(),
+        &serde_json::json!({"color": "blue"})
+    );
+    assert!(!h.has_node("ghost")); // never auto-created
+}
+
+#[test]
+fn set_edge_attributes_merges_skips_missing() {
+    let mut h: DiHypergraph = DiHypergraph::new();
+    h.add_edge(
+        (vec!["a".into()], vec![]),
+        Some("e1".into()),
+        serde_json::json!({"w": 1}),
+    )
+    .unwrap();
+    let mut heat = serde_json::Map::new();
+    heat.insert("heat".to_string(), serde_json::json!(0.5));
+    let mut x = serde_json::Map::new();
+    x.insert("x".to_string(), serde_json::json!(1));
+    h.set_edge_attributes(vec![("e1".to_string(), heat), ("ghost".to_string(), x)]);
+    assert_eq!(
+        h.edge_attrs("e1").unwrap(),
+        &serde_json::json!({"w": 1, "heat": 0.5})
+    );
+    assert!(!h.has_edge("ghost"));
+}
+
+#[test]
+fn clear_resets_everything_and_counter() {
+    // D10: clear() ≡ new() — the uid counter resets (XGI continues it).
+    let mut h: DiHypergraph = DiHypergraph::new();
+    h.add_edge((vec!["a".into()], vec!["b".into()]), None, Value::Null)
+        .unwrap();
+    h.add_node("lonely", serde_json::json!({"x": 1}));
+    h.set_graph_attr("name", serde_json::json!("test"));
+    h.clear();
+    assert_eq!(h.num_nodes(), 0);
+    assert_eq!(h.num_edges(), 0);
+    assert!(h.graph_attr("name").is_none());
+    let auto = h
+        .add_edge((vec!["z".into()], vec![]), None, Value::Null)
+        .unwrap();
+    assert_eq!(auto, "0");
+}
+
+#[test]
+fn clear_edges_keeps_nodes_and_counter() {
+    // D16: XGI's DiHypergraph has NO clear_edges (AttributeError); the
+    // core provides it for API uniformity — nodes, node attrs, and net
+    // attrs survive; the counter continues (no "cleared ≡ fresh"
+    // reading: the node state is preserved).
+    let mut h: DiHypergraph = DiHypergraph::new();
+    h.add_edge((vec!["a".into()], vec!["b".into()]), None, Value::Null)
+        .unwrap();
+    h.add_edge(
+        (vec!["c".into()], vec![]),
+        Some("e1".into()),
+        serde_json::json!({"heat": 0.5}),
+    )
+    .unwrap();
+    h.add_node("lonely", serde_json::json!({"x": 1}));
+    h.set_graph_attr("name", serde_json::json!("test"));
+    h.clear_edges();
+    assert_eq!(h.num_edges(), 0);
+    assert_eq!(h.num_nodes(), 4);
+    assert_eq!(
+        h.node_attrs("lonely").unwrap(),
+        &serde_json::json!({"x": 1})
+    );
+    assert_eq!(h.graph_attr("name").unwrap(), &serde_json::json!("test"));
+    assert!(h.memberships("a").unwrap().is_empty());
+    let auto = h
+        .add_edge((vec!["z".into()], vec![]), None, Value::Null)
+        .unwrap();
+    assert_eq!(auto, "1");
+}
+
+#[test]
+fn freeze_guards_all_structural_mutators() {
+    // D12 uniform guard, incl. the two membership ops XGI's DiHypergraph
+    // freeze list omits (extension, probed) and clear_edges (D16).
+    let mut h: DiHypergraph = DiHypergraph::new();
+    h.add_edge(
+        (vec!["a".into(), "b".into()], vec!["c".into()]),
+        Some("e1".into()),
+        Value::Null,
+    )
+    .unwrap();
+    assert!(!h.is_frozen());
+    h.freeze();
+    assert!(h.is_frozen());
+    let mut check = |f: &mut dyn FnMut(&mut DiHypergraph)| {
+        let r = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| f(&mut h)));
+        assert!(r.is_err());
+    };
+    check(&mut |h| {
+        h.add_node("z", Value::Null);
+    });
+    check(&mut |h| {
+        h.add_edge((vec!["a".into()], vec![]), None, Value::Null)
+            .unwrap();
+    });
+    check(&mut |h| {
+        h.add_edges_from(vec![(vec!["a".into()], vec![], None, Value::Null)]);
+    });
+    check(&mut |h| h.remove_node("a", false, true).unwrap());
+    check(&mut |h| h.remove_edge("e1").unwrap());
+    check(&mut |h| h.add_node_to_edge("e1", "n", Direction::In));
+    check(&mut |h| {
+        h.remove_node_from_edge("e1", "a", Direction::In, true)
+            .unwrap();
+    });
+    check(&mut |h| h.clear());
+    check(&mut |h| h.clear_edges());
+    // Untouched by all of it.
+    assert_eq!(h.num_edges(), 1);
+    assert_eq!(h.tail("e1").unwrap(), vec!["a", "b"]);
+}
+
+#[test]
+fn freeze_leaves_attr_channel_open() {
+    // XGI parity: set_node_attributes / set_edge_attributes are NOT
+    // guarded on a frozen network.
+    let mut h: DiHypergraph = DiHypergraph::new();
+    h.add_edge(
+        (vec!["a".into()], vec![]),
+        Some("e1".into()),
+        serde_json::json!({}),
+    )
+    .unwrap();
+    h.freeze();
+    let mut k = serde_json::Map::new();
+    k.insert("k".to_string(), serde_json::json!(1));
+    h.set_node_attributes(vec![("a".to_string(), k.clone())]);
+    h.set_edge_attributes(vec![("e1".to_string(), k)]);
+    assert_eq!(h.node_attrs("a").unwrap()["k"], 1);
+    assert_eq!(h.edge_attrs("e1").unwrap()["k"], 1);
+}
+
+#[test]
+fn copy_is_independent_and_carries_counter_and_frozen() {
+    // D13: the frozen flag carries (XGI's swizzled copy is not frozen).
+    let mut h: DiHypergraph = DiHypergraph::new();
+    h.add_node("a", serde_json::json!({"color": "red"}));
+    h.add_edge(
+        (vec!["a".into(), "b".into()], vec!["c".into()]),
+        None,
+        serde_json::json!({"heat": 0.5}),
+    )
+    .unwrap();
+    h.set_graph_attr("name", serde_json::json!("test"));
+    h.freeze();
+
+    let cp = h.copy();
+    assert!(cp.is_frozen());
+
+    // Mutate the original in every channel; the copy is untouched.
+    h.node_attrs_mut("a").unwrap()["color"] = serde_json::json!("blue");
+    h.edge_attrs_mut("0").unwrap()["heat"] = serde_json::json!(0.9);
+    h.set_graph_attr("name", serde_json::json!("modified"));
+    assert_eq!(cp.node_attrs("a").unwrap()["color"], "red");
+    assert_eq!(cp.edge_attrs("0").unwrap()["heat"], 0.5);
+    assert_eq!(cp.graph_attr("name").unwrap(), &serde_json::json!("test"));
+
+    // Counter carried: an auto edge added to a fresh copy continues.
+    let mut h2: DiHypergraph = DiHypergraph::new();
+    h2.add_edge((vec!["a".into()], vec![]), None, Value::Null)
+        .unwrap();
+    let mut cp2 = h2.copy();
+    let auto = cp2
+        .add_edge((vec!["b".into()], vec![]), None, Value::Null)
+        .unwrap();
+    assert_eq!(auto, "1");
+}
+
+#[test]
+fn debug_formats_dimembers_in_insertion_order() {
+    let mut h: DiHypergraph = DiHypergraph::new();
+    h.add_edge(
+        (
+            vec!["a".into(), "b".into(), "c".into()],
+            vec!["b".into(), "d".into()],
+        ),
+        None,
+        Value::Null,
+    )
+    .unwrap();
+    h.add_edge((vec!["a".into()], vec![]), Some("e1".into()), Value::Null)
+        .unwrap();
+    h.add_node("lonely", Value::Null); // never appears
+    assert_eq!(
+        format!("{h:?}"),
+        "DiHypergraph([({a, b, c}, {b, d}), ({a}, {})])"
+    );
+
+    let empty: DiHypergraph = DiHypergraph::new();
+    assert_eq!(format!("{empty:?}"), "DiHypergraph([])");
+
+    let mut both_empty: DiHypergraph = DiHypergraph::new();
+    both_empty
+        .add_edge((vec![], vec![]), None, Value::Null)
+        .unwrap();
+    assert_eq!(format!("{both_empty:?}"), "DiHypergraph([({}, {})])");
+}
+
+#[test]
+fn partial_eq_is_direction_aware() {
+    let build = |tail: &[&str], head: &[&str]| {
+        let mut h: DiHypergraph = DiHypergraph::new();
+        h.add_edge(
+            (
+                tail.iter().map(|m| m.to_string()).collect(),
+                head.iter().map(|m| m.to_string()).collect(),
+            ),
+            Some("e1".into()),
+            Value::Null,
+        )
+        .unwrap();
+        h
+    };
+    let a = build(&["a", "b"], &["c"]);
+    assert_eq!(a, build(&["a", "b"], &["c"]));
+    assert_ne!(a, build(&["c"], &["a", "b"])); // flipped -> not equal
+    assert_eq!(a, build(&["b", "a"], &["c"])); // order insignificant
+    assert_ne!(a, build(&["a", "b"], &["b"])); // head differs
+                                               // Both-directions vs tail-only.
+    assert_ne!(build(&["a", "b"], &["b"]), build(&["a", "b"], &[]));
+}
+
+#[test]
+fn partial_eq_attrs_and_ids_significant() {
+    let mut a: DiHypergraph = DiHypergraph::new();
+    a.add_edge(
+        (vec!["a".into()], vec!["b".into()]),
+        Some("e1".into()),
+        serde_json::json!({"w": 1}),
+    )
+    .unwrap();
+    let mut b: DiHypergraph = DiHypergraph::new();
+    b.add_edge(
+        (vec!["a".into()], vec!["b".into()]),
+        Some("e1".into()),
+        serde_json::json!({"w": 2}),
+    )
+    .unwrap();
+    assert_ne!(a, b); // edge attrs
+    let mut c: DiHypergraph = DiHypergraph::new();
+    c.add_edge(
+        (vec!["a".into()], vec!["b".into()]),
+        Some("e2".into()), // different id
+        serde_json::json!({"w": 1}),
+    )
+    .unwrap();
+    assert_ne!(a, c);
+    // Node attrs and net attrs significant.
+    let mut d = a.copy();
+    assert_eq!(a, d);
+    *d.node_attrs_mut("a").unwrap() = serde_json::json!({"k": 1});
+    assert_ne!(a, d);
+    let mut e = a.copy();
+    e.set_graph_attr("name", serde_json::json!("x"));
+    assert_ne!(a, e);
+}

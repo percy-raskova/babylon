@@ -1878,3 +1878,711 @@ fn diverge_d2_di_remove_edge_missing_errors() {
         Err(EdgeError::NotFound { .. })
     ));
 }
+
+// ---------------------------------------------------------------------------
+// DiHypergraph bulk/attrs/copy/clear/freeze/Debug/eq (Phase 2 Task 5)
+// ---------------------------------------------------------------------------
+
+#[test]
+fn conform_di_repr_format() {
+    // XGI's DiHypergraph.__repr__ is f"{cls}({self.edges.dimembers()})" —
+    // the class name wrapping a list of (tail, head) set-tuples, edges in
+    // insertion order. The Rust core's Debug produces the same SHAPE
+    // (DiHypergraph([({tail}, {head}), ...])) with members in INSERTION
+    // order and uniform braces — cited divergence D5 (XGI's member sets
+    // are hash-ordered; the fixture records sorted projections only).
+    // XGI renders an empty side as "set()"; Rust formats "{}" — same D5
+    // class. Lonely nodes never appear (XGI parity).
+    let gt = ground_truth();
+    let v = vector(&gt, "di_repr");
+    assert_eq!(v["repr_prefix"], "DiHypergraph("); // XGI truth, pinned
+    assert_eq!(v["repr_empty"], "DiHypergraph([])"); // XGI truth, pinned
+    assert_eq!(v["repr_both_empty_edge"], "DiHypergraph([(set(), set())])"); // pinned
+    assert_eq!(
+        v["dimembers_sorted"],
+        serde_json::json!([[["a", "b", "c"], ["b", "d"]], [["a"], []]])
+    ); // XGI truth (sorted), pinned
+
+    let mut h: DiHypergraph = DiHypergraph::new();
+    h.add_edge(
+        (
+            vec!["a".into(), "b".into(), "c".into()],
+            vec!["b".into(), "d".into()],
+        ),
+        None,
+        Value::Null,
+    )
+    .unwrap();
+    h.add_edge((vec!["a".into()], vec![]), Some("e1".into()), Value::Null)
+        .unwrap();
+    h.add_node("lonely", Value::Null);
+    let repr = format!("{h:?}");
+    assert!(repr.starts_with(v["repr_prefix"].as_str().unwrap()));
+    assert_eq!(repr, "DiHypergraph([({a, b, c}, {b, d}), ({a}, {})])");
+    // Every fixture-recorded (sorted) side matches the Rust side.
+    for (i, eid) in ["0", "e1"].iter().enumerate() {
+        let (mut tail, mut head) = h.dimembers(eid).unwrap();
+        tail.sort();
+        head.sort();
+        assert_eq!(vec![tail, head], ids_nested(&v["dimembers_sorted"][i]));
+    }
+
+    let empty: DiHypergraph = DiHypergraph::new();
+    assert_eq!(format!("{empty:?}"), v["repr_empty"].as_str().unwrap());
+
+    // Both-empty edge: XGI's "(set(), set())" artifact is pinned as
+    // truth; Rust formats braces uniformly — "({}, {})" (same D5 class).
+    let mut both_empty: DiHypergraph = DiHypergraph::new();
+    both_empty
+        .add_edge((vec![], vec![]), None, Value::Null)
+        .unwrap();
+    assert_eq!(format!("{both_empty:?}"), "DiHypergraph([({}, {})])");
+}
+
+#[test]
+fn conform_di_eq_structural() {
+    // XGI's DiHypergraph.__eq__ delegates to xgi.algorithms.equal with
+    // the defaults: the edge-id -> {"in": tail, "out": head} mapping,
+    // node attrs, edge attrs, and net attrs are all significant;
+    // member order is not. DIRECTION IS SIGNIFICANT (probed: tail/head
+    // swapped -> NOT equal; both-directions vs tail-only -> NOT equal).
+    // The Rust core's PartialEq matches every recorded verdict.
+    let gt = ground_truth();
+    let v = vector(&gt, "di_eq");
+    // XGI truth, pinned.
+    assert_eq!(v["same"], true);
+    assert_eq!(v["direction_flipped"], false);
+    assert_eq!(v["member_order_insignificant"], true);
+    assert_eq!(v["diff_edge_id"], false);
+    assert_eq!(v["diff_edge_attr"], false);
+    assert_eq!(v["lonely_same"], true);
+    assert_eq!(v["diff_node_attr"], false);
+    assert_eq!(v["lonely_missing"], false);
+    assert_eq!(v["diff_net_attr"], false);
+    assert_eq!(v["both_vs_tail_only"], false);
+    assert_eq!(v["empty_attr_lonely_vs_absent"], false);
+
+    let build = |tail: &[&str],
+                 head: &[&str],
+                 idx: &str,
+                 edge_attr: Value,
+                 solo: Option<(&str, Value)>,
+                 net: Option<(&str, Value)>| {
+        let mut h: DiHypergraph = DiHypergraph::new();
+        h.add_edge(
+            (
+                tail.iter().map(|m| m.to_string()).collect(),
+                head.iter().map(|m| m.to_string()).collect(),
+            ),
+            Some(idx.into()),
+            edge_attr,
+        )
+        .unwrap();
+        if let Some((n, attrs)) = solo {
+            h.add_node(n, attrs);
+        }
+        if let Some((k, val)) = net {
+            h.set_graph_attr(k, val);
+        }
+        h
+    };
+    let a = build(&["a", "b"], &["c"], "e1", Value::Null, None, None);
+    assert_eq!(a, build(&["a", "b"], &["c"], "e1", Value::Null, None, None));
+    // Direction flipped -> NOT equal.
+    assert_ne!(a, build(&["c"], &["a", "b"], "e1", Value::Null, None, None));
+    // Member order insignificant.
+    assert_eq!(a, build(&["b", "a"], &["c"], "e1", Value::Null, None, None));
+    // Edge id significant.
+    assert_ne!(a, build(&["a", "b"], &["c"], "e2", Value::Null, None, None));
+    // Edge attrs significant.
+    assert_ne!(
+        build(
+            &["a", "b"],
+            &["c"],
+            "e1",
+            serde_json::json!({"w": 1}),
+            None,
+            None
+        ),
+        build(
+            &["a", "b"],
+            &["c"],
+            "e1",
+            serde_json::json!({"w": 2}),
+            None,
+            None
+        )
+    );
+    // Net attrs significant.
+    assert_ne!(
+        a,
+        build(
+            &["a", "b"],
+            &["c"],
+            "e1",
+            Value::Null,
+            None,
+            Some(("name", serde_json::json!("x")))
+        )
+    );
+    // Both-directions vs tail-only -> NOT equal.
+    assert_ne!(
+        build(&["a", "b"], &["b"], "e1", Value::Null, None, None),
+        build(&["a", "b"], &[], "e1", Value::Null, None, None)
+    );
+    // Lonely node attrs significant; presence significant (even with
+    // EMPTY attrs — XGI compares _node_attr, where every node carries a
+    // dict).
+    let l1 = build(
+        &["a", "b"],
+        &["c"],
+        "e1",
+        Value::Null,
+        Some(("solo", serde_json::json!({"color": "red"}))),
+        None,
+    );
+    let l2 = build(
+        &["a", "b"],
+        &["c"],
+        "e1",
+        Value::Null,
+        Some(("solo", serde_json::json!({"color": "red"}))),
+        None,
+    );
+    let l3 = build(
+        &["a", "b"],
+        &["c"],
+        "e1",
+        Value::Null,
+        Some(("solo", serde_json::json!({"color": "blue"}))),
+        None,
+    );
+    assert_eq!(l1, l2);
+    assert_ne!(l1, l3);
+    assert_ne!(l1, a);
+    let e1 = build(
+        &["a", "b"],
+        &["c"],
+        "e1",
+        Value::Null,
+        Some(("solo", serde_json::json!({}))),
+        None,
+    );
+    assert_ne!(e1, a);
+}
+
+#[test]
+fn conform_di_add_edges_from() {
+    // XGI's add_edges_from accepts members-only (auto ids), (members,
+    // idx), (members, attrdict), (members, idx, attrdict), and dict
+    // bunches, plus **attr broadcast (per-edge attrs take precedence);
+    // returns None. The Rust core takes uniform (tail, head, idx,
+    // attrs) quadruples — format detection and broadcast merging are
+    // binding concerns (D7 class); the outcomes conform. The Notes
+    // claim empty edges are skipped — the runtime CREATES one for
+    // ([], []) (D1-class docstring lie); the core conforms.
+    let gt = ground_truth();
+    let v = vector(&gt, "di_add_edges_from");
+    assert_eq!(v["members_only"]["return"], Value::Null); // XGI truth, pinned
+    assert_eq!(v["dup_warns_continues"]["return"], Value::Null); // pinned
+    assert_eq!(v["dup_warns_continues"]["warned"], true); // pinned
+    assert!(v["dup_warns_continues"]["warning_prefix"]
+        .as_str()
+        .unwrap()
+        .starts_with("uid e1 already exists"));
+    // Broadcast: per-edge color wins, size merges in — XGI truth, pinned.
+    assert_eq!(
+        v["broadcast"],
+        serde_json::json!({"0": {"color": "red", "size": 10}})
+    );
+
+    // Members-only: auto ids in order.
+    let mut h: DiHypergraph = DiHypergraph::new();
+    let results = h.add_edges_from(vec![
+        (
+            vec!["a".into(), "b".into()],
+            vec!["c".into()],
+            None,
+            Value::Null,
+        ),
+        (
+            vec!["d".into()],
+            vec!["e".into(), "f".into()],
+            None,
+            Value::Null,
+        ),
+    ]);
+    assert!(results.iter().all(|r| r.is_ok()));
+    assert_eq!(h.edge_ids(), ids(&v["members_only"]["edge_ids"]));
+    for (eid, recorded) in v["members_only"]["dimembers"].as_object().unwrap() {
+        assert_dimembers(&h, eid, recorded);
+    }
+
+    // (members, idx, attrs): ids and per-edge attrs land.
+    let mut h2: DiHypergraph = DiHypergraph::new();
+    h2.add_edges_from(vec![
+        (
+            vec!["a".into()],
+            vec!["b".into()],
+            Some("one".into()),
+            serde_json::json!({"color": "red"}),
+        ),
+        (
+            vec!["c".into()],
+            vec![],
+            Some("two".into()),
+            serde_json::json!({"color": "blue", "age": 40}),
+        ),
+    ]);
+    assert_eq!(h2.edge_ids(), ids(&v["with_idx_attrs"]["edge_ids"]));
+    for (eid, attrs) in v["with_idx_attrs"]["attrs"].as_object().unwrap() {
+        assert_eq!(h2.edge_attrs(eid).unwrap(), attrs);
+    }
+    for (eid, recorded) in v["with_idx_attrs"]["dimembers"].as_object().unwrap() {
+        assert_dimembers(&h2, eid, recorded);
+    }
+
+    // Broadcast equivalence: the binding merges **attr into each edge's
+    // dict (per-edge wins) before calling; the core receives the merged
+    // attrs — the outcome matches XGI's recorded broadcast result.
+    let mut h3: DiHypergraph = DiHypergraph::new();
+    h3.add_edges_from(vec![(
+        vec!["a".into()],
+        vec!["b".into()],
+        None,
+        serde_json::json!({"color": "red", "size": 10}),
+    )]);
+    assert_eq!(h3.edge_attrs("0").unwrap(), &v["broadcast"]["0"]);
+
+    // Empty edge is CREATED, not skipped (D1-class).
+    let mut h4: DiHypergraph = DiHypergraph::new();
+    h4.add_edges_from(vec![
+        (vec![], vec![], None, Value::Null),
+        (vec!["a".into()], vec!["b".into()], None, Value::Null),
+    ]);
+    assert_eq!(h4.edge_ids(), ids(&v["empty_created"]["edge_ids"]));
+    for (eid, recorded) in v["empty_created"]["dimembers"].as_object().unwrap() {
+        assert_dimembers(&h4, eid, recorded);
+    }
+}
+
+#[test]
+fn diverge_d2_di_add_edges_from_dup_errors_continues() {
+    // Same D2 error-channel class as the undirected bulk add: XGI warns
+    // + skips a duplicate idx and CONTINUES with the rest (the dup's
+    // members are never added). The Rust core surfaces the dup as
+    // Err(AlreadyExists) in the per-edge Vec<Result> and continues; the
+    // binding translates Err -> UserWarning + skip.
+    let gt = ground_truth();
+    let v = vector(&gt, "di_add_edges_from")["dup_warns_continues"].clone();
+
+    let mut h: DiHypergraph = DiHypergraph::new();
+    let results = h.add_edges_from(vec![
+        (
+            vec!["a".into()],
+            vec!["b".into()],
+            Some("e1".into()),
+            Value::Null,
+        ),
+        (
+            vec!["c".into()],
+            vec!["d".into()],
+            Some("e1".into()),
+            Value::Null,
+        ),
+        (
+            vec!["e".into()],
+            vec!["f".into()],
+            Some("e2".into()),
+            Value::Null,
+        ),
+    ]);
+    assert_eq!(results.len(), 3);
+    assert!(results[0].is_ok());
+    assert!(matches!(results[1], Err(EdgeError::AlreadyExists { .. })));
+    assert!(results[2].is_ok(), "continues past the dup");
+
+    // Dup skipped, the rest kept — XGI's recorded final state.
+    assert_eq!(h.edge_ids(), ids(&v["edge_ids"]));
+    assert_eq!(h.num_nodes(), v["num_nodes"].as_u64().unwrap() as usize);
+    for (eid, recorded) in v["dimembers"].as_object().unwrap() {
+        assert_dimembers(&h, eid, recorded);
+    }
+}
+
+#[test]
+fn conform_di_set_attrs() {
+    // set_node_attributes / set_edge_attributes mirror the undirected
+    // class: dict-of-dicts MERGES into existing attr dicts; a missing id
+    // warns + SKIPS, never auto-creates (the warn channel is a binding
+    // concern — D2 class); a list of pairs raises XGIError at XGI's
+    // Python boundary (the core takes pairs — D7 class); the scalar and
+    // dict-of-scalars name= forms are binding sugar (their outcomes are
+    // pinned as XGI truth; the core's per-node merge produces them).
+    let gt = ground_truth();
+    let v = vector(&gt, "di_set_attrs");
+    // XGI truth, pinned.
+    assert_eq!(v["node_dict_of_dicts"]["return"], Value::Null);
+    assert_eq!(v["node_dict_of_dicts"]["warned"], true);
+    assert_eq!(
+        v["node_dict_of_dicts"]["warning_message"],
+        "Node ghost does not exist!"
+    );
+    assert_eq!(v["node_pairs_exception"], "XGIError");
+    assert_eq!(
+        v["node_pairs_message"],
+        "Must pass a dictionary of dictionaries"
+    );
+    assert_eq!(
+        v["node_dict_of_dicts"]["attrs_a"],
+        serde_json::json!({"x": 1, "color": "red"})
+    );
+    assert_eq!(v["edge_dict_of_dicts"]["return"], Value::Null);
+    assert_eq!(v["edge_dict_of_dicts"]["warned"], true);
+    assert_eq!(
+        v["edge_dict_of_dicts"]["warning_message"],
+        "Edge ghost does not exist!"
+    );
+    assert_eq!(
+        v["edge_dict_of_dicts"]["attrs_e1"],
+        serde_json::json!({"w": 1, "heat": 0.5})
+    );
+    // Scalar broadcast + dict-of-scalars name= forms: XGI truth, pinned.
+    assert_eq!(
+        v["node_scalar_broadcast"]["attrs_a"],
+        serde_json::json!({"color": "red"})
+    );
+    assert_eq!(
+        v["node_scalar_broadcast"]["attrs_c"],
+        serde_json::json!({"color": "red"})
+    );
+    assert_eq!(
+        v["node_dict_of_scalars"]["attrs_a"],
+        serde_json::json!({"color": "red"})
+    );
+    assert_eq!(v["node_dict_of_scalars"]["attrs_b"], serde_json::json!({}));
+
+    // Node dict-of-dicts: merge; ghost skipped, never auto-created.
+    let mut h: DiHypergraph = DiHypergraph::new();
+    h.add_edge(
+        (vec!["a".into(), "b".into()], vec!["c".into()]),
+        Some("e1".into()),
+        Value::Null,
+    )
+    .unwrap();
+    *h.node_attrs_mut("a").unwrap() = serde_json::json!({"x": 1});
+    let color = |c: &str| {
+        let mut m = serde_json::Map::new();
+        m.insert("color".to_string(), serde_json::json!(c));
+        m
+    };
+    h.set_node_attributes(vec![
+        ("a".to_string(), color("red")),
+        ("b".to_string(), color("blue")),
+        ("ghost".to_string(), color("green")),
+    ]);
+    assert_eq!(
+        h.node_attrs("a").unwrap(),
+        &v["node_dict_of_dicts"]["attrs_a"]
+    );
+    assert_eq!(
+        h.node_attrs("b").unwrap(),
+        &v["node_dict_of_dicts"]["attrs_b"]
+    );
+    assert!(!h.has_node("ghost"));
+    assert_eq!(
+        h.num_nodes(),
+        v["node_dict_of_dicts"]["num_nodes"].as_u64().unwrap() as usize
+    );
+
+    // Edge dict-of-dicts: merge; ghost skipped.
+    let mut h2: DiHypergraph = DiHypergraph::new();
+    h2.add_edge(
+        (vec!["a".into()], vec!["b".into()]),
+        Some("e1".into()),
+        serde_json::json!({"w": 1}),
+    )
+    .unwrap();
+    h2.add_edge(
+        (vec!["c".into()], vec!["d".into()]),
+        Some("e2".into()),
+        serde_json::json!({}),
+    )
+    .unwrap();
+    let mut heat = serde_json::Map::new();
+    heat.insert("heat".to_string(), serde_json::json!(0.5));
+    let mut x = serde_json::Map::new();
+    x.insert("x".to_string(), serde_json::json!(1));
+    h2.set_edge_attributes(vec![("e1".to_string(), heat), ("ghost".to_string(), x)]);
+    assert_eq!(
+        h2.edge_attrs("e1").unwrap(),
+        &v["edge_dict_of_dicts"]["attrs_e1"]
+    );
+    assert_eq!(
+        h2.edge_attrs("e2").unwrap(),
+        &v["edge_dict_of_dicts"]["attrs_e2"]
+    );
+    assert!(!h2.has_edge("ghost"));
+    assert_eq!(
+        h2.num_edges(),
+        v["edge_dict_of_dicts"]["num_edges"].as_u64().unwrap() as usize
+    );
+}
+
+#[test]
+fn diverge_d10_di_clear_resets_uid_counter() {
+    // DiHypergraph.clear() empties nodes, edges, all attr channels, and
+    // net attrs — the Rust core conforms on all of that. D10 (extended
+    // to DiHypergraph): XGI does NOT reset its auto-id counter (the next
+    // auto id continues at 1); the Rust core resets edge_uid_counter —
+    // clear() ≡ new() (III.7 replay-from-empty determinism).
+    let gt = ground_truth();
+    let v = vector(&gt, "di_clear_freeze")["clear"].clone();
+    assert_eq!(v["num_nodes"], 0); // XGI truth, pinned
+    assert_eq!(v["num_edges"], 0);
+    assert_eq!(v["node_ids"], serde_json::json!([]));
+    assert_eq!(v["edge_ids"], serde_json::json!([]));
+    assert_eq!(v["net_attrs"], serde_json::json!({}));
+    assert_eq!(ids(&v["auto_ids_after_clear"]), vec!["1"]); // XGI truth, pinned
+
+    let mut h: DiHypergraph = DiHypergraph::new();
+    h.add_edge(
+        (vec!["a".into(), "b".into()], vec!["c".into()]),
+        None,
+        Value::Null,
+    )
+    .unwrap();
+    h.add_edge(
+        (vec!["d".into()], vec!["e".into()]),
+        Some("e1".into()),
+        serde_json::json!({"heat": 0.5}),
+    )
+    .unwrap();
+    h.add_node("lonely", serde_json::json!({"x": 1}));
+    h.set_graph_attr("name", serde_json::json!("test"));
+    h.clear();
+
+    assert_eq!(h.num_nodes(), 0);
+    assert_eq!(h.num_edges(), 0);
+    assert!(h.node_ids().is_empty());
+    assert!(h.edge_ids().is_empty());
+    assert!(h.graph_attr("name").is_none());
+    assert!(h.node_attrs("lonely").is_none());
+    assert!(h.edge_attrs("e1").is_none());
+
+    // D10: Rust resets the counter — the post-clear auto id is "0".
+    let auto = h
+        .add_edge((vec!["z".into()], vec![]), None, Value::Null)
+        .unwrap();
+    assert_eq!(auto, "0"); // Rust divergence, deliberate
+}
+
+#[test]
+fn diverge_d16_di_clear_edges_is_core_extension() {
+    // D16: XGI's DiHypergraph HAS NO clear_edges — the attribute lookup
+    // falls through XGI's __getattr__ stat fallback and raises
+    // AttributeError (pinned below). The Rust core provides clear_edges
+    // for API uniformity with Hypergraph: it removes every edge, keeps
+    // all nodes/attrs/net attrs, and (like the undirected core) does NOT
+    // reset the uid counter. Freeze-guarded per the D12 uniform-guard
+    // rationale.
+    let gt = ground_truth();
+    let v = vector(&gt, "di_clear_freeze")["freeze"]["guarded"]["clear_edges"].clone();
+    assert_eq!(v["exception"], "AttributeError"); // XGI truth, pinned
+    assert!(v["message"]
+        .as_str()
+        .unwrap()
+        .starts_with("clear_edges is not a method of DiHypergraph"));
+
+    let mut h: DiHypergraph = DiHypergraph::new();
+    h.add_edge(
+        (vec!["a".into(), "b".into()], vec!["c".into()]),
+        None,
+        Value::Null,
+    )
+    .unwrap();
+    h.add_edge(
+        (vec!["d".into()], vec!["e".into()]),
+        Some("e1".into()),
+        serde_json::json!({"heat": 0.5}),
+    )
+    .unwrap();
+    h.add_node("lonely", serde_json::json!({"x": 1}));
+    h.set_graph_attr("name", serde_json::json!("test"));
+    h.clear_edges();
+
+    assert_eq!(h.num_edges(), 0);
+    assert_eq!(h.num_nodes(), 6, "nodes survive");
+    assert_eq!(
+        h.node_attrs("lonely").unwrap(),
+        &serde_json::json!({"x": 1})
+    );
+    assert_eq!(
+        h.graph_attr("name"),
+        Some(&serde_json::json!("test")),
+        "net attrs survive"
+    );
+    assert!(h.memberships("a").unwrap().is_empty());
+
+    // Counter NOT reset (uniformity with Hypergraph.clear_edges — the
+    // node state survives, so counter continuity matches state
+    // continuity): the next auto id is "1".
+    let auto = h
+        .add_edge((vec!["z".into()], vec![]), None, Value::Null)
+        .unwrap();
+    assert_eq!(auto, "1");
+}
+
+#[test]
+fn conform_di_freeze_blocks_mutation() {
+    // XGI's DiHypergraph.freeze() guards add_node(s)_from,
+    // add_edge(s)_from, remove_node(s)_from, remove_edge(s)_from, and
+    // clear (XGIError "Frozen higher-order network can't be modified").
+    // The Rust core panics on the same mutators (panic ≡ raise; the
+    // binding converts — D2 error-channel class). The attr-dict channel
+    // (set_node_attributes / set_edge_attributes) is unguarded in XGI —
+    // the Rust core matches.
+    let gt = ground_truth();
+    let v = vector(&gt, "di_clear_freeze")["freeze"].clone();
+    assert_eq!(v["is_frozen_before"], false); // XGI truth, pinned
+    assert_eq!(v["is_frozen_after"], true); // XGI truth, pinned
+    for method in [
+        "add_node",
+        "add_nodes_from",
+        "add_edge",
+        "add_edges_from",
+        "remove_node",
+        "remove_nodes_from",
+        "remove_edge",
+        "remove_edges_from",
+        "clear",
+    ] {
+        assert_eq!(v["guarded"][method]["exception"], "XGIError"); // pinned
+        assert_eq!(
+            v["guarded"][method]["message"],
+            "Frozen higher-order network can't be modified"
+        );
+    }
+    // The attr-dict channel is NOT guarded in XGI — pinned as truth.
+    assert_eq!(v["guarded"]["set_node_attributes"], Value::Null);
+    assert_eq!(v["guarded"]["set_edge_attributes"], Value::Null);
+
+    let mut h: DiHypergraph = DiHypergraph::new();
+    h.add_edge(
+        (vec!["a".into(), "b".into()], vec!["c".into()]),
+        Some("e1".into()),
+        serde_json::json!({"w": 1}),
+    )
+    .unwrap();
+    assert!(!h.is_frozen());
+    h.freeze();
+    assert!(h.is_frozen());
+
+    let mut panics = |f: &mut dyn FnMut(&mut DiHypergraph)| {
+        std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| f(&mut h))).is_err()
+    };
+    assert!(panics(&mut |h| {
+        h.add_node("z", Value::Null);
+    }));
+    assert!(panics(&mut |h| {
+        h.add_nodes_from(vec![("z".to_string(), Value::Null)]);
+    }));
+    assert!(panics(&mut |h| {
+        h.add_edge((vec!["a".into()], vec!["b".into()]), None, Value::Null)
+            .unwrap();
+    }));
+    assert!(panics(&mut |h| {
+        h.add_edges_from(vec![(
+            vec!["a".into()],
+            vec!["b".into()],
+            None,
+            Value::Null,
+        )]);
+    }));
+    assert!(panics(&mut |h| h.remove_node("a", false, true).unwrap()));
+    assert!(panics(&mut |h| {
+        h.remove_nodes_from(vec!["a".to_string()], false, true);
+    }));
+    assert!(panics(&mut |h| h.remove_edge("e1").unwrap()));
+    assert!(panics(&mut |h| {
+        h.remove_edges_from(vec!["e1".to_string()]);
+    }));
+    assert!(panics(&mut |h| h.clear()));
+
+    // XGI parity: the attr-dict channel stays OPEN on a frozen graph.
+    let mut attrs = serde_json::Map::new();
+    attrs.insert("k".to_string(), serde_json::json!(1));
+    h.set_node_attributes(vec![("a".to_string(), attrs.clone())]);
+    h.set_edge_attributes(vec![("e1".to_string(), attrs)]);
+    assert_eq!(h.node_attrs("a").unwrap()["k"], 1);
+    assert_eq!(h.edge_attrs("e1").unwrap()["k"], 1);
+}
+
+#[test]
+fn diverge_d12_di_freeze_guards_membership_ops_and_clear_edges() {
+    // D12 (extended to DiHypergraph): XGI's DiHypergraph freeze list
+    // omits add_node_to_edge AND remove_node_from_edge (unlike the
+    // undirected class, which guards both) — probed: both mutate a
+    // FROZEN DiHypergraph unimpeded. clear_edges does not exist at all
+    // (D16). The Rust core's frozen flag guards ALL structural mutators
+    // uniformly — a freeze that permits membership surgery or wholesale
+    // edge deletion is not a freeze.
+    let gt = ground_truth();
+    let v = vector(&gt, "di_clear_freeze")["freeze"].clone();
+    assert_eq!(v["guarded"]["add_node_to_edge"], Value::Null); // XGI truth, pinned
+    assert_eq!(v["guarded"]["remove_node_from_edge"], Value::Null); // pinned
+
+    let mut h: DiHypergraph = DiHypergraph::new();
+    h.add_edge(
+        (vec!["a".into(), "b".into()], vec!["c".into()]),
+        Some("e1".into()),
+        Value::Null,
+    )
+    .unwrap();
+    h.freeze();
+    let r1 = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        h.add_node_to_edge("e1", "n", Direction::In);
+    }));
+    assert!(
+        r1.is_err(),
+        "Rust divergence: add_node_to_edge panics when frozen"
+    );
+    let r2 = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        h.remove_node_from_edge("e1", "a", Direction::In, true)
+            .unwrap();
+    }));
+    assert!(
+        r2.is_err(),
+        "Rust divergence: remove_node_from_edge panics when frozen"
+    );
+    let r3 = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| h.clear_edges()));
+    assert!(
+        r3.is_err(),
+        "Rust divergence: clear_edges panics when frozen"
+    );
+    // The panics fired BEFORE any mutation: the original is untouched.
+    assert_eq!(h.tail("e1").unwrap(), vec!["a", "b"]);
+    assert!(!h.has_node("n"));
+    assert_eq!(h.num_edges(), 1);
+}
+
+#[test]
+fn diverge_d13_di_copy_carries_frozen() {
+    // D13 (DiHypergraph parity): XGI's freeze is per-instance
+    // method-swizzling — copy() of a frozen DiHypergraph is NOT frozen
+    // (pinned). The Rust core's frozen flag is data; copy() carries it.
+    let gt = ground_truth();
+    let v = vector(&gt, "di_clear_freeze")["freeze"].clone();
+    assert_eq!(v["copy_of_frozen_is_frozen"], false); // XGI truth, pinned
+
+    let mut h: DiHypergraph = DiHypergraph::new();
+    h.add_edge(
+        (vec!["a".into()], vec!["b".into()]),
+        Some("e1".into()),
+        Value::Null,
+    )
+    .unwrap();
+    h.freeze();
+    let cp = h.copy();
+    assert!(cp.is_frozen(), "Rust divergence: copy of frozen is frozen");
+}

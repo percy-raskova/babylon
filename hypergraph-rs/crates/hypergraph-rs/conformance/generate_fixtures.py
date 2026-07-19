@@ -1039,6 +1039,306 @@ def v_di_remove_node_modes() -> dict:
     return out
 
 
+def v_di_repr() -> dict:
+    # PROBE (2026-07-18, xgi 0.10.2): __repr__ is
+    # f"{cls}({self.edges.dimembers()})" — the class name wrapping the
+    # dimembers LIST: one (tail, head) set-tuple per edge, edges in
+    # insertion order (stable); member order INSIDE each set is
+    # hash-ordered (unstable across runs for str ids) — recorded SORTED
+    # per side. An empty side renders with Python's set() artifact; a
+    # lonely node never appears (only edges' members do). The Rust Debug
+    # formats both sides with uniform braces and insertion-ordered
+    # members (D5 class — strictly more defined).
+    DH = xgi.DiHypergraph()
+    DH.add_edge((["a", "b", "c"], ["b", "d"]))
+    DH.add_edge((["a"], []), idx="e1")
+    DH.add_node("lonely")
+    empty = xgi.DiHypergraph()
+    both_empty = xgi.DiHypergraph()
+    both_empty.add_edge(([], []))
+    return {
+        "repr_prefix": repr(DH)[:13],  # "DiHypergraph("
+        "dimembers_sorted": [
+            [
+                sorted(str(n) for n in DH.edges.tail(e)),
+                sorted(str(n) for n in DH.edges.head(e)),
+            ]
+            for e in DH.edges
+        ],
+        "repr_empty": repr(empty),  # "DiHypergraph([])"
+        # XGI renders an empty side with the set() artifact; the Rust
+        # core formats braces uniformly ("{}") — same D5 class.
+        "repr_both_empty_edge": repr(both_empty),  # "DiHypergraph([(set(), set())])"
+    }
+
+
+def v_di_eq() -> dict:
+    # PROBE (2026-07-18, xgi 0.10.2): DiHypergraph.__eq__ delegates to
+    # xgi.algorithms.equal with the defaults (compare_edge_ids=True,
+    # compare_attrs=True). equal compares H1._edge != H2._edge — for
+    # DiHypergraph that mapping is {id: {"in": tail_set, "out":
+    # head_set}} — so DIRECTION IS SIGNIFICANT: the same nodes with
+    # tail/head swapped are NOT equal; a node in BOTH directions differs
+    # from a tail-only node. Node attrs are significant (every node
+    # carries an attr dict — a lonely node with EMPTY attrs still
+    # differs from an absent one), edge attrs and net attrs are
+    # significant; member order is not.
+    def build(edge, edge_attr=None, node_attrs=None, net=None):
+        members, idx = edge
+        DH = xgi.DiHypergraph()
+        DH.add_edge(members, idx=idx, **(edge_attr or {}))
+        for n, a in (node_attrs or {}).items():
+            if n in DH:
+                DH.nodes[n].update(a)
+            else:
+                DH.add_node(n, **a)
+        for k, val in (net or {}).items():
+            DH[k] = val
+        return DH
+
+    A = build(((["a", "b"], ["c"]), "e1"))
+    return {
+        "same": build(((["a", "b"], ["c"]), "e1")) == A,
+        "direction_flipped": build(((["c"], ["a", "b"]), "e1")) == A,
+        "member_order_insignificant": build(((["b", "a"], ["c"]), "e1")) == A,
+        "diff_edge_id": build(((["a", "b"], ["c"]), "e2")) == A,
+        "diff_edge_attr": build(((["a", "b"], ["c"]), "e1"), {"w": 2})
+        == build(((["a", "b"], ["c"]), "e1"), {"w": 1}),
+        "lonely_same": build(((["a", "b"], ["c"]), "e1"), None, {"solo": {"color": "red"}})
+        == build(((["a", "b"], ["c"]), "e1"), None, {"solo": {"color": "red"}}),
+        "diff_node_attr": build(((["a", "b"], ["c"]), "e1"), None, {"solo": {"color": "red"}})
+        == build(((["a", "b"], ["c"]), "e1"), None, {"solo": {"color": "blue"}}),
+        "lonely_missing": build(((["a", "b"], ["c"]), "e1"))
+        == build(((["a", "b"], ["c"]), "e1"), None, {"solo": {"color": "red"}}),
+        "diff_net_attr": build(((["a", "b"], ["c"]), "e1"), {"w": 1}, None, {"name": "x"})
+        == build(((["a", "b"], ["c"]), "e1"), {"w": 1}),
+        "both_vs_tail_only": build(((["a", "b"], ["b"]), "e1")) == build(((["a", "b"], []), "e1")),
+        "empty_attr_lonely_vs_absent": build(((["a", "b"], ["c"]), "e1"), None, {"solo": {}})
+        == build(((["a", "b"], ["c"]), "e1")),
+    }
+
+
+def v_di_add_edges_from() -> dict:
+    # PROBE (2026-07-18, xgi 0.10.2): formats — (members) with auto ids;
+    # (members, idx); (members, attrdict) with auto ids; (members, idx,
+    # attrdict); dict {idx: members}; returns None. `**attr` broadcast
+    # merges into EVERY edge with per-edge attrs taking precedence. A
+    # dup idx warns ("uid e1 already exists, cannot add edge ([3],
+    # [4]).") and CONTINUES (D2 class — the dup's members are never
+    # added). The Notes claim empty edges are skipped — the runtime
+    # CREATES an empty edge for ([], []) (D1-class docstring lie). The
+    # Rust core takes uniform (tail, head, idx, attrs) quadruples —
+    # format detection and broadcast merging are binding concerns (D7
+    # class); per-edge results carry the dup as Err(AlreadyExists).
+    out = {}
+    DH = xgi.DiHypergraph()
+    ret = DH.add_edges_from(
+        [
+            (  # format 1: members only, auto ids
+                (["a", "b"], ["c"])
+            ),
+            (["d"], ["e", "f"]),
+        ]
+    )
+    out["members_only"] = {
+        "return": ret,
+        "edge_ids": _di_ids(DH),
+        "dimembers": _di_dimembers_sorted(DH),
+    }
+    DH = xgi.DiHypergraph()
+    DH.add_edges_from(  # format 4: (members, idx, attrdict)
+        [
+            ((["a"], ["b"]), "one", {"color": "red"}),
+            ((["c"], []), "two", {"color": "blue", "age": 40}),
+        ]
+    )
+    out["with_idx_attrs"] = {
+        "edge_ids": _di_ids(DH),
+        "attrs": {str(e): dict(DH.edges[e]) for e in DH.edges},
+        "dimembers": _di_dimembers_sorted(DH),
+    }
+    DH = xgi.DiHypergraph()
+    DH.add_edges_from(  # broadcast: per-edge color wins, size merges in
+        [((["a"], ["b"]), {"color": "red"})], color="blue", size=10
+    )
+    out["broadcast"] = {str(e): dict(DH.edges[e]) for e in DH.edges}
+    DH = xgi.DiHypergraph()
+    with warnings.catch_warnings(record=True) as caught:
+        warnings.simplefilter("always")
+        ret = DH.add_edges_from(
+            [
+                ((["a"], ["b"]), "e1"),
+                ((["c"], ["d"]), "e1"),  # dup — warns, skipped, members never added
+                ((["e"], ["f"]), "e2"),
+            ]
+        )
+    out["dup_warns_continues"] = {
+        "return": ret,
+        "warned": len(caught) > 0,
+        "warning_prefix": str(caught[0].message)[:22] if caught else None,
+        "edge_ids": _di_ids(DH),
+        "num_nodes": DH.num_nodes,
+        "dimembers": _di_dimembers_sorted(DH),
+    }
+    DH = xgi.DiHypergraph()
+    DH.add_edges_from([([], []), (["a"], ["b"])])
+    out["empty_created"] = {
+        "edge_ids": _di_ids(DH),
+        "dimembers": _di_dimembers_sorted(DH),
+    }
+    return out
+
+
+def v_di_set_attrs() -> dict:
+    # PROBE (2026-07-18, xgi 0.10.2): set_node_attributes mirrors the
+    # undirected class exactly — dict-of-dicts MERGES into each existing
+    # node's attr dict; a missing node warns ("Node ghost does not
+    # exist!") + SKIPS, never auto-created; a list of pairs raises
+    # XGIError ("Must pass a dictionary of dictionaries"); scalar +
+    # name= broadcasts to ALL nodes; dict-of-scalars + name= sets per
+    # node (missing warns + skips). set_edge_attributes dict-of-dicts:
+    # merge; a missing edge warns ("Edge ghost does not exist!") +
+    # skips. The Rust core takes (id, attr_map) pairs — the scalar/name=
+    # forms are binding sugar (D7 class); the warn channel is binding
+    # (D2 class).
+    out = {}
+    DH = xgi.DiHypergraph()
+    DH.add_edge((["a", "b"], ["c"]), idx="e1")
+    DH.nodes["a"].update({"x": 1})
+    with warnings.catch_warnings(record=True) as caught:
+        warnings.simplefilter("always")
+        ret = DH.set_node_attributes(
+            {"a": {"color": "red"}, "b": {"color": "blue"}, "ghost": {"color": "green"}}
+        )
+    out["node_dict_of_dicts"] = {
+        "return": ret,
+        "warned": len(caught) > 0,
+        "warning_message": str(caught[0].message) if caught else None,
+        "attrs_a": dict(DH.nodes["a"]),  # merged: x survives, color added
+        "attrs_b": dict(DH.nodes["b"]),
+        "num_nodes": DH.num_nodes,  # ghost NOT auto-created
+    }
+    DH2 = xgi.DiHypergraph()
+    DH2.add_node("a")
+    try:
+        DH2.set_node_attributes([("a", {"k": "v"})])
+    except Exception as exc:  # recording the observed type IS the vector
+        out["node_pairs_exception"] = type(exc).__name__
+        out["node_pairs_message"] = str(exc)
+    DH3 = xgi.DiHypergraph()
+    DH3.add_edge((["a", "b"], ["c"]), idx="e1")
+    DH3.set_node_attributes("red", name="color")
+    out["node_scalar_broadcast"] = {
+        "attrs_a": dict(DH3.nodes["a"]),
+        "attrs_c": dict(DH3.nodes["c"]),
+    }
+    DH4 = xgi.DiHypergraph()
+    DH4.add_edge((["a", "b"], ["c"]), idx="e1")
+    with warnings.catch_warnings(record=True) as caught:
+        warnings.simplefilter("always")
+        DH4.set_node_attributes({"a": "red", "ghost": "green"}, name="color")
+    out["node_dict_of_scalars"] = {
+        "warned": len(caught) > 0,
+        "warning_message": str(caught[0].message) if caught else None,
+        "attrs_a": dict(DH4.nodes["a"]),
+        "attrs_b": dict(DH4.nodes["b"]),
+    }
+    DH5 = xgi.DiHypergraph()
+    DH5.add_edge((["a"], ["b"]), idx="e1", w=1)
+    DH5.add_edge((["c"], ["d"]), idx="e2")
+    with warnings.catch_warnings(record=True) as caught:
+        warnings.simplefilter("always")
+        ret = DH5.set_edge_attributes({"e1": {"heat": 0.5}, "ghost": {"x": 1}})
+    out["edge_dict_of_dicts"] = {
+        "return": ret,
+        "warned": len(caught) > 0,
+        "warning_message": str(caught[0].message) if caught else None,
+        "attrs_e1": dict(DH5.edges["e1"]),  # merged: w survives, heat added
+        "attrs_e2": dict(DH5.edges["e2"]),
+        "num_edges": DH5.num_edges,
+    }
+    return out
+
+
+def v_di_clear_freeze() -> dict:
+    # PROBE (2026-07-18, xgi 0.10.2): clear() empties nodes, edges, all
+    # attr channels, and net attrs — and, like the undirected class
+    # (D10), does NOT reset _edge_uid (the next auto id continues at 1;
+    # the Rust core resets — clear() ≡ new()). freeze() guards
+    # add_node(s)_from, add_edge(s)_from, remove_node(s)_from,
+    # remove_edge(s)_from, and clear — and, UNLIKE the undirected class,
+    # NOT add_node_to_edge / remove_node_from_edge (both mutate a FROZEN
+    # DiHypergraph unimpeded — the Rust core guards ALL structural
+    # mutators uniformly; D12 extension, Task 4 already landed the
+    # guard). clear_edges DOES NOT EXIST on DiHypergraph (AttributeError
+    # via XGI's __getattr__ stat fallback — the Rust core provides it
+    # for API uniformity; D16). The attr-dict channel
+    # (set_node_attributes / set_edge_attributes) is unguarded, matching
+    # the undirected class. copy() of a frozen DiHypergraph is NOT
+    # frozen (D13 parity — the Rust core's flag is data, carried).
+    DH = xgi.DiHypergraph()
+    DH.add_edge((["a", "b"], ["c"]))  # auto id 0 — bumps XGI's counter
+    DH.add_edge((["d"], ["e"]), idx="e1", heat=0.5)
+    DH.add_node("lonely", x=1)
+    DH["name"] = "test"
+    DH.clear()
+    out = {
+        "clear": {
+            "num_nodes": DH.num_nodes,
+            "num_edges": DH.num_edges,
+            "node_ids": sorted(str(n) for n in DH.nodes),
+            "edge_ids": _di_ids(DH),
+            "net_attrs": dict(DH._net_attr),
+        }
+    }
+    DH.add_edge((["z"], []))
+    out["clear"]["auto_ids_after_clear"] = _di_ids(DH)
+
+    DH = xgi.DiHypergraph()
+    DH.add_edge((["a", "b"], ["c"]), idx="e1", w=1)
+    was_frozen = DH.is_frozen
+    DH.freeze()
+    probes = [
+        ("add_node", lambda: DH.add_node("z")),
+        ("add_nodes_from", lambda: DH.add_nodes_from(["z"])),
+        ("add_edge", lambda: DH.add_edge((["a"], ["b"]))),
+        ("add_edges_from", lambda: DH.add_edges_from([(["a"], ["b"])])),
+        ("remove_node", lambda: DH.remove_node("a")),
+        ("remove_nodes_from", lambda: DH.remove_nodes_from(["a"])),
+        ("remove_edge", lambda: DH.remove_edge("e1")),
+        ("remove_edges_from", lambda: DH.remove_edges_from(["e1"])),
+        ("add_node_to_edge", lambda: DH.add_node_to_edge("e1", "n", "in")),
+        ("remove_node_from_edge", lambda: DH.remove_node_from_edge("e1", "a", "in")),
+        ("clear", lambda: DH.clear()),
+        ("set_node_attributes", lambda: DH.set_node_attributes({"a": {"k": 1}})),
+        ("set_edge_attributes", lambda: DH.set_edge_attributes({"e1": {"k": 1}})),
+        # LAST in spirit: not a method at all — AttributeError, not a
+        # guard outcome. Runs after the mutation-capable unguarded
+        # probes above; each probe records raise/no-raise only.
+        ("clear_edges", lambda: DH.clear_edges()),
+    ]
+    guarded = {}
+    for name, fn in probes:
+        try:
+            with warnings.catch_warnings():
+                warnings.simplefilter("ignore")
+                fn()
+            guarded[name] = None  # no raise — NOT guarded
+        except Exception as exc:  # recording the observed type IS the vector
+            guarded[name] = {"exception": type(exc).__name__, "message": str(exc)}
+
+    DH2 = xgi.DiHypergraph()
+    DH2.add_edge((["a"], ["b"]))
+    DH2.freeze()
+    out["freeze"] = {
+        "is_frozen_before": was_frozen,
+        "is_frozen_after": DH.is_frozen,
+        "guarded": guarded,
+        "copy_of_frozen_is_frozen": DH2.copy().is_frozen,
+    }
+    return out
+
+
 def main() -> None:
     vectors = {
         name.removeprefix("v_"): fn()

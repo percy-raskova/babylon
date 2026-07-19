@@ -4182,6 +4182,7 @@ class EngineBridge:
             graph,
             territory_filter=territory_filter,
             ledger=_derive_intel_ledger(session_id),
+            veil_tier=_resolve_veil_tier(state),
         )
         return {
             "tick": state.tick,
@@ -10517,6 +10518,7 @@ def _build_org_network(
     *,
     territory_filter: str | None = None,
     ledger: IntelLedger | None = None,
+    veil_tier: int = 0,
 ) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
     """Build the org-network nodes/edges for :meth:`EngineBridge.get_org_network`.
 
@@ -10538,6 +10540,17 @@ def _build_org_network(
             in scope (:func:`_centrality_by_territory`, which discards
             every fogged field and keeps only centrality numbers) passes
             nothing rather than paying for a lookup it can't use.
+        veil_tier: G4 (Finding 1, adversarial review): the requesting
+            player org's Veil-of-Money tier (:func:`_resolve_veil_tier`),
+            threaded into each territory node's :func:`_serialize_territory`
+            call the same way ``reach`` already is — before this fix,
+            ``reach`` (fog) was threaded but ``veil_tier`` was not, so the
+            veil gate inside ``_serialize_territory`` never ran and a
+            tier-0 client's territory nodes carried real value-axis
+            numbers through this payload. Defaults to ``0`` (fully veiled,
+            fail-closed) so :func:`_centrality_by_territory`'s unlabeled
+            call (which only reads node ids/types, never ``attributes``)
+            is unaffected either way.
 
     Returns:
         ``(nodes, edges)`` — both sorted deterministically
@@ -10551,6 +10564,7 @@ def _build_org_network(
     # Track 1 / Task 4: this IS a player-facing view (spec-113 Multi-Scale
     # Spatial Rendering, served via EngineBridge.get_org_network) — its
     # territory nodes get the same fog gate _state_to_snapshot applies.
+    # G4 (Finding 1): and the same veil gate (see the veil_tier arg above).
     reach = _current_organizing_reach(graph)
 
     if territory_filter is not None:
@@ -10602,6 +10616,7 @@ def _build_org_network(
                 reach=reach,
                 ledger=resolved_ledger,
                 tick=_graph_tick(graph),
+                veil_tier=veil_tier,
             ),
         }
         for tid in territory_ids

@@ -56,11 +56,12 @@ from typing import Final
 
 from pydantic import BaseModel, ConfigDict, model_validator
 
+from babylon.sentinels.exemptions import SentinelExemption
+
 __all__ = [
     "DECLARED_FOGGED_CONSUMERS",
     "MASKED_ARITHMETIC_EXEMPTIONS",
     "DeclaredFoggedConsumer",
-    "MaskedArithmeticExemption",
 ]
 
 #: Arithmetic-ish callables whose direct argument being an unguarded
@@ -112,34 +113,6 @@ class DeclaredFoggedConsumer(BaseModel):
         return self
 
 
-class MaskedArithmeticExemption(BaseModel):
-    """A declared row known to currently lack a guard, on record.
-
-    Never a silent shrug: every row names the owner and the dated
-    reasoning, exactly as
-    :class:`babylon.sentinels.inert.registry.InertExemption` does.
-    """
-
-    model_config = ConfigDict(frozen=True, extra="forbid")
-
-    name: str
-    reason: str
-    owner: str
-    date: str
-
-    @model_validator(mode="after")
-    def _validate_shape(self) -> MaskedArithmeticExemption:
-        """Reject a malformed row loudly at import (Constitution III.11).
-
-        :returns: ``self`` when valid.
-        :raises ValueError: If any field is blank.
-        """
-        for field_name in ("name", "reason", "owner", "date"):
-            if not getattr(self, field_name).strip():
-                raise ValueError(f"MaskedArithmeticExemption.{field_name} must be non-empty")
-        return self
-
-
 #: The one seeded row (Track 1 Task 10 founding instance). Verified against
 #: the shipped fix (commit 657e415c6): ``_build_state_apparatus_dashboard``
 #: guards ``heat`` with ``if o.get("heat") is not None`` before any
@@ -167,6 +140,6 @@ DECLARED_FOGGED_CONSUMERS: Final[tuple[DeclaredFoggedConsumer, ...]] = (
 )
 
 #: Deliberately EMPTY: the one declared row is currently guarded (the
-#: shipped fix). A future row here must name an owner and a dated reason,
-#: same as babylon.sentinels.inert.registry.INERT_EXEMPTIONS.
-MASKED_ARITHMETIC_EXEMPTIONS: Final[tuple[MaskedArithmeticExemption, ...]] = ()
+#: shipped fix). A future row's ``key`` must be ``("fogged_consumer", name)``
+#: (see :mod:`babylon.sentinels.exemptions`).
+MASKED_ARITHMETIC_EXEMPTIONS: Final[tuple[SentinelExemption, ...]] = ()

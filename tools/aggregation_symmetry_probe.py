@@ -48,6 +48,7 @@ from babylon.sentinels.aggregation.registry import (  # noqa: E402
     DeclaredPartialCoverageAggregate,
 )
 from babylon.sentinels.base import LabelledCheck, SentinelCheckError, run_sensor  # noqa: E402
+from babylon.sentinels.exemptions import is_exempt  # noqa: E402
 
 _WHY: str = (
     "WHY THIS FAILS: Constitution III.11 (Loud Failure / honest-null) forbids a "
@@ -167,11 +168,6 @@ _PROBES: dict[str, Callable[[DeclaredPartialCoverageAggregate], list[str]]] = {
 }
 
 
-def _exempted_names() -> frozenset[str]:
-    """The set of row names carrying a recorded ``AggregationExemption``."""
-    return frozenset(row.name for row in AGGREGATION_EXEMPTIONS)
-
-
 def check_all_declared_aggregates() -> list[str]:
     """Run every declared row's probe and collect violations.
 
@@ -181,10 +177,9 @@ def check_all_declared_aggregates() -> list[str]:
         declared (a stale/incomplete registration), or if a probe itself
         hits an infrastructure failure.
     """
-    exempted = _exempted_names()
     violations: list[str] = []
     for row in DECLARED_AGGREGATES:
-        if row.name in exempted:
+        if is_exempt(("aggregate", row.name), AGGREGATION_EXEMPTIONS):
             continue
         probe = _PROBES.get(row.name)
         if probe is None:

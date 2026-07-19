@@ -48,6 +48,7 @@ from hypothesis import HealthCheck, given, settings  # noqa: E402
 from hypothesis import strategies as st  # noqa: E402
 
 from babylon.sentinels.base import LabelledCheck, SentinelCheckError, run_sensor  # noqa: E402
+from babylon.sentinels.exemptions import is_exempt  # noqa: E402
 from babylon.sentinels.fog.registry import FOG_CONTAINMENT_EXEMPTIONS  # noqa: E402
 
 _MAX_EXAMPLES = 200
@@ -66,11 +67,6 @@ _VALUE_STRATEGY = st.one_of(
 )
 
 
-def _exempted_fields() -> frozenset[str]:
-    """The set of field names carrying a recorded ``FogContainmentExemption``."""
-    return frozenset(row.field for row in FOG_CONTAINMENT_EXEMPTIONS)
-
-
 @st.composite
 def _payload_case(draw: st.DrawFn) -> tuple[dict[str, Any], tuple[str, ...]]:
     """Draw ``(payload, fields)`` — a non-empty subset of the org-political
@@ -79,7 +75,11 @@ def _payload_case(draw: st.DrawFn) -> tuple[dict[str, Any], tuple[str, ...]]:
     """
     from game.fog.filter import ORG_POLITICAL_FIELDS
 
-    candidates = [f for f in ORG_POLITICAL_FIELDS if f not in _exempted_fields()]
+    candidates = [
+        f
+        for f in ORG_POLITICAL_FIELDS
+        if not is_exempt(("political_field", f), FOG_CONTAINMENT_EXEMPTIONS)
+    ]
     fields = tuple(
         draw(
             st.lists(st.sampled_from(candidates), unique=True, min_size=1, max_size=len(candidates))
@@ -137,9 +137,10 @@ def check_no_political_field_escapes() -> list[str]:
             f"case: {exc}\n"
             "    fix: every name in POLITICAL_FIELDS/ORG_POLITICAL_FIELDS must be "
             "masked to None for an out-of-reach node with no ledger coverage -- "
-            "check apply_fog's masking loop, or add a reasoned "
-            "FogContainmentExemption (field, owner, date, reason) -- never a silent "
-            "field removal from POLITICAL_FIELDS.\n"
+            "check apply_fog's masking loop, or add a reasoned SentinelExemption "
+            "(key=('political_field', field), reason, owner, date, tracking_task) to "
+            "FOG_CONTAINMENT_EXEMPTIONS -- never a silent field removal from "
+            "POLITICAL_FIELDS.\n"
             "    WHY THIS FAILS: Constitution VIII.12 (silent no-op / disarmed "
             "guardrail) -- a fog gate that masks most shapes but silently misses one "
             "(an empty string, a nested structure, an already-falsy value) is worse "

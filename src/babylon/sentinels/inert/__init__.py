@@ -31,7 +31,6 @@ from babylon.sentinels.inert.registry import (
     PRODUCTION_ROOTS,
     DeclaredProducer,
     DeclaredStore,
-    InertExemption,
 )
 
 __all__ = [
@@ -41,7 +40,6 @@ __all__ = [
     "PRODUCTION_ROOTS",
     "DeclaredProducer",
     "DeclaredStore",
-    "InertExemption",
     "detect_accumulator_classes",
     "is_test_source",
     "producer_reference_sites",

@@ -78,6 +78,7 @@ from pathlib import Path
 from typing import Final
 
 from babylon.sentinels.base import LabelledCheck, SentinelCheckError, run_sensor
+from babylon.sentinels.exemptions import is_exempt
 from babylon.sentinels.inert.registry import (
     DECLARED_PRODUCERS,
     DECLARED_STORES,
@@ -392,14 +393,6 @@ def producer_reference_sites(path: Path, symbol: str, def_file: str) -> list[int
     return sorted(sites)
 
 
-def _exempted_names() -> frozenset[str]:
-    """The set of row names carrying a recorded :class:`InertExemption`.
-
-    :returns: Exempted row names (empty today — see the registry module).
-    """
-    return frozenset(row.name for row in INERT_EXEMPTIONS)
-
-
 def stores_without_production_writer(
     registry: tuple[DeclaredStore, ...] = DECLARED_STORES,
 ) -> list[str]:
@@ -412,10 +405,12 @@ def stores_without_production_writer(
     :raises SentinelCheckError: If a scan root is missing or a file is
         unparseable (exit 2 — infrastructure failure, never a silent pass).
     """
-    exempted = _exempted_names()
     violations: list[str] = []
     for row in registry:
-        if row.name in exempted:
+        # Kind-tagged "store" -- a producer exemption sharing this row's bare
+        # name must NOT also clear this (different) check. See
+        # babylon.sentinels.exemptions module docstring.
+        if is_exempt(("store", row.name), INERT_EXEMPTIONS):
             continue
         sites: list[str] = []
         for path in _production_files():
@@ -429,8 +424,9 @@ def stores_without_production_writer(
             f"caller of {methods}() anywhere in {PRODUCTION_ROOTS}.\n"
             f"    what it stores: {row.what_it_stores}\n"
             f"    consequence: {row.failure_if_unwired}\n"
-            "    fix: wire a real production writer, or add a reasoned InertExemption "
-            "(name, owner, date, reason) -- never a silent registry removal.\n"
+            "    fix: wire a real production writer, or add a reasoned SentinelExemption "
+            "(key=('store', name), reason, owner, date, tracking_task) to "
+            "INERT_EXEMPTIONS -- never a silent registry removal.\n"
             f"    {_WHY_STORE}"
         )
     return sorted(violations)
@@ -449,10 +445,11 @@ def producers_without_production_caller(
     :raises SentinelCheckError: If a scan root is missing or a file is
         unparseable (exit 2 — infrastructure failure, never a silent pass).
     """
-    exempted = _exempted_names()
     violations: list[str] = []
     for row in registry:
-        if row.name in exempted:
+        # Kind-tagged "producer" -- see stores_without_production_writer's
+        # own comment; the two rules must never share one bare-name set.
+        if is_exempt(("producer", row.name), INERT_EXEMPTIONS):
             continue
         sites: list[str] = []
         for path in _production_files():
@@ -464,8 +461,9 @@ def producers_without_production_caller(
             f"producer {row.name!r} ({row.symbol} in {row.def_file}) has NO production "
             f"reference anywhere in {PRODUCTION_ROOTS}.\n"
             f"    what it produces: {row.what_it_produces}\n"
-            "    fix: wire a real production caller, or add a reasoned InertExemption "
-            "(name, owner, date, reason) -- never a silent registry removal.\n"
+            "    fix: wire a real production caller, or add a reasoned SentinelExemption "
+            "(key=('producer', name), reason, owner, date, tracking_task) to "
+            "INERT_EXEMPTIONS -- never a silent registry removal.\n"
             f"    {_WHY_PRODUCER}"
         )
     return sorted(violations)

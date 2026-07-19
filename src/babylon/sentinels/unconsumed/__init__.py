@@ -25,7 +25,6 @@ from babylon.sentinels.unconsumed.registry import (
     PRODUCTION_ROOTS,
     UNCONSUMED_EXEMPTIONS,
     DeclaredComputedField,
-    UnconsumedExemption,
 )
 
 __all__ = [
@@ -33,7 +32,6 @@ __all__ = [
     "PRODUCTION_ROOTS",
     "UNCONSUMED_EXEMPTIONS",
     "DeclaredComputedField",
-    "UnconsumedExemption",
     "computed_fields_without_consumer",
     "is_test_source",
     "reader_sites",

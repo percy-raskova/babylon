@@ -15,11 +15,13 @@ Three tiers, mirroring the inert sentinel's own test shape (``test_inert.py``):
   proves the gating check function actually reds on a genuinely-unread row
   and stays clean on a genuinely-read one.
 - **Liveness** (the real, shipped registry) — the one declared row,
-  ``reification_buffer``. As of this writing it IS a genuine, unremediated
-  gap (Track 1 audit finding) — this tier asserts the CURRENT REAL FINDING
-  (the row has no reader), not a clean pass, because that is the honest
-  state of the repository today; flipping it to clean requires wiring a real
-  consumer, out of scope for the sentinel-suite task that added this gate.
+  ``reification_buffer``, IS a genuine, real gap (Track 1 audit finding):
+  nothing downstream reads the key back. Gate-governance ruling (2026-07-18)
+  converted this from a bare RED finding to a properly-formed, tracked
+  :class:`~babylon.sentinels.exemptions.SentinelExemption` (task #42) — this
+  tier asserts the gate is GREEN *because of the recorded exemption*, not
+  because the underlying gap was fixed; wiring a real consumer remains a
+  separate unit of work.
 """
 
 from __future__ import annotations
@@ -219,17 +221,41 @@ def test_test_only_reader_does_not_count(tmp_path: Path, monkeypatch: pytest.Mon
 
 
 def test_exempted_row_is_skipped(monkeypatch: pytest.MonkeyPatch) -> None:
-    from babylon.sentinels.unconsumed.registry import UnconsumedExemption
+    from babylon.sentinels.exemptions import SentinelExemption
 
     row = _row(dict_key="totally_synthetic_unread_key_xyz123")
-    exemption = UnconsumedExemption(
-        name=row.name,
+    exemption = SentinelExemption(
+        key=("computed_field", row.name),
         reason="test exemption",
         owner="test",
         date="2026-07-18",
+        tracking_task="#1",
     )
     monkeypatch.setattr("babylon.sentinels.unconsumed.checks.UNCONSUMED_EXEMPTIONS", (exemption,))
     assert computed_fields_without_consumer((row,)) == []
+
+
+def test_exemption_does_not_absorb_a_different_row_of_the_same_class(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Mutation-validation of the teeth: an exemption for one dict key must
+    NOT silently clear a genuinely-different unread field."""
+    from babylon.sentinels.exemptions import SentinelExemption
+
+    exempted_row = _row(dict_key="totally_synthetic_unread_key_xyz123")
+    other_row = _row(dict_key="a_completely_different_unread_key_abc789")
+    exemption = SentinelExemption(
+        key=("computed_field", exempted_row.name),
+        reason="test exemption",
+        owner="test",
+        date="2026-07-18",
+        tracking_task="#1",
+    )
+    monkeypatch.setattr("babylon.sentinels.unconsumed.checks.UNCONSUMED_EXEMPTIONS", (exemption,))
+    violations = computed_fields_without_consumer((exempted_row, other_row))
+    assert len(violations) == 1
+    assert "a_completely_different_unread_key_abc789" in violations[0]
+    assert "totally_synthetic_unread_key_xyz123" not in violations[0]
 
 
 # ---------------------------------------------------------------------------
@@ -246,17 +272,16 @@ def test_declared_registry_has_the_one_seeded_row() -> None:
     assert DECLARED_COMPUTED_FIELDS[0].name == "reification_buffer"
 
 
-def test_live_registry_currently_reports_the_real_unremediated_gap() -> None:
+def test_live_registry_is_clean_via_the_recorded_exemption() -> None:
     """Track 1 Task 10 finding: reification_buffer IS computed (a real
     production caller exists -- the inert sentinel's own rule covers that)
     and IS written onto the graph, but NOTHING in src/ or web/ reads
-    material_conditions['reification_buffer'] back. This is the CURRENT,
-    honest state of the repository -- this test pins that the sentinel
-    correctly surfaces it, not that the repository is clean. Fixing this
-    (wiring a real consumer, or recording a reasoned
-    ``UnconsumedExemption``) is a follow-up, out of scope for the
-    sentinel-suite task that built this gate.
-    """
-    violations = computed_fields_without_consumer()
-    assert len(violations) == 1
-    assert "reification_buffer" in violations[0]
+    material_conditions['reification_buffer'] back. Gate-governance ruling
+    (2026-07-18) records this as a tracked ``SentinelExemption`` (task #42)
+    rather than leaving the gate RED -- this test pins that the sentinel is
+    GREEN *because of the exemption*, not because the gap was fixed."""
+    from babylon.sentinels.exemptions import is_exempt
+    from babylon.sentinels.unconsumed.registry import UNCONSUMED_EXEMPTIONS
+
+    assert is_exempt(("computed_field", "reification_buffer"), UNCONSUMED_EXEMPTIONS)
+    assert computed_fields_without_consumer() == []

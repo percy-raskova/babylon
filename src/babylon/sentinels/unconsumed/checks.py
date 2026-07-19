@@ -66,6 +66,7 @@ from pathlib import Path
 from typing import Final
 
 from babylon.sentinels.base import LabelledCheck, SentinelCheckError, run_sensor
+from babylon.sentinels.exemptions import is_exempt
 from babylon.sentinels.unconsumed.registry import (
     DECLARED_COMPUTED_FIELDS,
     PRODUCTION_ROOTS,
@@ -185,14 +186,6 @@ def reader_sites(path: Path, dict_key: str) -> list[int]:
     return sorted(sites)
 
 
-def _exempted_names() -> frozenset[str]:
-    """The set of row names carrying a recorded :class:`UnconsumedExemption`.
-
-    :returns: Exempted row names (empty today — see the registry module).
-    """
-    return frozenset(row.name for row in UNCONSUMED_EXEMPTIONS)
-
-
 def computed_fields_without_consumer(
     registry: tuple[DeclaredComputedField, ...] = DECLARED_COMPUTED_FIELDS,
 ) -> list[str]:
@@ -207,10 +200,9 @@ def computed_fields_without_consumer(
     :raises SentinelCheckError: If a scan root is missing or a file is
         unparseable (exit 2 — infrastructure failure, never a silent pass).
     """
-    exempted = _exempted_names()
     violations: list[str] = []
     for row in registry:
-        if row.name in exempted:
+        if is_exempt(("computed_field", row.name), UNCONSUMED_EXEMPTIONS):
             continue
         sites: list[str] = []
         for path in _production_files():
@@ -225,8 +217,8 @@ def computed_fields_without_consumer(
             f"    what it computes: {row.what_it_computes}\n"
             f"    consequence: {row.consequence_if_unread}\n"
             "    fix: wire a real downstream consumer, or add a reasoned "
-            "UnconsumedExemption (name, owner, date, reason) -- never a silent "
-            "registry removal.\n"
+            "SentinelExemption (key, reason, owner, date, tracking_task) to "
+            "UNCONSUMED_EXEMPTIONS -- never a silent registry removal.\n"
             f"    {_WHY}"
         )
     return sorted(violations)
@@ -242,13 +234,23 @@ _GATING_CHECKS: Final[tuple[LabelledCheck, ...]] = (
 def _summary(advisory_count: int) -> str:
     """Clean one-line summary: the counts actually enforced.
 
+    Distinguishes a field that genuinely HAS a reader from one that is
+    merely held open by a recorded exemption — "all clean" would be a lie
+    the moment ``UNCONSUMED_EXEMPTIONS`` is non-empty.
+
     :param advisory_count: Number of advisory findings (0 — no advisory tier).
     :returns: The summary line.
     """
     _ = advisory_count  # This sentinel declares no advisory tier.
+    exempted = sum(
+        1
+        for row in DECLARED_COMPUTED_FIELDS
+        if is_exempt(("computed_field", row.name), UNCONSUMED_EXEMPTIONS)
+    )
     return (
-        f"UNCONSUMED clean: {len(DECLARED_COMPUTED_FIELDS)} declared computed "
-        "field(s) all have a production reader."
+        f"UNCONSUMED clean: {len(DECLARED_COMPUTED_FIELDS) - exempted} of "
+        f"{len(DECLARED_COMPUTED_FIELDS)} declared computed field(s) have a "
+        f"production reader ({exempted} held open by a recorded exemption)."
     )
 
 

@@ -12,6 +12,7 @@
 import { describe, it, expect, beforeEach } from "vitest";
 import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
+import { MemoryRouter } from "react-router";
 import { BottomDrawer } from "./BottomDrawer";
 import { useStore } from "@/store";
 import { resetStore } from "@/test/resetStore";
@@ -22,15 +23,26 @@ beforeEach(() => {
   resetMockGameState();
 });
 
+// EconomyDashboard (hosted in the economy tab) calls useNavigate() for the
+// veil study-link, so the drawer must render under a Router — same pattern as
+// EconomyDashboard.test.tsx.
+function renderDrawer(): void {
+  render(
+    <MemoryRouter initialEntries={[`/game/${DEFAULT_GAME_ID}`]}>
+      <BottomDrawer gameId={DEFAULT_GAME_ID} />
+    </MemoryRouter>,
+  );
+}
+
 describe("BottomDrawer", () => {
   it("renders the region-bottomstrip landmark and defaults to Trends (TimeseriesChart)", async () => {
-    render(<BottomDrawer gameId={DEFAULT_GAME_ID} />);
+    renderDrawer();
     expect(screen.getByTestId("region-bottomstrip")).toBeInTheDocument();
     await waitFor(() => expect(screen.getByTestId("timeseries-chart")).toBeInTheDocument());
   });
 
   it("keeps TimeseriesChart mounted (fan-out eligible) even when the drawer is closed", async () => {
-    render(<BottomDrawer gameId={DEFAULT_GAME_ID} />);
+    renderDrawer();
     await waitFor(() => expect(useStore.getState().panels.timeseries.mounted).toBe(true));
 
     useStore.getState().ui.setBottomDrawer("none");
@@ -39,20 +51,20 @@ describe("BottomDrawer", () => {
 
   it("the 'events' mode points to the tray in-register, never the admin-voice fallback", () => {
     useStore.getState().ui.setBottomDrawer("events");
-    render(<BottomDrawer gameId={DEFAULT_GAME_ID} />);
+    renderDrawer();
 
     expect(screen.queryByText(/No events loaded yet\./)).not.toBeInTheDocument();
     expect(screen.getByText(/dispatch already runs in the tray/i)).toBeInTheDocument();
   });
 
   it("no longer hosts a 'scissors' tab — ScissorsChart relocated to the routed Circuit page (Track 2 T2-1)", () => {
-    render(<BottomDrawer gameId={DEFAULT_GAME_ID} />);
+    renderDrawer();
     expect(screen.queryByTestId("bottomdrawer-tab-scissors")).not.toBeInTheDocument();
     expect(screen.queryByTestId("scissors-chart")).not.toBeInTheDocument();
   });
 
   it("the 'economy' tab toggles and renders EconomyDashboard, keeping it mounted (fan-out eligible) throughout", async () => {
-    render(<BottomDrawer gameId={DEFAULT_GAME_ID} />);
+    renderDrawer();
     await waitFor(() => expect(useStore.getState().panels.economy.mounted).toBe(true));
 
     // Trends is the default tab — EconomyDashboard is mounted (fetching in

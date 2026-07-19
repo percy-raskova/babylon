@@ -28,7 +28,7 @@ from babylon.kernel.event_bus import Event
 from babylon.kernel.system_base import SystemBase
 from babylon.kernel.system_protocol import ContextType
 from babylon.kernel.tick_partition import TickPartition
-from babylon.models.enums import EventType
+from babylon.models.enums import EventType, NodeType
 
 logger = logging.getLogger(__name__)
 
@@ -117,7 +117,7 @@ def _discover_field_names(graph: GraphProtocol) -> list[str]:
         Sorted list of distinct field names (empty when no node carries fields).
     """
     names: set[str] = set()
-    for node in graph.query_nodes(node_type="social_class"):
+    for node in graph.query_nodes(node_type=NodeType.SOCIAL_CLASS):
         fields = node.attributes.get("contradiction_fields", {})
         if isinstance(fields, dict):
             names.update(fields.keys())
@@ -180,7 +180,7 @@ def _compute_node_derivatives(
         edge_weight_attr: Optional edge attribute name for weights.
             None = unweighted (all weights 1.0), preserving backward compat.
     """
-    for node in graph.query_nodes(node_type="social_class"):
+    for node in graph.query_nodes(node_type=NodeType.SOCIAL_CLASS):
         node_id = node.id
         node_fields: dict[str, float] = node.attributes.get("contradiction_fields", {})
         if not node_fields:
@@ -336,7 +336,7 @@ def _build_field_stack(graph: GraphProtocol) -> dict[str, Any]:
         at least one registered field name.
     """
     raw_nodes: dict[str, dict[str, Any]] = {}
-    for node in graph.query_nodes(node_type="social_class"):
+    for node in graph.query_nodes(node_type=NodeType.SOCIAL_CLASS):
         fields: dict[str, float] = node.attributes.get("contradiction_fields", {})
         derivs: dict[str, dict[str, float | None]] = node.attributes.get("field_derivatives", {})
         if not fields and not derivs:
@@ -392,7 +392,7 @@ def _identify_principal_contradiction(
     field_max_abs_df_dt: dict[str, float] = dict.fromkeys(field_names, 0.0)
     field_total_magnitude: dict[str, float] = dict.fromkeys(field_names, 0.0)
 
-    for node in graph.query_nodes(node_type="social_class"):
+    for node in graph.query_nodes(node_type=NodeType.SOCIAL_CLASS):
         derivs: dict[str, dict[str, float | None]] = node.attributes.get("field_derivatives", {})
         for field_name in field_names:
             field_deriv = derivs.get(field_name, {})

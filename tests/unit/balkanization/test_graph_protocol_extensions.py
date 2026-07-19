@@ -18,6 +18,7 @@ from __future__ import annotations
 import pytest
 
 from babylon.kernel.graph_protocol import GraphProtocol
+from babylon.models.enums import NodeType
 from babylon.topology.graph import BabylonGraph
 
 pytestmark = pytest.mark.topology
@@ -27,9 +28,9 @@ pytestmark = pytest.mark.topology
 def adapter_with_influences() -> BabylonGraph:
     adapter = BabylonGraph()
     adapter.add_node("HEX_001", "territory")
-    adapter.add_node("FAC_A", "balkanization_faction")
-    adapter.add_node("FAC_B", "balkanization_faction")
-    adapter.add_node("FAC_C", "balkanization_faction")
+    adapter.add_node("FAC_A", NodeType.FACTION)
+    adapter.add_node("FAC_B", NodeType.FACTION)
+    adapter.add_node("FAC_C", NodeType.FACTION)
     adapter.add_edge(
         "FAC_A",
         "HEX_001",

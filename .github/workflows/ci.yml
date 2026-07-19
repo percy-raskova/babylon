@@ -55,11 +55,8 @@ jobs:
       - name: Repo hygiene gate
         run: mise run check:hygiene
 
-      - name: Seam continuity gate (Sensor 1 — VIII.12)
-        run: mise run check:seams
-
-      - name: Data-coverage sentinel (static — declared sources exist)
-        run: mise run check:coverage
+      - name: Sentinel family (11 static gates — VIII.12; the catalog DB-probe runs in nightly's refdata job, this job has no reference DB)
+        run: mise run check:sentinels-static
 
       - name: Lint (ruff check)
         run: mise run lint:check

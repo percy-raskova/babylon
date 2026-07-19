@@ -1,9 +1,39 @@
 meta:
-  version: 1.29.0
-  updated: '2026-07-18'
+  version: 1.32.0
+  updated: '2026-07-19'
   description: Architecture Decision Records Index
   format: See individual ADR files in this directory
 decisions:
+  ADR087_mass_work_solidarity_producer:
+    title: 'Wire the org->class SOLIDARITY producer for real (Unit 6, ADR073/ADR085 write side): EDUCATE/PROPAGANDIZE/PROVIDE_SERVICE create-or-strengthen a MASS_LINK-amplified edge (engine/actions/_mass_work.py), DoctrineSystem decays it per tick, ConsciousnessSystem''s read side is rewritten to gate org sources on solidarity_strength (not class_consciousness -- orgs have none); rebuilt doctrine-consciousness contract test against real graph shapes (PoliticalFaction/SocialClass -> WorldState.to_graph(), real resolve_campaign dispatch, never a hand-stamped edge); new vocabulary-sentinel rule (d) catches exactly the fixture-fabrication class that hid this gap; qa:regression 5/5 byte-identical (zero orgs in the 5 canonical scenarios)'
+    status: accepted
+    date: '2026-07-19'
+    file: ADR087_mass_work_solidarity_producer.yaml
+  ADR086_business_seeding:
+    title: 'Seed real-QCEW Business organizations into the canonical playable scenarios (us_nationwide + wayne_county): a committed, hash-stamped deterministic seed artifact (business_seeds.json) generated from fact_qcew_annual PRIVATE-sector employment (6-digit leaves folded to 2-digit NAICS via sector_code, imputed leaves included per house policy, REUSING get_county_employment_by_naics), a single shared builder both scenario builders call (DRY), capped at K=5 top-sectors per scope so org count stays far under the engine max_orgs=1000 cap; honest names (real geography + real sector), only real-data fields set (employment/naics/sector), all others keep model defaults; event-flood a NON-ISSUE — the survey premise was wrong, OODA already aggregates per-business layer0 into ONE ORGANIZATIONAL_ACTION summary/tick (MEASURED: 6 orgs, 1 event/tick, 4058-byte payload; naive per-hex would be 5590 > cap); economic behaviour (EMPLOY) explicitly future work; surfaced+fixed a latent 4dp rounding drift in _centrality_by_territory; qa:regression 5/5 byte-identical (zero-org regression scenarios prove scope)'
+    status: accepted
+    date: '2026-07-19'
+    file: ADR086_business_seeding.yaml
+  ADR084_retire_dead_models:
+    title: 'Constitution III.10 formal retirement of dead speculative constructs: KeyFigure (model + WorldState field + to_graph/from_graph plumbing + identify_key_figures + bound-invariant + vocabulary model-fields row) and community_composition() removed as tests-only dead code; NodeType.KEY_FIGURE reclassified production-stamped -> declared-not-stamped (still types classify_topology''s out-of-scope COMMAND-edge fixtures); Business INVESTIGATED and KEPT — found LIVE (OrgType.BUSINESS processed every tick by process_layer0 via OODASystem, action_effects, eligibility, npc_stub, postgres CHECK; Business is the live from_graph reconstruction target), so the ruling''s third target is deferred back to the owner with evidence rather than deleted; qa:regression byte-identical (retired paths never execute in the 5 canonical scenarios)'
+    status: accepted
+    date: '2026-07-18'
+    file: ADR084_retire_dead_models.yaml
+  ADR085_retire_org_solidarity_mass_link:
+    title: 'Retire the org-sourced MASS_LINK solidarity-transmission branch (DoctrineSystem Unit 6b, ADR073): the only reachable path was a fabricated test fixture — no verb or system ever creates an organization-sourced SOLIDARITY edge — so the read-side code, its defines coefficient, and its fixture are deleted; the sibling CLASS_ANALYSIS theory bonus (same commit, same Unit 6b) stays, because it IS wired to real production verb dispatch'
+    status: accepted
+    date: '2026-07-18'
+    file: ADR085_retire_org_solidarity_mass_link.yaml
+  ADR083_bifurcation_county_fips_fix:
+    title: 'Blocker I-2: BifurcationRiskCalculator read a flat "territory" key no producer writes (real field is "county_fips") — solidarity density was silently 0.0 and the agitation-fallback legitimation path silently unreachable for every county in every real game; fixed with RED/GREEN tests using real production node shape, two fabricated-shape test fixtures repaired, two now-stale vocabulary-sentinel exemption rows deleted; verified TWO independent ways (instrumented call-count + mise run qa:regression re-run) that the fix moves ZERO regression baselines, because none of the 5 canonical scenarios ever wire melt_calculator — correcting the registry comment''s prior unverified prediction that fixing it "would move baselines"'
+    status: accepted
+    date: '2026-07-18'
+    file: ADR083_bifurcation_county_fips_fix.yaml
+  ADR082_consciousness_bifurcation_recoupling:
+    title: 'Consciousness recoupling: a positive wage-value balance redirects agitation to the CHAUVINIST pole instead of gating it to zero — balance SIGN drives bifurcation direction, |balance| drives intensity, with a deliberately non-monotonic Gaussian peaking at the precarious margin (MIM: the marginal labour aristocracy is the most reactionary); grounded in Emmanuel UE p.180 / MIM mim-lumpen.txt:206-217 / Amin LWV p.127, per-class reading licensed by Cope DWDC p.204; FIRST ceremony to genuinely move all 5 regression baselines — every drift lands in national_identity, none in class_consciousness'
+    status: accepted
+    date: '2026-07-18'
+    file: ADR082_consciousness_bifurcation_recoupling.yaml
   ADR081_declarative_system_ordering:
     title: 'spec-116 systems-dedup Phase 4 — Declarative tick ordering: each System declares partition/position ClassVars; simulation_engine DERIVES _DEFAULT_SYSTEMS + the three spec-056 partition frozensets from them (was a hand-ordered list + three hand-maintained sets held in sync by import-time assertions)'
     status: accepted

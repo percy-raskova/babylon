@@ -81,6 +81,7 @@ from babylon.config.defines.tunables import (
     PrecisionDefines,
     TimescaleDefines,
 )
+from babylon.config.defines.veil import VeilDefines
 
 __all__ = [
     "AidDefines",
@@ -129,6 +130,7 @@ __all__ = [
     "TerritoryDefines",
     "TimescaleDefines",
     "TopologyDefines",
+    "VeilDefines",
     "VitalityDefines",
     "WorkingDayDefines",
 ]

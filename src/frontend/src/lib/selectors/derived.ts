@@ -108,7 +108,12 @@ const orgEffectiveCadre: ScriptValue = {
     if (!org) return 0;
 
     const baseCadre = org.cadre_level;
-    const heatPenalty = org.heat * GAMEDEFINES.HEAT_CADRE_PENALTY;
+    // org.heat can be fog-masked (null) for a non-player org outside the
+    // viewer's organizing reach (game.fog.filter.POLITICAL_FIELDS) — mirrors
+    // primitives.ts's orgHeat/orgCadre `?? 0` convention for this same
+    // fog-maskable field, since the selector framework's Breakdown.total is
+    // number-only (no honest-null contributor shape exists yet).
+    const heatPenalty = (org.heat ?? 0) * GAMEDEFINES.HEAT_CADRE_PENALTY;
     return Math.max(0, baseCadre * (1 - heatPenalty));
   },
   breakdown: (scope: Scope): Breakdown => {
@@ -120,7 +125,8 @@ const orgEffectiveCadre: ScriptValue = {
     if (!org) return { total: 0, contributors: [] };
 
     const baseCadre = org.cadre_level;
-    const heatPenalty = org.heat * GAMEDEFINES.HEAT_CADRE_PENALTY;
+    // See the evaluate() comment above: org.heat can be fog-masked (null).
+    const heatPenalty = (org.heat ?? 0) * GAMEDEFINES.HEAT_CADRE_PENALTY;
     const penaltyValue = baseCadre * heatPenalty;
 
     const contributors: Contributor[] = [
@@ -142,7 +148,7 @@ const orgEffectiveCadre: ScriptValue = {
         children: [
           {
             label: "Organization Heat",
-            value: org.heat,
+            value: org.heat ?? 0,
             share: 1,
             source: {
               kind: "snapshot_field",

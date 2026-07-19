@@ -137,7 +137,7 @@ class HealthDetailView(APIView):
             return {"reachable": False, "pool_size": None}
 
         persistence = getattr(bridge, "_persistence", None)
-        pool = getattr(persistence, "_pool", None) if persistence is not None else None
+        pool = getattr(persistence, "pool", None) if persistence is not None else None
         if pool is None:
             return {"reachable": False, "pool_size": None}
 
@@ -173,7 +173,7 @@ class HealthDetailView(APIView):
 
             bridge = game_api._bridge_instance
             persistence = getattr(bridge, "_persistence", None) if bridge else None
-            pool = getattr(persistence, "_pool", None) if persistence else None
+            pool = getattr(persistence, "pool", None) if persistence else None
             if pool is not None:
                 with pool.connection() as conn, conn.cursor() as cur:
                     cur.execute(

@@ -72,6 +72,32 @@ describe("adaptHex", () => {
     expect(rows.find((r) => r.label === "Habitability")?.value).toBeNull();
     expect(rows.find((r) => r.label === "Population")?.value).toBeNull();
   });
+
+  describe("Track 1 Task 7 — no fogged dead ends", () => {
+    it("attaches a fog ref to Dominant Class when it is in vision_masked", () => {
+      const node = adaptHex(
+        { kind: "hex", id: "t1" },
+        { county_name: "Wayne County", dominant_class: null, vision_masked: ["dominant_class"] },
+      );
+      const row = node.sections[0]?.rows.find((r) => r.label === "Dominant Class");
+      expect(row?.ref).toEqual({
+        kind: "fog",
+        id: "territory:t1:dominant_class",
+        label: "Dominant Class",
+        inline: {
+          field: "dominant_class",
+          nodeType: "territory",
+          nodeId: "t1",
+          nodeName: "Wayne County",
+        },
+      });
+    });
+
+    it("does not attach a fog ref when dominant_class is simply absent (not masked)", () => {
+      const node = adaptHex({ kind: "hex", id: "t1" }, { county_name: "Wayne County" });
+      expect(node.sections[0]?.rows.find((r) => r.label === "Dominant Class")?.ref).toBeUndefined();
+    });
+  });
 });
 
 describe("territoryToHexInline", () => {

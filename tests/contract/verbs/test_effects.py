@@ -164,6 +164,91 @@ class TestAidTransfer:
         assert result.failure_reason is not None
 
 
+class TestMassWorkSolidarity:
+    """Unit 6 write side (ADR087): EDUCATE/PROPAGANDIZE/PROVIDE_SERVICE
+    create-or-strengthen an org -> class SOLIDARITY edge when targeting a
+    social_class node, amplified by the org's MASS_LINK doctrine tag.
+    PROTEST stays a solidarity CONSUMER (``mobilize.py``'s
+    ``_count_solidarity_edges``), never a producer — untested here, covered
+    by ``TestMobilize``.
+    """
+
+    @pytest.mark.parametrize(
+        "action_type",
+        [ActionType.PROVIDE_SERVICE, ActionType.EDUCATE, ActionType.PROPAGANDIZE],
+    )
+    def test_mass_work_verb_creates_solidarity_edge_to_class(
+        self, verb_graph, services, action_type
+    ) -> None:
+        assert verb_graph.get_edge_data(ORG_ID, CLASS_ID) is None
+        _dispatch(verb_graph, services, action_type, CLASS_ID)
+        edge = verb_graph.get_edge(ORG_ID, CLASS_ID, EdgeType.SOLIDARITY.value)
+        assert edge is not None
+        assert edge.attributes["solidarity_strength"] == pytest.approx(
+            services.defines.doctrine.mass_work_solidarity_gain
+        )
+
+    def test_repeated_dispatch_strengthens_rather_than_overwrites(
+        self, verb_graph, services
+    ) -> None:
+        _dispatch(verb_graph, services, ActionType.PROPAGANDIZE, CLASS_ID)
+        first = verb_graph.get_edge(ORG_ID, CLASS_ID, EdgeType.SOLIDARITY.value)
+        assert first is not None
+        first_strength = first.attributes["solidarity_strength"]
+
+        _dispatch(verb_graph, services, ActionType.PROPAGANDIZE, CLASS_ID)
+        second = verb_graph.get_edge(ORG_ID, CLASS_ID, EdgeType.SOLIDARITY.value)
+        assert second is not None
+        assert second.attributes["solidarity_strength"] > first_strength
+
+    def test_solidarity_strength_is_capped_at_one(self, verb_graph, services) -> None:
+        max_dispatches = 100  # fixed upper bound (static-analysis friendly, III bound rule)
+        for _ in range(max_dispatches):
+            _dispatch(verb_graph, services, ActionType.PROPAGANDIZE, CLASS_ID)
+        edge = verb_graph.get_edge(ORG_ID, CLASS_ID, EdgeType.SOLIDARITY.value)
+        assert edge is not None
+        assert edge.attributes["solidarity_strength"] == pytest.approx(1.0)
+
+    def test_mass_link_tag_amplifies_the_gain(self, verb_graph, services) -> None:
+        verb_graph.update_node(ORG_ID, doctrine_tags={"mass_link": 5.0})
+        _dispatch(verb_graph, services, ActionType.PROPAGANDIZE, CLASS_ID)
+        edge = verb_graph.get_edge(ORG_ID, CLASS_ID, EdgeType.SOLIDARITY.value)
+        assert edge is not None
+        doctrine = services.defines.doctrine
+        expected = doctrine.mass_work_solidarity_gain * (1.0 + doctrine.mass_link_weight * 5.0)
+        assert edge.attributes["solidarity_strength"] == pytest.approx(expected)
+
+    def test_zero_mass_link_is_exactly_the_base_gain(self, verb_graph, services) -> None:
+        verb_graph.update_node(ORG_ID, doctrine_tags={"mass_link": 0.0})
+        _dispatch(verb_graph, services, ActionType.PROPAGANDIZE, CLASS_ID)
+        edge = verb_graph.get_edge(ORG_ID, CLASS_ID, EdgeType.SOLIDARITY.value)
+        assert edge is not None
+        assert edge.attributes["solidarity_strength"] == pytest.approx(
+            services.defines.doctrine.mass_work_solidarity_gain
+        )
+
+    def test_targeting_a_non_class_node_is_a_no_op(self, verb_graph, services) -> None:
+        # ORG_ID already carries a PRESENCE edge to HOME_TERRITORY (seeded by
+        # to_graph() from territory_ids) — a target-type no-op must leave it
+        # completely untouched, not just skip creating a NEW edge.
+        before = verb_graph.get_edge_data(ORG_ID, HOME_TERRITORY)
+        assert before is not None
+        assert before["edge_type"] == "presence"
+        _dispatch(verb_graph, services, ActionType.PROPAGANDIZE, HOME_TERRITORY)
+        after = verb_graph.get_edge_data(ORG_ID, HOME_TERRITORY)
+        assert after == before, "a non-social_class target must never gain/alter an edge"
+
+    def test_study_sub_verb_does_not_create_a_solidarity_edge(self, verb_graph, services) -> None:
+        # EDUCATE(Doctrine)'s target is the acting org itself, not a class —
+        # apply_mass_work_solidarity's own target-type check would no-op
+        # regardless, but this pins the sub-verb branch never even targets
+        # a class.
+        _dispatch(
+            verb_graph, services, ActionType.EDUCATE, ORG_ID, doctrine_node_id="trade_unionism"
+        )
+        assert verb_graph.get_edge_data(ORG_ID, CLASS_ID) is None
+
+
 class TestReproduce:
     """reproduce (cadre training) raises cadre_level and cohesion."""
 

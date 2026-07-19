@@ -1,7 +1,6 @@
-"""Tests for key figure identification and cohesion loss (Feature 031, T026).
+"""Tests for organization cohesion loss on member removal (Feature 031, T026).
 
-Tests identify_key_figures() finding articulation points and
-cohesion_loss_on_removal() for vulnerability analysis.
+Tests cohesion_loss_on_removal() for vulnerability analysis.
 """
 
 from __future__ import annotations
@@ -9,111 +8,7 @@ from __future__ import annotations
 import pytest
 
 from babylon.config.defines import OrganizationDefines
-from babylon.domain.organizations.topology import cohesion_loss_on_removal, identify_key_figures
-from babylon.models.enums import EdgeType
-from babylon.topology.graph import BabylonGraph
-
-
-class TestIdentifyKeyFiguresStar:
-    """STAR topology: center is sole articulation point."""
-
-    @pytest.mark.math
-    def test_star_center_is_key_figure(self) -> None:
-        """Hub of star is the sole articulation point."""
-        G = BabylonGraph()
-        nodes = ["kf-hub", "kf-a", "kf-b", "kf-c"]
-        for n in nodes:
-            G.add_node(n, _node_type="key_figure")
-        G.add_edge("kf-hub", "kf-a", edge_type=EdgeType.COMMAND)
-        G.add_edge("kf-hub", "kf-b", edge_type=EdgeType.COMMAND)
-        G.add_edge("kf-hub", "kf-c", edge_type=EdgeType.COMMAND)
-
-        key_figs = identify_key_figures("org-001", nodes, G)
-        kf_ids = [kf.id for kf in key_figs]
-        assert "kf-hub" in kf_ids
-        assert len(key_figs) == 1
-
-    @pytest.mark.math
-    def test_star_center_is_singleton(self) -> None:
-        """Hub of star has is_singleton=True (no structural equivalent)."""
-        G = BabylonGraph()
-        nodes = ["kf-hub", "kf-a", "kf-b", "kf-c"]
-        for n in nodes:
-            G.add_node(n, _node_type="key_figure")
-        G.add_edge("kf-hub", "kf-a", edge_type=EdgeType.COMMAND)
-        G.add_edge("kf-hub", "kf-b", edge_type=EdgeType.COMMAND)
-        G.add_edge("kf-hub", "kf-c", edge_type=EdgeType.COMMAND)
-
-        key_figs = identify_key_figures("org-001", nodes, G)
-        hub_kf = [kf for kf in key_figs if kf.id == "kf-hub"][0]
-        assert hub_kf.is_singleton is True
-
-    @pytest.mark.math
-    def test_star_center_high_structural_importance(self) -> None:
-        """Hub of star has structural_importance > 0.8 (Scenario 8).
-
-        Uses 7-node star (1 hub + 6 leaves) so importance = (6-1)/(7-1) = 0.833.
-        """
-        G = BabylonGraph()
-        leaves = [f"kf-{i}" for i in range(6)]
-        nodes = ["kf-hub", *leaves]
-        for n in nodes:
-            G.add_node(n, _node_type="key_figure")
-        for leaf in leaves:
-            G.add_edge("kf-hub", leaf, edge_type=EdgeType.COMMAND)
-
-        key_figs = identify_key_figures("org-001", nodes, G)
-        hub_kf = [kf for kf in key_figs if kf.id == "kf-hub"][0]
-        assert hub_kf.structural_importance > 0.8
-
-
-class TestIdentifyKeyFiguresCell:
-    """CELL topology: only cutout nodes are key figures."""
-
-    @pytest.mark.math
-    def test_cell_bridge_is_key_figure(self) -> None:
-        """Bridge/cutout connecting two cells is the key figure."""
-        G = BabylonGraph()
-        cell1 = ["kf-a", "kf-b", "kf-c"]
-        cell2 = ["kf-d", "kf-e", "kf-f"]
-        bridge = "kf-bridge"
-        all_nodes = [*cell1, *cell2, bridge]
-        for n in all_nodes:
-            G.add_node(n, _node_type="key_figure")
-
-        for i, src in enumerate(cell1):
-            for j, tgt in enumerate(cell1):
-                if i != j:
-                    G.add_edge(src, tgt, edge_type=EdgeType.COMMAND)
-        for i, src in enumerate(cell2):
-            for j, tgt in enumerate(cell2):
-                if i != j:
-                    G.add_edge(src, tgt, edge_type=EdgeType.COMMAND)
-        G.add_edge("kf-c", bridge, edge_type=EdgeType.COMMAND)
-        G.add_edge(bridge, "kf-d", edge_type=EdgeType.COMMAND)
-
-        key_figs = identify_key_figures("org-001", all_nodes, G)
-        kf_ids = [kf.id for kf in key_figs]
-        assert bridge in kf_ids
-
-
-class TestIdentifyKeyFiguresMesh:
-    """MESH topology: no/few key figures (highly connected)."""
-
-    @pytest.mark.math
-    def test_mesh_no_key_figures(self) -> None:
-        """Complete graph has no articulation points → no key figures."""
-        G = BabylonGraph()
-        nodes = ["kf-a", "kf-b", "kf-c", "kf-d"]
-        for n in nodes:
-            G.add_node(n, _node_type="key_figure")
-        for i, src in enumerate(nodes):
-            for j, tgt in enumerate(nodes):
-                if i != j:
-                    G.add_edge(src, tgt, edge_type=EdgeType.COMMAND)
-
-        key_figs = identify_key_figures("org-001", nodes, G)
-        assert len(key_figs) == 0
+from babylon.domain.organizations.topology import cohesion_loss_on_removal
 
 
 class TestCohesionLossOnRemoval:

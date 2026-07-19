@@ -41,7 +41,7 @@ def _seed_graph() -> tuple[BabylonGraph, str]:
     # Add a fascist faction (spec-070 model) as the capture target.
     graph.add_node(
         "FAC_SETTLER",
-        "balkanization_faction",
+        "faction",
         is_settler_formation=True,
         colonial_stance="uphold",
         ideology="settler-restorationism",

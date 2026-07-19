@@ -2,9 +2,80 @@
 # What exists vs what's planned - KEEP THIS UPDATED
 
 meta:
-  version: "2.38.0"  # 2.28.0 lives on feature/19-emergent-class-partition (Program 19 Phase 0+1)
-  updated: "2026-07-17"
+  version: "2.41.0"  # 2.28.0 lives on feature/19-emergent-class-partition (Program 19 Phase 0+1)
+  updated: "2026-07-19"
   truth_status: |
+    (2026-07-19 §7 ACCEPTANCE CLOSURE) ALL SEVEN Viable-Game acceptance gaps
+    from the #36 audit are CLOSED on fix/null-play-coupling (owner ruling: fix
+    all before the dev PR). G1: standing 520-tick nationwide null-play pacing
+    gate (integration tier + qa:pacing + nightly; one real 51m43s acceptance
+    run; century run stays owner-deferred per ADR079). G4: the Veil of Money
+    is now SERVER-enforced across every web/game serialization endpoint —
+    economy dashboard/summary/timeseries/map lenses/map history/inspectors/
+    org-network/narration prose//explain/ provenance/snapshot derived block —
+    via web/game/veil.py's TIER1/TIER2 registries + gate_value_axis_fields
+    (persistence paths deliberately ungated: the material record keeps true
+    values; gating applies at the wire, post-persistence). Track-2(ii) seam
+    contract closed the same pass: 4 missing economy_dashboard registry rows +
+    a delegation-aware _returned_dict_keys harvester + the GATING
+    check_economy_dashboard_keys (mutation-validated). G5: veil.spec.ts
+    Playwright e2e (locked instruments + study-link to the real doctrine
+    route). G6: tests/unit/ai/test_frame_entailment.py — frame->prose
+    entailment eval, live Ollama, negative-control-validated; honest limits
+    recorded (no production frame->NarrativeDirector seam exists yet; one live
+    run caught the model inventing a figure — the eval working as intended).
+    G7: the first-session e2e now covers ALL contracted legs — crisis forced +
+    asserted (double-gated BABYLON_E2E_TEST_HOOKS hook through the real event
+    pipeline) and epilogue reached through the REAL horizon->UNRESOLVED path
+    (rigged 1-tick-horizon defines override; fast-forward itself already
+    shipped as FR-116-5 accept-outcome). G2+G3 = the ADR087 entry below.
+    COLLATERAL FIXES en route: persist_full_tick was WIPING every tick's
+    just-persisted tick_event rows on every session (events or [] +
+    replace=True) — journal/alerts/endgame/objectives dashboards were all
+    starved; fixed with red/green pins (None=no-op, []=clears). A fog-masked
+    null org heat crashed StateApparatusDashboard (frontend type lie; fixed
+    null-honest). EDUCATE-at-tick-0 e2e expectations were defect-era copy
+    (pre-Task-8b) — amended to the corrected all-nine-eligible contract.
+    Full evidence + honest-caveat ledger: .superpowers/sdd/progress.md and
+    the PR body.
+
+    (2026-07-19 ADR087) UNIT 6 WIRED FOR REAL: the org->class SOLIDARITY
+    producer ADR085 found missing is built. engine/actions/_mass_work.py::
+    apply_mass_work_solidarity is called from the three mass-work verb
+    resolvers (aid.py PROVIDE_SERVICE, educate.py EDUCATE classic path,
+    campaign.py PROPAGANDIZE): targeting a social_class node creates-or-
+    strengthens an org->class SOLIDARITY edge, gain = mass_work_solidarity_gain
+    * (1 + mass_link_weight * mass_link) — continuous amplification, not a
+    binary MASS_LINK gate. DoctrineSystem decays org-sourced edges per tick
+    (mass_work_solidarity_decay_rate). ConsciousnessSystem's read side
+    rewritten: an organization-sourced SOLIDARITY edge contributes
+    solidarity_strength directly (gated on negligible_transmission, never
+    class_consciousness — orgs have none); class-sourced edges keep the
+    original gate. Rebuilt tests/unit/engine/systems/
+    test_doctrine_consciousness_signal.py against REAL graph shapes
+    (PoliticalFaction/SocialClass -> WorldState.to_graph(), real
+    resolve_campaign dispatch) — the fabricated add_node/add_edge fixture
+    ADR085 diagnosed is gone. New vocabulary-sentinel rule (d)
+    (fabricated_edge_sources) catches exactly that failure class going
+    forward: every fixture-stamped (edge_type, source node type) combination
+    must have a production producer or a cited EDGE_SOURCE_ALLOWLIST entry
+    (16 pre-existing combinations cataloged, mostly runtime-org_id verb
+    resolvers and bulk/dynamic hydration invisible to a literal-only static
+    scan by design). qa:regression 5/5 byte-identical (zero orgs in the 5
+    canonical scenarios — pre-verified by ADR085, confirmed empirically here).
+
+    (2026-07-19 ADR086) BUSINESS SEEDING: the canonical playable scenarios now
+    seed real-QCEW Business orgs (us_nationwide 1->6 orgs, wayne_county 2->7)
+    from a committed hash-stamped artifact (src/babylon/data/game/
+    business_seeds.json, gen by tools/generate_business_seeds.py) via one shared
+    builder engine/scenarios/business_seeds.py. Top-5 PRIVATE-sector 2-digit
+    NAICS sectors/scope by real employment (reuses get_county_employment_by_naics);
+    honest names ("Wayne County Manufacturing"); only real-data fields set,
+    behaviour (EMPLOY) = future work. Event-flood: NON-ISSUE (OODA already
+    aggregates layer0 into 1 ORGANIZATIONAL_ACTION/tick; measured 6 orgs ->
+    1 event/tick). Surfaced+fixed a 4dp rounding drift in _centrality_by_territory.
+    qa:regression 5/5 byte-identical (zero-org regression scenarios = scope proof).
+
     (2026-07-17 overnight) THE EXECUTION SLATE (branch feature/22-execution-slate;
     /goal "complete all remaining open tasks"): every ADR075/ADR076 ruling
     EXECUTED. (1) AMPUTATIONS: 16 objects dropped (A1 __pre_086 via the

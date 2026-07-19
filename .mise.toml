@@ -100,8 +100,8 @@ description = "Run complexity gate (xenon) - fails if CC > 15"
 run = "poetry run xenon --max-absolute C src/"
 
 [tasks.check]
-description = "Fast CI gate: data-pathway + hygiene + seams + coverage + lint + imports + format + typecheck + unit tests"
-depends = ["data:doctor", "check:hygiene", "check:seams", "check:coverage", "lint", "lint:imports", "format", "typecheck", "test:unit"]
+description = "Fast CI gate: data-pathway + hygiene + ALL 11 sentinels + lint + imports + format + typecheck + unit tests"
+depends = ["data:doctor", "check:hygiene", "check:sentinels", "lint", "lint:imports", "format", "typecheck", "test:unit"]
 
 [tasks."data:doctor"]
 description = "Loud data-pathway gate: trove mount + repo symlinks + Postgres bind on the data drive (clean skip off the dev box); heal = sudo tools/heal_data_mount.sh"
@@ -122,6 +122,54 @@ run = "poetry run python tools/sentinel_check.py seam --check"
 [tasks."check:coverage"]
 description = "Data-coverage sentinel: every declared reference-data source class exists (static gate)"
 run = "poetry run python tools/sentinel_check.py coverage --check"
+
+[tasks."check:vocabulary"]
+description = "Node-type vocabulary sentinel: no invented _node_type strings; every production query has a producer"
+run = "poetry run python tools/sentinel_check.py vocabulary --check"
+
+[tasks."check:inert"]
+description = "Inert-construct sentinel: every declared store's writer and every declared producer has a real production caller (static gate)"
+run = "poetry run python tools/sentinel_check.py inert --check"
+
+[tasks."check:dangling"]
+description = "Dangling-reference sentinel (dual of inert): every typed-receiver getattr() call names a real member of a watched class (static gate)"
+run = "poetry run python tools/sentinel_check.py dangling --check"
+
+[tasks."check:unconsumed"]
+description = "Unconsumed-value sentinel: every declared computed dict key has a real production reader (static gate)"
+run = "poetry run python tools/sentinel_check.py unconsumed --check"
+
+[tasks."check:masked-arithmetic"]
+description = "Masked-arithmetic sentinel: no unguarded arithmetic on a fog-masked political field (static gate)"
+run = "poetry run python tools/sentinel_check.py masked_arithmetic --check"
+
+[tasks."check:aggregation"]
+description = "Aggregation-symmetry sentinel: all-masked group input must yield None, never a fabricated 0.0 (dynamic gate)"
+run = "poetry run python tools/sentinel_check.py aggregation --check"
+
+[tasks."check:fog"]
+description = "Fog-containment sentinel: Hypothesis property — no political field escapes an out-of-reach mask (dynamic gate)"
+run = "poetry run python tools/sentinel_check.py fog --check"
+
+[tasks."check:catalog"]
+description = "Data-catalog sentinel: reference-DB objects reconcile with data-catalog.yaml — no undeclared objects, phantom rows, or dark KEEP objects (DB probe)"
+run = "poetry run python tools/sentinel_check.py catalog --check"
+
+[tasks."check:partition"]
+description = "Partition sentinel (ADR070): seeded-vs-derived class evidence; hard violations gate, agreement metrics stay advisory (dynamic)"
+run = "poetry run python tools/sentinel_check.py partition --check"
+
+[tasks."check:synthetic"]
+description = "Synthetic-data sentinel: every declared synthetic source's source + guard symbols exist (static gate)"
+run = "poetry run python tools/sentinel_check.py synthetic --check"
+
+[tasks."check:sentinels"]
+description = "ALL 12 sentinels (owner ruling 2026-07-18: the whole family is fast-gate LOCALLY — the dev box has the reference DB): seam coverage vocabulary inert dangling unconsumed masked-arithmetic aggregation fog catalog partition synthetic"
+depends = ["check:sentinels-static", "check:catalog"]
+
+[tasks."check:sentinels-static"]
+description = "The 11 static sentinels (no reference DB needed) — CI's fast-gate job runs THIS; the catalog DB-probe runs where the DB exists (locally via check:sentinels, in CI via nightly's requires_reference_db job)"
+depends = ["check:seams", "check:coverage", "check:vocabulary", "check:inert", "check:dangling", "check:unconsumed", "check:masked-arithmetic", "check:aggregation", "check:fog", "check:partition", "check:synthetic"]
 
 [tasks.cap]
 description = "Run a command under a HARD memory+CPU cgroup cap (can't freeze the machine). Use for any heavy run: mise run cap -- mise run test:unit"
@@ -173,13 +221,16 @@ mkdir -p reports/test-results/unit-ci
 # stranded its queue -> scheduler futex-wait at 99%) self-salvages with a full
 # summary + junit instead of burning the job's timeout-minutes and dying mute.
 # --max-worker-restart=2: repeated worker death fails the session loudly.
-# tests/unit/ai is NOT ignored (2026-07-16 re-tier): all 217 tests there are
-# mock-based and run in ~3s — the `ai` marker on them is taxonomy, not an
-# LLM-server dependency; local test:unit always ran them, CI now matches.
+# tests/unit/ai is NOT ignored (2026-07-16 re-tier): the mock-based ai-suite
+# tests run here in ~3s — the `ai` marker on them is taxonomy, not an
+# LLM-server dependency; local test:unit always ran them, CI matches. The
+# 2026-07-19 G6 entailment eval added the directory's FIRST genuinely
+# live-LLM tests — those carry `requires_ollama` and are excluded from every
+# fast gate (they run via `mise run test:ai` on a box with the daemon).
 timeout --signal=INT --kill-after=120 15m \
 poetry run pytest tests/unit \
   -o addopts="" -vv -ra -l --tb=long --durations=0 \
-  -m 'not red_phase and not slow and not requires_reference_db' \
+  -m 'not red_phase and not slow and not requires_reference_db and not requires_ollama' \
   -n 4 --dist loadscope --max-worker-restart=2 \
   --cov=src/babylon \
   --cov-report=term-missing:skip-covered \
@@ -191,7 +242,7 @@ poetry run coverage report --include='src/babylon/engine/systems/*' --fail-under
 """
 
 [tasks."test:rest-ci"]
-description = "CI heavy shard (program 15): everything outside tests/unit except the web-Postgres suites (their own job), PLUS slow-marked tests/unit tests (test:unit-ci excludes slow — without this second leg they would run nowhere in CI); max-verbosity output; includes slow; excludes red_phase/requires_reference_db"
+description = "CI heavy shard (program 15): everything outside tests/unit except the web-Postgres suites (their own job), PLUS slow-marked tests/unit tests (test:unit-ci excludes slow — without this second leg they would run nowhere in CI); max-verbosity output; includes slow; excludes red_phase/requires_reference_db/pacing_gate (G1's 520-tick gate is nightly-only via qa:pacing, never this shard)"
 # NO coverage on this shard (program 15, 2026-07-11): pytest-cov under
 # `-n 4` xdist instruments all of src/babylon in every worker, and stacked on
 # the memory-heavy integration/property suites it OOM-killed a worker on the
@@ -216,7 +267,7 @@ export HYPOTHESIS_PROFILE="${HYPOTHESIS_PROFILE:-ci}"
 timeout --signal=INT --kill-after=120 "${BABYLON_REST_SHARD_TIMEOUT:-100m}" \
 poetry run pytest tests --ignore=tests/unit --ignore=tests/integration/web \
   -o addopts="" -vv -ra -l --tb=long --durations=0 \
-  -m 'not red_phase and not requires_reference_db' \
+  -m 'not red_phase and not requires_reference_db and not pacing_gate' \
   -n 4 --dist loadscope --max-worker-restart=2 \
   --junit-xml=reports/test-results/rest-ci/junit.xml
 echo '=== slow-marked tests/unit tests (excluded from the test:unit-ci fast shard) ==='
@@ -233,21 +284,59 @@ description = "pip-audit through the expiring-ignores policy wrapper (program 15
 run = "poetry run python tools/run_pip_audit.py"
 
 [tasks.commit]
-description = "Hook-safe commit: pre-run hooks on staged files, re-stage their fixes, commit, verify HEAD moved"
-usage = 'arg "<message>" help="Conventional commit message"'
+description = "Hook-safe commit: pre-run hooks, re-stage fixes, retry on hook-rewrite, VERIFY HEAD moved. Pass - to read the message from stdin (multi-line bodies)."
+usage = 'arg "<message>" help="Conventional commit message, or - to read from stdin"'
 run = '''
-set -e
+set -euo pipefail
 if git diff --cached --quiet; then
-  echo "nothing staged — git add first"; exit 1
+  echo "[commit] nothing staged — git add first"; exit 1
 fi
-# First pass absorbs the 'files were modified by this hook' abort;
-# re-stage hook fixes for EXACTLY the staged set (not the whole tree);
-# the commit itself re-runs hooks and must pass.
+
+# Capture the EXACT staged set and the pre-commit HEAD up front.
+STAGED="$(git diff --cached --name-only)"
+BEFORE="$(git rev-parse HEAD)"
+
+# Message: literal arg, or stdin when "-" (the only way to pass a body with
+# blank lines — a single `git commit -m` cannot, which is why callers used to
+# bypass this task entirely and lose the HEAD verification below).
+MSGFILE="$(mktemp)"
+trap 'rm -f "$MSGFILE"' EXIT
+if [ "$usage_message" = "-" ]; then
+  cat > "$MSGFILE"
+else
+  printf '%s\n' "$usage_message" > "$MSGFILE"
+fi
+
+# Re-stage hook fixes for EXACTLY the staged set — never the whole tree,
+# which would sweep up unrelated working-tree changes.
+restage() {
+  for f in $STAGED; do
+    if [ -e "$f" ]; then git add -- "$f"; fi
+  done
+  true
+}
+
+# First pass absorbs the "files were modified by this hook" abort.
 poetry run pre-commit run || true
-for f in $(git diff --cached --name-only); do
-  if [ -e "$f" ]; then git add -- "$f"; fi
-done
-git commit -m "$usage_message"
+restage
+
+# The commit re-runs hooks. If a hook rewrites a staged file DURING this run,
+# git aborts while every hook prints Passed and HEAD silently does not move.
+# Retry once after re-staging — the rewrite has already been applied by then.
+if ! git commit -F "$MSGFILE"; then
+  echo "[commit] first attempt aborted (hook rewrote a staged file) — re-staging and retrying"
+  restage
+  git commit -F "$MSGFILE"
+fi
+
+# THE ACTUAL VERIFICATION. Printing `git log` is not a check; comparing is.
+AFTER="$(git rev-parse HEAD)"
+if [ "$BEFORE" = "$AFTER" ]; then
+  echo "[commit] FAILED: HEAD did not move ($(git rev-parse --short "$BEFORE")). NOTHING WAS COMMITTED."
+  echo "[commit] Inspect 'git status --short' for MM entries (staged AND modified = hook rewrite)."
+  exit 1
+fi
+echo "[commit] OK: HEAD $(git rev-parse --short "$BEFORE") -> $(git rev-parse --short "$AFTER")"
 git log --oneline -1
 git status --short | grep -v "^??" || true
 '''
@@ -278,7 +367,7 @@ git status --short | grep -v "^??" || true
 description = "Unit tests (fast gate — excludes slow-marked; those run in test:slow locally and CI's test:rest-ci) → reports/test-results/unit/"
 run = """
 mkdir -p reports/test-results/unit
-poetry run pytest tests/unit -m 'not red_phase and not slow' \
+poetry run pytest tests/unit -m 'not red_phase and not slow and not requires_ollama' \
   -n 4 --dist loadscope --max-worker-restart=2 \
   -vv --tb=long --showlocals --show-capture=all --capture=tee-sys -r aR --durations=25 \
   --junit-xml=reports/test-results/unit/junit.xml \
@@ -290,7 +379,7 @@ poetry run pytest tests/unit -m 'not red_phase and not slow' \
 description = "Unit tests excluding slow-marked → reports/test-results/fast/"
 run = """
 mkdir -p reports/test-results/fast
-poetry run pytest tests/unit -m 'not slow' \
+poetry run pytest tests/unit -m 'not slow and not requires_ollama' \
   -vv --tb=long --showlocals --show-capture=all --capture=tee-sys -r aR --durations=25 \
   --junit-xml=reports/test-results/fast/junit.xml \
   --json-report --json-report-file=reports/test-results/fast/report.json --json-report-indent=2 \
@@ -949,6 +1038,16 @@ run = "poetry run python tools/audit_simplex_bypasses.py"
 [tasks."qa:tick-budget"]
 description = "Spec-104: per-system wallclock budget gate (michigan-statewide 5-tick profile vs ratified budget)"
 run = "BABYLON_PG_DSN=${BABYLON_PG_DSN:-dbname=babylon_test host=localhost port=5433 user=test password=test} poetry run python tools/tick_budget_check.py --ticks 5 --scope michigan-statewide-no-canada"
+
+[tasks."qa:pacing"]
+description = "G1 standing gate: 520-tick (10yr) nationwide null-play pacing probe survival contract (spec-116 gate 1 / ADR079, owner ruling 2026-07-19). Multi-minute, single-flight — nightly-only, never mise run check/test:unit/test:rest-ci."
+run = """
+mkdir -p reports/test-results/pacing
+poetry run pytest tests/integration/engine/test_pacing_gate_g1.py \
+  -o addopts="" -vv -ra -l --tb=long --durations=0 \
+  -m pacing_gate \
+  --junit-xml=reports/test-results/pacing/junit.xml
+"""
 
 [tasks."clean:testdb"]
 description = "Recycle the bloated babylon_test DB (test ticks accumulate ~GBs; drop, recreate, re-bootstrap)"

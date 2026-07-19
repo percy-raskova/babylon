@@ -18,8 +18,10 @@ from babylon.formulas.consciousness_routing import (
     compute_reification_buffer,
     route_agitation_to_ternary,
 )
+from babylon.formulas.contradiction import calculate_wealth_asymmetry_balance
+from babylon.formulas.sustained_exploitation import sustained_exploitation_magnitude
 from babylon.kernel.tick_partition import TickPartition
-from babylon.models.enums import EdgeType
+from babylon.models.enums import EdgeType, NodeType
 
 if TYPE_CHECKING:
     from babylon.kernel.graph_protocol import GraphProtocol
@@ -123,6 +125,32 @@ class ConsciousnessSystem(SystemBase):
         _wage_balance = float(wage_state.get("balance", 0.0))
         wage_deterioration = max(0.0, _wage_rate) if _wage_balance < 0.0 else 0.0
 
+        # Task 2 (2026-07-18, sustained wage-value defect — B in the null-play
+        # political-coupling plan): ADDS a LEVEL term alongside the RATE term
+        # above. ``wage_deterioration`` only fires while the relation is
+        # actively sharpening (rate > 0); once the Imperial Circuit reaches
+        # steady state (rate -> 0) that term goes silent even if labor
+        # remains permanently on the losing side. ``sustained_exploitation_
+        # agitation`` reads a magnitude, not a delta, so a persistent
+        # (non-worsening) defect still generates agitation every tick it
+        # holds.
+        #
+        # Defect fix (fix/null-play-coupling, post-948e46ad): this MUST NOT
+        # read the global ``_wage_balance`` above. That value is
+        # ``_mean_asymmetry`` (catalog.py:134-145) — an unweighted arithmetic
+        # mean of an INTENSIVE quantity ((w-v)/(w+v), bounded [-1, 1]) over
+        # ALL classes. Averaging intensives without share-weighting is a
+        # variance error, AND class_consciousness is PER-CLASS while the
+        # global mean is class-independent: a bribed labor aristocracy
+        # (balance > 0) folded together with an exploited periphery worker
+        # keeps the mean >= 0, so the ``balance < 0`` gate never opens and
+        # every class radicalizes (or doesn't) identically — erasing the
+        # theory this engine models. Each class's OWN balance is computed
+        # per-iteration below, from that class's OWN ``w_paid`` /
+        # ``v_produced`` (see the loop). See
+        # ``babylon.formulas.sustained_exploitation`` for the Volume III
+        # (spec-024) collision-boundary contract this reads through.
+
         # Initialize or retrieve previous wages tracking from persistent storage
         if PREVIOUS_WAGES_KEY not in persistent:
             persistent[PREVIOUS_WAGES_KEY] = {}
@@ -144,6 +172,58 @@ class ConsciousnessSystem(SystemBase):
             # Skip inactive (dead) entities - dead can't develop consciousness
             if not attrs.get("active", True):
                 continue
+
+            # Per-class sustained wage-value defect (fix/null-play-coupling):
+            # ``w_paid``/``v_produced`` are written directly onto THIS node's
+            # attributes by EconomicSystem (engine/systems/economic.py:
+            # 501-502) on ticks it actually paid this class — same
+            # presence-of-both selector ContradictionSystem uses
+            # (engine/systems/contradiction.py:279) to build the (unrelated
+            # here) global mean. Absent either field means no wage-value
+            # transaction was recorded for this class THIS tick (e.g. the
+            # class is the payer itself, or its employer had zero wealth).
+            #
+            # Consciousness Recoupling correction (docs/superpowers/specs/
+            # 2026-07-18-consciousness-recoupling-design.md, §2): the OLD
+            # sign-gated formula (sustained_exploitation_agitation) mapped
+            # "no data this tick" and "balance == 0.0 exactly" to the SAME
+            # safe output (0.0), because its gate was `balance >= 0 -> 0.0`.
+            # sustained_exploitation_magnitude's positive branch does NOT
+            # have that property — it PEAKS near balance == 0 — so an
+            # absent-data fallback of `class_wage_balance = 0.0` would now
+            # silently fabricate near-peak chauvinist agitation for classes
+            # with no recorded wage-value transaction at all. This is
+            # exactly the silent `.get(field, 0.0)` masking the project
+            # forbids: the presence check below gates the WHOLE computation
+            # (magnitude AND chauvinist_pressure), not just the balance
+            # value, so "no data" reads as an explicit, documented zero
+            # contribution — not a data point on the curve.
+            node_w_paid = attrs.get("w_paid")
+            node_v_produced = attrs.get("v_produced")
+            if node_w_paid is not None and node_v_produced is not None:
+                class_wage_balance = calculate_wealth_asymmetry_balance(
+                    float(node_v_produced), float(node_w_paid)
+                )
+                sustained_deterioration = sustained_exploitation_magnitude(
+                    class_wage_balance,
+                    services.defines.consciousness.sustained_exploitation_sensitivity,
+                    services.defines.consciousness.chauvinist_peak_location,
+                    services.defines.consciousness.chauvinist_peak_falloff,
+                )
+                # Balance sign determines bifurcation DIRECTION (spec §2):
+                # only a POSITIVE balance (the imperial bribe) biases
+                # routing toward the fascist pole. A negative balance
+                # (labor losing) contributes zero chauvinist pressure —
+                # its direction is instead the revolutionary pull already
+                # carried by solidarity_pressure below.
+                chauvinist_pressure = (
+                    max(0.0, class_wage_balance)
+                    * services.defines.consciousness.chauvinist_pressure_scale
+                )
+            else:
+                class_wage_balance = 0.0
+                sustained_deterioration = 0.0
+                chauvinist_pressure = 0.0
 
             # Calculate wages received (sum of incoming WAGES edges)
             core_wages = 0.0
@@ -171,35 +251,36 @@ class ConsciousnessSystem(SystemBase):
             solidarity_pressure = 0.0
             activation_threshold = services.defines.solidarity.activation_threshold
 
+            # ADR087 (supersedes the ADR085 invariant comment this replaces):
+            # SOLIDARITY edges now have TWO source shapes. class-sourced
+            # edges (scenarios/_legacy.py + _legacy_wayne.py, the two static
+            # scenario-genesis producers ADR085 audited) still gate on the
+            # SOURCE's own revolutionary consciousness — a bribed or
+            # unconscious class transmits nothing. org-sourced edges (the
+            # Unit 6 write side: EDUCATE/PROPAGANDIZE/PROVIDE_SERVICE mass
+            # work, `engine/actions/_mass_work.py`) have no ideology of their
+            # own to gate on — the edge's `solidarity_strength` IS the
+            # signal (organized mass work materially raises the target's
+            # effective solidarity; MIM(P) organizing loop, owner-ratified
+            # 2026-07-18/19). Gated instead on a negligible-transmission
+            # floor (shared with the class-sourced noise filter) so a
+            # freshly-decayed near-zero edge doesn't contribute forever.
+            negligible_transmission = services.defines.solidarity.negligible_transmission
             for edge in graph.query_edges(edge_type=EdgeType.SOLIDARITY):
                 if edge.target_id == node.id:
                     # Get solidarity_strength from edge
                     strength = edge.attributes.get("solidarity_strength", 0.0)
-                    if strength > 0:
-                        src_node = graph.get_node(edge.source_id)
-                        src_attrs = src_node.attributes if src_node else {}
-                        # GraphNode strips _node_type OUT of .attributes (the
-                        # known round-trip gotcha) — read .node_type instead.
-                        src_type = str(src_node.node_type) if src_node else ""
-                        if src_type == "organization":
-                            # DoctrineSystem Unit 6b (ADR073): an organization
-                            # transmits solidarity through its MASS LINK — the
-                            # corpus's "connection to the broad masses". An
-                            # isolated org (MASS_LINK == 0) transmits nothing
-                            # ("Low: Isolated, actions seen as terrorism"). The
-                            # consciousness gate below is a class-node concept
-                            # and does not apply to org sources. StrEnum keys:
-                            # "mass_link" finds both enum- and str-keyed dicts.
-                            doctrine_tags = src_attrs.get("doctrine_tags") or {}
-                            mass_link = float(doctrine_tags.get("mass_link", 0.0))
-                            if mass_link > 0:
-                                bonus = services.defines.doctrine.mass_link_solidarity_bonus
-                                solidarity_pressure += strength * (
-                                    1.0 + bonus * min(mass_link, 10.0)
-                                )
-                            continue
+                    if strength <= 0:
+                        continue
+                    src_node = graph.get_node(edge.source_id)
+                    if src_node is None:
+                        continue
+                    if src_node.node_type == NodeType.ORGANIZATION.value:
+                        if strength > negligible_transmission:
+                            solidarity_pressure += strength
+                    else:
                         # Only count if source has revolutionary consciousness
-                        source_profile = _get_ideology_profile_from_node(src_attrs)
+                        source_profile = _get_ideology_profile_from_node(src_node.attributes)
                         source_consciousness = source_profile["class_consciousness"]
                         if source_consciousness > activation_threshold:
                             solidarity_pressure += strength
@@ -214,7 +295,12 @@ class ConsciousnessSystem(SystemBase):
                 imperial_rent_delta=wealth_change,  # Wealth decline ~ rent decline
                 visibility_delta=0.0,  # g₃₃ changes handled in community system
             )
-            new_agitation = current_profile["agitation"] + agitation_increment + wage_deterioration
+            new_agitation = (
+                current_profile["agitation"]
+                + agitation_increment
+                + wage_deterioration
+                + sustained_deterioration
+            )
 
             # Route agitation through solidarity → class/nation split.
             # The ternary router (Spec 043) returns shifts in (revolutionary,
@@ -232,6 +318,7 @@ class ConsciousnessSystem(SystemBase):
                 agitation=new_agitation,
                 solidarity_factor=min(1.0, solidarity_pressure),
                 education_pressure=0.0,  # Education pressure handled in community system
+                chauvinist_pressure=chauvinist_pressure,
             )
             new_class = min(1.0, current_profile["class_consciousness"] + delta_r)
             new_nation = min(1.0, current_profile["national_identity"] + delta_f)

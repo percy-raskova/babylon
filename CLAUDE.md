@@ -192,6 +192,24 @@ system backstop). Owner ruling 2026-07-14:
   `WHERE tick = N` on the raw table; `MAX(tick)` ≠ last committed tick (that's `tick_commit`).
 - **`WorldState` is frozen** — mutate via `model_copy(update={...})`, never assignment.
 - **Inject dependencies explicitly**, don't discover them at runtime.
+- **Never hand-stamp `_node_type` with a raw string — use `NodeType.*`** (`models/enums/topology.py`),
+  in fixtures too. A fixture stamping a type production never emits gives a green test over a dead
+  feature: `balkanization_faction` vs `faction` silently disabled RED_SETTLER_TRAP, secession
+  enumeration and FASCIST_RECRUITMENT. **The same failure mode applies to node SHAPE, not just
+  type**: a fixture stamping an attribute a node's model doesn't declare (`territory_ids` on
+  `social_class` — no such field; only `Organization`/`Institution` have it) gives a green test over
+  dead production code the same way. `mise run check:vocabulary` enforces BOTH — 3 rules
+  (`src/babylon/sentinels/vocabulary/`): no invented type strings, every queried type has a producer,
+  and every stamped attribute on a production-stamped node type is a real declared field or a cited
+  `EXTRA_STAMPABLE_ATTRIBUTES` graph-only write (registry docs the full exemption governance).
+  Task #45 audit (2026-07-18) found 6 more live instances of the attribute-shape bug beyond
+  `territory_ids` — 3 fixed in `web/game/engine_bridge.py` (flat `agitation`/`factional_composition`
+  reads where production nests them one level deeper), 3 left open as owner-gated `src/babylon/engine/`
+  defects (`ATTRIBUTE_EXEMPTIONS`' "Reason 2" rows name each).
+  **Worktree gotcha**: `poetry run python tools/sentinel_check.py ...` run directly (not via `mise
+  run`) resolves `babylon` to whichever checkout's venv is active, not necessarily this worktree's —
+  prefix with `PYTHONPATH="$PWD/src"` or use the `mise run check:vocabulary` task, which sets it
+  correctly.
 
 ## Maintaining this file
 

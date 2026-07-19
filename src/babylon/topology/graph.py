@@ -165,9 +165,13 @@ class _GraphCore:
     def add_node(self, node_id: str, node_type: str | None = None, **attributes: Any) -> None:
         """Add (or nx-style merge into) a node.
 
-        Protocol form: ``add_node(id, "social_class", wealth=1.0)``.
-        Authoring form: ``add_node(id, wealth=1.0, _node_type="social_class")``.
+        Protocol form: ``add_node(id, NodeType.SOCIAL_CLASS, wealth=1.0)``.
+        Authoring form: ``add_node(id, wealth=1.0, _node_type=NodeType.SOCIAL_CLASS)``.
         Adding an existing node merges attributes (NetworkX semantics).
+
+        Always pass a :class:`~babylon.models.enums.topology.NodeType`, never a
+        raw string — an invented type makes every query for it match nothing,
+        forever. Enforced by ``mise run check:vocabulary``.
         """
         payload = self._normalize_node_payload(node_type, attributes)
         existing = self._node_payload.get(node_id)

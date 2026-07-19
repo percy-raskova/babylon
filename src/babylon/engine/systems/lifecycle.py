@@ -28,7 +28,7 @@ from babylon.kernel.event_bus import Event
 from babylon.kernel.system_base import SystemBase
 from babylon.kernel.system_protocol import ContextType
 from babylon.kernel.tick_partition import TickPartition
-from babylon.models.enums import EventType, LegitimationClassification
+from babylon.models.enums import EventType, LegitimationClassification, NodeType
 
 if TYPE_CHECKING:
     from babylon.kernel.graph_protocol import GraphProtocol
@@ -77,7 +77,7 @@ class LifecycleSystem(SystemBase):
         defines = services.defines.lifecycle
         tick = context.tick if hasattr(context, "tick") else context.get("tick", 0)
 
-        for node in graph.query_nodes(node_type="territory"):
+        for node in graph.query_nodes(node_type=NodeType.TERRITORY):
             attrs = node.attributes
             territory_id = node.id
 

@@ -10,7 +10,8 @@
 import type { InspectionNode, InspectionRef, InspectionRow } from "@/types/inspection";
 import type { TerritoryState } from "@/types/game";
 import { explainRefFor } from "../provenance";
-import { readNumberField, readStringField, type RawEntity } from "./fields";
+import { fogRefFor } from "../fogFields";
+import { readNumberField, readStringField, readVisionMasked, type RawEntity } from "./fields";
 
 /**
  * Project a clicked `TerritoryState` (the per-hex feature a map click carries)
@@ -41,6 +42,12 @@ export function territoryToHexInline(territory: TerritoryState): RawEntity {
 export function adaptHex(ref: InspectionRef, data: RawEntity): InspectionNode {
   const scope = `hex:${ref.id}`;
   const countyName = readStringField(data, "county_name");
+  // Track 1 Task 7: `dominant_class` is a POLITICAL_FIELDS member gated by
+  // `apply_fog` for `get_inspector_hex` — a fog ref turns its masked
+  // "no data" into a clickable explanation, only when the bridge actually
+  // withheld it (never for a field merely absent for an unrelated reason,
+  // e.g. a map-click `TerritoryState` that never carried it at all).
+  const maskedFields = readVisionMasked(data);
 
   const rows: InspectionRow[] = [
     { label: "County", value: countyName, format: "raw" },
@@ -49,7 +56,12 @@ export function adaptHex(ref: InspectionRef, data: RawEntity): InspectionNode {
     { label: "Biocapacity", value: readNumberField(data, "biocapacity"), format: "decimal2" },
     { label: "Heat", value: readNumberField(data, "heat"), format: "decimal2" },
     { label: "Rent Level", value: readNumberField(data, "rent_level"), format: "decimal2" },
-    { label: "Dominant Class", value: readStringField(data, "dominant_class"), format: "raw" },
+    {
+      label: "Dominant Class",
+      value: readStringField(data, "dominant_class"),
+      format: "raw",
+      ref: fogRefFor("dominant_class", maskedFields, "territory", ref.id, countyName),
+    },
     {
       label: "Profit Rate",
       value: readNumberField(data, "profit_rate"),

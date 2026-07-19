@@ -185,6 +185,53 @@ def run_probe(scenario: str, ticks: int, seed: int) -> ProbeResult:
     )
 
 
+def assert_null_play_survival(result: ProbeResult, expected_ticks: int) -> None:
+    """Assert the null-play survival contract (G1 standing pacing gate).
+
+    The contract, per spec-116 gate 1 / ADR079 and the owner ruling
+    "520 ticks / 10 years, century run deferred" (2026-07-19):
+
+    1. The probe completes the full requested horizon (no crash, no early
+       exit).
+    2. No recognizer axis ever LATCHES a recognized pattern under null
+       play — ``first_recognition`` stays ``None`` for all five axes.
+    3. No axis's underlying continuous progress metric reaches ``1.0`` at
+       ANY sampled tick, even if ``recognized_pattern`` never surfaced it.
+       This is deliberately checked separately from (2):
+       :class:`~babylon.engine.observers.EndgameDetector` reports only the
+       single first-matched axis (FR-033 priority order) as
+       ``recognized_pattern`` each tick, so a lower-priority axis quietly
+       reaching ``1.0`` progress alongside a higher-priority match would
+       never appear in ``first_recognition`` — a "gate-blindness" blind
+       spot. Scanning every sampled point in ``axis_curves`` catches that
+       case directly instead of trusting the latch alone.
+
+    Args:
+        result: The completed :class:`ProbeResult` (real or, for the
+            wrapper's own unit tests, a stubbed one).
+        expected_ticks: The exact tick count the run must have completed.
+
+    Raises:
+        AssertionError: If any leg of the contract is violated.
+    """
+    if result.ticks_completed != expected_ticks:
+        raise AssertionError(
+            f"expected ticks_completed == {expected_ticks}, got {result.ticks_completed}"
+        )
+    for axis in AXES:
+        first = result.first_recognition[axis]
+        if first is not None:
+            raise AssertionError(
+                f"axis {axis!r} latched recognized_pattern at tick {first} under null play"
+            )
+    for axis in AXES:
+        for tick, progress in result.axis_curves[axis]:
+            if progress >= 1.0:
+                raise AssertionError(
+                    f"axis {axis!r} progress reached {progress} at tick {tick} under null play"
+                )
+
+
 class Command(BaseCommand):
     """Headless null-play pacing probe over the web scenario path."""
 

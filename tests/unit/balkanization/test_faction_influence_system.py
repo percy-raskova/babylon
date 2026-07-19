@@ -13,7 +13,7 @@ import pytest
 from babylon.config.defines.balkanization import BalkanizationDefines
 from babylon.engine.context import TickContext
 from babylon.engine.systems.faction_influence import FactionInfluenceSystem
-from babylon.models.enums import EventType
+from babylon.models.enums import EventType, NodeType
 from babylon.topology.graph import BabylonGraph
 
 pytestmark = pytest.mark.unit
@@ -55,13 +55,13 @@ def _events_of(bus: _RecordingEventBus, ev_type: Any) -> list[_CapturedEvent]:
 def _seed_two_factions_one_territory(adapter: BabylonGraph) -> None:
     adapter.add_node(
         "FAC_A",
-        "balkanization_faction",
+        NodeType.FACTION,
         colonial_stance="uphold",
         class_reduction=0.0,
     )
     adapter.add_node(
         "FAC_B",
-        "balkanization_faction",
+        NodeType.FACTION,
         colonial_stance="abolish",
         class_reduction=0.5,
     )
@@ -140,13 +140,13 @@ def test_faction_victory_fires_on_supermajority(services: Any) -> None:
     adapter = BabylonGraph()
     adapter.add_node(
         "FAC_DOM",
-        "balkanization_faction",
+        NodeType.FACTION,
         colonial_stance="uphold",
         class_reduction=0.0,
     )
     adapter.add_node(
         "FAC_MIN",
-        "balkanization_faction",
+        NodeType.FACTION,
         colonial_stance="abolish",
         class_reduction=0.0,
     )
@@ -186,13 +186,13 @@ def test_red_settler_trap_event_emits_for_high_class_reduction_ignore(
     adapter = BabylonGraph()
     adapter.add_node(
         "FAC_TRAP",
-        "balkanization_faction",
+        "faction",
         colonial_stance="ignore",
         class_reduction=0.7,
     )
     adapter.add_node(
         "FAC_SAFE",
-        "balkanization_faction",
+        "faction",
         colonial_stance="abolish",
         class_reduction=0.7,  # ABOLISH skips trap.
     )

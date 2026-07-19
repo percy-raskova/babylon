@@ -12,6 +12,7 @@ from __future__ import annotations
 
 from babylon.kernel.graph_protocol import GraphProtocol
 from babylon.models.entities.institution import Institution
+from babylon.models.enums import NodeType
 
 
 def community_embeddedness(
@@ -41,7 +42,7 @@ def community_embeddedness(
     community_counts: dict[str, int] = {}
     community_in_territory: dict[str, int] = {}
 
-    for node in graph.query_nodes(node_type="community"):
+    for node in graph.query_nodes(node_type=NodeType.COMMUNITY):
         community_type = node.get_attr("community_type", "")
         if not community_type:
             continue

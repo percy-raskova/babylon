@@ -29,7 +29,7 @@ from babylon.formulas.balkanization import calculate_metabolic_impact
 from babylon.kernel.event_bus import Event
 from babylon.kernel.system_base import SystemBase
 from babylon.kernel.tick_partition import TickPartition
-from babylon.models.enums import EventType, ExtractionPolicy
+from babylon.models.enums import EventType, ExtractionPolicy, NodeType
 
 if TYPE_CHECKING:  # pragma: no cover
     from babylon.kernel.graph_protocol import GraphProtocol
@@ -84,7 +84,9 @@ class SovereigntySystem(SystemBase):
         dual_power_territories: list[tuple[str, list[str], float]] = []
 
         # Enumerate territories deterministically by node ID.
-        territory_ids = sorted(node.id for node in wrapped.query_nodes(node_type="territory"))
+        territory_ids = sorted(
+            node.id for node in wrapped.query_nodes(node_type=NodeType.TERRITORY)
+        )
         for territory_id in territory_ids:
             claims = wrapped.query_territory_claims(territory_id)
             if not claims:

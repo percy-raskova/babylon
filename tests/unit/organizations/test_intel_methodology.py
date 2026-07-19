@@ -1,7 +1,6 @@
-"""Tests for IntelMethodology and KeyFigure (Feature 031, T010/T023).
+"""Tests for IntelMethodology (Feature 031, T010/T023).
 
-Tests IntelMethodology frozen model with 3 presets (default + defines-driven)
-and KeyFigure entity.
+Tests IntelMethodology frozen model with 3 presets (default + defines-driven).
 """
 
 from __future__ import annotations
@@ -10,7 +9,7 @@ import pytest
 from pydantic import ValidationError
 
 from babylon.config.defines import OrganizationDefines
-from babylon.models.entities.organization import IntelMethodology, KeyFigure
+from babylon.models.entities.organization import IntelMethodology
 from tests.constants import TestConstants
 
 TC = TestConstants
@@ -200,108 +199,3 @@ class TestIntelMethodologyTierDifferentiation:
             ]
         )
         assert pd_count < fusion_count < fbi_count
-
-
-class TestKeyFigureCreation:
-    """KeyFigure entity with 6 fields."""
-
-    @pytest.mark.math
-    def test_create_minimal(self) -> None:
-        kf = KeyFigure(
-            id="kf-001",
-            name="John Smith",
-            organization_id="org-001",
-            role="Chairman",
-        )
-        assert kf.id == "kf-001"
-        assert kf.name == "John Smith"
-        assert kf.organization_id == "org-001"
-        assert kf.role == "Chairman"
-
-    @pytest.mark.math
-    def test_default_structural_importance(self) -> None:
-        kf = KeyFigure(
-            id="kf-001",
-            name="John Smith",
-            organization_id="org-001",
-            role="Chairman",
-        )
-        assert kf.structural_importance == pytest.approx(0.5)
-
-    @pytest.mark.math
-    def test_default_is_singleton(self) -> None:
-        kf = KeyFigure(
-            id="kf-001",
-            name="John Smith",
-            organization_id="org-001",
-            role="Chairman",
-        )
-        assert kf.is_singleton is False
-
-    @pytest.mark.math
-    def test_rejects_empty_id(self) -> None:
-        with pytest.raises(ValidationError):
-            KeyFigure(
-                id="",
-                name="John Smith",
-                organization_id="org-001",
-                role="Chairman",
-            )
-
-    @pytest.mark.math
-    def test_rejects_empty_name(self) -> None:
-        with pytest.raises(ValidationError):
-            KeyFigure(
-                id="kf-001",
-                name="",
-                organization_id="org-001",
-                role="Chairman",
-            )
-
-    @pytest.mark.math
-    def test_rejects_empty_role(self) -> None:
-        with pytest.raises(ValidationError):
-            KeyFigure(
-                id="kf-001",
-                name="John Smith",
-                organization_id="org-001",
-                role="",
-            )
-
-    @pytest.mark.math
-    def test_rejects_negative_structural_importance(self) -> None:
-        with pytest.raises(ValidationError):
-            KeyFigure(
-                id="kf-001",
-                name="John Smith",
-                organization_id="org-001",
-                role="Chairman",
-                structural_importance=-0.1,
-            )
-
-    @pytest.mark.math
-    def test_frozen(self) -> None:
-        kf = KeyFigure(
-            id="kf-001",
-            name="John Smith",
-            organization_id="org-001",
-            role="Chairman",
-        )
-        with pytest.raises(ValidationError):
-            kf.role = "Vice Chairman"  # type: ignore[misc]
-
-    @pytest.mark.ledger
-    def test_serialization_round_trip(self) -> None:
-        kf = KeyFigure(
-            id="kf-001",
-            name="John Smith",
-            organization_id="org-001",
-            role="Chairman",
-            structural_importance=0.8,
-            is_singleton=True,
-        )
-        json_str = kf.model_dump_json()
-        restored = KeyFigure.model_validate_json(json_str)
-        assert restored.id == kf.id
-        assert restored.structural_importance == pytest.approx(kf.structural_importance)
-        assert restored.is_singleton is True

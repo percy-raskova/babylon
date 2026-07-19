@@ -408,7 +408,14 @@ class TestGetInspectorHexWave2Lenses:
 
         bridge, _graph = self._wayne_bridge()
         state = _build_initial_state_for_scenario("wayne_county")
-        territory = next(iter(state.territories.values()))
+        # Track 1 / Task 5: agitation is now gated outside organizing reach
+        # (fix/null-play-coupling) — use a territory the player org actually
+        # has PRESENCE in (its own territory_ids), not an arbitrary one, so
+        # this still proves the underlying agitation computation works
+        # rather than incidentally asserting against the fog gate.
+        assert state.player_org_id is not None
+        player_org = state.organizations[state.player_org_id]
+        territory = state.territories[player_org.territory_ids[0]]
 
         result = bridge.get_inspector_hex(uuid.uuid4(), territory.h3_index)
 

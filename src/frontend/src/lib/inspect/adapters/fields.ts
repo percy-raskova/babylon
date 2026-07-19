@@ -24,6 +24,15 @@ export function readStringField(data: RawEntity | null, key: string): string | n
   return typeof v === "string" ? v : null;
 }
 
+/** The field names Track 1's `apply_fog` masked to `null` on this payload
+ *  (`web/game/fog/filter.py`'s `vision_masked`), or `[]` when absent/
+ *  malformed — never throws, mirrors every other reader here's "honest
+ *  absence over fabrication" contract (Constitution III.11). */
+export function readVisionMasked(data: RawEntity | null): string[] {
+  const v = data?.vision_masked;
+  return Array.isArray(v) ? v.filter((x): x is string => typeof x === "string") : [];
+}
+
 export function readConsciousness(data: RawEntity | null): ConsciousnessVector | null {
   const v = data?.consciousness;
   if (v === null || typeof v !== "object") return null;

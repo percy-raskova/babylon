@@ -17,7 +17,7 @@ from typing import TYPE_CHECKING, Any, ClassVar
 from babylon.kernel.event_bus import Event
 from babylon.kernel.tick_partition import TickPartition
 from babylon.models.entity_registry import CORE_BOURGEOISIE_ID
-from babylon.models.enums import EventType, SocialRole
+from babylon.models.enums import EventType, NodeType, SocialRole
 
 if TYPE_CHECKING:
     from babylon.kernel.graph_protocol import GraphProtocol
@@ -66,7 +66,7 @@ def _find_entity_by_role(
     Returns:
         Tuple of (node_id, node_data) or None if not found
     """
-    for node in graph.query_nodes(node_type="social_class"):
+    for node in graph.query_nodes(node_type=NodeType.SOCIAL_CLASS):
         attrs = node.attributes
 
         # Skip inactive unless explicitly requested

@@ -97,6 +97,25 @@ describe("resolveRef", () => {
     expect(capturedScope).toBe("global");
   });
 
+  it("resolves a fog ref synchronously from inline, with no network call at all", async () => {
+    server.use(
+      http.get("/api/games/:id/node/:entityId/", () => {
+        throw new Error("must not be called — fog resolves purely from inline");
+      }),
+    );
+    const node = await resolveRef("game-001", {
+      kind: "fog",
+      id: "territory:t1:solidarity_index",
+      inline: {
+        field: "solidarity_index",
+        nodeType: "territory",
+        nodeId: "t1",
+        nodeName: "Wayne County",
+      },
+    });
+    expect(node.title).toBe("Unknown: Class Solidarity");
+  });
+
   it("throws (loud failure) on a non-ok API response", async () => {
     server.use(
       http.get("/api/games/:id/org/:entityId/", () =>

@@ -2,8 +2,8 @@
  * TopBar — Layer 1 chrome, the floating full-width strip (architecture
  * §1.1/§1.2's `StatusBar` → `TopBar` migrate row). Real `/summary/` fields
  * (tick, profit rate, imperial rent Φ, population, alert counts), the
- * takeover-open buttons (Wire / Dialectic / Chronicle / Network / Doctrine),
- * and `SpeedControls`
+ * takeover-open buttons (Wire / Dialectic / Chronicle / Network), and
+ * `SpeedControls`
  * (bible §5.1's identity/date/speed cluster). An instance of `FloatingPanel`
  * (anchor="top") per architecture §1.3 — no `title`/`onToggle` given, so
  * `FloatingPanel` renders no header and TopBar's own layout owns the whole
@@ -21,9 +21,19 @@
  * Keeps `region-statusbar`/`tick-value` testids (frozen — real-loop.spec.ts,
  * end-turn-flow.spec.ts, briefing-map-smoke.spec.ts, map-lens-cycling.spec.ts
  * all read them).
+ *
+ * "Screens" cluster (Track 2 T2-0): a real route navigation, distinct from
+ * the "Takeovers" cluster's `ui.openTakeover` overlay grammar — clicking
+ * "Circuit" or "Doctrine" is a URL change (`/game/:id/circuit`,
+ * `/game/:id/doctrine`), not a store flag. Doctrine moved here from the
+ * Takeovers cluster in Track 3 T3-5: `DoctrineTakeover` relocated off the
+ * `ui.openTakeover("doctrine")` overlay flag onto its own routed room (the
+ * "Line" page), the same move T2-1 made for `ScissorsChart`/Circuit —
+ * `"doctrine"` is no longer a valid `TakeoverKind`.
  */
 
 import { useEffect } from "react";
+import { useNavigate } from "react-router";
 import { useStore } from "@/store";
 import { FloatingPanel } from "./FloatingPanel";
 import { SpeedControls } from "./SpeedControls";
@@ -36,6 +46,7 @@ interface TopBarProps {
 }
 
 export function TopBar({ gameId }: TopBarProps): React.JSX.Element {
+  const navigate = useNavigate();
   const tick = useStore((s) => s.world.snapshot?.tick);
   const summaryData = useStore((s) => s.panels.summary.data);
   const fetchSummary = useStore((s) => s.panels.summary.fetch);
@@ -124,7 +135,30 @@ export function TopBar({ gameId }: TopBarProps): React.JSX.Element {
           <TakeoverButton kind="dialectic" label="Dialectic" onOpen={openTakeover} />
           <TakeoverButton kind="chronicle" label="Chronicle" onOpen={openTakeover} />
           <TakeoverButton kind="network" label="Network" onOpen={openTakeover} />
-          <TakeoverButton kind="doctrine" label="Doctrine" onOpen={openTakeover} />
+        </div>
+
+        {/* Cluster 3b — screens (Track 2 T2-0, Track 3 T3-5): real route navigation. */}
+        <div
+          className="flex items-center gap-1 border-l-2 border-ksbc-muted-1 pl-3"
+          role="group"
+          aria-label="Screens"
+        >
+          <button
+            type="button"
+            onClick={() => navigate(`/game/${gameId}/circuit`)}
+            data-testid="nav-circuit"
+            className={keyButtonClass(false, "px-2 py-1 text-[9px]")}
+          >
+            Circuit
+          </button>
+          <button
+            type="button"
+            onClick={() => navigate(`/game/${gameId}/doctrine`)}
+            data-testid="nav-doctrine"
+            className={keyButtonClass(false, "px-2 py-1 text-[9px]")}
+          >
+            Doctrine
+          </button>
         </div>
 
         {/* Cluster 4 — speed */}

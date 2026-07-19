@@ -463,3 +463,77 @@ class TestGetSnapshotServesEndgameProgress:
         snapshot = bridge.get_snapshot(_SESSION)
 
         assert "endgame_progress" not in snapshot
+
+
+class TestForceEndgameTestHook:
+    """G7-crisis (spec-116 first-session e2e crisis leg): ``resolve_tick``'s
+    ``force_endgame_test_hook`` parameter lets an e2e-only caller end the
+    game through the exact same real ``EndgameEvent`` construction a
+    genuine horizon termination uses, years before the fixed century
+    horizon — the frontend's autopause/critical-event machinery fires ONLY
+    on ``endgame_reached`` (spec-116 FR-116-2's salience re-tier), so this
+    is the only way to exercise it deterministically inside a short e2e
+    window. Inert unless BOTH the kwarg is True *and* the server process has
+    ``BABYLON_E2E_TEST_HOOKS=1`` exported (``_e2e_test_hooks_enabled``) —
+    either alone is a no-op, so neither a stray kwarg nor a leaked env var
+    can fire this alone in production."""
+
+    def test_force_hook_ends_game_far_below_horizon_when_env_enabled(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.setenv("BABYLON_E2E_TEST_HOOKS", "1")
+        mock_persistence = _make_mock_persistence()  # default horizon: 5200
+        bridge = EngineBridge(mock_persistence)
+        _wire_fake_engine(bridge, monkeypatch, _healthy_state)
+
+        snapshot = bridge.resolve_tick(_SESSION, force_endgame_test_hook=True)
+
+        assert snapshot["endgame"]["outcome"] == "unresolved"
+        assert snapshot["endgame"]["tick"] == 1
+        endgame_events = [e for e in snapshot["events"] if e.get("type") == "endgame_reached"]
+        assert len(endgame_events) == 1
+
+    def test_force_hook_reports_a_recognized_pattern_as_the_outcome(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """FOLLOW-PATTERN sibling of
+        ``test_horizon_ends_game_with_recognized_pattern`` — the forced
+        endgame's outcome is still the currently-recognized pattern, not
+        always ``unresolved``, matching real horizon-termination semantics
+        exactly (this hook only moves *when* the check fires, never *how*
+        the outcome is computed)."""
+        monkeypatch.setenv("BABYLON_E2E_TEST_HOOKS", "1")
+        mock_persistence = _make_mock_persistence()
+        bridge = EngineBridge(mock_persistence)
+        _wire_fake_engine(bridge, monkeypatch, _fascist_state)
+
+        snapshot = bridge.resolve_tick(_SESSION, force_endgame_test_hook=True)
+
+        assert snapshot["endgame"]["outcome"] == "fascist_consolidation"
+
+    def test_force_hook_is_inert_without_the_kwarg(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        """The env var alone (server opted in) never fires this — a caller
+        must also explicitly ask via the kwarg."""
+        monkeypatch.setenv("BABYLON_E2E_TEST_HOOKS", "1")
+        mock_persistence = _make_mock_persistence()
+        bridge = EngineBridge(mock_persistence)
+        _wire_fake_engine(bridge, monkeypatch, _healthy_state)
+
+        snapshot = bridge.resolve_tick(_SESSION)  # force_endgame_test_hook defaults False
+
+        assert "endgame" not in snapshot
+
+    def test_force_hook_is_inert_without_the_env_var(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        """The kwarg alone (a request header some caller sent) never fires
+        this — the server process must also have explicitly opted in. This
+        is what makes the hook inert in production: the header can only
+        ever come from an e2e page, but even a stray/forged one is a no-op
+        against a server that never exported the env var."""
+        monkeypatch.delenv("BABYLON_E2E_TEST_HOOKS", raising=False)
+        mock_persistence = _make_mock_persistence()
+        bridge = EngineBridge(mock_persistence)
+        _wire_fake_engine(bridge, monkeypatch, _healthy_state)
+
+        snapshot = bridge.resolve_tick(_SESSION, force_endgame_test_hook=True)
+
+        assert "endgame" not in snapshot

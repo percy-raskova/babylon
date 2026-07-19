@@ -142,6 +142,34 @@ jobs:
           --ignore=tests/integration/web
           -o addopts="" -vv -ra -l --tb=long --durations=0
 
+  pacing-gate:
+    name: G1 Pacing Gate (520-tick nationwide null-play, dev HEAD)
+    if: github.event.schedule != '0 4 * * 0'
+    runs-on: ubuntu-latest
+    # Measured: a 20-tick `us` sample cost 117.49s wall-clock on the dev box;
+    # linear-fit extrapolation to 520 ticks ~= 49 minutes (see the test's
+    # docstring for the full model). No Postgres/reference-DB dependency —
+    # pacing_probe runs the engine's step() loop entirely in-memory and the
+    # `us` scenario's territories + seeded businesses come from H3 generation
+    # + a committed JSON artifact, not the data drive.
+    timeout-minutes: 75
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: dev
+      - uses: ./.github/actions/bootstrap-python
+        with:
+          gdal: "true"
+      - name: G1 standing pacing gate (mise run qa:pacing)
+        run: mise run qa:pacing
+      - name: Upload test results
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: nightly-pacing-gate-results
+          path: reports/test-results/pacing/
+          retention-days: 14
+
   # ── Weekly (Sunday): forward-compat, sim artifacts, mutation ─────────────
   py313-forward-compat:
     name: Python 3.13 Suite (forward compat)
@@ -171,7 +199,7 @@ jobs:
         run: >-
           poetry run pytest tests --ignore=tests/unit/ai --ignore=tests/integration/web
           -o addopts="" -vv -ra -l --tb=long --durations=0
-          -m "not red_phase and not requires_reference_db"
+          -m "not red_phase and not requires_reference_db and not pacing_gate"
 
   sim-artifacts:
     name: Simulation Trace + Sweep Artifacts

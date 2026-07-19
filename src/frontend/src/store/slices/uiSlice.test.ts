@@ -71,6 +71,16 @@ describe("ui slice", () => {
     expect(useStore.getState().ui.chrome.composerOpen).toBe(true);
   });
 
+  it("openComposer unconditionally opens the composer (idempotent, unlike toggle)", () => {
+    useStore.getState().ui.openComposer();
+    expect(useStore.getState().ui.chrome.composerOpen).toBe(true);
+    useStore.getState().ui.openComposer();
+    expect(useStore.getState().ui.chrome.composerOpen).toBe(true);
+    useStore.getState().ui.toggleComposer(); // close it
+    useStore.getState().ui.openComposer();
+    expect(useStore.getState().ui.chrome.composerOpen).toBe(true);
+  });
+
   it("setBottomDrawer switches between none/trends/events/economy", () => {
     useStore.getState().ui.setBottomDrawer("events");
     expect(useStore.getState().ui.chrome.bottomDrawer).toBe("events");
@@ -98,8 +108,6 @@ describe("ui slice", () => {
     expect(useStore.getState().ui.takeover.active).toBe("dialectic");
     useStore.getState().ui.openTakeover("network");
     expect(useStore.getState().ui.takeover.active).toBe("network");
-    useStore.getState().ui.openTakeover("doctrine");
-    expect(useStore.getState().ui.takeover.active).toBe("doctrine");
     useStore.getState().ui.closeTakeover();
     expect(useStore.getState().ui.takeover.active).toBeNull();
   });

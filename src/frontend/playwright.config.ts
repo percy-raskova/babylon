@@ -34,6 +34,7 @@ const AUTHENTICATED_SPECS = [
   "event-popup.spec.ts",
   "lobby-briefing.spec.ts",
   "first-session.spec.ts",
+  "veil.spec.ts",
 ];
 
 export default defineConfig({

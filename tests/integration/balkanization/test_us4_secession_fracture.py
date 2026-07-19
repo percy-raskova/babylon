@@ -12,7 +12,7 @@ import pytest
 
 from babylon.engine.context import TickContext
 from babylon.engine.systems.collapse_transition import CollapseTransitionSystem
-from babylon.models.enums import EventType
+from babylon.models.enums import EventType, NodeType
 from babylon.topology.graph import BabylonGraph
 
 pytestmark = pytest.mark.integration
@@ -57,7 +57,7 @@ def _build_parent_with_n_claims(adapter: BabylonGraph, n: int) -> str:
     )
     adapter.add_node(
         "FAC_DECOLONIAL",
-        "balkanization_faction",
+        NodeType.FACTION,
         colonial_stance="abolish",
         class_reduction=0.5,
     )
@@ -220,7 +220,7 @@ def test_collapse_with_winning_factions_creates_successor_sovereigns(
     ]:
         adapter.add_node(
             fac,
-            "balkanization_faction",
+            NodeType.FACTION,
             colonial_stance=stance,
             class_reduction=0.5,
         )

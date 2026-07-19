@@ -21,6 +21,7 @@ from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
 from babylon.kernel.system_base import SystemBase
+from babylon.models.enums import NodeType
 
 if TYPE_CHECKING:
     from collections.abc import Iterable
@@ -67,7 +68,7 @@ def aggregate_hexes_by_county(
             "count": 0.0,
         }
     )
-    for node in protocol.query_nodes(node_type="hex"):
+    for node in protocol.query_nodes(node_type=NodeType.HEX):
         attrs = node.attributes
         county_fips = attrs.get("county_fips")
         if not county_fips:

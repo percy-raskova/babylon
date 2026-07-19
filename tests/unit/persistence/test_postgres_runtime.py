@@ -499,6 +499,97 @@ class TestPersistTickEvents:
 
 
 # ══════════════════════════════════════════════════════════════════════
+# Regression: persist_full_tick's caller-omits-events footgun.
+#
+# EngineBridge._persist_snapshots_safe calls persist_full_tick for the six
+# read-model snapshot tables only, never passing `events=` at all (it has
+# no events to contribute — resolve_tick's own EngineBridge._persist_
+# tick_events_safe already wrote the tick's real events into tick_event
+# moments earlier via a SEPARATE call). Before this fix, persist_full_tick
+# unconditionally forwarded `events or []` to persist_tick_events, whose
+# default `replace=True` DELETEs any existing (game_id, tick) rows before
+# inserting — with an empty list, that DELETE fires and nothing is
+# reinserted, silently discarding every real tick_event row for that tick
+# (including ENDGAME_REACHED) on every single resolve_tick call. Found via
+# a live-DB delete-audit trigger while investigating why
+# EngineBridge.get_endgame_state never reflected a real horizon
+# termination. `events=[]` (an explicit empty list, as
+# tests/integration/test_tick_immutability.py's `_minimal_payload` passes)
+# is a real, intentional "no events this tick" and must keep clearing.
+# ══════════════════════════════════════════════════════════════════════
+
+
+class TestPersistFullTickEventsHandling:
+    """persist_full_tick must distinguish `events=None` from `events=[]`."""
+
+    def _configure_fresh_tick(self, mock_cursor: MagicMock) -> None:
+        """Make the tick_log race-safety INSERT...RETURNING see a fresh tick."""
+        mock_cursor.fetchone.return_value = (0,)
+
+    def test_omitted_events_never_touches_tick_event(
+        self,
+        runtime: PostgresRuntime,
+        session_id: UUID,
+        mock_cursor: MagicMock,
+    ) -> None:
+        """A caller that never mentions events (e.g. the snapshot-tables-only
+        write path) must not clear a tick's already-persisted events."""
+        self._configure_fresh_tick(mock_cursor)
+
+        runtime.persist_full_tick(session_id, 0)
+
+        tick_event_deletes = [
+            call
+            for call in mock_cursor.execute.call_args_list
+            if "DELETE FROM tick_event" in call[0][0]
+        ]
+        assert tick_event_deletes == []
+        assert mock_cursor.executemany.call_count == 0
+
+    def test_explicit_empty_events_still_clears(
+        self,
+        runtime: PostgresRuntime,
+        session_id: UUID,
+        mock_cursor: MagicMock,
+    ) -> None:
+        """A caller that explicitly says 'zero events this tick' still gets
+        the existing clear-then-write-nothing behavior (unchanged)."""
+        self._configure_fresh_tick(mock_cursor)
+
+        runtime.persist_full_tick(session_id, 0, events=[])
+
+        tick_event_deletes = [
+            call
+            for call in mock_cursor.execute.call_args_list
+            if "DELETE FROM tick_event" in call[0][0]
+        ]
+        assert len(tick_event_deletes) == 1
+        assert mock_cursor.executemany.call_count == 0
+
+    def test_real_events_delete_then_insert(
+        self,
+        runtime: PostgresRuntime,
+        session_id: UUID,
+        mock_cursor: MagicMock,
+    ) -> None:
+        """A caller that carries real events still gets delete-then-insert."""
+        self._configure_fresh_tick(mock_cursor)
+        events = [{"event_type": "endgame_reached", "severity": "critical", "summary": "Endgame"}]
+
+        runtime.persist_full_tick(session_id, 0, events=events)
+
+        tick_event_deletes = [
+            call
+            for call in mock_cursor.execute.call_args_list
+            if "DELETE FROM tick_event" in call[0][0]
+        ]
+        assert len(tick_event_deletes) == 1
+        assert mock_cursor.executemany.call_count == 1
+        insert_sql = mock_cursor.executemany.call_args_list[0][0][0]
+        assert "INSERT INTO tick_event" in insert_sql
+
+
+# ══════════════════════════════════════════════════════════════════════
 # T012: hydrate_graph — graph reconstruction + JSONB round-trip
 # ══════════════════════════════════════════════════════════════════════
 

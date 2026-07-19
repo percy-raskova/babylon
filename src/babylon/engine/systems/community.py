@@ -28,7 +28,13 @@ from babylon.models.entities.community import (
 )
 from babylon.models.entities.consciousness import SUBSTRATE_FLOOR_DEFAULTS, OrgContribution
 from babylon.models.entities.contradiction import Contradiction
-from babylon.models.enums import CommunityType, ConsciousnessTendency, HyperedgeCategory, SocialRole
+from babylon.models.enums import (
+    CommunityType,
+    ConsciousnessTendency,
+    HyperedgeCategory,
+    NodeType,
+    SocialRole,
+)
 
 if TYPE_CHECKING:
     from babylon.kernel.graph_protocol import GraphProtocol
@@ -394,7 +400,7 @@ def _compute_consciousness_from_orgs(
     org_data: list[tuple[str, set[str], ConsciousnessTendency, float, float]] = []
     max_orgs = 500
     org_count = 0
-    for node in graph.query_nodes(node_type="organization"):
+    for node in graph.query_nodes(node_type=NodeType.ORGANIZATION):
         attrs = node.attributes
         tendency_raw = attrs.get("consciousness_tendency")
         if tendency_raw is None:
@@ -463,7 +469,7 @@ def _collect_memberships(
     all_memberships: list[CommunityMembership] = []
     agent_memberships: dict[str, list[CommunityMembership]] = {}
 
-    for node in graph.query_nodes(node_type="social_class"):
+    for node in graph.query_nodes(node_type=NodeType.SOCIAL_CLASS):
         if not node.attributes.get("active", True):
             continue
         memberships = _extract_memberships_from_node(node.attributes)

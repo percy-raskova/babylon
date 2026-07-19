@@ -28,7 +28,7 @@ if TYPE_CHECKING:
 from babylon.kernel.system_base import SystemBase
 from babylon.kernel.system_protocol import ContextType
 from babylon.kernel.tick_partition import TickPartition
-from babylon.models.enums import EdgeType
+from babylon.models.enums import EdgeType, NodeType
 
 logger = logging.getLogger(__name__)
 
@@ -107,7 +107,7 @@ class ContradictionFieldSystem(SystemBase):
         field_max = services.defines.contradiction_field.field_max
 
         # Process all social_class nodes
-        for node in graph.query_nodes(node_type="social_class"):
+        for node in graph.query_nodes(node_type=NodeType.SOCIAL_CLASS):
             node_id = node.id
             attrs = dict(node.attributes)
 
@@ -181,7 +181,7 @@ class ContradictionFieldSystem(SystemBase):
         atomization = self._atomization_gap(graph)
         tension_index = self._build_tension_index(graph)
 
-        for node in graph.query_nodes(node_type="social_class"):
+        for node in graph.query_nodes(node_type=NodeType.SOCIAL_CLASS):
             node_id = node.id
             tensions = tension_index.get(node_id)
             exploitation = sum(tensions) / len(tensions) if tensions else 0.0

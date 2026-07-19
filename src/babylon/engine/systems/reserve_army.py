@@ -14,7 +14,7 @@ from babylon.kernel.event_bus import Event
 from babylon.kernel.system_base import SystemBase
 from babylon.kernel.system_protocol import ContextType
 from babylon.kernel.tick_partition import TickPartition
-from babylon.models.enums import EventType
+from babylon.models.enums import EventType, NodeType
 
 if TYPE_CHECKING:
     from babylon.kernel.graph_protocol import GraphProtocol
@@ -60,7 +60,7 @@ class ReserveArmySystem(SystemBase):
 
         # Lowercase per WorldState.to_graph (_node_type="territory") — the
         # capitalized "Territory" filter matched ZERO nodes in production.
-        for node in list(protocol.query_nodes(node_type="territory")):
+        for node in list(protocol.query_nodes(node_type=NodeType.TERRITORY)):
             data = node.attributes
 
             # Read reserve_ratio from node (set by data loader or prior system)

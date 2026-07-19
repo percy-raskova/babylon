@@ -280,6 +280,78 @@ class TestRouteAgitationToTernary:
 
 @pytest.mark.unit
 @pytest.mark.math
+class TestChauvinistPressure:
+    """``chauvinist_pressure`` (Consciousness Recoupling design spec, §2 Change
+    2): a positive wage-value balance biases bifurcation TOWARD the fascist
+    pole by reducing ``effective_solidarity``. Derived in ``ideology.py`` from
+    POSITIVE ``balance``; negative balance contributes zero (wired
+    separately -- this module only tests the routing mechanics)."""
+
+    def test_default_is_backward_compatible(self) -> None:
+        """Omitting ``chauvinist_pressure`` must behave EXACTLY as before
+        (default 0.0 -- every existing caller is unaffected)."""
+        without_kwarg = route_agitation_to_ternary(
+            agitation=1.0, solidarity_factor=0.6, education_pressure=0.1
+        )
+        with_zero = route_agitation_to_ternary(
+            agitation=1.0,
+            solidarity_factor=0.6,
+            education_pressure=0.1,
+            chauvinist_pressure=0.0,
+        )
+        assert without_kwarg == with_zero
+
+    def test_chauvinist_pressure_reduces_effective_solidarity(self) -> None:
+        """Nonzero chauvinist_pressure must shift routing away from
+        revolutionary (r) and toward fascist (f), relative to the same
+        agitation/solidarity with zero pressure."""
+        dr_no_pressure, _, df_no_pressure = route_agitation_to_ternary(
+            agitation=1.0,
+            solidarity_factor=0.6,
+            education_pressure=0.0,
+            chauvinist_pressure=0.0,
+        )
+        dr_pressured, _, df_pressured = route_agitation_to_ternary(
+            agitation=1.0,
+            solidarity_factor=0.6,
+            education_pressure=0.0,
+            chauvinist_pressure=0.6,
+        )
+        assert dr_pressured < dr_no_pressure
+        assert df_pressured > df_no_pressure
+
+    def test_chauvinist_pressure_can_flip_the_dominant_pole(self) -> None:
+        """With solidarity alone favoring revolutionary (effective_solidarity
+        > 0.5), sufficient chauvinist_pressure must flip the dominant route
+        to fascist -- this is the mechanism that lets a positive wage-value
+        balance override an otherwise-favorable solidarity reading."""
+        dr, _, df = route_agitation_to_ternary(
+            agitation=1.0,
+            solidarity_factor=0.6,
+            education_pressure=0.0,
+            chauvinist_pressure=0.5,
+        )
+        assert df > dr
+
+    def test_effective_solidarity_clamped_at_floor_not_negative(self) -> None:
+        """chauvinist_pressure larger than solidarity + education must clamp
+        effective_solidarity to 0.0, not go negative (which would invert the
+        routing formula's (1 - effective_solidarity) term past 1.0)."""
+        dr, _, df = route_agitation_to_ternary(
+            agitation=1.0,
+            solidarity_factor=0.2,
+            education_pressure=0.0,
+            chauvinist_pressure=5.0,
+        )
+        assert dr == pytest.approx(0.0)
+        # All consumed agitation routes to fascist at the clamped floor.
+        consumed = 1.0 * ConsciousnessDefines().agitation_consumption_rate
+        expected_df = consumed * 1.0 * ConsciousnessDefines().routing_scale
+        assert df == pytest.approx(expected_df)
+
+
+@pytest.mark.unit
+@pytest.mark.math
 class TestNormalizeToSimplex:
     """normalize_to_simplex: ensure r + l + f = 1."""
 

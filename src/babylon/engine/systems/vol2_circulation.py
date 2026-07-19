@@ -46,6 +46,7 @@ from babylon.domain.economics.boundary_flow_register import (
     NodeKind,
 )
 from babylon.kernel.system_base import SystemBase
+from babylon.models.enums import NodeType
 
 if TYPE_CHECKING:
     from babylon.domain.economics.lodes_commute_matrix import (
@@ -160,7 +161,7 @@ class Vol2CirculationStep:
         # ── 1. Snapshot pre-state v vector for in-area hexes ────────────────
         # We treat any hex node carrying _node_type == "hex" as in-area.
         hex_v: dict[str, float] = {}
-        for node in protocol.query_nodes(node_type="hex"):
+        for node in protocol.query_nodes(node_type=NodeType.HEX):
             hex_v[node.id] = float(node.attributes.get("v", 0.0))
 
         pre_total_v = float(sum(hex_v.values()))

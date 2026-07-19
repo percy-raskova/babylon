@@ -2347,7 +2347,25 @@ class PostgresRuntime:
             self.persist_hex_activity(game_id, tick, hex_activities or [], _cursor=cur)
             if economic_summary:
                 self.persist_economic_summary(game_id, tick, economic_summary, _cursor=cur)
-            self.persist_tick_events(game_id, tick, events or [], _cursor=cur)
+            # Unlike the six additive (``ON CONFLICT DO NOTHING``) helpers
+            # above, ``persist_tick_events``'s default ``replace=True`` is a
+            # DELETE-then-INSERT: a caller that passes no ``events`` at all
+            # (``None`` — "I have nothing to say about this tick's events",
+            # e.g. the snapshot-table-only caller in
+            # ``EngineBridge._persist_snapshots_safe``, which never carries
+            # events) must NOT be treated as "clear every event this tick
+            # already has" — that silently discarded every real
+            # ``tick_event`` row (including ``ENDGAME_REACHED``) moments
+            # after ``EngineBridge._persist_tick_events_safe`` wrote it
+            # earlier in the same ``resolve_tick`` call, on EVERY tick of
+            # EVERY session (found via a live-DB delete-audit trigger while
+            # investigating why ``get_endgame_state`` never saw a real
+            # horizon termination). ``events=[]`` (an explicit empty list,
+            # as the atomicity/immutability integration tests pass) is a
+            # real, intentional "no events this tick" and still clears +
+            # writes nothing, honoring the existing all-or-nothing contract.
+            if events is not None:
+                self.persist_tick_events(game_id, tick, events, _cursor=cur)
 
     # ─── Spec 037: hex_latest Refresh ────────────────────────────────
 

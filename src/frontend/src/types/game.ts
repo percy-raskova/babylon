@@ -98,7 +98,36 @@ export interface MapSnapshotMetadata {
    * lenses honestly before/without a given backend property).
    */
   available_metrics?: string[];
+  /**
+   * Track 1 / Task 6: territory-anchored SOLIDARITY edges — the cockpit map
+   * layer's data source for drawing solidarity as literal lines
+   * (`EngineBridge.get_map_snapshot`, `_build_solidarity_edge_lines`,
+   * `web/game/engine_bridge.py`). Fog-gated server-side: BOTH endpoints must
+   * be in the viewer's organizing reach or the edge is OMITTED entirely (an
+   * edge's existence is itself political information) — never present with
+   * a null/placeholder endpoint. Absent when the optional metadata block
+   * failed to build (best-effort — never fails the map); an empty array is
+   * the honest "no visible solidarity yet" state, not an error.
+   */
+  solidarity_edges?: SolidarityEdgeLine[];
   [key: string]: unknown;
+}
+
+/**
+ * One `metadata.solidarity_edges[]` entry (`_build_solidarity_edge_lines`) —
+ * a single visible SOLIDARITY edge between two `social_class` nodes,
+ * territory-anchored via the bridge's existing TENANCY resolution. Mirrors
+ * `FieldStateEdge`'s `source_territory`/`target_territory` convention:
+ * `null` (key present, never omitted) when that endpoint class has no
+ * resolvable TENANCY territory — honest absence, not a fabricated one.
+ */
+export interface SolidarityEdgeLine {
+  source: string;
+  target: string;
+  source_territory: string | null;
+  target_territory: string | null;
+  /** `SolidaritySystem`/`StruggleSystem`-mutated edge strength, real not inert. */
+  solidarity_strength: number;
 }
 
 /** Trap detection output from the engine. */
@@ -314,8 +343,16 @@ export interface OrgState {
   class_character: string;
   cohesion: number;
   cadre_level: number;
+  /** Never gated (`budget` is never in `ORG_POLITICAL_FIELDS` — see
+   *  `game.fog.filter`), always a real number. */
   budget: number;
-  heat: number;
+  /** `heat` IS gated (`game.fog.filter.POLITICAL_FIELDS`): a non-player org
+   *  outside the viewer's organizing reach with no ledger entry renders
+   *  `null` — an honest "unknown to the player", never a fabricated 0.0
+   *  (Constitution III.11, Track 1 Task 4/5). Consumers MUST null-guard
+   *  before formatting (`StateOrgList`'s prior unguarded `.toFixed()` crash
+   *  was the regression this comment documents). */
+  heat: number | null;
   territory_ids: string[];
   hyperedge_memberships: string[];
   /** Null until the engine computes an org-level ideology distribution —
@@ -1060,6 +1097,28 @@ export interface CountyFlowSnapshot {
 }
 
 /**
+ * The Veil of Money's serialized status (Track 2 T2-8/T2-9, spec-117 §5d,
+ * D7) — `web/game/veil.py::compute_veil_status`. `tier` is 0 (money-form
+ * only) / 1 (exploitation visible) / 2 (the scissors, fully unlocked).
+ * `value_produced`/`exploitation_rate` here are a Tier-1-gated COPY of the
+ * same-named top-level `EconomyDashboardPayload` fields — `null` below
+ * Tier 1, enforced server-side (never a client-side-only hide). G4
+ * (veil-leak closure): the top-level fields are now gated by the EXACT
+ * same tier (`web/game/veil.py::gate_value_axis_fields`) — a prior version
+ * of this comment claimed they were deliberately ungated; that was the
+ * leak the audit found. `veil.*` and the top-level fields always agree.
+ */
+export interface VeilStatus {
+  tier: 0 | 1 | 2;
+  /** Doctrine node id whose acquisition advances the tier, `null` at tier 2. */
+  next_unlock_node_id: string | null;
+  /** That node's human-readable name, `null` at tier 2. */
+  next_unlock_label: string | null;
+  value_produced: number | null;
+  exploitation_rate: number | null;
+}
+
+/**
  * GET /api/games/{id}/economy/ (no `territory_id`) — graph-wide economy
  * dashboard. See `EngineBridge.get_economy_dashboard`. Distinct from
  * `EconomyPayload`, which is the per-territory shape returned when
@@ -1068,8 +1127,10 @@ export interface CountyFlowSnapshot {
 export interface EconomyDashboardPayload {
   tick: number;
   has_data: boolean;
-  value_produced: number;
-  rent_extracted: number;
+  /** `null` below the Veil's Tier 1 (G4) — same gate as `veil.value_produced`. */
+  value_produced: number | null;
+  /** `null` below the Veil's Tier 1 (G4) — imperial-rent family. */
+  rent_extracted: number | null;
   exploitation_rate: number | null;
   profit_rate: number | null;
   occ: number | null;
@@ -1081,6 +1142,45 @@ export interface EconomyDashboardPayload {
   wealth_by_class_role: Record<string, number>;
   /** Hex-level static-economy broadcast (spec-109 A7), surfaced when reachable. */
   county_flow: CountyFlowSnapshot;
+  /**
+   * T2-6a (spec-117) — the Fundamental Theorem, graph-wide: `wage_flow_total`
+   * (Σ core wages paid, W_c) minus `value_produced` (Σ value produced, V_c).
+   * Promotes the per-class `imperial_rent_gap` already computed for the
+   * inspector popup (`_social_class_inspector_fields`) to a graph-wide total
+   * — same sign convention (positive = core wages exceed value produced, an
+   * imperial subsidy). Both addends are extensive totals, so this sum
+   * carries none of the unweighted-mean-of-a-ratio risk a per-region
+   * average would. `null` below the Veil's Tier 1 (G4) — imperial-rent
+   * family, same gate as `imperial_rent_gap_by_region` below.
+   */
+  imperial_rent_gap: number | null;
+  /**
+   * T2-6b (spec-117) — net-new per-territory breakdown. One row per
+   * territory with at least one positive-population TENANCY-linked tenant
+   * class; `gap_per_capita` is the population-share-weighted mean of each
+   * tenant's own `(core_wages - wealth) / population`
+   * (`ScaleAdjunction.aggregate_intensive`, never a raw unweighted average —
+   * see `_imperial_rent_gap_by_region`'s docstring). Empty when no territory
+   * has a positive-population tenant this session (Constitution III.11 —
+   * never a fabricated row) OR below the Veil's Tier 1 (G4) — the two
+   * "empty" cases are indistinguishable on the wire by design.
+   */
+  imperial_rent_gap_by_region: ImperialRentGapRegion[];
+  /** The Veil of Money's tier status (Track 2 T2-8/T2-9). */
+  veil: VeilStatus;
+}
+
+/**
+ * One row of `EconomyDashboardPayload.imperial_rent_gap_by_region` — see
+ * `EngineBridge.get_economy_dashboard` / `_imperial_rent_gap_by_region`.
+ */
+export interface ImperialRentGapRegion {
+  territory_id: string;
+  /** Total population across the territory's positive-population tenants. */
+  population: number;
+  wc_per_capita: number;
+  vc_per_capita: number;
+  gap_per_capita: number;
 }
 
 /**
@@ -1125,7 +1225,10 @@ export interface StateApparatusDashboard {
   organizations: OrgState[];
   org_count: number;
   total_repression_budget: number;
-  total_heat: number;
+  /** `None` (honest unknown) when every state org's heat is masked by fog —
+   *  never a fabricated `0.0` (`_build_state_apparatus_dashboard`,
+   *  Constitution III.11). `StatChip` already renders this null-safely. */
+  total_heat: number | null;
   state_finances: Record<string, unknown>;
   recent_actions: GameEvent[];
 }

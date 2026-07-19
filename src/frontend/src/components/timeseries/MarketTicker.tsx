@@ -10,7 +10,7 @@
  */
 
 import type { TimeseriesPayload } from "@/types/game";
-import { deriveTickerState, latestMeltDrift, type TickerTone } from "@/lib/scissors";
+import { deriveTickerState, latestMeltDrift, meltCopy, type TickerTone } from "@/lib/scissors";
 
 const TONE_CLASS: Record<TickerTone, string> = {
   crash: "text-laser",
@@ -19,13 +19,6 @@ const TONE_CLASS: Record<TickerTone, string> = {
   slump: "text-ash",
   steady: "text-ash",
 };
-
-function meltCopy(drift: number): string {
-  const pct = Math.abs(drift * 100).toFixed(1);
-  return drift >= 0
-    ? `MELT drift +${(drift * 100).toFixed(1)}% — $1 commands ${pct}% less labor than its value basis`
-    : `MELT drift ${(drift * 100).toFixed(1)}% — $1 commands ${pct}% more labor than its value basis`;
-}
 
 export function MarketTicker({
   payload,

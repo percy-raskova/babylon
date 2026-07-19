@@ -2,7 +2,7 @@
 
 Nine end-to-end scenarios from quickstart.md validating the full Organization
 Base Model across all subtypes, composition calculators, consciousness effect,
-topology classification, key figure identification, and graph round-trip.
+and graph round-trip.
 """
 
 from __future__ import annotations
@@ -10,21 +10,14 @@ from __future__ import annotations
 import pytest
 from pydantic import ValidationError
 
-from babylon.config.defines import OrganizationDefines
 from babylon.domain.organizations.composition import (
     class_composition,
     lifecycle_composition,
-)
-from babylon.domain.organizations.topology import (
-    classify_topology,
-    cohesion_loss_on_removal,
-    identify_key_figures,
 )
 from babylon.models.entities.organization import (
     Business,
     CivilSocietyOrg,
     IntelMethodology,
-    KeyFigure,
     PoliticalFaction,
     StateApparatus,
 )
@@ -36,7 +29,6 @@ from babylon.models.enums import (
     LegalStanding,
     OrgType,
     ServiceType,
-    TopologyType,
 )
 from babylon.models.world_state import WorldState
 from babylon.topology.graph import BabylonGraph
@@ -301,52 +293,6 @@ class TestScenario6LifecycleComposition:
 
 
 # =========================================================================
-# Scenario 7: Consciousness Effect — Revolutionary Faction (US3, SC-003)
-# =========================================================================
-
-
-class TestScenario8KeyFigures:
-    """STAR topology identification and key figure analysis."""
-
-    @pytest.fixture
-    def star_graph(self) -> BabylonGraph:
-        """Church COMMAND graph: pastor as hub, 3 deacons as leaves."""
-        G = BabylonGraph()
-        nodes = ["kf_pastor", "kf_deacon_1", "kf_deacon_2", "kf_deacon_3"]
-        for n in nodes:
-            G.add_node(n, _node_type="key_figure", name=n, role="key_figure")
-        G.add_edge("kf_pastor", "kf_deacon_1", edge_type=EdgeType.COMMAND)
-        G.add_edge("kf_pastor", "kf_deacon_2", edge_type=EdgeType.COMMAND)
-        G.add_edge("kf_pastor", "kf_deacon_3", edge_type=EdgeType.COMMAND)
-        return G
-
-    @pytest.mark.integration
-    def test_star_topology_detected(self, star_graph: BabylonGraph) -> None:
-        members = ["kf_pastor", "kf_deacon_1", "kf_deacon_2", "kf_deacon_3"]
-        topo = classify_topology("org_first_baptist", members, star_graph)
-        assert topo.topology_type == TopologyType.STAR
-
-    @pytest.mark.integration
-    def test_pastor_is_sole_key_figure(self, star_graph: BabylonGraph) -> None:
-        members = ["kf_pastor", "kf_deacon_1", "kf_deacon_2", "kf_deacon_3"]
-        key_figs = identify_key_figures("org_first_baptist", members, star_graph)
-        assert len(key_figs) == 1
-        assert key_figs[0].id == "kf_pastor"
-        assert key_figs[0].is_singleton is True
-
-    @pytest.mark.integration
-    def test_cohesion_loss_on_pastor_removal(self) -> None:
-        """Removing pastor from church (cohesion 0.8): 0.8 - 0.2 = 0.6."""
-        defines = OrganizationDefines()
-        new_cohesion = cohesion_loss_on_removal(
-            current_cohesion=0.8,
-            removed_count=1,
-            defines=defines,
-        )
-        assert new_cohesion == pytest.approx(0.6)
-
-
-# =========================================================================
 # Scenario 9: Graph Round-Trip (US1, SC-001/SC-007)
 # =========================================================================
 
@@ -363,21 +309,6 @@ class TestScenario9GraphRoundTrip:
         church: CivilSocietyOrg,
     ) -> None:
         """All 4 subtypes survive serialization round-trip."""
-        pastor = KeyFigure(
-            id="kf_pastor",
-            name="Pastor Johnson",
-            organization_id="org_first_baptist",
-            role="pastor",
-            structural_importance=0.9,
-            is_singleton=True,
-        )
-        deacon = KeyFigure(
-            id="kf_deacon_1",
-            name="Deacon Smith",
-            organization_id="org_first_baptist",
-            role="deacon",
-        )
-
         world = WorldState(
             tick=0,
             organizations={
@@ -385,10 +316,6 @@ class TestScenario9GraphRoundTrip:
                 "org_ford": ford,
                 "org_rwp": rwp,
                 "org_first_baptist": church,
-            },
-            key_figures={
-                "kf_pastor": pastor,
-                "kf_deacon_1": deacon,
             },
         )
 
@@ -413,10 +340,6 @@ class TestScenario9GraphRoundTrip:
         assert reconstructed.organizations["org_rwp"].is_player is True
         assert reconstructed.organizations["org_first_baptist"].legitimacy == 0.7
 
-        # Key figures survive
-        assert len(reconstructed.key_figures) == 2
-        assert reconstructed.key_figures["kf_pastor"].organization_id == "org_first_baptist"
-
     @pytest.mark.integration
     def test_graph_node_types(
         self,
@@ -424,23 +347,14 @@ class TestScenario9GraphRoundTrip:
         church: CivilSocietyOrg,
     ) -> None:
         """Graph nodes carry correct _node_type markers."""
-        pastor = KeyFigure(
-            id="kf_pastor",
-            name="Pastor Johnson",
-            organization_id="org_first_baptist",
-            role="pastor",
-        )
-
         world = WorldState(
             tick=0,
             organizations={
                 "org_detroit_pd": detroit_pd,
                 "org_first_baptist": church,
             },
-            key_figures={"kf_pastor": pastor},
         )
 
         graph = world.to_graph()
         assert graph.nodes["org_detroit_pd"]["_node_type"] == "organization"
         assert graph.nodes["org_first_baptist"]["_node_type"] == "organization"
-        assert graph.nodes["kf_pastor"]["_node_type"] == "key_figure"

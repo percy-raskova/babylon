@@ -585,6 +585,77 @@ class TestResolveStampsUpdatedAt:
 
 @pytest.mark.unit
 @pytest.mark.django_db
+class TestForceEndgameTestHookHeader:
+    """G7-crisis (spec-116 first-session e2e crisis leg): the
+    ``X-Babylon-E2E-Force-Endgame`` request header threads through to
+    ``resolve_game_tick``/``EngineBridge.resolve_tick`` as
+    ``force_endgame_test_hook`` — the view-layer half of the hook (the
+    server-side ``BABYLON_E2E_TEST_HOOKS`` env-var gate lives in
+    ``EngineBridge.resolve_tick`` / ``_e2e_test_hooks_enabled``, covered by
+    ``tests/unit/web/test_endgame_wiring.py::TestForceEndgameTestHook``)."""
+
+    def test_header_present_threads_true_to_the_bridge(self) -> None:
+        from unittest.mock import MagicMock
+
+        import game.api
+
+        client, session = _make_recover_session("active")
+        mock_bridge = MagicMock()
+        mock_bridge.resolve_tick.return_value = {"tick": 4, "events": []}
+        game.api._bridge_instance = mock_bridge
+        try:
+            response = client.post(
+                f"/api/games/{session.id}/resolve/",
+                HTTP_X_BABYLON_E2E_FORCE_ENDGAME="1",
+            )
+        finally:
+            game.api._bridge_instance = None
+
+        assert response.status_code == 200
+        assert mock_bridge.resolve_tick.call_args.kwargs["force_endgame_test_hook"] is True
+
+    def test_header_absent_threads_false_to_the_bridge(self) -> None:
+        from unittest.mock import MagicMock
+
+        import game.api
+
+        client, session = _make_recover_session("active")
+        mock_bridge = MagicMock()
+        mock_bridge.resolve_tick.return_value = {"tick": 4, "events": []}
+        game.api._bridge_instance = mock_bridge
+        try:
+            response = client.post(f"/api/games/{session.id}/resolve/")
+        finally:
+            game.api._bridge_instance = None
+
+        assert response.status_code == 200
+        assert mock_bridge.resolve_tick.call_args.kwargs["force_endgame_test_hook"] is False
+
+    def test_header_wrong_value_threads_false_to_the_bridge(self) -> None:
+        """Only the literal ``"1"`` value counts — anything else (including
+        a truthy-looking string) is honest-false, never coerced."""
+        from unittest.mock import MagicMock
+
+        import game.api
+
+        client, session = _make_recover_session("active")
+        mock_bridge = MagicMock()
+        mock_bridge.resolve_tick.return_value = {"tick": 4, "events": []}
+        game.api._bridge_instance = mock_bridge
+        try:
+            response = client.post(
+                f"/api/games/{session.id}/resolve/",
+                HTTP_X_BABYLON_E2E_FORCE_ENDGAME="true",
+            )
+        finally:
+            game.api._bridge_instance = None
+
+        assert response.status_code == 200
+        assert mock_bridge.resolve_tick.call_args.kwargs["force_endgame_test_hook"] is False
+
+
+@pytest.mark.unit
+@pytest.mark.django_db
 class TestScenarioList:
     """T033: Verify GET /api/scenarios/ returns scenario catalog."""
 

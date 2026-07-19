@@ -259,6 +259,54 @@ describe("VerbForm pre-submit cost line (spec-116 FR-116-4.3)", () => {
   });
 });
 
+describe("VerbForm pre-targeting (Track 1 Task 7)", () => {
+  it("seeds targetId from initialTargetId so Submit sends it without any TargetPicker click", async () => {
+    stubTargets(); // fetched list does NOT include "territory-99" — the preset must still apply
+    const onSubmit = vi.fn();
+    render(
+      <VerbForm
+        gameId={DEFAULT_GAME_ID}
+        orgId="org-1"
+        verb="educate"
+        config={makeConfig()}
+        snapshot={makeSnapshot()}
+        submitting={false}
+        onSubmit={onSubmit}
+        initialTargetId="territory-99"
+        initialTargetLabel="Wayne County"
+      />,
+    );
+    await waitFor(() => expect(screen.getByTestId("target-picker")).toBeInTheDocument());
+    await userEvent.click(screen.getByRole("button", { name: /submit educate/i }));
+    expect(onSubmit).toHaveBeenCalledWith("territory-99", expect.anything());
+  });
+
+  it("shows a visible 'Targeting' note naming the preset label", async () => {
+    stubTargets();
+    render(
+      <VerbForm
+        gameId={DEFAULT_GAME_ID}
+        orgId="org-1"
+        verb="educate"
+        config={makeConfig()}
+        snapshot={makeSnapshot()}
+        submitting={false}
+        onSubmit={vi.fn()}
+        initialTargetId="territory-99"
+        initialTargetLabel="Wayne County"
+      />,
+    );
+    expect(await screen.findByTestId("preset-target-note")).toHaveTextContent("Wayne County");
+  });
+
+  it("renders no preset note when no initial target is given (existing behavior unchanged)", async () => {
+    stubTargets();
+    renderForm(makeConfig());
+    await waitFor(() => expect(screen.getByTestId("target-picker")).toBeInTheDocument());
+    expect(screen.queryByTestId("preset-target-note")).not.toBeInTheDocument();
+  });
+});
+
 describe("VerbForm ineligible empty state (spec-116 FR-4.8)", () => {
   it("renders reason + remedy in the empty state when the verb is ineligible (spec-116 FR-4.8)", async () => {
     server.use(

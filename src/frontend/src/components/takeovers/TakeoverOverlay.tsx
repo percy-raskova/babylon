@@ -1,7 +1,9 @@
 /**
  * TakeoverOverlay — the full-screen overlay host for the Wire, Chronicle,
  * and Dialectic takeovers (spec-110 B5, program 12 owner ruling 2: "Wire,
- * Chronicle/EndState, Dialectic stay full-screen takeovers").
+ * Chronicle/EndState, Dialectic stay full-screen takeovers"). Doctrine
+ * (the 5th takeover) RETIRED from this overlay in Track 3 T3-5 — relocated
+ * to its own routed room, `/game/:id/doctrine` (see `DoctrinePage`).
  *
  * Renders OVER the persistent shell — the map stays mounted underneath
  * (`AppShell` never unmounts it); this is an absolutely-positioned overlay,
@@ -31,7 +33,6 @@ import { WireTakeover } from "./wire/WireTakeover";
 import { ChronicleTakeover } from "./chronicle/ChronicleTakeover";
 import { DialecticTakeover } from "./dialectic/DialecticTakeover";
 import { NetworkTakeover } from "./network/NetworkTakeover";
-import { DoctrineTakeover } from "./doctrine/DoctrineTakeover";
 import type { TakeoverKind } from "@/store/slices/uiSlice";
 
 interface Props {
@@ -51,7 +52,6 @@ const TAKEOVER_LABEL: Record<TakeoverKind, string> = {
   chronicle: "Chronicle",
   dialectic: "Dialectic",
   network: "Network",
-  doctrine: "Doctrine Tree",
 };
 
 export function TakeoverOverlay({ gameId }: Props): React.JSX.Element | null {
@@ -104,7 +104,6 @@ export function TakeoverOverlay({ gameId }: Props): React.JSX.Element | null {
           {active === "chronicle" && <ChronicleTakeover gameId={gameId} />}
           {active === "dialectic" && <DialecticTakeover gameId={gameId} />}
           {active === "network" && <NetworkTakeover gameId={gameId} />}
-          {active === "doctrine" && <DoctrineTakeover gameId={gameId} />}
         </div>
       </div>
     </div>

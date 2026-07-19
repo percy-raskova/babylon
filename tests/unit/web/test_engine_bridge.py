@@ -15,7 +15,9 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from babylon.models.enums import EventType
+from babylon.models.entities.institution import InternalBalanceOfForces
+from babylon.models.entities.social_class import IdeologicalProfile
+from babylon.models.enums import ActionType, EventType
 from babylon.models.events import SimulationEvent
 from babylon.topology.graph import BabylonGraph
 from game.engine_bridge import (
@@ -25,11 +27,14 @@ from game.engine_bridge import (
     EngineBridge,
     _build_initial_state_for_scenario,
     _classify_event,
+    _derive_intel_ledger,
     _heat_delta_by_territory,
     _hex_feature_properties,
     _hex_state_row,
+    _investigate_field_snapshot,
     _mean_territory_attr,
     _org_count_by_territory,
+    _query_investigate_action_results,
     _serialize_territory,
     _state_to_snapshot,
     resolve_scenario,
@@ -561,15 +566,11 @@ class TestActionResultPersistence:
 
         bridge.resolve_tick(sid)
 
-        # Check that persist_action_result was called (or ActionResult.objects.create)
-        # The bridge should write results for each submitted action
-        result_fn = getattr(mock_persistence, "persist_action_result", None)
-        if result_fn is not None:
-            assert result_fn.called, "persist_action_result should be called for each action"
-        else:
-            # If using Django ORM directly, we check via a different mechanism
-            # This test verifies the bridge at least attempts result persistence
-            pass  # Will be validated via integration test
+        # The bridge batches the tick's action rows into one
+        # persist_action_results call (task #43; pool present => Postgres path).
+        assert mock_persistence.persist_action_results.called, (
+            "persist_action_results should be called with the tick's action rows"
+        )
 
 
 @pytest.mark.unit
@@ -1142,6 +1143,67 @@ class TestHexFeaturePropertiesHabitability:
 
 
 @pytest.mark.unit
+class TestHexFeaturePropertiesVeilGate:
+    """G4: the map lens's per-hex value-axis fields
+    (profit_rate/exploitation_rate/occ/imperial_rent/price_divergence) gate
+    on ``veil_tier`` exactly like every other endpoint in the sweep —
+    ``get_map_snapshot``'s own real-tree wiring is covered indirectly via
+    ``TestBalkanizationMapFields``; this pins the pure per-hex composer's
+    gating contract directly (tier-0 sweep, acceptance criterion 1)."""
+
+    @staticmethod
+    def _row() -> Any:
+        from types import SimpleNamespace
+
+        return SimpleNamespace(
+            h3_index="h1",
+            county_fips="26163",
+            county_name="Wayne",
+            bea_ea_code=None,
+            msa_code=None,
+            profit_rate=0.15,
+            exploitation_rate=0.30,
+            occ=2.1,
+            imperial_rent=0.05,
+            heat=0.4,
+            org_count=1,
+            dominant_class=None,
+            pop_total=5000,
+            attributes={"price_divergence": 0.2},
+        )
+
+    def test_veil_tier_none_is_unfogged_byte_identical_to_before_g4(self) -> None:
+        """The default (``veil_tier=None``, every pre-existing direct call
+        site) stays real/ungated — G4 must not regress a single pre-G4 test."""
+        props = _hex_feature_properties(self._row())
+        assert props["profit_rate"] == pytest.approx(0.15)
+        assert props["price_divergence"] == pytest.approx(0.2)
+
+    def test_tier_zero_masks_every_value_axis_field(self) -> None:
+        props = _hex_feature_properties(self._row(), veil_tier=0)
+        assert props["profit_rate"] is None
+        assert props["exploitation_rate"] is None
+        assert props["occ"] is None
+        assert props["imperial_rent"] is None
+        assert props["price_divergence"] is None
+        # Never touched — heat is money-form/political, not value-axis.
+        assert props["heat"] == pytest.approx(0.4)
+
+    def test_tier_one_unlocks_tier1_fields_but_not_the_scissors(self) -> None:
+        props = _hex_feature_properties(self._row(), veil_tier=1)
+        assert props["profit_rate"] == pytest.approx(0.15)
+        assert props["exploitation_rate"] == pytest.approx(0.30)
+        assert props["occ"] == pytest.approx(2.1)
+        assert props["imperial_rent"] == pytest.approx(0.05)
+        assert props["price_divergence"] is None
+
+    def test_tier_two_unlocks_everything(self) -> None:
+        props = _hex_feature_properties(self._row(), veil_tier=2)
+        assert props["profit_rate"] == pytest.approx(0.15)
+        assert props["price_divergence"] == pytest.approx(0.2)
+
+
+@pytest.mark.unit
 class TestHexStateRowStateFips:
     _SID = uuid.UUID("aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee")
 
@@ -1454,6 +1516,17 @@ def _patched_hydrate_state(bridge: EngineBridge, graph: BabylonGraph, tick: int 
     return patch.object(bridge, "hydrate_state", return_value=(mock_state, graph))
 
 
+def _stamp_unlocked_veil(graph: BabylonGraph, org_id: str = "org-player") -> None:
+    """G4: stamp ``org_id`` as this graph's player org with BOTH veil
+    threshold nodes acquired (Tier 2, fully unlocked) — for fixtures built
+    before the Veil-of-Money program existed, whose tests are about real-
+    data arithmetic, not veil gating, and should keep reading real numbers
+    unchanged. See ``TestEconomyDashboardVeil``/``TestVeilGating`` for the
+    dedicated tier-0/1/2 gating coverage."""
+    graph.graph["player_org_id"] = org_id
+    graph.nodes[org_id]["acquired_doctrine_ids"] = ("class_consciousness", "trade_unionism")
+
+
 def _make_balkanization_graph() -> BabylonGraph:
     """Build a graph with orgs, territories, social classes, and spec-070
     faction/sovereign/INFLUENCES/CLAIMS data for de-fixture + balkanization
@@ -1513,8 +1586,19 @@ def _make_balkanization_graph() -> BabylonGraph:
         name="Genesee Proletariat",
         role="proletariat",
         wealth=812.4,
-        agitation=0.62,
-        territory_ids=["T1"],
+        # Real shape: agitation lives under ideology.agitation (nested, per
+        # SocialClass.model_dump()) -- production never emits a flat
+        # top-level "agitation" key. A flat stamp here would silently mask
+        # the get_educate_targets/get_aid_targets bug it once did.
+        ideology=IdeologicalProfile(agitation=0.62).model_dump(),
+        # Deliberately NO territory_ids -- SocialClass has no such field in
+        # production (only Organization/Institution do). The TENANCY edge
+        # below is the real Occupant -> Territory link every verb-target
+        # method resolves through now (Track 1 Task 8c renamed the old
+        # organization-or-territory_ids helper to
+        # `_territory_id_bearing_nodes` and scoped it to `organization`
+        # nodes only -- a fabricated territory_ids here would be inert at
+        # best and a task #45 vocabulary-sentinel violation at worst).
     )
     g.add_edge(
         "org-player",
@@ -1524,6 +1608,7 @@ def _make_balkanization_graph() -> BabylonGraph:
         value_flow=118.9,
         tension=0.34,
     )
+    g.add_edge("sc-genesee-proles", "T1", "tenancy")
 
     g.add_node("FAC_A", "faction", colonial_stance="UPHOLD", is_settler_formation=True)
     g.add_node("FAC_B", "faction", colonial_stance="IGNORE", is_settler_formation=True)
@@ -1565,6 +1650,7 @@ class TestGetEconomy:
         mock_persistence = _make_mock_persistence()
         bridge = EngineBridge(mock_persistence)
         graph = _make_balkanization_graph()
+        _stamp_unlocked_veil(graph)
 
         with _patched_hydrate_state(bridge, graph):
             result = bridge.get_economy(uuid.uuid4(), territory_id="T1")
@@ -1579,6 +1665,7 @@ class TestGetEconomy:
         mock_persistence = _make_mock_persistence()
         bridge = EngineBridge(mock_persistence)
         graph = _make_balkanization_graph()
+        _stamp_unlocked_veil(graph)
 
         with _patched_hydrate_state(bridge, graph):
             result = bridge.get_economy(uuid.uuid4(), territory_id="T2")
@@ -1599,6 +1686,207 @@ class TestGetEconomy:
         result = bridge.get_economy(session_id)
 
         assert result == bridge.get_economy_dashboard(session_id)
+
+    def test_value_produced_includes_social_class_wealth_via_tenancy_not_territory_ids(
+        self,
+    ) -> None:
+        """Track 1 Task 8c: ``SocialClass`` never carries a ``territory_ids``
+        field in production (only ``Organization``/``Institution`` do) --
+        it links to a territory via a real TENANCY edge instead. A
+        territory with NO organization present but a social_class tenant
+        purely via TENANCY (no fabricated ``territory_ids`` stamp,
+        unlike the shared ``T1`` fixture) must still surface that class's
+        wealth in ``value_produced`` -- proving the resolution goes through
+        :func:`game.engine_bridge._tenancy_members_by_territory`, not the
+        territory_ids field no social_class node actually has.
+        """
+        mock_persistence = _make_mock_persistence()
+        bridge = EngineBridge(mock_persistence)
+        graph = _make_balkanization_graph()
+        _stamp_unlocked_veil(graph)
+        graph.add_node(
+            "T3",
+            "territory",
+            name="Oakland County",
+            county_fips="26125",
+            heat=0.1,
+            population=3000,
+        )
+        graph.add_node(
+            "sc-oakland-proles",
+            "social_class",
+            name="Oakland Proletariat",
+            role="proletariat",
+            wealth=555.5,
+            ideology=IdeologicalProfile(agitation=0.1).model_dump(),
+        )
+        graph.add_edge("sc-oakland-proles", "T3", "tenancy")
+
+        with _patched_hydrate_state(bridge, graph):
+            result = bridge.get_economy(uuid.uuid4(), territory_id="T3")
+
+        assert result["has_data"] is True
+        assert result["value_produced"] == pytest.approx(555.5)
+
+
+@pytest.mark.unit
+class TestImperialRentGapByRegion:
+    """spec-117 T2-6b: per-territory Fundamental Theorem reading.
+
+    ``core_wages``/``wealth`` are population-scaled class-level totals (a
+    class node IS its whole demographic block — ``ProductionSystem``:
+    ``produced_value = effective_labor_power * population``), so their raw
+    difference is NOT directly comparable across classes of different
+    population. The per-capita normalization (``gap / population``) is the
+    genuine intensive; ``ScaleAdjunction.aggregate_intensive`` population-
+    share-weights it into the region's own total-gap-over-total-population.
+
+    Adopted from the salvaged red-phase commit ``75b168f2`` (prior attempt
+    died mid-red-phase) — verified correct against
+    :meth:`ScaleAdjunction.aggregate_intensive`'s own math by hand before
+    landing (see this task's report), then implemented fresh.
+    """
+
+    def _graph_with_two_tenants(self) -> BabylonGraph:
+        g = BabylonGraph()
+        g.graph["tick"] = 1
+        g.add_node("T1", "territory", name="Genesee County", population=4000)
+        g.add_node("T2", "territory", name="Washtenaw County", population=2000)
+        # T1 tenant A: population 1000, wealth 500 (Vc/capita=0.5),
+        # core_wages 800 (Wc/capita=0.8) -> gap/capita = +0.3.
+        g.add_node("class-a", "social_class", name="A", role="proletariat", wealth=500.0)
+        g.add_edge("class-a", "T1", "tenancy")
+        g.add_edge("employer-a", "class-a", "wages", value_flow=800.0)
+        g.nodes["class-a"]["population"] = 1000
+        # T1 tenant B: population 3000, wealth 4500 (Vc/capita=1.5),
+        # core_wages 1200 (Wc/capita=0.4) -> gap/capita = -1.1.
+        g.add_node("class-b", "social_class", name="B", role="core_bourgeoisie", wealth=4500.0)
+        g.add_edge("class-b", "T1", "tenancy")
+        g.add_edge("employer-b", "class-b", "wages", value_flow=1200.0)
+        g.nodes["class-b"]["population"] = 3000
+        # T2 tenant C: population 2000, wealth 1000, core_wages 1000 ->
+        # both per-capita 0.5, gap/capita = 0.0.
+        g.add_node("class-c", "social_class", name="C", role="proletariat", wealth=1000.0)
+        g.add_edge("class-c", "T2", "tenancy")
+        g.add_edge("employer-c", "class-c", "wages", value_flow=1000.0)
+        g.nodes["class-c"]["population"] = 2000
+        return g
+
+    def test_region_gap_is_population_weighted_mean_per_capita(self) -> None:
+        from game.engine_bridge import _imperial_rent_gap_by_region
+
+        graph = self._graph_with_two_tenants()
+        rows = _imperial_rent_gap_by_region(graph)
+        by_id = {r["territory_id"]: r for r in rows}
+
+        # T1: (800+1200)/4000 Wc, (500+4500)/4000 Vc, gap = -3000/4000.
+        assert by_id["T1"]["wc_per_capita"] == pytest.approx(0.5)
+        assert by_id["T1"]["vc_per_capita"] == pytest.approx(1.25)
+        assert by_id["T1"]["gap_per_capita"] == pytest.approx(-0.75)
+        assert by_id["T1"]["population"] == pytest.approx(4000)
+
+        # T2: single tenant, both per-capita 0.5 -> gap 0.
+        assert by_id["T2"]["wc_per_capita"] == pytest.approx(0.5)
+        assert by_id["T2"]["vc_per_capita"] == pytest.approx(0.5)
+        assert by_id["T2"]["gap_per_capita"] == pytest.approx(0.0)
+
+    def test_territory_with_only_zero_population_tenant_is_absent(self) -> None:
+        from game.engine_bridge import _imperial_rent_gap_by_region
+
+        graph = self._graph_with_two_tenants()
+        graph.add_node("T3", "territory", name="Oakland County", population=0)
+        graph.add_node("class-d", "social_class", name="D", role="proletariat", wealth=10.0)
+        graph.add_edge("class-d", "T3", "tenancy")
+        graph.nodes["class-d"]["population"] = 0
+
+        rows = _imperial_rent_gap_by_region(graph)
+
+        assert "T3" not in {r["territory_id"] for r in rows}
+
+    def test_class_with_no_tenancy_edge_creates_no_phantom_region(self) -> None:
+        from game.engine_bridge import _imperial_rent_gap_by_region
+
+        graph = self._graph_with_two_tenants()
+        graph.add_node("class-floating", "social_class", name="Floating", wealth=999.0)
+        graph.nodes["class-floating"]["population"] = 500
+
+        rows = _imperial_rent_gap_by_region(graph)
+
+        assert {r["territory_id"] for r in rows} == {"T1", "T2"}
+
+    def test_empty_graph_returns_empty_list(self) -> None:
+        from game.engine_bridge import _imperial_rent_gap_by_region
+
+        assert _imperial_rent_gap_by_region(BabylonGraph()) == []
+
+
+@pytest.mark.unit
+class TestEconomyDashboardFundamentalTheorem:
+    """T2-6a/b (spec-117): get_economy_dashboard's graph-wide Wc/Vc gap
+    (promoted from the per-class ``imperial_rent_gap`` already computed for
+    the inspector popup — same ``core_wages - wealth`` sign convention, just
+    summed graph-wide instead of read per-class) and the net-new per-region
+    breakdown (:func:`_imperial_rent_gap_by_region`)."""
+
+    def _dashboard_result(self, graph: BabylonGraph) -> dict[str, Any]:
+        mock_persistence = _make_mock_persistence()
+        bridge = EngineBridge(mock_persistence)
+        mock_state = MagicMock()
+        mock_state.tick = 10
+        # get_economy_dashboard reads state.economy.imperial_rent_pool /
+        # .current_super_wage_rate -- a bare MagicMock() isn't a real number
+        # and float(MagicMock()) raises, so this pins the "no economy state"
+        # honest-None branch explicitly rather than exercising a MagicMock
+        # by accident.
+        mock_state.economy = None
+        # G4: this class is about the imperial_rent_gap ARITHMETIC, not veil
+        # gating (that's TestEconomyDashboardVeil's job) -- a real, fully-
+        # unlocked player org keeps every assertion below reading real
+        # numbers, matching this fixture's pre-veil-program intent.
+        mock_state.organizations = {
+            "org-player": MagicMock(acquired_doctrine_ids=("class_consciousness", "trade_unionism"))
+        }
+        mock_state.player_org_id = "org-player"
+        with patch.object(bridge, "hydrate_state", return_value=(mock_state, graph)):
+            return bridge.get_economy_dashboard(uuid.uuid4())
+
+    def test_imperial_rent_gap_is_wage_flow_minus_value_produced(self) -> None:
+        graph = _make_balkanization_graph()
+
+        result = self._dashboard_result(graph)
+
+        # _make_balkanization_graph seeds no WAGES edges -> wage_flow_total
+        # is honestly 0.0; value_produced is sc-genesee-proles' wealth
+        # (812.4, the graph's only social_class node).
+        assert result["wage_flow_total"] == pytest.approx(0.0)
+        assert result["value_produced"] == pytest.approx(812.4)
+        assert result["imperial_rent_gap"] == pytest.approx(-812.4)
+
+    def test_imperial_rent_gap_by_region_absent_without_population(self) -> None:
+        graph = _make_balkanization_graph()
+
+        result = self._dashboard_result(graph)
+
+        # sc-genesee-proles is TENANCY-linked to T1 but carries no
+        # `population` field of its own (only Territory nodes do in this
+        # fixture) -> excluded, so the region list is honestly empty rather
+        # than fabricating a per-capita reading with a phantom population.
+        assert result["imperial_rent_gap_by_region"] == []
+
+    def test_imperial_rent_gap_by_region_reflects_positive_population_tenant(self) -> None:
+        graph = _make_balkanization_graph()
+        graph.nodes["sc-genesee-proles"]["population"] = 5000
+        graph.add_edge("employer-genesee", "sc-genesee-proles", "wages", value_flow=1000.0)
+
+        result = self._dashboard_result(graph)
+
+        rows = result["imperial_rent_gap_by_region"]
+        assert len(rows) == 1
+        assert rows[0]["territory_id"] == "T1"
+        assert rows[0]["population"] == pytest.approx(5000)
+        assert rows[0]["wc_per_capita"] == pytest.approx(round(1000.0 / 5000, 4))
+        assert rows[0]["vc_per_capita"] == pytest.approx(round(812.4 / 5000, 4))
+        assert rows[0]["gap_per_capita"] == pytest.approx(round(1000.0 / 5000 - 812.4 / 5000, 4))
 
 
 @pytest.mark.unit
@@ -1671,9 +1959,12 @@ class TestDefixturedVerbTargets:
             name="Washtenaw Proletariat",
             role="proletariat",
             wealth=200.0,
-            agitation=0.2,
-            territory_ids=["T2"],
+            ideology=IdeologicalProfile(agitation=0.2).model_dump(),
+            # No territory_ids -- SocialClass has no such field in production;
+            # the TENANCY edge below is the real link (see the comment on
+            # sc-genesee-proles in _make_balkanization_graph above).
         )
+        graph.add_edge("sc-washtenaw-proles", "T2", "tenancy")
 
         with _patched_hydrate_state(bridge, graph):
             result = bridge.get_educate_targets(uuid.uuid4(), "org-player")
@@ -1703,6 +1994,28 @@ class TestDefixturedVerbTargets:
         assert result["status"] == "ok"
         self._assert_no_fixture_literals(result)
         assert len(result["population_targets"]) >= 1
+
+    def test_aid_targets_agitation_level_reads_real_ideology_agitation(self) -> None:
+        """Track 1 audit (task #45): ``get_aid_targets`` read a flat
+        top-level ``agitation`` key off social_class node data, but
+        ``SocialClass.model_dump()`` (what ``WorldState.to_graph()`` stamps)
+        nests it under ``ideology.agitation`` -- no production graph ever
+        carries a flat ``agitation`` key, so every real game's
+        ``agitation_level`` was silently ``0.0``. This had NO prior test
+        coverage at all (unlike ``get_educate_targets``'s ``avg_agitation``,
+        which a fixture that mirrored the same flat shape had masked).
+        """
+        mock_persistence = _make_mock_persistence()
+        bridge = EngineBridge(mock_persistence)
+        graph = _make_balkanization_graph()
+
+        with _patched_hydrate_state(bridge, graph):
+            result = bridge.get_aid_targets(uuid.uuid4(), "org-player")
+
+        target = next(
+            t for t in result["population_targets"] if t["community_id"] == "sc-genesee-proles"
+        )
+        assert target["material_conditions"]["agitation_level"] == pytest.approx(0.62)
 
     def test_aid_targets_empty_when_org_has_no_territories(self) -> None:
         mock_persistence = _make_mock_persistence()
@@ -1746,6 +2059,257 @@ class TestDefixturedVerbTargets:
 
         self._assert_no_fixture_literals(result)
 
+    def test_reproduce_targets_base_population_from_tenancy_not_territory_ids(
+        self,
+    ) -> None:
+        """Track 1 Task 8c: ``base_population`` filtered
+        ``_node_type == "social_class"`` over a helper (``_nodes_in_territory``)
+        that resolves via the ``territory_ids`` field -- a field
+        ``SocialClass`` never carries in production (only
+        ``Organization``/``Institution`` do). Structurally always 0 against
+        real data. A social_class tenant (real TENANCY edge, no fabricated
+        ``territory_ids``) to one of the org's own territories must
+        contribute its population.
+        """
+        mock_persistence = _make_mock_persistence()
+        bridge = EngineBridge(mock_persistence)
+        graph = _make_balkanization_graph()
+        graph.add_node(
+            "sc-real-tenancy",
+            "social_class",
+            name="Detroit Proletariat",
+            role="proletariat",
+            wealth=0.0,
+            population=250_000,
+        )
+        graph.add_edge("sc-real-tenancy", "T1", "tenancy")
+
+        with _patched_hydrate_state(bridge, graph):
+            result = bridge.get_reproduce_targets(uuid.uuid4(), "org-player")
+
+        base_population = result["targets"][0]["modes"]["mass_recruitment"]["recruitment_pool"][
+            "base_population"
+        ]
+        assert base_population >= 250_000
+
+    def test_reproduce_targets_base_population_dedups_class_across_org_territories(
+        self,
+    ) -> None:
+        """A county-scale social class commonly tenants many hex
+        territories the org also operates in -- summing per owned
+        territory-id without dedup would double- (or N-times-) count the
+        same class's population. org-player operates T1 and T2
+        (``_make_balkanization_graph``); tenant the same class to both and
+        assert it is counted exactly once.
+        """
+        mock_persistence = _make_mock_persistence()
+        bridge = EngineBridge(mock_persistence)
+        graph = _make_balkanization_graph()
+        graph.add_node(
+            "sc-real-tenancy",
+            "social_class",
+            name="Detroit Proletariat",
+            role="proletariat",
+            wealth=0.0,
+            population=250_000,
+        )
+        graph.add_edge("sc-real-tenancy", "T1", "tenancy")
+        graph.add_edge("sc-real-tenancy", "T2", "tenancy")
+
+        with _patched_hydrate_state(bridge, graph):
+            result = bridge.get_reproduce_targets(uuid.uuid4(), "org-player")
+
+        base_population = result["targets"][0]["modes"]["mass_recruitment"]["recruitment_pool"][
+            "base_population"
+        ]
+        # sc-genesee-proles (tenant to T1, population unset -> 0) +
+        # sc-real-tenancy (250_000, tenant to BOTH org territories, counted once).
+        assert base_population == 250_000
+
+    def test_attack_targets_p_acquiescence_resolves_via_tenancy_not_territory_ids(
+        self,
+    ) -> None:
+        """Track 1 Task 9: ``get_attack_targets``'s inline ``p_acquiescence``
+        collection filtered ``_node_type == "social_class"`` AND
+        ``tid in data.get("territory_ids", [])`` -- the same root-cause bug
+        Tasks 8/8b/8c fixed elsewhere. ``SocialClass`` has no
+        ``territory_ids`` field in production, so that condition
+        structurally never matched, and ``warsaw_ghetto_flag`` was
+        permanently inert (``population_p_acquiescence`` always ``None``,
+        ``active`` always ``False``) regardless of real survival-probability
+        data. A social_class tenant (real TENANCY edge, no fabricated
+        ``territory_ids``) with ``p_acquiescence`` at/below the Warsaw
+        Ghetto threshold must trip the flag.
+        """
+        mock_persistence = _make_mock_persistence()
+        bridge = EngineBridge(mock_persistence)
+        graph = _make_balkanization_graph()
+        graph.add_node(
+            "sc-desperate-tenancy",
+            "social_class",
+            name="Desperate Detroit Proletariat",
+            role="proletariat",
+            wealth=0.0,
+            p_acquiescence=0.02,
+        )
+        graph.add_edge("sc-desperate-tenancy", "T1", "tenancy")
+
+        with _patched_hydrate_state(bridge, graph):
+            result = bridge.get_attack_targets(uuid.uuid4(), "org-player")
+
+        assert result["warsaw_ghetto_flag"]["population_p_acquiescence"] == pytest.approx(0.02)
+        assert result["warsaw_ghetto_flag"]["active"] is True
+
+
+@pytest.mark.unit
+class TestInvestigateTargetsDemocked:
+    """Track 1 Task 9 (2026-07-18): ``get_investigate_targets`` de-mock.
+
+    The grounding audit found: a hardcoded ``observe_capability``, a literal
+    ``"org-police-union"`` target, a hardcoded ``active_moles_suspected=1``.
+    Only ``territory_scans``' ``target_id``/``name``/``heat`` read the real
+    graph before this task.
+    """
+
+    def test_observe_capability_honest_null_before_any_engine_tick(self) -> None:
+        """A fresh graph with no EH shadow attrs (no engine tick has run
+        EpistemicHorizonSystem yet) must NOT fabricate the old 0.6/TARGETED
+        constant -- honest absence instead."""
+        mock_persistence = _make_mock_persistence()
+        bridge = EngineBridge(mock_persistence)
+        graph = _make_balkanization_graph()
+
+        with _patched_hydrate_state(bridge, graph):
+            result = bridge.get_investigate_targets(uuid.uuid4(), "org-player")
+
+        assert result["observe_capability"] == {
+            "intel_network_strength": None,
+            "max_scan_depth": "UNKNOWN",
+        }
+
+    def test_observe_capability_reads_real_eh_shadow_attrs(self) -> None:
+        """Once EH shadow attrs exist on the org's own territories (written
+        by ``compute_epistemic_horizon``/``_carry_epistemic_horizon`` at
+        tick-resolution time), ``observe_capability`` must reflect them."""
+        mock_persistence = _make_mock_persistence()
+        bridge = EngineBridge(mock_persistence)
+        graph = _make_balkanization_graph()
+        graph.update_node("T1", intel_confidence=0.4, vision_state="mud")
+        graph.update_node("T2", intel_confidence=0.6, vision_state="water")
+
+        with _patched_hydrate_state(bridge, graph):
+            result = bridge.get_investigate_targets(uuid.uuid4(), "org-player")
+
+        assert result["observe_capability"]["intel_network_strength"] == pytest.approx(0.5)
+        assert result["observe_capability"]["max_scan_depth"] == "DEEP"
+
+    def test_targeted_scans_reads_real_organization_not_fixture_literal(self) -> None:
+        """The prior hardcoded ``"org-police-union"``/``"Fraternal Order of
+        Police"`` literal named a node that never existed in any scenario.
+        A real hostile organization sharing the player's territory must
+        appear instead, and the fixture literal must never appear."""
+        mock_persistence = _make_mock_persistence()
+        bridge = EngineBridge(mock_persistence)
+        graph = _make_balkanization_graph()
+        graph.add_node(
+            "org-state-police",
+            "organization",
+            name="Genesee County Sheriff",
+            org_type="state_apparatus",
+            budget=500.0,
+            territory_ids=["T1"],
+        )
+
+        with _patched_hydrate_state(bridge, graph):
+            result = bridge.get_investigate_targets(uuid.uuid4(), "org-player")
+
+        target_ids = {t["target_id"] for t in result["targets"]["targeted_scans"]}
+        assert "org-state-police" in target_ids
+        assert "org-police-union" not in target_ids
+        payload_text = str(result)
+        assert "Fraternal Order of Police" not in payload_text
+
+    def test_targeted_scans_empty_when_no_hostile_org_present(self) -> None:
+        """Constitution III.11: no hostile organization/institution in the
+        org's own territories means an honestly empty list, never a
+        fabricated placeholder target."""
+        mock_persistence = _make_mock_persistence()
+        bridge = EngineBridge(mock_persistence)
+        graph = _make_balkanization_graph()
+
+        with _patched_hydrate_state(bridge, graph):
+            result = bridge.get_investigate_targets(uuid.uuid4(), "org-player")
+
+        assert result["targets"]["targeted_scans"] == []
+
+    def test_counter_intelligence_active_moles_suspected_is_honest_none(self) -> None:
+        """No engine path ever writes an infiltration/mole record anywhere
+        the bridge can read (``resolve_infiltrate`` has zero non-test call
+        sites) -- the prior ``1`` was fabricated. Must be ``None``, not a
+        fabricated count."""
+        mock_persistence = _make_mock_persistence()
+        bridge = EngineBridge(mock_persistence)
+        graph = _make_balkanization_graph()
+
+        with _patched_hydrate_state(bridge, graph):
+            result = bridge.get_investigate_targets(uuid.uuid4(), "org-player")
+
+        assert result["targets"]["counter_intelligence"]["active_moles_suspected"] is None
+
+    def test_territory_scans_likely_reveals_matches_real_resolver_reveal_table(self) -> None:
+        """The prior hardcoded ``likely_reveals`` (``material_readiness``/
+        ``hidden_factions``/``state_deployment``) did not match a single
+        field ``resolve_investigate`` actually reveals for a territory
+        (``heat``/``rent_level``/``population``/``under_eviction``). Must
+        reuse the resolver's own reveal table, not a hand-written list that
+        can silently drift from it."""
+        mock_persistence = _make_mock_persistence()
+        bridge = EngineBridge(mock_persistence)
+        graph = _make_balkanization_graph()
+
+        with _patched_hydrate_state(bridge, graph):
+            result = bridge.get_investigate_targets(uuid.uuid4(), "org-player")
+
+        scan = result["targets"]["territory_scans"][0]
+        assert set(scan["projected_reveals"]["likely_reveals"]) == {
+            "heat",
+            "rent_level",
+            "population",
+            "under_eviction",
+        }
+
+    def test_targets_bounded_to_own_territories_within_organizing_reach(self) -> None:
+        """Fog decision (Track 1 Task 9): this target list is NOT
+        reach-gated, because every target here is already bounded to
+        org_id's own PRESENCE territories -- exactly organizing_reach's
+        first hop. Pin that property directly: every scan target id is
+        inside the org's own organizing reach.
+
+        ``organizing_reach``'s PRESENCE hop walks real PRESENCE edges, not
+        the ``territory_ids`` attribute directly (``Organization.
+        territory_ids`` is materialized as PRESENCE edges by the real
+        engine's ``WorldState.to_graph()`` -- ``game.fog.reach``'s module
+        docstring) -- ``_make_balkanization_graph`` is hand-built and
+        predates that materialization, so this test adds the PRESENCE edges
+        explicitly to exercise the real property rather than an
+        accidentally-empty reach.
+        """
+        from game.engine_bridge import _current_organizing_reach
+
+        mock_persistence = _make_mock_persistence()
+        bridge = EngineBridge(mock_persistence)
+        graph = _make_balkanization_graph()
+        graph.set_graph_attr("player_org_id", "org-player")
+        graph.add_edge("org-player", "T1", "presence")
+        graph.add_edge("org-player", "T2", "presence")
+
+        with _patched_hydrate_state(bridge, graph):
+            result = bridge.get_investigate_targets(uuid.uuid4(), "org-player")
+            reach = _current_organizing_reach(graph)
+
+        for scan in result["targets"]["territory_scans"]:
+            assert scan["target_id"] in reach
+
 
 @pytest.mark.unit
 class TestDefixturedQueryCorrectness:
@@ -1775,6 +2339,7 @@ class TestDefixturedQueryCorrectness:
         mock_persistence = _make_mock_persistence()
         bridge = EngineBridge(mock_persistence)
         graph = _make_balkanization_graph()
+        _stamp_unlocked_veil(graph)
 
         with _patched_hydrate_state(bridge, graph):
             result = bridge.get_economy(uuid.uuid4(), territory_id="T1")
@@ -1820,6 +2385,83 @@ class TestDefixturedQueryCorrectness:
         assert "org-civil-society" in target_ids
 
 
+@pytest.mark.unit
+class TestEducateTargetsResolveViaTenancy:
+    """Track 1 / Task 8 (2026-07-18): ``get_educate_targets`` must resolve
+    social_class targets via TENANCY edges (the real Occupant -> Territory
+    link ``_tenancy_members_by_territory`` already walks for
+    ``_dominant_class_by_territory``/``_solidarity_index_by_territory`` at
+    ``/map/``), not via ``territory_ids`` on the social_class node —
+    ``SocialClass`` has no such field in production (``to_graph`` dumps
+    model fields verbatim; only ``Organization``/``Institution`` carry
+    ``territory_ids``). The old ``_nodes_in_territory``-based lookup
+    structurally always returned ``[]`` for the social_class half of its
+    ``_node_type in ("social_class", "organization")`` check, so every
+    territory landed in ``unavailable_communities`` regardless of real
+    TENANCY data.
+    """
+
+    def _production_faithful_graph(self) -> BabylonGraph:
+        """A graph shaped exactly like a real hydrated session: the
+        social_class node carries NO ``territory_ids`` key at all (unlike
+        ``_make_balkanization_graph``'s ``sc-genesee-proles``, which still
+        carries the fictitious attribute for the other, out-of-scope
+        verb-target tests that key off it) — only a live TENANCY edge
+        connects it to its territory.
+        """
+        g = BabylonGraph()
+        g.graph["tick"] = 3
+        g.add_node(
+            "org-player",
+            "organization",
+            id="org-player",
+            name="Cell",
+            org_type="political_faction",
+            cadre_level=1.0,
+            cohesion=0.4,
+            budget=50.0,
+            heat=0.1,
+            territory_ids=["T1"],
+        )
+        g.add_node("T1", "territory", name="Genesee County")
+        g.add_node(
+            "sc-genesee-proles",
+            "social_class",
+            id="sc-genesee-proles",
+            name="Genesee Proletariat",
+            role="proletariat",
+            wealth=800.0,
+            ideology=IdeologicalProfile(agitation=0.5).model_dump(),
+        )
+        g.add_edge("sc-genesee-proles", "T1", "tenancy")
+        return g
+
+    def test_resolves_social_class_via_tenancy_edge_no_territory_ids_field(self) -> None:
+        mock_persistence = _make_mock_persistence()
+        bridge = EngineBridge(mock_persistence)
+        graph = self._production_faithful_graph()
+
+        with _patched_hydrate_state(bridge, graph):
+            result = bridge.get_educate_targets(uuid.uuid4(), "org-player")
+
+        target_ids = {t["community_id"] for t in result["targets"]}
+        assert "sc-genesee-proles" in target_ids
+        assert result["unavailable_communities"] == []
+
+    def test_territory_with_no_tenancy_members_is_honestly_unavailable(self) -> None:
+        mock_persistence = _make_mock_persistence()
+        bridge = EngineBridge(mock_persistence)
+        graph = self._production_faithful_graph()
+        graph.remove_edge("sc-genesee-proles", "T1")
+
+        with _patched_hydrate_state(bridge, graph):
+            result = bridge.get_educate_targets(uuid.uuid4(), "org-player")
+
+        assert result["targets"] == []
+        unavailable_ids = {u["community_id"] for u in result["unavailable_communities"]}
+        assert "community-unknown-T1" in unavailable_ids
+
+
 def _make_wayne_tick0_graph() -> BabylonGraph:
     """Tick-0 wayne_county-shaped graph for eligibility tests.
 
@@ -1862,7 +2504,7 @@ def _make_wayne_tick0_graph() -> BabylonGraph:
         name="Detroit Proletariat",
         role="proletariat",
         wealth=15.0,
-        agitation=0.2,
+        ideology=IdeologicalProfile(agitation=0.2).model_dump(),
     )
     return g
 
@@ -1920,8 +2562,11 @@ class TestVerbEligibility:
             assert by_verb[verb]["remedy"] is None, verb
 
     def test_educate_flips_eligible_when_social_class_shares_territory(self) -> None:
+        # A live TENANCY edge (the real Occupant -> Territory link), not a
+        # fabricated `territory_ids` stamp on the social_class node --
+        # SocialClass has no such field in production (Task 8 / Task 8b).
         graph = _make_wayne_tick0_graph()
-        graph.update_node("C001", territory_ids=["hex-1"])
+        graph.add_edge("C001", "hex-1", "tenancy")
         result, _ = self._eligibility(graph)
         by_verb = {v["verb"]: v for v in result["verbs"]}
         assert by_verb["educate"]["eligible"] is True
@@ -1940,6 +2585,115 @@ class TestVerbEligibility:
         with _patched_hydrate_state(bridge, _make_wayne_tick0_graph(), tick=0):
             result = bridge.get_verb_eligibility(uuid.uuid4(), "NOT-AN-ORG")
         assert result == {"status": "error", "error": "Org not found"}
+
+
+@pytest.mark.unit
+class TestVerbEligibilityAgreesWithTargetsRealWayneCounty:
+    """Track 1 / Task 8b (2026-07-18): ``get_verb_eligibility`` must agree,
+    verb-by-verb, with whatever the corresponding ``get_*_targets`` method
+    actually returns -- on the REAL ``wayne_county`` scenario graph, not a
+    hand-built fixture.
+
+    This is the exact class of contradiction Task 8 left behind:
+    ``get_educate_targets`` was fixed to resolve social_class targets via
+    TENANCY (:func:`_tenancy_members_by_territory`), but
+    ``get_verb_eligibility``'s ``has_social_class`` predicate still checked
+    the nonexistent ``territory_ids`` field on social_class nodes, so
+    ``educate`` could report ineligible while real targets existed. Pinning
+    eligibility against the target list directly -- rather than testing
+    either side alone -- is what would have caught it.
+    """
+
+    @staticmethod
+    def _bridge_with_real_wayne_graph() -> tuple[EngineBridge, BabylonGraph]:
+        state = _build_initial_state_for_scenario("wayne_county")
+        graph = state.to_graph()
+        mock_persistence = _make_mock_persistence()
+        bridge = EngineBridge(mock_persistence)
+        return bridge, graph
+
+    @pytest.mark.parametrize("org_id", ["ORG001", "ORG002"])
+    def test_educate_eligibility_agrees_with_educate_targets(self, org_id: str) -> None:
+        bridge, graph = self._bridge_with_real_wayne_graph()
+        with _patched_hydrate_state(bridge, graph, tick=0):
+            targets = bridge.get_educate_targets(uuid.uuid4(), org_id)
+            eligibility = bridge.get_verb_eligibility(uuid.uuid4(), org_id)
+
+        by_verb = {v["verb"]: v for v in eligibility["verbs"]}
+        assert by_verb["educate"]["eligible"] == bool(targets["targets"]), (
+            f"educate eligible={by_verb['educate']['eligible']!r} disagrees with "
+            f"get_educate_targets returning {len(targets['targets'])} targets for {org_id}"
+        )
+
+    @pytest.mark.parametrize("org_id", ["ORG001", "ORG002"])
+    def test_aid_eligibility_agrees_with_aid_targets(self, org_id: str) -> None:
+        bridge, graph = self._bridge_with_real_wayne_graph()
+        with _patched_hydrate_state(bridge, graph, tick=0):
+            targets = bridge.get_aid_targets(uuid.uuid4(), org_id)
+            eligibility = bridge.get_verb_eligibility(uuid.uuid4(), org_id)
+
+        by_verb = {v["verb"]: v for v in eligibility["verbs"]}
+        has_any_target = bool(targets["population_targets"]) or bool(targets["org_targets"])
+        assert by_verb["aid"]["eligible"] == has_any_target, (
+            f"aid eligible={by_verb['aid']['eligible']!r} disagrees with get_aid_targets "
+            f"returning {len(targets['population_targets'])} population + "
+            f"{len(targets['org_targets'])} org targets for {org_id}"
+        )
+
+    def test_aid_population_targets_resolves_via_tenancy_real_wayne_county(self) -> None:
+        """``get_aid_targets``'s population arm has the SAME
+        ``_nodes_in_territory``/``territory_ids`` root-cause bug as
+        pre-fix ``get_educate_targets`` -- ``ORG001``'s own territories
+        (``862ab21b7ffffff``, ``862ab2c57ffffff``) are real TENANCY homes
+        for ``C001`` in the ``wayne_county`` scenario, so the population
+        arm must not come back empty. The ``aid`` eligibility bit alone
+        does not catch this: ``has_org_in_reach`` (ORG001/ORG002 share
+        territory) keeps ``aid`` eligible regardless, masking a fully
+        empty population arm -- hence this direct assertion.
+        """
+        bridge, graph = self._bridge_with_real_wayne_graph()
+        with _patched_hydrate_state(bridge, graph, tick=0):
+            targets = bridge.get_aid_targets(uuid.uuid4(), "ORG001")
+
+        assert targets["population_targets"], (
+            "get_aid_targets population arm returned no targets for ORG001 despite "
+            "real TENANCY-linked social_class C001 in its own territories"
+        )
+
+    def test_attack_targets_p_acquiescence_resolves_via_tenancy_real_wayne_county(
+        self,
+    ) -> None:
+        """Track 1 Task 9: confirmed empirically against the real
+        ``wayne_county`` scenario -- ``C001`` (real ``p_acquiescence=0.0``)
+        tenants ORG001's own territory via TENANCY, but the pre-fix inline
+        loop's ``tid in data.get("territory_ids", [])`` check on
+        social_class nodes never matched (SocialClass carries no
+        ``territory_ids`` in production), so ``p_acquiescence_values`` was
+        always ``[]`` and ``warsaw_ghetto_flag.population_p_acquiescence``
+        was always ``None``. After the fix it must surface the real value.
+        """
+        bridge, graph = self._bridge_with_real_wayne_graph()
+        with _patched_hydrate_state(bridge, graph, tick=0):
+            result = bridge.get_attack_targets(uuid.uuid4(), "ORG001")
+
+        assert result["warsaw_ghetto_flag"]["population_p_acquiescence"] is not None
+
+    def test_investigate_targeted_scans_finds_real_state_apparatus_real_wayne_county(
+        self,
+    ) -> None:
+        """Track 1 Task 9: ``ORG002`` (Detroit Police Department,
+        ``org_type=state_apparatus``) shares territory
+        ``862ab21b7ffffff``/``862ab2c57ffffff`` with ``ORG001`` in the real
+        ``wayne_county`` scenario. The pre-fix ``targeted_scans`` always
+        returned the fictional literal ``"org-police-union"`` regardless;
+        after the fix it must surface the real ORG002 node instead."""
+        bridge, graph = self._bridge_with_real_wayne_graph()
+        with _patched_hydrate_state(bridge, graph, tick=0):
+            result = bridge.get_investigate_targets(uuid.uuid4(), "ORG001")
+
+        target_ids = {t["target_id"] for t in result["targets"]["targeted_scans"]}
+        assert "ORG002" in target_ids
+        assert "org-police-union" not in target_ids
 
 
 @pytest.mark.unit
@@ -2052,12 +2806,19 @@ class TestResolveTickConsumesEngineResults:
         bridge = EngineBridge(mock_persistence)
         bridge.resolve_tick(self._SID)
 
-        mock_persistence.persist_action_result.assert_called_once()
-        kwargs = mock_persistence.persist_action_result.call_args.kwargs
-        assert kwargs["success"] is True
-        assert kwargs["consciousness_delta"] == 0.05
-        assert kwargs["details"]["direct_effects"] == {"note": "real"}
-        assert kwargs["details"]["failure_reason"] is None
+        # Batched path (task #43): one plural persist_action_results call per
+        # tick carrying every action's row (pool present => Postgres path).
+        mock_persistence.persist_action_results.assert_called_once()
+        mock_persistence.persist_action_result.assert_not_called()
+        call = mock_persistence.persist_action_results.call_args
+        results = call.args[1]  # (tick, results, *, session_id=...)
+        assert call.kwargs["session_id"] == self._SID
+        assert len(results) == 1
+        row = results[0]
+        assert row["success"] is True
+        assert row["consciousness_delta"] == 0.05
+        assert row["details"]["direct_effects"] == {"note": "real"}
+        assert row["details"]["failure_reason"] is None
 
     @patch("game.engine_bridge.step")
     def test_missing_engine_result_is_loud_failure(self, mock_step: MagicMock) -> None:
@@ -2071,10 +2832,381 @@ class TestResolveTickConsumesEngineResults:
         bridge = EngineBridge(mock_persistence)
         bridge.resolve_tick(self._SID)
 
-        mock_persistence.persist_action_result.assert_called_once()
-        kwargs = mock_persistence.persist_action_result.call_args.kwargs
-        assert kwargs["success"] is False
-        assert kwargs["details"]["failure_reason"] is not None
+        mock_persistence.persist_action_results.assert_called_once()
+        results = mock_persistence.persist_action_results.call_args.args[1]
+        assert len(results) == 1
+        row = results[0]
+        assert row["success"] is False
+        assert row["details"]["failure_reason"] is not None
+
+    @patch("game.engine_bridge.step")
+    def test_batches_all_action_results_into_one_call(self, mock_step: MagicMock) -> None:
+        """Two pending actions => a single persist_action_results call whose
+        results list carries both rows (task #43 batched activation)."""
+        mock_persistence = _make_mock_persistence()
+        mock_persistence.get_pending_turns.return_value = [
+            {"org_id": "pf1", "verb": "educate", "target_id": "hex_a"},
+            {"org_id": "pf2", "verb": "educate", "target_id": "hex_b"},
+        ]
+        mock_step.return_value = _make_mock_new_state()
+        bridge = EngineBridge(mock_persistence)
+        bridge.resolve_tick(self._SID)
+
+        mock_persistence.persist_action_results.assert_called_once()
+        mock_persistence.persist_action_result.assert_not_called()
+        results = mock_persistence.persist_action_results.call_args.args[1]
+        assert len(results) == 2
+        assert {r["org_id"] for r in results} == {"pf1", "pf2"}
+
+
+# ---------------------------------------------------------------------- #
+# Track 1 / Task 3 (2026-07-18): the intel ledger's writer
+# ---------------------------------------------------------------------- #
+
+
+@pytest.mark.unit
+class TestInvestigateFieldSnapshot:
+    """``_investigate_field_snapshot`` is the write-side half of the intel
+    ledger (``game.fog.ledger.IntelLedger``): it freezes the fields an
+    INVESTIGATE resolution named as revealed (field NAMES only —
+    ``resolve_investigate``'s ``direct_effects`` carries no values) off the
+    live post-tick graph, so a later fog read shows the TRUE value as of
+    that tick, never a recomputation."""
+
+    def _graph_with_territory(self, **attrs: Any) -> BabylonGraph:
+        graph = BabylonGraph()
+        graph.add_node("T1", _node_type="territory", **attrs)
+        return graph
+
+    def test_non_investigate_action_yields_none(self) -> None:
+        graph = self._graph_with_territory(heat=0.42)
+        result = _investigate_field_snapshot(
+            ActionType.EDUCATE, "T1", {"revealed": {"T1": ["heat"]}}, graph
+        )
+        assert result is None
+
+    def test_no_action_type_yields_none(self) -> None:
+        graph = self._graph_with_territory(heat=0.42)
+        result = _investigate_field_snapshot(None, "T1", {"revealed": {"T1": ["heat"]}}, graph)
+        assert result is None
+
+    def test_missing_target_id_yields_none(self) -> None:
+        graph = self._graph_with_territory(heat=0.42)
+        result = _investigate_field_snapshot(
+            ActionType.MAP_NETWORK, None, {"revealed": {"T1": ["heat"]}}, graph
+        )
+        assert result is None
+
+    def test_target_not_in_graph_yields_none(self) -> None:
+        graph = self._graph_with_territory(heat=0.42)
+        result = _investigate_field_snapshot(
+            ActionType.MAP_NETWORK, "T-GONE", {"revealed": {"T-GONE": ["heat"]}}, graph
+        )
+        assert result is None
+
+    def test_no_revealed_fields_for_target_yields_none(self) -> None:
+        graph = self._graph_with_territory(heat=0.42)
+        result = _investigate_field_snapshot(ActionType.MAP_NETWORK, "T1", {"revealed": {}}, graph)
+        assert result is None
+
+    def test_failed_investigate_with_empty_direct_effects_yields_none(self) -> None:
+        """A failed INVESTIGATE (mass-receptivity gate) carries no
+        ``revealed`` key at all — honest absence, not a crash."""
+        graph = self._graph_with_territory(heat=0.42)
+        result = _investigate_field_snapshot(ActionType.MAP_NETWORK, "T1", {}, graph)
+        assert result is None
+
+    def test_successful_investigate_captures_the_real_graph_values(self) -> None:
+        graph = self._graph_with_territory(heat=0.42, rent_level=0.1, population=500)
+        result = _investigate_field_snapshot(
+            ActionType.MAP_NETWORK,
+            "T1",
+            {"scan_type": "territory_scan", "revealed": {"T1": ["heat", "population"]}},
+            graph,
+        )
+        assert result == {
+            "field_group": "territory:political",
+            "value_snapshot": {"heat": 0.42, "population": 500},
+        }
+
+    def test_field_group_matches_apply_fogs_own_derivation(self) -> None:
+        """Written under apply_fog's EXACT field_group format
+        (``game.fog.filter.political_field_group``) — a mismatch would make
+        the entry silently unreachable at read time."""
+        from game.fog.filter import political_field_group
+
+        graph = self._graph_with_territory(heat=0.42)
+        result = _investigate_field_snapshot(
+            ActionType.MAP_NETWORK, "T1", {"revealed": {"T1": ["heat"]}}, graph
+        )
+        assert result is not None
+        assert result["field_group"] == political_field_group("territory")
+
+    def test_revealed_field_absent_from_the_node_is_not_fabricated(self) -> None:
+        """``resolve_investigate``'s default revealed-field list can name a
+        field the node doesn't actually carry — never invent a value."""
+        graph = self._graph_with_territory(heat=0.42)  # no rent_level attr
+        result = _investigate_field_snapshot(
+            ActionType.MAP_NETWORK, "T1", {"revealed": {"T1": ["heat", "rent_level"]}}, graph
+        )
+        assert result == {
+            "field_group": "territory:political",
+            "value_snapshot": {"heat": 0.42},
+        }
+
+
+@pytest.mark.unit
+class TestResolveTickPersistsInvestigateSnapshot:
+    """End-to-end (mocked persistence): resolve_tick's per-action loop
+    stashes the intel snapshot onto the persisted ``action_result`` row for
+    a successful INVESTIGATE — the enrichment ``_derive_intel_ledger``
+    later reads back."""
+
+    _SID = uuid.UUID("aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee")
+
+    @patch("game.engine_bridge.step")
+    def test_investigate_action_result_carries_the_intel_snapshot(
+        self, mock_step: MagicMock
+    ) -> None:
+        mock_persistence = _make_mock_persistence()
+        mock_persistence.get_pending_turns.return_value = [
+            {"org_id": "pf1", "verb": "investigate", "target_id": "T1"},
+        ]
+
+        def fake_step(*_args: Any, **kwargs: Any) -> MagicMock:
+            ctx = kwargs.get("persistent_context")
+            assert ctx is not None
+            ctx["turn_resolution"] = {
+                "action_phase_results": [
+                    {
+                        "action": {
+                            "org_id": "pf1",
+                            "action_type": "map_network",
+                            "target_id": "T1",
+                        },
+                        "success": True,
+                        "consciousness_delta": None,
+                        "direct_effects": {
+                            "scan_type": "territory_scan",
+                            "revealed": {"T1": ["heat"]},
+                        },
+                        "failure_reason": None,
+                    }
+                ]
+            }
+            new_state = _make_mock_new_state()
+            graph = _make_minimal_graph()
+            graph.add_node("T1", _node_type="territory", heat=0.734)
+            new_state.to_graph.return_value = graph
+            return new_state
+
+        mock_step.side_effect = fake_step
+        bridge = EngineBridge(mock_persistence)
+        bridge.resolve_tick(self._SID)
+
+        mock_persistence.persist_action_results.assert_called_once()
+        results = mock_persistence.persist_action_results.call_args.args[1]
+        assert len(results) == 1
+        details = results[0]["details"]
+        assert details["intel_field_group"] == "territory:political"
+        assert details["intel_value_snapshot"] == {"heat": 0.734}
+
+    @patch("game.engine_bridge.step")
+    def test_non_investigate_action_carries_no_intel_snapshot(self, mock_step: MagicMock) -> None:
+        mock_persistence = _make_mock_persistence()
+        mock_persistence.get_pending_turns.return_value = [
+            {"org_id": "pf1", "verb": "educate", "target_id": "T1"},
+        ]
+
+        def fake_step(*_args: Any, **kwargs: Any) -> MagicMock:
+            ctx = kwargs.get("persistent_context")
+            assert ctx is not None
+            ctx["turn_resolution"] = {
+                "action_phase_results": [
+                    {
+                        "action": {"org_id": "pf1", "action_type": "educate", "target_id": "T1"},
+                        "success": True,
+                        "consciousness_delta": None,
+                        "direct_effects": {"note": "irrelevant"},
+                        "failure_reason": None,
+                    }
+                ]
+            }
+            return _make_mock_new_state()
+
+        mock_step.side_effect = fake_step
+        bridge = EngineBridge(mock_persistence)
+        bridge.resolve_tick(self._SID)
+
+        results = mock_persistence.persist_action_results.call_args.args[1]
+        details = results[0]["details"]
+        assert "intel_field_group" not in details
+        assert "intel_value_snapshot" not in details
+
+
+@pytest.mark.unit
+@pytest.mark.django_db
+class TestDeriveIntelLedger:
+    """Track 1 / Task 3: ``_derive_intel_ledger`` reads back persisted
+    ``action_result`` rows and folds them via ``ledger_from_events`` — the
+    real write-then-read loop, exercised against a real (test) database
+    rather than a mock."""
+
+    def _make_session(self) -> uuid.UUID:
+        from game.models import GameSession
+
+        sid = uuid.uuid4()
+        GameSession.objects.create(id=sid, scenario="default", current_tick=0)
+        return sid
+
+    def test_fresh_session_yields_an_empty_ledger(self) -> None:
+        sid = self._make_session()
+        ledger = _derive_intel_ledger(sid)
+        assert ledger.entries == ()
+
+    def test_enriched_investigate_row_becomes_a_reachable_ledger_entry(self) -> None:
+        from game.fog.ledger import read_intel
+        from game.models import ActionResult
+
+        sid = self._make_session()
+        ActionResult.objects.create(
+            session_id=sid,
+            tick=10,
+            org_id="PLAYER_ORG",
+            action_type=ActionType.MAP_NETWORK.value,
+            target_id="T1",
+            initiative_score=0.0,
+            action_cost=1.0,
+            success=True,
+            details={
+                "direct_effects": {
+                    "scan_type": "territory_scan",
+                    "revealed": {"T1": ["heat"]},
+                },
+                "failure_reason": None,
+                "intel_field_group": "territory:political",
+                "intel_value_snapshot": {"heat": 0.734},
+            },
+        )
+
+        ledger = _derive_intel_ledger(sid)
+
+        reading = read_intel(
+            ledger,
+            node_id="T1",
+            field_group="territory:political",
+            tick=12,
+            staleness_ticks=5,
+            unknown_ticks=20,
+        )
+        assert reading.tier == "exact"
+        assert reading.value_snapshot == {"heat": 0.734}
+
+    def test_failed_investigate_row_is_excluded(self) -> None:
+        """``success=False`` rows never reach the ledger (excluded by the
+        query filter itself) — a failed INVESTIGATE (mass-receptivity gate)
+        revealed nothing."""
+        from game.models import ActionResult
+
+        sid = self._make_session()
+        ActionResult.objects.create(
+            session_id=sid,
+            tick=10,
+            org_id="PLAYER_ORG",
+            action_type=ActionType.MAP_NETWORK.value,
+            target_id="T1",
+            initiative_score=0.0,
+            action_cost=1.0,
+            success=False,
+            details={"direct_effects": {}, "failure_reason": "masses do not trust you"},
+        )
+
+        ledger = _derive_intel_ledger(sid)
+        assert ledger.entries == ()
+
+    def test_row_without_the_enrichment_keys_is_excluded(self) -> None:
+        """An ``action_result`` row with no ``intel_field_group``/
+        ``intel_value_snapshot`` (e.g. any row persisted before this task
+        shipped) is skipped, never fabricated (Constitution III.11)."""
+        from game.models import ActionResult
+
+        sid = self._make_session()
+        ActionResult.objects.create(
+            session_id=sid,
+            tick=10,
+            org_id="PLAYER_ORG",
+            action_type=ActionType.MAP_NETWORK.value,
+            target_id="T1",
+            initiative_score=0.0,
+            action_cost=1.0,
+            success=True,
+            details={"direct_effects": {"revealed": {"T1": ["heat"]}}, "failure_reason": None},
+        )
+
+        ledger = _derive_intel_ledger(sid)
+        assert ledger.entries == ()
+
+    def test_non_investigate_action_result_rows_are_excluded(self) -> None:
+        from game.models import ActionResult
+
+        sid = self._make_session()
+        ActionResult.objects.create(
+            session_id=sid,
+            tick=10,
+            org_id="PLAYER_ORG",
+            action_type="educate",
+            target_id="T1",
+            initiative_score=0.0,
+            action_cost=1.0,
+            success=True,
+            details={
+                "direct_effects": {},
+                "failure_reason": None,
+                "intel_field_group": "territory:political",
+                "intel_value_snapshot": {"heat": 0.1},
+            },
+        )
+
+        ledger = _derive_intel_ledger(sid)
+        assert ledger.entries == ()
+
+    def test_query_helper_returns_plain_dicts_with_the_expected_keys(self) -> None:
+        from game.models import ActionResult
+
+        sid = self._make_session()
+        ActionResult.objects.create(
+            session_id=sid,
+            tick=3,
+            org_id="PLAYER_ORG",
+            action_type=ActionType.MAP_NETWORK.value,
+            target_id="T1",
+            initiative_score=0.0,
+            action_cost=1.0,
+            success=True,
+            details={
+                "intel_field_group": "territory:political",
+                "intel_value_snapshot": {"heat": 0.1},
+            },
+        )
+
+        rows = _query_investigate_action_results(sid)
+
+        assert len(rows) == 1
+        assert rows[0]["tick"] == 3
+        assert rows[0]["target_id"] == "T1"
+
+
+@pytest.mark.unit
+class TestDeriveIntelLedgerWithoutDjangoDb:
+    """No ``@pytest.mark.django_db`` here on purpose: proves the best-effort
+    fallback actually engages when the ORM query is blocked (pytest-django
+    forbids DB access without the marker) — the same failure mode a
+    headless/non-web context hits — rather than crashing every
+    player-facing view that now calls ``_derive_intel_ledger``."""
+
+    def test_blocked_db_access_yields_an_empty_ledger_not_a_crash(self) -> None:
+        ledger = _derive_intel_ledger(uuid.uuid4())
+        assert ledger.entries == ()
 
 
 # ---------------------------------------------------------------------- #
@@ -3087,6 +4219,14 @@ class TestGetMapHistory:
                 "exploitation_rate": 1.3033,
             }
         ]
+        # G4: profit_rate is now veil-gated — this test is about the COLUMN
+        # SELECTION (profit_rate vs exploitation_rate), not veil gating, so
+        # stamp the player org fully unlocked (Tier 2).
+        graph = mock_persistence.hydrate_graph.return_value
+        graph.nodes[graph.graph["player_org_id"]]["acquired_doctrine_ids"] = (
+            "class_consciousness",
+            "trade_unionism",
+        )
         bridge = EngineBridge(mock_persistence)
 
         result = bridge.get_map_history(uuid.uuid4(), metric="profit_rate")
@@ -3106,6 +4246,41 @@ class TestGetMapHistory:
         result = bridge.get_map_history(uuid.uuid4(), metric="profit_rate")
 
         assert result["frames"][0]["values"] == {"26163": None}
+
+    def test_g4_veil_tier_zero_masks_profit_rate_frames(self) -> None:
+        """G4: profit_rate/exploitation_rate are value-axis — below the
+        player org's Veil Tier 1, every frame value masks to None even
+        though the persisted history has real numbers (never a client-side-
+        only hide; the scrubber must never see the real replay)."""
+        mock_persistence = _make_mock_persistence()
+        mock_persistence.query_county_trace_latest_tick.return_value = 1
+        mock_persistence.query_county_trace_metric_frames.return_value = [
+            {"tick": 0, "county_fips": "26163", "profit_rate": 0.10, "exploitation_rate": 0.20},
+            {"tick": 1, "county_fips": "26163", "profit_rate": 0.15, "exploitation_rate": 0.25},
+        ]
+        # Default fixture graph's player org starts at Tier 0 (empty
+        # acquired_doctrine_ids) — no stamping needed for this test.
+        bridge = EngineBridge(mock_persistence)
+
+        result = bridge.get_map_history(uuid.uuid4(), metric="profit_rate")
+
+        assert result["frames"][0]["values"] == {"26163": None}
+        assert result["frames"][1]["values"] == {"26163": None}
+
+    def test_g4_veil_never_gates_money_form_heat_metric(self) -> None:
+        """heat/population are money-form/political, never veil-gated — no
+        tier resolution overhead, no masking, regardless of tier."""
+        mock_persistence = _make_mock_persistence()
+        mock_persistence.query_territory_snapshot_latest_tick.return_value = 0
+        mock_persistence.query_territory_snapshot_metric_frames.return_value = [
+            {"tick": 0, "county_fips": "26163", "heat": 0.42, "pop_total": 8000},
+        ]
+        bridge = EngineBridge(mock_persistence)
+
+        result = bridge.get_map_history(uuid.uuid4(), metric="heat")
+
+        assert result["frames"][0]["values"] == {"26163": pytest.approx(0.42)}
+        mock_persistence.hydrate_graph.assert_not_called()
 
     def test_explicit_range_within_cap_is_not_capped(self) -> None:
         mock_persistence = _make_mock_persistence()
@@ -3566,7 +4741,15 @@ class TestExpectedDeltas:
             "inst-court",
             "institution",
             name="County Court",
-            factional_composition={"security_state": 0.6},
+            # Real shape: production carries factional weights under
+            # internal_balance (Institution.model_dump()'s nested
+            # InternalBalanceOfForces) -- no production graph ever emits a
+            # flat "factional_composition" key (Track 1 audit, task #45).
+            internal_balance=InternalBalanceOfForces(
+                liberal_technocratic=0.6,
+                revanchist_fascist=0.3,
+                institutionalist_bonapartist=0.1,
+            ).model_dump(),
             territory_ids=["T1"],
         )
 
@@ -3580,6 +4763,12 @@ class TestExpectedDeltas:
         for row in [*org_rows, *inst_rows]:
             assert row["expected_deltas"]["heat_delta"] == heat_gain
             assert row["expected_deltas"]["consciousness_delta"] is None
+        court_row = next(r for r in inst_rows if r["target_id"] == "inst-court")
+        assert court_row["factional_control"] == {
+            "liberal_technocratic": 0.6,
+            "revanchist_fascist": 0.3,
+            "institutionalist_bonapartist": 0.1,
+        }
 
     def test_educate_row_includes_doctrine_theory_bonus_for_class_analysis_org(self) -> None:
         """Task-18-review fix: EDUCATE's resolver (resolve_educate ->
@@ -3752,10 +4941,203 @@ class TestEconomyDashboardChipContract:
             "tribute_flow_total",
             "wealth_by_class_role",
             "county_flow",
+            "imperial_rent_gap",
+            "imperial_rent_gap_by_region",
+            "veil",
         }, (
             "EconomyDashboardPayload drifted — update types/game.ts, the "
             "chips, and this pin in the SAME commit (no phantoms, no orphans)"
         )
+
+
+@pytest.mark.unit
+class TestEconomyDashboardVeil:
+    """T2-8/T2-9 (spec-117 §5d, D7): ``veil`` is computed from the player
+    org's REAL ``acquired_doctrine_ids`` (not a mock resolver — I-7 lesson
+    from ``test_doctrine_tree_endpoint.py``), and the two value-axis fields
+    it carries are ``None`` below Tier 1, never a fabricated number a client
+    could read regardless of tier (the same "enforced at serialization"
+    boundary the fog uses)."""
+
+    @staticmethod
+    def _state_with_acquired(acquired: tuple[str, ...]) -> Any:
+        state = _build_initial_state_for_scenario("default")
+        org = state.organizations["ORG001"].model_copy(update={"acquired_doctrine_ids": acquired})
+        return state.model_copy(update={"organizations": {"ORG001": org}})
+
+    def _dashboard_with_acquired(self, acquired: tuple[str, ...]) -> dict[str, Any]:
+        state = self._state_with_acquired(acquired)
+        bridge = EngineBridge(_make_mock_persistence())
+        with patch.object(bridge, "hydrate_state", return_value=(state, state.to_graph())):
+            return bridge.get_economy_dashboard(uuid.uuid4())
+
+    def test_no_player_org_is_tier_zero(self) -> None:
+        state = _build_initial_state_for_scenario("default").model_copy(
+            update={"organizations": {}, "player_org_id": None}
+        )
+        bridge = EngineBridge(_make_mock_persistence())
+        with patch.object(bridge, "hydrate_state", return_value=(state, state.to_graph())):
+            result = bridge.get_economy_dashboard(uuid.uuid4())
+
+        assert result["veil"]["tier"] == 0
+        assert result["veil"]["next_unlock_node_id"] == "class_consciousness"
+        assert result["veil"]["next_unlock_label"] == "Class Consciousness"
+        assert result["veil"]["value_produced"] is None
+        assert result["veil"]["exploitation_rate"] is None
+
+    def test_empty_acquired_is_tier_zero(self) -> None:
+        result = self._dashboard_with_acquired(())
+
+        assert result["veil"]["tier"] == 0
+        assert result["veil"]["value_produced"] is None
+        assert result["veil"]["exploitation_rate"] is None
+
+    def test_tier1_node_acquired_unlocks_the_value_axis(self) -> None:
+        result = self._dashboard_with_acquired(("class_consciousness",))
+
+        assert result["veil"]["tier"] == 1
+        assert result["veil"]["next_unlock_node_id"] == "trade_unionism"
+        assert result["veil"]["next_unlock_label"] == "Trade Unionism"
+        # Real numbers, not a copy fabricated independently of the actual
+        # aggregate — must equal the legacy (always-live) top-level fields.
+        assert result["veil"]["value_produced"] == result["value_produced"]
+        assert result["veil"]["exploitation_rate"] == result["exploitation_rate"]
+
+    def test_both_nodes_acquired_is_tier_two_with_no_next_unlock(self) -> None:
+        result = self._dashboard_with_acquired(("class_consciousness", "trade_unionism"))
+
+        assert result["veil"]["tier"] == 2
+        assert result["veil"]["next_unlock_node_id"] is None
+        assert result["veil"]["next_unlock_label"] is None
+        assert result["veil"]["value_produced"] == result["value_produced"]
+        assert result["veil"]["exploitation_rate"] == result["exploitation_rate"]
+
+    def test_legacy_top_level_fields_are_veiled_too(self) -> None:
+        """G4: the audit found the legacy top-level ``value_produced``/
+        ``exploitation_rate`` fields (EconomyDashboard/BottomDrawer's
+        pre-existing surface) leaking the real numbers ungated below Tier 1
+        — only the new ``veil.*`` copies were gated (Wave 2B). Closed: the
+        top-level fields are now gated by the exact same tier, so no client
+        inspection of the wire response can pierce the veil regardless of
+        which field name it reads."""
+        result = self._dashboard_with_acquired(())
+
+        assert result["value_produced"] is None
+        assert result["exploitation_rate"] is None
+        assert result["rent_extracted"] is None
+        assert result["profit_rate"] is None
+        assert result["occ"] is None
+        assert result["imperial_rent_pool"] is None
+        assert result["imperial_rent_gap"] is None
+        assert result["imperial_rent_gap_by_region"] == []
+
+    def test_legacy_top_level_fields_unlock_at_tier_one(self) -> None:
+        """The flip side of the gate: at Tier 1, the legacy top-level
+        fields carry the SAME real numbers ``veil.*`` does — gating never
+        forks the two into disagreeing values."""
+        result = self._dashboard_with_acquired(("class_consciousness",))
+
+        assert result["value_produced"] == result["veil"]["value_produced"]
+        assert result["exploitation_rate"] == result["veil"]["exploitation_rate"]
+        assert isinstance(result["value_produced"], float)
+        assert isinstance(result["exploitation_rate"], float)
+
+
+@pytest.mark.unit
+class TestDerivedEconomyVeilGate:
+    """G4 follow-up (adversarial re-review round 2, Finding F1):
+    ``_state_to_snapshot`` builds ``derived.economy`` from
+    ``state.economy.model_dump()`` (``imperial_rent_pool``/
+    ``current_super_wage_rate``/``current_repression_level``) — the FIRST
+    two ``_gate_snapshot_territories`` call sites returning the full
+    snapshot to a client (``get_snapshot``, ``resolve_tick``) gated
+    ``territories`` but never ``derived``, so ``imperial_rent_pool`` (a
+    literal ``TIER1_VALUE_RELATION_FIELDS`` name) leaked ungated to a
+    tier-0 client on both GET /state/ and POST /resolve/. Closed by
+    extending ``_gate_snapshot_territories`` to also gate
+    ``derived["economy"]``. ``current_super_wage_rate``/
+    ``current_repression_level`` stay real at every tier (money-form wage
+    rate / political repression modifier — never gated per veil.py's own
+    registry)."""
+
+    @staticmethod
+    def _state_with_acquired(
+        acquired: tuple[str, ...], *, imperial_rent_pool: float = 250.0
+    ) -> Any:
+        from babylon.models.entities.economy import GlobalEconomy
+
+        state = _build_initial_state_for_scenario("default")
+        org = state.organizations["ORG001"].model_copy(update={"acquired_doctrine_ids": acquired})
+        return state.model_copy(
+            update={
+                "organizations": {"ORG001": org},
+                "economy": GlobalEconomy(imperial_rent_pool=imperial_rent_pool),
+            }
+        )
+
+    def _snapshot_with_acquired(self, acquired: tuple[str, ...]) -> dict[str, Any]:
+        state = self._state_with_acquired(acquired)
+        bridge = EngineBridge(_make_mock_persistence())
+        with patch.object(bridge, "hydrate_state", return_value=(state, state.to_graph())):
+            return bridge.get_snapshot(uuid.uuid4())
+
+    def test_get_snapshot_masks_imperial_rent_pool_at_tier_zero(self) -> None:
+        result = self._snapshot_with_acquired(())
+
+        assert result["derived"]["economy"]["imperial_rent_pool"] is None
+
+    def test_get_snapshot_never_masks_wage_rate_or_repression(self) -> None:
+        """Money-form wage rate / political repression modifier stay real
+        even at Tier 0 — only imperial_rent_pool is a TIER1 field."""
+        result = self._snapshot_with_acquired(())
+
+        assert result["derived"]["economy"]["current_super_wage_rate"] == pytest.approx(0.20)
+        assert result["derived"]["economy"]["current_repression_level"] == pytest.approx(0.5)
+
+    def test_get_snapshot_unlocks_imperial_rent_pool_at_tier_one(self) -> None:
+        result = self._snapshot_with_acquired(("class_consciousness",))
+
+        assert result["derived"]["economy"]["imperial_rent_pool"] == pytest.approx(250.0)
+
+    def test_get_snapshot_unlocks_imperial_rent_pool_at_tier_two(self) -> None:
+        result = self._snapshot_with_acquired(("class_consciousness", "trade_unionism"))
+
+        assert result["derived"]["economy"]["imperial_rent_pool"] == pytest.approx(250.0)
+
+    @patch("game.engine_bridge.step")
+    def test_resolve_tick_masks_imperial_rent_pool_at_tier_zero(self, mock_step: MagicMock) -> None:
+        sid = uuid.UUID("dddddddd-eeee-ffff-aaaa-bbbbbbbbbbbb")
+        mock_persistence = _make_mock_persistence()
+        mock_persistence.get_pending_turns.return_value = []
+        new_state = self._state_with_acquired((), imperial_rent_pool=333.0).model_copy(
+            update={"tick": 1}
+        )
+        mock_step.return_value = new_state
+
+        bridge = EngineBridge(mock_persistence)
+        result = bridge.resolve_tick(sid)
+
+        assert result["derived"]["economy"]["imperial_rent_pool"] is None
+        # Never masked — money-form / political, real at every tier.
+        assert result["derived"]["economy"]["current_super_wage_rate"] == pytest.approx(0.20)
+        assert result["derived"]["economy"]["current_repression_level"] == pytest.approx(0.5)
+
+    @patch("game.engine_bridge.step")
+    def test_resolve_tick_unlocks_imperial_rent_pool_at_tier_one(
+        self, mock_step: MagicMock
+    ) -> None:
+        sid = uuid.UUID("dddddddd-eeee-ffff-aaaa-cccccccccccc")
+        mock_persistence = _make_mock_persistence()
+        mock_persistence.get_pending_turns.return_value = []
+        new_state = self._state_with_acquired(
+            ("class_consciousness",), imperial_rent_pool=333.0
+        ).model_copy(update={"tick": 1})
+        mock_step.return_value = new_state
+
+        bridge = EngineBridge(mock_persistence)
+        result = bridge.resolve_tick(sid)
+
+        assert result["derived"]["economy"]["imperial_rent_pool"] == pytest.approx(333.0)
 
 
 @pytest.mark.unit
@@ -3992,3 +5374,46 @@ class TestGroupCDDocstringsHonest:
 # docstring against build_default_registry().keys, so it cannot go stale
 # again at 6 OR at 10. A hardcoded "six bound contradictions" assertion
 # here would red the moment U5.2 grows the registry to ten.
+
+
+class TestMobilizeTargetsIncludeSeededBusinesses:
+    """ADR086: the QCEW-seeded ``Business`` NPCs surface as real MOBILIZE
+    targets in a ``us_nationwide`` session -- ``get_mobilize_targets`` walks the
+    player org's territories and returns the business/civil_society orgs sharing
+    them, so the businesses seeded into the player's HQ hexes are targetable."""
+
+    def test_us_nationwide_businesses_are_mobilize_targets(self) -> None:
+        from babylon.engine.scenarios import create_us_scenario
+        from babylon.engine.scenarios.business_seeds import build_seeded_businesses
+
+        state, _config, _defines = create_us_scenario()
+        graph = state.to_graph()
+        bridge = EngineBridge(_make_mock_persistence())
+
+        with _patched_hydrate_state(bridge, graph):
+            result = bridge.get_mobilize_targets(uuid.uuid4(), state.player_org_id)
+
+        target_ids = {t["id"] for t in result["targets"]}
+        seeded_ids = set(build_seeded_businesses("US", []))
+        # Every seeded business shares the player's HQ territories, so all are
+        # reachable as MOBILIZE targets (not merely a non-empty intersection).
+        assert seeded_ids, "no businesses seeded"
+        assert seeded_ids <= target_ids, (
+            f"seeded businesses missing from MOBILIZE targets: {seeded_ids - target_ids}"
+        )
+
+    def test_targeted_businesses_carry_real_names_and_type(self) -> None:
+        from babylon.engine.scenarios import create_us_scenario
+        from babylon.engine.scenarios.business_seeds import build_seeded_businesses
+
+        state, _config, _defines = create_us_scenario()
+        graph = state.to_graph()
+        bridge = EngineBridge(_make_mock_persistence())
+
+        with _patched_hydrate_state(bridge, graph):
+            result = bridge.get_mobilize_targets(uuid.uuid4(), state.player_org_id)
+
+        by_id = {t["id"]: t for t in result["targets"]}
+        for biz_id, biz in build_seeded_businesses("US", []).items():
+            assert by_id[biz_id]["name"] == biz.name
+            assert by_id[biz_id]["type"] == "BUSINESS"

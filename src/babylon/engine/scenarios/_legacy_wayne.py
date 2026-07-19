@@ -32,8 +32,13 @@ from babylon.config.defines import (
     GameDefines,
     SurvivalDefines,
 )
+from babylon.engine.scenarios.business_seeds import build_seeded_businesses
 from babylon.models.config import SimulationConfig
-from babylon.models.entities.organization import CivilSocietyOrg, StateApparatus
+from babylon.models.entities.organization import (
+    CivilSocietyOrg,
+    OrganizationType,
+    StateApparatus,
+)
 from babylon.models.entities.relationship import Relationship
 from babylon.models.entities.social_class import SocialClass
 from babylon.models.entities.state_apparatus_ai import FactionBalance
@@ -611,15 +616,23 @@ def create_wayne_county_scenario(
     # _create_state_apparatus_org's docstring).
     state_apparatus_org = _create_state_apparatus_org(detroit_hexes)
 
+    # Seed real-QCEW Business NPCs (ADR086) for Wayne County (FIPS 26163) in the
+    # same Detroit periphery hexes the player org operates in, so they are
+    # MOBILIZE-eligible and fog-reachable. Player org is inserted FIRST so
+    # ``list(organizations.values())[0]`` stays ORG001 (bridge-pipeline /
+    # contract-parity tests rely on this ordering).
+    organizations: dict[str, OrganizationType] = {
+        _PLAYER_ORG_ID: player_org,
+        _STATE_APPARATUS_ID: state_apparatus_org,
+    }
+    organizations.update(build_seeded_businesses("26163", player_org.territory_ids))
+
     # Assemble WorldState
     state = WorldState(
         tick=0,
         entities=entities,
         territories=territories,
-        organizations={
-            _PLAYER_ORG_ID: player_org,
-            _STATE_APPARATUS_ID: state_apparatus_org,
-        },
+        organizations=organizations,
         relationships=relationships,
         event_log=[],
         # EH ruling 6 (owner 2026-07-16): the engine-side player pointer —

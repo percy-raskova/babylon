@@ -16,13 +16,18 @@
 import type { StateCreator } from "zustand";
 import type { RootState } from "../types";
 
-/** The full-screen takeover surfaces (spec-110 B5; `network` added AW4-R2;
- *  `doctrine` added Epoch 3 Wave 6 Phase 0), or none open. */
-export type TakeoverKind = "wire" | "chronicle" | "dialectic" | "network" | "doctrine";
+/** The full-screen takeover surfaces (spec-110 B5; `network` added AW4-R2),
+ *  or none open. `"doctrine"` (added Epoch 3 Wave 6 Phase 0) RETIRED in
+ *  Track 3 T3-5: `DoctrineTakeover` relocated off this overlay flag onto
+ *  its own routed room (`/game/:id/doctrine`, the "Line" page) — the same
+ *  move Track 2 T2-1 made for `ScissorsChart`/`BottomDrawerState`. */
+export type TakeoverKind = "wire" | "chronicle" | "dialectic" | "network";
 
-/** `BottomDrawer`'s six states (architecture §1.4): closed, or one of its five contents. */
+/** `BottomDrawer`'s five states (architecture §1.4): closed, or one of its four
+ *  contents. `"scissors"` retired (Track 2 T2-1): ScissorsChart relocated to
+ *  the routed Circuit page (`/game/:id/circuit`) — its own room, not a tab. */
 export type BottomDrawerState =
-  "none" | "trends" | "scissors" | "events" | "economy" | "state-apparatus" | "edges";
+  "none" | "trends" | "events" | "economy" | "state-apparatus" | "edges";
 
 /**
  * Chrome panel open/collapsed state (architecture §1.4). One field per
@@ -63,6 +68,11 @@ export interface UiSlice {
     toggleCrisisTimeline: () => void;
     toggleRadarLoop: () => void;
     toggleComposer: () => void;
+    /** Unconditionally opens the composer (Track 1 Task 7) — unlike
+     *  `toggleComposer`, never closes it. A deliberate CTA (e.g. a fogged
+     *  field's "Investigate" link) must show the composer, not risk
+     *  toggling it shut when it was already open. */
+    openComposer: () => void;
     setBottomDrawer: (state: BottomDrawerState) => void;
     setFocusedPanel: (id: string | null) => void;
     openTakeover: (kind: TakeoverKind) => void;
@@ -116,6 +126,8 @@ export const createUiSlice: StateCreator<RootState, [], [], UiSlice> = (set) => 
       set((s) => ({
         ui: { ...s.ui, chrome: { ...s.ui.chrome, composerOpen: !s.ui.chrome.composerOpen } },
       })),
+    openComposer: () =>
+      set((s) => ({ ui: { ...s.ui, chrome: { ...s.ui.chrome, composerOpen: true } } })),
     setBottomDrawer: (state) =>
       set((s) => ({ ui: { ...s.ui, chrome: { ...s.ui.chrome, bottomDrawer: state } } })),
     setFocusedPanel: (id) => set((s) => ({ ui: { ...s.ui, focusedPanelId: id } })),

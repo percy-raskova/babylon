@@ -81,6 +81,7 @@ from babylon.config.defines.tunables import (
     PrecisionDefines,
     TimescaleDefines,
 )
+from babylon.config.defines.veil import VeilDefines
 
 
 class GameDefines(BaseModel):
@@ -130,6 +131,7 @@ class GameDefines(BaseModel):
     - capital_vol3: Volume III surplus-distribution / credit / counter-tendency
       thresholds (024-capital-volume-iii; migrated off module-level Finals
       in the 2026-07-18 honesty sweep)
+    - veil: The Veil of Money's theoretical disclosure tier thresholds (D7, spec-117 §5d)
     """
 
     model_config = ConfigDict(frozen=True)
@@ -198,6 +200,8 @@ class GameDefines(BaseModel):
     # Volume III financial-claims thresholds (024-capital-volume-iii;
     # 2026-07-18 honesty sweep, U2)
     capital_vol3: CapitalVolumeIIIDefines = Field(default_factory=CapitalVolumeIIIDefines)
+    # Veil of Money — theoretical disclosure tier thresholds (D7, spec-117 §5d)
+    veil: VeilDefines = Field(default_factory=VeilDefines)
 
     # Legacy flat attributes for backward compatibility
     # These delegate to the nested structure
@@ -328,6 +332,7 @@ class GameDefines(BaseModel):
             doctrine=DoctrineDefines(**data.get("doctrine", {})),
             market=MarketDefines(**data.get("market", {})),
             capital_vol3=CapitalVolumeIIIDefines(**data.get("capital_vol3", {})),
+            veil=VeilDefines(**data.get("veil", {})),
         )
 
     @classmethod

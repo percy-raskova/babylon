@@ -460,53 +460,38 @@ class MarketScissorsSystem(SystemBase):
             graph.update_node(node.id, reserve_ratio=min(base + influx, 1.0))
 
 
-def _capital_weighted_mean(
-    graph: GraphProtocol, node_type: str, attr: str, *, weight_attr: str = "tick_capital_stock"
-) -> float | None:
-    """Capital-weighted mean of an intensive attribute across active nodes.
-
-    The aggregate of a rate/ratio across space is
-    ``Sum(value_i * weight_i) / Sum(weight_i)``, never an unweighted mean of
-    the per-node ratios — an unweighted mean lets a tiny node swing the
-    national reading as hard as a large one (the intensive-aggregation
-    class, §3.6/§3.7 of the Vol III money design). A node missing
-    ``weight_attr`` (or carrying a non-positive one) contributes weight
-    1.0, so fixtures that never stamp capital stock keep their prior
-    unweighted reading. Sorted-id iteration fixes the float summation
-    order (III.7); ``None`` — never zero — when no active node carries
-    ``attr`` (honest absence, III.11).
-    """
-    weighted_total = 0.0
-    weight_total = 0.0
-    found = False
-    for node in sorted(graph.query_nodes(node_type=node_type), key=lambda n: n.id):
-        attrs = node.attributes
-        if not attrs.get("active", True):
-            continue
-        value = attrs.get(attr)
-        if not isinstance(value, (int, float)):
-            continue
-        weight_raw = attrs.get(weight_attr)
-        weight = (
-            float(weight_raw) if isinstance(weight_raw, (int, float)) and weight_raw > 0.0 else 1.0
-        )
-        weighted_total += float(value) * weight
-        weight_total += weight
-        found = True
-    return weighted_total / weight_total if found else None
-
-
 def _mean_profit_rate(graph: GraphProtocol) -> float | None:
-    """Capital-weighted mean territory ``tick_profit_rate``, or ``None``.
+    """The realized general rate of profit ``r``, read from the ONE place it
+    is computed — TickDynamicsSystem's published ``NATIONAL_FINANCIAL_ATTR``.
 
-    The aggregate rate of profit is ``Sum(s) / Sum(c+v)``, not
-    ``mean(r_i)`` — an unweighted mean lets a tiny county swing the
-    national serviceability line as hard as Wayne. ``tick_capital_stock``
-    (``c+v``) is the :func:`_capital_weighted_mean` weight; absence
-    returns ``None`` — the serviceability law then falls back to its base
-    (no rate is fabricated, III.11).
+    ``r = Sum(s) / Sum(c+v)`` is a single materially-grounded quantity, the
+    place Vol. III part 3 meets part 5: the same rate that sets the endogenous
+    interest ceiling (``TickDynamicsSystem._economy_wide_profit_rate``) sets
+    this serviceability line, so the two coupled subsystems MUST read the same
+    number, never two independently-aggregated ones (the divergent-duplicate
+    defect the final review caught). The value rides on
+    ``endogenous_interest.profit_rate_ceiling`` (= ``r`` when ``r > 0``, else
+    ``0.0``).
+
+    ``None`` — the serviceability law then falls back to its base (no rate is
+    fabricated, III.11) — when no financial state was published this tick (U3
+    has not run, or an abstract/county-free graph carries no realized profit so
+    the ceiling is ``0.0``). A published ceiling of exactly ``0.0`` is treated
+    as honest absence: the general rate of profit is a ratio of sums that is
+    never exactly zero on real data, so ``0.0`` marks "no realized profit
+    measured" — the base-fallback case, matching the pre-repair reading over an
+    empty territory layer.
     """
-    return _capital_weighted_mean(graph, "territory", "tick_profit_rate")
+    raw = graph.get_graph_attr(NATIONAL_FINANCIAL_ATTR, None)
+    if not isinstance(raw, dict):
+        return None
+    endogenous = raw.get("endogenous_interest")
+    if not isinstance(endogenous, dict):
+        return None
+    ceiling = endogenous.get("profit_rate_ceiling")
+    if not isinstance(ceiling, (int, float)) or isinstance(ceiling, bool):
+        return None
+    return float(ceiling) if ceiling > 0.0 else None
 
 
 def _mean_ratio_to_capital(graph: GraphProtocol, numerator_attr: str) -> float | None:

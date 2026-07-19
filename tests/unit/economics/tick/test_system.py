@@ -2187,6 +2187,44 @@ class _StubDistributionOkCalculator:
         )
 
 
+class TestEconomyWideProfitRate:
+    """r = Sum(s)/Sum(c+v), sourced from the realized county tensors, is
+    surplus-weighted — the intensive-aggregation resistance that moved here when
+    the profit rate was unified onto ONE definition feeding both the endogenous
+    interest ceiling and the scissors serviceability line (final-review #1)."""
+
+    def test_surplus_weighted_not_unweighted(self) -> None:
+        """A tiny high-rate county must not out-vote a large low-rate one."""
+        system = TickDynamicsSystem()
+        registry = MockTensorRegistry(
+            {
+                (WAYNE_FIPS, 2015): MockTensor(profit_rate=1.0, total_s=100.0),
+                (OAKLAND_FIPS, 2015): MockTensor(profit_rate=0.05, total_s=100_000.0),
+            }
+        )
+        services = _make_services(tensor_registry=registry)
+        states = {
+            WAYNE_FIPS: _make_county(fips=WAYNE_FIPS, year=2015),
+            OAKLAND_FIPS: _make_county(fips=OAKLAND_FIPS, year=2015),
+        }
+        r = system._economy_wide_profit_rate(states, 2015, services)
+        # Sum(s)/Sum(s/pr) = 100100 / (100 + 2_000_000) ~= 0.05005, dominated by
+        # the large-surplus county — NOT the unweighted mean (1.0+0.05)/2=0.525.
+        assert r == pytest.approx(100_100.0 / 2_000_100.0)
+        assert r is not None and r < 0.1
+
+    def test_no_realized_profit_is_none(self) -> None:
+        """No tensor coverage -> honest None (never a fabricated zero, III.11)."""
+        system = TickDynamicsSystem()
+        services = _make_services(tensor_registry=MockTensorRegistry({}))
+        r = system._economy_wide_profit_rate({WAYNE_FIPS: _make_county(year=2015)}, 2015, services)
+        assert r is None
+
+    def test_empty_county_domain_is_none(self) -> None:
+        r = TickDynamicsSystem()._economy_wide_profit_rate({}, 2015, _make_services())
+        assert r is None
+
+
 class TestVol3FinancialLayerSentinelObservability:
     """A NoDataSentinel reaching the tick-system consumer must be counted
     and logged, not silently swallowed (code-review finding 1)."""

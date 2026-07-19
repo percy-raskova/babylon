@@ -209,6 +209,28 @@ def _euphoric_graph(fictitious_log: float = 1.5) -> BabylonGraph:
     return graph
 
 
+def _publish_profit_rate(graph: BabylonGraph, r: float) -> None:
+    """Publish NATIONAL_FINANCIAL_ATTR carrying the economy-wide rate of profit
+    ``r`` on ``endogenous_interest.profit_rate_ceiling`` — the single source
+    ``_mean_profit_rate`` reads (unified with the interest ceiling, finding #1).
+    This is what ``TickDynamicsSystem`` publishes @4 before the scissors @17.8
+    reads it in the same tick.
+    """
+    from babylon.domain.economics.credit.types import EndogenousInterestRate
+
+    params = NationalFinancialParameters(
+        endogenous_interest=EndogenousInterestRate(
+            year=2015,
+            profit_rate_ceiling=r,
+            rate=r * 0.30,
+            fragility_premium=0.0,
+            tightness=0.0,
+            reserve_army_signal=0.0,
+        )
+    )
+    graph.set_graph_attr(NATIONAL_FINANCIAL_ATTR, params.model_dump())
+
+
 def _county_worker(
     graph: BabylonGraph, node_id: str, fips: str, w_paid: float, v_produced: float
 ) -> None:
@@ -440,9 +462,14 @@ class TestCorrection:
         assert graph.graph["market"]["corrections"] == 2
 
     def test_healthy_profit_rate_services_the_bubble(self) -> None:
-        """tick_profit_rate=0.3 → serviceable 0.55 + 4·0.3 = 1.75 > 1.5."""
+        """Published r=0.3 → serviceable 0.55 + 4·0.3 = 1.75 > 1.5 → no snap.
+
+        The serviceability line now reads the ONE published rate of profit
+        (``endogenous_interest.profit_rate_ceiling``), unified with the interest
+        ceiling, not a scissors-local aggregation of ``tick_profit_rate``.
+        """
         graph = _euphoric_graph(fictitious_log=1.5)
-        graph.update_node("metropole", tick_profit_rate=0.3)
+        _publish_profit_rate(graph, 0.3)
         _step(graph, _enabled_services(), tick=10)
         assert graph.graph["market"]["corrections"] == 0
 
@@ -458,7 +485,7 @@ class TestCorrection:
         invented constant.
         """
         graph = _euphoric_graph(fictitious_log=1.5)
-        graph.update_node("metropole", tick_profit_rate=0.3, tick_capital_stock=10.0)
+        _publish_profit_rate(graph, 0.3)
         graph.set_graph_attr(
             TICK_DYNAMICS_KEY,
             {
@@ -469,16 +496,26 @@ class TestCorrection:
         _step(graph, _enabled_services(), tick=10)
         assert graph.graph["market"]["corrections"] == 1
 
-    def test_capital_weighted_profit_rate_resists_a_tiny_outlier(self) -> None:
-        """A 1-unit-capital county's 1.0 profit rate must not out-vote a
-        1000-unit-capital county's 0.0. The unweighted mean(1.0, 0.0)=0.5
-        would service the 1.5 overhang (0.55 + 4*0.5 = 2.55 > 1.5, no
-        snap); the capital-weighted mean drags the aggregate to ~0.001 and
-        the snap fires (fixes the intensive-aggregation defect, §3.6 last
-        row: the aggregate profit rate is Sum(s)/Sum(c+v), not mean(r_i))."""
+    def test_published_profit_rate_is_the_single_serviceability_source(self) -> None:
+        """The serviceability line reads the ONE published rate of profit, not a
+        scissors-local aggregation. A published r=0.001 (the surplus-weighted
+        Sum(s)/Sum(c+v) that TickDynamics computes — the intensive-aggregation
+        resistance now lives THERE, tested in test_system.py) fails to service
+        the 1.5 overhang (0.55 + 4*0.001 = 0.554 < 1.5) and the snap fires;
+        the unified read means the interest ceiling and this line cannot
+        diverge (finding #1)."""
         graph = _euphoric_graph(fictitious_log=1.5)
-        graph.update_node("metropole", tick_profit_rate=1.0, tick_capital_stock=1.0)
-        graph.update_node("hinterland", tick_profit_rate=0.0, tick_capital_stock=1000.0)
+        _publish_profit_rate(graph, 0.001)
+        _step(graph, _enabled_services(), tick=10)
+        assert graph.graph["market"]["corrections"] == 1
+
+    def test_absent_financial_state_falls_back_to_base_serviceability(self) -> None:
+        """No NATIONAL_FINANCIAL_ATTR (U3 has not run this tick, or a county-free
+        graph) → _mean_profit_rate is None → the serviceability law uses its
+        base, exactly as the pre-repair read over an empty territory layer did.
+        A published ceiling of 0.0 is the same honest-absence case."""
+        graph = _euphoric_graph(fictitious_log=1.5)
+        # base serviceable = 0.55 < 1.5 overhang, no profit rate to lift it.
         _step(graph, _enabled_services(), tick=10)
         assert graph.graph["market"]["corrections"] == 1
 

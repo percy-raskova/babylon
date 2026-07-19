@@ -284,8 +284,9 @@ class EndogenousInterestRate(BaseModel):
     :ivar year: Simulation year (no upper ceiling — the campaign runs to
         2109; deliberately unlike ``InterestRateState.year``'s le=2040, which
         was a latent post-2040 crash on the live path).
-    :ivar profit_rate_ceiling: Economy-wide average rate of profit ``r``
-        (capital-weighted); ``0.0`` when no profit is measured.
+    :ivar profit_rate_ceiling: Economy-wide realized general rate of profit
+        ``r = Sum(s)/Sum(c+v)`` (surplus-weighted over the county tensors);
+        ``0.0`` when no county carries a realized profit rate.
     :ivar rate: National interest rate ``i`` = ``r * share(tightness)``, or
         ``0.0`` when ``profit_rate_ceiling`` is ``0.0``.
     :ivar fragility_premium: Endogenous spread = ``i - r*base`` (>= 0); the

@@ -48,11 +48,12 @@ from pathlib import Path
 from typing import Final
 
 from babylon.models.enums.topology import NodeType
-from babylon.sentinels._ast import add_node_attribute_stamps, node_type_uses
+from babylon.sentinels._ast import add_node_attribute_stamps, edge_source_type_uses, node_type_uses
 from babylon.sentinels.base import LabelledCheck, SentinelCheckError, run_sensor
 from babylon.sentinels.exemptions import is_exempt
 from babylon.sentinels.vocabulary.registry import (
     ATTRIBUTE_EXEMPTIONS,
+    EDGE_SOURCE_ALLOWLIST,
     EXTRA_STAMPABLE_ATTRIBUTES,
     LITERAL_EXEMPTIONS,
     MODEL_FIELDS_BY_NODE_TYPE,
@@ -63,6 +64,7 @@ from babylon.sentinels.vocabulary.registry import (
 )
 
 __all__ = [
+    "fabricated_edge_sources",
     "fabricated_node_attributes",
     "invented_node_types",
     "main",
@@ -107,6 +109,17 @@ _WHY_FABRICATED: Final[str] = (
     "gave six tests a green bar over four live bugs (educate targets, verb "
     "eligibility, aid population targets, base_population, and the "
     "per-territory economy panel)."
+)
+
+_WHY_FABRICATED_EDGE: Final[str] = (
+    "WHY THIS FAILS: a fixture that ALSO hand-stamps the source node's own "
+    "type in the SAME file, then wires an edge combination no production "
+    "code creates the same literal way, is a closed loop with no external "
+    "referent -- the exact failure class ADR085 diagnosed: a fabricated "
+    "'vanguard' organization node feeding a fabricated org-sourced SOLIDARITY "
+    "edge, the ONLY reachable path for a whole amplification branch that "
+    "never had a real write side. A production reader gated on this "
+    "(edge_type, source_type) combination reacts to ZERO real edges forever."
 )
 
 
@@ -267,12 +280,58 @@ def fabricated_node_attributes() -> list[str]:
     return violations
 
 
-#: All three rules gate: an invented type, a producerless query, and a
-#: fabricated shape are each a live defect, not an observation.
+def fabricated_edge_sources() -> list[str]:
+    """Rule (d): every fixture-stamped (edge_type, source_type) combination
+    a fixture stamps must match a combination production stamps the same
+    literal way, or be a cited :data:`EDGE_SOURCE_ALLOWLIST` entry.
+
+    See :data:`~babylon.sentinels.vocabulary.registry.EDGE_SOURCE_ALLOWLIST`
+    for this rule's deliberately NARROWER static scope (most real edge
+    producers in this codebase write with a runtime id, not a literal, and
+    are invisible to it by design — the allowlist docstring is the full
+    accounting).
+
+    :returns: One violation string per offending ``(file, line, combination)``.
+    :raises SentinelCheckError: If a scan root is missing or a file is
+        unparseable (exit 2 — infrastructure failure, never a silent pass).
+    """
+    produced: set[tuple[str, str]] = set()
+    for path in _python_files(PRODUCTION_ROOTS):
+        produced.update(
+            (edge_type, source_type)
+            for _lineno, edge_type, source_type in edge_source_type_uses(path)
+        )
+
+    violations: list[str] = []
+    for path in _python_files(SCAN_ROOTS):
+        rel = path.relative_to(_REPO_ROOT)
+        for lineno, edge_type, source_type in edge_source_type_uses(path):
+            combo = (edge_type, source_type)
+            if combo in produced or combo in EDGE_SOURCE_ALLOWLIST:
+                continue
+            violations.append(
+                f'{rel}:{lineno} stamps a "{edge_type}" edge sourced from a '
+                f'"{source_type}" node -- a combination no production code '
+                f"creates the same literal way.\n"
+                f"    produced combinations: {sorted(produced) or 'none'}\n"
+                f"    fix: wire a real producer for this (edge_type, source_type) pair "
+                f"(and if it writes with a runtime id, note that in a comment -- this "
+                f"rule cannot see it either way), or -- if this is a deliberate "
+                f"negative control or a documented scanner blind spot -- add an\n"
+                f"         EDGE_SOURCE_ALLOWLIST entry with a citation.\n"
+                f"    {_WHY_FABRICATED_EDGE}"
+            )
+    return violations
+
+
+#: All four rules gate: an invented type, a producerless query, a fabricated
+#: node shape, and a fabricated edge-source combination are each a live
+#: defect, not an observation.
 _GATING_CHECKS: Final[tuple[LabelledCheck, ...]] = (
     ("invented-node-type", invented_node_types),
     ("unstamped-queried-node-type", unstamped_queried_node_types),
     ("fabricated-node-attribute", fabricated_node_attributes),
+    ("fabricated-edge-source", fabricated_edge_sources),
 )
 
 
@@ -282,8 +341,10 @@ def _summary(advisory_count: int) -> str:
     return (
         f"VOCABULARY clean: {len(_ALLOWED)} declared node types; "
         f"every literal in {'/, '.join(SCAN_ROOTS)}/ is a NodeType member, "
-        f"every production query has a production producer, and every "
-        f"stamped attribute on a production-stamped node type is real shape."
+        f"every production query has a production producer, every "
+        f"stamped attribute on a production-stamped node type is real shape, "
+        f"and every fixture-stamped (edge_type, source_type) combination has "
+        f"a production producer or a cited allowlist entry."
     )
 
 

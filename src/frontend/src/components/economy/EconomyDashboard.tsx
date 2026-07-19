@@ -20,15 +20,27 @@
  * toggled by the drawer via CSS, never JSX-conditional) so the tick
  * fan-out stays alive while the tab is visually hidden — the same rule
  * `TimeseriesChart` follows there.
+ *
+ * G4 (veil-leak closure): the audit found the "Value Produced"/
+ * "Exploitation" chips reading the top-level `data.value_produced`/
+ * `data.exploitation_rate` fields directly — real numbers regardless of
+ * the player org's Veil-of-Money tier, since this drawer tab is always
+ * mounted. Repointed to `data.veil.value_produced`/`data.veil.
+ * exploitation_rate` (the same gated source `CircuitPage.tsx`'s
+ * exploitation section reads) with a `VeilLock` placeholder below Tier 1
+ * — the two screens' veiled presentation is now identical, not two
+ * independently-gated copies.
  */
 
 import { useEffect, useState } from "react";
+import { useNavigate } from "react-router";
 import { Line, LineChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
 import { get as apiGet } from "@/api/client";
 import { endpoints } from "@/api/endpoints";
 import { useStore } from "@/store";
 import { StatChip } from "@/components/shell/StatChip";
 import { SectionLabel } from "@/components/shell/SectionLabel";
+import { VeilLock } from "@/components/shell/VeilLock";
 import type { GameEvent, JournalPayload, TimeseriesPayload } from "@/types/game";
 
 interface EconomyDashboardProps {
@@ -126,6 +138,7 @@ function CrisisTimeline({ gameId }: { gameId: string }): React.JSX.Element {
 }
 
 export function EconomyDashboard({ gameId }: EconomyDashboardProps): React.JSX.Element {
+  const navigate = useNavigate();
   const data = useStore((s) => s.panels.economy.data);
   const loading = useStore((s) => s.panels.economy.loading);
   const error = useStore((s) => s.panels.economy.error);
@@ -138,6 +151,10 @@ export function EconomyDashboard({ gameId }: EconomyDashboardProps): React.JSX.E
     void fetchEconomy(gameId);
     return () => setMounted(false);
   }, [gameId, fetchEconomy, setMounted]);
+
+  const studyDoctrine = (): void => {
+    navigate(`/game/${gameId}/doctrine`);
+  };
 
   if (loading && data === null) {
     return <p className="p-3 text-[11px] text-ash">Loading economy…</p>;
@@ -164,19 +181,47 @@ export function EconomyDashboard({ gameId }: EconomyDashboardProps): React.JSX.E
     <div className="flex flex-col gap-3 p-2" data-testid="economy-dashboard">
       <div className="flex flex-wrap gap-1.5" data-testid="economy-stat-chips">
         <StatChip label="Tick" value={data.tick} format={(v) => v.toFixed(0)} />
-        <StatChip label="Value Produced" value={data.value_produced} format={(v) => v.toFixed(1)} />
-        <StatChip
-          label="Rent Extracted"
-          value={data.rent_extracted}
-          format={(v) => v.toFixed(1)}
-          colorClassName="text-rent"
-        />
-        <StatChip
-          label="Exploitation"
-          value={data.exploitation_rate}
-          format={(v) => v.toFixed(3)}
-          metric="exploitation_rate"
-        />
+        {data.veil.tier >= 1 ? (
+          <>
+            <StatChip
+              label="Value Produced"
+              value={data.veil.value_produced}
+              format={(v) => v.toFixed(1)}
+            />
+            <StatChip
+              label="Rent Extracted"
+              value={data.rent_extracted}
+              format={(v) => v.toFixed(1)}
+              colorClassName="text-rent"
+            />
+            <StatChip
+              label="Exploitation"
+              value={data.veil.exploitation_rate}
+              format={(v) => v.toFixed(3)}
+              metric="exploitation_rate"
+            />
+          </>
+        ) : (
+          // G4: below Tier 1, "Value Produced"/"Exploitation" are replaced
+          // by ONE locked placeholder naming the real next doctrine node —
+          // never the bare (server-masked) `null` StatChip would otherwise
+          // show. "Rent Extracted" stays a plain chip (also server-masked
+          // below Tier 1 — the existing honest "no data" StatChip path,
+          // same as `profit_rate`/`occ` pre-year-boundary).
+          <>
+            <StatChip
+              label="Rent Extracted"
+              value={data.rent_extracted}
+              format={(v) => v.toFixed(1)}
+              colorClassName="text-rent"
+            />
+            <VeilLock
+              label={data.veil.next_unlock_label ?? "Theory"}
+              onStudy={studyDoctrine}
+              section="economy"
+            />
+          </>
+        )}
         <StatChip
           label="Profit Rate"
           value={data.profit_rate}

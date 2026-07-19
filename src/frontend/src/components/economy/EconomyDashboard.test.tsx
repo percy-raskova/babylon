@@ -1,6 +1,8 @@
 import { describe, it, expect, beforeEach } from "vitest";
 import { render, screen, waitFor } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 import { http, HttpResponse } from "msw";
+import { MemoryRouter, Routes, Route } from "react-router";
 import { server } from "@/test/server";
 import { EconomyDashboard } from "./EconomyDashboard";
 import { useStore } from "@/store";
@@ -13,22 +15,38 @@ beforeEach(() => {
   resetMockGameState();
 });
 
+/** `EconomyDashboard` uses `useNavigate` (G4: the Study CTA) — needs a Router. */
+function renderDashboard(): ReturnType<typeof render> {
+  return render(
+    <MemoryRouter initialEntries={[`/game/${DEFAULT_GAME_ID}`]}>
+      <Routes>
+        <Route path="/game/:id" element={<EconomyDashboard gameId={DEFAULT_GAME_ID} />} />
+        <Route
+          path="/game/:id/doctrine"
+          element={<div data-testid="stub-doctrine">DOCTRINE</div>}
+        />
+      </Routes>
+    </MemoryRouter>,
+  );
+}
+
+function mockEconomy(overrides: Parameters<typeof makeEconomyDashboardPayload>[0]): void {
+  server.use(
+    http.get("/api/games/:id/economy/", () =>
+      HttpResponse.json({ status: "ok", data: makeEconomyDashboardPayload(overrides) }),
+    ),
+  );
+}
+
 describe("EconomyDashboard", () => {
   it("renders the dashboard once real /economy/ data loads", async () => {
-    render(<EconomyDashboard gameId={DEFAULT_GAME_ID} />);
+    renderDashboard();
     await waitFor(() => expect(screen.getByTestId("economy-dashboard")).toBeInTheDocument());
   });
 
   it("shows a loud empty state when has_data is false", async () => {
-    server.use(
-      http.get("/api/games/:id/economy/", () =>
-        HttpResponse.json({
-          status: "ok",
-          data: makeEconomyDashboardPayload({ has_data: false }),
-        }),
-      ),
-    );
-    render(<EconomyDashboard gameId={DEFAULT_GAME_ID} />);
+    mockEconomy({ has_data: false });
+    renderDashboard();
     await waitFor(() => expect(screen.getByTestId("economy-no-data")).toBeInTheDocument());
   });
 
@@ -38,29 +56,22 @@ describe("EconomyDashboard", () => {
         HttpResponse.json({ status: "error", message: "Economy unavailable" }, { status: 500 }),
       ),
     );
-    render(<EconomyDashboard gameId={DEFAULT_GAME_ID} />);
+    renderDashboard();
     await waitFor(() => expect(screen.getByRole("alert")).toHaveTextContent("Economy unavailable"));
   });
 
   it("mounts and unmounts the economy panel", async () => {
-    const { unmount } = render(<EconomyDashboard gameId={DEFAULT_GAME_ID} />);
+    const { unmount } = renderDashboard();
     await waitFor(() => expect(useStore.getState().panels.economy.mounted).toBe(true));
     unmount();
     expect(useStore.getState().panels.economy.mounted).toBe(false);
   });
 
   it("no longer renders the wealth-by-class-role composition (T2-7: relocated to CircuitPage)", async () => {
-    server.use(
-      http.get("/api/games/:id/economy/", () =>
-        HttpResponse.json({
-          status: "ok",
-          data: makeEconomyDashboardPayload({
-            wealth_by_class_role: { periphery_proletariat: 40, core_bourgeoisie: 60 },
-          }),
-        }),
-      ),
-    );
-    render(<EconomyDashboard gameId={DEFAULT_GAME_ID} />);
+    mockEconomy({
+      wealth_by_class_role: { periphery_proletariat: 40, core_bourgeoisie: 60 },
+    });
+    renderDashboard();
     await waitFor(() => expect(screen.getByTestId("economy-dashboard")).toBeInTheDocument());
     expect(screen.queryByTestId("breakdown-bar")).not.toBeInTheDocument();
   });
@@ -92,7 +103,7 @@ describe("EconomyDashboard", () => {
         }),
       ),
     );
-    render(<EconomyDashboard gameId={DEFAULT_GAME_ID} />);
+    renderDashboard();
     await waitFor(() => expect(screen.getByTestId("crisis-timeline")).toBeInTheDocument());
     const rows = screen.getAllByTestId(/^crisis-row-/);
     expect(rows).toHaveLength(2);
@@ -101,20 +112,13 @@ describe("EconomyDashboard", () => {
   });
 
   it("shows an honest empty state when the journal has no crisis events", async () => {
-    render(<EconomyDashboard gameId={DEFAULT_GAME_ID} />);
+    renderDashboard();
     await waitFor(() => expect(screen.getByTestId("crisis-timeline-empty")).toBeInTheDocument());
   });
 
   it("renders every chip live from a fully-populated payload — no phantoms (spec-116 4d.6)", async () => {
-    server.use(
-      http.get("/api/games/:id/economy/", () =>
-        HttpResponse.json({
-          status: "ok",
-          data: makeEconomyDashboardPayload({ profit_rate: 0.153, occ: 2.4 }),
-        }),
-      ),
-    );
-    render(<EconomyDashboard gameId={DEFAULT_GAME_ID} />);
+    mockEconomy({ profit_rate: 0.153, occ: 2.4 });
+    renderDashboard();
     await waitFor(() => expect(screen.getByTestId("economy-stat-chips")).toBeInTheDocument());
 
     expect(screen.getByTestId("stat-profit rate")).toHaveTextContent("0.153");
@@ -126,7 +130,7 @@ describe("EconomyDashboard", () => {
 
   it("keeps honest 'no data' on exactly the year-boundary chips pre-boundary (spec-116 4d.6)", async () => {
     // Default fixture: profit_rate/occ null (pre-tick-52 cadence honesty).
-    render(<EconomyDashboard gameId={DEFAULT_GAME_ID} />);
+    renderDashboard();
     await waitFor(() => expect(screen.getByTestId("economy-stat-chips")).toBeInTheDocument());
 
     expect(screen.getByTestId("stat-profit rate")).toHaveTextContent("no data");
@@ -135,5 +139,58 @@ describe("EconomyDashboard", () => {
     expect(screen.getByTestId("stat-value produced")).not.toHaveTextContent("no data");
     expect(screen.getByTestId("stat-rent pool")).not.toHaveTextContent("no data");
     expect(screen.getByTestId("stat-wage flow")).not.toHaveTextContent("no data");
+  });
+
+  describe("the Veil of Money (G4: closes the legacy top-level leak)", () => {
+    it("tier 0: locks Value Produced/Exploitation behind a VeilLock naming the real next doctrine node", async () => {
+      mockEconomy({
+        value_produced: null,
+        exploitation_rate: null,
+        rent_extracted: null,
+        veil: {
+          tier: 0,
+          next_unlock_node_id: "class_consciousness",
+          next_unlock_label: "Class Consciousness",
+          value_produced: null,
+          exploitation_rate: null,
+        },
+      });
+      renderDashboard();
+      await waitFor(() => expect(screen.getByTestId("veil-locked")).toBeInTheDocument());
+      expect(screen.queryByTestId("stat-value produced")).not.toBeInTheDocument();
+      expect(screen.queryByTestId("stat-exploitation")).not.toBeInTheDocument();
+      expect(screen.getByText(/Study: Class Consciousness/)).toBeInTheDocument();
+      // No client-side inspection can pierce it — the values are absent,
+      // not merely hidden by CSS/JSX (they were never in the DOM at all).
+      expect(screen.queryByText("100")).not.toBeInTheDocument();
+    });
+
+    it("tier 2 (default fixture, tier >= 1): Value Produced/Exploitation read real numbers off veil.*", async () => {
+      renderDashboard();
+      await waitFor(() => expect(screen.getByTestId("economy-stat-chips")).toBeInTheDocument());
+      expect(screen.queryByTestId("veil-locked")).not.toBeInTheDocument();
+      expect(screen.getByTestId("stat-value produced")).toHaveTextContent("100");
+      expect(screen.getByTestId("stat-exploitation")).toHaveTextContent("0.200");
+    });
+
+    it("the study CTA navigates to the routed Doctrine page", async () => {
+      mockEconomy({
+        value_produced: null,
+        exploitation_rate: null,
+        veil: {
+          tier: 0,
+          next_unlock_node_id: "class_consciousness",
+          next_unlock_label: "Class Consciousness",
+          value_produced: null,
+          exploitation_rate: null,
+        },
+      });
+      renderDashboard();
+      await waitFor(() =>
+        expect(screen.getByTestId("veil-study-link-economy")).toBeInTheDocument(),
+      );
+      await userEvent.click(screen.getByTestId("veil-study-link-economy"));
+      expect(screen.getByTestId("stub-doctrine")).toBeInTheDocument();
+    });
   });
 });

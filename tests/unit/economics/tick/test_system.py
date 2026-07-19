@@ -16,7 +16,7 @@ import pytest
 
 from babylon.config.defines import GameDefines
 from babylon.config.defines.economy_basic import EconomyDefines
-from babylon.domain.economics.credit.types import InterestRateState
+from babylon.domain.economics.distribution.types import SurplusValueDistribution
 from babylon.domain.economics.dynamics.types import ClassDistribution
 from babylon.domain.economics.reserve_army.types import ReserveArmyState
 from babylon.domain.economics.tensor import NoDataSentinel
@@ -2063,21 +2063,6 @@ class _StubInterestSentinelCalculator:
         )
 
 
-class _StubInterestCalculatorOk:
-    """Always returns real (non-sentinel) interest rate data.
-
-    Used to isolate the fictitious-capital/distribution sentinel paths —
-    `_compute_national_financial_state`/`_compute_financial_layer` call
-    ``services.interest_calculator`` unconditionally (no None-guard) and
-    `_compute_financial_layer` early-returns entirely when
-    ``services.interest_calculator is None``, so a real interest calculator
-    must stay wired even when the test targets a different calculator.
-    """
-
-    def compute_interest_rate_state(self, year: int) -> InterestRateState:
-        return InterestRateState(year=2015, base_rate=0.25, treasury_10y=2.27, baa_spread=2.64)
-
-
 class _StubFictitiousSentinelCalculator:
     """Always returns a year-window NoDataSentinel (never real data)."""
 
@@ -2152,9 +2137,10 @@ class _StubHousingSentinelCalculator:
 
 
 class _SpyDistributionCalculatorRecordsCalls:
-    """Records every call — used to prove compute_distribution is NEVER
-    invoked when the national interest rate is absent (code-review finding
-    U2.2-3: it must not be called with a fabricated 0.0)."""
+    """Records every call — used to prove compute_distribution IS reached with
+    the real endogenous national interest rate (U9 inverts code-review finding
+    U2.2-3: the rate is no longer absent, so the call is never skipped and the
+    rate passed is genuine, never a fabricated substitute)."""
 
     def __init__(self) -> None:
         self.calls: list[dict[str, object]] = []
@@ -2175,7 +2161,30 @@ class _SpyDistributionCalculatorRecordsCalls:
                 "national_interest_rate": national_interest_rate,
             }
         )
-        return NoDataSentinel(fips=fips, year=year, reason="should never be reached")
+        return NoDataSentinel(fips=fips, year=year, reason="spy — records the call")
+
+
+class _StubDistributionOkCalculator:
+    """Always returns a real SurplusValueDistribution (never a sentinel) —
+    used to prove the distribution reaches a county with positive surplus."""
+
+    def compute_distribution(
+        self,
+        fips: str,
+        year: int,
+        total_surplus: float,
+        county_profit_rate: float,
+        national_interest_rate: float,
+        county_employment: float = 0.0,
+    ) -> SurplusValueDistribution:
+        return SurplusValueDistribution(
+            fips_code=fips,
+            year=year,
+            total_surplus_produced=total_surplus,
+            interest_payments=0.0,
+            ground_rent=0.0,
+            taxes_on_surplus=0.0,
+        )
 
 
 class TestVol3FinancialLayerSentinelObservability:
@@ -2198,14 +2207,36 @@ class TestVol3FinancialLayerSentinelObservability:
         assert national_rate == 0.0  # empty graph: no territory profit rate
         assert national_spread == 0.0
 
+    def test_county_distribution_runs_without_an_interest_calculator(self) -> None:
+        """U9: the endogenous rate makes the distribution reachable even when
+        no FRED interest calculator is wired — the config gate is the
+        distribution calculator, not the (now calibration-only) interest one."""
+        system = TickDynamicsSystem()
+        registry = MockTensorRegistry(
+            {(WAYNE_FIPS, 2020): MockTensor(profit_rate=0.10, total_s=1_000_000.0)}
+        )
+        services = _make_services(
+            interest_calculator=None,
+            distribution_calculator=_StubDistributionOkCalculator(),
+            tensor_registry=registry,
+        )
+        county = _make_county(year=2020)
+        national_params = _make_national_params(year=2020)
+
+        out = system._compute_financial_layer(
+            {WAYNE_FIPS: county}, national_params, services, 2020, build_territory_graph()
+        )
+        # A county with positive surplus now carries a surplus_distribution
+        # (national_rate is a real endogenous float, never None -> no skip).
+        assert any(getattr(c, "surplus_distribution", None) is not None for c in out.values())
+
     def test_national_fictitious_sentinel_records_tally(self) -> None:
         system = TickDynamicsSystem()
         services = _make_services(
-            interest_calculator=_StubInterestCalculatorOk(),
             fictitious_capital_calculator=_StubFictitiousSentinelCalculator(),
         )
 
-        _national_rate, _spread, fictitious, _reason = system._compute_national_financial_state(
+        _national_rate, _spread, fictitious = system._compute_national_financial_state(
             services, 2041, build_territory_graph()
         )
 
@@ -2230,16 +2261,17 @@ class TestVol3FinancialLayerSentinelObservability:
         assert updated.surplus_distribution is None
         assert services.economics_fallbacks.vol3_distribution_sentinel == 1
 
-    def test_full_financial_layer_at_year_2041_surfaces_all_three_sentinels(self) -> None:
+    def test_full_financial_layer_at_year_2041_surfaces_both_data_sentinels(self) -> None:
         """System-level: _compute_financial_layer (not just the calculators
         in isolation) surfaces the honest degradation for a real
-        out-of-window year — the exact gap code-review finding 1 identified."""
+        out-of-window year. U9: the interest rate is endogenous (never a
+        sentinel), so the surviving data sentinels are fictitious-capital and
+        distribution."""
         system = TickDynamicsSystem()
         registry = MockTensorRegistry(
             {(WAYNE_FIPS, 2041): MockTensor(profit_rate=0.10, total_s=1_000_000.0)}
         )
         services = _make_services(
-            interest_calculator=_StubInterestSentinelCalculator(),
             fictitious_capital_calculator=_StubFictitiousSentinelCalculator(),
             distribution_calculator=_StubDistributionSentinelCalculator(),
             tensor_registry=registry,
@@ -2253,14 +2285,15 @@ class TestVol3FinancialLayerSentinelObservability:
 
         assert result[WAYNE_FIPS].surplus_distribution is None
         tally = services.economics_fallbacks
-        assert tally.vol3_interest_sentinel == 1
         assert tally.vol3_fictitious_sentinel == 1
         assert tally.vol3_distribution_sentinel == 1
 
     def test_sentinel_reason_is_logged_at_warning(self, caplog: pytest.LogCaptureFixture) -> None:
-        """The sentinel's own .reason (not a hand-rolled message) reaches the log."""
+        """The sentinel's own .reason (not a hand-rolled message) reaches the
+        log. U9: the interest rate is endogenous (never a sentinel), so the
+        national-state sentinel source is the fictitious-capital calculator."""
         system = TickDynamicsSystem()
-        services = _make_services(interest_calculator=_StubInterestSentinelCalculator())
+        services = _make_services(fictitious_capital_calculator=_StubFictitiousSentinelCalculator())
 
         with caplog.at_level("WARNING"):
             system._compute_national_financial_state(services, 2041, build_territory_graph())
@@ -2281,7 +2314,6 @@ class TestVol3FinancialLayerSentinelObservability:
             }
         )
         services = _make_services(
-            interest_calculator=_StubInterestCalculatorOk(),
             distribution_calculator=_StubDistributionSentinelCalculator(),
             tensor_registry=registry,
         )
@@ -2314,16 +2346,14 @@ class TestVol3FinancialLayerSentinelObservability:
         ("outside Volume III modeled...") and the distribution sentinel's
         reason ("Rental income data unavailable...") are textually distinct
         and both independently actionable — both must reach caplog in the
-        same year. (The interest calculator is kept real here specifically
-        so compute_distribution is actually invoked and can independently
-        report ITS OWN distinct data gap — see U2.2-3's fix, which skips
-        compute_distribution entirely when interest itself is absent.)"""
+        same year. (U9: the national rate is endogenous and never absent, so
+        compute_distribution is always invoked and can independently report
+        ITS OWN distinct data gap.)"""
         system = TickDynamicsSystem()
         registry = MockTensorRegistry(
             {(WAYNE_FIPS, 2041): MockTensor(profit_rate=0.10, total_s=1_000_000.0)}
         )
         services = _make_services(
-            interest_calculator=_StubInterestCalculatorOk(),
             fictitious_capital_calculator=_StubFictitiousSentinelCalculator(),
             distribution_calculator=_StubRentalDataGapDistributionCalculator(),
             tensor_registry=registry,
@@ -2389,36 +2419,35 @@ class TestVol3FinancialLayerSentinelObservability:
         messages = [r.getMessage() for r in caplog.records]
         assert any("Housing decomposition data unavailable" in m for m in messages)
 
-    def test_absent_national_rate_skips_distribution_never_fabricates_zero_interest(
+    def test_endogenous_rate_always_reaches_distribution_with_the_real_rate(
         self,
     ) -> None:
-        """Code-review finding U2.2-3: when the interest calculator has no
-        data for `year`, compute_distribution must NEVER be called with a
-        fabricated 0.0 national_interest_rate — that would silently publish
-        a genuine-looking zero-interest SurplusValueDistribution. Proven by
-        a spy calculator that records every call: it must receive zero calls."""
+        """U9 inverts code-review finding U2.2-3: the national interest rate is
+        now endogenous and never absent, so compute_distribution is always
+        reached for a county with positive surplus and receives the REAL
+        endogenous rate — never a skip, never a fabricated substitute. Proven
+        by a spy calculator that records every call: with no profit on the
+        graph the rate it receives is a genuine 0.0, not an absence."""
         system = TickDynamicsSystem()
         registry = MockTensorRegistry(
             {(WAYNE_FIPS, 2041): MockTensor(profit_rate=0.10, total_s=1_000_000.0)}
         )
         spy = _SpyDistributionCalculatorRecordsCalls()
         services = _make_services(
-            interest_calculator=_StubInterestSentinelCalculator(),
             distribution_calculator=spy,
             tensor_registry=registry,
         )
         county = _make_county(year=2041)
         national_params = _make_national_params(year=2041)
 
-        result = system._compute_financial_layer(
+        system._compute_financial_layer(
             {WAYNE_FIPS: county}, national_params, services, 2041, build_territory_graph()
         )
 
-        assert spy.calls == [], (
-            "compute_distribution must never be invoked when the national rate is absent"
+        assert len(spy.calls) == 1, (
+            "compute_distribution must be reached now the national rate is endogenous"
         )
-        assert result[WAYNE_FIPS].surplus_distribution is None
-        assert services.economics_fallbacks.vol3_distribution_sentinel == 1
+        assert spy.calls[0]["national_interest_rate"] == 0.0  # empty graph: no profit to divide
 
 
 # =============================================================================
@@ -2703,24 +2732,20 @@ class TestWriteHexSubstrate:
 
 
 class TestComputeNationalFinancialState:
-    """Tests for _compute_national_financial_state (vol3-money-scissors U3.2).
+    """Tests for _compute_national_financial_state (vol3-money-scissors U3.2/U9).
 
-    U3 keeps the existing 4-tuple return contract (national_rate,
-    national_spread, fictitious, interest_unavailable_reason) and
-    additionally publishes a NationalFinancialParameters graph attribute
-    so downstream CONSEQUENCE-phase Systems can read it (see
-    graph_bridge.NATIONAL_FINANCIAL_ATTR) — it previously died as a
+    U9 returns a 3-tuple (national_rate, national_spread, fictitious) where the
+    rate/spread are ENDOGENOUS floats (Capital Vol. III Part V) — never absent —
+    and publishes a NationalFinancialParameters graph attribute carrying the
+    EndogenousInterestRate so downstream CONSEQUENCE-phase Systems can read it
+    (see graph_bridge.NATIONAL_FINANCIAL_ATTR) — it previously died as a
     transient local.
     """
 
     def test_publishes_national_financial_parameters_to_graph(self) -> None:
-        """Verify the method instantiates + publishes NationalFinancialParameters."""
+        """Verify the method instantiates + publishes NationalFinancialParameters
+        carrying the endogenous interest rate (U9) and fictitious capital."""
         services = _make_services(
-            interest_calculator=MockInterestRateCalculator(
-                base_rate=0.25,
-                treasury_10y=2.27,
-                baa_spread=2.64,
-            ),
             fictitious_capital_calculator=MockFictitiousCapitalCalculator(
                 government_debt=18e12,
                 corporate_equity=20e12,
@@ -2731,91 +2756,95 @@ class TestComputeNationalFinancialState:
         graph = build_territory_graph()
         system = TickDynamicsSystem()
 
-        (
-            national_rate,
-            national_spread,
-            fictitious,
-            interest_unavailable_reason,
-        ) = system._compute_national_financial_state(services, 2015, graph)
+        national_rate, national_spread, fictitious = system._compute_national_financial_state(
+            services, 2015, graph
+        )
 
-        # Existing tuple contract is unchanged — county-level callers still
-        # get the 4-tuple (float | None, float | None,
-        # FictitiousCapitalStock | None, str | None).
-        assert national_rate == pytest.approx(0.25 + 2.64)
-        assert national_spread == pytest.approx(2.64)
+        # U9 3-tuple: rate/spread are endogenous floats, never None. With no
+        # territory profit rate on the graph the endogenous rate is 0.0.
+        assert isinstance(national_rate, float)
+        assert isinstance(national_spread, float)
+        assert national_rate == 0.0
+        assert national_spread == 0.0
         assert fictitious is not None
         assert fictitious.total_claims == pytest.approx(60e12)
-        assert interest_unavailable_reason is None
 
         published = read_national_financial_state_from_graph(graph)
         assert published is not None
-        assert published.interest_rate_state is not None
-        assert published.interest_rate_state.base_rate == pytest.approx(0.25)
+        assert published.endogenous_interest is not None
+        assert published.endogenous_interest.rate == pytest.approx(0.0)
         assert published.fictitious_capital is not None
         assert published.fictitious_capital.total_claims == pytest.approx(60e12)
 
-    def test_publishes_honest_none_when_calculators_return_sentinel(self) -> None:
-        """Verify a NoDataSentinel from either calculator publishes None fields.
+    def test_publishes_endogenous_rate_with_honest_none_fictitious(self) -> None:
+        """U9: the national rate is always a total endogenous float (never
+        None), while an absent fictitious-capital calculator still publishes a
+        None fictitious field.
 
-        Constitution III.11: absence must stay None, never a fabricated
-        zero — this proves the publish path preserves that even when
-        called directly (not gated by _compute_financial_layer's
-        interest_calculator-is-None early return).
+        Constitution III.11: fictitious absence must stay None, never a
+        fabricated zero — this proves the publish path preserves that even
+        when called directly (not gated by _compute_financial_layer's
+        distribution_calculator-is-None early return).
         """
         services = _make_services(
-            interest_calculator=MockInterestRateCalculator(force_sentinel=True),
             fictitious_capital_calculator=None,
         )
         graph = build_territory_graph()
         system = TickDynamicsSystem()
 
-        (
-            national_rate,
-            national_spread,
-            fictitious,
-            interest_unavailable_reason,
-        ) = system._compute_national_financial_state(services, 2015, graph)
+        national_rate, national_spread, fictitious = system._compute_national_financial_state(
+            services, 2015, graph
+        )
 
-        # Honest absence (Constitution III.11), shipped in aedce819: an
-        # absent rate is None, NOT a fabricated 0.0, and the sentinel's own
-        # .reason travels with it so the caller can attribute the gap.
-        assert national_rate is None
-        assert national_spread is None
+        # Endogenous rate/spread are genuine 0.0 (no profit on the graph),
+        # never an absence; fictitious stays honestly None (III.11).
+        assert national_rate == 0.0
+        assert national_spread == 0.0
         assert fictitious is None
-        assert interest_unavailable_reason == "Forced sentinel for testing"
-        assert services.economics_fallbacks.vol3_interest_sentinel == 1
 
         published = read_national_financial_state_from_graph(graph)
         assert published is not None
-        assert published.interest_rate_state is None
+        assert published.endogenous_interest is not None
         assert published.fictitious_capital is None
 
     def test_publishes_credit_state_with_a_real_fragility_index(self) -> None:
-        """U3.4: the `credit` opposition (U5.2) measures default_rate * spread.
-        Nothing in the codebase constructed a CreditState before this task, so
+        """U3.4/U9: the `credit` opposition (U5.2) measures default_rate * spread,
+        where the spread is now the ENDOGENOUS fragility premium (Capital Vol.
+        III Part V), not a FRED BAA read. A territory carrying a real profit
+        rate and an elevated reserve army produces a genuinely non-zero
+        premium; credit_fragility must equal default_rate * that premium.
+        Nothing in the codebase constructed a CreditState before U3.4, so
         GraphInputs.credit_fragility was permanently None and the declared
         credit->financial transforms edge permanently demoted `financial`."""
         services = _make_services(
-            interest_calculator=MockInterestRateCalculator(
-                base_rate=0.25, treasury_10y=2.27, baa_spread=2.64
-            ),
             fictitious_capital_calculator=MockFictitiousCapitalCalculator(),
             credit_aggregate_source=MockCreditAggregateSource(data={2015: (60e12, 18e12, 20e12)}),
         )
+        # Seed a real profit rate + an elevated reserve army so the endogenous
+        # loan-market tightness (and hence the fragility premium) is non-zero.
         graph = build_territory_graph()
+        graph.update_node(
+            WAYNE_FIPS,
+            tick_profit_rate=0.10,
+            tick_capital_stock=1.0,
+            reserve_ratio=0.54,
+        )
         system = TickDynamicsSystem()
 
         system._compute_national_financial_state(services, 2015, graph)
 
         published = read_national_financial_state_from_graph(graph)
         assert published is not None
+        assert published.endogenous_interest is not None
+        spread = published.endogenous_interest.fragility_premium
+        assert spread > 0.0, "seeded profit + reserve army must yield a real premium"
         assert published.credit_state is not None
-        assert published.credit_state.spread_to_treasuries == pytest.approx(2.64)
+        assert published.credit_state.spread_to_treasuries == pytest.approx(spread)
         assert published.credit_state.default_rate == pytest.approx(
             services.defines.capital_vol3.default_rate_estimate
         )
         assert published.credit_state.credit_fragility == pytest.approx(
-            services.defines.capital_vol3.default_rate_estimate * 2.64
+            services.defines.capital_vol3.default_rate_estimate * spread
         )
 
     def test_credit_state_is_none_without_an_interest_state(self) -> None:

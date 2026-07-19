@@ -1,4 +1,4 @@
-"""The production opposition catalog: Babylon's five bound contradictions.
+"""The production opposition catalog: Babylon's ten bound contradictions.
 
 :func:`build_default_registry` wires an
 :class:`~babylon.domain.dialectics.core.opposition.OppositionRegistry` over
@@ -9,9 +9,11 @@ module free of any ``babylon.engine`` import, so the dialectics package
 stays a pure downstream of ``formulas`` + ``models`` and cannot form an
 import cycle with the system that consumes it.
 
-The five oppositions, and the honest measure each is bound to on this
-branch (verified against a 30-tick single-county bridged probe,
-2026-07-02):
+The ten oppositions, and the honest measure each is bound to. The first
+five were verified against a 30-tick single-county bridged probe
+(2026-07-02); ``price_value`` was promoted to CANONICAL by ADR078; the
+four Volume III money oppositions were bound by the Vol III money-scissors
+work (2026-07-18):
 
 - ``capital_labor`` — mean wealth-asymmetry over EXPLOITATION edges
   (labor = pole A / source, capital = pole B / target). Antagonistic.
@@ -36,6 +38,28 @@ branch (verified against a 30-tick single-county bridged probe,
   inflow = core pole dominant). It shares ``wage``'s inputs but carries the
   core/periphery poles and the frame level; that shared-input coupling is
   encoded as ``wage feeds imperial`` in the default coupling graph.
+- ``price_value`` — the Market Scissors axis (Program 23, ADR077/ADR078)
+  read as an adjunction defect: gap and balance come from the pre-derived
+  ``GraphInputs.market_balance``, the engine's ``tanh(price_log / scale)``.
+  CANONICAL: it competes for principal contradiction.
+- ``surplus_distribution`` — enterprise⇄rentier: the rentier share
+  ``(i + r + t) / s``, the division of one county's produced surplus among
+  the capitals claiming it. Balance crosses zero where the claims exactly
+  extinguish enterprise profit.
+- ``debt_spiral`` — solvent⇄indebted: accumulated enterprise-profit
+  shortfall over annual surplus. Zero debt reads gap 0 (no contradiction),
+  balance −1 (the solvent pole leads).
+- ``credit`` — accommodation⇄fragility: ``default_rate * spread``, scaled by
+  the engine against its crisis reference so balance crosses zero AT the
+  threshold. National; unplaced on the level lattice.
+- ``financial`` — real⇄fictitious: claims on future value over present
+  production, read from the scissors' ``fictitious_log`` in ratio space.
+  National; unplaced on the level lattice.
+
+All four Volume III bindings share ``_ratio_reading``'s zero-parameter
+saturating map and all four are ``antagonistic=False``: the division of
+surplus among capitals is real conflict but INTRA-class, and only
+``capital_labor`` and ``imperial`` carry the rupture-producing flag.
 
 Design note (shared defect, different poles): ``wage`` and ``imperial`` read
 the identical ``(w_paid, v_produced)`` defect but bind different poles —

@@ -367,3 +367,27 @@ class TestVolumeThreeOppositions:
         states = _states(GraphInputs(debt_ratio=-2.0))
         assert states["debt_spiral"].gap == pytest.approx(0.0)
         assert states["debt_spiral"].balance == pytest.approx(0.0)
+
+
+class TestCatalogDocstringAccuracy:
+    """The module docstring is a claim about the registry; pin it to the code.
+
+    It went stale twice already — it still said "five bound contradictions"
+    and omitted ``price_value`` for the whole period during which
+    ``price_value`` was CANONICAL (ADR078). Documentation that describes a
+    registry can be checked against that registry, so it is.
+    """
+
+    def test_docstring_names_every_registered_key(self) -> None:
+        import babylon.domain.dialectics.instances.catalog as catalog_module
+
+        docstring = catalog_module.__doc__ or ""
+        for key in build_default_registry().keys:
+            assert f"``{key}``" in docstring, f"docstring never mentions {key!r}"
+
+    def test_docstring_does_not_claim_five(self) -> None:
+        import babylon.domain.dialectics.instances.catalog as catalog_module
+
+        docstring = catalog_module.__doc__ or ""
+        assert "five bound contradictions" not in docstring
+        assert "The five oppositions" not in docstring

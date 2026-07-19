@@ -10,8 +10,24 @@
  *   fixed-horizon copy) -> Begin -> cockpit at tick 0 -> disabled-with-
  *   reason verb grid (no dead ends) -> eligible verb (Campaign) -> preview
  *   (probability + cost) visible BEFORE submit -> submit succeeds ->
- *   resolve two ticks (dedup + autopause-once exercised live) ->
- *   endgame_progress axes rendered honestly in the objectives tray.
+ *   resolve two ticks (a FORCED first crisis hard-asserted live, dedup
+ *   exercised live) -> endgame_progress axes rendered honestly in the
+ *   objectives tray.
+ *
+ * G7-crisis (spec §7 lines 267-268's "... -> first crisis -> epilogue"):
+ * `endgame_reached` is the ONLY event the frontend classifies "critical"
+ * (spec-116 FR-116-2's salience re-tier — crimson reserved for the endgame
+ * alone) and hence the only autopause trigger, and it fires exclusively at
+ * the fixed ~5200-tick century horizon (EndgameDetector recognizes the five
+ * patterns but never adjudicates — owner ruling 2026-07-17). No
+ * scenario/seed reaches it inside this spec's 2-tick window, so the crisis
+ * leg below forces it through a real, test-only server hook
+ * (`forceEndgameOnNextResolve` — see its docstring in `fixtures.ts`) that
+ * reuses the exact same `EndgameEvent` construction a genuine horizon
+ * termination already uses. The epilogue leg itself (accept-outcome,
+ * chronicle/epilogue copy) is a SEPARATE later task and is not built here —
+ * this test only clears the chronicle takeover that opens as an
+ * unavoidable side effect of the same signal, asserting nothing about it.
  *
  * FOLLOW-PATTERN: `real-loop.spec.ts` (shared-session serial suite shape)
  * + `lobby-briefing.spec.ts` (the real create->briefing->begin flow) +
@@ -39,7 +55,7 @@
  * the literal acceptance-gate code in the task brief (which asserts only
  * `preview-probability` + `verb-cost`, not target-delta chips).
  */
-import { expect, test, acknowledgeAutopauseIfPresent } from "./fixtures";
+import { expect, test, acknowledgeAutopauseIfPresent, forceEndgameOnNextResolve } from "./fixtures";
 
 /** Session id created by the "creating an operation" test. */
 let gameId = "";
@@ -173,14 +189,17 @@ test.describe("first session — fresh player trunk (spec-116 acceptance gate 6)
     await expect(page.getByTestId("pending-actions")).toBeVisible({ timeout: 10000 });
   });
 
-  test("resolving two ticks: no consecutive identical event cards, autopause handled cleanly, endgame_progress axes render honestly", async ({
+  test("resolving two ticks: a forced first crisis autopauses and is acknowledged live, no consecutive identical event cards, endgame_progress axes render honestly", async ({
     page,
   }) => {
     expect(gameId, "submit test ran first").toBeTruthy();
     await page.goto(`/game/${gameId}`);
     await expect(page.getByTestId("tick-value")).toHaveText("0", { timeout: 15000 });
 
-    // Resolve tick 0 -> 1.
+    // Resolve tick 0 -> 1, forcing a real endgame_reached via the G7-crisis
+    // test-only hook (see forceEndgameOnNextResolve's docstring) — the spec
+    // §7 "first crisis" leg, deterministic and asserted, not tolerated.
+    await forceEndgameOnNextResolve(page);
     const stepButton = page.getByRole("button", { name: "Step" });
     await expect(stepButton).toBeEnabled({ timeout: 10000 });
     await Promise.all([
@@ -191,12 +210,32 @@ test.describe("first session — fresh player trunk (spec-116 acceptance gate 6)
       stepButton.click(),
     ]);
     await expect(page.getByTestId("tick-value")).toHaveText("1", { timeout: 15000 });
-    // Acceptance gate 3 exercised live: at most one autopause per distinct
-    // event — acknowledgeAutopauseIfPresent resumes past it if the tick's
-    // events triggered one, and never re-fires for the same key.
-    await acknowledgeAutopauseIfPresent(page);
 
-    // Resolve tick 1 -> 2.
+    // Acceptance gate 3, HARD-asserted: the forced critical event actually
+    // autopauses the sim (not "if present" — it must be present).
+    await expect(page.getByTestId("time-status")).toHaveText("AUTOPAUSED", { timeout: 15000 });
+    await expect(page.getByTestId("critical-event-modal")).toBeVisible();
+
+    // endgame_reached also flips panels.endgame.data.outcome null -> non-null
+    // on this SAME tick (worldSlice.onTickAdvanced's
+    // maybeOpenChronicleOnEndgame), auto-opening the chronicle takeover
+    // (z-50) on top of the modal (chrome layer, z-20) — an unavoidable side
+    // effect of the only event type the frontend currently classifies
+    // "critical" (spec-116 FR-116-2). The epilogue leg is out of scope here
+    // (a separate later task) — this only clears the incidental overlay so
+    // the modal underneath is reachable again; nothing about the
+    // takeover's own content is asserted.
+    const takeover = page.getByTestId("takeover-overlay");
+    if ((await takeover.count()) > 0) {
+      await page.getByTestId("takeover-close").click();
+    }
+
+    await page.getByTestId("autopause-resume").click();
+    await expect(page.getByTestId("time-status")).toHaveText("PAUSED", { timeout: 10000 });
+    await expect(page.getByTestId("critical-event-modal")).toHaveCount(0);
+
+    // Resolve tick 1 -> 2 (no forced crisis this time — the real engine's
+    // own dynamics govern it, so the tolerant helper stays the right tool).
     await expect(stepButton).toBeEnabled({ timeout: 10000 });
     await Promise.all([
       page.waitForResponse(

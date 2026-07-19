@@ -104,3 +104,43 @@ export async function acknowledgeAutopauseIfPresent(page: Page): Promise<void> {
   await expect(status).toHaveText("PAUSED", { timeout: 5000 });
   await expect(modal).toHaveCount(0);
 }
+
+/**
+ * G7-crisis test-only hook (first-session.spec.ts's crisis-window test):
+ * make the NEXT `POST /resolve/` this page issues carry
+ * `X-Babylon-E2E-Force-Endgame: 1`. Only when the server process has ALSO
+ * opted in via `BABYLON_E2E_TEST_HOOKS=1` (`web/game/engine_bridge.py`'s
+ * `_e2e_test_hooks_enabled` — never set outside an e2e run) does that
+ * header make the tick end the game through the exact real `EndgameEvent`
+ * construction a genuine ~5200-tick horizon termination already uses
+ * (`web/game/api.py`'s `resolve_tick` view reads the header;
+ * `EngineBridge.resolve_tick`'s `force_endgame_test_hook` param gates the
+ * real construction on it).
+ *
+ * `endgame_reached` is the ONLY event the frontend classifies "critical"
+ * (spec-116 FR-116-2's salience re-tier — crimson reserved for the
+ * endgame alone), hence the only autopause trigger; recognizing one of the
+ * five endgame *patterns* only fires the non-critical `pattern_shift`
+ * event. Since the fixed-horizon design never reaches the real termination
+ * this early, this is the only way to exercise the autopause/
+ * critical-event machinery deterministically inside a short e2e window —
+ * see the crisis-window test's own docstring for evidence this was
+ * checked, not assumed.
+ *
+ * `page.route(..., { times: 1 })` scopes the header to exactly the next
+ * matching request — it can never leak into a later resolve this page
+ * makes, or into any other spec file's page/session even under a full
+ * parallel e2e run against a shared dev server (each spec file gets its
+ * own browser context).
+ */
+export async function forceEndgameOnNextResolve(page: Page): Promise<void> {
+  await page.route(
+    "**/resolve/",
+    async (route) => {
+      await route.continue({
+        headers: { ...route.request().headers(), "x-babylon-e2e-force-endgame": "1" },
+      });
+    },
+    { times: 1 },
+  );
+}

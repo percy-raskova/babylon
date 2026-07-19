@@ -19,6 +19,7 @@ import sys
 from collections.abc import Callable
 
 from babylon.sentinels.coverage.checks import main as coverage_main
+from babylon.sentinels.liveness.checks import main as liveness_main
 from babylon.sentinels.seam.checks import main as seam_main
 from babylon.sentinels.synthetic.checks import main as synthetic_main
 
@@ -53,6 +54,7 @@ _SENSORS: dict[str, Callable[[list[str] | None], int]] = {
     "partition": _partition_main,
     "synthetic": synthetic_main,
     "catalog": _catalog_main,
+    "liveness": liveness_main,
 }
 
 

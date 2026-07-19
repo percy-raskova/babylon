@@ -123,6 +123,10 @@ run = "poetry run python tools/sentinel_check.py seam --check"
 description = "Data-coverage sentinel: every declared reference-data source class exists (static gate)"
 run = "poetry run python tools/sentinel_check.py coverage --check"
 
+[tasks."check:liveness"]
+description = "Liveness sentinel (ADVISORY, local): correct-but-inert + computed-but-never-consumed"
+run = "poetry run python tools/sentinel_check.py liveness"
+
 [tasks.cap]
 description = "Run a command under a HARD memory+CPU cgroup cap (can't freeze the machine). Use for any heavy run: mise run cap -- mise run test:unit"
 run = "tools/capped.sh"

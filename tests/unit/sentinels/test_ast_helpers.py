@@ -14,6 +14,7 @@ import pytest
 
 from babylon.sentinels._ast import (
     coupling_edges,
+    frozenset_str_members,
     parse_module,
     referenced_names,
     returned_dict_keys,
@@ -125,6 +126,18 @@ def test_returned_dict_keys_takes_only_the_last_top_level_return(tmp_path: Path)
         encoding="utf-8",
     )
     assert returned_dict_keys(target, "make") == ("real_key",)
+
+
+def test_frozenset_str_members_reads_a_frozenset_literal(tmp_path: Path) -> None:
+    """U7.11: a module-level ``VAR: frozenset[str] = frozenset({...})`` reads back
+    as the set of its string members, statically (no import)."""
+    target = tmp_path / "m.py"
+    target.write_text(
+        "from __future__ import annotations\n"
+        "EXPECTED: frozenset[str] = frozenset({'A', 'B', 'C'})\n",
+        encoding="utf-8",
+    )
+    assert set(frozenset_str_members(target, "EXPECTED")) == {"A", "B", "C"}
 
 
 def test_returned_dict_keys_excludes_nested_scope_returns(tmp_path: Path) -> None:

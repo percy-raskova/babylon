@@ -104,6 +104,52 @@ def literal_dict_keys(path: Path, var_name: str) -> tuple[str, ...]:
     raise SentinelCheckError(f"{path}: no module-level assignment to {var_name!r} found")
 
 
+def frozenset_str_members(path: Path, var_name: str) -> tuple[str, ...]:
+    """Return the string members of a module-level ``frozenset({...})`` literal.
+
+    Reads ``VAR = frozenset({...})`` or ``VAR: frozenset[str] = frozenset({...})``
+    from ``path`` by AST — no import, no execution. Non-string members and
+    non-literal sets are ignored (the sentinel compares only string symbols).
+
+    :param path: Source file to parse.
+    :param var_name: The assigned name to extract (``Assign`` or ``AnnAssign``).
+    :returns: The string-literal members, in source order (empty tuple if the
+        assignment is absent or holds no string literals).
+    :raises SentinelCheckError: If the file is missing or unparseable.
+    """
+    tree = parse_module(path)
+    for node in ast.walk(tree):
+        target: ast.expr | None
+        value: ast.expr | None
+        if isinstance(node, ast.Assign) and len(node.targets) == 1:
+            target = node.targets[0]
+            value = node.value
+        elif isinstance(node, ast.AnnAssign):
+            target = node.target
+            value = node.value
+        else:
+            continue
+        if value is None:
+            continue
+        if not isinstance(target, ast.Name) or target.id != var_name:
+            continue
+        # frozenset({...}) or frozenset([...])
+        if (
+            isinstance(value, ast.Call)
+            and isinstance(value.func, ast.Name)
+            and value.func.id == "frozenset"
+            and value.args
+        ):
+            value = value.args[0]
+        members: list[str] = []
+        if isinstance(value, (ast.Set, ast.List, ast.Tuple)):
+            for elt in value.elts:
+                if isinstance(elt, ast.Constant) and isinstance(elt.value, str):
+                    members.append(elt.value)
+        return tuple(members)
+    return ()
+
+
 def tick_write_set(path: Path) -> set[str]:
     """Collect the ``tick_*`` keyword names the engine writes via ``update_node``.
 

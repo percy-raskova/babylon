@@ -60,6 +60,8 @@ jobs:
         run: mise run check:seams
       - name: Data-coverage sentinel (static — declared sources exist)
         run: mise run check:coverage
+      - name: Public-surface baseline gate (__all__ vs pinned baseline)
+        run: mise run check:surface
       - name: Lint (ruff check)
         run: mise run lint:check
       - name: Format (ruff format --check — blocking)

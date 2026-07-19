@@ -27,6 +27,7 @@ EXPECTED_DEFINES_PUBLIC: frozenset[str] = frozenset(
         "ArcGISDefines",
         "BehavioralDefines",
         "BifurcationDefines",
+        "CapitalVolumeIIIDefines",  # U2.3 (Vol III money-scissors program)
         "CarceralDefines",
         "ClassDynamicsDefines",
         "ClassSystemDefines",

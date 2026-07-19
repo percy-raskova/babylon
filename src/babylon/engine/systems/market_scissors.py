@@ -410,22 +410,50 @@ class MarketScissorsSystem(SystemBase):
             graph.update_node(node.id, reserve_ratio=min(base + influx, 1.0))
 
 
-def _mean_profit_rate(graph: GraphProtocol) -> float | None:
-    """Mean territory ``tick_profit_rate``, or ``None`` when none carry it.
+def _capital_weighted_mean(
+    graph: GraphProtocol, node_type: str, attr: str, *, weight_attr: str = "tick_capital_stock"
+) -> float | None:
+    """Capital-weighted mean of an intensive attribute across active nodes.
 
-    The same year-boundary observable the bridge aggregates for
-    ``tick_summary.profit_rate``. Sorted-id iteration fixes the float
-    summation order (III.7); absence returns ``None`` — the serviceability
-    law then falls back to its base (no rate is fabricated, III.11).
+    The aggregate of a rate/ratio across space is
+    ``Sum(value_i * weight_i) / Sum(weight_i)``, never an unweighted mean of
+    the per-node ratios — an unweighted mean lets a tiny node swing the
+    national reading as hard as a large one (the intensive-aggregation
+    class, §3.6/§3.7 of the Vol III money design). A node missing
+    ``weight_attr`` (or carrying a non-positive one) contributes weight
+    1.0, so fixtures that never stamp capital stock keep their prior
+    unweighted reading. Sorted-id iteration fixes the float summation
+    order (III.7); ``None`` — never zero — when no active node carries
+    ``attr`` (honest absence, III.11).
     """
-    total = 0.0
-    count = 0
-    for node in sorted(graph.query_nodes(node_type="territory"), key=lambda n: n.id):
+    weighted_total = 0.0
+    weight_total = 0.0
+    found = False
+    for node in sorted(graph.query_nodes(node_type=node_type), key=lambda n: n.id):
         attrs = node.attributes
         if not attrs.get("active", True):
             continue
-        rate = attrs.get("tick_profit_rate")
-        if isinstance(rate, (int, float)):
-            total += float(rate)
-            count += 1
-    return total / count if count else None
+        value = attrs.get(attr)
+        if not isinstance(value, (int, float)):
+            continue
+        weight_raw = attrs.get(weight_attr)
+        weight = (
+            float(weight_raw) if isinstance(weight_raw, (int, float)) and weight_raw > 0.0 else 1.0
+        )
+        weighted_total += float(value) * weight
+        weight_total += weight
+        found = True
+    return weighted_total / weight_total if found else None
+
+
+def _mean_profit_rate(graph: GraphProtocol) -> float | None:
+    """Capital-weighted mean territory ``tick_profit_rate``, or ``None``.
+
+    The aggregate rate of profit is ``Sum(s) / Sum(c+v)``, not
+    ``mean(r_i)`` — an unweighted mean lets a tiny county swing the
+    national serviceability line as hard as Wayne. ``tick_capital_stock``
+    (``c+v``) is the :func:`_capital_weighted_mean` weight; absence
+    returns ``None`` — the serviceability law then falls back to its base
+    (no rate is fabricated, III.11).
+    """
+    return _capital_weighted_mean(graph, "territory", "tick_profit_rate")

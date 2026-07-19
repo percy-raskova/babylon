@@ -397,6 +397,19 @@ class TestCorrection:
         _step(graph, _enabled_services(), tick=10)
         assert graph.graph["market"]["corrections"] == 0
 
+    def test_capital_weighted_profit_rate_resists_a_tiny_outlier(self) -> None:
+        """A 1-unit-capital county's 1.0 profit rate must not out-vote a
+        1000-unit-capital county's 0.0. The unweighted mean(1.0, 0.0)=0.5
+        would service the 1.5 overhang (0.55 + 4*0.5 = 2.55 > 1.5, no
+        snap); the capital-weighted mean drags the aggregate to ~0.001 and
+        the snap fires (fixes the intensive-aggregation defect, §3.6 last
+        row: the aggregate profit rate is Sum(s)/Sum(c+v), not mean(r_i))."""
+        graph = _euphoric_graph(fictitious_log=1.5)
+        graph.update_node("metropole", tick_profit_rate=1.0, tick_capital_stock=1.0)
+        graph.update_node("hinterland", tick_profit_rate=0.0, tick_capital_stock=1000.0)
+        _step(graph, _enabled_services(), tick=10)
+        assert graph.graph["market"]["corrections"] == 1
+
     def test_no_overhang_no_snap(self) -> None:
         graph = _euphoric_graph(fictitious_log=0.3)
         _step(graph, _enabled_services(), tick=10)

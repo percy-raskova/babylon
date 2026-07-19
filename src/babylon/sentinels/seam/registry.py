@@ -2433,6 +2433,354 @@ _ECONOMY_SERIES_METRICS: tuple[SeamEntry, ...] = (
     ),
 )
 
+# ---------------------------------------------------------------------------
+# ECONOMY scope — the ``get_economy_dashboard`` graph-wide dashboard payload
+# (spec-109 A4). T2-2 (Slice 2, 2026-07-18): the 5-row block above only covers
+# the ``/timeseries/`` history series (Program 23 ADR079); this block covers
+# the *dashboard* surface's own wire keys, each verified against a real
+# Postgres session (``tests/integration/web/test_dashboards.py::
+# TestEconomyDashboard``, ``tests/unit/web/test_engine_bridge.py::
+# TestMeanTerritoryAttr``) — never declared from a code reading alone.
+# ---------------------------------------------------------------------------
+
+_ECONOMY_DASHBOARD_EMITTERS: tuple[str, ...] = (
+    "web/game/engine_bridge.py::EngineBridge.get_economy_dashboard (:3019)",
+    "src/frontend/src/components/economy/EconomyDashboard.tsx",
+)
+
+_ECONOMY_DASHBOARD_METRICS: tuple[SeamEntry, ...] = (
+    SeamEntry(
+        payload="economy_dashboard.value_produced",
+        wire_keys=("value_produced",),
+        scope=SeamScope.ECONOMY,
+        owner_layer="bridge (_aggregate_graph_economy, graph-wide sum of wealth)",
+        liveness_class=LivenessClass.MUST_BE_LIVE,
+        dtype="float",
+        write_site="web/game/engine_bridge.py::_aggregate_graph_economy (:910)",
+        read_paths=_ECONOMY_DASHBOARD_EMITTERS,
+        spec_ref="spec-109 A4",
+        notes=(
+            "sum(wealth) over every social_class/organization node (rounded); a real 0.0 on a "
+            "tick-0 graph with no wealth yet is honest, not fabricated, so this is MUST_BE_LIVE "
+            "(always a float, never None) — confirmed by test_dashboards.py's post-create/"
+            "post-resolve assertions. NOTE the wire-key collision: "
+            "persisted_tick_summary.total_v below (get_game_timeseries's ``value_produced`` "
+            "array) is a DIFFERENT, currently-DEAD payload sharing this exact (scope, wire_key) "
+            "— see that row for the discovered defect."
+        ),
+    ),
+    SeamEntry(
+        payload="economy_dashboard.profit_rate",
+        wire_keys=("profit_rate",),
+        scope=SeamScope.ECONOMY,
+        owner_layer="bridge (_mean_territory_attr over tick_profit_rate, graph-wide mean)",
+        liveness_class=LivenessClass.DECLARED_CONDITIONAL,
+        liveness_condition=(
+            _YEAR_BOUNDARY + "; a graph-wide MEAN over every territory carrying the attr "
+            "(_mean_territory_attr), distinct from the MAP-scope per-feature reading and from "
+            "the dead persisted_tick_summary.profit_rate column below"
+        ),
+        dtype="float",
+        write_site="web/game/engine_bridge.py::_mean_territory_attr (:7984)",
+        read_paths=_ECONOMY_DASHBOARD_EMITTERS,
+        spec_ref="spec-109 A4 · Program-17 item-25",
+        notes=(
+            "Confirmed real: test_dashboards.py pins it None at tick 0 (no boundary crossed "
+            "yet). NOTE the wire-key collision with the dead "
+            "persisted_tick_summary.profit_rate column below."
+        ),
+    ),
+    SeamEntry(
+        payload="economy_dashboard.occ",
+        wire_keys=("occ",),
+        scope=SeamScope.ECONOMY,
+        owner_layer="bridge (_mean_territory_attr over tick_occ, graph-wide mean)",
+        liveness_class=LivenessClass.DECLARED_CONDITIONAL,
+        liveness_condition=(
+            _YEAR_BOUNDARY + "; graph-wide MEAN, same pattern as profit_rate above"
+        ),
+        dtype="float",
+        write_site="web/game/engine_bridge.py::_mean_territory_attr (:7984)",
+        read_paths=_ECONOMY_DASHBOARD_EMITTERS,
+        spec_ref="spec-109 A4 · Program-17 item-25",
+        notes="Confirmed real: test_dashboards.py pins it None at tick 0 (no boundary crossed yet).",
+    ),
+    SeamEntry(
+        payload="global_economy.imperial_rent_pool",
+        wire_keys=("imperial_rent_pool",),
+        scope=SeamScope.ECONOMY,
+        owner_layer="babylon.engine.systems.economic.ImperialRentSystem (_save_economy)",
+        liveness_class=LivenessClass.MUST_BE_LIVE,
+        dtype="float",
+        write_site="src/babylon/engine/systems/economic.py::ImperialRentSystem._save_economy (:804)",
+        read_paths=_ECONOMY_DASHBOARD_EMITTERS,
+        spec_ref="spec-109 A4",
+        notes=(
+            "GlobalEconomy.imperial_rent_pool is a required WorldState.economy field (default "
+            "100.0, models/entities/economy.py:63) — always present, confirmed by "
+            "test_dashboards.py at tick 0 and tick 2. Distinct wire key from MAP-scope "
+            "imperial_rent (the Leontief flow rate) and TERRITORY-scope hex_latest.imperial_rent "
+            "— this is the accumulated STOCK."
+        ),
+    ),
+    SeamEntry(
+        payload="global_economy.current_super_wage_rate",
+        wire_keys=("current_super_wage_rate",),
+        scope=SeamScope.ECONOMY,
+        owner_layer="babylon.engine.systems.economic.ImperialRentSystem (_save_economy)",
+        liveness_class=LivenessClass.MUST_BE_LIVE,
+        dtype="float",
+        write_site="src/babylon/engine/systems/economic.py::ImperialRentSystem._save_economy (:805)",
+        read_paths=_ECONOMY_DASHBOARD_EMITTERS,
+        spec_ref="spec-109 A4",
+        notes=(
+            "GlobalEconomy.current_super_wage_rate is a required field (default 0.20, "
+            "models/entities/economy.py:68) — always present, same MUST_BE_LIVE basis as "
+            "imperial_rent_pool above."
+        ),
+    ),
+    SeamEntry(
+        payload="wage_flow_total",
+        wire_keys=("wage_flow_total",),
+        scope=SeamScope.ECONOMY,
+        owner_layer="bridge (_sum_edge_value_flow_by_mode, EdgeType.WAGES)",
+        liveness_class=LivenessClass.MUST_BE_LIVE,
+        dtype="float",
+        write_site="web/game/engine_bridge.py::_sum_edge_value_flow_by_mode (:936)",
+        read_paths=_ECONOMY_DASHBOARD_EMITTERS,
+        spec_ref="spec-109 A4",
+        notes=(
+            "Sum starts at 0.0 and is never None (an honest 0.0 in a graph with no WAGES edges "
+            "is real, not fabricated) — confirmed live and non-fabricated by "
+            "test_dashboards.py::test_economy_dashboard_wage_flow_after_resolves against the "
+            "wayne_county WAGES edge."
+        ),
+    ),
+    SeamEntry(
+        payload="tribute_flow_total",
+        wire_keys=("tribute_flow_total",),
+        scope=SeamScope.ECONOMY,
+        owner_layer="bridge (_sum_edge_value_flow_by_mode, EdgeType.TRIBUTE)",
+        liveness_class=LivenessClass.MUST_BE_LIVE,
+        dtype="float",
+        write_site="web/game/engine_bridge.py::_sum_edge_value_flow_by_mode (:936)",
+        read_paths=_ECONOMY_DASHBOARD_EMITTERS,
+        spec_ref="spec-109 A4",
+        notes="Sibling of wage_flow_total above, filtered to EdgeType.TRIBUTE instead of WAGES.",
+    ),
+    SeamEntry(
+        payload="wealth_by_class_role",
+        wire_keys=("wealth_by_class_role",),
+        scope=SeamScope.ECONOMY,
+        owner_layer="bridge (_wealth_by_class_role, SocialClass.wealth grouped by SocialRole)",
+        liveness_class=LivenessClass.MUST_BE_LIVE,
+        dtype="json",
+        nullable=False,
+        write_site="web/game/engine_bridge.py::_wealth_by_class_role (:1056)",
+        read_paths=_ECONOMY_DASHBOARD_EMITTERS,
+        spec_ref="spec-109 A4",
+        notes=(
+            "The container is always a dict (possibly {} on a classless graph, never None) — "
+            "confirmed non-empty for wayne_county by test_dashboards.py. Rendered as the "
+            "BreakdownBar composition chart."
+        ),
+    ),
+    SeamEntry(
+        payload="county_flow",
+        wire_keys=("county_flow",),
+        scope=SeamScope.ECONOMY,
+        owner_layer="bridge (_county_flow_snapshot, first territory carrying carried flow state)",
+        liveness_class=LivenessClass.DECLARED_CONDITIONAL,
+        liveness_condition=(
+            "the container ({year, phi_accrued_this_year, wage_accrued_this_year}) is always a "
+            "dict, but every field inside is None until at least one territory has carried "
+            "flow_wage_accrued state this session (i.e. crossed a year boundary) — confirmed "
+            "live by test_static_economy_flow.py's cross-tick county_flow movement assertions"
+        ),
+        dtype="json",
+        nullable=False,
+        write_site="web/game/engine_bridge.py::_county_flow_snapshot (:8012)",
+        read_paths=_ECONOMY_DASHBOARD_EMITTERS,
+        spec_ref="owner item 30, point 5",
+        notes=(
+            "SERIALIZED BUT UNRENDERED (verified 2026-07-18): the frontend types this shape "
+            "(types/game.ts CountyFlowSnapshot) and exercises it in test fixtures/MSW handlers, "
+            "but no shipped .tsx component reads county_flow — a real backend value with no "
+            "current UI consumer. Not fabricated, just not yet wired to a view."
+        ),
+    ),
+)
+
+# ---------------------------------------------------------------------------
+# ECONOMY scope — the Program 23 Market-Scissors columns behind
+# ``get_game_timeseries`` that the original 5-row block didn't cover (T2-2,
+# Slice 2). Three are real (the ``state.market`` axis, gated on paid-worker
+# accounting); three are a DISCOVERED DEFECT verified against the live
+# ``babylon_test`` DB (430 persisted ``tick_summary`` rows: 0 with a non-null
+# ``total_v``/``total_s``/``profit_rate``, 19 with non-null
+# ``price_log``/``fictitious_log``/``market_corrections`` — the real trio).
+# ``_build_tick_summary`` (:8747-8753) hardcodes ``total_c``/``total_v``/
+# ``total_s``/``exploitation_rate``/``profit_rate`` to ``None``
+# UNCONDITIONALLY — no other call site ever writes them — despite this
+# module's own ``get_game_timeseries`` docstring (:2924) claiming
+# ``value_produced``/``surplus``/``profit_rate`` are "real substrate".
+# ---------------------------------------------------------------------------
+
+_ECONOMY_TIMESERIES_SCISSORS_METRICS: tuple[SeamEntry, ...] = (
+    SeamEntry(
+        payload="persisted_tick_summary.price_log",
+        wire_keys=("price_index",),
+        scope=SeamScope.ECONOMY,
+        owner_layer="babylon.models.market.MarketState (MarketScissorsSystem @17.8)",
+        liveness_class=LivenessClass.DECLARED_CONDITIONAL,
+        liveness_condition=(
+            "MarketState exists only once a paid-worker node (both w_paid and v_produced "
+            "attrs) is present (MarketScissorsSystem._aggregate_wage_value); None on graphs "
+            "with no wage-relation accounting — confirmed live on the babylon_test DB (19/430 "
+            "tick_summary rows non-null)"
+        ),
+        dtype="float",
+        write_site="src/babylon/engine/systems/market_scissors.py::MarketScissorsSystem.step (:165)",
+        derivation_site="web/game/engine_bridge.py::get_game_timeseries (exp(price_log), :2981)",
+        read_paths=_TIMESERIES_EMITTERS,
+        spec_ref="Program 23 · ADR077",
+        notes=(
+            "exp(price_log) so 1.0 = price at value. Rendered by ScissorsChart.tsx. Real "
+            "substrate — NOT the dead trio below."
+        ),
+    ),
+    SeamEntry(
+        payload="persisted_tick_summary.fictitious_log",
+        wire_keys=("fictitious_ratio",),
+        scope=SeamScope.ECONOMY,
+        owner_layer="babylon.models.market.MarketState (MarketScissorsSystem @17.8)",
+        liveness_class=LivenessClass.DECLARED_CONDITIONAL,
+        liveness_condition=(
+            "same MarketState condition as price_index above — confirmed live (19/430 rows)"
+        ),
+        dtype="float",
+        write_site="src/babylon/engine/systems/market_scissors.py::MarketScissorsSystem.step (:165)",
+        derivation_site=(
+            "web/game/engine_bridge.py::get_game_timeseries (exp(fictitious_log), :2982)"
+        ),
+        read_paths=_TIMESERIES_EMITTERS,
+        spec_ref="Program 23 · ADR077",
+        notes=(
+            "exp(fictitious_log) so 1.0 = fictitious capitalization at real. Rendered by "
+            "ScissorsChart.tsx."
+        ),
+    ),
+    SeamEntry(
+        payload="persisted_tick_summary.market_corrections",
+        wire_keys=("market_corrections",),
+        scope=SeamScope.ECONOMY,
+        owner_layer="babylon.models.market.MarketState.corrections (ADR078 correction snap)",
+        liveness_class=LivenessClass.DECLARED_CONDITIONAL,
+        liveness_condition=(
+            "same MarketState condition as price_index above — confirmed live (19/430 rows); "
+            "the field itself is a monotonic int counter, 0 until the first correction snap"
+        ),
+        dtype="int",
+        write_site="src/babylon/engine/systems/market_scissors.py::MarketScissorsSystem.step (:165)",
+        derivation_site="web/game/engine_bridge.py::get_game_timeseries (:2987)",
+        read_paths=_TIMESERIES_EMITTERS,
+        spec_ref="Program 23 · ADR078",
+        notes="Cumulative snap count; the cockpit derives correction ticks from increments.",
+    ),
+    SeamEntry(
+        payload="persisted_tick_summary.total_s",
+        wire_keys=("surplus",),
+        scope=SeamScope.ECONOMY,
+        owner_layer="bridge (_build_tick_summary — hardcoded None, never wired)",
+        liveness_class=LivenessClass.NOT_YET_COMPUTED,
+        dtype="float",
+        write_site="web/game/engine_bridge.py::_build_tick_summary (:8751, unconditional None)",
+        read_paths=_TIMESERIES_EMITTERS,
+        spec_ref="Program 23 · ADR077",
+        notes=(
+            "DISCOVERED DEFECT (T2-2, 2026-07-18): _build_tick_summary hardcodes total_s=None "
+            "unconditionally regardless of graph/state — no other call site ever populates the "
+            "tick_summary.total_s DB column. Empirically 0/430 non-null on the live "
+            "babylon_test DB. The get_game_timeseries docstring (:2924) calls this 'real "
+            "substrate' — that claim is false as shipped. A real total_s exists elsewhere in "
+            "the engine (the substrate tensor's total_s, see "
+            "tests/integration/test_marx_identities.py) but is never threaded into this "
+            "persistence row — computed-but-never-consumed-AT-THIS-SEAM, not a fabricated "
+            "value (the wire key does emit; it just never emits non-null). NOT_YET_COMPUTED, "
+            "not DECLARED_CONDITIONAL, because no condition in today's code produces a value."
+        ),
+    ),
+    SeamEntry(
+        payload="persisted_tick_summary.total_v",
+        wire_keys=("value_produced",),
+        scope=SeamScope.ECONOMY,
+        owner_layer="bridge (_build_tick_summary — hardcoded None, never wired)",
+        liveness_class=LivenessClass.NOT_YET_COMPUTED,
+        dtype="float",
+        write_site="web/game/engine_bridge.py::_build_tick_summary (:8750, unconditional None)",
+        read_paths=_TIMESERIES_EMITTERS,
+        spec_ref="Program 23 · ADR077",
+        notes=(
+            "DISCOVERED DEFECT, same root cause as persisted_tick_summary.total_s above — see "
+            "that row. Shares its wire key + scope with the LIVE "
+            "economy_dashboard.value_produced row above (a real, working, DIFFERENT "
+            "computation: _aggregate_graph_economy's sum(wealth), read live off the graph, "
+            "never persisted) — a genuine (scope, wire_key) collision today's SeamScope "
+            "taxonomy does not resolve, since ECONOMY covers both the dashboard and the "
+            "timeseries surfaces (candidate follow-up: split into distinct scopes). Also "
+            "unconsumed on the frontend: no .tsx component reads the timeseries "
+            "value_produced array (EconomyDashboard.tsx reads the dashboard scalar only)."
+        ),
+    ),
+    SeamEntry(
+        payload="persisted_tick_summary.profit_rate",
+        wire_keys=("profit_rate",),
+        scope=SeamScope.ECONOMY,
+        owner_layer="bridge (_build_tick_summary — hardcoded None, never wired)",
+        liveness_class=LivenessClass.NOT_YET_COMPUTED,
+        dtype="float",
+        write_site="web/game/engine_bridge.py::_build_tick_summary (:8753, unconditional None)",
+        read_paths=_TIMESERIES_EMITTERS,
+        spec_ref="Program 23 · ADR077",
+        notes=(
+            "DISCOVERED DEFECT, same root cause as persisted_tick_summary.total_s above. "
+            "Shares its wire key + scope with the LIVE economy_dashboard.profit_rate row above "
+            "(a real, different computation: _mean_territory_attr over tick_profit_rate) and "
+            "with the MAP-scope tick_profit_rate row (a per-feature reading) — three payloads, "
+            "one wire-key string, only this one is dead."
+        ),
+    ),
+)
+
+# ---------------------------------------------------------------------------
+# INSPECTOR scope — ``imperial_rent_gap`` (T2-2, Slice 2). Genuinely ungated:
+# absent from SEAM_REGISTRY entirely (unlike circuit_flows, already registered
+# above at the INSPECTOR block, and the ternary-consciousness/agitation rows
+# covering the rest of _social_class_inspector_fields's Program 17 Wave 1
+# additions).
+# ---------------------------------------------------------------------------
+
+_INSPECTOR_IMPERIAL_RENT_GAP_METRICS: tuple[SeamEntry, ...] = (
+    SeamEntry(
+        payload="imperial_rent_gap",
+        wire_keys=("imperial_rent_gap",),
+        scope=SeamScope.INSPECTOR,
+        owner_layer="bridge-derived (_social_class_inspector_fields, core_wages - wealth)",
+        liveness_class=LivenessClass.MUST_BE_LIVE,
+        dtype="float",
+        derivation_site="web/game/engine_bridge.py::_social_class_inspector_fields (:2026)",
+        read_paths=_INSPECTOR_EMITTERS,
+        spec_ref="Fundamental Theorem (W_c - V_c = Phi)",
+        notes=(
+            "Signed Phi per social_class node: core_wages (incoming WAGES flow) minus wealth "
+            "(value produced). Always a float (both operands default 0.0, never None) — "
+            "confirmed real and signed both directions by test_engine_bridge_inspectors.py "
+            "(positive subsidy gap +0.35, negative exploited gap -0.15, not clamped). Rendered "
+            "by the inspector's Imperial Rent Gap row (lib/inspect/adapters/node.ts)."
+        ),
+    ),
+)
+
 #: The declared observable-field contract. Populated per build phase.
 SEAM_REGISTRY: tuple[SeamEntry, ...] = (
     _MAP_METRICS
@@ -2446,5 +2794,8 @@ SEAM_REGISTRY: tuple[SeamEntry, ...] = (
     + _PATTERN_SHIFT_METRICS
     + _ENDGAME_EPILOGUE_METRICS  # spec-116 FR-116-4.2: epilogue/palette/accepted_at_tick
     + _ACTION_METRICS  # spec-116 FR-116-4.4: per-target expected_deltas
-    + _ECONOMY_SERIES_METRICS  # appended as the new final term; leave all prior terms
+    + _ECONOMY_SERIES_METRICS  # Program 23 ADR079: crisis/bifurcation/wage/capital/unemployment
+    + _ECONOMY_DASHBOARD_METRICS  # T2-2: get_economy_dashboard's 9 wire keys (Slice 2)
+    + _ECONOMY_TIMESERIES_SCISSORS_METRICS  # T2-2: scissors trio + 3 discovered-dead siblings
+    + _INSPECTOR_IMPERIAL_RENT_GAP_METRICS  # T2-2: imperial_rent_gap, genuinely ungated
 )

@@ -203,15 +203,21 @@ TICK_PREFIXED_NODE_TYPES: Final[frozenset[str]] = frozenset(
 #:    real ``SocialClass`` shape, any string would do.
 #: 2. **KNOWN LIVE BUGS held open by an owner decision** (mirrors
 #:    :data:`UNSTAMPED_QUERY_ALLOWLIST`'s governance): the production reader
-#:    lives in ``src/babylon/engine/``, one of the two scenario seeders
-#:    (``src/babylon/engine/scenarios/_legacy.py`` / ``_legacy_wayne.py``),
-#:    or an engine-adjacent economics module a live System calls every tick
-#:    (``src/babylon/domain/economics/crisis/bifurcation.py``, wired into
-#:    ``TickDynamicsSystem`` — fixing it would move ``qa:regression``
-#:    baselines) — all out of scope for the task that discovered them (#45).
-#:    TODO(owner): fix the read side (or the seeder) and delete the row —
-#:    this half of the list must only ever shrink. Full detail in the task
-#:    #45 audit report.
+#:    lives in ``src/babylon/engine/`` or one of the two scenario seeders
+#:    (``src/babylon/engine/scenarios/_legacy.py`` / ``_legacy_wayne.py``) —
+#:    out of scope for the task that discovered them (#45). TODO(owner): fix
+#:    the read side (or the seeder) and delete the row — this half of the
+#:    list must only ever shrink. Full detail in the task #45 audit report.
+#:    (``domain/economics/crisis/bifurcation.py``'s ``territory``/
+#:    ``county_fips`` row — the row this comment used to cite as the example
+#:    of an engine-adjacent, ``qa:regression``-moving instance — was FIXED
+#:    under Blocker I-2: the 2-line rename was verified, empirically, to move
+#:    ZERO qa:regression baselines, because none of the 5 canonical scenarios
+#:    ever wire a ``melt_calculator`` — the whole per-county pipeline
+#:    ``_compute_bifurcation_risk`` lives in short-circuits before reaching
+#:    it. The "fixing it would move baselines" prediction in this comment
+#:    was therefore inaccurate for this instance; verify empirically before
+#:    trusting that inference for the next one.)
 ATTRIBUTE_EXEMPTIONS: Final[frozenset[tuple[str, str, str]]] = frozenset(
     {
         # -- Reason 1: generic/duck-typed attribute-name tests -------------
@@ -264,19 +270,6 @@ ATTRIBUTE_EXEMPTIONS: Final[frozenset[tuple[str, str, str]]] = frozenset(
             "tests/unit/engine/test_wealth_distribution_system.py",
             "social_class",
             "class_consciousness",
-        ),
-        # domain/economics/crisis/bifurcation.py's
-        # _compute_solidarity_density/_compute_legitimation read a flat
-        # "territory" key off social_class nodes to filter by county FIPS;
-        # SocialClass carries no such field (the real one is "county_fips").
-        # Wired into TickDynamicsSystem (a live System), so solidarity
-        # density and the agitation-fallback legitimation path are silently
-        # 0.0-input/empty-set in every real game.
-        ("tests/unit/economics/crisis/test_bifurcation_risk.py", "social_class", "territory"),
-        (
-            "tests/unit/economics/crisis/test_crisis_lifecycle.py",
-            "social_class",
-            "territory",
         ),
         # ooda.py / ooda/initiative.py read "ooda_profile"/
         # "counter_intel_score" off organization nodes; neither

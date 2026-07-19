@@ -292,3 +292,37 @@ class TestServiceabilityAnchorPresent:
         assert serviceability_anchor(distribution) == pytest.approx(
             distribution.financialization_share
         )
+
+
+@pytest.mark.unit
+class TestAnchorModuleContract:
+    """The anchor is publicly exported and structurally pure (clauses 3 and 4)."""
+
+    def test_exported_from_the_monetary_package(self) -> None:
+        """U6 imports the anchor from the package, not the submodule."""
+        import babylon.domain.economics.monetary as monetary
+
+        assert "fictitious_anchor" in monetary.__all__
+        assert "serviceability_anchor" in monetary.__all__
+        assert monetary.fictitious_anchor is fictitious_anchor
+        assert monetary.serviceability_anchor is serviceability_anchor
+
+    def test_imports_nothing_from_the_engine_layer(self) -> None:
+        """domain/ must not import engine/ (Program 14 layering)."""
+        from pathlib import Path
+
+        from babylon.domain.economics.monetary import anchor as anchor_module
+
+        source = Path(str(anchor_module.__file__)).read_text(encoding="utf-8")
+        assert "babylon.engine" not in source
+        assert "babylon.web" not in source
+
+    def test_uses_no_rng_and_no_wall_clock(self) -> None:
+        """Determinism (Constitution III.7): zero RNG, zero clock, zero I/O."""
+        from pathlib import Path
+
+        from babylon.domain.economics.monetary import anchor as anchor_module
+
+        source = Path(str(anchor_module.__file__)).read_text(encoding="utf-8")
+        for forbidden in ("import random", "import time", "from datetime", "open("):
+            assert forbidden not in source, f"anchor.py must not contain {forbidden!r}"

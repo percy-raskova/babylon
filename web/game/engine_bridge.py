@@ -75,7 +75,12 @@ from .fog.ledger import IntelLedger, ledger_from_events, read_intel
 from .fog.reach import organizing_reach
 from .log_handler import sanitize_for_log
 from .map_contract import MAP_HISTORY_REPLAYABLE_METRICS, MAP_METRIC_PROPERTIES
-from .veil import compute_veil_status, compute_veil_tier, gate_value_axis_fields
+from .veil import (
+    TIER1_VALUE_RELATION_FIELDS,
+    compute_veil_status,
+    compute_veil_tier,
+    gate_value_axis_fields,
+)
 from .verb_copy import VERB_INELIGIBILITY_COPY
 
 if TYPE_CHECKING:
@@ -3702,6 +3707,22 @@ class EngineBridge:
             )
 
         frames = [{"tick": t, "values": dict(sorted(by_tick[t].items()))} for t in sorted(by_tick)]
+
+        # G4 (veil-leak closure): of the 4 replayable metrics, only
+        # profit_rate/exploitation_rate are value-axis (heat/population are
+        # money-form/political, never gated) — tier resolution is skipped
+        # entirely for those, so this scrubber's common case pays nothing
+        # extra. Best-effort, fails CLOSED like get_game_timeseries.
+        if metric in TIER1_VALUE_RELATION_FIELDS:
+            try:
+                graph = self._persistence.hydrate_graph(tick=None, session_id=session_id)
+                veil_tier = _resolve_veil_tier_from_graph(graph)
+            except Exception:  # noqa: BLE001 — diagnostic; never blocks the request
+                logger.exception("get_map_history: veil tier resolution failed for %r", metric)
+                veil_tier = 0
+            if veil_tier < 1:
+                for frame in frames:
+                    frame["values"] = dict.fromkeys(frame["values"])
 
         return {
             "metric": metric,

@@ -4158,6 +4158,14 @@ class TestGetMapHistory:
                 "exploitation_rate": 1.3033,
             }
         ]
+        # G4: profit_rate is now veil-gated — this test is about the COLUMN
+        # SELECTION (profit_rate vs exploitation_rate), not veil gating, so
+        # stamp the player org fully unlocked (Tier 2).
+        graph = mock_persistence.hydrate_graph.return_value
+        graph.nodes[graph.graph["player_org_id"]]["acquired_doctrine_ids"] = (
+            "class_consciousness",
+            "trade_unionism",
+        )
         bridge = EngineBridge(mock_persistence)
 
         result = bridge.get_map_history(uuid.uuid4(), metric="profit_rate")
@@ -4177,6 +4185,41 @@ class TestGetMapHistory:
         result = bridge.get_map_history(uuid.uuid4(), metric="profit_rate")
 
         assert result["frames"][0]["values"] == {"26163": None}
+
+    def test_g4_veil_tier_zero_masks_profit_rate_frames(self) -> None:
+        """G4: profit_rate/exploitation_rate are value-axis — below the
+        player org's Veil Tier 1, every frame value masks to None even
+        though the persisted history has real numbers (never a client-side-
+        only hide; the scrubber must never see the real replay)."""
+        mock_persistence = _make_mock_persistence()
+        mock_persistence.query_county_trace_latest_tick.return_value = 1
+        mock_persistence.query_county_trace_metric_frames.return_value = [
+            {"tick": 0, "county_fips": "26163", "profit_rate": 0.10, "exploitation_rate": 0.20},
+            {"tick": 1, "county_fips": "26163", "profit_rate": 0.15, "exploitation_rate": 0.25},
+        ]
+        # Default fixture graph's player org starts at Tier 0 (empty
+        # acquired_doctrine_ids) — no stamping needed for this test.
+        bridge = EngineBridge(mock_persistence)
+
+        result = bridge.get_map_history(uuid.uuid4(), metric="profit_rate")
+
+        assert result["frames"][0]["values"] == {"26163": None}
+        assert result["frames"][1]["values"] == {"26163": None}
+
+    def test_g4_veil_never_gates_money_form_heat_metric(self) -> None:
+        """heat/population are money-form/political, never veil-gated — no
+        tier resolution overhead, no masking, regardless of tier."""
+        mock_persistence = _make_mock_persistence()
+        mock_persistence.query_territory_snapshot_latest_tick.return_value = 0
+        mock_persistence.query_territory_snapshot_metric_frames.return_value = [
+            {"tick": 0, "county_fips": "26163", "heat": 0.42, "pop_total": 8000},
+        ]
+        bridge = EngineBridge(mock_persistence)
+
+        result = bridge.get_map_history(uuid.uuid4(), metric="heat")
+
+        assert result["frames"][0]["values"] == {"26163": pytest.approx(0.42)}
+        mock_persistence.hydrate_graph.assert_not_called()
 
     def test_explicit_range_within_cap_is_not_capped(self) -> None:
         mock_persistence = _make_mock_persistence()

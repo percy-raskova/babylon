@@ -1143,6 +1143,67 @@ class TestHexFeaturePropertiesHabitability:
 
 
 @pytest.mark.unit
+class TestHexFeaturePropertiesVeilGate:
+    """G4: the map lens's per-hex value-axis fields
+    (profit_rate/exploitation_rate/occ/imperial_rent/price_divergence) gate
+    on ``veil_tier`` exactly like every other endpoint in the sweep —
+    ``get_map_snapshot``'s own real-tree wiring is covered indirectly via
+    ``TestBalkanizationMapFields``; this pins the pure per-hex composer's
+    gating contract directly (tier-0 sweep, acceptance criterion 1)."""
+
+    @staticmethod
+    def _row() -> Any:
+        from types import SimpleNamespace
+
+        return SimpleNamespace(
+            h3_index="h1",
+            county_fips="26163",
+            county_name="Wayne",
+            bea_ea_code=None,
+            msa_code=None,
+            profit_rate=0.15,
+            exploitation_rate=0.30,
+            occ=2.1,
+            imperial_rent=0.05,
+            heat=0.4,
+            org_count=1,
+            dominant_class=None,
+            pop_total=5000,
+            attributes={"price_divergence": 0.2},
+        )
+
+    def test_veil_tier_none_is_unfogged_byte_identical_to_before_g4(self) -> None:
+        """The default (``veil_tier=None``, every pre-existing direct call
+        site) stays real/ungated — G4 must not regress a single pre-G4 test."""
+        props = _hex_feature_properties(self._row())
+        assert props["profit_rate"] == pytest.approx(0.15)
+        assert props["price_divergence"] == pytest.approx(0.2)
+
+    def test_tier_zero_masks_every_value_axis_field(self) -> None:
+        props = _hex_feature_properties(self._row(), veil_tier=0)
+        assert props["profit_rate"] is None
+        assert props["exploitation_rate"] is None
+        assert props["occ"] is None
+        assert props["imperial_rent"] is None
+        assert props["price_divergence"] is None
+        # Never touched — heat is money-form/political, not value-axis.
+        assert props["heat"] == pytest.approx(0.4)
+
+    def test_tier_one_unlocks_tier1_fields_but_not_the_scissors(self) -> None:
+        props = _hex_feature_properties(self._row(), veil_tier=1)
+        assert props["profit_rate"] == pytest.approx(0.15)
+        assert props["exploitation_rate"] == pytest.approx(0.30)
+        assert props["occ"] == pytest.approx(2.1)
+        assert props["imperial_rent"] == pytest.approx(0.05)
+        assert props["price_divergence"] is None
+
+    def test_tier_two_unlocks_everything(self) -> None:
+        props = _hex_feature_properties(self._row(), veil_tier=2)
+        assert props["profit_rate"] == pytest.approx(0.15)
+        assert props["price_divergence"] == pytest.approx(0.2)
+
+
+@pytest.mark.unit
 class TestHexStateRowStateFips:
     _SID = uuid.UUID("aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee")
 

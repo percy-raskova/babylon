@@ -210,3 +210,38 @@ class TestGateValueAxisFields:
         payload = dict.fromkeys(TIER2_SCISSORS_FIELDS, 1.0)
         out = gate_value_axis_fields(payload, tier=1)
         assert all(v is None for v in out.values())
+
+
+class TestMobilizeValueEffectAdjudication:
+    """Adversarial re-review round 2 — the non-blocking flag adjudicated:
+    ``surplus_denied``/``disrupted_production``
+    (``MobilizeValueEffectSerializer``, ``web/game/serializers.py:859-860``)
+    are the MOBILIZE verb's per-target estimated value effect. Read
+    literally against this module's own §5d table: ``surplus_denied``
+    names the same Marxian surplus VALUE as ``surplus`` one verb-outcome
+    step removed, and ``disrupted_production`` is the same relation for
+    ``value_produced`` — GATED, not money-form (no dollar figure, no wage
+    rate). No producer computes either field today (schema-only, unwired
+    in both ``EngineBridge``/``StubEngineBridge``); this pins the policy so
+    the mask applies automatically the instant a future MOBILIZE resolver
+    populates them — see the module docstring's §5d table for the full
+    reasoning."""
+
+    def test_surplus_denied_is_a_registered_tier1_field(self) -> None:
+        assert "surplus_denied" in TIER1_VALUE_RELATION_FIELDS
+
+    def test_disrupted_production_is_a_registered_tier1_field(self) -> None:
+        assert "disrupted_production" in TIER1_VALUE_RELATION_FIELDS
+
+    def test_surplus_denied_masks_below_tier_one(self) -> None:
+        out = gate_value_axis_fields({"surplus_denied": 12.5}, tier=0)
+        assert out["surplus_denied"] is None
+
+    def test_disrupted_production_masks_below_tier_one(self) -> None:
+        out = gate_value_axis_fields({"disrupted_production": 8.0}, tier=0)
+        assert out["disrupted_production"] is None
+
+    def test_both_real_at_tier_one(self) -> None:
+        out = gate_value_axis_fields({"surplus_denied": 12.5, "disrupted_production": 8.0}, tier=1)
+        assert out["surplus_denied"] == 12.5
+        assert out["disrupted_production"] == 8.0

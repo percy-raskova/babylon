@@ -10887,23 +10887,45 @@ def _filter_edges_by_reach(
 
 
 def _gate_snapshot_territories(snapshot: dict[str, Any], veil_tier: int) -> dict[str, Any]:
-    """Gate value-axis fields on every territory in an already-built
-    ``_state_to_snapshot`` payload (G4: veil-leak closure).
+    """Gate value-axis fields on every territory AND the derived economy
+    block in an already-built ``_state_to_snapshot`` payload (G4: veil-leak
+    closure).
 
     Applied AFTER any persistence use of the TRUE snapshot — never inside
     :func:`_state_to_snapshot` itself, since ``resolve_tick`` also persists
     from that function's output (see its docstring). Mutates ``snapshot``
-    in place (replacing ``territories`` with a gated copy) and returns it,
-    for a one-line call at each read-only call site. A no-op when
-    ``"territories"`` is absent (e.g. a caller that only kept a sub-key).
+    in place (replacing ``territories``/``derived["economy"]`` with gated
+    copies) and returns it, for a one-line call at each read-only call
+    site. A no-op when a key is absent (e.g. a caller that only kept a
+    sub-key — ``inspect_node``/``inspect_hex`` discard everything but one
+    ``territories`` entry, so gating ``derived`` here is harmless for them
+    too).
+
+    G4 follow-up (adversarial re-review round 2, Finding F1):
+    ``derived["economy"]`` is ``state.economy.model_dump()`` —
+    ``imperial_rent_pool`` (a literal :data:`~game.veil.
+    TIER1_VALUE_RELATION_FIELDS` name) leaked ungated on both
+    ``GET /state/`` (``EngineBridge.get_snapshot``) and
+    ``POST /resolve/`` (``EngineBridge.resolve_tick``), since this
+    function only ever touched ``snapshot["territories"]``.
+    ``current_super_wage_rate``/``current_repression_level`` (the other
+    two ``GlobalEconomy`` fields) are money-form/political — never gated,
+    same as everywhere else in the sweep — so
+    :func:`~game.veil.gate_value_axis_fields` (name-based, touches only
+    keys it recognizes) is the correct tool here unchanged.
 
     :param snapshot: The dict :func:`_state_to_snapshot` returned.
     :param veil_tier: The requesting player org's veil tier.
-    :returns: ``snapshot``, with ``territories`` gated.
+    :returns: ``snapshot``, with ``territories``/``derived["economy"]`` gated.
     """
     territories = snapshot.get("territories")
     if isinstance(territories, list):
         snapshot["territories"] = [gate_value_axis_fields(t, veil_tier) for t in territories]
+    derived = snapshot.get("derived")
+    if isinstance(derived, dict):
+        economy = derived.get("economy")
+        if isinstance(economy, dict):
+            derived["economy"] = gate_value_axis_fields(economy, veil_tier)
     return snapshot
 
 

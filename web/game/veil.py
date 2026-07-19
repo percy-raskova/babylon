@@ -75,6 +75,24 @@ Tier >= 1 — wage-vs-value-produced axis and the imperial-rent family
 - ``profit_rate`` (s/(c+v)) and ``occ`` (c/v) — value relations built from
   the same surplus-value decomposition, gated identically to
   ``exploitation_rate``.
+- ``surplus_denied``, ``disrupted_production`` (adversarial re-review
+  round 2, adjudicated — ``MobilizeValueEffectSerializer``,
+  ``web/game/serializers.py``): the MOBILIZE verb's per-target estimated
+  "value effect" — how much surplus value / value production a strike or
+  protest would deny the target business. **Gated, not money-form**: read
+  literally, ``surplus_denied`` names the SAME quantity as ``surplus``
+  above (Marxian surplus VALUE, not a dollar figure) one verb-outcome step
+  removed, and ``disrupted_production`` is the same relation for
+  ``value_produced`` — the identical "reconstructs a registry quantity one
+  step away" judgment already applied to
+  ``game.provenance``'s ``labor_aristocracy_ratio``/
+  ``value_extraction_ratio``. No producer computes either field today
+  (``EngineBridge.get_mobilize_targets``/``StubEngineBridge.
+  get_mobilize_targets`` never populate a target's ``sl_options``/
+  ``estimated_effects.value`` — schema-only, unwired); the registry entry
+  is a forward pin so the mask applies automatically the instant a future
+  MOBILIZE resolver populates them, the same defense-in-depth precedent
+  ``profit_rate``/``occ`` already set while THEY had no live producer.
 
 Tier >= 2 — the price<->value divergence instruments
 (:data:`TIER2_SCISSORS_FIELDS`):
@@ -92,8 +110,12 @@ reasoning a reviewer would otherwise have to re-derive: dollar-denominated
 precedent — ``wealth_by_class_role``'s CircuitPage relocation); real dollar
 flows ``wage_flow_total``/``tribute_flow_total`` (money paid, not a
 value-theoretic ratio); ``current_super_wage_rate`` (a wage RATE, same
-money-form family as the dollar wages it is a percentage of); ecological or
-political axes that were never value-theoretic to begin with — ``heat``,
+money-form family as the dollar wages it is a percentage of);
+``current_repression_level`` (``GlobalEconomy``'s system-wide repression
+modifier, ``derived.economy`` on the full snapshot — adversarial re-review
+round 2, Finding F1: a political axis blended with per-class
+``repression_faced``, never a value ratio); ecological or political axes
+that were never value-theoretic to begin with — ``heat``,
 ``biocapacity``, ``consciousness``, ``solidarity``, ``crisis_pop_share``,
 ``bifurcation_score_mean``, ``wage_compression_mean``,
 ``capital_stock_total``, ``unemployment_rate_mean``, and
@@ -197,6 +219,8 @@ TIER1_VALUE_RELATION_FIELDS: frozenset[str] = frozenset(
         "imperial_rent_gap_by_region",
         "profit_rate",
         "occ",
+        "surplus_denied",
+        "disrupted_production",
     }
 )
 

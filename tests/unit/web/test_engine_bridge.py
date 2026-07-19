@@ -5044,6 +5044,103 @@ class TestEconomyDashboardVeil:
 
 
 @pytest.mark.unit
+class TestDerivedEconomyVeilGate:
+    """G4 follow-up (adversarial re-review round 2, Finding F1):
+    ``_state_to_snapshot`` builds ``derived.economy`` from
+    ``state.economy.model_dump()`` (``imperial_rent_pool``/
+    ``current_super_wage_rate``/``current_repression_level``) — the FIRST
+    two ``_gate_snapshot_territories`` call sites returning the full
+    snapshot to a client (``get_snapshot``, ``resolve_tick``) gated
+    ``territories`` but never ``derived``, so ``imperial_rent_pool`` (a
+    literal ``TIER1_VALUE_RELATION_FIELDS`` name) leaked ungated to a
+    tier-0 client on both GET /state/ and POST /resolve/. Closed by
+    extending ``_gate_snapshot_territories`` to also gate
+    ``derived["economy"]``. ``current_super_wage_rate``/
+    ``current_repression_level`` stay real at every tier (money-form wage
+    rate / political repression modifier — never gated per veil.py's own
+    registry)."""
+
+    @staticmethod
+    def _state_with_acquired(
+        acquired: tuple[str, ...], *, imperial_rent_pool: float = 250.0
+    ) -> Any:
+        from babylon.models.entities.economy import GlobalEconomy
+
+        state = _build_initial_state_for_scenario("default")
+        org = state.organizations["ORG001"].model_copy(update={"acquired_doctrine_ids": acquired})
+        return state.model_copy(
+            update={
+                "organizations": {"ORG001": org},
+                "economy": GlobalEconomy(imperial_rent_pool=imperial_rent_pool),
+            }
+        )
+
+    def _snapshot_with_acquired(self, acquired: tuple[str, ...]) -> dict[str, Any]:
+        state = self._state_with_acquired(acquired)
+        bridge = EngineBridge(_make_mock_persistence())
+        with patch.object(bridge, "hydrate_state", return_value=(state, state.to_graph())):
+            return bridge.get_snapshot(uuid.uuid4())
+
+    def test_get_snapshot_masks_imperial_rent_pool_at_tier_zero(self) -> None:
+        result = self._snapshot_with_acquired(())
+
+        assert result["derived"]["economy"]["imperial_rent_pool"] is None
+
+    def test_get_snapshot_never_masks_wage_rate_or_repression(self) -> None:
+        """Money-form wage rate / political repression modifier stay real
+        even at Tier 0 — only imperial_rent_pool is a TIER1 field."""
+        result = self._snapshot_with_acquired(())
+
+        assert result["derived"]["economy"]["current_super_wage_rate"] == pytest.approx(0.20)
+        assert result["derived"]["economy"]["current_repression_level"] == pytest.approx(0.5)
+
+    def test_get_snapshot_unlocks_imperial_rent_pool_at_tier_one(self) -> None:
+        result = self._snapshot_with_acquired(("class_consciousness",))
+
+        assert result["derived"]["economy"]["imperial_rent_pool"] == pytest.approx(250.0)
+
+    def test_get_snapshot_unlocks_imperial_rent_pool_at_tier_two(self) -> None:
+        result = self._snapshot_with_acquired(("class_consciousness", "trade_unionism"))
+
+        assert result["derived"]["economy"]["imperial_rent_pool"] == pytest.approx(250.0)
+
+    @patch("game.engine_bridge.step")
+    def test_resolve_tick_masks_imperial_rent_pool_at_tier_zero(self, mock_step: MagicMock) -> None:
+        sid = uuid.UUID("dddddddd-eeee-ffff-aaaa-bbbbbbbbbbbb")
+        mock_persistence = _make_mock_persistence()
+        mock_persistence.get_pending_turns.return_value = []
+        new_state = self._state_with_acquired((), imperial_rent_pool=333.0).model_copy(
+            update={"tick": 1}
+        )
+        mock_step.return_value = new_state
+
+        bridge = EngineBridge(mock_persistence)
+        result = bridge.resolve_tick(sid)
+
+        assert result["derived"]["economy"]["imperial_rent_pool"] is None
+        # Never masked — money-form / political, real at every tier.
+        assert result["derived"]["economy"]["current_super_wage_rate"] == pytest.approx(0.20)
+        assert result["derived"]["economy"]["current_repression_level"] == pytest.approx(0.5)
+
+    @patch("game.engine_bridge.step")
+    def test_resolve_tick_unlocks_imperial_rent_pool_at_tier_one(
+        self, mock_step: MagicMock
+    ) -> None:
+        sid = uuid.UUID("dddddddd-eeee-ffff-aaaa-cccccccccccc")
+        mock_persistence = _make_mock_persistence()
+        mock_persistence.get_pending_turns.return_value = []
+        new_state = self._state_with_acquired(
+            ("class_consciousness",), imperial_rent_pool=333.0
+        ).model_copy(update={"tick": 1})
+        mock_step.return_value = new_state
+
+        bridge = EngineBridge(mock_persistence)
+        result = bridge.resolve_tick(sid)
+
+        assert result["derived"]["economy"]["imperial_rent_pool"] == pytest.approx(333.0)
+
+
+@pytest.mark.unit
 class TestSpineWhitelistSeverityAndTitles:
     """spec-116 FR-116-4.7 sweep: severity tiers + humanized titles for the
     14 newly wired types (FR-116-2 reserves critical for genuine

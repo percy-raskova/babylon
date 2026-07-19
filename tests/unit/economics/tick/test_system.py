@@ -20,6 +20,7 @@ from babylon.domain.economics.credit.types import InterestRateState
 from babylon.domain.economics.dynamics.types import ClassDistribution
 from babylon.domain.economics.reserve_army.types import ReserveArmyState
 from babylon.domain.economics.tensor import NoDataSentinel
+from babylon.domain.economics.tick.graph_bridge import read_national_financial_state_from_graph
 from babylon.domain.economics.tick.system import (
     DEFAULT_V_REPRODUCTION,
     WEEKS_PER_YEAR,
@@ -43,7 +44,9 @@ from tests.unit.economics.tick.conftest import (
     MockBasketVisibilityCalculator,
     MockCapitalStockCalculator,
     MockClassTransitionEngine,
+    MockFictitiousCapitalCalculator,
     MockGammaIIICalculator,
+    MockInterestRateCalculator,
     MockMELTCalculator,
     MockTensor,
     MockTensorRegistry,
@@ -2186,7 +2189,7 @@ class TestVol3FinancialLayerSentinelObservability:
         services = _make_services(interest_calculator=_StubInterestSentinelCalculator())
 
         national_rate, _spread, _fictitious, reason = system._compute_national_financial_state(
-            services, 2041
+            services, 2041, build_territory_graph()
         )
 
         assert national_rate is None
@@ -2202,7 +2205,7 @@ class TestVol3FinancialLayerSentinelObservability:
         )
 
         _national_rate, _spread, fictitious, _reason = system._compute_national_financial_state(
-            services, 2041
+            services, 2041, build_territory_graph()
         )
 
         assert fictitious is None
@@ -2244,7 +2247,7 @@ class TestVol3FinancialLayerSentinelObservability:
         national_params = _make_national_params(year=2041)
 
         result = system._compute_financial_layer(
-            {WAYNE_FIPS: county}, national_params, services, 2041
+            {WAYNE_FIPS: county}, national_params, services, 2041, build_territory_graph()
         )
 
         assert result[WAYNE_FIPS].surplus_distribution is None
@@ -2259,7 +2262,7 @@ class TestVol3FinancialLayerSentinelObservability:
         services = _make_services(interest_calculator=_StubInterestSentinelCalculator())
 
         with caplog.at_level("WARNING"):
-            system._compute_national_financial_state(services, 2041)
+            system._compute_national_financial_state(services, 2041, build_territory_graph())
 
         messages = [r.getMessage() for r in caplog.records]
         assert any("outside Volume III modeled financial-data window" in m for m in messages)
@@ -2288,7 +2291,9 @@ class TestVol3FinancialLayerSentinelObservability:
         national_params = _make_national_params(year=2041)
 
         with caplog.at_level("WARNING"):
-            system._compute_financial_layer(counties, national_params, services, 2041)
+            system._compute_financial_layer(
+                counties, national_params, services, 2041, build_territory_graph()
+            )
 
         vol3_messages = [
             r.getMessage()
@@ -2326,7 +2331,9 @@ class TestVol3FinancialLayerSentinelObservability:
         national_params = _make_national_params(year=2041)
 
         with caplog.at_level("WARNING"):
-            system._compute_financial_layer({WAYNE_FIPS: county}, national_params, services, 2041)
+            system._compute_financial_layer(
+                {WAYNE_FIPS: county}, national_params, services, 2041, build_territory_graph()
+            )
 
         messages = [r.getMessage() for r in caplog.records]
         assert any("outside Volume III modeled financial-data window" in m for m in messages), (
@@ -2403,7 +2410,7 @@ class TestVol3FinancialLayerSentinelObservability:
         national_params = _make_national_params(year=2041)
 
         result = system._compute_financial_layer(
-            {WAYNE_FIPS: county}, national_params, services, 2041
+            {WAYNE_FIPS: county}, national_params, services, 2041, build_territory_graph()
         )
 
         assert spy.calls == [], (
@@ -2692,3 +2699,92 @@ class TestWriteHexSubstrate:
         node_data = graph.nodes[WAYNE_FIPS]
         hex_attrs = [k for k in node_data if k.startswith("hex_")]
         assert hex_attrs == []
+
+
+class TestComputeNationalFinancialState:
+    """Tests for _compute_national_financial_state (vol3-money-scissors U3.2).
+
+    U3 keeps the existing 4-tuple return contract (national_rate,
+    national_spread, fictitious, interest_unavailable_reason) and
+    additionally publishes a NationalFinancialParameters graph attribute
+    so downstream CONSEQUENCE-phase Systems can read it (see
+    graph_bridge.NATIONAL_FINANCIAL_ATTR) — it previously died as a
+    transient local.
+    """
+
+    def test_publishes_national_financial_parameters_to_graph(self) -> None:
+        """Verify the method instantiates + publishes NationalFinancialParameters."""
+        services = _make_services(
+            interest_calculator=MockInterestRateCalculator(
+                base_rate=0.25,
+                treasury_10y=2.27,
+                baa_spread=2.64,
+            ),
+            fictitious_capital_calculator=MockFictitiousCapitalCalculator(
+                government_debt=18e12,
+                corporate_equity=20e12,
+                corporate_debt=8e12,
+                household_debt=14e12,
+            ),
+        )
+        graph = build_territory_graph()
+        system = TickDynamicsSystem()
+
+        (
+            national_rate,
+            national_spread,
+            fictitious,
+            interest_unavailable_reason,
+        ) = system._compute_national_financial_state(services, 2015, graph)
+
+        # Existing tuple contract is unchanged — county-level callers still
+        # get the 4-tuple (float | None, float | None,
+        # FictitiousCapitalStock | None, str | None).
+        assert national_rate == pytest.approx(0.25 + 2.64)
+        assert national_spread == pytest.approx(2.64)
+        assert fictitious is not None
+        assert fictitious.total_claims == pytest.approx(60e12)
+        assert interest_unavailable_reason is None
+
+        published = read_national_financial_state_from_graph(graph)
+        assert published is not None
+        assert published.interest_rate_state is not None
+        assert published.interest_rate_state.base_rate == pytest.approx(0.25)
+        assert published.fictitious_capital is not None
+        assert published.fictitious_capital.total_claims == pytest.approx(60e12)
+
+    def test_publishes_honest_none_when_calculators_return_sentinel(self) -> None:
+        """Verify a NoDataSentinel from either calculator publishes None fields.
+
+        Constitution III.11: absence must stay None, never a fabricated
+        zero — this proves the publish path preserves that even when
+        called directly (not gated by _compute_financial_layer's
+        interest_calculator-is-None early return).
+        """
+        services = _make_services(
+            interest_calculator=MockInterestRateCalculator(force_sentinel=True),
+            fictitious_capital_calculator=None,
+        )
+        graph = build_territory_graph()
+        system = TickDynamicsSystem()
+
+        (
+            national_rate,
+            national_spread,
+            fictitious,
+            interest_unavailable_reason,
+        ) = system._compute_national_financial_state(services, 2015, graph)
+
+        # Honest absence (Constitution III.11), shipped in aedce819: an
+        # absent rate is None, NOT a fabricated 0.0, and the sentinel's own
+        # .reason travels with it so the caller can attribute the gap.
+        assert national_rate is None
+        assert national_spread is None
+        assert fictitious is None
+        assert interest_unavailable_reason == "Forced sentinel for testing"
+        assert services.economics_fallbacks.vol3_interest_sentinel == 1
+
+        published = read_national_financial_state_from_graph(graph)
+        assert published is not None
+        assert published.interest_rate_state is None
+        assert published.fictitious_capital is None

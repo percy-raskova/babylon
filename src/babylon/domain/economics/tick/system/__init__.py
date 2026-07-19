@@ -51,6 +51,7 @@ from babylon.domain.economics.tick.derived_rates import DerivedRateCalculator
 from babylon.domain.economics.tick.graph_bridge import (
     read_tick_state_from_graph,
     resolve_county_identity,
+    write_national_financial_state_to_graph,
     write_tick_state_to_graph,
 )
 from babylon.domain.economics.tick.precarity import PrecarityDeriver
@@ -60,6 +61,7 @@ from babylon.domain.economics.tick.types import (
     CountyEconomicState,
     CrisisPhase,
     CrisisState,
+    NationalFinancialParameters,
     NationalTickParameters,
     SimulationTickState,
     SmoothedCoefficients,
@@ -219,6 +221,7 @@ class TickDynamicsSystem(SystemBase):
             national_params,
             services,
             year,
+            graph,
         )
 
         # Step 6: Simulate class transitions (with cascade tracking)
@@ -1393,6 +1396,7 @@ class TickDynamicsSystem(SystemBase):
         _national_params: NationalTickParameters,
         services: ServicesProtocol,
         year: int,
+        graph: GraphProtocol,
     ) -> dict[str, CountyEconomicState]:
         """Compute Volume III financial distribution layer.
 
@@ -1405,6 +1409,9 @@ class TickDynamicsSystem(SystemBase):
             _national_params: National economic context (reserved for future use).
             services: ServicesProtocol with financial calculators.
             year: Current simulation year.
+            graph: Mutable shared graph — passed through so the national
+                financial state can be published under
+                ``graph_bridge.NATIONAL_FINANCIAL_ATTR`` (U3).
 
         Returns:
             Updated county states with financial fields populated.
@@ -1414,7 +1421,7 @@ class TickDynamicsSystem(SystemBase):
             return county_states
 
         national_rate, national_spread, fictitious, interest_unavailable_reason = (
-            self._compute_national_financial_state(services, year)
+            self._compute_national_financial_state(services, year, graph)
         )
 
         # County-level computation
@@ -1481,8 +1488,15 @@ class TickDynamicsSystem(SystemBase):
         self,
         services: ServicesProtocol,
         year: int,
+        graph: GraphProtocol,
     ) -> tuple[float | None, float | None, FictitiousCapitalStock | None, str | None]:
         """Compute national-level financial parameters once per tick.
+
+        Feature: 024-capital-volume-iii / vol3-money-scissors U3
+        Instantiates NationalFinancialParameters from whatever calculators
+        are configured and publishes it via graph_bridge under
+        NATIONAL_FINANCIAL_ATTR, so any System later in the same tick can
+        see it — it previously died as a transient local (design doc SS1.2).
 
         Constitution III.11 (honest absence): when the interest calculator
         has no data for ``year``, the national rate is ``None`` — never a
@@ -1503,6 +1517,9 @@ class TickDynamicsSystem(SystemBase):
             ``.reason`` (or ``None`` if the interest calculator succeeded),
             so a caller that must skip work because the rate is absent can
             attribute *why* instead of recording an unexplained gap.
+            This 4-tuple landed in commit ``aedce819`` and is preserved
+            here verbatim; only the ``graph`` parameter and the publish
+            call below are new in U3.2.
         """
         fallbacks = services.economics_fallbacks
         interest_result = services.interest_calculator.compute_interest_rate_state(year)
@@ -1525,6 +1542,12 @@ class TickDynamicsSystem(SystemBase):
                 self._log_vol3_sentinel_once_per_year(year, "fictitious", fict_result.reason)
             else:
                 fictitious = fict_result
+
+        financial_params = NationalFinancialParameters(
+            interest_rate_state=interest_state,
+            fictitious_capital=fictitious,
+        )
+        write_national_financial_state_to_graph(graph, financial_params)
 
         return national_rate, national_spread, fictitious, interest_unavailable_reason
 

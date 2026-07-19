@@ -286,7 +286,9 @@ class Simulation:
             )
 
             fred_cache = load_fred_series_from_db(calc_session_factory)
-            financial_overrides = create_financial_services(fred_series_cache=fred_cache)
+            financial_overrides = create_financial_services(
+                fred_series_cache=fred_cache, defines=defines
+            )
             calculator_overrides.update(financial_overrides)
 
             # Feature 023: Wire Volume II circulation calculators

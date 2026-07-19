@@ -52,51 +52,90 @@ class FinancialCrisisAssessment(BaseModel):
 
     fips_code: str = Field(..., min_length=5, max_length=5)
     year: int = Field(..., ge=2007, le=2040)
-    profit_squeeze: bool = Field(
+    profit_squeeze: bool | None = Field(
         default=False,
-        description="Interest burden > INTEREST_BURDEN_SQUEEZE",
+        description="Interest burden > INTEREST_BURDEN_SQUEEZE; None if unmeasured",
     )
-    overaccumulation: bool = Field(
+    overaccumulation: bool | None = Field(
         default=False,
-        description="Financialization > FINANCIALIZATION_BUBBLE",
+        description="Financialization > FINANCIALIZATION_BUBBLE; None if unmeasured",
     )
-    credit_fragility: bool = Field(
+    credit_fragility: bool | None = Field(
         default=False,
-        description="default_rate * spread > CREDIT_FRAGILITY_THRESHOLD",
+        description="default_rate * spread > credit_fragility_threshold(); None if unmeasured",
     )
-    claims_exceed_surplus: bool = Field(
+    claims_exceed_surplus: bool | None = Field(
         default=False,
-        description="i + r + t > s",
+        description="i + r + t > s; None if unmeasured",
     )
 
-    @computed_field  # type: ignore[prop-decorator]
     @property
-    def active_signals(self) -> int:
-        """Count of active (True) crisis signals."""
-        return sum(
-            [
-                self.profit_squeeze,
-                self.overaccumulation,
-                self.credit_fragility,
-                self.claims_exceed_surplus,
-            ]
+    def _signals(self) -> tuple[bool | None, ...]:
+        """The four crisis signals in declaration order."""
+        return (
+            self.profit_squeeze,
+            self.overaccumulation,
+            self.credit_fragility,
+            self.claims_exceed_surplus,
         )
 
     @computed_field  # type: ignore[prop-decorator]
     @property
+    def active_signals(self) -> int:
+        """Count of signals measured AND firing.
+
+        A ``None`` signal is unmeasured, not quiescent (Constitution III.11),
+        so it is excluded here rather than counted as a ``False``.
+        """
+        return sum(1 for signal in self._signals if signal is True)
+
+    @computed_field  # type: ignore[prop-decorator]
+    @property
+    def measured_signals(self) -> int:
+        """Count of signals that carry a real measurement (not ``None``).
+
+        Published alongside :attr:`crisis_probability` so a consumer can tell
+        "0.0 because nothing is wrong" from "0.0 because nothing was measured"
+        — the distinction a fabricated ``False`` destroyed (U2.3 review
+        findings 4 and 5).
+        """
+        return sum(1 for signal in self._signals if signal is not None)
+
+    @computed_field  # type: ignore[prop-decorator]
+    @property
     def crisis_probability(self) -> float:
-        """Fraction of active crisis signals (0.0 to 1.0)."""
-        return self.active_signals / 4
+        """Fraction of MEASURED crisis signals that are firing (0.0 to 1.0).
+
+        The denominator is :attr:`measured_signals`, not a fixed 4: dividing an
+        unmeasured signal into the total would silently dilute the probability
+        toward zero and report a calmer system than the data supports. When
+        nothing was measured the probability is ``0.0`` — read it together with
+        ``measured_signals == 0``, which is the honest "no assessment" state.
+        """
+        measured = self.measured_signals
+        if measured == 0:
+            return 0.0
+        return self.active_signals / measured
 
     @classmethod
     def normal(cls, fips: str = "00000", year: int = 2020) -> FinancialCrisisAssessment:
-        """Factory for no-crisis state.
+        """Factory for a MEASURED no-crisis state.
+
+        Every signal is explicitly ``False`` — measured and quiescent — which
+        is deliberately distinct from the unmeasured ``None`` state.
 
         Args:
             fips: FIPS code (default "00000").
             year: Assessment year (default 2020).
 
         Returns:
-            FinancialCrisisAssessment with all signals False.
+            FinancialCrisisAssessment with all four signals measured False.
         """
-        return cls(fips_code=fips, year=year)
+        return cls(
+            fips_code=fips,
+            year=year,
+            profit_squeeze=False,
+            overaccumulation=False,
+            credit_fragility=False,
+            claims_exceed_surplus=False,
+        )

@@ -6149,15 +6149,17 @@ def _seed_wayne_county_fips(state: WorldState) -> WorldState:
     all of them (not one arbitrarily "designated" hex) is the honest
     choice, not a shortcut.
 
-    It is also the only crash-safe choice bridge-only. ``county_fips`` on
-    a *subset* of territories would leave the other hexes' 15-char H3 ids
-    as ``TickDynamicsSystem._get_territory_fips``'s per-node fallback
-    (``county_fips or node.id``) — and ``CountyEconomicState.fips`` is a
-    hard ``min_length=5, max_length=5`` Pydantic constraint, so a mix of
-    one real 5-digit fips plus 80 fifteen-char H3 ids would raise
-    ``ValidationError`` the moment the annual pipeline runs. Giving every
-    territory the *identical* real fips avoids that without touching the
-    engine: ``_compute_county_states`` computes into a ``dict[fips, ...]``,
+    It is also what makes the county layer *reachable* at all. Since
+    2026-07-18 the engine resolves a territory's county identity from
+    ``county_fips`` and nothing else
+    (:func:`~babylon.domain.economics.tick.graph_bridge.resolve_county_identity`);
+    a territory without one is an EMPTY DOMAIN and is skipped, rather than
+    being fabricated into a pseudo-county named after its 15-char H3 id.
+    So stamping only a *subset* would no longer crash — it would silently
+    compute the county pipeline over just that subset, which is a worse
+    failure mode than the old ``ValidationError`` because it is quiet.
+    Giving every territory the *identical* real fips keeps the whole county
+    in scope: ``_compute_county_states`` computes into a ``dict[fips, ...]``,
     so 81 identical keys collapse to exactly ONE ``CountyEconomicState`` —
     "computed once per fips, no double-counting" holds structurally, not
     just as documentation.
@@ -6220,6 +6222,7 @@ def _has_county_resolution_territory(state: WorldState) -> bool:
 #: :func:`_bridge_economics_overrides` is called on EVERY ``resolve_tick`` — so
 #: rebuilding it per tick would re-query the reference DB ~15x per county every
 #: tick. Keyed by ``frozenset`` so distinct scenarios don't collide.
+_TENSOR_REGISTRY_CACHE: dict[frozenset[str], Any] = {}
 _CAPITAL_CALCULATOR_CACHE: dict[frozenset[str], Any] = {}
 
 #: QCEW county coverage runs 2010–2024; hydrate the full span once so the
@@ -6227,18 +6230,71 @@ _CAPITAL_CALCULATOR_CACHE: dict[frozenset[str], Any] = {}
 _CAPITAL_HYDRATION_YEARS: Final[tuple[int, ...]] = tuple(range(2010, 2025))
 
 
+def _build_tensor_registry(fips_codes: tuple[str, ...]) -> Any:
+    """Build (and cache) a hydrated ``TensorRegistry`` for the given counties.
+
+    Spec-116 U1 (vol3-money-scissors): factored out of
+    ``_build_capital_calculator`` so BOTH ``capital_calculator`` and
+    ``services.tensor_registry`` share ONE hydration pass over the reference
+    DB instead of two. Before this split, the web bridge built a
+    ``TensorRegistry`` only to wrap it in a ``CapitalStockCalculator`` and
+    discard the registry itself — the county financial layer's
+    ``_get_county_surplus``/``_get_county_profit_rate``
+    (``domain/economics/tick/system/__init__.py:1547,1599``) read
+    ``getattr(services, "tensor_registry", None)``, which was always
+    ``None`` for web sessions, so ``surplus_distribution`` never computed
+    (design doc §1.1).
+
+    Args:
+        fips_codes: The county FIPS this session computes over (non-empty).
+
+    Returns:
+        A hydrated ``TensorRegistry`` covering ``_CAPITAL_HYDRATION_YEARS``
+        for every FIPS in ``fips_codes``.
+    """
+    key = frozenset(fips_codes)
+    cached = _TENSOR_REGISTRY_CACHE.get(key)
+    if cached is not None:
+        return cached
+
+    from pathlib import Path
+
+    import babylon.domain.economics as economics_pkg
+    from babylon.domain.economics.adapters import SQLiteQCEWSource
+    from babylon.domain.economics.department_mapper import DepartmentMapper
+    from babylon.domain.economics.hydrator import MarxianHydrator
+    from babylon.domain.economics.tensor_registry import TensorRegistry
+    from babylon.engine.hydration.reference import StubBEASource
+    from babylon.reference.database import get_reference_session
+
+    # DELIBERATE TWIN: babylon/engine/headless_runner/runner.py:_build_economics_overrides
+    # runs the near-identical hydration. Two by design — a shared factory would put
+    # reference-DB I/O in domain/, which the layering forbids. Change both.
+    registry = TensorRegistry()
+    naics_yaml = Path(economics_pkg.__file__).parent / "data" / "naics_to_dept.yaml"
+    with get_reference_session() as session:
+        hydrator = MarxianHydrator(
+            SQLiteQCEWSource(session),
+            StubBEASource(),  # falls back to DepartmentMapper department ratios
+            DepartmentMapper.from_yaml(naics_yaml),
+        )
+        # sorted: fixes hydration/summation order across sessions (III.7, §5 hazard 1)
+        registry.hydrate_counties(hydrator, sorted(fips_codes), list(_CAPITAL_HYDRATION_YEARS))
+
+    _TENSOR_REGISTRY_CACHE[key] = registry
+    return registry
+
+
 def _build_capital_calculator(fips_codes: tuple[str, ...]) -> Any:
-    """Build (and cache) a ``CapitalStockCalculator`` with a hydrated registry.
+    """Build (and cache) a ``CapitalStockCalculator`` over a shared TensorRegistry.
 
     Owner item 25 / Fix B (owner-ruled 2026-07-12): give the web session a REAL
     per-county capital stock K instead of the engine's ``0.0`` default, so
     ``occ = K/v`` is non-zero and ``profit_rate = s/(K+v)`` separates from
     ``exploitation_rate = s/v`` — with K=0 the two are identical, a degenerate,
-    dishonest tie. Mirrors the ``TensorRegistry`` hydration in
-    :meth:`babylon.engine.simulation._legacy.Simulation.from_sqlite`, and reads
-    the SAME reference DB the Leontief rent path already opens (no new runtime
-    dependency). Cached per FIPS-set because hydration hits the DB once per
-    ``(county, year)``.
+    dishonest tie. As of U1 (vol3-money-scissors), the underlying
+    ``TensorRegistry`` hydration is shared with ``services.tensor_registry``
+    via :func:`_build_tensor_registry` — one DB round-trip, two consumers.
 
     Args:
         fips_codes: The county FIPS this session computes over (non-empty).
@@ -6254,27 +6310,9 @@ def _build_capital_calculator(fips_codes: tuple[str, ...]) -> Any:
     if cached is not None:
         return cached
 
-    from pathlib import Path
-
-    import babylon.domain.economics as economics_pkg
-    from babylon.domain.economics.adapters import SQLiteQCEWSource
     from babylon.domain.economics.capital_stock import CapitalStockCalculator
-    from babylon.domain.economics.department_mapper import DepartmentMapper
-    from babylon.domain.economics.hydrator import MarxianHydrator
-    from babylon.domain.economics.tensor_registry import TensorRegistry
-    from babylon.engine.hydration.reference import StubBEASource
-    from babylon.reference.database import get_reference_session
 
-    registry = TensorRegistry()
-    naics_yaml = Path(economics_pkg.__file__).parent / "data" / "naics_to_dept.yaml"
-    with get_reference_session() as session:
-        hydrator = MarxianHydrator(
-            SQLiteQCEWSource(session),
-            StubBEASource(),  # falls back to DepartmentMapper department ratios
-            DepartmentMapper.from_yaml(naics_yaml),
-        )
-        registry.hydrate_counties(hydrator, list(fips_codes), list(_CAPITAL_HYDRATION_YEARS))
-
+    registry = _build_tensor_registry(fips_codes)
     calculator = CapitalStockCalculator(registry)
     _CAPITAL_CALCULATOR_CACHE[key] = calculator
     return calculator
@@ -6422,8 +6460,14 @@ def _bridge_economics_overrides(fips_codes: tuple[str, ...] = ()) -> tuple[dict[
     # Owner item 25 / Fix B: wire a real per-county capital_calculator (cached) so
     # occ and profit_rate are non-degenerate. Only when we know which counties to
     # hydrate — a bare call (no FIPS) leaves K at the engine's 0.0 default.
+    # U1 (vol3-money-scissors): also wire the SAME hydrated TensorRegistry as
+    # services.tensor_registry — the missing piece that kept the county
+    # financial layer (surplus_distribution, s = p + i + r + t) permanently
+    # dark for web sessions even though distribution_calculator/interest_
+    # calculator/fictitious_capital_calculator etc. were already wired below.
     if fips_codes:
         overrides["capital_calculator"] = _build_capital_calculator(fips_codes)
+        overrides["tensor_registry"] = _build_tensor_registry(fips_codes)
 
     # Spec-116 Task 20b: wire the FRED-backed circulation (Feature 023) +
     # financial (Feature 024) services the same way the headless runner does
@@ -6442,7 +6486,7 @@ def _bridge_economics_overrides(fips_codes: tuple[str, ...] = ()) -> tuple[dict[
     )
 
     fred_cache = load_fred_series_from_db(session_factory)
-    overrides.update(create_financial_services(fred_series_cache=fred_cache))
+    overrides.update(create_financial_services(fred_series_cache=fred_cache, defines=defines))
 
     circulation_cache = load_circulation_series_from_db(session_factory)
     overrides.update(
@@ -6646,10 +6690,12 @@ def _carry_tick_dynamics_flows(
                 # (circulation, Feature 023) + Group D (financial
                 # distribution, Feature 024) join the carry — the write-site
                 # expressions from graph_bridge.py:128-197 mirrored
-                # byte-for-byte, fallback constants included. DECLARED-DARK:
-                # both gating services are unwired, so these are the frozen
-                # fallbacks until then (SEAM_REGISTRY rows stay
-                # NOT_YET_COMPUTED — never relabeled live).
+                # byte-for-byte. CORRECTED 2026-07-18
+                # (vol3-money-scissors-design honesty sweep, U2): "both
+                # gating services are unwired" was stale — real wired
+                # implementations exist for 8 of 9 Group C/D rows;
+                # SEAM_REGISTRY is the authoritative per-row wiring status,
+                # not this comment.
                 tick_liquidity_ratio=county.circulation_state.circuit_state.liquidity_ratio,
                 tick_commodity_overhang=(county.circulation_state.circuit_state.commodity_overhang),
                 tick_replacement_cycle=(
@@ -8702,16 +8748,16 @@ def _serialize_territory(t: Any, *, graph: Any = None) -> dict[str, Any]:
 
     Playability Spine Task 20 (spec-116 4d.5): the Feature-023 circulation
     family and Feature-024 financial-distribution family join the same
-    ``tick_``-prefixed graph-attr pattern, serialized DECLARED-DARK — the
-    gating services (``turnover_profile_source``/``interest_calculator``)
-    are unwired, so post-boundary values are the engine's fallback constants
-    (0.0/False/0, plus ``tick_housing_fictitious_fraction``'s honest
-    ``None``). The wire keys keep their ``tick_`` prefix (registry
-    ``wire_keys``) — none collides with an existing payload key or Territory
-    model field. SEAM_REGISTRY rows: Groups C/D, ``NOT_YET_COMPUTED`` (a
-    FRED-backed sibling implementation exists but is not wired into this
-    pipeline — computable, just not yet wired; frozen constants are never
-    relabeled live).
+    ``tick_``-prefixed graph-attr pattern. The wire keys keep their
+    ``tick_`` prefix (registry ``wire_keys``) — none collides with an
+    existing payload key or Territory model field. CORRECTED 2026-07-18
+    (vol3-money-scissors-design honesty sweep, U2): this docstring
+    previously claimed both gating services were categorically unwired and
+    every row ``NOT_YET_COMPUTED``; that was false for 8 of 9 Group C/D
+    rows. Consult SEAM_REGISTRY for the authoritative per-row wiring
+    status — a row still showing its fallback constant (0.0/False/0, plus
+    ``tick_housing_fictitious_fraction``'s honest ``None``) means that
+    SPECIFIC gating service is unwired on this path, not the whole family.
     """
     territory_id = t.id
     return {
@@ -8774,10 +8820,11 @@ def _serialize_territory(t: Any, *, graph: Any = None) -> dict[str, Any]:
         "vision_state": _territory_graph_attr(graph, territory_id, "vision_state"),
         # Playability Spine Task 20 (spec-116 4d.5): Group C (circulation,
         # Feature 023) + Group D (financial distribution, Feature 024),
-        # serialized DECLARED-DARK under their registry wire keys (tick_
-        # prefix kept — the tick_median_wage collision precedent). Values are
-        # the engine's fallback constants until turnover_profile_source /
-        # interest_calculator are wired; None before the first boundary.
+        # serialized under their registry wire keys (tick_ prefix kept —
+        # the tick_median_wage collision precedent). CORRECTED 2026-07-18
+        # (vol3-money-scissors-design honesty sweep, U2): most of these
+        # rows now carry real wired values — see SEAM_REGISTRY for the
+        # authoritative per-row status, not this comment.
         "tick_liquidity_ratio": _territory_graph_attr(graph, territory_id, "tick_liquidity_ratio"),
         "tick_commodity_overhang": _territory_graph_attr(
             graph, territory_id, "tick_commodity_overhang"

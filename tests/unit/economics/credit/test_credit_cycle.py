@@ -10,14 +10,17 @@ STAGNATION is terminal (no exits).
 
 from __future__ import annotations
 
+from collections.abc import Callable
+from pathlib import Path
+
 import pytest
 
 from babylon.domain.economics.credit.credit_cycle import DefaultCreditCycleDetector
 from babylon.domain.economics.credit.types import (
     OVEREXTENSION_DEFAULT_RATE,
     RECOVERY_CONSECUTIVE_PERIODS,
-    STAGNATION_CREDIT_GROWTH,
     CreditCyclePhase,
+    stagnation_credit_growth,
 )
 
 
@@ -96,7 +99,7 @@ class TestOverextensionTransitions:
         new_phase, count = detector.evaluate(
             profit_rate=0.02,
             profit_rate_trend=-0.005,
-            credit_growth=STAGNATION_CREDIT_GROWTH / 2,  # Below threshold
+            credit_growth=stagnation_credit_growth() / 2,  # Below threshold
             default_rate=OVEREXTENSION_DEFAULT_RATE / 2,  # Below crisis threshold
             current_phase=CreditCyclePhase.OVEREXTENSION,
         )
@@ -178,7 +181,7 @@ class TestRecoveryTransitions:
         new_phase, count = detector.evaluate(
             profit_rate=0.04,
             profit_rate_trend=0.01,
-            credit_growth=STAGNATION_CREDIT_GROWTH + 0.01,  # Above threshold
+            credit_growth=stagnation_credit_growth() + 0.01,  # Above threshold
             default_rate=0.01,
             current_phase=CreditCyclePhase.RECOVERY,
         )
@@ -189,7 +192,7 @@ class TestRecoveryTransitions:
         new_phase, count = detector.evaluate(
             profit_rate=0.03,
             profit_rate_trend=0.005,
-            credit_growth=STAGNATION_CREDIT_GROWTH / 2,  # Below threshold
+            credit_growth=stagnation_credit_growth() / 2,  # Below threshold
             default_rate=0.01,
             current_phase=CreditCyclePhase.RECOVERY,
         )
@@ -289,3 +292,94 @@ class TestInvalidTransitions:
             current_phase=CreditCyclePhase.EXPANSION,
         )
         assert new_phase == CreditCyclePhase.EXPANSION
+
+
+@pytest.mark.unit
+class TestProductionConsumesTheStagnationAccessor:
+    """The state machine must READ ``stagnation_credit_growth()`` per call.
+
+    Every other test in this file derives its inputs from the same accessor
+    production calls, so all of them pass identically against a hardcoded
+    ``0.01``. This drives an OVERRIDDEN ``defines.yaml`` through
+    ``DefaultCreditCycleDetector.evaluate`` and asserts the PHASE VERDICT
+    changes for one fixed input — which only a live read can do.
+    """
+
+    def test_recovery_verdict_follows_the_yaml_threshold(
+        self,
+        detector: DefaultCreditCycleDetector,
+        divergent_defines_yaml: Callable[..., Path],
+    ) -> None:
+        from babylon.domain.economics.credit import types as credit_types
+
+        # credit_growth 0.03 sits ABOVE the shipped 0.01 threshold …
+        phase_shipped, _ = detector.evaluate(
+            profit_rate=0.05,
+            profit_rate_trend=0.0,
+            credit_growth=0.03,
+            default_rate=0.01,
+            current_phase=CreditCyclePhase.RECOVERY,
+        )
+        assert phase_shipped == CreditCyclePhase.EXPANSION
+
+        # … and BELOW an overridden 0.05, which must flip the verdict.
+        divergent_defines_yaml(
+            {"crisis": {"stagnation_credit_growth": 0.05}},
+            credit_types._default_defines,
+        )
+        phase_overridden, _ = detector.evaluate(
+            profit_rate=0.05,
+            profit_rate_trend=0.0,
+            credit_growth=0.03,
+            default_rate=0.01,
+            current_phase=CreditCyclePhase.RECOVERY,
+        )
+        assert phase_overridden == CreditCyclePhase.STAGNATION, (
+            "the RECOVERY transition ignored the overridden "
+            "crisis.stagnation_credit_growth — it is reading a hardcoded literal"
+        )
+
+
+@pytest.mark.unit
+class TestDetectorHonoursRunScopedDefines:
+    """Finding U2.3-3: the no-arg accessor path ignores run-scoped defines.
+
+    ``stagnation_credit_growth()`` with no argument resolves
+    ``GameDefines.load_default()``, which reads ``defines.yaml`` off disk and
+    caches it process-wide. A headless run started with ``--defines
+    overlay.yaml`` hashes the overlay into its manifest and then evaluates
+    against the on-disk value — the manifest hash would not describe the run.
+    The detector owns a ``GameDefines``, so it can resolve at call time.
+    """
+
+    def test_constructor_defines_override_reaches_the_transition_guard(self) -> None:
+        from babylon.config.defines import GameDefines
+        from babylon.domain.economics.credit.credit_cycle import DefaultCreditCycleDetector
+
+        base = GameDefines.load_default()
+        overridden = base.model_copy(
+            update={"crisis": base.crisis.model_copy(update={"stagnation_credit_growth": 0.5})}
+        )
+        detector = DefaultCreditCycleDetector(defines=overridden)
+
+        # credit_growth 0.2 is ABOVE the shipped 1% threshold (so the default
+        # detector stays in RECOVERY->EXPANSION) but BELOW the 0.5 override,
+        # which must route to STAGNATION instead.
+        phase, _ = detector.evaluate(
+            profit_rate=0.05,
+            profit_rate_trend=0.0,
+            credit_growth=0.2,
+            default_rate=0.0,
+            current_phase=CreditCyclePhase.RECOVERY,
+        )
+        assert phase is CreditCyclePhase.STAGNATION
+
+        default_detector = DefaultCreditCycleDetector()
+        default_phase, _ = default_detector.evaluate(
+            profit_rate=0.05,
+            profit_rate_trend=0.0,
+            credit_growth=0.2,
+            default_rate=0.0,
+            current_phase=CreditCyclePhase.RECOVERY,
+        )
+        assert default_phase is CreditCyclePhase.EXPANSION

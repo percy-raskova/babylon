@@ -225,7 +225,7 @@ class NationalTickParameters(BaseModel):
 
     model_config = ConfigDict(frozen=True)
 
-    year: int = Field(..., ge=2007, le=2040, description="Parameter year")
+    year: int = Field(..., ge=2007, description="Parameter year")
     tau: float = Field(..., gt=0, description="National MELT ($/labor-hour)")
     gamma_basket: float = Field(..., gt=0, le=1, description="Basket visibility (smoothed)")
     gamma_basket_raw: float = Field(..., gt=0, le=1, description="Basket visibility (raw)")
@@ -261,7 +261,13 @@ class DerivedRates(BaseModel):
     model_config = ConfigDict(frozen=True)
 
     fips: str = Field(..., min_length=5, max_length=5, description="County FIPS code")
-    year: int = Field(..., ge=2007, le=2040, description="Rate year")
+    # Honesty sweep (spec 2026-07-18 vol3-money-scissors-design, U2): year is
+    # copied straight from CountyEconomicState.year (derived_rates.py), which
+    # tracks the real simulation year for the WHOLE campaign (no upper bound,
+    # see CountyEconomicState.year below) — a stale le=2040 here would crash
+    # every tick past year 2040 instead of the county state it derives from.
+    # Only the floor is a genuine sanity bound.
+    year: int = Field(..., ge=2007, description="Rate year")
     profit_rate: float | None = Field(default=None, description="r = s/(K+v), None if undefined")
     organic_composition: float | None = Field(
         default=None, ge=0, description="OCC = c/v, None if v=0"
@@ -312,7 +318,17 @@ class CountyEconomicState(BaseModel):
     model_config = ConfigDict(frozen=True)
 
     fips: str = Field(..., min_length=5, max_length=5, description="County FIPS code")
-    year: int = Field(..., ge=2007, le=2040, description="State year")
+    # Honesty sweep (spec 2026-07-18 vol3-money-scissors-design, U2): the
+    # county's own reported year has no legitimate ceiling — the simulation
+    # runs for the whole campaign horizon (SIM_EPOCH_YEAR + up to ~100
+    # years), unlike Volume III's calculators whose FRED/Z.1-bound outputs
+    # (surplus_distribution, debt_accumulation, etc. below) legitimately
+    # degrade to NoDataSentinel outside their modeled window instead. The
+    # prior `le=2040` silently fabricated year=2040 for every tick past
+    # 2040 (~85% of a 5200-tick campaign; mirrors the U2.1 fix already
+    # applied to NationalTickParameters.year / SimulationTickState.year).
+    # Only the floor is a genuine sanity bound.
+    year: int = Field(..., ge=2007, description="State year")
     capital_stock: float = Field(..., ge=0, description="Capital stock K")
     throughput_position: float = Field(..., gt=0, description="Pi = tau_through / tau_national")
     supply_chain_depth: float = Field(..., ge=0, le=5, description="Supply chain depth D")
@@ -439,7 +455,10 @@ class TickSummary(BaseModel):
 
     model_config = ConfigDict(frozen=True)
 
-    year: int = Field(..., ge=2007, le=2040, description="Tick year")
+    # Honesty sweep (spec 2026-07-18 vol3-money-scissors-design, U2): same
+    # treatment as CountyEconomicState.year above — the tick's own summary
+    # year has no legitimate ceiling. Only the floor is a genuine sanity bound.
+    year: int = Field(..., ge=2007, description="Tick year")
     counties_processed: int = Field(..., ge=0, description="Number of counties computed")
     phi_aggregate: float = Field(..., ge=0, description="Total national imperial rent")
     national_melt: float = Field(..., gt=0, description="National MELT (tau)")
@@ -517,7 +536,15 @@ class SimulationTickState(BaseModel):
 
     model_config = ConfigDict(frozen=True)
 
-    year: int = Field(..., ge=2007, le=2040, description="Current simulation year")
+    # Honesty sweep (spec 2026-07-18 vol3-money-scissors-design, U2):
+    # SimulationTickState is the outermost, always-executed assembly at
+    # the end of TickDynamicsSystem.step()'s annual pipeline and is fed
+    # the raw, unclamped ``year`` local directly (system/__init__.py) —
+    # the same value U2.1 stopped clamping to 2040 for
+    # NationalTickParameters.year. Only the floor is a genuine sanity
+    # bound; the ceiling silently crashed every tick past year 2040
+    # (~85% of a 5200-tick campaign).
+    year: int = Field(..., ge=2007, description="Current simulation year")
     national_params: NationalTickParameters = Field(..., description="National context")
     county_states: dict[str, CountyEconomicState] = Field(
         ..., description="Per-county snapshots keyed by FIPS"

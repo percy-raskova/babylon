@@ -6,6 +6,7 @@ Feature: 024-capital-volume-iii (US2, US3)
 from __future__ import annotations
 
 from enum import StrEnum
+from functools import lru_cache
 from typing import Final
 
 from pydantic import BaseModel, ConfigDict, Field, computed_field
@@ -84,21 +85,67 @@ signals systemic overaccumulation of fictitious capital relative to real
 production capacity.
 """
 
-CREDIT_FRAGILITY_THRESHOLD: Final[float] = 0.02
-"""Credit fragility index (default_rate * spread) crisis threshold.
 
-Traceability: FRED BAA-AAA spread * Moody's default rate product. During
-2008 crisis, the product of corporate bond spread (~6%) and default rate
-(~4%) exceeded 0.02. Below this threshold, credit system is stable.
-"""
+@lru_cache(maxsize=1)
+def _default_defines() -> GameDefines:
+    """Process-cached ``GameDefines.load_default()``.
 
-STAGNATION_CREDIT_GROWTH: Final[float] = GameDefines().crisis.stagnation_credit_growth
-"""Credit expansion rate threshold for stagnation diagnosis.
+    Same rationale as ``distribution.types._default_defines``: cached on
+    FIRST USE rather than at import time, and bypassed entirely when a
+    caller passes an explicit ``defines``.
+    """
+    return GameDefines.load_default()
 
-Traceability: FRED TCMDO YoY growth rate. When credit growth falls below
-1% annually, the economy is in secular stagnation — insufficient credit
-creation for expansion but insufficient defaults for crisis clearing.
-"""
+
+def stagnation_credit_growth(defines: GameDefines | None = None) -> float:
+    """Credit expansion rate threshold for stagnation diagnosis.
+
+    Traceability: FRED TCMDO YoY growth rate. When credit growth falls below
+    1% annually, the economy is in secular stagnation — insufficient credit
+    creation for expansion but insufficient defaults for crisis clearing.
+
+    Reads ``crisis.stagnation_credit_growth`` from the passed ``defines``, or
+    from the process-cached default when omitted. Was a module-level ``Final``
+    initialised from a bare ``GameDefines()`` — which read the dataclass
+    defaults and ignored ``defines.yaml`` entirely — until the 2026-07-18
+    honesty sweep.
+    """
+    resolved = defines if defines is not None else _default_defines()
+    return resolved.crisis.stagnation_credit_growth
+
+
+def credit_fragility_threshold(defines: GameDefines | None = None) -> float:
+    """Expected-loss product above which the credit_fragility signal fires.
+
+    The signal is ``default_rate * credit_spread > credit_fragility_threshold()``,
+    where both inputs are DECIMALS: ``factory.py`` divides the FRED percent
+    series (``FEDFUNDS``, ``DGS10``, ``BAA10Y``) by 100 at load time.
+
+    Traceability: BAA10Y peaked at 5.56% (0.0556) in Dec 2008; with the
+    documented 2% default-rate estimate (``capital_vol3.default_rate_estimate``)
+    the crisis-peak product is 1.11e-3, while a calm year (1.8% spread) yields
+    3.6e-4. The 1.0e-3 default therefore separates crisis from calm.
+
+    Was a module-level ``Final`` of ``0.02`` — a value calibrated for
+    PERCENT-scaled inputs — until the U2.3 code review measured that it
+    required a 100% annual borrowing rate to cross, so ``credit_fragility``
+    published ``False`` for every county in every modeled year, including the
+    height of the 2008 credit crisis (review finding 5).
+
+    Reads ``capital_vol3.credit_fragility_threshold`` from the passed
+    ``defines``, or from the process-cached default when omitted.
+
+    Args:
+        defines: Optional run-scoped ``GameDefines``. Pass this whenever the
+            caller holds one — the no-arg path resolves the on-disk
+            ``defines.yaml`` and cannot see a ``--defines`` overlay.
+
+    Returns:
+        The expected-loss threshold as a decimal product.
+    """
+    resolved = defines if defines is not None else _default_defines()
+    return resolved.capital_vol3.credit_fragility_threshold
+
 
 OVEREXTENSION_DEFAULT_RATE: Final[float] = 0.03
 """Default rate threshold triggering transition from OVEREXTENSION to CRISIS.
@@ -151,7 +198,7 @@ class CreditState(BaseModel):
     Tracks aggregate credit conditions and the current credit cycle phase.
     The credit_fragility computed field provides a crisis signal when
     the product of default_rate and spread_to_treasuries exceeds the
-    CREDIT_FRAGILITY_THRESHOLD constant.
+    :func:`credit_fragility_threshold` accessor.
 
     Feature: 024-capital-volume-iii (FR-002, FR-006)
     """

@@ -14,6 +14,7 @@ import yaml
 from pydantic import BaseModel, ConfigDict, Field
 
 from babylon.config.defines.balkanization import BalkanizationDefines
+from babylon.config.defines.capital_vol3 import CapitalVolumeIIIDefines
 from babylon.config.defines.consciousness import (
     BifurcationDefines,
     ConsciousnessDefines,
@@ -126,6 +127,9 @@ class GameDefines(BaseModel):
     - epistemic_horizon: Fog-of-war Phase 1 shadow coefficients (Epistemic Horizon program)
     - doctrine: DoctrineSystem mechanic coefficients (owner-ratified 2026-07-15)
     - market: Price⟷value scissors dynamics (Program 23 Phase-1 shadow, ADR077)
+    - capital_vol3: Volume III surplus-distribution / credit / counter-tendency
+      thresholds (024-capital-volume-iii; migrated off module-level Finals
+      in the 2026-07-18 honesty sweep)
     """
 
     model_config = ConfigDict(frozen=True)
@@ -191,6 +195,9 @@ class GameDefines(BaseModel):
     doctrine: DoctrineDefines = Field(default_factory=DoctrineDefines)
     # Market Scissors — price/fictitious oscillators (Program 23 Phase-1 shadow, ADR077)
     market: MarketDefines = Field(default_factory=MarketDefines)
+    # Volume III financial-claims thresholds (024-capital-volume-iii;
+    # 2026-07-18 honesty sweep, U2)
+    capital_vol3: CapitalVolumeIIIDefines = Field(default_factory=CapitalVolumeIIIDefines)
 
     # Legacy flat attributes for backward compatibility
     # These delegate to the nested structure
@@ -320,6 +327,7 @@ class GameDefines(BaseModel):
             epistemic_horizon=EpistemicHorizonDefines(**data.get("epistemic_horizon", {})),
             doctrine=DoctrineDefines(**data.get("doctrine", {})),
             market=MarketDefines(**data.get("market", {})),
+            capital_vol3=CapitalVolumeIIIDefines(**data.get("capital_vol3", {})),
         )
 
     @classmethod

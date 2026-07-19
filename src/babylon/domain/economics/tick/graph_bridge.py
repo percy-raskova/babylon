@@ -38,6 +38,42 @@ from babylon.domain.economics.tick.types import (
 TICK_DYNAMICS_KEY: str = "tick_dynamics"
 
 
+def resolve_county_identity(node: Any) -> str | None:
+    """Resolve a territory node's REAL county identity, or ``None``.
+
+    The county identity of a territory lives in its ``county_fips`` attribute
+    and nowhere else. A graph node id is a graph-local label, NOT a county FIPS
+    code: ``Territory.id`` is constrained to ``^(T[0-9]{3,}|[0-9a-f]{15})$``, so
+    a production territory id is either a bridge-minted ``'T001'`` or a 15-char
+    H3 cell — never a valid 5-char FIPS.
+
+    The former ``county_fips or node.id`` fallback therefore could not succeed.
+    It had exactly two possible outcomes, both wrong:
+
+    1. a pydantic ``ValidationError`` downstream, because
+       ``ClassDistribution.fips`` / ``CountyEconomicState.fips`` are
+       ``min_length=5, max_length=5`` (``'T001'`` is 4 chars, an H3 id is 15);
+    2. a pseudo-county that misses every real-FIPS-keyed data source.
+
+    Fabricating an identifier is no better than fabricating a zero — both are
+    Constitution III.11 violations. A territory with no ``county_fips`` has no
+    county economic identity; that is an EMPTY DOMAIN and callers skip it. The
+    NATIONAL layer is unaffected — it does not key on counties.
+
+    Args:
+        node: A graph node exposing ``attributes`` (only territories carry a
+            county identity).
+
+    Returns:
+        The real county FIPS, or ``None`` when the territory carries none.
+    """
+    county_fips = node.attributes.get("county_fips")
+    if county_fips is None:
+        return None
+    identity = str(county_fips)
+    return identity if identity else None
+
+
 def write_tick_state_to_graph(  # pragma: no mutate — data serialization
     graph: GraphProtocol,
     state: SimulationTickState,
@@ -82,11 +118,19 @@ def write_tick_state_to_graph(  # pragma: no mutate — data serialization
     # so the writeback lands on the right node; abstract territories key by their id.
     fips_to_node: dict[str, str] = {}  # pragma: no mutate
     for territory_node in graph.query_nodes():  # pragma: no mutate
-        if territory_node.node_type == "territory":  # pragma: no mutate
-            key = str(  # pragma: no mutate
-                territory_node.attributes.get("county_fips") or territory_node.id
-            )  # pragma: no mutate
-            fips_to_node[key] = str(territory_node.id)  # pragma: no mutate
+        if territory_node.node_type != "territory":  # pragma: no mutate
+            continue  # pragma: no mutate
+        # Real county FIPS only (owner item 25). A territory with no
+        # county_fips has no county identity — an empty domain, not a
+        # pseudo-county named after its node label (see
+        # :func:`resolve_county_identity`). The miss path below
+        # (`fips_to_node.get(fips, fips)`) already covers abstract
+        # territories keyed by their own id, so skipping here does not
+        # change lookup semantics for real-FIPS territories.
+        territory_fips = resolve_county_identity(territory_node)  # pragma: no mutate
+        if territory_fips is None:  # pragma: no mutate
+            continue  # pragma: no mutate
+        fips_to_node[territory_fips] = str(territory_node.id)  # pragma: no mutate
 
     # Write county-level state to Territory nodes
     for fips, county in state.county_states.items():  # pragma: no mutate
@@ -156,8 +200,8 @@ def write_tick_state_to_graph(  # pragma: no mutate — data serialization
                 else 0.0  # pragma: no mutate
             ),  # pragma: no mutate
             tick_ground_rent=(  # pragma: no mutate
-                county.rent_extraction.total_rent  # pragma: no mutate
-                if county.rent_extraction is not None  # pragma: no mutate
+                county.surplus_distribution.ground_rent  # pragma: no mutate
+                if county.surplus_distribution is not None  # pragma: no mutate
                 else 0.0  # pragma: no mutate
             ),  # pragma: no mutate
             tick_rentier_share=(  # pragma: no mutate
@@ -234,8 +278,12 @@ def read_tick_state_from_graph(  # pragma: no mutate — data serialization
         if "tick_capital_stock" not in node_data:  # pragma: no mutate
             continue  # pragma: no mutate
 
-        # Real county FIPS (owner item 25); node id may be a label ('T001').
-        fips = str(node_data.get("county_fips") or node.id)  # pragma: no mutate
+        # Real county FIPS (owner item 25). A territory with no county_fips has
+        # no county identity to read back — an empty domain, not a pseudo-county
+        # named after its node label (see :func:`resolve_county_identity`).
+        fips = resolve_county_identity(node)  # pragma: no mutate
+        if fips is None:  # pragma: no mutate
+            continue  # pragma: no mutate
         dist_dict = node_data.get("tick_class_distribution", {})  # pragma: no mutate
         class_dist = ClassDistribution(  # pragma: no mutate
             fips=fips,  # pragma: no mutate

@@ -23,6 +23,7 @@ from __future__ import annotations
 import sqlite3
 from collections.abc import Generator
 from pathlib import Path
+from typing import TYPE_CHECKING
 
 import pytest
 from sqlalchemy import Engine, create_engine, event
@@ -31,6 +32,11 @@ from sqlalchemy.orm import Session, sessionmaker
 from babylon.domain.economics.adapters import SQLiteQCEWSource
 from babylon.domain.economics.department_mapper import DepartmentMapper
 from babylon.domain.economics.hydrator import MarxianHydrator
+
+if TYPE_CHECKING:
+    from babylon.config.defines import GameDefines
+    from babylon.models.config import SimulationConfig
+    from babylon.models.world_state import WorldState
 
 # =============================================================================
 # DATABASE PATH CANDIDATES (mirrors tests/integration/tensors/conftest.py)
@@ -472,3 +478,77 @@ def mock_bea_source() -> MockBEADataSource:
 # test_imperial_rent_pipeline.py`` which uses synthetic Mock fixtures for
 # the Spec 057 Protocol surfaces (PeripheryLaborCoefficientsSource,
 # FinalDemandSource, IndustryToCountyAllocator).
+
+
+# =============================================================================
+# WAYNE-SCOPED WORLD STATE (U1.9 acceptance — vol3-money-scissors)
+# =============================================================================
+
+#: Wayne County, Michigan. The single county U1's acceptance run computes over,
+#: and the FIPS U1.6 hydrates the ``TensorRegistry`` for.
+WAYNE_COUNTY_FIPS = "26163"
+
+
+def build_wayne_world_state() -> tuple[WorldState, SimulationConfig, GameDefines]:
+    """Build a Wayne-County-scoped world the engine can tick past a year boundary.
+
+    Reuse over recreation: :func:`babylon.engine.scenarios.create_wayne_county_scenario`
+    (``engine/scenarios/_legacy_wayne.py:577``) already returns exactly the
+    ``(WorldState, SimulationConfig, GameDefines)`` triple, already populated with
+    the H3 res-5 hex territories, social classes, relationships and the player /
+    state-apparatus organizations that the 30 systems need in order to run. This
+    helper does ONE thing on top of it, and that one thing is load-bearing for
+    U1: it stamps the real county identity onto every territory.
+
+    Why the stamp is required: ``TickDynamicsSystem`` resolves a territory's
+    county key from ``county_fips`` and nothing else — see
+    ``domain/economics/tick/graph_bridge.resolve_county_identity``. The stock
+    Wayne scenario sets no ``county_fips`` at all, so without this stamp every
+    H3 territory is an EMPTY DOMAIN and the county pipeline computes over ZERO
+    counties: ``_get_county_surplus`` is never reached and
+    ``surplus_distribution`` stays ``None`` — for a reason that has nothing to
+    do with the wiring this task exists to prove. That is exactly the
+    green-test-over-a-dead-feature trap the fixture-vocabulary rule warns about.
+
+    (Before 2026-07-18 the engine instead fabricated a pseudo-county per H3 id
+    via a ``county_fips or node.id`` fallback; those pseudo-counties missed
+    U1.6's ``"26163"``-keyed ``TensorRegistry`` just the same. The stamp was
+    required then and is required now — only the failure mode changed, from a
+    fabricated identifier to honest absence.)
+
+    ``county_fips`` is a real ``Territory`` model field
+    (``models/entities/territory.py:75``), ``WorldState.to_graph`` writes it onto
+    the node via ``**territory.model_dump()``, and it is NOT in
+    ``TERRITORY_EXCLUDED_FIELDS`` — so it survives the ``to_graph``/``from_graph``
+    round trip that ``simulation_engine.step`` performs on every tick.
+
+    Tick 0 is deliberate: ``0 % WEEKS_PER_YEAR == 0``, so the very first ``step``
+    is a year-boundary tick that bootstraps county states at the default
+    ``base_year`` of 2010 (``_determine_year``, same module ``:350-364``); the
+    caller then drives 52 ``step`` calls (ticks 0-51) and executes tick 52 — the
+    next boundary — as its capturing pass, recomputing at 2011. Both years
+    sit inside U1.6's ``_TENSOR_HYDRATION_YEARS`` (2010-2024), so both find real
+    QCEW/FRED-backed data rather than a ``NoDataSentinel``.
+
+    Determinism (Constitution III.7): every input is fixed — the scenario's
+    default ``extraction_efficiency``/``repression_level``, the default
+    ``SimulationConfig`` (and therefore the default ``rng_seed``), and a
+    deterministic dict comprehension over ``state.territories``. Two calls
+    produce equal worlds.
+
+    Returns:
+        ``(state, config, defines)`` — a tick-0 ``WorldState`` whose every
+        territory carries ``county_fips == "26163"``, the scenario's
+        ``SimulationConfig``, and the scenario's ``GameDefines``.
+    """
+    from babylon.engine.scenarios import create_wayne_county_scenario
+
+    state, config, defines = create_wayne_county_scenario()
+
+    territories = {
+        territory_id: territory.model_copy(update={"county_fips": WAYNE_COUNTY_FIPS})
+        for territory_id, territory in state.territories.items()
+    }
+    # WorldState is frozen — mutate via model_copy, never assignment.
+    scoped_state = state.model_copy(update={"territories": territories, "tick": 0})
+    return scoped_state, config, defines

@@ -144,6 +144,21 @@ class TestComputeFictitiousCapital:
         assert result.corporate_debt == pytest.approx(7_500_000_000_000.0)
         assert result.household_debt == pytest.approx(13_800_000_000_000.0)
 
+    def test_year_outside_modeled_range_returns_sentinel_even_with_real_data(
+        self,
+    ) -> None:
+        """Guard fires BEFORE any data lookup — proven by giving 2050 real data."""
+        credit_source = MockCreditAggregateSource(
+            data={2050: (90_000_000_000_000.0, 32_000_000_000_000.0, 34_000_000_000_000.0)}
+        )
+        z1_source = MockZ1Source(
+            data={2050: (13_000_000_000_000.0, 19_000_000_000_000.0, 640_000_000_000_000.0)}
+        )
+        calc = DefaultFictitiousCapitalCalculator(credit_source=credit_source, z1_source=z1_source)
+        result = calc.compute_fictitious_capital(2050)
+        assert isinstance(result, NoDataSentinel)
+        assert "modeled" in result.reason.lower()
+
 
 # =============================================================================
 # compute_financialization_index

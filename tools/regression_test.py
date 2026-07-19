@@ -75,6 +75,124 @@ DEFAULT_MAX_TICKS: Final[int] = 52
 CHECKPOINT_INTERVAL: Final[int] = 10
 TOLERANCE: Final[float] = 1e-5
 
+FRED_FIXTURE_PATH: Final[Path] = (
+    Path(__file__).parent.parent / "tests" / "fixtures" / "vol3_fred_series.json"
+)
+
+
+def _load_vol3_fred_fixture() -> dict[str, dict[int, float]]:
+    """Load the committed Vol III FRED fixture (D4) — no DB, no drive.
+
+    The JSON on disk stores year as a string (JSON object keys are always
+    strings); the Vol III adapters (``FredInterestRateAdapter`` et al.) index
+    by ``int`` year, so keys are converted back on load.
+
+    Returns:
+        ``{series_id: {year: value}}`` matching
+        :func:`babylon.domain.economics.factory.load_fred_series_from_db`'s
+        return shape.
+    """
+    raw: dict[str, dict[str, float]] = json.loads(FRED_FIXTURE_PATH.read_text())
+    return {
+        series_id: {int(year): value for year, value in years.items()}
+        for series_id, years in raw.items()
+    }
+
+
+MELT_FIXTURE_PATH: Final[Path] = (
+    Path(__file__).parent.parent / "tests" / "fixtures" / "vol3_melt_national.json"
+)
+
+
+class _FixtureNationalGDPSource:
+    """Fixture-backed ``BEADataSource`` — hermetic twin of ``SQLiteBEANationalGDPSource``.
+
+    Returns ``None`` for an absent year, exactly as the SQLite adapter does
+    (Constitution III.11) — the fixture omits years the reference DB has no
+    row for rather than zero-filling them.
+    """
+
+    def __init__(self, gdp_by_year: dict[int, float]) -> None:
+        self._gdp_by_year = gdp_by_year
+
+    def get_gdp(self, year: int) -> float | None:
+        return self._gdp_by_year.get(year)
+
+
+class _FixtureNationalEmploymentSource:
+    """Fixture-backed ``QCEWDataSource`` — twin of ``SQLiteQCEWNationalEmploymentSource``."""
+
+    def __init__(self, employment_by_year: dict[int, int]) -> None:
+        self._employment_by_year = employment_by_year
+
+    def get_national_employment(self, year: int) -> int | None:
+        return self._employment_by_year.get(year)
+
+
+def _load_vol3_melt_fixture() -> tuple[dict[int, float], dict[int, int]]:
+    """Load the committed national MELT fixture (D4) — no DB, no drive.
+
+    JSON object keys are always strings; ``DefaultMELTCalculator`` indexes by
+    ``int`` year, so keys are converted back on load.
+
+    Returns:
+        ``(gdp_by_year, employment_by_year)`` — the two national annual series
+        ``DefaultMELTCalculator`` consumes, and nothing else.
+    """
+    raw: dict[str, dict[str, float]] = json.loads(MELT_FIXTURE_PATH.read_text())
+    gdp = {int(year): float(value) for year, value in raw["gdp"].items()}
+    employment = {int(year): int(value) for year, value in raw["employment"].items()}
+    return gdp, employment
+
+
+def _build_vol3_melt_calculator() -> Any:
+    """Build the fixture-backed ``melt_calculator`` for ``qa:regression``.
+
+    ``create_financial_services`` supplies every Vol III calculator EXCEPT this
+    one — it is built only by ``create_economics_services``, which needs a
+    SQLAlchemy session the hermetic harness forbids. Without it,
+    ``TickDynamicsSystem`` returns early on ``melt_calculator is None`` and the
+    entire annual economics pipeline (Steps 2-9, including the Step 5.5 Vol III
+    financial layer) is skipped — the gate runs, but sees nothing.
+
+    Deliberately NOT accompanied by a ``TensorRegistry``: ``get_melt`` does not
+    consume one, and the five regression scenarios carry no ``county_fips``, so
+    a real-FIPS-keyed registry is unreachable from them (county coverage is
+    Task U1.9's job, over the Wayne County scenario).
+    """
+    from babylon.domain.economics.melt import DefaultMELTCalculator
+
+    gdp_by_year, employment_by_year = _load_vol3_melt_fixture()
+    return DefaultMELTCalculator(
+        _FixtureNationalGDPSource(gdp_by_year),
+        _FixtureNationalEmploymentSource(employment_by_year),
+    )
+
+
+def _build_vol3_calculator_overrides(defines: GameDefines) -> dict[str, Any]:
+    """Build Vol III ``calculator_overrides`` from the committed FRED fixture.
+
+    D4: gives ``qa:regression`` real (2010-2024) money data without touching
+    the babylon-data drive — the harness reads only the committed fixture.
+
+    Args:
+        defines: The scenario's resolved ``GameDefines`` (same instance
+            passed to ``step()``), so ``capital_vol3``-moddable calculator
+            constants (e.g. the housing ground-rent capitalization rate)
+            honor scenario/CLI overrides instead of silently reverting to
+            ``GameDefines.load_default()`` (honesty sweep, U2.4).
+    """
+    from babylon.domain.economics.factory import create_financial_services
+
+    overrides = create_financial_services(
+        fred_series_cache=_load_vol3_fred_fixture(), defines=defines
+    )
+    # The one key create_financial_services does not supply, and the one that
+    # decides whether TickDynamicsSystem executes at all.
+    overrides["melt_calculator"] = _build_vol3_melt_calculator()
+    return overrides
+
+
 # Dense-trace per-entity/per-edge column contract (Program 13 item 2). Each
 # entry is (column-name suffix, getter). Declared once so the CSV header and
 # every row are built from the exact same ordered list and can never drift
@@ -565,6 +683,12 @@ def _run_scenario_ticks(
     state, sim_config, defines = create_scenario(name)
     config_info = SCENARIOS[name]
     persistent_context: dict[str, Any] = {}
+    # D4: Vol III calculator_overrides built ONCE per scenario run — the
+    # calculators are stateless/reused across ticks, mirroring the cadence
+    # _legacy.py's Simulation already uses (one calculator_overrides dict
+    # persists across the whole run, rebuilt only per ServiceContainer.create
+    # call inside step() itself).
+    calculator_overrides = _build_vol3_calculator_overrides(defines)
 
     checkpoints: list[CheckpointData] = []
     ticks_survived = 0
@@ -582,7 +706,13 @@ def _run_scenario_ticks(
         dense_rows.append(_dense_row(state, 0, entity_ids, edge_keys))
 
     for tick in range(1, max_ticks + 1):
-        state = step(state, sim_config, persistent_context, defines)
+        state = step(
+            state,
+            sim_config,
+            persistent_context,
+            defines,
+            calculator_overrides=calculator_overrides,
+        )
         ticks_survived = tick
 
         # Checkpoint at intervals

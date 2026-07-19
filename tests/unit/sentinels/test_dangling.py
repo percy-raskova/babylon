@@ -384,19 +384,15 @@ def test_registry_declares_all_four_persistence_watched_classes() -> None:
     }
 
 
-def test_founding_specimen_is_still_live_and_named_exactly() -> None:
-    """LIVENESS: as of this writing (before task #43's parallel fix lane
-    lands on this branch), engine_bridge.py:10990 is still the SINGULAR
-    `persist_action_result` -- the gate must name exactly this site. If this
-    ever starts passing spuriously without the fix landing, the gate is
-    broken; if the fix lands and this starts failing, update/remove this
-    test as part of that same change (it is pinning a KNOWN, tracked defect,
-    not asserting desired end-state)."""
-    violations = dangling_references()
-    assert len(violations) == 1
-    assert "web/game/engine_bridge.py:10990" in violations[0]
-    assert "persist_action_result" in violations[0]
-    assert "persist_action_results" in violations[0]  # nearest-match names the real target
+def test_live_tree_is_clean_founding_specimen_fixed() -> None:
+    """The founding specimen (singular `persist_action_result`,
+    engine_bridge.py:10990) was FIXED by task #43's fix lane (e8bb2f3d) in
+    the same integration that landed this sentinel -- the pre-fix twin of
+    this test pinned the red on the live defect (its docstring mandated this
+    flip when the fix landed). The red capability itself stays covered by
+    the synthetic-fixture tests above; THIS pins the desired end-state: no
+    typed-receiver getattr in production names a nonexistent member."""
+    assert dangling_references() == []
 
 
 def test_class_members_matches_real_postgres_runtime_shape() -> None:
@@ -415,20 +411,20 @@ def test_class_members_matches_real_postgres_runtime_shape() -> None:
 # ---------------------------------------------------------------------------
 
 
-def test_cli_entry_point_reds_on_the_live_specimen() -> None:
-    """`sentinel_check.py dangling --check` currently exits 1 -- the founding
-    specimen (engine_bridge.py:10990) is still live on this branch. Once
-    task #43's fix lands, this assertion flips to 0/clean as part of that
-    same change (see test_founding_specimen_is_still_live_and_named_exactly
-    for the paired liveness pin)."""
+def test_cli_entry_point_clean_on_live_tree() -> None:
+    """`sentinel_check.py dangling --check` exits 0 on the integrated tree:
+    the founding specimen was fixed by task #43's fix lane in the same
+    integration that landed this sentinel (the pre-fix twin asserted exit 1
+    on the then-live defect and mandated this flip). CLI red-path wiring
+    stays covered by the fixture-driven checks tests."""
     result = subprocess.run(  # noqa: S603 - fixed argv, no shell, trusted path
         [sys.executable, str(_TOOL_PATH), "dangling", "--check"],
         capture_output=True,
         text=True,
         check=False,
     )
-    assert result.returncode == 1, (
-        "expected the DANGLING sensor to red on the live specimen:\n"
+    assert result.returncode == 0, (
+        "expected the DANGLING sensor to be clean on the integrated tree:\n"
         f"stdout:\n{result.stdout}\nstderr:\n{result.stderr}"
     )
-    assert "persist_action_result" in result.stderr
+    assert "DANGLING clean" in result.stdout

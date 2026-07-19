@@ -107,6 +107,58 @@ class TestShockRendering:
 
 
 @pytest.mark.unit
+class TestPulseVeilGate:
+    """G4 Finding 2 (adversarial review): the "pool" (imperial_rent_pool)
+    sentence formats a real value-axis number into narration prose — the
+    same class of leak :data:`_VEILED_APOLOGIST_REFUTATION`
+    (``engine_bridge.py``) already fixes for the social_class inspector.
+    ``veil_tier`` defaults to ``2`` (fully unlocked) so every pre-existing
+    call site (this suite's other tests) stays byte-identical. Below Tier
+    1 the pool sentence must not name real numbers; wage/p_rev stay
+    visible — money-form and political axes are never gated (veil.py)."""
+
+    def test_default_veil_tier_is_unlocked_byte_identical_to_before_g4(self) -> None:
+        beats = render_frame_beats([_pulse_frame()])
+        assert "100.00" in beats[0].body
+        assert "70.00" in beats[0].body
+
+    def test_tier_zero_veils_the_pool_sentence_but_not_wage_or_p_rev(self) -> None:
+        body = render_frame_beats([_pulse_frame()], veil_tier=0)[0].body
+        assert "100.00" not in body
+        assert "70.00" not in body
+        assert "0.2000" in body  # wage rate — money-form, never gated
+        assert "0.300" in body
+        assert "0.450" in body  # p_rev — political axis, never gated
+
+    def test_tier_one_unlocks_the_pool_sentence(self) -> None:
+        body = render_frame_beats([_pulse_frame()], veil_tier=1)[0].body
+        assert "100.00" in body
+        assert "70.00" in body
+
+
+@pytest.mark.unit
+class TestShockVeilGate:
+    """Same leak, the SHOCK_DOCTRINE pattern's rent-pool-crash sentence
+    (the pool's percentage drop is itself a value-axis relation)."""
+
+    def test_default_veil_tier_is_unlocked_byte_identical_to_before_g4(self) -> None:
+        body = render_frame_beats([_shock_frame()])[0].body
+        assert "30.0%" in body
+
+    def test_tier_zero_veils_the_pool_crash_percentage(self) -> None:
+        body = render_frame_beats([_shock_frame()], veil_tier=0)[0].body
+        assert "30.0%" not in body
+        assert "0.2000" in body  # wage — still visible
+        assert "0.1500" in body
+        assert "0.300" in body  # p_rev — still visible
+        assert "0.450" in body
+
+    def test_tier_one_unlocks_the_pool_crash_percentage(self) -> None:
+        body = render_frame_beats([_shock_frame()], veil_tier=1)[0].body
+        assert "30.0%" in body
+
+
+@pytest.mark.unit
 class TestContractLimits:
     def test_beat_ids_fit_the_64_char_column(self) -> None:
         beats = render_frame_beats([_pulse_frame(), _shock_frame()])

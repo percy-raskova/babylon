@@ -5642,6 +5642,11 @@ class EngineBridge:
 
         snapshot = _state_to_snapshot(new_state, session_id, graph=new_graph)
 
+        # G4: resolved ONCE and reused below (the causal-beats render below
+        # AND the response gate at the end of this method) — one tier
+        # computation, not two independent ones.
+        veil_tier = _resolve_veil_tier(new_state)
+
         # Spec 092 R-CONS: persist this tick's events into tick_event so the
         # journal/alerts dashboards (get_journal_dashboard/get_alerts_dashboard)
         # have real history to read back. Best-effort — a journal-write
@@ -5650,7 +5655,10 @@ class EngineBridge:
         # Spec-116 FR-4.1: land this tick's causal frames as deterministic
         # NarrationRecord beats (the same table the LLM path writes and
         # game_narration serves). Best-effort — never fails tick resolution.
-        _persist_causal_beats_safe(session_id, new_state.tick, causal_frames)
+        # G4 (Finding 2): veil_tier gates the persisted prose's imperial-
+        # rent-pool sentence — see _persist_causal_beats_safe's docstring
+        # for why this is the ONLY gate (no read-time re-check for prose).
+        _persist_causal_beats_safe(session_id, new_state.tick, causal_frames, veil_tier=veil_tier)
         # P0 #7: refresh the hex_latest map cache from this tick's territories
         # (sibling of the tick_event write above; best-effort, never raises).
         # Spec-109 A2: org_count from live territory_ids, heat_delta from the
@@ -5712,7 +5720,7 @@ class EngineBridge:
         # safe in particular) has already consumed the TRUE ``snapshot``,
         # so the engine's material record (hex_latest) is never corrupted
         # with a masked value (see _state_to_snapshot's docstring).
-        return _gate_snapshot_territories(snapshot, _resolve_veil_tier(new_state))
+        return _gate_snapshot_territories(snapshot, veil_tier)
 
     # ------------------------------------------------------------------ #
     # Action management
@@ -9344,6 +9352,8 @@ def _persist_causal_beats_safe(
     session_id: UUID,
     tick: int,
     frames: tuple[dict[str, Any], ...] | list[dict[str, Any]],
+    *,
+    veil_tier: int = 2,
 ) -> None:
     """Best-effort write of a tick's causal frames as ``NarrationRecord`` beats.
 
@@ -9359,10 +9369,25 @@ def _persist_causal_beats_safe(
     ``(session, tick, beat_id)``. Observer-layer only: outside the tick
     hash, touches neither state nor graph.
 
+    G4 (Finding 2, adversarial review): ``GET .../narration/`` (``api.py::
+    game_narration``) serves persisted rows verbatim, with no read-time
+    re-gate step (unlike ``territories``, which every read path re-gates
+    via ``_gate_snapshot_territories`` AFTER persistence keeps the TRUE
+    value) — free-form prose has no such structured re-gate. So the veil
+    tier used here is the ONE gate: ``veil_tier`` must be the caller's
+    real, already-resolved tier at RENDER time, never a later re-check.
+
     Args:
         session_id: The game session UUID.
         tick: The tick the frames were captured on.
         frames: ``CausalChainObserver.latest_frames`` for this tick.
+        veil_tier: The session's Veil-of-Money tier
+            (:func:`_resolve_veil_tier`) — threaded into
+            :func:`~game.causal_voice.render_frame_beats` so the
+            ``imperial_rent_pool`` sentence in each beat veils below Tier
+            1, the same as every other value-axis surface in the sweep.
+            Defaults to ``2`` (fully unlocked) for any caller that predates
+            this parameter.
     """
     if not frames:
         return
@@ -9376,7 +9401,7 @@ def _persist_causal_beats_safe(
         )
         from game.models import GameSession, NarrationRecord
 
-        beats = render_frame_beats(frames)
+        beats = render_frame_beats(frames, veil_tier=veil_tier)
         if not beats:
             return
         with transaction.atomic():

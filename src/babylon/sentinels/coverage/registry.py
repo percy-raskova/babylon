@@ -128,3 +128,96 @@ DATA_REQUIREMENTS: tuple[DataRequirement, ...] = (
         notes="Feeds the per-county Leontief Phi flow (Program-17 item-1a).",
     ),
 )
+
+
+class GateEstate(BaseModel):
+    """One claim that a gate's harness exercises a named service estate.
+
+    A gate can be green and blind: ``qa:regression``'s byte-identical baselines
+    passed for months while injecting no economics calculators at all, so the
+    project's Definition of Done never executed a line of the estate it claimed
+    to guard. This row makes the claim checkable — the estate is whatever a
+    service factory returns, and the harness must inject all of it.
+
+    Frozen and ``extra="forbid"`` so a malformed row is a loud import-time
+    failure (Constitution III.11).
+
+    :ivar gate_name: the mise task the claim is about (e.g. ``"qa:regression"``).
+    :ivar harness_file: repo-relative ``.py`` path of the harness the gate runs.
+    :ivar estate_name: human name for the estate (e.g.
+        ``"financial_calculators"``).
+    :ivar factory_file: repo-relative ``.py`` path defining ``factory_symbol``.
+    :ivar factory_symbol: the factory function whose returned dict keys ARE the
+        estate.
+    :ivar exempt_keys: keys the gate deliberately does not inject.
+    :ivar exempt_reason: why those keys are exempt; required when
+        ``exempt_keys`` is non-empty — a narrowed claim must be argued.
+    """
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    gate_name: str
+    harness_file: str
+    estate_name: str
+    factory_file: str
+    factory_symbol: str
+    exempt_keys: tuple[str, ...] = ()
+    exempt_reason: str = ""
+
+    @model_validator(mode="after")
+    def _validate_shape(self) -> GateEstate:
+        """Reject non-``.py`` paths and silently-narrowed claims.
+
+        :returns: ``self`` when valid.
+        :raises ValueError: If ``harness_file``/``factory_file`` is not a ``.py``
+            path, or ``exempt_keys`` is non-empty without an ``exempt_reason``.
+        """
+        for label, value in (
+            ("harness_file", self.harness_file),
+            ("factory_file", self.factory_file),
+        ):
+            if not value.endswith(".py"):
+                raise ValueError(f"{self.gate_name!r}: {label} must be a .py path, got {value!r}")
+        if self.exempt_keys and not self.exempt_reason.strip():
+            raise ValueError(
+                f"{self.gate_name!r}: exempt_keys requires an exempt_reason — "
+                "narrowing a gate's claim silently is the failure this row exists "
+                "to forbid"
+            )
+        return self
+
+
+#: The gates whose executed-code set is compared against the estate they claim
+#: to guard. ``qa:regression`` is the project's Definition of Done.
+GATE_ESTATES: tuple[GateEstate, ...] = (
+    GateEstate(
+        gate_name="qa:regression",
+        harness_file="tools/regression_test.py",
+        estate_name="economics_calculators",
+        factory_file=f"{_ECON}/factory.py",
+        factory_symbol="create_economics_services",
+        exempt_keys=(
+            "melt_calculator",
+            "basket_calculator",
+            "gamma_calculator",
+            "capital_calculator",
+            "throughput_calculator",
+            "transition_engine",
+            "tensor_registry",
+        ),
+        exempt_reason=(
+            "U1.3 wired the harness's calculator_overrides from "
+            "create_financial_services only (the D4 committed FRED fixture covers "
+            "the Vol III series alone). The Volumes I/II economics estate needs "
+            "its own committed fixture before the harness can inject it; narrowed "
+            "deliberately, not silently."
+        ),
+    ),
+    GateEstate(
+        gate_name="qa:regression",
+        harness_file="tools/regression_test.py",
+        estate_name="financial_calculators",
+        factory_file=f"{_ECON}/factory.py",
+        factory_symbol="create_financial_services",
+    ),
+)

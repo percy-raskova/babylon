@@ -104,6 +104,15 @@ def serviceability_anchor(
     silent ``0.0`` at zero surplus — indistinguishable from a county that
     genuinely pays no interest (Constitution III.11).
 
+    Both ``total_surplus_produced`` and ``interest_payments`` are constrained
+    only by ``ge=0`` (no upper bound, no ``allow_inf_nan=False``), so ``+inf``
+    is a valid field value and a bare ``<= 0.0`` comparison is not a
+    finiteness guard. Mirrors :func:`fictitious_anchor`'s two-guard shape:
+    the denominator is checked for finiteness before dividing, and the
+    computed ratio is checked again before it leaves the function — never a
+    fabricated zero (``x / inf``) or a raw ``inf`` escaping the
+    ``float | NoDataSentinel`` contract.
+
     :param distribution: Published surplus distribution, or ``None`` when no
         distribution was computed this tick (the normal case past 2024).
     :returns: The interest burden as a fraction of surplus produced, or a
@@ -115,14 +124,35 @@ def serviceability_anchor(
             year=UNKNOWN_YEAR,
             reason="serviceability_anchor: no SurplusValueDistribution computed this tick",
         )
-    if distribution.total_surplus_produced <= 0.0:
+    surplus = distribution.total_surplus_produced
+    if not math.isfinite(surplus) or surplus <= 0.0:
+        if math.isfinite(surplus):
+            reason = (
+                f"serviceability_anchor: zero surplus produced in "
+                f"{distribution.fips_code} {distribution.year}; "
+                "interest burden undefined"
+            )
+        else:
+            reason = (
+                f"serviceability_anchor: non-finite surplus produced ({surplus}) "
+                f"in {distribution.fips_code} {distribution.year}; "
+                "interest burden undefined"
+            )
+        return NoDataSentinel(
+            fips=distribution.fips_code,
+            year=distribution.year,
+            reason=reason,
+        )
+    ratio = distribution.interest_payments / surplus
+    if not math.isfinite(ratio):
         return NoDataSentinel(
             fips=distribution.fips_code,
             year=distribution.year,
             reason=(
-                f"serviceability_anchor: zero surplus produced in "
+                f"serviceability_anchor: non-finite interest burden "
+                f"({distribution.interest_payments} / {surplus}) in "
                 f"{distribution.fips_code} {distribution.year}; "
                 "interest burden undefined"
             ),
         )
-    return distribution.interest_payments / distribution.total_surplus_produced
+    return ratio

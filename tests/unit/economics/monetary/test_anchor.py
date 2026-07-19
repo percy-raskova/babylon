@@ -170,6 +170,44 @@ class TestServiceabilityAnchorAbsence:
 
 
 @pytest.mark.unit
+class TestServiceabilityAnchorDegenerate:
+    """Non-finite field values must degrade to sentinels, never inf/nan floats.
+
+    total_surplus_produced and interest_payments are both constrained only by
+    ``ge=0`` (no upper bound, no allow_inf_nan=False), so +inf is a valid
+    Pydantic field value even though NaN is rejected (nan >= 0 is False).
+    """
+
+    def test_infinite_surplus_returns_sentinel_not_a_fabricated_zero(self) -> None:
+        """25.0 / inf silently evaluates to 0.0 -- indistinguishable from a
+        county that genuinely pays no interest. Must be a sentinel instead.
+        """
+        infinite_surplus = _distribution(surplus=float("inf"), interest=25.0)
+        result = serviceability_anchor(infinite_surplus)
+        assert isinstance(result, NoDataSentinel)
+        assert not isinstance(result, float)
+        assert result.fips == "26163"
+        assert result.year == 2020
+        assert "non-finite surplus" in result.reason
+
+    def test_infinite_interest_returns_sentinel_not_raw_inf(self) -> None:
+        """inf / 100.0 must not escape as a raw float('inf')."""
+        infinite_interest = _distribution(surplus=100.0, interest=float("inf"))
+        result = serviceability_anchor(infinite_interest)
+        assert isinstance(result, NoDataSentinel)
+        assert not isinstance(result, float)
+        assert result.fips == "26163"
+        assert result.year == 2020
+        assert "non-finite interest burden" in result.reason
+
+    def test_present_anchor_is_always_finite(self) -> None:
+        """No degenerate input escapes as inf or nan."""
+        result = serviceability_anchor(_distribution())
+        assert isinstance(result, float)
+        assert math.isfinite(result)
+
+
+@pytest.mark.unit
 class TestFictitiousAnchorDegenerate:
     """Degenerate ratios degrade to sentinels rather than infinities or raises."""
 

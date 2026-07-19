@@ -2480,3 +2480,28 @@ implements. The divergence register (spec §4.7) is append-only.
 **Remaining plan tasks are unchanged** (Task 8 `remove_node` is next; its
 strong branch's `remove_edge` dependency is noted in its brief). The
 register's D9 flags `remove_empty=False` as a Phase 2 addition.
+
+---
+
+## Phase 0+1 ACTUAL Completion Record (2026-07-18)
+
+**19/19 tasks complete, all reviewed.** Executed via SDD (implementer +
+reviewer subagents per task/batch) plus the H1–H9 post-review hardening.
+
+- Tasks 1–7: sequential, reviews clean.
+- Hardening H1–H9 (commits 9827de1a..d90904e8): the D1 empty-edge
+  conformance break + everything the empirical review found; conformance
+  harness, divergence register, toolchain pin, mise gate, CI.
+- Tasks 9→8 (dependency swap: remove_edge before remove_node), 10+11,
+  12+13, 14+15, 16+17, 18+19: batched, all reviews APPROVE/MERGE.
+- Final state: **105 workspace tests** (71 core + 34 conformance replay),
+  **31 XGI ground-truth fixture vectors** (regeneration byte-identical
+  across hash seeds), **divergences D1–D13 registered** (spec §4.7,
+  executable), `mise run rust:check` + `mise run rust:msrv` (1.85) green,
+  clippy/fmt/doc `-D warnings` clean, zero `unsafe`.
+- XGI probes during execution corrected the plan twice more (XGI has
+  `__eq__` via algorithms.equal; XGI freeze monkey-patching artifacts →
+  D12/D13) and exposed XGI's silent-overwrite footgun (D11).
+- Process: every XGI-facing behavior is vector-first (the fixture is the
+  spec); the register is append-only; briefs' stale paths/counts were
+  handled by dispatch rulings (in-crate tests, `--test core`).

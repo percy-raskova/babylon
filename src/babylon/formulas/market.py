@@ -106,26 +106,43 @@ def calculate_scissors_balance(log_ratio: float, *, scale: float) -> float:
 
 
 def calculate_serviceable_divergence(
-    profit_rate: float | None, *, base: float, slope: float
+    profit_rate: float | None,
+    *,
+    base: float,
+    slope: float,
+    interest_burden: float | None = None,
+    interest_slope: float = 0.0,
 ) -> float:
     """Log fictitious/real divergence the rate of profit can service (ADR078).
 
-    ``base + slope * max(profit_rate, 0)``: a healthy rate of profit carries a
-    larger claims structure; its FALL is what turns an existing bubble into an
-    unpayable one — Vol. III part 3 (the falling rate) meeting part 5
-    (fictitious capital). A loss-making economy still services the base (the
-    credit system's intrinsic tolerance is a floor, not a debt).
+    ``base + slope * max(profit_rate, 0) - interest_slope * max(interest_burden, 0)``,
+    floored at 0: a healthy rate of profit carries a larger claims
+    structure; its FALL is what turns an existing bubble into an unpayable
+    one — Vol. III part 3 (the falling rate) meeting part 5 (fictitious
+    capital). A financialised county's own interest burden (interest
+    payments relative to capital, U6) tightens the same threshold
+    independent of the profit rate — a second, orthogonal claim on the
+    credit system's tolerance. A loss-making, debt-free economy still
+    services the base (the credit system's intrinsic tolerance is a floor,
+    not a debt).
 
     :param profit_rate: Realized rate of profit, or ``None`` when no profit
-        observable exists this tick — the base alone is used (honest absence,
-        Constitution III.11; no rate is fabricated).
-    :param base: Serviceable log-divergence at zero profit (>= 0).
+        observable exists this tick — the base alone is used (honest
+        absence, Constitution III.11; no rate is fabricated).
+    :param base: Serviceable log-divergence at zero profit and zero
+        interest burden (>= 0).
     :param slope: Additional serviceable log-divergence per unit profit rate.
-    :returns: The serviceable log-divergence (>= base).
+    :param interest_burden: Interest-payments-to-capital ratio, or ``None``
+        when no territory carries the accounting pair — the term drops out
+        entirely (honest absence, III.11), matching pre-U6 behavior exactly.
+    :param interest_slope: Serviceable log-divergence LOST per unit
+        interest burden (a ``MarketDefines.correction_interest_slope``
+        coefficient).
+    :returns: The serviceable log-divergence, floored at 0.
     """
-    if profit_rate is None:
-        return base
-    return base + slope * max(profit_rate, 0.0)
+    profit_term = 0.0 if profit_rate is None else slope * max(profit_rate, 0.0)
+    interest_term = 0.0 if interest_burden is None else interest_slope * max(interest_burden, 0.0)
+    return max(base + profit_term - interest_term, 0.0)
 
 
 def calculate_overhang(fictitious_log: float, serviceable: float) -> float:

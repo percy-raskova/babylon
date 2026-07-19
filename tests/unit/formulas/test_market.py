@@ -41,6 +41,37 @@ class TestServiceableDivergence:
         assert calculate_serviceable_divergence(None, base=0.55, slope=4.0) == 0.55
 
 
+class TestServiceableDivergenceInterestBurden:
+    """U6: a financialised county tightens its own correction threshold
+    independent of profit rate (Vol. III part 3 meeting part 5)."""
+
+    def test_interest_burden_tightens_the_threshold(self) -> None:
+        healthy = calculate_serviceable_divergence(0.1, base=0.55, slope=4.0)
+        tightened = calculate_serviceable_divergence(
+            0.1, base=0.55, slope=4.0, interest_burden=0.3, interest_slope=1.0
+        )
+        assert tightened < healthy
+        assert tightened == pytest.approx(0.65)
+
+    def test_absent_interest_burden_is_bit_identical_to_pre_u6(self) -> None:
+        assert calculate_serviceable_divergence(
+            0.1, base=0.55, slope=4.0, interest_burden=None, interest_slope=1.0
+        ) == pytest.approx(0.95)
+
+    def test_zero_interest_slope_is_inert(self) -> None:
+        assert calculate_serviceable_divergence(
+            0.1, base=0.55, slope=4.0, interest_burden=5.0, interest_slope=0.0
+        ) == pytest.approx(0.95)
+
+    def test_floor_at_zero(self) -> None:
+        assert (
+            calculate_serviceable_divergence(
+                0.0, base=0.1, slope=0.0, interest_burden=1.0, interest_slope=1.0
+            )
+            == 0.0
+        )
+
+
 class TestOverhang:
     def test_within_serviceability_is_zero(self) -> None:
         assert calculate_overhang(0.4, 0.55) == 0.0

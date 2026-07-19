@@ -997,6 +997,9 @@ market:
   evaporation_gain: 0.15  # Game design: claim-holder wealth fraction destroyed per unit overhang — the fictitious wealth was counted as wealth; the snap un-counts it. Applies to bracket-0/1 roles (the ADR075 fold: bourgeoisies + petty bourgeoisie). (>= 0.0, <= 0.5)
   unemployment_gain: 0.08  # Game design: reserve-army ratio influx per unit overhang on territories carrying a wage relation (median_wage) — the crisis disciplines labor through the reserve army. (>= 0.0, <= 0.5)
   wealth_axis_kick_gain: 0.02  # Game design: w1 velocity impulse per unit overhang on the Program-21 wealth-share axis (conservation-preserving, the spec-114 FR-114-4 impulse form) — top-bracket paper wealth deflates relative to the whole. (>= 0.0, <= 0.1)
+  anchor_pull: 0.1  # Game design: strength of the pull toward fictitious_anchor (D1) while real FRED-backed financial data anchors this tick; the pull is exactly 0 when the anchor is absent, leaving the endogenous dynamics untouched. (>= 0.0, <= 1.0)
+  correction_interest_slope: 2.0  # Game design: serviceable log-divergence LOST per unit interest-burden-to-capital ratio — a financialised county tightens its own correction threshold independent of profit rate (Capital Vol. III part 3 meeting part 5). (>= 0.0, <= 20.0)
+  correction_debt_slope: 0.5  # Game design: additional correction severity per unit accumulated-debt-to-capital ratio — a debt spiral makes the re-identification of claims with real surplus MORE violent. (>= 0.0, <= 5.0)
 
 # ---------------------------------------------------------------------
 # capital_vol3 — Volume III (surplus distribution / credit / counter-tendency) coefficients.

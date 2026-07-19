@@ -53,8 +53,16 @@ def endogenous_interest_rate(
     there is nothing to divide (never a fabricated positive floor,
     Constitution III.11).
 
+    The precondition is genuine, not structural: ``r`` is the realized general
+    rate of profit that
+    :meth:`~babylon.domain.economics.tick.system.TickDynamicsSystem._economy_wide_profit_rate`
+    computes in scope from this tick's county surplus/profit-rate tensors, so
+    ``i = 0`` here means a run whose counties truly carry no realized profit
+    (an empty or pre-boundary tick), NOT the every-tick zero the earlier
+    graph-attr read produced by looking at a stripped graph.
+
     :param profit_rate: Economy-wide average rate of profit ``r``, or ``None``
-        when no profit observable exists this tick.
+        when no county carries a realized profit rate this tick.
     :param tightness: Loan-market tightness ``tau`` (clamped into [0, 1]).
     :param defines: Run-scoped ``GameDefines`` (reads ``capital_vol3``).
     :returns: A total :class:`EndogenousInterestRate` — never absent.

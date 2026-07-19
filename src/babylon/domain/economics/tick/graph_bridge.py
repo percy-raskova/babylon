@@ -392,57 +392,65 @@ def read_national_financial_state_from_graph(  # pragma: no mutate — data seri
     return NationalFinancialParameters.model_validate(data)  # pragma: no mutate
 
 
-def _capital_weighted_mean(graph: GraphProtocol, attr: str) -> float | None:
-    """Capital-weighted mean of ``attr`` over active territory nodes.
+def _employment_weighted_unemployment(
+    county_states: dict[str, CountyEconomicState],
+) -> float | None:
+    """Aggregate U-3 unemployment ``rho_bar`` over the tick's county states.
 
-    Weight is ``tick_capital_stock`` (Marx's general rate of profit = total
-    surplus / total capital — an extensive weighting, not the unweighted mean
-    of an intensive ratio, which is the intensive-aggregation defect class).
-    Sorted-id iteration (Constitution III.7). Returns ``None`` when no active
-    territory carries ``attr`` with a positive weight (honest absence,
-    III.11).
+    ``Sum(u3_i * employment_i) / Sum(employment_i)`` — the total-unemployed /
+    total-labor-force aggregate, which is the materially-correct extensive
+    weighting for an unemployment RATE (never the unweighted mean of the
+    per-county rates, which is the intensive-aggregation defect class: a
+    100k-worker county would swing the national reading as hard as Wayne).
+
+    Employment is the natural weight (the labor force the rate is a fraction
+    of), and unlike ``tick_capital_stock`` it is populated for every county
+    (the capital calculator returns 0 for many county-years, so a
+    capital-weighted reserve reading collapses to a structural zero). Read in
+    scope from ``county_states`` — never from ``tick_``-prefixed graph attrs,
+    which ``state.to_graph()`` strips at the top of every tick.
+
+    Sorted-FIPS float accumulation (Constitution III.7). ``None`` — never a
+    fabricated zero (III.11) — when no county carries positive employment.
     """
     weighted = 0.0
     weight = 0.0
-    for node in sorted(graph.query_nodes(node_type="territory"), key=lambda n: n.id):
-        attrs = node.attributes
-        if not attrs.get("active", True):
+    for fips in sorted(county_states):
+        county = county_states[fips]
+        employment = county.employment
+        if employment <= 0.0:
             continue
-        value = attrs.get(attr)
-        capital = attrs.get("tick_capital_stock")
-        if not isinstance(value, (int, float)):
-            continue
-        if not isinstance(capital, (int, float)) or float(capital) <= 0.0:
-            continue
-        weighted += float(value) * float(capital)
-        weight += float(capital)
+        weighted += county.unemployment_rate * employment
+        weight += employment
     if weight <= 0.0:
         return None
     return weighted / weight
 
 
-def economy_wide_profit_rate(graph: GraphProtocol) -> float | None:
-    """Economy-wide average rate of profit ``r`` (the interest ceiling).
-
-    Capital-weighted mean of territory ``tick_profit_rate`` (Capital Vol. III
-    ch. 22: interest is bounded by the average rate of profit). ``None`` when
-    no active territory carries a profit rate — the endogenous rate then reads
-    zero (no profit to divide), never a fabricated floor.
-    """
-    return _capital_weighted_mean(graph, "tick_profit_rate")
-
-
-def reserve_army_signal(graph: GraphProtocol, defines: GameDefines) -> float:
+def reserve_army_signal(
+    county_states: dict[str, CountyEconomicState],
+    defines: GameDefines,
+) -> float:
     """Reserve-army downturn signal ``s_r`` in [0, 1] (loan-capital demand).
 
     ``clamp((rho_bar - rho_ref) / (1 - rho_ref), 0, 1)`` where ``rho_bar`` is
-    the capital-weighted mean territory ``reserve_ratio`` and ``rho_ref`` is
-    ``capital_vol3.interest_reserve_reference``. The rising reserve army is
-    the material signature of the crisis that ignites the scramble for means
-    of payment (Capital Vol. III ch. 25); below the reference there is no
-    liquidity-demand pressure. Zero (not absent) when no reserve data exists.
+    the employment-weighted mean county U-3 unemployment rate
+    (:func:`_employment_weighted_unemployment`) and ``rho_ref`` is
+    ``capital_vol3.interest_reserve_reference`` — a threshold whose 0.08 value
+    is calibrated against BLS UNRATE (U-3), so U-3 is the consistent
+    county-native reserve measure (``CountyEconomicState`` carries no
+    ``reserve_ratio``; U-3 is its labor-slack field). The rising reserve army
+    is the material signature of the crisis that ignites the scramble for
+    means of payment (Capital Vol. III ch. 25); below the reference there is
+    no liquidity-demand pressure. Zero (not absent) when no county carries
+    labor-force data.
+
+    Reads ``county_states`` in scope (the freshly-computed current-tick
+    states), never ``tick_``-prefixed graph attrs — those are stripped by
+    ``state.to_graph()`` each tick and re-stamped only AFTER this financial
+    layer runs, which structurally zeroed the prior graph-attr reading.
     """
-    rho_bar = _capital_weighted_mean(graph, "reserve_ratio")
+    rho_bar = _employment_weighted_unemployment(county_states)
     if rho_bar is None:
         return 0.0
     rho_ref = defines.capital_vol3.interest_reserve_reference
@@ -489,7 +497,6 @@ __all__ = [
     "NATIONAL_FINANCIAL_ATTR",
     "TICK_DYNAMICS_KEY",
     "_reconstruct_tick_state",
-    "economy_wide_profit_rate",
     "read_national_financial_state_from_graph",
     "read_tick_state_from_graph",
     "reserve_army_signal",

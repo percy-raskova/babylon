@@ -56,7 +56,6 @@ from babylon.domain.economics.tick.crisis_detector import (
 )
 from babylon.domain.economics.tick.derived_rates import DerivedRateCalculator
 from babylon.domain.economics.tick.graph_bridge import (
-    economy_wide_profit_rate,
     read_tick_state_from_graph,
     reserve_army_signal,
     resolve_county_identity,
@@ -1431,7 +1430,7 @@ class TickDynamicsSystem(SystemBase):
             return county_states
 
         national_rate, national_spread, fictitious = self._compute_national_financial_state(
-            services, year, graph
+            services, year, graph, county_states
         )
 
         # County-level computation
@@ -1520,29 +1519,105 @@ class TickDynamicsSystem(SystemBase):
             spread_to_treasuries=national_spread,
         )
 
+    def _economy_wide_profit_rate(
+        self,
+        county_states: dict[str, CountyEconomicState],
+        year: int,
+        services: ServicesProtocol,
+    ) -> float | None:
+        """Realized general rate of profit ``r = Sum(s) / Sum(c+v)``.
+
+        Marx's general rate of profit (Capital Vol. III ch. 9/22), the ceiling
+        the endogenous interest rate divides. Sourced from the SAME reference
+        tensors the surplus distribution consumes: per county, ``s_i`` is the
+        realized surplus (``ValueTensor4x3.total_s``, via
+        :meth:`_get_county_surplus`) and ``(c+v)_i`` is the capital advanced it
+        implies, ``s_i / r_i`` where ``r_i`` is the county profit rate
+        (``tensor.profit_rate``, via :meth:`_get_county_profit_rate`). Hence
+        ``r = Sum(s_i) / Sum(s_i / r_i)`` — the surplus-weighted aggregate of
+        the county rates, NOT an unweighted mean of them (the
+        intensive-aggregation defect class). Because the ``(s_i, r_i)`` pair is
+        the one fed to ``distribution_calculator.compute_distribution`` at the
+        same ``_get_best_tensor_year``, the interest ceiling and the per-county
+        interest burden read one materially-grounded rate (total county
+        interest telescopes to ``share * Sum(s)``, a sane fraction of surplus).
+
+        Read in scope from ``county_states`` in hand — deliberately NOT from
+        ``tick_profit_rate`` / ``tick_capital_stock`` graph attrs. Those are
+        stripped by ``state.to_graph()`` at the top of every tick and not
+        re-stamped until ``write_tick_state_to_graph`` runs AFTER this financial
+        layer, so a graph read here always saw an empty graph and collapsed the
+        endogenous rate to a structural zero (the inertness this repair closes).
+        The county MELT quantities (``tau * employment`` surplus over
+        ``capital_stock``) are NOT used: ``capital_stock`` is 0 for many
+        county-years and ``employment`` degrades to a 100k default, which would
+        make ``s/(c+v)`` the rate of exploitation (a ~3.8 profit rate, a 114%
+        interest), not the realized rate of profit.
+
+        Sorted-FIPS float accumulation (Constitution III.7). ``None`` — never a
+        fabricated zero (III.11) — when no county carries a positive realized
+        surplus at a positive profit rate.
+
+        Args:
+            county_states: Current-tick county snapshots (the FIPS domain).
+            year: Current simulation year (fed to the tensor-year fallback).
+            services: ServicesProtocol carrying the tensor registry.
+
+        Returns:
+            The economy-wide rate of profit, or ``None`` on honest absence.
+        """
+        total_surplus = 0.0
+        total_capital_advanced = 0.0
+        for fips in sorted(county_states):
+            tensor_year = self._get_best_tensor_year(fips, year, services)
+            surplus = self._get_county_surplus(fips, tensor_year, services)
+            profit_rate = self._get_county_profit_rate(fips, tensor_year, services)
+            if surplus is None or profit_rate is None:
+                continue
+            if surplus <= 0.0 or profit_rate <= 0.0:
+                continue
+            total_surplus += surplus
+            total_capital_advanced += surplus / profit_rate
+        if total_capital_advanced <= 0.0:
+            return None
+        return total_surplus / total_capital_advanced
+
     def _compute_national_financial_state(
         self,
         services: ServicesProtocol,
         year: int,
         graph: GraphProtocol,
+        county_states: dict[str, CountyEconomicState],
     ) -> tuple[float, float, FictitiousCapitalStock | None]:
         """Compute the national financial parameters once per tick.
 
         vol3-money-scissors U9: the national interest rate is ENDOGENOUS
         (Capital Vol. III Part V) — computed from the economy-wide average
-        rate of profit (the ceiling; ch. 22) and loan-market tightness (the
-        demand for loanable money-capital; ch. 22/25), never read from FRED
-        and never absent. FRED is calibration only (see capital_vol3).
+        rate of profit (the ceiling; ch. 22, :meth:`_economy_wide_profit_rate`)
+        and loan-market tightness (the demand for loanable money-capital;
+        ch. 22/25, driven by the reserve-army signal
+        :func:`~babylon.domain.economics.tick.graph_bridge.reserve_army_signal`),
+        never read from FRED and never absent. FRED is calibration only (see
+        capital_vol3).
+
+        Both inputs are read from ``county_states`` (the freshly-computed
+        current-tick states in hand), NOT from the graph's ``tick_``-prefixed
+        node attrs — those are stripped by ``state.to_graph()`` each tick and
+        re-stamped only after this layer, so a graph read saw nothing and the
+        rate was a structural zero on every tick (the inertness this repair
+        closes). ``graph`` is still passed to PUBLISH the result under
+        ``NATIONAL_FINANCIAL_ATTR`` for CONSEQUENCE-phase readers.
 
         Returns:
             3-tuple ``(national_rate, national_spread, fictitious)``.
-            ``national_rate`` is total (always a float, 0.0 when no profit is
-            measured); ``national_spread`` is the endogenous fragility premium
-            (>= 0); ``fictitious`` remains Optional (a separate data path).
+            ``national_rate`` is total (always a float, 0.0 only when no county
+            carries a realized profit rate); ``national_spread`` is the
+            endogenous fragility premium (>= 0); ``fictitious`` remains
+            Optional (a separate data path).
         """
         defines = services.defines
-        profit_rate = economy_wide_profit_rate(graph)
-        s_r = reserve_army_signal(graph, defines)
+        profit_rate = self._economy_wide_profit_rate(county_states, year, services)
+        s_r = reserve_army_signal(county_states, defines)
         tau = loan_market_tightness(s_r, defines)
         endogenous = endogenous_interest_rate(profit_rate, tau, defines)
         endogenous = endogenous.model_copy(update={"year": year, "reserve_army_signal": s_r})

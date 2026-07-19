@@ -58,3 +58,17 @@ class TestEndogenousInterestRate:
                 tightness=0.0,
                 reserve_army_signal=0.0,
             )
+
+    def test_nonzero_rate_with_zero_ceiling_is_rejected(self) -> None:
+        # r <= 0: no profit to divide -> i must be 0 (ch. 22 / ch. 23). A
+        # nonzero rate against a zero (or negative-clamped-to-zero) ceiling
+        # violates that half of the bound and must be rejected loudly.
+        with pytest.raises(ValidationError, match="rate must be 0.0"):
+            EndogenousInterestRate(
+                year=2015,
+                profit_rate_ceiling=0.0,
+                rate=0.05,
+                fragility_premium=0.0,
+                tightness=0.0,
+                reserve_army_signal=0.0,
+            )

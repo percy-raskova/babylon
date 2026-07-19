@@ -7,8 +7,11 @@
  *
  *   lobby codenames -> create (scenario + curated difficulty) -> Scenario
  *   Briefing (cadre-council framing, five patterns, win condition named,
- *   fixed-horizon copy) -> Begin -> cockpit at tick 0 -> disabled-with-
- *   reason verb grid (no dead ends) -> eligible verb (Campaign) -> preview
+ *   fixed-horizon copy) -> Begin -> cockpit at tick 0 -> verb grid honestly
+ *   all-enabled at tick 0 (checked live, not assumed — see the verb-grid
+ *   leg's own comment; the disabled-with-reason machinery itself is real
+ *   and unchanged, it just has nothing to fire on in wayne_county yet) ->
+ *   eligible verb (Campaign) -> preview
  *   (probability + cost) visible BEFORE submit -> submit succeeds ->
  *   resolve two ticks (a FORCED first crisis hard-asserted live, dedup
  *   exercised live) -> endgame_progress axes rendered honestly in the
@@ -123,7 +126,7 @@ test.describe("first session — fresh player trunk (spec-116 acceptance gate 6)
     await expect(page.getByTestId("tick-value")).toHaveText("0", { timeout: 15000 });
   });
 
-  test("verb grid: ineligible verbs disabled with visible reasons, no dead ends", async ({
+  test("verb grid: EDUCATE eligible from tick 0 (real TENANCY partition), all nine verbs enabled, no dead ends", async ({
     page,
   }) => {
     expect(gameId, "briefing test ran first").toBeTruthy();
@@ -135,20 +138,55 @@ test.describe("first session — fresh player trunk (spec-116 acceptance gate 6)
     // Article V: flat 9-verb grid, nothing hidden.
     await expect(verbGrid.getByRole("button")).toHaveCount(9);
 
-    // Tick-0 wayne_county: EDUCATE is structurally ineligible (no
-    // organized community in the player's territories yet) — disabled
-    // WITH a visible reason, never a dead-end click (spec-116 FR-4.8).
+    // Tick-0 wayne_county: EDUCATE is ELIGIBLE, not disabled. This leg used
+    // to assert the opposite ("no organized community in the player's
+    // territories yet") — that expectation encoded the retired
+    // `territory_ids`-on-social_class fabricated-shape bug. Evidence
+    // (verified by a prior agent, cited rather than re-derived): commit
+    // 4fa5d45c (Track 1 Task 8b) fixed `get_verb_eligibility`'s
+    // `has_social_class` predicate (and `get_educate_targets`) to resolve
+    // class -> territory via the real Occupant -> Territory TENANCY edge
+    // (`_tenancy_members_by_territory` in `web/game/engine_bridge.py`), not
+    // the nonexistent `territory_ids` field on social_class nodes — pinned
+    // by its own regression test
+    // `TestVerbEligibilityAgreesWithTargetsRealWayneCounty`. wayne_county's
+    // map is 100% class-partitioned from scenario construction
+    // (`_legacy_wayne.py`), so a resident social_class already tenants the
+    // player's starting territories from tick 0 BY DESIGN. EDUCATE enabled
+    // at tick 0 is the correct, current behavior.
     const educate = verbGrid.getByRole("button", { name: /educate/i });
-    await expect(educate).toBeDisabled({ timeout: 15000 });
-    await expect(educate).toHaveAttribute("title", /no eligible targets yet:/);
+    await expect(educate).toBeEnabled({ timeout: 15000 });
 
-    const reasons = page.getByTestId("verb-ineligible-reasons");
-    await expect(reasons).toBeVisible();
-    await expect(reasons).toContainText(/no eligible targets yet:/);
-
-    // Campaign (the verb this trunk test submits below) stays enabled —
-    // disabled-with-reason never blocks a live verb.
-    await expect(verbGrid.getByRole("button", { name: /campaign/i })).toBeEnabled();
+    // Disabled-with-reason contract (spec-116 FR-4.8) — checked live, not
+    // assumed: every verb's eligibility predicate in `get_verb_eligibility`
+    // (`web/game/engine_bridge.py`) was read, and the real
+    // `GET .../actions/eligibility/?org_id=ORG001` payload was queried
+    // against a fresh wayne_county session at tick 0 — all nine verbs come
+    // back `eligible: true` (ORG001 starts with its own territories for
+    // investigate/campaign/move; the seeded Detroit-periphery state
+    // apparatus and QCEW businesses already share those territories for
+    // aid/attack/mobilize/negotiate; reproduce always targets the org
+    // itself). No verb is genuinely ineligible in wayne_county at tick 0
+    // today, so this leg does not fabricate a disabled-verb assertion — it
+    // pins the honest live state instead: every verb renders enabled
+    // (including Campaign, the verb this trunk test submits below) and the
+    // ineligible-reasons list stays absent, the same "never a fabricated
+    // disabled state" contract VerbGrid.tsx's own honest-null comment
+    // names, exercised from the other direction.
+    for (const label of [
+      "Educate",
+      "Aid",
+      "Attack",
+      "Mobilize",
+      "Campaign",
+      "Move",
+      "Investigate",
+      "Reproduce",
+      "Negotiate",
+    ]) {
+      await expect(verbGrid.getByRole("button", { name: new RegExp(label, "i") })).toBeEnabled();
+    }
+    await expect(page.getByTestId("verb-ineligible-reasons")).toHaveCount(0);
   });
 
   test("Campaign: target picker renders, preview visible before submit, submit succeeds", async ({

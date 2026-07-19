@@ -57,12 +57,19 @@ test.describe("Veil of Money — locked instrument + study link (spec-117 D7, §
     await page.goto(`/game/${gameId}/circuit`);
     await expect(page.getByTestId("region-circuit")).toBeVisible({ timeout: 15000 });
 
-    // Tier 0: CircuitPage renders ONE VeilLock per veiled section
-    // (exploitation + scissors), each carrying the same "veil-locked"
-    // testid — never a bare hidden section (spec-117 §5d: "Your cadre
-    // cannot yet see through the money-form").
+    // Tier 0: CircuitPage renders ONE VeilLock per veiled section —
+    // exploitation, scissors, AND (G4, "Wave-2A compound leak" closure)
+    // the Fundamental Theorem meter, which joined the other two as a third
+    // gated instrument — each carrying the same "veil-locked" testid, never
+    // a bare hidden section (spec-117 §5d: "Your cadre cannot yet see
+    // through the money-form"). See `CircuitPage.tsx`'s
+    // `renderFundamentalTheoremSection` + its own unit test
+    // (`CircuitPage.test.tsx`: "tier 0: veils the exploitation axis, the
+    // Fundamental Theorem meter, AND the scissors (G4)", asserting
+    // `getAllByTestId("veil-locked")).toHaveLength(3)`) — this count must
+    // stay in lockstep with that unit test's.
     await expect(page.getByTestId("veil-locked").first()).toBeVisible({ timeout: 15000 });
-    await expect(page.getByTestId("veil-locked")).toHaveCount(2);
+    await expect(page.getByTestId("veil-locked")).toHaveCount(3);
     await expect(page.getByTestId("veil-study-link-exploitation")).toBeVisible();
     await expect(page.getByTestId("veil-study-link-scissors")).toBeVisible();
 

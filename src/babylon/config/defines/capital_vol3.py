@@ -33,19 +33,19 @@ class CapitalVolumeIIIDefines(BaseModel):
 
     debt_spiral_threshold: float = Field(
         default=0.5,
-        ge=0.0,
+        gt=0.0,
         le=1.0,
         description=(
-            "NOT YET READ BY ANY CODE — editing this value changes nothing "
-            "in the shipped game. Intended meaning: the accumulated debt / "
-            "annual surplus ratio at which a county's debt spiral becomes "
-            "self-reinforcing (NBER 2001/2008 corporate debt-to-earnings "
-            "recession analysis). DebtAccumulation tracks accumulated_debt "
-            "and consecutive_deficit_ticks but never compares either "
-            "against this ratio, and no debt-spiral flag exists on any "
-            "model. The consumer is owed by U5 (debt_spiral opposition); "
-            "until it lands, this row is pinned dead by "
-            "tests/integration/economics/test_vol3_defines_reachability_live.py."
+            "Live since U5.10: the engine divides a county's accumulated "
+            "debt / annual surplus ratio by this before handing it to the "
+            "defines-free catalog (ContradictionSystem._county_money_ratios, "
+            "src/babylon/engine/systems/contradiction.py), so the "
+            "solvent<->indebted debt_spiral opposition's balance crosses "
+            "zero exactly AT this threshold — matching the "
+            "credit_fragility_scale division of labour. Derived from NBER "
+            "2001/2008 corporate debt-to-earnings recession analysis. Must "
+            "be strictly positive: it is a live divisor, and gt=0.0 (not "
+            "ge=0.0) enforces that at the schema boundary."
         ),
     )
     distribution_epsilon: float = Field(

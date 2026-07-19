@@ -78,39 +78,57 @@ _SCISSORS = "src/babylon/engine/systems/market_scissors.py"
 #: ``tests/unit/sentinels/test_coupling_sentinel.py``, which supply rows with two
 #: distinct producer files. Declared here rather than discovered later: this is
 #: the correct-but-inert class inside the program that ships its sensor.
+#:
+#: ``produces_symbols`` is restricted, per row, to the symbols ``_CONTRADICTION``
+#: itself computes and returns on its ``GraphInputs`` — i.e. it always equals
+#: that row's own ``inputs_fields`` today, because ``_CONTRADICTION`` is the
+#: sole producer of all five ``GraphInputs`` fields here. Earlier drafts also
+#: listed symbols ``_CONTRADICTION`` merely *reads* off another file's output
+#: (``price_log``/``price_velocity``/``fictitious_log`` from
+#: ``market_scissors.py`` via ``_SCISSORS``, ``surplus_distribution`` from
+#: ``distribution/calculator.py``, ``debt_accumulation`` and ``credit_state``
+#: from ``tick/system/__init__.py``/``tick/graph_bridge.py``) — that violated
+#: the ``:ivar produces_symbols:`` contract above (only the *producer* of a
+#: symbol may claim to publish it) and, for ``price_velocity`` specifically, was
+#: outright false: that name never appears in ``contradiction.py`` at all. Those
+#: real cross-file relationships are true, but they belong to a row keyed by
+#: their actual producer file, not to a row whose registered opposition_key
+#: comes from U5 and whose producer_file is ``_CONTRADICTION`` — none of the
+#: five keys here name that file's opposition, so no such row is added yet.
 MEASUREMENT_DEPENDENCIES: tuple[MeasurementDependency, ...] = (
     MeasurementDependency(
         opposition_key="price_value",
         inputs_fields=("market_balance",),
         producer_file=_CONTRADICTION,
-        produces_symbols=("market_balance", "price_log", "price_velocity"),
+        produces_symbols=("market_balance",),
     ),
     # U5.7 derives financialization_index in ContradictionSystem from the
     # scissors' fictitious_log; market_scissors.py is the upstream axis
-    # owner, contradiction.py is the field producer.
+    # owner and the real producer of fictitious_log, contradiction.py only
+    # reads it — so fictitious_log is not in this row's produces_symbols.
     MeasurementDependency(
         opposition_key="financial",
         inputs_fields=("financialization_index",),
         producer_file=_CONTRADICTION,
-        produces_symbols=("financialization_index", "fictitious_log"),
+        produces_symbols=("financialization_index",),
     ),
     MeasurementDependency(
         opposition_key="surplus_distribution",
         inputs_fields=("rentier_share",),
         producer_file=_CONTRADICTION,
-        produces_symbols=("surplus_distribution", "rentier_share"),
+        produces_symbols=("rentier_share",),
     ),
     MeasurementDependency(
         opposition_key="debt_spiral",
         inputs_fields=("debt_ratio",),
         producer_file=_CONTRADICTION,
-        produces_symbols=("debt_accumulation", "debt_ratio"),
+        produces_symbols=("debt_ratio",),
     ),
     MeasurementDependency(
         opposition_key="credit",
         inputs_fields=("credit_fragility",),
         producer_file=_CONTRADICTION,
-        produces_symbols=("credit_fragility", "credit_state"),
+        produces_symbols=("credit_fragility",),
     ),
 )
 

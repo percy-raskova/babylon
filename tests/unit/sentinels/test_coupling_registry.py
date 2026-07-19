@@ -45,12 +45,17 @@ def test_dependency_for_returns_none_for_unregistered_key() -> None:
     assert dependency_for("no_such_opposition") is None
 
 
-def test_price_value_publishes_the_scissors_symbols() -> None:
-    """``price_value``'s produces set is what a downstream reader must mention."""
+def test_price_value_publishes_only_what_contradiction_computes() -> None:
+    """``price_value``'s produces set is what a downstream reader must mention.
+
+    ``price_log``/``price_velocity`` are computed by ``market_scissors.py`` —
+    ``contradiction.py`` only reads them off the published market state, so
+    they are not this row's produced symbols (they are not published BY the
+    file this row names as ``producer_file``).
+    """
     row = dependency_for("price_value")
     assert row is not None
-    assert "market_balance" in row.produces_symbols
-    assert "price_log" in row.produces_symbols
+    assert row.produces_symbols == ("market_balance",)
 
 
 def test_row_rejects_empty_inputs_fields() -> None:

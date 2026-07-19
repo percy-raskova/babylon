@@ -4,19 +4,19 @@
 
 **Goal:** Bootstrap the `hypergraph-rs` Cargo workspace with 4 crates and implement the core `Hypergraph<N, E, M>` data structure (bipartite `StableDiGraph`) with full node/edge CRUD, membership queries, attribute access, and insertion-ordered iteration — the foundation that Phase 2 (DiHypergraph, views, conformance testing) builds on.
 
-**Architecture:** The hypergraph IS a `rustworkx_core::petgraph::stable_graph::StableDiGraph` with two node kinds (`Agent` and `Hyperedge`) connected by `MembershipEdge` edges. This bipartite representation makes it a genuine rustworkx-core plugin. `IndexMap` bimaps provide O(1) id-based lookup while preserving insertion order (III.7 determinism parity). **Spec correction:** §3.5 of the design spec says `petgraph::graph::DiGraph` "removes nodes by leaving a hole" — that's actually `StableGraph` behavior. `Graph::remove_node` swaps the last node into the freed slot (compaction), which breaks insertion order under churn. We use `StableDiGraph` which leaves holes and preserves insertion order — matching the spec's INTENT if not its type name.
+**Architecture:** The hypergraph IS a `rustworkx_core::petgraph::stable_graph::StableDiGraph` with two node kinds (`Agent` and `Hyperedge`) connected by `MembershipEdge` edges. This bipartite representation makes it a genuine rustworkx-core plugin. `IndexMap` bimaps provide O(1) id-based lookup while preserving insertion order (III.7 determinism parity). **Spec alignment:** the spec originally named `petgraph::graph::DiGraph` while describing `StableGraph` hole-leaving behavior (`Graph::remove_node` swap-compacts, which breaks insertion order under churn); the spec was corrected in the same PR that landed this plan — both documents now specify `StableDiGraph`.
 
-**Tech Stack:** Rust 1.79+ (matches rustworkx-core MSRV), `rustworkx-core` 0.18 (re-exports `petgraph`), `indexmap` 2, `serde` + `serde_json`, `thiserror`. BSD-3-Clause license.
+**Tech Stack:** Rust 1.85+ (rustworkx-core 0.18's declared MSRV — verified from crates.io metadata 2026-07-18; local toolchain 1.91.1), `rustworkx-core` 0.18 (re-exports `petgraph` 0.8 — there is NO direct petgraph dependency; `rustworkx_core::petgraph` is the only petgraph path, a direct `petgraph = "0.6"` pin was empirically shown to pull a second type-incompatible copy), `indexmap` 2, `serde` + `serde_json`, `thiserror` 2. BSD-3-Clause license.
 
 ## Global Constraints
 
-- **Rust edition 2021**, MSRV 1.79 (matches `rustworkx-core`)
+- **Rust edition 2021**, MSRV 1.85 (rustworkx-core 0.18 declares `rust-version = "1.85"`; an edition-2021 crate can depend on its edition-2024 code)
 - **License:** BSD-3-Clause (every crate manifest declares it)
 - **Workspace location:** `/hypergraph-rs/` at the babylon repo root (external dep; NOT inside `src/`)
 - **Determinism (III.7 parity):** All iteration is insertion-ordered. `StableDiGraph` preserves insertion order for nodes and edges even under removal (leaves holes, doesn't compact). `IndexMap` bimaps enforce id-lookup order independently. No `HashMap` anywhere in the public iteration path.
 - **No `unsafe` code** in the core crate.
 - **TDD discipline:** Every task follows red → green → commit. Write the failing test first, verify it fails, implement minimal code to pass, verify it passes, commit.
-- **Commit convention:** Conventional commits (`type(scope): desc`). End with `Co-Authored-By: opencode <opencode@local>` trailer.
+- **Commit convention:** Conventional commits (`type(scope): desc`). End with `Co-Authored-By: Claude Fable 5 <noreply@anthropic.com>` trailer.
 - **Generic type defaults:** `N = serde_json::Value, E = serde_json::Value, M = serde_json::Value` — XGI-style dynamic attrs by default.
 - **XGI API fidelity** (confirmed from `.venv/lib/python3.13/site-packages/xgi/core/hypergraph.py`):
   - `add_edge` auto-creates member nodes that don't exist (hypergraph.py:620-623)
@@ -24,8 +24,15 @@
   - `add_edge` with duplicate `idx` warns and returns (no-op) (hypergraph.py:613-615)
   - `add_edge` deduplicates members via `set(members)` (hypergraph.py:611)
   - `remove_node` has weak (default) and strong modes (hypergraph.py:435-478)
-  - `H.nodes.memberships(n)` returns a `set` of edge IDs (views.py:629)
-  - `H.edges.members(e)` returns a `set` of node IDs (views.py:706+)
+  - `H.nodes.memberships(n)` returns a `set` of edge IDs (views.py:604-630); missing ids raise `IDNotFound` (a `KeyError` subclass, NOT an `XGIError` subclass)
+  - `H.edges.members(e)` returns a `set` of node IDs when `e` is given (views.py:706-747; the no-arg form returns a list/dict of sets)
+- **Deliberate deviations from XGI** (each verified against the installed 0.10.2 source in the 2026-07-18 preflight; the Phase 7 Python binding shims where noted):
+  - Duplicate `idx` on `add_edge`: XGI warns and silently no-ops (hypergraph.py:613-615); we return `Err(EdgeError::AlreadyExists)`. Binding shims to warn+no-op for conformance.
+  - Empty members on `add_edge`: XGI's docstring claims `XGIError` but the code has NO check — it silently creates an empty edge (verified empirically); we return `Err(EdgeError::EmptyMembers)` — deliberate strictness.
+  - Member iteration order: XGI stores members in plain hash-ordered `set`s — order varies with `PYTHONHASHSEED` (verified empirically); our substrate is insertion-ordered. A determinism IMPROVEMENT, not parity. Conformance tests must compare memberships as sets, never as ordered lists.
+  - XGI's `update_uid_counter` call is guarded by `if idx:` (hypergraph.py:630) — a falsy explicit id (`0`, `""`) skips the counter update, so the next auto-id `add_edge` collides and silently loses the edge. We implement the correct semantics (any numeric id updates the counter, including `"0"`), fixing the upstream bug.
+  - `clear()` / `clear_edges()`: XGI does NOT reset the edge-uid counter (hypergraph.py:1231-1255 never touch `_edge_uid`) — neither do we.
+  - `copy()` of a frozen hypergraph returns an UNFROZEN copy in XGI (`copy()` builds a fresh instance; freeze monkeypatches only the original) — we match that.
 
 ---
 
@@ -40,13 +47,19 @@ hypergraph-rs/                                    # workspace root (repo top-lev
 ├── crates/
 │   ├── hypergraph-rs/                            # core library (this plan's focus)
 │   │   ├── Cargo.toml
-│   │   └── src/
-│   │       ├── lib.rs                            # crate root, re-exports
-│   │       └── core/
-│   │           ├── mod.rs
-│   │           ├── hypergraph.rs                 # Hypergraph<N,E,M> struct + impl
-│   │           ├── kinds.rs                      # NodeKind<N,E>, MembershipEdge<M>
-│   │           └── error.rs                      # NodeError, EdgeError
+│   │   ├── src/
+│   │   │   ├── lib.rs                            # crate root, re-exports
+│   │   │   └── core/
+│   │   │       ├── mod.rs
+│   │   │       ├── hypergraph.rs                 # Hypergraph<N,E,M> struct + impl
+│   │   │       ├── kinds.rs                      # NodeKind<N,E>, MembershipEdge<M>
+│   │   │       └── error.rs                      # NodeError, EdgeError
+│   │   └── tests/
+│   │       └── test_hypergraph.rs                # integration tests (TDD) — MUST be a
+│   │                                             #   direct child of the CRATE's tests/
+│   │                                             #   (cargo discovers targets only there;
+│   │                                             #   a workspace-root tests/ belongs to no
+│   │                                             #   package and is never compiled)
 │   ├── hypergraph-rs-python/                     # PyO3 bindings (stub in Phase 0)
 │   │   ├── Cargo.toml
 │   │   └── src/lib.rs
@@ -56,9 +69,8 @@ hypergraph-rs/                                    # workspace root (repo top-lev
 │   └── hypergraph-rs-cli/                        # CLI binary (stub in Phase 0)
 │       ├── Cargo.toml
 │       └── src/main.rs
-└── tests/
-    └── core/
-        └── test_hypergraph.rs                    # core unit tests (TDD)
+└── (workspace-root tests/ arrives in Phase 7 — Python conftest.py + ported/
+     XGI pytest files; it is NOT a cargo test location)
 ```
 
 **Responsibility split:**
@@ -120,8 +132,13 @@ Write to `hypergraph-rs/.gitignore`:
 ```
 /target
 **/*.rs.bk
-Cargo.lock
 ```
+
+Note: `Cargo.lock` is deliberately **committed** (not ignored) — the workspace
+contains a binary crate (`hypergraph-rs-cli`) and cdylibs, and committing the
+lockfile pins the exact `rustworkx-core`/`petgraph`/`indexmap` resolution
+(reproducible builds; the III.7 determinism culture applies to the toolchain
+too).
 
 - [ ] **Step 3: Create the README.md**
 
@@ -148,7 +165,7 @@ cd hypergraph-rs
 git add LICENSE README.md .gitignore
 git commit -m "docs(hypergraph-rs): bootstrap workspace root with LICENSE, README, .gitignore
 
-Co-Authored-By: opencode <opencode@local>"
+Co-Authored-By: Claude Fable 5 <noreply@anthropic.com>"
 ```
 
 ---
@@ -187,18 +204,21 @@ resolver = "2"
 [workspace.package]
 version = "0.1.0"
 edition = "2021"
-rust-version = "1.79"
+rust-version = "1.85"
 license = "BSD-3-Clause"
 authors = ["Babylon Project"]
 repository = "https://github.com/percy-raskova/babylon"
 
 [workspace.dependencies]
+# NO direct petgraph dependency: rustworkx-core 0.18 re-exports petgraph 0.8;
+# all petgraph types are reached via rustworkx_core::petgraph. A direct pin
+# (the spec's original petgraph = "0.6") resolves to a SECOND type-incompatible
+# petgraph copy (verified empirically via cargo tree, 2026-07-18 preflight).
 rustworkx-core = "0.18"
-petgraph = "0.6"
 indexmap = "2"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
-thiserror = "1"
+thiserror = "2"
 rand = "0.8"
 rand_pcg = "0.3"
 rayon = "1"
@@ -221,7 +241,6 @@ description = "A Rust port of XGI — hypergraph library built on rustworkx-core
 
 [dependencies]
 rustworkx-core.workspace = true
-petgraph.workspace = true
 indexmap.workspace = true
 serde.workspace = true
 serde_json.workspace = true
@@ -414,8 +433,14 @@ crate-type = ["cdylib"]
 
 [dependencies]
 hypergraph-rs = { path = "../hypergraph-rs" }
-pyo3 = { version = "0.22", features = ["extension-module"] }
+pyo3 = { version = "0.29", features = ["extension-module"] }
 ```
+
+Note: pyo3 0.29 is the current release line (0.22 was stale at plan time).
+pyo3's build script needs a Python interpreter at build time
+(`pyo3-build-config` resolves the ABI from `python3` on PATH or
+`PYO3_PYTHON`) — present on this box, an explicit prerequisite for any
+clean CI runner.
 
 Write to `hypergraph-rs/crates/hypergraph-rs-python/src/lib.rs`:
 
@@ -425,7 +450,7 @@ Write to `hypergraph-rs/crates/hypergraph-rs-python/src/lib.rs`:
 use pyo3::prelude::*;
 
 #[pymodule]
-fn _hypergraph_rs_core(_py: Python, _m: &Bound<PyModule>) -> PyResult<()> {
+fn _hypergraph_rs_core(_m: &Bound<'_, PyModule>) -> PyResult<()> {
     Ok(())
 }
 ```
@@ -456,13 +481,17 @@ Write to `hypergraph-rs/crates/hypergraph-rs-wasm/src/lib.rs`:
 ```rust
 //! WASM bindings for hypergraph-rs (stub — Phase 8 implements the full surface).
 
+use wasm_bindgen::prelude::*;
+
 #[wasm_bindgen]
 pub fn _init() {
     // Stub — Phase 8 will implement the full WASM surface.
 }
 ```
 
-Note: add `use wasm_bindgen::prelude::*;` at the top if the compiler requires it.
+The `use wasm_bindgen::prelude::*;` import is MANDATORY — without it
+`#[wasm_bindgen]` is an unresolved attribute and the whole-workspace
+`cargo build` in Step 6 fails.
 
 Write to `hypergraph-rs/crates/hypergraph-rs-cli/Cargo.toml`:
 
@@ -520,7 +549,7 @@ Core crate: Hypergraph<N,E,M> struct with StableDiGraph bipartite substrate
 + IndexMap bimaps. NodeKind<N,E> and MembershipEdge<M> types. Error types
 for NodeError and EdgeError.
 
-Co-Authored-By: opencode <opencode@local>"
+Co-Authored-By: Claude Fable 5 <noreply@anthropic.com>"
 ```
 
 ---
@@ -530,7 +559,7 @@ Co-Authored-By: opencode <opencode@local>"
 ### Task 3: Test and implement `add_node` + `has_node`
 
 **Files:**
-- Create: `hypergraph-rs/tests/core/test_hypergraph.rs`
+- Create: `hypergraph-rs/crates/hypergraph-rs/tests/test_hypergraph.rs`
 - Modify: `hypergraph-rs/crates/hypergraph-rs/src/core/hypergraph.rs`
 
 **Interfaces:**
@@ -538,7 +567,7 @@ Co-Authored-By: opencode <opencode@local>"
 
 - [ ] **Step 1: Write the failing test**
 
-Write to `hypergraph-rs/tests/core/test_hypergraph.rs`:
+Write to `hypergraph-rs/crates/hypergraph-rs/tests/test_hypergraph.rs`:
 
 ```rust
 use hypergraph_rs::Hypergraph;
@@ -617,7 +646,7 @@ cd hypergraph-rs
 git add -A
 git commit -m "feat(hypergraph-rs): implement add_node + has_node
 
-Co-Authored-By: opencode <opencode@local>"
+Co-Authored-By: Claude Fable 5 <noreply@anthropic.com>"
 ```
 
 ---
@@ -625,7 +654,7 @@ Co-Authored-By: opencode <opencode@local>"
 ### Task 4: Test and implement `add_edge` with auto-node-creation and auto-id
 
 **Files:**
-- Modify: `hypergraph-rs/tests/core/test_hypergraph.rs`
+- Modify: `hypergraph-rs/crates/hypergraph-rs/tests/test_hypergraph.rs`
 - Modify: `hypergraph-rs/crates/hypergraph-rs/src/core/hypergraph.rs`
 
 **Interfaces:**
@@ -633,7 +662,7 @@ Co-Authored-By: opencode <opencode@local>"
 
 - [ ] **Step 1: Write the failing test**
 
-Append to `tests/core/test_hypergraph.rs`:
+Append to `crates/hypergraph-rs/tests/test_hypergraph.rs`:
 
 ```rust
 use hypergraph_rs::EdgeError;
@@ -778,7 +807,7 @@ cd hypergraph-rs
 git add -A
 git commit -m "feat(hypergraph-rs): implement add_edge with auto-node-creation and auto-id
 
-Co-Authored-By: opencode <opencode@local>"
+Co-Authored-By: Claude Fable 5 <noreply@anthropic.com>"
 ```
 
 ---
@@ -786,12 +815,12 @@ Co-Authored-By: opencode <opencode@local>"
 ### Task 5: Test and implement `has_edge`
 
 **Files:**
-- Modify: `hypergraph-rs/tests/core/test_hypergraph.rs`
+- Modify: `hypergraph-rs/crates/hypergraph-rs/tests/test_hypergraph.rs`
 - Modify: `hypergraph-rs/crates/hypergraph-rs/src/core/hypergraph.rs`
 
 - [ ] **Step 1: Write the failing test**
 
-Append to `tests/core/test_hypergraph.rs`:
+Append to `crates/hypergraph-rs/tests/test_hypergraph.rs`:
 
 ```rust
 #[test]
@@ -846,7 +875,7 @@ cd hypergraph-rs
 git add -A
 git commit -m "feat(hypergraph-rs): implement has_edge
 
-Co-Authored-By: opencode <opencode@local>"
+Co-Authored-By: Claude Fable 5 <noreply@anthropic.com>"
 ```
 
 ---
@@ -854,7 +883,7 @@ Co-Authored-By: opencode <opencode@local>"
 ### Task 6: Test and implement `memberships` + `members` queries
 
 **Files:**
-- Modify: `hypergraph-rs/tests/core/test_hypergraph.rs`
+- Modify: `hypergraph-rs/crates/hypergraph-rs/tests/test_hypergraph.rs`
 - Modify: `hypergraph-rs/crates/hypergraph-rs/src/core/hypergraph.rs`
 
 **Interfaces:**
@@ -862,7 +891,7 @@ Co-Authored-By: opencode <opencode@local>"
 
 - [ ] **Step 1: Write the failing test**
 
-Append to `tests/core/test_hypergraph.rs`:
+Append to `crates/hypergraph-rs/tests/test_hypergraph.rs`:
 
 ```rust
 #[test]
@@ -966,7 +995,7 @@ cd hypergraph-rs
 git add -A
 git commit -m "feat(hypergraph-rs): implement memberships + members queries
 
-Co-Authored-By: opencode <opencode@local>"
+Co-Authored-By: Claude Fable 5 <noreply@anthropic.com>"
 ```
 
 ---
@@ -974,12 +1003,12 @@ Co-Authored-By: opencode <opencode@local>"
 ### Task 7: Test and implement insertion-ordered `node_ids` + `edge_ids`
 
 **Files:**
-- Modify: `hypergraph-rs/tests/core/test_hypergraph.rs`
+- Modify: `hypergraph-rs/crates/hypergraph-rs/tests/test_hypergraph.rs`
 - Modify: `hypergraph-rs/crates/hypergraph-rs/src/core/hypergraph.rs`
 
 - [ ] **Step 1: Write the failing test**
 
-Append to `tests/core/test_hypergraph.rs`:
+Append to `crates/hypergraph-rs/tests/test_hypergraph.rs`:
 
 ```rust
 #[test]
@@ -1042,7 +1071,7 @@ cd hypergraph-rs
 git add -A
 git commit -m "feat(hypergraph-rs): implement insertion-ordered node_ids + edge_ids
 
-Co-Authored-By: opencode <opencode@local>"
+Co-Authored-By: Claude Fable 5 <noreply@anthropic.com>"
 ```
 
 ---
@@ -1050,7 +1079,7 @@ Co-Authored-By: opencode <opencode@local>"
 ### Task 8: Test and implement `remove_node` (weak + strong modes)
 
 **Files:**
-- Modify: `hypergraph-rs/tests/core/test_hypergraph.rs`
+- Modify: `hypergraph-rs/crates/hypergraph-rs/tests/test_hypergraph.rs`
 - Modify: `hypergraph-rs/crates/hypergraph-rs/src/core/hypergraph.rs`
 
 **Interfaces:**
@@ -1058,7 +1087,7 @@ Co-Authored-By: opencode <opencode@local>"
 
 - [ ] **Step 1: Write the failing test**
 
-Append to `tests/core/test_hypergraph.rs`:
+Append to `crates/hypergraph-rs/tests/test_hypergraph.rs`:
 
 ```rust
 use hypergraph_rs::NodeError;
@@ -1177,7 +1206,7 @@ cd hypergraph-rs
 git add -A
 git commit -m "feat(hypergraph-rs): implement remove_node with weak + strong modes
 
-Co-Authored-By: opencode <opencode@local>"
+Co-Authored-By: Claude Fable 5 <noreply@anthropic.com>"
 ```
 
 ---
@@ -1185,12 +1214,12 @@ Co-Authored-By: opencode <opencode@local>"
 ### Task 9: Test and implement `remove_edge`
 
 **Files:**
-- Modify: `hypergraph-rs/tests/core/test_hypergraph.rs`
+- Modify: `hypergraph-rs/crates/hypergraph-rs/tests/test_hypergraph.rs`
 - Modify: `hypergraph-rs/crates/hypergraph-rs/src/core/hypergraph.rs`
 
 - [ ] **Step 1: Write the failing test**
 
-Append to `tests/core/test_hypergraph.rs`:
+Append to `crates/hypergraph-rs/tests/test_hypergraph.rs`:
 
 ```rust
 #[test]
@@ -1268,7 +1297,7 @@ cd hypergraph-rs
 git add -A
 git commit -m "feat(hypergraph-rs): implement remove_edge
 
-Co-Authored-By: opencode <opencode@local>"
+Co-Authored-By: Claude Fable 5 <noreply@anthropic.com>"
 ```
 
 ---
@@ -1276,7 +1305,7 @@ Co-Authored-By: opencode <opencode@local>"
 ### Task 10: Test and implement attribute access (`node_attrs`, `edge_attrs`, mut variants)
 
 **Files:**
-- Modify: `hypergraph-rs/tests/core/test_hypergraph.rs`
+- Modify: `hypergraph-rs/crates/hypergraph-rs/tests/test_hypergraph.rs`
 - Modify: `hypergraph-rs/crates/hypergraph-rs/src/core/hypergraph.rs`
 
 **Interfaces:**
@@ -1284,7 +1313,7 @@ Co-Authored-By: opencode <opencode@local>"
 
 - [ ] **Step 1: Write the failing test**
 
-Append to `tests/core/test_hypergraph.rs`:
+Append to `crates/hypergraph-rs/tests/test_hypergraph.rs`:
 
 ```rust
 #[test]
@@ -1398,7 +1427,7 @@ cd hypergraph-rs
 git add -A
 git commit -m "feat(hypergraph-rs): implement node/edge attribute accessors
 
-Co-Authored-By: opencode <opencode@local>"
+Co-Authored-By: Claude Fable 5 <noreply@anthropic.com>"
 ```
 
 ---
@@ -1406,12 +1435,12 @@ Co-Authored-By: opencode <opencode@local>"
 ### Task 11: Test and implement graph-level attributes + `clear`
 
 **Files:**
-- Modify: `hypergraph-rs/tests/core/test_hypergraph.rs`
+- Modify: `hypergraph-rs/crates/hypergraph-rs/tests/test_hypergraph.rs`
 - Modify: `hypergraph-rs/crates/hypergraph-rs/src/core/hypergraph.rs`
 
 - [ ] **Step 1: Write the failing test**
 
-Append to `tests/core/test_hypergraph.rs`:
+Append to `crates/hypergraph-rs/tests/test_hypergraph.rs`:
 
 ```rust
 #[test]
@@ -1473,11 +1502,14 @@ Add inside the impl block:
     }
 
     /// Remove all nodes and edges. XGI parity: `H.clear()`.
+    ///
+    /// The edge-uid counter is deliberately NOT reset — XGI's `clear()`
+    /// never touches `_edge_uid` (verified 0.10.2: auto-ids continue the
+    /// pre-clear sequence).
     pub fn clear(&mut self) {
         self.inner = StableDiGraph::new();
         self.agent_ids.clear();
         self.hyperedge_ids.clear();
-        self.edge_uid_counter = 0;
         self.graph_attrs.clear();
     }
 ```
@@ -1494,7 +1526,7 @@ cd hypergraph-rs
 git add -A
 git commit -m "feat(hypergraph-rs): implement graph-level attrs + clear
 
-Co-Authored-By: opencode <opencode@local>"
+Co-Authored-By: Claude Fable 5 <noreply@anthropic.com>"
 ```
 
 ---
@@ -1502,12 +1534,12 @@ Co-Authored-By: opencode <opencode@local>"
 ### Task 12: Test and implement `copy` (deep clone)
 
 **Files:**
-- Modify: `hypergraph-rs/tests/core/test_hypergraph.rs`
+- Modify: `hypergraph-rs/crates/hypergraph-rs/tests/test_hypergraph.rs`
 - Modify: `hypergraph-rs/crates/hypergraph-rs/src/core/hypergraph.rs`
 
 - [ ] **Step 1: Write the failing test**
 
-Append to `tests/core/test_hypergraph.rs`:
+Append to `crates/hypergraph-rs/tests/test_hypergraph.rs`:
 
 ```rust
 #[test]
@@ -1576,7 +1608,7 @@ cd hypergraph-rs
 git add -A
 git commit -m "feat(hypergraph-rs): implement copy (deep clone)
 
-Co-Authored-By: opencode <opencode@local>"
+Co-Authored-By: Claude Fable 5 <noreply@anthropic.com>"
 ```
 
 ---
@@ -1584,12 +1616,12 @@ Co-Authored-By: opencode <opencode@local>"
 ### Task 13: Test and implement bulk operations
 
 **Files:**
-- Modify: `hypergraph-rs/tests/core/test_hypergraph.rs`
+- Modify: `hypergraph-rs/crates/hypergraph-rs/tests/test_hypergraph.rs`
 - Modify: `hypergraph-rs/crates/hypergraph-rs/src/core/hypergraph.rs`
 
 - [ ] **Step 1: Write the failing test**
 
-Append to `tests/core/test_hypergraph.rs`:
+Append to `crates/hypergraph-rs/tests/test_hypergraph.rs`:
 
 ```rust
 #[test]
@@ -1672,7 +1704,7 @@ cd hypergraph-rs
 git add -A
 git commit -m "feat(hypergraph-rs): implement add_nodes_from + add_edges_from
 
-Co-Authored-By: opencode <opencode@local>"
+Co-Authored-By: Claude Fable 5 <noreply@anthropic.com>"
 ```
 
 ---
@@ -1680,12 +1712,12 @@ Co-Authored-By: opencode <opencode@local>"
 ### Task 14: Test and implement `PartialEq` (structural equality)
 
 **Files:**
-- Modify: `hypergraph-rs/tests/core/test_hypergraph.rs`
+- Modify: `hypergraph-rs/crates/hypergraph-rs/tests/test_hypergraph.rs`
 - Modify: `hypergraph-rs/crates/hypergraph-rs/src/core/hypergraph.rs`
 
 - [ ] **Step 1: Write the failing test**
 
-Append to `tests/core/test_hypergraph.rs`:
+Append to `crates/hypergraph-rs/tests/test_hypergraph.rs`:
 
 ```rust
 #[test]
@@ -1694,7 +1726,7 @@ fn test_eq_same_structure() {
     h1.add_edge(vec!["a".to_string(), "b".to_string()], Some("e1".to_string()), serde_json::json!({"w": 1})).unwrap();
     let mut h2: Hypergraph = Hypergraph::new();
     h2.add_edge(vec!["a".to_string(), "b".to_string()], Some("e1".to_string()), serde_json::json!({"w": 1})).unwrap();
-    assert_eq!(h1, h2);
+    assert!(h1 == h2);
 }
 
 #[test]
@@ -1703,7 +1735,7 @@ fn test_eq_different_edge_attrs() {
     h1.add_edge(vec!["a".to_string()], Some("e1".to_string()), serde_json::json!({"w": 1})).unwrap();
     let mut h2: Hypergraph = Hypergraph::new();
     h2.add_edge(vec!["a".to_string()], Some("e1".to_string()), serde_json::json!({"w": 2})).unwrap();
-    assert_ne!(h1, h2);
+    assert!(h1 != h2);
 }
 
 #[test]
@@ -1712,16 +1744,21 @@ fn test_eq_different_members() {
     h1.add_edge(vec!["a".to_string(), "b".to_string()], Some("e1".to_string()), serde_json::Value::Null).unwrap();
     let mut h2: Hypergraph = Hypergraph::new();
     h2.add_edge(vec!["a".to_string(), "c".to_string()], Some("e1".to_string()), serde_json::Value::Null).unwrap();
-    assert_ne!(h1, h2);
+    assert!(h1 != h2);
 }
 
 #[test]
 fn test_eq_both_empty() {
     let h1: Hypergraph = Hypergraph::new();
     let h2: Hypergraph = Hypergraph::new();
-    assert_eq!(h1, h2);
+    assert!(h1 == h2);
 }
 ```
+
+Note: these tests use `assert!(h1 == h2)` / `assert!(h1 != h2)` rather than
+`assert_eq!`/`assert_ne!` — those macros require `Debug` on the operands
+(their failure branch formats with `{:?}`, type-checked even on pass), and
+`Hypergraph`'s `Debug` impl doesn't exist until Task 18.
 
 - [ ] **Step 2: Run test to verify it fails**
 
@@ -1772,7 +1809,7 @@ cd hypergraph-rs
 git add -A
 git commit -m "feat(hypergraph-rs): implement PartialEq (structural equality)
 
-Co-Authored-By: opencode <opencode@local>"
+Co-Authored-By: Claude Fable 5 <noreply@anthropic.com>"
 ```
 
 ---
@@ -1780,17 +1817,17 @@ Co-Authored-By: opencode <opencode@local>"
 ### Task 15: Test and implement `add_node_to_edge` + `remove_node_from_edge`
 
 **Files:**
-- Modify: `hypergraph-rs/tests/core/test_hypergraph.rs`
+- Modify: `hypergraph-rs/crates/hypergraph-rs/tests/test_hypergraph.rs`
 - Modify: `hypergraph-rs/crates/hypergraph-rs/src/core/hypergraph.rs`
 
 **Interfaces:**
 - Produces: `add_node_to_edge(&mut self, edge_id: &str, node_id: &str) -> Result<(), EdgeError>` where `N: Default` — adds a node to an existing edge; auto-creates both if missing. `remove_node_from_edge(&mut self, edge_id: &str, node_id: &str, remove_empty: bool) -> Result<(), NodeError>` — removes a node from an edge; optionally removes the edge if it becomes empty.
 
-**XGI source reference** (hypergraph.py:~860-890, ~920-950): `add_node_to_edge` auto-creates edge and node if either doesn't exist. `remove_node_from_edge` raises XGIError if edge/node missing or node not in edge; removes empty edge by default.
+**XGI source reference** (verified 2026-07-18: `add_node_to_edge` at hypergraph.py:1080-1117, `remove_node_from_edge` at hypergraph.py:1166-1208): `add_node_to_edge` auto-creates edge and node if either doesn't exist. `remove_node_from_edge` raises XGIError if edge/node missing or node not in edge; removes empty edge only when `remove_empty=True` (the default).
 
 - [ ] **Step 1: Write the failing test**
 
-Append to `tests/core/test_hypergraph.rs`:
+Append to `crates/hypergraph-rs/tests/test_hypergraph.rs`:
 
 ```rust
 #[test]
@@ -1816,7 +1853,7 @@ fn test_add_node_to_edge_auto_creates_edge_and_node() {
 
 #[test]
 fn test_remove_node_from_edge_basic() {
-    let mut h: Hypergraph = Hypergraph = Hypergraph::new();
+    let mut h: Hypergraph = Hypergraph::new();
     h.add_edge(vec!["a".to_string(), "b".to_string(), "c".to_string()], Some("e1".to_string()), serde_json::Value::Null).unwrap();
     h.remove_node_from_edge("e1", "b", true).unwrap();
     let members = h.members("e1").unwrap();
@@ -1878,6 +1915,7 @@ Add inside the impl block:
     pub fn add_node_to_edge(&mut self, edge_id: &str, node_id: &str) -> Result<(), EdgeError>
     where
         N: Default,
+        E: Default,
         M: Default + Clone,
     {
         // Auto-create edge if missing
@@ -1954,16 +1992,6 @@ Add inside the impl block:
     }
 ```
 
-Note: `add_node_to_edge` requires `E: Default` as well (to auto-create the edge with default attrs). Add that bound:
-
-```rust
-    pub fn add_node_to_edge(&mut self, edge_id: &str, node_id: &str) -> Result<(), EdgeError>
-    where
-        N: Default,
-        E: Default,
-        M: Default + Clone,
-```
-
 - [ ] **Step 4: Run test to verify it passes**
 
 Run: `cd hypergraph-rs && cargo test -p hypergraph-rs --test test_hypergraph`
@@ -1976,7 +2004,7 @@ cd hypergraph-rs
 git add -A
 git commit -m "feat(hypergraph-rs): implement add_node_to_edge + remove_node_from_edge
 
-Co-Authored-By: opencode <opencode@local>"
+Co-Authored-By: Claude Fable 5 <noreply@anthropic.com>"
 ```
 
 ---
@@ -1984,7 +2012,7 @@ Co-Authored-By: opencode <opencode@local>"
 ### Task 16: Test and implement `set_node_attributes` + `set_edge_attributes`
 
 **Files:**
-- Modify: `hypergraph-rs/tests/core/test_hypergraph.rs`
+- Modify: `hypergraph-rs/crates/hypergraph-rs/tests/test_hypergraph.rs`
 - Modify: `hypergraph-rs/crates/hypergraph-rs/src/core/hypergraph.rs`
 
 **Interfaces:**
@@ -1992,11 +2020,9 @@ Co-Authored-By: opencode <opencode@local>"
 
 - [ ] **Step 1: Write the failing test**
 
-Append to `tests/core/test_hypergraph.rs`:
+Append to `crates/hypergraph-rs/tests/test_hypergraph.rs`:
 
 ```rust
-use std::collections::BTreeMap;
-
 #[test]
 fn test_set_node_attributes_from_pairs() {
     let mut h: Hypergraph = Hypergraph::new();
@@ -2062,9 +2088,14 @@ Expected: FAIL — `set_node_attributes` and `set_edge_attributes` don't exist.
 
 - [ ] **Step 3: Implement both methods**
 
-Add inside the impl block:
+Add a SEPARATE concrete-typed impl block AFTER the generic `impl<N, E, M>`
+block (NOT inside it): these methods call `as_object_mut()`, an inherent
+method of `serde_json::Value` that does not exist on bare type parameters
+`N`/`E` — placing them in the generic block is a hard compile error
+(`no method named as_object_mut found for type parameter N`).
 
 ```rust
+impl<M> Hypergraph<serde_json::Value, serde_json::Value, M> {
     /// Set node attributes from (id, attr_map) pairs.
     /// XGI parity: `H.set_node_attributes(values, name=None)`.
     /// Silently skips missing node IDs (XGI warns).
@@ -2101,9 +2132,14 @@ Add inside the impl block:
             }
         }
     }
+}
 ```
 
-Note: This implementation assumes `N`/`E` are `serde_json::Value` (the default). For generic `N`/`E`, these methods would need different signatures. Since the defaults are `serde_json::Value`, this covers XGI parity. Babylon can later specialize with typed setters.
+Note: these methods live in a concrete `impl<M> Hypergraph<serde_json::Value,
+serde_json::Value, M>` block because `as_object_mut` is inherent to
+`serde_json::Value`. The default-typed test Hypergraph (`N=E=M=Value`) picks
+them up from this specialized impl; Babylon can later add typed setters for
+specialized `N`/`E`.
 
 - [ ] **Step 4: Run test to verify it passes**
 
@@ -2117,7 +2153,7 @@ cd hypergraph-rs
 git add -A
 git commit -m "feat(hypergraph-rs): implement set_node_attributes + set_edge_attributes
 
-Co-Authored-By: opencode <opencode@local>"
+Co-Authored-By: Claude Fable 5 <noreply@anthropic.com>"
 ```
 
 ---
@@ -2125,7 +2161,7 @@ Co-Authored-By: opencode <opencode@local>"
 ### Task 17: Test and implement `clear_edges` + `freeze` / `is_frozen`
 
 **Files:**
-- Modify: `hypergraph-rs/tests/core/test_hypergraph.rs`
+- Modify: `hypergraph-rs/crates/hypergraph-rs/tests/test_hypergraph.rs`
 - Modify: `hypergraph-rs/crates/hypergraph-rs/src/core/hypergraph.rs`
 
 **Interfaces:**
@@ -2133,7 +2169,7 @@ Co-Authored-By: opencode <opencode@local>"
 
 - [ ] **Step 1: Write the failing test**
 
-Append to `tests/core/test_hypergraph.rs`:
+Append to `crates/hypergraph-rs/tests/test_hypergraph.rs`:
 
 ```rust
 #[test]
@@ -2205,19 +2241,14 @@ Update `new()`:
     }
 ```
 
-Update `clear()` to also reset `frozen`:
-```rust
-    pub fn clear(&mut self) {
-        self.inner = StableDiGraph::new();
-        self.agent_ids.clear();
-        self.hyperedge_ids.clear();
-        self.edge_uid_counter = 0;
-        self.graph_attrs.clear();
-        self.frozen = false;  // NEW
-    }
-```
+`clear()` needs NO frozen change: XGI freezes `clear` too (hypergraph.py:1550
+puts `clear` in the frozen-method list, so a frozen hypergraph's `clear()`
+raises `XGIError`) — with the frozen guard added below, a `self.frozen = false`
+inside `clear()` would be unreachable dead state-change.
 
-Update `copy()` to copy `frozen`:
+Update `copy()` to initialize `frozen` (XGI parity: `copy()` of a frozen
+hypergraph returns an UNFROZEN copy — XGI's `copy()` constructs a fresh
+instance and `freeze()` monkeypatches only the original, verified 0.10.2):
 ```rust
     pub fn copy(&self) -> Self where N: Clone, E: Clone, M: Clone {
         Self {
@@ -2226,7 +2257,7 @@ Update `copy()` to copy `frozen`:
             hyperedge_ids: self.hyperedge_ids.clone(),
             edge_uid_counter: self.edge_uid_counter,
             graph_attrs: self.graph_attrs.clone(),
-            frozen: self.frozen,  // NEW
+            frozen: false,  // NEW — XGI parity: copies are always unfrozen
         }
     }
 ```
@@ -2235,15 +2266,15 @@ Add the new methods:
 
 ```rust
     /// Remove all edges, keeping nodes.
-    /// XGI parity: `H.clear_edges()`.
+    ///
+    /// XGI parity: `H.clear_edges()` — the edge-uid counter is NOT reset
+    /// (XGI's `clear_edges` never touches `_edge_uid`, verified 0.10.2).
     pub fn clear_edges(&mut self) {
-        // Remove all hyperedge nodes from the bipartite graph
-        for (_, &he_idx) in &self.hyperedge_ids.clone() {
+        let hyperedge_indices: Vec<NodeIndex> = self.hyperedge_ids.values().copied().collect();
+        for he_idx in hyperedge_indices {
             self.inner.remove_node(he_idx);
         }
         self.hyperedge_ids.clear();
-        // Reset edge counter
-        self.edge_uid_counter = 0;
     }
 
     /// Freeze the hypergraph, preventing modification.
@@ -2283,7 +2314,7 @@ cd hypergraph-rs
 git add -A
 git commit -m "feat(hypergraph-rs): implement clear_edges + freeze/is_frozen
 
-Co-Authored-By: opencode <opencode@local>"
+Co-Authored-By: Claude Fable 5 <noreply@anthropic.com>"
 ```
 
 ---
@@ -2291,7 +2322,7 @@ Co-Authored-By: opencode <opencode@local>"
 ### Task 18: Test and implement `__repr__` / `Debug` formatting
 
 **Files:**
-- Modify: `hypergraph-rs/tests/core/test_hypergraph.rs`
+- Modify: `hypergraph-rs/crates/hypergraph-rs/tests/test_hypergraph.rs`
 - Modify: `hypergraph-rs/crates/hypergraph-rs/src/core/hypergraph.rs`
 
 **Interfaces:**
@@ -2299,7 +2330,7 @@ Co-Authored-By: opencode <opencode@local>"
 
 - [ ] **Step 1: Write the failing test**
 
-Append to `tests/core/test_hypergraph.rs`:
+Append to `crates/hypergraph-rs/tests/test_hypergraph.rs`:
 
 ```rust
 #[test]
@@ -2364,7 +2395,7 @@ cd hypergraph-rs
 git add -A
 git commit -m "feat(hypergraph-rs): implement Debug (XGI __repr__ parity)
 
-Co-Authored-By: opencode <opencode@local>"
+Co-Authored-By: Claude Fable 5 <noreply@anthropic.com>"
 ```
 
 ---
@@ -2383,6 +2414,12 @@ Expected: May have warnings. Fix all of them.
 
 Common fixes: remove unused imports, use `&str` instead of `&String`, add `#[allow(clippy::xxx)]` with a comment for false positives.
 
+If `clippy::map_entry` fires on `add_edge`/`add_node_to_edge` (the
+`if !map.contains_key(k) { … map.insert(k, v) }` shape), prefer
+`#[allow(clippy::map_entry)]` with a one-line justification — the inserted
+value comes from a separate `self.inner.add_node(...)` `&mut self` borrow,
+so the entry API would conflict — over an entry-API rewrite.
+
 - [ ] **Step 3: Run clippy on all workspace crates**
 
 Run: `cd hypergraph-rs && cargo clippy --workspace -- -D warnings`
@@ -2391,7 +2428,9 @@ Expected: PASS — no warnings.
 - [ ] **Step 4: Run the full test suite**
 
 Run: `cd hypergraph-rs && cargo test --workspace`
-Expected: PASS — all 49 tests, 0 failures.
+Expected: PASS — all 64 tests, 0 failures (the pyo3/wasm/cli stub crates each
+contribute 0 tests; the "49" that stood here previously was a stale copy of
+Task 14's checkpoint).
 
 - [ ] **Step 5: Run rustfmt**
 
@@ -2404,7 +2443,7 @@ cd hypergraph-rs
 git add -A
 git commit -m "chore(hypergraph-rs): clippy + fmt cleanup
 
-Co-Authored-By: opencode <opencode@local>"
+Co-Authored-By: Claude Fable 5 <noreply@anthropic.com>"
 ```
 
 ---

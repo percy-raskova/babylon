@@ -38,8 +38,12 @@ across 7 consumer files, removing the `xgi` Poetry dependency entirely.
 
 ## 2. Workspace architecture
 
-Top-level `/hypergraph-rs/` in the babylon repo (external dep — Babylon
-declares it via a Poetry path dependency).
+Top-level `/hypergraph-rs/` at the babylon repo root, mounted as its **own
+git repository** (the parent `.gitignore`s `/hypergraph-rs/` — the program-20
+`infra/` subrepo pattern; owner ruling 2026-07-18: isolated dev environment,
+becomes a submodule/remote repo when published). Babylon declares it via a
+Poetry path dependency at swap time (Phase 11) and imports only the built
+PyO3 extension.
 
 ```
 hypergraph-rs/                          # top-level workspace, external dep
@@ -89,8 +93,8 @@ hypergraph-rs/                          # top-level workspace, external dep
   deps) + three thin binding crates. The core does all the work; bindings are
   thin adapters.
 - **`rustworkx-core` is the backbone.** The hypergraph IS a
-  `rustworkx_core::petgraph::Graph` under the hood (see §3) — this is what
-  makes it a "genuine plugin."
+  `rustworkx_core::petgraph::stable_graph::StableDiGraph` under the hood
+  (see §3) — this is what makes it a "genuine plugin."
 - **The npm package is optional/secondary.** The scene-graph JSON is the
   contract; the React renderer is one consumer.
 
@@ -98,12 +102,12 @@ hypergraph-rs/                          # top-level workspace, external dep
 
 ## 3. Core data structure — bipartite rustworkx graph (Approach B)
 
-The hypergraph IS a `rustworkx_core::petgraph::Graph` with two node kinds.
-This is what makes it a genuine rustworkx plugin — we extend petgraph's data
-structure with n-ary semantics.
+The hypergraph IS a `rustworkx_core::petgraph::stable_graph::StableDiGraph`
+with two node kinds. This is what makes it a genuine rustworkx plugin — we
+extend petgraph's data structure with n-ary semantics.
 
 ```rust
-use rustworkx_core::petgraph::graph::{DiGraph, NodeIndex};
+use rustworkx_core::petgraph::stable_graph::{NodeIndex, StableDiGraph};
 use indexmap::IndexMap;
 
 /// The two roles in the bipartite structure.
@@ -125,9 +129,10 @@ pub struct MembershipEdge<M> {
 /// The hypergraph. One field. Everything else is views over it.
 pub struct Hypergraph<N = serde_json::Value, E = serde_json::Value, M = serde_json::Value> {
     /// Bipartite: Agent nodes + Hyperedge nodes + membership edges.
-    /// Insertion-ordered (petgraph::graph::DiGraph preserves insertion order
-    /// for both nodes and edges — required for III.7 determinism parity).
-    inner: DiGraph<NodeKind<N, E>, MembershipEdge<M>>,
+    /// Insertion-ordered (StableDiGraph preserves insertion order for both
+    /// nodes and edges, leaving holes on removal — required for III.7
+    /// determinism parity; plain Graph/DiGraph swap-compacts on removal).
+    inner: StableDiGraph<NodeKind<N, E>, MembershipEdge<M>>,
 
     /// Insertion-ordered bimaps for O(1) id-based lookup (mirrors
     /// BabylonGraph's `_ids` / `_index_to_id` pattern from ADR052).
@@ -191,16 +196,19 @@ pub struct SimplicialComplex<N, E, M> {
 
 ### 3.5 Determinism (III.7 parity)
 
-`petgraph::graph::DiGraph` preserves insertion order for both nodes and edges
-(unlike rustworkx's `PyDiGraph` which reuses indices — the exact issue ADR052
-had to work around). So the bipartite substrate is *naturally* insertion
-ordered, no mirror dicts needed for ordering. The `agent_ids` /
-`hyperedge_ids` IndexMaps are for O(1) id lookup only, not ordering.
+`petgraph::stable_graph::StableDiGraph` preserves insertion order for both
+nodes and edges even under removal (unlike rustworkx's `PyDiGraph` which
+reuses indices — the exact issue ADR052 had to work around; and unlike
+petgraph's plain `Graph`/`DiGraph`, whose `remove_node` swap-compacts the
+last node into the freed slot, breaking insertion order under churn). So the
+bipartite substrate is *naturally* insertion ordered, no mirror dicts needed
+for ordering. The `agent_ids` / `hyperedge_ids` IndexMaps are for O(1) id
+lookup only, not ordering.
 
-`petgraph::graph::DiGraph` removes nodes by leaving a hole (the index is
-marked removed, not reused) — better for determinism than `PyDiGraph`.
-Iteration via `inner.node_indices()` skips holes automatically. The bimaps
-hide this entirely from the public API.
+`StableDiGraph` removes nodes by leaving a hole — "The node index a is
+invalidated, but none other" (petgraph 0.8.3 docs, the version rustworkx-core
+0.18 resolves). Iteration via `inner.node_indices()` skips holes
+automatically. The bimaps hide this entirely from the public API.
 
 ---
 
@@ -217,7 +225,7 @@ impl<N, E, M> Hypergraph<N, E, M> {
     // Constructors
     pub fn new() -> Self;
     pub fn from_memberships(memberships: Vec<(String, Vec<String>)>) -> Self;
-    pub fn from_bipartite_graph(g: petgraph::graph::DiGraph<N, E>) -> Self;
+    pub fn from_bipartite_graph(g: petgraph::stable_graph::StableDiGraph<N, E>) -> Self;
 
     // Node CRUD
     pub fn add_node(&mut self, node_id: &str, attrs: N) -> bool;
@@ -226,8 +234,12 @@ impl<N, E, M> Hypergraph<N, E, M> {
     pub fn has_node(&self, node_id: &str) -> bool;
     pub fn num_nodes(&self) -> usize;
 
-    // Edge CRUD — XGI uses `idx=` for the edge ID (v0.9 breaking change, pinned)
-    pub fn add_edge(&mut self, members: Vec<String>, idx: Option<String>, attrs: E) -> String;
+    // Edge CRUD — XGI uses `idx=` for the edge ID (v0.9 breaking change, pinned).
+    // Result (not bare String): duplicate `idx` → Err(AlreadyExists), empty
+    // members → Err(EmptyMembers) — deliberate strictness deviations from XGI's
+    // warn+no-op / silent-empty-edge runtime behavior; the Python binding shims
+    // duplicate-idx back to warn+no-op for conformance.
+    pub fn add_edge(&mut self, members: Vec<String>, idx: Option<String>, attrs: E) -> Result<String, EdgeError>;
     pub fn add_edges_from(&mut self, edges: impl IntoIterator<Item = (Vec<String>, Option<String>, E)>);
     pub fn remove_edge(&mut self, edge_id: &str) -> Result<(), EdgeError>;
     pub fn has_edge(&self, edge_id: &str) -> bool;
@@ -251,7 +263,7 @@ impl<N, E, M> Hypergraph<N, E, M> {
 
     // 1-skeleton and bipartite projections (rustworkx-native algorithms run on these)
     pub fn skeleton(&self) -> rustworkx_core::petgraph::graph::Graph<String, f64>;
-    pub fn bipartite_graph(&self) -> &rustworkx_core::petgraph::graph::DiGraph<NodeKind<N,E>, MembershipEdge<M>>;
+    pub fn bipartite_graph(&self) -> &rustworkx_core::petgraph::stable_graph::StableDiGraph<NodeKind<N,E>, MembershipEdge<M>>;
 
     // Iteration (insertion-ordered, III.7 parity)
     pub fn node_ids(&self) -> impl Iterator<Item = &str>;
@@ -327,7 +339,7 @@ all generator functions, all algorithms, etc. The 164 symbols.
 ### 4.6 Determinism contract (Constitution III.7 parity)
 
 XGI's iteration order is insertion order (Python dicts). Our
-`petgraph::graph::DiGraph` + `IndexMap` combo is insertion-ordered by
+`petgraph::stable_graph::StableDiGraph` + `IndexMap` combo is insertion-ordered by
 construction. The conformance gate (XGI tests) will catch any order drift.
 We add a property-based test (like ADR052's `test_graph_iteration_order.py`)
 that differential-tests against the real XGI oracle on random hypergraph
@@ -545,7 +557,7 @@ rustworkx = "^0.18.0"
 # Removed:
 # xgi = "^0.10"
 # New (path dependency to the top-level workspace):
-hypergraph-rs = { path = "../hypergraph-rs/crates/hypergraph-rs-python", develop = true }
+hypergraph-rs = { path = "hypergraph-rs/crates/hypergraph-rs-python", develop = true }
 ```
 
 Babylon installs the PyO3 extension via Poetry's path dependency. Maturin
@@ -1052,13 +1064,15 @@ resolver = "2"
 [workspace.package]
 version = "0.1.0"
 edition = "2021"
-rust-version = "1.79"  # match rustworkx-core MSRV
+rust-version = "1.85"  # rustworkx-core 0.18's declared MSRV (crates.io metadata)
 license = "BSD-3-Clause"
 authors = ["Babylon Project"]
 
 [workspace.dependencies]
+# NO direct petgraph dep: rustworkx-core 0.18 re-exports petgraph 0.8; all
+# petgraph types are reached via rustworkx_core::petgraph. A direct pin
+# resolves to a second, type-incompatible petgraph copy (verified 2026-07-18).
 rustworkx-core = "0.18"
-petgraph = "0.6"        # re-exported by rustworkx-core, pinned to match
 indexmap = "2"
 ndarray = "0.16"
 sprs = "0.11"           # sparse matrices (incidence, adjacency, overlap)
@@ -1110,7 +1124,7 @@ The user chose "Full port first, then swap." Phased breakdown:
 - Verify `cargo build` on all 4 crates passes
 
 #### Phase 1: Core data structure + minimal API (1-2 weeks)
-- `Hypergraph<N, E, M>` struct (bipartite `petgraph::graph::DiGraph`)
+- `Hypergraph<N, E, M>` struct (bipartite `petgraph::stable_graph::StableDiGraph`)
 - `add_node`, `add_edge`, `remove_node`, `remove_edge`, `memberships`,
   `members`, `num_nodes`, `num_edges`
 - `agent_ids` / `hyperedge_ids` IndexMap bimaps

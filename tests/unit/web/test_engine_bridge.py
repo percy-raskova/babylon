@@ -4789,10 +4789,85 @@ class TestEconomyDashboardChipContract:
             "county_flow",
             "imperial_rent_gap",
             "imperial_rent_gap_by_region",
+            "veil",
         }, (
             "EconomyDashboardPayload drifted — update types/game.ts, the "
             "chips, and this pin in the SAME commit (no phantoms, no orphans)"
         )
+
+
+@pytest.mark.unit
+class TestEconomyDashboardVeil:
+    """T2-8/T2-9 (spec-117 §5d, D7): ``veil`` is computed from the player
+    org's REAL ``acquired_doctrine_ids`` (not a mock resolver — I-7 lesson
+    from ``test_doctrine_tree_endpoint.py``), and the two value-axis fields
+    it carries are ``None`` below Tier 1, never a fabricated number a client
+    could read regardless of tier (the same "enforced at serialization"
+    boundary the fog uses)."""
+
+    @staticmethod
+    def _state_with_acquired(acquired: tuple[str, ...]) -> Any:
+        state = _build_initial_state_for_scenario("default")
+        org = state.organizations["ORG001"].model_copy(update={"acquired_doctrine_ids": acquired})
+        return state.model_copy(update={"organizations": {"ORG001": org}})
+
+    def _dashboard_with_acquired(self, acquired: tuple[str, ...]) -> dict[str, Any]:
+        state = self._state_with_acquired(acquired)
+        bridge = EngineBridge(_make_mock_persistence())
+        with patch.object(bridge, "hydrate_state", return_value=(state, state.to_graph())):
+            return bridge.get_economy_dashboard(uuid.uuid4())
+
+    def test_no_player_org_is_tier_zero(self) -> None:
+        state = _build_initial_state_for_scenario("default").model_copy(
+            update={"organizations": {}, "player_org_id": None}
+        )
+        bridge = EngineBridge(_make_mock_persistence())
+        with patch.object(bridge, "hydrate_state", return_value=(state, state.to_graph())):
+            result = bridge.get_economy_dashboard(uuid.uuid4())
+
+        assert result["veil"]["tier"] == 0
+        assert result["veil"]["next_unlock_node_id"] == "class_consciousness"
+        assert result["veil"]["next_unlock_label"] == "Class Consciousness"
+        assert result["veil"]["value_produced"] is None
+        assert result["veil"]["exploitation_rate"] is None
+
+    def test_empty_acquired_is_tier_zero(self) -> None:
+        result = self._dashboard_with_acquired(())
+
+        assert result["veil"]["tier"] == 0
+        assert result["veil"]["value_produced"] is None
+        assert result["veil"]["exploitation_rate"] is None
+
+    def test_tier1_node_acquired_unlocks_the_value_axis(self) -> None:
+        result = self._dashboard_with_acquired(("class_consciousness",))
+
+        assert result["veil"]["tier"] == 1
+        assert result["veil"]["next_unlock_node_id"] == "trade_unionism"
+        assert result["veil"]["next_unlock_label"] == "Trade Unionism"
+        # Real numbers, not a copy fabricated independently of the actual
+        # aggregate — must equal the legacy (always-live) top-level fields.
+        assert result["veil"]["value_produced"] == result["value_produced"]
+        assert result["veil"]["exploitation_rate"] == result["exploitation_rate"]
+
+    def test_both_nodes_acquired_is_tier_two_with_no_next_unlock(self) -> None:
+        result = self._dashboard_with_acquired(("class_consciousness", "trade_unionism"))
+
+        assert result["veil"]["tier"] == 2
+        assert result["veil"]["next_unlock_node_id"] is None
+        assert result["veil"]["next_unlock_label"] is None
+        assert result["veil"]["value_produced"] == result["value_produced"]
+        assert result["veil"]["exploitation_rate"] == result["exploitation_rate"]
+
+    def test_legacy_top_level_fields_are_never_veiled(self) -> None:
+        """T2-7 scope boundary: the pre-existing top-level ``value_produced``/
+        ``exploitation_rate`` fields (EconomyDashboard/BottomDrawer's existing
+        surface) are untouched by the veil — only the new ``veil.*`` copies
+        are gated. Documented, deliberate scope choice (see ``web/game/veil.py``
+        module docstring); this test pins it against a silent future change."""
+        result = self._dashboard_with_acquired(())
+
+        assert isinstance(result["value_produced"], float)
+        assert isinstance(result["exploitation_rate"], float)
 
 
 @pytest.mark.unit

@@ -231,6 +231,13 @@ export const handlers = [
         county_flow: { year: null, phi_accrued_this_year: null, wage_accrued_this_year: null },
         imperial_rent_gap: -70,
         imperial_rent_gap_by_region: [],
+        veil: {
+          tier: 2,
+          next_unlock_node_id: null,
+          next_unlock_label: null,
+          value_produced: 100,
+          exploitation_rate: 0.2,
+        },
       },
     });
   }),

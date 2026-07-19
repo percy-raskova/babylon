@@ -135,6 +135,32 @@ Note `weighted_mean_metrics` averages intensive quantities. Per the type theorem
 (memory `intensive-aggregation-variance-error`), that is contravariantly correct but
 correct *by accident*. Leave the math alone in this task; do not "fix" it here.
 
+## Task 5b: Fog the state-apparatus dashboard (added mid-execution)
+
+**Why:** Task 5 correctly gated `_serialize_organization`, but
+`get_state_apparatus_dashboard` (:3465) discarded its graph (`state, _graph =`)
+and never threaded `reach` — leaving the whole state-apparatus screen unfogged.
+
+Audited all four unthreaded `_serialize_organization` call sites. Only this one
+is a leak: `create_game` (:2023/:2099) and `_persist_snapshots_safe` (:8201) are
+internal **persistence** paths that MUST write true state — fogging them would
+corrupt the database. Fog is a serialization-boundary concern, not a storage one.
+
+**The trap:** `_build_state_apparatus_dashboard` (:1195) does
+`float(o.get("heat", 0.0))`. Fog sets masked fields to `None`, so `float(None)`
+raises TypeError — the naive fix 500s the dashboard. Verified empirically before
+committing to a design.
+
+**Owner ruling (2026-07-18): partial aggregate + masked count.** `total_heat`
+sums only orgs whose heat is visible; the payload carries `heat_orgs_visible` /
+`heat_orgs_masked`. All-masked yields `total_heat = None`, never `0.0` — a zero
+reads as "the police are under no pressure," which is a lie (III.11).
+
+Consistent with the precedent Task 5 set for hex rollups, where `heat_pop`
+excludes masked hexes from the mean's denominator rather than letting them
+contribute a false zero. **Both aggregation paths now handle partial coverage
+identically** — that symmetry is the point, and Task 10's sentinel should pin it.
+
 ## Task 6: Solidarity edges as literal lines
 
 **Files:**

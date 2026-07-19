@@ -1,17 +1,27 @@
 import { describe, it, expect, beforeEach } from "vitest";
 import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
+import { http, HttpResponse } from "msw";
 import { MemoryRouter, Routes, Route } from "react-router";
+import { server } from "@/test/server";
 import { CircuitPage } from "./CircuitPage";
 import { useStore } from "@/store";
 import { resetStore } from "@/test/resetStore";
 import { resetMockGameState, DEFAULT_GAME_ID } from "@/test/handlers";
-import { makeSnapshot } from "@/test/fixtures";
+import { makeSnapshot, makeEconomyDashboardPayload } from "@/test/fixtures";
 
 beforeEach(() => {
   resetStore();
   resetMockGameState();
 });
+
+function mockEconomy(overrides: Parameters<typeof makeEconomyDashboardPayload>[0]): void {
+  server.use(
+    http.get("/api/games/:id/economy/", () =>
+      HttpResponse.json({ status: "ok", data: makeEconomyDashboardPayload(overrides) }),
+    ),
+  );
+}
 
 function renderCircuitPage(): void {
   render(
@@ -57,5 +67,82 @@ describe("CircuitPage", () => {
     await waitFor(() =>
       expect(screen.getByTestId("fundamental-theorem-meter")).toBeInTheDocument(),
     );
+  it("renders the wealth-by-class-role composition (T2-7 relocation)", async () => {
+    mockEconomy({
+      wealth_by_class_role: { periphery_proletariat: 40, core_bourgeoisie: 60 },
+    });
+    renderCircuitPage();
+    await waitFor(() => expect(screen.getByTestId("breakdown-bar")).toBeInTheDocument());
+    expect(screen.getByText("Periphery Proletariat")).toBeInTheDocument();
+    expect(screen.getByText("Core Bourgeoisie")).toBeInTheDocument();
+  });
+
+  describe("the Veil of Money (T2-8/T2-9)", () => {
+    it("tier 0: veils both the exploitation axis and the scissors, naming the tier-1 study target", async () => {
+      mockEconomy({
+        veil: {
+          tier: 0,
+          next_unlock_node_id: "class_consciousness",
+          next_unlock_label: "Class Consciousness",
+          value_produced: null,
+          exploitation_rate: null,
+        },
+      });
+      renderCircuitPage();
+      await waitFor(() => expect(screen.getAllByTestId("veil-locked")).toHaveLength(2));
+      expect(screen.queryByTestId("scissors-chart")).not.toBeInTheDocument();
+      expect(screen.queryByTestId("circuit-exploitation-chips")).not.toBeInTheDocument();
+      expect(screen.getAllByText(/Study: Class Consciousness/)).toHaveLength(2);
+    });
+
+    it("tier 1: exploitation axis unlocked with real numbers, scissors still veiled naming trade_unionism", async () => {
+      mockEconomy({
+        veil: {
+          tier: 1,
+          next_unlock_node_id: "trade_unionism",
+          next_unlock_label: "Trade Unionism",
+          value_produced: 100,
+          exploitation_rate: 0.2,
+        },
+      });
+      renderCircuitPage();
+      await waitFor(() =>
+        expect(screen.getByTestId("circuit-exploitation-chips")).toBeInTheDocument(),
+      );
+      expect(screen.getByTestId("stat-value produced")).toHaveTextContent("100");
+      expect(screen.getByTestId("stat-exploitation rate")).toHaveTextContent("0.200");
+      expect(screen.queryByTestId("scissors-chart")).not.toBeInTheDocument();
+      expect(screen.getByText(/Study: Trade Unionism/)).toBeInTheDocument();
+    });
+
+    it("tier 2 (default fixture): both the exploitation axis and the scissors are unlocked", async () => {
+      renderCircuitPage();
+      await waitFor(() =>
+        expect(screen.getByTestId("circuit-exploitation-chips")).toBeInTheDocument(),
+      );
+      await waitFor(() => expect(screen.getByTestId("scissors-chart")).toBeInTheDocument());
+      expect(screen.queryByTestId("veil-locked")).not.toBeInTheDocument();
+    });
+
+    it("the study CTA opens the Doctrine takeover and navigates back to the map", async () => {
+      mockEconomy({
+        veil: {
+          tier: 0,
+          next_unlock_node_id: "class_consciousness",
+          next_unlock_label: "Class Consciousness",
+          value_produced: null,
+          exploitation_rate: null,
+        },
+      });
+      renderCircuitPage();
+      await waitFor(() =>
+        expect(screen.getByTestId("veil-study-link-exploitation")).toBeInTheDocument(),
+      );
+
+      await userEvent.click(screen.getByTestId("veil-study-link-exploitation"));
+
+      expect(screen.getByTestId("stub-map")).toBeInTheDocument();
+      expect(useStore.getState().ui.takeover.active).toBe("doctrine");
+    });
   });
 });

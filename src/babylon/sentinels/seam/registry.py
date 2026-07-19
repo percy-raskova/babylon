@@ -2585,12 +2585,16 @@ _ECONOMY_DASHBOARD_METRICS: tuple[SeamEntry, ...] = (
         dtype="json",
         nullable=False,
         write_site="web/game/engine_bridge.py::_wealth_by_class_role (:1056)",
-        read_paths=_ECONOMY_DASHBOARD_EMITTERS,
+        read_paths=(
+            "web/game/engine_bridge.py::EngineBridge.get_economy_dashboard (:3020)",
+            "src/frontend/src/components/circuit/CircuitPage.tsx",
+        ),
         spec_ref="spec-109 A4",
         notes=(
             "The container is always a dict (possibly {} on a classless graph, never None) — "
             "confirmed non-empty for wayne_county by test_dashboards.py. Rendered as the "
-            "BreakdownBar composition chart."
+            "BreakdownBar composition chart — RELOCATED (Track 2 T2-7, D2: 'no god-dashboard') "
+            "from EconomyDashboard.tsx onto CircuitPage.tsx; the payload itself is unchanged."
         ),
     ),
     SeamEntry(
@@ -2663,6 +2667,43 @@ _ECONOMY_DASHBOARD_METRICS: tuple[SeamEntry, ...] = (
             "documented in domain/dialectics/instances/catalog.py's _mean_asymmetry — confirmed "
             "by test_engine_bridge.py::TestImperialRentGapByRegion + "
             "TestEconomyDashboardFundamentalTheorem."
+        ),
+    ),
+    SeamEntry(
+        payload="veil",
+        wire_keys=("veil",),
+        scope=SeamScope.ECONOMY,
+        owner_layer="bridge (compute_veil_status, game.veil — Track 2 T2-8/T2-9, spec-117 §5d)",
+        liveness_class=LivenessClass.DECLARED_CONDITIONAL,
+        liveness_condition=(
+            "the container ({tier, next_unlock_node_id, next_unlock_label, value_produced, "
+            "exploitation_rate}) is always a dict with tier always non-null; "
+            "next_unlock_node_id/next_unlock_label are null only at tier 2 (fully unlocked); "
+            "value_produced/exploitation_rate are null below tier 1 BY DESIGN (the veil "
+            "itself, not a data gap) — every combination confirmed by "
+            "tests/unit/web/test_engine_bridge.py::TestEconomyDashboardVeil and the "
+            "monotonicity property test in tests/unit/web/test_veil.py"
+        ),
+        dtype="json",
+        nullable=False,
+        write_site=(
+            "web/game/engine_bridge.py::EngineBridge.get_economy_dashboard (:3020), "
+            "via game.veil.compute_veil_status"
+        ),
+        read_paths=(
+            "web/game/engine_bridge.py::EngineBridge.get_economy_dashboard (:3020)",
+            "src/frontend/src/components/circuit/CircuitPage.tsx",
+        ),
+        spec_ref="spec-117 §5d (D7)",
+        notes=(
+            "The Veil of Money's tier status — gates value_produced/exploitation_rate "
+            "visibility on the player org's REAL acquired_doctrine_ids (append-only "
+            "membership test, never the decaying doctrine_tags accumulator or the "
+            "spendable theoretical_labor balance — see game/veil.py's module docstring "
+            "for why those would violate the spec's monotonicity requirement). Distinct "
+            "from the always-live top-level value_produced/exploitation_rate rows above: "
+            "those are EconomyDashboard/BottomDrawer's unrelated pre-existing surface, "
+            "deliberately out of this program's scope."
         ),
     ),
 )

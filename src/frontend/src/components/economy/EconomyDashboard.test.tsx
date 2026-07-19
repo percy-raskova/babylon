@@ -49,7 +49,7 @@ describe("EconomyDashboard", () => {
     expect(useStore.getState().panels.economy.mounted).toBe(false);
   });
 
-  it("renders the wealth-by-class-role composition", async () => {
+  it("no longer renders the wealth-by-class-role composition (T2-7: relocated to CircuitPage)", async () => {
     server.use(
       http.get("/api/games/:id/economy/", () =>
         HttpResponse.json({
@@ -61,9 +61,8 @@ describe("EconomyDashboard", () => {
       ),
     );
     render(<EconomyDashboard gameId={DEFAULT_GAME_ID} />);
-    await waitFor(() => expect(screen.getByTestId("breakdown-bar")).toBeInTheDocument());
-    expect(screen.getByText("Periphery Proletariat")).toBeInTheDocument();
-    expect(screen.getByText("Core Bourgeoisie")).toBeInTheDocument();
+    await waitFor(() => expect(screen.getByTestId("economy-dashboard")).toBeInTheDocument());
+    expect(screen.queryByTestId("breakdown-bar")).not.toBeInTheDocument();
   });
 
   it("renders crisis-phase-transition rows from the journal, tick-ordered", async () => {

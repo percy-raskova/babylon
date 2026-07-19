@@ -71,6 +71,7 @@ from .fog.ledger import IntelLedger, ledger_from_events, read_intel
 from .fog.reach import organizing_reach
 from .log_handler import sanitize_for_log
 from .map_contract import MAP_HISTORY_REPLAYABLE_METRICS, MAP_METRIC_PROPERTIES
+from .veil import compute_veil_status
 from .verb_copy import VERB_INELIGIBILITY_COPY
 
 if TYPE_CHECKING:
@@ -3152,6 +3153,18 @@ class EngineBridge:
         population-share-weighted per-capita breakdown — see
         :func:`_imperial_rent_gap_by_region`.
 
+        ``veil`` (Track 2 T2-8/T2-9, spec-117 §5d, D7) is the Veil of
+        Money's serialized status for the player org: ``tier``
+        (0/1/2, :func:`~game.veil.compute_veil_tier`), the next-unlock
+        doctrine node id/label, and a Tier-1-gated COPY of
+        ``value_produced``/``exploitation_rate`` — ``None`` below Tier 1,
+        enforced here at serialization (never a client-side-only hide) so
+        no inspection of the wire response can pierce it. This is scoped to
+        the new ``veil.*`` sub-object only: the legacy top-level
+        ``value_produced``/``exploitation_rate`` fields above are UNCHANGED
+        (EconomyDashboard/BottomDrawer's pre-existing surface, out of this
+        program's scope — see ``web/game/veil.py``'s module docstring).
+
         Args:
             session_id: The game session UUID.
 
@@ -3161,18 +3174,34 @@ class EngineBridge:
             ``occ``/``imperial_rent_pool``/``current_super_wage_rate``/
             ``wage_flow_total``/``tribute_flow_total``/
             ``wealth_by_class_role``/``county_flow``/``imperial_rent_gap``/
-            ``imperial_rent_gap_by_region``.
+            ``imperial_rent_gap_by_region``/``veil``.
         """
         state, graph = self.hydrate_state(session_id)
         econ = _aggregate_graph_economy(graph)
         wage_flow_total = _sum_edge_value_flow_by_mode(graph, frozenset({"wages"}))
+        value_produced = econ["value_produced"]
+        exploitation_rate = econ["exploitation_rate"]
+
+        from babylon.domain.doctrine import load_doctrine_tree
+
+        player_org = _player_org_from_state(state)
+        acquired_doctrine_ids = getattr(player_org, "acquired_doctrine_ids", ())
+        veil_defines = GameDefines().veil
+        node_labels = {node_id: node.name for node_id, node in load_doctrine_tree().nodes.items()}
+        veil_status = compute_veil_status(
+            acquired_doctrine_ids,
+            veil_defines.tier1_doctrine_node_id,
+            veil_defines.tier2_doctrine_node_id,
+            node_labels,
+        )
+        veil_unlocked = veil_status.tier >= 1
 
         return {
             "tick": state.tick,
             "has_data": econ["has_data"],
-            "value_produced": econ["value_produced"],
+            "value_produced": value_produced,
             "rent_extracted": econ["rent_extracted"],
-            "exploitation_rate": econ["exploitation_rate"],
+            "exploitation_rate": exploitation_rate,
             "profit_rate": _mean_territory_attr(graph, "tick_profit_rate"),
             "occ": _mean_territory_attr(graph, "tick_occ"),
             "imperial_rent_pool": (
@@ -3187,6 +3216,13 @@ class EngineBridge:
             "county_flow": _county_flow_snapshot(graph),
             "imperial_rent_gap": round(wage_flow_total - econ["value_produced"], 4),
             "imperial_rent_gap_by_region": _imperial_rent_gap_by_region(graph),
+            "veil": {
+                "tier": veil_status.tier,
+                "next_unlock_node_id": veil_status.next_unlock_node_id,
+                "next_unlock_label": veil_status.next_unlock_label,
+                "value_produced": value_produced if veil_unlocked else None,
+                "exploitation_rate": exploitation_rate if veil_unlocked else None,
+            },
         }
 
     def get_economy(self, session_id: UUID, territory_id: str | None = None) -> dict[str, Any]:
@@ -3905,11 +3941,7 @@ class EngineBridge:
         """
         try:
             state, _graph = self.hydrate_state(session_id)
-            orgs = getattr(state, "organizations", None)
-            if not isinstance(orgs, dict):
-                return None
-            player_org_id = getattr(state, "player_org_id", None)
-            return orgs.get(player_org_id) if player_org_id else None
+            return _player_org_from_state(state)
         except (RuntimeError, ValueError, KeyError, AttributeError, TypeError):
             return None
 
@@ -6870,6 +6902,32 @@ def _is_player_org(org_id: str, player_org_id: str | None) -> bool:
             ``False`` in that case, never a fallback guess.
     """
     return player_org_id is not None and org_id == player_org_id
+
+
+def _player_org_from_state(state: Any) -> Any:
+    """Return the player's organization off an ALREADY-HYDRATED WorldState.
+
+    Pure, no I/O — extracted from :meth:`EngineBridge._player_doctrine_org`
+    (Track 2 T2-8) so a caller that already holds ``state`` (e.g.
+    :meth:`EngineBridge.get_economy_dashboard`, which calls
+    :meth:`EngineBridge.hydrate_state` once for its own aggregate) can reuse
+    it instead of paying for a second hydration just to answer "who is the
+    player org". :meth:`EngineBridge._player_doctrine_org` now delegates
+    here after doing its own hydrate.
+
+    :param state: A hydrated ``WorldState`` (or any object exposing
+        ``organizations``/``player_org_id`` — accepts ``Any`` so a
+        ``MagicMock``/``SimpleNamespace`` test double works the same way).
+    :returns: The player's ``Organization``, or ``None`` if ``state`` carries
+        no ``organizations`` dict or no ``player_org_id`` names a live one —
+        never raises (Constitution III.11: absence is a legitimate answer
+        for synthetic/headless scenarios, not an error).
+    """
+    orgs = getattr(state, "organizations", None)
+    if not isinstance(orgs, dict):
+        return None
+    player_org_id = getattr(state, "player_org_id", None)
+    return orgs.get(player_org_id) if player_org_id else None
 
 
 #: Track 1 / Task 3 (2026-07-18): the honest fallback once INVESTIGATE

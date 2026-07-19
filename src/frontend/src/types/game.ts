@@ -1089,6 +1089,27 @@ export interface CountyFlowSnapshot {
 }
 
 /**
+ * The Veil of Money's serialized status (Track 2 T2-8/T2-9, spec-117 §5d,
+ * D7) — `web/game/veil.py::compute_veil_status`. `tier` is 0 (money-form
+ * only) / 1 (exploitation visible) / 2 (the scissors, fully unlocked).
+ * `value_produced`/`exploitation_rate` here are a Tier-1-gated COPY of the
+ * same-named top-level `EconomyDashboardPayload` fields — `null` below
+ * Tier 1, enforced server-side (never a client-side-only hide). The
+ * top-level fields themselves are NOT gated (EconomyDashboard/BottomDrawer's
+ * pre-existing surface, out of this program's scope) — only screens that
+ * read `veil.*` see the gated presentation.
+ */
+export interface VeilStatus {
+  tier: 0 | 1 | 2;
+  /** Doctrine node id whose acquisition advances the tier, `null` at tier 2. */
+  next_unlock_node_id: string | null;
+  /** That node's human-readable name, `null` at tier 2. */
+  next_unlock_label: string | null;
+  value_produced: number | null;
+  exploitation_rate: number | null;
+}
+
+/**
  * GET /api/games/{id}/economy/ (no `territory_id`) — graph-wide economy
  * dashboard. See `EngineBridge.get_economy_dashboard`. Distinct from
  * `EconomyPayload`, which is the per-territory shape returned when
@@ -1145,6 +1166,8 @@ export interface ImperialRentGapRegion {
   wc_per_capita: number;
   vc_per_capita: number;
   gap_per_capita: number;
+  /** The Veil of Money's tier status (Track 2 T2-8/T2-9). */
+  veil: VeilStatus;
 }
 
 /**

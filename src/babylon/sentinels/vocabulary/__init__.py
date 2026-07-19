@@ -20,15 +20,22 @@ Rule (c) (2026-07-18, task #45 audit): the sibling bug, one level down --
 a fixture stamping ``territory_ids`` on a ``social_class`` node (a field
 ``SocialClass`` does not have) gave six tests a green bar over four live
 bugs. Same closed-loop shape, over attributes instead of the type itself.
+
+Rule (d) (ADR087, 2026-07-19): the same shape again, over an EDGE's source
+node type -- a fixture stamping an org-sourced SOLIDARITY edge (ADR085's
+``mass_link`` amplification branch) when the only reachable path was that
+same fixture, never a real producer.
 """
 
 from babylon.sentinels.vocabulary.checks import (
+    fabricated_edge_sources,
     fabricated_node_attributes,
     invented_node_types,
     unstamped_queried_node_types,
 )
 from babylon.sentinels.vocabulary.registry import (
     ATTRIBUTE_EXEMPTIONS,
+    EDGE_SOURCE_ALLOWLIST,
     EXTRA_STAMPABLE_ATTRIBUTES,
     MODEL_FIELDS_BY_NODE_TYPE,
     PRODUCTION_ROOTS,
@@ -38,11 +45,13 @@ from babylon.sentinels.vocabulary.registry import (
 
 __all__ = [
     "ATTRIBUTE_EXEMPTIONS",
+    "EDGE_SOURCE_ALLOWLIST",
     "EXTRA_STAMPABLE_ATTRIBUTES",
     "MODEL_FIELDS_BY_NODE_TYPE",
     "PRODUCTION_ROOTS",
     "SCAN_ROOTS",
     "UNSTAMPED_QUERY_ALLOWLIST",
+    "fabricated_edge_sources",
     "fabricated_node_attributes",
     "invented_node_types",
     "unstamped_queried_node_types",

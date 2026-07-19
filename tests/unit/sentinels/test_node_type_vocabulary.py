@@ -2,7 +2,7 @@
 
 Two tiers, because a static gate can fail in two directions:
 
-- **Liveness** — the three rules are clean against the real tree right now.
+- **Liveness** — the four rules are clean against the real tree right now.
 - **Efficacy** — the AST extractor actually SEES each syntactic form it claims
   to cover. This tier is the load-bearing one: a scanner that silently returns
   nothing passes every liveness assertion while enforcing nothing, which is the
@@ -15,10 +15,15 @@ from pathlib import Path
 
 import pytest
 
-from babylon.models.enums import NodeType
-from babylon.sentinels._ast import add_node_attribute_stamps, node_type_uses
+from babylon.models.enums import EdgeType, NodeType
+from babylon.sentinels._ast import (
+    add_node_attribute_stamps,
+    edge_source_type_uses,
+    node_type_uses,
+)
 from babylon.sentinels.base import SentinelCheckError
 from babylon.sentinels.vocabulary import (
+    fabricated_edge_sources,
     fabricated_node_attributes,
     invented_node_types,
     unstamped_queried_node_types,
@@ -265,3 +270,155 @@ def test_attribute_exemption_does_not_absorb_a_different_symbol(
     assert len(violations) == 1
     assert "other_fake_attr" in violations[0]
     assert "exempted_fake_attr" not in violations[0]
+
+
+# ---------------------------------------------------------------------------
+# Rule (d) — edge-shape closure (ADR087): every fixture-stamped
+# (edge_type, source_node_type) combination must have a production producer,
+# or a cited EDGE_SOURCE_ALLOWLIST entry.
+# ---------------------------------------------------------------------------
+
+
+def _edge_uses(tmp_path: Path, source: str) -> set[tuple[str, str]]:
+    """Parse ``source`` and return its ``(edge_type, source_node_type)`` pairs."""
+    path = tmp_path / "sample.py"
+    path.write_text(source, encoding="utf-8")
+    return {
+        (edge_type, source_type) for _lineno, edge_type, source_type in edge_source_type_uses(path)
+    }
+
+
+def test_no_fabricated_edge_sources_in_repo() -> None:
+    """Rule (d): every fixture-stamped edge-source combination has a
+    production producer or a cited allowlist entry."""
+    assert fabricated_edge_sources() == []
+
+
+def test_edge_extractor_sees_add_edge_keyword_form(tmp_path: Path) -> None:
+    """``add_node(id, TYPE)`` + ``add_edge(id, tgt, edge_type=EdgeType.X)``."""
+    found = _edge_uses(
+        tmp_path,
+        "g.add_node('ORG1', NodeType.ORGANIZATION)\n"
+        "g.add_edge('ORG1', 'C001', edge_type=EdgeType.SOLIDARITY)\n",
+    )
+    assert ("solidarity", "organization") in found
+
+
+def test_edge_extractor_sees_add_edge_positional_form(tmp_path: Path) -> None:
+    """``add_edge(source, target, "TYPE", ...)`` — the 3rd-positional protocol form."""
+    found = _edge_uses(
+        tmp_path,
+        'g.add_node("C001", "social_class")\ng.add_edge("C001", "C002", "solidarity")\n',
+    )
+    assert ("solidarity", "social_class") in found
+
+
+def test_edge_extractor_sees_relationship_constructor_form(tmp_path: Path) -> None:
+    """``SocialClass(id=X, ...)`` + ``Relationship(source_id=X, edge_type=EdgeType.Y)``
+    — the scenario-genesis pattern (``scenarios/_legacy.py``)."""
+    found = _edge_uses(
+        tmp_path,
+        "worker = SocialClass(id=PERIPHERY_WORKER_ID, name='W')\n"
+        "solidarity = Relationship(source_id=PERIPHERY_WORKER_ID, target_id=OTHER_ID, "
+        "edge_type=EdgeType.SOLIDARITY)\n",
+    )
+    assert ("solidarity", "social_class") in found
+
+
+def test_edge_extractor_resolves_dot_value_suffixed_edge_type(tmp_path: Path) -> None:
+    """``edge_type=EdgeType.TRANSACTIONAL.value`` resolves the same as the
+    bare member (a common real-code idiom, e.g. ``negotiate.py``)."""
+    found = _edge_uses(
+        tmp_path,
+        "g.add_node('ORG1', NodeType.ORGANIZATION)\n"
+        "g.add_edge('ORG1', 'ORG2', edge_type=EdgeType.TRANSACTIONAL.value)\n",
+    )
+    assert ("transactional", "organization") in found
+
+
+def test_edge_extractor_ignores_an_unresolvable_variable_source(tmp_path: Path) -> None:
+    """A runtime-parameter source (``org_id``, never bound in this file) is
+    honest absence, not a guess -- mirrors real verb-resolver producers
+    (``engine/actions/negotiate.py``, ``_mass_work.py``), which are
+    deliberately invisible to this rule (see the allowlist docstring)."""
+    found = _edge_uses(
+        tmp_path, "graph.add_edge(org_id, target_id, edge_type=EdgeType.SOLIDARITY)\n"
+    )
+    assert found == set()
+
+
+def test_edge_extractor_raises_on_unparseable_source(tmp_path: Path) -> None:
+    """A broken file is an infrastructure failure, never a silent empty pass."""
+    path = tmp_path / "broken.py"
+    path.write_text("def (:\n", encoding="utf-8")
+    with pytest.raises(SentinelCheckError):
+        edge_source_type_uses(path)
+
+
+def test_edge_founding_bug_would_be_caught(tmp_path: Path) -> None:
+    """The ADR085 defect, reconstructed: a fabricated 'vanguard' organization
+    node feeding a fabricated org-sourced SOLIDARITY edge -- the exact shape
+    the salvage test's original fixture used, and rule (d) exists to reject."""
+    found = _edge_uses(
+        tmp_path,
+        "graph.add_node(_ORG_ID, NodeType.ORGANIZATION, cadre_level=cadre_level)\n"
+        "graph.add_edge(_ORG_ID, _CLASS_ID, edge_type=EdgeType.SOLIDARITY, "
+        "solidarity_strength=_SOLIDARITY_STRENGTH)\n",
+    )
+    assert (EdgeType.SOLIDARITY.value, "organization") in found
+
+
+def test_edge_source_allowlist_does_not_absorb_a_different_combination(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """An allowlist entry for one (edge_type, source_type) pair must NOT
+    clear a genuinely different fabricated combination in the same tree —
+    mirrors ``test_attribute_exemption_does_not_absorb_a_different_symbol``'s
+    exact discipline for rule (c), applied to rule (d)'s type-level list."""
+    (tmp_path / "src").mkdir()
+    (tmp_path / "web").mkdir()
+    (tmp_path / "tests").mkdir()
+    (tmp_path / "tests" / "sample.py").write_text(
+        "graph.add_node('ORG1', NodeType.ORGANIZATION)\n"
+        "graph.add_node('C001', NodeType.SOCIAL_CLASS)\n"
+        "graph.add_edge('ORG1', 'C001', edge_type=EdgeType.SOLIDARITY)\n"
+        "graph.add_edge('ORG1', 'C001', edge_type=EdgeType.MEMBERSHIP)\n",
+        encoding="utf-8",
+    )
+    monkeypatch.setattr("babylon.sentinels.vocabulary.checks._REPO_ROOT", tmp_path)
+    monkeypatch.setattr(
+        "babylon.sentinels.vocabulary.checks.EDGE_SOURCE_ALLOWLIST",
+        frozenset({("membership", "organization")}),
+    )
+    violations = fabricated_edge_sources()
+    assert len(violations) == 1
+    assert "solidarity" in violations[0]
+    assert "membership" not in violations[0]
+
+
+def test_edge_source_allowlist_clears_a_genuinely_allowlisted_combination(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The reverse of the above: the SAME combination, once allowlisted,
+    produces zero violations (red -> green round-trip)."""
+    (tmp_path / "src").mkdir()
+    (tmp_path / "web").mkdir()
+    (tmp_path / "tests").mkdir()
+    (tmp_path / "tests" / "sample.py").write_text(
+        "graph.add_node('ORG1', NodeType.ORGANIZATION)\n"
+        "graph.add_node('C001', NodeType.SOCIAL_CLASS)\n"
+        "graph.add_edge('ORG1', 'C001', edge_type=EdgeType.SOLIDARITY)\n",
+        encoding="utf-8",
+    )
+    monkeypatch.setattr("babylon.sentinels.vocabulary.checks._REPO_ROOT", tmp_path)
+
+    # RED: not yet allowlisted.
+    monkeypatch.setattr("babylon.sentinels.vocabulary.checks.EDGE_SOURCE_ALLOWLIST", frozenset())
+    assert fabricated_edge_sources() != []
+
+    # GREEN: allowlisted.
+    monkeypatch.setattr(
+        "babylon.sentinels.vocabulary.checks.EDGE_SOURCE_ALLOWLIST",
+        frozenset({("solidarity", "organization")}),
+    )
+    assert fabricated_edge_sources() == []

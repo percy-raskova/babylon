@@ -16,6 +16,8 @@ to develop consciousness from their material exploitation.
 
 import pytest
 
+from babylon.config.defines.doctrine import DoctrineDefines
+from babylon.engine.actions._mass_work import apply_mass_work_solidarity
 from babylon.engine.context import TickContext
 from babylon.engine.services import ServiceContainer
 from babylon.engine.systems.ideology import ConsciousnessSystem
@@ -449,3 +451,103 @@ class TestWageOppositionCrisisGate:
         expected_raw = 0.3 * sensitivity  # -balance * sensitivity, rate term stays 0
         decay_rate = defines.consciousness.agitation_decay_rate
         assert ideology["agitation"] == pytest.approx(expected_raw * (1.0 - decay_rate))
+
+
+@pytest.mark.unit
+class TestOrganizationSourcedSolidarity:
+    """ADR087's read-side rewrite: an ORGANIZATION-sourced SOLIDARITY edge
+    contributes ``solidarity_strength`` directly (gated on
+    ``negligible_transmission``, never on the source's ``class_consciousness``
+    — an org has none). Class-sourced edges keep the ORIGINAL consciousness
+    gate unchanged (regression-covered by
+    ``test_wealth_extraction_routes_to_{fascism,revolution}_with[out]_solidarity``
+    above, both still green).
+
+    The edge is built through the REAL producer
+    (:func:`~babylon.engine.actions._mass_work.apply_mass_work_solidarity`),
+    never a hand-stamped ``graph.add_edge(...)`` — the vocabulary sentinel's
+    edge-shape rule polices exactly that fabrication, and this module's own
+    ADR085 history is the reason it exists.
+    """
+
+    _ORG_ID = "ORG1"
+
+    @classmethod
+    def _graph_with_org_and_worker(cls) -> BabylonGraph:
+        graph = BabylonGraph()
+        graph.add_node(
+            PERIPHERY_WORKER_ID,
+            wealth=1.0,
+            ideology={
+                "class_consciousness": 0.5,
+                "national_identity": 0.5,
+                "agitation": 0.0,
+            },
+            _node_type="social_class",
+        )
+        graph.add_node(cls._ORG_ID, cadre_level=0.0, _node_type="organization")
+        return graph
+
+    def test_org_sourced_edge_routes_to_revolution_without_a_consciousness_gate(self) -> None:
+        """An org has no ``class_consciousness`` to gate on -- the edge's
+        ``solidarity_strength`` alone (above the noise floor) must be enough
+        to route a wealth-loss shock toward the revolutionary pole."""
+        graph = self._graph_with_org_and_worker()
+        apply_mass_work_solidarity(
+            graph,
+            self._ORG_ID,
+            dict(graph.nodes[self._ORG_ID]),
+            PERIPHERY_WORKER_ID,
+            DoctrineDefines(),
+        )
+
+        services = ServiceContainer.create()
+        system = ConsciousnessSystem()
+        context = TickContext(tick=0)
+        system.step(graph, services, context)
+
+        graph.nodes[PERIPHERY_WORKER_ID]["wealth"] = 0.3  # major extraction
+        context["tick"] = 1
+        system.step(graph, services, context)
+
+        ideology = graph.nodes[PERIPHERY_WORKER_ID]["ideology"]
+        assert ideology["class_consciousness"] > 0.5, (
+            "an org-sourced SOLIDARITY edge must route agitation to "
+            "revolution on strength alone, with no ideology to gate on"
+        )
+
+    def test_below_negligible_transmission_contributes_nothing(self) -> None:
+        """A near-zero org-sourced edge (below the noise floor) must NOT
+        move the needle — identical to an isolated worker with no edge at
+        all (mirrors ``test_wealth_extraction_routes_to_fascism_without_solidarity``).
+
+        Built via the REAL producer with a test-only ``mass_work_solidarity_gain``
+        override small enough to land below the floor -- never a hand-stamped
+        edge (see the class docstring).
+        """
+        graph = self._graph_with_org_and_worker()
+        negligible = ServiceContainer.create().defines.solidarity.negligible_transmission
+        tiny_gain_doctrine = DoctrineDefines(mass_work_solidarity_gain=negligible / 2.0)
+        apply_mass_work_solidarity(
+            graph,
+            self._ORG_ID,
+            dict(graph.nodes[self._ORG_ID]),
+            PERIPHERY_WORKER_ID,
+            tiny_gain_doctrine,
+        )
+
+        services = ServiceContainer.create()
+        system = ConsciousnessSystem()
+        context = TickContext(tick=0)
+        system.step(graph, services, context)
+
+        graph.nodes[PERIPHERY_WORKER_ID]["wealth"] = 0.3
+        context["tick"] = 1
+        system.step(graph, services, context)
+
+        ideology = graph.nodes[PERIPHERY_WORKER_ID]["ideology"]
+        assert ideology["national_identity"] > 0.5, (
+            "below the negligible-transmission floor, an org-sourced edge "
+            "contributes nothing -- the shock routes to fascism exactly as "
+            "if no solidarity existed at all"
+        )

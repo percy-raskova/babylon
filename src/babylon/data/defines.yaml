@@ -978,6 +978,9 @@ doctrine:
   congress_delta_weight: 0.15  # Ruling 5 / DT-5: linear weight of the tag-vector delta since the last congress on the purge-success probability (Yugoslavia-1948 pattern — sustained material divergence predicts direction). (>= 0.0)
   congress_contingency_floor: 0.1  # Ruling 5 / DT-5: purge-success probability is clamped to [floor, 1-floor] — a nonzero contingent term stays live at ANY delta (Lushan 1959 / Gang of Four 1976: the decisive information was never in the observable state). (> 0.0, < 0.5)
   theory_bonus_per_class_analysis: 0.02  # Unit 6b feedback: per-point CLASS_ANALYSIS multiplier on an org's consciousness-raising delta (corpus: 'High: correct prioritization, theory bonus'); tag capped at 10 => max +20% at default. (>= 0.0)
+  mass_work_solidarity_gain: 0.05  # Unit 6b write side (ADR087): base org->class SOLIDARITY solidarity_strength gain per mass-work verb dispatch (EDUCATE/PROPAGANDIZE/PROVIDE_SERVICE targeting a social_class), before MASS_LINK amplification. (>= 0.0, <= 1.0)
+  mass_link_weight: 0.1  # Unit 6b write side (ADR087): multiplier on the org's MASS_LINK tag (range [0, 10]) amplifying mass_work_solidarity_gain -- gain = base * (1 + weight * mass_link); at the default weight and MASS_LINK's ceiling (10) the gain doubles. (>= 0.0)
+  mass_work_solidarity_decay_rate: 0.02  # Unit 6b write side (ADR087): per-tick multiplicative decay of org-sourced SOLIDARITY edges' solidarity_strength -- a mass link not renewed by work withers (floored at 0). Faster than tag_decay_rate (0.55%/tick): an edge is a concrete organizing relationship, not accumulated theory, and lapses sooner without renewal. (>= 0.0, <= 1.0)
 
 # ---------------------------------------------------------------------
 # market — Price⟷value scissors dynamics coefficients (per-tick units).

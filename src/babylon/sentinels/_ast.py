@@ -14,7 +14,7 @@ from __future__ import annotations
 import ast
 from pathlib import Path
 
-from babylon.models.enums.topology import NodeType
+from babylon.models.enums.topology import EdgeType, NodeType
 from babylon.sentinels.base import SentinelCheckError
 
 
@@ -423,3 +423,204 @@ def add_node_attribute_stamps(path: Path) -> list[NodeAttributeStamp]:
         stamps += [(call_node.lineno, node_type, attr) for attr in attrs]
 
     return sorted(set(stamps))
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Edge-shape closure (Rule d, ADR087): every (edge_type, SOURCE node type) a
+# fixture stamps must have a production producer. Deliberately a SEPARATE,
+# additive family of helpers from the node-vocabulary ones above -- narrower
+# scoped (only ``add_edge``/``Relationship`` call sites whose SOURCE resolves
+# to a same-file node-type binding), so it does not risk the well-tested
+# node-vocabulary extractor's behavior.
+# ─────────────────────────────────────────────────────────────────────────────
+
+#: One (edge_type, source_node_type) combination a module stamps:
+#: ``(lineno, edge_type_value, source_node_type_value)``.
+EdgeSourceUse = tuple[int, str, str]
+
+#: Pydantic entity-model constructor names mapped to the NodeType they mint,
+#: mirroring ``vocabulary.registry.MODEL_FIELDS_BY_NODE_TYPE``'s grouping --
+#: the only two SOLIDARITY producers in ``src/`` (``scenarios/_legacy.py`` +
+#: ``_legacy_wayne.py``) build edges via ``Relationship(source_id=...)``
+#: against nodes built via these constructors, never a raw ``add_node`` call.
+_ENTITY_CTOR_NODE_TYPES: dict[str, str] = {
+    "SocialClass": NodeType.SOCIAL_CLASS.value,
+    "Territory": NodeType.TERRITORY.value,
+    "Organization": NodeType.ORGANIZATION.value,
+    "StateApparatus": NodeType.ORGANIZATION.value,
+    "Business": NodeType.ORGANIZATION.value,
+    "PoliticalFaction": NodeType.ORGANIZATION.value,
+    "CivilSocietyOrg": NodeType.ORGANIZATION.value,
+    "Institution": NodeType.INSTITUTION.value,
+    "IndustryHyperedge": NodeType.INDUSTRY.value,
+    "Sovereign": NodeType.SOVEREIGN.value,
+    "BalkanizationFaction": NodeType.FACTION.value,
+}
+
+
+def _enum_member_value(node: ast.expr, enum_cls: type, enum_name: str) -> str | None:
+    """Resolve ``EnumName.MEMBER`` (optionally ``.value``-suffixed) or a bare
+    string literal to the member's string value.
+
+    A deliberately separate resolver from ``node_type_uses``'s internal
+    ``_leaf_value`` (never modified by this addition) — this one also
+    unwraps a trailing ``.value`` (``EdgeType.SOLIDARITY.value``), a form
+    that appears at several real ``add_edge(..., edge_type=X.value)`` call
+    sites this rule must not go blind to.
+    """
+    if isinstance(node, ast.Constant) and isinstance(node.value, str):
+        return node.value
+    target = node
+    if (
+        isinstance(target, ast.Attribute)
+        and target.attr == "value"
+        and isinstance(target.value, ast.Attribute)
+    ):
+        target = target.value
+    if (
+        isinstance(target, ast.Attribute)
+        and isinstance(target.value, ast.Name)
+        and target.value.id == enum_name
+    ):
+        member = enum_cls.__members__.get(target.attr)  # type: ignore[attr-defined]
+        return None if member is None else str(member.value)
+    return None
+
+
+def _id_key(node: ast.expr) -> str | None:
+    """The binding key for an id-position expression: its literal string
+    value, or the ``Name`` it references (module-level ID constants are the
+    common form -- the SAME ``Name`` typically appears at both the
+    node-creation site and the edge-creation site)."""
+    if isinstance(node, ast.Constant) and isinstance(node.value, str):
+        return node.value
+    if isinstance(node, ast.Name):
+        return node.id
+    return None
+
+
+def _local_source_type_bindings(tree: ast.Module) -> dict[str, str]:
+    """Map each locally-bound id key to the node type it was created with.
+
+    Recognizes ``add_node(id_expr, TYPE, ...)`` (both the 2nd-positional and
+    ``_node_type=``/``node_type=`` keyword forms) and pydantic entity
+    constructors (``SocialClass(id=..., ...)`` etc, via
+    :data:`_ENTITY_CTOR_NODE_TYPES`) within the SAME file -- deliberately NOT
+    cross-file (a module-level ID constant shared between files still
+    resolves per-file, since the constructor/add_node call and the
+    edge-creation call are always co-located in every real producer today).
+    """
+    bindings: dict[str, str] = {}
+    for node in ast.walk(tree):
+        if not isinstance(node, ast.Call):
+            continue
+        if isinstance(node.func, ast.Attribute) and node.func.attr == "add_node":
+            if not node.args:
+                continue
+            type_value: str | None = None
+            if len(node.args) >= 2:
+                type_value = _enum_member_value(node.args[1], NodeType, "NodeType")
+            for kw in node.keywords:
+                if kw.arg in ("_node_type", "node_type"):
+                    resolved = _enum_member_value(kw.value, NodeType, "NodeType")
+                    if resolved is not None:
+                        type_value = resolved
+            if type_value is None:
+                continue
+            key = _id_key(node.args[0])
+            if key is not None:
+                bindings[key] = type_value
+        elif isinstance(node.func, ast.Name) and node.func.id in _ENTITY_CTOR_NODE_TYPES:
+            id_kw = next((kw for kw in node.keywords if kw.arg == "id"), None)
+            if id_kw is None:
+                continue
+            key = _id_key(id_kw.value)
+            if key is not None:
+                bindings[key] = _ENTITY_CTOR_NODE_TYPES[node.func.id]
+    return bindings
+
+
+def _add_edge_call_shape(call: ast.Call) -> tuple[ast.expr | None, ast.expr | None]:
+    """``add_edge(source, target, edge_type=X)``'s (source, edge_type) exprs.
+
+    Supports both the 3rd-positional protocol form and the ``edge_type=``
+    keyword authoring form (:meth:`~babylon.topology.graph.BabylonGraph.add_edge`).
+    """
+    source_expr = call.args[0] if len(call.args) >= 2 else None
+    edge_type_expr = call.args[2] if len(call.args) >= 3 else None
+    for kw in call.keywords:
+        if kw.arg == "edge_type":
+            edge_type_expr = kw.value
+    return source_expr, edge_type_expr
+
+
+def _relationship_call_shape(call: ast.Call) -> tuple[ast.expr | None, ast.expr | None]:
+    """``Relationship(source_id=X, edge_type=Y, ...)``'s (source, edge_type) exprs."""
+    source_expr: ast.expr | None = None
+    edge_type_expr: ast.expr | None = None
+    for kw in call.keywords:
+        if kw.arg == "source_id":
+            source_expr = kw.value
+        elif kw.arg == "edge_type":
+            edge_type_expr = kw.value
+    return source_expr, edge_type_expr
+
+
+def _edge_stamp_shape(call: ast.Call) -> tuple[ast.expr | None, ast.expr | None]:
+    """Dispatch one call node to its (source, edge_type) expr pair, if any."""
+    if isinstance(call.func, ast.Attribute) and call.func.attr == "add_edge":
+        return _add_edge_call_shape(call)
+    if isinstance(call.func, ast.Name) and call.func.id == "Relationship":
+        return _relationship_call_shape(call)
+    return None, None
+
+
+def edge_source_type_uses(path: Path) -> list[EdgeSourceUse]:
+    """Extract every (edge_type, source_node_type) combination a module stamps.
+
+    Recognizes two syntactic forms, matched against a same-file id->type
+    binding (see :func:`_local_source_type_bindings`):
+
+    * ``add_edge(source, target, edge_type=EdgeType.X, ...)`` / the
+      3rd-positional protocol form (:meth:`~babylon.topology.graph.BabylonGraph.add_edge`,
+      the direct-graph-write pattern verb resolvers use) -- the source's key
+      is the FIRST positional argument.
+    * ``Relationship(source_id=X, target_id=Y, edge_type=EdgeType.Z, ...)``
+      (:class:`~babylon.models.entities.relationship.Relationship`, the
+      scenario-genesis pattern) -- the source's key is the ``source_id``
+      keyword.
+
+    Both a variable source (unresolvable against the same file's bindings)
+    and an unresolvable edge type contribute nothing -- honest absence, never
+    a guess (mirrors :func:`add_node_attribute_stamps`'s own philosophy).
+
+    :param path: Source file to parse.
+    :returns: ``(lineno, edge_type, source_node_type)`` triples, sorted.
+    :raises SentinelCheckError: If the file is missing or unparseable.
+    """
+    try:
+        tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
+    except OSError as exc:
+        raise SentinelCheckError(f"cannot read {path}: {exc}") from exc
+    except SyntaxError as exc:
+        raise SentinelCheckError(f"cannot parse {path}: {exc}") from exc
+
+    bindings = _local_source_type_bindings(tree)
+    uses: list[EdgeSourceUse] = []
+    for node in ast.walk(tree):
+        if not isinstance(node, ast.Call):
+            continue
+        source_expr, edge_type_expr = _edge_stamp_shape(node)
+        if source_expr is None or edge_type_expr is None:
+            continue
+        edge_value = _enum_member_value(edge_type_expr, EdgeType, "EdgeType")
+        if edge_value is None:
+            continue
+        source_key = _id_key(source_expr)
+        if source_key is None:
+            continue
+        source_type = bindings.get(source_key)
+        if source_type is None:
+            continue
+        uses.append((node.lineno, edge_value, source_type))
+    return sorted(set(uses))

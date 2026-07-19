@@ -46,6 +46,7 @@ from babylon.sentinels.exemptions import SentinelExemption
 
 __all__ = [
     "ATTRIBUTE_EXEMPTIONS",
+    "EDGE_SOURCE_ALLOWLIST",
     "EXTRA_STAMPABLE_ATTRIBUTES",
     "LITERAL_EXEMPTIONS",
     "MODEL_FIELDS_BY_NODE_TYPE",
@@ -489,4 +490,114 @@ ATTRIBUTE_EXEMPTIONS: Final[tuple[SentinelExemption, ...]] = (
         date="2026-07-18",
         tracking_task="#45",
     ),
+)
+
+#: Rule (d) (ADR087, 2026-07-19) — edge-shape closure: every
+#: ``(edge_type, SOURCE node type)`` combination stamped anywhere in
+#: :data:`SCAN_ROOTS` via a literal ``add_edge(...)``/``Relationship(...)``
+#: call (source resolved against a SAME-FILE ``add_node``/entity-constructor
+#: binding — see :func:`babylon.sentinels._ast.edge_source_type_uses`) must
+#: match a combination :data:`PRODUCTION_ROOTS` produces the SAME literal way.
+#: This is a NARROWER static lens than rule (b)'s node-type closure: most
+#: edges in this codebase are NOT created via a literal, statically-resolvable
+#: call at all —
+#:
+#: 1. **Verb resolvers write with a runtime ``org_id``/``target_id``**
+#:    (``engine/actions/negotiate.py``'s real TRANSACTIONAL producer,
+#:    ``engine/actions/_mass_work.py``'s new SOLIDARITY producer, ADR087) —
+#:    the source is a function PARAMETER, never a literal or same-file bound
+#:    Name, so these real producers are invisible to this rule by
+#:    construction (mirrors rule (c)'s own explicit ``update_node``
+#:    scope-out: "inferring one would require dataflow analysis this static
+#:    scanner does not do").
+#: 2. **Bulk/dynamic hydration** (``persistence/postgres_runtime/_legacy.py``'s
+#:    ``graph.add_edge(row["source_id"], row["target_id"], **attrs)``,
+#:    TIGER-derived territory ADJACENCY, LODES-derived MEMBERSHIP/EMPLOYMENT) —
+#:    the source id is a runtime value from a data row, never a literal.
+#: 3. **Engine-computed edges** (``FactionInfluenceSystem``'s INFLUENCES,
+#:    written from territory computation at runtime).
+#:
+#: This rule therefore catches EXACTLY the class of bug ADR085 diagnosed — a
+#: fixture that ALSO hand-stamps the source node's type in the SAME file,
+#: closing a loop with no external referent — not "every edge in the game has
+#: a literal Python producer" (false; see above). Every entry below is a
+#: PRE-EXISTING (edge_type, source_type) combination this rule's static lens
+#: cannot confirm a producer for, verified NOT to be a masked instance of the
+#: ADR085 bug (each cited). TODO(owner): entries under category 1/2/3 could
+#: be closed by teaching the scanner real dataflow, but that is a
+#: disproportionate undertaking for what each individually is — a documented,
+#: honest gap, not a live defect. This list must only ever shrink.
+#:
+#: - ``("ADJACENCY"/"adjacency", "territory")``: category 2 — TIGER-derived
+#:   spatial adjacency; heavily consumed (``engine/systems/territory.py``,
+#:   ``domain/bifurcation/ceiling.py``) but never literally produced.
+#: - ``("EXPLOITATION", "social_class")`` / ``("SOLIDARITY", "social_class")``
+#:   / ``("TENANCY", "social_class")`` / ``("WAGES", "social_class")``
+#:   (UPPERCASE): ``tests/unit/engine/test_graph_conformance.py`` +
+#:   ``test_graph_iteration_order.py`` — generic graph-PROTOCOL conformance
+#:   tests using the bare enum NAME as an arbitrary string, not
+#:   ``EdgeType.X.value`` — the exact "generic/duck-typed, not a real shape
+#:   claim" reasoning already covering these two files' node-attribute rows
+#:   (Reason 1, above). The real lowercase combination
+#:   (``"solidarity"``/``"exploitation"``/etc., ``"social_class"``) IS
+#:   produced (``scenarios/_legacy.py`` + ``_legacy_wayne.py``) and needs no
+#:   allowlisting.
+#: - ``("command", "key_figure")`` / ``("membership", "key_figure")``:
+#:   ``key_figure`` is DECLARED but NOT production-stamped (``NodeType``'s own
+#:   docstring: "the node type remains only to type ``classify_topology``'s
+#:   COMMAND-edge test fixtures" — the backing ``KeyFigure`` model was retired,
+#:   ADR084/III.10). Mirrors :data:`UNSTAMPED_QUERY_ALLOWLIST`'s ``hex``/
+#:   ``community`` precedent exactly.
+#: - ``("exploitation", "organization")``: ``tests/unit/web/test_engine_bridge.py``
+#:   — a plausible real economic shape (a Business/StateApparatus extracting
+#:   from a class) the two legacy scenario factories simply never wire;
+#:   category 1/3 (an org-sourced extraction edge would come from a runtime
+#:   economic computation, not a literal).
+#: - ``("friendship", "social_class")``: ``tests/unit/models/test_relationship.py::
+#:   test_rejects_invalid_edge_type_string`` — a DELIBERATE negative control:
+#:   asserts ``Relationship(edge_type="friendship")`` is REJECTED
+#:   (``pytest.raises(ValidationError)``). Mirrors :data:`LITERAL_EXEMPTIONS`'
+#:   ``balkanization_faction`` precedent — naming the bogus type is the point.
+#: - ``("influences", "faction")``: ``FactionInfluenceSystem`` reads INFLUENCES
+#:   (category 3 — engine-computed from territory state at runtime, never a
+#:   literal ``add_edge``).
+#: - ``("membership", "organization")`` / ``("membership", "social_class")``:
+#:   category 1/2 — MEMBERSHIP is consumed extensively (``ooda/_helpers.py``,
+#:   ``domain/organizations/composition.py``, ``engine/systems/reactionary.py``,
+#:   ``engine/systems/community.py``) but every real writer found uses a
+#:   runtime/dynamic source; ``test_community_membership_lint.py``'s row is
+#:   additionally a deliberate negative control ("Deliberately seed the
+#:   violation") for ``NoCommunityFanOut``.
+#: - ``("repression", "social_class")``: ``tests/unit/models/test_relationship.py::
+#:   test_repression_edge`` — a ``Relationship`` MODEL unit test (can the
+#:   model represent a comprador->periphery REPRESSION edge), independent of
+#:   whether the two CURRENT scenario factories choose to wire one.
+#: - ``("tenancy", "organization")``: ``tests/unit/web/test_map_dominant_class_solidarity.py::
+#:   test_non_social_class_tenants_are_excluded`` — the test's own comment:
+#:   "malformed data, still real-world-possible" — a deliberate negative case
+#:   proving the web bridge's tenancy reader excludes non-social_class tenants.
+#: - ``("transactional", "organization")``: category 1 — the real producer
+#:   is ``engine/actions/negotiate.py``'s
+#:   ``graph.add_edge(org_id, target_id, edge_type=EdgeType.TRANSACTIONAL.value)``,
+#:   invisible to this rule because ``org_id``/``target_id`` are function
+#:   parameters, never literals.
+EDGE_SOURCE_ALLOWLIST: Final[frozenset[tuple[str, str]]] = frozenset(
+    {
+        ("ADJACENCY", "territory"),
+        ("adjacency", "territory"),
+        ("EXPLOITATION", "social_class"),
+        ("SOLIDARITY", "social_class"),
+        ("TENANCY", "social_class"),
+        ("WAGES", "social_class"),
+        ("command", "key_figure"),
+        ("membership", "key_figure"),
+        ("exploitation", "organization"),
+        ("friendship", "social_class"),
+        ("influences", "faction"),
+        ("membership", "organization"),
+        ("membership", "social_class"),
+        ("repression", "social_class"),
+        ("tenancy", "organization"),
+        ("transactional", "organization"),
+    }
 )

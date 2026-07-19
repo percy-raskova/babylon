@@ -229,3 +229,39 @@ def test_shape_founding_bug_would_be_caught() -> None:
     field, so rule (c) would reject a fixture stamping it."""
     assert "territory_ids" not in MODEL_FIELDS_BY_NODE_TYPE["social_class"]
     assert "territory_ids" in MODEL_FIELDS_BY_NODE_TYPE["organization"]
+
+
+# ---------------------------------------------------------------------------
+# Mutation-validation: SentinelExemption teeth, exercised through the real
+# rule (c) check (gate-governance ruling, 2026-07-18).
+# ---------------------------------------------------------------------------
+
+
+def test_attribute_exemption_does_not_absorb_a_different_symbol(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """An exemption exact-keyed to one ``(file, node_type, attribute)``
+    triple must NOT clear a genuinely different fabricated attribute in the
+    SAME file on the SAME node type -- same shape, different symbol."""
+    from babylon.sentinels.exemptions import SentinelExemption
+
+    (tmp_path / "src").mkdir()
+    (tmp_path / "web").mkdir()
+    (tmp_path / "tests").mkdir()
+    (tmp_path / "src" / "sample.py").write_text(
+        'g.add_node("C1", "social_class", exempted_fake_attr=1.0, other_fake_attr=2.0)\n',
+        encoding="utf-8",
+    )
+    exemption = SentinelExemption(
+        key=("node_attribute", "src/sample.py", "social_class", "exempted_fake_attr"),
+        reason="test exemption",
+        owner="test",
+        date="2026-07-18",
+        tracking_task="#1",
+    )
+    monkeypatch.setattr("babylon.sentinels.vocabulary.checks._REPO_ROOT", tmp_path)
+    monkeypatch.setattr("babylon.sentinels.vocabulary.checks.ATTRIBUTE_EXEMPTIONS", (exemption,))
+    violations = fabricated_node_attributes()
+    assert len(violations) == 1
+    assert "other_fake_attr" in violations[0]
+    assert "exempted_fake_attr" not in violations[0]

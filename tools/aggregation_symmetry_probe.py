@@ -48,6 +48,7 @@ from babylon.sentinels.aggregation.registry import (  # noqa: E402
     DeclaredPartialCoverageAggregate,
 )
 from babylon.sentinels.base import LabelledCheck, SentinelCheckError, run_sensor  # noqa: E402
+from babylon.sentinels.exemptions import is_exempt  # noqa: E402
 
 _WHY: str = (
     "WHY THIS FAILS: Constitution III.11 (Loud Failure / honest-null) forbids a "
@@ -114,8 +115,9 @@ def _check_hex_features_heat(row: DeclaredPartialCoverageAggregate) -> list[str]
         "group -- expected None.\n"
         f"    denominator: {row.denominator_note}\n"
         f"    consequence: {row.consequence_if_regressed}\n"
-        "    fix: restore the heat_pop partial-coverage denominator, or add a "
-        "reasoned AggregationExemption -- never a silent registry removal.\n"
+        "    fix: restore the heat_pop partial-coverage denominator, or add a reasoned "
+        "SentinelExemption (key=('aggregate', name), reason, owner, date, tracking_task) "
+        "to AGGREGATION_EXEMPTIONS -- never a silent registry removal.\n"
         f"    {_WHY}"
     ]
 
@@ -151,8 +153,9 @@ def _check_state_apparatus_dashboard_heat(row: DeclaredPartialCoverageAggregate)
         "all-masked session -- expected None.\n"
         f"    denominator: {row.denominator_note}\n"
         f"    consequence: {row.consequence_if_regressed}\n"
-        "    fix: restore the visible_heats-only sum, or add a reasoned "
-        "AggregationExemption -- never a silent registry removal.\n"
+        "    fix: restore the visible_heats-only sum, or add a reasoned SentinelExemption "
+        "(key=('aggregate', name), reason, owner, date, tracking_task) to "
+        "AGGREGATION_EXEMPTIONS -- never a silent registry removal.\n"
         f"    {_WHY}"
     ]
 
@@ -167,11 +170,6 @@ _PROBES: dict[str, Callable[[DeclaredPartialCoverageAggregate], list[str]]] = {
 }
 
 
-def _exempted_names() -> frozenset[str]:
-    """The set of row names carrying a recorded ``AggregationExemption``."""
-    return frozenset(row.name for row in AGGREGATION_EXEMPTIONS)
-
-
 def check_all_declared_aggregates() -> list[str]:
     """Run every declared row's probe and collect violations.
 
@@ -181,10 +179,9 @@ def check_all_declared_aggregates() -> list[str]:
         declared (a stale/incomplete registration), or if a probe itself
         hits an infrastructure failure.
     """
-    exempted = _exempted_names()
     violations: list[str] = []
     for row in DECLARED_AGGREGATES:
-        if row.name in exempted:
+        if is_exempt(("aggregate", row.name), AGGREGATION_EXEMPTIONS):
             continue
         probe = _PROBES.get(row.name)
         if probe is None:

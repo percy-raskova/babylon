@@ -50,6 +50,7 @@ from typing import Final
 from babylon.models.enums.topology import NodeType
 from babylon.sentinels._ast import add_node_attribute_stamps, node_type_uses
 from babylon.sentinels.base import LabelledCheck, SentinelCheckError, run_sensor
+from babylon.sentinels.exemptions import is_exempt
 from babylon.sentinels.vocabulary.registry import (
     ATTRIBUTE_EXEMPTIONS,
     EXTRA_STAMPABLE_ATTRIBUTES,
@@ -155,7 +156,9 @@ def invented_node_types() -> list[str]:
     for path in _python_files(SCAN_ROOTS):
         rel = path.relative_to(_REPO_ROOT)
         for lineno, literal, role in node_type_uses(path):
-            if literal in _ALLOWED or (rel.as_posix(), literal) in LITERAL_EXEMPTIONS:
+            if literal in _ALLOWED or is_exempt(
+                ("node_type_literal", rel.as_posix(), literal), LITERAL_EXEMPTIONS
+            ):
                 continue
             verb = "stamps" if role == "stamp" else "queries"
             violations.append(
@@ -248,7 +251,7 @@ def fabricated_node_attributes() -> list[str]:
                 continue
             if node_type in TICK_PREFIXED_NODE_TYPES and attr.startswith("tick_"):
                 continue
-            if (rel_posix, node_type, attr) in ATTRIBUTE_EXEMPTIONS:
+            if is_exempt(("node_attribute", rel_posix, node_type, attr), ATTRIBUTE_EXEMPTIONS):
                 continue
             violations.append(
                 f'{rel}:{lineno} stamps attribute "{attr}" on a "{node_type}" node, '

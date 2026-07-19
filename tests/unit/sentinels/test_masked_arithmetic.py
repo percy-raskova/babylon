@@ -215,7 +215,7 @@ def test_raises_when_function_not_found(tmp_path: Path, monkeypatch: pytest.Monk
 
 
 def test_exempted_row_is_skipped(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    from babylon.sentinels.masked_arithmetic.registry import MaskedArithmeticExemption
+    from babylon.sentinels.exemptions import SentinelExemption
 
     monkeypatch.setattr("babylon.sentinels.masked_arithmetic.checks._REPO_ROOT", tmp_path)
     rel = "buggy2.py"
@@ -231,13 +231,62 @@ def test_exempted_row_is_skipped(tmp_path: Path, monkeypatch: pytest.MonkeyPatch
         payload_note="synthetic",
         consequence_if_regressed="synthetic",
     )
-    exemption = MaskedArithmeticExemption(
-        name="synthetic_row", reason="test", owner="test", date="2026-07-18"
+    exemption = SentinelExemption(
+        key=("fogged_consumer", "synthetic_row"),
+        reason="test",
+        owner="test",
+        date="2026-07-18",
+        tracking_task="#1",
     )
     monkeypatch.setattr(
         "babylon.sentinels.masked_arithmetic.checks.MASKED_ARITHMETIC_EXEMPTIONS", (exemption,)
     )
     assert unguarded_masked_arithmetic((row,)) == []
+
+
+def test_exemption_does_not_absorb_a_different_row_of_the_same_class(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Mutation-validation of the teeth: an exemption for one function/field
+    row must NOT silently clear a genuinely-different unguarded row."""
+    from babylon.sentinels.exemptions import SentinelExemption
+
+    monkeypatch.setattr("babylon.sentinels.masked_arithmetic.checks._REPO_ROOT", tmp_path)
+    rel = "buggy3.py"
+    (tmp_path / rel).write_text(
+        "def target(orgs):\n    return sum(float(o.get('heat', 0.0)) for o in orgs)\n",
+        encoding="utf-8",
+    )
+    exempted_row = DeclaredFoggedConsumer(
+        name="synthetic_row",
+        def_file=rel,
+        function_name="target",
+        field="heat",
+        payload_note="synthetic",
+        consequence_if_regressed="synthetic",
+    )
+    other_row = DeclaredFoggedConsumer(
+        name="a_completely_different_row",
+        def_file=rel,
+        function_name="target",
+        field="heat",
+        payload_note="synthetic",
+        consequence_if_regressed="synthetic",
+    )
+    exemption = SentinelExemption(
+        key=("fogged_consumer", "synthetic_row"),
+        reason="test",
+        owner="test",
+        date="2026-07-18",
+        tracking_task="#1",
+    )
+    monkeypatch.setattr(
+        "babylon.sentinels.masked_arithmetic.checks.MASKED_ARITHMETIC_EXEMPTIONS", (exemption,)
+    )
+    violations = unguarded_masked_arithmetic((exempted_row, other_row))
+    assert len(violations) == 1
+    assert "a_completely_different_row" in violations[0]
+    assert "synthetic_row" not in violations[0]
 
 
 # ---------------------------------------------------------------------------

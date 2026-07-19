@@ -25,7 +25,6 @@ from babylon.sentinels.masked_arithmetic.registry import (
     DECLARED_FOGGED_CONSUMERS,
     MASKED_ARITHMETIC_EXEMPTIONS,
     DeclaredFoggedConsumer,
-    MaskedArithmeticExemption,
 )
 
 __all__ = [
@@ -33,7 +32,6 @@ __all__ = [
     "DECLARED_FOGGED_CONSUMERS",
     "MASKED_ARITHMETIC_EXEMPTIONS",
     "DeclaredFoggedConsumer",
-    "MaskedArithmeticExemption",
     "find_function",
     "guard_exists_for_field",
     "unguarded_arithmetic_sites",

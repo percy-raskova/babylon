@@ -37,42 +37,13 @@ from __future__ import annotations
 
 from typing import Final
 
-from pydantic import BaseModel, ConfigDict, model_validator
+from babylon.sentinels.exemptions import SentinelExemption
 
-__all__ = ["FOG_CONTAINMENT_EXEMPTIONS", "FogContainmentExemption"]
-
-
-class FogContainmentExemption(BaseModel):
-    """A political field known to legitimately escape masking, on record.
-
-    Never a silent shrug: every row names the owner and the dated
-    reasoning, exactly as
-    :class:`babylon.sentinels.inert.registry.InertExemption` does. No field
-    is exempted today — every member of ``POLITICAL_FIELDS``/
-    ``ORG_POLITICAL_FIELDS`` is expected to mask cleanly.
-    """
-
-    model_config = ConfigDict(frozen=True, extra="forbid")
-
-    field: str
-    reason: str
-    owner: str
-    date: str
-
-    @model_validator(mode="after")
-    def _validate_shape(self) -> FogContainmentExemption:
-        """Reject a malformed row loudly at import (Constitution III.11).
-
-        :returns: ``self`` when valid.
-        :raises ValueError: If any field is blank.
-        """
-        for field_name in ("field", "reason", "owner", "date"):
-            if not getattr(self, field_name).strip():
-                raise ValueError(f"FogContainmentExemption.{field_name} must be non-empty")
-        return self
-
+__all__ = ["FOG_CONTAINMENT_EXEMPTIONS"]
 
 #: Deliberately EMPTY: every declared political field is expected to mask
-#: cleanly. A future row here must name an owner and a dated reason, same
-#: as babylon.sentinels.inert.registry.INERT_EXEMPTIONS.
-FOG_CONTAINMENT_EXEMPTIONS: Final[tuple[FogContainmentExemption, ...]] = ()
+#: cleanly. No field is exempted today. A future row's ``key`` must be
+#: ``("political_field", field)`` (gate-governance ruling, 2026-07-18 —
+#: replaces the bespoke ``FogContainmentExemption`` class with the
+#: family-wide :class:`~babylon.sentinels.exemptions.SentinelExemption`).
+FOG_CONTAINMENT_EXEMPTIONS: Final[tuple[SentinelExemption, ...]] = ()

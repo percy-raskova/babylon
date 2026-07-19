@@ -31,13 +31,14 @@ framing):
   site (a subscript or ``.get()``/``.pop()`` access naming that exact key).
 
 :data:`UNCONSUMED_EXEMPTIONS` is the one narrow escape hatch — an
-owner-approved, dated, written reason a declared field is *known* to
-currently lack a consumer, mirroring
-:data:`babylon.sentinels.inert.registry.INERT_EXEMPTIONS`. As of this
-writing it is deliberately EMPTY: the one declared row
-(``reification_buffer``) is a real, unremediated gap this sentinel is
-built to surface loudly, not paper over — see the module's own liveness
-test tier for the current (RED) finding.
+owner-approved, dated, tracked reason a declared field is *known* to
+currently lack a consumer, recorded as the family-wide
+:class:`~babylon.sentinels.exemptions.SentinelExemption` (gate-governance
+ruling, 2026-07-18 — replaces a bespoke ``UnconsumedExemption`` class that
+duplicated four sibling sentinels' identical ``name``/``reason``/``owner``/
+``date`` shape). It holds ONE row: ``reification_buffer`` is a real gap
+this sentinel is built to surface, not silently drop — wiring a real
+consumer is tracked as task #42, not this row's problem to solve.
 
 Layer 0.5: imports nothing above :mod:`babylon.models`.
 """
@@ -48,12 +49,13 @@ from typing import Final
 
 from pydantic import BaseModel, ConfigDict, model_validator
 
+from babylon.sentinels.exemptions import SentinelExemption
+
 __all__ = [
     "DECLARED_COMPUTED_FIELDS",
     "PRODUCTION_ROOTS",
     "UNCONSUMED_EXEMPTIONS",
     "DeclaredComputedField",
-    "UnconsumedExemption",
 ]
 
 #: Trees scanned for a production READ site. Test files are EXCLUDED no
@@ -112,39 +114,6 @@ class DeclaredComputedField(BaseModel):
         return self
 
 
-class UnconsumedExemption(BaseModel):
-    """A declared computed field known to lack a consumer, on record.
-
-    Never a silent shrug: every row names the owner and the dated
-    reasoning, exactly as
-    :class:`babylon.sentinels.inert.registry.InertExemption` does.
-
-    :ivar name: The exempted row's :class:`DeclaredComputedField.name`.
-    :ivar reason: Why the gap is tolerated right now.
-    :ivar owner: Who approved the exemption.
-    :ivar date: ISO date the exemption was recorded.
-    """
-
-    model_config = ConfigDict(frozen=True, extra="forbid")
-
-    name: str
-    reason: str
-    owner: str
-    date: str
-
-    @model_validator(mode="after")
-    def _validate_shape(self) -> UnconsumedExemption:
-        """Reject a malformed row loudly at import (Constitution III.11).
-
-        :returns: ``self`` when valid.
-        :raises ValueError: If any field is blank.
-        """
-        for field_name in ("name", "reason", "owner", "date"):
-            if not getattr(self, field_name).strip():
-                raise ValueError(f"UnconsumedExemption.{field_name} must be non-empty")
-        return self
-
-
 #: The one seeded row (Track 1 Task 10). Verified 2026-07-18 by grep across
 #: ``src``/``web``: only the write site
 #: (``engine/systems/ideology.py::ConsciousnessSystem.step``), the model
@@ -179,10 +148,31 @@ DECLARED_COMPUTED_FIELDS: Final[tuple[DeclaredComputedField, ...]] = (
     ),
 )
 
-#: Deliberately EMPTY. The one DECLARED_COMPUTED_FIELDS row above is a real,
-#: currently-unremediated gap (see its consequence_if_unread) -- this
-#: sentinel is built to report that honestly (a RED finding against the real
-#: registry, not a green rubber stamp), never to launder it via a silent
-#: exemption. A future row here must name an owner and a dated reason, same
-#: as babylon.sentinels.inert.registry.INERT_EXEMPTIONS.
-UNCONSUMED_EXEMPTIONS: Final[tuple[UnconsumedExemption, ...]] = ()
+#: The one exemption (gate-governance ruling, 2026-07-18). Wiring
+#: ``reification_buffer`` into a real consumer (the natural target is
+#: ``route_agitation_to_ternary`` — see the module docstring's
+#: ``consequence_if_unread``) moves ``qa:regression`` baselines, so it is
+#: tracked as its own unit of work (task #42: "#37 follow-ups ... 5
+#: sentinels"), not silently absorbed into this governance task. This is a
+#: recorded, revisitable decision to hold the gate GREEN while that work is
+#: pending -- not a rubber stamp: the row's own ``reason`` restates the exact
+#: gap (see ``DECLARED_COMPUTED_FIELDS[0].consequence_if_unread`` above), and
+#: the key is tagged ``("computed_field", name)`` so it can never leak onto
+#: an unrelated finding (see :mod:`babylon.sentinels.exemptions`).
+UNCONSUMED_EXEMPTIONS: Final[tuple[SentinelExemption, ...]] = (
+    SentinelExemption(
+        key=("computed_field", "reification_buffer"),
+        reason=(
+            "compute_reification_buffer() has a genuine production caller "
+            "(ConsciousnessSystem.step) and writes material_conditions"
+            "['reification_buffer'] every tick, but nothing downstream reads the "
+            "key back yet -- wiring a real consumer (route_agitation_to_ternary is "
+            "the natural target) changes bifurcation-routing behavior and moves "
+            "qa:regression baselines, so it is tracked as its own unit of work "
+            "rather than folded into this gate-governance change."
+        ),
+        owner="Persephone Raskova",
+        date="2026-07-18",
+        tracking_task="#42",
+    ),
+)

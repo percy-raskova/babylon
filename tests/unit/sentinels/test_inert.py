@@ -331,6 +331,62 @@ def test_producers_check_passes_on_the_real_reification_buffer_row() -> None:
     assert producers_without_production_caller(DECLARED_PRODUCERS) == []
 
 
+def test_exempted_store_is_skipped(monkeypatch: pytest.MonkeyPatch) -> None:
+    from babylon.sentinels.exemptions import SentinelExemption
+
+    phantom = DeclaredStore(
+        name="phantom_store",
+        def_file="web/game/fog/ledger.py",
+        class_name="IntelLedger",
+        writer_methods=("this_writer_method_does_not_exist_anywhere",),
+        what_it_stores="synthetic defect for the exemption proof",
+        failure_if_unwired="n/a",
+    )
+    exemption = SentinelExemption(
+        key=("store", "phantom_store"),
+        reason="test exemption",
+        owner="test",
+        date="2026-07-18",
+        tracking_task="#1",
+    )
+    monkeypatch.setattr("babylon.sentinels.inert.checks.INERT_EXEMPTIONS", (exemption,))
+    assert stores_without_production_writer((phantom,)) == []
+
+
+def test_exemption_does_not_leak_across_store_and_producer_kinds(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Mutation-validation of the teeth: the pre-unification inert sentinel
+    matched exemptions by bare ``row.name`` shared across BOTH
+    ``stores_without_production_writer`` and
+    ``producers_without_production_caller`` -- an exemption meant for one
+    rule would have silently cleared the other rule's row of the SAME NAME.
+    A ``SentinelExemption`` keyed ``("producer", "phantom_shared_name")``
+    must NOT clear a store row named ``"phantom_shared_name"``."""
+    from babylon.sentinels.exemptions import SentinelExemption
+
+    phantom_store = DeclaredStore(
+        name="phantom_shared_name",
+        def_file="web/game/fog/ledger.py",
+        class_name="IntelLedger",
+        writer_methods=("this_writer_method_does_not_exist_anywhere",),
+        what_it_stores="synthetic defect for the cross-kind proof",
+        failure_if_unwired="n/a",
+    )
+    # An exemption recorded for the PRODUCER rule, naming the SAME symbol.
+    producer_exemption = SentinelExemption(
+        key=("producer", "phantom_shared_name"),
+        reason="test exemption for a DIFFERENT rule",
+        owner="test",
+        date="2026-07-18",
+        tracking_task="#1",
+    )
+    monkeypatch.setattr("babylon.sentinels.inert.checks.INERT_EXEMPTIONS", (producer_exemption,))
+    violations = stores_without_production_writer((phantom_store,))
+    assert len(violations) == 1
+    assert "phantom_shared_name" in violations[0]
+
+
 def test_stores_check_raises_on_missing_declared_file() -> None:
     phantom = DeclaredStore(
         name="gone_module",

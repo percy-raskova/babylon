@@ -25,10 +25,19 @@ CLOSED, not merely additive" — see
 
 :data:`INERT_EXEMPTIONS` is the one narrow escape hatch: a declared construct
 *known* to currently lack a production caller, kept un-gated only with an
-owner-approved, dated, written reason — mirroring how
-``GameDefines.epistemic_horizon.class_factor_default`` documents an explicit
-fallback rather than a silent one. An exemption is not a shrug; it is a
-recorded, revisitable decision.
+owner-approved, dated, tracked reason — recorded as the family-wide
+:class:`~babylon.sentinels.exemptions.SentinelExemption` (gate-governance
+ruling, 2026-07-18 — replaces a bespoke ``InertExemption`` class). An
+exemption is not a shrug; it is a recorded, revisitable decision. Every row's ``key`` is tagged with its
+rule's *kind* (``"store"`` or ``"producer"``) — rules (a) and (b) check two
+DIFFERENT registries (:data:`DECLARED_STORES`/:data:`DECLARED_PRODUCERS`)
+that are free to share a row ``name`` (nothing in either registry's own
+validator forbids it). A bare-name-keyed exemption set — the pre-unification
+shape, checked with plain ``row.name in {row.name for row in
+INERT_EXEMPTIONS}`` shared across BOTH rules — would silently let an
+exemption meant for one rule ALSO clear the other the day a store and a
+producer happened to share a name; the kind tag closes that hole by
+construction rather than by continued vigilance.
 
 Layer 0.5: imports nothing above :mod:`babylon.models`.
 """
@@ -39,6 +48,8 @@ from typing import Final
 
 from pydantic import BaseModel, ConfigDict, model_validator
 
+from babylon.sentinels.exemptions import SentinelExemption
+
 __all__ = [
     "DECLARED_PRODUCERS",
     "DECLARED_STORES",
@@ -46,7 +57,6 @@ __all__ = [
     "PRODUCTION_ROOTS",
     "DeclaredProducer",
     "DeclaredStore",
-    "InertExemption",
 ]
 
 #: Trees scanned for a production caller/reference. Test files are EXCLUDED
@@ -133,40 +143,6 @@ class DeclaredProducer(BaseModel):
         return self
 
 
-class InertExemption(BaseModel):
-    """A declared store/producer known to lack a production caller, on record.
-
-    Never a silent shrug: every row names the owner and the dated reasoning,
-    exactly as ``GameDefines.epistemic_horizon.class_factor_default``
-    documents an explicit fallback rather than an implicit one.
-
-    :ivar name: The exempted row's ``DeclaredStore.name`` or
-        ``DeclaredProducer.name``.
-    :ivar reason: Why the gap is tolerated right now.
-    :ivar owner: Who approved the exemption.
-    :ivar date: ISO date the exemption was recorded.
-    """
-
-    model_config = ConfigDict(frozen=True, extra="forbid")
-
-    name: str
-    reason: str
-    owner: str
-    date: str
-
-    @model_validator(mode="after")
-    def _validate_shape(self) -> InertExemption:
-        """Reject a malformed row loudly at import (Constitution III.11).
-
-        :returns: ``self`` when valid.
-        :raises ValueError: If any field is blank.
-        """
-        for field_name in ("name", "reason", "owner", "date"):
-            if not getattr(self, field_name).strip():
-                raise ValueError(f"InertExemption.{field_name} must be non-empty")
-        return self
-
-
 #: The two known "immutable accumulator" stores in ``src``/``web`` (verified
 #: 2026-07-18 by :func:`babylon.sentinels.inert.checks.detect_accumulator_classes`
 #: against the current tree — exactly these two match the shape, so the
@@ -242,5 +218,9 @@ DECLARED_PRODUCERS: Final[tuple[DeclaredProducer, ...]] = (
 #: built — see its row's ``failure_if_unwired`` for the caller that closed
 #: the gap). This tuple exists so a future genuinely-irreducible gap has
 #: somewhere honest to go, mirroring ``class_factor_default``'s "explicit,
-#: never silent" fallback — never a bare ``continue`` in the check logic.
-INERT_EXEMPTIONS: Final[tuple[InertExemption, ...]] = ()
+#: never silent" fallback — never a bare ``continue`` in the check logic. A
+#: future row's ``key`` MUST be ``("store", name)`` or ``("producer", name)``
+#: (see the module docstring) — a bare ``(name,)`` key would fail
+#: :func:`~babylon.sentinels.exemptions.is_exempt`'s exact-match by
+#: construction, since neither check ever looks up a one-element key.
+INERT_EXEMPTIONS: Final[tuple[SentinelExemption, ...]] = ()

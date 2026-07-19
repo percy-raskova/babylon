@@ -13,9 +13,6 @@ module) lives in ``tools/fog_containment_probe.py`` — see that module's and
 this package's ``registry`` module docstrings.
 """
 
-from babylon.sentinels.fog.registry import (
-    FOG_CONTAINMENT_EXEMPTIONS,
-    FogContainmentExemption,
-)
+from babylon.sentinels.fog.registry import FOG_CONTAINMENT_EXEMPTIONS
 
-__all__ = ["FOG_CONTAINMENT_EXEMPTIONS", "FogContainmentExemption"]
+__all__ = ["FOG_CONTAINMENT_EXEMPTIONS"]

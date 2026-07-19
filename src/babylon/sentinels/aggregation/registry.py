@@ -40,10 +40,11 @@ from typing import Final
 
 from pydantic import BaseModel, ConfigDict, model_validator
 
+from babylon.sentinels.exemptions import SentinelExemption
+
 __all__ = [
     "AGGREGATION_EXEMPTIONS",
     "DECLARED_AGGREGATES",
-    "AggregationExemption",
     "DeclaredPartialCoverageAggregate",
 ]
 
@@ -93,34 +94,6 @@ class DeclaredPartialCoverageAggregate(BaseModel):
         return self
 
 
-class AggregationExemption(BaseModel):
-    """A declared aggregate known to currently violate the symmetry, on record.
-
-    Never a silent shrug: every row names the owner and the dated
-    reasoning, exactly as
-    :class:`babylon.sentinels.inert.registry.InertExemption` does.
-    """
-
-    model_config = ConfigDict(frozen=True, extra="forbid")
-
-    name: str
-    reason: str
-    owner: str
-    date: str
-
-    @model_validator(mode="after")
-    def _validate_shape(self) -> AggregationExemption:
-        """Reject a malformed row loudly at import (Constitution III.11).
-
-        :returns: ``self`` when valid.
-        :raises ValueError: If any field is blank.
-        """
-        for field_name in ("name", "reason", "owner", "date"):
-            if not getattr(self, field_name).strip():
-                raise ValueError(f"AggregationExemption.{field_name} must be non-empty")
-        return self
-
-
 #: The two grounded rows (Track 1 Task 10). Both verified clean against the
 #: current tree by ``tools/aggregation_symmetry_probe.py``.
 DECLARED_AGGREGATES: Final[tuple[DeclaredPartialCoverageAggregate, ...]] = (
@@ -160,6 +133,6 @@ DECLARED_AGGREGATES: Final[tuple[DeclaredPartialCoverageAggregate, ...]] = (
 )
 
 #: Deliberately EMPTY: both declared rows are currently symmetric (verified
-#: dynamically). A future row here must name an owner and a dated reason,
-#: same as babylon.sentinels.inert.registry.INERT_EXEMPTIONS.
-AGGREGATION_EXEMPTIONS: Final[tuple[AggregationExemption, ...]] = ()
+#: dynamically). A future row's ``key`` must be ``("aggregate", name)`` (see
+#: :mod:`babylon.sentinels.exemptions`).
+AGGREGATION_EXEMPTIONS: Final[tuple[SentinelExemption, ...]] = ()

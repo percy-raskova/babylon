@@ -47,6 +47,7 @@ from pathlib import Path
 from typing import Final, TypeGuard
 
 from babylon.sentinels.base import LabelledCheck, SentinelCheckError, run_sensor
+from babylon.sentinels.exemptions import is_exempt
 from babylon.sentinels.masked_arithmetic.registry import (
     ARITHMETIC_WRAPPERS,
     DECLARED_FOGGED_CONSUMERS,
@@ -231,13 +232,6 @@ def guard_exists_for_field(function: ast.FunctionDef | ast.AsyncFunctionDef, fie
     return False
 
 
-def _exempted_names() -> frozenset[str]:
-    """The set of row names carrying a recorded
-    :class:`~babylon.sentinels.masked_arithmetic.registry.MaskedArithmeticExemption`.
-    """
-    return frozenset(row.name for row in MASKED_ARITHMETIC_EXEMPTIONS)
-
-
 def unguarded_masked_arithmetic(
     registry: tuple[DeclaredFoggedConsumer, ...] = DECLARED_FOGGED_CONSUMERS,
 ) -> list[str]:
@@ -254,10 +248,9 @@ def unguarded_masked_arithmetic(
         ``function_name`` cannot be found (exit 2 — infrastructure failure,
         never a silent pass).
     """
-    exempted = _exempted_names()
     violations: list[str] = []
     for row in registry:
-        if row.name in exempted:
+        if is_exempt(("fogged_consumer", row.name), MASKED_ARITHMETIC_EXEMPTIONS):
             continue
         path = _REPO_ROOT / row.def_file
         tree = _parse(path)
@@ -280,8 +273,9 @@ def unguarded_masked_arithmetic(
             f"    payload: {row.payload_note}\n"
             f"    consequence: {row.consequence_if_regressed}\n"
             "    fix: guard the field with an explicit `is not None` check before "
-            "arithmetic, or add a reasoned MaskedArithmeticExemption (name, owner, date, "
-            "reason) -- never a silent registry removal.\n"
+            "arithmetic, or add a reasoned SentinelExemption "
+            "(key=('fogged_consumer', name), reason, owner, date, tracking_task) to "
+            "MASKED_ARITHMETIC_EXEMPTIONS -- never a silent registry removal.\n"
             f"    {_WHY}"
         )
     return sorted(violations)

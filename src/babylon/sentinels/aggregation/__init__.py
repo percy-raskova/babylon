@@ -16,13 +16,11 @@ and the registry module's "why dynamic, not static" note.
 from babylon.sentinels.aggregation.registry import (
     AGGREGATION_EXEMPTIONS,
     DECLARED_AGGREGATES,
-    AggregationExemption,
     DeclaredPartialCoverageAggregate,
 )
 
 __all__ = [
     "AGGREGATION_EXEMPTIONS",
     "DECLARED_AGGREGATES",
-    "AggregationExemption",
     "DeclaredPartialCoverageAggregate",
 ]

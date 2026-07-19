@@ -2609,6 +2609,54 @@ _ECONOMY_DASHBOARD_METRICS: tuple[SeamEntry, ...] = (
             "current UI consumer. Not fabricated, just not yet wired to a view."
         ),
     ),
+    SeamEntry(
+        payload="economy_dashboard.imperial_rent_gap",
+        wire_keys=("imperial_rent_gap",),
+        scope=SeamScope.ECONOMY,
+        owner_layer="bridge (get_economy_dashboard, wage_flow_total - value_produced)",
+        liveness_class=LivenessClass.MUST_BE_LIVE,
+        dtype="float",
+        write_site="web/game/engine_bridge.py::EngineBridge.get_economy_dashboard (:3120)",
+        read_paths=_ECONOMY_DASHBOARD_EMITTERS,
+        spec_ref="spec-117 T2-6a (Fundamental Theorem, W_c - V_c = Phi)",
+        notes=(
+            "T2-6a (Slice A): graph-wide promotion of the per-class imperial_rent_gap already "
+            "computed for the inspector popup (see the INSPECTOR-scope row below) — Sigma core "
+            "wages paid (wage_flow_total) minus Sigma value produced (value_produced), both "
+            "EXTENSIVE totals summed graph-wide (never averaged), so this carries none of the "
+            "unweighted-mean-of-a-ratio risk a naive per-region average would. Always a float "
+            "(both addends default 0.0) -- confirmed by "
+            "test_engine_bridge.py::TestEconomyDashboardFundamentalTheorem."
+        ),
+    ),
+    SeamEntry(
+        payload="economy_dashboard.imperial_rent_gap_by_region",
+        wire_keys=("imperial_rent_gap_by_region",),
+        scope=SeamScope.ECONOMY,
+        owner_layer="bridge (_imperial_rent_gap_by_region, ScaleAdjunction.aggregate_intensive)",
+        liveness_class=LivenessClass.DECLARED_CONDITIONAL,
+        liveness_condition=(
+            "the container is always a list, but stays empty ([]) until at least one territory "
+            "has a positive-population TENANCY-linked tenant social_class this session "
+            "(Constitution III.11 — never a fabricated per-capita row for an all-zero-population "
+            "region)"
+        ),
+        dtype="json",
+        nullable=False,
+        write_site="web/game/engine_bridge.py::_imperial_rent_gap_by_region (:1823)",
+        read_paths=_ECONOMY_DASHBOARD_EMITTERS,
+        spec_ref="spec-117 T2-6b (per-region Fundamental Theorem, population-share-weighted)",
+        notes=(
+            "T2-6b (Slice A), net-new: one {territory_id, population, wc_per_capita, "
+            "vc_per_capita, gap_per_capita} row per positive-population TENANCY region. "
+            "gap_per_capita is a population-SHARE-WEIGHTED MEAN via "
+            "ScaleAdjunction.aggregate_intensive (domain/dialectics/instances/scale.py) — never "
+            "an unweighted mean of the per-class ratio, the known intensive-aggregation bug "
+            "documented in domain/dialectics/instances/catalog.py's _mean_asymmetry — confirmed "
+            "by test_engine_bridge.py::TestImperialRentGapByRegion + "
+            "TestEconomyDashboardFundamentalTheorem."
+        ),
+    ),
 )
 
 # ---------------------------------------------------------------------------

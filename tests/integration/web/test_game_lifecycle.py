@@ -156,7 +156,12 @@ class TestGameLifecycle:
                 session_id=session_id,
                 tick=0,
                 org_id=first_org,
-                verb="AGITATE",
+                # "educate", not "AGITATE": affordability went live once #211
+                # made orgs resolve in state (the gate silently skipped on
+                # org=None before), and AGITATE was never in the player
+                # ACTION_COSTS table (vanguard_resources.py) — it is an OODA
+                # org action. Lowercase to match the real API path's casing.
+                verb="educate",
                 action_type=first_action.get("action_type"),
                 target_id=first_action.get("target_id"),
             )

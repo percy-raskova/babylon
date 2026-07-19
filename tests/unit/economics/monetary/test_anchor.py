@@ -262,3 +262,33 @@ class TestFictitiousAnchorDegenerate:
         result = fictitious_anchor(_stock(2020), 50.0)
         assert isinstance(result, float)
         assert math.isfinite(result)
+
+
+@pytest.mark.unit
+class TestServiceabilityAnchorPresent:
+    """serviceability_anchor computes interest_payments / total_surplus_produced."""
+
+    def test_returns_the_interest_burden(self) -> None:
+        """25.0 interest against 100.0 surplus is a burden of 0.25."""
+        assert serviceability_anchor(_distribution()) == pytest.approx(0.25)
+
+    def test_zero_interest_with_positive_surplus_is_a_real_zero(self) -> None:
+        """A county that genuinely pays no interest reads 0.0, not a sentinel."""
+        result = serviceability_anchor(_distribution(interest=0.0))
+        assert isinstance(result, float)
+        assert result == pytest.approx(0.0)
+
+    def test_burden_above_one_is_a_legitimate_reading(self) -> None:
+        """Interest exceeding surplus is the debt-spiral condition, not an error."""
+        overclaimed = _distribution(surplus=50.0, interest=75.0)
+        assert overclaimed.profit_of_enterprise < 0.0
+        result = serviceability_anchor(overclaimed)
+        assert isinstance(result, float)
+        assert result == pytest.approx(1.5)
+
+    def test_matches_financialization_share_when_surplus_is_positive(self) -> None:
+        """Where the computed field is well-defined the anchor agrees with it."""
+        distribution = _distribution()
+        assert serviceability_anchor(distribution) == pytest.approx(
+            distribution.financialization_share
+        )

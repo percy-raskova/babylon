@@ -426,3 +426,20 @@ class TestRoundTripFrozen:
         )
         with pytest.raises(ValidationError):
             axis.price_log = 1.0  # type: ignore[misc]
+
+
+class TestMarketScissorsDocstringHonest:
+    """Honesty sweep (U2, Row M): docstrings said 'Phase 1 SHADOW ONLY ...
+    no correction feedback', but Phase 2 (ADR078) is wired and firing by
+    default."""
+
+    def test_module_docstring_no_longer_claims_shadow_only(self) -> None:
+        import babylon.engine.systems.market_scissors as market_scissors_module
+
+        doc = market_scissors_module.__doc__ or ""
+        assert "Phase 1 SHADOW ONLY" not in doc
+        assert "no correction feedback" not in doc
+
+    def test_class_docstring_no_longer_claims_shadow(self) -> None:
+        doc = MarketScissorsSystem.__doc__ or ""
+        assert "Phase 1 SHADOW" not in doc

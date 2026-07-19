@@ -6690,10 +6690,12 @@ def _carry_tick_dynamics_flows(
                 # (circulation, Feature 023) + Group D (financial
                 # distribution, Feature 024) join the carry — the write-site
                 # expressions from graph_bridge.py:128-197 mirrored
-                # byte-for-byte, fallback constants included. DECLARED-DARK:
-                # both gating services are unwired, so these are the frozen
-                # fallbacks until then (SEAM_REGISTRY rows stay
-                # NOT_YET_COMPUTED — never relabeled live).
+                # byte-for-byte. CORRECTED 2026-07-18
+                # (vol3-money-scissors-design honesty sweep, U2): "both
+                # gating services are unwired" was stale — real wired
+                # implementations exist for 8 of 9 Group C/D rows;
+                # SEAM_REGISTRY is the authoritative per-row wiring status,
+                # not this comment.
                 tick_liquidity_ratio=county.circulation_state.circuit_state.liquidity_ratio,
                 tick_commodity_overhang=(county.circulation_state.circuit_state.commodity_overhang),
                 tick_replacement_cycle=(
@@ -8746,16 +8748,16 @@ def _serialize_territory(t: Any, *, graph: Any = None) -> dict[str, Any]:
 
     Playability Spine Task 20 (spec-116 4d.5): the Feature-023 circulation
     family and Feature-024 financial-distribution family join the same
-    ``tick_``-prefixed graph-attr pattern, serialized DECLARED-DARK — the
-    gating services (``turnover_profile_source``/``interest_calculator``)
-    are unwired, so post-boundary values are the engine's fallback constants
-    (0.0/False/0, plus ``tick_housing_fictitious_fraction``'s honest
-    ``None``). The wire keys keep their ``tick_`` prefix (registry
-    ``wire_keys``) — none collides with an existing payload key or Territory
-    model field. SEAM_REGISTRY rows: Groups C/D, ``NOT_YET_COMPUTED`` (a
-    FRED-backed sibling implementation exists but is not wired into this
-    pipeline — computable, just not yet wired; frozen constants are never
-    relabeled live).
+    ``tick_``-prefixed graph-attr pattern. The wire keys keep their
+    ``tick_`` prefix (registry ``wire_keys``) — none collides with an
+    existing payload key or Territory model field. CORRECTED 2026-07-18
+    (vol3-money-scissors-design honesty sweep, U2): this docstring
+    previously claimed both gating services were categorically unwired and
+    every row ``NOT_YET_COMPUTED``; that was false for 8 of 9 Group C/D
+    rows. Consult SEAM_REGISTRY for the authoritative per-row wiring
+    status — a row still showing its fallback constant (0.0/False/0, plus
+    ``tick_housing_fictitious_fraction``'s honest ``None``) means that
+    SPECIFIC gating service is unwired on this path, not the whole family.
     """
     territory_id = t.id
     return {
@@ -8818,10 +8820,11 @@ def _serialize_territory(t: Any, *, graph: Any = None) -> dict[str, Any]:
         "vision_state": _territory_graph_attr(graph, territory_id, "vision_state"),
         # Playability Spine Task 20 (spec-116 4d.5): Group C (circulation,
         # Feature 023) + Group D (financial distribution, Feature 024),
-        # serialized DECLARED-DARK under their registry wire keys (tick_
-        # prefix kept — the tick_median_wage collision precedent). Values are
-        # the engine's fallback constants until turnover_profile_source /
-        # interest_calculator are wired; None before the first boundary.
+        # serialized under their registry wire keys (tick_ prefix kept —
+        # the tick_median_wage collision precedent). CORRECTED 2026-07-18
+        # (vol3-money-scissors-design honesty sweep, U2): most of these
+        # rows now carry real wired values — see SEAM_REGISTRY for the
+        # authoritative per-row status, not this comment.
         "tick_liquidity_ratio": _territory_graph_attr(graph, territory_id, "tick_liquidity_ratio"),
         "tick_commodity_overhang": _territory_graph_attr(
             graph, territory_id, "tick_commodity_overhang"

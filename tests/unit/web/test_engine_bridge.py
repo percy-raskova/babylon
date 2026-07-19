@@ -3962,3 +3962,33 @@ class TestBridgeEconomicsOverridesWiresVol1ReserveArmyServices:
         finally:
             if leontief_session is not None:
                 leontief_session.close()
+
+
+class TestGroupCDDocstringsHonest:
+    """Honesty sweep (U2, Row K): the 'both gating services are unwired'
+    claim was false for 8 of 9 Group C/D rows."""
+
+    def test_carry_tick_dynamics_flows_comment_corrected(self) -> None:
+        import inspect
+
+        from game.engine_bridge import _carry_tick_dynamics_flows
+
+        source = inspect.getsource(_carry_tick_dynamics_flows)
+        assert "both gating services are unwired" not in source
+        assert "CORRECTED 2026-07-18" in source
+
+    def test_serialize_territory_docstring_corrected(self) -> None:
+        import inspect
+
+        doc = _serialize_territory.__doc__ or ""
+        assert "both gating services are unwired" not in doc
+        assert "CORRECTED 2026-07-18" in doc
+        source = inspect.getsource(_serialize_territory)
+        assert "until turnover_profile_source /" not in source
+
+
+# Catalog docstring tests: NONE IN THIS TASK.
+# U5.3's TestCatalogDocstringAccuracy is authoritative — it pins the
+# docstring against build_default_registry().keys, so it cannot go stale
+# again at 6 OR at 10. A hardcoded "six bound contradictions" assertion
+# here would red the moment U5.2 grows the registry to ten.

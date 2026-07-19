@@ -1,4 +1,4 @@
-"""Market-scissors system — Phase 1 SHADOW ONLY (Program 23, ADR077).
+"""Market-scissors system (Program 23, ADR077/ADR078 — correction feedback LIVE).
 
 Position 17.8: immediately BEFORE ContradictionSystem @18 so the
 ``price_value`` shadow opposition measures a fresh scissors the same tick.
@@ -10,13 +10,15 @@ on the graph — ``Σ v_produced`` (demand pull on prices) and
 ``Σ max(v_produced − w_paid, 0)`` (return-chasing on fictitious capital),
 with price momentum feeding speculation (``momentum_coupling``).
 
-PHASE 1 SCOPE (binding): observe-only shadow.
+PHASE 2 SCOPE (current, ADR078 promotion ceremony): the correction feeds
+back into the material base by default (``GameDefines.market.feedback_enabled``).
 
 - State home: ``G.graph["market"]`` metadata (the ``wealth_distribution``
   round-trip pattern; ``WorldState.market`` carries it across facade ticks).
-- Nothing reads it to change tick outputs: no correction feedback into
-  wealth, credit, or the reserve army (Phase 2, owner-gated), so the sampled
-  qa:regression checkpoints stay byte-identical.
+- The correction snap DOES change tick outputs: it evaporates claim-holder
+  wealth, swells the reserve army, and publishes ``MARKET_CORRECTION``
+  (``feedback_enabled=False`` restores the old Phase-1 observe-only
+  behavior for byte-comparison runs).
 - Honest absence: a graph with no paid-worker accounting gets NO market —
   the phenomenal form cannot precede its substance (Constitution III.11).
 - Deterministic: coefficients from ``GameDefines.market``, nodes iterated in
@@ -121,7 +123,7 @@ def _aggregate_wage_value_by_county(graph: GraphProtocol) -> dict[str, tuple[flo
 
 
 class MarketScissorsSystem(SystemBase):
-    """Phase 1 SHADOW: the national price⟷value scissors axis."""
+    """The national price⟷value scissors axis (Phase 2: correction feedback live by default)."""
 
     partition: ClassVar[TickPartition] = TickPartition.CONSEQUENCE
     position: ClassVar[float] = 17.8

@@ -104,7 +104,7 @@ def _make_graph_with_solidarity(
                 "class_consciousness": 0.5,
                 "national_identity": 0.5,
             },
-            territory=fips,
+            county_fips=fips,  # real SocialClass field (Blocker I-2 fix; was "territory")
         )
 
     # Add cross-class solidarity edges (up to num_solidarity_edges)
@@ -358,7 +358,7 @@ class TestBifurcationEdgeCases:
             _node_type="social_class",
             role="proletariat",
             ideology={"agitation": 0.5, "class_consciousness": 0.5, "national_identity": 0.5},
-            territory="26163",
+            county_fips="26163",  # real SocialClass field (Blocker I-2 fix; was "territory")
         )
         crisis = _make_crisis_state()
         prev_dist = _make_dist()
@@ -407,3 +407,74 @@ class TestBifurcationEdgeCases:
         result = calc.compute(graph, "26163", crisis, prev_dist, curr_dist)
 
         assert -1.0 <= result.score <= 1.0
+
+
+# =============================================================================
+# Blocker I-2: real production shape uses `county_fips`, never `territory`
+# =============================================================================
+
+
+@pytest.mark.unit
+class TestRealProductionNodeShape:
+    """SocialClass carries no ``territory`` field -- the real field production
+    writes is ``county_fips`` (``WorldState.to_graph()`` dumps
+    ``entity.model_dump()`` verbatim; ``headless_runner/bridge.py``'s
+    per-county entity builder passes ``county_fips=`` to
+    ``create_labor_aristocracy``/``create_bourgeoisie``). No production writer
+    anywhere in ``src/`` ever stamps a flat ``territory`` key onto a
+    social_class node. Before this fix, ``_compute_solidarity_density`` /
+    ``_compute_legitimation`` filtered on that fabricated key, so cross-class
+    solidarity density was silently 0.0 -- and the agitation-fallback
+    legitimation path silently unreachable -- for every county in every real
+    game, regardless of real solidarity topology.
+
+    ``_make_graph_with_solidarity`` (module-level helper, shared with every
+    other test in this file) already stamps the real ``county_fips`` field --
+    that fixture WAS the fabricated-``territory`` fixture this suite's own
+    other classes exercise; it is now real production shape, so these tests
+    reuse it directly rather than duplicating fixture-building logic.
+    """
+
+    def test_solidarity_density_nonzero_with_real_county_fips_shape(self) -> None:
+        """Cross-class solidarity IS detected when nodes carry the real
+        ``county_fips`` field -- not the fabricated ``territory`` key."""
+        calc = BifurcationRiskCalculator()
+        graph = _make_graph_with_solidarity(num_solidarity_edges=4, mean_agitation=0.5)
+
+        density = calc._compute_solidarity_density(graph, "26163")
+
+        assert density > 0.0, (
+            "solidarity density must be nonzero when social_class nodes carry "
+            "real production shape (county_fips) -- got 0.0, meaning the "
+            "calculator is still reading the fabricated 'territory' key"
+        )
+
+    def test_legitimation_reads_agitation_with_real_county_fips_shape(self) -> None:
+        """The agitation-fallback legitimation path must actually read the
+        seeded agitation values when nodes carry ``county_fips`` -- not fall
+        back to the empty-set default of 1.0 (full legitimation)."""
+        calc = BifurcationRiskCalculator()
+        graph = _make_graph_with_solidarity(mean_agitation=0.6)
+
+        legitimation = calc._compute_legitimation(graph, "26163")
+
+        assert legitimation == pytest.approx(0.4), (
+            "legitimation must reflect 1 - mean(agitation) = 0.4 when nodes "
+            "carry real production shape (county_fips) -- got "
+            f"{legitimation}, meaning agitation values were never found "
+            "(the calculator is still reading the fabricated 'territory' key)"
+        )
+
+    def test_compute_produces_nonneutral_metric_with_real_shape(self) -> None:
+        """End-to-end: ``compute()`` during active crisis must yield a
+        non-neutral metric when the graph uses real production shape."""
+        calc = BifurcationRiskCalculator()
+        graph = _make_graph_with_solidarity(num_solidarity_edges=4, mean_agitation=0.5)
+        crisis = _make_crisis_state()
+        prev_dist = _make_dist(la=0.40, prol=0.35)
+        curr_dist = _make_dist(la=0.35, prol=0.30)
+
+        result = calc.compute(graph, "26163", crisis, prev_dist, curr_dist)
+
+        assert result.solidarity_density > 0.0
+        assert result.legitimation < 1.0

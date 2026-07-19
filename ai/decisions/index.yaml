@@ -1,9 +1,14 @@
 meta:
-  version: 1.29.0
+  version: 1.30.0
   updated: '2026-07-18'
   description: Architecture Decision Records Index
   format: See individual ADR files in this directory
 decisions:
+  ADR083_bifurcation_county_fips_fix:
+    title: 'Blocker I-2: BifurcationRiskCalculator read a flat "territory" key no producer writes (real field is "county_fips") — solidarity density was silently 0.0 and the agitation-fallback legitimation path silently unreachable for every county in every real game; fixed with RED/GREEN tests using real production node shape, two fabricated-shape test fixtures repaired, two now-stale vocabulary-sentinel exemption rows deleted; verified TWO independent ways (instrumented call-count + mise run qa:regression re-run) that the fix moves ZERO regression baselines, because none of the 5 canonical scenarios ever wire melt_calculator — correcting the registry comment''s prior unverified prediction that fixing it "would move baselines"'
+    status: accepted
+    date: '2026-07-18'
+    file: ADR083_bifurcation_county_fips_fix.yaml
   ADR082_consciousness_bifurcation_recoupling:
     title: 'Consciousness recoupling: a positive wage-value balance redirects agitation to the CHAUVINIST pole instead of gating it to zero — balance SIGN drives bifurcation direction, |balance| drives intensity, with a deliberately non-monotonic Gaussian peaking at the precarious margin (MIM: the marginal labour aristocracy is the most reactionary); grounded in Emmanuel UE p.180 / MIM mim-lumpen.txt:206-217 / Amin LWV p.127, per-class reading licensed by Cope DWDC p.204; FIRST ceremony to genuinely move all 5 regression baselines — every drift lands in national_identity, none in class_consciousness'
     status: accepted

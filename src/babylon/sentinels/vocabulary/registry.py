@@ -429,41 +429,23 @@ ATTRIBUTE_EXEMPTIONS: Final[tuple[SentinelExemption, ...]] = (
         date="2026-07-18",
         tracking_task="#45",
     ),
-    SentinelExemption(
-        key=(
-            "node_attribute",
-            "tests/unit/economics/crisis/test_bifurcation_risk.py",
-            "social_class",
-            "territory",
-        ),
-        reason=(
-            "domain/economics/crisis/bifurcation.py's _compute_solidarity_density/"
-            "_compute_legitimation read a flat 'territory' key off social_class "
-            "nodes to filter by county FIPS; SocialClass carries no such field "
-            "(the real one is 'county_fips'). Wired into TickDynamicsSystem (a "
-            "live System), so solidarity density and the agitation-fallback "
-            "legitimation path are silently 0.0-input/empty-set in every real game."
-        ),
-        owner="Persephone Raskova",
-        date="2026-07-18",
-        tracking_task="#45",
-    ),
-    SentinelExemption(
-        key=(
-            "node_attribute",
-            "tests/unit/economics/crisis/test_crisis_lifecycle.py",
-            "social_class",
-            "territory",
-        ),
-        reason=(
-            "Same 'territory' vs 'county_fips' bug as test_bifurcation_risk.py "
-            "(task #45 audit) -- covered from the crisis-lifecycle integration "
-            "angle."
-        ),
-        owner="Persephone Raskova",
-        date="2026-07-18",
-        tracking_task="#45",
-    ),
+    # NOTE (merge resolution, 2026-07-18): the two ``social_class``/``territory``
+    # rows that used to sit here -- for ``test_bifurcation_risk.py`` and
+    # ``test_crisis_lifecycle.py`` -- were DELETED under Blocker I-2, which fixed
+    # the underlying read (``territory`` -> ``county_fips``) in
+    # ``domain/economics/crisis/bifurcation.py``. This half of the list must only
+    # ever SHRINK, and this is what shrinking looks like: fix the read side, then
+    # delete the row.
+    #
+    # CORRECTION worth keeping: this file previously cited that row as THE example
+    # of an engine-adjacent fix that "would move qa:regression baselines." It did
+    # not. The 2-line rename moved ZERO baselines, because none of the 5 canonical
+    # regression scenarios wire a ``melt_calculator`` -- the per-county pipeline
+    # short-circuits before ``_compute_bifurcation_risk`` is reached. The
+    # prediction was inference, not measurement. VERIFY BASELINE IMPACT
+    # EMPIRICALLY before trusting that inference for the next instance; and note
+    # the corollary, which is the more uncomfortable half: a fix the regression
+    # suite cannot feel is a fix the regression suite was never guarding.
     SentinelExemption(
         key=(
             "node_attribute",

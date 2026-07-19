@@ -186,10 +186,16 @@ class DefaultTickInitializer:
                 lumpenproletariat_share=_DEFAULT_LUMPENPROLETARIAT,
             )
 
-            clamped_year = min(max(year, 2007), 2040)
+            # U2 honesty sweep: CountyEconomicState.year dropped its le=2040
+            # ceiling (types.py) because the campaign runs past 2040 and the
+            # ceiling silently fabricated year=2040 for ~85% of a run. Mirror it
+            # here — keep only the 2007 floor as a sanity bound (the sibling
+            # clamps in system/__init__.py were already fixed). ClassDistribution
+            # keeps its own separate [2007, 2030] window above (clamped_dist_year).
+            floored_year = max(year, 2007)
             states[fips] = CountyEconomicState(
                 fips=fips,
-                year=clamped_year,
+                year=floored_year,
                 capital_stock=capital_stock,
                 throughput_position=throughput_position,
                 supply_chain_depth=supply_chain_depth,

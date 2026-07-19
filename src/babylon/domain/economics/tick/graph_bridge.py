@@ -20,6 +20,7 @@ from typing import TYPE_CHECKING, Any, Final
 if TYPE_CHECKING:
     from babylon.kernel.graph_protocol import GraphProtocol
 
+from babylon.config.defines import GameDefines
 from babylon.domain.economics.dynamics.types import ClassDistribution
 from babylon.domain.economics.tick.derived_rates import DerivedRateCalculator
 from babylon.domain.economics.tick.types import (
@@ -391,6 +392,67 @@ def read_national_financial_state_from_graph(  # pragma: no mutate — data seri
     return NationalFinancialParameters.model_validate(data)  # pragma: no mutate
 
 
+def _capital_weighted_mean(graph: GraphProtocol, attr: str) -> float | None:
+    """Capital-weighted mean of ``attr`` over active territory nodes.
+
+    Weight is ``tick_capital_stock`` (Marx's general rate of profit = total
+    surplus / total capital — an extensive weighting, not the unweighted mean
+    of an intensive ratio, which is the intensive-aggregation defect class).
+    Sorted-id iteration (Constitution III.7). Returns ``None`` when no active
+    territory carries ``attr`` with a positive weight (honest absence,
+    III.11).
+    """
+    weighted = 0.0
+    weight = 0.0
+    for node in sorted(graph.query_nodes(node_type="territory"), key=lambda n: n.id):
+        attrs = node.attributes
+        if not attrs.get("active", True):
+            continue
+        value = attrs.get(attr)
+        capital = attrs.get("tick_capital_stock")
+        if not isinstance(value, (int, float)):
+            continue
+        if not isinstance(capital, (int, float)) or float(capital) <= 0.0:
+            continue
+        weighted += float(value) * float(capital)
+        weight += float(capital)
+    if weight <= 0.0:
+        return None
+    return weighted / weight
+
+
+def economy_wide_profit_rate(graph: GraphProtocol) -> float | None:
+    """Economy-wide average rate of profit ``r`` (the interest ceiling).
+
+    Capital-weighted mean of territory ``tick_profit_rate`` (Capital Vol. III
+    ch. 22: interest is bounded by the average rate of profit). ``None`` when
+    no active territory carries a profit rate — the endogenous rate then reads
+    zero (no profit to divide), never a fabricated floor.
+    """
+    return _capital_weighted_mean(graph, "tick_profit_rate")
+
+
+def reserve_army_signal(graph: GraphProtocol, defines: GameDefines) -> float:
+    """Reserve-army downturn signal ``s_r`` in [0, 1] (loan-capital demand).
+
+    ``clamp((rho_bar - rho_ref) / (1 - rho_ref), 0, 1)`` where ``rho_bar`` is
+    the capital-weighted mean territory ``reserve_ratio`` and ``rho_ref`` is
+    ``capital_vol3.interest_reserve_reference``. The rising reserve army is
+    the material signature of the crisis that ignites the scramble for means
+    of payment (Capital Vol. III ch. 25); below the reference there is no
+    liquidity-demand pressure. Zero (not absent) when no reserve data exists.
+    """
+    rho_bar = _capital_weighted_mean(graph, "reserve_ratio")
+    if rho_bar is None:
+        return 0.0
+    rho_ref = defines.capital_vol3.interest_reserve_reference
+    denom = 1.0 - rho_ref
+    if denom <= 0.0:
+        return 1.0 if rho_bar > rho_ref else 0.0
+    raw = (rho_bar - rho_ref) / denom
+    return 0.0 if raw < 0.0 else (1.0 if raw > 1.0 else raw)
+
+
 def _reconstruct_tick_state(  # pragma: no mutate — data deserialization
     tick_data: dict[str, Any],
 ) -> SimulationTickState | None:
@@ -427,8 +489,10 @@ __all__ = [
     "NATIONAL_FINANCIAL_ATTR",
     "TICK_DYNAMICS_KEY",
     "_reconstruct_tick_state",
+    "economy_wide_profit_rate",
     "read_national_financial_state_from_graph",
     "read_tick_state_from_graph",
+    "reserve_army_signal",
     "write_national_financial_state_to_graph",
     "write_tick_state_to_graph",
 ]

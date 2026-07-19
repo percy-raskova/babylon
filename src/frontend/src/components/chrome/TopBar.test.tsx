@@ -130,7 +130,10 @@ describe("TopBar", () => {
       <MemoryRouter initialEntries={[`/game/${DEFAULT_GAME_ID}`]}>
         <Routes>
           <Route path="/game/:id" element={<TopBar gameId={DEFAULT_GAME_ID} />} />
-          <Route path="/game/:id/doctrine" element={<div data-testid="stub-doctrine">doctrine</div>} />
+          <Route
+            path="/game/:id/doctrine"
+            element={<div data-testid="stub-doctrine">doctrine</div>}
+          />
         </Routes>
       </MemoryRouter>,
     );

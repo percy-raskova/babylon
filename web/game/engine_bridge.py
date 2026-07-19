@@ -56,7 +56,11 @@ from babylon.ooda.npc_stub import select_npc_actions
 # owner instruction rather than duplicated — the math (r/l/f simplex algebra) has
 # exactly one home.
 from babylon.persistence.county_aggregation import _ideology_to_ternary
-from babylon.persistence.protocols import RuntimePersistence, TickAlreadyResolved
+from babylon.persistence.protocols import (
+    BridgePersistence,
+    RuntimePersistence,
+    TickAlreadyResolved,
+)
 from babylon.topology.graph import BabylonGraph, BabylonUGraph
 from babylon.topology.graph_algorithms import (
     betweenness_centrality,
@@ -189,7 +193,7 @@ def _fetch_session_rng_seed_from_pool(pool: Any, session_id: UUID) -> int:
     return 0
 
 
-def _fetch_session_game_defines(persistence: Any, session_id: UUID) -> GameDefines:
+def _fetch_session_game_defines(persistence: BridgePersistence, session_id: UUID) -> GameDefines:
     """Read this session's GameDefines from its ``game_session`` row (C.13).
 
     Defines are stored per-session in ``game_session.game_defines_json``
@@ -200,11 +204,8 @@ def _fetch_session_game_defines(persistence: Any, session_id: UUID) -> GameDefin
     defaults when the persistence layer has no session store
     (StubEngineBridge / SQLite dev) or the row is missing.
     """
-    session_getter = getattr(persistence, "get_session", None)
-    if not callable(session_getter):
-        return GameDefines()
     try:
-        row = session_getter(session_id)
+        row = persistence.get_session(session_id)
     except Exception:  # noqa: BLE001 — non-fatal; defaults are safe
         logger.exception("Failed to read game_defines_json for session %s", session_id)
         return GameDefines()
@@ -2189,7 +2190,7 @@ class EngineBridge:
 
     def __init__(
         self,
-        persistence: RuntimePersistence,
+        persistence: BridgePersistence,
         narrator: NarratorProvider | None = None,
         narrative_service: NarrativeService | None = None,
     ) -> None:
@@ -2323,9 +2324,11 @@ class EngineBridge:
         # Backward-compatible bootstrap: if a legacy/new session has no persisted
         # tick-0 graph yet, seed it from the stored scenario and retry hydrate.
         if tick is None and _is_unseeded_graph(graph):
-            session_getter = getattr(self._persistence, "get_session", None)
-            if callable(session_getter):
-                session_row = session_getter(session_id)
+            session_row = self._persistence.get_session(session_id)
+            # Backends without a session store (SQLite ``RuntimeDatabase``)
+            # return None here — no stored scenario to seed from, so skip the
+            # bootstrap (honest: never invent a scenario, Constitution III.11).
+            if session_row is not None:
                 scenario = (
                     str(session_row.get("scenario", "default"))
                     if isinstance(session_row, dict)
@@ -2991,13 +2994,11 @@ class EngineBridge:
         econ = _aggregate_graph_economy(graph)
 
         event_rows: list[dict[str, Any]] = []
-        query = getattr(self._persistence, "query_tick_events", None)
-        if callable(query):
-            try:
-                event_rows = query(session_id, state.tick)
-            except Exception:  # noqa: BLE001 — diagnostic; never blocks the request
-                logger.exception("get_game_summary: query_tick_events failed")
-                event_rows = []
+        try:
+            event_rows = self._persistence.query_tick_events(session_id, state.tick)
+        except Exception:  # noqa: BLE001 — diagnostic; never blocks the request
+            logger.exception("get_game_summary: query_tick_events failed")
+            event_rows = []
         event_counts: dict[str, int] = {"critical": 0, "warning": 0, "informational": 0}
         for row in event_rows:
             severity = row.get("severity") or _classify_event(str(row.get("event_type", "")))
@@ -3036,13 +3037,11 @@ class EngineBridge:
         ever consumed against a live Postgres deployment).
         """
         rows: list[dict[str, Any]] = []
-        query = getattr(self._persistence, "query_tick_summary_series", None)
-        if callable(query):
-            try:
-                rows = query(session_id)
-            except Exception:  # noqa: BLE001 — diagnostic; never blocks request
-                logger.exception("get_game_timeseries: query_tick_summary_series failed")
-                rows = []
+        try:
+            rows = self._persistence.query_tick_summary_series(session_id)
+        except Exception:  # noqa: BLE001 — diagnostic; never blocks request
+            logger.exception("get_game_timeseries: query_tick_summary_series failed")
+            rows = []
 
         ticks: list[int] = []
         imperial_rent: list[float | None] = []
@@ -3359,13 +3358,11 @@ class EngineBridge:
             wiring — honest empty, Constitution III.11).
         """
         rows: list[dict[str, Any]] = []
-        query = getattr(self._persistence, "query_org_snapshot_history", None)
-        if callable(query):
-            try:
-                rows = query(session_id, org_id)
-            except Exception:  # noqa: BLE001 — diagnostic; never blocks the request
-                logger.exception("get_org_history: query_org_snapshot_history failed")
-                rows = []
+        try:
+            rows = self._persistence.query_org_snapshot_history(session_id, org_id)
+        except Exception:  # noqa: BLE001 — diagnostic; never blocks the request
+            logger.exception("get_org_history: query_org_snapshot_history failed")
+            rows = []
         return {"org_id": org_id, "history": rows}
 
     def get_territory_history(self, session_id: UUID, county_fips: str) -> dict[str, Any]:
@@ -3391,13 +3388,11 @@ class EngineBridge:
             this FIPS yet.
         """
         rows: list[dict[str, Any]] = []
-        query = getattr(self._persistence, "query_territory_snapshot_history", None)
-        if callable(query):
-            try:
-                rows = query(session_id, county_fips)
-            except Exception:  # noqa: BLE001 — diagnostic; never blocks the request
-                logger.exception("get_territory_history: query_territory_snapshot_history failed")
-                rows = []
+        try:
+            rows = self._persistence.query_territory_snapshot_history(session_id, county_fips)
+        except Exception:  # noqa: BLE001 — diagnostic; never blocks the request
+            logger.exception("get_territory_history: query_territory_snapshot_history failed")
+            rows = []
         return {"county_fips": county_fips, "history": rows}
 
     def get_map_history(
@@ -3518,12 +3513,12 @@ class EngineBridge:
             }
 
         if metric in _MAP_HISTORY_TERRITORY_SNAPSHOT_METRICS:
-            latest_fn = getattr(self._persistence, "query_territory_snapshot_latest_tick", None)
-            frames_fn = getattr(self._persistence, "query_territory_snapshot_metric_frames", None)
+            latest_fn = self._persistence.query_territory_snapshot_latest_tick
+            frames_fn = self._persistence.query_territory_snapshot_metric_frames
             value_key = _MAP_HISTORY_TERRITORY_SNAPSHOT_METRICS[metric]
         else:
-            latest_fn = getattr(self._persistence, "query_county_trace_latest_tick", None)
-            frames_fn = getattr(self._persistence, "query_county_trace_metric_frames", None)
+            latest_fn = self._persistence.query_county_trace_latest_tick
+            frames_fn = self._persistence.query_county_trace_metric_frames
             value_key = _MAP_HISTORY_COUNTY_TRACE_METRICS[metric]
 
         empty: dict[str, Any] = {
@@ -3533,9 +3528,8 @@ class EngineBridge:
             "capped": False,
             "frames": [],
         }
-        if not callable(latest_fn) or not callable(frames_fn):
-            # SQLite-backed RuntimeDatabase / StubEngineBridge parity: honest empty.
-            return empty
+        # SQLite-backed RuntimeDatabase / StubEngineBridge degrade honestly:
+        # latest_fn returns None (=> empty below) and frames_fn returns [].
 
         if to_tick is not None:
             requested_to = to_tick
@@ -3626,24 +3620,21 @@ class EngineBridge:
             never struggled (honest empty, Constitution III.11).
         """
         rows: list[dict[str, Any]] = []
-        query = getattr(self._persistence, "query_class_snapshot_history", None)
-        if callable(query):
-            try:
-                rows = query(session_id, node_id)
-            except Exception:  # noqa: BLE001 — diagnostic; never blocks the request
-                logger.exception("get_class_history: query_class_snapshot_history failed")
-                rows = []
+        try:
+            rows = self._persistence.query_class_snapshot_history(session_id, node_id)
+        except Exception:  # noqa: BLE001 — diagnostic; never blocks the request
+            logger.exception("get_class_history: query_class_snapshot_history failed")
+            rows = []
 
         ruptures: list[dict[str, Any]] = []
-        event_query = getattr(self._persistence, "query_node_uprising_events", None)
-        if callable(event_query):
-            try:
-                ruptures = [
-                    _game_event_from_tick_event_row(row) for row in event_query(session_id, node_id)
-                ]
-            except Exception:  # noqa: BLE001 — diagnostic; never blocks the request
-                logger.exception("get_class_history: query_node_uprising_events failed")
-                ruptures = []
+        try:
+            ruptures = [
+                _game_event_from_tick_event_row(row)
+                for row in self._persistence.query_node_uprising_events(session_id, node_id)
+            ]
+        except Exception:  # noqa: BLE001 — diagnostic; never blocks the request
+            logger.exception("get_class_history: query_node_uprising_events failed")
+            ruptures = []
 
         return {"class_id": node_id, "history": rows, "ruptures": ruptures}
 
@@ -3687,13 +3678,11 @@ class EngineBridge:
             return {"edge_id": edge_id, "history": []}
 
         rows: list[dict[str, Any]] = []
-        query = getattr(self._persistence, "query_edge_snapshot_history", None)
-        if callable(query):
-            try:
-                rows = query(session_id, source, target)
-            except Exception:  # noqa: BLE001 — diagnostic; never blocks the request
-                logger.exception("get_edge_history: query_edge_snapshot_history failed")
-                rows = []
+        try:
+            rows = self._persistence.query_edge_snapshot_history(session_id, source, target)
+        except Exception:  # noqa: BLE001 — diagnostic; never blocks the request
+            logger.exception("get_edge_history: query_edge_snapshot_history failed")
+            rows = []
 
         history = [
             {
@@ -3826,13 +3815,11 @@ class EngineBridge:
         ]
 
         rows: list[dict[str, Any]] = []
-        query = getattr(self._persistence, "query_session_events", None)
-        if callable(query):
-            try:
-                rows = query(session_id, limit=_JOURNAL_LIMIT)
-            except Exception:  # noqa: BLE001 — diagnostic; never blocks the request
-                logger.exception("get_state_apparatus_dashboard: query_session_events failed")
-                rows = []
+        try:
+            rows = self._persistence.query_session_events(session_id, limit=_JOURNAL_LIMIT)
+        except Exception:  # noqa: BLE001 — diagnostic; never blocks the request
+            logger.exception("get_state_apparatus_dashboard: query_session_events failed")
+            rows = []
         recent_actions = [
             _game_event_from_tick_event_row(row)
             for row in rows
@@ -4132,13 +4119,11 @@ class EngineBridge:
         state, _graph = self.hydrate_state(session_id)
 
         rows: list[dict[str, Any]] = []
-        query = getattr(self._persistence, "query_infrastructure_link_state", None)
-        if callable(query):
-            try:
-                rows = query(session_id, state.tick)
-            except Exception:  # noqa: BLE001 — diagnostic; never blocks the request
-                logger.exception("get_infrastructure: query_infrastructure_link_state failed")
-                rows = []
+        try:
+            rows = self._persistence.query_infrastructure_link_state(session_id, state.tick)
+        except Exception:  # noqa: BLE001 — diagnostic; never blocks the request
+            logger.exception("get_infrastructure: query_infrastructure_link_state failed")
+            rows = []
 
         edges = [_infrastructure_edge_row(row) for row in rows]
         return {"tick": state.tick, "nodes": [], "edges": edges}
@@ -4163,13 +4148,11 @@ class EngineBridge:
             ``snapshot.events`` (id/type/tick/severity/title/body/data).
         """
         rows: list[dict[str, Any]] = []
-        query = getattr(self._persistence, "query_session_events", None)
-        if callable(query):
-            try:
-                rows = query(session_id, limit=_JOURNAL_LIMIT)
-            except Exception:  # noqa: BLE001 — diagnostic; never blocks request
-                logger.exception("get_journal_dashboard: query_session_events failed")
-                rows = []
+        try:
+            rows = self._persistence.query_session_events(session_id, limit=_JOURNAL_LIMIT)
+        except Exception:  # noqa: BLE001 — diagnostic; never blocks request
+            logger.exception("get_journal_dashboard: query_session_events failed")
+            rows = []
         return {"events": [_game_event_from_tick_event_row(row) for row in rows]}
 
     def get_alerts_dashboard(self, session_id: UUID) -> dict[str, Any]:
@@ -4189,13 +4172,11 @@ class EngineBridge:
         """
         state, _graph = self.hydrate_state(session_id)
         rows: list[dict[str, Any]] = []
-        query = getattr(self._persistence, "query_tick_events", None)
-        if callable(query):
-            try:
-                rows = query(session_id, state.tick)
-            except Exception:  # noqa: BLE001 — diagnostic; never blocks request
-                logger.exception("get_alerts_dashboard: query_tick_events failed")
-                rows = []
+        try:
+            rows = self._persistence.query_tick_events(session_id, state.tick)
+        except Exception:  # noqa: BLE001 — diagnostic; never blocks request
+            logger.exception("get_alerts_dashboard: query_tick_events failed")
+            rows = []
         alerts = [
             _game_event_from_tick_event_row(row)
             for row in rows
@@ -4291,9 +4272,7 @@ class EngineBridge:
             str(principal_aspect.get("id", "")) if isinstance(principal_aspect, dict) else ""
         )
 
-        rows = _fetch_contradiction_field_rows(
-            getattr(self._persistence, "_pool", None), session_id
-        )
+        rows = _fetch_contradiction_field_rows(self._persistence.pool, session_id)
 
         oppositions: list[dict[str, Any]] = []
         for row in rows:
@@ -4372,7 +4351,7 @@ class EngineBridge:
         # — the latest graph's events list loses an endgame event the moment
         # even one more tick elapses. tick_event (durable, cumulative) is the
         # only correct source for "has this game ever ended".
-        row = _fetch_endgame_event_row(getattr(self._persistence, "_pool", None), session_id)
+        row = _fetch_endgame_event_row(self._persistence.pool, session_id)
         outcome = _outcome_from_endgame_row(row)
         summary = str(row.get("summary") or "") if row is not None and outcome else ""
         if row is not None and outcome:
@@ -4490,7 +4469,7 @@ class EngineBridge:
         graph_attrs: dict[str, Any] = getattr(graph, "graph", {}) or {}
         tick = int(graph_attrs.get("tick", 0))
 
-        row = _fetch_endgame_event_row(getattr(self._persistence, "_pool", None), session_id)
+        row = _fetch_endgame_event_row(self._persistence.pool, session_id)
         outcome = _outcome_from_endgame_row(row)
 
         progress_block = graph_attrs.get("endgame_progress")
@@ -4639,7 +4618,7 @@ class EngineBridge:
             ``TradeFlowsPayload`` dict matching
             ``specs/103-trade-surfaces/contracts/trade-flows.yaml``.
         """
-        pool = getattr(self._persistence, "_pool", None)
+        pool = self._persistence.pool
         graph = self._persistence.hydrate_graph(tick=None, session_id=session_id)
         graph_attrs: dict[str, Any] = getattr(graph, "graph", {}) or {}
         tick = int(graph_attrs.get("tick", 0))
@@ -4717,7 +4696,7 @@ class EngineBridge:
             ``ExposurePayload`` dict matching
             ``specs/103-trade-surfaces/contracts/county-exposure.yaml``.
         """
-        pool = getattr(self._persistence, "_pool", None)
+        pool = self._persistence.pool
         # hydrate_graph is called for its side-effect of ensuring the session
         # is bootstrapped; the exposure payload itself carries no tick field.
         self._persistence.hydrate_graph(tick=None, session_id=session_id)
@@ -4827,7 +4806,7 @@ class EngineBridge:
             ``TradePanelPayload`` dict matching
             ``specs/103-trade-surfaces/contracts/trade-panel.yaml``.
         """
-        pool = getattr(self._persistence, "_pool", None)
+        pool = self._persistence.pool
         graph = self._persistence.hydrate_graph(tick=None, session_id=session_id)
         graph_attrs: dict[str, Any] = getattr(graph, "graph", {}) or {}
         tick = int(graph_attrs.get("tick", 0))
@@ -5252,9 +5231,7 @@ class EngineBridge:
         # Spec 061 US5 T080 (FR-024): thread the session's rng_seed
         # into the engine config so action resolution is byte-deterministic
         # across replays of the same seed + action sequence.
-        rng_seed = _fetch_session_rng_seed_from_pool(
-            getattr(self._persistence, "_pool", None), session_id
-        )
+        rng_seed = _fetch_session_rng_seed_from_pool(self._persistence.pool, session_id)
         sim_config = SimulationConfig(rng_seed=rng_seed)
 
         # T014: Read pending player actions and format for engine injection
@@ -5448,6 +5425,7 @@ class EngineBridge:
         # replaces the old pre/post-diff fakery that hardcoded success=True and
         # diffed a never-present class_consciousness attr).
         results_by_org = _index_engine_action_results(persistent_context)
+        action_results: list[dict[str, Any]] = []
         for action in pending:
             tid = action.get("target_id")
             pre = pre_step.get(tid or "", {})
@@ -5493,7 +5471,11 @@ class EngineBridge:
                 "heat_delta": post_heat - pre.get("heat", 0.0),
                 "details": details,
             }
-            _persist_action_result(self._persistence, result_data)
+            action_results.append(result_data)
+        # Task #43: batch this tick's action rows into ONE persist call after
+        # the per-org loop (Postgres executemany, or Django ORM row-by-row on
+        # a pool-less backend) instead of a per-action write.
+        _persist_action_results(self._persistence, session_id, new_state.tick, action_results)
 
         snapshot = _state_to_snapshot(new_state, session_id, graph=new_graph)
 
@@ -7141,7 +7123,7 @@ def _query_investigate_action_results(session_id: UUID) -> list[dict[str, Any]]:
 
     Track 1 / Task 3: the read half of :func:`_investigate_field_snapshot`'s
     write-time enrichment. Queries the Django ORM ``ActionResult`` model
-    directly (mirrors ``_persist_action_result``'s own ORM fallback and
+    directly (mirrors ``_persist_action_results``'s own ORM fallback and
     ``get_map_snapshot``'s ``GameSession``/``HexState`` reads elsewhere in
     this file) — ``action_result`` has no protocol-level query method
     (``RuntimePersistence`` only declares the WRITE side,
@@ -9007,7 +8989,7 @@ def _build_tick_summary(
 
 
 def _persist_snapshots_safe(
-    persistence: RuntimePersistence,
+    persistence: BridgePersistence,
     session_id: UUID,
     state: WorldState,
     *,
@@ -9041,11 +9023,6 @@ def _persist_snapshots_safe(
             call sites omit it (tick-0 has no TickDynamics output; honest
             ``None``, never a fabricated 0.0).
     """
-    full_tick_fn = getattr(persistence, "persist_full_tick", None)
-    summary_fn = getattr(persistence, "persist_tick_summary", None)
-    if not callable(full_tick_fn) or not callable(summary_fn):
-        return
-
     territories = [_serialize_territory(t, graph=graph) for t in state.territories.values()]
     organizations = [
         _serialize_organization(o, player_org_id=state.player_org_id)
@@ -9055,7 +9032,7 @@ def _persist_snapshots_safe(
     edges = [_serialize_edge(rel) for rel in state.relationships]
 
     try:
-        full_tick_fn(
+        persistence.persist_full_tick(
             session_id,
             state.tick,
             territories=_territory_snapshot_rows(territories),
@@ -9075,7 +9052,7 @@ def _persist_snapshots_safe(
         )
 
     try:
-        summary_fn(
+        persistence.persist_tick_summary(
             state.tick,
             _build_tick_summary(state, organizations, graph=graph),
             session_id=session_id,
@@ -9087,7 +9064,7 @@ def _persist_snapshots_safe(
 
 
 def _persist_tick_events_safe(
-    persistence: RuntimePersistence,
+    persistence: BridgePersistence,
     session_id: UUID,
     tick: int,
     serialized_events: list[dict[str, Any]],
@@ -9097,9 +9074,9 @@ def _persist_tick_events_safe(
     """Best-effort write of a tick's events into the ``tick_event`` table.
 
     Spec 092 R-CONS: gives ``get_journal_dashboard``/``get_alerts_dashboard``
-    real history to read back. Mirrors :func:`_persist_action_result`'s
-    optional-capability pattern — SQLite-backed ``RuntimeDatabase``
-    (dev/test) has no ``persist_tick_events`` method and this becomes a
+    real history to read back. Mirrors :func:`_persist_action_results`'s
+    write pattern — SQLite-backed ``RuntimeDatabase``
+    (dev/test) implements ``persist_tick_events`` as an honest no-op, so this becomes a
     silent no-op there (matches :meth:`EngineBridge.get_game_timeseries`'s
     established SQLite fallback). Never raises: a journal-write failure
     must not fail tick resolution.
@@ -9126,12 +9103,9 @@ def _persist_tick_events_safe(
     """
     if not serialized_events:
         return
-    persist_fn = getattr(persistence, "persist_tick_events", None)
-    if not callable(persist_fn):
-        return
     rows = [_tick_event_row(e) for e in serialized_events]
     try:
-        persist_fn(session_id, tick, rows, replace=replace)
+        persistence.persist_tick_events(session_id, tick, rows, replace=replace)
     except Exception:  # noqa: BLE001 — diagnostic; never blocks tick resolution
         logger.exception("Failed to persist tick_event rows session=%s tick=%d", session_id, tick)
 
@@ -9653,7 +9627,7 @@ def _persist_hex_state_safe(
     game loop never wrote it, so the map rendered zero features for every
     real game (only the ``seed_hex_data`` mock-fixture command wrote rows).
     Mirrors :func:`_persist_tick_events_safe`'s never-raise contract, and
-    :func:`_persist_action_result`'s Django-ORM write path — Django's
+    :func:`_persist_action_results`'s Django-ORM write path — Django's
     ``default`` database is the same Postgres the persistence pool points at
     (see :func:`init_persistence`), so an ORM UPSERT lands in the exact table
     the map reader queries. Uses ``bulk_create(update_conflicts=True)`` →
@@ -10793,11 +10767,9 @@ def _compute_traps(
     return result.model_dump()
 
 
-def _mark_resolved_safe(persistence: RuntimePersistence, session_id: UUID, tick: int) -> None:
-    """Mark turns as resolved if the persistence layer supports it."""
-    mark_fn = getattr(persistence, "mark_turns_resolved", None)
-    if mark_fn is not None:
-        mark_fn(session_id=session_id, tick=tick)
+def _mark_resolved_safe(persistence: BridgePersistence, session_id: UUID, tick: int) -> None:
+    """Mark turns as resolved (no-op on backends without a turn queue)."""
+    persistence.mark_turns_resolved(session_id=session_id, tick=tick)
 
 
 def _preview_consciousness_delta(
@@ -10977,27 +10949,57 @@ def _investigate_field_snapshot(
     }
 
 
-def _persist_action_result(persistence: RuntimePersistence, result_data: dict[str, Any]) -> None:
-    """Write an ActionResult record via persistence layer or Django ORM.
+def _persist_action_results(
+    persistence: BridgePersistence,
+    session_id: UUID,
+    tick: int,
+    results: list[dict[str, Any]],
+) -> None:
+    """Write a tick's ActionResult rows into the ``action_result`` table.
 
-    Tries ``persist_action_result()`` on the persistence layer first.
-    Falls back to Django ORM ``ActionResult.objects.create()`` if unavailable.
+    Task #43 activation: a Postgres-capable backend (``persistence.pool``
+    present) takes the batched ``executemany`` path via
+    :meth:`~babylon.persistence.protocols.BridgePersistence.persist_action_results`
+    — replacing the former ``getattr(persistence, "persist_action_result",
+    None)`` duck-typing whose singular name existed on NO backend, so every
+    action always fell through to the Django ORM. The pool and the Django
+    ``default`` connection address the SAME Postgres runtime DB (``init_persistence``
+    builds the pool from Django's DB settings), so the ``action_result`` rows the
+    ORM readers see (intel ledger, dashboards) are byte-identical either way.
+
+    Backends without a connection pool (SQLite ``RuntimeDatabase``, whose
+    ``persist_action_results`` is an honest no-op) fall back to the Django
+    ORM one row at a time, preserving the pre-#43 write so those rows still
+    reach the ORM readers.
+
+    Best-effort like its ``_persist_*_safe`` siblings: a write failure is
+    logged loudly but never fails tick resolution.
 
     Args:
-        persistence: The RuntimePersistence instance.
-        result_data: Dict with ActionResult fields.
+        persistence: The persistence backend.
+        session_id: The game session UUID.
+        tick: The tick these results belong to.
+        results: Per-action ``ActionResult`` field dicts (one per resolved action).
     """
-    persist_fn = getattr(persistence, "persist_action_result", None)
-    if persist_fn is not None:
-        persist_fn(**result_data)
-    else:
-        # Fallback: use Django ORM
+    if not results:
+        return
+    if persistence.pool is not None:
         try:
-            from game.models import ActionResult
+            persistence.persist_action_results(tick, results, session_id=session_id)
+        except Exception:  # noqa: BLE001 — diagnostic; never blocks tick resolution
+            logger.exception(
+                "Failed to persist action_result rows session=%s tick=%d", session_id, tick
+            )
+        return
+    # Pool-less backend (SQLite RuntimeDatabase): Django ORM fallback so the
+    # intel ledger / dashboards still see the rows.
+    try:
+        from game.models import ActionResult
 
+        for result_data in results:
             ActionResult.objects.create(**result_data)
-        except Exception as exc:
-            logger.warning("Failed to persist action result: %s", exc)
+    except Exception as exc:  # noqa: BLE001 — diagnostic; never blocks tick resolution
+        logger.warning("Failed to persist action result: %s", exc)
 
 
 # ---------------------------------------------------------------------- #

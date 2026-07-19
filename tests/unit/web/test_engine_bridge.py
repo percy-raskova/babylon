@@ -566,15 +566,11 @@ class TestActionResultPersistence:
 
         bridge.resolve_tick(sid)
 
-        # Check that persist_action_result was called (or ActionResult.objects.create)
-        # The bridge should write results for each submitted action
-        result_fn = getattr(mock_persistence, "persist_action_result", None)
-        if result_fn is not None:
-            assert result_fn.called, "persist_action_result should be called for each action"
-        else:
-            # If using Django ORM directly, we check via a different mechanism
-            # This test verifies the bridge at least attempts result persistence
-            pass  # Will be validated via integration test
+        # The bridge batches the tick's action rows into one
+        # persist_action_results call (task #43; pool present => Postgres path).
+        assert mock_persistence.persist_action_results.called, (
+            "persist_action_results should be called with the tick's action rows"
+        )
 
 
 @pytest.mark.unit
@@ -2726,12 +2722,19 @@ class TestResolveTickConsumesEngineResults:
         bridge = EngineBridge(mock_persistence)
         bridge.resolve_tick(self._SID)
 
-        mock_persistence.persist_action_result.assert_called_once()
-        kwargs = mock_persistence.persist_action_result.call_args.kwargs
-        assert kwargs["success"] is True
-        assert kwargs["consciousness_delta"] == 0.05
-        assert kwargs["details"]["direct_effects"] == {"note": "real"}
-        assert kwargs["details"]["failure_reason"] is None
+        # Batched path (task #43): one plural persist_action_results call per
+        # tick carrying every action's row (pool present => Postgres path).
+        mock_persistence.persist_action_results.assert_called_once()
+        mock_persistence.persist_action_result.assert_not_called()
+        call = mock_persistence.persist_action_results.call_args
+        results = call.args[1]  # (tick, results, *, session_id=...)
+        assert call.kwargs["session_id"] == self._SID
+        assert len(results) == 1
+        row = results[0]
+        assert row["success"] is True
+        assert row["consciousness_delta"] == 0.05
+        assert row["details"]["direct_effects"] == {"note": "real"}
+        assert row["details"]["failure_reason"] is None
 
     @patch("game.engine_bridge.step")
     def test_missing_engine_result_is_loud_failure(self, mock_step: MagicMock) -> None:
@@ -2745,10 +2748,31 @@ class TestResolveTickConsumesEngineResults:
         bridge = EngineBridge(mock_persistence)
         bridge.resolve_tick(self._SID)
 
-        mock_persistence.persist_action_result.assert_called_once()
-        kwargs = mock_persistence.persist_action_result.call_args.kwargs
-        assert kwargs["success"] is False
-        assert kwargs["details"]["failure_reason"] is not None
+        mock_persistence.persist_action_results.assert_called_once()
+        results = mock_persistence.persist_action_results.call_args.args[1]
+        assert len(results) == 1
+        row = results[0]
+        assert row["success"] is False
+        assert row["details"]["failure_reason"] is not None
+
+    @patch("game.engine_bridge.step")
+    def test_batches_all_action_results_into_one_call(self, mock_step: MagicMock) -> None:
+        """Two pending actions => a single persist_action_results call whose
+        results list carries both rows (task #43 batched activation)."""
+        mock_persistence = _make_mock_persistence()
+        mock_persistence.get_pending_turns.return_value = [
+            {"org_id": "pf1", "verb": "educate", "target_id": "hex_a"},
+            {"org_id": "pf2", "verb": "educate", "target_id": "hex_b"},
+        ]
+        mock_step.return_value = _make_mock_new_state()
+        bridge = EngineBridge(mock_persistence)
+        bridge.resolve_tick(self._SID)
+
+        mock_persistence.persist_action_results.assert_called_once()
+        mock_persistence.persist_action_result.assert_not_called()
+        results = mock_persistence.persist_action_results.call_args.args[1]
+        assert len(results) == 2
+        assert {r["org_id"] for r in results} == {"pf1", "pf2"}
 
 
 # ---------------------------------------------------------------------- #
@@ -2896,10 +2920,12 @@ class TestResolveTickPersistsInvestigateSnapshot:
         bridge = EngineBridge(mock_persistence)
         bridge.resolve_tick(self._SID)
 
-        mock_persistence.persist_action_result.assert_called_once()
-        kwargs = mock_persistence.persist_action_result.call_args.kwargs
-        assert kwargs["details"]["intel_field_group"] == "territory:political"
-        assert kwargs["details"]["intel_value_snapshot"] == {"heat": 0.734}
+        mock_persistence.persist_action_results.assert_called_once()
+        results = mock_persistence.persist_action_results.call_args.args[1]
+        assert len(results) == 1
+        details = results[0]["details"]
+        assert details["intel_field_group"] == "territory:political"
+        assert details["intel_value_snapshot"] == {"heat": 0.734}
 
     @patch("game.engine_bridge.step")
     def test_non_investigate_action_carries_no_intel_snapshot(self, mock_step: MagicMock) -> None:
@@ -2928,9 +2954,10 @@ class TestResolveTickPersistsInvestigateSnapshot:
         bridge = EngineBridge(mock_persistence)
         bridge.resolve_tick(self._SID)
 
-        kwargs = mock_persistence.persist_action_result.call_args.kwargs
-        assert "intel_field_group" not in kwargs["details"]
-        assert "intel_value_snapshot" not in kwargs["details"]
+        results = mock_persistence.persist_action_results.call_args.args[1]
+        details = results[0]["details"]
+        assert "intel_field_group" not in details
+        assert "intel_value_snapshot" not in details
 
 
 @pytest.mark.unit

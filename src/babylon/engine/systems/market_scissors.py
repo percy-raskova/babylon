@@ -30,14 +30,16 @@ from __future__ import annotations
 from typing import TYPE_CHECKING, ClassVar
 
 from babylon.domain.economics.distribution.types import SurplusValueDistribution
-from babylon.domain.economics.monetary import serviceability_anchor
+from babylon.domain.economics.monetary import fictitious_anchor, serviceability_anchor
 from babylon.domain.economics.tensor import NoDataSentinel
-from babylon.domain.economics.tick.graph_bridge import TICK_DYNAMICS_KEY
+from babylon.domain.economics.tick.graph_bridge import NATIONAL_FINANCIAL_ATTR, TICK_DYNAMICS_KEY
+from babylon.domain.economics.tick.types import NationalFinancialParameters
 from babylon.engine.systems.wealth_distribution import (
     MARKET_CORRECTION_SHOCK_ATTR,
     bracket_of_role,
 )
 from babylon.formulas.market import (
+    calculate_anchor_pull,
     calculate_correction_severity,
     calculate_correction_snap,
     calculate_ema,
@@ -127,6 +129,28 @@ def _aggregate_wage_value_by_county(graph: GraphProtocol) -> dict[str, tuple[flo
     return flows
 
 
+def _read_fictitious_anchor(metadata: dict[str, object], real_output: float) -> float | None:
+    """Resolve the D1 monetary anchor from ``NATIONAL_FINANCIAL_ATTR``.
+
+    ``None`` — never a fabricated pull — when the key is absent (no
+    national financial state published this tick; U3 has not run, or this
+    graph carries no financial layer at all) or when
+    :func:`~babylon.domain.economics.monetary.fictitious_anchor`
+    itself returns :class:`~babylon.domain.economics.tensor.NoDataSentinel`
+    (no real FRED coverage past the 2024 data horizon, D1). The
+    oscillator's endogenous dynamics then carry the tick unchanged
+    (Constitution III.11).
+    """
+    raw = metadata.get(NATIONAL_FINANCIAL_ATTR)
+    if not isinstance(raw, dict):
+        return None
+    national_financial = NationalFinancialParameters.model_validate(raw)
+    result = fictitious_anchor(national_financial.fictitious_capital, real_output)
+    if isinstance(result, NoDataSentinel):
+        return None
+    return float(result)
+
+
 class MarketScissorsSystem(SystemBase):
     """The national price⟷value scissors axis (Phase 2: correction feedback live by default)."""
 
@@ -154,9 +178,12 @@ class MarketScissorsSystem(SystemBase):
             return  # no value substrate, no phenomenal form (III.11)
         wages, value = flow
         surplus = max(value - wages, 0.0)
+        anchor = _read_fictitious_anchor(metadata, value)
         prior_raw = metadata.get(MARKET_ATTR)
         if isinstance(prior_raw, dict):
-            state = self._advance(MarketState(**prior_raw), surplus, value, defines, int(tick))
+            state = self._advance(
+                MarketState(**prior_raw), surplus, value, defines, int(tick), anchor
+            )
         else:
             state = MarketState(
                 price_log=0.0,
@@ -244,13 +271,18 @@ class MarketScissorsSystem(SystemBase):
         value: float,
         defines: MarketDefines,
         tick: int,
+        anchor: float | None = None,
     ) -> MarketState:
         """One deterministic oscillator step of both scissors.
 
         Prices chase value-output growth (demand pull) against the law-of-
         value reversion; fictitious capitalization chases realized-surplus
-        growth PLUS price momentum (speculation rides the boom) against a
-        weaker gravity — bubbles outlive price swings.
+        growth PLUS price momentum (speculation rides the boom) PLUS a
+        pull toward the real-data anchor when one covers this tick (D1,
+        U6) against a weaker gravity — bubbles outlive price swings.
+        ``anchor`` is ``None`` for the county axes (:meth:`_step_county_axes`
+        never passes one — no per-territory ``fictitious_log`` projection,
+        out of scope per §6 of the design).
         """
         price_drive = calculate_growth_drive(
             value, prior.value_ema, sensitivity=defines.price_drive_sensitivity
@@ -268,6 +300,7 @@ class MarketScissorsSystem(SystemBase):
                 surplus, prior.surplus_ema, sensitivity=defines.fictitious_drive_sensitivity
             )
             + defines.momentum_coupling * price_velocity
+            + calculate_anchor_pull(anchor, prior.fictitious_log, gain=defines.anchor_pull)
         )
         fictitious_log, fictitious_velocity = calculate_scissors_step(
             prior.fictitious_log,

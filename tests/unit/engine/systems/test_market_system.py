@@ -12,10 +12,14 @@ import pytest
 from pydantic import ValidationError
 
 from babylon.config.defines import GameDefines, MarketDefines
+from babylon.domain.economics.credit.types import FictitiousCapitalStock
 from babylon.domain.economics.distribution.types import SurplusValueDistribution
 from babylon.domain.economics.dynamics.types import ClassDistribution
-from babylon.domain.economics.tick.graph_bridge import TICK_DYNAMICS_KEY
-from babylon.domain.economics.tick.types import CountyEconomicState
+from babylon.domain.economics.tick.graph_bridge import (
+    NATIONAL_FINANCIAL_ATTR,
+    TICK_DYNAMICS_KEY,
+)
+from babylon.domain.economics.tick.types import CountyEconomicState, NationalFinancialParameters
 from babylon.engine.context import TickContext
 from babylon.engine.services import ServiceContainer
 from babylon.engine.simulation_engine import _DEFAULT_SYSTEMS, CONSEQUENCE_SYSTEMS
@@ -552,3 +556,66 @@ class TestMarketScissorsDocstringHonest:
     def test_class_docstring_no_longer_claims_shadow(self) -> None:
         doc = MarketScissorsSystem.__doc__ or ""
         assert "Phase 1 SHADOW" not in doc
+
+
+class TestAnchorAbsentIsBitIdentical:
+    """U6/D1: absence of NATIONAL_FINANCIAL_ATTR must reproduce the exact
+    pre-U6.8 trajectory — captured before the anchor-pull wiring landed."""
+
+    def test_advance_without_an_anchor_matches_the_pre_u6_pin(self) -> None:
+        defines = MarketDefines()
+        prior = MarketState(
+            price_log=0.12,
+            price_velocity=-0.01,
+            fictitious_log=0.4,
+            fictitious_velocity=0.02,
+            surplus_ema=3.5,
+            value_ema=11.0,
+            tick=42,
+        )
+        result = MarketScissorsSystem._advance(
+            prior, surplus=4.0, value=12.0, defines=defines, tick=43, anchor=None
+        )
+        assert result.price_log == 0.16364545454545454
+        assert result.price_velocity == 0.04364545454545454
+        assert result.fictitious_log == 0.5643941558441559
+        assert result.fictitious_velocity == 0.16439415584415584
+        assert result.surplus_ema == 3.575
+        assert result.value_ema == 11.149999999999999
+
+
+class TestAnchorPresentPullsTheOscillator:
+    """D1: real FRED data anchors the fictitious oscillator while it
+    covers this tick (§3.5 item 3)."""
+
+    @staticmethod
+    def _run(publish_anchor: bool) -> float:
+        graph = BabylonGraph()
+        _paid_worker(graph, "w1", w_paid=0.8, v_produced=1.0)
+        services = ServiceContainer.create()
+        _step(graph, services, tick=1)  # seed at zero — no anchor read on the seed tick
+        if publish_anchor:
+            graph.graph[NATIONAL_FINANCIAL_ATTR] = NationalFinancialParameters(
+                fictitious_capital=FictitiousCapitalStock(
+                    year=2020,
+                    government_debt=3.0,
+                    corporate_equity=3.0,
+                    corporate_debt=3.0,
+                    household_debt=3.0,
+                ),
+            ).model_dump()
+        graph.update_node("w1", v_produced=1.0, w_paid=0.8)
+        _step(graph, services, tick=2)
+        return float(graph.graph["market"]["fictitious_log"])
+
+    def test_anchor_pulls_the_fictitious_log_upward(self) -> None:
+        anchored = self._run(publish_anchor=True)
+        unanchored = self._run(publish_anchor=False)
+        assert unanchored == 0.0
+        assert anchored > unanchored
+
+    def test_missing_national_financial_key_is_inert(self) -> None:
+        """No NATIONAL_FINANCIAL_ATTR at all (U3 has not run this tick, or
+        the graph carries no financial layer) — same as an explicit
+        anchor=None, never an error."""
+        assert self._run(publish_anchor=False) == 0.0

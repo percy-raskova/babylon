@@ -9,6 +9,11 @@ decisions:
     status: accepted
     date: '2026-07-18'
     file: ADR084_retire_dead_models.yaml
+  ADR085_retire_org_solidarity_mass_link:
+    title: 'Retire the org-sourced MASS_LINK solidarity-transmission branch (DoctrineSystem Unit 6b, ADR073): the only reachable path was a fabricated test fixture — no verb or system ever creates an organization-sourced SOLIDARITY edge — so the read-side code, its defines coefficient, and its fixture are deleted; the sibling CLASS_ANALYSIS theory bonus (same commit, same Unit 6b) stays, because it IS wired to real production verb dispatch'
+    status: accepted
+    date: '2026-07-18'
+    file: ADR085_retire_org_solidarity_mass_link.yaml
   ADR083_bifurcation_county_fips_fix:
     title: 'Blocker I-2: BifurcationRiskCalculator read a flat "territory" key no producer writes (real field is "county_fips") — solidarity density was silently 0.0 and the agitation-fallback legitimation path silently unreachable for every county in every real game; fixed with RED/GREEN tests using real production node shape, two fabricated-shape test fixtures repaired, two now-stale vocabulary-sentinel exemption rows deleted; verified TWO independent ways (instrumented call-count + mise run qa:regression re-run) that the fix moves ZERO regression baselines, because none of the 5 canonical scenarios ever wire melt_calculator — correcting the registry comment''s prior unverified prediction that fixing it "would move baselines"'
     status: accepted

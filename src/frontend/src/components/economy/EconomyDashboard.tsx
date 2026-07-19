@@ -1,10 +1,14 @@
 /**
  * EconomyDashboard — the `/economy/` left-drawer panel (Wave 2 W2.2a,
  * `reports/wave2-implementation-map.md`). Stat chips over the graph-wide
- * `EconomyDashboardPayload`, the `wealth_by_class_role` composition, the
- * wealth trajectory (reusing `panels.timeseries`'s real `wealth` array —
- * no second fetch), and a crisis-phase-transition timeline read straight
- * from the journal.
+ * `EconomyDashboardPayload`, the wealth trajectory (reusing
+ * `panels.timeseries`'s real `wealth` array — no second fetch), and a
+ * crisis-phase-transition timeline read straight from the journal.
+ *
+ * The `wealth_by_class_role` composition that used to live here was
+ * RELOCATED (not duplicated) to `CircuitPage.tsx` (Track 2 T2-7, D2:
+ * "no god-dashboard" — each front gets a room of its own); this panel no
+ * longer renders it.
  *
  * `panels.economy.setMounted` had zero production call sites before this
  * component (Wave 2 recon: the panel was fully plumbed but never fetched)
@@ -24,48 +28,11 @@ import { get as apiGet } from "@/api/client";
 import { endpoints } from "@/api/endpoints";
 import { useStore } from "@/store";
 import { StatChip } from "@/components/shell/StatChip";
-import { BreakdownBar } from "@/components/inspect/BreakdownBar";
-import { SOCIAL_ROLE_LABELS } from "@/components/map/mapLensLayers";
+import { SectionLabel } from "@/components/shell/SectionLabel";
 import type { GameEvent, JournalPayload, TimeseriesPayload } from "@/types/game";
-import type { InspectionCompositionEntry } from "@/types/inspection";
 
 interface EconomyDashboardProps {
   gameId: string;
-}
-
-/**
- * Wealth-by-role composition color, one per canonical `SocialRole`
- * (`src/babylon/models/enums/social.py`). `SOCIAL_ROLE_COLOR`
- * (`components/map/mapLensLayers.ts`) is an RGBA array for deck.gl map
- * layers, not reusable here as-is — `BreakdownBar` wants a Tailwind
- * `text-*` token — so this is a parallel mapping onto this app's existing
- * `--babylon-*` tokens, chosen to match their documented meaning
- * (`index.css`) where one exists: `cadre` is literally documented "Labor
- * aristocracy, info text"; `rent`/`heat` track the extraction family
- * (core/comprador bourgeoisie); `laser` matches the map lens's own
- * `carceral_enforcer` choice exactly ("THREAT"). An unrecognized role key
- * (a scenario emitting something outside the 8 canonical values) falls
- * back to `BreakdownBar`'s own default rather than a fabricated color.
- */
-const ROLE_CHIP_COLOR: Record<string, string> = {
-  core_bourgeoisie: "text-rent",
-  comprador_bourgeoisie: "text-heat",
-  labor_aristocracy: "text-cadre",
-  petty_bourgeoisie: "text-population",
-  periphery_proletariat: "text-spire",
-  internal_proletariat: "text-solidarity",
-  lumpenproletariat: "text-thermal",
-  carceral_enforcer: "text-laser",
-};
-
-function wealthCompositionEntries(
-  wealthByRole: Record<string, number>,
-): InspectionCompositionEntry[] {
-  return Object.entries(wealthByRole).map(([role, value]) => ({
-    key: SOCIAL_ROLE_LABELS[role] ?? role,
-    value,
-    color: ROLE_CHIP_COLOR[role],
-  }));
 }
 
 interface WealthChartRow {
@@ -158,10 +125,6 @@ function CrisisTimeline({ gameId }: { gameId: string }): React.JSX.Element {
   );
 }
 
-function SectionLabel({ children }: { children: React.ReactNode }): React.JSX.Element {
-  return <p className="mb-1 text-[9px] uppercase tracking-widest text-ksbc-muted-2">{children}</p>;
-}
-
 export function EconomyDashboard({ gameId }: EconomyDashboardProps): React.JSX.Element {
   const data = useStore((s) => s.panels.economy.data);
   const loading = useStore((s) => s.panels.economy.loading);
@@ -247,11 +210,6 @@ export function EconomyDashboard({ gameId }: EconomyDashboardProps): React.JSX.E
           format={(v) => v.toFixed(1)}
           colorClassName="text-rent"
         />
-      </div>
-
-      <div>
-        <SectionLabel>Wealth by Class</SectionLabel>
-        <BreakdownBar entries={wealthCompositionEntries(data.wealth_by_class_role)} />
       </div>
 
       <div>

@@ -439,6 +439,13 @@ export function makeEconomyDashboardPayload(
     tribute_flow_total: 5,
     wealth_by_class_role: { periphery_proletariat: 40, core_bourgeoisie: 60 },
     county_flow: { year: null, phi_accrued_this_year: null, wage_accrued_this_year: null },
+    veil: {
+      tier: 2,
+      next_unlock_node_id: null,
+      next_unlock_label: null,
+      value_produced: 100,
+      exploitation_rate: 0.2,
+    },
     ...overrides,
   };
 }

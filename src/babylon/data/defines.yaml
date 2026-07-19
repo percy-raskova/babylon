@@ -1002,3 +1002,10 @@ market:
   evaporation_gain: 0.15  # Game design: claim-holder wealth fraction destroyed per unit overhang — the fictitious wealth was counted as wealth; the snap un-counts it. Applies to bracket-0/1 roles (the ADR075 fold: bourgeoisies + petty bourgeoisie). (>= 0.0, <= 0.5)
   unemployment_gain: 0.08  # Game design: reserve-army ratio influx per unit overhang on territories carrying a wage relation (median_wage) — the crisis disciplines labor through the reserve army. (>= 0.0, <= 0.5)
   wealth_axis_kick_gain: 0.02  # Game design: w1 velocity impulse per unit overhang on the Program-21 wealth-share axis (conservation-preserving, the spec-114 FR-114-4 impulse form) — top-bracket paper wealth deflates relative to the whole. (>= 0.0, <= 0.1)
+
+# ---------------------------------------------------------------------
+# veil — Doctrine-node-id thresholds gating the Veil of Money's 3 tiers.
+# ---------------------------------------------------------------------
+veil:
+  tier1_doctrine_node_id: class_consciousness  # Ruling D7: acquiring this doctrine node unlocks veil Tier 1 (exploitation visible — wage vs value-produced axes). Default is the free tree root (cost_tl=0), reachable the first DoctrineSystem tick for any organization regardless of cadre_level (bootstrap fires once theoretical_labor >= 0).
+  tier2_doctrine_node_id: trade_unionism  # Ruling D7: acquiring this doctrine node unlocks veil Tier 2 (the scissors — price/value divergence instruments, the Fundamental Theorem meter's full form). Default costs 25 TL; at cadre_level=0.25 (the nationwide Cadre Council seed) and study_allocation=0.20 that is 25 / (0.25*0.20) = 500 ticks — reachable inside a 520-tick campaign, but earned near its end.

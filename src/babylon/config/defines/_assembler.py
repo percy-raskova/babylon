@@ -80,6 +80,7 @@ from babylon.config.defines.tunables import (
     PrecisionDefines,
     TimescaleDefines,
 )
+from babylon.config.defines.veil import VeilDefines
 
 
 class GameDefines(BaseModel):
@@ -126,6 +127,7 @@ class GameDefines(BaseModel):
     - epistemic_horizon: Fog-of-war Phase 1 shadow coefficients (Epistemic Horizon program)
     - doctrine: DoctrineSystem mechanic coefficients (owner-ratified 2026-07-15)
     - market: Price⟷value scissors dynamics (Program 23 Phase-1 shadow, ADR077)
+    - veil: The Veil of Money's theoretical disclosure tier thresholds (D7, spec-117 §5d)
     """
 
     model_config = ConfigDict(frozen=True)
@@ -191,6 +193,8 @@ class GameDefines(BaseModel):
     doctrine: DoctrineDefines = Field(default_factory=DoctrineDefines)
     # Market Scissors — price/fictitious oscillators (Program 23 Phase-1 shadow, ADR077)
     market: MarketDefines = Field(default_factory=MarketDefines)
+    # Veil of Money — theoretical disclosure tier thresholds (D7, spec-117 §5d)
+    veil: VeilDefines = Field(default_factory=VeilDefines)
 
     # Legacy flat attributes for backward compatibility
     # These delegate to the nested structure
@@ -320,6 +324,7 @@ class GameDefines(BaseModel):
             epistemic_horizon=EpistemicHorizonDefines(**data.get("epistemic_horizon", {})),
             doctrine=DoctrineDefines(**data.get("doctrine", {})),
             market=MarketDefines(**data.get("market", {})),
+            veil=VeilDefines(**data.get("veil", {})),
         )
 
     @classmethod

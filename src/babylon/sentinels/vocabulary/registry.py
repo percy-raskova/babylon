@@ -34,7 +34,6 @@ from babylon.models.entities.institution import Institution
 from babylon.models.entities.organization import (
     Business,
     CivilSocietyOrg,
-    KeyFigure,
     Organization,
     PoliticalFaction,
     StateApparatus,
@@ -159,7 +158,6 @@ MODEL_FIELDS_BY_NODE_TYPE: Final[dict[str, frozenset[str]]] = {
         | PoliticalFaction.model_fields
         | CivilSocietyOrg.model_fields
     ),
-    NodeType.KEY_FIGURE.value: frozenset(KeyFigure.model_fields),
     NodeType.INSTITUTION.value: frozenset(Institution.model_fields),
     NodeType.INDUSTRY.value: frozenset(IndustryHyperedge.model_fields),
     NodeType.SOVEREIGN.value: frozenset(Sovereign.model_fields),
@@ -359,24 +357,6 @@ ATTRIBUTE_EXEMPTIONS: Final[tuple[SentinelExemption, ...]] = (
         owner="Persephone Raskova",
         date="2026-07-18",
         tracking_task="N/A (permanent by design -- negative-control test)",
-    ),
-    SentinelExemption(
-        key=(
-            "node_attribute",
-            "tests/unit/organizations/test_composition.py",
-            "social_class",
-            "community",
-        ),
-        reason=(
-            "domain/organizations/composition.py's community_composition() "
-            "genuinely reads 'community' off social_class nodes via MEMBERSHIP "
-            "edges -- no System currently calls it, so this is an orphaned-"
-            "computation finding (task #45 audit), not a masked live bug the way "
-            "agitation/class_consciousness were."
-        ),
-        owner="Persephone Raskova",
-        date="2026-07-18",
-        tracking_task="N/A (task #45 audit; orphaned computation, not an owner-gated bug)",
     ),
     SentinelExemption(
         key=(

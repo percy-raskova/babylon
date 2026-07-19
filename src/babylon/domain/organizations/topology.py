@@ -1,8 +1,8 @@
-"""Topology classification and key figure identification (Feature 031, T027).
+"""Topology classification for organizations (Feature 031, T027).
 
 Classifies organization COMMAND subgraphs into STAR, HIERARCHY, MESH, or CELL
-topologies and identifies structurally critical key figures via articulation
-point analysis.
+topologies via articulation-point analysis, and computes cohesion loss on
+member removal.
 """
 
 from __future__ import annotations
@@ -10,7 +10,6 @@ from __future__ import annotations
 from typing import TYPE_CHECKING
 
 from babylon.domain.organizations.types import TopologyClassification
-from babylon.models.entities.organization import KeyFigure
 from babylon.models.enums import EdgeType, TopologyType, resolve_edge_type
 from babylon.topology.graph import BabylonUGraph
 from babylon.topology.graph_algorithms import (
@@ -126,68 +125,6 @@ def classify_topology(
 
     # Disconnected graph
     return _result(None)
-
-
-def identify_key_figures(
-    org_id: str,
-    member_node_ids: list[str],
-    G: BabylonGraph,
-) -> list[KeyFigure]:
-    """Identify structurally critical key figures via articulation point analysis.
-
-    Args:
-        org_id: Organization node ID.
-        member_node_ids: Node IDs of key figures in this organization.
-        G: Full directed graph containing COMMAND edges.
-
-    Returns:
-        List of KeyFigure entities for each articulation point.
-    """
-    if len(member_node_ids) < 2:
-        return []
-
-    subgraph = _extract_command_subgraph(member_node_ids, G)
-    if subgraph.number_of_edges() == 0:
-        return []
-
-    art_points = sorted(articulation_point_set(subgraph))
-    n = len(member_node_ids)
-    key_figures: list[KeyFigure] = []
-
-    for ap_id in art_points:
-        # Compute structural importance: (components_after_removal - 1) / (n - 1)
-        # Normalized to [0, 1] where 1.0 = maximum fragmentation
-        test_graph = subgraph.copy()
-        test_graph.remove_node(ap_id)
-        components_after = component_count(test_graph)
-        importance = min((components_after - 1) / (n - 1), 1.0) if n > 1 else 0.0
-
-        # Check for structural equivalents (same degree, same neighbors)
-        ap_neighbors = set(subgraph.neighbors(ap_id))
-        ap_degree = subgraph.degree(ap_id)
-        has_equivalent = False
-        for other_id in member_node_ids:
-            if other_id == ap_id:
-                continue
-            if subgraph.degree(other_id) == ap_degree:
-                other_neighbors = set(subgraph.neighbors(other_id))
-                # Same neighborhood structure (excluding each other)
-                if ap_neighbors - {other_id} == other_neighbors - {ap_id}:
-                    has_equivalent = True
-                    break
-
-        node_data = G.nodes.get(ap_id, {})
-        kf = KeyFigure(
-            id=ap_id,
-            name=node_data.get("name", ap_id),
-            organization_id=org_id,
-            role=node_data.get("role", "key_figure"),
-            structural_importance=importance,
-            is_singleton=not has_equivalent,
-        )
-        key_figures.append(kf)
-
-    return key_figures
 
 
 def cohesion_loss_on_removal(

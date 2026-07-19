@@ -70,19 +70,6 @@ def class_composition(org_id: str, G: BabylonGraph) -> CompositionResult:
     return _composition_by_attribute(org_id, G, "role", "class")
 
 
-def community_composition(org_id: str, G: BabylonGraph) -> CompositionResult:
-    """Analyze community makeup of an organization via MEMBERSHIP edges.
-
-    Args:
-        org_id: Organization node ID.
-        G: Graph containing organization and social class nodes.
-
-    Returns:
-        CompositionResult with community distribution proportions.
-    """
-    return _composition_by_attribute(org_id, G, "community", "community")
-
-
 def lifecycle_composition(org_id: str, G: BabylonGraph) -> CompositionResult:
     """Analyze lifecycle phase makeup of an organization via MEMBERSHIP edges.
 

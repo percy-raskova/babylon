@@ -1,7 +1,7 @@
 """Tests for composition calculators (Feature 031, T017-T019/T028).
 
-Tests class_composition, community_composition, lifecycle_composition,
-and effective_capacity calculators.
+Tests class_composition, lifecycle_composition, and effective_capacity
+calculators.
 """
 
 from __future__ import annotations
@@ -10,7 +10,6 @@ import pytest
 
 from babylon.domain.organizations.composition import (
     class_composition,
-    community_composition,
     effective_capacity,
     lifecycle_composition,
 )
@@ -74,44 +73,6 @@ class TestClassComposition:
 
         result = class_composition("org-001", G)
         assert result.total_members == pytest.approx(50.0)
-
-
-class TestCommunityComposition:
-    """community_composition: analyze community makeup via MEMBERSHIP edges."""
-
-    @pytest.mark.math
-    def test_single_community(self) -> None:
-        G = BabylonGraph()
-        G.add_node("org-001", _node_type="organization")
-        G.add_node("sc-001", _node_type="social_class", community="new_afrikan")
-        G.add_edge("org-001", "sc-001", edge_type=EdgeType.MEMBERSHIP, weight=80)
-
-        result = community_composition("org-001", G)
-        assert result.axis == "community"
-        assert result.total_members == pytest.approx(80.0)
-        assert result.distribution["new_afrikan"] == pytest.approx(1.0)
-
-    @pytest.mark.math
-    def test_mixed_communities(self) -> None:
-        G = BabylonGraph()
-        G.add_node("org-001", _node_type="organization")
-        G.add_node("sc-001", _node_type="social_class", community="new_afrikan")
-        G.add_node("sc-002", _node_type="social_class", community="settler")
-        G.add_edge("org-001", "sc-001", edge_type=EdgeType.MEMBERSHIP, weight=70)
-        G.add_edge("org-001", "sc-002", edge_type=EdgeType.MEMBERSHIP, weight=30)
-
-        result = community_composition("org-001", G)
-        assert result.distribution["new_afrikan"] == pytest.approx(0.7)
-        assert result.distribution["settler"] == pytest.approx(0.3)
-
-    @pytest.mark.math
-    def test_no_memberships(self) -> None:
-        G = BabylonGraph()
-        G.add_node("org-001", _node_type="organization")
-
-        result = community_composition("org-001", G)
-        assert result.total_members == pytest.approx(0.0)
-        assert result.distribution == {}
 
 
 class TestLifecycleComposition:

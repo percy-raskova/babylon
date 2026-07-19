@@ -177,7 +177,7 @@ def _iter_worldstate_collections(
 
     Walks the canonical collections enumerated in
     ``specs/054-bound-invariants/data-model.md §1.1``: entities, territories,
-    relationships, organizations, key_figures, institutions, state_finances,
+    relationships, organizations, institutions, state_finances,
     contradiction_frames, industries. Relationships are keyed by their
     ``id`` attribute when present, otherwise by their list index.
 
@@ -191,7 +191,6 @@ def _iter_worldstate_collections(
         rel_id = getattr(rel, "id", None) or f"relationship[{idx}]"
         yield rel_id, rel
     yield from state.organizations.items()
-    yield from state.key_figures.items()
     yield from state.institutions.items()
     yield from state.state_finances.items()
     yield from state.contradiction_frames.items()

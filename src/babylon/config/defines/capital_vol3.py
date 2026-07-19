@@ -138,6 +138,19 @@ class CapitalVolumeIIIDefines(BaseModel):
             "live per-tick rate)."
         ),
     )
+    credit_fragility_scale: float = Field(
+        default=0.02,
+        gt=0.0,
+        description=(
+            "Empirical: crisis reference for the credit opposition. The "
+            "engine divides the credit fragility index "
+            "(default_rate * spread_to_treasuries) by this before handing it "
+            "to the defines-free catalog, so the accommodation⇄fragility "
+            "balance crosses zero exactly AT the threshold. 0.02 is the "
+            "2008 reading — corporate bond spread ~6% times default rate "
+            "~4% — matching CREDIT_FRAGILITY_THRESHOLD's own derivation."
+        ),
+    )
 
     @field_validator("counter_tendency_weights")
     @classmethod

@@ -66,4 +66,10 @@ describe("App routing", () => {
     // (index route) never matched — the pattern's whole point.
     expect(useStore.getState().session.activeGameId).toBe(DEFAULT_GAME_ID);
   });
+
+  it("renders the Doctrine screen at /game/:id/doctrine — a sibling of the map, not a takeover (Track 3 T3-5)", async () => {
+    renderAt(`/game/${DEFAULT_GAME_ID}/doctrine`);
+    await waitFor(() => expect(screen.getByTestId("region-doctrine")).toBeInTheDocument());
+    expect(useStore.getState().session.activeGameId).toBe(DEFAULT_GAME_ID);
+  });
 });

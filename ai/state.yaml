@@ -2,9 +2,21 @@
 # What exists vs what's planned - KEEP THIS UPDATED
 
 meta:
-  version: "2.38.0"  # 2.28.0 lives on feature/19-emergent-class-partition (Program 19 Phase 0+1)
-  updated: "2026-07-17"
+  version: "2.39.0"  # 2.28.0 lives on feature/19-emergent-class-partition (Program 19 Phase 0+1)
+  updated: "2026-07-19"
   truth_status: |
+    (2026-07-19 ADR086) BUSINESS SEEDING: the canonical playable scenarios now
+    seed real-QCEW Business orgs (us_nationwide 1->6 orgs, wayne_county 2->7)
+    from a committed hash-stamped artifact (src/babylon/data/game/
+    business_seeds.json, gen by tools/generate_business_seeds.py) via one shared
+    builder engine/scenarios/business_seeds.py. Top-5 PRIVATE-sector 2-digit
+    NAICS sectors/scope by real employment (reuses get_county_employment_by_naics);
+    honest names ("Wayne County Manufacturing"); only real-data fields set,
+    behaviour (EMPLOY) = future work. Event-flood: NON-ISSUE (OODA already
+    aggregates layer0 into 1 ORGANIZATIONAL_ACTION/tick; measured 6 orgs ->
+    1 event/tick). Surfaced+fixed a 4dp rounding drift in _centrality_by_territory.
+    qa:regression 5/5 byte-identical (zero-org regression scenarios = scope proof).
+
     (2026-07-17 overnight) THE EXECUTION SLATE (branch feature/22-execution-slate;
     /goal "complete all remaining open tasks"): every ADR075/ADR076 ruling
     EXECUTED. (1) AMPUTATIONS: 16 objects dropped (A1 __pre_086 via the

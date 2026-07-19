@@ -20,9 +20,11 @@ import type { RootState } from "../types";
  *  `doctrine` added Epoch 3 Wave 6 Phase 0), or none open. */
 export type TakeoverKind = "wire" | "chronicle" | "dialectic" | "network" | "doctrine";
 
-/** `BottomDrawer`'s six states (architecture §1.4): closed, or one of its five contents. */
+/** `BottomDrawer`'s five states (architecture §1.4): closed, or one of its four
+ *  contents. `"scissors"` retired (Track 2 T2-1): ScissorsChart relocated to
+ *  the routed Circuit page (`/game/:id/circuit`) — its own room, not a tab. */
 export type BottomDrawerState =
-  "none" | "trends" | "scissors" | "events" | "economy" | "state-apparatus" | "edges";
+  "none" | "trends" | "events" | "economy" | "state-apparatus" | "edges";
 
 /**
  * Chrome panel open/collapsed state (architecture §1.4). One field per

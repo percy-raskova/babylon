@@ -58,4 +58,12 @@ describe("App routing", () => {
     renderAt("/something-unknown");
     await waitFor(() => expect(screen.getByText(/Your Games/)).toBeInTheDocument());
   });
+
+  it("renders the Circuit screen at /game/:id/circuit — a sibling of the map, not a takeover", async () => {
+    renderAt(`/game/${DEFAULT_GAME_ID}/circuit`);
+    await waitFor(() => expect(screen.getByTestId("region-circuit")).toBeInTheDocument());
+    // The layout route's session-setup effect ran even though the map
+    // (index route) never matched — the pattern's whole point.
+    expect(useStore.getState().session.activeGameId).toBe(DEFAULT_GAME_ID);
+  });
 });

@@ -45,6 +45,12 @@ describe("BottomDrawer", () => {
     expect(screen.getByText(/dispatch already runs in the tray/i)).toBeInTheDocument();
   });
 
+  it("no longer hosts a 'scissors' tab — ScissorsChart relocated to the routed Circuit page (Track 2 T2-1)", () => {
+    render(<BottomDrawer gameId={DEFAULT_GAME_ID} />);
+    expect(screen.queryByTestId("bottomdrawer-tab-scissors")).not.toBeInTheDocument();
+    expect(screen.queryByTestId("scissors-chart")).not.toBeInTheDocument();
+  });
+
   it("the 'economy' tab toggles and renders EconomyDashboard, keeping it mounted (fan-out eligible) throughout", async () => {
     render(<BottomDrawer gameId={DEFAULT_GAME_ID} />);
     await waitFor(() => expect(useStore.getState().panels.economy.mounted).toBe(true));

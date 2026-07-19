@@ -18,6 +18,7 @@ import argparse
 import sys
 from collections.abc import Callable
 
+from babylon.sentinels.aggregation.checks import main as aggregation_main
 from babylon.sentinels.coverage.checks import main as coverage_main
 from babylon.sentinels.liveness.checks import main as liveness_main
 from babylon.sentinels.seam.checks import main as seam_main
@@ -55,6 +56,7 @@ _SENSORS: dict[str, Callable[[list[str] | None], int]] = {
     "synthetic": synthetic_main,
     "catalog": _catalog_main,
     "liveness": liveness_main,
+    "aggregation": aggregation_main,
 }
 
 

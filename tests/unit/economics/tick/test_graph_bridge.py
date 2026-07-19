@@ -6,7 +6,7 @@ Task: T008
 
 from __future__ import annotations
 
-from babylon.domain.economics.credit.types import FictitiousCapitalStock, InterestRateState
+from babylon.domain.economics.credit.types import EndogenousInterestRate, FictitiousCapitalStock
 from babylon.domain.economics.distribution.types import DebtAccumulation, SurplusValueDistribution
 from babylon.domain.economics.financial_crisis.types import FinancialCrisisAssessment
 from babylon.domain.economics.rent.types import HousingValueDecomposition, RentExtraction
@@ -348,13 +348,15 @@ class TestWriteNationalFinancialStateToGraph:
     """
 
     def _sample_params(self) -> NationalFinancialParameters:
-        """Build a fully-populated interest+fictitious-capital sample."""
+        """Build a fully-populated endogenous-interest+fictitious-capital sample."""
         return NationalFinancialParameters(
-            interest_rate_state=InterestRateState(
+            endogenous_interest=EndogenousInterestRate(
                 year=2015,
-                base_rate=0.25,
-                treasury_10y=2.27,
-                baa_spread=2.64,
+                profit_rate_ceiling=0.10,
+                rate=0.03,
+                fragility_premium=0.0,
+                tightness=0.0,
+                reserve_army_signal=0.0,
             ),
             fictitious_capital=FictitiousCapitalStock(
                 year=2015,
@@ -375,7 +377,7 @@ class TestWriteNationalFinancialStateToGraph:
         assert NATIONAL_FINANCIAL_ATTR in graph.graph
         stored = graph.graph[NATIONAL_FINANCIAL_ATTR]
         assert isinstance(stored, dict)
-        assert stored["interest_rate_state"]["base_rate"] == 0.25
+        assert stored["endogenous_interest"]["rate"] == 0.03
         assert stored["fictitious_capital"]["government_debt"] == 18e12
 
     def test_read_returns_none_when_nothing_published(self) -> None:
@@ -392,9 +394,9 @@ class TestWriteNationalFinancialStateToGraph:
         result = read_national_financial_state_from_graph(graph)
 
         assert result is not None
-        assert result.interest_rate_state is not None
-        assert result.interest_rate_state.base_rate == 0.25
-        assert result.interest_rate_state.effective_rate == 0.25 + 2.64
+        assert result.endogenous_interest is not None
+        assert result.endogenous_interest.rate == 0.03
+        assert result.endogenous_interest.profit_rate_ceiling == 0.10
         assert result.fictitious_capital is not None
         assert result.fictitious_capital.total_claims == 60e12
         assert result.credit_state is None

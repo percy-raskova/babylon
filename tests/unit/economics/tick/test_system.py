@@ -2182,21 +2182,21 @@ class TestVol3FinancialLayerSentinelObservability:
     """A NoDataSentinel reaching the tick-system consumer must be counted
     and logged, not silently swallowed (code-review finding 1)."""
 
-    def test_national_interest_sentinel_records_tally_never_a_fabricated_zero(self) -> None:
-        """Code-review finding U2.2-3: absent interest data must propagate as
-        None, never a fabricated 0.0 that would silently flow into
-        compute_distribution's national_interest_rate * implied_capital term."""
+    def test_national_rate_is_endogenous_and_total(self) -> None:
+        """U9: the national rate is computed from the sim's own quantities and
+        is never None. With no profit rate on the graph it is 0.0 (no profit
+        to divide, Capital Vol. III ch. 23), not a NoDataSentinel."""
         system = TickDynamicsSystem()
         services = _make_services(interest_calculator=_StubInterestSentinelCalculator())
-
-        national_rate, _spread, _fictitious, reason = system._compute_national_financial_state(
-            services, 2041, build_territory_graph()
+        graph = build_territory_graph()
+        year = 2041
+        national_rate, national_spread, _fictitious = system._compute_national_financial_state(
+            services, year, graph
         )
-
-        assert national_rate is None
-        assert reason is not None
-        assert "outside Volume III modeled financial-data window" in reason
-        assert services.economics_fallbacks.vol3_interest_sentinel == 1
+        assert isinstance(national_rate, float)
+        assert isinstance(national_spread, float)
+        assert national_rate == 0.0  # empty graph: no territory profit rate
+        assert national_spread == 0.0
 
     def test_national_fictitious_sentinel_records_tally(self) -> None:
         system = TickDynamicsSystem()

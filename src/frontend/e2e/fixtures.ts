@@ -55,10 +55,21 @@ export async function csrfToken(page: Page): Promise<string> {
  * "chromium-authenticated" project). Returns the new session id, or ""
  * on failure (callers assert truthiness — a fabricated id would silently
  * mask a broken create path, Constitution III.11).
+ *
+ * `defines` optionally forwards a `GameDefines` override (the same
+ * `CreateGameSerializer` field `EngineBridge.create_game` feeds straight
+ * into `GameDefines(**(defines or {}))`, `engine_bridge.py:2214-2249`) —
+ * used by the epilogue leg's rigged-horizon session. Omitted, this is a
+ * byte-identical no-op for every existing caller.
  */
-export async function createWayneCountyGame(page: Page): Promise<string> {
+export async function createWayneCountyGame(
+  page: Page,
+  defines?: Record<string, unknown>,
+): Promise<string> {
+  const data: Record<string, unknown> = { scenario: "wayne_county" };
+  if (defines) data.defines = defines;
   const res = await page.request.post(`${BASE}/api/games/`, {
-    data: { scenario: "wayne_county" },
+    data,
     headers: {
       "Content-Type": "application/json",
       "X-CSRFToken": await csrfToken(page),

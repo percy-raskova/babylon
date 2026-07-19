@@ -75,7 +75,7 @@ from .fog.ledger import IntelLedger, ledger_from_events, read_intel
 from .fog.reach import organizing_reach
 from .log_handler import sanitize_for_log
 from .map_contract import MAP_HISTORY_REPLAYABLE_METRICS, MAP_METRIC_PROPERTIES
-from .veil import compute_veil_status
+from .veil import compute_veil_status, compute_veil_tier, gate_value_axis_fields
 from .verb_copy import VERB_INELIGIBILITY_COPY
 
 if TYPE_CHECKING:
@@ -2083,8 +2083,19 @@ def _apply_class_vision_gate(payload: dict[str, Any], vision: str | None) -> Non
     payload["vision_approx"] = approx
 
 
+#: G4: the veiled placeholder narrative — same copy as CircuitPage's
+#: ``VeilLock`` component ("Your cadre cannot yet see through the
+#: money-form.") — replaces ``apologist_refutation`` below Tier 1, since
+#: that sentence embeds the wage-vs-value-produced RELATION (not just two
+#: individually tier-0 money-form numbers) in prose form.
+_VEILED_APOLOGIST_REFUTATION: Final[str] = (
+    "Your cadre cannot yet see through the money-form — study Doctrine to "
+    "reveal this class's exploitation relation."
+)
+
+
 def _social_class_inspector_fields(
-    data: dict[str, Any], core_wages: float, graph: BabylonGraph
+    data: dict[str, Any], core_wages: float, graph: BabylonGraph, veil_tier: int = 2
 ) -> dict[str, Any]:
     """Build the wage-pairing + apologist narrative block for a
     ``social_class`` inspector payload.
@@ -2094,6 +2105,18 @@ def _social_class_inspector_fields(
     ``imperial_rent_gap`` (= Φ per the Fundamental Theorem ``W_c − V_c``).
     Signed deliberately: negative for exploited/periphery classes is itself
     an honest, theoretically meaningful signal, not an error.
+
+    G4 (veil-leak closure): ``veil_tier`` defaults to ``2`` (fully unlocked)
+    so every pre-existing direct call site keeps the real, ungated payload
+    — the player-facing composer (:meth:`EngineBridge.get_inspector_node`)
+    always supplies the real tier. Below Tier 1, ``imperial_rent_gap`` masks
+    via :func:`~game.veil.gate_value_axis_fields` AND
+    ``apologist_refutation`` is replaced with
+    :data:`_VEILED_APOLOGIST_REFUTATION` — narrative prose that names real
+    numbers is just as much a leak as the numbers themselves (the sentence
+    reveals "core wages exceed value produced", the exact Tier-1 relation,
+    even though ``wealth``/``core_wages`` are individually tier-0 money-form
+    and stay visible unmasked).
 
     Program 17 Wave 1 also adds (W1.4): the per-class ternary consciousness
     (``consciousness``, honest-null per :func:`_ternary_consciousness_or_none`),
@@ -2170,8 +2193,11 @@ def _social_class_inspector_fields(
         "class_position_mock": True,
         "circuit_flows": _build_circuit_flows(graph),
         "apologist_claim": _APOLOGIST_CLAIM,
-        "apologist_refutation": apologist_refutation,
+        "apologist_refutation": (
+            apologist_refutation if veil_tier >= 1 else _VEILED_APOLOGIST_REFUTATION
+        ),
     }
+    payload = gate_value_axis_fields(payload, veil_tier)
     # EH Phase 2 reveal gate: political knowledge filtered by the player's
     # vision over this class's territories (presentation boundary only —
     # snapshots persisted upstream keep TRUE values).
@@ -2389,7 +2415,8 @@ class EngineBridge:
             organizations, institutions, economy, events.
         """
         state, graph = self.hydrate_state(session_id)
-        return _state_to_snapshot(state, session_id, graph=graph)
+        snapshot = _state_to_snapshot(state, session_id, graph=graph)
+        return _gate_snapshot_territories(snapshot, _resolve_veil_tier(state))
 
     def get_map_snapshot(
         self,
@@ -2408,6 +2435,14 @@ class EngineBridge:
 
         Returns:
             GeoJSON dict matching the HexMap frontend contract.
+
+        G4 (veil-leak closure): the SAME hydrated graph resolves the player
+        org's Veil-of-Money tier ONCE (:func:`_resolve_veil_tier_from_graph`)
+        and gates BOTH composers' value-axis map-lens fields
+        (``profit_rate``/``exploitation_rate``/``occ``/``imperial_rent``/
+        ``price_divergence`` — :func:`~game.veil.gate_value_axis_fields`),
+        the same one-fog-feeds-both pattern the spatial ``reach`` already
+        follows below — never two independently-derived gates.
 
         Track 1 / Task 5: the graph is now hydrated ONCE, up front (it used
         to be hydrated a second time, later, only for the balkanization
@@ -2443,6 +2478,10 @@ class EngineBridge:
         reach = _current_organizing_reach(graph)
         ledger = _derive_intel_ledger(session_id)
         staleness_ticks, unknown_ticks = _current_intel_aging_ticks()
+        # G4 (veil-leak closure): a hydration failure defaults to tier 0
+        # (fully veiled) — the same "deny on ambiguity" default ``reach``
+        # already uses above, never a fabricated full-visibility fallback.
+        veil_tier = _resolve_veil_tier_from_graph(graph) if graph is not None else 0
         h3_to_territory: dict[str, str] = (
             {
                 node_data["h3_index"]: node_id
@@ -2473,6 +2512,7 @@ class EngineBridge:
                         tick=target_tick,
                         staleness_ticks=staleness_ticks,
                         unknown_ticks=unknown_ticks,
+                        veil_tier=veil_tier,
                     ),
                 }
                 features.append(feature)
@@ -2487,6 +2527,7 @@ class EngineBridge:
                 staleness_ticks=staleness_ticks,
                 unknown_ticks=unknown_ticks,
                 h3_to_territory=h3_to_territory,
+                veil_tier=veil_tier,
             )
 
         metadata: dict[str, Any] = {
@@ -2541,6 +2582,7 @@ class EngineBridge:
         staleness_ticks: int = 0,
         unknown_ticks: int = 0,
         h3_to_territory: dict[str, str] | None = None,
+        veil_tier: int | None = None,
     ) -> list[dict[str, Any]]:
         """Aggregate hex-level data to a higher zoom tier.
 
@@ -2854,97 +2896,94 @@ class EngineBridge:
             role_votes = dominant_class_pop.get(key) or {}
             type_votes = territory_type_pop.get(key) or {}
             vision_votes = vision_state_pop.get(key) or {}
+            properties: dict[str, Any] = {
+                "group_key": key,
+                "group_name": group_names.get(key, key),
+                "zoom": zoom,
+                "hex_count": acc["count"],
+                "member_h3": sorted(member_h3[key]),
+                "profit_rate": round(acc["profit_rate_sum"] / total_pop, 6),
+                "exploitation_rate": round(acc["exploitation_rate_sum"] / total_pop, 4),
+                "occ": round(acc["occ_sum"] / total_pop, 4),
+                # 6dp, not 2dp: per-hex Φ is ~1e-5 (Leontief structural
+                # rent), so round(…, 2) collapsed the whole lens to 0.00
+                # once Program 17 lit real Φ — the default lens read as
+                # blank even though the value is non-zero. Match the
+                # profit_rate precision above.
+                "imperial_rent": round(acc["imperial_rent_sum"], 6),
+                # Track 1 / Task 5: heat_pop (not total_pop) — a
+                # partial-coverage denominator like habitability
+                # below, so a masked hex's heat is excluded from the
+                # mean rather than silently read as 0.0. Unfogged,
+                # heat_pop == total_pop always (no behavior change).
+                "heat": (round(acc["heat_sum"] / heat_pop, 4) if heat_pop else None),
+                "org_presence": acc["org_presence_sum"],
+                "population": acc["population_sum"],
+                "habitability": (
+                    round(acc["habitability_sum"] / habitability_pop, 4)
+                    if habitability_pop
+                    else None
+                ),
+                "solidarity_index": (
+                    round(acc["solidarity_index_sum"] / solidarity_index_pop, 4)
+                    if solidarity_index_pop
+                    else None
+                ),
+                "dominant_class": (
+                    max(role_votes.items(), key=lambda kv: (kv[1], kv[0]))[0]
+                    if role_votes
+                    else None
+                ),
+                "throughput_position": (
+                    round(acc["throughput_position_sum"] / throughput_position_pop, 4)
+                    if throughput_position_pop
+                    else None
+                ),
+                "agitation": (
+                    round(acc["agitation_sum"] / agitation_pop, 4) if agitation_pop else None
+                ),
+                "centrality": (
+                    round(acc["centrality_sum"] / centrality_pop, 4) if centrality_pop else None
+                ),
+                "territory_type": (
+                    max(type_votes.items(), key=lambda kv: (kv[1], kv[0]))[0]
+                    if type_votes
+                    else None
+                ),
+                "mass_receptivity": (
+                    round(acc["mass_receptivity_sum"] / mass_receptivity_pop, 4)
+                    if mass_receptivity_pop
+                    else None
+                ),
+                "vision_state": (
+                    max(vision_votes.items(), key=lambda kv: (kv[1], kv[0]))[0]
+                    if vision_votes
+                    else None
+                ),
+                "wage_pressure": (
+                    round(acc["wage_pressure_sum"] / wage_pressure_pop, 4)
+                    if wage_pressure_pop
+                    else None
+                ),
+                "dispossession_intensity": (
+                    round(acc["dispossession_intensity_sum"] / dispossession_intensity_pop, 4)
+                    if dispossession_intensity_pop
+                    else None
+                ),
+                "price_divergence": (
+                    round(acc["price_divergence_sum"] / price_divergence_pop, 4)
+                    if price_divergence_pop
+                    else None
+                ),
+            }
+            if veil_tier is not None:
+                properties = gate_value_axis_fields(properties, veil_tier)
             features.append(
                 {
                     "type": "Feature",
                     "id": key,
                     "geometry": None,  # Geometry deferred — frontend uses reference polygons
-                    "properties": {
-                        "group_key": key,
-                        "group_name": group_names.get(key, key),
-                        "zoom": zoom,
-                        "hex_count": acc["count"],
-                        "member_h3": sorted(member_h3[key]),
-                        "profit_rate": round(acc["profit_rate_sum"] / total_pop, 6),
-                        "exploitation_rate": round(acc["exploitation_rate_sum"] / total_pop, 4),
-                        "occ": round(acc["occ_sum"] / total_pop, 4),
-                        # 6dp, not 2dp: per-hex Φ is ~1e-5 (Leontief structural
-                        # rent), so round(…, 2) collapsed the whole lens to 0.00
-                        # once Program 17 lit real Φ — the default lens read as
-                        # blank even though the value is non-zero. Match the
-                        # profit_rate precision above.
-                        "imperial_rent": round(acc["imperial_rent_sum"], 6),
-                        # Track 1 / Task 5: heat_pop (not total_pop) — a
-                        # partial-coverage denominator like habitability
-                        # below, so a masked hex's heat is excluded from the
-                        # mean rather than silently read as 0.0. Unfogged,
-                        # heat_pop == total_pop always (no behavior change).
-                        "heat": (round(acc["heat_sum"] / heat_pop, 4) if heat_pop else None),
-                        "org_presence": acc["org_presence_sum"],
-                        "population": acc["population_sum"],
-                        "habitability": (
-                            round(acc["habitability_sum"] / habitability_pop, 4)
-                            if habitability_pop
-                            else None
-                        ),
-                        "solidarity_index": (
-                            round(acc["solidarity_index_sum"] / solidarity_index_pop, 4)
-                            if solidarity_index_pop
-                            else None
-                        ),
-                        "dominant_class": (
-                            max(role_votes.items(), key=lambda kv: (kv[1], kv[0]))[0]
-                            if role_votes
-                            else None
-                        ),
-                        "throughput_position": (
-                            round(acc["throughput_position_sum"] / throughput_position_pop, 4)
-                            if throughput_position_pop
-                            else None
-                        ),
-                        "agitation": (
-                            round(acc["agitation_sum"] / agitation_pop, 4)
-                            if agitation_pop
-                            else None
-                        ),
-                        "centrality": (
-                            round(acc["centrality_sum"] / centrality_pop, 4)
-                            if centrality_pop
-                            else None
-                        ),
-                        "territory_type": (
-                            max(type_votes.items(), key=lambda kv: (kv[1], kv[0]))[0]
-                            if type_votes
-                            else None
-                        ),
-                        "mass_receptivity": (
-                            round(acc["mass_receptivity_sum"] / mass_receptivity_pop, 4)
-                            if mass_receptivity_pop
-                            else None
-                        ),
-                        "vision_state": (
-                            max(vision_votes.items(), key=lambda kv: (kv[1], kv[0]))[0]
-                            if vision_votes
-                            else None
-                        ),
-                        "wage_pressure": (
-                            round(acc["wage_pressure_sum"] / wage_pressure_pop, 4)
-                            if wage_pressure_pop
-                            else None
-                        ),
-                        "dispossession_intensity": (
-                            round(
-                                acc["dispossession_intensity_sum"] / dispossession_intensity_pop, 4
-                            )
-                            if dispossession_intensity_pop
-                            else None
-                        ),
-                        "price_divergence": (
-                            round(acc["price_divergence_sum"] / price_divergence_pop, 4)
-                            if price_divergence_pop
-                            else None
-                        ),
-                    },
+                    "properties": properties,
                 }
             )
 
@@ -2968,6 +3007,13 @@ class EngineBridge:
         :meth:`get_economy_dashboard` pattern, spec-116 4d.9): honest
         ``None`` until the first year boundary this session stamps county
         state, never a fabricated 0.0 (Constitution III.11).
+
+        G4 (veil-leak closure): ``imperial_rent``/``exploitation_rate``/
+        ``profit_rate`` are gated by the player org's Veil-of-Money tier
+        (:func:`~game.veil.gate_value_axis_fields`) — this payload backs the
+        always-mounted TopBar, so an ungated value axis here was the
+        widest-reach leak the sweep found (every screen, not just the
+        economy panel).
 
         Args:
             session_id: The game session UUID.
@@ -3005,7 +3051,7 @@ class EngineBridge:
             if severity in event_counts:
                 event_counts[severity] += 1
 
-        return {
+        payload = {
             "tick": state.tick,
             "imperial_rent": imperial_rent,
             "avg_consciousness": avg_consciousness,
@@ -3016,6 +3062,11 @@ class EngineBridge:
             "class_count": len(state.entities),
             "event_counts": event_counts,
         }
+        # G4: this is the TopBar summary — always mounted, so an ungated
+        # ``imperial_rent``/``exploitation_rate``/``profit_rate`` here was
+        # the widest-reach leak in the sweep (visible on every screen,
+        # regardless of which panel a tier-0 player has open).
+        return gate_value_axis_fields(payload, _resolve_veil_tier(state))
 
     def get_game_timeseries(self, session_id: UUID) -> dict[str, Any]:
         """Return historical timeseries data for charting (spec 061 US3, FR-026).
@@ -3035,6 +3086,15 @@ class EngineBridge:
         :meth:`PostgresRuntime.query_tick_summary_series`. SQLite-backed
         ``RuntimeDatabase`` returns an empty list (the v2 pages are only
         ever consumed against a live Postgres deployment).
+
+        G4 (veil-leak closure): ``imperial_rent``/``value_produced``/
+        ``surplus``/``profit_rate`` (Tier >= 1) and ``price_index``/
+        ``fictitious_ratio``/``market_corrections`` (Tier >= 2) are gated by
+        the player org's Veil-of-Money tier
+        (:func:`~game.veil.gate_value_axis_fields`) — a best-effort SECOND
+        graph hydration resolves the tier (this endpoint's own data source,
+        ``query_tick_summary_series``, needs no graph at all); any failure
+        to resolve it fails CLOSED (tier 0), never open.
         """
         rows: list[dict[str, Any]] = []
         try:
@@ -3042,6 +3102,21 @@ class EngineBridge:
         except Exception:  # noqa: BLE001 — diagnostic; never blocks request
             logger.exception("get_game_timeseries: query_tick_summary_series failed")
             rows = []
+
+        # G4 (veil-leak closure): this endpoint's persistence contract is
+        # deliberately minimal (a bare ``query_tick_summary_series``, no
+        # graph hydration otherwise — see ``test_persistence_without_
+        # query_method_returns_empty``), so tier resolution is best-effort
+        # and fails CLOSED (tier 0 == fully veiled) on any error — the same
+        # "deny on ambiguity" default the spatial fog uses
+        # (:func:`_current_organizing_reach` on a ``None`` graph), never a
+        # fabricated full-visibility fallback.
+        try:
+            graph = self._persistence.hydrate_graph(tick=None, session_id=session_id)
+            veil_tier = _resolve_veil_tier_from_graph(graph)
+        except Exception:  # noqa: BLE001 — diagnostic; never blocks request
+            logger.exception("get_game_timeseries: veil tier resolution failed")
+            veil_tier = 0
 
         ticks: list[int] = []
         imperial_rent: list[float | None] = []
@@ -3096,7 +3171,7 @@ class EngineBridge:
             wage_compression_mean.append(_optional_float(row.get("wage_compression_mean")))
             capital_stock_total.append(_optional_float(row.get("capital_stock_total")))
             unemployment_rate_mean.append(_optional_float(row.get("unemployment_rate_mean")))
-        return {
+        payload = {
             "ticks": ticks,
             "imperial_rent": imperial_rent,
             "consciousness": consciousness,
@@ -3116,6 +3191,14 @@ class EngineBridge:
             "capital_stock_total": capital_stock_total,
             "unemployment_rate_mean": unemployment_rate_mean,
         }
+        # This is the shared data source behind MeltGauge (always-mounted
+        # Circuit left rail) and MarketTicker (nested inside ScissorsChart,
+        # itself client-gated) alike — gating ``price_index``/
+        # ``fictitious_ratio`` here closes BOTH leaks server-side without
+        # touching either component: MeltGauge's ``latestMeltDrift`` returns
+        # ``null`` on an all-``None`` array and renders nothing, the same
+        # "dark instrument" honest-absence path it already takes pre-tick-1.
+        return gate_value_axis_fields(payload, veil_tier)
 
     def get_economy_dashboard(self, session_id: UUID) -> dict[str, Any]:
         """Return the economy left-panel dashboard: real aggregate wealth,
@@ -3158,11 +3241,18 @@ class EngineBridge:
         doctrine node id/label, and a Tier-1-gated COPY of
         ``value_produced``/``exploitation_rate`` — ``None`` below Tier 1,
         enforced here at serialization (never a client-side-only hide) so
-        no inspection of the wire response can pierce it. This is scoped to
-        the new ``veil.*`` sub-object only: the legacy top-level
-        ``value_produced``/``exploitation_rate`` fields above are UNCHANGED
-        (EconomyDashboard/BottomDrawer's pre-existing surface, out of this
-        program's scope — see ``web/game/veil.py``'s module docstring).
+        no inspection of the wire response can pierce it.
+
+        G4 (veil-leak closure): the legacy top-level ``value_produced``/
+        ``exploitation_rate``/``rent_extracted``/``profit_rate``/``occ``/
+        ``imperial_rent_pool``/``imperial_rent_gap``/
+        ``imperial_rent_gap_by_region`` fields are now gated by the exact
+        same tier via :func:`~game.veil.gate_value_axis_fields` — a prior
+        version of this method left them ungated ("scoped to the new
+        veil.* sub-object only"), a documented leak the audit found and
+        this closes. ``veil.*`` and the top-level fields are therefore
+        always in lock-step: both real above the required tier, both
+        ``None`` below it.
 
         Args:
             session_id: The game session UUID.
@@ -3195,7 +3285,7 @@ class EngineBridge:
         )
         veil_unlocked = veil_status.tier >= 1
 
-        return {
+        payload = {
             "tick": state.tick,
             "has_data": econ["has_data"],
             "value_produced": value_produced,
@@ -3215,14 +3305,22 @@ class EngineBridge:
             "county_flow": _county_flow_snapshot(graph),
             "imperial_rent_gap": round(wage_flow_total - econ["value_produced"], 4),
             "imperial_rent_gap_by_region": _imperial_rent_gap_by_region(graph),
-            "veil": {
-                "tier": veil_status.tier,
-                "next_unlock_node_id": veil_status.next_unlock_node_id,
-                "next_unlock_label": veil_status.next_unlock_label,
-                "value_produced": value_produced if veil_unlocked else None,
-                "exploitation_rate": exploitation_rate if veil_unlocked else None,
-            },
         }
+        # G4: the legacy top-level fields above are gated by the SAME tier
+        # already computed for ``veil`` — no sibling ungated copy of the
+        # value axis survives serialization (§7 "no client inspection can
+        # pierce it"). ``gate_value_axis_fields`` only touches the field
+        # names it recognizes, so tick/has_data/money-form fields/
+        # wealth_by_class_role/county_flow pass through untouched.
+        payload = gate_value_axis_fields(payload, veil_status.tier)
+        payload["veil"] = {
+            "tier": veil_status.tier,
+            "next_unlock_node_id": veil_status.next_unlock_node_id,
+            "next_unlock_label": veil_status.next_unlock_label,
+            "value_produced": value_produced if veil_unlocked else None,
+            "exploitation_rate": exploitation_rate if veil_unlocked else None,
+        }
+        return payload
 
     def get_economy(self, session_id: UUID, territory_id: str | None = None) -> dict[str, Any]:
         """Return a per-territory economic summary (spec 093 US5).
@@ -3302,7 +3400,7 @@ class EngineBridge:
             exchange_ratio = (value_produced + rent_extracted) / value_produced
             exploitation_rate = round(calculate_unequal_exchange_rate(exchange_ratio) / 100.0, 4)
 
-        return {
+        payload = {
             "territory_id": territory_id,
             "has_data": has_data,
             "value_produced": round(value_produced, 4),
@@ -3315,6 +3413,11 @@ class EngineBridge:
                 else 0.0
             ),
         }
+        # G4: same veil gate get_economy_dashboard applies, for this
+        # per-territory analogue — graph-based tier resolution (not
+        # ``state``-based) since ``state`` here may be a synthetic
+        # double that carries no real ``organizations`` dict.
+        return gate_value_axis_fields(payload, _resolve_veil_tier_from_graph(graph))
 
     def get_communities_dashboard(self, session_id: UUID) -> dict[str, Any]:
         """Return communities dashboard (spec 061 US6 T089, FR-018 / spec 109 A4).
@@ -3709,7 +3812,9 @@ class EngineBridge:
     def inspect_node(self, session_id: UUID, node_id: str) -> dict[str, Any]:
         """Generic node lookup — dispatches by node type (FR-019)."""
         state, graph = self.hydrate_state(session_id)
-        snap = _state_to_snapshot(state, session_id, graph=graph)
+        snap = _gate_snapshot_territories(
+            _state_to_snapshot(state, session_id, graph=graph), _resolve_veil_tier(state)
+        )
         for collection in ("organizations", "institutions", "territories"):
             for entry in snap.get(collection, []):
                 if entry.get("id") == node_id:
@@ -3750,7 +3855,9 @@ class EngineBridge:
 
     def inspect_hex(self, session_id: UUID, h3_index: str) -> dict[str, Any]:
         state, graph = self.hydrate_state(session_id)
-        snap = _state_to_snapshot(state, session_id, graph=graph)
+        snap = _gate_snapshot_territories(
+            _state_to_snapshot(state, session_id, graph=graph), _resolve_veil_tier(state)
+        )
         territory = next(
             (t for t in snap.get("territories", []) if t.get("h3_index") == h3_index),
             None,
@@ -4924,7 +5031,8 @@ class EngineBridge:
         }
         if node_type == "social_class":
             core_wages = _incoming_wages_flow(graph, node_id)
-            payload.update(_social_class_inspector_fields(data, core_wages, graph))
+            veil_tier = _resolve_veil_tier_from_graph(graph)
+            payload.update(_social_class_inspector_fields(data, core_wages, graph, veil_tier))
             return payload
         payload.update(
             _enum_normalized({k: v for k, v in data.items() if k not in ("_node_type", "name")})
@@ -5186,6 +5294,9 @@ class EngineBridge:
             "intel_confidence": _territory_graph_attr(graph, territory_id, "intel_confidence"),
             "vision_state": _territory_graph_attr(graph, territory_id, "vision_state"),
         }
+        # G4 (veil-leak closure): value-axis fields gated BEFORE the
+        # spatial fog below — same order as every other composer.
+        payload = gate_value_axis_fields(payload, _resolve_veil_tier_from_graph(graph))
         staleness_ticks, unknown_ticks = _current_intel_aging_ticks()
         return apply_fog(
             payload,
@@ -5544,7 +5655,12 @@ class EngineBridge:
         # so this never blocks resolve_tick's return.
         self._narrative_service.schedule(session_id, state, new_state)
 
-        return snapshot
+        # G4 (veil-leak closure): gate the RESPONSE copy's value-axis
+        # fields LAST — every persistence call above (_persist_hex_state_
+        # safe in particular) has already consumed the TRUE ``snapshot``,
+        # so the engine's material record (hex_latest) is never corrupted
+        # with a masked value (see _state_to_snapshot's docstring).
+        return _gate_snapshot_territories(snapshot, _resolve_veil_tier(new_state))
 
     # ------------------------------------------------------------------ #
     # Action management
@@ -5992,6 +6108,12 @@ class EngineBridge:
         org_status = self.get_org_status(session_id, org_id)
         if not org_status:
             return {"status": "error", "error": "Org not found"}
+        # G4 (veil-leak closure): ``v_value_produced`` names the wage-vs-
+        # value-produced axis explicitly and rides a nested
+        # ``material_conditions`` dict :func:`~game.veil.gate_value_axis_
+        # fields` cannot reach (it only ever touches TOP-level keys) —
+        # gated inline at its one construction site below instead.
+        veil_tier = _resolve_veil_tier(state)
 
         # Compute cost metrics
         cost = {
@@ -6037,7 +6159,9 @@ class EngineBridge:
                         "population": data.get("population"),
                         "class_name": str(data.get("role", "UNKNOWN")).upper(),
                         "material_conditions": {
-                            "v_value_produced": float(data.get("wealth", 0.0)),
+                            "v_value_produced": (
+                                float(data.get("wealth", 0.0)) if veil_tier >= 1 else None
+                            ),
                             "wage_received": None,
                             "consumption_gap": None,
                             "subsistence_level": data.get("subsistence_threshold"),
@@ -6910,6 +7034,60 @@ def _player_org_from_state(state: Any) -> Any:
         return None
     player_org_id = getattr(state, "player_org_id", None)
     return orgs.get(player_org_id) if player_org_id else None
+
+
+def _resolve_veil_tier(state: Any) -> int:
+    """Resolve the player org's Veil-of-Money tier off an already-hydrated
+    ``WorldState`` (G4: the sweep's shared tier-resolution helper).
+
+    Thin wrapper around :func:`game.veil.compute_veil_tier` — reuses
+    :func:`_player_org_from_state` (so "no player org" resolves to tier 0
+    the same documented way :meth:`EngineBridge.get_economy_dashboard`
+    already established, never a crash) and ``GameDefines().veil`` for the
+    two threshold node ids. Every endpoint that emits a
+    :data:`~game.veil.TIER1_VALUE_RELATION_FIELDS`/
+    :data:`~game.veil.TIER2_SCISSORS_FIELDS` field and already holds a
+    ``state`` calls this exactly once, then passes the result to
+    :func:`~game.veil.gate_value_axis_fields` — one tier computation, reused,
+    not one ad hoc reimplementation per composer.
+    """
+    player_org = _player_org_from_state(state)
+    acquired_doctrine_ids = getattr(player_org, "acquired_doctrine_ids", ())
+    veil_defines = GameDefines().veil
+    return compute_veil_tier(
+        acquired_doctrine_ids,
+        veil_defines.tier1_doctrine_node_id,
+        veil_defines.tier2_doctrine_node_id,
+    )
+
+
+def _resolve_veil_tier_from_graph(graph: BabylonGraph) -> int:
+    """Resolve the player org's Veil-of-Money tier off a raw hydrated graph.
+
+    For callers that hold a ``BabylonGraph`` but no reconstructed
+    ``WorldState`` (e.g. :meth:`EngineBridge.get_inspector_node`/
+    ``get_inspector_hex``, which read the raw graph directly to avoid
+    ``WorldState.from_graph()`` crashing on unrecognized ``_node_type``
+    values — see those methods' docstrings) — reads ``acquired_doctrine_ids``
+    straight off the player org's graph node data (the same attribute
+    :func:`babylon.engine.systems.doctrine` writes there each tick), via the
+    same :func:`_resolve_player_org_id` this bridge already uses for fog
+    gating, so a second WorldState hydration is never paid for just to
+    answer "what tier is the veil at". A graph with no resolvable player org
+    (:func:`_resolve_player_org_id` returns ``None``) yields an empty
+    acquired set, hence tier 0 — the same documented "no player org is tier
+    zero" contract :func:`_resolve_veil_tier` established.
+    """
+    player_org_id = _resolve_player_org_id(graph)
+    acquired_doctrine_ids: tuple[str, ...] | list[str] = ()
+    if player_org_id is not None and player_org_id in graph.nodes:
+        acquired_doctrine_ids = graph.nodes[player_org_id].get("acquired_doctrine_ids", ())
+    veil_defines = GameDefines().veil
+    return compute_veil_tier(
+        acquired_doctrine_ids,
+        veil_defines.tier1_doctrine_node_id,
+        veil_defines.tier2_doctrine_node_id,
+    )
 
 
 #: Track 1 / Task 3 (2026-07-18): the honest fallback once INVESTIGATE
@@ -9185,6 +9363,7 @@ def _hex_feature_properties(
     tick: int = 0,
     staleness_ticks: int = 0,
     unknown_ticks: int = 0,
+    veil_tier: int | None = None,
 ) -> dict[str, Any]:
     """Project one ``hex_latest`` row onto hex-zoom ``/map/`` feature properties.
 
@@ -9269,6 +9448,8 @@ def _hex_feature_properties(
         "dispossession_intensity": attributes.get("dispossession_intensity"),
         "price_divergence": attributes.get("price_divergence"),
     }
+    if veil_tier is not None:
+        properties = gate_value_axis_fields(properties, veil_tier)
     if reach is None:
         return properties
     return apply_fog(
@@ -9853,6 +10034,7 @@ def _serialize_territory(
     reach: frozenset[str] | None = None,
     ledger: IntelLedger | None = None,
     tick: int | None = None,
+    veil_tier: int | None = None,
 ) -> dict[str, Any]:
     """Serialize a Territory with all visualization-relevant fields.
 
@@ -9870,6 +10052,22 @@ def _serialize_territory(
     models are the engine's own ledger of TRUE state, never the player's
     view) — this is exactly why fog is bolted on here as an opt-in
     postprocessing step rather than baked into the field-building above.
+
+    G4 (veil-leak closure): ``veil_tier`` is the SAME kind of opt-in as
+    ``reach`` — ``None`` (every internal persistence call site) skips
+    gating entirely, byte-identical to before; a genuinely player-facing
+    caller (``_state_to_snapshot``) passes the player org's real tier, which
+    masks ``price_divergence``/``imperial_rent``/``profit_rate``/``occ``/
+    ``exploitation_rate`` via :func:`~game.veil.gate_value_axis_fields`
+    (applied BEFORE :func:`~game.fog.filter.apply_fog`, so a masked
+    value-axis field can never be un-masked by the political-field gate
+    running after it — the two gates are orthogonal and compose safely
+    either order, but this order matches "value axis first" everywhere else
+    in the sweep). The many Group C/D ``tick_``-prefixed financial-
+    distribution fields (interest, ground rent, rentier share, ...) are
+    OUT OF SCOPE for this pass — a separate, actively-developed feature
+    line (vol3-money-scissors) owns their disclosure policy; flagged, not
+    silently gated alongside these five.
 
     Spec 061 US6 FR-013 (T095) originally stubbed ``consciousness`` /
     ``solidarity`` / ``dominant_community`` with fabricated 0.0/"" defaults.
@@ -10064,6 +10262,8 @@ def _serialize_territory(
             graph, territory_id, "tick_financial_crisis_signals"
         ),
     }
+    if veil_tier is not None:
+        payload = gate_value_axis_fields(payload, veil_tier)
     if reach is None:
         return payload
     staleness_ticks, unknown_ticks = _current_intel_aging_ticks()
@@ -10595,6 +10795,27 @@ def _filter_edges_by_reach(
     return visible
 
 
+def _gate_snapshot_territories(snapshot: dict[str, Any], veil_tier: int) -> dict[str, Any]:
+    """Gate value-axis fields on every territory in an already-built
+    ``_state_to_snapshot`` payload (G4: veil-leak closure).
+
+    Applied AFTER any persistence use of the TRUE snapshot — never inside
+    :func:`_state_to_snapshot` itself, since ``resolve_tick`` also persists
+    from that function's output (see its docstring). Mutates ``snapshot``
+    in place (replacing ``territories`` with a gated copy) and returns it,
+    for a one-line call at each read-only call site. A no-op when
+    ``"territories"`` is absent (e.g. a caller that only kept a sub-key).
+
+    :param snapshot: The dict :func:`_state_to_snapshot` returned.
+    :param veil_tier: The requesting player org's veil tier.
+    :returns: ``snapshot``, with ``territories`` gated.
+    """
+    territories = snapshot.get("territories")
+    if isinstance(territories, list):
+        snapshot["territories"] = [gate_value_axis_fields(t, veil_tier) for t in territories]
+    return snapshot
+
+
 def _state_to_snapshot(state: WorldState, session_id: UUID, *, graph: Any = None) -> dict[str, Any]:
     """Convert a WorldState to a JSON-serializable dict for API responses.
 
@@ -10632,6 +10853,19 @@ def _state_to_snapshot(state: WorldState, session_id: UUID, *, graph: Any = None
     ``action_result`` table (or a fresh session with no persisted
     INVESTIGATE history) safely yields the honestly-empty ledger via
     :func:`_derive_intel_ledger`'s own best-effort fallback.
+
+    G4 (veil-leak closure): this function does NOT gate value-axis fields
+    itself, unlike ``ledger`` above — ``resolve_tick`` feeds
+    ``snapshot["territories"]`` to :func:`_persist_hex_state_safe`
+    (``hex_latest``, the map's OWN read-time veil gate reads FROM this
+    table), so baking gating in here would persist a MASKED value as the
+    engine's material record — the exact bug :func:`_serialize_territory`'s
+    own docstring already flags for fog ("persisting a fogged value would
+    be a real bug... never the player's view"). Instead, each of the 6
+    genuinely read-only call sites gates its OWN copy of this function's
+    output via :func:`_gate_snapshot_territories` AFTER calling this
+    function; ``resolve_tick`` gates its response copy AFTER persistence
+    has already consumed the true values. See those call sites.
     """
     reach = _current_organizing_reach(graph)
     ledger = _derive_intel_ledger(session_id)

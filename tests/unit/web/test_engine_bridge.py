@@ -1455,6 +1455,17 @@ def _patched_hydrate_state(bridge: EngineBridge, graph: BabylonGraph, tick: int 
     return patch.object(bridge, "hydrate_state", return_value=(mock_state, graph))
 
 
+def _stamp_unlocked_veil(graph: BabylonGraph, org_id: str = "org-player") -> None:
+    """G4: stamp ``org_id`` as this graph's player org with BOTH veil
+    threshold nodes acquired (Tier 2, fully unlocked) — for fixtures built
+    before the Veil-of-Money program existed, whose tests are about real-
+    data arithmetic, not veil gating, and should keep reading real numbers
+    unchanged. See ``TestEconomyDashboardVeil``/``TestVeilGating`` for the
+    dedicated tier-0/1/2 gating coverage."""
+    graph.graph["player_org_id"] = org_id
+    graph.nodes[org_id]["acquired_doctrine_ids"] = ("class_consciousness", "trade_unionism")
+
+
 def _make_balkanization_graph() -> BabylonGraph:
     """Build a graph with orgs, territories, social classes, and spec-070
     faction/sovereign/INFLUENCES/CLAIMS data for de-fixture + balkanization
@@ -1578,6 +1589,7 @@ class TestGetEconomy:
         mock_persistence = _make_mock_persistence()
         bridge = EngineBridge(mock_persistence)
         graph = _make_balkanization_graph()
+        _stamp_unlocked_veil(graph)
 
         with _patched_hydrate_state(bridge, graph):
             result = bridge.get_economy(uuid.uuid4(), territory_id="T1")
@@ -1592,6 +1604,7 @@ class TestGetEconomy:
         mock_persistence = _make_mock_persistence()
         bridge = EngineBridge(mock_persistence)
         graph = _make_balkanization_graph()
+        _stamp_unlocked_veil(graph)
 
         with _patched_hydrate_state(bridge, graph):
             result = bridge.get_economy(uuid.uuid4(), territory_id="T2")
@@ -1629,6 +1642,7 @@ class TestGetEconomy:
         mock_persistence = _make_mock_persistence()
         bridge = EngineBridge(mock_persistence)
         graph = _make_balkanization_graph()
+        _stamp_unlocked_veil(graph)
         graph.add_node(
             "T3",
             "territory",
@@ -1764,6 +1778,14 @@ class TestEconomyDashboardFundamentalTheorem:
         # honest-None branch explicitly rather than exercising a MagicMock
         # by accident.
         mock_state.economy = None
+        # G4: this class is about the imperial_rent_gap ARITHMETIC, not veil
+        # gating (that's TestEconomyDashboardVeil's job) -- a real, fully-
+        # unlocked player org keeps every assertion below reading real
+        # numbers, matching this fixture's pre-veil-program intent.
+        mock_state.organizations = {
+            "org-player": MagicMock(acquired_doctrine_ids=("class_consciousness", "trade_unionism"))
+        }
+        mock_state.player_org_id = "org-player"
         with patch.object(bridge, "hydrate_state", return_value=(mock_state, graph)):
             return bridge.get_economy_dashboard(uuid.uuid4())
 
@@ -2256,6 +2278,7 @@ class TestDefixturedQueryCorrectness:
         mock_persistence = _make_mock_persistence()
         bridge = EngineBridge(mock_persistence)
         graph = _make_balkanization_graph()
+        _stamp_unlocked_veil(graph)
 
         with _patched_hydrate_state(bridge, graph):
             result = bridge.get_economy(uuid.uuid4(), territory_id="T1")
@@ -4885,14 +4908,33 @@ class TestEconomyDashboardVeil:
         assert result["veil"]["value_produced"] == result["value_produced"]
         assert result["veil"]["exploitation_rate"] == result["exploitation_rate"]
 
-    def test_legacy_top_level_fields_are_never_veiled(self) -> None:
-        """T2-7 scope boundary: the pre-existing top-level ``value_produced``/
-        ``exploitation_rate`` fields (EconomyDashboard/BottomDrawer's existing
-        surface) are untouched by the veil — only the new ``veil.*`` copies
-        are gated. Documented, deliberate scope choice (see ``web/game/veil.py``
-        module docstring); this test pins it against a silent future change."""
+    def test_legacy_top_level_fields_are_veiled_too(self) -> None:
+        """G4: the audit found the legacy top-level ``value_produced``/
+        ``exploitation_rate`` fields (EconomyDashboard/BottomDrawer's
+        pre-existing surface) leaking the real numbers ungated below Tier 1
+        — only the new ``veil.*`` copies were gated (Wave 2B). Closed: the
+        top-level fields are now gated by the exact same tier, so no client
+        inspection of the wire response can pierce the veil regardless of
+        which field name it reads."""
         result = self._dashboard_with_acquired(())
 
+        assert result["value_produced"] is None
+        assert result["exploitation_rate"] is None
+        assert result["rent_extracted"] is None
+        assert result["profit_rate"] is None
+        assert result["occ"] is None
+        assert result["imperial_rent_pool"] is None
+        assert result["imperial_rent_gap"] is None
+        assert result["imperial_rent_gap_by_region"] == []
+
+    def test_legacy_top_level_fields_unlock_at_tier_one(self) -> None:
+        """The flip side of the gate: at Tier 1, the legacy top-level
+        fields carry the SAME real numbers ``veil.*`` does — gating never
+        forks the two into disagreeing values."""
+        result = self._dashboard_with_acquired(("class_consciousness",))
+
+        assert result["value_produced"] == result["veil"]["value_produced"]
+        assert result["exploitation_rate"] == result["veil"]["exploitation_rate"]
         assert isinstance(result["value_produced"], float)
         assert isinstance(result["exploitation_rate"], float)
 

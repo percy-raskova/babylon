@@ -27,10 +27,33 @@
  * leg below forces it through a real, test-only server hook
  * (`forceEndgameOnNextResolve` — see its docstring in `fixtures.ts`) that
  * reuses the exact same `EndgameEvent` construction a genuine horizon
- * termination already uses. The epilogue leg itself (accept-outcome,
- * chronicle/epilogue copy) is a SEPARATE later task and is not built here —
- * this test only clears the chronicle takeover that opens as an
- * unavoidable side effect of the same signal, asserting nothing about it.
+ * termination already uses; that leg asserts nothing about the epilogue's
+ * own content, only that the incidental chronicle takeover it opens can be
+ * cleared. The epilogue leg (last, below) is the real horizon->UNRESOLVED
+ * path instead: a SEPARATE, rigged-horizon session (`campaign_horizon_years:
+ * 1, weeks_per_year: 1` — `horizon_tick` = 1, so the very first resolve
+ * crosses it for real, no forced hook) reaches the genuine `EndStateScreen`
+ * epilogue and pins its content + terminal-state honesty.
+ *
+ * G7-epilogue investigation finding (real defect, FIXED alongside this
+ * leg): reaching this leg without the fix left `get_endgame_state` — and
+ * therefore every `tick_event`-sourced read (journal, alerts, endgame) —
+ * permanently null. Root cause: `EngineBridge.resolve_tick`'s OWN
+ * `_persist_tick_events_safe` call correctly wrote the tick's real events
+ * (confirmed live via a delete-audit trigger on the dev DB), but a LATER
+ * call in the same `resolve_tick`, `_persist_snapshots_safe` ->
+ * `PostgresRuntime.persist_full_tick`, forwarded no `events=` argument at
+ * all (it only carries the six read-model snapshot tables); `persist_full_
+ * tick` unconditionally passed that `None` through as `events or []` to
+ * `persist_tick_events`, whose default `replace=True` DELETEs the tick's
+ * existing rows before inserting — with an empty list, deleting and
+ * inserting nothing wiped the real events moments after they were
+ * written, on EVERY tick of EVERY session. Fixed in
+ * `src/babylon/persistence/postgres_runtime/_legacy.py` (`persist_full_
+ * tick` now only touches `tick_event` when its caller passes `events`
+ * explicitly — `None` is honored as "nothing to say", `[]` still clears);
+ * regression-pinned in `tests/unit/persistence/test_postgres_runtime.py`
+ * (`TestPersistFullTickEventsHandling`).
  *
  * FOLLOW-PATTERN: `real-loop.spec.ts` (shared-session serial suite shape)
  * + `lobby-briefing.spec.ts` (the real create->briefing->begin flow) +
@@ -58,7 +81,15 @@
  * the literal acceptance-gate code in the task brief (which asserts only
  * `preview-probability` + `verb-cost`, not target-delta chips).
  */
-import { expect, test, acknowledgeAutopauseIfPresent, forceEndgameOnNextResolve } from "./fixtures";
+import {
+  expect,
+  test,
+  acknowledgeAutopauseIfPresent,
+  forceEndgameOnNextResolve,
+  createWayneCountyGame,
+  csrfToken,
+  BASE,
+} from "./fixtures";
 
 /** Session id created by the "creating an operation" test. */
 let gameId = "";
@@ -329,5 +360,124 @@ test.describe("first session — fresh player trunk (spec-116 acceptance gate 6)
     for (const v of values) {
       expect(v, "no endgame_progress axis may be pinned at 1.00 two ticks in").not.toBe("1.00");
     }
+  });
+
+  test("epilogue: a real horizon termination renders the UNRESOLVED epilogue and the outcome is a genuine terminal state", async ({
+    page,
+  }) => {
+    // Measured cost: one real /resolve/ call on this rigged session took
+    // ~14-15s live; 90s leaves ample margin for that plus rendering/polling
+    // (no other spec file in e2e/ sets test.setTimeout — the Playwright
+    // default is 30s, too tight for a real engine step).
+    test.setTimeout(90_000);
+
+    // A SECOND, independent session via the API fixture (never through
+    // lobby/briefing — leg 2 above drives the real create->briefing flow
+    // and asserts `briefing-horizon` contains "100 years" on an UN-rigged
+    // session; that assertion must keep passing, so this leg's rigged
+    // defines override never touches it). `defines` is the officially
+    // supported `CreateGameSerializer` field (`web/game/serializers.py`) ->
+    // `GameDefines(**(defines or {}))` in `EngineBridge.create_game`
+    // (`engine_bridge.py:2261-2299`), persisted per-session and re-read
+    // every tick via `_fetch_session_game_defines`.
+    //
+    // `weeks_per_year` is NOT display-only — it feeds real sim dynamics
+    // (checked before overriding it: `production.py`/`economic.py` divide
+    // annual labor-power/wage-rate/extraction-efficiency by it every tick,
+    // `phi_distribution.py` divides the annual Φ inflow by it). Overriding
+    // it to 1 for this ONE rigged, deterministic, e2e-only session is the
+    // documented trade the brief authorizes ("acceptable — fabricating the
+    // epilogue payload is NOT"): `horizon_tick = campaign_horizon_years(1)
+    // * weeks_per_year(1) = 1`, so the very first resolve crosses the
+    // fixed-horizon gate for real (`engine_bridge.py:5535-5537`) — no
+    // forced test hook, the same `EndgameEvent` construction a genuine
+    // ~5200-tick campaign uses. Verified live (a single real resolve on
+    // this exact override produced a normal ~250-event tick, no engine
+    // errors) before relying on it here.
+    const epilogueGameId = await createWayneCountyGame(page, {
+      endgame: { campaign_horizon_years: 1 },
+      timescale: { weeks_per_year: 1 },
+    });
+    expect(epilogueGameId, "the rigged-horizon session must be created").toBeTruthy();
+
+    await page.goto(`/game/${epilogueGameId}`);
+    await expect(page.getByTestId("tick-value")).toHaveText("0", { timeout: 15000 });
+
+    const stepButton = page.getByRole("button", { name: "Step" });
+    await expect(stepButton).toBeEnabled({ timeout: 10000 });
+    await Promise.all([
+      page.waitForResponse(
+        (r) =>
+          r.url().includes(`/api/games/${epilogueGameId}/resolve/`) &&
+          r.request().method() === "POST",
+        { timeout: 30000 },
+      ),
+      stepButton.click(),
+    ]);
+    await expect(page.getByTestId("tick-value")).toHaveText("1", { timeout: 15000 });
+
+    // endgame_reached is real here (not the crisis leg's forced hook), so
+    // the SAME "critical" autopause machinery fires — verified live: on
+    // this exact rigged session, `time-status` reaches AUTOPAUSED, the
+    // critical-event-modal mounts, and (per FR-116-4.2's null->non-null
+    // outcome transition) the chronicle takeover auto-opens UNDERNEATH it
+    // (z-50 over the modal's z-20) with the real EndStateScreen content —
+    // this leg asserts that content directly rather than dismissing it.
+    const endState = page.getByTestId("end-state");
+    await expect(endState).toBeVisible({ timeout: 15000 });
+    await expect(endState).toHaveAttribute("data-outcome", "unresolved");
+    await expect(endState).toHaveClass(/end-state--unresolved/);
+
+    // Exact copy from web/game/epilogues.py's "unresolved" entry — the
+    // real horizon->UNRESOLVED epilogue, not a fabricated stand-in.
+    await expect(page.getByRole("heading", { name: "THE STRUGGLE CONTINUES" })).toBeVisible();
+    await expect(page.locator(".end-state-epilogue-body")).toHaveText(
+      "One hundred years, and no verdict. The contradiction did not resolve; it deepened, " +
+        "changed terrain, and outlived every administration that claimed to manage it. " +
+        "History does not end because the observation window closes. The line holds where " +
+        "you built it; the rest belongs to the next century, and to whoever organizes it.",
+    );
+
+    // Real terminal-state verification (checked live, not assumed): the
+    // backend has no session-status gate that refuses a further
+    // `/resolve/` once horizon_tick is crossed (`session.status` stays
+    // "active"), so a direct API call still returns 200 and the tick
+    // keeps advancing underneath. What IS genuinely terminal: (a) the UI's
+    // own Step control is disabled the moment AUTOPAUSED lands (`Time
+    // Controls.tsx`'s `disabled={!isPaused}` — the player cannot advance
+    // further without an explicit Resume), and (b) the PERSISTED epilogue
+    // itself never changes — `get_endgame_state`'s `_fetch_endgame_event_
+    // row` reads the FIRST `ENDGAME_REACHED` row
+    // (`ORDER BY tick ASC LIMIT 1`), so the outcome/headline/epilogue/tick
+    // this leg already asserted above stay byte-identical no matter how
+    // many further ticks resolve. Both are asserted directly rather than
+    // fabricating a "resolve was refused" claim the app does not make.
+    await expect(page.getByTestId("time-status")).toHaveText("AUTOPAUSED", { timeout: 10000 });
+    await expect(stepButton).toBeDisabled();
+
+    const endgameBefore = await (
+      await page.request.get(`${BASE}/api/games/${epilogueGameId}/endgame/`)
+    ).json();
+
+    const furtherResolve = await page.request.post(`${BASE}/api/games/${epilogueGameId}/resolve/`, {
+      data: {},
+      headers: {
+        "Content-Type": "application/json",
+        "X-CSRFToken": await csrfToken(page),
+        Referer: `${BASE}/`,
+      },
+    });
+    expect(
+      furtherResolve.status(),
+      "the backend has no game_over refusal gate — a further resolve succeeds",
+    ).toBe(200);
+
+    const endgameAfter = await (
+      await page.request.get(`${BASE}/api/games/${epilogueGameId}/endgame/`)
+    ).json();
+    expect(
+      endgameAfter.data,
+      "the persisted epilogue is a genuine terminal state — immutable across further ticks",
+    ).toEqual(endgameBefore.data);
   });
 });

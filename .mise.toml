@@ -100,8 +100,8 @@ description = "Run complexity gate (xenon) - fails if CC > 15"
 run = "poetry run xenon --max-absolute C src/"
 
 [tasks.check]
-description = "Fast CI gate: data-pathway + hygiene + seams + coverage + lint + imports + format + typecheck + unit tests"
-depends = ["data:doctor", "check:hygiene", "check:seams", "check:coverage", "lint", "lint:imports", "format", "typecheck", "test:unit"]
+description = "Fast CI gate: data-pathway + hygiene + ALL 11 sentinels + lint + imports + format + typecheck + unit tests"
+depends = ["data:doctor", "check:hygiene", "check:sentinels", "lint", "lint:imports", "format", "typecheck", "test:unit"]
 
 [tasks."data:doctor"]
 description = "Loud data-pathway gate: trove mount + repo symlinks + Postgres bind on the data drive (clean skip off the dev box); heal = sudo tools/heal_data_mount.sh"
@@ -146,6 +146,22 @@ run = "poetry run python tools/sentinel_check.py aggregation --check"
 [tasks."check:fog"]
 description = "Fog-containment sentinel: Hypothesis property — no political field escapes an out-of-reach mask (dynamic gate)"
 run = "poetry run python tools/sentinel_check.py fog --check"
+
+[tasks."check:catalog"]
+description = "Data-catalog sentinel: reference-DB objects reconcile with data-catalog.yaml — no undeclared objects, phantom rows, or dark KEEP objects (DB probe)"
+run = "poetry run python tools/sentinel_check.py catalog --check"
+
+[tasks."check:partition"]
+description = "Partition sentinel (ADR070): seeded-vs-derived class evidence; hard violations gate, agreement metrics stay advisory (dynamic)"
+run = "poetry run python tools/sentinel_check.py partition --check"
+
+[tasks."check:synthetic"]
+description = "Synthetic-data sentinel: every declared synthetic source's source + guard symbols exist (static gate)"
+run = "poetry run python tools/sentinel_check.py synthetic --check"
+
+[tasks."check:sentinels"]
+description = "ALL 11 sentinels (owner ruling 2026-07-18: the whole family is fast-gate): seam coverage vocabulary inert unconsumed masked-arithmetic aggregation fog catalog partition synthetic"
+depends = ["check:seams", "check:coverage", "check:vocabulary", "check:inert", "check:unconsumed", "check:masked-arithmetic", "check:aggregation", "check:fog", "check:catalog", "check:partition", "check:synthetic"]
 
 [tasks.cap]
 description = "Run a command under a HARD memory+CPU cgroup cap (can't freeze the machine). Use for any heavy run: mise run cap -- mise run test:unit"

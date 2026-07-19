@@ -55,11 +55,8 @@ jobs:
       - name: Repo hygiene gate
         run: mise run check:hygiene
 
-      - name: Seam continuity gate (Sensor 1 — VIII.12)
-        run: mise run check:seams
-
-      - name: Data-coverage sentinel (static — declared sources exist)
-        run: mise run check:coverage
+      - name: Sentinel family (all 11 declared-invariant gates — VIII.12)
+        run: mise run check:sentinels
 
       - name: Lint (ruff check)
         run: mise run lint:check

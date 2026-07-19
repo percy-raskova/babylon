@@ -1064,25 +1064,22 @@ df -h /var | tail -1
 """
 
 [tasks."db:bootstrap"]
-description = "Apply babylon canonical schema to the running test container (idempotent)"
+# ensure_ddl_applied, not a bare per-statement loop (ADR074's own law): the
+# bare loop created every table but never the _babylon_schema_stamp digest
+# table (that DDL lives only inside ensure_ddl_applied), so nightly's
+# Postgres bootstrap silently diverged from the production schema path and
+# any test touching the stamp table failed (nightly 2026-07-19). The DDL set
+# is fully IF NOT EXISTS-idempotent, so the loop's error-swallowing bought
+# nothing; ensure_ddl_applied fails loudly instead (III.11).
+description = "Apply babylon canonical schema to the running test container (digest-stamped via ensure_ddl_applied, idempotent)"
 run = """
 poetry run python -c "
 import psycopg
-from babylon.persistence.postgres_schema import POSTGRES_SCHEMA_DDL
+from babylon.persistence.postgres_schema import POSTGRES_SCHEMA_DDL, ensure_ddl_applied
 dsn = 'host=localhost port=5433 dbname=babylon_test user=test password=test'
 with psycopg.connect(dsn, autocommit=True) as conn:
-    for ddl in POSTGRES_SCHEMA_DDL:
-        try:
-            conn.execute(ddl)
-        except psycopg.errors.DuplicateTable:
-            pass
-        except psycopg.errors.DuplicateObject:
-            pass
-        except psycopg.errors.UndefinedObject as e:
-            print(f'WARN missing extension: {e}')
-        except Exception as e:
-            print(f'WARN DDL: {e}')
-print('Schema bootstrap complete.')
+    executed = ensure_ddl_applied(conn, POSTGRES_SCHEMA_DDL)
+print(f'Schema bootstrap complete (executed={executed}, stamp table guaranteed).')
 "
 """
 

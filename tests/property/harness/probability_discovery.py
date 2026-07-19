@@ -23,6 +23,7 @@ from __future__ import annotations
 import importlib
 import inspect
 import pkgutil
+import warnings
 from collections.abc import Callable
 from functools import lru_cache
 from typing import Any, get_type_hints
@@ -127,8 +128,26 @@ def _iter_public_formulas() -> list[Callable[..., Any]]:
     return sorted(seen, key=lambda f: (f.__module__, f.__qualname__))
 
 
+#: Modules whose IMPORT deliberately emits DeprecationWarning (deprecated
+#: shims kept for their own unit tests). The walker imports everything by
+#: contract, so these warnings are expected there and suppressed by name —
+#: name-scoped so a NEW unexpected import-time deprecation anywhere else
+#: still detonates under pyproject's ``error::DeprecationWarning:babylon.*``
+#: policy instead of being silently swallowed.
+_DEPRECATED_SHIM_MODULES: frozenset[str] = frozenset({"babylon.models.components.organization"})
+
+
 def _iter_package_modules(package: Any) -> list[Any]:
-    """Recursively import every submodule of a package and return them."""
+    """Recursively import every submodule of a package and return them.
+
+    Known deprecated shims warn at module import; without the name-scoped
+    suppression below, pyproject's ``error::DeprecationWarning:babylon.*``
+    policy detonates the first discovery call per pytest worker (nightly
+    2026-07-19, an order-dependent failure only later tests escaped via the
+    module cache). A shim not yet listed in ``_DEPRECATED_SHIM_MODULES``
+    fails loudly here — add it to the registry deliberately, never blanket-
+    suppress.
+    """
     modules: list[Any] = [package]
     if not hasattr(package, "__path__"):
         return modules
@@ -136,7 +155,12 @@ def _iter_package_modules(package: Any) -> list[Any]:
         if mod_info.name.endswith(".__main__"):
             continue
         try:
-            mod = importlib.import_module(mod_info.name)
+            if mod_info.name in _DEPRECATED_SHIM_MODULES:
+                with warnings.catch_warnings():
+                    warnings.simplefilter("ignore", DeprecationWarning)
+                    mod = importlib.import_module(mod_info.name)
+            else:
+                mod = importlib.import_module(mod_info.name)
         except ImportError:
             continue
         modules.append(mod)

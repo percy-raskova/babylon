@@ -307,11 +307,31 @@ class TestZoomHierarchyCompleteness:
         assert row is not None
         assert row["n"] == 1
 
-    def test_bea_tier_exists(self, db: sqlite3.Connection) -> None:
-        """BEA tier: at least 1 BEA EA exists."""
-        row = db.execute("SELECT count(*) AS n FROM dim_bea_economic_area").fetchone()
-        assert row is not None
-        assert row["n"] >= 1
+    def test_bea_tier_exists(self) -> None:
+        """BEA tier: at least 1 BEA EA exists — read from the successor CSV.
+
+        ``dim_bea_economic_area`` was amputated from the reference DB by
+        ADR076 (36f4cb98) with a committed CSV successor registered in
+        ``data-artifacts.yaml``. That commit migrated the whole
+        ``TestBEAEconomicAreas`` class but missed this straggler, which kept
+        querying the dropped table (nightly Reference-Data red since
+        2026-07-17). The zoom-hierarchy claim now reads the successor the
+        same way ``tests/unit/reference/test_data_artifacts.py`` does; that
+        file additionally pins the full 8-row content.
+        """
+        import csv
+
+        csv_path = (
+            Path(__file__).resolve().parents[2]
+            / "src"
+            / "babylon"
+            / "data"
+            / "reference"
+            / "dim_bea_economic_area.csv"
+        )
+        with csv_path.open(encoding="utf-8") as handle:
+            rows = list(csv.DictReader(handle))
+        assert len(rows) >= 1
 
     def test_msa_tier_exists(self, db: sqlite3.Connection) -> None:
         """MSA tier: at least 1 metro area exists."""

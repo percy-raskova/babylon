@@ -15,7 +15,6 @@ Or set ``BABYLON_STUB_BRIDGE=1`` to auto-initialize in ``_get_bridge()``.
 from __future__ import annotations
 
 import logging
-import random
 from typing import Any
 from uuid import UUID, uuid4
 
@@ -1207,8 +1206,26 @@ class StubEngineBridge:
     def resolve_tick(
         self,
         session_id: UUID,
-    ) -> list[dict[str, Any]]:
-        """Advance the game by one tick. Returns action results."""
+        persistent_context: dict[str, Any] | None = None,
+        *,
+        force_endgame_test_hook: bool = False,
+    ) -> dict[str, Any]:
+        """Advance the game by one tick and return the new snapshot.
+
+        Signature and return shape mirror ``EngineBridge.resolve_tick`` (the
+        protocol authority) so the ``_get_bridge()`` fallback actually serves
+        the ``/resolve/`` view — which reads ``snapshot.get("tick")`` off
+        this return — instead of 500ing on the old ``(session_id)``-only,
+        list-returning shape. Both extra parameters keep the REAL bridge's
+        names (``tick_resolver.resolve_game_tick`` passes them by keyword,
+        so the underscore unused-param convention would break the call) and
+        are deliberately inert: the stub carries no engine, so there is no
+        cross-tick context to thread and no EndgameDetector for the e2e
+        hook to fire — an honest no-op, never a fabricated endgame. Queued
+        actions are drained each tick so repeat submissions don't
+        accumulate; the stub invents no per-action results for them.
+        """
+        del persistent_context, force_endgame_test_hook  # inert: no engine behind the stub
         session = _stub_sessions.get(session_id)
         if session:
             session["tick"] += 1
@@ -1222,25 +1239,8 @@ class StubEngineBridge:
             except Exception:
                 pass
 
-        actions = _stub_actions.get(session_id, [])
-        results = []
-        for action in actions:
-            results.append(
-                {
-                    "org_id": action["org_id"],
-                    "action_type": action["verb"].upper(),
-                    "target_id": action.get("target_id"),
-                    "initiative_score": round(random.uniform(0.3, 0.9), 2),
-                    "action_cost": 1.0,
-                    "success": random.random() > 0.3,
-                    "consciousness_delta": round(random.uniform(-0.02, 0.08), 3),
-                    "heat_delta": round(random.uniform(0.0, 0.1), 3),
-                    "details": {},
-                }
-            )
-
         _stub_actions[session_id] = []
-        return results
+        return self.get_snapshot(session_id)
 
     # ------------------------------------------------------------------ #
     # Spec 103: Trade surfaces — stub returns honest empty states.

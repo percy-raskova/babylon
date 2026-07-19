@@ -205,3 +205,29 @@ class TestProbabilityBounds:
         invariant = ProbabilityInRange(field_pairs=discover_probability_fields())
         result = invariant.check(state, rehydrated)
         assert result.ok, result.msg
+
+
+def test_discovery_walk_does_not_leak_deprecation_warnings() -> None:
+    """Regression (nightly 2026-07-19, pre-existing since before spec-116):
+    ``discover_probability_fields`` recursively imports every submodule of
+    ``babylon.models`` — including the deprecated ``components.organization``
+    shim, which warns at module import. Under pyproject's
+    ``error::DeprecationWarning:babylon.*`` policy that import EXPLODED the
+    first test to trigger discovery in a worker (order-dependent: later
+    tests saw the cached module and passed). The walker must treat a
+    deprecated shim as a legitimate walk member whose warning is expected.
+    """
+    import sys
+    import warnings
+
+    from tests.property.harness import probability_discovery
+
+    probability_discovery.discover_probability_fields.cache_clear()
+    sys.modules.pop("babylon.models.components.organization", None)
+    try:
+        with warnings.catch_warnings():
+            warnings.simplefilter("error", DeprecationWarning)
+            pairs = probability_discovery.discover_probability_fields()
+        assert pairs, "discovery returned no Probability fields"
+    finally:
+        probability_discovery.discover_probability_fields.cache_clear()

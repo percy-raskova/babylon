@@ -47,6 +47,25 @@ def test_run_scenario_passes_vol3_calculator_overrides_to_step(
     assert overrides.get("fictitious_capital_calculator") is not None
 
 
+def test_build_vol3_calculator_overrides_threads_defines_into_housing_calculator() -> None:
+    """Honesty sweep (U2.4): ``_build_vol3_calculator_overrides`` must pass
+    the scenario's resolved ``defines`` into ``create_financial_services``,
+    not silently let the housing ground-rent capitalization rate revert to
+    a second, independent ``GameDefines.load_default()`` call inside the
+    factory while every other ``capital_vol3`` coefficient honors the
+    scenario's defines_overrides."""
+    from babylon.config.defines import CapitalVolumeIIIDefines, GameDefines
+
+    custom_defines = GameDefines(
+        capital_vol3=CapitalVolumeIIIDefines(housing_capitalization_rate_default=0.12)
+    )
+
+    overrides = rt._build_vol3_calculator_overrides(custom_defines)
+
+    housing_calc = overrides["housing_calculator"]
+    assert housing_calc._interest_rate == 0.12
+
+
 def test_regression_test_module_stays_hermetic_no_db_no_drive() -> None:
     """D4: qa:regression's in-memory harness must never gain a DB/drive
     dependency. create_financial_services() itself is DB-free (it only

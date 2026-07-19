@@ -289,3 +289,40 @@ def test_build_economics_overrides_wires_tensor_registry_and_financial_services(
     finally:
         if leontief_session is not None:
             leontief_session.close()
+
+
+def test_build_economics_overrides_threads_defines_into_housing_calculator() -> None:
+    """Honesty sweep (U2.4): ``_build_economics_overrides``'s
+    ``create_financial_services(fred_series_cache=fred_cache)`` call
+    (runner.py, inside the ``scope_fips`` branch) previously dropped the
+    ``defines`` parameter already passed into this very function, so
+    ``housing_calculator``'s interest rate silently reverted to a second,
+    independent ``GameDefines.load_default()`` call inside the factory
+    while every other ``capital_vol3`` coefficient honored the caller's
+    ``--defines`` overlay.
+    """
+    pytest.importorskip("sqlalchemy")
+    if not SQLITE_REF.exists():
+        pytest.skip(f"SQLite reference DB missing at {SQLITE_REF}")
+
+    from babylon.config.defines import CapitalVolumeIIIDefines, GameDefines
+    from babylon.engine.headless_runner.runner import _build_economics_overrides
+    from babylon.reference.database import get_normalized_session_factory
+
+    session_factory = get_normalized_session_factory()
+    custom_defines = GameDefines(
+        capital_vol3=CapitalVolumeIIIDefines(housing_capitalization_rate_default=0.12)
+    )
+
+    overrides, leontief_session = _build_economics_overrides(
+        session_factory=session_factory,
+        defines=custom_defines,
+        scope_fips=frozenset({"26163"}),
+    )
+    try:
+        housing_calc = overrides.get("housing_calculator")
+        assert housing_calc is not None
+        assert housing_calc._interest_rate == 0.12
+    finally:
+        if leontief_session is not None:
+            leontief_session.close()

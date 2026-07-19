@@ -169,15 +169,24 @@ def _build_vol3_melt_calculator() -> Any:
     )
 
 
-def _build_vol3_calculator_overrides() -> dict[str, Any]:
+def _build_vol3_calculator_overrides(defines: GameDefines) -> dict[str, Any]:
     """Build Vol III ``calculator_overrides`` from the committed FRED fixture.
 
     D4: gives ``qa:regression`` real (2010-2024) money data without touching
     the babylon-data drive — the harness reads only the committed fixture.
+
+    Args:
+        defines: The scenario's resolved ``GameDefines`` (same instance
+            passed to ``step()``), so ``capital_vol3``-moddable calculator
+            constants (e.g. the housing ground-rent capitalization rate)
+            honor scenario/CLI overrides instead of silently reverting to
+            ``GameDefines.load_default()`` (honesty sweep, U2.4).
     """
     from babylon.domain.economics.factory import create_financial_services
 
-    overrides = create_financial_services(fred_series_cache=_load_vol3_fred_fixture())
+    overrides = create_financial_services(
+        fred_series_cache=_load_vol3_fred_fixture(), defines=defines
+    )
     # The one key create_financial_services does not supply, and the one that
     # decides whether TickDynamicsSystem executes at all.
     overrides["melt_calculator"] = _build_vol3_melt_calculator()
@@ -679,7 +688,7 @@ def _run_scenario_ticks(
     # _legacy.py's Simulation already uses (one calculator_overrides dict
     # persists across the whole run, rebuilt only per ServiceContainer.create
     # call inside step() itself).
-    calculator_overrides = _build_vol3_calculator_overrides()
+    calculator_overrides = _build_vol3_calculator_overrides(defines)
 
     checkpoints: list[CheckpointData] = []
     ticks_survived = 0

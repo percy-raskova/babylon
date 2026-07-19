@@ -1044,7 +1044,9 @@ def _build_economics_overrides(
             overrides["tensor_registry"] = registry
 
             fred_cache = load_fred_series_from_db(session_factory)
-            overrides.update(create_financial_services(fred_series_cache=fred_cache))
+            overrides.update(
+                create_financial_services(fred_series_cache=fred_cache, defines=defines)
+            )
 
     return overrides, leontief_session
 

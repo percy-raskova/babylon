@@ -6486,7 +6486,7 @@ def _bridge_economics_overrides(fips_codes: tuple[str, ...] = ()) -> tuple[dict[
     )
 
     fred_cache = load_fred_series_from_db(session_factory)
-    overrides.update(create_financial_services(fred_series_cache=fred_cache))
+    overrides.update(create_financial_services(fred_series_cache=fred_cache, defines=defines))
 
     circulation_cache = load_circulation_series_from_db(session_factory)
     overrides.update(

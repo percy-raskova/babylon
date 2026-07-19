@@ -108,3 +108,42 @@ def test_returned_dict_keys_raises_on_unknown_function(tmp_path: Path) -> None:
     target.write_text("def g():\n    return {'a': 1}\n", encoding="utf-8")
     with pytest.raises(SentinelCheckError, match="no function"):
         returned_dict_keys(target, "does_not_exist")
+
+
+def test_returned_dict_keys_takes_only_the_last_top_level_return(tmp_path: Path) -> None:
+    """A dead/superseded early ``return {...}`` branch must not leak its keys in."""
+    target = tmp_path / "mod.py"
+    target.write_text(
+        "\n".join(
+            [
+                "def make():",
+                "    if False:",
+                "        return {'dead_key': 1}",
+                "    return {'real_key': 2}",
+            ]
+        ),
+        encoding="utf-8",
+    )
+    assert returned_dict_keys(target, "make") == ("real_key",)
+
+
+def test_returned_dict_keys_excludes_nested_scope_returns(tmp_path: Path) -> None:
+    """A dict-returning method on a class/closure declared inside stays out."""
+    target = tmp_path / "mod.py"
+    target.write_text(
+        "\n".join(
+            [
+                "def make():",
+                "    class _Adapter:",
+                "        def as_dict(self) -> dict:",
+                "            return {'nested_key': 1}",
+                "    def inner():",
+                "        return {'closure_key': 2}",
+                "    _Adapter()",
+                "    inner()",
+                "    return {'real_key': 3}",
+            ]
+        ),
+        encoding="utf-8",
+    )
+    assert returned_dict_keys(target, "make") == ("real_key",)

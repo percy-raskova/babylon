@@ -12,6 +12,7 @@ empty result.
 from __future__ import annotations
 
 import ast
+from collections.abc import Iterator
 from pathlib import Path
 
 from babylon.sentinels.base import SentinelCheckError
@@ -250,6 +251,29 @@ def coupling_edges(path: Path) -> tuple[tuple[str, str, str], ...]:
     return tuple(edges)
 
 
+_SCOPE_BOUNDARY: tuple[type[ast.AST], ...] = (
+    ast.FunctionDef,
+    ast.AsyncFunctionDef,
+    ast.ClassDef,
+)
+
+
+def _walk_own_scope(node: ast.AST) -> Iterator[ast.AST]:
+    """Depth-first walk of ``node``'s own lexical scope only.
+
+    Like :func:`ast.walk`, but does not descend into a nested ``def``/``async
+    def``/``class`` body — a ``return`` statement inside one of those belongs to
+    that inner scope, not to ``node``.
+
+    :param node: The function/module body to walk.
+    :yields: Every descendant node reachable without crossing a scope boundary.
+    """
+    for child in ast.iter_child_nodes(node):
+        yield child
+        if not isinstance(child, _SCOPE_BOUNDARY):
+            yield from _walk_own_scope(child)
+
+
 def returned_dict_keys(path: Path, func_name: str) -> tuple[str, ...]:
     """Extract the string keys of the dict literal a named function returns.
 
@@ -258,6 +282,12 @@ def returned_dict_keys(path: Path, func_name: str) -> tuple[str, ...]:
     the estate the DoD gate is meant to inject. Reading them statically lets the
     gate-blindness sensor compare estate against harness without importing
     ``babylon.domain``.
+
+    Only the function's *own* scope is scanned: a ``return {...}`` nested inside
+    a closure or class the function declares internally does not count, and if
+    the function's own scope contains more than one ``return {...}``, only the
+    LAST one in source order is read (matching what actually executes when a
+    factory has a superseded early-return branch).
 
     :param path: Source file defining ``func_name``.
     :param func_name: The module-level function whose returned dict to read.
@@ -272,14 +302,14 @@ def returned_dict_keys(path: Path, func_name: str) -> tuple[str, ...]:
             target = node
     if target is None:
         raise SentinelCheckError(f"{path}: no function {func_name!r} at module level")
-    keys: set[str] = set()
-    for sub in ast.walk(target):
+    last_keys: tuple[str, ...] | None = None
+    for sub in _walk_own_scope(target):
         if isinstance(sub, ast.Return) and isinstance(sub.value, ast.Dict):
-            keys.update(
+            last_keys = tuple(
                 k.value
                 for k in sub.value.keys
                 if isinstance(k, ast.Constant) and isinstance(k.value, str)
             )
-    if not keys:
+    if last_keys is None:
         raise SentinelCheckError(f"{path}:{func_name} returns no dict literal")
-    return tuple(sorted(keys))
+    return tuple(sorted(last_keys))

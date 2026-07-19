@@ -8,6 +8,8 @@ reason. A zero is never fabricated (Constitution III.11).
 
 from __future__ import annotations
 
+import math
+
 import pytest
 
 from babylon.domain.economics.credit.types import FictitiousCapitalStock
@@ -81,3 +83,38 @@ class TestFictitiousAnchorAbsence:
         assert result.fips == NATIONAL_FIPS
         assert result.year == 2020
         assert "total_claims" in result.reason
+
+
+@pytest.mark.unit
+class TestFictitiousAnchorPresent:
+    """fictitious_anchor computes log(total_claims / real_output) when data exists."""
+
+    def test_returns_log_of_the_real_ratio(self) -> None:
+        """total_claims 100.0 over real output 50.0 is ln(2.0)."""
+        result = fictitious_anchor(_stock(2020), 50.0)
+        assert result == pytest.approx(math.log(2.0))
+
+    def test_par_claims_anchor_at_zero(self) -> None:
+        """Claims exactly equal to real output anchor at log-ratio 0.0."""
+        result = fictitious_anchor(_stock(2020), 100.0)
+        assert result == pytest.approx(0.0)
+
+    def test_undervalued_claims_anchor_below_zero(self) -> None:
+        """Claims below real output give a negative log anchor."""
+        result = fictitious_anchor(_stock(2020), 200.0)
+        assert isinstance(result, float)
+        assert result < 0.0
+
+    def test_derivatives_are_excluded_from_the_anchor(self) -> None:
+        """derivatives_notional is tracked but never enters total_claims."""
+        with_derivatives = FictitiousCapitalStock(
+            year=2020,
+            government_debt=20.0,
+            corporate_equity=40.0,
+            corporate_debt=10.0,
+            household_debt=30.0,
+            derivatives_notional=900.0,
+        )
+        assert fictitious_anchor(with_derivatives, 50.0) == pytest.approx(
+            fictitious_anchor(_stock(2020), 50.0)
+        )

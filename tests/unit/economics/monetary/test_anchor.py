@@ -13,10 +13,12 @@ import math
 import pytest
 
 from babylon.domain.economics.credit.types import FictitiousCapitalStock
+from babylon.domain.economics.distribution.types import SurplusValueDistribution
 from babylon.domain.economics.monetary.anchor import (
     NATIONAL_FIPS,
     UNKNOWN_YEAR,
     fictitious_anchor,
+    serviceability_anchor,
 )
 from babylon.domain.economics.tensor import NoDataSentinel
 
@@ -118,6 +120,53 @@ class TestFictitiousAnchorPresent:
         assert fictitious_anchor(with_derivatives, 50.0) == pytest.approx(
             fictitious_anchor(_stock(2020), 50.0)
         )
+
+
+def _distribution(
+    *,
+    surplus: float = 100.0,
+    interest: float = 25.0,
+    fips: str = "26163",
+    year: int = 2020,
+) -> SurplusValueDistribution:
+    """Build a distribution with the interest claim under test."""
+    return SurplusValueDistribution(
+        fips_code=fips,
+        year=year,
+        total_surplus_produced=surplus,
+        interest_payments=interest,
+        ground_rent=10.0,
+        taxes_on_surplus=15.0,
+    )
+
+
+@pytest.mark.unit
+class TestServiceabilityAnchorAbsence:
+    """serviceability_anchor returns an honest sentinel when input is absent."""
+
+    def test_absent_distribution_returns_sentinel(self) -> None:
+        """No SurplusValueDistribution computed: sentinel, not a zero burden."""
+        result = serviceability_anchor(None)
+        assert isinstance(result, NoDataSentinel)
+        assert result.fips == NATIONAL_FIPS
+        assert result.year == UNKNOWN_YEAR
+        assert "SurplusValueDistribution" in result.reason
+
+    def test_zero_surplus_returns_sentinel_not_the_computed_field_zero(self) -> None:
+        """financialization_share silently returns 0.0 at zero surplus; we must not."""
+        zero_surplus = _distribution(surplus=0.0, interest=0.0)
+        assert zero_surplus.financialization_share == 0.0
+        result = serviceability_anchor(zero_surplus)
+        assert isinstance(result, NoDataSentinel)
+        assert result.fips == "26163"
+        assert result.year == 2020
+        assert "zero surplus" in result.reason
+
+    def test_absence_is_falsy_and_never_a_float(self) -> None:
+        """The sentinel supports the walrus pattern and is not a number."""
+        result = serviceability_anchor(None)
+        assert not result
+        assert not isinstance(result, float)
 
 
 @pytest.mark.unit

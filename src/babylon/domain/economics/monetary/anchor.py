@@ -21,6 +21,7 @@ import math
 from typing import Final
 
 from babylon.domain.economics.credit.types import FictitiousCapitalStock
+from babylon.domain.economics.distribution.types import SurplusValueDistribution
 from babylon.domain.economics.tensor import NoDataSentinel
 
 NATIONAL_FIPS: Final[str] = "USA"
@@ -86,3 +87,42 @@ def fictitious_anchor(
             ),
         )
     return math.log(ratio)
+
+
+def serviceability_anchor(
+    distribution: SurplusValueDistribution | None,
+) -> float | NoDataSentinel:
+    """Real interest burden ``i / s`` — how much surplus is already spoken for.
+
+    Tightens :func:`babylon.formulas.market.calculate_serviceable_divergence`
+    beyond its existing profit-rate slope: a financialised county services a
+    smaller claims structure at the same rate of profit. Vol. III part 3 (the
+    falling rate) meeting part 5 (fictitious capital).
+
+    Guards the denominator itself rather than delegating to
+    :attr:`SurplusValueDistribution.financialization_share`, which returns a
+    silent ``0.0`` at zero surplus — indistinguishable from a county that
+    genuinely pays no interest (Constitution III.11).
+
+    :param distribution: Published surplus distribution, or ``None`` when no
+        distribution was computed this tick (the normal case past 2024).
+    :returns: The interest burden as a fraction of surplus produced, or a
+        :class:`NoDataSentinel` naming the specific absence.
+    """
+    if distribution is None:
+        return NoDataSentinel(
+            fips=NATIONAL_FIPS,
+            year=UNKNOWN_YEAR,
+            reason="serviceability_anchor: no SurplusValueDistribution computed this tick",
+        )
+    if distribution.total_surplus_produced <= 0.0:
+        return NoDataSentinel(
+            fips=distribution.fips_code,
+            year=distribution.year,
+            reason=(
+                f"serviceability_anchor: zero surplus produced in "
+                f"{distribution.fips_code} {distribution.year}; "
+                "interest burden undefined"
+            ),
+        )
+    return distribution.interest_payments / distribution.total_surplus_produced

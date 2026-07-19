@@ -1153,6 +1153,8 @@ export interface EconomyDashboardPayload {
    * never a fabricated row).
    */
   imperial_rent_gap_by_region: ImperialRentGapRegion[];
+  /** The Veil of Money's tier status (Track 2 T2-8/T2-9). */
+  veil: VeilStatus;
 }
 
 /**
@@ -1166,8 +1168,6 @@ export interface ImperialRentGapRegion {
   wc_per_capita: number;
   vc_per_capita: number;
   gap_per_capita: number;
-  /** The Veil of Money's tier status (Track 2 T2-8/T2-9). */
-  veil: VeilStatus;
 }
 
 /**

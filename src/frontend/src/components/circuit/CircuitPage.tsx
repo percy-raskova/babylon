@@ -21,10 +21,9 @@
  * sections read `panels.economy.data.veil` (`web/game/veil.py`,
  * `EngineBridge.get_economy_dashboard`) and render either the real content
  * or a locked placeholder naming the doctrine node that unlocks it, linking
- * into the Doctrine takeover (`openTakeover("doctrine")` + a navigate back
- * to the map route, since `TakeoverOverlay` only mounts inside `AppShell` —
- * the flag is read the instant that tree mounts, so the takeover opens
- * already-expanded rather than requiring a second click).
+ * into the routed Doctrine page (`/game/:id/doctrine`). T3-5 retired the
+ * doctrine takeover in favor of that route, so the study CTA is a plain
+ * `navigate()` — no overlay flag involved.
  *
  * Deliberately thin chrome: a back-to-map link and the live tick (read
  * straight off `world.snapshot`, which keeps updating here because the
@@ -141,7 +140,6 @@ export function CircuitPage({ gameId }: CircuitPageProps): React.JSX.Element {
   const economyData = useStore((s) => s.panels.economy.data);
   const fetchEconomy = useStore((s) => s.panels.economy.fetch);
   const setEconomyMounted = useStore((s) => s.panels.economy.setMounted);
-  const openTakeover = useStore((s) => s.ui.openTakeover);
 
   useEffect(() => {
     setEconomyMounted(true);
@@ -150,11 +148,9 @@ export function CircuitPage({ gameId }: CircuitPageProps): React.JSX.Element {
   }, [gameId, fetchEconomy, setEconomyMounted]);
 
   const studyDoctrine = (): void => {
-    // TakeoverOverlay only mounts inside AppShell (the map route) — set the
-    // flag first, then navigate; it reads as already-open the instant that
-    // tree mounts (the Zustand store persists across the route swap).
-    openTakeover("doctrine");
-    navigate(`/game/${gameId}`);
+    // The Doctrine surface is its own route since T3-5 (the takeover was
+    // retired) — a plain navigation, no overlay flag involved.
+    navigate(`/game/${gameId}/doctrine`);
   };
 
   const veil: VeilStatus | undefined = economyData?.veil;

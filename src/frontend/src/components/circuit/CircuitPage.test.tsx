@@ -28,6 +28,10 @@ function renderCircuitPage(): void {
     <MemoryRouter initialEntries={[`/game/${DEFAULT_GAME_ID}/circuit`]}>
       <Routes>
         <Route path="/game/:id" element={<div data-testid="stub-map">MAP</div>} />
+        <Route
+          path="/game/:id/doctrine"
+          element={<div data-testid="stub-doctrine">DOCTRINE</div>}
+        />
         <Route path="/game/:id/circuit" element={<CircuitPage gameId={DEFAULT_GAME_ID} />} />
       </Routes>
     </MemoryRouter>,
@@ -67,6 +71,8 @@ describe("CircuitPage", () => {
     await waitFor(() =>
       expect(screen.getByTestId("fundamental-theorem-meter")).toBeInTheDocument(),
     );
+  });
+
   it("renders the wealth-by-class-role composition (T2-7 relocation)", async () => {
     mockEconomy({
       wealth_by_class_role: { periphery_proletariat: 40, core_bourgeoisie: 60 },
@@ -124,7 +130,7 @@ describe("CircuitPage", () => {
       expect(screen.queryByTestId("veil-locked")).not.toBeInTheDocument();
     });
 
-    it("the study CTA opens the Doctrine takeover and navigates back to the map", async () => {
+    it("the study CTA navigates to the routed Doctrine page (T3-5 retired the takeover)", async () => {
       mockEconomy({
         veil: {
           tier: 0,
@@ -141,8 +147,8 @@ describe("CircuitPage", () => {
 
       await userEvent.click(screen.getByTestId("veil-study-link-exploitation"));
 
-      expect(screen.getByTestId("stub-map")).toBeInTheDocument();
-      expect(useStore.getState().ui.takeover.active).toBe("doctrine");
+      expect(screen.getByTestId("stub-doctrine")).toBeInTheDocument();
+      expect(useStore.getState().ui.takeover.active).toBeNull();
     });
   });
 });

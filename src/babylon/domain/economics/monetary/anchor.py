@@ -66,4 +66,13 @@ def fictitious_anchor(
             year=stock.year,
             reason=f"fictitious_anchor: no real output observable for {stock.year}",
         )
+    if stock.total_claims <= 0.0:
+        return NoDataSentinel(
+            fips=NATIONAL_FIPS,
+            year=stock.year,
+            reason=(
+                f"fictitious_anchor: zero total_claims for {stock.year}, "
+                "financialization ratio undefined"
+            ),
+        )
     return math.log(stock.ratio_to_real(real_output))

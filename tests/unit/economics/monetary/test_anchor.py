@@ -58,3 +58,26 @@ class TestFictitiousAnchorAbsence:
     def test_absence_never_returns_a_float(self) -> None:
         """Absence is never expressed as a number."""
         assert not isinstance(fictitious_anchor(None, None), float)
+
+    def test_zero_total_claims_returns_sentinel_not_domain_error(self) -> None:
+        """An all-zero stock is a legitimate Pydantic value, not an error input.
+
+        Every field on FictitiousCapitalStock is constrained only with
+        ge=0.0, so government_debt=corporate_equity=corporate_debt=
+        household_debt=0.0 constructs cleanly and total_claims == 0.0.
+        ratio_to_real then returns 0.0 (real_output > 0), and math.log(0.0)
+        raises ValueError -- fictitious_anchor must intercept that and return
+        an honest sentinel instead of crashing the tick (Constitution III.11).
+        """
+        zero_stock = FictitiousCapitalStock(
+            year=2020,
+            government_debt=0.0,
+            corporate_equity=0.0,
+            corporate_debt=0.0,
+            household_debt=0.0,
+        )
+        result = fictitious_anchor(zero_stock, 50.0)
+        assert isinstance(result, NoDataSentinel)
+        assert result.fips == NATIONAL_FIPS
+        assert result.year == 2020
+        assert "total_claims" in result.reason

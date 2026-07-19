@@ -736,6 +736,7 @@ def pulse_scenario_b() -> tuple[dict[str, object], str]:
 
 
 @pytest.mark.ai
+@pytest.mark.requires_ollama
 class TestLiveShockDoctrineEntailment:
     def test_shock_scenario_a_prose_entails_frame(
         self, shock_scenario_a: tuple[dict[str, object], str]
@@ -755,6 +756,7 @@ class TestLiveShockDoctrineEntailment:
 
 
 @pytest.mark.ai
+@pytest.mark.requires_ollama
 class TestLiveTickPulseEntailment:
     def test_pulse_scenario_a_prose_entails_frame(
         self, pulse_scenario_a: tuple[dict[str, object], str]
@@ -774,6 +776,7 @@ class TestLiveTickPulseEntailment:
 
 
 @pytest.mark.ai
+@pytest.mark.requires_ollama
 class TestNegativeControlOnRealProse:
     """The mutation-validation of the eval itself: take REAL, live-generated
     prose (known-good, asserted clean above) and deliberately corrupt it

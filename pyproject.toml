@@ -179,6 +179,7 @@ markers = [
     "contract: Contract tests pinning cross-boundary interfaces (tests/contract/)",
     "requires_reference_db: Tests needing the reference SQLite DB (data/sqlite/marxist-data-3NF.sqlite) — excluded on the dev CI tier; main/nightly include them via the CI subset artifact (item 40)",
     "pacing_gate: G1 standing 520-tick nationwide null-play pacing gate (spec-116 gate 1 / ADR079) — multi-minute, single-flight; runs ONLY via `mise run qa:pacing` / nightly, never in mise run check, test:unit, test:rest-ci, or py313-forward-compat",
+    "requires_ollama: needs a live local Ollama daemon + chat model (multi-minute, probabilistic) — excluded from every fast gate; runs via `mise run test:ai`. The bare `ai` marker stays taxonomy-only (2026-07-16 re-tier: mock-based ai-suite tests DO run in fast gates)",
 ]
 # Enforce marker/config strictness via ini options: the --strict-markers /
 # --strict-config addopts entries were a verified NO-OP under pytest 9.0.3

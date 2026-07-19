@@ -844,6 +844,201 @@ def v_di_members_must_be_pair() -> dict:
     return out
 
 
+def v_di_add_node_to_edge() -> dict:
+    # PROBE (2026-07-18, xgi 0.10.2): direction "in" puts the node in the
+    # TAIL (_edge[e]["in"]), "out" in the HEAD. Auto-creates a missing
+    # edge AND a missing node; returns None; set semantics — re-adding the
+    # same (node, direction) is a no-op, and adding the same node in the
+    # OTHER direction puts it in BOTH sets. D11-extension: DiHypergraph's
+    # add_node_to_edge does NOT call update_uid_counter either — after
+    # auto-creating numeric edge 5, the next auto id is 0 (the same
+    # silent-overwrite footgun as undirected D11: XGI's auto-id add_edge
+    # does not existence-check, so the sequence OVERWRITES edge 0's
+    # members; pinned below). The Rust core bumps iff the id parses as
+    # u64, extending the D3/D11 rule to DiHypergraph.
+    DH = xgi.DiHypergraph()
+    ret_in = DH.add_node_to_edge("newedge", "newnode", "in")
+    ret_out = DH.add_node_to_edge("e2", "n2", "out")
+    DH.add_edge(([1], [2]), idx="e1")
+    DH.add_node_to_edge("e1", 1, "in")  # re-add same direction: no-op
+    DH.add_node_to_edge("e1", 1, "out")  # other direction: node in BOTH
+    out = {
+        "return_in": ret_in,
+        "return_out": ret_out,
+        "edge_ids": _di_ids(DH),
+        "num_nodes": DH.num_nodes,
+        "node_ids": sorted(str(n) for n in DH.nodes),
+        "dimembers": _di_dimembers_sorted(DH),
+        "dimemberships": _di_dimemberships_sorted(DH),
+    }
+    DH2 = xgi.DiHypergraph()
+    DH2.add_node_to_edge(5, "x", "in")
+    DH2.add_edge(([1], [2]))  # auto id — XGI counter untouched
+    out["numeric_id_no_bump"] = {
+        "edge_ids": _di_ids(DH2),
+        "dimembers": _di_dimembers_sorted(DH2),
+    }
+    return out
+
+
+def v_di_remove_node_from_edge() -> dict:
+    # PROBE (2026-07-18, xgi 0.10.2): removes ONLY the direction's side —
+    # removing node 2 with direction "in" (tail) from ([1,2],[2,3]) leaves
+    # 2 in the HEAD. Directed "emptied" = BOTH tail AND head empty:
+    # removing the last tail member of ([1],[2]) with remove_empty=True
+    # leaves the edge ALIVE (head still has 2); removing the last head
+    # member then empties it and it IS dropped. remove_empty=False keeps a
+    # both-empty edge. Errors (XGIError, D2 channel): missing edge
+    # "Edge noedge not in the hypergraph"; missing node "Node ghost not in
+    # the hypergraph"; not-a-member is PER-DIRECTION:
+    # "in-edge e1 does not contain node b" / "out-edge e1 does not contain
+    # node b" (a head-only member fails direction "in"). Invalid direction
+    # is validated FIRST, before the existence checks — D14 makes it
+    # compile-time-impossible in Rust.
+    out = {}
+    DH = xgi.DiHypergraph()
+    DH.add_edge(([1, 2], [2, 3]), idx="e1")
+    DH.remove_node_from_edge("e1", 2, "in", remove_empty=False)
+    out["direction_only"] = {
+        "dimembers": _di_dimembers_sorted(DH),
+        "dimemberships": _di_dimemberships_sorted(DH),
+        "edge_ids": _di_ids(DH),
+        "node_ids": sorted(str(n) for n in DH.nodes),
+    }
+    DH2 = xgi.DiHypergraph()
+    DH2.add_edge(([1], [2]), idx="e2")
+    DH2.remove_node_from_edge("e2", 1, "in")  # remove_empty=True default
+    out["empty_means_both_sides"] = {
+        "edge_ids": _di_ids(DH2),
+        "dimembers": _di_dimembers_sorted(DH2),
+    }
+    DH2.remove_node_from_edge("e2", 2, "out")
+    out["both_empty_dropped"] = {
+        "edge_ids": _di_ids(DH2),
+        "node_ids": sorted(str(n) for n in DH2.nodes),
+    }
+    DH3 = xgi.DiHypergraph()
+    DH3.add_edge(([1], []), idx="e3")
+    DH3.remove_node_from_edge("e3", 1, "in", remove_empty=False)
+    out["keep_empty"] = {
+        "edge_ids": _di_ids(DH3),
+        "dimembers": _di_dimembers_sorted(DH3),
+    }
+    errs = {}
+    DH4 = xgi.DiHypergraph()
+    try:
+        DH4.remove_node_from_edge("noedge", "a", "in")
+    except Exception as exc:  # recording the observed type IS the vector
+        errs["missing_edge"] = {"exception": type(exc).__name__, "message": str(exc)}
+    DH4.add_edge(([1], [2]), idx="e1")
+    try:
+        DH4.remove_node_from_edge("e1", "ghost", "in")
+    except Exception as exc:
+        errs["missing_node"] = {"exception": type(exc).__name__, "message": str(exc)}
+    DH4.add_node("b")
+    try:
+        DH4.remove_node_from_edge("e1", "b", "in")
+    except Exception as exc:
+        errs["not_in_tail"] = {"exception": type(exc).__name__, "message": str(exc)}
+    try:
+        DH4.remove_node_from_edge("e1", "b", "out")
+    except Exception as exc:
+        errs["not_in_head"] = {"exception": type(exc).__name__, "message": str(exc)}
+    try:
+        DH4.remove_node_from_edge("e1", 2, "in")  # head-only member, wrong direction
+    except Exception as exc:
+        errs["wrong_direction_member"] = {
+            "exception": type(exc).__name__,
+            "message": str(exc),
+        }
+    out["errors"] = errs
+    return out
+
+
+def v_di_remove_node_modes() -> dict:
+    # PROBE (2026-07-18, xgi 0.10.2): remove_node(n, strong, remove_empty)
+    # — weak drops the node from BOTH directions of every containing edge;
+    # an edge left with BOTH tail and head empty is removed iff
+    # remove_empty (an edge with one side still populated SURVIVES — e2
+    # below keeps (set(), {4})). Strong removes every incident edge
+    # (in ∪ out) ENTIRELY, regardless of remove_empty. Missing node:
+    # IDNotFound "ID ghost not found". remove_nodes_from WARNS
+    # "Node ghost not in dihypergraph" (note: "dihypergraph", unlike the
+    # undirected "hypergraph"), SKIPS, CONTINUES. remove_edges_from RAISES
+    # IDNotFound mid-iteration (partial effects: e1 already removed, e3
+    # never attempted). remove_edge on a missing id: IDNotFound.
+    out = {}
+    DH = xgi.DiHypergraph()
+    DH.add_edge(([1, 2], [2, 3]), idx="e1")
+    DH.add_edge(([2], [4]), idx="e2")
+    DH.add_edge(([5], [2]), idx="e3")
+    ret = DH.remove_node(2, strong=False, remove_empty=False)
+    out["weak_keep"] = {
+        "return": ret,
+        "edge_ids": _di_ids(DH),
+        "node_ids": sorted(str(n) for n in DH.nodes),
+        "has_node_2": 2 in DH,
+        "dimembers": _di_dimembers_sorted(DH),
+    }
+    DH2 = xgi.DiHypergraph()
+    DH2.add_edge(([2], [4]), idx="e2")
+    DH2.add_edge(([2], []), idx="e5")
+    DH2.remove_node(2)  # XGI defaults: strong=False, remove_empty=True
+    out["weak_drop"] = {
+        "edge_ids": _di_ids(DH2),
+        "dimembers": _di_dimembers_sorted(DH2),
+    }
+    DH3 = xgi.DiHypergraph()
+    DH3.add_edge(([1, 2], [3]), idx="e1")
+    DH3.add_edge(([4], [2, 5]), idx="e2")
+    DH3.add_edge(([6], [7]), idx="e4")
+    DH3.remove_node(2, strong=True, remove_empty=False)
+    out["strong_ignores_flag"] = {
+        "edge_ids": _di_ids(DH3),
+        "node_ids": sorted(str(n) for n in DH3.nodes),
+        "dimembers": _di_dimembers_sorted(DH3),
+    }
+    DH4 = xgi.DiHypergraph()
+    try:
+        DH4.remove_node("ghost")
+    except Exception as exc:  # recording the observed type IS the vector
+        out["missing_node"] = {"exception": type(exc).__name__, "message": str(exc)}
+    DH5 = xgi.DiHypergraph()
+    DH5.add_edge(([1, 2], [3]), idx="e1")
+    with warnings.catch_warnings(record=True) as caught:
+        warnings.simplefilter("always")
+        ret = DH5.remove_nodes_from([1, "ghost", 2])
+    out["nodes_from_missing"] = {
+        "return": ret,
+        "warned": len(caught) > 0,
+        "warning_message": str(caught[0].message) if caught else None,
+        "node_ids": sorted(str(n) for n in DH5.nodes),
+        "edge_ids": _di_ids(DH5),
+        "dimembers": _di_dimembers_sorted(DH5),
+    }
+    DH6 = xgi.DiHypergraph()
+    DH6.add_edge(([1], [2]), idx="e1")
+    DH6.add_edge(([2], [3]), idx="e2")
+    DH6.add_edge(([3], [4]), idx="e3")
+    edges_from = {}
+    try:
+        DH6.remove_edges_from(["e1", "ghost", "e3"])
+    except Exception as exc:  # recording the observed type IS the vector
+        edges_from["exception"] = type(exc).__name__
+        edges_from["message"] = str(exc)
+    edges_from["edge_ids_after"] = _di_ids(DH6)
+    out["edges_from_missing"] = edges_from
+    DH7 = xgi.DiHypergraph()
+    try:
+        DH7.remove_edge("ghost")
+    except Exception as exc:  # recording the observed type IS the vector
+        out["remove_edge_missing"] = {
+            "exception": type(exc).__name__,
+            "message": str(exc),
+        }
+    return out
+
+
 def main() -> None:
     vectors = {
         name.removeprefix("v_"): fn()

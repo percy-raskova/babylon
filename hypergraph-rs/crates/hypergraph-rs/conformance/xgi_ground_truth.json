@@ -282,6 +282,95 @@
       "num_nodes": 4,
       "return": null
     },
+    "di_add_node_to_edge": {
+      "dimembers": {
+        "e1": {
+          "head": [
+            "1",
+            "2"
+          ],
+          "tail": [
+            "1"
+          ]
+        },
+        "e2": {
+          "head": [
+            "n2"
+          ],
+          "tail": []
+        },
+        "newedge": {
+          "head": [],
+          "tail": [
+            "newnode"
+          ]
+        }
+      },
+      "dimemberships": {
+        "1": [
+          [
+            "e1"
+          ],
+          [
+            "e1"
+          ]
+        ],
+        "2": [
+          [
+            "e1"
+          ],
+          []
+        ],
+        "n2": [
+          [
+            "e2"
+          ],
+          []
+        ],
+        "newnode": [
+          [],
+          [
+            "newedge"
+          ]
+        ]
+      },
+      "edge_ids": [
+        "newedge",
+        "e2",
+        "e1"
+      ],
+      "node_ids": [
+        "1",
+        "2",
+        "n2",
+        "newnode"
+      ],
+      "num_nodes": 4,
+      "numeric_id_no_bump": {
+        "dimembers": {
+          "0": {
+            "head": [
+              "2"
+            ],
+            "tail": [
+              "1"
+            ]
+          },
+          "5": {
+            "head": [],
+            "tail": [
+              "x"
+            ]
+          }
+        },
+        "edge_ids": [
+          5,
+          0
+        ]
+      },
+      "return_in": null,
+      "return_out": null
+    },
     "di_both_directions": {
       "dimembers": {
         "e1": {
@@ -398,6 +487,212 @@
       "str_members": {
         "exception": "XGIError",
         "message": "Directed edge must be a list or tuple!"
+      }
+    },
+    "di_remove_node_from_edge": {
+      "both_empty_dropped": {
+        "edge_ids": [],
+        "node_ids": [
+          "1",
+          "2"
+        ]
+      },
+      "direction_only": {
+        "dimembers": {
+          "e1": {
+            "head": [
+              "2",
+              "3"
+            ],
+            "tail": [
+              "1"
+            ]
+          }
+        },
+        "dimemberships": {
+          "1": [
+            [],
+            [
+              "e1"
+            ]
+          ],
+          "2": [
+            [
+              "e1"
+            ],
+            []
+          ],
+          "3": [
+            [
+              "e1"
+            ],
+            []
+          ]
+        },
+        "edge_ids": [
+          "e1"
+        ],
+        "node_ids": [
+          "1",
+          "2",
+          "3"
+        ]
+      },
+      "empty_means_both_sides": {
+        "dimembers": {
+          "e2": {
+            "head": [
+              "2"
+            ],
+            "tail": []
+          }
+        },
+        "edge_ids": [
+          "e2"
+        ]
+      },
+      "errors": {
+        "missing_edge": {
+          "exception": "XGIError",
+          "message": "Edge noedge not in the hypergraph"
+        },
+        "missing_node": {
+          "exception": "XGIError",
+          "message": "Node ghost not in the hypergraph"
+        },
+        "not_in_head": {
+          "exception": "XGIError",
+          "message": "out-edge e1 does not contain node b"
+        },
+        "not_in_tail": {
+          "exception": "XGIError",
+          "message": "in-edge e1 does not contain node b"
+        },
+        "wrong_direction_member": {
+          "exception": "XGIError",
+          "message": "in-edge e1 does not contain node 2"
+        }
+      },
+      "keep_empty": {
+        "dimembers": {
+          "e3": {
+            "head": [],
+            "tail": []
+          }
+        },
+        "edge_ids": [
+          "e3"
+        ]
+      }
+    },
+    "di_remove_node_modes": {
+      "edges_from_missing": {
+        "edge_ids_after": [
+          "e2",
+          "e3"
+        ],
+        "exception": "IDNotFound",
+        "message": "'ID ghost not found'"
+      },
+      "missing_node": {
+        "exception": "IDNotFound",
+        "message": "'ID ghost not found'"
+      },
+      "nodes_from_missing": {
+        "dimembers": {
+          "e1": {
+            "head": [
+              "3"
+            ],
+            "tail": []
+          }
+        },
+        "edge_ids": [
+          "e1"
+        ],
+        "node_ids": [
+          "3"
+        ],
+        "return": null,
+        "warned": true,
+        "warning_message": "Node ghost not in dihypergraph"
+      },
+      "remove_edge_missing": {
+        "exception": "IDNotFound",
+        "message": "'ID ghost not found'"
+      },
+      "strong_ignores_flag": {
+        "dimembers": {
+          "e4": {
+            "head": [
+              "7"
+            ],
+            "tail": [
+              "6"
+            ]
+          }
+        },
+        "edge_ids": [
+          "e4"
+        ],
+        "node_ids": [
+          "1",
+          "3",
+          "4",
+          "5",
+          "6",
+          "7"
+        ]
+      },
+      "weak_drop": {
+        "dimembers": {
+          "e2": {
+            "head": [
+              "4"
+            ],
+            "tail": []
+          }
+        },
+        "edge_ids": [
+          "e2"
+        ]
+      },
+      "weak_keep": {
+        "dimembers": {
+          "e1": {
+            "head": [
+              "3"
+            ],
+            "tail": [
+              "1"
+            ]
+          },
+          "e2": {
+            "head": [
+              "4"
+            ],
+            "tail": []
+          },
+          "e3": {
+            "head": [],
+            "tail": [
+              "5"
+            ]
+          }
+        },
+        "edge_ids": [
+          "e1",
+          "e2",
+          "e3"
+        ],
+        "has_node_2": false,
+        "node_ids": [
+          "1",
+          "3",
+          "4",
+          "5"
+        ],
+        "return": null
       }
     },
     "di_uid_counter": {

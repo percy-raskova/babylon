@@ -10,8 +10,8 @@
 use indexmap::IndexMap;
 use rustworkx_core::petgraph::stable_graph::{NodeIndex, StableDiGraph};
 
-use super::error::EdgeError;
-use super::kinds::{MembershipEdge, NodeKind};
+use super::error::{EdgeError, MembershipError, NodeError};
+use super::kinds::{Direction, MembershipEdge, NodeKind};
 
 /// A directed hypergraph, represented as a bipartite graph.
 ///
@@ -380,5 +380,258 @@ impl<N, E, M> DiHypergraph<N, E, M> {
         }
 
         Ok(edge_id)
+    }
+
+    /// Add a node to an edge in the given direction — auto-creates both
+    /// if missing; idempotent on re-add (set semantics per direction).
+    /// INFALLIBLE — XGI returns `None` in every branch (probed v0.10.2)
+    /// and its only error path is the invalid-direction string, which the
+    /// [`Direction`] enum makes compile-time-impossible (divergence D14).
+    ///
+    /// XGI parity: `DH.add_node_to_edge(edge, node, direction)` —
+    /// `"in"` ([`Direction::In`]) puts the node in the TAIL, `"out"`
+    /// ([`Direction::Out`]) in the HEAD. Adding a node that is already a
+    /// member in the OTHER direction puts it in BOTH sets.
+    ///
+    /// XGI never touches its uid counter here either — like the
+    /// undirected class, auto-creating a numeric edge id does not bump
+    /// `_edge_uid` (probed: the next auto id is 0, and XGI's auto-id
+    /// add_edge does not existence-check, so the sequence silently
+    /// overwrites that edge's members in XGI). The Rust core bumps iff
+    /// `edge_id.parse::<u64>()` succeeds — the D3/D11 rule extended to
+    /// `DiHypergraph` — foreclosing the collision class.
+    pub fn add_node_to_edge(&mut self, edge_id: &str, node_id: &str, direction: Direction)
+    where
+        N: Default,
+        E: Default,
+        M: Default + Clone,
+    {
+        self.assert_not_frozen();
+        // Auto-create edge if missing
+        if !self.hyperedge_ids.contains_key(edge_id) {
+            let he_idx = self.inner.add_node(NodeKind::Hyperedge(E::default()));
+            self.hyperedge_ids.insert(edge_id.to_string(), he_idx);
+            // D11-extension: bump the uid counter if edge_id is numeric
+            // (XGI does not — probed for DiHypergraph too).
+            if let Ok(n) = edge_id.parse::<u64>() {
+                if n >= self.edge_uid_counter {
+                    self.edge_uid_counter = n + 1;
+                }
+            }
+        }
+        // Auto-create node if missing
+        if !self.agent_ids.contains_key(node_id) {
+            let nidx = self.inner.add_node(NodeKind::Agent(N::default()));
+            self.agent_ids.insert(node_id.to_string(), nidx);
+        }
+        let agent_idx = self.agent_ids[node_id];
+        let he_idx = self.hyperedge_ids[edge_id];
+        // Insert the arc for the direction (set semantics: re-adding an
+        // existing membership is a no-op). In = tail = agent -> edge;
+        // Out = head = edge -> agent.
+        let (from, to) = match direction {
+            Direction::In => (agent_idx, he_idx),
+            Direction::Out => (he_idx, agent_idx),
+        };
+        if self.inner.find_edge(from, to).is_none() {
+            self.inner.add_edge(
+                from,
+                to,
+                MembershipEdge {
+                    member_data: M::default(),
+                },
+            );
+        }
+    }
+
+    /// Remove a node from an edge IN THE GIVEN DIRECTION only; the node
+    /// itself (and any membership in the other direction) survives.
+    /// `remove_empty` drops the edge if it is left empty, where directed
+    /// "empty" means BOTH tail AND head are empty (probed v0.10.2: an
+    /// edge with one side still populated survives even with
+    /// `remove_empty=True`).
+    ///
+    /// XGI parity: `DH.remove_node_from_edge(edge, node, direction,
+    /// remove_empty=True)`. XGI raises XGIError for a missing edge, a
+    /// missing node, or a node not a member IN THAT DIRECTION (probed:
+    /// "in-edge e1 does not contain node 2" for a head-only member) —
+    /// the Rust core returns the matching [`MembershipError`] variant and
+    /// the PyO3 binding translates Err -> raise, reproducing XGI's exact
+    /// per-direction messages (D2 error channel). XGI's fourth error,
+    /// the invalid-direction string, is validated FIRST in XGI and is
+    /// compile-time-impossible here (D14).
+    pub fn remove_node_from_edge(
+        &mut self,
+        edge_id: &str,
+        node_id: &str,
+        direction: Direction,
+        remove_empty: bool,
+    ) -> Result<(), MembershipError> {
+        self.assert_not_frozen();
+        let he_idx = *self
+            .hyperedge_ids
+            .get(edge_id)
+            .ok_or(MembershipError::EdgeNotFound {
+                edge_id: edge_id.to_string(),
+            })?;
+        let agent_idx = *self
+            .agent_ids
+            .get(node_id)
+            .ok_or(MembershipError::NodeNotFound {
+                node_id: node_id.to_string(),
+            })?;
+
+        // Membership is PER-DIRECTION: the arc for `direction` must exist.
+        let (from, to) = match direction {
+            Direction::In => (agent_idx, he_idx),
+            Direction::Out => (he_idx, agent_idx),
+        };
+        let arc = self
+            .inner
+            .find_edge(from, to)
+            .ok_or(MembershipError::NotAMember {
+                node_id: node_id.to_string(),
+                edge_id: edge_id.to_string(),
+            })?;
+        self.inner.remove_edge(arc);
+
+        // Directed "emptied" = BOTH tail AND head empty (probed).
+        if remove_empty {
+            let has_tail = self
+                .agent_ids
+                .values()
+                .any(|a| self.inner.contains_edge(*a, he_idx));
+            let has_head = self
+                .agent_ids
+                .values()
+                .any(|a| self.inner.contains_edge(he_idx, *a));
+            if !has_tail && !has_head {
+                self.inner.remove_node(he_idx);
+                self.hyperedge_ids.shift_remove(edge_id);
+            }
+        }
+        Ok(())
+    }
+
+    /// Remove a hyperedge from the dihypergraph.
+    /// XGI parity: `DH.remove_edge(e)`.
+    pub fn remove_edge(&mut self, edge_id: &str) -> Result<(), EdgeError> {
+        self.assert_not_frozen();
+        let he_idx = *self.hyperedge_ids.get(edge_id).ok_or(EdgeError::NotFound {
+            edge_id: edge_id.to_string(),
+        })?;
+        self.inner.remove_node(he_idx);
+        self.hyperedge_ids.shift_remove(edge_id);
+        Ok(())
+    }
+
+    /// Remove multiple edges, returning a result per ATTEMPTED edge.
+    ///
+    /// XGI parity: `DH.remove_edges_from(ebunch)` — XGI iterates in
+    /// order and RAISES `IDNotFound` on the first missing id: ids BEFORE
+    /// it are already removed (partial effects), ids AFTER it are never
+    /// attempted (probed v0.10.2: `["e1", "ghost", "e3"]` removes e1 and
+    /// leaves e2 AND e3 in place). The core records per-item results and
+    /// STOPS after the first `Err` — the D2-class channel translation;
+    /// the binding truncates at the first `Err` and raises, reproducing
+    /// XGI exactly (the state already matches).
+    pub fn remove_edges_from(
+        &mut self,
+        edges: impl IntoIterator<Item = String>,
+    ) -> Vec<Result<(), EdgeError>> {
+        self.assert_not_frozen();
+        let mut results = Vec::new();
+        for edge_id in edges {
+            let result = self.remove_edge(&edge_id);
+            let stop = result.is_err();
+            results.push(result);
+            if stop {
+                break;
+            }
+        }
+        results
+    }
+
+    /// Remove a node from the dihypergraph — three-mode (register D9).
+    ///
+    /// XGI parity: `DH.remove_node(n, strong=False, remove_empty=True)`.
+    /// Weak mode drops the node from BOTH directions of every containing
+    /// edge; an edge left empty — BOTH tail AND head empty, the probed
+    /// directed definition — is removed iff `remove_empty`. Strong mode
+    /// removes every incident edge (in either direction) ENTIRELY,
+    /// regardless of `remove_empty` (probed: the flag is irrelevant in
+    /// strong mode).
+    pub fn remove_node(
+        &mut self,
+        node_id: &str,
+        strong: bool,
+        remove_empty: bool,
+    ) -> Result<(), NodeError> {
+        self.assert_not_frozen();
+        let agent_idx = *self.agent_ids.get(node_id).ok_or(NodeError::NotFound {
+            node_id: node_id.to_string(),
+        })?;
+
+        let edge_ids: Vec<String> = self.memberships(node_id).unwrap_or_default();
+
+        if strong {
+            for eid in edge_ids {
+                self.remove_edge(&eid).map_err(|_| NodeError::NotFound {
+                    node_id: node_id.to_string(),
+                })?;
+            }
+        } else {
+            for eid in &edge_ids {
+                let he_idx = self.hyperedge_ids[eid];
+                // Remove the node's arcs in BOTH directions.
+                if let Some(e) = self.inner.find_edge(agent_idx, he_idx) {
+                    self.inner.remove_edge(e);
+                }
+                if let Some(e) = self.inner.find_edge(he_idx, agent_idx) {
+                    self.inner.remove_edge(e);
+                }
+                if remove_empty {
+                    // Directed "emptied" = BOTH tail AND head empty.
+                    let has_tail = self
+                        .agent_ids
+                        .values()
+                        .any(|a| self.inner.contains_edge(*a, he_idx));
+                    let has_head = self
+                        .agent_ids
+                        .values()
+                        .any(|a| self.inner.contains_edge(he_idx, *a));
+                    if !has_tail && !has_head {
+                        self.inner.remove_node(he_idx);
+                        self.hyperedge_ids.shift_remove(eid);
+                    }
+                }
+            }
+        }
+
+        self.inner.remove_node(agent_idx);
+        self.agent_ids.shift_remove(node_id);
+        Ok(())
+    }
+
+    /// Remove multiple nodes, returning a result per node.
+    ///
+    /// XGI parity: `DH.remove_nodes_from(nodes, strong, remove_empty)` —
+    /// XGI WARNS on a missing id ("Node {n} not in dihypergraph" — note:
+    /// "dihypergraph", unlike the undirected class's "hypergraph"
+    /// message), SKIPS it, and CONTINUES with the rest (probed v0.10.2).
+    /// The core records a per-item `Err(NodeError::NotFound)` and
+    /// continues — the D2-class channel translation; the binding warns
+    /// per `Err` item to reproduce XGI's behavior.
+    pub fn remove_nodes_from(
+        &mut self,
+        nodes: impl IntoIterator<Item = String>,
+        strong: bool,
+        remove_empty: bool,
+    ) -> Vec<Result<(), NodeError>> {
+        self.assert_not_frozen();
+        nodes
+            .into_iter()
+            .map(|n| self.remove_node(&n, strong, remove_empty))
+            .collect()
     }
 }

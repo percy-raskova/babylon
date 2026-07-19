@@ -1,7 +1,7 @@
 //! Unit tests for `DiHypergraph` — mirroring XGI's
 //! `tests/core/test_dihypergraph.py`.
 
-use hypergraph_rs::{DiHypergraph, Direction};
+use hypergraph_rs::{DiHypergraph, Direction, EdgeError, MembershipError, NodeError};
 use serde_json::Value;
 
 /// Two-edge fixture used across the query tests:
@@ -246,5 +246,357 @@ fn direction_enum_serializes_lowercase() {
     assert_eq!(
         serde_json::from_str::<Direction>("\"out\"").unwrap(),
         Direction::Out
+    );
+}
+
+// ---------------------------------------------------------------------------
+// Membership ops and removals (Phase 2 Task 4)
+// ---------------------------------------------------------------------------
+
+#[test]
+fn add_node_to_edge_autocreates_edge_and_node() {
+    // XGI parity: auto-creates a missing edge AND a missing node;
+    // direction In -> tail, Out -> head. Infallible () like the
+    // undirected core (Task 1 signature mirror).
+    let mut h: DiHypergraph = DiHypergraph::new();
+    h.add_node_to_edge("e1", "a", Direction::In);
+    assert!(h.has_edge("e1"));
+    assert!(h.has_node("a"));
+    assert_eq!(h.tail("e1").unwrap(), vec!["a"]);
+    assert_eq!(h.head("e1").unwrap(), Vec::<String>::new());
+    // Auto-created edge/node carry default attrs.
+    assert_eq!(h.edge_attrs("e1").unwrap(), &Value::Null);
+    assert_eq!(h.node_attrs("a").unwrap(), &Value::Null);
+
+    h.add_node_to_edge("e2", "b", Direction::Out);
+    assert_eq!(h.tail("e2").unwrap(), Vec::<String>::new());
+    assert_eq!(h.head("e2").unwrap(), vec!["b"]);
+}
+
+#[test]
+fn add_node_to_edge_numeric_id_bumps_counter() {
+    // D11-extension: XGI's DiHypergraph.add_node_to_edge does NOT bump
+    // the uid counter (probed: next auto id 0 after auto-creating edge
+    // 5); the Rust core bumps iff the id parses as u64 — the D3/D11 rule
+    // extended to DiHypergraph.
+    let mut h: DiHypergraph = DiHypergraph::new();
+    h.add_node_to_edge("5", "x", Direction::In);
+    let auto = h
+        .add_edge((vec!["y".into()], vec![]), None, Value::Null)
+        .unwrap();
+    assert_eq!(auto, "6");
+    // Non-numeric ids don't bump.
+    let mut h2: DiHypergraph = DiHypergraph::new();
+    h2.add_node_to_edge("e", "x", Direction::In);
+    let auto2 = h2
+        .add_edge((vec!["y".into()], vec![]), None, Value::Null)
+        .unwrap();
+    assert_eq!(auto2, "0");
+}
+
+#[test]
+fn add_node_to_edge_set_semantics_and_both_directions() {
+    // Re-adding the same (node, direction) is a no-op; adding the same
+    // node in the OTHER direction puts it in BOTH sets (probed).
+    let mut h: DiHypergraph = DiHypergraph::new();
+    h.add_edge(
+        (vec!["a".into()], vec!["b".into()]),
+        Some("e1".into()),
+        Value::Null,
+    )
+    .unwrap();
+    h.add_node_to_edge("e1", "a", Direction::In); // already tail: no-op
+    assert_eq!(h.tail("e1").unwrap(), vec!["a"]);
+    assert_eq!(h.head("e1").unwrap(), vec!["b"]);
+    h.add_node_to_edge("e1", "a", Direction::Out); // now BOTH
+    assert_eq!(h.tail("e1").unwrap(), vec!["a"]);
+    assert_eq!(h.head("e1").unwrap(), vec!["a", "b"]);
+    assert_eq!(
+        h.dimemberships("a").unwrap(),
+        (vec!["e1".to_string()], vec!["e1".to_string()])
+    );
+}
+
+#[test]
+fn remove_node_from_edge_removes_only_that_direction() {
+    let mut h: DiHypergraph = DiHypergraph::new();
+    h.add_edge(
+        (vec!["a".into(), "b".into()], vec!["b".into(), "c".into()]),
+        Some("e1".into()),
+        Value::Null,
+    )
+    .unwrap();
+    h.remove_node_from_edge("e1", "b", Direction::In, false)
+        .unwrap();
+    assert_eq!(h.tail("e1").unwrap(), vec!["a"]);
+    assert_eq!(h.head("e1").unwrap(), vec!["b", "c"]); // b survives in head
+                                                       // Removing the OTHER direction now removes b entirely.
+    h.remove_node_from_edge("e1", "b", Direction::Out, false)
+        .unwrap();
+    assert_eq!(h.head("e1").unwrap(), vec!["c"]);
+}
+
+#[test]
+fn remove_node_from_edge_emptied_means_both_sides() {
+    // Directed "emptied" = BOTH tail AND head empty (probed): removing
+    // the last tail member of ([a],[b]) with remove_empty=true leaves the
+    // edge ALIVE (head still populated).
+    let mut h: DiHypergraph = DiHypergraph::new();
+    h.add_edge(
+        (vec!["a".into()], vec!["b".into()]),
+        Some("e1".into()),
+        Value::Null,
+    )
+    .unwrap();
+    h.remove_node_from_edge("e1", "a", Direction::In, true)
+        .unwrap();
+    assert!(h.has_edge("e1"));
+    assert_eq!(
+        h.dimembers("e1").unwrap(),
+        (Vec::<String>::new(), vec!["b".to_string()])
+    );
+    // Removing the last head member empties both sides -> dropped.
+    h.remove_node_from_edge("e1", "b", Direction::Out, true)
+        .unwrap();
+    assert!(!h.has_edge("e1"));
+    assert!(h.has_node("a") && h.has_node("b")); // nodes survive
+}
+
+#[test]
+fn remove_node_from_edge_keep_empty() {
+    let mut h: DiHypergraph = DiHypergraph::new();
+    h.add_edge((vec!["a".into()], vec![]), Some("e1".into()), Value::Null)
+        .unwrap();
+    h.remove_node_from_edge("e1", "a", Direction::In, false)
+        .unwrap();
+    assert!(h.has_edge("e1"));
+    assert_eq!(
+        h.dimembers("e1").unwrap(),
+        (Vec::<String>::new(), Vec::<String>::new())
+    );
+}
+
+#[test]
+fn remove_node_from_edge_membership_errors() {
+    // Missing edge.
+    let mut h: DiHypergraph = DiHypergraph::new();
+    let err = h.remove_node_from_edge("noedge", "a", Direction::In, true);
+    assert_eq!(
+        err,
+        Err(MembershipError::EdgeNotFound {
+            edge_id: "noedge".to_string()
+        })
+    );
+    assert_eq!(err.unwrap_err().to_string(), "edge noedge does not exist");
+    // Missing node.
+    h.add_edge(
+        (vec!["a".into()], vec!["b".into()]),
+        Some("e1".into()),
+        Value::Null,
+    )
+    .unwrap();
+    assert_eq!(
+        h.remove_node_from_edge("e1", "ghost", Direction::Out, true),
+        Err(MembershipError::NodeNotFound {
+            node_id: "ghost".to_string()
+        })
+    );
+    // Not a member IN THAT DIRECTION (b is head-only; In fails).
+    assert_eq!(
+        h.remove_node_from_edge("e1", "b", Direction::In, true),
+        Err(MembershipError::NotAMember {
+            node_id: "b".to_string(),
+            edge_id: "e1".to_string()
+        })
+    );
+    let err = h.remove_node_from_edge("e1", "a", Direction::Out, true);
+    assert_eq!(
+        err,
+        Err(MembershipError::NotAMember {
+            node_id: "a".to_string(),
+            edge_id: "e1".to_string()
+        })
+    );
+    assert_eq!(
+        err.unwrap_err().to_string(),
+        "node a is not a member of edge e1"
+    );
+}
+
+#[test]
+fn remove_edge_basic_and_missing() {
+    let mut h: DiHypergraph = DiHypergraph::new();
+    h.add_edge(
+        (vec!["a".into(), "b".into()], vec!["c".into()]),
+        Some("e1".into()),
+        Value::Null,
+    )
+    .unwrap();
+    h.add_edge((vec!["c".into()], vec![]), Some("e2".into()), Value::Null)
+        .unwrap();
+    h.remove_edge("e1").unwrap();
+    assert_eq!(h.edge_ids(), vec!["e2"]);
+    assert_eq!(h.num_nodes(), 3); // nodes survive
+    assert_eq!(h.memberships("a").unwrap(), Vec::<String>::new());
+    assert!(matches!(
+        h.remove_edge("ghost"),
+        Err(EdgeError::NotFound { .. })
+    ));
+}
+
+#[test]
+fn remove_edges_from_per_item_stops_after_err() {
+    // D2-class translation (probed XGI raises mid-iteration; partial
+    // effects): per-item results, stop after the first Err.
+    let mut h: DiHypergraph = DiHypergraph::new();
+    for e in ["e1", "e2", "e3"] {
+        h.add_edge((vec!["a".into()], vec![]), Some(e.into()), Value::Null)
+            .unwrap();
+    }
+    let results = h.remove_edges_from(vec![
+        "e1".to_string(),
+        "ghost".to_string(),
+        "e3".to_string(),
+    ]);
+    assert_eq!(results.len(), 2);
+    assert!(results[0].is_ok());
+    assert!(matches!(results[1], Err(EdgeError::NotFound { .. })));
+    assert_eq!(h.edge_ids(), vec!["e2", "e3"]);
+}
+
+#[test]
+fn remove_node_weak_both_directions() {
+    // Weak removal drops the node from BOTH directions of every edge.
+    let mut h: DiHypergraph = DiHypergraph::new();
+    h.add_edge(
+        (vec!["a".into(), "b".into()], vec!["b".into(), "c".into()]),
+        Some("e1".into()),
+        Value::Null,
+    )
+    .unwrap();
+    h.add_edge(
+        (vec!["b".into()], vec!["d".into()]),
+        Some("e2".into()),
+        Value::Null,
+    )
+    .unwrap();
+    h.add_edge(
+        (vec!["e".into()], vec!["b".into()]),
+        Some("e3".into()),
+        Value::Null,
+    )
+    .unwrap();
+    h.remove_node("b", false, false).unwrap();
+    assert!(!h.has_node("b"));
+    assert_eq!(
+        h.dimembers("e1").unwrap(),
+        (vec!["a".to_string()], vec!["c".to_string()])
+    );
+    assert_eq!(
+        h.dimembers("e2").unwrap(),
+        (Vec::<String>::new(), vec!["d".to_string()])
+    );
+    assert_eq!(
+        h.dimembers("e3").unwrap(),
+        (vec!["e".to_string()], Vec::<String>::new())
+    );
+}
+
+#[test]
+fn remove_node_weak_drops_only_both_empty_edges() {
+    // remove_empty=true: e2 (tail-only singleton) empties BOTH sides ->
+    // dropped; e1 keeps its head -> survives.
+    let mut h: DiHypergraph = DiHypergraph::new();
+    h.add_edge(
+        (vec!["b".into()], vec!["d".into()]),
+        Some("e1".into()),
+        Value::Null,
+    )
+    .unwrap();
+    h.add_edge((vec!["b".into()], vec![]), Some("e2".into()), Value::Null)
+        .unwrap();
+    h.remove_node("b", false, true).unwrap();
+    assert_eq!(h.edge_ids(), vec!["e1"]);
+    assert_eq!(
+        h.dimembers("e1").unwrap(),
+        (Vec::<String>::new(), vec!["d".to_string()])
+    );
+}
+
+#[test]
+fn remove_node_weak_remove_empty_false_keeps_emptied_edge() {
+    let mut h: DiHypergraph = DiHypergraph::new();
+    h.add_edge((vec!["b".into()], vec![]), Some("e1".into()), Value::Null)
+        .unwrap();
+    h.remove_node("b", false, false).unwrap();
+    assert_eq!(h.edge_ids(), vec!["e1"]);
+    assert_eq!(
+        h.dimembers("e1").unwrap(),
+        (Vec::<String>::new(), Vec::<String>::new())
+    );
+}
+
+#[test]
+fn remove_node_strong_removes_incident_edges_regardless_of_flag() {
+    let mut h: DiHypergraph = DiHypergraph::new();
+    h.add_edge(
+        (vec!["a".into(), "b".into()], vec!["c".into()]),
+        Some("e1".into()),
+        Value::Null,
+    )
+    .unwrap();
+    h.add_edge(
+        (vec!["d".into()], vec!["b".into(), "e".into()]),
+        Some("e2".into()),
+        Value::Null,
+    )
+    .unwrap();
+    h.add_edge(
+        (vec!["f".into()], vec!["g".into()]),
+        Some("e3".into()),
+        Value::Null,
+    )
+    .unwrap();
+    h.remove_node("b", true, false).unwrap();
+    assert_eq!(h.edge_ids(), vec!["e3"]);
+    // Other nodes survive the strong removal of incident edges.
+    for n in ["a", "c", "d", "e", "f", "g"] {
+        assert!(h.has_node(n));
+    }
+    assert!(!h.has_node("b"));
+}
+
+#[test]
+fn remove_node_missing_returns_error() {
+    let mut h: DiHypergraph = DiHypergraph::new();
+    assert!(matches!(
+        h.remove_node("ghost", false, true),
+        Err(NodeError::NotFound { .. })
+    ));
+}
+
+#[test]
+fn remove_nodes_from_per_item_continues_past_missing() {
+    let mut h: DiHypergraph = DiHypergraph::new();
+    h.add_edge(
+        (vec!["a".into(), "b".into()], vec!["c".into()]),
+        Some("e1".into()),
+        Value::Null,
+    )
+    .unwrap();
+    let results = h.remove_nodes_from(
+        vec!["a".to_string(), "ghost".to_string(), "b".to_string()],
+        false,
+        true,
+    );
+    assert_eq!(results.len(), 3);
+    assert!(results[0].is_ok());
+    assert!(matches!(results[1], Err(NodeError::NotFound { .. })));
+    assert!(results[2].is_ok());
+    assert_eq!(h.node_ids(), vec!["c"]);
+    // Tail emptied but head survives -> e1 lives.
+    assert_eq!(
+        h.dimembers("e1").unwrap(),
+        (Vec::<String>::new(), vec!["c".to_string()])
     );
 }

@@ -62,7 +62,14 @@ function StateOrgList({ organizations }: { organizations: OrgState[] }): React.J
           <span className="flex-1 truncate text-bone">{org.name}</span>
           <span className="font-mono text-[9px] text-ash">{org.id}</span>
           <span className="font-mono text-[10px] text-laser">budget {org.budget.toFixed(1)}</span>
-          <span className="font-mono text-[10px] text-heat">heat {org.heat.toFixed(2)}</span>
+          {/* org.heat is fog-masked (null) for a non-player org outside the
+              viewer's organizing reach (game.fog.filter.POLITICAL_FIELDS) —
+              an honest "unknown to the player", never a fabricated 0.0
+              (Constitution III.11). budget is never gated (never in
+              ORG_POLITICAL_FIELDS), so it needs no equivalent guard. */}
+          <span className="font-mono text-[10px] text-heat">
+            heat {org.heat === null ? "unknown" : org.heat.toFixed(2)}
+          </span>
         </li>
       ))}
     </ul>

@@ -95,6 +95,44 @@ describe("StateApparatusDashboard", () => {
     expect(row).toHaveTextContent("0.10");
   });
 
+  it("renders an org with fog-masked (null) heat without crashing (Constitution III.11)", async () => {
+    // Regression: a state_apparatus org outside the viewer's organizing
+    // reach serializes with heat: null (game.fog.filter's political-field
+    // gate — an honest "unknown to the player", never a fabricated 0.0).
+    // budget is never gated, so it stays a real number even when heat is
+    // masked. StateOrgList's unguarded `org.heat.toFixed(2)` crashed the
+    // whole React tree on this exact payload shape (no error boundary),
+    // which is why world.snapshot/tick-value never rendered in the
+    // first-session e2e — see StateApparatusDashboard.tsx's null-guard.
+    server.use(
+      http.get("/api/games/:id/state-apparatus/", () =>
+        HttpResponse.json({
+          status: "ok",
+          data: makeStateApparatusDashboard({
+            organizations: [
+              makeOrg({
+                id: "ORG002",
+                name: "Detroit Police Department",
+                org_type: "state_apparatus",
+                budget: 100,
+                heat: null,
+                vanguard: null,
+              }),
+            ],
+            org_count: 1,
+            total_heat: null,
+          }),
+        }),
+      ),
+    );
+    render(<StateApparatusDashboard gameId={DEFAULT_GAME_ID} />);
+    await waitFor(() => expect(screen.getByTestId("state-apparatus-orgs")).toBeInTheDocument());
+    const row = screen.getByTestId("state-org-ORG002");
+    expect(row).toHaveTextContent("Detroit Police Department");
+    expect(row).toHaveTextContent("budget 100.0");
+    expect(row).toHaveTextContent("heat unknown");
+  });
+
   it("shows an honest empty state when no state-apparatus orgs are seeded", async () => {
     server.use(
       http.get("/api/games/:id/state-apparatus/", () =>

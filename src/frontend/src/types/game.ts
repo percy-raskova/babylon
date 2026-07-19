@@ -343,8 +343,16 @@ export interface OrgState {
   class_character: string;
   cohesion: number;
   cadre_level: number;
+  /** Never gated (`budget` is never in `ORG_POLITICAL_FIELDS` — see
+   *  `game.fog.filter`), always a real number. */
   budget: number;
-  heat: number;
+  /** `heat` IS gated (`game.fog.filter.POLITICAL_FIELDS`): a non-player org
+   *  outside the viewer's organizing reach with no ledger entry renders
+   *  `null` — an honest "unknown to the player", never a fabricated 0.0
+   *  (Constitution III.11, Track 1 Task 4/5). Consumers MUST null-guard
+   *  before formatting (`StateOrgList`'s prior unguarded `.toFixed()` crash
+   *  was the regression this comment documents). */
+  heat: number | null;
   territory_ids: string[];
   hyperedge_memberships: string[];
   /** Null until the engine computes an org-level ideology distribution —
@@ -1212,7 +1220,10 @@ export interface StateApparatusDashboard {
   organizations: OrgState[];
   org_count: number;
   total_repression_budget: number;
-  total_heat: number;
+  /** `None` (honest unknown) when every state org's heat is masked by fog —
+   *  never a fabricated `0.0` (`_build_state_apparatus_dashboard`,
+   *  Constitution III.11). `StatChip` already renders this null-safely. */
+  total_heat: number | null;
   state_finances: Record<string, unknown>;
   recent_actions: GameEvent[];
 }

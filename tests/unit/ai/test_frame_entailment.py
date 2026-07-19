@@ -203,7 +203,18 @@ _STYLE_PHRASE_WHITELIST = frozenset(
     }
 )
 
-_NUMERIC_TOLERANCE = 0.02
+# Scale-aware tolerance: an absolute floor (handles raw ratio-scale [0, 1]
+# rounding, e.g. 0.6667 -> "0.67") PLUS a relative component (handles
+# percent-scale [0, 100] rounding, e.g. 66.6667 -> "67%", a 0.33 absolute
+# gap the flat floor alone would reject). Real false positive hit during
+# this eval's development: a faithfully echoed "67%" (from pool_ratio =
+# 200/300 = 0.6667) was flagged ungrounded under a flat 0.02 tolerance --
+# fixed by scaling the allowance with the ground-truth value's own
+# magnitude, so ratio-scale and percent-scale surface forms of the SAME
+# underlying quantity are both covered without tracking which form a
+# given prose token used.
+_NUMERIC_ABS_TOLERANCE = 0.02
+_NUMERIC_REL_TOLERANCE = 0.01
 
 
 @dataclass(frozen=True)
@@ -239,12 +250,23 @@ def _tick_pulse_quantities(frame: dict[str, object]) -> dict[str, float]:
 
 
 def _shock_doctrine_quantities(frame: dict[str, object]) -> dict[str, float]:
-    """Named quantities derivable from a real SHOCK_DOCTRINE frame."""
+    """Named quantities derivable from a real SHOCK_DOCTRINE frame.
+
+    Includes ``pool_ratio`` (``pool_after / pool_before``): this is the
+    exact quantity the bridging ``CrisisEvent.pool_ratio`` carries (see
+    ``_run_shock_doctrine_scenario``), and ``DialecticalPromptBuilder.
+    _format_event`` renders it into the context block as e.g. "Pool ratio
+    at 0.67 (67%)" -- omitting it here previously caused a real false
+    positive: a faithfully-echoed "0.67" was flagged as ungrounded because
+    only the raw pool_before/pool_after were in the allowed-number set, not
+    their ratio.
+    """
     causal_graph = frame["causal_graph"]  # type: ignore[index]
     nodes = {n["type"]: n for n in causal_graph["nodes"]}  # type: ignore[index]
     shock_data = nodes["ECONOMIC_SHOCK"]["data"]
     austerity_data = nodes["AUSTERITY_RESPONSE"]["data"]
     radical_data = nodes["RADICALIZATION"]["data"]
+    pool_before, pool_after = float(shock_data["pool_before"]), float(shock_data["pool_after"])
     wage_before, wage_after = (
         float(austerity_data["wage_before"]),
         float(austerity_data["wage_after"]),
@@ -257,8 +279,9 @@ def _shock_doctrine_quantities(frame: dict[str, object]) -> dict[str, float]:
         "shock_tick": float(nodes["ECONOMIC_SHOCK"]["tick"]),
         "austerity_tick": float(nodes["AUSTERITY_RESPONSE"]["tick"]),
         "radical_tick": float(nodes["RADICALIZATION"]["tick"]),
-        "pool_before": float(shock_data["pool_before"]),
-        "pool_after": float(shock_data["pool_after"]),
+        "pool_before": pool_before,
+        "pool_after": pool_after,
+        "pool_ratio": (pool_after / pool_before) if pool_before else 0.0,
         "drop_percent": float(shock_data["drop_percent"]),
         "wage_before": wage_before,
         "wage_after": wage_after,
@@ -339,7 +362,11 @@ def extract_entity_claims(prose: str) -> list[str]:
 
 
 def _claim_is_grounded(claim: float, allowed: set[float]) -> bool:
-    return any(abs(claim - allowed_value) <= _NUMERIC_TOLERANCE for allowed_value in allowed)
+    for allowed_value in allowed:
+        tolerance = max(_NUMERIC_ABS_TOLERANCE, abs(allowed_value) * _NUMERIC_REL_TOLERANCE)
+        if abs(claim - allowed_value) <= tolerance:
+            return True
+    return False
 
 
 def check_entailment(prose: str, frame: dict[str, object]) -> list[EntailmentViolation]:
@@ -539,6 +566,44 @@ class TestNumericEntailmentHelper:
     def test_unknown_pattern_is_loud(self) -> None:
         with pytest.raises(ValueError, match="unknown causal frame pattern"):
             check_entailment("anything", {"pattern": "NOT_A_PATTERN"})
+
+    def test_shock_doctrine_pool_ratio_percent_is_not_flagged(self) -> None:
+        """Regression test for a real false positive hit during this eval's
+        development against live Ollama: a real generation faithfully
+        echoed the pool ratio ("a pool ratio of 0.67") that
+        DialecticalPromptBuilder._format_event renders from the bridging
+        CrisisEvent -- but ``_shock_doctrine_quantities`` originally derived
+        only pool_before/pool_after, never their ratio, so the faithfully
+        echoed number had no matching ground truth. Fixed by deriving
+        ``pool_ratio`` alongside the other SHOCK_DOCTRINE quantities."""
+        shock_frame: dict[str, object] = {
+            "pattern": "SHOCK_DOCTRINE",
+            "causal_graph": {
+                "nodes": [
+                    {
+                        "id": "shock_t20",
+                        "type": "ECONOMIC_SHOCK",
+                        "tick": 20,
+                        "data": {"pool_before": 300.0, "pool_after": 200.0, "drop_percent": -33.3},
+                    },
+                    {
+                        "id": "austerity_t21",
+                        "type": "AUSTERITY_RESPONSE",
+                        "tick": 21,
+                        "data": {"wage_before": 0.3, "wage_after": 0.1},
+                    },
+                    {
+                        "id": "radical_t22",
+                        "type": "RADICALIZATION",
+                        "tick": 22,
+                        "data": {"p_rev_before": 0.1, "p_rev_after": 0.6},
+                    },
+                ],
+                "edges": [],
+            },
+        }
+        prose = "The economic crisis shows a pool ratio of 0.67, a 67% level, after austerity."
+        assert check_entailment(prose, shock_frame) == []
 
 
 @pytest.mark.unit

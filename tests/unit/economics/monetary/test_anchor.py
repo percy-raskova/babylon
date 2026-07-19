@@ -118,3 +118,41 @@ class TestFictitiousAnchorPresent:
         assert fictitious_anchor(with_derivatives, 50.0) == pytest.approx(
             fictitious_anchor(_stock(2020), 50.0)
         )
+
+
+@pytest.mark.unit
+class TestFictitiousAnchorDegenerate:
+    """Degenerate ratios degrade to sentinels rather than infinities or raises."""
+
+    def test_zero_real_output_returns_sentinel(self) -> None:
+        """ratio_to_real returns inf at zero output; the anchor must not."""
+        result = fictitious_anchor(_stock(2020), 0.0)
+        assert isinstance(result, NoDataSentinel)
+        assert result.year == 2020
+        assert "non-positive real output" in result.reason
+
+    def test_negative_real_output_returns_sentinel(self) -> None:
+        """A negative output observable is absence, not a value."""
+        result = fictitious_anchor(_stock(2020), -25.0)
+        assert isinstance(result, NoDataSentinel)
+        assert "non-positive real output" in result.reason
+
+    def test_zero_total_claims_returns_sentinel(self) -> None:
+        """log(0) is undefined; zero claims is absence of a log anchor."""
+        empty = FictitiousCapitalStock(
+            year=2020,
+            government_debt=0.0,
+            corporate_equity=0.0,
+            corporate_debt=0.0,
+            household_debt=0.0,
+        )
+        result = fictitious_anchor(empty, 50.0)
+        assert isinstance(result, NoDataSentinel)
+        assert result.year == 2020
+        assert "zero total claims" in result.reason
+
+    def test_present_anchor_is_always_finite(self) -> None:
+        """No degenerate input escapes as inf or nan."""
+        result = fictitious_anchor(_stock(2020), 50.0)
+        assert isinstance(result, float)
+        assert math.isfinite(result)

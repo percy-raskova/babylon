@@ -51,8 +51,8 @@ def fictitious_anchor(
         no stock reached the graph this tick (the normal case past 2024).
     :param real_output: Real output the claims are drawn against, or ``None``
         when no output observable exists.
-    :returns: The log-space anchor, or a :class:`NoDataSentinel` naming the
-        specific absence. Never a fabricated zero.
+    :returns: The finite log-space anchor, or a :class:`NoDataSentinel` naming
+        the specific absence. Never a fabricated zero, never ``inf``/``nan``.
     """
     if stock is None:
         return NoDataSentinel(
@@ -66,13 +66,23 @@ def fictitious_anchor(
             year=stock.year,
             reason=f"fictitious_anchor: no real output observable for {stock.year}",
         )
-    if stock.total_claims <= 0.0:
+    if real_output <= 0.0:
         return NoDataSentinel(
             fips=NATIONAL_FIPS,
             year=stock.year,
             reason=(
-                f"fictitious_anchor: zero total_claims for {stock.year}, "
-                "financialization ratio undefined"
+                f"fictitious_anchor: non-positive real output ({real_output}) "
+                f"for {stock.year}; log-ratio undefined"
             ),
         )
-    return math.log(stock.ratio_to_real(real_output))
+    ratio = stock.ratio_to_real(real_output)
+    if ratio <= 0.0:
+        return NoDataSentinel(
+            fips=NATIONAL_FIPS,
+            year=stock.year,
+            reason=(
+                f"fictitious_anchor: zero total claims (total_claims) for "
+                f"{stock.year}; log-ratio undefined"
+            ),
+        )
+    return math.log(ratio)

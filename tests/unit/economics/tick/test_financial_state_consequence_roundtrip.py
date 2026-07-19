@@ -10,6 +10,8 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING, ClassVar
 
+import pytest
+
 from babylon.domain.economics.tick.graph_bridge import (
     NATIONAL_FINANCIAL_ATTR,
     read_national_financial_state_from_graph,
@@ -20,10 +22,16 @@ from babylon.engine.context import TickContext
 from babylon.kernel.system_base import SystemBase
 from babylon.kernel.tick_partition import TickPartition
 from tests.unit.economics.tick.conftest import (
+    WAYNE_FIPS,
     MockFictitiousCapitalCalculator,
-    MockInterestRateCalculator,
+    MockTensor,
+    MockTensorRegistry,
 )
-from tests.unit.economics.tick.test_system import _make_graph_with_state, _make_services
+from tests.unit.economics.tick.test_system import (
+    _make_graph_with_state,
+    _make_services,
+    _StubDistributionOkCalculator,
+)
 
 if TYPE_CHECKING:
     from babylon.kernel.graph_protocol import GraphProtocol
@@ -58,13 +66,25 @@ class _SpyConsequenceSystem(SystemBase):
 
 
 def test_consequence_phase_system_reads_financial_state_same_tick() -> None:
-    """A CONSEQUENCE System reads what MATERIAL_BASE published, same tick."""
+    """A CONSEQUENCE System reads what MATERIAL_BASE published, same tick — AND
+    the published rate is genuinely non-zero on the fixture's real county data.
+
+    This is the single full-``.step()`` publish-path proof. It drives the whole
+    pipeline (not just ``_compute_financial_layer`` directly): the U9 gate is
+    ``if services.distribution_calculator is None: return``, so a
+    ``distribution_calculator`` is injected to open it, and a ``tensor_registry``
+    serves Wayne's realized (profit_rate, total_s) so
+    ``_economy_wide_profit_rate`` yields a real ``r`` and the endogenous rate is
+    ``r * base share > 0``. Asserting that non-zero rate is exactly what would
+    have caught the structural inertness — it is the load-bearing sentinel again.
+    """
+    # _make_graph_with_state seeds Wayne at year 2015; step() advances to 2016.
+    registry = MockTensorRegistry(
+        {(WAYNE_FIPS, 2016): MockTensor(profit_rate=0.10, total_s=1_000_000.0)}
+    )
     services = _make_services(
-        interest_calculator=MockInterestRateCalculator(
-            base_rate=0.25,
-            treasury_10y=2.27,
-            baa_spread=2.64,
-        ),
+        distribution_calculator=_StubDistributionOkCalculator(),
+        tensor_registry=registry,
         fictitious_capital_calculator=MockFictitiousCapitalCalculator(
             government_debt=18e12,
             corporate_equity=20e12,
@@ -81,7 +101,8 @@ def test_consequence_phase_system_reads_financial_state_same_tick() -> None:
     assert NATIONAL_FINANCIAL_ATTR not in graph.graph
 
     # MATERIAL_BASE (@4.0) runs first — this is where NationalFinancialParameters
-    # is instantiated and published (U3.2).
+    # is instantiated and published (U3.2), through the melt gate AND the
+    # distribution-calculator gate (the exact early-returns U1 guards).
     material_base_system.step(graph, services, context)
     assert NATIONAL_FINANCIAL_ATTR in graph.graph
 
@@ -92,5 +113,11 @@ def test_consequence_phase_system_reads_financial_state_same_tick() -> None:
     assert consequence_system.observed is not None
     assert consequence_system.observed.fictitious_capital is not None
     assert consequence_system.observed.fictitious_capital.total_claims == 60e12
-    assert consequence_system.observed.interest_rate_state is not None
-    assert consequence_system.observed.interest_rate_state.base_rate == 0.25
+    # The endogenous rate is the load-bearing anti-inertness assertion: r=0.10
+    # (Wayne tensor), calm labor market (u3 0.053 < 0.08 ref) -> share = base
+    # 0.30 -> rate = 0.03, genuinely non-zero, NOT a structural 0.0.
+    endogenous = consequence_system.observed.endogenous_interest
+    assert endogenous is not None
+    assert endogenous.rate == pytest.approx(0.10 * 0.30)
+    assert endogenous.rate > 0.0
+    assert endogenous.profit_rate_ceiling == pytest.approx(0.10)

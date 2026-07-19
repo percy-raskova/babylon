@@ -39,34 +39,39 @@ def test_regression_run_actually_invokes_the_vol3_financial_layer(
 ) -> None:
     """RED->GREEN: a full regression run must reach Step 5.5 (financial layer).
 
-    ``_compute_national_financial_state`` calls
-    ``interest_calculator.compute_interest_rate_state(year)`` once per
-    year-boundary tick, *before* the per-county loop — so it fires even though
-    these scenarios carry no real counties. Zero calls means the pipeline never
-    got past the ``melt_calculator is None`` gate.
+    Post-U9 the interest rate is ENDOGENOUS: ``_compute_national_financial_state``
+    computes the economy-wide rate of profit via
+    ``TickDynamicsSystem._economy_wide_profit_rate(county_states, year, services)``
+    once per year-boundary tick — reachable only THROUGH the ``melt_calculator``
+    gate (Step 2) and the ``distribution_calculator`` gate (Step 5.5). Spying on
+    that seam through ``rt.run_scenario`` proves the whole
+    run_scenario -> melt-gate -> Step 5.5 chain executes; zero calls means the
+    pipeline never got past a closed gate (the exact U1.3 inertness this
+    sentinel exists to catch). two_node carries no counties, so the rate it
+    produces is an honest 0.0 — this test proves INVOCATION; the
+    non-zero-on-real-data proof lives in the county-bearing roundtrip test
+    (``test_financial_state_consequence_roundtrip``).
     """
-    from babylon.domain.economics.credit.interest import DefaultInterestCalculator
-
-    original = DefaultInterestCalculator.compute_interest_rate_state
+    original = TickDynamicsSystem._economy_wide_profit_rate
     observed_years: list[int] = []
 
-    def _counting(self: Any, year: int) -> Any:
+    def _counting(self: Any, county_states: Any, year: int, services: Any) -> Any:
         observed_years.append(year)
-        return original(self, year)
+        return original(self, county_states, year, services)
 
-    monkeypatch.setattr(DefaultInterestCalculator, "compute_interest_rate_state", _counting)
+    monkeypatch.setattr(TickDynamicsSystem, "_economy_wide_profit_rate", _counting)
 
     rt.run_scenario("two_node", max_ticks=rt.DEFAULT_MAX_TICKS)
 
     assert observed_years, (
-        "Vol III financial calculators were CONSTRUCTED but never INVOKED across a "
-        f"full {rt.DEFAULT_MAX_TICKS}-tick qa:regression run. TickDynamicsSystem's "
-        "`if services.melt_calculator is None` guard "
-        "(src/babylon/domain/economics/tick/system/__init__.py) is still closed, so "
-        "Steps 2-9 of the annual economics pipeline — national params, county state, "
-        "Vol I production, imperial rent, circulation, crisis triggers, the Step 5.5 "
+        "The Vol III financial layer was never INVOKED across a full "
+        f"{rt.DEFAULT_MAX_TICKS}-tick qa:regression run. Either TickDynamicsSystem's "
+        "`if services.melt_calculator is None` guard (Step 2) or "
+        "`if services.distribution_calculator is None` guard (Step 5.5) is closed, so "
+        "the annual economics pipeline — national params, county state, Vol I "
+        "production, imperial rent, circulation, crisis triggers, the Step 5.5 "
         "financial layer, class transitions, bifurcation risk, derived rates — never "
-        "execute. qa:regression remains blind to the whole economics estate."
+        "executes. qa:regression remains blind to the whole economics estate."
     )
     # context.tick == state.tick and the harness loop starts state.tick at 0,
     # so the sole year boundary in a DEFAULT_MAX_TICKS == 52 run is context.tick

@@ -145,22 +145,62 @@ class TestResolveActionOrder:
 
 
 class TestCommunityEmbeddedness:
-    """Community embeddedness computation."""
+    """Community embeddedness: org -> territory_ids -> TENANCY-linked
+    social_class members -> each member's ``community_memberships`` share.
+
+    Fixtures here are production-faithful: TENANCY is the real Occupant ->
+    Territory edge (mirrors ``web/game/engine_bridge.py::
+    _tenancy_members_by_territory``'s idiom), and NO node anywhere carries
+    ``community_type`` -- that attribute is never produced (community is
+    never a main-graph node, INV-010) and is exactly the phantom-attribute
+    shape task #40 retired.
+    """
 
     def test_no_territories_returns_zero(self) -> None:
         graph = BabylonGraph()
         graph.add_node("org_1", _node_type="organization")
         assert compute_community_embeddedness("org_1", graph) == 0.0
 
+    def test_no_reachable_members_returns_zero(self) -> None:
+        """org has territory_ids but no TENANCY-linked social_class members."""
+        graph = BabylonGraph()
+        graph.add_node("org_1", _node_type="organization", territory_ids=["terr_1"])
+        graph.add_node("terr_1", _node_type="territory")
+        assert compute_community_embeddedness("org_1", graph) == 0.0
+
+    def test_no_memberships_anywhere_is_exactly_zero(self) -> None:
+        """Production-faithful graph: real TENANCY-linked members, none of
+        whom carry ``community_memberships`` -- must be exactly 0.0, not a
+        default/fallback value."""
+        graph = BabylonGraph()
+        graph.add_node("org_1", _node_type="organization", territory_ids=["terr_1"])
+        graph.add_node("terr_1", _node_type="territory")
+        graph.add_node("member_1", _node_type="social_class")
+        graph.add_node("member_2", _node_type="social_class")
+        graph.add_edge("member_1", "terr_1", edge_type="tenancy")
+        graph.add_edge("member_2", "terr_1", edge_type="tenancy")
+        assert compute_community_embeddedness("org_1", graph) == 0.0
+
+    def test_partial_membership_share(self) -> None:
+        """2 of 4 TENANCY-linked members carry a non-empty
+        ``community_memberships`` -> exactly 0.5."""
+        graph = BabylonGraph()
+        graph.add_node("org_1", _node_type="organization", territory_ids=["terr_1"])
+        graph.add_node("terr_1", _node_type="territory")
+        graph.add_node("member_1", _node_type="social_class", community_memberships=["religious"])
+        graph.add_node("member_2", _node_type="social_class", community_memberships=["labor"])
+        graph.add_node("member_3", _node_type="social_class")
+        graph.add_node("member_4", _node_type="social_class")
+        for member_id in ("member_1", "member_2", "member_3", "member_4"):
+            graph.add_edge(member_id, "terr_1", edge_type="tenancy")
+        assert compute_community_embeddedness("org_1", graph) == pytest.approx(0.5)
+
     def test_returns_bounded_value(self) -> None:
         graph = BabylonGraph()
-        graph.add_node(
-            "org_1",
-            _node_type="organization",
-            territory_ids=["terr_1"],
-        )
-        graph.add_node("member_1", community_type="new_afrikan", territory_id="terr_1")
-        graph.add_edge("org_1", "member_1", edge_type="membership")
+        graph.add_node("org_1", _node_type="organization", territory_ids=["terr_1"])
+        graph.add_node("terr_1", _node_type="territory")
+        graph.add_node("member_1", _node_type="social_class", community_memberships=["new_afrikan"])
+        graph.add_edge("member_1", "terr_1", edge_type="tenancy")
         result = compute_community_embeddedness("org_1", graph)
         assert 0.0 <= result <= 1.0
 

@@ -84,29 +84,3 @@ def make_org_node(
     }
     node.update(attrs)
     return node
-
-
-def make_community_node(
-    community_id: str = "community_1",
-    **attrs: Any,
-) -> dict[str, Any]:
-    """Create a dict representing a community graph node.
-
-    Args:
-        community_id: Node ID.
-        **attrs: Additional node attributes.
-
-    Returns:
-        Dict with standard community node attributes.
-    """
-    node: dict[str, Any] = {
-        "_node_type": "community",
-        "id": community_id,
-        "community_type": "new_afrikan",
-        "collective_identity": 0.3,
-        "dominant_tendency": "revolutionary",
-        "ideological_contestation": 0.2,
-        "infrastructure": 0.5,
-    }
-    node.update(attrs)
-    return node

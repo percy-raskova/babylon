@@ -12,7 +12,7 @@ from __future__ import annotations
 from typing import TYPE_CHECKING
 
 from babylon.config.defines import OODADefines
-from babylon.models.enums import EdgeType, JurisdictionLevel
+from babylon.models.enums import EdgeType, JurisdictionLevel, NodeType
 from babylon.ooda.types import InitiativeScore
 
 if TYPE_CHECKING:
@@ -83,45 +83,71 @@ def compute_community_embeddedness(
     org_id: str,
     graph: BabylonGraph,
 ) -> float:
-    """Compute how embedded an organization is in its operating communities.
+    """Compute how embedded an organization is in its territories' communities.
 
-    Embeddedness = overlap of org member communities with territory communities.
+    Walks ``org_id`` -> its ``territory_ids`` (a declared field on
+    ``Organization``/``Institution``) -> the ``social_class`` nodes TENANCY-
+    linked into each of those territories (the real Occupant -> Territory
+    edge; reimplements the traversal idiom of ``web/game/engine_bridge.py::
+    _tenancy_members_by_territory`` in ``BabylonGraph`` terms, since ``src``
+    may not import ``web``) -> each reachable member's
+    ``community_memberships`` list (a declared ``SocialClass`` field,
+    ``src/babylon/models/entities/social_class.py``).
+
+    Embeddedness is the share of TENANCY-reachable members carrying at least
+    one community membership: ``members_with_membership / total_reachable``.
+    Bounded to [0, 1] by construction. Iterates sorted territory ids and
+    sorted member node ids throughout, so the result never depends on graph
+    insertion order (Constitution III.7 — determinism).
+
+    .. note::
+       This value is structurally 0.0 in every real game today: no
+       production writer ever populates ``SocialClass.community_memberships``
+       (``CommunitySystem.step`` no-ops every tick — see the seam registry,
+       ``src/babylon/sentinels/seam/registry.py:1969-1991``,
+       ``liveness_class=STRUCTURALLY_IMPOSSIBLE``). Seeding that field is a
+       separate, owner-gated program (out of this function's scope); this
+       function reads the real substrate shape so the score becomes live the
+       moment a producer exists, instead of reading a phantom attribute
+       (``community_type``) no producer ever writes.
 
     Args:
         org_id: Organization node ID.
-        graph: Graph with MEMBERSHIP edges and territory/community nodes.
+        graph: Graph with TENANCY edges and territory/social_class nodes.
 
     Returns:
-        Embeddedness value in [0, 1].
+        Embeddedness value in [0, 1]. 0.0 if the org has no ``territory_ids``
+        or no TENANCY-linked member is reachable.
     """
     org_data = graph.nodes.get(org_id, {})
-    territory_ids: list[str] = org_data.get("territory_ids", [])
-
-    # Find community types from MEMBERSHIP edge targets
-    org_communities: set[str] = set()
-    for _, target, data in graph.out_edges(org_id, data=True):
-        edge_type = data.get("edge_type", "")
-        if edge_type == EdgeType.MEMBERSHIP.value or edge_type == EdgeType.MEMBERSHIP:
-            target_data = graph.nodes.get(target, {})
-            community = target_data.get("community_type") or target_data.get("community")
-            if community:
-                org_communities.add(str(community))
-
-    # Find community types present in org's territories
-    territory_communities: set[str] = set()
-    for tid in territory_ids:
-        # Check nodes that are in this territory
-        for node_id, node_data in graph.nodes(data=True):
-            if node_data.get("territory_id") == tid or node_id == tid:
-                community = node_data.get("community_type")
-                if community:
-                    territory_communities.add(str(community))
-
-    if not territory_communities:
+    territory_ids = sorted(org_data.get("territory_ids") or [])
+    if not territory_ids:
         return 0.0
 
-    overlap = len(org_communities & territory_communities) / len(territory_communities)
-    return max(0.0, min(1.0, overlap))
+    territory_set = set(territory_ids)
+    member_ids: set[str] = set()
+    for source, target in graph.edges:
+        if target not in territory_set:
+            continue
+        edge_data = graph.edges[(source, target)]
+        etype = str(edge_data.get("edge_type", edge_data.get("_edge_type", ""))).lower()
+        if etype != EdgeType.TENANCY.value:
+            continue
+        source_data = graph.nodes.get(source, {})
+        if source_data.get("_node_type") != NodeType.SOCIAL_CLASS.value:
+            continue
+        member_ids.add(source)
+
+    if not member_ids:
+        return 0.0
+
+    with_membership = sum(
+        1
+        for member_id in sorted(member_ids)
+        if graph.nodes.get(member_id, {}).get("community_memberships")
+    )
+    embeddedness = with_membership / len(member_ids)
+    return max(0.0, min(1.0, embeddedness))
 
 
 def update_momentum(

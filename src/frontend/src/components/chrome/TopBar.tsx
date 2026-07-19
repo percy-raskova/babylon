@@ -21,9 +21,17 @@
  * Keeps `region-statusbar`/`tick-value` testids (frozen — real-loop.spec.ts,
  * end-turn-flow.spec.ts, briefing-map-smoke.spec.ts, map-lens-cycling.spec.ts
  * all read them).
+ *
+ * "Screens" cluster (Track 2 T2-0): a real route navigation, distinct from
+ * the "Takeovers" cluster's `ui.openTakeover` overlay grammar — clicking
+ * "Circuit" is a URL change to `/game/:id/circuit`, not a store flag. This
+ * is the second concrete call site of the T2-0 routing pattern (the first
+ * is `GameRoute`'s `<Outlet/>` layout); Track 3's Doctrine/"Line" page adds
+ * its own button here the same way.
  */
 
 import { useEffect } from "react";
+import { useNavigate } from "react-router";
 import { useStore } from "@/store";
 import { FloatingPanel } from "./FloatingPanel";
 import { SpeedControls } from "./SpeedControls";
@@ -36,6 +44,7 @@ interface TopBarProps {
 }
 
 export function TopBar({ gameId }: TopBarProps): React.JSX.Element {
+  const navigate = useNavigate();
   const tick = useStore((s) => s.world.snapshot?.tick);
   const summaryData = useStore((s) => s.panels.summary.data);
   const fetchSummary = useStore((s) => s.panels.summary.fetch);
@@ -125,6 +134,22 @@ export function TopBar({ gameId }: TopBarProps): React.JSX.Element {
           <TakeoverButton kind="chronicle" label="Chronicle" onOpen={openTakeover} />
           <TakeoverButton kind="network" label="Network" onOpen={openTakeover} />
           <TakeoverButton kind="doctrine" label="Doctrine" onOpen={openTakeover} />
+        </div>
+
+        {/* Cluster 3b — screens (Track 2 T2-0): real route navigation. */}
+        <div
+          className="flex items-center gap-1 border-l-2 border-ksbc-muted-1 pl-3"
+          role="group"
+          aria-label="Screens"
+        >
+          <button
+            type="button"
+            onClick={() => navigate(`/game/${gameId}/circuit`)}
+            data-testid="nav-circuit"
+            className={keyButtonClass(false, "px-2 py-1 text-[9px]")}
+          >
+            Circuit
+          </button>
         </div>
 
         {/* Cluster 4 — speed */}

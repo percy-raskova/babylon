@@ -131,6 +131,10 @@ run = "poetry run python tools/sentinel_check.py vocabulary --check"
 description = "Inert-construct sentinel: every declared store's writer and every declared producer has a real production caller (static gate)"
 run = "poetry run python tools/sentinel_check.py inert --check"
 
+[tasks."check:dangling"]
+description = "Dangling-reference sentinel (dual of inert): every typed-receiver getattr() call names a real member of a watched class (static gate)"
+run = "poetry run python tools/sentinel_check.py dangling --check"
+
 [tasks."check:unconsumed"]
 description = "Unconsumed-value sentinel: every declared computed dict key has a real production reader (static gate)"
 run = "poetry run python tools/sentinel_check.py unconsumed --check"
@@ -160,8 +164,8 @@ description = "Synthetic-data sentinel: every declared synthetic source's source
 run = "poetry run python tools/sentinel_check.py synthetic --check"
 
 [tasks."check:sentinels"]
-description = "ALL 11 sentinels (owner ruling 2026-07-18: the whole family is fast-gate): seam coverage vocabulary inert unconsumed masked-arithmetic aggregation fog catalog partition synthetic"
-depends = ["check:seams", "check:coverage", "check:vocabulary", "check:inert", "check:unconsumed", "check:masked-arithmetic", "check:aggregation", "check:fog", "check:catalog", "check:partition", "check:synthetic"]
+description = "ALL 12 sentinels (owner ruling 2026-07-18: the whole family is fast-gate): seam coverage vocabulary inert dangling unconsumed masked-arithmetic aggregation fog catalog partition synthetic"
+depends = ["check:seams", "check:coverage", "check:vocabulary", "check:inert", "check:dangling", "check:unconsumed", "check:masked-arithmetic", "check:aggregation", "check:fog", "check:catalog", "check:partition", "check:synthetic"]
 
 [tasks.cap]
 description = "Run a command under a HARD memory+CPU cgroup cap (can't freeze the machine). Use for any heavy run: mise run cap -- mise run test:unit"

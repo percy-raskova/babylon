@@ -19,6 +19,7 @@ import sys
 from collections.abc import Callable
 
 from babylon.sentinels.coverage.checks import main as coverage_main
+from babylon.sentinels.dangling.checks import main as dangling_main
 from babylon.sentinels.inert.checks import main as inert_main
 from babylon.sentinels.masked_arithmetic.checks import main as masked_arithmetic_main
 from babylon.sentinels.seam.checks import main as seam_main
@@ -88,6 +89,7 @@ _SENSORS: dict[str, Callable[[list[str] | None], int]] = {
     "catalog": _catalog_main,
     "vocabulary": vocabulary_main,
     "inert": inert_main,
+    "dangling": dangling_main,
     "unconsumed": unconsumed_main,
     "masked_arithmetic": masked_arithmetic_main,
     "aggregation": _aggregation_main,

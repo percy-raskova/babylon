@@ -2896,94 +2896,111 @@ class EngineBridge:
             role_votes = dominant_class_pop.get(key) or {}
             type_votes = territory_type_pop.get(key) or {}
             vision_votes = vision_state_pop.get(key) or {}
-            properties: dict[str, Any] = {
-                "group_key": key,
-                "group_name": group_names.get(key, key),
-                "zoom": zoom,
-                "hex_count": acc["count"],
-                "member_h3": sorted(member_h3[key]),
-                "profit_rate": round(acc["profit_rate_sum"] / total_pop, 6),
-                "exploitation_rate": round(acc["exploitation_rate_sum"] / total_pop, 4),
-                "occ": round(acc["occ_sum"] / total_pop, 4),
-                # 6dp, not 2dp: per-hex Φ is ~1e-5 (Leontief structural
-                # rent), so round(…, 2) collapsed the whole lens to 0.00
-                # once Program 17 lit real Φ — the default lens read as
-                # blank even though the value is non-zero. Match the
-                # profit_rate precision above.
-                "imperial_rent": round(acc["imperial_rent_sum"], 6),
-                # Track 1 / Task 5: heat_pop (not total_pop) — a
-                # partial-coverage denominator like habitability
-                # below, so a masked hex's heat is excluded from the
-                # mean rather than silently read as 0.0. Unfogged,
-                # heat_pop == total_pop always (no behavior change).
-                "heat": (round(acc["heat_sum"] / heat_pop, 4) if heat_pop else None),
-                "org_presence": acc["org_presence_sum"],
-                "population": acc["population_sum"],
-                "habitability": (
-                    round(acc["habitability_sum"] / habitability_pop, 4)
-                    if habitability_pop
-                    else None
-                ),
-                "solidarity_index": (
-                    round(acc["solidarity_index_sum"] / solidarity_index_pop, 4)
-                    if solidarity_index_pop
-                    else None
-                ),
-                "dominant_class": (
-                    max(role_votes.items(), key=lambda kv: (kv[1], kv[0]))[0]
-                    if role_votes
-                    else None
-                ),
-                "throughput_position": (
-                    round(acc["throughput_position_sum"] / throughput_position_pop, 4)
-                    if throughput_position_pop
-                    else None
-                ),
-                "agitation": (
-                    round(acc["agitation_sum"] / agitation_pop, 4) if agitation_pop else None
-                ),
-                "centrality": (
-                    round(acc["centrality_sum"] / centrality_pop, 4) if centrality_pop else None
-                ),
-                "territory_type": (
-                    max(type_votes.items(), key=lambda kv: (kv[1], kv[0]))[0]
-                    if type_votes
-                    else None
-                ),
-                "mass_receptivity": (
-                    round(acc["mass_receptivity_sum"] / mass_receptivity_pop, 4)
-                    if mass_receptivity_pop
-                    else None
-                ),
-                "vision_state": (
-                    max(vision_votes.items(), key=lambda kv: (kv[1], kv[0]))[0]
-                    if vision_votes
-                    else None
-                ),
-                "wage_pressure": (
-                    round(acc["wage_pressure_sum"] / wage_pressure_pop, 4)
-                    if wage_pressure_pop
-                    else None
-                ),
-                "dispossession_intensity": (
-                    round(acc["dispossession_intensity_sum"] / dispossession_intensity_pop, 4)
-                    if dispossession_intensity_pop
-                    else None
-                ),
-                "price_divergence": (
-                    round(acc["price_divergence_sum"] / price_divergence_pop, 4)
-                    if price_divergence_pop
-                    else None
-                ),
-            }
-            if veil_tier is not None:
-                properties = gate_value_axis_fields(properties, veil_tier)
+            # G4 (veil-leak closure): gated INLINE, per field, rather than a
+            # post-hoc gate_value_axis_fields() pass over the whole dict —
+            # Sensor 3 (seam/provenance.py's check_admin_feature_emission)
+            # statically requires a LITERAL "properties": {...} dict here to
+            # verify emission honesty; a local variable holding the dict
+            # (however it was built) is invisible to that AST check. Same
+            # "veil_tier is None means unfogged" opt-in convention every
+            # other veil_tier-accepting composer in this file uses.
+            tier1_ok = veil_tier is None or veil_tier >= 1
+            tier2_ok = veil_tier is None or veil_tier >= 2
             features.append(
                 {
                     "type": "Feature",
                     "id": key,
                     "geometry": None,  # Geometry deferred — frontend uses reference polygons
-                    "properties": properties,
+                    "properties": {
+                        "group_key": key,
+                        "group_name": group_names.get(key, key),
+                        "zoom": zoom,
+                        "hex_count": acc["count"],
+                        "member_h3": sorted(member_h3[key]),
+                        "profit_rate": (
+                            round(acc["profit_rate_sum"] / total_pop, 6) if tier1_ok else None
+                        ),
+                        "exploitation_rate": (
+                            round(acc["exploitation_rate_sum"] / total_pop, 4) if tier1_ok else None
+                        ),
+                        "occ": (round(acc["occ_sum"] / total_pop, 4) if tier1_ok else None),
+                        # 6dp, not 2dp: per-hex Φ is ~1e-5 (Leontief structural
+                        # rent), so round(…, 2) collapsed the whole lens to 0.00
+                        # once Program 17 lit real Φ — the default lens read as
+                        # blank even though the value is non-zero. Match the
+                        # profit_rate precision above.
+                        "imperial_rent": (round(acc["imperial_rent_sum"], 6) if tier1_ok else None),
+                        # Track 1 / Task 5: heat_pop (not total_pop) — a
+                        # partial-coverage denominator like habitability
+                        # below, so a masked hex's heat is excluded from the
+                        # mean rather than silently read as 0.0. Unfogged,
+                        # heat_pop == total_pop always (no behavior change).
+                        "heat": (round(acc["heat_sum"] / heat_pop, 4) if heat_pop else None),
+                        "org_presence": acc["org_presence_sum"],
+                        "population": acc["population_sum"],
+                        "habitability": (
+                            round(acc["habitability_sum"] / habitability_pop, 4)
+                            if habitability_pop
+                            else None
+                        ),
+                        "solidarity_index": (
+                            round(acc["solidarity_index_sum"] / solidarity_index_pop, 4)
+                            if solidarity_index_pop
+                            else None
+                        ),
+                        "dominant_class": (
+                            max(role_votes.items(), key=lambda kv: (kv[1], kv[0]))[0]
+                            if role_votes
+                            else None
+                        ),
+                        "throughput_position": (
+                            round(acc["throughput_position_sum"] / throughput_position_pop, 4)
+                            if throughput_position_pop
+                            else None
+                        ),
+                        "agitation": (
+                            round(acc["agitation_sum"] / agitation_pop, 4)
+                            if agitation_pop
+                            else None
+                        ),
+                        "centrality": (
+                            round(acc["centrality_sum"] / centrality_pop, 4)
+                            if centrality_pop
+                            else None
+                        ),
+                        "territory_type": (
+                            max(type_votes.items(), key=lambda kv: (kv[1], kv[0]))[0]
+                            if type_votes
+                            else None
+                        ),
+                        "mass_receptivity": (
+                            round(acc["mass_receptivity_sum"] / mass_receptivity_pop, 4)
+                            if mass_receptivity_pop
+                            else None
+                        ),
+                        "vision_state": (
+                            max(vision_votes.items(), key=lambda kv: (kv[1], kv[0]))[0]
+                            if vision_votes
+                            else None
+                        ),
+                        "wage_pressure": (
+                            round(acc["wage_pressure_sum"] / wage_pressure_pop, 4)
+                            if wage_pressure_pop
+                            else None
+                        ),
+                        "dispossession_intensity": (
+                            round(
+                                acc["dispossession_intensity_sum"] / dispossession_intensity_pop, 4
+                            )
+                            if dispossession_intensity_pop
+                            else None
+                        ),
+                        "price_divergence": (
+                            round(acc["price_divergence_sum"] / price_divergence_pop, 4)
+                            if price_divergence_pop and tier2_ok
+                            else None
+                        ),
+                    },
                 }
             )
 
@@ -3065,8 +3082,13 @@ class EngineBridge:
         # G4: this is the TopBar summary — always mounted, so an ungated
         # ``imperial_rent``/``exploitation_rate``/``profit_rate`` here was
         # the widest-reach leak in the sweep (visible on every screen,
-        # regardless of which panel a tier-0 player has open).
-        return gate_value_axis_fields(payload, _resolve_veil_tier(state))
+        # regardless of which panel a tier-0 player has open). Assigned back
+        # to ``payload`` (not ``return gate_value_axis_fields(...)`` bare)
+        # so the seam bridge-serialization sweep's AST harvester can still
+        # resolve this serializer's real emitted keys via the local-
+        # dict-variable pattern (bridge.py::_local_dict_var_keys).
+        payload = gate_value_axis_fields(payload, _resolve_veil_tier(state))
+        return payload
 
     def get_game_timeseries(self, session_id: UUID) -> dict[str, Any]:
         """Return historical timeseries data for charting (spec 061 US3, FR-026).
@@ -3198,7 +3220,11 @@ class EngineBridge:
         # touching either component: MeltGauge's ``latestMeltDrift`` returns
         # ``null`` on an all-``None`` array and renders nothing, the same
         # "dark instrument" honest-absence path it already takes pre-tick-1.
-        return gate_value_axis_fields(payload, veil_tier)
+        # Assigned back to ``payload`` (see get_game_summary's identical note
+        # above) so the seam sweep's AST harvester can still resolve this
+        # serializer's real keys.
+        payload = gate_value_axis_fields(payload, veil_tier)
+        return payload
 
     def get_economy_dashboard(self, session_id: UUID) -> dict[str, Any]:
         """Return the economy left-panel dashboard: real aggregate wealth,
@@ -3416,8 +3442,12 @@ class EngineBridge:
         # G4: same veil gate get_economy_dashboard applies, for this
         # per-territory analogue — graph-based tier resolution (not
         # ``state``-based) since ``state`` here may be a synthetic
-        # double that carries no real ``organizations`` dict.
-        return gate_value_axis_fields(payload, _resolve_veil_tier_from_graph(graph))
+        # double that carries no real ``organizations`` dict. Assigned
+        # back to ``payload`` (see get_game_summary's identical note) so
+        # the seam sweep's AST harvester can still resolve this
+        # serializer's real keys.
+        payload = gate_value_axis_fields(payload, _resolve_veil_tier_from_graph(graph))
+        return payload
 
     def get_communities_dashboard(self, session_id: UUID) -> dict[str, Any]:
         """Return communities dashboard (spec 061 US6 T089, FR-018 / spec 109 A4).

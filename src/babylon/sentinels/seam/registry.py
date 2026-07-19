@@ -2462,19 +2462,26 @@ _ECONOMY_DASHBOARD_METRICS: tuple[SeamEntry, ...] = (
         wire_keys=("value_produced",),
         scope=SeamScope.ECONOMY,
         owner_layer="bridge (_aggregate_graph_economy, graph-wide sum of wealth)",
-        liveness_class=LivenessClass.MUST_BE_LIVE,
+        liveness_class=LivenessClass.DECLARED_CONDITIONAL,
+        liveness_condition=(
+            "a real 0.0 on a tick-0 graph with no wealth yet is honest, not fabricated — the "
+            "ONLY null reason before G4 — but veil-masked to None below the player org's "
+            "Veil-of-Money Tier 1 (web/game/veil.py::gate_value_axis_fields, G4 leak closure); "
+            "the two null reasons are indistinguishable on the wire by design"
+        ),
         dtype="float",
         write_site="web/game/engine_bridge.py::_aggregate_graph_economy (:910)",
         read_paths=_ECONOMY_DASHBOARD_EMITTERS,
-        spec_ref="spec-109 A4",
+        spec_ref="spec-109 A4 · spec-117 §5d (G4 veil gate)",
         notes=(
-            "sum(wealth) over every social_class/organization node (rounded); a real 0.0 on a "
-            "tick-0 graph with no wealth yet is honest, not fabricated, so this is MUST_BE_LIVE "
-            "(always a float, never None) — confirmed by test_dashboards.py's post-create/"
-            "post-resolve assertions. NOTE the wire-key collision: "
-            "persisted_tick_summary.total_v below (get_game_timeseries's ``value_produced`` "
-            "array) is a DIFFERENT, currently-DEAD payload sharing this exact (scope, wire_key) "
-            "— see that row for the discovered defect."
+            "sum(wealth) over every social_class/organization node (rounded) — confirmed by "
+            "test_dashboards.py's post-create/post-resolve assertions. G4: reclassified from "
+            "MUST_BE_LIVE — the veil can now legitimately null this field regardless of real "
+            "economic activity (TestEconomyDashboardVeil/TestVeilGating pin both null reasons). "
+            "NOTE the wire-key collision: persisted_tick_summary.total_v below "
+            "(get_game_timeseries's ``value_produced`` array) is a DIFFERENT, currently-DEAD "
+            "payload sharing this exact (scope, wire_key) — see that row for the discovered "
+            "defect."
         ),
     ),
     SeamEntry(
@@ -2486,12 +2493,14 @@ _ECONOMY_DASHBOARD_METRICS: tuple[SeamEntry, ...] = (
         liveness_condition=(
             _YEAR_BOUNDARY + "; a graph-wide MEAN over every territory carrying the attr "
             "(_mean_territory_attr), distinct from the MAP-scope per-feature reading and from "
-            "the dead persisted_tick_summary.profit_rate column below"
+            "the dead persisted_tick_summary.profit_rate column below. G4: ALSO veil-masked "
+            "below Tier 1 (gate_value_axis_fields) — a s/(c+v) value relation, gated identically "
+            "to exploitation_rate."
         ),
         dtype="float",
         write_site="web/game/engine_bridge.py::_mean_territory_attr (:7984)",
         read_paths=_ECONOMY_DASHBOARD_EMITTERS,
-        spec_ref="spec-109 A4 · Program-17 item-25",
+        spec_ref="spec-109 A4 · Program-17 item-25 · spec-117 §5d (G4 veil gate)",
         notes=(
             "Confirmed real: test_dashboards.py pins it None at tick 0 (no boundary crossed "
             "yet). NOTE the wire-key collision with the dead "
@@ -2505,30 +2514,117 @@ _ECONOMY_DASHBOARD_METRICS: tuple[SeamEntry, ...] = (
         owner_layer="bridge (_mean_territory_attr over tick_occ, graph-wide mean)",
         liveness_class=LivenessClass.DECLARED_CONDITIONAL,
         liveness_condition=(
-            _YEAR_BOUNDARY + "; graph-wide MEAN, same pattern as profit_rate above"
+            _YEAR_BOUNDARY + "; graph-wide MEAN, same pattern as profit_rate above. G4: ALSO "
+            "veil-masked below Tier 1 (gate_value_axis_fields) — a c/v value relation."
         ),
         dtype="float",
         write_site="web/game/engine_bridge.py::_mean_territory_attr (:7984)",
         read_paths=_ECONOMY_DASHBOARD_EMITTERS,
-        spec_ref="spec-109 A4 · Program-17 item-25",
+        spec_ref="spec-109 A4 · Program-17 item-25 · spec-117 §5d (G4 veil gate)",
         notes="Confirmed real: test_dashboards.py pins it None at tick 0 (no boundary crossed yet).",
+    ),
+    SeamEntry(
+        payload="economy_dashboard.tick",
+        wire_keys=("tick",),
+        scope=SeamScope.ECONOMY,
+        owner_layer="bridge (EngineBridge.hydrate_state, WorldState.tick)",
+        liveness_class=LivenessClass.MUST_BE_LIVE,
+        dtype="int",
+        nullable=False,
+        write_site="web/game/engine_bridge.py::EngineBridge.get_economy_dashboard (:3120)",
+        read_paths=_ECONOMY_DASHBOARD_EMITTERS,
+        spec_ref="spec-109 A4",
+        notes=(
+            "G4 (Track-2(ii) seam-contract closure): one of the 4 rows the audit found "
+            "missing for a LIVE chip field — always the hydrated state's real tick, never "
+            "None. Confirmed by every test in test_engine_bridge.py::TestEconomyDashboard*."
+        ),
+    ),
+    SeamEntry(
+        payload="economy_dashboard.has_data",
+        wire_keys=("has_data",),
+        scope=SeamScope.ECONOMY,
+        owner_layer="bridge (_aggregate_graph_economy, value_produced > 0 or rent_extracted > 0)",
+        liveness_class=LivenessClass.MUST_BE_LIVE,
+        dtype="bool",
+        nullable=False,
+        write_site="web/game/engine_bridge.py::_aggregate_graph_economy (:900)",
+        read_paths=_ECONOMY_DASHBOARD_EMITTERS,
+        spec_ref="spec-109 A4",
+        notes=(
+            "G4: the other 3 missing rows the audit found. Always a real bool (never None) — "
+            "the honest 'no economic activity recorded' gate EconomyDashboard.tsx reads before "
+            "rendering any chip."
+        ),
+    ),
+    SeamEntry(
+        payload="economy_dashboard.rent_extracted",
+        wire_keys=("rent_extracted",),
+        scope=SeamScope.ECONOMY,
+        owner_layer="bridge (_aggregate_graph_economy, sum of EXTRACTIVE/ANTAGONISTIC edge value_flow)",
+        liveness_class=LivenessClass.DECLARED_CONDITIONAL,
+        liveness_condition=(
+            "always a float (0.0 is an honest 'no extractive edges yet', not fabricated) UNLESS "
+            "veil-masked to None below the player org's Veil-of-Money Tier 1 (G4, "
+            "web/game/veil.py::gate_value_axis_fields — imperial-rent family) — the two null "
+            "reasons are NOT distinguishable on the wire by design, same as veil.value_produced"
+        ),
+        dtype="float",
+        write_site="web/game/engine_bridge.py::_aggregate_graph_economy (:900)",
+        read_paths=_ECONOMY_DASHBOARD_EMITTERS,
+        spec_ref="spec-109 A4 · spec-117 §5d (G4 veil gate)",
+        notes=(
+            "G4: sibling of value_produced/exploitation_rate above — same "
+            "_aggregate_graph_economy computation, now gated by the SAME veil tier via "
+            "gate_value_axis_fields (Task A's leak closure). Was live-but-unregistered before "
+            "this row; the veil gate is why it is DECLARED_CONDITIONAL rather than "
+            "MUST_BE_LIVE now."
+        ),
+    ),
+    SeamEntry(
+        payload="economy_dashboard.exploitation_rate",
+        wire_keys=("exploitation_rate",),
+        scope=SeamScope.ECONOMY,
+        owner_layer="bridge (_aggregate_graph_economy, calculate_unequal_exchange_rate)",
+        liveness_class=LivenessClass.DECLARED_CONDITIONAL,
+        liveness_condition=(
+            "None when value_produced <= 0 (an honest 'no basis for the ratio', pre-existing) "
+            "OR veil-masked below Tier 1 (G4 — the wage-vs-value-produced axis itself); the two "
+            "null reasons are indistinguishable on the wire by design"
+        ),
+        dtype="float",
+        write_site="web/game/engine_bridge.py::_aggregate_graph_economy (:900)",
+        read_paths=_ECONOMY_DASHBOARD_EMITTERS,
+        spec_ref="spec-109 A4 · spec-117 §5d (G4 veil gate)",
+        notes=(
+            "G4: the LEGACY top-level twin of veil.exploitation_rate (see the veil row below) "
+            "— both fields now gated by the exact same tier (Task A's leak closure); a prior "
+            "version of this payload left this top-level field ungated while only the nested "
+            "veil.* copy was gated — the leak this program closed."
+        ),
     ),
     SeamEntry(
         payload="global_economy.imperial_rent_pool",
         wire_keys=("imperial_rent_pool",),
         scope=SeamScope.ECONOMY,
         owner_layer="babylon.engine.systems.economic.ImperialRentSystem (_save_economy)",
-        liveness_class=LivenessClass.MUST_BE_LIVE,
+        liveness_class=LivenessClass.DECLARED_CONDITIONAL,
+        liveness_condition=(
+            "GlobalEconomy.imperial_rent_pool is a required WorldState.economy field (default "
+            "100.0) — always present pre-G4. G4: now ALSO veil-masked below Tier 1 "
+            "(gate_value_axis_fields — imperial-rent family), so the wire value can be None "
+            "regardless of the underlying field's real presence."
+        ),
         dtype="float",
         write_site="src/babylon/engine/systems/economic.py::ImperialRentSystem._save_economy (:804)",
         read_paths=_ECONOMY_DASHBOARD_EMITTERS,
-        spec_ref="spec-109 A4",
+        spec_ref="spec-109 A4 · spec-117 §5d (G4 veil gate)",
         notes=(
             "GlobalEconomy.imperial_rent_pool is a required WorldState.economy field (default "
-            "100.0, models/entities/economy.py:63) — always present, confirmed by "
-            "test_dashboards.py at tick 0 and tick 2. Distinct wire key from MAP-scope "
-            "imperial_rent (the Leontief flow rate) and TERRITORY-scope hex_latest.imperial_rent "
-            "— this is the accumulated STOCK."
+            "100.0, models/entities/economy.py:63) — confirmed by test_dashboards.py at tick 0 "
+            "and tick 2. Distinct wire key from MAP-scope imperial_rent (the Leontief flow rate) "
+            "and TERRITORY-scope hex_latest.imperial_rent — this is the accumulated STOCK. G4: "
+            "reclassified from MUST_BE_LIVE — the veil can now legitimately null this field."
         ),
     ),
     SeamEntry(
@@ -2626,19 +2722,24 @@ _ECONOMY_DASHBOARD_METRICS: tuple[SeamEntry, ...] = (
         wire_keys=("imperial_rent_gap",),
         scope=SeamScope.ECONOMY,
         owner_layer="bridge (get_economy_dashboard, wage_flow_total - value_produced)",
-        liveness_class=LivenessClass.MUST_BE_LIVE,
+        liveness_class=LivenessClass.DECLARED_CONDITIONAL,
+        liveness_condition=(
+            "always a float pre-G4 (both addends default 0.0, never fabricated-absent). G4: now "
+            "ALSO veil-masked to None below Tier 1 (gate_value_axis_fields — imperial-rent "
+            "family) — the two null reasons are indistinguishable on the wire by design."
+        ),
         dtype="float",
         write_site="web/game/engine_bridge.py::EngineBridge.get_economy_dashboard (:3120)",
         read_paths=_ECONOMY_DASHBOARD_EMITTERS,
-        spec_ref="spec-117 T2-6a (Fundamental Theorem, W_c - V_c = Phi)",
+        spec_ref="spec-117 T2-6a (Fundamental Theorem, W_c - V_c = Phi) · §5d (G4 veil gate)",
         notes=(
             "T2-6a (Slice A): graph-wide promotion of the per-class imperial_rent_gap already "
             "computed for the inspector popup (see the INSPECTOR-scope row below) — Sigma core "
             "wages paid (wage_flow_total) minus Sigma value produced (value_produced), both "
             "EXTENSIVE totals summed graph-wide (never averaged), so this carries none of the "
-            "unweighted-mean-of-a-ratio risk a naive per-region average would. Always a float "
-            "(both addends default 0.0) -- confirmed by "
-            "test_engine_bridge.py::TestEconomyDashboardFundamentalTheorem."
+            "unweighted-mean-of-a-ratio risk a naive per-region average would -- confirmed by "
+            "test_engine_bridge.py::TestEconomyDashboardFundamentalTheorem. G4: reclassified "
+            "from MUST_BE_LIVE — the veil can now legitimately null this field."
         ),
     ),
     SeamEntry(
@@ -2651,7 +2752,8 @@ _ECONOMY_DASHBOARD_METRICS: tuple[SeamEntry, ...] = (
             "the container is always a list, but stays empty ([]) until at least one territory "
             "has a positive-population TENANCY-linked tenant social_class this session "
             "(Constitution III.11 — never a fabricated per-capita row for an all-zero-population "
-            "region)"
+            "region) OR below the veil's Tier 1 (G4, gate_value_axis_fields masks this field to "
+            "[] too) — the two empty-list reasons are indistinguishable on the wire by design"
         ),
         dtype="json",
         nullable=False,

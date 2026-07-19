@@ -29,6 +29,10 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING, ClassVar
 
+from babylon.domain.economics.distribution.types import SurplusValueDistribution
+from babylon.domain.economics.monetary import serviceability_anchor
+from babylon.domain.economics.tensor import NoDataSentinel
+from babylon.domain.economics.tick.graph_bridge import TICK_DYNAMICS_KEY
 from babylon.engine.systems.wealth_distribution import (
     MARKET_CORRECTION_SHOCK_ATTR,
     bracket_of_role,
@@ -307,10 +311,18 @@ class MarketScissorsSystem(SystemBase):
         coefficients from ``GameDefines.market``, zero RNG.
         """
         profit_rate = _mean_profit_rate(graph)
+        # §3.3/§3.4: the interest burden is `i / s` from SurplusValueDistribution
+        # — the share of produced surplus already spoken for — NOT interest over
+        # capital stock. serviceability_anchor is the module that computes it,
+        # and this is its production consumer (the `surplus_distribution
+        # constrains financial` edge's declared grounding).
+        interest_burden = _national_serviceability(graph)
         serviceable = calculate_serviceable_divergence(
             profit_rate,
             base=defines.correction_threshold_base,
             slope=defines.correction_profit_slope,
+            interest_burden=interest_burden,
+            interest_slope=defines.correction_interest_slope,
         )
         overhang = calculate_overhang(state.fictitious_log, serviceable)
         if overhang <= 0.0:
@@ -457,3 +469,91 @@ def _mean_profit_rate(graph: GraphProtocol) -> float | None:
     (no rate is fabricated, III.11).
     """
     return _capital_weighted_mean(graph, "territory", "tick_profit_rate")
+
+
+def _mean_ratio_to_capital(graph: GraphProtocol, numerator_attr: str) -> float | None:
+    """Exact ``Sum(numerator) / Sum(tick_capital_stock)`` over active territories.
+
+    Deliberately NOT :func:`_capital_weighted_mean`: that helper defaults a
+    missing weight to 1.0 so weightless fixtures keep their prior unweighted
+    reading, whereas this one SKIPS a territory missing either attribute (the
+    ratio is undefined without capital). Two different absence policies, two
+    helpers — do not merge them without re-pinning both call sites' fixtures.
+
+    Weighting each territory's own ``numerator/capital`` ratio by its
+    capital stock telescopes algebraically to this sum-of-sums — the exact
+    national aggregate, not an approximation, and dimensionally consistent
+    with ``tick_profit_rate`` (also normalized to ``c+v``). Territories
+    missing either attribute, or carrying non-positive capital (the ratio
+    is undefined), are skipped — honest absence (III.11), never a
+    fabricated zero. Sorted-id iteration fixes the float summation order
+    (III.7).
+    """
+    numerator_total = 0.0
+    capital_total = 0.0
+    for node in sorted(graph.query_nodes(node_type="territory"), key=lambda n: n.id):
+        attrs = node.attributes
+        if not attrs.get("active", True):
+            continue
+        numerator = attrs.get(numerator_attr)
+        capital = attrs.get("tick_capital_stock")
+        if not isinstance(numerator, (int, float)) or not isinstance(capital, (int, float)):
+            continue
+        if capital <= 0.0:
+            continue
+        numerator_total += float(numerator)
+        capital_total += float(capital)
+    return numerator_total / capital_total if capital_total > 0.0 else None
+
+
+def _national_serviceability(graph: GraphProtocol) -> float | None:
+    """National interest burden ``Σi / Σs``, via ``serviceability_anchor``.
+
+    Aggregated as a RATIO OF SUMS over the published county distributions —
+    never a mean of per-county burdens (the intensive-aggregation class).
+    ``serviceability_anchor`` is applied to the aggregated distribution so the
+    honest-absence contract (§3.3 clause 1) is the single source of the
+    absent/present decision; a ``NoDataSentinel`` resolves to ``None`` and the
+    interest term drops out of ``calculate_serviceable_divergence`` entirely.
+
+    The aggregate is stamped with the REAL tick year, read from the same
+    ``tick_dynamics["year"]`` entry the bridge writes alongside
+    ``county_states``. No invented constant: a hardcoded year would be an
+    inline coefficient with no material referent (Aleksandrov Test), and a
+    wrong one would silently mislabel every sentinel this function emits.
+    A missing or non-integer year is honest absence, not a default.
+    """
+    tick_data = graph.get_graph_attr(TICK_DYNAMICS_KEY, None)
+    if not isinstance(tick_data, dict):
+        return None
+    year = tick_data.get("year")
+    if not isinstance(year, int) or isinstance(year, bool):
+        return None
+    county_states = tick_data.get("county_states")
+    if not isinstance(county_states, dict):
+        return None
+    total_surplus = 0.0
+    total_interest = 0.0
+    saw_any = False
+    for fips in sorted(county_states):  # sorted: fixes float summation order (III.7)
+        distribution = getattr(county_states[fips], "surplus_distribution", None)
+        if distribution is None:
+            continue
+        saw_any = True
+        total_surplus += distribution.total_surplus_produced
+        total_interest += distribution.interest_payments
+    if not saw_any:
+        return None
+    aggregate = SurplusValueDistribution(
+        # "00000" is not a county: it is the reserved national-aggregate FIPS.
+        # `monetary.anchor.NATIONAL_FIPS` ("USA") cannot be used here —
+        # SurplusValueDistribution.fips_code is min_length=max_length=5.
+        fips_code="00000",
+        year=year,
+        total_surplus_produced=total_surplus,
+        interest_payments=total_interest,
+        ground_rent=0.0,
+        taxes_on_surplus=0.0,
+    )
+    result = serviceability_anchor(aggregate)
+    return None if isinstance(result, NoDataSentinel) else float(result)

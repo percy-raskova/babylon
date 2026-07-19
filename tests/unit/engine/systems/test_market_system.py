@@ -12,6 +12,10 @@ import pytest
 from pydantic import ValidationError
 
 from babylon.config.defines import GameDefines, MarketDefines
+from babylon.domain.economics.distribution.types import SurplusValueDistribution
+from babylon.domain.economics.dynamics.types import ClassDistribution
+from babylon.domain.economics.tick.graph_bridge import TICK_DYNAMICS_KEY
+from babylon.domain.economics.tick.types import CountyEconomicState
 from babylon.engine.context import TickContext
 from babylon.engine.services import ServiceContainer
 from babylon.engine.simulation_engine import _DEFAULT_SYSTEMS, CONSEQUENCE_SYSTEMS
@@ -215,6 +219,47 @@ def _county_worker(
     )
 
 
+def _county_with(*, surplus: float, interest: float) -> CountyEconomicState:
+    """A published county state carrying only the surplus/interest pair.
+
+    Every other field is a fixed, valid filler: this fixture exists to feed
+    `_national_serviceability`, which reads `surplus_distribution` alone.
+    `ClassDistribution` enforces sum-to-one within 0.001, so the five shares
+    are not free parameters.
+    """
+    return CountyEconomicState(
+        fips="26163",
+        year=2015,
+        capital_stock=1.0e9,
+        throughput_position=0.9,
+        supply_chain_depth=2.1,
+        unemployment_rate=0.05,
+        u6_rate=0.10,
+        pter_rate=0.04,
+        nilf_rate=0.06,
+        median_wage=21.0,
+        employment=500000.0,
+        class_distribution=ClassDistribution(
+            fips="26163",
+            year=2015,
+            bourgeoisie_share=0.01,
+            petit_bourgeoisie_share=0.09,
+            labor_aristocracy_share=0.40,
+            proletariat_share=0.35,
+            lumpenproletariat_share=0.15,
+        ),
+        phi_hour=3.5,
+        surplus_distribution=SurplusValueDistribution(
+            fips_code="26163",
+            year=2015,
+            total_surplus_produced=surplus,
+            interest_payments=interest,
+            ground_rent=0.0,
+            taxes_on_surplus=0.0,
+        ),
+    )
+
+
 class TestCountyAxis:
     """ADR078: per-county scissors — the axis under the map lens."""
 
@@ -396,6 +441,29 @@ class TestCorrection:
         graph.update_node("metropole", tick_profit_rate=0.3)
         _step(graph, _enabled_services(), tick=10)
         assert graph.graph["market"]["corrections"] == 0
+
+    def test_interest_burden_tightens_the_threshold_into_a_snap(self) -> None:
+        """A healthy 0.3 profit rate alone services the 1.5 overhang
+        (0.55 + 4*0.3 = 1.75 > 1.5). A national interest burden of i/s = 0.6
+        (serviceability_anchor, §3.3) drops serviceable to 1.75 - 2.0*0.6 =
+        0.55 < 1.5 and the snap fires — §3.5 item 1.
+
+        `year` is written alongside `county_states` because that is exactly
+        what `write_tick_state_to_graph` publishes (graph_bridge.py:61); the
+        aggregate distribution is stamped with the REAL tick year, never an
+        invented constant.
+        """
+        graph = _euphoric_graph(fictitious_log=1.5)
+        graph.update_node("metropole", tick_profit_rate=0.3, tick_capital_stock=10.0)
+        graph.set_graph_attr(
+            TICK_DYNAMICS_KEY,
+            {
+                "year": 2015,
+                "county_states": {"26163": _county_with(surplus=100.0, interest=60.0)},
+            },
+        )
+        _step(graph, _enabled_services(), tick=10)
+        assert graph.graph["market"]["corrections"] == 1
 
     def test_capital_weighted_profit_rate_resists_a_tiny_outlier(self) -> None:
         """A 1-unit-capital county's 1.0 profit rate must not out-vote a

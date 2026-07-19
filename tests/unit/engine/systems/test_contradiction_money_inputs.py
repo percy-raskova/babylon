@@ -158,7 +158,9 @@ class TestCountyRatios:
             },
         )
         inputs = _inputs(graph, ServiceContainer.create())
-        assert inputs.debt_ratio == pytest.approx(0.5)  # 100 / 200
+        # raw 100 / 200 = 0.5, scaled by the default debt_spiral_threshold
+        # (0.5) so 1.0 means "exactly at the debt spiral" (U5.10).
+        assert inputs.debt_ratio == pytest.approx(1.0)
 
     def test_zero_total_surplus_reads_absent_not_infinite(self) -> None:
         graph = BabylonGraph()
@@ -220,3 +222,46 @@ class TestNationalRatios:
         services = ServiceContainer.create()
         expected = math.exp(float(services.defines.market.max_abs_log))
         assert _inputs(graph, services).financialization_index == pytest.approx(expected)
+
+
+class TestDebtRatioIsInThresholdUnits:
+    """§3.6 row 10: DEBT_SPIRAL_THRESHOLD was a dead constant designed as a
+    crisis signal and never wired. The debt_spiral opposition's shared ratio
+    map crosses balance 0 at x == 1, so 1.0 must MEAN 'at the debt-spiral
+    threshold' — otherwise the opposition's unity point is arbitrary."""
+
+    def test_debt_at_the_threshold_reads_exactly_one(self) -> None:
+        graph = BabylonGraph()
+        graph.set_graph_attr(
+            TICK_DYNAMICS_KEY,
+            {
+                "county_states": {
+                    "26163": _county(
+                        "26163", surplus=100.0, interest=0.0, rent=0.0, taxes=0.0, debt=50.0
+                    )
+                }
+            },
+        )
+        services = ServiceContainer.create()
+        # raw debt/surplus = 0.5, which IS defines.capital_vol3.debt_spiral_threshold
+        assert services.defines.capital_vol3.debt_spiral_threshold == pytest.approx(0.5)
+        assert _inputs(graph, services).debt_ratio == pytest.approx(1.0)
+
+    def test_a_modded_threshold_moves_the_unity_point(self) -> None:
+        from babylon.config.defines import CapitalVolumeIIIDefines, GameDefines
+
+        graph = BabylonGraph()
+        graph.set_graph_attr(
+            TICK_DYNAMICS_KEY,
+            {
+                "county_states": {
+                    "26163": _county(
+                        "26163", surplus=100.0, interest=0.0, rent=0.0, taxes=0.0, debt=50.0
+                    )
+                }
+            },
+        )
+        services = ServiceContainer.create(
+            defines=GameDefines(capital_vol3=CapitalVolumeIIIDefines(debt_spiral_threshold=0.25))
+        )
+        assert _inputs(graph, services).debt_ratio == pytest.approx(2.0)

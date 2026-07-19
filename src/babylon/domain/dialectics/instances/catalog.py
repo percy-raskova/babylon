@@ -47,8 +47,10 @@ work (2026-07-18):
   the capitals claiming it. Balance crosses zero where the claims exactly
   extinguish enterprise profit.
 - ``debt_spiral`` — solvent⇄indebted: accumulated enterprise-profit
-  shortfall over annual surplus. Zero debt reads gap 0 (no contradiction),
-  balance −1 (the solvent pole leads).
+  shortfall over annual surplus, scaled by the engine against
+  ``capital_vol3.debt_spiral_threshold`` so balance crosses zero AT the
+  spiral threshold. Zero debt reads gap 0 (no contradiction), balance −1
+  (the solvent pole leads).
 - ``credit`` — accommodation⇄fragility: ``default_rate * spread``, scaled by
   the engine against its crisis reference so balance crosses zero AT the
   threshold. National; unplaced on the level lattice.

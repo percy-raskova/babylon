@@ -373,7 +373,9 @@ class ContradictionSystem(SystemBase):
                 scale=float(services.defines.market.scissors_balance_scale),
             )
 
-        rentier_share, debt_ratio = self._county_money_ratios(graph)
+        rentier_share, debt_ratio = self._county_money_ratios(
+            graph, float(services.defines.capital_vol3.debt_spiral_threshold)
+        )
 
         financialization_index: float | None = None
         if isinstance(market_raw, dict) and "fictitious_log" in market_raw:
@@ -405,7 +407,9 @@ class ContradictionSystem(SystemBase):
         )
 
     @staticmethod
-    def _county_money_ratios(graph: GraphProtocol) -> tuple[float | None, float | None]:
+    def _county_money_ratios(
+        graph: GraphProtocol, debt_spiral_threshold: float
+    ) -> tuple[float | None, float | None]:
         """``(rentier_share, debt_ratio)`` aggregated over the county layer.
 
         Both are RATIOS OF SUMS — ``Σclaims / Σsurplus`` and
@@ -417,6 +421,12 @@ class ContradictionSystem(SystemBase):
 
         Counties are visited in sorted FIPS order so the float summation
         order is fixed (Constitution III.7).
+
+        Args:
+            graph: The live graph.
+            debt_spiral_threshold: ``defines.capital_vol3.debt_spiral_threshold``
+                (in ``[0, 1]`` by schema). Scales the raw debt/surplus ratio
+                so 1.0 means "exactly at the debt spiral".
 
         Returns:
             ``(None, None)`` when no county carries a
@@ -456,7 +466,12 @@ class ContradictionSystem(SystemBase):
 
         if not saw_distribution or total_surplus <= 0.0:
             return (None, None)
-        debt_ratio = total_debt / total_surplus if saw_debt else None
+        # DEBT_SPIRAL_THRESHOLD (§3.6 row 10) was a dead constant designed as a
+        # crisis signal. Dividing here — not in the defines-free catalog — makes
+        # 1.0 mean "exactly at the debt spiral", so _ratio_reading's balance
+        # crosses zero AT the threshold rather than at an arbitrary debt/surplus
+        # parity nobody argued for.
+        debt_ratio = (total_debt / total_surplus) / debt_spiral_threshold if saw_debt else None
         return (total_claims / total_surplus, debt_ratio)
 
     @staticmethod

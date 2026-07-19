@@ -131,6 +131,10 @@ run = "poetry run python tools/sentinel_check.py liveness"
 description = "Aggregation sentinel (ADVISORY, local): no unweighted mean of a rate/ratio/balance"
 run = "poetry run python tools/sentinel_check.py aggregation"
 
+[tasks."check:coupling"]
+description = "Coupling sentinel (ADVISORY, local): declared coupling edges vs real dependencies, both directions"
+run = "poetry run python tools/sentinel_check.py coupling"
+
 [tasks.cap]
 description = "Run a command under a HARD memory+CPU cgroup cap (can't freeze the machine). Use for any heavy run: mise run cap -- mise run test:unit"
 run = "tools/capped.sh"

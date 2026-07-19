@@ -139,16 +139,18 @@ class CapitalVolumeIIIDefines(BaseModel):
         ),
     )
     credit_fragility_scale: float = Field(
-        default=0.02,
+        default=1.0e-3,
         gt=0.0,
         description=(
             "Empirical: crisis reference for the credit opposition. The "
             "engine divides the credit fragility index "
             "(default_rate * spread_to_treasuries) by this before handing it "
             "to the defines-free catalog, so the accommodation⇄fragility "
-            "balance crosses zero exactly AT the threshold. 0.02 is the "
-            "2008 reading — corporate bond spread ~6% times default rate "
-            "~4% — matching CREDIT_FRAGILITY_THRESHOLD's own derivation."
+            "balance crosses zero exactly AT the threshold — which requires "
+            "this to equal credit_fragility_threshold (the same raw product "
+            "IS the threshold). 1.0e-3 is the Dec-2008 reading — corporate "
+            "bond spread 0.0556 times default rate 0.02 — matching "
+            "capital_vol3.credit_fragility_threshold's own derivation."
         ),
     )
 

@@ -18,6 +18,7 @@ from __future__ import annotations
 import math
 
 __all__ = [
+    "calculate_anchor_pull",
     "calculate_correction_severity",
     "calculate_correction_snap",
     "calculate_ema",
@@ -198,3 +199,29 @@ def calculate_correction_severity(
     if debt_ratio is None:
         return base_severity
     return min(max(base_severity + slope * max(debt_ratio, 0.0), 0.0), 1.0)
+
+
+def calculate_anchor_pull(anchor: float | None, current: float, *, gain: float) -> float:
+    """Drive term pulling the fictitious log-ratio toward its real-data anchor.
+
+    D1 (owner ruling, 2026-07-18): real FRED data seeds and anchors the
+    oscillator where it exists (2010-2024); past the data horizon the
+    oscillator's own dynamics ARE the money system. This term is the
+    "anchors" half: while a real ratio exists, it exerts a proportional
+    pull alongside the drive and reversion terms already in
+    :func:`calculate_scissors_step`.
+
+    :param anchor: The log-space target
+        (:func:`~babylon.domain.economics.monetary.anchor.fictitious_anchor`
+        output, already resolved from ``NoDataSentinel`` to ``None`` by the
+        caller), or ``None`` when no real financial data covers this tick —
+        the term is then exactly 0.0, leaving the endogenous dynamics
+        untouched (honest absence, Constitution III.11).
+    :param current: The oscillator's current ``fictitious_log``.
+    :param gain: ``MarketDefines.anchor_pull`` — the pull's strength.
+    :returns: ``gain * (anchor - current)``, or ``0.0`` when ``anchor`` is
+        ``None``.
+    """
+    if anchor is None:
+        return 0.0
+    return gain * (anchor - current)

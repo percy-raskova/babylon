@@ -10,6 +10,7 @@ from __future__ import annotations
 import pytest
 
 from babylon.formulas.market import (
+    calculate_anchor_pull,
     calculate_correction_severity,
     calculate_correction_snap,
     calculate_ema,
@@ -220,3 +221,25 @@ class TestCorrectionSeverity:
 
     def test_zero_slope_is_inert(self) -> None:
         assert calculate_correction_severity(0.6, debt_ratio=10.0, slope=0.0) == 0.6
+
+
+class TestAnchorPull:
+    """D1/U6: pulls the fictitious oscillator toward the FRED-grounded
+    anchor while real financial data covers this tick; absent anchor is
+    inert — the oscillator's endogenous dynamics carry the other ~85% of
+    a campaign (§3.3 D1)."""
+
+    def test_absent_anchor_is_zero_drive(self) -> None:
+        assert calculate_anchor_pull(None, 0.4, gain=0.3) == 0.0
+
+    def test_pulls_toward_a_higher_anchor(self) -> None:
+        assert calculate_anchor_pull(1.0, 0.4, gain=0.3) == pytest.approx(0.18)
+
+    def test_pulls_toward_a_lower_anchor(self) -> None:
+        assert calculate_anchor_pull(0.0, 0.4, gain=0.3) == pytest.approx(-0.12)
+
+    def test_zero_gain_is_inert_even_when_anchored(self) -> None:
+        assert calculate_anchor_pull(1.0, 0.4, gain=0.0) == 0.0
+
+    def test_at_the_anchor_the_pull_is_zero(self) -> None:
+        assert calculate_anchor_pull(0.4, 0.4, gain=0.5) == 0.0

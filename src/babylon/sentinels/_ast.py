@@ -164,3 +164,122 @@ def eventtype_names_in_module(path: Path) -> set[str]:
         ):
             names.add(node.attr)
     return names
+
+
+def parse_module(path: Path) -> ast.Module:
+    """Read and parse ``path`` with :mod:`ast`, failing loudly on either error.
+
+    The single shared entry point for the U7 sensors: a missing or unparseable
+    source is an *infrastructure* failure (exit 2), never an empty result that
+    would read as a clean pass (Constitution III.11).
+
+    :param path: Source file to parse.
+    :returns: The parsed module.
+    :raises SentinelCheckError: If the file cannot be read or cannot be parsed.
+    """
+    try:
+        source = path.read_text(encoding="utf-8")
+    except OSError as exc:
+        raise SentinelCheckError(f"cannot read {path}: {exc}") from exc
+    try:
+        return ast.parse(source, filename=str(path))
+    except SyntaxError as exc:
+        raise SentinelCheckError(f"cannot parse {path}: {exc}") from exc
+
+
+def referenced_names(path: Path) -> set[str]:
+    """Collect every symbol a module *mentions*, however it mentions it.
+
+    A consumer can reach an output four ways: a bare name (``price_divergence``),
+    an attribute (``axis.fictitious_log``), a keyword argument
+    (``update_node(..., price_divergence=x)``), or a string key
+    (``attrs.get("national_financial")``). All four count as a reference — the
+    liveness and coupling sensors ask "does this file read that output?", and a
+    string-keyed graph read is as real a reader as an imported constant.
+
+    :param path: Source file to parse.
+    :returns: The union of referenced names, attribute names, keyword-argument
+        names, and string-literal constants.
+    :raises SentinelCheckError: If the file is missing or unparseable.
+    """
+    tree = parse_module(path)
+    names: set[str] = set()
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Name):
+            names.add(node.id)
+        elif isinstance(node, ast.Attribute):
+            names.add(node.attr)
+        elif isinstance(node, ast.keyword) and node.arg is not None:
+            names.add(node.arg)
+        elif isinstance(node, ast.Constant) and isinstance(node.value, str):
+            names.add(node.value)
+    return names
+
+
+def coupling_edges(path: Path) -> tuple[tuple[str, str, str], ...]:
+    """Extract the declared ``Coupling(source=, target=, kind=)`` literals.
+
+    Reads the dialectics catalog statically — :mod:`babylon.sentinels` may not
+    import ``babylon.domain`` (import-linter contract, ``pyproject.toml``) — and
+    returns the declared coupling map as plain triples. A call whose endpoints
+    are not string literals is skipped (a computed edge is not a *declared* one).
+
+    :param path: The module declaring the ``Coupling(...)`` literals.
+    :returns: ``(source, target, kind)`` triples, in source order.
+    :raises SentinelCheckError: If the file is missing or unparseable.
+    """
+    tree = parse_module(path)
+    edges: list[tuple[str, str, str]] = []
+    for node in ast.walk(tree):
+        if not (
+            isinstance(node, ast.Call)
+            and isinstance(node.func, ast.Name)
+            and node.func.id == "Coupling"
+        ):
+            continue
+        parts: dict[str, str] = {}
+        for kw in node.keywords:
+            if (
+                kw.arg in {"source", "target", "kind"}
+                and isinstance(kw.value, ast.Constant)
+                and isinstance(kw.value.value, str)
+            ):
+                parts[kw.arg] = kw.value.value
+        if len(parts) == 3:
+            edges.append((parts["source"], parts["target"], parts["kind"]))
+    return tuple(edges)
+
+
+def returned_dict_keys(path: Path, func_name: str) -> tuple[str, ...]:
+    """Extract the string keys of the dict literal a named function returns.
+
+    The service factories (``create_economics_services``,
+    ``create_financial_services``) each end in one dict literal whose keys ARE
+    the estate the DoD gate is meant to inject. Reading them statically lets the
+    gate-blindness sensor compare estate against harness without importing
+    ``babylon.domain``.
+
+    :param path: Source file defining ``func_name``.
+    :param func_name: The module-level function whose returned dict to read.
+    :returns: The string keys of the last returned dict literal, sorted.
+    :raises SentinelCheckError: If the file is missing/unparseable, the function
+        is absent, or it returns no dict literal.
+    """
+    tree = parse_module(path)
+    target: ast.FunctionDef | None = None
+    for node in tree.body:
+        if isinstance(node, ast.FunctionDef) and node.name == func_name:
+            target = node
+    if target is None:
+        raise SentinelCheckError(f"{path}: no function {func_name!r} at module level")
+    keys: set[str] = set()
+    for sub in ast.walk(target):
+        if isinstance(sub, ast.Return) and isinstance(sub.value, ast.Dict):
+            keys.update(
+                k.value
+                for k in sub.value.keys
+                if isinstance(k, ast.Constant) and isinstance(k.value, str)
+            )
+    if not keys:
+        raise SentinelCheckError(f"{path}:{func_name} returns no dict literal")
+    return tuple(sorted(keys))

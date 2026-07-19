@@ -83,12 +83,25 @@ PRODUCTION_ROOTS: Final[tuple[str, ...]] = ("src", "web")
 #:   ``simulation_engine`` determinism-hash row collector therefore all iterate
 #:   an empty set at runtime.
 #: - ``community``: community membership lives in the XGI *hypergraph*
-#:   (``engine/systems/community.py``), not the main graph. The last surviving
-#:   query is ``domain/institution/queries.py::community_embeddedness``, which
-#:   has no production caller. The same defect was already found and fixed once
-#:   in the web bridge (see ``tests/unit/web/test_engine_bridge.py``,
-#:   ``test_educate_targets_uses_social_class_not_community``).
-UNSTAMPED_QUERY_ALLOWLIST: Final[frozenset[str]] = frozenset({"hex", "community"})
+#:   (``engine/systems/community.py``), not the main graph, so no production
+#:   code ever stamps a ``community`` node onto the engine graph either. Task
+#:   #40 deleted the previously-cited "last surviving query"
+#:   (``domain/institution/queries.py::community_embeddedness``, zero
+#:   production callers). Removing this allowlist entry entirely was
+#:   attempted and empirically fails: ``engine/invariants.py::
+#:   _is_community_node_attr`` (``node_attrs.get("_node_type") ==
+#:   "community"``, backing ``NoCommunityFanOut``, INV-010's defensive
+#:   negative-check invariant) is a second scanner-visible "query" for this
+#:   type. It is intentional -- the invariant asserts community is NEVER
+#:   stamped as a MEMBERSHIP-edge source -- but it too has no production
+#:   *caller* (``NoCommunityFanOut`` is only ever instantiated by
+#:   ``tests/property/invariants/test_community_membership_lint.py``), so the
+#:   same "test-only caller in a production-tree file" shape the deleted
+#:   queries.py function had. Left open rather than remediated: out of task
+#:   #40's scoped checklist (which named only queries.py), a new finding for
+#:   an owner to scope (wire ``NoCommunityFanOut`` into a real invariant
+#:   runner, or delete it the same way).
+UNSTAMPED_QUERY_ALLOWLIST: Final[frozenset[str]] = frozenset({"community", "hex"})
 
 #: Exact ``("node_type_literal", path, literal)`` keys exempt from rule (a).
 #: Deliberately keyed on BOTH file and string so an exemption cannot leak to

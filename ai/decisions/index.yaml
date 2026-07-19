@@ -1,9 +1,14 @@
 meta:
-  version: 1.31.0
-  updated: '2026-07-18'
+  version: 1.32.0
+  updated: '2026-07-19'
   description: Architecture Decision Records Index
   format: See individual ADR files in this directory
 decisions:
+  ADR086_business_seeding:
+    title: 'Seed real-QCEW Business organizations into the canonical playable scenarios (us_nationwide + wayne_county): a committed, hash-stamped deterministic seed artifact (business_seeds.json) generated from fact_qcew_annual PRIVATE-sector employment (6-digit leaves folded to 2-digit NAICS via sector_code, imputed leaves included per house policy, REUSING get_county_employment_by_naics), a single shared builder both scenario builders call (DRY), capped at K=5 top-sectors per scope so org count stays far under the engine max_orgs=1000 cap; honest names (real geography + real sector), only real-data fields set (employment/naics/sector), all others keep model defaults; event-flood a NON-ISSUE — the survey premise was wrong, OODA already aggregates per-business layer0 into ONE ORGANIZATIONAL_ACTION summary/tick (MEASURED: 6 orgs, 1 event/tick, 4058-byte payload; naive per-hex would be 5590 > cap); economic behaviour (EMPLOY) explicitly future work; surfaced+fixed a latent 4dp rounding drift in _centrality_by_territory; qa:regression 5/5 byte-identical (zero-org regression scenarios prove scope)'
+    status: accepted
+    date: '2026-07-19'
+    file: ADR086_business_seeding.yaml
   ADR084_retire_dead_models:
     title: 'Constitution III.10 formal retirement of dead speculative constructs: KeyFigure (model + WorldState field + to_graph/from_graph plumbing + identify_key_figures + bound-invariant + vocabulary model-fields row) and community_composition() removed as tests-only dead code; NodeType.KEY_FIGURE reclassified production-stamped -> declared-not-stamped (still types classify_topology''s out-of-scope COMMAND-edge fixtures); Business INVESTIGATED and KEPT — found LIVE (OrgType.BUSINESS processed every tick by process_layer0 via OODASystem, action_effects, eligibility, npc_stub, postgres CHECK; Business is the live from_graph reconstruction target), so the ruling''s third target is deferred back to the owner with evidence rather than deleted; qa:regression byte-identical (retired paths never execute in the 5 canonical scenarios)'
     status: accepted

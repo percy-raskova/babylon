@@ -10,8 +10,9 @@ Multiverse Protocol: Scenario injection for counterfactual simulation.
 from __future__ import annotations
 
 from babylon.config.defines import EconomyDefines, GameDefines, SurvivalDefines
+from babylon.engine.scenarios.business_seeds import build_seeded_businesses
 from babylon.models.config import SimulationConfig
-from babylon.models.entities.organization import CivilSocietyOrg
+from babylon.models.entities.organization import CivilSocietyOrg, OrganizationType
 from babylon.models.entities.relationship import Relationship
 from babylon.models.entities.social_class import SocialClass
 from babylon.models.entities.territory import Territory
@@ -893,12 +894,19 @@ def create_us_scenario(
     )
     player_org = _create_national_player_org(hq_territory_ids)
 
+    # Seed real-QCEW Business NPCs (ADR086) in the player's HQ territories so
+    # they are MOBILIZE-eligible and fog-reachable. Player org is inserted
+    # FIRST so ``list(organizations.values())[0]`` stays the player org
+    # (contract-parity / bridge-pipeline tests rely on this ordering).
+    organizations: dict[str, OrganizationType] = {_NATIONAL_PLAYER_ORG_ID: player_org}
+    organizations.update(build_seeded_businesses("US", hq_territory_ids))
+
     return (
         WorldState(
             tick=0,
             entities=state.entities,
             territories=territories,
-            organizations={_NATIONAL_PLAYER_ORG_ID: player_org},
+            organizations=organizations,
             relationships=[*core_relationships, *tenancy_edges],
             event_log=[],
             # EH ruling 6 (owner 2026-07-16): the engine-side player pointer

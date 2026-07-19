@@ -22,8 +22,9 @@ from __future__ import annotations
 import pytest
 
 from babylon.engine.scenarios import create_us_scenario
+from babylon.engine.scenarios.business_seeds import build_seeded_businesses
 from babylon.models.entities.organization import CivilSocietyOrg
-from babylon.models.enums import EdgeType
+from babylon.models.enums import EdgeType, OrgType
 from babylon.models.world_state import WorldState
 
 pytestmark = pytest.mark.unit
@@ -40,11 +41,20 @@ class TestUSScenarioHasAPlayerOrg:
         state, _config, _defines = create_us_scenario()
         assert state.player_org_id in state.organizations
 
-    def test_exactly_one_organization_seeded(self) -> None:
-        """Owner ruling: ONE national org, not a multi-org player contract --
-        every player-org-keyed surface assumes a single ``player_org_id``."""
+    def test_exactly_one_player_org_plus_seeded_businesses(self) -> None:
+        """Owner ruling: ONE national PLAYER org, not a multi-org player
+        contract -- every player-org-keyed surface assumes a single
+        ``player_org_id``. ADR086 additionally seeds real-QCEW ``Business``
+        NPCs (``BIZ_US_*``), so the total org count is 1 player + the seed
+        count (was ``== 1`` before ADR086)."""
         state, _config, _defines = create_us_scenario()
-        assert len(state.organizations) == 1
+        seeded = build_seeded_businesses("US", [])
+        businesses = [o for o in state.organizations.values() if o.org_type == OrgType.BUSINESS]
+        assert len(businesses) == len(seeded)
+        assert len(state.organizations) == 1 + len(seeded)
+        # Exactly one player-keyed org remains (the single-player_org_id contract).
+        assert state.player_org_id is not None
+        assert isinstance(state.organizations[state.player_org_id], CivilSocietyOrg)
 
     def test_player_org_is_civil_society_type(self) -> None:
         """Mirrors ``_legacy_wayne.py``'s ``ORG001`` shape exactly."""
@@ -103,6 +113,34 @@ class TestPresenceEdgesMaterialize:
             if edge.source_id == state.player_org_id
         }
         assert presence_targets == set(org.territory_ids)
+
+
+class TestSeedsRealBusinesses:
+    """ADR086: ``us_nationwide`` seeds QCEW-sourced ``Business`` NPCs the player
+    can see and MOBILIZE against, sized from REAL BLS private-sector employment."""
+
+    def test_business_employment_matches_the_seed_artifact(self) -> None:
+        state, _config, _defines = create_us_scenario()
+        seeded = build_seeded_businesses("US", [])
+        by_id = {o.id: o for o in state.organizations.values()}
+        for biz_id, expected in seeded.items():
+            assert biz_id in by_id, f"seeded business {biz_id} missing from scenario"
+            assert by_id[biz_id].employment_count == expected.employment_count
+            assert by_id[biz_id].employment_count > 0
+
+    def test_businesses_share_a_player_territory(self) -> None:
+        """MOBILIZE eligibility + fog reach need the businesses to live in a
+        territory the player org is present in (``get_mobilize_targets`` walks
+        the player's ``territory_ids``)."""
+        state, _config, _defines = create_us_scenario()
+        player = state.organizations[state.player_org_id]  # type: ignore[index]
+        player_territories = set(player.territory_ids)
+        businesses = [o for o in state.organizations.values() if o.org_type == OrgType.BUSINESS]
+        assert businesses, "no Business orgs seeded"
+        for biz in businesses:
+            assert player_territories & set(biz.territory_ids), (
+                f"business {biz.id} shares no territory with the player org"
+            )
 
 
 class TestReturnsWorldStateTuple:

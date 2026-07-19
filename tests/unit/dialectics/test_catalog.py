@@ -25,12 +25,16 @@ def _states(inputs: GraphInputs, tick: int = 0):  # type: ignore[no-untyped-def]
 
 
 class TestRegistryShape:
-    def test_six_oppositions_bound(self) -> None:
+    def test_ten_oppositions_bound(self) -> None:
         assert _reg().keys == (
             "atomization",
             "capital_labor",
+            "credit",
+            "debt_spiral",
+            "financial",
             "imperial",
             "price_value",
+            "surplus_distribution",
             "tenancy",
             "wage",
         )
@@ -170,6 +174,12 @@ class TestLevelPlacement:
             # Program 23: the national scissors sits on no county/bloc rung
             # yet — unplaced by design (empty = unplaced, opposition.py).
             "price_value": "",
+            # Vol III (U5.2): the two county-keyed money axes and the two
+            # national (unplaced) ones.
+            "surplus_distribution": "county",
+            "debt_spiral": "county",
+            "credit": "",
+            "financial": "",
         }
 
 
@@ -257,3 +267,103 @@ class TestVolumeThreeInputFields:
         inputs = GraphInputs(rentier_share=0.4)
         with pytest.raises(AttributeError):
             inputs.rentier_share = 0.9  # type: ignore[misc]
+
+
+class TestVolumeThreeOppositions:
+    """The four Vol III bindings: shared ratio family, honest absence.
+
+    Every one reads a NON-NEGATIVE ratio against its own material unity
+    point (claims == substance) and maps it with the same zero-parameter
+    saturating family: ``gap = x/(1+x)``, ``balance = (x-1)/(x+1)``. So the
+    balance crosses zero exactly where the claim equals the substance it
+    claims, and the gap is 0 only when the claim is absent altogether.
+    """
+
+    @pytest.mark.parametrize(
+        "key",
+        ["surplus_distribution", "debt_spiral", "credit", "financial"],
+    )
+    def test_absent_input_reads_zero_zero(self, key: str) -> None:
+        # No Vol III data (the ~85%-of-campaign steady state): no claim,
+        # no contradiction — never a fabricated value.
+        states = _states(GraphInputs())
+        assert states[key].gap == pytest.approx(0.0)
+        assert states[key].balance == pytest.approx(0.0)
+
+    @pytest.mark.parametrize(
+        "key",
+        ["surplus_distribution", "debt_spiral", "credit", "financial"],
+    )
+    def test_none_of_them_is_antagonistic(self, key: str) -> None:
+        # The catalog reserves antagonistic=True for capital_labor and
+        # imperial alone: the division of surplus AMONG capitals is real
+        # conflict but intra-class, and mislabelling it would corrupt
+        # principal-contradiction ranking.
+        assert _reg().spec_for(key).antagonistic is False
+
+    def test_levels_are_county_for_the_two_county_axes(self) -> None:
+        assert _reg().spec_for("surplus_distribution").level_name == "county"
+        assert _reg().spec_for("debt_spiral").level_name == "county"
+
+    def test_the_two_national_axes_are_unplaced(self) -> None:
+        assert _reg().spec_for("credit").level_name == ""
+        assert _reg().spec_for("financial").level_name == ""
+
+    def test_poles_are_named_as_specified(self) -> None:
+        reg = _reg()
+        assert (reg.spec_for("surplus_distribution").pole_a) == "enterprise"
+        assert (reg.spec_for("surplus_distribution").pole_b) == "rentier"
+        assert (reg.spec_for("debt_spiral").pole_a) == "solvent"
+        assert (reg.spec_for("debt_spiral").pole_b) == "indebted"
+        assert (reg.spec_for("credit").pole_a) == "accommodation"
+        assert (reg.spec_for("credit").pole_b) == "fragility"
+        assert (reg.spec_for("financial").pole_a) == "real"
+        assert (reg.spec_for("financial").pole_b) == "fictitious"
+
+    def test_zero_claim_is_no_contradiction_not_maximal(self) -> None:
+        # Rentiers claim nothing: the functioning capitalist retains the
+        # whole surplus. That is the ABSENCE of the conflict, not its peak.
+        states = _states(GraphInputs(rentier_share=0.0, debt_ratio=0.0))
+        assert states["surplus_distribution"].gap == pytest.approx(0.0)
+        assert states["surplus_distribution"].balance == pytest.approx(-1.0)
+        assert states["surplus_distribution"].leading_pole == "a"
+        assert states["debt_spiral"].gap == pytest.approx(0.0)
+        assert states["debt_spiral"].balance == pytest.approx(-1.0)
+
+    def test_unity_point_is_the_balance_zero_crossing(self) -> None:
+        # x == 1: claims exactly equal the surplus they claim (p == 0);
+        # fragility exactly at its crisis reference; fictitious exactly at
+        # parity with real. Neither pole leads.
+        states = _states(
+            GraphInputs(
+                rentier_share=1.0,
+                debt_ratio=1.0,
+                credit_fragility=1.0,
+                financialization_index=1.0,
+            )
+        )
+        for key in ("surplus_distribution", "debt_spiral", "credit", "financial"):
+            assert states[key].balance == pytest.approx(0.0)
+            assert states[key].gap == pytest.approx(0.5)
+
+    def test_claims_exceeding_surplus_puts_the_rentier_pole_in_the_lead(self) -> None:
+        # (i + r + t) = 3s: interest, rent and taxes consume three times the
+        # surplus produced. Enterprise profit is deeply negative.
+        states = _states(GraphInputs(rentier_share=3.0))
+        assert states["surplus_distribution"].gap == pytest.approx(0.75)
+        assert states["surplus_distribution"].balance == pytest.approx(0.5)
+        assert states["surplus_distribution"].leading_pole == "b"
+
+    def test_financialization_bubble_reads_fictitious_dominant(self) -> None:
+        # 3.5 is the FRED TCMDO/GDP overaccumulation reading (~2008 peak).
+        states = _states(GraphInputs(financialization_index=3.5))
+        assert states["financial"].balance == pytest.approx(2.5 / 4.5)
+        assert states["financial"].leading_pole == "b"
+
+    def test_negative_ratios_are_rejected_as_absent(self) -> None:
+        # A ratio of a non-negative claim to a non-negative substance can
+        # never be negative; a negative reading is corrupt input, and the
+        # honest response is the absent reading, not a clamped fiction.
+        states = _states(GraphInputs(debt_ratio=-2.0))
+        assert states["debt_spiral"].gap == pytest.approx(0.0)
+        assert states["debt_spiral"].balance == pytest.approx(0.0)

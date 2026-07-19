@@ -300,6 +300,69 @@ def _price_value_measure(inputs: GraphInputs) -> GapReading:
     return GapReading(gap=abs(balance), balance=balance)
 
 
+def _ratio_reading(ratio: float | None) -> GapReading:
+    """Map a non-negative claim/substance ratio onto ``(gap, balance)``.
+
+    The shared measure family for every Volume III money opposition. Each
+    reads a ratio of a CLAIM on value to the value that must validate it
+    — rentier claims to surplus produced, accumulated debt to annual
+    surplus, credit fragility to its crisis reference, fictitious capital
+    to real production — so all four share one zero-parameter map::
+
+        gap     = x / (1 + x)
+        balance = (x - 1) / (x + 1) = 2 * gap - 1
+
+    Reading the two outputs materially: the balance crosses zero exactly
+    at ``x = 1``, the point where the claim equals the substance claimed
+    (enterprise profit exactly extinguished, fragility exactly at
+    threshold, paper exactly at parity with production). Below it the
+    substance leads (pole A); above it the claim leads (pole B). The gap
+    is 0 only where the claim is absent altogether — a surplus no rentier
+    touches carries no rentier contradiction — and saturates toward 1 as
+    the claim runs away from what produces it.
+
+    The family is deliberately scale-free (no coefficient, so this module
+    stays defines-free per its import contract); any scaling a ratio needs
+    is applied by the engine before it reaches :class:`GraphInputs`, the
+    same division of labour ``market_balance`` already uses.
+
+    Args:
+        ratio: The claim/substance ratio, or ``None`` when the underlying
+            data is absent.
+
+    Returns:
+        ``GapReading(0.0, 0.0)`` — the catalog's canonical ABSENT reading —
+        when ``ratio`` is ``None`` or negative (a ratio of two non-negative
+        magnitudes cannot be negative, so a negative value is corrupt input
+        and absence is the honest answer, Constitution III.11). Otherwise
+        the saturating reading above.
+    """
+    if ratio is None or ratio < 0.0:
+        return GapReading(gap=0.0, balance=0.0)
+    gap = ratio / (1.0 + ratio)
+    return GapReading(gap=gap, balance=2.0 * gap - 1.0)
+
+
+def _surplus_distribution_measure(inputs: GraphInputs) -> GapReading:
+    """enterprise (A) ⇄ rentier (B) — the division of surplus among capitals."""
+    return _ratio_reading(inputs.rentier_share)
+
+
+def _debt_spiral_measure(inputs: GraphInputs) -> GapReading:
+    """solvent (A) ⇄ indebted (B) — accumulated shortfall against annual surplus."""
+    return _ratio_reading(inputs.debt_ratio)
+
+
+def _credit_measure(inputs: GraphInputs) -> GapReading:
+    """accommodation (A) ⇄ fragility (B) — ``default_rate * spread`` in threshold units."""
+    return _ratio_reading(inputs.credit_fragility)
+
+
+def _financial_measure(inputs: GraphInputs) -> GapReading:
+    """real (A) ⇄ fictitious (B) — claims on future value over present production."""
+    return _ratio_reading(inputs.financialization_index)
+
+
 def build_default_registry(rate_weight: float = 10.0) -> OppositionRegistry[GraphInputs]:
     """Build the production five-opposition registry.
 
@@ -391,6 +454,69 @@ def build_default_registry(rate_weight: float = 10.0) -> OppositionRegistry[Grap
             # falls out of the frames/rupture/regime machinery. It was born
             # shadow (ADR077) to prove byte-inertness first; the generic
             # shadow mechanism remains for Amendment T's future bindings.
+        ),
+        BoundOpposition(
+            spec=OppositionSpec(
+                key="surplus_distribution",
+                pole_a="enterprise",
+                pole_b="rentier",
+                unity="the functioning capitalist can only set production going with "
+                "capital the money-capitalist, the landowner and the state advance or "
+                "levy against it; interest, ground rent and taxes are therefore not "
+                "deductions from an alien fund but the shares in which the one surplus "
+                "value the workers produced is divided among the capitals that claim "
+                "it (Capital Vol. III parts 4-6)",
+                level_name="county",
+                antagonistic=False,
+            ),
+            measure=_surplus_distribution_measure,
+        ),
+        BoundOpposition(
+            spec=OppositionSpec(
+                key="debt_spiral",
+                pole_a="solvent",
+                pole_b="indebted",
+                unity="when the rentier claims outrun the surplus produced, the "
+                "shortfall is not settled but carried: the enterprise borrows to pay "
+                "the interest it already owes, and the debt is a claim on surplus "
+                "value not yet extracted from any worker — solvency and indebtedness "
+                "are the same accumulation read at two moments (Capital Vol. III ch. 30-32)",
+                level_name="county",
+                antagonistic=False,
+            ),
+            measure=_debt_spiral_measure,
+        ),
+        BoundOpposition(
+            spec=OppositionSpec(
+                key="credit",
+                pole_a="accommodation",
+                pole_b="fragility",
+                unity="credit is the lever that carries accumulation past the limits "
+                "of the individual capital, and by exactly the same act it makes each "
+                "capital's reproduction depend on every other's payment: the system "
+                "that accommodates the boom IS the system that transmits the default "
+                "(Capital Vol. III ch. 27, 30)",
+                # level_name stays "" (unplaced): the credit system is national;
+                # it sits on no county/bloc lattice rung.
+                antagonistic=False,
+            ),
+            measure=_credit_measure,
+        ),
+        BoundOpposition(
+            spec=OppositionSpec(
+                key="financial",
+                pole_a="real",
+                pole_b="fictitious",
+                unity="a bond, a share and a mortgage are titles to future surplus "
+                "value, not the value itself; they are bought and sold as capital "
+                "while the labour that must validate them has not been performed — "
+                "the paper presupposes the production it has already outrun (Capital "
+                "Vol. III ch. 25, 29)",
+                # level_name stays "" (unplaced): the fictitious-capital stock and
+                # the scissors axis reading it are both national.
+                antagonistic=False,
+            ),
+            measure=_financial_measure,
         ),
     ]
     return OppositionRegistry(bindings=bindings, rate_weight=rate_weight)

@@ -144,7 +144,9 @@ class TestDefaultCouplingGraph:
 
     def test_only_the_bound_edges_survive(self) -> None:
         graph = build_default_coupling_graph(build_default_registry())
-        # wage->{capital_labor, imperial} feeds + the symmetric capital_labor<->imperial.
+        # wage->{capital_labor, imperial, price_value} feeds + the symmetric
+        # capital_labor<->imperial, and the two Vol III crisis-producer
+        # transforms whose endpoints U5.2 bound (surplus->debt, credit->financial).
         non_contains = {_triple(c) for c in graph.couplings if c.kind != "contains"}
         assert non_contains == {
             ("wage", "capital_labor", "feeds"),
@@ -152,6 +154,8 @@ class TestDefaultCouplingGraph:
             ("wage", "price_value", "feeds"),
             ("capital_labor", "imperial", "antagonizes"),
             ("imperial", "capital_labor", "antagonizes"),
+            ("surplus_distribution", "debt_spiral", "transforms"),
+            ("credit", "financial", "transforms"),
         }
 
     def test_unbound_transforms_are_skipped_and_logged(
@@ -160,10 +164,12 @@ class TestDefaultCouplingGraph:
         with caplog.at_level(logging.INFO, logger="babylon.domain.dialectics.instances.catalog"):
             build_default_coupling_graph(build_default_registry())
         skipped = [r for r in caplog.records if "Skipping coupling" in r.getMessage()]
-        # The four crisis-producer transforms reference Phase D/E keys not yet bound.
-        assert len(skipped) == 4
+        # Two crisis-producer transforms still reference Phase D/E keys not yet
+        # bound (the Vol III pair surplus->debt and credit->financial went live
+        # once U5.2 registered their endpoints).
+        assert len(skipped) == 2
         joined = " ".join(r.getMessage() for r in skipped)
-        for endpoint in ("realization", "disproportionality", "debt_spiral", "financial"):
+        for endpoint in ("realization", "disproportionality"):
             assert endpoint in joined
 
 

@@ -235,7 +235,7 @@ poetry run coverage report --include='src/babylon/engine/systems/*' --fail-under
 """
 
 [tasks."test:rest-ci"]
-description = "CI heavy shard (program 15): everything outside tests/unit except the web-Postgres suites (their own job), PLUS slow-marked tests/unit tests (test:unit-ci excludes slow — without this second leg they would run nowhere in CI); max-verbosity output; includes slow; excludes red_phase/requires_reference_db"
+description = "CI heavy shard (program 15): everything outside tests/unit except the web-Postgres suites (their own job), PLUS slow-marked tests/unit tests (test:unit-ci excludes slow — without this second leg they would run nowhere in CI); max-verbosity output; includes slow; excludes red_phase/requires_reference_db/pacing_gate (G1's 520-tick gate is nightly-only via qa:pacing, never this shard)"
 # NO coverage on this shard (program 15, 2026-07-11): pytest-cov under
 # `-n 4` xdist instruments all of src/babylon in every worker, and stacked on
 # the memory-heavy integration/property suites it OOM-killed a worker on the
@@ -260,7 +260,7 @@ export HYPOTHESIS_PROFILE="${HYPOTHESIS_PROFILE:-ci}"
 timeout --signal=INT --kill-after=120 "${BABYLON_REST_SHARD_TIMEOUT:-100m}" \
 poetry run pytest tests --ignore=tests/unit --ignore=tests/integration/web \
   -o addopts="" -vv -ra -l --tb=long --durations=0 \
-  -m 'not red_phase and not requires_reference_db' \
+  -m 'not red_phase and not requires_reference_db and not pacing_gate' \
   -n 4 --dist loadscope --max-worker-restart=2 \
   --junit-xml=reports/test-results/rest-ci/junit.xml
 echo '=== slow-marked tests/unit tests (excluded from the test:unit-ci fast shard) ==='
@@ -1031,6 +1031,16 @@ run = "poetry run python tools/audit_simplex_bypasses.py"
 [tasks."qa:tick-budget"]
 description = "Spec-104: per-system wallclock budget gate (michigan-statewide 5-tick profile vs ratified budget)"
 run = "BABYLON_PG_DSN=${BABYLON_PG_DSN:-dbname=babylon_test host=localhost port=5433 user=test password=test} poetry run python tools/tick_budget_check.py --ticks 5 --scope michigan-statewide-no-canada"
+
+[tasks."qa:pacing"]
+description = "G1 standing gate: 520-tick (10yr) nationwide null-play pacing probe survival contract (spec-116 gate 1 / ADR079, owner ruling 2026-07-19). Multi-minute, single-flight — nightly-only, never mise run check/test:unit/test:rest-ci."
+run = """
+mkdir -p reports/test-results/pacing
+poetry run pytest tests/integration/engine/test_pacing_gate_g1.py \
+  -o addopts="" -vv -ra -l --tb=long --durations=0 \
+  -m pacing_gate \
+  --junit-xml=reports/test-results/pacing/junit.xml
+"""
 
 [tasks."clean:testdb"]
 description = "Recycle the bloated babylon_test DB (test ticks accumulate ~GBs; drop, recreate, re-bootstrap)"

@@ -52,6 +52,19 @@ def test_sensor_is_dispatchable_and_advisory(sensor: str, expected_word: str) ->
     assert expected_word in result.stdout
 
 
+def test_surface_sensor_is_dispatchable_and_gates() -> None:
+    """The surface sensor runs from the family CLI and reports clean.
+
+    Unlike the four sensors above, ``surface`` is not advisory (owner ruling
+    2026-07-19; U7.11) -- it gates on drift. On the committed, clean repo
+    state it must still exit 0 with its own summary line, proving the CLI
+    actually dispatches this sensor rather than silently omitting it.
+    """
+    result = _run("surface")
+    assert result.returncode == 0, result.stderr
+    assert "Public surface" in result.stdout
+
+
 def test_unknown_sensor_is_rejected() -> None:
     """An unregistered sensor name is refused by argparse, not silently ignored."""
     result = _run("no_such_sensor")

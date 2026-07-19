@@ -111,8 +111,16 @@ class MockGammaIIICalculator:
         self._gamma_iii = gamma_iii
 
     def compute(self, year: int) -> GammaIII | NoDataSentinel:
-        """Return fixed GammaIII."""
-        if year < 2007 or year > 2040:
+        """Return fixed GammaIII.
+
+        Bound matches ``GammaIII.year``'s own ``le=2030`` field constraint
+        (gamma/types.py) — a stale ``year > 2040`` check here let years
+        2031-2040 fall through to the ``GammaIII(...)`` construction below
+        and crash with a pydantic ``ValidationError`` instead of degrading
+        to ``NoDataSentinel`` (found by task U2.8's full-campaign walk,
+        which is the first test to exercise that gap).
+        """
+        if year < 2007 or year > 2030:
             return NoDataSentinel(fips="USA", year=year, reason=f"Year {year} out of range")
         return GammaIII(
             year=year,

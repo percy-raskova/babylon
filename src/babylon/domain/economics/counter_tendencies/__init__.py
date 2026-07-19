@@ -13,13 +13,16 @@ from babylon.domain.economics.counter_tendencies.calculator import (
     DefaultCounterTendencyCalculator,
 )
 from babylon.domain.economics.counter_tendencies.types import (
-    COUNTER_TENDENCY_WEIGHTS,
     CounterTendencyStrength,
+    counter_tendency_weights,
+    imperial_rent_reference_scale,
 )
 
 __all__: list[str] = [
-    # Constants
-    "COUNTER_TENDENCY_WEIGHTS",
+    # Coefficient accessors (GameDefines-backed since the 2026-07-18
+    # honesty sweep; these are functions, not constants)
+    "counter_tendency_weights",
+    "imperial_rent_reference_scale",
     # Types
     "CounterTendencyStrength",
     # Protocols

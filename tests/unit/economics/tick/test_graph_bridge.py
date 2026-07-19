@@ -284,7 +284,12 @@ class TestWriteFinancialState:
 
         node_data = graph.nodes[WAYNE_FIPS]
         assert node_data["tick_interest_burden"] == 200.0
-        assert node_data["tick_ground_rent"] == 280.0  # 50 + 30 + 200
+        # U1 repoint: tick_ground_rent now mirrors Path A
+        # (SurplusValueDistribution.ground_rent, real FRED rental income),
+        # not Path B (RentExtraction.total_rent = 50 + 30 + 200 = 280, which
+        # _DefaultCountyRentalAdapter always returns None for and therefore
+        # never actually reaches this attribute in production).
+        assert node_data["tick_ground_rent"] == 100.0
         assert node_data["tick_rentier_share"] == 0.1  # 100 / 1000
         assert node_data["tick_profit_of_enterprise"] == 650.0
         assert node_data["tick_financialization_share"] == 0.2  # 200 / 1000

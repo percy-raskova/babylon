@@ -9,6 +9,9 @@ where p (profit of enterprise) is the RESIDUAL: p = s - i - r - t.
 
 from __future__ import annotations
 
+from collections.abc import Callable
+from pathlib import Path
+
 import pytest
 from pydantic import ValidationError
 
@@ -254,3 +257,87 @@ class TestFieldValidation:
                 ground_rent=0.0,
                 taxes_on_surplus=0.0,
             )
+
+
+@pytest.mark.unit
+class TestThresholdAccessorsAreGameDefinesBacked:
+    """Honesty sweep (U2): the DEBT_SPIRAL_THRESHOLD/DISTRIBUTION_EPSILON
+    Finals are gone; debt_spiral_threshold()/distribution_epsilon() read from
+    GameDefines.capital_vol3 at call time, not at import time."""
+
+    def test_debt_spiral_threshold_matches_capital_vol3(self) -> None:
+        from babylon.config.defines import GameDefines
+        from babylon.domain.economics.distribution.types import debt_spiral_threshold
+
+        assert (
+            debt_spiral_threshold() == GameDefines.load_default().capital_vol3.debt_spiral_threshold
+        )
+
+    def test_distribution_epsilon_matches_capital_vol3(self) -> None:
+        from babylon.config.defines import GameDefines
+        from babylon.domain.economics.distribution.types import distribution_epsilon
+
+        assert (
+            distribution_epsilon() == GameDefines.load_default().capital_vol3.distribution_epsilon
+        )
+
+    def test_explicit_defines_override_is_honoured(self) -> None:
+        """A caller-supplied GameDefines wins over the process default — the
+        behaviour the deleted module-level Finals made impossible."""
+        from babylon.config.defines import GameDefines
+        from babylon.domain.economics.distribution.types import (
+            debt_spiral_threshold,
+            distribution_epsilon,
+        )
+
+        base = GameDefines.load_default()
+        overridden = base.model_copy(
+            update={
+                "capital_vol3": base.capital_vol3.model_copy(
+                    update={"debt_spiral_threshold": 0.75, "distribution_epsilon": 1e-6}
+                )
+            }
+        )
+        assert debt_spiral_threshold(overridden) == pytest.approx(0.75)
+        assert distribution_epsilon(overridden) == pytest.approx(1e-6)
+
+
+@pytest.mark.unit
+class TestProductionConsumesTheEpsilonAccessor:
+    """The accessor is only useful if the SHIPPING code path calls it.
+
+    Every other test here calls ``distribution_epsilon()`` directly, or
+    compares the computed field against a value derived from that same call —
+    both of which pass identically whether ``distribution_complete`` reads the
+    accessor or hardcodes ``1e-9``. This drives an OVERRIDDEN ``defines.yaml``
+    through the production computed field and asserts the verdict MOVES, which
+    a hardcoded literal cannot do.
+    """
+
+    def test_distribution_complete_flips_when_the_yaml_tightens_epsilon(
+        self, divergent_defines_yaml: Callable[..., Path]
+    ) -> None:
+        from babylon.domain.economics.distribution import types as distribution_types
+
+        # Residual here is pure IEEE-754 representation error: p = s - i - r - t
+        # then i + r + t + p re-associates the same doubles in a different
+        # order. Deterministic, and ~5.55e-17 — comfortably inside the shipped
+        # 1e-9 epsilon and comfortably outside a 1e-17 one.
+        claim = SurplusValueDistribution(
+            fips_code="26163",
+            year=2020,
+            total_surplus_produced=0.3,
+            interest_payments=0.1,
+            ground_rent=0.1,
+            taxes_on_surplus=0.1,
+        )
+        assert claim.distribution_complete is True, "shipped epsilon should accept FP noise"
+
+        divergent_defines_yaml(
+            {"capital_vol3": {"distribution_epsilon": 1e-17}},
+            distribution_types._default_defines,
+        )
+        assert claim.distribution_complete is False, (
+            "distribution_complete ignored the tightened capital_vol3."
+            "distribution_epsilon — it is reading a hardcoded literal, not the accessor"
+        )

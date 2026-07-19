@@ -75,6 +75,16 @@ class TestComputeInterestRateState:
         assert result.baa_spread == pytest.approx(0.0349)
         assert result.effective_rate == pytest.approx(0.0193 + 0.0349)
 
+    def test_year_outside_modeled_range_returns_sentinel_even_with_real_data(
+        self,
+    ) -> None:
+        """Guard fires BEFORE any data lookup — proven by giving 2050 real data."""
+        source = MockInterestRateSource(data={2050: (0.03, 0.04, 0.02)})
+        calc = DefaultInterestCalculator(rate_source=source)
+        result = calc.compute_interest_rate_state(2050)
+        assert isinstance(result, NoDataSentinel)
+        assert "modeled" in result.reason.lower()
+
 
 # =============================================================================
 # compute_county_interest_burden (FR-003)

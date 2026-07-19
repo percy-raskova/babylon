@@ -273,6 +273,44 @@ class TestCrisisDefines:
 
 
 # =============================================================================
+# ECONOMY GAMMA-FALLBACK DEFINES TESTS (honesty sweep, U2.2 additional work)
+# =============================================================================
+
+
+@pytest.mark.unit
+class TestEconomyGammaFallbackDefines:
+    """TickDynamicsSystem Step 2's gamma_basket/gamma_III modelled defaults
+    must be GameDefines fields (Constitution III.1), not inline literals.
+    """
+
+    def test_gamma_basket_default_field_exists(self) -> None:
+        """EconomyDefines exposes gamma_basket_default."""
+        defines = GameDefines()
+        assert hasattr(defines.economy, "gamma_basket_default")
+
+    def test_gamma_basket_default_value(self) -> None:
+        """Default gamma_basket_default is 0.68 (unchanged behavior)."""
+        defines = GameDefines()
+        assert defines.economy.gamma_basket_default == 0.68
+
+    def test_gamma_iii_default_field_exists(self) -> None:
+        """EconomyDefines exposes gamma_iii_default."""
+        defines = GameDefines()
+        assert hasattr(defines.economy, "gamma_iii_default")
+
+    def test_gamma_iii_default_value(self) -> None:
+        """Default gamma_iii_default is 0.33 (unchanged behavior)."""
+        defines = GameDefines()
+        assert defines.economy.gamma_iii_default == 0.33
+
+    def test_economy_defines_frozen_rejects_gamma_fallback_mutation(self) -> None:
+        """EconomyDefines is frozen; the new fields are no exception."""
+        defines = GameDefines()
+        with pytest.raises((TypeError, ValueError)):
+            defines.economy.gamma_basket_default = 0.5  # type: ignore[misc]
+
+
+# =============================================================================
 # CLASS DYNAMICS DEFINES SYNC TESTS (Feature 028 remediation)
 # =============================================================================
 

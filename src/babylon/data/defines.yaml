@@ -97,6 +97,8 @@ economy:
   bribery_tension_threshold: 0.7  # Maximum capital_labor opposition gap for bribery policy (C1.5). (>= 0.0, <= 1.0)
   iron_fist_tension_threshold: 0.5  # Minimum capital_labor opposition gap for iron fist policy (C1.5). (>= 0.0, <= 1.0)
   trpf_efficiency_floor: 0.1  # Minimum extraction efficiency after TRPF decay (>= 0.0, <= 1.0)
+  gamma_basket_default: 0.68  # Modelled national-average basket visibility used when basket_calculator is unwired (~32% consumption subsidy, alpha=0.25/gamma_import=0.35 per A-004). (> 0.0, <= 1.0)
+  gamma_iii_default: 0.33  # Modelled national-average Department III (reproductive labor) visibility used when gamma_calculator is unwired. (> 0.0, <= 1.0)
   leontief_rent:  # Tunables for the Leontief imperial-rent integration (Spec 057)
     qcew_carry_forward_max_years: 5  # Maximum look-back window in years for the QCEW carry-forward fallback in the industry-to-county allocator; 0 disables carry-forward (strict no-data semantics). (>= 0, <= 20)
     phi_hour_outlier_threshold_low: -1000.0  # Per-county phi_hour values below this trigger a PhiHourOutlierEvent via EventBus (Spec 057 / FR-008). Pre-clamp negative values cannot reach phi_hour because of the two-layer axiom enforcement (research.md §R5); this threshold is defense-in-depth and validation only.
@@ -1002,3 +1004,23 @@ market:
   evaporation_gain: 0.15  # Game design: claim-holder wealth fraction destroyed per unit overhang — the fictitious wealth was counted as wealth; the snap un-counts it. Applies to bracket-0/1 roles (the ADR075 fold: bourgeoisies + petty bourgeoisie). (>= 0.0, <= 0.5)
   unemployment_gain: 0.08  # Game design: reserve-army ratio influx per unit overhang on territories carrying a wage relation (median_wage) — the crisis disciplines labor through the reserve army. (>= 0.0, <= 0.5)
   wealth_axis_kick_gain: 0.02  # Game design: w1 velocity impulse per unit overhang on the Program-21 wealth-share axis (conservation-preserving, the spec-114 FR-114-4 impulse form) — top-bracket paper wealth deflates relative to the whole. (>= 0.0, <= 0.1)
+
+# ---------------------------------------------------------------------
+# capital_vol3 — Volume III (surplus distribution / credit / counter-tendency) coefficients.
+# ---------------------------------------------------------------------
+capital_vol3:
+  debt_spiral_threshold: 0.5  # NOT YET READ BY ANY CODE — editing this value changes nothing in the shipped game. Intended meaning: the accumulated debt / annual surplus ratio at which a county's debt spiral becomes self-reinforcing (NBER 2001/2008 corporate debt-to-earnings recession analysis). DebtAccumulation tracks accumulated_debt and consecutive_deficit_ticks but never compares either against this ratio, and no debt-spiral flag exists on any model. The consumer is owed by U5 (debt_spiral opposition); until it lands, this row is pinned dead by tests/integration/economics/test_vol3_defines_reachability_live.py. (>= 0.0, <= 1.0)
+  distribution_epsilon: 1.0e-09  # Floating-point tolerance for the surplus distribution accounting identity s = p + i + r + t (IEEE 754 double tolerance). (> 0.0, <= 0.001)
+  counter_tendency_weights:  # Weights for the six TRPF counter-tendencies (exploitation_rate, wage_suppression, capital_cheapening, reserve_army, imperial_rent, fictitious_profits); must sum to 1.0.
+  - 0.2
+  - 0.15
+  - 0.15
+  - 0.15
+  - 0.2
+  - 0.15
+  imperial_rent_reference_scale: 500000000000.0  # Reference scale (dollars) normalizing imperial rent flow into the counter-tendency weight; Cope (2012) annual Global South-to-North transfer estimate. (> 0.0)
+  profit_rate_fallback: 0.05  # County profit rate used for the surplus-distribution interest calculation when the tensor registry has no profit_rate for this county-year. (>= 0.0, <= 1.0)
+  national_county_count: 3300  # Approximate US county count used to scale a single county's surplus up to a national proxy for the financialization ratio (FictitiousCapitalStock.ratio_to_real denominator). (>= 1, <= 5000)
+  default_rate_estimate: 0.02  # Loan default-rate estimate feeding credit_fragility. No FRED charge-off-rate series is wired for this (D4's fixture list has none) — a documented estimate, not live data; see spec 2026-07-18 vol3-money-scissors-design Table 3.6. (>= 0.0, <= 1.0)
+  credit_fragility_threshold: 0.001  # Expected-loss product (default_rate * credit_spread) above which the credit_fragility signal fires. Calibrated for DECIMAL inputs: FRED BAA10Y is divided by 100 at load (factory.py), peaking at 0.0556 in Dec 2008, so with the 2% default-rate estimate the crisis-peak product is 1.11e-3 and a calm-year product (0.018 spread) is 3.6e-4. The prior hardcoded 0.02 was calibrated for PERCENT-scaled inputs and required a 100% borrowing rate to fire, so the signal was hardwired False in every modeled year (U2.3 review finding 5). (> 0.0, <= 1.0)
+  housing_capitalization_rate_default: 0.05  # Fallback interest rate for housing ground-rent capitalization (construction-time snapshot; DefaultHousingDecompositionCalculator does not re-read a live per-tick rate). (>= 0.0, <= 1.0)

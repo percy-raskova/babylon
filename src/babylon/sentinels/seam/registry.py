@@ -923,16 +923,24 @@ _TERRITORY_TICK_METRICS: tuple[SeamEntry, ...] = (
         payload="tick_ground_rent",
         wire_keys=("tick_ground_rent",),
         scope=SeamScope.TERRITORY,
-        owner_layer="domain.economics.tick (RentExtraction.total_rent)",
-        liveness_class=LivenessClass.NOT_YET_COMPUTED,
+        owner_layer="domain.economics.tick (SurplusValueDistribution.ground_rent)",
+        liveness_class=LivenessClass.DECLARED_CONDITIONAL,
+        liveness_condition=_FINANCIAL_LIVENESS_CONDITION,
         dtype="float",
         read_paths=_TICK_DARK_EMITTERS,
-        spec_ref="Epochs audit · Wave 2 · Gap-1 · spec-116 Task 20b",
+        spec_ref="vol3-money-scissors U1 (2026-07-18); supersedes spec-116 Task 20b",
         notes=(
-            "STILL NOT_YET_COMPUTED after Task 20b: gated on "
-            "`_DefaultCountyRentalAdapter` returning None — no county rental series "
-            "in the reference DB; interest_calculator is now wired but ground rent "
-            "needs a real rental data source (future data-acquisition task)."
+            "U1 repoint: was permanently NOT_YET_COMPUTED because "
+            "write_tick_state_to_graph read RentExtraction.total_rent (Path "
+            "B, _DefaultCountyRentalAdapter unconditionally returns None — "
+            "no county rental series in the reference DB). Repointed to "
+            "SurplusValueDistribution.ground_rent (Path A, real FRED "
+            "B230RC0Q173SBEA rental income via DefaultDistributionCalculator), "
+            "which was always live wherever distribution_calculator + "
+            "tensor_registry are wired — same condition as tick_interest_burden. "
+            "The 3-way agricultural/resource/urban rent split (Path B) has no "
+            "data source and stays honestly absent as its own field "
+            "(rent_extraction), just no longer the source of this graph attr."
         ),
     ),
     SeamEntry(

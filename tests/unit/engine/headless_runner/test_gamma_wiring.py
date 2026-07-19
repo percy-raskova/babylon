@@ -101,13 +101,18 @@ def test_run_passes_gamma_calculator_to_service_container(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
 ) -> None:
-    """RED→GREEN: run() must pass gamma_calculator to ServiceContainer.create.
+    """RED->GREEN: run() must pass gamma_calculator AND tensor_registry to
+    ServiceContainer.create.
 
     Before E101 wiring: ``ServiceContainer.create(defines=defines)`` is
-    called with no ``gamma_calculator`` kwarg → assertion fails (RED).
+    called with no ``gamma_calculator`` kwarg -> assertion fails (RED).
     After wiring: ``_build_economics_overrides()`` is called and its
     return dict is unpacked into ``ServiceContainer.create(**overrides)``,
     so ``gamma_calculator`` is present and non-None (GREEN).
+
+    U1 (vol3-money-scissors) additionally threads ``scope_fips=config.scope_fips``
+    into that same call, so ``tensor_registry`` (and the Vol III financial
+    calculators) must ALSO be present in the captured kwargs.
 
     The Postgres / hydration / bridge layer is stubbed so we reach the
     ``ServiceContainer.create`` call site without a live database. A
@@ -200,3 +205,124 @@ def test_run_passes_gamma_calculator_to_service_container(
         "run() did not pass melt_calculator to ServiceContainer.create; "
         f"captured kwargs: {sorted(captured.keys())}"
     )
+    assert captured.get("tensor_registry") is not None, (
+        "run() did not pass tensor_registry to ServiceContainer.create; "
+        f"captured kwargs: {sorted(captured.keys())}"
+    )
+    assert captured.get("distribution_calculator") is not None, (
+        "run() did not pass distribution_calculator to ServiceContainer.create; "
+        f"captured kwargs: {sorted(captured.keys())}"
+    )
+
+
+def test_build_economics_overrides_wires_tensor_registry_and_financial_services() -> None:
+    """U1 (vol3-money-scissors): tensor_registry + Vol III financial
+    calculators are wired when scope_fips is provided alongside
+    session_factory.
+
+    Without this, `_get_county_surplus`/`_get_county_profit_rate`
+    (domain/economics/tick/system/__init__.py:1547,1599) read
+    `getattr(services, "tensor_registry", None)` as permanently None, so
+    `total_surplus` never exceeds 0 and `surplus_distribution` never
+    computes — even though `distribution_calculator` et al. are wired.
+    """
+    pytest.importorskip("sqlalchemy")
+    if not SQLITE_REF.exists():
+        pytest.skip(f"SQLite reference DB missing at {SQLITE_REF}")
+
+    from babylon.domain.economics.factory import load_fred_series_from_db
+    from babylon.engine.headless_runner.runner import _build_economics_overrides
+    from babylon.reference.database import get_normalized_session_factory
+
+    session_factory = get_normalized_session_factory()
+    overrides, leontief_session = _build_economics_overrides(
+        session_factory=session_factory,
+        scope_fips=frozenset({"26163"}),
+    )
+    try:
+        assert overrides.get("tensor_registry") is not None
+        registry = overrides["tensor_registry"]
+        assert "26163" in registry.all_fips()
+        # `all_fips()` only proves hydrate_counties() was CALLED for this
+        # FIPS — TensorRegistry.hydrate_counties() catches per-county-year
+        # failures and writes a (falsy) NoDataSentinel into the same cache
+        # dict all_fips() iterates, so key presence survives even total
+        # hydration failure. Prove real tensor content landed instead.
+        hydrated_years = registry.available_years("26163")
+        assert len(hydrated_years) == 15, (
+            "expected all 15 hydration years (2010-2024) to have been "
+            f"attempted for 26163, got {sorted(hydrated_years)}"
+        )
+        tensor_2020 = registry.get("26163", 2020)
+        assert tensor_2020, (
+            "26163/2020 hydrated to a falsy NoDataSentinel "
+            f"(reason={getattr(tensor_2020, 'reason', None)!r}) — registry "
+            "key presence does not imply real tensor data"
+        )
+
+        # Same class of gap on the financial-calculator side:
+        # create_financial_services() always returns non-None calculator
+        # objects even when fred_series_cache is empty (e.g. the reference
+        # DB is missing fact_fred_national/dim_fred_series) — the
+        # calculators just resolve to NoDataSentinel forever. Prove the
+        # FRED cache actually has data and that it reaches a calculator.
+        fred_cache = load_fred_series_from_db(session_factory)
+        assert {"FEDFUNDS", "GFDEBTN"} <= set(fred_cache), (
+            f"expected FEDFUNDS and GFDEBTN in the FRED cache, got {sorted(fred_cache)}"
+        )
+        assert fred_cache["FEDFUNDS"].get(2020) is not None, (
+            "FEDFUNDS/2020 missing from the FRED cache — financial "
+            "calculators would be wired to an empty series"
+        )
+
+        assert overrides.get("distribution_calculator") is not None
+        assert overrides.get("interest_calculator") is not None
+        assert overrides.get("fictitious_capital_calculator") is not None
+
+        interest_state_2020 = overrides["interest_calculator"].compute_interest_rate_state(2020)
+        assert interest_state_2020, (
+            "interest_calculator.compute_interest_rate_state(2020) returned a "
+            f"falsy NoDataSentinel (reason={getattr(interest_state_2020, 'reason', None)!r}) "
+            "— a non-None calculator object does not imply real FRED data reached it"
+        )
+        assert interest_state_2020.base_rate is not None
+    finally:
+        if leontief_session is not None:
+            leontief_session.close()
+
+
+def test_build_economics_overrides_threads_defines_into_housing_calculator() -> None:
+    """Honesty sweep (U2.4): ``_build_economics_overrides``'s
+    ``create_financial_services(fred_series_cache=fred_cache)`` call
+    (runner.py, inside the ``scope_fips`` branch) previously dropped the
+    ``defines`` parameter already passed into this very function, so
+    ``housing_calculator``'s interest rate silently reverted to a second,
+    independent ``GameDefines.load_default()`` call inside the factory
+    while every other ``capital_vol3`` coefficient honored the caller's
+    ``--defines`` overlay.
+    """
+    pytest.importorskip("sqlalchemy")
+    if not SQLITE_REF.exists():
+        pytest.skip(f"SQLite reference DB missing at {SQLITE_REF}")
+
+    from babylon.config.defines import CapitalVolumeIIIDefines, GameDefines
+    from babylon.engine.headless_runner.runner import _build_economics_overrides
+    from babylon.reference.database import get_normalized_session_factory
+
+    session_factory = get_normalized_session_factory()
+    custom_defines = GameDefines(
+        capital_vol3=CapitalVolumeIIIDefines(housing_capitalization_rate_default=0.12)
+    )
+
+    overrides, leontief_session = _build_economics_overrides(
+        session_factory=session_factory,
+        defines=custom_defines,
+        scope_fips=frozenset({"26163"}),
+    )
+    try:
+        housing_calc = overrides.get("housing_calculator")
+        assert housing_calc is not None
+        assert housing_calc._interest_rate == 0.12
+    finally:
+        if leontief_session is not None:
+            leontief_session.close()

@@ -54,6 +54,21 @@ class EconomicsFallbackTally:
     gamma_basket_calculator_none: int = 0
     gamma_iii_calculator_none: int = 0
     gamma_iii_returned_none: int = 0
+    #: Volume III financial-layer honesty sweep (U2.2 fix): the interest,
+    #: fictitious-capital, and surplus-distribution calculators return a
+    #: NoDataSentinel for any year outside their modeled window
+    #: (:func:`babylon.domain.economics.tensor.year_within_modeled_range`).
+    #: These counters make that degradation observable in the run manifest
+    #: instead of it silently zeroing out the financial layer.
+    vol3_interest_sentinel: int = 0
+    vol3_fictitious_sentinel: int = 0
+    vol3_distribution_sentinel: int = 0
+    #: U2.2 review-finding fix: rent and housing calculators sat next to the
+    #: three counters above but were never instrumented — the rent adapter
+    #: is a stub that returns NoDataSentinel for every county/year in the
+    #: default wiring, and it was previously swallowed with zero observability.
+    vol3_rent_sentinel: int = 0
+    vol3_housing_sentinel: int = 0
 
     def observe_wiring(self, *, melt: bool, basket: bool, gamma: bool) -> None:
         """Record calculator wired-vs-None status for this observation.
@@ -84,6 +99,26 @@ class EconomicsFallbackTally:
         """Count a gamma_III fallback taken because a wired calculator returned no data."""
         self.gamma_iii_returned_none += 1
 
+    def record_vol3_interest_sentinel(self) -> None:
+        """Count a NoDataSentinel from ``compute_interest_rate_state`` (year outside window)."""
+        self.vol3_interest_sentinel += 1
+
+    def record_vol3_fictitious_sentinel(self) -> None:
+        """Count a NoDataSentinel from ``compute_fictitious_capital`` (year outside window)."""
+        self.vol3_fictitious_sentinel += 1
+
+    def record_vol3_distribution_sentinel(self) -> None:
+        """Count a NoDataSentinel from ``compute_distribution`` (year outside window or absent data)."""
+        self.vol3_distribution_sentinel += 1
+
+    def record_vol3_rent_sentinel(self) -> None:
+        """Count a NoDataSentinel from ``compute_rent_extraction`` (absent data)."""
+        self.vol3_rent_sentinel += 1
+
+    def record_vol3_housing_sentinel(self) -> None:
+        """Count a NoDataSentinel from ``decompose_housing_value`` (absent data)."""
+        self.vol3_housing_sentinel += 1
+
     def to_dict(self) -> dict[str, int | bool]:
         """Serialize to a manifest-ready dict (stable key order).
 
@@ -100,6 +135,11 @@ class EconomicsFallbackTally:
             "gamma_basket_calculator_none": self.gamma_basket_calculator_none,
             "gamma_iii_calculator_none": self.gamma_iii_calculator_none,
             "gamma_iii_returned_none": self.gamma_iii_returned_none,
+            "vol3_interest_sentinel": self.vol3_interest_sentinel,
+            "vol3_fictitious_sentinel": self.vol3_fictitious_sentinel,
+            "vol3_distribution_sentinel": self.vol3_distribution_sentinel,
+            "vol3_rent_sentinel": self.vol3_rent_sentinel,
+            "vol3_housing_sentinel": self.vol3_housing_sentinel,
         }
 
 

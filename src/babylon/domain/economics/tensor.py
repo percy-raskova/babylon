@@ -130,6 +130,44 @@ class NoDataSentinel:
         return hash((self.fips, self.year, self.reason))
 
 
+# =============================================================================
+# VOLUME III MODELED-DATA YEAR WINDOW
+# =============================================================================
+
+MODELED_YEAR_FLOOR: Final[int] = 2007
+"""Lower bound of Volume III's modeled financial-data year window.
+
+Traceability: the FRED/Z.1 series backing Volume III (interest rates,
+credit aggregates, fictitious capital, surplus distribution) have no
+meaningful coverage before 2007.
+"""
+
+MODELED_YEAR_CEILING: Final[int] = 2040
+"""Upper bound of Volume III's modeled financial-data year window.
+
+Volume III structured models (interest rates, credit cycle, fictitious
+capital, surplus distribution, debt accumulation) represent real FRED/Z.1
+data (2010-2024) extrapolated to this administratively-chosen horizon
+(spec 2026-07-18 vol3-money-scissors-design, D1). Years outside this
+window are honestly absent (:class:`NoDataSentinel`) rather than
+fabricated — the endogenous price/fictitious scissors
+(:mod:`babylon.engine.systems.market_scissors`) carries the money system
+for the remainder of a campaign, unlike this structured layer.
+"""
+
+
+def year_within_modeled_range(year: int) -> bool:
+    """Return True if ``year`` falls inside Volume III's modeled-data window.
+
+    Args:
+        year: Calendar year to check.
+
+    Returns:
+        True if ``MODELED_YEAR_FLOOR <= year <= MODELED_YEAR_CEILING``.
+    """
+    return MODELED_YEAR_FLOOR <= year <= MODELED_YEAR_CEILING
+
+
 class DepartmentRow(BaseModel):
     """Value composition for a single Marxian department.
 

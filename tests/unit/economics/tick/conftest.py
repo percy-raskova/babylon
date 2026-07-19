@@ -111,8 +111,16 @@ class MockGammaIIICalculator:
         self._gamma_iii = gamma_iii
 
     def compute(self, year: int) -> GammaIII | NoDataSentinel:
-        """Return fixed GammaIII."""
-        if year < 2007 or year > 2040:
+        """Return fixed GammaIII.
+
+        Bound matches ``GammaIII.year``'s own ``le=2030`` field constraint
+        (gamma/types.py) — a stale ``year > 2040`` check here let years
+        2031-2040 fall through to the ``GammaIII(...)`` construction below
+        and crash with a pydantic ``ValidationError`` instead of degrading
+        to ``NoDataSentinel`` (found by task U2.8's full-campaign walk,
+        which is the first test to exercise that gap).
+        """
+        if year < 2007 or year > 2030:
             return NoDataSentinel(fips="USA", year=year, reason=f"Year {year} out of range")
         return GammaIII(
             year=year,
@@ -210,10 +218,11 @@ class MockImperialRentCalculator:
 
 
 class MockTensor:
-    """Mock tensor with configurable profit_rate attribute."""
+    """Mock tensor with configurable profit_rate/total_s attributes."""
 
-    def __init__(self, profit_rate: float | None = None) -> None:
+    def __init__(self, profit_rate: float | None = None, total_s: float | None = None) -> None:
         self.profit_rate = profit_rate
+        self.total_s = total_s
 
 
 class MockTensorRegistry:
@@ -402,16 +411,24 @@ def build_territory_graph(
 ) -> BabylonGraph:
     """Build a test graph with Territory nodes.
 
+    The county identity is stamped as an explicit ``county_fips`` attribute —
+    the ONLY place a territory carries one. Keying the node BY its FIPS is a
+    fixture convenience; production territory ids are constrained to
+    ``^(T[0-9]{3,}|[0-9a-f]{15})$`` and are never FIPS codes, so a fixture that
+    left the identity implicit in the node id would model a graph shape
+    production cannot emit (the fixture-vocabulary trap).
+
     Args:
         fips_codes: FIPS codes for territory nodes. Defaults to Wayne County.
 
     Returns:
-        DiGraph with territory nodes having _node_type="territory".
+        DiGraph with territory nodes having _node_type="territory" and a real
+        ``county_fips``.
     """
     if fips_codes is None:
         fips_codes = [WAYNE_FIPS]
 
     graph = BabylonGraph()
     for fips in fips_codes:
-        graph.add_node(fips, _node_type="territory")
+        graph.add_node(fips, _node_type="territory", county_fips=fips)
     return graph

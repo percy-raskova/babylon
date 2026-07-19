@@ -5,43 +5,86 @@ Feature: 024-capital-volume-iii (US5)
 
 from __future__ import annotations
 
+from functools import lru_cache
 from typing import Final
 
 from pydantic import BaseModel, ConfigDict, Field, computed_field
 
+from babylon.config.defines import GameDefines
+
 # ============================================================================
-# THRESHOLD CONSTANTS (Module-Level)
+# THRESHOLD ACCESSORS (GameDefines-backed)
 # ============================================================================
 
-COUNTER_TENDENCY_WEIGHTS: Final[list[float]] = [0.20, 0.15, 0.15, 0.15, 0.20, 0.15]
-"""Weights for the six TRPF counter-tendencies in net strength computation.
 
-Order: [exploitation_rate, wage_suppression, capital_cheapening,
-        reserve_army, imperial_rent, fictitious_profits]
+@lru_cache(maxsize=1)
+def _default_defines() -> GameDefines:
+    """Process-cached ``GameDefines.load_default()`` for the accessors below.
 
-Traceability: MLM-TW theory weights imperial rent (0.20) and exploitation
-rate increase (0.20) higher than other counter-tendencies because these
-are the primary mechanisms sustaining core profit rates. The remaining
-four tendencies receive equal weight (0.15 each). Sum = 1.0.
-"""
+    Same rationale as ``distribution.types._default_defines``: both accessors
+    are read from the ``net_counter_tendency`` computed field. Cached on FIRST
+    USE, not at import time; an explicit ``defines`` argument bypasses the
+    cache.
 
-IMPERIAL_RENT_REFERENCE_SCALE: Final[float] = 500_000_000_000.0
-"""Reference scale for imperial rent normalization (dollars).
+    MEASURED REACHABILITY (U2.3 review finding 1 — corrected 2026-07-18). An
+    earlier revision claimed this field is "evaluated on every model access
+    and every model_dump()". During a live tick it is evaluated ZERO times:
+    its owner ``DefaultCounterTendencyCalculator.compute_counter_tendencies``
+    is constructed in ``factory.py`` and injected in ``services.py`` but never
+    called anywhere in ``src/``. Instrumenting both accessors across a full
+    live Wayne run counted zero production invocations, so an edit to
+    ``capital_vol3.counter_tendency_weights`` or
+    ``capital_vol3.imperial_rent_reference_scale`` currently changes nothing
+    the shipped game computes. Pinned by
+    ``tests/integration/economics/test_vol3_defines_reachability_live.py``;
+    wiring is owed by U5 (counter-tendency opposition).
 
-Imperial rent flows are normalized to [0, 1] via::
+    RUN SCOPE (U2.3 review finding 3): this path resolves the ON-DISK
+    ``defines.yaml`` and cannot see a headless-runner ``--defines`` overlay.
+    Callers holding a run-scoped ``GameDefines`` must pass it explicitly.
+    """
+    return GameDefines.load_default()
 
-    normalized = min(imperial_rent_flow / IMPERIAL_RENT_REFERENCE_SCALE, 1.0)
 
-This makes the counter-tendency weight proportional to the actual
-magnitude of unequal exchange (Marx V3 Ch14 §V), capping at 1.0
-when the flow reaches the reference scale.
+def counter_tendency_weights(defines: GameDefines | None = None) -> list[float]:
+    """Weights for the six TRPF counter-tendencies in net strength computation.
 
-Traceability: The default $500B corresponds approximately to the annual
-net value transfer from Global South to Global North estimated by
-Cope (2012), *Divided World Divided Class*.  This constant is intended
-to be tunable: a future imperial rent specification may replace it
-with a GameDefines-sourced parameter calibrated against FRED trade data.
-"""
+    Order: [exploitation_rate, wage_suppression, capital_cheapening,
+            reserve_army, imperial_rent, fictitious_profits]
+
+    Traceability: MLM-TW theory weights imperial rent (0.20) and exploitation
+    rate increase (0.20) higher than other counter-tendencies because these
+    are the primary mechanisms sustaining core profit rates. The remaining
+    four tendencies receive equal weight (0.15 each). Sum = 1.0.
+    GameDefines-backed (``capital_vol3.counter_tendency_weights``) since the
+    2026-07-18 honesty sweep.
+
+    Reads ``capital_vol3.counter_tendency_weights`` from the passed
+    ``defines``, or from the process-cached default when omitted.
+    """
+    resolved = defines if defines is not None else _default_defines()
+    return resolved.capital_vol3.counter_tendency_weights
+
+
+def imperial_rent_reference_scale(defines: GameDefines | None = None) -> float:
+    """Reference scale for imperial rent normalization (dollars).
+
+    Imperial rent flows are normalized to [0, 1] via::
+
+        normalized = min(imperial_rent_flow / imperial_rent_reference_scale(), 1.0)
+
+    Traceability: The default $500B corresponds approximately to the annual
+    net value transfer from Global South to Global North estimated by
+    Cope (2012), *Divided World Divided Class*. GameDefines-backed
+    (``capital_vol3.imperial_rent_reference_scale``) since the 2026-07-18
+    honesty sweep.
+
+    Reads ``capital_vol3.imperial_rent_reference_scale`` from the passed
+    ``defines``, or from the process-cached default when omitted.
+    """
+    resolved = defines if defines is not None else _default_defines()
+    return resolved.capital_vol3.imperial_rent_reference_scale
+
 
 _IMPERIAL_RENT_EPSILON: Final[float] = 1e-10
 """Epsilon for imperial rent normalization (prevents division by zero)."""
@@ -63,7 +106,7 @@ class CounterTendencyStrength(BaseModel):
     6. Fictitious profits (financial sector)
 
     The computed ``net_counter_tendency`` is a weighted sum using
-    :data:`COUNTER_TENDENCY_WEIGHTS`. Positive values indicate
+    :func:`counter_tendency_weights`. Positive values indicate
     counter-tendencies dominating; negative indicates TRPF dominating.
 
     Args:
@@ -108,15 +151,16 @@ class CounterTendencyStrength(BaseModel):
           = cheapening = positive CT)
         - [3] reserve_army_size: direct (high unemployment = positive CT)
         - [4] imperial_rent_flow: linear normalization against
-          ``IMPERIAL_RENT_REFERENCE_SCALE``, capped at 1.0.
+          :func:`imperial_rent_reference_scale`, capped at 1.0.
           The *magnitude* of unequal exchange matters (Marx V3 Ch14 §V).
         - [5] fictitious_profit_share: direct
         """
         # Magnitude-sensitive normalization: larger flows → stronger CT.
-        # Capped at 1.0 at the reference scale. Extensible: adjust
-        # IMPERIAL_RENT_REFERENCE_SCALE to recalibrate.
+        # Capped at 1.0 at the reference scale. Extensible: edit
+        # capital_vol3.imperial_rent_reference_scale in defines.yaml to
+        # recalibrate — no code change needed since the 2026-07-18 sweep.
         imperial_normalized = min(
-            self.imperial_rent_flow / max(IMPERIAL_RENT_REFERENCE_SCALE, _IMPERIAL_RENT_EPSILON),
+            self.imperial_rent_flow / max(imperial_rent_reference_scale(), _IMPERIAL_RENT_EPSILON),
             1.0,
         )
 
@@ -128,4 +172,4 @@ class CounterTendencyStrength(BaseModel):
             imperial_normalized,
             self.fictitious_profit_share,
         ]
-        return sum(w * v for w, v in zip(indicators, COUNTER_TENDENCY_WEIGHTS, strict=True))
+        return sum(w * v for w, v in zip(indicators, counter_tendency_weights(), strict=True))

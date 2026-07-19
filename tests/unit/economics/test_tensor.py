@@ -11,7 +11,14 @@ from __future__ import annotations
 import pytest
 from pydantic import ValidationError
 
-from babylon.domain.economics.tensor import DepartmentRow, NoDataSentinel, ValueTensor4x3
+from babylon.domain.economics.tensor import (
+    MODELED_YEAR_CEILING,
+    MODELED_YEAR_FLOOR,
+    DepartmentRow,
+    NoDataSentinel,
+    ValueTensor4x3,
+    year_within_modeled_range,
+)
 
 
 class TestDepartmentRow:
@@ -602,3 +609,20 @@ class TestNoDataSentinel:
         assert ":" in sentinel.reason
         assert "26163" in sentinel.reason
         assert "2022" in sentinel.reason
+
+
+class TestYearWithinModeledRange:
+    """year_within_modeled_range boundary contract (honesty sweep, U2)."""
+
+    def test_floor_and_ceiling_are_2007_and_2040(self) -> None:
+        assert MODELED_YEAR_FLOOR == 2007
+        assert MODELED_YEAR_CEILING == 2040
+
+    def test_boundaries_are_inclusive(self) -> None:
+        assert year_within_modeled_range(2007) is True
+        assert year_within_modeled_range(2040) is True
+
+    def test_outside_window_is_false(self) -> None:
+        assert year_within_modeled_range(2006) is False
+        assert year_within_modeled_range(2041) is False
+        assert year_within_modeled_range(2109) is False

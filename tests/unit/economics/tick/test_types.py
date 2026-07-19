@@ -59,8 +59,8 @@ class TestNationalTickParameters:
         with pytest.raises(ValidationError):
             params.tau = 65.0  # type: ignore[misc]
 
-    def test_year_bounds(self) -> None:
-        """Verify year constraint ge=2007, le=2040."""
+    def test_year_floor_bound(self) -> None:
+        """Verify year floor ge=2007 (no upper bound — MELT runs the whole campaign)."""
         with pytest.raises(ValidationError, match="year"):
             NationalTickParameters(
                 year=2006,
@@ -72,17 +72,26 @@ class TestNationalTickParameters:
                 tau_effective=42.16,
                 v_reproduction=12.0,
             )
-        with pytest.raises(ValidationError, match="year"):
-            NationalTickParameters(
-                year=2041,
-                tau=62.0,
-                gamma_basket=0.68,
-                gamma_basket_raw=0.68,
-                gamma_III=0.33,
-                gamma_III_raw=0.33,
-                tau_effective=42.16,
-                v_reproduction=12.0,
-            )
+
+    def test_year_has_no_upper_bound(self) -> None:
+        """Honesty sweep (spec 2026-07-18 vol3-money-scissors-design, U2):
+
+        MELT/gamma_basket/gamma_III are computed for the WHOLE campaign
+        horizon (SIM_EPOCH_YEAR=2010 .. +100yr), unlike Volume III's
+        FRED-bound financial models — so this model must accept a real
+        late-campaign year instead of the caller clamping/fabricating one.
+        """
+        params = NationalTickParameters(
+            year=2109,
+            tau=62.0,
+            gamma_basket=0.68,
+            gamma_basket_raw=0.68,
+            gamma_III=0.33,
+            gamma_III_raw=0.33,
+            tau_effective=42.16,
+            v_reproduction=12.0,
+        )
+        assert params.year == 2109
 
     def test_tau_must_be_positive(self) -> None:
         """Verify tau gt=0 constraint."""
@@ -164,6 +173,24 @@ class TestDerivedRates:
         with pytest.raises(ValidationError, match="phi_hour"):
             DerivedRates(fips="26163", year=2015, phi_hour=-1.0)
 
+    def test_year_has_no_upper_bound(self) -> None:
+        """Honesty sweep (spec 2026-07-18 vol3-money-scissors-design, U2):
+
+        DerivedRates.year is copied straight from CountyEconomicState.year
+        (derived_rates.py), which has no upper bound (see
+        TestCountyEconomicState.test_year_has_no_upper_bound below) — a
+        stale ``le=2040`` here would crash ``_compute_tick_summary`` every
+        tick past year 2040 even though the county state it derives from
+        was already fixed.
+        """
+        rates = DerivedRates(fips="26163", year=2109, phi_hour=3.50)
+        assert rates.year == 2109
+
+    def test_year_floor_bound(self) -> None:
+        """Verify year floor ge=2007."""
+        with pytest.raises(ValidationError, match="year"):
+            DerivedRates(fips="26163", year=2006, phi_hour=3.50)
+
 
 class TestCountyEconomicState:
     """Tests for CountyEconomicState frozen model."""
@@ -216,6 +243,70 @@ class TestCountyEconomicState:
                 throughput_position=0.9,
                 supply_chain_depth=5.5,
                 unemployment_rate=0.05,
+                u6_rate=0.10,
+                pter_rate=0.04,
+                nilf_rate=0.06,
+                median_wage=21.0,
+                employment=500000.0,
+                class_distribution=dist,
+                phi_hour=3.50,
+            )
+
+    def test_year_has_no_upper_bound(self) -> None:
+        """Honesty sweep (spec 2026-07-18 vol3-money-scissors-design, U2):
+
+        The county's own reported year has no upper bound — the simulation
+        runs for the whole campaign horizon (SIM_EPOCH_YEAR + up to ~100
+        years), unlike Volume III's calculators whose FRED/Z.1-bound
+        outputs correctly degrade to NoDataSentinel outside their modeled
+        window instead. class_distribution keeps its own separate [2007,
+        2030] window (Feature 016), unaffected by this fix.
+        """
+        dist = ClassDistribution(
+            fips="26163",
+            year=2015,
+            bourgeoisie_share=0.01,
+            petit_bourgeoisie_share=0.09,
+            labor_aristocracy_share=0.40,
+            proletariat_share=0.35,
+            lumpenproletariat_share=0.15,
+        )
+        state = CountyEconomicState(
+            fips="26163",
+            year=2109,
+            capital_stock=1e9,
+            throughput_position=0.9,
+            supply_chain_depth=2.1,
+            unemployment_rate=0.053,
+            u6_rate=0.10,
+            pter_rate=0.04,
+            nilf_rate=0.06,
+            median_wage=21.0,
+            employment=500000.0,
+            class_distribution=dist,
+            phi_hour=3.50,
+        )
+        assert state.year == 2109
+
+    def test_year_floor_bound(self) -> None:
+        """Verify year floor ge=2007."""
+        dist = ClassDistribution(
+            fips="26163",
+            year=2007,
+            bourgeoisie_share=0.01,
+            petit_bourgeoisie_share=0.09,
+            labor_aristocracy_share=0.40,
+            proletariat_share=0.35,
+            lumpenproletariat_share=0.15,
+        )
+        with pytest.raises(ValidationError, match="year"):
+            CountyEconomicState(
+                fips="26163",
+                year=2006,
+                capital_stock=1e9,
+                throughput_position=0.9,
+                supply_chain_depth=2.1,
+                unemployment_rate=0.053,
                 u6_rate=0.10,
                 pter_rate=0.04,
                 nilf_rate=0.06,
@@ -294,6 +385,51 @@ class TestTickSummary:
         assert summary.counties_processed == 3
         assert summary.phi_aggregate == 1e12
 
+    def test_year_has_no_upper_bound(self) -> None:
+        """Honesty sweep (spec 2026-07-18 vol3-money-scissors-design, U2):
+
+        TickSummary is the outermost per-tick aggregate, assembled every
+        tick for the whole campaign horizon — no legitimate ceiling
+        (mirrors CountyEconomicState.year / NationalTickParameters.year).
+        """
+        summary = TickSummary(
+            year=2109,
+            counties_processed=3,
+            phi_aggregate=1e12,
+            national_melt=62.0,
+            mean_profit_rate=0.15,
+            mean_occ=3.2,
+            mean_exploitation_rate=1.5,
+            national_class_distribution={
+                "bourgeoisie": 0.01,
+                "petit_bourgeoisie": 0.09,
+                "labor_aristocracy": 0.40,
+                "proletariat": 0.35,
+                "lumpenproletariat": 0.15,
+            },
+        )
+        assert summary.year == 2109
+
+    def test_year_floor_bound(self) -> None:
+        """Verify year floor ge=2007."""
+        with pytest.raises(ValidationError, match="year"):
+            TickSummary(
+                year=2006,
+                counties_processed=3,
+                phi_aggregate=1e12,
+                national_melt=62.0,
+                mean_profit_rate=0.15,
+                mean_occ=3.2,
+                mean_exploitation_rate=1.5,
+                national_class_distribution={
+                    "bourgeoisie": 0.01,
+                    "petit_bourgeoisie": 0.09,
+                    "labor_aristocracy": 0.40,
+                    "proletariat": 0.35,
+                    "lumpenproletariat": 0.15,
+                },
+            )
+
 
 class TestSimulationTickState:
     """Tests for SimulationTickState frozen model."""
@@ -337,6 +473,30 @@ class TestSimulationTickState:
         """Verify frozen model rejects mutation."""
         with pytest.raises(ValidationError):
             sample_tick_state.year = 2016  # type: ignore[misc]
+
+    def test_year_has_no_upper_bound(
+        self,
+        sample_national_params: NationalTickParameters,
+        sample_county_state: CountyEconomicState,
+        sample_coefficients: SmoothedCoefficients,
+    ) -> None:
+        """Honesty sweep (spec 2026-07-18 vol3-money-scissors-design, U2):
+
+        SimulationTickState is the outermost, always-executed assembly at
+        the end of TickDynamicsSystem.step()'s annual pipeline, fed the
+        raw unclamped ``year`` local directly (system/__init__.py). A
+        stale ``le=2040`` bound here crashes any campaign that reaches
+        year 2041 (tick ~1612 of a 5200-tick / 100-year campaign) even
+        though the U2.1 fix already removed the equivalent ceiling from
+        NationalTickParameters.year, which feeds this same construction.
+        """
+        state = SimulationTickState(
+            year=2109,
+            national_params=sample_national_params,
+            county_states={"26163": sample_county_state},
+            coefficients=sample_coefficients,
+        )
+        assert state.year == 2109
 
 
 class TestCrisisPhase:

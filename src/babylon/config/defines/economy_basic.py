@@ -376,6 +376,33 @@ class EconomyDefines(BaseModel):
         description="Minimum extraction efficiency after TRPF decay",
     )
 
+    # MELT gamma modelled defaults (honesty sweep, U2.2 additional work).
+    # TickDynamicsSystem Step 2 (_compute_national_params) substitutes these
+    # when basket_calculator/gamma_calculator is unwired — a deliberate
+    # national-average modelled default (per EconomicsFallbackTally, C.8 /
+    # spec 2.R), not a data-availability gap. Constitution III.1: every
+    # substituted coefficient on a live path is a GameDefines field, never
+    # an inline literal.
+    gamma_basket_default: float = Field(
+        default=0.68,
+        gt=0.0,
+        le=1.0,
+        description=(
+            "Modelled national-average basket visibility used when "
+            "basket_calculator is unwired (~32% consumption subsidy, "
+            "alpha=0.25/gamma_import=0.35 per A-004)."
+        ),
+    )
+    gamma_iii_default: float = Field(
+        default=0.33,
+        gt=0.0,
+        le=1.0,
+        description=(
+            "Modelled national-average Department III (reproductive labor) "
+            "visibility used when gamma_calculator is unwired."
+        ),
+    )
+
     # Spec 057 — Leontief imperial-rent pipeline tunables
     leontief_rent: LeontiefRentDefines = Field(
         default_factory=lambda: LeontiefRentDefines(),

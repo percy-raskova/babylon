@@ -160,6 +160,34 @@ class TestDetroitWiring:
                 f"profit_rate={first['profit_rate']} looks like capital_stock, not a rate"
             )
 
+    def test_from_sqlite_threads_defines_into_housing_calculator(self) -> None:
+        """Honesty sweep (U2.4): ``from_sqlite``'s
+        ``create_financial_services(fred_series_cache=fred_cache)`` call
+        previously dropped the already-resolved/hydrated ``defines`` this
+        method passes to ``ServiceContainer.create`` a few lines later, so
+        ``housing_calculator``'s interest rate silently reverted to a
+        second, independent ``GameDefines.load_default()`` call inside the
+        factory — inert relative to a caller-supplied ``defines`` override.
+        """
+        from babylon.config.defines import CapitalVolumeIIIDefines, GameDefines
+        from babylon.engine.simulation import Simulation
+
+        custom_defines = GameDefines(
+            capital_vol3=CapitalVolumeIIIDefines(housing_capitalization_rate_default=0.12)
+        )
+
+        sim = Simulation.from_sqlite(
+            ["26163", "26125"],
+            year=2022,
+            years=[2022],
+            defines=custom_defines,
+        )
+
+        assert sim._calculator_overrides is not None
+        housing_calc = sim._calculator_overrides.get("housing_calculator")
+        assert housing_calc is not None
+        assert housing_calc._interest_rate == 0.12
+
     def test_calculator_overrides_none_without_years(self) -> None:
         """from_sqlite WITHOUT years param does NOT wire calculators."""
         from babylon.engine.simulation import Simulation

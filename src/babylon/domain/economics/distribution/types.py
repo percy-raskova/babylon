@@ -5,29 +5,85 @@ Feature: 024-capital-volume-iii (US1)
 
 from __future__ import annotations
 
-from typing import Final
+from functools import lru_cache
 
 from pydantic import BaseModel, ConfigDict, Field, computed_field
 
+from babylon.config.defines import GameDefines
+from babylon.domain.economics.tensor import year_within_modeled_range
+
 # ============================================================================
-# THRESHOLD CONSTANTS (Module-Level)
+# THRESHOLD ACCESSORS (GameDefines-backed)
 # ============================================================================
 
-DEBT_SPIRAL_THRESHOLD: Final[float] = 0.5
-"""Accumulated debt / annual surplus ratio triggering crisis flag.
 
-Traceability: When cumulative enterprise losses (accumulated debt)
-exceed 50% of a county's annual surplus value, the debt spiral is
-structurally self-reinforcing. Derived from NBER recession analysis
-of corporate debt-to-earnings ratios during 2001 and 2008 recessions.
-"""
+@lru_cache(maxsize=1)
+def _default_defines() -> GameDefines:
+    """Process-cached ``GameDefines.load_default()`` for the accessors below.
 
-DISTRIBUTION_EPSILON: Final[float] = 1e-9
-"""Floating-point tolerance for surplus distribution accounting identity.
+    Cached on FIRST USE, not at import time — which is the whole point of the
+    migration. A process that never touches these accessors (layer-0.5
+    sentinels, the docs build) never reads the file, and any caller that holds
+    a real ``GameDefines`` passes it explicitly and bypasses the cache
+    entirely. Tests that need a different default call
+    ``_default_defines.cache_clear()``.
 
-The identity s = p + i + r + t must hold within this epsilon.
-Standard IEEE 754 double-precision tolerance for financial accounting.
-"""
+    MEASURED REACHABILITY (U2.3 review finding 1 — corrected 2026-07-18). An
+    earlier revision of this docstring justified the cache by claiming
+    ``distribution_complete`` is "evaluated per county per tick". It is not:
+    instrumenting these accessors across a full live Wayne run counted ZERO
+    production invocations of either. ``distribution_complete`` has no
+    production reader — ``graph_bridge.py`` publishes ``interest_payments``,
+    ``ground_rent``, ``rentier_share``, ``profit_of_enterprise``,
+    ``financialization_share`` and ``claims_exceed_surplus`` but not this
+    field, and no county-state ``model_dump()`` occurs in the tick or
+    persistence path, so the lazy ``computed_field`` never fires.
+    ``debt_spiral_threshold`` has no consumer at all.
+
+    The cache is still correct (an uncached ``load_default()`` re-parses
+    ``defines.yaml`` from disk on every call), but it is currently insurance
+    against a future hot path rather than a description of one. The live
+    counts are pinned by
+    ``tests/integration/economics/test_vol3_defines_reachability_live.py``;
+    wiring is owed by U3 (graph publication) and U5 (debt_spiral opposition).
+
+    RUN SCOPE (U2.3 review finding 3): this path resolves the ON-DISK
+    ``defines.yaml`` and cannot see a headless-runner ``--defines`` overlay.
+    Callers holding a run-scoped ``GameDefines`` must pass it explicitly.
+    """
+    return GameDefines.load_default()
+
+
+def debt_spiral_threshold(defines: GameDefines | None = None) -> float:
+    """Accumulated debt / annual surplus ratio triggering crisis flag.
+
+    Traceability: When cumulative enterprise losses (accumulated debt)
+    exceed 50% of a county's annual surplus value, the debt spiral is
+    structurally self-reinforcing. Derived from NBER recession analysis
+    of corporate debt-to-earnings ratios during 2001 and 2008 recessions.
+    GameDefines-backed (``capital_vol3.debt_spiral_threshold``) since the
+    2026-07-18 honesty sweep — moddable via defines.yaml.
+
+    Reads ``capital_vol3.debt_spiral_threshold`` from the passed
+    ``defines``, or from the process-cached default when omitted.
+    """
+    resolved = defines if defines is not None else _default_defines()
+    return resolved.capital_vol3.debt_spiral_threshold
+
+
+def distribution_epsilon(defines: GameDefines | None = None) -> float:
+    """Floating-point tolerance for surplus distribution accounting identity.
+
+    The identity s = p + i + r + t must hold within this epsilon.
+    Standard IEEE 754 double-precision tolerance for financial accounting.
+    GameDefines-backed (``capital_vol3.distribution_epsilon``) since the
+    2026-07-18 honesty sweep.
+
+    Reads ``capital_vol3.distribution_epsilon`` from the passed
+    ``defines``, or from the process-cached default when omitted.
+    """
+    resolved = defines if defines is not None else _default_defines()
+    return resolved.capital_vol3.distribution_epsilon
 
 
 # ============================================================================
@@ -39,7 +95,7 @@ class SurplusValueDistribution(BaseModel):
     """Decomposition of surplus value into competing claims.
 
     Feature: 024-capital-volume-iii (FR-001)
-    Identity: s = p + i + r + t (within DISTRIBUTION_EPSILON)
+    Identity: s = p + i + r + t (within :func:`distribution_epsilon`)
 
     Profit of enterprise is the residual after interest, rent, and taxes
     are deducted from total surplus. It may go negative when claims exceed
@@ -84,7 +140,7 @@ class SurplusValueDistribution(BaseModel):
             + self.taxes_on_surplus
             + self.profit_of_enterprise
         )
-        return bool(abs(distributed - self.total_surplus_produced) < DISTRIBUTION_EPSILON)
+        return bool(abs(distributed - self.total_surplus_produced) < distribution_epsilon())
 
     @computed_field  # type: ignore[prop-decorator]
     @property
@@ -168,14 +224,25 @@ class DebtAccumulation(BaseModel):
         If profit < 0: debt increases by |profit|, deficit ticks increment.
         If profit >= 0: debt decreases by min(profit, debt), deficit ticks reset.
 
+        Honest absence (Constitution III.11): if ``new_year`` falls outside
+        Volume III's modeled financial-data window
+        (:func:`babylon.domain.economics.tensor.year_within_modeled_range`),
+        ``current`` is returned UNCHANGED — the debt state carries forward
+        rather than raising a year-range ``ValidationError`` or fabricating
+        a value for an unmodeled year (spec 2026-07-18
+        vol3-money-scissors-design, D1's "endogenous thereafter" principle).
+
         Args:
             current: Current debt state.
             enterprise_profit: Enterprise profit for the period (may be negative).
             new_year: Calendar year for the new state.
 
         Returns:
-            New DebtAccumulation reflecting the update.
+            New DebtAccumulation reflecting the update, or ``current``
+            unchanged if ``new_year`` is outside the modeled window.
         """
+        if not year_within_modeled_range(new_year):
+            return current
         if enterprise_profit < 0:
             new_debt = current.accumulated_debt + abs(enterprise_profit)
             new_ticks = current.consecutive_deficit_ticks + 1

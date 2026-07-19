@@ -20,13 +20,15 @@ import pytest
 
 EXPECTED_DEFINES_PUBLIC: frozenset[str] = frozenset(
     {
-        # 44 child *Defines classes (41 from Spec 058 + 1 from Spec 057: LeontiefRentDefines
+        # 45 child *Defines classes (41 from Spec 058 + 1 from Spec 057: LeontiefRentDefines
         # + 1 from Epistemic Horizon Phase 1: EpistemicHorizonDefines
-        # + 1 from the Doctrine Tree mechanics: DoctrineDefines)
+        # + 1 from the Doctrine Tree mechanics: DoctrineDefines
+        # + 1 from Vol III money-through-the-scissors U2.3: CapitalVolumeIIIDefines)
         "AidDefines",
         "ArcGISDefines",
         "BehavioralDefines",
         "BifurcationDefines",
+        "CapitalVolumeIIIDefines",
         "CarceralDefines",
         "ClassDynamicsDefines",
         "ClassSystemDefines",

@@ -4745,6 +4745,54 @@ class TestBridgeEconomicsOverridesWiresCirculationAndFinancialServices:
             if leontief_session is not None:
                 leontief_session.close()
 
+    def test_overrides_thread_defines_into_housing_calculator(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Honesty sweep (U2.4): ``_bridge_economics_overrides`` resolves its
+        own ``defines = GameDefines.load_default()`` (already threaded into
+        ``create_leontief_rent_services`` above) but previously dropped it
+        from the ``create_financial_services(fred_series_cache=fred_cache)``
+        call — ``housing_calculator``'s interest rate silently reverted to a
+        SECOND, independent ``GameDefines.load_default()`` call inside the
+        factory instead of the one this function (and thus this session)
+        actually resolved.
+
+        ``GameDefines.load_default`` is monkeypatched to return a DIFFERENT
+        value on its second call — a plain single fixed return would pass
+        whether or not the fix is applied (``create_financial_services``'s
+        own internal fallback is also ``GameDefines.load_default()``, so a
+        constant stub can't distinguish "reused the resolved defines" from
+        "fell back to a second independent load"). Only the fix (threading
+        the already-resolved ``defines`` through directly, avoiding a
+        second call) keeps the housing rate at the first call's value.
+        """
+        from babylon.config.defines import CapitalVolumeIIIDefines, GameDefines
+        from game.engine_bridge import _bridge_economics_overrides
+
+        custom_defines = GameDefines(
+            capital_vol3=CapitalVolumeIIIDefines(housing_capitalization_rate_default=0.12)
+        )
+        call_count = {"n": 0}
+
+        def _fake_load_default(cls: type[GameDefines]) -> GameDefines:
+            call_count["n"] += 1
+            return custom_defines if call_count["n"] == 1 else GameDefines()
+
+        monkeypatch.setattr(GameDefines, "load_default", classmethod(_fake_load_default))
+
+        overrides, leontief_session = _bridge_economics_overrides(())
+        try:
+            housing_calc = overrides.get("housing_calculator")
+            assert housing_calc is not None
+            assert housing_calc._interest_rate == 0.12, (
+                "housing_calculator._interest_rate reverted to a SECOND, "
+                "independent GameDefines.load_default() call instead of "
+                "reusing the defines this function already resolved"
+            )
+        finally:
+            if leontief_session is not None:
+                leontief_session.close()
+
 
 @pytest.mark.requires_reference_db
 class TestBridgeEconomicsOverridesWiresVol1ReserveArmyServices:
@@ -4797,3 +4845,33 @@ class TestBridgeEconomicsOverridesWiresVol1ReserveArmyServices:
         finally:
             if leontief_session is not None:
                 leontief_session.close()
+
+
+class TestGroupCDDocstringsHonest:
+    """Honesty sweep (U2, Row K): the 'both gating services are unwired'
+    claim was false for 8 of 9 Group C/D rows."""
+
+    def test_carry_tick_dynamics_flows_comment_corrected(self) -> None:
+        import inspect
+
+        from game.engine_bridge import _carry_tick_dynamics_flows
+
+        source = inspect.getsource(_carry_tick_dynamics_flows)
+        assert "both gating services are unwired" not in source
+        assert "CORRECTED 2026-07-18" in source
+
+    def test_serialize_territory_docstring_corrected(self) -> None:
+        import inspect
+
+        doc = _serialize_territory.__doc__ or ""
+        assert "both gating services are unwired" not in doc
+        assert "CORRECTED 2026-07-18" in doc
+        source = inspect.getsource(_serialize_territory)
+        assert "until turnover_profile_source /" not in source
+
+
+# Catalog docstring tests: NONE IN THIS TASK.
+# U5.3's TestCatalogDocstringAccuracy is authoritative — it pins the
+# docstring against build_default_registry().keys, so it cannot go stale
+# again at 6 OR at 10. A hardcoded "six bound contradictions" assertion
+# here would red the moment U5.2 grows the registry to ten.

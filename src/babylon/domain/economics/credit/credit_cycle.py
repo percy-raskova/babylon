@@ -13,14 +13,17 @@ See Also:
 
 from __future__ import annotations
 
-from typing import Protocol
+from typing import TYPE_CHECKING, Protocol
 
 from babylon.domain.economics.credit.types import (
     OVEREXTENSION_DEFAULT_RATE,
     RECOVERY_CONSECUTIVE_PERIODS,
-    STAGNATION_CREDIT_GROWTH,
     CreditCyclePhase,
+    stagnation_credit_growth,
 )
+
+if TYPE_CHECKING:
+    from babylon.config.defines import GameDefines
 
 
 class CreditCycleDetector(Protocol):
@@ -62,11 +65,20 @@ class DefaultCreditCycleDetector:
 
     - EXPANSION -> OVEREXTENSION: credit_growth > 0 AND profit_rate_trend < 0
     - OVEREXTENSION -> CRISIS: default_rate > OVEREXTENSION_DEFAULT_RATE
-    - OVEREXTENSION -> STAGNATION: abs(credit_growth) < STAGNATION_CREDIT_GROWTH
+    - OVEREXTENSION -> STAGNATION: abs(credit_growth) < stagnation_credit_growth()
     - CRISIS -> RECOVERY: profit_rate_trend > 0 for RECOVERY_CONSECUTIVE_PERIODS
-    - RECOVERY -> EXPANSION: credit_growth > STAGNATION_CREDIT_GROWTH
-    - RECOVERY -> STAGNATION: abs(credit_growth) < STAGNATION_CREDIT_GROWTH
+    - RECOVERY -> EXPANSION: credit_growth > stagnation_credit_growth()
+    - RECOVERY -> STAGNATION: abs(credit_growth) < stagnation_credit_growth()
+
+    Args:
+        defines: Optional run-scoped ``GameDefines``. Supplied, the stagnation
+            threshold resolves from it; omitted, it resolves the process
+            default, which cannot see a headless-runner ``--defines`` overlay
+            (U2.3 review finding 3).
     """
+
+    def __init__(self, defines: GameDefines | None = None) -> None:
+        self._defines = defines
 
     def evaluate(
         self,
@@ -123,7 +135,7 @@ class DefaultCreditCycleDetector:
         """OVEREXTENSION -> CRISIS (high defaults) or STAGNATION (low growth)."""
         if default_rate > OVEREXTENSION_DEFAULT_RATE:
             return (CreditCyclePhase.CRISIS, 0)
-        if abs(credit_growth) < STAGNATION_CREDIT_GROWTH:
+        if abs(credit_growth) < stagnation_credit_growth(self._defines):
             return (CreditCyclePhase.STAGNATION, 0)
         return (CreditCyclePhase.OVEREXTENSION, 0)
 
@@ -140,8 +152,9 @@ class DefaultCreditCycleDetector:
 
     def _evaluate_recovery(self, credit_growth: float) -> tuple[CreditCyclePhase, int]:
         """RECOVERY -> EXPANSION (credit resumes) or STAGNATION (stalls)."""
-        if credit_growth > STAGNATION_CREDIT_GROWTH:
+        threshold = stagnation_credit_growth(self._defines)
+        if credit_growth > threshold:
             return (CreditCyclePhase.EXPANSION, 0)
-        if abs(credit_growth) < STAGNATION_CREDIT_GROWTH:
+        if abs(credit_growth) < threshold:
             return (CreditCyclePhase.STAGNATION, 0)
         return (CreditCyclePhase.RECOVERY, 0)

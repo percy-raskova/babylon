@@ -14,8 +14,12 @@ from typing import Any
 
 import pytest
 
+from babylon.config.defines import GameDefines
+from babylon.config.defines.economy_basic import EconomyDefines
+from babylon.domain.economics.credit.types import InterestRateState
 from babylon.domain.economics.dynamics.types import ClassDistribution
 from babylon.domain.economics.reserve_army.types import ReserveArmyState
+from babylon.domain.economics.tensor import NoDataSentinel
 from babylon.domain.economics.tick.system import (
     DEFAULT_V_REPRODUCTION,
     WEEKS_PER_YEAR,
@@ -539,15 +543,17 @@ class TestBootstrapCountyStates:
         county = result[WAYNE_FIPS]
         assert county.class_distribution.year == 2030
 
-    def test_bootstrap_year_clamping_county_state(self) -> None:
-        """CountyEconomicState year clamped to [2007, 2040]."""
+    def test_bootstrap_year_has_no_upper_bound(self) -> None:
+        """Honesty sweep (U2 fix): CountyEconomicState year is NOT clamped/
+        fabricated to 2040 above the floor — it flows through as the real
+        simulation year (mirrors NationalTickParameters.year, U2.1)."""
         system = TickDynamicsSystem()
         graph = build_territory_graph()
         graph.nodes[WAYNE_FIPS]["tick_capital_stock"] = 1e9
 
         result = system._bootstrap_county_states(graph, 2045)
         county = result[WAYNE_FIPS]
-        assert county.year == 2040
+        assert county.year == 2045
 
     def test_bootstrap_year_clamping_below_minimum(self) -> None:
         """Year below 2007 clamped to 2007 for both dist and county."""
@@ -1583,15 +1589,17 @@ class TestComputeTickSummary:
 
         assert result.mean_profit_rate == pytest.approx(0.0)
 
-    def test_year_clamping(self) -> None:
-        """Year outside [2007, 2040] is clamped."""
+    def test_year_passes_through_unclamped_above_2040(self) -> None:
+        """Honesty sweep (U2 fix): TickSummary.year is NOT clamped/fabricated
+        to 2040 — it flows through as the real simulation year (mirrors
+        CountyEconomicState.year / NationalTickParameters.year, U2.1)."""
         system = TickDynamicsSystem()
         county = _make_county()
         states = {WAYNE_FIPS: county}
         params = _make_national_params()
 
         result = system._compute_tick_summary(2050, states, params)
-        assert result.year == 2040
+        assert result.year == 2050
 
     def test_counties_processed_count(self) -> None:
         """counties_processed equals number of county states."""
@@ -1787,8 +1795,11 @@ class TestComputeNationalParams:
         assert result is not None
         assert result.gamma_III_raw == pytest.approx(0.33)
 
-    def test_year_clamping_to_2040(self) -> None:
-        """Year > 2040 clamped to 2040."""
+    def test_year_passes_through_unclamped_above_2040(self) -> None:
+        """Honesty sweep: year > 2040 is NOT clamped/fabricated to 2040 — it
+        flows through as the real simulation year (NationalTickParameters
+        has no upper year bound; MELT/gamma compute for the whole campaign).
+        """
         system = TickDynamicsSystem()
         melt = MockMELTCalculator(tau=62.0, accept_any_year=True)
         services = _make_services(melt_calculator=melt)
@@ -1796,7 +1807,7 @@ class TestComputeNationalParams:
         result = system._compute_national_params(2050, services, prev_coefficients=None)
 
         assert result is not None
-        assert result.year == 2040
+        assert result.year == 2050
 
     def test_year_clamping_to_2007(self) -> None:
         """Year < 2007 clamped to 2007."""
@@ -1946,8 +1957,460 @@ class TestEconomicsFallbackInstrumentation:
             "gamma_basket_calculator_none",
             "gamma_iii_calculator_none",
             "gamma_iii_returned_none",
+            "vol3_interest_sentinel",
+            "vol3_fictitious_sentinel",
+            "vol3_distribution_sentinel",
+            "vol3_rent_sentinel",
+            "vol3_housing_sentinel",
         }
         assert payload["gamma_basket_calculator_none"] == 1
+
+
+# =============================================================================
+# Honesty sweep (U2.2 additional work): gamma fallback constants must be
+# GameDefines-backed (III.1), and the "calculator unwired" log must read as
+# a modelled default, not an implied wiring bug.
+# =============================================================================
+
+
+class TestGammaFallbackHonestySweep:
+    """gamma_basket/gamma_III unwired-calculator fallbacks are GameDefines
+    fields, actually consumed (not merely coincidentally matching), with a
+    log message that names the modelled default rather than implying a gap.
+    """
+
+    def test_gamma_basket_fallback_reads_from_defines_not_hardcoded(self) -> None:
+        """Changing GameDefines.economy.gamma_basket_default changes the
+        fallback value actually used — proves the value is wired to
+        defines, not still a coincidentally-matching inline literal.
+        """
+        system = TickDynamicsSystem()
+        defines = GameDefines(economy=EconomyDefines(gamma_basket_default=0.55))
+        services = _make_services(basket_calculator=None, defines=defines)
+
+        result = system._compute_national_params(2015, services, prev_coefficients=None)
+
+        assert result is not None
+        assert result.gamma_basket_raw == pytest.approx(0.55)
+
+    def test_gamma_iii_fallback_reads_from_defines_not_hardcoded(self) -> None:
+        """Changing GameDefines.economy.gamma_iii_default changes the
+        fallback value actually used — proves the value is wired to
+        defines, not still a coincidentally-matching inline literal.
+        """
+        system = TickDynamicsSystem()
+        defines = GameDefines(economy=EconomyDefines(gamma_iii_default=0.21))
+        services = _make_services(gamma_calculator=None, defines=defines)
+
+        result = system._compute_national_params(2015, services, prev_coefficients=None)
+
+        assert result is not None
+        assert result.gamma_III_raw == pytest.approx(0.21)
+
+    def test_basket_unwired_log_names_modelled_default_not_a_gap(
+        self, caplog: pytest.LogCaptureFixture
+    ) -> None:
+        """The unwired-basket-calculator log reads as a deliberate modelled
+        default, not as an implied wiring bug."""
+        system = TickDynamicsSystem()
+        services = _make_services(basket_calculator=None)
+
+        with caplog.at_level("WARNING"):
+            system._compute_national_params(2015, services, prev_coefficients=None)
+
+        messages = [r.getMessage() for r in caplog.records]
+        assert any("modelled default" in m.lower() for m in messages)
+        assert not any("basket_calculator not wired; using fallback" in m for m in messages)
+
+    def test_gamma_iii_unwired_log_names_modelled_default_not_a_gap(
+        self, caplog: pytest.LogCaptureFixture
+    ) -> None:
+        """The unwired-gamma-calculator log reads as a deliberate modelled
+        default, not as an implied wiring bug."""
+        system = TickDynamicsSystem()
+        services = _make_services(gamma_calculator=None)
+
+        with caplog.at_level("WARNING"):
+            system._compute_national_params(2015, services, prev_coefficients=None)
+
+        messages = [r.getMessage() for r in caplog.records]
+        assert any("modelled default" in m.lower() for m in messages)
+        assert not any("gamma_III calculator not wired; using fallback" in m for m in messages)
+
+
+# =============================================================================
+# Volume III financial-layer honesty sweep (U2.2 fix, code-review finding 1):
+# the year-window NoDataSentinel produced by the interest/fictitious-capital/
+# distribution calculators must be OBSERVABLE (tally + throttled log) at the
+# consumer, not silently swallowed. These tests exercise the *consumer*
+# methods directly — the calculators' own guard is already covered in
+# isolation by tests/unit/economics/credit/ and tests/unit/economics/distribution/.
+# =============================================================================
+
+
+class _StubInterestSentinelCalculator:
+    """Always returns a year-window NoDataSentinel (never real data)."""
+
+    def compute_interest_rate_state(self, year: int) -> NoDataSentinel:
+        return NoDataSentinel(
+            fips="USA",
+            year=year,
+            reason=f"Year {year} outside Volume III modeled financial-data window [2007, 2040]",
+        )
+
+
+class _StubInterestCalculatorOk:
+    """Always returns real (non-sentinel) interest rate data.
+
+    Used to isolate the fictitious-capital/distribution sentinel paths —
+    `_compute_national_financial_state`/`_compute_financial_layer` call
+    ``services.interest_calculator`` unconditionally (no None-guard) and
+    `_compute_financial_layer` early-returns entirely when
+    ``services.interest_calculator is None``, so a real interest calculator
+    must stay wired even when the test targets a different calculator.
+    """
+
+    def compute_interest_rate_state(self, year: int) -> InterestRateState:
+        return InterestRateState(year=2015, base_rate=0.25, treasury_10y=2.27, baa_spread=2.64)
+
+
+class _StubFictitiousSentinelCalculator:
+    """Always returns a year-window NoDataSentinel (never real data)."""
+
+    def compute_fictitious_capital(self, year: int) -> NoDataSentinel:
+        return NoDataSentinel(
+            fips="USA",
+            year=year,
+            reason=f"Year {year} outside Volume III modeled financial-data window [2007, 2040]",
+        )
+
+
+class _StubDistributionSentinelCalculator:
+    """Always returns a year-window NoDataSentinel (never real data)."""
+
+    def compute_distribution(
+        self,
+        fips: str,
+        year: int,
+        total_surplus: float,
+        county_profit_rate: float,
+        national_interest_rate: float,
+        county_employment: float = 0.0,
+    ) -> NoDataSentinel:
+        return NoDataSentinel(
+            fips=fips,
+            year=year,
+            reason=f"Year {year} outside Volume III modeled financial-data window [2007, 2040]",
+        )
+
+
+class _StubRentalDataGapDistributionCalculator:
+    """Always returns a NoDataSentinel with a rental-income-specific reason
+    (distinct from the year-window reason) — used to prove distinct reasons
+    from different sentinel sources both reach the log (code-review findings
+    U2.2-1/U2.2-4)."""
+
+    def compute_distribution(
+        self,
+        fips: str,
+        year: int,
+        total_surplus: float,
+        county_profit_rate: float,
+        national_interest_rate: float,
+        county_employment: float = 0.0,
+    ) -> NoDataSentinel:
+        return NoDataSentinel(
+            fips=fips,
+            year=year,
+            reason=f"Rental income data unavailable for {fips}/{year}",
+        )
+
+
+class _StubRentSentinelCalculator:
+    """Always returns a NoDataSentinel (rent adapter has no data)."""
+
+    def compute_rent_extraction(self, fips: str, year: int) -> NoDataSentinel:
+        return NoDataSentinel(
+            fips=fips, year=year, reason=f"Rent extraction data unavailable for {fips}/{year}"
+        )
+
+    def compute_rent_share(self, rent: Any, total_surplus: float) -> float:
+        return 0.0
+
+
+class _StubHousingSentinelCalculator:
+    """Always returns a NoDataSentinel (housing adapter has no data)."""
+
+    def decompose_housing_value(self, fips: str, year: int) -> NoDataSentinel:
+        return NoDataSentinel(
+            fips=fips, year=year, reason=f"Housing decomposition data unavailable for {fips}/{year}"
+        )
+
+
+class _SpyDistributionCalculatorRecordsCalls:
+    """Records every call — used to prove compute_distribution is NEVER
+    invoked when the national interest rate is absent (code-review finding
+    U2.2-3: it must not be called with a fabricated 0.0)."""
+
+    def __init__(self) -> None:
+        self.calls: list[dict[str, object]] = []
+
+    def compute_distribution(
+        self,
+        fips: str,
+        year: int,
+        total_surplus: float,
+        county_profit_rate: float,
+        national_interest_rate: float,
+        county_employment: float = 0.0,
+    ) -> NoDataSentinel:
+        self.calls.append(
+            {
+                "fips": fips,
+                "year": year,
+                "national_interest_rate": national_interest_rate,
+            }
+        )
+        return NoDataSentinel(fips=fips, year=year, reason="should never be reached")
+
+
+class TestVol3FinancialLayerSentinelObservability:
+    """A NoDataSentinel reaching the tick-system consumer must be counted
+    and logged, not silently swallowed (code-review finding 1)."""
+
+    def test_national_interest_sentinel_records_tally_never_a_fabricated_zero(self) -> None:
+        """Code-review finding U2.2-3: absent interest data must propagate as
+        None, never a fabricated 0.0 that would silently flow into
+        compute_distribution's national_interest_rate * implied_capital term."""
+        system = TickDynamicsSystem()
+        services = _make_services(interest_calculator=_StubInterestSentinelCalculator())
+
+        national_rate, _spread, _fictitious, reason = system._compute_national_financial_state(
+            services, 2041
+        )
+
+        assert national_rate is None
+        assert reason is not None
+        assert "outside Volume III modeled financial-data window" in reason
+        assert services.economics_fallbacks.vol3_interest_sentinel == 1
+
+    def test_national_fictitious_sentinel_records_tally(self) -> None:
+        system = TickDynamicsSystem()
+        services = _make_services(
+            interest_calculator=_StubInterestCalculatorOk(),
+            fictitious_capital_calculator=_StubFictitiousSentinelCalculator(),
+        )
+
+        _national_rate, _spread, fictitious, _reason = system._compute_national_financial_state(
+            services, 2041
+        )
+
+        assert fictitious is None
+        assert services.economics_fallbacks.vol3_fictitious_sentinel == 1
+
+    def test_county_distribution_sentinel_records_tally(self) -> None:
+        system = TickDynamicsSystem()
+        registry = MockTensorRegistry(
+            {(WAYNE_FIPS, 2041): MockTensor(profit_rate=0.10, total_s=1_000_000.0)}
+        )
+        services = _make_services(
+            distribution_calculator=_StubDistributionSentinelCalculator(),
+            tensor_registry=registry,
+        )
+        county = _make_county(year=2041)
+
+        updated = system._compute_county_financial_state(
+            WAYNE_FIPS, county, services, 2041, national_rate=0.04, fictitious=None
+        )
+
+        assert updated.surplus_distribution is None
+        assert services.economics_fallbacks.vol3_distribution_sentinel == 1
+
+    def test_full_financial_layer_at_year_2041_surfaces_all_three_sentinels(self) -> None:
+        """System-level: _compute_financial_layer (not just the calculators
+        in isolation) surfaces the honest degradation for a real
+        out-of-window year — the exact gap code-review finding 1 identified."""
+        system = TickDynamicsSystem()
+        registry = MockTensorRegistry(
+            {(WAYNE_FIPS, 2041): MockTensor(profit_rate=0.10, total_s=1_000_000.0)}
+        )
+        services = _make_services(
+            interest_calculator=_StubInterestSentinelCalculator(),
+            fictitious_capital_calculator=_StubFictitiousSentinelCalculator(),
+            distribution_calculator=_StubDistributionSentinelCalculator(),
+            tensor_registry=registry,
+        )
+        county = _make_county(year=2041)
+        national_params = _make_national_params(year=2041)
+
+        result = system._compute_financial_layer(
+            {WAYNE_FIPS: county}, national_params, services, 2041
+        )
+
+        assert result[WAYNE_FIPS].surplus_distribution is None
+        tally = services.economics_fallbacks
+        assert tally.vol3_interest_sentinel == 1
+        assert tally.vol3_fictitious_sentinel == 1
+        assert tally.vol3_distribution_sentinel == 1
+
+    def test_sentinel_reason_is_logged_at_warning(self, caplog: pytest.LogCaptureFixture) -> None:
+        """The sentinel's own .reason (not a hand-rolled message) reaches the log."""
+        system = TickDynamicsSystem()
+        services = _make_services(interest_calculator=_StubInterestSentinelCalculator())
+
+        with caplog.at_level("WARNING"):
+            system._compute_national_financial_state(services, 2041)
+
+        messages = [r.getMessage() for r in caplog.records]
+        assert any("outside Volume III modeled financial-data window" in m for m in messages)
+
+    def test_sentinel_logged_once_per_year_not_once_per_county(
+        self, caplog: pytest.LogCaptureFixture
+    ) -> None:
+        """3300-county-scale tick must not spam one WARNING per county for
+        the same year boundary — only the tally counts every occurrence."""
+        system = TickDynamicsSystem()
+        registry = MockTensorRegistry(
+            {
+                (WAYNE_FIPS, 2041): MockTensor(profit_rate=0.10, total_s=1_000_000.0),
+                (OAKLAND_FIPS, 2041): MockTensor(profit_rate=0.10, total_s=1_000_000.0),
+            }
+        )
+        services = _make_services(
+            interest_calculator=_StubInterestCalculatorOk(),
+            distribution_calculator=_StubDistributionSentinelCalculator(),
+            tensor_registry=registry,
+        )
+        counties = {
+            WAYNE_FIPS: _make_county(fips=WAYNE_FIPS, year=2041),
+            OAKLAND_FIPS: _make_county(fips=OAKLAND_FIPS, year=2041),
+        }
+        national_params = _make_national_params(year=2041)
+
+        with caplog.at_level("WARNING"):
+            system._compute_financial_layer(counties, national_params, services, 2041)
+
+        vol3_messages = [
+            r.getMessage()
+            for r in caplog.records
+            if "outside Volume III modeled financial-data window" in r.getMessage()
+        ]
+        assert len(vol3_messages) == 1
+        assert services.economics_fallbacks.vol3_distribution_sentinel == 2
+
+    def test_distinct_reasons_from_different_categories_both_reach_log_same_year(
+        self, caplog: pytest.LogCaptureFixture
+    ) -> None:
+        """Code-review findings U2.2-1/U2.2-4: a per-year-only throttle let
+        the FIRST sentinel category of the year claim the tick's only log
+        slot, silently swallowing every other category's distinct reason
+        for the rest of that year. The fictitious-capital sentinel's reason
+        ("outside Volume III modeled...") and the distribution sentinel's
+        reason ("Rental income data unavailable...") are textually distinct
+        and both independently actionable — both must reach caplog in the
+        same year. (The interest calculator is kept real here specifically
+        so compute_distribution is actually invoked and can independently
+        report ITS OWN distinct data gap — see U2.2-3's fix, which skips
+        compute_distribution entirely when interest itself is absent.)"""
+        system = TickDynamicsSystem()
+        registry = MockTensorRegistry(
+            {(WAYNE_FIPS, 2041): MockTensor(profit_rate=0.10, total_s=1_000_000.0)}
+        )
+        services = _make_services(
+            interest_calculator=_StubInterestCalculatorOk(),
+            fictitious_capital_calculator=_StubFictitiousSentinelCalculator(),
+            distribution_calculator=_StubRentalDataGapDistributionCalculator(),
+            tensor_registry=registry,
+        )
+        county = _make_county(year=2041)
+        national_params = _make_national_params(year=2041)
+
+        with caplog.at_level("WARNING"):
+            system._compute_financial_layer({WAYNE_FIPS: county}, national_params, services, 2041)
+
+        messages = [r.getMessage() for r in caplog.records]
+        assert any("outside Volume III modeled financial-data window" in m for m in messages), (
+            "fictitious-capital sentinel's distinct reason must reach the log"
+        )
+        assert any("Rental income data unavailable" in m for m in messages), (
+            "distribution sentinel's distinct reason must ALSO reach the log in the same year, "
+            "not be swallowed by the fictitious category claiming the year's only slot"
+        )
+
+    def test_rent_sentinel_records_tally_and_logs_reason(
+        self, caplog: pytest.LogCaptureFixture
+    ) -> None:
+        """Code-review finding U2.2-2: rent_calculator sat next to the
+        instrumented interest/fictitious/distribution consumers with no
+        tally counter and no log — the default wiring's rent adapter is a
+        stub that returns NoDataSentinel for every county/year."""
+        system = TickDynamicsSystem()
+        services = _make_services(rent_calculator=_StubRentSentinelCalculator())
+        county = _make_county(year=2020)
+
+        with caplog.at_level("WARNING"):
+            updated = system._compute_county_financial_state(
+                WAYNE_FIPS, county, services, 2020, national_rate=0.04, fictitious=None
+            )
+
+        assert updated.rent_extraction is None
+        assert services.economics_fallbacks.vol3_rent_sentinel == 1
+        messages = [r.getMessage() for r in caplog.records]
+        assert any("Rent extraction data unavailable" in m for m in messages)
+
+    def test_housing_sentinel_records_tally_and_logs_reason(
+        self, caplog: pytest.LogCaptureFixture
+    ) -> None:
+        """Code-review finding U2.2-2: housing_calculator sat next to the
+        instrumented interest/fictitious/distribution consumers with no
+        tally counter and no log — the missing observability let
+        housing_decomposition go dark for most county-years with zero
+        manifest signal (graph_bridge.py reads
+        housing_decomposition.fictitious_fraction downstream)."""
+        system = TickDynamicsSystem()
+        services = _make_services(housing_calculator=_StubHousingSentinelCalculator())
+        county = _make_county(year=2020)
+
+        with caplog.at_level("WARNING"):
+            updated = system._compute_county_financial_state(
+                WAYNE_FIPS, county, services, 2020, national_rate=0.04, fictitious=None
+            )
+
+        assert updated.housing_decomposition is None
+        assert services.economics_fallbacks.vol3_housing_sentinel == 1
+        messages = [r.getMessage() for r in caplog.records]
+        assert any("Housing decomposition data unavailable" in m for m in messages)
+
+    def test_absent_national_rate_skips_distribution_never_fabricates_zero_interest(
+        self,
+    ) -> None:
+        """Code-review finding U2.2-3: when the interest calculator has no
+        data for `year`, compute_distribution must NEVER be called with a
+        fabricated 0.0 national_interest_rate — that would silently publish
+        a genuine-looking zero-interest SurplusValueDistribution. Proven by
+        a spy calculator that records every call: it must receive zero calls."""
+        system = TickDynamicsSystem()
+        registry = MockTensorRegistry(
+            {(WAYNE_FIPS, 2041): MockTensor(profit_rate=0.10, total_s=1_000_000.0)}
+        )
+        spy = _SpyDistributionCalculatorRecordsCalls()
+        services = _make_services(
+            interest_calculator=_StubInterestSentinelCalculator(),
+            distribution_calculator=spy,
+            tensor_registry=registry,
+        )
+        county = _make_county(year=2041)
+        national_params = _make_national_params(year=2041)
+
+        result = system._compute_financial_layer(
+            {WAYNE_FIPS: county}, national_params, services, 2041
+        )
+
+        assert spy.calls == [], (
+            "compute_distribution must never be invoked when the national rate is absent"
+        )
+        assert result[WAYNE_FIPS].surplus_distribution is None
+        assert services.economics_fallbacks.vol3_distribution_sentinel == 1
 
 
 # =============================================================================
@@ -1996,8 +2459,11 @@ class TestComputeCountyStates:
         assert county.phi_hour == pytest.approx(4.0)
         assert county.capital_stock == pytest.approx(2e9)
 
-    def test_year_clamping(self) -> None:
-        """Year clamped to [2007, 2040]."""
+    def test_year_passes_through_unclamped_above_2040(self) -> None:
+        """Honesty sweep (U2 fix): CountyEconomicState.year is NOT clamped/
+        fabricated to 2040 — it flows through as the real simulation year
+        (mirrors NationalTickParameters.year, U2.1). ClassDistribution's
+        own [2007, 2030] window (Feature 016) is untouched by this fix."""
         system = TickDynamicsSystem()
         # Use None for throughput_calculator (ThroughputMetrics rejects year>2040)
         services = _make_services(throughput_calculator=None)
@@ -2006,7 +2472,7 @@ class TestComputeCountyStates:
             2050, [WAYNE_FIPS], services, prev_county_states=None
         )
 
-        assert result[WAYNE_FIPS].year == 2040
+        assert result[WAYNE_FIPS].year == 2050
 
     def test_default_distribution_no_prev(self) -> None:
         """No previous state → default class distribution shares."""

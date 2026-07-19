@@ -18,6 +18,7 @@ from __future__ import annotations
 import math
 
 __all__ = [
+    "calculate_correction_severity",
     "calculate_correction_snap",
     "calculate_ema",
     "calculate_growth_drive",
@@ -172,3 +173,28 @@ def calculate_correction_snap(
     :returns: ``(log_ratio * (1 - severity), min(velocity, 0.0))``.
     """
     return log_ratio * (1.0 - severity), min(velocity, 0.0)
+
+
+def calculate_correction_severity(
+    base_severity: float, *, debt_ratio: float | None, slope: float
+) -> float:
+    """Fraction of the fictitious log-ratio closed by one snap, debt-adjusted.
+
+    A debt spiral (U6: accumulated deficit relative to capital) makes the
+    violent re-identification of claims with real surplus MORE violent,
+    not less — the credit system has less slack to absorb a slow unwind.
+
+    :param base_severity: The ADR078 baseline (``MarketDefines.correction_severity``).
+    :param debt_ratio: Accumulated-debt-to-capital ratio, or ``None`` when
+        no territory carries the accounting pair — the base is used
+        unchanged (honest absence, III.11; bit-identical to pre-U6
+        behavior).
+    :param slope: Additional severity per unit debt ratio (a
+        ``MarketDefines.correction_debt_slope`` coefficient).
+    :returns: ``base_severity`` plus the debt term, clamped to ``[0, 1]``
+        (:class:`~babylon.models.market.MarketState` cannot express a
+        severity outside the unit interval).
+    """
+    if debt_ratio is None:
+        return base_severity
+    return min(max(base_severity + slope * max(debt_ratio, 0.0), 0.0), 1.0)

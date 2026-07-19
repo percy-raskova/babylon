@@ -10,6 +10,7 @@ from __future__ import annotations
 import pytest
 
 from babylon.formulas.market import (
+    calculate_correction_severity,
     calculate_correction_snap,
     calculate_ema,
     calculate_growth_drive,
@@ -198,3 +199,24 @@ class TestBalance:
         assert calculate_scissors_balance(0.7, scale=0.5) == pytest.approx(
             -calculate_scissors_balance(-0.7, scale=0.5)
         )
+
+
+class TestCorrectionSeverity:
+    """U6: a debt spiral makes the re-identification of claims with real
+    surplus MORE violent — the accumulated-debt term on correction
+    severity."""
+
+    def test_absent_debt_ratio_is_the_base_severity(self) -> None:
+        assert calculate_correction_severity(0.6, debt_ratio=None, slope=0.5) == 0.6
+
+    def test_debt_ratio_increases_severity(self) -> None:
+        assert calculate_correction_severity(0.6, debt_ratio=0.2, slope=0.5) == pytest.approx(0.7)
+
+    def test_severity_clamps_to_one(self) -> None:
+        assert calculate_correction_severity(0.6, debt_ratio=5.0, slope=1.0) == 1.0
+
+    def test_negative_debt_ratio_never_reduces_severity(self) -> None:
+        assert calculate_correction_severity(0.6, debt_ratio=-1.0, slope=0.5) == 0.6
+
+    def test_zero_slope_is_inert(self) -> None:
+        assert calculate_correction_severity(0.6, debt_ratio=10.0, slope=0.0) == 0.6

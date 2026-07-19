@@ -115,8 +115,9 @@ def _check_hex_features_heat(row: DeclaredPartialCoverageAggregate) -> list[str]
         "group -- expected None.\n"
         f"    denominator: {row.denominator_note}\n"
         f"    consequence: {row.consequence_if_regressed}\n"
-        "    fix: restore the heat_pop partial-coverage denominator, or add a "
-        "reasoned AggregationExemption -- never a silent registry removal.\n"
+        "    fix: restore the heat_pop partial-coverage denominator, or add a reasoned "
+        "SentinelExemption (key=('aggregate', name), reason, owner, date, tracking_task) "
+        "to AGGREGATION_EXEMPTIONS -- never a silent registry removal.\n"
         f"    {_WHY}"
     ]
 
@@ -152,8 +153,9 @@ def _check_state_apparatus_dashboard_heat(row: DeclaredPartialCoverageAggregate)
         "all-masked session -- expected None.\n"
         f"    denominator: {row.denominator_note}\n"
         f"    consequence: {row.consequence_if_regressed}\n"
-        "    fix: restore the visible_heats-only sum, or add a reasoned "
-        "AggregationExemption -- never a silent registry removal.\n"
+        "    fix: restore the visible_heats-only sum, or add a reasoned SentinelExemption "
+        "(key=('aggregate', name), reason, owner, date, tracking_task) to "
+        "AGGREGATION_EXEMPTIONS -- never a silent registry removal.\n"
         f"    {_WHY}"
     ]
 

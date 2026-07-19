@@ -12,6 +12,15 @@ Pydantic entity models (never a duplicated field list), and
 :data:`EXTRA_STAMPABLE_ATTRIBUTES` / :data:`ATTRIBUTE_EXEMPTIONS` are the only
 two places shape drift can be declared open.
 
+:data:`LITERAL_EXEMPTIONS` and :data:`ATTRIBUTE_EXEMPTIONS` are recorded as
+the family-wide :class:`~babylon.sentinels.exemptions.SentinelExemption`
+(gate-governance ruling, 2026-07-18) — previously a bare
+``frozenset[tuple[str, ...]]`` whose "reason" lived only in a source
+*comment*. Matching stays exact-tuple (:func:`~babylon.sentinels.exemptions.
+is_exempt`), keyed ``("node_type_literal", path, literal)`` /
+``("node_attribute", path, node_type, attribute)`` — unchanged in spirit from
+before, just now validated data instead of an implicit convention.
+
 Layer 0.5: imports nothing above :mod:`babylon.models`.
 """
 
@@ -34,6 +43,7 @@ from babylon.models.entities.social_class import SocialClass
 from babylon.models.entities.sovereign import Sovereign
 from babylon.models.entities.territory import Territory
 from babylon.models.enums.topology import NodeType
+from babylon.sentinels.exemptions import SentinelExemption
 
 __all__ = [
     "ATTRIBUTE_EXEMPTIONS",
@@ -80,31 +90,49 @@ PRODUCTION_ROOTS: Final[tuple[str, ...]] = ("src", "web")
 #:   ``test_educate_targets_uses_social_class_not_community``).
 UNSTAMPED_QUERY_ALLOWLIST: Final[frozenset[str]] = frozenset({"hex", "community"})
 
-#: Exact ``(path, literal)`` pairs exempt from rule (a). Deliberately keyed on
-#: BOTH file and string so an exemption cannot leak to another call site: the
-#: point of the rule is that an invented type is invisible, and a broad
-#: exemption would re-hide it.
+#: Exact ``("node_type_literal", path, literal)`` keys exempt from rule (a).
+#: Deliberately keyed on BOTH file and string so an exemption cannot leak to
+#: another call site: the point of the rule is that an invented type is
+#: invisible, and a broad exemption would re-hide it.
 #:
 #: Added 2026-07-18 (Task 1b). This list must only ever shrink.
-LITERAL_EXEMPTIONS: Final[frozenset[tuple[str, str]]] = frozenset(
-    {
-        # The 3b60dcfe regression test asserts the WRONG string matches
-        # NOTHING. Naming the bogus type is the whole point of the test, so
-        # this exemption is permanent rather than debt.
-        (
+LITERAL_EXEMPTIONS: Final[tuple[SentinelExemption, ...]] = (
+    SentinelExemption(
+        key=(
+            "node_type_literal",
             "tests/unit/balkanization/test_faction_node_type_query.py",
             "balkanization_faction",
         ),
-        # Legacy CamelCase persistence format. ``postgres_runtime/_legacy.py``
-        # deliberately tolerates BOTH casings (see ``_extract_promoted_columns``,
-        # which branches on ``node_type in ("SocialClass", "social_class")``),
-        # and these tests cover the legacy branch by hydrating legacy rows.
-        # NOT a live bug — but note a graph hydrated from CamelCase rows will
-        # NOT answer ``query_nodes(NodeType.SOCIAL_CLASS)``.
-        # TODO(owner): decide whether the legacy casing should be normalised on
-        # hydration; until then the tolerance stays covered and visible here.
-        ("tests/unit/persistence/test_postgres_runtime.py", "SocialClass"),
-    }
+        reason=(
+            "The 3b60dcfe regression test asserts the WRONG string matches NOTHING. "
+            "Naming the bogus type is the whole point of the test, so this exemption "
+            "is permanent rather than debt."
+        ),
+        owner="Persephone Raskova",
+        date="2026-07-18",
+        tracking_task="N/A (permanent by design -- regression test for the founding bug)",
+    ),
+    SentinelExemption(
+        key=(
+            "node_type_literal",
+            "tests/unit/persistence/test_postgres_runtime.py",
+            "SocialClass",
+        ),
+        reason=(
+            "Legacy CamelCase persistence format. postgres_runtime/_legacy.py "
+            "deliberately tolerates BOTH casings (_extract_promoted_columns branches "
+            "on node_type in ('SocialClass', 'social_class')), and this test covers "
+            "the legacy branch by hydrating legacy rows. NOT a live bug -- but a "
+            "graph hydrated from CamelCase rows will NOT answer "
+            "query_nodes(NodeType.SOCIAL_CLASS)."
+        ),
+        owner="Persephone Raskova",
+        date="2026-07-18",
+        tracking_task=(
+            "N/A (owner design question open -- whether to normalise legacy casing "
+            "on hydration -- no ticket filed; the tolerance itself is intentional)"
+        ),
+    ),
 )
 
 #: Rule (c) — shape closure. Every REAL production-stamped node type's
@@ -191,105 +219,312 @@ TICK_PREFIXED_NODE_TYPES: Final[frozenset[str]] = frozenset(
     {NodeType.SOCIAL_CLASS.value, NodeType.TERRITORY.value}
 )
 
-#: Exact ``(path, node_type, attribute)`` triples exempt from Rule (c).
-#: Keyed on all three so an exemption cannot leak to another call site or
-#: node type — same discipline as :data:`LITERAL_EXEMPTIONS`. Two different
-#: reasons populate this list; each row says which:
+#: Exact ``("node_attribute", path, node_type, attribute)`` keys exempt from
+#: Rule (c). Keyed on all four so an exemption cannot leak to another call
+#: site or node type — same discipline as :data:`LITERAL_EXEMPTIONS`. Two
+#: different reasons populate this list; each row's ``reason``/
+#: ``tracking_task`` says which:
 #:
-#: 1. **Generic/duck-typed utility tests.** The function under test takes
-#:    the attribute NAME as a runtime parameter (attribute-agnostic
-#:    aggregation, a generic clamped-write helper, a property-based
-#:    iteration-order oracle) — the fixture is not claiming the attribute is
-#:    real ``SocialClass`` shape, any string would do.
+#: 1. **Generic/duck-typed utility tests, and orphaned-but-not-broken domain
+#:    functions** (``tracking_task`` is ``"N/A"`` — nothing to remediate).
+#:    The function under test takes the attribute NAME as a runtime
+#:    parameter (attribute-agnostic aggregation, a generic clamped-write
+#:    helper, a property-based iteration-order oracle) — the fixture is not
+#:    claiming the attribute is real ``SocialClass`` shape, any string would
+#:    do; OR the reader is a real, currently-uncalled domain function (task
+#:    #45 audit's "orphaned computation" finding — not a masked live bug).
 #: 2. **KNOWN LIVE BUGS held open by an owner decision** (mirrors
-#:    :data:`UNSTAMPED_QUERY_ALLOWLIST`'s governance): the production reader
-#:    lives in ``src/babylon/engine/``, one of the two scenario seeders
+#:    :data:`UNSTAMPED_QUERY_ALLOWLIST`'s governance, ``tracking_task="#45"``
+#:    — the audit that found them): the production reader lives in
+#:    ``src/babylon/engine/``, one of the two scenario seeders
 #:    (``src/babylon/engine/scenarios/_legacy.py`` / ``_legacy_wayne.py``),
 #:    or an engine-adjacent economics module a live System calls every tick
 #:    (``src/babylon/domain/economics/crisis/bifurcation.py``, wired into
 #:    ``TickDynamicsSystem`` — fixing it would move ``qa:regression``
 #:    baselines) — all out of scope for the task that discovered them (#45).
-#:    TODO(owner): fix the read side (or the seeder) and delete the row —
-#:    this half of the list must only ever shrink. Full detail in the task
-#:    #45 audit report.
-ATTRIBUTE_EXEMPTIONS: Final[frozenset[tuple[str, str, str]]] = frozenset(
-    {
-        # -- Reason 1: generic/duck-typed attribute-name tests -------------
-        (
+#:    Fix the read side (or the seeder) and delete the row — this half of
+#:    the list must only ever shrink.
+ATTRIBUTE_EXEMPTIONS: Final[tuple[SentinelExemption, ...]] = (
+    # -- Reason 1: generic/duck-typed attribute-name tests -----------------
+    SentinelExemption(
+        key=(
+            "node_attribute",
             "tests/unit/engine/adapters/test_aggregation_mixin.py",
             "social_class",
             "consciousness",
         ),
-        (
+        reason=(
+            "Generic/duck-typed attribute-name test: the attribute-agnostic "
+            "aggregation mixin takes the attribute NAME as a runtime parameter -- "
+            "not a claim that 'consciousness' is real SocialClass shape here, any "
+            "string would do."
+        ),
+        owner="Persephone Raskova",
+        date="2026-07-18",
+        tracking_task="N/A (permanent by design)",
+    ),
+    SentinelExemption(
+        key=(
+            "node_attribute",
             "tests/unit/engine/adapters/test_query_mixin.py",
             "social_class",
             "consciousness",
         ),
-        ("tests/unit/engine/systems/test_system_base.py", "social_class", "wage"),
-        ("tests/unit/engine/test_graph_iteration_order.py", "social_class", "w"),
-        # GraphProtocol conformance suite: a pure store/retrieve round-trip
-        # check (add_node -> node.attributes[...] -> update_node ->
-        # node.attributes[...] again) over the generic protocol surface, not
-        # a claim that "consciousness" is real SocialClass shape.
-        ("tests/unit/engine/test_graph_conformance.py", "social_class", "consciousness"),
-        # Deliberate negative control (mirrors LITERAL_EXEMPTIONS'
-        # balkanization_faction row): proves MetabolismSystem filters by
-        # _node_type and ignores a wrong-typed node's s_bio/s_class.
-        ("tests/unit/engine/systems/test_metabolism.py", "faction", "s_bio"),
-        ("tests/unit/engine/systems/test_metabolism.py", "faction", "s_class"),
-        # Real (if currently unwired) domain functions:
-        # domain/organizations/composition.py's community_composition() /
-        # lifecycle_composition() genuinely read "community"/
-        # "lifecycle_phase" off social_class nodes via MEMBERSHIP edges — no
-        # System currently calls either composition function, so this is an
-        # orphaned-computation finding (task #45 audit), not a masked live
-        # bug the way agitation/class_consciousness were.
-        ("tests/unit/organizations/test_composition.py", "social_class", "community"),
-        (
+        reason=(
+            "Generic/duck-typed attribute-name test: the attribute-agnostic query "
+            "mixin takes the attribute NAME as a runtime parameter -- not a claim "
+            "that 'consciousness' is real SocialClass shape here."
+        ),
+        owner="Persephone Raskova",
+        date="2026-07-18",
+        tracking_task="N/A (permanent by design)",
+    ),
+    SentinelExemption(
+        key=(
+            "node_attribute",
+            "tests/unit/engine/systems/test_system_base.py",
+            "social_class",
+            "wage",
+        ),
+        reason=(
+            "Generic/duck-typed attribute-name test: SystemBase's clamped-write "
+            "helper takes the attribute NAME as a runtime parameter -- not a claim "
+            "that 'wage' is real SocialClass shape here."
+        ),
+        owner="Persephone Raskova",
+        date="2026-07-18",
+        tracking_task="N/A (permanent by design)",
+    ),
+    SentinelExemption(
+        key=(
+            "node_attribute",
+            "tests/unit/engine/test_graph_iteration_order.py",
+            "social_class",
+            "w",
+        ),
+        reason=(
+            "Generic/duck-typed attribute-name test: a property-based "
+            "iteration-order oracle takes the attribute NAME as a runtime "
+            "parameter -- not a claim that 'w' is real SocialClass shape here."
+        ),
+        owner="Persephone Raskova",
+        date="2026-07-18",
+        tracking_task="N/A (permanent by design)",
+    ),
+    SentinelExemption(
+        key=(
+            "node_attribute",
+            "tests/unit/engine/test_graph_conformance.py",
+            "social_class",
+            "consciousness",
+        ),
+        reason=(
+            "GraphProtocol conformance suite: a pure store/retrieve round-trip "
+            "check (add_node -> node.attributes[...] -> update_node -> "
+            "node.attributes[...] again) over the generic protocol surface, not a "
+            "claim that 'consciousness' is real SocialClass shape."
+        ),
+        owner="Persephone Raskova",
+        date="2026-07-18",
+        tracking_task="N/A (permanent by design)",
+    ),
+    SentinelExemption(
+        key=(
+            "node_attribute",
+            "tests/unit/engine/systems/test_metabolism.py",
+            "faction",
+            "s_bio",
+        ),
+        reason=(
+            "Deliberate negative control (mirrors LITERAL_EXEMPTIONS' "
+            "balkanization_faction row): proves MetabolismSystem filters by "
+            "_node_type and ignores a wrong-typed node's s_bio."
+        ),
+        owner="Persephone Raskova",
+        date="2026-07-18",
+        tracking_task="N/A (permanent by design -- negative-control test)",
+    ),
+    SentinelExemption(
+        key=(
+            "node_attribute",
+            "tests/unit/engine/systems/test_metabolism.py",
+            "faction",
+            "s_class",
+        ),
+        reason=(
+            "Deliberate negative control (mirrors LITERAL_EXEMPTIONS' "
+            "balkanization_faction row): proves MetabolismSystem filters by "
+            "_node_type and ignores a wrong-typed node's s_class."
+        ),
+        owner="Persephone Raskova",
+        date="2026-07-18",
+        tracking_task="N/A (permanent by design -- negative-control test)",
+    ),
+    SentinelExemption(
+        key=(
+            "node_attribute",
+            "tests/unit/organizations/test_composition.py",
+            "social_class",
+            "community",
+        ),
+        reason=(
+            "domain/organizations/composition.py's community_composition() "
+            "genuinely reads 'community' off social_class nodes via MEMBERSHIP "
+            "edges -- no System currently calls it, so this is an orphaned-"
+            "computation finding (task #45 audit), not a masked live bug the way "
+            "agitation/class_consciousness were."
+        ),
+        owner="Persephone Raskova",
+        date="2026-07-18",
+        tracking_task="N/A (task #45 audit; orphaned computation, not an owner-gated bug)",
+    ),
+    SentinelExemption(
+        key=(
+            "node_attribute",
             "tests/unit/organizations/test_composition.py",
             "social_class",
             "lifecycle_phase",
         ),
-        (
+        reason=(
+            "domain/organizations/composition.py's lifecycle_composition() "
+            "genuinely reads 'lifecycle_phase' off social_class nodes via "
+            "MEMBERSHIP edges -- no System currently calls it, so this is an "
+            "orphaned-computation finding (task #45 audit), not a masked live bug."
+        ),
+        owner="Persephone Raskova",
+        date="2026-07-18",
+        tracking_task="N/A (task #45 audit; orphaned computation, not an owner-gated bug)",
+    ),
+    SentinelExemption(
+        key=(
+            "node_attribute",
             "tests/integration/test_organization_detroit.py",
             "social_class",
             "lifecycle_phase",
         ),
-        # -- Reason 2: known live bugs, owner-gated, src/babylon/engine/ ---
-        # wealth_distribution.py::_bracket_resistances reads a flat
-        # "class_consciousness" key that NO production graph carries (the
-        # real field is nested ideology.class_consciousness) -- the ODE's
-        # resistance term is silently always 0.0 in every real game.
-        (
+        reason=(
+            "Same orphaned-computation finding as test_composition.py's "
+            "lifecycle_phase row (task #45 audit) -- lifecycle_composition() has "
+            "no System caller."
+        ),
+        owner="Persephone Raskova",
+        date="2026-07-18",
+        tracking_task="N/A (task #45 audit; orphaned computation, not an owner-gated bug)",
+    ),
+    # -- Reason 2: known live bugs, owner-gated, src/babylon/engine/ -------
+    SentinelExemption(
+        key=(
+            "node_attribute",
             "tests/unit/engine/test_wealth_distribution_system.py",
             "social_class",
             "class_consciousness",
         ),
-        # domain/economics/crisis/bifurcation.py's
-        # _compute_solidarity_density/_compute_legitimation read a flat
-        # "territory" key off social_class nodes to filter by county FIPS;
-        # SocialClass carries no such field (the real one is "county_fips").
-        # Wired into TickDynamicsSystem (a live System), so solidarity
-        # density and the agitation-fallback legitimation path are silently
-        # 0.0-input/empty-set in every real game.
-        ("tests/unit/economics/crisis/test_bifurcation_risk.py", "social_class", "territory"),
-        (
+        reason=(
+            "wealth_distribution.py::_bracket_resistances reads a flat "
+            "'class_consciousness' key that NO production graph carries (the real "
+            "field is nested ideology.class_consciousness) -- the ODE's resistance "
+            "term is silently always 0.0 in every real game."
+        ),
+        owner="Persephone Raskova",
+        date="2026-07-18",
+        tracking_task="#45",
+    ),
+    SentinelExemption(
+        key=(
+            "node_attribute",
+            "tests/unit/economics/crisis/test_bifurcation_risk.py",
+            "social_class",
+            "territory",
+        ),
+        reason=(
+            "domain/economics/crisis/bifurcation.py's _compute_solidarity_density/"
+            "_compute_legitimation read a flat 'territory' key off social_class "
+            "nodes to filter by county FIPS; SocialClass carries no such field "
+            "(the real one is 'county_fips'). Wired into TickDynamicsSystem (a "
+            "live System), so solidarity density and the agitation-fallback "
+            "legitimation path are silently 0.0-input/empty-set in every real game."
+        ),
+        owner="Persephone Raskova",
+        date="2026-07-18",
+        tracking_task="#45",
+    ),
+    SentinelExemption(
+        key=(
+            "node_attribute",
             "tests/unit/economics/crisis/test_crisis_lifecycle.py",
             "social_class",
             "territory",
         ),
-        # ooda.py / ooda/initiative.py read "ooda_profile"/
-        # "counter_intel_score" off organization nodes; neither
-        # scenarios/_legacy.py nor _legacy_wayne.py (the only two production
-        # seeders) ever stamps either, so both are always the safe default
-        # (OODAProfile()/0.0) in every real game.
-        ("tests/integration/test_ooda_detroit.py", "organization", "ooda_profile"),
-        ("tests/integration/test_ooda_detroit.py", "organization", "counter_intel_score"),
-        (
+        reason=(
+            "Same 'territory' vs 'county_fips' bug as test_bifurcation_risk.py "
+            "(task #45 audit) -- covered from the crisis-lifecycle integration "
+            "angle."
+        ),
+        owner="Persephone Raskova",
+        date="2026-07-18",
+        tracking_task="#45",
+    ),
+    SentinelExemption(
+        key=(
+            "node_attribute",
+            "tests/integration/test_ooda_detroit.py",
+            "organization",
+            "ooda_profile",
+        ),
+        reason=(
+            "ooda.py / ooda/initiative.py read 'ooda_profile' off organization "
+            "nodes; neither scenarios/_legacy.py nor _legacy_wayne.py (the only "
+            "two production seeders) ever stamps it, so it is always the safe "
+            "default (OODAProfile()) in every real game."
+        ),
+        owner="Persephone Raskova",
+        date="2026-07-18",
+        tracking_task="#45",
+    ),
+    SentinelExemption(
+        key=(
+            "node_attribute",
+            "tests/integration/test_ooda_detroit.py",
+            "organization",
+            "counter_intel_score",
+        ),
+        reason=(
+            "Same seeder gap as the ooda_profile row (task #45 audit): neither "
+            "production seeder ever stamps 'counter_intel_score', so it is always "
+            "the safe default (0.0) in every real game."
+        ),
+        owner="Persephone Raskova",
+        date="2026-07-18",
+        tracking_task="#45",
+    ),
+    SentinelExemption(
+        key=(
+            "node_attribute",
             "tests/property/invariants/test_consequence_after_actions.py",
             "organization",
             "ooda_profile",
         ),
-        ("tests/unit/ooda/test_ooda_system.py", "organization", "ooda_profile"),
-    }
+        reason=(
+            "Same ooda_profile seeder gap (task #45 audit), covered from the "
+            "property-invariant angle."
+        ),
+        owner="Persephone Raskova",
+        date="2026-07-18",
+        tracking_task="#45",
+    ),
+    SentinelExemption(
+        key=(
+            "node_attribute",
+            "tests/unit/ooda/test_ooda_system.py",
+            "organization",
+            "ooda_profile",
+        ),
+        reason=(
+            "Same ooda_profile seeder gap (task #45 audit), covered from the "
+            "OODA-system unit angle."
+        ),
+        owner="Persephone Raskova",
+        date="2026-07-18",
+        tracking_task="#45",
+    ),
 )

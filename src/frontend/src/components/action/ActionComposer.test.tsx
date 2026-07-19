@@ -271,6 +271,21 @@ describe("ActionComposer", () => {
       render(<ActionComposer gameId={DEFAULT_GAME_ID} />);
       expect(screen.queryByTestId("preset-target-note")).not.toBeInTheDocument();
     });
+
+    it("clears the preset target when the user switches verbs (PR #211 review)", async () => {
+      seedPlayerOrg();
+      useStore.getState().actions.presetInvestigate("territory-99", "Wayne County");
+
+      render(<ActionComposer gameId={DEFAULT_GAME_ID} />);
+      expect(await screen.findByTestId("preset-target-note")).toHaveTextContent("Wayne County");
+
+      await userEvent.click(screen.getByRole("button", { name: /educate/i }));
+
+      // The INVESTIGATE preset's target dies with the verb it was queued
+      // for — it must not silently pre-target EDUCATE (or any other verb
+      // the user switches to).
+      expect(screen.queryByTestId("preset-target-note")).not.toBeInTheDocument();
+    });
   });
 
   it("shows a loud submit error when the backend rejects the action", async () => {

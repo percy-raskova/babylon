@@ -63,5 +63,14 @@ export function useInvestigatePreset(): InvestigatePreset {
     if (preset) consumePreset();
   }, [preset, consumePreset]);
 
-  return { verb, setVerb, presetTarget };
+  // PR #211 review: the preset's target dies with the verb it was queued
+  // for. `VerbForm` remounts on every verb change (keyed by org+verb) and
+  // reads `initialTargetId` fresh, so a lingering presetTarget would
+  // silently pre-target whatever verb the user switches to next.
+  const selectVerb = (next: PlayerVerb | null): void => {
+    setVerb(next);
+    setPresetTarget(null);
+  };
+
+  return { verb, setVerb: selectVerb, presetTarget };
 }

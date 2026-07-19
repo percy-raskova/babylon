@@ -137,6 +137,25 @@ class TestFictitiousAnchorDegenerate:
         assert isinstance(result, NoDataSentinel)
         assert "non-positive real output" in result.reason
 
+    def test_nan_real_output_returns_sentinel(self) -> None:
+        """NaN is neither <= 0 nor > 0 under IEEE-754; it must still be caught.
+
+        math.log(nan) returns nan silently (no exception), so a naive
+        ``real_output <= 0.0`` guard lets a NaN observable escape as a raw
+        float instead of an honest sentinel.
+        """
+        result = fictitious_anchor(_stock(2020), float("nan"))
+        assert isinstance(result, NoDataSentinel)
+        assert not isinstance(result, float)
+        assert result.year == 2020
+        assert "non-positive real output" in result.reason
+
+    def test_infinite_real_output_returns_sentinel(self) -> None:
+        """+inf real output must also be caught, not just non-positive values."""
+        result = fictitious_anchor(_stock(2020), float("inf"))
+        assert isinstance(result, NoDataSentinel)
+        assert result.year == 2020
+
     def test_zero_total_claims_returns_sentinel(self) -> None:
         """log(0) is undefined; zero claims is absence of a log anchor."""
         empty = FictitiousCapitalStock(

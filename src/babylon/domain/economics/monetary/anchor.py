@@ -66,7 +66,7 @@ def fictitious_anchor(
             year=stock.year,
             reason=f"fictitious_anchor: no real output observable for {stock.year}",
         )
-    if real_output <= 0.0:
+    if not math.isfinite(real_output) or real_output <= 0.0:
         return NoDataSentinel(
             fips=NATIONAL_FIPS,
             year=stock.year,
@@ -76,7 +76,7 @@ def fictitious_anchor(
             ),
         )
     ratio = stock.ratio_to_real(real_output)
-    if ratio <= 0.0:
+    if not math.isfinite(ratio) or ratio <= 0.0:
         return NoDataSentinel(
             fips=NATIONAL_FIPS,
             year=stock.year,

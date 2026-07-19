@@ -47,3 +47,38 @@ class TestEndogenousInterestRate:
         cold = endogenous_interest_rate(0.15, -3.0, self._defines())
         assert cold.tightness == 0.0
         assert cold.rate == pytest.approx(0.15 * 0.30)
+
+
+@pytest.mark.unit
+class TestLoanMarketTightness:
+    def _defines(self) -> GameDefines:
+        return GameDefines.load_default()
+
+    def test_no_reserve_army_signal_is_slack_market(self) -> None:
+        from babylon.domain.economics.credit.endogenous_interest import (
+            loan_market_tightness,
+        )
+
+        assert loan_market_tightness(0.0, self._defines()) == 0.0
+
+    def test_full_reserve_army_signal_saturates_tightness(self) -> None:
+        from babylon.domain.economics.credit.endogenous_interest import (
+            loan_market_tightness,
+        )
+
+        # g_r = 1.0 (default) so s_r = 1.0 -> tau = 1.0.
+        assert loan_market_tightness(1.0, self._defines()) == pytest.approx(1.0)
+
+    def test_tightness_is_clamped_when_gain_overshoots(self) -> None:
+        from babylon.domain.economics.credit.endogenous_interest import (
+            loan_market_tightness,
+        )
+
+        d = GameDefines.load_default().model_copy(
+            update={
+                "capital_vol3": GameDefines.load_default().capital_vol3.model_copy(
+                    update={"interest_reserve_demand_gain": 4.0}
+                )
+            }
+        )
+        assert loan_market_tightness(0.5, d) == pytest.approx(1.0)

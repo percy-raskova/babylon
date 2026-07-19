@@ -85,3 +85,24 @@ def endogenous_interest_rate(
         tightness=tau,
         reserve_army_signal=0.0,
     )
+
+
+def loan_market_tightness(reserve_army_signal: float, defines: GameDefines) -> float:
+    """Loan-market tightness ``tau`` — the demand/supply balance of loanable
+    money-capital (Capital Vol. III ch. 22).
+
+    ``tau = clamp(g_r * s_r - S, 0, 1)``. The demand term is the reserve-army
+    downturn signal ``s_r`` (the material scramble for means of payment as
+    overproduction throws labour out; ch. 25). The supply term ``S`` — idle
+    money-capital — has no graph quantity yet and is fixed at 0 (design §1.5),
+    so base U9 reproduces low/rising/spike and defers only the stagnation
+    collapse.
+
+    :param reserve_army_signal: ``s_r`` in [0, 1] (see
+        ``graph_bridge.reserve_army_signal``).
+    :param defines: Run-scoped ``GameDefines`` (reads ``capital_vol3``).
+    :returns: ``tau`` in [0, 1].
+    """
+    gain = defines.capital_vol3.interest_reserve_demand_gain
+    demand = gain * reserve_army_signal
+    return _clamp_unit(demand - _IDLE_MONEY_CAPITAL_SUPPLY)

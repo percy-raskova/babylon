@@ -2185,7 +2185,7 @@ class TestVol3FinancialLayerSentinelObservability:
         system = TickDynamicsSystem()
         services = _make_services(interest_calculator=_StubInterestSentinelCalculator())
 
-        national_rate, _fictitious, reason = system._compute_national_financial_state(
+        national_rate, _spread, _fictitious, reason = system._compute_national_financial_state(
             services, 2041
         )
 
@@ -2201,7 +2201,7 @@ class TestVol3FinancialLayerSentinelObservability:
             fictitious_capital_calculator=_StubFictitiousSentinelCalculator(),
         )
 
-        _national_rate, fictitious, _reason = system._compute_national_financial_state(
+        _national_rate, _spread, fictitious, _reason = system._compute_national_financial_state(
             services, 2041
         )
 

@@ -1413,7 +1413,7 @@ class TickDynamicsSystem(SystemBase):
         if services.interest_calculator is None:
             return county_states
 
-        national_rate, fictitious, interest_unavailable_reason = (
+        national_rate, national_spread, fictitious, interest_unavailable_reason = (
             self._compute_national_financial_state(services, year)
         )
 
@@ -1432,6 +1432,7 @@ class TickDynamicsSystem(SystemBase):
                 national_rate,
                 fictitious,
                 interest_unavailable_reason=interest_unavailable_reason,
+                national_spread=national_spread,
             )
 
         # Preserve any remaining counties not processed (if truncated)
@@ -1480,7 +1481,7 @@ class TickDynamicsSystem(SystemBase):
         self,
         services: ServicesProtocol,
         year: int,
-    ) -> tuple[float | None, FictitiousCapitalStock | None, str | None]:
+    ) -> tuple[float | None, float | None, FictitiousCapitalStock | None, str | None]:
         """Compute national-level financial parameters once per tick.
 
         Constitution III.11 (honest absence): when the interest calculator
@@ -1492,8 +1493,12 @@ class TickDynamicsSystem(SystemBase):
         any computation that depends on the rate," not "treat as zero."
 
         Returns:
-            Tuple of (national_interest_rate_or_none,
+            Tuple of (national_interest_rate_or_none, national_spread_or_none,
             fictitious_capital_or_none, interest_unavailable_reason).
+            ``national_spread`` is the BAA10Y risk premium ALONE, kept
+            separate from the effective rate because the crisis assessor's
+            ``credit_spread`` parameter means the spread, not base+spread
+            (U2.3 review finding 5).
             ``interest_unavailable_reason`` is the interest sentinel's own
             ``.reason`` (or ``None`` if the interest calculator succeeded),
             so a caller that must skip work because the rate is absent can
@@ -1510,6 +1515,7 @@ class TickDynamicsSystem(SystemBase):
         else:
             interest_state = interest_result
         national_rate = interest_state.effective_rate if interest_state is not None else None
+        national_spread = interest_state.baa_spread if interest_state is not None else None
 
         fictitious = None
         if services.fictitious_capital_calculator is not None:
@@ -1520,7 +1526,7 @@ class TickDynamicsSystem(SystemBase):
             else:
                 fictitious = fict_result
 
-        return national_rate, fictitious, interest_unavailable_reason
+        return national_rate, national_spread, fictitious, interest_unavailable_reason
 
     def _compute_county_financial_state(
         self,
@@ -1531,6 +1537,7 @@ class TickDynamicsSystem(SystemBase):
         national_rate: float | None,
         fictitious: FictitiousCapitalStock | None,
         interest_unavailable_reason: str | None = None,
+        national_spread: float | None = None,
     ) -> CountyEconomicState:
         """Compute financial fields for a single county.
 
@@ -1547,6 +1554,10 @@ class TickDynamicsSystem(SystemBase):
                 ``.reason`` when ``national_rate`` is ``None``, so the
                 distribution skip below can attribute its cause instead of
                 recording an unexplained gap.
+            national_spread: The BAA10Y risk premium ALONE (not base+spread),
+                or ``None`` when the interest calculator had no data. Fed to
+                the crisis assessor's ``credit_spread`` parameter, which
+                means a spread (U2.3 review finding 5).
 
         Returns:
             Updated CountyEconomicState with financial fields.
@@ -1636,6 +1647,7 @@ class TickDynamicsSystem(SystemBase):
                 national_rate,
                 fictitious,
                 total_surplus,
+                national_spread=national_spread,
             )
             if assessment is not None:
                 updates["financial_crisis"] = assessment
@@ -1650,18 +1662,57 @@ class TickDynamicsSystem(SystemBase):
         year: int,
         updates: dict[str, object],
         services: ServicesProtocol,
-        national_rate: float,
+        national_rate: float,  # noqa: ARG002 - kept for call-site symmetry
         fictitious: FictitiousCapitalStock | None,
         total_surplus: float | None,
+        national_spread: float | None = None,
     ) -> object | None:
-        """Assess financial crisis for a single county."""
+        """Assess financial crisis for a single county.
+
+        Honest absence (Constitution III.11): ``financialization_ratio`` is
+        ``None`` — never a fabricated ``0.0`` — when the fictitious-capital
+        calculator returned a ``NoDataSentinel``. The old fabricated zero was
+        compared against ``FINANCIALIZATION_BUBBLE`` (3.5) and published
+        ``overaccumulation=False``, byte-identical to a genuine measurement of
+        a non-bubbled county, so no consumer could distinguish "measured, no
+        bubble" from "never measured" (U2.3 review finding 4). This is the
+        treatment ``national_rate`` already received elsewhere in this file.
+
+        ``credit_spread`` receives ``national_spread`` — the BAA10Y risk
+        premium — and NOT ``national_rate``, which is ``base_rate +
+        baa_spread``. Feeding the effective borrowing rate into a parameter
+        documented as a spread was the unit half of review finding 5.
+
+        Args:
+            fips: County FIPS code.
+            year: Current simulation year.
+            updates: Pending county-state updates; must carry
+                ``surplus_distribution``.
+            services: ServicesProtocol with the crisis assessor and defines.
+            national_rate: National effective borrowing rate. Retained so the
+                call site reads symmetrically with its sibling helpers; the
+                fragility predicate deliberately uses ``national_spread``.
+            fictitious: FictitiousCapitalStock, or ``None`` if unavailable.
+            total_surplus: County surplus, or ``None`` if unavailable.
+            national_spread: BAA10Y risk premium alone, or ``None``.
+
+        Returns:
+            A FinancialCrisisAssessment, or ``None`` if the assessor declined.
+        """
         surplus_dist = updates["surplus_distribution"]
         fin_share = getattr(surplus_dist, "financialization_share", 0.0)
         claims_exceed = getattr(surplus_dist, "claims_exceed_surplus", False)
-        fin_ratio = 0.0
+        fin_ratio: float | None = None
         max_counties = services.defines.capital_vol3.national_county_count
         if fictitious is not None and total_surplus is not None and total_surplus > 0:
             fin_ratio = fictitious.ratio_to_real(total_surplus * max_counties)
+        else:
+            self._log_vol3_sentinel_once_per_year(
+                year,
+                "crisis",
+                "Fictitious capital unavailable — overaccumulation published "
+                "as None rather than a fabricated False",
+            )
 
         result: object | None = services.financial_crisis_assessor.assess(
             fips=fips,
@@ -1669,7 +1720,7 @@ class TickDynamicsSystem(SystemBase):
             interest_burden_ratio=float(fin_share),
             financialization_ratio=fin_ratio,
             default_rate=services.defines.capital_vol3.default_rate_estimate,
-            credit_spread=national_rate,
+            credit_spread=national_spread,
             claims_exceed_surplus=bool(claims_exceed),
         )
         return result

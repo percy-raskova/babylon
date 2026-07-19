@@ -36,9 +36,16 @@ class CapitalVolumeIIIDefines(BaseModel):
         ge=0.0,
         le=1.0,
         description=(
-            "Accumulated debt / annual surplus ratio triggering the "
-            "debt-spiral crisis flag (NBER 2001/2008 corporate "
-            "debt-to-earnings recession analysis)."
+            "NOT YET READ BY ANY CODE — editing this value changes nothing "
+            "in the shipped game. Intended meaning: the accumulated debt / "
+            "annual surplus ratio at which a county's debt spiral becomes "
+            "self-reinforcing (NBER 2001/2008 corporate debt-to-earnings "
+            "recession analysis). DebtAccumulation tracks accumulated_debt "
+            "and consecutive_deficit_ticks but never compares either "
+            "against this ratio, and no debt-spiral flag exists on any "
+            "model. The consumer is owed by U5 (debt_spiral opposition); "
+            "until it lands, this row is pinned dead by "
+            "tests/integration/economics/test_vol3_defines_reachability_live.py."
         ),
     )
     distribution_epsilon: float = Field(
@@ -102,6 +109,22 @@ class CapitalVolumeIIIDefines(BaseModel):
             "fixture list has none) — a documented estimate, not live "
             "data; see spec 2026-07-18 vol3-money-scissors-design "
             "Table 3.6."
+        ),
+    )
+    credit_fragility_threshold: float = Field(
+        default=1.0e-3,
+        gt=0.0,
+        le=1.0,
+        description=(
+            "Expected-loss product (default_rate * credit_spread) above "
+            "which the credit_fragility signal fires. Calibrated for "
+            "DECIMAL inputs: FRED BAA10Y is divided by 100 at load "
+            "(factory.py), peaking at 0.0556 in Dec 2008, so with the 2% "
+            "default-rate estimate the crisis-peak product is 1.11e-3 and "
+            "a calm-year product (0.018 spread) is 3.6e-4. The prior "
+            "hardcoded 0.02 was calibrated for PERCENT-scaled inputs and "
+            "required a 100% borrowing rate to fire, so the signal was "
+            "hardwired False in every modeled year (U2.3 review finding 5)."
         ),
     )
     housing_capitalization_rate_default: float = Field(

@@ -21,17 +21,35 @@ from babylon.domain.economics.tensor import year_within_modeled_range
 def _default_defines() -> GameDefines:
     """Process-cached ``GameDefines.load_default()`` for the accessors below.
 
-    Cached because ``distribution_epsilon()`` is called from the
-    ``distribution_complete`` computed field, which is evaluated per county
-    per tick; an uncached ``load_default()`` re-parses ``defines.yaml`` from
-    disk on every one of those evaluations.
-
     Cached on FIRST USE, not at import time — which is the whole point of the
     migration. A process that never touches these accessors (layer-0.5
     sentinels, the docs build) never reads the file, and any caller that holds
     a real ``GameDefines`` passes it explicitly and bypasses the cache
     entirely. Tests that need a different default call
     ``_default_defines.cache_clear()``.
+
+    MEASURED REACHABILITY (U2.3 review finding 1 — corrected 2026-07-18). An
+    earlier revision of this docstring justified the cache by claiming
+    ``distribution_complete`` is "evaluated per county per tick". It is not:
+    instrumenting these accessors across a full live Wayne run counted ZERO
+    production invocations of either. ``distribution_complete`` has no
+    production reader — ``graph_bridge.py`` publishes ``interest_payments``,
+    ``ground_rent``, ``rentier_share``, ``profit_of_enterprise``,
+    ``financialization_share`` and ``claims_exceed_surplus`` but not this
+    field, and no county-state ``model_dump()`` occurs in the tick or
+    persistence path, so the lazy ``computed_field`` never fires.
+    ``debt_spiral_threshold`` has no consumer at all.
+
+    The cache is still correct (an uncached ``load_default()`` re-parses
+    ``defines.yaml`` from disk on every call), but it is currently insurance
+    against a future hot path rather than a description of one. The live
+    counts are pinned by
+    ``tests/integration/economics/test_vol3_defines_reachability_live.py``;
+    wiring is owed by U3 (graph publication) and U5 (debt_spiral opposition).
+
+    RUN SCOPE (U2.3 review finding 3): this path resolves the ON-DISK
+    ``defines.yaml`` and cannot see a headless-runner ``--defines`` overlay.
+    Callers holding a run-scoped ``GameDefines`` must pass it explicitly.
     """
     return GameDefines.load_default()
 

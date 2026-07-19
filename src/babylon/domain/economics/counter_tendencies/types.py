@@ -22,9 +22,26 @@ def _default_defines() -> GameDefines:
     """Process-cached ``GameDefines.load_default()`` for the accessors below.
 
     Same rationale as ``distribution.types._default_defines``: both accessors
-    are read from the ``net_counter_tendency`` computed field, evaluated on
-    every model access and every ``model_dump()``. Cached on FIRST USE, not at
-    import time; an explicit ``defines`` argument bypasses the cache.
+    are read from the ``net_counter_tendency`` computed field. Cached on FIRST
+    USE, not at import time; an explicit ``defines`` argument bypasses the
+    cache.
+
+    MEASURED REACHABILITY (U2.3 review finding 1 — corrected 2026-07-18). An
+    earlier revision claimed this field is "evaluated on every model access
+    and every model_dump()". During a live tick it is evaluated ZERO times:
+    its owner ``DefaultCounterTendencyCalculator.compute_counter_tendencies``
+    is constructed in ``factory.py`` and injected in ``services.py`` but never
+    called anywhere in ``src/``. Instrumenting both accessors across a full
+    live Wayne run counted zero production invocations, so an edit to
+    ``capital_vol3.counter_tendency_weights`` or
+    ``capital_vol3.imperial_rent_reference_scale`` currently changes nothing
+    the shipped game computes. Pinned by
+    ``tests/integration/economics/test_vol3_defines_reachability_live.py``;
+    wiring is owed by U5 (counter-tendency opposition).
+
+    RUN SCOPE (U2.3 review finding 3): this path resolves the ON-DISK
+    ``defines.yaml`` and cannot see a headless-runner ``--defines`` overlay.
+    Callers holding a run-scoped ``GameDefines`` must pass it explicitly.
     """
     return GameDefines.load_default()
 

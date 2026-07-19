@@ -338,3 +338,48 @@ class TestProductionConsumesTheStagnationAccessor:
             "the RECOVERY transition ignored the overridden "
             "crisis.stagnation_credit_growth — it is reading a hardcoded literal"
         )
+
+
+@pytest.mark.unit
+class TestDetectorHonoursRunScopedDefines:
+    """Finding U2.3-3: the no-arg accessor path ignores run-scoped defines.
+
+    ``stagnation_credit_growth()`` with no argument resolves
+    ``GameDefines.load_default()``, which reads ``defines.yaml`` off disk and
+    caches it process-wide. A headless run started with ``--defines
+    overlay.yaml`` hashes the overlay into its manifest and then evaluates
+    against the on-disk value — the manifest hash would not describe the run.
+    The detector owns a ``GameDefines``, so it can resolve at call time.
+    """
+
+    def test_constructor_defines_override_reaches_the_transition_guard(self) -> None:
+        from babylon.config.defines import GameDefines
+        from babylon.domain.economics.credit.credit_cycle import DefaultCreditCycleDetector
+
+        base = GameDefines.load_default()
+        overridden = base.model_copy(
+            update={"crisis": base.crisis.model_copy(update={"stagnation_credit_growth": 0.5})}
+        )
+        detector = DefaultCreditCycleDetector(defines=overridden)
+
+        # credit_growth 0.2 is ABOVE the shipped 1% threshold (so the default
+        # detector stays in RECOVERY->EXPANSION) but BELOW the 0.5 override,
+        # which must route to STAGNATION instead.
+        phase, _ = detector.evaluate(
+            profit_rate=0.05,
+            profit_rate_trend=0.0,
+            credit_growth=0.2,
+            default_rate=0.0,
+            current_phase=CreditCyclePhase.RECOVERY,
+        )
+        assert phase is CreditCyclePhase.STAGNATION
+
+        default_detector = DefaultCreditCycleDetector()
+        default_phase, _ = default_detector.evaluate(
+            profit_rate=0.05,
+            profit_rate_trend=0.0,
+            credit_growth=0.2,
+            default_rate=0.0,
+            current_phase=CreditCyclePhase.RECOVERY,
+        )
+        assert default_phase is CreditCyclePhase.EXPANSION

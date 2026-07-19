@@ -412,7 +412,7 @@ def create_financial_services(
 
     # Level 1: National-level calculators
     interest_calc = DefaultInterestCalculator(interest_rates)
-    credit_cycle = DefaultCreditCycleDetector()
+    credit_cycle = DefaultCreditCycleDetector(resolved_defines)
     fictitious_calc = DefaultFictitiousCapitalCalculator(credit_aggregates, z1)
     counter_tendency = DefaultCounterTendencyCalculator()
     value_converter = DefaultValueBasisConverter(_FredPriceIndexAdapter())
@@ -472,7 +472,7 @@ def create_financial_services(
     housing_calc = DefaultHousingDecompositionCalculator(
         housing, resolved_defines.capital_vol3.housing_capitalization_rate_default
     )
-    crisis_assessor = DefaultFinancialCrisisAssessor()
+    crisis_assessor = DefaultFinancialCrisisAssessor(resolved_defines)
 
     return {
         "distribution_calculator": distribution,

@@ -35,7 +35,6 @@ from babylon.domain.economics.credit.interest import (
     InterestCalculator,
 )
 from babylon.domain.economics.credit.types import (
-    CREDIT_FRAGILITY_THRESHOLD,
     FINANCIALIZATION_BUBBLE,
     INTEREST_BURDEN_SQUEEZE,
     OVEREXTENSION_DEFAULT_RATE,
@@ -45,6 +44,7 @@ from babylon.domain.economics.credit.types import (
     CreditState,
     FictitiousCapitalStock,
     InterestRateState,
+    credit_fragility_threshold,
     stagnation_credit_growth,
 )
 from babylon.domain.economics.credit.validation import (
@@ -63,7 +63,7 @@ __all__: list[str] = [
     # Threshold constants
     "INTEREST_BURDEN_SQUEEZE",
     "FINANCIALIZATION_BUBBLE",
-    "CREDIT_FRAGILITY_THRESHOLD",
+    "credit_fragility_threshold",
     "stagnation_credit_growth",
     "OVEREXTENSION_DEFAULT_RATE",
     "RECOVERY_CONSECUTIVE_PERIODS",

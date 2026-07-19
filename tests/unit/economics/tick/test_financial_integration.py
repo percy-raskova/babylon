@@ -319,9 +319,9 @@ class _SpyFinancialCrisisAssessor:
         fips: str,
         year: int,
         interest_burden_ratio: float,
-        financialization_ratio: float,
+        financialization_ratio: float | None,
         default_rate: float,
-        credit_spread: float,
+        credit_spread: float | None,
         claims_exceed_surplus: bool,
     ) -> FinancialCrisisAssessment:
         self.calls.append(
@@ -433,3 +433,100 @@ class TestCapitalVol3DefinesWiredIntoFinancialLayer:
         )
 
         assert spy.calls[0]["default_rate"] == pytest.approx(0.07)
+
+
+class TestCrisisAssessorReceivesHonestAbsence:
+    """Findings U2.3-4 and U2.3-5: the call site must not fabricate inputs.
+
+    ``_assess_county_financial_crisis`` initialised ``fin_ratio = 0.0`` and
+    only overwrote it when the fictitious-capital calculator had data, so a
+    ``NoDataSentinel`` published ``overaccumulation=False`` — byte-identical
+    to a genuine measurement of a non-bubbled county. It also passed
+    ``national_rate`` (base + spread) into a parameter documented as a
+    *spread*, which is the unit mismatch that made ``credit_fragility``
+    unreachable.
+    """
+
+    def test_absent_fictitious_capital_passes_none_not_zero(self) -> None:
+        system = TickDynamicsSystem()
+        spy = _SpyFinancialCrisisAssessor()
+        services = ServiceContainer.create(financial_crisis_assessor=spy, defines=GameDefines())
+        updates: dict[str, object] = {
+            "surplus_distribution": SurplusValueDistribution(
+                fips_code=_WAYNE_FIPS,
+                year=2020,
+                total_surplus_produced=1000.0,
+                interest_payments=100.0,
+                ground_rent=50.0,
+                taxes_on_surplus=25.0,
+            )
+        }
+
+        system._assess_county_financial_crisis(
+            fips=_WAYNE_FIPS,
+            year=2020,
+            updates=updates,
+            services=services,
+            national_rate=0.05,
+            national_spread=0.03,
+            fictitious=None,
+            total_surplus=1000.0,
+        )
+
+        assert spy.calls[0]["financialization_ratio"] is None
+
+    def test_credit_spread_receives_the_spread_not_the_effective_rate(self) -> None:
+        system = TickDynamicsSystem()
+        spy = _SpyFinancialCrisisAssessor()
+        services = ServiceContainer.create(financial_crisis_assessor=spy, defines=GameDefines())
+        updates: dict[str, object] = {
+            "surplus_distribution": SurplusValueDistribution(
+                fips_code=_WAYNE_FIPS,
+                year=2020,
+                total_surplus_produced=1000.0,
+                interest_payments=100.0,
+                ground_rent=50.0,
+                taxes_on_surplus=25.0,
+            )
+        }
+
+        system._assess_county_financial_crisis(
+            fips=_WAYNE_FIPS,
+            year=2020,
+            updates=updates,
+            services=services,
+            national_rate=0.0748,
+            national_spread=0.0556,
+            fictitious=None,
+            total_surplus=1000.0,
+        )
+
+        assert spy.calls[0]["credit_spread"] == pytest.approx(0.0556)
+
+    def test_absent_spread_passes_none(self) -> None:
+        system = TickDynamicsSystem()
+        spy = _SpyFinancialCrisisAssessor()
+        services = ServiceContainer.create(financial_crisis_assessor=spy, defines=GameDefines())
+        updates: dict[str, object] = {
+            "surplus_distribution": SurplusValueDistribution(
+                fips_code=_WAYNE_FIPS,
+                year=2020,
+                total_surplus_produced=1000.0,
+                interest_payments=100.0,
+                ground_rent=50.0,
+                taxes_on_surplus=25.0,
+            )
+        }
+
+        system._assess_county_financial_crisis(
+            fips=_WAYNE_FIPS,
+            year=2020,
+            updates=updates,
+            services=services,
+            national_rate=0.05,
+            national_spread=None,
+            fictitious=None,
+            total_surplus=1000.0,
+        )
+
+        assert spy.calls[0]["credit_spread"] is None

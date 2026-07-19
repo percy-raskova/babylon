@@ -175,3 +175,53 @@ class TestAccessorsReadTheYamlNotTheDataclassDefaults:
         )
         assert ct_types.counter_tendency_weights() == [0.5, 0.1, 0.1, 0.1, 0.1, 0.1]
         assert ct_types.imperial_rent_reference_scale() == pytest.approx(1_000.0)
+
+
+class TestCoefficientDescriptionsDoNotNameAbsentMechanisms:
+    """Finding U2.3-2: never document a feature that does not exist in code.
+
+    ``debt_spiral_threshold`` has no consumer anywhere in ``src/`` — not a
+    live one, not a dead-calculator one. ``DebtAccumulation.update`` tracks
+    ``accumulated_debt`` and ``consecutive_deficit_ticks`` and never compares
+    either against a ratio, and no debt-spiral flag exists on any model. The
+    generated ``defines.yaml`` therefore must not promise a player that
+    editing this value moves a "crisis flag".
+
+    Pinned as a contract rather than left to review: the description is the
+    only thing a modder reads before spending an evening on a knob.
+    """
+
+    def test_debt_spiral_threshold_description_declares_it_unread(self) -> None:
+        field = CapitalVolumeIIIDefines.model_fields["debt_spiral_threshold"]
+        description = field.description or ""
+        assert "NOT YET READ" in description, (
+            "debt_spiral_threshold has no consumer in src/; its description "
+            "must say so plainly rather than name a crisis flag that does "
+            "not exist (house rule: never document a feature that does not "
+            "exist in code)"
+        )
+        assert "crisis flag" not in description.lower()
+
+    def test_credit_fragility_threshold_is_calibrated_for_decimal_inputs(self) -> None:
+        """The predicate must be reachable on real FRED data.
+
+        ``credit_fragility = default_rate * credit_spread > threshold``.
+        ``credit_spread`` carries FRED BAA10Y as a DECIMAL (factory.py
+        divides the percent series by 100), peaking at 0.0556 in Dec 2008.
+        With the documented 0.02 default-rate estimate the peak product is
+        1.11e-3, so any threshold at or above that is unreachable in every
+        modeled year.
+        """
+        d = CapitalVolumeIIIDefines()
+        peak_product = d.default_rate_estimate * 0.0556
+        assert d.credit_fragility_threshold < peak_product, (
+            f"credit_fragility_threshold {d.credit_fragility_threshold} is not "
+            f"crossable by the 2008-peak product {peak_product} — the signal "
+            "is hardwired False for every county in every year"
+        )
+        calm_product = d.default_rate_estimate * 0.018
+        assert d.credit_fragility_threshold > calm_product, (
+            f"credit_fragility_threshold {d.credit_fragility_threshold} fires "
+            f"even on a calm-year product {calm_product} — a signal that is "
+            "always True is as uninformative as one that is never True"
+        )

@@ -478,6 +478,34 @@ class TestCorrection:
         _step(graph, _enabled_services(), tick=10)
         assert graph.graph["market"]["corrections"] == 1
 
+    def test_accumulated_debt_deepens_the_snap(self) -> None:
+        """A debt-free bubble snaps at the base severity 0.6 applied to the
+        SAME-TICK evolved fictitious log-ratio (1.5 seed advances to
+        1.54825 under the oscillator's own drive/reversion before the snap
+        applies, same as test_overhang_fires_the_snap's `before`; 1.54825 *
+        (1 - 0.6) = 0.6193). The SAME overhang, SAME capital stock, carrying
+        a debt-to-capital ratio of 1.0 closes MORE of the fictitious
+        log-ratio in the same single snap (§3.5 item 2). Capital stock is
+        held constant across both arms so the only varying input is debt —
+        otherwise the U6.1 capital-weighted profit aggregate and the C-5
+        serviceability denominator move too, and the test would not isolate
+        severity."""
+        debt_free = _euphoric_graph()
+        debt_free.update_node("metropole", tick_capital_stock=10.0)
+        _step(debt_free, _enabled_services(), tick=10)
+        debt_free_after = debt_free.graph["market"]["fictitious_log"]
+
+        indebted = _euphoric_graph()
+        indebted.update_node("metropole", tick_capital_stock=10.0, tick_accumulated_debt=10.0)
+        _step(indebted, _enabled_services(), tick=10)
+        indebted_after = indebted.graph["market"]["fictitious_log"]
+
+        assert debt_free_after == pytest.approx(
+            0.6193
+        )  # base severity 0.6 on the evolved 1.54825 log
+        assert indebted_after < debt_free_after
+        assert indebted_after == pytest.approx(0.0)  # severity clamps to 1.0: full wipeout
+
     def test_no_overhang_no_snap(self) -> None:
         graph = _euphoric_graph(fictitious_log=0.3)
         _step(graph, _enabled_services(), tick=10)

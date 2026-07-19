@@ -38,6 +38,7 @@ from babylon.engine.systems.wealth_distribution import (
     bracket_of_role,
 )
 from babylon.formulas.market import (
+    calculate_correction_severity,
     calculate_correction_snap,
     calculate_ema,
     calculate_growth_drive,
@@ -333,10 +334,14 @@ class MarketScissorsSystem(SystemBase):
         ):
             return state
 
+        debt_ratio = _mean_ratio_to_capital(graph, "tick_accumulated_debt")
+        severity = calculate_correction_severity(
+            defines.correction_severity, debt_ratio=debt_ratio, slope=defines.correction_debt_slope
+        )
         fictitious_log, fictitious_velocity = calculate_correction_snap(
             state.fictitious_log,
             state.fictitious_velocity,
-            severity=defines.correction_severity,
+            severity=severity,
         )
         price_log, price_velocity = calculate_correction_snap(
             state.price_log,

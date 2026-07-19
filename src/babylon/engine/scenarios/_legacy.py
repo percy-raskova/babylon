@@ -11,6 +11,7 @@ from __future__ import annotations
 
 from babylon.config.defines import EconomyDefines, GameDefines, SurvivalDefines
 from babylon.models.config import SimulationConfig
+from babylon.models.entities.organization import CivilSocietyOrg
 from babylon.models.entities.relationship import Relationship
 from babylon.models.entities.social_class import SocialClass
 from babylon.models.entities.territory import Territory
@@ -22,7 +23,16 @@ from babylon.models.entity_registry import (
     LABOR_ARISTOCRACY_ID,
     PERIPHERY_WORKER_ID,
 )
-from babylon.models.enums import EdgeType, SectorType, SocialRole, TerritoryType
+from babylon.models.enums import (
+    ClassCharacter,
+    ConsciousnessTendency,
+    EdgeType,
+    LegalStanding,
+    SectorType,
+    ServiceType,
+    SocialRole,
+    TerritoryType,
+)
 from babylon.models.scenario import ScenarioConfig
 from babylon.models.world_state import WorldState
 
@@ -701,6 +711,128 @@ def _create_us_territories() -> dict[str, Territory]:
     return territories
 
 
+# =============================================================================
+# NATIONAL PLAYER ORG: the Cadre Council (Blocker B1, owner-ruled 2026-07-18)
+# =============================================================================
+#
+# ``create_us_scenario`` (the ``us_nationwide`` canonical 520-tick campaign,
+# aliased in ``web/game/engine_bridge.py``'s ``_SCENARIO_ALIASES``) used to
+# seed ZERO organizations: ``player_org_id`` was ``None`` and every
+# player-org-keyed surface (fog reach, the doctrine tree, every verb-target
+# query) had nothing to key off. Owner ruling: seed exactly ONE national
+# player org -- do NOT build a multi-org player contract, every
+# player-org-keyed surface assumes a single ``player_org_id``.
+
+_NATIONAL_PLAYER_ORG_ID = "ORG001"
+
+# Real-region seed, not a fabricated id: chosen from the SAME region-name
+# classifier (``_get_region_name``) ``_create_us_territories`` already uses,
+# so "Upper Midwest" here is the identical label a territory's own ``name``
+# field would carry (e.g. "Upper Midwest Industrial"). Also gives narrative
+# continuity with ``create_wayne_county_scenario`` (Detroit, Michigan sits
+# inside this same region bucket).
+_NATIONAL_HQ_REGION = "Upper Midwest"
+
+# Matches ``_legacy_wayne.py``'s ``_create_player_org`` shape exactly: that
+# scenario also gives ORG001 exactly 2 starting territories
+# (``starting_territory_ids[:2]``).
+_NATIONAL_HQ_TERRITORY_COUNT = 2
+
+# Owner ruling B2: >= 0.24 or ``trade_unionism`` (25 TL, the cheapest
+# non-root doctrine node) is unreachable in a 520-tick campaign --
+# ``theoretical_labor`` accrues at ``cadre_level * study_allocation`` per
+# tick (``engine/systems/doctrine.py``), ``study_allocation`` is the fixed
+# 0.20 midpoint of the ratified [0.15, 0.25] band, and
+# ``25 / (cadre * 0.2) <= 520`` solves to ``cadre >= 0.2404``. This is
+# scenario SEED data (an initial entity attribute), not a cross-scenario
+# formula coefficient -- like ``create_two_node_scenario``'s
+# ``worker_wealth``/``owner_wealth`` and ``_legacy_wayne.py``'s hardcoded
+# ``cadre_level=0.1``, it lives as a literal here rather than in
+# ``GameDefines`` (checked ``config/defines/organizations.py`` and
+# ``doctrine.py`` first: neither carries a "scenario starting cadre_level"
+# field, and no existing scenario factory routes its seed values through
+# GameDefines either).
+_NATIONAL_PLAYER_ORG_CADRE_LEVEL = 0.25
+
+
+def _select_national_hq_territories(
+    territories: dict[str, Territory],
+    tenancy_edges: list[Relationship],
+    region_name: str,
+    tenant_class_id: str,
+    count: int,
+) -> list[str]:
+    """Pick a deterministic, real starting-region territory subset.
+
+    Filters to territories that (a) fall in ``region_name`` by the same
+    lat/lon classifier ``_create_us_territories`` uses, and (b) are held in
+    TENANCY specifically by ``tenant_class_id`` -- NOT "any class": the top-
+    population hexes in most regions are held by the Labor Aristocracy
+    zone (``_assign_tenancy_edges``'s next-20%-highest-rent band), and a
+    REVOLUTIONARY-tendency Cadre Council seeded there would be materially
+    backwards (the labor aristocracy is the imperial-rent-bribed stratum
+    LEAST amenable to revolutionary organizing, not the mass base). Sorted
+    by ``(-population, id)`` for determinism (population is real per-hex
+    data; id is the tiebreaker), then truncated to ``count``.
+
+    Args:
+        territories: The full scenario territory dict (H3-cell-id keyed).
+        tenancy_edges: The TENANCY edges already built for this scenario --
+            reused rather than recomputed so tenant-class assignment stays
+            single-sourced from ``_assign_tenancy_edges``.
+        region_name: A label from ``_REGIONS`` / ``_get_region_name``.
+        tenant_class_id: The entity id (e.g. ``PERIPHERY_WORKER_ID``) that
+            must hold TENANCY over a candidate territory.
+        count: How many territory ids to return.
+
+    Returns:
+        Up to ``count`` real territory ids from ``territories``.
+    """
+    import h3
+
+    tenant_by_territory = {
+        edge.target_id: edge.source_id
+        for edge in tenancy_edges
+        if edge.edge_type == EdgeType.TENANCY
+    }
+
+    candidates: list[tuple[int, str]] = []
+    for tid, territory in territories.items():
+        if tenant_by_territory.get(tid) != tenant_class_id:
+            continue
+        lat, lon = h3.cell_to_latlng(tid)
+        if _get_region_name(lat, lon) != region_name:
+            continue
+        candidates.append((territory.population, tid))
+
+    candidates.sort(key=lambda row: (-row[0], row[1]))
+    return [tid for _pop, tid in candidates[:count]]
+
+
+def _create_national_player_org(starting_territory_ids: list[str]) -> CivilSocietyOrg:
+    """Create the national Cadre Council -- the single player org for the
+    ``us_nationwide`` canonical campaign.
+
+    Mirrors ``_legacy_wayne.py``'s ``_create_player_org`` shape exactly
+    (same ``class_character``/``consciousness_tendency``/``legal_standing``/
+    ``service_type``/``cohesion``/``budget``/``heat``); ``cadre_level``
+    differs per owner ruling B2 (see ``_NATIONAL_PLAYER_ORG_CADRE_LEVEL``).
+    """
+    return CivilSocietyOrg(
+        id=_NATIONAL_PLAYER_ORG_ID,
+        name="Cadre Council",
+        class_character=ClassCharacter.PROLETARIAN,
+        consciousness_tendency=ConsciousnessTendency.REVOLUTIONARY,
+        legal_standing=LegalStanding.INFORMAL,
+        service_type=ServiceType.MUTUAL_AID,
+        territory_ids=starting_territory_ids,
+        cohesion=0.5,
+        cadre_level=_NATIONAL_PLAYER_ORG_CADRE_LEVEL,
+        budget=100.0,
+        heat=0.0,
+    )
+
+
 def create_us_scenario(
     extraction_efficiency: float = 0.8,
     repression_level: float = 0.5,
@@ -715,6 +847,12 @@ def create_us_scenario(
     Reuses the standard 6-class imperial circuit entities (4 active + 2 dormant)
     and 5 core relationship edges, adding TENANCY edges connecting classes to
     territory clusters based on class role.
+
+    Seeds one national player organization -- the Cadre Council (Blocker
+    B1, owner-ruled 2026-07-18) -- with PRESENCE in a real starting region
+    (see ``_NATIONAL_HQ_REGION``) so ``player_org_id``, the fog reach
+    system, the doctrine tree, and every verb-target query have a real
+    organization to key off in the canonical nationwide campaign.
 
     Args:
         extraction_efficiency: Alpha in imperial rent formula (default 0.8).
@@ -741,13 +879,32 @@ def create_us_scenario(
     # Combine all relationships: original edges (minus old T001/T002 tenancies) + new
     core_relationships = [r for r in state.relationships if r.edge_type != EdgeType.TENANCY]
 
+    # Seed the national player org (Blocker B1) in a real, already-tenanted
+    # starting region -- among PERIPHERY_WORKER_ID specifically (the mass
+    # base a REVOLUTIONARY-tendency org organizes among, not the Labor
+    # Aristocracy zone) -- so PRESENCE -> TENANCY -> SOLIDARITY fog reach is
+    # non-empty from tick 0.
+    hq_territory_ids = _select_national_hq_territories(
+        territories,
+        tenancy_edges,
+        _NATIONAL_HQ_REGION,
+        PERIPHERY_WORKER_ID,
+        _NATIONAL_HQ_TERRITORY_COUNT,
+    )
+    player_org = _create_national_player_org(hq_territory_ids)
+
     return (
         WorldState(
             tick=0,
             entities=state.entities,
             territories=territories,
+            organizations={_NATIONAL_PLAYER_ORG_ID: player_org},
             relationships=[*core_relationships, *tenancy_edges],
             event_log=[],
+            # EH ruling 6 (owner 2026-07-16): the engine-side player pointer
+            # -- EpistemicHorizonSystem computes player-relative C_p/I_c from
+            # it. Mirrors ``_legacy_wayne.py``'s ``create_wayne_county_scenario``.
+            player_org_id=_NATIONAL_PLAYER_ORG_ID,
         ),
         config,
         defines,

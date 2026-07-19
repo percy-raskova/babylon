@@ -265,14 +265,14 @@ subprocess-tee = ">=0.4.1"
 
 [[package]]
 name = "ansible-core"
-version = "2.20.3"
+version = "2.20.7rc1"
 description = "Radically simple IT automation"
 optional = false
 python-versions = ">=3.12"
 groups = ["main"]
 files = [
-    {file = "ansible_core-2.20.3-py3-none-any.whl", hash = "sha256:7fe2da953192cac5d5eb37bfc984bf9339daa252e0e3d1deb5526eb1f8be9f7f"},
-    {file = "ansible_core-2.20.3.tar.gz", hash = "sha256:38670ab2d2ffd67ee7e9e562f7c94e0927c8b7b4b0eb69233bc008c29e32d591"},
+    {file = "ansible_core-2.20.7rc1-py3-none-any.whl", hash = "sha256:a863f8edc2651dd29f3f4dcb369ca50217bf8dabc5a12485d27a7b86fa808c48"},
+    {file = "ansible_core-2.20.7rc1.tar.gz", hash = "sha256:daa7aa3c99da1a66508838becf92bdcfefa4dc5e5b831ce13596038d28441de2"},
 ]
 
 [package.dependencies]

@@ -35,6 +35,7 @@ Cross-tick + handoff channel.
 
 from __future__ import annotations
 
+import math
 from typing import TYPE_CHECKING, Any, ClassVar
 
 from babylon.domain.dialectics.core.coupling import StanceIntervention, apply_interventions
@@ -42,6 +43,14 @@ from babylon.domain.dialectics.core.opposition import OppositionState, PoleReadi
 from babylon.domain.dialectics.core.regime import classify_regime
 from babylon.domain.dialectics.instances.catalog import GraphInputs
 from babylon.domain.dialectics.instances.levels import level_index_for, spatial_lattice_for_counties
+from babylon.domain.economics.distribution.types import (
+    DebtAccumulation,
+    SurplusValueDistribution,
+)
+from babylon.domain.economics.tick.graph_bridge import (
+    NATIONAL_FINANCIAL_ATTR,
+    TICK_DYNAMICS_KEY,
+)
 from babylon.engine.topology_monitor import extract_solidarity_subgraph
 from babylon.formulas.contradiction import calculate_wealth_asymmetry_gap
 from babylon.formulas.market import calculate_scissors_balance
@@ -289,6 +298,20 @@ class ContradictionSystem(SystemBase):
                 scale=float(services.defines.market.scissors_balance_scale),
             )
 
+        rentier_share, debt_ratio = self._county_money_ratios(graph)
+
+        financialization_index: float | None = None
+        if isinstance(market_raw, dict) and "fictitious_log" in market_raw:
+            # The fictitious axis IS a log-ratio around the value anchor, so
+            # exp() returns it as the fictitious/real ratio directly — one
+            # axis, calibrated to FictitiousCapitalStock.ratio_to_real by the
+            # monetary anchor while real data exists, endogenous after 2024.
+            # The axis's own bound is the overflow clamp: a log outside it is
+            # corrupt input, and raising OverflowError mid-tick helps nobody.
+            bound = float(services.defines.market.max_abs_log)
+            clamped = max(-bound, min(bound, float(market_raw["fictitious_log"])))
+            financialization_index = math.exp(clamped)
+
         return GraphInputs(
             exploitation_pairs=tuple(exploitation),
             wage_value_pairs=tuple(wage_value),
@@ -298,7 +321,98 @@ class ContradictionSystem(SystemBase):
             wage_value_id_pairs=tuple(wage_value_ids),
             tenancy_id_pairs=tuple(tenancy_ids),
             market_balance=market_balance,
+            rentier_share=rentier_share,
+            debt_ratio=debt_ratio,
+            credit_fragility=self._credit_fragility(
+                graph, float(services.defines.capital_vol3.credit_fragility_scale)
+            ),
+            financialization_index=financialization_index,
         )
+
+    @staticmethod
+    def _county_money_ratios(graph: GraphProtocol) -> tuple[float | None, float | None]:
+        """``(rentier_share, debt_ratio)`` aggregated over the county layer.
+
+        Both are RATIOS OF SUMS — ``Σclaims / Σsurplus`` and
+        ``Σdebt / Σsurplus`` — never means of per-county ratios. That
+        distinction is the named *intensive-aggregation* error class: an
+        unweighted mean of an intensive across space lets a county producing
+        one dollar of surplus swing the national reading exactly as hard as
+        Wayne.
+
+        Counties are visited in sorted FIPS order so the float summation
+        order is fixed (Constitution III.7).
+
+        Returns:
+            ``(None, None)`` when no county carries a
+            :class:`SurplusValueDistribution`, or when the summed surplus is
+            not positive — a ratio with no denominator is absent, not zero
+            and not infinite (Constitution III.11). ``debt_ratio`` is
+            ``None`` on its own when distributions exist but no county
+            carries a :class:`DebtAccumulation`.
+        """
+        tick_data = graph.get_graph_attr(TICK_DYNAMICS_KEY, None)
+        if not isinstance(tick_data, dict):
+            return (None, None)
+        county_states = tick_data.get("county_states")
+        if not isinstance(county_states, dict):
+            return (None, None)
+
+        total_surplus = 0.0
+        total_claims = 0.0
+        total_debt = 0.0
+        saw_distribution = False
+        saw_debt = False
+        for fips in sorted(county_states):  # bounded by the county layer
+            county = county_states[fips]
+            distribution = getattr(county, "surplus_distribution", None)
+            if isinstance(distribution, SurplusValueDistribution):
+                saw_distribution = True
+                total_surplus += distribution.total_surplus_produced
+                total_claims += (
+                    distribution.interest_payments
+                    + distribution.ground_rent
+                    + distribution.taxes_on_surplus
+                )
+            debt = getattr(county, "debt_accumulation", None)
+            if isinstance(debt, DebtAccumulation):
+                saw_debt = True
+                total_debt += debt.accumulated_debt
+
+        if not saw_distribution or total_surplus <= 0.0:
+            return (None, None)
+        debt_ratio = total_debt / total_surplus if saw_debt else None
+        return (total_claims / total_surplus, debt_ratio)
+
+    @staticmethod
+    def _credit_fragility(graph: GraphProtocol, scale: float) -> float | None:
+        """National ``default_rate * spread``, divided by its crisis reference.
+
+        Read from the published :data:`NATIONAL_FINANCIAL_ATTR` dump, whose
+        ``credit_state`` block carries ``credit_fragility`` as a Pydantic
+        computed field. Dividing here (not in the catalog) keeps the catalog
+        defines-free — the same division of labour ``market_balance`` uses
+        for its ``tanh`` scale — and makes 1.0 mean "exactly at the crisis
+        threshold" for the shared ratio map.
+
+        Args:
+            graph: The live graph.
+            scale: ``defines.capital_vol3.credit_fragility_scale`` (> 0 by schema).
+
+        Returns:
+            The scaled fragility, or ``None`` when no national financial
+            state, no credit state, or no numeric fragility is published.
+        """
+        raw = graph.get_graph_attr(NATIONAL_FINANCIAL_ATTR, None)
+        if not isinstance(raw, dict):
+            return None
+        credit_state = raw.get("credit_state")
+        if not isinstance(credit_state, dict):
+            return None
+        fragility = credit_state.get("credit_fragility")
+        if not isinstance(fragility, (int, float)) or isinstance(fragility, bool):
+            return None
+        return float(fragility) / scale
 
     @staticmethod
     def _edge_wealths(

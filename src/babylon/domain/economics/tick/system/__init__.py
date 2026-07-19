@@ -1520,7 +1520,11 @@ class TickDynamicsSystem(SystemBase):
                     fips=fips,
                     year=year,
                     total_surplus=total_surplus,
-                    county_profit_rate=profit_rate if profit_rate is not None else 0.05,
+                    county_profit_rate=(
+                        profit_rate
+                        if profit_rate is not None
+                        else services.defines.capital_vol3.profit_rate_fallback
+                    ),
                     national_interest_rate=national_rate,
                     county_employment=county.employment,
                 )
@@ -1583,7 +1587,7 @@ class TickDynamicsSystem(SystemBase):
         fin_share = getattr(surplus_dist, "financialization_share", 0.0)
         claims_exceed = getattr(surplus_dist, "claims_exceed_surplus", False)
         fin_ratio = 0.0
-        max_counties = 3300
+        max_counties = services.defines.capital_vol3.national_county_count
         if fictitious is not None and total_surplus is not None and total_surplus > 0:
             fin_ratio = fictitious.ratio_to_real(total_surplus * max_counties)
 
@@ -1592,7 +1596,7 @@ class TickDynamicsSystem(SystemBase):
             year=year,
             interest_burden_ratio=float(fin_share),
             financialization_ratio=fin_ratio,
-            default_rate=0.02,  # Placeholder
+            default_rate=services.defines.capital_vol3.default_rate_estimate,
             credit_spread=national_rate,
             claims_exceed_surplus=bool(claims_exceed),
         )

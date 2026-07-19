@@ -334,6 +334,8 @@ def load_fred_series_from_db(
 
 def create_financial_services(
     fred_series_cache: dict[str, dict[int, float]] | None = None,
+    *,
+    defines: GameDefines | None = None,
 ) -> dict[str, Any]:
     """Create all Volume III financial calculators wired with real data sources.
 
@@ -347,10 +349,13 @@ def create_financial_services(
     Args:
         fred_series_cache: Optional pre-loaded FRED series data as
             {series_id: {year: value}}. If None, uses hardcoded defaults.
+        defines: Optional GameDefines override; defaults to
+            GameDefines.load_default() when omitted.
 
     Returns:
         Dict with keys matching ServiceContainer financial field names.
     """
+    from babylon.config.defines import GameDefines
     from babylon.domain.economics.counter_tendencies.calculator import (
         DefaultCounterTendencyCalculator,
     )
@@ -375,6 +380,8 @@ def create_financial_services(
         DefaultHousingDecompositionCalculator,
         DefaultRentCalculator,
     )
+
+    resolved_defines = defines if defines is not None else GameDefines.load_default()
 
     # Build FRED series cache (use provided or empty)
     series: dict[str, dict[int, float]] = fred_series_cache or {}
@@ -457,9 +464,14 @@ def create_financial_services(
             return None
 
     rent_calc = DefaultRentCalculator(_DefaultCountyRentalAdapter())
-    # Default 5% interest rate for rent capitalization; overridden per-tick
-    _default_interest = 0.05
-    housing_calc = DefaultHousingDecompositionCalculator(housing, _default_interest)
+    # Fallback rent-capitalization interest rate — a construction-time
+    # snapshot DefaultHousingDecompositionCalculator captures once and
+    # never reassigns. (Honesty sweep, U2: the prior comment claiming a
+    # per-tick override was stale — no such override exists; see spec
+    # 2026-07-18 vol3-money-scissors-design Table 3.6.)
+    housing_calc = DefaultHousingDecompositionCalculator(
+        housing, resolved_defines.capital_vol3.housing_capitalization_rate_default
+    )
     crisis_assessor = DefaultFinancialCrisisAssessor()
 
     return {

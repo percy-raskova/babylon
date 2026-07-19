@@ -12,6 +12,7 @@ from __future__ import annotations
 import pytest
 from pydantic import ValidationError
 
+from babylon.config.defines import CapitalVolumeIIIDefines, GameDefines
 from babylon.domain.economics.counter_tendencies.types import CounterTendencyStrength
 from babylon.domain.economics.credit.types import (
     CreditCyclePhase,
@@ -24,10 +25,13 @@ from babylon.domain.economics.dynamics.types import ClassDistribution
 from babylon.domain.economics.financial_crisis.types import FinancialCrisisAssessment
 from babylon.domain.economics.monetary.types import MonetaryAdjustment
 from babylon.domain.economics.rent.types import HousingValueDecomposition, RentExtraction
+from babylon.domain.economics.tick.system import TickDynamicsSystem
 from babylon.domain.economics.tick.types import (
     CountyEconomicState,
     NationalFinancialParameters,
 )
+from babylon.engine.services import ServiceContainer
+from tests.unit.economics.tick.conftest import MockTensor, MockTensorRegistry
 
 # =============================================================================
 # T084: NationalFinancialParameters Tests
@@ -269,3 +273,163 @@ class TestCountyEconomicStateFinancialFields:
         state = _make_county_state(financial_crisis=crisis)
         assert state.financial_crisis is not None
         assert state.financial_crisis.active_signals == 2
+
+
+# =============================================================================
+# U2.4: capital_vol3 magic-number wiring tests
+# =============================================================================
+
+_WAYNE_FIPS = "26163"
+
+
+class _SpyDistributionCalculator:
+    """Captures compute_distribution kwargs; always succeeds."""
+
+    def __init__(self) -> None:
+        self.calls: list[dict[str, object]] = []
+
+    def compute_distribution(
+        self,
+        fips: str,
+        year: int,
+        total_surplus: float,
+        county_profit_rate: float,
+        national_interest_rate: float,
+        county_employment: float = 0.0,
+    ) -> SurplusValueDistribution:
+        self.calls.append({"county_profit_rate": county_profit_rate})
+        return SurplusValueDistribution(
+            fips_code=fips,
+            year=year,
+            total_surplus_produced=total_surplus,
+            interest_payments=0.0,
+            ground_rent=0.0,
+            taxes_on_surplus=0.0,
+        )
+
+
+class _SpyFinancialCrisisAssessor:
+    """Captures assess() kwargs; returns a minimal valid assessment."""
+
+    def __init__(self) -> None:
+        self.calls: list[dict[str, object]] = []
+
+    def assess(
+        self,
+        fips: str,
+        year: int,
+        interest_burden_ratio: float,
+        financialization_ratio: float,
+        default_rate: float,
+        credit_spread: float,
+        claims_exceed_surplus: bool,
+    ) -> FinancialCrisisAssessment:
+        self.calls.append(
+            {
+                "financialization_ratio": financialization_ratio,
+                "default_rate": default_rate,
+                "credit_spread": credit_spread,
+            }
+        )
+        return FinancialCrisisAssessment(fips_code=fips, year=year)
+
+
+class TestCapitalVol3DefinesWiredIntoFinancialLayer:
+    """Honesty sweep (U2): magic numbers in the financial layer now read
+    services.defines.capital_vol3.* instead of bare literals."""
+
+    def test_profit_rate_fallback_reads_capital_vol3(self) -> None:
+        system = TickDynamicsSystem()
+        spy = _SpyDistributionCalculator()
+        registry = MockTensorRegistry(
+            {(_WAYNE_FIPS, 2020): MockTensor(profit_rate=None, total_s=1000.0)}
+        )
+        defines = GameDefines(capital_vol3=CapitalVolumeIIIDefines(profit_rate_fallback=0.09))
+        services = ServiceContainer.create(
+            distribution_calculator=spy,
+            tensor_registry=registry,
+            defines=defines,
+        )
+        county = _make_county_state()
+
+        system._compute_county_financial_state(
+            fips=_WAYNE_FIPS,
+            county=county,
+            services=services,
+            year=2020,
+            national_rate=0.05,
+            fictitious=None,
+        )
+
+        assert spy.calls[0]["county_profit_rate"] == pytest.approx(0.09)
+
+    def test_national_county_count_reads_capital_vol3(self) -> None:
+        system = TickDynamicsSystem()
+        spy = _SpyFinancialCrisisAssessor()
+        registry = MockTensorRegistry(
+            {(_WAYNE_FIPS, 2020): MockTensor(profit_rate=0.05, total_s=1000.0)}
+        )
+        defines = GameDefines(capital_vol3=CapitalVolumeIIIDefines(national_county_count=10))
+        services = ServiceContainer.create(
+            financial_crisis_assessor=spy,
+            tensor_registry=registry,
+            defines=defines,
+        )
+        fictitious = FictitiousCapitalStock(
+            year=2020,
+            government_debt=1_000_000.0,
+            corporate_equity=1_000_000.0,
+            corporate_debt=1_000_000.0,
+            household_debt=1_000_000.0,
+        )
+        updates: dict[str, object] = {
+            "surplus_distribution": SurplusValueDistribution(
+                fips_code=_WAYNE_FIPS,
+                year=2020,
+                total_surplus_produced=1000.0,
+                interest_payments=100.0,
+                ground_rent=50.0,
+                taxes_on_surplus=25.0,
+            )
+        }
+
+        system._assess_county_financial_crisis(
+            fips=_WAYNE_FIPS,
+            year=2020,
+            updates=updates,
+            services=services,
+            national_rate=0.05,
+            fictitious=fictitious,
+            total_surplus=1000.0,
+        )
+
+        expected_ratio = fictitious.ratio_to_real(1000.0 * 10)
+        assert spy.calls[0]["financialization_ratio"] == pytest.approx(expected_ratio)
+
+    def test_default_rate_estimate_reads_capital_vol3(self) -> None:
+        system = TickDynamicsSystem()
+        spy = _SpyFinancialCrisisAssessor()
+        defines = GameDefines(capital_vol3=CapitalVolumeIIIDefines(default_rate_estimate=0.07))
+        services = ServiceContainer.create(financial_crisis_assessor=spy, defines=defines)
+        updates: dict[str, object] = {
+            "surplus_distribution": SurplusValueDistribution(
+                fips_code=_WAYNE_FIPS,
+                year=2020,
+                total_surplus_produced=1000.0,
+                interest_payments=100.0,
+                ground_rent=50.0,
+                taxes_on_surplus=25.0,
+            )
+        }
+
+        system._assess_county_financial_crisis(
+            fips=_WAYNE_FIPS,
+            year=2020,
+            updates=updates,
+            services=services,
+            national_rate=0.05,
+            fictitious=None,
+            total_surplus=1000.0,
+        )
+
+        assert spy.calls[0]["default_rate"] == pytest.approx(0.07)

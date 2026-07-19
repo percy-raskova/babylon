@@ -70,12 +70,16 @@ def _require_national_scope(live: sqlite3.Connection) -> None:
 
     ``tools/make_reference_subset.py`` deliberately pins ``fact_qcew_annual``
     to ``michigan`` scope while ``fact_qcew_county_rollup`` stays ``full``
-    (the BLOCKED-FULL trio) — so on the CI subset the rollup⟷annual JOINs
-    these gates are built on compare national rollups against Michigan-only
-    leaves and the bands collapse (nightly Reference-Data red since
-    2026-07-17). The full DB satisfies the gates exactly as specced (SC-001/
-    002/004/006), so re-banding for the subset would paper over a genuine
-    scope mismatch as sampling noise; the honest disposition is a cited skip.
+    (the BLOCKED-FULL trio) — so on the CI subset, gates that assert
+    NATIONAL scale (sc001's row-count floor, sc004's national ownership
+    JOIN, sc006's 10M-row floor) collapse by construction (nightly
+    Reference-Data red since 2026-07-17). The full DB satisfies them
+    exactly as specced, so re-banding for the subset would paper over a
+    genuine scope mismatch as sampling noise; the honest disposition is a
+    cited skip. sc002 deliberately does NOT guard: it asserts only a
+    within-band SHARE over whatever county-years both tables carry, which
+    is a meaningful reconciliation on the Michigan subset too (empirically
+    1680/1680 within band there).
     """
     (n,) = live.execute("SELECT COUNT(DISTINCT county_id) FROM fact_qcew_annual").fetchone()
     if n < _NATIONAL_SCOPE_MIN_COUNTIES:
@@ -114,7 +118,8 @@ class TestBands:
         assert within / total * 100.0 >= 99.0, f"{within}/{total}"
 
     def test_sc002_wages_99pct_within_2pct(self, live: sqlite3.Connection) -> None:
-        _require_national_scope(live)
+        # No scope guard: share-only assertion, meaningful on both the full
+        # DB and the Michigan subset — see _require_national_scope's docstring.
         total, within = _within_band_share(live, "total_wages_usd")
         assert within / total * 100.0 >= 99.0, f"{within}/{total}"
 

@@ -23,6 +23,7 @@ from __future__ import annotations
 import importlib
 import inspect
 import pkgutil
+import warnings
 from collections.abc import Callable
 from functools import lru_cache
 from typing import Any, get_type_hints
@@ -128,7 +129,15 @@ def _iter_public_formulas() -> list[Callable[..., Any]]:
 
 
 def _iter_package_modules(package: Any) -> list[Any]:
-    """Recursively import every submodule of a package and return them."""
+    """Recursively import every submodule of a package and return them.
+
+    Deprecated shims (e.g. ``babylon.models.components.organization``) warn
+    at module import; this walker imports EVERYTHING by contract, so that
+    warning is expected here and suppressed exactly here — otherwise
+    pyproject's ``error::DeprecationWarning:babylon.*`` policy detonates the
+    first discovery call per pytest worker (nightly 2026-07-19, an
+    order-dependent failure only later tests escaped via the module cache).
+    """
     modules: list[Any] = [package]
     if not hasattr(package, "__path__"):
         return modules
@@ -136,7 +145,9 @@ def _iter_package_modules(package: Any) -> list[Any]:
         if mod_info.name.endswith(".__main__"):
             continue
         try:
-            mod = importlib.import_module(mod_info.name)
+            with warnings.catch_warnings():
+                warnings.simplefilter("ignore", DeprecationWarning)
+                mod = importlib.import_module(mod_info.name)
         except ImportError:
             continue
         modules.append(mod)

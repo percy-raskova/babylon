@@ -5104,3 +5104,46 @@ class TestGroupCDDocstringsHonest:
 # docstring against build_default_registry().keys, so it cannot go stale
 # again at 6 OR at 10. A hardcoded "six bound contradictions" assertion
 # here would red the moment U5.2 grows the registry to ten.
+
+
+class TestMobilizeTargetsIncludeSeededBusinesses:
+    """ADR086: the QCEW-seeded ``Business`` NPCs surface as real MOBILIZE
+    targets in a ``us_nationwide`` session -- ``get_mobilize_targets`` walks the
+    player org's territories and returns the business/civil_society orgs sharing
+    them, so the businesses seeded into the player's HQ hexes are targetable."""
+
+    def test_us_nationwide_businesses_are_mobilize_targets(self) -> None:
+        from babylon.engine.scenarios import create_us_scenario
+        from babylon.engine.scenarios.business_seeds import build_seeded_businesses
+
+        state, _config, _defines = create_us_scenario()
+        graph = state.to_graph()
+        bridge = EngineBridge(_make_mock_persistence())
+
+        with _patched_hydrate_state(bridge, graph):
+            result = bridge.get_mobilize_targets(uuid.uuid4(), state.player_org_id)
+
+        target_ids = {t["id"] for t in result["targets"]}
+        seeded_ids = set(build_seeded_businesses("US", []))
+        # Every seeded business shares the player's HQ territories, so all are
+        # reachable as MOBILIZE targets (not merely a non-empty intersection).
+        assert seeded_ids, "no businesses seeded"
+        assert seeded_ids <= target_ids, (
+            f"seeded businesses missing from MOBILIZE targets: {seeded_ids - target_ids}"
+        )
+
+    def test_targeted_businesses_carry_real_names_and_type(self) -> None:
+        from babylon.engine.scenarios import create_us_scenario
+        from babylon.engine.scenarios.business_seeds import build_seeded_businesses
+
+        state, _config, _defines = create_us_scenario()
+        graph = state.to_graph()
+        bridge = EngineBridge(_make_mock_persistence())
+
+        with _patched_hydrate_state(bridge, graph):
+            result = bridge.get_mobilize_targets(uuid.uuid4(), state.player_org_id)
+
+        by_id = {t["id"]: t for t in result["targets"]}
+        for biz_id, biz in build_seeded_businesses("US", []).items():
+            assert by_id[biz_id]["name"] == biz.name
+            assert by_id[biz_id]["type"] == "BUSINESS"

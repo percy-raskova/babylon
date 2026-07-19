@@ -242,8 +242,13 @@ class TestBackendContractParity:
         # 2 since AW3-R2 item 3: player org (ORG001) + the seeded
         # STATE_APPARATUS "Detroit Police Department" (ORG002) that
         # activates RuleBasedStateAI (see
-        # tests/integration/test_state_ai_wayne_county.py).
-        assert len(wayne_county_state.organizations) == 2
+        # tests/integration/test_state_ai_wayne_county.py). ADR086 adds the
+        # real-QCEW Business NPCs (BIZ_WAYNE_*); was ``== 2`` before ADR086.
+        from babylon.engine.scenarios.business_seeds import build_seeded_businesses
+
+        assert len(wayne_county_state.organizations) == 2 + len(
+            build_seeded_businesses("26163", [])
+        )
         assert len(wayne_county_state.relationships) > 80  # 81 tenancy + 4 structural
 
     def test_vanguard_resources_computed_correctly(self, vanguard_resources) -> None:

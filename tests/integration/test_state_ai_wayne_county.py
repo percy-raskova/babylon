@@ -70,7 +70,11 @@ class TestWayneCountySeedsStateApparatus:
         state, _config, _defines = create_wayne_county_scenario()
 
         assert "ORG001" in state.organizations
-        assert len(state.organizations) == 2
+        # 2 (player ORG001 + Detroit PD ORG002) + the ADR086 real-QCEW Business
+        # NPCs (BIZ_WAYNE_*); was ``== 2`` before ADR086 seeded businesses.
+        from babylon.engine.scenarios.business_seeds import build_seeded_businesses
+
+        assert len(state.organizations) == 2 + len(build_seeded_businesses("26163", []))
 
 
 class TestStateAIExecutesInWayneCounty:

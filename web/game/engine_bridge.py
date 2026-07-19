@@ -10515,16 +10515,20 @@ def _centrality_by_territory(state: WorldState, graph: Any) -> dict[str, float]:
         graph: The hydrated session graph (edges live only here).
 
     Returns:
-        Map of territory node id -> degree centrality in [0, 1], rounded to
-        4 places. A territory absent from the org network (no
-        organization/institution has a PRESENCE edge there) is simply
-        absent — callers must treat a missing entry as ``None``, never a
-        fabricated 0.0 (Constitution III.11).
+        Map of territory node id -> degree centrality in [0, 1]. The value is
+        the SAME full-precision ``_org_network_centrality`` reading the
+        ``get_org_network`` endpoint returns (the "no drift" contract in
+        ``test_aw4_centrality_lens.py`` — a prior 4-place rounding here was a
+        latent drift surfaced when ADR086's wayne_county businesses made a
+        territory's degree 1/9); display rounding belongs at the render layer.
+        A territory absent from the org network (no organization/institution
+        has a PRESENCE edge there) is simply absent — callers must treat a
+        missing entry as ``None``, never a fabricated 0.0 (Constitution III.11).
     """
     nodes, edges = _build_org_network(state, graph)
     centrality = _org_network_centrality(nodes, edges)
     return {
-        str(node["id"]): round(centrality[str(node["id"])]["degree"], 4)
+        str(node["id"]): centrality[str(node["id"])]["degree"]
         for node in nodes
         if node["type"] == "territory" and str(node["id"]) in centrality
     }

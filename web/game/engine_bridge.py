@@ -7626,6 +7626,26 @@ def _has_county_resolution_territory(state: WorldState) -> bool:
 _TENSOR_REGISTRY_CACHE: dict[frozenset[str], Any] = {}
 _CAPITAL_CALCULATOR_CACHE: dict[frozenset[str], Any] = {}
 
+#: PR #209 review: both caches above hold a fully-hydrated registry (15 years
+#: × every county in the key) per distinct FIPS-set for the life of the web
+#: worker — unbounded, that grows with every new scenario/county-set a session
+#: requests. 8 comfortably covers every canonical scenario while capping the
+#: worst case; infra bound, not a gameplay coefficient, hence no GameDefines.
+_ECONOMICS_CACHE_MAX: Final[int] = 8
+
+
+def _cache_put_bounded(cache: dict[frozenset[str], Any], key: frozenset[str], value: Any) -> None:
+    """FIFO-bounded insert shared by both economics caches (PR #209 review).
+
+    Dicts iterate in insertion order, so ``next(iter(cache))`` is the oldest
+    entry; one eviction per insert keeps ``len(cache) <= _ECONOMICS_CACHE_MAX``
+    because this is the caches' only writer.
+    """
+    if len(cache) >= _ECONOMICS_CACHE_MAX:
+        cache.pop(next(iter(cache)))
+    cache[key] = value
+
+
 #: QCEW county coverage runs 2010–2024; hydrate the full span once so the
 #: perpetual-inventory ``get_K`` has every year the sim can advance into.
 _CAPITAL_HYDRATION_YEARS: Final[tuple[int, ...]] = tuple(range(2010, 2025))
@@ -7679,10 +7699,13 @@ def _build_tensor_registry(fips_codes: tuple[str, ...]) -> Any:
             StubBEASource(),  # falls back to DepartmentMapper department ratios
             DepartmentMapper.from_yaml(naics_yaml),
         )
-        # sorted: fixes hydration/summation order across sessions (III.7, §5 hazard 1)
-        registry.hydrate_counties(hydrator, sorted(fips_codes), list(_CAPITAL_HYDRATION_YEARS))
+        # sorted(key), not sorted(fips_codes): fixes hydration/summation order
+        # across sessions (III.7, §5 hazard 1) AND hydrates exactly the deduped
+        # cache key — a duplicate county in the tuple is one hydration, not two
+        # (PR #209 review).
+        registry.hydrate_counties(hydrator, sorted(key), list(_CAPITAL_HYDRATION_YEARS))
 
-    _TENSOR_REGISTRY_CACHE[key] = registry
+    _cache_put_bounded(_TENSOR_REGISTRY_CACHE, key, registry)
     return registry
 
 
@@ -7715,7 +7738,7 @@ def _build_capital_calculator(fips_codes: tuple[str, ...]) -> Any:
 
     registry = _build_tensor_registry(fips_codes)
     calculator = CapitalStockCalculator(registry)
-    _CAPITAL_CALCULATOR_CACHE[key] = calculator
+    _cache_put_bounded(_CAPITAL_CALCULATOR_CACHE, key, calculator)
     return calculator
 
 

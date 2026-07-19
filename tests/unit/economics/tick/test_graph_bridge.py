@@ -6,18 +6,23 @@ Task: T008
 
 from __future__ import annotations
 
+from babylon.domain.economics.credit.types import FictitiousCapitalStock, InterestRateState
 from babylon.domain.economics.distribution.types import DebtAccumulation, SurplusValueDistribution
 from babylon.domain.economics.financial_crisis.types import FinancialCrisisAssessment
 from babylon.domain.economics.rent.types import HousingValueDecomposition, RentExtraction
 from babylon.domain.economics.tick.graph_bridge import (
+    NATIONAL_FINANCIAL_ATTR,
     TICK_DYNAMICS_KEY,
+    read_national_financial_state_from_graph,
     read_tick_state_from_graph,
+    write_national_financial_state_to_graph,
     write_tick_state_to_graph,
 )
 from babylon.domain.economics.tick.types import (
     BifurcationRiskMetric,
     CrisisPhase,
     CrisisState,
+    NationalFinancialParameters,
     NationalTickParameters,
     SimulationTickState,
     SmoothedCoefficients,
@@ -331,3 +336,67 @@ class TestWriteFinancialState:
         assert recovered.housing_decomposition is None
         assert recovered.debt_accumulation is None
         assert recovered.financial_crisis is None
+
+
+class TestWriteNationalFinancialStateToGraph:
+    """Tests for write/read of NationalFinancialParameters (vol3-money-scissors U3).
+
+    Feature: 024-capital-volume-iii / vol3-money-scissors U3
+    Publishes the previously-transient FictitiousCapitalStock + national
+    interest state so a CONSEQUENCE-phase System can read them later in
+    the same tick (design doc SS3.2, SS1.2).
+    """
+
+    def _sample_params(self) -> NationalFinancialParameters:
+        """Build a fully-populated interest+fictitious-capital sample."""
+        return NationalFinancialParameters(
+            interest_rate_state=InterestRateState(
+                year=2015,
+                base_rate=0.25,
+                treasury_10y=2.27,
+                baa_spread=2.64,
+            ),
+            fictitious_capital=FictitiousCapitalStock(
+                year=2015,
+                government_debt=18e12,
+                corporate_equity=20e12,
+                corporate_debt=8e12,
+                household_debt=14e12,
+            ),
+        )
+
+    def test_write_stores_model_dump_dict_under_national_financial_attr(self) -> None:
+        """Verify write stores a plain dict (model_dump()), not the object."""
+        graph = build_territory_graph()
+        params = self._sample_params()
+
+        write_national_financial_state_to_graph(graph, params)
+
+        assert NATIONAL_FINANCIAL_ATTR in graph.graph
+        stored = graph.graph[NATIONAL_FINANCIAL_ATTR]
+        assert isinstance(stored, dict)
+        assert stored["interest_rate_state"]["base_rate"] == 0.25
+        assert stored["fictitious_capital"]["government_debt"] == 18e12
+
+    def test_read_returns_none_when_nothing_published(self) -> None:
+        """Verify read returns None before any write (absence, not a fake zero)."""
+        graph = build_territory_graph()
+        assert read_national_financial_state_from_graph(graph) is None
+
+    def test_round_trip_reconstructs_national_financial_parameters(self) -> None:
+        """Verify write-then-read reconstructs equivalent nested Pydantic models."""
+        graph = build_territory_graph()
+        params = self._sample_params()
+
+        write_national_financial_state_to_graph(graph, params)
+        result = read_national_financial_state_from_graph(graph)
+
+        assert result is not None
+        assert result.interest_rate_state is not None
+        assert result.interest_rate_state.base_rate == 0.25
+        assert result.interest_rate_state.effective_rate == 0.25 + 2.64
+        assert result.fictitious_capital is not None
+        assert result.fictitious_capital.total_claims == 60e12
+        assert result.credit_state is None
+        assert result.counter_tendencies is None
+        assert result.monetary_adjustment is None

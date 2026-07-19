@@ -15,7 +15,7 @@ See Also:
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, Final
 
 if TYPE_CHECKING:
     from babylon.kernel.graph_protocol import GraphProtocol
@@ -28,6 +28,7 @@ from babylon.domain.economics.tick.types import (
     CrisisPhase,
     CrisisState,
     DerivedRates,
+    NationalFinancialParameters,
     NationalTickParameters,
     SimulationTickState,
     SmoothedCoefficients,
@@ -339,6 +340,57 @@ def read_tick_state_from_graph(  # pragma: no mutate — data serialization
     )  # pragma: no mutate
 
 
+# Graph metadata key — Feature 024/vol3-money-scissors U3: the national
+# financial state (interest rate environment + fictitious capital stock)
+# published once per tick so CONSEQUENCE-phase Systems can read it. Kept
+# separate from TICK_DYNAMICS_KEY / NationalTickParameters (the MELT/gamma
+# carrier) — different lifecycle (see NationalFinancialParameters docstring).
+NATIONAL_FINANCIAL_ATTR: Final[str] = "national_financial"
+
+
+def write_national_financial_state_to_graph(  # pragma: no mutate — data serialization
+    graph: GraphProtocol,
+    params: NationalFinancialParameters,
+) -> None:
+    """Write NationalFinancialParameters to the shared graph.
+
+    Feature: 024-capital-volume-iii / vol3-money-scissors U3
+
+    Stores ``params.model_dump()`` (a plain dict, not the Pydantic object
+    itself) under ``graph.graph[NATIONAL_FINANCIAL_ATTR]`` so any System
+    later in the same tick can read it via
+    :func:`read_national_financial_state_from_graph`.
+
+    Args:
+        graph: Mutable NetworkX graph or GraphProtocol (modified in-place).
+        params: National financial state to publish.
+    """
+    graph.set_graph_attr(NATIONAL_FINANCIAL_ATTR, params.model_dump())  # pragma: no mutate
+
+
+def read_national_financial_state_from_graph(  # pragma: no mutate — data serialization
+    graph: GraphProtocol,
+) -> NationalFinancialParameters | None:
+    """Read NationalFinancialParameters from the shared graph.
+
+    Feature: 024-capital-volume-iii / vol3-money-scissors U3
+
+    Args:
+        graph: NetworkX graph or GraphProtocol possibly containing the
+            published financial state.
+
+    Returns:
+        Reconstructed NationalFinancialParameters, or None if nothing has
+        been published this tick.
+    """
+    data: dict[str, Any] | None = graph.get_graph_attr(  # pragma: no mutate
+        NATIONAL_FINANCIAL_ATTR
+    )
+    if data is None:  # pragma: no mutate
+        return None  # pragma: no mutate
+    return NationalFinancialParameters.model_validate(data)  # pragma: no mutate
+
+
 def _reconstruct_tick_state(  # pragma: no mutate — data deserialization
     tick_data: dict[str, Any],
 ) -> SimulationTickState | None:
@@ -372,8 +424,11 @@ def _reconstruct_tick_state(  # pragma: no mutate — data deserialization
 
 
 __all__ = [
+    "NATIONAL_FINANCIAL_ATTR",
     "TICK_DYNAMICS_KEY",
     "_reconstruct_tick_state",
+    "read_national_financial_state_from_graph",
     "read_tick_state_from_graph",
+    "write_national_financial_state_to_graph",
     "write_tick_state_to_graph",
 ]

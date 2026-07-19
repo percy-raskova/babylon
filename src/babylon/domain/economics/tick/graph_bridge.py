@@ -118,11 +118,19 @@ def write_tick_state_to_graph(  # pragma: no mutate — data serialization
     # so the writeback lands on the right node; abstract territories key by their id.
     fips_to_node: dict[str, str] = {}  # pragma: no mutate
     for territory_node in graph.query_nodes():  # pragma: no mutate
-        if territory_node.node_type == "territory":  # pragma: no mutate
-            key = str(  # pragma: no mutate
-                territory_node.attributes.get("county_fips") or territory_node.id
-            )  # pragma: no mutate
-            fips_to_node[key] = str(territory_node.id)  # pragma: no mutate
+        if territory_node.node_type != "territory":  # pragma: no mutate
+            continue  # pragma: no mutate
+        # Real county FIPS only (owner item 25). A territory with no
+        # county_fips has no county identity — an empty domain, not a
+        # pseudo-county named after its node label (see
+        # :func:`resolve_county_identity`). The miss path below
+        # (`fips_to_node.get(fips, fips)`) already covers abstract
+        # territories keyed by their own id, so skipping here does not
+        # change lookup semantics for real-FIPS territories.
+        territory_fips = resolve_county_identity(territory_node)  # pragma: no mutate
+        if territory_fips is None:  # pragma: no mutate
+            continue  # pragma: no mutate
+        fips_to_node[territory_fips] = str(territory_node.id)  # pragma: no mutate
 
     # Write county-level state to Territory nodes
     for fips, county in state.county_states.items():  # pragma: no mutate

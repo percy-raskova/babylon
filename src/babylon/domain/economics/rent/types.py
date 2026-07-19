@@ -19,6 +19,15 @@ class RentCategory(StrEnum):
     land/location) and absolute rent (monopoly payment for any land
     access). Both operate across three economic sectors.
 
+    DORMANT (honesty sweep, spec 2026-07-18 vol3-money-scissors-design,
+    U2 §3.6): zero behavioural consumers as of this writing —
+    :class:`RentExtraction` carries the three categories as discrete
+    named fields (``agricultural_rent``/``resource_rent``/``urban_rent``),
+    never keyed by this enum. Reserved for a future category-keyed rent
+    API; wire it or remove it rather than letting it silently rot
+    further if it is still unconsumed the next time this module is
+    touched.
+
     Values:
         AGRICULTURAL: Farmland rent (differential by soil fertility/location).
         RESOURCE: Mining, oil/gas rent (differential by deposit quality).

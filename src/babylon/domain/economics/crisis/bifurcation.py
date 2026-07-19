@@ -147,7 +147,7 @@ class BifurcationRiskCalculator:
             if node.node_type != "social_class":
                 continue
             attrs = node.attributes
-            if attrs.get("territory") != fips:
+            if attrs.get("county_fips") != fips:
                 continue
             role = attrs.get("role", "")
             county_nodes.append((node.id, str(role)))
@@ -209,7 +209,7 @@ class BifurcationRiskCalculator:
             if node.node_type != "social_class":
                 continue
             attrs = node.attributes
-            if attrs.get("territory") != fips:
+            if attrs.get("county_fips") != fips:
                 continue
             ideology = attrs.get("ideology", {})
             if isinstance(ideology, dict):

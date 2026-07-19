@@ -272,7 +272,7 @@ class TestCrossSystemIntegration:
                 _node_type="social_class",
                 role=role,
                 ideology={"agitation": 0.6, "class_consciousness": 0.5, "national_identity": 0.5},
-                territory="26163",
+                county_fips="26163",  # real SocialClass field (Blocker I-2 fix; was "territory")
             )
         # Add some solidarity edges
         g.add_edge("26163_labor_aristocracy", "26163_proletariat", edge_type="solidarity")
@@ -467,7 +467,7 @@ class TestSC008Performance:
                         "class_consciousness": 0.3,
                         "national_identity": 0.5,
                     },
-                    territory=fips,
+                    county_fips=fips,  # real SocialClass field (Blocker I-2 fix; was "territory")
                 )
             g.add_edge(
                 f"{fips}_proletariat",

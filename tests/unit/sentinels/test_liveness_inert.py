@@ -13,6 +13,7 @@ from pathlib import Path
 
 import pytest
 
+from babylon.sentinels.liveness import checks as checks_module
 from babylon.sentinels.liveness.checks import check_producers_are_not_inert, main
 from babylon.sentinels.liveness.registry import LivenessRow
 
@@ -91,3 +92,60 @@ def test_cli_dispatches_the_liveness_sensor() -> None:
     )
     assert result.returncode == 0
     assert "Liveness" in result.stdout
+
+
+def test_correct_but_inert_check_is_registered_in_advisory_checks() -> None:
+    """WIRING: the check function itself sits in the tuple ``main()`` iterates.
+
+    Proves ``check_producers_are_not_inert`` is not merely defined but actually
+    reachable from the sensor's own dispatch path — a deleted or mistyped
+    ``_ADVISORY_CHECKS`` entry must fail this test even though the check
+    function and its direct-call tests above remain untouched.
+    """
+    wired_checks = [check for _, check in checks_module._ADVISORY_CHECKS]
+    assert check_producers_are_not_inert in wired_checks
+
+
+def test_correct_but_inert_finding_reaches_stderr_through_main(
+    monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """WIRING: an inert producer must surface through ``main()``, not just direct calls.
+
+    Drives an injected inert producer through ``main() -> run_sensor ->
+    _ADVISORY_CHECKS`` and asserts the ``[correct-but-inert]`` line reaches
+    stderr while ``main()`` still returns 0 (advisory). This is the invocation
+    proof the direct-call tests above cannot provide: they call
+    ``check_producers_are_not_inert`` themselves and would stay green even if
+    the sensor's own wiring to it were severed.
+
+    Note: ``check_producers_are_not_inert``'s ``registry`` default binds the
+    ``LIVENESS_ROWS`` tuple object at def-time, so monkeypatching the module
+    global ``LIVENESS_ROWS`` would never reach it. The stub below instead
+    calls the real check with an explicit injected registry and is installed
+    as the actual ``_ADVISORY_CHECKS`` entry ``main()`` reads at call time.
+    """
+    phantom = LivenessRow(
+        name="phantom_wiring_proof",
+        producer_file="src/babylon/engine/systems/market_scissors.py",
+        producer_symbol="PhantomWiringProofSystem",
+        output_symbol="phantom_wiring_output",
+        consumer_files=(),
+        dormant_reason="injected: wiring proof",
+        material_relation="injected defect proving the check runs through main()",
+    )
+
+    def stub_check() -> list[str]:
+        return check_producers_are_not_inert((phantom,))
+
+    monkeypatch.setattr(
+        checks_module,
+        "_ADVISORY_CHECKS",
+        (("producer runs but every output is dormant", stub_check),),
+    )
+
+    exit_code = main([])
+    captured = capsys.readouterr()
+
+    assert exit_code == 0  # advisory findings never gate
+    assert "[correct-but-inert]" in captured.err
+    assert "PhantomWiringProofSystem" in captured.err

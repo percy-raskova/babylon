@@ -10,7 +10,7 @@
 //! the fixture with `mise run rust:fixtures`; a fixture diff is news —
 //! investigate before committing.
 
-use hypergraph_rs::{EdgeError, Hypergraph, MembershipError, NodeError};
+use hypergraph_rs::{DiHypergraph, EdgeError, Hypergraph, MembershipError, NodeError};
 use serde_json::Value;
 
 fn ground_truth() -> Value {
@@ -1233,4 +1233,262 @@ fn conform_repr_format() {
     let mut lone_empty: Hypergraph = Hypergraph::new();
     lone_empty.add_edge(vec![], None, Value::Null).unwrap();
     assert_eq!(format!("{lone_empty:?}"), "Hypergraph([{}])");
+}
+
+// ---------------------------------------------------------------------------
+// DiHypergraph (Phase 2 Task 3+)
+// ---------------------------------------------------------------------------
+
+/// Assert a directed edge's (tail, head) against the fixture's sorted lists.
+/// Rust returns insertion-ordered vecs (D5); the fixture records sorted, so
+/// both sides are sorted before comparison.
+fn assert_dimembers(h: &DiHypergraph, edge_id: &str, recorded: &Value) {
+    let (mut tail, mut head) = h.dimembers(edge_id).unwrap();
+    tail.sort();
+    head.sort();
+    assert_eq!(tail, ids(&recorded["tail"]));
+    assert_eq!(head, ids(&recorded["head"]));
+}
+
+#[test]
+fn conform_di_add_edge_dimembers() {
+    // XGI: add_edge((tail, head)) — tail FIRST, head SECOND; returns None
+    // (D8 class: the Rust core returns Ok(id)). dimembers(e) = (tail,
+    // head); members(e) = tail ∪ head. dimemberships(n) = (in, out) —
+    // "in" = edges where n is in the HEAD, "out" = edges where n is in the
+    // TAIL — IN FIRST (probed: tail-only node 1 -> (set(), {0}); head-only
+    // node 4 -> ({0}, set())).
+    let gt = ground_truth();
+    let v = vector(&gt, "di_add_edge_dimembers");
+    assert_eq!(v["return"], Value::Null); // XGI truth, pinned
+    assert_eq!(v["dimemberships"]["1"], serde_json::json!([[], ["0"]])); // pinned
+    assert_eq!(v["dimemberships"]["4"], serde_json::json!([["0"], []])); // pinned
+
+    let mut h: DiHypergraph = DiHypergraph::new();
+    let eid = h
+        .add_edge(
+            (
+                vec!["1".into(), "2".into(), "3".into()],
+                vec!["2".into(), "3".into(), "4".into()],
+            ),
+            None,
+            Value::Null,
+        )
+        .unwrap();
+    assert_eq!(eid, id_str(&v["edge_ids"][0]));
+    assert_eq!(h.num_nodes(), v["num_nodes"].as_u64().unwrap() as usize);
+    assert_dimembers(&h, &eid, &v["dimembers"]["0"]);
+    assert_eq!(h.tail(&eid).unwrap(), vec!["1", "2", "3"]);
+    assert_eq!(h.head(&eid).unwrap(), vec!["2", "3", "4"]);
+    assert_eq!(h.members(&eid).unwrap(), vec!["1", "2", "3", "4"]);
+
+    // dimemberships: (head-edges, tail-edges), IN first — XGI's order.
+    assert_eq!(
+        h.dimemberships("1").unwrap(),
+        (Vec::<String>::new(), vec!["0".to_string()])
+    );
+    assert_eq!(
+        h.dimemberships("4").unwrap(),
+        (vec!["0".to_string()], Vec::<String>::new())
+    );
+    for (nid, expected) in v["dimemberships"].as_object().unwrap() {
+        let (mut head_edges, mut tail_edges) = h.dimemberships(nid).unwrap();
+        head_edges.sort();
+        tail_edges.sort();
+        assert_eq!(vec![head_edges, tail_edges], ids_nested(expected));
+    }
+    for (nid, expected) in v["memberships"].as_object().unwrap() {
+        let mut got = h.memberships(nid).unwrap();
+        got.sort();
+        assert_eq!(got, ids(expected));
+    }
+}
+
+fn ids_nested(v: &Value) -> Vec<Vec<String>> {
+    v.as_array().unwrap().iter().map(ids).collect()
+}
+
+#[test]
+fn conform_di_uid_counter() {
+    // DiHypergraph shares update_uid_counter with Hypergraph (probed):
+    // auto ids 0, 1; int idx 5 bumps to 6; str "5" no bump; float 5.0
+    // bumps; "x" no bump. The Rust core bumps iff idx.parse::<u64>()
+    // succeeds — conforming on int-idx, diverging as registered on
+    // str-idx (D3) and float-idx (D4).
+    let gt = ground_truth();
+    let v = vector(&gt, "di_uid_counter");
+    assert_eq!(ids(&v["int_idx_bumps"]), vec!["0", "1", "5", "6"]); // XGI truth
+    assert_eq!(ids(&v["str_idx_no_bump"]), vec!["5", "0"]); // XGI truth
+    assert_eq!(ids(&v["float_idx_bumps"]), vec!["5.0", "6"]); // XGI truth
+    assert_eq!(ids(&v["nonnumeric_idx_no_bump"]), vec!["x", "0"]); // XGI truth
+
+    let mut h: DiHypergraph = DiHypergraph::new();
+    assert_eq!(
+        h.add_edge((vec!["1".into()], vec!["2".into()]), None, Value::Null)
+            .unwrap(),
+        "0"
+    );
+    assert_eq!(
+        h.add_edge((vec!["3".into()], vec!["4".into()]), None, Value::Null)
+            .unwrap(),
+        "1"
+    );
+    h.add_edge(
+        (vec!["5".into()], vec!["6".into()]),
+        Some("5".into()),
+        Value::Null,
+    )
+    .unwrap();
+    // D3: Rust bumps for str-numeric "5" — next auto is "6", not "0".
+    let auto = h
+        .add_edge((vec!["7".into()], vec!["8".into()]), None, Value::Null)
+        .unwrap();
+    assert_eq!(auto, "6");
+
+    // D4: "5.0" fails parse::<u64>() — no bump.
+    let mut h2: DiHypergraph = DiHypergraph::new();
+    h2.add_edge(
+        (vec!["1".into()], vec!["2".into()]),
+        Some("5.0".into()),
+        Value::Null,
+    )
+    .unwrap();
+    let auto2 = h2
+        .add_edge((vec!["3".into()], vec!["4".into()]), None, Value::Null)
+        .unwrap();
+    assert_eq!(auto2, "0");
+}
+
+#[test]
+fn diverge_d2_di_dup_idx_errors_instead_of_warn_noop() {
+    // Same D2 error-channel class as the undirected dup-idx: XGI warns +
+    // no-ops (returns None); the Rust core returns Err(AlreadyExists) and
+    // the binding translates back to UserWarning + None.
+    let gt = ground_truth();
+    let v = vector(&gt, "di_dup_idx");
+    assert_eq!(v["return"], Value::Null); // XGI truth, pinned
+    assert_eq!(v["warned"], true); // XGI truth, pinned
+    assert!(v["warning_prefix"]
+        .as_str()
+        .unwrap()
+        .starts_with("uid e1 already exists"));
+
+    let mut h: DiHypergraph = DiHypergraph::new();
+    h.add_edge(
+        (vec!["1".into()], vec!["2".into()]),
+        Some("e1".into()),
+        Value::Null,
+    )
+    .unwrap();
+    let err = h.add_edge(
+        (vec!["3".into()], vec!["4".into()]),
+        Some("e1".into()),
+        Value::Null,
+    );
+    assert!(matches!(err, Err(EdgeError::AlreadyExists { .. })));
+    assert_eq!(h.num_edges(), 1);
+    assert_eq!(h.num_nodes(), v["num_nodes"].as_u64().unwrap() as usize);
+    assert_eq!(h.tail("e1").unwrap(), vec!["1"]);
+    assert_eq!(h.head("e1").unwrap(), vec!["2"]);
+}
+
+#[test]
+fn conform_di_empty_edge() {
+    // D1-class parity: add_edge(([], [])) creates an empty directed edge;
+    // empty-tail-only and empty-head-only are likewise allowed (probed).
+    let gt = ground_truth();
+    let v = vector(&gt, "di_empty_edge");
+    assert_eq!(v["both_empty"]["return"], Value::Null); // XGI truth, pinned
+
+    let mut h: DiHypergraph = DiHypergraph::new();
+    let eid = h.add_edge((vec![], vec![]), None, Value::Null).unwrap();
+    assert_eq!(eid, id_str(&v["both_empty"]["edge_ids"][0]));
+    assert_eq!(h.num_edges(), 1);
+    assert_eq!(h.num_nodes(), 0);
+    assert_eq!(
+        h.dimembers(&eid).unwrap(),
+        (Vec::<String>::new(), Vec::<String>::new())
+    );
+    assert!(h.members(&eid).unwrap().is_empty());
+
+    let mut h2: DiHypergraph = DiHypergraph::new();
+    let e2 = h2
+        .add_edge((vec![], vec!["1".into()]), None, Value::Null)
+        .unwrap();
+    assert_eq!(h2.tail(&e2).unwrap(), Vec::<String>::new());
+    assert_eq!(h2.head(&e2).unwrap(), vec!["1"]);
+
+    let mut h3: DiHypergraph = DiHypergraph::new();
+    let e3 = h3
+        .add_edge((vec!["1".into()], vec![]), None, Value::Null)
+        .unwrap();
+    assert_eq!(h3.tail(&e3).unwrap(), vec!["1"]);
+    assert_eq!(h3.head(&e3).unwrap(), Vec::<String>::new());
+}
+
+#[test]
+fn conform_di_both_directions() {
+    // A node listed in BOTH tail and head of the same edge is stored in
+    // both sets and survives round-trip; duplicates within one direction
+    // are deduped (set semantics per direction, probed).
+    let gt = ground_truth();
+    let v = vector(&gt, "di_both_directions");
+    assert_eq!(v["dimemberships"]["2"], serde_json::json!([["e1"], ["e1"]])); // pinned
+
+    let mut h: DiHypergraph = DiHypergraph::new();
+    h.add_edge(
+        (
+            vec!["1".into(), "1".into(), "2".into()],
+            vec!["2".into(), "2".into(), "3".into()],
+        ),
+        Some("e1".into()),
+        Value::Null,
+    )
+    .unwrap();
+    assert_eq!(h.tail("e1").unwrap(), vec!["1", "2"]);
+    assert_eq!(h.head("e1").unwrap(), vec!["2", "3"]);
+    assert_eq!(h.members("e1").unwrap(), vec!["1", "2", "3"]);
+    assert_eq!(h.num_nodes(), v["num_nodes"].as_u64().unwrap() as usize);
+    assert_eq!(
+        h.dimemberships("2").unwrap(),
+        (vec!["e1".to_string()], vec!["e1".to_string()])
+    );
+}
+
+#[test]
+fn diverge_d14_members_must_be_pair() {
+    // D14: XGI raises XGIError "Directed edge must be a list or tuple!"
+    // on non-list/tuple members (and a raw TypeError on a list of ints),
+    // and XGIError "Invalid direction!" on a bad direction string. The
+    // Rust core makes BOTH compile-time-impossible: add_edge takes
+    // (Vec<String>, Vec<String>) and direction is the Direction enum —
+    // type-level prevention. The Phase 7 binding exposes shims raising
+    // XGIError for conformance. XGI's runtime errors are pinned here.
+    let gt = ground_truth();
+    let v = vector(&gt, "di_members_must_be_pair");
+    assert_eq!(v["set_members"]["exception"], "XGIError"); // XGI truth, pinned
+    assert_eq!(
+        v["set_members"]["message"],
+        "Directed edge must be a list or tuple!"
+    );
+    assert_eq!(v["str_members"]["exception"], "XGIError"); // pinned
+    assert_eq!(
+        v["str_members"]["message"],
+        "Directed edge must be a list or tuple!"
+    );
+    assert_eq!(v["int_list_members"]["exception"], "TypeError"); // pinned
+    assert_eq!(v["invalid_direction"]["exception"], "XGIError"); // pinned
+    assert_eq!(v["invalid_direction"]["message"], "Invalid direction!");
+
+    // Rust: the pair shape and the direction vocabulary are types, not
+    // runtime checks — this test's existence (it compiles) is the proof.
+    let mut h: DiHypergraph = DiHypergraph::new();
+    h.add_edge(
+        (vec!["1".into()], vec!["2".into()]),
+        Some("e1".into()),
+        Value::Null,
+    )
+    .unwrap();
+    assert_eq!(h.tail("e1").unwrap(), vec!["1"]);
+    assert_eq!(h.head("e1").unwrap(), vec!["2"]);
 }

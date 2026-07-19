@@ -671,6 +671,179 @@ def v_repr_format() -> dict:
     }
 
 
+def _di_ids(DH: xgi.DiHypergraph) -> list:
+    return list(DH.edges)
+
+
+def _di_dimembers_sorted(DH: xgi.DiHypergraph) -> dict:
+    return {
+        str(e): {
+            "tail": sorted(str(n) for n in DH.edges.tail(e)),
+            "head": sorted(str(n) for n in DH.edges.head(e)),
+        }
+        for e in DH.edges
+    }
+
+
+def _di_members_sorted(DH: xgi.DiHypergraph) -> dict:
+    return {str(e): sorted(str(n) for n in DH.edges.members(e)) for e in DH.edges}
+
+
+def _di_dimemberships_sorted(DH: xgi.DiHypergraph) -> dict:
+    # (in, out) tuple order — in = edges where n is in the HEAD, out =
+    # edges where n is in the TAIL (probed: tail-only node -> (set(), {e}),
+    # head-only node -> ({e}, set())).
+    return {
+        str(n): [
+            sorted(str(e) for e in DH.nodes.dimemberships(n)[0]),
+            sorted(str(e) for e in DH.nodes.dimemberships(n)[1]),
+        ]
+        for n in DH.nodes
+    }
+
+
+def v_di_add_edge_dimembers() -> dict:
+    # PROBE (2026-07-18, xgi 0.10.2): add_edge((tail, head)) — tail is the
+    # FIRST entry, head the SECOND; returns None. dimembers(e) =
+    # (tail, head); members(e) = tail ∪ head. dimemberships(n) =
+    # (in, out): "in" = edges where n is in the HEAD, "out" = edges where
+    # n is in the TAIL — IN FIRST (probed on node 1, tail-only ->
+    # (set(), {0}); node 4, head-only -> ({0}, set())).
+    DH = xgi.DiHypergraph()
+    ret = DH.add_edge(([1, 2, 3], [2, 3, 4]))
+    return {
+        "return": ret,
+        "edge_ids": _di_ids(DH),
+        "num_nodes": DH.num_nodes,
+        "node_ids": sorted(str(n) for n in DH.nodes),
+        "dimembers": _di_dimembers_sorted(DH),
+        "members": _di_members_sorted(DH),
+        "dimemberships": _di_dimemberships_sorted(DH),
+        "memberships": {str(n): sorted(str(e) for e in DH.nodes.memberships(n)) for n in DH.nodes},
+    }
+
+
+def v_di_uid_counter() -> dict:
+    # PROBE (2026-07-18, xgi 0.10.2): DiHypergraph shares
+    # update_uid_counter with Hypergraph — auto ids are ints 0, 1; int idx
+    # 5 bumps the next auto to 6; str idx "5" does NOT bump (next auto 0);
+    # float idx 5.0 bumps (next auto 6); non-numeric str "x" does not.
+    # (D3/D4 parity: the Rust core bumps iff idx.parse::<u64>() succeeds.)
+    out = {}
+    DH = xgi.DiHypergraph()
+    DH.add_edge(([1], [2]))
+    DH.add_edge(([3], [4]))
+    DH.add_edge(([5], [6]), idx=5)
+    DH.add_edge(([7], [8]))
+    out["int_idx_bumps"] = _di_ids(DH)
+    DH = xgi.DiHypergraph()
+    DH.add_edge(([1], [2]), idx="5")
+    DH.add_edge(([3], [4]))
+    out["str_idx_no_bump"] = _di_ids(DH)
+    DH = xgi.DiHypergraph()
+    DH.add_edge(([1], [2]), idx=5.0)
+    DH.add_edge(([3], [4]))
+    out["float_idx_bumps"] = _di_ids(DH)
+    DH = xgi.DiHypergraph()
+    DH.add_edge(([1], [2]), idx="x")
+    DH.add_edge(([3], [4]))
+    out["nonnumeric_idx_no_bump"] = _di_ids(DH)
+    return out
+
+
+def v_di_dup_idx() -> dict:
+    # PROBE (2026-07-18, xgi 0.10.2): duplicate idx warns
+    # ("uid e1 already exists, cannot add edge ([3], [4])") + no-ops,
+    # returns None — the D2 class. The dup's members are never added.
+    DH = xgi.DiHypergraph()
+    DH.add_edge(([1], [2]), idx="e1")
+    with warnings.catch_warnings(record=True) as caught:
+        warnings.simplefilter("always")
+        ret = DH.add_edge(([3], [4]), idx="e1")
+    return {
+        "return": ret,
+        "warned": len(caught) > 0,
+        "warning_prefix": str(caught[0].message)[:22] if caught else None,
+        "edge_ids": _di_ids(DH),
+        "num_edges": DH.num_edges,
+        "num_nodes": DH.num_nodes,
+        "dimembers": _di_dimembers_sorted(DH),
+    }
+
+
+def v_di_empty_edge() -> dict:
+    # PROBE (2026-07-18, xgi 0.10.2): add_edge(([], [])) creates an empty
+    # directed edge — dimembers (set(), set()) — returns None; an
+    # empty-tail-only or empty-head-only edge is likewise allowed. D1-class
+    # parity with the undirected add_edge([]).
+    out = {}
+    DH = xgi.DiHypergraph()
+    ret = DH.add_edge(([], []))
+    out["both_empty"] = {
+        "return": ret,
+        "edge_ids": _di_ids(DH),
+        "num_edges": DH.num_edges,
+        "num_nodes": DH.num_nodes,
+        "dimembers": _di_dimembers_sorted(DH),
+    }
+    DH = xgi.DiHypergraph()
+    DH.add_edge(([], [1]))
+    out["empty_tail"] = {"dimembers": _di_dimembers_sorted(DH)}
+    DH = xgi.DiHypergraph()
+    DH.add_edge(([1], []))
+    out["empty_head"] = {"dimembers": _di_dimembers_sorted(DH)}
+    return out
+
+
+def v_di_both_directions() -> dict:
+    # PROBE (2026-07-18, xgi 0.10.2): a node listed in BOTH the tail and
+    # the head of the same edge is stored in both sets and survives
+    # round-trip — dimembers shows it in both, dimemberships lists the
+    # edge in both slots. Duplicate members within one direction are
+    # deduped (set semantics per direction).
+    DH = xgi.DiHypergraph()
+    DH.add_edge(([1, 1, 2], [2, 2, 3]), idx="e1")
+    return {
+        "dimembers": _di_dimembers_sorted(DH),
+        "members": _di_members_sorted(DH),
+        "dimemberships": _di_dimemberships_sorted(DH),
+        "num_nodes": DH.num_nodes,
+    }
+
+
+def v_di_members_must_be_pair() -> dict:
+    # PROBE (2026-07-18, xgi 0.10.2): add_edge with non-list/tuple members
+    # raises XGIError "Directed edge must be a list or tuple!" (a set or a
+    # string hits it; a list of ints PASSES the isinstance check and dies
+    # iterating — TypeError "'int' object is not iterable", also pinned).
+    # add_node_to_edge with an invalid direction string raises XGIError
+    # "Invalid direction!". Divergence D14: the Rust core makes BOTH
+    # compile-time-impossible — add_edge takes (Vec<String>, Vec<String>)
+    # and direction is the Direction enum; the Phase 7 binding exposes
+    # shims raising XGIError for conformance.
+    out = {}
+    DH = xgi.DiHypergraph()
+    try:
+        DH.add_edge({1, 2, 3})  # a set — not a list/tuple
+    except Exception as exc:  # recording the observed type IS the vector
+        out["set_members"] = {"exception": type(exc).__name__, "message": str(exc)}
+    try:
+        DH.add_edge("abc")  # a string — not a list/tuple
+    except Exception as exc:
+        out["str_members"] = {"exception": type(exc).__name__, "message": str(exc)}
+    try:
+        DH.add_edge([1, 2, 3])  # list of ints — passes isinstance, dies iterating
+    except Exception as exc:
+        out["int_list_members"] = {"exception": type(exc).__name__, "message": str(exc)}
+    DH2 = xgi.DiHypergraph()
+    DH2.add_edge(([1], [2]), idx="e1")
+    try:
+        DH2.add_node_to_edge("e1", 3, "sideways")
+    except Exception as exc:
+        out["invalid_direction"] = {"exception": type(exc).__name__, "message": str(exc)}
+    return out
+
+
 def main() -> None:
     vectors = {
         name.removeprefix("v_"): fn()

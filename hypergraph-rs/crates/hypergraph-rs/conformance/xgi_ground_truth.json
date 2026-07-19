@@ -203,6 +203,223 @@
       "num_edges": 1,
       "num_nodes": 2
     },
+    "di_add_edge_dimembers": {
+      "dimembers": {
+        "0": {
+          "head": [
+            "2",
+            "3",
+            "4"
+          ],
+          "tail": [
+            "1",
+            "2",
+            "3"
+          ]
+        }
+      },
+      "dimemberships": {
+        "1": [
+          [],
+          [
+            "0"
+          ]
+        ],
+        "2": [
+          [
+            "0"
+          ],
+          [
+            "0"
+          ]
+        ],
+        "3": [
+          [
+            "0"
+          ],
+          [
+            "0"
+          ]
+        ],
+        "4": [
+          [
+            "0"
+          ],
+          []
+        ]
+      },
+      "edge_ids": [
+        0
+      ],
+      "members": {
+        "0": [
+          "1",
+          "2",
+          "3",
+          "4"
+        ]
+      },
+      "memberships": {
+        "1": [
+          "0"
+        ],
+        "2": [
+          "0"
+        ],
+        "3": [
+          "0"
+        ],
+        "4": [
+          "0"
+        ]
+      },
+      "node_ids": [
+        "1",
+        "2",
+        "3",
+        "4"
+      ],
+      "num_nodes": 4,
+      "return": null
+    },
+    "di_both_directions": {
+      "dimembers": {
+        "e1": {
+          "head": [
+            "2",
+            "3"
+          ],
+          "tail": [
+            "1",
+            "2"
+          ]
+        }
+      },
+      "dimemberships": {
+        "1": [
+          [],
+          [
+            "e1"
+          ]
+        ],
+        "2": [
+          [
+            "e1"
+          ],
+          [
+            "e1"
+          ]
+        ],
+        "3": [
+          [
+            "e1"
+          ],
+          []
+        ]
+      },
+      "members": {
+        "e1": [
+          "1",
+          "2",
+          "3"
+        ]
+      },
+      "num_nodes": 3
+    },
+    "di_dup_idx": {
+      "dimembers": {
+        "e1": {
+          "head": [
+            "2"
+          ],
+          "tail": [
+            "1"
+          ]
+        }
+      },
+      "edge_ids": [
+        "e1"
+      ],
+      "num_edges": 1,
+      "num_nodes": 2,
+      "return": null,
+      "warned": true,
+      "warning_prefix": "uid e1 already exists,"
+    },
+    "di_empty_edge": {
+      "both_empty": {
+        "dimembers": {
+          "0": {
+            "head": [],
+            "tail": []
+          }
+        },
+        "edge_ids": [
+          0
+        ],
+        "num_edges": 1,
+        "num_nodes": 0,
+        "return": null
+      },
+      "empty_head": {
+        "dimembers": {
+          "0": {
+            "head": [],
+            "tail": [
+              "1"
+            ]
+          }
+        }
+      },
+      "empty_tail": {
+        "dimembers": {
+          "0": {
+            "head": [
+              "1"
+            ],
+            "tail": []
+          }
+        }
+      }
+    },
+    "di_members_must_be_pair": {
+      "int_list_members": {
+        "exception": "TypeError",
+        "message": "'int' object is not iterable"
+      },
+      "invalid_direction": {
+        "exception": "XGIError",
+        "message": "Invalid direction!"
+      },
+      "set_members": {
+        "exception": "XGIError",
+        "message": "Directed edge must be a list or tuple!"
+      },
+      "str_members": {
+        "exception": "XGIError",
+        "message": "Directed edge must be a list or tuple!"
+      }
+    },
+    "di_uid_counter": {
+      "float_idx_bumps": [
+        5.0,
+        6
+      ],
+      "int_idx_bumps": [
+        0,
+        1,
+        5,
+        6
+      ],
+      "nonnumeric_idx_no_bump": [
+        "x",
+        0
+      ],
+      "str_idx_no_bump": [
+        "5",
+        0
+      ]
+    },
     "eq_structural": {
       "diff_edge_attr": false,
       "diff_edge_id": false,

@@ -24,3 +24,21 @@ pub struct MembershipEdge<M> {
     /// The per-membership data (e.g., role, strength, visibility).
     pub member_data: M,
 }
+
+/// A direction for directed membership in a [`super::dihypergraph::DiHypergraph`].
+///
+/// XGI parity: XGI's direction strings `"in"`/`"out"` — `"in"` puts the
+/// node in the edge's TAIL (`_edge[e]["in"]`, the arc agent→edge), `"out"`
+/// in the HEAD (`_edge[e]["out"]`, the arc edge→agent). The enum makes an
+/// invalid direction compile-time-impossible where XGI raises
+/// `XGIError("Invalid direction!")` at runtime (divergence D14); the serde
+/// spelling is the lowercase XGI string so the Phase 7 binding maps
+/// strings onto variants directly.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum Direction {
+    /// Tail membership — the arc agent→edge (XGI `"in"`).
+    In,
+    /// Head membership — the arc edge→agent (XGI `"out"`).
+    Out,
+}

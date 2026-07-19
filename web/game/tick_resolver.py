@@ -14,6 +14,8 @@ def resolve_game_tick(
     bridge: Any,
     session_id: UUID,
     persistent_context: dict[str, Any] | None = None,
+    *,
+    force_endgame_test_hook: bool = False,
 ) -> dict[str, Any]:
     """Resolve one tick for a game session via the engine bridge.
 
@@ -21,12 +23,19 @@ def resolve_game_tick(
         bridge: An EngineBridge instance (or StubEngineBridge for dev/test).
         session_id: The game session UUID.
         persistent_context: Optional cross-tick context.
+        force_endgame_test_hook: G7-crisis test-only hook — see
+            ``EngineBridge.resolve_tick``'s docstring. Defaults to False, so
+            every existing caller is byte-identical.
 
     Returns:
         JSON-serializable snapshot dict of the new game state.
     """
     result: dict[str, Any] = cast(
         dict[str, Any],
-        bridge.resolve_tick(session_id, persistent_context=persistent_context),
+        bridge.resolve_tick(
+            session_id,
+            persistent_context=persistent_context,
+            force_endgame_test_hook=force_endgame_test_hook,
+        ),
     )
     return result

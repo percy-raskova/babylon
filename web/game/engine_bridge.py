@@ -16,6 +16,7 @@ from __future__ import annotations
 import json
 import logging
 import math
+import os
 from itertools import pairwise
 from typing import TYPE_CHECKING, Any, Final
 from uuid import UUID
@@ -633,6 +634,21 @@ def _accepted_tick_from_endgame_row(row: dict[str, Any] | None) -> int | None:
     if isinstance(raw, bool) or not isinstance(raw, int):
         return None
     return raw
+
+
+def _e2e_test_hooks_enabled() -> bool:
+    """G7-crisis test-only hook gate (spec-116 first-session e2e crisis leg).
+
+    ``resolve_tick``'s ``force_endgame_test_hook`` parameter only takes
+    effect when this ALSO returns True — i.e. when the server process has
+    ``BABYLON_E2E_TEST_HOOKS=1`` explicitly exported. This is never set in
+    production or development settings; a caller passing
+    ``force_endgame_test_hook=True`` against a server that never opted in
+    (the only path production/dev traffic can reach) is a complete no-op.
+    See ``resolve_tick``'s docstring and ``web/game/api.py``'s
+    ``resolve_tick`` view (which gates the per-request header this backs).
+    """
+    return os.environ.get("BABYLON_E2E_TEST_HOOKS") == "1"
 
 
 def _compute_avg_node_attr(graph: Any, attr: str, default: float = 0.0) -> float:
@@ -5206,6 +5222,8 @@ class EngineBridge:
         self,
         session_id: UUID,
         persistent_context: dict[str, Any] | None = None,
+        *,
+        force_endgame_test_hook: bool = False,
     ) -> dict[str, Any]:
         """Advance the simulation one tick: hydrate → step → persist → snapshot.
 
@@ -5217,6 +5235,21 @@ class EngineBridge:
         Args:
             session_id: The game session UUID.
             persistent_context: Optional cross-tick context dict.
+            force_endgame_test_hook: G7-crisis test-only hook (spec-116
+                first-session e2e crisis leg). When True *and*
+                :func:`_e2e_test_hooks_enabled` also returns True, this tick
+                ends the game through the exact same real ``EndgameEvent``
+                construction below that a genuine horizon termination uses —
+                never a fabricated event shape — years before the fixed
+                century horizon, so an e2e can deterministically exercise
+                the frontend's autopause/critical-event machinery (which
+                fires only on ``endgame_reached``) without playing out
+                ~5200 ticks. Ignored (this tick resolves normally) unless
+                both conditions hold — see ``web/game/api.py``'s
+                ``resolve_tick`` view for the per-request header that sets
+                this, and ``_e2e_test_hooks_enabled`` for the server-side
+                opt-in that gates it. Defaults to False, so every existing
+                caller is byte-identical.
 
         Returns:
             JSON-serializable snapshot of the new state after stepping.
@@ -5339,7 +5372,9 @@ class EngineBridge:
         horizon_tick = (
             game_defines.endgame.campaign_horizon_years * game_defines.timescale.weeks_per_year
         )
-        game_over = new_state.tick >= horizon_tick
+        game_over = new_state.tick >= horizon_tick or (
+            force_endgame_test_hook and _e2e_test_hooks_enabled()
+        )
         outcome = pattern or GameOutcome.UNRESOLVED
         if game_over:
             endgame_event = EndgameEvent(tick=new_state.tick, outcome=outcome)

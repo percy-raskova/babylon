@@ -16,9 +16,12 @@
 import type { StateCreator } from "zustand";
 import type { RootState } from "../types";
 
-/** The full-screen takeover surfaces (spec-110 B5; `network` added AW4-R2;
- *  `doctrine` added Epoch 3 Wave 6 Phase 0), or none open. */
-export type TakeoverKind = "wire" | "chronicle" | "dialectic" | "network" | "doctrine";
+/** The full-screen takeover surfaces (spec-110 B5; `network` added AW4-R2),
+ *  or none open. `"doctrine"` (added Epoch 3 Wave 6 Phase 0) RETIRED in
+ *  Track 3 T3-5: `DoctrineTakeover` relocated off this overlay flag onto
+ *  its own routed room (`/game/:id/doctrine`, the "Line" page) — the same
+ *  move Track 2 T2-1 made for `ScissorsChart`/`BottomDrawerState`. */
+export type TakeoverKind = "wire" | "chronicle" | "dialectic" | "network";
 
 /** `BottomDrawer`'s five states (architecture §1.4): closed, or one of its four
  *  contents. `"scissors"` retired (Track 2 T2-1): ScissorsChart relocated to

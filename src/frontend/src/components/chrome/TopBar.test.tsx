@@ -105,9 +105,11 @@ describe("TopBar", () => {
 
     await userEvent.click(screen.getByTestId("open-network"));
     expect(useStore.getState().ui.takeover.active).toBe("network");
+  });
 
-    await userEvent.click(screen.getByTestId("open-doctrine"));
-    expect(useStore.getState().ui.takeover.active).toBe("doctrine");
+  it("no longer hosts an 'open-doctrine' takeover button — DoctrineTakeover relocated to the routed Doctrine/'Line' page (Track 3 T3-5)", () => {
+    renderTopBar();
+    expect(screen.queryByTestId("open-doctrine")).not.toBeInTheDocument();
   });
 
   it("navigates to the routed Circuit screen from its TopBar button (Track 2 T2-0)", async () => {
@@ -121,6 +123,22 @@ describe("TopBar", () => {
     );
     await userEvent.click(screen.getByTestId("nav-circuit"));
     expect(screen.getByTestId("stub-circuit")).toBeInTheDocument();
+  });
+
+  it("navigates to the routed Doctrine/'Line' screen from its TopBar button (Track 3 T3-5)", async () => {
+    render(
+      <MemoryRouter initialEntries={[`/game/${DEFAULT_GAME_ID}`]}>
+        <Routes>
+          <Route path="/game/:id" element={<TopBar gameId={DEFAULT_GAME_ID} />} />
+          <Route
+            path="/game/:id/doctrine"
+            element={<div data-testid="stub-doctrine">doctrine</div>}
+          />
+        </Routes>
+      </MemoryRouter>,
+    );
+    await userEvent.click(screen.getByTestId("nav-doctrine"));
+    expect(screen.getByTestId("stub-doctrine")).toBeInTheDocument();
   });
 
   it("hosts SpeedControls (time-status testid survives the TimeControls → SpeedControls migration)", () => {

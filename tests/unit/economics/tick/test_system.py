@@ -38,6 +38,7 @@ from babylon.domain.economics.tick.types import (
 from babylon.engine.context import TickContext
 from babylon.engine.services import ServiceContainer
 from babylon.topology.graph import BabylonGraph
+from tests.unit.economics.credit.conftest import MockCreditAggregateSource
 from tests.unit.economics.tick.conftest import (
     WAYNE_FIPS,
     CapturingTransitionEngine,
@@ -2788,3 +2789,42 @@ class TestComputeNationalFinancialState:
         assert published is not None
         assert published.interest_rate_state is None
         assert published.fictitious_capital is None
+
+    def test_publishes_credit_state_with_a_real_fragility_index(self) -> None:
+        """U3.4: the `credit` opposition (U5.2) measures default_rate * spread.
+        Nothing in the codebase constructed a CreditState before this task, so
+        GraphInputs.credit_fragility was permanently None and the declared
+        credit->financial transforms edge permanently demoted `financial`."""
+        services = _make_services(
+            interest_calculator=MockInterestRateCalculator(
+                base_rate=0.25, treasury_10y=2.27, baa_spread=2.64
+            ),
+            fictitious_capital_calculator=MockFictitiousCapitalCalculator(),
+            credit_aggregate_source=MockCreditAggregateSource(data={2015: (60e12, 18e12, 20e12)}),
+        )
+        graph = build_territory_graph()
+        system = TickDynamicsSystem()
+
+        system._compute_national_financial_state(services, 2015, graph)
+
+        published = read_national_financial_state_from_graph(graph)
+        assert published is not None
+        assert published.credit_state is not None
+        assert published.credit_state.spread_to_treasuries == pytest.approx(2.64)
+        assert published.credit_state.default_rate == pytest.approx(
+            services.defines.capital_vol3.default_rate_estimate
+        )
+        assert published.credit_state.credit_fragility == pytest.approx(
+            services.defines.capital_vol3.default_rate_estimate * 2.64
+        )
+
+    def test_credit_state_is_none_without_an_interest_state(self) -> None:
+        """III.11: no spread observable => no credit state, never a zero one."""
+        services = _make_services(
+            interest_calculator=MockInterestRateCalculator(force_sentinel=True),
+        )
+        graph = build_territory_graph()
+        TickDynamicsSystem()._compute_national_financial_state(services, 2015, graph)
+        published = read_national_financial_state_from_graph(graph)
+        assert published is not None
+        assert published.credit_state is None

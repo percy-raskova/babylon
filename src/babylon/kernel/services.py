@@ -71,6 +71,7 @@ class ServicesProtocol(Protocol):
     distribution_calculator: Any
     interest_calculator: Any
     credit_cycle_detector: Any
+    credit_aggregate_source: Any
     fictitious_capital_calculator: Any
     rent_calculator: Any
     housing_calculator: Any

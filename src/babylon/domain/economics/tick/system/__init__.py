@@ -37,7 +37,11 @@ from babylon.domain.economics.circulation.types import (
     ReproductionAnalysis,
     ReproductionBalance,
 )
-from babylon.domain.economics.credit.types import FictitiousCapitalStock
+from babylon.domain.economics.credit.types import (
+    CreditState,
+    FictitiousCapitalStock,
+    InterestRateState,
+)
 from babylon.domain.economics.crisis.bifurcation import BifurcationRiskCalculator
 from babylon.domain.economics.crisis.wage_compression import should_halt_accumulation
 from babylon.domain.economics.dynamics.types import ClassDistribution, EconomicConditions
@@ -1484,6 +1488,40 @@ class TickDynamicsSystem(SystemBase):
             "TickDynamics Step 5.5 (Volume III financial layer, %s): %s", category, reason
         )
 
+    @staticmethod
+    def _build_credit_state(
+        services: ServicesProtocol,
+        year: int,
+        interest_state: InterestRateState | None,
+    ) -> CreditState | None:
+        """Assemble the national credit state from the FRED credit aggregate.
+
+        The ONLY producer of ``CreditState`` in the codebase (vol3-money-scissors
+        U3.4). ``credit_fragility = default_rate * spread_to_treasuries`` is the
+        measure the ``credit`` opposition (accommodation ⟷ fragility) is bound
+        to; without this the opposition reads absent forever and the declared
+        ``credit -> financial`` transforms edge permanently demotes ``financial``.
+
+        Returns:
+            ``None`` — never a fabricated zero (III.11) — when no interest state
+            supplies the spread, or when no credit aggregate source supplies
+            total credit for ``year``.
+        """
+        if interest_state is None:
+            return None
+        source = getattr(services, "credit_aggregate_source", None)
+        if source is None:
+            return None
+        total_credit = source.get_total_credit(year)
+        if total_credit is None:
+            return None
+        return CreditState(
+            year=year,
+            total_credit=total_credit,
+            default_rate=services.defines.capital_vol3.default_rate_estimate,
+            spread_to_treasuries=interest_state.baa_spread,
+        )
+
     def _compute_national_financial_state(
         self,
         services: ServicesProtocol,
@@ -1545,6 +1583,7 @@ class TickDynamicsSystem(SystemBase):
 
         financial_params = NationalFinancialParameters(
             interest_rate_state=interest_state,
+            credit_state=self._build_credit_state(services, year, interest_state),
             fictitious_capital=fictitious,
         )
         write_national_financial_state_to_graph(graph, financial_params)

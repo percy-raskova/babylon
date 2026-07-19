@@ -262,6 +262,7 @@ class ServiceContainer:
     distribution_calculator: Any = field(default=None)
     interest_calculator: Any = field(default=None)
     credit_cycle_detector: Any = field(default=None)
+    credit_aggregate_source: Any = field(default=None)
     fictitious_capital_calculator: Any = field(default=None)
     rent_calculator: Any = field(default=None)
     housing_calculator: Any = field(default=None)
@@ -317,6 +318,7 @@ class ServiceContainer:
         distribution_calculator: Any = None,
         interest_calculator: Any = None,
         credit_cycle_detector: Any = None,
+        credit_aggregate_source: Any = None,
         fictitious_capital_calculator: Any = None,
         rent_calculator: Any = None,
         housing_calculator: Any = None,
@@ -413,6 +415,7 @@ class ServiceContainer:
             distribution_calculator=distribution_calculator,
             interest_calculator=interest_calculator,
             credit_cycle_detector=credit_cycle_detector,
+            credit_aggregate_source=credit_aggregate_source,
             fictitious_capital_calculator=fictitious_capital_calculator,
             rent_calculator=rent_calculator,
             housing_calculator=housing_calculator,

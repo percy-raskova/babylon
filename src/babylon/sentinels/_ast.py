@@ -108,14 +108,18 @@ def frozenset_str_members(path: Path, var_name: str) -> tuple[str, ...]:
     """Return the string members of a module-level ``frozenset({...})`` literal.
 
     Reads ``VAR = frozenset({...})`` or ``VAR: frozenset[str] = frozenset({...})``
-    from ``path`` by AST — no import, no execution. Non-string members and
-    non-literal sets are ignored (the sentinel compares only string symbols).
+    from ``path`` by AST — no import, no execution. Non-string members are
+    ignored (the sentinel compares only string symbols), but the assignment
+    itself must be present and its value must be a set/list/tuple literal
+    (optionally wrapped in a ``frozenset(...)`` call) — mirroring
+    :func:`literal_str_tuple`'s contract so an absent or malformed baseline
+    fails loud rather than reading as an empty, drift-free baseline.
 
     :param path: Source file to parse.
     :param var_name: The assigned name to extract (``Assign`` or ``AnnAssign``).
-    :returns: The string-literal members, in source order (empty tuple if the
-        assignment is absent or holds no string literals).
-    :raises SentinelCheckError: If the file is missing or unparseable.
+    :returns: The string-literal members, in source order.
+    :raises SentinelCheckError: If the file is missing or unparseable, the name
+        is absent, or its value is not a set/list/tuple literal.
     """
     tree = parse_module(path)
     for node in ast.walk(tree):
@@ -141,13 +145,14 @@ def frozenset_str_members(path: Path, var_name: str) -> tuple[str, ...]:
             and value.args
         ):
             value = value.args[0]
-        members: list[str] = []
-        if isinstance(value, (ast.Set, ast.List, ast.Tuple)):
-            for elt in value.elts:
-                if isinstance(elt, ast.Constant) and isinstance(elt.value, str):
-                    members.append(elt.value)
-        return tuple(members)
-    return ()
+        if not isinstance(value, (ast.Set, ast.List, ast.Tuple)):
+            raise SentinelCheckError(f"{path}:{var_name} is not a frozenset/set/list/tuple literal")
+        return tuple(
+            elt.value
+            for elt in value.elts
+            if isinstance(elt, ast.Constant) and isinstance(elt.value, str)
+        )
+    raise SentinelCheckError(f"{path}: no module-level assignment to {var_name!r} found")
 
 
 def tick_write_set(path: Path) -> set[str]:

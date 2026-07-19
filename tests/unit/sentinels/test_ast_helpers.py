@@ -140,6 +140,28 @@ def test_frozenset_str_members_reads_a_frozenset_literal(tmp_path: Path) -> None
     assert set(frozenset_str_members(target, "EXPECTED")) == {"A", "B", "C"}
 
 
+def test_frozenset_str_members_raises_on_absent_var_name(tmp_path: Path) -> None:
+    """A renamed/typo'd baseline variable is infrastructure failure, not an
+    empty (and therefore falsely drift-free) baseline — mirrors
+    ``literal_str_tuple``'s contract for the same failure mode."""
+    target = tmp_path / "m.py"
+    target.write_text("OTHER = frozenset({'A'})\n", encoding="utf-8")
+    with pytest.raises(SentinelCheckError, match="no module-level assignment"):
+        frozenset_str_members(target, "EXPECTED")
+
+
+def test_frozenset_str_members_raises_on_non_literal_value(tmp_path: Path) -> None:
+    """A computed/aliased baseline (not a set/list/tuple literal) must raise,
+    not silently read back as an empty baseline."""
+    target = tmp_path / "m.py"
+    target.write_text(
+        "OTHER = frozenset({'A'})\nEXPECTED = OTHER\n",
+        encoding="utf-8",
+    )
+    with pytest.raises(SentinelCheckError, match="not a frozenset/set/list/tuple literal"):
+        frozenset_str_members(target, "EXPECTED")
+
+
 def test_returned_dict_keys_excludes_nested_scope_returns(tmp_path: Path) -> None:
     """A dict-returning method on a class/closure declared inside stays out."""
     target = tmp_path / "mod.py"

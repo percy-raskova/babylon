@@ -73,13 +73,24 @@ class TestGameSummary:
     """get_game_summary: top-bar aggregate."""
 
     def test_summary_after_create_has_real_fields(self, bridge: object) -> None:
+        """A fresh session is veil-tier 0: value-axis fields are masked.
+
+        G4 (spec-116 §7, PR #211) server-gates the TopBar summary via
+        ``gate_value_axis_fields`` — ``imperial_rent``/``exploitation_rate``
+        are None until the player acquires the tier-1 doctrine node. The
+        pre-veil contract asserted ``imperial_rent is not None`` here; the
+        UNVEILED path is covered by ``test_summary_tick_advances_after_
+        resolves`` below (doctrine accrual lifts the tier past 0).
+        """
         session_id = bridge.create_game(scenario="wayne_county", rng_seed=0)  # type: ignore[attr-defined]
 
         summary = bridge.get_game_summary(session_id)  # type: ignore[attr-defined]
 
         assert summary["tick"] == 0
-        # imperial_rent_pool defaults to 100.0 in GlobalEconomy — always present.
-        assert summary["imperial_rent"] is not None
+        # Veiled at birth (tier 0) — masked server-side, never fabricated.
+        assert summary["imperial_rent"] is None
+        assert summary["exploitation_rate"] is None
+        # Money-form / non-value-axis fields stay real through the veil.
         assert summary["avg_consciousness"] is not None
         assert summary["population_total"] is not None
         assert summary["population_total"] > 0
@@ -103,12 +114,22 @@ class TestEconomyDashboard:
     """get_economy_dashboard: dashboard-wide economy aggregate."""
 
     def test_economy_dashboard_after_create_has_real_fields(self, bridge: object) -> None:
+        """A fresh session is veil-tier 0: value-axis fields are masked.
+
+        G4 (spec-116 §7, PR #211): ``imperial_rent_pool`` is tier-≥1 and
+        arrives None with a ``veil`` block at tier 0; money-form fields
+        (``current_super_wage_rate``, wealth by class role) stay real.
+        """
         session_id = bridge.create_game(scenario="wayne_county", rng_seed=0)  # type: ignore[attr-defined]
 
         economy = bridge.get_economy_dashboard(session_id)  # type: ignore[attr-defined]
 
         assert economy["tick"] == 0
-        assert economy["imperial_rent_pool"] is not None
+        # Veiled at birth (tier 0) — masked server-side, never fabricated.
+        assert economy["imperial_rent_pool"] is None
+        assert economy["veil"]["tier"] == 0
+        assert economy["veil"]["next_unlock_node_id"] == "class_consciousness"
+        # Money-form fields stay real through the veil.
         assert economy["current_super_wage_rate"] is not None
         assert isinstance(economy["wealth_by_class_role"], dict)
         assert economy["wealth_by_class_role"]  # wayne_county seeds several classes

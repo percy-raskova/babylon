@@ -5449,7 +5449,11 @@ class EngineBridge:
                         "target_id": action.get("target_id", org_id),
                         "org_id": org_id,
                         "action_point_cost": 1,
-                        "params": action.get("params_json", {}),
+                        # `or {}`, not a .get default: a submit without params
+                        # persists params_json as JSON null, and .get's default
+                        # only covers an ABSENT key — None here fails Action's
+                        # params dict validation and 500s the whole resolve.
+                        "params": action.get("params_json") or {},
                     }
                 )
             persistent_context["player_actions"] = player_actions

@@ -222,8 +222,14 @@ def test_discovery_walk_does_not_leak_deprecation_warnings() -> None:
 
     from tests.property.harness import probability_discovery
 
+    shim = "babylon.models.components.organization"
     probability_discovery.discover_probability_fields.cache_clear()
-    sys.modules.pop("babylon.models.components.organization", None)
+    # Pop (not delete-and-forget): the walk re-imports the shim, creating a
+    # SECOND class object — restoring the original module afterward keeps
+    # class identity intact for later tests in the same process
+    # (test_package_access_warns asserts `resolved is OrganizationComponent`;
+    # the 2026-07-19 verification nightly caught the duplicate).
+    saved_module = sys.modules.pop(shim, None)
     try:
         with warnings.catch_warnings():
             warnings.simplefilter("error", DeprecationWarning)
@@ -231,3 +237,10 @@ def test_discovery_walk_does_not_leak_deprecation_warnings() -> None:
         assert pairs, "discovery returned no Probability fields"
     finally:
         probability_discovery.discover_probability_fields.cache_clear()
+        if saved_module is not None:
+            sys.modules[shim] = saved_module
+            import babylon.models.components as components_pkg
+
+            # Re-import also rebound the parent package's submodule
+            # attribute; point it back at the original module too.
+            components_pkg.organization = saved_module

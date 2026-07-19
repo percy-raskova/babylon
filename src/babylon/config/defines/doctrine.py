@@ -89,6 +89,23 @@ class DoctrineDefines(BaseModel):
         ge=0.0,
         description="Unit 6b feedback: per-point CLASS_ANALYSIS multiplier on an org's consciousness-raising delta (corpus: 'High: correct prioritization, theory bonus'); tag capped at 10 => max +20% at default.",
     )
+    mass_work_solidarity_gain: float = Field(
+        default=0.05,
+        ge=0.0,
+        le=1.0,
+        description="Unit 6b write side (ADR087): base org->class SOLIDARITY solidarity_strength gain per mass-work verb dispatch (EDUCATE/PROPAGANDIZE/PROVIDE_SERVICE targeting a social_class), before MASS_LINK amplification.",
+    )
+    mass_link_weight: float = Field(
+        default=0.1,
+        ge=0.0,
+        description="Unit 6b write side (ADR087): multiplier on the org's MASS_LINK tag (range [0, 10]) amplifying mass_work_solidarity_gain -- gain = base * (1 + weight * mass_link); at the default weight and MASS_LINK's ceiling (10) the gain doubles.",
+    )
+    mass_work_solidarity_decay_rate: float = Field(
+        default=0.02,
+        ge=0.0,
+        le=1.0,
+        description="Unit 6b write side (ADR087): per-tick multiplicative decay of org-sourced SOLIDARITY edges' solidarity_strength -- a mass link not renewed by work withers (floored at 0). Faster than tag_decay_rate (0.55%/tick): an edge is a concrete organizing relationship, not accumulated theory, and lapses sooner without renewal.",
+    )
 
 
 __all__ = ["DoctrineDefines"]

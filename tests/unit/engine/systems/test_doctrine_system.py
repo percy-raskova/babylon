@@ -10,6 +10,7 @@ import pytest
 
 from babylon.config.defines.doctrine import DoctrineDefines
 from babylon.domain.doctrine import load_doctrine_tree
+from babylon.engine.actions._mass_work import apply_mass_work_solidarity
 from babylon.engine.context import TickContext
 from babylon.engine.services import ServiceContainer
 from babylon.engine.systems.doctrine import (
@@ -19,12 +20,16 @@ from babylon.engine.systems.doctrine import (
 )
 from babylon.models.entities.doctrine import DoctrineTree
 from babylon.models.entities.organization import PoliticalFaction
+from babylon.models.entities.relationship import Relationship
+from babylon.models.entities.social_class import SocialClass
 from babylon.models.enums import (
     ClassCharacter,
     ConsciousnessTendency,
+    EdgeType,
     EventType,
     LegalStanding,
     OrgType,
+    SocialRole,
 )
 from babylon.models.enums.doctrine import DoctrineTag
 from babylon.models.world_state import WorldState
@@ -267,6 +272,87 @@ class TestComputeDoctrineOverGraph:
         )
         # model default is {} — a non-congress tick must not update it
         assert graph.nodes["vanguard"]["congress_tag_snapshot"] == {}
+
+
+class TestMassWorkSolidarityDecay:
+    """Unit 6 write side (ADR087): ``compute_doctrine`` decays each org's
+    OUTGOING mass-work SOLIDARITY edges every tick -- a mass link not
+    renewed by work withers, floored at 0. Built via the REAL producer
+    (:func:`~babylon.engine.actions._mass_work.apply_mass_work_solidarity`),
+    never a hand-stamped edge (see ``test_ideology.py``'s
+    ``TestOrganizationSourcedSolidarity`` for why)."""
+
+    def test_org_sourced_edge_decays_each_tick(
+        self, tree: DoctrineTree, defines: DoctrineDefines
+    ) -> None:
+        workers = SocialClass(id="C900", name="Workers", role=SocialRole.PERIPHERY_PROLETARIAT)
+        state = WorldState(
+            tick=0, entities={"C900": workers}, territories={}, organizations={"vanguard": _org()}
+        )
+        graph = state.to_graph()
+        apply_mass_work_solidarity(
+            graph, "vanguard", dict(graph.nodes["vanguard"]), "C900", defines
+        )
+        seeded = graph.get_edge("vanguard", "C900", EdgeType.SOLIDARITY.value)
+        assert seeded is not None
+        before = seeded.attributes["solidarity_strength"]
+
+        compute_doctrine(graph, defines, tree)
+
+        after_edge = graph.get_edge("vanguard", "C900", EdgeType.SOLIDARITY.value)
+        assert after_edge is not None
+        after = after_edge.attributes["solidarity_strength"]
+        assert after == pytest.approx(before * (1.0 - defines.mass_work_solidarity_decay_rate))
+
+    def test_decay_floors_at_zero_never_negative(self, tree: DoctrineTree) -> None:
+        # Test-only large decay rate purely for observability over a
+        # handful of ticks (mirrors the contract test's own precedent).
+        fast_decay = DoctrineDefines(mass_work_solidarity_decay_rate=0.9)
+        workers = SocialClass(id="C900", name="Workers", role=SocialRole.PERIPHERY_PROLETARIAT)
+        state = WorldState(
+            tick=0, entities={"C900": workers}, territories={}, organizations={"vanguard": _org()}
+        )
+        graph = state.to_graph()
+        apply_mass_work_solidarity(
+            graph, "vanguard", dict(graph.nodes["vanguard"]), "C900", fast_decay
+        )
+
+        max_ticks = 50  # fixed upper bound
+        for _ in range(max_ticks):
+            compute_doctrine(graph, fast_decay, tree)
+            edge = graph.get_edge("vanguard", "C900", EdgeType.SOLIDARITY.value)
+            assert edge is not None
+            assert edge.attributes["solidarity_strength"] >= 0.0
+
+    def test_class_sourced_solidarity_edges_are_untouched_by_doctrine_decay(
+        self, tree: DoctrineTree, defines: DoctrineDefines
+    ) -> None:
+        """Regression: the two static SocialClass -> SocialClass SOLIDARITY
+        producers (``scenarios/_legacy.py`` + ``_legacy_wayne.py``) must
+        never be decayed by DoctrineSystem -- its loop only touches an ORG
+        node's OWN outgoing edges, never a class-sourced edge."""
+        worker_a = SocialClass(id="C900", name="Worker A", role=SocialRole.PERIPHERY_PROLETARIAT)
+        worker_b = SocialClass(id="C901", name="Worker B", role=SocialRole.LABOR_ARISTOCRACY)
+        solidarity = Relationship(
+            source_id="C900",
+            target_id="C901",
+            edge_type=EdgeType.SOLIDARITY,
+            solidarity_strength=0.5,
+        )
+        state = WorldState(
+            tick=0,
+            entities={"C900": worker_a, "C901": worker_b},
+            territories={},
+            relationships=[solidarity],
+            organizations={"vanguard": _org()},
+        )
+        graph = state.to_graph()
+
+        compute_doctrine(graph, defines, tree)
+
+        edge = graph.get_edge("C900", "C901", EdgeType.SOLIDARITY.value)
+        assert edge is not None
+        assert edge.attributes["solidarity_strength"] == pytest.approx(0.5)
 
 
 class TestDoctrineDeterminism:

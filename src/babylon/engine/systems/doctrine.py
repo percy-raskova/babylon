@@ -27,6 +27,12 @@ seed-deterministic tick RNG (:func:`~babylon.kernel.system_base.resolve_rng`,
 Constitution III.7 — same seed, same history), with tag deltas since the last
 congress biasing the odds inside a clamped contingency band.
 
+After the per-org doctrine loop, :func:`compute_doctrine` also decays that
+org's outgoing mass-work SOLIDARITY edges (Unit 6 write side, ADR087):
+``mass_work_solidarity_decay_rate`` per tick, floored at 0. This is graph-level
+state a verb resolver wrote (:func:`babylon.engine.actions._mass_work.apply_mass_work_solidarity`),
+not a `step_organization` mechanic — a mass link not renewed by work withers.
+
 Determinism: the per-tick loop is RNG-free; the congress consumes the seeded
 tick RNG only when a purge is actually attempted (an org holds a trap AND can
 afford ``trap_escape_tl``). Byte-safe on the qa:regression goldens by
@@ -48,7 +54,7 @@ from babylon.domain.doctrine.mechanics import (
 )
 from babylon.kernel.event_bus import Event
 from babylon.kernel.tick_partition import TickPartition
-from babylon.models.enums import EventType, NodeType
+from babylon.models.enums import EdgeType, EventType, NodeType
 from babylon.models.enums.doctrine import DoctrineTag
 
 if TYPE_CHECKING:
@@ -94,6 +100,32 @@ def _cheapest_acquirable(tree: DoctrineTree, acquired: tuple[str, ...], tl: floa
     if not candidates:
         return None
     return min(candidates, key=lambda nid: (tree.nodes[nid].cost_tl, nid))
+
+
+def _decay_mass_work_solidarity_edges(graph: GraphProtocol, org_id: str, decay_rate: float) -> None:
+    """Decay one org's outgoing SOLIDARITY edges (Unit 6 write side, ADR087).
+
+    A mass link not renewed by work withers: every org-sourced SOLIDARITY
+    edge's ``solidarity_strength`` shrinks multiplicatively each tick,
+    floored at 0. Symmetric with the write side
+    (:func:`babylon.engine.actions._mass_work.apply_mass_work_solidarity`) —
+    both live at the engine layer (graph-level state a verb resolver wrote),
+    not the domain-layer doctrine mechanics `step_organization` composes.
+    Uses :meth:`~babylon.kernel.graph_protocol.GraphProtocol.query_edges`
+    (not the concrete ``out_edges``) to stay protocol-typed.
+    """
+    for edge in graph.query_edges(edge_type=EdgeType.SOLIDARITY.value):
+        if edge.source_id != org_id:
+            continue
+        strength = float(edge.attributes.get("solidarity_strength", 0.0))
+        if strength <= 0.0:
+            continue
+        graph.update_edge(
+            org_id,
+            edge.target_id,
+            EdgeType.SOLIDARITY.value,
+            solidarity_strength=max(0.0, strength * (1.0 - decay_rate)),
+        )
 
 
 def _reachable_traps(tree: DoctrineTree, acquired: tuple[str, ...]) -> list[DoctrineNode]:
@@ -253,6 +285,7 @@ def compute_doctrine(
         if is_congress:
             updates["congress_tag_snapshot"] = attrs["congress_tag_snapshot"]
         graph.update_node(org_id, **updates)
+        _decay_mass_work_solidarity_edges(graph, org_id, defines.mass_work_solidarity_decay_rate)
         events.extend((org_id, trap_id, "sprung") for trap_id in sprung)
     return events
 

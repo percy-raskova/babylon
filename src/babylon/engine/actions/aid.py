@@ -1,22 +1,30 @@
 """AID verb resolver (verb-dispatch engine).
 
 Direct community service provision (``ActionType.PROVIDE_SERVICE``). Combines
-two effects:
+three effects:
 
 1. A five-factor consciousness delta via the Feature-032 machinery
    (tendency-split base — revolutionary orgs raise CI, liberal orgs less so).
 2. An optional material transfer: ``params["transfer_amount"]`` moves from the
    acting org's ``budget`` to the target's ``wealth`` (both round-trip model
    fields). Insufficient budget fails loud (``success=False``).
+3. A mass-work SOLIDARITY edge (Unit 6 write side, ADR087): PROVIDE_SERVICE is
+   one of the three mass-work verbs that create-or-strengthen an org -> class
+   SOLIDARITY edge when targeting a ``social_class`` node, amplified by the
+   org's MASS_LINK doctrine tag. Applied unconditionally on dispatch (even
+   when the material transfer fails for insufficient budget) — the org still
+   did the community-service work.
 
 See Also:
     :func:`babylon.ooda.action_effects.compute_consciousness_delta`.
+    :func:`babylon.engine.actions._mass_work.apply_mass_work_solidarity`.
 """
 
 from __future__ import annotations
 
 from typing import TYPE_CHECKING, Any
 
+from babylon.engine.actions._mass_work import apply_mass_work_solidarity
 from babylon.models.enums import ActionType, EventType
 from babylon.ooda.action_effects import compute_consciousness_delta
 from babylon.ooda.types import ActionResult
@@ -55,6 +63,9 @@ def resolve_aid(
         graph,
         services.defines.ooda,
         services.defines.organization,
+    )
+    apply_mass_work_solidarity(
+        graph, action.org_id, org_attrs, action.target_id, services.defines.doctrine
     )
 
     transfer = float(action.params.get("transfer_amount", 0.0))

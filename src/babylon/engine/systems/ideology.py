@@ -21,7 +21,7 @@ from babylon.formulas.consciousness_routing import (
 from babylon.formulas.contradiction import calculate_wealth_asymmetry_balance
 from babylon.formulas.sustained_exploitation import sustained_exploitation_magnitude
 from babylon.kernel.tick_partition import TickPartition
-from babylon.models.enums import EdgeType
+from babylon.models.enums import EdgeType, NodeType
 
 if TYPE_CHECKING:
     from babylon.kernel.graph_protocol import GraphProtocol
@@ -251,26 +251,36 @@ class ConsciousnessSystem(SystemBase):
             solidarity_pressure = 0.0
             activation_threshold = services.defines.solidarity.activation_threshold
 
-            # ADR085: SOLIDARITY edges are only ever created between
-            # social_class nodes (scenarios/_legacy.py + _legacy_wayne.py —
-            # the only two creation sites in src/); no verb or system creates
-            # an organization-sourced SOLIDARITY edge, so the source is
-            # always a social_class node in every reachable graph and the
-            # consciousness gate below applies unconditionally. An earlier
-            # org-sourced MASS_LINK amplification branch (DoctrineSystem
-            # Unit 6b, ADR073) was retired here — its only reachable path was
-            # a fabricated test fixture, never a real producer; see ADR085
-            # for the full retraction and what a real Unit 6b write-side
-            # would need.
+            # ADR087 (supersedes the ADR085 invariant comment this replaces):
+            # SOLIDARITY edges now have TWO source shapes. class-sourced
+            # edges (scenarios/_legacy.py + _legacy_wayne.py, the two static
+            # scenario-genesis producers ADR085 audited) still gate on the
+            # SOURCE's own revolutionary consciousness — a bribed or
+            # unconscious class transmits nothing. org-sourced edges (the
+            # Unit 6 write side: EDUCATE/PROPAGANDIZE/PROVIDE_SERVICE mass
+            # work, `engine/actions/_mass_work.py`) have no ideology of their
+            # own to gate on — the edge's `solidarity_strength` IS the
+            # signal (organized mass work materially raises the target's
+            # effective solidarity; MIM(P) organizing loop, owner-ratified
+            # 2026-07-18/19). Gated instead on a negligible-transmission
+            # floor (shared with the class-sourced noise filter) so a
+            # freshly-decayed near-zero edge doesn't contribute forever.
+            negligible_transmission = services.defines.solidarity.negligible_transmission
             for edge in graph.query_edges(edge_type=EdgeType.SOLIDARITY):
                 if edge.target_id == node.id:
                     # Get solidarity_strength from edge
                     strength = edge.attributes.get("solidarity_strength", 0.0)
-                    if strength > 0:
-                        src_node = graph.get_node(edge.source_id)
-                        src_attrs = src_node.attributes if src_node else {}
+                    if strength <= 0:
+                        continue
+                    src_node = graph.get_node(edge.source_id)
+                    if src_node is None:
+                        continue
+                    if src_node.node_type == NodeType.ORGANIZATION.value:
+                        if strength > negligible_transmission:
+                            solidarity_pressure += strength
+                    else:
                         # Only count if source has revolutionary consciousness
-                        source_profile = _get_ideology_profile_from_node(src_attrs)
+                        source_profile = _get_ideology_profile_from_node(src_node.attributes)
                         source_consciousness = source_profile["class_consciousness"]
                         if source_consciousness > activation_threshold:
                             solidarity_pressure += strength

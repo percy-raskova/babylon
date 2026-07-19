@@ -15127,6 +15127,13 @@ the endogenous rate `i = r·share(τ)` (Capital Vol. III Part V), and confirm
 the rate is total (no `NoDataSentinel`) across all five scenarios. Do NOT
 describe the interest rate as FRED-grounded.
 
+**Wealth-weighted asymmetry field (U7.6b, owner ruling 2026-07-19):** the
+delta report MUST also include a per-scenario line attributing dialectical
+movement on the capital_labor / wage / imperial / tenancy oppositions to the
+`_mean_asymmetry` wealth-weighting fix (`gap = Σ|b−a|/Σ(a+b)`, the
+intensive-aggregation remedy the U7.6 sensor forced) — discovered live by
+the sensor, fixed under the same owner gate that covers this report.
+
 ### imperial_circuit
 
 **Description:** 4-node default scenario (`tools/regression_test.py` SCENARIOS).

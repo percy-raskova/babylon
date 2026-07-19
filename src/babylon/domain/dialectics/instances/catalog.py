@@ -546,16 +546,28 @@ def build_default_registry(rate_weight: float = 10.0) -> OppositionRegistry[Grap
     return OppositionRegistry(bindings=bindings, rate_weight=rate_weight)
 
 
-# The ratified crisis-producer map. The four ``transforms`` edges reference
-# Phase D/E value-form oppositions (Circulation, Reproduction, Credit, ...) not
-# yet bound on this branch; the two class edges are bound today. The builder
-# keeps only edges whose BOTH endpoints are registered — it never invents a
-# null binding for an absent endpoint.
+# The ratified crisis-producer map. Every edge is DERIVED — read off the code
+# against ``coupling.py``'s operational definitions of the five kinds, not
+# authored from theory — and carries its citation, because the graph is a
+# CLAIM ABOUT THE CODE and drifts from it the moment either side changes.
+# (That drift is exactly how the two Vol III ``transforms`` edges below sat
+# dormant and undetected for months.) The builder keeps only edges whose BOTH
+# endpoints are registered; it never invents a null binding for an absent one.
 _DEFAULT_COUPLINGS: tuple[Coupling, ...] = (
-    # crisis producers: source's output becomes target's input prices
+    # crisis producers: source's output becomes target's input prices.
+    # Still unbound — the two Volume II circulation oppositions are out of
+    # scope for the Vol III money work and are NOT faked.
     Coupling(source="circulation", target="realization", kind="transforms"),
     Coupling(source="reproduction", target="disproportionality", kind="transforms"),
+    # DebtAccumulation.update consumes profit_of_enterprise — the residual of
+    # the surplus distribution (economics/tick/system/__init__.py, the annual
+    # county financial block): the distribution's output IS the debt tracker's
+    # input. Reserved since Phase D; live since the Vol III binding.
     Coupling(source="surplus_distribution", target="debt_spiral", kind="transforms"),
+    # Credit conditions become fictitious accumulation's input: the default
+    # rate and spread that price credit are what the claims on future value
+    # are capitalized against. Reserved since Phase D; live since the Vol III
+    # binding.
     Coupling(source="credit", target="financial", kind="transforms"),
     # the two antagonistic class contradictions are mutually antagonistic
     Coupling(source="capital_labor", target="imperial", kind="antagonizes"),
@@ -567,6 +579,24 @@ _DEFAULT_COUPLINGS: tuple[Coupling, ...] = (
     # the realized wage⇄value flow IS the scissors' drive term (ADR078): the
     # market axis integrates what the wage relation produces each tick.
     Coupling(source="wage", target="price_value", kind="feeds"),
+    #
+    # The reciprocal pair below is not a modelling flourish: the two edges
+    # fire at DIFFERENT moments of one cycle, and both are readable in
+    # engine/systems/market_scissors.py.
+    #
+    # Expansion — fictitious_drive includes ``momentum_coupling *
+    # price_velocity`` (market_scissors.py fictitious-drive block): the
+    # fictitious step READS the price observation, so ``feeds``.
+    Coupling(source="price_value", target="financial", kind="feeds"),
+    # Correction — calculate_correction_snap pulls price_log down from the
+    # fictitious overhang (market_scissors.py correction block): the price
+    # step READS the fictitious observation, so ``feeds`` back. CouplingGraph
+    # requires no acyclicity, and the cycle is the honest record.
+    Coupling(source="financial", target="price_value", kind="feeds"),
+    # The interest burden i/s sets serviceable_divergence — the ceiling on
+    # fictitious_log before the snap — so the distribution LIMITS the
+    # financial axis's reachable state space: ``constrains``, not ``feeds``.
+    Coupling(source="surplus_distribution", target="financial", kind="constrains"),
 )
 
 

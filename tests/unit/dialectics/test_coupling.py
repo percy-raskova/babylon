@@ -142,11 +142,30 @@ class TestDefaultCouplingGraph:
         assert ("capital_labor", "imperial", "antagonizes") in triples
         assert ("imperial", "capital_labor", "antagonizes") in triples  # symmetric
 
+    def test_the_two_reserved_vol_three_transforms_now_survive(self) -> None:
+        """The edges that sat dormant for months, awaiting their endpoints."""
+        graph = build_default_coupling_graph(build_default_registry())
+        triples = {_triple(c) for c in graph.couplings}
+        assert ("surplus_distribution", "debt_spiral", "transforms") in triples
+        assert ("credit", "financial", "transforms") in triples
+
+    def test_price_value_and_financial_feed_each_other(self) -> None:
+        """Mutual feeds at two moments of one cycle: in expansion price
+        momentum drives speculation (fictitious_drive reads price_velocity);
+        in correction the bubble snaps prices. Nothing in CouplingGraph
+        requires acyclicity, and the reciprocal pair is the truthful record."""
+        graph = build_default_coupling_graph(build_default_registry())
+        triples = {_triple(c) for c in graph.couplings}
+        assert ("price_value", "financial", "feeds") in triples
+        assert ("financial", "price_value", "feeds") in triples
+
+    def test_the_interest_burden_constrains_the_financial_axis(self) -> None:
+        graph = build_default_coupling_graph(build_default_registry())
+        triples = {_triple(c) for c in graph.couplings}
+        assert ("surplus_distribution", "financial", "constrains") in triples
+
     def test_only_the_bound_edges_survive(self) -> None:
         graph = build_default_coupling_graph(build_default_registry())
-        # wage->{capital_labor, imperial, price_value} feeds + the symmetric
-        # capital_labor<->imperial, and the two Vol III crisis-producer
-        # transforms whose endpoints U5.2 bound (surplus->debt, credit->financial).
         non_contains = {_triple(c) for c in graph.couplings if c.kind != "contains"}
         assert non_contains == {
             ("wage", "capital_labor", "feeds"),
@@ -156,21 +175,25 @@ class TestDefaultCouplingGraph:
             ("imperial", "capital_labor", "antagonizes"),
             ("surplus_distribution", "debt_spiral", "transforms"),
             ("credit", "financial", "transforms"),
+            ("price_value", "financial", "feeds"),
+            ("financial", "price_value", "feeds"),
+            ("surplus_distribution", "financial", "constrains"),
         }
 
-    def test_unbound_transforms_are_skipped_and_logged(
+    def test_only_the_volume_two_edges_are_still_skipped(
         self, caplog: pytest.LogCaptureFixture
     ) -> None:
         with caplog.at_level(logging.INFO, logger="babylon.domain.dialectics.instances.catalog"):
             build_default_coupling_graph(build_default_registry())
         skipped = [r for r in caplog.records if "Skipping coupling" in r.getMessage()]
-        # Two crisis-producer transforms still reference Phase D/E keys not yet
-        # bound (the Vol III pair surplus->debt and credit->financial went live
-        # once U5.2 registered their endpoints).
+        # Only the two Volume II circulation edges remain unbound; they are
+        # explicitly out of scope and are NOT faked.
         assert len(skipped) == 2
         joined = " ".join(r.getMessage() for r in skipped)
         for endpoint in ("realization", "disproportionality"):
             assert endpoint in joined
+        for landed in ("debt_spiral", "financial"):
+            assert landed not in joined
 
 
 def _state(

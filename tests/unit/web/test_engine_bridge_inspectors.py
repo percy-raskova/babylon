@@ -56,6 +56,14 @@ class TestGetInspectorNode:
         # value_flow=0.0 (tick 0); overwrite to a deterministic positive
         # gap for this test.
         graph.add_edge("C003", "C002", edge_type="wages", value_flow=1.0, tension=0.0)
+        # G4: this test is about the wage-vs-value ARITHMETIC, not veil
+        # gating (wayne_county's player org starts at Veil Tier 0 — see
+        # web/game/veil.py's docstring — which would otherwise mask
+        # imperial_rent_gap here). Stamp the real player org unlocked.
+        graph.nodes["ORG001"]["acquired_doctrine_ids"] = (
+            "class_consciousness",
+            "trade_unionism",
+        )
 
         result = bridge.get_inspector_node(uuid.uuid4(), "C002")
 
@@ -71,6 +79,10 @@ class TestGetInspectorNode:
         wages 0.0, wealth 0.15 — the gap is negative (exploited, not
         subsidized). Signed, not clamped to zero (owner ruling)."""
         bridge, _graph = _wayne_bridge()
+        _graph.nodes["ORG001"]["acquired_doctrine_ids"] = (
+            "class_consciousness",
+            "trade_unionism",
+        )
 
         result = bridge.get_inspector_node(uuid.uuid4(), "C001")
 
@@ -583,6 +595,37 @@ class TestGetInspectorHex:
     def test_unknown_h3_index_returns_empty_dict(self) -> None:
         bridge, _graph = _wayne_bridge()
         assert bridge.get_inspector_hex(uuid.uuid4(), "nonexistent-h3") == {}
+
+    def test_g4_veil_gates_the_value_axis_fields(self) -> None:
+        """G4: with real tick_* data present, the value-axis fields mask
+        below Tier 1 (wayne_county's player org starts at Tier 0 — see
+        web/game/veil.py's docstring) and unlock once the org is stamped
+        past Tier 1, same tier gate every other endpoint in the sweep uses."""
+        from game.engine_bridge import _build_initial_state_for_scenario
+
+        bridge, graph = _wayne_bridge()
+        state = _build_initial_state_for_scenario("wayne_county")
+        territory = next(iter(state.territories.values()))
+        graph.nodes[territory.id]["tick_profit_rate"] = 0.15
+        graph.nodes[territory.id]["tick_exploitation_rate"] = 0.30
+        graph.nodes[territory.id]["tick_occ"] = 2.1
+        graph.nodes[territory.id]["tick_phi_hour"] = 0.05
+
+        locked = bridge.get_inspector_hex(uuid.uuid4(), territory.h3_index)
+        assert locked["profit_rate"] is None
+        assert locked["exploitation_rate"] is None
+        assert locked["occ"] is None
+        assert locked["imperial_rent"] is None
+
+        graph.nodes["ORG001"]["acquired_doctrine_ids"] = (
+            "class_consciousness",
+            "trade_unionism",
+        )
+        unlocked = bridge.get_inspector_hex(uuid.uuid4(), territory.h3_index)
+        assert unlocked["profit_rate"] == pytest.approx(0.15)
+        assert unlocked["exploitation_rate"] == pytest.approx(0.30)
+        assert unlocked["occ"] == pytest.approx(2.1)
+        assert unlocked["imperial_rent"] == pytest.approx(0.05)
 
 
 class TestAllFiveDegradeToEmptyDictOnUnknownId:

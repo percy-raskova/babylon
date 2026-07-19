@@ -25,6 +25,16 @@
  * doctrine takeover in favor of that route, so the study CTA is a plain
  * `navigate()` — no overlay flag involved.
  *
+ * G4 (veil-leak closure, "Wave-2A compound leak"): the Fundamental
+ * Theorem meter joins the exploitation/scissors sections as a THIRD
+ * gated instrument — it reads `wage_flow_total`/`value_produced`/
+ * `imperial_rent_gap`/`imperial_rent_gap_by_region` off the TOP-LEVEL
+ * payload (not `veil.*`), which the server now gates identically
+ * (`gate_value_axis_fields`); the audit found this rail rendering the
+ * meter unconditionally, ungated by tier. `VeilLock` itself moved to
+ * `components/shell/VeilLock.tsx` (shared with `EconomyDashboard.tsx`'s
+ * own gated chips) rather than staying a CircuitPage-local component.
+ *
  * Deliberately thin chrome: a back-to-map link and the live tick (read
  * straight off `world.snapshot`, which keeps updating here because the
  * heartbeat/session lifecycle is owned by the `/game/:id` layout route
@@ -42,9 +52,10 @@ import { MeltGauge } from "@/components/timeseries/MeltGauge";
 import { FundamentalTheoremMeter } from "@/components/circuit/FundamentalTheoremMeter";
 import { StatChip } from "@/components/shell/StatChip";
 import { SectionLabel } from "@/components/shell/SectionLabel";
+import { VeilLock } from "@/components/shell/VeilLock";
 import { BreakdownBar } from "@/components/inspect/BreakdownBar";
 import { SOCIAL_ROLE_LABELS } from "@/components/map/mapLensLayers";
-import type { VeilStatus } from "@/types/game";
+import type { EconomyDashboardPayload, VeilStatus } from "@/types/game";
 import type { InspectionCompositionEntry } from "@/types/inspection";
 
 interface CircuitPageProps {
@@ -76,41 +87,6 @@ function wealthCompositionEntries(
   }));
 }
 
-interface VeilLockProps {
-  label: string;
-  onStudy: () => void;
-  /** Disambiguates this lock's testids from the Circuit's other veiled
-   *  section (both may render simultaneously at tier 0). */
-  section: "exploitation" | "scissors";
-}
-
-/**
- * The Veil of Money's locked-instrument placeholder — "visible-but-veiled
- * with a path", never a bare hidden section (spec-117 §5d: "Your cadre
- * cannot yet see through the money-form"). The CTA names the REAL next
- * doctrine node (`veil.next_unlock_label`, sourced server-side from the
- * loaded tree, never a fabricated label) and links into the Doctrine
- * takeover.
- */
-function VeilLock({ label, onStudy, section }: VeilLockProps): React.JSX.Element {
-  return (
-    <div
-      className="border-2 border-dashed border-ksbc-muted-1 p-3 text-[11px] italic text-shroud"
-      data-testid="veil-locked"
-    >
-      Your cadre cannot yet see through the money-form.{" "}
-      <button
-        type="button"
-        onClick={onStudy}
-        data-testid={`veil-study-link-${section}`}
-        className="not-italic text-accent-crimson underline hover:text-rupture"
-      >
-        Study: {label}
-      </button>
-    </div>
-  );
-}
-
 /**
  * The Scissors section: the Tier-2 instrument itself (ScissorsChart) once
  * unlocked, its veiled placeholder below Tier 2, or nothing while
@@ -130,6 +106,35 @@ function renderScissorsSection(
   }
   return (
     <VeilLock label={veil.next_unlock_label ?? "Theory"} onStudy={onStudy} section="scissors" />
+  );
+}
+
+/**
+ * The Fundamental Theorem instrument: the real meter once Tier 1 unlocks
+ * the wage-vs-value-produced axis, its veiled placeholder below Tier 1, or
+ * nothing while `panels.economy` has not yet loaded (G4, "Wave-2A compound
+ * leak" — this rail used to render the meter unconditionally, reading the
+ * now-gated top-level `wage_flow_total`/`value_produced`/`imperial_rent_
+ * gap`/`imperial_rent_gap_by_region` fields regardless of tier).
+ */
+function renderFundamentalTheoremSection(
+  economyData: EconomyDashboardPayload | null,
+  gameId: string,
+  onStudy: () => void,
+): React.JSX.Element | null {
+  const veil = economyData?.veil;
+  if (veil === undefined) {
+    return null;
+  }
+  if (veil.tier >= 1) {
+    return <FundamentalTheoremMeter gameId={gameId} />;
+  }
+  return (
+    <VeilLock
+      label={veil.next_unlock_label ?? "Theory"}
+      onStudy={onStudy}
+      section="fundamental-theorem"
+    />
   );
 }
 
@@ -190,7 +195,7 @@ export function CircuitPage({ gameId }: CircuitPageProps): React.JSX.Element {
             <MeltGauge payload={timeseries} />
           </div>
           <div className="border-2 border-ksbc-muted-1 bg-plate">
-            <FundamentalTheoremMeter gameId={gameId} />
+            {renderFundamentalTheoremSection(economyData, gameId, studyDoctrine)}
           </div>
         </aside>
         <div className="flex min-h-0 min-w-0 flex-1 flex-col gap-4 overflow-y-auto">

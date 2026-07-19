@@ -54,12 +54,79 @@ at ``cadre_level=0.25``:
   1250`` ticks — never reached in one 520-tick campaign; ``wayne_county``
   reverting to a dev fixture (D3) means this is an accepted, documented
   limitation of that fixture, not a bug.
+
+**§5d field -> tier table (G4).** The tier sketch above (money-form / value
+relations / scissors) is a category description; this is the literal,
+canonical field-name registry every serialization endpoint gates against —
+:data:`TIER1_VALUE_RELATION_FIELDS` / :data:`TIER2_SCISSORS_FIELDS`, applied
+uniformly by :func:`gate_value_axis_fields`. A field's tier is a property of
+its NAME, not of which endpoint happens to emit it — the same
+``exploitation_rate`` gates identically whether it appears on the economy
+dashboard, a map-lens hex feature, or the social-class inspector.
+
+Tier >= 1 — wage-vs-value-produced axis and the imperial-rent family
+(:data:`TIER1_VALUE_RELATION_FIELDS`):
+
+- ``value_produced`` / ``v_value_produced``, ``surplus``,
+  ``exploitation_rate`` — the wage-vs-value-produced axis itself.
+- ``rent_extracted``, ``imperial_rent`` / ``imperial_rent_pool``,
+  ``imperial_rent_gap``, ``imperial_rent_gap_by_region`` — the imperial-rent
+  family (Φ = W_c − V_c and its accumulator).
+- ``profit_rate`` (s/(c+v)) and ``occ`` (c/v) — value relations built from
+  the same surplus-value decomposition, gated identically to
+  ``exploitation_rate``.
+- ``surplus_denied``, ``disrupted_production`` (adversarial re-review
+  round 2, adjudicated — ``MobilizeValueEffectSerializer``,
+  ``web/game/serializers.py``): the MOBILIZE verb's per-target estimated
+  "value effect" — how much surplus value / value production a strike or
+  protest would deny the target business. **Gated, not money-form**: read
+  literally, ``surplus_denied`` names the SAME quantity as ``surplus``
+  above (Marxian surplus VALUE, not a dollar figure) one verb-outcome step
+  removed, and ``disrupted_production`` is the same relation for
+  ``value_produced`` — the identical "reconstructs a registry quantity one
+  step away" judgment already applied to
+  ``game.provenance``'s ``labor_aristocracy_ratio``/
+  ``value_extraction_ratio``. No producer computes either field today
+  (``EngineBridge.get_mobilize_targets``/``StubEngineBridge.
+  get_mobilize_targets`` never populate a target's ``sl_options``/
+  ``estimated_effects.value`` — schema-only, unwired); the registry entry
+  is a forward pin so the mask applies automatically the instant a future
+  MOBILIZE resolver populates them, the same defense-in-depth precedent
+  ``profit_rate``/``occ`` already set while THEY had no live producer.
+
+Tier >= 2 — the price<->value divergence instruments
+(:data:`TIER2_SCISSORS_FIELDS`):
+
+- ``price_divergence``, ``fictitious_ratio`` — the scissors themselves.
+- ``price_index`` — MELT drift (``price_index - 1``): a dollar's command
+  over labor time, the same phenomenal-form-vs-substance reading.
+- ``market_corrections`` — the scissors-snap chart marker (cumulative
+  correction count), meaningless without the chart it annotates.
+
+Money-form quantities NEVER in either registry, deliberately left ungated
+(tier 0, always visible) at every site audited in G4, with the one-line
+reasoning a reviewer would otherwise have to re-derive: dollar-denominated
+``wealth``/``wealth_by_class_role`` (the money-form itself, spec-117 §5b
+precedent — ``wealth_by_class_role``'s CircuitPage relocation); real dollar
+flows ``wage_flow_total``/``tribute_flow_total`` (money paid, not a
+value-theoretic ratio); ``current_super_wage_rate`` (a wage RATE, same
+money-form family as the dollar wages it is a percentage of);
+``current_repression_level`` (``GlobalEconomy``'s system-wide repression
+modifier, ``derived.economy`` on the full snapshot — adversarial re-review
+round 2, Finding F1: a political axis blended with per-class
+``repression_faced``, never a value ratio); ecological or political axes
+that were never value-theoretic to begin with — ``heat``,
+``biocapacity``, ``consciousness``, ``solidarity``, ``crisis_pop_share``,
+``bifurcation_score_mean``, ``wage_compression_mean``,
+``capital_stock_total``, ``unemployment_rate_mean``, and
+``extraction_intensity`` (metabolic-rift ecological pressure, not a Marxian
+value ratio, despite the name).
 """
 
 from __future__ import annotations
 
 from collections.abc import Iterable, Mapping
-from typing import NamedTuple
+from typing import Any, NamedTuple
 
 
 class VeilStatus(NamedTuple):
@@ -134,4 +201,92 @@ def compute_veil_status(
     return VeilStatus(tier=tier, next_unlock_node_id=next_id, next_unlock_label=label)
 
 
-__all__ = ["VeilStatus", "compute_veil_status", "compute_veil_tier"]
+#: Tier >= 1 — the wage-vs-value-produced axis + the imperial-rent family.
+#: See the module docstring's "§5d field -> tier table" for the reasoning
+#: behind each name. One registry, reused by every G4-audited serialization
+#: endpoint via :func:`gate_value_axis_fields`, so a field's tier can never
+#: silently drift between two composers that both happen to emit it.
+TIER1_VALUE_RELATION_FIELDS: frozenset[str] = frozenset(
+    {
+        "value_produced",
+        "v_value_produced",
+        "surplus",
+        "exploitation_rate",
+        "rent_extracted",
+        "imperial_rent",
+        "imperial_rent_pool",
+        "imperial_rent_gap",
+        "imperial_rent_gap_by_region",
+        "profit_rate",
+        "occ",
+        "surplus_denied",
+        "disrupted_production",
+    }
+)
+
+#: Tier >= 2 — the price<->value divergence instruments (the scissors).
+TIER2_SCISSORS_FIELDS: frozenset[str] = frozenset(
+    {
+        "price_divergence",
+        "price_index",
+        "fictitious_ratio",
+        "market_corrections",
+    }
+)
+
+
+def _masked_like(value: Any) -> Any:
+    """A same-shape masked replacement for one gated field's value.
+
+    A scalar (float/int/``None``) masks to ``None``. A list of scalars (a
+    timeseries payload's parallel array) masks element-wise to a same-length
+    list of ``None`` — preserving index-alignment against a sibling
+    ``ticks`` array. A list of dicts (a rows-of-regions payload, e.g.
+    ``imperial_rent_gap_by_region``) masks to the empty list — the same
+    "no region reaches" honest-absence convention that field's own producer
+    already uses for a genuine no-data case.
+    """
+    if isinstance(value, list):
+        if value and isinstance(value[0], dict):
+            return []
+        return [None] * len(value)
+    return None
+
+
+def gate_value_axis_fields(payload: Mapping[str, Any], tier: int) -> dict[str, Any]:
+    """Null out this payload's ungated value-axis fields below their tier.
+
+    Server-enforced per §5d/D7: a field named in
+    :data:`TIER1_VALUE_RELATION_FIELDS` masks below tier 1; one named in
+    :data:`TIER2_SCISSORS_FIELDS` masks below tier 2. Every other key in
+    ``payload`` (``tick``, ``has_data``, money-form fields, the fog's
+    political fields, ...) passes through unchanged — this function only
+    ever touches keys it recognizes by name, so it composes safely with
+    :func:`~game.fog.filter.apply_fog` (an orthogonal spatial gate) applied
+    to the same dict, in either order.
+
+    :param payload: A flat dict about to cross the wire — may itself carry
+        list-valued fields (a timeseries payload's parallel arrays); see
+        :func:`_masked_like` for how those are masked.
+    :param tier: The requesting player org's veil tier (0/1/2,
+        :func:`compute_veil_tier`).
+    :returns: A new dict; ``payload`` itself is never mutated.
+    """
+    result = dict(payload)
+    for field in TIER1_VALUE_RELATION_FIELDS:
+        if field in result and tier < 1:
+            result[field] = _masked_like(result[field])
+    for field in TIER2_SCISSORS_FIELDS:
+        if field in result and tier < 2:
+            result[field] = _masked_like(result[field])
+    return result
+
+
+__all__ = [
+    "TIER1_VALUE_RELATION_FIELDS",
+    "TIER2_SCISSORS_FIELDS",
+    "VeilStatus",
+    "compute_veil_status",
+    "compute_veil_tier",
+    "gate_value_axis_fields",
+]

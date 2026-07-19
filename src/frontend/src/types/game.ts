@@ -1102,10 +1102,11 @@ export interface CountyFlowSnapshot {
  * only) / 1 (exploitation visible) / 2 (the scissors, fully unlocked).
  * `value_produced`/`exploitation_rate` here are a Tier-1-gated COPY of the
  * same-named top-level `EconomyDashboardPayload` fields — `null` below
- * Tier 1, enforced server-side (never a client-side-only hide). The
- * top-level fields themselves are NOT gated (EconomyDashboard/BottomDrawer's
- * pre-existing surface, out of this program's scope) — only screens that
- * read `veil.*` see the gated presentation.
+ * Tier 1, enforced server-side (never a client-side-only hide). G4
+ * (veil-leak closure): the top-level fields are now gated by the EXACT
+ * same tier (`web/game/veil.py::gate_value_axis_fields`) — a prior version
+ * of this comment claimed they were deliberately ungated; that was the
+ * leak the audit found. `veil.*` and the top-level fields always agree.
  */
 export interface VeilStatus {
   tier: 0 | 1 | 2;
@@ -1126,8 +1127,10 @@ export interface VeilStatus {
 export interface EconomyDashboardPayload {
   tick: number;
   has_data: boolean;
-  value_produced: number;
-  rent_extracted: number;
+  /** `null` below the Veil's Tier 1 (G4) — same gate as `veil.value_produced`. */
+  value_produced: number | null;
+  /** `null` below the Veil's Tier 1 (G4) — imperial-rent family. */
+  rent_extracted: number | null;
   exploitation_rate: number | null;
   profit_rate: number | null;
   occ: number | null;
@@ -1147,9 +1150,10 @@ export interface EconomyDashboardPayload {
    * — same sign convention (positive = core wages exceed value produced, an
    * imperial subsidy). Both addends are extensive totals, so this sum
    * carries none of the unweighted-mean-of-a-ratio risk a per-region
-   * average would.
+   * average would. `null` below the Veil's Tier 1 (G4) — imperial-rent
+   * family, same gate as `imperial_rent_gap_by_region` below.
    */
-  imperial_rent_gap: number;
+  imperial_rent_gap: number | null;
   /**
    * T2-6b (spec-117) — net-new per-territory breakdown. One row per
    * territory with at least one positive-population TENANCY-linked tenant
@@ -1158,7 +1162,8 @@ export interface EconomyDashboardPayload {
    * (`ScaleAdjunction.aggregate_intensive`, never a raw unweighted average —
    * see `_imperial_rent_gap_by_region`'s docstring). Empty when no territory
    * has a positive-population tenant this session (Constitution III.11 —
-   * never a fabricated row).
+   * never a fabricated row) OR below the Veil's Tier 1 (G4) — the two
+   * "empty" cases are indistinguishable on the wire by design.
    */
   imperial_rent_gap_by_region: ImperialRentGapRegion[];
   /** The Veil of Money's tier status (Track 2 T2-8/T2-9). */

@@ -487,6 +487,17 @@ def _make_aggregated_features(zoom: str, tick: int) -> list[dict[str, Any]]:
 # transitively ``babylon.engine``/``babylon.persistence``) — this whole
 # module's point is to boot Django with zero engine/DB dependency weight,
 # same as every other ``_make_*`` mock builder here.
+#
+# G4 follow-up (Veil of Money dev parity): this stub world is permanently
+# fresh — ``StubEngineBridge.get_doctrine_tree`` reports ``acquired_ids:
+# []`` (Tier 0), and there is no engine here to ever advance it. So the
+# value-axis numbers below are masked to ``None`` exactly where
+# ``game.provenance.explain_metric(..., veil_tier=0)`` would mask them —
+# see that module's docstring for which fields/metrics gate and why. This
+# is NOT re-derived from ``game.provenance`` at runtime (that would defeat
+# the whole point of this module — see the paragraph above); it is a
+# one-time hand-mirror of the same masking decision, kept in lockstep by
+# ``tests/unit/web/test_game_explain_view.py``'s stub-parity tests.
 _STUB_EXPLAIN_METRICS: dict[str, dict[str, Any]] = {
     "value_extraction_ratio": {
         "formula": {
@@ -494,10 +505,10 @@ _STUB_EXPLAIN_METRICS: dict[str, dict[str, Any]] = {
             "expression": "exchange_ratio = (value_produced + rent_extracted) / value_produced",
             "doc": "Graph-wide extraction proxy behind /economy/'s global exploitation_rate.",
         },
-        "value": 1.82,
+        "value": None,
         "inputs": [
-            {"name": "value_produced", "label": "Value produced", "value": 420.0, "kind": "state"},
-            {"name": "rent_extracted", "label": "Rent extracted", "value": 344.4, "kind": "state"},
+            {"name": "value_produced", "label": "Value produced", "value": None, "kind": "state"},
+            {"name": "rent_extracted", "label": "Rent extracted", "value": None, "kind": "state"},
         ],
     },
     "exploitation_rate": {
@@ -506,12 +517,12 @@ _STUB_EXPLAIN_METRICS: dict[str, dict[str, Any]] = {
             "expression": "Convert exchange ratio to exploitation rate percentage.",
             "doc": "Convert exchange ratio to exploitation rate percentage.",
         },
-        "value": 0.45,
+        "value": None,
         "inputs": [
             {
                 "name": "exchange_ratio",
                 "label": "Exchange ratio",
-                "value": 1.82,
+                "value": None,
                 "kind": "metric",
                 "ref": "value_extraction_ratio",
             },
@@ -541,7 +552,7 @@ _STUB_EXPLAIN_METRICS: dict[str, dict[str, Any]] = {
             "expression": "imperial_rent = state.economy.imperial_rent_pool",
             "doc": "Raw GlobalEconomy ledger balance, not a derived formula.",
         },
-        "value": 50.0,
+        "value": None,
         "inputs": [],
     },
     "labor_aristocracy_ratio": {
@@ -550,7 +561,7 @@ _STUB_EXPLAIN_METRICS: dict[str, dict[str, Any]] = {
             "expression": "Wc/Vc ratio. When > 1, worker receives more than produced.",
             "doc": "Wc/Vc ratio. When > 1, worker receives more than produced.",
         },
-        "value": 1.2,
+        "value": None,
         "inputs": [
             {
                 "name": "core_wages",
@@ -561,7 +572,7 @@ _STUB_EXPLAIN_METRICS: dict[str, dict[str, Any]] = {
             {
                 "name": "value_produced",
                 "label": "Value produced (entity wealth)",
-                "value": 85.0,
+                "value": None,
                 "kind": "state",
             },
         ],
@@ -623,7 +634,7 @@ _STUB_EXPLAIN_METRICS: dict[str, dict[str, Any]] = {
             {
                 "name": "value_produced",
                 "label": "Value produced (entity wealth)",
-                "value": 85.0,
+                "value": None,
                 "kind": "state",
             },
             {

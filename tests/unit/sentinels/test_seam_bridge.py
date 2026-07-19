@@ -220,3 +220,178 @@ def test_live_tree_runs_without_raising() -> None:
     findings = check_bridge_serialization()
     assert isinstance(findings, list)
     assert all(isinstance(f, str) for f in findings)
+
+
+class TestSingleHopDelegationFollowed:
+    """G4 Task C: the delegation-blindness class the audit found — a serializer
+    whose ENTIRE body is ``return self.other_method(...)`` (the real
+    ``get_economy`` -> ``get_economy_dashboard`` shape) used to report a
+    "delegated" blind spot and harvest ZERO keys, so a declared-but-unemitted
+    field on the DELEGATE could never be caught through this route. Fixed
+    generically in ``_returned_dict_keys`` (single-hop ``self.<method>()``
+    resolution) — not special-cased to ``get_economy`` by name."""
+
+    def test_pure_delegation_resolves_the_delegates_keys(self, tmp_path: Path) -> None:
+        """A serializer that ONLY delegates is checked against the delegate's
+        real emitted keys, not reported as an unverifiable blind spot."""
+        engine = (
+            "class EngineBridge:\n"
+            "    def get_economy(self, s):\n"
+            "        return self.get_economy_dashboard(s)\n"
+            "    def get_economy_dashboard(self, s):\n"
+            "        return {'a': 1, 'b': 2}\n"
+        )
+        paths = _write_wiring(
+            tmp_path, urls=_URLS, api=_API, engine=engine, endpoints=_ENDPOINTS, game_ts=_GAME_TS
+        )
+        assert check_bridge_serialization(**paths) == []
+
+    def test_pure_delegation_still_catches_a_phantom_on_the_delegate(self, tmp_path: Path) -> None:
+        """The whole point: a field the DELEGATE never emits must still red
+        through the delegating serializer's route — this is the exact defect
+        class ``rent_extracted``/``exploitation_rate`` risked going uncaught."""
+        engine = (
+            "class EngineBridge:\n"
+            "    def get_economy(self, s):\n"
+            "        return self.get_economy_dashboard(s)\n"
+            "    def get_economy_dashboard(self, s):\n"
+            "        return {'a': 1}\n"
+        )
+        paths = _write_wiring(
+            tmp_path, urls=_URLS, api=_API, engine=engine, endpoints=_ENDPOINTS, game_ts=_GAME_TS
+        )
+        findings = check_bridge_serialization(**paths)
+        assert len(findings) == 1
+        assert "'b'" in findings[0]
+        assert "get_economy" in findings[0]
+
+    def test_mixed_literal_and_delegated_branches_union_both(self, tmp_path: Path) -> None:
+        """``get_economy``'s REAL shape: one branch a literal dict (the
+        per-territory case), one branch delegating to ``get_economy_
+        dashboard`` (the no-``territory_id`` case) — both branches' keys are
+        unioned, not just whichever return statement is scanned first."""
+        engine = (
+            "class EngineBridge:\n"
+            "    def get_economy(self, s, territory_id=None):\n"
+            "        if territory_id is None:\n"
+            "            return self.get_economy_dashboard(s)\n"
+            "        return {'a': 1}\n"
+            "    def get_economy_dashboard(self, s):\n"
+            "        return {'a': 1, 'b': 2}\n"
+        )
+        paths = _write_wiring(
+            tmp_path, urls=_URLS, api=_API, engine=engine, endpoints=_ENDPOINTS, game_ts=_GAME_TS
+        )
+        assert check_bridge_serialization(**paths) == []
+
+    def test_multi_hop_delegation_is_not_followed_past_one_hop(self, tmp_path: Path) -> None:
+        """ "Single-hop" is a deliberate limit, not an oversight — a 2-hop chain
+        (``get_economy`` -> ``_a`` -> ``_b``) still reports as a blind spot
+        rather than silently resolving arbitrarily deep chains (and risking
+        infinite recursion on an accidental cycle)."""
+        engine = (
+            "class EngineBridge:\n"
+            "    def get_economy(self, s):\n"
+            "        return self._a(s)\n"
+            "    def _a(self, s):\n"
+            "        return self._b(s)\n"
+            "    def _b(self, s):\n"
+            "        return {'a': 1, 'b': 2}\n"
+        )
+        paths = _write_wiring(
+            tmp_path, urls=_URLS, api=_API, engine=engine, endpoints=_ENDPOINTS, game_ts=_GAME_TS
+        )
+        findings = check_bridge_serialization(**paths)
+        assert any("delegated shape" in f for f in findings)
+
+    def test_delegating_to_a_serializer_the_bridge_lacks_is_a_blind_spot(
+        self, tmp_path: Path
+    ) -> None:
+        """Delegating to a nonexistent method degrades to the existing
+        "absent" blind-spot report, never a crash."""
+        engine = (
+            "class EngineBridge:\n"
+            "    def get_economy(self, s):\n"
+            "        return self.get_economy_dashboard(s)\n"
+        )
+        paths = _write_wiring(
+            tmp_path, urls=_URLS, api=_API, engine=engine, endpoints=_ENDPOINTS, game_ts=_GAME_TS
+        )
+        findings = check_bridge_serialization(**paths)
+        assert any("returns a delegated shape" in f for f in findings)
+
+
+class TestLocalVariablePayloadResolved:
+    """G4 Task C companion fix: the "build a payload across statements, then
+    return the variable" idiom (`payload = {...}; payload = gate_fn(payload,
+    tier); payload['veil'] = {...}; return payload` — the EXACT shape G4's own
+    veil-gating changes gave ``get_economy_dashboard``) must resolve the same
+    way a literal ``return {...}`` does, not regress to a delegated blind spot
+    just because the dict passes through a local variable and a masking call
+    on its way out."""
+
+    def test_return_of_a_locally_built_dict_resolves_its_keys(self, tmp_path: Path) -> None:
+        engine = (
+            "class EngineBridge:\n"
+            "    def get_economy(self, s):\n"
+            "        payload = {'a': 1, 'b': 2}\n"
+            "        return payload\n"
+        )
+        paths = _write_wiring(
+            tmp_path, urls=_URLS, api=_API, engine=engine, endpoints=_ENDPOINTS, game_ts=_GAME_TS
+        )
+        assert check_bridge_serialization(**paths) == []
+
+    def test_subscript_assignment_after_the_literal_adds_its_key(self, tmp_path: Path) -> None:
+        """``payload['veil'] = {...}`` after the initial literal must count
+        ``veil`` among the emitted keys — the exact ``get_economy_dashboard``
+        pattern (the ``veil`` sub-object is added after the gate call)."""
+        game_ts = (
+            "export interface EconomyDashboardPayload {\n"
+            "  a: number;\n  b: number;\n  veil: number;\n}\n"
+        )
+        engine = (
+            "class EngineBridge:\n"
+            "    def get_economy(self, s):\n"
+            "        payload = {'a': 1, 'b': 2}\n"
+            "        payload = gate_value_axis_fields(payload, tier)\n"
+            "        payload['veil'] = {}\n"
+            "        return payload\n"
+        )
+        paths = _write_wiring(
+            tmp_path, urls=_URLS, api=_API, engine=engine, endpoints=_ENDPOINTS, game_ts=game_ts
+        )
+        assert check_bridge_serialization(**paths) == []
+
+    def test_still_catches_a_phantom_through_a_local_variable(self, tmp_path: Path) -> None:
+        engine = (
+            "class EngineBridge:\n"
+            "    def get_economy(self, s):\n"
+            "        payload = {'a': 1}\n"
+            "        return payload\n"
+        )
+        paths = _write_wiring(
+            tmp_path, urls=_URLS, api=_API, engine=engine, endpoints=_ENDPOINTS, game_ts=_GAME_TS
+        )
+        findings = check_bridge_serialization(**paths)
+        assert len(findings) == 1
+        assert "'b'" in findings[0]
+
+    def test_variable_reassigned_from_an_unrelated_call_stays_a_blind_spot(
+        self, tmp_path: Path
+    ) -> None:
+        """Only a same-variable masking reassignment (``x = f(x, ...)``) is
+        trusted to preserve the key set — reassignment from an unrelated
+        expression must NOT inherit the old (now possibly stale) key set."""
+        engine = (
+            "class EngineBridge:\n"
+            "    def get_economy(self, s):\n"
+            "        payload = {'a': 1, 'b': 2}\n"
+            "        payload = build_something_else()\n"
+            "        return payload\n"
+        )
+        paths = _write_wiring(
+            tmp_path, urls=_URLS, api=_API, engine=engine, endpoints=_ENDPOINTS, game_ts=_GAME_TS
+        )
+        findings = check_bridge_serialization(**paths)
+        assert any("delegated shape" in f for f in findings)

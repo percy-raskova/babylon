@@ -40,7 +40,13 @@ from hypothesis import strategies as st
 
 from babylon.config.defines import VeilDefines
 from babylon.domain.doctrine import load_doctrine_tree
-from game.veil import compute_veil_status, compute_veil_tier
+from game.veil import (
+    TIER1_VALUE_RELATION_FIELDS,
+    TIER2_SCISSORS_FIELDS,
+    compute_veil_status,
+    compute_veil_tier,
+    gate_value_axis_fields,
+)
 
 pytestmark = pytest.mark.unit
 
@@ -135,3 +141,107 @@ class TestMonotonicity:
         assert compute_veil_tier(tuple(grown), _TIER1, _TIER2) >= compute_veil_tier(
             tuple(base), _TIER1, _TIER2
         )
+
+
+class TestGateValueAxisFields:
+    """``gate_value_axis_fields`` — the single reusable masking primitive
+    every value-axis-bearing serialization endpoint applies at the wire
+    boundary (G4 sweep). One registry of field names (:data:`TIER1_VALUE_
+    RELATION_FIELDS`/:data:`TIER2_SCISSORS_FIELDS`), reused everywhere, so a
+    field's tier can never silently drift between two composers."""
+
+    def test_tier1_field_masked_below_tier_one(self) -> None:
+        out = gate_value_axis_fields({"value_produced": 42.0}, tier=0)
+        assert out["value_produced"] is None
+
+    def test_tier1_field_visible_at_tier_one(self) -> None:
+        out = gate_value_axis_fields({"value_produced": 42.0}, tier=1)
+        assert out["value_produced"] == 42.0
+
+    def test_tier2_field_masked_below_tier_two(self) -> None:
+        out = gate_value_axis_fields({"price_divergence": 0.5}, tier=1)
+        assert out["price_divergence"] is None
+
+    def test_tier2_field_visible_at_tier_two(self) -> None:
+        out = gate_value_axis_fields({"price_divergence": 0.5}, tier=2)
+        assert out["price_divergence"] == 0.5
+
+    def test_tier1_field_still_masked_below_tier_two_but_above_tier_one(self) -> None:
+        """A tier-1 field is visible at tier 1 already — tier 2 must not
+        regress it."""
+        out = gate_value_axis_fields({"exploitation_rate": 0.3}, tier=1)
+        assert out["exploitation_rate"] == 0.3
+
+    def test_unrecognized_field_passes_through_unchanged(self) -> None:
+        """Only field names in the registry are ever touched — ``tick``/
+        ``has_data``/money-form fields/political fog fields must never be
+        masked by this function."""
+        out = gate_value_axis_fields({"tick": 10, "wage_flow_total": 500.0}, tier=0)
+        assert out == {"tick": 10, "wage_flow_total": 500.0}
+
+    def test_list_valued_field_masks_elementwise_preserving_length(self) -> None:
+        """Timeseries payloads carry parallel arrays — masking must keep
+        the array's length so a sibling ``ticks`` array stays index-aligned."""
+        out = gate_value_axis_fields({"imperial_rent": [1.0, 2.0, None, 4.0]}, tier=0)
+        assert out["imperial_rent"] == [None, None, None, None]
+
+    def test_list_of_dicts_field_masks_to_empty_list(self) -> None:
+        """``imperial_rent_gap_by_region`` is a list of row dicts, not a
+        list of scalars — masks to ``[]`` (the same "no region reaches"
+        honest-absence convention :func:`_imperial_rent_gap_by_region`
+        already uses for a real no-data case)."""
+        out = gate_value_axis_fields(
+            {"imperial_rent_gap_by_region": [{"territory_id": "T1", "gap_per_capita": 0.4}]},
+            tier=0,
+        )
+        assert out["imperial_rent_gap_by_region"] == []
+
+    def test_does_not_mutate_the_input_dict(self) -> None:
+        original = {"value_produced": 42.0}
+        gate_value_axis_fields(original, tier=0)
+        assert original["value_produced"] == 42.0
+
+    def test_every_tier1_field_masks_at_tier_zero(self) -> None:
+        payload = dict.fromkeys(TIER1_VALUE_RELATION_FIELDS, 1.0)
+        out = gate_value_axis_fields(payload, tier=0)
+        assert all(v is None for v in out.values())
+
+    def test_every_tier2_field_masks_below_tier_two(self) -> None:
+        payload = dict.fromkeys(TIER2_SCISSORS_FIELDS, 1.0)
+        out = gate_value_axis_fields(payload, tier=1)
+        assert all(v is None for v in out.values())
+
+
+class TestMobilizeValueEffectAdjudication:
+    """Adversarial re-review round 2 — the non-blocking flag adjudicated:
+    ``surplus_denied``/``disrupted_production``
+    (``MobilizeValueEffectSerializer``, ``web/game/serializers.py:859-860``)
+    are the MOBILIZE verb's per-target estimated value effect. Read
+    literally against this module's own §5d table: ``surplus_denied``
+    names the same Marxian surplus VALUE as ``surplus`` one verb-outcome
+    step removed, and ``disrupted_production`` is the same relation for
+    ``value_produced`` — GATED, not money-form (no dollar figure, no wage
+    rate). No producer computes either field today (schema-only, unwired
+    in both ``EngineBridge``/``StubEngineBridge``); this pins the policy so
+    the mask applies automatically the instant a future MOBILIZE resolver
+    populates them — see the module docstring's §5d table for the full
+    reasoning."""
+
+    def test_surplus_denied_is_a_registered_tier1_field(self) -> None:
+        assert "surplus_denied" in TIER1_VALUE_RELATION_FIELDS
+
+    def test_disrupted_production_is_a_registered_tier1_field(self) -> None:
+        assert "disrupted_production" in TIER1_VALUE_RELATION_FIELDS
+
+    def test_surplus_denied_masks_below_tier_one(self) -> None:
+        out = gate_value_axis_fields({"surplus_denied": 12.5}, tier=0)
+        assert out["surplus_denied"] is None
+
+    def test_disrupted_production_masks_below_tier_one(self) -> None:
+        out = gate_value_axis_fields({"disrupted_production": 8.0}, tier=0)
+        assert out["disrupted_production"] is None
+
+    def test_both_real_at_tier_one(self) -> None:
+        out = gate_value_axis_fields({"surplus_denied": 12.5, "disrupted_production": 8.0}, tier=1)
+        assert out["surplus_denied"] == 12.5
+        assert out["disrupted_production"] == 8.0

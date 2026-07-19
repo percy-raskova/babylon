@@ -20,7 +20,13 @@ from game.engine_bridge import EngineBridge
 
 
 def _bridge_and_state() -> tuple[EngineBridge, MagicMock]:
-    """A bridge with list-returning event queries and an empty-world state."""
+    """A bridge with list-returning event queries and an empty-world state.
+
+    G4: ``organizations`` carries a real player org with BOTH veil
+    threshold nodes acquired (Tier 2, fully unlocked) — this suite is about
+    the ``profit_rate`` WIRING, not veil gating (that's ``TestEconomyDashboardVeil``'s
+    job), so it must keep reading real numbers post-boundary.
+    """
     persistence = MagicMock()
     persistence.query_tick_events.return_value = []
     bridge = EngineBridge(persistence)
@@ -28,7 +34,10 @@ def _bridge_and_state() -> tuple[EngineBridge, MagicMock]:
     state.tick = 60
     state.entities = {}
     state.territories = {}
-    state.organizations = {}
+    state.organizations = {
+        "org-player": MagicMock(acquired_doctrine_ids=("class_consciousness", "trade_unionism"))
+    }
+    state.player_org_id = "org-player"
     state.economy = None
     return bridge, state
 

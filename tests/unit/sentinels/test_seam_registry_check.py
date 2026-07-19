@@ -220,3 +220,78 @@ def test_survival_calculus_inspector_rows_are_registered() -> None:
     }
     for entry in entries.values():
         assert entry.liveness_class is LivenessClass.MUST_BE_LIVE
+
+
+class TestCheckEconomyDashboardKeys:
+    """G4 Task C(ii): gives the ECONOMY scope TEETH — a GATING check,
+    analogous to ``check_map_metrics``, reconciling registry
+    ``economy_dashboard.*`` wire keys against ``get_economy_dashboard``'s REAL
+    emitted keys (harvested through the delegation-aware
+    ``_returned_dict_keys`` from ``bridge.py`` — Task C(i)'s fix). Before this
+    check existed, ``get_economy`` delegating to ``get_economy_dashboard``
+    made the whole surface a blind spot the advisory sweep silently skipped;
+    this closes it as a GATING check the fast-gate enforces."""
+
+    def test_real_registry_reconciles_with_get_economy_dashboard(self) -> None:
+        """The shipped registry's economy_dashboard.* keys equal what
+        get_economy_dashboard really emits (green)."""
+        assert sensor1.check_economy_dashboard_keys() == []
+
+    def test_dropped_registry_row_is_flagged(self) -> None:
+        """Removing a real economy_dashboard row (the exact G4 defect —
+        rent_extracted/exploitation_rate/tick/has_data went unregistered)
+        reds the gate, naming the missing wire key."""
+        broken = tuple(
+            e
+            for e in SEAM_REGISTRY
+            if not (e.scope is SeamScope.ECONOMY and e.wire_keys == ("rent_extracted",))
+        )
+        assert len(broken) == len(SEAM_REGISTRY) - 1
+
+        violations = sensor1.check_economy_dashboard_keys(registry=broken)
+
+        assert len(violations) == 1
+        assert "rent_extracted" in violations[0]
+        assert "not registered" in violations[0]
+
+    def test_phantom_registry_row_is_flagged(self) -> None:
+        """A registry economy_dashboard row get_economy_dashboard never emits
+        is a phantom — a component reading it would get undefined."""
+        phantom = SeamEntry(
+            payload="economy_dashboard.bogus_field",
+            wire_keys=("bogus_field",),
+            scope=SeamScope.ECONOMY,
+            owner_layer="test",
+            liveness_class=LivenessClass.MUST_BE_LIVE,
+            dtype="float",
+            read_paths=("web/game/engine_bridge.py::EngineBridge.get_economy_dashboard (:1)",),
+        )
+        with_phantom = (*SEAM_REGISTRY, phantom)
+
+        violations = sensor1.check_economy_dashboard_keys(registry=with_phantom)
+
+        assert len(violations) == 1
+        assert "bogus_field" in violations[0]
+        assert "phantom" in violations[0].lower()
+
+    def test_reintroduced_delegation_blindness_is_an_infrastructure_error(
+        self, tmp_path: Path
+    ) -> None:
+        """The mutation-validation case Task C's owner ruling asks for: if
+        ``get_economy_dashboard`` regressed to a shape the harvester cannot
+        statically resolve (a fresh, un-followed delegation chain), this
+        check must fail LOUDLY (never silently pass an unverifiable
+        scope) — a SentinelCheckError, not a silent green."""
+        broken_engine = tmp_path / "engine_bridge.py"
+        broken_engine.write_text(
+            "class EngineBridge:\n"
+            "    def get_economy_dashboard(self, s):\n"
+            "        return self._a(s)\n"
+            "    def _a(self, s):\n"
+            "        return self._b(s)\n"
+            "    def _b(self, s):\n"
+            "        return {'value_produced': 1}\n",
+            encoding="utf-8",
+        )
+        with pytest.raises(SentinelCheckError):
+            sensor1.check_economy_dashboard_keys(engine_path=broken_engine)

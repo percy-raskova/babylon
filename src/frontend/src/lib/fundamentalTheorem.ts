@@ -26,12 +26,17 @@ export interface FundamentalTheoremReading {
 /**
  * The graph-wide Fundamental Theorem reading, or `null` when the graph has
  * no economic activity recorded yet (`has_data: false` — Constitution
- * III.11, never a fabricated zero reading).
+ * III.11, never a fabricated zero reading) OR when `value_produced`/
+ * `imperial_rent_gap` are veil-masked (G4: below the player org's Tier 1 —
+ * `EconomyDashboardPayload`'s server-gated fields, see `web/game/veil.py`).
+ * `CircuitPage.tsx` only mounts the meter that reads this at Tier >= 1, so
+ * the `null` case is a defensive contract, not the expected path.
  */
 export function deriveFundamentalTheoremReading(
   payload: EconomyDashboardPayload,
 ): FundamentalTheoremReading | null {
   if (!payload.has_data) return null;
+  if (payload.value_produced === null || payload.imperial_rent_gap === null) return null;
   return {
     wc: payload.wage_flow_total,
     vc: payload.value_produced,

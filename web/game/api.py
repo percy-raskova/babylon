@@ -1230,6 +1230,7 @@ def game_explain(request: Request, game_id: str) -> JsonResponse:
     if not raw_scope:
         return _error("Missing required query parameter 'scope'", http_status=400)
 
+    from .engine_bridge import _resolve_veil_tier
     from .provenance import (
         METRIC_PROVENANCE,
         SUPPORTED_SCOPE_KINDS,
@@ -1256,8 +1257,13 @@ def game_explain(request: Request, game_id: str) -> JsonResponse:
         except Exception:  # noqa: BLE001 — diagnostic; surfaced as a clean 404
             logger.exception("game_explain: failed to hydrate state for session=%s", session_uuid)
             return _error("Game state not available", http_status=404)
+        # G4 follow-up: /explain/ is a client-inspectable disclosure
+        # instrument for value-axis quantities (game.provenance's module
+        # docstring) — resolve the session's real Veil-of-Money tier the
+        # same way every other gated endpoint does and thread it through.
+        veil_tier = _resolve_veil_tier(state)
         try:
-            result = explain_metric(state, graph, metric, scope)
+            result = explain_metric(state, graph, metric, scope, veil_tier=veil_tier)
         except UnknownMetricError:
             return _error(
                 f"Unknown metric {metric!r}. Valid metrics: {sorted(METRIC_PROVENANCE)}",

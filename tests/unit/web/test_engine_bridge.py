@@ -1143,6 +1143,67 @@ class TestHexFeaturePropertiesHabitability:
 
 
 @pytest.mark.unit
+class TestHexFeaturePropertiesVeilGate:
+    """G4: the map lens's per-hex value-axis fields
+    (profit_rate/exploitation_rate/occ/imperial_rent/price_divergence) gate
+    on ``veil_tier`` exactly like every other endpoint in the sweep —
+    ``get_map_snapshot``'s own real-tree wiring is covered indirectly via
+    ``TestBalkanizationMapFields``; this pins the pure per-hex composer's
+    gating contract directly (tier-0 sweep, acceptance criterion 1)."""
+
+    @staticmethod
+    def _row() -> Any:
+        from types import SimpleNamespace
+
+        return SimpleNamespace(
+            h3_index="h1",
+            county_fips="26163",
+            county_name="Wayne",
+            bea_ea_code=None,
+            msa_code=None,
+            profit_rate=0.15,
+            exploitation_rate=0.30,
+            occ=2.1,
+            imperial_rent=0.05,
+            heat=0.4,
+            org_count=1,
+            dominant_class=None,
+            pop_total=5000,
+            attributes={"price_divergence": 0.2},
+        )
+
+    def test_veil_tier_none_is_unfogged_byte_identical_to_before_g4(self) -> None:
+        """The default (``veil_tier=None``, every pre-existing direct call
+        site) stays real/ungated — G4 must not regress a single pre-G4 test."""
+        props = _hex_feature_properties(self._row())
+        assert props["profit_rate"] == pytest.approx(0.15)
+        assert props["price_divergence"] == pytest.approx(0.2)
+
+    def test_tier_zero_masks_every_value_axis_field(self) -> None:
+        props = _hex_feature_properties(self._row(), veil_tier=0)
+        assert props["profit_rate"] is None
+        assert props["exploitation_rate"] is None
+        assert props["occ"] is None
+        assert props["imperial_rent"] is None
+        assert props["price_divergence"] is None
+        # Never touched — heat is money-form/political, not value-axis.
+        assert props["heat"] == pytest.approx(0.4)
+
+    def test_tier_one_unlocks_tier1_fields_but_not_the_scissors(self) -> None:
+        props = _hex_feature_properties(self._row(), veil_tier=1)
+        assert props["profit_rate"] == pytest.approx(0.15)
+        assert props["exploitation_rate"] == pytest.approx(0.30)
+        assert props["occ"] == pytest.approx(2.1)
+        assert props["imperial_rent"] == pytest.approx(0.05)
+        assert props["price_divergence"] is None
+
+    def test_tier_two_unlocks_everything(self) -> None:
+        props = _hex_feature_properties(self._row(), veil_tier=2)
+        assert props["profit_rate"] == pytest.approx(0.15)
+        assert props["price_divergence"] == pytest.approx(0.2)
+
+
+@pytest.mark.unit
 class TestHexStateRowStateFips:
     _SID = uuid.UUID("aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee")
 
@@ -1455,6 +1516,17 @@ def _patched_hydrate_state(bridge: EngineBridge, graph: BabylonGraph, tick: int 
     return patch.object(bridge, "hydrate_state", return_value=(mock_state, graph))
 
 
+def _stamp_unlocked_veil(graph: BabylonGraph, org_id: str = "org-player") -> None:
+    """G4: stamp ``org_id`` as this graph's player org with BOTH veil
+    threshold nodes acquired (Tier 2, fully unlocked) — for fixtures built
+    before the Veil-of-Money program existed, whose tests are about real-
+    data arithmetic, not veil gating, and should keep reading real numbers
+    unchanged. See ``TestEconomyDashboardVeil``/``TestVeilGating`` for the
+    dedicated tier-0/1/2 gating coverage."""
+    graph.graph["player_org_id"] = org_id
+    graph.nodes[org_id]["acquired_doctrine_ids"] = ("class_consciousness", "trade_unionism")
+
+
 def _make_balkanization_graph() -> BabylonGraph:
     """Build a graph with orgs, territories, social classes, and spec-070
     faction/sovereign/INFLUENCES/CLAIMS data for de-fixture + balkanization
@@ -1578,6 +1650,7 @@ class TestGetEconomy:
         mock_persistence = _make_mock_persistence()
         bridge = EngineBridge(mock_persistence)
         graph = _make_balkanization_graph()
+        _stamp_unlocked_veil(graph)
 
         with _patched_hydrate_state(bridge, graph):
             result = bridge.get_economy(uuid.uuid4(), territory_id="T1")
@@ -1592,6 +1665,7 @@ class TestGetEconomy:
         mock_persistence = _make_mock_persistence()
         bridge = EngineBridge(mock_persistence)
         graph = _make_balkanization_graph()
+        _stamp_unlocked_veil(graph)
 
         with _patched_hydrate_state(bridge, graph):
             result = bridge.get_economy(uuid.uuid4(), territory_id="T2")
@@ -1629,6 +1703,7 @@ class TestGetEconomy:
         mock_persistence = _make_mock_persistence()
         bridge = EngineBridge(mock_persistence)
         graph = _make_balkanization_graph()
+        _stamp_unlocked_veil(graph)
         graph.add_node(
             "T3",
             "territory",
@@ -1764,6 +1839,14 @@ class TestEconomyDashboardFundamentalTheorem:
         # honest-None branch explicitly rather than exercising a MagicMock
         # by accident.
         mock_state.economy = None
+        # G4: this class is about the imperial_rent_gap ARITHMETIC, not veil
+        # gating (that's TestEconomyDashboardVeil's job) -- a real, fully-
+        # unlocked player org keeps every assertion below reading real
+        # numbers, matching this fixture's pre-veil-program intent.
+        mock_state.organizations = {
+            "org-player": MagicMock(acquired_doctrine_ids=("class_consciousness", "trade_unionism"))
+        }
+        mock_state.player_org_id = "org-player"
         with patch.object(bridge, "hydrate_state", return_value=(mock_state, graph)):
             return bridge.get_economy_dashboard(uuid.uuid4())
 
@@ -2256,6 +2339,7 @@ class TestDefixturedQueryCorrectness:
         mock_persistence = _make_mock_persistence()
         bridge = EngineBridge(mock_persistence)
         graph = _make_balkanization_graph()
+        _stamp_unlocked_veil(graph)
 
         with _patched_hydrate_state(bridge, graph):
             result = bridge.get_economy(uuid.uuid4(), territory_id="T1")
@@ -4135,6 +4219,14 @@ class TestGetMapHistory:
                 "exploitation_rate": 1.3033,
             }
         ]
+        # G4: profit_rate is now veil-gated — this test is about the COLUMN
+        # SELECTION (profit_rate vs exploitation_rate), not veil gating, so
+        # stamp the player org fully unlocked (Tier 2).
+        graph = mock_persistence.hydrate_graph.return_value
+        graph.nodes[graph.graph["player_org_id"]]["acquired_doctrine_ids"] = (
+            "class_consciousness",
+            "trade_unionism",
+        )
         bridge = EngineBridge(mock_persistence)
 
         result = bridge.get_map_history(uuid.uuid4(), metric="profit_rate")
@@ -4154,6 +4246,41 @@ class TestGetMapHistory:
         result = bridge.get_map_history(uuid.uuid4(), metric="profit_rate")
 
         assert result["frames"][0]["values"] == {"26163": None}
+
+    def test_g4_veil_tier_zero_masks_profit_rate_frames(self) -> None:
+        """G4: profit_rate/exploitation_rate are value-axis — below the
+        player org's Veil Tier 1, every frame value masks to None even
+        though the persisted history has real numbers (never a client-side-
+        only hide; the scrubber must never see the real replay)."""
+        mock_persistence = _make_mock_persistence()
+        mock_persistence.query_county_trace_latest_tick.return_value = 1
+        mock_persistence.query_county_trace_metric_frames.return_value = [
+            {"tick": 0, "county_fips": "26163", "profit_rate": 0.10, "exploitation_rate": 0.20},
+            {"tick": 1, "county_fips": "26163", "profit_rate": 0.15, "exploitation_rate": 0.25},
+        ]
+        # Default fixture graph's player org starts at Tier 0 (empty
+        # acquired_doctrine_ids) — no stamping needed for this test.
+        bridge = EngineBridge(mock_persistence)
+
+        result = bridge.get_map_history(uuid.uuid4(), metric="profit_rate")
+
+        assert result["frames"][0]["values"] == {"26163": None}
+        assert result["frames"][1]["values"] == {"26163": None}
+
+    def test_g4_veil_never_gates_money_form_heat_metric(self) -> None:
+        """heat/population are money-form/political, never veil-gated — no
+        tier resolution overhead, no masking, regardless of tier."""
+        mock_persistence = _make_mock_persistence()
+        mock_persistence.query_territory_snapshot_latest_tick.return_value = 0
+        mock_persistence.query_territory_snapshot_metric_frames.return_value = [
+            {"tick": 0, "county_fips": "26163", "heat": 0.42, "pop_total": 8000},
+        ]
+        bridge = EngineBridge(mock_persistence)
+
+        result = bridge.get_map_history(uuid.uuid4(), metric="heat")
+
+        assert result["frames"][0]["values"] == {"26163": pytest.approx(0.42)}
+        mock_persistence.hydrate_graph.assert_not_called()
 
     def test_explicit_range_within_cap_is_not_capped(self) -> None:
         mock_persistence = _make_mock_persistence()
@@ -4885,16 +5012,132 @@ class TestEconomyDashboardVeil:
         assert result["veil"]["value_produced"] == result["value_produced"]
         assert result["veil"]["exploitation_rate"] == result["exploitation_rate"]
 
-    def test_legacy_top_level_fields_are_never_veiled(self) -> None:
-        """T2-7 scope boundary: the pre-existing top-level ``value_produced``/
-        ``exploitation_rate`` fields (EconomyDashboard/BottomDrawer's existing
-        surface) are untouched by the veil — only the new ``veil.*`` copies
-        are gated. Documented, deliberate scope choice (see ``web/game/veil.py``
-        module docstring); this test pins it against a silent future change."""
+    def test_legacy_top_level_fields_are_veiled_too(self) -> None:
+        """G4: the audit found the legacy top-level ``value_produced``/
+        ``exploitation_rate`` fields (EconomyDashboard/BottomDrawer's
+        pre-existing surface) leaking the real numbers ungated below Tier 1
+        — only the new ``veil.*`` copies were gated (Wave 2B). Closed: the
+        top-level fields are now gated by the exact same tier, so no client
+        inspection of the wire response can pierce the veil regardless of
+        which field name it reads."""
         result = self._dashboard_with_acquired(())
 
+        assert result["value_produced"] is None
+        assert result["exploitation_rate"] is None
+        assert result["rent_extracted"] is None
+        assert result["profit_rate"] is None
+        assert result["occ"] is None
+        assert result["imperial_rent_pool"] is None
+        assert result["imperial_rent_gap"] is None
+        assert result["imperial_rent_gap_by_region"] == []
+
+    def test_legacy_top_level_fields_unlock_at_tier_one(self) -> None:
+        """The flip side of the gate: at Tier 1, the legacy top-level
+        fields carry the SAME real numbers ``veil.*`` does — gating never
+        forks the two into disagreeing values."""
+        result = self._dashboard_with_acquired(("class_consciousness",))
+
+        assert result["value_produced"] == result["veil"]["value_produced"]
+        assert result["exploitation_rate"] == result["veil"]["exploitation_rate"]
         assert isinstance(result["value_produced"], float)
         assert isinstance(result["exploitation_rate"], float)
+
+
+@pytest.mark.unit
+class TestDerivedEconomyVeilGate:
+    """G4 follow-up (adversarial re-review round 2, Finding F1):
+    ``_state_to_snapshot`` builds ``derived.economy`` from
+    ``state.economy.model_dump()`` (``imperial_rent_pool``/
+    ``current_super_wage_rate``/``current_repression_level``) — the FIRST
+    two ``_gate_snapshot_territories`` call sites returning the full
+    snapshot to a client (``get_snapshot``, ``resolve_tick``) gated
+    ``territories`` but never ``derived``, so ``imperial_rent_pool`` (a
+    literal ``TIER1_VALUE_RELATION_FIELDS`` name) leaked ungated to a
+    tier-0 client on both GET /state/ and POST /resolve/. Closed by
+    extending ``_gate_snapshot_territories`` to also gate
+    ``derived["economy"]``. ``current_super_wage_rate``/
+    ``current_repression_level`` stay real at every tier (money-form wage
+    rate / political repression modifier — never gated per veil.py's own
+    registry)."""
+
+    @staticmethod
+    def _state_with_acquired(
+        acquired: tuple[str, ...], *, imperial_rent_pool: float = 250.0
+    ) -> Any:
+        from babylon.models.entities.economy import GlobalEconomy
+
+        state = _build_initial_state_for_scenario("default")
+        org = state.organizations["ORG001"].model_copy(update={"acquired_doctrine_ids": acquired})
+        return state.model_copy(
+            update={
+                "organizations": {"ORG001": org},
+                "economy": GlobalEconomy(imperial_rent_pool=imperial_rent_pool),
+            }
+        )
+
+    def _snapshot_with_acquired(self, acquired: tuple[str, ...]) -> dict[str, Any]:
+        state = self._state_with_acquired(acquired)
+        bridge = EngineBridge(_make_mock_persistence())
+        with patch.object(bridge, "hydrate_state", return_value=(state, state.to_graph())):
+            return bridge.get_snapshot(uuid.uuid4())
+
+    def test_get_snapshot_masks_imperial_rent_pool_at_tier_zero(self) -> None:
+        result = self._snapshot_with_acquired(())
+
+        assert result["derived"]["economy"]["imperial_rent_pool"] is None
+
+    def test_get_snapshot_never_masks_wage_rate_or_repression(self) -> None:
+        """Money-form wage rate / political repression modifier stay real
+        even at Tier 0 — only imperial_rent_pool is a TIER1 field."""
+        result = self._snapshot_with_acquired(())
+
+        assert result["derived"]["economy"]["current_super_wage_rate"] == pytest.approx(0.20)
+        assert result["derived"]["economy"]["current_repression_level"] == pytest.approx(0.5)
+
+    def test_get_snapshot_unlocks_imperial_rent_pool_at_tier_one(self) -> None:
+        result = self._snapshot_with_acquired(("class_consciousness",))
+
+        assert result["derived"]["economy"]["imperial_rent_pool"] == pytest.approx(250.0)
+
+    def test_get_snapshot_unlocks_imperial_rent_pool_at_tier_two(self) -> None:
+        result = self._snapshot_with_acquired(("class_consciousness", "trade_unionism"))
+
+        assert result["derived"]["economy"]["imperial_rent_pool"] == pytest.approx(250.0)
+
+    @patch("game.engine_bridge.step")
+    def test_resolve_tick_masks_imperial_rent_pool_at_tier_zero(self, mock_step: MagicMock) -> None:
+        sid = uuid.UUID("dddddddd-eeee-ffff-aaaa-bbbbbbbbbbbb")
+        mock_persistence = _make_mock_persistence()
+        mock_persistence.get_pending_turns.return_value = []
+        new_state = self._state_with_acquired((), imperial_rent_pool=333.0).model_copy(
+            update={"tick": 1}
+        )
+        mock_step.return_value = new_state
+
+        bridge = EngineBridge(mock_persistence)
+        result = bridge.resolve_tick(sid)
+
+        assert result["derived"]["economy"]["imperial_rent_pool"] is None
+        # Never masked — money-form / political, real at every tier.
+        assert result["derived"]["economy"]["current_super_wage_rate"] == pytest.approx(0.20)
+        assert result["derived"]["economy"]["current_repression_level"] == pytest.approx(0.5)
+
+    @patch("game.engine_bridge.step")
+    def test_resolve_tick_unlocks_imperial_rent_pool_at_tier_one(
+        self, mock_step: MagicMock
+    ) -> None:
+        sid = uuid.UUID("dddddddd-eeee-ffff-aaaa-cccccccccccc")
+        mock_persistence = _make_mock_persistence()
+        mock_persistence.get_pending_turns.return_value = []
+        new_state = self._state_with_acquired(
+            ("class_consciousness",), imperial_rent_pool=333.0
+        ).model_copy(update={"tick": 1})
+        mock_step.return_value = new_state
+
+        bridge = EngineBridge(mock_persistence)
+        result = bridge.resolve_tick(sid)
+
+        assert result["derived"]["economy"]["imperial_rent_pool"] == pytest.approx(333.0)
 
 
 @pytest.mark.unit

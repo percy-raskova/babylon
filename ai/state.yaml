@@ -2,9 +2,34 @@
 # What exists vs what's planned - KEEP THIS UPDATED
 
 meta:
-  version: "2.39.0"  # 2.28.0 lives on feature/19-emergent-class-partition (Program 19 Phase 0+1)
+  version: "2.40.0"  # 2.28.0 lives on feature/19-emergent-class-partition (Program 19 Phase 0+1)
   updated: "2026-07-19"
   truth_status: |
+    (2026-07-19 ADR087) UNIT 6 WIRED FOR REAL: the org->class SOLIDARITY
+    producer ADR085 found missing is built. engine/actions/_mass_work.py::
+    apply_mass_work_solidarity is called from the three mass-work verb
+    resolvers (aid.py PROVIDE_SERVICE, educate.py EDUCATE classic path,
+    campaign.py PROPAGANDIZE): targeting a social_class node creates-or-
+    strengthens an org->class SOLIDARITY edge, gain = mass_work_solidarity_gain
+    * (1 + mass_link_weight * mass_link) — continuous amplification, not a
+    binary MASS_LINK gate. DoctrineSystem decays org-sourced edges per tick
+    (mass_work_solidarity_decay_rate). ConsciousnessSystem's read side
+    rewritten: an organization-sourced SOLIDARITY edge contributes
+    solidarity_strength directly (gated on negligible_transmission, never
+    class_consciousness — orgs have none); class-sourced edges keep the
+    original gate. Rebuilt tests/unit/engine/systems/
+    test_doctrine_consciousness_signal.py against REAL graph shapes
+    (PoliticalFaction/SocialClass -> WorldState.to_graph(), real
+    resolve_campaign dispatch) — the fabricated add_node/add_edge fixture
+    ADR085 diagnosed is gone. New vocabulary-sentinel rule (d)
+    (fabricated_edge_sources) catches exactly that failure class going
+    forward: every fixture-stamped (edge_type, source node type) combination
+    must have a production producer or a cited EDGE_SOURCE_ALLOWLIST entry
+    (16 pre-existing combinations cataloged, mostly runtime-org_id verb
+    resolvers and bulk/dynamic hydration invisible to a literal-only static
+    scan by design). qa:regression 5/5 byte-identical (zero orgs in the 5
+    canonical scenarios — pre-verified by ADR085, confirmed empirically here).
+
     (2026-07-19 ADR086) BUSINESS SEEDING: the canonical playable scenarios now
     seed real-QCEW Business orgs (us_nationwide 1->6 orgs, wayne_county 2->7)
     from a committed hash-stamped artifact (src/babylon/data/game/

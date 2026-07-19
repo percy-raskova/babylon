@@ -30,6 +30,7 @@ from babylon.domain.economics.circulation.types import CirculationCrisisState
 from babylon.domain.economics.counter_tendencies.types import CounterTendencyStrength
 from babylon.domain.economics.credit.types import (
     CreditState,
+    EndogenousInterestRate,
     FictitiousCapitalStock,
     InterestRateState,
 )
@@ -482,6 +483,7 @@ class NationalFinancialParameters(BaseModel):
         interest_rate_state: National interest rate environment.
         credit_state: Credit system health.
         fictitious_capital: Accumulated financial claims.
+        endogenous_interest: Endogenous national interest rate (Vol. III Part V).
         counter_tendencies: TRPF counter-tendency indicators.
         monetary_adjustment: Value basis conversion factors.
     """
@@ -494,6 +496,13 @@ class NationalFinancialParameters(BaseModel):
     credit_state: CreditState | None = Field(default=None, description="Credit system health")
     fictitious_capital: FictitiousCapitalStock | None = Field(
         default=None, description="Accumulated financial claims"
+    )
+    endogenous_interest: EndogenousInterestRate | None = Field(
+        default=None,
+        description=(
+            "Endogenous national interest rate (Vol. III Part V). Always set "
+            "by the producer post-U9; None only on .empty()."
+        ),
     )
     counter_tendencies: CounterTendencyStrength | None = Field(
         default=None, description="TRPF counter-tendency indicators"

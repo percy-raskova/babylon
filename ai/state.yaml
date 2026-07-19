@@ -5,6 +5,24 @@ meta:
   version: "2.38.0"  # 2.28.0 lives on feature/19-emergent-class-partition (Program 19 Phase 0+1)
   updated: "2026-07-17"
   truth_status: |
+    (2026-07-18) SENTINEL FAMILY GROWS TO SIX ERROR CLASSES (ADR082): the
+    Vol III money work surfaced six failure modes no existing test caught.
+    New packages babylon.sentinels.liveness (correct-but-inert,
+    computed-but-never-consumed), .aggregation (intensive-aggregation),
+    .coupling (undeclared-coupling, checked in BOTH directions), plus
+    check_gate_estate_coverage extending .coverage (gate-blindness — the
+    state qa:regression was in for the whole economics estate), plus
+    .surface (public-surface baseline blindness, U7.11 — live specimen
+    CapitalVolumeIIIDefines added to defines.__all__ without a matching
+    EXPECTED_DEFINES_PUBLIC edit, U2.3). Five are ADVISORY and
+    local/on-demand per the standing owner ruling: new mise tasks
+    check:liveness / check:aggregation / check:coupling; no CI gating, no
+    nightly plumbing. The sixth, check:surface, is wired as a real gate
+    (owner ruling 2026-07-19) — folded into mise run check's depends and
+    into ci.yml/main.yml, exactly like check:seams/check:coverage. Each
+    sensor ships a mutation test that injects its own defect and proves
+    the sensor reds. STRUCK from the owed-sentinel list: correct-but-inert,
+    computed-but-never-consumed, gate-blindness, intensive-aggregation.
     (2026-07-17 overnight) THE EXECUTION SLATE (branch feature/22-execution-slate;
     /goal "complete all remaining open tasks"): every ADR075/ADR076 ruling
     EXECUTED. (1) AMPUTATIONS: 16 objects dropped (A1 __pre_086 via the

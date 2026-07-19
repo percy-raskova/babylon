@@ -4,6 +4,11 @@ meta:
   description: Architecture Decision Records Index
   format: See individual ADR files in this directory
 decisions:
+  ADR082_sentinel_error_classes:
+    title: 'Six named sentinel error classes ship: liveness (correct-but-inert, computed-but-never-consumed), aggregation (intensive-aggregation), coupling (undeclared-coupling, both directions), gate-blindness extending the coverage sentinel, and surface (public-surface baseline blindness) -- five advisory, the sixth (surface) a real CI gate per owner ruling 2026-07-19'
+    status: accepted
+    date: '2026-07-18'
+    file: ADR082_sentinel_error_classes.yaml
   ADR081_declarative_system_ordering:
     title: 'spec-116 systems-dedup Phase 4 — Declarative tick ordering: each System declares partition/position ClassVars; simulation_engine DERIVES _DEFAULT_SYSTEMS + the three spec-056 partition frozensets from them (was a hand-ordered list + three hand-maintained sets held in sync by import-time assertions)'
     status: accepted

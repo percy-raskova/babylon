@@ -719,7 +719,7 @@ fn test_add_node_to_edge_existing_edge() {
         serde_json::Value::Null,
     )
     .unwrap();
-    h.add_node_to_edge("e1", "c").unwrap();
+    h.add_node_to_edge("e1", "c");
     let members = h.members("e1").unwrap();
     assert!(members.contains(&"c".to_string()));
     assert_eq!(members.len(), 3);
@@ -729,11 +729,22 @@ fn test_add_node_to_edge_existing_edge() {
 fn test_add_node_to_edge_auto_creates_edge_and_node() {
     let mut h: Hypergraph = Hypergraph::new();
     // Neither edge "new_edge" nor node "new_node" exist
-    h.add_node_to_edge("new_edge", "new_node").unwrap();
+    h.add_node_to_edge("new_edge", "new_node");
     assert!(h.has_edge("new_edge"));
     assert!(h.has_node("new_node"));
     let members = h.members("new_edge").unwrap();
     assert_eq!(members, vec!["new_node"]);
+}
+
+#[test]
+fn test_add_node_to_edge_is_infallible() {
+    // Phase 2 Task 1: add_node_to_edge returns () — XGI auto-creates a
+    // missing edge AND a missing node and has no error path (probed:
+    // returns None in every branch, idempotent on re-add). The vestigial
+    // Result<(), EdgeError> is gone.
+    let mut h: Hypergraph = Hypergraph::new();
+    let _: () = h.add_node_to_edge("e1", "c");
+    assert_eq!(h.members("e1").unwrap(), vec!["c"]);
 }
 
 #[test]
@@ -783,15 +794,50 @@ fn test_remove_node_from_edge_keep_empty() {
     assert!(h.members("e1").unwrap().is_empty());
 }
 
+use hypergraph_rs::MembershipError;
+
 #[test]
 fn test_remove_node_from_edge_missing_edge_returns_error() {
+    // MembershipError::EdgeNotFound — XGI raises XGIError ("Edge e1 not in
+    // the hypergraph"); the core's variant is discriminative without
+    // string-matching (Phase 2 Task 1; the binding translates Err -> raise,
+    // D2 channel class).
     let mut h: Hypergraph = Hypergraph::new();
-    let result = h.remove_node_from_edge("nonexistent", "a", true);
-    assert!(result.is_err());
+    let err = h.remove_node_from_edge("e1", "a", true).unwrap_err();
+    assert_eq!(
+        err,
+        MembershipError::EdgeNotFound {
+            edge_id: "e1".to_string()
+        }
+    );
+    assert_eq!(format!("{err}"), "edge e1 does not exist");
+}
+
+#[test]
+fn test_remove_node_from_edge_missing_node_returns_error() {
+    // MembershipError::NodeNotFound — the edge exists, the node does not
+    // (XGI: "Node ghost not in the hypergraph").
+    let mut h: Hypergraph = Hypergraph::new();
+    h.add_edge(
+        vec!["a".to_string()],
+        Some("e1".to_string()),
+        serde_json::Value::Null,
+    )
+    .unwrap();
+    let err = h.remove_node_from_edge("e1", "ghost", true).unwrap_err();
+    assert_eq!(
+        err,
+        MembershipError::NodeNotFound {
+            node_id: "ghost".to_string()
+        }
+    );
+    assert_eq!(format!("{err}"), "node ghost does not exist");
 }
 
 #[test]
 fn test_remove_node_from_edge_node_not_in_edge_returns_error() {
+    // MembershipError::NotAMember — both exist, but the node is not in the
+    // edge (XGI: "Edge e1 does not contain node b").
     let mut h: Hypergraph = Hypergraph::new();
     h.add_edge(
         vec!["a".to_string()],
@@ -800,8 +846,15 @@ fn test_remove_node_from_edge_node_not_in_edge_returns_error() {
     )
     .unwrap();
     h.add_node("b", serde_json::Value::Null);
-    let result = h.remove_node_from_edge("e1", "b", true);
-    assert!(result.is_err());
+    let err = h.remove_node_from_edge("e1", "b", true).unwrap_err();
+    assert_eq!(
+        err,
+        MembershipError::NotAMember {
+            node_id: "b".to_string(),
+            edge_id: "e1".to_string()
+        }
+    );
+    assert_eq!(format!("{err}"), "node b is not a member of edge e1");
 }
 
 #[test]
@@ -963,7 +1016,7 @@ fn test_freeze_guards_all_structural_mutators() {
     }));
     assert!(panics(&mut |h| h.remove_node("a", false).unwrap()));
     assert!(panics(&mut |h| h.remove_edge("e1").unwrap()));
-    assert!(panics(&mut |h| h.add_node_to_edge("e1", "c").unwrap()));
+    assert!(panics(&mut |h| h.add_node_to_edge("e1", "c")));
     assert!(panics(&mut |h| h
         .remove_node_from_edge("e1", "a", true)
         .unwrap()));

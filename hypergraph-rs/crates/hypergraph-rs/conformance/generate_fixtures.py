@@ -377,9 +377,14 @@ def v_remove_node_from_edge_drop_empty() -> dict:
     }
 
 
-def v_remove_node_from_edge_missing_raises() -> dict:
-    # All three error branches raise XGIError (the D2 error-channel class):
-    # missing edge, missing node, node not in edge.
+def v_membership_errors() -> dict:
+    # PROBE (2026-07-18, xgi 0.10.2): all three remove_node_from_edge error
+    # branches raise XGIError (the D2 error-channel class), each with a
+    # DISTINCT message: missing edge -> "Edge noedge not in the hypergraph";
+    # missing node -> "Node ghost not in the hypergraph"; node not in edge
+    # -> "Edge e1 does not contain node b". The Rust core maps each branch
+    # to a dedicated MembershipError variant (EdgeNotFound / NodeNotFound /
+    # NotAMember); the binding translates Err -> raise.
     out = {}
     H = xgi.Hypergraph()
     try:

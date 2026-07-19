@@ -10,7 +10,7 @@
 //! the fixture with `mise run rust:fixtures`; a fixture diff is news —
 //! investigate before committing.
 
-use hypergraph_rs::{EdgeError, Hypergraph, NodeError};
+use hypergraph_rs::{EdgeError, Hypergraph, MembershipError, NodeError};
 use serde_json::Value;
 
 fn ground_truth() -> Value {
@@ -578,16 +578,16 @@ fn conform_add_node_to_edge_autocreate() {
     assert_eq!(v["return_readd"], Value::Null); // XGI truth, pinned
 
     let mut h: Hypergraph = Hypergraph::new();
-    h.add_node_to_edge("new_edge", "new_node").unwrap(); // both missing
+    h.add_node_to_edge("new_edge", "new_node"); // both missing
     h.add_edge(
         vec!["a".into(), "b".into()],
         Some("e1".into()),
         serde_json::json!({"heat": 0.5}),
     )
     .unwrap();
-    h.add_node_to_edge("e1", "c").unwrap(); // existing edge, new node
-    h.add_node_to_edge("e1", "c").unwrap(); // idempotent re-add
-    h.add_node_to_edge("e1", "a").unwrap(); // existing node into existing edge
+    h.add_node_to_edge("e1", "c"); // existing edge, new node
+    h.add_node_to_edge("e1", "c"); // idempotent re-add
+    h.add_node_to_edge("e1", "a"); // existing node into existing edge
 
     assert_eq!(h.edge_ids(), ids(&v["edge_ids"]));
     assert_eq!(h.num_edges(), v["num_edges"].as_u64().unwrap() as usize);
@@ -621,7 +621,7 @@ fn diverge_d11_add_node_to_edge_numeric_bumps_counter() {
     assert_eq!(ids(&v["edge_ids"]), vec!["5", "0"]); // XGI truth, pinned
 
     let mut h: Hypergraph = Hypergraph::new();
-    h.add_node_to_edge("5", "x").unwrap();
+    h.add_node_to_edge("5", "x");
     let auto = h.add_edge(vec!["y".into()], None, Value::Null).unwrap();
     assert_eq!(auto, "6"); // Rust divergence, deliberate
     assert_eq!(h.members("5").unwrap(), vec!["x"]);
@@ -691,13 +691,16 @@ fn conform_remove_node_from_edge_drop_empty() {
 }
 
 #[test]
-fn diverge_d2_remove_node_from_edge_missing_errors() {
-    // Same error-channel class as D2: XGI signals all three failure branches
-    // (missing edge, missing node, node not in edge) by raising XGIError;
-    // the Rust core returns Err(NodeError::NotFound) and the PyO3 binding
-    // translates Err → raise. No new divergence number.
+fn conform_membership_errors() {
+    // XGI raises XGIError on all three remove_node_from_edge failure
+    // branches, each with a DISTINCT message (pinned below). The Rust core
+    // maps each branch to a dedicated MembershipError variant
+    // (EdgeNotFound / NodeNotFound / NotAMember) so callers can
+    // discriminate without string-matching; the PyO3 binding translates
+    // Err -> raise, reproducing XGI's exact messages (D2 error-channel
+    // class — no new divergence number).
     let gt = ground_truth();
-    let v = vector(&gt, "remove_node_from_edge_missing_raises");
+    let v = vector(&gt, "membership_errors");
     assert_eq!(v["missing_edge"]["exception"], "XGIError"); // XGI truth, pinned
     assert_eq!(
         v["missing_edge"]["message"],
@@ -716,20 +719,36 @@ fn diverge_d2_remove_node_from_edge_missing_errors() {
 
     let mut h: Hypergraph = Hypergraph::new();
     let err = h.remove_node_from_edge("noedge", "a", true);
-    assert!(matches!(err, Err(NodeError::NotFound { .. })));
+    assert_eq!(
+        err,
+        Err(MembershipError::EdgeNotFound {
+            edge_id: "noedge".to_string()
+        })
+    );
 
     let mut h2: Hypergraph = Hypergraph::new();
     h2.add_edge(vec!["a".into()], Some("e1".into()), Value::Null)
         .unwrap();
     let err = h2.remove_node_from_edge("e1", "ghost", true);
-    assert!(matches!(err, Err(NodeError::NotFound { .. })));
+    assert_eq!(
+        err,
+        Err(MembershipError::NodeNotFound {
+            node_id: "ghost".to_string()
+        })
+    );
 
     let mut h3: Hypergraph = Hypergraph::new();
     h3.add_edge(vec!["a".into()], Some("e1".into()), Value::Null)
         .unwrap();
     h3.add_node("b", Value::Null);
     let err = h3.remove_node_from_edge("e1", "b", true);
-    assert!(matches!(err, Err(NodeError::NotFound { .. })));
+    assert_eq!(
+        err,
+        Err(MembershipError::NotAMember {
+            node_id: "b".to_string(),
+            edge_id: "e1".to_string()
+        })
+    );
 }
 
 #[test]
@@ -913,7 +932,7 @@ fn conform_freeze_blocks_mutation() {
     }));
     assert!(panics(&mut |h| h.remove_node("a", false).unwrap()));
     assert!(panics(&mut |h| h.remove_edge("e1").unwrap()));
-    assert!(panics(&mut |h| h.add_node_to_edge("e1", "c").unwrap()));
+    assert!(panics(&mut |h| h.add_node_to_edge("e1", "c")));
     assert!(panics(&mut |h| h
         .remove_node_from_edge("e1", "a", true)
         .unwrap()));

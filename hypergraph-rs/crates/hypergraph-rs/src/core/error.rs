@@ -10,6 +10,27 @@ pub enum NodeError {
     NotFound { node_id: String },
 }
 
+/// Error raised when a membership operation fails
+/// (`Hypergraph::remove_node_from_edge`).
+///
+/// XGI raises `XGIError` for all three branches, each with a distinct
+/// message (probed v0.10.2); the core returns a dedicated variant per
+/// branch so callers discriminate without string-matching. The PyO3
+/// binding translates `Err` -> raise, reproducing XGI's exact messages
+/// (D2 error-channel class).
+#[derive(Debug, Clone, Error, PartialEq)]
+pub enum MembershipError {
+    /// The edge ID was not found in the hypergraph.
+    #[error("edge {edge_id} does not exist")]
+    EdgeNotFound { edge_id: String },
+    /// The node ID was not found in the hypergraph.
+    #[error("node {node_id} does not exist")]
+    NodeNotFound { node_id: String },
+    /// Both exist, but the node is not a member of the edge.
+    #[error("node {node_id} is not a member of edge {edge_id}")]
+    NotAMember { node_id: String, edge_id: String },
+}
+
 /// Error raised when an edge operation fails.
 #[derive(Debug, Clone, Error, PartialEq)]
 pub enum EdgeError {

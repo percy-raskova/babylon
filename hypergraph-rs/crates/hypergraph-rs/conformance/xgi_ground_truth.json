@@ -251,6 +251,20 @@
       "is_frozen_after": true,
       "is_frozen_before": false
     },
+    "membership_errors": {
+      "missing_edge": {
+        "exception": "XGIError",
+        "message": "Edge noedge not in the hypergraph"
+      },
+      "missing_node": {
+        "exception": "XGIError",
+        "message": "Node ghost not in the hypergraph"
+      },
+      "not_in_edge": {
+        "exception": "XGIError",
+        "message": "Edge e1 does not contain node b"
+      }
+    },
     "node_attr_set_read": {
       "attrs": {
         "color": "red"
@@ -347,20 +361,6 @@
       },
       "num_edges": 1,
       "num_nodes": 1
-    },
-    "remove_node_from_edge_missing_raises": {
-      "missing_edge": {
-        "exception": "XGIError",
-        "message": "Edge noedge not in the hypergraph"
-      },
-      "missing_node": {
-        "exception": "XGIError",
-        "message": "Node ghost not in the hypergraph"
-      },
-      "not_in_edge": {
-        "exception": "XGIError",
-        "message": "Edge e1 does not contain node b"
-      }
     },
     "remove_node_missing_raises": {
       "exception": "IDNotFound",

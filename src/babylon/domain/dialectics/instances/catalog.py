@@ -119,6 +119,28 @@ class GraphInputs:
             Market Scissors axis (Program 23, ADR077) — the engine computes
             ``tanh(price_log / scale)`` with the defines-owned scale so the
             catalog stays defines-free; ``None`` = no market axis this tick.
+        rentier_share: NATIONAL aggregate ``(i + r + t) / s`` — the share of
+            produced surplus value claimed by interest, ground rent and taxes
+            rather than retained by the functioning capitalist (Capital Vol.
+            III part 5). Computed by the engine as ``Σclaims / Σsurplus``
+            across counties — an EXTENSIVE ratio-of-sums, never a mean of
+            per-county ratios. ``None`` = no county carries a surplus
+            distribution this tick.
+        debt_ratio: NATIONAL ``Σ accumulated_debt / Σ annual surplus`` — the
+            cumulative enterprise-profit shortfall measured against the
+            surplus that would have to service it. ``None`` = no county
+            carries a debt accumulation this tick.
+        credit_fragility: ``default_rate * spread``, pre-divided by the
+            defines-owned crisis reference so 1.0 IS the crisis threshold
+            (the engine owns the scale, exactly as it owns the ``tanh``
+            scale for ``market_balance``, keeping this module defines-free).
+            ``None`` = no national credit state published this tick.
+        financialization_index: fictitious claims over real production. Read
+            from the scissors' ``fictitious_log`` in ratio space
+            (``exp``), which the monetary anchor calibrates to
+            ``FictitiousCapitalStock.ratio_to_real`` while real data exists —
+            one axis, materially grounded at its origin, endogenous
+            thereafter. ``None`` = no market axis this tick.
     """
 
     exploitation_pairs: tuple[WealthPair, ...] = ()
@@ -129,6 +151,10 @@ class GraphInputs:
     wage_value_id_pairs: tuple[tuple[str, float, float], ...] = ()
     tenancy_id_pairs: tuple[tuple[str, str, float, float], ...] = ()
     market_balance: float | None = field(default=None)
+    rentier_share: float | None = field(default=None)
+    debt_ratio: float | None = field(default=None)
+    credit_fragility: float | None = field(default=None)
+    financialization_index: float | None = field(default=None)
 
 
 def _mean_asymmetry(pairs: Sequence[WealthPair]) -> GapReading:

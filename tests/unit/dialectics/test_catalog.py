@@ -224,3 +224,36 @@ class TestPriceValue:
             r for r in _reg().read_poles(GraphInputs()) if r.opposition_key == "price_value"
         ]
         assert readings == []
+
+
+class TestVolumeThreeInputFields:
+    """The four Vol III money fields are optional and absent by default.
+
+    Absence is the normal steady state for ~85% of a campaign (the FRED
+    series terminate at 2024), so ``None`` must be the DEFAULT, never a
+    fabricated 0.0 (Constitution III.11).
+    """
+
+    def test_all_four_default_to_none(self) -> None:
+        inputs = GraphInputs()
+        assert inputs.rentier_share is None
+        assert inputs.debt_ratio is None
+        assert inputs.credit_fragility is None
+        assert inputs.financialization_index is None
+
+    def test_all_four_are_settable_floats(self) -> None:
+        inputs = GraphInputs(
+            rentier_share=0.4,
+            debt_ratio=1.5,
+            credit_fragility=2.0,
+            financialization_index=3.5,
+        )
+        assert inputs.rentier_share == pytest.approx(0.4)
+        assert inputs.debt_ratio == pytest.approx(1.5)
+        assert inputs.credit_fragility == pytest.approx(2.0)
+        assert inputs.financialization_index == pytest.approx(3.5)
+
+    def test_graph_inputs_stays_frozen(self) -> None:
+        inputs = GraphInputs(rentier_share=0.4)
+        with pytest.raises(AttributeError):
+            inputs.rentier_share = 0.9  # type: ignore[misc]

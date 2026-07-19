@@ -14,6 +14,10 @@ bugs of ``project/06-lawverian-dialectics.md`` §2). Each tick the system:
 3. derives ``contradiction_frames`` from the registry states (intensity ← gap,
    aspect_balance ← rate, principal_aspect ← leading_pole; frame
    principal/secondary = registry principal + runner-up);
+3b. corrects the ranking against the injected ``CouplingGraph``: a
+    ``transforms`` target cannot rank principal while the source supplying
+    its input reads absent (Vol III money scissors, U5). This runs BEFORE
+    frames/rupture/regime so every consumer sees one principal;
 4. fires RUPTURE on the principal opposition's gap exceeding the defines
    threshold **AND rising** (rate > 0) — Mao's "condition AND level", never on
    hitting a ceiling.
@@ -204,6 +208,10 @@ class ContradictionSystem(SystemBase):
         shadow = tuple(s for s in states if s.key in shadow_keys)
 
         if canonical:
+            # The coupling graph corrects the ranking BEFORE anything reads it,
+            # so frames, rupture, the regime classifier and the stash all agree
+            # on one principal contradiction.
+            canonical = self._respect_coupling_direction(canonical, services)
             self._write_frames(graph, services, registry, canonical)
             self._maybe_rupture(services, canonical, tick)
             self._classify_regime(graph, services, registry, canonical, tick)
@@ -229,6 +237,73 @@ class ContradictionSystem(SystemBase):
         applied = apply_interventions(states, interventions)
         graph.set_graph_attr(OPPOSITION_INTERVENTIONS_ATTR, [])
         return applied
+
+    def _respect_coupling_direction(
+        self,
+        states: tuple[OppositionState, ...],
+        services: ServicesProtocol,
+    ) -> tuple[OppositionState, ...]:
+        """Forbid a ``transforms`` TARGET from leading while its SOURCE is absent.
+
+        The coupling graph's first production duty (Constitution III.10: no
+        construct ships as vocabulary). ``coupling.py`` defines ``transforms``
+        as "the source's output becomes the target's input prices" — so a
+        target whose input has no reading cannot honestly be the contradiction
+        whose development leads all others. Crisis has a direction of travel;
+        this is what knows it.
+
+        Absence is read off the measure, not guessed: ``gap == 0.0 AND
+        balance == 0.0`` is the catalog's canonical no-data reading (empty
+        pair sets, ``None`` market balance, ``None`` money ratio). A real
+        reading of *nothing claimed* — gap 0 with the substance pole leading
+        at balance −1 — is PRESENT, and does not demote anything.
+
+        Only the principal is re-ranked; no gap, balance, rate or leading
+        pole is touched. When every eligible candidate is blocked the
+        original principal stands: a tick must never end without one.
+
+        Args:
+            states: This tick's canonical (non-shadow) states, already
+                intervened.
+            services: The container carrying ``coupling_graph`` and
+                ``defines.tension.principal_rate_weight``.
+
+        Returns:
+            The same states, with at most one ``is_principal`` flag moved.
+        """
+        coupling_graph = services.coupling_graph
+        if coupling_graph is None:
+            return states
+        principal = next((state for state in states if state.is_principal), None)
+        if principal is None:
+            return states
+
+        absent = {state.key for state in states if state.gap == 0.0 and state.balance == 0.0}
+        if not absent:
+            return states
+        blocked = {
+            state.key
+            for state in states  # bounded by registered bindings
+            if any(
+                edge.kind == "transforms" and edge.source in absent
+                for edge in coupling_graph.upstream_for(state.key)
+            )
+        }
+        if principal.key not in blocked:
+            return states
+
+        rate_weight = float(services.defines.tension.principal_rate_weight)
+        eligible = sorted(
+            (state for state in states if state.key not in blocked and state.key not in absent),
+            key=lambda state: (-self._score(state, rate_weight), state.key),
+        )
+        if not eligible:
+            return states
+        successor_key = eligible[0].key
+        return tuple(
+            state.model_copy(update={"is_principal": state.key == successor_key})
+            for state in states
+        )
 
     @staticmethod
     def _read_previous(graph: GraphProtocol) -> dict[str, OppositionState]:

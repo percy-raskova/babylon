@@ -407,6 +407,102 @@ def v_membership_errors() -> dict:
     return out
 
 
+def v_remove_node_remove_empty() -> dict:
+    # PROBE (2026-07-18, xgi 0.10.2): remove_node(n, strong, remove_empty)
+    # is THREE-mode. Weak + remove_empty=False leaves an emptied edge in
+    # place (H.edges still lists it; members(e) == set()); weak +
+    # remove_empty=True (the default) drops it. Strong mode removes every
+    # incident edge REGARDLESS of remove_empty (probed with
+    # remove_empty=False: e1/e2 still removed, e4 survives). All branches
+    # return None.
+    out = {}
+    H = xgi.Hypergraph()
+    H.add_edge(["a", "b"], idx="e1")
+    H.add_edge(["b"], idx="e2")
+    ret = H.remove_node("b", strong=False, remove_empty=False)
+    out["weak_keep"] = {
+        "return": ret,
+        "edge_ids": _ids(H),
+        "num_edges": H.num_edges,
+        "node_ids": sorted(str(n) for n in H.nodes),
+        "has_node_b": "b" in H,
+        "members": _members_sorted(H),
+    }
+    H = xgi.Hypergraph()
+    H.add_edge(["a", "b"], idx="e1")
+    H.add_edge(["b"], idx="e2")
+    H.remove_node("b", strong=False, remove_empty=True)
+    out["weak_drop"] = {
+        "edge_ids": _ids(H),
+        "num_edges": H.num_edges,
+        "members": _members_sorted(H),
+    }
+    H = xgi.Hypergraph()
+    H.add_edge(["a", "b"], idx="e1")
+    H.add_edge(["a", "c", "d"], idx="e2")
+    H.add_edge(["c", "d"], idx="e4")
+    H.remove_node("a", strong=True, remove_empty=False)
+    out["strong_ignores_flag"] = {
+        "edge_ids": _ids(H),
+        "node_ids": sorted(str(n) for n in H.nodes),
+        "members": _members_sorted(H),
+    }
+    return out
+
+
+def v_remove_nodes_from_missing() -> dict:
+    # PROBE (2026-07-18, xgi 0.10.2): remove_nodes_from WARNS on a missing
+    # id ("Node ghost not in hypergraph" — note: NO "the", unlike
+    # remove_node's IDNotFound message), SKIPS it, and CONTINUES with the
+    # rest (c is still removed after ghost); returns None. The Rust core
+    # records a per-item Err(NodeError::NotFound) and continues — the
+    # D2-class channel translation; the binding warns per Err item.
+    H = xgi.Hypergraph()
+    H.add_edge(["a", "b"], idx="e1")
+    H.add_edge(["b", "c"], idx="e2")
+    with warnings.catch_warnings(record=True) as caught:
+        warnings.simplefilter("always")
+        ret = H.remove_nodes_from(["b", "ghost", "c"])
+    return {
+        "return": ret,
+        "warned": len(caught) > 0,
+        "warning_message": str(caught[0].message) if caught else None,
+        "node_ids": sorted(str(n) for n in H.nodes),
+        "edge_ids": _ids(H),
+        "members": _members_sorted(H),
+    }
+
+
+def v_remove_edges_from_missing() -> dict:
+    # PROBE (2026-07-18, xgi 0.10.2): remove_edges_from iterates in order
+    # and RAISES IDNotFound("ID ghost not found") on the first missing id
+    # — ids BEFORE it are already removed (partial effects); ids AFTER it
+    # are never attempted (["e1", "ghost", "e3"] leaves e2 AND e3 in
+    # place). An all-valid bunch returns None and removes every listed
+    # edge (nodes survive). The Rust core records per-item results and
+    # STOPS after the first Err — the D2-class channel translation — so
+    # the binding can reproduce the raise exactly (state already matches).
+    H = xgi.Hypergraph()
+    H.add_edge(["a", "b"], idx="e1")
+    H.add_edge(["b", "c"], idx="e2")
+    H.add_edge(["c", "d"], idx="e3")
+    out = {}
+    try:
+        H.remove_edges_from(["e1", "ghost", "e3"])
+    except Exception as exc:  # recording the observed type IS the vector
+        out["exception"] = type(exc).__name__
+        out["message"] = str(exc)
+    out["edge_ids_after"] = _ids(H)
+    out["num_nodes"] = H.num_nodes
+    H2 = xgi.Hypergraph()
+    H2.add_edge(["a", "b"], idx="e1")
+    H2.add_edge(["b", "c"], idx="e2")
+    out["all_valid_return"] = H2.remove_edges_from(["e1", "e2"])
+    out["all_valid_edges"] = _ids(H2)
+    out["all_valid_nodes"] = sorted(str(n) for n in H2.nodes)
+    return out
+
+
 def v_set_node_attributes_bulk() -> dict:
     # XGI's set_node_attributes(values, name=None) with a dict-of-dicts:
     # MERGES into each existing node's attr dict, and a missing node is

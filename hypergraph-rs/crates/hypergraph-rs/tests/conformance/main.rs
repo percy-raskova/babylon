@@ -309,7 +309,7 @@ fn conform_remove_node_weak() {
         .unwrap();
     h.add_edge(vec!["b".into()], Some("e3".into()), Value::Null)
         .unwrap();
-    h.remove_node("b", false).unwrap();
+    h.remove_node("b", false, true).unwrap();
 
     assert_eq!(h.edge_ids(), ids(&v["edge_ids"])); // e3 emptied -> removed
     assert_eq!(h.num_edges(), v["num_edges"].as_u64().unwrap() as usize);
@@ -347,7 +347,7 @@ fn conform_remove_node_strong() {
     .unwrap();
     h.add_edge(vec!["c".into(), "d".into()], Some("e4".into()), Value::Null)
         .unwrap();
-    h.remove_node("a", true).unwrap();
+    h.remove_node("a", true, true).unwrap();
 
     assert_eq!(h.edge_ids(), ids(&v["edge_ids"]));
     assert_eq!(h.num_edges(), v["num_edges"].as_u64().unwrap() as usize);
@@ -378,8 +378,161 @@ fn diverge_d2_remove_node_missing_errors() {
     assert_eq!(v["message"], "'ID nonexistent not found'");
 
     let mut h: Hypergraph = Hypergraph::new();
-    let err = h.remove_node("nonexistent", false);
+    let err = h.remove_node("nonexistent", false, true);
     assert!(matches!(err, Err(NodeError::NotFound { .. })));
+}
+
+#[test]
+fn conform_remove_node_remove_empty() {
+    // XGI's remove_node(n, strong, remove_empty) is three-mode (register
+    // D9, implemented in Phase 2 Task 2): weak + remove_empty=False leaves
+    // the emptied edge in place (queryable: members(e) == []); weak +
+    // remove_empty=True (the XGI default) drops it; strong removes every
+    // incident edge REGARDLESS of the flag. The Rust core conforms on all
+    // three modes.
+    let gt = ground_truth();
+    let v = vector(&gt, "remove_node_remove_empty");
+    assert_eq!(v["weak_keep"]["return"], Value::Null); // XGI truth, pinned
+    assert_eq!(v["weak_keep"]["has_node_b"], false); // XGI truth, pinned
+    assert_eq!(v["weak_keep"]["members"]["e2"], serde_json::json!([])); // pinned
+
+    // Weak + remove_empty=False: the emptied edge SURVIVES.
+    let mut h: Hypergraph = Hypergraph::new();
+    h.add_edge(vec!["a".into(), "b".into()], Some("e1".into()), Value::Null)
+        .unwrap();
+    h.add_edge(vec!["b".into()], Some("e2".into()), Value::Null)
+        .unwrap();
+    h.remove_node("b", false, false).unwrap();
+    assert_eq!(h.edge_ids(), ids(&v["weak_keep"]["edge_ids"]));
+    assert_eq!(
+        h.num_edges(),
+        v["weak_keep"]["num_edges"].as_u64().unwrap() as usize
+    );
+    assert!(!h.has_node("b"));
+    assert_eq!(h.node_ids(), ids(&v["weak_keep"]["node_ids"]));
+    assert_eq!(h.members("e1").unwrap(), vec!["a"]);
+    assert_eq!(h.members("e2").unwrap(), Vec::<String>::new()); // emptied, alive
+
+    // Weak + remove_empty=True: the emptied edge is dropped.
+    let mut h: Hypergraph = Hypergraph::new();
+    h.add_edge(vec!["a".into(), "b".into()], Some("e1".into()), Value::Null)
+        .unwrap();
+    h.add_edge(vec!["b".into()], Some("e2".into()), Value::Null)
+        .unwrap();
+    h.remove_node("b", false, true).unwrap();
+    assert_eq!(h.edge_ids(), ids(&v["weak_drop"]["edge_ids"]));
+    assert_eq!(
+        h.num_edges(),
+        v["weak_drop"]["num_edges"].as_u64().unwrap() as usize
+    );
+
+    // Strong + remove_empty=False: incident edges are removed ANYWAY.
+    let mut h: Hypergraph = Hypergraph::new();
+    h.add_edge(vec!["a".into(), "b".into()], Some("e1".into()), Value::Null)
+        .unwrap();
+    h.add_edge(
+        vec!["a".into(), "c".into(), "d".into()],
+        Some("e2".into()),
+        Value::Null,
+    )
+    .unwrap();
+    h.add_edge(vec!["c".into(), "d".into()], Some("e4".into()), Value::Null)
+        .unwrap();
+    h.remove_node("a", true, false).unwrap();
+    assert_eq!(h.edge_ids(), ids(&v["strong_ignores_flag"]["edge_ids"]));
+    assert_eq!(h.node_ids(), ids(&v["strong_ignores_flag"]["node_ids"]));
+    assert_eq!(h.members("e4").unwrap(), vec!["c", "d"]);
+}
+
+#[test]
+fn diverge_d2_remove_nodes_from_missing_warns_per_item() {
+    // XGI's remove_nodes_from WARNS on a missing id ("Node ghost not in
+    // hypergraph" — note: no "the", unlike remove_node's IDNotFound
+    // message), SKIPS it, and CONTINUES with the rest; returns None.
+    // D2-class channel translation: the Rust core records a per-item
+    // Err(NodeError::NotFound) in the returned Vec and continues; the
+    // binding warns per Err item to reproduce XGI's behavior.
+    let gt = ground_truth();
+    let v = vector(&gt, "remove_nodes_from_missing");
+    assert_eq!(v["return"], Value::Null); // XGI truth, pinned
+    assert_eq!(v["warned"], true); // XGI truth, pinned
+    assert_eq!(v["warning_message"], "Node ghost not in hypergraph"); // pinned
+
+    let mut h: Hypergraph = Hypergraph::new();
+    h.add_edge(vec!["a".into(), "b".into()], Some("e1".into()), Value::Null)
+        .unwrap();
+    h.add_edge(vec!["b".into(), "c".into()], Some("e2".into()), Value::Null)
+        .unwrap();
+    let results = h.remove_nodes_from(
+        vec!["b".to_string(), "ghost".to_string(), "c".to_string()],
+        false,
+        true,
+    );
+    assert_eq!(results.len(), 3);
+    assert!(results[0].is_ok());
+    assert_eq!(
+        results[1],
+        Err(NodeError::NotFound {
+            node_id: "ghost".to_string()
+        })
+    );
+    assert!(results[2].is_ok(), "continues past the missing id");
+
+    assert_eq!(h.node_ids(), ids(&v["node_ids"]));
+    assert_eq!(h.edge_ids(), ids(&v["edge_ids"]));
+    assert_eq!(h.members("e1").unwrap(), vec!["a"]);
+}
+
+#[test]
+fn diverge_d2_remove_edges_from_missing_stops_after_err() {
+    // XGI's remove_edges_from RAISES IDNotFound("ID ghost not found") on
+    // the first missing id — ids BEFORE it are already removed (partial
+    // effects); ids AFTER it are never attempted (["e1", "ghost", "e3"]
+    // leaves e2 AND e3 in place). D2-class channel translation: the Rust
+    // core records per-item results and STOPS after the first Err (the
+    // returned Vec has one entry per ATTEMPTED id, length <= input), so
+    // the binding can reproduce the raise exactly — the state already
+    // matches XGI's post-raise state.
+    let gt = ground_truth();
+    let v = vector(&gt, "remove_edges_from_missing");
+    assert_eq!(v["exception"], "IDNotFound"); // XGI truth, pinned
+    assert_eq!(v["message"], "'ID ghost not found'"); // XGI truth, pinned
+    assert_eq!(v["all_valid_return"], Value::Null); // XGI truth, pinned
+
+    let mut h: Hypergraph = Hypergraph::new();
+    h.add_edge(vec!["a".into(), "b".into()], Some("e1".into()), Value::Null)
+        .unwrap();
+    h.add_edge(vec!["b".into(), "c".into()], Some("e2".into()), Value::Null)
+        .unwrap();
+    h.add_edge(vec!["c".into(), "d".into()], Some("e3".into()), Value::Null)
+        .unwrap();
+    let results = h.remove_edges_from(vec![
+        "e1".to_string(),
+        "ghost".to_string(),
+        "e3".to_string(),
+    ]);
+    assert_eq!(results.len(), 2, "e3 was never attempted");
+    assert!(results[0].is_ok());
+    assert_eq!(
+        results[1],
+        Err(EdgeError::NotFound {
+            edge_id: "ghost".to_string()
+        })
+    );
+    assert_eq!(h.edge_ids(), ids(&v["edge_ids_after"])); // e2 AND e3 survive
+    assert_eq!(h.num_nodes(), v["num_nodes"].as_u64().unwrap() as usize);
+
+    // All-valid bunch: every listed edge removed, nodes survive.
+    let mut h2: Hypergraph = Hypergraph::new();
+    h2.add_edge(vec!["a".into(), "b".into()], Some("e1".into()), Value::Null)
+        .unwrap();
+    h2.add_edge(vec!["b".into(), "c".into()], Some("e2".into()), Value::Null)
+        .unwrap();
+    let results = h2.remove_edges_from(vec!["e1".to_string(), "e2".to_string()]);
+    assert_eq!(results.len(), 2);
+    assert!(results.iter().all(|r| r.is_ok()));
+    assert!(h2.edge_ids().is_empty());
+    assert_eq!(h2.node_ids(), ids(&v["all_valid_nodes"]));
 }
 
 #[test]
@@ -930,7 +1083,7 @@ fn conform_freeze_blocks_mutation() {
     assert!(panics(&mut |h| {
         h.add_edge(vec!["a".into()], None, Value::Null).unwrap();
     }));
-    assert!(panics(&mut |h| h.remove_node("a", false).unwrap()));
+    assert!(panics(&mut |h| h.remove_node("a", false, true).unwrap()));
     assert!(panics(&mut |h| h.remove_edge("e1").unwrap()));
     assert!(panics(&mut |h| h.add_node_to_edge("e1", "c")));
     assert!(panics(&mut |h| h

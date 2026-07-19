@@ -367,9 +367,21 @@ impl<N, E, M> Hypergraph<N, E, M> {
         Ok(())
     }
 
-    /// Remove a node from the hypergraph.
+    /// Remove a node from the hypergraph — three-mode (register D9).
+    ///
     /// XGI parity: `H.remove_node(n, strong=False, remove_empty=True)`.
-    pub fn remove_node(&mut self, node_id: &str, strong: bool) -> Result<(), NodeError> {
+    /// Weak mode drops the node from every containing edge; an edge left
+    /// EMPTY is removed iff `remove_empty` (probed v0.10.2: with
+    /// `remove_empty=False` the emptied edge survives, queryable as
+    /// `members(e) == []`). Strong mode removes every incident edge
+    /// REGARDLESS of `remove_empty` (probed: the flag is irrelevant in
+    /// strong mode).
+    pub fn remove_node(
+        &mut self,
+        node_id: &str,
+        strong: bool,
+        remove_empty: bool,
+    ) -> Result<(), NodeError> {
         self.assert_not_frozen();
         let agent_idx = *self.agent_ids.get(node_id).ok_or(NodeError::NotFound {
             node_id: node_id.to_string(),
@@ -392,13 +404,15 @@ impl<N, E, M> Hypergraph<N, E, M> {
                 if let Some(e) = self.inner.find_edge(he_idx, agent_idx) {
                     self.inner.remove_edge(e);
                 }
-                let has_members = self
-                    .inner
-                    .neighbors(he_idx)
-                    .any(|n| matches!(self.inner.node_weight(n), Some(NodeKind::Agent(_))));
-                if !has_members {
-                    self.inner.remove_node(he_idx);
-                    self.hyperedge_ids.shift_remove(eid);
+                if remove_empty {
+                    let has_members = self
+                        .inner
+                        .neighbors(he_idx)
+                        .any(|n| matches!(self.inner.node_weight(n), Some(NodeKind::Agent(_))));
+                    if !has_members {
+                        self.inner.remove_node(he_idx);
+                        self.hyperedge_ids.shift_remove(eid);
+                    }
                 }
             }
         }
@@ -406,6 +420,56 @@ impl<N, E, M> Hypergraph<N, E, M> {
         self.inner.remove_node(agent_idx);
         self.agent_ids.shift_remove(node_id);
         Ok(())
+    }
+
+    /// Remove multiple nodes, returning a result per node.
+    ///
+    /// XGI parity: `H.remove_nodes_from(nodes, strong, remove_empty)` —
+    /// XGI WARNS on a missing id ("Node {n} not in hypergraph" — note: no
+    /// "the", unlike `remove_node`'s `IDNotFound` message), SKIPS it, and
+    /// CONTINUES with the rest (probed v0.10.2). The core records a
+    /// per-item `Err(NodeError::NotFound)` and continues — the D2-class
+    /// channel translation; the binding warns per `Err` item to reproduce
+    /// XGI's behavior.
+    pub fn remove_nodes_from(
+        &mut self,
+        nodes: impl IntoIterator<Item = String>,
+        strong: bool,
+        remove_empty: bool,
+    ) -> Vec<Result<(), NodeError>> {
+        self.assert_not_frozen();
+        nodes
+            .into_iter()
+            .map(|n| self.remove_node(&n, strong, remove_empty))
+            .collect()
+    }
+
+    /// Remove multiple edges, returning a result per ATTEMPTED edge.
+    ///
+    /// XGI parity: `H.remove_edges_from(ebunch)` — XGI iterates in order
+    /// and RAISES `IDNotFound` on the first missing id: ids BEFORE it are
+    /// already removed (partial effects), ids AFTER it are never
+    /// attempted (probed v0.10.2: `["e1", "ghost", "e3"]` removes e1 and
+    /// leaves e2 AND e3 in place). The core records per-item results and
+    /// STOPS after the first `Err`, so the returned Vec has one entry per
+    /// attempted id (length <= input length) — the D2-class channel
+    /// translation; the binding truncates at the first `Err` and raises,
+    /// reproducing XGI exactly (the state already matches).
+    pub fn remove_edges_from(
+        &mut self,
+        edges: impl IntoIterator<Item = String>,
+    ) -> Vec<Result<(), EdgeError>> {
+        self.assert_not_frozen();
+        let mut results = Vec::new();
+        for edge_id in edges {
+            let result = self.remove_edge(&edge_id);
+            let stop = result.is_err();
+            results.push(result);
+            if stop {
+                break;
+            }
+        }
+        results
     }
 
     /// Remove all nodes, edges, and attributes — node attrs, edge attrs,

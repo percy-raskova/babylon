@@ -324,6 +324,22 @@
       "num_nodes": 4,
       "return": null
     },
+    "remove_edges_from_missing": {
+      "all_valid_edges": [],
+      "all_valid_nodes": [
+        "a",
+        "b",
+        "c"
+      ],
+      "all_valid_return": null,
+      "edge_ids_after": [
+        "e2",
+        "e3"
+      ],
+      "exception": "IDNotFound",
+      "message": "'ID ghost not found'",
+      "num_nodes": 4
+    },
     "remove_node_from_edge_drop_empty": {
       "edge_ids": [
         "e1"
@@ -365,6 +381,53 @@
     "remove_node_missing_raises": {
       "exception": "IDNotFound",
       "message": "'ID nonexistent not found'"
+    },
+    "remove_node_remove_empty": {
+      "strong_ignores_flag": {
+        "edge_ids": [
+          "e4"
+        ],
+        "members": {
+          "e4": [
+            "c",
+            "d"
+          ]
+        },
+        "node_ids": [
+          "b",
+          "c",
+          "d"
+        ]
+      },
+      "weak_drop": {
+        "edge_ids": [
+          "e1"
+        ],
+        "members": {
+          "e1": [
+            "a"
+          ]
+        },
+        "num_edges": 1
+      },
+      "weak_keep": {
+        "edge_ids": [
+          "e1",
+          "e2"
+        ],
+        "has_node_b": false,
+        "members": {
+          "e1": [
+            "a"
+          ],
+          "e2": []
+        },
+        "node_ids": [
+          "a"
+        ],
+        "num_edges": 2,
+        "return": null
+      }
     },
     "remove_node_strong": {
       "edge_ids": [
@@ -425,6 +488,22 @@
       ],
       "num_edges": 2,
       "num_nodes": 3
+    },
+    "remove_nodes_from_missing": {
+      "edge_ids": [
+        "e1"
+      ],
+      "members": {
+        "e1": [
+          "a"
+        ]
+      },
+      "node_ids": [
+        "a"
+      ],
+      "return": null,
+      "warned": true,
+      "warning_message": "Node ghost not in hypergraph"
     },
     "repr_format": {
       "members_sorted": [

@@ -500,7 +500,7 @@ fn test_remove_node_weak_removes_from_edges() {
         serde_json::Value::Null,
     )
     .unwrap();
-    h.remove_node("b", false).unwrap();
+    h.remove_node("b", false, true).unwrap();
     assert!(!h.has_node("b"));
     assert!(h.has_edge("e1"));
     let members = h.members("e1").unwrap();
@@ -517,7 +517,7 @@ fn test_remove_node_weak_removes_singleton_edges() {
         serde_json::Value::Null,
     )
     .unwrap();
-    h.remove_node("a", false).unwrap();
+    h.remove_node("a", false, true).unwrap();
     assert!(!h.has_node("a"));
     assert!(!h.has_edge("e1"));
 }
@@ -537,7 +537,7 @@ fn test_remove_node_strong_removes_all_containing_edges() {
         serde_json::Value::Null,
     )
     .unwrap();
-    h.remove_node("a", true).unwrap();
+    h.remove_node("a", true, true).unwrap();
     assert!(!h.has_node("a"));
     assert!(!h.has_edge("e1"));
     assert!(!h.has_edge("e2"));
@@ -548,7 +548,7 @@ fn test_remove_node_strong_removes_all_containing_edges() {
 #[test]
 fn test_remove_node_missing_returns_error() {
     let mut h: Hypergraph = Hypergraph::new();
-    let result = h.remove_node("nonexistent", false);
+    let result = h.remove_node("nonexistent", false, true);
     assert!(matches!(result, Err(NodeError::NotFound { .. })));
 }
 
@@ -558,7 +558,7 @@ fn test_remove_node_preserves_insertion_order() {
     h.add_node("a", serde_json::Value::Null);
     h.add_node("b", serde_json::Value::Null);
     h.add_node("c", serde_json::Value::Null);
-    h.remove_node("b", false).unwrap();
+    h.remove_node("b", false, true).unwrap();
     assert_eq!(h.node_ids(), vec!["a", "c"]);
 }
 
@@ -1014,8 +1014,14 @@ fn test_freeze_guards_all_structural_mutators() {
             serde_json::Value::Null,
         )]);
     }));
-    assert!(panics(&mut |h| h.remove_node("a", false).unwrap()));
+    assert!(panics(&mut |h| h.remove_node("a", false, true).unwrap()));
+    assert!(panics(&mut |h| {
+        h.remove_nodes_from(vec!["a".to_string()], false, true);
+    }));
     assert!(panics(&mut |h| h.remove_edge("e1").unwrap()));
+    assert!(panics(&mut |h| {
+        h.remove_edges_from(vec!["e1".to_string()]);
+    }));
     assert!(panics(&mut |h| h.add_node_to_edge("e1", "c")));
     assert!(panics(&mut |h| h
         .remove_node_from_edge("e1", "a", true)
@@ -1109,4 +1115,213 @@ fn test_debug_format_empty_edge_and_lonely_node() {
     h.add_edge(vec![], None, serde_json::Value::Null).unwrap();
     h.add_node("lonely", serde_json::Value::Null);
     assert_eq!(format!("{:?}", h), "Hypergraph([{}])");
+}
+
+#[test]
+fn test_remove_node_weak_remove_empty_false_keeps_emptied_edge() {
+    // D9 (Phase 2 Task 2, probed): weak removal with remove_empty=False
+    // leaves an emptied edge IN PLACE — still listed, queryable as
+    // members(e) == Some(vec![]), num_edges unchanged.
+    let mut h: Hypergraph = Hypergraph::new();
+    h.add_edge(
+        vec!["a".to_string(), "b".to_string()],
+        Some("e1".to_string()),
+        serde_json::Value::Null,
+    )
+    .unwrap();
+    h.add_edge(
+        vec!["b".to_string()],
+        Some("e2".to_string()),
+        serde_json::Value::Null,
+    )
+    .unwrap();
+    h.remove_node("b", false, false).unwrap();
+    assert!(!h.has_node("b"));
+    assert_eq!(h.num_edges(), 2);
+    assert!(h.has_edge("e2"));
+    assert_eq!(h.members("e2"), Some(vec![])); // emptied, alive
+    assert_eq!(h.members("e1").unwrap(), vec!["a"]);
+    assert_eq!(h.memberships("a").unwrap(), vec!["e1"]);
+}
+
+#[test]
+fn test_remove_node_strong_ignores_remove_empty_false() {
+    // Probed: strong mode removes every incident edge REGARDLESS of
+    // remove_empty — the flag is irrelevant in strong mode.
+    let mut h: Hypergraph = Hypergraph::new();
+    h.add_edge(
+        vec!["a".to_string(), "b".to_string()],
+        Some("e1".to_string()),
+        serde_json::Value::Null,
+    )
+    .unwrap();
+    h.add_edge(
+        vec!["a".to_string(), "c".to_string(), "d".to_string()],
+        Some("e2".to_string()),
+        serde_json::Value::Null,
+    )
+    .unwrap();
+    h.add_edge(
+        vec!["c".to_string(), "d".to_string()],
+        Some("e4".to_string()),
+        serde_json::Value::Null,
+    )
+    .unwrap();
+    h.remove_node("a", true, false).unwrap();
+    assert!(!h.has_node("a"));
+    assert!(!h.has_edge("e1"));
+    assert!(!h.has_edge("e2"));
+    assert!(h.has_edge("e4"));
+    assert_eq!(h.members("e4").unwrap(), vec!["c", "d"]);
+}
+
+#[test]
+fn test_remove_nodes_from_missing_per_item_err_continues() {
+    // XGI warns ("Node ghost not in hypergraph") + skips + CONTINUES on a
+    // missing id; the core records a per-item Err and continues (D2-class
+    // channel translation — the binding warns per Err item).
+    let mut h: Hypergraph = Hypergraph::new();
+    h.add_edge(
+        vec!["a".to_string(), "b".to_string()],
+        Some("e1".to_string()),
+        serde_json::Value::Null,
+    )
+    .unwrap();
+    h.add_edge(
+        vec!["b".to_string(), "c".to_string()],
+        Some("e2".to_string()),
+        serde_json::Value::Null,
+    )
+    .unwrap();
+    let results = h.remove_nodes_from(
+        vec!["b".to_string(), "ghost".to_string(), "c".to_string()],
+        false,
+        true,
+    );
+    assert_eq!(results.len(), 3);
+    assert!(results[0].is_ok());
+    assert_eq!(
+        results[1],
+        Err(NodeError::NotFound {
+            node_id: "ghost".to_string()
+        })
+    );
+    assert!(results[2].is_ok());
+    // b and c both removed; e2 emptied (c gone) -> dropped; e1 = [a].
+    assert_eq!(h.node_ids(), vec!["a"]);
+    assert_eq!(h.edge_ids(), vec!["e1"]);
+    assert_eq!(h.members("e1").unwrap(), vec!["a"]);
+}
+
+#[test]
+fn test_remove_nodes_from_remove_empty_false_passthrough() {
+    // The bulk path forwards remove_empty: an emptied edge survives.
+    let mut h: Hypergraph = Hypergraph::new();
+    h.add_edge(
+        vec!["a".to_string(), "b".to_string()],
+        Some("e1".to_string()),
+        serde_json::Value::Null,
+    )
+    .unwrap();
+    h.add_edge(
+        vec!["b".to_string()],
+        Some("e2".to_string()),
+        serde_json::Value::Null,
+    )
+    .unwrap();
+    let results = h.remove_nodes_from(vec!["b".to_string()], false, false);
+    assert_eq!(results.len(), 1);
+    assert!(results[0].is_ok());
+    assert_eq!(h.num_edges(), 2);
+    assert_eq!(h.members("e2"), Some(vec![]));
+}
+
+#[test]
+fn test_remove_nodes_from_strong_passthrough() {
+    // The bulk path forwards strong: every incident edge is removed.
+    let mut h: Hypergraph = Hypergraph::new();
+    h.add_edge(
+        vec!["a".to_string(), "b".to_string()],
+        Some("e1".to_string()),
+        serde_json::Value::Null,
+    )
+    .unwrap();
+    h.add_edge(
+        vec!["a".to_string(), "c".to_string()],
+        Some("e2".to_string()),
+        serde_json::Value::Null,
+    )
+    .unwrap();
+    let results = h.remove_nodes_from(vec!["a".to_string()], true, false);
+    assert!(results[0].is_ok());
+    assert!(!h.has_edge("e1"));
+    assert!(!h.has_edge("e2"));
+    assert!(h.has_node("b"));
+}
+
+#[test]
+fn test_remove_edges_from_all_valid() {
+    let mut h: Hypergraph = Hypergraph::new();
+    h.add_edge(
+        vec!["a".to_string(), "b".to_string()],
+        Some("e1".to_string()),
+        serde_json::Value::Null,
+    )
+    .unwrap();
+    h.add_edge(
+        vec!["b".to_string(), "c".to_string()],
+        Some("e2".to_string()),
+        serde_json::Value::Null,
+    )
+    .unwrap();
+    let results = h.remove_edges_from(vec!["e1".to_string(), "e2".to_string()]);
+    assert_eq!(results.len(), 2);
+    assert!(results.iter().all(|r| r.is_ok()));
+    assert_eq!(h.num_edges(), 0);
+    // Nodes survive edge removal (XGI parity).
+    assert_eq!(h.node_ids(), vec!["a", "b", "c"]);
+}
+
+#[test]
+fn test_remove_edges_from_missing_stops_after_first_err() {
+    // XGI RAISES IDNotFound mid-iteration on the first missing id: ids
+    // before it are already removed (partial effects), ids after it are
+    // never attempted. The core records per-item results and STOPS after
+    // the first Err (Vec length = attempted count <= input length), so
+    // the binding can reproduce the raise exactly.
+    let mut h: Hypergraph = Hypergraph::new();
+    h.add_edge(
+        vec!["a".to_string(), "b".to_string()],
+        Some("e1".to_string()),
+        serde_json::Value::Null,
+    )
+    .unwrap();
+    h.add_edge(
+        vec!["b".to_string(), "c".to_string()],
+        Some("e2".to_string()),
+        serde_json::Value::Null,
+    )
+    .unwrap();
+    h.add_edge(
+        vec!["c".to_string(), "d".to_string()],
+        Some("e3".to_string()),
+        serde_json::Value::Null,
+    )
+    .unwrap();
+    let results = h.remove_edges_from(vec![
+        "e1".to_string(),
+        "ghost".to_string(),
+        "e3".to_string(),
+    ]);
+    assert_eq!(results.len(), 2, "e3 was never attempted");
+    assert!(results[0].is_ok());
+    assert_eq!(
+        results[1],
+        Err(EdgeError::NotFound {
+            edge_id: "ghost".to_string()
+        })
+    );
+    assert!(!h.has_edge("e1")); // removed before the error
+    assert!(h.has_edge("e2"));
+    assert!(h.has_edge("e3")); // never attempted
 }

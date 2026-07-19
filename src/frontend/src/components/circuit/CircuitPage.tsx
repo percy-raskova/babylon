@@ -6,6 +6,12 @@
  * UNTOUCHED — only its mount point moved; `deriveCorrectionTicks` and the
  * live `/timeseries/` data flow are exactly as they were.
  *
+ * T2-4/T2-6 (Slice A) add a left rail: the MELT gauge (a real instrument on
+ * `latestMeltDrift`, reading `panels.timeseries` passively — the same data
+ * `ScissorsChart` already drives) and the Fundamental Theorem meter (Wc vs
+ * Vc, graph-wide + per-region — self-mounts `panels.economy`, the one new
+ * fetch this screen needed). Neither touches `ScissorsChart` itself.
+ *
  * Deliberately thin chrome: a back-to-map link and the live tick (read
  * straight off `world.snapshot`, which keeps updating here because the
  * heartbeat/session lifecycle is owned by the `/game/:id` layout route
@@ -18,6 +24,8 @@
 import { useNavigate } from "react-router";
 import { useStore } from "@/store";
 import { ScissorsChart } from "@/components/timeseries/ScissorsChart";
+import { MeltGauge } from "@/components/timeseries/MeltGauge";
+import { FundamentalTheoremMeter } from "@/components/circuit/FundamentalTheoremMeter";
 
 interface CircuitPageProps {
   gameId: string;
@@ -26,6 +34,7 @@ interface CircuitPageProps {
 export function CircuitPage({ gameId }: CircuitPageProps): React.JSX.Element {
   const navigate = useNavigate();
   const tick = useStore((s) => s.world.snapshot?.tick);
+  const timeseries = useStore((s) => s.panels.timeseries.data);
 
   return (
     <div
@@ -53,8 +62,21 @@ export function CircuitPage({ gameId }: CircuitPageProps): React.JSX.Element {
           </span>
         </div>
       </header>
-      <div className="min-h-0 flex-1 p-4">
-        <ScissorsChart gameId={gameId} />
+      <div className="flex min-h-0 flex-1 gap-4 p-4">
+        <aside
+          className="flex w-72 shrink-0 flex-col gap-3 overflow-y-auto"
+          data-testid="circuit-instruments"
+        >
+          <div className="border-2 border-ksbc-muted-1 bg-plate">
+            <MeltGauge payload={timeseries} />
+          </div>
+          <div className="border-2 border-ksbc-muted-1 bg-plate">
+            <FundamentalTheoremMeter gameId={gameId} />
+          </div>
+        </aside>
+        <div className="min-h-0 min-w-0 flex-1">
+          <ScissorsChart gameId={gameId} />
+        </div>
       </div>
     </div>
   );

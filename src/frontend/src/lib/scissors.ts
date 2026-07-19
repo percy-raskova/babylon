@@ -43,6 +43,18 @@ export function latestMeltDrift(payload: TimeseriesPayload): number | null {
   return null;
 }
 
+/**
+ * Human copy for a MELT drift reading — shared by `MarketTicker`'s ticker
+ * line and `MeltGauge`'s instrument (T2-4, spec-117) so both surfaces name
+ * the same reading identically.
+ */
+export function meltCopy(drift: number): string {
+  const pct = Math.abs(drift * 100).toFixed(1);
+  return drift >= 0
+    ? `MELT drift +${(drift * 100).toFixed(1)}% — $1 commands ${pct}% less labor than its value basis`
+    : `MELT drift ${(drift * 100).toFixed(1)}% — $1 commands ${pct}% more labor than its value basis`;
+}
+
 export type TickerTone = "crash" | "euphoria" | "rally" | "slump" | "steady";
 
 export interface TickerState {

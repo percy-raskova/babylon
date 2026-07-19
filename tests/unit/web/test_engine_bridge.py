@@ -1659,6 +1659,158 @@ class TestGetEconomy:
 
 
 @pytest.mark.unit
+class TestImperialRentGapByRegion:
+    """spec-117 T2-6b: per-territory Fundamental Theorem reading.
+
+    ``core_wages``/``wealth`` are population-scaled class-level totals (a
+    class node IS its whole demographic block — ``ProductionSystem``:
+    ``produced_value = effective_labor_power * population``), so their raw
+    difference is NOT directly comparable across classes of different
+    population. The per-capita normalization (``gap / population``) is the
+    genuine intensive; ``ScaleAdjunction.aggregate_intensive`` population-
+    share-weights it into the region's own total-gap-over-total-population.
+
+    Adopted from the salvaged red-phase commit ``75b168f2`` (prior attempt
+    died mid-red-phase) — verified correct against
+    :meth:`ScaleAdjunction.aggregate_intensive`'s own math by hand before
+    landing (see this task's report), then implemented fresh.
+    """
+
+    def _graph_with_two_tenants(self) -> BabylonGraph:
+        g = BabylonGraph()
+        g.graph["tick"] = 1
+        g.add_node("T1", "territory", name="Genesee County", population=4000)
+        g.add_node("T2", "territory", name="Washtenaw County", population=2000)
+        # T1 tenant A: population 1000, wealth 500 (Vc/capita=0.5),
+        # core_wages 800 (Wc/capita=0.8) -> gap/capita = +0.3.
+        g.add_node("class-a", "social_class", name="A", role="proletariat", wealth=500.0)
+        g.add_edge("class-a", "T1", "tenancy")
+        g.add_edge("employer-a", "class-a", "wages", value_flow=800.0)
+        g.nodes["class-a"]["population"] = 1000
+        # T1 tenant B: population 3000, wealth 4500 (Vc/capita=1.5),
+        # core_wages 1200 (Wc/capita=0.4) -> gap/capita = -1.1.
+        g.add_node("class-b", "social_class", name="B", role="core_bourgeoisie", wealth=4500.0)
+        g.add_edge("class-b", "T1", "tenancy")
+        g.add_edge("employer-b", "class-b", "wages", value_flow=1200.0)
+        g.nodes["class-b"]["population"] = 3000
+        # T2 tenant C: population 2000, wealth 1000, core_wages 1000 ->
+        # both per-capita 0.5, gap/capita = 0.0.
+        g.add_node("class-c", "social_class", name="C", role="proletariat", wealth=1000.0)
+        g.add_edge("class-c", "T2", "tenancy")
+        g.add_edge("employer-c", "class-c", "wages", value_flow=1000.0)
+        g.nodes["class-c"]["population"] = 2000
+        return g
+
+    def test_region_gap_is_population_weighted_mean_per_capita(self) -> None:
+        from game.engine_bridge import _imperial_rent_gap_by_region
+
+        graph = self._graph_with_two_tenants()
+        rows = _imperial_rent_gap_by_region(graph)
+        by_id = {r["territory_id"]: r for r in rows}
+
+        # T1: (800+1200)/4000 Wc, (500+4500)/4000 Vc, gap = -3000/4000.
+        assert by_id["T1"]["wc_per_capita"] == pytest.approx(0.5)
+        assert by_id["T1"]["vc_per_capita"] == pytest.approx(1.25)
+        assert by_id["T1"]["gap_per_capita"] == pytest.approx(-0.75)
+        assert by_id["T1"]["population"] == pytest.approx(4000)
+
+        # T2: single tenant, both per-capita 0.5 -> gap 0.
+        assert by_id["T2"]["wc_per_capita"] == pytest.approx(0.5)
+        assert by_id["T2"]["vc_per_capita"] == pytest.approx(0.5)
+        assert by_id["T2"]["gap_per_capita"] == pytest.approx(0.0)
+
+    def test_territory_with_only_zero_population_tenant_is_absent(self) -> None:
+        from game.engine_bridge import _imperial_rent_gap_by_region
+
+        graph = self._graph_with_two_tenants()
+        graph.add_node("T3", "territory", name="Oakland County", population=0)
+        graph.add_node("class-d", "social_class", name="D", role="proletariat", wealth=10.0)
+        graph.add_edge("class-d", "T3", "tenancy")
+        graph.nodes["class-d"]["population"] = 0
+
+        rows = _imperial_rent_gap_by_region(graph)
+
+        assert "T3" not in {r["territory_id"] for r in rows}
+
+    def test_class_with_no_tenancy_edge_creates_no_phantom_region(self) -> None:
+        from game.engine_bridge import _imperial_rent_gap_by_region
+
+        graph = self._graph_with_two_tenants()
+        graph.add_node("class-floating", "social_class", name="Floating", wealth=999.0)
+        graph.nodes["class-floating"]["population"] = 500
+
+        rows = _imperial_rent_gap_by_region(graph)
+
+        assert {r["territory_id"] for r in rows} == {"T1", "T2"}
+
+    def test_empty_graph_returns_empty_list(self) -> None:
+        from game.engine_bridge import _imperial_rent_gap_by_region
+
+        assert _imperial_rent_gap_by_region(BabylonGraph()) == []
+
+
+@pytest.mark.unit
+class TestEconomyDashboardFundamentalTheorem:
+    """T2-6a/b (spec-117): get_economy_dashboard's graph-wide Wc/Vc gap
+    (promoted from the per-class ``imperial_rent_gap`` already computed for
+    the inspector popup — same ``core_wages - wealth`` sign convention, just
+    summed graph-wide instead of read per-class) and the net-new per-region
+    breakdown (:func:`_imperial_rent_gap_by_region`)."""
+
+    def _dashboard_result(self, graph: BabylonGraph) -> dict[str, Any]:
+        mock_persistence = _make_mock_persistence()
+        bridge = EngineBridge(mock_persistence)
+        mock_state = MagicMock()
+        mock_state.tick = 10
+        # get_economy_dashboard reads state.economy.imperial_rent_pool /
+        # .current_super_wage_rate -- a bare MagicMock() isn't a real number
+        # and float(MagicMock()) raises, so this pins the "no economy state"
+        # honest-None branch explicitly rather than exercising a MagicMock
+        # by accident.
+        mock_state.economy = None
+        with patch.object(bridge, "hydrate_state", return_value=(mock_state, graph)):
+            return bridge.get_economy_dashboard(uuid.uuid4())
+
+    def test_imperial_rent_gap_is_wage_flow_minus_value_produced(self) -> None:
+        graph = _make_balkanization_graph()
+
+        result = self._dashboard_result(graph)
+
+        # _make_balkanization_graph seeds no WAGES edges -> wage_flow_total
+        # is honestly 0.0; value_produced is sc-genesee-proles' wealth
+        # (812.4, the graph's only social_class node).
+        assert result["wage_flow_total"] == pytest.approx(0.0)
+        assert result["value_produced"] == pytest.approx(812.4)
+        assert result["imperial_rent_gap"] == pytest.approx(-812.4)
+
+    def test_imperial_rent_gap_by_region_absent_without_population(self) -> None:
+        graph = _make_balkanization_graph()
+
+        result = self._dashboard_result(graph)
+
+        # sc-genesee-proles is TENANCY-linked to T1 but carries no
+        # `population` field of its own (only Territory nodes do in this
+        # fixture) -> excluded, so the region list is honestly empty rather
+        # than fabricating a per-capita reading with a phantom population.
+        assert result["imperial_rent_gap_by_region"] == []
+
+    def test_imperial_rent_gap_by_region_reflects_positive_population_tenant(self) -> None:
+        graph = _make_balkanization_graph()
+        graph.nodes["sc-genesee-proles"]["population"] = 5000
+        graph.add_edge("employer-genesee", "sc-genesee-proles", "wages", value_flow=1000.0)
+
+        result = self._dashboard_result(graph)
+
+        rows = result["imperial_rent_gap_by_region"]
+        assert len(rows) == 1
+        assert rows[0]["territory_id"] == "T1"
+        assert rows[0]["population"] == pytest.approx(5000)
+        assert rows[0]["wc_per_capita"] == pytest.approx(round(1000.0 / 5000, 4))
+        assert rows[0]["vc_per_capita"] == pytest.approx(round(812.4 / 5000, 4))
+        assert rows[0]["gap_per_capita"] == pytest.approx(round(1000.0 / 5000 - 812.4 / 5000, 4))
+
+
+@pytest.mark.unit
 class TestBalkanizationMapFields:
     """Spec 093 US3: get_map_snapshot's balkanization block (real spec-070 graph reads)."""
 
@@ -4635,6 +4787,8 @@ class TestEconomyDashboardChipContract:
             "tribute_flow_total",
             "wealth_by_class_role",
             "county_flow",
+            "imperial_rent_gap",
+            "imperial_rent_gap_by_region",
         }, (
             "EconomyDashboardPayload drifted — update types/game.ts, the "
             "chips, and this pin in the SAME commit (no phantoms, no orphans)"

@@ -1110,6 +1110,41 @@ export interface EconomyDashboardPayload {
   wealth_by_class_role: Record<string, number>;
   /** Hex-level static-economy broadcast (spec-109 A7), surfaced when reachable. */
   county_flow: CountyFlowSnapshot;
+  /**
+   * T2-6a (spec-117) — the Fundamental Theorem, graph-wide: `wage_flow_total`
+   * (Σ core wages paid, W_c) minus `value_produced` (Σ value produced, V_c).
+   * Promotes the per-class `imperial_rent_gap` already computed for the
+   * inspector popup (`_social_class_inspector_fields`) to a graph-wide total
+   * — same sign convention (positive = core wages exceed value produced, an
+   * imperial subsidy). Both addends are extensive totals, so this sum
+   * carries none of the unweighted-mean-of-a-ratio risk a per-region
+   * average would.
+   */
+  imperial_rent_gap: number;
+  /**
+   * T2-6b (spec-117) — net-new per-territory breakdown. One row per
+   * territory with at least one positive-population TENANCY-linked tenant
+   * class; `gap_per_capita` is the population-share-weighted mean of each
+   * tenant's own `(core_wages - wealth) / population`
+   * (`ScaleAdjunction.aggregate_intensive`, never a raw unweighted average —
+   * see `_imperial_rent_gap_by_region`'s docstring). Empty when no territory
+   * has a positive-population tenant this session (Constitution III.11 —
+   * never a fabricated row).
+   */
+  imperial_rent_gap_by_region: ImperialRentGapRegion[];
+}
+
+/**
+ * One row of `EconomyDashboardPayload.imperial_rent_gap_by_region` — see
+ * `EngineBridge.get_economy_dashboard` / `_imperial_rent_gap_by_region`.
+ */
+export interface ImperialRentGapRegion {
+  territory_id: string;
+  /** Total population across the territory's positive-population tenants. */
+  population: number;
+  wc_per_capita: number;
+  vc_per_capita: number;
+  gap_per_capita: number;
 }
 
 /**

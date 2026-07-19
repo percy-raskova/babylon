@@ -229,6 +229,8 @@ export const handlers = [
         tribute_flow_total: 5,
         wealth_by_class_role: { proletariat: 40, bourgeoisie: 60 },
         county_flow: { year: null, phi_accrued_this_year: null, wage_accrued_this_year: null },
+        imperial_rent_gap: -70,
+        imperial_rent_gap_by_region: [],
       },
     });
   }),

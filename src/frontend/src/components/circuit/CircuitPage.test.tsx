@@ -49,4 +49,13 @@ describe("CircuitPage", () => {
     await userEvent.click(screen.getByTestId("circuit-back-to-map"));
     expect(screen.getByTestId("stub-map")).toBeInTheDocument();
   });
+
+  it("mounts the MELT gauge and Fundamental Theorem meter on the instruments rail (T2-4/T2-6)", async () => {
+    renderCircuitPage();
+    expect(screen.getByTestId("circuit-instruments")).toBeInTheDocument();
+    await waitFor(() => expect(screen.getByTestId("melt-gauge")).toBeInTheDocument());
+    await waitFor(() =>
+      expect(screen.getByTestId("fundamental-theorem-meter")).toBeInTheDocument(),
+    );
+  });
 });

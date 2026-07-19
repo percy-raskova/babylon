@@ -23,6 +23,7 @@ from uuid import UUID
 import psycopg
 
 from babylon.config.defines import GameDefines
+from babylon.domain.dialectics.instances.scale import ScaleAdjunction
 from babylon.engine.actions.investigate import (
     _REVEAL_BY_NODE_TYPE as _INVESTIGATE_REVEAL_BY_NODE_TYPE,
 )
@@ -1819,6 +1820,106 @@ def _incoming_wages_flow(graph: BabylonGraph, node_id: str) -> float:
     return total
 
 
+def _imperial_rent_gap_by_region(graph: BabylonGraph) -> list[dict[str, Any]]:
+    """Per-territory Fundamental Theorem reading (T2-6b, spec-117).
+
+    ``core_wages`` (:func:`_incoming_wages_flow`) and ``wealth`` are
+    population-scaled class-level TOTALS (a ``social_class`` node IS its
+    whole demographic block — ``ProductionSystem``:
+    ``produced_value = effective_labor_power * population``), so a class's
+    raw ``core_wages - wealth`` is not comparable across classes of
+    different population, and a territory holding several TENANCY-linked
+    classes cannot honestly report a single gap by just adding those raw
+    per-class totals together and calling it "the region's gap": Φ is a
+    ratio (per-capita), not an extensive quantity, so an unweighted
+    combination silently reintroduces the intensive-aggregation bug
+    documented in ``domain/dialectics/instances/catalog.py``'s
+    ``_mean_asymmetry`` (see CLAUDE.md's "Gotchas").
+
+    The correct move: divide each class's gap by ITS OWN population to get
+    the genuine intensive (``gap_per_capita``), then use
+    :meth:`~babylon.domain.dialectics.instances.scale.ScaleAdjunction.
+    aggregate_intensive` (population-share-weighted mean) to fold a
+    territory's tenant classes into one region-level per-capita reading —
+    the same primitive already grounds the spatial/social level lattices
+    (``domain/dialectics/instances/levels.py``), applied here to the
+    Fundamental Theorem for the first time from ``web/``.
+
+    A class with zero (or negative — never expected, defensively excluded)
+    population contributes no honest per-capita reading and is dropped
+    before the adjunction is built; a territory left with no positive-
+    population tenant this way is OMITTED from the result entirely
+    (Constitution III.11 — an absent region, never a fabricated 0.0/0
+    per-capita reading). A class with no live TENANCY edge to any territory
+    (:func:`_tenancy_members_by_territory`) never enters the computation at
+    all, so it can never fabricate a phantom region.
+
+    Args:
+        graph: The hydrated session graph.
+
+    Returns:
+        One row per territory with a positive-population TENANCY-linked
+        tenant, sorted by ``territory_id`` for determinism (Constitution
+        III.7): ``territory_id``, ``population`` (the region's total
+        positive tenant population), ``wc_per_capita``, ``vc_per_capita``,
+        ``gap_per_capita`` (= ``wc_per_capita - vc_per_capita``, signed like
+        the per-class ``imperial_rent_gap`` — positive is an imperial
+        subsidy). Empty list when no territory has a positive-population
+        tenant.
+    """
+    tenancy_members = _tenancy_members_by_territory(graph)
+
+    mapping: dict[str, str] = {}
+    shares: dict[str, float] = {}
+    wc_per_capita: dict[str, float] = {}
+    vc_per_capita: dict[str, float] = {}
+    region_population: dict[str, float] = {}
+
+    for territory_id, member_ids in tenancy_members.items():
+        positive_members: list[tuple[str, dict[str, Any], float]] = []
+        total_population = 0.0
+        for member_id in member_ids:
+            data = graph.nodes.get(member_id, {})
+            population = float(data.get("population", 0) or 0)
+            if population <= 0.0:
+                continue
+            positive_members.append((member_id, data, population))
+            total_population += population
+        if total_population <= 0.0:
+            continue
+
+        region_population[territory_id] = total_population
+        for member_id, data, population in positive_members:
+            mapping[member_id] = territory_id
+            shares[member_id] = population / total_population
+            core_wages = _incoming_wages_flow(graph, member_id)
+            wealth = float(data.get("wealth", 0.0))
+            wc_per_capita[member_id] = core_wages / population
+            vc_per_capita[member_id] = wealth / population
+
+    if not mapping:
+        return []
+
+    adjunction = ScaleAdjunction(mapping=mapping, shares=shares)
+    wc_region = adjunction.aggregate_intensive(wc_per_capita)
+    vc_region = adjunction.aggregate_intensive(vc_per_capita)
+
+    rows: list[dict[str, Any]] = []
+    for territory_id in adjunction.parents():
+        wc = wc_region[territory_id]
+        vc = vc_region[territory_id]
+        rows.append(
+            {
+                "territory_id": territory_id,
+                "population": region_population[territory_id],
+                "wc_per_capita": round(wc, 4),
+                "vc_per_capita": round(vc, 4),
+                "gap_per_capita": round(wc - vc, 4),
+            }
+        )
+    return rows
+
+
 _APOLOGIST_CLAIM: Final[str] = (
     "The wage gap reflects a 'skill premium' — harder-earned pay, not a "
     "politically-arranged subsidy."
@@ -3038,6 +3139,19 @@ class EngineBridge:
         see :func:`_has_county_resolution_territory`) — ``None`` fields
         when no territory has ever carried boundary state this session.
 
+        ``imperial_rent_gap`` (T2-6a, spec-117) promotes the Fundamental
+        Theorem reading already computed per-class for the inspector popup
+        (:func:`_social_class_inspector_fields`'s ``core_wages - wealth``,
+        Φ = W_c − V_c) to a graph-wide total: ``wage_flow_total`` (Σ core
+        wages paid, W_c) minus ``value_produced`` (Σ value produced, V_c).
+        Both addends are EXTENSIVE totals, so summing them graph-wide (unlike
+        averaging a RATIO across classes) carries no intensive-aggregation
+        risk — positive means core wages exceed value produced in aggregate
+        (an imperial subsidy), same sign convention as the per-class field.
+        ``imperial_rent_gap_by_region`` (T2-6b) is the net-new per-territory
+        population-share-weighted per-capita breakdown — see
+        :func:`_imperial_rent_gap_by_region`.
+
         Args:
             session_id: The game session UUID.
 
@@ -3046,10 +3160,12 @@ class EngineBridge:
             ``rent_extracted``/``exploitation_rate``/``profit_rate``/
             ``occ``/``imperial_rent_pool``/``current_super_wage_rate``/
             ``wage_flow_total``/``tribute_flow_total``/
-            ``wealth_by_class_role``/``county_flow``.
+            ``wealth_by_class_role``/``county_flow``/``imperial_rent_gap``/
+            ``imperial_rent_gap_by_region``.
         """
         state, graph = self.hydrate_state(session_id)
         econ = _aggregate_graph_economy(graph)
+        wage_flow_total = _sum_edge_value_flow_by_mode(graph, frozenset({"wages"}))
 
         return {
             "tick": state.tick,
@@ -3065,10 +3181,12 @@ class EngineBridge:
             "current_super_wage_rate": (
                 float(state.economy.current_super_wage_rate) if state.economy else None
             ),
-            "wage_flow_total": _sum_edge_value_flow_by_mode(graph, frozenset({"wages"})),
+            "wage_flow_total": wage_flow_total,
             "tribute_flow_total": _sum_edge_value_flow_by_mode(graph, frozenset({"tribute"})),
             "wealth_by_class_role": _wealth_by_class_role(state),
             "county_flow": _county_flow_snapshot(graph),
+            "imperial_rent_gap": round(wage_flow_total - econ["value_produced"], 4),
+            "imperial_rent_gap_by_region": _imperial_rent_gap_by_region(graph),
         }
 
     def get_economy(self, session_id: UUID, territory_id: str | None = None) -> dict[str, Any]:

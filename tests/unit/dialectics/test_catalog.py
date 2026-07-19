@@ -68,8 +68,42 @@ class TestCapitalLabor:
 
     def test_mean_over_multiple_edges(self) -> None:
         states = _states(GraphInputs(exploitation_pairs=((0.0, 10.0), (10.0, 10.0))))
-        # gaps: 1.0 and 0.0 → mean 0.5
-        assert states["capital_labor"].gap == pytest.approx(0.5)
+        # Wealth-weighted (owner ruling 2026-07-19): pair (0,10) has pole-sum
+        # 10, |b-a| 10; pair (10,10) has pole-sum 20, |b-a| 0. gap = Σ|b-a| /
+        # Σ(a+b) = (10+0) / (10+20) = 10/30 = 1/3.
+        assert states["capital_labor"].gap == pytest.approx(1.0 / 3.0)
+
+    def test_mean_asymmetry_is_wealth_weighted_not_pair_counted(self) -> None:
+        """One enormous near-parity pair dominates one tiny fully-polarized pair.
+
+        Pairs (4950, 4950) at parity (pole-sum 9900, gap_mass 0) and
+        (0.0, 100.0) fully polarized (pole-sum 100, gap_mass 100): an
+        unweighted mean reads gap ``(0 + 1.0) / 2 = 0.5``; the
+        wealth-weighted field reads ``Σ|b−a| / Σ(a+b) = 100 / 10_000 =
+        0.01``. The tiny pair must NOT swing the reading as hard as the
+        enormous one (intensive-aggregation class, owner ruling 2026-07-19).
+
+        Magnitudes are chosen so the exact weighted result (0.01) lands on
+        the ``Intensity`` field's pre-existing 1e-6 precision grid
+        (``babylon.kernel.math.quantize``, Epoch 0 gatekeeper) with no
+        rounding remainder — the original 1e6-vs-1 demonstration produces a
+        true gap of ~5e-7, which the SAME gatekeeper legitimately floors to
+        0.0 (unrelated to this fix), so it is not usable as an exact
+        ``pytest.approx`` pin.
+        """
+        inputs = GraphInputs(
+            exploitation_pairs=((4950.0, 4950.0), (0.0, 100.0)),
+        )
+        reading = _states(inputs)["capital_labor"]
+        assert reading.gap == pytest.approx(0.01)
+        assert reading.balance == pytest.approx(0.01)
+
+    def test_mean_asymmetry_all_pairs_degenerate_is_zero(self) -> None:
+        # A pole-sum below the epsilon guard carries no wealth mass to weight
+        # by, so it is skipped; an all-degenerate input reads absent (0, 0).
+        states = _states(GraphInputs(exploitation_pairs=((0.0, 0.0),)))
+        assert states["capital_labor"].gap == 0.0
+        assert states["capital_labor"].balance == 0.0
 
 
 class TestWage:

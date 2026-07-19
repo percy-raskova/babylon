@@ -75,7 +75,7 @@ gap stays in ``[0, 1]`` (the raw ``(w−v)/v`` is unbounded). See
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Final
 
 if TYPE_CHECKING:
     from babylon.topology.graph import BabylonUGraph
@@ -96,10 +96,7 @@ from babylon.domain.dialectics.instances.connectivity import (
     atomization_index,
     connectivity_cylinder,
 )
-from babylon.formulas.contradiction import (
-    calculate_wealth_asymmetry_balance,
-    calculate_wealth_asymmetry_gap,
-)
+from babylon.formulas.contradiction import calculate_wealth_asymmetry_balance
 
 __all__ = ["GraphInputs", "build_default_coupling_graph", "build_default_registry"]
 
@@ -183,17 +180,44 @@ class GraphInputs:
     financialization_index: float | None = field(default=None)
 
 
-def _mean_asymmetry(pairs: Sequence[WealthPair]) -> GapReading:
-    """Mean wealth-asymmetry gap and balance over ``(pole_a, pole_b)`` pairs.
+_ASYMMETRY_EPSILON: Final[float] = 1e-9
+"""Degenerate-pair guard, mirroring ``calculate_wealth_asymmetry_*``'s epsilon default."""
 
-    Empty input → ``gap 0.0, balance 0.0`` (an absent edge set carries no
-    contradiction), per the design contract.
+
+def _mean_asymmetry(pairs: Sequence[WealthPair]) -> GapReading:
+    """Wealth-weighted asymmetry gap and balance over ``(pole_a, pole_b)`` pairs.
+
+    Each pair's bounded reading (``|b−a|/(a+b)``, ``(b−a)/(a+b)``) is weighted
+    by the wealth engaged in the relationship (``a+b`` — an extensive
+    magnitude), which telescopes algebraically to the exact ratio of sums:
+    ``gap = Σ|b−a| / Σ(a+b)``, ``balance = Σ(b−a) / Σ(a+b)``. An unweighted
+    mean lets a tiny pair swing the field reading as hard as an enormous one —
+    the intensive-aggregation error class (U7.6 sensor; owner ruling
+    2026-07-19). Lawverian reading: the opposition's counit defect integrated
+    over the relationship field, with material wealth as the measure.
+
+    Pairs whose pole sum falls below ``_ASYMMETRY_EPSILON`` carry no wealth
+    mass and are skipped — under the per-pair formulas they read 0.0 and here
+    they contribute zero weight, so the two forms agree on the degenerate
+    case. Empty input (or all pairs degenerate) → ``gap 0.0, balance 0.0``
+    (an absent edge set carries no contradiction), per the design contract.
+    Summation runs in input order, which the engine constructs
+    deterministically (III.7).
     """
-    if not pairs:
+    gap_mass = 0.0
+    balance_mass = 0.0
+    weight_total = 0.0
+    for a, b in pairs:
+        pole_sum = a + b
+        if pole_sum < _ASYMMETRY_EPSILON:
+            continue
+        gap_mass += abs(b - a)
+        balance_mass += b - a
+        weight_total += pole_sum
+    if weight_total <= 0.0:
         return GapReading(gap=0.0, balance=0.0)
-    n = len(pairs)
-    gap = sum(calculate_wealth_asymmetry_gap(a, b) for a, b in pairs) / n
-    balance = sum(calculate_wealth_asymmetry_balance(a, b) for a, b in pairs) / n
+    gap = min(1.0, max(0.0, gap_mass / weight_total))
+    balance = min(1.0, max(-1.0, balance_mass / weight_total))
     return GapReading(gap=gap, balance=balance)
 
 

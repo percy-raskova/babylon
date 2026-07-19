@@ -109,12 +109,18 @@ class TickDynamicsSystem(SystemBase):
         self._smoother = CoefficientSmoother(alpha=0.3)
         self._rate_calculator = DerivedRateCalculator()
         # Honesty sweep (spec 2026-07-18 vol3-money-scissors-design, U2.2
-        # fix): tracks the last year a Volume III financial-layer
-        # NoDataSentinel was logged, so a 3300-county tick logs the
-        # degradation ONCE per year boundary instead of once per county.
-        # The tally counter (services.economics_fallbacks) still records
-        # every occurrence — only the WARNING log is throttled.
-        self._vol3_sentinel_last_logged_year: int | None = None
+        # fix): tracks the (year, category) pairs a Volume III
+        # financial-layer NoDataSentinel was already logged for, so a
+        # 3300-county tick logs the degradation ONCE per year boundary PER
+        # SOURCE CATEGORY (interest/fictitious/distribution/rent/housing)
+        # instead of once per county AND instead of letting the first
+        # category of the year silently claim the only slot (code-review
+        # findings U2.2-1/U2.2-4: a bare per-year int throttle let one
+        # sentinel category swallow every other category's distinct
+        # .reason for the rest of that year). The tally counter
+        # (services.economics_fallbacks) still records every occurrence —
+        # only the WARNING log is throttled.
+        self._vol3_sentinel_logged: set[tuple[int, str]] = set()
 
     def step(
         self,
@@ -1407,7 +1413,9 @@ class TickDynamicsSystem(SystemBase):
         if services.interest_calculator is None:
             return county_states
 
-        national_rate, fictitious = self._compute_national_financial_state(services, year)
+        national_rate, fictitious, interest_unavailable_reason = (
+            self._compute_national_financial_state(services, year)
+        )
 
         # County-level computation
         updated: dict[str, CountyEconomicState] = {}
@@ -1423,6 +1431,7 @@ class TickDynamicsSystem(SystemBase):
                 year,
                 national_rate,
                 fictitious,
+                interest_unavailable_reason=interest_unavailable_reason,
             )
 
         # Preserve any remaining counties not processed (if truncated)
@@ -1432,56 +1441,86 @@ class TickDynamicsSystem(SystemBase):
 
         return updated
 
-    def _log_vol3_sentinel_once_per_year(self, year: int, reason: str) -> None:
-        """Log a Volume III NoDataSentinel degradation at WARNING, once per year.
+    def _log_vol3_sentinel_once_per_year(self, year: int, category: str, reason: str) -> None:
+        """Log a Volume III NoDataSentinel degradation at WARNING, once per
+        (year, category).
 
         The tally counter (recorded separately by the caller) counts every
         occurrence; this only throttles the human-facing log line so a
         3300-county tick does not emit thousands of near-identical
         warnings for the same year boundary (Constitution III.11 — honest
-        absence must be observable, not spam).
+        absence must be observable, not spam). Keying on ``category`` in
+        addition to ``year`` (code-review findings U2.2-1/U2.2-4) ensures
+        that when multiple independent sentinel sources fire in the same
+        year — e.g. the interest calculator AND the distribution
+        calculator, each for a distinct data gap — every source's first
+        distinct reason still reaches the log instead of the first
+        category of the year claiming the tick's only slot.
 
         Args:
             year: Current simulation year.
+            category: Short tag identifying the sentinel's source, e.g.
+                ``"interest"``, ``"fictitious"``, ``"distribution"``,
+                ``"rent"``, ``"housing"`` — NOT derived from ``reason``
+                (which is per-county for some sources and would defeat
+                the throttle if used as the key).
             reason: The sentinel's own ``.reason`` field (never a
                 hand-rolled message — preserves the specific cause,
                 whether that's the year-window guard or absent source data).
         """
-        if self._vol3_sentinel_last_logged_year == year:
+        key = (year, category)
+        if key in self._vol3_sentinel_logged:
             return
-        self._vol3_sentinel_last_logged_year = year
-        logger.warning("TickDynamics Step 5.5 (Volume III financial layer): %s", reason)
+        self._vol3_sentinel_logged.add(key)
+        logger.warning(
+            "TickDynamics Step 5.5 (Volume III financial layer, %s): %s", category, reason
+        )
 
     def _compute_national_financial_state(
         self,
         services: ServicesProtocol,
         year: int,
-    ) -> tuple[float, FictitiousCapitalStock | None]:
+    ) -> tuple[float | None, FictitiousCapitalStock | None, str | None]:
         """Compute national-level financial parameters once per tick.
 
+        Constitution III.11 (honest absence): when the interest calculator
+        has no data for ``year``, the national rate is ``None`` — never a
+        fabricated ``0.0``. A fabricated zero rate would silently flow into
+        ``compute_distribution``'s ``national_interest_rate * implied_capital``
+        term and publish a genuine-looking zero-interest distribution
+        (code-review finding U2.2-3). Callers must treat ``None`` as "skip
+        any computation that depends on the rate," not "treat as zero."
+
         Returns:
-            Tuple of (national_interest_rate, fictitious_capital_or_none).
+            Tuple of (national_interest_rate_or_none,
+            fictitious_capital_or_none, interest_unavailable_reason).
+            ``interest_unavailable_reason`` is the interest sentinel's own
+            ``.reason`` (or ``None`` if the interest calculator succeeded),
+            so a caller that must skip work because the rate is absent can
+            attribute *why* instead of recording an unexplained gap.
         """
         fallbacks = services.economics_fallbacks
         interest_result = services.interest_calculator.compute_interest_rate_state(year)
         interest_state = None
+        interest_unavailable_reason: str | None = None
         if isinstance(interest_result, NoDataSentinel):
             fallbacks.record_vol3_interest_sentinel()
-            self._log_vol3_sentinel_once_per_year(year, interest_result.reason)
+            interest_unavailable_reason = interest_result.reason
+            self._log_vol3_sentinel_once_per_year(year, "interest", interest_result.reason)
         else:
             interest_state = interest_result
-        national_rate = interest_state.effective_rate if interest_state is not None else 0.0
+        national_rate = interest_state.effective_rate if interest_state is not None else None
 
         fictitious = None
         if services.fictitious_capital_calculator is not None:
             fict_result = services.fictitious_capital_calculator.compute_fictitious_capital(year)
             if isinstance(fict_result, NoDataSentinel):
                 fallbacks.record_vol3_fictitious_sentinel()
-                self._log_vol3_sentinel_once_per_year(year, fict_result.reason)
+                self._log_vol3_sentinel_once_per_year(year, "fictitious", fict_result.reason)
             else:
                 fictitious = fict_result
 
-        return national_rate, fictitious
+        return national_rate, fictitious, interest_unavailable_reason
 
     def _compute_county_financial_state(
         self,
@@ -1489,8 +1528,9 @@ class TickDynamicsSystem(SystemBase):
         county: CountyEconomicState,
         services: ServicesProtocol,
         year: int,
-        national_rate: float,
+        national_rate: float | None,
         fictitious: FictitiousCapitalStock | None,
+        interest_unavailable_reason: str | None = None,
     ) -> CountyEconomicState:
         """Compute financial fields for a single county.
 
@@ -1499,8 +1539,14 @@ class TickDynamicsSystem(SystemBase):
             county: Current county state.
             services: ServicesProtocol with financial calculators.
             year: Current simulation year.
-            national_rate: National effective interest rate.
+            national_rate: National effective interest rate, or ``None`` if
+                the interest calculator had no data for ``year``
+                (Constitution III.11 — never a fabricated ``0.0``).
             fictitious: FictitiousCapitalStock or None.
+            interest_unavailable_reason: The interest sentinel's own
+                ``.reason`` when ``national_rate`` is ``None``, so the
+                distribution skip below can attribute its cause instead of
+                recording an unexplained gap.
 
         Returns:
             Updated CountyEconomicState with financial fields.
@@ -1516,46 +1562,72 @@ class TickDynamicsSystem(SystemBase):
             profit_rate = self._get_county_profit_rate(fips, tensor_year, services)
             total_surplus = self._get_county_surplus(fips, tensor_year, services)
             if total_surplus is not None and total_surplus > 0:
-                dist = services.distribution_calculator.compute_distribution(
-                    fips=fips,
-                    year=year,
-                    total_surplus=total_surplus,
-                    county_profit_rate=(
-                        profit_rate
-                        if profit_rate is not None
-                        else services.defines.capital_vol3.profit_rate_fallback
-                    ),
-                    national_interest_rate=national_rate,
-                    county_employment=county.employment,
-                )
-                if isinstance(dist, NoDataSentinel):
+                if national_rate is None:
+                    # Honest absence (Constitution III.11): the national rate
+                    # itself is unavailable — compute_distribution would
+                    # otherwise be called with a fabricated 0.0 and silently
+                    # publish a genuine-looking zero-interest distribution
+                    # (code-review finding U2.2-3). Skip the call entirely.
                     services.economics_fallbacks.record_vol3_distribution_sentinel()
-                    self._log_vol3_sentinel_once_per_year(year, dist.reason)
+                    self._log_vol3_sentinel_once_per_year(
+                        year,
+                        "distribution",
+                        interest_unavailable_reason
+                        or f"National interest rate unavailable for {year}",
+                    )
                 else:
-                    updates["surplus_distribution"] = dist
-                    if county.debt_accumulation is not None:
-                        from babylon.domain.economics.distribution.types import DebtAccumulation
+                    dist = services.distribution_calculator.compute_distribution(
+                        fips=fips,
+                        year=year,
+                        total_surplus=total_surplus,
+                        county_profit_rate=(
+                            profit_rate
+                            if profit_rate is not None
+                            else services.defines.capital_vol3.profit_rate_fallback
+                        ),
+                        national_interest_rate=national_rate,
+                        county_employment=county.employment,
+                    )
+                    if isinstance(dist, NoDataSentinel):
+                        services.economics_fallbacks.record_vol3_distribution_sentinel()
+                        self._log_vol3_sentinel_once_per_year(year, "distribution", dist.reason)
+                    else:
+                        updates["surplus_distribution"] = dist
+                        if county.debt_accumulation is not None:
+                            from babylon.domain.economics.distribution.types import (
+                                DebtAccumulation,
+                            )
 
-                        updates["debt_accumulation"] = DebtAccumulation.update(
-                            county.debt_accumulation,
-                            dist.profit_of_enterprise,
-                            year,
-                        )
+                            updates["debt_accumulation"] = DebtAccumulation.update(
+                                county.debt_accumulation,
+                                dist.profit_of_enterprise,
+                                year,
+                            )
 
         # Rent extraction
         if services.rent_calculator is not None:
             rent_result = services.rent_calculator.compute_rent_extraction(fips, year)
-            if not isinstance(rent_result, NoDataSentinel):
+            if isinstance(rent_result, NoDataSentinel):
+                services.economics_fallbacks.record_vol3_rent_sentinel()
+                self._log_vol3_sentinel_once_per_year(year, "rent", rent_result.reason)
+            else:
                 updates["rent_extraction"] = rent_result
 
         # Housing decomposition
         if services.housing_calculator is not None:
             housing_result = services.housing_calculator.decompose_housing_value(fips, year)
-            if not isinstance(housing_result, NoDataSentinel):
+            if isinstance(housing_result, NoDataSentinel):
+                services.economics_fallbacks.record_vol3_housing_sentinel()
+                self._log_vol3_sentinel_once_per_year(year, "housing", housing_result.reason)
+            else:
                 updates["housing_decomposition"] = housing_result
 
         # Financial crisis assessment
-        if services.financial_crisis_assessor is not None and "surplus_distribution" in updates:
+        if (
+            services.financial_crisis_assessor is not None
+            and "surplus_distribution" in updates
+            and national_rate is not None
+        ):
             assessment = self._assess_county_financial_crisis(
                 fips,
                 year,

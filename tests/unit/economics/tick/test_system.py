@@ -1960,6 +1960,8 @@ class TestEconomicsFallbackInstrumentation:
             "vol3_interest_sentinel",
             "vol3_fictitious_sentinel",
             "vol3_distribution_sentinel",
+            "vol3_rent_sentinel",
+            "vol3_housing_sentinel",
         }
         assert payload["gamma_basket_calculator_none"] == 1
 
@@ -2102,19 +2104,94 @@ class _StubDistributionSentinelCalculator:
         )
 
 
+class _StubRentalDataGapDistributionCalculator:
+    """Always returns a NoDataSentinel with a rental-income-specific reason
+    (distinct from the year-window reason) — used to prove distinct reasons
+    from different sentinel sources both reach the log (code-review findings
+    U2.2-1/U2.2-4)."""
+
+    def compute_distribution(
+        self,
+        fips: str,
+        year: int,
+        total_surplus: float,
+        county_profit_rate: float,
+        national_interest_rate: float,
+        county_employment: float = 0.0,
+    ) -> NoDataSentinel:
+        return NoDataSentinel(
+            fips=fips,
+            year=year,
+            reason=f"Rental income data unavailable for {fips}/{year}",
+        )
+
+
+class _StubRentSentinelCalculator:
+    """Always returns a NoDataSentinel (rent adapter has no data)."""
+
+    def compute_rent_extraction(self, fips: str, year: int) -> NoDataSentinel:
+        return NoDataSentinel(
+            fips=fips, year=year, reason=f"Rent extraction data unavailable for {fips}/{year}"
+        )
+
+    def compute_rent_share(self, rent: Any, total_surplus: float) -> float:
+        return 0.0
+
+
+class _StubHousingSentinelCalculator:
+    """Always returns a NoDataSentinel (housing adapter has no data)."""
+
+    def decompose_housing_value(self, fips: str, year: int) -> NoDataSentinel:
+        return NoDataSentinel(
+            fips=fips, year=year, reason=f"Housing decomposition data unavailable for {fips}/{year}"
+        )
+
+
+class _SpyDistributionCalculatorRecordsCalls:
+    """Records every call — used to prove compute_distribution is NEVER
+    invoked when the national interest rate is absent (code-review finding
+    U2.2-3: it must not be called with a fabricated 0.0)."""
+
+    def __init__(self) -> None:
+        self.calls: list[dict[str, object]] = []
+
+    def compute_distribution(
+        self,
+        fips: str,
+        year: int,
+        total_surplus: float,
+        county_profit_rate: float,
+        national_interest_rate: float,
+        county_employment: float = 0.0,
+    ) -> NoDataSentinel:
+        self.calls.append(
+            {
+                "fips": fips,
+                "year": year,
+                "national_interest_rate": national_interest_rate,
+            }
+        )
+        return NoDataSentinel(fips=fips, year=year, reason="should never be reached")
+
+
 class TestVol3FinancialLayerSentinelObservability:
     """A NoDataSentinel reaching the tick-system consumer must be counted
     and logged, not silently swallowed (code-review finding 1)."""
 
-    def test_national_interest_sentinel_records_tally_not_a_fabricated_zero(self) -> None:
+    def test_national_interest_sentinel_records_tally_never_a_fabricated_zero(self) -> None:
+        """Code-review finding U2.2-3: absent interest data must propagate as
+        None, never a fabricated 0.0 that would silently flow into
+        compute_distribution's national_interest_rate * implied_capital term."""
         system = TickDynamicsSystem()
         services = _make_services(interest_calculator=_StubInterestSentinelCalculator())
 
-        national_rate, _fictitious = system._compute_national_financial_state(services, 2041)
+        national_rate, _fictitious, reason = system._compute_national_financial_state(
+            services, 2041
+        )
 
-        # national_rate falls back to 0.0 (pre-existing degrade-gracefully
-        # contract) but the fallback is now COUNTED, unlike before this fix.
-        assert national_rate == pytest.approx(0.0)
+        assert national_rate is None
+        assert reason is not None
+        assert "outside Volume III modeled financial-data window" in reason
         assert services.economics_fallbacks.vol3_interest_sentinel == 1
 
     def test_national_fictitious_sentinel_records_tally(self) -> None:
@@ -2124,7 +2201,9 @@ class TestVol3FinancialLayerSentinelObservability:
             fictitious_capital_calculator=_StubFictitiousSentinelCalculator(),
         )
 
-        _national_rate, fictitious = system._compute_national_financial_state(services, 2041)
+        _national_rate, fictitious, _reason = system._compute_national_financial_state(
+            services, 2041
+        )
 
         assert fictitious is None
         assert services.economics_fallbacks.vol3_fictitious_sentinel == 1
@@ -2218,6 +2297,120 @@ class TestVol3FinancialLayerSentinelObservability:
         ]
         assert len(vol3_messages) == 1
         assert services.economics_fallbacks.vol3_distribution_sentinel == 2
+
+    def test_distinct_reasons_from_different_categories_both_reach_log_same_year(
+        self, caplog: pytest.LogCaptureFixture
+    ) -> None:
+        """Code-review findings U2.2-1/U2.2-4: a per-year-only throttle let
+        the FIRST sentinel category of the year claim the tick's only log
+        slot, silently swallowing every other category's distinct reason
+        for the rest of that year. The fictitious-capital sentinel's reason
+        ("outside Volume III modeled...") and the distribution sentinel's
+        reason ("Rental income data unavailable...") are textually distinct
+        and both independently actionable — both must reach caplog in the
+        same year. (The interest calculator is kept real here specifically
+        so compute_distribution is actually invoked and can independently
+        report ITS OWN distinct data gap — see U2.2-3's fix, which skips
+        compute_distribution entirely when interest itself is absent.)"""
+        system = TickDynamicsSystem()
+        registry = MockTensorRegistry(
+            {(WAYNE_FIPS, 2041): MockTensor(profit_rate=0.10, total_s=1_000_000.0)}
+        )
+        services = _make_services(
+            interest_calculator=_StubInterestCalculatorOk(),
+            fictitious_capital_calculator=_StubFictitiousSentinelCalculator(),
+            distribution_calculator=_StubRentalDataGapDistributionCalculator(),
+            tensor_registry=registry,
+        )
+        county = _make_county(year=2041)
+        national_params = _make_national_params(year=2041)
+
+        with caplog.at_level("WARNING"):
+            system._compute_financial_layer({WAYNE_FIPS: county}, national_params, services, 2041)
+
+        messages = [r.getMessage() for r in caplog.records]
+        assert any("outside Volume III modeled financial-data window" in m for m in messages), (
+            "fictitious-capital sentinel's distinct reason must reach the log"
+        )
+        assert any("Rental income data unavailable" in m for m in messages), (
+            "distribution sentinel's distinct reason must ALSO reach the log in the same year, "
+            "not be swallowed by the fictitious category claiming the year's only slot"
+        )
+
+    def test_rent_sentinel_records_tally_and_logs_reason(
+        self, caplog: pytest.LogCaptureFixture
+    ) -> None:
+        """Code-review finding U2.2-2: rent_calculator sat next to the
+        instrumented interest/fictitious/distribution consumers with no
+        tally counter and no log — the default wiring's rent adapter is a
+        stub that returns NoDataSentinel for every county/year."""
+        system = TickDynamicsSystem()
+        services = _make_services(rent_calculator=_StubRentSentinelCalculator())
+        county = _make_county(year=2020)
+
+        with caplog.at_level("WARNING"):
+            updated = system._compute_county_financial_state(
+                WAYNE_FIPS, county, services, 2020, national_rate=0.04, fictitious=None
+            )
+
+        assert updated.rent_extraction is None
+        assert services.economics_fallbacks.vol3_rent_sentinel == 1
+        messages = [r.getMessage() for r in caplog.records]
+        assert any("Rent extraction data unavailable" in m for m in messages)
+
+    def test_housing_sentinel_records_tally_and_logs_reason(
+        self, caplog: pytest.LogCaptureFixture
+    ) -> None:
+        """Code-review finding U2.2-2: housing_calculator sat next to the
+        instrumented interest/fictitious/distribution consumers with no
+        tally counter and no log — the missing observability let
+        housing_decomposition go dark for most county-years with zero
+        manifest signal (graph_bridge.py reads
+        housing_decomposition.fictitious_fraction downstream)."""
+        system = TickDynamicsSystem()
+        services = _make_services(housing_calculator=_StubHousingSentinelCalculator())
+        county = _make_county(year=2020)
+
+        with caplog.at_level("WARNING"):
+            updated = system._compute_county_financial_state(
+                WAYNE_FIPS, county, services, 2020, national_rate=0.04, fictitious=None
+            )
+
+        assert updated.housing_decomposition is None
+        assert services.economics_fallbacks.vol3_housing_sentinel == 1
+        messages = [r.getMessage() for r in caplog.records]
+        assert any("Housing decomposition data unavailable" in m for m in messages)
+
+    def test_absent_national_rate_skips_distribution_never_fabricates_zero_interest(
+        self,
+    ) -> None:
+        """Code-review finding U2.2-3: when the interest calculator has no
+        data for `year`, compute_distribution must NEVER be called with a
+        fabricated 0.0 national_interest_rate — that would silently publish
+        a genuine-looking zero-interest SurplusValueDistribution. Proven by
+        a spy calculator that records every call: it must receive zero calls."""
+        system = TickDynamicsSystem()
+        registry = MockTensorRegistry(
+            {(WAYNE_FIPS, 2041): MockTensor(profit_rate=0.10, total_s=1_000_000.0)}
+        )
+        spy = _SpyDistributionCalculatorRecordsCalls()
+        services = _make_services(
+            interest_calculator=_StubInterestSentinelCalculator(),
+            distribution_calculator=spy,
+            tensor_registry=registry,
+        )
+        county = _make_county(year=2041)
+        national_params = _make_national_params(year=2041)
+
+        result = system._compute_financial_layer(
+            {WAYNE_FIPS: county}, national_params, services, 2041
+        )
+
+        assert spy.calls == [], (
+            "compute_distribution must never be invoked when the national rate is absent"
+        )
+        assert result[WAYNE_FIPS].surplus_distribution is None
+        assert services.economics_fallbacks.vol3_distribution_sentinel == 1
 
 
 # =============================================================================

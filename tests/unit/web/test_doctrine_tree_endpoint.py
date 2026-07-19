@@ -128,7 +128,18 @@ class TestGetDoctrineTreeEngineBridge:
 
     def test_serves_live_player_faction_doctrine_state(self) -> None:
         """A player faction with acquired doctrine overlays its real acquired
-        nodes, decaying tag accumulator, and theoretical labour onto the tree."""
+        nodes, decaying tag accumulator, and theoretical labour onto the tree.
+
+        Real resolution, not a mocked ``_player_doctrine_org`` (I-7 / Track 1
+        completion gap): a decoy NON-player org that ALSO has acquired
+        doctrine (e.g. the police org after tick 1, once the free root node
+        is acquired) sits FIRST in ``state.organizations`` iteration order —
+        exactly the condition under which the retired ``is_player``
+        attribute (never set by any scenario) plus "any org with non-empty
+        acquired_doctrine_ids" fallback would silently serve the decoy's
+        tree to the player. A mocked resolver can't catch a wrong resolver;
+        this exercises the real ``WorldState.player_org_id`` lookup.
+        """
         from types import SimpleNamespace
         from unittest.mock import patch
 
@@ -136,22 +147,33 @@ class TestGetDoctrineTreeEngineBridge:
         from game.engine_bridge import EngineBridge
 
         bridge = EngineBridge(MagicMock())
-        faction = SimpleNamespace(
-            id="vanguard",
-            is_player=True,
+        player_org = SimpleNamespace(
+            id="ORG001",
             acquired_doctrine_ids=("class_consciousness", "trade_unionism"),
             theoretical_labor=42.5,
             doctrine_tags={DoctrineTag.MILITANCY: 3.0},
             study_target_id="democratic_centralism",
         )
-        with patch.object(bridge, "_player_doctrine_org", return_value=faction):
+        decoy_non_player_org = SimpleNamespace(
+            id="ORG002",
+            acquired_doctrine_ids=("class_consciousness",),
+            theoretical_labor=1.0,
+            doctrine_tags={DoctrineTag.MILITANCY: 0.0},
+            study_target_id=None,
+        )
+        state = MagicMock()
+        state.player_org_id = "ORG001"
+        # Decoy inserted FIRST so a first-match fallback would pick it.
+        state.organizations = {"ORG002": decoy_non_player_org, "ORG001": player_org}
+
+        with patch.object(bridge, "hydrate_state", return_value=(state, MagicMock())):
             result = bridge.get_doctrine_tree(uuid.uuid4())
 
         assert result["acquired_ids"] == ["class_consciousness", "trade_unionism"]
         assert result["theoretical_labor"] == 42.5
         assert result["tags"]["militancy"] == 3.0
         # Unit 7b: the canvas needs the acting faction + its standing order.
-        assert result["faction_id"] == "vanguard"
+        assert result["faction_id"] == "ORG001"
         assert result["study_target_id"] == "democratic_centralism"
 
 

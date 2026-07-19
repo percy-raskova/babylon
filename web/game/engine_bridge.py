@@ -3767,9 +3767,20 @@ class EngineBridge:
 
         Honest graceful degradation (Constitution III.11: infrastructure-layer
         try/except): any hydration failure, a non-hydratable/mock session, or a
-        session with no player faction yields ``None`` — the canvas then shows the
-        starting position rather than fabricated progress. Prefers the
-        ``is_player`` faction; falls back to any org that has begun acquiring.
+        session with no player org set yields ``None`` — the canvas then shows
+        the starting position rather than fabricated progress.
+
+        Player identity comes from :attr:`WorldState.player_org_id`, the
+        canonical source (see :func:`_resolve_player_org_id` / :func:`_is_player_org`).
+        This previously checked the retired ``is_player`` attribute (never set
+        by any scenario under ``src/babylon/engine/scenarios/`` — it exists only
+        on ``PoliticalFaction``, not the ``CivilSocietyOrg``/``StateApparatus``
+        pair scenarios actually create) with a fallback to "any org with
+        non-empty ``acquired_doctrine_ids``", which both the player org and a
+        non-player org (e.g. a police ``StateApparatus``) satisfy after tick 1
+        once the free root doctrine node is acquired — a fourth, independent
+        copy of "is this the player org" nothing enforced agreement on
+        (see :func:`_is_player_org`'s docstring for the first three).
 
         :param session_id: The game session UUID.
         :returns: An ``Organization`` (with the doctrine fields) or ``None``.
@@ -3779,12 +3790,8 @@ class EngineBridge:
             orgs = getattr(state, "organizations", None)
             if not isinstance(orgs, dict):
                 return None
-            player = next((o for o in orgs.values() if getattr(o, "is_player", False)), None)
-            if player is not None:
-                return player
-            return next(
-                (o for o in orgs.values() if getattr(o, "acquired_doctrine_ids", None)), None
-            )
+            player_org_id = getattr(state, "player_org_id", None)
+            return orgs.get(player_org_id) if player_org_id else None
         except (RuntimeError, ValueError, KeyError, AttributeError, TypeError):
             return None
 

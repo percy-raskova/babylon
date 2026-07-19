@@ -176,6 +176,42 @@ class TestOrganizingReachAgainstRealWayneCountyScenario:
         )
 
 
+class TestOrganizingReachAgainstRealUSScenario:
+    """Blocker B1 (owner-ruled, 2026-07-18): the canonical ``us_nationwide``
+    campaign (``create_us_scenario``) seeded ZERO organizations before this
+    fix -- ``player_org_id`` was ``None`` and reach was structurally empty
+    for the ONE game mode the spec's D3 declares IS the game. Same contract
+    as :class:`TestOrganizingReachAgainstRealWayneCountyScenario`, against
+    the nationwide scenario's seeded national Cadre Council org instead.
+    """
+
+    def test_reach_includes_tenancy_and_solidarity_hops(self) -> None:
+        from babylon.engine.scenarios import create_us_scenario
+        from game.fog.reach import organizing_reach
+
+        state, _config, defines = create_us_scenario()
+        graph = state.to_graph()
+        assert state.player_org_id is not None
+
+        radius = defines.epistemic_horizon.organizing_reach_radius
+        reach = organizing_reach(graph, state.player_org_id, radius=radius)
+
+        # C001 (Periphery Worker) holds TENANCY over the player org's
+        # starting territories -- the org is seeded among the mass base the
+        # imperial circuit's periphery-worker tenancy zone already covers.
+        assert "C001" in reach, (
+            f"expected the TENANCY-reached tenant class in the reach set; got {sorted(reach)}"
+        )
+        # C004 (Labor Aristocracy) is C001's SOLIDARITY partner in the
+        # shared imperial-circuit relationship set ``create_us_scenario``
+        # reuses (edge exists regardless of solidarity_strength).
+        assert "C004" in reach, (
+            "expected the SOLIDARITY-reached allied class in the reach set "
+            "-- if this fails, the organizing front is EMPTY in the shipped "
+            f"scenario and needs an owner seeding decision; got {sorted(reach)}"
+        )
+
+
 class TestSolidarityNeverTouchesAnOrganization:
     """Pins the structural fact that makes the composed-hop design
     necessary: SOLIDARITY edges in the shipped scenarios connect

@@ -66,7 +66,7 @@ Binding interface contract — the authoritative names, verbatim:
 | File | Unit | Responsibility |
 |---|---|---|
 | `tick/graph_bridge.py` | U1.5, U3.1 | Repoints `tick_ground_rent` at Path A; adds `NATIONAL_FINANCIAL_ATTR` write/read |
-| `tick/system/__init__.py` | U2.1, U2.4, U2.5, U3.2, U3.4 | Year-ceiling fix; magic numbers → defines; `credit_spread` = BAA spread; publishes + builds the national financial state |
+| `tick/system/__init__.py` | U2.1, U2.4, ~~U2.5~~, U3.2, U3.4 | Year-ceiling fix; magic numbers → defines; `credit_spread` = BAA spread (**already landed** in `aedce819` — U2.5 is complete by supersession); publishes + builds the national financial state |
 | `tick/types.py` | U2.1 | `NationalTickParameters` loses the `le=2040` ceiling (the live MELT-path crash) |
 | `tensor.py` | U2.2 | Adds `MODELED_YEAR_FLOOR`/`CEILING` + `year_within_modeled_range` |
 | `credit/interest.py`, `credit/fictitious_capital.py` | U2.2 | Year-window overruns degrade to `NoDataSentinel` instead of raising |
@@ -151,7 +151,7 @@ U1 → U2 → U3 → U4 → U5 → U6 → U7 → U8
 Hard constraints, each with the reason it cannot be relaxed:
 
 1. **U2 before every long run.** U2.1 removes `le=2040` from `NationalTickParameters`, which sits on the already-live MELT path. Year 2041 arrives at tick ≈1612 of a 5200-tick campaign. U1's only scenario run is `max_ticks=1`, so U1 → U2 is safe; nothing after U2 may run long without it.
-2. **U2 before U3.** U3.2 rewrites the same method U2.5 fixes. See correction C-1: U3 must *preserve* U2.5's 3-tuple, not revert it.
+2. **U2 before U3.** U3.2 rewrites the same method U2.5 was written to fix. **U2.5 is already complete by supersession** — commit `aedce819` (a review-fix pass carried out during U2.3) closed the same `credit_spread`/effective-rate conflation, and closed it better. See the supersession note at the head of Task U2.5; do **not** apply U2.5's original brief. The contract U3.2 must preserve is the **4-tuple** `(national_rate, national_spread, fictitious, interest_unavailable_reason)` typed `tuple[float | None, float | None, FictitiousCapitalStock | None, str | None]` — *not* the non-Optional 3-tuple this plan originally specified. The `| None` types are Constitution III.11 honest absence and are load-bearing: U3 must not revert them to fabricated `0.0`s.
 3. **U3 before U6, not before U4.** U4's anchors are pure functions of an already-resolved `FictitiousCapitalStock` object; they never read `NATIONAL_FINANCIAL_ATTR`. The real U3 consumer is U6.8's `_read_fictitious_anchor`.
 4. **U4 before U6.** U6.8 imports `fictitious_anchor`; U6.6 imports `serviceability_anchor`.
 5. **U5 before U7.** U7.7's `MEASUREMENT_DEPENDENCIES` declares oppositions U5.2 binds and reads fields U5.7 produces.
@@ -197,6 +197,17 @@ corrections applied (a real injected-defect red phase, and the commit trailer).
 
 
 **What was reconciled across auditors.** Four blockers were found independently by three or four auditors each, which is strong evidence they are real rather than artifacts of one reviewer's model: the `_compute_national_financial_state` signature clash (all four), the missing `credit_state` producer (three), the catalog-docstring double-edit (three), and the ADR082 collision (three). All four are resolved above with a named authoritative unit and exact replacements.
+
+> **Reality correction, 2026-07-18 (post-`aedce819`).** The `_compute_national_financial_state`
+> signature clash was resolved *by the code* before the plan's own resolution could be executed: a
+> review-fix pass during U2.3 landed the same `credit_spread` fix as a **4-tuple with `float | None`
+> honest-absence typing**, superseding U2.5 entirely. The plan's authoritative-unit answer above
+> (U2.5 owns the signature, U3.2 preserves it) still holds in *form* — U3.2 is still the unit that
+> extends the method — but the shape it preserves is the live 4-tuple, not the 3-tuple the audit
+> arbitrated. Task U2.5 now carries a supersession banner; U3.2's `Produces:` block, both test
+> code blocks, its red-phase expectation and its implementation block were rewritten against the
+> live source. This is the plan's one confirmed case of the "stale by construction" hazard called
+> out under **Systemic issue** below actually firing.
 
 **Where auditors disagreed, and how it was decided.** Four genuine conflicts:
 
@@ -3925,16 +3936,101 @@ Co-Authored-By: Claude Opus 4.8 (1M context) <noreply@anthropic.com>"
 
 ### Task U2.5: `credit_spread` must be the BAA spread, not the effective borrowing rate
 
-**Files:**
+> ## ✅ COMPLETE BY SUPERSESSION — DO NOT EXECUTE THE BRIEF BELOW
+>
+> **Closed by commit `aedce819`** ("fix(economics): close five U2.3 review findings — inert knobs,
+> fabricated zeros, unreachable predicate"), a review-fix pass carried out during U2.3. That commit
+> fixed the same `credit_spread`/effective-rate conflation this task describes (it is U2.3 **review
+> finding 5**), and fixed it *better* than the brief below — it also carries Constitution III.11
+> honest-absence typing that the brief does not.
+>
+> **The interface actually live at HEAD:**
+>
+> ```python
+>     def _compute_national_financial_state(
+>         self,
+>         services: ServicesProtocol,
+>         year: int,
+>     ) -> tuple[float | None, float | None, FictitiousCapitalStock | None, str | None]:
+> ```
+>
+> A **4-tuple** `(national_rate, national_spread, fictitious, interest_unavailable_reason)`:
+>
+> - `national_rate` — `InterestRateState.effective_rate` (`base_rate + baa_spread`), or `None` when
+>   the interest calculator returned a `NoDataSentinel` for `year`. **Never a fabricated `0.0`** — a
+>   fabricated zero would flow silently into `compute_distribution`'s
+>   `national_interest_rate * implied_capital` term and publish a genuine-looking zero-interest
+>   distribution (review finding U2.2-3).
+> - `national_spread` — the BAA10Y risk premium **alone**, `None` on the same absence. This is what
+>   reaches the crisis assessor's `credit_spread` parameter; that is exactly the fix U2.5 was
+>   written to deliver.
+> - `fictitious` — `FictitiousCapitalStock | None`.
+> - `interest_unavailable_reason` — the interest sentinel's own `.reason`, or `None` when the
+>   calculator succeeded, so a caller that must skip work can attribute *why*.
+>
+> The sibling helpers were threaded accordingly, with **`national_spread`** as the parameter name
+> (not `baa_spread`) and with `national_rate` **retained** on `_assess_county_financial_crisis`:
+>
+> ```python
+>     def _compute_county_financial_state(
+>         self,
+>         fips: str,
+>         county: CountyEconomicState,
+>         services: ServicesProtocol,
+>         year: int,
+>         national_rate: float | None,
+>         fictitious: FictitiousCapitalStock | None,
+>         interest_unavailable_reason: str | None = None,
+>         national_spread: float | None = None,
+>     ) -> CountyEconomicState: ...
+>
+>     def _assess_county_financial_crisis(
+>         self,
+>         fips: str,
+>         year: int,
+>         updates: dict[str, object],
+>         services: ServicesProtocol,
+>         national_rate: float,  # noqa: ARG002 - kept for call-site symmetry
+>         fictitious: FictitiousCapitalStock | None,
+>         total_surplus: float | None,
+>         national_spread: float | None = None,
+>     ) -> object | None: ...
+> ```
+>
+> **Verified at HEAD:** the signatures above are read from the live source; `mypy src` is clean
+> across 638 files; `tests/unit/economics/tick/test_financial_integration.py` passes 21/21 —
+> including `TestCrisisAssessorReceivesHonestAbsence::test_credit_spread_receives_the_spread_not_the_effective_rate`,
+> which pins exactly what Step 1 below was meant to deliver, plus
+> `test_absent_fictitious_capital_passes_none_not_zero` and `test_absent_spread_passes_none`.
+>
+> **Applying the brief below would be a regression.** It renames `national_spread` → `baa_spread`,
+> re-types the returns as non-Optional `float`, restores `else 0.0` fabricated zeros, restores
+> `fin_ratio = 0.0`, and strips `national_rate` from `_assess_county_financial_crisis` — reverting
+> honest-absence handling and breaking three passing tests. **Do not re-run this task.** It is
+> retained verbatim below only as the historical record of what was planned; nothing in it is
+> pending work.
+>
+> **Downstream:** U3.2 rewrites this same method and has been corrected to build on the live
+> 4-tuple. U3.4 inserts a helper before it and consumes only its `interest_state` local, so it is
+> unaffected by the arity.
+
+**Files:** *(historical — superseded, do not apply)*
 - Modify: `src/babylon/domain/economics/tick/system/__init__.py:1366,1375-1412,1414-1422,1480-1524`
 - Test: `tests/unit/economics/tick/test_financial_integration.py` (append)
 - Modify: `tests/unit/economics/tick/test_financial_integration.py` (U2.4's three `TestCapitalVol3DefinesWiredIntoFinancialLayer` call sites — signature change)
 
-**Interfaces:**
+**Interfaces:** *(historical — superseded, do not apply)*
 - Consumes: `InterestRateState.baa_spread` (`babylon.domain.economics.credit.types`); the `_SpyFinancialCrisisAssessor` from U2.4 (reused, already present).
-- Produces: `TickDynamicsSystem._compute_national_financial_state(...) -> tuple[float, float, FictitiousCapitalStock | None]` (national_rate, baa_spread, fictitious) — a signature later units must match if they extend this method; `_compute_county_financial_state`/`_assess_county_financial_crisis` gain a `baa_spread: float` parameter.
+- ~~Produces: `TickDynamicsSystem._compute_national_financial_state(...) -> tuple[float, float, FictitiousCapitalStock | None]` (national_rate, baa_spread, fictitious) — a signature later units must match if they extend this method; `_compute_county_financial_state`/`_assess_county_financial_crisis` gain a `baa_spread: float` parameter.~~
+  **SUPERSEDED.** The signature later units must match is the one live at HEAD:
+  `_compute_national_financial_state(services, year) -> tuple[float | None, float | None, FictitiousCapitalStock | None, str | None]`,
+  with `national_spread` (not `baa_spread`) threaded as a keyword through
+  `_compute_county_financial_state` and `_assess_county_financial_crisis`, and `national_rate`
+  retained on both. Downstream tasks read *that* contract, not the struck-through line above.
 
-- [ ] **Step 1: Write the failing test**
+> Every step below is the historical record of superseded work. **Do not execute any of them.**
+
+- [ ] ~~**Step 1: Write the failing test**~~ *(superseded — the equivalent tests already exist and pass as `TestCrisisAssessorReceivesHonestAbsence` in `tests/unit/economics/tick/test_financial_integration.py`)*
 ```python
 # --- tests/unit/economics/tick/test_financial_integration.py (append) ---
 class TestCreditSpreadUsesBaaSpreadNotEffectiveRate:
@@ -3988,10 +4084,10 @@ class TestCreditSpreadUsesBaaSpreadNotEffectiveRate:
         assert fictitious is None
 ```
 (Add the corresponding imports at the top of `test_financial_integration.py`: `from babylon.domain.economics.credit.interest import DefaultInterestCalculator` and `from tests.unit.economics.credit.conftest import MockInterestRateSource`.)
-- [ ] **Step 2: Run test to verify it fails**
+- [ ] ~~**Step 2: Run test to verify it fails**~~ *(superseded — this red is unreachable at HEAD: `_assess_county_financial_crisis` still rejects `baa_spread=`, but the method returns a 4-tuple, so `test_compute_national_financial_state_returns_baa_spread` would now fail with `ValueError: too many values to unpack (expected 3)`, not the "not enough values" below)*
 Run: `mise run test:q -- tests/unit/economics/tick/test_financial_integration.py::TestCreditSpreadUsesBaaSpreadNotEffectiveRate`
 Expected: FAIL — `test_assess_county_financial_crisis_passes_baa_spread` raises `TypeError: _assess_county_financial_crisis() got an unexpected keyword argument 'baa_spread'`; `test_compute_national_financial_state_returns_baa_spread` fails unpacking a 2-tuple into 3 names (`ValueError: not enough values to unpack`).
-- [ ] **Step 3: Write minimal implementation**
+- [ ] ~~**Step 3: Write minimal implementation**~~ *(superseded — **pasting this block reverts `aedce819`**: it re-types the returns as non-Optional `float`, restores `else 0.0`, restores `fin_ratio = 0.0`, and drops `interest_unavailable_reason` entirely)*
 ```python
 # src/babylon/domain/economics/tick/system/__init__.py:1366 — BEFORE:
 #         national_rate, fictitious = self._compute_national_financial_state(services, year)
@@ -4195,14 +4291,14 @@ Expected: FAIL — `test_assess_county_financial_crisis_passes_baa_spread` raise
         )
         return result
 ```
-- [ ] **Step 3b: Update U2.4's call sites for the new signature**
+- [ ] ~~**Step 3b: Update U2.4's call sites for the new signature**~~ *(superseded — U2.4's three call sites are already correct at HEAD against the live `national_spread` keyword; applying these replacements would break them)*
 In `tests/unit/economics/tick/test_financial_integration.py`, in `TestCapitalVol3DefinesWiredIntoFinancialLayer`:
 `test_profit_rate_fallback_reads_capital_vol3` — replace `            national_rate=0.05,\n            fictitious=None,` with `            national_rate=0.05,\n            baa_spread=0.0234,\n            fictitious=None,`.
 `test_national_county_count_reads_capital_vol3` and `test_default_rate_estimate_reads_capital_vol3` — replace `            national_rate=0.05,` with `            baa_spread=0.0234,` (`_assess_county_financial_crisis` no longer takes `national_rate` at all; `_compute_county_financial_state` takes BOTH).
-- [ ] **Step 4: Run tests to verify they pass**
+- [ ] ~~**Step 4: Run tests to verify they pass**~~ *(superseded — these two files already pass at HEAD: `test_financial_integration.py` 21/21, `mypy src` clean across 638 files)*
 Run: `mise run test:q -- tests/unit/economics/tick/test_financial_integration.py tests/unit/economics/tick/test_system.py`
 Expected: PASS
-- [ ] **Step 5: Commit**
+- [ ] ~~**Step 5: Commit**~~ *(superseded — the fix is already in history as `aedce819`; there is nothing to commit)*
 ```bash
 mise run commit -- "fix(economics): pass the BAA spread, not the effective rate, as credit_spread
 
@@ -4910,12 +5006,12 @@ Co-Authored-By: Claude Opus 4.8 (1M context) <noreply@anthropic.com>"
 **Files:**
 - Modify: `tests/unit/economics/tick/conftest.py:209-211` (insert two new mock calculator classes), `:9-25` (imports)
 - Modify: `tests/unit/economics/tick/test_system.py:11-48` (imports), append new test class at EOF (after line 2228)
-- Modify: `src/babylon/domain/economics/tick/system/__init__.py:40-74` (imports), `:202-208` (call site), `:1340-1412` (`_compute_financial_layer` + `_compute_national_financial_state`)
+- Modify: `src/babylon/domain/economics/tick/system/__init__.py` — the import block (~`:40-74`), the Step 5.5 call site (~`:216-222`), `_compute_financial_layer` (~`:1390`) and `_compute_national_financial_state` (~`:1480`). **Line numbers are hints only; anchor on the quoted `def` lines.** They shifted when commit `aedce819` grew the method.
 - Test: `tests/unit/economics/tick/test_system.py`
 
 **Interfaces:**
 - Consumes: `NATIONAL_FINANCIAL_ATTR`, `write_national_financial_state_to_graph`, `read_national_financial_state_from_graph` (Task U3.1); `NationalFinancialParameters` (`tick/types.py:454-493`)
-- Produces: `TickDynamicsSystem._compute_national_financial_state(services, year, graph) -> tuple[float, float, FictitiousCapitalStock | None]` (adds `graph`; the 3-tuple `(national_rate, baa_spread, fictitious)` contract from U2.5 is PRESERVED — U3 must NOT revert it). `credit_state` is populated by the new Task U3.4, which U5.7 depends on. — this is the exact method U4/U5/U6 will extend to also populate `credit_state`/`counter_tendencies`/`monetary_adjustment`; `MockInterestRateCalculator`, `MockFictitiousCapitalCalculator` test fixtures (reused by Task U3.3 and by U1).
+- Produces: `TickDynamicsSystem._compute_national_financial_state(services, year, graph) -> tuple[float | None, float | None, FictitiousCapitalStock | None, str | None]` — **the only change this task makes to the contract is adding the `graph` parameter.** The **4-tuple** `(national_rate, national_spread, fictitious, interest_unavailable_reason)` shipped by commit `aedce819` is PRESERVED verbatim, including its `float | None` honest-absence typing (Constitution III.11). U3 must NOT collapse it to a 3-tuple and must NOT re-introduce `else 0.0` fabricated zeros — U2.5's original 3-tuple brief is superseded; see the supersession note at Task U2.5. `credit_state` is populated by the new Task U3.4, which U5.7 depends on. — this is the exact method U4/U5/U6 will extend to also populate `credit_state`/`counter_tendencies`/`monetary_adjustment`; `MockInterestRateCalculator`, `MockFictitiousCapitalCalculator` test fixtures (reused by Task U3.3 and by U1).
 
 - [ ] **Step 1: Write the failing test**
 
@@ -5017,10 +5113,12 @@ Then append this new class at the end of the file (after the last `test_invalid_
 class TestComputeNationalFinancialState:
     """Tests for _compute_national_financial_state (vol3-money-scissors U3.2).
 
-    U3 turns the transient (national_rate, fictitious) tuple into a
-    published NationalFinancialParameters graph attribute so downstream
-    CONSEQUENCE-phase Systems can read it (see
-    graph_bridge.NATIONAL_FINANCIAL_ATTR).
+    U3 keeps the existing 4-tuple return contract (national_rate,
+    national_spread, fictitious, interest_unavailable_reason) and
+    additionally publishes a NationalFinancialParameters graph attribute
+    so downstream CONSEQUENCE-phase Systems can read it (see
+    graph_bridge.NATIONAL_FINANCIAL_ATTR) — it previously died as a
+    transient local.
     """
 
     def test_publishes_national_financial_parameters_to_graph(self) -> None:
@@ -5041,16 +5139,21 @@ class TestComputeNationalFinancialState:
         graph = build_territory_graph()
         system = TickDynamicsSystem()
 
-        national_rate, baa_spread, fictitious = system._compute_national_financial_state(
-            services, 2015, graph
-        )
+        (
+            national_rate,
+            national_spread,
+            fictitious,
+            interest_unavailable_reason,
+        ) = system._compute_national_financial_state(services, 2015, graph)
 
         # Existing tuple contract is unchanged — county-level callers still
-        # get (float, FictitiousCapitalStock | None).
+        # get the 4-tuple (float | None, float | None,
+        # FictitiousCapitalStock | None, str | None).
         assert national_rate == pytest.approx(0.25 + 2.64)
-        assert baa_spread == pytest.approx(2.64)
+        assert national_spread == pytest.approx(2.64)
         assert fictitious is not None
         assert fictitious.total_claims == pytest.approx(60e12)
+        assert interest_unavailable_reason is None
 
         published = read_national_financial_state_from_graph(graph)
         assert published is not None
@@ -5074,13 +5177,21 @@ class TestComputeNationalFinancialState:
         graph = build_territory_graph()
         system = TickDynamicsSystem()
 
-        national_rate, baa_spread, fictitious = system._compute_national_financial_state(
-            services, 2015, graph
-        )
+        (
+            national_rate,
+            national_spread,
+            fictitious,
+            interest_unavailable_reason,
+        ) = system._compute_national_financial_state(services, 2015, graph)
 
-        assert national_rate == 0.0
-        assert baa_spread == 0.0
+        # Honest absence (Constitution III.11), shipped in aedce819: an
+        # absent rate is None, NOT a fabricated 0.0, and the sentinel's own
+        # .reason travels with it so the caller can attribute the gap.
+        assert national_rate is None
+        assert national_spread is None
         assert fictitious is None
+        assert interest_unavailable_reason == "Forced sentinel for testing"
+        assert services.economics_fallbacks.vol3_interest_sentinel == 1
 
         published = read_national_financial_state_from_graph(graph)
         assert published is not None
@@ -5090,7 +5201,9 @@ class TestComputeNationalFinancialState:
 
 - [ ] **Step 2: Run test to verify it fails**
 Run: `mise run test:q -- tests/unit/economics/tick/test_system.py::TestComputeNationalFinancialState`
-Expected: FAIL with `TypeError: TickDynamicsSystem._compute_national_financial_state() takes 3 positional arguments but 4 were given` (post-U2.5 signature is `(self, services, year)` returning a 3-tuple — no `graph` param yet).
+Expected: FAIL — **both** tests error with `TypeError: TickDynamicsSystem._compute_national_financial_state() takes 3 positional arguments but 4 were given`. The parameter list at HEAD is `(self, services, year)` — no `graph` yet — so the call raises before either test reaches an assertion.
+
+Note what this red does **not** prove: the *return* arity is already correct at HEAD. Commit `aedce819` shipped the 4-tuple, so the unpacking in Step 1 would succeed on its own; only the missing `graph` parameter is red here. If you instead see `ValueError: not enough values to unpack (expected 4, got 3)`, someone has reverted the method to U2.5's superseded 3-tuple — **STOP and restore the 4-tuple**, do not adapt the test to a 3-tuple.
 
 - [ ] **Step 3: Write minimal implementation**
 
@@ -5120,7 +5233,7 @@ from babylon.domain.economics.tick.types import (
 )
 ```
 
-Update the call site (lines 202-208):
+Update the Step 5.5 call site (~lines 216-222 at HEAD — anchor on the `# Step 5.5: Compute financial layer (Feature 024)` comment):
 
 ```python
         # Step 5.5: Compute financial layer (Feature 024)
@@ -5133,7 +5246,7 @@ Update the call site (lines 202-208):
         )
 ```
 
-Replace `_compute_financial_layer`'s signature/docstring (lines 1340-1361) and its internal call (line 1366):
+Replace `_compute_financial_layer`'s signature/docstring and its internal call — anchor on the `def _compute_financial_layer(` line and replace down to and including the `self._compute_national_financial_state(services, year)` unpack. **Everything below that unpack (the county loop, the truncation guard, the preserve-remaining loop, the `return updated`) is left byte-for-byte as-is — do not retype it.**
 
 ```python
     def _compute_financial_layer(
@@ -5166,12 +5279,15 @@ Replace `_compute_financial_layer`'s signature/docstring (lines 1340-1361) and i
         if services.interest_calculator is None:
             return county_states
 
-        national_rate, baa_spread, fictitious = self._compute_national_financial_state(
-            services, year, graph
+        national_rate, national_spread, fictitious, interest_unavailable_reason = (
+            self._compute_national_financial_state(services, year, graph)
         )
 ```
 
-Replace `_compute_national_financial_state` (lines 1391-1412):
+Replace `_compute_national_financial_state` — anchor on `def _compute_national_financial_state(`
+and replace through its `return` statement. **This is the version live at HEAD (commit
+`aedce819`) with the `graph` parameter and the publish call added; the 4-tuple and every `| None`
+are preserved deliberately.**
 
 ```python
     def _compute_national_financial_state(
@@ -5179,7 +5295,7 @@ Replace `_compute_national_financial_state` (lines 1391-1412):
         services: ServicesProtocol,
         year: int,
         graph: GraphProtocol,
-    ) -> tuple[float, float, FictitiousCapitalStock | None]:
+    ) -> tuple[float | None, float | None, FictitiousCapitalStock | None, str | None]:
         """Compute national-level financial parameters once per tick.
 
         Feature: 024-capital-volume-iii / vol3-money-scissors U3
@@ -5188,21 +5304,49 @@ Replace `_compute_national_financial_state` (lines 1391-1412):
         NATIONAL_FINANCIAL_ATTR, so any System later in the same tick can
         see it — it previously died as a transient local (design doc SS1.2).
 
+        Constitution III.11 (honest absence): when the interest calculator
+        has no data for ``year``, the national rate is ``None`` — never a
+        fabricated ``0.0``. A fabricated zero rate would silently flow into
+        ``compute_distribution``'s ``national_interest_rate * implied_capital``
+        term and publish a genuine-looking zero-interest distribution
+        (code-review finding U2.2-3). Callers must treat ``None`` as "skip
+        any computation that depends on the rate," not "treat as zero."
+
         Returns:
-            Tuple of (national_interest_rate, national_baa_spread,
-            fictitious_capital_or_none) — the U2.5 3-tuple contract,
-            preserved; only the ``graph`` parameter is new.
+            Tuple of (national_interest_rate_or_none, national_spread_or_none,
+            fictitious_capital_or_none, interest_unavailable_reason).
+            ``national_spread`` is the BAA10Y risk premium ALONE, kept
+            separate from the effective rate because the crisis assessor's
+            ``credit_spread`` parameter means the spread, not base+spread
+            (U2.3 review finding 5).
+            ``interest_unavailable_reason`` is the interest sentinel's own
+            ``.reason`` (or ``None`` if the interest calculator succeeded),
+            so a caller that must skip work because the rate is absent can
+            attribute *why* instead of recording an unexplained gap.
+            This 4-tuple landed in commit ``aedce819`` and is preserved
+            here verbatim; only the ``graph`` parameter and the publish
+            call below are new in U3.2.
         """
-        interest_state = services.interest_calculator.compute_interest_rate_state(year)
-        if isinstance(interest_state, NoDataSentinel):
-            interest_state = None
-        national_rate = interest_state.effective_rate if interest_state is not None else 0.0
-        baa_spread = interest_state.baa_spread if interest_state is not None else 0.0
+        fallbacks = services.economics_fallbacks
+        interest_result = services.interest_calculator.compute_interest_rate_state(year)
+        interest_state = None
+        interest_unavailable_reason: str | None = None
+        if isinstance(interest_result, NoDataSentinel):
+            fallbacks.record_vol3_interest_sentinel()
+            interest_unavailable_reason = interest_result.reason
+            self._log_vol3_sentinel_once_per_year(year, "interest", interest_result.reason)
+        else:
+            interest_state = interest_result
+        national_rate = interest_state.effective_rate if interest_state is not None else None
+        national_spread = interest_state.baa_spread if interest_state is not None else None
 
         fictitious = None
         if services.fictitious_capital_calculator is not None:
             fict_result = services.fictitious_capital_calculator.compute_fictitious_capital(year)
-            if not isinstance(fict_result, NoDataSentinel):
+            if isinstance(fict_result, NoDataSentinel):
+                fallbacks.record_vol3_fictitious_sentinel()
+                self._log_vol3_sentinel_once_per_year(year, "fictitious", fict_result.reason)
+            else:
                 fictitious = fict_result
 
         financial_params = NationalFinancialParameters(
@@ -5211,20 +5355,43 @@ Replace `_compute_national_financial_state` (lines 1391-1412):
         )
         write_national_financial_state_to_graph(graph, financial_params)
 
-        return national_rate, baa_spread, fictitious
+        return national_rate, national_spread, fictitious, interest_unavailable_reason
 ```
+
+> **Do not "simplify" this body.** Every `| None`, every sentinel tally
+> (`record_vol3_interest_sentinel` / `record_vol3_fictitious_sentinel`) and every
+> `_log_vol3_sentinel_once_per_year` call is load-bearing and already covered by passing tests in
+> `tests/unit/economics/tick/test_system.py`. Replacing a `None` with `0.0` reverts commit
+> `aedce819` and reds `test_national_interest_sentinel_records_tally_never_a_fabricated_zero`,
+> `test_sentinel_reason_is_logged_at_warning`, and
+> `test_absent_national_rate_skips_distribution_never_fabricates_zero_interest`.
+
+- [ ] **Step 3b: Update `_compute_financial_layer`'s four existing test call sites**
+
+`_compute_financial_layer` gains a required `graph` parameter, and four tests in
+`tests/unit/economics/tick/test_system.py` call it with four positional arguments and no graph
+(`system._compute_financial_layer(<counties>, national_params, services, 2041)` — inside
+`test_full_financial_layer_at_year_2041_surfaces_all_three_sentinels`,
+`test_sentinel_logged_once_per_year_not_once_per_county`,
+`test_distinct_reasons_from_different_categories_both_reach_log_same_year`, and
+`test_absent_national_rate_skips_distribution_never_fabricates_zero_interest`). Append
+`, build_territory_graph()` to each of the four calls — that helper is already imported in this
+file. These four call sites did not exist when this plan was written; they arrived with the U2.2/U2.3
+sentinel-tally tests. Without this edit, Step 4 cannot pass.
 
 - [ ] **Step 4: Run test to verify it passes**
 Run: `mise run test:q -- tests/unit/economics/tick/test_system.py`
-Expected: PASS (the whole file — confirms threading `graph` through `_compute_financial_layer`'s call site at line 203 didn't break any of the ~2200 lines of existing pipeline tests).
+Expected: PASS (the whole file — confirms threading `graph` through `_compute_financial_layer`'s production call site and the four test call sites from Step 3b didn't break any of the ~2200 lines of existing pipeline tests). Then run `mise run test:q -- tests/unit/economics/tick/test_financial_integration.py` too: it exercises `_compute_county_financial_state`/`_assess_county_financial_crisis` directly and must still be 21/21, proving U3.2 left the honest-absence contract from `aedce819` intact.
 
 - [ ] **Step 5: Commit**
 ```bash
 mise run commit -- "feat(economics): wire _compute_national_financial_state to publish via graph_bridge
 
 U3.2: NationalFinancialParameters is now instantiated and published under
-NATIONAL_FINANCIAL_ATTR every tick the financial layer runs. Tuple return
-contract for existing county-level callers is unchanged.
+NATIONAL_FINANCIAL_ATTR every tick the financial layer runs. The 4-tuple
+return contract for existing county-level callers is unchanged, including
+its float | None honest-absence typing (aedce819); only the graph
+parameter is new.
 
 Co-Authored-By: Claude Opus 4.8 (1M context) <noreply@anthropic.com>"
 ```
@@ -5468,9 +5635,15 @@ to `None` before Step 3's implementation exists, which is what that test asserts
 part of this task's red phase.
 - [ ] **Step 3: Write minimal implementation**
 
-Add `CreditState` to the `credit.types` import block in
-`src/babylon/domain/economics/tick/system/__init__.py`, then insert this helper
-immediately before `_compute_national_financial_state`:
+Add `CreditState` **and `InterestRateState`** to the `credit.types` import block in
+`src/babylon/domain/economics/tick/system/__init__.py` — at HEAD that block imports only
+`FictitiousCapitalStock`, and the helper below annotates an `InterestRateState | None` parameter,
+so mypy reds without it. Then insert this helper immediately before
+`_compute_national_financial_state` (i.e. after `_log_vol3_sentinel_once_per_year`).
+
+This task is unaffected by the method's 4-tuple return contract: it neither calls nor unpacks
+`_compute_national_financial_state`, it only reads the `interest_state` local and extends the
+`NationalFinancialParameters(...)` construction that U3.2 adds.
 ```python
     @staticmethod
     def _build_credit_state(
@@ -10409,7 +10582,7 @@ LIVENESS_ROWS: tuple[LivenessRow, ...] = (
             "Government + corporate + household claims on future surplus. Published "
             "by U3 and read by the U6 monetary anchor; before that it died as a "
             "transient local inside _assess_county_financial_crisis after producing "
-            "one boolean."
+            "one financialization ratio (float | None since aedce819)."
         ),
     ),
     LivenessRow(

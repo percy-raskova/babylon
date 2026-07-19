@@ -56,6 +56,14 @@ class TestGetInspectorNode:
         # value_flow=0.0 (tick 0); overwrite to a deterministic positive
         # gap for this test.
         graph.add_edge("C003", "C002", edge_type="wages", value_flow=1.0, tension=0.0)
+        # G4: this test is about the wage-vs-value ARITHMETIC, not veil
+        # gating (wayne_county's player org starts at Veil Tier 0 — see
+        # web/game/veil.py's docstring — which would otherwise mask
+        # imperial_rent_gap here). Stamp the real player org unlocked.
+        graph.nodes["ORG001"]["acquired_doctrine_ids"] = (
+            "class_consciousness",
+            "trade_unionism",
+        )
 
         result = bridge.get_inspector_node(uuid.uuid4(), "C002")
 
@@ -71,6 +79,10 @@ class TestGetInspectorNode:
         wages 0.0, wealth 0.15 — the gap is negative (exploited, not
         subsidized). Signed, not clamped to zero (owner ruling)."""
         bridge, _graph = _wayne_bridge()
+        _graph.nodes["ORG001"]["acquired_doctrine_ids"] = (
+            "class_consciousness",
+            "trade_unionism",
+        )
 
         result = bridge.get_inspector_node(uuid.uuid4(), "C001")
 

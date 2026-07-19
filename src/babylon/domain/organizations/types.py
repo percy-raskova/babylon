@@ -78,8 +78,8 @@ class AggregatedEffect(BaseModel):
 class CompositionResult(BaseModel):
     """Result of a composition analysis (class, community, or lifecycle).
 
-    Produced by ``class_composition()``, ``community_composition()``,
-    or ``lifecycle_composition()`` calculators.
+    Produced by the ``class_composition()`` or ``lifecycle_composition()``
+    calculators.
 
     Attributes:
         distribution: Proportional breakdown (key depends on axis).

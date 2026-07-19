@@ -25,7 +25,7 @@ from babylon.models.entities.institution import (
     InternalBalanceOfForces,
     ReproductionMechanism,
 )
-from babylon.models.entities.organization import KeyFigure, StateApparatus
+from babylon.models.entities.organization import StateApparatus
 from babylon.models.entities.social_class import SocialClass
 from babylon.models.entities.sovereign import Sovereign
 from babylon.models.entities.territory import Territory
@@ -64,12 +64,6 @@ _FAMILIES: list[tuple[NodeType, str, str, Any]] = [
             class_character="bourgeois",
             jurisdiction="municipal",
         ),
-    ),
-    (
-        NodeType.KEY_FIGURE,
-        "key_figures",
-        "KF_CADRE",
-        KeyFigure(id="KF_CADRE", name="Cadre", organization_id="ORG1", role="chair"),
     ),
     (
         NodeType.INSTITUTION,

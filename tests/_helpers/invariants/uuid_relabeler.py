@@ -37,7 +37,6 @@ _TOP_LEVEL_KEY_FIELDS: tuple[str, ...] = (
     "state_finances",
     "contradiction_frames",
     "organizations",
-    "key_figures",
     "institutions",
     "industries",
 )

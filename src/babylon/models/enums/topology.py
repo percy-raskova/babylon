@@ -32,7 +32,6 @@ class NodeType(StrEnum):
         TERRITORY:    Spatial substrate node (immutable; claims are overlays).
         SOCIAL_CLASS: A class position — the primary economic actor.
         ORGANIZATION: A collective actor that observes and acts (OODA).
-        KEY_FIGURE:   A named individual inside an organization's hierarchy.
         INSTITUTION:  A durable apparatus housing organizations.
         INDUSTRY:     A branch of production.
         SOVEREIGN:    A political authority claiming territories (spec-070).
@@ -49,6 +48,10 @@ class NodeType(StrEnum):
         COMMUNITY: Community membership lives in the XGI *hypergraph*
                    (``engine/systems/community.py``), not the main graph.
         PERSON:    OODA fixture vocabulary for MEMBERSHIP-edge targets.
+        KEY_FIGURE: Named individual inside an org's COMMAND hierarchy. The
+                   backing ``KeyFigure`` model was retired (ADR084, III.10 —
+                   tests-only dead code); the node type remains only to type
+                   ``classify_topology``'s COMMAND-edge test fixtures.
         ENTITY:    Generic fixture node for type-agnostic graph analysis.
         EXTERNAL:  Fixture negative control — a node that is deliberately not a hex.
         COUNTY:    Fixture negative control — an aggregate that is not a hex.
@@ -58,7 +61,6 @@ class NodeType(StrEnum):
     TERRITORY = "territory"
     SOCIAL_CLASS = "social_class"
     ORGANIZATION = "organization"
-    KEY_FIGURE = "key_figure"
     INSTITUTION = "institution"
     INDUSTRY = "industry"
     SOVEREIGN = "sovereign"
@@ -67,6 +69,7 @@ class NodeType(StrEnum):
     HEX = "hex"
     COMMUNITY = "community"
     PERSON = "person"
+    KEY_FIGURE = "key_figure"  # model retired ADR084; types classify_topology test fixtures
     ENTITY = "entity"
     EXTERNAL = "external"
     COUNTY = "county"
@@ -106,7 +109,7 @@ class EdgeType(StrEnum):
     MEMBERSHIP = "membership"  # Organization → SocialClass (weighted by population)
     RECRUITMENT = "recruitment"  # Organization → SocialClass (active pipeline)
     EMPLOYMENT = "employment"  # Business → SocialClass (employer relationship)
-    COMMAND = "command"  # KeyFigure → KeyFigure (internal hierarchy)
+    COMMAND = "command"  # org member → org member (internal hierarchy)
     PRESENCE = "presence"  # Organization → Territory (operational footprint)
     # OODA Loop System (Feature 032)
     TRANSACTIONAL = "transactional"  # Organization → Community (service-for-support exchange)

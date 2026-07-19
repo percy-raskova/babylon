@@ -30,10 +30,7 @@ from babylon.models.entities.institution import (
     Institution,
     InstitutionOrgRelation,
 )
-from babylon.models.entities.organization import (
-    KeyFigure,
-    OrganizationType,
-)
+from babylon.models.entities.organization import OrganizationType
 from babylon.models.entities.relationship import Relationship
 from babylon.models.entities.social_class import SocialClass
 from babylon.models.entities.sovereign import Sovereign
@@ -568,10 +565,6 @@ class WorldState(BaseModel):
         default_factory=dict,
         description="Map of organization ID to Organization subtype (Feature 031)",
     )
-    key_figures: dict[str, KeyFigure] = Field(
-        default_factory=dict,
-        description="Map of key figure ID to KeyFigure (Feature 031)",
-    )
 
     # Institution Base Model (Feature 040)
     institutions: dict[str, Institution] = Field(
@@ -702,10 +695,6 @@ class WorldState(BaseModel):
             for tid in org.territory_ids:
                 if tid in G:
                     G.add_edge(org_id, tid, edge_type=EdgeType.PRESENCE.value)
-
-        # Add key figure nodes with _node_type marker (Feature 031)
-        for kf_id, kf in self.key_figures.items():
-            G.add_node(kf_id, _node_type=NodeType.KEY_FIGURE, **kf.model_dump())
 
         # Add institution nodes with _node_type marker (Feature 040)
         for inst_id, inst in self.institutions.items():
@@ -915,7 +904,6 @@ class WorldState(BaseModel):
         entities: dict[str, SocialClass] = {}
         territories: dict[str, Territory] = {}
         organizations: dict[str, OrganizationType] = {}
-        key_figures_dict: dict[str, KeyFigure] = {}
         institutions_dict: dict[str, Institution] = {}
         industries_dict: dict[str, IndustryHyperedge] = {}
         sovereigns_dict: dict[str, Sovereign] = {}
@@ -930,8 +918,6 @@ class WorldState(BaseModel):
                 territories[node_id] = _reconstruct_territory(node_data)
             elif node_type == "organization":
                 organizations[node_id] = _reconstruct_organization(node_data)
-            elif node_type == "key_figure":
-                key_figures_dict[node_id] = KeyFigure(**node_data)
             elif node_type == "institution":
                 institutions_dict[node_id] = _reconstruct_institution(node_data)
             elif node_type == "industry":
@@ -978,7 +964,6 @@ class WorldState(BaseModel):
             state_finances=state_finances,
             contradiction_frames=contradiction_frames,
             organizations=organizations,
-            key_figures=key_figures_dict,
             institutions=institutions_dict,
             institution_relations=institution_relations,
             industries=industries_dict,

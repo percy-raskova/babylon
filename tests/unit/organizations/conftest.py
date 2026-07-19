@@ -1,6 +1,6 @@
 """Test fixtures for organization unit tests (Feature 031, T013).
 
-Provides factory fixtures for all 4 Detroit subtypes, KeyFigure,
+Provides factory fixtures for all 4 Detroit subtypes
 and edge helpers for all 5 organization edge types.
 """
 
@@ -12,7 +12,6 @@ from babylon.models.entities.organization import (
     Business,
     CivilSocietyOrg,
     IntelMethodology,
-    KeyFigure,
     PoliticalFaction,
     StateApparatus,
 )
@@ -99,27 +98,13 @@ def first_baptist_church() -> CivilSocietyOrg:
 
 
 @pytest.fixture
-def sample_key_figure() -> KeyFigure:
-    """Sample key figure for testing."""
-    return KeyFigure(
-        id="kf-001",
-        name="Grace Lee Boggs",
-        organization_id="pf-rwp",
-        role="Chairman",
-        structural_importance=0.9,
-        is_singleton=True,
-    )
-
-
-@pytest.fixture
 def org_graph(
     detroit_pd: StateApparatus,
     ford_motor: Business,
     revolutionary_workers_party: PoliticalFaction,
     first_baptist_church: CivilSocietyOrg,
-    sample_key_figure: KeyFigure,
 ) -> BabylonGraph:
-    """Graph with all 4 Detroit org subtypes, a key figure, and edges."""
+    """Graph with all 4 Detroit org subtypes and edges."""
     G = BabylonGraph()
 
     # Add territory nodes
@@ -131,13 +116,6 @@ def org_graph(
         G.add_node(org.id, _node_type="organization", **org.model_dump())
         for tid in org.territory_ids:
             G.add_edge(org.id, tid, edge_type=EdgeType.PRESENCE)
-
-    # Add key figure node
-    G.add_node(
-        sample_key_figure.id,
-        _node_type="key_figure",
-        **sample_key_figure.model_dump(),
-    )
 
     # Add MEMBERSHIP edge
     G.add_edge(
@@ -160,13 +138,6 @@ def org_graph(
         "social-class-labor-aristocracy",
         edge_type=EdgeType.EMPLOYMENT,
         weight=5000,
-    )
-
-    # Add COMMAND edge
-    G.add_edge(
-        sample_key_figure.id,
-        "kf-002",
-        edge_type=EdgeType.COMMAND,
     )
 
     return G

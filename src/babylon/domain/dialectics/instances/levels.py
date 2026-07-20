@@ -6,6 +6,14 @@ Babylon's two real hierarchies:
 - **spatial** ``hex ≺ county ≺ state ≺ nation``
 - **social** ``individual ≺ community ≺ class ≺ bloc``
 
+Amendment U (#39 T3) adds two PARALLEL county-aggregation rungs above county
+that never nest into ``state``: the commuting zone (:func:`cz_adjunction`,
+TOTAL) and the metropolitan statistical area (:func:`msa_adjunction`,
+PARTIAL) -- both cross state lines by construction, so they sit alongside the
+``county ≺ state ≺ nation`` chain rather than inside it. See
+:func:`spatial_lattice_rungs_for_counties` for the bundle T6's SubstrateSystem
+binding consumes.
+
 The ambient object for BOTH chains is a **keyed field** ``Mapping[str, float]``
 (entity id → value, e.g. county fips → capital_labor edge tension). Each level's
 skeleton/sheaf modality is the **closure** that broadcasts a field to its
@@ -42,19 +50,30 @@ See Also:
 
 from __future__ import annotations
 
+import csv
 from collections.abc import Mapping, Sequence
+from dataclasses import dataclass
+from pathlib import Path
+from typing import TYPE_CHECKING
 
 from babylon.domain.dialectics.core.level import Level, LevelLattice, LevelOperators
 from babylon.domain.dialectics.instances.scale import ScaleAdjunction
+
+if TYPE_CHECKING:
+    from sqlalchemy.orm import Session
 
 __all__ = [
     "LEVEL_INDEX",
     "SOCIAL_LEVEL_NAMES",
     "SPATIAL_LEVEL_NAMES",
+    "SpatialLatticeRungs",
     "build_lattice_from_maps",
+    "cz_adjunction",
     "level_index_for",
+    "msa_adjunction",
     "social_lattice_from_memberships",
     "spatial_lattice_for_counties",
+    "spatial_lattice_rungs_for_counties",
 ]
 
 #: The keyed field the lattices operate over (entity id → scalar).
@@ -62,6 +81,26 @@ KeyedField = Mapping[str, float]
 
 _RESOLUTION_TOL = 1e-9
 """Elementwise tolerance for the resolution equality on keyed fields."""
+
+_BRIDGE_COUNTY_CZ_CSV = (
+    Path(__file__).resolve().parents[3] / "data" / "reference" / "bridge_county_cz.csv"
+)
+"""The committed 1990 USDA ERS commuting-zone crosswalk (Amendment U / #39 T1;
+``data-artifacts.yaml`` entry ``bridge_county_cz``; 3141 counties, 741 CZs)."""
+
+_FIPS_VINTAGE_BRIDGES: dict[str, str] = {
+    "12086": "12025",  # Miami-Dade County, FL -- renamed from Dade County, 1997.
+    "46102": "46113",  # Oglala Lakota County, SD -- renamed from Shannon County, 2015.
+    "08014": "08013",  # Broomfield County, CO -- carved from Boulder County, 2001;
+    # Broomfield inherits Boulder's CZ (no 1990 CZ exists for a county that
+    # did not exist in 1990).
+}
+"""Modern FIPS -> the 1990-vintage FIPS whose CZ it inherits (Amendment U binding
+rule). The 1990 ERS crosswalk predates these three county changes; every OTHER
+county absent from the crosswalk is a genuine gap and fails loud (see
+:func:`cz_adjunction`'s docstring for the empirically-verified extent of that
+gap -- Puerto Rico municipios and post-1990 Alaska/Connecticut reorganizations
+-- which this map deliberately does NOT paper over)."""
 
 SPATIAL_LEVEL_NAMES: tuple[str, ...] = ("hex", "county", "state", "nation")
 SOCIAL_LEVEL_NAMES: tuple[str, ...] = ("individual", "community", "class", "bloc")
@@ -263,6 +302,223 @@ def spatial_lattice_for_counties(
         populations=populations,
         tol=tol,
     )
+
+
+def _cz_mapping_from_csv(csv_path: Path) -> dict[str, str]:
+    """``county_fips -> cz_id`` from the committed crosswalk, vintage-bridged.
+
+    Reads the raw 1990 ERS rows verbatim, then adds one entry per
+    :data:`_FIPS_VINTAGE_BRIDGES` key so the three post-1990 counties resolve
+    through the county whose CZ they inherited. ``cz_id`` values are carried
+    through exactly as stored (already zero-padded 5-char strings in the
+    committed CSV) -- the Chetty mobility-atlas tables store the same codes
+    unpadded (``int``), a join-format note that lives in the CSV's provenance
+    (``data-artifacts.yaml`` / T1's provenance report), not this function.
+
+    Args:
+        csv_path: Path to ``bridge_county_cz.csv``.
+
+    Returns:
+        Sorted ``{county_fips: cz_id}`` covering the crosswalk's 3141 counties
+        plus the 3 bridged modern FIPS (3144 keys total).
+
+    Raises:
+        KeyError: If a :data:`_FIPS_VINTAGE_BRIDGES` target is itself absent
+            from the crosswalk (would indicate the CSV changed shape).
+    """
+    mapping: dict[str, str] = {}
+    with csv_path.open(encoding="utf-8", newline="") as handle:
+        for row in csv.DictReader(handle):
+            mapping[row["county_fips"]] = row["cz_id"]
+    for modern_fips, vintage_fips in _FIPS_VINTAGE_BRIDGES.items():
+        try:
+            mapping[modern_fips] = mapping[vintage_fips]
+        except KeyError as exc:
+            raise KeyError(
+                f"_FIPS_VINTAGE_BRIDGES entry {modern_fips!r} -> {vintage_fips!r} but "
+                f"{vintage_fips!r} is absent from {csv_path}"
+            ) from exc
+    return dict(sorted(mapping.items()))
+
+
+def cz_adjunction() -> ScaleAdjunction:
+    """The county -> commuting-zone rung (Amendment U): TOTAL, uniform shares.
+
+    Built from the committed 1990 USDA ERS crosswalk
+    (``src/babylon/data/reference/bridge_county_cz.csv``, #39 T1), vintage-
+    bridged per :data:`_FIPS_VINTAGE_BRIDGES`. Every commuting zone crosses
+    state lines by construction (Amendment U) -- this rung is PARALLEL to
+    ``county -> state``, never nested under it.
+
+    ``allocate()`` is even-split (:meth:`ScaleAdjunction.uniform`) until a
+    population weighting is deliberately chosen; ``aggregate()`` -- the
+    direction T6's SubstrateSystem binding uses -- is share-independent for
+    extensive quantities, so the uniform choice does not affect it.
+
+    Totality is real but SCOPED, not universal: this rung resolves every one
+    of the crosswalk's 3141 counties plus the 3 vintage-bridged modern FIPS
+    (3144 keys). It does NOT cover: Puerto Rico's 78 municipios (CZs are a
+    CONUS+AK+HI concept; the 1990 ERS delineation never covered the
+    territories), the 51 synthetic ``{state}999`` "rest-of-state" placeholder
+    rows the reference DB carries (excluded from "the county universe" the
+    same way ``engine.headless_runner.scopes._load_national_fips`` already
+    excludes them), and 19 counties created by post-1990 geography changes the
+    crosswalk necessarily predates and that have no natural 1:1 predecessor to
+    bridge to: Connecticut's 2022 county -> planning-region switch (9 regions,
+    each spanning parts of the old counties) and Alaska's repeated borough/
+    census-area reorganizations (10 areas, e.g. Kusilvak split from Wade
+    Hampton, Chugach/Copper River split from Valdez-Cordova). A caller that
+    asks this rung to resolve one of those 19 gets a loud, named
+    :class:`KeyError` (see :func:`spatial_lattice_rungs_for_counties`) --
+    never a silent skip (Constitution III.11). Closing that residual gap is a
+    follow-up data-acquisition decision (a sourced CT/AK remap or an explicit
+    scope carve-out in Amendment U), not something this function fabricates.
+
+    Returns:
+        A :class:`ScaleAdjunction` with 3144 counties as children and 741
+        commuting zones as parents.
+    """
+    mapping = _cz_mapping_from_csv(_BRIDGE_COUNTY_CZ_CSV)
+    return ScaleAdjunction.uniform(mapping)
+
+
+def _msa_mapping_from_session(session: Session) -> dict[str, str]:
+    """``county_fips -> cbsa_code`` for counties with a Metropolitan Statistical Area.
+
+    Restricted to ``dim_metro_area.area_type == 'msa'`` (excluding
+    'micropolitan' and 'csa' rows) -- ``bridge_county_metro`` is a genuine
+    many-to-many bridge (a county can sit in an MSA AND a containing CSA), so
+    without this filter a county could carry more than one parent, which
+    :class:`ScaleAdjunction` forbids (a total function child -> parent). The
+    ``msa``-only filter is empirically a clean partition: 0 of the 1252
+    MSA-covered counties have more than one ``area_type='msa'`` row.
+
+    Args:
+        session: An open reference-DB session (read-only by convention).
+
+    Returns:
+        Sorted ``{county_fips: cbsa_code}``, one entry per MSA-covered county
+        (partial -- non-metro counties are simply absent).
+    """
+    from babylon.reference.schema import BridgeCountyMetro, DimCounty, DimMetroArea
+
+    rows = (
+        session.query(DimCounty.fips, DimMetroArea.cbsa_code)
+        .join(BridgeCountyMetro, BridgeCountyMetro.county_id == DimCounty.county_id)
+        .join(DimMetroArea, DimMetroArea.metro_area_id == BridgeCountyMetro.metro_area_id)
+        .filter(DimMetroArea.area_type == "msa")
+        .order_by(DimCounty.fips)
+        .all()
+    )
+    mapping = {fips: cbsa_code for fips, cbsa_code in rows if cbsa_code is not None}
+    return dict(sorted(mapping.items()))
+
+
+def msa_adjunction() -> ScaleAdjunction:
+    """The county -> metro-area rung (Amendment U): PARTIAL, uniform shares.
+
+    Built from the reference DB's ``bridge_county_metro`` / ``dim_metro_area``
+    (OMB delineation, ``area_type='msa'``), keyed by ``cbsa_code`` (matches the
+    ``msa_code`` field the web layer already carries per territory,
+    ``web/game/models.py``/``postgres_schema.py``). Every MSA crosses state
+    lines by construction (Amendment U) -- this rung is PARALLEL to
+    ``county -> state``, never nested under it.
+
+    Non-metro counties are simply absent from the mapping -- MSA coverage is
+    PARTIAL by design (unlike :func:`cz_adjunction`'s totality), and
+    :meth:`ScaleAdjunction.aggregate` over a mixed covered/uncovered set
+    therefore sums only the covered counties. This is a documented partial
+    cover, never grossed up to look total.
+
+    ``allocate()`` is even-split (:meth:`ScaleAdjunction.uniform`) until a
+    population weighting is deliberately chosen; ``aggregate()`` -- the
+    direction T6's SubstrateSystem binding uses -- is share-independent for
+    extensive quantities.
+
+    Returns:
+        A :class:`ScaleAdjunction` with the MSA-covered counties (~1252) as
+        children and their CBSA codes (~393 distinct MSAs) as parents.
+    """
+    from babylon.reference.database import get_reference_session
+
+    with get_reference_session() as session:
+        mapping = _msa_mapping_from_session(session)
+    return ScaleAdjunction.uniform(mapping)
+
+
+@dataclass(frozen=True)
+class SpatialLatticeRungs:
+    """The three parallel Amendment U county-aggregation rungs, plus the chain.
+
+    ``chain`` is the existing ``county -> state -> nation`` nesting (identical
+    to calling :func:`spatial_lattice_for_counties` with the same arguments).
+    ``cz`` and ``msa`` sit ALONGSIDE ``chain``, not nested under it -- both
+    commuting zones and metro areas cross state lines by construction
+    (Amendment U), so only ``state -> nation`` actually nests.
+    """
+
+    chain: LevelLattice[KeyedField]
+    cz: ScaleAdjunction
+    msa: ScaleAdjunction
+
+
+def spatial_lattice_rungs_for_counties(
+    counties: Sequence[str],
+    *,
+    populations: Mapping[str, float] | None = None,
+    tol: float = _RESOLUTION_TOL,
+) -> SpatialLatticeRungs:
+    """All three parallel Amendment U rungs for a county subset, plus the chain.
+
+    ``cz`` is restricted to exactly the requested counties and stays TOTAL:
+    every requested county must resolve (directly or via
+    :data:`_FIPS_VINTAGE_BRIDGES`) or this call fails loud, naming the
+    offending county (Constitution III.11) -- see :func:`cz_adjunction`'s
+    docstring for the crosswalk's real (and non-fabricated) coverage gaps.
+    ``msa`` is restricted to the SUBSET of requested counties present in
+    ``bridge_county_metro`` -- absent counties are simply dropped (documented
+    partial-cover semantics, never grossed up).
+
+    Args:
+        counties: County FIPS codes (deduplicated + sorted internally, same
+            contract as :func:`spatial_lattice_for_counties`).
+        populations: Optional per-county population, forwarded to ``chain``
+            only. ``cz``/``msa`` always use uniform shares (Amendment U
+            binding rule) regardless of ``populations``.
+        tol: Elementwise resolution tolerance, forwarded to ``chain``.
+
+    Returns:
+        A :class:`SpatialLatticeRungs` bundling ``chain`` with the ``cz`` and
+        ``msa`` rungs, each freshly recomputed with uniform shares over
+        exactly this county subset (so every :class:`ScaleAdjunction`'s
+        per-parent shares validly sum to 1 -- a global/nationwide share would
+        NOT sum to 1 over a partial subset).
+
+    Raises:
+        ValueError: If ``counties`` is empty (from ``chain``'s construction).
+        KeyError: If a requested county has no commuting-zone mapping, even
+            after vintage-bridge reconciliation (names the offending county).
+    """
+    unique = sorted(set(counties))
+    chain = spatial_lattice_for_counties(unique, populations=populations, tol=tol)
+
+    full_cz = cz_adjunction().mapping
+    cz_mapping: dict[str, str] = {}
+    for fips in unique:
+        try:
+            cz_mapping[fips] = full_cz[fips]
+        except KeyError as exc:
+            raise KeyError(
+                f"county {fips!r} has no commuting-zone mapping (absent from the "
+                "1990 ERS crosswalk and not covered by _FIPS_VINTAGE_BRIDGES)"
+            ) from exc
+    cz_rung = ScaleAdjunction.uniform(cz_mapping)
+
+    full_msa = msa_adjunction().mapping
+    msa_mapping = {fips: full_msa[fips] for fips in unique if fips in full_msa}
+    msa_rung = ScaleAdjunction.uniform(msa_mapping)
+
+    return SpatialLatticeRungs(chain=chain, cz=cz_rung, msa=msa_rung)
 
 
 def social_lattice_from_memberships(

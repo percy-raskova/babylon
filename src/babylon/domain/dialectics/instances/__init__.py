@@ -15,17 +15,25 @@ from babylon.domain.dialectics.instances.connectivity import (
 )
 from babylon.domain.dialectics.instances.levels import (
     LEVEL_INDEX,
+    SpatialLatticeRungs,
+    cz_adjunction,
     level_index_for,
+    msa_adjunction,
     social_lattice_from_memberships,
     spatial_lattice_for_counties,
+    spatial_lattice_rungs_for_counties,
 )
 
 __all__ = [
     "LEVEL_INDEX",
+    "SpatialLatticeRungs",
     "atomization_index",
     "connectivity_cylinder",
+    "cz_adjunction",
     "level_index_for",
+    "msa_adjunction",
     "pieces",
     "social_lattice_from_memberships",
     "spatial_lattice_for_counties",
+    "spatial_lattice_rungs_for_counties",
 ]

@@ -41,7 +41,10 @@ from verify_reference_roundtrip import (  # type: ignore[import-not-found]  # no
 )
 
 from babylon.sentinels.coverage import db_probe  # noqa: E402
-from babylon.sentinels.coverage.catalog import GOVERNED_PREFIXES  # noqa: E402
+from babylon.sentinels.coverage.catalog import (  # noqa: E402
+    GOVERNED_PREFIXES,
+    load_catalog_tables,
+)
 
 
 def _estate_db(path: Path, with_utility: bool = True) -> sqlite3.Connection:
@@ -118,6 +121,45 @@ class TestRoundtripScope:
         report = compare_databases(live, rebuilt)
         assert report.ok
         assert "ingest_checkpoint" not in report.tables
+
+
+class TestCuratedSpecLiveness:
+    def test_generate_mode_specs_name_catalogued_tables(self) -> None:
+        # The demotion-handoff law (would have caught all seven 2026-07-20
+        # cutover reds at unit time): a generate-mode spec reads its
+        # source_table from the DB at export, and the catalog is DB-bijective
+        # (sentinel-enforced) — so a generate spec whose table has no catalog
+        # row names a demoted or never-existing table and MUST be register.
+        catalog = {t.name for t in load_catalog_tables()}
+        stale = [
+            spec.name
+            for spec in make_data_artifacts.ARTIFACTS
+            if spec.mode == "generate" and spec.source_table not in catalog
+        ]
+        assert stale == []
+
+    def test_register_mode_counts_parquet_rows(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        import pyarrow as pa
+        import pyarrow.parquet as pq
+
+        artifact = tmp_path / "fact_toy.parquet"
+        pq.write_table(pa.table({"id": [1, 2, 3]}), artifact)
+        spec = make_data_artifacts.ArtifactSpec(
+            name="fact_toy",
+            format="parquet",
+            source_table="fact_toy",
+            home=str(artifact),
+            material_relation="test: three toy rows.",
+            mode="register",
+        )
+        monkeypatch.setattr(make_data_artifacts, "ARTIFACTS", (spec,))
+        db = tmp_path / "empty.sqlite"
+        sqlite3.connect(db).close()
+        entries = make_data_artifacts.generate(db)
+        assert entries[0]["rows"] == 3
+        assert entries[0]["mode"] == "register"
 
 
 class TestSingleSourceOfTruth:

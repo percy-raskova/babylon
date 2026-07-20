@@ -150,15 +150,22 @@ ARTIFACTS: tuple[ArtifactSpec, ...] = (
         home="dist/data-artifacts/fact_energy_annual.parquet",
         material_relation=(
             "EIA MER annual energy series values 1949-2023 (series x year) — "
-            "national energy-metabolism history."
+            "national energy-metabolism history. R3 one-shot export then "
+            "DB-table demotion; the parquet has been canonical since."
         ),
+        mode="register",
     ),
     ArtifactSpec(
         name="dim_energy_series",
         format="parquet",
         source_table="dim_energy_series",
         home="dist/data-artifacts/dim_energy_series.parquet",
-        material_relation="EIA MER series definitions for fact_energy_annual.",
+        material_relation=(
+            "EIA MER series definitions for fact_energy_annual. R3 one-shot "
+            "export then DB-table demotion; the parquet has been canonical "
+            "since."
+        ),
+        mode="register",
     ),
     ArtifactSpec(
         name="dim_energy_table",
@@ -166,8 +173,11 @@ ARTIFACTS: tuple[ArtifactSpec, ...] = (
         source_table="dim_energy_table",
         home="dist/data-artifacts/dim_energy_table.parquet",
         material_relation=(
-            "EIA MER table taxonomy (with marxian_interpretation labels) for the energy series."
+            "EIA MER table taxonomy (with marxian_interpretation labels) for "
+            "the energy series. R3 one-shot export then DB-table demotion; "
+            "the parquet has been canonical since."
         ),
+        mode="register",
     ),
     ArtifactSpec(
         name="bridge_lodes_block",
@@ -177,8 +187,10 @@ ARTIFACTS: tuple[ArtifactSpec, ...] = (
         material_relation=(
             "census-block -> county/tract/CBSA/ZCTA crosswalk with block "
             "centroids (1,150,562 blocks) — the future hex-level commuter "
-            "disaggregation geography."
+            "disaggregation geography. R4 spike export then DB-table "
+            "demotion; the parquet has been canonical since."
         ),
+        mode="register",
     ),
     ArtifactSpec(
         name="staging_arcgis_feature",
@@ -188,8 +200,11 @@ ARTIFACTS: tuple[ArtifactSpec, ...] = (
         material_relation=(
             "facility-grain ArcGIS provenance rows (5,974 features: source, "
             "object id, county, type, capacity) behind fact_coercive_"
-            "infrastructure — kept as raw-provenance artifact."
+            "infrastructure — kept as raw-provenance artifact. R5 one-shot "
+            "export then DB-table demotion; the parquet has been canonical "
+            "since."
         ),
+        mode="register",
     ),
 )
 
@@ -709,7 +724,10 @@ def generate(db_path: Path, *, full_coverage: bool = False) -> list[dict[str, ob
                 if not out.exists():
                     msg = f"register-mode artifact missing: {out}"
                     raise ArtifactError(msg)
-                rows = _csv_data_rows(out)
+                if spec.format == "parquet":
+                    rows = pq.ParquetFile(out).metadata.num_rows
+                else:
+                    rows = _csv_data_rows(out)
             elif spec.format == "csv":
                 columns, pk, _schema = _table_layout(conn, spec.source_table)
                 data = _fetch_sorted(conn, spec.source_table, columns, pk)

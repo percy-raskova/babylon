@@ -221,10 +221,25 @@ class TestGeneratorDeterminism:
         finally:
             conn.close()
 
-    def test_generate_requires_every_spec_table(self, source_db: Path) -> None:
-        # The real ARTIFACTS specs must hard-fail against a DB lacking them —
+    def test_generate_mode_requires_its_spec_table(
+        self, source_db: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        # A generate-mode spec must hard-fail against a DB lacking its table —
         # the loud-policy discipline inherited from make_reference_subset.
-        with pytest.raises(ArtifactError):
+        # Synthetic spec: every CURATED spec is register-mode post-demotion
+        # (all nine adopt canonical artifacts), so the law is pinned here
+        # directly; full-coverage enumerated specs are the live generate path.
+        import make_data_artifacts as mda
+
+        spec = mda.ArtifactSpec(
+            name="fact_missing",
+            format="parquet",
+            source_table="fact_missing",
+            home="dist/data-artifacts/fact_missing.parquet",
+            material_relation="test: names a table the DB does not have.",
+        )
+        monkeypatch.setattr(mda, "ARTIFACTS", (spec,))
+        with pytest.raises(ArtifactError, match="fact_missing"):
             generate(source_db)
 
 

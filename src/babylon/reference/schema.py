@@ -26,6 +26,12 @@ Facts (34 tables):
 Note:
     Census fact tables include time_id and race_id FKs for multi-year and
     race-disaggregated analysis (15 years x 10 race groups).
+
+    The census above is the pre-ADR076 schema. The 2026-07-17 execution
+    slate (ADR075/076) amputated 16 tables (incl. the Energy dims/fact
+    listed here) and demoted 8 — ``data-catalog.yaml`` is the authoritative
+    per-table registry; amputated tables live on as committed CSV artifacts
+    registered in ``data-artifacts.yaml``.
 """
 
 from datetime import date, datetime

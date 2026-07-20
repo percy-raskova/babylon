@@ -1,20 +1,33 @@
-"""The aggregation sentinel — intensive quantities do not average.
+"""Aggregation sentinel: partial-coverage symmetry across fog-masked rollups.
 
-An **extensive** quantity (wealth, population, hours) sums across a region; an
-**intensive** one (a rate, ratio, share, balance, index) does not. The aggregate
-profit rate is ``Σs / Σ(c+v)``, never ``mean(rᵢ)`` — and the difference is not
-cosmetic: the unweighted form gives a four-hundred-person county the same say in
-a national threshold as Wayne County, so a national serviceability line moves for
-reasons no material relation supports.
+Instance of the Sentinel pattern guarding the "aggregation partial-coverage
+symmetry" invariant (Track 1 audit, 2026-07-18): two aggregations —
+``_aggregate_hex_features`` (``heat`` over hexes) and
+``_build_state_apparatus_dashboard`` (``heat`` over state-apparatus orgs) —
+must treat "every member fog-masked" identically: the group aggregate must
+be an honest ``None``, never a fabricated ``0.0``. Only the *declared
+contract* (the registry of which functions/fields this applies to) lives in
+this layer-0.5 package; the dynamic harness that calls the real functions
+(needs ``web.game.engine_bridge``, a Django app above the engine) lives in
+``tools/aggregation_symmetry_probe.py`` — see that module's own docstring,
+and the registry module's "why dynamic, not static" note.
 
-This sensor finds the unweighted form statically, by shape: a division whose
-numerator accumulates and whose denominator merely counts, inside a function
-whose name or accumulator names an intensive. Sites that are legitimately
-equal-weighted declare an exemption WITH A REASON in
-:mod:`babylon.sentinels.aggregation.registry`.
-
-Advisory and local/on-demand per the standing owner ruling:
-``poetry run python tools/sentinel_check.py aggregation``.
-
-Layer 0.5: imports nothing above :mod:`babylon.models`.
+Since the Vol III merge (PR #216, ADR088) this package hosts a SECOND
+sub-sensor: the static intensive-means scanner (``intensive_registry.py`` +
+``checks.py``, dispatched as ``sentinel_check.py aggregation-intensive``,
+ADVISORY/local by owner ruling) — a rate/ratio/share averaged unweighted
+across space is a variance error. The two share the package name because
+both guard aggregation honesty; they share no symbols.
 """
+
+from babylon.sentinels.aggregation.registry import (
+    AGGREGATION_EXEMPTIONS,
+    DECLARED_AGGREGATES,
+    DeclaredPartialCoverageAggregate,
+)
+
+__all__ = [
+    "AGGREGATION_EXEMPTIONS",
+    "DECLARED_AGGREGATES",
+    "DeclaredPartialCoverageAggregate",
+]

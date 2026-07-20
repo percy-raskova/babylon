@@ -25,7 +25,7 @@ from babylon.kernel.services import ServicesProtocol
 from babylon.kernel.system_base import SystemBase
 from babylon.kernel.system_protocol import ContextType
 from babylon.kernel.tick_partition import TickPartition
-from babylon.models.enums import EventType
+from babylon.models.enums import EventType, NodeType
 
 if TYPE_CHECKING:
     from babylon.kernel.graph_protocol import GraphProtocol
@@ -88,7 +88,7 @@ class MetabolismSystem(SystemBase):
             self._write_clamped(graph, territory_id, "habitability", current_hab + float(impact))
 
         # Phase 1: Update each territory's biocapacity
-        for node in graph.query_nodes(node_type="territory"):
+        for node in graph.query_nodes(node_type=NodeType.TERRITORY):
             attrs = node.attributes
 
             # Calculate biocapacity change using formula
@@ -120,14 +120,14 @@ class MetabolismSystem(SystemBase):
         # Phase 2: Calculate global aggregates (after biocapacity updates)
         total_biocapacity = sum(
             node.attributes.get("biocapacity", 0.0)
-            for node in graph.query_nodes(node_type="territory")
+            for node in graph.query_nodes(node_type=NodeType.TERRITORY)
         )
 
         # Mass Line: Scale consumption by population, skip inactive (dead) entities
         total_consumption = sum(
             (node.attributes.get("s_bio", 0.0) + node.attributes.get("s_class", 0.0))
             * node.attributes.get("population", 1)
-            for node in graph.query_nodes(node_type="social_class")
+            for node in graph.query_nodes(node_type=NodeType.SOCIAL_CLASS)
             if node.attributes.get("active", True)
         )
 

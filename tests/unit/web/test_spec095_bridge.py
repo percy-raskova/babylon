@@ -89,7 +89,7 @@ def _make_mock_persistence_with_contradictions() -> MagicMock:
     # hydrate_graph returns a graph with contradiction attributes
     mock.hydrate_graph.return_value = _mock_graph_with_contradictions()
     # _pool with a connection cursor returning contradiction_field rows
-    mock._pool = MagicMock()
+    mock.pool = MagicMock()
     cursor = MagicMock()
     cursor.fetchall.return_value = [
         {
@@ -111,7 +111,7 @@ def _make_mock_persistence_with_contradictions() -> MagicMock:
     conn.cursor.return_value = cursor
     conn.__enter__ = MagicMock(return_value=conn)
     conn.__exit__ = MagicMock(return_value=False)
-    mock._pool.connection.return_value = conn
+    mock.pool.connection.return_value = conn
     return mock
 
 
@@ -214,7 +214,7 @@ class TestGetEndgameState:
         mock_persistence = MagicMock()
         mock_persistence.get_metadata.return_value = None
         mock_persistence.hydrate_graph.return_value = _mock_graph_with_contradictions()
-        mock_persistence._pool = MagicMock()
+        mock_persistence.pool = MagicMock()
         cursor = MagicMock()
         cursor.fetchone.return_value = (
             5,
@@ -227,7 +227,7 @@ class TestGetEndgameState:
         conn.cursor.return_value = cursor
         conn.__enter__ = MagicMock(return_value=conn)
         conn.__exit__ = MagicMock(return_value=False)
-        mock_persistence._pool.connection.return_value = conn
+        mock_persistence.pool.connection.return_value = conn
         bridge = EngineBridge(mock_persistence)
 
         result = bridge.get_endgame_state(_SESSION)
@@ -265,7 +265,7 @@ def _mock_persistence_with_endgame_row(
     mock_persistence = MagicMock()
     mock_persistence.get_metadata.return_value = None
     mock_persistence.hydrate_graph.return_value = _mock_graph_with_contradictions()
-    mock_persistence._pool = MagicMock()
+    mock_persistence.pool = MagicMock()
     cursor = MagicMock()
     cursor.fetchone.return_value = (tick, detail, summary)
     cursor.__enter__ = MagicMock(return_value=cursor)
@@ -274,7 +274,7 @@ def _mock_persistence_with_endgame_row(
     conn.cursor.return_value = cursor
     conn.__enter__ = MagicMock(return_value=conn)
     conn.__exit__ = MagicMock(return_value=False)
-    mock_persistence._pool.connection.return_value = conn
+    mock_persistence.pool.connection.return_value = conn
     return mock_persistence
 
 

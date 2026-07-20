@@ -16,6 +16,7 @@ from __future__ import annotations
 import json
 import logging
 import math
+import os
 from itertools import pairwise
 from typing import TYPE_CHECKING, Any, Final
 from uuid import UUID
@@ -23,6 +24,11 @@ from uuid import UUID
 import psycopg
 
 from babylon.config.defines import GameDefines
+from babylon.domain.dialectics.instances.scale import ScaleAdjunction
+from babylon.engine.actions.investigate import (
+    _REVEAL_BY_NODE_TYPE as _INVESTIGATE_REVEAL_BY_NODE_TYPE,
+)
+from babylon.engine.actions.investigate import _REVEAL_DEFAULT as _INVESTIGATE_REVEAL_DEFAULT
 
 # Spec-113 Lane D: re-exported (not otherwise used in this module) so
 # game/provenance.py can build METRIC_PROVENANCE without its own direct
@@ -51,7 +57,11 @@ from babylon.ooda.npc_stub import select_npc_actions
 # owner instruction rather than duplicated — the math (r/l/f simplex algebra) has
 # exactly one home.
 from babylon.persistence.county_aggregation import _ideology_to_ternary
-from babylon.persistence.protocols import RuntimePersistence, TickAlreadyResolved
+from babylon.persistence.protocols import (
+    BridgePersistence,
+    RuntimePersistence,
+    TickAlreadyResolved,
+)
 from babylon.topology.graph import BabylonGraph, BabylonUGraph
 from babylon.topology.graph_algorithms import (
     betweenness_centrality,
@@ -61,8 +71,17 @@ from babylon.topology.graph_algorithms import (
 )
 
 from .epilogues import EPILOGUES
+from .fog.filter import ORG_POLITICAL_FIELDS, POLITICAL_FIELDS, apply_fog, political_field_group
+from .fog.ledger import IntelLedger, ledger_from_events, read_intel
+from .fog.reach import organizing_reach
 from .log_handler import sanitize_for_log
 from .map_contract import MAP_HISTORY_REPLAYABLE_METRICS, MAP_METRIC_PROPERTIES
+from .veil import (
+    TIER1_VALUE_RELATION_FIELDS,
+    compute_veil_status,
+    compute_veil_tier,
+    gate_value_axis_fields,
+)
 from .verb_copy import VERB_INELIGIBILITY_COPY
 
 if TYPE_CHECKING:
@@ -180,7 +199,7 @@ def _fetch_session_rng_seed_from_pool(pool: Any, session_id: UUID) -> int:
     return 0
 
 
-def _fetch_session_game_defines(persistence: Any, session_id: UUID) -> GameDefines:
+def _fetch_session_game_defines(persistence: BridgePersistence, session_id: UUID) -> GameDefines:
     """Read this session's GameDefines from its ``game_session`` row (C.13).
 
     Defines are stored per-session in ``game_session.game_defines_json``
@@ -191,11 +210,8 @@ def _fetch_session_game_defines(persistence: Any, session_id: UUID) -> GameDefin
     defaults when the persistence layer has no session store
     (StubEngineBridge / SQLite dev) or the row is missing.
     """
-    session_getter = getattr(persistence, "get_session", None)
-    if not callable(session_getter):
-        return GameDefines()
     try:
-        row = session_getter(session_id)
+        row = persistence.get_session(session_id)
     except Exception:  # noqa: BLE001 — non-fatal; defaults are safe
         logger.exception("Failed to read game_defines_json for session %s", session_id)
         return GameDefines()
@@ -625,6 +641,21 @@ def _accepted_tick_from_endgame_row(row: dict[str, Any] | None) -> int | None:
     return raw
 
 
+def _e2e_test_hooks_enabled() -> bool:
+    """G7-crisis test-only hook gate (spec-116 first-session e2e crisis leg).
+
+    ``resolve_tick``'s ``force_endgame_test_hook`` parameter only takes
+    effect when this ALSO returns True — i.e. when the server process has
+    ``BABYLON_E2E_TEST_HOOKS=1`` explicitly exported. This is never set in
+    production or development settings; a caller passing
+    ``force_endgame_test_hook=True`` against a server that never opted in
+    (the only path production/dev traffic can reach) is a complete no-op.
+    See ``resolve_tick``'s docstring and ``web/game/api.py``'s
+    ``resolve_tick`` view (which gates the per-request header this backs).
+    """
+    return os.environ.get("BABYLON_E2E_TEST_HOOKS") == "1"
+
+
 def _compute_avg_node_attr(graph: Any, attr: str, default: float = 0.0) -> float:
     """Compute the mean of a numeric node attribute across all graph nodes.
 
@@ -711,12 +742,30 @@ _CONTESTED_INFLUENCE_DELTA: float = 0.12
 _CONTESTED_DOMINANCE_FLOOR: float = 0.45
 
 
-def _nodes_in_territory(graph: BabylonGraph, territory_id: str) -> list[tuple[str, dict[str, Any]]]:
-    """Return (node_id, data) for every social_class/organization node whose
-    ``territory_ids`` includes ``territory_id``."""
+def _territory_id_bearing_nodes(
+    graph: BabylonGraph, territory_id: str
+) -> list[tuple[str, dict[str, Any]]]:
+    """Return (node_id, data) for every ``organization`` node whose own
+    ``territory_ids`` field lists ``territory_id``.
+
+    NAMING TRAP (fixed 2026-07-18, Track 1 Task 8c — this function used to
+    be called ``_nodes_in_territory``, which reads as "every node located
+    in this territory" and invited exactly the bug this rename fixes):
+    ``territory_ids`` is a real Pydantic field, but it exists ONLY on
+    ``Organization`` (``models/entities/organization.py``) and
+    ``Institution`` (``models/entities/institution.py``) — ``SocialClass``
+    NEVER carries it. A social class links to a territory via a real
+    TENANCY edge instead (``ProductionSystem``'s tenancy-assignment logic);
+    resolve that membership through :func:`_tenancy_members_by_territory`,
+    never through this helper. This helper additionally only recognizes
+    the ``organization`` node type — every real call site filters to it
+    explicitly already, and Institution's own ``territory_ids`` (real
+    though it is) has no consumer here; read ``inst.territory_ids``
+    directly if one is ever needed.
+    """
     found: list[tuple[str, dict[str, Any]]] = []
     for node_id, data in graph.nodes(data=True):
-        if data.get("_node_type") not in ("social_class", "organization"):
+        if data.get("_node_type") != "organization":
             continue
         if territory_id in data.get("territory_ids", []):
             found.append((node_id, data))
@@ -1184,12 +1233,27 @@ def _build_state_apparatus_dashboard(
 
     Returns:
         Dict with ``tick``/``organizations``/``org_count``/
-        ``total_repression_budget``/``total_heat``/``state_finances``/
-        ``recent_actions``.
+        ``total_repression_budget``/``total_heat``/``heat_orgs_visible``/
+        ``heat_orgs_masked``/``state_finances``/``recent_actions``.
+
+    Task 5b (2026-07-18): ``organizations`` may now carry fogged
+    ``_serialize_organization`` output — a masked org's ``heat`` is
+    ``None`` (key present, value ``None``), never a fabricated 0.0. ``budget``
+    is MATERIAL (never in ``ORG_POLITICAL_FIELDS``), so
+    ``total_repression_budget`` sums it unconditionally, unaffected by fog.
+    ``total_heat`` sums ONLY orgs whose ``heat`` is visible (owner ruling:
+    partial aggregate + masked count, mirroring ``_aggregate_hex_features``'s
+    ``heat_pop`` partial-coverage denominator) — when every state org's heat
+    is masked, ``total_heat`` is ``None`` (honest unknown), never ``0.0``,
+    which would misread as "the police are under no pressure" (Constitution
+    III.11).
     """
     state_orgs = [o for o in organizations if o.get("org_type") == "state_apparatus"]
     total_repression_budget = round(sum(float(o.get("budget", 0.0)) for o in state_orgs), 4)
-    total_heat = round(sum(float(o.get("heat", 0.0)) for o in state_orgs), 4)
+    visible_heats = [float(o["heat"]) for o in state_orgs if o.get("heat") is not None]
+    heat_orgs_visible = len(visible_heats)
+    heat_orgs_masked = len(state_orgs) - heat_orgs_visible
+    total_heat = round(sum(visible_heats), 4) if visible_heats else None
     state_finances = {
         state_id: finance.model_dump(mode="json")
         for state_id, finance in state.state_finances.items()
@@ -1200,6 +1264,8 @@ def _build_state_apparatus_dashboard(
         "org_count": len(state_orgs),
         "total_repression_budget": total_repression_budget,
         "total_heat": total_heat,
+        "heat_orgs_visible": heat_orgs_visible,
+        "heat_orgs_masked": heat_orgs_masked,
         "state_finances": state_finances,
         "recent_actions": recent_actions,
     }
@@ -1396,6 +1462,59 @@ def _solidarity_index_by_territory(
     return index
 
 
+def _class_node_agitation(node_data: dict[str, Any]) -> float | None:
+    """A single social_class node's ``ideology.agitation``, or ``None`` if absent.
+
+    ``SocialClass.model_dump()`` (what ``WorldState.to_graph()`` stamps onto
+    every social_class node) nests ``agitation`` under ``ideology`` -- there is
+    no flat top-level ``agitation`` key in production. Track 1 audit (task #45)
+    found two verb-target methods (``get_educate_targets``/``get_aid_targets``)
+    reading a flat ``"agitation"`` key that no production graph ever carries,
+    always silently returning 0.0; fixture stamps that mirrored the same flat
+    shape masked it. This is the one honest reader — extracted out of
+    :func:`_agitation_index_by_territory` so both call sites share it.
+
+    :param node_data: A social_class node's raw attribute dict.
+    :returns: The class's current agitation, or ``None`` when no ``ideology``
+        dict (or no ``agitation`` key within it) is present.
+    """
+    ideology = node_data.get("ideology")
+    agitation = ideology.get("agitation") if isinstance(ideology, dict) else None
+    return None if agitation is None else float(agitation)
+
+
+#: The three named ``InternalBalanceOfForces`` weight fields, in the exact
+#: order ``_serialize_institution`` (the typed-Institution serializer)
+#: reports them -- kept here as the single list both readers share.
+_FACTIONAL_WEIGHT_KEYS: Final[tuple[str, str, str]] = (
+    "liberal_technocratic",
+    "revanchist_fascist",
+    "institutionalist_bonapartist",
+)
+
+
+def _institution_factional_control(node_data: dict[str, Any]) -> dict[str, float]:
+    """An institution node's factional weights, keyed like ``_serialize_institution``.
+
+    ``Institution.model_dump()`` (what ``WorldState.to_graph()`` stamps onto
+    every institution node) nests the three ruling-class-fraction weights
+    under ``internal_balance`` -- no production graph ever carries a flat
+    ``"factional_composition"`` key (Track 1 audit, task #45: ``get_attack_targets``
+    read that non-existent key and always returned ``{}``). Only the three
+    named weights are extracted (not a raw passthrough of ``internal_balance``)
+    because its full dump also carries the computed ``hegemonic_fraction``
+    enum member, which is not JSON-safe.
+
+    :param node_data: An institution node's raw attribute dict.
+    :returns: The three faction weights, or all-zero if ``internal_balance``
+        is absent (never a fabricated non-zero default).
+    """
+    balance = node_data.get("internal_balance")
+    if not isinstance(balance, dict):
+        return dict.fromkeys(_FACTIONAL_WEIGHT_KEYS, 0.0)
+    return {key: float(balance.get(key, 0.0)) for key in _FACTIONAL_WEIGHT_KEYS}
+
+
 def _agitation_index_by_territory(
     graph: BabylonGraph, tenancy_members: dict[str, list[str]]
 ) -> dict[str, float]:
@@ -1429,12 +1548,11 @@ def _agitation_index_by_territory(
         total_population = 0.0
         for member_id in member_ids:
             node_data = graph.nodes.get(member_id, {})
-            ideology = node_data.get("ideology")
-            agitation = ideology.get("agitation") if isinstance(ideology, dict) else None
+            agitation = _class_node_agitation(node_data)
             if agitation is None:
                 continue
             population = float(node_data.get("population") or 0)
-            weighted_sum += float(agitation) * population
+            weighted_sum += agitation * population
             total_population += population
         if total_population:
             index[territory_id] = round(weighted_sum / total_population, 4)
@@ -1466,6 +1584,60 @@ def _class_to_territory(tenancy_members: dict[str, list[str]]) -> dict[str, str]
         for class_id in sorted(tenancy_members[territory_id]):
             mapping.setdefault(class_id, territory_id)
     return mapping
+
+
+def _build_solidarity_edge_lines(
+    graph: BabylonGraph, reach: frozenset[str], class_territory: dict[str, str]
+) -> list[dict[str, Any]]:
+    """Territory-anchored SOLIDARITY edges for the cockpit map layer (Track 1
+    / Task 6) — the ``get_map_snapshot`` metadata block's data source for
+    drawing solidarity as literal lines on the geographic map.
+
+    Reuses :func:`_collect_solidarity_edges` (the same edge walk
+    ``/communities/`` uses) and territory-anchors each endpoint via
+    :func:`_class_to_territory`, the identical pattern
+    :func:`_build_field_state_edges` already established for gradient
+    edges — not a new resolution mechanism.
+
+    **Fog gate: BOTH endpoints must be in ``reach``**, same rule and same
+    reasoning as :func:`_filter_edges_by_reach` (this is the map-layer
+    twin of that gate, over the graph's raw SOLIDARITY edges rather than
+    already-serialized ``WorldState.relationships`` dicts — two data
+    sources feeding the same edge family, one shared visibility rule).
+    An edge failing the check is OMITTED, never emitted with a null
+    ``source_territory``/``target_territory`` stub.
+
+    Args:
+        graph: The hydrated session graph.
+        reach: :func:`_current_organizing_reach`'s result.
+        class_territory: Output of :func:`_class_to_territory` (built from
+            :func:`_tenancy_members_by_territory`) — the caller's own, so
+            this function does not re-derive it (mirrors
+            :func:`_build_field_state_edges`'s signature).
+
+    Returns:
+        One dict per visible edge: ``source``/``target`` (social_class node
+        ids), ``source_territory``/``target_territory`` (territory node id,
+        or ``None`` when that class holds no live TENANCY edge — honest
+        absence, not a fabricated territory), ``solidarity_strength``.
+        Sorted by ``(source, target)`` for determinism, independent of
+        graph iteration order.
+    """
+    lines: list[dict[str, Any]] = []
+    for source, target, strength in _collect_solidarity_edges(graph):
+        if source not in reach or target not in reach:
+            continue
+        lines.append(
+            {
+                "source": source,
+                "target": target,
+                "source_territory": class_territory.get(source),
+                "target_territory": class_territory.get(target),
+                "solidarity_strength": round(strength, 4),
+            }
+        )
+    lines.sort(key=lambda line: (line["source"], line["target"]))
+    return lines
 
 
 def _build_field_state_nodes(graph: Any) -> list[dict[str, Any]]:
@@ -1671,6 +1843,106 @@ def _incoming_wages_flow(graph: BabylonGraph, node_id: str) -> float:
     return total
 
 
+def _imperial_rent_gap_by_region(graph: BabylonGraph) -> list[dict[str, Any]]:
+    """Per-territory Fundamental Theorem reading (T2-6b, spec-117).
+
+    ``core_wages`` (:func:`_incoming_wages_flow`) and ``wealth`` are
+    population-scaled class-level TOTALS (a ``social_class`` node IS its
+    whole demographic block — ``ProductionSystem``:
+    ``produced_value = effective_labor_power * population``), so a class's
+    raw ``core_wages - wealth`` is not comparable across classes of
+    different population, and a territory holding several TENANCY-linked
+    classes cannot honestly report a single gap by just adding those raw
+    per-class totals together and calling it "the region's gap": Φ is a
+    ratio (per-capita), not an extensive quantity, so an unweighted
+    combination silently reintroduces the intensive-aggregation bug
+    documented in ``domain/dialectics/instances/catalog.py``'s
+    ``_mean_asymmetry`` (see CLAUDE.md's "Gotchas").
+
+    The correct move: divide each class's gap by ITS OWN population to get
+    the genuine intensive (``gap_per_capita``), then use
+    :meth:`~babylon.domain.dialectics.instances.scale.ScaleAdjunction.
+    aggregate_intensive` (population-share-weighted mean) to fold a
+    territory's tenant classes into one region-level per-capita reading —
+    the same primitive already grounds the spatial/social level lattices
+    (``domain/dialectics/instances/levels.py``), applied here to the
+    Fundamental Theorem for the first time from ``web/``.
+
+    A class with zero (or negative — never expected, defensively excluded)
+    population contributes no honest per-capita reading and is dropped
+    before the adjunction is built; a territory left with no positive-
+    population tenant this way is OMITTED from the result entirely
+    (Constitution III.11 — an absent region, never a fabricated 0.0/0
+    per-capita reading). A class with no live TENANCY edge to any territory
+    (:func:`_tenancy_members_by_territory`) never enters the computation at
+    all, so it can never fabricate a phantom region.
+
+    Args:
+        graph: The hydrated session graph.
+
+    Returns:
+        One row per territory with a positive-population TENANCY-linked
+        tenant, sorted by ``territory_id`` for determinism (Constitution
+        III.7): ``territory_id``, ``population`` (the region's total
+        positive tenant population), ``wc_per_capita``, ``vc_per_capita``,
+        ``gap_per_capita`` (= ``wc_per_capita - vc_per_capita``, signed like
+        the per-class ``imperial_rent_gap`` — positive is an imperial
+        subsidy). Empty list when no territory has a positive-population
+        tenant.
+    """
+    tenancy_members = _tenancy_members_by_territory(graph)
+
+    mapping: dict[str, str] = {}
+    shares: dict[str, float] = {}
+    wc_per_capita: dict[str, float] = {}
+    vc_per_capita: dict[str, float] = {}
+    region_population: dict[str, float] = {}
+
+    for territory_id, member_ids in tenancy_members.items():
+        positive_members: list[tuple[str, dict[str, Any], float]] = []
+        total_population = 0.0
+        for member_id in member_ids:
+            data = graph.nodes.get(member_id, {})
+            population = float(data.get("population", 0) or 0)
+            if population <= 0.0:
+                continue
+            positive_members.append((member_id, data, population))
+            total_population += population
+        if total_population <= 0.0:
+            continue
+
+        region_population[territory_id] = total_population
+        for member_id, data, population in positive_members:
+            mapping[member_id] = territory_id
+            shares[member_id] = population / total_population
+            core_wages = _incoming_wages_flow(graph, member_id)
+            wealth = float(data.get("wealth", 0.0))
+            wc_per_capita[member_id] = core_wages / population
+            vc_per_capita[member_id] = wealth / population
+
+    if not mapping:
+        return []
+
+    adjunction = ScaleAdjunction(mapping=mapping, shares=shares)
+    wc_region = adjunction.aggregate_intensive(wc_per_capita)
+    vc_region = adjunction.aggregate_intensive(vc_per_capita)
+
+    rows: list[dict[str, Any]] = []
+    for territory_id in adjunction.parents():
+        wc = wc_region[territory_id]
+        vc = vc_region[territory_id]
+        rows.append(
+            {
+                "territory_id": territory_id,
+                "population": region_population[territory_id],
+                "wc_per_capita": round(wc, 4),
+                "vc_per_capita": round(vc, 4),
+                "gap_per_capita": round(wc - vc, 4),
+            }
+        )
+    return rows
+
+
 _APOLOGIST_CLAIM: Final[str] = (
     "The wage gap reflects a 'skill premium' — harder-earned pay, not a "
     "politically-arranged subsidy."
@@ -1832,8 +2104,19 @@ def _apply_class_vision_gate(payload: dict[str, Any], vision: str | None) -> Non
     payload["vision_approx"] = approx
 
 
+#: G4: the veiled placeholder narrative — same copy as CircuitPage's
+#: ``VeilLock`` component ("Your cadre cannot yet see through the
+#: money-form.") — replaces ``apologist_refutation`` below Tier 1, since
+#: that sentence embeds the wage-vs-value-produced RELATION (not just two
+#: individually tier-0 money-form numbers) in prose form.
+_VEILED_APOLOGIST_REFUTATION: Final[str] = (
+    "Your cadre cannot yet see through the money-form — study Doctrine to "
+    "reveal this class's exploitation relation."
+)
+
+
 def _social_class_inspector_fields(
-    data: dict[str, Any], core_wages: float, graph: BabylonGraph
+    data: dict[str, Any], core_wages: float, graph: BabylonGraph, veil_tier: int = 2
 ) -> dict[str, Any]:
     """Build the wage-pairing + apologist narrative block for a
     ``social_class`` inspector payload.
@@ -1843,6 +2126,18 @@ def _social_class_inspector_fields(
     ``imperial_rent_gap`` (= Φ per the Fundamental Theorem ``W_c − V_c``).
     Signed deliberately: negative for exploited/periphery classes is itself
     an honest, theoretically meaningful signal, not an error.
+
+    G4 (veil-leak closure): ``veil_tier`` defaults to ``2`` (fully unlocked)
+    so every pre-existing direct call site keeps the real, ungated payload
+    — the player-facing composer (:meth:`EngineBridge.get_inspector_node`)
+    always supplies the real tier. Below Tier 1, ``imperial_rent_gap`` masks
+    via :func:`~game.veil.gate_value_axis_fields` AND
+    ``apologist_refutation`` is replaced with
+    :data:`_VEILED_APOLOGIST_REFUTATION` — narrative prose that names real
+    numbers is just as much a leak as the numbers themselves (the sentence
+    reveals "core wages exceed value produced", the exact Tier-1 relation,
+    even though ``wealth``/``core_wages`` are individually tier-0 money-form
+    and stay visible unmasked).
 
     Program 17 Wave 1 also adds (W1.4): the per-class ternary consciousness
     (``consciousness``, honest-null per :func:`_ternary_consciousness_or_none`),
@@ -1919,8 +2214,11 @@ def _social_class_inspector_fields(
         "class_position_mock": True,
         "circuit_flows": _build_circuit_flows(graph),
         "apologist_claim": _APOLOGIST_CLAIM,
-        "apologist_refutation": apologist_refutation,
+        "apologist_refutation": (
+            apologist_refutation if veil_tier >= 1 else _VEILED_APOLOGIST_REFUTATION
+        ),
     }
+    payload = gate_value_axis_fields(payload, veil_tier)
     # EH Phase 2 reveal gate: political knowledge filtered by the player's
     # vision over this class's territories (presentation boundary only —
     # snapshots persisted upstream keep TRUE values).
@@ -1939,7 +2237,7 @@ class EngineBridge:
 
     def __init__(
         self,
-        persistence: RuntimePersistence,
+        persistence: BridgePersistence,
         narrator: NarratorProvider | None = None,
         narrative_service: NarrativeService | None = None,
     ) -> None:
@@ -2016,7 +2314,10 @@ class EngineBridge:
         # A2: org_count is real at tick 0 (scenario-seeded orgs); heat_delta
         # has no prior tick to diff against, so it stays at the column
         # default (0.0).
-        initial_orgs = [_serialize_organization(o) for o in initial_state.organizations.values()]
+        initial_orgs = [
+            _serialize_organization(o, player_org_id=initial_state.player_org_id)
+            for o in initial_state.organizations.values()
+        ]
         initial_tenancy_members = _tenancy_members_by_territory(initial_graph)
         _persist_hex_state_safe(
             session_id,
@@ -2070,9 +2371,11 @@ class EngineBridge:
         # Backward-compatible bootstrap: if a legacy/new session has no persisted
         # tick-0 graph yet, seed it from the stored scenario and retry hydrate.
         if tick is None and _is_unseeded_graph(graph):
-            session_getter = getattr(self._persistence, "get_session", None)
-            if callable(session_getter):
-                session_row = session_getter(session_id)
+            session_row = self._persistence.get_session(session_id)
+            # Backends without a session store (SQLite ``RuntimeDatabase``)
+            # return None here — no stored scenario to seed from, so skip the
+            # bootstrap (honest: never invent a scenario, Constitution III.11).
+            if session_row is not None:
                 scenario = (
                     str(session_row.get("scenario", "default"))
                     if isinstance(session_row, dict)
@@ -2090,7 +2393,8 @@ class EngineBridge:
                 # pre-fix games gain a map on first hydrate. Spec-109 A2:
                 # org_count is real; heat_delta has no prior tick.
                 seeded_orgs = [
-                    _serialize_organization(o) for o in seeded_state.organizations.values()
+                    _serialize_organization(o, player_org_id=seeded_state.player_org_id)
+                    for o in seeded_state.organizations.values()
                 ]
                 seeded_tenancy_members = _tenancy_members_by_territory(seeded_graph)
                 _persist_hex_state_safe(
@@ -2132,7 +2436,8 @@ class EngineBridge:
             organizations, institutions, economy, events.
         """
         state, graph = self.hydrate_state(session_id)
-        return _state_to_snapshot(state, session_id, graph=graph)
+        snapshot = _state_to_snapshot(state, session_id, graph=graph)
+        return _gate_snapshot_territories(snapshot, _resolve_veil_tier(state))
 
     def get_map_snapshot(
         self,
@@ -2151,6 +2456,26 @@ class EngineBridge:
 
         Returns:
             GeoJSON dict matching the HexMap frontend contract.
+
+        G4 (veil-leak closure): the SAME hydrated graph resolves the player
+        org's Veil-of-Money tier ONCE (:func:`_resolve_veil_tier_from_graph`)
+        and gates BOTH composers' value-axis map-lens fields
+        (``profit_rate``/``exploitation_rate``/``occ``/``imperial_rent``/
+        ``price_divergence`` — :func:`~game.veil.gate_value_axis_fields`),
+        the same one-fog-feeds-both pattern the spatial ``reach`` already
+        follows below — never two independently-derived gates.
+
+        Track 1 / Task 5: the graph is now hydrated ONCE, up front (it used
+        to be hydrated a second time, later, only for the balkanization
+        block) — the SAME ``reach``/``h3_to_territory`` map gates BOTH the
+        hex-zoom composer (:func:`_hex_feature_properties`) and every
+        aggregated zoom (:meth:`_aggregate_hex_features`), one fogging
+        decision feeding both, never two independently-derived ones. A
+        hydration failure defaults ``graph`` to ``None`` ->
+        ``reach=frozenset()`` (:func:`_current_organizing_reach`'s own
+        None-graph handling) — fully fogged, never a crash or a fabricated
+        full-visibility default; the balkanization block is simply omitted,
+        same as before this task.
         """
         import h3
 
@@ -2165,6 +2490,29 @@ class EngineBridge:
 
         hex_states = HexState.objects.filter(game=session, tick=target_tick)
 
+        graph = None
+        try:
+            graph = self._persistence.hydrate_graph(tick=target_tick, session_id=session_id)
+        except Exception:  # noqa: BLE001 — best-effort; map still renders, fully fogged
+            logger.exception("Failed to hydrate graph for map fog for session %s", session_id)
+
+        reach = _current_organizing_reach(graph)
+        ledger = _derive_intel_ledger(session_id)
+        staleness_ticks, unknown_ticks = _current_intel_aging_ticks()
+        # G4 (veil-leak closure): a hydration failure defaults to tier 0
+        # (fully veiled) — the same "deny on ambiguity" default ``reach``
+        # already uses above, never a fabricated full-visibility fallback.
+        veil_tier = _resolve_veil_tier_from_graph(graph) if graph is not None else 0
+        h3_to_territory: dict[str, str] = (
+            {
+                node_data["h3_index"]: node_id
+                for node_id, node_data in graph.nodes(data=True)
+                if node_data.get("_node_type") == "territory" and node_data.get("h3_index")
+            }
+            if graph is not None
+            else {}
+        )
+
         if zoom == "hex":
             # Full hex-level detail — no aggregation
             features = []
@@ -2177,12 +2525,31 @@ class EngineBridge:
                     "type": "Feature",
                     "id": state.h3_index,
                     "geometry": {"type": "Polygon", "coordinates": [coordinates]},
-                    "properties": _hex_feature_properties(state),
+                    "properties": _hex_feature_properties(
+                        state,
+                        territory_id=h3_to_territory.get(state.h3_index),
+                        reach=reach,
+                        ledger=ledger,
+                        tick=target_tick,
+                        staleness_ticks=staleness_ticks,
+                        unknown_ticks=unknown_ticks,
+                        veil_tier=veil_tier,
+                    ),
                 }
                 features.append(feature)
         else:
             # Aggregated zoom level — group by dimension column
-            features = self._aggregate_hex_features(hex_states, zoom)
+            features = self._aggregate_hex_features(
+                hex_states,
+                zoom,
+                reach=reach,
+                ledger=ledger,
+                tick=target_tick,
+                staleness_ticks=staleness_ticks,
+                unknown_ticks=unknown_ticks,
+                h3_to_territory=h3_to_territory,
+                veil_tier=veil_tier,
+            )
 
         metadata: dict[str, Any] = {
             "tick": target_tick,
@@ -2195,12 +2562,29 @@ class EngineBridge:
         # Spec 093 US3: balkanization block for the map lens set. Reads the
         # raw graph directly (see _build_balkanization_block docstring for
         # why WorldState.from_graph() must be avoided here). Best-effort —
-        # a hydration failure must not break the rest of the map snapshot.
-        try:
-            graph = self._persistence.hydrate_graph(tick=target_tick, session_id=session_id)
-            metadata["balkanization"] = _build_balkanization_block(graph)
-        except Exception:  # noqa: BLE001 — optional block, never fails the map
-            logger.exception("Failed to build balkanization block for session %s", session_id)
+        # reuses the graph already hydrated above rather than hydrating a
+        # second time.
+        if graph is not None:
+            try:
+                metadata["balkanization"] = _build_balkanization_block(graph)
+            except Exception:  # noqa: BLE001 — optional block, never fails the map
+                logger.exception("Failed to build balkanization block for session %s", session_id)
+
+            # Track 1 / Task 6: SOLIDARITY edges as literal lines — the
+            # cockpit map layer's data source. Territory-anchored via the
+            # same TENANCY resolution h3_to_territory above already needed
+            # (_tenancy_members_by_territory), fog-gated by the SAME reach
+            # this whole snapshot already computed — see
+            # _build_solidarity_edge_lines's docstring for the BOTH-endpoints
+            # rule.
+            try:
+                tenancy_members = _tenancy_members_by_territory(graph)
+                class_territory = _class_to_territory(tenancy_members)
+                metadata["solidarity_edges"] = _build_solidarity_edge_lines(
+                    graph, reach, class_territory
+                )
+            except Exception:  # noqa: BLE001 — optional block, never fails the map
+                logger.exception("Failed to build solidarity edge lines for session %s", session_id)
 
         return {
             "type": "FeatureCollection",
@@ -2212,6 +2596,14 @@ class EngineBridge:
     def _aggregate_hex_features(
         hex_states: Any,
         zoom: str,
+        *,
+        reach: frozenset[str] | None = None,
+        ledger: IntelLedger | None = None,
+        tick: int = 0,
+        staleness_ticks: int = 0,
+        unknown_ticks: int = 0,
+        h3_to_territory: dict[str, str] | None = None,
+        veil_tier: int | None = None,
     ) -> list[dict[str, Any]]:
         """Aggregate hex-level data to a higher zoom tier.
 
@@ -2278,6 +2670,31 @@ class EngineBridge:
         other numeric lens in this family it is SIGNED (roughly
         ``[-2.0, 2.0]``); the weighted-mean arithmetic below is agnostic to
         sign, so no special-casing is needed.
+
+        Track 1 / Task 5: ``reach``/``ledger``/``tick``/``staleness_ticks``/
+        ``unknown_ticks``/``h3_to_territory`` are OPTIONAL and default to
+        ``None``/``0`` — every pre-existing direct call (every test in
+        ``tests/unit/web/test_map_aggregation.py`` and
+        ``test_map_dominant_class_solidarity.py`` calls this with just
+        ``(hex_states, zoom)``) keeps getting the unfogged aggregate,
+        byte-identical. When ``reach`` is supplied,
+        ``heat``/``dominant_class``/``solidarity_index``/``agitation`` are
+        gated PER HEX, through the exact same
+        :func:`~game.fog.filter.apply_fog` call
+        :func:`_hex_feature_properties` uses on the hex zoom, BEFORE that
+        hex's value is folded into any accumulator below — this is the
+        "filtered-then-aggregated" pipeline: aggregation math never changes,
+        it just never sees an out-of-reach hex's real political value.
+        ``heat`` gets its own partial-coverage denominator (``heat_pop``,
+        alongside ``habitability_pop`` et al.) for exactly this reason — a
+        masked hex's heat must be EXCLUDED from the mean, never silently
+        read as ``0.0`` (Constitution III.11); when nothing is masked
+        (``reach=None``, or every hex in the group is in reach)
+        ``heat_pop == population_sum`` always, so the unfogged case is
+        unaffected. ``dominant_class``/``solidarity_index``/``agitation``
+        already had partial-coverage handling (a hex simply not reporting
+        the field) — a masked hex now takes that SAME "didn't report it"
+        path, no new accumulator needed for those three.
         """
         from collections import defaultdict
 
@@ -2314,7 +2731,14 @@ class EngineBridge:
                 "exploitation_rate_sum": 0.0,
                 "occ_sum": 0.0,
                 "imperial_rent_sum": 0.0,
+                # Track 1 / Task 5: heat gets its OWN partial-coverage
+                # denominator (like habitability_pop below), not
+                # population_sum — a fogged hex's heat must be EXCLUDED from
+                # the mean, never silently read as 0.0. When nothing is
+                # masked, heat_pop == population_sum always (no behavior
+                # change for the unfogged case).
                 "heat_sum": 0.0,
+                "heat_pop": 0,
                 "org_presence_sum": 0,
                 "population_sum": 0,
                 # Spec-109 A2: habitability isn't emitted by every hex (only
@@ -2381,6 +2805,54 @@ class EngineBridge:
                 key = "unknown"
             acc = groups[key]
             pop = state.pop_total or 0
+            attributes = getattr(state, "attributes", None) or {}
+
+            # Track 1 / Task 5: gate this hex's political fields ONCE, before
+            # any accumulator below sees them — the "filtered-then-aggregated"
+            # pipeline. ``reach is None`` (every pre-existing direct call)
+            # skips the gate entirely and reads the raw values, byte-identical
+            # to before this task. The SAME apply_fog gate
+            # ``_hex_feature_properties`` calls for the hex zoom; a
+            # territory_id this map can't resolve (``h3_to_territory`` empty
+            # or missing this h3_index) deny-by-defaults to "" (never in
+            # reach, never a ledger hit) rather than crashing or leaking.
+            heat_value = state.heat
+            dominant_class_value = getattr(state, "dominant_class", None)
+            solidarity_index_value = attributes.get("solidarity_index")
+            agitation_value = attributes.get("agitation")
+            if reach is not None:
+                territory_id = (h3_to_territory or {}).get(state.h3_index, "")
+                gated_political = apply_fog(
+                    {
+                        "heat": heat_value,
+                        "dominant_class": dominant_class_value,
+                        "solidarity_index": solidarity_index_value,
+                        "agitation": agitation_value,
+                    },
+                    "territory",
+                    territory_id,
+                    reach,
+                    ledger if ledger is not None else _EMPTY_INTEL_LEDGER,
+                    tick,
+                    staleness_ticks=staleness_ticks,
+                    unknown_ticks=unknown_ticks,
+                )
+                heat_value = gated_political["heat"]
+                dominant_class_value = gated_political["dominant_class"]
+                solidarity_index_value = gated_political["solidarity_index"]
+                agitation_value = gated_political["agitation"]
+                # Fold the (possibly masked) values back into a shadow copy of
+                # ``attributes`` so the generic weighted_mean_metrics loop
+                # below (which reads solidarity_index/agitation off
+                # ``attributes``) sees the gated values without any special
+                # casing — the same partial-coverage bookkeeping it already
+                # does for a hex that simply never reported the field.
+                attributes = {
+                    **attributes,
+                    "solidarity_index": solidarity_index_value,
+                    "agitation": agitation_value,
+                }
+
             # These five are Postgres NUMERIC columns (psycopg → Decimal) once
             # populated; the accumulators are float-seeded (line 1691+), and
             # ``float += Decimal`` raises TypeError. Cast at the read boundary —
@@ -2392,13 +2864,14 @@ class EngineBridge:
             acc["exploitation_rate_sum"] += float(state.exploitation_rate or 0) * pop
             acc["occ_sum"] += float(state.occ or 0) * pop
             acc["imperial_rent_sum"] += float(state.imperial_rent or 0)
-            acc["heat_sum"] += float(state.heat or 0) * pop
+            if heat_value is not None:
+                acc["heat_sum"] += float(heat_value) * pop
+                acc["heat_pop"] += pop
             acc["org_presence_sum"] += state.org_count or 0
             acc["population_sum"] += pop
             acc["count"] += 1
             member_h3[key].append(state.h3_index)
 
-            attributes = getattr(state, "attributes", None) or {}
             # Numeric partial-coverage lenses (population-weighted mean, each
             # with its own coverage denominator). One loop over
             # ``weighted_mean_metrics`` instead of a branch per lens — identical
@@ -2420,7 +2893,7 @@ class EngineBridge:
             if vision_state is not None:
                 vision_state_pop[key][vision_state] += pop
 
-            dominant_class = getattr(state, "dominant_class", None)
+            dominant_class = dominant_class_value
             if dominant_class is not None:
                 dominant_class_pop[key][dominant_class] += pop
 
@@ -2431,6 +2904,7 @@ class EngineBridge:
         features: list[dict[str, Any]] = []
         for key, acc in groups.items():
             total_pop = acc["population_sum"] or 1  # avoid div-by-zero
+            heat_pop = acc["heat_pop"]
             habitability_pop = acc["habitability_pop"]
             solidarity_index_pop = acc["solidarity_index_pop"]
             throughput_position_pop = acc["throughput_position_pop"]
@@ -2443,6 +2917,16 @@ class EngineBridge:
             role_votes = dominant_class_pop.get(key) or {}
             type_votes = territory_type_pop.get(key) or {}
             vision_votes = vision_state_pop.get(key) or {}
+            # G4 (veil-leak closure): gated INLINE, per field, rather than a
+            # post-hoc gate_value_axis_fields() pass over the whole dict —
+            # Sensor 3 (seam/provenance.py's check_admin_feature_emission)
+            # statically requires a LITERAL "properties": {...} dict here to
+            # verify emission honesty; a local variable holding the dict
+            # (however it was built) is invisible to that AST check. Same
+            # "veil_tier is None means unfogged" opt-in convention every
+            # other veil_tier-accepting composer in this file uses.
+            tier1_ok = veil_tier is None or veil_tier >= 1
+            tier2_ok = veil_tier is None or veil_tier >= 2
             features.append(
                 {
                     "type": "Feature",
@@ -2454,16 +2938,25 @@ class EngineBridge:
                         "zoom": zoom,
                         "hex_count": acc["count"],
                         "member_h3": sorted(member_h3[key]),
-                        "profit_rate": round(acc["profit_rate_sum"] / total_pop, 6),
-                        "exploitation_rate": round(acc["exploitation_rate_sum"] / total_pop, 4),
-                        "occ": round(acc["occ_sum"] / total_pop, 4),
+                        "profit_rate": (
+                            round(acc["profit_rate_sum"] / total_pop, 6) if tier1_ok else None
+                        ),
+                        "exploitation_rate": (
+                            round(acc["exploitation_rate_sum"] / total_pop, 4) if tier1_ok else None
+                        ),
+                        "occ": (round(acc["occ_sum"] / total_pop, 4) if tier1_ok else None),
                         # 6dp, not 2dp: per-hex Φ is ~1e-5 (Leontief structural
                         # rent), so round(…, 2) collapsed the whole lens to 0.00
                         # once Program 17 lit real Φ — the default lens read as
                         # blank even though the value is non-zero. Match the
                         # profit_rate precision above.
-                        "imperial_rent": round(acc["imperial_rent_sum"], 6),
-                        "heat": round(acc["heat_sum"] / total_pop, 4),
+                        "imperial_rent": (round(acc["imperial_rent_sum"], 6) if tier1_ok else None),
+                        # Track 1 / Task 5: heat_pop (not total_pop) — a
+                        # partial-coverage denominator like habitability
+                        # below, so a masked hex's heat is excluded from the
+                        # mean rather than silently read as 0.0. Unfogged,
+                        # heat_pop == total_pop always (no behavior change).
+                        "heat": (round(acc["heat_sum"] / heat_pop, 4) if heat_pop else None),
                         "org_presence": acc["org_presence_sum"],
                         "population": acc["population_sum"],
                         "habitability": (
@@ -2525,7 +3018,7 @@ class EngineBridge:
                         ),
                         "price_divergence": (
                             round(acc["price_divergence_sum"] / price_divergence_pop, 4)
-                            if price_divergence_pop
+                            if price_divergence_pop and tier2_ok
                             else None
                         ),
                     },
@@ -2553,6 +3046,13 @@ class EngineBridge:
         ``None`` until the first year boundary this session stamps county
         state, never a fabricated 0.0 (Constitution III.11).
 
+        G4 (veil-leak closure): ``imperial_rent``/``exploitation_rate``/
+        ``profit_rate`` are gated by the player org's Veil-of-Money tier
+        (:func:`~game.veil.gate_value_axis_fields`) — this payload backs the
+        always-mounted TopBar, so an ungated value axis here was the
+        widest-reach leak the sweep found (every screen, not just the
+        economy panel).
+
         Args:
             session_id: The game session UUID.
 
@@ -2578,20 +3078,18 @@ class EngineBridge:
         econ = _aggregate_graph_economy(graph)
 
         event_rows: list[dict[str, Any]] = []
-        query = getattr(self._persistence, "query_tick_events", None)
-        if callable(query):
-            try:
-                event_rows = query(session_id, state.tick)
-            except Exception:  # noqa: BLE001 — diagnostic; never blocks the request
-                logger.exception("get_game_summary: query_tick_events failed")
-                event_rows = []
+        try:
+            event_rows = self._persistence.query_tick_events(session_id, state.tick)
+        except Exception:  # noqa: BLE001 — diagnostic; never blocks the request
+            logger.exception("get_game_summary: query_tick_events failed")
+            event_rows = []
         event_counts: dict[str, int] = {"critical": 0, "warning": 0, "informational": 0}
         for row in event_rows:
             severity = row.get("severity") or _classify_event(str(row.get("event_type", "")))
             if severity in event_counts:
                 event_counts[severity] += 1
 
-        return {
+        payload = {
             "tick": state.tick,
             "imperial_rent": imperial_rent,
             "avg_consciousness": avg_consciousness,
@@ -2602,6 +3100,16 @@ class EngineBridge:
             "class_count": len(state.entities),
             "event_counts": event_counts,
         }
+        # G4: this is the TopBar summary — always mounted, so an ungated
+        # ``imperial_rent``/``exploitation_rate``/``profit_rate`` here was
+        # the widest-reach leak in the sweep (visible on every screen,
+        # regardless of which panel a tier-0 player has open). Assigned back
+        # to ``payload`` (not ``return gate_value_axis_fields(...)`` bare)
+        # so the seam bridge-serialization sweep's AST harvester can still
+        # resolve this serializer's real emitted keys via the local-
+        # dict-variable pattern (bridge.py::_local_dict_var_keys).
+        payload = gate_value_axis_fields(payload, _resolve_veil_tier(state))
+        return payload
 
     def get_game_timeseries(self, session_id: UUID) -> dict[str, Any]:
         """Return historical timeseries data for charting (spec 061 US3, FR-026).
@@ -2621,15 +3129,37 @@ class EngineBridge:
         :meth:`PostgresRuntime.query_tick_summary_series`. SQLite-backed
         ``RuntimeDatabase`` returns an empty list (the v2 pages are only
         ever consumed against a live Postgres deployment).
+
+        G4 (veil-leak closure): ``imperial_rent``/``value_produced``/
+        ``surplus``/``profit_rate`` (Tier >= 1) and ``price_index``/
+        ``fictitious_ratio``/``market_corrections`` (Tier >= 2) are gated by
+        the player org's Veil-of-Money tier
+        (:func:`~game.veil.gate_value_axis_fields`) — a best-effort SECOND
+        graph hydration resolves the tier (this endpoint's own data source,
+        ``query_tick_summary_series``, needs no graph at all); any failure
+        to resolve it fails CLOSED (tier 0), never open.
         """
         rows: list[dict[str, Any]] = []
-        query = getattr(self._persistence, "query_tick_summary_series", None)
-        if callable(query):
-            try:
-                rows = query(session_id)
-            except Exception:  # noqa: BLE001 — diagnostic; never blocks request
-                logger.exception("get_game_timeseries: query_tick_summary_series failed")
-                rows = []
+        try:
+            rows = self._persistence.query_tick_summary_series(session_id)
+        except Exception:  # noqa: BLE001 — diagnostic; never blocks request
+            logger.exception("get_game_timeseries: query_tick_summary_series failed")
+            rows = []
+
+        # G4 (veil-leak closure): this endpoint's persistence contract is
+        # deliberately minimal (a bare ``query_tick_summary_series``, no
+        # graph hydration otherwise — see ``test_persistence_without_
+        # query_method_returns_empty``), so tier resolution is best-effort
+        # and fails CLOSED (tier 0 == fully veiled) on any error — the same
+        # "deny on ambiguity" default the spatial fog uses
+        # (:func:`_current_organizing_reach` on a ``None`` graph), never a
+        # fabricated full-visibility fallback.
+        try:
+            graph = self._persistence.hydrate_graph(tick=None, session_id=session_id)
+            veil_tier = _resolve_veil_tier_from_graph(graph)
+        except Exception:  # noqa: BLE001 — diagnostic; never blocks request
+            logger.exception("get_game_timeseries: veil tier resolution failed")
+            veil_tier = 0
 
         ticks: list[int] = []
         imperial_rent: list[float | None] = []
@@ -2684,7 +3214,7 @@ class EngineBridge:
             wage_compression_mean.append(_optional_float(row.get("wage_compression_mean")))
             capital_stock_total.append(_optional_float(row.get("capital_stock_total")))
             unemployment_rate_mean.append(_optional_float(row.get("unemployment_rate_mean")))
-        return {
+        payload = {
             "ticks": ticks,
             "imperial_rent": imperial_rent,
             "consciousness": consciousness,
@@ -2704,6 +3234,18 @@ class EngineBridge:
             "capital_stock_total": capital_stock_total,
             "unemployment_rate_mean": unemployment_rate_mean,
         }
+        # This is the shared data source behind MeltGauge (always-mounted
+        # Circuit left rail) and MarketTicker (nested inside ScissorsChart,
+        # itself client-gated) alike — gating ``price_index``/
+        # ``fictitious_ratio`` here closes BOTH leaks server-side without
+        # touching either component: MeltGauge's ``latestMeltDrift`` returns
+        # ``null`` on an all-``None`` array and renders nothing, the same
+        # "dark instrument" honest-absence path it already takes pre-tick-1.
+        # Assigned back to ``payload`` (see get_game_summary's identical note
+        # above) so the seam sweep's AST harvester can still resolve this
+        # serializer's real keys.
+        payload = gate_value_axis_fields(payload, veil_tier)
+        return payload
 
     def get_economy_dashboard(self, session_id: UUID) -> dict[str, Any]:
         """Return the economy left-panel dashboard: real aggregate wealth,
@@ -2727,6 +3269,38 @@ class EngineBridge:
         see :func:`_has_county_resolution_territory`) — ``None`` fields
         when no territory has ever carried boundary state this session.
 
+        ``imperial_rent_gap`` (T2-6a, spec-117) promotes the Fundamental
+        Theorem reading already computed per-class for the inspector popup
+        (:func:`_social_class_inspector_fields`'s ``core_wages - wealth``,
+        Φ = W_c − V_c) to a graph-wide total: ``wage_flow_total`` (Σ core
+        wages paid, W_c) minus ``value_produced`` (Σ value produced, V_c).
+        Both addends are EXTENSIVE totals, so summing them graph-wide (unlike
+        averaging a RATIO across classes) carries no intensive-aggregation
+        risk — positive means core wages exceed value produced in aggregate
+        (an imperial subsidy), same sign convention as the per-class field.
+        ``imperial_rent_gap_by_region`` (T2-6b) is the net-new per-territory
+        population-share-weighted per-capita breakdown — see
+        :func:`_imperial_rent_gap_by_region`.
+
+        ``veil`` (Track 2 T2-8/T2-9, spec-117 §5d, D7) is the Veil of
+        Money's serialized status for the player org: ``tier``
+        (0/1/2, :func:`~game.veil.compute_veil_tier`), the next-unlock
+        doctrine node id/label, and a Tier-1-gated COPY of
+        ``value_produced``/``exploitation_rate`` — ``None`` below Tier 1,
+        enforced here at serialization (never a client-side-only hide) so
+        no inspection of the wire response can pierce it.
+
+        G4 (veil-leak closure): the legacy top-level ``value_produced``/
+        ``exploitation_rate``/``rent_extracted``/``profit_rate``/``occ``/
+        ``imperial_rent_pool``/``imperial_rent_gap``/
+        ``imperial_rent_gap_by_region`` fields are now gated by the exact
+        same tier via :func:`~game.veil.gate_value_axis_fields` — a prior
+        version of this method left them ungated ("scoped to the new
+        veil.* sub-object only"), a documented leak the audit found and
+        this closes. ``veil.*`` and the top-level fields are therefore
+        always in lock-step: both real above the required tier, both
+        ``None`` below it.
+
         Args:
             session_id: The game session UUID.
 
@@ -2735,17 +3309,35 @@ class EngineBridge:
             ``rent_extracted``/``exploitation_rate``/``profit_rate``/
             ``occ``/``imperial_rent_pool``/``current_super_wage_rate``/
             ``wage_flow_total``/``tribute_flow_total``/
-            ``wealth_by_class_role``/``county_flow``.
+            ``wealth_by_class_role``/``county_flow``/``imperial_rent_gap``/
+            ``imperial_rent_gap_by_region``/``veil``.
         """
         state, graph = self.hydrate_state(session_id)
         econ = _aggregate_graph_economy(graph)
+        wage_flow_total = _sum_edge_value_flow_by_mode(graph, frozenset({"wages"}))
+        value_produced = econ["value_produced"]
+        exploitation_rate = econ["exploitation_rate"]
 
-        return {
+        from babylon.domain.doctrine import load_doctrine_tree
+
+        player_org = _player_org_from_state(state)
+        acquired_doctrine_ids = getattr(player_org, "acquired_doctrine_ids", ())
+        veil_defines = GameDefines().veil
+        node_labels = {node_id: node.name for node_id, node in load_doctrine_tree().nodes.items()}
+        veil_status = compute_veil_status(
+            acquired_doctrine_ids,
+            veil_defines.tier1_doctrine_node_id,
+            veil_defines.tier2_doctrine_node_id,
+            node_labels,
+        )
+        veil_unlocked = veil_status.tier >= 1
+
+        payload = {
             "tick": state.tick,
             "has_data": econ["has_data"],
-            "value_produced": econ["value_produced"],
+            "value_produced": value_produced,
             "rent_extracted": econ["rent_extracted"],
-            "exploitation_rate": econ["exploitation_rate"],
+            "exploitation_rate": exploitation_rate,
             "profit_rate": _mean_territory_attr(graph, "tick_profit_rate"),
             "occ": _mean_territory_attr(graph, "tick_occ"),
             "imperial_rent_pool": (
@@ -2754,11 +3346,28 @@ class EngineBridge:
             "current_super_wage_rate": (
                 float(state.economy.current_super_wage_rate) if state.economy else None
             ),
-            "wage_flow_total": _sum_edge_value_flow_by_mode(graph, frozenset({"wages"})),
+            "wage_flow_total": wage_flow_total,
             "tribute_flow_total": _sum_edge_value_flow_by_mode(graph, frozenset({"tribute"})),
             "wealth_by_class_role": _wealth_by_class_role(state),
             "county_flow": _county_flow_snapshot(graph),
+            "imperial_rent_gap": round(wage_flow_total - econ["value_produced"], 4),
+            "imperial_rent_gap_by_region": _imperial_rent_gap_by_region(graph),
         }
+        # G4: the legacy top-level fields above are gated by the SAME tier
+        # already computed for ``veil`` — no sibling ungated copy of the
+        # value axis survives serialization (§7 "no client inspection can
+        # pierce it"). ``gate_value_axis_fields`` only touches the field
+        # names it recognizes, so tick/has_data/money-form fields/
+        # wealth_by_class_role/county_flow pass through untouched.
+        payload = gate_value_axis_fields(payload, veil_status.tier)
+        payload["veil"] = {
+            "tier": veil_status.tier,
+            "next_unlock_node_id": veil_status.next_unlock_node_id,
+            "next_unlock_label": veil_status.next_unlock_label,
+            "value_produced": value_produced if veil_unlocked else None,
+            "exploitation_rate": exploitation_rate if veil_unlocked else None,
+        }
+        return payload
 
     def get_economy(self, session_id: UUID, territory_id: str | None = None) -> dict[str, Any]:
         """Return a per-territory economic summary (spec 093 US5).
@@ -2772,6 +3381,18 @@ class EngineBridge:
         Without ``territory_id``, delegates to the dashboard-wide
         :meth:`get_economy_dashboard` (spec 109 A4) for backward
         compatibility with the existing ``/economy/`` route.
+
+        Track 1 / Task 8c (2026-07-18): social_class membership is resolved
+        via :func:`_tenancy_members_by_territory` (the real Occupant ->
+        Territory TENANCY edge), not :func:`_territory_id_bearing_nodes`'s
+        ``territory_ids`` check — ``SocialClass`` has no such field in
+        production, so the old code's node set (and therefore
+        ``value_produced``) structurally excluded every social class and
+        summed only organization wealth (which the engine never populates
+        — ``Organization`` carries no ``wealth`` field). Organization
+        membership stays through :func:`_territory_id_bearing_nodes` — its
+        genuinely correct use, since ``Organization`` does carry
+        ``territory_ids``.
         """
         if territory_id is None:
             return self.get_economy_dashboard(session_id)
@@ -2780,7 +3401,12 @@ class EngineBridge:
         if territory_id not in graph.nodes:
             return _empty_economy_payload(territory_id)
 
-        econ_nodes = _nodes_in_territory(graph, territory_id)
+        tenancy_members = _tenancy_members_by_territory(graph)
+        econ_nodes = [
+            (node_id, graph.nodes[node_id])
+            for node_id in tenancy_members.get(territory_id, [])
+            if node_id in graph.nodes
+        ] + _territory_id_bearing_nodes(graph, territory_id)
         node_ids = {node_id for node_id, _ in econ_nodes}
         value_produced = sum(float(data.get("wealth", 0.0)) for _, data in econ_nodes)
         terr_data = graph.nodes.get(territory_id, {})
@@ -2821,7 +3447,7 @@ class EngineBridge:
             exchange_ratio = (value_produced + rent_extracted) / value_produced
             exploitation_rate = round(calculate_unequal_exchange_rate(exchange_ratio) / 100.0, 4)
 
-        return {
+        payload = {
             "territory_id": territory_id,
             "has_data": has_data,
             "value_produced": round(value_produced, 4),
@@ -2834,6 +3460,15 @@ class EngineBridge:
                 else 0.0
             ),
         }
+        # G4: same veil gate get_economy_dashboard applies, for this
+        # per-territory analogue — graph-based tier resolution (not
+        # ``state``-based) since ``state`` here may be a synthetic
+        # double that carries no real ``organizations`` dict. Assigned
+        # back to ``payload`` (see get_game_summary's identical note) so
+        # the seam sweep's AST harvester can still resolve this
+        # serializer's real keys.
+        payload = gate_value_axis_fields(payload, _resolve_veil_tier_from_graph(graph))
+        return payload
 
     def get_communities_dashboard(self, session_id: UUID) -> dict[str, Any]:
         """Return communities dashboard (spec 061 US6 T089, FR-018 / spec 109 A4).
@@ -2877,13 +3512,11 @@ class EngineBridge:
             wiring — honest empty, Constitution III.11).
         """
         rows: list[dict[str, Any]] = []
-        query = getattr(self._persistence, "query_org_snapshot_history", None)
-        if callable(query):
-            try:
-                rows = query(session_id, org_id)
-            except Exception:  # noqa: BLE001 — diagnostic; never blocks the request
-                logger.exception("get_org_history: query_org_snapshot_history failed")
-                rows = []
+        try:
+            rows = self._persistence.query_org_snapshot_history(session_id, org_id)
+        except Exception:  # noqa: BLE001 — diagnostic; never blocks the request
+            logger.exception("get_org_history: query_org_snapshot_history failed")
+            rows = []
         return {"org_id": org_id, "history": rows}
 
     def get_territory_history(self, session_id: UUID, county_fips: str) -> dict[str, Any]:
@@ -2909,13 +3542,11 @@ class EngineBridge:
             this FIPS yet.
         """
         rows: list[dict[str, Any]] = []
-        query = getattr(self._persistence, "query_territory_snapshot_history", None)
-        if callable(query):
-            try:
-                rows = query(session_id, county_fips)
-            except Exception:  # noqa: BLE001 — diagnostic; never blocks the request
-                logger.exception("get_territory_history: query_territory_snapshot_history failed")
-                rows = []
+        try:
+            rows = self._persistence.query_territory_snapshot_history(session_id, county_fips)
+        except Exception:  # noqa: BLE001 — diagnostic; never blocks the request
+            logger.exception("get_territory_history: query_territory_snapshot_history failed")
+            rows = []
         return {"county_fips": county_fips, "history": rows}
 
     def get_map_history(
@@ -3036,12 +3667,12 @@ class EngineBridge:
             }
 
         if metric in _MAP_HISTORY_TERRITORY_SNAPSHOT_METRICS:
-            latest_fn = getattr(self._persistence, "query_territory_snapshot_latest_tick", None)
-            frames_fn = getattr(self._persistence, "query_territory_snapshot_metric_frames", None)
+            latest_fn = self._persistence.query_territory_snapshot_latest_tick
+            frames_fn = self._persistence.query_territory_snapshot_metric_frames
             value_key = _MAP_HISTORY_TERRITORY_SNAPSHOT_METRICS[metric]
         else:
-            latest_fn = getattr(self._persistence, "query_county_trace_latest_tick", None)
-            frames_fn = getattr(self._persistence, "query_county_trace_metric_frames", None)
+            latest_fn = self._persistence.query_county_trace_latest_tick
+            frames_fn = self._persistence.query_county_trace_metric_frames
             value_key = _MAP_HISTORY_COUNTY_TRACE_METRICS[metric]
 
         empty: dict[str, Any] = {
@@ -3051,9 +3682,8 @@ class EngineBridge:
             "capped": False,
             "frames": [],
         }
-        if not callable(latest_fn) or not callable(frames_fn):
-            # SQLite-backed RuntimeDatabase / StubEngineBridge parity: honest empty.
-            return empty
+        # SQLite-backed RuntimeDatabase / StubEngineBridge degrade honestly:
+        # latest_fn returns None (=> empty below) and frames_fn returns [].
 
         if to_tick is not None:
             requested_to = to_tick
@@ -3093,6 +3723,22 @@ class EngineBridge:
             )
 
         frames = [{"tick": t, "values": dict(sorted(by_tick[t].items()))} for t in sorted(by_tick)]
+
+        # G4 (veil-leak closure): of the 4 replayable metrics, only
+        # profit_rate/exploitation_rate are value-axis (heat/population are
+        # money-form/political, never gated) — tier resolution is skipped
+        # entirely for those, so this scrubber's common case pays nothing
+        # extra. Best-effort, fails CLOSED like get_game_timeseries.
+        if metric in TIER1_VALUE_RELATION_FIELDS:
+            try:
+                graph = self._persistence.hydrate_graph(tick=None, session_id=session_id)
+                veil_tier = _resolve_veil_tier_from_graph(graph)
+            except Exception:  # noqa: BLE001 — diagnostic; never blocks the request
+                logger.exception("get_map_history: veil tier resolution failed for %r", metric)
+                veil_tier = 0
+            if veil_tier < 1:
+                for frame in frames:
+                    frame["values"] = dict.fromkeys(frame["values"])
 
         return {
             "metric": metric,
@@ -3144,24 +3790,21 @@ class EngineBridge:
             never struggled (honest empty, Constitution III.11).
         """
         rows: list[dict[str, Any]] = []
-        query = getattr(self._persistence, "query_class_snapshot_history", None)
-        if callable(query):
-            try:
-                rows = query(session_id, node_id)
-            except Exception:  # noqa: BLE001 — diagnostic; never blocks the request
-                logger.exception("get_class_history: query_class_snapshot_history failed")
-                rows = []
+        try:
+            rows = self._persistence.query_class_snapshot_history(session_id, node_id)
+        except Exception:  # noqa: BLE001 — diagnostic; never blocks the request
+            logger.exception("get_class_history: query_class_snapshot_history failed")
+            rows = []
 
         ruptures: list[dict[str, Any]] = []
-        event_query = getattr(self._persistence, "query_node_uprising_events", None)
-        if callable(event_query):
-            try:
-                ruptures = [
-                    _game_event_from_tick_event_row(row) for row in event_query(session_id, node_id)
-                ]
-            except Exception:  # noqa: BLE001 — diagnostic; never blocks the request
-                logger.exception("get_class_history: query_node_uprising_events failed")
-                ruptures = []
+        try:
+            ruptures = [
+                _game_event_from_tick_event_row(row)
+                for row in self._persistence.query_node_uprising_events(session_id, node_id)
+            ]
+        except Exception:  # noqa: BLE001 — diagnostic; never blocks the request
+            logger.exception("get_class_history: query_node_uprising_events failed")
+            ruptures = []
 
         return {"class_id": node_id, "history": rows, "ruptures": ruptures}
 
@@ -3205,13 +3848,11 @@ class EngineBridge:
             return {"edge_id": edge_id, "history": []}
 
         rows: list[dict[str, Any]] = []
-        query = getattr(self._persistence, "query_edge_snapshot_history", None)
-        if callable(query):
-            try:
-                rows = query(session_id, source, target)
-            except Exception:  # noqa: BLE001 — diagnostic; never blocks the request
-                logger.exception("get_edge_history: query_edge_snapshot_history failed")
-                rows = []
+        try:
+            rows = self._persistence.query_edge_snapshot_history(session_id, source, target)
+        except Exception:  # noqa: BLE001 — diagnostic; never blocks the request
+            logger.exception("get_edge_history: query_edge_snapshot_history failed")
+            rows = []
 
         history = [
             {
@@ -3238,7 +3879,9 @@ class EngineBridge:
     def inspect_node(self, session_id: UUID, node_id: str) -> dict[str, Any]:
         """Generic node lookup — dispatches by node type (FR-019)."""
         state, graph = self.hydrate_state(session_id)
-        snap = _state_to_snapshot(state, session_id, graph=graph)
+        snap = _gate_snapshot_territories(
+            _state_to_snapshot(state, session_id, graph=graph), _resolve_veil_tier(state)
+        )
         for collection in ("organizations", "institutions", "territories"):
             for entry in snap.get(collection, []):
                 if entry.get("id") == node_id:
@@ -3279,7 +3922,9 @@ class EngineBridge:
 
     def inspect_hex(self, session_id: UUID, h3_index: str) -> dict[str, Any]:
         state, graph = self.hydrate_state(session_id)
-        snap = _state_to_snapshot(state, session_id, graph=graph)
+        snap = _gate_snapshot_territories(
+            _state_to_snapshot(state, session_id, graph=graph), _resolve_veil_tier(state)
+        )
         territory = next(
             (t for t in snap.get("territories", []) if t.get("h3_index") == h3_index),
             None,
@@ -3326,18 +3971,29 @@ class EngineBridge:
 
         Returns:
             Dict per :func:`_build_state_apparatus_dashboard`.
+
+        Task 5b (2026-07-18): this is player-facing, so it must thread the
+        SAME reach/ledger/tick fog gate :func:`_state_to_snapshot` uses,
+        instead of discarding the hydrated graph and calling
+        :func:`_serialize_organization` unfogged — the fix Task 5 left open.
         """
-        state, _graph = self.hydrate_state(session_id)
-        organizations = [_serialize_organization(o) for o in state.organizations.values()]
+        state, graph = self.hydrate_state(session_id)
+        reach = _current_organizing_reach(graph)
+        ledger = _derive_intel_ledger(session_id)
+        tick = state.tick
+        organizations = [
+            _serialize_organization(
+                o, player_org_id=state.player_org_id, reach=reach, ledger=ledger, tick=tick
+            )
+            for o in state.organizations.values()
+        ]
 
         rows: list[dict[str, Any]] = []
-        query = getattr(self._persistence, "query_session_events", None)
-        if callable(query):
-            try:
-                rows = query(session_id, limit=_JOURNAL_LIMIT)
-            except Exception:  # noqa: BLE001 — diagnostic; never blocks the request
-                logger.exception("get_state_apparatus_dashboard: query_session_events failed")
-                rows = []
+        try:
+            rows = self._persistence.query_session_events(session_id, limit=_JOURNAL_LIMIT)
+        except Exception:  # noqa: BLE001 — diagnostic; never blocks the request
+            logger.exception("get_state_apparatus_dashboard: query_session_events failed")
+            rows = []
         recent_actions = [
             _game_event_from_tick_event_row(row)
             for row in rows
@@ -3426,24 +4082,27 @@ class EngineBridge:
 
         Honest graceful degradation (Constitution III.11: infrastructure-layer
         try/except): any hydration failure, a non-hydratable/mock session, or a
-        session with no player faction yields ``None`` — the canvas then shows the
-        starting position rather than fabricated progress. Prefers the
-        ``is_player`` faction; falls back to any org that has begun acquiring.
+        session with no player org set yields ``None`` — the canvas then shows
+        the starting position rather than fabricated progress.
+
+        Player identity comes from :attr:`WorldState.player_org_id`, the
+        canonical source (see :func:`_resolve_player_org_id` / :func:`_is_player_org`).
+        This previously checked the retired ``is_player`` attribute (never set
+        by any scenario under ``src/babylon/engine/scenarios/`` — it exists only
+        on ``PoliticalFaction``, not the ``CivilSocietyOrg``/``StateApparatus``
+        pair scenarios actually create) with a fallback to "any org with
+        non-empty ``acquired_doctrine_ids``", which both the player org and a
+        non-player org (e.g. a police ``StateApparatus``) satisfy after tick 1
+        once the free root doctrine node is acquired — a fourth, independent
+        copy of "is this the player org" nothing enforced agreement on
+        (see :func:`_is_player_org`'s docstring for the first three).
 
         :param session_id: The game session UUID.
         :returns: An ``Organization`` (with the doctrine fields) or ``None``.
         """
         try:
             state, _graph = self.hydrate_state(session_id)
-            orgs = getattr(state, "organizations", None)
-            if not isinstance(orgs, dict):
-                return None
-            player = next((o for o in orgs.values() if getattr(o, "is_player", False)), None)
-            if player is not None:
-                return player
-            return next(
-                (o for o in orgs.values() if getattr(o, "acquired_doctrine_ids", None)), None
-            )
+            return _player_org_from_state(state)
         except (RuntimeError, ValueError, KeyError, AttributeError, TypeError):
             return None
 
@@ -3534,7 +4193,13 @@ class EngineBridge:
             target, mode) — Constitution III.7.
         """
         state, graph = self.hydrate_state(session_id)
-        nodes, edges = _build_org_network(state, graph, territory_filter=territory_filter)
+        nodes, edges = _build_org_network(
+            state,
+            graph,
+            territory_filter=territory_filter,
+            ledger=_derive_intel_ledger(session_id),
+            veil_tier=_resolve_veil_tier(state),
+        )
         return {
             "tick": state.tick,
             "nodes": nodes,
@@ -3629,13 +4294,11 @@ class EngineBridge:
         state, _graph = self.hydrate_state(session_id)
 
         rows: list[dict[str, Any]] = []
-        query = getattr(self._persistence, "query_infrastructure_link_state", None)
-        if callable(query):
-            try:
-                rows = query(session_id, state.tick)
-            except Exception:  # noqa: BLE001 — diagnostic; never blocks the request
-                logger.exception("get_infrastructure: query_infrastructure_link_state failed")
-                rows = []
+        try:
+            rows = self._persistence.query_infrastructure_link_state(session_id, state.tick)
+        except Exception:  # noqa: BLE001 — diagnostic; never blocks the request
+            logger.exception("get_infrastructure: query_infrastructure_link_state failed")
+            rows = []
 
         edges = [_infrastructure_edge_row(row) for row in rows]
         return {"tick": state.tick, "nodes": [], "edges": edges}
@@ -3660,13 +4323,11 @@ class EngineBridge:
             ``snapshot.events`` (id/type/tick/severity/title/body/data).
         """
         rows: list[dict[str, Any]] = []
-        query = getattr(self._persistence, "query_session_events", None)
-        if callable(query):
-            try:
-                rows = query(session_id, limit=_JOURNAL_LIMIT)
-            except Exception:  # noqa: BLE001 — diagnostic; never blocks request
-                logger.exception("get_journal_dashboard: query_session_events failed")
-                rows = []
+        try:
+            rows = self._persistence.query_session_events(session_id, limit=_JOURNAL_LIMIT)
+        except Exception:  # noqa: BLE001 — diagnostic; never blocks request
+            logger.exception("get_journal_dashboard: query_session_events failed")
+            rows = []
         return {"events": [_game_event_from_tick_event_row(row) for row in rows]}
 
     def get_alerts_dashboard(self, session_id: UUID) -> dict[str, Any]:
@@ -3686,13 +4347,11 @@ class EngineBridge:
         """
         state, _graph = self.hydrate_state(session_id)
         rows: list[dict[str, Any]] = []
-        query = getattr(self._persistence, "query_tick_events", None)
-        if callable(query):
-            try:
-                rows = query(session_id, state.tick)
-            except Exception:  # noqa: BLE001 — diagnostic; never blocks request
-                logger.exception("get_alerts_dashboard: query_tick_events failed")
-                rows = []
+        try:
+            rows = self._persistence.query_tick_events(session_id, state.tick)
+        except Exception:  # noqa: BLE001 — diagnostic; never blocks request
+            logger.exception("get_alerts_dashboard: query_tick_events failed")
+            rows = []
         alerts = [
             _game_event_from_tick_event_row(row)
             for row in rows
@@ -3788,9 +4447,7 @@ class EngineBridge:
             str(principal_aspect.get("id", "")) if isinstance(principal_aspect, dict) else ""
         )
 
-        rows = _fetch_contradiction_field_rows(
-            getattr(self._persistence, "_pool", None), session_id
-        )
+        rows = _fetch_contradiction_field_rows(self._persistence.pool, session_id)
 
         oppositions: list[dict[str, Any]] = []
         for row in rows:
@@ -3869,7 +4526,7 @@ class EngineBridge:
         # — the latest graph's events list loses an endgame event the moment
         # even one more tick elapses. tick_event (durable, cumulative) is the
         # only correct source for "has this game ever ended".
-        row = _fetch_endgame_event_row(getattr(self._persistence, "_pool", None), session_id)
+        row = _fetch_endgame_event_row(self._persistence.pool, session_id)
         outcome = _outcome_from_endgame_row(row)
         summary = str(row.get("summary") or "") if row is not None and outcome else ""
         if row is not None and outcome:
@@ -3987,7 +4644,7 @@ class EngineBridge:
         graph_attrs: dict[str, Any] = getattr(graph, "graph", {}) or {}
         tick = int(graph_attrs.get("tick", 0))
 
-        row = _fetch_endgame_event_row(getattr(self._persistence, "_pool", None), session_id)
+        row = _fetch_endgame_event_row(self._persistence.pool, session_id)
         outcome = _outcome_from_endgame_row(row)
 
         progress_block = graph_attrs.get("endgame_progress")
@@ -4136,7 +4793,7 @@ class EngineBridge:
             ``TradeFlowsPayload`` dict matching
             ``specs/103-trade-surfaces/contracts/trade-flows.yaml``.
         """
-        pool = getattr(self._persistence, "_pool", None)
+        pool = self._persistence.pool
         graph = self._persistence.hydrate_graph(tick=None, session_id=session_id)
         graph_attrs: dict[str, Any] = getattr(graph, "graph", {}) or {}
         tick = int(graph_attrs.get("tick", 0))
@@ -4214,7 +4871,7 @@ class EngineBridge:
             ``ExposurePayload`` dict matching
             ``specs/103-trade-surfaces/contracts/county-exposure.yaml``.
         """
-        pool = getattr(self._persistence, "_pool", None)
+        pool = self._persistence.pool
         # hydrate_graph is called for its side-effect of ensuring the session
         # is bootstrapped; the exposure payload itself carries no tick field.
         self._persistence.hydrate_graph(tick=None, session_id=session_id)
@@ -4324,7 +4981,7 @@ class EngineBridge:
             ``TradePanelPayload`` dict matching
             ``specs/103-trade-surfaces/contracts/trade-panel.yaml``.
         """
-        pool = getattr(self._persistence, "_pool", None)
+        pool = self._persistence.pool
         graph = self._persistence.hydrate_graph(tick=None, session_id=session_id)
         graph_attrs: dict[str, Any] = getattr(graph, "graph", {}) or {}
         tick = int(graph_attrs.get("tick", 0))
@@ -4407,6 +5064,28 @@ class EngineBridge:
         other node type gets an honest generic dump of its real fields,
         enum-normalized (matches ``EventsFeed.tsx``'s documented "node is
         the generic fallback" contract).
+
+        Track 1 / Task 4: the generic (non-``social_class``) branch is a
+        RAW dump of the node's own graph attrs — the one path in this
+        method that can surface a political field (e.g. ``heat`` on a
+        territory/organization node, ``colonial_stance`` on a faction node)
+        completely unfiltered, since it bypasses every other composer
+        (:func:`_serialize_territory`, ``get_inspector_org``, ...). It gets
+        the SAME :func:`~game.fog.filter.apply_fog` gate those composers
+        do. The ``social_class`` branch is deliberately left alone — it
+        already runs through ``_apply_class_vision_gate``
+        (:func:`_social_class_inspector_fields`), a pre-existing, narrower
+        gate this task does not fold into ``apply_fog`` (see the Task 4
+        report's assessment of that as a future correctness hazard).
+
+        Track 1 / Task 5 §B: when ``node_type == "organization"`` this uses
+        :data:`~game.fog.filter.ORG_POLITICAL_FIELDS` instead of the default
+        :data:`~game.fog.filter.POLITICAL_FIELDS` — so an org node clicked
+        through the generic fallback (not ``get_inspector_org``) gates
+        ``consciousness_tendency``/``cohesion``/``cadre_level`` the same way
+        ``heat`` already was. The player's own org is exempt (full
+        visibility of your own organization) via an explicit bypass, not an
+        emergent property of reach.
         """
         graph = self._persistence.hydrate_graph(tick=None, session_id=session_id)
         if node_id not in graph.nodes:
@@ -4420,12 +5099,30 @@ class EngineBridge:
         }
         if node_type == "social_class":
             core_wages = _incoming_wages_flow(graph, node_id)
-            payload.update(_social_class_inspector_fields(data, core_wages, graph))
-        else:
-            payload.update(
-                _enum_normalized({k: v for k, v in data.items() if k not in ("_node_type", "name")})
-            )
-        return payload
+            veil_tier = _resolve_veil_tier_from_graph(graph)
+            payload.update(_social_class_inspector_fields(data, core_wages, graph, veil_tier))
+            return payload
+        payload.update(
+            _enum_normalized({k: v for k, v in data.items() if k not in ("_node_type", "name")})
+        )
+        if node_type == "organization" and _is_player_org(node_id, _resolve_player_org_id(graph)):
+            payload["vision_masked"] = []
+            payload["vision_approx"] = []
+            return payload
+        staleness_ticks, unknown_ticks = _current_intel_aging_ticks()
+        return apply_fog(
+            payload,
+            node_type,
+            node_id,
+            _current_organizing_reach(graph),
+            _derive_intel_ledger(session_id),
+            _graph_tick(graph),
+            staleness_ticks=staleness_ticks,
+            unknown_ticks=unknown_ticks,
+            political_fields=ORG_POLITICAL_FIELDS
+            if node_type == "organization"
+            else POLITICAL_FIELDS,
+        )
 
     def get_inspector_org(self, session_id: UUID, org_id: str) -> dict[str, Any]:
         """Return real Organization fields for a drill-down (spec-113).
@@ -4442,6 +5139,24 @@ class EngineBridge:
         :func:`_compute_traps` code path the main snapshot uses — never
         duplicated) — both only for the player org; non-player orgs get
         ``None`` for each rather than an empty-shell section.
+
+        Player-org status is resolved from ``WorldState.player_org_id``
+        (via :func:`_resolve_player_org_id` / :func:`_is_player_org`), not
+        a structural guess — Track 1 / Task 1 (2026-07-18).
+
+        Track 1 / Task 4: ``heat`` is the one political field this payload
+        carries (the player org's own node is always in its own reach, so
+        its ``heat`` stays exact; a rival org's is masked unless a ledger
+        entry covers it — see :func:`~game.fog.filter.apply_fog`).
+
+        Track 1 / Task 5 §B: ``consciousness_tendency``/``cohesion``/
+        ``cadre_level`` join ``heat`` as gated org-internal-state fields
+        (:data:`~game.fog.filter.ORG_POLITICAL_FIELDS`) — an org's
+        existence/territory_ids/budget stay material (always visible); its
+        internal state is political for every NON-PLAYER org. The player's
+        own org is exempt via an EXPLICIT bypass (not merely relying on it
+        being trivially in its own reach) — full visibility of your own
+        organization is a hard guarantee, not an emergent property.
         """
         graph = self._persistence.hydrate_graph(tick=None, session_id=session_id)
         if org_id not in graph.nodes or graph.nodes[org_id].get("_node_type") != "organization":
@@ -4455,9 +5170,7 @@ class EngineBridge:
                 "consciousness_tendency": data.get("consciousness_tendency"),
             }
         )
-        is_player_org = (
-            enums["class_character"] == "proletarian" and enums["org_type"] == "civil_society"
-        )
+        is_player_org = _is_player_org(org_id, _resolve_player_org_id(graph))
 
         vanguard: dict[str, Any] | None = None
         traps: dict[str, Any] | None = None
@@ -4488,7 +5201,7 @@ class EngineBridge:
                 world_state = WorldState.from_graph(graph, tick=_graph_tick(graph))
                 traps = _compute_traps(world_state, session_id, persist=False)
 
-        return {
+        payload: dict[str, Any] = {
             "id": org_id,
             "name": data.get("name", org_id),
             "class_character": enums["class_character"],
@@ -4503,6 +5216,22 @@ class EngineBridge:
             "vanguard": vanguard,
             "traps": traps,
         }
+        if is_player_org:
+            payload["vision_masked"] = []
+            payload["vision_approx"] = []
+            return payload
+        staleness_ticks, unknown_ticks = _current_intel_aging_ticks()
+        return apply_fog(
+            payload,
+            "organization",
+            org_id,
+            _current_organizing_reach(graph),
+            _derive_intel_ledger(session_id),
+            _graph_tick(graph),
+            staleness_ticks=staleness_ticks,
+            unknown_ticks=unknown_ticks,
+            political_fields=ORG_POLITICAL_FIELDS,
+        )
 
     def get_inspector_community(self, session_id: UUID, hyperedge_id: str) -> dict[str, Any]:
         """Return one ``/communities/`` entry by id.
@@ -4575,6 +5304,14 @@ class EngineBridge:
         executes only inside a tick — this drill-down reads whatever
         ``hydrate_graph`` last persisted) or for a tenant-less territory
         (Constitution III.11).
+
+        Track 1 / Task 5: ``dominant_class``/``solidarity_index``/
+        ``agitation`` are the three :data:`~game.fog.filter.POLITICAL_FIELDS`
+        names this payload carries — gated through the same
+        :func:`~game.fog.filter.apply_fog` call ``_serialize_territory``/
+        ``get_inspector_org``/``get_inspector_node`` already use (Task 4),
+        never a second gate. Before this task the hex inspector was the one
+        drill-down surface that skipped fogging entirely.
         """
         graph = self._persistence.hydrate_graph(tick=None, session_id=session_id)
         territory_id: str | None = None
@@ -4596,11 +5333,11 @@ class EngineBridge:
         territory_type_raw = data.get("territory_type")
         org_presence = sum(
             1
-            for _node_id, member_data in _nodes_in_territory(graph, territory_id)
+            for _node_id, member_data in _territory_id_bearing_nodes(graph, territory_id)
             if member_data.get("_node_type") == "organization"
         )
 
-        return {
+        payload: dict[str, Any] = {
             "id": territory_id,
             "h3_index": h3_index,
             "name": data.get("name", territory_id),
@@ -4625,6 +5362,20 @@ class EngineBridge:
             "intel_confidence": _territory_graph_attr(graph, territory_id, "intel_confidence"),
             "vision_state": _territory_graph_attr(graph, territory_id, "vision_state"),
         }
+        # G4 (veil-leak closure): value-axis fields gated BEFORE the
+        # spatial fog below — same order as every other composer.
+        payload = gate_value_axis_fields(payload, _resolve_veil_tier_from_graph(graph))
+        staleness_ticks, unknown_ticks = _current_intel_aging_ticks()
+        return apply_fog(
+            payload,
+            "territory",
+            territory_id,
+            _current_organizing_reach(graph),
+            _derive_intel_ledger(session_id),
+            _graph_tick(graph),
+            staleness_ticks=staleness_ticks,
+            unknown_ticks=unknown_ticks,
+        )
 
     # ------------------------------------------------------------------ #
     # Tick resolution
@@ -4634,6 +5385,8 @@ class EngineBridge:
         self,
         session_id: UUID,
         persistent_context: dict[str, Any] | None = None,
+        *,
+        force_endgame_test_hook: bool = False,
     ) -> dict[str, Any]:
         """Advance the simulation one tick: hydrate → step → persist → snapshot.
 
@@ -4645,6 +5398,21 @@ class EngineBridge:
         Args:
             session_id: The game session UUID.
             persistent_context: Optional cross-tick context dict.
+            force_endgame_test_hook: G7-crisis test-only hook (spec-116
+                first-session e2e crisis leg). When True *and*
+                :func:`_e2e_test_hooks_enabled` also returns True, this tick
+                ends the game through the exact same real ``EndgameEvent``
+                construction below that a genuine horizon termination uses —
+                never a fabricated event shape — years before the fixed
+                century horizon, so an e2e can deterministically exercise
+                the frontend's autopause/critical-event machinery (which
+                fires only on ``endgame_reached``) without playing out
+                ~5200 ticks. Ignored (this tick resolves normally) unless
+                both conditions hold — see ``web/game/api.py``'s
+                ``resolve_tick`` view for the per-request header that sets
+                this, and ``_e2e_test_hooks_enabled`` for the server-side
+                opt-in that gates it. Defaults to False, so every existing
+                caller is byte-identical.
 
         Returns:
             JSON-serializable snapshot of the new state after stepping.
@@ -4659,9 +5427,7 @@ class EngineBridge:
         # Spec 061 US5 T080 (FR-024): thread the session's rng_seed
         # into the engine config so action resolution is byte-deterministic
         # across replays of the same seed + action sequence.
-        rng_seed = _fetch_session_rng_seed_from_pool(
-            getattr(self._persistence, "_pool", None), session_id
-        )
+        rng_seed = _fetch_session_rng_seed_from_pool(self._persistence.pool, session_id)
         sim_config = SimulationConfig(rng_seed=rng_seed)
 
         # T014: Read pending player actions and format for engine injection
@@ -4683,7 +5449,11 @@ class EngineBridge:
                         "target_id": action.get("target_id", org_id),
                         "org_id": org_id,
                         "action_point_cost": 1,
-                        "params": action.get("params_json", {}),
+                        # `or {}`, not a .get default: a submit without params
+                        # persists params_json as JSON null, and .get's default
+                        # only covers an ABSENT key — None here fails Action's
+                        # params dict validation and 500s the whole resolve.
+                        "params": action.get("params_json") or {},
                     }
                 )
             persistent_context["player_actions"] = player_actions
@@ -4769,7 +5539,9 @@ class EngineBridge:
         horizon_tick = (
             game_defines.endgame.campaign_horizon_years * game_defines.timescale.weeks_per_year
         )
-        game_over = new_state.tick >= horizon_tick
+        game_over = new_state.tick >= horizon_tick or (
+            force_endgame_test_hook and _e2e_test_hooks_enabled()
+        )
         outcome = pattern or GameOutcome.UNRESOLVED
         if game_over:
             endgame_event = EndgameEvent(tick=new_state.tick, outcome=outcome)
@@ -4855,6 +5627,7 @@ class EngineBridge:
         # replaces the old pre/post-diff fakery that hardcoded success=True and
         # diffed a never-present class_consciousness attr).
         results_by_org = _index_engine_action_results(persistent_context)
+        action_results: list[dict[str, Any]] = []
         for action in pending:
             tid = action.get("target_id")
             pre = pre_step.get(tid or "", {})
@@ -4869,6 +5642,23 @@ class EngineBridge:
             engine_result = _pop_engine_result(results_by_org, action["org_id"])
             success, failure_reason, ci_delta, direct_effects = _engine_result_fields(engine_result)
 
+            details: dict[str, Any] = {
+                "direct_effects": direct_effects,
+                "failure_reason": failure_reason,
+            }
+            # Track 1 / Task 3: for a successful INVESTIGATE, stash the
+            # revealed fields' TRUE values off new_graph (already in scope)
+            # onto this row's details — the write half of the intel ledger
+            # (game.fog.ledger.ledger_from_events reads these two keys back
+            # via _derive_intel_ledger). See _investigate_field_snapshot's
+            # docstring for why this must happen HERE, not at fog-read time.
+            intel_snapshot = _investigate_field_snapshot(
+                action_type_enum, tid, direct_effects, new_graph
+            )
+            if intel_snapshot is not None:
+                details["intel_field_group"] = intel_snapshot["field_group"]
+                details["intel_value_snapshot"] = intel_snapshot["value_snapshot"]
+
             result_data = {
                 "session_id": session_id,
                 "tick": new_state.tick,
@@ -4881,11 +5671,20 @@ class EngineBridge:
                 "success": success,
                 "consciousness_delta": ci_delta,
                 "heat_delta": post_heat - pre.get("heat", 0.0),
-                "details": {"direct_effects": direct_effects, "failure_reason": failure_reason},
+                "details": details,
             }
-            _persist_action_result(self._persistence, result_data)
+            action_results.append(result_data)
+        # Task #43: batch this tick's action rows into ONE persist call after
+        # the per-org loop (Postgres executemany, or Django ORM row-by-row on
+        # a pool-less backend) instead of a per-action write.
+        _persist_action_results(self._persistence, session_id, new_state.tick, action_results)
 
         snapshot = _state_to_snapshot(new_state, session_id, graph=new_graph)
+
+        # G4: resolved ONCE and reused below (the causal-beats render below
+        # AND the response gate at the end of this method) — one tier
+        # computation, not two independent ones.
+        veil_tier = _resolve_veil_tier(new_state)
 
         # Spec 092 R-CONS: persist this tick's events into tick_event so the
         # journal/alerts dashboards (get_journal_dashboard/get_alerts_dashboard)
@@ -4895,7 +5694,10 @@ class EngineBridge:
         # Spec-116 FR-4.1: land this tick's causal frames as deterministic
         # NarrationRecord beats (the same table the LLM path writes and
         # game_narration serves). Best-effort — never fails tick resolution.
-        _persist_causal_beats_safe(session_id, new_state.tick, causal_frames)
+        # G4 (Finding 2): veil_tier gates the persisted prose's imperial-
+        # rent-pool sentence — see _persist_causal_beats_safe's docstring
+        # for why this is the ONLY gate (no read-time re-check for prose).
+        _persist_causal_beats_safe(session_id, new_state.tick, causal_frames, veil_tier=veil_tier)
         # P0 #7: refresh the hex_latest map cache from this tick's territories
         # (sibling of the tick_event write above; best-effort, never raises).
         # Spec-109 A2: org_count from live territory_ids, heat_delta from the
@@ -4952,7 +5754,12 @@ class EngineBridge:
         # so this never blocks resolve_tick's return.
         self._narrative_service.schedule(session_id, state, new_state)
 
-        return snapshot
+        # G4 (veil-leak closure): gate the RESPONSE copy's value-axis
+        # fields LAST — every persistence call above (_persist_hex_state_
+        # safe in particular) has already consumed the TRUE ``snapshot``,
+        # so the engine's material record (hex_latest) is never corrupted
+        # with a masked value (see _state_to_snapshot's docstring).
+        return _gate_snapshot_territories(snapshot, veil_tier)
 
     # ------------------------------------------------------------------ #
     # Action management
@@ -5044,8 +5851,17 @@ class EngineBridge:
         org_data = graph.nodes[org_id]
         own_tids = {str(t) for t in org_data.get("territory_ids", [])}
 
-        # One bounded pass over the graph gathers every predicate input.
-        has_social_class = False  # educate; aid (population arm)
+        # Track 1 / Task 8b (2026-07-18): social_class <-> territory is
+        # resolved via the real Occupant -> Territory TENANCY edge
+        # (:func:`_tenancy_members_by_territory`), not the nonexistent
+        # `territory_ids` field on social_class nodes -- the same fix
+        # Task 8 applied to get_educate_targets. This predicate MUST agree
+        # with get_educate_targets/get_aid_targets's population arm, or
+        # `educate`/`aid` can report ineligible while real targets exist.
+        tenancy_members = _tenancy_members_by_territory(graph)
+        has_social_class = any(tid in tenancy_members for tid in own_tids)
+
+        # One bounded pass over the graph gathers every remaining predicate input.
         has_org_in_reach = False  # aid (org arm); attack (org arm)
         has_mobilizable_org = False  # mobilize (business/civil_society)
         has_institution_in_reach = False  # attack (institution arm)
@@ -5063,8 +5879,6 @@ class EngineBridge:
                     has_org_in_reach = True
                     if str(data.get("org_type", "")) in ("business", "civil_society"):
                         has_mobilizable_org = True
-            elif node_type == "social_class" and node_tids & own_tids:
-                has_social_class = True
             elif node_type == "institution" and node_tids & own_tids:
                 has_institution_in_reach = True
 
@@ -5252,6 +6066,32 @@ class EngineBridge:
 
         Matches the contract defined in spec 043, integrating actual
         consciousness and material readiness from the graph when available.
+
+        Track 1 / Task 8 (2026-07-18): social_class targets are resolved via
+        :func:`_tenancy_members_by_territory` — the real Occupant -> Territory
+        TENANCY edge, the same linkage ``_dominant_class_by_territory``/
+        ``_solidarity_index_by_territory`` already use for ``/map/`` — not
+        via ``_territory_id_bearing_nodes``'s ``territory_ids`` check.
+        ``SocialClass`` has no ``territory_ids`` field in production
+        (``to_graph`` dumps model fields verbatim; only
+        ``Organization``/``Institution`` carry that field), so the old
+        lookup structurally never found a social_class node and every
+        territory landed in ``unavailable_communities`` regardless of real
+        TENANCY data.
+
+        Fog note: this target list is NOT reach-gated. The classes returned
+        here are exactly ``org_id``'s own PRESENCE (territory_ids) + TENANCY
+        hop — the identical first two hops :func:`game.fog.reach.
+        organizing_reach` itself walks rooted at the player org. When
+        ``org_id`` is the resolved player org (the calling convention every
+        shipped caller uses — :class:`~game.api.EducateVerbView`), every
+        target here is, by construction, already inside that org's own
+        organizing reach; gating would be a no-op. Whether an arbitrary,
+        non-player ``org_id`` could be passed here is a pre-existing
+        authorization question shared by every ``get_*_targets`` method
+        (aid/mobilize/attack/reproduce/educate alike, none of which validate
+        ``org_id`` against the session's player org) — out of this task's
+        scope, which is the ``_territory_id_bearing_nodes`` -> tenancy swap only.
         """
         state, graph = self.hydrate_state(session_id)
         org_status = self.get_org_status(session_id, org_id)
@@ -5275,6 +6115,7 @@ class EngineBridge:
 
         org_data = graph.nodes.get(org_id, {})
         territory_ids = org_data.get("territory_ids", [])
+        tenancy_members = _tenancy_members_by_territory(graph)
         for tid in territory_ids:
             if tid not in graph.nodes:
                 continue
@@ -5282,9 +6123,9 @@ class EngineBridge:
             terr_name = terr_data.get("name", tid)
 
             social_classes = [
-                (nid, nd)
-                for nid, nd in _nodes_in_territory(graph, tid)
-                if nd.get("_node_type") == "social_class"
+                (sc_id, graph.nodes[sc_id])
+                for sc_id in tenancy_members.get(tid, [])
+                if sc_id in graph.nodes
             ]
             if not social_classes:
                 unavailable_communities.append(
@@ -5298,7 +6139,7 @@ class EngineBridge:
                 continue
 
             for sc_id, sc_data in social_classes:
-                agitation = float(sc_data.get("agitation", 0.0))
+                agitation = _class_node_agitation(sc_data) or 0.0
                 cohesion = float(org_status.get("cohesion", 0.0))
 
                 targets.append(
@@ -5366,6 +6207,12 @@ class EngineBridge:
         org_status = self.get_org_status(session_id, org_id)
         if not org_status:
             return {"status": "error", "error": "Org not found"}
+        # G4 (veil-leak closure): ``v_value_produced`` names the wage-vs-
+        # value-produced axis explicitly and rides a nested
+        # ``material_conditions`` dict :func:`~game.veil.gate_value_axis_
+        # fields` cannot reach (it only ever touches TOP-level keys) —
+        # gated inline at its one construction site below instead.
+        veil_tier = _resolve_veil_tier(state)
 
         # Compute cost metrics
         cost = {
@@ -5384,6 +6231,12 @@ class EngineBridge:
 
         org_data = graph.nodes.get(org_id, {})
         territory_ids = org_data.get("territory_ids", [])
+        # Track 1 / Task 8b (2026-07-18): social_class targets resolve via
+        # the real Occupant -> Territory TENANCY edge
+        # (_tenancy_members_by_territory), not _territory_id_bearing_nodes's
+        # territory_ids check -- SocialClass has no such field in
+        # production (the same fix Task 8 applied to get_educate_targets).
+        tenancy_members = _tenancy_members_by_territory(graph)
 
         for tid in territory_ids:
             if tid not in graph.nodes:
@@ -5391,54 +6244,60 @@ class EngineBridge:
             terr_data = graph.nodes[tid]
             terr_name = terr_data.get("name", tid)
 
-            econ_nodes = _nodes_in_territory(graph, tid)
             found_any = False
-            for node_id, data in econ_nodes:
-                node_type = data.get("_node_type")
-                if node_type == "social_class":
-                    found_any = True
-                    population_targets.append(
-                        {
-                            "community_id": node_id,
-                            "community_name": data.get("name", node_id),
-                            "population": data.get("population"),
-                            "class_name": str(data.get("role", "UNKNOWN")).upper(),
-                            "material_conditions": {
-                                "v_value_produced": float(data.get("wealth", 0.0)),
-                                "wage_received": None,
-                                "consumption_gap": None,
-                                "subsistence_level": data.get("subsistence_threshold"),
-                                "agitation_level": float(data.get("agitation", 0.0)),
-                            },
-                            "edge_status": _edge_status_between(graph, org_id, node_id),
-                            "feedforward": {
-                                "note": "No per-tick aid-effect projection exists in the engine yet."
-                            },
-                            "expected_deltas": {
-                                "consciousness_delta": round(
-                                    _preview_consciousness_delta(
-                                        org_data, node_id, ActionType.PROVIDE_SERVICE, graph
-                                    ),
-                                    4,
+
+            for node_id in tenancy_members.get(tid, []):
+                data = graph.nodes.get(node_id)
+                if data is None:
+                    continue
+                found_any = True
+                population_targets.append(
+                    {
+                        "community_id": node_id,
+                        "community_name": data.get("name", node_id),
+                        "population": data.get("population"),
+                        "class_name": str(data.get("role", "UNKNOWN")).upper(),
+                        "material_conditions": {
+                            "v_value_produced": (
+                                float(data.get("wealth", 0.0)) if veil_tier >= 1 else None
+                            ),
+                            "wage_received": None,
+                            "consumption_gap": None,
+                            "subsistence_level": data.get("subsistence_threshold"),
+                            "agitation_level": _class_node_agitation(data) or 0.0,
+                        },
+                        "edge_status": _edge_status_between(graph, org_id, node_id),
+                        "feedforward": {
+                            "note": "No per-tick aid-effect projection exists in the engine yet."
+                        },
+                        "expected_deltas": {
+                            "consciousness_delta": round(
+                                _preview_consciousness_delta(
+                                    org_data, node_id, ActionType.PROVIDE_SERVICE, graph
                                 ),
-                                "heat_delta": None,
-                            },
-                        }
-                    )
-                elif node_type == "organization" and node_id != org_id:
-                    found_any = True
-                    org_targets.append(
-                        {
-                            "org_id": node_id,
-                            "org_name": data.get("name", node_id),
-                            "org_type": str(data.get("org_type", "UNKNOWN")),
-                            "material_stock": float(data.get("budget", 0.0)),
-                            "edge_status": _edge_status_between(graph, org_id, node_id),
-                            "feedforward": {
-                                "note": "No per-tick aid-effect projection exists in the engine yet."
-                            },
-                        }
-                    )
+                                4,
+                            ),
+                            "heat_delta": None,
+                        },
+                    }
+                )
+
+            for node_id, data in _territory_id_bearing_nodes(graph, tid):
+                if data.get("_node_type") != "organization" or node_id == org_id:
+                    continue
+                found_any = True
+                org_targets.append(
+                    {
+                        "org_id": node_id,
+                        "org_name": data.get("name", node_id),
+                        "org_type": str(data.get("org_type", "UNKNOWN")),
+                        "material_stock": float(data.get("budget", 0.0)),
+                        "edge_status": _edge_status_between(graph, org_id, node_id),
+                        "feedforward": {
+                            "note": "No per-tick aid-effect projection exists in the engine yet."
+                        },
+                    }
+                )
 
             if not found_any:
                 unavailable_targets.append(
@@ -5480,14 +6339,14 @@ class EngineBridge:
         for tid in territory_ids:
             if tid not in graph.nodes:
                 continue
-            for node_id, data in _nodes_in_territory(graph, tid):
+            for node_id, data in _territory_id_bearing_nodes(graph, tid):
                 if data.get("_node_type") != "organization" or node_id == org_id:
                     continue
                 if str(data.get("org_type", "")) not in ("business", "civil_society"):
                     continue
                 allies = [
                     {"id": ally_id, "name": graph.nodes[ally_id].get("name", ally_id)}
-                    for ally_id, ally_data in _nodes_in_territory(graph, tid)
+                    for ally_id, ally_data in _territory_id_bearing_nodes(graph, tid)
                     if ally_data.get("_node_type") == "organization"
                     and ally_id not in (org_id, node_id)
                 ]
@@ -5562,6 +6421,15 @@ class EngineBridge:
         # defines.yaml) — one source of truth, per the Step-3 promotion.
         attack_heat_gain = round(GameDefines().ooda.attack_self_heat_gain, 4)
         territory_ids = org_data.get("territory_ids", [])
+        # Track 1 / Task 9 (2026-07-18): social_class membership for the
+        # Warsaw Ghetto p_acquiescence check resolved via the real Occupant
+        # -> Territory TENANCY edge (_tenancy_members_by_territory), not the
+        # nonexistent territory_ids field on social_class nodes -- the same
+        # root-cause bug Tasks 8/8b/8c fixed elsewhere. Confirmed empirically
+        # against the real wayne_county scenario: p_acquiescence_values was
+        # always [] (warsaw_ghetto_flag permanently inert) despite C001
+        # (real p_acquiescence=0.0) tenanting ORG001's own territory.
+        tenancy_members = _tenancy_members_by_territory(graph)
 
         organizations: list[dict[str, Any]] = []
         institutions: list[dict[str, Any]] = []
@@ -5575,12 +6443,13 @@ class EngineBridge:
             terr_name = terr_data.get("name", tid)
             found_any = False
 
+            for sc_id in tenancy_members.get(tid, []):
+                sc_data = graph.nodes.get(sc_id)
+                if sc_data is not None and "p_acquiescence" in sc_data:
+                    p_acquiescence_values.append(float(sc_data["p_acquiescence"]))
+
             for node_id, data in graph.nodes(data=True):
                 node_type = data.get("_node_type")
-                if node_type == "social_class" and tid in data.get("territory_ids", []):
-                    if "p_acquiescence" in data:
-                        p_acquiescence_values.append(float(data["p_acquiescence"]))
-                    continue
                 if (
                     node_type == "organization"
                     and node_id != org_id
@@ -5610,7 +6479,7 @@ class EngineBridge:
                             "target_id": node_id,
                             "target_type": "INSTITUTION",
                             "name": data.get("name", node_id),
-                            "factional_control": dict(data.get("factional_composition", {})),
+                            "factional_control": _institution_factional_control(data),
                             "expected_deltas": {
                                 "consciousness_delta": None,
                                 "heat_delta": attack_heat_gain,
@@ -5656,6 +6525,20 @@ class EngineBridge:
         """Return available reproduction modes for the REPRODUCE verb.
 
         Matches the contract defined in spec 048 for organizational reproduction.
+
+        Track 1 / Task 8c (2026-07-18): ``base_population`` filtered
+        ``_node_type == "social_class"`` over
+        :func:`_territory_id_bearing_nodes`, which resolves via the
+        ``territory_ids`` field — a field ``SocialClass`` never carries in
+        production (only ``Organization``/``Institution`` do). That
+        combination structurally never matched anything, so
+        ``base_population`` was always 0 against real data. Resolved via
+        :func:`_tenancy_members_by_territory` (the real Occupant ->
+        Territory TENANCY edge) instead, deduped across the org's own
+        territories: a county-scale social class commonly tenants many hex
+        territories the org also operates in, so summing per
+        territory-id without dedup would double- (or N-times-) count the
+        same class's population.
         """
         state, graph = self.hydrate_state(session_id)
         org_status = self.get_org_status(session_id, org_id)
@@ -5674,11 +6557,14 @@ class EngineBridge:
 
         org_data = graph.nodes.get(org_id, {})
         territory_ids = org_data.get("territory_ids", [])
+        tenancy_members = _tenancy_members_by_territory(graph)
+        base_population_class_ids: set[str] = set()
+        for tid in territory_ids:
+            base_population_class_ids.update(tenancy_members.get(tid, []))
         base_population = sum(
-            int(data.get("population", 0))
-            for tid in territory_ids
-            for node_id, data in _nodes_in_territory(graph, tid)
-            if data.get("_node_type") == "social_class"
+            int(graph.nodes[sc_id].get("population", 0))
+            for sc_id in base_population_class_ids
+            if sc_id in graph.nodes
         )
 
         targets = [
@@ -5731,6 +6617,76 @@ class EngineBridge:
         """Return available investigation targets for the INVESTIGATE verb.
 
         Matches the contract defined in spec 048 for intel-gathering.
+
+        Track 1 / Task 9 (2026-07-18) de-mock. The grounding audit found a
+        hardcoded ``observe_capability``, a literal ``"org-police-union"``
+        target, and a hardcoded ``active_moles_suspected=1`` — only
+        ``territory_scans``' ``target_id``/``name``/``heat`` read the real
+        graph. Real sources now:
+
+        - ``observe_capability`` (:func:`_investigate_observe_capability`):
+          the org's own territories' real EH shadow attrs
+          (``intel_confidence``/``vision_state``, written by
+          :func:`~babylon.engine.systems.epistemic_horizon.compute_epistemic_horizon`
+          via ``_carry_epistemic_horizon`` at tick-resolution time). Honestly
+          ``None``/``"UNKNOWN"`` before the first real engine tick runs
+          (``EpistemicHorizonSystem`` is position 22 of 30 — a fresh tick-0
+          scenario has no shadow attrs yet), never the prior fabricated
+          ``0.6``/``"TARGETED"``.
+        - ``targets.targeted_scans`` (:func:`_hostile_org_and_institution_targets`):
+          real ``organization``/``institution`` nodes present in the org's
+          own territories — the SAME ``territory_ids`` resolution
+          :meth:`get_attack_targets` already uses (a field
+          ``Organization``/``Institution`` genuinely carry) — not the
+          literal ``"org-police-union"``, which named a node that has never
+          existed in any shipped scenario (confirmed empirically against
+          the real ``wayne_county`` scenario: it surfaces ``ORG002``,
+          Detroit Police Department, instead). Deduplicated by node id — a
+          targeted scan targets an ENTITY, not an entity-per-territory row
+          (unlike :meth:`get_attack_targets`'s intentional per-territory
+          duplication).
+        - ``current_knowledge`` on both scan arms
+          (:func:`_investigate_current_knowledge`): reads this session's
+          real :class:`~game.fog.ledger.IntelLedger` (Track 1 / Task 3),
+          instead of an identical hardcoded literal for every target
+          regardless of INVESTIGATE history.
+        - ``likely_reveals``: reuses
+          :data:`babylon.engine.actions.investigate._REVEAL_BY_NODE_TYPE` —
+          the resolver's OWN reveal table — instead of a hand-written list
+          that did not match what a real INVESTIGATE resolution actually
+          reveals (the prior literal named ``"material_readiness"``/
+          ``"hidden_factions"``/``"state_deployment"``, none of which
+          ``resolve_investigate`` ever reveals for a territory).
+        - ``counter_intelligence.active_moles_suspected``: still MOCKED —
+          ``None``, not the fabricated ``1``. No engine path ever writes an
+          infiltration/mole record anywhere the bridge can read:
+          ``resolve_infiltrate``/``check_audit``
+          (``babylon/ooda/state_ai/repress_effects.py``/
+          ``administer_effects.py``) are real, unit-tested functions, but
+          ``StateActionType.INFILTRATE`` is only ever SCORED in
+          ``babylon/ooda/state_ai/decision.py``'s action-selection weights
+          and never dispatched to a resolver anywhere in ``src/`` — grep
+          confirms ``resolve_infiltrate`` has zero non-test call sites.
+          There is no persisted infiltration state anywhere for this field
+          to read. Fixing it honestly requires wiring
+          ``StateActionType.INFILTRATE`` through to ``resolve_infiltrate``
+          and persisting the resulting records somewhere queryable
+          (mirroring how ``_derive_intel_ledger`` reads persisted
+          ``action_result`` rows) — an engine-adjacent wiring task, out of
+          this bridge-layer task's scope.
+
+        Fog note: this target list is NOT reach-gated (same precedent and
+        reasoning as Task 8's ``get_educate_targets``). Every territory/org/
+        institution enumerated here is already bounded to ``org_id``'s own
+        PRESENCE territories — exactly ``organizing_reach``'s first
+        (PRESENCE) hop — so gating would be a no-op for the calling
+        convention every shipped caller uses (``org_id`` == the session's
+        resolved player org). Gating would also be actively harmful here:
+        INVESTIGATE is the verb that EARNS intel (writes
+        ``investigation_intel``/ledger entries that expand what is knowable
+        elsewhere) — hiding investigation targets behind reach would make
+        reach permanently unexpandable from outside itself, a deadlock this
+        verb specifically exists to break.
         """
         state, graph = self.hydrate_state(session_id)
         org_status = self.get_org_status(session_id, org_id)
@@ -5747,54 +6703,82 @@ class EngineBridge:
             "over_budget_penalty": None,
         }
 
-        observe_capability = {"intel_network_strength": 0.6, "max_scan_depth": "TARGETED"}
-
         org_data = graph.nodes.get(org_id, {})
+        territory_ids = org_data.get("territory_ids", [])
+
+        observe_capability = _investigate_observe_capability(graph, territory_ids)
+
+        ledger = _derive_intel_ledger(session_id)
+        staleness_ticks, unknown_ticks = _current_intel_aging_ticks()
+
         territory_scans = [
             {
                 "target_id": str(tid),
                 "name": graph.nodes[tid].get("name", tid),
                 "target_type": "TERRITORY",
                 "heat": float(graph.nodes[tid].get("heat", 0.0)),
-                "current_knowledge": {
-                    "visibility_level": "SURFACE",
-                    "known_attributes": ["population"],
-                    "last_scanned_tick": None,
-                },
+                "current_knowledge": _investigate_current_knowledge(
+                    ledger,
+                    "territory",
+                    tid,
+                    state.tick,
+                    staleness_ticks,
+                    unknown_ticks,
+                    always_known=("population",),
+                ),
                 "resource_cost": {"sympathizer_labor": 5.0},
                 "projected_reveals": {
                     "new_visibility_level": "TARGETED",
-                    "likely_reveals": ["material_readiness", "hidden_factions", "state_deployment"],
+                    "likely_reveals": list(
+                        _INVESTIGATE_REVEAL_BY_NODE_TYPE.get(
+                            "territory", _INVESTIGATE_REVEAL_DEFAULT
+                        )
+                    ),
                 },
             }
-            for tid in org_data.get("territory_ids", [])
+            for tid in territory_ids
             if tid in graph.nodes
         ]
 
+        hostile_targets = _hostile_org_and_institution_targets(graph, org_id, territory_ids)
         targeted_scans = [
             {
-                "target_id": "org-police-union",
-                "name": "Fraternal Order of Police",
-                "target_type": "INSTITUTION",
-                "current_knowledge": {
-                    "visibility_level": "NONE",
-                    "known_attributes": [],
-                    "last_scanned_tick": None,
-                },
+                "target_id": node_id,
+                "name": data.get("name", node_id),
+                "target_type": (
+                    "INSTITUTION"
+                    if data.get("_node_type") == "institution"
+                    else str(data.get("org_type", "UNKNOWN")).upper()
+                ),
+                "current_knowledge": _investigate_current_knowledge(
+                    ledger,
+                    str(data.get("_node_type")),
+                    node_id,
+                    state.tick,
+                    staleness_ticks,
+                    unknown_ticks,
+                ),
                 "resource_cost": {"cadre_labor": 4.0},
                 "projected_reveals": {
-                    "new_visibility_level": "SURFACE",
-                    "likely_reveals": ["factional_control", "defensive_capacity"],
+                    "new_visibility_level": "TARGETED",
+                    "likely_reveals": list(
+                        _INVESTIGATE_REVEAL_BY_NODE_TYPE.get(
+                            str(data.get("_node_type")), _INVESTIGATE_REVEAL_DEFAULT
+                        )
+                    ),
                 },
                 "detection_risk": {
                     "probability": 0.35,
                     "consequence": "Increases organization heat by 0.15",
                 },
             }
+            for node_id, data in sorted(hostile_targets.items())
         ]
 
         counter_intelligence = {
-            "active_moles_suspected": 1,
+            # MOCKED: no engine path ever writes an infiltration/mole record
+            # anywhere this bridge can read — see this method's docstring.
+            "active_moles_suspected": None,
             "resource_cost": {"cadre_labor": 5.0},
             "projected_reveals": {
                 "new_visibility_level": "INTERNAL_AUDIT",
@@ -6075,6 +7059,427 @@ def _graph_tick(graph: BabylonGraph) -> int:
     return int(graph.graph.get("tick", 0))
 
 
+def _resolve_player_org_id(graph: BabylonGraph) -> str | None:
+    """Resolve the canonical player-organization id from graph metadata.
+
+    ``WorldState.player_org_id`` (``src/babylon/models/world_state.py:461``)
+    is the single source of truth for "the organization the player
+    embodies" — already relied on engine-side by ``EpistemicHorizonSystem``
+    and ``DoctrineSystem``. It rides graph metadata only when set
+    (``WorldState._write_optional_axes``, world_state.py:827-828) and is
+    read back with this exact ``isinstance`` guard by
+    ``WorldState.from_graph`` (world_state.py:992-996). The same idiom is
+    mirrored here (and in ``engine/systems/epistemic_horizon.py:239-240``)
+    so bridge callers that only hold a ``BabylonGraph`` — not a
+    reconstructed ``WorldState`` — don't pay to build one just to answer
+    "is this the player org?".
+
+    Returns ``None`` when absent. This is not a failure: sessions with no
+    player org set (synthetic scenarios, headless sweeps — documented at
+    world_state.py:467-469) legitimately have no player-relative vision,
+    and every org must resolve to "not player-controlled" rather than
+    falling back to a structural guess.
+    """
+    raw = graph.graph.get("player_org_id")
+    return raw if isinstance(raw, str) else None
+
+
+def _is_player_org(org_id: str, player_org_id: str | None) -> bool:
+    """Whether ``org_id`` is the session's canonical player organization.
+
+    Single source of truth for "is this the player org", replacing the
+    ``class_character == "proletarian" and org_type == "civil_society"``
+    structural heuristic that used to live duplicated, verbatim, in
+    ``_serialize_organization`` and ``get_inspector_org`` — a stopgap for
+    the missing engine-side ``controlling_player_id`` link (see the retired
+    docstring note that used to sit on ``_serialize_organization``) that
+    could silently diverge from ``WorldState.player_org_id``: an org could
+    match the heuristic without being the real player org, or the real
+    player org could fail to match it (e.g. a non-civil_society or non-
+    proletarian player faction). Track 1 / Task 1 (2026-07-18) retires the
+    heuristic in favor of this single comparison.
+
+    Args:
+        org_id: The organization id being classified.
+        player_org_id: The session's ``WorldState.player_org_id``, or
+            ``None`` for sessions with no player org set (see
+            :func:`_resolve_player_org_id`) — every org resolves to
+            ``False`` in that case, never a fallback guess.
+    """
+    return player_org_id is not None and org_id == player_org_id
+
+
+def _player_org_from_state(state: Any) -> Any:
+    """Return the player's organization off an ALREADY-HYDRATED WorldState.
+
+    Pure, no I/O — extracted from :meth:`EngineBridge._player_doctrine_org`
+    (Track 2 T2-8) so a caller that already holds ``state`` (e.g.
+    :meth:`EngineBridge.get_economy_dashboard`, which calls
+    :meth:`EngineBridge.hydrate_state` once for its own aggregate) can reuse
+    it instead of paying for a second hydration just to answer "who is the
+    player org". :meth:`EngineBridge._player_doctrine_org` now delegates
+    here after doing its own hydrate.
+
+    :param state: A hydrated ``WorldState`` (or any object exposing
+        ``organizations``/``player_org_id`` — accepts ``Any`` so a
+        ``MagicMock``/``SimpleNamespace`` test double works the same way).
+    :returns: The player's ``Organization``, or ``None`` if ``state`` carries
+        no ``organizations`` dict or no ``player_org_id`` names a live one —
+        never raises (Constitution III.11: absence is a legitimate answer
+        for synthetic/headless scenarios, not an error).
+    """
+    orgs = getattr(state, "organizations", None)
+    if not isinstance(orgs, dict):
+        return None
+    player_org_id = getattr(state, "player_org_id", None)
+    return orgs.get(player_org_id) if player_org_id else None
+
+
+def _resolve_veil_tier(state: Any) -> int:
+    """Resolve the player org's Veil-of-Money tier off an already-hydrated
+    ``WorldState`` (G4: the sweep's shared tier-resolution helper).
+
+    Thin wrapper around :func:`game.veil.compute_veil_tier` — reuses
+    :func:`_player_org_from_state` (so "no player org" resolves to tier 0
+    the same documented way :meth:`EngineBridge.get_economy_dashboard`
+    already established, never a crash) and ``GameDefines().veil`` for the
+    two threshold node ids. Every endpoint that emits a
+    :data:`~game.veil.TIER1_VALUE_RELATION_FIELDS`/
+    :data:`~game.veil.TIER2_SCISSORS_FIELDS` field and already holds a
+    ``state`` calls this exactly once, then passes the result to
+    :func:`~game.veil.gate_value_axis_fields` — one tier computation, reused,
+    not one ad hoc reimplementation per composer.
+    """
+    player_org = _player_org_from_state(state)
+    acquired_doctrine_ids = getattr(player_org, "acquired_doctrine_ids", ())
+    veil_defines = GameDefines().veil
+    return compute_veil_tier(
+        acquired_doctrine_ids,
+        veil_defines.tier1_doctrine_node_id,
+        veil_defines.tier2_doctrine_node_id,
+    )
+
+
+def _resolve_veil_tier_from_graph(graph: BabylonGraph) -> int:
+    """Resolve the player org's Veil-of-Money tier off a raw hydrated graph.
+
+    For callers that hold a ``BabylonGraph`` but no reconstructed
+    ``WorldState`` (e.g. :meth:`EngineBridge.get_inspector_node`/
+    ``get_inspector_hex``, which read the raw graph directly to avoid
+    ``WorldState.from_graph()`` crashing on unrecognized ``_node_type``
+    values — see those methods' docstrings) — reads ``acquired_doctrine_ids``
+    straight off the player org's graph node data (the same attribute
+    :func:`babylon.engine.systems.doctrine` writes there each tick), via the
+    same :func:`_resolve_player_org_id` this bridge already uses for fog
+    gating, so a second WorldState hydration is never paid for just to
+    answer "what tier is the veil at". A graph with no resolvable player org
+    (:func:`_resolve_player_org_id` returns ``None``) yields an empty
+    acquired set, hence tier 0 — the same documented "no player org is tier
+    zero" contract :func:`_resolve_veil_tier` established.
+    """
+    player_org_id = _resolve_player_org_id(graph)
+    acquired_doctrine_ids: tuple[str, ...] | list[str] = ()
+    if player_org_id is not None and player_org_id in graph.nodes:
+        acquired_doctrine_ids = graph.nodes[player_org_id].get("acquired_doctrine_ids", ())
+    veil_defines = GameDefines().veil
+    return compute_veil_tier(
+        acquired_doctrine_ids,
+        veil_defines.tier1_doctrine_node_id,
+        veil_defines.tier2_doctrine_node_id,
+    )
+
+
+#: Track 1 / Task 3 (2026-07-18): the honest fallback once INVESTIGATE
+#: resolutions ARE event-sourced (:func:`_derive_intel_ledger`, below) —
+#: "nothing observed yet" for a fresh session (no persisted
+#: ``action_result`` rows to fold) or a non-session context
+#: (``_centrality_by_territory``'s :func:`_build_org_network` call, which
+#: has no ``session_id`` and only needs the resulting centrality numbers,
+#: never the fogged payload). Every genuinely PLAYER-FACING call site now
+#: derives a REAL ledger instead of reading this constant directly. Sharing
+#: one instance is safe: :class:`IntelLedger` is frozen and this one can
+#: never accumulate entries, unlike the four forbidden per-process session
+#: dicts (``_session_action_history`` et al.) — it is an immutable empty
+#: VALUE, not mutable session state.
+_EMPTY_INTEL_LEDGER: Final[IntelLedger] = IntelLedger()
+
+
+def _current_organizing_reach(graph: Any) -> frozenset[str]:
+    """:func:`game.fog.reach.organizing_reach` for this graph's own player
+    org, using the DEFAULT (not session-persisted) ``GameDefines`` reach-
+    radius coefficient — the same ad hoc ``GameDefines()`` read this module
+    already uses for other single-coefficient lookups from a plain function
+    with no ``session_id``/persistence handle in scope (e.g. line ~4982,
+    ~5521, ~9445). Empty when ``graph`` is ``None``, carries no
+    ``player_org_id`` (:func:`_resolve_player_org_id`), or the id names no
+    live node (a dissolved/never-materialized player org — verified real:
+    ``WorldState.organizations`` can be emptied via ``model_copy`` while
+    graph metadata still names the old id, e.g.
+    ``tests/unit/web/test_aw4_centrality_lens.py::test_org_less_scenario_is_honestly_empty``) —
+    Constitution III.11: none of these are a crash-worthy corrupt-data case
+    from THIS caller's perspective, they just mean reach cannot be
+    established, so this defaults to deny (fully fogged), never a
+    fabricated full-visibility reach. ``organizing_reach`` itself still
+    raises loud for a caller that hands it a genuinely-invalid id directly
+    (Task 2's own contract, unchanged) — this wrapper only pre-empts that
+    for the "stale metadata, no live node" case specifically.
+    """
+    if graph is None:
+        return frozenset()
+    player_org_id = _resolve_player_org_id(graph)
+    if player_org_id is not None and player_org_id not in graph.nodes:
+        return frozenset()
+    radius = GameDefines().epistemic_horizon.organizing_reach_radius
+    return organizing_reach(graph, player_org_id, radius)
+
+
+def _current_intel_aging_ticks() -> tuple[int, int]:
+    """``(intel_staleness_ticks, intel_unknown_ticks)`` off the default
+    ``GameDefines.epistemic_horizon`` — see :func:`_current_organizing_reach`
+    for why this reads the DEFAULT rather than a session-persisted
+    ``GameDefines`` (same precedent, same reason)."""
+    eh = GameDefines().epistemic_horizon
+    return eh.intel_staleness_ticks, eh.intel_unknown_ticks
+
+
+#: Ordinal ranking of the real EH ``vision_state`` vocabulary
+#: (desert/mud/water — :func:`~babylon.engine.systems.epistemic_horizon.compute_epistemic_horizon`),
+#: used by :func:`_investigate_observe_capability` to find the BEST vision
+#: state among an org's territories (higher = the masses talk more).
+_VISION_STATE_RANK: dict[str, int] = {"desert": 0, "mud": 1, "water": 2}
+
+#: Track 1 / Task 9 (2026-07-18): an explicit INTERPRETATION mapping the
+#: real EH ``vision_state`` vocabulary onto this file's pre-existing
+#: NONE/SURFACE/TARGETED/DEEP scan-depth vocabulary (already used elsewhere
+#: in ``get_investigate_targets``) — flagged as a design call, not a
+#: certainty, mirroring ``game.fog.filter``'s own ``colonial_stance``
+#: interpretation note.
+_VISION_STATE_TO_SCAN_DEPTH: dict[str, str] = {
+    "desert": "SURFACE",
+    "mud": "TARGETED",
+    "water": "DEEP",
+}
+
+
+def _investigate_observe_capability(
+    graph: BabylonGraph, territory_ids: list[Any]
+) -> dict[str, Any]:
+    """The INVESTIGATE verb's real ``observe_capability`` — Track 1 / Task 9.
+
+    ``intel_network_strength``: mean real ``intel_confidence`` across the
+    org's own territories that carry the attr (written onto TERRITORY nodes
+    by :func:`~babylon.engine.systems.epistemic_horizon.compute_epistemic_horizon`
+    via ``_carry_epistemic_horizon`` at tick-resolution time) — the corpus's
+    own "the masses ARE the intelligence network" measure of how well this
+    org currently perceives its own ground, not a fabricated constant.
+
+    ``max_scan_depth``: :data:`_VISION_STATE_TO_SCAN_DEPTH` applied to the
+    highest-ranked real ``vision_state`` (:data:`_VISION_STATE_RANK`) among
+    those same territories.
+
+    Honest-null (Constitution III.11): before ``EpistemicHorizonSystem``
+    (position 22 of 30) has run a single real engine tick, no territory
+    carries these shadow attrs at all — this returns
+    ``{"intel_network_strength": None, "max_scan_depth": "UNKNOWN"}``,
+    never the prior fabricated ``{"intel_network_strength": 0.6,
+    "max_scan_depth": "TARGETED"}``.
+    """
+    confidences: list[float] = []
+    best_vision: str | None = None
+    best_rank = -1
+    for tid in territory_ids:
+        data = graph.nodes.get(tid)
+        if data is None:
+            continue
+        confidence = data.get("intel_confidence")
+        if confidence is not None:
+            confidences.append(float(confidence))
+        vision = data.get("vision_state")
+        rank = _VISION_STATE_RANK.get(vision, -1) if isinstance(vision, str) else -1
+        if rank > best_rank:
+            best_rank = rank
+            best_vision = vision
+    intel_network_strength = round(sum(confidences) / len(confidences), 4) if confidences else None
+    max_scan_depth = (
+        _VISION_STATE_TO_SCAN_DEPTH.get(best_vision, "UNKNOWN") if best_vision else "UNKNOWN"
+    )
+    return {"intel_network_strength": intel_network_strength, "max_scan_depth": max_scan_depth}
+
+
+#: Track 1 / Task 9: maps :class:`~game.fog.ledger.IntelReading`'s
+#: ``tier`` onto this file's pre-existing NONE/SURFACE/TARGETED vocabulary.
+_INVESTIGATE_VISIBILITY_BY_TIER: dict[str, str] = {
+    "exact": "TARGETED",
+    "approximate": "SURFACE",
+    "unknown": "NONE",
+}
+
+
+def _investigate_current_knowledge(
+    ledger: IntelLedger,
+    node_type: str,
+    node_id: str,
+    tick: int,
+    staleness_ticks: int,
+    unknown_ticks: int,
+    *,
+    always_known: tuple[str, ...] = (),
+) -> dict[str, Any]:
+    """The INVESTIGATE target list's ``current_knowledge`` block for one
+    node — Track 1 / Task 9. Reads this session's real
+    :class:`~game.fog.ledger.IntelLedger` (Track 1 / Task 3's
+    :func:`_derive_intel_ledger`) via :func:`~game.fog.ledger.read_intel`,
+    instead of the prior identical hardcoded literal for every target
+    regardless of INVESTIGATE history.
+
+    Args:
+        always_known: field names that are MATERIAL, not POLITICAL (never
+            gated anywhere else in this bridge — e.g. ``population`` is not
+            a member of :data:`~game.fog.filter.POLITICAL_FIELDS`), so they
+            are always known independent of ledger history. Empty for
+            organization/institution targets, which have no such baseline.
+    """
+    reading = read_intel(
+        ledger,
+        node_id,
+        political_field_group(node_type),
+        tick,
+        staleness_ticks=staleness_ticks,
+        unknown_ticks=unknown_ticks,
+    )
+    known_attributes = sorted({*always_known, *(reading.value_snapshot or {}).keys()})
+    return {
+        "visibility_level": _INVESTIGATE_VISIBILITY_BY_TIER[reading.tier],
+        "known_attributes": known_attributes,
+        "last_scanned_tick": reading.tick_observed,
+    }
+
+
+def _hostile_org_and_institution_targets(
+    graph: BabylonGraph, org_id: str, territory_ids: list[Any]
+) -> dict[str, dict[str, Any]]:
+    """Real ``organization``/``institution`` nodes present in ``org_id``'s
+    own territories, excluding ``org_id`` itself — Track 1 / Task 9.
+
+    Mirrors :meth:`EngineBridge.get_attack_targets`'s identical
+    ``territory_ids`` resolution (a field ``Organization``/``Institution``
+    genuinely carry in production, unlike ``SocialClass`` — see this
+    file's TENANCY-vs-``territory_ids`` gotcha). Deduplicated by node id
+    (first territory seen wins) rather than one row per (org, territory)
+    pair: a targeted INVESTIGATE scan targets an ENTITY, not an entity's
+    presence in one specific territory (unlike ``get_attack_targets``,
+    which intentionally lists one row per territory an org can be attacked
+    from).
+
+    Args:
+        graph: The hydrated session graph.
+        org_id: The acting org — excluded from its own results.
+        territory_ids: The acting org's own territory ids.
+
+    Returns:
+        Map of node id -> node attrs, for real hostile organization/
+        institution nodes. Empty when none exist yet (Constitution III.11 —
+        no fabricated placeholder target).
+    """
+    found: dict[str, dict[str, Any]] = {}
+    for tid in territory_ids:
+        if tid not in graph.nodes:
+            continue
+        for node_id, data in graph.nodes(data=True):
+            if node_id == org_id or node_id in found:
+                continue
+            if data.get("_node_type") not in ("organization", "institution"):
+                continue
+            if tid in data.get("territory_ids", []):
+                found[node_id] = data
+    return found
+
+
+def _query_investigate_action_results(session_id: UUID) -> list[dict[str, Any]]:
+    """Fetch this session's persisted, successful INVESTIGATE action_result rows.
+
+    Track 1 / Task 3: the read half of :func:`_investigate_field_snapshot`'s
+    write-time enrichment. Queries the Django ORM ``ActionResult`` model
+    directly (mirrors ``_persist_action_results``'s own ORM fallback and
+    ``get_map_snapshot``'s ``GameSession``/``HexState`` reads elsewhere in
+    this file) — ``action_result`` has no protocol-level query method
+    (``RuntimePersistence`` only declares the WRITE side,
+    ``persist_action_results``), so there is no ``getattr``-based
+    persistence indirection available to reuse here.
+
+    Best-effort like this file's other ``game.models`` read paths: any
+    failure (Django not configured, e.g. a non-``django_db`` unit test; a
+    genuinely absent table) yields an empty list — the caller
+    (:func:`_derive_intel_ledger`) folds that into an honestly empty
+    ledger, never a crash on a read-only convenience path.
+
+    Args:
+        session_id: The game session UUID.
+
+    Returns:
+        Dicts with ``tick``/``target_id``/``details`` keys, one per
+        persisted successful ``ActionType.MAP_NETWORK`` (INVESTIGATE)
+        ``action_result`` row.
+    """
+    from game.models import ActionResult
+
+    try:
+        rows = ActionResult.objects.filter(
+            session_id=session_id,
+            action_type=ActionType.MAP_NETWORK.value,
+            success=True,
+        ).values("tick", "target_id", "details")
+        return [dict(row) for row in rows]
+    except Exception:  # noqa: BLE001 — best-effort read; empty ledger is honest
+        logger.exception(
+            "Failed to query INVESTIGATE action_result rows for session %s", session_id
+        )
+        return []
+
+
+def _derive_intel_ledger(session_id: UUID) -> IntelLedger:
+    """Derive this session's real :class:`IntelLedger` from persisted history.
+
+    Track 1 / Task 3 (2026-07-18): replaces :data:`_EMPTY_INTEL_LEDGER` at
+    every PLAYER-FACING fog call site. Deterministic and replayable — built
+    entirely from the ``action_result`` table (never one of the forbidden
+    per-process session globals), so a worker restart mid-session
+    reconstructs the exact same ledger a live process would have, and two
+    concurrent readers of the same session always agree.
+
+    Rows lacking the ``intel_field_group``/``intel_value_snapshot`` details
+    keys (any ``action_result`` row that isn't a Track-1/Task-3-enriched
+    INVESTIGATE — including every row persisted before this task shipped)
+    are skipped by :func:`~game.fog.ledger.ledger_from_events`, which never
+    fabricates an entry from a partial row (Constitution III.11).
+
+    Args:
+        session_id: The game session UUID.
+
+    Returns:
+        A new :class:`IntelLedger` — :data:`_EMPTY_INTEL_LEDGER`-equivalent
+        (zero entries) for a fresh session or one with no recoverable
+        INVESTIGATE history.
+    """
+    rows = _query_investigate_action_results(session_id)
+    ledger_rows: list[dict[str, Any]] = []
+    for row in rows:
+        details = row.get("details") or {}
+        field_group = details.get("intel_field_group")
+        value_snapshot = details.get("intel_value_snapshot")
+        if not field_group or not value_snapshot:
+            continue
+        ledger_rows.append(
+            {
+                "tick": row.get("tick"),
+                "target_id": row.get("target_id"),
+                "field_group": field_group,
+                "value_snapshot": value_snapshot,
+            }
+        )
+    return ledger_from_events(ledger_rows)
+
+
 # Aliases accepted at the API/CLI boundary, mapped to canonical names in the
 # engine scenario registry (babylon.engine.scenarios). "us_nationwide" is the
 # SCENARIO_CATALOG key served by GET /api/scenarios/ (web/game/api.py) and the
@@ -6225,6 +7630,26 @@ def _has_county_resolution_territory(state: WorldState) -> bool:
 _TENSOR_REGISTRY_CACHE: dict[frozenset[str], Any] = {}
 _CAPITAL_CALCULATOR_CACHE: dict[frozenset[str], Any] = {}
 
+#: PR #209 review: both caches above hold a fully-hydrated registry (15 years
+#: × every county in the key) per distinct FIPS-set for the life of the web
+#: worker — unbounded, that grows with every new scenario/county-set a session
+#: requests. 8 comfortably covers every canonical scenario while capping the
+#: worst case; infra bound, not a gameplay coefficient, hence no GameDefines.
+_ECONOMICS_CACHE_MAX: Final[int] = 8
+
+
+def _cache_put_bounded(cache: dict[frozenset[str], Any], key: frozenset[str], value: Any) -> None:
+    """FIFO-bounded insert shared by both economics caches (PR #209 review).
+
+    Dicts iterate in insertion order, so ``next(iter(cache))`` is the oldest
+    entry; one eviction per insert keeps ``len(cache) <= _ECONOMICS_CACHE_MAX``
+    because this is the caches' only writer.
+    """
+    if len(cache) >= _ECONOMICS_CACHE_MAX:
+        cache.pop(next(iter(cache)))
+    cache[key] = value
+
+
 #: QCEW county coverage runs 2010–2024; hydrate the full span once so the
 #: perpetual-inventory ``get_K`` has every year the sim can advance into.
 _CAPITAL_HYDRATION_YEARS: Final[tuple[int, ...]] = tuple(range(2010, 2025))
@@ -6278,10 +7703,13 @@ def _build_tensor_registry(fips_codes: tuple[str, ...]) -> Any:
             StubBEASource(),  # falls back to DepartmentMapper department ratios
             DepartmentMapper.from_yaml(naics_yaml),
         )
-        # sorted: fixes hydration/summation order across sessions (III.7, §5 hazard 1)
-        registry.hydrate_counties(hydrator, sorted(fips_codes), list(_CAPITAL_HYDRATION_YEARS))
+        # sorted(key), not sorted(fips_codes): fixes hydration/summation order
+        # across sessions (III.7, §5 hazard 1) AND hydrates exactly the deduped
+        # cache key — a duplicate county in the tuple is one hydration, not two
+        # (PR #209 review).
+        registry.hydrate_counties(hydrator, sorted(key), list(_CAPITAL_HYDRATION_YEARS))
 
-    _TENSOR_REGISTRY_CACHE[key] = registry
+    _cache_put_bounded(_TENSOR_REGISTRY_CACHE, key, registry)
     return registry
 
 
@@ -6314,7 +7742,7 @@ def _build_capital_calculator(fips_codes: tuple[str, ...]) -> Any:
 
     registry = _build_tensor_registry(fips_codes)
     calculator = CapitalStockCalculator(registry)
-    _CAPITAL_CALCULATOR_CACHE[key] = calculator
+    _cache_put_bounded(_CAPITAL_CALCULATOR_CACHE, key, calculator)
     return calculator
 
 
@@ -7861,7 +9289,7 @@ def _build_tick_summary(
 
 
 def _persist_snapshots_safe(
-    persistence: RuntimePersistence,
+    persistence: BridgePersistence,
     session_id: UUID,
     state: WorldState,
     *,
@@ -7895,18 +9323,16 @@ def _persist_snapshots_safe(
             call sites omit it (tick-0 has no TickDynamics output; honest
             ``None``, never a fabricated 0.0).
     """
-    full_tick_fn = getattr(persistence, "persist_full_tick", None)
-    summary_fn = getattr(persistence, "persist_tick_summary", None)
-    if not callable(full_tick_fn) or not callable(summary_fn):
-        return
-
     territories = [_serialize_territory(t, graph=graph) for t in state.territories.values()]
-    organizations = [_serialize_organization(o) for o in state.organizations.values()]
+    organizations = [
+        _serialize_organization(o, player_org_id=state.player_org_id)
+        for o in state.organizations.values()
+    ]
     entities = [_serialize_entity(e) for e in state.entities.values()]
     edges = [_serialize_edge(rel) for rel in state.relationships]
 
     try:
-        full_tick_fn(
+        persistence.persist_full_tick(
             session_id,
             state.tick,
             territories=_territory_snapshot_rows(territories),
@@ -7926,7 +9352,7 @@ def _persist_snapshots_safe(
         )
 
     try:
-        summary_fn(
+        persistence.persist_tick_summary(
             state.tick,
             _build_tick_summary(state, organizations, graph=graph),
             session_id=session_id,
@@ -7938,7 +9364,7 @@ def _persist_snapshots_safe(
 
 
 def _persist_tick_events_safe(
-    persistence: RuntimePersistence,
+    persistence: BridgePersistence,
     session_id: UUID,
     tick: int,
     serialized_events: list[dict[str, Any]],
@@ -7948,9 +9374,9 @@ def _persist_tick_events_safe(
     """Best-effort write of a tick's events into the ``tick_event`` table.
 
     Spec 092 R-CONS: gives ``get_journal_dashboard``/``get_alerts_dashboard``
-    real history to read back. Mirrors :func:`_persist_action_result`'s
-    optional-capability pattern — SQLite-backed ``RuntimeDatabase``
-    (dev/test) has no ``persist_tick_events`` method and this becomes a
+    real history to read back. Mirrors :func:`_persist_action_results`'s
+    write pattern — SQLite-backed ``RuntimeDatabase``
+    (dev/test) implements ``persist_tick_events`` as an honest no-op, so this becomes a
     silent no-op there (matches :meth:`EngineBridge.get_game_timeseries`'s
     established SQLite fallback). Never raises: a journal-write failure
     must not fail tick resolution.
@@ -7977,12 +9403,9 @@ def _persist_tick_events_safe(
     """
     if not serialized_events:
         return
-    persist_fn = getattr(persistence, "persist_tick_events", None)
-    if not callable(persist_fn):
-        return
     rows = [_tick_event_row(e) for e in serialized_events]
     try:
-        persist_fn(session_id, tick, rows, replace=replace)
+        persistence.persist_tick_events(session_id, tick, rows, replace=replace)
     except Exception:  # noqa: BLE001 — diagnostic; never blocks tick resolution
         logger.exception("Failed to persist tick_event rows session=%s tick=%d", session_id, tick)
 
@@ -7991,6 +9414,8 @@ def _persist_causal_beats_safe(
     session_id: UUID,
     tick: int,
     frames: tuple[dict[str, Any], ...] | list[dict[str, Any]],
+    *,
+    veil_tier: int = 2,
 ) -> None:
     """Best-effort write of a tick's causal frames as ``NarrationRecord`` beats.
 
@@ -8006,10 +9431,25 @@ def _persist_causal_beats_safe(
     ``(session, tick, beat_id)``. Observer-layer only: outside the tick
     hash, touches neither state nor graph.
 
+    G4 (Finding 2, adversarial review): ``GET .../narration/`` (``api.py::
+    game_narration``) serves persisted rows verbatim, with no read-time
+    re-gate step (unlike ``territories``, which every read path re-gates
+    via ``_gate_snapshot_territories`` AFTER persistence keeps the TRUE
+    value) — free-form prose has no such structured re-gate. So the veil
+    tier used here is the ONE gate: ``veil_tier`` must be the caller's
+    real, already-resolved tier at RENDER time, never a later re-check.
+
     Args:
         session_id: The game session UUID.
         tick: The tick the frames were captured on.
         frames: ``CausalChainObserver.latest_frames`` for this tick.
+        veil_tier: The session's Veil-of-Money tier
+            (:func:`_resolve_veil_tier`) — threaded into
+            :func:`~game.causal_voice.render_frame_beats` so the
+            ``imperial_rent_pool`` sentence in each beat veils below Tier
+            1, the same as every other value-axis surface in the sweep.
+            Defaults to ``2`` (fully unlocked) for any caller that predates
+            this parameter.
     """
     if not frames:
         return
@@ -8023,7 +9463,7 @@ def _persist_causal_beats_safe(
         )
         from game.models import GameSession, NarrationRecord
 
-        beats = render_frame_beats(frames)
+        beats = render_frame_beats(frames, veil_tier=veil_tier)
         if not beats:
             return
         with transaction.atomic():
@@ -8053,7 +9493,17 @@ def _persist_causal_beats_safe(
         )
 
 
-def _hex_feature_properties(state: Any) -> dict[str, Any]:
+def _hex_feature_properties(
+    state: Any,
+    *,
+    territory_id: str | None = None,
+    reach: frozenset[str] | None = None,
+    ledger: IntelLedger | None = None,
+    tick: int = 0,
+    staleness_ticks: int = 0,
+    unknown_ticks: int = 0,
+    veil_tier: int | None = None,
+) -> dict[str, Any]:
     """Project one ``hex_latest`` row onto hex-zoom ``/map/`` feature properties.
 
     Emits every :data:`MAP_METRIC_PROPERTIES` key (the spec-109 A3 contract —
@@ -8070,14 +9520,48 @@ def _hex_feature_properties(state: Any) -> dict[str, Any]:
     ``get_map_snapshot`` loop so the contract is unit-testable without a
     database.
 
+    Track 1 / Task 5: ``territory_id``/``reach``/``ledger``/``tick``/
+    ``staleness_ticks``/``unknown_ticks`` are OPTIONAL and default to
+    ``None``/``0`` — mirrors ``_serialize_territory``'s exact opt-in fog
+    pattern (Task 4). ``reach is None`` means "fog not requested" (every
+    direct unit-test call site that predates this task keeps getting the
+    unfogged dict, byte-identical); a caller building the real player-facing
+    ``/map/`` hex zoom (``EngineBridge.get_map_snapshot``) always supplies a
+    real ``reach``, gating this dict's political fields
+    (``heat``/``dominant_class``/``solidarity_index``/``agitation`` — the
+    four names :data:`~game.fog.filter.POLITICAL_FIELDS` shares with this
+    surface) through the SAME :func:`~game.fog.filter.apply_fog` gate
+    ``_serialize_territory``/``get_inspector_*`` already use — not a second,
+    independently-derived one. ``_aggregate_hex_features`` gates the
+    identical four fields the same way, on every state it folds into a
+    group, BEFORE any aggregation math runs — this function and that one
+    are the two halves of ONE filtered-then-aggregated pipeline, never two
+    independent gates.
+
     Args:
         state: One ``HexState`` row (or any object carrying its columns).
+        territory_id: The territory node id this hex's ``h3_index``
+            resolves to (the caller's own ``h3_index -> territory_id``
+            map), or ``None`` when it cannot be resolved — coerced to
+            ``""`` before the fog gate, which can never be a member of
+            ``reach`` or a ledger entry, so it deny-by-defaults to fully
+            fogged (mirrors ``_current_organizing_reach``'s own
+            deny-on-ambiguity rule) rather than crashing or fabricating
+            visibility.
+        reach: :func:`game.fog.reach.organizing_reach`'s result, or
+            ``None`` to skip fogging entirely (opt-in, see above).
+        ledger: The session's :class:`~game.fog.ledger.IntelLedger`;
+            defaults to the shared empty ledger when ``reach`` is given but
+            this is omitted.
+        tick: The current simulation tick.
+        staleness_ticks: ``GameDefines.epistemic_horizon.intel_staleness_ticks``.
+        unknown_ticks: ``GameDefines.epistemic_horizon.intel_unknown_ticks``.
 
     Returns:
         The feature ``properties`` dict.
     """
     attributes = getattr(state, "attributes", None) or {}
-    return {
+    properties: dict[str, Any] = {
         "h3_index": state.h3_index,
         "county_fips": state.county_fips,
         "county_name": state.county_name,
@@ -8103,6 +9587,20 @@ def _hex_feature_properties(state: Any) -> dict[str, Any]:
         "dispossession_intensity": attributes.get("dispossession_intensity"),
         "price_divergence": attributes.get("price_divergence"),
     }
+    if veil_tier is not None:
+        properties = gate_value_axis_fields(properties, veil_tier)
+    if reach is None:
+        return properties
+    return apply_fog(
+        properties,
+        "territory",
+        territory_id or "",
+        reach,
+        ledger if ledger is not None else _EMPTY_INTEL_LEDGER,
+        tick,
+        staleness_ticks=staleness_ticks,
+        unknown_ticks=unknown_ticks,
+    )
 
 
 def _org_count_by_territory(organizations: list[dict[str, Any]]) -> dict[str, int]:
@@ -8449,7 +9947,7 @@ def _persist_hex_state_safe(
     game loop never wrote it, so the map rendered zero features for every
     real game (only the ``seed_hex_data`` mock-fixture command wrote rows).
     Mirrors :func:`_persist_tick_events_safe`'s never-raise contract, and
-    :func:`_persist_action_result`'s Django-ORM write path — Django's
+    :func:`_persist_action_results`'s Django-ORM write path — Django's
     ``default`` database is the same Postgres the persistence pool points at
     (see :func:`init_persistence`), so an ORM UPSERT lands in the exact table
     the map reader queries. Uses ``bulk_create(update_conflicts=True)`` →
@@ -8668,8 +10166,47 @@ def _compute_real_median_wage(graph: Any, territory_id: str) -> float | None:
     return round(float(wage) * float(deflator), 4)
 
 
-def _serialize_territory(t: Any, *, graph: Any = None) -> dict[str, Any]:
+def _serialize_territory(
+    t: Any,
+    *,
+    graph: Any = None,
+    reach: frozenset[str] | None = None,
+    ledger: IntelLedger | None = None,
+    tick: int | None = None,
+    veil_tier: int | None = None,
+) -> dict[str, Any]:
     """Serialize a Territory with all visualization-relevant fields.
+
+    Track 1 / Task 4: ``reach``/``ledger``/``tick`` are OPTIONAL and default
+    to ``None`` — every pre-existing call site (internal persistence paths
+    like ``_persist_hex_state_safe``'s territory-snapshot rows, and
+    ``territory_snapshot`` history via ``_persist_snapshots_safe``) keeps
+    reading the TRUE, ungated payload this function has always returned,
+    unchanged. Fog is opt-in: a caller building a genuinely PLAYER-FACING
+    view (``_state_to_snapshot``, ``_build_org_network``) passes a non-
+    ``None`` ``reach`` (even an empty ``frozenset()`` counts — that is
+    "reach computed, node not in it", not "fog not requested"), which runs
+    the built payload through :func:`game.fog.filter.apply_fog` before
+    returning. Persisting a fogged value would be a real bug (the DB read
+    models are the engine's own ledger of TRUE state, never the player's
+    view) — this is exactly why fog is bolted on here as an opt-in
+    postprocessing step rather than baked into the field-building above.
+
+    G4 (veil-leak closure): ``veil_tier`` is the SAME kind of opt-in as
+    ``reach`` — ``None`` (every internal persistence call site) skips
+    gating entirely, byte-identical to before; a genuinely player-facing
+    caller (``_state_to_snapshot``) passes the player org's real tier, which
+    masks ``price_divergence``/``imperial_rent``/``profit_rate``/``occ``/
+    ``exploitation_rate`` via :func:`~game.veil.gate_value_axis_fields`
+    (applied BEFORE :func:`~game.fog.filter.apply_fog`, so a masked
+    value-axis field can never be un-masked by the political-field gate
+    running after it — the two gates are orthogonal and compose safely
+    either order, but this order matches "value axis first" everywhere else
+    in the sweep). The many Group C/D ``tick_``-prefixed financial-
+    distribution fields (interest, ground rent, rentier share, ...) are
+    OUT OF SCOPE for this pass — a separate, actively-developed feature
+    line (vol3-money-scissors) owns their disclosure policy; flagged, not
+    silently gated alongside these five.
 
     Spec 061 US6 FR-013 (T095) originally stubbed ``consciousness`` /
     ``solidarity`` / ``dominant_community`` with fabricated 0.0/"" defaults.
@@ -8760,7 +10297,7 @@ def _serialize_territory(t: Any, *, graph: Any = None) -> dict[str, Any]:
     SPECIFIC gating service is unwired on this path, not the whole family.
     """
     territory_id = t.id
-    return {
+    payload = {
         "id": t.id,
         "name": t.name,
         "h3_index": t.h3_index,
@@ -8864,6 +10401,21 @@ def _serialize_territory(t: Any, *, graph: Any = None) -> dict[str, Any]:
             graph, territory_id, "tick_financial_crisis_signals"
         ),
     }
+    if veil_tier is not None:
+        payload = gate_value_axis_fields(payload, veil_tier)
+    if reach is None:
+        return payload
+    staleness_ticks, unknown_ticks = _current_intel_aging_ticks()
+    return apply_fog(
+        payload,
+        "territory",
+        territory_id,
+        reach,
+        ledger if ledger is not None else _EMPTY_INTEL_LEDGER,
+        tick if tick is not None else 0,
+        staleness_ticks=staleness_ticks,
+        unknown_ticks=unknown_ticks,
+    )
 
 
 _OODA_PHASE_ORDER: tuple[str, ...] = ("observe", "orient", "decide", "act")
@@ -8895,7 +10447,14 @@ def _derive_short_name(name: str) -> str:
     return name[:15] + "…"
 
 
-def _serialize_organization(o: Any) -> dict[str, Any]:
+def _serialize_organization(
+    o: Any,
+    *,
+    player_org_id: str | None,
+    reach: frozenset[str] | None = None,
+    ledger: IntelLedger | None = None,
+    tick: int | None = None,
+) -> dict[str, Any]:
     """Serialize an Organization with all visualization-relevant fields.
 
     Spec 061 US4 (T067, T068): adds ``short_name`` / ``player_controlled``
@@ -8903,18 +10462,47 @@ def _serialize_organization(o: Any) -> dict[str, Any]:
 
     Note on ``player_controlled``: the engine model does not yet carry an
     explicit ``controlling_player_id`` linking an Organization to a
-    Django auth user. Until that link is added by a follow-up spec, we
-    fall back on the existing class_character + org_type heuristic that
-    also gates VanguardResources attachment — proletarian civil-society
-    orgs are treated as player-controlled.
+    Django auth user. ``WorldState.player_org_id`` fills that role
+    (:func:`_is_player_org`) — Track 1 / Task 1 (2026-07-18) retired the
+    ``class_character == "proletarian" and org_type == "civil_society"``
+    structural heuristic this used to fall back on, which could silently
+    diverge from the canonical field already used engine-side by
+    ``EpistemicHorizonSystem``/``DoctrineSystem``.
 
     For player organizations, computes and attaches VanguardResources
     as the ``vanguard`` field.
+
+    Track 1 / Task 5 §B: ``reach``/``ledger``/``tick`` are OPTIONAL and
+    default to ``None`` — mirrors ``_serialize_territory``'s exact opt-in
+    fog pattern (Task 4). ``reach is None`` (every internal/persistence call
+    site: hex-state seed backfill, ``_persist_snapshots_safe``) keeps
+    reading the TRUE, ungated payload, unchanged. A caller building a
+    genuinely PLAYER-FACING view (``_state_to_snapshot``,
+    ``_build_org_network``) passes a real ``reach``, gating
+    ``consciousness_tendency``/``cohesion``/``cadre_level``/``heat``
+    (:data:`~game.fog.filter.ORG_POLITICAL_FIELDS`) for every NON-PLAYER
+    org — an org's existence/``territory_ids``/``budget`` stay material,
+    never gated. The player's own org is exempt via an EXPLICIT bypass, a
+    hard guarantee rather than an emergent property of ``is_player_org ==
+    (o.id == player_org_id)`` happening to also satisfy ``o.id in reach``.
+
+    Args:
+        o: The Organization to serialize.
+        player_org_id: The session's ``WorldState.player_org_id`` (see
+            :func:`_resolve_player_org_id`), or ``None`` for sessions with
+            no player org set. Required (not defaulted) so no call site can
+            forget to thread it and silently render every org as
+            non-player-controlled.
+        reach: :func:`game.fog.reach.organizing_reach`'s result, or ``None``
+            to skip fogging entirely (opt-in, see above).
+        ledger: The session's :class:`~game.fog.ledger.IntelLedger`;
+            defaults to the shared empty ledger when ``reach`` is given but
+            this is omitted.
+        tick: The current simulation tick; defaults to ``0`` under the same
+            condition.
     """
     name = str(o.name)
-    is_player_org = (
-        _enum_val(o.class_character) == "proletarian" and _enum_val(o.org_type) == "civil_society"
-    )
+    is_player_org = _is_player_org(o.id, player_org_id)
 
     # Spec 061 FR-011: surface OODA phase as a deterministic enum.
     ooda_profile: dict[str, float] = {
@@ -8970,7 +10558,24 @@ def _serialize_organization(o: Any) -> dict[str, Any]:
         )
         result["vanguard"] = vanguard.model_dump()
 
-    return result
+    if reach is None:
+        return result
+    if is_player_org:
+        result["vision_masked"] = []
+        result["vision_approx"] = []
+        return result
+    staleness_ticks, unknown_ticks = _current_intel_aging_ticks()
+    return apply_fog(
+        result,
+        "organization",
+        o.id,
+        reach,
+        ledger if ledger is not None else _EMPTY_INTEL_LEDGER,
+        tick if tick is not None else 0,
+        staleness_ticks=staleness_ticks,
+        unknown_ticks=unknown_ticks,
+        political_fields=ORG_POLITICAL_FIELDS,
+    )
 
 
 def _serialize_institution(inst: Any) -> dict[str, Any]:
@@ -8995,7 +10600,12 @@ def _serialize_institution(inst: Any) -> dict[str, Any]:
 
 
 def _build_org_network(
-    state: WorldState, graph: Any, *, territory_filter: str | None = None
+    state: WorldState,
+    graph: Any,
+    *,
+    territory_filter: str | None = None,
+    ledger: IntelLedger | None = None,
+    veil_tier: int = 0,
 ) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
     """Build the org-network nodes/edges for :meth:`EngineBridge.get_org_network`.
 
@@ -9010,15 +10620,39 @@ def _build_org_network(
         graph: The hydrated session graph (edges live only here — orgs
             carry no edge collection on their Pydantic model).
         territory_filter: Optional territory id restricting the node set.
+        ledger: Track 1 / Task 3: the session's real
+            :class:`~game.fog.ledger.IntelLedger`
+            (:func:`_derive_intel_ledger`), or ``None`` to fall back to
+            :data:`_EMPTY_INTEL_LEDGER` — the caller with no ``session_id``
+            in scope (:func:`_centrality_by_territory`, which discards
+            every fogged field and keeps only centrality numbers) passes
+            nothing rather than paying for a lookup it can't use.
+        veil_tier: G4 (Finding 1, adversarial review): the requesting
+            player org's Veil-of-Money tier (:func:`_resolve_veil_tier`),
+            threaded into each territory node's :func:`_serialize_territory`
+            call the same way ``reach`` already is — before this fix,
+            ``reach`` (fog) was threaded but ``veil_tier`` was not, so the
+            veil gate inside ``_serialize_territory`` never ran and a
+            tier-0 client's territory nodes carried real value-axis
+            numbers through this payload. Defaults to ``0`` (fully veiled,
+            fail-closed) so :func:`_centrality_by_territory`'s unlabeled
+            call (which only reads node ids/types, never ``attributes``)
+            is unaffected either way.
 
     Returns:
         ``(nodes, edges)`` — both sorted deterministically
         (Constitution III.7): nodes by id, edges by
         ``(source, target, mode)``.
     """
+    resolved_ledger = ledger if ledger is not None else _EMPTY_INTEL_LEDGER
     orgs = state.organizations
     institutions = state.institutions
     territories = state.territories
+    # Track 1 / Task 4: this IS a player-facing view (spec-113 Multi-Scale
+    # Spatial Rendering, served via EngineBridge.get_org_network) — its
+    # territory nodes get the same fog gate _state_to_snapshot applies.
+    # G4 (Finding 1): and the same veil gate (see the veil_tier arg above).
+    reach = _current_organizing_reach(graph)
 
     if territory_filter is not None:
         org_ids = sorted(oid for oid, o in orgs.items() if territory_filter in o.territory_ids)
@@ -9040,7 +10674,19 @@ def _build_org_network(
         )
 
     nodes: list[dict[str, Any]] = [
-        {"id": oid, "type": "organization", "attributes": _serialize_organization(orgs[oid])}
+        {
+            "id": oid,
+            "type": "organization",
+            # Track 1 / Task 5 §B: the same reach that gates territory nodes
+            # below also gates this org's internal state for non-player orgs.
+            "attributes": _serialize_organization(
+                orgs[oid],
+                player_org_id=state.player_org_id,
+                reach=reach,
+                ledger=resolved_ledger,
+                tick=_graph_tick(graph),
+            ),
+        }
         for oid in org_ids
     ]
     nodes.extend(
@@ -9051,7 +10697,14 @@ def _build_org_network(
         {
             "id": tid,
             "type": "territory",
-            "attributes": _serialize_territory(territories[tid], graph=graph),
+            "attributes": _serialize_territory(
+                territories[tid],
+                graph=graph,
+                reach=reach,
+                ledger=resolved_ledger,
+                tick=_graph_tick(graph),
+                veil_tier=veil_tier,
+            ),
         }
         for tid in territory_ids
     )
@@ -9189,16 +10842,20 @@ def _centrality_by_territory(state: WorldState, graph: Any) -> dict[str, float]:
         graph: The hydrated session graph (edges live only here).
 
     Returns:
-        Map of territory node id -> degree centrality in [0, 1], rounded to
-        4 places. A territory absent from the org network (no
-        organization/institution has a PRESENCE edge there) is simply
-        absent — callers must treat a missing entry as ``None``, never a
-        fabricated 0.0 (Constitution III.11).
+        Map of territory node id -> degree centrality in [0, 1]. The value is
+        the SAME full-precision ``_org_network_centrality`` reading the
+        ``get_org_network`` endpoint returns (the "no drift" contract in
+        ``test_aw4_centrality_lens.py`` — a prior 4-place rounding here was a
+        latent drift surfaced when ADR086's wayne_county businesses made a
+        territory's degree 1/9); display rounding belongs at the render layer.
+        A territory absent from the org network (no organization/institution
+        has a PRESENCE edge there) is simply absent — callers must treat a
+        missing entry as ``None``, never a fabricated 0.0 (Constitution III.11).
     """
     nodes, edges = _build_org_network(state, graph)
     centrality = _org_network_centrality(nodes, edges)
     return {
-        str(node["id"]): round(centrality[str(node["id"])]["degree"], 4)
+        str(node["id"]): centrality[str(node["id"])]["degree"]
         for node in nodes
         if node["type"] == "territory" and str(node["id"]) in centrality
     }
@@ -9231,6 +10888,109 @@ def _serialize_edge(rel: Any) -> dict[str, Any]:
     }
 
 
+#: EdgeType.SOLIDARITY.value, mirrors ``_serialize_edge``'s ``"mode"`` wire
+#: value (``_enum_val(rel.edge_type)``) — the one edge type this module's
+#: fog gate treats as political existence, not just political fields.
+_SOLIDARITY_EDGE_MODE: Final[str] = "solidarity"
+
+
+def _filter_edges_by_reach(
+    edges: list[dict[str, Any]], reach: frozenset[str] | None = None
+) -> list[dict[str, Any]]:
+    """Omit out-of-reach SOLIDARITY edges from an already-serialized edge
+    list entirely — never mask their fields to ``None`` (Track 1 / Task 6).
+
+    Unlike every other Track 1 fog surface, a SOLIDARITY edge's very
+    EXISTENCE is political information: an org's territory/field payload
+    stays present-with-masked-fields outside reach, but there is no
+    equivalent "masked edge" shape here — an edge either belongs in the
+    payload or it does not. So the gate is list membership, not
+    :func:`game.fog.filter.apply_fog`'s per-field redaction.
+
+    **Design decision: BOTH endpoints must be in reach for the edge to
+    survive.** See this module's :func:`test_solidarity_edge_fog` docstring
+    (``tests/unit/web/test_solidarity_edge_fog.py``) for the full reasoning;
+    in short, "either endpoint in reach" would let a near, organized class
+    leak the existence of a far, unorganized solidarity partner merely by
+    the edge's presence — exactly what the fog protects. ``both`` accepts
+    the map looking severed at the reach boundary as the safe failure mode.
+
+    Only edges whose ``"mode"`` is :data:`_SOLIDARITY_EDGE_MODE` are ever
+    gated — every other edge type (EXPLOITATION/WAGES/TENANCY/TRIBUTE/
+    ADJACENCY/...) is MATERIAL (``game.fog.filter.POLITICAL_FIELDS`` lists
+    only ``"solidarity"``, no other edge-type name) and always passes
+    through, regardless of reach.
+
+    Args:
+        edges: ``_serialize_edge`` output dicts (``source_id``/``target_id``/
+            ``mode`` keys read here).
+        reach: :func:`_current_organizing_reach`'s result. ``None`` (the
+            default) means "fog not requested" — every pre-existing caller
+            of ``_serialize_edge`` that never threads ``reach`` (e.g.
+            ``_persist_snapshots_safe``, an internal persistence path that
+            MUST keep writing TRUE state) is unaffected: this function is
+            opt-in, exactly like ``_serialize_territory``'s own ``reach``
+            parameter.
+
+    Returns:
+        A NEW list — ``edges`` is never mutated. Order is preserved for the
+        surviving entries.
+    """
+    if reach is None:
+        return edges
+    visible: list[dict[str, Any]] = []
+    for edge in edges:
+        if edge.get("mode") != _SOLIDARITY_EDGE_MODE:
+            visible.append(edge)
+            continue
+        if edge.get("source_id") in reach and edge.get("target_id") in reach:
+            visible.append(edge)
+    return visible
+
+
+def _gate_snapshot_territories(snapshot: dict[str, Any], veil_tier: int) -> dict[str, Any]:
+    """Gate value-axis fields on every territory AND the derived economy
+    block in an already-built ``_state_to_snapshot`` payload (G4: veil-leak
+    closure).
+
+    Applied AFTER any persistence use of the TRUE snapshot — never inside
+    :func:`_state_to_snapshot` itself, since ``resolve_tick`` also persists
+    from that function's output (see its docstring). Mutates ``snapshot``
+    in place (replacing ``territories``/``derived["economy"]`` with gated
+    copies) and returns it, for a one-line call at each read-only call
+    site. A no-op when a key is absent (e.g. a caller that only kept a
+    sub-key — ``inspect_node``/``inspect_hex`` discard everything but one
+    ``territories`` entry, so gating ``derived`` here is harmless for them
+    too).
+
+    G4 follow-up (adversarial re-review round 2, Finding F1):
+    ``derived["economy"]`` is ``state.economy.model_dump()`` —
+    ``imperial_rent_pool`` (a literal :data:`~game.veil.
+    TIER1_VALUE_RELATION_FIELDS` name) leaked ungated on both
+    ``GET /state/`` (``EngineBridge.get_snapshot``) and
+    ``POST /resolve/`` (``EngineBridge.resolve_tick``), since this
+    function only ever touched ``snapshot["territories"]``.
+    ``current_super_wage_rate``/``current_repression_level`` (the other
+    two ``GlobalEconomy`` fields) are money-form/political — never gated,
+    same as everywhere else in the sweep — so
+    :func:`~game.veil.gate_value_axis_fields` (name-based, touches only
+    keys it recognizes) is the correct tool here unchanged.
+
+    :param snapshot: The dict :func:`_state_to_snapshot` returned.
+    :param veil_tier: The requesting player org's veil tier.
+    :returns: ``snapshot``, with ``territories``/``derived["economy"]`` gated.
+    """
+    territories = snapshot.get("territories")
+    if isinstance(territories, list):
+        snapshot["territories"] = [gate_value_axis_fields(t, veil_tier) for t in territories]
+    derived = snapshot.get("derived")
+    if isinstance(derived, dict):
+        economy = derived.get("economy")
+        if isinstance(economy, dict):
+            derived["economy"] = gate_value_axis_fields(economy, veil_tier)
+    return snapshot
+
+
 def _state_to_snapshot(state: WorldState, session_id: UUID, *, graph: Any = None) -> dict[str, Any]:
     """Convert a WorldState to a JSON-serializable dict for API responses.
 
@@ -9247,11 +11007,64 @@ def _state_to_snapshot(state: WorldState, session_id: UUID, *, graph: Any = None
 
     Returns:
         Flat dict suitable for JSON encoding.
+
+    Track 1 / Task 4: this is THE primary player-facing full-state view —
+    every one of its 7 call sites (:meth:`EngineBridge.get_snapshot`,
+    ``inspect_node``/``inspect_org``/``inspect_edge``/``inspect_hex``,
+    ``get_organizations_dashboard``, and ``resolve_tick``'s response) reads
+    through here, so its ``territories`` block is the fog gate's main
+    surface — see :func:`_current_organizing_reach`/
+    :func:`_serialize_territory`. The one caller that omits ``graph``
+    (:meth:`EngineBridge.get_organizations_dashboard`, which only needs
+    ``organizations``) gets an empty reach for its (unused) territories —
+    honest deny, never a fabricated full-visibility default (Constitution
+    III.11).
+
+    Track 1 / Task 3: ``ledger`` is derived HERE (:func:`_derive_intel_ledger`)
+    rather than threaded in as a parameter — every one of the 7 call sites
+    already carries ``session_id``, so deriving internally fixes every
+    caller in one place instead of requiring each to remember to pass a
+    real ledger. A non-``django_db`` unit test with no real
+    ``action_result`` table (or a fresh session with no persisted
+    INVESTIGATE history) safely yields the honestly-empty ledger via
+    :func:`_derive_intel_ledger`'s own best-effort fallback.
+
+    G4 (veil-leak closure): this function does NOT gate value-axis fields
+    itself, unlike ``ledger`` above — ``resolve_tick`` feeds
+    ``snapshot["territories"]`` to :func:`_persist_hex_state_safe`
+    (``hex_latest``, the map's OWN read-time veil gate reads FROM this
+    table), so baking gating in here would persist a MASKED value as the
+    engine's material record — the exact bug :func:`_serialize_territory`'s
+    own docstring already flags for fog ("persisting a fogged value would
+    be a real bug... never the player's view"). Instead, each of the 6
+    genuinely read-only call sites gates its OWN copy of this function's
+    output via :func:`_gate_snapshot_territories` AFTER calling this
+    function; ``resolve_tick`` gates its response copy AFTER persistence
+    has already consumed the true values. See those call sites.
     """
-    territories = [_serialize_territory(t, graph=graph) for t in state.territories.values()]
-    organizations = [_serialize_organization(o) for o in state.organizations.values()]
+    reach = _current_organizing_reach(graph)
+    ledger = _derive_intel_ledger(session_id)
+    tick = state.tick
+    territories = [
+        _serialize_territory(t, graph=graph, reach=reach, ledger=ledger, tick=tick)
+        for t in state.territories.values()
+    ]
+    # Track 1 / Task 5 §B: the SAME reach/ledger/tick that gates territories
+    # above also gates each non-player org's internal state
+    # (consciousness_tendency/cohesion/cadre_level/heat) — one fog
+    # computation feeding both, not two independently derived ones.
+    organizations = [
+        _serialize_organization(
+            o, player_org_id=state.player_org_id, reach=reach, ledger=ledger, tick=tick
+        )
+        for o in state.organizations.values()
+    ]
     institutions = [_serialize_institution(inst) for inst in state.institutions.values()]
-    edges = [_serialize_edge(rel) for rel in state.relationships]
+    # Track 1 / Task 6: the SAME reach that gates territory/org political
+    # fields above also gates SOLIDARITY edge EXISTENCE here — an
+    # out-of-reach SOLIDARITY edge is omitted from the list entirely, never
+    # emitted with masked fields (see _filter_edges_by_reach's docstring).
+    edges = _filter_edges_by_reach([_serialize_edge(rel) for rel in state.relationships], reach)
     events_list: list[dict[str, Any]] = [
         _serialize_event(e, session_id, graph=graph) for e in state.events
     ]
@@ -9305,20 +11118,21 @@ def _compute_traps(
 ) -> dict[str, Any] | None:
     """Run trap detection for a session, computing scores from action history.
 
-    Returns None if no player org is found (non-Wayne County scenarios).
+    Returns None if the state carries no ``player_org_id`` (synthetic
+    scenarios, headless sweeps) or if that id names no known organization.
     ``persist=False`` computes without writing ``_session_trap_state`` —
     for read-only callers (the org inspector) that must never advance the
     ``ticks_at_moderate`` escalation carried tick-to-tick.
+
+    Player identity comes from :attr:`WorldState.player_org_id`, the canonical
+    source (see :func:`_resolve_player_org_id`). This function previously
+    re-derived it from the retired structural heuristic
+    ``class_character == "proletarian" and org_type == "civil_society"`` — a
+    third, independent copy of a definition nothing enforced agreement on, so
+    trap detection could silently target a different organization than the
+    inspector and serializer did.
     """
-    # Find the player org
-    player_org = None
-    for org in state.organizations.values():
-        if (
-            _enum_val(org.class_character) == "proletarian"
-            and _enum_val(org.org_type) == "civil_society"
-        ):
-            player_org = org
-            break
+    player_org = state.organizations.get(state.player_org_id) if state.player_org_id else None
 
     if player_org is None:
         return None
@@ -9366,11 +11180,9 @@ def _compute_traps(
     return result.model_dump()
 
 
-def _mark_resolved_safe(persistence: RuntimePersistence, session_id: UUID, tick: int) -> None:
-    """Mark turns as resolved if the persistence layer supports it."""
-    mark_fn = getattr(persistence, "mark_turns_resolved", None)
-    if mark_fn is not None:
-        mark_fn(session_id=session_id, tick=tick)
+def _mark_resolved_safe(persistence: BridgePersistence, session_id: UUID, tick: int) -> None:
+    """Mark turns as resolved (no-op on backends without a turn queue)."""
+    persistence.mark_turns_resolved(session_id=session_id, tick=tick)
 
 
 def _preview_consciousness_delta(
@@ -9489,27 +11301,118 @@ def _engine_result_fields(
     return success, failure_reason, ci_delta, direct_effects
 
 
-def _persist_action_result(persistence: RuntimePersistence, result_data: dict[str, Any]) -> None:
-    """Write an ActionResult record via persistence layer or Django ORM.
+def _investigate_field_snapshot(
+    action_type_enum: ActionType | None,
+    target_id: str | None,
+    direct_effects: dict[str, Any],
+    graph: Any,
+) -> dict[str, Any] | None:
+    """Freeze an INVESTIGATE resolution's revealed fields off the live graph.
 
-    Tries ``persist_action_result()`` on the persistence layer first.
-    Falls back to Django ORM ``ActionResult.objects.create()`` if unavailable.
+    Track 1 / Task 3 (2026-07-18): the write-side half of the intel ledger
+    (``game.fog.ledger.IntelLedger``/``ledger_from_events``). The engine's
+    ``resolve_investigate`` (``src/babylon/engine/actions/investigate.py``)
+    names WHICH fields were revealed (``direct_effects["revealed"]`` —
+    field NAMES only, e.g. ``["heat", "rent_level", ...]``) but carries no
+    VALUES — this bridge-layer function is what supplies them, reading the
+    live post-tick ``graph`` at the exact moment ``resolve_tick`` already
+    has it in scope, so the captured snapshot is the TRUE value as of this
+    tick, frozen forever after (never recomputed at a later fog read — see
+    ``game.fog.ledger.IntelEntry``'s docstring for why that distinction is
+    the whole point of the staleness/quantization tiers). This is bridge
+    code, not engine code: no ``src/babylon/engine/*`` file changes.
+
+    Returns ``None`` unless this was a successful ``ActionType.MAP_NETWORK``
+    (INVESTIGATE) resolution naming a non-empty revealed-fields list for a
+    ``target_id`` still present on ``graph`` — any other action, a failed
+    INVESTIGATE (``direct_effects`` absent/empty), or a since-removed target
+    yields no snapshot (Constitution III.11: no fabricated entry).
 
     Args:
-        persistence: The RuntimePersistence instance.
-        result_data: Dict with ActionResult fields.
-    """
-    persist_fn = getattr(persistence, "persist_action_result", None)
-    if persist_fn is not None:
-        persist_fn(**result_data)
-    else:
-        # Fallback: use Django ORM
-        try:
-            from game.models import ActionResult
+        action_type_enum: The resolved action's :class:`ActionType`, or
+            ``None`` (unrecognized verb).
+        target_id: The action's target node id.
+        direct_effects: ``ActionResult.direct_effects`` from the engine
+            result (``{"scan_type": ..., "revealed": {target_id: [...]}}``
+            for a successful INVESTIGATE).
+        graph: The post-tick graph (``resolve_tick``'s ``new_graph``).
 
+    Returns:
+        ``{"field_group": ..., "value_snapshot": ...}`` ready to stash onto
+        the persisted ``action_result`` row's ``details``, or ``None``.
+    """
+    if action_type_enum is not ActionType.MAP_NETWORK or not target_id:
+        return None
+    revealed_by_target = direct_effects.get("revealed")
+    if not isinstance(revealed_by_target, dict):
+        return None
+    fields = revealed_by_target.get(target_id)
+    if not fields or target_id not in graph.nodes:
+        return None
+    node_data = graph.nodes[target_id]
+    node_type = node_data.get("_node_type")
+    if not node_type:
+        return None
+    value_snapshot = {field: node_data[field] for field in fields if field in node_data}
+    if not value_snapshot:
+        return None
+    return {
+        "field_group": political_field_group(str(node_type)),
+        "value_snapshot": value_snapshot,
+    }
+
+
+def _persist_action_results(
+    persistence: BridgePersistence,
+    session_id: UUID,
+    tick: int,
+    results: list[dict[str, Any]],
+) -> None:
+    """Write a tick's ActionResult rows into the ``action_result`` table.
+
+    Task #43 activation: a Postgres-capable backend (``persistence.pool``
+    present) takes the batched ``executemany`` path via
+    :meth:`~babylon.persistence.protocols.BridgePersistence.persist_action_results`
+    — replacing the former ``getattr(persistence, "persist_action_result",
+    None)`` duck-typing whose singular name existed on NO backend, so every
+    action always fell through to the Django ORM. The pool and the Django
+    ``default`` connection address the SAME Postgres runtime DB (``init_persistence``
+    builds the pool from Django's DB settings), so the ``action_result`` rows the
+    ORM readers see (intel ledger, dashboards) are byte-identical either way.
+
+    Backends without a connection pool (SQLite ``RuntimeDatabase``, whose
+    ``persist_action_results`` is an honest no-op) fall back to the Django
+    ORM one row at a time, preserving the pre-#43 write so those rows still
+    reach the ORM readers.
+
+    Best-effort like its ``_persist_*_safe`` siblings: a write failure is
+    logged loudly but never fails tick resolution.
+
+    Args:
+        persistence: The persistence backend.
+        session_id: The game session UUID.
+        tick: The tick these results belong to.
+        results: Per-action ``ActionResult`` field dicts (one per resolved action).
+    """
+    if not results:
+        return
+    if persistence.pool is not None:
+        try:
+            persistence.persist_action_results(tick, results, session_id=session_id)
+        except Exception:  # noqa: BLE001 — diagnostic; never blocks tick resolution
+            logger.exception(
+                "Failed to persist action_result rows session=%s tick=%d", session_id, tick
+            )
+        return
+    # Pool-less backend (SQLite RuntimeDatabase): Django ORM fallback so the
+    # intel ledger / dashboards still see the rows.
+    try:
+        from game.models import ActionResult
+
+        for result_data in results:
             ActionResult.objects.create(**result_data)
-        except Exception as exc:
-            logger.warning("Failed to persist action result: %s", exc)
+    except Exception as exc:  # noqa: BLE001 — diagnostic; never blocks tick resolution
+        logger.warning("Failed to persist action result: %s", exc)
 
 
 # ---------------------------------------------------------------------- #

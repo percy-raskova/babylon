@@ -24,6 +24,7 @@ from babylon.kernel.tick_partition import TickPartition
 from babylon.models.enums import (
     DisplacementPriorityMode,
     EdgeType,
+    NodeType,
     OperationalProfile,
     TerritoryType,
 )
@@ -116,7 +117,7 @@ class TerritorySystem(SystemBase):
         heat_decay_rate = services.defines.territory.heat_decay_rate
         high_profile_heat_gain = services.defines.territory.high_profile_heat_gain
 
-        for node in graph.query_nodes(node_type="territory"):
+        for node in graph.query_nodes(node_type=NodeType.TERRITORY):
             attrs = node.attributes
 
             profile = attrs.get("profile")
@@ -225,7 +226,7 @@ class TerritorySystem(SystemBase):
         # Collect population transfers (to avoid order-dependent updates)
         transfers: dict[str, int] = {}
 
-        for node in graph.query_nodes(node_type="territory"):
+        for node in graph.query_nodes(node_type=NodeType.TERRITORY):
             attrs = node.attributes
 
             current_heat = attrs.get("heat", 0.0)
@@ -324,7 +325,7 @@ class TerritorySystem(SystemBase):
         """
         decay_rate = services.defines.territory.concentration_camp_decay_rate
 
-        for node in graph.query_nodes(node_type="territory"):
+        for node in graph.query_nodes(node_type=NodeType.TERRITORY):
             attrs = node.attributes
 
             territory_type = attrs.get("territory_type")

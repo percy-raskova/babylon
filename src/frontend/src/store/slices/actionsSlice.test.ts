@@ -97,6 +97,27 @@ describe("actions slice — submit", () => {
   });
 });
 
+describe("actions slice — investigate preset (Track 1 Task 7)", () => {
+  it("starts with no preset", () => {
+    expect(useStore.getState().actions.preset).toBeNull();
+  });
+
+  it("presetInvestigate sets a pending investigate preset naming the verb + target", () => {
+    useStore.getState().actions.presetInvestigate("territory-1", "Wayne County");
+    expect(useStore.getState().actions.preset).toEqual({
+      verb: "investigate",
+      targetId: "territory-1",
+      targetLabel: "Wayne County",
+    });
+  });
+
+  it("consumePreset clears it", () => {
+    useStore.getState().actions.presetInvestigate("territory-1", "Wayne County");
+    useStore.getState().actions.consumePreset();
+    expect(useStore.getState().actions.preset).toBeNull();
+  });
+});
+
 describe("actions slice — world slice clears pending on tick advance", () => {
   it("submitting an action then resolving the tick clears the pending list", async () => {
     await useStore.getState().actions.submit(DEFAULT_GAME_ID, "educate", {

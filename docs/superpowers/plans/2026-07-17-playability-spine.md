@@ -5262,7 +5262,7 @@ export const CAUSAL_PULSE_FIXTURE_BEAT: NarrationBeat = {
   scope: "tick",
   subjectRef: null,
   headline: "The week's ledger, tick 104.",
-  body: "The imperial rent pool fell from 118.40 to 96.10. The super-wage rate held at 0.1840. Peak revolutionary probability rose from 0.310 to 0.335.",
+  body: "The imperial rent pool fell from 118.40 to 96.10. The super-wage rate fell from 0.1920 to 0.1840. Peak revolutionary probability rose from 0.310 to 0.335.",
   register: "wire",
 };
 

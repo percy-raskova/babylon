@@ -62,6 +62,43 @@ describe("adaptOrg", () => {
     expect(node.sections[0]?.rows.find((r) => r.label === "Budget")?.value).toBe(100.0);
   });
 
+  describe("Track 1 Task 7 — no fogged dead ends", () => {
+    it("attaches a fog ref to Heat when heat is in vision_masked", () => {
+      const node = adaptOrg(
+        { kind: "org", id: "org-2" },
+        { name: "Rival Union", heat: null, vision_masked: ["heat"] },
+      );
+      const row = node.sections[0]?.rows.find((r) => r.label === "Heat");
+      expect(row?.ref).toEqual({
+        kind: "fog",
+        id: "organization:org-2:heat",
+        label: "Repression Heat",
+        inline: {
+          field: "heat",
+          nodeType: "organization",
+          nodeId: "org-2",
+          nodeName: "Rival Union",
+        },
+      });
+    });
+
+    it("attaches a fog ref to Cohesion when cohesion is in vision_masked", () => {
+      const node = adaptOrg(
+        { kind: "org", id: "org-2" },
+        { name: "Rival Union", cohesion: null, vision_masked: ["cohesion"] },
+      );
+      const row = node.sections[0]?.rows.find((r) => r.label === "Cohesion");
+      expect(row?.ref?.kind).toBe("fog");
+      expect(row?.ref?.label).toBe("Organizational Cohesion");
+    });
+
+    it("does not attach a fog ref when heat/cohesion are simply absent (not masked)", () => {
+      const node = adaptOrg({ kind: "org", id: "org-1" }, { name: "My Own Org" });
+      expect(node.sections[0]?.rows.find((r) => r.label === "Heat")?.ref).toBeUndefined();
+      expect(node.sections[0]?.rows.find((r) => r.label === "Cohesion")?.ref).toBeUndefined();
+    });
+  });
+
   describe("Vanguard Resources section (W1.3)", () => {
     const vanguardData = {
       vanguard: {

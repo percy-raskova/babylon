@@ -31,7 +31,7 @@ from typing import TYPE_CHECKING, ClassVar
 
 from babylon.domain.economics.tensor import NoDataSentinel
 from babylon.kernel.tick_partition import TickPartition
-from babylon.models.enums import EdgeType, SocialRole
+from babylon.models.enums import EdgeType, NodeType, SocialRole
 
 if TYPE_CHECKING:
     from babylon.kernel.graph_protocol import GraphProtocol
@@ -128,7 +128,7 @@ class ProductionSystem(SystemBase):
         # Track LA production for wages phase (Amin/Wallerstein model)
         la_production: dict[str, float] = {}
 
-        for node in graph.query_nodes(node_type="social_class"):
+        for node in graph.query_nodes(node_type=NodeType.SOCIAL_CLASS):
             attrs = node.attributes
 
             # Skip inactive (dead) workers
@@ -259,7 +259,7 @@ class ProductionSystem(SystemBase):
             graph: The world graph with territory nodes.
             territory_production: Map of territory_id -> total production this tick.
         """
-        for node in graph.query_nodes(node_type="territory"):
+        for node in graph.query_nodes(node_type=NodeType.TERRITORY):
             attrs = node.attributes
             total_production = territory_production.get(node.id, 0.0)
             max_biocapacity = attrs.get("max_biocapacity", 100.0)

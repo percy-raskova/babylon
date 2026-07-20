@@ -14,6 +14,7 @@ from __future__ import annotations
 
 import pytest
 
+from babylon.engine.context import TickContext
 from babylon.topology.graph import BabylonGraph
 
 pytestmark = [pytest.mark.cross_scale, pytest.mark.integration]
@@ -72,7 +73,10 @@ def test_conservation_alarm_event_published_to_bus():
         event_bus = bus
 
     sid = uuid4()
-    engine.run_tick(graph, _Services(), {"tick": 7, "session_id": sid})
+    # TickContext, not a raw dict: 444b5216 collapsed ContextType to
+    # TickContext and deleted the dict fallback (this nightly-only file was
+    # missed by that commit's fixture-migration census).
+    engine.run_tick(graph, _Services(), TickContext(tick=7, session_id=sid))
 
     assert len(received) == 1, f"Expected one alarm event, got {len(received)}"
     event = received[0]
@@ -120,6 +124,6 @@ def test_no_alarm_event_when_severity_ok():
     class _Services:
         event_bus = bus
 
-    engine.run_tick(graph, _Services(), {"tick": 0, "session_id": uuid4()})
+    engine.run_tick(graph, _Services(), TickContext(tick=0, session_id=uuid4()))
 
     assert received == []

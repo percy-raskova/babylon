@@ -17,7 +17,7 @@ from babylon.sentinels.aggregation.checks import (
     check_no_unweighted_intensive_means,
     unweighted_mean_sites,
 )
-from babylon.sentinels.aggregation.registry import AggregationExemption
+from babylon.sentinels.aggregation.intensive_registry import AggregationExemption
 
 pytestmark = pytest.mark.unit
 

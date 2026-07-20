@@ -37,7 +37,7 @@ from babylon.formulas.reactionary import calculate_spontaneous_riot_risk
 from babylon.kernel.event_bus import Event
 from babylon.kernel.node_access import class_consciousness_from_node
 from babylon.kernel.tick_partition import TickPartition
-from babylon.models.enums import EdgeType, EventType, SocialRole
+from babylon.models.enums import EdgeType, EventType, NodeType, SocialRole
 
 if TYPE_CHECKING:
     from babylon.kernel.graph_protocol import GraphProtocol
@@ -430,7 +430,7 @@ class StruggleSystem(SystemBase):
         react = services.defines.reactionary
         wealth_destruction = services.defines.struggle.wealth_destruction_rate
 
-        for node in sorted(graph.query_nodes(node_type="social_class"), key=lambda n: n.id):
+        for node in sorted(graph.query_nodes(node_type=NodeType.SOCIAL_CLASS), key=lambda n: n.id):
             attrs = node.attributes
             if not attrs.get("active", True):
                 continue

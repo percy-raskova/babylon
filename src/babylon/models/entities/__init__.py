@@ -59,7 +59,6 @@ from babylon.models.entities.organization import (
     Business,
     CivilSocietyOrg,
     IntelMethodology,
-    KeyFigure,
     Organization,
     OrganizationType,
     PoliticalFaction,
@@ -136,7 +135,6 @@ __all__ = [
     "CivilSocietyOrg",
     "OrganizationType",
     "IntelMethodology",
-    "KeyFigure",
     # Ternary Consciousness (Feature 034)
     "TernaryConsciousness",
     "SubstrateFloor",

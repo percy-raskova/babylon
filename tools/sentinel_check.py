@@ -18,13 +18,18 @@ import argparse
 import sys
 from collections.abc import Callable
 
-from babylon.sentinels.aggregation.checks import main as aggregation_main
+from babylon.sentinels.aggregation.checks import main as aggregation_intensive_main
 from babylon.sentinels.coupling.checks import main as coupling_main
 from babylon.sentinels.coverage.checks import main as coverage_main
+from babylon.sentinels.dangling.checks import main as dangling_main
+from babylon.sentinels.inert.checks import main as inert_main
 from babylon.sentinels.liveness.checks import main as liveness_main
+from babylon.sentinels.masked_arithmetic.checks import main as masked_arithmetic_main
 from babylon.sentinels.seam.checks import main as seam_main
 from babylon.sentinels.surface.checks import main as surface_main
 from babylon.sentinels.synthetic.checks import main as synthetic_main
+from babylon.sentinels.unconsumed.checks import main as unconsumed_main
+from babylon.sentinels.vocabulary.checks import main as vocabulary_main
 
 
 def _catalog_main(argv: list[str] | None) -> int:
@@ -36,6 +41,40 @@ def _catalog_main(argv: list[str] | None) -> int:
     from babylon.sentinels.coverage.db_probe import main as catalog_main
 
     return catalog_main(argv)
+
+
+def _aggregation_main(argv: list[str] | None) -> int:
+    """Route to the aggregation-symmetry probe (Track 1 Task 10) — lazy import.
+
+    The probe imports ``web.game.engine_bridge`` (a Django app layered above
+    ``babylon.*``), which ``babylon.sentinels`` may not import, so it lives
+    beside this file in ``tools/`` (``aggregation_symmetry_probe.py``) and
+    loads only when selected — the same split ``_partition_main`` uses for
+    the engine.
+
+    Not to be confused with ``aggregation-intensive`` (the static
+    intensive-means scanner from the Vol III sentinel program, ADR088):
+    two sub-sensors, one package, split keys because the symmetry probe is a
+    CI gate while the intensive scanner is advisory/local by owner ruling.
+    """
+    from aggregation_symmetry_probe import (
+        main as aggregation_main,  # type: ignore[import-not-found]
+    )
+
+    return aggregation_main(argv)
+
+
+def _fog_main(argv: list[str] | None) -> int:
+    """Route to the fog-containment Hypothesis probe (Track 1 Task 10) — lazy import.
+
+    The probe imports ``game.fog.filter``/``game.fog.ledger`` (``web.game.*``
+    modules), which ``babylon.sentinels`` may not import, so it lives beside
+    this file in ``tools/`` (``fog_containment_probe.py``) and loads only
+    when selected.
+    """
+    from fog_containment_probe import main as fog_main  # type: ignore[import-not-found]
+
+    return fog_main(argv)
 
 
 def _partition_main(argv: list[str] | None) -> int:
@@ -57,8 +96,15 @@ _SENSORS: dict[str, Callable[[list[str] | None], int]] = {
     "partition": _partition_main,
     "synthetic": synthetic_main,
     "catalog": _catalog_main,
+    "vocabulary": vocabulary_main,
+    "inert": inert_main,
+    "dangling": dangling_main,
+    "unconsumed": unconsumed_main,
+    "masked_arithmetic": masked_arithmetic_main,
+    "aggregation": _aggregation_main,
+    "aggregation-intensive": aggregation_intensive_main,
+    "fog": _fog_main,
     "liveness": liveness_main,
-    "aggregation": aggregation_main,
     "coupling": coupling_main,
     "surface": surface_main,
 }

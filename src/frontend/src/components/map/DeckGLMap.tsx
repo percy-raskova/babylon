@@ -57,6 +57,10 @@ import {
   buildFieldFlowLayers,
   useFlowAnimationClock,
 } from "@/components/map/layers/fieldFlow";
+import {
+  resolveSolidarityLines,
+  buildSolidarityLineLayers,
+} from "@/components/map/layers/solidarityLines";
 import { get as apiGet } from "@/api/client";
 import { endpoints } from "@/api/endpoints";
 import { useStore } from "@/store";
@@ -72,6 +76,7 @@ import { regionFillForLens, type FillDomain, type RegionFillProperties } from "@
 import {
   hexFeaturePropertiesByH3,
   availableMetricsFromMapData,
+  solidarityEdgesFromMapData,
   type HexMapFeatureProperties,
 } from "@/lib/mapMetadata";
 import { lensKey, type Lens, type MapMetric } from "@/lib/lens";
@@ -1034,6 +1039,23 @@ export function DeckGLMap({
   const balkanization = mapData?.metadata?.balkanization ?? null;
   const availableMetrics = useMemo(() => availableMetricsFromMapData(mapData ?? null), [mapData]);
 
+  // Solidarity-line map layer (Track 1 / Task 6) — territory-anchored,
+  // fog-gated SOLIDARITY edges (`_build_solidarity_edge_lines`) already
+  // ship on the same one-shot-per-tick `/map/` response `balkanization`
+  // reads above; no separate fetch (unlike `field_flow`'s `GET
+  // /field_state/`, which is lens-gated). Absence (missing key or empty
+  // array) is the honest "no visible solidarity yet" state — see
+  // `solidarityLines.ts`'s module docstring.
+  const solidarityEdges = solidarityEdgesFromMapData(mapData);
+  const solidarityLineSegments = useMemo(
+    () => resolveSolidarityLines(solidarityEdges, territories),
+    [solidarityEdges, territories],
+  );
+  const solidarityLineLayers = useMemo(
+    () => buildSolidarityLineLayers(solidarityLineSegments),
+    [solidarityLineSegments],
+  );
+
   // Critical-event map pulse (Lane PULSE, DESIGN_BIBLE.md §5.2's third
   // channel). This is the ONE place DeckGLMap reaches into the store — it is
   // otherwise a controlled/presentational component (spec-110 B2/B3) — because
@@ -1239,15 +1261,17 @@ export function DeckGLMap({
     replay,
   ]);
 
-  // Critical-event pulses, storm markers, and the gradient wind ride ABOVE
-  // the base map so none of these cues is ever occluded by fills/hulls. All
-  // three are stable-empty arrays at rest (`useCriticalPulses`/`stormLayers`/
-  // `fieldFlowLayers`), so this memo — and the deck.gl layer list it feeds —
-  // is referentially unchanged while nothing is rupturing/struggling/flowing
-  // (DeckGLMap's render/stability contract, architecture §3.3).
+  // Critical-event pulses, storm markers, the gradient wind, and solidarity
+  // lines ride ABOVE the base map so none of these cues is ever occluded by
+  // fills/hulls. All four are stable-empty arrays at rest
+  // (`useCriticalPulses`/`stormLayers`/`fieldFlowLayers`/
+  // `solidarityLineLayers`), so this memo — and the deck.gl layer list it
+  // feeds — is referentially unchanged while nothing is rupturing/
+  // struggling/flowing/organizing (DeckGLMap's render/stability contract,
+  // architecture §3.3).
   const allLayers = useMemo(
-    () => [...layers, ...pulseLayers, ...stormLayers, ...fieldFlowLayers],
-    [layers, pulseLayers, stormLayers, fieldFlowLayers],
+    () => [...layers, ...pulseLayers, ...stormLayers, ...fieldFlowLayers, ...solidarityLineLayers],
+    [layers, pulseLayers, stormLayers, fieldFlowLayers, solidarityLineLayers],
   );
 
   return (

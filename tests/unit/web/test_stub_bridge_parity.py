@@ -304,6 +304,60 @@ class TestSmokeTheTwentyRestoredMethods:
         assert "story" in result
 
 
+class TestResolveTickParity:
+    """``resolve_tick`` is the one non-``get_*`` method the production API
+    calls on whichever bridge ``_get_bridge()`` returns (``web/game/api.py``
+    resolve view → ``tick_resolver.resolve_game_tick``) — and it sat outside
+    this file's ``get_*``-only sweep, which is exactly how it drifted: PR
+    #211's review caught the stub lagging the real signature (no
+    ``persistent_context``/``force_endgame_test_hook``, list-not-snapshot
+    return), so the fallback path 500'd on every resolve."""
+
+    def test_signature_matches_real_bridge_exactly(self) -> None:
+        from game.engine_bridge import EngineBridge
+        from game.stub_bridge import StubEngineBridge
+
+        real = inspect.signature(EngineBridge.resolve_tick)
+        stub = inspect.signature(StubEngineBridge.resolve_tick)
+        real_params = {n: p.kind for n, p in real.parameters.items() if n != "self"}
+        stub_params = {
+            _strip_leading_underscore(n): p.kind for n, p in stub.parameters.items() if n != "self"
+        }
+        # Full-name parity, not just required-param parity: the drift that
+        # broke the fallback path was in OPTIONAL parameters, which the
+        # required-only check in _signature_mismatches cannot see.
+        assert real_params == stub_params
+
+    def test_resolve_game_tick_returns_snapshot_through_production_seam(self) -> None:
+        from game.tick_resolver import resolve_game_tick
+
+        bridge, session_id = _stub_session()
+        before = bridge.get_snapshot(session_id)["tick"]
+
+        snapshot = resolve_game_tick(
+            bridge,
+            session_id,
+            persistent_context=None,
+            force_endgame_test_hook=True,  # inert on the stub — no engine, no endgame
+        )
+
+        # The resolve view reads snapshot.get("tick") off this return; a list
+        # (the old stub shape) has no .get and crashed even past the kwargs.
+        assert isinstance(snapshot, dict)
+        assert snapshot["tick"] == before + 1
+        assert snapshot["session_id"] == str(session_id)
+
+    def test_resolve_tick_still_drains_queued_actions(self) -> None:
+        bridge, session_id = _stub_session()
+        bridge.submit_action(session_id, 0, _ORG_ID, "educate")
+
+        bridge.resolve_tick(session_id)
+
+        from game.stub_bridge import _stub_actions
+
+        assert _stub_actions[session_id] == []
+
+
 class TestVerbEligibilityStub:
     """Spec-116 FR-4.8 twin: coherent with the stub's own target methods
     (mobilize honestly empty; negotiate ineligible because ORG001 is the

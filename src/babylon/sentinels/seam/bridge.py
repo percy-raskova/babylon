@@ -242,7 +242,129 @@ def _own_returns(func: ast.FunctionDef | ast.AsyncFunctionDef) -> list[ast.expr 
     return values
 
 
-def _returned_dict_keys(engine_path: Path, func_name: str) -> tuple[frozenset[str], str]:
+def _dict_literal_keys(node: ast.Dict) -> tuple[set[str], bool]:
+    """Extract a dict literal's own string keys, flagging any dynamic ones.
+
+    :param node: The ``ast.Dict`` node.
+    :returns: ``(literal string keys, has_dynamic_key)`` — ``has_dynamic_key``
+        is ``True`` on a ``**spread`` entry or a computed (non-``Constant``)
+        key, meaning the dict's true key set cannot be fully known statically.
+    """
+    keys: set[str] = set()
+    dynamic = False
+    for key in node.keys:
+        if key is None:  # ``**spread`` entry
+            dynamic = True
+        elif isinstance(key, ast.Constant) and isinstance(key.value, str):
+            keys.add(key.value)
+        else:  # computed / non-literal key
+            dynamic = True
+    return keys, dynamic
+
+
+def _local_dict_var_keys(
+    func: ast.FunctionDef | ast.AsyncFunctionDef,
+) -> dict[str, set[str] | None]:
+    """Track local variables built up as dict literals across several statements.
+
+    Handles the "assemble a payload, then return the variable" idiom
+    (``payload = {...}``; ``payload = gate_fn(payload, tier)``;
+    ``payload["veil"] = {...}``; ``return payload``) that a bare
+    ``return {...}`` check misses entirely — the exact shape G4's own
+    veil-gating changes gave ``get_economy_dashboard``. Over-approximates in
+    the same safe direction as :func:`_returned_dict_keys` itself: every
+    assignment to a name (across every branch) unions into that name's
+    tracked key set, never subtracts from it.
+
+    Three patterns recognized per assignment target:
+
+    1. ``name = {...}`` — a dict literal; its keys union into ``name``'s set
+       (or mark it dynamic-unresolvable via a ``None`` entry — see below).
+    2. ``name = some_call(name, ...)`` — a same-variable "masking"
+       reassignment (``gate_value_axis_fields``/``_gate_snapshot_
+       territories`` both have this shape: filter/null VALUES, never add or
+       remove KEYS) — ``name``'s already-tracked key set is trusted forward
+       unchanged. Only trusted when ``name`` is already known; a masking-
+       shaped call over an UNTRACKED name proves nothing, so it is marked
+       unresolvable.
+    3. ``name[<literal str>] = ...`` — one more key added to an already-
+       tracked ``name`` (the ``payload["veil"] = {...}`` pattern).
+
+    Any OTHER assignment to a tracked or untracked name (a call that is not a
+    same-variable reassignment, a name, a comprehension, ...) marks that name
+    unresolvable (``None``) — this function only ever CONFIRMS a stable dict
+    shape, never guesses one.
+
+    :param func: The function to scan (does not descend into nested
+        ``def``/``lambda`` — same boundary :func:`_own_returns` respects).
+    :returns: ``{variable_name: key_set}``; a variable mapped to ``None`` is
+        proven NOT resolvable as a stable dict.
+    """
+    tracked: dict[str, set[str] | None] = {}
+
+    def _is_self_reassignment(call: ast.Call, name: str) -> bool:
+        return bool(call.args) and isinstance(call.args[0], ast.Name) and call.args[0].id == name
+
+    def visit(node: ast.AST) -> None:
+        for child in ast.iter_child_nodes(node):
+            if isinstance(child, ast.FunctionDef | ast.AsyncFunctionDef | ast.Lambda):
+                continue
+            if isinstance(child, ast.Assign) and len(child.targets) == 1:
+                target = child.targets[0]
+                if isinstance(target, ast.Name):
+                    name = target.id
+                    if isinstance(child.value, ast.Dict):
+                        literal_keys, dynamic = _dict_literal_keys(child.value)
+                        existing = tracked.get(name) or set()
+                        tracked[name] = None if dynamic else existing | literal_keys
+                    elif (
+                        isinstance(child.value, ast.Call)
+                        and _is_self_reassignment(child.value, name)
+                        and tracked.get(name) is not None
+                    ):
+                        pass  # masking reassignment — keep the tracked key set
+                    else:
+                        tracked[name] = None
+                elif (
+                    isinstance(target, ast.Subscript)
+                    and isinstance(target.value, ast.Name)
+                    and isinstance(target.slice, ast.Constant)
+                    and isinstance(target.slice.value, str)
+                ):
+                    name = target.value.id
+                    existing_keys = tracked.get(name)
+                    if existing_keys is not None:
+                        tracked[name] = existing_keys | {target.slice.value}
+            visit(child)
+
+    visit(func)
+    return tracked
+
+
+def _self_call_name(value: ast.expr | None) -> str | None:
+    """Return the method name if ``value`` is a ``self.<method>(...)`` call.
+
+    :param value: A return statement's value expression (``None`` for a bare
+        ``return`` — ``_own_returns`` may hand back either).
+    :returns: The method name, or ``None`` if ``value`` is not a same-class
+        method call (module-level function calls, e.g.
+        ``gate_value_axis_fields(payload, tier)``, are NOT delegation —
+        they mask/derive a value, they do not hand off "this IS the wire
+        shape" the way ``self.<method>()`` does).
+    """
+    if (
+        isinstance(value, ast.Call)
+        and isinstance(value.func, ast.Attribute)
+        and isinstance(value.func.value, ast.Name)
+        and value.func.value.id == "self"
+    ):
+        return value.func.attr
+    return None
+
+
+def _returned_dict_keys(
+    engine_path: Path, func_name: str, *, _depth: int = 0
+) -> tuple[frozenset[str], str]:
     """Extract a serializer's emitted top-level keys and classify its return shape.
 
     Generalizes ``provenance._emitted_property_keys`` from a nested ``properties``
@@ -250,15 +372,29 @@ def _returned_dict_keys(engine_path: Path, func_name: str) -> tuple[frozenset[st
     keys across every ``return {...}`` in the function (over-approximating in the
     safe direction — an error-branch return only adds keys, never removes them).
 
+    G4 Task C (delegation-blindness, the standing "sentinel every error class"
+    rule): a return value that resolves to a stable dict shape via
+    :func:`_local_dict_var_keys` (the "build up a local variable, return it"
+    idiom) OR a single-hop ``self.<method>()`` call (:func:`_self_call_name` —
+    the ``get_economy`` -> ``get_economy_dashboard`` pure-delegation shape)
+    contributes ITS keys instead of collapsing the whole function to
+    ``"delegated"``. Deliberately single-hop: ``_depth`` caps recursion at one
+    level, so a delegation chain longer than one hop (or an accidental cycle)
+    reports as ``"delegated"`` rather than resolving arbitrarily deep chains —
+    this is a documented limit, not an oversight (see the multi-hop test).
+
     :param engine_path: The bridge source holding the serializer.
     :param func_name: The serializer method name (``"get_economy"``).
+    :param _depth: Internal recursion guard — single-hop delegation only
+        follows from ``_depth == 0``; callers never pass this explicitly.
     :returns: ``(literal string keys, shape)`` where ``shape`` is one of
-        ``"dict"`` (checkable), ``"opaque"`` (dict built with ``**spread`` /
-        dynamic keys — uncheckable), ``"list"``, ``"delegated"`` (returns a
-        call/name), ``"missing"`` (no value-returning statement), or ``"absent"``
-        (no such serializer defined here — a view references it but the real
-        bridge does not define it: reported as a blind spot, not a hard error,
-        so one dead serializer never aborts the whole sweep).
+        ``"dict"`` (checkable — directly or via a resolved delegation),
+        ``"opaque"`` (dict built with ``**spread`` / dynamic keys —
+        uncheckable), ``"list"``, ``"delegated"`` (returns an unresolved
+        call/name), ``"missing"`` (no value-returning statement), or
+        ``"absent"`` (no such serializer defined here — a view references it
+        but the real bridge does not define it: reported as a blind spot, not
+        a hard error, so one dead serializer never aborts the whole sweep).
     :raises SentinelCheckError: If the bridge source is missing or unparseable.
     """
     tree = _parse(engine_path)
@@ -270,20 +406,30 @@ def _returned_dict_keys(engine_path: Path, func_name: str) -> tuple[frozenset[st
     if target is None:
         return frozenset(), "absent"
 
+    local_vars = _local_dict_var_keys(target)
+
     keys: set[str] = set()
     found_dict = found_list = found_delegated = dynamic = False
     for value in _own_returns(target):
         if isinstance(value, ast.Dict):
             found_dict = True
-            for key in value.keys:
-                if key is None:  # ``**spread`` entry
-                    dynamic = True
-                elif isinstance(key, ast.Constant) and isinstance(key.value, str):
-                    keys.add(key.value)
-                else:  # computed / non-literal key
-                    dynamic = True
+            literal_keys, is_dynamic = _dict_literal_keys(value)
+            keys |= literal_keys
+            dynamic = dynamic or is_dynamic
         elif isinstance(value, ast.List | ast.ListComp | ast.SetComp | ast.DictComp):
             found_list = True
+        elif _depth == 0 and (delegate := _self_call_name(value)) is not None:
+            delegate_keys, delegate_shape = _returned_dict_keys(
+                engine_path, delegate, _depth=_depth + 1
+            )
+            if delegate_shape == "dict":
+                found_dict = True
+                keys |= delegate_keys
+            else:
+                found_delegated = True
+        elif isinstance(value, ast.Name) and (resolved := local_vars.get(value.id)) is not None:
+            found_dict = True
+            keys |= resolved
         elif isinstance(value, ast.Call | ast.Name | ast.Attribute | ast.Subscript):
             found_delegated = True
 

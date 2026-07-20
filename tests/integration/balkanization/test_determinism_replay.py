@@ -25,6 +25,7 @@ from babylon.engine.systems.collapse_transition import CollapseTransitionSystem
 from babylon.engine.systems.faction_influence import FactionInfluenceSystem
 from babylon.engine.systems.metabolism import MetabolismSystem
 from babylon.engine.systems.sovereignty import SovereigntySystem
+from babylon.models.enums import NodeType
 from babylon.topology.graph import BabylonGraph
 
 pytestmark = pytest.mark.integration
@@ -94,13 +95,13 @@ def _build_initial_graph(seed_id: str) -> BabylonGraph:
     )
     adapter.add_node(
         "FAC_RESTORATIONIST",
-        "balkanization_faction",
+        NodeType.FACTION,
         colonial_stance="uphold",
         class_reduction=0.0,
     )
     adapter.add_node(
         "FAC_DECOLONIAL",
-        "balkanization_faction",
+        NodeType.FACTION,
         colonial_stance="abolish",
         class_reduction=0.5,
     )

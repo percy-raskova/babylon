@@ -42,8 +42,8 @@ from babylon.sentinels._ast import (
     literal_str_tuple,
     tick_write_set,
 )
-from babylon.sentinels.base import LabelledCheck, run_sensor
-from babylon.sentinels.seam.bridge import check_bridge_serialization
+from babylon.sentinels.base import LabelledCheck, SentinelCheckError, run_sensor
+from babylon.sentinels.seam.bridge import _returned_dict_keys, check_bridge_serialization
 from babylon.sentinels.seam.provenance import check_admin_feature_emission
 from babylon.sentinels.seam.registry import SEAM_REGISTRY
 from babylon.sentinels.seam.types import SeamEntry, SeamScope
@@ -108,6 +108,89 @@ def check_map_metrics(registry: tuple[SeamEntry, ...] = SEAM_REGISTRY) -> list[s
         violations.append(
             f"map metric {phantom!r} is registered (scope=MAP) but not in "
             f"MAP_METRIC_PROPERTIES — a phantom lens the backend never emits"
+        )
+    return violations
+
+
+def _economy_dashboard_registry_keys(registry: tuple[SeamEntry, ...]) -> set[str]:
+    """Registry ``ECONOMY``-scope wire keys whose ``read_paths`` cite
+    ``get_economy_dashboard`` specifically.
+
+    ``SeamScope.ECONOMY`` is shared by TWO distinct emitters —
+    ``get_economy_dashboard`` (this check's concern) and
+    ``get_game_timeseries`` (a completely different payload, e.g.
+    ``crisis_pop_share``/``price_index`` — see the ``_ECONOMY_SERIES_
+    METRICS``/``_ECONOMY_TIMESERIES_SCISSORS_METRICS`` registry blocks). A
+    bare ``scope is SeamScope.ECONOMY`` filter would conflate the two and
+    report every ``get_game_timeseries``-only row as a phantom. Filtering on
+    ``read_paths`` (every row cites its real emitter there) keeps the two
+    apart the same way the registry's own docstrings already do.
+
+    :param registry: The registry to filter.
+    :returns: The union of ``wire_keys`` across matching rows.
+    """
+    keys: set[str] = set()
+    for entry in registry:
+        if entry.scope is SeamScope.ECONOMY and any(
+            "get_economy_dashboard" in path for path in entry.read_paths
+        ):
+            keys.update(entry.wire_keys)
+    return keys
+
+
+def check_economy_dashboard_keys(
+    registry: tuple[SeamEntry, ...] = SEAM_REGISTRY,
+    engine_path: Path = _ENGINE_BRIDGE_PATH,
+) -> list[str]:
+    """GATING: reconcile registry economy_dashboard.* keys against
+    ``get_economy_dashboard``'s REAL emitted keys (G4 Task C).
+
+    Analogous to :func:`check_map_metrics` (registry vs. a source-of-truth,
+    both directions red the gate), but for the ECONOMY scope's
+    ``get_economy_dashboard`` payload — the "standing owner rule: sentinel
+    every error class" response to the delegation-blindness the audit found:
+    ``get_economy`` delegates its no-``territory_id`` path entirely to
+    ``get_economy_dashboard`` (``return self.get_economy_dashboard(...)``),
+    which used to make :func:`~babylon.sentinels.seam.bridge.
+    check_bridge_serialization`'s advisory sweep report the WHOLE surface as
+    an unverifiable "delegated" blind spot — silently skipping exactly the
+    kind of missing-registration defect (``tick``/``has_data``/
+    ``rent_extracted``/``exploitation_rate`` all went unregistered) this
+    check now GATES on directly. Harvests through
+    :func:`~babylon.sentinels.seam.bridge._returned_dict_keys`, the same
+    delegation-aware (single-hop ``self.<method>()`` + local-dict-variable)
+    harvester Task C(i) fixed generically — not special-cased to
+    ``get_economy_dashboard`` by name, so any future serializer with the
+    same shape benefits identically.
+
+    :param registry: The registry to check (injectable for tests).
+    :param engine_path: The bridge source to harvest keys from (injectable).
+    :returns: Sorted violation strings (empty when the two sets match).
+    :raises SentinelCheckError: If ``get_economy_dashboard`` cannot be found/
+        parsed, OR resolves to a non-``dict`` shape — an economy-scope
+        regression this check exists to gate can never silently pass as
+        "nothing to check" (Constitution III.11: loud, not silent).
+    """
+    emitted, shape = _returned_dict_keys(engine_path, "get_economy_dashboard")
+    if shape != "dict":
+        raise SentinelCheckError(
+            f"get_economy_dashboard returns a {shape!r} shape — cannot verify the ECONOMY "
+            f"scope's registry coverage against it (fix the harvester or the serializer; "
+            f"this scope may never silently go unverifiable)"
+        )
+    registered = _economy_dashboard_registry_keys(registry)
+
+    violations: list[str] = []
+    for missing in sorted(emitted - registered):
+        violations.append(
+            f"get_economy_dashboard emits {missing!r} but it is not registered in "
+            f"SEAM_REGISTRY (scope=ECONOMY)"
+        )
+    for phantom in sorted(registered - emitted):
+        violations.append(
+            f"economy wire key {phantom!r} is registered (scope=ECONOMY, "
+            f"get_economy_dashboard) but the serializer never emits it — a phantom a "
+            f"component reading it would get undefined from"
         )
     return violations
 
@@ -230,6 +313,10 @@ _GATING_CHECKS: tuple[LabelledCheck, ...] = (
     ("map metric not reconciled with MAP_METRIC_PROPERTIES", check_map_metrics),
     ("registered tick_* payload missing from the engine write-set", check_tick_payloads_exist),
     ("_EVENT_SEVERITY keyed on a non-EventType string", check_severity_vocabulary),
+    (
+        "economy_dashboard key not reconciled with get_economy_dashboard (G4 Task C)",
+        check_economy_dashboard_keys,
+    ),
 )
 
 #: Advisory Sensor-1 checks: findings are printed loudly but do NOT gate — the

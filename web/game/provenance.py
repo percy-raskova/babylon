@@ -37,6 +37,69 @@ directly from ``babylon.engine.formula_registry`` —
 ``tests/unit/web/test_import_boundary.py`` enforces ``engine_bridge.py`` as
 the *only* file in ``web/`` allowed to import ``babylon.engine`` (and
 ``babylon.models``/``babylon.config``/``babylon.ooda``/``babylon.persistence``).
+
+**G4 follow-up — the Veil of Money (owner-adjudicated, same branch as the
+org-network/causal-voice fixes).** ``GET .../explain/`` is a client-
+inspectable serialization endpoint carrying raw value-axis numbers
+(``value_produced``/``exploitation_rate``/``imperial_rent``/...) — exactly
+the leak class those fixes closed elsewhere, and precisely the kind of
+disclosure instrument the Veil design intends to gate (§7: below-threshold
+clients never receive value-axis payloads, no client inspection can pierce
+it). :func:`explain_metric` takes an optional ``veil_tier`` (default ``2``,
+fully unlocked, so every pre-existing direct caller — this module's own
+test suite — stays byte-identical; the real caller,
+``api.py::game_explain``, always resolves and supplies the session's real
+tier via ``engine_bridge._resolve_veil_tier``).
+
+Two independent gating tables, both against :mod:`game.veil`'s
+:data:`~game.veil.TIER1_VALUE_RELATION_FIELDS` registry (no
+:data:`~game.veil.TIER2_SCISSORS_FIELDS` name or reconstruction of one
+appears anywhere in this manifest — verified by
+``tests/unit/web/test_provenance.py::TestVeilGatingManifestContract``, so
+no Tier-2 gating logic exists here):
+
+* :data:`_TIER1_GATED_METRICS` — metric keys whose OWN ``value`` masks
+  below Tier 1. Four are literal registry-name matches
+  (``exploitation_rate``/``profit_rate``/``occ``/``imperial_rent``); three
+  are judgment calls, extending the registry's "gate on NAME" rule to "or
+  on the ONE computation separating it from that name" — an "explain"
+  panel that hands a Tier-0 client the exact two numbers one division away
+  from ``exploitation_rate`` is still a pierce, not a compliant partial
+  reveal:
+
+  - ``value_extraction_ratio`` IS ``exploitation_rate``'s un-rounded
+    precursor (``exchange_ratio``, one ``calculate_unequal_exchange_rate()``
+    call away — see :func:`_exploitation_rate_value`).
+  - ``labor_aristocracy_ratio`` is the SAME core-wages-vs-value-produced
+    relation ``engine_bridge._social_class_inspector_fields``'s
+    ``imperial_rent_gap`` already gates (there: a signed difference; here:
+    a ratio — same relation, different arithmetic).
+  - ``consciousness_drift``'s own architecture.md formula body is
+    literally ``k(1 - Wc/Vc) - lambda*Psi + bifurcation`` — ``Wc/Vc`` IS
+    the Fundamental Theorem ratio (``W_c > V_c`` gates the whole MLM-TW
+    core-revolution-impossibility result). Its value is always ``None``
+    today (``sensitivity_k``/``decay_lambda`` unreachable — see below) so
+    this is defense-in-depth against the day those constants get wired,
+    not a live behavior change.
+
+* :data:`_TIER1_GATED_INPUT_NAMES` — ``ProvenanceInputValue.name`` values
+  masked below Tier 1 regardless of which metric they appear under:
+  ``value_produced``/``rent_extracted`` (literal registry names) and
+  ``exchange_ratio`` (the ``exploitation_rate`` input — IS
+  ``value_extraction_ratio``'s gated value, one recursive ``ref`` hop
+  away). Money-form/political inputs are deliberately NEVER in this set —
+  ``core_wages`` (a wage FLOW, same family as ``wage_flow_total``),
+  ``wealth``/``subsistence_threshold`` (the money-form itself),
+  ``cohesion``/``repression``/``current_consciousness`` (political axes),
+  and the GameDefines-coefficient constants
+  (``steepness_k``/``sensitivity_k``/``decay_lambda``, already honestly
+  ``None``) all stay real at every tier, the same money-form/value-axis
+  split :mod:`game.veil`'s own module docstring draws.
+
+Static formula metadata (``expression``/``doc``/``formula_name``) is never
+gated — like ``apologist_claim`` in ``_social_class_inspector_fields``,
+these describe the FORMULA, not a per-session numeric READING; the Veil
+masks state data, not which metrics exist.
 """
 
 from __future__ import annotations
@@ -46,6 +109,48 @@ from dataclasses import dataclass
 from typing import Any
 
 from .engine_bridge import FormulaRegistry, _aggregate_graph_economy
+from .veil import TIER1_VALUE_RELATION_FIELDS
+
+#: Literal name matches against :data:`~game.veil.TIER1_VALUE_RELATION_FIELDS`
+#: — see the module docstring's "G4 follow-up" section.
+_TIER1_LITERAL_NAME_METRICS: frozenset[str] = frozenset(
+    {"exploitation_rate", "profit_rate", "occ", "imperial_rent"}
+)
+
+#: NOT literal registry names, but reconstruct one within a single
+#: arithmetic step — see the module docstring's "G4 follow-up" section for
+#: the per-metric reasoning.
+_TIER1_RECONSTRUCTION_METRICS: frozenset[str] = frozenset(
+    {"value_extraction_ratio", "labor_aristocracy_ratio", "consciousness_drift"}
+)
+
+#: Every metric key whose ``value`` masks below Tier 1.
+_TIER1_GATED_METRICS: frozenset[str] = _TIER1_LITERAL_NAME_METRICS | _TIER1_RECONSTRUCTION_METRICS
+
+#: Literal name matches against the registry, at the INPUT level.
+_TIER1_LITERAL_NAME_INPUTS: frozenset[str] = frozenset({"value_produced", "rent_extracted"})
+
+#: ``exchange_ratio`` (the ``exploitation_rate`` entry's sole input) IS
+#: ``value_extraction_ratio``'s gated value one ``ref`` hop away.
+_TIER1_RECONSTRUCTION_INPUTS: frozenset[str] = frozenset({"exchange_ratio"})
+
+#: Every ``ProvenanceInputValue.name`` masked below Tier 1.
+_TIER1_GATED_INPUT_NAMES: frozenset[str] = _TIER1_LITERAL_NAME_INPUTS | _TIER1_RECONSTRUCTION_INPUTS
+
+# Fail LOUD at import time (Constitution III.11), not just in a test file,
+# if either literal-name table ever drifts from the real veil.py registry
+# (also re-checked by tests/unit/web/test_provenance.py::
+# TestVeilGatingManifestContract for a friendlier failure message). A
+# plain `if`/`raise` rather than `assert` (ruff S101): an assert is
+# stripped under `python -O`, which would silently disarm this contract.
+if not (_TIER1_LITERAL_NAME_METRICS <= TIER1_VALUE_RELATION_FIELDS):
+    raise RuntimeError(
+        "_TIER1_LITERAL_NAME_METRICS has drifted from game.veil.TIER1_VALUE_RELATION_FIELDS"
+    )
+if not (_TIER1_LITERAL_NAME_INPUTS <= TIER1_VALUE_RELATION_FIELDS):
+    raise RuntimeError(
+        "_TIER1_LITERAL_NAME_INPUTS has drifted from game.veil.TIER1_VALUE_RELATION_FIELDS"
+    )
 
 # ---------------------------------------------------------------------- #
 # Scope grammar: "global" | "hex:<h3>" | "org:<id>"
@@ -640,7 +745,24 @@ METRIC_PROVENANCE: dict[str, MetricProvenance] = {
 # ---------------------------------------------------------------------- #
 
 
-def explain_metric(state: Any, graph: Any, metric: str, scope: ExplainScope) -> ExplainResult:
+def _masked_input(value: ProvenanceInputValue) -> ProvenanceInputValue:
+    """Same-shape masked replacement for one gated input.
+
+    Every :class:`ProvenanceInputValue` here carries a plain scalar
+    (``float | str | None``), never a list — unlike
+    :func:`~game.veil.gate_value_axis_fields`'s element-wise list case,
+    there is no parallel-array shape to preserve, so this simply nulls
+    ``value`` and keeps ``name``/``label``/``kind``/``ref`` (the row still
+    exists in the response — the FIELD is not hidden, only its number).
+    """
+    return ProvenanceInputValue(
+        name=value.name, label=value.label, value=None, kind=value.kind, ref=value.ref
+    )
+
+
+def explain_metric(
+    state: Any, graph: Any, metric: str, scope: ExplainScope, *, veil_tier: int = 2
+) -> ExplainResult:
     """Resolve one ``(metric, scope)`` request against hydrated state/graph.
 
     Args:
@@ -648,6 +770,15 @@ def explain_metric(state: Any, graph: Any, metric: str, scope: ExplainScope) -> 
         graph: The matching hydrated ``BabylonGraph``.
         metric: A :data:`METRIC_PROVENANCE` key.
         scope: The parsed scope (see :func:`parse_scope`).
+        veil_tier: G4 follow-up — the requesting player org's Veil-of-Money
+            tier (``engine_bridge._resolve_veil_tier``). Defaults to ``2``
+            (fully unlocked) so every pre-existing direct caller (this
+            module's own test suite) stays byte-identical; the real
+            player-facing caller (``api.py::game_explain``) always
+            supplies the session's real tier. Below Tier 1, every metric
+            in :data:`_TIER1_GATED_METRICS` masks its ``value`` and every
+            input named in :data:`_TIER1_GATED_INPUT_NAMES` masks its
+            ``value`` — see the module docstring's "G4 follow-up" section.
 
     Returns:
         The fully-resolved :class:`ExplainResult`.
@@ -676,6 +807,14 @@ def explain_metric(state: Any, graph: Any, metric: str, scope: ExplainScope) -> 
     ctx = ExplainContext(state=state, graph=graph, scope=scope)
     inputs = provenance.inputs_fn(ctx)
     value = provenance.value_fn(ctx)
+
+    if veil_tier < 1:
+        if metric in _TIER1_GATED_METRICS:
+            value = None
+        inputs = tuple(
+            _masked_input(i) if i.name in _TIER1_GATED_INPUT_NAMES else i for i in inputs
+        )
+
     return ExplainResult(
         metric=metric,
         scope=format_scope(scope),

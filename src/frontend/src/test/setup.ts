@@ -91,6 +91,10 @@ vi.mock("@deck.gl/layers", () => ({
   // Wave 3 §11: fieldFlow.ts's static dashed base layer — same reasoning as
   // TripsLayer above.
   PathLayer: vi.fn(),
+  // Track 1 / Task 6: solidarityLines.ts's line layer — same reasoning as
+  // PathLayer above (DeckGLMap imports it unconditionally, not just when
+  // solidarityLines.test.ts locally overrides this mock).
+  LineLayer: vi.fn(),
 }));
 
 // ---------------------------------------------------------------------------

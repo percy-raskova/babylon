@@ -102,15 +102,20 @@ def create_fascist_state() -> WorldState:
     """Create a WorldState that meets fascist consolidation conditions.
 
     Conditions:
-    - national_identity > class_consciousness for 3+ nodes
+    - national_identity > class_consciousness for a supermajority of nodes:
+      ``EndgameDefines.fascist_majority_fraction`` = 0.9 since d14d2c42
+      (spec-116 pacing ceremony #1 — the 0.75 gate false-positive-locked
+      FASCIST_CONSOLIDATION on small-archetype scenarios). 9 fascist of 10
+      entities = 0.9 clears the gate exactly; the old 4-of-5 = 0.8 no
+      longer does.
 
     Returns:
         WorldState configured for fascist consolidation.
     """
-    # Create entities where 4 have fascist consciousness
+    # Create entities where 9 of 10 have fascist consciousness
     entities = {}
-    for i in range(5):
-        if i < 4:  # 4 fascist nodes
+    for i in range(10):
+        if i < 9:  # 9 fascist nodes
             entities[f"C{i:03d}"] = SocialClass(
                 id=f"C{i:03d}",
                 name=f"Fascist Worker {i}",

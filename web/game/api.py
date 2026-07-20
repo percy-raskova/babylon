@@ -1230,6 +1230,7 @@ def game_explain(request: Request, game_id: str) -> JsonResponse:
     if not raw_scope:
         return _error("Missing required query parameter 'scope'", http_status=400)
 
+    from .engine_bridge import _resolve_veil_tier
     from .provenance import (
         METRIC_PROVENANCE,
         SUPPORTED_SCOPE_KINDS,
@@ -1256,8 +1257,13 @@ def game_explain(request: Request, game_id: str) -> JsonResponse:
         except Exception:  # noqa: BLE001 — diagnostic; surfaced as a clean 404
             logger.exception("game_explain: failed to hydrate state for session=%s", session_uuid)
             return _error("Game state not available", http_status=404)
+        # G4 follow-up: /explain/ is a client-inspectable disclosure
+        # instrument for value-axis quantities (game.provenance's module
+        # docstring) — resolve the session's real Veil-of-Money tier the
+        # same way every other gated endpoint does and thread it through.
+        veil_tier = _resolve_veil_tier(state)
         try:
-            result = explain_metric(state, graph, metric, scope)
+            result = explain_metric(state, graph, metric, scope, veil_tier=veil_tier)
         except UnknownMetricError:
             return _error(
                 f"Unknown metric {metric!r}. Valid metrics: {sorted(METRIC_PROVENANCE)}",
@@ -1502,6 +1508,23 @@ def actions_list(request: Request, game_id: str) -> JsonResponse:
     )
 
 
+def _e2e_force_endgame_requested(request: Request) -> bool:
+    """G7-crisis test-only hook (spec-116 first-session e2e crisis leg): does
+    THIS request ask ``resolve_tick`` to force a real ``endgame_reached``
+    event? Scoped to a single request via an explicit header (never a
+    session-wide or global toggle) so a full parallel e2e run against a
+    shared dev server can never leak this into any other spec file's
+    session — only whichever Playwright page explicitly injects the header
+    (e.g. via ``page.route``) is affected. Still fully inert unless the
+    server process ALSO opted in via ``BABYLON_E2E_TEST_HOOKS=1`` (checked
+    downstream by ``EngineBridge.resolve_tick`` /
+    ``_e2e_test_hooks_enabled``) — never set in production/development
+    settings, so this header is a no-op everywhere except an e2e run that
+    exported it.
+    """
+    return request.headers.get("X-Babylon-E2E-Force-Endgame") == "1"
+
+
 @api_view(["POST"])
 @permission_classes([IsAuthenticated])
 def resolve_tick(request: Request, game_id: str) -> JsonResponse:
@@ -1532,7 +1555,11 @@ def resolve_tick(request: Request, game_id: str) -> JsonResponse:
     logger.info("Resolving tick session=%s current_tick=%d", session.id, session.current_tick)
 
     try:
-        snapshot = resolve_game_tick(bridge, uuid.UUID(str(session.id)))
+        snapshot = resolve_game_tick(
+            bridge,
+            uuid.UUID(str(session.id)),
+            force_endgame_test_hook=_e2e_force_endgame_requested(request),
+        )
     except Exception:
         # Restore status on failure so the game can be retried
         GameSession.objects.filter(id=session.id).update(status="active", updated_at=timezone.now())

@@ -116,43 +116,46 @@ class TestSerializedOrgShape:
     """T058-T061: spec 061 fields present on every serialized org."""
 
     def test_player_controlled_flag_correct_for_player_org(self) -> None:
-        org = _StubOrg(class_character="proletarian", org_type="civil_society")
-        out = _serialize_organization(org)
+        """Track 1 / Task 1 (2026-07-18): player status now comes from
+        ``player_org_id``, not the retired class_character/org_type
+        heuristic — the stub's field values are incidental here."""
+        org = _StubOrg(id="org-x", class_character="proletarian", org_type="civil_society")
+        out = _serialize_organization(org, player_org_id="org-x")
         assert out["player_controlled"] is True
         assert out["vanguard"] is not None  # T058 corollary
 
     def test_player_controlled_flag_correct_for_npc_org(self) -> None:
         org = _StubOrg(class_character="bourgeois", org_type="business")
-        out = _serialize_organization(org)
+        out = _serialize_organization(org, player_org_id=None)
         assert out["player_controlled"] is False
         assert out["vanguard"] is None
 
     def test_ooda_phase_enum_present(self) -> None:
         org = _StubOrg(ooda_profile=_OodaStub(observe=0.1, orient=0.1, decide=0.7, act=0.1))
-        out = _serialize_organization(org)
+        out = _serialize_organization(org, player_org_id=None)
         assert out["ooda"]["phase"] == "decide"
         assert out["ooda"]["phase"] in ("observe", "orient", "decide", "act")
 
     def test_short_name_present_and_bounded(self) -> None:
         org = _StubOrg(name="A Reasonable Org Name")
-        out = _serialize_organization(org)
+        out = _serialize_organization(org, player_org_id=None)
         assert out["short_name"] != ""
         assert len(out["short_name"]) <= 16
 
     def test_hyperedge_memberships_always_a_list(self) -> None:
         org = _StubOrg()
-        out = _serialize_organization(org)
+        out = _serialize_organization(org, player_org_id=None)
         assert isinstance(out["hyperedge_memberships"], list)
         # US6 will populate; for now empty is a valid empty contract.
 
     def test_legitimacy_and_opacity_fields_present(self) -> None:
         org = _StubOrg(legitimacy=0.73, opacity=0.21)
-        out = _serialize_organization(org)
+        out = _serialize_organization(org, player_org_id=None)
         assert out["legitimacy"] == pytest.approx(0.73)
         assert out["opacity"] == pytest.approx(0.21)
 
     def test_legitimacy_defaults_to_half_when_attribute_absent(self) -> None:
         org = _StubOrg()  # no legitimacy attribute
-        out = _serialize_organization(org)
+        out = _serialize_organization(org, player_org_id=None)
         assert out["legitimacy"] == 0.5
         assert out["opacity"] == 0.5

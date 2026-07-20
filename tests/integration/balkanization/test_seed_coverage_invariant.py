@@ -25,6 +25,7 @@ from babylon.data.game.balkanization import (
     load_seed_factions,
     load_seed_sovereigns_raw,
 )
+from babylon.models.enums import NodeType
 from babylon.topology.graph import BabylonGraph
 
 pytestmark = pytest.mark.integration
@@ -40,7 +41,7 @@ def _seed_state_with_exterior_null_fallback(
     for faction in load_seed_factions():
         adapter.add_node(
             faction.id,
-            "balkanization_faction",
+            NodeType.FACTION,
             colonial_stance=faction.colonial_stance.value,
             class_reduction=faction.class_reduction,
             is_settler_formation=faction.is_settler_formation,

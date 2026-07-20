@@ -251,6 +251,43 @@ describe("ActionComposer", () => {
     expect(screen.getByTestId("verb-cost")).toHaveTextContent("1 AP");
   });
 
+  describe("investigate preset (Track 1 Task 7)", () => {
+    it("selects INVESTIGATE and pre-fills its target when actions.preset is set before mount", async () => {
+      seedPlayerOrg();
+      useStore.getState().actions.presetInvestigate("territory-99", "Wayne County");
+
+      render(<ActionComposer gameId={DEFAULT_GAME_ID} />);
+
+      // The composer opened directly on the INVESTIGATE form (not the grid
+      // requiring a manual click), and the target is visibly pre-filled.
+      expect(await screen.findByTestId("preset-target-note")).toHaveTextContent("Wayne County");
+      // The preset is consumed exactly once — revisiting the grid must not
+      // silently reapply a stale preset to a different verb.
+      expect(useStore.getState().actions.preset).toBeNull();
+    });
+
+    it("does nothing special when no preset is queued (existing flow unchanged)", () => {
+      seedPlayerOrg();
+      render(<ActionComposer gameId={DEFAULT_GAME_ID} />);
+      expect(screen.queryByTestId("preset-target-note")).not.toBeInTheDocument();
+    });
+
+    it("clears the preset target when the user switches verbs (PR #211 review)", async () => {
+      seedPlayerOrg();
+      useStore.getState().actions.presetInvestigate("territory-99", "Wayne County");
+
+      render(<ActionComposer gameId={DEFAULT_GAME_ID} />);
+      expect(await screen.findByTestId("preset-target-note")).toHaveTextContent("Wayne County");
+
+      await userEvent.click(screen.getByRole("button", { name: /educate/i }));
+
+      // The INVESTIGATE preset's target dies with the verb it was queued
+      // for — it must not silently pre-target EDUCATE (or any other verb
+      // the user switches to).
+      expect(screen.queryByTestId("preset-target-note")).not.toBeInTheDocument();
+    });
+  });
+
   it("shows a loud submit error when the backend rejects the action", async () => {
     server.use(
       http.get("/api/games/:id/actions/educate/targets/", () =>

@@ -38,6 +38,7 @@ import type {
   FieldStatePayload,
   MapHistoryFrame,
   MapHistoryPayload,
+  SolidarityEdgeLine,
 } from "@/types/game";
 import type { WireFeed, WireStoryIndex } from "@/types/wire";
 import { EMPTY_WIRE_FEED } from "@/types/wire";
@@ -438,6 +439,15 @@ export function makeEconomyDashboardPayload(
     tribute_flow_total: 5,
     wealth_by_class_role: { periphery_proletariat: 40, core_bourgeoisie: 60 },
     county_flow: { year: null, phi_accrued_this_year: null, wage_accrued_this_year: null },
+    imperial_rent_gap: -70,
+    imperial_rent_gap_by_region: [],
+    veil: {
+      tier: 2,
+      next_unlock_node_id: null,
+      next_unlock_label: null,
+      value_produced: 100,
+      exploitation_rate: 0.2,
+    },
     ...overrides,
   };
 }
@@ -513,6 +523,23 @@ export function makeFieldStateEdge(overrides?: Partial<FieldStateEdge>): FieldSt
     target_territory: "territory-suburbs",
     field: "exploitation",
     gradient: 0.3,
+    ...overrides,
+  };
+}
+
+/**
+ * One `metadata.solidarity_edges[]` entry of GET /api/games/{id}/map/
+ * (Track 1 / Task 6's solidarity-line map layer).
+ */
+export function makeSolidarityEdgeLine(
+  overrides?: Partial<SolidarityEdgeLine>,
+): SolidarityEdgeLine {
+  return {
+    source: "C001",
+    target: "C002",
+    source_territory: "territory-downtown",
+    target_territory: "territory-suburbs",
+    solidarity_strength: 0.5,
     ...overrides,
   };
 }

@@ -2,7 +2,7 @@
 
 Defines the Organization base class and four frozen Pydantic subtypes:
 StateApparatus, Business, PoliticalFaction, CivilSocietyOrg. Also defines
-IntelMethodology (supporting model) and KeyFigure (separate graph node).
+IntelMethodology (supporting model).
 
 The ``OrganizationType`` discriminated union dispatches on ``org_type``
 for automatic subtype selection during deserialization.
@@ -423,46 +423,3 @@ OrganizationType = Annotated[
     Field(discriminator="org_type"),
 ]
 """Discriminated union dispatching on ``org_type`` to the correct subtype."""
-
-
-class KeyFigure(BaseModel):
-    """Individual node within organizational topology (Feature 031).
-
-    Stored as a separate graph node (``_node_type="key_figure"``).
-    COMMAND edges connect KeyFigure nodes within the same organization.
-
-    Attributes:
-        id: Unique key figure identifier.
-        name: Name.
-        organization_id: Parent organization.
-        role: Position title/function.
-        structural_importance: Topological criticality [0, 1].
-        is_singleton: No structural equivalent (Sparrow).
-    """
-
-    model_config = ConfigDict(frozen=True)
-
-    id: str = Field(
-        min_length=1,
-        description="Unique key figure identifier",
-    )
-    name: str = Field(
-        min_length=1,
-        description="Name",
-    )
-    organization_id: str = Field(
-        min_length=1,
-        description="Parent organization ID",
-    )
-    role: str = Field(
-        min_length=1,
-        description="Position title/function",
-    )
-    structural_importance: Probability = Field(
-        default=0.5,
-        description="Topological criticality [0, 1]",
-    )
-    is_singleton: bool = Field(
-        default=False,
-        description="No structural equivalent (Sparrow)",
-    )

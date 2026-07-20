@@ -1,4 +1,4 @@
-ADR083_vol3_money_scissors:
+ADR089_vol3_money_scissors:
   status: "accepted"
   date: "2026-07-19"
   title: "Volume III Money wired live through the Value-Price Scissors: the dormant Vol III estate (SurplusValueDistribution, DebtAccumulation, FictitiousCapitalStock) connected via calculator_overrides + a new NationalFinancialParameters graph publication + a monetary anchor pulling the market-scissors oscillator toward real FRED-backed ratios where data exists (2010-2024), four new bound oppositions (surplus_distribution/debt_spiral/credit/financial, catalog 6->10) with CouplingGraph activated as ContradictionSystem's first production consumer, a 13-item honesty sweep (including a latent year-ceiling ValidationError crash on the live MELT path), six new sentinel classes, and an endogenous national interest rate (Capital Vol. III Part V) that replaces the FRED interest read with a bounded share of the average rate of profit driven by loan-market tightness, the rate now total (never absent), U9 -- gate byte-identical vs the frozen baselines; regeneration declined as unnecessary under the recorded owner approval (Option B, 2026-07-19)"
@@ -161,4 +161,4 @@ ADR083_vol3_money_scissors:
     ADR056_spec102_gamma_hydration_and_shocks.yaml (determinism-proof
     precedent), ADR077_market_scissors.yaml, ADR078_market_correction.yaml
     (shadow-then-ceremony precedent),
-    ADR082_sentinel_error_classes.yaml (the U7 sentinel family)
+    ADR088_sentinel_error_classes.yaml (the U7 sentinel family)

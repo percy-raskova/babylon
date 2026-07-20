@@ -24,6 +24,8 @@ import uuid
 
 import pytest
 
+from babylon.persistence.postgres_schema import POSTGRES_SCHEMA_DDL, ensure_ddl_applied
+
 pytestmark = [
     pytest.mark.requires_postgres,
     pytest.mark.skipif(
@@ -162,6 +164,12 @@ class TestWebPathMigrations:
         )
         with pool.connection() as conn:
             conn.autocommit = True
+            # Self-sufficient setup (nightly 2026-07-19): guarantee the stamp
+            # table exists whatever bootstrapped this DB — the old bare-loop
+            # db:bootstrap created every schema table EXCEPT the stamp table
+            # (its DDL lives only inside ensure_ddl_applied), so the DELETE
+            # below crashed with UndefinedTable on nightly's Postgres.
+            ensure_ddl_applied(conn, POSTGRES_SCHEMA_DDL)
             for column in dropped:
                 conn.execute(f"ALTER TABLE tick_summary DROP COLUMN IF EXISTS {column}")
             # ensure_ddl_applied is digest-stamped: clear the stamps so the

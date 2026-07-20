@@ -18,7 +18,7 @@ Re-exported via :mod:`babylon.config.defines.__init__`; composed into
 
 from __future__ import annotations
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 
 class EpistemicHorizonDefines(BaseModel):
@@ -106,6 +106,67 @@ class EpistemicHorizonDefines(BaseModel):
             "automatically fails). Cadre-presence gating is Phase 3."
         ),
     )
+    organizing_reach_radius: int = Field(
+        default=1,
+        ge=1,
+        le=5,
+        description=(
+            "Track 1 Task 2 (2026-07-18, spec-117 §5a): depth of the SOLIDARITY "
+            "hop ONLY, in ``web.game.fog.reach.organizing_reach``. Reach is a "
+            "composed, alternating traversal — org --PRESENCE--> territory "
+            "--TENANCY--> class --SOLIDARITY--> class — NOT a union BFS over an "
+            "edge-type set. The PRESENCE and TENANCY hops are structural facts "
+            "(an org's operational footprint; a territory's occupant) and are "
+            "always exactly one hop regardless of this value; only the "
+            "SOLIDARITY front extends. Default 1 mirrors the design text — "
+            "'visible only within organizing reach: where the org has presence "
+            "or solidarity connection' — one ally deep, not a transitive chain. "
+            "A union over {PRESENCE, SOLIDARITY} rooted at the org would be "
+            "SILENTLY PRESENCE-ONLY: SOLIDARITY edges connect social_class to "
+            "social_class and never touch an organization (verified in both "
+            "shipped scenarios, ``_legacy_wayne.py:427-429`` and "
+            "``_legacy.py:433-435``)."
+        ),
+    )
+    intel_staleness_ticks: int = Field(
+        default=5,
+        ge=1,
+        description=(
+            "Track 1 Task 3 (2026-07-18): a fog-ledger entry no older than "
+            "this many ticks renders EXACT. Older renders approximate "
+            "(quantized), then unknown past ``intel_unknown_ticks``. Intel "
+            "ages visibly — this is NOT a decay simulation, just a pure "
+            "function of (ledger, current tick)."
+        ),
+    )
+    intel_unknown_ticks: int = Field(
+        default=20,
+        ge=1,
+        description=(
+            "Track 1 Task 3 (2026-07-18): a fog-ledger entry older than this "
+            "many ticks renders UNKNOWN rather than approximate. Must exceed "
+            "``intel_staleness_ticks`` — enforced by "
+            "``EpistemicHorizonDefines.check_intel_tick_ordering``."
+        ),
+    )
+
+    @model_validator(mode="after")
+    def check_intel_tick_ordering(self) -> EpistemicHorizonDefines:
+        """Fail loud on a misconfigured fog-ledger tier ordering.
+
+        ``intel_unknown_ticks`` must strictly exceed ``intel_staleness_ticks``
+        — otherwise the "approximate" tier is empty or inverted, silently
+        collapsing a 3-tier reveal gate into 2 (Constitution III.11: a
+        misconfigured coefficient must fail loud, not degrade quietly).
+        """
+        if self.intel_unknown_ticks <= self.intel_staleness_ticks:
+            raise ValueError(
+                "intel_unknown_ticks "
+                f"({self.intel_unknown_ticks}) must exceed intel_staleness_ticks "
+                f"({self.intel_staleness_ticks}) or the 'approximate' fog tier "
+                "is empty/inverted"
+            )
+        return self
 
 
 __all__ = ["EpistemicHorizonDefines"]

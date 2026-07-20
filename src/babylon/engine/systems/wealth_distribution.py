@@ -48,7 +48,7 @@ from babylon.formulas.class_dynamics import (
 from babylon.kernel.system_base import SystemBase
 from babylon.kernel.system_protocol import ContextType
 from babylon.kernel.tick_partition import TickPartition
-from babylon.models.enums import SocialRole
+from babylon.models.enums import NodeType, SocialRole
 
 if TYPE_CHECKING:
     from babylon.kernel.graph_protocol import GraphProtocol
@@ -169,7 +169,7 @@ def _bracket_resistances(graph: GraphProtocol) -> _Vector:
     """
     sums = [0.0, 0.0, 0.0, 0.0]
     counts = [0, 0, 0, 0]
-    nodes = sorted(graph.query_nodes(node_type="social_class"), key=lambda n: n.id)
+    nodes = sorted(graph.query_nodes(node_type=NodeType.SOCIAL_CLASS), key=lambda n: n.id)
     for node in nodes:
         role = SocialRole.coerce(node.attributes.get("role"))
         if role is None:
@@ -266,7 +266,7 @@ class WealthDistributionSystem(SystemBase):
             "velocities": list(velocities),
             "tick": int(tick),
         }
-        nodes = sorted(graph.query_nodes(node_type="social_class"), key=lambda n: n.id)
+        nodes = sorted(graph.query_nodes(node_type=NodeType.SOCIAL_CLASS), key=lambda n: n.id)
         for node in nodes:
             role = SocialRole.coerce(node.attributes.get("role"))
             if role is None:

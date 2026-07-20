@@ -48,7 +48,7 @@ not**:
   This program modernizes *coverage* and *observability*, not strictness.
 - **The gate must declare what it watches, and a sentinel must prove the
   declaration is complete** — the same declared-invariant pattern as the six
-  sentinel classes (ADR082). A gate whose estate is implicit rots silently.
+  sentinel classes (ADR088). A gate whose estate is implicit rots silently.
 - **A baseline that captures a channel is an inertness detector for that
   channel.** All-zeros is a signal, never a default.
 - **CI never touches the babylon-data drive** (owner ruling 2026-07-14): every

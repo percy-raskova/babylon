@@ -112,12 +112,12 @@ def _make_mock_persistence_with_flows() -> MagicMock:
     graph.nodes.return_value = iter([])
     graph.edges = MagicMock(return_value=iter([]))
     mock.hydrate_graph.return_value = graph
-    mock._pool = _mock_pool_with_boundary_flows()
+    mock.pool = _mock_pool_with_boundary_flows()
     return mock
 
 
 def _make_mock_persistence_no_pool() -> MagicMock:
-    """Mock persistence with NO _pool (SQLite dev/test degradation case)."""
+    """Mock persistence with no pool (SQLite dev/test degradation case)."""
     mock = MagicMock()
     mock.get_metadata.return_value = None
     mock.get_session.return_value = {"scenario": "default"}
@@ -126,9 +126,8 @@ def _make_mock_persistence_no_pool() -> MagicMock:
     graph.nodes.return_value = iter([])
     graph.edges = MagicMock(return_value=iter([]))
     mock.hydrate_graph.return_value = graph
-    # No _pool attribute — simulates SQLite dev/test
-    if hasattr(mock, "_pool"):
-        del mock._pool
+    # pool is None — the honest SQLite ``RuntimeDatabase.pool`` return value.
+    mock.pool = None
     return mock
 
 

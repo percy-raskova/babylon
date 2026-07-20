@@ -2,11 +2,10 @@
  * Verb submit — one verb end-to-end including the target picker
  * (spec-110 B6, cockpit equivalent of web/frontend/e2e/verb-submit.spec.ts).
  * real-loop.spec.ts also drives campaign once as part of the full loop;
- * this spec is the focused ActionComposer/VerbGrid/TargetPicker gate:
- * the flat 9-verb grid (Article V — all 9 verbs have real engine
- * resolvers, see `babylon.engine.actions.VERB_RESOLVERS`, but at tick 0
- * EDUCATE and MOBILIZE render disabled-with-reason per spec-116 FR-4.8 —
- * a structural dead-end honestly surfaced, not a missing handler), the
+ * this spec is the focused ActionComposer/VerbGrid/TargetPicker gate: the
+ * flat 9-verb grid (Article V — all 9 verbs have real engine resolvers,
+ * see `babylon.engine.actions.VERB_RESOLVERS`, and all nine are ELIGIBLE
+ * at tick 0 in wayne_county — see the eligibility test's own comment), the
  * live snapshot-sourced target picker, and a full submit→201→pending-list
  * round trip.
  *
@@ -17,6 +16,23 @@
  * was once whole-suite `fixme` because Django's CSRF/CORS allowlist 403'd
  * every login origin but 5173 — see auth.setup.ts's docstring for the fix.
  * No `fixme` remains; the suite runs for real against the live stack.
+ *
+ * CORRECTED 2026-07-19 (G7-epilogue task, folded in): the eligibility test
+ * used to assert EDUCATE and MOBILIZE disabled-with-reason at tick 0 — the
+ * same stale defect-era assumption `first-session.spec.ts`'s leg 4 already
+ * shed (see that file's own comment, citing commit 4fa5d45c). That
+ * expectation encoded the retired `territory_ids`-on-social_class
+ * fabricated-shape bug (`get_verb_eligibility`'s `has_social_class`
+ * predicate read a field `SocialClass` never declares); the fix resolves
+ * class -> territory via the real Occupant -> Territory TENANCY edge
+ * instead, and wayne_county's map is 100% class-partitioned from scenario
+ * construction, so a resident social_class already tenants the player's
+ * territories from tick 0 by design. Re-verified live against this exact
+ * spec's own session before amending: `GET .../actions/eligibility/` on a
+ * fresh wayne_county session at tick 0 returns `eligible: true` for all
+ * nine verbs, no `verb-ineligible-reasons` block. Amended to the honest,
+ * currently-correct assertion (positive, not a fabricated disabled state)
+ * rather than deleting the coverage.
  */
 import { expect, test, createWayneCountyGame } from "./fixtures";
 
@@ -31,7 +47,7 @@ test.describe("Verb submit — live engine (cockpit, spec-110 B6)", () => {
     expect(gameId, "session creation must return a session_id").toBeTruthy();
   });
 
-  test("VerbGrid tick-0 eligibility: EDUCATE and MOBILIZE disabled with visible reason, no dead-end clicks (spec-116 FR-4.8)", async ({
+  test("VerbGrid tick-0 eligibility: all nine verbs enabled, no dead ends, no fabricated disabled state (spec-116 FR-4.8)", async ({
     page,
   }) => {
     expect(gameId, "session-creation test ran first").toBeTruthy();
@@ -40,37 +56,41 @@ test.describe("Verb submit — live engine (cockpit, spec-110 B6)", () => {
     const verbGrid = page.getByTestId("verb-grid");
     await expect(verbGrid).toBeVisible();
 
-    // Tick-0 wayne_county: no social_class node carries the org's
-    // territories (structural — SocialClass has no territory_ids field)
-    // and the only co-located org is the state apparatus, so EDUCATE and
-    // MOBILIZE are disabled-with-reason instead of dead-ending into
-    // "No eligible targets."
-    const educate = verbGrid.getByRole("button", { name: /educate/i });
-    await expect(educate).toBeDisabled({ timeout: 15000 });
-    await expect(educate).toHaveAttribute(
-      "title",
-      /no eligible targets yet: No organized community/,
-    );
-    await expect(verbGrid.getByRole("button", { name: /mobilize/i })).toBeDisabled();
-
-    // Reason + remedy are VISIBLE, not tooltip-only.
-    const reasons = page.getByTestId("verb-ineligible-reasons");
-    await expect(reasons).toContainText("No organized community in your territories yet.");
-    await expect(reasons).toContainText("political education unlocks");
-
-    // Article V: the other seven verbs stay enabled; nothing is hidden.
+    // Tick-0 wayne_county: EDUCATE and MOBILIZE are ELIGIBLE, not disabled.
+    // This leg used to assert the opposite ("no organized community in the
+    // player's territories yet") — that expectation encoded the retired
+    // `territory_ids`-on-social_class fabricated-shape bug. Commit
+    // 4fa5d45c (Track 1 Task 8b) fixed `get_verb_eligibility`'s
+    // `has_social_class` predicate (and `get_educate_targets`) to resolve
+    // class -> territory via the real Occupant -> Territory TENANCY edge
+    // (`_tenancy_members_by_territory` in `web/game/engine_bridge.py`), not
+    // the nonexistent `territory_ids` field on social_class nodes.
+    // wayne_county's map is 100% class-partitioned from scenario
+    // construction (`_legacy_wayne.py`), so a resident social_class already
+    // tenants the player's starting territories from tick 0 by design —
+    // see `first-session.spec.ts`'s verb-grid leg for the same finding,
+    // pinned there by `TestVerbEligibilityAgreesWithTargetsRealWayneCounty`.
+    // All nine verbs render enabled and the disabled-with-reason machinery
+    // (still real and unchanged) stays absent — the honest live state, not
+    // a fabricated dead end in either direction.
     for (const verb of [
+      "Educate",
       "Aid",
       "Attack",
+      "Mobilize",
       "Campaign",
       "Move",
       "Investigate",
       "Reproduce",
       "Negotiate",
     ]) {
-      await expect(verbGrid.getByRole("button", { name: new RegExp(verb, "i") })).toBeEnabled();
+      await expect(
+        verbGrid.getByRole("button", { name: new RegExp(verb, "i") }),
+        `${verb} must be enabled at tick 0 (real live state)`,
+      ).toBeEnabled({ timeout: 15000 });
     }
     await expect(verbGrid.getByRole("button")).toHaveCount(9);
+    await expect(page.getByTestId("verb-ineligible-reasons")).toHaveCount(0);
   });
 
   test("selecting Campaign renders the live snapshot-sourced target picker", async ({ page }) => {

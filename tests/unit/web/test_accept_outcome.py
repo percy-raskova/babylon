@@ -176,7 +176,7 @@ class TestAcceptOutcomeStampsDurableEndgame:
         # by a fresh get_endgame_state call (real Postgres would round-trip
         # this row for real; here the mock pool's cursor is wired to return
         # exactly what accept_outcome persisted).
-        mock_persistence._pool = MagicMock()
+        mock_persistence.pool = MagicMock()
         cursor = MagicMock()
         cursor.fetchone.return_value = (
             12,
@@ -189,7 +189,7 @@ class TestAcceptOutcomeStampsDurableEndgame:
         conn.cursor.return_value = cursor
         conn.__enter__ = MagicMock(return_value=conn)
         conn.__exit__ = MagicMock(return_value=False)
-        mock_persistence._pool.connection.return_value = conn
+        mock_persistence.pool.connection.return_value = conn
 
         result = bridge.get_endgame_state(_SESSION)
 

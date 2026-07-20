@@ -145,6 +145,72 @@ class TestGetOrgNetworkEngineBridge:
 
 
 @pytest.mark.unit
+class TestGetOrgNetworkVeilGate:
+    """G4 Finding 1 (adversarial review): ``_build_org_network`` threaded
+    ``reach`` (fog) into ``_serialize_territory`` but never ``veil_tier``,
+    so the veil gate inside ``_serialize_territory`` never ran — a tier-0
+    client's territory nodes carried real value-axis numbers
+    (profit_rate/exploitation_rate/occ/imperial_rent/price_divergence)
+    straight through the org-network payload. Pins the fix the same way
+    ``TestGetInspectorHex::test_g4_veil_gates_the_value_axis_fields``
+    (test_engine_bridge_inspectors.py) already pins the sibling inspector
+    endpoint — stamping real ``tick_*``/``price_divergence`` graph data,
+    then the player org's ``acquired_doctrine_ids`` to move tiers."""
+
+    @staticmethod
+    def _stamp_value_axis_fields(graph: Any, territory_id: str) -> None:
+        graph.nodes[territory_id]["tick_profit_rate"] = 0.15
+        graph.nodes[territory_id]["tick_exploitation_rate"] = 0.30
+        graph.nodes[territory_id]["tick_occ"] = 2.1
+        graph.nodes[territory_id]["tick_phi_hour"] = 0.05
+        graph.nodes[territory_id]["price_divergence"] = 0.2
+
+    def test_tier_zero_masks_value_axis_fields_on_territory_nodes(self) -> None:
+        bridge, graph, territory_id = _wayne_bridge_with_institution()
+        self._stamp_value_axis_fields(graph, territory_id)
+
+        result = bridge.get_org_network(uuid.uuid4())
+
+        attrs = next(n for n in result["nodes"] if n["id"] == territory_id)["attributes"]
+        assert attrs["profit_rate"] is None
+        assert attrs["exploitation_rate"] is None
+        assert attrs["occ"] is None
+        assert attrs["imperial_rent"] is None
+        assert attrs["price_divergence"] is None
+        # Never touched — heat is money-form, not value-axis.
+        assert attrs["heat"] is not None
+
+    def test_tier_two_unlocks_value_axis_fields_on_territory_nodes(self) -> None:
+        bridge, graph, territory_id = _wayne_bridge_with_institution()
+        self._stamp_value_axis_fields(graph, territory_id)
+        graph.nodes["ORG001"]["acquired_doctrine_ids"] = (
+            "class_consciousness",
+            "trade_unionism",
+        )
+
+        result = bridge.get_org_network(uuid.uuid4())
+
+        attrs = next(n for n in result["nodes"] if n["id"] == territory_id)["attributes"]
+        assert attrs["profit_rate"] == pytest.approx(0.15)
+        assert attrs["exploitation_rate"] == pytest.approx(0.30)
+        assert attrs["occ"] == pytest.approx(2.1)
+        assert attrs["imperial_rent"] == pytest.approx(0.05)
+        assert attrs["price_divergence"] == pytest.approx(0.2)
+
+    def test_tier_one_unlocks_tier1_fields_but_not_the_scissors(self) -> None:
+        bridge, graph, territory_id = _wayne_bridge_with_institution()
+        self._stamp_value_axis_fields(graph, territory_id)
+        graph.nodes["ORG001"]["acquired_doctrine_ids"] = ("class_consciousness",)
+
+        result = bridge.get_org_network(uuid.uuid4())
+
+        attrs = next(n for n in result["nodes"] if n["id"] == territory_id)["attributes"]
+        assert attrs["profit_rate"] == pytest.approx(0.15)
+        assert attrs["imperial_rent"] == pytest.approx(0.05)
+        assert attrs["price_divergence"] is None  # Tier-2 scissors still veiled
+
+
+@pytest.mark.unit
 class TestGetOrgNetworkStubBridge:
     def test_stub_returns_well_formed_empty_payload(self) -> None:
         from game.stub_bridge import StubEngineBridge

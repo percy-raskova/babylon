@@ -17,6 +17,9 @@ from typing import TYPE_CHECKING, Any, Protocol, runtime_checkable
 from uuid import UUID
 
 if TYPE_CHECKING:
+    from psycopg import Connection
+    from psycopg_pool import ConnectionPool
+
     from babylon.topology.graph import BabylonGraph
 
 
@@ -394,6 +397,160 @@ class PostgresRuntimeExtensions(Protocol):
 
 
 @runtime_checkable
+class BridgePersistence(RuntimePersistence, Protocol):
+    """The full persistence surface the web ``EngineBridge`` consumes.
+
+    Extends the core :class:`RuntimePersistence` write/hydrate contract with
+    the read-model **query** methods (backing the v2 dashboard/inspector/map
+    endpoints), the read-model **snapshot writers** invoked during
+    ``resolve_tick``, and the raw connection ``pool``.
+
+    Both runtime backends satisfy this protocol, with **documented absence
+    semantics** (Constitution III.11 — honest degradation, never fabricated
+    data):
+
+    - :class:`~babylon.persistence.postgres_runtime.PostgresRuntime` implements
+      every method with live SQL.
+    - :class:`~babylon.persistence.runtime_db.RuntimeDatabase` (SQLite, dev/test)
+      implements them as honest-empty degradations — ``[]`` / ``None`` / ``0`` /
+      no-op — because the v2 read-model pages only ever run against a live
+      Postgres deployment.
+
+    Retiring the former ``getattr(persistence, "<name>", None)`` duck-typing
+    (task #43): the capability boundary is now expressed **in the type system**
+    (a mistyped method name is a mypy error, not a silent ``None`` fallback)
+    rather than in ~17 near-duplicate docstring paragraphs.
+    """
+
+    # -- Raw connection pool (None on backends without one) --------------- #
+
+    @property
+    def pool(self) -> ConnectionPool[Connection[Any]] | None:
+        """The underlying psycopg connection pool, or ``None`` if the backend
+        has none (SQLite ``RuntimeDatabase`` uses a bare ``sqlite3`` connection).
+        """
+        ...
+
+    # -- Session store --------------------------------------------------- #
+
+    def get_session(self, session_id: UUID) -> dict[str, Any] | None:
+        """Read a ``game_session`` row as a dict, or ``None`` if absent."""
+        ...
+
+    # -- Read-model queries (SQLite degrades to empty) ------------------- #
+
+    def query_tick_events(self, session_id: UUID, tick: int) -> list[dict[str, Any]]:
+        """Return ``tick_event`` rows for one ``(session, tick)``."""
+        ...
+
+    def query_tick_summary_series(self, session_id: UUID) -> list[dict[str, Any]]:
+        """Return the ``tick_summary`` time-series for a session."""
+        ...
+
+    def query_org_snapshot_history(
+        self, session_id: UUID, org_id: str, *, limit: int = 1000
+    ) -> list[dict[str, Any]]:
+        """Return one organization's ``org_snapshot`` history."""
+        ...
+
+    def query_territory_snapshot_history(
+        self, session_id: UUID, county_fips: str, *, limit: int = 1000
+    ) -> list[dict[str, Any]]:
+        """Return one county's ``territory_snapshot`` history."""
+        ...
+
+    def query_territory_snapshot_latest_tick(self, session_id: UUID) -> int | None:
+        """Return the latest persisted ``territory_snapshot`` tick, or ``None``."""
+        ...
+
+    def query_territory_snapshot_metric_frames(
+        self, session_id: UUID, from_tick: int, to_tick: int, *, limit: int = 200_000
+    ) -> list[dict[str, Any]]:
+        """Return per-tick, per-county ``territory_snapshot`` metric frames."""
+        ...
+
+    def query_county_trace_latest_tick(self, session_id: UUID) -> int | None:
+        """Return the latest persisted ``county_trace`` tick, or ``None``."""
+        ...
+
+    def query_county_trace_metric_frames(
+        self, session_id: UUID, from_tick: int, to_tick: int, *, limit: int = 200_000
+    ) -> list[dict[str, Any]]:
+        """Return per-tick, per-county ``county_trace`` metric frames."""
+        ...
+
+    def query_class_snapshot_history(
+        self, session_id: UUID, class_id: str, *, limit: int = 1000
+    ) -> list[dict[str, Any]]:
+        """Return one social class's ``class_snapshot`` history."""
+        ...
+
+    def query_node_uprising_events(
+        self, session_id: UUID, node_id: str, *, limit: int = 1000
+    ) -> list[dict[str, Any]]:
+        """Return UPRISING ``tick_event`` rows for one node."""
+        ...
+
+    def query_edge_snapshot_history(
+        self, session_id: UUID, source_id: str, target_id: str, *, limit: int = 128
+    ) -> list[dict[str, Any]]:
+        """Return one edge's ``edge_snapshot`` history."""
+        ...
+
+    def query_session_events(self, session_id: UUID, *, limit: int = 200) -> list[dict[str, Any]]:
+        """Return a session's ``tick_event`` rows, newest-first."""
+        ...
+
+    def query_infrastructure_link_state(self, session_id: UUID, tick: int) -> list[dict[str, Any]]:
+        """Return per-edge infrastructure link state for one tick."""
+        ...
+
+    # -- Read-model snapshot writers (SQLite no-ops) --------------------- #
+
+    def persist_full_tick(
+        self,
+        session_id: UUID,
+        tick: int,
+        *,
+        territories: list[dict[str, Any]] | None = None,
+        orgs: list[dict[str, Any]] | None = None,
+        classes: list[dict[str, Any]] | None = None,
+        edges: list[dict[str, Any]] | None = None,
+        communities: list[dict[str, Any]] | None = None,
+        hex_activities: list[dict[str, Any]] | None = None,
+        economic_summary: dict[str, Any] | None = None,
+        events: list[dict[str, Any]] | None = None,
+    ) -> None:
+        """Persist the spec-037 read-model snapshot tables for one tick."""
+        ...
+
+    def persist_tick_summary(self, tick: int, summary: dict[str, Any], *, session_id: UUID) -> None:
+        """Persist the pre-aggregated ``tick_summary`` row for one tick."""
+        ...
+
+    def persist_tick_events(
+        self,
+        session_id: UUID,
+        tick: int,
+        events: list[dict[str, Any]],
+        *,
+        replace: bool = True,
+    ) -> None:
+        """Persist a tick's events into ``tick_event``."""
+        ...
+
+    def persist_action_results(
+        self, tick: int, results: list[dict[str, Any]], *, session_id: UUID
+    ) -> None:
+        """Persist a tick's OODA action-resolution outcomes into ``action_result``."""
+        ...
+
+    def mark_turns_resolved(self, session_id: UUID, tick: int) -> int:
+        """Mark this tick's submitted turns resolved; return the count updated."""
+        ...
+
+
+@runtime_checkable
 class VectorStoreProtocol(Protocol):
     """Backend-agnostic vector storage for semantic search.
 
@@ -447,6 +604,7 @@ class VectorStoreProtocol(Protocol):
 
 
 __all__ = [
+    "BridgePersistence",
     "MonotonicityViolationError",
     "PostgresRuntimeExtensions",
     "RuntimePersistence",

@@ -20,9 +20,11 @@ import pytest
 
 EXPECTED_DEFINES_PUBLIC: frozenset[str] = frozenset(
     {
-        # 44 child *Defines classes (41 from Spec 058 + 1 from Spec 057: LeontiefRentDefines
+        # 46 child *Defines classes (41 from Spec 058 + 1 from Spec 057: LeontiefRentDefines
         # + 1 from Epistemic Horizon Phase 1: EpistemicHorizonDefines
-        # + 1 from the Doctrine Tree mechanics: DoctrineDefines)
+        # + 1 from the Doctrine Tree mechanics: DoctrineDefines
+        # + 1 from Vol III money-through-the-scissors U2.3: CapitalVolumeIIIDefines
+        # + 1 from the Veil of Money T2-9: VeilDefines)
         "AidDefines",
         "ArcGISDefines",
         "BehavioralDefines",
@@ -68,6 +70,7 @@ EXPECTED_DEFINES_PUBLIC: frozenset[str] = frozenset(
         "TerritoryDefines",
         "TimescaleDefines",
         "TopologyDefines",
+        "VeilDefines",  # spec-117 T2-9 / the Veil of Money (deliberate surface addition)
         "VitalityDefines",
         "WorkingDayDefines",
         # 1 assembler facade
@@ -118,6 +121,9 @@ EXPECTED_ENUMS_PUBLIC: frozenset[str] = frozenset(
         "LifecyclePhase",
         "LocalityClass",
         "MembershipRole",
+        # Added 2026-07-18 (Task 1b): the closed graph node-type vocabulary,
+        # beside EdgeType. Deliberate public-surface addition, not drift.
+        "NodeType",
         "OperationalProfile",
         "OrgType",
         "PlayerMode",

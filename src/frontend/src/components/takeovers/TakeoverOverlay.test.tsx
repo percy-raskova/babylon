@@ -73,16 +73,6 @@ describe("TakeoverOverlay", () => {
     await waitFor(() => expect(screen.getByTestId("network-empty")).toBeInTheDocument());
   });
 
-  it("opens the Doctrine takeover and renders DoctrineTakeover content from the doctrine-tree panel fixture", async () => {
-    useStore.getState().ui.openTakeover("doctrine");
-    render(<TakeoverOverlay gameId={DEFAULT_GAME_ID} />);
-
-    expect(screen.getByTestId("takeover-overlay")).toHaveAttribute("data-takeover", "doctrine");
-    await waitFor(() =>
-      expect(screen.getByTestId("doctrine-node-class_consciousness")).toBeInTheDocument(),
-    );
-  });
-
   it("closes via the close button", async () => {
     useStore.getState().ui.openTakeover("dialectic");
     render(<TakeoverOverlay gameId={DEFAULT_GAME_ID} />);
@@ -128,14 +118,14 @@ describe("TakeoverOverlay", () => {
     expect(useStore.getState().panels.network.mounted).toBe(false);
   });
 
-  it("mounts the doctrineTree panel while the Doctrine takeover is open, unmounts it on close", async () => {
-    useStore.getState().ui.openTakeover("doctrine");
+  it("no longer renders a Doctrine takeover — DoctrineTakeover relocated to the routed Doctrine/'Line' page (Track 3 T3-5)", () => {
     render(<TakeoverOverlay gameId={DEFAULT_GAME_ID} />);
-    await waitFor(() => expect(useStore.getState().panels.doctrineTree.mounted).toBe(true));
-
-    useStore.getState().ui.closeTakeover();
-    await waitFor(() => expect(screen.queryByTestId("takeover-overlay")).not.toBeInTheDocument());
+    // "doctrine" is no longer a valid TakeoverKind (TypeScript enforces this
+    // at compile time — see uiSlice.ts); the overlay never had it open here,
+    // so the doctrine-tree panel stays unmounted and no doctrine content
+    // exists anywhere in the DOM.
     expect(useStore.getState().panels.doctrineTree.mounted).toBe(false);
+    expect(screen.queryByTestId("doctrine-node-class_consciousness")).not.toBeInTheDocument();
   });
 
   it("renders the causal shock beat in the Wire narrator strip (spec-116 FR-4.1)", async () => {

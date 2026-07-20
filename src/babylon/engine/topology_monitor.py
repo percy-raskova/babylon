@@ -34,7 +34,7 @@ import random
 from typing import TYPE_CHECKING
 
 from babylon.domain.dialectics.instances.connectivity import pieces
-from babylon.models.enums import EdgeType
+from babylon.models.enums import EdgeType, NodeType
 from babylon.models.events import PhaseTransitionEvent, SimulationEvent
 from babylon.models.topology_metrics import ResilienceResult, TopologySnapshot
 from babylon.topology.graph import BabylonUGraph
@@ -78,7 +78,7 @@ def extract_solidarity_subgraph(
     solidarity_graph = BabylonUGraph()
 
     # Add all social_class nodes (even if isolated)
-    for node in G.query_nodes(node_type="social_class"):
+    for node in G.query_nodes(node_type=NodeType.SOCIAL_CLASS):
         solidarity_graph.add_node(node.id)
 
     # Collect social_class node IDs for edge filtering
@@ -457,7 +457,7 @@ class TopologyMonitor:
         graph: GraphProtocol = state.to_graph()
 
         # Count social_class nodes
-        total_nodes = sum(1 for _ in graph.query_nodes(node_type="social_class"))
+        total_nodes = sum(1 for _ in graph.query_nodes(node_type=NodeType.SOCIAL_CLASS))
 
         # Extract solidarity subgraph and calculate metrics
         solidarity_graph = extract_solidarity_subgraph(graph)

@@ -37,6 +37,7 @@ if TYPE_CHECKING:
 
 from babylon.domain.economics.substrate.aggregation import DefaultResolutionAggregator
 from babylon.domain.economics.substrate.types import HexGrid
+from babylon.models.enums import NodeType
 
 logger = logging.getLogger(__name__)
 
@@ -298,7 +299,7 @@ def read_hex_state_from_graph(
     """
     result: dict[str, R6TerritoryState] = {}
 
-    for node in graph.query_nodes(node_type="territory"):
+    for node in graph.query_nodes(node_type=NodeType.TERRITORY):
         attrs = node.attributes
         if "hex_total_capital" not in attrs:
             continue

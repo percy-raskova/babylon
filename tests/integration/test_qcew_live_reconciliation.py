@@ -60,6 +60,36 @@ class TestWayne2010:
         assert delta_pct <= 2.0, f"Wayne 2010 proxy {proxy} vs {WAYNE_2010_PUBLISHED}"
 
 
+#: The full reference DB carries 3,232 distinct counties in fact_qcew_annual;
+#: the pinned CI subset carries Michigan's 83 (+1 AL regression-guard row).
+_NATIONAL_SCOPE_MIN_COUNTIES = 3_000
+
+
+def _require_national_scope(live: sqlite3.Connection) -> None:
+    """Skip the national SC gates on the Michigan-scoped CI subset.
+
+    ``tools/make_reference_subset.py`` deliberately pins ``fact_qcew_annual``
+    to ``michigan`` scope while ``fact_qcew_county_rollup`` stays ``full``
+    (the BLOCKED-FULL trio) — so on the CI subset, gates that assert
+    NATIONAL scale (sc001's row-count floor, sc004's national ownership
+    JOIN, sc006's 10M-row floor) collapse by construction (nightly
+    Reference-Data red since 2026-07-17). The full DB satisfies them
+    exactly as specced, so re-banding for the subset would paper over a
+    genuine scope mismatch as sampling noise; the honest disposition is a
+    cited skip. sc002 deliberately does NOT guard: it asserts only a
+    within-band SHARE over whatever county-years both tables carry, which
+    is a meaningful reconciliation on the Michigan subset too (empirically
+    1680/1680 within band there).
+    """
+    (n,) = live.execute("SELECT COUNT(DISTINCT county_id) FROM fact_qcew_annual").fetchone()
+    if n < _NATIONAL_SCOPE_MIN_COUNTIES:
+        pytest.skip(
+            f"fact_qcew_annual has {n} counties — Michigan-scoped CI subset "
+            "(tools/make_reference_subset.py); the SC national bands need the "
+            "full reference DB"
+        )
+
+
 def _within_band_share(live: sqlite3.Connection, metric: str) -> tuple[int, int]:
     rows = live.execute(
         f"""
@@ -82,15 +112,19 @@ def _within_band_share(live: sqlite3.Connection, metric: str) -> tuple[int, int]
 
 class TestBands:
     def test_sc001_employment_99pct_within_2pct(self, live: sqlite3.Connection) -> None:
+        _require_national_scope(live)
         total, within = _within_band_share(live, "employment")
         assert total > 40_000  # ~3,220 counties × 15 years
         assert within / total * 100.0 >= 99.0, f"{within}/{total}"
 
     def test_sc002_wages_99pct_within_2pct(self, live: sqlite3.Connection) -> None:
+        # No scope guard: share-only assertion, meaningful on both the full
+        # DB and the Michigan subset — see _require_national_scope's docstring.
         total, within = _within_band_share(live, "total_wages_usd")
         assert within / total * 100.0 >= 99.0, f"{within}/{total}"
 
     def test_sc004_ownership_95pct_within_2pct(self, live: sqlite3.Connection) -> None:
+        _require_national_scope(live)
         rows = live.execute(
             """
             SELECT COUNT(*),
@@ -114,6 +148,7 @@ class TestBands:
 
 class TestProvenanceAtScale:
     def test_sc006_full_coverage_and_semantics(self, live: sqlite3.Connection) -> None:
+        _require_national_scope(live)
         total, determinate = live.execute(
             "SELECT COUNT(*), SUM(CASE WHEN is_imputed IN (0,1) THEN 1 ELSE 0 END)"
             " FROM fact_qcew_annual"

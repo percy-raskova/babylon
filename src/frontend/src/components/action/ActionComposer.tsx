@@ -17,6 +17,7 @@ import type { GameSnapshot, PlayerVerb, VerbEligibilityEntry } from "@/types/gam
 import { VerbGrid } from "./VerbGrid";
 import { VerbForm } from "./VerbForm";
 import { useVerbEligibility, type VerbEligibilityMap } from "./useVerbEligibility";
+import { useInvestigatePreset, type PresetTarget } from "./useInvestigatePreset";
 
 interface ActionComposerProps {
   gameId: string;
@@ -38,6 +39,19 @@ function eligibilityForVerb(
   return map[verb] ?? null;
 }
 
+/** Track 1 Task 7: `VerbForm`'s two preset props, honest-null when no
+ *  preset target is active — extracted for the same complexity-budget
+ *  reason as `eligibilityForVerb` above. */
+function presetTargetProps(presetTarget: PresetTarget | null): {
+  initialTargetId: string | null;
+  initialTargetLabel: string | null;
+} {
+  return {
+    initialTargetId: presetTarget?.id ?? null,
+    initialTargetLabel: presetTarget?.label ?? null,
+  };
+}
+
 export function ActionComposer({ gameId }: ActionComposerProps): React.JSX.Element {
   const snapshot = useStore((s) => s.world.snapshot);
   const submit = useStore((s) => s.actions.submit);
@@ -48,7 +62,11 @@ export function ActionComposer({ gameId }: ActionComposerProps): React.JSX.Eleme
   const playerOrgs = (snapshot?.organizations ?? []).filter((o) => o.player_controlled === true);
   const [orgId, setOrgId] = useState<string>("");
   const activeOrgId = playerOrgs.some((o) => o.id === orgId) ? orgId : (playerOrgs[0]?.id ?? "");
-  const [verb, setVerb] = useState<PlayerVerb | null>(null);
+  // Track 1 Task 7 (2026-07-18): `verb` is driven either by the user's own
+  // VerbGrid click or by a queued composer preset (e.g. a fogged field's
+  // "Investigate" CTA) — see `useInvestigatePreset`'s own docstring for why
+  // that consumption happens there rather than inline here.
+  const { verb, setVerb, presetTarget } = useInvestigatePreset();
   const config = verb ? VERB_REGISTRY[verb] : undefined;
   const [liveCost, setLiveCost] = useState<LiveVerbCost | null>(null);
   const eligibility = useVerbEligibility(gameId, activeOrgId, tickOf(snapshot));
@@ -91,6 +109,7 @@ export function ActionComposer({ gameId }: ActionComposerProps): React.JSX.Eleme
               onSubmit={handleFormSubmit}
               onCostChange={setLiveCost}
               eligibility={eligibilityForVerb(eligibility, verb)}
+              {...presetTargetProps(presetTarget)}
             />
           )}
 

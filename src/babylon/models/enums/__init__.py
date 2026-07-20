@@ -88,6 +88,7 @@ from babylon.models.enums.topology import (
     FlowCategory,
     InfrastructureType,
     JunctionType,
+    NodeType,
     TopologyType,
 )
 
@@ -128,6 +129,7 @@ __all__ = [
     "LifecyclePhase",
     "LocalityClass",
     "MembershipRole",
+    "NodeType",
     "OperationalProfile",
     "OrgType",
     "PlayerMode",

@@ -39,7 +39,7 @@ from typing import TYPE_CHECKING, Any, ClassVar
 
 from babylon.kernel.node_access import class_consciousness_from_node
 from babylon.kernel.tick_partition import TickPartition
-from babylon.models.enums import EdgeType, SocialRole
+from babylon.models.enums import EdgeType, NodeType, SocialRole
 
 if TYPE_CHECKING:
     from babylon.kernel.graph_protocol import GraphProtocol
@@ -161,7 +161,7 @@ def compute_epistemic_horizon(
         defines: This session's ``EpistemicHorizonDefines``
             (``services.defines.epistemic_horizon`` / ``game_defines.epistemic_horizon``).
     """
-    for territory in graph.query_nodes(node_type="territory"):
+    for territory in graph.query_nodes(node_type=NodeType.TERRITORY):
         territory_id = territory.id
 
         mass_receptivity = mass_receptivity_of(graph, territory_id, defines)

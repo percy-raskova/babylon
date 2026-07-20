@@ -15,7 +15,7 @@ import yaml
 DECISIONS_DIR = Path(__file__).resolve().parents[3] / "ai" / "decisions"
 INDEX_PATH = DECISIONS_DIR / "index.yaml"
 
-NEW_ADR_STEM = "ADR083_vol3_money_scissors"
+NEW_ADR_STEM = "ADR089_vol3_money_scissors"
 
 
 def test_new_adr_file_exists_with_matching_top_level_key() -> None:
@@ -55,7 +55,7 @@ def test_no_unfilled_placeholders_in_the_governance_records() -> None:
 
     Unlike U8.3's ``reports/vol3-baseline-delta.md`` -- a draft evidence
     artifact allowed placeholders everywhere but its Owner Approval Gate
-    until that gate is satisfied -- ADR083 and the new ai/state.yaml
+    until that gate is satisfied -- ADR089 and the new ai/state.yaml
     paragraph are permanent governance history the moment this task
     commits them. Zero tolerance, no carve-out.
     """

@@ -17,7 +17,7 @@ import sys
 from pathlib import Path
 
 from babylon.sentinels._ast import parse_module
-from babylon.sentinels.aggregation.registry import (
+from babylon.sentinels.aggregation.intensive_registry import (
     AGGREGATION_EXEMPTIONS,
     INTENSIVE_LEXICON,
     MEAN_LEXICON,

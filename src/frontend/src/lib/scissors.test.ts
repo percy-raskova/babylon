@@ -1,6 +1,11 @@
 import { describe, expect, it } from "vitest";
 import { makeTimeseriesPayload } from "@/test/fixtures";
-import { deriveCorrectionTicks, deriveTickerState, latestMeltDrift } from "@/lib/scissors";
+import {
+  deriveCorrectionTicks,
+  deriveTickerState,
+  latestMeltDrift,
+  meltCopy,
+} from "@/lib/scissors";
 
 describe("deriveCorrectionTicks", () => {
   it("marks the ticks where the cumulative count increments", () => {
@@ -76,5 +81,19 @@ describe("deriveTickerState", () => {
   it("is deterministic — same payload, same state", () => {
     const payload = makeTimeseriesPayload({ fictitious_ratio: [1.0, 1.31] });
     expect(deriveTickerState(payload)).toEqual(deriveTickerState(payload));
+  });
+});
+
+describe("meltCopy", () => {
+  it("reads 'less labor' on a positive drift", () => {
+    expect(meltCopy(0.08)).toBe(
+      "MELT drift +8.0% — $1 commands 8.0% less labor than its value basis",
+    );
+  });
+
+  it("reads 'more labor' on a negative drift", () => {
+    expect(meltCopy(-0.05)).toBe(
+      "MELT drift -5.0% — $1 commands 5.0% more labor than its value basis",
+    );
   });
 });

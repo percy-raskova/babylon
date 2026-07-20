@@ -14,17 +14,25 @@ Investigate carries Territory/Org/Edge sub-verbs — the Article V nine-verb
 roster is untouched. Unlike the consciousness path, the sub-verb writes the
 order onto the acting org's node directly (the mobilize/aid/move precedent).
 
+**Mass-work SOLIDARITY (Unit 6 write side, ADR087):** the classic
+(non-study) path is one of the three mass-work verbs that create-or-strengthen
+an org -> class SOLIDARITY edge when targeting a ``social_class`` node,
+amplified by the org's MASS_LINK doctrine tag. The Study sub-verb does NOT
+trigger this — it targets the acting org itself, not a class.
+
 See Also:
     :func:`babylon.ooda.action_effects.compute_consciousness_delta`: the
     pure five-factor formula the consciousness path composes.
     :func:`babylon.engine.systems.doctrine.step_organization`: the per-tick
     consumer of the standing study order.
+    :func:`babylon.engine.actions._mass_work.apply_mass_work_solidarity`.
 """
 
 from __future__ import annotations
 
 from typing import TYPE_CHECKING, Any
 
+from babylon.engine.actions._mass_work import apply_mass_work_solidarity
 from babylon.models.enums import EventType
 from babylon.ooda.action_effects import resolve_action
 from babylon.ooda.types import ActionResult
@@ -61,6 +69,9 @@ def resolve_educate(
     doctrine_node_id = action.params.get("doctrine_node_id")
     if doctrine_node_id:
         return _resolve_study_order(action, org_attrs, graph, str(doctrine_node_id))
+    apply_mass_work_solidarity(
+        graph, action.org_id, org_attrs, action.target_id, services.defines.doctrine
+    )
     return resolve_action(
         action,
         org_attrs,

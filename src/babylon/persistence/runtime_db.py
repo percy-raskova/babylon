@@ -37,6 +37,9 @@ from babylon.persistence.serialization import canonical_event_json, json_default
 if TYPE_CHECKING:
     from collections.abc import Iterator
 
+    from psycopg import Connection
+    from psycopg_pool import ConnectionPool
+
     from babylon.topology.graph import BabylonGraph
 
 
@@ -516,6 +519,201 @@ class RuntimeDatabase:
             "invariant_checks": json.loads(result[2]) if result[2] else None,
             "wall_time_ms": result[3],
         }
+
+    # ------------------------------------------------------------------ #
+    # BridgePersistence read-model surface (task #43).
+    #
+    # The web ``EngineBridge`` v2 read-model pages (dashboards, inspectors,
+    # map replay, journal) only ever run against a live Postgres deployment.
+    # SQLite ``RuntimeDatabase`` is the dev/test runtime, so these implement
+    # the :class:`~babylon.persistence.protocols.BridgePersistence` contract
+    # with **honest-empty degradation** (Constitution III.11): ``[]`` / ``None``
+    # / ``0`` / no-op — never fabricated data. This makes the dev/prod
+    # capability split explicit in the type system, retiring the former
+    # ``getattr(persistence, "<name>", None)`` duck-typing in engine_bridge.py.
+    # ------------------------------------------------------------------ #
+
+    @property
+    def pool(self) -> ConnectionPool[Connection[Any]] | None:
+        """No psycopg pool — this backend uses a bare ``sqlite3`` connection.
+
+        :returns: ``None`` always.
+        """
+        return None
+
+    def get_session(self, session_id: UUID) -> dict[str, Any] | None:
+        """No ``game_session`` store on the SQLite runtime.
+
+        :param session_id: Unused (no session store on SQLite).
+        :returns: ``None`` always.
+        """
+        del session_id
+        return None
+
+    def query_tick_events(self, session_id: UUID, tick: int) -> list[dict[str, Any]]:
+        """Honest-empty: no ``tick_event`` read-model table on SQLite.
+
+        :returns: Empty list always.
+        """
+        del session_id, tick
+        return []
+
+    def query_tick_summary_series(self, session_id: UUID) -> list[dict[str, Any]]:
+        """Honest-empty: no ``tick_summary`` series on SQLite.
+
+        :returns: Empty list always.
+        """
+        del session_id
+        return []
+
+    def query_org_snapshot_history(
+        self, session_id: UUID, org_id: str, *, limit: int = 1000
+    ) -> list[dict[str, Any]]:
+        """Honest-empty: no ``org_snapshot`` table on SQLite.
+
+        :returns: Empty list always.
+        """
+        del session_id, org_id, limit
+        return []
+
+    def query_territory_snapshot_history(
+        self, session_id: UUID, county_fips: str, *, limit: int = 1000
+    ) -> list[dict[str, Any]]:
+        """Honest-empty: no ``territory_snapshot`` table on SQLite.
+
+        :returns: Empty list always.
+        """
+        del session_id, county_fips, limit
+        return []
+
+    def query_territory_snapshot_latest_tick(self, session_id: UUID) -> int | None:
+        """Honest-empty: no ``territory_snapshot`` table on SQLite.
+
+        :returns: ``None`` always.
+        """
+        del session_id
+        return None
+
+    def query_territory_snapshot_metric_frames(
+        self, session_id: UUID, from_tick: int, to_tick: int, *, limit: int = 200_000
+    ) -> list[dict[str, Any]]:
+        """Honest-empty: no ``territory_snapshot`` metric frames on SQLite.
+
+        :returns: Empty list always.
+        """
+        del session_id, from_tick, to_tick, limit
+        return []
+
+    def query_county_trace_latest_tick(self, session_id: UUID) -> int | None:
+        """Honest-empty: no ``county_trace`` table on SQLite.
+
+        :returns: ``None`` always.
+        """
+        del session_id
+        return None
+
+    def query_county_trace_metric_frames(
+        self, session_id: UUID, from_tick: int, to_tick: int, *, limit: int = 200_000
+    ) -> list[dict[str, Any]]:
+        """Honest-empty: no ``county_trace`` metric frames on SQLite.
+
+        :returns: Empty list always.
+        """
+        del session_id, from_tick, to_tick, limit
+        return []
+
+    def query_class_snapshot_history(
+        self, session_id: UUID, class_id: str, *, limit: int = 1000
+    ) -> list[dict[str, Any]]:
+        """Honest-empty: no ``class_snapshot`` table on SQLite.
+
+        :returns: Empty list always.
+        """
+        del session_id, class_id, limit
+        return []
+
+    def query_node_uprising_events(
+        self, session_id: UUID, node_id: str, *, limit: int = 1000
+    ) -> list[dict[str, Any]]:
+        """Honest-empty: no ``tick_event`` read-model table on SQLite.
+
+        :returns: Empty list always.
+        """
+        del session_id, node_id, limit
+        return []
+
+    def query_edge_snapshot_history(
+        self, session_id: UUID, source_id: str, target_id: str, *, limit: int = 128
+    ) -> list[dict[str, Any]]:
+        """Honest-empty: no ``edge_snapshot`` table on SQLite.
+
+        :returns: Empty list always.
+        """
+        del session_id, source_id, target_id, limit
+        return []
+
+    def query_session_events(self, session_id: UUID, *, limit: int = 200) -> list[dict[str, Any]]:
+        """Honest-empty: no ``tick_event`` read-model table on SQLite.
+
+        :returns: Empty list always.
+        """
+        del session_id, limit
+        return []
+
+    def query_infrastructure_link_state(self, session_id: UUID, tick: int) -> list[dict[str, Any]]:
+        """Honest-empty: no infrastructure read-model on SQLite.
+
+        :returns: Empty list always.
+        """
+        del session_id, tick
+        return []
+
+    def persist_full_tick(
+        self,
+        session_id: UUID,
+        tick: int,
+        *,
+        territories: list[dict[str, Any]] | None = None,
+        orgs: list[dict[str, Any]] | None = None,
+        classes: list[dict[str, Any]] | None = None,
+        edges: list[dict[str, Any]] | None = None,
+        communities: list[dict[str, Any]] | None = None,
+        hex_activities: list[dict[str, Any]] | None = None,
+        economic_summary: dict[str, Any] | None = None,
+        events: list[dict[str, Any]] | None = None,
+    ) -> None:
+        """No-op: the read-model snapshot tables are Postgres-only."""
+        del session_id, tick, territories, orgs, classes, edges
+        del communities, hex_activities, economic_summary, events
+
+    def persist_tick_summary(self, tick: int, summary: dict[str, Any], *, session_id: UUID) -> None:
+        """No-op: ``tick_summary`` is a Postgres-only read-model table."""
+        del tick, summary, session_id
+
+    def persist_tick_events(
+        self,
+        session_id: UUID,
+        tick: int,
+        events: list[dict[str, Any]],
+        *,
+        replace: bool = True,
+    ) -> None:
+        """No-op: ``tick_event`` is a Postgres-only read-model table."""
+        del session_id, tick, events, replace
+
+    def persist_action_results(
+        self, tick: int, results: list[dict[str, Any]], *, session_id: UUID
+    ) -> None:
+        """No-op: ``action_result`` is a Postgres-only read-model table."""
+        del tick, results, session_id
+
+    def mark_turns_resolved(self, session_id: UUID, tick: int) -> int:
+        """No-op: no turn queue on the SQLite runtime.
+
+        :returns: ``0`` always (no rows updated).
+        """
+        del session_id, tick
+        return 0
 
     def close(self) -> None:
         """Close the database connection."""

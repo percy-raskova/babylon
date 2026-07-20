@@ -1,10 +1,14 @@
 /**
  * EconomyDashboard — the `/economy/` left-drawer panel (Wave 2 W2.2a,
  * `reports/wave2-implementation-map.md`). Stat chips over the graph-wide
- * `EconomyDashboardPayload`, the `wealth_by_class_role` composition, the
- * wealth trajectory (reusing `panels.timeseries`'s real `wealth` array —
- * no second fetch), and a crisis-phase-transition timeline read straight
- * from the journal.
+ * `EconomyDashboardPayload`, the wealth trajectory (reusing
+ * `panels.timeseries`'s real `wealth` array — no second fetch), and a
+ * crisis-phase-transition timeline read straight from the journal.
+ *
+ * The `wealth_by_class_role` composition that used to live here was
+ * RELOCATED (not duplicated) to `CircuitPage.tsx` (Track 2 T2-7, D2:
+ * "no god-dashboard" — each front gets a room of its own); this panel no
+ * longer renders it.
  *
  * `panels.economy.setMounted` had zero production call sites before this
  * component (Wave 2 recon: the panel was fully plumbed but never fetched)
@@ -16,56 +20,31 @@
  * toggled by the drawer via CSS, never JSX-conditional) so the tick
  * fan-out stays alive while the tab is visually hidden — the same rule
  * `TimeseriesChart` follows there.
+ *
+ * G4 (veil-leak closure): the audit found the "Value Produced"/
+ * "Exploitation" chips reading the top-level `data.value_produced`/
+ * `data.exploitation_rate` fields directly — real numbers regardless of
+ * the player org's Veil-of-Money tier, since this drawer tab is always
+ * mounted. Repointed to `data.veil.value_produced`/`data.veil.
+ * exploitation_rate` (the same gated source `CircuitPage.tsx`'s
+ * exploitation section reads) with a `VeilLock` placeholder below Tier 1
+ * — the two screens' veiled presentation is now identical, not two
+ * independently-gated copies.
  */
 
 import { useEffect, useState } from "react";
+import { useNavigate } from "react-router";
 import { Line, LineChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
 import { get as apiGet } from "@/api/client";
 import { endpoints } from "@/api/endpoints";
 import { useStore } from "@/store";
 import { StatChip } from "@/components/shell/StatChip";
-import { BreakdownBar } from "@/components/inspect/BreakdownBar";
-import { SOCIAL_ROLE_LABELS } from "@/components/map/mapLensLayers";
+import { SectionLabel } from "@/components/shell/SectionLabel";
+import { VeilLock } from "@/components/shell/VeilLock";
 import type { GameEvent, JournalPayload, TimeseriesPayload } from "@/types/game";
-import type { InspectionCompositionEntry } from "@/types/inspection";
 
 interface EconomyDashboardProps {
   gameId: string;
-}
-
-/**
- * Wealth-by-role composition color, one per canonical `SocialRole`
- * (`src/babylon/models/enums/social.py`). `SOCIAL_ROLE_COLOR`
- * (`components/map/mapLensLayers.ts`) is an RGBA array for deck.gl map
- * layers, not reusable here as-is — `BreakdownBar` wants a Tailwind
- * `text-*` token — so this is a parallel mapping onto this app's existing
- * `--babylon-*` tokens, chosen to match their documented meaning
- * (`index.css`) where one exists: `cadre` is literally documented "Labor
- * aristocracy, info text"; `rent`/`heat` track the extraction family
- * (core/comprador bourgeoisie); `laser` matches the map lens's own
- * `carceral_enforcer` choice exactly ("THREAT"). An unrecognized role key
- * (a scenario emitting something outside the 8 canonical values) falls
- * back to `BreakdownBar`'s own default rather than a fabricated color.
- */
-const ROLE_CHIP_COLOR: Record<string, string> = {
-  core_bourgeoisie: "text-rent",
-  comprador_bourgeoisie: "text-heat",
-  labor_aristocracy: "text-cadre",
-  petty_bourgeoisie: "text-population",
-  periphery_proletariat: "text-spire",
-  internal_proletariat: "text-solidarity",
-  lumpenproletariat: "text-thermal",
-  carceral_enforcer: "text-laser",
-};
-
-function wealthCompositionEntries(
-  wealthByRole: Record<string, number>,
-): InspectionCompositionEntry[] {
-  return Object.entries(wealthByRole).map(([role, value]) => ({
-    key: SOCIAL_ROLE_LABELS[role] ?? role,
-    value,
-    color: ROLE_CHIP_COLOR[role],
-  }));
 }
 
 interface WealthChartRow {
@@ -158,11 +137,8 @@ function CrisisTimeline({ gameId }: { gameId: string }): React.JSX.Element {
   );
 }
 
-function SectionLabel({ children }: { children: React.ReactNode }): React.JSX.Element {
-  return <p className="mb-1 text-[9px] uppercase tracking-widest text-ksbc-muted-2">{children}</p>;
-}
-
 export function EconomyDashboard({ gameId }: EconomyDashboardProps): React.JSX.Element {
+  const navigate = useNavigate();
   const data = useStore((s) => s.panels.economy.data);
   const loading = useStore((s) => s.panels.economy.loading);
   const error = useStore((s) => s.panels.economy.error);
@@ -175,6 +151,10 @@ export function EconomyDashboard({ gameId }: EconomyDashboardProps): React.JSX.E
     void fetchEconomy(gameId);
     return () => setMounted(false);
   }, [gameId, fetchEconomy, setMounted]);
+
+  const studyDoctrine = (): void => {
+    navigate(`/game/${gameId}/doctrine`);
+  };
 
   if (loading && data === null) {
     return <p className="p-3 text-[11px] text-ash">Loading economy…</p>;
@@ -201,19 +181,47 @@ export function EconomyDashboard({ gameId }: EconomyDashboardProps): React.JSX.E
     <div className="flex flex-col gap-3 p-2" data-testid="economy-dashboard">
       <div className="flex flex-wrap gap-1.5" data-testid="economy-stat-chips">
         <StatChip label="Tick" value={data.tick} format={(v) => v.toFixed(0)} />
-        <StatChip label="Value Produced" value={data.value_produced} format={(v) => v.toFixed(1)} />
-        <StatChip
-          label="Rent Extracted"
-          value={data.rent_extracted}
-          format={(v) => v.toFixed(1)}
-          colorClassName="text-rent"
-        />
-        <StatChip
-          label="Exploitation"
-          value={data.exploitation_rate}
-          format={(v) => v.toFixed(3)}
-          metric="exploitation_rate"
-        />
+        {data.veil.tier >= 1 ? (
+          <>
+            <StatChip
+              label="Value Produced"
+              value={data.veil.value_produced}
+              format={(v) => v.toFixed(1)}
+            />
+            <StatChip
+              label="Rent Extracted"
+              value={data.rent_extracted}
+              format={(v) => v.toFixed(1)}
+              colorClassName="text-rent"
+            />
+            <StatChip
+              label="Exploitation"
+              value={data.veil.exploitation_rate}
+              format={(v) => v.toFixed(3)}
+              metric="exploitation_rate"
+            />
+          </>
+        ) : (
+          // G4: below Tier 1, "Value Produced"/"Exploitation" are replaced
+          // by ONE locked placeholder naming the real next doctrine node —
+          // never the bare (server-masked) `null` StatChip would otherwise
+          // show. "Rent Extracted" stays a plain chip (also server-masked
+          // below Tier 1 — the existing honest "no data" StatChip path,
+          // same as `profit_rate`/`occ` pre-year-boundary).
+          <>
+            <StatChip
+              label="Rent Extracted"
+              value={data.rent_extracted}
+              format={(v) => v.toFixed(1)}
+              colorClassName="text-rent"
+            />
+            <VeilLock
+              label={data.veil.next_unlock_label ?? "Theory"}
+              onStudy={studyDoctrine}
+              section="economy"
+            />
+          </>
+        )}
         <StatChip
           label="Profit Rate"
           value={data.profit_rate}
@@ -247,11 +255,6 @@ export function EconomyDashboard({ gameId }: EconomyDashboardProps): React.JSX.E
           format={(v) => v.toFixed(1)}
           colorClassName="text-rent"
         />
-      </div>
-
-      <div>
-        <SectionLabel>Wealth by Class</SectionLabel>
-        <BreakdownBar entries={wealthCompositionEntries(data.wealth_by_class_role)} />
       </div>
 
       <div>

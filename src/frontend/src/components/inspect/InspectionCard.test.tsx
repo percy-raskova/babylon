@@ -86,6 +86,69 @@ describe("InspectionCard", () => {
     expect(useStore.getState().ui.chrome.composerOpen).toBe(!before);
   });
 
+  describe("fog frame — 'no fogged dead ends' (Track 1 Task 7)", () => {
+    function fogFrame(): InspectionFrame {
+      return frame({
+        ref: {
+          kind: "fog",
+          id: "territory:t1:solidarity_index",
+          inline: {
+            field: "solidarity_index",
+            nodeType: "territory",
+            nodeId: "t1",
+            nodeName: "Wayne County",
+          },
+        },
+        data: {
+          ref: { kind: "fog", id: "territory:t1:solidarity_index" },
+          title: "Unknown: Class Solidarity",
+          sections: [
+            {
+              rows: [
+                { label: "What", value: "Class Solidarity", format: "raw" },
+                {
+                  label: "Why",
+                  value: "This territory is outside your organization's reach.",
+                  format: "raw",
+                },
+              ],
+            },
+          ],
+        },
+      });
+    }
+
+    it("renders an Investigate CTA for a resolved fog frame", () => {
+      render(
+        <InspectionCard frame={fogFrame()} canDrill onDrill={vi.fn()} onTogglePin={vi.fn()} />,
+      );
+      expect(screen.getByTestId("fog-investigate-link")).toBeInTheDocument();
+    });
+
+    it("clicking Investigate presets the target and opens the composer", () => {
+      useStore.setState((s) => ({
+        ui: { ...s.ui, chrome: { ...s.ui.chrome, composerOpen: false } },
+      }));
+      render(
+        <InspectionCard frame={fogFrame()} canDrill onDrill={vi.fn()} onTogglePin={vi.fn()} />,
+      );
+      fireEvent.click(screen.getByTestId("fog-investigate-link"));
+      expect(useStore.getState().actions.preset).toEqual({
+        verb: "investigate",
+        targetId: "t1",
+        targetLabel: "Wayne County",
+      });
+      expect(useStore.getState().ui.chrome.composerOpen).toBe(true);
+    });
+
+    it("does not render the generic 'Act' link for a fog subject", () => {
+      render(
+        <InspectionCard frame={fogFrame()} canDrill onDrill={vi.fn()} onTogglePin={vi.fn()} />,
+      );
+      expect(screen.queryByTestId("inspection-act")).not.toBeInTheDocument();
+    });
+  });
+
   it("does not render the 'act' link for a metric subject", () => {
     render(
       <InspectionCard

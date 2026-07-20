@@ -40,6 +40,21 @@ interface VerbFormProps {
    *  bearing empty state in TargetPicker; null/absent falls back to the
    *  legacy bare line. */
   eligibility?: VerbEligibilityEntry | null;
+  /**
+   * Track 1 Task 7 (2026-07-18): pre-seed `targetId` from a composer preset
+   * (e.g. clicking a fogged field's "Investigate" link) — read only as the
+   * initial `useState` value, so it applies once at mount (this component
+   * already remounts on org/verb change via its `key`, matching every other
+   * "seed once" pattern here). Deliberately independent of the fetched
+   * `targets` list: `resolve_investigate` reads `target_id` directly off the
+   * graph with no allow-list, so a target absent from the (still-mocked,
+   * Task 9) discovery list still submits correctly — `initialTargetLabel`
+   * renders a visible note so the player sees what's targeted even when
+   * `TargetPicker` has nothing highlighted.
+   */
+  initialTargetId?: string | null;
+  /** Display label paired with `initialTargetId` — see above. */
+  initialTargetLabel?: string | null;
 }
 
 function defaultParamVals(config: VerbConfig): Record<string, unknown> {
@@ -103,6 +118,24 @@ function emptyReasonFor(eligibility: VerbEligibilityEntry | null | undefined): s
   return [eligibility.reason, eligibility.remedy].filter(Boolean).join(" ");
 }
 
+/** Track 1 Task 7 (2026-07-18): the visible "Targeting: X" note for a
+ *  composer preset — null when no `initialTargetId` was supplied. Extracted
+ *  for the same complexity-budget reason as the other `*For`/`*Content`
+ *  helpers above. See `VerbFormProps.initialTargetId`'s docstring for why
+ *  this note matters even though `TargetPicker` may show nothing
+ *  highlighted for it. */
+function presetTargetNote(
+  initialTargetId: string | null | undefined,
+  initialTargetLabel: string | null | undefined,
+): React.JSX.Element | null {
+  if (!initialTargetId) return null;
+  return (
+    <p data-testid="preset-target-note" className="text-[10px] italic text-fog">
+      Targeting: {initialTargetLabel ?? initialTargetId}
+    </p>
+  );
+}
+
 export function VerbForm({
   gameId,
   orgId,
@@ -113,8 +146,10 @@ export function VerbForm({
   onSubmit,
   onCostChange,
   eligibility,
+  initialTargetId,
+  initialTargetLabel,
 }: VerbFormProps): React.JSX.Element {
-  const [targetId, setTargetId] = useState<string | null>(null);
+  const [targetId, setTargetId] = useState<string | null>(initialTargetId ?? null);
   const [paramVals, setParamVals] = useState<Record<string, unknown>>(() =>
     defaultParamVals(config),
   );
@@ -133,6 +168,8 @@ export function VerbForm({
 
   return (
     <>
+      {presetTargetNote(initialTargetId, initialTargetLabel)}
+
       {showPicker && (
         <TargetPicker
           targets={targets}

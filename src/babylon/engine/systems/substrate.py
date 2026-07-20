@@ -23,6 +23,7 @@ from typing import TYPE_CHECKING, ClassVar
 
 from babylon.kernel.system_base import SystemBase
 from babylon.kernel.tick_partition import TickPartition
+from babylon.models.enums import NodeType
 
 if TYPE_CHECKING:
     from babylon.kernel.graph_protocol import GraphProtocol
@@ -72,7 +73,7 @@ class SubstrateSystem(SystemBase):
 
         # Visit every hex node. We do NOT touch external nodes.
         hex_count = 0
-        for node in list(protocol.query_nodes(node_type="hex")):
+        for node in list(protocol.query_nodes(node_type=NodeType.HEX)):
             hex_count += 1
             # Seed missing stocks with 0.0 (setdefault semantics). Concrete
             # dynamics (depletion rate × consumption, regeneration rate ×

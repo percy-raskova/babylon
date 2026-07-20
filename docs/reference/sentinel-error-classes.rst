@@ -62,7 +62,7 @@ hard as Wayne County.
 
 :Sensor: ``babylon.sentinels.aggregation.checks.check_no_unweighted_intensive_means``
 :Registry: ``babylon.sentinels.aggregation.registry``
-:Run: ``mise run check:aggregation``
+:Run: ``mise run check:aggregation-intensive``
 :Remedy: aggregate numerator and denominator separately, or declare an
    ``AggregationExemption`` with the reason equal weighting is materially right.
 

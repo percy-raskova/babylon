@@ -40,7 +40,7 @@ Binding interface contract — the authoritative names, verbatim:
 - New `MarketDefines` fields (U6): `anchor_pull`, `correction_interest_slope`, `correction_debt_slope`.
 - New opposition keys (U5), all `antagonistic=False`: `"surplus_distribution"` (enterprise/rentier, county), `"debt_spiral"` (solvent/indebted, county), `"credit"` (accommodation/fragility, `""`), `"financial"` (real/fictitious, `""`).
 - New sentinel packages (U7): `sentinels/{liveness,aggregation,coupling}/`; gate-blindness extends `sentinels/coverage/`; `sentinels/surface/` (U7.11 — the sixth class, public-surface baseline blindness).
-- ADR numbers: **U7.10 = ADR082**, **U8.6 = ADR083** (verified: highest existing is ADR081).
+- ADR numbers: **U7.10 = ADR088**, **U8.6 = ADR089** (verified: highest existing is ADR081).
 
 ---
 
@@ -126,11 +126,11 @@ Binding interface contract — the authoritative names, verbatim:
 ### Governance, docs, baselines
 | File | Unit | Responsibility |
 |---|---|---|
-| `.mise.toml` | U7.5, U7.6, U7.8 | `check:liveness`, `check:aggregation`, `check:coupling` — advisory, local-only, never CI |
+| `.mise.toml` | U7.5, U7.6, U7.8 | `check:liveness`, `check:aggregation-intensive`, `check:coupling` — advisory, local-only, never CI |
 | `.mise.toml` + `.github/workflows/{ci,main}.yml` | U7.11 | `check:surface` — a real gate folded into `[tasks.check]` + CI (owner ruling 2026-07-19) |
 | `docs/reference/sentinel-error-classes.rst` *(create)* | U7.10 | The six classes, each with its sensor and its remedy |
-| `ai/decisions/ADR082_sentinel_error_classes.yaml` *(create)* | U7.10 | The sentinel-family decision |
-| `ai/decisions/ADR083_vol3_money_scissors.yaml` *(create)* | U8.6 | The Vol III decision |
+| `ai/decisions/ADR088_sentinel_error_classes.yaml` *(create)* | U7.10 | The sentinel-family decision |
+| `ai/decisions/ADR089_vol3_money_scissors.yaml` *(create)* | U8.6 | The Vol III decision |
 | `ai/decisions/index.yaml`, `ai/state.yaml` | U7.10, U8.6 | Catalog + truth-status records |
 | `reports/vol3-baseline-delta.md` *(create)* | U4.8, U5.9, U8.3–U8.5 | Verification-evidence table, per-scenario delta analysis, **Owner Approval Gate** |
 | `tests/baselines/{imperial_circuit,two_node,starvation,glut,fascist_bifurcation}.json` + `dense/*.csv` | U8.5 | Regenerated in the ceremony commit — **only after owner approval** |
@@ -177,7 +177,7 @@ Before Task U1.1, confirm the following in `/home/user/projects/game/babylon-vol
 
 1. **Worktree + branch** — `git branch --show-current` returns `refactor/vol3-money-scissors`. ✅ verified at plan-authoring time.
 2. **`data/` symlink farm** — already linked: `data -> /home/user/projects/game/babylon/data`. ✅ verified. U1.1 is therefore a *verification* task, not a repair task; if `ls -la data` shows a live symlink, record that and move on. `mise run doctor` step 3b is the canonical check. U1.2's fixture export reads the reference DB through this link — it is a hard prerequisite for U1.2 and for nothing else.
-3. **ADR numbering** — `ls ai/decisions/ | grep -oE 'ADR[0-9]+' | sort -u | tail -1` returns `ADR081`. ✅ verified. U7.10 claims **ADR082**, U8.6 claims **ADR083**. If other work has landed on `dev` since, trust the command's output over these numbers and shift both, preserving the U7-before-U8 ordering.
+3. **ADR numbering** — `ls ai/decisions/ | grep -oE 'ADR[0-9]+' | sort -u | tail -1` returns `ADR081`. ✅ verified. U7.10 claims **ADR088**, U8.6 claims **ADR089**. If other work has landed on `dev` since, trust the command's output over these numbers and shift both, preserving the U7-before-U8 ordering.
 4. **Editable-venv shadow** — worktrees share the main checkout's editable install. Prefix ad-hoc `python -c` invocations with `PYTHONPATH="$PWD/src"` so you are exercising *this* worktree's source, not `babylon/`'s.
 5. **Sentinel package layout** — `src/babylon/sentinels/` currently contains `_ast.py`, `base.py`, `conservation/`, `coverage/`, `dynamic.py`, `partition/`, `roundtrip/`, `seam/`, `synthetic/`. ✅ verified. `liveness/`, `aggregation/`, `coupling/` do not exist and are created by U7.
 6. **Resource discipline** — run heavy commands uncapped (earlyoom is the backstop), but **never fan out parallel agents that each spawn pytest**. Scoped `mise run test:q` only.
@@ -199,7 +199,7 @@ corrections applied (a real injected-defect red phase, and the commit trailer).
 ## Self-Review Record
 
 
-**What was reconciled across auditors.** Four blockers were found independently by three or four auditors each, which is strong evidence they are real rather than artifacts of one reviewer's model: the `_compute_national_financial_state` signature clash (all four), the missing `credit_state` producer (three), the catalog-docstring double-edit (three), and the ADR082 collision (three). All four are resolved above with a named authoritative unit and exact replacements.
+**What was reconciled across auditors.** Four blockers were found independently by three or four auditors each, which is strong evidence they are real rather than artifacts of one reviewer's model: the `_compute_national_financial_state` signature clash (all four), the missing `credit_state` producer (three), the catalog-docstring double-edit (three), and the ADR088 collision (three). All four are resolved above with a named authoritative unit and exact replacements.
 
 > **Reality correction, 2026-07-18 (post-`aedce819`).** The `_compute_national_financial_state`
 > signature clash was resolved *by the code* before the plan's own resolution could be executed: a
@@ -12830,7 +12830,7 @@ equal-weighted declare an exemption WITH A REASON in
 :mod:`babylon.sentinels.aggregation.registry`.
 
 Advisory and local/on-demand per the standing owner ruling:
-``poetry run python tools/sentinel_check.py aggregation``.
+``poetry run python tools/sentinel_check.py aggregation-intensive``.
 
 Layer 0.5: imports nothing above :mod:`babylon.models`.
 """
@@ -13119,7 +13119,7 @@ from babylon.sentinels.aggregation.checks import main as aggregation_main
 
 Append to `.mise.toml`:
 ```toml
-[tasks."check:aggregation"]
+[tasks."check:aggregation-intensive"]
 description = "Aggregation sentinel (ADVISORY, local): no unweighted mean of a rate/ratio/balance"
 run = "poetry run python tools/sentinel_check.py aggregation"
 ```
@@ -13429,7 +13429,7 @@ Co-Authored-By: Claude Opus 4.8 (1M context) <noreply@anthropic.com>"
 **Files:**
 - Create: `src/babylon/sentinels/coupling/checks.py`
 - Modify: `tools/sentinel_check.py` (import + `_SENSORS` entry, beside the `aggregation` entry from U7.6)
-- Modify: `.mise.toml` (append after the `check:aggregation` block from U7.6)
+- Modify: `.mise.toml` (append after the `check:aggregation-intensive` block from U7.6)
 - Test: `tests/unit/sentinels/test_coupling_sentinel.py`
 
 **Interfaces:**
@@ -14183,7 +14183,7 @@ an `__all__` whose members diverge from the baseline frozenset that pins it.
 - Modify: `.mise.toml` (`check:surface` task, folded into `[tasks.check]`'s
   `depends` — a real gate, mirroring `check:seams`/`check:coverage`, NOT the
   advisory/local-only pattern U7.5/U7.6/U7.8 use for `check:liveness`/
-  `check:aggregation`/`check:coupling`)
+  `check:aggregation-intensive`/`check:coupling`)
 - Modify: `.github/workflows/ci.yml`, `.github/workflows/main.yml` (add an
   explicit `check:surface` step, mirroring the `check:seams`/`check:coverage`
   steps in both files)
@@ -14418,7 +14418,7 @@ from babylon.sentinels.surface.checks import main as surface_main
 ```
 
 **Amended by owner ruling 2026-07-19:** unlike the other five sentinels in
-this family (`check:liveness`/`check:aggregation`/`check:coupling`, U7.5/
+this family (`check:liveness`/`check:aggregation-intensive`/`check:coupling`, U7.5/
 U7.6/U7.8 — advisory and local-only, they never gate CI), `check:surface`
 is wired as a real gate — exactly the way the repo's existing
 `check:seams`/`check:coverage`
@@ -14536,7 +14536,7 @@ Co-Authored-By: Claude Opus 4.8 (1M context) <noreply@anthropic.com>"
 **Files:**
 - Create: `docs/reference/sentinel-error-classes.rst`
 - Modify: `ai/state.yaml`
-- Create: `ai/decisions/ADR082_sentinel_error_classes.yaml`
+- Create: `ai/decisions/ADR088_sentinel_error_classes.yaml`
 - Modify: `ai/decisions/index.yaml`
 - Test: `tests/unit/sentinels/test_sentinel_family_cli.py`
 
@@ -14645,8 +14645,8 @@ Expected: FAIL with `FileNotFoundError: .../docs/reference/sentinel-error-classe
 
 Run `ls ai/decisions/ | grep -oE 'ADR[0-9]+' | sort -t R -k2 -n | tail -1` first and
 substitute the real next number in the filename, the top-level YAML key, and the
-index.yaml entry. At authoring time the highest was ADR081, making this ADR082 and
-U8.6's ADR083.
+index.yaml entry. At authoring time the highest was ADR081, making this ADR088 and
+U8.6's ADR089.
 
 `docs/reference/sentinel-error-classes.rst`:
 ```rst
@@ -14714,7 +14714,7 @@ hard as Wayne County.
 
 :Sensor: ``babylon.sentinels.aggregation.checks.check_no_unweighted_intensive_means``
 :Registry: ``babylon.sentinels.aggregation.registry``
-:Run: ``mise run check:aggregation``
+:Run: ``mise run check:aggregation-intensive``
 :Remedy: aggregate numerator and denominator separately, or declare an
    ``AggregationExemption`` with the reason equal weighting is materially right.
 
@@ -14750,11 +14750,11 @@ added to ``babylon.config.defines.__all__`` (U2.3) without a matching edit to
    ``__all__``.
 ```
 
-`ai/decisions/ADR082_sentinel_error_classes.yaml` (match the field shape of the
+`ai/decisions/ADR088_sentinel_error_classes.yaml` (match the field shape of the
 neighbouring `ADR0NN_*.yaml` files — read `ai/decisions/ADR081_*.yaml` first and
 mirror its keys exactly):
 ```yaml
-ADR082_sentinel_error_classes:
+ADR088_sentinel_error_classes:
   status: "accepted"
   date: "2026-07-18"
   title: "Six named sentinel error classes ship (five advisory local sensors, one CI gate)"
@@ -14789,7 +14789,7 @@ ADR082_sentinel_error_classes:
     and proves the sensor reds.
   consequences: >
     The four owed classes are struck from the owed list. New mise tasks
-    check:liveness, check:aggregation, check:coupling, check:surface;
+    check:liveness, check:aggregation-intensive, check:coupling, check:surface;
     check:coverage gains an advisory tier. check:surface alone is folded into
     [tasks.check]'s depends and into ci.yml/main.yml as a real gate. The
     registries are hand-written dev-time contracts and must be grown as
@@ -14810,16 +14810,16 @@ ADR082_sentinel_error_classes:
 
 Add to `ai/decisions/index.yaml`, immediately after the `decisions:` line:
 ```yaml
-  ADR082_sentinel_error_classes:
+  ADR088_sentinel_error_classes:
     title: 'Six named sentinel error classes ship: liveness (correct-but-inert, computed-but-never-consumed), aggregation (intensive-aggregation), coupling (undeclared-coupling, both directions), gate-blindness extending the coverage sentinel, and surface (public-surface baseline blindness) -- five advisory, the sixth (surface) a real CI gate per owner ruling 2026-07-19'
     status: accepted
     date: '2026-07-18'
-    file: ADR082_sentinel_error_classes.yaml
+    file: ADR088_sentinel_error_classes.yaml
 ```
 
 Append to `ai/state.yaml`, immediately after the `truth_status: |` line:
 ```yaml
-    (2026-07-18) SENTINEL FAMILY GROWS TO SIX ERROR CLASSES (ADR082): the
+    (2026-07-18) SENTINEL FAMILY GROWS TO SIX ERROR CLASSES (ADR088): the
     Vol III money work surfaced six failure modes no existing test caught.
     New packages babylon.sentinels.liveness (correct-but-inert,
     computed-but-never-consumed), .aggregation (intensive-aggregation),
@@ -14830,7 +14830,7 @@ Append to `ai/state.yaml`, immediately after the `truth_status: |` line:
     CapitalVolumeIIIDefines added to defines.__all__ without a matching
     EXPECTED_DEFINES_PUBLIC edit, U2.3). Five are ADVISORY and
     local/on-demand per the standing owner ruling: new mise tasks
-    check:liveness / check:aggregation / check:coupling; no CI gating, no
+    check:liveness / check:aggregation-intensive / check:coupling; no CI gating, no
     nightly plumbing. The sixth, check:surface, is wired as a real gate
     (owner ruling 2026-07-19) — folded into mise run check's depends and
     into ci.yml/main.yml, exactly like check:seams/check:coverage. Each
@@ -14843,7 +14843,7 @@ Run: `mise run test:q -- tests/unit/sentinels/test_sentinel_family_cli.py`
 Expected: PASS (7 passed)
 - [ ] **Step 5: Commit**
 ```bash
-mise run commit -- "docs(sentinels): reference doc + ADR082 for the six error classes
+mise run commit -- "docs(sentinels): reference doc + ADR088 for the six error classes
 
 Co-Authored-By: Claude Opus 4.8 (1M context) <noreply@anthropic.com>"
 ```
@@ -15427,7 +15427,7 @@ EOF
 ### Task U8.6: ADR + index.yaml catalog entry + ai/state.yaml
 
 **Files:**
-- Create: `ai/decisions/ADR083_vol3_money_scissors.yaml` (verified free; still run the `ls`/`grep` check in Step 1 and trust its output over this literal)
+- Create: `ai/decisions/ADR089_vol3_money_scissors.yaml` (verified free; still run the `ls`/`grep` check in Step 1 and trust its output over this literal)
 - Modify: `ai/decisions/index.yaml:6-7` (insert new entry as the first item under `decisions:`, before `ADR081_declarative_system_ordering:`)
 - Modify: `ai/state.yaml:5-7` (bump `meta.version`, `meta.updated`, and prepend a new paragraph to `truth_status` immediately after the `truth_status: |` line, before the existing 2026-07-17 paragraph)
 
@@ -15435,11 +15435,11 @@ EOF
 - Consumes: the ceremony commit hash from U8.5 Step 7; the approval record from U8.4; the filled `reports/vol3-baseline-delta.md` from U8.3.
 - Produces: the permanent governance record for this work — nothing downstream in this plan depends on it, but it is the acceptance-criteria closer for U8 ("ADR landed; `ai/state.yaml` updated").
 
-- [ ] **Step 1: Determine the real next ADR number — do not assume ADR083**
+- [ ] **Step 1: Determine the real next ADR number — do not assume ADR089**
 ```bash
 ls ai/decisions/ | grep -oE 'ADR[0-9]+' | sort -t R -k2 -n | tail -1
 ```
-U7.10 lands `ADR082_sentinel_error_classes.yaml` before this task runs, so the next free number is `ADR083` — but other work may have landed since, so trust the command's output, not this note. The rest of this task uses `ADR083` as a placeholder; substitute the real number everywhere (filename, the `index.yaml` key, and the top-level YAML key inside the ADR file itself, which must match the filename per every existing ADR's convention).
+U7.10 lands `ADR088_sentinel_error_classes.yaml` before this task runs, so the next free number is `ADR089` — but other work may have landed since, so trust the command's output, not this note. The rest of this task uses `ADR089` as a placeholder; substitute the real number everywhere (filename, the `index.yaml` key, and the top-level YAML key inside the ADR file itself, which must match the filename per every existing ADR's convention).
 
 - [ ] **Step 2: Write the failing test**
 ```python
@@ -15461,7 +15461,7 @@ DECISIONS_DIR = Path(__file__).resolve().parents[3] / "ai" / "decisions"
 INDEX_PATH = DECISIONS_DIR / "index.yaml"
 
 # Substitute the real number determined in Step 1.
-NEW_ADR_STEM = "ADR083_vol3_money_scissors"
+NEW_ADR_STEM = "ADR089_vol3_money_scissors"
 
 
 def test_new_adr_file_exists_with_matching_top_level_key() -> None:
@@ -15503,7 +15503,7 @@ def test_no_unfilled_placeholders_in_the_governance_records() -> None:
 
     Unlike U8.3's `reports/vol3-baseline-delta.md` -- a draft evidence
     artifact allowed placeholders everywhere but its Owner Approval Gate
-    until that gate is satisfied -- ADR083 and the new ai/state.yaml
+    until that gate is satisfied -- ADR089 and the new ai/state.yaml
     paragraph are permanent governance history the moment this task
     commits them. Zero tolerance, no carve-out.
     """
@@ -15518,12 +15518,12 @@ def test_no_unfilled_placeholders_in_the_governance_records() -> None:
 ```
 - [ ] **Step 3: Run test to verify it fails**
 Run: `mise run test:q -- tests/unit/decisions/test_adr083_vol3_money_scissors.py` (create the parent dir if `tests/unit/decisions/` doesn't yet exist — check first with `ls tests/unit/decisions/ 2>/dev/null`; if absent, this is a new test directory and needs no `__init__.py` beyond matching the sibling convention used elsewhere, e.g. `tests/unit/tools/__init__.py`)
-Expected: FAIL with `AssertionError: missing .../ai/decisions/ADR083_vol3_money_scissors.yaml`.
+Expected: FAIL with `AssertionError: missing .../ai/decisions/ADR089_vol3_money_scissors.yaml`.
 - [ ] **Step 4: Write minimal implementation**
 
-Create `ai/decisions/ADR083_vol3_money_scissors.yaml` (substitute the real number from Step 1):
+Create `ai/decisions/ADR089_vol3_money_scissors.yaml` (substitute the real number from Step 1):
 ```yaml
-ADR083_vol3_money_scissors:
+ADR089_vol3_money_scissors:
   status: "accepted"
   date: "2026-07-18"
   title: "Volume III Money wired live through the Value-Price Scissors: the dormant Vol III estate (SurplusValueDistribution, DebtAccumulation, FictitiousCapitalStock) connected via calculator_overrides + a new NationalFinancialParameters graph publication + a monetary anchor pulling the market-scissors oscillator toward real FRED-backed ratios where data exists (2010-2024), four new bound oppositions (surplus_distribution/debt_spiral/credit/financial, catalog 6->10) with CouplingGraph activated as ContradictionSystem's first production consumer, a 13-item honesty sweep (including a latent year-ceiling ValidationError crash on the live MELT path), and six new sentinel classes; baselines regenerated per the recorded owner-approval ceremony -- and an endogenous national interest rate (Capital Vol. III Part V) that replaces the FRED interest read with a bounded share of the average rate of profit driven by loan-market tightness, the rate now total (never absent), U9"
@@ -15633,21 +15633,21 @@ ADR083_vol3_money_scissors:
     ADR056_spec102_gamma_hydration_and_shocks.yaml (determinism-proof
     precedent), ADR077_market_scissors.yaml, ADR078_market_correction.yaml
     (shadow-then-ceremony precedent),
-    ADR082_sentinel_error_classes.yaml (the U7 sentinel family)
+    ADR088_sentinel_error_classes.yaml (the U7 sentinel family)
 ```
 
 Edit `ai/decisions/index.yaml` — insert immediately after line 6 (`decisions:`), before the existing `ADR081_declarative_system_ordering:` entry:
 ```yaml
-  ADR083_vol3_money_scissors:
+  ADR089_vol3_money_scissors:
     title: 'Volume III Money wired live through the Value-Price Scissors: the dormant Vol III estate connected via calculator_overrides + a new NationalFinancialParameters graph publication + a monetary anchor, four new bound oppositions (catalog 6->10) with CouplingGraph activated as ContradictionSystem''s first production consumer, a 13-item honesty sweep, six new sentinel classes, and an endogenous national interest rate (Capital Vol. III Part V, U9 -- the rate total, never absent); baselines regenerated per the recorded owner-approval ceremony'
     status: accepted
     date: '2026-07-18'
-    file: ADR083_vol3_money_scissors.yaml
+    file: ADR089_vol3_money_scissors.yaml
 ```
 
 Edit `ai/state.yaml`: change line 5 from `version: "2.38.0"  # ...` to `version: "2.39.0"  # ...` (append a comment noting this ADR if the existing comment convention warrants it), change line 6's `updated:` to today's date, and insert a new paragraph immediately after line 7 (`truth_status: |`), before the existing `(2026-07-17 overnight) THE EXECUTION SLATE...` paragraph:
 ```yaml
-    (<FILL: today's date>) VOL III MONEY WIRED LIVE (ADR083; branch
+    (<FILL: today's date>) VOL III MONEY WIRED LIVE (ADR089; branch
     refactor/vol3-money-scissors, design docs/superpowers/specs/
     2026-07-18-vol3-money-scissors-design.md): the dormant Vol III
     economics estate (spec-024) connected end-to-end for the first time --
@@ -15663,7 +15663,7 @@ Edit `ai/state.yaml`: change line 5 from `version: "2.38.0"  # ...` to `version:
     (NationalTickParameters' le=2040 constraint now degrades to
     NoDataSentinel). Baselines regenerated `<FILL: ceremony commit hash>`
     after a written, owner-approved per-scenario delta analysis
-    (reports/vol3-baseline-delta.md) per D3 -- see ADR083 for the full
+    (reports/vol3-baseline-delta.md) per D3 -- see ADR089 for the full
     mechanism breakdown.
 ```
 - [ ] **Step 4b: Resolve the five placeholder markers Step 4 just wrote**
@@ -15728,7 +15728,7 @@ ceremony_hash = os.environ["CEREMONY_HASH"]
 today = os.environ["TODAY"]
 scenario_list = os.environ["SCENARIO_LIST"]
 
-adr_path = Path("ai/decisions/ADR083_vol3_money_scissors.yaml")
+adr_path = Path("ai/decisions/ADR089_vol3_money_scissors.yaml")
 text = adr_path.read_text()
 
 decision_marker = "commit `<FILL: the U8.5 Step 7 commit hash>`."
@@ -15750,7 +15750,7 @@ text = text.replace(
 )
 
 adr_path.write_text(text)
-print("ADR083 markers resolved.")
+print("ADR089 markers resolved.")
 
 state_path = Path("ai/state.yaml")
 text = state_path.read_text()
@@ -15767,7 +15767,7 @@ state_path.write_text(text)
 print("state.yaml markers resolved.")
 PY
 
-grep -n '<FILL\|<SUBSTITUTE' ai/decisions/ADR083_vol3_money_scissors.yaml ai/state.yaml \
+grep -n '<FILL\|<SUBSTITUTE' ai/decisions/ADR089_vol3_money_scissors.yaml ai/state.yaml \
   && { echo "FAIL: placeholder markers still present"; exit 1; } \
   || echo "OK: no <FILL / <SUBSTITUTE markers remain in either file."
 ```
@@ -15777,7 +15777,7 @@ Expected: PASS (4 passed).
 - [ ] **Step 6: Commit**
 ```bash
 mise run commit -- "$(cat <<'EOF'
-docs(adr): ADR083 vol3 money-scissors landed + index.yaml + state.yaml (U8.6, closes design spec 2026-07-18-vol3-money-scissors-design.md)
+docs(adr): ADR089 vol3 money-scissors landed + index.yaml + state.yaml (U8.6, closes design spec 2026-07-18-vol3-money-scissors-design.md)
 
 Co-Authored-By: Claude Opus 4.8 (1M context) <noreply@anthropic.com>
 EOF

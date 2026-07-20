@@ -1,4 +1,4 @@
-ADR082_sentinel_error_classes:
+ADR088_sentinel_error_classes:
   status: "accepted"
   date: "2026-07-18"
   title: "Six named sentinel error classes ship (five advisory local sensors, one CI gate)"
@@ -33,7 +33,7 @@ ADR082_sentinel_error_classes:
     and proves the sensor reds.
   consequences: >
     The four owed classes are struck from the owed list. New mise tasks
-    check:liveness, check:aggregation, check:coupling, check:surface;
+    check:liveness, check:aggregation-intensive, check:coupling, check:surface;
     check:coverage gains an advisory tier. check:surface alone is folded into
     [tasks.check]'s depends and into ci.yml/main.yml as a real gate. The
     registries are hand-written dev-time contracts and must be grown as

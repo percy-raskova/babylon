@@ -1,9 +1,14 @@
 meta:
-  version: 1.34.0
-  updated: '2026-07-19'
+  version: 1.35.0
+  updated: '2026-07-20'
   description: Architecture Decision Records Index
   format: See individual ADR files in this directory
 decisions:
+  ADR091_us_county_seed_artifact:
+    title: 'USScenario reads the committed, hash-stamped county-seed artifact (src/babylon/data/game/us_county_territories.json, schema_version 2, 3153 FIPS-sorted counties, content_hash 3cd1d1d9...) instead of the reference DB at build time -- deterministic-data-artifacts doctrine applied to the #39 T4 blocker (a live population query measured ~6.6s, unaffordable at 130+ scenario-building call sites); records provenance (Census/QCEW population, TIGER centroids, USGS mineral-value area-share allocation, 50/50 state totals conservation-verified), the declared retired-FIPS dedup (46113/02270/02261, Bedford 51515/51019 correctly NOT deduped), the CT double-carry disposition (259.0 exact, field-vintage-disjoint), 31 explicit-absence gap rows, and three named-but-not-fixed defects (headless scopes.py dedup gap, endgame_detector.py stale territory-count comment, msa/bea/bea_ea map-zoom no-write-site); serves as the #39 (hex/scale county-keying) program close-out record alongside ADR090'
+    status: accepted
+    date: '2026-07-20'
+    file: ADR091_us_county_seed_artifact.yaml
   ADR090_scale_lattice_amendment_u:
     title: 'Amendment U — spatial scale ladder codified as a LATTICE (county atom; CZ/MSA/state parallel county-aggregations, only state nests into nation); CZ rung grounded in the new bridge_county_cz ERS-1990 artifact; MSA rung on the existing dim_metro_area estate; supersedes Amendment K spatial clause after the #39 investigation proved the recorded chain geographically unrealizable (CZs and MSAs cross state lines)'
     status: accepted

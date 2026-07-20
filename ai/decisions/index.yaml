@@ -1,9 +1,14 @@
 meta:
-  version: 1.36.0
+  version: 1.37.0
   updated: '2026-07-20'
   description: Architecture Decision Records Index
   format: See individual ADR files in this directory
 decisions:
+  ADR093_amendments_v_w_x:
+    title: 'Amendments V/W/X (CONSTITUTION v2.12.0, owner-ratified 2026-07-20): V = narrator-only AI (no LLM in the input path, Amendment I superseded-in-part; local-first provider stack) + transport-generalized client contract (in-process/HTTP/file materialization; browser client legacy, Archive TUI successor) + III.6 pinning generalized to all persisted AI artifacts; W = III.13 Deterministic Materialization [PENDING CODE] (ORDER BY projections, sandboxed sim-time templates, byte-identical artifacts, golden vault, Loud Failure extends to pixels); X = infra domain delegated to the babylon-infra constitution v1.0.0 (infra/ submodule), X.1 scoped to the production estate (no-Nix letter corrected), the infra flake = sole toolchain pinning authority in sqlite-3.53.1 lockstep [IMPLEMENTED], X.8 local-first Periphery/Metropole distribution [PENDING CODE] (embedded player PG17+pgvector, Nix flake beta channel, Metropole observes-never-adjudicates), X.6 Grafana+SQL carve-out (D3). Sources committed under ai/_inbox/tui/; roadmap 6.5 provenance-ceremony amendment HELD on the open BD home ruling'
+    status: accepted
+    date: '2026-07-20'
+    file: ADR093_amendments_v_w_x.yaml
   ADR092_us_county_seed_artifact:
     title: 'USScenario reads the committed, hash-stamped county-seed artifact (src/babylon/data/game/us_county_territories.json, schema_version 2, 3153 FIPS-sorted counties, content_hash 3cd1d1d9...) instead of the reference DB at build time -- deterministic-data-artifacts doctrine applied to the #39 T4 blocker (a live population query measured ~6.6s, unaffordable at 130+ scenario-building call sites); records provenance (Census/QCEW population, TIGER centroids, USGS mineral-value area-share allocation, 50/50 state totals conservation-verified), the declared retired-FIPS dedup (46113/02270/02261, Bedford 51515/51019 correctly NOT deduped), the CT double-carry disposition (259.0 exact, field-vintage-disjoint), 31 explicit-absence gap rows, and three named-but-not-fixed defects (headless scopes.py dedup gap, endgame_detector.py stale territory-count comment, msa/bea/bea_ea map-zoom no-write-site); serves as the #39 (hex/scale county-keying) program close-out record alongside ADR091'
     status: accepted

@@ -2,9 +2,20 @@
 # What exists vs what's planned - KEEP THIS UPDATED
 
 meta:
-  version: "2.43.0"  # 2.28.0 lives on feature/19-emergent-class-partition (Program 19 Phase 0+1)
+  version: "2.44.0"  # 2.28.0 lives on feature/19-emergent-class-partition (Program 19 Phase 0+1)
   updated: "2026-07-20"
   truth_status: |
+    (2026-07-20) CONSTITUTION v2.12.0 -- AMENDMENTS V/W/X (ADR093): the
+    Archive-pivot + infrastructure package, owner-ratified in-session.
+    V narrator-only AI + transport-generalized client (browser = legacy,
+    TUI successor); W deterministic materialization / golden vault
+    [PENDING CODE]; X infra domain delegated to the babylon-infra
+    constitution (infra/ submodule, PR #223), Nix flake = sole toolchain
+    pinning authority (sqlite 3.53.1 lockstep, PR #222), local-first
+    Periphery/Metropole distribution [PENDING CODE], Grafana+SQL
+    observability carve-out (D3). Canon docs committed ai/_inbox/tui/.
+    HELD: roadmap 6.5 provenance-ceremony amendment (BD home ruling open),
+    CCL re-derive, NLCD (Epic 14), T reserved (ADR072).
     (2026-07-20) TASK #39 -- HEX/SCALE COUNTY-KEYING + SCALEADJUNCTION
     BINDING COMPLETE (ADR091 Amendment U + ADR092; branch
     feature/queue-2026-07-19, worktree babylon-queue; T1-T8 landed and

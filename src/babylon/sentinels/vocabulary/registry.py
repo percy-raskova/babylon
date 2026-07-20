@@ -54,6 +54,7 @@ __all__ = [
     "PHANTOM_ATTRIBUTE_READS",
     "PRODUCTION_ROOTS",
     "SCAN_ROOTS",
+    "TERRITORY_KEYING_EXEMPTIONS",
     "TICK_PREFIXED_NODE_TYPES",
     "UNSTAMPED_QUERY_ALLOWLIST",
 ]
@@ -700,3 +701,22 @@ PHANTOM_ATTRIBUTE_EXEMPTIONS: Final[tuple[SentinelExemption, ...]] = (
         tracking_task="#58 (task #40 discovery; wire-or-delete owner-gated)",
     ),
 )
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Rule (f) (#39 T8) — Territory wrong-rung keying: the res-3 inversion class,
+# both directions. USScenario's historical bug minted a bare FIPS string as
+# Territory(id=...) (identity must live ONLY in county_fips); the mirror-image
+# mistake would stamp an H3-cell value onto county_fips (Wayne's hex path and
+# the county path must never cross). See
+# :func:`~babylon.sentinels._ast.territory_keying_uses` for the two recognised
+# forms and their documented static-heuristic narrowing.
+# ─────────────────────────────────────────────────────────────────────────────
+
+#: Exact ``("territory_keying", path, kind, detail)`` keys exempt from rule
+#: (f). Empty today -- no production or test call site currently constructs a
+#: wrong-rung Territory (T4 landed the county-keyed fix cleanly; Wayne's hex
+#: path never sets county_fips at all). Expected future occupants: a test
+#: that DELIBERATELY constructs a malformed Territory to prove a validator
+#: rejects it (mirrors :data:`LITERAL_EXEMPTIONS`' ``balkanization_faction``
+#: precedent) -- each such row must cite the covering test by name.
+TERRITORY_KEYING_EXEMPTIONS: Final[tuple[SentinelExemption, ...]] = ()

@@ -31,6 +31,12 @@ graph-node attribute no production code ever WRITES must not be READ
 either. Founding instance: ``ooda/initiative.py::
 compute_community_embeddedness`` read ``community_type`` (community is
 never a main-graph node, INV-010) and was structurally always ``0.0``.
+
+Rule (f) (#39 T8, 2026-07-20): the res-3 inversion class, both directions --
+a bare FIPS-shaped literal passed to ``Territory(id=...)``, or an
+H3-cell-derived expression passed to ``Territory(county_fips=...)``.
+USScenario's historical bug minted the county FIPS straight into ``id``;
+the mirror-image mistake would cross Wayne's hex path into the county grain.
 """
 
 from babylon.sentinels.vocabulary.checks import (
@@ -39,6 +45,7 @@ from babylon.sentinels.vocabulary.checks import (
     invented_node_types,
     phantom_attribute_uses,
     unstamped_queried_node_types,
+    wrong_rung_territory_keying,
 )
 from babylon.sentinels.vocabulary.registry import (
     ATTRIBUTE_EXEMPTIONS,
@@ -49,6 +56,7 @@ from babylon.sentinels.vocabulary.registry import (
     PHANTOM_ATTRIBUTE_READS,
     PRODUCTION_ROOTS,
     SCAN_ROOTS,
+    TERRITORY_KEYING_EXEMPTIONS,
     UNSTAMPED_QUERY_ALLOWLIST,
 )
 
@@ -61,10 +69,12 @@ __all__ = [
     "PHANTOM_ATTRIBUTE_READS",
     "PRODUCTION_ROOTS",
     "SCAN_ROOTS",
+    "TERRITORY_KEYING_EXEMPTIONS",
     "UNSTAMPED_QUERY_ALLOWLIST",
     "fabricated_edge_sources",
     "fabricated_node_attributes",
     "invented_node_types",
     "phantom_attribute_uses",
     "unstamped_queried_node_types",
+    "wrong_rung_territory_keying",
 ]

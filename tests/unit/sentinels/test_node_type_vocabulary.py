@@ -21,6 +21,7 @@ from babylon.sentinels._ast import (
     edge_source_type_uses,
     graph_node_attribute_reads,
     node_type_uses,
+    territory_keying_uses,
 )
 from babylon.sentinels.base import SentinelCheckError
 from babylon.sentinels.exemptions import SentinelExemption
@@ -30,6 +31,7 @@ from babylon.sentinels.vocabulary import (
     invented_node_types,
     phantom_attribute_uses,
     unstamped_queried_node_types,
+    wrong_rung_territory_keying,
 )
 from babylon.sentinels.vocabulary.registry import MODEL_FIELDS_BY_NODE_TYPE
 
@@ -567,3 +569,191 @@ def test_phantom_read_extractor_raises_on_unparseable_source(tmp_path: Path) -> 
     path.write_text("def (:\n", encoding="utf-8")
     with pytest.raises(SentinelCheckError):
         graph_node_attribute_reads(path, frozenset({"community_type"}))
+
+
+# ---------------------------------------------------------------------------
+# Rule (f) — wrong-rung Territory keying (#39 T8): the res-3 inversion class,
+# both directions.
+# ---------------------------------------------------------------------------
+
+
+def _territory_uses(tmp_path: Path, source: str) -> set[tuple[str, str]]:
+    """Parse ``source`` and return its ``(kind, detail)`` pairs."""
+    path = tmp_path / "sample.py"
+    path.write_text(source, encoding="utf-8")
+    return {(kind, detail) for _lineno, kind, detail in territory_keying_uses(path)}
+
+
+def test_no_wrong_rung_territory_keying_in_repo() -> None:
+    """Rule (f): no Territory(...) call in src/, web/ or tests/ keys the
+    wrong spatial rung (T4 landed the county-keyed fix cleanly; Wayne's hex
+    path never sets county_fips at all)."""
+    assert wrong_rung_territory_keying() == []
+
+
+def test_extractor_sees_bare_fips_literal_id(tmp_path: Path) -> None:
+    """``Territory(id="26163")`` — the res-3 inversion bug's exact shape."""
+    found = _territory_uses(tmp_path, 'Territory(id="26163", name="x")')
+    assert ("fips_literal_id", "26163") in found
+
+
+def test_extractor_allows_counter_built_fstring_id(tmp_path: Path) -> None:
+    """``Territory(id=f"T{i:04d}")`` — the real USScenario idiom, legitimate."""
+    assert _territory_uses(tmp_path, 'Territory(id=f"T{i:04d}", name="x")') == set()
+
+
+def test_extractor_allows_h3_cell_variable_id(tmp_path: Path) -> None:
+    """``Territory(id=cell)`` — Wayne's real hex idiom, legitimate."""
+    source = (
+        "cells = h3.polygon_to_cells(polygon, 5)\n"
+        "for cell in cells:\n"
+        "    Territory(id=cell, h3_index=cell)\n"
+    )
+    assert _territory_uses(tmp_path, source) == set()
+
+
+def test_extractor_allows_plain_variable_id(tmp_path: Path) -> None:
+    """``Territory(id=territory_id)`` where territory_id is an ordinary
+    (non-FIPS-literal) variable -- honest absence, not a guess."""
+    source = 'territory_id = f"T{i:04d}"\nTerritory(id=territory_id, county_fips=fips)\n'
+    assert _territory_uses(tmp_path, source) == set()
+
+
+def test_extractor_sees_direct_h3_call_as_county_fips(tmp_path: Path) -> None:
+    """``Territory(county_fips=h3.cell_to_latlng(cell)[0])`` — the mirror-image
+    inversion, wrapped in a subscript ("the source involves an h3. call")."""
+    found = _territory_uses(
+        tmp_path, 'Territory(id="T0001", county_fips=h3.cell_to_latlng(cell)[0])'
+    )
+    assert ("h3_derived_county_fips", "h3.cell_to_latlng(cell)[0]") in found
+
+
+def test_extractor_sees_h3_derived_variable_as_county_fips_same_scope(tmp_path: Path) -> None:
+    """A variable assigned from an h3. call earlier in the SAME function scope,
+    then passed to county_fips=, is the same violation via dataflow."""
+    source = (
+        "def build():\n"
+        "    cell = h3.polygon_to_cells(polygon, 3)[0]\n"
+        "    return Territory(id='T0001', county_fips=cell)\n"
+    )
+    found = _territory_uses(tmp_path, source)
+    assert ("h3_derived_county_fips", "cell") in found
+
+
+def test_extractor_sees_for_loop_bound_h3_cell_as_county_fips(tmp_path: Path) -> None:
+    """Wayne's REAL production idiom (``_legacy_wayne.py``):
+    ``cells = h3.polygon_to_cells(...)`` then ``for cell in cells:`` -- the
+    loop target inherits the iterable's h3-derived-ness. This is the exact
+    shape the mirror-image mutation exercise reconstructs."""
+    source = (
+        "def build():\n"
+        "    cells = h3.polygon_to_cells(polygon, 5)\n"
+        "    for cell in cells:\n"
+        "        Territory(id=cell, h3_index=cell, county_fips=cell)\n"
+    )
+    found = _territory_uses(tmp_path, source)
+    assert ("h3_derived_county_fips", "cell") in found
+
+
+def test_extractor_ignores_h3_derived_variable_from_a_different_function(tmp_path: Path) -> None:
+    """The SAME variable name bound from an h3. call in a DIFFERENT function
+    is invisible -- tracing is scoped to the SAME function, never cross-function
+    (the documented narrowing)."""
+    source = (
+        "def make_cell():\n"
+        "    cell = h3.polygon_to_cells(polygon, 3)[0]\n"
+        "    return cell\n"
+        "\n"
+        "def build(cell):\n"
+        "    return Territory(id='T0001', county_fips=cell)\n"
+    )
+    assert _territory_uses(tmp_path, source) == set()
+
+
+def test_extractor_ignores_ordinary_county_fips_variable(tmp_path: Path) -> None:
+    """``county_fips=fips`` where ``fips`` comes from an ordinary dict/DB
+    read (the real USScenario shape, T4) is never flagged."""
+    source = (
+        "def build(county):\n"
+        "    fips = county['fips']\n"
+        "    return Territory(id='T0001', county_fips=fips)\n"
+    )
+    assert _territory_uses(tmp_path, source) == set()
+
+
+def test_territory_extractor_raises_on_unparseable_source(tmp_path: Path) -> None:
+    """A broken file is an infrastructure failure, never a silent empty pass."""
+    path = tmp_path / "broken.py"
+    path.write_text("def (:\n", encoding="utf-8")
+    with pytest.raises(SentinelCheckError):
+        territory_keying_uses(path)
+
+
+def test_founding_bug_would_be_caught_by_wrong_rung_rule(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The #39 T4 res-3 defect, reconstructed: a bare FIPS literal passed to
+    Territory(id=...) is rejected by rule (f)."""
+    (tmp_path / "src").mkdir()
+    (tmp_path / "web").mkdir()
+    (tmp_path / "tests").mkdir()
+    (tmp_path / "src" / "sample.py").write_text(
+        'Territory(id="26163", name="Wayne County, MI")\n',
+        encoding="utf-8",
+    )
+    monkeypatch.setattr("babylon.sentinels.vocabulary.checks._REPO_ROOT", tmp_path)
+    monkeypatch.setattr("babylon.sentinels.vocabulary.checks.TERRITORY_KEYING_EXEMPTIONS", ())
+    violations = wrong_rung_territory_keying()
+    assert len(violations) == 1
+    assert "26163" in violations[0]
+    assert "src/sample.py:1" in violations[0]
+
+
+def test_founding_bug_mirror_would_be_caught_by_wrong_rung_rule(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The mirror-image defect: an H3-cell-derived value passed to
+    Territory(county_fips=...) is rejected by rule (f)."""
+    (tmp_path / "src").mkdir()
+    (tmp_path / "web").mkdir()
+    (tmp_path / "tests").mkdir()
+    (tmp_path / "src" / "sample.py").write_text(
+        "cell = h3.polygon_to_cells(polygon, 3)[0]\nTerritory(id='T0001', county_fips=cell)\n",
+        encoding="utf-8",
+    )
+    monkeypatch.setattr("babylon.sentinels.vocabulary.checks._REPO_ROOT", tmp_path)
+    monkeypatch.setattr("babylon.sentinels.vocabulary.checks.TERRITORY_KEYING_EXEMPTIONS", ())
+    violations = wrong_rung_territory_keying()
+    assert len(violations) == 1
+    assert "cell" in violations[0]
+    assert "src/sample.py:2" in violations[0]
+
+
+def test_territory_keying_exemption_does_not_absorb_a_different_symbol(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """An exemption exact-keyed to one ``(kind, file, detail)`` triple must
+    NOT clear a genuinely different wrong-rung site in the SAME file --
+    mirrors the discipline every other rule's exemption test enforces."""
+    (tmp_path / "src").mkdir()
+    (tmp_path / "web").mkdir()
+    (tmp_path / "tests").mkdir()
+    (tmp_path / "src" / "sample.py").write_text(
+        'Territory(id="26163", name="a")\nTerritory(id="26125", name="b")\n',
+        encoding="utf-8",
+    )
+    exemption = SentinelExemption(
+        key=("territory_keying", "src/sample.py", "fips_literal_id", "26163"),
+        reason="test exemption -- deliberate negative-control fixture",
+        owner="test",
+        date="2026-07-20",
+        tracking_task="#1",
+    )
+    monkeypatch.setattr("babylon.sentinels.vocabulary.checks._REPO_ROOT", tmp_path)
+    monkeypatch.setattr(
+        "babylon.sentinels.vocabulary.checks.TERRITORY_KEYING_EXEMPTIONS", (exemption,)
+    )
+    violations = wrong_rung_territory_keying()
+    assert len(violations) == 1
+    assert "26125" in violations[0]
+    assert "26163" not in violations[0]

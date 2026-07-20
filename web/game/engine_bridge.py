@@ -7586,31 +7586,48 @@ def _load_seed_hex_to_county_bridge() -> dict[str, str]:
     doc) — but ``_build_initial_state_for_scenario("default"/"us")`` is
     exercised by many *plain* ``unit``-marked tests that never expected a DB
     dependency (``us_county_data``'s own docstring: this scenario builder
-    "must stay reference-DB-free at build time"). A missing table/file must
-    therefore degrade the influence layer to its pre-existing no-op, loudly
-    logged, never propagate and take the whole session build down with it.
+    "must stay reference-DB-free at build time"). An **absent** DB file is
+    therefore the one legitimate degradation case: the influence layer
+    falls back to its pre-existing no-op, loudly logged, rather than take
+    the whole session build down with it.
+
+    T5 review I1: that graceful degradation must NOT extend to a DB file
+    that exists but is broken (corruption, locks, disk I/O) — those are
+    real production faults on a dev-box web session where the reference DB
+    genuinely exists, and silently emptying the county influence layer for
+    them would mute Constitution III.11 ("MUST fail loud"). So the
+    existence check below runs *before* the query, using the same path
+    resolution :mod:`babylon.reference.database` already exposes
+    (``NORMALIZED_DB_PATH`` — honors ``BABYLON_NORMALIZED_DB_PATH``, no new
+    config knob). Only a missing file degrades; a present-but-failing
+    query is left to propagate unguarded.
 
     Returns:
         ``{h3_index: county_fips}`` — see
         :func:`babylon.engine.hydration.reference.query_h3_to_county_fips`.
-        Empty when the reference DB is unavailable.
-    """
-    from sqlalchemy.exc import OperationalError
+        Empty when the reference DB file is absent.
 
+    Raises:
+        sqlalchemy.exc.SQLAlchemyError: If the reference DB file exists but
+            the query fails (corruption, lock, missing table/column, disk
+            I/O). Deliberately not caught — see the I1 note above.
+    """
     from babylon.data.game.balkanization import load_seed_influences
     from babylon.engine.hydration.reference import query_h3_to_county_fips
+    from babylon.reference.database import NORMALIZED_DB_PATH
 
-    hex_ids = [str(edge["territory_id"]) for edge in load_seed_influences()]
-    try:
-        return query_h3_to_county_fips(hex_ids)
-    except OperationalError:
+    if not NORMALIZED_DB_PATH.is_file():
         logger.warning(
-            "_load_seed_hex_to_county_bridge: reference DB unavailable "
-            "(bridge_county_h3/dim_county not queryable) -- county-grain "
-            "balkanization influence layer skipped for this session "
-            "(degrades to the pre-existing no-op for county scenarios)."
+            "_load_seed_hex_to_county_bridge: reference DB file absent at "
+            "%s -- county-grain balkanization influence layer skipped for "
+            "this session (degrades to the pre-existing no-op for county "
+            "scenarios).",
+            NORMALIZED_DB_PATH,
         )
         return {}
+
+    hex_ids = [str(edge["territory_id"]) for edge in load_seed_influences()]
+    return query_h3_to_county_fips(hex_ids)
 
 
 def _seed_wayne_county_fips(state: WorldState) -> WorldState:
@@ -8740,6 +8757,10 @@ def _aggregate_county_influences(
     from babylon.models.entities.relationship import Relationship
     from babylon.models.enums import EdgeType
 
+    # Sorted construction makes a county_fips collision deterministic (highest
+    # tid wins, last writer) rather than order-dependent; acceptable because
+    # the current data model guarantees one territory per county_fips (T4's
+    # committed county-seed artifact), so no collision is expected in practice.
     territory_by_fips = {t.county_fips: tid for tid, t in sorted(county_territories.items())}
     # (faction_id, target_tid) -> list of (influence_level, support_type)
     buckets: dict[tuple[str, str], list[tuple[float, str]]] = {}

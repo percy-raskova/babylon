@@ -47,6 +47,44 @@ def _county_territory(territory_id: str, county_fips: str) -> Territory:
     )
 
 
+def _expected_hex_influences(
+    hex_territories: dict[str, Territory],
+) -> dict[tuple[str, str], tuple[float, str]]:
+    """Independently recompute the hex-parent aggregation for assertions.
+
+    Mirrors the hex path's own aggregation rule (mean ``influence_level``,
+    lexicographic-max ``support_type`` tie-break — see
+    ``_seed_balkanization_layer``'s docstring) via ``h3.cell_to_parent`` at
+    the fixture's own resolution. Uses only the raw seed data and the h3
+    library (never ``_seed_balkanization_layer`` or its internal loop), so
+    this is an independent oracle, not a tautological re-assertion of
+    production's own output (T5 review M1).
+    """
+    import h3
+
+    from babylon.data.game.balkanization import load_seed_influences
+
+    resolution = h3.get_resolution(next(iter(sorted(hex_territories))))
+    buckets: dict[tuple[str, str], list[tuple[float, str]]] = {}
+    for edge in load_seed_influences():
+        try:
+            parent = h3.cell_to_parent(str(edge["territory_id"]), resolution)
+        except (ValueError, TypeError):
+            continue
+        if parent not in hex_territories:
+            continue
+        key = (str(edge["faction_id"]), parent)
+        buckets.setdefault(key, []).append(
+            (float(edge["influence_level"]), str(edge["support_type"]))
+        )
+    expected: dict[tuple[str, str], tuple[float, str]] = {}
+    for key, children in buckets.items():
+        level = round(sum(lvl for lvl, _ in children) / len(children), 6)
+        support = max(children, key=lambda c: (c[0], c[1]))[1]
+        expected[key] = (level, support)
+    return expected
+
+
 def _expected_county_influences(
     hex_to_county: dict[str, str],
     territory_by_fips: dict[str, str],
@@ -153,6 +191,19 @@ class TestSeedBalkanizationLayerHexPathUnchanged:
         # Every aggregated edge must target a real scenario territory (the
         # h3.cell_to_parent join), never a raw hex id absent from the scenario.
         assert {r.target_id for r in influences} <= set(seeded.territories)
+
+        # T5 review M1: pin the actual influence_level/support_type VALUES,
+        # not just edge existence + target subset — an independent oracle
+        # (never the production aggregation) computed from the fixture's own
+        # seed data.
+        hex_territories = {
+            tid: t for tid, t in state.territories.items() if getattr(t, "h3_index", None)
+        }
+        expected = _expected_hex_influences(hex_territories)
+        actual = {
+            (r.source_id, r.target_id): (r.influence_level, r.support_type) for r in influences
+        }
+        assert actual == expected
 
 
 @pytest.mark.unit
@@ -310,21 +361,65 @@ class TestLoadSeedHexToCountyBridgeDegradesGracefully:
     guard existed. ``_load_seed_hex_to_county_bridge`` must degrade to ``{}``
     (the pre-existing county-influence no-op), loudly logged, never let a DB
     hiccup take an entire session build down with it.
+
+    T5 review I1: that degradation is legitimate ONLY when the reference DB
+    file is genuinely absent (the CI/unit-tier case above). A file that
+    EXISTS but is broken (corrupt, locked, missing the table) is a real
+    production fault and must propagate loud (Constitution III.11), never
+    collapse into the same silent no-op — the two tests below pin both
+    halves of that boundary.
     """
 
-    def test_operational_error_degrades_to_empty_mapping(
-        self, monkeypatch: pytest.MonkeyPatch
+    def test_missing_db_file_degrades_to_empty_mapping(
+        self, tmp_path, monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
     ) -> None:
-        from sqlalchemy.exc import OperationalError
+        import logging
 
-        import babylon.engine.hydration.reference as reference_module
+        import babylon.reference.database as database_module
         from game.engine_bridge import _load_seed_hex_to_county_bridge
 
-        def _raise(*_args: object, **_kwargs: object) -> dict[str, str]:
-            raise OperationalError("SELECT 1", {}, Exception("no such table: bridge_county_h3"))
+        missing_path = tmp_path / "does_not_exist.sqlite"
+        monkeypatch.setattr(database_module, "NORMALIZED_DB_PATH", missing_path)
 
-        monkeypatch.setattr(reference_module, "query_h3_to_county_fips", _raise)
-
-        result = _load_seed_hex_to_county_bridge()
+        with caplog.at_level(logging.WARNING):
+            result = _load_seed_hex_to_county_bridge()
 
         assert result == {}
+        assert any("reference DB file absent" in record.message for record in caplog.records), (
+            f"expected a loud WARNING naming the absent DB file, got: {caplog.records}"
+        )
+
+    def test_present_but_broken_db_raises(self, tmp_path, monkeypatch: pytest.MonkeyPatch) -> None:
+        """A DB file that EXISTS but lacks ``bridge_county_h3``/``dim_county``
+        (e.g. a fresh, empty SQLite file) is the "present but broken" case
+        I1 distinguishes from "absent" — it must raise, never degrade to
+        the no-op, because the file genuinely being there but unusable is
+        exactly the production fault (corruption/locks/schema drift) the
+        old blanket ``except OperationalError`` used to mute."""
+        import sqlite3
+
+        from sqlalchemy.exc import OperationalError
+
+        import babylon.reference.database as database_module
+        from game.engine_bridge import _load_seed_hex_to_county_bridge
+
+        broken_path = tmp_path / "empty_no_table.sqlite"
+        # A genuinely valid, connectable SQLite file that simply has none
+        # of the normalized schema's tables.
+        sqlite3.connect(str(broken_path)).close()
+
+        monkeypatch.setattr(database_module, "NORMALIZED_DB_PATH", broken_path)
+        monkeypatch.setattr(database_module, "NORMALIZED_DATABASE_URL", f"sqlite:///{broken_path}")
+        # normalized_engine()/get_normalized_session_factory() memoize into
+        # these module globals on first use anywhere in the test process;
+        # reset them so this test's engine is actually bound to broken_path
+        # instead of reusing whatever the reference DB already resolved to.
+        # monkeypatch restores both to their prior value on teardown.
+        monkeypatch.setattr(database_module, "_normalized_engine", None)
+        monkeypatch.setattr(database_module, "_NormalizedSessionLocal", None)
+
+        # SQLAlchemy wraps the raw sqlite3.OperationalError ("no such
+        # table: bridge_county_h3") in its own exception type; the original
+        # driver exception is chained on .orig.
+        with pytest.raises(OperationalError):
+            _load_seed_hex_to_county_bridge()

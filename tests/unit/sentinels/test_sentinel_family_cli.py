@@ -40,7 +40,11 @@ def _run(sensor: str) -> subprocess.CompletedProcess[str]:
     ("sensor", "expected_word"),
     [
         ("liveness", "Liveness"),
-        ("aggregation", "Aggregation"),
+        # "aggregation-intensive", not "aggregation": the bare name now
+        # dispatches the fog-rollup symmetry probe (Track 1 Task 10) after
+        # the dev deconflict; this family's intensive-mean sensor kept its
+        # code at sentinels/aggregation/checks.py under the suffixed CLI key.
+        ("aggregation-intensive", "Aggregation"),
         ("coupling", "Coupling"),
         ("coverage", "Data coverage"),
     ],

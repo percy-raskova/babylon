@@ -455,6 +455,37 @@ SCENARIO_COVERAGE_DATA: Final[tuple[dict[str, Any], ...]] = (
         ),
         "at_rest": (),
     },
+    {
+        # detroit_tri_county: not one of the five canonical qa:regression
+        # scenarios (it is the committed e2e headless-runner baseline, spec-102/
+        # spec-065), but its bundle is a real, verified fixture — used here ONLY
+        # for bundle_event/bundle_field rows checked against the committed JSON,
+        # per Task 3's controller resolution. Every candidate row was probed
+        # against tests/baselines/detroit-tri-county-5t.json before being kept;
+        # OODASystem's "organizational_action" event was tried and REJECTED —
+        # its payload is {"org_count": 0, "action_count": 0, "layer0_count": 0}
+        # on every one of the 5 ticks in this baseline, the identical weakness
+        # that put OODASystem in COVERAGE_GAPS_DATA in the first place, so it
+        # stays a gap (see task-3-report.md for the full evidence trail).
+        "scenario": "detroit_tri_county",
+        "layers": ("dialectics",),
+        "systems": (
+            {
+                "system": "ContradictionSystem",
+                "kind": "bundle_field",
+                "key": "terminal_state.max_tension",
+                "claim": "the committed baseline's terminal max_tension (0.667728, "
+                "MAX(tension) over EXPLOITATION edges per "
+                "headless_runner.runner._query_max_tension) diverges from the "
+                "bridge's static tick-0 EXPLOITATION seed (tension=0.1, "
+                "bridge._build_per_county_relationships), proving "
+                "ContradictionSystem._write_edge_tensions computed and "
+                "persisted a real wealth-asymmetry gap rather than leaving the "
+                "seed value untouched",
+            },
+        ),
+        "at_rest": (),
+    },
 )
 
 SCENARIO_COVERAGE: Final[tuple[ScenarioCoverage, ...]] = tuple(
@@ -465,12 +496,15 @@ SCENARIO_COVERAGE: Final[tuple[ScenarioCoverage, ...]] = tuple(
 # verified by spot-run (see task-2-report.md). Every one of these is a real,
 # checked finding, not a placeholder: each was read in source AND probed live
 # (40-150 tick runs) before being declared a gap here. detroit_tri_county
-# (later task) and any nationwide/hex-seeded scenario are the natural
-# remediation path for the organization/faction/sovereign/hex-dependent rows;
-# a few (ContradictionSystem, MetabolismSystem, TerritorySystem,
-# EdgeTransitionSystem) need either a new evidence *kind* (territory_delta
-# doesn't exist yet) or a scenario specifically calibrated to cross a
-# threshold that never gets crossed in these five.
+# and any nationwide/hex-seeded scenario are the natural remediation path for
+# the organization/faction/sovereign/hex-dependent rows; a few (MetabolismSystem,
+# TerritorySystem, EdgeTransitionSystem) need either a new evidence *kind*
+# (territory_delta doesn't exist yet) or a scenario specifically calibrated to
+# cross a threshold that never gets crossed in these five. ContradictionSystem
+# was CLOSED in Task 3 via a bundle_field row against the committed
+# detroit-tri-county-5t.json baseline (terminal_state.max_tension diverges
+# from the seeded tick-0 value) — see the detroit_tri_county entry above and
+# task-3-report.md.
 COVERAGE_GAPS_DATA: Final[tuple[dict[str, str], ...]] = (
     {
         "system": "SubstrateSystem",
@@ -516,18 +550,6 @@ COVERAGE_GAPS_DATA: Final[tuple[dict[str, str], ...]] = (
         "resolution and DUAL_POWER_ACTIVE detection never exercise (the unconditional "
         "empty-dict persistent_data write every tick is bookkeeping, not material logic)",
         "remediation": "a balkanization-scenario fixture seeding SOVEREIGN nodes + CLAIMS edges",
-    },
-    {
-        "system": "ContradictionSystem",
-        "reason": "RUPTURE (gap>threshold AND rising) and LEVEL_TRANSITION (sublation) never fire "
-        "across any of the five scenarios in 150 ticks; its other outputs (edge tension, "
-        "opposition_states, contradiction_frames, dialectical_regime) are either "
-        "edge-scoped (unobservable via entity_delta, which only reads state.entities) or "
-        "backed by dict-default WorldState fields that are already non-None BEFORE any "
-        "tick runs, so state_presence's `is not None` check cannot distinguish 'ran' from "
-        "'never ran' for them",
-        "remediation": "a scenario calibrated to cross tension.rupture_gap_threshold with a rising "
-        "principal opposition, or a bundle_field row against a baseline that does",
     },
     {
         "system": "MetabolismSystem",

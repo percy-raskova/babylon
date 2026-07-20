@@ -143,7 +143,10 @@ jobs:
           -o addopts="" -vv -ra -l --tb=long --durations=0
       - name: Rebuild-verify reference DB (parquet-canonical gate)
         run: |
-          if ! rg -q '^product:' data-artifacts.yaml; then
+          # grep, not rg: ripgrep is NOT on the runner (proven 2026-07-20 run
+          # 29785321382 — 'rg: command not found' made this probe silently
+          # take the pre-cutover path AFTER the cutover had merged).
+          if ! grep -q '^product:' data-artifacts.yaml; then
             echo "::notice::no product block in data-artifacts.yaml yet — rebuild-verify inert (pre-cutover)"
             exit 0
           fi
@@ -155,7 +158,11 @@ jobs:
           # (cachix/install-nix-action, nix-release.yml prior art), then DELETE
           # this warning path so the leg becomes the true remote identity proof.
           RUNTIME=$(poetry run python -c 'import sqlite3; print(sqlite3.sqlite_version)')
-          PINNED=$(rg -o 'sqlite_version: "([0-9.]+)"' -r '$1' data-artifacts.yaml | head -1)
+          PINNED=$(sed -n 's/^  sqlite_version: "\([0-9.]*\)"$/\1/p' data-artifacts.yaml | head -1)
+          if [ -z "$PINNED" ]; then
+            echo "::error::could not extract sqlite_version pin from data-artifacts.yaml — probe broken, failing loudly"
+            exit 1
+          fi
           if [ "$RUNTIME" != "$PINNED" ]; then
             MSG="runner sqlite ${RUNTIME} != pinned ${PINNED} — byte-identity leg"
             MSG="${MSG} skipped; CI-devshell pinning is the ADR098 declared follow-up"

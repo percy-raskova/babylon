@@ -960,6 +960,19 @@ poetry run python -m babylon_data.exposure \\
   ${usage_drop_backup:+--drop-backup}
 """
 
+[tasks."data:verify-build"]
+description = "Build the reference DB twice from sources and prove byte-identity (dev box only)"
+run = """
+poetry run python tools/build_reference_db.py --out dist/build/ref-a.sqlite
+poetry run python tools/build_reference_db.py --out dist/build/ref-b.sqlite
+python3 - <<'EOF'
+import hashlib, pathlib, sys
+h = [hashlib.sha256(pathlib.Path(p).read_bytes()).hexdigest()
+     for p in ("dist/build/ref-a.sqlite", "dist/build/ref-b.sqlite")]
+print(h[0]); sys.exit(0 if h[0] == h[1] else 1)
+EOF
+"""
+
 # =============================================================================
 # DATABASE (Namespaced)
 # Isolated Postgres instance via Docker to avoid OS daemon collisions

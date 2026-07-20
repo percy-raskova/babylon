@@ -46,6 +46,10 @@ AUDIO_OUTPUT_DIR = "assets/audio"
 # INSTALLATION
 # =============================================================================
 
+[tasks."nix"]
+description = "run any command inside the mounted infra devshell (pinned toolchain incl. sqlite-3.53.1 python), e.g. mise run nix -- poetry run python tools/build_reference_db.py; needs: git submodule update --init infra"
+run = 'nix develop "${MISE_PROJECT_ROOT:-$PWD}/infra" --command'
+
 [tasks.install]
 description = "Install all dependencies"
 run = "poetry install --with dev"

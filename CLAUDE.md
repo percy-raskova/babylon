@@ -161,6 +161,18 @@ CI (`.github/workflows/ci.yml`) invokes the same mise tasks devs run (`test:unit
 `qa:regression`, …) — the only raw-poetry exceptions are the py3.13 forward-compat leg (`nightly.yml`)
 and a handful of documented one-offs (migrations, doc build, ad hoc pytest legs).
 
+## Environment — the infra devshell (canonical toolchain)
+
+`infra/` is a git submodule of [babylon-infra](https://github.com/percy-raskova/babylon-infra)
+(Program 20 / ADR069/071; mounted 2026-07-20 by owner ruling). Its Nix flake is the canonical
+toolchain: python 3.12 with **sqlite pinned 3.53.1** (lockstep with
+`tools/build_reference_db.py::PINNED_SQLITE_VERSION` — the reference-DB byte-identity contract),
+node, gdal/geos/proj, libpq, playwright browsers. Fresh clones/worktrees:
+`git submodule update --init infra`, then run pinned-toolchain commands via
+`mise run nix -- <cmd>`. The host venv (3.46.1 sqlite) still runs everything EXCEPT the
+reference-DB builder, which hard-fails off-pin by design. Bumping the flake's `nixpkgs-data`
+input IS a declared sqlite-pin change.
+
 ## Machine safety — resource limits (history: froze the dev box twice, 2026-07-12)
 
 Solo dev box (12 cores / 31 GB RAM). The 2026-07-12 freezes were root-caused and FIXED: BLAS

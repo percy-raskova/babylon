@@ -553,7 +553,7 @@ def attribute_divergence(
         The first-divergence attribution, or ``None`` if the two row sets
         are identical (row-for-row, cell-for-cell, and equal in count).
     """
-    from tools.regression_scenarios import CHANNEL_WRITERS
+    from regression_scenarios import CHANNEL_WRITERS
 
     n = min(len(expected_rows), len(actual_rows))
     for i in range(n):

@@ -678,7 +678,7 @@ PHANTOM_ATTRIBUTE_EXEMPTIONS: Final[tuple[SentinelExemption, ...]] = (
         ),
         owner="Persephone Raskova",
         date="2026-07-19",
-        tracking_task="N/A (task #40 discovery; unscoped, owner-gated)",
+        tracking_task="#58 (task #40 discovery; wire-or-delete owner-gated)",
     ),
     SentinelExemption(
         key=(
@@ -693,6 +693,6 @@ PHANTOM_ATTRIBUTE_EXEMPTIONS: Final[tuple[SentinelExemption, ...]] = (
         ),
         owner="Persephone Raskova",
         date="2026-07-19",
-        tracking_task="N/A (task #40 discovery; unscoped, owner-gated)",
+        tracking_task="#58 (task #40 discovery; wire-or-delete owner-gated)",
     ),
 )

@@ -61,6 +61,7 @@ from babylon.config.defines.state_apparatus import (
     InstitutionDefines,
     StateApparatusAIDefines,
 )
+from babylon.config.defines.substrate import SubstrateDefines
 from babylon.config.defines.survival import (
     AidDefines,
     BehavioralDefines,
@@ -125,6 +126,7 @@ __all__ = [
     "SolidarityDefines",
     "StateApparatusAIDefines",
     "StruggleDefines",
+    "SubstrateDefines",
     "SurvivalDefines",
     "TensionDefines",
     "TerritoryDefines",

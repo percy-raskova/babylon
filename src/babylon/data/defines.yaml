@@ -1011,6 +1011,14 @@ market:
   correction_debt_slope: 0.5  # Game design: additional correction severity per unit accumulated-debt-to-capital ratio — a debt spiral makes the re-identification of claims with real surplus MORE violent. (>= 0.0, <= 5.0)
 
 # ---------------------------------------------------------------------
+# substrate — Raw-material stock depletion/regeneration coefficients.
+# ---------------------------------------------------------------------
+substrate:
+  depletion_scale: 1.0  # Game design: multiplier applied to a territory's extraction_intensity before it drives raw_material_stock depletion -- lets raw-material sensitivity to extraction diverge from Territory.biocapacity's own (MetabolismSystem) dynamics. 1.0 = extraction_intensity applies unscaled. (>= 0.0, <= 10.0)
+  regeneration_rate: 0.0  # Game design: fraction of raw_material_stock regenerated per tick. Minerals are non-renewable, so the default is 0.0 (monotone depletion); nonzero exists for modding a renewable substrate variant, not as a balancing fudge factor. (>= 0.0, <= 1.0)
+  entropy_factor: 1.2  # Game design: extraction costs more than it yields (thermodynamic inefficiency) -- mirrors MetabolismDefines.entropy_factor's convention for this parallel raw_material_stock family. (> 1.0, <= 3.0)
+
+# ---------------------------------------------------------------------
 # capital_vol3 — Volume III (surplus distribution / credit / counter-tendency) coefficients.
 # ---------------------------------------------------------------------
 capital_vol3:

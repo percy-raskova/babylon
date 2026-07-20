@@ -62,6 +62,7 @@ from babylon.config.defines.state_apparatus import (
     InstitutionDefines,
     StateApparatusAIDefines,
 )
+from babylon.config.defines.substrate import SubstrateDefines
 from babylon.config.defines.survival import (
     BehavioralDefines,
     StruggleDefines,
@@ -128,6 +129,7 @@ class GameDefines(BaseModel):
     - epistemic_horizon: Fog-of-war Phase 1 shadow coefficients (Epistemic Horizon program)
     - doctrine: DoctrineSystem mechanic coefficients (owner-ratified 2026-07-15)
     - market: Price⟷value scissors dynamics (Program 23 Phase-1 shadow, ADR077)
+    - substrate: raw_material_stock depletion/regeneration (#39 T6)
     - capital_vol3: Volume III surplus-distribution / credit / counter-tendency
       thresholds (024-capital-volume-iii; migrated off module-level Finals
       in the 2026-07-18 honesty sweep)
@@ -197,6 +199,8 @@ class GameDefines(BaseModel):
     doctrine: DoctrineDefines = Field(default_factory=DoctrineDefines)
     # Market Scissors — price/fictitious oscillators (Program 23 Phase-1 shadow, ADR077)
     market: MarketDefines = Field(default_factory=MarketDefines)
+    # Substrate physical stocks — raw_material_stock depletion/regeneration (#39 T6)
+    substrate: SubstrateDefines = Field(default_factory=SubstrateDefines)
     # Volume III financial-claims thresholds (024-capital-volume-iii;
     # 2026-07-18 honesty sweep, U2)
     capital_vol3: CapitalVolumeIIIDefines = Field(default_factory=CapitalVolumeIIIDefines)
@@ -331,6 +335,7 @@ class GameDefines(BaseModel):
             epistemic_horizon=EpistemicHorizonDefines(**data.get("epistemic_horizon", {})),
             doctrine=DoctrineDefines(**data.get("doctrine", {})),
             market=MarketDefines(**data.get("market", {})),
+            substrate=SubstrateDefines(**data.get("substrate", {})),
             capital_vol3=CapitalVolumeIIIDefines(**data.get("capital_vol3", {})),
             veil=VeilDefines(**data.get("veil", {})),
         )

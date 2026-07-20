@@ -100,7 +100,7 @@ description = "Run complexity gate (xenon) - fails if CC > 15"
 run = "poetry run xenon --max-absolute C src/"
 
 [tasks.check]
-description = "Fast CI gate: data-pathway + hygiene + ALL 11 sentinels + lint + imports + format + typecheck + unit tests"
+description = "Fast CI gate: data-pathway + hygiene + ALL 13 sentinels + lint + imports + format + typecheck + unit tests"
 depends = ["data:doctor", "check:hygiene", "check:sentinels", "lint", "lint:imports", "format", "typecheck", "test:unit"]
 
 [tasks."data:doctor"]
@@ -164,16 +164,24 @@ description = "Synthetic-data sentinel: every declared synthetic source's source
 run = "poetry run python tools/sentinel_check.py synthetic --check"
 
 [tasks."check:sentinels"]
-description = "ALL 12 sentinels (owner ruling 2026-07-18: the whole family is fast-gate LOCALLY — the dev box has the reference DB): seam coverage vocabulary inert dangling unconsumed masked-arithmetic aggregation fog catalog partition synthetic"
+description = "ALL 13 sentinels (owner ruling 2026-07-18: the whole family is fast-gate LOCALLY — the dev box has the reference DB): seam coverage vocabulary inert dangling unconsumed masked-arithmetic aggregation fog catalog partition synthetic gate-coverage"
 depends = ["check:sentinels-static", "check:catalog"]
 
 [tasks."check:sentinels-static"]
-description = "The 11 static sentinels (no reference DB needed) — CI's fast-gate job runs THIS; the catalog DB-probe runs where the DB exists (locally via check:sentinels, in CI via nightly's requires_reference_db job)"
-depends = ["check:seams", "check:coverage", "check:vocabulary", "check:inert", "check:dangling", "check:unconsumed", "check:masked-arithmetic", "check:aggregation", "check:fog", "check:partition", "check:synthetic"]
+description = "The 12 static sentinels (no reference DB needed) — CI's fast-gate job runs THIS; the catalog DB-probe runs where the DB exists (locally via check:sentinels, in CI via nightly's requires_reference_db job)"
+depends = ["check:seams", "check:coverage", "check:vocabulary", "check:inert", "check:dangling", "check:unconsumed", "check:masked-arithmetic", "check:aggregation", "check:fog", "check:partition", "check:synthetic", "check:gate-coverage"]
 
 [tasks."check:surface"]
 description = "Sentinel: __all__ vs its pinned baseline frozenset (public-surface baseline blindness gate)"
 run = "poetry run python tools/sentinel_check.py surface --check"
+
+[tasks."check:gate-coverage"]
+description = "Sentinel: qa:regression estate declaration is complete over all 30 engine systems (gate-blindness gate)"
+run = "poetry run python tools/sentinel_check.py gate-coverage --check"
+
+[tasks."check:gate-coverage-truth"]
+description = "Dynamic gate-coverage truth probe: every declared SystemEvidence actually occurs in its scenario (runs the engine, ~one gate-length)"
+run = "poetry run python tools/sentinel_check.py gate-coverage-truth --check"
 
 [tasks."check:liveness"]
 description = "Liveness sentinel (ADVISORY, local): correct-but-inert + computed-but-never-consumed"
@@ -843,13 +851,14 @@ description = "Generate dense per-tick golden trace CSVs for the 5 regression sc
 run = "poetry run python tools/regression_test.py generate --force --dense"
 
 [tasks."qa:e2e-regression"]
-description = "Run headless 5-tick tri-county sim with --strict, compare like-for-like baseline (spec-064; scope pairing fixed in spec-086 T038)"
+description = "Run headless 5-tick tri-county sim with --strict, compare like-for-like baseline (spec-064; scope pairing fixed in spec-086 T038; dense golden leg added Task 10/E2b)"
 run = """
 ARTIFACT_DIR=$(poetry run python -m babylon.engine.headless_runner \\
   --scope detroit-tri-county --ticks 5 --strict)
 poetry run python tools/regression_test.py compare-bundle \\
   --bundle "$ARTIFACT_DIR" \\
-  --baseline tests/baselines/detroit-tri-county-5t.json
+  --baseline tests/baselines/detroit-tri-county-5t.json \\
+  --dense-baseline tests/baselines/dense/detroit_tri_county.csv
 """
 
 [tasks."qa:storage-budget"]

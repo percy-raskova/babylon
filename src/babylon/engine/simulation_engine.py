@@ -448,12 +448,39 @@ def _save_graph_context(
     persistent_context: dict[str, Any] | None,
     tick: int,
 ) -> None:
-    """Save tick_dynamics from graph into persistent_context after systems run.
+    """Save tick_dynamics into persistent_context; national_financial save-side only.
 
-    Feature 020: Persists tick_dynamics so it survives the WorldState round-trip.
-    Also accumulates year-boundary snapshots for get_time_series().
+    Feature 020: persists tick_dynamics so it survives the WorldState
+    round-trip. Also accumulates year-boundary snapshots for get_time_series().
+
+    qa-modernization E3-pre (2026-07-20): additionally saves
+    ``_national_financial`` into ``persistent_context`` whenever the Vol III
+    financial layer stamped ``graph.graph["national_financial"]`` that tick,
+    so the qa harness and the gate-coverage-truth probe can read it back out
+    of ``persistent_context`` even though it never survives the per-tick
+    ``WorldState`` round-trip on the graph itself. This is deliberately
+    SAVE-SIDE ONLY — there is no corresponding restore in
+    ``_restore_graph_context``. Restoring was tried and reverted: doing so
+    re-stamps ``graph.graph["national_financial"]`` before systems run, which
+    changes MarketScissorsSystem/ContradictionSystem's live tick-N dynamics
+    (they read the attr straight off the graph), not just observability —
+    verified against the 5 qa:regression baselines (2026-07-20): with restore
+    wired, 4 of 5 diverge starting tick 2 (e.g. imperial_circuit's
+    C002_wealth: 0.969216 -> 0.758412), because ``TickDynamicsSystem``'s
+    annual pipeline gate uses the PRE-increment ``state.tick`` (a fresh
+    ``WorldState`` starts at ``tick=0``, and ``simulation_engine.step()``
+    builds ``TickContext(tick=state.tick, ...)``), so ``0 % 52 == 0`` fires
+    the financial layer on the very FIRST ``step()`` call rather than "never"
+    — restoring that value then leaks it forward through the rest of every
+    52-tick baseline. Whether the engine itself should see persisted
+    financial state between annual boundaries is a real Vol III design
+    question, gated to the owner, not this observability program.
     """
-    if persistent_context is None or "tick_dynamics" not in G.graph:
+    if persistent_context is None:
+        return
+    if "national_financial" in G.graph:
+        persistent_context["_national_financial"] = G.graph["national_financial"]
+    if "tick_dynamics" not in G.graph:
         return
     tick_dynamics_data = G.graph["tick_dynamics"]
     persistent_context["_tick_dynamics"] = tick_dynamics_data

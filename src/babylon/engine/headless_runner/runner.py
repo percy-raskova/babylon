@@ -45,6 +45,7 @@ from babylon.domain.economics.county_exposure import load_county_exposure_map
 from babylon.engine.context import TickContext
 from babylon.engine.headless_runner.argparse_cli import build_parser
 from babylon.engine.headless_runner.bridge import WorldStateBridge
+from babylon.engine.headless_runner.dense_trace import dense_trace_header, dense_trace_row
 from babylon.engine.headless_runner.event_capture import EventCapture
 from babylon.engine.headless_runner.manifest import build_manifest
 from babylon.engine.headless_runner.models import (
@@ -67,6 +68,7 @@ from babylon.engine.headless_runner.storage_probe import query_storage_footprint
 from babylon.engine.headless_runner.trace_emitter import TRACE_COLUMNS, TraceEmitter
 from babylon.engine.services import ServiceContainer
 from babylon.engine.simulation_engine import _DEFAULT_SYSTEMS, SimulationEngine
+from babylon.engine.trace_format import trace_rows_to_csv_bytes
 from babylon.kernel.event_bus import EventBus
 from babylon.kernel.services import ServicesProtocol
 from babylon.models.world_state import WorldState
@@ -1082,6 +1084,10 @@ def run(config: SimulationRunConfig) -> SimulationRunResult:
     leontief_session: Any = None
     ticks_completed = 0
     per_tick_durations: list[float] = []
+    # Task 10 (E2b): one row per tick (including tick 0), populated by
+    # _tick_loop's _capture_dense_row closure; written to
+    # <output_dir>/dense_trace.csv by _emit_artifacts.
+    dense_rows: list[list[str]] = []
     t_session = 0.0
     t_hex = 0.0
 
@@ -1252,6 +1258,7 @@ def run(config: SimulationRunConfig) -> SimulationRunResult:
                     per_tick_durations=per_tick_durations,
                     county_exposure_by_external=county_exposure_by_external,
                     external_nodes_phi=external_nodes_phi,
+                    dense_rows=dense_rows,
                 )
                 if endgame_event_payload is not None:
                     end_game_event = endgame_event_payload
@@ -1323,6 +1330,7 @@ def run(config: SimulationRunConfig) -> SimulationRunResult:
             terminal_state=terminal_state,
             snapshot=snapshot,
             audit_entries=audit_entries,
+            dense_rows=dense_rows,
             performance=_build_performance(
                 total_start=t_total,
                 session_init=t_session,
@@ -1473,6 +1481,7 @@ def _tick_loop(
     services: ServicesProtocol | None = None,
     county_exposure_by_external: dict[str, dict[str, float]] | None = None,
     external_nodes_phi: dict[str, float] | None = None,
+    dense_rows: list[list[str]] | None = None,
 ) -> tuple[int, dict[str, Any] | None]:
     """Drive the tick loop with tqdm + cooperative SIGINT.
 
@@ -1493,9 +1502,39 @@ def _tick_loop(
     value-identical no-op — ``_effective_external_nodes_phi`` returns a map
     equal to ``external_nodes_phi`` — so canonical runs are unaffected.
 
+    Task 10 (E2b): when ``dense_rows`` is provided (and both ``runtime``
+    and ``graph`` are available — the standard production path; the
+    bridge-only unit tests in ``test_runner_engine_invocation.py`` pass
+    neither, so they're unaffected), one row is appended to it per tick
+    (including tick 0), mirroring ``runner._county_terminal_snapshot``'s
+    per-county v/c/s/k/population query at every tick instead of only the
+    terminal one, plus the county surplus-distribution + national
+    financial values read off ``graph`` post-tick. Mutated in place
+    (matches the existing ``per_tick_durations`` accumulator idiom in this
+    same function) rather than widening the return tuple, so this stays
+    backward-compatible with the two direct unit-test callers.
+
     Returns:
         ``(ticks_completed, endgame_event)``.
     """
+    pool = runtime.pool if runtime is not None else None
+    dense_counties = sorted(config.scope_fips)
+
+    def _capture_dense_row(tick_number: int) -> None:
+        if dense_rows is None or pool is None or graph is None:
+            return
+        county_snapshot = _county_terminal_snapshot(
+            pool=pool, session_id=session_id, terminal_tick=tick_number
+        )
+        dense_rows.append(
+            dense_trace_row(
+                tick=tick_number,
+                counties=dense_counties,
+                county_snapshot=county_snapshot,
+                graph=graph,
+            )
+        )
+
     # Tick 0 was persisted by initialize_session via the hex hydrator
     # (hex_state rows only). Spec-065 also persists the tick-0 subsystem
     # rows as the first iteration of this loop, so the bridge call
@@ -1517,6 +1556,7 @@ def _tick_loop(
             expected_hash=determinism_hash_t0,
             expected_hex_rows=bridge.hex_template_size,
         )
+    _capture_dense_row(0)
 
     # Spec-102 SLICE B: shock timeline + persistent per-bloc multiplier
     # state, threaded across tick-loop iterations (never reset per tick).
@@ -1578,6 +1618,7 @@ def _tick_loop(
             county_exposure_by_external=county_exposure_by_external,
             external_nodes_phi=effective_external_nodes_phi,
         )
+        _capture_dense_row(tick)
         per_tick_durations.append(time.perf_counter() - t_tick)
         ticks_completed = tick + 1
 
@@ -1654,8 +1695,9 @@ def _emit_artifacts(
     events: tuple[Any, ...] = (),
     bridge_db_reads: dict[str, int] | None = None,
     economics_fallbacks: dict[str, Any] | None = None,
+    dense_rows: list[list[str]] | None = None,
 ) -> Path:
-    """Write trace.csv + summary.json + manifest.json into ``config.output_dir``."""
+    """Write trace.csv + dense_trace.csv + summary.json + manifest.json into ``config.output_dir``."""
     _prepare_output_dir(config.output_dir)
     artifact_dir = config.output_dir
 
@@ -1671,6 +1713,15 @@ def _emit_artifacts(
         for row in trace_rows:
             emitter.write_row(row)
         trace_row_count = emitter.row_count
+
+    # dense_trace.csv (Task 10, E2b) — one row per tick, only when the tick
+    # loop actually captured any (dry-run / bridge-only-unit-test callers
+    # pass an empty list; --dry-run has no tick loop at all).
+    dense_trace_path: Path | None = None
+    if dense_rows:
+        dense_header = dense_trace_header(sorted(config.scope_fips))
+        dense_trace_path = artifact_dir / "dense_trace.csv"
+        dense_trace_path.write_bytes(trace_rows_to_csv_bytes(dense_header, dense_rows))
 
     # summary.json
     summary_payload = build_summary(
@@ -1710,6 +1761,15 @@ def _emit_artifacts(
         ("trace.csv", "trace_csv_v1", trace_path.stat().st_size, trace_row_count),
         ("summary.json", "summary_json_v1", summary_path.stat().st_size, None),
     ]
+    if dense_trace_path is not None:
+        artifact_files.append(
+            (
+                "dense_trace.csv",
+                "dense_trace_csv_v1",
+                dense_trace_path.stat().st_size,
+                len(dense_rows) if dense_rows is not None else None,
+            )
+        )
     manifest_payload = build_manifest(
         config=config,
         session_id=str(session_id),

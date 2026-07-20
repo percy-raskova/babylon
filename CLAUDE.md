@@ -134,8 +134,11 @@ files, so intertwined units force ugly giant commits. Use `mise run commit -- "t
 ## Definition of done
 
 - `mise run check` — lint + format + typecheck + `test:unit` — green.
-- For any engine/economics/defines change: `mise run qa:regression` **byte-identical** (5 scenarios).
-  If a value moves unintentionally, STOP; if intentionally, regenerate baselines and say so.
+- For any engine/economics/defines change: `mise run qa:regression` **byte-identical** (6 scenarios
+  + no-dead-columns leg + in-gate two-process determinism leg, ~10s local) plus `mise run
+  check:gate-coverage` (static, fast lane) / `check:gate-coverage-truth` (dynamic, qa lane) —
+  coverage is now declared and proved, not implicit (ADR090). If a value moves unintentionally,
+  STOP; if intentionally, regenerate baselines and say so.
 - After significant work: update `ai/state.yaml`; add an ADR in `ai/decisions/` (individual
   `ADR0NN_*.yaml` files + `index.yaml` catalog) for architectural decisions.
 
@@ -149,7 +152,7 @@ mise run check                          # fast gate: lint + format + typecheck +
 mise run check:quick                    # same minus the test leg
 mise run test:q -- tests/unit/foo.py    # quiet scoped pytest (keeps cache => --lf works)
 mise run test:failed                    # re-run last failures
-mise run qa:regression                  # 5-scenario byte-identical baseline gate
+mise run qa:regression                  # 6-scenario byte-identical baseline gate (ADR090)
 mise run sim:status                     # canonical-run status (tick/520, DB size, liveness)
 mise run db:sql -- "SELECT ..."         # one-shot SQL vs babylon_test
 ```

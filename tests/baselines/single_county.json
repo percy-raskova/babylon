@@ -1,0 +1,95 @@
+{
+  "scenario": "single_county",
+  "description": "Wayne-seeded minimal county: Vol III financial layer, MELT path, and distribution identity all fire",
+  "generated_at": "2026-07-20T14:26:06+00:00",
+  "defines_hash": "e1bb9aa5af15fd56",
+  "max_ticks": 52,
+  "checkpoints": [
+    {
+      "tick": 0,
+      "p_w_wealth": 0.0,
+      "p_c_wealth": 0.0,
+      "c_b_wealth": 0.5,
+      "c_w_wealth": 0.5,
+      "imperial_rent_pool": 100.0,
+      "exploitation_tension": 0.0,
+      "p_w_consciousness": 0.0,
+      "p_w_p_revolution": 0.0,
+      "p_w_active": false
+    },
+    {
+      "tick": 10,
+      "p_w_wealth": 0.0,
+      "p_c_wealth": 0.0,
+      "c_b_wealth": 0.442291,
+      "c_w_wealth": 0.624994,
+      "imperial_rent_pool": 98.05975,
+      "exploitation_tension": 0.230773,
+      "p_w_consciousness": 0.0,
+      "p_w_p_revolution": 0.0,
+      "p_w_active": false
+    },
+    {
+      "tick": 20,
+      "p_w_wealth": 0.0,
+      "p_c_wealth": 0.0,
+      "c_b_wealth": 0.393519,
+      "c_w_wealth": 0.741051,
+      "imperial_rent_pool": 96.166794,
+      "exploitation_tension": 0.306311,
+      "p_w_consciousness": 0.0,
+      "p_w_p_revolution": 0.0,
+      "p_w_active": false
+    },
+    {
+      "tick": 30,
+      "p_w_wealth": 0.0,
+      "p_c_wealth": 0.0,
+      "c_b_wealth": 0.352952,
+      "c_w_wealth": 0.84889,
+      "imperial_rent_pool": 94.319486,
+      "exploitation_tension": 0.412649,
+      "p_w_consciousness": 0.0,
+      "p_w_p_revolution": 0.0,
+      "p_w_active": false
+    },
+    {
+      "tick": 40,
+      "p_w_wealth": 0.0,
+      "p_c_wealth": 0.0,
+      "c_b_wealth": 0.319936,
+      "c_w_wealth": 0.949191,
+      "imperial_rent_pool": 92.516246,
+      "exploitation_tension": 0.495817,
+      "p_w_consciousness": 0.0,
+      "p_w_p_revolution": 0.0,
+      "p_w_active": false
+    },
+    {
+      "tick": 50,
+      "p_w_wealth": 0.0,
+      "p_c_wealth": 0.0,
+      "c_b_wealth": 0.293835,
+      "c_w_wealth": 1.042577,
+      "imperial_rent_pool": 90.755589,
+      "exploitation_tension": 0.560263,
+      "p_w_consciousness": 0.0,
+      "p_w_p_revolution": 0.0,
+      "p_w_active": false
+    },
+    {
+      "tick": 52,
+      "p_w_wealth": 0.0,
+      "p_c_wealth": 0.0,
+      "c_b_wealth": 0.289384,
+      "c_w_wealth": 1.060475,
+      "imperial_rent_pool": 90.408442,
+      "exploitation_tension": 0.571239,
+      "p_w_consciousness": 0.0,
+      "p_w_p_revolution": 0.0,
+      "p_w_active": false
+    }
+  ],
+  "final_outcome": "SURVIVED",
+  "ticks_survived": 52
+}

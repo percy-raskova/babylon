@@ -37,10 +37,29 @@ import regression_test as rt  # type: ignore[import-not-found]  # noqa: E402
 BASELINE_DIR = Path(__file__).resolve().parents[3] / "tests" / "baselines"
 DENSE_DIR = BASELINE_DIR / "dense"
 
+_PENDING_CEREMONY_SKIP_REASON = "PENDING CEREMONY: golden minted by the Task 11 ceremony"
+
+
+def _skip_if_pending_ceremony(scenario_name: str) -> None:
+    """Skip loudly for a scenario whose baseline hasn't been minted yet.
+
+    Keyed off the explicit ``rt.PENDING_CEREMONY`` allowlist, never off
+    golden-file absence: a scenario NOT in the allowlist whose golden is
+    missing (e.g. one of the five already-minted scenarios, accidentally
+    deleted) must still FAIL loudly, not silently skip — that's exactly the
+    failure mode a file-absence-keyed skip would mask. Task 11's ceremony
+    mints ``single_county``'s golden and removes it from
+    ``PENDING_CEREMONY`` in the same commit, which turns this skip back into
+    a real assertion automatically.
+    """
+    if scenario_name in rt.PENDING_CEREMONY:
+        pytest.skip(_PENDING_CEREMONY_SKIP_REASON)
+
 
 @pytest.mark.parametrize("scenario_name", sorted(rt.SCENARIOS))
 def test_dense_golden_exists_for_every_scenario(scenario_name: str) -> None:
     """Every scenario in SCENARIOS has a committed dense CSV golden."""
+    _skip_if_pending_ceremony(scenario_name)
     golden_path = DENSE_DIR / f"{scenario_name}.csv"
     assert golden_path.exists(), (
         f"missing dense golden for {scenario_name!r} at {golden_path} — "
@@ -51,6 +70,7 @@ def test_dense_golden_exists_for_every_scenario(scenario_name: str) -> None:
 @pytest.mark.parametrize("scenario_name", sorted(rt.SCENARIOS))
 def test_dense_golden_has_documented_column_shape(scenario_name: str) -> None:
     """The header starts with 'tick' and every row has the same width as the header."""
+    _skip_if_pending_ceremony(scenario_name)
     golden_path = DENSE_DIR / f"{scenario_name}.csv"
     with golden_path.open(newline="") as f:
         rows = list(csv.reader(f))
@@ -77,6 +97,7 @@ def test_dense_golden_has_documented_column_shape(scenario_name: str) -> None:
 @pytest.mark.parametrize("scenario_name", sorted(rt.SCENARIOS))
 def test_dense_trace_regeneration_matches_committed_golden(scenario_name: str) -> None:
     """Re-running the scenario reproduces the committed golden byte-for-byte."""
+    _skip_if_pending_ceremony(scenario_name)
     expected_max_ticks = rt.load_baseline(BASELINE_DIR / f"{scenario_name}.json").max_ticks
     _baseline, dense = rt.run_scenario_dense(scenario_name, max_ticks=expected_max_ticks)
 

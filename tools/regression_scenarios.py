@@ -70,6 +70,17 @@ SCENARIOS: Final[dict[str, dict[str, Any]]] = {
     },
 }
 
+#: Scenarios registered in SCENARIOS whose baseline (checkpoint JSON + dense CSV
+#: golden) has not been minted yet. Declared explicitly — NOT inferred from
+#: golden-file absence — so the dense-golden gate
+#: (tests/unit/tools/test_dense_goldens.py) and the report-completeness gate
+#: (tests/unit/tools/test_vol3_baseline_delta_report.py) skip these scenarios
+#: LOUDLY while still failing hard if a golden for one of the five ALREADY-minted
+#: scenarios ever goes missing (a file-absence-keyed skip would silently mask
+#: that accident instead of catching it). Task 11's ceremony mints
+#: single_county's baseline and removes it from this set in the same commit.
+PENDING_CEREMONY: Final[frozenset[str]] = frozenset({"single_county"})
+
 
 def create_scenario(
     name: str,

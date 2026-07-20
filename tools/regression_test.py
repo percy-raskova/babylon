@@ -52,7 +52,11 @@ sys.path.insert(0, str(Path(__file__).parent.parent / "src"))
 sys.path.insert(0, str(Path(__file__).parent))
 
 # Import from centralized shared module (ADR036)
-from regression_scenarios import SCENARIOS, create_scenario  # noqa: F401  (re-export)
+from regression_scenarios import (  # noqa: F401  (re-export)
+    PENDING_CEREMONY,
+    SCENARIOS,
+    create_scenario,
+)
 from shared import (
     COMPRADOR_ID,
     CORE_BOURGEOISIE_ID,

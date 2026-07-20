@@ -248,38 +248,6 @@ the Vol III financial layer; even the live price⟷value scissors reads only
 — a consciousness-layer mechanism the Vol III money layer only feeds through the
 (absent) financial oppositions; with no county surplus the routing is unchanged.
 
-### single_county
-
-**Description:** Wayne-seeded minimal county — Vol III financial layer, MELT path,
-and distribution identity all fire (`tools/regression_test.py` SCENARIOS). Added by
-the **qa:regression modernization program** (Task 8/E2a, 2026-07-20) — this
-scenario postdates the Vol III money-scissors branch the rest of this report
-documents, so it is not a "before vs after Vol III" comparison the way the five
-scenarios above are; it is the scenario this report's own headline finding says
-was missing ("the five `qa:regression` scenarios carry zero `county_fips`").
-
-| Field | Before | After | Named mechanism |
-|---|---|---|---|
-| First checkpoint tick with a value delta | n/a — no committed baseline yet | n/a — no committed baseline yet | carries a real `county_fips` ("26163", Wayne County MI); its committed baseline mints in the modernization program's Task 11 ceremony, not this report |
-| `final_outcome` / `ticks_survived` | n/a | n/a | pending Task 11 |
-| Correction fired differently | n/a | n/a | pending Task 11 |
-| Principal contradiction at terminal tick | n/a | n/a | pending Task 11 |
-| First dense-trace divergence | n/a | n/a | pending Task 11 (no dense golden committed yet — `qa:regression` prints `PENDING CEREMONY: single_county`) |
-
-**Materiality argument:** a live 52-tick spot-run (`task-8-report.md`, 2026-07-20)
-with a real Wayne 26163/2010 tensor
-(`tests/fixtures/single_county_wayne.json`, extracted via the production
-`MarxianHydrator` chain) confirms the interest layer is reachable through this
-exact scenario/harness path — `interest_payments = 970247586.15` (> 0),
-`endogenous_interest.rate = 0.017834` (> 0) — the same mechanism SC-001 proved
-live above, now reachable from a scenario headed for the byte-identical tier
-instead of only from a live-DB integration test. The scenario's own committed
-baseline (the actual "before/after" this table's format expects) is minted in
-Task 11's ceremony; until then it is intentionally excluded from the
-byte-identical pass/fail count (`compare_all_baselines` prints `PENDING
-CEREMONY: single_county`, per the modernization design's E2a) rather than
-either fabricated here or silently dropped from this report.
-
 ## qa:e2e-regression (detroit-tri-county, 5 ticks)
 
 **PASS, unchanged.** The captured run (`reports/vol3-e2e-regression-raw-diff.txt`)

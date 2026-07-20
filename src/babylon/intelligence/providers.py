@@ -16,9 +16,14 @@ Design commitments, from the nix-player-channel and local-first docs:
   langchain — X.6.
 * **Mute is always legal** (R4). The game is fully playable and fully
   informative silent; nothing here is ever load-bearing for the sim.
-* **AI observes and narrates; the engine adjudicates** (II.5). ``parse``
-  returns only schema-validated verb JSON or raises ``ParseRejected`` —
-  prompt injection degrades prose, never state legality.
+* **AI observes and narrates; the engine adjudicates** (II.5). This module
+  has no free-text-to-verb parse lane: Amendment V (ratified 2026-07-20)
+  rules there is no LLM in the input path (ruling R4) — player verbs enter
+  only through the deterministic verb registry, and free text is flavor,
+  never engine state. The drop this module originated from carried a
+  ``parse()`` method (schema-validated verb JSON from free text) per the
+  pre-Amendment-V ``nix-plan.md`` §A8 proposal; it was removed before this
+  seam merged, per owner ruling, for Amendment V compliance.
 * **Loud/quiet partition** (III.11): provider failures raise
   ``ProviderUnavailable`` — the intelligence layer catches, logs loudly, and
   degrades to mute quietly. The sim never blocks on the network.
@@ -40,10 +45,8 @@ Archive embedder compose on top of these primitives.
 
 from __future__ import annotations
 
-import json
 import logging
 import os
-import re
 import stat
 import tomllib
 from collections.abc import Callable, Mapping, Sequence
@@ -51,7 +54,6 @@ from enum import StrEnum
 from pathlib import Path
 from typing import Any, Protocol, runtime_checkable
 
-import jsonschema
 from openai import OpenAI
 from pydantic import BaseModel, ConfigDict, Field, SecretStr
 
@@ -66,7 +68,6 @@ __all__ = [
     "ProviderHealth",
     "ProviderError",
     "ProviderUnavailable",
-    "ParseRejected",
     "NarratorProvider",
     "OpenAICompatProvider",
     "MuteProvider",
@@ -97,15 +98,6 @@ DEFAULT_CLOUDFLARE_EMBED_MODEL = "@cf/baai/bge-m3"
 DEFAULT_LOCAL_CHAT_MODEL = "local-chat"  # llama-server serves its loaded gguf under its own name
 DEFAULT_LOCAL_EMBED_MODEL = "local-embed"
 
-_PARSE_SYSTEM = (
-    "You translate a player's free-text intent into ONE action as strict JSON "
-    "matching the provided schema. Output only the JSON object — no prose, no "
-    "code fences. If the intent does not map to a legal action, output "
-    '{"verb": null}.'
-)
-
-_FENCE_RE = re.compile(r"^```(?:json)?\s*(.*?)\s*```$", re.DOTALL)
-
 
 class ProviderKind(StrEnum):
     BUNDLED = "bundled"
@@ -121,11 +113,6 @@ class ProviderError(RuntimeError):
 class ProviderUnavailable(ProviderError):
     """Transport/endpoint failure. Caller degrades to mute: quietly for the
     sim, loudly in the log (III.11 partition)."""
-
-
-class ParseRejected(ProviderError):
-    """The model's output was not schema-valid verb JSON. The engine never
-    sees it (II.5); the TUI falls back to structured verb entry."""
 
 
 class ProviderEndpoint(BaseModel):
@@ -170,18 +157,20 @@ class ProviderHealth(BaseModel):
 
 @runtime_checkable
 class NarratorProvider(Protocol):
-    """§A8: narrate / parse / embed / health. Presentation composes above;
-    nothing below this protocol touches adjudication."""
+    """§A8: narrate / embed / health. Presentation composes above; nothing
+    below this protocol touches adjudication.
+
+    No ``parse()``: Amendment V (ratified 2026-07-20, ruling R4) rules there
+    is no LLM in the input path — free text is flavor only and never becomes
+    engine state. Player verbs enter only through the deterministic verb
+    registry.
+    """
 
     endpoint: ProviderEndpoint
 
     def narrate(
         self, system: str, prompt: str, *, max_tokens: int = 512, temperature: float = 0.7
     ) -> NarrationResult: ...
-
-    def parse(
-        self, player_text: str, verb_schema: Mapping[str, Any], *, system: str = _PARSE_SYSTEM
-    ) -> dict[str, Any]: ...
 
     def embed(self, texts: Sequence[str]) -> EmbeddingResult: ...
 
@@ -391,26 +380,6 @@ class OpenAICompatProvider:
             completion_tokens=getattr(usage, "completion_tokens", None),
         )
 
-    def parse(
-        self, player_text: str, verb_schema: Mapping[str, Any], *, system: str = _PARSE_SYSTEM
-    ) -> dict[str, Any]:
-        result = self.narrate(system, player_text, max_tokens=256, temperature=0.0)
-        raw = result.text.strip()
-        fenced = _FENCE_RE.match(raw)
-        if fenced:
-            raw = fenced.group(1)
-        try:
-            candidate = json.loads(raw)
-        except json.JSONDecodeError as exc:
-            raise ParseRejected(f"parser output was not JSON: {exc}") from exc
-        if not isinstance(candidate, dict):
-            raise ParseRejected("parser output was JSON but not an object")
-        try:
-            jsonschema.validate(candidate, dict(verb_schema))
-        except jsonschema.ValidationError as exc:
-            raise ParseRejected(f"parser output failed verb schema: {exc.message}") from exc
-        return candidate
-
     def embed(self, texts: Sequence[str]) -> EmbeddingResult:
         if not texts:
             raise ProviderError("embed() requires at least one text")
@@ -444,9 +413,8 @@ class MuteProvider:
 
     * ``narrate`` returns empty prose attributed to the mute pin — the TUI
       renders silence; the record stays honest (nothing fabricated).
-    * ``parse`` and ``embed`` raise ``ProviderUnavailable``: free-text intent
-      falls back to structured verb entry; Archive search degrades to lexical.
-      Both degradations are the caller's to render loudly.
+    * ``embed`` raises ``ProviderUnavailable``: Archive search degrades to
+      lexical. The caller renders that degradation loudly.
     """
 
     def __init__(self) -> None:
@@ -466,15 +434,6 @@ class MuteProvider:
         temperature: float = 0.7,  # noqa: ARG002 — NarratorProvider shape
     ) -> NarrationResult:
         return NarrationResult(text="", model_pin="mute", provider=ProviderKind.MUTE)
-
-    def parse(
-        self,
-        player_text: str,  # noqa: ARG002 — NarratorProvider shape
-        verb_schema: Mapping[str, Any],  # noqa: ARG002 — NarratorProvider shape
-        *,
-        system: str = _PARSE_SYSTEM,  # noqa: ARG002 — NarratorProvider shape
-    ) -> dict[str, Any]:
-        raise ProviderUnavailable("mute lane cannot parse free text; use structured verb entry")
 
     def embed(self, texts: Sequence[str]) -> EmbeddingResult:  # noqa: ARG002 — NarratorProvider shape
         raise ProviderUnavailable("mute lane cannot embed; Archive search degrades to lexical")

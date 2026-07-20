@@ -2,13 +2,16 @@
 
 No network anywhere: the openai client is replaced by fakes through the
 ``client_factory`` injection point. These tests pin what the seam *does* —
-precedence order, mute degradation, schema-gated parsing, pin reporting —
-per Amendment Q's spirit: contracts over construction.
+precedence order, mute degradation, pin reporting — per Amendment Q's
+spirit: contracts over construction.
+
+No ``parse()`` lane: Amendment V (ratified 2026-07-20, ruling R4) rules
+there is no LLM in the input path, so the seam carries no free-text-to-verb
+translation and this file carries no tests for one.
 """
 
 from __future__ import annotations
 
-import json
 import os
 from pathlib import Path
 from types import SimpleNamespace
@@ -22,7 +25,6 @@ from babylon.intelligence.providers import (
     IntelligenceSettings,
     MuteProvider,
     OpenAICompatProvider,
-    ParseRejected,
     ProviderEndpoint,
     ProviderKind,
     ProviderUnavailable,
@@ -113,16 +115,6 @@ def settings_with(**overrides: Any) -> IntelligenceSettings:
 
 
 CF_URL = "https://babylon-api.example.workers.dev/v1"
-
-VERB_SCHEMA = {
-    "type": "object",
-    "properties": {
-        "verb": {"type": ["string", "null"]},
-        "target": {"type": "string"},
-    },
-    "required": ["verb"],
-    "additionalProperties": False,
-}
 
 
 # ---------------------------------------------------------------------------
@@ -282,36 +274,6 @@ def test_narrate_empty_output_is_loud_failure() -> None:
         make_provider(FakeClient(chat_text="")).narrate("sys", "prompt")
 
 
-def test_parse_accepts_schema_valid_json() -> None:
-    payload = {"verb": "agitate", "target": "rust-belt"}
-    client = FakeClient(chat_text=json.dumps(payload))
-    assert make_provider(client).parse("agitate the rust belt", VERB_SCHEMA) == payload
-
-
-def test_parse_strips_code_fences() -> None:
-    payload = {"verb": None}
-    client = FakeClient(chat_text=f"```json\n{json.dumps(payload)}\n```")
-    assert make_provider(client).parse("dance", VERB_SCHEMA) == payload
-
-
-def test_parse_rejects_non_json() -> None:
-    with pytest.raises(ParseRejected):
-        make_provider(FakeClient(chat_text="I think you should agitate!")).parse("x", VERB_SCHEMA)
-
-
-def test_parse_rejects_schema_violation() -> None:
-    # injection degrades prose, never state legality (II.5): extra keys refused
-    client = FakeClient(chat_text=json.dumps({"verb": "agitate", "grant_wealth": 1e9}))
-    with pytest.raises(ParseRejected):
-        make_provider(client).parse("x", VERB_SCHEMA)
-
-
-def test_parse_uses_temperature_zero() -> None:
-    client = FakeClient(chat_text='{"verb": null}')
-    make_provider(client).parse("x", VERB_SCHEMA)
-    assert client.chat_calls[0]["temperature"] == 0.0
-
-
 def test_embed_reports_dimensions_and_pin() -> None:
     r = make_provider(FakeClient(embed_dims=1024)).embed(["a", "b"])
     assert r.dimensions == 1024  # per-campaign pgvector pin discipline (§3.4)
@@ -340,10 +302,8 @@ def test_mute_narrates_silence_honestly() -> None:
     assert r.text == "" and r.model_pin == "mute"  # nothing fabricated, ever
 
 
-def test_mute_parse_and_embed_degrade_loudly() -> None:
+def test_mute_embed_degrades_loudly() -> None:
     m = MuteProvider()
-    with pytest.raises(ProviderUnavailable):
-        m.parse("x", VERB_SCHEMA)
     with pytest.raises(ProviderUnavailable):
         m.embed(["x"])
 

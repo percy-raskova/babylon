@@ -982,17 +982,17 @@ def compare_baselines(
     if expected.ticks_survived != actual.ticks_survived:
         diffs.append(f"ticks_survived: {expected.ticks_survived} != {actual.ticks_survived}")
 
-    # Compare defines hash
+    # E5a (modernization program): defines_hash gates. A GameDefines change
+    # without a baseline ceremony is exactly the silent-drift the gate exists
+    # to catch; the five stale hashes that motivated this were refreshed
+    # (value-identical) in the same commit that armed this tooth.
     if expected.defines_hash != actual.defines_hash:
         diffs.append(
-            f"WARNING: defines_hash changed ({expected.defines_hash} -> {actual.defines_hash})"
+            f"defines_hash mismatch ({expected.defines_hash} -> {actual.defines_hash}): "
+            f"GameDefines changed without a baseline ceremony. If intentional, run "
+            f"'mise run qa:regression-generate-dense' and commit the regenerated "
+            f"baselines with a declared drift table (test(baselines): ...)."
         )
-        # The continuation line MUST carry the WARNING prefix too: the
-        # passed-filter below treats any non-WARNING diff as a failure, and an
-        # unprefixed continuation turned a hash-only (advisory) change into a
-        # spurious 5/5 FAIL on 2026-07-15 when a new GameDefines category
-        # landed with byte-identical tick values.
-        diffs.append("WARNING:   This may indicate GameDefines parameter changes")
 
     # Compare checkpoints
     min_checkpoints = min(len(expected.checkpoints), len(actual.checkpoints))

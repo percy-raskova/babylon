@@ -38,48 +38,20 @@ DENSE_DIR = BASELINE_DIR / "dense"
 
 _PENDING_CEREMONY_SKIP_REASON = "PENDING CEREMONY: golden minted by the Task 11 ceremony"
 
-# E3 (Task 9): STALE BY DESIGN, not pending — these five scenarios already
-# have a committed golden, but Task 9 widened the dense header (4 new
-# ``financial_*`` columns on every scenario, plus per-county
-# ``county_<fips>_*`` columns on county-bearing ones), so the committed
-# bytes no longer match a fresh run until Task 11's ceremony re-mints them.
-# TODO(Task 11): remove this allowlist entirely once the ceremony lands —
-# at that point every scenario's regeneration test should be a real
-# assertion again.
-_STALE_UNTIL_CEREMONY_SKIP_REASON = (
-    "STALE BY DESIGN: headers widened by E3; goldens re-minted by the Task 11 ceremony"
-)
-
 
 def _skip_if_pending_ceremony(scenario_name: str) -> None:
     """Skip loudly for a scenario whose baseline hasn't been minted yet.
 
     Keyed off the explicit ``rt.PENDING_CEREMONY`` allowlist, never off
     golden-file absence: a scenario NOT in the allowlist whose golden is
-    missing (e.g. one of the five already-minted scenarios, accidentally
+    missing (e.g. one of the six already-minted scenarios, accidentally
     deleted) must still FAIL loudly, not silently skip — that's exactly the
-    failure mode a file-absence-keyed skip would mask. Task 11's ceremony
-    mints ``single_county``'s golden and removes it from
-    ``PENDING_CEREMONY`` in the same commit, which turns this skip back into
-    a real assertion automatically.
+    failure mode a file-absence-keyed skip would mask. ``PENDING_CEREMONY``
+    is empty as of the Task 11 ceremony (2026-07-20, ``single_county``
+    minted); this stays live for any future scenario's mint window.
     """
     if scenario_name in rt.PENDING_CEREMONY:
         pytest.skip(_PENDING_CEREMONY_SKIP_REASON)
-
-
-def _skip_if_stale_until_ceremony(scenario_name: str) -> None:
-    """Skip loudly (byte-comparison only) for a scenario whose golden is stale by design.
-
-    Keyed off the explicit ``rt.STALE_UNTIL_CEREMONY`` allowlist, mirroring
-    ``_skip_if_pending_ceremony``'s deletion-masking-guard design: only the
-    byte-identical REGENERATION-comparison test skips for these scenarios —
-    ``test_dense_golden_exists_for_every_scenario`` (this function is never
-    called from there) stays a real assertion, so a golden file going
-    missing still fails loudly instead of being waved through by this
-    allowlist too.
-    """
-    if scenario_name in rt.STALE_UNTIL_CEREMONY:
-        pytest.skip(_STALE_UNTIL_CEREMONY_SKIP_REASON)
 
 
 @pytest.mark.parametrize("scenario_name", sorted(rt.SCENARIOS))
@@ -124,7 +96,6 @@ def test_dense_golden_has_documented_column_shape(scenario_name: str) -> None:
 def test_dense_trace_regeneration_matches_committed_golden(scenario_name: str) -> None:
     """Re-running the scenario reproduces the committed golden byte-for-byte."""
     _skip_if_pending_ceremony(scenario_name)
-    _skip_if_stale_until_ceremony(scenario_name)
     expected_max_ticks = rt.load_baseline(BASELINE_DIR / f"{scenario_name}.json").max_ticks
     _baseline, dense = rt.run_scenario_dense(scenario_name, max_ticks=expected_max_ticks)
 
@@ -140,11 +111,10 @@ def test_compare_dense_trace_catches_a_synthetic_one_value_mutation(tmp_path: Pa
     rubber stamp. Builds the scratch "golden" from the freshly-computed
     trace ITSELF (not the currently-committed file on disk), so this test
     stays a same-shape, self-consistent mutation-detection check regardless
-    of the committed golden's current column contract — including through
-    Task 9/E3's sanctioned red window, where the committed ``two_node.csv``
-    is deliberately stale (widened dense header, not yet re-minted by the
-    Task 11 ceremony) and would otherwise make every cell walk short-circuit
-    on the header-mismatch path before ever reaching the mutated cell.
+    of the committed golden's current column contract (Task 9/E3's widened
+    header, re-minted by the Task 11 ceremony) — a future header widening
+    would otherwise make every cell walk short-circuit on the
+    header-mismatch path before ever reaching the mutated cell.
     Corrupts exactly one cell in the scratch copy and asserts
     ``compare_dense_trace`` reports the mutation with the exact tick+column
     it touched — never a silent pass (Constitution III.11). Never touches
@@ -187,9 +157,8 @@ def test_compare_dense_trace_catches_a_synthetic_one_value_mutation(tmp_path: Pa
     # there is nothing on disk this test could corrupt. Asserting the real
     # committed golden compares clean against a freshly-computed `dense`
     # trace is exactly `test_dense_trace_regeneration_matches_committed_golden`'s
-    # job, and for `two_node` specifically that assertion is expected to be
-    # FALSE right now — `two_node` is in `rt.STALE_UNTIL_CEREMONY`, the
-    # sanctioned red window this task opens.
+    # job, which (post Task 11 ceremony) is a real assertion for every
+    # scenario including `two_node`.
 
 
 def test_appended_trailing_column_produces_a_loud_header_report(tmp_path: Path) -> None:

@@ -77,24 +77,10 @@ SCENARIOS: Final[dict[str, dict[str, Any]]] = {
 #: (tests/unit/tools/test_vol3_baseline_delta_report.py) skip these scenarios
 #: LOUDLY while still failing hard if a golden for one of the five ALREADY-minted
 #: scenarios ever goes missing (a file-absence-keyed skip would silently mask
-#: that accident instead of catching it). Task 11's ceremony mints
-#: single_county's baseline and removes it from this set in the same commit.
-PENDING_CEREMONY: Final[frozenset[str]] = frozenset({"single_county"})
-
-#: E3 (Task 9) widened the dense-trace header (4 new ``financial_*`` columns
-#: on every scenario, plus per-county ``county_<fips>_*`` columns on
-#: county-bearing ones) — the five originally-minted scenarios' committed
-#: dense goldens no longer match byte-for-byte until Task 11's ceremony
-#: re-mints them. Declared explicitly (mirrors ``PENDING_CEREMONY`` above) so
-#: the dense-golden REGENERATION-comparison test
-#: (tests/unit/tools/test_dense_goldens.py) skips these five LOUDLY with a
-#: reason naming the cause, while the EXISTS/shape tests stay live (a
-#: deletion-masking guard: a golden file going missing must still fail).
-#: Task 11 removes this allowlist entirely in the same commit that mints the
-#: widened goldens.
-STALE_UNTIL_CEREMONY: Final[frozenset[str]] = frozenset(
-    {"imperial_circuit", "two_node", "starvation", "glut", "fascist_bifurcation"}
-)
+#: that accident instead of catching it). Task 11's ceremony (2026-07-20) minted
+#: single_county's baseline and removed it from this set in that same commit —
+#: empty now, but the mechanism stays for any future scenario's mint window.
+PENDING_CEREMONY: Final[frozenset[str]] = frozenset()
 
 
 def create_scenario(
@@ -1976,7 +1962,136 @@ SCENARIO_COVERAGE_DATA: Final[tuple[dict[str, Any], ...]] = (
                 "forbidden_values": ("0.1", "0.0"),
             },
         ),
-        "at_rest": (),
+        # Task 11 ceremony (E3 bundle-path extension): 13 channels verified
+        # empirically dead across the committed 5-tick detroit_tri_county
+        # dense golden (2026-07-20) -- county_<fips>_{interest,ground_rent,
+        # taxes} for all 3 scope counties (26099 Macomb, 26125 Oakland,
+        # 26163 Wayne) + all 4 financial_* channels. Mechanism: both channel
+        # families are written only by TickDynamicsSystem's annual pipeline
+        # (SurplusValueDistribution for the county trio; NationalFinancial
+        # Parameters/endogenous_interest for financial_*), which is gated
+        # behind `if tick % WEEKS_PER_YEAR != 0: self._accrue_flows(graph);
+        # return` (src/babylon/domain/economics/tick/system/__init__.py:161)
+        # -- _accrue_flows only carries forward per-tick FLOW quantities
+        # (imperial rent, wages), never surplus distribution or national
+        # financial state. The headless runner's tick loop feeds
+        # context.tick in {1, 2, 3, 4} for a `--ticks 5` run (tick 0 is a
+        # pre-engine persist-only row; `tick_range = range(1, config.ticks)`,
+        # src/babylon/engine/headless_runner/runner.py:1566) -- none of
+        # which is a multiple of WEEKS_PER_YEAR (52), so the annual boundary
+        # never crosses and these 13 columns stay at their Field-default
+        # 0.0 for the whole run. The other 15 dense-trace columns
+        # (county_<fips>_{total_v,total_c,total_s,total_k,population}) are
+        # live every tick via a different, non-annual-gated path. Verified
+        # by direct cell inspection of the committed golden (2026-07-20):
+        # every value in these 13 columns is "0.0" across all 5 rows; every
+        # other non-tick column varies. A run crossing tick 52 would
+        # populate all 13 (see single_county's `financial_endogenous_rate`
+        # dense column, live via the same TickDynamicsSystem pipeline over
+        # 52 ticks, for the counter-example proving the mechanism, not the
+        # column, is what's inert here).
+        "at_rest": (
+            {
+                "channel": "county_26099_interest",
+                "reason": (
+                    "Macomb (26099) surplus_distribution.interest_payments -- annual-pipeline-"
+                    "gated (TickDynamicsSystem, tick % 52 != 0 for every engine tick in this "
+                    "5-tick bundle run); never crosses the boundary. Verified live, 2026-07-20."
+                ),
+            },
+            {
+                "channel": "county_26099_ground_rent",
+                "reason": (
+                    "Macomb (26099) surplus_distribution.ground_rent -- same annual-pipeline "
+                    "gate as county_26099_interest above. Verified live, 2026-07-20."
+                ),
+            },
+            {
+                "channel": "county_26099_taxes",
+                "reason": (
+                    "Macomb (26099) surplus_distribution.taxes_on_surplus -- same annual-"
+                    "pipeline gate as county_26099_interest above. Verified live, 2026-07-20."
+                ),
+            },
+            {
+                "channel": "county_26125_interest",
+                "reason": (
+                    "Oakland (26125) surplus_distribution.interest_payments -- same annual-"
+                    "pipeline gate as county_26099_interest above. Verified live, 2026-07-20."
+                ),
+            },
+            {
+                "channel": "county_26125_ground_rent",
+                "reason": (
+                    "Oakland (26125) surplus_distribution.ground_rent -- same annual-pipeline "
+                    "gate as county_26099_interest above. Verified live, 2026-07-20."
+                ),
+            },
+            {
+                "channel": "county_26125_taxes",
+                "reason": (
+                    "Oakland (26125) surplus_distribution.taxes_on_surplus -- same annual-"
+                    "pipeline gate as county_26099_interest above. Verified live, 2026-07-20."
+                ),
+            },
+            {
+                "channel": "county_26163_interest",
+                "reason": (
+                    "Wayne (26163) surplus_distribution.interest_payments -- same annual-"
+                    "pipeline gate as county_26099_interest above (this is the U9 channel the "
+                    "qa:regression modernization program exists to keep visible -- LIVE in "
+                    "single_county's 52-tick dense golden, at rest here only because this "
+                    "bundle run is 5 ticks). Verified live, 2026-07-20."
+                ),
+            },
+            {
+                "channel": "county_26163_ground_rent",
+                "reason": (
+                    "Wayne (26163) surplus_distribution.ground_rent -- same annual-pipeline "
+                    "gate as county_26099_interest above. Verified live, 2026-07-20."
+                ),
+            },
+            {
+                "channel": "county_26163_taxes",
+                "reason": (
+                    "Wayne (26163) surplus_distribution.taxes_on_surplus -- same annual-"
+                    "pipeline gate as county_26099_interest above. Verified live, 2026-07-20."
+                ),
+            },
+            {
+                "channel": "financial_endogenous_rate",
+                "reason": (
+                    "NationalFinancialParameters.endogenous_interest.rate -- written by the "
+                    "same TickDynamicsSystem annual pipeline as the county surplus-distribution "
+                    "channels above (tick % 52 != 0 for every engine tick in this 5-tick bundle "
+                    "run); never crosses the boundary. Verified live, 2026-07-20."
+                ),
+            },
+            {
+                "channel": "financial_profit_rate_ceiling",
+                "reason": (
+                    "NationalFinancialParameters.endogenous_interest.profit_rate_ceiling -- same "
+                    "annual-pipeline gate as financial_endogenous_rate above. "
+                    "Verified live, 2026-07-20."
+                ),
+            },
+            {
+                "channel": "financial_s_r",
+                "reason": (
+                    "NationalFinancialParameters.endogenous_interest.reserve_army_signal -- same "
+                    "annual-pipeline gate as financial_endogenous_rate above. "
+                    "Verified live, 2026-07-20."
+                ),
+            },
+            {
+                "channel": "financial_tightness",
+                "reason": (
+                    "NationalFinancialParameters.endogenous_interest.tightness -- same "
+                    "annual-pipeline gate as financial_endogenous_rate above. "
+                    "Verified live, 2026-07-20."
+                ),
+            },
+        ),
     },
     {
         # single_county (Task 8, E2a): the smallest graph where the Vol III

@@ -59,7 +59,6 @@ from regression_scenarios import (  # noqa: F401  (re-export)
     PENDING_CEREMONY,
     SCENARIO_COVERAGE,
     SCENARIOS,
-    STALE_UNTIL_CEREMONY,
     create_scenario,
 )
 from shared import (
@@ -1523,25 +1522,22 @@ def _compare_bundle_command(args: Any) -> int:
         print("  ✓ no critical conservation violations")
 
     # 4. dense_trace.csv byte-compare against the detroit_tri_county dense
-    # golden (Task 10, E2b). Missing baseline is a loud, non-fatal
-    # PENDING CEREMONY — the golden is minted by the Task 11 ceremony; this
-    # branch is pre-ceremony only and should be removed once
-    # tests/baselines/dense/detroit_tri_county.csv is committed.
+    # golden (Task 10, E2b). The Task 11 ceremony mints
+    # tests/baselines/dense/detroit_tri_county.csv, so a missing golden is
+    # now a hard regression (deletion/never-minted), not a pending state.
     dense_baseline_path: Path = args.dense_baseline
-    if not dense_baseline_path.exists():
-        print(
-            "  PENDING CEREMONY: detroit_tri_county dense golden "
-            f"(minted by the Task 11 ceremony) — {dense_baseline_path} not found"
-        )
+    dense_bundle_path = bundle_dir / "dense_trace.csv"
+    if not dense_bundle_path.exists():
+        failures.append(f"dense_trace.csv missing from bundle: {dense_bundle_path}")
     else:
-        dense_bundle_path = bundle_dir / "dense_trace.csv"
-        if not dense_bundle_path.exists():
-            failures.append(f"dense_trace.csv missing from bundle: {dense_bundle_path}")
+        dense_bundle_bytes = dense_bundle_path.read_bytes()
+        if not dense_baseline_path.exists():
+            failures.append(f"detroit_tri_county dense golden not found: {dense_baseline_path}")
         else:
             dense_ok, dense_report = compare_dense_csv_bytes(
                 "detroit_tri_county",
                 dense_baseline_path.read_bytes(),
-                dense_bundle_path.read_bytes(),
+                dense_bundle_bytes,
             )
             if dense_ok:
                 print("  ✓ dense_trace.csv byte-identical to detroit_tri_county golden")
@@ -1549,6 +1545,23 @@ def _compare_bundle_command(args: Any) -> int:
                 failures.append("dense_trace.csv diverged from detroit_tri_county golden")
                 if dense_report is not None:
                     print(_format_divergence_report(dense_report))
+
+        # 5. Bundle-path dead-column guard (Task 11, E3 extension): runs
+        # unconditionally on the bundle's own dense trace — never gated
+        # behind dense_ok/golden-presence above, mirroring
+        # compare_all_baselines's "never gated" dead-column check — so an
+        # undeclared dead channel (or a stale at_rest row) is caught even on
+        # a bundle whose byte-compare already failed for an unrelated reason.
+        bundle_header, bundle_rows = _parse_dense_csv_bytes(dense_bundle_bytes)
+        dead_column_findings = check_dead_columns(
+            "detroit_tri_county", bundle_header, bundle_rows, SCENARIO_COVERAGE
+        )
+        if dead_column_findings:
+            failures.extend(dead_column_findings)
+            for finding in dead_column_findings:
+                print(f"  {finding}")
+        elif bundle_header:
+            print("  ✓ no dead columns in dense_trace.csv (bundle)")
 
     print()
     if failures:

@@ -314,3 +314,64 @@ element E5), which refreshes them in the same ceremony that promotes the
 hash to a gating leg. `qa:regression` re-run at sign-off time
 (2026-07-19 ~8:50pm): **5 passed, 0 failed — "All regression tests
 passed!"**.
+
+## Task 11 Ceremony Addendum (2026-07-20): single_county baseline minted
+
+> **Added by the qa:regression modernization program Task 11 ceremony,
+> 2026-07-20.** This section documents the `single_county` scenario baseline
+> minted in that ceremony commit (`test(baselines): modernization ceremony —
+> county scenarios + financial channels + determinism leg (E2+E3+E5b)`).
+> Unlike the five sections above — each diffing an EXISTING frozen scenario
+> against its pre-Vol-III baseline and finding no delta, because all five
+> carry no `county_fips` — `single_county` (Task 8, E2a) is a brand-new
+> scenario added specifically to exercise the Vol III financial layer on a
+> real county (Wayne, FIPS 26163). There is no pre-Vol-III baseline for it to
+> diff against, so the table below reports its own within-run before/after
+> (pre- vs. post-financial-layer-engagement), read directly from the
+> just-minted `tests/baselines/single_county.json` and
+> `tests/baselines/dense/single_county.csv` — real numbers, not placeholders.
+
+### single_county
+
+**Description:** Wayne-seeded minimal county: Vol III financial layer, MELT
+path, and distribution identity all fire (`tools/regression_scenarios.py`
+SCENARIOS).
+
+| Field | Before (tick 0, pre-engagement) | After (tick 1..52, live) | Named mechanism |
+|---|---|---|---|
+| `financial_endogenous_rate` (endogenous interest rate `i`) | `0.0` | `0.017834` (`0.017833969800785755`) | TickDynamicsSystem's annual pipeline (Vol III Part V `endogenous_interest_rate`) fires on the harness's first `step()` call (`context.tick` is the pre-increment `state.tick` = 0, `0 % 52 == 0`) and is carried forward every subsequent tick (SAVE-ONLY semantics, Task 7) |
+| `financial_profit_rate_ceiling` (`r`) | `0.0` | `0.059447` (`0.05944656600261918`) | same annual-pipeline computation, sourced from Wayne's realized 2010 surplus/profit-rate tensor |
+| `county_26163_interest` (`interest_payments`) | `0.0` | `9.702476e+08` (`970247586.1500003`) | `SurplusValueDistribution.interest_payments` — this is the U9 channel the modernization program exists to keep visible in the gate; real, not fixture-stamped |
+| `county_26163_total_s` (surplus `s`) | `0.0` | `3.234159e+09` (`3234158620.500001`) | `SurplusValueDistribution.total_surplus_produced` |
+| `county_26163_ground_rent` (`r`, rent term) | `0.0` | `1.998961e+08` (`199896129.03225806`) | `SurplusValueDistribution.ground_rent` |
+| `county_26163_taxes` (`t`) | `0.0` | `1.756561e+08` (`175656129.03225806`) | `SurplusValueDistribution.taxes_on_surplus` |
+| `county_26163_profit_enterprise` (`p`) | `0.0` | `1.888359e+09` (`1888358776.2854843`) | `SurplusValueDistribution.profit_of_enterprise` |
+| Distribution identity `s = p + i + r + t` | vacuous (all 0) | closes exactly: `1888358776.2854843 + 970247586.1500003 + 199896129.03225806 + 175656129.03225806 = 3234158620.500001`, `Δ = 0.0` | same annual pipeline; all four terms strictly positive |
+| Interest share of surplus (`i/s`) | n/a | `30.0000%` | `970247586.15 / 3234158620.50` |
+| `final_outcome` / `ticks_survived` | — | `SURVIVED` / `52` | scenario runs the full 52-tick horizon, no death event |
+| First dense-trace divergence vs this ceremony's minted golden | n/a (NEW golden — nothing to diverge from) | none — `dense/single_county.csv` is this run's own just-committed golden, re-verified byte-identical on regeneration before commit | — |
+
+**Materiality argument:** this is the smallest graph where the Vol III
+financial layer fires THROUGH THE PRODUCTION PATH — the scenario this
+program exists for (U9's interest-rate inertness shipped invisible because
+no gate scenario carried a county; see the headline finding above). All four
+distribution terms are strictly positive and the identity closes exactly, so
+SC-001's claim now has a live, gate-enforced witness inside `qa:regression`
+itself, not only in the ad hoc integration test the headline finding cites.
+
+**Principal contradiction at terminal tick:** exploitation tension between
+the Wayne Core Bourgeoisie (C003) and Labor Aristocracy (C004) rises
+monotonically over the run (`exploitation_tension`: `0.0` at tick 0 →
+`0.571239` at tick 52, sampled checkpoints in
+`tests/baselines/single_county.json`) — the live interest burden does not,
+at these coefficients, reroute the principal contradiction away from the
+wage/production axis.
+
+**Dead-column declarations (E3):** `financial_s_r` and `financial_tightness`
+are declared `at_rest` for this scenario in
+`tools/regression_scenarios.py`'s `SCENARIO_COVERAGE` (Task 9, verified
+genuine — Wayne's real 2010 U-3 = 0.05 is below
+`capital_vol3.interest_reserve_reference` = 0.08, so
+`reserve_army_signal()` clamps to 0.0 for this county's real calibration,
+not because the code path is unreachable); `financial_endogenous_rate` and
+`financial_profit_rate_ceiling` are live, per the table above.

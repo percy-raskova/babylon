@@ -1,0 +1,68 @@
+# Nix release channel — the player-channel doc's §7 job, now with the real
+# R2 push wired. TEMPLATE for the main game repo: merge into the existing
+# release workflow when the packaging train opens (the flake itself is
+# decision-queue work; this file shows the exact cache mechanics).
+#
+# Secrets required (game repo):
+#   R2_ACCESS_KEY_ID / R2_SECRET_ACCESS_KEY
+#       R2 API token scoped "Object Read & Write" to the babylon-cache bucket
+#       ONLY (dash → R2 → Manage API tokens). Not an account-wide token.
+#   CF_ACCOUNT_ID
+#       same account id as the workers; forms the S3 endpoint below.
+#   NIX_CACHE_SIGNING_KEY
+#       secret half from cloudflare/scripts/generate-cache-key.sh (§A10).
+#
+# Free-tier ledger for this job: R2 storage 10 GB free (a ~1.2 GB closure per
+# release → ~8 releases resident; `nix store` paths dedupe across releases, and
+# stale releases can be pruned from the bucket). Class A ops 1M/month free —
+# one `nix copy` is one PUT per store path (~hundreds), noise. Egress: free.
+name: nix-release
+
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  nix-release:
+    runs-on: ubuntu-latest
+    # House rule (Constitution III.11): every job carries timeout-minutes —
+    # a hang must die loudly, not run to the 360min default.
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: cachix/install-nix-action@v31
+        with:
+          extra_nix_config: |
+            experimental-features = nix-command flakes
+
+      - name: Build the closure players receive
+        run: nix build .#babylon
+
+      - name: Regression gate ON the closure (Amendment Q extended)
+        run: nix flake check
+
+      - name: Sign and push to the babylon-cache R2 bucket
+        env:
+          AWS_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
+        run: |
+          umask 077
+          printf '%s' "${{ secrets.NIX_CACHE_SIGNING_KEY }}" > /tmp/cache-key
+          ENDPOINT="${{ secrets.CF_ACCOUNT_ID }}.r2.cloudflarestorage.com"
+          STORE_URI="s3://babylon-cache?scheme=https&endpoint=${ENDPOINT}"
+          STORE_URI="${STORE_URI}&region=auto&secret-key=/tmp/cache-key&compression=zstd"
+          nix copy --to "$STORE_URI" .#babylon
+          rm -f /tmp/cache-key
+
+      # Players then substitute from the Worker front-door, no compiling:
+      #   extra-substituters = https://babylon-cache.<sub>.workers.dev
+      #   extra-trusted-public-keys = babylon-cache-1:<PUBKEY>
+      # (target hostname once the zone lands: https://cache.babylon.percypedia.biz)
+
+      - name: AppImage demo artifact (zero-install path)
+        run: nix bundle --bundler github:ralismark/nix-appimage .#babylon || true

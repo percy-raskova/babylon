@@ -34,9 +34,9 @@ There is no `tests/unit/data/`, `tests/unit/ui/`, or `tests/e2e/`. Browser E2E t
 
 `tests/unit/` mirrors `src/babylon/`'s top-level packages (`ai`, `balkanization`,
 `bifurcation`, `config`, `core`, `dialectics`, `domain`, `economics`, `engine`, `formulas`,
-`infrastructure`, `institution`, `kernel`, `ledger`, `metrics`, `models`, `observatory`,
-`ooda`, `organizations`, `persistence`, `protocols`, `reference`, `sentinels`, `state_ai`,
-`tools`, `topology`, `utils`, `web`) plus a handful of root-level guard tests
+`infrastructure`, `institution`, `intelligence`, `kernel`, `ledger`, `metrics`, `models`,
+`observatory`, `ooda`, `organizations`, `persistence`, `protocols`, `reference`, `sentinels`,
+`state_ai`, `tools`, `topology`, `utils`, `web`) plus a handful of root-level guard tests
 (`test_blas_thread_cap.py`, `test_contract_parity.py`, `test_mise_tasks.py`,
 `test_public_import_surface.py`, ...).
 

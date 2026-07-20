@@ -298,15 +298,21 @@ def _column_array(values: list[object], field: pa.Field) -> pa.Array:
 
 
 def governed_db_tables(conn: sqlite3.Connection) -> list[str]:
-    """Every table this DB governs — the full sweep surface for the Phase-0
-    measurement CLI. Excludes sqlite's own internal bookkeeping tables
-    (``sqlite_sequence`` et al.)."""
+    """Every table this DB governs — the sweep surface for full-coverage
+    export, roundtrip verification and the Phase-0 measurement CLI. Excludes
+    sqlite's own internal bookkeeping tables (``sqlite_sequence`` et al.)
+    AND utility tables outside the governed estate (``ingest_checkpoint``,
+    ``staging_*`` — no catalog row, no parquet source, no place in the build
+    product; the boundary is ``GOVERNED_PREFIXES``, the same scope the
+    catalog sentinel probes)."""
+    from babylon.sentinels.coverage.catalog import GOVERNED_PREFIXES
+
     rows = conn.execute(
         "SELECT name FROM sqlite_master "
         "WHERE type = 'table' AND name NOT LIKE 'sqlite_%' "
         "ORDER BY name"
     ).fetchall()
-    return [row[0] for row in rows]
+    return [row[0] for row in rows if row[0].startswith(GOVERNED_PREFIXES)]
 
 
 def _catalog_by_name() -> dict[str, CatalogTable]:

@@ -54,6 +54,7 @@ from tools.regression_scenarios import (  # noqa: E402
     ScenarioCoverage,
     create_scenario,
 )
+from tools.shared import PERIPHERY_WORKER_ID, is_dead  # noqa: E402
 
 _DEFAULT_MAX_TICKS: Final[int] = 52
 _STATIC_KINDS: Final[tuple[str, ...]] = ("bundle_event", "bundle_field")
@@ -93,6 +94,14 @@ def _entity_attr(state: Any, dotted: str) -> Any:
     entity = state.entities.get(entity_id)
     if entity is None:
         return None
+    # Mirrors IdeologicalProfile's three fields exactly (class_consciousness,
+    # national_identity, agitation). A future field added to IdeologicalProfile
+    # that a coverage row references by dotted key will NOT match this tuple,
+    # so _entity_attr falls through to plain getattr(entity, attr) below —
+    # entity has no such attribute either, so it returns None and the row
+    # reds as a false declaration. Loud-by-design: this tuple must be kept in
+    # sync with IdeologicalProfile by hand, not silently miscounted as "no
+    # such field, so the row is simply always false and always at fault."
     if attr in ("class_consciousness", "national_identity", "agitation"):
         return getattr(entity.ideology, attr, None)
     return getattr(entity, attr, None)
@@ -162,6 +171,14 @@ def run_probe(
                 if r.kind == "economy_delta" and r.key not in changed:
                     if getattr(state.economy, r.key, None) != initial_econ[r.key]:
                         changed.add(r.key)
+            # Mirror _run_scenario_ticks's early-death break exactly (same
+            # PERIPHERY_WORKER_ID / is_dead the gate uses, from tools.shared):
+            # the gate stops stepping a scenario the tick the periphery worker
+            # dies, so the probe must never certify evidence from ticks the
+            # gate itself never executes.
+            p_w = state.entities.get(PERIPHERY_WORKER_ID)
+            if p_w and is_dead(p_w):
+                break
         for r in rows:
             ok = (
                 (r.kind == "event" and r.key in seen_events)

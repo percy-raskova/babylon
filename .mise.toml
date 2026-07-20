@@ -976,6 +976,18 @@ poetry run python -m babylon_data.exposure \\
   ${usage_drop_backup:+--drop-backup}
 """
 
+[tasks."data:artifacts"]
+description = "Regenerate ALL reference sources (full-coverage parquet + manifest v2) from the live DB"
+run = "poetry run python tools/make_data_artifacts.py --full-coverage"
+
+[tasks."data:schema"]
+description = "Extract canonical schema.sql from the live DB + update the manifest schema block"
+run = "poetry run python tools/extract_reference_schema.py"
+
+[tasks."data:build-db"]
+description = "Rebuild the reference DB from parquet sources + schema.sql (product block updated)"
+run = "poetry run python tools/build_reference_db.py --out dist/build/marxist-data-3NF.sqlite --update-manifest"
+
 [tasks."data:verify-build"]
 description = "Build the reference DB twice from sources and prove byte-identity (dev box only)"
 run = """
@@ -992,6 +1004,10 @@ EOF
 [tasks."data:verify-roundtrip"]
 description = "Content-compare the live reference DB against the rebuilt product"
 run = "poetry run python tools/verify_reference_roundtrip.py --live data/sqlite/marxist-data-3NF.sqlite --rebuilt dist/build/marxist-data-3NF.sqlite"
+
+[tasks."data:subset"]
+description = "Build the CI subset FROM THE REBUILT PRODUCT (subset drift dies by construction)"
+run = "poetry run python tools/make_reference_subset.py --source dist/build/marxist-data-3NF.sqlite --output dist/build/reference-subset.sqlite --manifest dist/build/reference-subset.manifest.json"
 
 # =============================================================================
 # DATABASE (Namespaced)

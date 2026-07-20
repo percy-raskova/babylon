@@ -535,6 +535,16 @@ python:
       "qa:verify": "Formula correctness verification"
       "demo:slice": "Full pipeline demo (Engine->RAG->LLM)"
       "docs:live": "Live-reload documentation server"
+      # Parquet-canonical reference-data pipeline (2026-07-19 plan): sources
+      # (parquet + schema.sql) are canonical; the SQLite reference DB is a
+      # deterministic build product. Pipeline order: artifacts -> schema ->
+      # build-db -> verify-build/verify-roundtrip -> subset.
+      "data:artifacts": "Regenerate ALL reference sources (full-coverage parquet + manifest v2) from the live DB"
+      "data:schema": "Extract canonical schema.sql from the live DB + update the manifest schema block"
+      "data:build-db": "Rebuild the reference DB from parquet sources + schema.sql (product block updated)"
+      "data:verify-build": "Build the reference DB twice from sources and prove byte-identity (dev box only)"
+      "data:verify-roundtrip": "Content-compare the live reference DB against the rebuilt product"
+      "data:subset": "Build the CI subset from the rebuilt product (subset drift dies by construction)"
 
 # =============================================================================
 # PARAMETER TUNING TOOLING

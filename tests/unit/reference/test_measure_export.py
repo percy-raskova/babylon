@@ -15,11 +15,13 @@ import sys
 from pathlib import Path
 
 import pyarrow.parquet as pq  # type: ignore[import-untyped]
+import pytest
 
 _REPO_ROOT = Path(__file__).resolve().parents[3]
 TOOLS_DIR = _REPO_ROOT / "tools"
 sys.path.insert(0, str(TOOLS_DIR))
 
+import make_data_artifacts  # type: ignore[import-not-found]  # noqa: E402
 from make_data_artifacts import (  # type: ignore[import-not-found]  # noqa: E402
     export_table_parquet,
     governed_db_tables,
@@ -77,3 +79,40 @@ def test_governed_db_tables_excludes_internal(tmp_path: Path) -> None:
     conn.execute("INSERT INTO fact_a (x) VALUES ('q')")  # materializes sqlite_sequence
     conn.commit()
     assert governed_db_tables(conn) == ["fact_a"]
+
+
+def test_export_table_parquet_handles_empty_table(tmp_path: Path) -> None:
+    conn = sqlite3.connect(tmp_path / "mini.sqlite")
+    conn.execute("CREATE TABLE dim_empty (id INTEGER PRIMARY KEY, name TEXT)")
+    conn.commit()
+    rows, _size = export_table_parquet(conn, "dim_empty", tmp_path / "a.parquet")
+    rows2, _size2 = export_table_parquet(conn, "dim_empty", tmp_path / "b.parquet")
+    assert rows == rows2 == 0
+    table = pq.read_table(tmp_path / "a.parquet")
+    assert table.num_rows == 0
+    assert _sha256(tmp_path / "a.parquet") == _sha256(tmp_path / "b.parquet")
+
+
+def test_export_table_parquet_streams_multiple_row_groups(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # Forces the fetchmany-batch loop in export_table_parquet to emit more
+    # than one row group, covering the streaming path the curated-table
+    # generate() calls never exercise (ROW_GROUP_SIZE=4Mi exceeds every
+    # curated table).
+    monkeypatch.setattr(make_data_artifacts, "ROW_GROUP_SIZE", 2)
+    conn = sqlite3.connect(tmp_path / "mini.sqlite")
+    conn.execute("CREATE TABLE dim_multi (id INTEGER PRIMARY KEY, name TEXT)")
+    conn.executemany(
+        "INSERT INTO dim_multi VALUES (?,?)",
+        [(5, "e"), (4, "d"), (3, "c"), (2, "b"), (1, "a")],
+    )
+    conn.commit()
+    rows, _size = export_table_parquet(conn, "dim_multi", tmp_path / "a.parquet")
+    rows2, _size2 = export_table_parquet(conn, "dim_multi", tmp_path / "b.parquet")
+    assert rows == rows2 == 5
+    assert _sha256(tmp_path / "a.parquet") == _sha256(tmp_path / "b.parquet")
+
+    table = pq.read_table(tmp_path / "a.parquet")
+    assert table.column("id").to_pylist() == [1, 2, 3, 4, 5]
+    assert pq.ParquetFile(tmp_path / "a.parquet").num_row_groups == 3

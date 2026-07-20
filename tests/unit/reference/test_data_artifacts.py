@@ -36,7 +36,7 @@ from make_data_artifacts import (  # type: ignore[import-not-found]  # noqa: E40
     _sha256,
     _table_layout,
     _write_csv,
-    _write_parquet,
+    export_table_parquet,
     generate,
 )
 
@@ -180,20 +180,23 @@ class TestGeneratorDeterminism:
         return db
 
     def test_double_generation_is_byte_identical(self, source_db: Path, tmp_path: Path) -> None:
+        # The parquet leg exercises the production writer, export_table_parquet
+        # (the generate() path's only parquet-writing call) — not a second,
+        # production-unused writer that the fast gate wouldn't otherwise guard.
         conn = sqlite3.connect(f"file:{source_db}?mode=ro", uri=True)
         try:
-            columns, _pk, schema = _table_layout(conn, "fact_sample")
+            columns, _pk, _schema = _table_layout(conn, "fact_sample")
             rows = conn.execute("SELECT id, label, value FROM fact_sample ORDER BY id").fetchall()
+            hashes: dict[str, set[str]] = {"csv": set(), "parquet": set()}
+            for run in (1, 2):
+                csv_out = tmp_path / f"run{run}.csv"
+                pq_out = tmp_path / f"run{run}.parquet"
+                _write_csv(csv_out, columns, rows)
+                export_table_parquet(conn, "fact_sample", pq_out)
+                hashes["csv"].add(_sha256(csv_out))
+                hashes["parquet"].add(_sha256(pq_out))
         finally:
             conn.close()
-        hashes: dict[str, set[str]] = {"csv": set(), "parquet": set()}
-        for run in (1, 2):
-            csv_out = tmp_path / f"run{run}.csv"
-            pq_out = tmp_path / f"run{run}.parquet"
-            _write_csv(csv_out, columns, rows)
-            _write_parquet(pq_out, schema, rows)
-            hashes["csv"].add(_sha256(csv_out))
-            hashes["parquet"].add(_sha256(pq_out))
         assert len(hashes["csv"]) == 1
         assert len(hashes["parquet"]) == 1
 

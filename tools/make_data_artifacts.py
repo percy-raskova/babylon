@@ -263,22 +263,11 @@ def _column_array(values: list[object], field: pa.Field) -> pa.Array:
     tables (none declare a BOOLEAN column), verified byte-identical.
     """
     if pa.types.is_boolean(field.type):
+        # bool(v) collapses any non-0/1 int (e.g. 2) to True — the future
+        # round-trip verifier (plan Task 7) must canonicalize BOOLEAN columns
+        # the same way rather than comparing raw storage values.
         values = [None if v is None else bool(v) for v in values]
     return pa.array(values, type=field.type)
-
-
-def _write_parquet(path: Path, schema: pa.Schema, rows: list[tuple[object, ...]]) -> None:
-    path.parent.mkdir(parents=True, exist_ok=True)
-    arrays = [_column_array([row[i] for row in rows], field) for i, field in enumerate(schema)]
-    table = pa.Table.from_arrays(arrays, schema=schema)
-    pq.write_table(
-        table,
-        path,
-        compression=PARQUET_COMPRESSION,
-        compression_level=PARQUET_COMPRESSION_LEVEL,
-        row_group_size=max(len(rows), 1),
-        write_statistics=True,
-    )
 
 
 def governed_db_tables(conn: sqlite3.Connection) -> list[str]:
@@ -333,7 +322,7 @@ def export_table_parquet(conn: sqlite3.Connection, table: str, dest: Path) -> tu
             wrote_any_group = True
         if not wrote_any_group:
             # An empty table still needs a valid (0-row) parquet file —
-            # mirrors _write_parquet's row_group_size=max(len(rows), 1).
+            # row_group_size=1 is a floor, not a claim of one actual row.
             empty = pa.Table.from_arrays(
                 [_column_array([], field) for field in schema], schema=schema
             )

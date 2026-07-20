@@ -35,6 +35,9 @@ Documentation = "https://github.com/bogdanscarwash/babylon#readme"
 Issues = "https://github.com/bogdanscarwash/babylon/issues"
 Source = "https://github.com/bogdanscarwash/babylon"
 
+[project.scripts]
+babylon = "babylon.cli:app"
+
 [tool.poetry.dependencies]
 pydantic = ">=2.10.3"
 numpy = ">=1.26.4"

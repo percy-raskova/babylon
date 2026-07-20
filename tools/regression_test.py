@@ -52,20 +52,16 @@ sys.path.insert(0, str(Path(__file__).parent.parent / "src"))
 sys.path.insert(0, str(Path(__file__).parent))
 
 # Import from centralized shared module (ADR036)
+from regression_scenarios import SCENARIOS, create_scenario  # noqa: F401  (re-export)
 from shared import (
     COMPRADOR_ID,
     CORE_BOURGEOISIE_ID,
     LABOR_ARISTOCRACY_ID,
     PERIPHERY_WORKER_ID,
-    inject_parameter,
     is_dead,
 )
 
 from babylon.config.defines import GameDefines
-from babylon.engine.scenarios import (
-    create_imperial_circuit_scenario,
-    create_two_node_scenario,
-)
 from babylon.engine.simulation_engine import step
 
 # Constants
@@ -214,43 +210,6 @@ _DENSE_EDGE_FIELDS: Final[list[tuple[str, Callable[[Any], float | bool]]]] = [
     ("tension", lambda r: float(r.tension)),
 ]
 
-# Scenario configurations
-SCENARIOS: Final[dict[str, dict[str, Any]]] = {
-    "imperial_circuit": {
-        "description": "4-node default scenario",
-        "factory": "create_imperial_circuit_scenario",
-        "defines_overrides": {},
-    },
-    "two_node": {
-        "description": "Minimal worker vs owner",
-        "factory": "create_two_node_scenario",
-        "defines_overrides": {},
-    },
-    "starvation": {
-        "description": "Low extraction efficiency stress",
-        "factory": "create_imperial_circuit_scenario",
-        "defines_overrides": {
-            "economy.extraction_efficiency": 0.05,
-        },
-    },
-    "glut": {
-        "description": "High extraction with metabolic overshoot",
-        "factory": "create_imperial_circuit_scenario",
-        "defines_overrides": {
-            "economy.extraction_efficiency": 0.99,
-            "survival.default_subsistence": 0.0,
-        },
-    },
-    "fascist_bifurcation": {
-        "description": "Consciousness routing to national identity",
-        "factory": "create_imperial_circuit_scenario",
-        "defines_overrides": {
-            "economy.extraction_efficiency": 0.7,
-            "consciousness.sensitivity": 0.3,
-        },
-    },
-}
-
 
 @dataclass
 class CheckpointData:
@@ -319,36 +278,6 @@ def hash_defines(defines: GameDefines) -> str:
     """
     json_str = defines.model_dump_json(indent=None)
     return hashlib.sha256(json_str.encode()).hexdigest()[:16]
-
-
-def create_scenario(
-    name: str,
-) -> tuple[Any, Any, GameDefines]:
-    """Create scenario by name.
-
-    Args:
-        name: Scenario name from SCENARIOS
-
-    Returns:
-        Tuple of (WorldState, SimulationConfig, GameDefines)
-    """
-    config = SCENARIOS[name]
-
-    # Call factory function
-    factory_name = config["factory"]
-    if factory_name == "create_imperial_circuit_scenario":
-        state, sim_config, base_defines = create_imperial_circuit_scenario()
-    elif factory_name == "create_two_node_scenario":
-        state, sim_config, base_defines = create_two_node_scenario()
-    else:
-        raise ValueError(f"Unknown factory: {factory_name}")
-
-    # Apply overrides
-    defines = base_defines
-    for path, value in config["defines_overrides"].items():
-        defines = inject_parameter(defines, path, value)
-
-    return state, sim_config, defines
 
 
 def get_entity_value(state: Any, entity_id: str, field: str, default: float = 0.0) -> float:

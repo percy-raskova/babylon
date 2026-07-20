@@ -108,3 +108,38 @@ class TestNoFabricatedAdjacency:
         state, _config, _defines = create_us_scenario()
         adjacency_edges = [r for r in state.relationships if r.edge_type == EdgeType.ADJACENCY]
         assert adjacency_edges == []
+
+
+class TestRawMaterialStockIsStampedFromArtifact:
+    """#39 T6: raw_material_stock is stamped straight from the artifact's
+    raw_material_value_millions -- never fabricated, never a live DB read
+    at scenario-build time (D-T6-2)."""
+
+    def test_every_territory_matches_the_artifact_value(self) -> None:
+        state, _config, _defines = create_us_scenario()
+        data = load_county_data()
+        by_fips = {c["fips"]: c["raw_material_value_millions"] for c in data["counties"]}
+        for territory in state.territories.values():
+            assert territory.county_fips in by_fips
+            assert territory.raw_material_stock == by_fips[territory.county_fips]
+
+    def test_gap_counties_carry_none(self) -> None:
+        state, _config, _defines = create_us_scenario()
+        data = load_county_data()
+        gap_fips = {
+            gap["fips"] for gap in data["gaps"] if gap["field"] == "raw_material_value_millions"
+        }
+        assert gap_fips, "expected at least one raw_material_value_millions gap in the artifact"
+        by_county_fips = {t.county_fips: t for t in state.territories.values()}
+        for fips in gap_fips:
+            assert by_county_fips[fips].raw_material_stock is None
+
+    def test_seeded_counties_carry_a_nonnegative_stock(self) -> None:
+        state, _config, _defines = create_us_scenario()
+        seeded = [
+            t.raw_material_stock
+            for t in state.territories.values()
+            if t.raw_material_stock is not None
+        ]
+        assert len(seeded) > 0
+        assert all(v >= 0.0 for v in seeded)

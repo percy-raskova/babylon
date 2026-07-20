@@ -732,16 +732,20 @@ def _create_us_territories() -> tuple[dict[str, Territory], dict[str, str]]:
     (Constitution III.11). This scenario emits NO ADJACENCY edges, matching
     the pre-T4 hex scenario's behavior (it never emitted any either).
 
-    Missing per-county fields (documented in the artifact's ``gaps`` list —
-    23 of 3155 counties, zero overlap between the population-missing and
-    centroid-missing sets; a 3156th raw-scope county, 46113, is excluded
-    entirely as a retired-FIPS duplicate of 46102 — see the artifact's
-    ``exclusions``) are handled with a loud log + an honest baseline,
-    never a fabricated nonzero value: population defaults to 0, and
-    geometry-less counties fall back to ``_FALLBACK_SECTOR``/
-    ``_FALLBACK_TERRITORY_TYPE``/``_FALLBACK_RENT_LEVEL``/
-    ``_FALLBACK_BIOCAPACITY`` instead of running ``_classify_hex`` (which
-    has no lat/lon to classify from).
+    Missing per-county fields (documented in the artifact's ``gaps`` list;
+    see the artifact's ``exclusions`` for the retired-FIPS dedup) are
+    handled with a loud log + an honest baseline, never a fabricated
+    nonzero value: population defaults to 0, and geometry-less counties
+    fall back to ``_FALLBACK_SECTOR``/``_FALLBACK_TERRITORY_TYPE``/
+    ``_FALLBACK_RENT_LEVEL``/``_FALLBACK_BIOCAPACITY`` instead of running
+    ``_classify_hex`` (which has no lat/lon to classify from).
+
+    ``raw_material_stock`` (#39 T6, schema_version 2) is stamped straight
+    from the artifact's ``raw_material_value_millions`` -- ``None`` when the
+    county's state has no ``fact_state_minerals`` row or the county has no
+    geometry row (SubstrateSystem never touches a ``None`` stock; see its
+    module docstring). No per-tick reference-DB read: seeding happens once,
+    here, at scenario-build time (D-T6-2).
 
     Returns:
         ``(territories, region_by_territory)`` — the territory dict
@@ -761,6 +765,7 @@ def _create_us_territories() -> tuple[dict[str, Territory], dict[str, str]]:
         lat = county["centroid_lat"]
         lon = county["centroid_lon"]
         population = county["population"]
+        raw_material_value_millions = county["raw_material_value_millions"]
 
         if lat is not None and lon is not None:
             metro_inf = _compute_metro_influence(lat, lon)
@@ -789,6 +794,16 @@ def _create_us_territories() -> tuple[dict[str, Territory], dict[str, str]]:
                 fips,
             )
 
+        if raw_material_value_millions is None:
+            logger.warning(
+                "_create_us_territories: county=%s has no committed "
+                "raw_material_value_millions (see us_county_territories.json "
+                "'gaps'); territory seeded with raw_material_stock=None -- "
+                "SubstrateSystem will never touch it (Constitution III.11 -- "
+                "no fabricated default)",
+                fips,
+            )
+
         state_abbrev = county["state_abbrev"]
         name = f"{county['county_name']}, {state_abbrev}" if state_abbrev else county["county_name"]
 
@@ -804,6 +819,7 @@ def _create_us_territories() -> tuple[dict[str, Territory], dict[str, str]]:
             biocapacity=biocap,
             max_biocapacity=biocap,
             heat=0.0,
+            raw_material_stock=raw_material_value_millions,
         )
     return territories, region_by_territory
 

@@ -13,7 +13,8 @@ module reads the committed, hash-stamped
 class of problem (real QCEW business-seed data, ADR086).
 
 Only the raw reference-derived fields are baked into the artifact (fips,
-county_name, state_abbrev, centroid lat/lon, population); the pure in-memory
+county_name, state_abbrev, centroid lat/lon, population,
+raw_material_value_millions -- #39 T6, schema_version 2); the pure in-memory
 sector/rent/biocapacity/region classification stays runtime logic in
 ``_legacy.py`` (no DB access needed for it). Missing fields are explicit
 ``null`` in the artifact, with reasons recorded in its ``gaps`` list --

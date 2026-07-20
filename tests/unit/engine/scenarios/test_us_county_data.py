@@ -27,6 +27,11 @@ _AUTAUGA_POPULATION_2010 = 55505
 _BALDWIN_FIPS = "01003"
 _BALDWIN_POPULATION_2010 = 201206
 
+# fact_state_minerals(AL).value_millions=2210 allocated to Autauga/Baldwin by
+# dim_county_geometry.area_sq_km share (#39 T6), spot-verified at generation time.
+_AUTAUGA_RAW_MATERIAL_MILLIONS = 25.479854048273463
+_BALDWIN_RAW_MATERIAL_MILLIONS = 85.46863199358724
+
 _REFERENCE_DB = DEFAULT_SQLITE_PATH
 
 
@@ -102,6 +107,10 @@ class TestArtifactProvenance:
                 assert (fips, "population") in gap_keys, f"{fips} population null but no gap entry"
             if county["centroid_lat"] is None or county["centroid_lon"] is None:
                 assert (fips, "centroid") in gap_keys, f"{fips} centroid null but no gap entry"
+            if county["raw_material_value_millions"] is None:
+                assert (fips, "raw_material_value_millions") in gap_keys, (
+                    f"{fips} raw_material_value_millions null but no gap entry"
+                )
 
         for gap in data["gaps"]:
             assert gap["reason"], f"gap entry for {gap['fips']} has an empty reason"
@@ -112,7 +121,68 @@ class TestArtifactProvenance:
         null_centroid = sum(
             1 for c in data["counties"] if c["centroid_lat"] is None or c["centroid_lon"] is None
         )
-        assert len(data["gaps"]) == null_population + null_centroid
+        null_raw_material = sum(
+            1 for c in data["counties"] if c["raw_material_value_millions"] is None
+        )
+        assert len(data["gaps"]) == null_population + null_centroid + null_raw_material
+
+
+class TestRawMaterialValueMillions:
+    """#39 T6: fact_state_minerals allocated to counties by area_sq_km share
+    (schema_version 2). Mirrors TestArtifactProvenance's population tests."""
+
+    def test_schema_version_bumped(self) -> None:
+        data = load_county_data()
+        assert data["schema_version"] == 2
+
+    def test_autauga_and_baldwin_are_the_real_allocated_figures(self) -> None:
+        """Not round inventions -- an area-weighted share of a real USGS total."""
+        data = load_county_data()
+        by_fips = {c["fips"]: c["raw_material_value_millions"] for c in data["counties"]}
+        assert by_fips[_AUTAUGA_FIPS] == pytest.approx(_AUTAUGA_RAW_MATERIAL_MILLIONS)
+        assert by_fips[_BALDWIN_FIPS] == pytest.approx(_BALDWIN_RAW_MATERIAL_MILLIONS)
+
+    def test_values_are_not_round_inventions(self) -> None:
+        data = load_county_data()
+        values = [
+            c["raw_material_value_millions"]
+            for c in data["counties"]
+            if c["raw_material_value_millions"] is not None
+        ]
+        assert len(values) > 1
+        assert len(set(values)) > 1, "all non-null values are identical -- looks fabricated"
+
+    def test_values_are_nonnegative(self) -> None:
+        data = load_county_data()
+        for county in data["counties"]:
+            value = county["raw_material_value_millions"]
+            if value is not None:
+                assert value >= 0.0, f"{county['fips']} has a negative raw_material_value_millions"
+
+    def test_dc_and_pr_states_are_unseedable(self) -> None:
+        """DC has no fact_state_minerals row (USGS covers the 50 states only);
+        PR is out of the national scope entirely (_load_national_fips)."""
+        data = load_county_data()
+        by_fips = {c["fips"]: c for c in data["counties"]}
+        assert by_fips["11001"]["raw_material_value_millions"] is None
+        assert not any(fips.startswith("72") for fips in by_fips)
+
+    def test_state_shares_sum_to_the_state_total(self) -> None:
+        """Every seeded county's share, summed within its state, reconstructs
+        the state's fact_state_minerals value (allocation conserves the total)."""
+        data = load_county_data()
+        by_state: dict[str, float] = {}
+        for county in data["counties"]:
+            value = county["raw_material_value_millions"]
+            if value is not None:
+                state_fips = county["fips"][:2]
+                by_state[state_fips] = by_state.get(state_fips, 0.0) + value
+        # Alabama (01): fact_state_minerals value_millions = 2210, fully
+        # covered by geometry (no gaps for AL raw_material_value_millions).
+        assert by_state["01"] == pytest.approx(2210.0)
+        # Connecticut (09): value_millions = 259, allocated across the 9
+        # modern planning regions (the 8 pre-2022 counties have no geometry).
+        assert by_state["09"] == pytest.approx(259.0)
 
 
 class TestRetiredFipsDedup:
@@ -210,3 +280,34 @@ class TestArtifactRederivesFromDB:
         data = load_county_data()
         excluded = {e["fips"] for e in data["exclusions"]}
         assert {c["fips"] for c in data["counties"]} == set(expected) - excluded
+
+    def test_raw_material_value_millions_rederives_from_fact_state_minerals(self) -> None:
+        """#39 T6: allocated state totals reconstruct fact_state_minerals --
+        shares sum to 1 per state over the counties the artifact could seed
+        (i.e. covered by dim_county_geometry -- the generator's own scope)."""
+        from tools.generate_us_county_territories import (
+            _allocate_raw_material_values,
+            _load_county_geo_rows,
+            _load_state_minerals,
+        )
+
+        from babylon.reference.database import get_normalized_session_factory
+
+        data = load_county_data()
+        scope_fips = frozenset(c["fips"] for c in data["counties"])
+        session_factory = get_normalized_session_factory()
+        geo_rows = _load_county_geo_rows(session_factory)
+        state_minerals = _load_state_minerals(session_factory)
+        areas = {fips: geo_rows[fips][4] for fips in scope_fips if fips in geo_rows}
+
+        values, _gap_reasons = _allocate_raw_material_values(scope_fips, areas, state_minerals)
+        by_fips = {c["fips"]: c["raw_material_value_millions"] for c in data["counties"]}
+        for fips in scope_fips:
+            assert values[fips] == pytest.approx(by_fips[fips], abs=1e-6), (
+                f"{fips} raw_material_value_millions does not re-derive from "
+                "the reference DB -- artifact is stale"
+            )
+
+        # Alabama's fully-covered total re-derives exactly.
+        al_total = sum(v for fips, v in values.items() if fips.startswith("01") and v is not None)
+        assert al_total == pytest.approx(state_minerals["01"])

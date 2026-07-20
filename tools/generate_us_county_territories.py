@@ -80,12 +80,27 @@ scope (flagged for a follow-up task, not fixed here).
 
 Only the RAW reference-derived fields are baked into the artifact
 (``fips``, ``county_name``, ``state_abbrev``, ``centroid_lat``/``lon``,
-``population``). The pure, in-memory sector/rent/biocapacity/region
-classification (``_classify_hex``/``_compute_metro_influence``/
-``_get_region_name`` in ``_legacy.py``) stays runtime logic -- it needs no
-DB access and predates this artifact (Wayne's untouched precedent uses the
-identical hand-authored classification style), so precomputing its output
-here would only bloat the artifact without adding real data.
+``population``, ``raw_material_value_millions``). The pure, in-memory
+sector/rent/biocapacity/region classification (``_classify_hex``/
+``_compute_metro_influence``/``_get_region_name`` in ``_legacy.py``) stays
+runtime logic -- it needs no DB access and predates this artifact (Wayne's
+untouched precedent uses the identical hand-authored classification style),
+so precomputing its output here would only bloat the artifact without
+adding real data.
+
+**Raw-material value policy (2026-07-20, #39 T6, schema_version 2)**:
+``fact_state_minerals.value_millions`` (USGS Mineral Commodity Summaries,
+Program 22 Wave 1, 50 states -- no energy or biocapacity reference-data
+source exists, see ``engine/systems/substrate.py``) allocated state -> county
+by land-area share: ``county_share = area_sq_km / Σ(area_sq_km over the
+state's scoped counties with a geometry row)``. This is the same
+apportionment key ``persistence/hex_hydrator.py`` already uses for
+raw-material stocks ("follows AREA -- where mining + extraction happens").
+A county's ``raw_material_value_millions`` is ``None`` (recorded in
+``gaps``) when its state has no ``fact_state_minerals`` row (DC, PR -- USGS
+covers the 50 states only) or the county itself has no
+``dim_county_geometry`` row (no area to allocate a share from) -- never a
+fabricated default.
 
 Regeneration::
 
@@ -109,7 +124,7 @@ from typing import Any
 from babylon.engine.headless_runner.reference_data_cache import ReferenceDataCache
 from babylon.engine.headless_runner.scopes import DEFAULT_SQLITE_PATH, _load_national_fips
 from babylon.reference.database import get_normalized_session_factory
-from babylon.reference.schema import DimCounty, DimCountyGeometry, DimState
+from babylon.reference.schema import DimCounty, DimCountyGeometry, DimState, FactStateMinerals
 
 #: Matches WorldStateBridge.hydrate_initial's default start_year (bridge.py)
 #: and empirically has the best national-scope Census/QCEW coverage among
@@ -156,12 +171,15 @@ _ARTIFACT_PATH = (
 
 def _load_county_geo_rows(
     session_factory: Any,
-) -> dict[str, tuple[str, str, float | None, float | None]]:
-    """Real per-county name/state/centroid rows, FIPS-keyed.
+) -> dict[str, tuple[str, str, float | None, float | None, float | None]]:
+    """Real per-county name/state/centroid/area rows, FIPS-keyed.
 
-    Returns ``{fips: (county_name, state_abbrev, centroid_lat, centroid_lon)}``.
-    ``centroid_lat``/``centroid_lon`` are ``None`` for counties without a
-    ``dim_county_geometry`` row.
+    Returns ``{fips: (county_name, state_abbrev, centroid_lat, centroid_lon,
+    area_sq_km)}``. ``centroid_lat``/``centroid_lon``/``area_sq_km`` are
+    ``None`` for counties without a ``dim_county_geometry`` row (empirically
+    the same counties lack both -- ``area_sq_km`` is never null on a county
+    that HAS a geometry row, verified against the reference DB at T6
+    generation time).
     """
     with session_factory() as session:
         rows = (
@@ -171,6 +189,7 @@ def _load_county_geo_rows(
                 DimState.state_abbrev,
                 DimCountyGeometry.centroid_lat,
                 DimCountyGeometry.centroid_lon,
+                DimCountyGeometry.area_sq_km,
             )
             .join(DimState, DimState.state_id == DimCounty.state_id)
             .outerjoin(DimCountyGeometry, DimCountyGeometry.county_id == DimCounty.county_id)
@@ -182,8 +201,26 @@ def _load_county_geo_rows(
             state_abbrev,
             float(lat) if lat is not None else None,
             float(lon) if lon is not None else None,
+            float(area) if area is not None else None,
         )
-        for fips, county_name, state_abbrev, lat, lon in rows
+        for fips, county_name, state_abbrev, lat, lon, area in rows
+    }
+
+
+def _load_state_minerals(session_factory: Any) -> dict[str, float]:
+    """``{state_fips: value_millions}`` from ``fact_state_minerals`` (Program 22
+    Wave 1) joined to ``dim_state`` -- 50 states, no DC/PR/territories (USGS
+    Mineral Commodity Summaries covers the 50 states only)."""
+    with session_factory() as session:
+        rows = (
+            session.query(DimState.state_fips, FactStateMinerals.value_millions)
+            .join(FactStateMinerals, FactStateMinerals.state_id == DimState.state_id)
+            .all()
+        )
+    return {
+        state_fips: float(value_millions)
+        for state_fips, value_millions in rows
+        if value_millions is not None
     }
 
 
@@ -249,6 +286,52 @@ def _dedup_retired_fips(scope_fips: frozenset[str]) -> tuple[frozenset[str], lis
     return frozenset(scope_fips - dropped), exclusions
 
 
+def _allocate_raw_material_values(
+    scope_fips: frozenset[str],
+    areas: dict[str, float | None],
+    state_minerals: dict[str, float],
+) -> tuple[dict[str, float | None], dict[str, str]]:
+    """State ``fact_state_minerals.value_millions`` allocated to counties by
+    land-area share (module docstring, "Raw-material value policy").
+
+    Args:
+        scope_fips: Counties in scope (post retired-FIPS dedup).
+        areas: ``{fips: area_sq_km}`` (``None`` = no ``dim_county_geometry`` row).
+        state_minerals: ``{state_fips: value_millions}`` (50 states only).
+
+    Returns:
+        ``(values, gap_reasons)`` -- ``{fips: raw_material_value_millions}``
+        (``None`` when unseedable) and ``{fips: reason}`` for exactly the
+        ``None`` entries, for the caller to fold into the artifact's ``gaps``
+        list alongside population/centroid (module docstring format).
+    """
+    state_area_totals: dict[str, float] = {}
+    for fips in scope_fips:
+        area = areas.get(fips)
+        if area is not None:
+            state_fips = fips[:2]
+            state_area_totals[state_fips] = state_area_totals.get(state_fips, 0.0) + area
+
+    values: dict[str, float | None] = {}
+    gap_reasons: dict[str, str] = {}
+    for fips in sorted(scope_fips):
+        state_fips = fips[:2]
+        state_value = state_minerals.get(state_fips)
+        area = areas.get(fips)
+        if state_value is None:
+            values[fips] = None
+            gap_reasons[fips] = f"no fact_state_minerals row for state={state_fips}"
+        elif area is None:
+            values[fips] = None
+            gap_reasons[fips] = (
+                f"no dim_county_geometry row for county={fips} "
+                "(no area to allocate a state-mineral-value share from)"
+            )
+        else:
+            values[fips] = state_value * (area / state_area_totals[state_fips])
+    return values, gap_reasons
+
+
 def build_payload(
     year: int = DEFAULT_POPULATION_YEAR,
     sqlite_path: Path = DEFAULT_SQLITE_PATH,
@@ -256,15 +339,24 @@ def build_payload(
     """Build the full county-seed artifact payload from the reference DB."""
     raw_scope_fips = _load_national_fips(sqlite_path)
     scope_fips, exclusions = _dedup_retired_fips(raw_scope_fips)
-    geo_rows = _load_county_geo_rows(get_normalized_session_factory())
+    session_factory = get_normalized_session_factory()
+    geo_rows = _load_county_geo_rows(session_factory)
+    state_minerals = _load_state_minerals(session_factory)
 
     cache = ReferenceDataCache(sqlite_path)
     cache.hydrate(scope_fips=scope_fips, year_set=frozenset({year}))
 
+    areas = {fips: geo_rows[fips][4] for fips in scope_fips if fips in geo_rows}
+    raw_material_values, raw_material_gap_reasons = _allocate_raw_material_values(
+        scope_fips, areas, state_minerals
+    )
+
     counties: list[dict[str, Any]] = []
     gaps: list[dict[str, str]] = []
     for fips in sorted(scope_fips):
-        county_name, state_abbrev, lat, lon = geo_rows.get(fips, (fips, "", None, None))
+        county_name, state_abbrev, lat, lon, _area = geo_rows.get(
+            fips, (fips, "", None, None, None)
+        )
 
         population = cache.lookup_population(fips, year)
         if population is None:
@@ -285,6 +377,16 @@ def build_payload(
                 }
             )
 
+        raw_material_reason = raw_material_gap_reasons.get(fips)
+        if raw_material_reason is not None:
+            gaps.append(
+                {
+                    "fips": fips,
+                    "field": "raw_material_value_millions",
+                    "reason": raw_material_reason,
+                }
+            )
+
         counties.append(
             {
                 "fips": fips,
@@ -293,6 +395,7 @@ def build_payload(
                 "centroid_lat": lat,
                 "centroid_lon": lon,
                 "population": population,
+                "raw_material_value_millions": raw_material_values.get(fips),
             }
         )
 
@@ -311,11 +414,12 @@ def build_payload(
         )
 
     return {
-        "schema_version": 1,
+        "schema_version": 2,
         "source": {
             "dataset": (
                 "dim_county + dim_county_geometry + fact_census_income (Census) "
-                "with fact_qcew_annual (QCEW) fallback"
+                "with fact_qcew_annual (QCEW) fallback + fact_state_minerals "
+                "(USGS MCS, Program 22 Wave 1)"
             ),
             "reference_db": "data/sqlite/marxist-data-3NF.sqlite",
             "scope_rule": (
@@ -329,6 +433,13 @@ def build_payload(
                 "fact_qcew_annual employment SUM x 0.33 fallback (matches "
                 "ReferenceDataCache._resolve_population byte-for-byte -- reused "
                 "directly, not reimplemented)"
+            ),
+            "raw_material_value_policy": (
+                "fact_state_minerals.value_millions (50 states) allocated to "
+                "counties by dim_county_geometry.area_sq_km share within the "
+                "state (schema_version 2, #39 T6) -- None when the state has "
+                "no fact_state_minerals row (DC/PR) or the county has no "
+                "geometry row (see 'gaps')"
             ),
             "county_count": len(counties),
         },

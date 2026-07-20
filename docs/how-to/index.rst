@@ -34,6 +34,20 @@ Guides for extending and customizing the simulation mechanics.
    Load, modify, and analyze ``GameDefines`` parameters. Includes parameter
    sweeps and sensitivity analysis workflows.
 
+Reference Data
+--------------
+
+.. toctree::
+   :maxdepth: 1
+
+   reference-data-pipeline
+
+**Add or Change Reference Data (parquet-canonical pipeline)**
+   Add tables or ingest rows through the source-only pipeline: parquet +
+   ``schema.sql`` are canonical, the SQLite reference DB is a deterministic
+   build product, and loaders run against scratch copies via
+   ``tools/loader_to_sources.py`` (ADR098).
+
 State Apparatus AI (Feature 039)
 ---------------------------------
 

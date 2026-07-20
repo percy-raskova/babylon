@@ -147,6 +147,21 @@ jobs:
             echo "::notice::no product block in data-artifacts.yaml yet — rebuild-verify inert (pre-cutover)"
             exit 0
           fi
+          # The byte-identity contract is defined ONLY under the pinned sqlite
+          # (the builder hard-gates on PINNED_SQLITE_VERSION). Stock runners
+          # ship an older sqlite, so off-pin this leg warns LOUDLY and skips
+          # instead of hard-failing every nightly. Declared follow-up (ADR098):
+          # run this step inside the infra devshell on CI
+          # (cachix/install-nix-action, nix-release.yml prior art), then DELETE
+          # this warning path so the leg becomes the true remote identity proof.
+          RUNTIME=$(poetry run python -c 'import sqlite3; print(sqlite3.sqlite_version)')
+          PINNED=$(rg -o 'sqlite_version: "([0-9.]+)"' -r '$1' data-artifacts.yaml | head -1)
+          if [ "$RUNTIME" != "$PINNED" ]; then
+            MSG="runner sqlite ${RUNTIME} != pinned ${PINNED} — byte-identity leg"
+            MSG="${MSG} skipped; CI-devshell pinning is the ADR098 declared follow-up"
+            echo "::warning title=rebuild-verify OFF-PIN::${MSG}"
+            exit 0
+          fi
           poetry run python tools/build_reference_db.py --out /tmp/rebuilt.sqlite
           poetry run python - <<'EOF'
           import hashlib, pathlib, sys, yaml

@@ -1,6 +1,6 @@
 # Parquet Reference-Data Pipeline — Design
 
-**Status:** owner-ruled 2026-07-18 ("Parquet pipeline, ingest lands as a source"), spec pending owner review.
+**Status:** EXECUTED 2026-07-20 (Phase 6 cutover, ADR098; plan `docs/superpowers/plans/2026-07-19-parquet-reference-pipeline.md`). Originally owner-ruled 2026-07-18 ("Parquet pipeline, ingest lands as a source").
 **Owner intent (verbatim):** "Can you make a Parquet representation of that sqlite database, then in CI
 for the load process you can make a byte-identical version of the same sqlite database, and have the
 added benefit of adding whatever else you want to it?"

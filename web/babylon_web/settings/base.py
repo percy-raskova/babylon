@@ -26,6 +26,15 @@ DEBUG = False
 
 ALLOWED_HOSTS: list[str] = []
 
+# GeoDjango native libraries: under the infra devshell's nix python the
+# dynamic linker sees no host libs and ctypes find_library() locates
+# nothing, so the flake exports exact store paths (babylon-infra a7f1008).
+# Host installs leave these unset and keep the ldconfig lookup.
+if os.environ.get("GDAL_LIBRARY_PATH"):
+    GDAL_LIBRARY_PATH = os.environ["GDAL_LIBRARY_PATH"]
+if os.environ.get("GEOS_LIBRARY_PATH"):
+    GEOS_LIBRARY_PATH = os.environ["GEOS_LIBRARY_PATH"]
+
 # --------------------------------------------------------------------------- #
 # Application definition
 # --------------------------------------------------------------------------- #

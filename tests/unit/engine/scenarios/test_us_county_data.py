@@ -19,7 +19,12 @@ import json
 import pytest
 
 from babylon.engine.headless_runner.scopes import DEFAULT_SQLITE_PATH, _load_national_fips
-from babylon.engine.scenarios.us_county_data import ARTIFACT_PATH, load_county_data
+from babylon.engine.scenarios.us_county_data import (
+    ARTIFACT_PATH,
+    _verify_content_hash,
+    _verify_schema_version,
+    load_county_data,
+)
 
 # Real Census 2010 figures, spot-verified against the raw DB at generation time.
 _AUTAUGA_FIPS = "01001"
@@ -125,6 +130,40 @@ class TestArtifactProvenance:
             1 for c in data["counties"] if c["raw_material_value_millions"] is None
         )
         assert len(data["gaps"]) == null_population + null_centroid + null_raw_material
+
+
+class TestSchemaVersionValidation:
+    """#39 T6 M1 / LOW-2: the loader validates ``schema_version`` explicitly --
+    ``content_hash`` alone cannot catch a stale/mismatched schema, since it's
+    computed the same way regardless of version (self-consistent even over a
+    stale v1 artifact)."""
+
+    def test_committed_artifact_passes(self) -> None:
+        """The real committed artifact validates cleanly (schema_version 2)."""
+        data = load_county_data()
+        _verify_schema_version(data)  # must not raise
+
+    def test_wrong_schema_version_fails_loud(self) -> None:
+        data = {**load_county_data(), "schema_version": 1}
+        with pytest.raises(ValueError, match="schema_version mismatch"):
+            _verify_schema_version(data)
+
+    def test_missing_schema_version_fails_loud(self) -> None:
+        data = {k: v for k, v in load_county_data().items() if k != "schema_version"}
+        with pytest.raises(ValueError, match="schema_version mismatch"):
+            _verify_schema_version(data)
+
+    def test_error_names_the_regeneration_command(self) -> None:
+        data = {**load_county_data(), "schema_version": 1}
+        with pytest.raises(ValueError, match="tools/generate_us_county_territories.py"):
+            _verify_schema_version(data)
+
+    def test_wrong_schema_version_does_not_trip_the_content_hash_check(self) -> None:
+        """A version-only mismatch (content otherwise byte-identical) still
+        passes content_hash -- proving schema_version needs its OWN guard,
+        not just a stronger hash."""
+        data = {**load_county_data(), "schema_version": 1}
+        _verify_content_hash(data)  # must not raise: hash is version-agnostic
 
 
 class TestRawMaterialValueMillions:

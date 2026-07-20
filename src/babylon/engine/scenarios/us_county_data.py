@@ -34,7 +34,31 @@ from typing import Any
 #: ``<pkg>/data/game/<file>.json``).
 ARTIFACT_PATH = Path(__file__).resolve().parents[2] / "data" / "game" / "us_county_territories.json"
 
+#: The schema_version this loader (and _legacy.py's consumer) understands.
+#: Bumped to 2 at #39 T6 (raw_material_value_millions added). content_hash
+#: alone cannot catch a stale/mismatched schema_version -- it's computed the
+#: same way regardless of version, so it stays self-consistent even over a
+#: stale v1 artifact (#39 T6 M1 / LOW-2).
+_EXPECTED_SCHEMA_VERSION: int = 2
+
 __all__ = ["ARTIFACT_PATH", "load_county_data"]
+
+
+def _verify_schema_version(data: dict[str, Any]) -> None:
+    """Loud failure (Constitution III.11) on a stale/mismatched artifact schema.
+
+    Raises:
+        ValueError: the stamped ``schema_version`` does not match
+            :data:`_EXPECTED_SCHEMA_VERSION` -- the artifact predates (or is
+            newer than) a field this loader's consumer expects.
+    """
+    actual = data.get("schema_version")
+    if actual != _EXPECTED_SCHEMA_VERSION:
+        raise ValueError(
+            f"{ARTIFACT_PATH.name} schema_version mismatch: expected "
+            f"{_EXPECTED_SCHEMA_VERSION}, got {actual!r} -- regenerate via "
+            "tools/generate_us_county_territories.py"
+        )
 
 
 def _verify_content_hash(data: dict[str, Any]) -> None:
@@ -67,9 +91,11 @@ def load_county_data() -> dict[str, Any]:
         FileNotFoundError: If the artifact is missing (regenerate with
             ``tools/generate_us_county_territories.py``).
         json.JSONDecodeError: If the artifact is not valid JSON.
-        ValueError: If the stamped ``content_hash`` doesn't match the
-            recomputed hash over ``counties``.
+        ValueError: If the stamped ``schema_version`` does not match
+            :data:`_EXPECTED_SCHEMA_VERSION`, or the stamped ``content_hash``
+            doesn't match the recomputed hash over ``counties``.
     """
     data = json.loads(ARTIFACT_PATH.read_text(encoding="utf-8"))
+    _verify_schema_version(data)
     _verify_content_hash(data)
     return data  # type: ignore[no-any-return]

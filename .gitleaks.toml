@@ -75,6 +75,13 @@ paths = [
 #      reads, not credentials. The dict shape (`"kind": ..., "key": ...`)
 #      trips the same generic `"key": "<moderate-entropy-string>"` heuristic
 #      as the two entries above.
+#   11. docs/superpowers/plans/2026-07-19-qa-regression-modernization.md:370-380
+#      (commit 49793938, the modernization implementation plan) — same
+#      class as 6-10: the plan's Task 2 section carries EXAMPLE
+#      SCENARIO_COVERAGE_DATA rows verbatim (`"kind": "entity_delta",
+#      "key": "C001.wealth"` etc.), inspected unredacted 2026-07-20 on the
+#      PR #220 full-history scan; dotted `<entity_id>.<attribute>` probe
+#      keys in a planning document, not credentials.
 [[rules]]
 id = "generic-api-key"
 
@@ -84,4 +91,5 @@ paths = [
   '''specs/020-detroit-vertical-slice/contracts/internal-api\.md''',
   '''tests/integration/test_proletarian_internationalism\.py''',
   '''tools/regression_scenarios\.py''',
+  '''docs/superpowers/plans/2026-07-19-qa-regression-modernization\.md''',
 ]

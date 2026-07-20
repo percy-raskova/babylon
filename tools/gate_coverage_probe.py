@@ -114,6 +114,7 @@ def run_probe(
     """Verify every runtime-verifiable evidence row; return findings."""
     from tools.regression_test import (  # heavy import, local; mirrors gate cadence
         _build_vol3_calculator_overrides,
+        build_single_county_overrides,
     )
 
     from babylon.engine.simulation_engine import step  # heavy import, local
@@ -138,8 +139,17 @@ def run_probe(
         # Mirror _run_scenario_ticks exactly: calculator_overrides built ONCE
         # per scenario run and passed into every step() call, so
         # TickDynamicsSystem (and anything gated behind melt_calculator) sees
-        # the same services the byte-identical gate exercises.
-        calculator_overrides = _build_vol3_calculator_overrides(defines)
+        # the same services the byte-identical gate exercises. single_county
+        # additionally needs the real-FIPS tensor_registry (E2a) — without
+        # it, TickDynamicsSystem's financial layer would still stamp
+        # _national_financial (hollow: rate stays 0.0, no real Wayne tensor
+        # ever touched), which is exactly the false-positive this probe
+        # exists to reject.
+        calculator_overrides = (
+            build_single_county_overrides(defines)
+            if cov.scenario == "single_county"
+            else _build_vol3_calculator_overrides(defines)
+        )
         context: dict[str, Any] = {}
         seen_events: set[str] = set()
         initial = {r.key: _entity_attr(state, r.key) for r in rows if r.kind == "entity_delta"}

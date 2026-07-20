@@ -23,6 +23,7 @@ from shared import inject_parameter
 from babylon.config.defines import GameDefines
 from babylon.engine.scenarios import (
     create_imperial_circuit_scenario,
+    create_single_county_scenario,
     create_two_node_scenario,
 )
 
@@ -61,6 +62,12 @@ SCENARIOS: Final[dict[str, dict[str, Any]]] = {
             "consciousness.sensitivity": 0.3,
         },
     },
+    "single_county": {
+        "description": "Wayne-seeded minimal county: Vol III financial layer, "
+        "MELT path, and distribution identity all fire",
+        "factory": "create_single_county_scenario",
+        "defines_overrides": {},
+    },
 }
 
 
@@ -83,6 +90,8 @@ def create_scenario(
         state, sim_config, base_defines = create_imperial_circuit_scenario()
     elif factory_name == "create_two_node_scenario":
         state, sim_config, base_defines = create_two_node_scenario()
+    elif factory_name == "create_single_county_scenario":
+        state, sim_config, base_defines = create_single_county_scenario()
     else:
         raise ValueError(f"Unknown factory: {factory_name}")
 
@@ -96,7 +105,8 @@ def create_scenario(
 
 # =============================================================================
 # Coverage declarations (E1): ScenarioCoverage data model + honest per-scenario
-# declarations for the five canonical qa:regression scenarios.
+# declarations for the canonical qa:regression scenarios (five original +
+# single_county, Task 8/E2a).
 # =============================================================================
 
 
@@ -504,25 +514,63 @@ SCENARIO_COVERAGE_DATA: Final[tuple[dict[str, Any], ...]] = (
         ),
         "at_rest": (),
     },
+    {
+        # single_county (Task 8, E2a): the smallest graph where the Vol III
+        # financial layer fires THROUGH THE PRODUCTION PATH — the scenario
+        # this program exists for (U9's interest-rate inertness shipped
+        # invisible because no gate scenario carried a county). Verified by
+        # a live 52-tick spot-run (2026-07-20, task-8-report.md) with
+        # tools.regression_test.build_single_county_overrides' real
+        # Wayne-County tensor_registry: distribution.interest_payments ==
+        # 970247586.15 (> 0, real, not a fixture stamp), national_financial
+        # endogenous_interest.rate == 0.01783... (> 0), and state.market is
+        # a live MarketState (not None) by tick 52.
+        "scenario": "single_county",
+        "layers": ("material_base", "financial", "market"),
+        "systems": (
+            {
+                "system": "TickDynamicsSystem",
+                "kind": "context_presence",
+                "key": "_tick_dynamics",
+                "claim": "county economic state computed from realized Wayne tensors",
+            },
+            {
+                "system": "TickDynamicsSystem",
+                "kind": "context_presence",
+                "key": "_national_financial",
+                "claim": "endogenous interest rate (Vol III Part V) computed and published",
+            },
+            {
+                "system": "MarketScissorsSystem",
+                "kind": "state_presence",
+                "key": "market",
+                "claim": "price-value axis live over a county-bearing graph",
+            },
+        ),
+        "at_rest": (),
+    },
 )
 
 SCENARIO_COVERAGE: Final[tuple[ScenarioCoverage, ...]] = tuple(
     ScenarioCoverage(**d) for d in SCENARIO_COVERAGE_DATA
 )
 
-# Systems NO canonical scenario among the five evidences, with TRUE reasons
-# verified by spot-run (see task-2-report.md). Every one of these is a real,
-# checked finding, not a placeholder: each was read in source AND probed live
-# (40-150 tick runs) before being declared a gap here. detroit_tri_county
-# and any nationwide/hex-seeded scenario are the natural remediation path for
-# the organization/faction/sovereign/hex-dependent rows; a few (MetabolismSystem,
-# TerritorySystem, EdgeTransitionSystem) need either a new evidence *kind*
-# (territory_delta doesn't exist yet) or a scenario specifically calibrated to
-# cross a threshold that never gets crossed in these five. ContradictionSystem
-# was CLOSED in Task 3 via a bundle_field row against the committed
-# detroit-tri-county-5t.json baseline (terminal_state.max_tension diverges
-# from the seeded tick-0 value) — see the detroit_tri_county entry above and
-# task-3-report.md.
+# Systems NO canonical scenario evidences, with TRUE reasons verified by
+# spot-run (see task-2-report.md). Every one of these is a real, checked
+# finding, not a placeholder: each was read in source AND probed live
+# (40-150 tick runs) before being declared a gap here — originally audited
+# against the first five scenarios; TickDynamicsSystem was CLOSED in Task 8
+# via single_county's context_presence rows (see that entry above and
+# task-8-report.md) and removed from this list. detroit_tri_county and any
+# nationwide/hex-seeded scenario are the natural remediation path for the
+# remaining organization/faction/sovereign/hex-dependent rows; a few
+# (MetabolismSystem, TerritorySystem, EdgeTransitionSystem) need either a new
+# evidence *kind* (territory_delta doesn't exist yet) or a scenario
+# specifically calibrated to cross a threshold that never gets crossed in
+# the six canonical scenarios today. ContradictionSystem was CLOSED in Task 3
+# via a bundle_field row against the committed detroit-tri-county-5t.json
+# baseline (terminal_state.max_tension diverges from the seeded tick-0
+# value) — see the detroit_tri_county entry above and task-3-report.md.
 COVERAGE_GAPS_DATA: Final[tuple[dict[str, str], ...]] = (
     {
         "system": "SubstrateSystem",
@@ -540,12 +588,14 @@ COVERAGE_GAPS_DATA: Final[tuple[dict[str, str], ...]] = (
     },
     {
         "system": "OODASystem",
-        "reason": "no organizations are seeded in any of the five; the per-tick ORGANIZATIONAL_ACTION "
-        "summary event fires every tick but with org_count=action_count=layer0_count=0 — "
-        "the turn-resolution loop's own control flow runs, but no organizational action, "
-        "initiative resolution, or verb-resolver logic ever exercises",
-        "remediation": "detroit_tri_county / single_county (later tasks), which seed real "
-        "organizations, carry OODASystem's real evidence",
+        "reason": "no organizations are seeded in any canonical scenario (single_county, Task 8, "
+        "seeds only 2 SocialClass + 1 Territory — no ORGANIZATION nodes); the per-tick "
+        "ORGANIZATIONAL_ACTION summary event fires every tick but with "
+        "org_count=action_count=layer0_count=0 — the turn-resolution loop's own control "
+        "flow runs, but no organizational action, initiative resolution, or verb-resolver "
+        "logic ever exercises",
+        "remediation": "detroit_tri_county / a future org-seeding scenario, which would carry "
+        "OODASystem's real evidence",
     },
     {
         "system": "FactionInfluenceSystem",
@@ -557,10 +607,10 @@ COVERAGE_GAPS_DATA: Final[tuple[dict[str, str], ...]] = (
     },
     {
         "system": "DoctrineSystem",
-        "reason": "no ORGANIZATION nodes are seeded; the system's own module docstring documents "
-        "it as a no-op on the five qa:regression goldens for exactly this reason",
-        "remediation": "detroit_tri_county / single_county / nationwide, which seed the Cadre "
-        "Council player org",
+        "reason": "no ORGANIZATION nodes are seeded (single_county, Task 8, included); the "
+        "system's own module docstring documents it as a no-op on the qa:regression "
+        "goldens for exactly this reason",
+        "remediation": "detroit_tri_county / nationwide, which seed the Cadre Council player org",
     },
     {
         "system": "SovereigntySystem",
@@ -652,15 +702,6 @@ COVERAGE_GAPS_DATA: Final[tuple[dict[str, str], ...]] = (
         "logic",
         "remediation": "a scenario seeding an edge_mode-bearing edge with a predicate-crossing "
         "condition",
-    },
-    {
-        "system": "TickDynamicsSystem",
-        "reason": "services.melt_calculator is None (the plain step() API's default, Feature 013); "
-        "the 8-step annual pipeline's early-return guard fires every year boundary, and "
-        "_accrue_flows() (the only unconditional call) no-ops with no prior boundary "
-        "state in any of these five scenarios",
-        "remediation": "pass melt_calculator via step()'s calculator_overrides, as detroit_tri_county"
-        "/nationwide presumably does",
     },
 )
 

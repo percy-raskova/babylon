@@ -196,6 +196,57 @@ def _build_vol3_calculator_overrides(defines: GameDefines) -> dict[str, Any]:
     return overrides
 
 
+SINGLE_COUNTY_FIXTURE_PATH: Final[Path] = (
+    Path(__file__).parent.parent / "tests" / "fixtures" / "single_county_wayne.json"
+)
+
+
+def build_single_county_overrides(defines: GameDefines) -> dict[str, Any]:
+    """Wayne-county calculator_overrides from the committed fixture (D4).
+
+    Extends the Vol III override set from :func:`_build_vol3_calculator_overrides`
+    (the same FRED-fixture-backed ``distribution_calculator``/``melt_calculator``
+    the other 5 canonical scenarios use — those national-level FRED series
+    already cover Wayne's extraction year, see the fixture's ``_provenance``)
+    with a real-FIPS ``tensor_registry`` hydrated from the committed
+    ``tests/fixtures/single_county_wayne.json`` extraction (Wayne County,
+    FIPS 26163, real reference-DB tensor via the production
+    ``MarxianHydrator`` chain — see that fixture's ``_provenance`` for the
+    extraction method and year-selection rationale). The production
+    calculator chain (``TensorRegistry`` -> ``SurplusDistributionCalculator``)
+    runs for real on this data; only the LEAF tensor input is fixture-fed
+    (mocking-is-debt boundary, D4).
+
+    Args:
+        defines: The scenario's resolved ``GameDefines`` (same instance
+            passed to ``step()``), forwarded unchanged to
+            :func:`_build_vol3_calculator_overrides`.
+    """
+    from babylon.domain.economics.tensor import DepartmentRow, ValueTensor4x3
+    from babylon.domain.economics.tensor_registry import TensorRegistry
+
+    overrides = _build_vol3_calculator_overrides(defines)
+
+    fixture = json.loads(SINGLE_COUNTY_FIXTURE_PATH.read_text(encoding="utf-8"))
+    tensor_data = fixture["tensor"]
+    tensor = ValueTensor4x3(
+        fips_code=fixture["fips_code"],
+        year=fixture["year"],
+        dept_I=DepartmentRow(**tensor_data["dept_I"]),
+        dept_IIa=DepartmentRow(**tensor_data["dept_IIa"]),
+        dept_IIb=DepartmentRow(**tensor_data["dept_IIb"]),
+        dept_III=DepartmentRow(**tensor_data["dept_III"]),
+        naics_granularity=tensor_data["naics_granularity"],
+        excluded_wages=tensor_data["excluded_wages"],
+        visibility_g33=tensor_data["visibility_g33"],
+    )
+    registry = TensorRegistry()
+    registry.put(fixture["fips_code"], fixture["year"], tensor)
+    overrides["tensor_registry"] = registry
+
+    return overrides
+
+
 # Dense-trace per-entity/per-edge column contract (Program 13 item 2). Each
 # entry is (column-name suffix, getter). Declared once so the CSV header and
 # every row are built from the exact same ordered list and can never drift
@@ -754,8 +805,14 @@ def _run_scenario_ticks(
     # calculators are stateless/reused across ticks, mirroring the cadence
     # _legacy.py's Simulation already uses (one calculator_overrides dict
     # persists across the whole run, rebuilt only per ServiceContainer.create
-    # call inside step() itself).
-    calculator_overrides = _build_vol3_calculator_overrides(defines)
+    # call inside step() itself). single_county additionally needs a
+    # real-FIPS tensor_registry (E2a) — every other scenario carries no
+    # county_fips, so a registry would be unreachable from them.
+    calculator_overrides = (
+        build_single_county_overrides(defines)
+        if name == "single_county"
+        else _build_vol3_calculator_overrides(defines)
+    )
 
     checkpoints: list[CheckpointData] = []
     ticks_survived = 0
@@ -1088,7 +1145,13 @@ def compare_all_baselines(baseline_dir: Path) -> tuple[int, int]:
         baseline_path = baseline_dir / f"{name}.json"
 
         if not baseline_path.exists():
-            print(f"  SKIP {name}: no baseline (run 'generate' first)")
+            # Loud, not a silent skip: a scenario declared in SCENARIOS with
+            # no committed baseline is a known pending state (e.g.
+            # single_county, Task 8/E2a — its baseline mints in Task 11's
+            # ceremony), not a bug. Neither passed nor failed is incremented,
+            # so this never hard-fails compare — the other scenarios still
+            # gate normally.
+            print(f"  PENDING CEREMONY: {name} (no baseline committed — run 'generate' first)")
             continue
 
         print(f"  Comparing {name}...", end=" ", flush=True)

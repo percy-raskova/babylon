@@ -721,7 +721,9 @@ def find_unknown_tables(table_names: list[str], policy: dict[str, TablePolicy]) 
     :returns: Sorted names matching a classified prefix but missing a policy
         entry (``[]`` if none).
     """
-    prefixes = ("fact_", "dim_", "bridge_")
+    from babylon.sentinels.coverage.catalog import GOVERNED_PREFIXES
+
+    prefixes = tuple(p for p in GOVERNED_PREFIXES if p != "view_")
     return sorted(name for name in table_names if name.startswith(prefixes) and name not in policy)
 
 

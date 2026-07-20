@@ -170,14 +170,17 @@ def view_content_hash(conn: sqlite3.Connection, view: str) -> tuple[int, str]:
 
 
 def _governed_db_views(conn: sqlite3.Connection) -> list[str]:
-    """Every non-internal view in ``conn`` — the view-side twin of
-    :func:`make_data_artifacts.governed_db_tables`."""
+    """Every governed view in ``conn`` — the view-side twin of
+    :func:`make_data_artifacts.governed_db_tables`, scoped by the same
+    ``GOVERNED_PREFIXES`` boundary (all reference views are ``view_*``)."""
+    from babylon.sentinels.coverage.catalog import GOVERNED_PREFIXES
+
     rows = conn.execute(
         "SELECT name FROM sqlite_master "
         "WHERE type = 'view' AND name NOT LIKE 'sqlite_%' "
         "ORDER BY name"
     ).fetchall()
-    return [row[0] for row in rows]
+    return [row[0] for row in rows if row[0].startswith(GOVERNED_PREFIXES)]
 
 
 def _compare_names(

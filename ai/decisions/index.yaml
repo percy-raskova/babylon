@@ -1,9 +1,14 @@
 meta:
-  version: 1.37.0
+  version: 1.38.0
   updated: '2026-07-20'
   description: Architecture Decision Records Index
   format: See individual ADR files in this directory
 decisions:
+  ADR098_parquet_canonical_reference:
+    title: 'Parquet-canonical reference pipeline EXECUTED (Phase 6 cutover, #46): per-table parquet sources + schema.sql canonical, the SQLite reference DB a deterministic sha-pinned BUILD PRODUCT (double-build byte-identical on sqlite 3.53.1, product f760bab5...); working DB flipped with byte-verified pre-parquet backup; ci-data-v7 (subset DERIVED from the product, 80 parquet + schema.sql manifest-pinned); loaders produce sources only (tools/loader_to_sources.py) — the shared DB is never opened for write; D1-D4 as ruled, GOVERNED_PREFIXES single SoT, demotion-handoff law, index-order fidelity, ingest_checkpoint out of the estate; IMPORT_USE discovered ALREADY LANDED out-of-band so the dark-Φ consumers lit up with zero code changes; declared follow-ups: CI-devshell sqlite pinning for the nightly rebuild-verify leg (loud off-pin warning until then), auto-create-masks-absence sentinel still owed. NOTE: numbered 098 because 094-097 are claimed by the nix-player-channel packet on the concurrently-active dev line'
+    status: accepted
+    date: '2026-07-20'
+    file: ADR098_parquet_canonical_reference.yaml
   ADR093_amendments_v_w_x:
     title: 'Amendments V/W/X (CONSTITUTION v2.12.0, owner-ratified 2026-07-20): V = narrator-only AI (no LLM in the input path, Amendment I superseded-in-part; local-first provider stack) + transport-generalized client contract (in-process/HTTP/file materialization; browser client legacy, Archive TUI successor) + III.6 pinning generalized to all persisted AI artifacts; W = III.13 Deterministic Materialization [PENDING CODE] (ORDER BY projections, sandboxed sim-time templates, byte-identical artifacts, golden vault, Loud Failure extends to pixels); X = infra domain delegated to the babylon-infra constitution v1.0.0 (infra/ submodule), X.1 scoped to the production estate (no-Nix letter corrected), the infra flake = sole toolchain pinning authority in sqlite-3.53.1 lockstep [IMPLEMENTED], X.8 local-first Periphery/Metropole distribution [PENDING CODE] (embedded player PG17+pgvector, Nix flake beta channel, Metropole observes-never-adjudicates), X.6 Grafana+SQL carve-out (D3). Sources committed under ai/_inbox/tui/; roadmap 6.5 provenance-ceremony amendment HELD on the open BD home ruling'
     status: accepted

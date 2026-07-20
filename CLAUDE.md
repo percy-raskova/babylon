@@ -42,8 +42,11 @@ proposing architecture).
 Three-layer local system, no external servers. Full map: `ai/architecture.yaml`.
 
 - **The Ledger** — rigid material state. SQLite reference DB (`data/sqlite/marxist-data-3NF.sqlite`,
-  read-only) + PostgreSQL runtime (`src/babylon/persistence/`) + a few JSON seeds in
-  `src/babylon/data/game/`.
+  read-only — a deterministic BUILD PRODUCT since ADR098: parquet sources + `schema.sql` in
+  `data-artifacts.yaml` are canonical, `mise run data:build-db` rebuilds it sha-identically on the
+  pinned toolchain; loaders never write it, they produce sources via `tools/loader_to_sources.py` —
+  see `docs/how-to/reference-data-pipeline.rst`) + PostgreSQL runtime (`src/babylon/persistence/`)
+  + a few JSON seeds in `src/babylon/data/game/`.
 - **The Topology** — fluid relational state via **rustworkx** (`babylon.topology.BabylonGraph`;
   its own package since Program 14; NetworkX was removed, Amendment L / ADR052).
   `WorldState.to_graph()` / `from_graph()`. Foundational node types

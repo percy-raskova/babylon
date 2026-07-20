@@ -45,6 +45,17 @@ Usage::
 
     poetry run python tools/ingest_bea_imports.py \\
         --db-url "sqlite:////home/user/projects/game/babylon/data/sqlite/marxist-data-3NF.sqlite"
+
+.. note::
+   Post-cutover (parquet-canonical pipeline plan, Task 11), normal usage of
+   this loader goes through ``tools/loader_to_sources.py`` instead of calling
+   ``main`` here directly: the wrapper runs this module's ``main`` against a
+   SCRATCH COPY of the build product, then re-exports the affected tables
+   (``fact_bea_io_coefficient``, ``dim_bea_io_table_type``, ``dim_time``) as
+   parquet sources and regenerates the manifest — loaders produce sources,
+   only the builder produces the DB. This module's ``main(argv)`` signature
+   and direct-DB-write behavior are unchanged; they are exactly what the
+   wrapper calls against the scratch copy.
 """
 
 from __future__ import annotations

@@ -32,6 +32,13 @@ Note:
     listed here) and demoted 8 — ``data-catalog.yaml`` is the authoritative
     per-table registry; amputated tables live on as committed CSV artifacts
     registered in ``data-artifacts.yaml``.
+
+    Since the parquet-canonical cutover (ADR098, 2026-07-20),
+    ``data-artifacts.yaml`` is the LINEAGE AUTHORITY for the whole estate:
+    per-table parquet sources + ``schema.sql`` are canonical (sha-pinned in
+    the manifest), and the SQLite reference DB is a deterministic build
+    product of ``tools/build_reference_db.py``. These ORM classes describe
+    that product for readers; the DDL of record is ``schema.sql``.
 """
 
 from datetime import date, datetime

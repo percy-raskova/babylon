@@ -416,12 +416,15 @@ class TestFullPipelineRoundTrip:
         source_path = tmp_path / "src.sqlite"
         conn = sqlite3.connect(source_path)
         conn.executescript(
+            # Canonical contiguous-block DDL shape (tables, then indexes,
+            # then views) — the builder's replay contract hard-fails
+            # interleavings.
             "CREATE TABLE dim_k (id INTEGER PRIMARY KEY, name TEXT);\n"
             "CREATE TABLE fact_m (id INTEGER PRIMARY KEY, k_id INTEGER, v NUMERIC);\n"
-            "CREATE INDEX idx_fact_m_k ON fact_m (k_id);\n"
-            "CREATE VIEW view_m AS SELECT k_id, SUM(v) s FROM fact_m GROUP BY k_id;\n"
             "CREATE TABLE fact_flag (id INTEGER PRIMARY KEY, active BOOLEAN, seen_on DATE);\n"
             "CREATE TABLE dim_note (id INTEGER PRIMARY KEY, code TEXT, note TEXT, weight NUMERIC);\n"
+            "CREATE INDEX idx_fact_m_k ON fact_m (k_id);\n"
+            "CREATE VIEW view_m AS SELECT k_id, SUM(v) s FROM fact_m GROUP BY k_id;\n"
         )
         conn.executemany("INSERT INTO dim_k VALUES (?,?)", [(1, "a"), (2, "b")])
         conn.executemany("INSERT INTO fact_m VALUES (?,?,?)", [(1, 1, 2.5), (2, 2, 4.0)])

@@ -161,17 +161,129 @@ def check_subset_policy_parity(
     return sorted(violations)
 
 
+#: Top-level keys the manifest may declare (v1: just `version`/`artifacts`;
+#: v2 adds the optional `schema`/`product` blocks). Anything else is a typo
+#: (e.g. `schemas:`) that would silently disarm whichever block it was meant
+#: to populate — loud, not ignored (III.11).
+_MANIFEST_TOP_LEVEL_KEYS = frozenset({"version", "schema", "product", "artifacts"})
+
+
+def _check_schema_block(
+    schema: dict[str, object], target: Path, manifest_path: Path | None
+) -> list[str]:
+    """Validate an optional v2 ``schema`` block (Task 4's extractor output).
+
+    ``file`` follows the identical in-repo/dist-tier rule as artifact
+    entries: an in-repo path must exist and sha256-match; a ``dist/`` path is
+    skipped when absent locally (CI verifies it at fetch time).
+    ``tables``/``views``/``indexes`` are shape-checked as non-negative ints
+    only — no cross-check against the real schema.
+    """
+    import hashlib
+
+    violations: list[str] = []
+    required = ("file", "sha256", "tables", "views", "indexes")
+    missing = [key for key in required if key not in schema]
+    if missing:
+        violations.append(f"manifest schema block missing key(s): {missing}")
+        return violations
+
+    home = str(schema["file"])
+    if not home.startswith("dist/"):
+        path = (target.parent / home) if manifest_path is not None else (_REPO_ROOT / home)
+        if not path.is_file():
+            violations.append(f"schema.file missing: {home} (manifest promises it in-repo)")
+        else:
+            digest = hashlib.sha256(path.read_bytes()).hexdigest()
+            if digest != schema["sha256"]:
+                violations.append(
+                    f"schema.file drifted: sha256 {digest[:12]}... != manifest "
+                    f"{str(schema['sha256'])[:12]}... ({home})"
+                )
+
+    for key in ("tables", "views", "indexes"):
+        value = schema[key]
+        if isinstance(value, bool) or not isinstance(value, int) or value < 0:
+            violations.append(f"schema.{key} must be a non-negative int, got {value!r}")
+
+    return violations
+
+
+def _check_product_block(product: dict[str, object]) -> list[str]:
+    """Validate an optional v2 ``product`` block (Task 5's builder output).
+
+    SHAPE validation only (plan deviation D2): the static fast gate never
+    verifies ``sha256`` against an actual on-disk database — the
+    rebuild-vs-rebuild pin is verified by the builder and by CI at
+    build/fetch time, never by this sensor (doing so here would require the
+    multi-hundred-MB reference DB locally, which the fast gate must not
+    require).
+    """
+    violations: list[str] = []
+    required = ("name", "sha256", "page_size", "application_id", "user_version", "sqlite_version")
+    missing = [key for key in required if key not in product]
+    if missing:
+        violations.append(f"manifest product block missing key(s): {missing}")
+        return violations
+
+    name = product["name"]
+    if not isinstance(name, str) or not name.strip():
+        violations.append(f"product.name must be a non-empty string, got {name!r}")
+
+    sha256_value = product["sha256"]
+    is_valid_sha = (
+        isinstance(sha256_value, str)
+        and len(sha256_value) == 64
+        and sha256_value == sha256_value.lower()
+        and all(c in "0123456789abcdef" for c in sha256_value)
+    )
+    if not is_valid_sha:
+        violations.append(f"product.sha256 must be 64 lowercase hex chars, got {sha256_value!r}")
+
+    for key in ("page_size", "user_version"):
+        value = product[key]
+        if isinstance(value, bool) or not isinstance(value, int) or value <= 0:
+            violations.append(f"product.{key} must be a positive int, got {value!r}")
+
+    application_id = product["application_id"]
+    if isinstance(application_id, bool) or not isinstance(application_id, int):
+        violations.append(f"product.application_id must be an int, got {application_id!r}")
+
+    sqlite_version = product["sqlite_version"]
+    if not isinstance(sqlite_version, str) or not sqlite_version.strip():
+        violations.append(
+            f"product.sqlite_version must be a non-empty string, got {sqlite_version!r}"
+        )
+
+    return violations
+
+
 def check_artifact_manifest(
     manifest_path: Path | None = None,
 ) -> list[str]:
     """Every in-repo artifact in ``data-artifacts.yaml`` exists and hash-matches.
+
+    Supports both manifest versions (parquet pipeline Task 3): v1
+    (``version: "1.0.0"``, flat ``artifacts:`` only) and v2 (optional
+    ``schema``/``product`` blocks alongside ``artifacts:``). The
+    artifact-entry checks below are identical for both — this function never
+    branches on the declared ``version`` string itself, only on which
+    optional top-level blocks are present.
 
     The manifest is the successor registry for demoted reference tables
     (ADR076): once a table's DB copy is dropped, the hash-pinned artifact IS
     the data. An in-repo entry whose file is missing or whose sha256 drifted
     is silent data corruption — exactly what the demotion handoff forbids.
     Release-tier entries (``dist/``) are pin-verified at fetch time in CI,
-    not here (the fast gate must not require the assets locally).
+    not here (the fast gate must not require the assets locally); the v2
+    ``schema.file`` follows the identical rule (see
+    :func:`_check_schema_block`). The v2 ``product`` block is validated for
+    shape only, never its hash (see :func:`_check_product_block` for why —
+    plan deviation D2).
+
+    Any unknown top-level key (e.g. ``schemas:`` typoed for ``schema:``) is a
+    loud violation (Constitution III.11) rather than a silently-ignored typo
+    that would disarm whichever block it was meant to populate.
 
     :param manifest_path: Manifest to check (defaults to the real
         ``data-artifacts.yaml``; injectable for efficacy tests). A missing
@@ -192,7 +304,16 @@ def check_artifact_manifest(
     except (yaml.YAMLError, KeyError, TypeError) as error:
         msg = f"data-artifacts.yaml is unreadable/malformed: {error}"
         raise SentinelCheckError(msg) from error
+
     violations: list[str] = []
+
+    unknown_keys = set(manifest) - _MANIFEST_TOP_LEVEL_KEYS
+    if unknown_keys:
+        violations.append(
+            f"data-artifacts.yaml has unknown top-level key(s): {sorted(unknown_keys)} "
+            f"(allowed: {sorted(_MANIFEST_TOP_LEVEL_KEYS)}) — typo?"
+        )
+
     for entry in entries:
         home = str(entry["home"])
         if home.startswith("dist/"):
@@ -209,6 +330,15 @@ def check_artifact_manifest(
                 f"artifact {entry['name']!r} drifted: sha256 {digest[:12]}... != "
                 f"manifest {str(entry['sha256'])[:12]}... ({home})"
             )
+
+    schema = manifest.get("schema")
+    if schema is not None:
+        violations.extend(_check_schema_block(schema, target, manifest_path))
+
+    product = manifest.get("product")
+    if product is not None:
+        violations.extend(_check_product_block(product))
+
     return sorted(violations)
 
 

@@ -38,8 +38,10 @@ from make_data_artifacts import (  # type: ignore[import-not-found]  # noqa: E40
     _sha256,
     _table_layout,
     _write_csv,
+    _write_manifest,
     export_table_parquet,
     generate,
+    update_product_block,
 )
 
 
@@ -253,3 +255,182 @@ class TestEnumerateFullCoverageSpecs:
         monkeypatch.setattr(make_data_artifacts, "_catalog_by_name", dict)
         with pytest.raises(KeyError, match="fact_orphan"):
             make_data_artifacts.enumerate_full_coverage_specs(conn)
+
+    def test_enumerate_full_coverage_specs_is_name_sorted(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        # FOLD-IN 3 (Task 2 review): >=2 enumerated tables come back in
+        # name-sorted order. governed_db_tables() already ORDER BYs the
+        # table name in SQL; this pins that the enumeration wrapper doesn't
+        # lose the ordering on its way through.
+        conn = sqlite3.connect(tmp_path / "m3.sqlite")
+        conn.execute("CREATE TABLE fact_zzz_last (id INTEGER PRIMARY KEY)")
+        conn.execute("CREATE TABLE fact_aaa_first (id INTEGER PRIMARY KEY)")
+        conn.execute("CREATE TABLE fact_mmm_mid (id INTEGER PRIMARY KEY)")
+        conn.commit()
+        fake_catalog = {
+            "fact_zzz_last": SimpleNamespace(material_relation="z"),
+            "fact_aaa_first": SimpleNamespace(material_relation="a"),
+            "fact_mmm_mid": SimpleNamespace(material_relation="m"),
+        }
+        monkeypatch.setattr(make_data_artifacts, "_catalog_by_name", lambda: fake_catalog)
+        specs = make_data_artifacts.enumerate_full_coverage_specs(conn)
+        names = [s.name for s in specs]
+        assert len(names) >= 2
+        assert names == sorted(names)
+        assert names == ["fact_aaa_first", "fact_mmm_mid", "fact_zzz_last"]
+
+
+class TestManifestV2Writer:
+    """Manifest v2 (parquet pipeline Task 3): the ``schema``/``product``
+    blocks, the single ``_write_manifest`` writer, and its second caller
+    ``update_product_block``.
+    """
+
+    @pytest.fixture()
+    def real_entries(self) -> list[dict[str, object]]:
+        """The actual committed v1 manifest's artifact entries — reused so
+        the round-trip tests prove something about real content, not just
+        synthetic fixtures, and so at least one entry exercises a
+        multi-line-wrapped ``material_relation`` (the FOLD-IN 1 fix)."""
+        manifest = yaml.safe_load(_MANIFEST.read_text())
+        return manifest["artifacts"]  # type: ignore[no-any-return]
+
+    @pytest.fixture()
+    def schema_block(self) -> dict[str, object]:
+        return {
+            "file": "dist/data-artifacts/schema.sql",
+            "sha256": "a" * 64,
+            "tables": 76,
+            "views": 8,
+            "indexes": 100,
+        }
+
+    @pytest.fixture()
+    def product_block(self) -> dict[str, object]:
+        return {
+            "name": "marxist-data-3NF.sqlite",
+            "sha256": "b" * 64,
+            "page_size": 4096,
+            "application_id": 1112359244,
+            "user_version": 1,
+            "sqlite_version": "3.46.1",
+        }
+
+    def test_write_manifest_v2_round_trip(
+        self,
+        tmp_path: Path,
+        real_entries: list[dict[str, object]],
+        schema_block: dict[str, object],
+        product_block: dict[str, object],
+    ) -> None:
+        out = tmp_path / "data-artifacts.yaml"
+        _write_manifest(
+            real_entries, schema_entry=schema_block, product_entry=product_block, path=out
+        )
+        parsed = yaml.safe_load(out.read_text())
+        assert parsed["version"] == "2.0.0"
+        # fixed block order: version, schema, product, artifacts
+        assert list(parsed.keys()) == ["version", "schema", "product", "artifacts"]
+        assert parsed["schema"] == schema_block
+        assert parsed["product"] == product_block
+        assert parsed["artifacts"] == real_entries
+
+    def test_write_manifest_v2_omits_absent_blocks(
+        self, tmp_path: Path, real_entries: list[dict[str, object]]
+    ) -> None:
+        out = tmp_path / "data-artifacts.yaml"
+        _write_manifest(real_entries, path=out)
+        parsed = yaml.safe_load(out.read_text())
+        assert parsed["version"] == "2.0.0"
+        assert "schema" not in parsed
+        assert "product" not in parsed
+        assert parsed["artifacts"] == real_entries
+
+    def test_update_product_block_adds_product_preserving_artifacts_section(
+        self,
+        tmp_path: Path,
+        real_entries: list[dict[str, object]],
+        product_block: dict[str, object],
+    ) -> None:
+        out = tmp_path / "data-artifacts.yaml"
+        _write_manifest(real_entries, path=out)  # no product block yet
+        before_text = out.read_text()
+        before_artifacts_section = before_text.split("\nartifacts:\n", 1)[1]
+
+        update_product_block(out, product_block)
+
+        after_text = out.read_text()
+        after_artifacts_section = after_text.split("\nartifacts:\n", 1)[1]
+        assert after_artifacts_section == before_artifacts_section
+
+        parsed = yaml.safe_load(after_text)
+        assert parsed["product"] == product_block
+        assert "schema" not in parsed  # wasn't present before; stays absent
+
+    def test_update_product_block_preserves_existing_schema_block(
+        self,
+        tmp_path: Path,
+        real_entries: list[dict[str, object]],
+        schema_block: dict[str, object],
+        product_block: dict[str, object],
+    ) -> None:
+        out = tmp_path / "data-artifacts.yaml"
+        _write_manifest(real_entries, schema_entry=schema_block, path=out)
+
+        update_product_block(out, product_block)
+
+        parsed = yaml.safe_load(out.read_text())
+        assert parsed["schema"] == schema_block
+        assert parsed["product"] == product_block
+
+    def test_rewrite_idempotence_is_byte_identical(
+        self,
+        tmp_path: Path,
+        real_entries: list[dict[str, object]],
+        product_block: dict[str, object],
+    ) -> None:
+        # FOLD-IN 1 consequence: write -> update_product_block (unchanged
+        # product) -> bytes identical. No pre-commit hook involved, so this
+        # must hold on the raw writer output alone.
+        out = tmp_path / "data-artifacts.yaml"
+        _write_manifest(real_entries, product_entry=product_block, path=out)
+        first_bytes = out.read_bytes()
+
+        update_product_block(out, product_block)
+        second_bytes = out.read_bytes()
+
+        assert first_bytes == second_bytes
+        # direct proof of the _wrap trailing-space fix: no line in the file
+        # ends with a trailing space (would previously only be true after
+        # the trailing-whitespace pre-commit hook ran).
+        text = first_bytes.decode("utf-8")
+        assert all(not line.endswith(" ") for line in text.splitlines())
+
+    def test_write_manifest_rejects_duplicate_names(self, tmp_path: Path) -> None:
+        # FOLD-IN 2 (Task 2 review): not reachable via the real ARTIFACTS
+        # today, but a future builder assumes name-uniqueness — guard it.
+        dup_entries: list[dict[str, object]] = [
+            {
+                "name": "x",
+                "format": "csv",
+                "source_table": "x",
+                "mode": "generate",
+                "rows": 1,
+                "sha256": "a" * 64,
+                "home": "src/babylon/data/reference/x.csv",
+                "material_relation": "r1",
+            },
+            {
+                "name": "x",
+                "format": "csv",
+                "source_table": "x2",
+                "mode": "generate",
+                "rows": 1,
+                "sha256": "b" * 64,
+                "home": "src/babylon/data/reference/x2.csv",
+                "material_relation": "r2",
+            },
+        ]
+        with pytest.raises(ArtifactError, match="x"):
+            _write_manifest(dup_entries, path=tmp_path / "data-artifacts.yaml")

@@ -404,12 +404,22 @@ def _csv_data_rows(path: Path) -> int:
 
 
 def _wrap(text: str, indent: str, width: int = 96) -> list[str]:
-    """Greedy word-wrap for the hand-written manifest YAML."""
+    """Greedy word-wrap for the hand-written manifest YAML.
+
+    Every emitted line is ``rstrip()``-ed at append time — including
+    non-final wrapped lines, which previously carried a trailing space from
+    the greedy accumulator (only the last line was rstripped). That quirk
+    meant a fresh regeneration never round-tripped byte-identically against
+    the committed file on its own — it relied on the repo's
+    trailing-whitespace pre-commit hook to silently strip it on write. Fixed
+    here so byte-identity holds without that hook dependency (parquet
+    pipeline Task 3, FOLD-IN 1).
+    """
     lines: list[str] = []
     current = indent
     for word in text.split():
         if len(current) + len(word) + 1 > width and current.strip():
-            lines.append(current)
+            lines.append(current.rstrip())
             current = indent
         current = f"{current}{word} " if current.strip() else f"{indent}{word} "
     if current.strip():
@@ -417,16 +427,102 @@ def _wrap(text: str, indent: str, width: int = 96) -> list[str]:
     return lines
 
 
-def _write_manifest(entries: list[dict[str, object]]) -> None:
+#: Manifest schema version emitted by every future write (Task 3: manifest
+#: v2 — optional `schema`/`product` blocks alongside the v1 `artifacts:`
+#: list). The committed v1.0.0 manifest is not touched by this constant;
+#: nothing in this module reads it back.
+MANIFEST_VERSION = "2.0.0"
+
+#: Fixed key order for the optional `schema` block (Task 4's extractor).
+_SCHEMA_BLOCK_KEYS: tuple[str, ...] = ("file", "sha256", "tables", "views", "indexes")
+
+#: Fixed key order for the optional `product` block (Task 5's builder;
+#: `sqlite_version` is quoted on write — a dotted version string that could
+#: otherwise be misread, matching the existing `version:` field's quoting).
+_PRODUCT_BLOCK_KEYS: tuple[str, ...] = (
+    "name",
+    "sha256",
+    "page_size",
+    "application_id",
+    "user_version",
+    "sqlite_version",
+)
+
+
+def _assert_unique_entry_names(entries: list[dict[str, object]]) -> None:
+    """Loud guard (FOLD-IN 2, Task 2 review): two entries sharing a ``name``
+    would corrupt whichever future consumer keys off it (the builder's
+    per-artifact lookup). Not reachable via the real ``ARTIFACTS`` today —
+    this guards the invariant for when that stops being true.
+    """
+    seen: set[object] = set()
+    for entry in entries:
+        name = entry["name"]
+        if name in seen:
+            msg = f"duplicate artifact name in manifest write: {name!r}"
+            raise ArtifactError(msg)
+        seen.add(name)
+
+
+def _write_schema_block(lines: list[str], schema: dict[str, object]) -> None:
+    lines.append("schema:")
+    for key in _SCHEMA_BLOCK_KEYS:
+        lines.append(f"  {key}: {schema[key]}")
+
+
+def _write_product_block(lines: list[str], product: dict[str, object]) -> None:
+    lines.append("product:")
+    for key in _PRODUCT_BLOCK_KEYS:
+        value = product[key]
+        if key == "sqlite_version":
+            lines.append(f'  {key}: "{value}"')
+        else:
+            lines.append(f"  {key}: {value}")
+
+
+def _write_manifest(
+    entries: list[dict[str, object]],
+    *,
+    schema_entry: dict[str, object] | None = None,
+    product_entry: dict[str, object] | None = None,
+    path: Path | None = None,
+) -> None:
+    """Render ``data-artifacts.yaml`` — the single writer both callers share.
+
+    Always emits ``version: "2.0.0"`` (manifest v2); the optional ``schema``/
+    ``product`` blocks are written only when their entry dict is supplied, in
+    the fixed block order ``version, schema, product, artifacts``. The
+    ``artifacts:`` section formatting is otherwise unchanged from v1 — see
+    :func:`_wrap` for the trailing-space fix (FOLD-IN 1) that makes a
+    regeneration byte-identical without relying on the pre-commit hook.
+
+    :param entries: Artifact entries (the same v1-shaped dicts ``generate()``
+        has always produced).
+    :param schema_entry: Optional ``schema`` block (Task 4's extractor
+        output) — omitted from the manifest entirely when ``None``.
+    :param product_entry: Optional ``product`` block (Task 5's builder
+        output, normally supplied via :func:`update_product_block` rather
+        than passed here directly) — omitted when ``None``.
+    :param path: Destination file (defaults to the module-level
+        :data:`MANIFEST_PATH`; overridable so :func:`update_product_block` —
+        and tests — can target an arbitrary manifest without mutating module
+        state).
+    :raises ArtifactError: If two entries share a ``name`` (FOLD-IN 2).
+    """
+    _assert_unique_entry_names(entries)
     lines = [
         "# data-artifacts.yaml — successor registry for artifact-ized reference tables",
         "# (ADR076). One entry per artifact: the lineage that used to live in the",
         "# dropped table's data-catalog.yaml row. REGENERATED by",
         "# tools/make_data_artifacts.py — do not edit entries by hand.",
         "---",
-        'version: "1.0.0"',
-        "artifacts:",
+        f'version: "{MANIFEST_VERSION}"',
     ]
+    if schema_entry is not None:
+        _write_schema_block(lines, schema_entry)
+    if product_entry is not None:
+        _write_product_block(lines, product_entry)
+    lines.append("artifacts:")
     for entry in entries:
         lines.append(f"  - name: {entry['name']}")
         lines.append(f"    format: {entry['format']}")
@@ -438,7 +534,37 @@ def _write_manifest(entries: list[dict[str, object]]) -> None:
         lines.append(f"    home: {entry['home']}")
         lines.append("    material_relation: >-")
         lines.extend(_wrap(str(entry["material_relation"]), "      "))
-    MANIFEST_PATH.write_text("\n".join(lines) + "\n")
+    target = MANIFEST_PATH if path is None else path
+    target.write_text("\n".join(lines) + "\n")
+
+
+def update_product_block(manifest_path: Path, product: dict[str, object]) -> None:
+    """Layer a ``product`` block onto an existing manifest (plan deviation D2).
+
+    Reads ``manifest_path``, keeps its ``artifacts`` entries and any existing
+    ``schema`` block untouched, and rewrites through :func:`_write_manifest`
+    with the new ``product`` block. This is the ONE writer function's second
+    caller: the exporter CLI's :func:`main` writes entries (``schema_entry``
+    once Task 4 lands); this is the builder's (``tools/build_reference_db.py``)
+    path to stamp the rebuild-vs-rebuild product hash without disturbing
+    anything else already on the manifest.
+
+    :param manifest_path: Manifest to read and rewrite in place.
+    :param product: The new ``product`` block. Shape is validated by the
+        coverage sentinel (:func:`babylon.sentinels.coverage.checks.
+        check_artifact_manifest`), not here — this is a plain writer.
+    """
+    import yaml
+
+    manifest = yaml.safe_load(manifest_path.read_text())
+    entries = manifest["artifacts"]
+    schema_entry = manifest.get("schema")
+    _write_manifest(
+        entries,
+        schema_entry=schema_entry,
+        product_entry=product,
+        path=manifest_path,
+    )
 
 
 def generate(db_path: Path, *, full_coverage: bool = False) -> list[dict[str, object]]:

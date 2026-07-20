@@ -17,11 +17,15 @@ concern and is deliberately not exercised here.
 
 from __future__ import annotations
 
+from pathlib import Path
+
 import pytest
+import yaml
 
 from babylon.sentinels.base import SentinelCheckError
 from babylon.sentinels.coverage.checks import (
     _REPO_ROOT,
+    check_artifact_manifest,
     check_source_classes_exist,
     module_class_names,
 )
@@ -110,3 +114,126 @@ def test_registry_rejects_non_py_source_file() -> None:
             tables=(),
             material_relation="r",
         )
+
+
+class TestArtifactManifestSentinel:
+    """``check_artifact_manifest`` — supports both manifest versions (parquet
+    pipeline Task 3): v1 (flat ``artifacts:`` only) and v2 (optional
+    ``schema``/``product`` blocks alongside it).
+    """
+
+    def test_real_committed_manifest_is_clean(self) -> None:
+        """INVARIANT: the actual committed v1 data-artifacts.yaml passes,
+        untouched by this task (the manifest itself is not regenerated)."""
+        assert check_artifact_manifest() == []
+
+    def test_v2_fixture_with_absent_dist_schema_file_passes(self, tmp_path: Path) -> None:
+        manifest_path = tmp_path / "data-artifacts.yaml"
+        manifest_path.write_text(
+            yaml.safe_dump(
+                {
+                    "version": "2.0.0",
+                    "schema": {
+                        "file": "dist/data-artifacts/schema.sql",
+                        "sha256": "a" * 64,
+                        "tables": 76,
+                        "views": 8,
+                        "indexes": 100,
+                    },
+                    "artifacts": [],
+                }
+            )
+        )
+        assert check_artifact_manifest(manifest_path) == []
+
+    def test_v2_fixture_with_valid_schema_and_product_passes(self, tmp_path: Path) -> None:
+        schema_file = tmp_path / "schema.sql"
+        schema_file.write_text("CREATE TABLE t (id INTEGER);\n")
+        import hashlib
+
+        digest = hashlib.sha256(schema_file.read_bytes()).hexdigest()
+        manifest_path = tmp_path / "data-artifacts.yaml"
+        manifest_path.write_text(
+            yaml.safe_dump(
+                {
+                    "version": "2.0.0",
+                    "schema": {
+                        "file": "schema.sql",
+                        "sha256": digest,
+                        "tables": 1,
+                        "views": 0,
+                        "indexes": 0,
+                    },
+                    "product": {
+                        "name": "marxist-data-3NF.sqlite",
+                        "sha256": "b" * 64,
+                        "page_size": 4096,
+                        "application_id": 1112359244,
+                        "user_version": 1,
+                        "sqlite_version": "3.46.1",
+                    },
+                    "artifacts": [],
+                }
+            )
+        )
+        assert check_artifact_manifest(manifest_path) == []
+
+    def test_v2_in_repo_schema_file_hash_mismatch_fails(self, tmp_path: Path) -> None:
+        schema_file = tmp_path / "schema.sql"
+        schema_file.write_text("CREATE TABLE t (id INTEGER);\n")
+        manifest_path = tmp_path / "data-artifacts.yaml"
+        manifest_path.write_text(
+            yaml.safe_dump(
+                {
+                    "version": "2.0.0",
+                    "schema": {
+                        "file": "schema.sql",
+                        "sha256": "0" * 64,  # deliberately wrong
+                        "tables": 1,
+                        "views": 0,
+                        "indexes": 0,
+                    },
+                    "artifacts": [],
+                }
+            )
+        )
+        violations = check_artifact_manifest(manifest_path)
+        assert len(violations) == 1
+        assert "schema.file drifted" in violations[0]
+
+    def test_v2_malformed_product_bad_sha_length_fails(self, tmp_path: Path) -> None:
+        manifest_path = tmp_path / "data-artifacts.yaml"
+        manifest_path.write_text(
+            yaml.safe_dump(
+                {
+                    "version": "2.0.0",
+                    "product": {
+                        "name": "marxist-data-3NF.sqlite",
+                        "sha256": "abc123",  # too short, not 64 hex chars
+                        "page_size": 4096,
+                        "application_id": 1112359244,
+                        "user_version": 1,
+                        "sqlite_version": "3.46.1",
+                    },
+                    "artifacts": [],
+                }
+            )
+        )
+        violations = check_artifact_manifest(manifest_path)
+        assert len(violations) == 1
+        assert "product.sha256" in violations[0]
+
+    def test_unknown_top_level_key_fails(self, tmp_path: Path) -> None:
+        manifest_path = tmp_path / "data-artifacts.yaml"
+        manifest_path.write_text(
+            yaml.safe_dump(
+                {
+                    "version": "2.0.0",
+                    "schemas": {},  # typo for "schema"
+                    "artifacts": [],
+                }
+            )
+        )
+        violations = check_artifact_manifest(manifest_path)
+        assert len(violations) == 1
+        assert "schemas" in violations[0]

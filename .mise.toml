@@ -851,13 +851,14 @@ description = "Generate dense per-tick golden trace CSVs for the 5 regression sc
 run = "poetry run python tools/regression_test.py generate --force --dense"
 
 [tasks."qa:e2e-regression"]
-description = "Run headless 5-tick tri-county sim with --strict, compare like-for-like baseline (spec-064; scope pairing fixed in spec-086 T038)"
+description = "Run headless 5-tick tri-county sim with --strict, compare like-for-like baseline (spec-064; scope pairing fixed in spec-086 T038; dense golden leg added Task 10/E2b)"
 run = """
 ARTIFACT_DIR=$(poetry run python -m babylon.engine.headless_runner \\
   --scope detroit-tri-county --ticks 5 --strict)
 poetry run python tools/regression_test.py compare-bundle \\
   --bundle "$ARTIFACT_DIR" \\
-  --baseline tests/baselines/detroit-tri-county-5t.json
+  --baseline tests/baselines/detroit-tri-county-5t.json \\
+  --dense-baseline tests/baselines/dense/detroit_tri_county.csv
 """
 
 [tasks."qa:storage-budget"]

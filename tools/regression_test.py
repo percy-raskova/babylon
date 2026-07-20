@@ -40,7 +40,10 @@ import csv
 import hashlib
 import io
 import json
+import os
+import subprocess
 import sys
+import time
 from collections.abc import Callable
 from dataclasses import asdict, dataclass
 from datetime import UTC, datetime
@@ -69,6 +72,7 @@ from shared import (
 
 from babylon.config.defines import GameDefines
 from babylon.engine.simulation_engine import step
+from babylon.engine.trace_format import format_trace_value, trace_rows_to_csv_bytes
 
 # Constants
 BASELINE_DIR: Final[Path] = Path(__file__).parent.parent / "tests" / "baselines"
@@ -381,11 +385,11 @@ def get_exploitation_tension(state: Any) -> float:
 def _format_dense_value(value: float | bool) -> str:
     """Format one dense-trace scalar per the documented float/bool policy.
 
-    Floats use Python's ``repr()`` (the shortest round-trippable decimal for
-    the IEEE-754 double — the same family ``defines_hash`` relies on, per
-    ``docs/reference/determinism-contract.rst``). Bools render via
-    ``str(bool)`` (``"True"``/``"False"``) — checked first since ``bool`` is
-    an ``int`` subclass and would otherwise be swallowed by a float branch.
+    Byte-neutral delegation (Task 10, E2b) to
+    :func:`babylon.engine.trace_format.format_trace_value` — the shared
+    serializer, moved verbatim so both this CLI and the headless-runner
+    bundle's ``dense_trace.csv`` (Task 10) use one byte contract. See that
+    module's docstring for the full float/bool policy.
 
     Args:
         value: A float or bool captured from WorldState.
@@ -393,9 +397,7 @@ def _format_dense_value(value: float | bool) -> str:
     Returns:
         The exact string written to the dense CSV cell.
     """
-    if isinstance(value, bool):
-        return str(value)
-    return repr(value)
+    return format_trace_value(value)
 
 
 #: The 4 national financial columns (E3) — always emitted, every scenario.
@@ -572,10 +574,12 @@ def _dense_row(
 def dense_trace_to_csv_bytes(trace: DenseTrace) -> bytes:
     """Serialize a :class:`DenseTrace` to its canonical CSV byte stream.
 
-    Matches the ``trace.csv`` behavioral-artifact convention documented in
-    ``docs/reference/determinism-contract.rst``: UTF-8, comma-delimited,
-    RFC 4180 minimal quoting, ``\\n`` line terminator, header row, trailing
-    newline.
+    Byte-neutral delegation (Task 10, E2b) to
+    :func:`babylon.engine.trace_format.trace_rows_to_csv_bytes` — the shared
+    serializer, moved verbatim. Matches the ``trace.csv`` behavioral-artifact
+    convention documented in ``docs/reference/determinism-contract.rst``:
+    UTF-8, comma-delimited, RFC 4180 minimal quoting, ``\\n`` line
+    terminator, header row, trailing newline.
 
     Args:
         trace: The dense trace to serialize.
@@ -584,11 +588,7 @@ def dense_trace_to_csv_bytes(trace: DenseTrace) -> bytes:
         The exact bytes that get written to (or compared against)
         ``tests/baselines/dense/<scenario>.csv``.
     """
-    buf = io.StringIO(newline="")
-    writer = csv.writer(buf, lineterminator="\n", quoting=csv.QUOTE_MINIMAL)
-    writer.writerow(trace.header)
-    writer.writerows(trace.rows)
-    return buf.getvalue().encode("utf-8")
+    return trace_rows_to_csv_bytes(trace.header, trace.rows)
 
 
 def _parse_dense_csv_bytes(data: bytes) -> tuple[list[str], list[list[str]]]:
@@ -774,6 +774,59 @@ def save_dense_trace(trace: DenseTrace, output_dir: Path) -> Path:
     return output_path
 
 
+def compare_dense_csv_bytes(
+    scenario: str, expected_bytes: bytes, actual_bytes: bytes
+) -> tuple[bool, DivergenceReport | None]:
+    """Byte-compare two dense/trace CSVs, attributing the first divergence.
+
+    The shared cell-walk entry point behind both :func:`compare_dense_trace`
+    (regression-scenario dense goldens) and ``compare-bundle``'s
+    ``--dense-baseline`` leg (Task 10, E5b) — one comparison implementation,
+    two callers, so a future attribution fix lands in both places at once.
+
+    Args:
+        scenario: Name threaded through to the report (a regression
+            scenario, or ``"detroit_tri_county"`` for the bundle leg).
+        expected_bytes: Committed golden CSV bytes.
+        actual_bytes: Freshly-produced CSV bytes.
+
+    Returns:
+        Tuple of (passed, report). ``passed`` is True and the report is
+        None when the bytes match exactly. On mismatch, ``passed`` is
+        False. Both blobs are parsed back through
+        :func:`_parse_dense_csv_bytes` first, and the two headers are
+        compared *before* any cell walk: a changed column set
+        (inserted/appended/removed/reordered column — e.g. a future
+        dense-schema widening) short-circuits to a loud ``column="<header>"``
+        report naming both header lists, rather than either misattributing
+        a shifted cell to the wrong column or — worse — silently returning
+        ``None`` when the trailing columns happen to still agree
+        cell-for-cell. Only once the headers match does ``report``
+        attribute the first divergent tick+column (E4) via
+        :func:`attribute_divergence`.
+    """
+    if expected_bytes == actual_bytes:
+        return True, None
+
+    expected_header, expected_rows = _parse_dense_csv_bytes(expected_bytes)
+    actual_header, actual_rows = _parse_dense_csv_bytes(actual_bytes)
+    if expected_header != actual_header:
+        return False, DivergenceReport(
+            scenario=scenario,
+            tick=0,
+            column="<header>",
+            channel="<column set changed>",
+            county=None,
+            expected=str(expected_header),
+            actual=str(actual_header),
+            magnitude=None,
+            last_agreeing_tick=None,
+            candidate_systems=(),
+        )
+    report = attribute_divergence(scenario, expected_header, expected_rows, actual_rows)
+    return False, report
+
+
 def compare_dense_trace(
     trace: DenseTrace, baseline_dir: Path
 ) -> tuple[bool, DivergenceReport | None]:
@@ -788,17 +841,8 @@ def compare_dense_trace(
         Tuple of (passed, report). ``passed`` is True and the report is
         None when either the golden doesn't exist yet (dense goldens are
         opt-in per Program 13 item 2 — absence is not a failure) or the
-        bytes match exactly. On mismatch, ``passed`` is False. Both blobs
-        are parsed back through :func:`_parse_dense_csv_bytes` first, and
-        the two headers are compared *before* any cell walk: a changed
-        column set (inserted/appended/removed/reordered column — e.g. a
-        future dense-schema widening) short-circuits to a loud
-        ``column="<header>"`` report naming both header lists, rather than
-        either misattributing a shifted cell to the wrong column or —
-        worse — silently returning ``None`` when the trailing columns
-        happen to still agree cell-for-cell. Only once the headers match
-        does ``report`` attribute the first divergent tick+column (E4) via
-        :func:`attribute_divergence`.
+        bytes match exactly (see :func:`compare_dense_csv_bytes` for the
+        byte-comparison + attribution mechanics once both exist).
     """
     golden_path = baseline_dir / DENSE_SUBDIR / f"{trace.scenario}.csv"
     if not golden_path.exists():
@@ -806,26 +850,7 @@ def compare_dense_trace(
 
     expected_bytes = golden_path.read_bytes()
     actual_bytes = dense_trace_to_csv_bytes(trace)
-    if expected_bytes == actual_bytes:
-        return True, None
-
-    expected_header, expected_rows = _parse_dense_csv_bytes(expected_bytes)
-    actual_header, actual_rows = _parse_dense_csv_bytes(actual_bytes)
-    if expected_header != actual_header:
-        return False, DivergenceReport(
-            scenario=trace.scenario,
-            tick=0,
-            column="<header>",
-            channel="<column set changed>",
-            county=None,
-            expected=str(expected_header),
-            actual=str(actual_header),
-            magnitude=None,
-            last_agreeing_tick=None,
-            candidate_systems=(),
-        )
-    report = attribute_divergence(trace.scenario, expected_header, expected_rows, actual_rows)
-    return False, report
+    return compare_dense_csv_bytes(trace.scenario, expected_bytes, actual_bytes)
 
 
 def check_dead_columns(
@@ -1360,6 +1385,64 @@ def compare_all_baselines(baseline_dir: Path) -> tuple[int, int]:
     return passed, failed
 
 
+def _determinism_leg(scenario: str = "imperial_circuit") -> tuple[bool, list[str]]:
+    """Two independent OS processes generate the same scenario; bytes must match.
+
+    Folded from tests/unit/tools/test_regression_construction_cadence_determinism.py
+    (U7.0) into the gate itself (E5b). PYTHONHASHSEED is stripped so each
+    child randomizes its own hash seed — two processes sharing one seed would
+    be a false-positive determinism proof. The fast-tier unit test stays in
+    place unchanged (a mirror of this same mechanism, run on every ``pytest``
+    invocation rather than only on ``compare``).
+
+    Args:
+        scenario: Scenario name passed to both child ``generate`` calls.
+
+    Returns:
+        Tuple of (passed, problems). ``problems`` is empty iff both
+        processes' sampled-checkpoint JSON (minus the wall-clock
+        ``generated_at`` field) and dense-trace CSV bytes agree exactly.
+    """
+    import tempfile
+
+    problems: list[str] = []
+    with tempfile.TemporaryDirectory() as tmp:
+        dirs = [Path(tmp) / "a", Path(tmp) / "b"]
+        for d in dirs:
+            result = subprocess.run(
+                [
+                    sys.executable,
+                    str(Path(__file__).resolve()),
+                    "generate",
+                    "--scenario",
+                    scenario,
+                    "--dense",
+                    "--output",
+                    str(d),
+                ],
+                capture_output=True,
+                text=True,
+                cwd=Path(__file__).parent.parent,
+                env={k: v for k, v in os.environ.items() if k != "PYTHONHASHSEED"},
+                timeout=300,
+            )
+            if result.returncode != 0:
+                return False, [f"determinism leg: generate failed in {d}: {result.stderr[-500:]}"]
+        a = json.loads((dirs[0] / f"{scenario}.json").read_text())
+        b = json.loads((dirs[1] / f"{scenario}.json").read_text())
+        a.pop("generated_at", None)
+        b.pop("generated_at", None)
+        if a != b:
+            problems.append(f"determinism leg: {scenario}.json differs between two processes")
+        csv_a = (dirs[0] / DENSE_SUBDIR / f"{scenario}.csv").read_bytes()
+        csv_b = (dirs[1] / DENSE_SUBDIR / f"{scenario}.csv").read_bytes()
+        if csv_a != csv_b:
+            problems.append(
+                f"determinism leg: dense CSV differs between two processes ({scenario})"
+            )
+    return not problems, problems
+
+
 def _compare_bundle_command(args: Any) -> int:
     """Spec-064 US4: compare a headless-runner bundle to the baseline summary.
 
@@ -1438,6 +1521,34 @@ def _compare_bundle_command(args: Any) -> int:
         failures.append(f"{len(critical)} critical conservation violation(s)")
     else:
         print("  ✓ no critical conservation violations")
+
+    # 4. dense_trace.csv byte-compare against the detroit_tri_county dense
+    # golden (Task 10, E2b). Missing baseline is a loud, non-fatal
+    # PENDING CEREMONY — the golden is minted by the Task 11 ceremony; this
+    # branch is pre-ceremony only and should be removed once
+    # tests/baselines/dense/detroit_tri_county.csv is committed.
+    dense_baseline_path: Path = args.dense_baseline
+    if not dense_baseline_path.exists():
+        print(
+            "  PENDING CEREMONY: detroit_tri_county dense golden "
+            f"(minted by the Task 11 ceremony) — {dense_baseline_path} not found"
+        )
+    else:
+        dense_bundle_path = bundle_dir / "dense_trace.csv"
+        if not dense_bundle_path.exists():
+            failures.append(f"dense_trace.csv missing from bundle: {dense_bundle_path}")
+        else:
+            dense_ok, dense_report = compare_dense_csv_bytes(
+                "detroit_tri_county",
+                dense_baseline_path.read_bytes(),
+                dense_bundle_path.read_bytes(),
+            )
+            if dense_ok:
+                print("  ✓ dense_trace.csv byte-identical to detroit_tri_county golden")
+            else:
+                failures.append("dense_trace.csv diverged from detroit_tri_county golden")
+                if dense_report is not None:
+                    print(_format_divergence_report(dense_report))
 
     print()
     if failures:
@@ -1536,6 +1647,16 @@ Examples:
         default=1.0,
         help="±%% tolerance on terminal_state.total_v (default: 1.0%%)",
     )
+    bundle_parser.add_argument(
+        "--dense-baseline",
+        type=Path,
+        default=Path("tests/baselines/dense/detroit_tri_county.csv"),
+        help=(
+            "Path to the committed detroit_tri_county dense golden CSV "
+            "(default: tests/baselines/dense/detroit_tri_county.csv). Byte-"
+            "compared against the bundle's dense_trace.csv (Task 10, E2b)."
+        ),
+    )
 
     args = parser.parse_args()
 
@@ -1596,6 +1717,28 @@ Examples:
 
         print()
         print(f"Results: {passed} passed, {failed} failed")
+
+        # E5b: two-process determinism proof, folded into the gate itself
+        # (Task 10). Runs unconditionally, every `compare` invocation,
+        # regardless of the scenario-comparison outcome above — this leg
+        # answers a different question (is a single scenario's construction
+        # deterministic across independent OS processes?), so it must not
+        # be skipped just because a header mismatch already failed the
+        # scenario loop (the sanctioned qa:regression-modernization red
+        # window: this leg is expected to PASS even while the 5 originals
+        # are red on the widened header).
+        print()
+        print("Determinism leg (E5b): two independent processes, imperial_circuit...")
+        det_start = time.perf_counter()
+        det_ok, det_problems = _determinism_leg()
+        det_elapsed = time.perf_counter() - det_start
+        if det_ok:
+            print(f"  PASS ({det_elapsed:.2f}s)")
+        else:
+            print(f"  FAIL ({det_elapsed:.2f}s)")
+            for problem in det_problems:
+                print(f"    {problem}")
+            failed += 1
 
         if failed > 0:
             print()

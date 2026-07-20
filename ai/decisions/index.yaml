@@ -1,5 +1,5 @@
 meta:
-  version: 1.38.0
+  version: 1.39.0
   updated: '2026-07-20'
   description: Architecture Decision Records Index
   format: See individual ADR files in this directory
@@ -9,6 +9,26 @@ decisions:
     status: accepted
     date: '2026-07-20'
     file: ADR098_parquet_canonical_reference.yaml
+  ADR097_render_seam:
+    title: 'The render seam under Amendment W: glyph canon (Tier 0) as the design target rather than the fallback (the entire fleet including GNOME Terminal/VTE and Windows Terminal has no pixel protocol -- everything the game communicates is communicated in character cells), the information-parity rule (Tier 1 pixel plates via textual-image+pillow re-render Tier-0 information and never carry unique content), Tier 2 SVG export through Textual''s native mechanism under the ratified III.13 determinism law, babylon doctor probe-once capability semantics (render_tier written to config, no mid-session re-probe, --render override, declared degradation), and the 256-color degraded palette as a DESIGN_BIBLE 9b row -- queue items 15 and 10'
+    status: accepted
+    date: '2026-07-20'
+    file: ADR097_render_seam.yaml
+  ADR096_inference_lane_mechanics:
+    title: 'Inference lane mechanics under Amendment V: bundled CPU llama-server over Ollama as the local default (loopback-only, lifecycle owned by the babylon process, one binary serving /v1/chat/completions and /v1/embeddings from sha256-pinned local gguf weights), provider precedence bundled -> detected-external -> Cloudflare-if-keyed -> mute, the signed model manifest (weights outside the Nix store in ~/.local/share/babylon/models/, hosted in the babylon-data R2 bucket, per-campaign embedding pins), the babylon_intel least-privilege Postgres role (SELECT on Hoist projections + INSERT on narrator-prose/embedding tables only, one migration), and the embedding-dimension schema seam (bge-m3 vector(1024), bge-base-en-v1.5 vector(768)) -- queue items 11/12/13; item 6 resolved by A7.5 (sentence-transformers and torch leave the tree); item 9 premium metering deliberately deferred'
+    status: accepted
+    date: '2026-07-20'
+    file: ADR096_inference_lane_mechanics.yaml
+  ADR095_packaging_train:
+    title: 'The Packaging Train opening moves: the babylon CLI entry-point contract ([project.scripts] babylon = babylon.cli:app with subcommands play/doctor/login/telemetry/self-update/uninstall), the dependency extras split (server extra absorbs ansible-dev-tools, rstcheck, doc8, boto3, Django, DRF, django-cors-headers, gunicorn) plus deletion of the stdlib-shadowing uuid ^1.30 relic, and the single-lock fork ruled U -- uv adopted at the packaging train with uv2nix consuming the same lock, Poetry-two-locks (K) recorded as the fallback -- queue items 4, 5, 8; untouched by Amendments V/W/X'
+    status: accepted
+    date: '2026-07-20'
+    file: ADR095_packaging_train.yaml
+  ADR094_nix_channel_deployment:
+    title: 'Nix Player Channel deployment mechanics under X.8: ed25519 narinfo-signing keypair (secret to CI only, public key baked into install.sh CACHE_KEY), cache.babylon.percypedia.biz custom-domain target served through the cache-worker front door (workers.dev interim, r2.dev never), Terraform-import obligation for the hand-provisioned live Cloudflare state assigned to babylon-infra with a Terraform-owns-resources / wrangler-owns-Workers boundary, deploy-workers.yml wrangler pin as a deploy precondition (action default 3.90.0 predates wrangler.jsonc support), monthly regression-gated nixpkgs pin cadence under Amendment-L discipline, and hypergraph-rs as a pinned flake input gated on port parity -- queue items 1-2 recorded as executed by X.8/X.1, this ADR proposes only the mechanics'
+    status: accepted
+    date: '2026-07-20'
+    file: ADR094_nix_channel_deployment.yaml
   ADR093_amendments_v_w_x:
     title: 'Amendments V/W/X (CONSTITUTION v2.12.0, owner-ratified 2026-07-20): V = narrator-only AI (no LLM in the input path, Amendment I superseded-in-part; local-first provider stack) + transport-generalized client contract (in-process/HTTP/file materialization; browser client legacy, Archive TUI successor) + III.6 pinning generalized to all persisted AI artifacts; W = III.13 Deterministic Materialization [PENDING CODE] (ORDER BY projections, sandboxed sim-time templates, byte-identical artifacts, golden vault, Loud Failure extends to pixels); X = infra domain delegated to the babylon-infra constitution v1.0.0 (infra/ submodule), X.1 scoped to the production estate (no-Nix letter corrected), the infra flake = sole toolchain pinning authority in sqlite-3.53.1 lockstep [IMPLEMENTED], X.8 local-first Periphery/Metropole distribution [PENDING CODE] (embedded player PG17+pgvector, Nix flake beta channel, Metropole observes-never-adjudicates), X.6 Grafana+SQL carve-out (D3). Sources committed under ai/_inbox/tui/; roadmap 6.5 provenance-ceremony amendment HELD on the open BD home ruling'
     status: accepted

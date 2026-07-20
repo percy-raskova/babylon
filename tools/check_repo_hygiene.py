@@ -40,6 +40,7 @@ ALLOWED_TOP_LEVEL_DIRS: frozenset[str] = frozenset(
         ".understand-anything",
         "ai",  # Claude's owned tree: context yamls, decisions/ ADRs, scratch/
         "assets",
+        "config-examples",  # §A3/§A8 player config templates (ADR096); never real secrets
         "design",
         "docker",
         "docs",

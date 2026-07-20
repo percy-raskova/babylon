@@ -7,6 +7,7 @@ raw federal statistical data and simulation-ready TerritoryState objects.
 Key Functions:
     - query_counties: Fetch county metadata from dim_county
     - query_hex_claims: Fetch H3 cells from bridge_county_h3
+    - query_h3_to_county_fips: Resolve H3 cells to county FIPS (the reverse join)
     - compute_initial_profit_rate: Calculate profit_rate from QCEW/BEA data
     - hydrate_territories: Create TerritoryState objects from database
 
@@ -129,6 +130,65 @@ def query_hex_claims(
                 )
 
         return hex_map
+
+    if session is not None:
+        return _query(session)
+
+    with get_reference_session() as sess:
+        return _query(sess)
+
+
+#: SQLite's default bound-parameter limit (SQLITE_MAX_VARIABLE_NUMBER) is 999;
+#: chunk well under that so a large caller-supplied H3 id list never trips it.
+_H3_LOOKUP_CHUNK_SIZE = 500
+
+
+def query_h3_to_county_fips(
+    h3_indices: list[str],
+    session: Session | None = None,
+) -> dict[str, str]:
+    """Resolve H3 cells to their containing county's FIPS via bridge_county_h3.
+
+    The reverse of :func:`query_hex_claims` (that one goes county_id -> hex
+    set; this one goes hex -> county FIPS). Needed by the county-grain
+    balkanization influence seed (#39 T5), which starts from a fixed set of
+    H3 cells (the proxy-data seed) and needs each one's containing county's
+    FIPS — never the county_id ``bridge_county_h3`` itself stores.
+
+    Scoped to exactly the requested cells (chunked at
+    :data:`_H3_LOOKUP_CHUNK_SIZE` to stay under SQLite's default
+    bound-parameter limit) — never a full-table scan, regardless of how
+    large ``bridge_county_h3`` grows.
+
+    Args:
+        h3_indices: H3 cell index strings to resolve. Duplicates are
+            deduplicated before querying.
+        session: Optional existing session. If None, creates a new one.
+
+    Returns:
+        Dict mapping H3 index to 5-digit county FIPS. Cells absent from
+        ``bridge_county_h3`` (outside county-mapped US territory, e.g.
+        coastal/offshore cells) are simply absent from the returned dict —
+        not an error, since a proxy-data seed built independently of the
+        county bridge is not guaranteed to align 1:1 with county coverage.
+    """
+    if not h3_indices:
+        return {}
+
+    unique_hexes = sorted(set(h3_indices))
+
+    def _query(sess: Session) -> dict[str, str]:
+        mapping: dict[str, str] = {}
+        for start in range(0, len(unique_hexes), _H3_LOOKUP_CHUNK_SIZE):
+            chunk = unique_hexes[start : start + _H3_LOOKUP_CHUNK_SIZE]
+            stmt = (
+                select(BridgeCountyH3.h3_index, DimCounty.fips)
+                .join(DimCounty, BridgeCountyH3.county_id == DimCounty.county_id)
+                .where(BridgeCountyH3.h3_index.in_(chunk))
+            )
+            for h3_index, fips in sess.execute(stmt).all():
+                mapping[h3_index] = fips
+        return mapping
 
     if session is not None:
         return _query(session)

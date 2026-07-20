@@ -23,6 +23,7 @@ from babylon.engine.hydration.reference import (
     compute_initial_profit_rate,
     hydrate_territories,
     query_counties,
+    query_h3_to_county_fips,
     query_hex_claims,
 )
 from babylon.engine.simulation import Simulation
@@ -138,6 +139,38 @@ class TestQueryHexClaims:
     def test_query_empty_county_ids_returns_empty(self) -> None:
         """Verify empty county_ids returns empty dict."""
         result = query_hex_claims([])
+        assert result == {}
+
+
+class TestQueryH3ToCountyFips:
+    """Test query_h3_to_county_fips() (#39 T5) — the reverse of query_hex_claims:
+    hex -> county FIPS instead of county_id -> hex set."""
+
+    def test_query_resolves_known_wayne_and_oakland_hexes(self) -> None:
+        """A real hex known to be in each county resolves to that county's FIPS."""
+        counties = query_counties(DETROIT_FIPS_CODES)
+        county_ids = [counties[fips].county_id for fips in DETROIT_FIPS_CODES]
+        hex_claims = query_hex_claims(county_ids)
+
+        wayne_id = counties[WAYNE_FIPS].county_id
+        oakland_id = counties[OAKLAND_FIPS].county_id
+        wayne_hex = next(iter(hex_claims[wayne_id]))
+        oakland_hex = next(iter(hex_claims[oakland_id]))
+
+        result = query_h3_to_county_fips([wayne_hex, oakland_hex])
+
+        assert result[wayne_hex] == WAYNE_FIPS
+        assert result[oakland_hex] == OAKLAND_FIPS
+
+    def test_query_empty_h3_indices_returns_empty(self) -> None:
+        """Verify empty h3_indices returns empty dict."""
+        result = query_h3_to_county_fips([])
+        assert result == {}
+
+    def test_query_unmatched_hex_is_absent_not_an_error(self) -> None:
+        """A syntactically-valid but unmapped H3 cell is simply absent from
+        the result (no KeyError, no fabricated county) — never an error."""
+        result = query_h3_to_county_fips(["ffffffffffffff0"])
         assert result == {}
 
 

@@ -43,6 +43,7 @@ ALLOWED_TOP_LEVEL_DIRS: frozenset[str] = frozenset(
         "design",
         "docker",
         "docs",
+        "infra",  # babylon-infra git submodule (gitlink) — canonical devshell/toolchain, ADR093 Amendment X
         "output",  # tracked delivery evidence: demo screenshots (spec-113 Living Map, ADR066)
         "project",  # long-horizon governance: programs/owner/execution/notes
         "reports",  # tracked audit evidence; run artifacts are gitignored

@@ -32,14 +32,30 @@ reimplemented) so the artifact can never drift from what
 ``WorldStateBridge`` already treats as the real per-county population.
 ``population_year`` is 2010: it matches ``WorldStateBridge.hydrate_initial``'s
 default ``start_year`` and empirically has the best coverage of the national
-scope among the years checked (3143/3156 -- see the ``gaps`` list for the
-13 counties Census/QCEW genuinely never covers: AK/CT post-1990 geography
-splits plus one historical-FIPS artifact).
+scope among the years checked (2010/2015/2018/2019/2020) -- the exact
+counties Census/QCEW genuinely never covers (AK/CT post-1990 geography
+splits) are named in the committed artifact's own ``gaps`` list, not
+restated here to avoid drift.
 
 **Centroid policy**: ``dim_county_geometry.centroid_lat``/``centroid_lon``,
 real TIGER centroids (NOT the fabricated hex-cell centroids the old h3 grid
-used). 12 of 3156 scoped counties lack a geometry row (a different,
+used). A small number of scoped counties lack a geometry row (a different,
 non-overlapping set from the population gap) -- also recorded in ``gaps``.
+
+**Retired-FIPS dedup (2026-07-19, scout finding)**: ``dim_county`` carries
+BOTH ``46113`` (Shannon County, SD) and ``46102`` (Oglala Lakota County, SD --
+the same physical county, renamed by the Census Bureau in 2015) as separate
+rows. Both pass ``_load_national_fips``'s scoping filter, so the raw national
+scope double-counts this one county. :data:`_RETIRED_FIPS_SUPERSEDED` names
+this one, verified, cited exclusion and drops the retired row (keeping the
+modern successor) when both are present in the same extraction -- recorded
+in the artifact's ``exclusions`` list, never silently dropped. This is a
+declared, cited map, NOT generic rename detection: if a similar duplicate
+surfaces later, the map is extended with its own citation, not inferred.
+``engine.headless_runner.scopes._load_national_fips`` itself carries the
+same latent double-count for the nationwide headless-runner path -- that is
+a separate, pre-existing production defect, OUT of this script's scope
+(flagged for a follow-up task, not fixed here).
 
 Only the RAW reference-derived fields are baked into the artifact
 (``fips``, ``county_name``, ``state_abbrev``, ``centroid_lat``/``lon``,
@@ -76,9 +92,19 @@ from babylon.reference.schema import DimCounty, DimCountyGeometry, DimState
 
 #: Matches WorldStateBridge.hydrate_initial's default start_year (bridge.py)
 #: and empirically has the best national-scope Census/QCEW coverage among
-#: the years checked at generation time (2010/2015/2018/2019/2020) --
-#: 3143/3156 counties covered, 13 gaps (see module docstring).
+#: the years checked at generation time (2010/2015/2018/2019/2020).
 DEFAULT_POPULATION_YEAR = 2010
+
+#: Retired FIPS -> modern successor FIPS for the SAME physical county, both
+#: of which are present as separate `dim_county` rows (module docstring,
+#: "Retired-FIPS dedup"). Verified empirically (scout finding, 2026-07-19):
+#: 46113 = Shannon County SD (retired); 46102 = Oglala Lakota County SD
+#: (renamed 2015 per Census Bureau change notice) -- the modern successor.
+#: A declared, cited exclusion map ONLY -- no generic rename inference; if
+#: another duplicate surfaces later, extend this map with its own citation.
+_RETIRED_FIPS_SUPERSEDED: dict[str, str] = {
+    "46113": "46102",  # Shannon County, SD -> Oglala Lakota County, SD (2015 rename)
+}
 
 _ARTIFACT_PATH = (
     Path(__file__).resolve().parent.parent
@@ -129,12 +155,44 @@ def _content_hash(counties: list[dict[str, Any]]) -> str:
     return hashlib.sha256(canonical.encode("utf-8")).hexdigest()
 
 
+def _dedup_retired_fips(scope_fips: frozenset[str]) -> tuple[frozenset[str], list[dict[str, str]]]:
+    """Drop retired FIPS whose modern successor is present in the same scope.
+
+    Only drops a key of :data:`_RETIRED_FIPS_SUPERSEDED` when its successor
+    value is ALSO present -- if the successor is somehow absent, the retired
+    row is kept rather than silently losing the county entirely.
+
+    Returns:
+        ``(deduped_scope, exclusions)`` where ``exclusions`` names each
+        dropped FIPS + its successor + a citation, for the artifact's
+        ``exclusions`` list.
+    """
+    exclusions: list[dict[str, str]] = []
+    dropped: set[str] = set()
+    for retired, successor in _RETIRED_FIPS_SUPERSEDED.items():
+        if retired in scope_fips and successor in scope_fips:
+            dropped.add(retired)
+            exclusions.append(
+                {
+                    "fips": retired,
+                    "successor_fips": successor,
+                    "reason": (
+                        f"retired FIPS superseded by {successor} (same physical county, "
+                        "renamed per Census Bureau change notice); both rows present in "
+                        "dim_county -- dropping the retired one to prevent double-counting"
+                    ),
+                }
+            )
+    return frozenset(scope_fips - dropped), exclusions
+
+
 def build_payload(
     year: int = DEFAULT_POPULATION_YEAR,
     sqlite_path: Path = DEFAULT_SQLITE_PATH,
 ) -> dict[str, Any]:
     """Build the full county-seed artifact payload from the reference DB."""
-    scope_fips = _load_national_fips(sqlite_path)
+    raw_scope_fips = _load_national_fips(sqlite_path)
+    scope_fips, exclusions = _dedup_retired_fips(raw_scope_fips)
     geo_rows = _load_county_geo_rows(get_normalized_session_factory())
 
     cache = ReferenceDataCache(sqlite_path)
@@ -175,6 +233,18 @@ def build_payload(
             }
         )
 
+    # Self-check (2026-07-19 scout finding): no retired FIPS from the
+    # exclusion map may survive dedup -- a survivor here means the drop
+    # logic failed silently, which must fail LOUD (Constitution III.11)
+    # rather than ship a duplicated county.
+    final_fips = {c["fips"] for c in counties}
+    survivors = final_fips & set(_RETIRED_FIPS_SUPERSEDED)
+    if survivors:
+        raise AssertionError(
+            f"retired FIPS {sorted(survivors)} survived _dedup_retired_fips -- "
+            "dedup logic is broken, refusing to write a duplicated artifact"
+        )
+
     return {
         "schema_version": 1,
         "source": {
@@ -185,7 +255,8 @@ def build_payload(
             "reference_db": "data/sqlite/marxist-data-3NF.sqlite",
             "scope_rule": (
                 "national (mirrors engine.headless_runner.scopes._load_national_fips: "
-                "state fips < '60', excludes {state}999 placeholders)"
+                "state fips < '60', excludes {state}999 placeholders) minus the "
+                "retired-FIPS dedup (see 'exclusions')"
             ),
             "population_year": year,
             "population_policy": (
@@ -199,6 +270,7 @@ def build_payload(
         "content_hash": _content_hash(counties),
         "counties": counties,
         "gaps": gaps,
+        "exclusions": exclusions,
     }
 
 
@@ -219,6 +291,9 @@ def main() -> None:
         f"  counties={payload['source']['county_count']}  year={payload['source']['population_year']}"
         f"  content_hash={payload['content_hash'][:16]}..."
     )
+    print(f"  exclusions={len(payload['exclusions'])}")
+    for excl in payload["exclusions"]:
+        print(f"    {excl['fips']} -> {excl['successor_fips']}: {excl['reason']}")
     print(f"  gaps={len(payload['gaps'])}")
     for gap in payload["gaps"]:
         print(f"    {gap['fips']} [{gap['field']}]: {gap['reason']}")

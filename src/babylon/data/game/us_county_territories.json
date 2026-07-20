@@ -3,12 +3,12 @@
   "source": {
     "dataset": "dim_county + dim_county_geometry + fact_census_income (Census) with fact_qcew_annual (QCEW) fallback",
     "reference_db": "data/sqlite/marxist-data-3NF.sqlite",
-    "scope_rule": "national (mirrors engine.headless_runner.scopes._load_national_fips: state fips < '60', excludes {state}999 placeholders)",
+    "scope_rule": "national (mirrors engine.headless_runner.scopes._load_national_fips: state fips < '60', excludes {state}999 placeholders) minus the retired-FIPS dedup (see 'exclusions')",
     "population_year": 2010,
     "population_policy": "Census fact_census_income household_count SUM primary; QCEW fact_qcew_annual employment SUM x 0.33 fallback (matches ReferenceDataCache._resolve_population byte-for-byte -- reused directly, not reimplemented)",
-    "county_count": 3156
+    "county_count": 3155
   },
-  "content_hash": "fe3b89b674754b02e12d16ec698203d8cd8d3ffe3bfe5122087b32e0c160f38d",
+  "content_hash": "df489fa0d0b44006f32a0388f41df9a240236d5fd4e90569c4bf9e1f7274a726",
   "counties": [
     {
       "fips": "01001",
@@ -19451,14 +19451,6 @@
       "population": 2895
     },
     {
-      "fips": "46113",
-      "county_name": "Shannon County",
-      "state_abbrev": "SD",
-      "centroid_lat": null,
-      "centroid_lon": null,
-      "population": 5807
-    },
-    {
       "fips": "46115",
       "county_name": "Spink County",
       "state_abbrev": "SD",
@@ -25371,14 +25363,16 @@
       "reason": "no Census or QCEW row for county=09190 year=2010"
     },
     {
-      "fips": "46113",
-      "field": "centroid",
-      "reason": "no dim_county_geometry row for county=46113"
-    },
-    {
       "fips": "51515",
       "field": "centroid",
       "reason": "no dim_county_geometry row for county=51515"
+    }
+  ],
+  "exclusions": [
+    {
+      "fips": "46113",
+      "successor_fips": "46102",
+      "reason": "retired FIPS superseded by 46102 (same physical county, renamed per Census Bureau change notice); both rows present in dim_county -- dropping the retired one to prevent double-counting"
     }
   ]
 }

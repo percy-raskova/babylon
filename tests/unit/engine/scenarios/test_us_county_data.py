@@ -45,13 +45,17 @@ class TestArtifactProvenance:
         recomputed = hashlib.sha256(canonical.encode("utf-8")).hexdigest()
         assert data["content_hash"] == recomputed
 
-    def test_county_count_matches_national_scope(self) -> None:
-        """The artifact's county universe is exactly _load_national_fips's --
-        never a hardcoded literal, derived from the same scoping rule."""
+    def test_county_count_matches_national_scope_minus_dedup(self) -> None:
+        """The artifact's county universe is _load_national_fips's scope MINUS
+        the declared retired-FIPS exclusions (2026-07-19 scout finding: raw
+        `_load_national_fips` double-counts 46113/46102, the same physical
+        county under two FIPS -- see `exclusions`) -- never a hardcoded
+        literal, derived from the same scoping rule + the documented dedup."""
         data = load_county_data()
-        expected = _load_national_fips(DEFAULT_SQLITE_PATH)
-        assert len(data["counties"]) == len(expected)
-        assert data["source"]["county_count"] == len(expected)
+        raw_scope = _load_national_fips(DEFAULT_SQLITE_PATH)
+        expected = len(raw_scope) - len(data["exclusions"])
+        assert len(data["counties"]) == expected
+        assert data["source"]["county_count"] == expected
 
     def test_counties_are_fips_sorted_and_unique(self) -> None:
         data = load_county_data()
@@ -96,6 +100,41 @@ class TestArtifactProvenance:
         assert len(data["gaps"]) == null_population + null_centroid
 
 
+class TestRetiredFipsDedup:
+    """2026-07-19 scout finding: `dim_county` carries BOTH 46113 (Shannon
+    County, SD, retired) and 46102 (Oglala Lakota County, SD, its 2015
+    rename) as separate rows -- the same physical county double-counted.
+    The generator drops the retired FIPS when its successor is present,
+    citing the exclusion rather than silently dropping it."""
+
+    def test_retired_fips_is_excluded(self) -> None:
+        data = load_county_data()
+        fips_list = {c["fips"] for c in data["counties"]}
+        assert "46113" not in fips_list
+
+    def test_successor_fips_is_present_with_real_population(self) -> None:
+        data = load_county_data()
+        by_fips = {c["fips"]: c for c in data["counties"]}
+        assert "46102" in by_fips
+        # QCEW fallback (Census absent for 46102 at 2010): int(3662 * 0.33).
+        assert by_fips["46102"]["population"] == 1208
+
+    def test_exclusion_is_documented_with_a_reason(self) -> None:
+        data = load_county_data()
+        assert len(data["exclusions"]) == 1
+        exclusion = data["exclusions"][0]
+        assert exclusion["fips"] == "46113"
+        assert exclusion["successor_fips"] == "46102"
+        assert exclusion["reason"]
+
+    def test_no_retired_fips_gap_entry_remains(self) -> None:
+        """46113 used to carry a 'centroid' gap entry before dedup -- once
+        excluded, it must not linger in `gaps` (it has no `counties` row)."""
+        data = load_county_data()
+        gap_fips = {gap["fips"] for gap in data["gaps"]}
+        assert "46113" not in gap_fips
+
+
 @pytest.mark.skipif(
     not _REFERENCE_DB.exists(),
     reason="reference DB absent (CI-without-drive); provenance pinned by committed values above",
@@ -115,6 +154,10 @@ class TestArtifactRederivesFromDB:
         assert cache.lookup_population(_AUTAUGA_FIPS, year) == _AUTAUGA_POPULATION_2010
 
     def test_county_scope_rederives(self) -> None:
+        """Raw `_load_national_fips` re-derives the artifact's scope PLUS the
+        one declared retired-FIPS exclusion (46113) -- see
+        TestRetiredFipsDedup for the dedup itself."""
         expected = _load_national_fips(_REFERENCE_DB)
         data = load_county_data()
-        assert {c["fips"] for c in data["counties"]} == set(expected)
+        excluded = {e["fips"] for e in data["exclusions"]}
+        assert {c["fips"] for c in data["counties"]} == set(expected) - excluded

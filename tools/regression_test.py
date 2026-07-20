@@ -655,6 +655,14 @@ def _parse_column(column: str) -> tuple[str, str | None]:
     if column.startswith(("economy_", "financial_")):
         return column, None
     if column.startswith("edge_"):
+        # Node ids contain no underscores (e.g. "C001"), so the channel is
+        # everything after "edge_<source>_<target>_" — which itself may
+        # contain underscores (e.g. "value_flow"). split("_", 3) isolates
+        # it; rsplit("_", 1) (the old behavior) wrongly truncated
+        # "edge_C001_C002_value_flow" to channel "flow".
+        parts = column.split("_", 3)
+        if len(parts) == 4:
+            return parts[3], None
         return column.rsplit("_", 1)[1], None
     _, _, suffix = column.partition("_")  # C001_wealth -> wealth
     return suffix or column, None

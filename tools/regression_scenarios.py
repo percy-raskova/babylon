@@ -2370,4 +2370,24 @@ CHANNEL_WRITERS: Final[dict[str, tuple[str, ...]]] = {
     "economy_imperial_rent_pool": ("ImperialRentSystem",),
     "economy_current_super_wage_rate": ("ImperialRentSystem",),
     "economy_current_repression_level": ("ImperialRentSystem",),
+    # E3 financial/county channels (final-review I1). All originate in
+    # TickDynamicsSystem's annual pipeline
+    # (`src/babylon/domain/economics/tick/system/__init__.py`):
+    # `financial_*` columns read `NationalFinancialParameters` written by
+    # `write_national_financial_state_to_graph` (called only from
+    # `_compute_national_financial_state`, a TickDynamicsSystem method);
+    # the bare county suffixes read `CountyEconomicState.surplus_distribution`
+    # written by `write_tick_state_to_graph`, also called only from
+    # TickDynamicsSystem.step() (verified via
+    # `rg -n "write_tick_state_to_graph\(|write_national_financial_state_to_graph\("`
+    # — both writers have exactly one call site each).
+    "financial_endogenous_rate": ("TickDynamicsSystem",),
+    "financial_profit_rate_ceiling": ("TickDynamicsSystem",),
+    "financial_s_r": ("TickDynamicsSystem",),
+    "financial_tightness": ("TickDynamicsSystem",),
+    "total_s": ("TickDynamicsSystem",),
+    "interest": ("TickDynamicsSystem",),
+    "ground_rent": ("TickDynamicsSystem",),
+    "taxes": ("TickDynamicsSystem",),
+    "profit_enterprise": ("TickDynamicsSystem",),
 }

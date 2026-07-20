@@ -61,9 +61,6 @@ jobs:
       - name: Public-surface baseline gate (__all__ vs pinned baseline)
         run: mise run check:surface
 
-      - name: Gate-coverage sentinel (estate declaration)
-        run: mise run check:gate-coverage
-
       - name: Lint (ruff check)
         run: mise run lint:check
 

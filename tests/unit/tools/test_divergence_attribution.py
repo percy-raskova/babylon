@@ -65,3 +65,34 @@ def test_non_numeric_divergence_has_none_magnitude() -> None:
     report = attribute_divergence("s", _HEADER, expected, actual)
     assert report is not None
     assert report.magnitude is None
+
+
+def test_financial_column_attributes_to_tick_dynamics_system() -> None:
+    header = ["tick", "financial_endogenous_rate"]
+    expected = _rows(["0", "0.01"], ["1", "0.02"])
+    actual = _rows(["0", "0.01"], ["1", "0.03"])
+    report = attribute_divergence("s", header, expected, actual)
+    assert report is not None
+    assert report.channel == "financial_endogenous_rate"
+    assert report.candidate_systems == ("TickDynamicsSystem",)
+
+
+def test_county_interest_column_attributes_to_tick_dynamics_system() -> None:
+    header = ["tick", "county_26163_interest"]
+    expected = _rows(["0", "0.0"], ["1", "5.0"])
+    actual = _rows(["0", "0.0"], ["1", "6.0"])
+    report = attribute_divergence("s", header, expected, actual)
+    assert report is not None
+    assert report.county == "26163"
+    assert report.channel == "interest"
+    assert report.candidate_systems == ("TickDynamicsSystem",)
+
+
+def test_edge_value_flow_column_yields_full_channel_name() -> None:
+    header = ["tick", "edge_C001_C002_value_flow"]
+    expected = _rows(["0", "0.0"], ["1", "5.0"])
+    actual = _rows(["0", "0.0"], ["1", "6.0"])
+    report = attribute_divergence("s", header, expected, actual)
+    assert report is not None
+    assert report.channel == "value_flow"
+    assert report.candidate_systems != ()

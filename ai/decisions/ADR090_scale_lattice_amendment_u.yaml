@@ -1,0 +1,46 @@
+id: ADR090
+title: >-
+  Amendment U — the spatial scale ladder is a LATTICE, not a chain: county is
+  the administrative atom; CZ (ERS 1990, total) / MSA (OMB, partial) / state
+  (total) are PARALLEL county-aggregations, only state nests into nation
+status: accepted
+date: '2026-07-19'
+context: >-
+  The owner's hex/community disposition (2026-07-18) recorded the ladder as
+  county < CZ < [MSA] < state < national and task #39 was scoped to bind
+  ScaleAdjunction to it. The #39 investigation (2026-07-19) surfaced two
+  contradictions: (1) Amendment K's canonical ladder (hex < county < state <
+  nation) carried no CZ/MSA rungs; (2) ERS commuting zones and OMB MSAs both
+  cross state lines, so the recorded chain is geographically unrealizable as a
+  nesting. Owner ruled (AskUserQuestion, 2026-07-19): constitutional
+  amendment wanted; MSA included since its data is already in the reference DB
+  (dim_metro_area/bridge_county_metro); drive checked for CZ data first —
+  CZ-level Chetty outcome tables exist but NO county->CZ crosswalk (the
+  WID_data_CZ.csv candidate is Czechia, the ISO country code), so the USDA ERS
+  1990 crosswalk was acquired (matching the Chetty tables' 1990 vintage).
+  Amendment text with the lattice correction ratified as drafted.
+decision: >-
+  CONSTITUTION.md v2.11.0 adds Amendment U superseding Amendment K's spatial
+  level-lattice clause: hex (res-7, immutable substrate) < county (atom,
+  county_fips, sole economy spatial key via resolve_county_identity); above
+  county, three parallel allocate-adjoint-aggregate adjunctions — CZ (total),
+  MSA (partial), state (total); only state < nation nests. Each rung carries an
+  Aleksandrov trace to real data: bridge_county_h3 / bridge_county_cz (new
+  in-repo register-mode artifact, 3141 counties -> 741 CZs) /
+  bridge_county_metro / FIPS prefix / constant. Letter T stays reserved for the
+  drafted Divergence Channel amendment (ADR072).
+consequences: >-
+  ScaleAdjunction's engine binding (task #39 T3/T6) builds three independent
+  county-keyed adjunctions instead of one chain — exactly what the frozen
+  model already supports (independent mapping dicts). The web map's CZ framing
+  (FramingSelector) stops being a silent county fallback once group_key_map
+  gains the cz rung backed by bridge_county_cz. Wayne County's sub-county
+  res-6 territories are out of scope (owner ruling W1: USScenario only;
+  ticket #57). No baseline drift expected from the amendment itself (the 5
+  canonical scenarios are opaque-T-id, county-free).
+evidence:
+  - CONSTITUTION.md Amendment U (v2.11.0)
+  - docs/superpowers/plans/2026-07-19-hex-scale-county-keying.md (ratified draft + rulings W1/W2)
+  - src/babylon/data/reference/bridge_county_cz.csv (commit 5675c868; provenance in the session scratchpad report)
+  - src/babylon/domain/dialectics/instances/scale.py (ScaleAdjunction — independent mapping per rung)
+  - owner ratification: AskUserQuestion 2026-07-19 ~9:05pm, "Ratify as drafted"

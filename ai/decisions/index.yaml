@@ -1,9 +1,14 @@
 meta:
-  version: 1.33.0
+  version: 1.34.0
   updated: '2026-07-19'
   description: Architecture Decision Records Index
   format: See individual ADR files in this directory
 decisions:
+  ADR090_scale_lattice_amendment_u:
+    title: 'Amendment U — spatial scale ladder codified as a LATTICE (county atom; CZ/MSA/state parallel county-aggregations, only state nests into nation); CZ rung grounded in the new bridge_county_cz ERS-1990 artifact; MSA rung on the existing dim_metro_area estate; supersedes Amendment K spatial clause after the #39 investigation proved the recorded chain geographically unrealizable (CZs and MSAs cross state lines)'
+    status: accepted
+    date: '2026-07-19'
+    file: ADR090_scale_lattice_amendment_u.yaml
   ADR089_vol3_money_scissors:
     title: 'Volume III Money wired live through the Value-Price Scissors: the dormant Vol III estate connected via calculator_overrides + a new NationalFinancialParameters graph publication + a monetary anchor, four new bound oppositions (catalog 6->10) with CouplingGraph activated as ContradictionSystem''s first production consumer, a 13-item honesty sweep, six new sentinel classes, and an endogenous national interest rate (Capital Vol. III Part V, U9 -- the rate total, never absent; post-review repair re-sourced r/s_r in-scope after the final review caught structural inertness); gate byte-identical vs the frozen baselines, regeneration declined as unnecessary under the recorded owner approval (Option B, 2026-07-19)'
     status: accepted

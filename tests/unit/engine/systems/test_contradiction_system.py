@@ -622,6 +622,41 @@ class TestNationalAxisEndToEnd:
         assert national["gap"] == 0.0
         assert national["balance"] == 0.0
 
+    def test_reading_is_order_independent_of_graph_construction(self) -> None:
+        """Constitution III.7: the same logical graph, built by inserting its
+        three factions (mixed stances, unequal INFLUENCES weights) in a
+        different order, must yield a BIT-IDENTICAL ``national`` reading —
+        ``==`` on the floats, not ``pytest.approx``. Unsorted float
+        accumulation over graph-insertion order is order-sensitive (0.1
+        UPHOLD + 0.2 IGNORE + 0.7 ABOLISH sums to a different last bit of
+        ``weight_total`` depending on visitation order); sorting both the
+        FACTION-node loop and the INFLUENCES-edge loop by id fixes it."""
+
+        def build(order: list[tuple[str, str, float]]) -> BabylonGraph:
+            graph = BabylonGraph()
+            graph.add_node("HEX_001", NodeType.TERRITORY)
+            for faction_id, stance, weight in order:
+                graph.add_node(faction_id, NodeType.FACTION, colonial_stance=stance)
+                graph.add_edge(faction_id, "HEX_001", EdgeType.INFLUENCES, influence_level=weight)
+            return graph
+
+        forward = [
+            ("FAC_A", "uphold", 0.1),
+            ("FAC_B", "ignore", 0.2),
+            ("FAC_C", "abolish", 0.7),
+        ]
+        graph_forward = build(forward)
+        graph_reversed = build(list(reversed(forward)))
+
+        ContradictionSystem().step(graph_forward, ServiceContainer.create(), TickContext(tick=1))
+        ContradictionSystem().step(graph_reversed, ServiceContainer.create(), TickContext(tick=1))
+
+        national_forward = graph_forward.graph["shadow_opposition_states"]["national"]
+        national_reversed = graph_reversed.graph["shadow_opposition_states"]["national"]
+
+        assert national_forward["balance"] == national_reversed["balance"]
+        assert national_forward["gap"] == national_reversed["gap"]
+
     def test_national_never_feeds_frames_or_rupture(self) -> None:
         """Observe-only (shadow discipline): even a maximally chauvinist
         reading never becomes the principal contradiction or a frame."""

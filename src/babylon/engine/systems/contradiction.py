@@ -454,9 +454,15 @@ class ContradictionSystem(SystemBase):
             Otherwise ``1.0 - 2.0 * weighted_mean_score`` so a positive
             reading is internationalism (pole B) dominant, matching the
             ``market_balance``/``_price_value_measure`` sign convention.
+
+            Edges and factions are visited in sorted order so the float
+            summation order is fixed (Constitution III.7).
         """
         influence_by_faction: dict[str, float] = {}
-        for edge in graph.query_edges(edge_type=EdgeType.INFLUENCES):
+        for edge in sorted(
+            graph.query_edges(edge_type=EdgeType.INFLUENCES),
+            key=lambda e: (e.source_id, e.target_id),
+        ):  # sorted: fixes float summation order (III.7)
             level = float(edge.attributes.get("influence_level", 0.0))
             if level <= 0.0:
                 continue
@@ -466,7 +472,10 @@ class ContradictionSystem(SystemBase):
 
         weighted_score = 0.0
         weight_total = 0.0
-        for node in graph.query_nodes(node_type=NodeType.FACTION):
+        for node in sorted(
+            graph.query_nodes(node_type=NodeType.FACTION),
+            key=lambda n: n.id,
+        ):  # sorted: fixes float summation order (III.7)
             weight = influence_by_faction.get(node.id, 0.0)
             if weight <= 0.0:
                 continue

@@ -226,14 +226,42 @@ class ConsciousnessSystem(SystemBase):
                 class_wage_balance = 0.0
                 chauvinist_pressure = 0.0
 
-            # Task #42-B (continuous repression term): ``repression_faced``
-            # is already a continuous [0, 1] LEVEL (bumped by POGROM/
-            # VIGILANTISM, ``ooda/action_effects.py``), distinct from
-            # StruggleSystem's event-triggered ``repression_backfire``
-            # spike. Presence-gated exactly like ``class_wage_balance``
-            # above — a node that never had ``repression_faced`` stamped at
-            # all contributes zero, not a fabricated fallback default.
-            node_repression = attrs.get("repression_faced")
+            # Task #42-B (continuous repression term), corrected task #42
+            # fix wave 1 (review MEDIUM-2, 2026-07-20): ``repression_faced``
+            # is a continuous [0, 1] LEVEL (bumped by POGROM/VIGILANTISM,
+            # ``ooda/action_effects.py``), distinct from StruggleSystem's
+            # event-triggered ``repression_backfire`` spike. Presence-gated
+            # exactly like ``class_wage_balance`` above — a node that never
+            # had ``repression_faced`` stamped at all contributes zero, not
+            # a fabricated fallback default.
+            #
+            # The RAW level must NOT be read directly: ``SocialClass``'s own
+            # model default is 0.5 (``social_class.py:169``), stamped on
+            # every class from tick 1 regardless of any actual repression
+            # EVENT. Reading it raw measures that ambient default as signal
+            # -- proven (review MEDIUM-2) to be the ENTIRE +0.00012 tick-1
+            # drift on all 5 canonical scenarios, a permanent ratchet with
+            # no material referent (Aleksandrov Test: the ambient default
+            # corresponds to no relation). Only repression PRODUCED above
+            # that baseline counts -- subtract ``DEFAULT_REPRESSION_FACED``
+            # (the SAME canonical fallback ``struggle.py``/``economic.py``/
+            # ``survival.py`` already read via ``services.defines.
+            # DEFAULT_REPRESSION_FACED``) and floor at zero. Canonical
+            # scenarios, which never fire POGROM/VIGILANTISM, get exactly
+            # zero by construction, matching the shadow-first/absent-safe
+            # discipline (ADR077/078). Known residual, documented not
+            # fixed: ``repression_faced`` never decays, so once produced
+            # this term accumulates monotonically -- defensible as
+            # accumulated repression experience.
+            node_repression_faced = attrs.get("repression_faced")
+            effective_repression = (
+                max(
+                    0.0,
+                    float(node_repression_faced) - services.defines.DEFAULT_REPRESSION_FACED,
+                )
+                if node_repression_faced is not None
+                else None
+            )
 
             # Calculate wages received (sum of incoming WAGES edges)
             core_wages = 0.0
@@ -314,7 +342,7 @@ class ConsciousnessSystem(SystemBase):
                 imperial_rent_delta=wealth_change,  # Wealth decline ~ rent decline
                 visibility_delta=0.0,  # g₃₃ changes handled in community system
                 wage_balance=class_wage_balance if wage_data_present else None,
-                repression_level=node_repression,
+                repression_level=effective_repression,
                 defines=services.defines.consciousness,
             )
             new_agitation = current_profile["agitation"] + agitation_increment + wage_deterioration

@@ -77,13 +77,49 @@ def compute_agitation_delta(
        of the same balance and route it via
        :func:`route_agitation_to_ternary` separately (ADR082: balance
        SIGN drives bifurcation DIRECTION, never an agitation gate).
-    5. ``repression_faced`` (task #42-B): already a continuous LEVEL in
-       [0, 1] -- MIM ``labor-aristocracy:34-40``: "the lack of violent
+    5. ``repression_faced`` (task #42-B; corrected task #42 fix wave 1,
+       review MEDIUM-2, 2026-07-20): a continuous LEVEL in [0, 1], but
+       ``repression_level`` must receive the PRODUCED excess above the
+       canonical ambient baseline -- ``effective_repression = max(0.0,
+       repression_faced - DEFAULT_REPRESSION_FACED)`` -- computed by the
+       CALLER (``ideology.py``), never the raw level. ``SocialClass``'s
+       own model default is 0.5 (``social_class.py:169``), stamped on
+       every class from tick 1 regardless of any actual repression
+       EVENT; reading it raw measures the ambient default as if it were
+       signal -- proven to be the ENTIRE +0.00012 tick-1 drift on all 5
+       canonical scenarios (a permanent ratchet with no material
+       referent, Aleksandrov Test), since neither this term nor
+       ``national_identity``/``class_consciousness`` ever decay. Gating
+       on the produced excess makes a class that never experienced a
+       POGROM/VIGILANTISM contribute exactly zero -- canonical scenarios
+       get zero by construction, matching the shadow-first/absent-safe
+       discipline (ADR077/078).
+
+       THEORY: MIM ``labor-aristocracy:34-40`` ("the lack of violent
        conflict itself is a fundamental reason for the lack of political
-       consciousness among the workers." Monotonic, sign-agnostic
-       (unlike 4, no non-monotonic shape is theorized here). Distinct
-       from ``StruggleSystem``'s EXCESSIVE_FORCE ``repression_backfire``
+       consciousness among the workers") grounds the *energy* --
+       repression radicalizes. It does NOT decide which *pole* that
+       energy routes to: the pole is the ratified bifurcation law
+       (ADR016_fascist_bifurcation -- SOLIDARITY edge presence routes
+       agitation to the revolutionary pole, its absence to the fascist
+       pole), applied downstream in :func:`route_agitation_to_ternary`.
+       Canonical C001 (no solidarity) therefore routes ALL of this
+       term's energy to ``national_identity``, the fascist pole --
+       "repression without organization breeds reaction," not "breeds
+       revolution" as a bare reading of the MIM citation alone might
+       suggest. Monotonic and sign-agnostic in the excess (unlike 4, no
+       non-monotonic shape is theorized here). Distinct from
+       ``StruggleSystem``'s EXCESSIVE_FORCE ``repression_backfire``
        spike, which is event-triggered, not a standing level.
+
+       KNOWN RESIDUAL (documented, not fixed here): ``repression_faced``
+       never decays (only raising writes exist --
+       ``ooda/action_effects.py``'s POGROM/VIGILANTISM bump,
+       ``engine/systems/economic.py``'s subsidy-repression coupling), so
+       once produced, this term's contribution accumulates monotonically
+       forever -- defensible as accumulated repression EXPERIENCE (a
+       population that lived through a POGROM stays marked by it), not a
+       bug, but worth flagging for whoever next tunes pacing/decay.
 
     Formula::
 
@@ -102,8 +138,14 @@ def compute_agitation_delta(
             tick for the caller's population -- an explicit "no data"
             (contributes zero), never a fabricated value at the
             near-peak ``balance == 0.0``.
-        repression_level: Current ``repression_faced`` in [0, 1], or
-            ``None`` when absent on the caller's node (contributes zero).
+        repression_level: The PRODUCED repression excess above the
+            canonical ambient baseline (``max(0.0, repression_faced -
+            DEFAULT_REPRESSION_FACED)``, computed by the caller), or
+            ``None`` when ``repression_faced`` is absent on the caller's
+            node entirely (contributes zero). NOT the raw
+            ``repression_faced`` level -- reading that raw would measure
+            the ambient model default as signal (task #42 fix wave 1,
+            review MEDIUM-2).
         defines: Optional custom coefficients.
 
     Returns:
@@ -228,9 +270,14 @@ def route_agitation_to_ternary(
 
     Agitation is consumed and routed to (Δr, Δl, Δf) based on:
 
-    1. **Solidarity** determines the revolutionary vs fascist split.
-       With solidarity, agitation routes to r (class consciousness).
-       Without solidarity, agitation routes to f (fascism).
+    1. **Solidarity** determines the revolutionary vs fascist split --
+       the ratified bifurcation law (``ADR016_fascist_bifurcation``:
+       "if solidarity infrastructure exists, agitation routes to class
+       awakening; if absent, agitation routes to fascist turn"),
+       regardless of WHY the agitation exists (a wage cut, repression,
+       or any other source this module's callers feed in). With
+       solidarity, agitation routes to r (class consciousness). Without
+       solidarity, agitation routes to f (fascism).
     2. **Education pressure** biases the split toward revolutionary.
        This is the mechanized effect of the EDUCATE verb.
     3. **Chauvinist pressure** biases the split toward fascist (Consciousness

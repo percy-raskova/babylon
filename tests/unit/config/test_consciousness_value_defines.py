@@ -50,9 +50,15 @@ class TestConsciousnessValueDefinesFields:
         assert defines.repression_backfire == pytest.approx(0.3)
 
     def test_repression_level_sensitivity_default(self) -> None:
-        """Continuous repression_faced level -> agitation (task #42-B)."""
+        """Continuous PRODUCED repression level -> agitation (task #42-B;
+        re-derived task #42 fix wave 1, review MEDIUM-2, 2026-07-20 -- the
+        term now reads the excess above DEFAULT_REPRESSION_FACED, so the
+        original 0.002's ambient-saturation rationale no longer applies;
+        re-grounded at the same order of magnitude as
+        sustained_exploitation_sensitivity, see the field's own
+        description for the full derivation)."""
         defines = ConsciousnessDefines()
-        assert defines.repression_level_sensitivity == pytest.approx(0.002)
+        assert defines.repression_level_sensitivity == pytest.approx(0.02)
 
     def test_rent_opacity_factor_default(self) -> None:
         """Rent opacity dampens exploitation visibility via imperial rent."""

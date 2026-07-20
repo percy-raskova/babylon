@@ -219,29 +219,52 @@ class ConsciousnessDefines(BaseModel):
     )
 
     # ----- Task #42-B (2026-07-20): continuous repression agitation term -----
+    # Re-derived task #42 fix wave 1 (review MEDIUM-2): the term now reads
+    # PRODUCED repression above DEFAULT_REPRESSION_FACED (ideology.py
+    # subtracts the baseline before calling compute_agitation_delta), so
+    # the original 0.002's rationale (avoid saturating on an ALWAYS-ON
+    # ambient 0.5 floor within a 126-tick horizon) no longer applies --
+    # canonical scenarios now get exactly zero by construction (no
+    # POGROM/VIGILANTISM fires there).
 
     repression_level_sensitivity: float = Field(
-        default=0.002,
+        default=0.02,
         ge=0.0,
         le=1.0,
         description=(
             "PROVISIONAL (calibrated later via `mise run sim:pacing`). "
             "repression_faced [0, 1] -> agitation, read as a continuous "
-            "LEVEL in compute_agitation_delta (MIM labor-aristocracy:34-40: "
-            "'the lack of violent conflict itself is a fundamental reason "
-            "for the lack of political consciousness among the workers'). "
-            "Distinct from repression_backfire (StruggleSystem's "
-            "EXCESSIVE_FORCE event spike): this fires every tick "
-            "repression_faced is present, not just on a spark roll. An "
-            "order of magnitude BELOW sustained_exploitation_sensitivity "
-            "(0.02) despite the similar 'LEVEL, not delta' shape: unlike "
-            "wage_balance (gated on an actual per-tick wage TRANSACTION), "
-            "SocialClass's own model default (repression_faced=0.5) means "
-            "this term is realistically unconditional from tick 1 for "
-            "every class, in every scenario -- measured directly (a "
-            "126-tick pre-crisis run with default repression_faced=0.5), "
-            "0.02 saturates national_identity to its 1.0 ceiling well "
-            "inside that window; 0.002 leaves comfortable headroom."
+            "PRODUCED LEVEL in compute_agitation_delta -- effective_"
+            "repression = max(0, repression_faced - DEFAULT_REPRESSION_"
+            "FACED), computed by ideology.py, never the raw level (task "
+            "#42 fix wave 1, review MEDIUM-2: reading the raw level "
+            "measured SocialClass's own ambient model default "
+            "(repression_faced=0.5, stamped on every class from tick 1 "
+            "with no repression EVENT) as if it were signal -- the "
+            "entire +0.00012 tick-1 canonical drift, before this fix). "
+            "MIM labor-aristocracy:34-40: 'the lack of violent conflict "
+            "itself is a fundamental reason for the lack of political "
+            "consciousness among the workers.' Distinct from "
+            "repression_backfire (StruggleSystem's EXCESSIVE_FORCE event "
+            "spike): this fires every tick effective_repression > 0, not "
+            "just on a spark roll. Grounded directly in the produced-"
+            "repression increments (ooda/action_effects.py's "
+            "_bump_repression_edge, same magnitude as the scalar bump): "
+            "ReactionaryDefines.pogrom_repression_increment=0.2 and "
+            "vigilantism_repression_increment=0.1 are the two writers of "
+            "this excess. Set to the SAME order of magnitude as "
+            "sustained_exploitation_sensitivity (0.02) -- both are LEVEL "
+            "(not delta) terms now gated on an actual produced material "
+            "event, not an ambient default -- but effective_repression's "
+            "own ceiling (repression_faced capped at 1.0, so excess maxes "
+            "at 1.0 - 0.5 = 0.5) is HALF sustained_exploitation_"
+            "magnitude's effective domain, so this term's own per-tick "
+            "ceiling (0.5 * 0.02 = 0.01) is conservatively half its "
+            "sibling's, appropriate given the documented residual: "
+            "repression_faced never decays, so once produced this term "
+            "accumulates forever. A single VIGILANTISM from baseline "
+            "contributes 0.1 * 0.02 = 0.002 that tick; a single POGROM "
+            "contributes 0.2 * 0.02 = 0.004."
         ),
     )
 

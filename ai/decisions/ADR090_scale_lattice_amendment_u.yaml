@@ -23,8 +23,10 @@ decision: >-
   CONSTITUTION.md v2.11.0 adds Amendment U superseding Amendment K's spatial
   level-lattice clause: hex (res-7, immutable substrate) < county (atom,
   county_fips, sole economy spatial key via resolve_county_identity); above
-  county, three parallel allocate-adjoint-aggregate adjunctions — CZ (total),
-  MSA (partial), state (total); only state < nation nests. Each rung carries an
+  county, three parallel allocate-adjoint-aggregate adjunctions — CZ (total
+  over the scoped county universe, with 19 declared loud-fail exceptions —
+  see the 2026-07-19 empirical correction below), MSA (partial), state
+  (total); only state < nation nests. Each rung carries an
   Aleksandrov trace to real data: bridge_county_h3 / bridge_county_cz (new
   in-repo register-mode artifact, 3141 counties -> 741 CZs) /
   bridge_county_metro / FIPS prefix / constant. Letter T stays reserved for the
@@ -44,3 +46,15 @@ evidence:
   - src/babylon/data/reference/bridge_county_cz.csv (commit 5675c868; provenance in the session scratchpad report)
   - src/babylon/domain/dialectics/instances/scale.py (ScaleAdjunction — independent mapping per rung)
   - owner ratification: AskUserQuestion 2026-07-19 ~9:05pm, "Ratify as drafted"
+  - >-
+    EMPIRICAL CORRECTION (post-ratification, 2026-07-19, #39 T3): CZ totality
+    verified against dim_county (3285 rows) — 151 rows carry no CZ: 51
+    synthetic {state}999 placeholders + 78 Puerto Rico municipios (both
+    already outside the established _load_national_fips county scoping) and
+    19 genuine post-1990 reorganizations (10 Alaska census-area changes, 9
+    Connecticut 2022 planning regions) with no honest 1:1 predecessor.
+    cz_adjunction() raises a named KeyError for the 19 (no fabricated
+    bridges); pinned by TestCZTotalityOverCountyUniverse in
+    tests/unit/dialectics/test_levels.py. Amendment U text carries the same
+    scope caveat; owner audits the correction in the queue PR ratification
+    thread.

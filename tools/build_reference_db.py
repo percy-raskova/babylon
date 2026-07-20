@@ -434,6 +434,14 @@ def build_reference_db(
     try:
         conn.execute(f"PRAGMA page_size={PAGE_SIZE}")
         conn.execute("PRAGMA journal_mode=DELETE")
+        # VACUUM spills a full copy of the DB to sqlite's temp dir, which
+        # defaults to /tmp — a 16G tmpfs on the dev box, where a ~4.6GB
+        # spill dies "database or disk is full" (cutover Step 4, 2026-07-20).
+        # Pin temp next to the output file instead: its filesystem must hold
+        # the product anyway. (Deprecated pragma, but it is the only
+        # per-connection control; SQLITE_TMPDIR proved unreliable through
+        # the mise->poetry->python chain.)
+        conn.execute(f"PRAGMA temp_store_directory = '{out_path.parent.resolve()}'")
 
         for stmt in table_statements:
             conn.execute(stmt.sql)

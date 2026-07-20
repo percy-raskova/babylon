@@ -12,7 +12,10 @@ name: Nightly
 
 on:
   schedule:
-    - cron: "0 6 * * *"   # daily deep legs, 06:00 UTC
+    # Owner ruling 2026-07-20: weekly tempo. The deep legs (formerly nightly)
+    # now run Wednesdays; the Sunday leg keeps its slot. workflow_dispatch
+    # remains the on-demand path (post-merge verification etc.).
+    - cron: "0 6 * * 3"   # weekly deep legs, Wednesday 06:00 UTC
     - cron: "0 4 * * 0"   # weekly leg, Sunday 04:00 UTC
   workflow_dispatch:
 
@@ -184,10 +187,14 @@ jobs:
     runs-on: ubuntu-latest
     # Measured: a 20-tick `us` sample cost 117.49s wall-clock on the dev box;
     # linear-fit extrapolation to 520 ticks ~= 49 minutes (see the test's
-    # docstring for the full model). No Postgres/reference-DB dependency —
-    # pacing_probe runs the engine's step() loop entirely in-memory and the
-    # `us` scenario's territories + seeded businesses come from H3 generation
-    # + a committed JSON artifact, not the data drive.
+    # docstring for the full model). No Postgres — but since PR #221 (#39,
+    # Amendment U) this leg DOES need the reference DB: SubstrateSystem's
+    # one-time ScaleAdjunction lattice build reads dim_county /
+    # bridge_county_metro / dim_metro_area (all shipped FULL in the ci-data
+    # subset). Without it, sqlalchemy auto-creates an empty sqlite and the
+    # run dies 'no such table: dim_county' at tick 0 (2026-07-20 red,
+    # run 29781894207). Territories/businesses still come from the
+    # committed JSON artifact, not the data drive.
     timeout-minutes: 75
     steps:
       - uses: actions/checkout@v7
@@ -196,6 +203,7 @@ jobs:
       - uses: ./.github/actions/bootstrap-python
         with:
           gdal: "true"
+      - uses: ./.github/actions/fetch-reference-db
       - name: G1 standing pacing gate (mise run qa:pacing)
         run: mise run qa:pacing
       - name: Upload test results

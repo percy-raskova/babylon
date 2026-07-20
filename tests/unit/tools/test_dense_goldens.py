@@ -80,9 +80,9 @@ def test_dense_trace_regeneration_matches_committed_golden(scenario_name: str) -
     expected_max_ticks = rt.load_baseline(BASELINE_DIR / f"{scenario_name}.json").max_ticks
     _baseline, dense = rt.run_scenario_dense(scenario_name, max_ticks=expected_max_ticks)
 
-    passed, diagnostic = rt.compare_dense_trace(dense, BASELINE_DIR)
+    passed, report = rt.compare_dense_trace(dense, BASELINE_DIR)
 
-    assert passed, f"{scenario_name}: dense golden drifted — {diagnostic}"
+    assert passed, f"{scenario_name}: dense golden drifted — {report}"
 
 
 def test_compare_dense_trace_catches_a_synthetic_one_value_mutation(tmp_path: Path) -> None:
@@ -118,12 +118,12 @@ def test_compare_dense_trace_catches_a_synthetic_one_value_mutation(tmp_path: Pa
     expected_max_ticks = rt.load_baseline(BASELINE_DIR / f"{scenario_name}.json").max_ticks
     _baseline, dense = rt.run_scenario_dense(scenario_name, max_ticks=expected_max_ticks)
 
-    passed, diagnostic = rt.compare_dense_trace(dense, tmp_path)
+    passed, report = rt.compare_dense_trace(dense, tmp_path)
 
     assert not passed, "mutation was not detected — dense compare is a rubber stamp"
-    assert diagnostic is not None
-    assert f"tick {mutated_tick}" in diagnostic
-    assert mutated_column in diagnostic
+    assert report is not None
+    assert report.tick == mutated_tick
+    assert report.column == mutated_column
 
     # And the real committed golden (never touched — only the tmp_path copy
     # was mutated) still compares clean.

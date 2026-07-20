@@ -68,6 +68,13 @@ from babylon.engine.simulation_engine import step
 BASELINE_DIR: Final[Path] = Path(__file__).parent.parent / "tests" / "baselines"
 DENSE_SUBDIR: Final[str] = "dense"
 DEFAULT_MAX_TICKS: Final[int] = 52
+
+# E4: machine-readable first-divergence attribution, rewritten fresh every
+# `compare` run (removed at the start of `compare_all_baselines` so a green
+# run never leaves a stale, misleading report behind).
+FIRST_DIVERGENCE_REPORT_PATH: Final[Path] = (
+    Path(__file__).parent.parent / "reports" / "qa-first-divergence.json"
+)
 CHECKPOINT_INTERVAL: Final[int] = 10
 TOLERANCE: Final[float] = 1e-5
 
@@ -471,44 +478,150 @@ def _parse_dense_csv_bytes(data: bytes) -> tuple[list[str], list[list[str]]]:
     return rows[0], rows[1:]
 
 
-def _first_dense_divergence(
-    expected_header: list[str],
-    expected_rows: list[list[str]],
-    actual_header: list[str],
-    actual_rows: list[list[str]],
-) -> str:
-    """Name the first divergent tick+column between two dense traces.
+@dataclass(frozen=True)
+class DivergenceReport:
+    """First point where an actual dense trace departs its golden baseline.
+
+    Produced by :func:`attribute_divergence` (E4) — replaces the old
+    ``_first_dense_divergence`` free-text diagnostic with a structured
+    record naming the tick, column, dialectical channel, county (when the
+    column is county-scoped), and the candidate systems
+    (:data:`tools.regression_scenarios.CHANNEL_WRITERS`) that could have
+    written it, so a dense-gate FAIL doesn't require hand-deriving
+    attribution (Program: qa:regression modernization, task 5).
+    """
+
+    scenario: str
+    tick: int
+    column: str
+    channel: str
+    county: str | None
+    expected: str
+    actual: str
+    magnitude: float | None
+    last_agreeing_tick: int | None
+    candidate_systems: tuple[str, ...]
+
+
+def _parse_column(column: str) -> tuple[str, str | None]:
+    """Return (channel suffix, county fips or None) for a dense column name.
 
     Args:
-        expected_header: Committed golden's header row.
+        column: A dense-trace header cell, e.g. ``"C001_wealth"``,
+            ``"edge_C001_C002_tension"``, ``"economy_imperial_rent_pool"``,
+            or a future ``"county_<fips>_<suffix>"`` / ``"financial_*"``
+            column (Task 9 / E3 — no current baseline emits these yet, but
+            the column vocabulary is already documented).
+
+    Returns:
+        Tuple of (channel, county fips or None). ``channel`` is the key
+        looked up in ``CHANNEL_WRITERS``.
+    """
+    if column.startswith("county_"):
+        parts = column.split("_", 2)  # county, <fips>, <suffix>
+        if len(parts) == 3:
+            return parts[2], parts[1]
+    if column.startswith(("economy_", "financial_")):
+        return column, None
+    if column.startswith("edge_"):
+        return column.rsplit("_", 1)[1], None
+    _, _, suffix = column.partition("_")  # C001_wealth -> wealth
+    return suffix or column, None
+
+
+def attribute_divergence(
+    scenario: str,
+    header: list[str],
+    expected_rows: list[list[str]],
+    actual_rows: list[list[str]],
+) -> DivergenceReport | None:
+    """Locate and attribute the first cell where actual departs expected.
+
+    The single cell-walk implementation behind both the dense-gate FAIL
+    path (:func:`compare_dense_trace`) and direct callers (tests, ad hoc
+    diagnosis) — there is intentionally no second copy of this walk.
+
+    Args:
+        scenario: Scenario name, threaded through to the report.
+        header: Column names shared by both ``expected_rows`` and
+            ``actual_rows`` (the golden's header — dense goldens assume a
+            static column contract per scenario).
         expected_rows: Committed golden's data rows.
-        actual_header: Freshly-generated header row.
         actual_rows: Freshly-generated data rows.
 
     Returns:
-        A single human-readable diagnostic string naming the first place the
-        two traces differ — never an empty diff (this function is only
-        called after byte-inequality has already been established).
+        The first-divergence attribution, or ``None`` if the two row sets
+        are identical (row-for-row, cell-for-cell, and equal in count).
     """
-    if expected_header != actual_header:
-        for i, (exp_col, act_col) in enumerate(zip(expected_header, actual_header, strict=False)):
-            if exp_col != act_col:
-                return f"column header mismatch at index {i}: {exp_col!r} != {act_col!r}"
-        return f"header length mismatch: {len(expected_header)} != {len(actual_header)} columns"
+    from tools.regression_scenarios import CHANNEL_WRITERS
 
-    for exp_row, act_row in zip(expected_rows, actual_rows, strict=False):
-        if exp_row == act_row:
-            continue
-        tick = exp_row[0] if exp_row else "?"
-        for col_idx, (exp_val, act_val) in enumerate(zip(exp_row, act_row, strict=False)):
-            if exp_val != act_val:
-                col_name = (
-                    expected_header[col_idx] if col_idx < len(expected_header) else f"#{col_idx}"
-                )
-                return f"tick {tick} column {col_name!r}: {exp_val} != {act_val}"
-        return f"tick {tick}: row length mismatch: {len(exp_row)} != {len(act_row)} columns"
+    n = min(len(expected_rows), len(actual_rows))
+    for i in range(n):
+        exp_row, act_row = expected_rows[i], actual_rows[i]
+        for j, column in enumerate(header):
+            exp = exp_row[j] if j < len(exp_row) else "<absent>"
+            act = act_row[j] if j < len(act_row) else "<absent>"
+            if exp == act:
+                continue
+            channel, county = _parse_column(column)
+            try:
+                magnitude: float | None = abs(float(act) - float(exp))
+            except ValueError:
+                magnitude = None
+            return DivergenceReport(
+                scenario=scenario,
+                tick=int(exp_row[0]),
+                column=column,
+                channel=channel,
+                county=county,
+                expected=exp,
+                actual=act,
+                magnitude=magnitude,
+                last_agreeing_tick=int(expected_rows[i - 1][0]) if i > 0 else None,
+                candidate_systems=CHANNEL_WRITERS.get(channel, ()),
+            )
+    if len(expected_rows) != len(actual_rows):
+        i = n
+        longer = expected_rows if len(expected_rows) > n else actual_rows
+        return DivergenceReport(
+            scenario=scenario,
+            tick=int(longer[i][0]),
+            column="<row count>",
+            channel="<missing row>",
+            county=None,
+            expected=str(len(expected_rows)),
+            actual=str(len(actual_rows)),
+            magnitude=None,
+            last_agreeing_tick=int(expected_rows[n - 1][0]) if n else None,
+            candidate_systems=(),
+        )
+    return None
 
-    return f"row count mismatch: {len(expected_rows)} != {len(actual_rows)} ticks"
+
+def _format_divergence_report(r: DivergenceReport) -> str:
+    """Human-readable one-liner for a :class:`DivergenceReport`."""
+    return (
+        f"  FIRST DIVERGENCE: tick {r.tick}, {r.column}"
+        + (f" (county {r.county})" if r.county else "")
+        + f": {r.expected} -> {r.actual}"
+        + (f" (Δ={r.magnitude!r})" if r.magnitude is not None else "")
+        + f"; last agreed tick {r.last_agreeing_tick}; "
+        + f"candidate systems: {', '.join(r.candidate_systems) or 'unmapped channel'}"
+    )
+
+
+def divergence_report_json(report: DivergenceReport) -> dict[str, Any]:
+    """JSON-serializable form of a :class:`DivergenceReport`.
+
+    Args:
+        report: The attribution to serialize.
+
+    Returns:
+        A plain dict (via :func:`dataclasses.asdict`) suitable for
+        ``json.dumps`` — the shape written to
+        ``reports/qa-first-divergence.json``.
+    """
+    return asdict(report)
 
 
 def save_dense_trace(trace: DenseTrace, output_dir: Path) -> Path:
@@ -528,7 +641,9 @@ def save_dense_trace(trace: DenseTrace, output_dir: Path) -> Path:
     return output_path
 
 
-def compare_dense_trace(trace: DenseTrace, baseline_dir: Path) -> tuple[bool, str | None]:
+def compare_dense_trace(
+    trace: DenseTrace, baseline_dir: Path
+) -> tuple[bool, DivergenceReport | None]:
     """Byte-compare a freshly-generated dense trace against its golden CSV.
 
     Args:
@@ -537,12 +652,15 @@ def compare_dense_trace(trace: DenseTrace, baseline_dir: Path) -> tuple[bool, st
             ``dense/`` subdirectory).
 
     Returns:
-        Tuple of (passed, diagnostic). ``passed`` is True and the
-        diagnostic is None when either the golden doesn't exist yet (dense
-        goldens are opt-in per Program 13 item 2 — absence is not a
-        failure) or the bytes match exactly. On mismatch, ``passed`` is
-        False and the diagnostic names the first divergent tick+column via
-        :func:`_first_dense_divergence`.
+        Tuple of (passed, report). ``passed`` is True and the report is
+        None when either the golden doesn't exist yet (dense goldens are
+        opt-in per Program 13 item 2 — absence is not a failure) or the
+        bytes match exactly. On mismatch, ``passed`` is False and
+        ``report`` attributes the first divergent tick+column (E4) via
+        :func:`attribute_divergence` — both blobs are parsed back through
+        :func:`_parse_dense_csv_bytes` so the compared cell strings are
+        exactly what a byte-level reader would see, matching the
+        already-established byte-inequality.
     """
     golden_path = baseline_dir / DENSE_SUBDIR / f"{trace.scenario}.csv"
     if not golden_path.exists():
@@ -554,8 +672,9 @@ def compare_dense_trace(trace: DenseTrace, baseline_dir: Path) -> tuple[bool, st
         return True, None
 
     expected_header, expected_rows = _parse_dense_csv_bytes(expected_bytes)
-    diagnostic = _first_dense_divergence(expected_header, expected_rows, trace.header, trace.rows)
-    return False, diagnostic
+    _actual_header, actual_rows = _parse_dense_csv_bytes(actual_bytes)
+    report = attribute_divergence(trace.scenario, expected_header, expected_rows, actual_rows)
+    return False, report
 
 
 def capture_checkpoint(state: Any, tick: int) -> CheckpointData:
@@ -925,6 +1044,14 @@ def compare_all_baselines(baseline_dir: Path) -> tuple[int, int]:
     (Program 13 item 2); a dense mismatch fails the scenario just like a
     checkpoint mismatch.
 
+    On any dense-gate FAIL, the first-divergence attribution (E4,
+    :func:`attribute_divergence`) is printed and every failing scenario's
+    :class:`DivergenceReport` is written to
+    :data:`FIRST_DIVERGENCE_REPORT_PATH` (``reports/qa-first-divergence.json``)
+    for machine consumption. Any stale report from a prior run is removed
+    up front, and the file is only (re)written when at least one scenario
+    actually diverged — a green run leaves no misleading report behind.
+
     Args:
         baseline_dir: Directory containing baseline JSON files
 
@@ -933,6 +1060,10 @@ def compare_all_baselines(baseline_dir: Path) -> tuple[int, int]:
     """
     passed = 0
     failed = 0
+    divergence_reports: list[DivergenceReport] = []
+
+    if FIRST_DIVERGENCE_REPORT_PATH.exists():
+        FIRST_DIVERGENCE_REPORT_PATH.unlink()
 
     for name in SCENARIOS:
         baseline_path = baseline_dir / f"{name}.json"
@@ -952,7 +1083,7 @@ def compare_all_baselines(baseline_dir: Path) -> tuple[int, int]:
 
         # Compare
         ok, diffs = compare_baselines(expected, actual)
-        dense_ok, dense_diagnostic = compare_dense_trace(dense_actual, baseline_dir)
+        dense_ok, dense_report = compare_dense_trace(dense_actual, baseline_dir)
 
         if ok and dense_ok:
             print("PASS")
@@ -962,8 +1093,15 @@ def compare_all_baselines(baseline_dir: Path) -> tuple[int, int]:
             failed += 1
             for diff in diffs:
                 print(f"    {diff}")
-            if not dense_ok:
-                print(f"    dense: {dense_diagnostic}")
+            if not dense_ok and dense_report is not None:
+                print(_format_divergence_report(dense_report))
+                divergence_reports.append(dense_report)
+
+    if divergence_reports:
+        FIRST_DIVERGENCE_REPORT_PATH.parent.mkdir(parents=True, exist_ok=True)
+        FIRST_DIVERGENCE_REPORT_PATH.write_text(
+            json.dumps([divergence_report_json(r) for r in divergence_reports], indent=2)
+        )
 
     return passed, failed
 

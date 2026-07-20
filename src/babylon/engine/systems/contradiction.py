@@ -63,7 +63,14 @@ from babylon.kernel.system_base import SystemBase
 from babylon.kernel.system_protocol import ContextType
 from babylon.kernel.tick_partition import TickPartition
 from babylon.models.entities.contradiction import Contradiction, ContradictionFrame
-from babylon.models.enums import ContradictionType, EdgeMode, EdgeType, EventType
+from babylon.models.enums import (
+    ColonialStance,
+    ContradictionType,
+    EdgeMode,
+    EdgeType,
+    EventType,
+    NodeType,
+)
 from babylon.sentinels.partition.registry import cell_name
 
 if TYPE_CHECKING:
@@ -124,6 +131,18 @@ _TENSION_EDGE_TYPES: tuple[EdgeType, ...] = (
     EdgeType.WAGES,
     EdgeType.TENANCY,
 )
+
+#: Task #42-C: colonial_stance (spec-070 FR-002) positioned on the national
+#: axis. 1.0 = the chauvinism pole (settler sovereignty defended/intensified),
+#: 0.0 = the internationalism pole (the settler relation dismantled), 0.5 =
+#: IGNORE's RED_OGV middle (class-only focus, neither pole — spec-070 FR-032).
+#: A hardcoded categorical map, not a GameDefines coefficient — the same
+#: division as ``formulas.balkanization._STANCE_TO_POLICY``.
+_STANCE_CHAUVINISM_SCORE: dict[ColonialStance, float] = {
+    ColonialStance.UPHOLD: 1.0,
+    ColonialStance.IGNORE: 0.5,
+    ColonialStance.ABOLISH: 0.0,
+}
 
 
 class ContradictionSystem(SystemBase):
@@ -327,6 +346,9 @@ class ContradictionSystem(SystemBase):
         feeding the per-node pole measures. The market Balance (Program 23)
         is derived here from the fresh ``market`` axis (@17.8 runs first)
         because the tanh scale is a define and the catalog stays defines-free.
+        The national Balance (task #42-C) is derived the same way from the
+        FACTION/INFLUENCES political-topology layer (spec-070), though here
+        no coefficient is owned at all — the weighting is a plain ratio.
         """
         exploitation: list[tuple[float, float]] = []
         exploitation_ids: list[tuple[str, str, float, float]] = []
@@ -398,6 +420,7 @@ class ContradictionSystem(SystemBase):
             wage_value_id_pairs=tuple(wage_value_ids),
             tenancy_id_pairs=tuple(tenancy_ids),
             market_balance=market_balance,
+            national_balance=self._national_chauvinism_balance(graph),
             rentier_share=rentier_share,
             debt_ratio=debt_ratio,
             credit_fragility=self._credit_fragility(
@@ -405,6 +428,61 @@ class ContradictionSystem(SystemBase):
             ),
             financialization_index=financialization_index,
         )
+
+    @staticmethod
+    def _national_chauvinism_balance(graph: GraphProtocol) -> float | None:
+        """National-axis Balance (task #42-C): colonial_stance, INFLUENCES-weighted.
+
+        Each ``BalkanizationFaction`` (spec-070 FR-005) positions itself on
+        the national-chauvinism<->internationalism axis via its
+        ``colonial_stance`` (FR-002); its material weight is the total
+        INFLUENCES ``influence_level`` (FR-014/FR-015) it holds across every
+        Territory it reaches — a faction with no territorial reach carries no
+        weight, the same "wealth engaged in the relationship" convention
+        ``_mean_asymmetry`` uses (unweighted means of an intensive quantity
+        across differently-sized material bases is the named
+        intensive-aggregation error class). A RATIO OF SUMS
+        (``Σ influence*score / Σ influence``), never a mean of per-faction
+        ratios.
+
+        Returns:
+            ``None`` when no FACTION node carries both a recognized
+            ``colonial_stance`` and positive summed influence — absent, not a
+            fabricated neutral (Constitution III.11). This is the permanent,
+            by-construction reading in all 5 canonical scenarios, which
+            construct no BalkanizationFaction/INFLUENCES edge at all.
+            Otherwise ``1.0 - 2.0 * weighted_mean_score`` so a positive
+            reading is internationalism (pole B) dominant, matching the
+            ``market_balance``/``_price_value_measure`` sign convention.
+        """
+        influence_by_faction: dict[str, float] = {}
+        for edge in graph.query_edges(edge_type=EdgeType.INFLUENCES):
+            level = float(edge.attributes.get("influence_level", 0.0))
+            if level <= 0.0:
+                continue
+            influence_by_faction[edge.source_id] = (
+                influence_by_faction.get(edge.source_id, 0.0) + level
+            )
+
+        weighted_score = 0.0
+        weight_total = 0.0
+        for node in graph.query_nodes(node_type=NodeType.FACTION):
+            weight = influence_by_faction.get(node.id, 0.0)
+            if weight <= 0.0:
+                continue
+            stance_raw = node.attributes.get("colonial_stance")
+            if not isinstance(stance_raw, str):
+                continue
+            try:
+                stance = ColonialStance(stance_raw)
+            except ValueError:
+                continue
+            weighted_score += weight * _STANCE_CHAUVINISM_SCORE[stance]
+            weight_total += weight
+
+        if weight_total <= 0.0:
+            return None
+        return 1.0 - 2.0 * (weighted_score / weight_total)
 
     @staticmethod
     def _county_money_ratios(

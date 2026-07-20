@@ -25,7 +25,7 @@ def _states(inputs: GraphInputs, tick: int = 0):  # type: ignore[no-untyped-def]
 
 
 class TestRegistryShape:
-    def test_ten_oppositions_bound(self) -> None:
+    def test_eleven_oppositions_bound(self) -> None:
         assert _reg().keys == (
             "atomization",
             "capital_labor",
@@ -33,16 +33,17 @@ class TestRegistryShape:
             "debt_spiral",
             "financial",
             "imperial",
+            "national",
             "price_value",
             "surplus_distribution",
             "tenancy",
             "wage",
         )
 
-    def test_no_shadow_bindings_after_the_promotion(self) -> None:
-        """ADR078: price_value is canonical; the shadow mechanism stays,
-        empty, as the Amendment T landing surface."""
-        assert _reg().shadow_keys == frozenset()
+    def test_national_is_the_only_shadow_binding(self) -> None:
+        """task #42-C: national lands shadow-first, on the same discipline
+        price_value was born under (ADR077) before its ADR078 promotion."""
+        assert _reg().shadow_keys == frozenset({"national"})
 
     def test_capital_labor_is_antagonistic(self) -> None:
         assert _reg().spec_for("capital_labor").antagonistic is True
@@ -214,6 +215,10 @@ class TestLevelPlacement:
             "debt_spiral": "county",
             "credit": "",
             "financial": "",
+            # task #42-C: the national axis aggregates faction stance
+            # NATIONALLY (INFLUENCES reach, no county/class rung) — unplaced,
+            # same as credit/financial.
+            "national": "",
         }
 
 
@@ -268,6 +273,45 @@ class TestPriceValue:
             r for r in _reg().read_poles(GraphInputs()) if r.opposition_key == "price_value"
         ]
         assert readings == []
+
+
+class TestNational:
+    """The national axis (task #42-C): national-chauvinism (A) ⇄ internationalism (B).
+
+    Shadow-first, on the same discipline ``price_value`` was born under
+    (ADR077): measured every tick, never principal, absent input reads zero.
+    """
+
+    def test_absent_national_axis_is_zero(self) -> None:
+        state = _states(GraphInputs())["national"]
+        assert state.gap == 0.0
+        assert state.balance == 0.0
+
+    def test_balance_passes_through_pre_derived_reading(self) -> None:
+        state = _states(GraphInputs(national_balance=0.6))["national"]
+        assert state.gap == pytest.approx(0.6)
+        assert state.balance == pytest.approx(0.6)
+        assert state.leading_pole == "b"  # internationalism dominant
+
+    def test_negative_balance_is_chauvinism_pole(self) -> None:
+        state = _states(GraphInputs(national_balance=-0.3))["national"]
+        assert state.gap == pytest.approx(0.3)
+        assert state.balance == pytest.approx(-0.3)
+        assert state.leading_pole == "a"  # national-chauvinism dominant
+
+    def test_out_of_range_reading_is_clamped(self) -> None:
+        state = _states(GraphInputs(national_balance=1.7))["national"]
+        assert state.balance == 1.0
+
+    def test_never_principal_even_at_full_gap(self) -> None:
+        """Shadow bindings never lead (ADR077) — promotion is a later, separate decision."""
+        states = _states(GraphInputs(national_balance=1.0))
+        assert states["national"].is_principal is False
+
+    def test_national_is_antagonistic(self) -> None:
+        # A genuine class-rupturing contradiction (the fascist bifurcation
+        # theory this engine models), same flag as capital_labor/imperial.
+        assert _reg().spec_for("national").antagonistic is True
 
 
 class TestVolumeThreeInputFields:

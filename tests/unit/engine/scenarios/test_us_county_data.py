@@ -47,10 +47,12 @@ class TestArtifactProvenance:
 
     def test_county_count_matches_national_scope_minus_dedup(self) -> None:
         """The artifact's county universe is _load_national_fips's scope MINUS
-        the declared retired-FIPS exclusions (2026-07-19 scout finding: raw
-        `_load_national_fips` double-counts 46113/46102, the same physical
-        county under two FIPS -- see `exclusions`) -- never a hardcoded
-        literal, derived from the same scoping rule + the documented dedup."""
+        the declared retired-FIPS exclusions (2026-07-19 scout finding + T4
+        review finding I-1: raw `_load_national_fips` double-counts
+        46113/46102 and 02270/02158 -- both 2015 renames -- and triple-counts
+        02261/02063/02066, a 2019 split -- see `exclusions`) -- never a
+        hardcoded literal, derived from the same scoping rule + the
+        documented dedup."""
         data = load_county_data()
         raw_scope = _load_national_fips(DEFAULT_SQLITE_PATH)
         expected = len(raw_scope) - len(data["exclusions"])
@@ -72,8 +74,21 @@ class TestArtifactProvenance:
         assert by_fips[_BALDWIN_FIPS] == _BALDWIN_POPULATION_2010
 
     def test_population_values_are_not_round_inventions(self) -> None:
-        for value in (_AUTAUGA_POPULATION_2010, _BALDWIN_POPULATION_2010):
-            assert value % 1000 != 0
+        """Real non-null populations from the artifact are not a fabricated
+        round-number template -- distinct counties carry distinct, non-round
+        figures (T4 review finding M-1: the prior version of this test
+        asserted over two module constants and never read the artifact, so
+        it could never fail regardless of the data)."""
+        data = load_county_data()
+        populations = [c["population"] for c in data["counties"] if c["population"] is not None]
+        assert len(populations) > 1
+        assert len(set(populations)) > 1, (
+            "all non-null populations are identical -- looks fabricated"
+        )
+        round_thousands = sum(1 for value in populations if value % 1000 == 0)
+        assert round_thousands < len(populations), (
+            "every non-null population is a round multiple of 1000 -- looks fabricated"
+        )
 
     def test_gaps_are_documented_and_nonoverlapping_by_field(self) -> None:
         """Every null field in `counties` has a matching, honest reason in
@@ -101,38 +116,72 @@ class TestArtifactProvenance:
 
 
 class TestRetiredFipsDedup:
-    """2026-07-19 scout finding: `dim_county` carries BOTH 46113 (Shannon
-    County, SD, retired) and 46102 (Oglala Lakota County, SD, its 2015
-    rename) as separate rows -- the same physical county double-counted.
-    The generator drops the retired FIPS when its successor is present,
-    citing the exclusion rather than silently dropping it."""
+    """`dim_county` carries retired FIPS whose modern successor(s) are ALSO
+    present as separate rows -- the same physical county/area double- or
+    triple-counted. Two declared, cited forms (2026-07-19 scout finding;
+    extended 2026-07-20, T4 review finding I-1):
 
-    def test_retired_fips_is_excluded(self) -> None:
+    - Rename (one successor each): 46113 (Shannon County, SD, retired) ->
+      46102 (Oglala Lakota County, SD, 2015 rename); 02270 (Wade Hampton
+      Census Area, AK, retired) -> 02158 (Kusilvak Census Area, AK, 2015
+      rename) -- the exact same class of duplicate as Shannon/Oglala Lakota.
+    - Split (two successors): 02261 (Valdez-Cordova Census Area, AK,
+      retired) -> 02063 (Chugach Census Area, AK) + 02066 (Copper River
+      Census Area, AK), a 2019 dissolution.
+
+    The generator drops a retired FIPS only when ALL of its successor(s) are
+    present, citing the exclusion rather than silently dropping it."""
+
+    def test_retired_fips_are_excluded(self) -> None:
         data = load_county_data()
         fips_list = {c["fips"] for c in data["counties"]}
         assert "46113" not in fips_list
+        assert "02270" not in fips_list
+        assert "02261" not in fips_list
 
-    def test_successor_fips_is_present_with_real_population(self) -> None:
+    def test_rename_successors_are_present(self) -> None:
         data = load_county_data()
         by_fips = {c["fips"]: c for c in data["counties"]}
         assert "46102" in by_fips
         # QCEW fallback (Census absent for 46102 at 2010): int(3662 * 0.33).
         assert by_fips["46102"]["population"] == 1208
+        # 02158's population is a documented gap (no Census/QCEW row at
+        # 2010, the county didn't exist yet under this FIPS) -- see
+        # TestArtifactProvenance's gap-coverage tests for that assertion.
+        assert "02158" in by_fips
 
-    def test_exclusion_is_documented_with_a_reason(self) -> None:
+    def test_split_successors_are_present(self) -> None:
         data = load_county_data()
-        assert len(data["exclusions"]) == 1
-        exclusion = data["exclusions"][0]
-        assert exclusion["fips"] == "46113"
-        assert exclusion["successor_fips"] == "46102"
-        assert exclusion["reason"]
+        by_fips = {c["fips"]: c for c in data["counties"]}
+        assert "02063" in by_fips
+        assert "02066" in by_fips
+
+    def test_exclusions_are_documented_with_reasons(self) -> None:
+        data = load_county_data()
+        assert len(data["exclusions"]) == 3
+        by_fips = {e["fips"]: e for e in data["exclusions"]}
+
+        rename_46113 = by_fips["46113"]
+        assert rename_46113["kind"] == "rename"
+        assert rename_46113["successor_fips"] == "46102"
+        assert rename_46113["reason"]
+
+        rename_02270 = by_fips["02270"]
+        assert rename_02270["kind"] == "rename"
+        assert rename_02270["successor_fips"] == "02158"
+        assert rename_02270["reason"]
+
+        split_02261 = by_fips["02261"]
+        assert split_02261["kind"] == "split"
+        assert split_02261["successor_fips"] == ["02063", "02066"]
+        assert split_02261["reason"]
 
     def test_no_retired_fips_gap_entry_remains(self) -> None:
-        """46113 used to carry a 'centroid' gap entry before dedup -- once
-        excluded, it must not linger in `gaps` (it has no `counties` row)."""
+        """Retired FIPS used to carry gap entries before dedup -- once
+        excluded, none may linger in `gaps` (they have no `counties` row)."""
         data = load_county_data()
         gap_fips = {gap["fips"] for gap in data["gaps"]}
-        assert "46113" not in gap_fips
+        assert gap_fips.isdisjoint({"46113", "02270", "02261"})
 
 
 @pytest.mark.skipif(
@@ -155,7 +204,7 @@ class TestArtifactRederivesFromDB:
 
     def test_county_scope_rederives(self) -> None:
         """Raw `_load_national_fips` re-derives the artifact's scope PLUS the
-        one declared retired-FIPS exclusion (46113) -- see
+        three declared retired-FIPS exclusions (46113, 02270, 02261) -- see
         TestRetiredFipsDedup for the dedup itself."""
         expected = _load_national_fips(_REFERENCE_DB)
         data = load_county_data()

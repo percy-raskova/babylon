@@ -42,20 +42,41 @@ real TIGER centroids (NOT the fabricated hex-cell centroids the old h3 grid
 used). A small number of scoped counties lack a geometry row (a different,
 non-overlapping set from the population gap) -- also recorded in ``gaps``.
 
-**Retired-FIPS dedup (2026-07-19, scout finding)**: ``dim_county`` carries
-BOTH ``46113`` (Shannon County, SD) and ``46102`` (Oglala Lakota County, SD --
-the same physical county, renamed by the Census Bureau in 2015) as separate
-rows. Both pass ``_load_national_fips``'s scoping filter, so the raw national
-scope double-counts this one county. :data:`_RETIRED_FIPS_SUPERSEDED` names
-this one, verified, cited exclusion and drops the retired row (keeping the
-modern successor) when both are present in the same extraction -- recorded
-in the artifact's ``exclusions`` list, never silently dropped. This is a
-declared, cited map, NOT generic rename detection: if a similar duplicate
-surfaces later, the map is extended with its own citation, not inferred.
+**Retired-FIPS dedup (2026-07-19, scout finding; extended 2026-07-20, T4
+review finding I-1)**: ``dim_county`` carries BOTH a retired FIPS and its
+modern successor(s) as separate rows for the SAME physical county/area, in
+two distinct forms:
+
+- **Rename** (:data:`_RETIRED_FIPS_SUPERSEDED`, one successor each):
+  ``46113`` (Shannon County, SD) -> ``46102`` (Oglala Lakota County, SD --
+  2015 Census Bureau rename); ``02270`` (Wade Hampton Census Area, AK) ->
+  ``02158`` (Kusilvak Census Area, AK -- 2015 Census Bureau rename, the exact
+  same class of duplicate as Shannon/Oglala Lakota).
+- **Split** (:data:`_RETIRED_FIPS_SPLIT`, two successors -- a rename map
+  cannot express two successors): ``02261`` (Valdez-Cordova Census Area, AK)
+  dissolved in 2019 into BOTH ``02063`` (Chugach Census Area) and ``02066``
+  (Copper River Census Area) per Census Bureau change notice; the retired
+  whole plus both halves are all present in ``dim_county``.
+
+All pass ``_load_national_fips``'s scoping filter, so the raw national scope
+double- (rename) or triple- (split) counts these areas. :func:`_dedup_retired_fips`
+drops a retired key ONLY when ALL of its successor(s) are present in the same
+extraction -- recorded in the artifact's ``exclusions`` list, never silently
+dropped. A generator self-check asserts NO key from the union of both maps
+survives dedup, failing loud (Constitution III.11) rather than shipping a
+duplicated artifact.
+
+These are declared, cited maps, NOT generic rename/split detection: if a
+similar duplicate surfaces later, a map is extended with its own citation,
+not inferred. Generic inference is deliberately out of scope -- e.g.
+``51515``/``51019`` (Bedford city / Bedford County, VA) are correctly NOT
+deduped: both were legitimately separate entities at the 2010 reference year
+(Bedford city didn't merge into Bedford County until 2013), so a name- or
+geography-based heuristic would wrongly collapse two real counties into one.
 ``engine.headless_runner.scopes._load_national_fips`` itself carries the
-same latent double-count for the nationwide headless-runner path -- that is
-a separate, pre-existing production defect, OUT of this script's scope
-(flagged for a follow-up task, not fixed here).
+same latent double/triple-count for the nationwide headless-runner path --
+that is a separate, pre-existing production defect, OUT of this script's
+scope (flagged for a follow-up task, not fixed here).
 
 Only the RAW reference-derived fields are baked into the artifact
 (``fips``, ``county_name``, ``state_abbrev``, ``centroid_lat``/``lon``,
@@ -97,13 +118,30 @@ DEFAULT_POPULATION_YEAR = 2010
 
 #: Retired FIPS -> modern successor FIPS for the SAME physical county, both
 #: of which are present as separate `dim_county` rows (module docstring,
-#: "Retired-FIPS dedup"). Verified empirically (scout finding, 2026-07-19):
+#: "Retired-FIPS dedup"). Verified empirically:
 #: 46113 = Shannon County SD (retired); 46102 = Oglala Lakota County SD
-#: (renamed 2015 per Census Bureau change notice) -- the modern successor.
+#: (renamed 2015 per Census Bureau change notice) -- the modern successor
+#: (scout finding, 2026-07-19). 02270 = Wade Hampton Census Area AK (retired);
+#: 02158 = Kusilvak Census Area AK (renamed 2015 per Census Bureau change
+#: notice) -- the modern successor (T4 review finding I-1, 2026-07-20).
 #: A declared, cited exclusion map ONLY -- no generic rename inference; if
 #: another duplicate surfaces later, extend this map with its own citation.
 _RETIRED_FIPS_SUPERSEDED: dict[str, str] = {
     "46113": "46102",  # Shannon County, SD -> Oglala Lakota County, SD (2015 rename)
+    "02270": "02158",  # Wade Hampton Census Area, AK -> Kusilvak Census Area, AK (2015 rename)
+}
+
+#: Retired FIPS -> (successor_a, successor_b) for a county SPLIT into TWO
+#: modern successors -- a rename map (above) cannot express two successors,
+#: hence this separate declared structure (module docstring, "Retired-FIPS
+#: dedup"). Verified empirically (T4 review finding I-1, 2026-07-20): 02261 =
+#: Valdez-Cordova Census Area AK (retired, dissolved 2019 per Census Bureau
+#: change notice) into 02063 = Chugach Census Area AK and 02066 = Copper
+#: River Census Area AK -- both halves. A declared, cited exclusion map
+#: ONLY -- no generic split inference; if another split surfaces later,
+#: extend this map with its own citation.
+_RETIRED_FIPS_SPLIT: dict[str, tuple[str, str]] = {
+    "02261": ("02063", "02066"),
 }
 
 _ARTIFACT_PATH = (
@@ -155,26 +193,33 @@ def _content_hash(counties: list[dict[str, Any]]) -> str:
     return hashlib.sha256(canonical.encode("utf-8")).hexdigest()
 
 
-def _dedup_retired_fips(scope_fips: frozenset[str]) -> tuple[frozenset[str], list[dict[str, str]]]:
-    """Drop retired FIPS whose modern successor is present in the same scope.
+def _dedup_retired_fips(scope_fips: frozenset[str]) -> tuple[frozenset[str], list[dict[str, Any]]]:
+    """Drop retired FIPS whose modern successor(s) are present in the same scope.
 
-    Only drops a key of :data:`_RETIRED_FIPS_SUPERSEDED` when its successor
-    value is ALSO present -- if the successor is somehow absent, the retired
-    row is kept rather than silently losing the county entirely.
+    Two declared, cited structures (module docstring, "Retired-FIPS dedup"):
+    a rename map (:data:`_RETIRED_FIPS_SUPERSEDED`, one successor) and a
+    split map (:data:`_RETIRED_FIPS_SPLIT`, two successors). A retired key is
+    dropped ONLY when ALL of its successor(s) are ALSO present -- if any
+    successor is somehow absent, the retired row is kept rather than
+    silently losing the county/area entirely.
 
     Returns:
         ``(deduped_scope, exclusions)`` where ``exclusions`` names each
-        dropped FIPS + its successor + a citation, for the artifact's
-        ``exclusions`` list.
+        dropped FIPS + its successor(s) + a citation, for the artifact's
+        ``exclusions`` list. Rename entries carry ``successor_fips`` as a
+        single string; split entries carry it as a two-element list
+        (distinguished by the ``kind`` field: ``"rename"`` vs ``"split"``).
     """
-    exclusions: list[dict[str, str]] = []
+    exclusions: list[dict[str, Any]] = []
     dropped: set[str] = set()
+
     for retired, successor in _RETIRED_FIPS_SUPERSEDED.items():
         if retired in scope_fips and successor in scope_fips:
             dropped.add(retired)
             exclusions.append(
                 {
                     "fips": retired,
+                    "kind": "rename",
                     "successor_fips": successor,
                     "reason": (
                         f"retired FIPS superseded by {successor} (same physical county, "
@@ -183,6 +228,24 @@ def _dedup_retired_fips(scope_fips: frozenset[str]) -> tuple[frozenset[str], lis
                     ),
                 }
             )
+
+    for retired, successors in _RETIRED_FIPS_SPLIT.items():
+        if retired in scope_fips and all(s in scope_fips for s in successors):
+            dropped.add(retired)
+            exclusions.append(
+                {
+                    "fips": retired,
+                    "kind": "split",
+                    "successor_fips": list(successors),
+                    "reason": (
+                        f"retired FIPS split into {successors[0]} and {successors[1]} "
+                        "(same physical area, dissolved per Census Bureau change notice); "
+                        "the retired whole plus both successor rows are present in "
+                        "dim_county -- dropping the retired whole to prevent triple-counting"
+                    ),
+                }
+            )
+
     return frozenset(scope_fips - dropped), exclusions
 
 
@@ -233,12 +296,14 @@ def build_payload(
             }
         )
 
-    # Self-check (2026-07-19 scout finding): no retired FIPS from the
-    # exclusion map may survive dedup -- a survivor here means the drop
+    # Self-check (2026-07-19 scout finding; extended 2026-07-20, T4 review
+    # finding I-1): no retired FIPS from the UNION of both exclusion maps
+    # (renames + splits) may survive dedup -- a survivor here means the drop
     # logic failed silently, which must fail LOUD (Constitution III.11)
-    # rather than ship a duplicated county.
+    # rather than ship a duplicated county/area.
     final_fips = {c["fips"] for c in counties}
-    survivors = final_fips & set(_RETIRED_FIPS_SUPERSEDED)
+    declared_exclusion_keys = set(_RETIRED_FIPS_SUPERSEDED) | set(_RETIRED_FIPS_SPLIT)
+    survivors = final_fips & declared_exclusion_keys
     if survivors:
         raise AssertionError(
             f"retired FIPS {sorted(survivors)} survived _dedup_retired_fips -- "
@@ -293,7 +358,9 @@ def main() -> None:
     )
     print(f"  exclusions={len(payload['exclusions'])}")
     for excl in payload["exclusions"]:
-        print(f"    {excl['fips']} -> {excl['successor_fips']}: {excl['reason']}")
+        successor = excl["successor_fips"]
+        successor_display = "+".join(successor) if isinstance(successor, list) else successor
+        print(f"    {excl['fips']} -> {successor_display} [{excl['kind']}]: {excl['reason']}")
     print(f"  gaps={len(payload['gaps'])}")
     for gap in payload["gaps"]:
         print(f"    {gap['fips']} [{gap['field']}]: {gap['reason']}")

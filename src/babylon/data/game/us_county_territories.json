@@ -6,9 +6,9 @@
     "scope_rule": "national (mirrors engine.headless_runner.scopes._load_national_fips: state fips < '60', excludes {state}999 placeholders) minus the retired-FIPS dedup (see 'exclusions')",
     "population_year": 2010,
     "population_policy": "Census fact_census_income household_count SUM primary; QCEW fact_qcew_annual employment SUM x 0.33 fallback (matches ReferenceDataCache._resolve_population byte-for-byte -- reused directly, not reimplemented)",
-    "county_count": 3155
+    "county_count": 3153
   },
-  "content_hash": "df489fa0d0b44006f32a0388f41df9a240236d5fd4e90569c4bf9e1f7274a726",
+  "content_hash": "588a6680e803c4f3f6f19e6148dd85e3be67b480bc1f64b9be9b4cabf7dd9534",
   "counties": [
     {
       "fips": "01001",
@@ -761,22 +761,6 @@
       "centroid_lat": 63.876222,
       "centroid_lon": -143.212887,
       "population": 7070
-    },
-    {
-      "fips": "02261",
-      "county_name": "Valdez-Cordova Census Area",
-      "state_abbrev": "AK",
-      "centroid_lat": null,
-      "centroid_lon": null,
-      "population": 10821
-    },
-    {
-      "fips": "02270",
-      "county_name": "Wade Hampton Census Area",
-      "state_abbrev": "AK",
-      "centroid_lat": null,
-      "centroid_lon": null,
-      "population": 3588
     },
     {
       "fips": "02275",
@@ -25268,16 +25252,6 @@
       "reason": "no Census or QCEW row for county=02158 year=2010"
     },
     {
-      "fips": "02261",
-      "field": "centroid",
-      "reason": "no dim_county_geometry row for county=02261"
-    },
-    {
-      "fips": "02270",
-      "field": "centroid",
-      "reason": "no dim_county_geometry row for county=02270"
-    },
-    {
       "fips": "09001",
       "field": "centroid",
       "reason": "no dim_county_geometry row for county=09001"
@@ -25371,8 +25345,24 @@
   "exclusions": [
     {
       "fips": "46113",
+      "kind": "rename",
       "successor_fips": "46102",
       "reason": "retired FIPS superseded by 46102 (same physical county, renamed per Census Bureau change notice); both rows present in dim_county -- dropping the retired one to prevent double-counting"
+    },
+    {
+      "fips": "02270",
+      "kind": "rename",
+      "successor_fips": "02158",
+      "reason": "retired FIPS superseded by 02158 (same physical county, renamed per Census Bureau change notice); both rows present in dim_county -- dropping the retired one to prevent double-counting"
+    },
+    {
+      "fips": "02261",
+      "kind": "split",
+      "successor_fips": [
+        "02063",
+        "02066"
+      ],
+      "reason": "retired FIPS split into 02063 and 02066 (same physical area, dissolved per Census Bureau change notice); the retired whole plus both successor rows are present in dim_county -- dropping the retired whole to prevent triple-counting"
     }
   ]
 }

@@ -363,6 +363,7 @@ class ConsciousnessSystem(SystemBase):
                 agitation=new_agitation,
                 solidarity_factor=min(1.0, solidarity_pressure),
                 education_pressure=0.0,  # Education pressure handled in community system
+                defines=services.defines.consciousness,
                 chauvinist_pressure=chauvinist_pressure,
             )
             new_class = min(1.0, current_profile["class_consciousness"] + delta_r)
@@ -385,6 +386,7 @@ class ConsciousnessSystem(SystemBase):
                     "exploitation_visibility": compute_exploitation_visibility(
                         exploitation_rate=abs(wage_change) if wage_change < 0 else 0.0,
                         imperial_rent=max(0.0, wealth_change),
+                        defines=services.defines.consciousness,
                     ),
                     "reification_buffer": compute_reification_buffer(
                         imperial_rent=max(0.0, wealth_change),

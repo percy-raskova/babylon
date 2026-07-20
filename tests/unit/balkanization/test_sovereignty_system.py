@@ -6,10 +6,11 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from typing import Any
-from unittest.mock import MagicMock
+from unittest.mock import MagicMock, patch
 
 import pytest
 
+from babylon.config.defines import GameDefines
 from babylon.engine.context import TickContext
 from babylon.engine.systems.sovereignty import SovereigntySystem
 from babylon.models.enums import EventType
@@ -37,6 +38,14 @@ class _RecordingEventBus:
 def services() -> Any:
     container = MagicMock()
     container.event_bus = _RecordingEventBus()
+    # Task #42 fix wave 1: SovereigntySystem now threads defines= through to
+    # calculate_metabolic_impact (review MEDIUM-1 sweep); a real GameDefines
+    # keeps every existing assertion below numerically unchanged (its
+    # BalkanizationDefines defaults ARE the -0.02/-0.005/+0.01 the tests
+    # already assert) while proving the call site no longer silently uses
+    # the formula's OWN internal default regardless of what services.defines
+    # says.
+    container.defines = GameDefines()
     return container
 
 
@@ -146,3 +155,32 @@ def test_sovereignty_skips_territories_with_no_claims(services: Any) -> None:
 
     impact = context.persistent_data["balkanization.metabolic_impact_by_territory"]
     assert "HEX_ORPHAN" not in impact
+
+
+def test_sovereignty_calls_calculate_metabolic_impact_with_run_defines(services: Any) -> None:
+    """Task #42 fix wave 1 (review MEDIUM-1 sweep): a regression discovered
+    while surveying the defines-passthrough bug class beyond ideology.py --
+    this call site silently used calculate_metabolic_impact's own internal
+    BalkanizationDefines() default, ignoring services.defines/defines.yaml
+    overrides. Direct call-contract pin, mirroring the ideology.py spy tests."""
+    from babylon.formulas.balkanization import (
+        calculate_metabolic_impact as _real_calculate_metabolic_impact,
+    )
+
+    adapter = BabylonGraph()
+    _seed_single_sovereign(adapter)
+    context = TickContext(tick=0, persistent_data={})
+
+    with patch(
+        "babylon.engine.systems.sovereignty.calculate_metabolic_impact",
+        wraps=_real_calculate_metabolic_impact,
+    ) as spy:
+        SovereigntySystem().step(adapter, services, context)
+
+    assert spy.call_args_list, "calculate_metabolic_impact was never called"
+    for call in spy.call_args_list:
+        assert call.kwargs.get("defines") is services.defines.balkanization, (
+            "calculate_metabolic_impact must receive the run's live "
+            "services.defines.balkanization -- omitting it silently falls "
+            f"back to schema defaults; actual call: {call}"
+        )

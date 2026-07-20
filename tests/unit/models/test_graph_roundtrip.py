@@ -1073,6 +1073,51 @@ class TestInvestigationIntelRoundTrip:
         assert recovered.territories["T001"].investigation_intel == 0.0
 
 
+class TestRawMaterialStockRoundTrip:
+    """#39 T6: ``raw_material_stock`` is a real, honestly-optional Territory
+    field (seeded from the USScenario artifact, depleted per tick by
+    SubstrateSystem). It is NOT in ``TERRITORY_EXCLUDED_FIELDS`` — it must
+    survive the WorldState round trip like any other declared field, both
+    when set (a seeded county) and when None (an unseeded/abstract
+    territory)."""
+
+    def test_raw_material_stock_survives_round_trip_when_set(self) -> None:
+        territory = Territory(
+            id="T001",
+            name="Autauga County, AL",
+            sector_type=SectorType.INDUSTRIAL,
+            county_fips="01001",
+            raw_material_stock=42.5,
+        )
+        state = WorldState(tick=1, territories={"T001": territory})
+        recovered = WorldState.from_graph(state.to_graph(), tick=1)
+        assert recovered.territories["T001"].raw_material_stock == 42.5
+
+    def test_raw_material_stock_survives_round_trip_when_none(self) -> None:
+        territory = Territory(id="T001", name="Detroit", sector_type=SectorType.INDUSTRIAL)
+        assert territory.raw_material_stock is None
+
+        state = WorldState(tick=1, territories={"T001": territory})
+        recovered = WorldState.from_graph(state.to_graph(), tick=1)
+        assert recovered.territories["T001"].raw_material_stock is None
+
+    def test_raw_material_stock_survives_post_depletion_update(self) -> None:
+        """Exactly the write pattern SubstrateSystem uses (update_node)."""
+        territory = Territory(
+            id="T001",
+            name="Autauga County, AL",
+            sector_type=SectorType.INDUSTRIAL,
+            county_fips="01001",
+            raw_material_stock=100.0,
+        )
+        state = WorldState(tick=1, territories={"T001": territory})
+        graph = state.to_graph()
+        graph.update_node("T001", raw_material_stock=97.3)
+
+        recovered = WorldState.from_graph(graph, tick=1)
+        assert recovered.territories["T001"].raw_material_stock == 97.3
+
+
 class TestPlayerOrgIdMetadataGuard:
     """2026-07-16 verify coverage: non-string garbage in graph metadata
     (a mock, or corrupted persistence) must read back as honest None, not

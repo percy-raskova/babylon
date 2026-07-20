@@ -1,7 +1,6 @@
 # qa:regression Modernization — Design
 
-**Status:** DRAFT — owner-approved direction (2026-07-19: "I approve of what you
-wrote. Please draft that modernization post-program"); spec awaiting owner review.
+**Status:** EXECUTED (ADR090, 2026-07-20).
 **Execution:** POST-MERGE program. Runs on a fresh branch off `dev` AFTER the
 `refactor/vol3-money-scissors` merge — never mid-program, because changing the
 measuring instrument while an approval gate is in flight churns its evidence.

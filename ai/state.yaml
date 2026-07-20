@@ -6,7 +6,7 @@ meta:
   updated: "2026-07-20"
   truth_status: |
     (2026-07-20) TASK #39 -- HEX/SCALE COUNTY-KEYING + SCALEADJUNCTION
-    BINDING COMPLETE (ADR090 Amendment U + ADR091; branch
+    BINDING COMPLETE (ADR091 Amendment U + ADR092; branch
     feature/queue-2026-07-19, worktree babylon-queue; T1-T8 landed and
     review-clean, T9 this close-out): USScenario's territories are re-keyed
     from ~1118 res-3 H3 hexes to 3153 US counties (one Territory per county,
@@ -15,7 +15,7 @@ meta:
     (`src/babylon/data/game/us_county_territories.json`, schema_version 2)
     rather than the reference DB at build time (deterministic-data-artifacts
     doctrine -- a live per-call population query measured ~6.6s, unaffordable
-    at 130+ scenario-building call sites in the test suite); ADR091 records
+    at 130+ scenario-building call sites in the test suite); ADR092 records
     the artifact's full provenance, its declared retired-FIPS dedup, and
     three named-but-not-fixed defects. Wayne County stays hex-keyed
     (untouched, owner ruling W1, ticket #57).
@@ -57,7 +57,7 @@ meta:
     checked (not just asserted to exist) so a rung whose concordance goes
     missing or truncated fails loud instead of silently degrading.
 
-    NOT fixed here (recorded as follow-up tickets in ADR091): (a)
+    NOT fixed here (recorded as follow-up tickets in ADR092): (a)
     `engine/headless_runner/scopes.py::_load_national_fips` still carries
     the same retired-FIPS duplicates for the headless nationwide path; (b)
     `engine/observers/endgame_detector.py:265`'s stale "~1100 territories"
@@ -68,7 +68,68 @@ meta:
     a fabrication. `qa:regression` stays 5/5 byte-identical throughout (the
     5 canonical scenarios are opaque-T-id and county-free, so this program
     is invisible to them by construction).
-
+    (2026-07-20) QA:REGRESSION GATE MODERNIZED (ADR090; branch
+    refactor/qa-regression-modernization, design docs/superpowers/specs/
+    2026-07-19-qa-regression-modernization-design.md): the byte-identical gate
+    now declares what it watches and proves the declaration true, instead of
+    silently passing over whatever the five original scenarios happened not to
+    exercise. HEADLINE FINDING (the reason the program exists): the five
+    original canonical scenarios exercise only 12 of the engine's 30 Systems;
+    the org layer is exercised NOWHERE — org_count=0 in every
+    organizational_action event, even in the detroit_tri_county e2e bundle —
+    and 17 CoverageGap rows remain, each with a verified-true mechanistic
+    reason and a remediation (tools/regression_scenarios.py:
+    SCENARIO_COVERAGE_DATA / COVERAGE_GAPS_DATA). Two new scenarios promoted
+    into the byte-identical tier: single_county (Wayne FIPS 26163, real
+    MarxianHydrator-extracted fixture) and detroit_tri_county (the e2e bundle,
+    now a full dense-trace member) — qa:regression is 6 scenarios, not 5.
+    The U9 endogenous-interest inertness class (ADR089) now has a concrete,
+    permanent detector: check_dead_columns fails the gate on any dense-trace
+    channel that is all-zeros/all-absent across a run unless honestly
+    declared at_rest; single_county's financial_endogenous_rate/
+    profit_rate_ceiling channels are live and value-pinned
+    (rate=0.017833969800785755, interest_payments=970247586.15, 30.0000% of
+    surplus, distribution identity p+i+r+t=s closes to Δ=0.0) — a future
+    silent zeroing of the endogenous rate reds this gate directly. Two new
+    gating sentinels: check:gate-coverage (static, fast lane) and
+    check:gate-coverage-truth (dynamic, qa lane). defines_hash promoted from
+    advisory WARNING to a real gating leg (refreshed value-identically in
+    Task 6, ahead of the ceremony — no checkpoint value moved, only the
+    hash). The ADR056-precedent two-independent-process determinism proof is
+    now an unconditional leg of qa:regression itself, not just a unit test.
+    Measured gate runtime: 9.632s, far under the 5-minute budget.
+    DECLARED DEVIATIONS from the spec: E3's original plan to restore
+    persisted national_financial state onto the graph every tick was BLOCKED
+    (TickDynamicsSystem's annual-boundary gate fires on the very first
+    step() call — context.tick is pre-increment, 0 % 52 == 0 — so restoring
+    moved 4 of 5 frozen baselines, a real dynamics change); descoped to
+    SAVE-ONLY (persistent_context retains the value for the harness/probe;
+    the engine's live behavior is untouched). OWNER-GATED OPEN QUESTION left
+    unresolved by design: should the engine itself see persisted
+    national_financial between annual boundaries — Vol III Part V semantics
+    suggest yes, but it is a dynamics ceremony, not observability plumbing.
+    NEW OWED SENTINEL CLASS (added to the project's owed-sentinel list;
+    nothing struck): frozen-constant inertness — check_dead_columns's
+    all-zeros/all-absent test cannot see a dormant field seeded to a nonzero
+    constant and never touched again; live specimens C005/C006 in the
+    imperial_circuit family (both seeded active=False/population=0 "until
+    CLASS_DECOMPOSITION", which never fires in 52 ticks — C006's
+    repression_faced=0.9 seed evades detection where C005's repression_faced
+    =0.0 seed correctly gets caught, same root cause, different
+    detectability purely from seed value). Two latent defects found+fixed en
+    route: the Task-5-latent attribution import crashed under stock
+    script-mode invocation (fixed with a genuine subprocess regression
+    test); gate_coverage_probe.run_probe hardcoded Vol III overrides for
+    every scenario, which would have certified single_county's evidence
+    rows true against a hollow run (fixed with scenario-conditional
+    dispatch). Forward contingency, disclosed not actioned: single_county's
+    financial_s_r/financial_tightness at-rest declarations trace to Wayne's
+    2010 unemployment_rate=0.05 (the KNOWN employment-100k placeholder,
+    Program 17 lineage) sitting below the interest_reserve_reference
+    threshold — a future U-3 correction >8pp would legitimately un-rest
+    them, which the stale-at_rest detector's own second direction would
+    correctly force. Full evidence: .superpowers/sdd/progress.md (the
+    12-task program ledger) and ADR090_qa_regression_modernization.yaml.
     (2026-07-19) VOL III MONEY WIRED LIVE (ADR089; branch
     refactor/vol3-money-scissors, design docs/superpowers/specs/
     2026-07-18-vol3-money-scissors-design.md): the dormant Vol III

@@ -1,12 +1,17 @@
 Sentinel error classes
 ======================
 
-Six named failure classes, each with a sensor that finds it. Five are
-**advisory** and **local/on-demand** — they print loudly, they never gate CI.
-The sixth, public-surface baseline blindness (U7.11), is wired as a real
-gate (``check:surface``, folded into ``mise run check`` and CI, owner ruling
-2026-07-19 — see that task's Files: block) because a scoped test run cannot
-otherwise see a repo-wide public-surface baseline drift.
+Six named failure classes, each with one or more sensors that find it. Five
+classes are **advisory** and **local/on-demand** — their sensors print loudly,
+they never gate CI. The sixth, public-surface baseline blindness (U7.11), is
+wired as a real gate (``check:surface``, folded into ``mise run check`` and
+CI, owner ruling 2026-07-19 — see that task's Files: block) because a scoped
+test run cannot otherwise see a repo-wide public-surface baseline drift.
+gate-blindness is the one exception to "one class, one sensor": it kept its
+original advisory instrument (``check:coverage``) and gained a second, gating
+instrument (``check:gate-coverage``, Task 3 of the qa:regression
+modernization program) pointed at ``qa:regression``'s own scenario estate —
+see that section for why.
 Run one with ``mise run check:<name>`` or
 ``poetry run python tools/sentinel_check.py <sensor>``.
 
@@ -51,6 +56,21 @@ of Volumes I, II or III.
 :Run: ``mise run check:coverage``
 :Remedy: build the harness's overrides from a committed deterministic fixture,
    or narrow the claim with ``exempt_keys`` **and** an ``exempt_reason``.
+
+A second instrument points this same class at ``qa:regression`` itself: the
+2026-07-19 U9 inertness episode proved the byte-identical gate can stay green
+over a dead feature when no canonical scenario exercises it. ``check:gate-coverage``
+statically proves every one of the engine's 30 Systems is either evidenced by a
+scenario or declared a reviewable ``CoverageGap`` row in
+``tools/regression_scenarios.py`` — and, unlike the advisory instrument above,
+it **gates** (owner ruling 2026-07-19 precedent, same as ``check:surface``).
+
+:Sensor: ``babylon.sentinels.gate_coverage.checks.check_union_covers_all_systems``
+   (plus ``check_declared_names_exist`` and ``check_bundle_evidence``)
+:Run: ``mise run check:gate-coverage`` — gates, folded into ``check:sentinels-static``
+   and CI.
+:Remedy: add a real ``SystemEvidence`` row backed by a spot-run or a committed
+   baseline, or a ``CoverageGap`` row with a true reason + remediation.
 
 intensive-aggregation
 ---------------------

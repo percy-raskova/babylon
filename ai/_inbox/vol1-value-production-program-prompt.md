@@ -34,7 +34,7 @@ subagent-driven execution → one declared ceremony. Mirror the Vol III conventi
    county-level BLS/Eviction-Lab/foreclosure ambition — that data would be new drive/API scope
    and MUST enter as a parquet-pipeline citizen (CI-no-drive standing rule).
 
-ADR numbering: ADR090 (Amendment U) and ADR091 (county seed artifact) exist on the queue branch;
+ADR numbering: ADR091 (Amendment U) and ADR092 (county seed artifact) exist on the queue branch (renumbered post-merge; dev's ADR090 = qa modernization);
 check `ai/decisions/index.yaml` for the true next free number at authoring time (≥ 092).
 
 ## 2. The estate — what exists, and exactly how it is disconnected (verified)

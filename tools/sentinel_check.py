@@ -23,6 +23,7 @@ from babylon.sentinels.coupling.checks import main as coupling_main
 from babylon.sentinels.coverage.checks import main as coverage_main
 from babylon.sentinels.dangling.checks import main as dangling_main
 from babylon.sentinels.defines_passthrough.checks import main as defines_passthrough_main
+from babylon.sentinels.gate_coverage.checks import main as gate_coverage_main
 from babylon.sentinels.inert.checks import main as inert_main
 from babylon.sentinels.liveness.checks import main as liveness_main
 from babylon.sentinels.masked_arithmetic.checks import main as masked_arithmetic_main
@@ -78,6 +79,23 @@ def _fog_main(argv: list[str] | None) -> int:
     return fog_main(argv)
 
 
+def _gate_coverage_truth_main(argv: list[str] | None) -> int:
+    """Route to the dynamic gate-coverage truth probe (E1 check-a) — lazy import.
+
+    The probe imports the engine (``babylon.engine.simulation_engine.step``),
+    which the layer-0.5 ``babylon.sentinels`` package may not import, so it
+    lives beside this file in ``tools/`` (``gate_coverage_probe.py``) and
+    loads only when selected — the runtime twin of ``gate-coverage``'s static
+    estate-completeness check (proves each declaration is TRUE, not just that
+    the estate is complete).
+    """
+    from gate_coverage_probe import (
+        main as gate_coverage_truth_main,  # type: ignore[import-not-found]
+    )
+
+    return gate_coverage_truth_main(argv)
+
+
 def _partition_main(argv: list[str] | None) -> int:
     """Route to the partition probe (Program 19, ADR070) — lazy import.
 
@@ -94,6 +112,8 @@ def _partition_main(argv: list[str] | None) -> int:
 _SENSORS: dict[str, Callable[[list[str] | None], int]] = {
     "seam": seam_main,
     "coverage": coverage_main,
+    "gate-coverage": gate_coverage_main,
+    "gate-coverage-truth": _gate_coverage_truth_main,
     "partition": _partition_main,
     "synthetic": synthetic_main,
     "catalog": _catalog_main,

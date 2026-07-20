@@ -5,7 +5,11 @@ pins the CLI surface: each new sensor is registered and exits 0 clean. Five
 (liveness x2, aggregation, coupling, gate-blindness) are advisory per the
 standing owner ruling; the sixth (public-surface baseline blindness, U7.11)
 is wired as a real check:surface gate, not advisory (owner ruling 2026-07-19
--- see U7.11's Files: block).
+-- see U7.11's Files: block). gate-blindness is no longer purely advisory:
+Task 3 of the qa:regression modernization program added a second, gating
+instrument (check:gate-coverage) alongside its original advisory one
+(check:coverage) -- see test_gate_coverage_sensor_is_dispatchable_and_gates
+below.
 """
 
 from __future__ import annotations
@@ -67,6 +71,13 @@ def test_surface_sensor_is_dispatchable_and_gates() -> None:
     result = _run("surface")
     assert result.returncode == 0, result.stderr
     assert "Public surface" in result.stdout
+
+
+def test_gate_coverage_sensor_is_dispatchable_and_gates() -> None:
+    """gate-coverage runs from the family CLI and reports clean on the repo."""
+    result = _run("gate-coverage")
+    assert result.returncode == 0, result.stderr
+    assert "Gate coverage" in result.stdout
 
 
 def test_unknown_sensor_is_rejected() -> None:

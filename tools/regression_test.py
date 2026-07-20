@@ -40,7 +40,10 @@ import csv
 import hashlib
 import io
 import json
+import os
+import subprocess
 import sys
+import time
 from collections.abc import Callable
 from dataclasses import asdict, dataclass
 from datetime import UTC, datetime
@@ -52,26 +55,35 @@ sys.path.insert(0, str(Path(__file__).parent.parent / "src"))
 sys.path.insert(0, str(Path(__file__).parent))
 
 # Import from centralized shared module (ADR036)
+from regression_scenarios import (  # noqa: F401  (re-export)
+    PENDING_CEREMONY,
+    SCENARIO_COVERAGE,
+    SCENARIOS,
+    create_scenario,
+)
 from shared import (
     COMPRADOR_ID,
     CORE_BOURGEOISIE_ID,
     LABOR_ARISTOCRACY_ID,
     PERIPHERY_WORKER_ID,
-    inject_parameter,
     is_dead,
 )
 
 from babylon.config.defines import GameDefines
-from babylon.engine.scenarios import (
-    create_imperial_circuit_scenario,
-    create_two_node_scenario,
-)
 from babylon.engine.simulation_engine import step
+from babylon.engine.trace_format import format_trace_value, trace_rows_to_csv_bytes
 
 # Constants
 BASELINE_DIR: Final[Path] = Path(__file__).parent.parent / "tests" / "baselines"
 DENSE_SUBDIR: Final[str] = "dense"
 DEFAULT_MAX_TICKS: Final[int] = 52
+
+# E4: machine-readable first-divergence attribution, rewritten fresh every
+# `compare` run (removed at the start of `compare_all_baselines` so a green
+# run never leaves a stale, misleading report behind).
+FIRST_DIVERGENCE_REPORT_PATH: Final[Path] = (
+    Path(__file__).parent.parent / "reports" / "qa-first-divergence.json"
+)
 CHECKPOINT_INTERVAL: Final[int] = 10
 TOLERANCE: Final[float] = 1e-5
 
@@ -193,6 +205,57 @@ def _build_vol3_calculator_overrides(defines: GameDefines) -> dict[str, Any]:
     return overrides
 
 
+SINGLE_COUNTY_FIXTURE_PATH: Final[Path] = (
+    Path(__file__).parent.parent / "tests" / "fixtures" / "single_county_wayne.json"
+)
+
+
+def build_single_county_overrides(defines: GameDefines) -> dict[str, Any]:
+    """Wayne-county calculator_overrides from the committed fixture (D4).
+
+    Extends the Vol III override set from :func:`_build_vol3_calculator_overrides`
+    (the same FRED-fixture-backed ``distribution_calculator``/``melt_calculator``
+    the other 5 canonical scenarios use — those national-level FRED series
+    already cover Wayne's extraction year, see the fixture's ``_provenance``)
+    with a real-FIPS ``tensor_registry`` hydrated from the committed
+    ``tests/fixtures/single_county_wayne.json`` extraction (Wayne County,
+    FIPS 26163, real reference-DB tensor via the production
+    ``MarxianHydrator`` chain — see that fixture's ``_provenance`` for the
+    extraction method and year-selection rationale). The production
+    calculator chain (``TensorRegistry`` -> ``SurplusDistributionCalculator``)
+    runs for real on this data; only the LEAF tensor input is fixture-fed
+    (mocking-is-debt boundary, D4).
+
+    Args:
+        defines: The scenario's resolved ``GameDefines`` (same instance
+            passed to ``step()``), forwarded unchanged to
+            :func:`_build_vol3_calculator_overrides`.
+    """
+    from babylon.domain.economics.tensor import DepartmentRow, ValueTensor4x3
+    from babylon.domain.economics.tensor_registry import TensorRegistry
+
+    overrides = _build_vol3_calculator_overrides(defines)
+
+    fixture = json.loads(SINGLE_COUNTY_FIXTURE_PATH.read_text(encoding="utf-8"))
+    tensor_data = fixture["tensor"]
+    tensor = ValueTensor4x3(
+        fips_code=fixture["fips_code"],
+        year=fixture["year"],
+        dept_I=DepartmentRow(**tensor_data["dept_I"]),
+        dept_IIa=DepartmentRow(**tensor_data["dept_IIa"]),
+        dept_IIb=DepartmentRow(**tensor_data["dept_IIb"]),
+        dept_III=DepartmentRow(**tensor_data["dept_III"]),
+        naics_granularity=tensor_data["naics_granularity"],
+        excluded_wages=tensor_data["excluded_wages"],
+        visibility_g33=tensor_data["visibility_g33"],
+    )
+    registry = TensorRegistry()
+    registry.put(fixture["fips_code"], fixture["year"], tensor)
+    overrides["tensor_registry"] = registry
+
+    return overrides
+
+
 # Dense-trace per-entity/per-edge column contract (Program 13 item 2). Each
 # entry is (column-name suffix, getter). Declared once so the CSV header and
 # every row are built from the exact same ordered list and can never drift
@@ -213,43 +276,6 @@ _DENSE_EDGE_FIELDS: Final[list[tuple[str, Callable[[Any], float | bool]]]] = [
     ("value_flow", lambda r: float(r.value_flow)),
     ("tension", lambda r: float(r.tension)),
 ]
-
-# Scenario configurations
-SCENARIOS: Final[dict[str, dict[str, Any]]] = {
-    "imperial_circuit": {
-        "description": "4-node default scenario",
-        "factory": "create_imperial_circuit_scenario",
-        "defines_overrides": {},
-    },
-    "two_node": {
-        "description": "Minimal worker vs owner",
-        "factory": "create_two_node_scenario",
-        "defines_overrides": {},
-    },
-    "starvation": {
-        "description": "Low extraction efficiency stress",
-        "factory": "create_imperial_circuit_scenario",
-        "defines_overrides": {
-            "economy.extraction_efficiency": 0.05,
-        },
-    },
-    "glut": {
-        "description": "High extraction with metabolic overshoot",
-        "factory": "create_imperial_circuit_scenario",
-        "defines_overrides": {
-            "economy.extraction_efficiency": 0.99,
-            "survival.default_subsistence": 0.0,
-        },
-    },
-    "fascist_bifurcation": {
-        "description": "Consciousness routing to national identity",
-        "factory": "create_imperial_circuit_scenario",
-        "defines_overrides": {
-            "economy.extraction_efficiency": 0.7,
-            "consciousness.sensitivity": 0.3,
-        },
-    },
-}
 
 
 @dataclass
@@ -321,36 +347,6 @@ def hash_defines(defines: GameDefines) -> str:
     return hashlib.sha256(json_str.encode()).hexdigest()[:16]
 
 
-def create_scenario(
-    name: str,
-) -> tuple[Any, Any, GameDefines]:
-    """Create scenario by name.
-
-    Args:
-        name: Scenario name from SCENARIOS
-
-    Returns:
-        Tuple of (WorldState, SimulationConfig, GameDefines)
-    """
-    config = SCENARIOS[name]
-
-    # Call factory function
-    factory_name = config["factory"]
-    if factory_name == "create_imperial_circuit_scenario":
-        state, sim_config, base_defines = create_imperial_circuit_scenario()
-    elif factory_name == "create_two_node_scenario":
-        state, sim_config, base_defines = create_two_node_scenario()
-    else:
-        raise ValueError(f"Unknown factory: {factory_name}")
-
-    # Apply overrides
-    defines = base_defines
-    for path, value in config["defines_overrides"].items():
-        defines = inject_parameter(defines, path, value)
-
-    return state, sim_config, defines
-
-
 def get_entity_value(state: Any, entity_id: str, field: str, default: float = 0.0) -> float:
     """Safely get entity field value.
 
@@ -388,11 +384,11 @@ def get_exploitation_tension(state: Any) -> float:
 def _format_dense_value(value: float | bool) -> str:
     """Format one dense-trace scalar per the documented float/bool policy.
 
-    Floats use Python's ``repr()`` (the shortest round-trippable decimal for
-    the IEEE-754 double — the same family ``defines_hash`` relies on, per
-    ``docs/reference/determinism-contract.rst``). Bools render via
-    ``str(bool)`` (``"True"``/``"False"``) — checked first since ``bool`` is
-    an ``int`` subclass and would otherwise be swallowed by a float branch.
+    Byte-neutral delegation (Task 10, E2b) to
+    :func:`babylon.engine.trace_format.format_trace_value` — the shared
+    serializer, moved verbatim so both this CLI and the headless-runner
+    bundle's ``dense_trace.csv`` (Task 10) use one byte contract. See that
+    module's docstring for the full float/bool policy.
 
     Args:
         value: A float or bool captured from WorldState.
@@ -400,32 +396,59 @@ def _format_dense_value(value: float | bool) -> str:
     Returns:
         The exact string written to the dense CSV cell.
     """
-    if isinstance(value, bool):
-        return str(value)
-    return repr(value)
+    return format_trace_value(value)
 
 
-def _dense_header(state: Any) -> tuple[list[str], list[str], list[tuple[str, str]]]:
+#: The 4 national financial columns (E3) — always emitted, every scenario.
+#: Column names are fixed regardless of the internal
+#: ``EndogenousInterestRate`` field names they read (verified against
+#: ``src/babylon/domain/economics/credit/types.py``): ``financial_s_r``
+#: reads the real field ``reserve_army_signal``, not a ``s_r`` key.
+_DENSE_FINANCIAL_SUFFIXES: Final[list[str]] = [
+    "endogenous_rate",
+    "profit_rate_ceiling",
+    "s_r",
+    "tightness",
+]
+
+#: The 5 per-county distribution columns (E3) — one set per county_fips a
+#: scenario's territories carry (verified against
+#: ``src/babylon/domain/economics/distribution/types.py``'s
+#: ``SurplusValueDistribution``: ``profit_enterprise`` reads the real
+#: computed field ``profit_of_enterprise``).
+_DENSE_COUNTY_SUFFIXES: Final[list[str]] = [
+    "total_s",
+    "interest",
+    "ground_rent",
+    "taxes",
+    "profit_enterprise",
+]
+
+
+def _dense_header(
+    state: Any,
+) -> tuple[list[str], list[str], list[tuple[str, str]], list[str]]:
     """Derive the dense-trace column contract from a scenario's tick-0 state.
 
-    The header (and the entity/edge ordering it encodes) is fixed once, from
-    the initial topology, on the documented assumption that a regression
-    scenario's entity and relationship set is static for its whole run (no
-    scenario in ``SCENARIOS`` adds/removes entities or edges mid-run).
-    :func:`_dense_row` verifies this assumption every tick and raises rather
-    than silently misaligning columns if it's ever violated (Constitution
-    III.11, Loud Failure).
+    The header (and the entity/edge/county ordering it encodes) is fixed
+    once, from the initial topology, on the documented assumption that a
+    regression scenario's entity, relationship, and territory/county set is
+    static for its whole run (no scenario in ``SCENARIOS`` adds/removes
+    entities, edges, or counties mid-run). :func:`_dense_row` verifies this
+    assumption every tick and raises rather than silently misaligning
+    columns if it's ever violated (Constitution III.11, Loud Failure).
 
     Args:
         state: The scenario's tick-0 WorldState.
 
     Returns:
         Tuple of (header, sorted entity IDs, sorted (source_id, target_id)
-        edge keys) — the latter two are reused by every row to avoid
-        re-deriving the topology every tick.
+        edge keys, sorted county FIPS codes) — the latter three are reused
+        by every row to avoid re-deriving the topology every tick.
     """
     entity_ids = sorted(state.entities.keys())
     edge_keys = sorted({(rel.source_id, rel.target_id) for rel in state.relationships})
+    counties = sorted(t.county_fips for t in state.territories.values() if t.county_fips)
 
     header = [
         "tick",
@@ -433,13 +456,16 @@ def _dense_header(state: Any) -> tuple[list[str], list[str], list[tuple[str, str
         "economy_current_super_wage_rate",
         "economy_current_repression_level",
     ]
+    header.extend(f"financial_{suffix}" for suffix in _DENSE_FINANCIAL_SUFFIXES)
+    for fips in counties:
+        header.extend(f"county_{fips}_{suffix}" for suffix in _DENSE_COUNTY_SUFFIXES)
     for entity_id in entity_ids:
         header.extend(f"{entity_id}_{suffix}" for suffix, _getter in _DENSE_ENTITY_FIELDS)
     for source_id, target_id in edge_keys:
         header.extend(
             f"edge_{source_id}_{target_id}_{suffix}" for suffix, _getter in _DENSE_EDGE_FIELDS
         )
-    return header, entity_ids, edge_keys
+    return header, entity_ids, edge_keys, counties
 
 
 def _dense_row(
@@ -447,6 +473,8 @@ def _dense_row(
     tick: int,
     entity_ids: list[str],
     edge_keys: list[tuple[str, str]],
+    counties: list[str],
+    context: dict[str, Any] | None,
 ) -> list[str]:
     """Build one dense-trace CSV row, asserting the topology hasn't drifted.
 
@@ -456,15 +484,28 @@ def _dense_row(
         entity_ids: Sorted entity IDs from :func:`_dense_header` (tick 0).
         edge_keys: Sorted (source_id, target_id) edge keys from
             :func:`_dense_header` (tick 0).
+        counties: Sorted county FIPS codes from :func:`_dense_header`
+            (tick 0).
+        context: The harness's ``persistent_context`` dict (Task 7,
+            SAVE-ONLY semantics) — ``_national_financial`` holds the
+            last-stamped :class:`NationalFinancialParameters` dump (the
+            annual pipeline fires exactly once per 52-tick run, on the
+            first ``step()`` call, since ``context.tick`` is the
+            pre-increment ``state.tick``); ``_tick_dynamics`` similarly
+            holds the last-stamped ``county_states`` dict of real
+            ``CountyEconomicState`` model instances. ``None``/absent-key
+            degrades to the same all-zero cells a county-free or
+            not-yet-boundary scenario would produce.
 
     Returns:
         List of formatted string cells aligned to the header.
 
     Raises:
-        ValueError: If ``state``'s entity or edge set no longer matches the
-            tick-0 topology — a scenario dynamically adding/removing
-            entities or edges is not supported by the fixed-column dense
-            format; failing loud here beats silently misaligning columns.
+        ValueError: If ``state``'s entity, edge, or county set no longer
+            matches the tick-0 topology — a scenario dynamically
+            adding/removing entities, edges, or counties is not supported
+            by the fixed-column dense format; failing loud here beats
+            silently misaligning columns.
     """
     actual_entity_ids = sorted(state.entities.keys())
     if actual_entity_ids != entity_ids:
@@ -483,10 +524,38 @@ def _dense_row(
             "a static relationship topology per scenario (Constitution III.11)"
         )
 
+    actual_counties = sorted(t.county_fips for t in state.territories.values() if t.county_fips)
+    if actual_counties != counties:
+        raise ValueError(
+            f"dense trace topology drift at tick {tick}: county set changed "
+            f"from {counties} to {actual_counties} — dense goldens assume "
+            "a static territory/county_fips topology per scenario (Constitution III.11)"
+        )
+
     row: list[str] = [str(tick)]
     row.append(_format_dense_value(float(state.economy.imperial_rent_pool)))
     row.append(_format_dense_value(float(state.economy.current_super_wage_rate)))
     row.append(_format_dense_value(float(state.economy.current_repression_level)))
+
+    financial = (context or {}).get("_national_financial") or {}
+    endo = financial.get("endogenous_interest") or {}
+    row.append(_format_dense_value(float(endo.get("rate", 0.0))))
+    row.append(_format_dense_value(float(endo.get("profit_rate_ceiling", 0.0))))
+    row.append(_format_dense_value(float(endo.get("reserve_army_signal", 0.0))))
+    row.append(_format_dense_value(float(endo.get("tightness", 0.0))))
+
+    county_states = ((context or {}).get("_tick_dynamics") or {}).get("county_states", {})
+    for fips in counties:
+        cs = county_states.get(fips)
+        dist = getattr(cs, "surplus_distribution", None) if cs is not None else None
+        for value in (
+            getattr(dist, "total_surplus_produced", 0.0),
+            getattr(dist, "interest_payments", 0.0),
+            getattr(dist, "ground_rent", 0.0),
+            getattr(dist, "taxes_on_surplus", 0.0),
+            getattr(dist, "profit_of_enterprise", 0.0),
+        ):
+            row.append(_format_dense_value(float(value)))
 
     for entity_id in entity_ids:
         entity = state.entities[entity_id]
@@ -504,10 +573,12 @@ def _dense_row(
 def dense_trace_to_csv_bytes(trace: DenseTrace) -> bytes:
     """Serialize a :class:`DenseTrace` to its canonical CSV byte stream.
 
-    Matches the ``trace.csv`` behavioral-artifact convention documented in
-    ``docs/reference/determinism-contract.rst``: UTF-8, comma-delimited,
-    RFC 4180 minimal quoting, ``\\n`` line terminator, header row, trailing
-    newline.
+    Byte-neutral delegation (Task 10, E2b) to
+    :func:`babylon.engine.trace_format.trace_rows_to_csv_bytes` — the shared
+    serializer, moved verbatim. Matches the ``trace.csv`` behavioral-artifact
+    convention documented in ``docs/reference/determinism-contract.rst``:
+    UTF-8, comma-delimited, RFC 4180 minimal quoting, ``\\n`` line
+    terminator, header row, trailing newline.
 
     Args:
         trace: The dense trace to serialize.
@@ -516,11 +587,7 @@ def dense_trace_to_csv_bytes(trace: DenseTrace) -> bytes:
         The exact bytes that get written to (or compared against)
         ``tests/baselines/dense/<scenario>.csv``.
     """
-    buf = io.StringIO(newline="")
-    writer = csv.writer(buf, lineterminator="\n", quoting=csv.QUOTE_MINIMAL)
-    writer.writerow(trace.header)
-    writer.writerows(trace.rows)
-    return buf.getvalue().encode("utf-8")
+    return trace_rows_to_csv_bytes(trace.header, trace.rows)
 
 
 def _parse_dense_csv_bytes(data: bytes) -> tuple[list[str], list[list[str]]]:
@@ -542,44 +609,159 @@ def _parse_dense_csv_bytes(data: bytes) -> tuple[list[str], list[list[str]]]:
     return rows[0], rows[1:]
 
 
-def _first_dense_divergence(
-    expected_header: list[str],
-    expected_rows: list[list[str]],
-    actual_header: list[str],
-    actual_rows: list[list[str]],
-) -> str:
-    """Name the first divergent tick+column between two dense traces.
+@dataclass(frozen=True)
+class DivergenceReport:
+    """First point where an actual dense trace departs its golden baseline.
+
+    Produced by :func:`attribute_divergence` (E4) — replaces the old
+    ``_first_dense_divergence`` free-text diagnostic with a structured
+    record naming the tick, column, dialectical channel, county (when the
+    column is county-scoped), and the candidate systems
+    (:data:`tools.regression_scenarios.CHANNEL_WRITERS`) that could have
+    written it, so a dense-gate FAIL doesn't require hand-deriving
+    attribution (Program: qa:regression modernization, task 5).
+    """
+
+    scenario: str
+    tick: int
+    column: str
+    channel: str
+    county: str | None
+    expected: str
+    actual: str
+    magnitude: float | None
+    last_agreeing_tick: int | None
+    candidate_systems: tuple[str, ...]
+
+
+def _parse_column(column: str) -> tuple[str, str | None]:
+    """Return (channel suffix, county fips or None) for a dense column name.
 
     Args:
-        expected_header: Committed golden's header row.
+        column: A dense-trace header cell, e.g. ``"C001_wealth"``,
+            ``"edge_C001_C002_tension"``, ``"economy_imperial_rent_pool"``,
+            or a future ``"county_<fips>_<suffix>"`` / ``"financial_*"``
+            column (Task 9 / E3 — no current baseline emits these yet, but
+            the column vocabulary is already documented).
+
+    Returns:
+        Tuple of (channel, county fips or None). ``channel`` is the key
+        looked up in ``CHANNEL_WRITERS``.
+    """
+    if column.startswith("county_"):
+        parts = column.split("_", 2)  # county, <fips>, <suffix>
+        if len(parts) == 3:
+            return parts[2], parts[1]
+    if column.startswith(("economy_", "financial_")):
+        return column, None
+    if column.startswith("edge_"):
+        # Node ids contain no underscores (e.g. "C001"), so the channel is
+        # everything after "edge_<source>_<target>_" — which itself may
+        # contain underscores (e.g. "value_flow"). split("_", 3) isolates
+        # it; rsplit("_", 1) (the old behavior) wrongly truncated
+        # "edge_C001_C002_value_flow" to channel "flow".
+        parts = column.split("_", 3)
+        if len(parts) == 4:
+            return parts[3], None
+        return column.rsplit("_", 1)[1], None
+    _, _, suffix = column.partition("_")  # C001_wealth -> wealth
+    return suffix or column, None
+
+
+def attribute_divergence(
+    scenario: str,
+    header: list[str],
+    expected_rows: list[list[str]],
+    actual_rows: list[list[str]],
+) -> DivergenceReport | None:
+    """Locate and attribute the first cell where actual departs expected.
+
+    The single cell-walk implementation behind both the dense-gate FAIL
+    path (:func:`compare_dense_trace`) and direct callers (tests, ad hoc
+    diagnosis) — there is intentionally no second copy of this walk.
+
+    Args:
+        scenario: Scenario name, threaded through to the report.
+        header: Column names shared by both ``expected_rows`` and
+            ``actual_rows`` (the golden's header — dense goldens assume a
+            static column contract per scenario).
         expected_rows: Committed golden's data rows.
-        actual_header: Freshly-generated header row.
         actual_rows: Freshly-generated data rows.
 
     Returns:
-        A single human-readable diagnostic string naming the first place the
-        two traces differ — never an empty diff (this function is only
-        called after byte-inequality has already been established).
+        The first-divergence attribution, or ``None`` if the two row sets
+        are identical (row-for-row, cell-for-cell, and equal in count).
     """
-    if expected_header != actual_header:
-        for i, (exp_col, act_col) in enumerate(zip(expected_header, actual_header, strict=False)):
-            if exp_col != act_col:
-                return f"column header mismatch at index {i}: {exp_col!r} != {act_col!r}"
-        return f"header length mismatch: {len(expected_header)} != {len(actual_header)} columns"
+    from regression_scenarios import CHANNEL_WRITERS
 
-    for exp_row, act_row in zip(expected_rows, actual_rows, strict=False):
-        if exp_row == act_row:
-            continue
-        tick = exp_row[0] if exp_row else "?"
-        for col_idx, (exp_val, act_val) in enumerate(zip(exp_row, act_row, strict=False)):
-            if exp_val != act_val:
-                col_name = (
-                    expected_header[col_idx] if col_idx < len(expected_header) else f"#{col_idx}"
-                )
-                return f"tick {tick} column {col_name!r}: {exp_val} != {act_val}"
-        return f"tick {tick}: row length mismatch: {len(exp_row)} != {len(act_row)} columns"
+    n = min(len(expected_rows), len(actual_rows))
+    for i in range(n):
+        exp_row, act_row = expected_rows[i], actual_rows[i]
+        for j, column in enumerate(header):
+            exp = exp_row[j] if j < len(exp_row) else "<absent>"
+            act = act_row[j] if j < len(act_row) else "<absent>"
+            if exp == act:
+                continue
+            channel, county = _parse_column(column)
+            try:
+                magnitude: float | None = abs(float(act) - float(exp))
+            except ValueError:
+                magnitude = None
+            tick = int(exp_row[0]) if exp_row else i  # degrade gracefully on an empty row
+            return DivergenceReport(
+                scenario=scenario,
+                tick=tick,
+                column=column,
+                channel=channel,
+                county=county,
+                expected=exp,
+                actual=act,
+                magnitude=magnitude,
+                last_agreeing_tick=int(expected_rows[i - 1][0]) if i > 0 else None,
+                candidate_systems=CHANNEL_WRITERS.get(channel, ()),
+            )
+    if len(expected_rows) != len(actual_rows):
+        i = n
+        longer = expected_rows if len(expected_rows) > n else actual_rows
+        return DivergenceReport(
+            scenario=scenario,
+            tick=int(longer[i][0]),
+            column="<row count>",
+            channel="<missing row>",
+            county=None,
+            expected=str(len(expected_rows)),
+            actual=str(len(actual_rows)),
+            magnitude=None,
+            last_agreeing_tick=int(expected_rows[n - 1][0]) if n else None,
+            candidate_systems=(),
+        )
+    return None
 
-    return f"row count mismatch: {len(expected_rows)} != {len(actual_rows)} ticks"
+
+def _format_divergence_report(r: DivergenceReport) -> str:
+    """Human-readable one-liner for a :class:`DivergenceReport`."""
+    return (
+        f"  FIRST DIVERGENCE: tick {r.tick}, {r.column}"
+        + (f" (county {r.county})" if r.county else "")
+        + f": {r.expected} -> {r.actual}"
+        + (f" (Δ={r.magnitude!r})" if r.magnitude is not None else "")
+        + f"; last agreed tick {r.last_agreeing_tick}; "
+        + f"candidate systems: {', '.join(r.candidate_systems) or 'unmapped channel'}"
+    )
+
+
+def divergence_report_json(report: DivergenceReport) -> dict[str, Any]:
+    """JSON-serializable form of a :class:`DivergenceReport`.
+
+    Args:
+        report: The attribution to serialize.
+
+    Returns:
+        A plain dict (via :func:`dataclasses.asdict`) suitable for
+        ``json.dumps`` — the shape written to
+        ``reports/qa-first-divergence.json``.
+    """
+    return asdict(report)
 
 
 def save_dense_trace(trace: DenseTrace, output_dir: Path) -> Path:
@@ -599,7 +781,62 @@ def save_dense_trace(trace: DenseTrace, output_dir: Path) -> Path:
     return output_path
 
 
-def compare_dense_trace(trace: DenseTrace, baseline_dir: Path) -> tuple[bool, str | None]:
+def compare_dense_csv_bytes(
+    scenario: str, expected_bytes: bytes, actual_bytes: bytes
+) -> tuple[bool, DivergenceReport | None]:
+    """Byte-compare two dense/trace CSVs, attributing the first divergence.
+
+    The shared cell-walk entry point behind both :func:`compare_dense_trace`
+    (regression-scenario dense goldens) and ``compare-bundle``'s
+    ``--dense-baseline`` leg (Task 10, E5b) — one comparison implementation,
+    two callers, so a future attribution fix lands in both places at once.
+
+    Args:
+        scenario: Name threaded through to the report (a regression
+            scenario, or ``"detroit_tri_county"`` for the bundle leg).
+        expected_bytes: Committed golden CSV bytes.
+        actual_bytes: Freshly-produced CSV bytes.
+
+    Returns:
+        Tuple of (passed, report). ``passed`` is True and the report is
+        None when the bytes match exactly. On mismatch, ``passed`` is
+        False. Both blobs are parsed back through
+        :func:`_parse_dense_csv_bytes` first, and the two headers are
+        compared *before* any cell walk: a changed column set
+        (inserted/appended/removed/reordered column — e.g. a future
+        dense-schema widening) short-circuits to a loud ``column="<header>"``
+        report naming both header lists, rather than either misattributing
+        a shifted cell to the wrong column or — worse — silently returning
+        ``None`` when the trailing columns happen to still agree
+        cell-for-cell. Only once the headers match does ``report``
+        attribute the first divergent tick+column (E4) via
+        :func:`attribute_divergence`.
+    """
+    if expected_bytes == actual_bytes:
+        return True, None
+
+    expected_header, expected_rows = _parse_dense_csv_bytes(expected_bytes)
+    actual_header, actual_rows = _parse_dense_csv_bytes(actual_bytes)
+    if expected_header != actual_header:
+        return False, DivergenceReport(
+            scenario=scenario,
+            tick=0,
+            column="<header>",
+            channel="<column set changed>",
+            county=None,
+            expected=str(expected_header),
+            actual=str(actual_header),
+            magnitude=None,
+            last_agreeing_tick=None,
+            candidate_systems=(),
+        )
+    report = attribute_divergence(scenario, expected_header, expected_rows, actual_rows)
+    return False, report
+
+
+def compare_dense_trace(
+    trace: DenseTrace, baseline_dir: Path
+) -> tuple[bool, DivergenceReport | None]:
     """Byte-compare a freshly-generated dense trace against its golden CSV.
 
     Args:
@@ -608,12 +845,11 @@ def compare_dense_trace(trace: DenseTrace, baseline_dir: Path) -> tuple[bool, st
             ``dense/`` subdirectory).
 
     Returns:
-        Tuple of (passed, diagnostic). ``passed`` is True and the
-        diagnostic is None when either the golden doesn't exist yet (dense
-        goldens are opt-in per Program 13 item 2 — absence is not a
-        failure) or the bytes match exactly. On mismatch, ``passed`` is
-        False and the diagnostic names the first divergent tick+column via
-        :func:`_first_dense_divergence`.
+        Tuple of (passed, report). ``passed`` is True and the report is
+        None when either the golden doesn't exist yet (dense goldens are
+        opt-in per Program 13 item 2 — absence is not a failure) or the
+        bytes match exactly (see :func:`compare_dense_csv_bytes` for the
+        byte-comparison + attribution mechanics once both exist).
     """
     golden_path = baseline_dir / DENSE_SUBDIR / f"{trace.scenario}.csv"
     if not golden_path.exists():
@@ -621,12 +857,44 @@ def compare_dense_trace(trace: DenseTrace, baseline_dir: Path) -> tuple[bool, st
 
     expected_bytes = golden_path.read_bytes()
     actual_bytes = dense_trace_to_csv_bytes(trace)
-    if expected_bytes == actual_bytes:
-        return True, None
+    return compare_dense_csv_bytes(trace.scenario, expected_bytes, actual_bytes)
 
-    expected_header, expected_rows = _parse_dense_csv_bytes(expected_bytes)
-    diagnostic = _first_dense_divergence(expected_header, expected_rows, trace.header, trace.rows)
-    return False, diagnostic
+
+def check_dead_columns(
+    scenario: str,
+    header: list[str],
+    rows: list[list[str]],
+    coverage: tuple[Any, ...],
+) -> list[str]:
+    """E3: every column must move, or carry a declared at_rest reason.
+
+    A channel that is all-zeros/all-absent across an entire run is an
+    inertness signal (the U9 failure mode) — never a default.
+    """
+    at_rest: dict[str, str] = {}
+    for cov in coverage:
+        if cov.scenario == scenario:
+            at_rest = {c.channel: c.reason for c in cov.at_rest}
+            break
+    dead_values = {"0.0", "-0.0", "0", "False", ""}
+    findings: list[str] = []
+    for j, column in enumerate(header):
+        if column == "tick":
+            continue
+        dead = all(row[j] in dead_values for row in rows)
+        if dead and column not in at_rest:
+            findings.append(
+                f"{scenario}: channel {column!r} is at rest across the entire run "
+                f"but not declared at_rest in ScenarioCoverage. Either the channel "
+                f"is dead (U9-class inertness — investigate) or declare it with a "
+                f"reason in tools/regression_scenarios.py."
+            )
+        if not dead and column in at_rest:
+            findings.append(
+                f"{scenario}: stale at_rest declaration — channel {column!r} is "
+                f"live but declared at rest ({at_rest[column]!r}). Delete the row."
+            )
+    return findings
 
 
 def capture_checkpoint(state: Any, tick: int) -> CheckpointData:
@@ -687,8 +955,14 @@ def _run_scenario_ticks(
     # calculators are stateless/reused across ticks, mirroring the cadence
     # _legacy.py's Simulation already uses (one calculator_overrides dict
     # persists across the whole run, rebuilt only per ServiceContainer.create
-    # call inside step() itself).
-    calculator_overrides = _build_vol3_calculator_overrides(defines)
+    # call inside step() itself). single_county additionally needs a
+    # real-FIPS tensor_registry (E2a) — every other scenario carries no
+    # county_fips, so a registry would be unreachable from them.
+    calculator_overrides = (
+        build_single_county_overrides(defines)
+        if name == "single_county"
+        else _build_vol3_calculator_overrides(defines)
+    )
 
     checkpoints: list[CheckpointData] = []
     ticks_survived = 0
@@ -701,9 +975,10 @@ def _run_scenario_ticks(
     dense_rows: list[list[str]] = []
     entity_ids: list[str] = []
     edge_keys: list[tuple[str, str]] = []
+    counties: list[str] = []
     if capture_dense:
-        dense_header, entity_ids, edge_keys = _dense_header(state)
-        dense_rows.append(_dense_row(state, 0, entity_ids, edge_keys))
+        dense_header, entity_ids, edge_keys, counties = _dense_header(state)
+        dense_rows.append(_dense_row(state, 0, entity_ids, edge_keys, counties, persistent_context))
 
     for tick in range(1, max_ticks + 1):
         state = step(
@@ -720,7 +995,9 @@ def _run_scenario_ticks(
             checkpoints.append(capture_checkpoint(state, tick))
 
         if capture_dense:
-            dense_rows.append(_dense_row(state, tick, entity_ids, edge_keys))
+            dense_rows.append(
+                _dense_row(state, tick, entity_ids, edge_keys, counties, persistent_context)
+            )
 
         # Check for death
         p_w = state.entities.get(PERIPHERY_WORKER_ID)
@@ -915,17 +1192,17 @@ def compare_baselines(
     if expected.ticks_survived != actual.ticks_survived:
         diffs.append(f"ticks_survived: {expected.ticks_survived} != {actual.ticks_survived}")
 
-    # Compare defines hash
+    # E5a (modernization program): defines_hash gates. A GameDefines change
+    # without a baseline ceremony is exactly the silent-drift the gate exists
+    # to catch; the five stale hashes that motivated this were refreshed
+    # (value-identical) in the same commit that armed this tooth.
     if expected.defines_hash != actual.defines_hash:
         diffs.append(
-            f"WARNING: defines_hash changed ({expected.defines_hash} -> {actual.defines_hash})"
+            f"defines_hash mismatch ({expected.defines_hash} -> {actual.defines_hash}): "
+            f"GameDefines changed without a baseline ceremony. If intentional, run "
+            f"'mise run qa:regression-generate-dense' and commit the regenerated "
+            f"baselines with a declared drift table (test(baselines): ...)."
         )
-        # The continuation line MUST carry the WARNING prefix too: the
-        # passed-filter below treats any non-WARNING diff as a failure, and an
-        # unprefixed continuation turned a hash-only (advisory) change into a
-        # spurious 5/5 FAIL on 2026-07-15 when a new GameDefines category
-        # landed with byte-identical tick values.
-        diffs.append("WARNING:   This may indicate GameDefines parameter changes")
 
     # Compare checkpoints
     min_checkpoints = min(len(expected.checkpoints), len(actual.checkpoints))
@@ -945,6 +1222,33 @@ def compare_baselines(
     return passed, diffs
 
 
+def _abort_on_dead_columns(name: str, trace: DenseTrace) -> None:
+    """E3: print dead-column findings and abort the write with exit 1.
+
+    Called before :func:`save_dense_trace` in both the all-scenarios and
+    single-scenario ``generate`` paths. A freshly-generated dense trace
+    carrying an undeclared dead channel (or a stale ``at_rest`` row that no
+    longer describes reality) must never be written as a new golden — that
+    would silently canonize the very inertness/staleness
+    :func:`check_dead_columns` exists to catch (Constitution III.11, Loud
+    Failure).
+
+    Args:
+        name: Scenario name, used both to look up its coverage row and to
+            prefix the printed findings.
+        trace: The freshly-built dense trace, not yet saved.
+
+    Raises:
+        SystemExit: With code 1, if any dead-column findings exist. Nothing
+            is written in that case.
+    """
+    findings = check_dead_columns(name, trace.header, trace.rows, SCENARIO_COVERAGE)
+    if findings:
+        for finding in findings:
+            print(f"  DEAD COLUMN: {finding}")
+        raise SystemExit(1)
+
+
 def generate_all_baselines(
     output_dir: Path, force: bool = False, dense: bool = False
 ) -> list[Path]:
@@ -962,6 +1266,13 @@ def generate_all_baselines(
         List of generated file paths (JSON only; dense CSV paths are
         printed but not included, to keep this function's return contract
         unchanged for any existing caller).
+
+    Raises:
+        SystemExit: With code 1, via :func:`_abort_on_dead_columns`, if any
+            scenario's freshly-generated dense trace carries an undeclared
+            dead channel or a stale ``at_rest`` row (E3). Nothing for that
+            scenario (or any scenario after it in iteration order) is
+            written in that case.
     """
     generated: list[Path] = []
 
@@ -974,6 +1285,8 @@ def generate_all_baselines(
 
         print(f"  Generating {name}...", end=" ", flush=True)
         baseline, dense_trace = _run_scenario_ticks(name, DEFAULT_MAX_TICKS, capture_dense=dense)
+        if dense and dense_trace is not None:
+            _abort_on_dead_columns(name, dense_trace)
         path = save_baseline(baseline, output_dir)
         if dense and dense_trace is not None:
             dense_path = save_dense_trace(dense_trace, output_dir / DENSE_SUBDIR)
@@ -996,6 +1309,21 @@ def compare_all_baselines(baseline_dir: Path) -> tuple[int, int]:
     (Program 13 item 2); a dense mismatch fails the scenario just like a
     checkpoint mismatch.
 
+    On any dense-gate FAIL, the first-divergence attribution (E4,
+    :func:`attribute_divergence`) is printed and every failing scenario's
+    :class:`DivergenceReport` is written to
+    :data:`FIRST_DIVERGENCE_REPORT_PATH` (``reports/qa-first-divergence.json``)
+    for machine consumption. Any stale report from a prior run is removed
+    up front, and the file is only (re)written when at least one scenario
+    actually diverged — a green run leaves no misleading report behind.
+
+    E3: :func:`check_dead_columns` also runs on every scenario's freshly
+    computed actual trace, unconditionally — never gated behind
+    ``dense_ok`` — so an undeclared dead channel (or a stale ``at_rest`` row)
+    is reported even on a run where the bytes already mismatched for an
+    unrelated reason; both signals matter during triage. Any finding is a
+    non-WARNING diff and fails the scenario's gate.
+
     Args:
         baseline_dir: Directory containing baseline JSON files
 
@@ -1004,12 +1332,22 @@ def compare_all_baselines(baseline_dir: Path) -> tuple[int, int]:
     """
     passed = 0
     failed = 0
+    divergence_reports: list[DivergenceReport] = []
+
+    if FIRST_DIVERGENCE_REPORT_PATH.exists():
+        FIRST_DIVERGENCE_REPORT_PATH.unlink()
 
     for name in SCENARIOS:
         baseline_path = baseline_dir / f"{name}.json"
 
         if not baseline_path.exists():
-            print(f"  SKIP {name}: no baseline (run 'generate' first)")
+            # Loud, not a silent skip: a scenario declared in SCENARIOS with
+            # no committed baseline is a known pending state (e.g.
+            # single_county, Task 8/E2a — its baseline mints in Task 11's
+            # ceremony), not a bug. Neither passed nor failed is incremented,
+            # so this never hard-fails compare — the other scenarios still
+            # gate normally.
+            print(f"  PENDING CEREMONY: {name} (no baseline committed — run 'generate' first)")
             continue
 
         print(f"  Comparing {name}...", end=" ", flush=True)
@@ -1021,11 +1359,17 @@ def compare_all_baselines(baseline_dir: Path) -> tuple[int, int]:
         # dense trace.
         actual, dense_actual = run_scenario_dense(name, max_ticks=expected.max_ticks)
 
-        # Compare
+        # Compare. Dead-column findings are computed on the freshly-computed
+        # actual trace unconditionally (not nested behind `dense_ok`) — a
+        # byte mismatch must never short-circuit this check; both signals
+        # matter during triage.
         ok, diffs = compare_baselines(expected, actual)
-        dense_ok, dense_diagnostic = compare_dense_trace(dense_actual, baseline_dir)
+        dense_ok, dense_report = compare_dense_trace(dense_actual, baseline_dir)
+        dead_column_findings = check_dead_columns(
+            name, dense_actual.header, dense_actual.rows, SCENARIO_COVERAGE
+        )
 
-        if ok and dense_ok:
+        if ok and dense_ok and not dead_column_findings:
             print("PASS")
             passed += 1
         else:
@@ -1033,10 +1377,77 @@ def compare_all_baselines(baseline_dir: Path) -> tuple[int, int]:
             failed += 1
             for diff in diffs:
                 print(f"    {diff}")
-            if not dense_ok:
-                print(f"    dense: {dense_diagnostic}")
+            if not dense_ok and dense_report is not None:
+                print(_format_divergence_report(dense_report))
+                divergence_reports.append(dense_report)
+            for finding in dead_column_findings:
+                print(f"    {finding}")
+
+    if divergence_reports:
+        FIRST_DIVERGENCE_REPORT_PATH.parent.mkdir(parents=True, exist_ok=True)
+        FIRST_DIVERGENCE_REPORT_PATH.write_text(
+            json.dumps([divergence_report_json(r) for r in divergence_reports], indent=2)
+        )
 
     return passed, failed
+
+
+def _determinism_leg(scenario: str = "imperial_circuit") -> tuple[bool, list[str]]:
+    """Two independent OS processes generate the same scenario; bytes must match.
+
+    Folded from tests/unit/tools/test_regression_construction_cadence_determinism.py
+    (U7.0) into the gate itself (E5b). PYTHONHASHSEED is stripped so each
+    child randomizes its own hash seed — two processes sharing one seed would
+    be a false-positive determinism proof. The fast-tier unit test stays in
+    place unchanged (a mirror of this same mechanism, run on every ``pytest``
+    invocation rather than only on ``compare``).
+
+    Args:
+        scenario: Scenario name passed to both child ``generate`` calls.
+
+    Returns:
+        Tuple of (passed, problems). ``problems`` is empty iff both
+        processes' sampled-checkpoint JSON (minus the wall-clock
+        ``generated_at`` field) and dense-trace CSV bytes agree exactly.
+    """
+    import tempfile
+
+    problems: list[str] = []
+    with tempfile.TemporaryDirectory() as tmp:
+        dirs = [Path(tmp) / "a", Path(tmp) / "b"]
+        for d in dirs:
+            result = subprocess.run(
+                [
+                    sys.executable,
+                    str(Path(__file__).resolve()),
+                    "generate",
+                    "--scenario",
+                    scenario,
+                    "--dense",
+                    "--output",
+                    str(d),
+                ],
+                capture_output=True,
+                text=True,
+                cwd=Path(__file__).parent.parent,
+                env={k: v for k, v in os.environ.items() if k != "PYTHONHASHSEED"},
+                timeout=300,
+            )
+            if result.returncode != 0:
+                return False, [f"determinism leg: generate failed in {d}: {result.stderr[-500:]}"]
+        a = json.loads((dirs[0] / f"{scenario}.json").read_text())
+        b = json.loads((dirs[1] / f"{scenario}.json").read_text())
+        a.pop("generated_at", None)
+        b.pop("generated_at", None)
+        if a != b:
+            problems.append(f"determinism leg: {scenario}.json differs between two processes")
+        csv_a = (dirs[0] / DENSE_SUBDIR / f"{scenario}.csv").read_bytes()
+        csv_b = (dirs[1] / DENSE_SUBDIR / f"{scenario}.csv").read_bytes()
+        if csv_a != csv_b:
+            problems.append(
+                f"determinism leg: dense CSV differs between two processes ({scenario})"
+            )
+    return not problems, problems
 
 
 def _compare_bundle_command(args: Any) -> int:
@@ -1117,6 +1528,48 @@ def _compare_bundle_command(args: Any) -> int:
         failures.append(f"{len(critical)} critical conservation violation(s)")
     else:
         print("  ✓ no critical conservation violations")
+
+    # 4. dense_trace.csv byte-compare against the detroit_tri_county dense
+    # golden (Task 10, E2b). The Task 11 ceremony mints
+    # tests/baselines/dense/detroit_tri_county.csv, so a missing golden is
+    # now a hard regression (deletion/never-minted), not a pending state.
+    dense_baseline_path: Path = args.dense_baseline
+    dense_bundle_path = bundle_dir / "dense_trace.csv"
+    if not dense_bundle_path.exists():
+        failures.append(f"dense_trace.csv missing from bundle: {dense_bundle_path}")
+    else:
+        dense_bundle_bytes = dense_bundle_path.read_bytes()
+        if not dense_baseline_path.exists():
+            failures.append(f"detroit_tri_county dense golden not found: {dense_baseline_path}")
+        else:
+            dense_ok, dense_report = compare_dense_csv_bytes(
+                "detroit_tri_county",
+                dense_baseline_path.read_bytes(),
+                dense_bundle_bytes,
+            )
+            if dense_ok:
+                print("  ✓ dense_trace.csv byte-identical to detroit_tri_county golden")
+            else:
+                failures.append("dense_trace.csv diverged from detroit_tri_county golden")
+                if dense_report is not None:
+                    print(_format_divergence_report(dense_report))
+
+        # 5. Bundle-path dead-column guard (Task 11, E3 extension): runs
+        # unconditionally on the bundle's own dense trace — never gated
+        # behind dense_ok/golden-presence above, mirroring
+        # compare_all_baselines's "never gated" dead-column check — so an
+        # undeclared dead channel (or a stale at_rest row) is caught even on
+        # a bundle whose byte-compare already failed for an unrelated reason.
+        bundle_header, bundle_rows = _parse_dense_csv_bytes(dense_bundle_bytes)
+        dead_column_findings = check_dead_columns(
+            "detroit_tri_county", bundle_header, bundle_rows, SCENARIO_COVERAGE
+        )
+        if dead_column_findings:
+            failures.extend(dead_column_findings)
+            for finding in dead_column_findings:
+                print(f"  {finding}")
+        elif bundle_header:
+            print("  ✓ no dead columns in dense_trace.csv (bundle)")
 
     print()
     if failures:
@@ -1215,6 +1668,16 @@ Examples:
         default=1.0,
         help="±%% tolerance on terminal_state.total_v (default: 1.0%%)",
     )
+    bundle_parser.add_argument(
+        "--dense-baseline",
+        type=Path,
+        default=Path("tests/baselines/dense/detroit_tri_county.csv"),
+        help=(
+            "Path to the committed detroit_tri_county dense golden CSV "
+            "(default: tests/baselines/dense/detroit_tri_county.csv). Byte-"
+            "compared against the bundle's dense_trace.csv (Task 10, E2b)."
+        ),
+    )
 
     args = parser.parse_args()
 
@@ -1247,6 +1710,8 @@ Examples:
             baseline, dense_trace = _run_scenario_ticks(
                 args.scenario, DEFAULT_MAX_TICKS, capture_dense=args.dense
             )
+            if args.dense and dense_trace is not None:
+                _abort_on_dead_columns(args.scenario, dense_trace)
             path = save_baseline(baseline, args.output)
             print(f"Generated: {path}")
             if args.dense and dense_trace is not None:
@@ -1273,6 +1738,28 @@ Examples:
 
         print()
         print(f"Results: {passed} passed, {failed} failed")
+
+        # E5b: two-process determinism proof, folded into the gate itself
+        # (Task 10). Runs unconditionally, every `compare` invocation,
+        # regardless of the scenario-comparison outcome above — this leg
+        # answers a different question (is a single scenario's construction
+        # deterministic across independent OS processes?), so it must not
+        # be skipped just because a header mismatch already failed the
+        # scenario loop (the sanctioned qa:regression-modernization red
+        # window: this leg is expected to PASS even while the 5 originals
+        # are red on the widened header).
+        print()
+        print("Determinism leg (E5b): two independent processes, imperial_circuit...")
+        det_start = time.perf_counter()
+        det_ok, det_problems = _determinism_leg()
+        det_elapsed = time.perf_counter() - det_start
+        if det_ok:
+            print(f"  PASS ({det_elapsed:.2f}s)")
+        else:
+            print(f"  FAIL ({det_elapsed:.2f}s)")
+            for problem in det_problems:
+                print(f"    {problem}")
+            failed += 1
 
         if failed > 0:
             print()

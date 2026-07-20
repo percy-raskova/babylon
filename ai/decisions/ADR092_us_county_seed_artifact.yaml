@@ -1,15 +1,15 @@
-ADR091_us_county_seed_artifact:
+ADR092_us_county_seed_artifact:
   status: "accepted"
   date: "2026-07-20"
   title: "USScenario reads the committed, hash-stamped county-seed artifact (src/babylon/data/game/us_county_territories.json, schema_version 2, 3153 counties) instead of the reference DB at build time -- the deterministic-data-artifacts doctrine applied to the #39 hex-to-county re-keying blocker -- plus close-out of the #39 (hex/scale county-keying) program: T1-T8 all landed and review-clean on feature/queue-2026-07-19"
   context: |
-    Task #39 (Amendment U / ADR090) re-keys USScenario's territories from
+    Task #39 (Amendment U / ADR091) re-keys USScenario's territories from
     res-3 H3 hexes to one Territory per US county (T4), binds ScaleAdjunction
     into the engine with real SubstrateSystem dynamics (T6), and adds the
     CZ/MSA scale rungs with real data (T1/T3/T7), closing with two new
     sentinel gates (T8). This ADR records the T4 blocker adjudication (the
     committed artifact) as the residual decision the program's other ADR
-    (ADR090, the constitutional amendment) does not cover, and serves as the
+    (ADR091, the constitutional amendment) does not cover, and serves as the
     program's close-out record.
 
     THE BLOCKER: `_create_us_territories` (`engine/scenarios/_legacy.py`)
@@ -175,7 +175,7 @@ ADR091_us_county_seed_artifact:
     - "tools/generate_us_county_territories.py (generator, retired-FIPS dedup + area-share allocation)"
     - "src/babylon/engine/scenarios/us_county_data.py (loader, schema_version validation)"
     - "src/babylon/engine/scenarios/_legacy.py::_create_us_territories (consumer, #39 T4)"
-    - "ai/decisions/ADR090_scale_lattice_amendment_u.yaml (Amendment U, the constitutional half of #39)"
+    - "ai/decisions/ADR091_scale_lattice_amendment_u.yaml (Amendment U, the constitutional half of #39)"
     - "ai/decisions/ADR086_business_seeding.yaml (deterministic-data-artifacts precedent this ADR mirrors)"
     - "docs/superpowers/plans/2026-07-19-hex-scale-county-keying.md (the #39 mini-plan, T1-T9)"
     - "src/babylon/engine/headless_runner/scopes.py::_load_national_fips (named defect (a), pre-existing, not fixed here)"

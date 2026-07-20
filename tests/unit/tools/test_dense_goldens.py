@@ -21,7 +21,6 @@ This module verifies two things:
 from __future__ import annotations
 
 import csv
-import shutil
 import sys
 from pathlib import Path
 
@@ -37,10 +36,28 @@ import regression_test as rt  # type: ignore[import-not-found]  # noqa: E402
 BASELINE_DIR = Path(__file__).resolve().parents[3] / "tests" / "baselines"
 DENSE_DIR = BASELINE_DIR / "dense"
 
+_PENDING_CEREMONY_SKIP_REASON = "PENDING CEREMONY: golden minted by the Task 11 ceremony"
+
+
+def _skip_if_pending_ceremony(scenario_name: str) -> None:
+    """Skip loudly for a scenario whose baseline hasn't been minted yet.
+
+    Keyed off the explicit ``rt.PENDING_CEREMONY`` allowlist, never off
+    golden-file absence: a scenario NOT in the allowlist whose golden is
+    missing (e.g. one of the six already-minted scenarios, accidentally
+    deleted) must still FAIL loudly, not silently skip — that's exactly the
+    failure mode a file-absence-keyed skip would mask. ``PENDING_CEREMONY``
+    is empty as of the Task 11 ceremony (2026-07-20, ``single_county``
+    minted); this stays live for any future scenario's mint window.
+    """
+    if scenario_name in rt.PENDING_CEREMONY:
+        pytest.skip(_PENDING_CEREMONY_SKIP_REASON)
+
 
 @pytest.mark.parametrize("scenario_name", sorted(rt.SCENARIOS))
 def test_dense_golden_exists_for_every_scenario(scenario_name: str) -> None:
     """Every scenario in SCENARIOS has a committed dense CSV golden."""
+    _skip_if_pending_ceremony(scenario_name)
     golden_path = DENSE_DIR / f"{scenario_name}.csv"
     assert golden_path.exists(), (
         f"missing dense golden for {scenario_name!r} at {golden_path} — "
@@ -51,6 +68,7 @@ def test_dense_golden_exists_for_every_scenario(scenario_name: str) -> None:
 @pytest.mark.parametrize("scenario_name", sorted(rt.SCENARIOS))
 def test_dense_golden_has_documented_column_shape(scenario_name: str) -> None:
     """The header starts with 'tick' and every row has the same width as the header."""
+    _skip_if_pending_ceremony(scenario_name)
     golden_path = DENSE_DIR / f"{scenario_name}.csv"
     with golden_path.open(newline="") as f:
         rows = list(csv.reader(f))
@@ -77,29 +95,40 @@ def test_dense_golden_has_documented_column_shape(scenario_name: str) -> None:
 @pytest.mark.parametrize("scenario_name", sorted(rt.SCENARIOS))
 def test_dense_trace_regeneration_matches_committed_golden(scenario_name: str) -> None:
     """Re-running the scenario reproduces the committed golden byte-for-byte."""
+    _skip_if_pending_ceremony(scenario_name)
     expected_max_ticks = rt.load_baseline(BASELINE_DIR / f"{scenario_name}.json").max_ticks
     _baseline, dense = rt.run_scenario_dense(scenario_name, max_ticks=expected_max_ticks)
 
-    passed, diagnostic = rt.compare_dense_trace(dense, BASELINE_DIR)
+    passed, report = rt.compare_dense_trace(dense, BASELINE_DIR)
 
-    assert passed, f"{scenario_name}: dense golden drifted — {diagnostic}"
+    assert passed, f"{scenario_name}: dense golden drifted — {report}"
 
 
 def test_compare_dense_trace_catches_a_synthetic_one_value_mutation(tmp_path: Path) -> None:
     """A single mutated cell in a *copy* of a golden is caught, loudly.
 
     RED-phase gate for Program 13 item 2: dense comparison must not be a
-    rubber stamp. Copies the real committed golden into a scratch
-    ``tmp_path`` baseline dir, corrupts exactly one cell, and asserts
-    ``compare_dense_trace`` reports the mutation with the exact
-    tick+column it touched — never a silent pass (Constitution III.11).
+    rubber stamp. Builds the scratch "golden" from the freshly-computed
+    trace ITSELF (not the currently-committed file on disk), so this test
+    stays a same-shape, self-consistent mutation-detection check regardless
+    of the committed golden's current column contract (Task 9/E3's widened
+    header, re-minted by the Task 11 ceremony) — a future header widening
+    would otherwise make every cell walk short-circuit on the
+    header-mismatch path before ever reaching the mutated cell.
+    Corrupts exactly one cell in the scratch copy and asserts
+    ``compare_dense_trace`` reports the mutation with the exact tick+column
+    it touched — never a silent pass (Constitution III.11). Never touches
+    the real committed golden file — everything scratch lives under
+    ``tmp_path``.
     """
     scenario_name = "two_node"
     scratch_dense_dir = tmp_path / "dense"
     scratch_dense_dir.mkdir()
-    committed_golden = DENSE_DIR / f"{scenario_name}.csv"
     scratch_golden = scratch_dense_dir / f"{scenario_name}.csv"
-    shutil.copy(committed_golden, scratch_golden)
+
+    expected_max_ticks = rt.load_baseline(BASELINE_DIR / f"{scenario_name}.json").max_ticks
+    _baseline, dense = rt.run_scenario_dense(scenario_name, max_ticks=expected_max_ticks)
+    scratch_golden.write_bytes(rt.dense_trace_to_csv_bytes(dense))
 
     with scratch_golden.open(newline="") as f:
         rows = list(csv.reader(f))
@@ -115,17 +144,108 @@ def test_compare_dense_trace_catches_a_synthetic_one_value_mutation(tmp_path: Pa
         writer = csv.writer(f, lineterminator="\n")
         writer.writerows(rows)
 
+    passed, report = rt.compare_dense_trace(dense, tmp_path)
+
+    assert not passed, "mutation was not detected — dense compare is a rubber stamp"
+    assert report is not None
+    assert report.tick == mutated_tick
+    assert report.column == mutated_column
+
+    # No "the real committed golden still compares clean" follow-up assertion
+    # here (removed, E3/Task 9): this test no longer reads the committed
+    # golden at all — the scratch copy is built from `dense` itself — so
+    # there is nothing on disk this test could corrupt. Asserting the real
+    # committed golden compares clean against a freshly-computed `dense`
+    # trace is exactly `test_dense_trace_regeneration_matches_committed_golden`'s
+    # job, which (post Task 11 ceremony) is a real assertion for every
+    # scenario including `two_node`.
+
+
+def test_appended_trailing_column_produces_a_loud_header_report(tmp_path: Path) -> None:
+    """A golden missing a trailing column (schema widening) fails loudly, not silently.
+
+    CRITICAL-1 regression: ``compare_dense_trace`` used to parse the fresh
+    CSV's header into a throwaway local and call ``attribute_divergence``
+    with only the golden's (shorter) header. Walking the fresh rows through
+    that shorter header meant every *shared* column still compared equal
+    (by construction here — the golden is the real trace with its last
+    column dropped, values otherwise identical), so ``attribute_divergence``
+    returned ``None`` even though the byte blobs already differ — a dense
+    FAIL that printed nothing and wrote no JSON entry
+    (``compare_all_baselines``'s ``if not dense_ok and dense_report is not
+    None`` guard silently no-ops on ``None``). This is exactly the shape
+    Task 9's dense-header widening (E3) would trigger. The fix compares
+    ``expected_header``/``actual_header`` before any cell walk and
+    short-circuits to a ``column="<header>"`` report.
+    """
+    scenario_name = "two_node"
     expected_max_ticks = rt.load_baseline(BASELINE_DIR / f"{scenario_name}.json").max_ticks
     _baseline, dense = rt.run_scenario_dense(scenario_name, max_ticks=expected_max_ticks)
 
-    passed, diagnostic = rt.compare_dense_trace(dense, tmp_path)
+    golden_trace = rt.DenseTrace(
+        scenario=scenario_name,
+        header=dense.header[:-1],
+        rows=[row[:-1] for row in dense.rows],
+    )
+    scratch_dense_dir = tmp_path / "dense"
+    scratch_dense_dir.mkdir()
+    (scratch_dense_dir / f"{scenario_name}.csv").write_bytes(
+        rt.dense_trace_to_csv_bytes(golden_trace)
+    )
 
-    assert not passed, "mutation was not detected — dense compare is a rubber stamp"
-    assert diagnostic is not None
-    assert f"tick {mutated_tick}" in diagnostic
-    assert mutated_column in diagnostic
+    passed, report = rt.compare_dense_trace(dense, tmp_path)
 
-    # And the real committed golden (never touched — only the tmp_path copy
-    # was mutated) still compares clean.
-    passed_real, _ = rt.compare_dense_trace(dense, BASELINE_DIR)
-    assert passed_real, "the committed golden must remain unaffected by this mutation test"
+    assert not passed, "a widened dense header must fail the gate"
+    assert report is not None, (
+        "silent FAIL reproduced: a schema-widened header with byte-identical "
+        "shared cells must still produce a loud attribution, never None"
+    )
+    assert report.column == "<header>"
+    assert report.channel == "<column set changed>"
+    assert report.tick == 0
+    assert report.magnitude is None
+    assert report.last_agreeing_tick is None
+    assert report.candidate_systems == ()
+    assert dense.header[-1] not in report.expected
+    assert dense.header[-1] in report.actual
+
+
+def test_inserted_mid_header_column_attributes_to_header_not_a_shifted_cell(
+    tmp_path: Path,
+) -> None:
+    """A column inserted mid-header is attributed to ``<header>``, not a shifted cell.
+
+    CRITICAL-1 regression: without a header check ahead of the cell walk, an
+    inserted column shifts every later index, and the old
+    golden-header-only walk would misattribute the resulting mismatch to
+    whichever unrelated, otherwise-unchanged column happened to land at the
+    first shifted index — at tick/row 0, actively misleading whoever reads
+    the attribution.
+    """
+    scenario_name = "two_node"
+    expected_max_ticks = rt.load_baseline(BASELINE_DIR / f"{scenario_name}.json").max_ticks
+    _baseline, dense = rt.run_scenario_dense(scenario_name, max_ticks=expected_max_ticks)
+
+    insert_at = 2  # mid-header: between the first two economy_* columns
+    golden_trace = rt.DenseTrace(
+        scenario=scenario_name,
+        header=dense.header[:insert_at] + ["inserted_col"] + dense.header[insert_at:],
+        rows=[row[:insert_at] + ["0.0"] + row[insert_at:] for row in dense.rows],
+    )
+    scratch_dense_dir = tmp_path / "dense"
+    scratch_dense_dir.mkdir()
+    (scratch_dense_dir / f"{scenario_name}.csv").write_bytes(
+        rt.dense_trace_to_csv_bytes(golden_trace)
+    )
+
+    passed, report = rt.compare_dense_trace(dense, tmp_path)
+
+    assert not passed
+    assert report is not None
+    assert report.column == "<header>", (
+        f"must attribute the header-shape change itself, not a shifted cell "
+        f"(got column={report.column!r})"
+    )
+    assert report.channel == "<column set changed>"
+    assert "inserted_col" in report.expected
+    assert "inserted_col" not in report.actual

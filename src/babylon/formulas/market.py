@@ -18,6 +18,8 @@ from __future__ import annotations
 import math
 
 __all__ = [
+    "calculate_anchor_pull",
+    "calculate_correction_severity",
     "calculate_correction_snap",
     "calculate_ema",
     "calculate_growth_drive",
@@ -106,26 +108,43 @@ def calculate_scissors_balance(log_ratio: float, *, scale: float) -> float:
 
 
 def calculate_serviceable_divergence(
-    profit_rate: float | None, *, base: float, slope: float
+    profit_rate: float | None,
+    *,
+    base: float,
+    slope: float,
+    interest_burden: float | None = None,
+    interest_slope: float = 0.0,
 ) -> float:
     """Log fictitious/real divergence the rate of profit can service (ADR078).
 
-    ``base + slope * max(profit_rate, 0)``: a healthy rate of profit carries a
-    larger claims structure; its FALL is what turns an existing bubble into an
-    unpayable one — Vol. III part 3 (the falling rate) meeting part 5
-    (fictitious capital). A loss-making economy still services the base (the
-    credit system's intrinsic tolerance is a floor, not a debt).
+    ``base + slope * max(profit_rate, 0) - interest_slope * max(interest_burden, 0)``,
+    floored at 0: a healthy rate of profit carries a larger claims
+    structure; its FALL is what turns an existing bubble into an unpayable
+    one — Vol. III part 3 (the falling rate) meeting part 5 (fictitious
+    capital). A financialised county's own interest burden (interest
+    payments relative to capital, U6) tightens the same threshold
+    independent of the profit rate — a second, orthogonal claim on the
+    credit system's tolerance. A loss-making, debt-free economy still
+    services the base (the credit system's intrinsic tolerance is a floor,
+    not a debt).
 
     :param profit_rate: Realized rate of profit, or ``None`` when no profit
-        observable exists this tick — the base alone is used (honest absence,
-        Constitution III.11; no rate is fabricated).
-    :param base: Serviceable log-divergence at zero profit (>= 0).
+        observable exists this tick — the base alone is used (honest
+        absence, Constitution III.11; no rate is fabricated).
+    :param base: Serviceable log-divergence at zero profit and zero
+        interest burden (>= 0).
     :param slope: Additional serviceable log-divergence per unit profit rate.
-    :returns: The serviceable log-divergence (>= base).
+    :param interest_burden: Interest-payments-to-capital ratio, or ``None``
+        when no territory carries the accounting pair — the term drops out
+        entirely (honest absence, III.11), matching pre-U6 behavior exactly.
+    :param interest_slope: Serviceable log-divergence LOST per unit
+        interest burden (a ``MarketDefines.correction_interest_slope``
+        coefficient).
+    :returns: The serviceable log-divergence, floored at 0.
     """
-    if profit_rate is None:
-        return base
-    return base + slope * max(profit_rate, 0.0)
+    profit_term = 0.0 if profit_rate is None else slope * max(profit_rate, 0.0)
+    interest_term = 0.0 if interest_burden is None else interest_slope * max(interest_burden, 0.0)
+    return max(base + profit_term - interest_term, 0.0)
 
 
 def calculate_overhang(fictitious_log: float, serviceable: float) -> float:
@@ -155,3 +174,54 @@ def calculate_correction_snap(
     :returns: ``(log_ratio * (1 - severity), min(velocity, 0.0))``.
     """
     return log_ratio * (1.0 - severity), min(velocity, 0.0)
+
+
+def calculate_correction_severity(
+    base_severity: float, *, debt_ratio: float | None, slope: float
+) -> float:
+    """Fraction of the fictitious log-ratio closed by one snap, debt-adjusted.
+
+    A debt spiral (U6: accumulated deficit relative to capital) makes the
+    violent re-identification of claims with real surplus MORE violent,
+    not less — the credit system has less slack to absorb a slow unwind.
+
+    :param base_severity: The ADR078 baseline (``MarketDefines.correction_severity``).
+    :param debt_ratio: Accumulated-debt-to-capital ratio, or ``None`` when
+        no territory carries the accounting pair — the base is used
+        unchanged (honest absence, III.11; bit-identical to pre-U6
+        behavior).
+    :param slope: Additional severity per unit debt ratio (a
+        ``MarketDefines.correction_debt_slope`` coefficient).
+    :returns: ``base_severity`` plus the debt term, clamped to ``[0, 1]``
+        (:class:`~babylon.models.market.MarketState` cannot express a
+        severity outside the unit interval).
+    """
+    if debt_ratio is None:
+        return base_severity
+    return min(max(base_severity + slope * max(debt_ratio, 0.0), 0.0), 1.0)
+
+
+def calculate_anchor_pull(anchor: float | None, current: float, *, gain: float) -> float:
+    """Drive term pulling the fictitious log-ratio toward its real-data anchor.
+
+    D1 (owner ruling, 2026-07-18): real FRED data seeds and anchors the
+    oscillator where it exists (2010-2024); past the data horizon the
+    oscillator's own dynamics ARE the money system. This term is the
+    "anchors" half: while a real ratio exists, it exerts a proportional
+    pull alongside the drive and reversion terms already in
+    :func:`calculate_scissors_step`.
+
+    :param anchor: The log-space target
+        (:func:`~babylon.domain.economics.monetary.anchor.fictitious_anchor`
+        output, already resolved from ``NoDataSentinel`` to ``None`` by the
+        caller), or ``None`` when no real financial data covers this tick —
+        the term is then exactly 0.0, leaving the endogenous dynamics
+        untouched (honest absence, Constitution III.11).
+    :param current: The oscillator's current ``fictitious_log``.
+    :param gain: ``MarketDefines.anchor_pull`` — the pull's strength.
+    :returns: ``gain * (anchor - current)``, or ``0.0`` when ``anchor`` is
+        ``None``.
+    """
+    if anchor is None:
+        return 0.0
+    return gain * (anchor - current)

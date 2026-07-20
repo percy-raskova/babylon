@@ -82,8 +82,17 @@ _EXPECTED_DEAD: dict[str, str] = {
     # financialization_share / claims_exceed_surplus and never this one, and
     # no county-state model_dump() occurs in the tick or persistence path.
     "distribution_epsilon": "U3 (publish the financial state to the graph)",
-    # No consumer of any kind in src/ — not even bound to a computed field.
-    "debt_spiral_threshold": "U5 (debt_spiral opposition)",
+    # U5.10 wired a LIVE consumer — ContradictionSystem._county_money_ratios
+    # reads services.defines.capital_vol3.debt_spiral_threshold directly as
+    # a GameDefines field access, bypassing this module's
+    # debt_spiral_threshold() accessor entirely. This row therefore stays
+    # correctly dead by THIS ledger's own narrow instrumentation (it only
+    # counts calls to the accessor function above, not direct field reads),
+    # but "No consumer of any kind in src/" is no longer true of the field
+    # itself — see capital_vol3.py's description and
+    # tests/unit/engine/systems/test_contradiction_money_inputs.py for the
+    # real consumer.
+    "debt_spiral_threshold": "U5 (debt_spiral opposition) — DONE via direct field access, not this accessor",
     # Both sit behind CounterTendencyStrength.net_counter_tendency, whose owner
     # counter_tendency_calculator is constructed in factory.py and injected in
     # services.py but never called anywhere in src/.

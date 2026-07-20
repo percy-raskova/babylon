@@ -93,3 +93,26 @@ class TestCorrectionLedger:
                 tick=0,
                 corrections=-1,
             )
+
+
+class TestU6Coefficients:
+    """U6: the scissors-loop-closing coefficients (interest burden, debt
+    spiral, and the D1 monetary anchor pull)."""
+
+    def test_defaults(self) -> None:
+        d = MarketDefines()
+        assert d.correction_interest_slope == 2.0
+        assert d.correction_debt_slope == 0.5
+        assert d.anchor_pull == 0.1
+
+    def test_anchor_pull_bounded_to_unit_interval(self) -> None:
+        with pytest.raises(ValidationError):
+            MarketDefines(anchor_pull=1.5)
+
+    def test_correction_interest_slope_rejects_negative(self) -> None:
+        with pytest.raises(ValidationError):
+            MarketDefines(correction_interest_slope=-1.0)
+
+    def test_correction_debt_slope_rejects_negative(self) -> None:
+        with pytest.raises(ValidationError):
+            MarketDefines(correction_debt_slope=-1.0)

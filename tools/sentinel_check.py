@@ -18,11 +18,15 @@ import argparse
 import sys
 from collections.abc import Callable
 
+from babylon.sentinels.aggregation.checks import main as aggregation_intensive_main
+from babylon.sentinels.coupling.checks import main as coupling_main
 from babylon.sentinels.coverage.checks import main as coverage_main
 from babylon.sentinels.dangling.checks import main as dangling_main
 from babylon.sentinels.inert.checks import main as inert_main
+from babylon.sentinels.liveness.checks import main as liveness_main
 from babylon.sentinels.masked_arithmetic.checks import main as masked_arithmetic_main
 from babylon.sentinels.seam.checks import main as seam_main
+from babylon.sentinels.surface.checks import main as surface_main
 from babylon.sentinels.synthetic.checks import main as synthetic_main
 from babylon.sentinels.unconsumed.checks import main as unconsumed_main
 from babylon.sentinels.vocabulary.checks import main as vocabulary_main
@@ -47,6 +51,11 @@ def _aggregation_main(argv: list[str] | None) -> int:
     beside this file in ``tools/`` (``aggregation_symmetry_probe.py``) and
     loads only when selected — the same split ``_partition_main`` uses for
     the engine.
+
+    Not to be confused with ``aggregation-intensive`` (the static
+    intensive-means scanner from the Vol III sentinel program, ADR088):
+    two sub-sensors, one package, split keys because the symmetry probe is a
+    CI gate while the intensive scanner is advisory/local by owner ruling.
     """
     from aggregation_symmetry_probe import (
         main as aggregation_main,  # type: ignore[import-not-found]
@@ -93,7 +102,11 @@ _SENSORS: dict[str, Callable[[list[str] | None], int]] = {
     "unconsumed": unconsumed_main,
     "masked_arithmetic": masked_arithmetic_main,
     "aggregation": _aggregation_main,
+    "aggregation-intensive": aggregation_intensive_main,
     "fog": _fog_main,
+    "liveness": liveness_main,
+    "coupling": coupling_main,
+    "surface": surface_main,
 }
 
 

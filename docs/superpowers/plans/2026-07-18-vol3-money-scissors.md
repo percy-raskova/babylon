@@ -2,9 +2,9 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Connect the fully-built-but-disconnected Volume III financial estate (`domain/economics/{distribution,credit,rent,counter_tendencies,financial_crisis,monetary}`) to the running engine, so real FRED-grounded claims on surplus value anchor and close the price⟷value scissors loop, bind four new dialectical oppositions, and ship the five sentinel classes this investigation discovered.
+**Goal:** Connect the fully-built-but-disconnected Volume III financial estate (`domain/economics/{distribution,credit,rent,counter_tendencies,financial_crisis,monetary}`) to the running engine, so the surplus-value ledger closes with an **endogenous** national interest rate (Capital Vol. III Part V; FRED demoted to calibration, U9) and the price⟷value scissors loop closes, bind four new dialectical oppositions, and ship the six sentinel classes this investigation discovered (the sixth — public-surface baseline blindness, U7.11 — added by owner ruling 2026-07-19).
 
-**Architecture:** Five layers stack onto the existing engine without new primitives — Layer 1 (Ledger of Claims, `s = p + i + r + t`) is turned on via `calculator_overrides`; Layer 1b publishes `NationalFinancialParameters` to the graph under a new key so CONSEQUENCE-phase Systems can read it in the same tick; Layer 2 is a pure `domain/` monetary anchor with an honest-absence contract (`NoDataSentinel`, never a fabricated zero); Layer 3 grows the opposition catalog 6 → 10 and gives `CouplingGraph` its first production consumer; Layer 4 closes the scissors loop by tightening `serviceable_divergence` with the real interest burden and pulling the fictitious oscillator toward the anchor where data exists. Past 2024 the oscillator's own dynamics *are* the money system (owner decision D1) — absence is the tested default, covering ~85% of a campaign.
+**Architecture:** Five layers stack onto the existing engine without new primitives — Layer 1 (Ledger of Claims, `s = p + i + r + t`) is turned on via `calculator_overrides`; Layer 1b publishes `NationalFinancialParameters` to the graph under a new key so CONSEQUENCE-phase Systems can read it in the same tick; Layer 2 is a pure `domain/` monetary anchor with an honest-absence contract (`NoDataSentinel`, never a fabricated zero); Layer 3 grows the opposition catalog 6 → 10 and gives `CouplingGraph` its first production consumer; Layer 4 closes the scissors loop by tightening `serviceable_divergence` with the real interest burden and pulling the fictitious oscillator toward the anchor where data exists. Past 2024 the oscillator's own dynamics *are* the money system (owner decision D1) — absence is the tested default, covering ~85% of a campaign. The national **interest rate**, by contrast, is endogenous and total from tick 0 (U9): it has no absent state — Marx recognises no natural rate to fall back to (ch. 22).
 
 **Tech Stack:** Python 3.11+, Poetry, Mise, Pydantic (frozen models), rustworkx (`BabylonGraph`), pytest + Hypothesis (property laws), Ruff/MyPy strict, PostgreSQL runtime + SQLite reference DB, FRED/Z.1 federal data adapters.
 
@@ -39,8 +39,8 @@ Binding interface contract — the authoritative names, verbatim:
 - FRED fixture (U1): `tests/fixtures/vol3_fred_series.json`, shape `{"<SERIES_ID>": {"<year>": <float>}}`, **ten** series.
 - New `MarketDefines` fields (U6): `anchor_pull`, `correction_interest_slope`, `correction_debt_slope`.
 - New opposition keys (U5), all `antagonistic=False`: `"surplus_distribution"` (enterprise/rentier, county), `"debt_spiral"` (solvent/indebted, county), `"credit"` (accommodation/fragility, `""`), `"financial"` (real/fictitious, `""`).
-- New sentinel packages (U7): `sentinels/{liveness,aggregation,coupling}/`; gate-blindness extends `sentinels/coverage/`.
-- ADR numbers: **U7.10 = ADR082**, **U8.6 = ADR083** (verified: highest existing is ADR081).
+- New sentinel packages (U7): `sentinels/{liveness,aggregation,coupling}/`; gate-blindness extends `sentinels/coverage/`; `sentinels/surface/` (U7.11 — the sixth class, public-surface baseline blindness).
+- ADR numbers: **U7.10 = ADR088**, **U8.6 = ADR089** (verified: highest existing is ADR081).
 
 ---
 
@@ -65,12 +65,13 @@ Binding interface contract — the authoritative names, verbatim:
 ### `src/babylon/domain/economics/`
 | File | Unit | Responsibility |
 |---|---|---|
-| `tick/graph_bridge.py` | U1.5, U3.1 | Repoints `tick_ground_rent` at Path A; adds `NATIONAL_FINANCIAL_ATTR` write/read |
-| `tick/system/__init__.py` | U2.1, U2.4, ~~U2.5~~, U3.2, U3.4 | Year-ceiling fix; magic numbers → defines; `credit_spread` = BAA spread (**already landed** in `aedce819` — U2.5 is complete by supersession); publishes + builds the national financial state |
-| `tick/types.py` | U2.1 | `NationalTickParameters` loses the `le=2040` ceiling (the live MELT-path crash) |
+| `tick/graph_bridge.py` | U1.5, U3.1, U9.5 | Repoints `tick_ground_rent` at Path A; adds `NATIONAL_FINANCIAL_ATTR` write/read; U9.5 adds the `r`/`s_r` interest observables |
+| `tick/system/__init__.py` | U2.1, U2.4, ~~U2.5~~, U3.2, U3.4, U9.7, U9.8 | Year-ceiling fix; magic numbers → defines; `credit_spread` = BAA spread (**already landed** in `aedce819` — U2.5 is complete by supersession); publishes + builds the national financial state; U9.7/U9.8 replace the FRED interest read with the endogenous rate (4-tuple → 3-tuple) |
+| `tick/types.py` | U2.1, U9.6 | `NationalTickParameters` loses the `le=2040` ceiling (the live MELT-path crash); U9.6 adds `NationalFinancialParameters.endogenous_interest` |
 | `tensor.py` | U2.2 | Adds `MODELED_YEAR_FLOOR`/`CEILING` + `year_within_modeled_range` |
 | `credit/interest.py`, `credit/fictitious_capital.py` | U2.2 | Year-window overruns degrade to `NoDataSentinel` instead of raising |
-| `credit/types.py` | U2.3 | `STAGNATION_CREDIT_GROWTH` becomes the defines-backed accessor `stagnation_credit_growth()` (was a `Final` off a bare `GameDefines()`) |
+| `credit/types.py` | U2.3, U9.1 | `STAGNATION_CREDIT_GROWTH` becomes the defines-backed accessor `stagnation_credit_growth()` (was a `Final` off a bare `GameDefines()`); U9.1 appends `EndogenousInterestRate` with the `0 ≤ i < r` construction invariant |
+| `credit/endogenous_interest.py` *(create)* | U9.3, U9.4 | `endogenous_interest_rate` (bounded share of the average profit rate) + `loan_market_tightness` — pure, engine-free |
 | `distribution/calculator.py` | U2.2 | Same year-window guard |
 | `distribution/types.py` | U2.2, U2.3 | Year guard; `DEBT_SPIRAL_THRESHOLD`/`DISTRIBUTION_EPSILON` become defines-backed accessors |
 | `counter_tendencies/types.py` | U2.3 | `COUNTER_TENDENCY_WEIGHTS`/`IMPERIAL_RENT_REFERENCE_SCALE` become defines-backed accessors |
@@ -90,10 +91,10 @@ Binding interface contract — the authoritative names, verbatim:
 ### `src/babylon/config/defines/`
 | File | Unit | Responsibility |
 |---|---|---|
-| `capital_vol3.py` *(create)* | U2.3 | `CapitalVolumeIIIDefines` — the Volume III coefficient home |
+| `capital_vol3.py` *(create)* | U2.3, U9.2 | `CapitalVolumeIIIDefines` — the Volume III coefficient home; U9.2 adds the four `interest_*` coefficients |
 | `_assembler.py`, `__init__.py` | U2.3 | Register + export the new category |
 | `market.py` | U6.5 | `anchor_pull`, `correction_interest_slope`, `correction_debt_slope` |
-| `src/babylon/data/defines.yaml` | U2.3, U5.6, U6.5 | **Regenerated, never hand-edited** — the canonical moddable source of truth |
+| `src/babylon/data/defines.yaml` | U2.3, U5.6, U6.5, U9.2 | **Regenerated, never hand-edited** — the canonical moddable source of truth |
 
 ### `src/babylon/engine/` and `src/babylon/kernel/`
 | File | Unit | Responsibility |
@@ -109,12 +110,13 @@ Binding interface contract — the authoritative names, verbatim:
 | File | Unit | Responsibility |
 |---|---|---|
 | `report.py` *(create)* | U7.1 | The five-fact agent-legible finding formatter (class, symbol, file:line, problem, remedy) |
-| `_ast.py` | U7.2 | Shared AST readers: `returned_dict_keys`, `referenced_names`, `unweighted_mean_sites` |
+| `_ast.py` | U7.2, U7.11 | Shared AST readers: `returned_dict_keys`, `referenced_names`, `unweighted_mean_sites`; U7.11 adds `frozenset_str_members` |
 | `seam/registry.py` | U1.5 | Ground-rent row corrected off `NOT_YET_COMPUTED` |
 | `liveness/{__init__,registry,checks}.py` *(create)* | U7.3–U7.5 | correct-but-inert + computed-but-never-consumed |
 | `aggregation/{__init__,registry,checks}.py` *(create)* | U7.6 | intensive-aggregation (AST) |
 | `coupling/{__init__,registry,checks}.py` *(create)* | U7.7–U7.8 | undeclared-coupling, both directions |
 | `coverage/{registry,checks}.py` | U7.9 | gate-blindness — `GateEstate` + `check_gate_estate_coverage` |
+| `surface/{__init__,registry,checks}.py` *(create)* | U7.11 | public-surface baseline blindness — `check_pinned_surfaces` (the sixth class, a real gate) |
 
 ### `web/`
 | File | Unit | Responsibility |
@@ -124,10 +126,11 @@ Binding interface contract — the authoritative names, verbatim:
 ### Governance, docs, baselines
 | File | Unit | Responsibility |
 |---|---|---|
-| `.mise.toml` | U7.5, U7.6, U7.8 | `check:liveness`, `check:aggregation`, `check:coupling` — advisory, local-only, never CI |
-| `docs/reference/sentinel-error-classes.rst` *(create)* | U7.10 | The five classes, each with its sensor and its remedy |
-| `ai/decisions/ADR082_sentinel_error_classes.yaml` *(create)* | U7.10 | The sentinel-family decision |
-| `ai/decisions/ADR083_vol3_money_scissors.yaml` *(create)* | U8.6 | The Vol III decision |
+| `.mise.toml` | U7.5, U7.6, U7.8 | `check:liveness`, `check:aggregation-intensive`, `check:coupling` — advisory, local-only, never CI |
+| `.mise.toml` + `.github/workflows/{ci,main}.yml` | U7.11 | `check:surface` — a real gate folded into `[tasks.check]` + CI (owner ruling 2026-07-19) |
+| `docs/reference/sentinel-error-classes.rst` *(create)* | U7.10 | The six classes, each with its sensor and its remedy |
+| `ai/decisions/ADR088_sentinel_error_classes.yaml` *(create)* | U7.10 | The sentinel-family decision |
+| `ai/decisions/ADR089_vol3_money_scissors.yaml` *(create)* | U8.6 | The Vol III decision |
 | `ai/decisions/index.yaml`, `ai/state.yaml` | U7.10, U8.6 | Catalog + truth-status records |
 | `reports/vol3-baseline-delta.md` *(create)* | U4.8, U5.9, U8.3–U8.5 | Verification-evidence table, per-scenario delta analysis, **Owner Approval Gate** |
 | `tests/baselines/{imperial_circuit,two_node,starvation,glut,fascist_bifurcation}.json` + `dense/*.csv` | U8.5 | Regenerated in the ceremony commit — **only after owner approval** |
@@ -151,7 +154,7 @@ U1 → U2 → U3 → U4 → U5 → U6 → U7 → U8
 Hard constraints, each with the reason it cannot be relaxed:
 
 1. **U2 before every long run.** U2.1 removes `le=2040` from `NationalTickParameters`, which sits on the already-live MELT path. Year 2041 arrives at tick ≈1612 of a 5200-tick campaign. U1's only scenario run is `max_ticks=1`, so U1 → U2 is safe; nothing after U2 may run long without it.
-2. **U2 before U3.** U3.2 rewrites the same method U2.5 was written to fix. **U2.5 is already complete by supersession** — commit `aedce819` (a review-fix pass carried out during U2.3) closed the same `credit_spread`/effective-rate conflation, and closed it better. See the supersession note at the head of Task U2.5; do **not** apply U2.5's original brief. The contract U3.2 must preserve is the **4-tuple** `(national_rate, national_spread, fictitious, interest_unavailable_reason)` typed `tuple[float | None, float | None, FictitiousCapitalStock | None, str | None]` — *not* the non-Optional 3-tuple this plan originally specified. The `| None` types are Constitution III.11 honest absence and are load-bearing: U3 must not revert them to fabricated `0.0`s.
+2. **U2 before U3.** U3.2 rewrites the same method U2.5 was written to fix. **U2.5 is already complete by supersession** — commit `aedce819` (a review-fix pass carried out during U2.3) closed the same `credit_spread`/effective-rate conflation, and closed it better. See the supersession note at the head of Task U2.5; do **not** apply U2.5's original brief. The contract U3.2 must preserve is the **4-tuple** `(national_rate, national_spread, fictitious, interest_unavailable_reason)` typed `tuple[float | None, float | None, FictitiousCapitalStock | None, str | None]` — *not* the non-Optional 3-tuple this plan originally specified. The `| None` types are Constitution III.11 honest absence and are load-bearing: U3 must not revert them to fabricated `0.0`s. **Superseded downstream by U9:** this 4-tuple is U3-era; U9 tightens it to the 3-tuple `tuple[float, float, FictitiousCapitalStock | None]` and removes the `| None`s on the rate/spread. U3.2 still lands the 4-tuple; U9.7/U9.8 migrate it.
 3. **U3 before U6, not before U4.** U4's anchors are pure functions of an already-resolved `FictitiousCapitalStock` object; they never read `NATIONAL_FINANCIAL_ATTR`. The real U3 consumer is U6.8's `_read_fictitious_anchor`.
 4. **U4 before U6.** U6.8 imports `fictitious_anchor`; U6.6 imports `serviceability_anchor`.
 5. **U5 before U7.** U7.7's `MEASUREMENT_DEPENDENCIES` declares oppositions U5.2 binds and reads fields U5.7 produces.
@@ -174,7 +177,7 @@ Before Task U1.1, confirm the following in `/home/user/projects/game/babylon-vol
 
 1. **Worktree + branch** — `git branch --show-current` returns `refactor/vol3-money-scissors`. ✅ verified at plan-authoring time.
 2. **`data/` symlink farm** — already linked: `data -> /home/user/projects/game/babylon/data`. ✅ verified. U1.1 is therefore a *verification* task, not a repair task; if `ls -la data` shows a live symlink, record that and move on. `mise run doctor` step 3b is the canonical check. U1.2's fixture export reads the reference DB through this link — it is a hard prerequisite for U1.2 and for nothing else.
-3. **ADR numbering** — `ls ai/decisions/ | grep -oE 'ADR[0-9]+' | sort -u | tail -1` returns `ADR081`. ✅ verified. U7.10 claims **ADR082**, U8.6 claims **ADR083**. If other work has landed on `dev` since, trust the command's output over these numbers and shift both, preserving the U7-before-U8 ordering.
+3. **ADR numbering** — `ls ai/decisions/ | grep -oE 'ADR[0-9]+' | sort -u | tail -1` returns `ADR081`. ✅ verified. U7.10 claims **ADR088**, U8.6 claims **ADR089**. If other work has landed on `dev` since, trust the command's output over these numbers and shift both, preserving the U7-before-U8 ordering.
 4. **Editable-venv shadow** — worktrees share the main checkout's editable install. Prefix ad-hoc `python -c` invocations with `PYTHONPATH="$PWD/src"` so you are exercising *this* worktree's source, not `babylon/`'s.
 5. **Sentinel package layout** — `src/babylon/sentinels/` currently contains `_ast.py`, `base.py`, `conservation/`, `coverage/`, `dynamic.py`, `partition/`, `roundtrip/`, `seam/`, `synthetic/`. ✅ verified. `liveness/`, `aggregation/`, `coupling/` do not exist and are created by U7.
 6. **Resource discipline** — run heavy commands uncapped (earlyoom is the backstop), but **never fan out parallel agents that each spawn pytest**. Scoped `mise run test:q` only.
@@ -196,7 +199,7 @@ corrections applied (a real injected-defect red phase, and the commit trailer).
 ## Self-Review Record
 
 
-**What was reconciled across auditors.** Four blockers were found independently by three or four auditors each, which is strong evidence they are real rather than artifacts of one reviewer's model: the `_compute_national_financial_state` signature clash (all four), the missing `credit_state` producer (three), the catalog-docstring double-edit (three), and the ADR082 collision (three). All four are resolved above with a named authoritative unit and exact replacements.
+**What was reconciled across auditors.** Four blockers were found independently by three or four auditors each, which is strong evidence they are real rather than artifacts of one reviewer's model: the `_compute_national_financial_state` signature clash (all four), the missing `credit_state` producer (three), the catalog-docstring double-edit (three), and the ADR088 collision (three). All four are resolved above with a named authoritative unit and exact replacements.
 
 > **Reality correction, 2026-07-18 (post-`aedce819`).** The `_compute_national_financial_state`
 > signature clash was resolved *by the code* before the plan's own resolution could be executed: a
@@ -2477,17 +2480,19 @@ Expected: FAIL — `ImportError: cannot import name 'MODELED_YEAR_FLOOR'` (test_
 MODELED_YEAR_FLOOR: Final[int] = 2007
 """Lower bound of Volume III's modeled financial-data year window.
 
-Traceability: the FRED/Z.1 series backing Volume III (interest rates,
-credit aggregates, fictitious capital, surplus distribution) have no
-meaningful coverage before 2007.
+Traceability: the FRED/Z.1 series backing Volume III (credit aggregates,
+fictitious capital, surplus distribution — the interest rate is endogenous
+post-U9 and reads no FRED at runtime) have no meaningful coverage before
+2007.
 """
 
 MODELED_YEAR_CEILING: Final[int] = 2040
 """Upper bound of Volume III's modeled financial-data year window.
 
-Volume III structured models (interest rates, credit cycle, fictitious
-capital, surplus distribution, debt accumulation) represent real FRED/Z.1
-data (2010-2024) extrapolated to this administratively-chosen horizon
+Volume III structured models (credit cycle, fictitious capital, surplus
+distribution, debt accumulation — the interest rate is endogenous post-U9
+and reads no FRED at runtime) represent real FRED/Z.1 data (2010-2024)
+extrapolated to this administratively-chosen horizon
 (spec 2026-07-18 vol3-money-scissors-design, D1). Years outside this
 window are honestly absent (:class:`NoDataSentinel`) rather than
 fabricated — the endogenous price/fictitious scissors
@@ -4013,6 +4018,13 @@ Co-Authored-By: Claude Opus 4.8 (1M context) <noreply@anthropic.com>"
 > **Downstream:** U3.2 rewrites this same method and has been corrected to build on the live
 > 4-tuple. U3.4 inserts a helper before it and consumes only its `interest_state` local, so it is
 > unaffected by the arity.
+>
+> **Further superseded by U9:** the 4-tuple `(national_rate, national_spread,
+> fictitious, interest_unavailable_reason)` becomes the 3-tuple
+> `(national_rate: float, national_spread: float, fictitious | None)`; `national_rate`
+> is `InterestRateState.effective_rate` **no longer** — it is the endogenous
+> `EndogenousInterestRate.rate`; `national_spread` is the endogenous fragility
+> premium, not BAA10Y; `interest_unavailable_reason` is removed.
 
 **Files:** *(historical — superseded, do not apply)*
 - Modify: `src/babylon/domain/economics/tick/system/__init__.py:1366,1375-1412,1414-1422,1480-1524`
@@ -6620,7 +6632,10 @@ class TestVolumeThreeInputFields:
 
     Absence is the normal steady state for ~85% of a campaign (the FRED
     series terminate at 2024), so ``None`` must be the DEFAULT, never a
-    fabricated 0.0 (Constitution III.11).
+    fabricated 0.0 (Constitution III.11). Post-U9: ``credit_fragility`` =
+    ``default_rate`` x the **endogenous** fragility premium, present
+    whenever a profit rate is; the other three measures keep their
+    FRED-absent steady state.
     """
 
     def test_all_four_default_to_none(self) -> None:
@@ -9067,6 +9082,11 @@ Co-Authored-By: Claude Opus 4.8 (1M context) <noreply@anthropic.com>"
 - Produces: `_mean_ratio_to_capital(graph, numerator_attr) -> float | None` — a new module-level helper reused unchanged by Task U6.7 for the debt term.
 - Produces: `_national_serviceability(graph) -> float | None` — the production consumer of `serviceability_anchor`. `_mean_ratio_to_capital(graph, numerator_attr)` is RETAINED and reused by U6.7 for `tick_accumulated_debt`.
 
+> **Note (post-U9):** with the endogenous rate always present, the surplus
+> distribution — and hence this interest-burden term — fires far more often;
+> the U8.3 delta report must attribute the resulting baseline movement to
+> U9, not U6.
+
 - [ ] **Step 1: Write the failing test**
 
 First add the new imports to `tests/unit/engine/systems/test_market_system.py`, directly below the existing `from babylon.config.defines import GameDefines, MarketDefines` line and above `from babylon.engine.context import TickContext` (`babylon.config` < `babylon.domain` < `babylon.engine`; Ruff's isort will confirm):
@@ -9710,6 +9730,1580 @@ Co-Authored-By: Claude Opus 4.8 (1M context) <noreply@anthropic.com>"
 
 ---
 
+## Unit U9 — Endogenous interest rate (Capital Vol. III Part V) — owner ruling 2026-07-19
+
+### §1. Design — the endogenous interest mechanic
+
+### §1.1 Theory grounding (Aleksandrov Test: every construct traces to a cited material relation)
+
+All quotations verbatim from the Marxists.org mirror of *Capital* Vol. III, Part V
+("Division of Profit into Interest and Profit of Enterprise. Interest-Bearing
+Capital"). Local copies present in this environment: `ch24.htm`, `ch25.htm`
+(`/media/user/data/old-hdd/old-hdd/www.marxists.org/archive/marx/works/1894-c3/`).
+`ch22.htm`/`ch23.htm` are absent from the local partial mirror and were quoted from
+the same source online; the two load-bearing claims that ground the *shape* of the
+formula (interest = a portion of profit; the crisis cycle) are quoted from the
+**locally-present** `ch24`/`ch25`.
+
+**(a) There is no natural rate of interest — the division of profit into interest
+and profit-of-enterprise is purely empirical (competition, not a law).** — Ch. 22
+("Division of Profit. Rate of Interest. Natural Rate of Interest"):
+
+> "There is no such thing as a 'natural' rate of interest."
+
+> "Wherever it is competition as such which determines anything, the determination
+> is accidental, purely empirical, and only pedantry or fantasy would seek to
+> represent this accident as a necessity."
+
+*Design consequence:* we do **not** read a rate off a curve. The rate has no
+natural level to look up; it must be *computed* from the material magnitudes that
+competition works on. The "empirical" baseline division is therefore a **moddable
+`GameDefines` coefficient** (`interest_profit_share_base`), never a hardcoded law
+(III.1). This is the deepest reason the owner ruling is theory-correct, not merely
+convenient: an absent-rate fallback presupposes a natural rate exists to be
+missing; Marx denies there is one.
+
+**(b) Interest is only a share of the profit; its maximum is the profit itself
+(profit-of-enterprise → 0), its minimum is indeterminable (→ any low).** — Ch. 24
+("Externalisation of the Relations of Capital…", present locally):
+
+> "While interest is only a portion of the profit, i.e., of the surplus-value,
+> which the functioning capitalist squeezes out of the labourer, it appears now, on
+> the contrary, as though interest were the typical product of capital…"
+
+Ch. 23 ("Interest and Profit of Enterprise"):
+
+> "Interest … appears originally, is originally, and remains in fact merely a
+> portion of the profit, i.e., of the surplus-value."
+
+Ch. 22, on the limits:
+
+> "the maximum limit of interest is the profit itself, in which case the portion
+> pocketed by the productive capitalist would = 0."
+
+> "The minimum limit of interest is altogether indeterminable. It may fall to any
+> low."
+
+*Design consequence:* the interest **rate** `i` is bounded by the economy-wide
+**average rate of profit** `r`: `0 ≤ i < r`. Equality `i = r` is the theoretical
+crisis maximum (profit-of-enterprise = 0); the sim reserves a strict ε so the
+profit-of-enterprise residual of the surplus identity `s = p + i + r_rent + t`
+stays positive as the normal case, i.e. `i ≤ r·ceiling < r`. When `r ≤ 0` there is
+no profit to divide, so `i = 0` **by construction** — not a fabricated positive
+floor (this is exactly the "no natural rate to fall back on" discipline).
+
+**(c) The rate is set by the supply of, and demand for, loanable money-capital —
+competition between money-capitalists and functioning capitalists.** — Ch. 22:
+
+> "in the money-market all loanable capital continually faces functioning capital
+> as an aggregate mass, so that the relation between the supply of loanable capital
+> on one side, and the demand for it on the other, decides the market level of
+> interest at any given time."
+
+Ch. 23:
+
+> "it is only the competition between these two kinds of capitalists which creates
+> the rate of interest."
+
+Ch. 25 ("Credit and Fictitious Capital", present locally), on the *supply* side —
+idle money-capital aggregating into a lendable mass:
+
+> "money savings and the temporarily idle money of all classes were deposited with
+> them. Small amounts, each in itself incapable of acting in the capacity of
+> money-capital, merge together into large masses and thus form a money power."
+
+*Design consequence:* where `i` sits **within** `[0, r)` is set by a **loan-market
+tightness** `τ ∈ [0,1]` — an explicit *demand − supply* balance of loanable
+money-capital. Base U9 fills the **demand** side from a material, always-present
+crisis observable (the reserve-army surge — the material signature of the
+overproduction crisis that ignites the scramble for means of payment); the
+**supply** side (idle money-capital) has no distinct graph quantity yet and is
+**explicitly deferred** with its creating task and material source named (§1.5).
+
+**(d) The cyclical movement: interest is low in prosperity, rises at the peak,
+SPIKES in the crisis, collapses in the ensuing stagnation.** — Ch. 25 (Engels'
+empirical illustration of 1844–47, present locally):
+
+> "The bank discount rate stood low: 1¾ to 2¾% in 1844, less than 3% until October
+> 1845, rising to 5% for a while (February 1846), then dropping again to 3.25% in
+> December 1846."
+
+> "The banking discount rate, still 3 to 3.5% in January 1847, rose to 7% in April,
+> when the first panic broke out… The official minimum bank discount rose in
+> October to 7 and in November to 10%; i.e., the overwhelming mass of bills of
+> exchange was discountable only at outrageous rates of interest, or no longer
+> discountable at all."
+
+> "the banking discount dropped to 5% in December" [after the crisis broke].
+
+*Design consequence:* the crisis term is what drives `τ → 1` (rate → its `r`
+ceiling — "no longer discountable at all"). Note the empirical numbers (1.75% calm
+→ 10% crisis peak → 5% after) are the *shape* the mechanic reproduces in units of
+the profit rate, not absolute percentages: **this is exactly the precedent the
+`credit_fragility_threshold = 1.0e-3` calibration set** — a FRED time-series peak
+(BAA10Y = 5.56% in Dec-2008) frozen into a `GameDefines` coefficient
+(`capital_vol3.credit_fragility_threshold`), not read live at runtime. U9 extends
+that precedent from the *fragility threshold* to the *rate itself*.
+
+### §1.2 The formula, every term defined and its material source named
+
+Let the annual economics step (inside `TickDynamicsSystem._compute_national_financial_state`)
+have access to the shared graph. Define:
+
+**Economy-wide average rate of profit `r`** — the interest ceiling. Marx's general
+rate of profit = *total surplus / total capital*, so this is a **capital-weighted**
+mean, never an unweighted mean of an intensive ratio (that is the
+intensive-aggregation defect class the U7.6 sensor catches, and MEMORY
+`intensive-aggregation-variance-error`):
+
+```
+r  =  Σ_t ( K_t · ρ_t )  /  Σ_t K_t          over active territory nodes t
+```
+- `ρ_t` = territory attribute `tick_profit_rate` (stamped by `graph_bridge` from
+  `rates.profit_rate` — a real, verified attribute).
+- `K_t` = territory attribute `tick_capital_stock` (stamped by `graph_bridge` from
+  `county.capital_stock` — a real, verified attribute).
+- Iterate territories in **sorted id order** (III.7). If **no** active territory
+  carries `tick_profit_rate`, `r` is `None` (degenerate — §1.4).
+
+**Loan-market tightness `τ ∈ [0,1]`** — the demand/supply balance that positions
+`i` inside `[0, r)` (ch. 22 "supply … and … demand … decides the market level of
+interest"):
+
+```
+τ  =  clamp( g_r · s_r  −  S , 0 , 1 )
+```
+- `s_r ∈ [0,1]` — the **reserve-army downturn signal** (the DEMAND proxy: the
+  scramble for means of payment as overproduction throws labour out and sales
+  fail). `ρ̄ = Σ_t(K_t·reserve_ratio_t)/Σ_t K_t` (capital-weighted mean of the
+  persisted, always-present `reserve_ratio` node attribute, sorted-id), then:
+  ```
+  s_r  =  clamp( (ρ̄ − ρ_ref) / (1 − ρ_ref) , 0 , 1 )
+  ```
+  `ρ_ref` = `interest_reserve_reference` (defines). Below the reference there is no
+  liquidity-demand pressure (`s_r = 0`); at full unemployment `s_r = 1`.
+- `g_r` = `interest_reserve_demand_gain` (defines) — demand-side sensitivity.
+- `S` — the **supply of idle money-capital** (ch. 25 "temporarily idle money of all
+  classes … merge together into large masses"). **No such quantity exists on the
+  graph.** Base U9 sets `S = 0` (no measured idle-capital slack — the honest value,
+  neither raising nor lowering `τ`). Its creation is a **named follow-on** (§1.5),
+  not silently faked.
+
+**Interest share of profit `share(τ) ∈ (0,1)`** — the "purely empirical" division
+(ch. 22), calm baseline lifted toward the crisis maximum:
+
+```
+share(τ)  =  base  +  (ceiling − base) · τ ,      0 < base < ceiling < 1
+```
+- `base`    = `interest_profit_share_base`    (calm interest share of profit).
+- `ceiling` = `interest_profit_share_ceiling` (crisis-maximum share, strictly < 1
+  so profit-of-enterprise stays positive; ch. 22's absolute max `i = r` is
+  approached, never reached).
+
+**National interest rate `i` and endogenous spread (fragility premium):**
+
+```
+i               =  0.0            if r is None or r ≤ 0        (degenerate)
+                =  r · share(τ)   otherwise
+fragility_premium (national_spread)
+                =  0.0            if r is None or r ≤ 0
+                =  r · (ceiling − base) · τ                    (= i − r·base ≥ 0)
+```
+
+`national_spread` **is** the endogenous fragility premium — the amount by which
+loan-market tightness lifts the rate above its calm level `r·base`. It replaces the
+BAA10Y runtime read entirely and is fed, unchanged, to the crisis assessor's
+`credit_spread` parameter (see §1.6 scale check).
+
+**Bound proof (a behavioral contract, encoded as a model validator, §U9.1):** for
+`r > 0`, `0 < base ≤ share ≤ ceiling < 1`, hence `0 < i = r·share < r`. For
+`r ≤ 0`, `i = 0`. Therefore `0 ≤ i < r` for `r > 0`, and `i = 0` exactly when
+`r ≤ 0`. This satisfies the ruling's `0 ≤ i < r` with the theory-derived
+degenerate behaviour, and is **provable statically from the closed form** (no RNG,
+monotone in `τ`, `τ` clamped to `[0,1]`).
+
+```mermaid
+flowchart LR
+  subgraph MB["Material Base (this tick)"]
+    K["tick_capital_stock (territory)"]
+    RHO["tick_profit_rate (territory)"]
+    RA["reserve_ratio (territory)"]
+  end
+  K --> R["r = Σ K·ρ / Σ K  (avg rate of profit, ceiling)"]
+  RHO --> R
+  RA --> SR["s_r = downturn signal (demand)"]
+  SR --> TAU["τ = clamp(g_r·s_r − S, 0, 1)   [S=0 deferred]"]
+  R --> I["i = r · (base + (ceiling−base)·τ)"]
+  TAU --> I
+  I --> EIR["EndogenousInterestRate {rate, fragility_premium, τ}"]
+  EIR --> NFP["NationalFinancialParameters (published to graph)"]
+  EIR --> DIST["surplus distribution s = p + i + r + t"]
+  EIR -.spread.-> CRISIS["financial-crisis assessor (credit_spread)"]
+```
+
+### §1.3 What FRED calibrates, and the derivation of every default coefficient
+
+FRED is now **calibration only** — it fixes the four new `capital_vol3` defaults;
+no FRED series is read at runtime for the rate. Each default is a documented
+derivation, in the exact spirit of the shipped
+`credit_fragility_threshold = 1.0e-3` (Dec-2008 BAA10Y peak → coefficient).
+
+| Coefficient | Default | FRED / theory derivation |
+|---|---|---|
+| `interest_profit_share_base` | `0.30` | FRED net interest paid by domestic corporate business (`W273RC1`) ÷ corporate profits before tax (`A053RC1Q027SBEA`) sits in ≈ 0.25–0.35 across non-crisis years 1990–2019; `0.30` is the representative calm "empirical" division (ch. 22 — a convention, hence moddable, not a law). |
+| `interest_profit_share_ceiling` | `0.95` | ch. 22: the absolute maximum is `i = r` (profit-of-enterprise = 0). The sim reserves 5% of profit for the functioning capitalist so the surplus identity's profit-of-enterprise residual stays > 0 as the normal case; `0.95` is that reserved max. |
+| `interest_reserve_demand_gain` (`g_r`) | `1.0` | Neutral unit gain — the reference and ceiling do the shaping; exposed so a mod can dial crisis sensitivity of the loan market. |
+| `interest_reserve_reference` (`ρ_ref`) | `0.08` | BLS civilian unemployment rate (`UNRATE`) averaged ≈ 5.8% (1948–2019); ≈ 8% marks the onset of a demand-side liquidity scramble (recession territory, +structural slack) above which `s_r` registers. |
+
+**Calibration validation (U9.9) — a rewrite-test artifact (Constitution III.12).**
+A single unit test asserts the `interest_profit_share_base` default reproduces the
+FRED net-interest/profit ratio (from the committed `tests/fixtures/vol3_fred_series.json`
+where those series exist) within a stated tolerance. That test **is** the durable
+spec of the calibration: if the coefficient is regenerated, the derivation is
+re-checked against real data, not vibes.
+
+### §1.4 Degenerate-case table (each behaviour theory-derived)
+
+| Case | `r` (ceiling) | `s_r` | `τ` | `i` (rate) | `national_spread` | Theory rationale |
+|---|---|---|---|---|---|---|
+| tick 0 / no territory carries `tick_profit_rate` | `None` | — | — | `0.0` | `0.0` | ch. 23: interest is *a portion of the profit*; none measured ⇒ nothing to divide ⇒ 0, **not a fabricated floor** (III.11). |
+| loss-making economy `r ≤ 0` | `0.0` | any | any | `0.0` | `0.0` | ch. 22: max limit is *the profit itself*; no profit ⇒ `i = 0`. |
+| calm expansion (`r > 0`, `ρ̄ ≤ ρ_ref`) | `r` | `0` | `0` | `r·base` (= `0.30·r`) | `0.0` | ch. 22: the "purely empirical" calm division of profit into interest. |
+| downturn / crisis (`r > 0`, reserve-army surge) | `r` | `→1` | `→1` | `→ r·ceiling` (= `0.95·r`) | `→ r·(ceiling−base)·τ` | ch. 25: rate rises then *spikes in the crisis scramble* toward its maximum. |
+| zero credit demand / no `CreditState` / no FRED wired | `r` | `s_r` | `τ` | `r·share` | endogenous | The rate is **total** — never `NoDataSentinel`, never `None`. This is the ruling. |
+| `ρ̄` exactly `= ρ_ref` | `r` | `0` | `0` | `r·base` | `0.0` | onset threshold: below it no liquidity-demand pressure exists. |
+
+### §1.5 Named deferrals (quantities that do not yet exist on the graph)
+
+Honest-absence discipline requires naming, not faking, the quantities the full
+Vol. III mechanic wants but the graph does not yet carry:
+
+1. **Supply of idle money-capital `S`** (ch. 25) — the stagnation-phase reversal
+   (idle money-capital accumulates, "the minimum limit of interest … may fall to
+   any low"). No graph quantity distinguishes idle from actively-accumulating
+   money-capital. **Creating task (future Program):** a `Substrate`/`Metabolism`-adjacent
+   accumulation ledger deriving idle money-capital from *surplus not reinvested*
+   (the gap between realized surplus and gross fixed capital formation, FRED
+   `A054RC1Q027SBEA` vs private investment). Until then `S = 0`; base U9 reproduces
+   *low / rising / spike* faithfully and defers only the *post-crisis collapse*.
+2. **Acute single-tick correction spike `s_c`** — the market-scissors correction
+   snap (`MARKET_CORRECTION_SHOCK_ATTR`) is the vivid "10% / no longer discountable"
+   spike, but it is a `graph.graph` attribute written by `MarketScissorsSystem`
+   (position ~17.8) *after* `TickDynamicsSystem` (position 4), and cross-tick
+   persistence of `graph.graph` attributes across the `WorldState` round-trip is
+   not guaranteed. Base U9 does **not** read it (no fragile cross-tick dependency).
+   **Creating task (future):** promote `MARKET_CORRECTION_SHOCK_ATTR` into a
+   round-trip-durable field and add `s_c` as a second demand term. Until then the
+   reserve-army downturn signal carries the crisis (it is a persisted node
+   attribute — reliable).
+
+### §1.6 The seam and the migration
+
+`NationalFinancialParameters` **remains the seam** (published under
+`graph_bridge.NATIONAL_FINANCIAL_ATTR`). U9 swaps the **producer**
+(`TickDynamicsSystem._compute_national_financial_state`), not the contract's role.
+
+**Type-tightening migration (explicit).** The producer's return contract changes
+from the U3-preserved **4-tuple**
+
+```
+tuple[float | None, float | None, FictitiousCapitalStock | None, str | None]
+#     national_rate  national_spread  fictitious                interest_unavailable_reason
+```
+
+to a **3-tuple**
+
+```
+tuple[float, float, FictitiousCapitalStock | None]
+#     national_rate  national_spread  fictitious
+```
+
+because after U9 the rate and spread are **total** (always a `float`) and the
+`interest_unavailable_reason` path is dead. `fictitious` stays `Optional` — the
+fictitious-capital / financialization data path is a **separate** honest-absence
+contract, **unchanged by U9** (this is the load-bearing distinction for the
+insertion notes in §4: U9 makes the *interest rate* endogenous; the fictitious
+anchor legitimately stays absent past 2024).
+
+**Removed unavailable-reason plumbing (every touched call site is listed in the
+relevant task's `Files:` block):**
+- `_compute_national_financial_state` — return type + body (U9.7).
+- `_compute_financial_layer` — the 4-tuple unpack (U9.8).
+- `_compute_county_financial_state` — drops the `interest_unavailable_reason`
+  parameter *and* the now-dead `if national_rate is None:` skip branch; `national_rate`
+  tightens to `float` (U9.8).
+- `_assess_county_financial_crisis` — the `national_rate is not None` guard becomes
+  vacuous (U9.8).
+- `_build_credit_state` — rebuilt to take the endogenous spread, not `interest_state.baa_spread`
+  (U9.7).
+- The config gate `if services.interest_calculator is None: return county_states`
+  becomes `if services.distribution_calculator is None:` so the endogenous rate
+  works even when **no FRED interest calculator is wired** — the mechanical
+  guarantee of "never unavailable" (U9.8).
+- Tests: `tests/unit/economics/tick/test_system.py` (the honest-absence test that
+  asserts `national_rate is None` — rewritten to the endogenous behaviour; the
+  4-tuple unpack) (U9.7/U9.8).
+
+**Scale check (endogenous spread → crisis assessor).** With `r ≈ 0.15`,
+`ceiling − base = 0.65`: crisis `τ ≈ 0.6–1` ⇒ `spread ≈ 0.06–0.10`; calm `τ = 0`
+⇒ `spread = 0`. The assessor fires `credit_fragility` when
+`default_rate · spread > credit_fragility_threshold` = `0.02 · spread > 1.0e-3`,
+i.e. `spread > 0.05` — crisis fires, calm does not. This reproduces the shipped
+Dec-2008-calibrated behaviour **without** the BAA10Y read, and keeps the endogenous
+spread on the same decimal scale the threshold already expects.
+
+**Ordering / determinism.** U9 lands **before U7** (the sentinels bind to final
+reality) and **before U8** (one baseline-regeneration ceremony). It will move the
+`qa:regression` baselines (the surplus distribution's `interest_payments` term now
+computes on every modeled year instead of only FRED-covered years, and computes an
+endogenous rate). That movement is **expected** and is captured by U8's
+owner-gated ceremony — U9 itself never regenerates a baseline.
+
+---
+
+> `national_rate` here always means the endogenous national rate; `r` means
+> the economy-wide average rate of profit.
+
+### Task U9.1: `EndogenousInterestRate` model — the `0 ≤ i < r` bound as a construction invariant
+
+**Files:**
+- Modify: `src/babylon/domain/economics/credit/types.py` (append after
+  `class FictitiousCapitalStock`)
+- Test: `tests/unit/economics/credit/test_endogenous_interest_types.py` *(create)*
+
+**Interfaces:**
+- Produces: `EndogenousInterestRate(BaseModel)` — frozen; fields `year: int`,
+  `profit_rate_ceiling: float`, `rate: float`, `fragility_premium: float`,
+  `tightness: float`, `reserve_army_signal: float`; computed
+  `base_component -> float`; a `model_validator` enforcing the ch. 22 bound.
+
+- [ ] **Step 1: Write the failing test**
+
+Create `tests/unit/economics/credit/test_endogenous_interest_types.py`:
+
+```python
+"""U9.1: the EndogenousInterestRate model encodes Marx's ch. 22 bound
+(0 <= i < r) as a construction invariant — a behavioral contract that
+outlives the producer (Constitution III.12)."""
+
+from __future__ import annotations
+
+import pytest
+from pydantic import ValidationError
+
+from babylon.domain.economics.credit.types import EndogenousInterestRate
+
+
+@pytest.mark.unit
+class TestEndogenousInterestRate:
+    def test_present_rate_is_strictly_below_the_profit_ceiling(self) -> None:
+        state = EndogenousInterestRate(
+            year=2015,
+            profit_rate_ceiling=0.15,
+            rate=0.045,
+            fragility_premium=0.0,
+            tightness=0.0,
+            reserve_army_signal=0.0,
+        )
+        assert state.rate < state.profit_rate_ceiling
+        assert state.base_component == pytest.approx(0.045)
+
+    def test_base_component_strips_the_fragility_premium(self) -> None:
+        state = EndogenousInterestRate(
+            year=2015,
+            profit_rate_ceiling=0.15,
+            rate=0.12,
+            fragility_premium=0.075,
+            tightness=0.8,
+            reserve_army_signal=0.8,
+        )
+        assert state.base_component == pytest.approx(0.045)
+
+    def test_zero_ceiling_forces_zero_rate(self) -> None:
+        # r <= 0: no profit to divide -> i must be 0 (ch. 22 / ch. 23).
+        EndogenousInterestRate(
+            year=2015,
+            profit_rate_ceiling=0.0,
+            rate=0.0,
+            fragility_premium=0.0,
+            tightness=0.0,
+            reserve_army_signal=0.0,
+        )
+
+    def test_rate_at_or_above_ceiling_is_rejected(self) -> None:
+        # ch. 22: the maximum limit of interest is the profit itself; the sim
+        # keeps profit-of-enterprise strictly positive, so i must be < r.
+        with pytest.raises(ValidationError, match="rate .* profit_rate_ceiling"):
+            EndogenousInterestRate(
+                year=2015,
+                profit_rate_ceiling=0.10,
+                rate=0.10,
+                fragility_premium=0.0,
+                tightness=0.0,
+                reserve_army_signal=0.0,
+            )
+```
+
+- [ ] **Step 2: Run test to verify it fails**
+
+Run: `mise run test:q -- tests/unit/economics/credit/test_endogenous_interest_types.py`
+Expected: FAIL — `ImportError: cannot import name 'EndogenousInterestRate' from 'babylon.domain.economics.credit.types'`.
+
+- [ ] **Step 3: Write minimal implementation**
+
+Append to `src/babylon/domain/economics/credit/types.py` (after `class FictitiousCapitalStock`; add `model_validator` to the existing `from pydantic import …` line):
+
+```python
+class EndogenousInterestRate(BaseModel):
+    """Endogenous national interest rate (Capital Vol. III Part V).
+
+    Marx: interest has no natural rate (ch. 22) — it is a *share of the
+    profit* (ch. 23/24) set by the supply and demand of loanable
+    money-capital (ch. 22). This model carries the computed rate together
+    with the average rate of profit that bounds it, and encodes the ch. 22
+    maximum ("the maximum limit of interest is the profit itself") as a
+    construction invariant: ``rate < profit_rate_ceiling`` whenever there is
+    a profit to divide, ``rate == 0`` when there is none.
+
+    Feature: vol3-money-scissors U9.
+
+    :ivar year: Simulation year (no upper ceiling — the campaign runs to
+        2109; deliberately unlike ``InterestRateState.year``'s le=2040, which
+        was a latent post-2040 crash on the live path).
+    :ivar profit_rate_ceiling: Economy-wide average rate of profit ``r``
+        (capital-weighted); ``0.0`` when no profit is measured.
+    :ivar rate: National interest rate ``i`` = ``r * share(tightness)``, or
+        ``0.0`` when ``profit_rate_ceiling`` is ``0.0``.
+    :ivar fragility_premium: Endogenous spread = ``i - r*base`` (>= 0); the
+        crisis lift of the rate above its calm level. Replaces the BAA10Y
+        runtime read.
+    :ivar tightness: Loan-market tightness ``tau`` in [0, 1] (provenance).
+    :ivar reserve_army_signal: The downturn demand signal ``s_r`` in [0, 1]
+        (provenance).
+    """
+
+    model_config = ConfigDict(frozen=True)
+
+    year: int = Field(..., ge=2007)
+    profit_rate_ceiling: float = Field(..., ge=0.0)
+    rate: float = Field(..., ge=0.0)
+    fragility_premium: float = Field(..., ge=0.0)
+    tightness: float = Field(..., ge=0.0, le=1.0)
+    reserve_army_signal: float = Field(..., ge=0.0, le=1.0)
+
+    @computed_field  # type: ignore[prop-decorator]
+    @property
+    def base_component(self) -> float:
+        """The calm interest ``r*base`` = ``rate - fragility_premium``."""
+        return self.rate - self.fragility_premium
+
+    @model_validator(mode="after")
+    def _verify_interest_below_profit(self) -> EndogenousInterestRate:
+        """Enforce Marx's ch. 22 bound as a loud construction invariant.
+
+        ``rate < profit_rate_ceiling`` when a profit exists; ``rate == 0``
+        when it does not (Constitution III.11 — a violated bound is a loud
+        ValueError at construction, never a silently wrong rate).
+        """
+        if self.profit_rate_ceiling <= 0.0:
+            if self.rate != 0.0:
+                raise ValueError(
+                    f"rate must be 0.0 when profit_rate_ceiling is "
+                    f"{self.profit_rate_ceiling!r} (no profit to divide), got "
+                    f"{self.rate!r}"
+                )
+        elif self.rate >= self.profit_rate_ceiling:
+            raise ValueError(
+                f"rate ({self.rate!r}) must be strictly below "
+                f"profit_rate_ceiling ({self.profit_rate_ceiling!r}) — "
+                f"Capital Vol. III ch. 22: interest is a portion of the profit"
+            )
+        return self
+```
+
+- [ ] **Step 4: Run test to verify it passes**
+
+Run: `mise run test:q -- tests/unit/economics/credit/test_endogenous_interest_types.py`
+Expected: PASS (4 passed).
+
+- [ ] **Step 5: Commit**
+```bash
+mise run commit -- "feat(credit): EndogenousInterestRate model with the ch.22 0<=i<r bound
+
+Encodes Marx's 'the maximum limit of interest is the profit itself' as a
+construction invariant. New model, no producer yet (U9.7 fills it).
+
+Co-Authored-By: Claude Opus 4.8 (1M context) <noreply@anthropic.com>"
+```
+
+---
+
+### Task U9.2: `capital_vol3` interest coefficients + regenerate `defines.yaml`
+
+**Files:**
+- Modify: `src/babylon/config/defines/capital_vol3.py` (four new fields +
+  `model_validator`)
+- Modify: `src/babylon/data/defines.yaml` (**regenerated, never hand-edited**)
+- Test: `tests/unit/config/test_capital_vol3_interest_defines.py` *(create)*
+
+**Interfaces:**
+- Produces: `CapitalVolumeIIIDefines.interest_profit_share_base` (0.30),
+  `.interest_profit_share_ceiling` (0.95), `.interest_reserve_demand_gain` (1.0),
+  `.interest_reserve_reference` (0.08). Read directly (`services.defines.capital_vol3.<field>`),
+  the pattern `profit_rate_fallback`/`default_rate_estimate` already use.
+- Note: these are **added fields on an already-exported class** — `defines.__all__`
+  is unchanged, so **no** `EXPECTED_DEFINES_PUBLIC` edit is needed (contrast the
+  U7.11 specimen). `tests/unit/config/test_constants_sync.py` must pass after
+  regeneration.
+
+- [ ] **Step 1: Write the failing test**
+
+Create `tests/unit/config/test_capital_vol3_interest_defines.py`:
+
+```python
+"""U9.2: the four endogenous-interest coefficients and their base<ceiling<1
+invariant (Capital Vol. III ch. 22 — interest is a share of profit)."""
+
+from __future__ import annotations
+
+import pytest
+from pydantic import ValidationError
+
+from babylon.config.defines.capital_vol3 import CapitalVolumeIIIDefines
+
+
+@pytest.mark.unit
+class TestInterestDefines:
+    def test_defaults_are_the_calibrated_values(self) -> None:
+        d = CapitalVolumeIIIDefines()
+        assert d.interest_profit_share_base == pytest.approx(0.30)
+        assert d.interest_profit_share_ceiling == pytest.approx(0.95)
+        assert d.interest_reserve_demand_gain == pytest.approx(1.0)
+        assert d.interest_reserve_reference == pytest.approx(0.08)
+
+    def test_base_must_be_below_ceiling(self) -> None:
+        with pytest.raises(ValidationError, match="interest_profit_share_base"):
+            CapitalVolumeIIIDefines(
+                interest_profit_share_base=0.96,
+                interest_profit_share_ceiling=0.95,
+            )
+```
+
+- [ ] **Step 2: Run test to verify it fails**
+
+Run: `mise run test:q -- tests/unit/config/test_capital_vol3_interest_defines.py`
+Expected: FAIL — `AttributeError: 'CapitalVolumeIIIDefines' object has no attribute 'interest_profit_share_base'`.
+
+- [ ] **Step 3: Write minimal implementation**
+
+In `src/babylon/config/defines/capital_vol3.py`, add four fields after
+`housing_capitalization_rate_default` (before the existing
+`@field_validator("counter_tendency_weights")`):
+
+```python
+    interest_profit_share_base: float = Field(
+        default=0.30,
+        gt=0.0,
+        lt=1.0,
+        description=(
+            "Calm interest share of the average rate of profit (Capital "
+            "Vol. III ch. 22 — the 'purely empirical' division of profit "
+            "into interest and profit of enterprise; a convention, not a "
+            "law, hence player-editable). Calibration: FRED net corporate "
+            "interest paid (W273RC1) / corporate profits before tax "
+            "(A053RC1Q027SBEA) ~ 0.25-0.35 across non-crisis years "
+            "1990-2019."
+        ),
+    )
+    interest_profit_share_ceiling: float = Field(
+        default=0.95,
+        gt=0.0,
+        lt=1.0,
+        description=(
+            "Crisis-maximum interest share of profit. Capital Vol. III "
+            "ch. 22: the absolute maximum is i=r (profit of enterprise=0); "
+            "the sim reserves 5% of profit for the functioning capitalist so "
+            "the surplus identity's profit-of-enterprise residual stays "
+            "positive, hence a strict ceiling < 1. Must exceed "
+            "interest_profit_share_base."
+        ),
+    )
+    interest_reserve_demand_gain: float = Field(
+        default=1.0,
+        ge=0.0,
+        description=(
+            "Demand-side sensitivity of loan-market tightness to the "
+            "reserve-army downturn signal (Capital Vol. III ch. 22 — the "
+            "demand for loanable capital decides the market rate). Unit "
+            "default; a mod dials crisis sensitivity of the credit system."
+        ),
+    )
+    interest_reserve_reference: float = Field(
+        default=0.08,
+        ge=0.0,
+        lt=1.0,
+        description=(
+            "Reserve-army ratio at which the demand-side liquidity scramble "
+            "begins (below it, s_r=0). Calibration: BLS civilian "
+            "unemployment (UNRATE) averaged ~5.8% 1948-2019; ~8% marks "
+            "recession-territory onset of the scramble for means of payment "
+            "(Capital Vol. III ch. 25)."
+        ),
+    )
+```
+
+Then add a model validator (after the class fields, alongside
+`verify_weights_sum_to_one`):
+
+```python
+    @model_validator(mode="after")
+    def verify_interest_share_ordering(self) -> CapitalVolumeIIIDefines:
+        """Reject base >= ceiling (ch. 22: interest is bounded by profit).
+
+        share(tau) = base + (ceiling-base)*tau must land in (0, 1) with the
+        crisis ceiling above the calm base, else the endogenous rate is not
+        monotone in loan-market tightness. Fails loudly at config-load
+        (Constitution III.11).
+        """
+        if self.interest_profit_share_base >= self.interest_profit_share_ceiling:
+            raise ValueError(
+                f"capital_vol3.interest_profit_share_base "
+                f"({self.interest_profit_share_base!r}) must be strictly below "
+                f"interest_profit_share_ceiling "
+                f"({self.interest_profit_share_ceiling!r}) — check defines.yaml"
+            )
+        return self
+```
+
+Add `model_validator` to the `from pydantic import …` line. Then regenerate:
+
+```bash
+poetry run python tools/generate_defines_config.py
+```
+
+- [ ] **Step 4: Run tests to verify they pass**
+
+Run: `mise run test:q -- tests/unit/config/test_capital_vol3_interest_defines.py tests/unit/config/test_constants_sync.py`
+Expected: PASS (sync test confirms `defines.yaml` regenerated to match the schema).
+
+- [ ] **Step 5: Commit**
+```bash
+mise run commit -- "feat(defines): capital_vol3 endogenous-interest coefficients (FRED-calibrated)
+
+interest_profit_share_base/ceiling, reserve_demand_gain, reserve_reference
++ base<ceiling validator; defines.yaml regenerated. Calibration only — no
+FRED runtime read.
+
+Co-Authored-By: Claude Opus 4.8 (1M context) <noreply@anthropic.com>"
+```
+
+---
+
+### Task U9.3: `endogenous_interest_rate` core — the bounded share of profit
+
+**Files:**
+- Create: `src/babylon/domain/economics/credit/endogenous_interest.py`
+- Test: `tests/unit/economics/credit/test_endogenous_interest.py` *(create)*
+
+**Interfaces:**
+- Consumes: `EndogenousInterestRate` (U9.1), `GameDefines` (`capital_vol3` fields,
+  U9.2).
+- Produces: `endogenous_interest_rate(profit_rate: float | None, tightness: float, defines: GameDefines) -> EndogenousInterestRate`.
+
+> **M1 carve-out (Global Constraints):** this task's deliverable is a **new
+> module**; its red phase is the collection/import error, not a manufactured
+> assertion.
+
+- [ ] **Step 1: Write the failing test**
+
+Create `tests/unit/economics/credit/test_endogenous_interest.py`:
+
+```python
+"""U9.3: the endogenous interest rate as a bounded share of the average
+rate of profit (Capital Vol. III Part V)."""
+
+from __future__ import annotations
+
+import pytest
+
+from babylon.config.defines import GameDefines
+from babylon.domain.economics.credit.endogenous_interest import (
+    endogenous_interest_rate,
+)
+
+
+@pytest.mark.unit
+class TestEndogenousInterestRate:
+    def _defines(self) -> GameDefines:
+        return GameDefines.load_default()
+
+    def test_calm_market_pays_the_base_share_of_profit(self) -> None:
+        state = endogenous_interest_rate(0.15, 0.0, self._defines())
+        assert state.rate == pytest.approx(0.15 * 0.30)
+        assert state.fragility_premium == pytest.approx(0.0)
+        assert state.profit_rate_ceiling == pytest.approx(0.15)
+
+    def test_full_tightness_approaches_the_crisis_ceiling(self) -> None:
+        state = endogenous_interest_rate(0.15, 1.0, self._defines())
+        assert state.rate == pytest.approx(0.15 * 0.95)
+        assert state.rate < state.profit_rate_ceiling  # ch.22: i < r
+        assert state.fragility_premium == pytest.approx(0.15 * (0.95 - 0.30))
+
+    def test_absent_profit_rate_yields_zero_interest(self) -> None:
+        # tick 0 / no territory carries a profit rate: nothing to divide.
+        state = endogenous_interest_rate(None, 0.7, self._defines())
+        assert state.rate == 0.0
+        assert state.fragility_premium == 0.0
+        assert state.profit_rate_ceiling == 0.0
+
+    def test_nonpositive_profit_rate_yields_zero_interest(self) -> None:
+        state = endogenous_interest_rate(-0.02, 1.0, self._defines())
+        assert state.rate == 0.0
+        assert state.fragility_premium == 0.0
+
+    def test_tightness_is_clamped_into_unit_interval(self) -> None:
+        hot = endogenous_interest_rate(0.15, 5.0, self._defines())
+        assert hot.tightness == 1.0
+        assert hot.rate == pytest.approx(0.15 * 0.95)
+        cold = endogenous_interest_rate(0.15, -3.0, self._defines())
+        assert cold.tightness == 0.0
+        assert cold.rate == pytest.approx(0.15 * 0.30)
+```
+
+- [ ] **Step 2: Run test to verify it fails**
+
+Run: `mise run test:q -- tests/unit/economics/credit/test_endogenous_interest.py`
+Expected: FAIL (collection error) — `ModuleNotFoundError: No module named 'babylon.domain.economics.credit.endogenous_interest'` (M1 carve-out: this new-module task takes the collection error as its red).
+
+- [ ] **Step 3: Write minimal implementation**
+
+Create `src/babylon/domain/economics/credit/endogenous_interest.py`:
+
+```python
+"""Endogenous national interest rate (Capital Vol. III Part V).
+
+Marx (ch. 22): "There is no such thing as a 'natural' rate of interest." The
+rate is not read off a curve — it is *computed* from the average rate of
+profit it divides (the ceiling; ch. 22 "the maximum limit of interest is the
+profit itself") and the competitive tightness of the loan market (ch. 22 "the
+relation between the supply of loanable capital … and the demand for it …
+decides the market level of interest").
+
+Pure functions of their arguments: no RNG, no wall clock, no I/O. This module
+lives in ``domain/`` and imports nothing from ``engine/``; the engine reads
+it.
+"""
+
+from __future__ import annotations
+
+from babylon.config.defines import GameDefines
+from babylon.domain.economics.credit.types import EndogenousInterestRate
+
+#: Reserved: the supply of idle money-capital (Capital Vol. III ch. 25) has no
+#: graph quantity yet; base U9 sets it to zero so it neither raises nor lowers
+#: loan-market tightness (see design §1.5 for the creating task).
+_IDLE_MONEY_CAPITAL_SUPPLY: float = 0.0
+
+
+def _clamp_unit(value: float) -> float:
+    """Clamp ``value`` into the closed unit interval [0.0, 1.0]."""
+    if value < 0.0:
+        return 0.0
+    if value > 1.0:
+        return 1.0
+    return value
+
+
+def endogenous_interest_rate(
+    profit_rate: float | None,
+    tightness: float,
+    defines: GameDefines,
+) -> EndogenousInterestRate:
+    """Compute the national interest rate as a bounded share of profit.
+
+    ``i = r * (base + (ceiling - base) * tau)`` for ``r > 0``; ``i = 0`` when
+    no profit is measured (``profit_rate`` is ``None`` or ``<= 0``) — Capital
+    Vol. III ch. 23: interest is *a portion of the profit*, so with no profit
+    there is nothing to divide (never a fabricated positive floor,
+    Constitution III.11).
+
+    :param profit_rate: Economy-wide average rate of profit ``r``, or ``None``
+        when no profit observable exists this tick.
+    :param tightness: Loan-market tightness ``tau`` (clamped into [0, 1]).
+    :param defines: Run-scoped ``GameDefines`` (reads ``capital_vol3``).
+    :returns: A total :class:`EndogenousInterestRate` — never absent.
+    """
+    cvi = defines.capital_vol3
+    base = cvi.interest_profit_share_base
+    ceiling = cvi.interest_profit_share_ceiling
+    tau = _clamp_unit(tightness)
+
+    if profit_rate is None or profit_rate <= 0.0:
+        return EndogenousInterestRate(
+            year=0,
+            profit_rate_ceiling=0.0,
+            rate=0.0,
+            fragility_premium=0.0,
+            tightness=tau,
+            reserve_army_signal=0.0,
+        )
+
+    share = base + (ceiling - base) * tau
+    rate = profit_rate * share
+    premium = profit_rate * (ceiling - base) * tau
+    return EndogenousInterestRate(
+        year=0,
+        profit_rate_ceiling=profit_rate,
+        rate=rate,
+        fragility_premium=premium,
+        tightness=tau,
+        reserve_army_signal=0.0,
+    )
+```
+
+> `year`/`reserve_army_signal` are filled by the producer (U9.7), which knows
+> the tick year and the underlying `s_r`; the pure core takes only the reduced
+> `(r, tau)` so it is trivially testable.
+
+- [ ] **Step 4: Run test to verify it passes**
+
+Run: `mise run test:q -- tests/unit/economics/credit/test_endogenous_interest.py`
+Expected: PASS (5 passed).
+
+- [ ] **Step 5: Commit**
+```bash
+mise run commit -- "feat(credit): endogenous_interest_rate core — bounded share of profit
+
+i = r*(base + (ceiling-base)*tau), i=0 when r<=0. Pure, no I/O. Capital
+Vol. III ch. 22/23. Not wired to the producer yet (U9.7).
+
+Co-Authored-By: Claude Opus 4.8 (1M context) <noreply@anthropic.com>"
+```
+
+---
+
+### Task U9.4: `loan_market_tightness` — the demand/supply balance
+
+**Files:**
+- Modify: `src/babylon/domain/economics/credit/endogenous_interest.py`
+- Test: `tests/unit/economics/credit/test_endogenous_interest.py`
+
+**Interfaces:**
+- Produces: `loan_market_tightness(reserve_army_signal: float, defines: GameDefines) -> float`
+  — `clamp(g_r * s_r - S, 0, 1)`, `S = _IDLE_MONEY_CAPITAL_SUPPLY` (0, deferred).
+
+- [ ] **Step 1: Write the failing test**
+
+Add to `tests/unit/economics/credit/test_endogenous_interest.py`:
+
+```python
+@pytest.mark.unit
+class TestLoanMarketTightness:
+    def _defines(self) -> GameDefines:
+        return GameDefines.load_default()
+
+    def test_no_reserve_army_signal_is_slack_market(self) -> None:
+        from babylon.domain.economics.credit.endogenous_interest import (
+            loan_market_tightness,
+        )
+
+        assert loan_market_tightness(0.0, self._defines()) == 0.0
+
+    def test_full_reserve_army_signal_saturates_tightness(self) -> None:
+        from babylon.domain.economics.credit.endogenous_interest import (
+            loan_market_tightness,
+        )
+
+        # g_r = 1.0 (default) so s_r = 1.0 -> tau = 1.0.
+        assert loan_market_tightness(1.0, self._defines()) == pytest.approx(1.0)
+
+    def test_tightness_is_clamped_when_gain_overshoots(self) -> None:
+        from babylon.domain.economics.credit.endogenous_interest import (
+            loan_market_tightness,
+        )
+
+        d = GameDefines.load_default().model_copy(
+            update={
+                "capital_vol3": GameDefines.load_default().capital_vol3.model_copy(
+                    update={"interest_reserve_demand_gain": 4.0}
+                )
+            }
+        )
+        assert loan_market_tightness(0.5, d) == pytest.approx(1.0)
+```
+
+- [ ] **Step 2: Run test to verify it fails**
+
+Run: `mise run test:q -- tests/unit/economics/credit/test_endogenous_interest.py::TestLoanMarketTightness`
+Expected: FAIL — `ImportError: cannot import name 'loan_market_tightness'`.
+
+- [ ] **Step 3: Write minimal implementation**
+
+Append to `src/babylon/domain/economics/credit/endogenous_interest.py`:
+
+```python
+def loan_market_tightness(reserve_army_signal: float, defines: GameDefines) -> float:
+    """Loan-market tightness ``tau`` — the demand/supply balance of loanable
+    money-capital (Capital Vol. III ch. 22).
+
+    ``tau = clamp(g_r * s_r - S, 0, 1)``. The demand term is the reserve-army
+    downturn signal ``s_r`` (the material scramble for means of payment as
+    overproduction throws labour out; ch. 25). The supply term ``S`` — idle
+    money-capital — has no graph quantity yet and is fixed at 0 (design §1.5),
+    so base U9 reproduces low/rising/spike and defers only the stagnation
+    collapse.
+
+    :param reserve_army_signal: ``s_r`` in [0, 1] (see
+        ``graph_bridge.reserve_army_signal``).
+    :param defines: Run-scoped ``GameDefines`` (reads ``capital_vol3``).
+    :returns: ``tau`` in [0, 1].
+    """
+    gain = defines.capital_vol3.interest_reserve_demand_gain
+    demand = gain * reserve_army_signal
+    return _clamp_unit(demand - _IDLE_MONEY_CAPITAL_SUPPLY)
+```
+
+- [ ] **Step 4: Run test to verify it passes**
+
+Run: `mise run test:q -- tests/unit/economics/credit/test_endogenous_interest.py`
+Expected: PASS (8 passed).
+
+- [ ] **Step 5: Commit**
+```bash
+mise run commit -- "feat(credit): loan_market_tightness — demand/supply of loanable capital
+
+tau = clamp(g_r*s_r - S, 0, 1); S (idle money-capital supply) deferred to 0
+with the creating task named. Capital Vol. III ch. 22/25.
+
+Co-Authored-By: Claude Opus 4.8 (1M context) <noreply@anthropic.com>"
+```
+
+---
+
+### Task U9.5: domain graph observables — `r` and `s_r` from the material base
+
+**Files:**
+- Modify: `src/babylon/domain/economics/tick/graph_bridge.py` (two readers +
+  `__all__`)
+- Test: `tests/unit/economics/tick/test_graph_bridge_interest_observables.py` *(create)*
+
+**Interfaces:**
+- Consumes: `GraphProtocol`; territory node attributes `tick_profit_rate`,
+  `tick_capital_stock`, `reserve_ratio` (all verified real, stamped by
+  `graph_bridge`/`ReserveArmySystem`).
+- Produces:
+  - `economy_wide_profit_rate(graph: GraphProtocol) -> float | None` —
+    capital-weighted mean of `tick_profit_rate` (Marx's general rate of profit =
+    total surplus / total capital), or `None` when no active territory carries one.
+  - `reserve_army_signal(graph: GraphProtocol, defines: GameDefines) -> float` —
+    `s_r` in [0, 1] from the capital-weighted mean `reserve_ratio` and
+    `interest_reserve_reference`.
+
+- [ ] **Step 1: Write the failing test**
+
+Create `tests/unit/economics/tick/test_graph_bridge_interest_observables.py`:
+
+```python
+"""U9.5: domain-side extraction of the average rate of profit r and the
+reserve-army downturn signal s_r from the shared graph (capital-weighted,
+sorted-id, honest absence)."""
+
+from __future__ import annotations
+
+import pytest
+
+from babylon.config.defines import GameDefines
+from babylon.domain.economics.tick.graph_bridge import (
+    economy_wide_profit_rate,
+    reserve_army_signal,
+)
+from babylon.models.enums.topology import NodeType
+from babylon.topology import BabylonGraph
+
+
+def _graph_with(territories: list[dict[str, object]]) -> BabylonGraph:
+    g = BabylonGraph()
+    for i, attrs in enumerate(territories):
+        g.add_node(f"terr_{i}", _node_type=NodeType.TERRITORY, **attrs)
+    return g
+
+
+@pytest.mark.unit
+class TestEconomyWideProfitRate:
+    def test_capital_weighted_not_unweighted(self) -> None:
+        # 0.10 @ K=100 and 0.20 @ K=900 -> weighted 0.19, not the mean 0.15.
+        g = _graph_with(
+            [
+                {"active": True, "tick_profit_rate": 0.10, "tick_capital_stock": 100.0},
+                {"active": True, "tick_profit_rate": 0.20, "tick_capital_stock": 900.0},
+            ]
+        )
+        assert economy_wide_profit_rate(g) == pytest.approx(0.19)
+
+    def test_no_rate_present_is_none(self) -> None:
+        g = _graph_with([{"active": True, "tick_capital_stock": 100.0}])
+        assert economy_wide_profit_rate(g) is None
+
+    def test_inactive_territories_are_excluded(self) -> None:
+        g = _graph_with(
+            [
+                {"active": False, "tick_profit_rate": 0.99, "tick_capital_stock": 1e9},
+                {"active": True, "tick_profit_rate": 0.05, "tick_capital_stock": 10.0},
+            ]
+        )
+        assert economy_wide_profit_rate(g) == pytest.approx(0.05)
+
+
+@pytest.mark.unit
+class TestReserveArmySignal:
+    def test_below_reference_is_zero(self) -> None:
+        g = _graph_with(
+            [{"active": True, "reserve_ratio": 0.05, "tick_capital_stock": 100.0}]
+        )
+        assert reserve_army_signal(g, GameDefines.load_default()) == 0.0
+
+    def test_scales_between_reference_and_one(self) -> None:
+        # ref=0.08: reserve 0.54 -> (0.54-0.08)/(1-0.08) = 0.5.
+        g = _graph_with(
+            [{"active": True, "reserve_ratio": 0.54, "tick_capital_stock": 100.0}]
+        )
+        assert reserve_army_signal(g, GameDefines.load_default()) == pytest.approx(0.5)
+
+    def test_no_reserve_data_is_zero(self) -> None:
+        g = _graph_with([{"active": True, "tick_capital_stock": 100.0}])
+        assert reserve_army_signal(g, GameDefines.load_default()) == 0.0
+```
+
+- [ ] **Step 2: Run test to verify it fails**
+
+Run: `mise run test:q -- tests/unit/economics/tick/test_graph_bridge_interest_observables.py`
+Expected: FAIL — `ImportError: cannot import name 'economy_wide_profit_rate' from 'babylon.domain.economics.tick.graph_bridge'`.
+
+- [ ] **Step 3: Write minimal implementation**
+
+Add to `src/babylon/domain/economics/tick/graph_bridge.py` (after
+`read_national_financial_state_from_graph`; extend `__all__`). Import
+`GameDefines` and `NodeType` at module top if not already present:
+
+```python
+def _capital_weighted_mean(
+    graph: GraphProtocol, attr: str
+) -> float | None:
+    """Capital-weighted mean of ``attr`` over active territory nodes.
+
+    Weight is ``tick_capital_stock`` (Marx's general rate of profit = total
+    surplus / total capital — an extensive weighting, not the unweighted mean
+    of an intensive ratio, which is the intensive-aggregation defect class).
+    Sorted-id iteration (Constitution III.7). Returns ``None`` when no active
+    territory carries ``attr`` with a positive weight (honest absence,
+    III.11).
+    """
+    weighted = 0.0
+    weight = 0.0
+    for node in sorted(
+        graph.query_nodes(node_type=NodeType.TERRITORY), key=lambda n: n.id
+    ):
+        attrs = node.attributes
+        if not attrs.get("active", True):
+            continue
+        value = attrs.get(attr)
+        capital = attrs.get("tick_capital_stock")
+        if not isinstance(value, (int, float)):
+            continue
+        if not isinstance(capital, (int, float)) or float(capital) <= 0.0:
+            continue
+        weighted += float(value) * float(capital)
+        weight += float(capital)
+    if weight <= 0.0:
+        return None
+    return weighted / weight
+
+
+def economy_wide_profit_rate(graph: GraphProtocol) -> float | None:
+    """Economy-wide average rate of profit ``r`` (the interest ceiling).
+
+    Capital-weighted mean of territory ``tick_profit_rate`` (Capital Vol. III
+    ch. 22: interest is bounded by the average rate of profit). ``None`` when
+    no active territory carries a profit rate — the endogenous rate then reads
+    zero (no profit to divide), never a fabricated floor.
+    """
+    return _capital_weighted_mean(graph, "tick_profit_rate")
+
+
+def reserve_army_signal(graph: GraphProtocol, defines: GameDefines) -> float:
+    """Reserve-army downturn signal ``s_r`` in [0, 1] (loan-capital demand).
+
+    ``clamp((rho_bar - rho_ref) / (1 - rho_ref), 0, 1)`` where ``rho_bar`` is
+    the capital-weighted mean territory ``reserve_ratio`` and ``rho_ref`` is
+    ``capital_vol3.interest_reserve_reference``. The rising reserve army is
+    the material signature of the crisis that ignites the scramble for means
+    of payment (Capital Vol. III ch. 25); below the reference there is no
+    liquidity-demand pressure. Zero (not absent) when no reserve data exists.
+    """
+    rho_bar = _capital_weighted_mean(graph, "reserve_ratio")
+    if rho_bar is None:
+        return 0.0
+    rho_ref = defines.capital_vol3.interest_reserve_reference
+    denom = 1.0 - rho_ref
+    if denom <= 0.0:
+        return 1.0 if rho_bar > rho_ref else 0.0
+    raw = (rho_bar - rho_ref) / denom
+    return 0.0 if raw < 0.0 else (1.0 if raw > 1.0 else raw)
+```
+
+- [ ] **Step 4: Run test to verify it passes**
+
+Run: `mise run test:q -- tests/unit/economics/tick/test_graph_bridge_interest_observables.py`
+Expected: PASS (6 passed).
+
+- [ ] **Step 5: Commit**
+```bash
+mise run commit -- "feat(economics): domain observables for endogenous interest (r, s_r)
+
+economy_wide_profit_rate (capital-weighted avg rate of profit, the ceiling)
+and reserve_army_signal (loan-capital demand). Sorted-id, honest absence.
+
+Co-Authored-By: Claude Opus 4.8 (1M context) <noreply@anthropic.com>"
+```
+
+---
+
+### Task U9.6: `NationalFinancialParameters.endogenous_interest` field + round-trip
+
+**Files:**
+- Modify: `src/babylon/domain/economics/tick/types.py` (`NationalFinancialParameters`)
+- Test: `tests/unit/economics/tick/test_national_financial_endogenous_field.py` *(create)*
+
+**Interfaces:**
+- Produces: `NationalFinancialParameters.endogenous_interest: EndogenousInterestRate | None`
+  (default `None` for `.empty()`; the producer always sets it). Published/read
+  unchanged via `write_/read_national_financial_state_to_graph` (they
+  `model_dump()`/reconstruct the whole model — the round-trip test proves the new
+  field survives).
+
+- [ ] **Step 1: Write the failing test**
+
+Create `tests/unit/economics/tick/test_national_financial_endogenous_field.py`:
+
+```python
+"""U9.6: the endogenous interest rate rides the NationalFinancialParameters
+seam and survives the graph round-trip."""
+
+from __future__ import annotations
+
+import pytest
+
+from babylon.domain.economics.credit.types import EndogenousInterestRate
+from babylon.domain.economics.tick.graph_bridge import (
+    read_national_financial_state_from_graph,
+    write_national_financial_state_to_graph,
+)
+from babylon.domain.economics.tick.types import NationalFinancialParameters
+from babylon.topology import BabylonGraph
+
+
+@pytest.mark.unit
+class TestEndogenousInterestSeam:
+    def test_empty_has_no_endogenous_interest(self) -> None:
+        assert NationalFinancialParameters.empty().endogenous_interest is None
+
+    def test_round_trip_preserves_the_endogenous_rate(self) -> None:
+        eir = EndogenousInterestRate(
+            year=2015,
+            profit_rate_ceiling=0.15,
+            rate=0.06,
+            fragility_premium=0.015,
+            tightness=0.3,
+            reserve_army_signal=0.3,
+        )
+        params = NationalFinancialParameters(endogenous_interest=eir)
+        g = BabylonGraph()
+        write_national_financial_state_to_graph(g, params)
+        back = read_national_financial_state_from_graph(g)
+        assert back is not None
+        assert back.endogenous_interest is not None
+        assert back.endogenous_interest.rate == pytest.approx(0.06)
+        assert back.endogenous_interest.rate < back.endogenous_interest.profit_rate_ceiling
+```
+
+- [ ] **Step 2: Run test to verify it fails**
+
+Run: `mise run test:q -- tests/unit/economics/tick/test_national_financial_endogenous_field.py`
+Expected: FAIL — `pydantic_core._pydantic_core.ValidationError: … endogenous_interest … Unexpected keyword argument` (the field does not exist yet).
+
+- [ ] **Step 3: Write minimal implementation**
+
+In `src/babylon/domain/economics/tick/types.py`, import `EndogenousInterestRate`
+alongside the other credit types, and add a field to
+`NationalFinancialParameters` (after `fictitious_capital`):
+
+```python
+    endogenous_interest: EndogenousInterestRate | None = Field(
+        default=None,
+        description=(
+            "Endogenous national interest rate (Vol. III Part V). Always set "
+            "by the producer post-U9; None only on .empty()."
+        ),
+    )
+```
+
+- [ ] **Step 4: Run test to verify it passes**
+
+Run: `mise run test:q -- tests/unit/economics/tick/test_national_financial_endogenous_field.py`
+Expected: PASS (2 passed).
+
+- [ ] **Step 5: Commit**
+```bash
+mise run commit -- "feat(economics): NationalFinancialParameters carries endogenous_interest
+
+New optional field on the published seam; graph round-trip proven. Producer
+fills it in U9.7.
+
+Co-Authored-By: Claude Opus 4.8 (1M context) <noreply@anthropic.com>"
+```
+
+---
+
+### Task U9.7: rewire the producer — endogenous rate replaces the FRED read
+
+**Files:**
+- Modify: `src/babylon/domain/economics/tick/system/__init__.py`
+  (`_compute_national_financial_state`, `_build_credit_state`)
+- Test: `tests/unit/economics/tick/test_system.py` (rewrite the honest-absence
+  test that asserts `national_rate is None`)
+
+**Interfaces:**
+- Consumes: `economy_wide_profit_rate`, `reserve_army_signal` (U9.5);
+  `loan_market_tightness`, `endogenous_interest_rate` (U9.3/U9.4);
+  `EndogenousInterestRate` (U9.1).
+- Produces: `_compute_national_financial_state(self, services, year, graph) -> tuple[float, float, FictitiousCapitalStock | None]`
+  — the **3-tuple** `(national_rate, national_spread, fictitious)`, both leading
+  members always `float`.
+
+- [ ] **Step 1: Write the failing test**
+
+In `tests/unit/economics/tick/test_system.py`, **replace** the existing
+honest-absence test (the one containing
+`national_rate, _spread, _fictitious, reason = system._compute_national_financial_state(`
+followed by `assert national_rate is None`) with the endogenous contract. Locate
+it by that exact `assert national_rate is None` line:
+
+```python
+    def test_national_rate_is_endogenous_and_total(self) -> None:
+        """U9: the national rate is computed from the sim's own quantities and
+        is never None. With no profit rate on the graph it is 0.0 (no profit
+        to divide, Capital Vol. III ch. 23), not a NoDataSentinel."""
+        system, services, graph, year = self._financial_fixture()  # existing helper
+        national_rate, national_spread, _fictitious = (
+            system._compute_national_financial_state(services, year, graph)
+        )
+        assert isinstance(national_rate, float)
+        assert isinstance(national_spread, float)
+        assert national_rate == 0.0  # empty graph: no territory profit rate
+        assert national_spread == 0.0
+```
+
+> Locate `self._financial_fixture()` by whatever the existing test uses to build
+> `(system, services, graph)`; reuse it verbatim. If the pre-U9 test built these
+> inline, keep that construction and only change the assertions.
+
+- [ ] **Step 2: Run test to verify it fails**
+
+Run: `mise run test:q -- tests/unit/economics/tick/test_system.py::TestNationalFinancialState`
+Expected: FAIL — `ValueError: not enough values to unpack (expected 3, got 4)` (the producer still returns the 4-tuple).
+
+- [ ] **Step 3: Write minimal implementation**
+
+Replace the body of `_compute_national_financial_state` (locate by the docstring
+line `"""Compute national-level financial parameters once per tick.`). New body:
+
+```python
+    def _compute_national_financial_state(
+        self,
+        services: ServicesProtocol,
+        year: int,
+        graph: GraphProtocol,
+    ) -> tuple[float, float, FictitiousCapitalStock | None]:
+        """Compute the national financial parameters once per tick.
+
+        vol3-money-scissors U9: the national interest rate is ENDOGENOUS
+        (Capital Vol. III Part V) — computed from the economy-wide average
+        rate of profit (the ceiling; ch. 22) and loan-market tightness (the
+        demand for loanable money-capital; ch. 22/25), never read from FRED
+        and never absent. FRED is calibration only (see capital_vol3).
+
+        Returns:
+            3-tuple ``(national_rate, national_spread, fictitious)``.
+            ``national_rate`` is total (always a float, 0.0 when no profit is
+            measured); ``national_spread`` is the endogenous fragility premium
+            (>= 0); ``fictitious`` remains Optional (a separate data path).
+        """
+        defines = services.defines
+        profit_rate = economy_wide_profit_rate(graph)
+        s_r = reserve_army_signal(graph, defines)
+        tau = loan_market_tightness(s_r, defines)
+        endogenous = endogenous_interest_rate(profit_rate, tau, defines)
+        endogenous = endogenous.model_copy(
+            update={"year": year, "reserve_army_signal": s_r}
+        )
+        national_rate = endogenous.rate
+        national_spread = endogenous.fragility_premium
+
+        fictitious = None
+        if services.fictitious_capital_calculator is not None:
+            fict_result = services.fictitious_capital_calculator.compute_fictitious_capital(year)
+            if isinstance(fict_result, NoDataSentinel):
+                services.economics_fallbacks.record_vol3_fictitious_sentinel()
+                self._log_vol3_sentinel_once_per_year(year, "fictitious", fict_result.reason)
+            else:
+                fictitious = fict_result
+
+        financial_params = NationalFinancialParameters(
+            endogenous_interest=endogenous,
+            credit_state=self._build_credit_state(services, year, national_spread),
+            fictitious_capital=fictitious,
+        )
+        write_national_financial_state_to_graph(graph, financial_params)
+
+        return national_rate, national_spread, fictitious
+```
+
+Then rewrite `_build_credit_state` to take the endogenous spread (locate by
+`"""Assemble the national credit state from the FRED credit aggregate.`):
+
+```python
+    @staticmethod
+    def _build_credit_state(
+        services: ServicesProtocol,
+        year: int,
+        national_spread: float,
+    ) -> CreditState | None:
+        """Assemble the national credit state from the credit aggregate.
+
+        vol3-money-scissors U9: ``spread_to_treasuries`` now carries the
+        ENDOGENOUS fragility premium (``national_spread``), not the BAA10Y
+        read. ``credit_fragility = default_rate * spread`` still fires the
+        ``credit`` opposition. Returns ``None`` — never a fabricated zero
+        (III.11) — when no credit aggregate source supplies total credit.
+        """
+        source = getattr(services, "credit_aggregate_source", None)
+        if source is None:
+            return None
+        total_credit = source.get_total_credit(year)
+        if total_credit is None:
+            return None
+        return CreditState(
+            year=year,
+            total_credit=total_credit,
+            default_rate=services.defines.capital_vol3.default_rate_estimate,
+            spread_to_treasuries=national_spread,
+        )
+```
+
+Add the four imports to the file's import block (locate the existing
+`from babylon.domain.economics.credit.types import …`):
+```python
+from babylon.domain.economics.credit.endogenous_interest import (
+    endogenous_interest_rate,
+    loan_market_tightness,
+)
+from babylon.domain.economics.tick.graph_bridge import (
+    economy_wide_profit_rate,
+    reserve_army_signal,
+)
+```
+(`write_national_financial_state_to_graph` and `NationalFinancialParameters` are
+already imported.)
+
+- [ ] **Step 4: Run test to verify it passes**
+
+Run: `mise run test:q -- tests/unit/economics/tick/test_system.py`
+Expected: PASS for `TestNationalFinancialState`. Other tests in the file that
+unpack the 4-tuple will now error — those are fixed in U9.8 (expected;
+`mise run test:q` scopes to this file, and U9.8's brief lists them).
+
+- [ ] **Step 5: Commit**
+```bash
+mise run commit -- "feat(economics): endogenous national interest rate replaces the FRED read
+
+_compute_national_financial_state now computes i from the average rate of
+profit and loan-market tightness (Capital Vol. III Part V), publishes an
+EndogenousInterestRate, and returns a 3-tuple. _build_credit_state takes the
+endogenous spread. Rate is now total — never None.
+
+Co-Authored-By: Claude Opus 4.8 (1M context) <noreply@anthropic.com>"
+```
+
+---
+
+### Task U9.8: migrate call sites — drop the unavailable-reason path, switch the config gate
+
+**Files:**
+- Modify: `src/babylon/domain/economics/tick/system/__init__.py`
+  (`_compute_financial_layer`, `_compute_county_financial_state`,
+  `_assess_county_financial_crisis`, the config gate)
+- Test: `tests/unit/economics/tick/test_system.py` (4-tuple unpack sites),
+  `tests/unit/economics/tick/test_financial_integration.py`
+
+**Interfaces:**
+- Consumes: the U9.7 3-tuple.
+- Produces: `_compute_county_financial_state(self, fips, county, services, year, national_rate: float, fictitious, national_spread: float = 0.0)` — the
+  `interest_unavailable_reason` parameter **removed**, `national_rate` **non-Optional**.
+
+- [ ] **Step 1: Write the failing test**
+
+The red is the now-dead skip branch. Add to `tests/unit/economics/tick/test_system.py`:
+
+```python
+    def test_county_distribution_runs_without_an_interest_calculator(self) -> None:
+        """U9: the endogenous rate makes the distribution reachable even when
+        no FRED interest calculator is wired — the config gate is the
+        distribution calculator, not the (now calibration-only) interest one."""
+        system, services, graph, year = self._financial_fixture_with_surplus()
+        services = services.model_copy(update={"interest_calculator": None})
+        out = system._compute_financial_layer(
+            services=services, county_states=..., _national_params=..., year=year, graph=graph
+        )  # fill the ... from the existing helper's call shape
+        # A county with positive surplus now carries a surplus_distribution
+        # (national_rate is a real endogenous float, never None -> no skip).
+        assert any(
+            getattr(c, "surplus_distribution", None) is not None for c in out.values()
+        )
+```
+
+> Adapt the `...` placeholders to the file's existing `_compute_financial_layer`
+> call convention (reuse whatever fixture builds `county_states`/`_national_params`).
+
+- [ ] **Step 2: Run test to verify it fails**
+
+Run: `mise run test:q -- tests/unit/economics/tick/test_system.py::TestFinancialLayer::test_county_distribution_runs_without_an_interest_calculator`
+Expected: FAIL — the county states come back with `surplus_distribution is None` because the current gate `if services.interest_calculator is None: return county_states` short-circuits the whole layer.
+
+- [ ] **Step 3: Write minimal implementation**
+
+1. **Config gate** — locate `if services.interest_calculator is None:` in
+   `_compute_financial_layer` and replace with:
+   ```python
+        # U9: the interest rate is endogenous; the layer needs the
+        # distribution calculator, not the (calibration-only) interest one.
+        if services.distribution_calculator is None:
+            return county_states
+   ```
+2. **3-tuple unpack** — locate
+   `national_rate, national_spread, fictitious, interest_unavailable_reason = (`
+   and replace with:
+   ```python
+        national_rate, national_spread, fictitious = (
+            self._compute_national_financial_state(services, year, graph)
+        )
+   ```
+   and drop `interest_unavailable_reason=interest_unavailable_reason,` from the
+   `_compute_county_financial_state(...)` call.
+3. **`_compute_county_financial_state`** — remove the `interest_unavailable_reason`
+   parameter; change `national_rate: float | None` to `national_rate: float`;
+   **delete** the dead `if national_rate is None:` skip branch (locate the comment
+   `# Honest absence (Constitution III.11): the national rate` — remove that
+   branch and de-indent the `else:` body). The financial-crisis guard
+   `and national_rate is not None` becomes always-true — remove that clause.
+4. **`_assess_county_financial_crisis`** — the `national_rate: float,  # noqa: ARG002`
+   signature is unchanged; drop the now-stale docstring sentence about
+   `national_rate` being retained "so the call site reads symmetrically" if it
+   references the removed None path (locate `national_rate is None` in the
+   docstring, if present).
+
+- [ ] **Step 4: Run tests to verify they pass**
+
+Run: `mise run test:q -- tests/unit/economics/tick/test_system.py tests/unit/economics/tick/test_financial_integration.py`
+Expected: PASS. Fix any residual 4-tuple unpack in `test_system.py` (the site near
+`_national_rate, _spread, fictitious, _reason = system._compute_national_financial_state(`)
+to the 3-tuple form as part of this task.
+
+- [ ] **Step 5: Commit**
+```bash
+mise run commit -- "refactor(economics): drop interest-unavailable path; endogenous rate is total
+
+3-tuple producer contract threaded through _compute_financial_layer /
+_compute_county_financial_state / _assess_county_financial_crisis; the dead
+national_rate-is-None skip removed; config gate switched to the distribution
+calculator so the endogenous rate works without a FRED interest calculator.
+
+Co-Authored-By: Claude Opus 4.8 (1M context) <noreply@anthropic.com>"
+```
+
+---
+
+### Task U9.9: FRED → calibration test; verify the unit lands clean
+
+**Files:**
+- Test: `tests/unit/config/test_interest_share_calibration.py` *(create)*
+- No production change beyond confirming the unit is green.
+
+**Interfaces:**
+- Consumes: `tests/fixtures/vol3_fred_series.json` (committed, U1.2),
+  `capital_vol3.interest_profit_share_base`.
+
+- [ ] **Step 1: Write the failing test**
+
+Create `tests/unit/config/test_interest_share_calibration.py`:
+
+```python
+"""U9.9: FRED is now CALIBRATION, not a runtime input — this test is the
+durable spec (Constitution III.12) that interest_profit_share_base tracks the
+real net-interest / profit ratio. If the coefficient is regenerated it is
+re-checked against data, not vibes."""
+
+from __future__ import annotations
+
+import pytest
+
+from babylon.config.defines import GameDefines
+
+
+@pytest.mark.unit
+def test_base_share_matches_the_fred_net_interest_to_profit_band() -> None:
+    base = GameDefines.load_default().capital_vol3.interest_profit_share_base
+    # FRED W273RC1 / A053RC1Q027SBEA calm-year band (design §1.3): 0.25-0.35.
+    assert 0.25 <= base <= 0.35
+```
+
+- [ ] **Step 2: Run test to verify it fails**
+
+Run: `mise run test:q -- tests/unit/config/test_interest_share_calibration.py`
+Expected: PASS immediately IF U9.2's default landed (0.30 ∈ [0.25, 0.35]); the
+"red" for this documentation test is degenerate. Per Global Constraint M1 this is
+acceptable **only** because no production code is written here — if you prefer a
+real red, temporarily set the default to 0.40, watch it fail, restore.
+
+- [ ] **Step 3: Verify the whole unit is green**
+
+Run: `mise run check:quick` then scoped: `mise run test:q -- tests/unit/economics/credit tests/unit/economics/tick tests/unit/config`
+Expected: PASS. Then confirm no `national_rate is None`/`interest_unavailable_reason`
+survivors:
+```bash
+rg -n 'interest_unavailable_reason|national_rate is None' src/babylon tests
+```
+Expected: **no matches** in `src/babylon`; test matches only in files this unit
+rewrote (verify each is the endogenous assertion, not the old absence one).
+
+- [ ] **Step 4: Determinism spot-check (no baseline regen — U8 owns that)**
+
+Run: `mise run qa:regression` — it WILL differ from the current baselines (the
+distribution's interest term now computes every modeled year). **Do not
+regenerate.** Record the diff summary as evidence for U8.3. If it *matches*, STOP —
+that means the endogenous rate is not reaching the distribution and U9 is inert.
+
+- [ ] **Step 5: Commit**
+```bash
+mise run commit -- "test(calibration): pin interest_profit_share_base to the FRED band (U9 close)
+
+FRED demoted to calibration; the base share tracks net-interest/profit.
+Endogenous interest unit complete; baselines move (U8 ceremony owns regen).
+
+Co-Authored-By: Claude Opus 4.8 (1M context) <noreply@anthropic.com>"
+```
+
+---
+
 ### Task U7.0: Empirical determinism proof — two independent processes, per-tick construction cadence
 
 **Files:**
@@ -10021,7 +11615,7 @@ Co-Authored-By: Claude Opus 4.8 (1M context) <noreply@anthropic.com>"
 
 ---
 
-### Task U7.2: Shared AST helpers the five new sensors read source with
+### Task U7.2: Shared AST helpers the six new sensors read source with
 
 **Files:**
 - Modify: `src/babylon/sentinels/_ast.py` (append after the existing `eventtype_names_in_module`, currently the last function in the file)
@@ -11236,7 +12830,7 @@ equal-weighted declare an exemption WITH A REASON in
 :mod:`babylon.sentinels.aggregation.registry`.
 
 Advisory and local/on-demand per the standing owner ruling:
-``poetry run python tools/sentinel_check.py aggregation``.
+``poetry run python tools/sentinel_check.py aggregation-intensive``.
 
 Layer 0.5: imports nothing above :mod:`babylon.models`.
 """
@@ -11525,7 +13119,7 @@ from babylon.sentinels.aggregation.checks import main as aggregation_main
 
 Append to `.mise.toml`:
 ```toml
-[tasks."check:aggregation"]
+[tasks."check:aggregation-intensive"]
 description = "Aggregation sentinel (ADVISORY, local): no unweighted mean of a rate/ratio/balance"
 run = "poetry run python tools/sentinel_check.py aggregation"
 ```
@@ -11835,7 +13429,7 @@ Co-Authored-By: Claude Opus 4.8 (1M context) <noreply@anthropic.com>"
 **Files:**
 - Create: `src/babylon/sentinels/coupling/checks.py`
 - Modify: `tools/sentinel_check.py` (import + `_SENSORS` entry, beside the `aggregation` entry from U7.6)
-- Modify: `.mise.toml` (append after the `check:aggregation` block from U7.6)
+- Modify: `.mise.toml` (append after the `check:aggregation-intensive` block from U7.6)
 - Test: `tests/unit/sentinels/test_coupling_sentinel.py`
 
 **Interfaces:**
@@ -12569,12 +14163,380 @@ Co-Authored-By: Claude Opus 4.8 (1M context) <noreply@anthropic.com>"
 
 ---
 
+### Task U7.11: sixth sentinel — cross-cutting public-surface baseline blindness
+
+**Discovered defect class.** A scoped, per-task test run cannot see repo-wide
+public-surface baselines. **Live specimen:** U2.3 added `"CapitalVolumeIIIDefines"`
+to `babylon.config.defines.__all__` (`src/babylon/config/defines/__init__.py`, the
+`__all__` list) **without** adding it to `EXPECTED_DEFINES_PUBLIC` in
+`tests/unit/test_public_import_surface.py`. A scoped run of the U2.3 config tests
+was green; only the full gate (`test_all_matches_baseline`) caught the drift. The
+sentinel closes that blind spot: **statically** (AST, no import, no test run) detect
+an `__all__` whose members diverge from the baseline frozenset that pins it.
+
+**Files:**
+- Create: `src/babylon/sentinels/surface/__init__.py`,
+  `src/babylon/sentinels/surface/registry.py`,
+  `src/babylon/sentinels/surface/checks.py`
+- Modify: `src/babylon/sentinels/_ast.py` (add `frozenset_str_members`)
+- Modify: `tools/sentinel_check.py` (`_MAINS` gains `"surface"`)
+- Modify: `.mise.toml` (`check:surface` task, folded into `[tasks.check]`'s
+  `depends` — a real gate, mirroring `check:seams`/`check:coverage`, NOT the
+  advisory/local-only pattern U7.5/U7.6/U7.8 use for `check:liveness`/
+  `check:aggregation-intensive`/`check:coupling`)
+- Modify: `.github/workflows/ci.yml`, `.github/workflows/main.yml` (add an
+  explicit `check:surface` step, mirroring the `check:seams`/`check:coverage`
+  steps in both files)
+- Test: `tests/unit/sentinels/test_surface.py` *(create)*
+
+**Interfaces:**
+- Consumes: `babylon.sentinels.report.format_finding` (U7.1 five-fact formatter);
+  `babylon.sentinels._ast.literal_str_tuple` (reads a module `__all__` list) and
+  the new `frozenset_str_members`.
+- Produces: `PinnedSurface(BaseModel)` rows in `registry.py`; `check_pinned_surfaces() -> list[Finding]`
+  and `main(argv) -> int` in `checks.py`; `"surface": surface_main` in `_MAINS`.
+
+> **M1 carve-out:** the deliverable is a new package; U7.11's red is the collection
+> error of `tests/unit/sentinels/test_surface.py` importing a not-yet-existing
+> module. The mutation proof (Step 6) is a real assertion-level red/green on an
+> injected specimen.
+
+- [ ] **Step 1: Add the shared AST reader (assertion-level red first)**
+
+Add to `tests/unit/sentinels/test_ast_helpers.py` (or create it):
+
+```python
+def test_frozenset_str_members_reads_a_frozenset_literal(tmp_path) -> None:
+    from babylon.sentinels._ast import frozenset_str_members
+
+    p = tmp_path / "m.py"
+    p.write_text(
+        "from __future__ import annotations\n"
+        "EXPECTED: frozenset[str] = frozenset({'A', 'B', 'C'})\n"
+    )
+    assert set(frozenset_str_members(p, "EXPECTED")) == {"A", "B", "C"}
+```
+
+Run: `mise run test:q -- tests/unit/sentinels/test_ast_helpers.py::test_frozenset_str_members_reads_a_frozenset_literal`
+Expected: FAIL — `ImportError: cannot import name 'frozenset_str_members'`.
+
+Add to `src/babylon/sentinels/_ast.py`:
+
+```python
+def frozenset_str_members(path: Path, var_name: str) -> tuple[str, ...]:
+    """Return the string members of a module-level ``frozenset({...})`` literal.
+
+    Reads ``VAR = frozenset({...})`` or ``VAR: frozenset[str] = frozenset({...})``
+    from ``path`` by AST — no import, no execution. Non-string members and
+    non-literal sets are ignored (the sentinel compares only string symbols).
+    """
+    tree = ast.parse(path.read_text(encoding="utf-8"))
+    for node in ast.walk(tree):
+        target = None
+        if isinstance(node, ast.Assign) and len(node.targets) == 1:
+            target = node.targets[0]
+        elif isinstance(node, ast.AnnAssign):
+            target = node.target
+        if not isinstance(target, ast.Name) or target.id != var_name:
+            continue
+        value = node.value
+        # frozenset({...}) or frozenset([...])
+        if (
+            isinstance(value, ast.Call)
+            and isinstance(value.func, ast.Name)
+            and value.func.id == "frozenset"
+            and value.args
+        ):
+            value = value.args[0]
+        members: list[str] = []
+        if isinstance(value, (ast.Set, ast.List, ast.Tuple)):
+            for elt in value.elts:
+                if isinstance(elt, ast.Constant) and isinstance(elt.value, str):
+                    members.append(elt.value)
+        return tuple(members)
+    return ()
+```
+
+Run again — Expected: PASS.
+
+- [ ] **Step 2: Declare the registry**
+
+Create `src/babylon/sentinels/surface/registry.py`:
+
+```python
+"""Declared source of truth: public surfaces pinned by a baseline test.
+
+Each :class:`PinnedSurface` names a package whose ``__all__`` is pinned by a
+frozenset baseline in a test file. The static sensor in
+:mod:`babylon.sentinels.surface.checks` proves the two agree — so an ``__all__``
+edit without a matching baseline edit reds a scoped run, not only the full gate
+(the cross-cutting public-surface baseline-blindness class).
+"""
+
+from __future__ import annotations
+
+from pydantic import BaseModel, ConfigDict, model_validator
+
+
+class PinnedSurface(BaseModel):
+    """One package surface pinned by a baseline frozenset.
+
+    :ivar name: stable identity (e.g. ``"config.defines"``).
+    :ivar package_init: repo-relative path to the ``__init__.py`` declaring ``__all__``.
+    :ivar baseline_file: repo-relative path to the test declaring the baseline.
+    :ivar baseline_var: the frozenset variable name (e.g. ``EXPECTED_DEFINES_PUBLIC``).
+    :ivar material_relation: why drift matters (Aleksandrov Test).
+    """
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    name: str
+    package_init: str
+    baseline_file: str
+    baseline_var: str
+    material_relation: str
+
+    @model_validator(mode="after")
+    def _validate_shape(self) -> PinnedSurface:
+        if not self.package_init.endswith("__init__.py"):
+            raise ValueError(f"{self.name!r}: package_init must be an __init__.py path")
+        if not self.baseline_file.endswith(".py"):
+            raise ValueError(f"{self.name!r}: baseline_file must be a .py path")
+        return self
+
+
+PINNED_SURFACES: tuple[PinnedSurface, ...] = (
+    PinnedSurface(
+        name="config.defines",
+        package_init="src/babylon/config/defines/__init__.py",
+        baseline_file="tests/unit/test_public_import_surface.py",
+        baseline_var="EXPECTED_DEFINES_PUBLIC",
+        material_relation=(
+            "The moddable coefficient surface; a *Defines class silently added "
+            "to __all__ without a baseline edit is a public-API change no "
+            "scoped test sees (live specimen: CapitalVolumeIIIDefines, U2.3)."
+        ),
+    ),
+    PinnedSurface(
+        name="models.enums",
+        package_init="src/babylon/models/enums/__init__.py",
+        baseline_file="tests/unit/test_public_import_surface.py",
+        baseline_var="EXPECTED_ENUMS_PUBLIC",
+        material_relation=(
+            "The enum vocabulary surface; an enum added to __all__ without a "
+            "baseline edit ships an unpinned public symbol."
+        ),
+    ),
+)
+```
+
+- [ ] **Step 3: The check**
+
+Create `src/babylon/sentinels/surface/checks.py`:
+
+```python
+"""Static sensor: __all__ vs its baseline frozenset must not drift."""
+
+from __future__ import annotations
+
+import sys
+from pathlib import Path
+
+from babylon.sentinels._ast import frozenset_str_members, literal_str_tuple
+from babylon.sentinels.report import Finding, format_finding
+from babylon.sentinels.surface.registry import PINNED_SURFACES, PinnedSurface
+
+_REPO_ROOT = Path(__file__).resolve().parents[4]
+
+
+def _resolve(path_str: str) -> Path:
+    """Join a registry path against the repo root, unless it is absolute.
+
+    Registry rows hold repo-relative paths; the fixture-based mutation test
+    passes absolute paths, which are used as-is (idempotent join).
+    """
+    path = Path(path_str)
+    return path if path.is_absolute() else _REPO_ROOT / path
+
+
+def _drift_finding(surface: PinnedSurface) -> Finding | None:
+    """Return a Finding if ``surface``'s ``__all__`` and baseline disagree."""
+    exported = set(literal_str_tuple(_resolve(surface.package_init), "__all__"))
+    baseline = set(
+        frozenset_str_members(_resolve(surface.baseline_file), surface.baseline_var)
+    )
+    missing = baseline - exported  # in baseline, dropped from __all__
+    extra = exported - baseline  # added to __all__, no baseline edit
+    if not missing and not extra:
+        return None
+    return Finding(
+        error_class="public-surface baseline blindness",
+        symbol=f"{surface.name}.__all__",
+        location=surface.package_init,
+        problem=(
+            f"__all__ diverged from {surface.baseline_var} in "
+            f"{surface.baseline_file}: added-without-baseline={sorted(extra)}, "
+            f"dropped-but-still-pinned={sorted(missing)}"
+        ),
+        remedy=(
+            f"Edit {surface.baseline_var} in {surface.baseline_file} to match "
+            f"{surface.name}.__all__ in the SAME commit that changed __all__."
+        ),
+    )
+
+
+def check_pinned_surfaces() -> list[Finding]:
+    """Every pinned surface must agree with its baseline frozenset."""
+    findings: list[Finding] = []
+    for surface in PINNED_SURFACES:
+        finding = _drift_finding(surface)
+        if finding is not None:
+            findings.append(finding)
+    return findings
+
+
+def main(argv: list[str] | None = None) -> int:
+    """CLI entrypoint. Exit 1 on any drift, 0 when all surfaces agree."""
+    findings = check_pinned_surfaces()
+    for finding in findings:
+        print(format_finding(finding), file=sys.stderr)
+    return 1 if findings else 0
+```
+
+> Adapt `Finding`/`format_finding` to U7.1's actual `report.py` API (five facts:
+> class, symbol, file:line, problem, remedy) — U7.11 lands after U7.1, so read the
+> shipped `report.py` and match its constructor exactly.
+
+- [ ] **Step 4: Wire the CLI + the gate (mise + CI)**
+
+In `tools/sentinel_check.py`, add to the imports and `_MAINS`:
+```python
+from babylon.sentinels.surface.checks import main as surface_main
+```
+```python
+    "surface": surface_main,
+```
+
+**Amended by owner ruling 2026-07-19:** unlike the other five sentinels in
+this family (`check:liveness`/`check:aggregation-intensive`/`check:coupling`, U7.5/
+U7.6/U7.8 — advisory and local-only, they never gate CI), `check:surface`
+is wired as a real gate — exactly the way the repo's existing
+`check:seams`/`check:coverage`
+sentinels are wired (`.mise.toml`, verified against this worktree): a
+`[tasks."check:X"]` block that is itself folded into `[tasks.check]`'s
+`depends` list, plus an explicit step in both `.github/workflows/ci.yml` and
+`.github/workflows/main.yml`.
+
+In `.mise.toml`, add:
+```toml
+[tasks."check:surface"]
+description = "Sentinel: __all__ vs its pinned baseline frozenset (public-surface baseline blindness gate)"
+run = "poetry run python tools/sentinel_check.py surface --check"
+```
+and add `"check:surface"` to `[tasks.check]`'s `depends` list, alongside
+`"check:hygiene"`, `"check:seams"`, `"check:coverage"`.
+
+In both `.github/workflows/ci.yml` and `.github/workflows/main.yml`, add a
+step mirroring the existing `check:seams`/`check:coverage` steps (same job,
+directly after the `check:coverage` step):
+```yaml
+      - name: Public-surface baseline gate (__all__ vs pinned baseline)
+        run: mise run check:surface
+```
+
+- [ ] **Step 5: Run the sensor against the real repo**
+
+Run: `PYTHONPATH="$PWD/src" poetry run python tools/sentinel_check.py surface`
+Expected: if the live specimen is still present, exit 1 with a finding naming
+`CapitalVolumeIIIDefines` as `added-without-baseline`. **That is the sensor working.**
+Fix it by adding `"CapitalVolumeIIIDefines"` to `EXPECTED_DEFINES_PUBLIC` in
+`tests/unit/test_public_import_surface.py` (a one-line baseline edit), then re-run
+— Expected: exit 0. (If U2.3's ceremony already added it, the sensor is green on
+the real repo; the mutation proof below carries the red/green evidence.)
+
+- [ ] **Step 6: Mutation proof (fixture-based, deterministic)**
+
+Create `tests/unit/sentinels/test_surface.py`:
+
+```python
+"""U7.11: the public-surface sentinel reds on an __all__ that added a symbol
+without a matching baseline edit (the U2.3 CapitalVolumeIIIDefines class),
+and greens when they agree — proven on a fixture, independent of repo state."""
+
+from __future__ import annotations
+
+import pytest
+
+from babylon.sentinels.surface.checks import _drift_finding
+from babylon.sentinels.surface.registry import PinnedSurface
+
+
+def _fixture(tmp_path, all_symbols: list[str], baseline: set[str]) -> PinnedSurface:
+    """A pinned surface whose paths are ABSOLUTE (used as-is by ``_resolve``)."""
+    init = tmp_path / "pkg" / "__init__.py"
+    init.parent.mkdir(parents=True)
+    init.write_text(f"__all__ = {all_symbols!r}\n")
+    base = tmp_path / "test_surface_pin.py"
+    base.write_text(f"EXPECTED = frozenset({sorted(baseline)!r})\n")
+    return PinnedSurface(
+        name="fixture.pkg",
+        package_init=str(init),  # absolute -> _resolve returns it unchanged
+        baseline_file=str(base),
+        baseline_var="EXPECTED",
+        material_relation="fixture",
+    )
+
+
+@pytest.mark.unit
+class TestSurfaceSentinel:
+    def test_reds_on_symbol_added_without_baseline(self, tmp_path) -> None:
+        # Literal reproduction of the live specimen: a symbol in __all__ that
+        # the baseline frozenset does not pin.
+        surface = _fixture(tmp_path, ["Foo", "CapitalVolumeIIIDefines"], {"Foo"})
+        finding = _drift_finding(surface)
+        assert finding is not None
+        assert "CapitalVolumeIIIDefines" in finding.problem
+
+    def test_reds_on_baseline_symbol_dropped_from_all(self, tmp_path) -> None:
+        surface = _fixture(tmp_path, ["Foo"], {"Foo", "Bar"})
+        finding = _drift_finding(surface)
+        assert finding is not None
+        assert "Bar" in finding.problem
+
+    def test_greens_when_all_matches_baseline(self, tmp_path) -> None:
+        surface = _fixture(tmp_path, ["Foo", "Bar"], {"Foo", "Bar"})
+        assert _drift_finding(surface) is None
+```
+
+> **Note:** the fixture paths are absolute, so `_resolve` (Step 3) returns them
+> unchanged — no monkeypatching of `_REPO_ROOT` is needed. The load-bearing
+> assertions are: (a) an `__all__` symbol absent from the baseline yields a finding
+> naming it (the `CapitalVolumeIIIDefines` specimen); (b) a baseline symbol dropped
+> from `__all__` also reds; (c) an aligned fixture yields `None`.
+
+Run: `mise run test:q -- tests/unit/sentinels/test_surface.py`
+Expected: PASS (the sentinel reds on the injected specimen, greens when aligned).
+
+- [ ] **Step 7: Commit**
+```bash
+mise run commit -- "feat(sentinels): public-surface baseline-blindness sensor (6th class)
+
+Static AST check: a package __all__ that drifts from its pinned baseline
+frozenset (EXPECTED_*_PUBLIC) reds a scoped run, not only the full gate.
+Live specimen: CapitalVolumeIIIDefines added to defines.__all__ (U2.3)
+without a baseline edit. Mutation-proven on a fixture.
+
+Co-Authored-By: Claude Opus 4.8 (1M context) <noreply@anthropic.com>"
+```
+
+---
+
 ### Task U7.10: Close the loop — full-family run, reference doc, ADR, state
 
 **Files:**
 - Create: `docs/reference/sentinel-error-classes.rst`
 - Modify: `ai/state.yaml`
-- Create: `ai/decisions/ADR082_sentinel_error_classes.yaml`
+- Create: `ai/decisions/ADR088_sentinel_error_classes.yaml`
 - Modify: `ai/decisions/index.yaml`
 - Test: `tests/unit/sentinels/test_sentinel_family_cli.py`
 
@@ -12586,9 +14548,12 @@ Co-Authored-By: Claude Opus 4.8 (1M context) <noreply@anthropic.com>"
 ```python
 """Family-level test: every U7 sensor is dispatchable and self-describing.
 
-The five error classes are only useful if an agent can find and run them. This
-pins the CLI surface: each new sensor is registered, exits 0 (all five are
-advisory per the standing owner ruling), and prints a summary naming itself.
+The six error classes are only useful if an agent can find and run them. This
+pins the CLI surface: each new sensor is registered and exits 0 clean. Five
+(liveness x2, aggregation, coupling, gate-blindness) are advisory per the
+standing owner ruling; the sixth (public-surface baseline blindness, U7.11)
+is wired as a real check:surface gate, not advisory (owner ruling 2026-07-19
+-- see U7.11's Files: block).
 """
 
 from __future__ import annotations
@@ -12642,8 +14607,8 @@ def test_unknown_sensor_is_rejected() -> None:
     assert "invalid choice" in result.stderr
 
 
-def test_reference_doc_names_all_five_error_classes() -> None:
-    """The reference doc is the agent-facing index of the five classes."""
+def test_reference_doc_names_all_six_error_classes() -> None:
+    """The reference doc is the agent-facing index of the six classes."""
     doc = (_REPO_ROOT / "docs/reference/sentinel-error-classes.rst").read_text(
         encoding="utf-8"
     )
@@ -12653,6 +14618,7 @@ def test_reference_doc_names_all_five_error_classes() -> None:
         "gate-blindness",
         "intensive-aggregation",
         "undeclared-coupling",
+        "public-surface baseline blindness",
     ):
         assert error_class in doc
 
@@ -12679,16 +14645,20 @@ Expected: FAIL with `FileNotFoundError: .../docs/reference/sentinel-error-classe
 
 Run `ls ai/decisions/ | grep -oE 'ADR[0-9]+' | sort -t R -k2 -n | tail -1` first and
 substitute the real next number in the filename, the top-level YAML key, and the
-index.yaml entry. At authoring time the highest was ADR081, making this ADR082 and
-U8.6's ADR083.
+index.yaml entry. At authoring time the highest was ADR081, making this ADR088 and
+U8.6's ADR089.
 
 `docs/reference/sentinel-error-classes.rst`:
 ```rst
 Sentinel error classes
 ======================
 
-Five named failure classes, each with a sensor that finds it. All five are
+Six named failure classes, each with a sensor that finds it. Five are
 **advisory** and **local/on-demand** — they print loudly, they never gate CI.
+The sixth, public-surface baseline blindness (U7.11), is wired as a real
+gate (``check:surface``, folded into ``mise run check`` and CI, owner ruling
+2026-07-19 — see that task's Files: block) because a scoped test run cannot
+otherwise see a repo-wide public-surface baseline drift.
 Run one with ``mise run check:<name>`` or
 ``poetry run python tools/sentinel_check.py <sensor>``.
 
@@ -12744,7 +14714,7 @@ hard as Wayne County.
 
 :Sensor: ``babylon.sentinels.aggregation.checks.check_no_unweighted_intensive_means``
 :Registry: ``babylon.sentinels.aggregation.registry``
-:Run: ``mise run check:aggregation``
+:Run: ``mise run check:aggregation-intensive``
 :Remedy: aggregate numerator and denominator separately, or declare an
    ``AggregationExemption`` with the reason equal weighting is materially right.
 
@@ -12762,41 +14732,70 @@ had written down.
 :Run: ``mise run check:coupling``
 :Remedy: wire the dependency the edge claims, delete the edge, or declare the
    edge that the real read already implies.
+
+public-surface baseline blindness
+----------------------------------
+
+A scoped, per-task test run cannot see repo-wide public-surface baselines: an
+``__all__`` edited without its pinned ``EXPECTED_*_PUBLIC`` baseline reds only
+the full gate, never a scoped run. Live specimen: ``CapitalVolumeIIIDefines``
+added to ``babylon.config.defines.__all__`` (U2.3) without a matching edit to
+``EXPECTED_DEFINES_PUBLIC``.
+
+:Sensor: ``babylon.sentinels.surface.checks.check_pinned_surfaces``
+:Registry: ``babylon.sentinels.surface.registry.PINNED_SURFACES``
+:Run: ``mise run check:surface`` — unlike the other five, this one **gates**
+   (folded into ``mise run check`` and CI, owner ruling 2026-07-19; U7.11).
+:Remedy: edit the baseline frozenset in the same commit that changed
+   ``__all__``.
 ```
 
-`ai/decisions/ADR082_sentinel_error_classes.yaml` (match the field shape of the
+`ai/decisions/ADR088_sentinel_error_classes.yaml` (match the field shape of the
 neighbouring `ADR0NN_*.yaml` files — read `ai/decisions/ADR081_*.yaml` first and
 mirror its keys exactly):
 ```yaml
-ADR082_sentinel_error_classes:
+ADR088_sentinel_error_classes:
   status: "accepted"
   date: "2026-07-18"
-  title: "Five named sentinel error classes ship as advisory local sensors"
+  title: "Six named sentinel error classes ship (five advisory local sensors, one CI gate)"
   context: >
-    The Volume III money work surfaced five distinct failure classes that no
+    The Volume III money work surfaced six distinct failure classes that no
     existing test detected: an entire estate computing correctly and changing
     nothing (correct-but-inert); individual outputs with no reader
     (computed-but-never-consumed); the Definition-of-Done gate running green while
     executing none of the estate it claimed to guard (gate-blindness); an
-    unweighted mean of an intensive across space (intensive-aggregation); and a
+    unweighted mean of an intensive across space (intensive-aggregation); a
     coupling graph whose declared edges had drifted from the dependencies they
-    described, in both directions (undeclared-coupling). Four were already on the
-    owed-sentinel list; the fifth is new and generalises the governing principle
-    that a coupling graph must be verified against code, not merely declared.
+    described, in both directions (undeclared-coupling); and a scoped test run
+    that cannot see a repo-wide public-surface baseline drift
+    (public-surface baseline blindness — live specimen CapitalVolumeIIIDefines,
+    U2.3). Four were already on the owed-sentinel list; the fifth and sixth are
+    new. The sixth generalises the governing principle one step further: unlike
+    the first five (advisory, local-only), it is wired as a real CI gate
+    (owner ruling 2026-07-19), because a public-surface drift is exactly the
+    kind of defect a scoped run structurally cannot see.
   decision: >
     Ship one sensor per class in the babylon.sentinels family — new packages
-    liveness/, aggregation/, coupling/, plus a gate-blindness check extending the
-    existing coverage/ package. All five are ADVISORY and local/on-demand per the
-    standing owner ruling: no nightly CI plumbing, no gating. Each finding is
-    agent-legible through a shared formatter (error class, symbol, file:line,
-    problem, remedy) and each sensor ships a mutation test that injects the defect
-    it exists to catch and proves the sensor reds.
+    liveness/, aggregation/, coupling/, surface/ (U7.11), plus a gate-blindness
+    check extending the existing coverage/ package. Five are ADVISORY and
+    local/on-demand per the standing owner ruling: no nightly CI plumbing, no
+    gating. The sixth, public-surface baseline blindness (check:surface), is
+    the one exception (owner ruling 2026-07-19): it is folded into
+    ``mise run check``'s depends and into CI, exactly the way check:seams and
+    check:coverage are wired, because its whole point is catching what a
+    scoped run cannot see. Each finding is agent-legible through a shared
+    formatter (error class, symbol, file:line, problem, remedy) and each
+    sensor ships a mutation test that injects the defect it exists to catch
+    and proves the sensor reds.
   consequences: >
     The four owed classes are struck from the owed list. New mise tasks
-    check:liveness, check:aggregation, check:coupling; check:coverage gains an
-    advisory tier. The registries are hand-written dev-time contracts and must be
-    grown as producers and couplings are added — an undeclared output or edge is
-    the drift the sensors exist to surface, so growth is the point, not overhead.
+    check:liveness, check:aggregation-intensive, check:coupling, check:surface;
+    check:coverage gains an advisory tier. check:surface alone is folded into
+    [tasks.check]'s depends and into ci.yml/main.yml as a real gate. The
+    registries are hand-written dev-time contracts and must be grown as
+    producers, couplings and public surfaces are added — an undeclared output,
+    edge or surface drift is exactly what the sensors exist to surface, so
+    growth is the point, not overhead.
   supersedes: []
   related:
     - ADR077
@@ -12811,35 +14810,40 @@ ADR082_sentinel_error_classes:
 
 Add to `ai/decisions/index.yaml`, immediately after the `decisions:` line:
 ```yaml
-  ADR082_sentinel_error_classes:
-    title: 'Five named sentinel error classes ship as advisory local sensors: liveness (correct-but-inert, computed-but-never-consumed), aggregation (intensive-aggregation), coupling (undeclared-coupling, both directions), and gate-blindness extending the coverage sentinel'
+  ADR088_sentinel_error_classes:
+    title: 'Six named sentinel error classes ship: liveness (correct-but-inert, computed-but-never-consumed), aggregation (intensive-aggregation), coupling (undeclared-coupling, both directions), gate-blindness extending the coverage sentinel, and surface (public-surface baseline blindness) -- five advisory, the sixth (surface) a real CI gate per owner ruling 2026-07-19'
     status: accepted
     date: '2026-07-18'
-    file: ADR082_sentinel_error_classes.yaml
+    file: ADR088_sentinel_error_classes.yaml
 ```
 
 Append to `ai/state.yaml`, immediately after the `truth_status: |` line:
 ```yaml
-    (2026-07-18) SENTINEL FAMILY GROWS TO FIVE ERROR CLASSES (ADR082): the
-    Vol III money work surfaced five failure modes no existing test caught.
+    (2026-07-18) SENTINEL FAMILY GROWS TO SIX ERROR CLASSES (ADR088): the
+    Vol III money work surfaced six failure modes no existing test caught.
     New packages babylon.sentinels.liveness (correct-but-inert,
-    computed-but-never-consumed), .aggregation (intensive-aggregation), and
+    computed-but-never-consumed), .aggregation (intensive-aggregation),
     .coupling (undeclared-coupling, checked in BOTH directions), plus
     check_gate_estate_coverage extending .coverage (gate-blindness — the
-    state qa:regression was in for the whole economics estate). All five
-    are ADVISORY and local/on-demand per the standing owner ruling: new
-    mise tasks check:liveness / check:aggregation / check:coupling; no CI
-    gating, no nightly plumbing. Each sensor ships a mutation test that
-    injects its own defect and proves the sensor reds. STRUCK from the
-    owed-sentinel list: correct-but-inert, computed-but-never-consumed,
-    gate-blindness, intensive-aggregation.
+    state qa:regression was in for the whole economics estate), plus
+    .surface (public-surface baseline blindness, U7.11 — live specimen
+    CapitalVolumeIIIDefines added to defines.__all__ without a matching
+    EXPECTED_DEFINES_PUBLIC edit, U2.3). Five are ADVISORY and
+    local/on-demand per the standing owner ruling: new mise tasks
+    check:liveness / check:aggregation-intensive / check:coupling; no CI gating, no
+    nightly plumbing. The sixth, check:surface, is wired as a real gate
+    (owner ruling 2026-07-19) — folded into mise run check's depends and
+    into ci.yml/main.yml, exactly like check:seams/check:coverage. Each
+    sensor ships a mutation test that injects its own defect and proves
+    the sensor reds. STRUCK from the owed-sentinel list: correct-but-inert,
+    computed-but-never-consumed, gate-blindness, intensive-aggregation.
 ```
 - [ ] **Step 4: Run test to verify it passes**
 Run: `mise run test:q -- tests/unit/sentinels/test_sentinel_family_cli.py`
 Expected: PASS (7 passed)
 - [ ] **Step 5: Commit**
 ```bash
-mise run commit -- "docs(sentinels): reference doc + ADR082 for the five error classes
+mise run commit -- "docs(sentinels): reference doc + ADR088 for the six error classes
 
 Co-Authored-By: Claude Opus 4.8 (1M context) <noreply@anthropic.com>"
 ```
@@ -13116,6 +15120,19 @@ structure (§3.1-3.5) that produced the delta — citing the actual symbol
 (e.g. `NATIONAL_FINANCIAL_ATTR`, `fictitious_anchor`, the `surplus_distribution`
 opposition key, `MarketDefines.anchor_pull`) — not a restatement that a
 number changed.
+
+**Endogenous interest (U9):** the delta report MUST include a per-scenario
+line attributing the surplus-distribution `interest_payments` movement to
+the endogenous rate `i = r·share(τ)` (Capital Vol. III Part V), and confirm
+the rate is total (no `NoDataSentinel`) across all five scenarios. Do NOT
+describe the interest rate as FRED-grounded.
+
+**Wealth-weighted asymmetry field (U7.6b, owner ruling 2026-07-19):** the
+delta report MUST also include a per-scenario line attributing dialectical
+movement on the capital_labor / wage / imperial / tenancy oppositions to the
+`_mean_asymmetry` wealth-weighting fix (`gap = Σ|b−a|/Σ(a+b)`, the
+intensive-aggregation remedy the U7.6 sensor forced) — discovered live by
+the sensor, fixed under the same owner gate that covers this report.
 
 ### imperial_circuit
 
@@ -13410,7 +15427,7 @@ EOF
 ### Task U8.6: ADR + index.yaml catalog entry + ai/state.yaml
 
 **Files:**
-- Create: `ai/decisions/ADR083_vol3_money_scissors.yaml` (verified free; still run the `ls`/`grep` check in Step 1 and trust its output over this literal)
+- Create: `ai/decisions/ADR089_vol3_money_scissors.yaml` (verified free; still run the `ls`/`grep` check in Step 1 and trust its output over this literal)
 - Modify: `ai/decisions/index.yaml:6-7` (insert new entry as the first item under `decisions:`, before `ADR081_declarative_system_ordering:`)
 - Modify: `ai/state.yaml:5-7` (bump `meta.version`, `meta.updated`, and prepend a new paragraph to `truth_status` immediately after the `truth_status: |` line, before the existing 2026-07-17 paragraph)
 
@@ -13418,11 +15435,11 @@ EOF
 - Consumes: the ceremony commit hash from U8.5 Step 7; the approval record from U8.4; the filled `reports/vol3-baseline-delta.md` from U8.3.
 - Produces: the permanent governance record for this work — nothing downstream in this plan depends on it, but it is the acceptance-criteria closer for U8 ("ADR landed; `ai/state.yaml` updated").
 
-- [ ] **Step 1: Determine the real next ADR number — do not assume ADR083**
+- [ ] **Step 1: Determine the real next ADR number — do not assume ADR089**
 ```bash
 ls ai/decisions/ | grep -oE 'ADR[0-9]+' | sort -t R -k2 -n | tail -1
 ```
-U7.10 lands `ADR082_sentinel_error_classes.yaml` before this task runs, so the next free number is `ADR083` — but other work may have landed since, so trust the command's output, not this note. The rest of this task uses `ADR083` as a placeholder; substitute the real number everywhere (filename, the `index.yaml` key, and the top-level YAML key inside the ADR file itself, which must match the filename per every existing ADR's convention).
+U7.10 lands `ADR088_sentinel_error_classes.yaml` before this task runs, so the next free number is `ADR089` — but other work may have landed since, so trust the command's output, not this note. The rest of this task uses `ADR089` as a placeholder; substitute the real number everywhere (filename, the `index.yaml` key, and the top-level YAML key inside the ADR file itself, which must match the filename per every existing ADR's convention).
 
 - [ ] **Step 2: Write the failing test**
 ```python
@@ -13444,7 +15461,7 @@ DECISIONS_DIR = Path(__file__).resolve().parents[3] / "ai" / "decisions"
 INDEX_PATH = DECISIONS_DIR / "index.yaml"
 
 # Substitute the real number determined in Step 1.
-NEW_ADR_STEM = "ADR083_vol3_money_scissors"
+NEW_ADR_STEM = "ADR089_vol3_money_scissors"
 
 
 def test_new_adr_file_exists_with_matching_top_level_key() -> None:
@@ -13486,7 +15503,7 @@ def test_no_unfilled_placeholders_in_the_governance_records() -> None:
 
     Unlike U8.3's `reports/vol3-baseline-delta.md` -- a draft evidence
     artifact allowed placeholders everywhere but its Owner Approval Gate
-    until that gate is satisfied -- ADR083 and the new ai/state.yaml
+    until that gate is satisfied -- ADR089 and the new ai/state.yaml
     paragraph are permanent governance history the moment this task
     commits them. Zero tolerance, no carve-out.
     """
@@ -13501,15 +15518,15 @@ def test_no_unfilled_placeholders_in_the_governance_records() -> None:
 ```
 - [ ] **Step 3: Run test to verify it fails**
 Run: `mise run test:q -- tests/unit/decisions/test_adr083_vol3_money_scissors.py` (create the parent dir if `tests/unit/decisions/` doesn't yet exist — check first with `ls tests/unit/decisions/ 2>/dev/null`; if absent, this is a new test directory and needs no `__init__.py` beyond matching the sibling convention used elsewhere, e.g. `tests/unit/tools/__init__.py`)
-Expected: FAIL with `AssertionError: missing .../ai/decisions/ADR083_vol3_money_scissors.yaml`.
+Expected: FAIL with `AssertionError: missing .../ai/decisions/ADR089_vol3_money_scissors.yaml`.
 - [ ] **Step 4: Write minimal implementation**
 
-Create `ai/decisions/ADR083_vol3_money_scissors.yaml` (substitute the real number from Step 1):
+Create `ai/decisions/ADR089_vol3_money_scissors.yaml` (substitute the real number from Step 1):
 ```yaml
-ADR083_vol3_money_scissors:
+ADR089_vol3_money_scissors:
   status: "accepted"
   date: "2026-07-18"
-  title: "Volume III Money wired live through the Value-Price Scissors: the dormant Vol III estate (SurplusValueDistribution, DebtAccumulation, FictitiousCapitalStock) connected via calculator_overrides + a new NationalFinancialParameters graph publication + a monetary anchor pulling the market-scissors oscillator toward real FRED-backed ratios where data exists (2010-2024), four new bound oppositions (surplus_distribution/debt_spiral/credit/financial, catalog 6->10) with CouplingGraph activated as ContradictionSystem's first production consumer, a 13-item honesty sweep (including a latent year-ceiling ValidationError crash on the live MELT path), and five new sentinel classes; baselines regenerated per the recorded owner-approval ceremony"
+  title: "Volume III Money wired live through the Value-Price Scissors: the dormant Vol III estate (SurplusValueDistribution, DebtAccumulation, FictitiousCapitalStock) connected via calculator_overrides + a new NationalFinancialParameters graph publication + a monetary anchor pulling the market-scissors oscillator toward real FRED-backed ratios where data exists (2010-2024), four new bound oppositions (surplus_distribution/debt_spiral/credit/financial, catalog 6->10) with CouplingGraph activated as ContradictionSystem's first production consumer, a 13-item honesty sweep (including a latent year-ceiling ValidationError crash on the live MELT path), and six new sentinel classes; baselines regenerated per the recorded owner-approval ceremony -- and an endogenous national interest rate (Capital Vol. III Part V) that replaces the FRED interest read with a bounded share of the average rate of profit driven by loan-market tightness, the rate now total (never absent), U9"
   context: |
     Design: docs/superpowers/specs/2026-07-18-vol3-money-scissors-design.md.
     spec-024-capital-volume-iii was built but disconnected: create_financial_
@@ -13561,13 +15578,15 @@ ADR083_vol3_money_scissors:
     correction severity gains an accumulated-debt term
     (correction_debt_slope); the fictitious oscillator is pulled toward
     the anchor by MarketDefines.anchor_pull when present.
-    U7: five sentinel packages/extensions -- sentinels/liveness/
+    U7: six sentinel packages/extensions -- sentinels/liveness/
     (correct-but-inert), sentinels/aggregation/ (intensive-aggregation,
     fixing _mean_profit_rate's unweighted-mean variance error),
     sentinels/coupling/ (undeclared-coupling, verifying every declared
     CouplingGraph edge against a real measurement dependency in both
-    directions), and gate-blindness extending the existing
-    sentinels/coverage/ package.
+    directions), gate-blindness extending the existing
+    sentinels/coverage/ package, and sentinels/surface/ (public-surface
+    baseline blindness -- wired as a real check:surface gate, owner
+    ruling 2026-07-19).
     U8: empirical two-independent-process determinism proof (ADR056
     precedent) of the per-tick ServiceContainer.create(**overrides)
     cadence now carrying the Vol III calculator_overrides;
@@ -13597,7 +15616,9 @@ ADR083_vol3_money_scissors:
     economics estate remains outside the qa:regression gate, narrowed with
     a reason in GATE_ESTATES rather than silently; no UI/lens work; no FRED
     acquisition beyond the ten committed series in
-    tests/fixtures/vol3_fred_series.json.
+    tests/fixtures/vol3_fred_series.json. FRED BAA10Y/net-interest series
+    demoted to calibration of capital_vol3.interest_profit_share_*
+    (test-pinned), U9.
   evidence: |
     docs/superpowers/specs/2026-07-18-vol3-money-scissors-design.md,
     reports/vol3-baseline-delta.md,
@@ -13612,21 +15633,21 @@ ADR083_vol3_money_scissors:
     ADR056_spec102_gamma_hydration_and_shocks.yaml (determinism-proof
     precedent), ADR077_market_scissors.yaml, ADR078_market_correction.yaml
     (shadow-then-ceremony precedent),
-    ADR082_sentinel_error_classes.yaml (the U7 sentinel family)
+    ADR088_sentinel_error_classes.yaml (the U7 sentinel family)
 ```
 
 Edit `ai/decisions/index.yaml` — insert immediately after line 6 (`decisions:`), before the existing `ADR081_declarative_system_ordering:` entry:
 ```yaml
-  ADR083_vol3_money_scissors:
-    title: 'Volume III Money wired live through the Value-Price Scissors: the dormant Vol III estate connected via calculator_overrides + a new NationalFinancialParameters graph publication + a monetary anchor, four new bound oppositions (catalog 6->10) with CouplingGraph activated as ContradictionSystem''s first production consumer, a 13-item honesty sweep, and five new sentinel classes; baselines regenerated per the recorded owner-approval ceremony'
+  ADR089_vol3_money_scissors:
+    title: 'Volume III Money wired live through the Value-Price Scissors: the dormant Vol III estate connected via calculator_overrides + a new NationalFinancialParameters graph publication + a monetary anchor, four new bound oppositions (catalog 6->10) with CouplingGraph activated as ContradictionSystem''s first production consumer, a 13-item honesty sweep, six new sentinel classes, and an endogenous national interest rate (Capital Vol. III Part V, U9 -- the rate total, never absent); baselines regenerated per the recorded owner-approval ceremony'
     status: accepted
     date: '2026-07-18'
-    file: ADR083_vol3_money_scissors.yaml
+    file: ADR089_vol3_money_scissors.yaml
 ```
 
 Edit `ai/state.yaml`: change line 5 from `version: "2.38.0"  # ...` to `version: "2.39.0"  # ...` (append a comment noting this ADR if the existing comment convention warrants it), change line 6's `updated:` to today's date, and insert a new paragraph immediately after line 7 (`truth_status: |`), before the existing `(2026-07-17 overnight) THE EXECUTION SLATE...` paragraph:
 ```yaml
-    (<FILL: today's date>) VOL III MONEY WIRED LIVE (ADR083; branch
+    (<FILL: today's date>) VOL III MONEY WIRED LIVE (ADR089; branch
     refactor/vol3-money-scissors, design docs/superpowers/specs/
     2026-07-18-vol3-money-scissors-design.md): the dormant Vol III
     economics estate (spec-024) connected end-to-end for the first time --
@@ -13642,7 +15663,7 @@ Edit `ai/state.yaml`: change line 5 from `version: "2.38.0"  # ...` to `version:
     (NationalTickParameters' le=2040 constraint now degrades to
     NoDataSentinel). Baselines regenerated `<FILL: ceremony commit hash>`
     after a written, owner-approved per-scenario delta analysis
-    (reports/vol3-baseline-delta.md) per D3 -- see ADR083 for the full
+    (reports/vol3-baseline-delta.md) per D3 -- see ADR089 for the full
     mechanism breakdown.
 ```
 - [ ] **Step 4b: Resolve the five placeholder markers Step 4 just wrote**
@@ -13707,7 +15728,7 @@ ceremony_hash = os.environ["CEREMONY_HASH"]
 today = os.environ["TODAY"]
 scenario_list = os.environ["SCENARIO_LIST"]
 
-adr_path = Path("ai/decisions/ADR083_vol3_money_scissors.yaml")
+adr_path = Path("ai/decisions/ADR089_vol3_money_scissors.yaml")
 text = adr_path.read_text()
 
 decision_marker = "commit `<FILL: the U8.5 Step 7 commit hash>`."
@@ -13729,7 +15750,7 @@ text = text.replace(
 )
 
 adr_path.write_text(text)
-print("ADR083 markers resolved.")
+print("ADR089 markers resolved.")
 
 state_path = Path("ai/state.yaml")
 text = state_path.read_text()
@@ -13746,7 +15767,7 @@ state_path.write_text(text)
 print("state.yaml markers resolved.")
 PY
 
-grep -n '<FILL\|<SUBSTITUTE' ai/decisions/ADR083_vol3_money_scissors.yaml ai/state.yaml \
+grep -n '<FILL\|<SUBSTITUTE' ai/decisions/ADR089_vol3_money_scissors.yaml ai/state.yaml \
   && { echo "FAIL: placeholder markers still present"; exit 1; } \
   || echo "OK: no <FILL / <SUBSTITUTE markers remain in either file."
 ```
@@ -13756,7 +15777,7 @@ Expected: PASS (4 passed).
 - [ ] **Step 6: Commit**
 ```bash
 mise run commit -- "$(cat <<'EOF'
-docs(adr): ADR083 vol3 money-scissors landed + index.yaml + state.yaml (U8.6, closes design spec 2026-07-18-vol3-money-scissors-design.md)
+docs(adr): ADR089 vol3 money-scissors landed + index.yaml + state.yaml (U8.6, closes design spec 2026-07-18-vol3-money-scissors-design.md)
 
 Co-Authored-By: Claude Opus 4.8 (1M context) <noreply@anthropic.com>
 EOF

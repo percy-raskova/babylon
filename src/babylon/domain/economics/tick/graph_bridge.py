@@ -15,11 +15,12 @@ See Also:
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, Final
 
 if TYPE_CHECKING:
     from babylon.kernel.graph_protocol import GraphProtocol
 
+from babylon.config.defines import GameDefines
 from babylon.domain.economics.dynamics.types import ClassDistribution
 from babylon.domain.economics.tick.derived_rates import DerivedRateCalculator
 from babylon.domain.economics.tick.types import (
@@ -28,6 +29,7 @@ from babylon.domain.economics.tick.types import (
     CrisisPhase,
     CrisisState,
     DerivedRates,
+    NationalFinancialParameters,
     NationalTickParameters,
     SimulationTickState,
     SmoothedCoefficients,
@@ -339,6 +341,126 @@ def read_tick_state_from_graph(  # pragma: no mutate — data serialization
     )  # pragma: no mutate
 
 
+# Graph metadata key — Feature 024/vol3-money-scissors U3: the national
+# financial state (interest rate environment + fictitious capital stock)
+# published once per tick so CONSEQUENCE-phase Systems can read it. Kept
+# separate from TICK_DYNAMICS_KEY / NationalTickParameters (the MELT/gamma
+# carrier) — different lifecycle (see NationalFinancialParameters docstring).
+NATIONAL_FINANCIAL_ATTR: Final[str] = "national_financial"
+
+
+def write_national_financial_state_to_graph(  # pragma: no mutate — data serialization
+    graph: GraphProtocol,
+    params: NationalFinancialParameters,
+) -> None:
+    """Write NationalFinancialParameters to the shared graph.
+
+    Feature: 024-capital-volume-iii / vol3-money-scissors U3
+
+    Stores ``params.model_dump()`` (a plain dict, not the Pydantic object
+    itself) under ``graph.graph[NATIONAL_FINANCIAL_ATTR]`` so any System
+    later in the same tick can read it via
+    :func:`read_national_financial_state_from_graph`.
+
+    Args:
+        graph: Mutable NetworkX graph or GraphProtocol (modified in-place).
+        params: National financial state to publish.
+    """
+    graph.set_graph_attr(NATIONAL_FINANCIAL_ATTR, params.model_dump())  # pragma: no mutate
+
+
+def read_national_financial_state_from_graph(  # pragma: no mutate — data serialization
+    graph: GraphProtocol,
+) -> NationalFinancialParameters | None:
+    """Read NationalFinancialParameters from the shared graph.
+
+    Feature: 024-capital-volume-iii / vol3-money-scissors U3
+
+    Args:
+        graph: NetworkX graph or GraphProtocol possibly containing the
+            published financial state.
+
+    Returns:
+        Reconstructed NationalFinancialParameters, or None if nothing has
+        been published this tick.
+    """
+    data: dict[str, Any] | None = graph.get_graph_attr(  # pragma: no mutate
+        NATIONAL_FINANCIAL_ATTR
+    )
+    if data is None:  # pragma: no mutate
+        return None  # pragma: no mutate
+    return NationalFinancialParameters.model_validate(data)  # pragma: no mutate
+
+
+def _employment_weighted_unemployment(
+    county_states: dict[str, CountyEconomicState],
+) -> float | None:
+    """Aggregate U-3 unemployment ``rho_bar`` over the tick's county states.
+
+    ``Sum(u3_i * employment_i) / Sum(employment_i)`` — the total-unemployed /
+    total-labor-force aggregate, which is the materially-correct extensive
+    weighting for an unemployment RATE (never the unweighted mean of the
+    per-county rates, which is the intensive-aggregation defect class: a
+    100k-worker county would swing the national reading as hard as Wayne).
+
+    Employment is the natural weight (the labor force the rate is a fraction
+    of), and unlike ``tick_capital_stock`` it is populated for every county
+    (the capital calculator returns 0 for many county-years, so a
+    capital-weighted reserve reading collapses to a structural zero). Read in
+    scope from ``county_states`` — never from ``tick_``-prefixed graph attrs,
+    which ``state.to_graph()`` strips at the top of every tick.
+
+    Sorted-FIPS float accumulation (Constitution III.7). ``None`` — never a
+    fabricated zero (III.11) — when no county carries positive employment.
+    """
+    weighted = 0.0
+    weight = 0.0
+    for fips in sorted(county_states):
+        county = county_states[fips]
+        employment = county.employment
+        if employment <= 0.0:
+            continue
+        weighted += county.unemployment_rate * employment
+        weight += employment
+    if weight <= 0.0:
+        return None
+    return weighted / weight
+
+
+def reserve_army_signal(
+    county_states: dict[str, CountyEconomicState],
+    defines: GameDefines,
+) -> float:
+    """Reserve-army downturn signal ``s_r`` in [0, 1] (loan-capital demand).
+
+    ``clamp((rho_bar - rho_ref) / (1 - rho_ref), 0, 1)`` where ``rho_bar`` is
+    the employment-weighted mean county U-3 unemployment rate
+    (:func:`_employment_weighted_unemployment`) and ``rho_ref`` is
+    ``capital_vol3.interest_reserve_reference`` — a threshold whose 0.08 value
+    is calibrated against BLS UNRATE (U-3), so U-3 is the consistent
+    county-native reserve measure (``CountyEconomicState`` carries no
+    ``reserve_ratio``; U-3 is its labor-slack field). The rising reserve army
+    is the material signature of the crisis that ignites the scramble for
+    means of payment (Capital Vol. III ch. 25); below the reference there is
+    no liquidity-demand pressure. Zero (not absent) when no county carries
+    labor-force data.
+
+    Reads ``county_states`` in scope (the freshly-computed current-tick
+    states), never ``tick_``-prefixed graph attrs — those are stripped by
+    ``state.to_graph()`` each tick and re-stamped only AFTER this financial
+    layer runs, which structurally zeroed the prior graph-attr reading.
+    """
+    rho_bar = _employment_weighted_unemployment(county_states)
+    if rho_bar is None:
+        return 0.0
+    rho_ref = defines.capital_vol3.interest_reserve_reference
+    denom = 1.0 - rho_ref
+    if denom <= 0.0:
+        return 1.0 if rho_bar > rho_ref else 0.0
+    raw = (rho_bar - rho_ref) / denom
+    return 0.0 if raw < 0.0 else (1.0 if raw > 1.0 else raw)
+
+
 def _reconstruct_tick_state(  # pragma: no mutate — data deserialization
     tick_data: dict[str, Any],
 ) -> SimulationTickState | None:
@@ -372,8 +494,12 @@ def _reconstruct_tick_state(  # pragma: no mutate — data deserialization
 
 
 __all__ = [
+    "NATIONAL_FINANCIAL_ATTR",
     "TICK_DYNAMICS_KEY",
     "_reconstruct_tick_state",
+    "read_national_financial_state_from_graph",
     "read_tick_state_from_graph",
+    "reserve_army_signal",
+    "write_national_financial_state_to_graph",
     "write_tick_state_to_graph",
 ]

@@ -42,6 +42,7 @@ class ServicesProtocol(Protocol):
     # unwired). Mirrors ServiceContainer's optional fields — all Any there too.
     field_registry: Any
     opposition_registry: Any
+    coupling_graph: Any
     reserve_army_data_source: Any
     dispossession_data_source: Any
     productivity_data_source: Any
@@ -71,6 +72,7 @@ class ServicesProtocol(Protocol):
     distribution_calculator: Any
     interest_calculator: Any
     credit_cycle_detector: Any
+    credit_aggregate_source: Any
     fictitious_capital_calculator: Any
     rent_calculator: Any
     housing_calculator: Any

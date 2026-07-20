@@ -1,9 +1,19 @@
 meta:
-  version: 1.32.0
+  version: 1.33.0
   updated: '2026-07-19'
   description: Architecture Decision Records Index
   format: See individual ADR files in this directory
 decisions:
+  ADR089_vol3_money_scissors:
+    title: 'Volume III Money wired live through the Value-Price Scissors: the dormant Vol III estate connected via calculator_overrides + a new NationalFinancialParameters graph publication + a monetary anchor, four new bound oppositions (catalog 6->10) with CouplingGraph activated as ContradictionSystem''s first production consumer, a 13-item honesty sweep, six new sentinel classes, and an endogenous national interest rate (Capital Vol. III Part V, U9 -- the rate total, never absent; post-review repair re-sourced r/s_r in-scope after the final review caught structural inertness); gate byte-identical vs the frozen baselines, regeneration declined as unnecessary under the recorded owner approval (Option B, 2026-07-19)'
+    status: accepted
+    date: '2026-07-19'
+    file: ADR089_vol3_money_scissors.yaml
+  ADR088_sentinel_error_classes:
+    title: 'Six named sentinel error classes ship: liveness (correct-but-inert, computed-but-never-consumed), aggregation (intensive-aggregation), coupling (undeclared-coupling, both directions), gate-blindness extending the coverage sentinel, and surface (public-surface baseline blindness) -- five advisory, the sixth (surface) a real CI gate per owner ruling 2026-07-19'
+    status: accepted
+    date: '2026-07-18'
+    file: ADR088_sentinel_error_classes.yaml
   ADR087_mass_work_solidarity_producer:
     title: 'Wire the org->class SOLIDARITY producer for real (Unit 6, ADR073/ADR085 write side): EDUCATE/PROPAGANDIZE/PROVIDE_SERVICE create-or-strengthen a MASS_LINK-amplified edge (engine/actions/_mass_work.py), DoctrineSystem decays it per tick, ConsciousnessSystem''s read side is rewritten to gate org sources on solidarity_strength (not class_consciousness -- orgs have none); rebuilt doctrine-consciousness contract test against real graph shapes (PoliticalFaction/SocialClass -> WorldState.to_graph(), real resolve_campaign dispatch, never a hand-stamped edge); new vocabulary-sentinel rule (d) catches exactly the fixture-fabrication class that hid this gap; qa:regression 5/5 byte-identical (zero orgs in the 5 canonical scenarios)'
     status: accepted

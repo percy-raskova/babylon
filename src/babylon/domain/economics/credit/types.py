@@ -9,7 +9,7 @@ from enum import StrEnum
 from functools import lru_cache
 from typing import Final
 
-from pydantic import BaseModel, ConfigDict, Field, computed_field
+from pydantic import BaseModel, ConfigDict, Field, computed_field, model_validator
 
 from babylon.config.defines import GameDefines
 
@@ -266,3 +266,71 @@ class FictitiousCapitalStock(BaseModel):
         if real_gdp <= 0.0:
             return float("inf")
         return self.total_claims / real_gdp
+
+
+class EndogenousInterestRate(BaseModel):
+    """Endogenous national interest rate (Capital Vol. III Part V).
+
+    Marx: interest has no natural rate (ch. 22) — it is a *share of the
+    profit* (ch. 23/24) set by the supply and demand of loanable
+    money-capital (ch. 22). This model carries the computed rate together
+    with the average rate of profit that bounds it, and encodes the ch. 22
+    maximum ("the maximum limit of interest is the profit itself") as a
+    construction invariant: ``rate < profit_rate_ceiling`` whenever there is
+    a profit to divide, ``rate == 0`` when there is none.
+
+    Feature: vol3-money-scissors U9.
+
+    :ivar year: Simulation year (no upper ceiling — the campaign runs to
+        2109; deliberately unlike ``InterestRateState.year``'s le=2040, which
+        was a latent post-2040 crash on the live path).
+    :ivar profit_rate_ceiling: Economy-wide realized general rate of profit
+        ``r = Sum(s)/Sum(c+v)`` (surplus-weighted over the county tensors);
+        ``0.0`` when no county carries a realized profit rate.
+    :ivar rate: National interest rate ``i`` = ``r * share(tightness)``, or
+        ``0.0`` when ``profit_rate_ceiling`` is ``0.0``.
+    :ivar fragility_premium: Endogenous spread = ``i - r*base`` (>= 0); the
+        crisis lift of the rate above its calm level. Replaces the BAA10Y
+        runtime read.
+    :ivar tightness: Loan-market tightness ``tau`` in [0, 1] (provenance).
+    :ivar reserve_army_signal: The downturn demand signal ``s_r`` in [0, 1]
+        (provenance).
+    """
+
+    model_config = ConfigDict(frozen=True)
+
+    year: int = Field(..., ge=2007)
+    profit_rate_ceiling: float = Field(..., ge=0.0)
+    rate: float = Field(..., ge=0.0)
+    fragility_premium: float = Field(..., ge=0.0)
+    tightness: float = Field(..., ge=0.0, le=1.0)
+    reserve_army_signal: float = Field(..., ge=0.0, le=1.0)
+
+    @computed_field  # type: ignore[prop-decorator]
+    @property
+    def base_component(self) -> float:
+        """The calm interest ``r*base`` = ``rate - fragility_premium``."""
+        return self.rate - self.fragility_premium
+
+    @model_validator(mode="after")
+    def _verify_interest_below_profit(self) -> EndogenousInterestRate:
+        """Enforce Marx's ch. 22 bound as a loud construction invariant.
+
+        ``rate < profit_rate_ceiling`` when a profit exists; ``rate == 0``
+        when it does not (Constitution III.11 — a violated bound is a loud
+        ValueError at construction, never a silently wrong rate).
+        """
+        if self.profit_rate_ceiling <= 0.0:
+            if self.rate != 0.0:
+                raise ValueError(
+                    f"rate must be 0.0 when profit_rate_ceiling is "
+                    f"{self.profit_rate_ceiling!r} (no profit to divide), got "
+                    f"{self.rate!r}"
+                )
+        elif self.rate >= self.profit_rate_ceiling:
+            raise ValueError(
+                f"rate ({self.rate!r}) must be strictly below "
+                f"profit_rate_ceiling ({self.profit_rate_ceiling!r}) — "
+                f"Capital Vol. III ch. 22: interest is a portion of the profit"
+            )
+        return self

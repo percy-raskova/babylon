@@ -29,11 +29,18 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING, ClassVar
 
+from babylon.domain.economics.distribution.types import SurplusValueDistribution
+from babylon.domain.economics.monetary import fictitious_anchor, serviceability_anchor
+from babylon.domain.economics.tensor import NoDataSentinel
+from babylon.domain.economics.tick.graph_bridge import NATIONAL_FINANCIAL_ATTR, TICK_DYNAMICS_KEY
+from babylon.domain.economics.tick.types import NationalFinancialParameters
 from babylon.engine.systems.wealth_distribution import (
     MARKET_CORRECTION_SHOCK_ATTR,
     bracket_of_role,
 )
 from babylon.formulas.market import (
+    calculate_anchor_pull,
+    calculate_correction_severity,
     calculate_correction_snap,
     calculate_ema,
     calculate_growth_drive,
@@ -122,6 +129,28 @@ def _aggregate_wage_value_by_county(graph: GraphProtocol) -> dict[str, tuple[flo
     return flows
 
 
+def _read_fictitious_anchor(metadata: dict[str, object], real_output: float) -> float | None:
+    """Resolve the D1 monetary anchor from ``NATIONAL_FINANCIAL_ATTR``.
+
+    ``None`` — never a fabricated pull — when the key is absent (no
+    national financial state published this tick; U3 has not run, or this
+    graph carries no financial layer at all) or when
+    :func:`~babylon.domain.economics.monetary.fictitious_anchor`
+    itself returns :class:`~babylon.domain.economics.tensor.NoDataSentinel`
+    (no real FRED coverage past the 2024 data horizon, D1). The
+    oscillator's endogenous dynamics then carry the tick unchanged
+    (Constitution III.11).
+    """
+    raw = metadata.get(NATIONAL_FINANCIAL_ATTR)
+    if not isinstance(raw, dict):
+        return None
+    national_financial = NationalFinancialParameters.model_validate(raw)
+    result = fictitious_anchor(national_financial.fictitious_capital, real_output)
+    if isinstance(result, NoDataSentinel):
+        return None
+    return float(result)
+
+
 class MarketScissorsSystem(SystemBase):
     """The national price⟷value scissors axis (Phase 2: correction feedback live by default)."""
 
@@ -149,9 +178,12 @@ class MarketScissorsSystem(SystemBase):
             return  # no value substrate, no phenomenal form (III.11)
         wages, value = flow
         surplus = max(value - wages, 0.0)
+        anchor = _read_fictitious_anchor(metadata, value)
         prior_raw = metadata.get(MARKET_ATTR)
         if isinstance(prior_raw, dict):
-            state = self._advance(MarketState(**prior_raw), surplus, value, defines, int(tick))
+            state = self._advance(
+                MarketState(**prior_raw), surplus, value, defines, int(tick), anchor
+            )
         else:
             state = MarketState(
                 price_log=0.0,
@@ -239,13 +271,18 @@ class MarketScissorsSystem(SystemBase):
         value: float,
         defines: MarketDefines,
         tick: int,
+        anchor: float | None = None,
     ) -> MarketState:
         """One deterministic oscillator step of both scissors.
 
         Prices chase value-output growth (demand pull) against the law-of-
         value reversion; fictitious capitalization chases realized-surplus
-        growth PLUS price momentum (speculation rides the boom) against a
-        weaker gravity — bubbles outlive price swings.
+        growth PLUS price momentum (speculation rides the boom) PLUS a
+        pull toward the real-data anchor when one covers this tick (D1,
+        U6) against a weaker gravity — bubbles outlive price swings.
+        ``anchor`` is ``None`` for the county axes (:meth:`_step_county_axes`
+        never passes one — no per-territory ``fictitious_log`` projection,
+        out of scope per §6 of the design).
         """
         price_drive = calculate_growth_drive(
             value, prior.value_ema, sensitivity=defines.price_drive_sensitivity
@@ -263,6 +300,7 @@ class MarketScissorsSystem(SystemBase):
                 surplus, prior.surplus_ema, sensitivity=defines.fictitious_drive_sensitivity
             )
             + defines.momentum_coupling * price_velocity
+            + calculate_anchor_pull(anchor, prior.fictitious_log, gain=defines.anchor_pull)
         )
         fictitious_log, fictitious_velocity = calculate_scissors_step(
             prior.fictitious_log,
@@ -307,10 +345,18 @@ class MarketScissorsSystem(SystemBase):
         coefficients from ``GameDefines.market``, zero RNG.
         """
         profit_rate = _mean_profit_rate(graph)
+        # §3.3/§3.4: the interest burden is `i / s` from SurplusValueDistribution
+        # — the share of produced surplus already spoken for — NOT interest over
+        # capital stock. serviceability_anchor is the module that computes it,
+        # and this is its production consumer (the `surplus_distribution
+        # constrains financial` edge's declared grounding).
+        interest_burden = _national_serviceability(graph)
         serviceable = calculate_serviceable_divergence(
             profit_rate,
             base=defines.correction_threshold_base,
             slope=defines.correction_profit_slope,
+            interest_burden=interest_burden,
+            interest_slope=defines.correction_interest_slope,
         )
         overhang = calculate_overhang(state.fictitious_log, serviceable)
         if overhang <= 0.0:
@@ -321,10 +367,14 @@ class MarketScissorsSystem(SystemBase):
         ):
             return state
 
+        debt_ratio = _mean_ratio_to_capital(graph, "tick_accumulated_debt")
+        severity = calculate_correction_severity(
+            defines.correction_severity, debt_ratio=debt_ratio, slope=defines.correction_debt_slope
+        )
         fictitious_log, fictitious_velocity = calculate_correction_snap(
             state.fictitious_log,
             state.fictitious_velocity,
-            severity=defines.correction_severity,
+            severity=severity,
         )
         price_log, price_velocity = calculate_correction_snap(
             state.price_log,
@@ -411,21 +461,122 @@ class MarketScissorsSystem(SystemBase):
 
 
 def _mean_profit_rate(graph: GraphProtocol) -> float | None:
-    """Mean territory ``tick_profit_rate``, or ``None`` when none carry it.
+    """The realized general rate of profit ``r``, read from the ONE place it
+    is computed — TickDynamicsSystem's published ``NATIONAL_FINANCIAL_ATTR``.
 
-    The same year-boundary observable the bridge aggregates for
-    ``tick_summary.profit_rate``. Sorted-id iteration fixes the float
-    summation order (III.7); absence returns ``None`` — the serviceability
-    law then falls back to its base (no rate is fabricated, III.11).
+    ``r = Sum(s) / Sum(c+v)`` is a single materially-grounded quantity, the
+    place Vol. III part 3 meets part 5: the same rate that sets the endogenous
+    interest ceiling (``TickDynamicsSystem._economy_wide_profit_rate``) sets
+    this serviceability line, so the two coupled subsystems MUST read the same
+    number, never two independently-aggregated ones (the divergent-duplicate
+    defect the final review caught). The value rides on
+    ``endogenous_interest.profit_rate_ceiling`` (= ``r`` when ``r > 0``, else
+    ``0.0``).
+
+    ``None`` — the serviceability law then falls back to its base (no rate is
+    fabricated, III.11) — when no financial state was published this tick (U3
+    has not run, or an abstract/county-free graph carries no realized profit so
+    the ceiling is ``0.0``). A published ceiling of exactly ``0.0`` is treated
+    as honest absence: the general rate of profit is a ratio of sums that is
+    never exactly zero on real data, so ``0.0`` marks "no realized profit
+    measured" — the base-fallback case, matching the pre-repair reading over an
+    empty territory layer.
     """
-    total = 0.0
-    count = 0
+    raw = graph.get_graph_attr(NATIONAL_FINANCIAL_ATTR, None)
+    if not isinstance(raw, dict):
+        return None
+    endogenous = raw.get("endogenous_interest")
+    if not isinstance(endogenous, dict):
+        return None
+    ceiling = endogenous.get("profit_rate_ceiling")
+    if not isinstance(ceiling, (int, float)) or isinstance(ceiling, bool):
+        return None
+    return float(ceiling) if ceiling > 0.0 else None
+
+
+def _mean_ratio_to_capital(graph: GraphProtocol, numerator_attr: str) -> float | None:
+    """Exact ``Sum(numerator) / Sum(tick_capital_stock)`` over active territories.
+
+    Deliberately NOT :func:`_capital_weighted_mean`: that helper defaults a
+    missing weight to 1.0 so weightless fixtures keep their prior unweighted
+    reading, whereas this one SKIPS a territory missing either attribute (the
+    ratio is undefined without capital). Two different absence policies, two
+    helpers — do not merge them without re-pinning both call sites' fixtures.
+
+    Weighting each territory's own ``numerator/capital`` ratio by its
+    capital stock telescopes algebraically to this sum-of-sums — the exact
+    national aggregate, not an approximation, and dimensionally consistent
+    with ``tick_profit_rate`` (also normalized to ``c+v``). Territories
+    missing either attribute, or carrying non-positive capital (the ratio
+    is undefined), are skipped — honest absence (III.11), never a
+    fabricated zero. Sorted-id iteration fixes the float summation order
+    (III.7).
+    """
+    numerator_total = 0.0
+    capital_total = 0.0
     for node in sorted(graph.query_nodes(node_type=NodeType.TERRITORY), key=lambda n: n.id):
         attrs = node.attributes
         if not attrs.get("active", True):
             continue
-        rate = attrs.get("tick_profit_rate")
-        if isinstance(rate, (int, float)):
-            total += float(rate)
-            count += 1
-    return total / count if count else None
+        numerator = attrs.get(numerator_attr)
+        capital = attrs.get("tick_capital_stock")
+        if not isinstance(numerator, (int, float)) or not isinstance(capital, (int, float)):
+            continue
+        if capital <= 0.0:
+            continue
+        numerator_total += float(numerator)
+        capital_total += float(capital)
+    return numerator_total / capital_total if capital_total > 0.0 else None
+
+
+def _national_serviceability(graph: GraphProtocol) -> float | None:
+    """National interest burden ``Σi / Σs``, via ``serviceability_anchor``.
+
+    Aggregated as a RATIO OF SUMS over the published county distributions —
+    never a mean of per-county burdens (the intensive-aggregation class).
+    ``serviceability_anchor`` is applied to the aggregated distribution so the
+    honest-absence contract (§3.3 clause 1) is the single source of the
+    absent/present decision; a ``NoDataSentinel`` resolves to ``None`` and the
+    interest term drops out of ``calculate_serviceable_divergence`` entirely.
+
+    The aggregate is stamped with the REAL tick year, read from the same
+    ``tick_dynamics["year"]`` entry the bridge writes alongside
+    ``county_states``. No invented constant: a hardcoded year would be an
+    inline coefficient with no material referent (Aleksandrov Test), and a
+    wrong one would silently mislabel every sentinel this function emits.
+    A missing or non-integer year is honest absence, not a default.
+    """
+    tick_data = graph.get_graph_attr(TICK_DYNAMICS_KEY, None)
+    if not isinstance(tick_data, dict):
+        return None
+    year = tick_data.get("year")
+    if not isinstance(year, int) or isinstance(year, bool):
+        return None
+    county_states = tick_data.get("county_states")
+    if not isinstance(county_states, dict):
+        return None
+    total_surplus = 0.0
+    total_interest = 0.0
+    saw_any = False
+    for fips in sorted(county_states):  # sorted: fixes float summation order (III.7)
+        distribution = getattr(county_states[fips], "surplus_distribution", None)
+        if distribution is None:
+            continue
+        saw_any = True
+        total_surplus += distribution.total_surplus_produced
+        total_interest += distribution.interest_payments
+    if not saw_any:
+        return None
+    aggregate = SurplusValueDistribution(
+        # "00000" is not a county: it is the reserved national-aggregate FIPS.
+        # `monetary.anchor.NATIONAL_FIPS` ("USA") cannot be used here —
+        # SurplusValueDistribution.fips_code is min_length=max_length=5.
+        fips_code="00000",
+        year=year,
+        total_surplus_produced=total_surplus,
+        interest_payments=total_interest,
+        ground_rent=0.0,
+        taxes_on_surplus=0.0,
+    )
+    result = serviceability_anchor(aggregate)
+    return None if isinstance(result, NoDataSentinel) else float(result)

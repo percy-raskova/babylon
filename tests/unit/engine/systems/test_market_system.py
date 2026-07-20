@@ -12,6 +12,14 @@ import pytest
 from pydantic import ValidationError
 
 from babylon.config.defines import GameDefines, MarketDefines
+from babylon.domain.economics.credit.types import FictitiousCapitalStock
+from babylon.domain.economics.distribution.types import SurplusValueDistribution
+from babylon.domain.economics.dynamics.types import ClassDistribution
+from babylon.domain.economics.tick.graph_bridge import (
+    NATIONAL_FINANCIAL_ATTR,
+    TICK_DYNAMICS_KEY,
+)
+from babylon.domain.economics.tick.types import CountyEconomicState, NationalFinancialParameters
 from babylon.engine.context import TickContext
 from babylon.engine.services import ServiceContainer
 from babylon.engine.simulation_engine import _DEFAULT_SYSTEMS, CONSEQUENCE_SYSTEMS
@@ -201,6 +209,28 @@ def _euphoric_graph(fictitious_log: float = 1.5) -> BabylonGraph:
     return graph
 
 
+def _publish_profit_rate(graph: BabylonGraph, r: float) -> None:
+    """Publish NATIONAL_FINANCIAL_ATTR carrying the economy-wide rate of profit
+    ``r`` on ``endogenous_interest.profit_rate_ceiling`` — the single source
+    ``_mean_profit_rate`` reads (unified with the interest ceiling, finding #1).
+    This is what ``TickDynamicsSystem`` publishes @4 before the scissors @17.8
+    reads it in the same tick.
+    """
+    from babylon.domain.economics.credit.types import EndogenousInterestRate
+
+    params = NationalFinancialParameters(
+        endogenous_interest=EndogenousInterestRate(
+            year=2015,
+            profit_rate_ceiling=r,
+            rate=r * 0.30,
+            fragility_premium=0.0,
+            tightness=0.0,
+            reserve_army_signal=0.0,
+        )
+    )
+    graph.set_graph_attr(NATIONAL_FINANCIAL_ATTR, params.model_dump())
+
+
 def _county_worker(
     graph: BabylonGraph, node_id: str, fips: str, w_paid: float, v_produced: float
 ) -> None:
@@ -212,6 +242,47 @@ def _county_worker(
         v_produced=v_produced,
         county_fips=fips,
         _node_type="social_class",
+    )
+
+
+def _county_with(*, surplus: float, interest: float) -> CountyEconomicState:
+    """A published county state carrying only the surplus/interest pair.
+
+    Every other field is a fixed, valid filler: this fixture exists to feed
+    `_national_serviceability`, which reads `surplus_distribution` alone.
+    `ClassDistribution` enforces sum-to-one within 0.001, so the five shares
+    are not free parameters.
+    """
+    return CountyEconomicState(
+        fips="26163",
+        year=2015,
+        capital_stock=1.0e9,
+        throughput_position=0.9,
+        supply_chain_depth=2.1,
+        unemployment_rate=0.05,
+        u6_rate=0.10,
+        pter_rate=0.04,
+        nilf_rate=0.06,
+        median_wage=21.0,
+        employment=500000.0,
+        class_distribution=ClassDistribution(
+            fips="26163",
+            year=2015,
+            bourgeoisie_share=0.01,
+            petit_bourgeoisie_share=0.09,
+            labor_aristocracy_share=0.40,
+            proletariat_share=0.35,
+            lumpenproletariat_share=0.15,
+        ),
+        phi_hour=3.5,
+        surplus_distribution=SurplusValueDistribution(
+            fips_code="26163",
+            year=2015,
+            total_surplus_produced=surplus,
+            interest_payments=interest,
+            ground_rent=0.0,
+            taxes_on_surplus=0.0,
+        ),
     )
 
 
@@ -391,11 +462,90 @@ class TestCorrection:
         assert graph.graph["market"]["corrections"] == 2
 
     def test_healthy_profit_rate_services_the_bubble(self) -> None:
-        """tick_profit_rate=0.3 → serviceable 0.55 + 4·0.3 = 1.75 > 1.5."""
+        """Published r=0.3 → serviceable 0.55 + 4·0.3 = 1.75 > 1.5 → no snap.
+
+        The serviceability line now reads the ONE published rate of profit
+        (``endogenous_interest.profit_rate_ceiling``), unified with the interest
+        ceiling, not a scissors-local aggregation of ``tick_profit_rate``.
+        """
         graph = _euphoric_graph(fictitious_log=1.5)
-        graph.update_node("metropole", tick_profit_rate=0.3)
+        _publish_profit_rate(graph, 0.3)
         _step(graph, _enabled_services(), tick=10)
         assert graph.graph["market"]["corrections"] == 0
+
+    def test_interest_burden_tightens_the_threshold_into_a_snap(self) -> None:
+        """A healthy 0.3 profit rate alone services the 1.5 overhang
+        (0.55 + 4*0.3 = 1.75 > 1.5). A national interest burden of i/s = 0.6
+        (serviceability_anchor, §3.3) drops serviceable to 1.75 - 2.0*0.6 =
+        0.55 < 1.5 and the snap fires — §3.5 item 1.
+
+        `year` is written alongside `county_states` because that is exactly
+        what `write_tick_state_to_graph` publishes (graph_bridge.py:61); the
+        aggregate distribution is stamped with the REAL tick year, never an
+        invented constant.
+        """
+        graph = _euphoric_graph(fictitious_log=1.5)
+        _publish_profit_rate(graph, 0.3)
+        graph.set_graph_attr(
+            TICK_DYNAMICS_KEY,
+            {
+                "year": 2015,
+                "county_states": {"26163": _county_with(surplus=100.0, interest=60.0)},
+            },
+        )
+        _step(graph, _enabled_services(), tick=10)
+        assert graph.graph["market"]["corrections"] == 1
+
+    def test_published_profit_rate_is_the_single_serviceability_source(self) -> None:
+        """The serviceability line reads the ONE published rate of profit, not a
+        scissors-local aggregation. A published r=0.001 (the surplus-weighted
+        Sum(s)/Sum(c+v) that TickDynamics computes — the intensive-aggregation
+        resistance now lives THERE, tested in test_system.py) fails to service
+        the 1.5 overhang (0.55 + 4*0.001 = 0.554 < 1.5) and the snap fires;
+        the unified read means the interest ceiling and this line cannot
+        diverge (finding #1)."""
+        graph = _euphoric_graph(fictitious_log=1.5)
+        _publish_profit_rate(graph, 0.001)
+        _step(graph, _enabled_services(), tick=10)
+        assert graph.graph["market"]["corrections"] == 1
+
+    def test_absent_financial_state_falls_back_to_base_serviceability(self) -> None:
+        """No NATIONAL_FINANCIAL_ATTR (U3 has not run this tick, or a county-free
+        graph) → _mean_profit_rate is None → the serviceability law uses its
+        base, exactly as the pre-repair read over an empty territory layer did.
+        A published ceiling of 0.0 is the same honest-absence case."""
+        graph = _euphoric_graph(fictitious_log=1.5)
+        # base serviceable = 0.55 < 1.5 overhang, no profit rate to lift it.
+        _step(graph, _enabled_services(), tick=10)
+        assert graph.graph["market"]["corrections"] == 1
+
+    def test_accumulated_debt_deepens_the_snap(self) -> None:
+        """A debt-free bubble snaps at the base severity 0.6 applied to the
+        SAME-TICK evolved fictitious log-ratio (1.5 seed advances to
+        1.54825 under the oscillator's own drive/reversion before the snap
+        applies, same as test_overhang_fires_the_snap's `before`; 1.54825 *
+        (1 - 0.6) = 0.6193). The SAME overhang, SAME capital stock, carrying
+        a debt-to-capital ratio of 1.0 closes MORE of the fictitious
+        log-ratio in the same single snap (§3.5 item 2). Capital stock is
+        held constant across both arms so the only varying input is debt —
+        otherwise the U6.1 capital-weighted profit aggregate and the C-5
+        serviceability denominator move too, and the test would not isolate
+        severity."""
+        debt_free = _euphoric_graph()
+        debt_free.update_node("metropole", tick_capital_stock=10.0)
+        _step(debt_free, _enabled_services(), tick=10)
+        debt_free_after = debt_free.graph["market"]["fictitious_log"]
+
+        indebted = _euphoric_graph()
+        indebted.update_node("metropole", tick_capital_stock=10.0, tick_accumulated_debt=10.0)
+        _step(indebted, _enabled_services(), tick=10)
+        indebted_after = indebted.graph["market"]["fictitious_log"]
+
+        assert debt_free_after == pytest.approx(
+            0.6193
+        )  # base severity 0.6 on the evolved 1.54825 log
+        assert indebted_after < debt_free_after
+        assert indebted_after == pytest.approx(0.0)  # severity clamps to 1.0: full wipeout
 
     def test_no_overhang_no_snap(self) -> None:
         graph = _euphoric_graph(fictitious_log=0.3)
@@ -443,3 +593,66 @@ class TestMarketScissorsDocstringHonest:
     def test_class_docstring_no_longer_claims_shadow(self) -> None:
         doc = MarketScissorsSystem.__doc__ or ""
         assert "Phase 1 SHADOW" not in doc
+
+
+class TestAnchorAbsentIsBitIdentical:
+    """U6/D1: absence of NATIONAL_FINANCIAL_ATTR must reproduce the exact
+    pre-U6.8 trajectory — captured before the anchor-pull wiring landed."""
+
+    def test_advance_without_an_anchor_matches_the_pre_u6_pin(self) -> None:
+        defines = MarketDefines()
+        prior = MarketState(
+            price_log=0.12,
+            price_velocity=-0.01,
+            fictitious_log=0.4,
+            fictitious_velocity=0.02,
+            surplus_ema=3.5,
+            value_ema=11.0,
+            tick=42,
+        )
+        result = MarketScissorsSystem._advance(
+            prior, surplus=4.0, value=12.0, defines=defines, tick=43, anchor=None
+        )
+        assert result.price_log == 0.16364545454545454
+        assert result.price_velocity == 0.04364545454545454
+        assert result.fictitious_log == 0.5643941558441559
+        assert result.fictitious_velocity == 0.16439415584415584
+        assert result.surplus_ema == 3.575
+        assert result.value_ema == 11.149999999999999
+
+
+class TestAnchorPresentPullsTheOscillator:
+    """D1: real FRED data anchors the fictitious oscillator while it
+    covers this tick (§3.5 item 3)."""
+
+    @staticmethod
+    def _run(publish_anchor: bool) -> float:
+        graph = BabylonGraph()
+        _paid_worker(graph, "w1", w_paid=0.8, v_produced=1.0)
+        services = ServiceContainer.create()
+        _step(graph, services, tick=1)  # seed at zero — no anchor read on the seed tick
+        if publish_anchor:
+            graph.graph[NATIONAL_FINANCIAL_ATTR] = NationalFinancialParameters(
+                fictitious_capital=FictitiousCapitalStock(
+                    year=2020,
+                    government_debt=3.0,
+                    corporate_equity=3.0,
+                    corporate_debt=3.0,
+                    household_debt=3.0,
+                ),
+            ).model_dump()
+        graph.update_node("w1", v_produced=1.0, w_paid=0.8)
+        _step(graph, services, tick=2)
+        return float(graph.graph["market"]["fictitious_log"])
+
+    def test_anchor_pulls_the_fictitious_log_upward(self) -> None:
+        anchored = self._run(publish_anchor=True)
+        unanchored = self._run(publish_anchor=False)
+        assert unanchored == 0.0
+        assert anchored > unanchored
+
+    def test_missing_national_financial_key_is_inert(self) -> None:
+        """No NATIONAL_FINANCIAL_ATTR at all (U3 has not run this tick, or
+        the graph carries no financial layer) — same as an explicit
+        anchor=None, never an error."""
+        assert self._run(publish_anchor=False) == 0.0

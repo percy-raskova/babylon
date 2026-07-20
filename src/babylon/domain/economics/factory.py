@@ -478,6 +478,7 @@ def create_financial_services(
         "distribution_calculator": distribution,
         "interest_calculator": interest_calc,
         "credit_cycle_detector": credit_cycle,
+        "credit_aggregate_source": credit_aggregates,
         "fictitious_capital_calculator": fictitious_calc,
         "rent_calculator": rent_calc,
         "housing_calculator": housing_calc,

@@ -100,7 +100,8 @@ class TestRegistryStash:
 
         states = graph.graph["opposition_states"]
         # price_value joined the canonical channel in ADR078 (zero-gap here:
-        # this graph carries no market axis).
+        # this graph carries no market axis); the four Vol III money axes
+        # joined in U5.2 (zero-gap here: this graph carries no Vol III data).
         assert set(states) == {
             "capital_labor",
             "wage",
@@ -108,6 +109,10 @@ class TestRegistryStash:
             "atomization",
             "imperial",
             "price_value",
+            "surplus_distribution",
+            "debt_spiral",
+            "credit",
+            "financial",
         }
         assert states["capital_labor"]["gap"] == pytest.approx(0.5)
         assert states["capital_labor"]["tick"] == 3
@@ -536,6 +541,10 @@ class TestPriceValueEndToEnd:
             "atomization",
             "imperial",
             "price_value",
+            "surplus_distribution",
+            "debt_spiral",
+            "credit",
+            "financial",
         }
         assert states["price_value"]["balance"] == pytest.approx(math.tanh(0.5 / scale))
         assert "shadow_opposition_states" not in graph.graph

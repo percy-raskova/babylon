@@ -30,13 +30,20 @@ import ast
 import sys
 from pathlib import Path
 
+from babylon.sentinels._ast import referenced_names, returned_dict_keys
 from babylon.sentinels.base import LabelledCheck, SentinelCheckError, run_sensor
 from babylon.sentinels.coverage.catalog import (
     CatalogTable,
     load_catalog_tables,
     subset_policy_map,
 )
-from babylon.sentinels.coverage.registry import DATA_REQUIREMENTS, DataRequirement
+from babylon.sentinels.coverage.registry import (
+    DATA_REQUIREMENTS,
+    GATE_ESTATES,
+    DataRequirement,
+    GateEstate,
+)
+from babylon.sentinels.report import finding
 
 #: Repo root (this file is ``<root>/src/babylon/sentinels/coverage/checks.py``).
 _REPO_ROOT: Path = Path(__file__).resolve().parents[4]
@@ -342,6 +349,60 @@ def check_artifact_manifest(
     return sorted(violations)
 
 
+def check_gate_estate_coverage(
+    estates: tuple[GateEstate, ...] = GATE_ESTATES,
+) -> list[str]:
+    """Every gate must inject every service key of the estate it claims to guard.
+
+    Reads the factory's returned dict keys statically (the estate) and the
+    harness's mentioned names (what it injects), and reports any key the harness
+    never mentions. A gate that runs green while executing none of its estate is
+    **gate-blind** — the state ``qa:regression`` was in for the whole economics
+    estate.
+
+    :param estates: Claims to check (defaults to the real :data:`GATE_ESTATES`;
+        injectable so the efficacy test can supply a deliberately blind gate).
+    :returns: Sorted agent-legible finding strings (empty when no gate is blind).
+    :raises SentinelCheckError: If a harness or factory file is missing,
+        unparseable, or the named factory returns no dict literal.
+    """
+    findings: list[str] = []
+    for estate in estates:
+        keys = returned_dict_keys(_REPO_ROOT / estate.factory_file, estate.factory_symbol)
+        injected = referenced_names(_REPO_ROOT / estate.harness_file)
+        # A harness that calls the factory itself injects the WHOLE estate;
+        # requiring it to spell every key would force the harness to
+        # duplicate the factory's own key list (DRY).
+        if estate.factory_symbol in injected:
+            continue
+        missing = sorted(
+            key for key in keys if key not in injected and key not in estate.exempt_keys
+        )
+        if not missing:
+            continue
+        findings.append(
+            finding(
+                error_class="gate-blindness",
+                symbol=f"{estate.gate_name} / {estate.estate_name}",
+                file=estate.harness_file,
+                line=0,
+                problem=(
+                    f"claims to guard {estate.factory_symbol}'s estate but never "
+                    f"injects {len(missing)} of its {len(keys)} service keys "
+                    f"({', '.join(missing)}) — the gate can be green with that code "
+                    "never executed"
+                ),
+                remedy=(
+                    "build calculator_overrides in the harness from a committed "
+                    "deterministic fixture so the estate actually runs, or narrow the "
+                    "claim by declaring exempt_keys WITH an exempt_reason on the "
+                    "GateEstate row"
+                ),
+            )
+        )
+    return sorted(findings)
+
+
 #: Gating checks: a violation reds the dev fast-gate (exit 1).
 _GATING_CHECKS: tuple[LabelledCheck, ...] = (
     ("declared reference-data source class does not exist", check_source_classes_exist),
@@ -350,8 +411,11 @@ _GATING_CHECKS: tuple[LabelledCheck, ...] = (
     ("data-artifacts manifest entry missing or hash-drifted", check_artifact_manifest),
 )
 
-#: No advisory tier yet — the reference-DB coverage probe is a nightly concern.
-_ADVISORY_CHECKS: tuple[LabelledCheck, ...] = ()
+#: Advisory tier: gate-blindness reports loudly but never gates, per the
+#: standing owner ruling that sentinels are advisory and local/on-demand.
+_ADVISORY_CHECKS: tuple[LabelledCheck, ...] = (
+    ("DoD gate does not execute the estate it claims to guard", check_gate_estate_coverage),
+)
 
 
 def _summary(advisory_count: int) -> str:

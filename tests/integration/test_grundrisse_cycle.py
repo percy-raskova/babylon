@@ -17,8 +17,10 @@ Distribution pays wages back to labor; Consumption depletes labor's stock), and
 resulting contradiction dynamics off the live graph each tick. The behavioral
 claims this suite pins (scope C1.7 D):
 
-- **multi-tick step**: the system runs a 10-tick arc, all five catalog
-  oppositions present every tick with exactly one principal;
+- **multi-tick step**: the system runs a 10-tick arc, all ten catalog
+  oppositions present every tick with exactly one principal (the five
+  money/market oppositions read at rest — gap 0 — in this data-free
+  fixture, per the catalog's absent-measure contract);
 - **gap/rate evolution**: the capital_labor gap develops and — crucially — can
   *fall* during the Distribution moment (it is NOT the old add-only ratchet)
   and is never pinned at the saturating 1.0;
@@ -108,7 +110,7 @@ _GRUNDRISSE_DELTAS: tuple[tuple[float, float], ...] = (
 class TestGrundrisseArc:
     """The 10-tick circuit: all oppositions present, capital_labor leads."""
 
-    def test_ten_tick_cycle_keeps_five_oppositions_and_one_principal(self) -> None:
+    def test_ten_tick_cycle_keeps_ten_oppositions_and_one_principal(self) -> None:
         graph = _build_circuit_graph()
         services = ServiceContainer.create()
         system = ContradictionSystem()
@@ -125,6 +127,11 @@ class TestGrundrisseArc:
                 "tenancy",
                 "atomization",
                 "imperial",
+                "price_value",
+                "surplus_distribution",
+                "debt_spiral",
+                "credit",
+                "financial",
             }
             assert sum(1 for s in states.values() if s["is_principal"]) == 1
             assert all(s["tick"] == tick for s in states.values())

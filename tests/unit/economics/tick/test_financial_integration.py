@@ -17,8 +17,8 @@ from babylon.domain.economics.counter_tendencies.types import CounterTendencyStr
 from babylon.domain.economics.credit.types import (
     CreditCyclePhase,
     CreditState,
+    EndogenousInterestRate,
     FictitiousCapitalStock,
-    InterestRateState,
 )
 from babylon.domain.economics.distribution.types import DebtAccumulation, SurplusValueDistribution
 from babylon.domain.economics.dynamics.types import ClassDistribution
@@ -44,9 +44,9 @@ class TestNationalFinancialParameters:
     def test_empty_factory(self) -> None:
         """Verify .empty() returns all-None state."""
         params = NationalFinancialParameters.empty()
-        assert params.interest_rate_state is None
         assert params.credit_state is None
         assert params.fictitious_capital is None
+        assert params.endogenous_interest is None
         assert params.counter_tendencies is None
         assert params.monetary_adjustment is None
 
@@ -60,20 +60,24 @@ class TestNationalFinancialParameters:
         """Verify NationalFinancialParameters is frozen."""
         params = NationalFinancialParameters.empty()
         with pytest.raises(ValidationError):
-            params.interest_rate_state = None  # type: ignore[misc]
+            params.credit_state = None  # type: ignore[misc]
 
-    def test_with_interest_rate_state(self) -> None:
-        """Verify construction with InterestRateState."""
-        irs = InterestRateState(
+    def test_with_endogenous_interest(self) -> None:
+        """Verify construction with the endogenous interest rate (the SOLE
+        interest carrier post-U9; the FRED interest_rate_state field was
+        removed as vestigial vocabulary)."""
+        ei = EndogenousInterestRate(
             year=2015,
-            base_rate=0.25,
-            treasury_10y=2.27,
-            baa_spread=2.64,
+            profit_rate_ceiling=0.10,
+            rate=0.03,
+            fragility_premium=0.0,
+            tightness=0.0,
+            reserve_army_signal=0.0,
         )
-        params = NationalFinancialParameters(interest_rate_state=irs)
-        assert params.interest_rate_state is not None
-        assert params.interest_rate_state.base_rate == 0.25
-        assert params.interest_rate_state.effective_rate == 0.25 + 2.64
+        params = NationalFinancialParameters(endogenous_interest=ei)
+        assert params.endogenous_interest is not None
+        assert params.endogenous_interest.rate == 0.03
+        assert params.endogenous_interest.profit_rate_ceiling == 0.10
 
     def test_with_credit_state(self) -> None:
         """Verify construction with CreditState."""
@@ -125,11 +129,13 @@ class TestNationalFinancialParameters:
     def test_fully_populated(self) -> None:
         """Verify construction with all fields populated."""
         params = NationalFinancialParameters(
-            interest_rate_state=InterestRateState(
+            endogenous_interest=EndogenousInterestRate(
                 year=2015,
-                base_rate=0.25,
-                treasury_10y=2.27,
-                baa_spread=2.64,
+                profit_rate_ceiling=0.10,
+                rate=0.03,
+                fragility_premium=0.0,
+                tightness=0.0,
+                reserve_army_signal=0.0,
             ),
             credit_state=CreditState(
                 year=2015,
@@ -152,7 +158,7 @@ class TestNationalFinancialParameters:
                 base_year=2012,
             ),
         )
-        assert params.interest_rate_state is not None
+        assert params.endogenous_interest is not None
         assert params.credit_state is not None
         assert params.fictitious_capital is not None
         assert params.counter_tendencies is not None

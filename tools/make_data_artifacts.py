@@ -94,8 +94,11 @@ ARTIFACTS: tuple[ArtifactSpec, ...] = (
         home="src/babylon/data/reference/bridge_county_bea_ea.csv",
         material_relation=(
             "county -> BEA Economic Area membership map — the regional-market "
-            "aggregation geography for cross-border metropolitan gravity."
+            "aggregation geography for cross-border metropolitan gravity. "
+            "R1 one-shot export (36f4cb98) then DB-table demotion; the CSV "
+            "has been canonical since (register, like babylon_ricci_final)."
         ),
+        mode="register",
     ),
     ArtifactSpec(
         name="dim_bea_economic_area",
@@ -104,8 +107,11 @@ ARTIFACTS: tuple[ArtifactSpec, ...] = (
         home="src/babylon/data/reference/dim_bea_economic_area.csv",
         material_relation=(
             "the 8 BEA Economic Areas (cross-border metro market regions) the "
-            "bridge maps counties onto."
+            "bridge maps counties onto. R1 one-shot export (36f4cb98) then "
+            "DB-table demotion; the CSV has been canonical since (register, "
+            "like babylon_ricci_final)."
         ),
+        mode="register",
     ),
     ArtifactSpec(
         name="babylon_ricci_final",

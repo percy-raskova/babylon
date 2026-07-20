@@ -1047,7 +1047,11 @@ def territory_keying_uses(path: Path) -> list[TerritoryKeyingUse]:
     - ``county_fips=<expr>`` where ``<expr>`` is directly an
       ``h3.<call>(...)``, or a ``Name`` bound (within the SAME function
       scope -- see :func:`_h3_derived_names_in_scope`) from an expression
-      that involves one.
+      that involves one. The bound expression's h3-derived-ness is followed
+      through comprehension targets too (e.g. ``cells = [h3.cell_to_latlng(c)
+      for c in raw]`` marks ``cells`` derived, so a subsequent ``for cell in
+      cells:`` still inherits it), since :func:`_expr_involves_h3_call` walks
+      the whole expression, comprehension bodies included.
 
     :param path: Source file to parse.
     :returns: ``(lineno, kind, detail)`` triples, sorted by location.

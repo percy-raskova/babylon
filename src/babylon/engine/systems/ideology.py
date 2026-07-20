@@ -19,7 +19,6 @@ from babylon.formulas.consciousness_routing import (
     route_agitation_to_ternary,
 )
 from babylon.formulas.contradiction import calculate_wealth_asymmetry_balance
-from babylon.formulas.sustained_exploitation import sustained_exploitation_magnitude
 from babylon.kernel.tick_partition import TickPartition
 from babylon.models.enums import EdgeType, NodeType
 
@@ -194,21 +193,23 @@ class ConsciousnessSystem(SystemBase):
             # silently fabricate near-peak chauvinist agitation for classes
             # with no recorded wage-value transaction at all. This is
             # exactly the silent `.get(field, 0.0)` masking the project
-            # forbids: the presence check below gates the WHOLE computation
-            # (magnitude AND chauvinist_pressure), not just the balance
-            # value, so "no data" reads as an explicit, documented zero
-            # contribution — not a data point on the curve.
+            # forbids: the presence check below gates the WHOLE computation,
+            # not just the balance value, so "no data" reads as an explicit,
+            # documented zero contribution — not a data point on the curve.
+            #
+            # Task #42-A (de-delta wiring): the magnitude itself is no
+            # longer computed here as a separate parallel addend —
+            # ``class_wage_balance`` (or ``None`` when absent) is passed
+            # straight into ``compute_agitation_delta`` below as
+            # ``wage_balance``, which is the sole call site of
+            # ``sustained_exploitation_magnitude`` now (DRY: one canonical
+            # Stage-1 converter, not two un-DRY'd agitation channels).
             node_w_paid = attrs.get("w_paid")
             node_v_produced = attrs.get("v_produced")
             if node_w_paid is not None and node_v_produced is not None:
+                wage_data_present = True
                 class_wage_balance = calculate_wealth_asymmetry_balance(
                     float(node_v_produced), float(node_w_paid)
-                )
-                sustained_deterioration = sustained_exploitation_magnitude(
-                    class_wage_balance,
-                    services.defines.consciousness.sustained_exploitation_sensitivity,
-                    services.defines.consciousness.chauvinist_peak_location,
-                    services.defines.consciousness.chauvinist_peak_falloff,
                 )
                 # Balance sign determines bifurcation DIRECTION (spec §2):
                 # only a POSITIVE balance (the imperial bribe) biases
@@ -221,9 +222,46 @@ class ConsciousnessSystem(SystemBase):
                     * services.defines.consciousness.chauvinist_pressure_scale
                 )
             else:
+                wage_data_present = False
                 class_wage_balance = 0.0
-                sustained_deterioration = 0.0
                 chauvinist_pressure = 0.0
+
+            # Task #42-B (continuous repression term), corrected task #42
+            # fix wave 1 (review MEDIUM-2, 2026-07-20): ``repression_faced``
+            # is a continuous [0, 1] LEVEL (bumped by POGROM/VIGILANTISM,
+            # ``ooda/action_effects.py``), distinct from StruggleSystem's
+            # event-triggered ``repression_backfire`` spike. Presence-gated
+            # exactly like ``class_wage_balance`` above — a node that never
+            # had ``repression_faced`` stamped at all contributes zero, not
+            # a fabricated fallback default.
+            #
+            # The RAW level must NOT be read directly: ``SocialClass``'s own
+            # model default is 0.5 (``social_class.py:169``), stamped on
+            # every class from tick 1 regardless of any actual repression
+            # EVENT. Reading it raw measures that ambient default as signal
+            # -- proven (review MEDIUM-2) to be the ENTIRE +0.00012 tick-1
+            # drift on all 5 canonical scenarios, a permanent ratchet with
+            # no material referent (Aleksandrov Test: the ambient default
+            # corresponds to no relation). Only repression PRODUCED above
+            # that baseline counts -- subtract ``DEFAULT_REPRESSION_FACED``
+            # (the SAME canonical fallback ``struggle.py``/``economic.py``/
+            # ``survival.py`` already read via ``services.defines.
+            # DEFAULT_REPRESSION_FACED``) and floor at zero. Canonical
+            # scenarios, which never fire POGROM/VIGILANTISM, get exactly
+            # zero by construction, matching the shadow-first/absent-safe
+            # discipline (ADR077/078). Known residual, documented not
+            # fixed: ``repression_faced`` never decays, so once produced
+            # this term accumulates monotonically -- defensible as
+            # accumulated repression experience.
+            node_repression_faced = attrs.get("repression_faced")
+            effective_repression = (
+                max(
+                    0.0,
+                    float(node_repression_faced) - services.defines.DEFAULT_REPRESSION_FACED,
+                )
+                if node_repression_faced is not None
+                else None
+            )
 
             # Calculate wages received (sum of incoming WAGES edges)
             core_wages = 0.0
@@ -289,18 +327,25 @@ class ConsciousnessSystem(SystemBase):
             current_profile = _get_ideology_profile_from_node(attrs)
 
             # Apply consciousness routing (Spec 043 - Value Transparency)
-            # Convert wage/wealth changes to agitation via tensor pipeline
+            # Convert wage/wealth changes to agitation via tensor pipeline.
+            # Task #42-A/B: wage_balance and repression_level are LEVELS
+            # (not deltas), presence-gated to None when absent this tick.
+            # ``defines=`` must be threaded through explicitly (task #42-A
+            # regression guard): the sustained-exploitation/repression
+            # coefficients now live INSIDE this call, and without this the
+            # function silently falls back to schema defaults, ignoring any
+            # ``services.defines``/``defines.yaml`` override -- exactly the
+            # per-run-config respect the old direct
+            # ``services.defines.consciousness.*`` reads had.
             agitation_increment = compute_agitation_delta(
                 exploitation_rate_delta=abs(wage_change) if wage_change < 0 else 0.0,
                 imperial_rent_delta=wealth_change,  # Wealth decline ~ rent decline
                 visibility_delta=0.0,  # g₃₃ changes handled in community system
+                wage_balance=class_wage_balance if wage_data_present else None,
+                repression_level=effective_repression,
+                defines=services.defines.consciousness,
             )
-            new_agitation = (
-                current_profile["agitation"]
-                + agitation_increment
-                + wage_deterioration
-                + sustained_deterioration
-            )
+            new_agitation = current_profile["agitation"] + agitation_increment + wage_deterioration
 
             # Route agitation through solidarity → class/nation split.
             # The ternary router (Spec 043) returns shifts in (revolutionary,
@@ -318,6 +363,7 @@ class ConsciousnessSystem(SystemBase):
                 agitation=new_agitation,
                 solidarity_factor=min(1.0, solidarity_pressure),
                 education_pressure=0.0,  # Education pressure handled in community system
+                defines=services.defines.consciousness,
                 chauvinist_pressure=chauvinist_pressure,
             )
             new_class = min(1.0, current_profile["class_consciousness"] + delta_r)
@@ -340,6 +386,7 @@ class ConsciousnessSystem(SystemBase):
                     "exploitation_visibility": compute_exploitation_visibility(
                         exploitation_rate=abs(wage_change) if wage_change < 0 else 0.0,
                         imperial_rent=max(0.0, wealth_change),
+                        defines=services.defines.consciousness,
                     ),
                     "reification_buffer": compute_reification_buffer(
                         imperial_rent=max(0.0, wealth_change),

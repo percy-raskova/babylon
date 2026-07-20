@@ -186,6 +186,43 @@ def resolve_action(
     )
 
 
+def _bump_repression_edge(
+    graph: BabylonGraph, source_id: str, target_id: str, increment: float
+) -> None:
+    """Create-or-strengthen a REPRESSION edge (source -> target), task #42-B.
+
+    Mirrors the ``repression_faced`` scalar bump this always accompanies
+    (same call site, same ``increment``) and the create-or-strengthen-or-skip
+    idiom :func:`~babylon.engine.actions._mass_work.apply_mass_work_solidarity`
+    established for the identical constraint: the graph stores one edge per
+    node pair (``multigraph=False``), so blindly adding a REPRESSION edge over
+    an existing DIFFERENT edge type would silently clobber it. Skipping is the
+    honest failure mode; clobbering would be a silent data-corruption bug.
+
+    ``EdgeType.REPRESSION`` had zero producers before this (3 read-only
+    consumers: ``negotiate.py``, ``bifurcation/axis.py``,
+    ``bifurcation/analysis.py`` — all read the ``weight`` attribute this
+    writes).
+    """
+    existing = graph.get_edge(source_id, target_id, EdgeType.REPRESSION.value)
+    if existing is not None:
+        graph.update_edge(
+            source_id,
+            target_id,
+            EdgeType.REPRESSION.value,
+            weight=min(1.0, existing.weight + increment),
+        )
+    elif not graph.has_edge(source_id, target_id):
+        graph.add_edge(
+            source_id,
+            target_id,
+            edge_type=EdgeType.REPRESSION.value,
+            weight=min(1.0, increment),
+        )
+    # else: (source_id, target_id) already holds a different edge type --
+    # skip rather than clobber it (see docstring).
+
+
 def _resolve_fascist_verb(
     action: Action, graph: BabylonGraph, reactionary: ReactionaryDefines
 ) -> ActionResult:
@@ -199,6 +236,10 @@ def _resolve_fascist_verb(
       repression.
     - **LOCKOUT**: the employer withdraws income — attenuate the target's
       incoming WAGES value_flow.
+
+    POGROM/VIGILANTISM also stamp a REPRESSION edge (acting org -> target,
+    task #42-B) alongside the ``repression_faced`` scalar bump, weighted by
+    the SAME increment (see :func:`_bump_repression_edge`).
 
     All coefficients come from the caller-supplied :class:`ReactionaryDefines`
     (III.1 + III.5 — the run's defines, so ``defines.yaml`` overrides are
@@ -219,6 +260,7 @@ def _resolve_fascist_verb(
             current_rep = float(node.attributes.get("repression_faced", 0.0))
             graph.update_node(target_id, repression_faced=min(1.0, current_rep + increment))
             effects["repression_increment"] = increment
+            _bump_repression_edge(graph, action.org_id, target_id, increment)
             if action_type == ActionType.POGROM:
                 current_wealth = float(node.attributes.get("wealth", 0.0))
                 new_wealth = current_wealth * (1.0 - reactionary.pogrom_wealth_destruction)

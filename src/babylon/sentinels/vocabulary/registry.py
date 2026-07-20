@@ -50,8 +50,11 @@ __all__ = [
     "EXTRA_STAMPABLE_ATTRIBUTES",
     "LITERAL_EXEMPTIONS",
     "MODEL_FIELDS_BY_NODE_TYPE",
+    "PHANTOM_ATTRIBUTE_EXEMPTIONS",
+    "PHANTOM_ATTRIBUTE_READS",
     "PRODUCTION_ROOTS",
     "SCAN_ROOTS",
+    "TERRITORY_KEYING_EXEMPTIONS",
     "TICK_PREFIXED_NODE_TYPES",
     "UNSTAMPED_QUERY_ALLOWLIST",
 ]
@@ -78,17 +81,34 @@ PRODUCTION_ROOTS: Final[tuple[str, ...]] = ("src", "web")
 #:
 #: - ``hex``: production carries hex substrate state on TERRITORY nodes via
 #:   ``domain/economics/substrate/hex_graph_bridge.py``; no code path stamps a
-#:   ``hex`` node onto the engine graph. ``SubstrateSystem`` (MATERIAL_BASE
-#:   @2.5), ``Vol2CirculationStep``, ``territory_diagnostics`` and the
-#:   ``simulation_engine`` determinism-hash row collector therefore all iterate
-#:   an empty set at runtime.
+#:   ``hex`` node onto the engine graph. ``Vol2CirculationStep``,
+#:   ``territory_diagnostics`` and the ``simulation_engine`` determinism-hash
+#:   row collector therefore all iterate an empty set at runtime. (#39 T6,
+#:   2026-07-20: ``SubstrateSystem`` (MATERIAL_BASE @2.5) was rewritten to
+#:   query ``NodeType.TERRITORY`` instead -- it no longer belongs to this
+#:   list -- but the entry itself stays, since the other two consumers are
+#:   still live; the #40 lesson is to keep this citation matching reality,
+#:   not to remove the entry the moment one consumer is fixed.)
 #: - ``community``: community membership lives in the XGI *hypergraph*
-#:   (``engine/systems/community.py``), not the main graph. The last surviving
-#:   query is ``domain/institution/queries.py::community_embeddedness``, which
-#:   has no production caller. The same defect was already found and fixed once
-#:   in the web bridge (see ``tests/unit/web/test_engine_bridge.py``,
-#:   ``test_educate_targets_uses_social_class_not_community``).
-UNSTAMPED_QUERY_ALLOWLIST: Final[frozenset[str]] = frozenset({"hex", "community"})
+#:   (``engine/systems/community.py``), not the main graph, so no production
+#:   code ever stamps a ``community`` node onto the engine graph either. Task
+#:   #40 deleted the previously-cited "last surviving query"
+#:   (``domain/institution/queries.py::community_embeddedness``, zero
+#:   production callers). Removing this allowlist entry entirely was
+#:   attempted and empirically fails: ``engine/invariants.py::
+#:   _is_community_node_attr`` (``node_attrs.get("_node_type") ==
+#:   "community"``, backing ``NoCommunityFanOut``, INV-010's defensive
+#:   negative-check invariant) is a second scanner-visible "query" for this
+#:   type. It is intentional -- the invariant asserts community is NEVER
+#:   stamped as a MEMBERSHIP-edge source -- but it too has no production
+#:   *caller* (``NoCommunityFanOut`` is only ever instantiated by
+#:   ``tests/property/invariants/test_community_membership_lint.py``), so the
+#:   same "test-only caller in a production-tree file" shape the deleted
+#:   queries.py function had. Left open rather than remediated: out of task
+#:   #40's scoped checklist (which named only queries.py), a new finding for
+#:   an owner to scope (wire ``NoCommunityFanOut`` into a real invariant
+#:   runner, or delete it the same way).
+UNSTAMPED_QUERY_ALLOWLIST: Final[frozenset[str]] = frozenset({"community", "hex"})
 
 #: Exact ``("node_type_literal", path, literal)`` keys exempt from rule (a).
 #: Deliberately keyed on BOTH file and string so an exemption cannot leak to
@@ -601,3 +621,102 @@ EDGE_SOURCE_ALLOWLIST: Final[frozenset[tuple[str, str]]] = frozenset(
         ("transactional", "organization"),
     }
 )
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Rule (e) (task #40) — phantom-attribute closure: a graph-node attribute no
+# producer ever writes must not be READ (production or test) or STAMPED
+# (test), because a reader keyed on it matches ZERO real nodes forever. The
+# founding instance: ``ooda/initiative.py::compute_community_embeddedness``
+# read ``node_data.get("community_type")`` -- an attribute NO production
+# code ever writes (community is never a main-graph node, INV-010) -- and
+# was therefore structurally always 0.0. Task #40 rewrote that function to
+# read the real TENANCY/``community_memberships`` substrate instead; this
+# rule gates the class so the phantom-read shape cannot recur.
+# ─────────────────────────────────────────────────────────────────────────────
+
+#: Graph-node attribute names BANNED as a ``.get()``/``.pop()``/``[...]``
+#: READ off a raw node-payload dict, or a keyword/dict-literal STAMP on a
+#: real ``add_node(...)`` call -- in production (``src``/``web``) AND in
+#: tests (a fixture stamping the phantom attribute is the fabrication half
+#: of the exact same bug; the sentinel's OWN tests are the sole exemption,
+#: since they must construct the violating shape to prove the gate rejects
+#: it). This list must only ever GROW as new phantom-attribute classes are
+#: discovered and shrink only when an attribute gains a real producer (at
+#: which point it is simply removed, not "fixed" here).
+#:
+#: - ``community_type``: community is NEVER a main-graph node (INV-010); no
+#:   production code stamps this onto a graph node, ever. The attribute DOES
+#:   legitimately exist on the XGI hypergraph's own ``CommunityMembership``/
+#:   ``CommunityState``/``SubstrateFloor`` Pydantic models (``mem.
+#:   community_type``, ``CommunityState(community_type=...)``) and as a
+#:   column in the REAL, Postgres-persisted community-state tables
+#:   (``persistence/postgres_runtime/_legacy.py``) -- plain attribute
+#:   access, constructor keywords, and DB-row dict reads, never a graph-node
+#:   ``.get()``/``[...]``/``add_node(...)`` shape, so
+#:   :func:`~babylon.sentinels._ast.graph_node_attribute_reads`'s
+#:   receiver-scoping (only a raw ``<x>.nodes.get(...)``/``<x>.nodes[...]``
+#:   payload counts) already excludes that entirely legitimate, unrelated
+#:   namespace by construction -- no exemption row needed or present for it.
+PHANTOM_ATTRIBUTE_READS: Final[frozenset[str]] = frozenset({"community_type"})
+
+#: Exact ``("phantom_attribute_read"|"phantom_attribute_stamp", path,
+#: attribute)`` keys exempt from rule (e) — KNOWN LIVE BUGS, owner-gated,
+#: discovered incidentally while building this gate, out of task #40's
+#: scoped checklist (mirrors :data:`ATTRIBUTE_EXEMPTIONS`'s "Reason 2"
+#: governance; ``tracking_task`` documents each as unscoped rather than
+#: "#40" itself).
+PHANTOM_ATTRIBUTE_EXEMPTIONS: Final[tuple[SentinelExemption, ...]] = (
+    SentinelExemption(
+        key=("phantom_attribute_read", "src/babylon/ooda/action_costs.py", "community_type"),
+        reason=(
+            "Task #40 discovery (NOT part of the assigned checklist): "
+            "_get_org_community_types/_get_target_community_type read "
+            "'community_type' off real graph.nodes.get(...) payloads -- the "
+            "identical phantom-attribute-read bug Fix B retired in "
+            "ooda/initiative.py. _is_contradiction_pair is therefore always "
+            "False and compute_action_cost's 'Across contradiction axis' branch "
+            "is dead in every real game. compute_action_cost (the only entry "
+            "point) additionally has ZERO production callers of its own "
+            "(mirrors Fix A's community_embeddedness shape exactly) -- an "
+            "earlier-order defect than the phantom read. Flagging for a future "
+            "task to either delete (Fix-A-style) or wire+repair (Fix-B-style)."
+        ),
+        owner="Persephone Raskova",
+        date="2026-07-19",
+        tracking_task="#58 (task #40 discovery; wire-or-delete owner-gated)",
+    ),
+    SentinelExemption(
+        key=(
+            "phantom_attribute_stamp",
+            "tests/unit/ooda/test_action_costs.py",
+            "community_type",
+        ),
+        reason=(
+            "Fixture feeding action_costs.py's own phantom-attribute-read bug "
+            "(see the sibling production-read exemption above) -- same tracking, "
+            "same future task."
+        ),
+        owner="Persephone Raskova",
+        date="2026-07-19",
+        tracking_task="#58 (task #40 discovery; wire-or-delete owner-gated)",
+    ),
+)
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Rule (f) (#39 T8) — Territory wrong-rung keying: the res-3 inversion class,
+# both directions. USScenario's historical bug minted a bare FIPS string as
+# Territory(id=...) (identity must live ONLY in county_fips); the mirror-image
+# mistake would stamp an H3-cell value onto county_fips (Wayne's hex path and
+# the county path must never cross). See
+# :func:`~babylon.sentinels._ast.territory_keying_uses` for the two recognised
+# forms and their documented static-heuristic narrowing.
+# ─────────────────────────────────────────────────────────────────────────────
+
+#: Exact ``("territory_keying", path, kind, detail)`` keys exempt from rule
+#: (f). Empty today -- no production or test call site currently constructs a
+#: wrong-rung Territory (T4 landed the county-keyed fix cleanly; Wayne's hex
+#: path never sets county_fips at all). Expected future occupants: a test
+#: that DELIBERATELY constructs a malformed Territory to prove a validator
+#: rejects it (mirrors :data:`LITERAL_EXEMPTIONS`' ``balkanization_faction``
+#: precedent) -- each such row must cite the covering test by name.
+TERRITORY_KEYING_EXEMPTIONS: Final[tuple[SentinelExemption, ...]] = ()

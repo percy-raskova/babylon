@@ -26,9 +26,18 @@ Spec-112 C5 — aggregated (non-hex) ``/map/`` features ship ``geometry: None``
 (the frontend derives region polygons from H3 cells at render time, see
 ``@deck.gl/geo-layers``'s ``H3ClusterLayer``), so each aggregated feature now
 carries ``properties.member_h3``: the sorted list of H3 indexes rolled into
-that group. Also pins a pre-existing quirk: ``zoom="cz"`` has no backing
-column on ``HexState`` and no ``group_key_map`` entry, so it silently falls
-through to county grouping — documented here, not fixed (owner queue).
+that group.
+
+#39 T7: ``zoom="cz"`` used to have no backing column on ``HexState`` and no
+``group_key_map`` entry, so it silently fell through to county grouping —
+now fixed: it groups by real commuting zone, derived from ``county_fips`` via
+T3's committed ``bridge_county_cz.csv`` crosswalk
+(``game.engine_bridge._county_to_cz_lookup``). See
+``tests/unit/web/test_map_aggregation.py::TestCzZoomAggregation`` for the
+fast-tier (no-DB) coverage of the real grouping/19-county-gap/vintage-bridge
+behavior; :class:`TestZoomCzGroupsByCommutingZone` below just re-pins that
+the silent county fallback is gone at this (Postgres-gated) integration
+layer.
 
 Requires a running PostgreSQL instance. Skip with:
 ``pytest -m "not requires_postgres"``.
@@ -349,17 +358,18 @@ class TestMemberH3Aggregation:
 
 
 @pytest.mark.usefixtures("_django_configured")
-class TestZoomCzFallsThroughToCounty:
-    """Pins current (pre-existing, NOT fixed here) behavior: ``HexState``
-    has no commuting-zone column at all, and ``_aggregate_hex_features``'s
-    ``group_key_map`` has no ``"cz"`` entry, so ``zoom="cz"`` silently falls
-    through ``group_key_map.get(zoom, "county_fips")`` and groups by
-    ``county_fips`` instead of a real CZ dimension. Flagged for the owner
-    queue: fixing this needs a schema addition (a CZ column + loader), not
-    just a ``group_key_map`` entry — out of scope for this lane.
+class TestZoomCzGroupsByCommutingZone:
+    """#39 T7: ``zoom="cz"`` now groups by a REAL commuting-zone dimension
+    (derived from ``county_fips`` via T3's committed ``bridge_county_cz.csv``
+    crosswalk, ``game.engine_bridge._county_to_cz_lookup``) — the silent
+    fallback to county grouping this class used to pin is gone. Wayne
+    (26163) and Macomb (26099) — the two counties this file's
+    ``_hex_row_stub`` fixture already exercises — both sit in commuting zone
+    11600 (Detroit), so they now merge into ONE cz group where they used to
+    (and still do, at ``zoom="county"``) stay separate.
     """
 
-    def test_cz_zoom_groups_by_county_fips_not_a_cz_dimension(self) -> None:
+    def test_cz_zoom_merges_counties_sharing_a_commuting_zone(self) -> None:
         from game.engine_bridge import EngineBridge
 
         rows = [_hex_row_stub("872a3072cffffff"), _hex_row_stub("872a3072dffffff")]
@@ -370,9 +380,9 @@ class TestZoomCzFallsThroughToCounty:
 
         cz_keys = {f["properties"]["group_key"] for f in cz_features}
         county_keys = {f["properties"]["group_key"] for f in county_features}
-        assert cz_keys == county_keys == {"26163", "26099"}
-        # The only difference is the literal "zoom" property value echoed
-        # back — the grouping dimension itself is identical to "county".
+        assert cz_keys == {"11600"}
+        assert county_keys == {"26163", "26099"}
+        assert cz_keys != county_keys
         assert {f["properties"]["zoom"] for f in cz_features} == {"cz"}
 
 

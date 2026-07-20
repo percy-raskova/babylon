@@ -5,6 +5,69 @@ meta:
   version: "2.43.0"  # 2.28.0 lives on feature/19-emergent-class-partition (Program 19 Phase 0+1)
   updated: "2026-07-20"
   truth_status: |
+    (2026-07-20) TASK #39 -- HEX/SCALE COUNTY-KEYING + SCALEADJUNCTION
+    BINDING COMPLETE (ADR091 Amendment U + ADR092; branch
+    feature/queue-2026-07-19, worktree babylon-queue; T1-T8 landed and
+    review-clean, T9 this close-out): USScenario's territories are re-keyed
+    from ~1118 res-3 H3 hexes to 3153 US counties (one Territory per county,
+    opaque `T0001..` ids, `county_fips` populated, `h3_index=None`), reading
+    a committed hash-stamped artifact
+    (`src/babylon/data/game/us_county_territories.json`, schema_version 2)
+    rather than the reference DB at build time (deterministic-data-artifacts
+    doctrine -- a live per-call population query measured ~6.6s, unaffordable
+    at 130+ scenario-building call sites in the test suite); ADR092 records
+    the artifact's full provenance, its declared retired-FIPS dedup, and
+    three named-but-not-fixed defects. Wayne County stays hex-keyed
+    (untouched, owner ruling W1, ticket #57).
+
+    The spatial scale ladder is now a constitutional LATTICE, not a chain
+    (Amendment U, CONSTITUTION.md v2.11.0, supersedes Amendment K's spatial
+    clause): county is the administrative atom (`resolve_county_identity`,
+    the sole economy spatial key); above it sit three PARALLEL
+    county-aggregations, each its own `ScaleAdjunction` (allocate <-> aggregate)
+    -- commuting zone (USDA ERS 1990 delineation, `bridge_county_cz.csv`,
+    total over the scoped county universe except 19 declared loud-fail
+    exceptions), metropolitan statistical area (OMB via `dim_metro_area`,
+    partial -- non-metro counties carry none), and state (total). Only state
+    nests further into nation; CZ and MSA cross state lines by construction
+    and never nest into state.
+
+    `SubstrateSystem` (@2.5) gets real dynamics and is the FIRST engine
+    consumer of `ScaleAdjunction`: county territories seed
+    `raw_material_stock`/`raw_material_capacity` from the artifact's
+    USGS-mineral-derived `raw_material_value_millions` (new `SubstrateDefines`
+    GameDefines category for the depletion/regeneration coefficients); the
+    system publishes aggregate substrate state at CZ/MSA/state/nation grain
+    into `persistent_data["substrate.<rung>"]`. The web map's `cz` zoom is
+    now real (`bridge_county_cz`-backed `group_key_map` entry,
+    `web/game/engine_bridge.py`) -- the silent county fallback for CZ framing
+    is retired. Balkanization influence seeding gains a county-grain path
+    (`bridge_county_h3` aggregation, keyed on `county_fips`) so USScenario
+    sessions are no longer silently skipped by the h3-parent-only seeding
+    logic.
+
+    Two new sentinel gates catch the discovered error classes: vocabulary
+    rule (f) (`babylon.sentinels.vocabulary`) statically forbids a bare
+    FIPS-shaped literal passed to `Territory(id=...)` or an H3-cell
+    expression passed to `Territory(county_fips=...)` -- the res-3 inversion
+    class, both directions; the coverage family gains
+    `LATTICE_RUNG_REQUIREMENTS` rows per lattice rung (hex->county,
+    county->CZ, county->MSA) naming the backing table/CSV, with the
+    committed county->CZ CSV's key/value coverage floor actually parsed and
+    checked (not just asserted to exist) so a rung whose concordance goes
+    missing or truncated fails loud instead of silently degrading.
+
+    NOT fixed here (recorded as follow-up tickets in ADR092): (a)
+    `engine/headless_runner/scopes.py::_load_national_fips` still carries
+    the same retired-FIPS duplicates for the headless nationwide path; (b)
+    `engine/observers/endgame_detector.py:265`'s stale "~1100 territories"
+    comment; (c) the web map's `msa`/`bea`/`bea_ea` zooms have no write site
+    for `msa_code`/`bea_ea_code` (every territory collapses to one bucket).
+    ADJACENCY edges are absent for the county grain (no real
+    county-adjacency reference source exists) -- a loud, documented gap, not
+    a fabrication. `qa:regression` stays 5/5 byte-identical throughout (the
+    5 canonical scenarios are opaque-T-id and county-free, so this program
+    is invisible to them by construction).
     (2026-07-20) QA:REGRESSION GATE MODERNIZED (ADR090; branch
     refactor/qa-regression-modernization, design docs/superpowers/specs/
     2026-07-19-qa-regression-modernization-design.md): the byte-identical gate
@@ -67,7 +130,6 @@ meta:
     them, which the stale-at_rest detector's own second direction would
     correctly force. Full evidence: .superpowers/sdd/progress.md (the
     12-task program ledger) and ADR090_qa_regression_modernization.yaml.
-
     (2026-07-19) VOL III MONEY WIRED LIVE (ADR089; branch
     refactor/vol3-money-scissors, design docs/superpowers/specs/
     2026-07-18-vol3-money-scissors-design.md): the dormant Vol III

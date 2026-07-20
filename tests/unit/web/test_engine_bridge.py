@@ -41,6 +41,14 @@ from game.engine_bridge import (
 )
 from game.verb_copy import VERB_INELIGIBILITY_COPY
 
+pytestmark = pytest.mark.skip(
+    reason=(
+        "web UI retired in favor of the TUI (owner ruling 2026-07-20): web-bridge "
+        "failures no longer gate; suite disabled wholesale rather than xfailing the "
+        "81 reference-DB-dependent cases individually"
+    ),
+)
+
 
 def _make_mock_persistence() -> MagicMock:
     """Create a mock RuntimePersistence with standard method signatures."""

@@ -53,11 +53,13 @@ def _build_detroit_graph() -> BabylonGraph:
     graph = BabylonGraph()
 
     # --- Community node ---
+    # Task #40: dropped the fabricated community_type="new_afrikan" stamp --
+    # no production OODA code (layer0/layer3/_helpers) reads it off this
+    # node; it was pure decoration no test asserted on either.
     graph.add_node(
         "comm_detroit",
         _node_type="community",
         id="comm_detroit",
-        community_type="new_afrikan",
         collective_identity=0.3,
         ideological_contestation=0.2,
         heat=0.0,
@@ -184,13 +186,18 @@ def _build_detroit_graph() -> BabylonGraph:
 
 
 def _add_person(graph: BabylonGraph, person_id: str, phase: str) -> None:
-    """Add a person node to the graph."""
+    """Add a person node to the graph.
+
+    Task #40: dropped the fabricated ``community_type="new_afrikan"`` stamp
+    -- no production OODA code reads it off a person node; it was pure
+    decoration (the phantom-attribute-read shape PHANTOM_ATTRIBUTE_READS now
+    gates).
+    """
     graph.add_node(
         person_id,
         _node_type="person",
         id=person_id,
         lifecycle_phase=phase,
-        community_type="new_afrikan",
     )
 
 

@@ -49,6 +49,17 @@ class TestConsciousnessValueDefinesFields:
         defines = ConsciousnessDefines()
         assert defines.repression_backfire == pytest.approx(0.3)
 
+    def test_repression_level_sensitivity_default(self) -> None:
+        """Continuous PRODUCED repression level -> agitation (task #42-B;
+        re-derived task #42 fix wave 1, review MEDIUM-2, 2026-07-20 -- the
+        term now reads the excess above DEFAULT_REPRESSION_FACED, so the
+        original 0.002's ambient-saturation rationale no longer applies;
+        re-grounded at the same order of magnitude as
+        sustained_exploitation_sensitivity, see the field's own
+        description for the full derivation)."""
+        defines = ConsciousnessDefines()
+        assert defines.repression_level_sensitivity == pytest.approx(0.02)
+
     def test_rent_opacity_factor_default(self) -> None:
         """Rent opacity dampens exploitation visibility via imperial rent."""
         defines = ConsciousnessDefines()
@@ -106,6 +117,13 @@ class TestConsciousnessValueDefinesBounds:
         with pytest.raises(ValidationError):
             ConsciousnessDefines(agitation_consumption_rate=-0.1)
 
+    def test_repression_level_sensitivity_bounded(self) -> None:
+        """repression_level_sensitivity in [0, 1]."""
+        with pytest.raises(ValidationError):
+            ConsciousnessDefines(repression_level_sensitivity=-0.1)
+        with pytest.raises(ValidationError):
+            ConsciousnessDefines(repression_level_sensitivity=1.5)
+
     def test_liberal_drift_rate_bounded(self) -> None:
         """liberal_drift_rate in [0, 1]."""
         with pytest.raises(ValidationError):
@@ -136,6 +154,7 @@ class TestConsciousnessValueDefinesIntegration:
         assert hasattr(c, "educate_base_effect")
         assert hasattr(c, "agitation_education_threshold")
         assert hasattr(c, "education_pressure_decay")
+        assert hasattr(c, "repression_level_sensitivity")
 
     def test_existing_fields_preserved(self) -> None:
         """Existing ConsciousnessDefines fields unchanged."""

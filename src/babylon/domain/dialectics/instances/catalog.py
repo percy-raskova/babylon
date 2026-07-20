@@ -9,11 +9,11 @@ module free of any ``babylon.engine`` import, so the dialectics package
 stays a pure downstream of ``formulas`` + ``models`` and cannot form an
 import cycle with the system that consumes it.
 
-The ten oppositions, and the honest measure each is bound to. The first
+The eleven oppositions, and the honest measure each is bound to. The first
 five were verified against a 30-tick single-county bridged probe
 (2026-07-02); ``price_value`` was promoted to CANONICAL by ADR078; the
 four Volume III money oppositions were bound by the Vol III money-scissors
-work (2026-07-18):
+work (2026-07-18); ``national`` landed SHADOW-first (task #42-C, 2026-07-20):
 
 - ``capital_labor`` — mean wealth-asymmetry over EXPLOITATION edges
   (labor = pole A / source, capital = pole B / target). Antagonistic.
@@ -56,6 +56,18 @@ work (2026-07-18):
   threshold. National; unplaced on the level lattice.
 - ``financial`` — real⇄fictitious: claims on future value over present
   production, read from the scissors' ``fictitious_log`` in ratio space.
+  National; unplaced on the level lattice.
+- ``national`` — national-chauvinism⇄internationalism: the settler bribe
+  that trades international class unity for a national privilege, versus
+  the solidarity that refuses it (Lenin, *Imperialism and the Split in
+  Socialism*; owner ruling 2026-07-15, doctrine tag NATIONAL_CHAUVINISM /
+  negation INTERNATIONALISM). Read from each ``BalkanizationFaction``'s
+  ``colonial_stance`` (spec-070 FR-002), weighted by its territorial
+  INFLUENCES reach (FR-014/FR-015) — UPHOLD is the chauvinist pole,
+  ABOLISH the internationalist pole, IGNORE the RED_OGV middle (FR-032).
+  SHADOW (task #42-C): the 5 canonical scenarios construct no
+  BalkanizationFaction at all, so this reads absent (0, 0) there BY
+  CONSTRUCTION, exactly as ``price_value`` did at its ADR077 landing.
   National; unplaced on the level lattice.
 
 All four Volume III bindings share ``_ratio_reading``'s zero-parameter
@@ -164,6 +176,13 @@ class GraphInputs:
             ``FictitiousCapitalStock.ratio_to_real`` while real data exists —
             one axis, materially grounded at its origin, endogenous
             thereafter. ``None`` = no market axis this tick.
+        national_balance: pre-derived national-axis ``Balance`` in [-1, 1]
+            (task #42-C) — the engine's INFLUENCES-weighted mean of every
+            BalkanizationFaction's ``colonial_stance``, scaled the same
+            division-of-labour way ``market_balance`` is (no coefficient, so
+            the catalog stays defines-free). ``None`` = no faction carries
+            both a recognized stance and positive territorial influence this
+            tick (the 5 canonical scenarios, permanently, by construction).
     """
 
     exploitation_pairs: tuple[WealthPair, ...] = ()
@@ -178,6 +197,7 @@ class GraphInputs:
     debt_ratio: float | None = field(default=None)
     credit_fragility: float | None = field(default=None)
     financialization_index: float | None = field(default=None)
+    national_balance: float | None = field(default=None)
 
 
 _ASYMMETRY_EPSILON: Final[float] = 1e-9
@@ -413,6 +433,23 @@ def _financial_measure(inputs: GraphInputs) -> GapReading:
     return _ratio_reading(inputs.financialization_index)
 
 
+def _national_measure(inputs: GraphInputs) -> GapReading:
+    """national-chauvinism (A) ⇄ internationalism (B) — task #42-C.
+
+    Reads the pre-derived Balance (the engine owns the INFLUENCES-weighting —
+    see ``GraphInputs.national_balance``). ``None`` → ``(0, 0)``: no faction
+    carries a recognized stance with positive territorial reach, so there is
+    no national contradiction to measure (Constitution III.11) — the honest,
+    by-construction reading in every one of the 5 canonical scenarios, which
+    build no BalkanizationFaction at all. Positive balance = internationalism
+    (pole B) dominant.
+    """
+    if inputs.national_balance is None:
+        return GapReading(gap=0.0, balance=0.0)
+    balance = max(-1.0, min(1.0, inputs.national_balance))
+    return GapReading(gap=abs(balance), balance=balance)
+
+
 def build_default_registry(rate_weight: float = 10.0) -> OppositionRegistry[GraphInputs]:
     """Build the production five-opposition registry.
 
@@ -567,6 +604,28 @@ def build_default_registry(rate_weight: float = 10.0) -> OppositionRegistry[Grap
                 antagonistic=False,
             ),
             measure=_financial_measure,
+        ),
+        BoundOpposition(
+            spec=OppositionSpec(
+                key="national",
+                pole_a="national-chauvinism",
+                pole_b="internationalism",
+                unity="the settler bribe that trades international class unity for a "
+                "national privilege, and the solidarity that refuses it, are the same "
+                "relation to the imperial nation-state read at its two poles (Lenin, "
+                "Imperialism and the Split in Socialism) — owner ruling 2026-07-15 named "
+                "the reactionary pole NATIONAL_CHAUVINISM, its negation INTERNATIONALISM "
+                "already live as the SolidaritySystem",
+                # level_name stays "" (unplaced): the axis aggregates faction stance
+                # NATIONALLY (all INFLUENCES reach, no county/class rung), same as
+                # credit/financial.
+                antagonistic=True,
+            ),
+            measure=_national_measure,
+            # SHADOW (task #42-C): measured every tick, excluded from principal
+            # scoring/frames/rupture; states ride shadow_opposition_states,
+            # exactly the ADR077 discipline price_value was born under.
+            shadow=True,
         ),
     ]
     return OppositionRegistry(bindings=bindings, rate_weight=rate_weight)

@@ -1,9 +1,17 @@
-"""SubstrateSystem pipeline integration test (T083 / US7).
+"""SubstrateSystem pipeline integration test (T083 / US7; retired-hex note #39 T6).
 
-Drives the canonical _DEFAULT_SYSTEMS pipeline through one tick against a
-live Postgres pool. Verifies SubstrateSystem at slot 2.5 sees Territory's
-output and Production reads the post-Substrate substrate values within the
-same tick.
+Drives SubstrateSystem through one tick against a live Postgres pool.
+
+#39 T6 rewrote SubstrateSystem to run real depletion dynamics on
+county-grain ``Territory`` nodes (``county_fips`` + ``raw_material_stock``),
+never ``NodeType.HEX`` (no production code path ever stamps a hex node onto
+the engine graph -- confirmed dead vocabulary,
+``sentinels/vocabulary/registry.py``'s ``UNSTAMPED_QUERY_ALLOWLIST``). The
+hex-node graphs below therefore now exercise the NO-OP path (zero eligible
+Territory nodes -- SubstrateSystem never even touches
+``services.defines``): a live-pool smoke test that step() runs cleanly
+inside a real engine tick, and that a no-op System still lets the
+auditor/persistence pipeline complete end-to-end.
 """
 
 from __future__ import annotations
@@ -40,12 +48,15 @@ def runtime(pg_pool, apply_062_migrations):  # type: ignore[no-untyped-def]
 
 
 def test_substrate_runs_in_default_pipeline_with_live_pool(runtime, caplog):  # type: ignore[no-untyped-def]
-    """SubstrateSystem.step() executes against a hex-only graph with live runtime.
+    """SubstrateSystem.step() executes cleanly against a live runtime when
+    the graph has zero Territory nodes (a hex-only graph, e.g.).
 
-    The full _DEFAULT_SYSTEMS pipeline has many systems that need additional
-    fixture setup (organizations, communities, contradictions); for the
-    substrate-position contract we instantiate just the three slots that
-    bracket SubstrateSystem and confirm it leaves substrate stocks intact.
+    #39 T6: this is the no-op path by construction (no NodeType.TERRITORY
+    nodes at all, so the eligibility query is empty and the system returns
+    before ever touching services.defines) -- the ``services`` stub below
+    deliberately carries no ``defines`` attribute, which would raise if
+    SubstrateSystem tried to read it. Passing here is itself the assertion
+    that the no-op path never reaches that read.
     """
     from babylon.engine.simulation_engine import SimulationEngine
     from babylon.engine.systems.substrate import SubstrateSystem
@@ -72,15 +83,20 @@ def test_substrate_runs_in_default_pipeline_with_live_pool(runtime, caplog):  # 
     with caplog.at_level(logging.DEBUG):
         engine.run_tick(graph, services, TickContext(tick=1))
 
-    # Substrate is pass-through: zero stays zero.
+    # No Territory nodes -> SubstrateSystem never touches this hex node's
+    # attributes at all (untouched, not "pass-through processed").
     assert graph.nodes["872d34a89ffffff"]["raw_material_stock"] == 0.0
-    # And the other stocks are still present.
     assert graph.nodes["872d34a89ffffff"]["energy_stock"] == 10.0
     assert graph.nodes["872d34a89ffffff"]["biocapacity_stock"] == 20.0
 
 
 def test_engine_with_auditor_persists_audit_row_to_live_pool(runtime, pg_pool):  # type: ignore[no-untyped-def]
-    """End-to-end: engine.run_tick → auditor → audit_log row persists."""
+    """End-to-end: engine.run_tick → auditor → audit_log row persists.
+
+    SubstrateSystem is the driver System here purely as a harmless no-op
+    (the hex-only graph has zero Territory nodes) -- the auditor's canned
+    evaluator, not SubstrateSystem's own math, is what this test exercises.
+    """
     from babylon.engine.simulation_engine import SimulationEngine
     from babylon.engine.systems.substrate import SubstrateSystem
     from babylon.persistence.audit_models import AuditSeverity

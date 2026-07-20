@@ -1,6 +1,6 @@
 """Vocabulary-sentinel checks: the node-type vocabulary must stay closed.
 
-Three gating rules, all read statically from source (no engine import, no
+Six gating rules, all read statically from source (no engine import, no
 Django, no DB — cheap enough for the always-on fast gate):
 
 **(a) No invented strings.** Every node-type literal stamped or queried
@@ -33,6 +33,31 @@ calls and duck-typed/attribute-agnostic utility tests are out of scope by
 design, not by oversight (full reasoning: the audit report + the exemption
 registry's own comments).
 
+**(d) Edge-shape closure** (ADR087). Every fixture-stamped ``(edge_type,
+SOURCE node type)`` combination must match a combination production stamps
+the same literal way, or a cited
+:data:`~babylon.sentinels.vocabulary.registry.EDGE_SOURCE_ALLOWLIST` entry —
+see that data's own docstring for its deliberately narrower static scope.
+
+**(e) Phantom-attribute closure** (task #40). No
+:data:`~babylon.sentinels.vocabulary.registry.PHANTOM_ATTRIBUTE_READS` name
+may be READ off a raw graph-node payload, or STAMPED via a real
+``add_node(...)`` call, anywhere production or a test fixture does so — the
+READ-side sibling of rule (c)'s STAMP-side check. The founding instance:
+``ooda/initiative.py::compute_community_embeddedness`` read
+``node_data.get("community_type")``, an attribute no production code ever
+writes (community is never a main-graph node, INV-010), and was therefore
+structurally always ``0.0``.
+
+**(f) Wrong-rung Territory keying** (#39 T8). No ``Territory(...)`` call may
+pass a bare FIPS-shaped string literal to ``id=``, or an H3-cell-derived
+expression to ``county_fips=`` — the res-3 inversion class, both directions.
+USScenario's historical bug minted the county FIPS straight into ``id``
+(identity must live ONLY in ``county_fips``); the mirror-image mistake would
+cross Wayne's hex path into the county grain. See
+:func:`~babylon.sentinels._ast.territory_keying_uses` for the two recognised
+forms and their documented static-heuristic narrowing.
+
 Failure messages are written for an agent with no other context: each names the
 offending ``file:line``, the offending string, the allowed set, the nearest
 legal member, and one sentence on *why* the rule exists.
@@ -48,7 +73,13 @@ from pathlib import Path
 from typing import Final
 
 from babylon.models.enums.topology import NodeType
-from babylon.sentinels._ast import add_node_attribute_stamps, edge_source_type_uses, node_type_uses
+from babylon.sentinels._ast import (
+    add_node_attribute_stamps,
+    edge_source_type_uses,
+    graph_node_attribute_reads,
+    node_type_uses,
+    territory_keying_uses,
+)
 from babylon.sentinels.base import LabelledCheck, SentinelCheckError, run_sensor
 from babylon.sentinels.exemptions import is_exempt
 from babylon.sentinels.vocabulary.registry import (
@@ -57,8 +88,11 @@ from babylon.sentinels.vocabulary.registry import (
     EXTRA_STAMPABLE_ATTRIBUTES,
     LITERAL_EXEMPTIONS,
     MODEL_FIELDS_BY_NODE_TYPE,
+    PHANTOM_ATTRIBUTE_EXEMPTIONS,
+    PHANTOM_ATTRIBUTE_READS,
     PRODUCTION_ROOTS,
     SCAN_ROOTS,
+    TERRITORY_KEYING_EXEMPTIONS,
     TICK_PREFIXED_NODE_TYPES,
     UNSTAMPED_QUERY_ALLOWLIST,
 )
@@ -68,7 +102,9 @@ __all__ = [
     "fabricated_node_attributes",
     "invented_node_types",
     "main",
+    "phantom_attribute_uses",
     "unstamped_queried_node_types",
+    "wrong_rung_territory_keying",
 ]
 
 #: Attribute keys every node carries that are never a model "field" in the
@@ -120,6 +156,29 @@ _WHY_FABRICATED_EDGE: Final[str] = (
     "edge, the ONLY reachable path for a whole amplification branch that "
     "never had a real write side. A production reader gated on this "
     "(edge_type, source_type) combination reacts to ZERO real edges forever."
+)
+
+_WHY_PHANTOM: Final[str] = (
+    "WHY THIS FAILS: an attribute no production code ever stamps onto a graph "
+    "node is invisible forever to any reader keyed on it -- the SAME 'closed "
+    "loop with no external referent' shape as an invented node type or a "
+    "fabricated field, one level down: the READ side, not just the STAMP "
+    "side. This is not hypothetical: ooda/initiative.py::"
+    "compute_community_embeddedness read 'community_type' (community is "
+    "never a main-graph node, INV-010) and was structurally always 0.0 in "
+    "every real game (task #40)."
+)
+
+_WHY_WRONG_RUNG: Final[str] = (
+    "WHY THIS FAILS: Territory.id and Territory.county_fips are two DIFFERENT "
+    "spatial rungs (Amendment U) -- a graph-local opaque label vs the real "
+    "county identity resolve_county_identity reads. USScenario's historical "
+    "res-3 bug minted the county FIPS straight into id (a bare FIPS string "
+    "matching Territory's own id pattern only by coincidence, never "
+    "resolvable as a real county by the economy); the mirror-image mistake "
+    "would cross Wayne's hex path (h3_index-keyed, no county_fips) into the "
+    "county grain, so a per-county reader would silently key off an H3 cell "
+    "that resolves to no real county at all."
 )
 
 
@@ -324,14 +383,114 @@ def fabricated_edge_sources() -> list[str]:
     return violations
 
 
-#: All four rules gate: an invented type, a producerless query, a fabricated
-#: node shape, and a fabricated edge-source combination are each a live
-#: defect, not an observation.
+def phantom_attribute_uses() -> list[str]:
+    """Rule (e) (task #40): no banned attribute is read off, or stamped
+    onto, a graph node — the phantom-attribute-read class.
+
+    The READ-side sibling of rule (c): a
+    :data:`~babylon.sentinels.vocabulary.registry.PHANTOM_ATTRIBUTE_READS`
+    name is banned wherever it is read off a raw node-payload dict
+    (:func:`~babylon.sentinels._ast.graph_node_attribute_reads` — any node
+    type, deliberately: the point is no production code writes this
+    attribute onto ANY graph node) or stamped via a real ``add_node(...)``
+    call (any node type too, mirroring
+    :data:`~babylon.sentinels.vocabulary.registry.UNSTAMPED_QUERY_ALLOWLIST`'s
+    governance — a test fixture stamping the phantom attribute is the
+    fabrication half of the identical bug, not a different one).
+
+    :returns: One violation string per offending ``(file, line, attribute)``.
+    :raises SentinelCheckError: If a scan root is missing or a file is
+        unparseable (exit 2 — infrastructure failure, never a silent pass).
+    """
+    violations: list[str] = []
+    for path in _python_files(SCAN_ROOTS):
+        rel = path.relative_to(_REPO_ROOT)
+        rel_posix = rel.as_posix()
+
+        for lineno, attr in graph_node_attribute_reads(path, PHANTOM_ATTRIBUTE_READS):
+            if is_exempt(("phantom_attribute_read", rel_posix, attr), PHANTOM_ATTRIBUTE_EXEMPTIONS):
+                continue
+            violations.append(
+                f'{rel}:{lineno} reads phantom attribute "{attr}" off a graph-node '
+                f"payload — no production code ever writes it there.\n"
+                f"    fix: read the real substrate the attribute is meant to "
+                f"represent, or — if this is a hand-verified non-graph-node "
+                f"namespace — add a PHANTOM_ATTRIBUTE_EXEMPTIONS entry with a "
+                f"citation.\n"
+                f"    {_WHY_PHANTOM}"
+            )
+
+        for lineno, node_type, attr in add_node_attribute_stamps(path):
+            if attr not in PHANTOM_ATTRIBUTE_READS:
+                continue
+            if is_exempt(
+                ("phantom_attribute_stamp", rel_posix, attr), PHANTOM_ATTRIBUTE_EXEMPTIONS
+            ):
+                continue
+            violations.append(
+                f'{rel}:{lineno} stamps phantom attribute "{attr}" onto a '
+                f'"{node_type}" node — no production reader can ever see it live, '
+                f"because no production code writes it either.\n"
+                f"    fix: delete the fabricated attribute from the fixture, or — "
+                f"if it is load-bearing to an out-of-scope consumer — add a "
+                f"PHANTOM_ATTRIBUTE_EXEMPTIONS entry with a citation.\n"
+                f"    {_WHY_PHANTOM}"
+            )
+    return violations
+
+
+def wrong_rung_territory_keying() -> list[str]:
+    """Rule (f) (#39 T8): no ``Territory(...)`` call keys the wrong rung.
+
+    The res-3 inversion class, both directions — see
+    :func:`~babylon.sentinels._ast.territory_keying_uses` for the two
+    recognised forms and their documented static-heuristic narrowing.
+
+    :returns: One violation string per offending call site, sorted by location.
+    :raises SentinelCheckError: If a scan root is missing or a file is
+        unparseable (exit 2 — infrastructure failure, never a silent pass).
+    """
+    violations: list[str] = []
+    for path in _python_files(SCAN_ROOTS):
+        rel = path.relative_to(_REPO_ROOT)
+        rel_posix = rel.as_posix()
+        for lineno, kind, detail in territory_keying_uses(path):
+            if is_exempt(
+                ("territory_keying", rel_posix, kind, detail), TERRITORY_KEYING_EXEMPTIONS
+            ):
+                continue
+            if kind == "fips_literal_id":
+                violations.append(
+                    f'{rel}:{lineno} passes bare FIPS-shaped literal "{detail}" to '
+                    f"Territory(id=...) -- the res-3 inversion bug's exact shape.\n"
+                    f"    fix: id must be a T-prefixed opaque label (e.g. an f-string "
+                    f"built from a counter, f'T{{i:04d}}') or an H3-cell variable; the "
+                    f"real county identity belongs ONLY in county_fips=.\n"
+                    f"    {_WHY_WRONG_RUNG}"
+                )
+            else:
+                violations.append(
+                    f'{rel}:{lineno} passes H3-cell-derived expression "{detail}" to '
+                    f"Territory(county_fips=...) -- the mirror-image res-3 inversion.\n"
+                    f"    fix: county_fips must be a real 5-digit county FIPS from "
+                    f"reference data (dim_county/bridge_county_h3), never an H3 cell "
+                    f"value -- Wayne's hex path and the county path must never cross.\n"
+                    f"    {_WHY_WRONG_RUNG}"
+                )
+    return sorted(violations)
+
+
+#: All six rules gate: an invented type, a producerless query, a fabricated
+#: node shape, a fabricated edge-source combination, a phantom-attribute
+#: read/stamp, and a wrong-rung Territory keying are each a live defect, not
+#: an observation.
 _GATING_CHECKS: Final[tuple[LabelledCheck, ...]] = (
     ("invented-node-type", invented_node_types),
     ("unstamped-queried-node-type", unstamped_queried_node_types),
     ("fabricated-node-attribute", fabricated_node_attributes),
     ("fabricated-edge-source", fabricated_edge_sources),
+    ("phantom-attribute-use", phantom_attribute_uses),
+    ("wrong-rung-territory-keying", wrong_rung_territory_keying),
 )
 
 
@@ -343,8 +502,10 @@ def _summary(advisory_count: int) -> str:
         f"every literal in {'/, '.join(SCAN_ROOTS)}/ is a NodeType member, "
         f"every production query has a production producer, every "
         f"stamped attribute on a production-stamped node type is real shape, "
-        f"and every fixture-stamped (edge_type, source_type) combination has "
-        f"a production producer or a cited allowlist entry."
+        f"every fixture-stamped (edge_type, source_type) combination has "
+        f"a production producer or a cited allowlist entry, no "
+        f"phantom attribute is read off or stamped onto any graph node, and "
+        f"no Territory(...) call keys the wrong spatial rung."
     )
 
 

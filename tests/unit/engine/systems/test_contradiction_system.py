@@ -35,7 +35,7 @@ from babylon.engine.systems.contradiction import (
     OPPOSITION_INTERVENTIONS_ATTR,
     ContradictionSystem,
 )
-from babylon.models.enums import EdgeType, EventType
+from babylon.models.enums import EdgeType, EventType, NodeType
 from babylon.topology.graph import BabylonGraph
 
 pytestmark = pytest.mark.unit
@@ -547,4 +547,126 @@ class TestPriceValueEndToEnd:
             "financial",
         }
         assert states["price_value"]["balance"] == pytest.approx(math.tanh(0.5 / scale))
-        assert "shadow_opposition_states" not in graph.graph
+        # task #42-C: national now registers shadow, so the channel is no
+        # longer empty-by-default — but this graph builds no FACTION/
+        # INFLUENCES data at all, so national reads the honest absent zero.
+        shadow_states = graph.graph["shadow_opposition_states"]
+        assert set(shadow_states) == {"national"}
+        assert shadow_states["national"]["gap"] == 0.0
+        assert shadow_states["national"]["balance"] == 0.0
+
+
+class TestNationalAxisEndToEnd:
+    """Default registry + FACTION/INFLUENCES data → the shadow channel (task #42-C)."""
+
+    def test_no_factions_reads_absent(self) -> None:
+        """The 5 canonical scenarios build no BalkanizationFaction at all —
+        this is their permanent, by-construction reading."""
+        graph = BabylonGraph()
+        graph.add_node("worker", wealth=10.0)
+        graph.add_node("owner", wealth=30.0)
+        graph.add_edge("worker", "owner", edge_type=EdgeType.EXPLOITATION)
+
+        ContradictionSystem().step(graph, ServiceContainer.create(), TickContext(tick=1))
+
+        assert "national" not in graph.graph["opposition_states"]
+        national = graph.graph["shadow_opposition_states"]["national"]
+        assert national["gap"] == 0.0
+        assert national["balance"] == 0.0
+        assert national["is_principal"] is False
+
+    def test_faction_stance_feeds_the_shadow_channel(self) -> None:
+        """Two factions, weighted by their INFLUENCES reach: UPHOLD (weight
+        0.3) and ABOLISH (weight 0.7) over the same Territory. Weighted mean
+        chauvinism score = (0.3*1.0 + 0.7*0.0) / 1.0 = 0.3; balance =
+        1 - 2*0.3 = 0.4 (internationalism, pole B, leads)."""
+        graph = BabylonGraph()
+        graph.add_node("HEX_001", NodeType.TERRITORY)
+        graph.add_node("FAC_UPHOLD", NodeType.FACTION, colonial_stance="uphold")
+        graph.add_node("FAC_ABOLISH", NodeType.FACTION, colonial_stance="abolish")
+        graph.add_edge("FAC_UPHOLD", "HEX_001", EdgeType.INFLUENCES, influence_level=0.3)
+        graph.add_edge("FAC_ABOLISH", "HEX_001", EdgeType.INFLUENCES, influence_level=0.7)
+
+        ContradictionSystem().step(graph, ServiceContainer.create(), TickContext(tick=1))
+
+        national = graph.graph["shadow_opposition_states"]["national"]
+        assert national["balance"] == pytest.approx(0.4)
+        assert national["gap"] == pytest.approx(0.4)
+        assert national["is_principal"] is False
+
+    def test_zero_influence_faction_contributes_nothing(self) -> None:
+        """A faction with no territorial reach carries no weight — the
+        intensive-aggregation guard (a lone UPHOLD faction with zero
+        influence must not swing the reading against a weighted ABOLISH one)."""
+        graph = BabylonGraph()
+        graph.add_node("HEX_001", NodeType.TERRITORY)
+        graph.add_node("FAC_UNPLACED", NodeType.FACTION, colonial_stance="uphold")
+        graph.add_node("FAC_ABOLISH", NodeType.FACTION, colonial_stance="abolish")
+        graph.add_edge("FAC_ABOLISH", "HEX_001", EdgeType.INFLUENCES, influence_level=0.5)
+        # FAC_UNPLACED has no INFLUENCES edge at all.
+
+        ContradictionSystem().step(graph, ServiceContainer.create(), TickContext(tick=1))
+
+        national = graph.graph["shadow_opposition_states"]["national"]
+        assert national["balance"] == pytest.approx(1.0)  # ABOLISH alone -> full internationalism
+
+    def test_unrecognized_stance_is_skipped_not_fabricated(self) -> None:
+        graph = BabylonGraph()
+        graph.add_node("HEX_001", NodeType.TERRITORY)
+        graph.add_node("FAC_BAD", NodeType.FACTION, colonial_stance="not-a-real-stance")
+        graph.add_edge("FAC_BAD", "HEX_001", EdgeType.INFLUENCES, influence_level=0.9)
+
+        ContradictionSystem().step(graph, ServiceContainer.create(), TickContext(tick=1))
+
+        national = graph.graph["shadow_opposition_states"]["national"]
+        assert national["gap"] == 0.0
+        assert national["balance"] == 0.0
+
+    def test_reading_is_order_independent_of_graph_construction(self) -> None:
+        """Constitution III.7: the same logical graph, built by inserting its
+        three factions (mixed stances, unequal INFLUENCES weights) in a
+        different order, must yield a BIT-IDENTICAL ``national`` reading —
+        ``==`` on the floats, not ``pytest.approx``. Unsorted float
+        accumulation over graph-insertion order is order-sensitive (0.1
+        UPHOLD + 0.2 IGNORE + 0.7 ABOLISH sums to a different last bit of
+        ``weight_total`` depending on visitation order); sorting both the
+        FACTION-node loop and the INFLUENCES-edge loop by id fixes it."""
+
+        def build(order: list[tuple[str, str, float]]) -> BabylonGraph:
+            graph = BabylonGraph()
+            graph.add_node("HEX_001", NodeType.TERRITORY)
+            for faction_id, stance, weight in order:
+                graph.add_node(faction_id, NodeType.FACTION, colonial_stance=stance)
+                graph.add_edge(faction_id, "HEX_001", EdgeType.INFLUENCES, influence_level=weight)
+            return graph
+
+        forward = [
+            ("FAC_A", "uphold", 0.1),
+            ("FAC_B", "ignore", 0.2),
+            ("FAC_C", "abolish", 0.7),
+        ]
+        graph_forward = build(forward)
+        graph_reversed = build(list(reversed(forward)))
+
+        ContradictionSystem().step(graph_forward, ServiceContainer.create(), TickContext(tick=1))
+        ContradictionSystem().step(graph_reversed, ServiceContainer.create(), TickContext(tick=1))
+
+        national_forward = graph_forward.graph["shadow_opposition_states"]["national"]
+        national_reversed = graph_reversed.graph["shadow_opposition_states"]["national"]
+
+        assert national_forward["balance"] == national_reversed["balance"]
+        assert national_forward["gap"] == national_reversed["gap"]
+
+    def test_national_never_feeds_frames_or_rupture(self) -> None:
+        """Observe-only (shadow discipline): even a maximally chauvinist
+        reading never becomes the principal contradiction or a frame."""
+        graph = BabylonGraph()
+        graph.add_node("HEX_001", NodeType.TERRITORY)
+        graph.add_node("FAC_UPHOLD", NodeType.FACTION, colonial_stance="uphold")
+        graph.add_edge("FAC_UPHOLD", "HEX_001", EdgeType.INFLUENCES, influence_level=1.0)
+
+        ContradictionSystem().step(graph, ServiceContainer.create(), TickContext(tick=1))
+
+        assert "national" not in graph.graph["opposition_states"]
+        frame = graph.graph["contradiction_frames"]["global"]
+        assert frame["principal"]["id"] != "national"

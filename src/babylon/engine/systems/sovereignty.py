@@ -100,7 +100,15 @@ class SovereigntySystem(SystemBase):
             policy = self._coerce_policy(sov_node.attributes.get("extraction_policy"))
             if policy is None:
                 continue
-            impact_by_territory[territory_id] = calculate_metabolic_impact(policy)
+            # Task #42 fix wave 1 (review MEDIUM-1 sweep): this call omitted
+            # defines= (silently used calculate_metabolic_impact's own
+            # BalkanizationDefines() schema default, ignoring services.
+            # defines/defines.yaml overrides) -- the same defines-passthrough
+            # bug class discovered in ideology.py, found here by the new
+            # defines_passthrough sentinel's repo-wide survey.
+            impact_by_territory[territory_id] = calculate_metabolic_impact(
+                policy, defines=services.defines.balkanization
+            )
             controller_by_territory[territory_id] = controller_id
 
             # FR-035: emit DUAL_POWER_ACTIVE if ≥2 Sovereigns have

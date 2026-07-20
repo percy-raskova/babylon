@@ -65,6 +65,7 @@ EXPECTED_DEFINES_PUBLIC: frozenset[str] = frozenset(
         "SolidarityDefines",
         "StateApparatusAIDefines",
         "StruggleDefines",
+        "SubstrateDefines",  # #39 T6 (deliberate surface addition)
         "SurvivalDefines",
         "TensionDefines",
         "TerritoryDefines",

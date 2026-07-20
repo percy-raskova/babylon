@@ -290,3 +290,138 @@ class TestPerClassSustainedTermDifferentiation:
             "old wiring's gate permanently closed), the per-class fix still "
             "generates agitation for the exploited class"
         )
+
+
+@pytest.mark.unit
+class TestClassWageBalanceFeedsComputeAgitationDelta:
+    """Task #42-A: ``class_wage_balance`` must flow into
+    ``compute_agitation_delta`` (the canonical Stage-1 converter) instead of
+    only the old parallel, hand-rolled addition. This is a DRY consolidation,
+    not a second, redundant contribution -- the exact magnitude
+    ``compute_agitation_delta`` now returns for this class's balance must be
+    the WHOLE story, not an addend on top of a still-separate local term.
+    """
+
+    def test_agitation_equals_compute_agitation_delta_output_exactly(self) -> None:
+        """No double counting: with every other delta pinned at zero (no
+        wage/wealth change, no opposition rate, no repression_faced set),
+        ``new_agitation`` must equal EXACTLY ``compute_agitation_delta``'s
+        return value for this class's own balance -- not that value PLUS a
+        second, separately-computed sustained-deterioration addend."""
+        from babylon.formulas.consciousness_routing import compute_agitation_delta
+        from babylon.formulas.contradiction import calculate_wealth_asymmetry_balance
+
+        graph = _graph_with_worker()
+        defines = GameDefines()
+        services = ServiceContainer.create(defines=defines)
+        system = ConsciousnessSystem()
+        system.step(graph, services, TickContext(tick=1))
+
+        worker_balance = calculate_wealth_asymmetry_balance(
+            _EXPLOITED_V_PRODUCED, _EXPLOITED_W_PAID
+        )
+        expected_increment = compute_agitation_delta(
+            exploitation_rate_delta=0.0,
+            imperial_rent_delta=0.0,
+            visibility_delta=0.0,
+            wage_balance=worker_balance,
+            defines=defines.consciousness,
+        )
+        # wage_deterioration (the separate RATE-gated term) is zero here:
+        # no opposition_states snapshot is injected in this fixture, and
+        # agitation starts at 0.0, so new_agitation before decay equals
+        # exactly agitation_increment.
+        decay_rate = defines.consciousness.agitation_decay_rate
+        expected_agitation = max(0.0, expected_increment) * (1.0 - decay_rate)
+
+        ideology = graph.nodes[PERIPHERY_WORKER_ID]["ideology"]
+        assert ideology["agitation"] == pytest.approx(expected_agitation), (
+            "class_wage_balance's contribution must flow through "
+            "compute_agitation_delta exactly once, not additionally via a "
+            "separate parallel sustained_deterioration addend"
+        )
+
+    def test_bribed_class_balance_also_flows_through_compute_agitation_delta(self) -> None:
+        """Same contract for a POSITIVE balance (the bribed class) -- ADR082:
+        the delta path must not silently zero this out either."""
+        from babylon.formulas.consciousness_routing import compute_agitation_delta
+        from babylon.formulas.contradiction import calculate_wealth_asymmetry_balance
+
+        graph = _graph_with_worker()
+        defines = GameDefines()
+        services = ServiceContainer.create(defines=defines)
+        system = ConsciousnessSystem()
+        system.step(graph, services, TickContext(tick=1))
+
+        bribed_balance = calculate_wealth_asymmetry_balance(_BRIBED_V_PRODUCED, _BRIBED_W_PAID)
+        expected_increment = compute_agitation_delta(
+            exploitation_rate_delta=0.0,
+            imperial_rent_delta=0.0,
+            visibility_delta=0.0,
+            wage_balance=bribed_balance,
+            defines=defines.consciousness,
+        )
+        decay_rate = defines.consciousness.agitation_decay_rate
+        expected_agitation = max(0.0, expected_increment) * (1.0 - decay_rate)
+
+        ideology = graph.nodes[LABOR_ARISTOCRACY_ID]["ideology"]
+        assert ideology["agitation"] == pytest.approx(expected_agitation)
+
+    def test_compute_agitation_delta_is_called_with_class_wage_balance(self) -> None:
+        """Direct call-contract pin: ``ideology.py`` must pass THIS class's
+        own ``class_wage_balance`` to ``compute_agitation_delta`` as the
+        ``wage_balance`` keyword -- the literal wiring task #42-A asks for,
+        not merely a numerically-equivalent parallel channel left in place.
+        """
+        from unittest.mock import patch
+
+        from babylon.formulas.consciousness_routing import (
+            compute_agitation_delta as _real_compute_agitation_delta,
+        )
+        from babylon.formulas.contradiction import calculate_wealth_asymmetry_balance
+
+        graph = _graph_with_worker()
+        defines = GameDefines()
+        services = ServiceContainer.create(defines=defines)
+        system = ConsciousnessSystem()
+
+        expected_worker_balance = calculate_wealth_asymmetry_balance(
+            _EXPLOITED_V_PRODUCED, _EXPLOITED_W_PAID
+        )
+
+        with patch(
+            "babylon.engine.systems.ideology.compute_agitation_delta",
+            wraps=_real_compute_agitation_delta,
+        ) as spy:
+            system.step(graph, services, TickContext(tick=1))
+
+        calls_with_worker_balance = [
+            call
+            for call in spy.call_args_list
+            if call.kwargs.get("wage_balance") == pytest.approx(expected_worker_balance)
+        ]
+        assert calls_with_worker_balance, (
+            "compute_agitation_delta must be called with "
+            "wage_balance=<this class's own class_wage_balance> at least once "
+            f"per tick; actual calls: {spy.call_args_list}"
+        )
+
+    def test_absent_wage_data_passes_none_not_a_fabricated_zero_balance(self) -> None:
+        """When a class has no w_paid/v_produced this tick, the caller must
+        pass ``wage_balance=None`` to compute_agitation_delta (an explicit
+        "no data"), not ``0.0`` -- the Gaussian branch peaks near a small
+        positive balance, so a literal 0.0 would fabricate near-peak
+        chauvinist agitation out of thin air for a class with no recorded
+        transaction at all."""
+        graph = _graph_with_worker(stamp_wage_value=False)
+        defines = GameDefines()
+        services = ServiceContainer.create(defines=defines)
+        system = ConsciousnessSystem()
+        system.step(graph, services, TickContext(tick=1))
+
+        ideology = graph.nodes[PERIPHERY_WORKER_ID]["ideology"]
+        assert ideology["agitation"] == pytest.approx(0.0), (
+            "no w_paid/v_produced this tick must contribute exactly zero "
+            "agitation from the balance term -- not the Gaussian's near-peak "
+            "value at balance=0.0"
+        )

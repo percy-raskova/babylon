@@ -58,6 +58,10 @@ class Territory(BaseModel):
         absentee_landlord_share: Absentee landlord share of rentals [0, 1]
         investigation_intel: Earned intel from player INVESTIGATE actions [0, 1]
             (EH Phase 2; accumulated event-sourced state, no decay until Phase 3)
+        raw_material_stock: Dollar-denominated raw-material stock, or None if
+            unseeded (#39 T6; SubstrateSystem @2.5)
+        raw_material_capacity: The regeneration ceiling for raw_material_stock,
+            or None if unseeded (#39 T6 M1; SubstrateSystem @2.5)
     """
 
     model_config = ConfigDict(
@@ -167,6 +171,39 @@ class Territory(BaseModel):
         ge=0.0,
         le=1.0,
         description="Current extraction pressure applied by economy",
+    )
+
+    # Substrate physical stocks (#39 T6, SubstrateSystem @2.5). Only
+    # raw_material_stock exists: no energy or biocapacity reference-data
+    # source exists in the reference DB (see substrate.py module docstring).
+    raw_material_stock: float | None = Field(
+        default=None,
+        ge=0.0,
+        description=(
+            "Dollar-denominated raw-material stock (USGS MCS value, "
+            "state total allocated to this county by land-area share), "
+            "depleted per tick by SubstrateSystem. None = honestly unseeded "
+            "(no fact_state_minerals row for this state, or no "
+            "dim_county_geometry area for this county) -- never a "
+            "fabricated default. Seeded once at USScenario build time from "
+            "the committed us_county_territories.json artifact; abstract "
+            "(non-county) territories stay None forever."
+        ),
+    )
+    raw_material_capacity: float | None = Field(
+        default=None,
+        ge=0.0,
+        description=(
+            "The regeneration ceiling for raw_material_stock (#39 T6 M1): a "
+            "stock cannot regenerate past this value. Stamped ONCE at "
+            "USScenario build time from the SAME us_county_territories.json "
+            "artifact value as raw_material_stock, and never mutated by "
+            "SubstrateSystem thereafter -- a persisted graph field (not "
+            "System-local memory) so the ceiling survives a mid-game "
+            "checkpoint restore unchanged, replay-safe under modded "
+            "regeneration_rate > 0. None = honestly unseeded, mirroring "
+            "raw_material_stock's own None case exactly."
+        ),
     )
 
     # Feature 021 (Capital Volume I) — labor-market and dispossession state.

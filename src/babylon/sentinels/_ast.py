@@ -12,6 +12,7 @@ empty result.
 from __future__ import annotations
 
 import ast
+import re
 from collections.abc import Iterator
 from pathlib import Path
 
@@ -572,6 +573,98 @@ def _add_node_call_shape(call: ast.Call) -> tuple[str | None, list[str]]:
     return node_type, attrs
 
 
+#: One phantom-attribute READ found in source: ``(lineno, attribute)`` -- a
+#: banned attribute name read via ``.get(...)``/``.pop(...)``/``[...]`` off a
+#: raw graph-node payload dict.
+AttributeRead = tuple[int, str]
+
+
+def _is_node_payload_expr(expr: ast.expr, bound_names: set[str]) -> bool:
+    """True iff ``expr`` is BabylonGraph's own raw node-payload accessor
+    shape (``<x>.nodes.get(id, {})`` / ``<x>.nodes[id]``), directly or via a
+    same-file bound ``Name`` (see :func:`_node_payload_bound_names`)."""
+    if isinstance(expr, ast.Name):
+        return expr.id in bound_names
+    if isinstance(expr, ast.Call):
+        func = expr.func
+        return (
+            isinstance(func, ast.Attribute)
+            and func.attr == "get"
+            and isinstance(func.value, ast.Attribute)
+            and func.value.attr == "nodes"
+        )
+    if isinstance(expr, ast.Subscript):
+        return isinstance(expr.value, ast.Attribute) and expr.value.attr == "nodes"
+    return False
+
+
+def _node_payload_bound_names(tree: ast.Module) -> set[str]:
+    """Names assigned (anywhere in the file) from a raw node-payload expr
+    (``member_data = graph.nodes.get(target, {})``-style bindings)."""
+    names: set[str] = set()
+    for node in ast.walk(tree):
+        if not isinstance(node, ast.Assign):
+            continue
+        if not _is_node_payload_expr(node.value, set()):
+            continue
+        for target in node.targets:
+            if isinstance(target, ast.Name):
+                names.add(target.id)
+    return names
+
+
+def graph_node_attribute_reads(path: Path, banned: frozenset[str]) -> list[AttributeRead]:
+    """Extract every banned attribute READ off a raw graph-node payload.
+
+    The phantom-attribute-read eye (task #40): scoped deliberately narrow,
+    mirroring :func:`add_node_attribute_stamps`'s own philosophy -- only a
+    ``.get``/``.pop``/subscript call whose RECEIVER is (directly, or via a
+    same-file bound ``Name``) BabylonGraph's own raw node-payload accessor
+    shape (``<x>.nodes.get(id, {})`` / ``<x>.nodes[id]``) counts. An
+    arbitrary dict reading the SAME string (a DB row, an API response
+    payload, a Pydantic model's own field accessed via a duck-typed
+    ``.get()`` fallback) is a different namespace entirely and is invisible
+    to this rule by construction, not by omission -- it is not a graph-node
+    read, so it cannot be the "no producer ever stamps this on a graph node"
+    bug this rule polices.
+
+    :param path: Source file to parse.
+    :param banned: Attribute names this rule polices.
+    :returns: ``(lineno, attribute)`` pairs, sorted.
+    :raises SentinelCheckError: If the file is missing or unparseable.
+    """
+    try:
+        tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
+    except OSError as exc:
+        raise SentinelCheckError(f"cannot read {path}: {exc}") from exc
+    except SyntaxError as exc:
+        raise SentinelCheckError(f"cannot parse {path}: {exc}") from exc
+
+    bound_names = _node_payload_bound_names(tree)
+    reads: list[AttributeRead] = []
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Call):
+            func = node.func
+            if (
+                isinstance(func, ast.Attribute)
+                and func.attr in ("get", "pop")
+                and node.args
+                and _is_node_payload_expr(func.value, bound_names)
+            ):
+                first = node.args[0]
+                if (
+                    isinstance(first, ast.Constant)
+                    and isinstance(first.value, str)
+                    and first.value in banned
+                ):
+                    reads.append((node.lineno, first.value))
+        elif isinstance(node, ast.Subscript) and _is_node_payload_expr(node.value, bound_names):
+            sub = node.slice
+            if isinstance(sub, ast.Constant) and isinstance(sub.value, str) and sub.value in banned:
+                reads.append((node.lineno, sub.value))
+    return sorted(set(reads))
+
+
 def add_node_attribute_stamps(path: Path) -> list[NodeAttributeStamp]:
     """Extract every keyword attribute a real ``add_node(...)`` call stamps.
 
@@ -824,3 +917,268 @@ def edge_source_type_uses(path: Path) -> list[EdgeSourceUse]:
             continue
         uses.append((node.lineno, edge_value, source_type))
     return sorted(set(uses))
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Territory wrong-rung keying (Rule f, ADR089-adjacent, #39 T8): the res-3
+# inversion class, both directions -- a bare FIPS-shaped literal passed to
+# ``Territory(id=...)``, or an H3-cell-derived value passed to
+# ``Territory(county_fips=...)``. A NEW, ADDITIVE family (mirrors rule (d)'s
+# own precedent) so it cannot risk the well-tested node-vocabulary/edge-shape
+# extractors' behavior.
+# ─────────────────────────────────────────────────────────────────────────────
+
+#: One Territory-construction wrong-rung-keying finding: ``(lineno, kind,
+#: detail)`` where ``kind`` is ``"fips_literal_id"`` (a bare 5-digit string
+#: literal passed to ``id=``) or ``"h3_derived_county_fips"`` (an
+#: H3-cell-derived value passed to ``county_fips=``), and ``detail`` is the
+#: offending literal/expression rendered for the failure message.
+TerritoryKeyingUse = tuple[int, str, str]
+
+#: A bare 5-digit FIPS string -- the ``Territory.id`` shape the model's own
+#: pattern (``^(T[0-9]{3,}|[0-9a-f]{15})$``) already forbids at runtime; this
+#: is the static, pre-runtime early warning for the identical mistake.
+_FIPS_LITERAL_RE = re.compile(r"^\d{5}$")
+
+
+def _is_h3_module_call(node: ast.AST) -> bool:
+    """True iff ``node`` is a call of the form ``h3.<anything>(...)``.
+
+    Deliberately narrow: only the ``h3.`` module-attribute call form (the
+    ``h3-py`` idiom every real call site in this codebase uses --
+    ``h3.polygon_to_cells``/``h3.cell_to_latlng``/etc) counts. A
+    differently-named import alias is invisible here -- honest absence over
+    a guess, mirroring every other extractor in this module.
+
+    :param node: Any AST node (accepts the broad type so
+        :func:`_expr_involves_h3_call` can pass every node
+        :func:`ast.walk` yields without a type-narrowing dance).
+    """
+    return (
+        isinstance(node, ast.Call)
+        and isinstance(node.func, ast.Attribute)
+        and isinstance(node.func.value, ast.Name)
+        and node.func.value.id == "h3"
+    )
+
+
+def _expr_involves_h3_call(expr: ast.expr) -> bool:
+    """True iff an ``h3.<call>(...)`` appears anywhere inside ``expr``.
+
+    Anywhere, not just top-level -- ``h3.cell_to_latlng(cell)[0]`` or a
+    similarly wrapped form still counts as "the source involves an h3. call".
+    """
+    return any(_is_h3_module_call(node) for node in ast.walk(expr))
+
+
+def _h3_derived_names_in_scope(scope: ast.AST) -> set[str]:
+    """Names bound, within ``scope``'s OWN lexical scope, to an H3-cell value.
+
+    Three forms, walked in source order (a single forward pass, no full CFG):
+
+    - ``cell = h3.polygon_to_cells(...)[0]`` / ``lat, lon = h3.cell_to_latlng(cell)``
+      -- an assignment whose RHS involves an ``h3.`` call.
+    - ``for cell in cells:`` where ``cells`` was ITSELF just bound to an
+      h3-derived value (Wayne's real production idiom:
+      ``cells = h3.polygon_to_cells(polygon, RES)`` then ``for cell in cells:``)
+      -- the loop target inherits the iterable's h3-derived-ness.
+    - ``x = cells`` (a bare-name RHS already known h3-derived) -- one-hop
+      transitive propagation through a rename.
+
+    Scoped to ``scope``'s own body only (:func:`_walk_own_scope` -- never
+    crossing a nested ``def``/``class`` boundary), per the rule's explicit
+    "within the same function scope" narrowing (a module-level H3 binding
+    shared across functions is deliberately NOT traced -- this is the
+    documented boundary of what a static scanner can prove without real
+    dataflow analysis, mirroring :func:`add_node_attribute_stamps`'s own
+    ``update_node``-out-of-scope precedent).
+    """
+    names: set[str] = set()
+    for node in _walk_own_scope(scope):
+        targets: list[ast.expr]
+        value: ast.expr
+        if isinstance(node, ast.Assign):
+            targets = node.targets
+            value = node.value
+        elif isinstance(node, ast.AnnAssign) and node.value is not None:
+            targets = [node.target]
+            value = node.value
+        elif isinstance(node, ast.For):
+            targets = [node.target]
+            value = node.iter
+        else:
+            continue
+        is_h3_derived = _expr_involves_h3_call(value) or (
+            isinstance(value, ast.Name) and value.id in names
+        )
+        if not is_h3_derived:
+            continue
+        for target in targets:
+            if isinstance(target, ast.Name):
+                names.add(target.id)
+            elif isinstance(target, (ast.Tuple, ast.List)):
+                names.update(elt.id for elt in target.elts if isinstance(elt, ast.Name))
+    return names
+
+
+def territory_keying_uses(path: Path) -> list[TerritoryKeyingUse]:
+    """Extract wrong-rung ``Territory(...)`` keying (vocabulary Rule f, #39 T8).
+
+    The res-3 inversion class, both directions: USScenario's historical bug
+    minted ``Territory(id=<bare FIPS>)`` (identity must live ONLY in
+    ``county_fips`` -- the model's own pattern,
+    ``^(T[0-9]{3,}|[0-9a-f]{15})$``, already forbids a bare FIPS in ``id`` at
+    runtime; this is the STATIC, pre-runtime, agent-legible early warning for
+    the identical mistake). The mirror-image mistake would stamp an
+    H3-cell-derived value onto ``county_fips`` -- Wayne's hex path
+    (``h3_index``-keyed, no ``county_fips``) and USScenario's county path
+    (``county_fips``-keyed, ``h3_index=None``) must never cross.
+
+    Two forms recognised, each scoped to a single ``Territory(...)`` call's
+    keyword arguments:
+
+    - ``id="26163"`` (or any 5-digit string literal) -- a bare FIPS-shaped
+      literal. A variable, an f-string built from a counter
+      (``f"T{i:04d}"``), or an H3-cell variable (``id=cell``) are all
+      legitimate and NOT flagged -- this is a static heuristic narrowed to
+      what is provable without dataflow analysis: only the literal-FIPS-
+      string form is unambiguous (documented narrowing, per the rule's own
+      brief).
+    - ``county_fips=<expr>`` where ``<expr>`` is directly an
+      ``h3.<call>(...)``, or a ``Name`` bound (within the SAME function
+      scope -- see :func:`_h3_derived_names_in_scope`) from an expression
+      that involves one. The bound expression's h3-derived-ness is followed
+      through comprehension targets too (e.g. ``cells = [h3.cell_to_latlng(c)
+      for c in raw]`` marks ``cells`` derived, so a subsequent ``for cell in
+      cells:`` still inherits it), since :func:`_expr_involves_h3_call` walks
+      the whole expression, comprehension bodies included.
+
+    :param path: Source file to parse.
+    :returns: ``(lineno, kind, detail)`` triples, sorted by location.
+    :raises SentinelCheckError: If the file is missing or unparseable (exit 2
+        — infrastructure failure, never a silent pass).
+    """
+    tree = parse_module(path)
+    uses: list[TerritoryKeyingUse] = []
+
+    scopes: list[ast.AST] = [tree]
+    scopes.extend(
+        node for node in ast.walk(tree) if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef))
+    )
+    for scope in scopes:
+        h3_names = _h3_derived_names_in_scope(scope)
+        for node in _walk_own_scope(scope):
+            if not (
+                isinstance(node, ast.Call)
+                and isinstance(node.func, ast.Name)
+                and node.func.id == "Territory"
+            ):
+                continue
+            for kw in node.keywords:
+                if kw.arg == "id":
+                    value = kw.value
+                    if (
+                        isinstance(value, ast.Constant)
+                        and isinstance(value.value, str)
+                        and _FIPS_LITERAL_RE.match(value.value)
+                    ):
+                        uses.append((node.lineno, "fips_literal_id", value.value))
+                elif kw.arg == "county_fips":
+                    value = kw.value
+                    if _expr_involves_h3_call(value) or (
+                        isinstance(value, ast.Name) and value.id in h3_names
+                    ):
+                        uses.append((node.lineno, "h3_derived_county_fips", ast.unparse(value)))
+    return sorted(set(uses))
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Defines-passthrough closure (task #42 fix wave 1, review MEDIUM-1): a
+# production call site invoking a formulas-layer function that declares an
+# OPTIONAL ``defines`` parameter must pass it, or it silently falls back to
+# that function's own schema-default coefficients -- defeating the run's
+# ``services.defines``/``defines.yaml`` override. A NEW, ADDITIVE family of
+# helpers (mirrors rule (d)/(f)'s own precedent) -- introspects a function's
+# OWN signature (never imports it) to find the ``defines`` parameter's
+# positional slot, then scans call sites for either form (keyword or
+# correctly-positioned positional argument).
+# ─────────────────────────────────────────────────────────────────────────────
+
+
+def optional_defines_param_index(path: Path, func_name: str) -> int | None:
+    """Positional index of an OPTIONAL ``defines`` parameter, if any.
+
+    Reads ``path`` with :mod:`ast` (no import, no execution) and inspects the
+    module-level function named ``func_name``.
+
+    :param path: Source file declaring ``func_name``.
+    :param func_name: The module-level function to inspect.
+    :returns: The parameter's 0-based positional index among ``args.args``
+        if ``func_name`` declares a ``defines`` parameter WITH a default
+        value (the "silently falls back to a schema default" shape this
+        sentinel exists for) -- ``None`` if the function is absent from
+        ``path``, declares no ``defines`` parameter at all, or declares one
+        WITHOUT a default. A required parameter cannot be silently omitted
+        -- Python raises ``TypeError`` at the call site -- so that shape is
+        out of this sentinel's scope by construction, not by oversight.
+    :raises SentinelCheckError: If the file is missing or unparseable.
+    """
+    tree = parse_module(path)
+    for node in tree.body:
+        if not (isinstance(node, ast.FunctionDef) and node.name == func_name):
+            continue
+        names = [a.arg for a in node.args.args]
+        if "defines" not in names:
+            return None
+        index = names.index("defines")
+        num_defaults = len(node.args.defaults)
+        first_defaulted_index = len(names) - num_defaults
+        if index < first_defaulted_index:
+            return None  # required parameter -- out of scope
+        return index
+    return None
+
+
+def calls_missing_keyword_or_positional_arg(
+    path: Path, func_name: str, arg_name: str, positional_index: int
+) -> list[int]:
+    """Line numbers of calls to ``func_name`` in ``path`` that omit ``arg_name``.
+
+    A call is considered to SATISFY the argument (and is therefore not
+    reported) if ``arg_name`` is passed as a keyword, passed positionally
+    (enough positional arguments reach ``positional_index``), or the call
+    includes a ``**kwargs``-style unpack (an unresolvable catch-all --
+    honest absence over a false positive, mirroring every other extractor in
+    this module's documented "cannot resolve without value-flow analysis"
+    boundary).
+
+    :param path: Source file to scan for call sites.
+    :param func_name: The bare function name to match (``f(...)`` or
+        ``module.f(...)`` / ``obj.f(...)`` -- matched on the final
+        attribute, like :func:`node_type_uses`'s own call-site matching).
+    :param arg_name: The keyword argument name that must be supplied.
+    :param positional_index: 0-based positional slot ``arg_name`` occupies
+        in the callee's signature (see :func:`optional_defines_param_index`).
+    :returns: Sorted, de-duplicated line numbers of offending calls.
+    :raises SentinelCheckError: If the file is missing or unparseable.
+    """
+    tree = parse_module(path)
+    misses: set[int] = set()
+    for node in ast.walk(tree):
+        if not isinstance(node, ast.Call):
+            continue
+        called_name: str | None = None
+        if isinstance(node.func, ast.Name):
+            called_name = node.func.id
+        elif isinstance(node.func, ast.Attribute):
+            called_name = node.func.attr
+        if called_name != func_name:
+            continue
+        if any(kw.arg == arg_name for kw in node.keywords):
+            continue
+        if any(kw.arg is None for kw in node.keywords):
+            continue  # **kwargs unpack -- cannot prove absence statically
+        if len(node.args) > positional_index:
+            continue
+        misses.add(node.lineno)
+    return sorted(misses)

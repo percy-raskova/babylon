@@ -9,8 +9,11 @@ Multiverse Protocol: Scenario injection for counterfactual simulation.
 
 from __future__ import annotations
 
+import logging
+
 from babylon.config.defines import EconomyDefines, GameDefines, SurvivalDefines
 from babylon.engine.scenarios.business_seeds import build_seeded_businesses
+from babylon.engine.scenarios.us_county_data import load_county_data
 from babylon.models.config import SimulationConfig
 from babylon.models.entities.organization import CivilSocietyOrg, OrganizationType
 from babylon.models.entities.relationship import Relationship
@@ -36,6 +39,8 @@ from babylon.models.enums import (
 )
 from babylon.models.scenario import ScenarioConfig
 from babylon.models.world_state import WorldState
+
+logger = logging.getLogger(__name__)
 
 
 def create_two_node_scenario(
@@ -677,39 +682,150 @@ def _classify_hex(
     return sector, territory_type, rent, biocap
 
 
-def _create_us_territories() -> dict[str, Territory]:
-    """Generate ~1100 H3 resolution-3 Territory objects covering CONUS.
+# Fallback classification for the small number of scoped counties that ship
+# with no `dim_county_geometry` centroid in the committed artifact (11 of
+# 3155 -- see `us_county_territories.json`'s "gaps": CT's 2022 planning-
+# region switch and AK borough/census-area reorganizations). Without a
+# lat/lon, `_classify_hex`/`_get_region_name` have no real input to classify
+# from -- Constitution III.11 forbids fabricating
+# a geographic classification, so these territories keep the Territory
+# model's OWN baseline values (sector_type has no default and must be set;
+# INDUSTRIAL mirrors `_classify_hex`'s own "unclassified/rural" bucket;
+# territory_type/rent_level are left at the model defaults CORE/1.0 rather
+# than asserting a guess).
+_FALLBACK_SECTOR = SectorType.INDUSTRIAL
+_FALLBACK_TERRITORY_TYPE = TerritoryType.CORE
+_FALLBACK_RENT_LEVEL = 1.0
+_FALLBACK_BIOCAPACITY = 100.0
+
+
+def _create_us_territories() -> tuple[dict[str, Territory], dict[str, str]]:
+    """Generate one Territory per US county (Amendment U / #39 T4).
+
+    Re-keys the scenario from the old res-3 H3 hex grid to the county grain:
+    counties come from the committed, hash-stamped
+    ``src/babylon/data/game/us_county_territories.json`` artifact (real
+    ``dim_county``/``dim_county_geometry``/Census+QCEW data, precomputed
+    offline by ``tools/generate_us_county_territories.py`` — see
+    ``babylon.engine.scenarios.us_county_data``'s module docstring for why
+    this scenario builder must stay reference-DB-free at build time). The
+    artifact is already FIPS-sorted, so ``T0001..`` ids are assigned in FIPS
+    order (the ``WorldStateBridge._build_per_county_territories`` idiom).
+
+    ``county_fips`` carries the real county identity (read by
+    ``resolve_county_identity``); ``h3_index`` is always ``None`` — the
+    ``Territory.id`` pattern (``^(T[0-9]{3,}|[0-9a-f]{15})$``) forbids a bare
+    FIPS in ``id``, so identity lives ONLY in ``county_fips``.
+
+    Sector/territory-type/rent/biocapacity classification reuses the
+    EXISTING, unchanged ``_compute_metro_influence``/``_classify_hex``
+    formulas (Wayne's untouched precedent uses the identical hand-authored
+    geographic-heuristic style) — fed real county centroids instead of
+    fabricated hex-cell centroids. Only ``population`` (an artifact field,
+    real Census/QCEW data) replaces what used to be a fabricated
+    metro-influence-derived estimate.
+
+    ADJACENCY: no real county-adjacency reference source exists in the
+    reference DB (``dim_county_geometry`` is boundary WKT geometry, not a
+    precomputed adjacency table; confirmed via a schema + data-catalog.yaml
+    scout) — deriving adjacency from geometry would be fabrication
+    (Constitution III.11). This scenario emits NO ADJACENCY edges, matching
+    the pre-T4 hex scenario's behavior (it never emitted any either).
+
+    Missing per-county fields (documented in the artifact's ``gaps`` list;
+    see the artifact's ``exclusions`` for the retired-FIPS dedup) are
+    handled with a loud log + an honest baseline, never a fabricated
+    nonzero value: population defaults to 0, and geometry-less counties
+    fall back to ``_FALLBACK_SECTOR``/``_FALLBACK_TERRITORY_TYPE``/
+    ``_FALLBACK_RENT_LEVEL``/``_FALLBACK_BIOCAPACITY`` instead of running
+    ``_classify_hex`` (which has no lat/lon to classify from).
+
+    ``raw_material_stock`` (#39 T6, schema_version 2) is stamped straight
+    from the artifact's ``raw_material_value_millions`` -- ``None`` when the
+    county's state has no ``fact_state_minerals`` row or the county has no
+    geometry row (SubstrateSystem never touches a ``None`` stock; see its
+    module docstring). No per-tick reference-DB read: seeding happens once,
+    here, at scenario-build time (D-T6-2). ``raw_material_capacity`` (#39 T6
+    M1) is stamped from the SAME ``raw_material_value_millions`` value --
+    the persisted regeneration ceiling SubstrateSystem reads every tick
+    instead of caching "the first stock it ever observed" in memory.
 
     Returns:
-        Dict mapping H3 cell ID to Territory.
+        ``(territories, region_by_territory)`` — the territory dict
+        (``T0001..`` id -> Territory) and a companion ``territory_id ->
+        region name`` map. Territory carries no lat/lon field, so this is
+        threaded to :func:`_select_national_hq_territories` instead of the
+        old approach of re-deriving a region from ``h3.cell_to_latlng``,
+        which no longer works once ``h3_index`` is ``None``.
     """
-    import h3
-
-    # CONUS bounding polygon (rectangular approximation)
-    polygon = h3.LatLngPoly([(24.5, -124.7), (49.4, -124.7), (49.4, -66.9), (24.5, -66.9)])
-    cells = h3.polygon_to_cells(polygon, 3)
+    data = load_county_data()
 
     territories: dict[str, Territory] = {}
-    for cell in cells:
-        lat, lon = h3.cell_to_latlng(cell)
-        metro_inf = _compute_metro_influence(lat, lon)
-        sector, t_type, rent, biocap = _classify_hex(lat, lon, metro_inf)
-        region = _get_region_name(lat, lon)
-        pop = max(100, int(metro_inf / 10))  # Scale down to per-hex population
+    region_by_territory: dict[str, str] = {}
+    for i, county in enumerate(data["counties"], start=1):
+        fips = county["fips"]
+        territory_id = f"T{i:04d}"
+        lat = county["centroid_lat"]
+        lon = county["centroid_lon"]
+        population = county["population"]
+        raw_material_value_millions = county["raw_material_value_millions"]
 
-        territories[cell] = Territory(
-            id=cell,
-            h3_index=cell,
-            name=f"{region} {sector.value.title()}",
+        if lat is not None and lon is not None:
+            metro_inf = _compute_metro_influence(lat, lon)
+            sector, t_type, rent, biocap = _classify_hex(lat, lon, metro_inf)
+            region_by_territory[territory_id] = _get_region_name(lat, lon)
+        else:
+            logger.warning(
+                "_create_us_territories: county=%s has no committed centroid "
+                "(see us_county_territories.json 'gaps'); territory seeded "
+                "with baseline sector/rent/biocapacity, no region classification "
+                "(Constitution III.11 -- no fabricated geographic classification)",
+                fips,
+            )
+            sector, t_type, rent, biocap = (
+                _FALLBACK_SECTOR,
+                _FALLBACK_TERRITORY_TYPE,
+                _FALLBACK_RENT_LEVEL,
+                _FALLBACK_BIOCAPACITY,
+            )
+
+        if population is None:
+            logger.warning(
+                "_create_us_territories: county=%s has no committed population "
+                "(see us_county_territories.json 'gaps'); territory seeded with "
+                "population=0 (Constitution III.11 -- no fabricated default)",
+                fips,
+            )
+
+        if raw_material_value_millions is None:
+            logger.warning(
+                "_create_us_territories: county=%s has no committed "
+                "raw_material_value_millions (see us_county_territories.json "
+                "'gaps'); territory seeded with raw_material_stock=None -- "
+                "SubstrateSystem will never touch it (Constitution III.11 -- "
+                "no fabricated default)",
+                fips,
+            )
+
+        state_abbrev = county["state_abbrev"]
+        name = f"{county['county_name']}, {state_abbrev}" if state_abbrev else county["county_name"]
+
+        territories[territory_id] = Territory(
+            id=territory_id,
+            county_fips=fips,
+            h3_index=None,
+            name=name,
             sector_type=sector,
             territory_type=t_type,
-            population=pop,
+            population=population or 0,
             rent_level=rent,
             biocapacity=biocap,
             max_biocapacity=biocap,
             heat=0.0,
+            raw_material_stock=raw_material_value_millions,
+            raw_material_capacity=raw_material_value_millions,
         )
-    return territories
+    return territories, region_by_territory
 
 
 # =============================================================================
@@ -762,22 +878,26 @@ def _select_national_hq_territories(
     region_name: str,
     tenant_class_id: str,
     count: int,
+    region_by_territory: dict[str, str],
 ) -> list[str]:
     """Pick a deterministic, real starting-region territory subset.
 
-    Filters to territories that (a) fall in ``region_name`` by the same
-    lat/lon classifier ``_create_us_territories`` uses, and (b) are held in
-    TENANCY specifically by ``tenant_class_id`` -- NOT "any class": the top-
-    population hexes in most regions are held by the Labor Aristocracy
-    zone (``_assign_tenancy_edges``'s next-20%-highest-rent band), and a
+    Filters to territories that (a) fall in ``region_name`` per
+    ``region_by_territory`` (Amendment U / #39 T4: territories are county-
+    keyed and carry no lat/lon of their own, so the region classification
+    computed once in ``_create_us_territories`` is threaded in here rather
+    than re-derived), and (b) are held in TENANCY specifically by
+    ``tenant_class_id`` -- NOT "any class": the top-population counties in
+    most regions are held by the Labor Aristocracy zone
+    (``_assign_tenancy_edges``'s next-20%-highest-rent band), and a
     REVOLUTIONARY-tendency Cadre Council seeded there would be materially
     backwards (the labor aristocracy is the imperial-rent-bribed stratum
     LEAST amenable to revolutionary organizing, not the mass base). Sorted
-    by ``(-population, id)`` for determinism (population is real per-hex
+    by ``(-population, id)`` for determinism (population is real Census/QCEW
     data; id is the tiebreaker), then truncated to ``count``.
 
     Args:
-        territories: The full scenario territory dict (H3-cell-id keyed).
+        territories: The full scenario territory dict (``T0001..``-id keyed).
         tenancy_edges: The TENANCY edges already built for this scenario --
             reused rather than recomputed so tenant-class assignment stays
             single-sourced from ``_assign_tenancy_edges``.
@@ -785,12 +905,14 @@ def _select_national_hq_territories(
         tenant_class_id: The entity id (e.g. ``PERIPHERY_WORKER_ID``) that
             must hold TENANCY over a candidate territory.
         count: How many territory ids to return.
+        region_by_territory: ``territory_id -> region name``, built by
+            :func:`_create_us_territories` (absent for the handful of
+            counties with no committed centroid -- those simply never match
+            any ``region_name`` here).
 
     Returns:
         Up to ``count`` real territory ids from ``territories``.
     """
-    import h3
-
     tenant_by_territory = {
         edge.target_id: edge.source_id
         for edge in tenancy_edges
@@ -801,8 +923,7 @@ def _select_national_hq_territories(
     for tid, territory in territories.items():
         if tenant_by_territory.get(tid) != tenant_class_id:
             continue
-        lat, lon = h3.cell_to_latlng(tid)
-        if _get_region_name(lat, lon) != region_name:
+        if region_by_territory.get(tid) != region_name:
             continue
         candidates.append((territory.population, tid))
 
@@ -839,11 +960,18 @@ def create_us_scenario(
     repression_level: float = 0.5,
     solidarity_strength: float = 0.0,
 ) -> tuple[WorldState, SimulationConfig, GameDefines]:
-    """Create a full CONUS hex scenario with ~1100 H3 territories.
+    """Create the nationwide US scenario: one Territory per US county.
 
-    Generates H3 resolution-3 hexagonal tiles covering the continental US.
-    Each hex has geographic-derived economic properties (population, rent,
-    biocapacity, sector type) computed from proximity to 20 metro centroids.
+    Amendment U / #39 T4: re-keyed from the old res-3 H3 hex grid (the
+    "hex/scale county-keying" fix, task #39) to one Territory per US county
+    -- the county is the base spatial atom the economy actually reads
+    (``resolve_county_identity``); a hex grid was never the right grain.
+    Counties come from the committed ``us_county_territories.json`` artifact
+    (real ``dim_county``/Census/QCEW data, no reference-DB access at build
+    time -- see :func:`_create_us_territories`). Each territory keeps the
+    same geographic-derived economic properties (population, rent,
+    biocapacity, sector type) the old hex grid computed, now from real
+    county centroids instead of hex-cell centroids.
 
     Reuses the standard 6-class imperial circuit entities (4 active + 2 dormant)
     and 5 core relationship edges, adding TENANCY edges connecting classes to
@@ -855,6 +983,12 @@ def create_us_scenario(
     system, the doctrine tree, and every verb-target query have a real
     organization to key off in the canonical nationwide campaign.
 
+    ADJACENCY: no real county-adjacency reference source exists in the
+    reference DB (confirmed: `dim_county_geometry` is boundary geometry
+    only, not a precomputed adjacency table) -- this scenario emits NO
+    ADJACENCY edges (Constitution III.11: deriving adjacency from geometry
+    would be fabrication), matching the pre-T4 hex scenario's behavior.
+
     Args:
         extraction_efficiency: Alpha in imperial rent formula (default 0.8).
         repression_level: Base repression level (default 0.5).
@@ -864,7 +998,7 @@ def create_us_scenario(
         Tuple of (WorldState, SimulationConfig, GameDefines).
     """
     # Generate territories
-    territories = _create_us_territories()
+    territories, region_by_territory = _create_us_territories()
     territory_ids = list(territories.keys())
 
     # Reuse the 6 social classes from the imperial circuit scenario
@@ -891,6 +1025,7 @@ def create_us_scenario(
         _NATIONAL_HQ_REGION,
         PERIPHERY_WORKER_ID,
         _NATIONAL_HQ_TERRITORY_COUNT,
+        region_by_territory,
     )
     player_org = _create_national_player_org(hq_territory_ids)
 

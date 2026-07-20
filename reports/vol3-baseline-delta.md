@@ -1,6 +1,6 @@
 # Vol III Money — Baseline Delta
 
-**Status:** DRAFT — pending owner approval (see "Owner Approval Gate" below)
+**Status:** APPROVED 2026-07-19 (Option B — baselines kept; see "Owner Approval Gate" and "Post-approval record")
 **Design:** `docs/superpowers/specs/2026-07-18-vol3-money-scissors-design.md`
 **Precedent:** ADR077/ADR078 (Program 23 Market Scissors) — the same
 "prove the delta in writing, then regenerate baselines in a dedicated
@@ -290,15 +290,27 @@ liveness is proven separately by SC-001, not by this 5-tick gate.
 > pre-Vol-III behavioral baseline and this branch's behavioral baseline are
 > identical on the frozen scenarios.
 
-**Approved by:** `<FILL — leave blank until real sign-off; do not
-pre-fill with a placeholder name>`
-**Date:** `<FILL>`
-**Approval text (verbatim):** `<FILL — quote the owner's actual approval
-message, per the ADR078 precedent of quoting the owner's exact words as
-the authorization record>`
+**Approved by:** Persephone Raskova (Benevolent Dictator / owner)
+**Date:** 2026-07-19
+**Approval text (verbatim):** "I approve of your plan and we can work that
+into your current workflow , go ahead" — given in direct reply to the
+controller's Option-B recommendation message, whose explicit ask was: approve
+this report to close U8.4, with the variant choice "keep existing baselines"
+(no regeneration; the `defines_hash` refresh lands once, in the qa:regression
+modernization program's E5 ceremony where the hash gains gating force). The
+same reply approved sequencing that modernization program BEFORE the Volume II
+circulation program.
 
 ## Post-approval record
 
-_Pending owner sign-off. If a `defines_hash` refresh is approved, the ceremony
-commit hash and a one-line confirmation that `qa:regression` is green against the
-refreshed baselines go here._
+Regeneration **declined as unnecessary** (owner-approved Option B,
+2026-07-19): the gate is byte-identical against the pre-Vol-III frozen
+baselines, so `tests/baselines/` is untouched by this program — preserving
+the invariant that a baselines commit always records a behavioral change.
+The stale advisory `defines_hash` values (pre-existing on all five baselines)
+are inherited by the qa:regression modernization program
+(`docs/superpowers/specs/2026-07-19-qa-regression-modernization-design.md`,
+element E5), which refreshes them in the same ceremony that promotes the
+hash to a gating leg. `qa:regression` re-run at sign-off time
+(2026-07-19 ~8:50pm): **5 passed, 0 failed — "All regression tests
+passed!"**.

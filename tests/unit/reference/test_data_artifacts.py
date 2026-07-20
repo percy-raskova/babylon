@@ -18,6 +18,7 @@ import hashlib
 import sqlite3
 import sys
 from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
 import yaml
@@ -30,6 +31,7 @@ _MANIFEST = _REPO_ROOT / "data-artifacts.yaml"
 TOOLS_DIR = _REPO_ROOT / "tools"
 sys.path.insert(0, str(TOOLS_DIR))
 
+import make_data_artifacts  # type: ignore[import-not-found]  # noqa: E402
 from make_data_artifacts import (  # type: ignore[import-not-found]  # noqa: E402
     ArtifactError,
     _arrow_type,
@@ -217,3 +219,37 @@ class TestGeneratorDeterminism:
         # the loud-policy discipline inherited from make_reference_subset.
         with pytest.raises(ArtifactError):
             generate(source_db)
+
+
+class TestEnumerateFullCoverageSpecs:
+    """Auto-enumeration of the full-DB-coverage artifact registry (parquet
+    pipeline plan Task 2): one spec per governed table not already curated in
+    ``ARTIFACTS``, with ``material_relation`` inherited from the table's
+    ``data-catalog.yaml`` row via :func:`make_data_artifacts._catalog_by_name`.
+    """
+
+    def test_enumerate_full_coverage_specs(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        conn = sqlite3.connect(tmp_path / "m.sqlite")
+        conn.execute("CREATE TABLE fact_new (id INTEGER PRIMARY KEY, v REAL)")
+        conn.execute("CREATE TABLE fact_energy_annual (id INTEGER PRIMARY KEY)")  # curated already
+        conn.commit()
+        fake_catalog = {"fact_new": SimpleNamespace(material_relation="test relation")}
+        monkeypatch.setattr(make_data_artifacts, "_catalog_by_name", lambda: fake_catalog)
+        specs = make_data_artifacts.enumerate_full_coverage_specs(conn)
+        assert [s.name for s in specs] == ["fact_new"]  # curated table skipped
+        assert specs[0].home == "dist/data-artifacts/fact_new.parquet"
+        assert specs[0].material_relation == "test relation"
+        assert specs[0].mode == "generate"
+        assert specs[0].format == "parquet"
+
+    def test_enumerate_full_coverage_missing_catalog_row_is_loud(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        conn = sqlite3.connect(tmp_path / "m.sqlite")
+        conn.execute("CREATE TABLE fact_orphan (id INTEGER PRIMARY KEY)")
+        conn.commit()
+        monkeypatch.setattr(make_data_artifacts, "_catalog_by_name", dict)
+        with pytest.raises(KeyError, match="fact_orphan"):
+            make_data_artifacts.enumerate_full_coverage_specs(conn)

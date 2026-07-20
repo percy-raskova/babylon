@@ -35,10 +35,20 @@ import sqlite3
 import sys
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Literal
+from typing import TYPE_CHECKING, Any, Literal
 
 import pyarrow as pa  # type: ignore[import-untyped]
 import pyarrow.parquet as pq  # type: ignore[import-untyped]
+
+if TYPE_CHECKING:
+    # Type-check-only: tools/ sits outside the babylon package and the
+    # import-linter root_packages = ["babylon"] boundary, so this is not a
+    # layering violation (precedent: tools/sentinel_check.py et al. import
+    # babylon.sentinels.* directly). Kept under TYPE_CHECKING to match
+    # _catalog_by_name's runtime-lazy import below (no reason to pay the
+    # babylon package import cost for every make_data_artifacts.py CLI
+    # invocation, including plain --check runs that never touch the catalog).
+    from babylon.sentinels.coverage.catalog import CatalogTable
 
 _DEFAULT_DB = Path("data/sqlite/marxist-data-3NF.sqlite")
 _ENV_OVERRIDE = "BABYLON_NORMALIZED_DB_PATH"
@@ -282,6 +292,56 @@ def governed_db_tables(conn: sqlite3.Connection) -> list[str]:
     return [row[0] for row in rows]
 
 
+def _catalog_by_name() -> dict[str, CatalogTable]:
+    """Thin wrapper over :func:`load_catalog_tables`, keyed by table name.
+
+    Isolated behind a function (rather than called inline) so tests can
+    monkeypatch the catalog lookup without touching the real
+    ``data-catalog.yaml`` file.
+
+    :returns: mapping of table name to its :class:`CatalogTable` row.
+    """
+    from babylon.sentinels.coverage.catalog import load_catalog_tables
+
+    return {t.name: t for t in load_catalog_tables()}
+
+
+def enumerate_full_coverage_specs(conn: sqlite3.Connection) -> tuple[ArtifactSpec, ...]:
+    """One parquet spec per DB table not already curated in ``ARTIFACTS``.
+
+    ``material_relation`` is inherited from the table's ``data-catalog.yaml``
+    row (the required Aleksandrov trace); a DB table with no catalog row
+    raises ``KeyError`` loudly — the catalog sentinel's bijection makes that
+    state a bug, never a default (Constitution III.11).
+
+    :param conn: open connection to the source reference DB.
+    :returns: one generate-mode parquet :class:`ArtifactSpec` per
+        not-yet-curated governed table.
+    :raises KeyError: if a governed table has no ``data-catalog.yaml`` row.
+    """
+    catalog = _catalog_by_name()
+    curated = {spec.source_table for spec in ARTIFACTS}
+    specs = []
+    for table in governed_db_tables(conn):
+        if table in curated:
+            continue
+        if table not in catalog:
+            raise KeyError(
+                f"{table}: DB table has no data-catalog.yaml row — fix the catalog first"
+            )
+        specs.append(
+            ArtifactSpec(
+                name=table,
+                format="parquet",
+                source_table=table,
+                home=f"dist/data-artifacts/{table}.parquet",
+                material_relation=catalog[table].material_relation,
+                mode="generate",
+            )
+        )
+    return tuple(specs)
+
+
 def export_table_parquet(conn: sqlite3.Connection, table: str, dest: Path) -> tuple[int, int]:
     """Write ``table`` to ``dest`` as parquet with the pinned codec/row-group
     settings — the ONLY parquet-writing path (both the curated generate
@@ -381,12 +441,21 @@ def _write_manifest(entries: list[dict[str, object]]) -> None:
     MANIFEST_PATH.write_text("\n".join(lines) + "\n")
 
 
-def generate(db_path: Path) -> list[dict[str, object]]:
-    """Generate every artifact and return the manifest entries."""
+def generate(db_path: Path, *, full_coverage: bool = False) -> list[dict[str, object]]:
+    """Generate every artifact and return the manifest entries.
+
+    :param db_path: source reference DB.
+    :param full_coverage: when ``True``, the working spec list grows from the
+        curated ``ARTIFACTS`` to ``ARTIFACTS + enumerate_full_coverage_specs``
+        — one additional parquet artifact per governed table not already
+        curated. Default ``False`` leaves the curated-only path unchanged
+        (the ``--full-coverage`` CLI flag's cutover is a later task).
+    """
     conn = sqlite3.connect(f"file:{db_path}?mode=ro", uri=True)
     entries: list[dict[str, object]] = []
     try:
-        for spec in ARTIFACTS:
+        specs = ARTIFACTS + enumerate_full_coverage_specs(conn) if full_coverage else ARTIFACTS
+        for spec in specs:
             out = Path(spec.home)
             if spec.mode == "register":
                 if not out.exists():
@@ -457,6 +526,15 @@ def main(argv: list[str] | None = None) -> int:
         default=Path(os.environ.get(_ENV_OVERRIDE, str(_DEFAULT_DB))),
     )
     parser.add_argument("--check", action="store_true", help="verify hashes vs manifest")
+    parser.add_argument(
+        "--full-coverage",
+        action="store_true",
+        help=(
+            "grow the working spec list to ARTIFACTS + one auto-enumerated parquet "
+            "spec per not-yet-curated governed table (default OFF; the curated-only "
+            "path is unchanged)"
+        ),
+    )
     args = parser.parse_args(argv)
 
     if args.check:
@@ -464,7 +542,7 @@ def main(argv: list[str] | None = None) -> int:
     if not args.db.exists():
         msg = f"database not found: {args.db}"
         raise ArtifactError(msg)
-    entries = generate(args.db)
+    entries = generate(args.db, full_coverage=args.full_coverage)
     _write_manifest(entries)
     print(f"[artifacts] manifest rewritten: {MANIFEST_PATH} ({len(entries)} entries)")
     return 0

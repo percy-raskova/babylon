@@ -401,11 +401,24 @@ def build_reference_db(
 
     table_statements = [s for s in statements if s.kind == "table"]
     table_names = {s.table for s in table_statements if s.table is not None}
-    indexes_by_table: dict[str, list[_Statement]] = {}
-    for stmt in statements:
-        if stmt.kind == "index" and stmt.table is not None:
-            indexes_by_table.setdefault(stmt.table, []).append(stmt)
+    index_statements = [s for s in statements if s.kind == "index"]
     trailing_statements = [s for s in statements if s.kind in ("view", "trigger")]
+
+    # Replay contract: the builder executes tables, then data, then indexes,
+    # then views/triggers — so it can only reproduce schema.sql's rowid order
+    # byte-for-byte when the file already has that contiguous-block shape
+    # (the real DB's is exactly TABLE* INDEX* VIEW*). An interleaved file
+    # would be silently reordered in the product; fail loud instead
+    # (Constitution III.11).
+    kind_rank = {"table": 0, "index": 1, "view": 2, "trigger": 2}
+    ranks = [kind_rank[s.kind] for s in statements]
+    if ranks != sorted(ranks):
+        msg = (
+            "schema.sql interleaves statement kinds (expected all tables, "
+            "then all indexes, then views/triggers) — the builder's replay "
+            "order cannot reproduce its sqlite_master rowid order"
+        )
+        raise SchemaParseError(msg)
 
     entry_source_tables = {str(entry["source_table"]) for entry in entries}
     missing_sources = sorted(name for name in table_names if name not in entry_source_tables)
@@ -435,8 +448,14 @@ def build_reference_db(
                 continue
             rows_inserted += _load_entry(conn, entry, sources_root)
             tables_built += 1
-            for index_stmt in indexes_by_table.get(table, []):
-                conn.execute(index_stmt.sql)
+
+        # All indexes AFTER all loads (bulk-load speed), in schema.sql
+        # statement order — sqlite_master rowid order is part of the schema
+        # fixed-point contract, and per-table creation in manifest (name-
+        # sorted) order broke it against the real DB's historical order
+        # (cutover Step 3, 2026-07-20).
+        for stmt in index_statements:
+            conn.execute(stmt.sql)
 
         for stmt in trailing_statements:
             conn.execute(stmt.sql)

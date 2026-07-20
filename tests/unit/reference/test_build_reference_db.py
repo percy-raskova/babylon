@@ -68,12 +68,14 @@ def _make_source_db(tmp_path: Path) -> sqlite3.Connection:
     BOOLEAN+DATE parquet table and a CSV-tier table."""
     conn = sqlite3.connect(tmp_path / "src.sqlite")
     conn.executescript(
+        # Canonical contiguous-block DDL shape (tables, then indexes, then
+        # views) — the builder's replay contract hard-fails interleavings.
         "CREATE TABLE dim_k (id INTEGER PRIMARY KEY, name TEXT);\n"
         "CREATE TABLE fact_m (id INTEGER PRIMARY KEY, k_id INTEGER, v REAL);\n"
-        "CREATE INDEX idx_fact_m_k ON fact_m (k_id);\n"
-        "CREATE VIEW view_m AS SELECT k_id, SUM(v) s FROM fact_m GROUP BY k_id;\n"
         "CREATE TABLE fact_flag (id INTEGER PRIMARY KEY, active BOOLEAN, seen_on DATE);\n"
         "CREATE TABLE dim_note (id INTEGER PRIMARY KEY, code TEXT, note TEXT, weight NUMERIC);\n"
+        "CREATE INDEX idx_fact_m_k ON fact_m (k_id);\n"
+        "CREATE VIEW view_m AS SELECT k_id, SUM(v) s FROM fact_m GROUP BY k_id;\n"
     )
     conn.executemany("INSERT INTO dim_k VALUES (?,?)", [(1, "a"), (2, "b")])
     conn.executemany("INSERT INTO fact_m VALUES (?,?,?)", [(1, 1, 2.5), (2, 2, 4.0)])
@@ -147,6 +149,72 @@ class TestDoubleBuildByteIdentity:
         assert r1.sha256 == r2.sha256
         assert isinstance(r1, BuildResult)
         assert r1.sqlite_version == PINNED_SQLITE_VERSION
+
+
+class TestSchemaOrderFidelity:
+    def test_index_rowid_order_survives_manifest_order_divergence(self, tmp_path: Path) -> None:
+        # Cutover Step 3 regression (2026-07-20): the real DB's sqlite_master
+        # carries indexes in historical creation order while manifest entries
+        # are name-sorted; creating each table's indexes per-load (manifest
+        # order) broke the schema fixed point. Creation order here (fact_z
+        # before fact_a, indexes interleaved) deliberately inverts the
+        # manifest's alphabetical order to pin the law: extract(source) ==
+        # extract(rebuilt), byte for byte.
+        # Same shape as the real schema.sql (all tables, then all indexes,
+        # then views — verified TABLE*75/INDEX*99/VIEW*8 at cutover): the
+        # builder's replay contract requires that shape and hard-fails on
+        # interleavings, so the fixture keeps the blocks contiguous while
+        # inverting alphabetical order inside each.
+        conn = sqlite3.connect(tmp_path / "src.sqlite")
+        conn.executescript(
+            "CREATE TABLE fact_z (id INTEGER PRIMARY KEY, v REAL);\n"
+            "CREATE TABLE fact_a (id INTEGER PRIMARY KEY, w REAL);\n"
+            "CREATE INDEX idx_fact_z_v ON fact_z (v);\n"
+            "CREATE INDEX idx_fact_a_w ON fact_a (w);\n"
+        )
+        conn.execute("INSERT INTO fact_z VALUES (1, 1.0)")
+        conn.execute("INSERT INTO fact_a VALUES (1, 2.0)")
+        conn.commit()
+
+        entries: list[dict[str, object]] = []
+        for table in ("fact_a", "fact_z"):  # name-sorted, inverting creation order
+            home = tmp_path / f"{table}.parquet"
+            rows, _size = export_table_parquet(conn, table, home)
+            entries.append(
+                {
+                    "name": table,
+                    "format": "parquet",
+                    "source_table": table,
+                    "mode": "generate",
+                    "rows": rows,
+                    "sha256": _sha256(home),
+                    "home": str(home.relative_to(tmp_path)),
+                    "material_relation": f"synthetic fixture table {table}",
+                }
+            )
+        source_schema = extract_schema_sql(conn)
+        schema_path = tmp_path / "schema.sql"
+        schema_path.write_text(source_schema)
+        census = schema_census(conn)
+        conn.close()
+        manifest_path = tmp_path / "data-artifacts.yaml"
+        _write_manifest(
+            entries,
+            schema_entry={
+                "file": str(schema_path.relative_to(tmp_path)),
+                "sha256": _sha256(schema_path),
+                **census,
+            },
+            path=manifest_path,
+        )
+
+        result = build_db(manifest_path, schema_path, tmp_path, tmp_path / "out.sqlite")
+        rebuilt = sqlite3.connect(result.path)
+        try:
+            rebuilt_schema = extract_schema_sql(rebuilt)
+        finally:
+            rebuilt.close()
+        assert rebuilt_schema == source_schema
 
 
 class TestBuildContentRoundTrip:

@@ -68,9 +68,13 @@ class TestManifest:
         )  # the four registered canonical CSVs (R1 pair post-demotion, ricci, county->CZ)
 
     def test_manifest_carries_all_registered_artifacts(self) -> None:
+        # Post-cutover the manifest is FULL-COVERAGE: the nine registered
+        # canonical artifacts plus one generate-mode parquet per governed
+        # table (Task 10 Step 2, 2026-07-20) — so the law is containment of
+        # the curated set plus catalog-complete coverage, not set equality.
         manifest = yaml.safe_load(_MANIFEST.read_text())
         names = {entry["name"] for entry in manifest["artifacts"]}
-        assert names == {
+        curated = {
             "bridge_county_bea_ea",
             "dim_bea_economic_area",
             "babylon_ricci_final",
@@ -81,6 +85,12 @@ class TestManifest:
             "bridge_lodes_block",
             "staging_arcgis_feature",
         }
+        assert curated <= names
+        from babylon.sentinels.coverage.catalog import load_catalog_tables
+
+        governed_tables = {t.name for t in load_catalog_tables() if t.kind == "table"}
+        missing = governed_tables - names
+        assert missing == set(), f"governed tables with no manifest source: {sorted(missing)}"
 
 
 class TestR1BeaCsvPreservation:

@@ -77,6 +77,9 @@ reports/test-results/
 # Ingest audit reports + per-run sim artifacts (regenerable byproducts)
 reports/ingest/
 reports/sim-runs/
+# qa:regression first-divergence attribution (E4; transient — rewritten/removed
+# every compare run, only present while a dense-gate FAIL is being diagnosed)
+reports/qa-first-divergence.json
 # Daemonized sim pidfiles/logs (sim:e2e-bg)
 .sim-pids/
 

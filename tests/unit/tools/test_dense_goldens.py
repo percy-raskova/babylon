@@ -129,3 +129,93 @@ def test_compare_dense_trace_catches_a_synthetic_one_value_mutation(tmp_path: Pa
     # was mutated) still compares clean.
     passed_real, _ = rt.compare_dense_trace(dense, BASELINE_DIR)
     assert passed_real, "the committed golden must remain unaffected by this mutation test"
+
+
+def test_appended_trailing_column_produces_a_loud_header_report(tmp_path: Path) -> None:
+    """A golden missing a trailing column (schema widening) fails loudly, not silently.
+
+    CRITICAL-1 regression: ``compare_dense_trace`` used to parse the fresh
+    CSV's header into a throwaway local and call ``attribute_divergence``
+    with only the golden's (shorter) header. Walking the fresh rows through
+    that shorter header meant every *shared* column still compared equal
+    (by construction here — the golden is the real trace with its last
+    column dropped, values otherwise identical), so ``attribute_divergence``
+    returned ``None`` even though the byte blobs already differ — a dense
+    FAIL that printed nothing and wrote no JSON entry
+    (``compare_all_baselines``'s ``if not dense_ok and dense_report is not
+    None`` guard silently no-ops on ``None``). This is exactly the shape
+    Task 9's dense-header widening (E3) would trigger. The fix compares
+    ``expected_header``/``actual_header`` before any cell walk and
+    short-circuits to a ``column="<header>"`` report.
+    """
+    scenario_name = "two_node"
+    expected_max_ticks = rt.load_baseline(BASELINE_DIR / f"{scenario_name}.json").max_ticks
+    _baseline, dense = rt.run_scenario_dense(scenario_name, max_ticks=expected_max_ticks)
+
+    golden_trace = rt.DenseTrace(
+        scenario=scenario_name,
+        header=dense.header[:-1],
+        rows=[row[:-1] for row in dense.rows],
+    )
+    scratch_dense_dir = tmp_path / "dense"
+    scratch_dense_dir.mkdir()
+    (scratch_dense_dir / f"{scenario_name}.csv").write_bytes(
+        rt.dense_trace_to_csv_bytes(golden_trace)
+    )
+
+    passed, report = rt.compare_dense_trace(dense, tmp_path)
+
+    assert not passed, "a widened dense header must fail the gate"
+    assert report is not None, (
+        "silent FAIL reproduced: a schema-widened header with byte-identical "
+        "shared cells must still produce a loud attribution, never None"
+    )
+    assert report.column == "<header>"
+    assert report.channel == "<column set changed>"
+    assert report.tick == 0
+    assert report.magnitude is None
+    assert report.last_agreeing_tick is None
+    assert report.candidate_systems == ()
+    assert dense.header[-1] not in report.expected
+    assert dense.header[-1] in report.actual
+
+
+def test_inserted_mid_header_column_attributes_to_header_not_a_shifted_cell(
+    tmp_path: Path,
+) -> None:
+    """A column inserted mid-header is attributed to ``<header>``, not a shifted cell.
+
+    CRITICAL-1 regression: without a header check ahead of the cell walk, an
+    inserted column shifts every later index, and the old
+    golden-header-only walk would misattribute the resulting mismatch to
+    whichever unrelated, otherwise-unchanged column happened to land at the
+    first shifted index — at tick/row 0, actively misleading whoever reads
+    the attribution.
+    """
+    scenario_name = "two_node"
+    expected_max_ticks = rt.load_baseline(BASELINE_DIR / f"{scenario_name}.json").max_ticks
+    _baseline, dense = rt.run_scenario_dense(scenario_name, max_ticks=expected_max_ticks)
+
+    insert_at = 2  # mid-header: between the first two economy_* columns
+    golden_trace = rt.DenseTrace(
+        scenario=scenario_name,
+        header=dense.header[:insert_at] + ["inserted_col"] + dense.header[insert_at:],
+        rows=[row[:insert_at] + ["0.0"] + row[insert_at:] for row in dense.rows],
+    )
+    scratch_dense_dir = tmp_path / "dense"
+    scratch_dense_dir.mkdir()
+    (scratch_dense_dir / f"{scenario_name}.csv").write_bytes(
+        rt.dense_trace_to_csv_bytes(golden_trace)
+    )
+
+    passed, report = rt.compare_dense_trace(dense, tmp_path)
+
+    assert not passed
+    assert report is not None
+    assert report.column == "<header>", (
+        f"must attribute the header-shape change itself, not a shifted cell "
+        f"(got column={report.column!r})"
+    )
+    assert report.channel == "<column set changed>"
+    assert "inserted_col" in report.expected
+    assert "inserted_col" not in report.actual

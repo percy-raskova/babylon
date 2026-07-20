@@ -568,9 +568,10 @@ def attribute_divergence(
                 magnitude: float | None = abs(float(act) - float(exp))
             except ValueError:
                 magnitude = None
+            tick = int(exp_row[0]) if exp_row else i  # degrade gracefully on an empty row
             return DivergenceReport(
                 scenario=scenario,
-                tick=int(exp_row[0]),
+                tick=tick,
                 column=column,
                 channel=channel,
                 county=county,
@@ -655,12 +656,17 @@ def compare_dense_trace(
         Tuple of (passed, report). ``passed`` is True and the report is
         None when either the golden doesn't exist yet (dense goldens are
         opt-in per Program 13 item 2 — absence is not a failure) or the
-        bytes match exactly. On mismatch, ``passed`` is False and
-        ``report`` attributes the first divergent tick+column (E4) via
-        :func:`attribute_divergence` — both blobs are parsed back through
-        :func:`_parse_dense_csv_bytes` so the compared cell strings are
-        exactly what a byte-level reader would see, matching the
-        already-established byte-inequality.
+        bytes match exactly. On mismatch, ``passed`` is False. Both blobs
+        are parsed back through :func:`_parse_dense_csv_bytes` first, and
+        the two headers are compared *before* any cell walk: a changed
+        column set (inserted/appended/removed/reordered column — e.g. a
+        future dense-schema widening) short-circuits to a loud
+        ``column="<header>"`` report naming both header lists, rather than
+        either misattributing a shifted cell to the wrong column or —
+        worse — silently returning ``None`` when the trailing columns
+        happen to still agree cell-for-cell. Only once the headers match
+        does ``report`` attribute the first divergent tick+column (E4) via
+        :func:`attribute_divergence`.
     """
     golden_path = baseline_dir / DENSE_SUBDIR / f"{trace.scenario}.csv"
     if not golden_path.exists():
@@ -672,7 +678,20 @@ def compare_dense_trace(
         return True, None
 
     expected_header, expected_rows = _parse_dense_csv_bytes(expected_bytes)
-    _actual_header, actual_rows = _parse_dense_csv_bytes(actual_bytes)
+    actual_header, actual_rows = _parse_dense_csv_bytes(actual_bytes)
+    if expected_header != actual_header:
+        return False, DivergenceReport(
+            scenario=trace.scenario,
+            tick=0,
+            column="<header>",
+            channel="<column set changed>",
+            county=None,
+            expected=str(expected_header),
+            actual=str(actual_header),
+            magnitude=None,
+            last_agreeing_tick=None,
+            candidate_systems=(),
+        )
     report = attribute_divergence(trace.scenario, expected_header, expected_rows, actual_rows)
     return False, report
 

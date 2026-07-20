@@ -677,15 +677,32 @@ Comparison and failure reporting
 ++++++++++++++++++++++++++++++++++
 
 ``compare_dense_trace()`` byte-compares the freshly-regenerated CSV against
-the committed golden. On a mismatch it re-parses the golden and walks rows
-in lockstep with the fresh trace to name the **first divergent tick and
-column** (``_first_dense_divergence()``) — e.g. ``tick 4 column
-'C001_wealth': 999.0 != 0.557396`` — rather than only reporting "bytes
-differ." Absence of a dense golden for a scenario is **not** a failure
-(dense goldens are additive, per-scenario; a scenario without one is simply
-not dense-checked yet) — only a byte mismatch against an *existing* golden
-fails the gate, keeping with Constitution III.11's distinction between a
-genuine failure and an empty/not-yet-populated domain.
+the committed golden. On a mismatch it re-parses both blobs back into
+(header, rows) and first compares the two headers: a changed column set
+(inserted, appended, removed, or reordered — e.g. a future dense-schema
+widening) short-circuits to a ``DivergenceReport`` naming
+``column="<header>"`` with both full header lists as ``expected``/``actual``,
+rather than either misattributing a shifted cell to the wrong column or
+silently reporting no divergence when the trailing columns still happen to
+agree cell-for-cell. Only once the headers match does ``attribute_divergence()``
+walk rows in lockstep to name the **first divergent tick and column**,
+producing a ``DivergenceReport`` (``scenario, tick, column, channel, county,
+expected, actual, magnitude, last_agreeing_tick, candidate_systems`` — the
+latter looked up from ``tools.regression_scenarios.CHANNEL_WRITERS``, naming
+which engine ``System`` classes could have written the diverging column) —
+e.g. printed as ``FIRST DIVERGENCE: tick 4, C001_wealth: 999.0 -> 0.557396
+(Δ=998.442604); last agreed tick 3; candidate systems: VitalitySystem,
+ProductionSystem, ...`` — rather than only reporting "bytes differ."
+``compare_all_baselines()`` also writes every failing scenario's
+``DivergenceReport`` (JSON, one entry per scenario) to
+``reports/qa-first-divergence.json`` for machine consumption; any stale file
+from a prior run is removed at the start of a compare, and the file is only
+(re)written when at least one scenario actually diverged, so a green run
+leaves no misleading report behind. Absence of a dense golden for a scenario
+is **not** a failure (dense goldens are additive, per-scenario; a scenario
+without one is simply not dense-checked yet) — only a byte mismatch against
+an *existing* golden fails the gate, keeping with Constitution III.11's
+distinction between a genuine failure and an empty/not-yet-populated domain.
 
 Determinism verified: the five committed goldens were generated twice, in
 two independent ``poetry run python`` processes, and byte-compared

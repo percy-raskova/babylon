@@ -1,9 +1,14 @@
 meta:
-  version: 1.33.0
-  updated: '2026-07-19'
+  version: 1.34.0
+  updated: '2026-07-20'
   description: Architecture Decision Records Index
   format: See individual ADR files in this directory
 decisions:
+  ADR090_qa_regression_modernization:
+    title: 'qa:regression modernized from a silent-blind byte-identical gate into a declared-and-proved one: E1 ScenarioCoverage/CoverageGap declarations (sentinel-enforced, static + dynamic-truth), E2 two new county-bearing canonical scenarios (single_county Wayne + detroit_tri_county bundle promoted to the byte-identical tier, 5->6 baselines), E3 financial dense-trace channels plus a no-dead-columns rule (the concrete U9-class-inertness detector), E4 first-divergence attribution replacing hand-derivation, E5 a real defines_hash gate (E5a) and an in-gate two-process determinism leg (E5b) -- headline finding: the five original scenarios exercise only 12 of the engine''s 30 Systems, the org layer is exercised NOWHERE (org_count=0 even in the detroit_tri_county e2e bundle), and 17 CoverageGap rows remain honestly declared as debt; gate runtime 9.632s, far under the 5-minute budget'
+    status: accepted
+    date: '2026-07-20'
+    file: ADR090_qa_regression_modernization.yaml
   ADR089_vol3_money_scissors:
     title: 'Volume III Money wired live through the Value-Price Scissors: the dormant Vol III estate connected via calculator_overrides + a new NationalFinancialParameters graph publication + a monetary anchor, four new bound oppositions (catalog 6->10) with CouplingGraph activated as ContradictionSystem''s first production consumer, a 13-item honesty sweep, six new sentinel classes, and an endogenous national interest rate (Capital Vol. III Part V, U9 -- the rate total, never absent; post-review repair re-sourced r/s_r in-scope after the final review caught structural inertness); gate byte-identical vs the frozen baselines, regeneration declined as unnecessary under the recorded owner approval (Option B, 2026-07-19)'
     status: accepted

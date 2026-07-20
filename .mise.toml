@@ -119,6 +119,10 @@ depends = ["lint", "format", "typecheck"]
 description = "Repo-hygiene gate: root allowlist, ignore-consistency, blob sizes (program 14)"
 run = "poetry run python tools/check_repo_hygiene.py"
 
+[tasks."check:ceremony"]
+description = "Baseline-ceremony gate (§6.5): commits touching tests/baselines/** must carry Baselines: blessed(<slug>)"
+run = "poetry run python tools/check_baseline_ceremony.py --range origin/dev..HEAD"
+
 [tasks."check:seams"]
 description = "Seam Observatory Sensor 1: observable-field continuity gate (Constitution VIII.12 / III.11)"
 run = "poetry run python tools/sentinel_check.py seam --check"

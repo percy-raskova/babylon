@@ -116,6 +116,9 @@ jobs:
       - name: qa:regression (5 scenarios vs committed baselines)
         run: mise run qa:regression
 
+      - name: Gate-coverage truth probe (declared evidence verified at gate cadence)
+        run: mise run check:gate-coverage-truth
+
   frontend:
     name: Frontend (tsc, eslint, prettier, vitest, build)
     runs-on: ubuntu-latest

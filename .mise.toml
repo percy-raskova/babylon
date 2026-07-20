@@ -179,6 +179,10 @@ run = "poetry run python tools/sentinel_check.py surface --check"
 description = "Sentinel: qa:regression estate declaration is complete over all 30 engine systems (gate-blindness gate)"
 run = "poetry run python tools/sentinel_check.py gate-coverage --check"
 
+[tasks."check:gate-coverage-truth"]
+description = "Dynamic gate-coverage truth probe: every declared SystemEvidence actually occurs in its scenario (runs the engine, ~one gate-length)"
+run = "poetry run python tools/sentinel_check.py gate-coverage-truth --check"
+
 [tasks."check:liveness"]
 description = "Liveness sentinel (ADVISORY, local): correct-but-inert + computed-but-never-consumed"
 run = "poetry run python tools/sentinel_check.py liveness"

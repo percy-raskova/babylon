@@ -45,33 +45,41 @@ ProductionSystem` (@3.0) wrote during the PREVIOUS tick, since Substrate
 **Lattice binding:** on the first tick with ≥1 eligible territory (never,
 for the 5 canonical qa:regression scenarios -- none of them carry
 ``county_fips``, so this system no-ops there BY CONSTRUCTION, not a
-defensive guard), the system builds four :class:`ScaleAdjunction` rungs over
-the eligible county set and caches them for the life of the instance (built
-once, not per tick -- the county universe is fixed at scenario-build time).
-Every tick thereafter it publishes EXTENSIVE (summed, never
-``aggregate_intensive`` -- a stock is summed, not averaged) aggregates of
-the post-depletion ``raw_material_stock`` into ``context.persistent_data``,
-mirroring :class:`~babylon.engine.systems.sovereignty.SovereigntySystem`'s
-mechanism:
+defensive guard), the system calls
+:func:`~babylon.domain.dialectics.instances.levels.spatial_lattice_rungs_for_counties`
+(T3) over the eligible county set and caches the returned
+:class:`~babylon.domain.dialectics.instances.levels.SpatialLatticeRungs` for
+the life of the instance (built once, not per tick). **This assumes a FIXED
+county universe for the lifetime of a scenario run** (true for USScenario,
+built once at scenario-build time) -- a county that became eligible only
+mid-run would silently never enter the cached rungs' aggregates, since the
+cache is never invalidated or rebuilt (#39 T6 LOW-3). Every tick thereafter
+this system publishes EXTENSIVE (summed, never ``aggregate_intensive`` -- a
+stock is summed, not averaged) aggregates of the post-depletion
+``raw_material_stock`` into ``context.persistent_data``, mirroring
+:class:`~babylon.engine.systems.sovereignty.SovereigntySystem`'s mechanism:
 
 - ``"substrate.cz"``, ``"substrate.msa"``, ``"substrate.state"``,
   ``"substrate.nation"`` -- ``dict[str, float]`` parent id -> summed stock.
 - ``"substrate.cz_excluded"`` -- the sorted list of eligible counties with
   no commuting-zone mapping (D-T6-5's honesty companion; see below).
 
-**The CZ rung is deliberately scoped, not shared with state/nation.**
-:func:`~babylon.domain.dialectics.instances.levels.cz_adjunction` covers
-every county except 19 post-1990 AK/CT geography changes (its own
-docstring names them) and raises a loud ``KeyError`` for any of the 19 --
-so this system pre-filters them out of the CZ rung ONLY, logging the
-exclusion once at lattice-build time (D-T6-5: "scope, don't catch"). The
-MSA rung is partial by design (uncovered counties silently absent, no
-exclusion needed) and the state/nation rungs are total (every FIPS resolves
-to a 2-digit state prefix and to ``"US"``) -- both are built over the FULL
-eligible county set, unlike CZ.
+**The CZ rung is deliberately scoped, not shared with state/nation** (#39
+T6 M1). T3's ``spatial_lattice_rungs_for_counties`` builds ``state``/
+``nation`` TOTAL over every eligible county, while ``cz`` is restricted to
+the counties :func:`~babylon.domain.dialectics.instances.levels.cz_adjunction`
+actually covers -- the 19 post-1990 AK/CT geography changes it cannot
+resolve (its own docstring names them) are EXCLUDED from ``cz`` and
+returned on ``SpatialLatticeRungs.cz_excluded``, derived by testing
+membership in the real crosswalk (never a hardcoded 19-county list). This
+System logs that exclusion once at lattice-build time (D-T6-5: "scope,
+don't catch"). The MSA rung is partial by design (uncovered counties
+silently absent, no exclusion needed).
 
 **``cz_adjunction``/``msa_adjunction`` are constructor-injectable** (default:
-the real functions). ``msa_adjunction()`` opens a reference-DB session
+the real functions), forwarded straight through to
+``spatial_lattice_rungs_for_counties`` so this System never duplicates T3's
+cz/msa construction logic. ``msa_adjunction()`` opens a reference-DB session
 (``levels.py``) -- this is the one place SubstrateSystem's lattice build
 touches the DB, ONCE per instance lifetime (not per tick, not per county;
 never at all for the 5 canonical scenarios). Unit tests inject a synthetic
@@ -89,10 +97,14 @@ from __future__ import annotations
 import contextlib
 import logging
 from collections.abc import Callable
-from dataclasses import dataclass
 from typing import TYPE_CHECKING, ClassVar, Final
 
-from babylon.domain.dialectics.instances.levels import cz_adjunction, msa_adjunction
+from babylon.domain.dialectics.instances.levels import (
+    SpatialLatticeRungs,
+    cz_adjunction,
+    msa_adjunction,
+    spatial_lattice_rungs_for_counties,
+)
 from babylon.domain.dialectics.instances.scale import ScaleAdjunction
 from babylon.domain.economics.tick.graph_bridge import resolve_county_identity
 from babylon.formulas.metabolic_rift import calculate_biocapacity_delta
@@ -115,20 +127,6 @@ SUBSTRATE_MSA_KEY: Final[str] = "substrate.msa"
 SUBSTRATE_STATE_KEY: Final[str] = "substrate.state"
 SUBSTRATE_NATION_KEY: Final[str] = "substrate.nation"
 SUBSTRATE_CZ_EXCLUDED_KEY: Final[str] = "substrate.cz_excluded"
-
-#: The constant every county maps to at the nation rung.
-_NATION_ID: Final[str] = "US"
-
-
-@dataclass(frozen=True)
-class _SubstrateRungs:
-    """The four cached scale-lattice rungs + the CZ exclusion list."""
-
-    cz: ScaleAdjunction
-    msa: ScaleAdjunction
-    state: ScaleAdjunction
-    nation: ScaleAdjunction
-    cz_excluded: tuple[str, ...]
 
 
 class SubstrateSystem(SystemBase):
@@ -170,7 +168,11 @@ class SubstrateSystem(SystemBase):
         """
         self._cz_adjunction_fn = cz_adjunction_fn
         self._msa_adjunction_fn = msa_adjunction_fn
-        self._rungs: _SubstrateRungs | None = None
+        #: Cached SpatialLatticeRungs (T3), built once on the first eligible
+        #: tick and never rebuilt -- see the module docstring's "Lattice
+        #: binding" section for the fixed-county-universe assumption this
+        #: relies on.
+        self._rungs: SpatialLatticeRungs | None = None
         #: Territory node id -> the FIRST raw_material_stock value this
         #: system ever observed for it (the regeneration ceiling). Without
         #: this, "current == max" on every call would force
@@ -253,45 +255,41 @@ class SubstrateSystem(SystemBase):
         with contextlib.suppress(AttributeError):
             context.persistent_data = persistent
 
-    def _build_rungs(self, all_counties: list[str]) -> _SubstrateRungs:
+    def _build_rungs(self, all_counties: list[str]) -> SpatialLatticeRungs:
         """Build the four scale-lattice rungs (called once, not per tick).
+
+        Delegates to :func:`~babylon.domain.dialectics.instances.levels.
+        spatial_lattice_rungs_for_counties` (T3), forwarding this System's
+        injected ``cz``/``msa`` adjunction sources so the fast-tier unit
+        tests never touch the reference DB (#39 T6 M1 -- this System no
+        longer duplicates T3's cz/msa/state/nation construction).
 
         Args:
             all_counties: Sorted, deduplicated county FIPS present among
                 this tick's eligible territories -- the T6-scoped county
                 universe (never the nationwide universe; a smaller test
                 scenario gets a smaller, internally-consistent lattice).
+                **Assumed fixed for the life of this System instance** (#39
+                T6 LOW-3) -- see the module docstring's "Lattice binding"
+                section.
 
         Returns:
-            The four rungs + the CZ exclusion list, for the caller to cache.
+            The T3 rungs bundle (``chain``, ``cz``, ``msa``, ``state``,
+            ``nation``, ``cz_excluded``), for the caller to cache.
         """
-        full_cz = self._cz_adjunction_fn().mapping
-        cz_covered = [fips for fips in all_counties if fips in full_cz]
-        cz_excluded = sorted(set(all_counties) - set(cz_covered))
-        if cz_excluded:
+        rungs = spatial_lattice_rungs_for_counties(
+            all_counties,
+            cz_adjunction_fn=self._cz_adjunction_fn,
+            msa_adjunction_fn=self._msa_adjunction_fn,
+        )
+        if rungs.cz_excluded:
             logger.warning(
                 "SubstrateSystem: %d eligible counties excluded from the CZ "
                 "substrate aggregate (no commuting-zone mapping): %s",
-                len(cz_excluded),
-                cz_excluded,
+                len(rungs.cz_excluded),
+                rungs.cz_excluded,
             )
-        cz_rung = ScaleAdjunction.uniform({fips: full_cz[fips] for fips in cz_covered})
-
-        full_msa = self._msa_adjunction_fn().mapping
-        msa_rung = ScaleAdjunction.uniform(
-            {fips: full_msa[fips] for fips in all_counties if fips in full_msa}
-        )
-
-        state_rung = ScaleAdjunction.uniform({fips: fips[:2] for fips in all_counties})
-        nation_rung = ScaleAdjunction.uniform(dict.fromkeys(all_counties, _NATION_ID))
-
-        return _SubstrateRungs(
-            cz=cz_rung,
-            msa=msa_rung,
-            state=state_rung,
-            nation=nation_rung,
-            cz_excluded=tuple(cz_excluded),
-        )
+        return rungs
 
 
 __all__ = [

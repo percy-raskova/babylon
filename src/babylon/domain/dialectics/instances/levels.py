@@ -51,10 +51,10 @@ See Also:
 from __future__ import annotations
 
 import csv
-from collections.abc import Mapping, Sequence
+from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass
 from pathlib import Path
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Final
 
 from babylon.domain.dialectics.core.level import Level, LevelLattice, LevelOperators
 from babylon.domain.dialectics.instances.scale import ScaleAdjunction
@@ -81,6 +81,9 @@ KeyedField = Mapping[str, float]
 
 _RESOLUTION_TOL = 1e-9
 """Elementwise tolerance for the resolution equality on keyed fields."""
+
+_NATION_ID: Final[str] = "US"
+"""The constant every county maps to at the nation rung."""
 
 _BRIDGE_COUNTY_CZ_CSV = (
     Path(__file__).resolve().parents[3] / "data" / "reference" / "bridge_county_cz.csv"
@@ -259,6 +262,26 @@ def _require_index(level_name: str) -> int:
     return index
 
 
+def _state_parent_map(counties: Sequence[str]) -> dict[str, str]:
+    """``county_fips -> 2-digit state prefix`` for every county (TOTAL).
+
+    Shared by :func:`spatial_lattice_for_counties` (the ``chain``'s
+    ``state`` level) and :func:`spatial_lattice_rungs_for_counties` (the
+    standalone ``state`` :class:`ScaleAdjunction` rung) so the two never
+    drift apart.
+    """
+    return {fips: fips[:2] for fips in counties}
+
+
+def _nation_parent_map(counties: Sequence[str]) -> dict[str, str]:
+    """``county_fips -> "US"`` (the constant nation parent) for every county.
+
+    Shared by :func:`spatial_lattice_for_counties` and
+    :func:`spatial_lattice_rungs_for_counties` (see :func:`_state_parent_map`).
+    """
+    return dict.fromkeys(counties, _NATION_ID)
+
+
 def spatial_lattice_for_counties(
     counties: Sequence[str],
     *,
@@ -293,8 +316,8 @@ def spatial_lattice_for_counties(
         raise ValueError("spatial_lattice_for_counties requires at least one county")
     parent_maps: dict[str, Mapping[str, str]] = {
         "county": {fips: fips for fips in unique},
-        "state": {fips: fips[:2] for fips in unique},
-        "nation": dict.fromkeys(unique, "US"),
+        "state": _state_parent_map(unique),
+        "nation": _nation_parent_map(unique),
     }
     return build_lattice_from_maps(
         ("county", "state", "nation"),
@@ -367,12 +390,16 @@ def cz_adjunction() -> ScaleAdjunction:
     bridge to: Connecticut's 2022 county -> planning-region switch (9 regions,
     each spanning parts of the old counties) and Alaska's repeated borough/
     census-area reorganizations (10 areas, e.g. Kusilvak split from Wade
-    Hampton, Chugach/Copper River split from Valdez-Cordova). A caller that
-    asks this rung to resolve one of those 19 gets a loud, named
-    :class:`KeyError` (see :func:`spatial_lattice_rungs_for_counties`) --
-    never a silent skip (Constitution III.11). Closing that residual gap is a
-    follow-up data-acquisition decision (a sourced CT/AK remap or an explicit
-    scope carve-out in Amendment U), not something this function fabricates.
+    Hampton, Chugach/Copper River split from Valdez-Cordova). Indexing
+    ``.mapping`` directly for one of those 19 raises Python's own
+    ``KeyError`` -- never a silent skip (Constitution III.11).
+    :func:`spatial_lattice_rungs_for_counties` -- the caller that must build
+    a rung over a real, possibly-gapped county set (#39 T6 M1) -- handles
+    this honestly by EXCLUDING those counties from its ``cz`` rung and
+    naming them on ``cz_excluded``, rather than propagating the raw
+    ``KeyError``. Closing the residual gap itself is a follow-up
+    data-acquisition decision (a sourced CT/AK remap or an explicit scope
+    carve-out in Amendment U), not something this function fabricates.
 
     Returns:
         A :class:`ScaleAdjunction` with 3144 counties as children and 741
@@ -448,18 +475,40 @@ def msa_adjunction() -> ScaleAdjunction:
 
 @dataclass(frozen=True)
 class SpatialLatticeRungs:
-    """The three parallel Amendment U county-aggregation rungs, plus the chain.
+    """All four Amendment U county-aggregation rungs, plus the resolution-law chain.
 
-    ``chain`` is the existing ``county -> state -> nation`` nesting (identical
-    to calling :func:`spatial_lattice_for_counties` with the same arguments).
-    ``cz`` and ``msa`` sit ALONGSIDE ``chain``, not nested under it -- both
-    commuting zones and metro areas cross state lines by construction
-    (Amendment U), so only ``state -> nation`` actually nests.
+    ``chain`` is the existing intensive-closure ``county -> state -> nation``
+    nesting (identical to calling :func:`spatial_lattice_for_counties` with
+    the same arguments) -- for the skeleton/sheaf resolution law
+    (:meth:`~babylon.domain.dialectics.core.level.LevelLattice.is_resolved_at`).
+
+    ``cz``, ``msa``, ``state``, and ``nation`` are the four EXTENSIVE-
+    aggregatable :class:`ScaleAdjunction` rungs a caller sums a per-county
+    stock/flow over (:meth:`ScaleAdjunction.aggregate`, never
+    ``aggregate_intensive`` -- shares are irrelevant to an extensive sum, so
+    all four use uniform shares regardless of ``populations``). ``state``
+    and ``nation`` are TOTAL over every requested county (every FIPS
+    resolves to a 2-digit state prefix / the constant ``"US"``). ``cz`` and
+    ``msa`` sit ALONGSIDE the state/nation chain, not nested under it --
+    both commuting zones and metro areas cross state lines by construction
+    (Amendment U). ``msa`` is PARTIAL by design (an uncovered county is
+    simply absent, no exclusion bookkeeping needed). ``cz`` is TOTAL over
+    the crosswalk, but a requested county absent from it (even after
+    vintage-bridge reconciliation) is EXCLUDED from ``cz`` rather than
+    raising -- see ``cz_excluded``.
+
+    ``cz_excluded`` names the (possibly empty) subset of requested counties
+    with no commuting-zone mapping, sorted for determinism -- derived by
+    testing membership in the real crosswalk (never a hardcoded county
+    list), so it stays correct if the crosswalk's coverage ever changes.
     """
 
     chain: LevelLattice[KeyedField]
     cz: ScaleAdjunction
     msa: ScaleAdjunction
+    state: ScaleAdjunction
+    nation: ScaleAdjunction
+    cz_excluded: tuple[str, ...]
 
 
 def spatial_lattice_rungs_for_counties(
@@ -467,58 +516,76 @@ def spatial_lattice_rungs_for_counties(
     *,
     populations: Mapping[str, float] | None = None,
     tol: float = _RESOLUTION_TOL,
+    cz_adjunction_fn: Callable[[], ScaleAdjunction] = cz_adjunction,
+    msa_adjunction_fn: Callable[[], ScaleAdjunction] = msa_adjunction,
 ) -> SpatialLatticeRungs:
-    """All three parallel Amendment U rungs for a county subset, plus the chain.
+    """All four Amendment U rungs for a county subset, plus the chain.
 
-    ``cz`` is restricted to exactly the requested counties and stays TOTAL:
-    every requested county must resolve (directly or via
-    :data:`_FIPS_VINTAGE_BRIDGES`) or this call fails loud, naming the
-    offending county (Constitution III.11) -- see :func:`cz_adjunction`'s
-    docstring for the crosswalk's real (and non-fabricated) coverage gaps.
-    ``msa`` is restricted to the SUBSET of requested counties present in
-    ``bridge_county_metro`` -- absent counties are simply dropped (documented
-    partial-cover semantics, never grossed up).
+    Serves the one real shape a production caller needs (#39 T6's
+    SubstrateSystem binding, the first and so far only caller): ``state``/
+    ``nation`` stay TOTAL over every requested county, so a nationwide sum
+    is never silently short, while ``cz`` is SCOPED to the counties the
+    crosswalk actually covers -- the rest are named on ``cz_excluded``
+    instead of raising. This replaces an earlier design (single shared
+    ``counties`` arg feeding both chain AND cz, raising on any cz gap) that
+    could not express "total chain + scoped cz" in one call: passing the
+    full requested set raised on the first cz-gap county, while passing a
+    cz-safe reduced set would ALSO have shrunk ``state``/``nation`` (#39 T6
+    M1). ``msa`` is restricted to the SUBSET of requested counties present
+    in ``bridge_county_metro`` -- absent counties are simply dropped
+    (documented partial-cover semantics, never grossed up).
 
     Args:
         counties: County FIPS codes (deduplicated + sorted internally, same
             contract as :func:`spatial_lattice_for_counties`).
         populations: Optional per-county population, forwarded to ``chain``
-            only. ``cz``/``msa`` always use uniform shares (Amendment U
-            binding rule) regardless of ``populations``.
+            only. ``cz``/``msa``/``state``/``nation`` always use uniform
+            shares (Amendment U binding rule; irrelevant to an extensive
+            sum regardless) -- unaffected by ``populations``.
         tol: Elementwise resolution tolerance, forwarded to ``chain``.
+        cz_adjunction_fn: Returns the full county -> CZ adjunction (default:
+            the real, reference-DB-free :func:`cz_adjunction`). Injectable
+            so a caller (e.g. SubstrateSystem) can forward its own
+            test-injected source without duplicating this function's logic.
+        msa_adjunction_fn: Returns the full county -> MSA adjunction
+            (default: the real :func:`msa_adjunction`, which opens a
+            reference-DB session). Injectable for the same reason.
 
     Returns:
-        A :class:`SpatialLatticeRungs` bundling ``chain`` with the ``cz`` and
-        ``msa`` rungs, each freshly recomputed with uniform shares over
-        exactly this county subset (so every :class:`ScaleAdjunction`'s
-        per-parent shares validly sum to 1 -- a global/nationwide share would
-        NOT sum to 1 over a partial subset).
+        A :class:`SpatialLatticeRungs` bundling ``chain`` with the four
+        EXTENSIVE rungs (``cz``, ``msa``, ``state``, ``nation``) and
+        ``cz_excluded``, each freshly recomputed over exactly this county
+        subset (so every :class:`ScaleAdjunction`'s per-parent shares
+        validly sum to 1 -- a global/nationwide share would NOT sum to 1
+        over a partial subset).
 
     Raises:
         ValueError: If ``counties`` is empty (from ``chain``'s construction).
-        KeyError: If a requested county has no commuting-zone mapping, even
-            after vintage-bridge reconciliation (names the offending county).
     """
     unique = sorted(set(counties))
     chain = spatial_lattice_for_counties(unique, populations=populations, tol=tol)
 
-    full_cz = cz_adjunction().mapping
-    cz_mapping: dict[str, str] = {}
-    for fips in unique:
-        try:
-            cz_mapping[fips] = full_cz[fips]
-        except KeyError as exc:
-            raise KeyError(
-                f"county {fips!r} has no commuting-zone mapping (absent from the "
-                "1990 ERS crosswalk and not covered by _FIPS_VINTAGE_BRIDGES)"
-            ) from exc
-    cz_rung = ScaleAdjunction.uniform(cz_mapping)
+    full_cz = cz_adjunction_fn().mapping
+    cz_covered = [fips for fips in unique if fips in full_cz]
+    cz_excluded = tuple(sorted(set(unique) - set(cz_covered)))
+    cz_rung = ScaleAdjunction.uniform({fips: full_cz[fips] for fips in cz_covered})
 
-    full_msa = msa_adjunction().mapping
-    msa_mapping = {fips: full_msa[fips] for fips in unique if fips in full_msa}
-    msa_rung = ScaleAdjunction.uniform(msa_mapping)
+    full_msa = msa_adjunction_fn().mapping
+    msa_rung = ScaleAdjunction.uniform(
+        {fips: full_msa[fips] for fips in unique if fips in full_msa}
+    )
 
-    return SpatialLatticeRungs(chain=chain, cz=cz_rung, msa=msa_rung)
+    state_rung = ScaleAdjunction.uniform(_state_parent_map(unique))
+    nation_rung = ScaleAdjunction.uniform(_nation_parent_map(unique))
+
+    return SpatialLatticeRungs(
+        chain=chain,
+        cz=cz_rung,
+        msa=msa_rung,
+        state=state_rung,
+        nation=nation_rung,
+        cz_excluded=cz_excluded,
+    )
 
 
 def social_lattice_from_memberships(

@@ -15,6 +15,7 @@ Hex layout (two states)::
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from pathlib import Path
 
 import pytest
@@ -327,11 +328,18 @@ class TestCZTotalityOverCountyUniverse:
         assert actual_gap == set(_AK_CT_CZ_GAP_FIPS)
 
 
-class TestUnknownCountyLoudFailure:
-    """Requirement 6: an uncovered county fails loud, never silently skipped.
-
-    None of these touch the reference DB: ``spatial_lattice_rungs_for_counties``
-    raises on the CZ half before ``msa_adjunction()`` is ever called.
+@pytest.mark.requires_reference_db
+@pytest.mark.skipif(not SQLITE_REF.exists(), reason=f"SQLite reference DB missing at {SQLITE_REF}")
+class TestUnknownCountyExcludedFromCZ:
+    """#39 T6 M1 (was "Requirement 6: fails loud"): an uncovered county is
+    EXCLUDED from ``cz`` and named on ``cz_excluded`` -- never silently
+    merged, and no longer a raised error. This is the scoped-cz-with-
+    total-chain redesign: the earlier design raised ``KeyError`` on ANY cz
+    gap, which could not express "total chain + scoped cz" in one call (see
+    ``spatial_lattice_rungs_for_counties``'s docstring). Touches the
+    reference DB (unlike the old raising design, which short-circuited on
+    the CZ half before ``msa_adjunction()`` was ever reached) -- the CZ half
+    no longer short-circuits before the MSA half runs.
     """
 
     @pytest.mark.parametrize(
@@ -344,9 +352,20 @@ class TestUnknownCountyLoudFailure:
             "09110",  # Connecticut planning region (2022 switch)
         ],
     )
-    def test_raises_named_key_error(self, fips: str) -> None:
-        with pytest.raises(KeyError, match=fips):
-            spatial_lattice_rungs_for_counties([fips])
+    def test_excluded_from_cz_and_named(self, fips: str) -> None:
+        rungs = spatial_lattice_rungs_for_counties([fips])
+        assert fips not in rungs.cz.mapping
+        assert rungs.cz_excluded == (fips,)
+
+    @pytest.mark.parametrize("fips", ["02158", "09110"])
+    def test_state_and_nation_remain_total_despite_the_cz_gap(self, fips: str) -> None:
+        """The whole point of #39 T6 M1: state/nation stay TOTAL even when
+        cz cannot resolve the county -- the earlier design would have
+        raised before returning anything at all."""
+        rungs = spatial_lattice_rungs_for_counties([fips])
+        assert fips in rungs.state.mapping
+        assert fips in rungs.nation.mapping
+        assert [lvl.name for lvl in rungs.chain.levels] == ["county", "state", "nation"]
 
 
 class TestMSAAdjunctionSynthetic:
@@ -483,3 +502,74 @@ class TestSpatialLatticeRungsForCounties:
         # uniform shares over the SUBSET, not the true nationwide 1/3 each).
         rungs = spatial_lattice_rungs_for_counties(["26163", "26099"])
         assert rungs.cz.shares == {"26163": pytest.approx(0.5), "26099": pytest.approx(0.5)}
+
+    def test_state_and_nation_are_total_extensive_rungs(self) -> None:
+        # #39 T6 M1: state/nation are standalone ScaleAdjunction rungs (not
+        # just closures buried in `chain`), summable via .aggregate().
+        counties = ["26163", "26125", "26099", "36061"]
+        rungs = spatial_lattice_rungs_for_counties(counties)
+        assert isinstance(rungs.state, ScaleAdjunction)
+        assert isinstance(rungs.nation, ScaleAdjunction)
+        assert rungs.state.mapping == {
+            "26163": "26",
+            "26125": "26",
+            "26099": "26",
+            "36061": "36",
+        }
+        assert set(rungs.nation.mapping.values()) == {"US"}
+        by_county = dict.fromkeys(counties, 10.0)
+        assert rungs.state.aggregate(by_county) == {"26": 30.0, "36": 10.0}
+        assert rungs.nation.aggregate(by_county) == {"US": 40.0}
+
+    def test_cz_excluded_is_empty_when_every_county_is_covered(self) -> None:
+        rungs = spatial_lattice_rungs_for_counties(["26163", "26125", "26099"])
+        assert rungs.cz_excluded == ()
+
+    def test_mixed_gap_and_covered_counties_state_nation_stay_total(self) -> None:
+        # #39 T6 M1's real shape: a nationwide county set spans both a real
+        # CZ-gap county (09110, a CT planning region) and an ordinary
+        # covered one (26163) -- cz excludes ONLY the gap county, while
+        # state/nation resolve BOTH (never shrinking to the cz-safe subset).
+        rungs = spatial_lattice_rungs_for_counties(["26163", "09110"])
+        assert rungs.cz_excluded == ("09110",)
+        assert "09110" not in rungs.cz.mapping
+        assert "26163" in rungs.cz.mapping
+        assert set(rungs.state.mapping) == {"26163", "09110"}
+        assert set(rungs.nation.mapping) == {"26163", "09110"}
+
+
+class TestSpatialLatticeRungsForCountiesInjectableSources:
+    """#39 T6 M1: ``cz_adjunction_fn``/``msa_adjunction_fn`` are injectable so
+    a caller (SubstrateSystem) can forward its own test-injected source
+    without touching the reference DB or duplicating this function's cz/msa
+    construction logic -- the exact seam SubstrateSystem's own tests rely
+    on. Fast tier: neither test here touches the reference DB.
+    """
+
+    @staticmethod
+    def _stub(mapping: dict[str, str]) -> Callable[[], ScaleAdjunction]:
+        def _fn() -> ScaleAdjunction:
+            return ScaleAdjunction.uniform(mapping)
+
+        return _fn
+
+    def test_injected_sources_replace_the_real_functions(self) -> None:
+        rungs = spatial_lattice_rungs_for_counties(
+            ["01001", "01003"],
+            cz_adjunction_fn=self._stub({"01001": "CZ_A", "01003": "CZ_A"}),
+            msa_adjunction_fn=self._stub({"01001": "MSA_X"}),
+        )
+        assert rungs.cz.mapping == {"01001": "CZ_A", "01003": "CZ_A"}
+        assert rungs.msa.mapping == {"01001": "MSA_X"}
+        assert rungs.cz_excluded == ()
+
+    def test_injected_cz_gap_is_excluded_and_named(self) -> None:
+        rungs = spatial_lattice_rungs_for_counties(
+            ["01001", "01003"],
+            cz_adjunction_fn=self._stub({"01001": "CZ_A"}),  # 01003 absent
+            msa_adjunction_fn=self._stub({}),
+        )
+        assert rungs.cz_excluded == ("01003",)
+        assert "01003" not in rungs.cz.mapping
+        assert "01003" in rungs.state.mapping  # chain/state/nation stay total
+        assert "01003" in rungs.nation.mapping

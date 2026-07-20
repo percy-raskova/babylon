@@ -2,7 +2,7 @@
 
 Two tiers, because a static gate can fail in two directions:
 
-- **Liveness** — the four rules are clean against the real tree right now.
+- **Liveness** — the five rules are clean against the real tree right now.
 - **Efficacy** — the AST extractor actually SEES each syntactic form it claims
   to cover. This tier is the load-bearing one: a scanner that silently returns
   nothing passes every liveness assertion while enforcing nothing, which is the
@@ -19,13 +19,16 @@ from babylon.models.enums import EdgeType, NodeType
 from babylon.sentinels._ast import (
     add_node_attribute_stamps,
     edge_source_type_uses,
+    graph_node_attribute_reads,
     node_type_uses,
 )
 from babylon.sentinels.base import SentinelCheckError
+from babylon.sentinels.exemptions import SentinelExemption
 from babylon.sentinels.vocabulary import (
     fabricated_edge_sources,
     fabricated_node_attributes,
     invented_node_types,
+    phantom_attribute_uses,
     unstamped_queried_node_types,
 )
 from babylon.sentinels.vocabulary.registry import MODEL_FIELDS_BY_NODE_TYPE
@@ -422,3 +425,145 @@ def test_edge_source_allowlist_clears_a_genuinely_allowlisted_combination(
         frozenset({("solidarity", "organization")}),
     )
     assert fabricated_edge_sources() == []
+
+
+# ---------------------------------------------------------------------------
+# Rule (e) — phantom-attribute closure (task #40): no banned attribute is
+# read off, or stamped onto, a graph node.
+# ---------------------------------------------------------------------------
+
+
+def test_no_phantom_attribute_uses_in_repo() -> None:
+    """Rule (e): no banned attribute is read off or stamped onto a graph
+    node anywhere in src/, web/ or tests/ (beyond the two owner-gated,
+    out-of-scope exemptions this module's own registry cites)."""
+    assert phantom_attribute_uses() == []
+
+
+def test_read_extractor_sees_get_call_on_bound_node_payload(tmp_path: Path) -> None:
+    """``member_data = graph.nodes.get(x, {})`` then
+    ``member_data.get("community_type")`` -- the two-step bind-then-read
+    idiom every real violation in this codebase uses."""
+    path = tmp_path / "sample.py"
+    path.write_text(
+        'member_data = graph.nodes.get(x, {})\nmember_data.get("community_type", "")\n',
+        encoding="utf-8",
+    )
+    assert (2, "community_type") in graph_node_attribute_reads(path, frozenset({"community_type"}))
+
+
+def test_read_extractor_sees_pop_call_on_bound_node_payload(tmp_path: Path) -> None:
+    """``.pop("attr")`` is also a read (mirrors ``_is_type_key_read``'s own
+    ``get``/``pop`` pair)."""
+    path = tmp_path / "sample.py"
+    path.write_text(
+        'row = graph.nodes.get(x, {})\nrow.pop("community_type")\n',
+        encoding="utf-8",
+    )
+    assert (2, "community_type") in graph_node_attribute_reads(path, frozenset({"community_type"}))
+
+
+def test_read_extractor_sees_subscript_on_bound_node_payload(tmp_path: Path) -> None:
+    """``target_data["community_type"]`` -- the subscript read form."""
+    path = tmp_path / "sample.py"
+    path.write_text(
+        'target_data = graph.nodes[x]\nv = target_data["community_type"]\n',
+        encoding="utf-8",
+    )
+    assert (2, "community_type") in graph_node_attribute_reads(path, frozenset({"community_type"}))
+
+
+def test_read_extractor_sees_direct_chained_form(tmp_path: Path) -> None:
+    """``graph.nodes.get(x, {}).get("community_type")`` -- no intermediate
+    variable needed."""
+    path = tmp_path / "sample.py"
+    path.write_text('graph.nodes.get(x, {}).get("community_type")\n', encoding="utf-8")
+    assert (1, "community_type") in graph_node_attribute_reads(path, frozenset({"community_type"}))
+
+
+def test_read_extractor_ignores_unrelated_dict_reads(tmp_path: Path) -> None:
+    """A ``.get("community_type")`` read on a name NEVER bound from
+    ``graph.nodes`` (a DB row, an arbitrary list item) is a different
+    namespace entirely -- invisible to this rule by construction."""
+    path = tmp_path / "sample.py"
+    path.write_text('row = cursor.fetchone()\nrow.get("community_type")\n', encoding="utf-8")
+    assert graph_node_attribute_reads(path, frozenset({"community_type"})) == []
+
+
+def test_stamp_extractor_reuses_add_node_attribute_stamps(tmp_path: Path) -> None:
+    """The STAMP side reuses the existing rule-(c) extractor unmodified --
+    any node type, since the point is no production code stamps this
+    attribute onto ANY graph node."""
+    path = tmp_path / "sample.py"
+    path.write_text(
+        'g.add_node("P1", _node_type="person", community_type="new_afrikan")\n',
+        encoding="utf-8",
+    )
+    stamps = add_node_attribute_stamps(path)
+    assert (1, "person", "community_type") in stamps
+
+
+def test_founding_bug_would_be_caught_by_phantom_read_rule(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The task #40 defect, reconstructed: a ``.get("community_type")`` read
+    off a real graph-node payload is rejected by rule (e)."""
+    (tmp_path / "src").mkdir()
+    (tmp_path / "web").mkdir()
+    (tmp_path / "tests").mkdir()
+    (tmp_path / "src" / "sample.py").write_text(
+        'node_data = graph.nodes.get(org_id, {})\nnode_data.get("community_type")\n',
+        encoding="utf-8",
+    )
+    monkeypatch.setattr("babylon.sentinels.vocabulary.checks._REPO_ROOT", tmp_path)
+    monkeypatch.setattr("babylon.sentinels.vocabulary.checks.PHANTOM_ATTRIBUTE_EXEMPTIONS", ())
+    violations = phantom_attribute_uses()
+    assert len(violations) == 1
+    assert "community_type" in violations[0]
+
+
+def test_phantom_exemption_does_not_absorb_a_different_symbol(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """An exemption exact-keyed to one ``(kind, file, attribute)`` triple
+    must NOT clear a genuinely different banned attribute in the SAME file
+    -- mirrors ``test_attribute_exemption_does_not_absorb_a_different_symbol``'s
+    exact discipline for rule (c), applied to rule (e). Uses synthetic
+    attribute names (not ``community_type``) so the assertion cannot be
+    fooled by ``_WHY_PHANTOM``'s own boilerplate example text."""
+    (tmp_path / "src").mkdir()
+    (tmp_path / "web").mkdir()
+    (tmp_path / "tests").mkdir()
+    (tmp_path / "src" / "sample.py").write_text(
+        "node_data = graph.nodes.get(org_id, {})\n"
+        'node_data.get("exempted_fake_attr")\n'
+        'node_data.get("other_fake_attr")\n',
+        encoding="utf-8",
+    )
+    exemption = SentinelExemption(
+        key=("phantom_attribute_read", "src/sample.py", "exempted_fake_attr"),
+        reason="test exemption",
+        owner="test",
+        date="2026-07-19",
+        tracking_task="#1",
+    )
+    monkeypatch.setattr("babylon.sentinels.vocabulary.checks._REPO_ROOT", tmp_path)
+    monkeypatch.setattr(
+        "babylon.sentinels.vocabulary.checks.PHANTOM_ATTRIBUTE_READS",
+        frozenset({"exempted_fake_attr", "other_fake_attr"}),
+    )
+    monkeypatch.setattr(
+        "babylon.sentinels.vocabulary.checks.PHANTOM_ATTRIBUTE_EXEMPTIONS", (exemption,)
+    )
+    violations = phantom_attribute_uses()
+    assert len(violations) == 1
+    assert "other_fake_attr" in violations[0]
+    assert "exempted_fake_attr" not in violations[0]
+
+
+def test_phantom_read_extractor_raises_on_unparseable_source(tmp_path: Path) -> None:
+    """A broken file is an infrastructure failure, never a silent empty pass."""
+    path = tmp_path / "broken.py"
+    path.write_text("def (:\n", encoding="utf-8")
+    with pytest.raises(SentinelCheckError):
+        graph_node_attribute_reads(path, frozenset({"community_type"}))

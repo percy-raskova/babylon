@@ -372,6 +372,98 @@ def _add_node_call_shape(call: ast.Call) -> tuple[str | None, list[str]]:
     return node_type, attrs
 
 
+#: One phantom-attribute READ found in source: ``(lineno, attribute)`` -- a
+#: banned attribute name read via ``.get(...)``/``.pop(...)``/``[...]`` off a
+#: raw graph-node payload dict.
+AttributeRead = tuple[int, str]
+
+
+def _is_node_payload_expr(expr: ast.expr, bound_names: set[str]) -> bool:
+    """True iff ``expr`` is BabylonGraph's own raw node-payload accessor
+    shape (``<x>.nodes.get(id, {})`` / ``<x>.nodes[id]``), directly or via a
+    same-file bound ``Name`` (see :func:`_node_payload_bound_names`)."""
+    if isinstance(expr, ast.Name):
+        return expr.id in bound_names
+    if isinstance(expr, ast.Call):
+        func = expr.func
+        return (
+            isinstance(func, ast.Attribute)
+            and func.attr == "get"
+            and isinstance(func.value, ast.Attribute)
+            and func.value.attr == "nodes"
+        )
+    if isinstance(expr, ast.Subscript):
+        return isinstance(expr.value, ast.Attribute) and expr.value.attr == "nodes"
+    return False
+
+
+def _node_payload_bound_names(tree: ast.Module) -> set[str]:
+    """Names assigned (anywhere in the file) from a raw node-payload expr
+    (``member_data = graph.nodes.get(target, {})``-style bindings)."""
+    names: set[str] = set()
+    for node in ast.walk(tree):
+        if not isinstance(node, ast.Assign):
+            continue
+        if not _is_node_payload_expr(node.value, set()):
+            continue
+        for target in node.targets:
+            if isinstance(target, ast.Name):
+                names.add(target.id)
+    return names
+
+
+def graph_node_attribute_reads(path: Path, banned: frozenset[str]) -> list[AttributeRead]:
+    """Extract every banned attribute READ off a raw graph-node payload.
+
+    The phantom-attribute-read eye (task #40): scoped deliberately narrow,
+    mirroring :func:`add_node_attribute_stamps`'s own philosophy -- only a
+    ``.get``/``.pop``/subscript call whose RECEIVER is (directly, or via a
+    same-file bound ``Name``) BabylonGraph's own raw node-payload accessor
+    shape (``<x>.nodes.get(id, {})`` / ``<x>.nodes[id]``) counts. An
+    arbitrary dict reading the SAME string (a DB row, an API response
+    payload, a Pydantic model's own field accessed via a duck-typed
+    ``.get()`` fallback) is a different namespace entirely and is invisible
+    to this rule by construction, not by omission -- it is not a graph-node
+    read, so it cannot be the "no producer ever stamps this on a graph node"
+    bug this rule polices.
+
+    :param path: Source file to parse.
+    :param banned: Attribute names this rule polices.
+    :returns: ``(lineno, attribute)`` pairs, sorted.
+    :raises SentinelCheckError: If the file is missing or unparseable.
+    """
+    try:
+        tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
+    except OSError as exc:
+        raise SentinelCheckError(f"cannot read {path}: {exc}") from exc
+    except SyntaxError as exc:
+        raise SentinelCheckError(f"cannot parse {path}: {exc}") from exc
+
+    bound_names = _node_payload_bound_names(tree)
+    reads: list[AttributeRead] = []
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Call):
+            func = node.func
+            if (
+                isinstance(func, ast.Attribute)
+                and func.attr in ("get", "pop")
+                and node.args
+                and _is_node_payload_expr(func.value, bound_names)
+            ):
+                first = node.args[0]
+                if (
+                    isinstance(first, ast.Constant)
+                    and isinstance(first.value, str)
+                    and first.value in banned
+                ):
+                    reads.append((node.lineno, first.value))
+        elif isinstance(node, ast.Subscript) and _is_node_payload_expr(node.value, bound_names):
+            sub = node.slice
+            if isinstance(sub, ast.Constant) and isinstance(sub.value, str) and sub.value in banned:
+                reads.append((node.lineno, sub.value))
+    return sorted(set(reads))
+
+
 def add_node_attribute_stamps(path: Path) -> list[NodeAttributeStamp]:
     """Extract every keyword attribute a real ``add_node(...)`` call stamps.
 

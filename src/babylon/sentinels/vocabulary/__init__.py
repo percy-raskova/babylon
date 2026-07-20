@@ -25,12 +25,19 @@ Rule (d) (ADR087, 2026-07-19): the same shape again, over an EDGE's source
 node type -- a fixture stamping an org-sourced SOLIDARITY edge (ADR085's
 ``mass_link`` amplification branch) when the only reachable path was that
 same fixture, never a real producer.
+
+Rule (e) (task #40, 2026-07-19): the READ-side sibling of rule (c) -- a
+graph-node attribute no production code ever WRITES must not be READ
+either. Founding instance: ``ooda/initiative.py::
+compute_community_embeddedness`` read ``community_type`` (community is
+never a main-graph node, INV-010) and was structurally always ``0.0``.
 """
 
 from babylon.sentinels.vocabulary.checks import (
     fabricated_edge_sources,
     fabricated_node_attributes,
     invented_node_types,
+    phantom_attribute_uses,
     unstamped_queried_node_types,
 )
 from babylon.sentinels.vocabulary.registry import (
@@ -38,6 +45,8 @@ from babylon.sentinels.vocabulary.registry import (
     EDGE_SOURCE_ALLOWLIST,
     EXTRA_STAMPABLE_ATTRIBUTES,
     MODEL_FIELDS_BY_NODE_TYPE,
+    PHANTOM_ATTRIBUTE_EXEMPTIONS,
+    PHANTOM_ATTRIBUTE_READS,
     PRODUCTION_ROOTS,
     SCAN_ROOTS,
     UNSTAMPED_QUERY_ALLOWLIST,
@@ -48,11 +57,14 @@ __all__ = [
     "EDGE_SOURCE_ALLOWLIST",
     "EXTRA_STAMPABLE_ATTRIBUTES",
     "MODEL_FIELDS_BY_NODE_TYPE",
+    "PHANTOM_ATTRIBUTE_EXEMPTIONS",
+    "PHANTOM_ATTRIBUTE_READS",
     "PRODUCTION_ROOTS",
     "SCAN_ROOTS",
     "UNSTAMPED_QUERY_ALLOWLIST",
     "fabricated_edge_sources",
     "fabricated_node_attributes",
     "invented_node_types",
+    "phantom_attribute_uses",
     "unstamped_queried_node_types",
 ]

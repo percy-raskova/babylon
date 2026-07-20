@@ -1086,3 +1086,95 @@ def territory_keying_uses(path: Path) -> list[TerritoryKeyingUse]:
                     ):
                         uses.append((node.lineno, "h3_derived_county_fips", ast.unparse(value)))
     return sorted(set(uses))
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Defines-passthrough closure (task #42 fix wave 1, review MEDIUM-1): a
+# production call site invoking a formulas-layer function that declares an
+# OPTIONAL ``defines`` parameter must pass it, or it silently falls back to
+# that function's own schema-default coefficients -- defeating the run's
+# ``services.defines``/``defines.yaml`` override. A NEW, ADDITIVE family of
+# helpers (mirrors rule (d)/(f)'s own precedent) -- introspects a function's
+# OWN signature (never imports it) to find the ``defines`` parameter's
+# positional slot, then scans call sites for either form (keyword or
+# correctly-positioned positional argument).
+# ─────────────────────────────────────────────────────────────────────────────
+
+
+def optional_defines_param_index(path: Path, func_name: str) -> int | None:
+    """Positional index of an OPTIONAL ``defines`` parameter, if any.
+
+    Reads ``path`` with :mod:`ast` (no import, no execution) and inspects the
+    module-level function named ``func_name``.
+
+    :param path: Source file declaring ``func_name``.
+    :param func_name: The module-level function to inspect.
+    :returns: The parameter's 0-based positional index among ``args.args``
+        if ``func_name`` declares a ``defines`` parameter WITH a default
+        value (the "silently falls back to a schema default" shape this
+        sentinel exists for) -- ``None`` if the function is absent from
+        ``path``, declares no ``defines`` parameter at all, or declares one
+        WITHOUT a default. A required parameter cannot be silently omitted
+        -- Python raises ``TypeError`` at the call site -- so that shape is
+        out of this sentinel's scope by construction, not by oversight.
+    :raises SentinelCheckError: If the file is missing or unparseable.
+    """
+    tree = parse_module(path)
+    for node in tree.body:
+        if not (isinstance(node, ast.FunctionDef) and node.name == func_name):
+            continue
+        names = [a.arg for a in node.args.args]
+        if "defines" not in names:
+            return None
+        index = names.index("defines")
+        num_defaults = len(node.args.defaults)
+        first_defaulted_index = len(names) - num_defaults
+        if index < first_defaulted_index:
+            return None  # required parameter -- out of scope
+        return index
+    return None
+
+
+def calls_missing_keyword_or_positional_arg(
+    path: Path, func_name: str, arg_name: str, positional_index: int
+) -> list[int]:
+    """Line numbers of calls to ``func_name`` in ``path`` that omit ``arg_name``.
+
+    A call is considered to SATISFY the argument (and is therefore not
+    reported) if ``arg_name`` is passed as a keyword, passed positionally
+    (enough positional arguments reach ``positional_index``), or the call
+    includes a ``**kwargs``-style unpack (an unresolvable catch-all --
+    honest absence over a false positive, mirroring every other extractor in
+    this module's documented "cannot resolve without value-flow analysis"
+    boundary).
+
+    :param path: Source file to scan for call sites.
+    :param func_name: The bare function name to match (``f(...)`` or
+        ``module.f(...)`` / ``obj.f(...)`` -- matched on the final
+        attribute, like :func:`node_type_uses`'s own call-site matching).
+    :param arg_name: The keyword argument name that must be supplied.
+    :param positional_index: 0-based positional slot ``arg_name`` occupies
+        in the callee's signature (see :func:`optional_defines_param_index`).
+    :returns: Sorted, de-duplicated line numbers of offending calls.
+    :raises SentinelCheckError: If the file is missing or unparseable.
+    """
+    tree = parse_module(path)
+    misses: set[int] = set()
+    for node in ast.walk(tree):
+        if not isinstance(node, ast.Call):
+            continue
+        called_name: str | None = None
+        if isinstance(node.func, ast.Name):
+            called_name = node.func.id
+        elif isinstance(node.func, ast.Attribute):
+            called_name = node.func.attr
+        if called_name != func_name:
+            continue
+        if any(kw.arg == arg_name for kw in node.keywords):
+            continue
+        if any(kw.arg is None for kw in node.keywords):
+            continue  # **kwargs unpack -- cannot prove absence statically
+        if len(node.args) > positional_index:
+            continue
+        misses.add(node.lineno)
+    return sorted(misses)

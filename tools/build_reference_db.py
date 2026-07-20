@@ -79,7 +79,11 @@ from make_data_artifacts import (  # noqa: E402
 PAGE_SIZE = 4096
 APPLICATION_ID = 0x4241424C  # "BABL"
 USER_VERSION = 1  # pipeline major version
-PINNED_SQLITE_VERSION = "3.46.1"
+PINNED_SQLITE_VERSION = "3.53.1"  # owner ruling 2026-07-20: match the CI runner; the
+#: toolchain pin's source of truth moves to babylon-infra (Nix env) — dev-box builder
+#: runs require that env (or any 3.53.1 runtime) until the box migrates. Bumped
+#: pre-cutover: no build products were ever minted under 3.46.1, so no regeneration
+#: event is owed (the plan's "bump = declared regeneration event" rule is vacuous here).
 
 #: Default canonical locations (repo-root-relative), matching the sibling
 #: exporters' ``_DEFAULT_DB``/``DEFAULT_OUT`` precedent.

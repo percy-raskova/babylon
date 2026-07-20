@@ -297,6 +297,20 @@ class TestSchemaParsing:
             list(build_reference_db._read_schema_statements(schema_path))
 
 
+class TestCoerceCsvCell:
+    """Direct unit coverage of :func:`build_reference_db._coerce_csv_cell` —
+    the CSV-tier per-cell coercion function (Tasks 5/6/7 review fold-ins 2+3).
+    """
+
+    def test_boolean_decltype_coerces_via_bool_int(self) -> None:
+        assert build_reference_db._coerce_csv_cell("1", "BOOLEAN", "active") is True
+        assert build_reference_db._coerce_csv_cell("0", "BOOLEAN", "active") is False
+
+    def test_unknown_decltype_is_fatal(self) -> None:
+        with pytest.raises(SchemaParseError, match="mystery_col.*BLOB"):
+            build_reference_db._coerce_csv_cell("x", "BLOB", "mystery_col")
+
+
 class TestCliEndToEnd:
     def test_cli_writes_db_and_updates_manifest(self, tmp_path: Path) -> None:
         conn = _make_source_db(tmp_path)

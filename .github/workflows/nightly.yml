@@ -141,6 +141,20 @@ jobs:
           poetry run pytest tests -m requires_reference_db
           --ignore=tests/integration/web
           -o addopts="" -vv -ra -l --tb=long --durations=0
+      - name: Rebuild-verify reference DB (parquet-canonical gate)
+        run: |
+          if ! rg -q '^product:' data-artifacts.yaml; then
+            echo "::notice::no product block in data-artifacts.yaml yet — rebuild-verify inert (pre-cutover)"
+            exit 0
+          fi
+          poetry run python tools/build_reference_db.py --out /tmp/rebuilt.sqlite
+          poetry run python - <<'EOF'
+          import hashlib, pathlib, sys, yaml
+          want = yaml.safe_load(pathlib.Path("data-artifacts.yaml").read_text())["product"]["sha256"]
+          got = hashlib.sha256(pathlib.Path("/tmp/rebuilt.sqlite").read_bytes()).hexdigest()
+          print(f"registry={want}\nrebuilt ={got}")
+          sys.exit(0 if want == got else 1)
+          EOF
 
   pacing-gate:
     name: G1 Pacing Gate (520-tick nationwide null-play, dev HEAD)

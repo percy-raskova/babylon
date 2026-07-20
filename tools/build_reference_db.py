@@ -36,6 +36,18 @@ Build algorithm (every point is a fixed determinism decision):
    close.
 8. Return a :class:`BuildResult` with the finished file's sha256.
 
+**Trigger support is aspirational, not exercised.** Step 3's statement
+splitter (:func:`_split_statements`) cuts ``schema.sql`` on a bare ``;\\n``
+terminator, which assumes no statement contains an un-terminated ``;`` of
+its own. A ``CREATE TRIGGER ... BEGIN ... END`` body with internal
+``;``-terminated statements breaks that assumption and is NOT correctly
+split. The real reference DB has 0 triggers today (``schema_census``
+confirms), so this never fires in practice; if a future migration adds one,
+the intended failure mode is a loud :class:`SchemaParseError` (the malformed
+fragment fails to classify, or SQLite rejects it at execute time) — never
+silent truncation (Constitution III.11). A trigger-bearing schema needs a
+smarter splitter before this builder can claim real trigger support.
+
 Usage::
 
     poetry run python tools/build_reference_db.py --out dist/build/ref.sqlite
@@ -142,6 +154,14 @@ def _split_statements(schema_sql_text: str) -> list[str]:
     extractor guarantees — exactly one trailing ``;`` per statement, one
     blank line between statements.
 
+    .. warning::
+       This split is NOT safe for a ``CREATE TRIGGER ... BEGIN ... END`` body
+       that contains its own ``;``-terminated statements — the trigger body
+       gets cut at the wrong points. See the module docstring's "Trigger
+       support is aspirational" note: the real DB has 0 triggers today, and
+       the fallout of a future one is a loud :class:`SchemaParseError`, never
+       silent truncation.
+
     :param schema_sql_text: Full ``schema.sql`` file contents.
     :returns: Statement bodies (no trailing ``;``), in file order.
     """
@@ -245,7 +265,7 @@ def _load_parquet_entry(conn: sqlite3.Connection, table: str, path: Path) -> int
     return total
 
 
-def _coerce_csv_cell(value: str, decltype: str) -> object:
+def _coerce_csv_cell(value: str, decltype: str, column: str) -> object:
     """Reverse the exporter's CSV handling for one cell.
 
     The exporter (``make_data_artifacts._write_csv``) writes every value
@@ -258,15 +278,22 @@ def _coerce_csv_cell(value: str, decltype: str) -> object:
       real empty-string value round-trips correctly; a real ``NULL`` does
       NOT (it becomes ``""`` instead — a documented, accepted lossy edge of
       the CSV tier).
-    - Every other declared type (INTEGER/BIGINT/BOOLEAN/NUMERIC/FLOAT/REAL/
-      DATE/DATETIME/...): an empty field is ``NULL`` (a numeric/date parse
-      can't otherwise represent ``""``); non-empty values convert per type.
+    - INTEGER/BIGINT/BOOLEAN/NUMERIC/FLOAT/REAL/DATE/DATETIME: an empty field
+      is ``NULL`` (a numeric/date parse can't otherwise represent ``""``);
+      non-empty values convert per type.
 
     :param value: Raw CSV cell text.
     :param decltype: The column's SQLite declared type (``PRAGMA
         table_info`` ``type``), matching
         :data:`make_data_artifacts._DECLTYPE_TO_ARROW`'s prefixes.
+    :param column: The column's name — used only to name the offending
+        column in :class:`SchemaParseError`'s message.
     :returns: The value to bind into the INSERT statement.
+    :raises SchemaParseError: If ``decltype`` doesn't match any recognized
+        prefix (TEXT/VARCHAR, INTEGER/BIGINT, BOOLEAN, NUMERIC/FLOAT/REAL,
+        DATE/DATETIME) — a genuinely unrecognized declared type is a
+        schema/exporter mismatch and must fail loud, never silently pass
+        through as a raw string (Constitution III.11).
     """
     upper = decltype.upper()
     if upper.startswith(_TEXT_LIKE_DECLTYPE_PREFIXES):
@@ -279,7 +306,10 @@ def _coerce_csv_cell(value: str, decltype: str) -> object:
         return bool(int(value))
     if upper.startswith(("NUMERIC", "FLOAT", "REAL")):
         return float(value)
-    return value  # DATE/DATETIME: source storage is already a plain string
+    if upper.startswith(("DATE", "DATETIME")):
+        return value  # source storage is already a plain string
+    msg = f"column {column!r}: unrecognized CSV-tier declared type {decltype!r}"
+    raise SchemaParseError(msg)
 
 
 def _load_csv_entry(conn: sqlite3.Connection, table: str, path: Path) -> int:
@@ -291,7 +321,8 @@ def _load_csv_entry(conn: sqlite3.Connection, table: str, path: Path) -> int:
         header = next(reader)
         rows = [
             tuple(
-                _coerce_csv_cell(cell, coltypes[col]) for cell, col in zip(raw, header, strict=True)
+                _coerce_csv_cell(cell, coltypes[col], col)
+                for cell, col in zip(raw, header, strict=True)
             )
             for raw in reader
         ]
@@ -344,6 +375,18 @@ def build_reference_db(
     :raises CoverageHoleError: A schema table has no manifest source.
     :raises SourceHashError: A source file's content drifted from its
         manifest hash.
+
+    .. note::
+       If a :class:`SourceHashError` (or any error raised once the output
+       file has been created and DDL applied — during per-table loading)
+       fires mid-build, ``out_path`` is left on disk as a PARTIAL, incomplete
+       database. That's not silently mistaken for a good build: the next
+       call to :func:`build_reference_db` targeting the same ``out_path``
+       unlinks it first (step 2) before writing again. Failures raised
+       BEFORE the output file is created — unpinned SQLite runtime, a
+       missing manifest/schema.sql, or a coverage hole (all detected in the
+       pre-flight checks above) — leave whatever was already at ``out_path``
+       untouched: nothing, for a fresh path (the common case).
     """
     if sqlite3.sqlite_version != PINNED_SQLITE_VERSION:
         msg = f"runtime sqlite3 {sqlite3.sqlite_version} != pinned {PINNED_SQLITE_VERSION}"

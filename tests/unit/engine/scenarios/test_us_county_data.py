@@ -55,6 +55,7 @@ class TestArtifactProvenance:
         recomputed = hashlib.sha256(canonical.encode("utf-8")).hexdigest()
         assert data["content_hash"] == recomputed
 
+    @pytest.mark.requires_reference_db
     def test_county_count_matches_national_scope_minus_dedup(self) -> None:
         """The artifact's county universe is _load_national_fips's scope MINUS
         the declared retired-FIPS exclusions (2026-07-19 scout finding + T4

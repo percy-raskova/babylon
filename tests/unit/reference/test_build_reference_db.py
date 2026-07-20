@@ -49,6 +49,16 @@ from make_data_artifacts import (  # type: ignore[import-not-found]  # noqa: E40
     export_table_parquet,
 )
 
+pytestmark = pytest.mark.skipif(
+    sqlite3.sqlite_version != PINNED_SQLITE_VERSION,
+    reason=(
+        f"byte-identity contract is defined only under the pinned SQLite "
+        f"{PINNED_SQLITE_VERSION} (runtime: {sqlite3.sqlite_version}); the builder's "
+        "version gate fires before any tested behavior -- CI runner pinning is a "
+        "#46 Phase-6 cutover work item"
+    ),
+)
+
 _CSV_TABLES = frozenset({"dim_note"})
 _ALL_TABLES = ("dim_k", "fact_m", "fact_flag", "dim_note")
 

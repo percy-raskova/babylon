@@ -20,8 +20,9 @@ sys.path.insert(0, str(TOOLS_DIR))
 
 import verify_reference_roundtrip  # type: ignore[import-not-found]  # noqa: E402
 from build_reference_db import (  # type: ignore[import-not-found]  # noqa: E402
-    build_reference_db as build_db,
+    PINNED_SQLITE_VERSION,
 )
+from build_reference_db import build_reference_db as build_db  # noqa: E402
 from extract_reference_schema import (  # type: ignore[import-not-found]  # noqa: E402
     extract_schema_sql,
 )
@@ -39,6 +40,16 @@ from verify_reference_roundtrip import (  # type: ignore[import-not-found]  # no
     compare_databases,
     table_content_hash,
     view_content_hash,
+)
+
+pytestmark = pytest.mark.skipif(
+    sqlite3.sqlite_version != PINNED_SQLITE_VERSION,
+    reason=(
+        f"byte-identity contract is defined only under the pinned SQLite "
+        f"{PINNED_SQLITE_VERSION} (runtime: {sqlite3.sqlite_version}); the builder's "
+        "version gate fires before any tested behavior -- CI runner pinning is a "
+        "#46 Phase-6 cutover work item"
+    ),
 )
 
 

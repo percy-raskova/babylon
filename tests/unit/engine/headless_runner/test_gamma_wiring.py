@@ -215,6 +215,7 @@ def test_run_passes_gamma_calculator_to_service_container(
     )
 
 
+@pytest.mark.requires_reference_db
 def test_build_economics_overrides_wires_tensor_registry_and_financial_services() -> None:
     """U1 (vol3-money-scissors): tensor_registry + Vol III financial
     calculators are wired when scope_fips is provided alongside
@@ -291,6 +292,7 @@ def test_build_economics_overrides_wires_tensor_registry_and_financial_services(
             leontief_session.close()
 
 
+@pytest.mark.requires_reference_db
 def test_build_economics_overrides_threads_defines_into_housing_calculator() -> None:
     """Honesty sweep (U2.4): ``_build_economics_overrides``'s
     ``create_financial_services(fred_series_cache=fred_cache)`` call

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Baseline-ceremony gate — §6.5 Provenance & Ceremony (owner ruling 2026-07-20).
+r"""Baseline-ceremony gate — §6.5 Provenance & Ceremony (owner ruling 2026-07-20).
 
 Constitution III.7 says "regenerate the baselines *and say so*"; III.12 makes
 the baseline estate a behavioral-contract artifact. This gate makes "say so"
@@ -13,20 +13,22 @@ where the slug is a lowercase ``[a-z0-9-]`` name for the ceremony (convention:
 stays the existing ``test(baselines): ...`` convention and the body records
 the drift table; the trailer is the greppable provenance record::
 
-    git log --grep 'Baselines: blessed' --format='%h %s'
+    git log -E --grep '^Baselines: blessed\(' --format='%h %s'
 
 Two modes (Constitution III.11 — both fail loudly):
 
 ``--commit-msg-file PATH``
     Local commit-msg hook: if staged paths touch the baseline estate, the
-    commit message must declare the ceremony. Best-effort (an ``--amend``
-    with an already-committed baseline change can slip it); CI is
-    authoritative.
+    commit message must declare the ceremony. Best-effort — an ``--amend``
+    of an already-committed baseline change, or a pathspec commit
+    (``git commit <path>``, which uses a temporary index), can slip past
+    it; the CI range leg catches both and is authoritative.
 
 ``--range A..B``
-    CI leg: every non-merge commit in the range that touches the baseline
-    estate must declare its ceremony. Merge commits are skipped — their
-    non-merge parents are inspected individually.
+    CI leg: every commit in the range that touches the baseline estate
+    must declare its ceremony. Merge commits are inspected for evil-merge
+    content only (paths differing from ALL parents via ``diff-tree --cc``);
+    clean merges need no trailer of their own.
 
 Exit codes: 0 = clean, 1 = undeclared ceremony, 2 = usage or git failure.
 Doctrine home: CLAUDE.md "Baseline ceremonies"; the ruling deliberately kept
@@ -102,12 +104,27 @@ def check_commit_msg(msg_file: Path, repo_root: Path) -> list[str]:
     return [f"staged baseline change(s) without declaration: {hit}"]
 
 
+def _is_merge_commit(sha: str, repo_root: Path) -> bool:
+    parent_tokens = _git(repo_root, "rev-list", "--parents", "-n", "1", sha).split()
+    return len(parent_tokens) > 2
+
+
 def check_range(range_spec: str, repo_root: Path) -> list[str]:
-    """CI leg: every non-merge commit in the range must declare its ceremony."""
-    shas_raw = _git(repo_root, "rev-list", "--no-merges", range_spec)
+    """CI leg: every commit in the range must declare its ceremony.
+
+    Non-merge commits are diffed against their parent. Merge commits are
+    inspected with ``diff-tree --cc``, which lists only paths whose content
+    differs from ALL parents — exactly evil-merge material. A clean merge
+    yields no such paths and needs no trailer of its own; an evil merge
+    that hand-resolves a baseline file is a ceremony in its own right.
+    """
+    shas_raw = _git(repo_root, "rev-list", range_spec)
     violations: list[str] = []
     for sha in [line for line in shas_raw.splitlines() if line]:
-        changed_raw = _git(repo_root, "diff-tree", "--no-commit-id", "--name-only", "-r", sha)
+        if _is_merge_commit(sha, repo_root):
+            changed_raw = _git(repo_root, "diff-tree", "--cc", "--no-commit-id", "--name-only", sha)
+        else:
+            changed_raw = _git(repo_root, "diff-tree", "--no-commit-id", "--name-only", "-r", sha)
         changed = [line for line in changed_raw.splitlines() if line]
         if not touches_baselines(changed):
             continue

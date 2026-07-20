@@ -9,7 +9,8 @@ ceremony via a ``Baselines: blessed(<ceremony-slug>)`` trailer.
 Two enforcement modes, both covered here against synthetic git repos:
 
 a. ``--commit-msg-file`` — the local commit-msg hook (staged paths vs message);
-b. ``--range A..B``      — the CI leg (every non-merge commit in a PR range).
+b. ``--range A..B``      — the CI leg (every commit in a PR range; merges
+   inspected for evil-merge content via ``diff-tree --cc``).
 
 The synthetic-violation tests are the mutation proof that each mode detects
 its violation class (Constitution III.11 — Loud Failure).
@@ -148,7 +149,7 @@ class TestCommitMsgMode:
 
 
 class TestRangeMode:
-    """CI leg: every non-merge commit in the range is inspected."""
+    """CI leg: every commit in the range is inspected (merges via --cc)."""
 
     def test_undeclared_commit_flagged_by_sha(self, tmp_path: Path) -> None:
         repo = _init_repo(tmp_path)
@@ -172,7 +173,7 @@ class TestRangeMode:
         _commit_file(repo, "src/module.py", "x = 1\n", "feat: unrelated")
         assert check_range(f"{base}..HEAD", repo) == []
 
-    def test_merge_commits_skipped(self, tmp_path: Path) -> None:
+    def test_clean_merge_commit_not_flagged(self, tmp_path: Path) -> None:
         repo = _init_repo(tmp_path)
         base = _git(repo, "rev-parse", "HEAD")
         _git(repo, "switch", "-c", "side")
@@ -180,8 +181,50 @@ class TestRangeMode:
         _git(repo, "switch", "main")
         _commit_file(repo, "other.md", "y\n", "docs: mainline drift")
         _git(repo, "merge", "--no-ff", "-m", "merge side into main", "side")
-        # The merge commit itself carries no trailer; only its non-merge
-        # parents are inspected, and the side commit is blessed.
+        # A clean merge introduces no content beyond its parents: the merge
+        # commit needs no trailer of its own (the side commit is blessed).
+        assert check_range(f"{base}..HEAD", repo) == []
+
+    def test_evil_merge_baseline_change_flagged(self, tmp_path: Path) -> None:
+        """A merge whose conflict resolution differs from BOTH parents is a
+        ceremony in its own right — the Opus-review evil-merge hole."""
+        repo = _init_repo(tmp_path)
+        _commit_file(repo, "tests/baselines/glut.json", "{}\n", BLESSED)
+        base = _git(repo, "rev-parse", "HEAD")
+        _git(repo, "switch", "-c", "side")
+        _commit_file(repo, "tests/baselines/glut.json", '{"v": 1}\n', BLESSED)
+        _git(repo, "switch", "main")
+        _commit_file(repo, "tests/baselines/glut.json", '{"v": 2}\n', BLESSED)
+        # Conflicting merge; resolve to content present in NEITHER parent.
+        merge = subprocess.run(["git", "merge", "side"], cwd=repo, capture_output=True, text=True)
+        assert merge.returncode != 0, "merge must conflict for the evil resolution"
+        (repo / "tests/baselines/glut.json").write_text('{"v": 999, "evil": true}\n')
+        _git(repo, "add", "tests/baselines/glut.json")
+        _git(repo, "commit", "--no-verify", "-m", "merge side into main")
+        merge_sha = _git(repo, "rev-parse", "HEAD")
+        violations = check_range(f"{base}..HEAD", repo)
+        assert len(violations) == 1
+        assert merge_sha[:12] in violations[0]
+
+    def test_evil_merge_with_trailer_is_clean(self, tmp_path: Path) -> None:
+        repo = _init_repo(tmp_path)
+        _commit_file(repo, "tests/baselines/glut.json", "{}\n", BLESSED)
+        base = _git(repo, "rev-parse", "HEAD")
+        _git(repo, "switch", "-c", "side")
+        _commit_file(repo, "tests/baselines/glut.json", '{"v": 1}\n', BLESSED)
+        _git(repo, "switch", "main")
+        _commit_file(repo, "tests/baselines/glut.json", '{"v": 2}\n', BLESSED)
+        merge = subprocess.run(["git", "merge", "side"], cwd=repo, capture_output=True, text=True)
+        assert merge.returncode != 0
+        (repo / "tests/baselines/glut.json").write_text('{"v": 999}\n')
+        _git(repo, "add", "tests/baselines/glut.json")
+        _git(
+            repo,
+            "commit",
+            "--no-verify",
+            "-m",
+            "merge side into main\n\nBaselines: blessed(evil-merge-resolution)",
+        )
         assert check_range(f"{base}..HEAD", repo) == []
 
     def test_multiple_undeclared_commits_all_reported(self, tmp_path: Path) -> None:

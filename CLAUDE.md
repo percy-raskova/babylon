@@ -57,7 +57,8 @@ Three-layer local system, no external servers. Full map: `ai/architecture.yaml`.
 
 **Client status (owner ruling 2026-07-20; Amendment V / II.8):** the browser/web client (`web/`,
 `src/frontend/`) is **legacy** — its failures don't gate work and the web `engine_bridge` suite is
-disabled wholesale (`tests/unit/web/test_engine_bridge.py` docstring). The terminal Archive client
+disabled wholesale (module-level `pytestmark` skip in `tests/unit/web/test_engine_bridge.py`). The
+terminal Archive client
 is the successor (program unspecced; drafts in `ai/_inbox/tui/`). The `observe()` projection
 contract is the durable seam; clients are disposable.
 
@@ -150,8 +151,9 @@ files, so intertwined units force ugly giant commits. Use `mise run commit -- "t
   IS a ceremony — subject `test(baselines): …`, body records the drift table (per-scenario columns,
   cell counts, max |d|, attribution), and the message MUST carry a
   `Baselines: blessed(<ceremony-slug>)` trailer. Enforced by the commit-msg hook locally and the
-  CI ceremony-gate on PRs (`tools/check_baseline_ceremony.py`; audit trail:
-  `git log --grep 'Baselines: blessed' --format='%h %s'`). Undeclared drift = red gate, STOP.
+  CI ceremony-gate on PRs (`tools/check_baseline_ceremony.py`; evil merges included via
+  `diff-tree --cc`; audit trail: `git log -E --grep '^Baselines: blessed\(' --format='%h %s'`).
+  Undeclared drift = red gate, STOP.
 - After significant work: update `ai/state.yaml`; add an ADR in `ai/decisions/` (individual
   `ADR0NN_*.yaml` files + `index.yaml` catalog) for architectural decisions.
 

@@ -57,6 +57,24 @@ The repair sources `r` and `s_r` from the tick's own `county_states` in scope
 (realized surplus/profit-rate tensors for `r = Σs/Σ(c+v)`; employment-weighted
 U-3 for `s_r`), eliminating the timing dependency entirely.
 
+Two source-selection disclosures (adversarial-verification pass, 2026-07-19):
+
+- **Why tensors, not the county MELT quantities, for `r`:** on real Wayne
+  26163/2011 the MELT path carries `capital_stock = 0` and the pre-existing
+  `employment = 100000.0` placeholder, so `Σs/Σ(c+v)` computed from MELT
+  collapses to the rate of *exploitation* (~3.79 → a 114% interest rate). The
+  realized reference tensors carry the actual profit rate (0.0597); `r` must
+  source from them until the capital-stock data gap is repaired.
+- **The employment-100k placeholder still touches this identity, though not
+  the interest headline:** `interest_payments` reads no employment (verified:
+  `distribution/calculator.py:160`), and in the single-county Wayne proof the
+  `s_r` employment *weight* is inert (real U-3 = 0.126 drives it). But the
+  `ground_rent` (2.01e8) and `taxes_on_surplus` (1.81e8) claim terms in
+  SC-001's identity ARE placeholder-scaled via `county_share = 100000/155e6`.
+  SC-001 asserts positivity and closure, which hold regardless — but the
+  magnitudes of those two terms should not be read as calibrated until the
+  employment placeholder (Program 17 honesty gap) is closed.
+
 ## Why the frozen gate scenarios still show no delta
 
 Constitution III.7's falsifiability gate (`qa:regression`) compares against the

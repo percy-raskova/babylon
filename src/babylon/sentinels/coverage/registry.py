@@ -24,6 +24,8 @@ source class's existence is.
 
 from __future__ import annotations
 
+from typing import Literal
+
 from pydantic import BaseModel, ConfigDict, model_validator
 
 
@@ -219,5 +221,215 @@ GATE_ESTATES: tuple[GateEstate, ...] = (
         estate_name="financial_calculators",
         factory_file=f"{_ECON}/factory.py",
         factory_symbol="create_financial_services",
+    ),
+)
+
+
+class LatticeRungRequirement(BaseModel):
+    """One declared Amendment U spatial-lattice-rung concordance (#39 T8).
+
+    Amendment U's lattice (``hex ≺ county``, then three PARALLEL
+    county-aggregations — CZ, MSA, state — with only ``state ≺ nation``
+    nesting further) is grounded by a "backing concordance" per rung: a
+    reference-DB table, a committed CSV artifact, or (where no external
+    source exists) the derivation code/constant itself. The historical bug
+    this row family guards against is the **CZ-silent-fallback class**: T7's
+    web CZ framing used to fall back to county silently when the crosswalk
+    was unavailable — a rung whose concordance goes missing or empty must
+    fail LOUD, naming the rung, never degrade quietly (Constitution III.11).
+
+    A SEPARATE, additive sibling of :class:`DataRequirement` (not an
+    extension of it) — the two "reference_table" rows below (hex→county,
+    county→MSA) *could* reuse ``DataRequirement``'s exact shape, but the
+    county→CZ row's coverage assertion (parse the committed CSV, floor its
+    key/value coverage) and the two derivation rows (no class at all) do not
+    fit that model's "a source class must exist" contract, so a new sibling
+    keeps :class:`DataRequirement` untouched rather than growing a
+    conditionally-validated superset onto it (mirrors the vocabulary
+    sentinel's own precedent of adding rule (d)'s edge-shape closure as a
+    NEW, ADDITIVE family rather than mutating the node-shape rule (c)).
+
+    Frozen and ``extra="forbid"`` so a malformed row is a loud failure at
+    import time (Constitution III.11).
+
+    :ivar rung: stable identity for the lattice rung (e.g. ``"hex_to_county"``).
+    :ivar concordance_name: human name for the backing concordance (a table
+        name, a CSV filename, or a description of the derivation).
+    :ivar kind: ``"reference_table"`` (a reference-DB-backed SQLAlchemy model
+        class; the static sensor proves the class exists, mirroring
+        :func:`~babylon.sentinels.coverage.checks.check_source_classes_exist`
+        — table EMPTINESS is governed by the existing ``data-catalog.yaml``
+        KEEP law, :mod:`babylon.sentinels.coverage.db_probe`, not re-checked
+        here), ``"committed_csv"`` (an in-repo CSV the fast gate parses
+        directly and floors its key/value coverage — the CZ-silent-fallback
+        guard), or ``"derivation"`` (no external source; a pure function or
+        module-level constant IS the concordance, declared explicitly so the
+        rung is never silently omitted from the coverage map).
+    :ivar source_file: repo-relative path. A ``.py`` module for
+        ``reference_table``/``derivation``; the committed ``.csv`` artifact
+        itself for ``committed_csv``.
+    :ivar material_relation: the material relation this rung grounds
+        (Aleksandrov Test) — why the aggregation is meaningless without it.
+    :ivar source_symbol: the class (``reference_table``) or function/constant
+        name (``derivation``) whose continued existence the sensor proves.
+        Unused (must stay blank) for ``committed_csv``.
+    :ivar key_column: (``committed_csv`` only) the CSV column holding the
+        finer-grained key (e.g. ``county_fips``).
+    :ivar value_column: (``committed_csv`` only) the CSV column holding the
+        coarser-grained value (e.g. ``cz_id``).
+    :ivar min_keys: (``committed_csv`` only) floor on distinct ``key_column``
+        values — below this, the artifact is truncated/corrupted.
+    :ivar min_values: (``committed_csv`` only) floor on distinct
+        ``value_column`` values.
+    :ivar notes: free-text clarification.
+    """
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    rung: str
+    concordance_name: str
+    kind: Literal["reference_table", "committed_csv", "derivation"]
+    source_file: str
+    material_relation: str
+    source_symbol: str = ""
+    key_column: str = ""
+    value_column: str = ""
+    min_keys: int = 0
+    min_values: int = 0
+    notes: str = ""
+
+    @model_validator(mode="after")
+    def _validate_shape(self) -> LatticeRungRequirement:
+        """Reject empty/incoherent rows loudly at import (III.11).
+
+        :returns: ``self`` when valid.
+        :raises ValueError: if ``rung``/``concordance_name``/``source_file``
+            is blank, or the per-``kind`` field contract is violated (a
+            ``committed_csv`` row missing its column/floor declarations, or a
+            ``reference_table``/``derivation`` row missing its
+            ``source_symbol`` or pointing at a non-``.py`` file).
+        """
+        if not self.rung.strip():
+            raise ValueError("LatticeRungRequirement.rung must be non-empty")
+        if not self.concordance_name.strip():
+            raise ValueError(f"{self.rung!r}: concordance_name must be non-empty")
+        if not self.source_file.strip():
+            raise ValueError(f"{self.rung!r}: source_file must be non-empty")
+        if self.kind == "committed_csv":
+            if not self.source_file.endswith(".csv"):
+                raise ValueError(f"{self.rung!r}: committed_csv kind requires a .csv source_file")
+            if not self.key_column.strip() or not self.value_column.strip():
+                raise ValueError(
+                    f"{self.rung!r}: committed_csv kind requires key_column and value_column"
+                )
+            if self.min_keys <= 0 or self.min_values <= 0:
+                raise ValueError(
+                    f"{self.rung!r}: committed_csv kind requires positive min_keys/min_values"
+                )
+        else:
+            if not self.source_file.endswith(".py"):
+                raise ValueError(f"{self.rung!r}: {self.kind} kind requires a .py source_file")
+            if not self.source_symbol.strip():
+                raise ValueError(f"{self.rung!r}: {self.kind} kind requires source_symbol")
+        return self
+
+
+#: Repo-relative home of the dialectics level-lattice module (the county→state
+#: and state→nation derivations live here — factored out for readability).
+_LEVELS = "src/babylon/domain/dialectics/instances/levels.py"
+
+#: One row per Amendment U lattice rung (#39 T8), naming its backing
+#: concordance. A rung whose concordance goes missing/empty fails LOUD,
+#: naming the rung — the CZ-silent-fallback class this family guards against.
+LATTICE_RUNG_REQUIREMENTS: tuple[LatticeRungRequirement, ...] = (
+    LatticeRungRequirement(
+        rung="hex_to_county",
+        concordance_name="bridge_county_h3",
+        kind="reference_table",
+        source_file="src/babylon/reference/schema.py",
+        source_symbol="BridgeCountyH3",
+        material_relation=(
+            "hex -> county spatial join — the immutable res-7 substrate's sole "
+            "path into the county-grain economy (query_h3_to_county_fips/"
+            "query_hex_claims read it); without it a hex-keyed seed cannot "
+            "resolve to the real county the tick economy reads."
+        ),
+        notes=(
+            "Table EMPTINESS is already governed nightly by data-catalog.yaml's "
+            "KEEP-disposition law (db_probe.py) — bridge_county_h3 is disposition: "
+            "keep there. This row proves the class the code depends on still "
+            "exists at its declared module path (mirrors DataRequirement's own "
+            "static contract)."
+        ),
+    ),
+    LatticeRungRequirement(
+        rung="county_to_cz",
+        concordance_name="bridge_county_cz.csv",
+        kind="committed_csv",
+        source_file="src/babylon/data/reference/bridge_county_cz.csv",
+        material_relation=(
+            "county -> 1990 ERS commuting zone (Amendment U) — the daily "
+            "reproduction-of-labor-power aggregation geography; T7's CZ web "
+            "framing reads this crosswalk directly. If it goes missing or "
+            "truncated the framing must fail loud, never silently fall back to "
+            "county (the CZ-silent-fallback class this row exists to prevent)."
+        ),
+        key_column="county_fips",
+        value_column="cz_id",
+        min_keys=3000,
+        min_values=741,
+        notes=(
+            "Floors mirror the artifact's OWN documented facts, not independently "
+            "invented magic numbers: data-artifacts.yaml pins bridge_county_cz at "
+            "rows=3141; cz_adjunction()'s docstring and "
+            "tests/unit/dialectics/test_levels.py::TestCZAdjunction both "
+            "independently pin 741 distinct CZs. >= (not ==) so a future, "
+            "gap-closing re-derivation (more counties/CZs, never fewer) still "
+            "passes."
+        ),
+    ),
+    LatticeRungRequirement(
+        rung="county_to_msa",
+        concordance_name="bridge_county_metro",
+        kind="reference_table",
+        source_file="src/babylon/reference/schema.py",
+        source_symbol="BridgeCountyMetro",
+        material_relation=(
+            "county -> OMB metropolitan statistical area (Amendment U) — the "
+            "concentrated labor/housing-market geography; partial by design "
+            "(non-metro counties carry no MSA), read by msa_adjunction() via "
+            "dim_metro_area.area_type == 'msa'."
+        ),
+        notes=(
+            "Table EMPTINESS is already governed nightly by data-catalog.yaml's "
+            "KEEP-disposition law (db_probe.py) — bridge_county_metro is "
+            "disposition: keep there."
+        ),
+    ),
+    LatticeRungRequirement(
+        rung="county_to_state",
+        concordance_name="FIPS-prefix derivation",
+        kind="derivation",
+        source_file=_LEVELS,
+        source_symbol="_state_parent_map",
+        material_relation=(
+            "county -> state (Amendment U, the juridical-repressive geography): "
+            "a pure 2-digit FIPS-prefix derivation, no external table. Declared "
+            "explicitly (rather than omitted) so the rung is not silently "
+            "invisible from the coverage map merely because it needs no data "
+            "file — the derivation function itself is the concordance."
+        ),
+    ),
+    LatticeRungRequirement(
+        rung="state_to_nation",
+        concordance_name="constant nation id",
+        kind="derivation",
+        source_file=_LEVELS,
+        source_symbol="_NATION_ID",
+        material_relation=(
+            "state -> nation (Amendment U): every state resolves to the "
+            "constant nation id 'US'. Declared explicitly for the same reason "
+            "as county_to_state — the constant itself is the concordance."
+        ),
     ),
 )

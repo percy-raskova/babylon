@@ -19,6 +19,18 @@ against the *file*, mirroring the seam Sensor-1 pattern.
 requirement needs is a *coverage probe*, shipped later against a Parquet subset.
 This module never touches the DB and never asserts the declared table names.
 
+**Amendment U lattice rungs** (#39 T8,
+:data:`~babylon.sentinels.coverage.registry.LATTICE_RUNG_REQUIREMENTS`) are a
+narrow exception to "never asserted": the county→CZ rung's backing concordance
+is a small, COMMITTED, in-repo CSV (never the reference DB), so
+:func:`check_lattice_rung_concordance` parses it directly and floors its
+key/value coverage — a rung whose concordance goes missing or truncated must
+fail LOUD naming the rung (the CZ-silent-fallback class: T7's web CZ framing
+used to fall back to county silently). The two reference-DB-backed rungs
+(hex→county, county→MSA) stay static-existence-only here, exactly like
+:data:`DATA_REQUIREMENTS`; their tables' EMPTINESS is already governed nightly
+by ``data-catalog.yaml``'s KEEP law (:mod:`babylon.sentinels.coverage.db_probe`).
+
 Run via the family runner; exit 0 = clean, 1 = incoherent requirement, 2 =
 infrastructure failure (source file missing/unparseable — itself a loud failure).
 """
@@ -27,6 +39,7 @@ from __future__ import annotations
 
 import argparse
 import ast
+import csv
 import sys
 from pathlib import Path
 
@@ -40,8 +53,10 @@ from babylon.sentinels.coverage.catalog import (
 from babylon.sentinels.coverage.registry import (
     DATA_REQUIREMENTS,
     GATE_ESTATES,
+    LATTICE_RUNG_REQUIREMENTS,
     DataRequirement,
     GateEstate,
+    LatticeRungRequirement,
 )
 from babylon.sentinels.report import finding
 
@@ -73,6 +88,41 @@ def module_class_names(path: Path) -> set[str]:
     return {node.name for node in tree.body if isinstance(node, ast.ClassDef)}
 
 
+def module_level_names(path: Path) -> set[str]:
+    """Statically collect module-level class/function/constant names in ``path``.
+
+    Mirrors :func:`module_class_names` but broader — a ``"derivation"``-kind
+    :class:`~babylon.sentinels.coverage.registry.LatticeRungRequirement` row
+    names a plain function (``_state_parent_map``) or a module-level constant
+    (``_NATION_ID``) as its concordance, not a class, so this helper collects
+    ``ClassDef``/``FunctionDef``/``AsyncFunctionDef`` names plus the targets of
+    module-level ``Assign``/``AnnAssign`` statements.
+
+    :param path: Source file to parse.
+    :returns: The set of top-level class/function/constant names.
+    :raises SentinelCheckError: If the file is missing or unparseable (an
+        infrastructure failure, never swallowed into a false pass).
+    """
+    try:
+        source = path.read_text(encoding="utf-8")
+    except OSError as exc:
+        raise SentinelCheckError(f"cannot read {path}: {exc}") from exc
+    try:
+        tree = ast.parse(source, filename=str(path))
+    except SyntaxError as exc:
+        raise SentinelCheckError(f"cannot parse {path}: {exc}") from exc
+
+    names: set[str] = set()
+    for node in tree.body:
+        if isinstance(node, (ast.ClassDef, ast.FunctionDef, ast.AsyncFunctionDef)):
+            names.add(node.name)
+        elif isinstance(node, ast.Assign):
+            names.update(target.id for target in node.targets if isinstance(target, ast.Name))
+        elif isinstance(node, ast.AnnAssign) and isinstance(node.target, ast.Name):
+            names.add(node.target.id)
+    return names
+
+
 def check_source_classes_exist(
     registry: tuple[DataRequirement, ...] = DATA_REQUIREMENTS,
 ) -> list[str]:
@@ -100,6 +150,120 @@ def check_source_classes_exist(
                 f"but {req.source_file} defines no such module-level class "
                 f"(renamed/moved/deleted? dependency orphaned)"
             )
+    return sorted(violations)
+
+
+#: One sentence explaining WHY a lattice-rung concordance going dark matters —
+#: shared by every finding :func:`check_lattice_rung_concordance` emits.
+_WHY_LATTICE_RUNG_DARK = (
+    "a lattice rung whose concordance silently degrades stops resolving real "
+    "aggregation keys and a consumer (e.g. T7's CZ web framing) falls back to "
+    "the next rung down without anyone noticing -- the CZ-silent-fallback "
+    "class this row family exists to prevent (Constitution III.11)."
+)
+
+
+def _committed_csv_violations(req: LatticeRungRequirement, path: Path) -> list[str]:
+    """Coverage violations for one ``"committed_csv"`` lattice-rung row.
+
+    Deliberately mirrors :func:`check_artifact_manifest`'s own "a missing
+    committed DATA artifact is a coverage VIOLATION, not an infrastructure
+    SentinelCheckError" posture — unlike a vanished *source module*
+    (:func:`check_source_classes_exist`'s contract), a vanished or truncated
+    committed CSV is exactly the drift this row exists to catch, so it must
+    reach the gate's ordinary violation-string path, never exit 2.
+
+    :param req: The ``committed_csv``-kind row to check.
+    :param path: Resolved absolute path to ``req.source_file``.
+    :returns: Violation strings (empty when the file exists, parses, declares
+        both columns, and each covers at least its declared floor).
+    """
+    if not path.is_file():
+        return [
+            f"lattice rung {req.rung!r} concordance {req.concordance_name!r} is "
+            f"MISSING ({req.source_file} does not exist) -- {_WHY_LATTICE_RUNG_DARK}"
+        ]
+
+    try:
+        with path.open(encoding="utf-8", newline="") as handle:
+            reader = csv.DictReader(handle)
+            fieldnames = reader.fieldnames or ()
+            if req.key_column not in fieldnames or req.value_column not in fieldnames:
+                return [
+                    f"lattice rung {req.rung!r} concordance {req.concordance_name!r} is "
+                    f"MALFORMED: header {list(fieldnames)} is missing declared column(s) "
+                    f"{req.key_column!r}/{req.value_column!r} -- {_WHY_LATTICE_RUNG_DARK}"
+                ]
+            keys: set[str] = set()
+            values: set[str] = set()
+            for row in reader:
+                keys.add(row[req.key_column])
+                values.add(row[req.value_column])
+    except (OSError, csv.Error) as exc:
+        raise SentinelCheckError(f"cannot read {path}: {exc}") from exc
+
+    violations: list[str] = []
+    if len(keys) < req.min_keys:
+        violations.append(
+            f"lattice rung {req.rung!r} concordance {req.concordance_name!r} covers only "
+            f"{len(keys)} distinct {req.key_column!r} keys, below the declared floor of "
+            f"{req.min_keys} -- {_WHY_LATTICE_RUNG_DARK}"
+        )
+    if len(values) < req.min_values:
+        violations.append(
+            f"lattice rung {req.rung!r} concordance {req.concordance_name!r} covers only "
+            f"{len(values)} distinct {req.value_column!r} values, below the declared floor "
+            f"of {req.min_values} -- {_WHY_LATTICE_RUNG_DARK}"
+        )
+    return violations
+
+
+def check_lattice_rung_concordance(
+    registry: tuple[LatticeRungRequirement, ...] = LATTICE_RUNG_REQUIREMENTS,
+) -> list[str]:
+    """Every Amendment U lattice rung's declared concordance is coherent and alive.
+
+    Dispatches per :attr:`~babylon.sentinels.coverage.registry.LatticeRungRequirement.kind`:
+
+    - ``"reference_table"``: the named SQLAlchemy model class must still exist
+      at its declared module path (mirrors :func:`check_source_classes_exist`
+      exactly; a missing/unparseable *source module* is an infrastructure
+      failure, :class:`SentinelCheckError`).
+    - ``"derivation"``: the named function/constant must still exist at
+      module level (:func:`module_level_names`; same infra-failure contract).
+    - ``"committed_csv"``: the artifact must exist, parse, declare both
+      columns, and cover at least its declared key/value floors — see
+      :func:`_committed_csv_violations` (a missing/truncated DATA artifact is
+      a coverage VIOLATION here, never an infrastructure failure — mirrors
+      :func:`check_artifact_manifest`).
+
+    :param registry: The requirements to check (defaults to the real
+        :data:`~babylon.sentinels.coverage.registry.LATTICE_RUNG_REQUIREMENTS`;
+        injectable so tests can supply a deliberately broken row).
+    :returns: Sorted violation strings (empty when every rung is coherent).
+    :raises SentinelCheckError: If a ``reference_table``/``derivation`` row's
+        source module is missing or unparseable (an infrastructure failure,
+        distinct from a coverage miss).
+    """
+    violations: list[str] = []
+    for req in registry:
+        path = _REPO_ROOT / req.source_file
+        if req.kind == "reference_table":
+            if req.source_symbol not in module_class_names(path):
+                violations.append(
+                    f"lattice rung {req.rung!r} names source class {req.source_symbol!r} "
+                    f"but {req.source_file} defines no such module-level class "
+                    f"(renamed/moved/deleted? {_WHY_LATTICE_RUNG_DARK})"
+                )
+        elif req.kind == "derivation":
+            if req.source_symbol not in module_level_names(path):
+                violations.append(
+                    f"lattice rung {req.rung!r} names derivation symbol "
+                    f"{req.source_symbol!r} but {req.source_file} defines no such "
+                    f"module-level name (renamed/moved/deleted? {_WHY_LATTICE_RUNG_DARK})"
+                )
+        else:
+            violations.extend(_committed_csv_violations(req, path))
     return sorted(violations)
 
 
@@ -409,6 +573,7 @@ _GATING_CHECKS: tuple[LabelledCheck, ...] = (
     ("catalog consumer/test path does not exist", check_catalog_paths_exist),
     ("catalog subset_policy drifted from make_reference_subset.TABLE", check_subset_policy_parity),
     ("data-artifacts manifest entry missing or hash-drifted", check_artifact_manifest),
+    ("lattice-rung concordance orphaned, missing, or truncated", check_lattice_rung_concordance),
 )
 
 #: Advisory tier: gate-blindness reports loudly but never gates, per the
@@ -429,7 +594,9 @@ def _summary(advisory_count: int) -> str:
         f"Data coverage (static): clean — {len(DATA_REQUIREMENTS)} reference-data "
         f"requirements coherent (source classes exist); "
         f"{len(load_catalog_tables())} catalog rows coherent (paths exist, "
-        "subset policies in parity)."
+        f"subset policies in parity); {len(LATTICE_RUNG_REQUIREMENTS)} Amendment U "
+        "lattice rungs coherent (concordances exist, alive, and covering their "
+        "declared floors)."
     )
     if advisory_count:
         summary += f" ({advisory_count} advisory findings above.)"

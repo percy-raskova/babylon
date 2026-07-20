@@ -1,21 +1,26 @@
-"""Pipeline-position tests for SubstrateSystem (T082 / T086 / US7).
+"""Pipeline-position tests for SubstrateSystem (T082 / T086 / US7; #39 T6).
 
 Verifies:
   - SubstrateSystem is inserted into the canonical _DEFAULT_SYSTEMS pipeline.
   - It runs between TerritorySystem (slot 2) and ProductionSystem (slot 3).
-  - Production reads substrate state from the *just-computed* graph attrs,
-    so a zeroed substrate value at start-of-tick propagates into Production
-    within the same tick.
+
+#39 T6 retired the old hex-grain pass-through MVP (``TestSubstrateZeroPropagation``,
+which asserted a zeroed ``raw_material_stock`` on a ``NodeType.HEX`` node
+propagates unchanged into Production the same tick) -- ``ProductionSystem``
+has never read ``raw_material_stock`` (grepped: zero references), so that
+"propagation" property had no real behavioral content once the pass-through
+became real depletion math. The real same-tick-ordering property SubstrateSystem
+now has -- it reads last tick's ``extraction_intensity`` (written by
+Production, which runs AFTER Substrate) -- is covered by
+``tests/unit/engine/systems/test_substrate.py::TestOneTickLag``.
 """
 
 from __future__ import annotations
 
 import pytest
 
-from babylon.engine.context import TickContext
 from babylon.engine.simulation_engine import _DEFAULT_SYSTEMS
 from babylon.engine.systems.substrate import SubstrateSystem
-from babylon.topology.graph import BabylonGraph
 
 
 @pytest.mark.cross_scale
@@ -69,50 +74,3 @@ class TestPipelineSubstratePosition:
             "Production must sit immediately after Substrate; "
             f"got gap of {production_idx - substrate_idx}"
         )
-
-
-@pytest.mark.cross_scale
-class TestSubstrateZeroPropagation:
-    """T086: zeroed substrate at start-of-tick affects Production same tick.
-
-    The behavioural property is: if a hex enters the tick with
-    raw_material_stock == 0, SubstrateSystem leaves it at 0, and
-    ProductionSystem sees 0 (not a stale non-zero from a pre-Substrate
-    snapshot). The pass-through MVP SubstrateSystem implementation
-    preserves this property by construction — it does not regenerate
-    stocks. The real assertion is that the engine never holds a
-    pre-Substrate snapshot that Production reads from.
-    """
-
-    def test_substrate_pass_through_preserves_zero(self) -> None:
-        """A zero raw_material_stock entering Substrate stays zero leaving."""
-
-        graph = BabylonGraph()
-        graph.add_node(
-            "872d34a89ffffff",
-            _node_type="hex",
-            raw_material_stock=0.0,
-            energy_stock=10.0,
-            biocapacity_stock=20.0,
-        )
-        SubstrateSystem().step(graph, services=object(), context=TickContext())  # type: ignore[arg-type]
-        assert graph.nodes["872d34a89ffffff"]["raw_material_stock"] == 0.0
-
-    def test_substrate_fills_missing_stock_attrs(self) -> None:
-        """FR-050: every hex carries all three substrate stocks after Substrate."""
-
-        graph = BabylonGraph()
-        graph.add_node("872d34a89ffffff", _node_type="hex")
-        SubstrateSystem().step(graph, services=object(), context=TickContext())  # type: ignore[arg-type]
-        attrs = graph.nodes["872d34a89ffffff"]
-        for key in ("raw_material_stock", "energy_stock", "biocapacity_stock"):
-            assert key in attrs
-            assert attrs[key] == 0.0
-
-    def test_substrate_skips_non_hex_nodes(self) -> None:
-        """External nodes and other types are NOT touched by SubstrateSystem."""
-
-        graph = BabylonGraph()
-        graph.add_node("canada", _node_type="external")
-        SubstrateSystem().step(graph, services=object(), context=TickContext())  # type: ignore[arg-type]
-        assert "raw_material_stock" not in graph.nodes["canada"]

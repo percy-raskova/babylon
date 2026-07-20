@@ -1,26 +1,101 @@
-"""SubstrateSystem: physical-stock tick at pipeline slot 2.5 (Spec 062, US7).
+"""SubstrateSystem: county-grain raw-material stock dynamics (#39 T6).
 
-Implements the System protocol. Runs after :class:`TerritorySystem` (slot 2)
-and before :class:`ProductionSystem` (slot 3), so production consumes the
-just-computed substrate values within the same tick.
+Rewrite of the MVP pass-through stub (Spec 062 US7): the old ``step()``
+iterated ``NodeType.HEX`` nodes, but no production code path ever stamps a
+``hex`` node onto the engine graph (confirmed dead code --
+``sentinels/vocabulary/registry.py``'s ``UNSTAMPED_QUERY_ALLOWLIST`` "hex"
+entry), so it was a no-op every tick. This system now runs real depletion
+dynamics on county-grain ``Territory`` nodes and is the FIRST engine
+consumer of :class:`~babylon.domain.dialectics.instances.scale.ScaleAdjunction`.
 
-Per FR-050/FR-051, the substrate system tracks physical stocks (raw
-materials, energy, biocapacity) that flow into Vol I production. For the
-MVP, the system is a pure pass-through that records substrate snapshots
-into the per-tick context so the auditor can observe them. Concrete
-stock-depletion / regeneration logic lands with the downstream economics
-spec that owns physical-substrate dynamics.
+**Scope: raw_material_stock ONLY.** No ``energy_stock`` or
+``biocapacity_stock`` dynamics exist here -- no reference-data source backs
+either (USGS Mineral Commodity Summaries excludes fuels by design, and no
+biocapacity/land-use table exists in the reference DB; both remain the
+documented placeholders on ``TerritoryDefines.initial_energy_per_hex`` /
+``initial_biocapacity_per_hex``, awaiting a future data-acquisition spec).
+
+**Seeding is NOT this system's job.** ``Territory.raw_material_stock`` is
+seeded once, at USScenario build time, from the committed
+``us_county_territories.json`` artifact's ``raw_material_value_millions``
+(``tools/generate_us_county_territories.py``, state
+``fact_state_minerals.value_millions`` allocated to counties by
+``dim_county_geometry.area_sq_km`` share -- Program 22 Wave 1). No System
+anywhere does a per-tick reference-DB read; this one doesn't either --
+``step()`` does ONLY per-tick math on the already-present graph attribute.
+A territory with ``raw_material_stock is None`` (unseeded: no
+``fact_state_minerals`` row for its state, no geometry row, or an abstract
+non-county territory) is skipped forever -- never a fabricated default.
+
+**Does NOT touch ``Territory.biocapacity``/``MetabolismSystem``.** Those are
+the ALREADY-LIVE metabolic-rift loop (``engine/systems/metabolism.py``,
+@13.0) -- a distinct ecological-limits index, not this dollar-denominated
+mineral-value stock. ``raw_material_stock`` dynamics are a genuinely
+PARALLEL application of the same ``ΔB = R - E·η`` formula
+(:func:`~babylon.formulas.metabolic_rift.calculate_biocapacity_delta`), with
+its OWN :class:`~babylon.config.defines.substrate.SubstrateDefines`
+coefficients -- this module never imports or mutates ``metabolism.py``.
+
+**One-tick lag (intended, by pipeline position):** this system reads each
+territory's ``extraction_intensity`` as it stands at the START of this
+tick -- i.e. whatever :class:`~babylon.engine.systems.production.
+ProductionSystem` (@3.0) wrote during the PREVIOUS tick, since Substrate
+(@2.5) always runs before Production within a single tick.
+
+**Lattice binding:** on the first tick with ≥1 eligible territory (never,
+for the 5 canonical qa:regression scenarios -- none of them carry
+``county_fips``, so this system no-ops there BY CONSTRUCTION, not a
+defensive guard), the system builds four :class:`ScaleAdjunction` rungs over
+the eligible county set and caches them for the life of the instance (built
+once, not per tick -- the county universe is fixed at scenario-build time).
+Every tick thereafter it publishes EXTENSIVE (summed, never
+``aggregate_intensive`` -- a stock is summed, not averaged) aggregates of
+the post-depletion ``raw_material_stock`` into ``context.persistent_data``,
+mirroring :class:`~babylon.engine.systems.sovereignty.SovereigntySystem`'s
+mechanism:
+
+- ``"substrate.cz"``, ``"substrate.msa"``, ``"substrate.state"``,
+  ``"substrate.nation"`` -- ``dict[str, float]`` parent id -> summed stock.
+- ``"substrate.cz_excluded"`` -- the sorted list of eligible counties with
+  no commuting-zone mapping (D-T6-5's honesty companion; see below).
+
+**The CZ rung is deliberately scoped, not shared with state/nation.**
+:func:`~babylon.domain.dialectics.instances.levels.cz_adjunction` covers
+every county except 19 post-1990 AK/CT geography changes (its own
+docstring names them) and raises a loud ``KeyError`` for any of the 19 --
+so this system pre-filters them out of the CZ rung ONLY, logging the
+exclusion once at lattice-build time (D-T6-5: "scope, don't catch"). The
+MSA rung is partial by design (uncovered counties silently absent, no
+exclusion needed) and the state/nation rungs are total (every FIPS resolves
+to a 2-digit state prefix and to ``"US"``) -- both are built over the FULL
+eligible county set, unlike CZ.
+
+**``cz_adjunction``/``msa_adjunction`` are constructor-injectable** (default:
+the real functions). ``msa_adjunction()`` opens a reference-DB session
+(``levels.py``) -- this is the one place SubstrateSystem's lattice build
+touches the DB, ONCE per instance lifetime (not per tick, not per county;
+never at all for the 5 canonical scenarios). Unit tests inject a synthetic
+adjunction-returning callable so the aggregation logic is exercised without
+a DB dependency, keeping them in the fast tier.
 
 See Also:
-    ``specs/062-cross-scale-integration/spec.md`` FR-050/FR-051/FR-052.
-    :mod:`babylon.kernel.system_protocol`: System Protocol.
+    ``docs/superpowers/plans/2026-07-19-hex-scale-county-keying.md`` (#39 T6).
+    :mod:`babylon.domain.dialectics.instances.scale`: ``ScaleAdjunction``.
+    :mod:`babylon.formulas.metabolic_rift`: the shared formula family.
 """
 
 from __future__ import annotations
 
+import contextlib
 import logging
-from typing import TYPE_CHECKING, ClassVar
+from collections.abc import Callable
+from dataclasses import dataclass
+from typing import TYPE_CHECKING, ClassVar, Final
 
+from babylon.domain.dialectics.instances.levels import cz_adjunction, msa_adjunction
+from babylon.domain.dialectics.instances.scale import ScaleAdjunction
+from babylon.domain.economics.tick.graph_bridge import resolve_county_identity
+from babylon.formulas.metabolic_rift import calculate_biocapacity_delta
 from babylon.kernel.system_base import SystemBase
 from babylon.kernel.tick_partition import TickPartition
 from babylon.models.enums import NodeType
@@ -29,23 +104,44 @@ if TYPE_CHECKING:
     from babylon.kernel.graph_protocol import GraphProtocol
     from babylon.kernel.services import ServicesProtocol
     from babylon.kernel.system_protocol import ContextType
+    from babylon.models.graph import GraphNode
 
 logger = logging.getLogger(__name__)
 
-_STOCK_KEYS = ("raw_material_stock", "energy_stock", "biocapacity_stock")
+#: ``context.persistent_data`` keys this system publishes (SovereigntySystem's
+#: dotted-namespace convention). Public for downstream consumers (#39 T7).
+SUBSTRATE_CZ_KEY: Final[str] = "substrate.cz"
+SUBSTRATE_MSA_KEY: Final[str] = "substrate.msa"
+SUBSTRATE_STATE_KEY: Final[str] = "substrate.state"
+SUBSTRATE_NATION_KEY: Final[str] = "substrate.nation"
+SUBSTRATE_CZ_EXCLUDED_KEY: Final[str] = "substrate.cz_excluded"
+
+#: The constant every county maps to at the nation rung.
+_NATION_ID: Final[str] = "US"
+
+
+@dataclass(frozen=True)
+class _SubstrateRungs:
+    """The four cached scale-lattice rungs + the CZ exclusion list."""
+
+    cz: ScaleAdjunction
+    msa: ScaleAdjunction
+    state: ScaleAdjunction
+    nation: ScaleAdjunction
+    cz_excluded: tuple[str, ...]
 
 
 class SubstrateSystem(SystemBase):
-    """Pipeline slot 2.5: substrate stock update before Production.
+    """Pipeline slot 2.5: raw-material stock depletion + scale-lattice binding.
 
-    The system reads each hex's pre-tick substrate stocks
-    (``raw_material_stock``, ``energy_stock``, ``biocapacity_stock``) from
-    the graph, applies any depletion/regeneration this tick, and writes
-    the post-tick values back to the graph node attributes. The values
-    are then visible to :class:`ProductionSystem` in the same tick.
+    Reads: each eligible ``Territory`` node's ``raw_material_stock``
+    (pre-tick) and ``extraction_intensity`` (last tick's ProductionSystem
+    output).
 
-    Production hex-locality: this system does NOT cross hex boundaries.
-    All depletion/regeneration is in-place per hex.
+    Writes: the post-depletion ``raw_material_stock`` back onto each
+    eligible node, clamped to ``[0, initial_seed_value]`` (the initial value
+    is the regeneration ceiling -- see ``__init__``); four extensive
+    aggregates into ``context.persistent_data`` (see module docstring).
     """
 
     partition: ClassVar[TickPartition] = TickPartition.MATERIAL_BASE
@@ -53,36 +149,156 @@ class SubstrateSystem(SystemBase):
 
     name: ClassVar[str] = "substrate"
 
+    def __init__(
+        self,
+        *,
+        cz_adjunction_fn: Callable[[], ScaleAdjunction] = cz_adjunction,
+        msa_adjunction_fn: Callable[[], ScaleAdjunction] = msa_adjunction,
+    ) -> None:
+        """Construct with injectable lattice-source callables.
+
+        Args:
+            cz_adjunction_fn: Returns the full county -> CZ adjunction
+                (default: the real, reference-DB-free
+                :func:`~babylon.domain.dialectics.instances.levels.cz_adjunction`,
+                which reads a committed CSV).
+            msa_adjunction_fn: Returns the full county -> MSA adjunction
+                (default: the real
+                :func:`~babylon.domain.dialectics.instances.levels.msa_adjunction`,
+                which opens a reference-DB session). Tests inject a
+                synthetic callable to avoid the DB dependency.
+        """
+        self._cz_adjunction_fn = cz_adjunction_fn
+        self._msa_adjunction_fn = msa_adjunction_fn
+        self._rungs: _SubstrateRungs | None = None
+        #: Territory node id -> the FIRST raw_material_stock value this
+        #: system ever observed for it (the regeneration ceiling). Without
+        #: this, "current == max" on every call would force
+        #: calculate_biocapacity_delta's ceiling guard to zero out
+        #: regeneration on EVERY tick, making SubstrateDefines.
+        #: regeneration_rate permanently inert regardless of its value --
+        #: exactly the "correct-but-inert coefficient" class this codebase
+        #: sentinels against. The initial seed value (never a graph field --
+        #: no max_raw_material_stock was added, keeping D-T6-4 minimal) is
+        #: the honest, non-fabricated ceiling: a stock cannot regenerate
+        #: past what the reference DB originally attested for that county.
+        self._initial_stock: dict[str, float] = {}
+
     def step(
         self,
         graph: GraphProtocol,
         services: ServicesProtocol,
         context: ContextType,
     ) -> None:
-        """Update substrate stocks for every hex node.
+        """Deplete each eligible territory's raw_material_stock, then publish
+        scale-lattice aggregates.
 
-        For the MVP, the stocks are passed through unchanged. The system
-        slot itself is the load-bearing contribution: by occupying
-        position 2.5, it guarantees Production reads post-Substrate
-        values rather than pre-Substrate snapshots (US7 acceptance test).
+        No-ops (writes nothing, publishes nothing) when zero territories are
+        eligible -- the case for all 5 canonical qa:regression scenarios
+        (they carry no ``county_fips``) and for any scenario whose
+        territories are all unseeded (``raw_material_stock is None``).
         """
-        _ = services  # Reserved for future depletion/regeneration coefficients.
-        _ = context  # Tick/year metadata available via ``context["tick"]``.
-
         protocol = self._wrap_graph(graph)
 
-        # Visit every hex node. We do NOT touch external nodes.
-        hex_count = 0
-        for node in list(protocol.query_nodes(node_type=NodeType.HEX)):
-            hex_count += 1
-            # Seed missing stocks with 0.0 (setdefault semantics). Concrete
-            # dynamics (depletion rate × consumption, regeneration rate ×
-            # biocapacity) land with the downstream physical-substrate spec.
-            missing = {key: 0.0 for key in _STOCK_KEYS if key not in node.attributes}
-            if missing:
-                protocol.update_node(node.id, **missing)
+        eligible: list[GraphNode] = sorted(
+            (
+                node
+                for node in protocol.query_nodes(node_type=NodeType.TERRITORY)
+                if resolve_county_identity(node) is not None
+                and node.attributes.get("raw_material_stock") is not None
+            ),
+            key=lambda node: node.id,
+        )
+        if not eligible:
+            return
 
-        logger.debug("SubstrateSystem touched %d hex nodes", hex_count)
+        defines = services.defines.substrate
+        stock_by_county: dict[str, float] = {}
+        for node in eligible:
+            county_fips = resolve_county_identity(node)
+            if county_fips is None:  # pragma: no cover -- filtered above
+                continue
+            current_stock = float(self._read(node, "raw_material_stock", required=True))
+            ceiling = self._initial_stock.setdefault(node.id, current_stock)
+            extraction_intensity = float(node.attributes.get("extraction_intensity", 0.0))
+            delta = calculate_biocapacity_delta(
+                regeneration_rate=defines.regeneration_rate,
+                max_biocapacity=ceiling,
+                extraction_intensity=extraction_intensity * defines.depletion_scale,
+                current_biocapacity=current_stock,
+                entropy_factor=defines.entropy_factor,
+            )
+            new_stock = self._write_clamped(
+                protocol,
+                node.id,
+                "raw_material_stock",
+                current_stock + delta,
+                lo=0.0,
+                hi=ceiling,
+            )
+            stock_by_county[county_fips] = new_stock
+
+        rungs = self._rungs
+        if rungs is None:
+            rungs = self._build_rungs(sorted(stock_by_county))
+            self._rungs = rungs
+
+        persistent = context.persistent_data
+        persistent[SUBSTRATE_CZ_KEY] = rungs.cz.aggregate(stock_by_county)
+        persistent[SUBSTRATE_MSA_KEY] = rungs.msa.aggregate(stock_by_county)
+        persistent[SUBSTRATE_STATE_KEY] = rungs.state.aggregate(stock_by_county)
+        persistent[SUBSTRATE_NATION_KEY] = rungs.nation.aggregate(stock_by_county)
+        persistent[SUBSTRATE_CZ_EXCLUDED_KEY] = list(rungs.cz_excluded)
+
+        with contextlib.suppress(AttributeError):
+            context.persistent_data = persistent
+
+    def _build_rungs(self, all_counties: list[str]) -> _SubstrateRungs:
+        """Build the four scale-lattice rungs (called once, not per tick).
+
+        Args:
+            all_counties: Sorted, deduplicated county FIPS present among
+                this tick's eligible territories -- the T6-scoped county
+                universe (never the nationwide universe; a smaller test
+                scenario gets a smaller, internally-consistent lattice).
+
+        Returns:
+            The four rungs + the CZ exclusion list, for the caller to cache.
+        """
+        full_cz = self._cz_adjunction_fn().mapping
+        cz_covered = [fips for fips in all_counties if fips in full_cz]
+        cz_excluded = sorted(set(all_counties) - set(cz_covered))
+        if cz_excluded:
+            logger.warning(
+                "SubstrateSystem: %d eligible counties excluded from the CZ "
+                "substrate aggregate (no commuting-zone mapping): %s",
+                len(cz_excluded),
+                cz_excluded,
+            )
+        cz_rung = ScaleAdjunction.uniform({fips: full_cz[fips] for fips in cz_covered})
+
+        full_msa = self._msa_adjunction_fn().mapping
+        msa_rung = ScaleAdjunction.uniform(
+            {fips: full_msa[fips] for fips in all_counties if fips in full_msa}
+        )
+
+        state_rung = ScaleAdjunction.uniform({fips: fips[:2] for fips in all_counties})
+        nation_rung = ScaleAdjunction.uniform(dict.fromkeys(all_counties, _NATION_ID))
+
+        return _SubstrateRungs(
+            cz=cz_rung,
+            msa=msa_rung,
+            state=state_rung,
+            nation=nation_rung,
+            cz_excluded=tuple(cz_excluded),
+        )
 
 
-__all__ = ["SubstrateSystem"]
+__all__ = [
+    "SUBSTRATE_CZ_EXCLUDED_KEY",
+    "SUBSTRATE_CZ_KEY",
+    "SUBSTRATE_MSA_KEY",
+    "SUBSTRATE_NATION_KEY",
+    "SUBSTRATE_STATE_KEY",
+    "SubstrateSystem",
+]

@@ -8,7 +8,13 @@ coverage-truth probe without dragging in the whole harness.
 
 from __future__ import annotations
 
+import sys
+from pathlib import Path
 from typing import Any, Final
+
+# Add src and tools to path for imports
+sys.path.insert(0, str(Path(__file__).parent.parent / "src"))
+sys.path.insert(0, str(Path(__file__).parent))
 
 from shared import inject_parameter
 

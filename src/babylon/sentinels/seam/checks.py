@@ -17,9 +17,12 @@ dev fast-gate (``mise run check`` -> ``check:seams``).
 Checks come in two tiers. **Gating** checks red the fast-gate (exit 1):
 ``check_map_metrics`` (registry MAP-scope keys vs ``map_contract.py``'s
 ``MAP_METRIC_PROPERTIES``), ``check_tick_payloads_exist`` (every registered
-``tick_*`` payload exists in the engine write-set), and
+``tick_*`` payload exists in the engine write-set),
 ``check_severity_vocabulary`` (every ``_EVENT_SEVERITY`` key is a real
-``EventType`` value). **Advisory** checks print loudly but do NOT gate — they
+``EventType`` value), and ``check_fog_field_mirror`` (Sensor 4: the fog political
+field vocabulary — ``filter.py``'s ``POLITICAL_FIELDS``/``ORG_INTERNAL_STATE_FIELDS``
+vs ``fogFields.ts``'s ``FOG_FIELD_LABELS`` — agrees exactly, both directions).
+**Advisory** checks print loudly but do NOT gate — they
 surface pre-existing drift awaiting a scoped remediation before promotion:
 ``check_tick_coverage``, ``check_narrator_vocabulary``, ``check_event_coverage``.
 
@@ -44,6 +47,7 @@ from babylon.sentinels._ast import (
 )
 from babylon.sentinels.base import LabelledCheck, SentinelCheckError, run_sensor
 from babylon.sentinels.seam.bridge import _returned_dict_keys, check_bridge_serialization
+from babylon.sentinels.seam.fog_provenance import check_fog_field_mirror
 from babylon.sentinels.seam.provenance import check_admin_feature_emission
 from babylon.sentinels.seam.registry import SEAM_REGISTRY
 from babylon.sentinels.seam.types import SeamEntry, SeamScope
@@ -316,6 +320,10 @@ _GATING_CHECKS: tuple[LabelledCheck, ...] = (
     (
         "economy_dashboard key not reconciled with get_economy_dashboard (G4 Task C)",
         check_economy_dashboard_keys,
+    ),
+    (
+        "fog political field-list drift between filter.py and fogFields.ts (Sensor 4)",
+        check_fog_field_mirror,
     ),
 )
 

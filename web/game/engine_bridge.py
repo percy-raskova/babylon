@@ -2230,6 +2230,45 @@ def _social_class_inspector_fields(
     return payload
 
 
+_CZ_LOOKUP_CACHE: dict[str, str] | None = None
+"""Process-level cache of ``county_fips -> cz_id`` (Amendment U / #39 T7).
+
+Unlike :data:`_TENSOR_REGISTRY_CACHE`/:data:`_CAPITAL_CALCULATOR_CACHE` above
+(keyed per scenario's FIPS-set), this is ONE static crosswalk for the whole
+process — the committed ``bridge_county_cz.csv`` never varies by session — so
+a single lazily-built dict suffices; no FIFO bound needed.
+"""
+
+
+def _county_to_cz_lookup() -> dict[str, str]:
+    """Return the process-cached ``county_fips -> cz_id`` mapping (#39 T7).
+
+    Reuses T3's committed loader (:func:`babylon.domain.dialectics.instances.
+    levels.cz_adjunction`, backed by ``bridge_county_cz.csv`` + the 3
+    vintage-FIPS bridges) rather than re-parsing the CSV in the web layer.
+    Reads :attr:`~babylon.domain.dialectics.instances.scale.ScaleAdjunction.
+    mapping` directly — the RAW total-lookup ``dict[str, str]`` — and never
+    calls ``.allocate()``/``.aggregate()``, both of which raise ``KeyError``
+    for a county missing from the other side of the map. The ``/map/`` zoom
+    path must never 500: a county absent from the crosswalk (the 19 AK/CT
+    counties the 1990 ERS delineation predates — see :func:`cz_adjunction`'s
+    docstring) simply has no entry, and callers use ``.get(county_fips)``
+    and treat ``None`` as "no CZ for this county" — the same null-bucket
+    handling ``_aggregate_hex_features`` already applies to the ``bea``/
+    ``msa`` zooms' grouping columns.
+
+    Returns:
+        The cached ``{county_fips: cz_id}`` dict (3144 entries: 3141 in the
+        crosswalk + 3 vintage-bridged modern FIPS).
+    """
+    global _CZ_LOOKUP_CACHE  # noqa: PLW0603
+    if _CZ_LOOKUP_CACHE is None:
+        from babylon.domain.dialectics.instances.levels import cz_adjunction
+
+        _CZ_LOOKUP_CACHE = cz_adjunction().mapping
+    return _CZ_LOOKUP_CACHE
+
+
 class EngineBridge:
     """Translates between Django request/response and simulation engine.
 
@@ -2454,7 +2493,11 @@ class EngineBridge:
             session_id: The game session UUID.
             tick: The tick to query data for. If None, uses current tick.
             layer: Optional layer filter (unused here, filtering done in API).
-            zoom: Spatial aggregation level (state/bea/msa/county/hex).
+            zoom: Spatial aggregation level (state/bea/msa/county/cz/hex).
+                #39 T7: "cz" (commuting zone) is real, backed by
+                :func:`_county_to_cz_lookup` — see
+                :meth:`_aggregate_hex_features`'s docstring for the 19
+                CZ-less-county (AK/CT) null-bucket handling.
 
         Returns:
             GeoJSON dict matching the HexMap frontend contract.
@@ -2697,6 +2740,25 @@ class EngineBridge:
         already had partial-coverage handling (a hex simply not reporting
         the field) — a masked hex now takes that SAME "didn't report it"
         path, no new accumulator needed for those three.
+
+        Amendment U / #39 T7: ``zoom="cz"`` groups by commuting zone, backed
+        by real data (:func:`_county_to_cz_lookup`, T3's committed
+        ``bridge_county_cz.csv`` crosswalk) instead of silently falling
+        through ``group_key_map.get(zoom, "county_fips")`` to county
+        grouping (the pre-T7 behavior). Unlike ``state_fips``/``county_fips``,
+        no ``HexState`` column stores ``cz_id`` — it is derived from each
+        state's real ``county_fips`` on read, per group, rather than read off
+        a stored attribute. The 19 AK/CT counties the 1990 ERS delineation
+        cannot resolve (CT's 2022 planning-region switch, AK's borough/
+        census-area reorganizations — see
+        :func:`~babylon.domain.dialectics.instances.levels.cz_adjunction`'s
+        docstring for the exhaustive list) are simply ABSENT from the
+        crosswalk; such a county's derived key is ``None``, which folds into
+        the SAME literal ``"unknown"`` null-bucket group this function
+        already uses for ``bea``/``msa`` zoom (whose ``HexState`` columns are
+        never populated for any territory today, so EVERY county already
+        takes this path at those two zooms) — never a ``KeyError``, never an
+        HTTP 500, never a silent merge into a wrong group.
         """
         from collections import defaultdict
 
@@ -2717,12 +2779,15 @@ class EngineBridge:
             "price_divergence",
         )
 
-        # Map zoom level to the grouping key
+        # Map zoom level to the grouping key. "cz" has no backing HexState
+        # column (unlike the other four) — see the per-state derivation
+        # below and this docstring's Amendment U / #39 T7 paragraph.
         group_key_map = {
             "state": "state_fips",
             "bea": "bea_ea_code",
             "msa": "msa_code",
             "county": "county_fips",
+            "cz": "cz_id",
         }
         group_attr = group_key_map.get(zoom, "county_fips")
 
@@ -2802,7 +2867,17 @@ class EngineBridge:
         vision_state_pop: dict[str, dict[str, float]] = defaultdict(lambda: defaultdict(float))
 
         for state in hex_states:
-            key = getattr(state, group_attr, None)
+            if group_attr == "cz_id":
+                # #39 T7: no HexState column stores cz_id — derive it from
+                # this state's real county_fips via T3's cached crosswalk
+                # (None for one of the 19 AK/CT counties absent from it,
+                # which falls into the "unknown" null-bucket below, same as
+                # every county already does at the never-populated bea/msa
+                # zooms).
+                county_fips = getattr(state, "county_fips", None)
+                key = _county_to_cz_lookup().get(county_fips) if county_fips is not None else None
+            else:
+                key = getattr(state, group_attr, None)
             if key is None:
                 key = "unknown"
             acc = groups[key]

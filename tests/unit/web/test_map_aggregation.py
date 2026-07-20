@@ -83,9 +83,99 @@ class TestAggregateHexFeaturesDecimalSafety:
         assert isinstance(props["profit_rate"], float)
         assert props["profit_rate"] == pytest.approx(0.2)
 
-    @pytest.mark.parametrize("zoom", ["county", "state", "bea", "msa"])
+    @pytest.mark.parametrize("zoom", ["county", "state", "bea", "msa", "cz"])
     def test_all_aggregated_zooms_survive_decimal(self, zoom: str) -> None:
         bridge = EngineBridge(MagicMock())
         features = bridge._aggregate_hex_features([_hex()], zoom)
         assert features
         assert isinstance(features[0]["properties"]["imperial_rent"], float)
+
+
+class TestCzZoomAggregation:
+    """#39 T7: ``zoom="cz"`` groups by real commuting zone (T3's committed
+    ``bridge_county_cz.csv`` crosswalk via ``_county_to_cz_lookup``), not the
+    pre-T7 silent fallback to ``county_fips`` grouping. Fast tier — the
+    committed CSV needs no DB, mirrored fixture approach to
+    :class:`TestAggregateHexFeaturesDecimalSafety` above.
+    """
+
+    def test_cz_zoom_merges_counties_sharing_a_commuting_zone(self) -> None:
+        """Michigan spot-check: Wayne/Oakland/Macomb (26163/26125/26099) all
+        sit in commuting zone 11600 (Detroit) — three distinct counties
+        collapse into one CZ group."""
+        bridge = EngineBridge(MagicMock())
+        rows = [
+            _hex(h3_index="862ab2c8fffff01", county_fips="26163"),  # Wayne
+            _hex(h3_index="862ab2c8fffff02", county_fips="26125"),  # Oakland
+            _hex(h3_index="862ab2c8fffff03", county_fips="26099"),  # Macomb
+        ]
+
+        features = bridge._aggregate_hex_features(rows, "cz")
+
+        assert len(features) == 1
+        props = features[0]["properties"]
+        assert props["group_key"] == "11600"
+        assert props["zoom"] == "cz"
+        assert sorted(props["member_h3"]) == sorted(r.h3_index for r in rows)
+
+    def test_cz_zoom_keys_are_cz_ids_not_county_fips(self) -> None:
+        """The silent fallback is dead: cz-zoom group keys must be real CZ
+        ids, never the raw county_fips the pre-T7 bug silently grouped by."""
+        bridge = EngineBridge(MagicMock())
+        rows = [
+            _hex(h3_index="862ab2c8fffff01", county_fips="26163"),
+            _hex(h3_index="862ab2c8fffff02", county_fips="26099"),
+        ]
+
+        cz_features = bridge._aggregate_hex_features(rows, "cz")
+        county_features = bridge._aggregate_hex_features(rows, "county")
+
+        cz_keys = {f["properties"]["group_key"] for f in cz_features}
+        county_keys = {f["properties"]["group_key"] for f in county_features}
+        assert cz_keys == {"11600"}
+        assert county_keys == {"26163", "26099"}
+        assert cz_keys != county_keys
+
+    def test_cz_less_county_falls_into_the_unknown_bucket(self) -> None:
+        """One of the 19 AK/CT counties absent from the 1990 ERS crosswalk
+        (09110, a 2022 Connecticut planning region — see
+        ``cz_adjunction()``'s docstring) must NOT 500 or silently merge into
+        a wrong CZ group. It follows the SAME "unknown" null-bucket every
+        county already takes at the never-populated bea/msa zooms (the
+        established partial-coverage precedent this mirrors) — read
+        directly off ``_aggregate_hex_features``'s
+        ``key = getattr(state, group_attr, None); if key is None: key =
+        "unknown"`` handling."""
+        bridge = EngineBridge(MagicMock())
+        rows = [_hex(h3_index="862ab2c8fffff04", county_fips="09110")]
+
+        features = bridge._aggregate_hex_features(rows, "cz")
+
+        assert len(features) == 1
+        assert features[0]["properties"]["group_key"] == "unknown"
+
+    def test_vintage_bridged_county_lands_in_its_bridged_cz(self) -> None:
+        """12086 (Miami-Dade, renamed from Dade County/12025 in 1997) has no
+        row of its own in the 1990 crosswalk — T3's
+        ``_FIPS_VINTAGE_BRIDGES`` binds it to 12025's CZ (07000)."""
+        bridge = EngineBridge(MagicMock())
+        rows = [_hex(h3_index="862ab2c8fffff05", county_fips="12086")]
+
+        features = bridge._aggregate_hex_features(rows, "cz")
+
+        assert len(features) == 1
+        assert features[0]["properties"]["group_key"] == "07000"
+
+    def test_unknown_zoom_value_still_falls_back_to_county(self) -> None:
+        """Pre-existing behavior pinned: a zoom string with no
+        ``group_key_map`` entry (typo, or a not-yet-supported level) still
+        defaults to ``county_fips`` grouping — unaffected by the new "cz"
+        entry."""
+        bridge = EngineBridge(MagicMock())
+        rows = [_hex(h3_index="862ab2c8fffff06", county_fips="26163")]
+
+        features = bridge._aggregate_hex_features(rows, "galaxy")
+
+        assert len(features) == 1
+        assert features[0]["properties"]["group_key"] == "26163"
+        assert features[0]["properties"]["zoom"] == "galaxy"

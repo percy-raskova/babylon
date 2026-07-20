@@ -508,7 +508,9 @@ def game_map(request: Request, game_id: str) -> JsonResponse:
         tick (int, optional): Tick to query. Default: current tick.
         lens (str, optional): Metric to overlay.
         zoom (str, optional): Spatial aggregation level.
-            One of: state, bea, msa, county, hex. Default: county.
+            One of: state, bea, bea_ea, msa, county, cz, hex. Default: county.
+            #39 T7: "cz" (commuting zone) is real, backed by a committed
+            county->CZ crosswalk (see engine_bridge._county_to_cz_lookup).
     """
     session = _get_session_or_none(game_id, request.user.id)
     if session is None:

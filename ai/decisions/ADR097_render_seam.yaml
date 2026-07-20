@@ -1,5 +1,5 @@
 ADR097_render_seam:
-  status: "proposed"
+  status: "accepted"
   date: "2026-07-20"
   title: "The render seam under Amendment W: glyph canon (Tier 0) as the design target rather than the fallback (the entire fleet including GNOME Terminal/VTE and Windows Terminal has no pixel protocol -- everything the game communicates is communicated in character cells), the information-parity rule (Tier 1 pixel plates via textual-image+pillow re-render Tier-0 information and never carry unique content), Tier 2 SVG export through Textual's native mechanism under the ratified III.13 determinism law, babylon doctor probe-once capability semantics (render_tier written to config, no mid-session re-probe, --render override, declared degradation), and the 256-color degraded palette as a DESIGN_BIBLE 9b row -- queue items 15 and 10"
   context: |

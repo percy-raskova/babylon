@@ -1,5 +1,5 @@
 ADR095_packaging_train:
-  status: "proposed"
+  status: "accepted"
   date: "2026-07-20"
   title: "The Packaging Train opening moves: the babylon CLI entry-point contract ([project.scripts] babylon = babylon.cli:app with subcommands play/doctor/login/telemetry/self-update/uninstall), the dependency extras split (server extra absorbs ansible-dev-tools, rstcheck, doc8, boto3, Django, DRF, django-cors-headers, gunicorn) plus deletion of the stdlib-shadowing uuid ^1.30 relic, and the single-lock fork ruled U -- uv adopted at the packaging train with uv2nix consuming the same lock, Poetry-two-locks (K) recorded as the fallback -- queue items 4, 5, 8; untouched by Amendments V/W/X"
   context: |

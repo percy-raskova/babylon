@@ -1,5 +1,5 @@
 ADR094_nix_channel_deployment:
-  status: "proposed"
+  status: "accepted"
   date: "2026-07-20"
   title: "Nix Player Channel deployment mechanics under X.8: ed25519 narinfo-signing keypair (secret to CI only, public key baked into install.sh CACHE_KEY), cache.babylon.percypedia.biz custom-domain target served through the cache-worker front door (workers.dev interim, r2.dev never), Terraform-import obligation for the hand-provisioned live Cloudflare state assigned to babylon-infra with a Terraform-owns-resources / wrangler-owns-Workers boundary, deploy-workers.yml wrangler pin as a deploy precondition (action default 3.90.0 predates wrangler.jsonc support), monthly regression-gated nixpkgs pin cadence under Amendment-L discipline, and hypergraph-rs as a pinned flake input gated on port parity -- queue items 1-2 recorded as executed by X.8/X.1, this ADR proposes only the mechanics"
   context: |

@@ -1,5 +1,5 @@
 ADR096_inference_lane_mechanics:
-  status: "proposed"
+  status: "accepted"
   date: "2026-07-20"
   title: "Inference lane mechanics under Amendment V: bundled CPU llama-server over Ollama as the local default (loopback-only, lifecycle owned by the babylon process, one binary serving /v1/chat/completions and /v1/embeddings from sha256-pinned local gguf weights), provider precedence bundled -> detected-external -> Cloudflare-if-keyed -> mute, the signed model manifest (weights outside the Nix store in ~/.local/share/babylon/models/, hosted in the babylon-data R2 bucket, per-campaign embedding pins), the babylon_intel least-privilege Postgres role (SELECT on Hoist projections + INSERT on narrator-prose/embedding tables only, one migration), and the embedding-dimension schema seam (bge-m3 vector(1024), bge-base-en-v1.5 vector(768)) -- queue items 11/12/13; item 6 resolved by A7.5 (sentence-transformers and torch leave the tree); item 9 premium metering deliberately deferred"
   context: |

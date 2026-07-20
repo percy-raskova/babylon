@@ -65,11 +65,11 @@ def _run_once(scenario: str, max_ticks: int) -> tuple[Any, Any]:
     state, sim_config, defines = rt.create_scenario(scenario)
     context: dict[str, Any] = {}
 
-    header, entity_ids, edge_keys = rt._dense_header(state)
-    rows = [rt._dense_row(state, 0, entity_ids, edge_keys)]
+    header, entity_ids, edge_keys, counties = rt._dense_header(state)
+    rows = [rt._dense_row(state, 0, entity_ids, edge_keys, counties, context)]
     for tick in range(1, max_ticks + 1):
         state = rt.step(state, sim_config, context, defines)
-        rows.append(rt._dense_row(state, tick, entity_ids, edge_keys))
+        rows.append(rt._dense_row(state, tick, entity_ids, edge_keys, counties, context))
 
     trace = rt.DenseTrace(scenario=scenario, header=header, rows=rows)
     return state, trace

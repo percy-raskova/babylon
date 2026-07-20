@@ -54,7 +54,9 @@ sys.path.insert(0, str(Path(__file__).parent))
 # Import from centralized shared module (ADR036)
 from regression_scenarios import (  # noqa: F401  (re-export)
     PENDING_CEREMONY,
+    SCENARIO_COVERAGE,
     SCENARIOS,
+    STALE_UNTIL_CEREMONY,
     create_scenario,
 )
 from shared import (
@@ -396,27 +398,56 @@ def _format_dense_value(value: float | bool) -> str:
     return repr(value)
 
 
-def _dense_header(state: Any) -> tuple[list[str], list[str], list[tuple[str, str]]]:
+#: The 4 national financial columns (E3) — always emitted, every scenario.
+#: Column names are fixed regardless of the internal
+#: ``EndogenousInterestRate`` field names they read (verified against
+#: ``src/babylon/domain/economics/credit/types.py``): ``financial_s_r``
+#: reads the real field ``reserve_army_signal``, not a ``s_r`` key.
+_DENSE_FINANCIAL_SUFFIXES: Final[list[str]] = [
+    "endogenous_rate",
+    "profit_rate_ceiling",
+    "s_r",
+    "tightness",
+]
+
+#: The 5 per-county distribution columns (E3) — one set per county_fips a
+#: scenario's territories carry (verified against
+#: ``src/babylon/domain/economics/distribution/types.py``'s
+#: ``SurplusValueDistribution``: ``profit_enterprise`` reads the real
+#: computed field ``profit_of_enterprise``).
+_DENSE_COUNTY_SUFFIXES: Final[list[str]] = [
+    "total_s",
+    "interest",
+    "ground_rent",
+    "taxes",
+    "profit_enterprise",
+]
+
+
+def _dense_header(
+    state: Any,
+) -> tuple[list[str], list[str], list[tuple[str, str]], list[str]]:
     """Derive the dense-trace column contract from a scenario's tick-0 state.
 
-    The header (and the entity/edge ordering it encodes) is fixed once, from
-    the initial topology, on the documented assumption that a regression
-    scenario's entity and relationship set is static for its whole run (no
-    scenario in ``SCENARIOS`` adds/removes entities or edges mid-run).
-    :func:`_dense_row` verifies this assumption every tick and raises rather
-    than silently misaligning columns if it's ever violated (Constitution
-    III.11, Loud Failure).
+    The header (and the entity/edge/county ordering it encodes) is fixed
+    once, from the initial topology, on the documented assumption that a
+    regression scenario's entity, relationship, and territory/county set is
+    static for its whole run (no scenario in ``SCENARIOS`` adds/removes
+    entities, edges, or counties mid-run). :func:`_dense_row` verifies this
+    assumption every tick and raises rather than silently misaligning
+    columns if it's ever violated (Constitution III.11, Loud Failure).
 
     Args:
         state: The scenario's tick-0 WorldState.
 
     Returns:
         Tuple of (header, sorted entity IDs, sorted (source_id, target_id)
-        edge keys) — the latter two are reused by every row to avoid
-        re-deriving the topology every tick.
+        edge keys, sorted county FIPS codes) — the latter three are reused
+        by every row to avoid re-deriving the topology every tick.
     """
     entity_ids = sorted(state.entities.keys())
     edge_keys = sorted({(rel.source_id, rel.target_id) for rel in state.relationships})
+    counties = sorted(t.county_fips for t in state.territories.values() if t.county_fips)
 
     header = [
         "tick",
@@ -424,13 +455,16 @@ def _dense_header(state: Any) -> tuple[list[str], list[str], list[tuple[str, str
         "economy_current_super_wage_rate",
         "economy_current_repression_level",
     ]
+    header.extend(f"financial_{suffix}" for suffix in _DENSE_FINANCIAL_SUFFIXES)
+    for fips in counties:
+        header.extend(f"county_{fips}_{suffix}" for suffix in _DENSE_COUNTY_SUFFIXES)
     for entity_id in entity_ids:
         header.extend(f"{entity_id}_{suffix}" for suffix, _getter in _DENSE_ENTITY_FIELDS)
     for source_id, target_id in edge_keys:
         header.extend(
             f"edge_{source_id}_{target_id}_{suffix}" for suffix, _getter in _DENSE_EDGE_FIELDS
         )
-    return header, entity_ids, edge_keys
+    return header, entity_ids, edge_keys, counties
 
 
 def _dense_row(
@@ -438,6 +472,8 @@ def _dense_row(
     tick: int,
     entity_ids: list[str],
     edge_keys: list[tuple[str, str]],
+    counties: list[str],
+    context: dict[str, Any] | None,
 ) -> list[str]:
     """Build one dense-trace CSV row, asserting the topology hasn't drifted.
 
@@ -447,15 +483,28 @@ def _dense_row(
         entity_ids: Sorted entity IDs from :func:`_dense_header` (tick 0).
         edge_keys: Sorted (source_id, target_id) edge keys from
             :func:`_dense_header` (tick 0).
+        counties: Sorted county FIPS codes from :func:`_dense_header`
+            (tick 0).
+        context: The harness's ``persistent_context`` dict (Task 7,
+            SAVE-ONLY semantics) — ``_national_financial`` holds the
+            last-stamped :class:`NationalFinancialParameters` dump (the
+            annual pipeline fires exactly once per 52-tick run, on the
+            first ``step()`` call, since ``context.tick`` is the
+            pre-increment ``state.tick``); ``_tick_dynamics`` similarly
+            holds the last-stamped ``county_states`` dict of real
+            ``CountyEconomicState`` model instances. ``None``/absent-key
+            degrades to the same all-zero cells a county-free or
+            not-yet-boundary scenario would produce.
 
     Returns:
         List of formatted string cells aligned to the header.
 
     Raises:
-        ValueError: If ``state``'s entity or edge set no longer matches the
-            tick-0 topology — a scenario dynamically adding/removing
-            entities or edges is not supported by the fixed-column dense
-            format; failing loud here beats silently misaligning columns.
+        ValueError: If ``state``'s entity, edge, or county set no longer
+            matches the tick-0 topology — a scenario dynamically
+            adding/removing entities, edges, or counties is not supported
+            by the fixed-column dense format; failing loud here beats
+            silently misaligning columns.
     """
     actual_entity_ids = sorted(state.entities.keys())
     if actual_entity_ids != entity_ids:
@@ -474,10 +523,38 @@ def _dense_row(
             "a static relationship topology per scenario (Constitution III.11)"
         )
 
+    actual_counties = sorted(t.county_fips for t in state.territories.values() if t.county_fips)
+    if actual_counties != counties:
+        raise ValueError(
+            f"dense trace topology drift at tick {tick}: county set changed "
+            f"from {counties} to {actual_counties} — dense goldens assume "
+            "a static territory/county_fips topology per scenario (Constitution III.11)"
+        )
+
     row: list[str] = [str(tick)]
     row.append(_format_dense_value(float(state.economy.imperial_rent_pool)))
     row.append(_format_dense_value(float(state.economy.current_super_wage_rate)))
     row.append(_format_dense_value(float(state.economy.current_repression_level)))
+
+    financial = (context or {}).get("_national_financial") or {}
+    endo = financial.get("endogenous_interest") or {}
+    row.append(_format_dense_value(float(endo.get("rate", 0.0))))
+    row.append(_format_dense_value(float(endo.get("profit_rate_ceiling", 0.0))))
+    row.append(_format_dense_value(float(endo.get("reserve_army_signal", 0.0))))
+    row.append(_format_dense_value(float(endo.get("tightness", 0.0))))
+
+    county_states = ((context or {}).get("_tick_dynamics") or {}).get("county_states", {})
+    for fips in counties:
+        cs = county_states.get(fips)
+        dist = getattr(cs, "surplus_distribution", None) if cs is not None else None
+        for value in (
+            getattr(dist, "total_surplus_produced", 0.0),
+            getattr(dist, "interest_payments", 0.0),
+            getattr(dist, "ground_rent", 0.0),
+            getattr(dist, "taxes_on_surplus", 0.0),
+            getattr(dist, "profit_of_enterprise", 0.0),
+        ):
+            row.append(_format_dense_value(float(value)))
 
     for entity_id in entity_ids:
         entity = state.entities[entity_id]
@@ -751,6 +828,43 @@ def compare_dense_trace(
     return False, report
 
 
+def check_dead_columns(
+    scenario: str,
+    header: list[str],
+    rows: list[list[str]],
+    coverage: tuple[Any, ...],
+) -> list[str]:
+    """E3: every column must move, or carry a declared at_rest reason.
+
+    A channel that is all-zeros/all-absent across an entire run is an
+    inertness signal (the U9 failure mode) — never a default.
+    """
+    at_rest: dict[str, str] = {}
+    for cov in coverage:
+        if cov.scenario == scenario:
+            at_rest = {c.channel: c.reason for c in cov.at_rest}
+            break
+    dead_values = {"0.0", "-0.0", "0", "False", ""}
+    findings: list[str] = []
+    for j, column in enumerate(header):
+        if column == "tick":
+            continue
+        dead = all(row[j] in dead_values for row in rows)
+        if dead and column not in at_rest:
+            findings.append(
+                f"{scenario}: channel {column!r} is at rest across the entire run "
+                f"but not declared at_rest in ScenarioCoverage. Either the channel "
+                f"is dead (U9-class inertness — investigate) or declare it with a "
+                f"reason in tools/regression_scenarios.py."
+            )
+        if not dead and column in at_rest:
+            findings.append(
+                f"{scenario}: stale at_rest declaration — channel {column!r} is "
+                f"live but declared at rest ({at_rest[column]!r}). Delete the row."
+            )
+    return findings
+
+
 def capture_checkpoint(state: Any, tick: int) -> CheckpointData:
     """Capture state at a checkpoint tick.
 
@@ -829,9 +943,10 @@ def _run_scenario_ticks(
     dense_rows: list[list[str]] = []
     entity_ids: list[str] = []
     edge_keys: list[tuple[str, str]] = []
+    counties: list[str] = []
     if capture_dense:
-        dense_header, entity_ids, edge_keys = _dense_header(state)
-        dense_rows.append(_dense_row(state, 0, entity_ids, edge_keys))
+        dense_header, entity_ids, edge_keys, counties = _dense_header(state)
+        dense_rows.append(_dense_row(state, 0, entity_ids, edge_keys, counties, persistent_context))
 
     for tick in range(1, max_ticks + 1):
         state = step(
@@ -848,7 +963,9 @@ def _run_scenario_ticks(
             checkpoints.append(capture_checkpoint(state, tick))
 
         if capture_dense:
-            dense_rows.append(_dense_row(state, tick, entity_ids, edge_keys))
+            dense_rows.append(
+                _dense_row(state, tick, entity_ids, edge_keys, counties, persistent_context)
+            )
 
         # Check for death
         p_w = state.entities.get(PERIPHERY_WORKER_ID)
@@ -1073,6 +1190,33 @@ def compare_baselines(
     return passed, diffs
 
 
+def _abort_on_dead_columns(name: str, trace: DenseTrace) -> None:
+    """E3: print dead-column findings and abort the write with exit 1.
+
+    Called before :func:`save_dense_trace` in both the all-scenarios and
+    single-scenario ``generate`` paths. A freshly-generated dense trace
+    carrying an undeclared dead channel (or a stale ``at_rest`` row that no
+    longer describes reality) must never be written as a new golden — that
+    would silently canonize the very inertness/staleness
+    :func:`check_dead_columns` exists to catch (Constitution III.11, Loud
+    Failure).
+
+    Args:
+        name: Scenario name, used both to look up its coverage row and to
+            prefix the printed findings.
+        trace: The freshly-built dense trace, not yet saved.
+
+    Raises:
+        SystemExit: With code 1, if any dead-column findings exist. Nothing
+            is written in that case.
+    """
+    findings = check_dead_columns(name, trace.header, trace.rows, SCENARIO_COVERAGE)
+    if findings:
+        for finding in findings:
+            print(f"  DEAD COLUMN: {finding}")
+        raise SystemExit(1)
+
+
 def generate_all_baselines(
     output_dir: Path, force: bool = False, dense: bool = False
 ) -> list[Path]:
@@ -1090,6 +1234,13 @@ def generate_all_baselines(
         List of generated file paths (JSON only; dense CSV paths are
         printed but not included, to keep this function's return contract
         unchanged for any existing caller).
+
+    Raises:
+        SystemExit: With code 1, via :func:`_abort_on_dead_columns`, if any
+            scenario's freshly-generated dense trace carries an undeclared
+            dead channel or a stale ``at_rest`` row (E3). Nothing for that
+            scenario (or any scenario after it in iteration order) is
+            written in that case.
     """
     generated: list[Path] = []
 
@@ -1102,6 +1253,8 @@ def generate_all_baselines(
 
         print(f"  Generating {name}...", end=" ", flush=True)
         baseline, dense_trace = _run_scenario_ticks(name, DEFAULT_MAX_TICKS, capture_dense=dense)
+        if dense and dense_trace is not None:
+            _abort_on_dead_columns(name, dense_trace)
         path = save_baseline(baseline, output_dir)
         if dense and dense_trace is not None:
             dense_path = save_dense_trace(dense_trace, output_dir / DENSE_SUBDIR)
@@ -1131,6 +1284,13 @@ def compare_all_baselines(baseline_dir: Path) -> tuple[int, int]:
     for machine consumption. Any stale report from a prior run is removed
     up front, and the file is only (re)written when at least one scenario
     actually diverged — a green run leaves no misleading report behind.
+
+    E3: :func:`check_dead_columns` also runs on every scenario's freshly
+    computed actual trace, unconditionally — never gated behind
+    ``dense_ok`` — so an undeclared dead channel (or a stale ``at_rest`` row)
+    is reported even on a run where the bytes already mismatched for an
+    unrelated reason; both signals matter during triage. Any finding is a
+    non-WARNING diff and fails the scenario's gate.
 
     Args:
         baseline_dir: Directory containing baseline JSON files
@@ -1167,11 +1327,17 @@ def compare_all_baselines(baseline_dir: Path) -> tuple[int, int]:
         # dense trace.
         actual, dense_actual = run_scenario_dense(name, max_ticks=expected.max_ticks)
 
-        # Compare
+        # Compare. Dead-column findings are computed on the freshly-computed
+        # actual trace unconditionally (not nested behind `dense_ok`) — a
+        # byte mismatch must never short-circuit this check; both signals
+        # matter during triage.
         ok, diffs = compare_baselines(expected, actual)
         dense_ok, dense_report = compare_dense_trace(dense_actual, baseline_dir)
+        dead_column_findings = check_dead_columns(
+            name, dense_actual.header, dense_actual.rows, SCENARIO_COVERAGE
+        )
 
-        if ok and dense_ok:
+        if ok and dense_ok and not dead_column_findings:
             print("PASS")
             passed += 1
         else:
@@ -1182,6 +1348,8 @@ def compare_all_baselines(baseline_dir: Path) -> tuple[int, int]:
             if not dense_ok and dense_report is not None:
                 print(_format_divergence_report(dense_report))
                 divergence_reports.append(dense_report)
+            for finding in dead_column_findings:
+                print(f"    {finding}")
 
     if divergence_reports:
         FIRST_DIVERGENCE_REPORT_PATH.parent.mkdir(parents=True, exist_ok=True)
@@ -1400,6 +1568,8 @@ Examples:
             baseline, dense_trace = _run_scenario_ticks(
                 args.scenario, DEFAULT_MAX_TICKS, capture_dense=args.dense
             )
+            if args.dense and dense_trace is not None:
+                _abort_on_dead_columns(args.scenario, dense_trace)
             path = save_baseline(baseline, args.output)
             print(f"Generated: {path}")
             if args.dense and dense_trace is not None:

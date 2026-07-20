@@ -81,6 +81,21 @@ SCENARIOS: Final[dict[str, dict[str, Any]]] = {
 #: single_county's baseline and removes it from this set in the same commit.
 PENDING_CEREMONY: Final[frozenset[str]] = frozenset({"single_county"})
 
+#: E3 (Task 9) widened the dense-trace header (4 new ``financial_*`` columns
+#: on every scenario, plus per-county ``county_<fips>_*`` columns on
+#: county-bearing ones) — the five originally-minted scenarios' committed
+#: dense goldens no longer match byte-for-byte until Task 11's ceremony
+#: re-mints them. Declared explicitly (mirrors ``PENDING_CEREMONY`` above) so
+#: the dense-golden REGENERATION-comparison test
+#: (tests/unit/tools/test_dense_goldens.py) skips these five LOUDLY with a
+#: reason naming the cause, while the EXISTS/shape tests stay live (a
+#: deletion-masking guard: a golden file going missing must still fail).
+#: Task 11 removes this allowlist entirely in the same commit that mints the
+#: widened goldens.
+STALE_UNTIL_CEREMONY: Final[frozenset[str]] = frozenset(
+    {"imperial_circuit", "two_node", "starvation", "glut", "fascist_bifurcation"}
+)
+
 
 def create_scenario(
     name: str,
@@ -316,7 +331,348 @@ SCENARIO_COVERAGE_DATA: Final[tuple[dict[str, Any], ...]] = (
                 "claim": "the D-P-D' population-cohort circuit steps every territory every tick",
             },
         ),
-        "at_rest": (),
+        "at_rest": (
+            {
+                "channel": "financial_endogenous_rate",
+                "reason": (
+                    "county-free scenario: no territory carries county_fips, so "
+                    "_tick_dynamics.county_states is empty every tick; "
+                    "TickDynamicsSystem._economy_wide_profit_rate returns None on an empty county_states "
+                    "dict, so endogenous_interest_rate() early-returns rate=profit_rate_ceiling=0.0 "
+                    "(Capital Vol. III ch. 23: no profit, nothing to divide), and reserve_army_signal()'s "
+                    "_employment_weighted_unemployment returns None on the empty dict (0.0 by its own "
+                    '"Zero, not absent, when no county carries labor-force data" contract), which zeroes '
+                    "loan_market_tightness() downstream too. Verified live, 2026-07-20."
+                ),
+            },
+            {
+                "channel": "financial_profit_rate_ceiling",
+                "reason": (
+                    "county-free scenario: no territory carries county_fips, so "
+                    "_tick_dynamics.county_states is empty every tick; "
+                    "TickDynamicsSystem._economy_wide_profit_rate returns None on an empty county_states "
+                    "dict, so endogenous_interest_rate() early-returns rate=profit_rate_ceiling=0.0 "
+                    "(Capital Vol. III ch. 23: no profit, nothing to divide), and reserve_army_signal()'s "
+                    "_employment_weighted_unemployment returns None on the empty dict (0.0 by its own "
+                    '"Zero, not absent, when no county carries labor-force data" contract), which zeroes '
+                    "loan_market_tightness() downstream too. Verified live, 2026-07-20."
+                ),
+            },
+            {
+                "channel": "financial_s_r",
+                "reason": (
+                    "county-free scenario: no territory carries county_fips, so "
+                    "_tick_dynamics.county_states is empty every tick; "
+                    "TickDynamicsSystem._economy_wide_profit_rate returns None on an empty county_states "
+                    "dict, so endogenous_interest_rate() early-returns rate=profit_rate_ceiling=0.0 "
+                    "(Capital Vol. III ch. 23: no profit, nothing to divide), and reserve_army_signal()'s "
+                    "_employment_weighted_unemployment returns None on the empty dict (0.0 by its own "
+                    '"Zero, not absent, when no county carries labor-force data" contract), which zeroes '
+                    "loan_market_tightness() downstream too. Verified live, 2026-07-20."
+                ),
+            },
+            {
+                "channel": "financial_tightness",
+                "reason": (
+                    "county-free scenario: no territory carries county_fips, so "
+                    "_tick_dynamics.county_states is empty every tick; "
+                    "TickDynamicsSystem._economy_wide_profit_rate returns None on an empty county_states "
+                    "dict, so endogenous_interest_rate() early-returns rate=profit_rate_ceiling=0.0 "
+                    "(Capital Vol. III ch. 23: no profit, nothing to divide), and reserve_army_signal()'s "
+                    "_employment_weighted_unemployment returns None on the empty dict (0.0 by its own "
+                    '"Zero, not absent, when no county carries labor-force data" contract), which zeroes '
+                    "loan_market_tightness() downstream too. Verified live, 2026-07-20."
+                ),
+            },
+            {
+                "channel": "C001_effective_wealth",
+                "reason": (
+                    "effective_wealth is written only for the WAGES edge's target entity "
+                    "(ImperialRentSystem's super-wage/PPP routine, engine/systems/economic.py:507); in "
+                    "this topology (imperial_circuit, also starvation/glut/fascist_bifurcation via the "
+                    "same factory) the sole WAGES edge targets C004 (Labor Aristocracy) -- Periphery "
+                    "Worker (C001) never receives a WAGES edge, so its effective_wealth stays at its "
+                    "Field(default=0.0) forever. Verified live, 2026-07-20."
+                ),
+            },
+            {
+                "channel": "C001_agitation",
+                "reason": (
+                    "C001 (Periphery Worker) never receives a WAGES edge (wage_change stays 0, so "
+                    "exploitation_rate_delta=0.0 in compute_agitation_delta) and never carries "
+                    "w_paid/v_produced attrs (only wage-paid classes get those stamped, "
+                    "engine/systems/ideology.py:201-226 -- so the "
+                    "wage_deterioration/sustained_deterioration terms stay 0.0 too); its wealth RISES "
+                    "every tick under this scenario's extraction_efficiency calibration (verified: "
+                    "0.615089->0.747949 over ticks 1-10), so compute_agitation_delta's "
+                    "imperial_rent_delta term (wealth_change, 'Wealth decline ~ rent decline') is also "
+                    "non-positive and contributes 0. All three agitation_increment terms are structurally "
+                    "zero for C001 in this topology/calibration; its agitation stays 0.0 the whole run. "
+                    "Verified live, 2026-07-20."
+                ),
+            },
+            {
+                "channel": "C002_effective_wealth",
+                "reason": (
+                    "effective_wealth is written only for the WAGES edge's target entity "
+                    "(ImperialRentSystem's super-wage/PPP routine, engine/systems/economic.py:507); in "
+                    "this topology (imperial_circuit, also starvation/glut/fascist_bifurcation via the "
+                    "same factory) the sole WAGES edge targets C004 (Labor Aristocracy) -- Comprador "
+                    "(C002) never receives a WAGES edge, so its effective_wealth stays at its "
+                    "Field(default=0.0) forever. Verified live, 2026-07-20."
+                ),
+            },
+            {
+                "channel": "C003_effective_wealth",
+                "reason": (
+                    "effective_wealth is written only for the WAGES edge's target entity "
+                    "(ImperialRentSystem's super-wage/PPP routine, engine/systems/economic.py:507); in "
+                    "this topology (imperial_circuit, also starvation/glut/fascist_bifurcation via the "
+                    "same factory) the sole WAGES edge targets C004 (Labor Aristocracy) -- Core "
+                    "Bourgeoisie (C003) never receives a WAGES edge, so its effective_wealth stays at its "
+                    "Field(default=0.0) forever. Verified live, 2026-07-20."
+                ),
+            },
+            {
+                "channel": "C005_wealth",
+                "reason": (
+                    "Carceral Enforcer (C005) / Internal Proletariat (C006) are seeded DORMANT "
+                    '(active=False, population=0) "until CLASS_DECOMPOSITION" (scenarios/_legacy.py '
+                    "comments) -- every consciousness/survival/struggle System explicitly skips inactive "
+                    'entities (e.g. engine/systems/ideology.py:172-174, "Skip inactive (dead) entities"). '
+                    "CLASS_DECOMPOSITION never fires within any of the five canonical scenarios' 52-tick "
+                    "horizon -- a PRE-EXISTING, already-documented gap (COVERAGE_GAPS_DATA's "
+                    'DecompositionSystem row: "SUPERWAGE_CRISIS never fires ... so CLASS_DECOMPOSITION '
+                    'correspondingly never fires"); this dense-column finding cross-validates that gap '
+                    "rather than discovering a new one. Verified live, 2026-07-20."
+                ),
+            },
+            {
+                "channel": "C005_effective_wealth",
+                "reason": (
+                    "Carceral Enforcer (C005) / Internal Proletariat (C006) are seeded DORMANT "
+                    '(active=False, population=0) "until CLASS_DECOMPOSITION" (scenarios/_legacy.py '
+                    "comments) -- every consciousness/survival/struggle System explicitly skips inactive "
+                    'entities (e.g. engine/systems/ideology.py:172-174, "Skip inactive (dead) entities"). '
+                    "CLASS_DECOMPOSITION never fires within any of the five canonical scenarios' 52-tick "
+                    "horizon -- a PRE-EXISTING, already-documented gap (COVERAGE_GAPS_DATA's "
+                    'DecompositionSystem row: "SUPERWAGE_CRISIS never fires ... so CLASS_DECOMPOSITION '
+                    'correspondingly never fires"); this dense-column finding cross-validates that gap '
+                    "rather than discovering a new one. Verified live, 2026-07-20."
+                ),
+            },
+            {
+                "channel": "C005_p_acquiescence",
+                "reason": (
+                    "Carceral Enforcer (C005) / Internal Proletariat (C006) are seeded DORMANT "
+                    '(active=False, population=0) "until CLASS_DECOMPOSITION" (scenarios/_legacy.py '
+                    "comments) -- every consciousness/survival/struggle System explicitly skips inactive "
+                    'entities (e.g. engine/systems/ideology.py:172-174, "Skip inactive (dead) entities"). '
+                    "CLASS_DECOMPOSITION never fires within any of the five canonical scenarios' 52-tick "
+                    "horizon -- a PRE-EXISTING, already-documented gap (COVERAGE_GAPS_DATA's "
+                    'DecompositionSystem row: "SUPERWAGE_CRISIS never fires ... so CLASS_DECOMPOSITION '
+                    'correspondingly never fires"); this dense-column finding cross-validates that gap '
+                    "rather than discovering a new one. Verified live, 2026-07-20."
+                ),
+            },
+            {
+                "channel": "C005_p_revolution",
+                "reason": (
+                    "Carceral Enforcer (C005) / Internal Proletariat (C006) are seeded DORMANT "
+                    '(active=False, population=0) "until CLASS_DECOMPOSITION" (scenarios/_legacy.py '
+                    "comments) -- every consciousness/survival/struggle System explicitly skips inactive "
+                    'entities (e.g. engine/systems/ideology.py:172-174, "Skip inactive (dead) entities"). '
+                    "CLASS_DECOMPOSITION never fires within any of the five canonical scenarios' 52-tick "
+                    "horizon -- a PRE-EXISTING, already-documented gap (COVERAGE_GAPS_DATA's "
+                    'DecompositionSystem row: "SUPERWAGE_CRISIS never fires ... so CLASS_DECOMPOSITION '
+                    'correspondingly never fires"); this dense-column finding cross-validates that gap '
+                    "rather than discovering a new one. Verified live, 2026-07-20."
+                ),
+            },
+            {
+                "channel": "C005_active",
+                "reason": (
+                    "Carceral Enforcer (C005) / Internal Proletariat (C006) are seeded DORMANT "
+                    '(active=False, population=0) "until CLASS_DECOMPOSITION" (scenarios/_legacy.py '
+                    "comments) -- every consciousness/survival/struggle System explicitly skips inactive "
+                    'entities (e.g. engine/systems/ideology.py:172-174, "Skip inactive (dead) entities"). '
+                    "CLASS_DECOMPOSITION never fires within any of the five canonical scenarios' 52-tick "
+                    "horizon -- a PRE-EXISTING, already-documented gap (COVERAGE_GAPS_DATA's "
+                    'DecompositionSystem row: "SUPERWAGE_CRISIS never fires ... so CLASS_DECOMPOSITION '
+                    'correspondingly never fires"); this dense-column finding cross-validates that gap '
+                    "rather than discovering a new one. Verified live, 2026-07-20."
+                ),
+            },
+            {
+                "channel": "C005_agitation",
+                "reason": (
+                    "Carceral Enforcer (C005) / Internal Proletariat (C006) are seeded DORMANT "
+                    '(active=False, population=0) "until CLASS_DECOMPOSITION" (scenarios/_legacy.py '
+                    "comments) -- every consciousness/survival/struggle System explicitly skips inactive "
+                    'entities (e.g. engine/systems/ideology.py:172-174, "Skip inactive (dead) entities"). '
+                    "CLASS_DECOMPOSITION never fires within any of the five canonical scenarios' 52-tick "
+                    "horizon -- a PRE-EXISTING, already-documented gap (COVERAGE_GAPS_DATA's "
+                    'DecompositionSystem row: "SUPERWAGE_CRISIS never fires ... so CLASS_DECOMPOSITION '
+                    'correspondingly never fires"); this dense-column finding cross-validates that gap '
+                    "rather than discovering a new one. Verified live, 2026-07-20."
+                ),
+            },
+            {
+                "channel": "C005_repression_faced",
+                "reason": (
+                    "Carceral Enforcer (C005) / Internal Proletariat (C006) are seeded DORMANT "
+                    '(active=False, population=0) "until CLASS_DECOMPOSITION" (scenarios/_legacy.py '
+                    "comments) -- every consciousness/survival/struggle System explicitly skips inactive "
+                    'entities (e.g. engine/systems/ideology.py:172-174, "Skip inactive (dead) entities"). '
+                    "CLASS_DECOMPOSITION never fires within any of the five canonical scenarios' 52-tick "
+                    "horizon -- a PRE-EXISTING, already-documented gap (COVERAGE_GAPS_DATA's "
+                    'DecompositionSystem row: "SUPERWAGE_CRISIS never fires ... so CLASS_DECOMPOSITION '
+                    'correspondingly never fires"); this dense-column finding cross-validates that gap '
+                    "rather than discovering a new one. Verified live, 2026-07-20."
+                ),
+            },
+            {
+                "channel": "C006_wealth",
+                "reason": (
+                    "Carceral Enforcer (C005) / Internal Proletariat (C006) are seeded DORMANT "
+                    '(active=False, population=0) "until CLASS_DECOMPOSITION" (scenarios/_legacy.py '
+                    "comments) -- every consciousness/survival/struggle System explicitly skips inactive "
+                    'entities (e.g. engine/systems/ideology.py:172-174, "Skip inactive (dead) entities"). '
+                    "CLASS_DECOMPOSITION never fires within any of the five canonical scenarios' 52-tick "
+                    "horizon -- a PRE-EXISTING, already-documented gap (COVERAGE_GAPS_DATA's "
+                    'DecompositionSystem row: "SUPERWAGE_CRISIS never fires ... so CLASS_DECOMPOSITION '
+                    'correspondingly never fires"); this dense-column finding cross-validates that gap '
+                    "rather than discovering a new one. Verified live, 2026-07-20."
+                ),
+            },
+            {
+                "channel": "C006_effective_wealth",
+                "reason": (
+                    "Carceral Enforcer (C005) / Internal Proletariat (C006) are seeded DORMANT "
+                    '(active=False, population=0) "until CLASS_DECOMPOSITION" (scenarios/_legacy.py '
+                    "comments) -- every consciousness/survival/struggle System explicitly skips inactive "
+                    'entities (e.g. engine/systems/ideology.py:172-174, "Skip inactive (dead) entities"). '
+                    "CLASS_DECOMPOSITION never fires within any of the five canonical scenarios' 52-tick "
+                    "horizon -- a PRE-EXISTING, already-documented gap (COVERAGE_GAPS_DATA's "
+                    'DecompositionSystem row: "SUPERWAGE_CRISIS never fires ... so CLASS_DECOMPOSITION '
+                    'correspondingly never fires"); this dense-column finding cross-validates that gap '
+                    "rather than discovering a new one. Verified live, 2026-07-20."
+                ),
+            },
+            {
+                "channel": "C006_p_acquiescence",
+                "reason": (
+                    "Carceral Enforcer (C005) / Internal Proletariat (C006) are seeded DORMANT "
+                    '(active=False, population=0) "until CLASS_DECOMPOSITION" (scenarios/_legacy.py '
+                    "comments) -- every consciousness/survival/struggle System explicitly skips inactive "
+                    'entities (e.g. engine/systems/ideology.py:172-174, "Skip inactive (dead) entities"). '
+                    "CLASS_DECOMPOSITION never fires within any of the five canonical scenarios' 52-tick "
+                    "horizon -- a PRE-EXISTING, already-documented gap (COVERAGE_GAPS_DATA's "
+                    'DecompositionSystem row: "SUPERWAGE_CRISIS never fires ... so CLASS_DECOMPOSITION '
+                    'correspondingly never fires"); this dense-column finding cross-validates that gap '
+                    "rather than discovering a new one. Verified live, 2026-07-20."
+                ),
+            },
+            {
+                "channel": "C006_p_revolution",
+                "reason": (
+                    "Carceral Enforcer (C005) / Internal Proletariat (C006) are seeded DORMANT "
+                    '(active=False, population=0) "until CLASS_DECOMPOSITION" (scenarios/_legacy.py '
+                    "comments) -- every consciousness/survival/struggle System explicitly skips inactive "
+                    'entities (e.g. engine/systems/ideology.py:172-174, "Skip inactive (dead) entities"). '
+                    "CLASS_DECOMPOSITION never fires within any of the five canonical scenarios' 52-tick "
+                    "horizon -- a PRE-EXISTING, already-documented gap (COVERAGE_GAPS_DATA's "
+                    'DecompositionSystem row: "SUPERWAGE_CRISIS never fires ... so CLASS_DECOMPOSITION '
+                    'correspondingly never fires"); this dense-column finding cross-validates that gap '
+                    "rather than discovering a new one. Verified live, 2026-07-20."
+                ),
+            },
+            {
+                "channel": "C006_active",
+                "reason": (
+                    "Carceral Enforcer (C005) / Internal Proletariat (C006) are seeded DORMANT "
+                    '(active=False, population=0) "until CLASS_DECOMPOSITION" (scenarios/_legacy.py '
+                    "comments) -- every consciousness/survival/struggle System explicitly skips inactive "
+                    'entities (e.g. engine/systems/ideology.py:172-174, "Skip inactive (dead) entities"). '
+                    "CLASS_DECOMPOSITION never fires within any of the five canonical scenarios' 52-tick "
+                    "horizon -- a PRE-EXISTING, already-documented gap (COVERAGE_GAPS_DATA's "
+                    'DecompositionSystem row: "SUPERWAGE_CRISIS never fires ... so CLASS_DECOMPOSITION '
+                    'correspondingly never fires"); this dense-column finding cross-validates that gap '
+                    "rather than discovering a new one. Verified live, 2026-07-20."
+                ),
+            },
+            {
+                "channel": "C006_agitation",
+                "reason": (
+                    "Carceral Enforcer (C005) / Internal Proletariat (C006) are seeded DORMANT "
+                    '(active=False, population=0) "until CLASS_DECOMPOSITION" (scenarios/_legacy.py '
+                    "comments) -- every consciousness/survival/struggle System explicitly skips inactive "
+                    'entities (e.g. engine/systems/ideology.py:172-174, "Skip inactive (dead) entities"). '
+                    "CLASS_DECOMPOSITION never fires within any of the five canonical scenarios' 52-tick "
+                    "horizon -- a PRE-EXISTING, already-documented gap (COVERAGE_GAPS_DATA's "
+                    'DecompositionSystem row: "SUPERWAGE_CRISIS never fires ... so CLASS_DECOMPOSITION '
+                    'correspondingly never fires"); this dense-column finding cross-validates that gap '
+                    "rather than discovering a new one. Verified live, 2026-07-20."
+                ),
+            },
+            {
+                "channel": "edge_C001_C004_value_flow",
+                "reason": (
+                    "value_flow is written only on EXPLOITATION/TRIBUTE/WAGES/CLIENT_STATE edges "
+                    "(ImperialRentSystem, engine/systems/economic.py -- 'value_flow=' appears at exactly "
+                    "those 4 call sites repo-wide); TENANCY (land occupancy) and SOLIDARITY (potential "
+                    "internationalism, solidarity_strength=0.0 in every canonical scenario) edges never "
+                    "receive it in the current model scope. Verified live, 2026-07-20."
+                ),
+            },
+            {
+                "channel": "edge_C001_C004_tension",
+                "reason": (
+                    "tension is written only on EXPLOITATION/WAGES/TENANCY edges "
+                    "(ContradictionSystem._TENSION_EDGE_TYPES, engine/systems/contradiction.py:122-126); "
+                    "SOLIDARITY is not in that tuple, so this edge's tension never moves. Verified live, "
+                    "2026-07-20."
+                ),
+            },
+            {
+                "channel": "edge_C001_T001_value_flow",
+                "reason": (
+                    "value_flow is written only on EXPLOITATION/TRIBUTE/WAGES/CLIENT_STATE edges "
+                    "(ImperialRentSystem, engine/systems/economic.py -- 'value_flow=' appears at exactly "
+                    "those 4 call sites repo-wide); TENANCY (land occupancy) and SOLIDARITY (potential "
+                    "internationalism, solidarity_strength=0.0 in every canonical scenario) edges never "
+                    "receive it in the current model scope. Verified live, 2026-07-20."
+                ),
+            },
+            {
+                "channel": "edge_C002_C003_tension",
+                "reason": (
+                    "tension is written only on EXPLOITATION/WAGES/TENANCY edges "
+                    "(ContradictionSystem._TENSION_EDGE_TYPES, engine/systems/contradiction.py:122-126); "
+                    "TRIBUTE/CLIENT_STATE edges are not in that tuple, so this edge's tension never "
+                    "moves. Verified live, 2026-07-20."
+                ),
+            },
+            {
+                "channel": "edge_C003_C002_tension",
+                "reason": (
+                    "tension is written only on EXPLOITATION/WAGES/TENANCY edges "
+                    "(ContradictionSystem._TENSION_EDGE_TYPES, engine/systems/contradiction.py:122-126); "
+                    "TRIBUTE/CLIENT_STATE edges are not in that tuple, so this edge's tension never "
+                    "moves. Verified live, 2026-07-20."
+                ),
+            },
+            {
+                "channel": "edge_C004_T002_value_flow",
+                "reason": (
+                    "value_flow is written only on EXPLOITATION/TRIBUTE/WAGES/CLIENT_STATE edges "
+                    "(ImperialRentSystem, engine/systems/economic.py -- 'value_flow=' appears at exactly "
+                    "those 4 call sites repo-wide); TENANCY (land occupancy) and SOLIDARITY (potential "
+                    "internationalism, solidarity_strength=0.0 in every canonical scenario) edges never "
+                    "receive it in the current model scope. Verified live, 2026-07-20."
+                ),
+            },
+        ),
     },
     {
         "scenario": "two_node",
@@ -382,7 +738,81 @@ SCENARIO_COVERAGE_DATA: Final[tuple[dict[str, Any], ...]] = (
                 "claim": "the national wealth-share ODE projects onto the worker's bracket",
             },
         ),
-        "at_rest": (),
+        "at_rest": (
+            {
+                "channel": "financial_endogenous_rate",
+                "reason": (
+                    "county-free scenario: no territory carries county_fips, so "
+                    "_tick_dynamics.county_states is empty every tick; "
+                    "TickDynamicsSystem._economy_wide_profit_rate returns None on an empty county_states "
+                    "dict, so endogenous_interest_rate() early-returns rate=profit_rate_ceiling=0.0 "
+                    "(Capital Vol. III ch. 23: no profit, nothing to divide), and reserve_army_signal()'s "
+                    "_employment_weighted_unemployment returns None on the empty dict (0.0 by its own "
+                    '"Zero, not absent, when no county carries labor-force data" contract), which zeroes '
+                    "loan_market_tightness() downstream too. Verified live, 2026-07-20."
+                ),
+            },
+            {
+                "channel": "financial_profit_rate_ceiling",
+                "reason": (
+                    "county-free scenario: no territory carries county_fips, so "
+                    "_tick_dynamics.county_states is empty every tick; "
+                    "TickDynamicsSystem._economy_wide_profit_rate returns None on an empty county_states "
+                    "dict, so endogenous_interest_rate() early-returns rate=profit_rate_ceiling=0.0 "
+                    "(Capital Vol. III ch. 23: no profit, nothing to divide), and reserve_army_signal()'s "
+                    "_employment_weighted_unemployment returns None on the empty dict (0.0 by its own "
+                    '"Zero, not absent, when no county carries labor-force data" contract), which zeroes '
+                    "loan_market_tightness() downstream too. Verified live, 2026-07-20."
+                ),
+            },
+            {
+                "channel": "financial_s_r",
+                "reason": (
+                    "county-free scenario: no territory carries county_fips, so "
+                    "_tick_dynamics.county_states is empty every tick; "
+                    "TickDynamicsSystem._economy_wide_profit_rate returns None on an empty county_states "
+                    "dict, so endogenous_interest_rate() early-returns rate=profit_rate_ceiling=0.0 "
+                    "(Capital Vol. III ch. 23: no profit, nothing to divide), and reserve_army_signal()'s "
+                    "_employment_weighted_unemployment returns None on the empty dict (0.0 by its own "
+                    '"Zero, not absent, when no county carries labor-force data" contract), which zeroes '
+                    "loan_market_tightness() downstream too. Verified live, 2026-07-20."
+                ),
+            },
+            {
+                "channel": "financial_tightness",
+                "reason": (
+                    "county-free scenario: no territory carries county_fips, so "
+                    "_tick_dynamics.county_states is empty every tick; "
+                    "TickDynamicsSystem._economy_wide_profit_rate returns None on an empty county_states "
+                    "dict, so endogenous_interest_rate() early-returns rate=profit_rate_ceiling=0.0 "
+                    "(Capital Vol. III ch. 23: no profit, nothing to divide), and reserve_army_signal()'s "
+                    "_employment_weighted_unemployment returns None on the empty dict (0.0 by its own "
+                    '"Zero, not absent, when no county carries labor-force data" contract), which zeroes '
+                    "loan_market_tightness() downstream too. Verified live, 2026-07-20."
+                ),
+            },
+            {
+                "channel": "C002_effective_wealth",
+                "reason": (
+                    "effective_wealth is written only for the WAGES edge's target entity "
+                    "(ImperialRentSystem's super-wage/PPP routine, engine/systems/economic.py:507); "
+                    "two_node's WAGES edge runs owner(C002)->worker(C001) (the PPP-Model comment in "
+                    "_legacy.py), so the WAGES edge targets C001 -- Core Owner (C002) never receives a "
+                    "WAGES edge, so its effective_wealth stays at its Field(default=0.0) forever. "
+                    "Verified live, 2026-07-20."
+                ),
+            },
+            {
+                "channel": "edge_C001_T001_value_flow",
+                "reason": (
+                    "value_flow is written only on EXPLOITATION/TRIBUTE/WAGES/CLIENT_STATE edges "
+                    "(ImperialRentSystem, engine/systems/economic.py -- 'value_flow=' appears at exactly "
+                    "those 4 call sites repo-wide); TENANCY (land occupancy) and SOLIDARITY (potential "
+                    "internationalism, solidarity_strength=0.0 in every canonical scenario) edges never "
+                    "receive it in the current model scope. Verified live, 2026-07-20."
+                ),
+            },
+        ),
     },
     {
         "scenario": "starvation",
@@ -415,7 +845,348 @@ SCENARIO_COVERAGE_DATA: Final[tuple[dict[str, Any], ...]] = (
                 "claim": "the rent pool still accrues/decays even at low (0.05) extraction efficiency",
             },
         ),
-        "at_rest": (),
+        "at_rest": (
+            {
+                "channel": "financial_endogenous_rate",
+                "reason": (
+                    "county-free scenario: no territory carries county_fips, so "
+                    "_tick_dynamics.county_states is empty every tick; "
+                    "TickDynamicsSystem._economy_wide_profit_rate returns None on an empty county_states "
+                    "dict, so endogenous_interest_rate() early-returns rate=profit_rate_ceiling=0.0 "
+                    "(Capital Vol. III ch. 23: no profit, nothing to divide), and reserve_army_signal()'s "
+                    "_employment_weighted_unemployment returns None on the empty dict (0.0 by its own "
+                    '"Zero, not absent, when no county carries labor-force data" contract), which zeroes '
+                    "loan_market_tightness() downstream too. Verified live, 2026-07-20."
+                ),
+            },
+            {
+                "channel": "financial_profit_rate_ceiling",
+                "reason": (
+                    "county-free scenario: no territory carries county_fips, so "
+                    "_tick_dynamics.county_states is empty every tick; "
+                    "TickDynamicsSystem._economy_wide_profit_rate returns None on an empty county_states "
+                    "dict, so endogenous_interest_rate() early-returns rate=profit_rate_ceiling=0.0 "
+                    "(Capital Vol. III ch. 23: no profit, nothing to divide), and reserve_army_signal()'s "
+                    "_employment_weighted_unemployment returns None on the empty dict (0.0 by its own "
+                    '"Zero, not absent, when no county carries labor-force data" contract), which zeroes '
+                    "loan_market_tightness() downstream too. Verified live, 2026-07-20."
+                ),
+            },
+            {
+                "channel": "financial_s_r",
+                "reason": (
+                    "county-free scenario: no territory carries county_fips, so "
+                    "_tick_dynamics.county_states is empty every tick; "
+                    "TickDynamicsSystem._economy_wide_profit_rate returns None on an empty county_states "
+                    "dict, so endogenous_interest_rate() early-returns rate=profit_rate_ceiling=0.0 "
+                    "(Capital Vol. III ch. 23: no profit, nothing to divide), and reserve_army_signal()'s "
+                    "_employment_weighted_unemployment returns None on the empty dict (0.0 by its own "
+                    '"Zero, not absent, when no county carries labor-force data" contract), which zeroes '
+                    "loan_market_tightness() downstream too. Verified live, 2026-07-20."
+                ),
+            },
+            {
+                "channel": "financial_tightness",
+                "reason": (
+                    "county-free scenario: no territory carries county_fips, so "
+                    "_tick_dynamics.county_states is empty every tick; "
+                    "TickDynamicsSystem._economy_wide_profit_rate returns None on an empty county_states "
+                    "dict, so endogenous_interest_rate() early-returns rate=profit_rate_ceiling=0.0 "
+                    "(Capital Vol. III ch. 23: no profit, nothing to divide), and reserve_army_signal()'s "
+                    "_employment_weighted_unemployment returns None on the empty dict (0.0 by its own "
+                    '"Zero, not absent, when no county carries labor-force data" contract), which zeroes '
+                    "loan_market_tightness() downstream too. Verified live, 2026-07-20."
+                ),
+            },
+            {
+                "channel": "C001_effective_wealth",
+                "reason": (
+                    "effective_wealth is written only for the WAGES edge's target entity "
+                    "(ImperialRentSystem's super-wage/PPP routine, engine/systems/economic.py:507); in "
+                    "this topology (imperial_circuit, also starvation/glut/fascist_bifurcation via the "
+                    "same factory) the sole WAGES edge targets C004 (Labor Aristocracy) -- Periphery "
+                    "Worker (C001) never receives a WAGES edge, so its effective_wealth stays at its "
+                    "Field(default=0.0) forever. Verified live, 2026-07-20."
+                ),
+            },
+            {
+                "channel": "C001_agitation",
+                "reason": (
+                    "C001 (Periphery Worker) never receives a WAGES edge (wage_change stays 0, so "
+                    "exploitation_rate_delta=0.0 in compute_agitation_delta) and never carries "
+                    "w_paid/v_produced attrs (only wage-paid classes get those stamped, "
+                    "engine/systems/ideology.py:201-226 -- so the "
+                    "wage_deterioration/sustained_deterioration terms stay 0.0 too); its wealth RISES "
+                    "every tick under this scenario's extraction_efficiency calibration (verified: "
+                    "0.615089->0.747949 over ticks 1-10), so compute_agitation_delta's "
+                    "imperial_rent_delta term (wealth_change, 'Wealth decline ~ rent decline') is also "
+                    "non-positive and contributes 0. All three agitation_increment terms are structurally "
+                    "zero for C001 in this topology/calibration; its agitation stays 0.0 the whole run. "
+                    "Verified live, 2026-07-20."
+                ),
+            },
+            {
+                "channel": "C002_effective_wealth",
+                "reason": (
+                    "effective_wealth is written only for the WAGES edge's target entity "
+                    "(ImperialRentSystem's super-wage/PPP routine, engine/systems/economic.py:507); in "
+                    "this topology (imperial_circuit, also starvation/glut/fascist_bifurcation via the "
+                    "same factory) the sole WAGES edge targets C004 (Labor Aristocracy) -- Comprador "
+                    "(C002) never receives a WAGES edge, so its effective_wealth stays at its "
+                    "Field(default=0.0) forever. Verified live, 2026-07-20."
+                ),
+            },
+            {
+                "channel": "C003_effective_wealth",
+                "reason": (
+                    "effective_wealth is written only for the WAGES edge's target entity "
+                    "(ImperialRentSystem's super-wage/PPP routine, engine/systems/economic.py:507); in "
+                    "this topology (imperial_circuit, also starvation/glut/fascist_bifurcation via the "
+                    "same factory) the sole WAGES edge targets C004 (Labor Aristocracy) -- Core "
+                    "Bourgeoisie (C003) never receives a WAGES edge, so its effective_wealth stays at its "
+                    "Field(default=0.0) forever. Verified live, 2026-07-20."
+                ),
+            },
+            {
+                "channel": "C005_wealth",
+                "reason": (
+                    "Carceral Enforcer (C005) / Internal Proletariat (C006) are seeded DORMANT "
+                    '(active=False, population=0) "until CLASS_DECOMPOSITION" (scenarios/_legacy.py '
+                    "comments) -- every consciousness/survival/struggle System explicitly skips inactive "
+                    'entities (e.g. engine/systems/ideology.py:172-174, "Skip inactive (dead) entities"). '
+                    "CLASS_DECOMPOSITION never fires within any of the five canonical scenarios' 52-tick "
+                    "horizon -- a PRE-EXISTING, already-documented gap (COVERAGE_GAPS_DATA's "
+                    'DecompositionSystem row: "SUPERWAGE_CRISIS never fires ... so CLASS_DECOMPOSITION '
+                    'correspondingly never fires"); this dense-column finding cross-validates that gap '
+                    "rather than discovering a new one. Verified live, 2026-07-20."
+                ),
+            },
+            {
+                "channel": "C005_effective_wealth",
+                "reason": (
+                    "Carceral Enforcer (C005) / Internal Proletariat (C006) are seeded DORMANT "
+                    '(active=False, population=0) "until CLASS_DECOMPOSITION" (scenarios/_legacy.py '
+                    "comments) -- every consciousness/survival/struggle System explicitly skips inactive "
+                    'entities (e.g. engine/systems/ideology.py:172-174, "Skip inactive (dead) entities"). '
+                    "CLASS_DECOMPOSITION never fires within any of the five canonical scenarios' 52-tick "
+                    "horizon -- a PRE-EXISTING, already-documented gap (COVERAGE_GAPS_DATA's "
+                    'DecompositionSystem row: "SUPERWAGE_CRISIS never fires ... so CLASS_DECOMPOSITION '
+                    'correspondingly never fires"); this dense-column finding cross-validates that gap '
+                    "rather than discovering a new one. Verified live, 2026-07-20."
+                ),
+            },
+            {
+                "channel": "C005_p_acquiescence",
+                "reason": (
+                    "Carceral Enforcer (C005) / Internal Proletariat (C006) are seeded DORMANT "
+                    '(active=False, population=0) "until CLASS_DECOMPOSITION" (scenarios/_legacy.py '
+                    "comments) -- every consciousness/survival/struggle System explicitly skips inactive "
+                    'entities (e.g. engine/systems/ideology.py:172-174, "Skip inactive (dead) entities"). '
+                    "CLASS_DECOMPOSITION never fires within any of the five canonical scenarios' 52-tick "
+                    "horizon -- a PRE-EXISTING, already-documented gap (COVERAGE_GAPS_DATA's "
+                    'DecompositionSystem row: "SUPERWAGE_CRISIS never fires ... so CLASS_DECOMPOSITION '
+                    'correspondingly never fires"); this dense-column finding cross-validates that gap '
+                    "rather than discovering a new one. Verified live, 2026-07-20."
+                ),
+            },
+            {
+                "channel": "C005_p_revolution",
+                "reason": (
+                    "Carceral Enforcer (C005) / Internal Proletariat (C006) are seeded DORMANT "
+                    '(active=False, population=0) "until CLASS_DECOMPOSITION" (scenarios/_legacy.py '
+                    "comments) -- every consciousness/survival/struggle System explicitly skips inactive "
+                    'entities (e.g. engine/systems/ideology.py:172-174, "Skip inactive (dead) entities"). '
+                    "CLASS_DECOMPOSITION never fires within any of the five canonical scenarios' 52-tick "
+                    "horizon -- a PRE-EXISTING, already-documented gap (COVERAGE_GAPS_DATA's "
+                    'DecompositionSystem row: "SUPERWAGE_CRISIS never fires ... so CLASS_DECOMPOSITION '
+                    'correspondingly never fires"); this dense-column finding cross-validates that gap '
+                    "rather than discovering a new one. Verified live, 2026-07-20."
+                ),
+            },
+            {
+                "channel": "C005_active",
+                "reason": (
+                    "Carceral Enforcer (C005) / Internal Proletariat (C006) are seeded DORMANT "
+                    '(active=False, population=0) "until CLASS_DECOMPOSITION" (scenarios/_legacy.py '
+                    "comments) -- every consciousness/survival/struggle System explicitly skips inactive "
+                    'entities (e.g. engine/systems/ideology.py:172-174, "Skip inactive (dead) entities"). '
+                    "CLASS_DECOMPOSITION never fires within any of the five canonical scenarios' 52-tick "
+                    "horizon -- a PRE-EXISTING, already-documented gap (COVERAGE_GAPS_DATA's "
+                    'DecompositionSystem row: "SUPERWAGE_CRISIS never fires ... so CLASS_DECOMPOSITION '
+                    'correspondingly never fires"); this dense-column finding cross-validates that gap '
+                    "rather than discovering a new one. Verified live, 2026-07-20."
+                ),
+            },
+            {
+                "channel": "C005_agitation",
+                "reason": (
+                    "Carceral Enforcer (C005) / Internal Proletariat (C006) are seeded DORMANT "
+                    '(active=False, population=0) "until CLASS_DECOMPOSITION" (scenarios/_legacy.py '
+                    "comments) -- every consciousness/survival/struggle System explicitly skips inactive "
+                    'entities (e.g. engine/systems/ideology.py:172-174, "Skip inactive (dead) entities"). '
+                    "CLASS_DECOMPOSITION never fires within any of the five canonical scenarios' 52-tick "
+                    "horizon -- a PRE-EXISTING, already-documented gap (COVERAGE_GAPS_DATA's "
+                    'DecompositionSystem row: "SUPERWAGE_CRISIS never fires ... so CLASS_DECOMPOSITION '
+                    'correspondingly never fires"); this dense-column finding cross-validates that gap '
+                    "rather than discovering a new one. Verified live, 2026-07-20."
+                ),
+            },
+            {
+                "channel": "C005_repression_faced",
+                "reason": (
+                    "Carceral Enforcer (C005) / Internal Proletariat (C006) are seeded DORMANT "
+                    '(active=False, population=0) "until CLASS_DECOMPOSITION" (scenarios/_legacy.py '
+                    "comments) -- every consciousness/survival/struggle System explicitly skips inactive "
+                    'entities (e.g. engine/systems/ideology.py:172-174, "Skip inactive (dead) entities"). '
+                    "CLASS_DECOMPOSITION never fires within any of the five canonical scenarios' 52-tick "
+                    "horizon -- a PRE-EXISTING, already-documented gap (COVERAGE_GAPS_DATA's "
+                    'DecompositionSystem row: "SUPERWAGE_CRISIS never fires ... so CLASS_DECOMPOSITION '
+                    'correspondingly never fires"); this dense-column finding cross-validates that gap '
+                    "rather than discovering a new one. Verified live, 2026-07-20."
+                ),
+            },
+            {
+                "channel": "C006_wealth",
+                "reason": (
+                    "Carceral Enforcer (C005) / Internal Proletariat (C006) are seeded DORMANT "
+                    '(active=False, population=0) "until CLASS_DECOMPOSITION" (scenarios/_legacy.py '
+                    "comments) -- every consciousness/survival/struggle System explicitly skips inactive "
+                    'entities (e.g. engine/systems/ideology.py:172-174, "Skip inactive (dead) entities"). '
+                    "CLASS_DECOMPOSITION never fires within any of the five canonical scenarios' 52-tick "
+                    "horizon -- a PRE-EXISTING, already-documented gap (COVERAGE_GAPS_DATA's "
+                    'DecompositionSystem row: "SUPERWAGE_CRISIS never fires ... so CLASS_DECOMPOSITION '
+                    'correspondingly never fires"); this dense-column finding cross-validates that gap '
+                    "rather than discovering a new one. Verified live, 2026-07-20."
+                ),
+            },
+            {
+                "channel": "C006_effective_wealth",
+                "reason": (
+                    "Carceral Enforcer (C005) / Internal Proletariat (C006) are seeded DORMANT "
+                    '(active=False, population=0) "until CLASS_DECOMPOSITION" (scenarios/_legacy.py '
+                    "comments) -- every consciousness/survival/struggle System explicitly skips inactive "
+                    'entities (e.g. engine/systems/ideology.py:172-174, "Skip inactive (dead) entities"). '
+                    "CLASS_DECOMPOSITION never fires within any of the five canonical scenarios' 52-tick "
+                    "horizon -- a PRE-EXISTING, already-documented gap (COVERAGE_GAPS_DATA's "
+                    'DecompositionSystem row: "SUPERWAGE_CRISIS never fires ... so CLASS_DECOMPOSITION '
+                    'correspondingly never fires"); this dense-column finding cross-validates that gap '
+                    "rather than discovering a new one. Verified live, 2026-07-20."
+                ),
+            },
+            {
+                "channel": "C006_p_acquiescence",
+                "reason": (
+                    "Carceral Enforcer (C005) / Internal Proletariat (C006) are seeded DORMANT "
+                    '(active=False, population=0) "until CLASS_DECOMPOSITION" (scenarios/_legacy.py '
+                    "comments) -- every consciousness/survival/struggle System explicitly skips inactive "
+                    'entities (e.g. engine/systems/ideology.py:172-174, "Skip inactive (dead) entities"). '
+                    "CLASS_DECOMPOSITION never fires within any of the five canonical scenarios' 52-tick "
+                    "horizon -- a PRE-EXISTING, already-documented gap (COVERAGE_GAPS_DATA's "
+                    'DecompositionSystem row: "SUPERWAGE_CRISIS never fires ... so CLASS_DECOMPOSITION '
+                    'correspondingly never fires"); this dense-column finding cross-validates that gap '
+                    "rather than discovering a new one. Verified live, 2026-07-20."
+                ),
+            },
+            {
+                "channel": "C006_p_revolution",
+                "reason": (
+                    "Carceral Enforcer (C005) / Internal Proletariat (C006) are seeded DORMANT "
+                    '(active=False, population=0) "until CLASS_DECOMPOSITION" (scenarios/_legacy.py '
+                    "comments) -- every consciousness/survival/struggle System explicitly skips inactive "
+                    'entities (e.g. engine/systems/ideology.py:172-174, "Skip inactive (dead) entities"). '
+                    "CLASS_DECOMPOSITION never fires within any of the five canonical scenarios' 52-tick "
+                    "horizon -- a PRE-EXISTING, already-documented gap (COVERAGE_GAPS_DATA's "
+                    'DecompositionSystem row: "SUPERWAGE_CRISIS never fires ... so CLASS_DECOMPOSITION '
+                    'correspondingly never fires"); this dense-column finding cross-validates that gap '
+                    "rather than discovering a new one. Verified live, 2026-07-20."
+                ),
+            },
+            {
+                "channel": "C006_active",
+                "reason": (
+                    "Carceral Enforcer (C005) / Internal Proletariat (C006) are seeded DORMANT "
+                    '(active=False, population=0) "until CLASS_DECOMPOSITION" (scenarios/_legacy.py '
+                    "comments) -- every consciousness/survival/struggle System explicitly skips inactive "
+                    'entities (e.g. engine/systems/ideology.py:172-174, "Skip inactive (dead) entities"). '
+                    "CLASS_DECOMPOSITION never fires within any of the five canonical scenarios' 52-tick "
+                    "horizon -- a PRE-EXISTING, already-documented gap (COVERAGE_GAPS_DATA's "
+                    'DecompositionSystem row: "SUPERWAGE_CRISIS never fires ... so CLASS_DECOMPOSITION '
+                    'correspondingly never fires"); this dense-column finding cross-validates that gap '
+                    "rather than discovering a new one. Verified live, 2026-07-20."
+                ),
+            },
+            {
+                "channel": "C006_agitation",
+                "reason": (
+                    "Carceral Enforcer (C005) / Internal Proletariat (C006) are seeded DORMANT "
+                    '(active=False, population=0) "until CLASS_DECOMPOSITION" (scenarios/_legacy.py '
+                    "comments) -- every consciousness/survival/struggle System explicitly skips inactive "
+                    'entities (e.g. engine/systems/ideology.py:172-174, "Skip inactive (dead) entities"). '
+                    "CLASS_DECOMPOSITION never fires within any of the five canonical scenarios' 52-tick "
+                    "horizon -- a PRE-EXISTING, already-documented gap (COVERAGE_GAPS_DATA's "
+                    'DecompositionSystem row: "SUPERWAGE_CRISIS never fires ... so CLASS_DECOMPOSITION '
+                    'correspondingly never fires"); this dense-column finding cross-validates that gap '
+                    "rather than discovering a new one. Verified live, 2026-07-20."
+                ),
+            },
+            {
+                "channel": "edge_C001_C004_value_flow",
+                "reason": (
+                    "value_flow is written only on EXPLOITATION/TRIBUTE/WAGES/CLIENT_STATE edges "
+                    "(ImperialRentSystem, engine/systems/economic.py -- 'value_flow=' appears at exactly "
+                    "those 4 call sites repo-wide); TENANCY (land occupancy) and SOLIDARITY (potential "
+                    "internationalism, solidarity_strength=0.0 in every canonical scenario) edges never "
+                    "receive it in the current model scope. Verified live, 2026-07-20."
+                ),
+            },
+            {
+                "channel": "edge_C001_C004_tension",
+                "reason": (
+                    "tension is written only on EXPLOITATION/WAGES/TENANCY edges "
+                    "(ContradictionSystem._TENSION_EDGE_TYPES, engine/systems/contradiction.py:122-126); "
+                    "SOLIDARITY is not in that tuple, so this edge's tension never moves. Verified live, "
+                    "2026-07-20."
+                ),
+            },
+            {
+                "channel": "edge_C001_T001_value_flow",
+                "reason": (
+                    "value_flow is written only on EXPLOITATION/TRIBUTE/WAGES/CLIENT_STATE edges "
+                    "(ImperialRentSystem, engine/systems/economic.py -- 'value_flow=' appears at exactly "
+                    "those 4 call sites repo-wide); TENANCY (land occupancy) and SOLIDARITY (potential "
+                    "internationalism, solidarity_strength=0.0 in every canonical scenario) edges never "
+                    "receive it in the current model scope. Verified live, 2026-07-20."
+                ),
+            },
+            {
+                "channel": "edge_C002_C003_tension",
+                "reason": (
+                    "tension is written only on EXPLOITATION/WAGES/TENANCY edges "
+                    "(ContradictionSystem._TENSION_EDGE_TYPES, engine/systems/contradiction.py:122-126); "
+                    "TRIBUTE/CLIENT_STATE edges are not in that tuple, so this edge's tension never "
+                    "moves. Verified live, 2026-07-20."
+                ),
+            },
+            {
+                "channel": "edge_C003_C002_tension",
+                "reason": (
+                    "tension is written only on EXPLOITATION/WAGES/TENANCY edges "
+                    "(ContradictionSystem._TENSION_EDGE_TYPES, engine/systems/contradiction.py:122-126); "
+                    "TRIBUTE/CLIENT_STATE edges are not in that tuple, so this edge's tension never "
+                    "moves. Verified live, 2026-07-20."
+                ),
+            },
+            {
+                "channel": "edge_C004_T002_value_flow",
+                "reason": (
+                    "value_flow is written only on EXPLOITATION/TRIBUTE/WAGES/CLIENT_STATE edges "
+                    "(ImperialRentSystem, engine/systems/economic.py -- 'value_flow=' appears at exactly "
+                    "those 4 call sites repo-wide); TENANCY (land occupancy) and SOLIDARITY (potential "
+                    "internationalism, solidarity_strength=0.0 in every canonical scenario) edges never "
+                    "receive it in the current model scope. Verified live, 2026-07-20."
+                ),
+            },
+        ),
     },
     {
         "scenario": "glut",
@@ -448,7 +1219,348 @@ SCENARIO_COVERAGE_DATA: Final[tuple[dict[str, Any], ...]] = (
                 "claim": "the stochastic spark still rolls every tick under the glut override",
             },
         ),
-        "at_rest": (),
+        "at_rest": (
+            {
+                "channel": "financial_endogenous_rate",
+                "reason": (
+                    "county-free scenario: no territory carries county_fips, so "
+                    "_tick_dynamics.county_states is empty every tick; "
+                    "TickDynamicsSystem._economy_wide_profit_rate returns None on an empty county_states "
+                    "dict, so endogenous_interest_rate() early-returns rate=profit_rate_ceiling=0.0 "
+                    "(Capital Vol. III ch. 23: no profit, nothing to divide), and reserve_army_signal()'s "
+                    "_employment_weighted_unemployment returns None on the empty dict (0.0 by its own "
+                    '"Zero, not absent, when no county carries labor-force data" contract), which zeroes '
+                    "loan_market_tightness() downstream too. Verified live, 2026-07-20."
+                ),
+            },
+            {
+                "channel": "financial_profit_rate_ceiling",
+                "reason": (
+                    "county-free scenario: no territory carries county_fips, so "
+                    "_tick_dynamics.county_states is empty every tick; "
+                    "TickDynamicsSystem._economy_wide_profit_rate returns None on an empty county_states "
+                    "dict, so endogenous_interest_rate() early-returns rate=profit_rate_ceiling=0.0 "
+                    "(Capital Vol. III ch. 23: no profit, nothing to divide), and reserve_army_signal()'s "
+                    "_employment_weighted_unemployment returns None on the empty dict (0.0 by its own "
+                    '"Zero, not absent, when no county carries labor-force data" contract), which zeroes '
+                    "loan_market_tightness() downstream too. Verified live, 2026-07-20."
+                ),
+            },
+            {
+                "channel": "financial_s_r",
+                "reason": (
+                    "county-free scenario: no territory carries county_fips, so "
+                    "_tick_dynamics.county_states is empty every tick; "
+                    "TickDynamicsSystem._economy_wide_profit_rate returns None on an empty county_states "
+                    "dict, so endogenous_interest_rate() early-returns rate=profit_rate_ceiling=0.0 "
+                    "(Capital Vol. III ch. 23: no profit, nothing to divide), and reserve_army_signal()'s "
+                    "_employment_weighted_unemployment returns None on the empty dict (0.0 by its own "
+                    '"Zero, not absent, when no county carries labor-force data" contract), which zeroes '
+                    "loan_market_tightness() downstream too. Verified live, 2026-07-20."
+                ),
+            },
+            {
+                "channel": "financial_tightness",
+                "reason": (
+                    "county-free scenario: no territory carries county_fips, so "
+                    "_tick_dynamics.county_states is empty every tick; "
+                    "TickDynamicsSystem._economy_wide_profit_rate returns None on an empty county_states "
+                    "dict, so endogenous_interest_rate() early-returns rate=profit_rate_ceiling=0.0 "
+                    "(Capital Vol. III ch. 23: no profit, nothing to divide), and reserve_army_signal()'s "
+                    "_employment_weighted_unemployment returns None on the empty dict (0.0 by its own "
+                    '"Zero, not absent, when no county carries labor-force data" contract), which zeroes '
+                    "loan_market_tightness() downstream too. Verified live, 2026-07-20."
+                ),
+            },
+            {
+                "channel": "C001_effective_wealth",
+                "reason": (
+                    "effective_wealth is written only for the WAGES edge's target entity "
+                    "(ImperialRentSystem's super-wage/PPP routine, engine/systems/economic.py:507); in "
+                    "this topology (imperial_circuit, also starvation/glut/fascist_bifurcation via the "
+                    "same factory) the sole WAGES edge targets C004 (Labor Aristocracy) -- Periphery "
+                    "Worker (C001) never receives a WAGES edge, so its effective_wealth stays at its "
+                    "Field(default=0.0) forever. Verified live, 2026-07-20."
+                ),
+            },
+            {
+                "channel": "C001_agitation",
+                "reason": (
+                    "C001 (Periphery Worker) never receives a WAGES edge (wage_change stays 0, so "
+                    "exploitation_rate_delta=0.0 in compute_agitation_delta) and never carries "
+                    "w_paid/v_produced attrs (only wage-paid classes get those stamped, "
+                    "engine/systems/ideology.py:201-226 -- so the "
+                    "wage_deterioration/sustained_deterioration terms stay 0.0 too); its wealth RISES "
+                    "every tick under this scenario's extraction_efficiency calibration (verified: "
+                    "0.615089->0.747949 over ticks 1-10), so compute_agitation_delta's "
+                    "imperial_rent_delta term (wealth_change, 'Wealth decline ~ rent decline') is also "
+                    "non-positive and contributes 0. All three agitation_increment terms are structurally "
+                    "zero for C001 in this topology/calibration; its agitation stays 0.0 the whole run. "
+                    "Verified live, 2026-07-20."
+                ),
+            },
+            {
+                "channel": "C002_effective_wealth",
+                "reason": (
+                    "effective_wealth is written only for the WAGES edge's target entity "
+                    "(ImperialRentSystem's super-wage/PPP routine, engine/systems/economic.py:507); in "
+                    "this topology (imperial_circuit, also starvation/glut/fascist_bifurcation via the "
+                    "same factory) the sole WAGES edge targets C004 (Labor Aristocracy) -- Comprador "
+                    "(C002) never receives a WAGES edge, so its effective_wealth stays at its "
+                    "Field(default=0.0) forever. Verified live, 2026-07-20."
+                ),
+            },
+            {
+                "channel": "C003_effective_wealth",
+                "reason": (
+                    "effective_wealth is written only for the WAGES edge's target entity "
+                    "(ImperialRentSystem's super-wage/PPP routine, engine/systems/economic.py:507); in "
+                    "this topology (imperial_circuit, also starvation/glut/fascist_bifurcation via the "
+                    "same factory) the sole WAGES edge targets C004 (Labor Aristocracy) -- Core "
+                    "Bourgeoisie (C003) never receives a WAGES edge, so its effective_wealth stays at its "
+                    "Field(default=0.0) forever. Verified live, 2026-07-20."
+                ),
+            },
+            {
+                "channel": "C005_wealth",
+                "reason": (
+                    "Carceral Enforcer (C005) / Internal Proletariat (C006) are seeded DORMANT "
+                    '(active=False, population=0) "until CLASS_DECOMPOSITION" (scenarios/_legacy.py '
+                    "comments) -- every consciousness/survival/struggle System explicitly skips inactive "
+                    'entities (e.g. engine/systems/ideology.py:172-174, "Skip inactive (dead) entities"). '
+                    "CLASS_DECOMPOSITION never fires within any of the five canonical scenarios' 52-tick "
+                    "horizon -- a PRE-EXISTING, already-documented gap (COVERAGE_GAPS_DATA's "
+                    'DecompositionSystem row: "SUPERWAGE_CRISIS never fires ... so CLASS_DECOMPOSITION '
+                    'correspondingly never fires"); this dense-column finding cross-validates that gap '
+                    "rather than discovering a new one. Verified live, 2026-07-20."
+                ),
+            },
+            {
+                "channel": "C005_effective_wealth",
+                "reason": (
+                    "Carceral Enforcer (C005) / Internal Proletariat (C006) are seeded DORMANT "
+                    '(active=False, population=0) "until CLASS_DECOMPOSITION" (scenarios/_legacy.py '
+                    "comments) -- every consciousness/survival/struggle System explicitly skips inactive "
+                    'entities (e.g. engine/systems/ideology.py:172-174, "Skip inactive (dead) entities"). '
+                    "CLASS_DECOMPOSITION never fires within any of the five canonical scenarios' 52-tick "
+                    "horizon -- a PRE-EXISTING, already-documented gap (COVERAGE_GAPS_DATA's "
+                    'DecompositionSystem row: "SUPERWAGE_CRISIS never fires ... so CLASS_DECOMPOSITION '
+                    'correspondingly never fires"); this dense-column finding cross-validates that gap '
+                    "rather than discovering a new one. Verified live, 2026-07-20."
+                ),
+            },
+            {
+                "channel": "C005_p_acquiescence",
+                "reason": (
+                    "Carceral Enforcer (C005) / Internal Proletariat (C006) are seeded DORMANT "
+                    '(active=False, population=0) "until CLASS_DECOMPOSITION" (scenarios/_legacy.py '
+                    "comments) -- every consciousness/survival/struggle System explicitly skips inactive "
+                    'entities (e.g. engine/systems/ideology.py:172-174, "Skip inactive (dead) entities"). '
+                    "CLASS_DECOMPOSITION never fires within any of the five canonical scenarios' 52-tick "
+                    "horizon -- a PRE-EXISTING, already-documented gap (COVERAGE_GAPS_DATA's "
+                    'DecompositionSystem row: "SUPERWAGE_CRISIS never fires ... so CLASS_DECOMPOSITION '
+                    'correspondingly never fires"); this dense-column finding cross-validates that gap '
+                    "rather than discovering a new one. Verified live, 2026-07-20."
+                ),
+            },
+            {
+                "channel": "C005_p_revolution",
+                "reason": (
+                    "Carceral Enforcer (C005) / Internal Proletariat (C006) are seeded DORMANT "
+                    '(active=False, population=0) "until CLASS_DECOMPOSITION" (scenarios/_legacy.py '
+                    "comments) -- every consciousness/survival/struggle System explicitly skips inactive "
+                    'entities (e.g. engine/systems/ideology.py:172-174, "Skip inactive (dead) entities"). '
+                    "CLASS_DECOMPOSITION never fires within any of the five canonical scenarios' 52-tick "
+                    "horizon -- a PRE-EXISTING, already-documented gap (COVERAGE_GAPS_DATA's "
+                    'DecompositionSystem row: "SUPERWAGE_CRISIS never fires ... so CLASS_DECOMPOSITION '
+                    'correspondingly never fires"); this dense-column finding cross-validates that gap '
+                    "rather than discovering a new one. Verified live, 2026-07-20."
+                ),
+            },
+            {
+                "channel": "C005_active",
+                "reason": (
+                    "Carceral Enforcer (C005) / Internal Proletariat (C006) are seeded DORMANT "
+                    '(active=False, population=0) "until CLASS_DECOMPOSITION" (scenarios/_legacy.py '
+                    "comments) -- every consciousness/survival/struggle System explicitly skips inactive "
+                    'entities (e.g. engine/systems/ideology.py:172-174, "Skip inactive (dead) entities"). '
+                    "CLASS_DECOMPOSITION never fires within any of the five canonical scenarios' 52-tick "
+                    "horizon -- a PRE-EXISTING, already-documented gap (COVERAGE_GAPS_DATA's "
+                    'DecompositionSystem row: "SUPERWAGE_CRISIS never fires ... so CLASS_DECOMPOSITION '
+                    'correspondingly never fires"); this dense-column finding cross-validates that gap '
+                    "rather than discovering a new one. Verified live, 2026-07-20."
+                ),
+            },
+            {
+                "channel": "C005_agitation",
+                "reason": (
+                    "Carceral Enforcer (C005) / Internal Proletariat (C006) are seeded DORMANT "
+                    '(active=False, population=0) "until CLASS_DECOMPOSITION" (scenarios/_legacy.py '
+                    "comments) -- every consciousness/survival/struggle System explicitly skips inactive "
+                    'entities (e.g. engine/systems/ideology.py:172-174, "Skip inactive (dead) entities"). '
+                    "CLASS_DECOMPOSITION never fires within any of the five canonical scenarios' 52-tick "
+                    "horizon -- a PRE-EXISTING, already-documented gap (COVERAGE_GAPS_DATA's "
+                    'DecompositionSystem row: "SUPERWAGE_CRISIS never fires ... so CLASS_DECOMPOSITION '
+                    'correspondingly never fires"); this dense-column finding cross-validates that gap '
+                    "rather than discovering a new one. Verified live, 2026-07-20."
+                ),
+            },
+            {
+                "channel": "C005_repression_faced",
+                "reason": (
+                    "Carceral Enforcer (C005) / Internal Proletariat (C006) are seeded DORMANT "
+                    '(active=False, population=0) "until CLASS_DECOMPOSITION" (scenarios/_legacy.py '
+                    "comments) -- every consciousness/survival/struggle System explicitly skips inactive "
+                    'entities (e.g. engine/systems/ideology.py:172-174, "Skip inactive (dead) entities"). '
+                    "CLASS_DECOMPOSITION never fires within any of the five canonical scenarios' 52-tick "
+                    "horizon -- a PRE-EXISTING, already-documented gap (COVERAGE_GAPS_DATA's "
+                    'DecompositionSystem row: "SUPERWAGE_CRISIS never fires ... so CLASS_DECOMPOSITION '
+                    'correspondingly never fires"); this dense-column finding cross-validates that gap '
+                    "rather than discovering a new one. Verified live, 2026-07-20."
+                ),
+            },
+            {
+                "channel": "C006_wealth",
+                "reason": (
+                    "Carceral Enforcer (C005) / Internal Proletariat (C006) are seeded DORMANT "
+                    '(active=False, population=0) "until CLASS_DECOMPOSITION" (scenarios/_legacy.py '
+                    "comments) -- every consciousness/survival/struggle System explicitly skips inactive "
+                    'entities (e.g. engine/systems/ideology.py:172-174, "Skip inactive (dead) entities"). '
+                    "CLASS_DECOMPOSITION never fires within any of the five canonical scenarios' 52-tick "
+                    "horizon -- a PRE-EXISTING, already-documented gap (COVERAGE_GAPS_DATA's "
+                    'DecompositionSystem row: "SUPERWAGE_CRISIS never fires ... so CLASS_DECOMPOSITION '
+                    'correspondingly never fires"); this dense-column finding cross-validates that gap '
+                    "rather than discovering a new one. Verified live, 2026-07-20."
+                ),
+            },
+            {
+                "channel": "C006_effective_wealth",
+                "reason": (
+                    "Carceral Enforcer (C005) / Internal Proletariat (C006) are seeded DORMANT "
+                    '(active=False, population=0) "until CLASS_DECOMPOSITION" (scenarios/_legacy.py '
+                    "comments) -- every consciousness/survival/struggle System explicitly skips inactive "
+                    'entities (e.g. engine/systems/ideology.py:172-174, "Skip inactive (dead) entities"). '
+                    "CLASS_DECOMPOSITION never fires within any of the five canonical scenarios' 52-tick "
+                    "horizon -- a PRE-EXISTING, already-documented gap (COVERAGE_GAPS_DATA's "
+                    'DecompositionSystem row: "SUPERWAGE_CRISIS never fires ... so CLASS_DECOMPOSITION '
+                    'correspondingly never fires"); this dense-column finding cross-validates that gap '
+                    "rather than discovering a new one. Verified live, 2026-07-20."
+                ),
+            },
+            {
+                "channel": "C006_p_acquiescence",
+                "reason": (
+                    "Carceral Enforcer (C005) / Internal Proletariat (C006) are seeded DORMANT "
+                    '(active=False, population=0) "until CLASS_DECOMPOSITION" (scenarios/_legacy.py '
+                    "comments) -- every consciousness/survival/struggle System explicitly skips inactive "
+                    'entities (e.g. engine/systems/ideology.py:172-174, "Skip inactive (dead) entities"). '
+                    "CLASS_DECOMPOSITION never fires within any of the five canonical scenarios' 52-tick "
+                    "horizon -- a PRE-EXISTING, already-documented gap (COVERAGE_GAPS_DATA's "
+                    'DecompositionSystem row: "SUPERWAGE_CRISIS never fires ... so CLASS_DECOMPOSITION '
+                    'correspondingly never fires"); this dense-column finding cross-validates that gap '
+                    "rather than discovering a new one. Verified live, 2026-07-20."
+                ),
+            },
+            {
+                "channel": "C006_p_revolution",
+                "reason": (
+                    "Carceral Enforcer (C005) / Internal Proletariat (C006) are seeded DORMANT "
+                    '(active=False, population=0) "until CLASS_DECOMPOSITION" (scenarios/_legacy.py '
+                    "comments) -- every consciousness/survival/struggle System explicitly skips inactive "
+                    'entities (e.g. engine/systems/ideology.py:172-174, "Skip inactive (dead) entities"). '
+                    "CLASS_DECOMPOSITION never fires within any of the five canonical scenarios' 52-tick "
+                    "horizon -- a PRE-EXISTING, already-documented gap (COVERAGE_GAPS_DATA's "
+                    'DecompositionSystem row: "SUPERWAGE_CRISIS never fires ... so CLASS_DECOMPOSITION '
+                    'correspondingly never fires"); this dense-column finding cross-validates that gap '
+                    "rather than discovering a new one. Verified live, 2026-07-20."
+                ),
+            },
+            {
+                "channel": "C006_active",
+                "reason": (
+                    "Carceral Enforcer (C005) / Internal Proletariat (C006) are seeded DORMANT "
+                    '(active=False, population=0) "until CLASS_DECOMPOSITION" (scenarios/_legacy.py '
+                    "comments) -- every consciousness/survival/struggle System explicitly skips inactive "
+                    'entities (e.g. engine/systems/ideology.py:172-174, "Skip inactive (dead) entities"). '
+                    "CLASS_DECOMPOSITION never fires within any of the five canonical scenarios' 52-tick "
+                    "horizon -- a PRE-EXISTING, already-documented gap (COVERAGE_GAPS_DATA's "
+                    'DecompositionSystem row: "SUPERWAGE_CRISIS never fires ... so CLASS_DECOMPOSITION '
+                    'correspondingly never fires"); this dense-column finding cross-validates that gap '
+                    "rather than discovering a new one. Verified live, 2026-07-20."
+                ),
+            },
+            {
+                "channel": "C006_agitation",
+                "reason": (
+                    "Carceral Enforcer (C005) / Internal Proletariat (C006) are seeded DORMANT "
+                    '(active=False, population=0) "until CLASS_DECOMPOSITION" (scenarios/_legacy.py '
+                    "comments) -- every consciousness/survival/struggle System explicitly skips inactive "
+                    'entities (e.g. engine/systems/ideology.py:172-174, "Skip inactive (dead) entities"). '
+                    "CLASS_DECOMPOSITION never fires within any of the five canonical scenarios' 52-tick "
+                    "horizon -- a PRE-EXISTING, already-documented gap (COVERAGE_GAPS_DATA's "
+                    'DecompositionSystem row: "SUPERWAGE_CRISIS never fires ... so CLASS_DECOMPOSITION '
+                    'correspondingly never fires"); this dense-column finding cross-validates that gap '
+                    "rather than discovering a new one. Verified live, 2026-07-20."
+                ),
+            },
+            {
+                "channel": "edge_C001_C004_value_flow",
+                "reason": (
+                    "value_flow is written only on EXPLOITATION/TRIBUTE/WAGES/CLIENT_STATE edges "
+                    "(ImperialRentSystem, engine/systems/economic.py -- 'value_flow=' appears at exactly "
+                    "those 4 call sites repo-wide); TENANCY (land occupancy) and SOLIDARITY (potential "
+                    "internationalism, solidarity_strength=0.0 in every canonical scenario) edges never "
+                    "receive it in the current model scope. Verified live, 2026-07-20."
+                ),
+            },
+            {
+                "channel": "edge_C001_C004_tension",
+                "reason": (
+                    "tension is written only on EXPLOITATION/WAGES/TENANCY edges "
+                    "(ContradictionSystem._TENSION_EDGE_TYPES, engine/systems/contradiction.py:122-126); "
+                    "SOLIDARITY is not in that tuple, so this edge's tension never moves. Verified live, "
+                    "2026-07-20."
+                ),
+            },
+            {
+                "channel": "edge_C001_T001_value_flow",
+                "reason": (
+                    "value_flow is written only on EXPLOITATION/TRIBUTE/WAGES/CLIENT_STATE edges "
+                    "(ImperialRentSystem, engine/systems/economic.py -- 'value_flow=' appears at exactly "
+                    "those 4 call sites repo-wide); TENANCY (land occupancy) and SOLIDARITY (potential "
+                    "internationalism, solidarity_strength=0.0 in every canonical scenario) edges never "
+                    "receive it in the current model scope. Verified live, 2026-07-20."
+                ),
+            },
+            {
+                "channel": "edge_C002_C003_tension",
+                "reason": (
+                    "tension is written only on EXPLOITATION/WAGES/TENANCY edges "
+                    "(ContradictionSystem._TENSION_EDGE_TYPES, engine/systems/contradiction.py:122-126); "
+                    "TRIBUTE/CLIENT_STATE edges are not in that tuple, so this edge's tension never "
+                    "moves. Verified live, 2026-07-20."
+                ),
+            },
+            {
+                "channel": "edge_C003_C002_tension",
+                "reason": (
+                    "tension is written only on EXPLOITATION/WAGES/TENANCY edges "
+                    "(ContradictionSystem._TENSION_EDGE_TYPES, engine/systems/contradiction.py:122-126); "
+                    "TRIBUTE/CLIENT_STATE edges are not in that tuple, so this edge's tension never "
+                    "moves. Verified live, 2026-07-20."
+                ),
+            },
+            {
+                "channel": "edge_C004_T002_value_flow",
+                "reason": (
+                    "value_flow is written only on EXPLOITATION/TRIBUTE/WAGES/CLIENT_STATE edges "
+                    "(ImperialRentSystem, engine/systems/economic.py -- 'value_flow=' appears at exactly "
+                    "those 4 call sites repo-wide); TENANCY (land occupancy) and SOLIDARITY (potential "
+                    "internationalism, solidarity_strength=0.0 in every canonical scenario) edges never "
+                    "receive it in the current model scope. Verified live, 2026-07-20."
+                ),
+            },
+        ),
     },
     {
         "scenario": "fascist_bifurcation",
@@ -484,7 +1596,348 @@ SCENARIO_COVERAGE_DATA: Final[tuple[dict[str, Any], ...]] = (
                 "extraction/consciousness-sensitivity override",
             },
         ),
-        "at_rest": (),
+        "at_rest": (
+            {
+                "channel": "financial_endogenous_rate",
+                "reason": (
+                    "county-free scenario: no territory carries county_fips, so "
+                    "_tick_dynamics.county_states is empty every tick; "
+                    "TickDynamicsSystem._economy_wide_profit_rate returns None on an empty county_states "
+                    "dict, so endogenous_interest_rate() early-returns rate=profit_rate_ceiling=0.0 "
+                    "(Capital Vol. III ch. 23: no profit, nothing to divide), and reserve_army_signal()'s "
+                    "_employment_weighted_unemployment returns None on the empty dict (0.0 by its own "
+                    '"Zero, not absent, when no county carries labor-force data" contract), which zeroes '
+                    "loan_market_tightness() downstream too. Verified live, 2026-07-20."
+                ),
+            },
+            {
+                "channel": "financial_profit_rate_ceiling",
+                "reason": (
+                    "county-free scenario: no territory carries county_fips, so "
+                    "_tick_dynamics.county_states is empty every tick; "
+                    "TickDynamicsSystem._economy_wide_profit_rate returns None on an empty county_states "
+                    "dict, so endogenous_interest_rate() early-returns rate=profit_rate_ceiling=0.0 "
+                    "(Capital Vol. III ch. 23: no profit, nothing to divide), and reserve_army_signal()'s "
+                    "_employment_weighted_unemployment returns None on the empty dict (0.0 by its own "
+                    '"Zero, not absent, when no county carries labor-force data" contract), which zeroes '
+                    "loan_market_tightness() downstream too. Verified live, 2026-07-20."
+                ),
+            },
+            {
+                "channel": "financial_s_r",
+                "reason": (
+                    "county-free scenario: no territory carries county_fips, so "
+                    "_tick_dynamics.county_states is empty every tick; "
+                    "TickDynamicsSystem._economy_wide_profit_rate returns None on an empty county_states "
+                    "dict, so endogenous_interest_rate() early-returns rate=profit_rate_ceiling=0.0 "
+                    "(Capital Vol. III ch. 23: no profit, nothing to divide), and reserve_army_signal()'s "
+                    "_employment_weighted_unemployment returns None on the empty dict (0.0 by its own "
+                    '"Zero, not absent, when no county carries labor-force data" contract), which zeroes '
+                    "loan_market_tightness() downstream too. Verified live, 2026-07-20."
+                ),
+            },
+            {
+                "channel": "financial_tightness",
+                "reason": (
+                    "county-free scenario: no territory carries county_fips, so "
+                    "_tick_dynamics.county_states is empty every tick; "
+                    "TickDynamicsSystem._economy_wide_profit_rate returns None on an empty county_states "
+                    "dict, so endogenous_interest_rate() early-returns rate=profit_rate_ceiling=0.0 "
+                    "(Capital Vol. III ch. 23: no profit, nothing to divide), and reserve_army_signal()'s "
+                    "_employment_weighted_unemployment returns None on the empty dict (0.0 by its own "
+                    '"Zero, not absent, when no county carries labor-force data" contract), which zeroes '
+                    "loan_market_tightness() downstream too. Verified live, 2026-07-20."
+                ),
+            },
+            {
+                "channel": "C001_effective_wealth",
+                "reason": (
+                    "effective_wealth is written only for the WAGES edge's target entity "
+                    "(ImperialRentSystem's super-wage/PPP routine, engine/systems/economic.py:507); in "
+                    "this topology (imperial_circuit, also starvation/glut/fascist_bifurcation via the "
+                    "same factory) the sole WAGES edge targets C004 (Labor Aristocracy) -- Periphery "
+                    "Worker (C001) never receives a WAGES edge, so its effective_wealth stays at its "
+                    "Field(default=0.0) forever. Verified live, 2026-07-20."
+                ),
+            },
+            {
+                "channel": "C001_agitation",
+                "reason": (
+                    "C001 (Periphery Worker) never receives a WAGES edge (wage_change stays 0, so "
+                    "exploitation_rate_delta=0.0 in compute_agitation_delta) and never carries "
+                    "w_paid/v_produced attrs (only wage-paid classes get those stamped, "
+                    "engine/systems/ideology.py:201-226 -- so the "
+                    "wage_deterioration/sustained_deterioration terms stay 0.0 too); its wealth RISES "
+                    "every tick under this scenario's extraction_efficiency calibration (verified: "
+                    "0.615089->0.747949 over ticks 1-10), so compute_agitation_delta's "
+                    "imperial_rent_delta term (wealth_change, 'Wealth decline ~ rent decline') is also "
+                    "non-positive and contributes 0. All three agitation_increment terms are structurally "
+                    "zero for C001 in this topology/calibration; its agitation stays 0.0 the whole run. "
+                    "Verified live, 2026-07-20."
+                ),
+            },
+            {
+                "channel": "C002_effective_wealth",
+                "reason": (
+                    "effective_wealth is written only for the WAGES edge's target entity "
+                    "(ImperialRentSystem's super-wage/PPP routine, engine/systems/economic.py:507); in "
+                    "this topology (imperial_circuit, also starvation/glut/fascist_bifurcation via the "
+                    "same factory) the sole WAGES edge targets C004 (Labor Aristocracy) -- Comprador "
+                    "(C002) never receives a WAGES edge, so its effective_wealth stays at its "
+                    "Field(default=0.0) forever. Verified live, 2026-07-20."
+                ),
+            },
+            {
+                "channel": "C003_effective_wealth",
+                "reason": (
+                    "effective_wealth is written only for the WAGES edge's target entity "
+                    "(ImperialRentSystem's super-wage/PPP routine, engine/systems/economic.py:507); in "
+                    "this topology (imperial_circuit, also starvation/glut/fascist_bifurcation via the "
+                    "same factory) the sole WAGES edge targets C004 (Labor Aristocracy) -- Core "
+                    "Bourgeoisie (C003) never receives a WAGES edge, so its effective_wealth stays at its "
+                    "Field(default=0.0) forever. Verified live, 2026-07-20."
+                ),
+            },
+            {
+                "channel": "C005_wealth",
+                "reason": (
+                    "Carceral Enforcer (C005) / Internal Proletariat (C006) are seeded DORMANT "
+                    '(active=False, population=0) "until CLASS_DECOMPOSITION" (scenarios/_legacy.py '
+                    "comments) -- every consciousness/survival/struggle System explicitly skips inactive "
+                    'entities (e.g. engine/systems/ideology.py:172-174, "Skip inactive (dead) entities"). '
+                    "CLASS_DECOMPOSITION never fires within any of the five canonical scenarios' 52-tick "
+                    "horizon -- a PRE-EXISTING, already-documented gap (COVERAGE_GAPS_DATA's "
+                    'DecompositionSystem row: "SUPERWAGE_CRISIS never fires ... so CLASS_DECOMPOSITION '
+                    'correspondingly never fires"); this dense-column finding cross-validates that gap '
+                    "rather than discovering a new one. Verified live, 2026-07-20."
+                ),
+            },
+            {
+                "channel": "C005_effective_wealth",
+                "reason": (
+                    "Carceral Enforcer (C005) / Internal Proletariat (C006) are seeded DORMANT "
+                    '(active=False, population=0) "until CLASS_DECOMPOSITION" (scenarios/_legacy.py '
+                    "comments) -- every consciousness/survival/struggle System explicitly skips inactive "
+                    'entities (e.g. engine/systems/ideology.py:172-174, "Skip inactive (dead) entities"). '
+                    "CLASS_DECOMPOSITION never fires within any of the five canonical scenarios' 52-tick "
+                    "horizon -- a PRE-EXISTING, already-documented gap (COVERAGE_GAPS_DATA's "
+                    'DecompositionSystem row: "SUPERWAGE_CRISIS never fires ... so CLASS_DECOMPOSITION '
+                    'correspondingly never fires"); this dense-column finding cross-validates that gap '
+                    "rather than discovering a new one. Verified live, 2026-07-20."
+                ),
+            },
+            {
+                "channel": "C005_p_acquiescence",
+                "reason": (
+                    "Carceral Enforcer (C005) / Internal Proletariat (C006) are seeded DORMANT "
+                    '(active=False, population=0) "until CLASS_DECOMPOSITION" (scenarios/_legacy.py '
+                    "comments) -- every consciousness/survival/struggle System explicitly skips inactive "
+                    'entities (e.g. engine/systems/ideology.py:172-174, "Skip inactive (dead) entities"). '
+                    "CLASS_DECOMPOSITION never fires within any of the five canonical scenarios' 52-tick "
+                    "horizon -- a PRE-EXISTING, already-documented gap (COVERAGE_GAPS_DATA's "
+                    'DecompositionSystem row: "SUPERWAGE_CRISIS never fires ... so CLASS_DECOMPOSITION '
+                    'correspondingly never fires"); this dense-column finding cross-validates that gap '
+                    "rather than discovering a new one. Verified live, 2026-07-20."
+                ),
+            },
+            {
+                "channel": "C005_p_revolution",
+                "reason": (
+                    "Carceral Enforcer (C005) / Internal Proletariat (C006) are seeded DORMANT "
+                    '(active=False, population=0) "until CLASS_DECOMPOSITION" (scenarios/_legacy.py '
+                    "comments) -- every consciousness/survival/struggle System explicitly skips inactive "
+                    'entities (e.g. engine/systems/ideology.py:172-174, "Skip inactive (dead) entities"). '
+                    "CLASS_DECOMPOSITION never fires within any of the five canonical scenarios' 52-tick "
+                    "horizon -- a PRE-EXISTING, already-documented gap (COVERAGE_GAPS_DATA's "
+                    'DecompositionSystem row: "SUPERWAGE_CRISIS never fires ... so CLASS_DECOMPOSITION '
+                    'correspondingly never fires"); this dense-column finding cross-validates that gap '
+                    "rather than discovering a new one. Verified live, 2026-07-20."
+                ),
+            },
+            {
+                "channel": "C005_active",
+                "reason": (
+                    "Carceral Enforcer (C005) / Internal Proletariat (C006) are seeded DORMANT "
+                    '(active=False, population=0) "until CLASS_DECOMPOSITION" (scenarios/_legacy.py '
+                    "comments) -- every consciousness/survival/struggle System explicitly skips inactive "
+                    'entities (e.g. engine/systems/ideology.py:172-174, "Skip inactive (dead) entities"). '
+                    "CLASS_DECOMPOSITION never fires within any of the five canonical scenarios' 52-tick "
+                    "horizon -- a PRE-EXISTING, already-documented gap (COVERAGE_GAPS_DATA's "
+                    'DecompositionSystem row: "SUPERWAGE_CRISIS never fires ... so CLASS_DECOMPOSITION '
+                    'correspondingly never fires"); this dense-column finding cross-validates that gap '
+                    "rather than discovering a new one. Verified live, 2026-07-20."
+                ),
+            },
+            {
+                "channel": "C005_agitation",
+                "reason": (
+                    "Carceral Enforcer (C005) / Internal Proletariat (C006) are seeded DORMANT "
+                    '(active=False, population=0) "until CLASS_DECOMPOSITION" (scenarios/_legacy.py '
+                    "comments) -- every consciousness/survival/struggle System explicitly skips inactive "
+                    'entities (e.g. engine/systems/ideology.py:172-174, "Skip inactive (dead) entities"). '
+                    "CLASS_DECOMPOSITION never fires within any of the five canonical scenarios' 52-tick "
+                    "horizon -- a PRE-EXISTING, already-documented gap (COVERAGE_GAPS_DATA's "
+                    'DecompositionSystem row: "SUPERWAGE_CRISIS never fires ... so CLASS_DECOMPOSITION '
+                    'correspondingly never fires"); this dense-column finding cross-validates that gap '
+                    "rather than discovering a new one. Verified live, 2026-07-20."
+                ),
+            },
+            {
+                "channel": "C005_repression_faced",
+                "reason": (
+                    "Carceral Enforcer (C005) / Internal Proletariat (C006) are seeded DORMANT "
+                    '(active=False, population=0) "until CLASS_DECOMPOSITION" (scenarios/_legacy.py '
+                    "comments) -- every consciousness/survival/struggle System explicitly skips inactive "
+                    'entities (e.g. engine/systems/ideology.py:172-174, "Skip inactive (dead) entities"). '
+                    "CLASS_DECOMPOSITION never fires within any of the five canonical scenarios' 52-tick "
+                    "horizon -- a PRE-EXISTING, already-documented gap (COVERAGE_GAPS_DATA's "
+                    'DecompositionSystem row: "SUPERWAGE_CRISIS never fires ... so CLASS_DECOMPOSITION '
+                    'correspondingly never fires"); this dense-column finding cross-validates that gap '
+                    "rather than discovering a new one. Verified live, 2026-07-20."
+                ),
+            },
+            {
+                "channel": "C006_wealth",
+                "reason": (
+                    "Carceral Enforcer (C005) / Internal Proletariat (C006) are seeded DORMANT "
+                    '(active=False, population=0) "until CLASS_DECOMPOSITION" (scenarios/_legacy.py '
+                    "comments) -- every consciousness/survival/struggle System explicitly skips inactive "
+                    'entities (e.g. engine/systems/ideology.py:172-174, "Skip inactive (dead) entities"). '
+                    "CLASS_DECOMPOSITION never fires within any of the five canonical scenarios' 52-tick "
+                    "horizon -- a PRE-EXISTING, already-documented gap (COVERAGE_GAPS_DATA's "
+                    'DecompositionSystem row: "SUPERWAGE_CRISIS never fires ... so CLASS_DECOMPOSITION '
+                    'correspondingly never fires"); this dense-column finding cross-validates that gap '
+                    "rather than discovering a new one. Verified live, 2026-07-20."
+                ),
+            },
+            {
+                "channel": "C006_effective_wealth",
+                "reason": (
+                    "Carceral Enforcer (C005) / Internal Proletariat (C006) are seeded DORMANT "
+                    '(active=False, population=0) "until CLASS_DECOMPOSITION" (scenarios/_legacy.py '
+                    "comments) -- every consciousness/survival/struggle System explicitly skips inactive "
+                    'entities (e.g. engine/systems/ideology.py:172-174, "Skip inactive (dead) entities"). '
+                    "CLASS_DECOMPOSITION never fires within any of the five canonical scenarios' 52-tick "
+                    "horizon -- a PRE-EXISTING, already-documented gap (COVERAGE_GAPS_DATA's "
+                    'DecompositionSystem row: "SUPERWAGE_CRISIS never fires ... so CLASS_DECOMPOSITION '
+                    'correspondingly never fires"); this dense-column finding cross-validates that gap '
+                    "rather than discovering a new one. Verified live, 2026-07-20."
+                ),
+            },
+            {
+                "channel": "C006_p_acquiescence",
+                "reason": (
+                    "Carceral Enforcer (C005) / Internal Proletariat (C006) are seeded DORMANT "
+                    '(active=False, population=0) "until CLASS_DECOMPOSITION" (scenarios/_legacy.py '
+                    "comments) -- every consciousness/survival/struggle System explicitly skips inactive "
+                    'entities (e.g. engine/systems/ideology.py:172-174, "Skip inactive (dead) entities"). '
+                    "CLASS_DECOMPOSITION never fires within any of the five canonical scenarios' 52-tick "
+                    "horizon -- a PRE-EXISTING, already-documented gap (COVERAGE_GAPS_DATA's "
+                    'DecompositionSystem row: "SUPERWAGE_CRISIS never fires ... so CLASS_DECOMPOSITION '
+                    'correspondingly never fires"); this dense-column finding cross-validates that gap '
+                    "rather than discovering a new one. Verified live, 2026-07-20."
+                ),
+            },
+            {
+                "channel": "C006_p_revolution",
+                "reason": (
+                    "Carceral Enforcer (C005) / Internal Proletariat (C006) are seeded DORMANT "
+                    '(active=False, population=0) "until CLASS_DECOMPOSITION" (scenarios/_legacy.py '
+                    "comments) -- every consciousness/survival/struggle System explicitly skips inactive "
+                    'entities (e.g. engine/systems/ideology.py:172-174, "Skip inactive (dead) entities"). '
+                    "CLASS_DECOMPOSITION never fires within any of the five canonical scenarios' 52-tick "
+                    "horizon -- a PRE-EXISTING, already-documented gap (COVERAGE_GAPS_DATA's "
+                    'DecompositionSystem row: "SUPERWAGE_CRISIS never fires ... so CLASS_DECOMPOSITION '
+                    'correspondingly never fires"); this dense-column finding cross-validates that gap '
+                    "rather than discovering a new one. Verified live, 2026-07-20."
+                ),
+            },
+            {
+                "channel": "C006_active",
+                "reason": (
+                    "Carceral Enforcer (C005) / Internal Proletariat (C006) are seeded DORMANT "
+                    '(active=False, population=0) "until CLASS_DECOMPOSITION" (scenarios/_legacy.py '
+                    "comments) -- every consciousness/survival/struggle System explicitly skips inactive "
+                    'entities (e.g. engine/systems/ideology.py:172-174, "Skip inactive (dead) entities"). '
+                    "CLASS_DECOMPOSITION never fires within any of the five canonical scenarios' 52-tick "
+                    "horizon -- a PRE-EXISTING, already-documented gap (COVERAGE_GAPS_DATA's "
+                    'DecompositionSystem row: "SUPERWAGE_CRISIS never fires ... so CLASS_DECOMPOSITION '
+                    'correspondingly never fires"); this dense-column finding cross-validates that gap '
+                    "rather than discovering a new one. Verified live, 2026-07-20."
+                ),
+            },
+            {
+                "channel": "C006_agitation",
+                "reason": (
+                    "Carceral Enforcer (C005) / Internal Proletariat (C006) are seeded DORMANT "
+                    '(active=False, population=0) "until CLASS_DECOMPOSITION" (scenarios/_legacy.py '
+                    "comments) -- every consciousness/survival/struggle System explicitly skips inactive "
+                    'entities (e.g. engine/systems/ideology.py:172-174, "Skip inactive (dead) entities"). '
+                    "CLASS_DECOMPOSITION never fires within any of the five canonical scenarios' 52-tick "
+                    "horizon -- a PRE-EXISTING, already-documented gap (COVERAGE_GAPS_DATA's "
+                    'DecompositionSystem row: "SUPERWAGE_CRISIS never fires ... so CLASS_DECOMPOSITION '
+                    'correspondingly never fires"); this dense-column finding cross-validates that gap '
+                    "rather than discovering a new one. Verified live, 2026-07-20."
+                ),
+            },
+            {
+                "channel": "edge_C001_C004_value_flow",
+                "reason": (
+                    "value_flow is written only on EXPLOITATION/TRIBUTE/WAGES/CLIENT_STATE edges "
+                    "(ImperialRentSystem, engine/systems/economic.py -- 'value_flow=' appears at exactly "
+                    "those 4 call sites repo-wide); TENANCY (land occupancy) and SOLIDARITY (potential "
+                    "internationalism, solidarity_strength=0.0 in every canonical scenario) edges never "
+                    "receive it in the current model scope. Verified live, 2026-07-20."
+                ),
+            },
+            {
+                "channel": "edge_C001_C004_tension",
+                "reason": (
+                    "tension is written only on EXPLOITATION/WAGES/TENANCY edges "
+                    "(ContradictionSystem._TENSION_EDGE_TYPES, engine/systems/contradiction.py:122-126); "
+                    "SOLIDARITY is not in that tuple, so this edge's tension never moves. Verified live, "
+                    "2026-07-20."
+                ),
+            },
+            {
+                "channel": "edge_C001_T001_value_flow",
+                "reason": (
+                    "value_flow is written only on EXPLOITATION/TRIBUTE/WAGES/CLIENT_STATE edges "
+                    "(ImperialRentSystem, engine/systems/economic.py -- 'value_flow=' appears at exactly "
+                    "those 4 call sites repo-wide); TENANCY (land occupancy) and SOLIDARITY (potential "
+                    "internationalism, solidarity_strength=0.0 in every canonical scenario) edges never "
+                    "receive it in the current model scope. Verified live, 2026-07-20."
+                ),
+            },
+            {
+                "channel": "edge_C002_C003_tension",
+                "reason": (
+                    "tension is written only on EXPLOITATION/WAGES/TENANCY edges "
+                    "(ContradictionSystem._TENSION_EDGE_TYPES, engine/systems/contradiction.py:122-126); "
+                    "TRIBUTE/CLIENT_STATE edges are not in that tuple, so this edge's tension never "
+                    "moves. Verified live, 2026-07-20."
+                ),
+            },
+            {
+                "channel": "edge_C003_C002_tension",
+                "reason": (
+                    "tension is written only on EXPLOITATION/WAGES/TENANCY edges "
+                    "(ContradictionSystem._TENSION_EDGE_TYPES, engine/systems/contradiction.py:122-126); "
+                    "TRIBUTE/CLIENT_STATE edges are not in that tuple, so this edge's tension never "
+                    "moves. Verified live, 2026-07-20."
+                ),
+            },
+            {
+                "channel": "edge_C004_T002_value_flow",
+                "reason": (
+                    "value_flow is written only on EXPLOITATION/TRIBUTE/WAGES/CLIENT_STATE edges "
+                    "(ImperialRentSystem, engine/systems/economic.py -- 'value_flow=' appears at exactly "
+                    "those 4 call sites repo-wide); TENANCY (land occupancy) and SOLIDARITY (potential "
+                    "internationalism, solidarity_strength=0.0 in every canonical scenario) edges never "
+                    "receive it in the current model scope. Verified live, 2026-07-20."
+                ),
+            },
+        ),
     },
     {
         # detroit_tri_county: not one of the five canonical qa:regression
@@ -558,7 +2011,57 @@ SCENARIO_COVERAGE_DATA: Final[tuple[dict[str, Any], ...]] = (
                 "claim": "price-value axis live over a county-bearing graph",
             },
         ),
-        "at_rest": (),
+        "at_rest": (
+            {
+                "channel": "financial_s_r",
+                "reason": (
+                    "single_county carries a real county (Wayne, FIPS 26163) whose real 2010 "
+                    "unemployment_rate is 0.05 (single_county_wayne.json fixture, via the production "
+                    "tensor chain) -- BELOW capital_vol3.interest_reserve_reference (0.08 default): "
+                    "reserve_army_signal()'s raw=(0.05-0.08)/(1-0.08) is negative, clamped to 0.0, and "
+                    "loan_market_tightness() inherits that 0 (gain*0.0 minus the idle-money-capital- "
+                    "supply constant, clamped to 0). "
+                    "financial_endogenous_rate/financial_profit_rate_ceiling ARE live here (rate "
+                    "approximately 0.017834) -- this channel is at rest for THIS county's real "
+                    "calibration, not because the code path is unreachable. Verified live, 2026-07-20."
+                ),
+            },
+            {
+                "channel": "financial_tightness",
+                "reason": (
+                    "single_county carries a real county (Wayne, FIPS 26163) whose real 2010 "
+                    "unemployment_rate is 0.05 (single_county_wayne.json fixture, via the production "
+                    "tensor chain) -- BELOW capital_vol3.interest_reserve_reference (0.08 default): "
+                    "reserve_army_signal()'s raw=(0.05-0.08)/(1-0.08) is negative, clamped to 0.0, and "
+                    "loan_market_tightness() inherits that 0 (gain*0.0 minus the idle-money-capital- "
+                    "supply constant, clamped to 0). "
+                    "financial_endogenous_rate/financial_profit_rate_ceiling ARE live here (rate "
+                    "approximately 0.017834) -- this channel is at rest for THIS county's real "
+                    "calibration, not because the code path is unreachable. Verified live, 2026-07-20."
+                ),
+            },
+            {
+                "channel": "C003_effective_wealth",
+                "reason": (
+                    "effective_wealth is written only for the WAGES edge's target entity "
+                    "(ImperialRentSystem's super-wage/PPP routine, engine/systems/economic.py:507); "
+                    "single_county's WAGES edge runs owner(C003, Wayne County Core "
+                    "Bourgeoisie)->worker(C004, Wayne County Labor Aristocracy), so the WAGES edge "
+                    "targets C004 -- Core Bourgeoisie (owner) (C003) never receives a WAGES edge, so its "
+                    "effective_wealth stays at its Field(default=0.0) forever. Verified live, 2026-07-20."
+                ),
+            },
+            {
+                "channel": "edge_C004_T001_value_flow",
+                "reason": (
+                    "value_flow is written only on EXPLOITATION/TRIBUTE/WAGES/CLIENT_STATE edges "
+                    "(ImperialRentSystem, engine/systems/economic.py -- 'value_flow=' appears at exactly "
+                    "those 4 call sites repo-wide); TENANCY (land occupancy) and SOLIDARITY (potential "
+                    "internationalism, solidarity_strength=0.0 in every canonical scenario) edges never "
+                    "receive it in the current model scope. Verified live, 2026-07-20."
+                ),
+            },
+        ),
     },
 )
 

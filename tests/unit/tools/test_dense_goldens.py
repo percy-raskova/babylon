@@ -21,7 +21,6 @@ This module verifies two things:
 from __future__ import annotations
 
 import csv
-import shutil
 import sys
 from pathlib import Path
 
@@ -39,6 +38,18 @@ DENSE_DIR = BASELINE_DIR / "dense"
 
 _PENDING_CEREMONY_SKIP_REASON = "PENDING CEREMONY: golden minted by the Task 11 ceremony"
 
+# E3 (Task 9): STALE BY DESIGN, not pending — these five scenarios already
+# have a committed golden, but Task 9 widened the dense header (4 new
+# ``financial_*`` columns on every scenario, plus per-county
+# ``county_<fips>_*`` columns on county-bearing ones), so the committed
+# bytes no longer match a fresh run until Task 11's ceremony re-mints them.
+# TODO(Task 11): remove this allowlist entirely once the ceremony lands —
+# at that point every scenario's regeneration test should be a real
+# assertion again.
+_STALE_UNTIL_CEREMONY_SKIP_REASON = (
+    "STALE BY DESIGN: headers widened by E3; goldens re-minted by the Task 11 ceremony"
+)
+
 
 def _skip_if_pending_ceremony(scenario_name: str) -> None:
     """Skip loudly for a scenario whose baseline hasn't been minted yet.
@@ -54,6 +65,21 @@ def _skip_if_pending_ceremony(scenario_name: str) -> None:
     """
     if scenario_name in rt.PENDING_CEREMONY:
         pytest.skip(_PENDING_CEREMONY_SKIP_REASON)
+
+
+def _skip_if_stale_until_ceremony(scenario_name: str) -> None:
+    """Skip loudly (byte-comparison only) for a scenario whose golden is stale by design.
+
+    Keyed off the explicit ``rt.STALE_UNTIL_CEREMONY`` allowlist, mirroring
+    ``_skip_if_pending_ceremony``'s deletion-masking-guard design: only the
+    byte-identical REGENERATION-comparison test skips for these scenarios —
+    ``test_dense_golden_exists_for_every_scenario`` (this function is never
+    called from there) stays a real assertion, so a golden file going
+    missing still fails loudly instead of being waved through by this
+    allowlist too.
+    """
+    if scenario_name in rt.STALE_UNTIL_CEREMONY:
+        pytest.skip(_STALE_UNTIL_CEREMONY_SKIP_REASON)
 
 
 @pytest.mark.parametrize("scenario_name", sorted(rt.SCENARIOS))
@@ -98,6 +124,7 @@ def test_dense_golden_has_documented_column_shape(scenario_name: str) -> None:
 def test_dense_trace_regeneration_matches_committed_golden(scenario_name: str) -> None:
     """Re-running the scenario reproduces the committed golden byte-for-byte."""
     _skip_if_pending_ceremony(scenario_name)
+    _skip_if_stale_until_ceremony(scenario_name)
     expected_max_ticks = rt.load_baseline(BASELINE_DIR / f"{scenario_name}.json").max_ticks
     _baseline, dense = rt.run_scenario_dense(scenario_name, max_ticks=expected_max_ticks)
 
@@ -110,17 +137,28 @@ def test_compare_dense_trace_catches_a_synthetic_one_value_mutation(tmp_path: Pa
     """A single mutated cell in a *copy* of a golden is caught, loudly.
 
     RED-phase gate for Program 13 item 2: dense comparison must not be a
-    rubber stamp. Copies the real committed golden into a scratch
-    ``tmp_path`` baseline dir, corrupts exactly one cell, and asserts
-    ``compare_dense_trace`` reports the mutation with the exact
-    tick+column it touched — never a silent pass (Constitution III.11).
+    rubber stamp. Builds the scratch "golden" from the freshly-computed
+    trace ITSELF (not the currently-committed file on disk), so this test
+    stays a same-shape, self-consistent mutation-detection check regardless
+    of the committed golden's current column contract — including through
+    Task 9/E3's sanctioned red window, where the committed ``two_node.csv``
+    is deliberately stale (widened dense header, not yet re-minted by the
+    Task 11 ceremony) and would otherwise make every cell walk short-circuit
+    on the header-mismatch path before ever reaching the mutated cell.
+    Corrupts exactly one cell in the scratch copy and asserts
+    ``compare_dense_trace`` reports the mutation with the exact tick+column
+    it touched — never a silent pass (Constitution III.11). Never touches
+    the real committed golden file — everything scratch lives under
+    ``tmp_path``.
     """
     scenario_name = "two_node"
     scratch_dense_dir = tmp_path / "dense"
     scratch_dense_dir.mkdir()
-    committed_golden = DENSE_DIR / f"{scenario_name}.csv"
     scratch_golden = scratch_dense_dir / f"{scenario_name}.csv"
-    shutil.copy(committed_golden, scratch_golden)
+
+    expected_max_ticks = rt.load_baseline(BASELINE_DIR / f"{scenario_name}.json").max_ticks
+    _baseline, dense = rt.run_scenario_dense(scenario_name, max_ticks=expected_max_ticks)
+    scratch_golden.write_bytes(rt.dense_trace_to_csv_bytes(dense))
 
     with scratch_golden.open(newline="") as f:
         rows = list(csv.reader(f))
@@ -136,9 +174,6 @@ def test_compare_dense_trace_catches_a_synthetic_one_value_mutation(tmp_path: Pa
         writer = csv.writer(f, lineterminator="\n")
         writer.writerows(rows)
 
-    expected_max_ticks = rt.load_baseline(BASELINE_DIR / f"{scenario_name}.json").max_ticks
-    _baseline, dense = rt.run_scenario_dense(scenario_name, max_ticks=expected_max_ticks)
-
     passed, report = rt.compare_dense_trace(dense, tmp_path)
 
     assert not passed, "mutation was not detected — dense compare is a rubber stamp"
@@ -146,10 +181,15 @@ def test_compare_dense_trace_catches_a_synthetic_one_value_mutation(tmp_path: Pa
     assert report.tick == mutated_tick
     assert report.column == mutated_column
 
-    # And the real committed golden (never touched — only the tmp_path copy
-    # was mutated) still compares clean.
-    passed_real, _ = rt.compare_dense_trace(dense, BASELINE_DIR)
-    assert passed_real, "the committed golden must remain unaffected by this mutation test"
+    # No "the real committed golden still compares clean" follow-up assertion
+    # here (removed, E3/Task 9): this test no longer reads the committed
+    # golden at all — the scratch copy is built from `dense` itself — so
+    # there is nothing on disk this test could corrupt. Asserting the real
+    # committed golden compares clean against a freshly-computed `dense`
+    # trace is exactly `test_dense_trace_regeneration_matches_committed_golden`'s
+    # job, and for `two_node` specifically that assertion is expected to be
+    # FALSE right now — `two_node` is in `rt.STALE_UNTIL_CEREMONY`, the
+    # sanctioned red window this task opens.
 
 
 def test_appended_trailing_column_produces_a_loud_header_report(tmp_path: Path) -> None:

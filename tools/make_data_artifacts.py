@@ -121,6 +121,23 @@ ARTIFACTS: tuple[ArtifactSpec, ...] = (
         mode="register",
     ),
     ArtifactSpec(
+        name="bridge_county_cz",
+        format="csv",
+        source_table="bridge_county_cz",
+        home="src/babylon/data/reference/bridge_county_cz.csv",
+        material_relation=(
+            "county -> 1990 ERS commuting zone membership (Tolbert-Sizer "
+            "journey-to-work delineation, 3141 counties -> 741 CZs) — the "
+            "daily reproduction-of-labor-power aggregation geography, the CZ "
+            "rung of the Amendment U spatial lattice; matches the on-drive "
+            "Chetty mobility-atlas CZ outcome tables (cz=11600 Detroit "
+            "spot-verified). Derived from the archived ERS source XLS "
+            "(babylon-data/external/usda-ers-cz90-crosswalk.xls); no DB "
+            "table ever existed (register-only, like babylon_ricci_final)."
+        ),
+        mode="register",
+    ),
+    ArtifactSpec(
         name="fact_energy_annual",
         format="parquet",
         source_table="fact_energy_annual",

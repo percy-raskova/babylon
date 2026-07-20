@@ -139,6 +139,172 @@ class TestComputeAgitationDelta:
 
 @pytest.mark.unit
 @pytest.mark.math
+class TestComputeAgitationDeltaWageBalance:
+    """Task #42-A: ``wage_balance`` (a LEVEL, not a delta) feeds the same
+    canonical Stage-1 converter as the three first-difference terms.
+
+    De-delta wiring (ADR082 + consciousness-theory grounding): balance is
+    non-monotonic magnitude (peaks near a small positive "precarious bribe"
+    balance, per :func:`~babylon.formulas.sustained_exploitation.
+    sustained_exploitation_magnitude`) -- sign-agnostic. Direction is NOT
+    this function's concern; it must never gate agitation to zero for a
+    positive balance (that would be the retired sign-gated formula's bug).
+    """
+
+    def test_wage_balance_none_no_contribution(self) -> None:
+        """Default (omitted) wage_balance leaves existing callers unaffected."""
+        delta = compute_agitation_delta(
+            exploitation_rate_delta=0.0,
+            imperial_rent_delta=0.0,
+            visibility_delta=0.0,
+        )
+        assert delta == pytest.approx(0.0)
+
+    def test_negative_wage_balance_generates_agitation(self) -> None:
+        """A negative balance (labor losing) generates agitation."""
+        delta = compute_agitation_delta(
+            exploitation_rate_delta=0.0,
+            imperial_rent_delta=0.0,
+            visibility_delta=0.0,
+            wage_balance=-0.5,
+        )
+        assert delta > 0.0
+
+    def test_positive_wage_balance_generates_agitation_not_quiescence(self) -> None:
+        """ADR082: a positive balance (the imperial bribe) must NOT gate
+        agitation to zero -- it still generates energy (routed elsewhere to
+        the fascist pole via chauvinist_pressure, not this function's job)."""
+        delta = compute_agitation_delta(
+            exploitation_rate_delta=0.0,
+            imperial_rent_delta=0.0,
+            visibility_delta=0.0,
+            wage_balance=0.5,
+        )
+        assert delta > 0.0
+
+    def test_wage_balance_matches_sustained_exploitation_magnitude(self) -> None:
+        """The delta path must reuse (not reimplement) the shared, sole
+        authoritative interpreter of balance's scale/sign."""
+        from babylon.formulas.sustained_exploitation import (
+            sustained_exploitation_magnitude,
+        )
+
+        defines = ConsciousnessDefines()
+        for balance in (-0.8, -0.1, 0.0, 0.1, 0.5, 0.9):
+            delta = compute_agitation_delta(
+                exploitation_rate_delta=0.0,
+                imperial_rent_delta=0.0,
+                visibility_delta=0.0,
+                wage_balance=balance,
+                defines=defines,
+            )
+            expected = sustained_exploitation_magnitude(
+                balance,
+                defines.sustained_exploitation_sensitivity,
+                defines.chauvinist_peak_location,
+                defines.chauvinist_peak_falloff,
+            )
+            assert delta == pytest.approx(expected), f"balance={balance}"
+
+    def test_wage_balance_combines_additively_with_delta_terms(self) -> None:
+        """wage_balance's contribution adds to (does not replace) the
+        pre-existing first-difference terms."""
+        defines = ConsciousnessDefines()
+        from babylon.formulas.sustained_exploitation import (
+            sustained_exploitation_magnitude,
+        )
+
+        delta = compute_agitation_delta(
+            exploitation_rate_delta=0.5,
+            imperial_rent_delta=-0.2,
+            visibility_delta=0.0,
+            wage_balance=-0.3,
+            defines=defines,
+        )
+        expected = (
+            0.5 * defines.exploitation_sensitivity
+            + 0.2 * defines.rent_decline_sensitivity
+            + sustained_exploitation_magnitude(
+                -0.3,
+                defines.sustained_exploitation_sensitivity,
+                defines.chauvinist_peak_location,
+                defines.chauvinist_peak_falloff,
+            )
+        )
+        assert delta == pytest.approx(expected)
+
+
+@pytest.mark.unit
+@pytest.mark.math
+class TestComputeAgitationDeltaRepressionLevel:
+    """Task #42-B: ``repression_faced`` is already a continuous [0, 1]
+    level (not an event) -- read directly as a Stage-1 agitation term,
+    orthogonal to the REPRESSION edge producer and distinct from
+    StruggleSystem's event-triggered ``repression_backfire`` spike."""
+
+    def test_repression_level_none_no_contribution(self) -> None:
+        """Default (omitted) repression_level leaves existing callers unaffected."""
+        delta = compute_agitation_delta(
+            exploitation_rate_delta=0.0,
+            imperial_rent_delta=0.0,
+            visibility_delta=0.0,
+        )
+        assert delta == pytest.approx(0.0)
+
+    def test_positive_repression_level_generates_agitation(self) -> None:
+        """MIM labor-aristocracy:34-40: absence of violent conflict is why
+        consciousness stays low -- so repression present must raise agitation."""
+        delta = compute_agitation_delta(
+            exploitation_rate_delta=0.0,
+            imperial_rent_delta=0.0,
+            visibility_delta=0.0,
+            repression_level=0.8,
+        )
+        assert delta > 0.0
+
+    def test_repression_level_zero_no_agitation(self) -> None:
+        """An explicit 0.0 level (as opposed to None/absent) contributes
+        nothing -- confirms the term is linear through the origin, not a
+        hidden nonzero floor."""
+        delta = compute_agitation_delta(
+            exploitation_rate_delta=0.0,
+            imperial_rent_delta=0.0,
+            visibility_delta=0.0,
+            repression_level=0.0,
+        )
+        assert delta == pytest.approx(0.0)
+
+    def test_repression_level_scales_with_defines_coefficient(self) -> None:
+        """repression_level -> agitation uses a dedicated, moddable coefficient."""
+        custom = ConsciousnessDefines(repression_level_sensitivity=0.5)
+        delta = compute_agitation_delta(
+            exploitation_rate_delta=0.0,
+            imperial_rent_delta=0.0,
+            visibility_delta=0.0,
+            repression_level=0.4,
+            defines=custom,
+        )
+        assert delta == pytest.approx(0.4 * 0.5)
+
+    def test_repression_level_combines_additively_with_other_terms(self) -> None:
+        """repression_level's contribution adds to (does not replace) the
+        pre-existing first-difference terms."""
+        defines = ConsciousnessDefines()
+        delta = compute_agitation_delta(
+            exploitation_rate_delta=0.5,
+            imperial_rent_delta=0.0,
+            visibility_delta=0.0,
+            repression_level=0.6,
+            defines=defines,
+        )
+        expected = (
+            0.5 * defines.exploitation_sensitivity + 0.6 * defines.repression_level_sensitivity
+        )
+        assert delta == pytest.approx(expected)
+
+
+@pytest.mark.unit
+@pytest.mark.math
 class TestComputeExploitationVisibility:
     """compute_exploitation_visibility: tensor state → visibility [0, 1]."""
 

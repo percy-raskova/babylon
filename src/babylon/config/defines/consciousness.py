@@ -218,6 +218,33 @@ class ConsciousnessDefines(BaseModel):
         ),
     )
 
+    # ----- Task #42-B (2026-07-20): continuous repression agitation term -----
+
+    repression_level_sensitivity: float = Field(
+        default=0.002,
+        ge=0.0,
+        le=1.0,
+        description=(
+            "PROVISIONAL (calibrated later via `mise run sim:pacing`). "
+            "repression_faced [0, 1] -> agitation, read as a continuous "
+            "LEVEL in compute_agitation_delta (MIM labor-aristocracy:34-40: "
+            "'the lack of violent conflict itself is a fundamental reason "
+            "for the lack of political consciousness among the workers'). "
+            "Distinct from repression_backfire (StruggleSystem's "
+            "EXCESSIVE_FORCE event spike): this fires every tick "
+            "repression_faced is present, not just on a spark roll. An "
+            "order of magnitude BELOW sustained_exploitation_sensitivity "
+            "(0.02) despite the similar 'LEVEL, not delta' shape: unlike "
+            "wage_balance (gated on an actual per-tick wage TRANSACTION), "
+            "SocialClass's own model default (repression_faced=0.5) means "
+            "this term is realistically unconditional from tick 1 for "
+            "every class, in every scenario -- measured directly (a "
+            "126-tick pre-crisis run with default repression_faced=0.5), "
+            "0.02 saturates national_identity to its 1.0 ceiling well "
+            "inside that window; 0.002 leaves comfortable headroom."
+        ),
+    )
+
 
 class ContradictionFieldDefines(BaseModel):
     """Contradiction field topology coefficients (Feature 002).

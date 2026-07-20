@@ -90,6 +90,44 @@ def test_efficacy_reds_on_false_bundle_evidence(tmp_path: Path) -> None:
     assert any("phantom_event_type" in f for f in findings)
 
 
+def test_efficacy_reds_on_false_bundle_field_path(tmp_path: Path) -> None:
+    """MUTATION: bundle_field naming a dotted path absent from the bundle reds."""
+    module = tmp_path / "scenarios.py"
+    module.write_text(
+        "SCENARIO_COVERAGE_DATA = ("
+        "{'scenario': 'detroit_tri_county', 'layers': (), 'systems': ("
+        "{'system': 'ContradictionSystem', 'kind': 'bundle_field', "
+        "'key': 'terminal_state.phantom_field', 'claim': 'c'},), 'at_rest': ()},)\n"
+        "COVERAGE_GAPS_DATA = ()\nCHANNEL_WRITERS = {}\n",
+        encoding="utf-8",
+    )
+    findings = check_bundle_evidence(scenarios_path=module)
+    assert any("phantom_field" in f for f in findings)
+
+
+def test_efficacy_reds_on_forbidden_bundle_field_value(tmp_path: Path) -> None:
+    """MUTATION: a bundle_field value matching a declared forbidden value reds.
+
+    Points at the REAL committed baseline (default bundle_path) with a
+    synthetic scenarios module whose row claims the real, present key
+    ``terminal_state.max_tension`` but forbids its actual committed value
+    (0.667728) — presence-only checking would pass this; the value check
+    must not.
+    """
+    module = tmp_path / "scenarios.py"
+    module.write_text(
+        "SCENARIO_COVERAGE_DATA = ("
+        "{'scenario': 'detroit_tri_county', 'layers': (), 'systems': ("
+        "{'system': 'ContradictionSystem', 'kind': 'bundle_field', "
+        "'key': 'terminal_state.max_tension', 'claim': 'c', "
+        "'forbidden_values': ('0.667728',)},), 'at_rest': ()},)\n"
+        "COVERAGE_GAPS_DATA = ()\nCHANNEL_WRITERS = {}\n",
+        encoding="utf-8",
+    )
+    findings = check_bundle_evidence(scenarios_path=module)
+    assert any("forbidden value" in f and "0.667728" in f for f in findings)
+
+
 def test_infra_missing_module_is_loud(tmp_path: Path) -> None:
     with pytest.raises(SentinelCheckError):
         check_union_covers_all_systems(scenarios_path=tmp_path / "nope.py")

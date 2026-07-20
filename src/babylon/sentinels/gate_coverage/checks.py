@@ -43,7 +43,7 @@ def _literal(path: Path, name: str) -> Any:
                 raise SentinelCheckError(f"{name} in {path} has no value")
             try:
                 return ast.literal_eval(value)
-            except ValueError as exc:
+            except (ValueError, TypeError) as exc:
                 raise SentinelCheckError(f"{name} in {path} is not a pure literal: {exc}") from exc
     raise SentinelCheckError(f"{name} not found in {path}")
 
@@ -169,6 +169,24 @@ def check_bundle_evidence(
                     )
                     break
                 node = node[part]
+            else:
+                # The dotted path fully resolved (no break) — presence alone
+                # doesn't prove the claimed System ran when the field is
+                # schema-static (always emitted, even 0.0 when inert). Pin
+                # the VALUE the row actually relies on: if it equals a
+                # declared forbidden_values entry (typically the field's
+                # seeded/default value), the evidenced System appears NOT to
+                # have run — a future baseline regen collapsing back to that
+                # value must red, not stay silently green on presence.
+                forbidden = row.get("forbidden_values", ())
+                if str(node) in forbidden:
+                    findings.append(
+                        f"[gate-blindness] {row['system']}: bundle_field "
+                        f"{row['key']!r} holds forbidden value {str(node)!r} in "
+                        f"{bundle_path.name} — the evidenced system appears NOT "
+                        f"to have run. REMEDY: regenerate the baseline honestly, "
+                        f"or fix the claim."
+                    )
     return findings
 
 

@@ -134,6 +134,15 @@ class SystemEvidence(_StrictModel):
           committed e2e baseline bundle, not by the probe.
     :param key: The evidence key, interpreted per ``kind``.
     :param claim: Human sentence naming the material relation exercised.
+    :param forbidden_values: ``bundle_field``-only. If the baseline's value at
+        ``key`` (compared as ``str(value)``) equals any of these, the gate
+        reds: presence alone doesn't prove the claimed System ran when the
+        field is schema-static (always emitted, even when the System is
+        inert) — this pins the *value* the row is actually relying on
+        (typically the field's seeded/default value) so a future baseline
+        regen that silently collapses back to that value is caught, not
+        waved through by a presence-only check. Empty (the default) for
+        every kind except the rows that need it.
     """
 
     system: str
@@ -148,6 +157,7 @@ class SystemEvidence(_StrictModel):
     ]
     key: str
     claim: str
+    forbidden_values: tuple[str, ...] = ()
 
 
 class AtRestChannel(_StrictModel):
@@ -482,6 +492,14 @@ SCENARIO_COVERAGE_DATA: Final[tuple[dict[str, Any], ...]] = (
                 "ContradictionSystem._write_edge_tensions computed and "
                 "persisted a real wealth-asymmetry gap rather than leaving the "
                 "seed value untouched",
+                # Presence alone doesn't prove this — max_tension is
+                # schema-static (always emitted, even 0.0 when inert). "0.1"
+                # is the bridge's static tick-0 EXPLOITATION seed;
+                # "0.0" is _query_max_tension's own inert/empty-table
+                # default. A future baseline regen landing on either value
+                # means ContradictionSystem's edge-tension write did NOT
+                # fire, and this row's claim would be false.
+                "forbidden_values": ("0.1", "0.0"),
             },
         ),
         "at_rest": (),

@@ -2,9 +2,38 @@
 # What exists vs what's planned - KEEP THIS UPDATED
 
 meta:
-  version: "2.38.0"  # 2.28.0 lives on feature/19-emergent-class-partition (Program 19 Phase 0+1)
-  updated: "2026-07-17"
+  version: "2.39.0"  # 2.28.0 lives on feature/19-emergent-class-partition (Program 19 Phase 0+1)
+  updated: "2026-07-19"
   truth_status: |
+    (2026-07-19) VOL III MONEY WIRED LIVE (ADR083; branch
+    refactor/vol3-money-scissors, design docs/superpowers/specs/
+    2026-07-18-vol3-money-scissors-design.md): the dormant Vol III
+    economics estate (spec-024) connected end-to-end for the first time --
+    s = p + i + r + t now evaluates in the shipped game, not just in
+    isolated tests. NationalFinancialParameters published to the graph
+    (NATIONAL_FINANCIAL_ATTR); a monetary anchor (domain/economics/monetary/
+    anchor.py) pulls the market-scissors oscillator toward real FRED ratios
+    2010-2024, honestly absent thereafter (~85% of a campaign); the
+    national interest rate is ENDOGENOUS and total (Capital Vol. III Part
+    V, U9: i = r*share(tau), 0 <= i < r by construction; FRED demoted to
+    test-pinned calibration) -- structurally inert as first landed
+    (read-before-write on tick-stamped graph attrs; caught by the final
+    whole-branch review), repaired by re-sourcing r/s_r in-scope from the
+    county reference tensors (Wayne 2011 pins i=0.019855, interest 33.3%
+    of surplus, SC-001 green on the real DB); dialectic catalog grows
+    6->10 oppositions (surplus_distribution, debt_spiral, credit,
+    financial) with CouplingGraph activated as ContradictionSystem's first
+    production consumer, and the asymmetry field wealth-weighted
+    (catalog._mean_asymmetry, owner ruling 2026-07-19 -- the U7.6 sensor's
+    live catch); a live year-2041 ValidationError crash on the
+    already-wired MELT path fixed (NationalTickParameters' le=2040
+    constraint now degrades to NoDataSentinel). Baselines UNTOUCHED:
+    qa:regression byte-identical (county-free scenarios cannot observe the
+    county financial layer -- the coverage blindness the owner-approved
+    qa:regression modernization program, spec 2026-07-19, exists to close;
+    sequenced BEFORE the Volume II circulation program); regeneration
+    declined as unnecessary per the recorded owner approval
+    (reports/vol3-baseline-delta.md, commit b791aba7).
     (2026-07-18) SENTINEL FAMILY GROWS TO SIX ERROR CLASSES (ADR082): the
     Vol III money work surfaced six failure modes no existing test caught.
     New packages babylon.sentinels.liveness (correct-but-inert,

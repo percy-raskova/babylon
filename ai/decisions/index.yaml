@@ -1,9 +1,14 @@
 meta:
-  version: 1.29.0
-  updated: '2026-07-18'
+  version: 1.30.0
+  updated: '2026-07-19'
   description: Architecture Decision Records Index
   format: See individual ADR files in this directory
 decisions:
+  ADR083_vol3_money_scissors:
+    title: 'Volume III Money wired live through the Value-Price Scissors: the dormant Vol III estate connected via calculator_overrides + a new NationalFinancialParameters graph publication + a monetary anchor, four new bound oppositions (catalog 6->10) with CouplingGraph activated as ContradictionSystem''s first production consumer, a 13-item honesty sweep, six new sentinel classes, and an endogenous national interest rate (Capital Vol. III Part V, U9 -- the rate total, never absent; post-review repair re-sourced r/s_r in-scope after the final review caught structural inertness); gate byte-identical vs the frozen baselines, regeneration declined as unnecessary under the recorded owner approval (Option B, 2026-07-19)'
+    status: accepted
+    date: '2026-07-19'
+    file: ADR083_vol3_money_scissors.yaml
   ADR082_sentinel_error_classes:
     title: 'Six named sentinel error classes ship: liveness (correct-but-inert, computed-but-never-consumed), aggregation (intensive-aggregation), coupling (undeclared-coupling, both directions), gate-blindness extending the coverage sentinel, and surface (public-surface baseline blindness) -- five advisory, the sixth (surface) a real CI gate per owner ruling 2026-07-19'
     status: accepted

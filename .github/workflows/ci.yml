@@ -76,6 +76,26 @@ jobs:
       - name: Poetry lock consistency
         run: poetry check --lock
 
+  # §6.5 Provenance & Ceremony (owner ruling 2026-07-20; doctrine in CLAUDE.md
+  # "Baseline ceremonies"): every PR commit touching tests/baselines/** must
+  # declare its ceremony with a `Baselines: blessed(<slug>)` trailer. PR-only:
+  # dev/main only move via PRs, so the PR range is the authoritative boundary
+  # (the commit-msg pre-commit hook is the best-effort local leg). Stdlib-only
+  # script — no poetry bootstrap needed.
+  ceremony-gate:
+    name: Baseline Ceremony Gate (§6.5 provenance)
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    if: github.event_name == 'pull_request'
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+      - name: Ceremony declarations present on baseline-touching commits
+        run: >-
+          python3 tools/check_baseline_ceremony.py
+          --range "${{ github.event.pull_request.base.sha }}..${{ github.event.pull_request.head.sha }}"
+
   test-unit:
     name: Unit Tests (xdist, coverage gate)
     runs-on: ubuntu-latest

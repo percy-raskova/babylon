@@ -1,9 +1,14 @@
 meta:
-  version: 1.38.0
+  version: 1.39.0
   updated: '2026-07-20'
   description: Architecture Decision Records Index
   format: See individual ADR files in this directory
 decisions:
+  ADR098_parquet_canonical_reference:
+    title: 'Parquet-canonical reference pipeline EXECUTED (Phase 6 cutover, #46): per-table parquet sources + schema.sql canonical, the SQLite reference DB a deterministic sha-pinned BUILD PRODUCT (double-build byte-identical on sqlite 3.53.1, product f760bab5...); working DB flipped with byte-verified pre-parquet backup; ci-data-v7 (subset DERIVED from the product, 80 parquet + schema.sql manifest-pinned); loaders produce sources only (tools/loader_to_sources.py) — the shared DB is never opened for write; D1-D4 as ruled, GOVERNED_PREFIXES single SoT, demotion-handoff law, index-order fidelity, ingest_checkpoint out of the estate; IMPORT_USE discovered ALREADY LANDED out-of-band so the dark-Φ consumers lit up with zero code changes; declared follow-ups: CI-devshell sqlite pinning for the nightly rebuild-verify leg (loud off-pin warning until then), auto-create-masks-absence sentinel still owed. NOTE: numbered 098 because 094-097 are claimed by the nix-player-channel packet on the concurrently-active dev line'
+    status: accepted
+    date: '2026-07-20'
+    file: ADR098_parquet_canonical_reference.yaml
   ADR097_render_seam:
     title: 'The render seam under Amendment W: glyph canon (Tier 0) as the design target rather than the fallback (the entire fleet including GNOME Terminal/VTE and Windows Terminal has no pixel protocol -- everything the game communicates is communicated in character cells), the information-parity rule (Tier 1 pixel plates via textual-image+pillow re-render Tier-0 information and never carry unique content), Tier 2 SVG export through Textual''s native mechanism under the ratified III.13 determinism law, babylon doctor probe-once capability semantics (render_tier written to config, no mid-session re-probe, --render override, declared degradation), and the 256-color degraded palette as a DESIGN_BIBLE 9b row -- queue items 15 and 10'
     status: accepted

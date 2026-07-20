@@ -35,15 +35,22 @@ inputs:
     # Program 22 minerals surfaces FULL. Release also carries the four ADR076
     # parquet artifacts (manifest-pinned in data-artifacts.yaml). tiger
     # tarball unchanged from v3.
-    default: ci-data-v6
+    # v7 (2026-07-20, parquet-canonical cutover): subset now DERIVED from the
+    # rebuilt build product (product sha f760bab5..., sqlite 3.53.1,
+    # double-build byte-identical; qa:regression 6/6 pre- and post-flip);
+    # release adds full per-table parquet (80 files) + canonical schema.sql,
+    # all manifest-pinned — the manifest-driven step below fetches them
+    # without any action-input bump. ingest_checkpoint left the governed
+    # estate (loaders recreate on demand). tiger tarball unchanged from v3.
+    default: ci-data-v7
   asset:
     description: Asset filename within the release
     required: false
-    default: reference-subset-20260717-v6.sqlite
+    default: reference-subset-20260720-v7.sqlite
   sha256:
     description: Expected sha256 of the asset (pin — bump with the tag)
     required: false
-    default: 65128960cadb2cd4ba59004e9942b594c83a94562556318f57ba35e6b80d7b88
+    default: f193d44e1b11d4eee9675cbb129b72bd6cd3c05e50a90c3bdd136cb54d56b32f
   tiger-asset:
     description: TIGER county-shapefile tarball within the release (the
       headless runner reads data/tiger/county/tl_2024_us_county.shp — proving

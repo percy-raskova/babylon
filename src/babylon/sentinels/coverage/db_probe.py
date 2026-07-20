@@ -32,7 +32,11 @@ import sys
 from pathlib import Path
 
 from babylon.sentinels.base import LabelledCheck, SentinelCheckError, run_sensor
-from babylon.sentinels.coverage.catalog import CatalogTable, load_catalog_tables
+from babylon.sentinels.coverage.catalog import (
+    GOVERNED_PREFIXES,
+    CatalogTable,
+    load_catalog_tables,
+)
 
 #: Repo root (this file is ``<root>/src/babylon/sentinels/coverage/db_probe.py``).
 _REPO_ROOT: Path = Path(__file__).resolve().parents[4]
@@ -40,8 +44,9 @@ _REPO_ROOT: Path = Path(__file__).resolve().parents[4]
 #: Traceability scope: only these prefixes are governed by the catalog
 #: (utility tables like ``ingest_checkpoint``/``staging_arcgis_feature`` are
 #: outside it, exactly as the subset generator's find_unknown_tables excludes
-#: them from policy review).
-_GOVERNED_PREFIXES: tuple[str, ...] = ("fact_", "dim_", "bridge_", "view_")
+#: them from policy review). Shared with every pipeline sweep surface —
+#: the definition lives in :mod:`babylon.sentinels.coverage.catalog`.
+_GOVERNED_PREFIXES: tuple[str, ...] = GOVERNED_PREFIXES
 
 
 def _database_path() -> Path:

@@ -174,8 +174,8 @@ deploy/ansible/production_inventory.yml
 deploy/ansible/inventory.yml
 deploy/ansible/.ansible/
 
-# program-20: local infra subrepo mount (becomes a submodule when it gets a remote)
-/infra/
+# program-20: infra/ is now a proper git submodule (github.com/percy-raskova/babylon-infra),
+# so it is tracked as a gitlink — no ignore entry needed.
 
 # hypergraph-rs: local subrepo mount (standalone Rust XGI port, own git repo —
 # same pattern as infra/; becomes a submodule/remote repo when published.

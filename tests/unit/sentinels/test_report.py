@@ -1,8 +1,9 @@
 """Tests for the agent-legible sentinel finding formatter.
 
 Every U7 sensor emits its findings through :func:`babylon.sentinels.report.finding`
-so that a coding agent reading a red gate always gets the same four facts in the
-same order: which error CLASS, which SYMBOL, where (``file:line``), and what to DO.
+so that a coding agent reading a red gate always gets the same five facts in the
+same order: which error CLASS, which SYMBOL, where (``file:line``), what is
+WRONG, and what to DO.
 """
 
 from __future__ import annotations

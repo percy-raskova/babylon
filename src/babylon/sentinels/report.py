@@ -8,7 +8,8 @@ actionable it must answer five questions in one line, always in the same order:
    ``intensive-aggregation``, ``undeclared-coupling``);
 2. **which symbol** — the offending name, not a vague area;
 3. **where** — repo-relative ``file:line`` the agent can open directly;
-4. **what to do** — a concrete remedy, never "investigate".
+4. **what is wrong** — the problem statement, specific to the site;
+5. **what to do** — a concrete remedy, never "investigate".
 
 The rendered shape is::
 

@@ -62,7 +62,10 @@ def _run_generate(output_dir: Path) -> subprocess.CompletedProcess[str]:
         capture_output=True,
         text=True,
         cwd=REPO_ROOT,
-        env=os.environ.copy(),
+        # A parent-pinned PYTHONHASHSEED would give both children the same
+        # fixed seed and silently defeat this test's hash-randomization-
+        # independence proof — each child must randomize on its own.
+        env={k: v for k, v in os.environ.items() if k != "PYTHONHASHSEED"},
         timeout=120,
     )
 

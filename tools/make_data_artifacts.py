@@ -35,7 +35,7 @@ import sqlite3
 import sys
 from dataclasses import dataclass
 from pathlib import Path
-from typing import TYPE_CHECKING, Any, Literal
+from typing import TYPE_CHECKING, Any, Literal, cast
 
 import pyarrow as pa  # type: ignore[import-untyped]
 import pyarrow.parquet as pq  # type: ignore[import-untyped]
@@ -582,8 +582,8 @@ def update_product_block(manifest_path: Path, product: dict[str, object]) -> Non
     if manifest is None:
         msg = f"manifest missing: {manifest_path}"
         raise ArtifactError(msg)
-    entries = manifest["artifacts"]
-    schema_entry = manifest.get("schema")
+    entries = cast("list[dict[str, object]]", manifest["artifacts"])
+    schema_entry = cast("dict[str, object] | None", manifest.get("schema"))
     _write_manifest(
         entries,
         schema_entry=schema_entry,
@@ -613,8 +613,8 @@ def update_schema_block(manifest_path: Path, schema: dict[str, object]) -> None:
     if manifest is None:
         msg = f"manifest missing: {manifest_path}"
         raise ArtifactError(msg)
-    entries = manifest["artifacts"]
-    product_entry = manifest.get("product")
+    entries = cast("list[dict[str, object]]", manifest["artifacts"])
+    product_entry = cast("dict[str, object] | None", manifest.get("product"))
     _write_manifest(
         entries,
         schema_entry=schema,
@@ -651,8 +651,12 @@ def _rewrite_manifest_preserving_blocks(
     """
     target = MANIFEST_PATH if manifest_path is None else manifest_path
     existing = _read_manifest(target)
-    schema_entry = existing.get("schema") if existing is not None else None
-    product_entry = existing.get("product") if existing is not None else None
+    schema_entry = (
+        cast("dict[str, object] | None", existing.get("schema")) if existing is not None else None
+    )
+    product_entry = (
+        cast("dict[str, object] | None", existing.get("product")) if existing is not None else None
+    )
     _write_manifest(entries, schema_entry=schema_entry, product_entry=product_entry, path=target)
 
 

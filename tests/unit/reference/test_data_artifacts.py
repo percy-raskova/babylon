@@ -574,6 +574,16 @@ class TestManifestRewriteAtomicity:
         assert parsed["product"] == product_block
         assert parsed["artifacts"] == new_entries
 
+        # BYTE-FOR-BYTE (FOLD-IN, Task 4 review): the name promises more than
+        # parsed-YAML equality — pin that the atomicity-preserving rewrite
+        # produces EXACTLY the same bytes a direct one-shot _write_manifest
+        # call would, given the same entries + blocks.
+        direct = tmp_path / "direct.yaml"
+        _write_manifest(
+            new_entries, schema_entry=schema_block, product_entry=product_block, path=direct
+        )
+        assert out.read_bytes() == direct.read_bytes()
+
     def test_first_ever_run_with_no_prior_manifest_omits_blocks(
         self, tmp_path: Path, real_entries: list[dict[str, object]]
     ) -> None:

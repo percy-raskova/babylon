@@ -35,7 +35,7 @@ import sqlite3
 import sys
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Literal
+from typing import Any, Literal
 
 import pyarrow as pa  # type: ignore[import-untyped]
 import pyarrow.parquet as pq  # type: ignore[import-untyped]
@@ -50,6 +50,12 @@ CSV_HOME = Path("src/babylon/data/reference")
 #: regeneration event (rerun the generator, update manifest hashes, say so).
 PARQUET_COMPRESSION = "zstd"
 PARQUET_COMPRESSION_LEVEL = 9
+
+#: Fixed chunking is the determinism pin: 4Mi rows exceeds every curated
+#: table so their existing single-group bytes are unchanged. Full-DB tables
+#: (LODES-family facts may run to tens of millions of rows) stream in
+#: batches of this size instead of one ``fetchall()``, to avoid OOM.
+ROW_GROUP_SIZE = 4_194_304
 
 
 class ArtifactError(Exception):
@@ -156,14 +162,22 @@ ARTIFACTS: tuple[ArtifactSpec, ...] = (
 
 #: sqlite declared-type prefix -> arrow type. NUMERIC maps to float64
 #: deliberately: sqlite stores these columns as REAL — there is no decimal
-#: precision in the source to preserve (documented, not inferred).
+#: precision in the source to preserve (documented, not inferred). DATE and
+#: DATETIME map to string() for the same reason: this codebase never opens
+#: sqlite3 with detect_types=PARSE_DECLTYPES, so both arrive as plain ISO
+#: strings (verified against the full reference DB, 2026-07-19) — mapping
+#: to a date/timestamp arrow type would be an inferred parse, not a
+#: preserved representation.
 _DECLTYPE_TO_ARROW: tuple[tuple[str, pa.DataType], ...] = (
     ("INTEGER", pa.int64()),
     ("BIGINT", pa.int64()),
     ("VARCHAR", pa.string()),
     ("TEXT", pa.string()),
+    ("DATETIME", pa.string()),
+    ("DATE", pa.string()),
     ("NUMERIC", pa.float64()),
     ("FLOAT", pa.float64()),
+    ("REAL", pa.float64()),
     ("BOOLEAN", pa.bool_()),
 )
 
@@ -178,18 +192,48 @@ def _arrow_type(decltype: str) -> pa.DataType:
     raise ArtifactError(msg)
 
 
-def _table_layout(conn: sqlite3.Connection, table: str) -> tuple[list[str], list[str], pa.Schema]:
-    """Return (columns, primary-key columns, explicit arrow schema)."""
+def _column_info(conn: sqlite3.Connection, table: str) -> list[tuple[Any, ...]]:
+    """Raw ``PRAGMA table_info`` rows for ``table`` — loud if it's absent.
+
+    Typed ``Any`` (not ``object``) to match ``Cursor.fetchall()``'s own stub
+    return type — sqlite3 row values are runtime-dynamic regardless of a
+    column's declared type, so ``object`` would be a false precision that
+    breaks every downstream ``row[i]`` use (str comparisons, sort keys).
+    """
     info = conn.execute(f"PRAGMA table_info({table})").fetchall()
     if not info:
         msg = f"source table missing from DB: {table}"
         raise ArtifactError(msg)
+    return info
+
+
+def _table_layout(conn: sqlite3.Connection, table: str) -> tuple[list[str], list[str], pa.Schema]:
+    """Return (columns, primary-key columns, explicit arrow schema)."""
+    info = _column_info(conn, table)
     columns = [row[1] for row in info]
     pk = [row[1] for row in sorted((r for r in info if r[5]), key=lambda r: r[5])]
     if not pk:
         msg = f"{table} has no primary key — cannot sort deterministically"
         raise ArtifactError(msg)
     schema = pa.schema([(row[1], _arrow_type(row[2])) for row in info])
+    return columns, pk, schema
+
+
+def _table_layout_or_all_columns(
+    conn: sqlite3.Connection, table: str
+) -> tuple[list[str], list[str], pa.Schema]:
+    """``_table_layout``, but a PK-less table sorts by every column instead
+    of hard-erroring — identical rows are interchangeable, so this stays
+    byte-deterministic without a declared primary key. Used by
+    ``export_table_parquet`` for the full-DB sweep, which encounters
+    staging/dimension tables the curated generate path never touches."""
+    info = _column_info(conn, table)
+    columns = [row[1] for row in info]
+    pk = [row[1] for row in sorted((r for r in info if r[5]), key=lambda r: r[5])]
+    schema = pa.schema([(row[1], _arrow_type(row[2])) for row in info])
+    if not pk:
+        print(f"{table}: no PK — sorting by all columns")
+        pk = columns
     return columns, pk, schema
 
 
@@ -209,9 +253,23 @@ def _write_csv(path: Path, columns: list[str], rows: list[tuple[object, ...]]) -
         writer.writerows(rows)
 
 
+def _column_array(values: list[object], field: pa.Field) -> pa.Array:
+    """Build one arrow column from raw sqlite row values for ``field``.
+
+    Boolean-declared columns arrive from sqlite3 as plain ints (0/1) — sqlite
+    has no native boolean storage class and the stdlib driver doesn't coerce
+    — so ``pa.array(ints, type=pa.bool_())`` refuses outright (ArrowInvalid).
+    Every other pinned type maps as-is; this is a no-op for the curated
+    tables (none declare a BOOLEAN column), verified byte-identical.
+    """
+    if pa.types.is_boolean(field.type):
+        values = [None if v is None else bool(v) for v in values]
+    return pa.array(values, type=field.type)
+
+
 def _write_parquet(path: Path, schema: pa.Schema, rows: list[tuple[object, ...]]) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
-    arrays = [pa.array([row[i] for row in rows], type=field.type) for i, field in enumerate(schema)]
+    arrays = [_column_array([row[i] for row in rows], field) for i, field in enumerate(schema)]
     table = pa.Table.from_arrays(arrays, schema=schema)
     pq.write_table(
         table,
@@ -221,6 +279,66 @@ def _write_parquet(path: Path, schema: pa.Schema, rows: list[tuple[object, ...]]
         row_group_size=max(len(rows), 1),
         write_statistics=True,
     )
+
+
+def governed_db_tables(conn: sqlite3.Connection) -> list[str]:
+    """Every table this DB governs — the full sweep surface for the Phase-0
+    measurement CLI. Excludes sqlite's own internal bookkeeping tables
+    (``sqlite_sequence`` et al.)."""
+    rows = conn.execute(
+        "SELECT name FROM sqlite_master "
+        "WHERE type = 'table' AND name NOT LIKE 'sqlite_%' "
+        "ORDER BY name"
+    ).fetchall()
+    return [row[0] for row in rows]
+
+
+def export_table_parquet(conn: sqlite3.Connection, table: str, dest: Path) -> tuple[int, int]:
+    """Write ``table`` to ``dest`` as parquet with the pinned codec/row-group
+    settings — the ONLY parquet-writing path (both the curated generate
+    mode below and ``tools/measure_reference_export.py``'s full-DB sweep
+    call this). Returns ``(rows, bytes)``.
+
+    Streams via ``cursor.fetchmany(ROW_GROUP_SIZE)`` batches rather than one
+    ``fetchall()`` — full-DB tables (LODES-family facts may run to tens of
+    millions of rows) risk an OOM under full materialization. Each batch
+    becomes exactly one row group (``ROW_GROUP_SIZE`` exceeds every curated
+    table, so their existing single-row-group bytes are unchanged).
+    """
+    columns, pk, schema = _table_layout_or_all_columns(conn, table)
+    order = ", ".join(f'"{c}"' for c in pk)
+    cols = ", ".join(f'"{c}"' for c in columns)
+    cursor = conn.execute(f'SELECT {cols} FROM "{table}" ORDER BY {order}')  # noqa: S608 — fixed spec list
+
+    dest.parent.mkdir(parents=True, exist_ok=True)
+    total_rows = 0
+    wrote_any_group = False
+    with pq.ParquetWriter(
+        dest,
+        schema,
+        compression=PARQUET_COMPRESSION,
+        compression_level=PARQUET_COMPRESSION_LEVEL,
+        write_statistics=True,
+    ) as writer:
+        while True:
+            batch = cursor.fetchmany(ROW_GROUP_SIZE)
+            if not batch:
+                break
+            arrays = [
+                _column_array([row[i] for row in batch], field) for i, field in enumerate(schema)
+            ]
+            chunk = pa.Table.from_arrays(arrays, schema=schema)
+            writer.write_table(chunk, row_group_size=len(batch))
+            total_rows += len(batch)
+            wrote_any_group = True
+        if not wrote_any_group:
+            # An empty table still needs a valid (0-row) parquet file —
+            # mirrors _write_parquet's row_group_size=max(len(rows), 1).
+            empty = pa.Table.from_arrays(
+                [_column_array([], field) for field in schema], schema=schema
+            )
+            writer.write_table(empty, row_group_size=1)
+    return total_rows, dest.stat().st_size
 
 
 def _sha256(path: Path) -> str:
@@ -286,14 +404,13 @@ def generate(db_path: Path) -> list[dict[str, object]]:
                     msg = f"register-mode artifact missing: {out}"
                     raise ArtifactError(msg)
                 rows = _csv_data_rows(out)
-            else:
-                columns, pk, schema = _table_layout(conn, spec.source_table)
+            elif spec.format == "csv":
+                columns, pk, _schema = _table_layout(conn, spec.source_table)
                 data = _fetch_sorted(conn, spec.source_table, columns, pk)
-                if spec.format == "csv":
-                    _write_csv(out, columns, data)
-                else:
-                    _write_parquet(out, schema, data)
+                _write_csv(out, columns, data)
                 rows = len(data)
+            else:
+                rows, _size = export_table_parquet(conn, spec.source_table, out)
             entries.append(
                 {
                     "name": spec.name,

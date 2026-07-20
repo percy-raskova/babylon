@@ -192,6 +192,7 @@ class TestLevelIndex:
 
     def test_level_index_for_unknown_is_none(self) -> None:
         assert level_index_for("") is None
+        assert level_index_for("galaxy") is None
 
 
 # =============================================================================
@@ -482,4 +483,3 @@ class TestSpatialLatticeRungsForCounties:
         # uniform shares over the SUBSET, not the true nationwide 1/3 each).
         rungs = spatial_lattice_rungs_for_counties(["26163", "26099"])
         assert rungs.cz.shares == {"26163": pytest.approx(0.5), "26099": pytest.approx(0.5)}
-        assert level_index_for("galaxy") is None

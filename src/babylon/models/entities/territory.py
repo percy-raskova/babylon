@@ -60,6 +60,8 @@ class Territory(BaseModel):
             (EH Phase 2; accumulated event-sourced state, no decay until Phase 3)
         raw_material_stock: Dollar-denominated raw-material stock, or None if
             unseeded (#39 T6; SubstrateSystem @2.5)
+        raw_material_capacity: The regeneration ceiling for raw_material_stock,
+            or None if unseeded (#39 T6 M1; SubstrateSystem @2.5)
     """
 
     model_config = ConfigDict(
@@ -186,6 +188,21 @@ class Territory(BaseModel):
             "fabricated default. Seeded once at USScenario build time from "
             "the committed us_county_territories.json artifact; abstract "
             "(non-county) territories stay None forever."
+        ),
+    )
+    raw_material_capacity: float | None = Field(
+        default=None,
+        ge=0.0,
+        description=(
+            "The regeneration ceiling for raw_material_stock (#39 T6 M1): a "
+            "stock cannot regenerate past this value. Stamped ONCE at "
+            "USScenario build time from the SAME us_county_territories.json "
+            "artifact value as raw_material_stock, and never mutated by "
+            "SubstrateSystem thereafter -- a persisted graph field (not "
+            "System-local memory) so the ceiling survives a mid-game "
+            "checkpoint restore unchanged, replay-safe under modded "
+            "regeneration_rate > 0. None = honestly unseeded, mirroring "
+            "raw_material_stock's own None case exactly."
         ),
     )
 

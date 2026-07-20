@@ -1118,6 +1118,56 @@ class TestRawMaterialStockRoundTrip:
         assert recovered.territories["T001"].raw_material_stock == 97.3
 
 
+class TestRawMaterialCapacityRoundTrip:
+    """#39 T6 M1: ``raw_material_capacity`` (the persisted regeneration
+    ceiling) is a real, honestly-optional Territory field -- it must survive
+    the WorldState round trip exactly like ``raw_material_stock``, and stay
+    UNCHANGED across a ``raw_material_stock``-only update (the ceiling is
+    never mutated by SubstrateSystem, only read)."""
+
+    def test_raw_material_capacity_survives_round_trip_when_set(self) -> None:
+        territory = Territory(
+            id="T001",
+            name="Autauga County, AL",
+            sector_type=SectorType.INDUSTRIAL,
+            county_fips="01001",
+            raw_material_stock=42.5,
+            raw_material_capacity=42.5,
+        )
+        state = WorldState(tick=1, territories={"T001": territory})
+        recovered = WorldState.from_graph(state.to_graph(), tick=1)
+        assert recovered.territories["T001"].raw_material_capacity == 42.5
+
+    def test_raw_material_capacity_survives_round_trip_when_none(self) -> None:
+        territory = Territory(id="T001", name="Detroit", sector_type=SectorType.INDUSTRIAL)
+        assert territory.raw_material_capacity is None
+
+        state = WorldState(tick=1, territories={"T001": territory})
+        recovered = WorldState.from_graph(state.to_graph(), tick=1)
+        assert recovered.territories["T001"].raw_material_capacity is None
+
+    def test_raw_material_capacity_is_unaffected_by_a_stock_only_update(self) -> None:
+        """The replay-safety property (#39 T6 M1): a checkpoint restore mid-run
+        must see the SAME ceiling a continuous run would, because
+        SubstrateSystem writes raw_material_stock only, never
+        raw_material_capacity."""
+        territory = Territory(
+            id="T001",
+            name="Autauga County, AL",
+            sector_type=SectorType.INDUSTRIAL,
+            county_fips="01001",
+            raw_material_stock=100.0,
+            raw_material_capacity=100.0,
+        )
+        state = WorldState(tick=1, territories={"T001": territory})
+        graph = state.to_graph()
+        graph.update_node("T001", raw_material_stock=64.0)  # SubstrateSystem's write pattern
+
+        recovered = WorldState.from_graph(graph, tick=1)
+        assert recovered.territories["T001"].raw_material_stock == 64.0
+        assert recovered.territories["T001"].raw_material_capacity == 100.0
+
+
 class TestPlayerOrgIdMetadataGuard:
     """2026-07-16 verify coverage: non-string garbage in graph metadata
     (a mock, or corrupted persistence) must read back as honest None, not

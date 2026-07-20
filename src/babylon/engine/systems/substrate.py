@@ -15,14 +15,15 @@ biocapacity/land-use table exists in the reference DB; both remain the
 documented placeholders on ``TerritoryDefines.initial_energy_per_hex`` /
 ``initial_biocapacity_per_hex``, awaiting a future data-acquisition spec).
 
-**Seeding is NOT this system's job.** ``Territory.raw_material_stock`` is
-seeded once, at USScenario build time, from the committed
-``us_county_territories.json`` artifact's ``raw_material_value_millions``
+**Seeding is NOT this system's job.** ``Territory.raw_material_stock`` AND
+``Territory.raw_material_capacity`` (the regeneration ceiling, #39 T6 M1)
+are seeded once, at USScenario build time, from the SAME committed
+``us_county_territories.json`` artifact value, ``raw_material_value_millions``
 (``tools/generate_us_county_territories.py``, state
 ``fact_state_minerals.value_millions`` allocated to counties by
 ``dim_county_geometry.area_sq_km`` share -- Program 22 Wave 1). No System
 anywhere does a per-tick reference-DB read; this one doesn't either --
-``step()`` does ONLY per-tick math on the already-present graph attribute.
+``step()`` does ONLY per-tick math on the already-present graph attributes.
 A territory with ``raw_material_stock is None`` (unseeded: no
 ``fact_state_minerals`` row for its state, no geometry row, or an abstract
 non-county territory) is skipped forever -- never a fabricated default.
@@ -86,6 +87,21 @@ never at all for the 5 canonical scenarios). Unit tests inject a synthetic
 adjunction-returning callable so the aggregation logic is exercised without
 a DB dependency, keeping them in the fast tier.
 
+**The regeneration ceiling is a persisted graph field, not System memory**
+(#39 T6 LOW-1). ``Territory.raw_material_capacity`` is stamped once, at
+scenario-build time, from the SAME artifact value as ``raw_material_stock``
+(``tools/generate_us_county_territories.py`` /
+``engine/scenarios/_legacy.py``), and is never mutated by this System (only
+``raw_material_stock`` depletes/regenerates). Reading the ceiling straight
+off the graph every tick -- rather than caching "the first stock value this
+instance ever observed" in a System-local dict -- makes the ceiling
+replay-safe: it survives a mid-game checkpoint restore (``to_graph``/
+``from_graph``) unchanged, so a modded ``regeneration_rate > 0`` regenerates
+toward the SAME ceiling whether the run replays from tick 0 or resumes from
+a checkpoint. The former in-memory-cache design was honest but NOT
+replay-safe under modding -- a restore mid-run would have re-captured the
+ceiling from the already-depleted stock, diverging from a continuous run.
+
 See Also:
     ``docs/superpowers/plans/2026-07-19-hex-scale-county-keying.md`` (#39 T6).
     :mod:`babylon.domain.dialectics.instances.scale`: ``ScaleAdjunction``.
@@ -133,12 +149,12 @@ class SubstrateSystem(SystemBase):
     """Pipeline slot 2.5: raw-material stock depletion + scale-lattice binding.
 
     Reads: each eligible ``Territory`` node's ``raw_material_stock``
-    (pre-tick) and ``extraction_intensity`` (last tick's ProductionSystem
-    output).
+    (pre-tick), ``raw_material_capacity`` (the regeneration ceiling, seeded
+    once at scenario-build time -- #39 T6 M1), and ``extraction_intensity``
+    (last tick's ProductionSystem output).
 
     Writes: the post-depletion ``raw_material_stock`` back onto each
-    eligible node, clamped to ``[0, initial_seed_value]`` (the initial value
-    is the regeneration ceiling -- see ``__init__``); four extensive
+    eligible node, clamped to ``[0, raw_material_capacity]``; four extensive
     aggregates into ``context.persistent_data`` (see module docstring).
     """
 
@@ -173,18 +189,6 @@ class SubstrateSystem(SystemBase):
         #: binding" section for the fixed-county-universe assumption this
         #: relies on.
         self._rungs: SpatialLatticeRungs | None = None
-        #: Territory node id -> the FIRST raw_material_stock value this
-        #: system ever observed for it (the regeneration ceiling). Without
-        #: this, "current == max" on every call would force
-        #: calculate_biocapacity_delta's ceiling guard to zero out
-        #: regeneration on EVERY tick, making SubstrateDefines.
-        #: regeneration_rate permanently inert regardless of its value --
-        #: exactly the "correct-but-inert coefficient" class this codebase
-        #: sentinels against. The initial seed value (never a graph field --
-        #: no max_raw_material_stock was added, keeping D-T6-4 minimal) is
-        #: the honest, non-fabricated ceiling: a stock cannot regenerate
-        #: past what the reference DB originally attested for that county.
-        self._initial_stock: dict[str, float] = {}
 
     def step(
         self,
@@ -221,7 +225,7 @@ class SubstrateSystem(SystemBase):
             if county_fips is None:  # pragma: no cover -- filtered above
                 continue
             current_stock = float(self._read(node, "raw_material_stock", required=True))
-            ceiling = self._initial_stock.setdefault(node.id, current_stock)
+            ceiling = self._read_ceiling(node)
             extraction_intensity = float(node.attributes.get("extraction_intensity", 0.0))
             delta = calculate_biocapacity_delta(
                 regeneration_rate=defines.regeneration_rate,
@@ -254,6 +258,38 @@ class SubstrateSystem(SystemBase):
 
         with contextlib.suppress(AttributeError):
             context.persistent_data = persistent
+
+    @staticmethod
+    def _read_ceiling(node: GraphNode) -> float:
+        """Read the persisted regeneration ceiling (#39 T6 M1 / LOW-1).
+
+        ``raw_material_capacity`` is stamped once, at scenario-build time,
+        alongside ``raw_material_stock`` (the SAME artifact value -- see the
+        module docstring) and never mutated by this System, so reading it
+        fresh every tick is replay-safe: it survives a mid-game checkpoint
+        restore unchanged, unlike a System-local "first observed stock"
+        cache would.
+
+        Raises:
+            KeyError: If the node has no ``raw_material_capacity`` attribute
+                at all -- it must be stamped at the same site as
+                ``raw_material_stock``, so its total absence is a seeding
+                bug, not an honest data gap.
+            ValueError: If the attribute is present but ``None`` -- the same
+                seeding-bug shape (stock and capacity are stamped together;
+                one present and the other ``None`` cannot be an honest
+                artifact gap, since a gap zeroes BOTH to ``None``).
+        """
+        capacity = SubstrateSystem._read(node, "raw_material_capacity", required=True)
+        if capacity is None:
+            raise ValueError(
+                f"Territory {node.id!r} carries raw_material_stock but its "
+                "raw_material_capacity (the regeneration ceiling) is None -- "
+                "both fields are stamped together, from the same artifact "
+                "value, at scenario build time (#39 T6 M1); this indicates "
+                "a seeding bug, not an honest data gap."
+            )
+        return float(capacity)
 
     def _build_rungs(self, all_counties: list[str]) -> SpatialLatticeRungs:
         """Build the four scale-lattice rungs (called once, not per tick).

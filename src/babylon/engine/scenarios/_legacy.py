@@ -745,7 +745,10 @@ def _create_us_territories() -> tuple[dict[str, Territory], dict[str, str]]:
     county's state has no ``fact_state_minerals`` row or the county has no
     geometry row (SubstrateSystem never touches a ``None`` stock; see its
     module docstring). No per-tick reference-DB read: seeding happens once,
-    here, at scenario-build time (D-T6-2).
+    here, at scenario-build time (D-T6-2). ``raw_material_capacity`` (#39 T6
+    M1) is stamped from the SAME ``raw_material_value_millions`` value --
+    the persisted regeneration ceiling SubstrateSystem reads every tick
+    instead of caching "the first stock it ever observed" in memory.
 
     Returns:
         ``(territories, region_by_territory)`` — the territory dict
@@ -820,6 +823,7 @@ def _create_us_territories() -> tuple[dict[str, Territory], dict[str, str]]:
             max_biocapacity=biocap,
             heat=0.0,
             raw_material_stock=raw_material_value_millions,
+            raw_material_capacity=raw_material_value_millions,
         )
     return territories, region_by_territory
 

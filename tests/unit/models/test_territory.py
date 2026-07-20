@@ -530,3 +530,45 @@ class TestTerritoryRawMaterialStock:
                 sector_type=SectorType.RESIDENTIAL,
                 raw_material_stock=-1.0,
             )
+
+
+@pytest.mark.topology
+class TestTerritoryRawMaterialCapacity:
+    """#39 T6 M1: raw_material_capacity is the regeneration ceiling, a real
+    honestly-optional field mirroring raw_material_stock exactly."""
+
+    def test_defaults_to_none(self) -> None:
+        """Unseeded territories carry None, never a fabricated zero."""
+        territory = Territory(
+            id="T001",
+            name="Test",
+            sector_type=SectorType.RESIDENTIAL,
+        )
+        assert territory.raw_material_capacity is None
+
+    def test_accepts_nonnegative_value(self) -> None:
+        territory = Territory(
+            id="T001",
+            name="Test",
+            sector_type=SectorType.RESIDENTIAL,
+            raw_material_capacity=123.45,
+        )
+        assert territory.raw_material_capacity == 123.45
+
+    def test_accepts_zero(self) -> None:
+        territory = Territory(
+            id="T001",
+            name="Test",
+            sector_type=SectorType.RESIDENTIAL,
+            raw_material_capacity=0.0,
+        )
+        assert territory.raw_material_capacity == 0.0
+
+    def test_rejects_negative_value(self) -> None:
+        with pytest.raises(ValidationError):
+            Territory(
+                id="T001",
+                name="Test",
+                sector_type=SectorType.RESIDENTIAL,
+                raw_material_capacity=-1.0,
+            )

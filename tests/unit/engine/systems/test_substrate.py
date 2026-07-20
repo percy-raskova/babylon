@@ -145,6 +145,7 @@ class TestDepletionMath:
             _node_type="territory",
             county_fips="01001",
             raw_material_stock=100.0,
+            raw_material_capacity=100.0,
             extraction_intensity=0.2,
         )
         services = ServiceContainer.create()
@@ -162,6 +163,7 @@ class TestDepletionMath:
             _node_type="territory",
             county_fips="01001",
             raw_material_stock=42.0,
+            raw_material_capacity=42.0,
             extraction_intensity=0.0,
         )
         services = ServiceContainer.create()
@@ -178,6 +180,7 @@ class TestDepletionMath:
             _node_type="territory",
             county_fips="01001",
             raw_material_stock=1000.0,
+            raw_material_capacity=1000.0,
             extraction_intensity=0.05,
         )
         services = ServiceContainer.create()
@@ -195,14 +198,14 @@ class TestDepletionMath:
 
     def test_nonzero_regeneration_coefficient_is_wired(self) -> None:
         """A modder-set regeneration_rate > 0 measurably regenerates the
-        stock back toward its initial seeded value (the ceiling) once it
-        has been depleted below that ceiling.
+        stock back toward its persisted raw_material_capacity (the ceiling,
+        #39 T6 M1) once it has been depleted below that ceiling.
 
         The formula's own ceiling guard (``current >= max`` -> regeneration
         forced to 0) means the FIRST tick a territory is seen can never
-        show regeneration (current == the just-captured ceiling) -- this is
-        why the coefficient must be exercised across two ticks: deplete
-        first, then observe regrowth toward the ceiling captured at tick 1.
+        show regeneration (current == the seeded ceiling) -- this is why
+        the coefficient must be exercised across two ticks: deplete first,
+        then observe regrowth toward the persisted ceiling.
         """
         graph = BabylonGraph()
         graph.add_node(
@@ -210,14 +213,15 @@ class TestDepletionMath:
             _node_type="territory",
             county_fips="01001",
             raw_material_stock=100.0,
+            raw_material_capacity=100.0,
             extraction_intensity=0.5,
         )
         defines = GameDefines(substrate=SubstrateDefines(regeneration_rate=0.1))
         services = ServiceContainer.create(defines=defines)
         system = _system(cz_mapping={"01001": "CZ1"})
 
-        # Tick 1: ceiling captured at 100.0; pure depletion (current==ceiling
-        # forces regeneration to 0 this tick).
+        # Tick 1: ceiling=100.0 (persisted, unaffected by stock depletion);
+        # pure depletion (current==ceiling forces regeneration to 0 this tick).
         # raw_extraction = 0.5*100=50; cost=50*1.2=60; stock=100-60=40.
         system.step(graph, services, TickContext(tick=1))
         assert graph.nodes["T001"]["raw_material_stock"] == pytest.approx(40.0)
@@ -225,29 +229,31 @@ class TestDepletionMath:
         # Tick 2: zero extraction -> pure regeneration toward the 100.0 ceiling.
         graph.update_node("T001", extraction_intensity=0.0)
         system.step(graph, services, TickContext(tick=2))
-        # regeneration = 0.1 * 100 (the tick-1 ceiling) = 10; stock=40+10=50.
+        # regeneration = 0.1 * 100 (raw_material_capacity, unchanged) = 10;
+        # stock=40+10=50.
         assert graph.nodes["T001"]["raw_material_stock"] == pytest.approx(50.0)
 
     def test_regeneration_never_exceeds_the_initial_ceiling(self) -> None:
-        """Even a large regeneration_rate cannot push the stock above the
-        value it was initially seeded with -- clamped like MetabolismSystem
-        clamps biocapacity to max_biocapacity."""
+        """Even a large regeneration_rate cannot push the stock above
+        raw_material_capacity -- clamped like MetabolismSystem clamps
+        biocapacity to max_biocapacity."""
         graph = BabylonGraph()
         graph.add_node(
             "T001",
             _node_type="territory",
             county_fips="01001",
             raw_material_stock=95.0,
+            raw_material_capacity=95.0,
             extraction_intensity=0.0,
         )
         defines = GameDefines(substrate=SubstrateDefines(regeneration_rate=1.0))
         services = ServiceContainer.create(defines=defines)
         system = _system(cz_mapping={"01001": "CZ1"})
 
-        # First tick captures the ceiling at 95.0 (current==ceiling forces
-        # regen to 0 here too) -- confirm no change, then deplete a touch so
-        # a SECOND tick can show regeneration clamped at the 95.0 ceiling,
-        # never climbing back to some larger figure.
+        # First tick: current==ceiling forces regen to 0 here too -- confirm
+        # no change, then deplete a touch so a SECOND tick can show
+        # regeneration clamped at the 95.0 ceiling, never climbing back to
+        # some larger figure.
         system.step(graph, services, TickContext(tick=1))
         assert graph.nodes["T001"]["raw_material_stock"] == pytest.approx(95.0)
 
@@ -270,6 +276,7 @@ class TestDepletionMath:
             _node_type="territory",
             county_fips="01001",
             raw_material_stock=100.0,
+            raw_material_capacity=100.0,
             extraction_intensity=0.1,
         )
         defines = GameDefines(substrate=SubstrateDefines(depletion_scale=2.0))
@@ -290,6 +297,7 @@ class TestDepletionMath:
             _node_type="territory",
             county_fips="01001",
             raw_material_stock=5.0,
+            raw_material_capacity=5.0,
             extraction_intensity=1.0,
         )
         services = ServiceContainer.create()
@@ -298,6 +306,47 @@ class TestDepletionMath:
 
         # raw_extraction = 1.0*5=5; cost=5*1.2=6; delta=-6; 5-6=-1 -> clamped to 0.
         assert graph.nodes["T001"]["raw_material_stock"] == 0.0
+
+
+@pytest.mark.unit
+class TestCeilingIsARequiredPersistedField:
+    """#39 T6 M1 / LOW-1: raw_material_capacity is the persisted regeneration
+    ceiling -- stamped together with raw_material_stock at scenario build
+    time. An eligible node missing it (never stamped, or explicitly None) is
+    a seeding bug, not an honest data gap, and fails loud rather than
+    silently falling back to a value that would reintroduce the
+    "correct-but-inert coefficient" bug (current==ceiling forces
+    regeneration to 0 forever)."""
+
+    def test_missing_capacity_attribute_fails_loud(self) -> None:
+        graph = BabylonGraph()
+        graph.add_node(
+            "T001",
+            _node_type="territory",
+            county_fips="01001",
+            raw_material_stock=100.0,
+            extraction_intensity=0.0,
+            # raw_material_capacity deliberately absent.
+        )
+        services = ServiceContainer.create()
+
+        with pytest.raises(KeyError, match="raw_material_capacity"):
+            _system(cz_mapping={"01001": "CZ1"}).step(graph, services, TickContext(tick=1))
+
+    def test_none_capacity_fails_loud(self) -> None:
+        graph = BabylonGraph()
+        graph.add_node(
+            "T001",
+            _node_type="territory",
+            county_fips="01001",
+            raw_material_stock=100.0,
+            raw_material_capacity=None,
+            extraction_intensity=0.0,
+        )
+        services = ServiceContainer.create()
+
+        with pytest.raises(ValueError, match="raw_material_capacity"):
+            _system(cz_mapping={"01001": "CZ1"}).step(graph, services, TickContext(tick=1))
 
 
 @pytest.mark.unit
@@ -312,6 +361,7 @@ class TestOneTickLag:
             _node_type="territory",
             county_fips="01001",
             raw_material_stock=100.0,
+            raw_material_capacity=100.0,
             extraction_intensity=0.0,  # nothing extracted "last tick"
         )
         services = ServiceContainer.create()
@@ -346,6 +396,7 @@ class TestScaleLatticeAggregates:
             _node_type="territory",
             county_fips="11111",
             raw_material_stock=100.0,
+            raw_material_capacity=100.0,
             extraction_intensity=0.0,
         )
         graph.add_node(
@@ -353,6 +404,7 @@ class TestScaleLatticeAggregates:
             _node_type="territory",
             county_fips="11112",
             raw_material_stock=50.0,
+            raw_material_capacity=50.0,
             extraction_intensity=0.0,
         )
         # A third county, different state, deliberately absent from the CZ
@@ -364,6 +416,7 @@ class TestScaleLatticeAggregates:
             _node_type="territory",
             county_fips="22221",
             raw_material_stock=30.0,
+            raw_material_capacity=30.0,
             extraction_intensity=0.0,
         )
         return graph

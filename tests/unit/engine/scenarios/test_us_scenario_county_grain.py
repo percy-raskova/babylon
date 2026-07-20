@@ -143,3 +143,24 @@ class TestRawMaterialStockIsStampedFromArtifact:
         ]
         assert len(seeded) > 0
         assert all(v >= 0.0 for v in seeded)
+
+
+class TestRawMaterialCapacityIsStampedFromArtifact:
+    """#39 T6 M1: raw_material_capacity (the persisted regeneration ceiling)
+    is stamped from the SAME artifact value as raw_material_stock -- the two
+    fields must always agree at scenario-build time."""
+
+    def test_capacity_equals_stock_for_every_territory(self) -> None:
+        state, _config, _defines = create_us_scenario()
+        for territory in state.territories.values():
+            assert territory.raw_material_capacity == territory.raw_material_stock
+
+    def test_gap_counties_carry_none_capacity(self) -> None:
+        state, _config, _defines = create_us_scenario()
+        data = load_county_data()
+        gap_fips = {
+            gap["fips"] for gap in data["gaps"] if gap["field"] == "raw_material_value_millions"
+        }
+        by_county_fips = {t.county_fips: t for t in state.territories.values()}
+        for fips in gap_fips:
+            assert by_county_fips[fips].raw_material_capacity is None

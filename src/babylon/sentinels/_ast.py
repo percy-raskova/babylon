@@ -12,6 +12,7 @@ empty result.
 from __future__ import annotations
 
 import ast
+from collections.abc import Iterator
 from pathlib import Path
 
 from babylon.models.enums.topology import EdgeType, NodeType
@@ -104,6 +105,57 @@ def literal_dict_keys(path: Path, var_name: str) -> tuple[str, ...]:
     raise SentinelCheckError(f"{path}: no module-level assignment to {var_name!r} found")
 
 
+def frozenset_str_members(path: Path, var_name: str) -> tuple[str, ...]:
+    """Return the string members of a module-level ``frozenset({...})`` literal.
+
+    Reads ``VAR = frozenset({...})`` or ``VAR: frozenset[str] = frozenset({...})``
+    from ``path`` by AST — no import, no execution. Non-string members are
+    ignored (the sentinel compares only string symbols), but the assignment
+    itself must be present and its value must be a set/list/tuple literal
+    (optionally wrapped in a ``frozenset(...)`` call) — mirroring
+    :func:`literal_str_tuple`'s contract so an absent or malformed baseline
+    fails loud rather than reading as an empty, drift-free baseline.
+
+    :param path: Source file to parse.
+    :param var_name: The assigned name to extract (``Assign`` or ``AnnAssign``).
+    :returns: The string-literal members, in source order.
+    :raises SentinelCheckError: If the file is missing or unparseable, the name
+        is absent, or its value is not a set/list/tuple literal.
+    """
+    tree = parse_module(path)
+    for node in ast.walk(tree):
+        target: ast.expr | None
+        value: ast.expr | None
+        if isinstance(node, ast.Assign) and len(node.targets) == 1:
+            target = node.targets[0]
+            value = node.value
+        elif isinstance(node, ast.AnnAssign):
+            target = node.target
+            value = node.value
+        else:
+            continue
+        if value is None:
+            continue
+        if not isinstance(target, ast.Name) or target.id != var_name:
+            continue
+        # frozenset({...}) or frozenset([...])
+        if (
+            isinstance(value, ast.Call)
+            and isinstance(value.func, ast.Name)
+            and value.func.id == "frozenset"
+            and value.args
+        ):
+            value = value.args[0]
+        if not isinstance(value, (ast.Set, ast.List, ast.Tuple)):
+            raise SentinelCheckError(f"{path}:{var_name} is not a frozenset/set/list/tuple literal")
+        return tuple(
+            elt.value
+            for elt in value.elts
+            if isinstance(elt, ast.Constant) and isinstance(elt.value, str)
+        )
+    raise SentinelCheckError(f"{path}: no module-level assignment to {var_name!r} found")
+
+
 def tick_write_set(path: Path) -> set[str]:
     """Collect the ``tick_*`` keyword names the engine writes via ``update_node``.
 
@@ -165,6 +217,154 @@ def eventtype_names_in_module(path: Path) -> set[str]:
         ):
             names.add(node.attr)
     return names
+
+
+def parse_module(path: Path) -> ast.Module:
+    """Read and parse ``path`` with :mod:`ast`, failing loudly on either error.
+
+    The single shared entry point for the U7 sensors: a missing or unparseable
+    source is an *infrastructure* failure (exit 2), never an empty result that
+    would read as a clean pass (Constitution III.11).
+
+    :param path: Source file to parse.
+    :returns: The parsed module.
+    :raises SentinelCheckError: If the file cannot be read or cannot be parsed.
+    """
+    try:
+        source = path.read_text(encoding="utf-8")
+    except OSError as exc:
+        raise SentinelCheckError(f"cannot read {path}: {exc}") from exc
+    try:
+        return ast.parse(source, filename=str(path))
+    except SyntaxError as exc:
+        raise SentinelCheckError(f"cannot parse {path}: {exc}") from exc
+
+
+def referenced_names(path: Path) -> set[str]:
+    """Collect every symbol a module *mentions*, however it mentions it.
+
+    A consumer can reach an output four ways: a bare name (``price_divergence``),
+    an attribute (``axis.fictitious_log``), a keyword argument
+    (``update_node(..., price_divergence=x)``), or a string key
+    (``attrs.get("national_financial")``). All four count as a reference — the
+    liveness and coupling sensors ask "does this file read that output?", and a
+    string-keyed graph read is as real a reader as an imported constant.
+
+    :param path: Source file to parse.
+    :returns: The union of referenced names, attribute names, keyword-argument
+        names, and string-literal constants.
+    :raises SentinelCheckError: If the file is missing or unparseable.
+    """
+    tree = parse_module(path)
+    names: set[str] = set()
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Name):
+            names.add(node.id)
+        elif isinstance(node, ast.Attribute):
+            names.add(node.attr)
+        elif isinstance(node, ast.keyword) and node.arg is not None:
+            names.add(node.arg)
+        elif isinstance(node, ast.Constant) and isinstance(node.value, str):
+            names.add(node.value)
+    return names
+
+
+def coupling_edges(path: Path) -> tuple[tuple[str, str, str], ...]:
+    """Extract the declared ``Coupling(source=, target=, kind=)`` literals.
+
+    Reads the dialectics catalog statically — :mod:`babylon.sentinels` may not
+    import ``babylon.domain`` (import-linter contract, ``pyproject.toml``) — and
+    returns the declared coupling map as plain triples. A call whose endpoints
+    are not string literals is skipped (a computed edge is not a *declared* one).
+
+    :param path: The module declaring the ``Coupling(...)`` literals.
+    :returns: ``(source, target, kind)`` triples, in source order.
+    :raises SentinelCheckError: If the file is missing or unparseable.
+    """
+    tree = parse_module(path)
+    edges: list[tuple[str, str, str]] = []
+    for node in ast.walk(tree):
+        if not (
+            isinstance(node, ast.Call)
+            and isinstance(node.func, ast.Name)
+            and node.func.id == "Coupling"
+        ):
+            continue
+        parts: dict[str, str] = {}
+        for kw in node.keywords:
+            if (
+                kw.arg in {"source", "target", "kind"}
+                and isinstance(kw.value, ast.Constant)
+                and isinstance(kw.value.value, str)
+            ):
+                parts[kw.arg] = kw.value.value
+        if len(parts) == 3:
+            edges.append((parts["source"], parts["target"], parts["kind"]))
+    return tuple(edges)
+
+
+_SCOPE_BOUNDARY: tuple[type[ast.AST], ...] = (
+    ast.FunctionDef,
+    ast.AsyncFunctionDef,
+    ast.ClassDef,
+)
+
+
+def _walk_own_scope(node: ast.AST) -> Iterator[ast.AST]:
+    """Depth-first walk of ``node``'s own lexical scope only.
+
+    Like :func:`ast.walk`, but does not descend into a nested ``def``/``async
+    def``/``class`` body — a ``return`` statement inside one of those belongs to
+    that inner scope, not to ``node``.
+
+    :param node: The function/module body to walk.
+    :yields: Every descendant node reachable without crossing a scope boundary.
+    """
+    for child in ast.iter_child_nodes(node):
+        yield child
+        if not isinstance(child, _SCOPE_BOUNDARY):
+            yield from _walk_own_scope(child)
+
+
+def returned_dict_keys(path: Path, func_name: str) -> tuple[str, ...]:
+    """Extract the string keys of the dict literal a named function returns.
+
+    The service factories (``create_economics_services``,
+    ``create_financial_services``) each end in one dict literal whose keys ARE
+    the estate the DoD gate is meant to inject. Reading them statically lets the
+    gate-blindness sensor compare estate against harness without importing
+    ``babylon.domain``.
+
+    Only the function's *own* scope is scanned: a ``return {...}`` nested inside
+    a closure or class the function declares internally does not count, and if
+    the function's own scope contains more than one ``return {...}``, only the
+    LAST one in source order is read (matching what actually executes when a
+    factory has a superseded early-return branch).
+
+    :param path: Source file defining ``func_name``.
+    :param func_name: The module-level function whose returned dict to read.
+    :returns: The string keys of the last returned dict literal, sorted.
+    :raises SentinelCheckError: If the file is missing/unparseable, the function
+        is absent, or it returns no dict literal.
+    """
+    tree = parse_module(path)
+    target: ast.FunctionDef | None = None
+    for node in tree.body:
+        if isinstance(node, ast.FunctionDef) and node.name == func_name:
+            target = node
+    if target is None:
+        raise SentinelCheckError(f"{path}: no function {func_name!r} at module level")
+    last_keys: tuple[str, ...] | None = None
+    for sub in _walk_own_scope(target):
+        if isinstance(sub, ast.Return) and isinstance(sub.value, ast.Dict):
+            last_keys = tuple(
+                k.value
+                for k in sub.value.keys
+                if isinstance(k, ast.Constant) and isinstance(k.value, str)
+            )
+    if last_keys is None:
+        raise SentinelCheckError(f"{path}:{func_name} returns no dict literal")
+    return tuple(sorted(last_keys))
 
 
 #: One node-type string literal found in source: ``(lineno, value, role)``

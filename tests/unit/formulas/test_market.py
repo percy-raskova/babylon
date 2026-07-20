@@ -10,6 +10,8 @@ from __future__ import annotations
 import pytest
 
 from babylon.formulas.market import (
+    calculate_anchor_pull,
+    calculate_correction_severity,
     calculate_correction_snap,
     calculate_ema,
     calculate_growth_drive,
@@ -39,6 +41,37 @@ class TestServiceableDivergence:
     def test_absent_profit_rate_is_the_base(self) -> None:
         """No profit observable → honest fallback to the base (III.11)."""
         assert calculate_serviceable_divergence(None, base=0.55, slope=4.0) == 0.55
+
+
+class TestServiceableDivergenceInterestBurden:
+    """U6: a financialised county tightens its own correction threshold
+    independent of profit rate (Vol. III part 3 meeting part 5)."""
+
+    def test_interest_burden_tightens_the_threshold(self) -> None:
+        healthy = calculate_serviceable_divergence(0.1, base=0.55, slope=4.0)
+        tightened = calculate_serviceable_divergence(
+            0.1, base=0.55, slope=4.0, interest_burden=0.3, interest_slope=1.0
+        )
+        assert tightened < healthy
+        assert tightened == pytest.approx(0.65)
+
+    def test_absent_interest_burden_is_bit_identical_to_pre_u6(self) -> None:
+        assert calculate_serviceable_divergence(
+            0.1, base=0.55, slope=4.0, interest_burden=None, interest_slope=1.0
+        ) == pytest.approx(0.95)
+
+    def test_zero_interest_slope_is_inert(self) -> None:
+        assert calculate_serviceable_divergence(
+            0.1, base=0.55, slope=4.0, interest_burden=5.0, interest_slope=0.0
+        ) == pytest.approx(0.95)
+
+    def test_floor_at_zero(self) -> None:
+        assert (
+            calculate_serviceable_divergence(
+                0.0, base=0.1, slope=0.0, interest_burden=1.0, interest_slope=1.0
+            )
+            == 0.0
+        )
 
 
 class TestOverhang:
@@ -167,3 +200,46 @@ class TestBalance:
         assert calculate_scissors_balance(0.7, scale=0.5) == pytest.approx(
             -calculate_scissors_balance(-0.7, scale=0.5)
         )
+
+
+class TestCorrectionSeverity:
+    """U6: a debt spiral makes the re-identification of claims with real
+    surplus MORE violent — the accumulated-debt term on correction
+    severity."""
+
+    def test_absent_debt_ratio_is_the_base_severity(self) -> None:
+        assert calculate_correction_severity(0.6, debt_ratio=None, slope=0.5) == 0.6
+
+    def test_debt_ratio_increases_severity(self) -> None:
+        assert calculate_correction_severity(0.6, debt_ratio=0.2, slope=0.5) == pytest.approx(0.7)
+
+    def test_severity_clamps_to_one(self) -> None:
+        assert calculate_correction_severity(0.6, debt_ratio=5.0, slope=1.0) == 1.0
+
+    def test_negative_debt_ratio_never_reduces_severity(self) -> None:
+        assert calculate_correction_severity(0.6, debt_ratio=-1.0, slope=0.5) == 0.6
+
+    def test_zero_slope_is_inert(self) -> None:
+        assert calculate_correction_severity(0.6, debt_ratio=10.0, slope=0.0) == 0.6
+
+
+class TestAnchorPull:
+    """D1/U6: pulls the fictitious oscillator toward the FRED-grounded
+    anchor while real financial data covers this tick; absent anchor is
+    inert — the oscillator's endogenous dynamics carry the other ~85% of
+    a campaign (§3.3 D1)."""
+
+    def test_absent_anchor_is_zero_drive(self) -> None:
+        assert calculate_anchor_pull(None, 0.4, gain=0.3) == 0.0
+
+    def test_pulls_toward_a_higher_anchor(self) -> None:
+        assert calculate_anchor_pull(1.0, 0.4, gain=0.3) == pytest.approx(0.18)
+
+    def test_pulls_toward_a_lower_anchor(self) -> None:
+        assert calculate_anchor_pull(0.0, 0.4, gain=0.3) == pytest.approx(-0.12)
+
+    def test_zero_gain_is_inert_even_when_anchored(self) -> None:
+        assert calculate_anchor_pull(1.0, 0.4, gain=0.0) == 0.0
+
+    def test_at_the_anchor_the_pull_is_zero(self) -> None:
+        assert calculate_anchor_pull(0.4, 0.4, gain=0.5) == 0.0

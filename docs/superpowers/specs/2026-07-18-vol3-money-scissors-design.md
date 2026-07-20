@@ -257,6 +257,10 @@ It stays honestly absent (III.11); it is not faked.
 
 ### 3.2 Layer 1b — Publication (new; discovered during verification)
 
+> **Amended by owner ruling 2026-07-19:** the national interest rate is
+> endogenous (Capital Vol. III Part V) — never absent; FRED demoted to
+> calibration. See plan Unit U9.
+
 `FictitiousCapitalStock` and the national interest state must reach the graph before the
 scissors at @17.8 can read them. They currently do not (§1.2).
 

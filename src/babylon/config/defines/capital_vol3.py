@@ -11,7 +11,7 @@ from __future__ import annotations
 
 import math
 
-from pydantic import BaseModel, ConfigDict, Field, field_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 COUNTER_TENDENCY_COUNT: int = 6
 """Number of TRPF counter-tendencies (Marx, *Capital* Vol. III Ch. 14).
@@ -33,19 +33,19 @@ class CapitalVolumeIIIDefines(BaseModel):
 
     debt_spiral_threshold: float = Field(
         default=0.5,
-        ge=0.0,
+        gt=0.0,
         le=1.0,
         description=(
-            "NOT YET READ BY ANY CODE — editing this value changes nothing "
-            "in the shipped game. Intended meaning: the accumulated debt / "
-            "annual surplus ratio at which a county's debt spiral becomes "
-            "self-reinforcing (NBER 2001/2008 corporate debt-to-earnings "
-            "recession analysis). DebtAccumulation tracks accumulated_debt "
-            "and consecutive_deficit_ticks but never compares either "
-            "against this ratio, and no debt-spiral flag exists on any "
-            "model. The consumer is owed by U5 (debt_spiral opposition); "
-            "until it lands, this row is pinned dead by "
-            "tests/integration/economics/test_vol3_defines_reachability_live.py."
+            "Live since U5.10: the engine divides a county's accumulated "
+            "debt / annual surplus ratio by this before handing it to the "
+            "defines-free catalog (ContradictionSystem._county_money_ratios, "
+            "src/babylon/engine/systems/contradiction.py), so the "
+            "solvent<->indebted debt_spiral opposition's balance crosses "
+            "zero exactly AT this threshold — matching the "
+            "credit_fragility_scale division of labour. Derived from NBER "
+            "2001/2008 corporate debt-to-earnings recession analysis. Must "
+            "be strictly positive: it is a live divisor, and gt=0.0 (not "
+            "ge=0.0) enforces that at the schema boundary."
         ),
     )
     distribution_epsilon: float = Field(
@@ -138,6 +138,70 @@ class CapitalVolumeIIIDefines(BaseModel):
             "live per-tick rate)."
         ),
     )
+    credit_fragility_scale: float = Field(
+        default=1.0e-3,
+        gt=0.0,
+        description=(
+            "Empirical: crisis reference for the credit opposition. The "
+            "engine divides the credit fragility index "
+            "(default_rate * spread_to_treasuries) by this before handing it "
+            "to the defines-free catalog, so the accommodation⇄fragility "
+            "balance crosses zero exactly AT the threshold — which requires "
+            "this to equal credit_fragility_threshold (the same raw product "
+            "IS the threshold). 1.0e-3 is the Dec-2008 reading — corporate "
+            "bond spread 0.0556 times default rate 0.02 — matching "
+            "capital_vol3.credit_fragility_threshold's own derivation."
+        ),
+    )
+    interest_profit_share_base: float = Field(
+        default=0.30,
+        gt=0.0,
+        lt=1.0,
+        description=(
+            "Calm interest share of the average rate of profit (Capital "
+            "Vol. III ch. 22 — the 'purely empirical' division of profit "
+            "into interest and profit of enterprise; a convention, not a "
+            "law, hence player-editable). Calibration: FRED net corporate "
+            "interest paid (W273RC1) / corporate profits before tax "
+            "(A053RC1Q027SBEA) ~ 0.25-0.35 across non-crisis years "
+            "1990-2019."
+        ),
+    )
+    interest_profit_share_ceiling: float = Field(
+        default=0.95,
+        gt=0.0,
+        lt=1.0,
+        description=(
+            "Crisis-maximum interest share of profit. Capital Vol. III "
+            "ch. 22: the absolute maximum is i=r (profit of enterprise=0); "
+            "the sim reserves 5% of profit for the functioning capitalist so "
+            "the surplus identity's profit-of-enterprise residual stays "
+            "positive, hence a strict ceiling < 1. Must exceed "
+            "interest_profit_share_base."
+        ),
+    )
+    interest_reserve_demand_gain: float = Field(
+        default=1.0,
+        ge=0.0,
+        description=(
+            "Demand-side sensitivity of loan-market tightness to the "
+            "reserve-army downturn signal (Capital Vol. III ch. 22 — the "
+            "demand for loanable capital decides the market rate). Unit "
+            "default; a mod dials crisis sensitivity of the credit system."
+        ),
+    )
+    interest_reserve_reference: float = Field(
+        default=0.08,
+        ge=0.0,
+        lt=1.0,
+        description=(
+            "Reserve-army ratio at which the demand-side liquidity scramble "
+            "begins (below it, s_r=0). Calibration: BLS civilian "
+            "unemployment (UNRATE) averaged ~5.8% 1948-2019; ~8% marks "
+            "recession-territory onset of the scramble for means of payment "
+            "(Capital Vol. III ch. 25)."
+        ),
+    )
 
     @field_validator("counter_tendency_weights")
     @classmethod
@@ -174,3 +238,21 @@ class CapitalVolumeIIIDefines(BaseModel):
                 f"capital_vol3.counter_tendency_weights list in defines.yaml"
             )
         return weights
+
+    @model_validator(mode="after")
+    def verify_interest_share_ordering(self) -> CapitalVolumeIIIDefines:
+        """Reject base >= ceiling (ch. 22: interest is bounded by profit).
+
+        share(tau) = base + (ceiling-base)*tau must land in (0, 1) with the
+        crisis ceiling above the calm base, else the endogenous rate is not
+        monotone in loan-market tightness. Fails loudly at config-load
+        (Constitution III.11).
+        """
+        if self.interest_profit_share_base >= self.interest_profit_share_ceiling:
+            raise ValueError(
+                f"capital_vol3.interest_profit_share_base "
+                f"({self.interest_profit_share_base!r}) must be strictly below "
+                f"interest_profit_share_ceiling "
+                f"({self.interest_profit_share_ceiling!r}) — check defines.yaml"
+            )
+        return self

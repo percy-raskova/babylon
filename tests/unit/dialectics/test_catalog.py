@@ -25,12 +25,16 @@ def _states(inputs: GraphInputs, tick: int = 0):  # type: ignore[no-untyped-def]
 
 
 class TestRegistryShape:
-    def test_six_oppositions_bound(self) -> None:
+    def test_ten_oppositions_bound(self) -> None:
         assert _reg().keys == (
             "atomization",
             "capital_labor",
+            "credit",
+            "debt_spiral",
+            "financial",
             "imperial",
             "price_value",
+            "surplus_distribution",
             "tenancy",
             "wage",
         )
@@ -64,8 +68,42 @@ class TestCapitalLabor:
 
     def test_mean_over_multiple_edges(self) -> None:
         states = _states(GraphInputs(exploitation_pairs=((0.0, 10.0), (10.0, 10.0))))
-        # gaps: 1.0 and 0.0 → mean 0.5
-        assert states["capital_labor"].gap == pytest.approx(0.5)
+        # Wealth-weighted (owner ruling 2026-07-19): pair (0,10) has pole-sum
+        # 10, |b-a| 10; pair (10,10) has pole-sum 20, |b-a| 0. gap = Σ|b-a| /
+        # Σ(a+b) = (10+0) / (10+20) = 10/30 = 1/3.
+        assert states["capital_labor"].gap == pytest.approx(1.0 / 3.0)
+
+    def test_mean_asymmetry_is_wealth_weighted_not_pair_counted(self) -> None:
+        """One enormous near-parity pair dominates one tiny fully-polarized pair.
+
+        Pairs (4950, 4950) at parity (pole-sum 9900, gap_mass 0) and
+        (0.0, 100.0) fully polarized (pole-sum 100, gap_mass 100): an
+        unweighted mean reads gap ``(0 + 1.0) / 2 = 0.5``; the
+        wealth-weighted field reads ``Σ|b−a| / Σ(a+b) = 100 / 10_000 =
+        0.01``. The tiny pair must NOT swing the reading as hard as the
+        enormous one (intensive-aggregation class, owner ruling 2026-07-19).
+
+        Magnitudes are chosen so the exact weighted result (0.01) lands on
+        the ``Intensity`` field's pre-existing 1e-6 precision grid
+        (``babylon.kernel.math.quantize``, Epoch 0 gatekeeper) with no
+        rounding remainder — the original 1e6-vs-1 demonstration produces a
+        true gap of ~5e-7, which the SAME gatekeeper legitimately floors to
+        0.0 (unrelated to this fix), so it is not usable as an exact
+        ``pytest.approx`` pin.
+        """
+        inputs = GraphInputs(
+            exploitation_pairs=((4950.0, 4950.0), (0.0, 100.0)),
+        )
+        reading = _states(inputs)["capital_labor"]
+        assert reading.gap == pytest.approx(0.01)
+        assert reading.balance == pytest.approx(0.01)
+
+    def test_mean_asymmetry_all_pairs_degenerate_is_zero(self) -> None:
+        # A pole-sum below the epsilon guard carries no wealth mass to weight
+        # by, so it is skipped; an all-degenerate input reads absent (0, 0).
+        states = _states(GraphInputs(exploitation_pairs=((0.0, 0.0),)))
+        assert states["capital_labor"].gap == 0.0
+        assert states["capital_labor"].balance == 0.0
 
 
 class TestWage:
@@ -170,6 +208,12 @@ class TestLevelPlacement:
             # Program 23: the national scissors sits on no county/bloc rung
             # yet — unplaced by design (empty = unplaced, opposition.py).
             "price_value": "",
+            # Vol III (U5.2): the two county-keyed money axes and the two
+            # national (unplaced) ones.
+            "surplus_distribution": "county",
+            "debt_spiral": "county",
+            "credit": "",
+            "financial": "",
         }
 
 
@@ -224,3 +268,160 @@ class TestPriceValue:
             r for r in _reg().read_poles(GraphInputs()) if r.opposition_key == "price_value"
         ]
         assert readings == []
+
+
+class TestVolumeThreeInputFields:
+    """The four Vol III money fields are optional and absent by default.
+
+    Absence is the normal steady state for ~85% of a campaign (the FRED
+    series terminate at 2024), so ``None`` must be the DEFAULT, never a
+    fabricated 0.0 (Constitution III.11).
+    """
+
+    def test_all_four_default_to_none(self) -> None:
+        inputs = GraphInputs()
+        assert inputs.rentier_share is None
+        assert inputs.debt_ratio is None
+        assert inputs.credit_fragility is None
+        assert inputs.financialization_index is None
+
+    def test_all_four_are_settable_floats(self) -> None:
+        inputs = GraphInputs(
+            rentier_share=0.4,
+            debt_ratio=1.5,
+            credit_fragility=2.0,
+            financialization_index=3.5,
+        )
+        assert inputs.rentier_share == pytest.approx(0.4)
+        assert inputs.debt_ratio == pytest.approx(1.5)
+        assert inputs.credit_fragility == pytest.approx(2.0)
+        assert inputs.financialization_index == pytest.approx(3.5)
+
+    def test_graph_inputs_stays_frozen(self) -> None:
+        inputs = GraphInputs(rentier_share=0.4)
+        with pytest.raises(AttributeError):
+            inputs.rentier_share = 0.9  # type: ignore[misc]
+
+
+class TestVolumeThreeOppositions:
+    """The four Vol III bindings: shared ratio family, honest absence.
+
+    Every one reads a NON-NEGATIVE ratio against its own material unity
+    point (claims == substance) and maps it with the same zero-parameter
+    saturating family: ``gap = x/(1+x)``, ``balance = (x-1)/(x+1)``. So the
+    balance crosses zero exactly where the claim equals the substance it
+    claims, and the gap is 0 only when the claim is absent altogether.
+    """
+
+    @pytest.mark.parametrize(
+        "key",
+        ["surplus_distribution", "debt_spiral", "credit", "financial"],
+    )
+    def test_absent_input_reads_zero_zero(self, key: str) -> None:
+        # No Vol III data (the ~85%-of-campaign steady state): no claim,
+        # no contradiction — never a fabricated value.
+        states = _states(GraphInputs())
+        assert states[key].gap == pytest.approx(0.0)
+        assert states[key].balance == pytest.approx(0.0)
+
+    @pytest.mark.parametrize(
+        "key",
+        ["surplus_distribution", "debt_spiral", "credit", "financial"],
+    )
+    def test_none_of_them_is_antagonistic(self, key: str) -> None:
+        # The catalog reserves antagonistic=True for capital_labor and
+        # imperial alone: the division of surplus AMONG capitals is real
+        # conflict but intra-class, and mislabelling it would corrupt
+        # principal-contradiction ranking.
+        assert _reg().spec_for(key).antagonistic is False
+
+    def test_levels_are_county_for_the_two_county_axes(self) -> None:
+        assert _reg().spec_for("surplus_distribution").level_name == "county"
+        assert _reg().spec_for("debt_spiral").level_name == "county"
+
+    def test_the_two_national_axes_are_unplaced(self) -> None:
+        assert _reg().spec_for("credit").level_name == ""
+        assert _reg().spec_for("financial").level_name == ""
+
+    def test_poles_are_named_as_specified(self) -> None:
+        reg = _reg()
+        assert (reg.spec_for("surplus_distribution").pole_a) == "enterprise"
+        assert (reg.spec_for("surplus_distribution").pole_b) == "rentier"
+        assert (reg.spec_for("debt_spiral").pole_a) == "solvent"
+        assert (reg.spec_for("debt_spiral").pole_b) == "indebted"
+        assert (reg.spec_for("credit").pole_a) == "accommodation"
+        assert (reg.spec_for("credit").pole_b) == "fragility"
+        assert (reg.spec_for("financial").pole_a) == "real"
+        assert (reg.spec_for("financial").pole_b) == "fictitious"
+
+    def test_zero_claim_is_no_contradiction_not_maximal(self) -> None:
+        # Rentiers claim nothing: the functioning capitalist retains the
+        # whole surplus. That is the ABSENCE of the conflict, not its peak.
+        states = _states(GraphInputs(rentier_share=0.0, debt_ratio=0.0))
+        assert states["surplus_distribution"].gap == pytest.approx(0.0)
+        assert states["surplus_distribution"].balance == pytest.approx(-1.0)
+        assert states["surplus_distribution"].leading_pole == "a"
+        assert states["debt_spiral"].gap == pytest.approx(0.0)
+        assert states["debt_spiral"].balance == pytest.approx(-1.0)
+
+    def test_unity_point_is_the_balance_zero_crossing(self) -> None:
+        # x == 1: claims exactly equal the surplus they claim (p == 0);
+        # fragility exactly at its crisis reference; fictitious exactly at
+        # parity with real. Neither pole leads.
+        states = _states(
+            GraphInputs(
+                rentier_share=1.0,
+                debt_ratio=1.0,
+                credit_fragility=1.0,
+                financialization_index=1.0,
+            )
+        )
+        for key in ("surplus_distribution", "debt_spiral", "credit", "financial"):
+            assert states[key].balance == pytest.approx(0.0)
+            assert states[key].gap == pytest.approx(0.5)
+
+    def test_claims_exceeding_surplus_puts_the_rentier_pole_in_the_lead(self) -> None:
+        # (i + r + t) = 3s: interest, rent and taxes consume three times the
+        # surplus produced. Enterprise profit is deeply negative.
+        states = _states(GraphInputs(rentier_share=3.0))
+        assert states["surplus_distribution"].gap == pytest.approx(0.75)
+        assert states["surplus_distribution"].balance == pytest.approx(0.5)
+        assert states["surplus_distribution"].leading_pole == "b"
+
+    def test_financialization_bubble_reads_fictitious_dominant(self) -> None:
+        # 3.5 is the FRED TCMDO/GDP overaccumulation reading (~2008 peak).
+        states = _states(GraphInputs(financialization_index=3.5))
+        assert states["financial"].balance == pytest.approx(2.5 / 4.5)
+        assert states["financial"].leading_pole == "b"
+
+    def test_negative_ratios_are_rejected_as_absent(self) -> None:
+        # A ratio of a non-negative claim to a non-negative substance can
+        # never be negative; a negative reading is corrupt input, and the
+        # honest response is the absent reading, not a clamped fiction.
+        states = _states(GraphInputs(debt_ratio=-2.0))
+        assert states["debt_spiral"].gap == pytest.approx(0.0)
+        assert states["debt_spiral"].balance == pytest.approx(0.0)
+
+
+class TestCatalogDocstringAccuracy:
+    """The module docstring is a claim about the registry; pin it to the code.
+
+    It went stale twice already — it still said "five bound contradictions"
+    and omitted ``price_value`` for the whole period during which
+    ``price_value`` was CANONICAL (ADR078). Documentation that describes a
+    registry can be checked against that registry, so it is.
+    """
+
+    def test_docstring_names_every_registered_key(self) -> None:
+        import babylon.domain.dialectics.instances.catalog as catalog_module
+
+        docstring = catalog_module.__doc__ or ""
+        for key in build_default_registry().keys:
+            assert f"``{key}``" in docstring, f"docstring never mentions {key!r}"
+
+    def test_docstring_does_not_claim_five(self) -> None:
+        import babylon.domain.dialectics.instances.catalog as catalog_module
+
+        docstring = catalog_module.__doc__ or ""
+        assert "five bound contradictions" not in docstring
+        assert "The five oppositions" not in docstring

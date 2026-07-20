@@ -36,6 +36,28 @@ class TestCapitalVolumeIIIDefaults:
         assert defines.capital_vol3.debt_spiral_threshold == pytest.approx(0.5)
 
 
+class TestDebtSpiralThresholdRejectsZero:
+    """Review finding (U5.10): ``debt_spiral_threshold`` became a live divisor
+    in ``ContradictionSystem._county_money_ratios``
+    (``(total_debt / total_surplus) / debt_spiral_threshold``) with no
+    in-function guard, mirroring ``credit_fragility_scale``'s own
+    ``gt=0.0`` — which exists for exactly this reason (it too is a live
+    divisor in the same module). Before U5.10 the field was inert prose and
+    ``ge=0.0`` was harmless; a schema-legal 0.0 is now a ``ZeroDivisionError``
+    reachable from a single modded ``defines.yaml`` edit on any tick where a
+    county carries both a distribution and nonzero accumulated debt. Pinned
+    at the schema boundary rather than left to the division site, matching
+    ``credit_fragility_scale``'s own precedent in this file.
+    """
+
+    def test_zero_is_rejected_at_construction(self) -> None:
+        with pytest.raises(ValidationError, match="debt_spiral_threshold"):
+            CapitalVolumeIIIDefines(debt_spiral_threshold=0.0)
+
+    def test_shipped_default_survives_the_tightened_constraint(self) -> None:
+        assert CapitalVolumeIIIDefines().debt_spiral_threshold == pytest.approx(0.5)
+
+
 class TestStagnationCreditGrowthIsAnAccessor:
     def test_no_import_time_snapshot_remains(self) -> None:
         """credit/types.py must expose an accessor, not a module-level Final
@@ -180,27 +202,27 @@ class TestAccessorsReadTheYamlNotTheDataclassDefaults:
 class TestCoefficientDescriptionsDoNotNameAbsentMechanisms:
     """Finding U2.3-2: never document a feature that does not exist in code.
 
-    ``debt_spiral_threshold`` has no consumer anywhere in ``src/`` — not a
-    live one, not a dead-calculator one. ``DebtAccumulation.update`` tracks
-    ``accumulated_debt`` and ``consecutive_deficit_ticks`` and never compares
-    either against a ratio, and no debt-spiral flag exists on any model. The
-    generated ``defines.yaml`` therefore must not promise a player that
-    editing this value moves a "crisis flag".
+    U5.10 wired ``debt_spiral_threshold`` into
+    ``ContradictionSystem._county_money_ratios`` as a live divisor, so the
+    description must now describe that live behaviour rather than continue
+    to claim the field is unread (Constitution III.11 in the other
+    direction: a stale "not yet read" claim is exactly as dishonest as a
+    fabricated feature once the consumer lands).
 
     Pinned as a contract rather than left to review: the description is the
     only thing a modder reads before spending an evening on a knob.
     """
 
-    def test_debt_spiral_threshold_description_declares_it_unread(self) -> None:
+    def test_debt_spiral_threshold_description_declares_it_live(self) -> None:
         field = CapitalVolumeIIIDefines.model_fields["debt_spiral_threshold"]
         description = field.description or ""
-        assert "NOT YET READ" in description, (
-            "debt_spiral_threshold has no consumer in src/; its description "
-            "must say so plainly rather than name a crisis flag that does "
-            "not exist (house rule: never document a feature that does not "
-            "exist in code)"
+        assert "NOT YET READ" not in description, (
+            "debt_spiral_threshold has been live since U5.10 "
+            "(ContradictionSystem._county_money_ratios divides by it); the "
+            "description must not still claim it changes nothing in the "
+            "shipped game"
         )
-        assert "crisis flag" not in description.lower()
+        assert "contradiction.py" in description or "debt_spiral" in description
 
     def test_credit_fragility_threshold_is_calibrated_for_decimal_inputs(self) -> None:
         """The predicate must be reachable on real FRED data.

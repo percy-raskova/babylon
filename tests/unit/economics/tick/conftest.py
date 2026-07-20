@@ -12,6 +12,7 @@ from typing import Any
 
 import pytest
 
+from babylon.domain.economics.credit.types import FictitiousCapitalStock, InterestRateState
 from babylon.domain.economics.dynamics.types import ClassDistribution, EconomicConditions
 from babylon.domain.economics.gamma.types import GammaIII
 from babylon.domain.economics.tensor import NoDataSentinel
@@ -215,6 +216,80 @@ class MockImperialRentCalculator:
 
     def is_labor_aristocracy(self, wage: float, params: Any) -> bool:
         return self._phi_hour > 0
+
+
+class MockInterestRateCalculator:
+    """Mock InterestRateCalculator returning a fixed InterestRateState.
+
+    Args:
+        base_rate: Federal funds rate (FEDFUNDS) to return.
+        treasury_10y: 10-year Treasury yield (DGS10) to return.
+        baa_spread: Baa corporate spread (BAA10Y) to return.
+        force_sentinel: If True, always return NoDataSentinel.
+    """
+
+    def __init__(
+        self,
+        base_rate: float = 0.25,
+        treasury_10y: float = 2.27,
+        baa_spread: float = 2.64,
+        *,
+        force_sentinel: bool = False,
+    ) -> None:
+        self._base_rate = base_rate
+        self._treasury_10y = treasury_10y
+        self._baa_spread = baa_spread
+        self._force_sentinel = force_sentinel
+
+    def compute_interest_rate_state(self, year: int) -> InterestRateState | NoDataSentinel:
+        """Return fixed InterestRateState or NoDataSentinel."""
+        if self._force_sentinel:
+            return NoDataSentinel(fips="USA", year=year, reason="Forced sentinel for testing")
+        return InterestRateState(
+            year=year,
+            base_rate=self._base_rate,
+            treasury_10y=self._treasury_10y,
+            baa_spread=self._baa_spread,
+        )
+
+
+class MockFictitiousCapitalCalculator:
+    """Mock FictitiousCapitalCalculator returning a fixed FictitiousCapitalStock.
+
+    Args:
+        government_debt: Federal debt (GFDEBTN) to return.
+        corporate_equity: Stock market cap to return.
+        corporate_debt: Corporate bonds/loans to return.
+        household_debt: Mortgages/consumer/student debt to return.
+        force_sentinel: If True, always return NoDataSentinel.
+    """
+
+    def __init__(
+        self,
+        government_debt: float = 18e12,
+        corporate_equity: float = 20e12,
+        corporate_debt: float = 8e12,
+        household_debt: float = 14e12,
+        *,
+        force_sentinel: bool = False,
+    ) -> None:
+        self._government_debt = government_debt
+        self._corporate_equity = corporate_equity
+        self._corporate_debt = corporate_debt
+        self._household_debt = household_debt
+        self._force_sentinel = force_sentinel
+
+    def compute_fictitious_capital(self, year: int) -> FictitiousCapitalStock | NoDataSentinel:
+        """Return fixed FictitiousCapitalStock or NoDataSentinel."""
+        if self._force_sentinel:
+            return NoDataSentinel(fips="USA", year=year, reason="Forced sentinel for testing")
+        return FictitiousCapitalStock(
+            year=year,
+            government_debt=self._government_debt,
+            corporate_equity=self._corporate_equity,
+            corporate_debt=self._corporate_debt,
+            household_debt=self._household_debt,
+        )
 
 
 class MockTensor:

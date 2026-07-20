@@ -12,7 +12,7 @@ Spec 008: Added metrics field for dependency-injected telemetry.
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, Final
 
 from babylon.config.defines import GameDefines
 from babylon.engine.formula_registry import FormulaRegistry
@@ -22,6 +22,10 @@ from babylon.models.config import SimulationConfig
 
 if TYPE_CHECKING:
     from babylon.kernel.metrics import MetricsCollectorProtocol
+
+#: Distinguishes an omitted ``coupling_graph`` argument (build the default)
+#: from an explicit ``coupling_graph=None`` (disable the rule).
+_UNSET: Final = object()
 
 
 @dataclass
@@ -197,6 +201,13 @@ class ServiceContainer:
     # OppositionRegistry to step each tick.
     opposition_registry: Any = field(default=None)
 
+    # Typed coupling graph over the opposition registry (Vol III money
+    # scissors, U5). Built by ``create`` beside the registry: ContradictionSystem
+    # consumes it so a ``transforms`` target cannot rank principal while its
+    # source reads absent — crisis has a direction of travel, and this is what
+    # knows it. None only in hand-built containers.
+    coupling_graph: Any = field(default=None)
+
     # Capital Volume I data sources (Feature 021 - optional, default None)
     reserve_army_data_source: Any = field(default=None)
     dispossession_data_source: Any = field(default=None)
@@ -262,6 +273,7 @@ class ServiceContainer:
     distribution_calculator: Any = field(default=None)
     interest_calculator: Any = field(default=None)
     credit_cycle_detector: Any = field(default=None)
+    credit_aggregate_source: Any = field(default=None)
     fictitious_capital_calculator: Any = field(default=None)
     rent_calculator: Any = field(default=None)
     housing_calculator: Any = field(default=None)
@@ -297,6 +309,7 @@ class ServiceContainer:
         productivity_data_source: Any = None,
         field_registry: Any = None,
         opposition_registry: Any = None,
+        coupling_graph: Any = _UNSET,
         melt_calculator: Any = None,
         basket_calculator: Any = None,
         gamma_calculator: Any = None,
@@ -317,6 +330,7 @@ class ServiceContainer:
         distribution_calculator: Any = None,
         interest_calculator: Any = None,
         credit_cycle_detector: Any = None,
+        credit_aggregate_source: Any = None,
         fictitious_capital_calculator: Any = None,
         rent_calculator: Any = None,
         housing_calculator: Any = None,
@@ -372,6 +386,20 @@ class ServiceContainer:
                 rate_weight=resolved_defines.tension.principal_rate_weight
             )
 
+        # Sentinel default so an EXPLICIT coupling_graph=None can disable the
+        # rule, distinguishable from an omitted argument. ServiceContainer is
+        # a plain dataclass today, so tests could mutate the field in place —
+        # but relying on that couples them to non-frozenness the container
+        # does not promise.
+        if coupling_graph is _UNSET and opposition_registry is not None:
+            from babylon.domain.dialectics.instances.catalog import (
+                build_default_coupling_graph,
+            )
+
+            coupling_graph = build_default_coupling_graph(opposition_registry)
+        if coupling_graph is _UNSET:
+            coupling_graph = None
+
         # Lazy import: the concrete SQLAlchemy connection lives in the
         # persistence layer; the engine names only the kernel protocol
         # (Program 14 — Constitution II.6). Engine->persistence is a legal
@@ -393,6 +421,7 @@ class ServiceContainer:
             productivity_data_source=productivity_data_source,
             field_registry=field_registry,
             opposition_registry=opposition_registry,
+            coupling_graph=coupling_graph,
             melt_calculator=melt_calculator,
             basket_calculator=basket_calculator,
             gamma_calculator=gamma_calculator,
@@ -413,6 +442,7 @@ class ServiceContainer:
             distribution_calculator=distribution_calculator,
             interest_calculator=interest_calculator,
             credit_cycle_detector=credit_cycle_detector,
+            credit_aggregate_source=credit_aggregate_source,
             fictitious_capital_calculator=fictitious_capital_calculator,
             rent_calculator=rent_calculator,
             housing_calculator=housing_calculator,

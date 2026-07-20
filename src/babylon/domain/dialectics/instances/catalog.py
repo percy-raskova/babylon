@@ -1,4 +1,4 @@
-"""The production opposition catalog: Babylon's five bound contradictions.
+"""The production opposition catalog: Babylon's ten bound contradictions.
 
 :func:`build_default_registry` wires an
 :class:`~babylon.domain.dialectics.core.opposition.OppositionRegistry` over
@@ -9,9 +9,11 @@ module free of any ``babylon.engine`` import, so the dialectics package
 stays a pure downstream of ``formulas`` + ``models`` and cannot form an
 import cycle with the system that consumes it.
 
-The five oppositions, and the honest measure each is bound to on this
-branch (verified against a 30-tick single-county bridged probe,
-2026-07-02):
+The ten oppositions, and the honest measure each is bound to. The first
+five were verified against a 30-tick single-county bridged probe
+(2026-07-02); ``price_value`` was promoted to CANONICAL by ADR078; the
+four Volume III money oppositions were bound by the Vol III money-scissors
+work (2026-07-18):
 
 - ``capital_labor`` — mean wealth-asymmetry over EXPLOITATION edges
   (labor = pole A / source, capital = pole B / target). Antagonistic.
@@ -36,6 +38,30 @@ branch (verified against a 30-tick single-county bridged probe,
   inflow = core pole dominant). It shares ``wage``'s inputs but carries the
   core/periphery poles and the frame level; that shared-input coupling is
   encoded as ``wage feeds imperial`` in the default coupling graph.
+- ``price_value`` — the Market Scissors axis (Program 23, ADR077/ADR078)
+  read as an adjunction defect: gap and balance come from the pre-derived
+  ``GraphInputs.market_balance``, the engine's ``tanh(price_log / scale)``.
+  CANONICAL: it competes for principal contradiction.
+- ``surplus_distribution`` — enterprise⇄rentier: the rentier share
+  ``(i + r + t) / s``, the division of one county's produced surplus among
+  the capitals claiming it. Balance crosses zero where the claims exactly
+  extinguish enterprise profit.
+- ``debt_spiral`` — solvent⇄indebted: accumulated enterprise-profit
+  shortfall over annual surplus, scaled by the engine against
+  ``capital_vol3.debt_spiral_threshold`` so balance crosses zero AT the
+  spiral threshold. Zero debt reads gap 0 (no contradiction), balance −1
+  (the solvent pole leads).
+- ``credit`` — accommodation⇄fragility: ``default_rate * spread``, scaled by
+  the engine against its crisis reference so balance crosses zero AT the
+  threshold. National; unplaced on the level lattice.
+- ``financial`` — real⇄fictitious: claims on future value over present
+  production, read from the scissors' ``fictitious_log`` in ratio space.
+  National; unplaced on the level lattice.
+
+All four Volume III bindings share ``_ratio_reading``'s zero-parameter
+saturating map and all four are ``antagonistic=False``: the division of
+surplus among capitals is real conflict but INTRA-class, and only
+``capital_labor`` and ``imperial`` carry the rupture-producing flag.
 
 Design note (shared defect, different poles): ``wage`` and ``imperial`` read
 the identical ``(w_paid, v_produced)`` defect but bind different poles —
@@ -49,7 +75,7 @@ gap stays in ``[0, 1]`` (the raw ``(w−v)/v`` is unbounded). See
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Final
 
 if TYPE_CHECKING:
     from babylon.topology.graph import BabylonUGraph
@@ -70,10 +96,7 @@ from babylon.domain.dialectics.instances.connectivity import (
     atomization_index,
     connectivity_cylinder,
 )
-from babylon.formulas.contradiction import (
-    calculate_wealth_asymmetry_balance,
-    calculate_wealth_asymmetry_gap,
-)
+from babylon.formulas.contradiction import calculate_wealth_asymmetry_balance
 
 __all__ = ["GraphInputs", "build_default_coupling_graph", "build_default_registry"]
 
@@ -119,6 +142,28 @@ class GraphInputs:
             Market Scissors axis (Program 23, ADR077) — the engine computes
             ``tanh(price_log / scale)`` with the defines-owned scale so the
             catalog stays defines-free; ``None`` = no market axis this tick.
+        rentier_share: NATIONAL aggregate ``(i + r + t) / s`` — the share of
+            produced surplus value claimed by interest, ground rent and taxes
+            rather than retained by the functioning capitalist (Capital Vol.
+            III part 5). Computed by the engine as ``Σclaims / Σsurplus``
+            across counties — an EXTENSIVE ratio-of-sums, never a mean of
+            per-county ratios. ``None`` = no county carries a surplus
+            distribution this tick.
+        debt_ratio: NATIONAL ``Σ accumulated_debt / Σ annual surplus`` — the
+            cumulative enterprise-profit shortfall measured against the
+            surplus that would have to service it. ``None`` = no county
+            carries a debt accumulation this tick.
+        credit_fragility: ``default_rate * spread``, pre-divided by the
+            defines-owned crisis reference so 1.0 IS the crisis threshold
+            (the engine owns the scale, exactly as it owns the ``tanh``
+            scale for ``market_balance``, keeping this module defines-free).
+            ``None`` = no national credit state published this tick.
+        financialization_index: fictitious claims over real production. Read
+            from the scissors' ``fictitious_log`` in ratio space
+            (``exp``), which the monetary anchor calibrates to
+            ``FictitiousCapitalStock.ratio_to_real`` while real data exists —
+            one axis, materially grounded at its origin, endogenous
+            thereafter. ``None`` = no market axis this tick.
     """
 
     exploitation_pairs: tuple[WealthPair, ...] = ()
@@ -129,19 +174,50 @@ class GraphInputs:
     wage_value_id_pairs: tuple[tuple[str, float, float], ...] = ()
     tenancy_id_pairs: tuple[tuple[str, str, float, float], ...] = ()
     market_balance: float | None = field(default=None)
+    rentier_share: float | None = field(default=None)
+    debt_ratio: float | None = field(default=None)
+    credit_fragility: float | None = field(default=None)
+    financialization_index: float | None = field(default=None)
+
+
+_ASYMMETRY_EPSILON: Final[float] = 1e-9
+"""Degenerate-pair guard, mirroring ``calculate_wealth_asymmetry_*``'s epsilon default."""
 
 
 def _mean_asymmetry(pairs: Sequence[WealthPair]) -> GapReading:
-    """Mean wealth-asymmetry gap and balance over ``(pole_a, pole_b)`` pairs.
+    """Wealth-weighted asymmetry gap and balance over ``(pole_a, pole_b)`` pairs.
 
-    Empty input → ``gap 0.0, balance 0.0`` (an absent edge set carries no
-    contradiction), per the design contract.
+    Each pair's bounded reading (``|b−a|/(a+b)``, ``(b−a)/(a+b)``) is weighted
+    by the wealth engaged in the relationship (``a+b`` — an extensive
+    magnitude), which telescopes algebraically to the exact ratio of sums:
+    ``gap = Σ|b−a| / Σ(a+b)``, ``balance = Σ(b−a) / Σ(a+b)``. An unweighted
+    mean lets a tiny pair swing the field reading as hard as an enormous one —
+    the intensive-aggregation error class (U7.6 sensor; owner ruling
+    2026-07-19). Lawverian reading: the opposition's counit defect integrated
+    over the relationship field, with material wealth as the measure.
+
+    Pairs whose pole sum falls below ``_ASYMMETRY_EPSILON`` carry no wealth
+    mass and are skipped — under the per-pair formulas they read 0.0 and here
+    they contribute zero weight, so the two forms agree on the degenerate
+    case. Empty input (or all pairs degenerate) → ``gap 0.0, balance 0.0``
+    (an absent edge set carries no contradiction), per the design contract.
+    Summation runs in input order, which the engine constructs
+    deterministically (III.7).
     """
-    if not pairs:
+    gap_mass = 0.0
+    balance_mass = 0.0
+    weight_total = 0.0
+    for a, b in pairs:
+        pole_sum = a + b
+        if pole_sum < _ASYMMETRY_EPSILON:
+            continue
+        gap_mass += abs(b - a)
+        balance_mass += b - a
+        weight_total += pole_sum
+    if weight_total <= 0.0:
         return GapReading(gap=0.0, balance=0.0)
-    n = len(pairs)
-    gap = sum(calculate_wealth_asymmetry_gap(a, b) for a, b in pairs) / n
-    balance = sum(calculate_wealth_asymmetry_balance(a, b) for a, b in pairs) / n
+    gap = min(1.0, max(0.0, gap_mass / weight_total))
+    balance = min(1.0, max(-1.0, balance_mass / weight_total))
     return GapReading(gap=gap, balance=balance)
 
 
@@ -274,6 +350,69 @@ def _price_value_measure(inputs: GraphInputs) -> GapReading:
     return GapReading(gap=abs(balance), balance=balance)
 
 
+def _ratio_reading(ratio: float | None) -> GapReading:
+    """Map a non-negative claim/substance ratio onto ``(gap, balance)``.
+
+    The shared measure family for every Volume III money opposition. Each
+    reads a ratio of a CLAIM on value to the value that must validate it
+    — rentier claims to surplus produced, accumulated debt to annual
+    surplus, credit fragility to its crisis reference, fictitious capital
+    to real production — so all four share one zero-parameter map::
+
+        gap     = x / (1 + x)
+        balance = (x - 1) / (x + 1) = 2 * gap - 1
+
+    Reading the two outputs materially: the balance crosses zero exactly
+    at ``x = 1``, the point where the claim equals the substance claimed
+    (enterprise profit exactly extinguished, fragility exactly at
+    threshold, paper exactly at parity with production). Below it the
+    substance leads (pole A); above it the claim leads (pole B). The gap
+    is 0 only where the claim is absent altogether — a surplus no rentier
+    touches carries no rentier contradiction — and saturates toward 1 as
+    the claim runs away from what produces it.
+
+    The family is deliberately scale-free (no coefficient, so this module
+    stays defines-free per its import contract); any scaling a ratio needs
+    is applied by the engine before it reaches :class:`GraphInputs`, the
+    same division of labour ``market_balance`` already uses.
+
+    Args:
+        ratio: The claim/substance ratio, or ``None`` when the underlying
+            data is absent.
+
+    Returns:
+        ``GapReading(0.0, 0.0)`` — the catalog's canonical ABSENT reading —
+        when ``ratio`` is ``None`` or negative (a ratio of two non-negative
+        magnitudes cannot be negative, so a negative value is corrupt input
+        and absence is the honest answer, Constitution III.11). Otherwise
+        the saturating reading above.
+    """
+    if ratio is None or ratio < 0.0:
+        return GapReading(gap=0.0, balance=0.0)
+    gap = ratio / (1.0 + ratio)
+    return GapReading(gap=gap, balance=2.0 * gap - 1.0)
+
+
+def _surplus_distribution_measure(inputs: GraphInputs) -> GapReading:
+    """enterprise (A) ⇄ rentier (B) — the division of surplus among capitals."""
+    return _ratio_reading(inputs.rentier_share)
+
+
+def _debt_spiral_measure(inputs: GraphInputs) -> GapReading:
+    """solvent (A) ⇄ indebted (B) — accumulated shortfall against annual surplus."""
+    return _ratio_reading(inputs.debt_ratio)
+
+
+def _credit_measure(inputs: GraphInputs) -> GapReading:
+    """accommodation (A) ⇄ fragility (B) — ``default_rate * spread`` in threshold units."""
+    return _ratio_reading(inputs.credit_fragility)
+
+
+def _financial_measure(inputs: GraphInputs) -> GapReading:
+    """real (A) ⇄ fictitious (B) — claims on future value over present production."""
+    return _ratio_reading(inputs.financialization_index)
+
+
 def build_default_registry(rate_weight: float = 10.0) -> OppositionRegistry[GraphInputs]:
     """Build the production five-opposition registry.
 
@@ -366,20 +505,95 @@ def build_default_registry(rate_weight: float = 10.0) -> OppositionRegistry[Grap
             # shadow (ADR077) to prove byte-inertness first; the generic
             # shadow mechanism remains for Amendment T's future bindings.
         ),
+        BoundOpposition(
+            spec=OppositionSpec(
+                key="surplus_distribution",
+                pole_a="enterprise",
+                pole_b="rentier",
+                unity="the functioning capitalist can only set production going with "
+                "capital the money-capitalist, the landowner and the state advance or "
+                "levy against it; interest, ground rent and taxes are therefore not "
+                "deductions from an alien fund but the shares in which the one surplus "
+                "value the workers produced is divided among the capitals that claim "
+                "it (Capital Vol. III parts 4-6)",
+                level_name="county",
+                antagonistic=False,
+            ),
+            measure=_surplus_distribution_measure,
+        ),
+        BoundOpposition(
+            spec=OppositionSpec(
+                key="debt_spiral",
+                pole_a="solvent",
+                pole_b="indebted",
+                unity="when the rentier claims outrun the surplus produced, the "
+                "shortfall is not settled but carried: the enterprise borrows to pay "
+                "the interest it already owes, and the debt is a claim on surplus "
+                "value not yet extracted from any worker — solvency and indebtedness "
+                "are the same accumulation read at two moments (Capital Vol. III ch. 30-32)",
+                level_name="county",
+                antagonistic=False,
+            ),
+            measure=_debt_spiral_measure,
+        ),
+        BoundOpposition(
+            spec=OppositionSpec(
+                key="credit",
+                pole_a="accommodation",
+                pole_b="fragility",
+                unity="credit is the lever that carries accumulation past the limits "
+                "of the individual capital, and by exactly the same act it makes each "
+                "capital's reproduction depend on every other's payment: the system "
+                "that accommodates the boom IS the system that transmits the default "
+                "(Capital Vol. III ch. 27, 30)",
+                # level_name stays "" (unplaced): the credit system is national;
+                # it sits on no county/bloc lattice rung.
+                antagonistic=False,
+            ),
+            measure=_credit_measure,
+        ),
+        BoundOpposition(
+            spec=OppositionSpec(
+                key="financial",
+                pole_a="real",
+                pole_b="fictitious",
+                unity="a bond, a share and a mortgage are titles to future surplus "
+                "value, not the value itself; they are bought and sold as capital "
+                "while the labour that must validate them has not been performed — "
+                "the paper presupposes the production it has already outrun (Capital "
+                "Vol. III ch. 25, 29)",
+                # level_name stays "" (unplaced): the fictitious-capital stock and
+                # the scissors axis reading it are both national.
+                antagonistic=False,
+            ),
+            measure=_financial_measure,
+        ),
     ]
     return OppositionRegistry(bindings=bindings, rate_weight=rate_weight)
 
 
-# The ratified crisis-producer map. The four ``transforms`` edges reference
-# Phase D/E value-form oppositions (Circulation, Reproduction, Credit, ...) not
-# yet bound on this branch; the two class edges are bound today. The builder
-# keeps only edges whose BOTH endpoints are registered — it never invents a
-# null binding for an absent endpoint.
+# The ratified crisis-producer map. Every edge is DERIVED — read off the code
+# against ``coupling.py``'s operational definitions of the five kinds, not
+# authored from theory — and carries its citation, because the graph is a
+# CLAIM ABOUT THE CODE and drifts from it the moment either side changes.
+# (That drift is exactly how the two Vol III ``transforms`` edges below sat
+# dormant and undetected for months.) The builder keeps only edges whose BOTH
+# endpoints are registered; it never invents a null binding for an absent one.
 _DEFAULT_COUPLINGS: tuple[Coupling, ...] = (
-    # crisis producers: source's output becomes target's input prices
+    # crisis producers: source's output becomes target's input prices.
+    # Still unbound — the two Volume II circulation oppositions are out of
+    # scope for the Vol III money work and are NOT faked.
     Coupling(source="circulation", target="realization", kind="transforms"),
     Coupling(source="reproduction", target="disproportionality", kind="transforms"),
+    # DebtAccumulation.update consumes profit_of_enterprise — the residual of
+    # the surplus distribution (economics/tick/system/__init__.py, the annual
+    # county financial block): the distribution's output IS the debt tracker's
+    # input. Reserved since Phase D; live since the Vol III binding.
     Coupling(source="surplus_distribution", target="debt_spiral", kind="transforms"),
+    # Credit conditions become fictitious accumulation's input: the default
+    # rate and spread that price credit are what the claims on future value
+    # are capitalized against. Reserved since Phase D; live since the Vol III
+    # binding.
     Coupling(source="credit", target="financial", kind="transforms"),
     # the two antagonistic class contradictions are mutually antagonistic
     Coupling(source="capital_labor", target="imperial", kind="antagonizes"),
@@ -391,6 +605,24 @@ _DEFAULT_COUPLINGS: tuple[Coupling, ...] = (
     # the realized wage⇄value flow IS the scissors' drive term (ADR078): the
     # market axis integrates what the wage relation produces each tick.
     Coupling(source="wage", target="price_value", kind="feeds"),
+    #
+    # The reciprocal pair below is not a modelling flourish: the two edges
+    # fire at DIFFERENT moments of one cycle, and both are readable in
+    # engine/systems/market_scissors.py.
+    #
+    # Expansion — fictitious_drive includes ``momentum_coupling *
+    # price_velocity`` (market_scissors.py fictitious-drive block): the
+    # fictitious step READS the price observation, so ``feeds``.
+    Coupling(source="price_value", target="financial", kind="feeds"),
+    # Correction — calculate_correction_snap pulls price_log down from the
+    # fictitious overhang (market_scissors.py correction block): the price
+    # step READS the fictitious observation, so ``feeds`` back. CouplingGraph
+    # requires no acyclicity, and the cycle is the honest record.
+    Coupling(source="financial", target="price_value", kind="feeds"),
+    # The interest burden i/s sets serviceable_divergence — the ceiling on
+    # fictitious_log before the snap — so the distribution LIMITS the
+    # financial axis's reachable state space: ``constrains``, not ``feeds``.
+    Coupling(source="surplus_distribution", target="financial", kind="constrains"),
 )
 
 

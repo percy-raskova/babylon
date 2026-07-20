@@ -211,3 +211,35 @@ class MarketDefines(BaseModel):
             "deflates relative to the whole."
         ),
     )
+    anchor_pull: float = Field(
+        default=0.1,
+        ge=0.0,
+        le=1.0,
+        description=(
+            "Game design: strength of the pull toward fictitious_anchor "
+            "(D1) while real FRED-backed financial data anchors this "
+            "tick; the pull is exactly 0 when the anchor is absent, "
+            "leaving the endogenous dynamics untouched."
+        ),
+    )
+    correction_interest_slope: float = Field(
+        default=2.0,
+        ge=0.0,
+        le=20.0,
+        description=(
+            "Game design: serviceable log-divergence LOST per unit "
+            "interest-burden-to-capital ratio — a financialised county "
+            "tightens its own correction threshold independent of profit "
+            "rate (Capital Vol. III part 3 meeting part 5)."
+        ),
+    )
+    correction_debt_slope: float = Field(
+        default=0.5,
+        ge=0.0,
+        le=5.0,
+        description=(
+            "Game design: additional correction severity per unit "
+            "accumulated-debt-to-capital ratio — a debt spiral makes the "
+            "re-identification of claims with real surplus MORE violent."
+        ),
+    )

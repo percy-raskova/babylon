@@ -11,6 +11,13 @@ this layer-0.5 package; the dynamic harness that calls the real functions
 (needs ``web.game.engine_bridge``, a Django app above the engine) lives in
 ``tools/aggregation_symmetry_probe.py`` — see that module's own docstring,
 and the registry module's "why dynamic, not static" note.
+
+Since the Vol III merge (PR #216, ADR088) this package hosts a SECOND
+sub-sensor: the static intensive-means scanner (``intensive_registry.py`` +
+``checks.py``, dispatched as ``sentinel_check.py aggregation-intensive``,
+ADVISORY/local by owner ruling) — a rate/ratio/share averaged unweighted
+across space is a variance error. The two share the package name because
+both guard aggregation honesty; they share no symbols.
 """
 
 from babylon.sentinels.aggregation.registry import (

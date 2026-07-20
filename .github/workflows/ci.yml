@@ -55,8 +55,11 @@ jobs:
       - name: Repo hygiene gate
         run: mise run check:hygiene
 
-      - name: Sentinel family (11 static gates — VIII.12; the catalog DB-probe runs in nightly's refdata job, this job has no reference DB)
+      - name: Sentinel family (static gates — VIII.12; catalog DB-probe runs in nightly refdata)
         run: mise run check:sentinels-static
+
+      - name: Public-surface baseline gate (__all__ vs pinned baseline)
+        run: mise run check:surface
 
       - name: Lint (ruff check)
         run: mise run lint:check

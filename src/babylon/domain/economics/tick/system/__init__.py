@@ -37,7 +37,14 @@ from babylon.domain.economics.circulation.types import (
     ReproductionAnalysis,
     ReproductionBalance,
 )
-from babylon.domain.economics.credit.types import FictitiousCapitalStock
+from babylon.domain.economics.credit.endogenous_interest import (
+    endogenous_interest_rate,
+    loan_market_tightness,
+)
+from babylon.domain.economics.credit.types import (
+    CreditState,
+    FictitiousCapitalStock,
+)
 from babylon.domain.economics.crisis.bifurcation import BifurcationRiskCalculator
 from babylon.domain.economics.crisis.wage_compression import should_halt_accumulation
 from babylon.domain.economics.dynamics.types import ClassDistribution, EconomicConditions
@@ -50,7 +57,9 @@ from babylon.domain.economics.tick.crisis_detector import (
 from babylon.domain.economics.tick.derived_rates import DerivedRateCalculator
 from babylon.domain.economics.tick.graph_bridge import (
     read_tick_state_from_graph,
+    reserve_army_signal,
     resolve_county_identity,
+    write_national_financial_state_to_graph,
     write_tick_state_to_graph,
 )
 from babylon.domain.economics.tick.precarity import PrecarityDeriver
@@ -60,6 +69,7 @@ from babylon.domain.economics.tick.types import (
     CountyEconomicState,
     CrisisPhase,
     CrisisState,
+    NationalFinancialParameters,
     NationalTickParameters,
     SimulationTickState,
     SmoothedCoefficients,
@@ -220,6 +230,7 @@ class TickDynamicsSystem(SystemBase):
             national_params,
             services,
             year,
+            graph,
         )
 
         # Step 6: Simulate class transitions (with cascade tracking)
@@ -1394,6 +1405,7 @@ class TickDynamicsSystem(SystemBase):
         _national_params: NationalTickParameters,
         services: ServicesProtocol,
         year: int,
+        graph: GraphProtocol,
     ) -> dict[str, CountyEconomicState]:
         """Compute Volume III financial distribution layer.
 
@@ -1406,16 +1418,20 @@ class TickDynamicsSystem(SystemBase):
             _national_params: National economic context (reserved for future use).
             services: ServicesProtocol with financial calculators.
             year: Current simulation year.
+            graph: Mutable shared graph — passed through so the national
+                financial state can be published under
+                ``graph_bridge.NATIONAL_FINANCIAL_ATTR`` (U3).
 
         Returns:
             Updated county states with financial fields populated.
         """
-        # Graceful skip if financial calculators not configured
-        if services.interest_calculator is None:
+        # U9: the interest rate is endogenous; the layer needs the
+        # distribution calculator, not the (calibration-only) interest one.
+        if services.distribution_calculator is None:
             return county_states
 
-        national_rate, national_spread, fictitious, interest_unavailable_reason = (
-            self._compute_national_financial_state(services, year)
+        national_rate, national_spread, fictitious = self._compute_national_financial_state(
+            services, year, graph, county_states
         )
 
         # County-level computation
@@ -1432,7 +1448,6 @@ class TickDynamicsSystem(SystemBase):
                 year,
                 national_rate,
                 fictitious,
-                interest_unavailable_reason=interest_unavailable_reason,
                 national_spread=national_spread,
             )
 
@@ -1478,56 +1493,155 @@ class TickDynamicsSystem(SystemBase):
             "TickDynamics Step 5.5 (Volume III financial layer, %s): %s", category, reason
         )
 
+    @staticmethod
+    def _build_credit_state(
+        services: ServicesProtocol,
+        year: int,
+        national_spread: float,
+    ) -> CreditState | None:
+        """Assemble the national credit state from the credit aggregate.
+
+        vol3-money-scissors U9: ``spread_to_treasuries`` now carries the
+        ENDOGENOUS fragility premium (``national_spread``), not the BAA10Y
+        read. ``credit_fragility = default_rate * spread`` still fires the
+        ``credit`` opposition. Returns ``None`` — never a fabricated zero
+        (III.11) — when no credit aggregate source supplies total credit.
+        """
+        source = getattr(services, "credit_aggregate_source", None)
+        if source is None:
+            return None
+        total_credit = source.get_total_credit(year)
+        if total_credit is None:
+            return None
+        return CreditState(
+            year=year,
+            total_credit=total_credit,
+            default_rate=services.defines.capital_vol3.default_rate_estimate,
+            spread_to_treasuries=national_spread,
+        )
+
+    def _economy_wide_profit_rate(
+        self,
+        county_states: dict[str, CountyEconomicState],
+        year: int,
+        services: ServicesProtocol,
+    ) -> float | None:
+        """Realized general rate of profit ``r = Sum(s) / Sum(c+v)``.
+
+        Marx's general rate of profit (Capital Vol. III ch. 9/22), the ceiling
+        the endogenous interest rate divides. Sourced from the SAME reference
+        tensors the surplus distribution consumes: per county, ``s_i`` is the
+        realized surplus (``ValueTensor4x3.total_s``, via
+        :meth:`_get_county_surplus`) and ``(c+v)_i`` is the capital advanced it
+        implies, ``s_i / r_i`` where ``r_i`` is the county profit rate
+        (``tensor.profit_rate``, via :meth:`_get_county_profit_rate`). Hence
+        ``r = Sum(s_i) / Sum(s_i / r_i)`` — the surplus-weighted aggregate of
+        the county rates, NOT an unweighted mean of them (the
+        intensive-aggregation defect class). Because the ``(s_i, r_i)`` pair is
+        the one fed to ``distribution_calculator.compute_distribution`` at the
+        same ``_get_best_tensor_year``, the interest ceiling and the per-county
+        interest burden read one materially-grounded rate (total county
+        interest telescopes to ``share * Sum(s)``, a sane fraction of surplus).
+
+        Read in scope from ``county_states`` in hand — deliberately NOT from
+        ``tick_profit_rate`` / ``tick_capital_stock`` graph attrs. Those are
+        stripped by ``state.to_graph()`` at the top of every tick and not
+        re-stamped until ``write_tick_state_to_graph`` runs AFTER this financial
+        layer, so a graph read here always saw an empty graph and collapsed the
+        endogenous rate to a structural zero (the inertness this repair closes).
+        The county MELT quantities (``tau * employment`` surplus over
+        ``capital_stock``) are NOT used: ``capital_stock`` is 0 for many
+        county-years and ``employment`` degrades to a 100k default, which would
+        make ``s/(c+v)`` the rate of exploitation (a ~3.8 profit rate, a 114%
+        interest), not the realized rate of profit.
+
+        Sorted-FIPS float accumulation (Constitution III.7). ``None`` — never a
+        fabricated zero (III.11) — when no county carries a positive realized
+        surplus at a positive profit rate.
+
+        Args:
+            county_states: Current-tick county snapshots (the FIPS domain).
+            year: Current simulation year (fed to the tensor-year fallback).
+            services: ServicesProtocol carrying the tensor registry.
+
+        Returns:
+            The economy-wide rate of profit, or ``None`` on honest absence.
+        """
+        total_surplus = 0.0
+        total_capital_advanced = 0.0
+        for fips in sorted(county_states):
+            tensor_year = self._get_best_tensor_year(fips, year, services)
+            surplus = self._get_county_surplus(fips, tensor_year, services)
+            profit_rate = self._get_county_profit_rate(fips, tensor_year, services)
+            if surplus is None or profit_rate is None:
+                continue
+            if surplus <= 0.0 or profit_rate <= 0.0:
+                continue
+            total_surplus += surplus
+            total_capital_advanced += surplus / profit_rate
+        if total_capital_advanced <= 0.0:
+            return None
+        return total_surplus / total_capital_advanced
+
     def _compute_national_financial_state(
         self,
         services: ServicesProtocol,
         year: int,
-    ) -> tuple[float | None, float | None, FictitiousCapitalStock | None, str | None]:
-        """Compute national-level financial parameters once per tick.
+        graph: GraphProtocol,
+        county_states: dict[str, CountyEconomicState],
+    ) -> tuple[float, float, FictitiousCapitalStock | None]:
+        """Compute the national financial parameters once per tick.
 
-        Constitution III.11 (honest absence): when the interest calculator
-        has no data for ``year``, the national rate is ``None`` — never a
-        fabricated ``0.0``. A fabricated zero rate would silently flow into
-        ``compute_distribution``'s ``national_interest_rate * implied_capital``
-        term and publish a genuine-looking zero-interest distribution
-        (code-review finding U2.2-3). Callers must treat ``None`` as "skip
-        any computation that depends on the rate," not "treat as zero."
+        vol3-money-scissors U9: the national interest rate is ENDOGENOUS
+        (Capital Vol. III Part V) — computed from the economy-wide average
+        rate of profit (the ceiling; ch. 22, :meth:`_economy_wide_profit_rate`)
+        and loan-market tightness (the demand for loanable money-capital;
+        ch. 22/25, driven by the reserve-army signal
+        :func:`~babylon.domain.economics.tick.graph_bridge.reserve_army_signal`),
+        never read from FRED and never absent. FRED is calibration only (see
+        capital_vol3).
+
+        Both inputs are read from ``county_states`` (the freshly-computed
+        current-tick states in hand), NOT from the graph's ``tick_``-prefixed
+        node attrs — those are stripped by ``state.to_graph()`` each tick and
+        re-stamped only after this layer, so a graph read saw nothing and the
+        rate was a structural zero on every tick (the inertness this repair
+        closes). ``graph`` is still passed to PUBLISH the result under
+        ``NATIONAL_FINANCIAL_ATTR`` for CONSEQUENCE-phase readers.
 
         Returns:
-            Tuple of (national_interest_rate_or_none, national_spread_or_none,
-            fictitious_capital_or_none, interest_unavailable_reason).
-            ``national_spread`` is the BAA10Y risk premium ALONE, kept
-            separate from the effective rate because the crisis assessor's
-            ``credit_spread`` parameter means the spread, not base+spread
-            (U2.3 review finding 5).
-            ``interest_unavailable_reason`` is the interest sentinel's own
-            ``.reason`` (or ``None`` if the interest calculator succeeded),
-            so a caller that must skip work because the rate is absent can
-            attribute *why* instead of recording an unexplained gap.
+            3-tuple ``(national_rate, national_spread, fictitious)``.
+            ``national_rate`` is total (always a float, 0.0 only when no county
+            carries a realized profit rate); ``national_spread`` is the
+            endogenous fragility premium (>= 0); ``fictitious`` remains
+            Optional (a separate data path).
         """
-        fallbacks = services.economics_fallbacks
-        interest_result = services.interest_calculator.compute_interest_rate_state(year)
-        interest_state = None
-        interest_unavailable_reason: str | None = None
-        if isinstance(interest_result, NoDataSentinel):
-            fallbacks.record_vol3_interest_sentinel()
-            interest_unavailable_reason = interest_result.reason
-            self._log_vol3_sentinel_once_per_year(year, "interest", interest_result.reason)
-        else:
-            interest_state = interest_result
-        national_rate = interest_state.effective_rate if interest_state is not None else None
-        national_spread = interest_state.baa_spread if interest_state is not None else None
+        defines = services.defines
+        profit_rate = self._economy_wide_profit_rate(county_states, year, services)
+        s_r = reserve_army_signal(county_states, defines)
+        tau = loan_market_tightness(s_r, defines)
+        endogenous = endogenous_interest_rate(profit_rate, tau, defines)
+        endogenous = endogenous.model_copy(update={"year": year, "reserve_army_signal": s_r})
+        national_rate = endogenous.rate
+        national_spread = endogenous.fragility_premium
 
         fictitious = None
         if services.fictitious_capital_calculator is not None:
             fict_result = services.fictitious_capital_calculator.compute_fictitious_capital(year)
             if isinstance(fict_result, NoDataSentinel):
-                fallbacks.record_vol3_fictitious_sentinel()
+                services.economics_fallbacks.record_vol3_fictitious_sentinel()
                 self._log_vol3_sentinel_once_per_year(year, "fictitious", fict_result.reason)
             else:
                 fictitious = fict_result
 
-        return national_rate, national_spread, fictitious, interest_unavailable_reason
+        financial_params = NationalFinancialParameters(
+            endogenous_interest=endogenous,
+            credit_state=self._build_credit_state(services, year, national_spread),
+            fictitious_capital=fictitious,
+        )
+        write_national_financial_state_to_graph(graph, financial_params)
+
+        return national_rate, national_spread, fictitious
 
     def _compute_county_financial_state(
         self,
@@ -1535,9 +1649,8 @@ class TickDynamicsSystem(SystemBase):
         county: CountyEconomicState,
         services: ServicesProtocol,
         year: int,
-        national_rate: float | None,
+        national_rate: float,
         fictitious: FictitiousCapitalStock | None,
-        interest_unavailable_reason: str | None = None,
         national_spread: float | None = None,
     ) -> CountyEconomicState:
         """Compute financial fields for a single county.
@@ -1547,18 +1660,14 @@ class TickDynamicsSystem(SystemBase):
             county: Current county state.
             services: ServicesProtocol with financial calculators.
             year: Current simulation year.
-            national_rate: National effective interest rate, or ``None`` if
-                the interest calculator had no data for ``year``
-                (Constitution III.11 — never a fabricated ``0.0``).
+            national_rate: National interest rate — endogenous and total
+                (U9, Capital Vol. III Part V), always a float (``0.0`` when no
+                profit is measured), never absent.
             fictitious: FictitiousCapitalStock or None.
-            interest_unavailable_reason: The interest sentinel's own
-                ``.reason`` when ``national_rate`` is ``None``, so the
-                distribution skip below can attribute its cause instead of
-                recording an unexplained gap.
-            national_spread: The BAA10Y risk premium ALONE (not base+spread),
-                or ``None`` when the interest calculator had no data. Fed to
-                the crisis assessor's ``credit_spread`` parameter, which
-                means a spread (U2.3 review finding 5).
+            national_spread: The endogenous fragility premium ALONE (not the
+                total rate), or ``None`` when unavailable. Fed to the crisis
+                assessor's ``credit_spread`` parameter, which means a spread
+                (U2.3 review finding 5).
 
         Returns:
             Updated CountyEconomicState with financial fields.
@@ -1574,47 +1683,35 @@ class TickDynamicsSystem(SystemBase):
             profit_rate = self._get_county_profit_rate(fips, tensor_year, services)
             total_surplus = self._get_county_surplus(fips, tensor_year, services)
             if total_surplus is not None and total_surplus > 0:
-                if national_rate is None:
-                    # Honest absence (Constitution III.11): the national rate
-                    # itself is unavailable — compute_distribution would
-                    # otherwise be called with a fabricated 0.0 and silently
-                    # publish a genuine-looking zero-interest distribution
-                    # (code-review finding U2.2-3). Skip the call entirely.
+                # U9: national_rate is endogenous and always a float, so the
+                # distribution is always reachable — no None-skip to fabricate.
+                dist = services.distribution_calculator.compute_distribution(
+                    fips=fips,
+                    year=year,
+                    total_surplus=total_surplus,
+                    county_profit_rate=(
+                        profit_rate
+                        if profit_rate is not None
+                        else services.defines.capital_vol3.profit_rate_fallback
+                    ),
+                    national_interest_rate=national_rate,
+                    county_employment=county.employment,
+                )
+                if isinstance(dist, NoDataSentinel):
                     services.economics_fallbacks.record_vol3_distribution_sentinel()
-                    self._log_vol3_sentinel_once_per_year(
-                        year,
-                        "distribution",
-                        interest_unavailable_reason
-                        or f"National interest rate unavailable for {year}",
-                    )
+                    self._log_vol3_sentinel_once_per_year(year, "distribution", dist.reason)
                 else:
-                    dist = services.distribution_calculator.compute_distribution(
-                        fips=fips,
-                        year=year,
-                        total_surplus=total_surplus,
-                        county_profit_rate=(
-                            profit_rate
-                            if profit_rate is not None
-                            else services.defines.capital_vol3.profit_rate_fallback
-                        ),
-                        national_interest_rate=national_rate,
-                        county_employment=county.employment,
-                    )
-                    if isinstance(dist, NoDataSentinel):
-                        services.economics_fallbacks.record_vol3_distribution_sentinel()
-                        self._log_vol3_sentinel_once_per_year(year, "distribution", dist.reason)
-                    else:
-                        updates["surplus_distribution"] = dist
-                        if county.debt_accumulation is not None:
-                            from babylon.domain.economics.distribution.types import (
-                                DebtAccumulation,
-                            )
+                    updates["surplus_distribution"] = dist
+                    if county.debt_accumulation is not None:
+                        from babylon.domain.economics.distribution.types import (
+                            DebtAccumulation,
+                        )
 
-                            updates["debt_accumulation"] = DebtAccumulation.update(
-                                county.debt_accumulation,
-                                dist.profit_of_enterprise,
-                                year,
-                            )
+                        updates["debt_accumulation"] = DebtAccumulation.update(
+                            county.debt_accumulation,
+                            dist.profit_of_enterprise,
+                            year,
+                        )
 
         # Rent extraction
         if services.rent_calculator is not None:
@@ -1635,11 +1732,7 @@ class TickDynamicsSystem(SystemBase):
                 updates["housing_decomposition"] = housing_result
 
         # Financial crisis assessment
-        if (
-            services.financial_crisis_assessor is not None
-            and "surplus_distribution" in updates
-            and national_rate is not None
-        ):
+        if services.financial_crisis_assessor is not None and "surplus_distribution" in updates:
             assessment = self._assess_county_financial_crisis(
                 fips,
                 year,

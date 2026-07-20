@@ -128,6 +128,21 @@ repos:
         stages: [commit-msg]
 
   # ==========================================================================
+  # BASELINE CEREMONY - §6.5 Provenance & Ceremony (owner ruling 2026-07-20)
+  # Commits touching tests/baselines/** must declare their ceremony with a
+  # `Baselines: blessed(<slug>)` trailer. Local leg is best-effort; the CI
+  # ceremony-gate job (PR range) is authoritative.
+  # ==========================================================================
+  - repo: local
+    hooks:
+      - id: baseline-ceremony
+        name: baseline ceremony declaration (§6.5)
+        entry: python3 tools/check_baseline_ceremony.py --commit-msg-file
+        language: system
+        always_run: true
+        stages: [commit-msg]
+
+  # ==========================================================================
   # GENERAL HYGIENE
   # ==========================================================================
   - repo: https://github.com/pre-commit/pre-commit-hooks

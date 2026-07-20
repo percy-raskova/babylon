@@ -59,6 +59,10 @@ export default tseslint.config(
       "sonarjs/cognitive-complexity": ["error", 25],
       "@typescript-eslint/no-empty-function": "off",
       "sonarjs/no-hardcoded-passwords": "off",
+      // New rule in the bumped eslint-plugin-sonarjs; the web frontend is
+      // legacy-track (TUI switch, owner ruling 2026-07-20) — restructuring
+      // its retired test suites into parameterized form is not happening.
+      "sonarjs/parameterized-tests": "off",
       // `array[0]!`/`.find(...)!` on known-populated test fixtures is the
       // standard idiom across this suite's ported tests (spec-110 B2) —
       // web/frontend's own eslint config downgrades this rule to "warn"

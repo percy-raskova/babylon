@@ -211,7 +211,7 @@ jobs:
           ref: dev
       # Documented exception to the mise-pinned toolchain: this leg exists
       # precisely to run a DIFFERENT python than .mise.toml pins.
-      - uses: actions/setup-python@v6
+      - uses: actions/setup-python@v7
         with:
           python-version: "3.13"
       - name: Install Poetry

@@ -35,6 +35,7 @@ import make_data_artifacts  # type: ignore[import-not-found]  # noqa: E402
 from make_data_artifacts import (  # type: ignore[import-not-found]  # noqa: E402
     ArtifactError,
     _arrow_type,
+    _rewrite_manifest_preserving_blocks,
     _sha256,
     _table_layout,
     _write_csv,
@@ -42,6 +43,7 @@ from make_data_artifacts import (  # type: ignore[import-not-found]  # noqa: E40
     export_table_parquet,
     generate,
     update_product_block,
+    update_schema_block,
 )
 
 
@@ -434,3 +436,153 @@ class TestManifestV2Writer:
         ]
         with pytest.raises(ArtifactError, match="x"):
             _write_manifest(dup_entries, path=tmp_path / "data-artifacts.yaml")
+
+    @staticmethod
+    def _schema_block_lines(text: str) -> list[str]:
+        """The exact lines of the manifest's ``schema:`` block (its key plus
+        every indented line directly under it) — used to pin the block's
+        bytes untouched by an unrelated rewrite, stricter than parsed-YAML
+        equality."""
+        lines = text.splitlines()
+        start = lines.index("schema:")
+        end = start + 1
+        while end < len(lines) and lines[end].startswith("  "):
+            end += 1
+        return lines[start:end]
+
+    def test_update_product_block_preserves_schema_block_bytes(
+        self,
+        tmp_path: Path,
+        real_entries: list[dict[str, object]],
+        schema_block: dict[str, object],
+        product_block: dict[str, object],
+    ) -> None:
+        # FOLD-IN (Task 3 review, Minor): the existing preservation test
+        # (test_update_product_block_preserves_existing_schema_block) only
+        # checks parsed-YAML equality; this pins the schema section's exact
+        # bytes are untouched by a product-only rewrite.
+        out = tmp_path / "data-artifacts.yaml"
+        _write_manifest(real_entries, schema_entry=schema_block, path=out)
+        before = self._schema_block_lines(out.read_text())
+
+        update_product_block(out, product_block)
+
+        after = self._schema_block_lines(out.read_text())
+        assert after == before
+
+    def test_update_schema_block_adds_schema_preserving_artifacts_section(
+        self,
+        tmp_path: Path,
+        real_entries: list[dict[str, object]],
+        schema_block: dict[str, object],
+    ) -> None:
+        # update_schema_block is the mirror image of update_product_block
+        # (Task 4's counterpart) — same artifacts-preservation contract.
+        out = tmp_path / "data-artifacts.yaml"
+        _write_manifest(real_entries, path=out)  # no schema block yet
+        before_text = out.read_text()
+        before_artifacts_section = before_text.split("\nartifacts:\n", 1)[1]
+
+        update_schema_block(out, schema_block)
+
+        after_text = out.read_text()
+        after_artifacts_section = after_text.split("\nartifacts:\n", 1)[1]
+        assert after_artifacts_section == before_artifacts_section
+
+        parsed = yaml.safe_load(after_text)
+        assert parsed["schema"] == schema_block
+        assert "product" not in parsed  # wasn't present before; stays absent
+
+    def test_update_schema_block_preserves_existing_product_block(
+        self,
+        tmp_path: Path,
+        real_entries: list[dict[str, object]],
+        schema_block: dict[str, object],
+        product_block: dict[str, object],
+    ) -> None:
+        out = tmp_path / "data-artifacts.yaml"
+        _write_manifest(real_entries, product_entry=product_block, path=out)
+
+        update_schema_block(out, schema_block)
+
+        parsed = yaml.safe_load(out.read_text())
+        assert parsed["schema"] == schema_block
+        assert parsed["product"] == product_block
+
+    def test_update_schema_block_missing_manifest_is_loud(self, tmp_path: Path) -> None:
+        with pytest.raises(ArtifactError, match="manifest missing"):
+            update_schema_block(tmp_path / "nope.yaml", {"file": "x"})
+
+    def test_update_product_block_missing_manifest_is_loud(self, tmp_path: Path) -> None:
+        with pytest.raises(ArtifactError, match="manifest missing"):
+            update_product_block(tmp_path / "nope.yaml", {"name": "x"})
+
+
+class TestManifestRewriteAtomicity:
+    """Task 4's BINDING atomicity fix: ``main()``'s manifest rewrite must
+    never silently drop an existing ``schema``/``product`` block once one
+    exists (the Task 3 review finding — a plain ``_write_manifest(entries)``
+    would still pass the coverage sentinel afterward, since a schema-less
+    manifest is valid, making the drop invisible). Exercises
+    ``_rewrite_manifest_preserving_blocks`` — the actual seam ``main()``
+    calls — not a hand-rolled substitute.
+    """
+
+    @pytest.fixture()
+    def real_entries(self) -> list[dict[str, object]]:
+        manifest = yaml.safe_load(_MANIFEST.read_text())
+        return manifest["artifacts"]  # type: ignore[no-any-return]
+
+    @pytest.fixture()
+    def schema_block(self) -> dict[str, object]:
+        return {
+            "file": "dist/data-artifacts/schema.sql",
+            "sha256": "a" * 64,
+            "tables": 76,
+            "views": 8,
+            "indexes": 100,
+        }
+
+    @pytest.fixture()
+    def product_block(self) -> dict[str, object]:
+        return {
+            "name": "marxist-data-3NF.sqlite",
+            "sha256": "b" * 64,
+            "page_size": 4096,
+            "application_id": 1112359244,
+            "user_version": 1,
+            "sqlite_version": "3.46.1",
+        }
+
+    def test_regeneration_preserves_both_blocks_byte_for_byte(
+        self,
+        tmp_path: Path,
+        real_entries: list[dict[str, object]],
+        schema_block: dict[str, object],
+        product_block: dict[str, object],
+    ) -> None:
+        out = tmp_path / "data-artifacts.yaml"
+        _write_manifest(
+            real_entries, schema_entry=schema_block, product_entry=product_block, path=out
+        )
+
+        new_entries = real_entries[:-1]  # a "regeneration" that dropped one entry
+        _rewrite_manifest_preserving_blocks(new_entries, manifest_path=out)
+
+        parsed = yaml.safe_load(out.read_text())
+        assert parsed["schema"] == schema_block
+        assert parsed["product"] == product_block
+        assert parsed["artifacts"] == new_entries
+
+    def test_first_ever_run_with_no_prior_manifest_omits_blocks(
+        self, tmp_path: Path, real_entries: list[dict[str, object]]
+    ) -> None:
+        # No manifest yet is NOT an error here (unlike update_product_block/
+        # update_schema_block) — generate() supplies its own fresh entries.
+        out = tmp_path / "data-artifacts.yaml"
+        assert not out.exists()
+        _rewrite_manifest_preserving_blocks(real_entries, manifest_path=out)
+        parsed = yaml.safe_load(out.read_text())
+        assert "schema" not in parsed
+        assert "product" not in parsed
+        assert parsed["artifacts"] == real_entries

@@ -538,6 +538,28 @@ def _write_manifest(
     target.write_text("\n".join(lines) + "\n")
 
 
+def _read_manifest(path: Path) -> dict[str, object] | None:
+    """Parse an existing manifest's YAML, or ``None`` if it doesn't exist yet.
+
+    Shared by :func:`update_product_block`, :func:`update_schema_block`, and
+    :func:`main`'s schema/product pass-through (parquet pipeline Task 4's
+    atomicity fix). Before Task 4, ``main()`` called
+    ``_write_manifest(entries)`` with no ``schema_entry``/``product_entry`` at
+    all, so any plain generator run would silently DROP an existing
+    ``schema`` block once one exists — and the coverage sentinel would still
+    pass, since a schema-less manifest is valid. Every rewrite path must read
+    whatever optional blocks already exist first.
+
+    :param path: Manifest file to read.
+    :returns: The parsed manifest dict, or ``None`` if ``path`` is absent.
+    """
+    import yaml
+
+    if not path.exists():
+        return None
+    return yaml.safe_load(path.read_text())  # type: ignore[no-any-return]
+
+
 def update_product_block(manifest_path: Path, product: dict[str, object]) -> None:
     """Layer a ``product`` block onto an existing manifest (plan deviation D2).
 
@@ -551,12 +573,15 @@ def update_product_block(manifest_path: Path, product: dict[str, object]) -> Non
 
     :param manifest_path: Manifest to read and rewrite in place.
     :param product: The new ``product`` block. Shape is validated by the
-        coverage sentinel (:func:`babylon.sentinels.coverage.checks.
-        check_artifact_manifest`), not here — this is a plain writer.
+        coverage sentinel (:func:`babylon.sentinels.coverage.checks.check_artifact_manifest`),
+        not here — this is a plain writer.
+    :raises ArtifactError: If ``manifest_path`` doesn't exist yet — there is
+        nothing to preserve ``artifacts`` entries from.
     """
-    import yaml
-
-    manifest = yaml.safe_load(manifest_path.read_text())
+    manifest = _read_manifest(manifest_path)
+    if manifest is None:
+        msg = f"manifest missing: {manifest_path}"
+        raise ArtifactError(msg)
     entries = manifest["artifacts"]
     schema_entry = manifest.get("schema")
     _write_manifest(
@@ -565,6 +590,70 @@ def update_product_block(manifest_path: Path, product: dict[str, object]) -> Non
         product_entry=product,
         path=manifest_path,
     )
+
+
+def update_schema_block(manifest_path: Path, schema: dict[str, object]) -> None:
+    """Layer a ``schema`` block onto an existing manifest — the mirror image
+    of :func:`update_product_block` (Task 4's counterpart): reads
+    ``manifest_path``, keeps its ``artifacts`` entries and any existing
+    ``product`` block untouched, and rewrites through :func:`_write_manifest`
+    with the new ``schema`` block. Used by
+    ``tools/extract_reference_schema.py``'s CLI.
+
+    :param manifest_path: Manifest to read and rewrite in place.
+    :param schema: The new ``schema`` block (extractor output: ``file``,
+        ``sha256``, ``tables``, ``views``, ``indexes``). Shape is validated
+        by the coverage sentinel
+        (:func:`babylon.sentinels.coverage.checks.check_artifact_manifest`),
+        not here — this is a plain writer.
+    :raises ArtifactError: If ``manifest_path`` doesn't exist yet — there is
+        nothing to preserve ``artifacts`` entries from.
+    """
+    manifest = _read_manifest(manifest_path)
+    if manifest is None:
+        msg = f"manifest missing: {manifest_path}"
+        raise ArtifactError(msg)
+    entries = manifest["artifacts"]
+    product_entry = manifest.get("product")
+    _write_manifest(
+        entries,
+        schema_entry=schema,
+        product_entry=product_entry,
+        path=manifest_path,
+    )
+
+
+def _rewrite_manifest_preserving_blocks(
+    entries: list[dict[str, object]], manifest_path: Path | None = None
+) -> None:
+    """Rewrite the manifest with freshly generated artifact ``entries``,
+    preserving whatever ``schema``/``product`` blocks the existing manifest
+    already carries.
+
+    This is the binding atomicity fix from the Task 3 review: a plain
+    ``_write_manifest(entries)`` from :func:`main` would silently DROP an
+    existing ``schema`` block once one exists (the coverage sentinel would
+    still pass, since a schema-less manifest is valid). Generalizes
+    :func:`update_product_block`'s ``manifest.get("schema")`` pass-through to
+    both optional blocks.
+
+    Unlike :func:`update_product_block`/:func:`update_schema_block`, a
+    missing manifest is NOT an error here: :func:`generate` supplies its own
+    fresh ``entries``, so the very first-ever run (no manifest yet) simply
+    writes with no ``schema``/``product`` blocks — unchanged from the
+    pre-Task-4 behavior.
+
+    :param entries: Freshly generated artifact entries (:func:`generate`'s
+        output).
+    :param manifest_path: Manifest to read-then-rewrite (defaults to the
+        module-level :data:`MANIFEST_PATH`; overridable so tests can target
+        a temp manifest).
+    """
+    target = MANIFEST_PATH if manifest_path is None else manifest_path
+    existing = _read_manifest(target)
+    schema_entry = existing.get("schema") if existing is not None else None
+    product_entry = existing.get("product") if existing is not None else None
+    _write_manifest(entries, schema_entry=schema_entry, product_entry=product_entry, path=target)
 
 
 def generate(db_path: Path, *, full_coverage: bool = False) -> list[dict[str, object]]:
@@ -644,7 +733,9 @@ def check() -> int:
 
 
 def main(argv: list[str] | None = None) -> int:
-    """Generate artifacts + rewrite the manifest, or verify with ``--check``."""
+    """Generate artifacts + rewrite the manifest (preserving any existing
+    ``schema``/``product`` blocks — Task 4's atomicity fix), or verify with
+    ``--check``."""
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument(
         "--db",
@@ -669,7 +760,7 @@ def main(argv: list[str] | None = None) -> int:
         msg = f"database not found: {args.db}"
         raise ArtifactError(msg)
     entries = generate(args.db, full_coverage=args.full_coverage)
-    _write_manifest(entries)
+    _rewrite_manifest_preserving_blocks(entries)
     print(f"[artifacts] manifest rewritten: {MANIFEST_PATH} ({len(entries)} entries)")
     return 0
 

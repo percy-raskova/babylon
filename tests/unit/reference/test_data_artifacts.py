@@ -63,15 +63,16 @@ class TestManifest:
             digest = hashlib.sha256(path.read_bytes()).hexdigest()
             assert digest == entry["sha256"], f"{entry['name']} drifted from its manifest hash"
             checked += 1
-        assert checked == 3  # the two R1 CSVs + the registered ricci CSV
+        assert checked == 4  # the two R1 CSVs + the ricci and county->CZ registered CSVs
 
-    def test_manifest_carries_all_eight_artifacts(self) -> None:
+    def test_manifest_carries_all_registered_artifacts(self) -> None:
         manifest = yaml.safe_load(_MANIFEST.read_text())
         names = {entry["name"] for entry in manifest["artifacts"]}
         assert names == {
             "bridge_county_bea_ea",
             "dim_bea_economic_area",
             "babylon_ricci_final",
+            "bridge_county_cz",
             "fact_energy_annual",
             "dim_energy_series",
             "dim_energy_table",

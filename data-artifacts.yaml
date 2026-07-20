@@ -10,6 +10,13 @@ schema:
   tables: 75
   views: 8
   indexes: 99
+product:
+  name: marxist-data-3NF.sqlite
+  sha256: f760bab5c63ce879decd72cfe3bf51c569a5a4ba2a4a57e0ccbb5d90f5e6fa42
+  page_size: 4096
+  application_id: 1111573068
+  user_version: 1
+  sqlite_version: "3.53.1"
 artifacts:
   - name: bridge_county_bea_ea
     format: csv

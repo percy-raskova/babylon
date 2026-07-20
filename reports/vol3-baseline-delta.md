@@ -8,132 +8,147 @@ ceremony commit" pattern (D3 owner ruling here mirrors that precedent
 explicitly).
 **Raw evidence:** `reports/vol3-baseline-delta-raw-diff.txt` (qa:regression),
 `reports/vol3-e2e-regression-raw-diff.txt` (qa:e2e-regression) — both
-captured verbatim by U8.2, real output from this branch, not paraphrased.
+captured verbatim, real output from this branch, not paraphrased.
+
+> **This report was rewritten after the final whole-branch review.** The prior
+> draft's headline ("no behavioral delta … not a sign the layer is inert") was
+> **false for the interest sub-layer**: the U9 endogenous rate was structurally
+> inert (`i ≡ 0.0` on all real data) and the report omitted the live SC-001
+> identity test that exposed it. That inertness has since been **repaired**
+> (commits below), the interest layer now produces real non-zero values on real
+> data, and this document reports the honest post-repair state.
 
 ## Headline finding (read this first)
 
-**`qa:regression` is byte-identical: 5 of 5 scenarios PASS, 0 fail.**
-`qa:e2e-regression` (detroit-tri-county, 5 ticks) PASSES unchanged. The
-Vol III financial layer landed by U1-U7 produces **no behavioral delta on
-any of these six gate runs** — and that is the *expected, materially-grounded*
-result, not a sign the layer is inert. Two independent reasons, both proven
-below:
+**The Vol III interest layer is now LIVE on real data, and the frozen gate
+scenarios remain byte-identical.** Both statements are true at once, and the
+reconciliation is the whole point:
+
+1. **`qa:regression` is byte-identical: 5 of 5 scenarios PASS, exit 0.**
+   `qa:e2e-regression` (detroit-tri-county, 5 ticks) PASSES unchanged. There is
+   **no behavioral delta** on any of these six gate runs — because they are all
+   county-free or sub-annual (mechanism per scenario below), so the now-live
+   Vol III interest layer honestly resolves to absence there.
+2. **On real county data the interest term is non-zero and materially sound.**
+   The live SC-001 identity test
+   (`tests/integration/economics/test_vol3_surplus_distribution_live.py`) is now
+   **GREEN** (it was RED). On Wayne 26163/2011 the layer produces:
+
+   | quantity | value |
+   |---|---|
+   | economy-wide rate of profit `r` (`profit_rate_ceiling`) | `0.059676` |
+   | reserve-army signal `s_r` = tightness `τ` | `0.050320` |
+   | endogenous interest rate `i` | `0.019855` |
+   | fragility premium (`i − r·base`) | `0.001952` |
+   | county `interest_payments` | `1.178853e9` (**33.3% of surplus**) |
+   | `profit_of_enterprise` residual | `1.98e9` (**positive** — not a debt spiral) |
+
+   `i/s = 0.333 ≈ base share`, `profit_of_enterprise` stays positive, and all
+   four claim terms (surplus, interest, rent, taxes) are strictly positive — so
+   SC-001's identity `s = p + i + r + t` now holds **substantively**, not
+   vacuously.
+
+The previous inertness was a graph-timing bug: `_compute_national_financial_state`
+read the profit rate and reserve signal off `tick_profit_rate` /
+`tick_capital_stock` / `reserve_ratio` graph attrs that `state.to_graph()` strips
+at the top of every tick and `write_tick_state_to_graph` re-stamps only *after*
+this layer runs. `r` was therefore `None` every tick → `i = 0.0` every county-year.
+The repair sources `r` and `s_r` from the tick's own `county_states` in scope
+(realized surplus/profit-rate tensors for `r = Σs/Σ(c+v)`; employment-weighted
+U-3 for `s_r`), eliminating the timing dependency entirely.
+
+## Why the frozen gate scenarios still show no delta
+
+Constitution III.7's falsifiability gate (`qa:regression`) compares against the
+**pre-Vol-III frozen baselines**. It stays byte-identical (exit 0) because:
 
 1. **The five `qa:regression` scenarios carry zero `county_fips`**
-   (`tools/regression_test.py:159` — "the five regression scenarios carry no
-   `county_fips`"). Every Vol III term is county-keyed or fed by county surplus
-   distributions, so each one resolves to honest-absence `None`
-   (Constitution III.11) and drops out of the tick. See the per-scenario
-   mechanism analysis below.
-2. **The `qa:e2e-regression` run is only 5 ticks long**, and the Vol III
-   annual pipeline "executes only on year boundaries"
-   (`src/babylon/domain/economics/tick/system/__init__.py:152`). A 5-tick
-   window never crosses a 52-tick year boundary, so the annual financial
-   recompute never fires.
+   (`tools/regression_test.py:159`). Every Vol III term is county-keyed or fed by
+   county surplus distributions; with no counties, the now-live interest layer
+   computes `r = None → i = 0.0` (honest absence, III.11) and drops out of the
+   tick. This is the SAME resolution the layer reaches when there is genuinely no
+   county data — the difference from the pre-repair state is that it is now
+   *reachable* on real data, proven by SC-001 above.
+2. **The `qa:e2e-regression` run is only 5 ticks long** and the summary contract
+   it pins (counties_alive, population, total_v within ±1.0%) does not serialize
+   the interest term; the interest burden reaches material state only through the
+   scissors correction, which does not fire in this short window.
 
-The **only** thing U1-U7 changed that a regeneration would encode is the
-**advisory `defines_hash`** — new `MarketDefines` fields (U4/U6) and
-`capital_vol3` endogenous-interest coefficients (U9) altered
-`GameDefines.model_dump_json`, so the live hash differs from the stored one
-(e.g. `imperial_circuit` baseline `08f0a3d2837f4bb3` → live
-`a8dde205a7256427`). This is **not a failure**: `compare_baselines`
-classifies a `defines_hash` change as a `WARNING` and excludes it from the
-pass filter (`passed = len([d for d in diffs if not d.startswith("WARNING")])
-== 0`, `tools/regression_test.py:962`), and the WARNING is printed only on a
-FAILing scenario — which is why the captured PASS output shows no WARNING line
-at all. **The behavioral baseline is byte-identical; U8.5's regeneration only
-refreshes that advisory `defines_hash`, it does not overwrite any tick value.**
-
-## Why this document exists
-
-Constitution III.7's falsifiability gate (`qa:regression`) was *expected* to
-go RED the moment U1-U7 land: `s = p + i + r + t` has never evaluated in the
-shipped game before this branch (design spec §1.1), so turning it on is a
-genuine behavioral change. D3 requires that change to be explained, per
-scenario, by a *named mechanism* — never "values shifted" — before any
-baseline is regenerated. The honest finding of this report is that the
-change **is real in the code path but produces no observable delta on the
-abstract gate scenarios**, for the county-coverage reason above — and D3 is
-satisfied by naming, per scenario, exactly *which* mechanism resolved to
-absence and *why*.
+The only thing a baseline regeneration *could* encode is the advisory
+`defines_hash` (new `MarketDefines`/`capital_vol3` coefficients from U4/U6/U9
+altered `GameDefines.model_dump_json`). `compare_baselines` classifies a
+`defines_hash` change as a `WARNING` and excludes it from the pass filter
+(`passed = len([d for d in diffs if not d.startswith("WARNING")]) == 0`,
+`tools/regression_test.py:944`), and the WARNING is printed only on a FAILing
+scenario — which is why the captured PASS output shows no WARNING line. **The
+behavioral baseline is byte-identical; no tick value, outcome, or dense trace
+moves. Baseline regeneration, if run at all, only refreshes that advisory hash.**
 
 ## Verification evidence
 
 | Check | Command | Result | Evidence |
 |---|---|---|---|
-| Per-tick construction cadence determinism | `mise run test:q -- tests/unit/tools/test_regression_construction_cadence_determinism.py` | PASS — 1 passed in 5.59s | U7.0 (pre-U7 run) + U8.5 Step 5 (post-regeneration re-run) |
-| qa:regression (checkpoint + dense) | `mise run qa:regression` | 5 passed, 0 failed (byte-identical; re-confirmed live) | `reports/vol3-baseline-delta-raw-diff.txt` |
-| qa:e2e-regression (detroit-tri-county, 5 ticks) | `mise run qa:e2e-regression` | PASS — "All regression checks passed", exit=0, total_v Δ=0.000% | `reports/vol3-e2e-regression-raw-diff.txt` |
-| `mise run check:quick` (lint+format+typecheck) | `mise run check:quick` | PASS | Ruff "All checks passed!"; format "1766 files left unchanged"; MyPy "Success: no issues found in 653 source files" |
-| Scoped unit sweep over every U1-U7 touched path | `mise run test:q -- tests/unit/economics tests/unit/dialectics tests/unit/engine tests/unit/config tests/unit/sentinels tests/unit/tools tests/unit/formulas` | 6023 passed, 1 xfailed, **2 pre-existing failures unrelated to U8.3** (see note) | see tail below |
+| Live SC-001 surplus-distribution identity (was RED, now GREEN) | `mise run test:q -- tests/integration/economics/test_vol3_surplus_distribution_live.py` | **3 passed** — `interest_payments=1.179e9` (was `0.0`) | see live values above |
+| qa:regression (checkpoint + dense) | `mise run qa:regression` / `tools/capture_qa_diff.py` | **5 passed, 0 failed, exit 0** (byte-identical) | `reports/vol3-baseline-delta-raw-diff.txt` |
+| qa:e2e-regression (detroit-tri-county, 5 ticks) | `mise run qa:e2e-regression` | **PASS** — counties_alive==3, total_v Δ=0.000%, exit=0 | `reports/vol3-e2e-regression-raw-diff.txt` |
+| Full DoD gate (lint+format+typecheck+test:unit) | `mise run check` | **green** | see repair-commit list below |
+| Import layering | `mise run lint:imports` | **6 kept, 0 broken** | domain must not import engine — held |
 
-Scoped-sweep tail:
+## SC-001: the RED that the prior report omitted (now GREEN)
+
+The prior report's central thesis was falsified by exactly one test it never ran.
+Pre-repair, on Wayne 26163/2011:
 
 ```
-FAILED tests/unit/economics/tick/test_financial_state_consequence_roundtrip.py::test_consequence_phase_system_reads_financial_state_same_tick
-FAILED tests/unit/tools/test_regression_test_melt_gate.py::test_regression_run_actually_invokes_the_vol3_financial_layer
-====== 2 failed, 6023 passed, 1 xfailed, 14 warnings in 285.37s (0:04:45) ======
+26163/2011: interest_payments is 0.0 — a distributed term is dark or zero, so
+SC-001's identity is being satisfied vacuously rather than by a real decomposition
 ```
 
-**Note on the 2 failures — pre-existing, out of U8.3 scope, not a regression
-introduced here.** U8.3 touches only two paths — `reports/vol3-baseline-delta.md`
-(this file) and `tests/unit/tools/test_vol3_baseline_delta_report.py` (new) —
-neither of which is production code or either failing test. Both failures
-reproduce in isolation on HEAD `adbe5f0c` before any U8.3 edit. Both are
-**stale spies left by the U9 endogenous-interest refactor**, not evidence of
-an inert layer:
+Post-repair the same run yields `interest_payments = 1.178853e9` and the test is
+green. This is the load-bearing proof that the layer is live on real data; it is
+recorded here so no future reader mistakes "byte-identical on the frozen gate" for
+"inert."
 
-- `test_regression_run_actually_invokes_the_vol3_financial_layer` monkeypatches
-  `DefaultInterestCalculator.compute_interest_rate_state` (the FRED-based
-  calculator) and asserts it is called during a run. U9 (commit `e19715d3`,
-  "endogenous national interest rate replaces the FRED read") removed that
-  calculator from the tick path, so the spy target is now dead code — the
-  financial layer **does** still execute (the live `qa:regression` run emits
-  `TickDynamics Step 2` national-params log lines, which sit *after* the
-  `melt_calculator is None` gate, proving the gate is open), it simply no
-  longer routes through `DefaultInterestCalculator`.
-- `test_consequence_phase_system_reads_financial_state_same_tick` asserts
-  `NATIONAL_FINANCIAL_ATTR in graph.graph` in a county-less harness; the same
-  U9/U3 wiring change moved when/whether that attr is published.
+## The repair (final-review disposition)
 
-These belong to the U1/U3/U9 financial-layer wiring tasks and are flagged for
-the owner as a follow-up; they do not affect this report's delta analysis
-(which turns on county coverage, not on these two spy targets).
+| # | Severity | Finding | Disposition |
+|---|---|---|---|
+| 1 | Critical | U9 endogenous rate structurally inert (`i ≡ 0.0`) | **Fixed** — `r`/`s_r` sourced in-scope from county tensors; SC-001 green |
+| 2 | Important | Duplicate divergent `_capital_weighted_mean` (interest ceiling vs scissors serviceability) | **Fixed** — unified onto one published `profit_rate_ceiling`; scissors delegates |
+| 3 | Critical ×2 | Two red-and-stale anti-inertness tests | **Fixed** — both rewritten to pin post-U9 reality; the roundtrip pins a non-zero rate on real data |
+| 4 | Minor | Vestigial `NationalFinancialParameters.interest_rate_state` | **Fixed** — field removed; `endogenous_interest` is the sole carrier |
+| 5 | — | This report false + citation nit | **Fixed** — rewritten; `:962` → `:944` |
+| 6 | Minor | `initializer.py` year-2040 clamp | **Fixed** — ceiling dropped, 2007 floor kept |
 
 ## Per-scenario delta
 
-Each section below names the mechanism from the design's layer structure
-(§3.1-3.5) that *would* have produced a delta and explains why it instead
-resolved to honest absence. The observed delta on every field is **none
-(byte-identical)** — the analytic content is *which* Vol III mechanism was
-reached and where it terminated in `None`.
+Each section names the mechanism that *would* have produced a delta and why it
+instead resolved to honest absence on the frozen scenario. The observed delta on
+every field is **none (byte-identical)**.
 
-**Endogenous interest (U9):** the national interest rate is **total by
-construction** — U9 (commit `2a7ae7f5`, "endogenous rate is total") dropped
-the interest-unavailable path; the rate is computed endogenously as
-`i = r·share(τ)` from sim quantities (Capital Vol. III Part V), *not* read
-from FRED (FRED is calibration-only, `interest_profit_share_base`), so **no
-`NoDataSentinel` is reachable for the rate on any of the five scenarios.**
-It nonetheless moves no baseline value: the rate's `interest_payments` feed
-the county-level `SurplusValueDistribution`, and with no `county_fips` there
-are no county distributions to carry them — `_national_serviceability`
-(`market_scissors.py:547`) returns `None` at its `county_states` guard, so
-the scissors interest-burden term drops out entirely.
+**Endogenous interest (U9):** the rate is now computed endogenously as
+`i = r·share(τ)` from the tick's realized county surplus/profit-rate tensors
+(Capital Vol. III Part V), never from FRED. On a county-free scenario there is no
+realized surplus, so `r = None → i = 0.0` (honest absence, III.11): the
+`interest_payments` that feed the county `SurplusValueDistribution` have no county
+distributions to carry them, and `_national_serviceability`
+(`market_scissors.py`) returns `None` at its `county_states` guard, so the
+scissors interest-burden term drops out.
 
-**Wealth-weighted asymmetry field (U7.6b, owner ruling 2026-07-19):** commit
-`3072efd4` rewrote `catalog.py::_mean_asymmetry` to weight each pair by its
-engaged wealth — `gap = Σ|b−a|/Σ(a+b)`, `balance = Σ(b−a)/Σ(a+b)` (the
-intensive-aggregation remedy the U7.6 sensor forced), affecting the
-`capital_labor`, `wage`, `imperial` and `tenancy` oppositions. These four
-oppositions *are* present on the abstract scenarios, yet the baseline is
-still byte-identical, because the reweighting lives in the **dialectical
-opposition layer, which the regression contract does not serialize** (neither
-`imperial_circuit.json`'s checkpoints nor `dense/imperial_circuit.csv` carry
-any opposition/asymmetry column — only class-level material state and edge
-flows/tensions). The reweighted reading re-enters material state only through
-(a) the `MarketScissors` correction, which reads the `price_value` opposition,
-not these four, and (b) the Vol III interest-burden/debt terms, which are
-absent here — so the new asymmetry formula changes no baseline-captured value.
+**Serviceability line unified onto one `r` (final-review #1):** the scissors
+`_mean_profit_rate` now reads the SAME published `endogenous_interest.profit_rate_ceiling`
+that sets the interest ceiling, not a second, independently-aggregated territory
+mean. On the county-free scenarios the published ceiling is `0.0` → treated as
+honest absence → base-fallback serviceability — byte-identical to the pre-change
+read over an empty territory layer.
+
+**Wealth-weighted asymmetry field (U7.6b):** the reweighting lives in the
+dialectical opposition layer, which the regression contract does not serialize —
+so it changes no baseline-captured value.
+
+All five frozen scenarios share one mechanism (they carry no `county_fips`), so
+the per-scenario tables are identical; each is listed individually so the report
+can never silently drop a scenario the gate covers.
 
 ### imperial_circuit
 
@@ -141,23 +156,17 @@ absent here — so the new asymmetry formula changes no baseline-captured value.
 
 | Field | Before (pre-Vol III) | After (this branch) | Named mechanism |
 |---|---|---|---|
-| First checkpoint tick with a value delta | none (byte-identical) | none (byte-identical) | Layer 1 ground-rent repoint (§3.1) needs `county_fips`; scenario has none → `NoDataSentinel` |
-| `final_outcome` | SURVIVED | SURVIVED | unchanged — no financial term reached the material state |
-| `ticks_survived` | 52 | 52 | unchanged |
-| Correction fired differently (tick, if any) | no | no | anchor pull (§3.3): `_read_fictitious_anchor` returns `None` (no `NATIONAL_FINANCIAL_ATTR.fictitious_capital`); interest-burden term (§3.5.1): `_national_serviceability` returns `None` (no county distributions) — both drop out |
-| Principal contradiction at terminal tick | (unchanged) | (unchanged) | `surplus_distribution`/`debt_spiral`/`credit`/`financial` are registered (catalog 6→10, U5.9) but get no county input → they never rank; Design Risk #4 not realized |
-| First dense-trace divergence (tick, column) | n/a | none (`dense/imperial_circuit.csv` byte-identical) | — |
+| First checkpoint tick with a value delta | none (byte-identical) | none (byte-identical) | no `county_fips` → every Vol III term resolves to `None` |
+| `final_outcome` / `ticks_survived` | SURVIVED / 52 | SURVIVED / 52 | unchanged — no financial term reached material state |
+| Correction fired differently | no | no | anchor pull + interest-burden both `None` (county-absent) |
+| Principal contradiction at terminal tick | (unchanged) | (unchanged) | the four new oppositions registered (catalog 6→10) but receive no county input → never rank |
+| First dense-trace divergence | n/a | none (`dense/imperial_circuit.csv` byte-identical) | — |
 
-**Materiality argument:** The Layer-1 repoint (`tick_ground_rent` reading
-`DefaultDistributionCalculator`'s real `B230RC0Q173SBEA`-backed figure instead
-of the `DefaultRentCalculator` `NoDataSentinel` it fell back to before) can
-only fire for a Territory that carries a `county_fips`. `imperial_circuit`'s
-territories carry none, so the surplus-distribution layer sees no county to
-distribute over: `ground_rent`, `interest_payments`, `taxes_on_surplus` are
-all absent, `_national_serviceability` short-circuits to `None`, and the
-scissors correction runs with exactly its pre-Vol-III inputs. The delta is
-honestly zero, and the reason is county coverage, not inert code (U1.9's
-Wayne integration test is where county coverage is proven).
+**Materiality argument:** no `county_fips`, so the surplus-distribution layer sees
+no county to distribute over — `ground_rent`, `interest_payments`,
+`taxes_on_surplus` all absent, `_national_serviceability` short-circuits to `None`,
+and the scissors correction runs with exactly its pre-Vol-III inputs. Honestly
+zero; the reason is county coverage, not inert code (proven live by SC-001 above).
 
 ### two_node
 
@@ -167,19 +176,12 @@ Wayne integration test is where county coverage is proven).
 |---|---|---|---|
 | First checkpoint tick with a value delta | none (byte-identical) | none (byte-identical) | no `county_fips` → every Vol III term `None` |
 | `final_outcome` / `ticks_survived` | SURVIVED / 52 | SURVIVED / 52 | unchanged |
-| Correction fired differently | no | no | anchor pull + interest-burden both resolve to `None` (§3.3/§3.5.1) |
+| Correction fired differently | no | no | anchor pull + interest-burden both `None` |
 | Principal contradiction at terminal tick | (unchanged) | (unchanged) | four new oppositions registered but unpopulated (no county surplus) |
 | First dense-trace divergence | n/a | none (`dense/two_node.csv` byte-identical) | — |
 
-**Materiality argument:** This is the honest-absence case the brief
-anticipated. `two_node`'s Territory nodes carry no `county_fips`
-(`src/babylon/models/entities/territory.py` makes it optional; the scenario
-sets none), so the observed result is exactly **no delta**. The
-`opposition_states` key-set *does* grow 6→10 in the live registry
-(`build_default_registry`, U5.9 evidence) and the `defines_hash` *does* change,
-but neither is part of the serialized checkpoint/dense contract, so both are
-invisible to `qa:regression`. Nothing else moved — read from the raw diff,
-not assumed.
+**Materiality argument:** the honest-absence case — `two_node`'s Territory nodes
+carry no `county_fips`, so the observed result is exactly no delta.
 
 ### starvation
 
@@ -189,15 +191,12 @@ not assumed.
 |---|---|---|---|
 | First checkpoint tick with a value delta | none (byte-identical) | none (byte-identical) | no `county_fips` → Vol III terms `None` |
 | `final_outcome` / `ticks_survived` | SURVIVED / 52 | SURVIVED / 52 | unchanged |
-| Correction fired differently | no | no | interest-burden term (§3.5.1) `None` via `_national_serviceability` |
+| Correction fired differently | no | no | interest-burden term `None` via `_national_serviceability` |
 | Principal contradiction at terminal tick | (unchanged) | (unchanged) | financial oppositions unpopulated |
 | First dense-trace divergence | n/a | none (`dense/starvation.csv` byte-identical) | — |
 
-**Materiality argument:** Low extraction efficiency stresses the Vol I
-production/survival path, none of which the Vol III layer touches without
-county surplus data. With no `county_fips`, the debt-accumulation term
-(§3.5.2) and anchor pull (§3.3) both terminate in honest absence, so the
-scenario's stress dynamics are byte-identical to the pre-Vol-III baseline.
+**Materiality argument:** low extraction stresses the Vol I production/survival
+path, which the Vol III layer does not touch without county surplus data.
 
 ### glut
 
@@ -207,16 +206,13 @@ scenario's stress dynamics are byte-identical to the pre-Vol-III baseline.
 |---|---|---|---|
 | First checkpoint tick with a value delta | none (byte-identical) | none (byte-identical) | no `county_fips` → Vol III terms `None` |
 | `final_outcome` / `ticks_survived` | SURVIVED / 52 | SURVIVED / 52 | unchanged |
-| Correction fired differently | no | no | anchor pull (§3.3) `None`; MarketScissors runs on pre-Vol-III `price_value` inputs |
+| Correction fired differently | no | no | anchor pull `None`; scissors runs on pre-Vol-III `price_value` inputs |
 | Principal contradiction at terminal tick | (unchanged) | (unchanged) | financial oppositions unpopulated |
 | First dense-trace divergence | n/a | none (`dense/glut.csv` byte-identical) | — |
 
-**Materiality argument:** High extraction with metabolic overshoot exercises
-the metabolic-rift path (`ΔB = R − E·η`), which is orthogonal to the Vol III
-financial layer. Even the price⟷value scissors (Program 23), which *is* live,
-reads only `price_value` — the U7.6b reweighting of `capital_labor`/`wage`/
-`imperial`/`tenancy` never reaches it, and the Vol III interest/debt terms are
-county-absent. Byte-identical.
+**Materiality argument:** the metabolic-rift path (`ΔB = R − E·η`) is orthogonal to
+the Vol III financial layer; even the live price⟷value scissors reads only
+`price_value`, and the county interest/debt terms are county-absent.
 
 ### fascist_bifurcation
 
@@ -227,64 +223,54 @@ county-absent. Byte-identical.
 | First checkpoint tick with a value delta | none (byte-identical) | none (byte-identical) | no `county_fips` → Vol III terms `None` |
 | `final_outcome` / `ticks_survived` | SURVIVED / 52 | SURVIVED / 52 | unchanged |
 | Correction fired differently | no | no | interest-burden + anchor pull both `None` |
-| Principal contradiction at terminal tick | (unchanged) | (unchanged) | `financial`/`debt_spiral` never populated to displace the prior principal (Design Risk #4 not realized) |
+| Principal contradiction at terminal tick | (unchanged) | (unchanged) | `financial`/`debt_spiral` never populated to displace the prior principal |
 | First dense-trace divergence | n/a | none (`dense/fascist_bifurcation.csv` byte-identical) | — |
 
-**Materiality argument:** Bifurcation routes agitation to national identity by
-SOLIDARITY-edge presence — a consciousness-layer mechanism the Vol III money
-layer only feeds through the (absent) financial oppositions. With no county
-surplus distributions the four new oppositions stay unpopulated, so the
-principal-contradiction ranking is unchanged and the fascist-routing dynamics
-are byte-identical to the pre-Vol-III baseline.
+**Materiality argument:** bifurcation routes agitation by SOLIDARITY-edge presence
+— a consciousness-layer mechanism the Vol III money layer only feeds through the
+(absent) financial oppositions; with no county surplus the routing is unchanged.
 
 ## qa:e2e-regression (detroit-tri-county, 5 ticks)
 
-**PASS, unchanged.** The captured run
-(`reports/vol3-e2e-regression-raw-diff.txt`) completes with
-`counties_alive == 3`, `population liveness: 3/3`,
+**PASS, unchanged.** The captured run (`reports/vol3-e2e-regression-raw-diff.txt`)
+completes with `counties_alive == 3`, `population liveness: 3/3`,
 `total_v: actual=1.497e+09, expected=1.497e+09, Δ=0.000%`, no critical
-conservation violations, exit=0. This scenario *does* hydrate real
-county-keyed reference series (the log shows `hydrate_counties: Loaded 45
-tensors`, `bea_reis_rent: 6`, `fred_rates: 6` rows across Wayne/Oakland/Macomb),
-so unlike `qa:regression` it *could* exercise the Vol III county path — but the
-annual financial recompute did not fire in this window. The annual pipeline is
-gated to year-boundary ticks (`if tick % WEEKS_PER_YEAR != 0: ...` skip,
-`src/babylon/domain/economics/tick/system/__init__.py:161`), and the captured
-e2e log contains **zero** `TickDynamics`/annual-pipeline lines (contrast the
-`qa:regression` diff, which emits `TickDynamics Step 2` national-params lines
-once the tick-0 boundary is crossed) — direct evidence the 5-tick window did
-not land on a year boundary. The summary-level comparison the e2e baseline
-pins (counties_alive, population, total_v within ±1.0%) therefore matches
-exactly (Δ=0.000%). County-level financial coverage is proven separately by
-U1.9's Wayne integration test, not by this 5-tick gate.
+conservation violations, exit=0. This scenario hydrates real county-keyed
+reference series (`hydrate_counties: Loaded 45 tensors`, `fred_rates: 6`), but the
+summary contract it pins (counties_alive, population, total_v within ±1.0%) does
+not serialize the interest term, and the scissors correction does not fire in the
+5-tick window — so the summary matches exactly (Δ=0.000%). County-level interest
+liveness is proven separately by SC-001, not by this 5-tick gate.
 
 ## Risks realized vs mitigated (design spec §7)
 
 | Risk | Realized? | Evidence |
 |---|---|---|
-| #1 turning on never-executed code surfaces latent bugs | No | Both U8.2 runs completed cleanly (exit 0, no `ValidationError`, no unexpected `NoDataSentinel` crash, no traceback) — the only non-tick log lines are the benign `gamma_basket`/`gamma_III` modelled-default INFO notices and the two expected "Skipping coupling" Volume II endpoint notices. The Vol III terms resolve to honest absence by design, not by error. |
-| #4 catalog growth 6→10 changes principal-contradiction ranking | No | No scenario saw a principal-contradiction change: the four new oppositions (`surplus_distribution`/`debt_spiral`/`credit`/`financial`) are registered (U5.9 evidence, `build_default_registry` catalog 6→10) but receive no county surplus input on any county-less scenario, so they never populate and never rank. The ranking is unchanged in all five per-scenario tables above. |
+| #1 turning on never-executed code surfaces latent bugs | Partially, then fixed | The dormant code WAS inert (structural `i≡0`); the final review caught it and it is now repaired and proven live (SC-001). |
+| #4 catalog growth 6→10 changes principal-contradiction ranking | No | No scenario saw a principal-contradiction change (county-absent → the four new oppositions never populate on the frozen scenarios). |
 
 ## Owner Approval Gate
 
-> **STOP. Do not proceed to baseline regeneration (U8.5) past this point
-> without an explicit, recorded owner approval below.**
+> **STOP. This document is the complete, factual record of the Vol III money
+> branch's behavior against the frozen baselines and against real data.**
 >
-> This report is the complete, factual record of every behavioral delta
-> `qa:regression` and `qa:e2e-regression` will encode as the new baseline.
-> Once regenerated, the old (pre-Vol-III) baseline is gone from
-> `tests/baselines/` — recoverable only via git history. The owner must
-> read the per-scenario tables above and affirmatively approve *in this
-> file* before U8.5 runs.
+> **What the owner is approving:** merge of the Vol III money-through-the-scissors
+> branch, whose flagship U9 endogenous interest layer is now proven LIVE on real
+> county data (SC-001 green; Wayne interest = 1.179e9, 33.3% of surplus) AND
+> byte-identical against every frozen `qa:regression`/`qa:e2e-regression` scenario
+> (they are county-free or sub-annual).
 >
-> **Honest scope note for the owner:** the behavioral baseline is
-> **byte-identical** (5/5 PASS, dense CSVs unchanged). The *only* value U8.5's
-> regeneration will change is the advisory `defines_hash` field in the five
-> checkpoint JSONs (new `MarketDefines`/`capital_vol3` coefficients from
-> U4/U6/U9). No tick value, outcome, or dense trace is overwritten — the
-> "old baseline" and the "new baseline" are identical except for that one
-> advisory hash. This is a lower-stakes regeneration than the boilerplate
-> above implies, and it is recorded here so the sign-off is fully informed.
+> **Baseline regeneration is OPTIONAL, not required.** `qa:regression` exits 0
+> against the existing frozen baselines — there is no behavioral value to
+> regenerate. The only difference a regeneration would encode is the advisory
+> `defines_hash` (a WARNING excluded from the pass filter). If the owner wants the
+> stored `defines_hash` refreshed to match the new `MarketDefines`/`capital_vol3`
+> coefficients, that is a cosmetic dedicated ceremony commit; if not, the branch
+> merges as-is with the gate green.
+>
+> **What is NOT changing:** no tick value, no outcome, no dense trace. The
+> pre-Vol-III behavioral baseline and this branch's behavioral baseline are
+> identical on the frozen scenarios.
 
 **Approved by:** `<FILL — leave blank until real sign-off; do not
 pre-fill with a placeholder name>`
@@ -293,8 +279,8 @@ pre-fill with a placeholder name>`
 message, per the ADR078 precedent of quoting the owner's exact words as
 the authorization record>`
 
-## Post-approval regeneration record
+## Post-approval record
 
-_Pending U8.5 — to be filled after owner sign-off with the ceremony commit
-hash and a one-line confirmation that `qa:regression` is green against the
-newly regenerated baselines._
+_Pending owner sign-off. If a `defines_hash` refresh is approved, the ceremony
+commit hash and a one-line confirmation that `qa:regression` is green against the
+refreshed baselines go here._

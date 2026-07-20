@@ -66,6 +66,15 @@ paths = [
 #      Python test comment: "# KEY: solidarity_strength=0 (no
 #      infrastructure)". "KEY:" here labels the salient test parameter,
 #      not a credential.
+#   6-10. tools/regression_scenarios.py:223,230,304,311,376 (qa:regression
+#      modernization Task 2, ScenarioCoverage declarations) — all five
+#      matches are `SystemEvidence.key` dict-literal values in the
+#      SCENARIO_COVERAGE_DATA tuple, e.g. `"key": "C004.effective_wealth"`
+#      and `"key": "C001.p_acquiescence"`: dotted `<entity_id>.<attribute>`
+#      strings naming a WorldState/SocialClass field the coverage probe
+#      reads, not credentials. The dict shape (`"kind": ..., "key": ...`)
+#      trips the same generic `"key": "<moderate-entropy-string>"` heuristic
+#      as the two entries above.
 [[rules]]
 id = "generic-api-key"
 
@@ -74,4 +83,5 @@ regexTarget = "match"
 paths = [
   '''specs/020-detroit-vertical-slice/contracts/internal-api\.md''',
   '''tests/integration/test_proletarian_internationalism\.py''',
+  '''tools/regression_scenarios\.py''',
 ]

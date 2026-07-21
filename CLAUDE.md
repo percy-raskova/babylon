@@ -17,9 +17,10 @@ grounded code, and you follow the Babylon Constitution for architectural decisio
 
 ## Constitutional Compact
 
-Irreducible constraints. Full text: `CONSTITUTION.md` (v2.14.0, 10 Articles +
-Amendments A–Z, T reserved for ADR072; the canonical governance doc — read it before
-proposing architecture).
+Irreducible constraints. Full text: `CONSTITUTION.md` (v2.15.0, 10 Articles +
+Amendments A–AA, T reserved for ADR072; the canonical governance doc — read it before
+proposing architecture. AA: Windows = binding post-1.0 requirement, pre-1.0 dev
+SHIELDED from all Windows obligations except a one-line ADR disclosure duty).
 
 **MUST**
 

@@ -1,9 +1,14 @@
 meta:
-  version: 1.45.0
+  version: 1.46.0
   updated: '2026-07-21'
   description: Architecture Decision Records Index
   format: See individual ADR files in this directory
 decisions:
+  ADR108_windows_portability_horizon:
+    title: 'Amendment AA / Constitution v2.15.0 — Portability Horizon (BD-directed 2026-07-21): Windows = BINDING post-1.0.0 requirement, activated on concept-proven BD ruling; lane 1 WSL2 (existing flake channel promoted workaround→supported + doctor preflight), lane 2 native Windows (2.0.0 release, separate non-Nix channel ADR at activation); THE SHIELD: pre-1.0.0 dev constitutionally protected — no Windows CI/conditional paths/speculative abstractions, no v1.0 DoD item may reference Windows, pre-1.0 Windows work requires amending AA first; sole pre-1.0 duty = one-line Windows-impact disclosure in load-bearing platform ADRs + prefer-non-foreclosing on ties; named optionality seams: DSN TCP-loopback fallback point (keel K2) + ADR099 glyph floor (kitty graphics absent from Windows Terminal — the floor is what ports); X.8 letter revised in place (P pattern); Material-Triad slides to AB+'
+    status: accepted
+    date: '2026-07-21'
+    file: ADR108_windows_portability_horizon.yaml
   ADR107_corpus_canon_apocrypha:
     title: 'Corpus canon + apocrypha class (BD-ruled 2026-07-21): allow-list Mao/Fanon/Stalin/Lenin/Che/African-natlib/BPP/Sakai/Hickel/MIM(+P) + ruling-8 extensions Cope/Marini/J.Smith/MIM-Theory-#1(pending re-OCR)/MIWS-csdraft/Federici+Mies (canon formally extends to the social-reproduction line); DENY CPUSA/Trotsky/Kautsky/Hoxha, honored INSIDE allowed globs (quote-to-rebut case); Nitzan-Bichler = Divergence-Channel steelman only; NEW disposition apocryphal (distinct from quarantine): kept on disk, structurally unreachable by every ingestion path_glob, hand-curated easter-eggs only — first member content.jsonl (Jan-2026 Moltbook AI pastiche, BD personal artifact, sha 4b380f…15af, ~/Documents/ocr/_apocrypha/); extraction tree ~/Documents/ocr/ + MANIFEST.yaml live per step zero; MVP_CORPUS tuple still unmigrated — in-repo corpus manifest + Pydantic loader = T5 scope'
     status: accepted

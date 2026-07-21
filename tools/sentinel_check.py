@@ -24,6 +24,7 @@ from babylon.sentinels.coupling.checks import main as coupling_main
 from babylon.sentinels.coverage.checks import main as coverage_main
 from babylon.sentinels.dangling.checks import main as dangling_main
 from babylon.sentinels.defines_passthrough.checks import main as defines_passthrough_main
+from babylon.sentinels.formula_registration.checks import main as formula_registration_main
 from babylon.sentinels.gate_coverage.checks import main as gate_coverage_main
 from babylon.sentinels.inert.checks import main as inert_main
 from babylon.sentinels.liveness.checks import main as liveness_main
@@ -123,6 +124,7 @@ _SENSORS: dict[str, Callable[[list[str] | None], int]] = {
     "inert": inert_main,
     "dangling": dangling_main,
     "defines_passthrough": defines_passthrough_main,
+    "formula_registration": formula_registration_main,
     "unconsumed": unconsumed_main,
     "masked_arithmetic": masked_arithmetic_main,
     "aggregation": _aggregation_main,

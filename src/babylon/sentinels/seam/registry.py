@@ -427,7 +427,20 @@ _MAP_METRICS: tuple[SeamEntry, ...] = (
             "Composite carceral/eviction intensity (DispossessionIntensityCalculator's weighted "
             "foreclosure/eviction/displacement/tax-sale/eminent-domain blend) — rides "
             "hex_latest's JSONB attributes column like habitability/mass_receptivity. "
-            "Population-weighted MEAN at county zoom, partial-coverage-aware."
+            "Population-weighted MEAN at county zoom, partial-coverage-aware. RETIRED "
+            "dead-observability characterization (Vol I U3/ADR110, 2026-07-21): this row's "
+            "gate was, before U3, a structurally-dead condition (DispossessionEventSystem had "
+            "zero production producers of foreclosure_rate/eviction_rate/displacement_rate "
+            "repo-wide — ADR108). U3 landed a real upstream producer, "
+            "TickDynamicsSystem._compute_accumulation_loop "
+            "(domain/economics/tick/system/__init__.py:1220-1311, year boundaries only, "
+            "System #4 — runs before DispossessionEventSystem #10 in the same tick), which "
+            "writes foreclosure_rate/eviction_rate from the FRED dispossession adapter onto "
+            "the same territory node. The condition above is now genuinely witnessable in "
+            "production (web bridge already; headless runner since U5) — DECLARED_CONDITIONAL "
+            "remains the correct class (still presence-conditional, not universal), but the "
+            "gate is no longer permanently dark. displacement_rate remains honestly unfed (no "
+            "FRED-backed source for gentrification displacement exists)."
         ),
     ),
     # --- Program 23 Phase 2 (ADR078): the per-county scissors' map reading.
@@ -1178,7 +1191,11 @@ _TERRITORY_TICK_METRICS: tuple[SeamEntry, ...] = (
         notes=(
             "Read via _territory_graph_attr, same shape as habitability/mass_receptivity on "
             "this surface. None until DispossessionEventSystem writes it (some dispossession "
-            "rate > 0 this tick)."
+            "rate > 0 this tick). RETIRED dead-observability characterization (Vol I U3/ADR110, "
+            "2026-07-21) — see the MAP-scope 'map.dispossession_intensity' row's notes for the "
+            "full citation: TickDynamicsSystem._compute_accumulation_loop now writes a real "
+            "foreclosure_rate/eviction_rate feed earlier in the same tick, so this gate is no "
+            "longer permanently dark, only genuinely presence-conditional."
         ),
     ),
 )

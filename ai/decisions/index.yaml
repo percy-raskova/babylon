@@ -4,6 +4,11 @@ meta:
   description: Architecture Decision Records Index
   format: See individual ADR files in this directory
 decisions:
+  ADR113_vol1_u7_sentinels:
+    title: 'Vol I U7 — Sentinels (scoped): new babylon.sentinels.formula_registration family closes the "inert family sees the registration as a satisfied reference" gap for FormulaRegistry entries (labor_aristocracy_ratio / is_labor_aristocracy genuinely live via U2''s compute_fundamental_theorem, the latter callable only found via import-alias resolution added for this sentinel; calculate_consciousness_drift a real, open gap held GREEN via one cited SentinelExemption naming provenance.py''s non-invoking reference). sentinels/seam/registry.py''s two dispossession_intensity DECLARED_CONDITIONAL rows updated to retire their pre-U3 dead-observability characterization now that TickDynamicsSystem._compute_accumulation_loop (U3/ADR110) feeds a real foreclosure_rate/eviction_rate producer. Item 1 (gated-dormancy registry) explicitly out of scope (ADR103 §10.2 hoists it to the T1.1 keel lane); item 4 (defines-passthrough + vocabulary sentinels) pure reuse -- the vocabulary sentinel''s own run during verification caught a real, pre-existing U6 violation (subsistence_threshold fabricated on a territory node), found and flagged, not fixed (out of scope).'
+    status: accepted
+    date: '2026-07-21'
+    file: ADR113_vol1_u7_sentinels.yaml
   ADR112_vol1_u6_oppositions:
     title: 'Vol I U6 — Oppositions: lights the three ADR103-reserved production-layer bindings (value_usevalue Ch.1, labor_laborpower Ch.6, absolute_relative_surplus Chs.10/12/15), shadow-first, with two new GraphInputs ratio fields (wealth_subsistence_ratio, surplus_strategy_ratio) and a third that reuses the existing wage/imperial (w_paid, v_produced) defect verbatim -- the three reserved coupling slots survive the builder for the first time. Registry 11->14 keys, shadow 1->4; canonical opposition_states unchanged (10 keys), so no baseline drift expected. Found, not fixed: a pre-existing (ADR089-era) stale assertion in test_lawverian_contradiction_bridge.py expecting 5 oppositions where 10 have flowed for a while, confirmed unrelated via git-stash isolation.'
     status: accepted

@@ -108,8 +108,10 @@ decision: >-
   runner.py:_build_economics_overrides` wires neither -- both re-verified
   unchanged on this tree) is Vol I's to close, NOT Vol II's. Recorded here,
   not built here. Entanglement with U4, precisely scoped by re-reading
-  `_run_tick_and_persist` (runner.py:~420-434): TWO of Vol2CirculationStep's
-  four gate keys are ALREADY wired into that shared context-building path --
+  `_advance_tick` (runner.py:388, called from runner.py:1672): TWO of
+  Vol2CirculationStep's four gate keys are ALREADY wired into that shared
+  context-building path (set at runner.py:436-437, inside the phi-
+  distribution `if` guard at runner.py:431-435) --
   `context["session_id"]` and `context["boundary_flow_register"]` (=
   `services.boundary_register`) are set whenever the (unrelated) phi-
   distribution keys are present -- so the runner-parity fix does NOT need to

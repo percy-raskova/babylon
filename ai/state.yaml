@@ -22,9 +22,9 @@ meta:
     recorded OUT of Vol II scope per §10.3, assigned to Vol I; U4's
     entanglement narrowed to two runner.py context keys (vol2_step,
     simulated_year) since session_id/boundary_flow_register are already
-    wired in _run_tick_and_persist. No code touched, no baseline drift (10/10
-    scoped tests green). Next: U2 (LODES OD data path, gated on the parquet
-    cutover per program §1).
+    wired in _advance_tick (runner.py:388, keys set at :436-437). No code
+    touched, no baseline drift (10/10 scoped tests green). Next: U2 (LODES OD
+    data path, gated on the parquet cutover per program §1).
     (2026-07-21 P2-P4) PROGRAM 24 THE ARCHIVE COMPLETE THROUGH P4 (branch
     feature/archive-p2-p4, PR #240 -> dev auto-merge armed; STAGED cutover
     draft PR #241 pending BD gate 3). P2: 18 Wave-1 builders + Wave-1.5

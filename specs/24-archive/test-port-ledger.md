@@ -13,14 +13,15 @@ RE-GUARDED (behavior now pinned by a registry/view contract test), CARRIED
 (deferred to a named P2 lane), RETIRED (legacy-only behavior, dies with the
 web client).
 
-## Disposition counts (P1 seed + P2 WO-38)
+## Disposition counts (P1 seed + P2 WO-35/WO-38/WO-39)
 
 | Disposition | Rows |
 |---|---|
 | PORTED | 4 |
-| REWRITTEN | 6 |
+| REWRITTEN | 7 |
 | RE-GUARDED | 2 |
 | CARRIED (P2) | 1 |
+| CARRIED (P3) | 1 |
 | RETIRED | 1 |
 
 ## Ledger
@@ -43,6 +44,8 @@ web client).
 | `src/frontend/e2e/end-turn-flow.spec.ts` (submit → resolve) | `tests/integration/archive/test_verb_resolution.py` (submit → fold → OODASystem adjudicates; rejection never reaches the engine) | REWRITTEN | WO-39 ✓ |
 | `::TestEngineBridgeActions` / `TestActionInjection` (submit affordability + injection shape) | `tests/unit/projection/verbs/test_submit.py` (attack mode-specific labor gates; JSON-null params coercion; org-absent fallthrough pinned) | PORTED | WO-39 ✓ |
 | bridge endgame-recognition block (century horizon, UNRESOLVED fallback, lock window) | `tests/unit/projection/test_endgame.py` (`endgame_status` pure fold; detector stays engine-side) | PORTED | WO-39 ✓ |
+| `src/frontend/e2e/lobby-briefing.spec.ts` (codename regex, 5 pattern rows, win badge, "100 years" horizon copy — NOT in ledger before this WO) | `tests/unit/projection/test_briefing.py` + `tests/unit/projection/vault/test_render_briefing.py` (`project_briefing`/`render_briefing` contract: `operation_codename` + `journal_objectives` ports) | REWRITTEN | WO-35 ✓ |
+| `src/frontend/e2e/lobby-briefing.spec.ts` (lobby row codename/tick/status metadata; archive → ABANDONED; arm-then-confirm delete) | campaign menu over the `babylon_meta` catalog | CARRIED (P3 WO-49) | — |
 | `src/frontend/e2e/auth.spec.ts` (Django login) | none — Django auth dies with the web client | RETIRED | — |
 
 ## Deviations recorded

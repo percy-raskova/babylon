@@ -20,9 +20,15 @@ import json
 from pathlib import Path
 from typing import Any
 
+from babylon.projection.briefing import BriefingView
 from babylon.projection.view_models import CountyView, hydrate_county
 
-__all__ = ["load_county_fixture", "record_county_fixture"]
+__all__ = [
+    "load_briefing_fixture",
+    "load_county_fixture",
+    "record_briefing_fixture",
+    "record_county_fixture",
+]
 
 
 def record_county_fixture(view: CountyView, path: Path) -> None:
@@ -61,3 +67,49 @@ def load_county_fixture(path: Path) -> CountyView:
     except json.JSONDecodeError as exc:
         raise ValueError(f"malformed JSON in projection fixture {path}: {exc}") from exc
     return hydrate_county(data)
+
+
+def record_briefing_fixture(view: BriefingView, path: Path) -> None:
+    """Serialize ``view`` to ``path`` as deterministic, sorted-key JSON.
+
+    Mirrors :func:`record_county_fixture` field-for-field (same sorted-key,
+    trailing-newline determinism contract); briefing has no live-engine
+    harvester step (:class:`~babylon.projection.briefing.BriefingView` is a
+    pure function of ``(session_id, tick, defines, axes, outcome)``, so
+    there is nothing to drive an engine tick for) — a caller records
+    whatever :func:`~babylon.projection.briefing.project_briefing` output it
+    already holds.
+
+    :param view: The projected briefing dossier to persist.
+    :param path: Destination file. The parent directory is NOT created here
+        — callers own directory setup, so a typo'd path fails loud instead
+        of silently minting a stray directory tree.
+    :raises OSError: if ``path``'s parent directory does not exist or is not
+        writable.
+    """
+    payload: dict[str, Any] = view.model_dump(mode="json")
+    text = json.dumps(payload, sort_keys=True, indent=2) + "\n"
+    path.write_text(text, encoding="utf-8")
+
+
+def load_briefing_fixture(path: Path) -> BriefingView:
+    """Hydrate a :class:`BriefingView` from a fixture written by :func:`record_briefing_fixture`.
+
+    :param path: The fixture file to load.
+    :returns: The validated, frozen :class:`BriefingView`.
+    :raises FileNotFoundError: if ``path`` does not exist — a missing fixture
+        is a loud failure (Constitution III.11), never a silently-substituted
+        default view.
+    :raises ValueError: if ``path``'s content is not valid JSON.
+    :raises pydantic.ValidationError: if the JSON parses but does not hydrate
+        to a valid :class:`BriefingView` (wrong shape, out-of-range value, an
+        invented field the model rejects under ``extra="forbid"``).
+    """
+    if not path.is_file():
+        raise FileNotFoundError(f"no projection fixture at {path}")
+    raw = path.read_text(encoding="utf-8")
+    try:
+        data = json.loads(raw)
+    except json.JSONDecodeError as exc:
+        raise ValueError(f"malformed JSON in projection fixture {path}: {exc}") from exc
+    return BriefingView.model_validate(data)

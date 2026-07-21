@@ -20,8 +20,10 @@ from __future__ import annotations
 
 from pathlib import Path
 
+from babylon.projection.briefing import BriefingView
 from babylon.projection.vault.git_backend import commit_page, init_vault
 from babylon.projection.vault.render import render_county
+from babylon.projection.vault.render_briefing import render_briefing
 from babylon.projection.view_models import CountyView
 
 
@@ -62,6 +64,35 @@ class VaultMaterializer:
             content,
             tick=tick,
             message=f"bake: county/{view.county_fips} @ tick {tick}",
+        )
+        return self._vault_root / relative_path
+
+    def bake_briefing(self, view: BriefingView, *, tick: int) -> Path:
+        """Render and commit one Scenario Briefing dossier page (WO-35).
+
+        The page path follows the same stable-ID slug ruling as
+        :meth:`bake_county`: ``briefing/<session_id>.md``, keyed on the
+        campaign session UUID rather than a mutable display name.
+
+        :param view: the briefing projection to materialize.
+        :param tick: the simulation tick driving the commit's sim-time
+            timestamp (via :func:`~babylon.projection.vault.git_backend.
+            commit_page`); the page's own ``verified_tick`` frontmatter
+            stamp comes from ``view.verified_tick`` (see :func:`~babylon.
+            projection.vault.render_briefing.render_briefing`), since unlike
+            :func:`~babylon.projection.vault.render.render_county` the
+            briefing renderer takes no separate tick argument.
+        :returns: the absolute path of the written page under the vault
+            root.
+        """
+        relative_path = f"briefing/{view.session_id}.md"
+        content = render_briefing(view)
+        commit_page(
+            self._vault_root,
+            relative_path,
+            content,
+            tick=tick,
+            message=f"bake: briefing/{view.session_id} @ tick {tick}",
         )
         return self._vault_root / relative_path
 

@@ -1,0 +1,324 @@
+"""The unified construct → expected-consumer registry (Lawvere-1991 seam algebra).
+
+T1.1 Unit 3 (``ai/_inbox/t11-seam-severity-design.md`` §3, §4 "U3"). Six sibling
+sentinel families — :mod:`~babylon.sentinels.inert`, :mod:`~babylon.sentinels.
+unconsumed`, :mod:`~babylon.sentinels.coupling`, :mod:`~babylon.sentinels.liveness`,
+:mod:`~babylon.sentinels.vocabulary`, :mod:`~babylon.sentinels.dangling` — each ask a
+narrow version of the SAME question ("does a real production file actually
+reference this declared thing?") through six different bespoke registry shapes
+(``DeclaredStore``/``DeclaredProducer``, ``DeclaredComputedField``,
+``MeasurementDependency``, ``LivenessRow``, the ``NodeType``-driven vocabulary
+scan, ``WatchedClass``/``WatchedReceiver``). This module gives that one question
+ONE graph-theoretic home:
+
+- **Ambient graph** ``G`` — every :class:`ConstructNode` (a declared, named
+  production symbol) plus every :class:`ExpectedConsumer` edge (a
+  ``read``/``call``/``import``/``publish`` claim that some file references that
+  symbol), read live from the row data below.
+- **Live subgraph** ``L`` — the constructs *transitively* reachable from
+  :data:`PRODUCTION_ENTRY_POINTS` (the 30-system tick's own module, the verb
+  resolvers, the projection/``observe()`` contract) by following edges whose
+  target file is already known live, verified statically via
+  :func:`babylon.sentinels._ast.referenced_names` (never an import, never an
+  engine run — see :mod:`babylon.sentinels.seam_algebra.checks`).
+- **Seam** ``∂L`` — the co-Heyting boundary: every declared construct NOT in
+  ``L`` is a **disconnected subsystem** — a nonempty core severed from
+  production, exactly the failure inert/unconsumed/liveness/etc. each detect
+  in their own narrower vocabulary.
+
+This registry is deliberately SMALL and load-bearing, not a re-scan of the
+whole codebase: it ships the one real, verified 2-hop production chain
+(:data:`PRODUCTION_ENTRY_POINTS` → ``consciousness_system`` → the inert
+family's own ``reification_buffer`` producer) that proves transitive
+reachability actually works end to end, plus the one currently-open
+disconnected-subsystem finding this unit exists to close: **F-EC-1**
+(``anisotropic_observation_error`` — day-one catch list, ``ai/_inbox/
+PROGRAM_v1_0_0_playable_archive.md`` §A). Cross-validation that the unified
+``∂L`` re-expresses (and loses no coverage against) the other five families'
+OWN mutation-catching behaviour lives in
+``tests/unit/sentinels/test_seam_algebra_cross_validation.py`` as small,
+self-contained, real-file-grounded fixtures — see that module's docstring.
+
+:data:`SEAM_ALGEBRA_EXEMPTIONS` is the same family-wide
+:class:`~babylon.sentinels.exemptions.SentinelExemption` every sibling sentinel
+uses (gate-governance ruling, 2026-07-18) — never a bespoke exemption class.
+
+Layer 0.5: imports nothing above :mod:`babylon.models` (in fact nothing above
+:mod:`babylon.sentinels` itself) — never the engine/topology/persistence/domain
+(import-linter contract, ``pyproject.toml``).
+"""
+
+from __future__ import annotations
+
+from typing import Final
+
+from pydantic import BaseModel, ConfigDict, model_validator
+
+from babylon.sentinels.exemptions import SentinelExemption
+
+__all__ = [
+    "CONSTRUCT_REGISTRY",
+    "EDGE_REGISTRY",
+    "ORIGIN_FAMILIES",
+    "PRODUCTION_ENTRY_POINTS",
+    "SEAM_ALGEBRA_EXEMPTIONS",
+    "ConstructNode",
+    "ExpectedConsumer",
+]
+
+#: The six legacy families this registry unifies, plus ``"native"`` for a
+#: construct seeded directly by the seam-algebra family with no legacy-family
+#: precedent (e.g. the day-one F-EC-1 catch-list witness). Closed set: a typo'd
+#: family name fails the row's own validator loudly rather than silently
+#: widening what "re-expresses a legacy family" means.
+ORIGIN_FAMILIES: Final[frozenset[str]] = frozenset(
+    {
+        "inert",
+        "unconsumed",
+        "coupling",
+        "liveness",
+        "vocabulary",
+        "dangling",
+        "native",
+    }
+)
+
+#: The four edge kinds the design names (§3.1): a construct's symbol may be
+#: statically confirmed inside a consumer file because that file READS an
+#: attribute/dict-key, CALLs it, IMPORTs it, or the construct PUBLISHES it for
+#: something else to pick up. All four resolve identically today (a name
+#: appearing in :func:`~babylon.sentinels._ast.referenced_names`'s output) —
+#: the kind is a documentation/provenance tag, not (yet) a distinct check
+#: rule; see the checks module's Scope note for why a uniform verification
+#: rule is the correct day-one reduction.
+_EDGE_KINDS: Final[frozenset[str]] = frozenset({"read", "call", "import", "publish"})
+
+#: The declared production entry points — the roots :class:`ConstructNode`
+#: reachability is measured FROM. Each is a real, architecturally-central file
+#: (never a test, never a fixture):
+#:
+#: - the 30-system materialist-causality tick (``_DEFAULT_SYSTEMS``) — every
+#:   System file it imports is, by construction, wired into the live game loop;
+#: - the nine-verb player-action dispatcher (``VERB_RESOLVERS`` /
+#:   ``resolve_player_action``) — the Action-phase's own entry point;
+#: - the projection registry — Amendment V / II.8's ``observe()`` contract,
+#:   the one declared read-seam every client (TUI, legacy web bridge) uses.
+PRODUCTION_ENTRY_POINTS: Final[tuple[str, ...]] = (
+    "src/babylon/engine/simulation_engine.py",
+    "src/babylon/engine/actions/__init__.py",
+    "src/babylon/projection/registry.py",
+)
+
+
+class ConstructNode(BaseModel):
+    """One declared node in the ambient seam-algebra graph ``G``.
+
+    :ivar name: Stable identity, unique within :data:`CONSTRUCT_REGISTRY`.
+    :ivar def_file: Repo-relative ``.py`` path declaring/producing the construct.
+    :ivar symbol: The bare production symbol name this construct denotes — a
+        class name, a function name, an enum member, or a dict/attribute key —
+        whatever string a consumer must reference to count as reaching it.
+    :ivar origin_family: Which pre-existing sentinel family's vocabulary this
+        construct re-expresses (one of :data:`ORIGIN_FAMILIES`); ``"native"``
+        for a construct with no legacy-family precedent.
+    :ivar material_relation: The material relation the construct carries
+        (Aleksandrov Test) — why anything downstream should want it.
+    """
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    name: str
+    def_file: str
+    symbol: str
+    origin_family: str
+    material_relation: str
+
+    @model_validator(mode="after")
+    def _validate_shape(self) -> ConstructNode:
+        """Reject a malformed row loudly at import (Constitution III.11).
+
+        :returns: ``self`` when valid.
+        :raises ValueError: If ``name``/``symbol``/``material_relation`` is
+            blank, ``def_file`` is not a ``.py`` path, or ``origin_family`` is
+            not one of :data:`ORIGIN_FAMILIES`.
+        """
+        for label, value in (
+            ("name", self.name),
+            ("symbol", self.symbol),
+            ("material_relation", self.material_relation),
+        ):
+            if not value.strip():
+                raise ValueError(f"ConstructNode.{label} must be non-empty")
+        if not self.def_file.endswith(".py"):
+            raise ValueError(f"{self.name!r}: def_file must be a .py path, got {self.def_file!r}")
+        if self.origin_family not in ORIGIN_FAMILIES:
+            raise ValueError(
+                f"{self.name!r}: origin_family {self.origin_family!r} not in "
+                f"{sorted(ORIGIN_FAMILIES)!r}"
+            )
+        return self
+
+
+class ExpectedConsumer(BaseModel):
+    """One declared edge: ``construct_name``'s symbol is expected inside ``consumer_file``.
+
+    :ivar construct_name: The :attr:`ConstructNode.name` this edge originates from
+        — must resolve against :data:`CONSTRUCT_REGISTRY` (validated at
+        collection time, see :func:`_validate_edges_resolve`, mirroring
+        :mod:`babylon.sentinels.vocabulary.registry`'s own
+        ``_validate_member_classes_resolve`` pattern).
+    :ivar consumer_file: Repo-relative ``.py`` path expected to reference the
+        construct's symbol.
+    :ivar edge_kind: One of :data:`_EDGE_KINDS` — ``read``/``call``/``import``/
+        ``publish``.
+    """
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    construct_name: str
+    consumer_file: str
+    edge_kind: str
+
+    @model_validator(mode="after")
+    def _validate_shape(self) -> ExpectedConsumer:
+        """Reject a malformed row loudly at import (Constitution III.11).
+
+        :returns: ``self`` when valid.
+        :raises ValueError: If ``construct_name`` is blank, ``consumer_file`` is
+            not a ``.py`` path, or ``edge_kind`` is not one of
+            :data:`_EDGE_KINDS`.
+        """
+        if not self.construct_name.strip():
+            raise ValueError("ExpectedConsumer.construct_name must be non-empty")
+        if not self.consumer_file.endswith(".py"):
+            raise ValueError(
+                f"{self.construct_name!r}: consumer_file must be a .py path, "
+                f"got {self.consumer_file!r}"
+            )
+        if self.edge_kind not in _EDGE_KINDS:
+            raise ValueError(
+                f"{self.construct_name!r}: edge_kind {self.edge_kind!r} not in "
+                f"{sorted(_EDGE_KINDS)!r}"
+            )
+        return self
+
+
+#: The unified, hand-curated node set. Deliberately small (§ module docstring):
+#: one real 2-hop chain proving transitive reachability, plus the one day-one
+#: disconnected-subsystem witness (F-EC-1).
+CONSTRUCT_REGISTRY: Final[tuple[ConstructNode, ...]] = (
+    ConstructNode(
+        name="consciousness_system",
+        def_file="src/babylon/engine/systems/ideology.py",
+        symbol="ConsciousnessSystem",
+        origin_family="native",
+        material_relation=(
+            "One of the 30 materialist-causality Systems (CONSEQUENCE phase, "
+            "position 17) `_DEFAULT_SYSTEMS` runs every tick — the production "
+            "bridge from the tick-loop entry point into the ideology domain, "
+            "and the second hop of this registry's one real transitive chain."
+        ),
+    ),
+    ConstructNode(
+        name="reification_buffer_producer",
+        def_file="src/babylon/formulas/consciousness_routing.py",
+        symbol="compute_reification_buffer",
+        origin_family="inert",
+        material_relation=(
+            "Commodity-fetishism reification buffer in [0, 1] "
+            "(|Phi| / (|Phi| + v + eps)) — re-expresses "
+            "babylon.sentinels.inert.registry.DECLARED_PRODUCERS's "
+            "'reification_buffer' row (the inert family's own founding "
+            "producer-reachability case) as one node of this unified graph, "
+            "reached transitively via consciousness_system -> "
+            "simulation_engine.py."
+        ),
+    ),
+    ConstructNode(
+        name="anisotropic_observation_error",
+        def_file="src/babylon/domain/bifurcation/consciousness.py",
+        symbol="anisotropic_observation_error",
+        origin_family="native",
+        material_relation=(
+            "Anisotropic per-axis observation-noise formula (FR-009) — "
+            "perturbs a TernaryConsciousness position so the state's estimate "
+            "of revolutionary consciousness (r) carries ~3x the noise of the "
+            "legal/fascist (l/f) split, modelling that r is hidden from "
+            "surveillance. F-EC-1 (the T1.1 day-one seam-algebra catch list, "
+            "ai/_inbox/PROGRAM_v1_0_0_playable_archive.md §A): zero production "
+            "callers exist anywhere in src/ or web/ — only "
+            "tests/unit/bifurcation/test_consciousness.py exercises it — so "
+            "this node is DELIBERATELY given no EDGE_REGISTRY entry: it is the "
+            "disconnected-subsystem witness this unit's mutation test proves "
+            "the boundary computation catches."
+        ),
+    ),
+)
+
+#: The unified, hand-curated edge set. ``anisotropic_observation_error`` has NO
+#: edge here by construction (see its ConstructNode docstring) — that absence
+#: IS the disconnected-subsystem finding F-EC-1.
+EDGE_REGISTRY: Final[tuple[ExpectedConsumer, ...]] = (
+    ExpectedConsumer(
+        construct_name="consciousness_system",
+        consumer_file="src/babylon/engine/simulation_engine.py",
+        edge_kind="import",
+    ),
+    ExpectedConsumer(
+        construct_name="reification_buffer_producer",
+        consumer_file="src/babylon/engine/systems/ideology.py",
+        edge_kind="call",
+    ),
+)
+
+
+def _validate_edges_resolve(
+    constructs: tuple[ConstructNode, ...], edges: tuple[ExpectedConsumer, ...]
+) -> None:
+    """Every edge's ``construct_name`` must name a real :data:`CONSTRUCT_REGISTRY` row.
+
+    Mirrors :mod:`babylon.sentinels.vocabulary.registry`'s own
+    ``_validate_member_classes_resolve`` — a typo'd or stale ``construct_name``
+    reference would silently make an edge inert (it would never match any
+    node during the boundary computation), which is precisely the class of
+    silent drift this whole family exists to forbid.
+
+    :param constructs: The declared node rows to resolve against.
+    :param edges: The declared edge rows to check.
+    :raises ValueError: If any edge names a construct absent from ``constructs``.
+    """
+    known = {node.name for node in constructs}
+    unknown = sorted({edge.construct_name for edge in edges if edge.construct_name not in known})
+    if unknown:
+        raise ValueError(
+            f"ExpectedConsumer row(s) name unknown construct(s): {unknown!r} — not "
+            f"present in CONSTRUCT_REGISTRY ({sorted(known)!r})"
+        )
+
+
+_validate_edges_resolve(CONSTRUCT_REGISTRY, EDGE_REGISTRY)
+
+#: The one day-one exemption: F-EC-1. Per the T1.1 default (design §9 item 3/4
+#: — exemption-with-rationale unless the owner prefers otherwise), this holds
+#: the finding open rather than unilaterally retiring or wiring the formula —
+#: that choice (retire vs. wire as the R-EC-2 "observation-noise fifth
+#: stratum") is a named BD-owed question, not this lane's to make.
+SEAM_ALGEBRA_EXEMPTIONS: Final[tuple[SentinelExemption, ...]] = (
+    SentinelExemption(
+        key=("construct", "anisotropic_observation_error"),
+        reason=(
+            "anisotropic_observation_error (FR-009) has zero production callers "
+            "in src/ or web/ -- only tests/unit/bifurcation/test_consciousness.py "
+            "exercises it. This is F-EC-1, the T1.1 day-one seam-algebra catch "
+            "list's disconnected-subsystem witness. Whether to retire it or wire "
+            "it as the R-EC-2 'observation-noise fifth stratum' is a BD-owed "
+            "disposition (design doc ai/_inbox/t11-seam-severity-design.md §9 "
+            "item 3); held open here per the T1.1 default (exemption-with-"
+            "rationale) rather than this lane choosing unilaterally."
+        ),
+        owner="Persephone Raskova",
+        date="2026-07-21",
+        tracking_task="N/A (BD-owed R-EC-2 disposition -- retire vs. wire as "
+        "observation-noise fifth stratum; no tracking ticket opened yet)",
+    ),
+)

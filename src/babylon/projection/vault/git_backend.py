@@ -16,6 +16,7 @@ pulls it into ``sys.modules`` merely by being on the import path.
 
 from __future__ import annotations
 
+import threading
 from pathlib import Path
 from typing import Final
 
@@ -24,6 +25,13 @@ from babylon.kernel.sim_clock import sim_datetime
 #: Fixed author/committer identity for every vault commit — the vault has
 #: one author, The Archive itself, never a wall-clock-derived human identity.
 _IDENTITY: Final[bytes] = b"The Archive <archive@babylon.local>"
+
+#: In-process single-writer discipline: the narrator side process (WO-42)
+#: commits from its worker thread while the tick baker commits from the
+#: main thread, and dulwich's stage/commit sequence is not safe against a
+#: concurrent writer on the same index file. One process, one committer at
+#: a time — cross-process writers remain out of contract.
+_COMMIT_LOCK: Final[threading.Lock] = threading.Lock()
 
 
 def init_vault(root: Path) -> None:
@@ -68,26 +76,27 @@ def commit_page(
     """
     from dulwich.repo import Repo
 
-    page_path = root / relative_path
-    page_path.parent.mkdir(parents=True, exist_ok=True)
-    page_path.write_text(content, encoding="utf8")
+    with _COMMIT_LOCK:
+        page_path = root / relative_path
+        page_path.parent.mkdir(parents=True, exist_ok=True)
+        page_path.write_text(content, encoding="utf8")
 
-    epoch_seconds = int(sim_datetime(tick).timestamp())
-    repo = Repo(str(root))
-    try:
-        worktree = repo.get_worktree()
-        worktree.stage([relative_path])
-        return worktree.commit(
-            message=message.encode("utf8"),
-            committer=_IDENTITY,
-            author=_IDENTITY,
-            commit_timestamp=epoch_seconds,
-            commit_timezone=0,
-            author_timestamp=epoch_seconds,
-            author_timezone=0,
-        )
-    finally:
-        repo.close()
+        epoch_seconds = int(sim_datetime(tick).timestamp())
+        repo = Repo(str(root))
+        try:
+            worktree = repo.get_worktree()
+            worktree.stage([relative_path])
+            return worktree.commit(
+                message=message.encode("utf8"),
+                committer=_IDENTITY,
+                author=_IDENTITY,
+                commit_timestamp=epoch_seconds,
+                commit_timezone=0,
+                author_timestamp=epoch_seconds,
+                author_timezone=0,
+            )
+        finally:
+            repo.close()
 
 
 __all__ = ["init_vault", "commit_page"]

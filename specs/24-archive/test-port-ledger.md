@@ -13,12 +13,12 @@ RE-GUARDED (behavior now pinned by a registry/view contract test), CARRIED
 (deferred to a named P2 lane), RETIRED (legacy-only behavior, dies with the
 web client).
 
-## Disposition counts (P1 seed + P2 WO-38)
+## Disposition counts (P1 seed + Lane E through WO-42)
 
 | Disposition | Rows |
 |---|---|
-| PORTED | 4 |
-| REWRITTEN | 6 |
+| PORTED | 9 |
+| REWRITTEN | 10 |
 | RE-GUARDED | 2 |
 | CARRIED (P2) | 1 |
 | RETIRED | 1 |
@@ -46,6 +46,9 @@ web client).
 | `::TestHexFeaturePropertiesVeilGate` / `TestDerivedEconomyVeilGate` + `test_veil.py` (doctrine veil tiers) | `tests/unit/projection/test_veil_gating.py` + `tests/unit/web/test_veil.py` (green through the `is`-identity shim over `babylon.projection.veil`) | PORTED | WO-41 ✓ |
 | `test_vision_gate.py` (desert/mud/water class gate) | `tests/unit/projection/test_veil_gating.py::TestClassVisionPort` (pure `apply_class_vision`; bridge wrapper delegates, its 12 behavioral tests stay green) | PORTED | WO-41 ✓ |
 | fog+class-vision two-gates hazard (`fog/filter.py` header, unresolved at P1) | `tests/unit/projection/test_veil_gating.py::TestGateComposition` (`apply_political_gates`: vision-then-fog, restriction-map composition — RESOLVED, not carried) | REWRITTEN | WO-41 ✓ |
+| `tests/unit/web/test_narration_record.py` (durable narrator persistence; idempotent `update_or_create` re-generation; degraded record visible) | `tests/unit/projection/vault/test_narrator_cache.py` (vault-page durability survives a fresh cache instance; degraded entry retried and superseded in place; degraded page renders as `{absence}`) | REWRITTEN | WO-42 ✓ |
+| `tests/unit/web/test_narrator.py::TestProviderSwap` + `NarrativeService` behaviors (non-blocking schedule; degraded-loud marker; III.6 model pinning) | `tests/unit/projection/vault/test_narrator_cache.py` (`TestSideProcess` fire-and-forget never raises; `TestDegradedLoud`; `TestModelPinSurvivesDeprecation` — deprecated pin's block byte-identical after a pin switch) | PORTED | WO-42 ✓ |
+| `tests/unit/web/test_narrator.py` (DeterministicNarrator Wire-feed templates, euphemism sync, bespoke class/org templates) | `tests/unit/projection/vault/test_narrator_cache.py::TestNarratorOffFullyInformative` — the deterministic baked page IS the fallback surface (R4); the Wire-feed template estate itself dies with the web client | REWRITTEN | WO-42 ✓ (template specifics retire at P4) |
 | `src/frontend/e2e/auth.spec.ts` (Django login) | none — Django auth dies with the web client | RETIRED | — |
 
 ## Deviations recorded

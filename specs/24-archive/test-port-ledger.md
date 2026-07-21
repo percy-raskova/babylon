@@ -13,14 +13,15 @@ RE-GUARDED (behavior now pinned by a registry/view contract test), CARRIED
 (deferred to a named P2 lane), RETIRED (legacy-only behavior, dies with the
 web client).
 
-## Disposition counts (P1 seed + Lane E through WO-42)
+## Disposition counts (P1 seed + Lane E through WO-42 + Wave-1 WO-35)
 
 | Disposition | Rows |
 |---|---|
 | PORTED | 9 |
-| REWRITTEN | 10 |
+| REWRITTEN | 11 |
 | RE-GUARDED | 2 |
 | CARRIED (P2) | 1 |
+| CARRIED (P3) | 1 |
 | RETIRED | 1 |
 
 ## Ledger
@@ -49,6 +50,8 @@ web client).
 | `tests/unit/web/test_narration_record.py` (durable narrator persistence; idempotent `update_or_create` re-generation; degraded record visible) | `tests/unit/projection/vault/test_narrator_cache.py` (vault-page durability survives a fresh cache instance; degraded entry retried and superseded in place; degraded page renders as `{absence}`) | REWRITTEN | WO-42 ✓ |
 | `tests/unit/web/test_narrator.py::TestProviderSwap` + `NarrativeService` behaviors (non-blocking schedule; degraded-loud marker; III.6 model pinning) | `tests/unit/projection/vault/test_narrator_cache.py` (`TestSideProcess` fire-and-forget never raises; `TestDegradedLoud`; `TestModelPinSurvivesDeprecation` — deprecated pin's block byte-identical after a pin switch) | PORTED | WO-42 ✓ |
 | `tests/unit/web/test_narrator.py` (DeterministicNarrator Wire-feed templates, euphemism sync, bespoke class/org templates) | `tests/unit/projection/vault/test_narrator_cache.py::TestNarratorOffFullyInformative` — the deterministic baked page IS the fallback surface (R4); the Wire-feed template estate itself dies with the web client | REWRITTEN | WO-42 ✓ (template specifics retire at P4) |
+| `src/frontend/e2e/lobby-briefing.spec.ts` (codename regex, 5 pattern rows, win badge, "100 years" horizon copy — NOT in ledger before this WO) | `tests/unit/projection/test_briefing.py` + `tests/unit/projection/vault/test_render_briefing.py` (`project_briefing`/`render_briefing` contract: `operation_codename` + `journal_objectives` ports) | REWRITTEN | WO-35 ✓ |
+| `src/frontend/e2e/lobby-briefing.spec.ts` (lobby row codename/tick/status metadata; archive → ABANDONED; arm-then-confirm delete) | campaign menu over the `babylon_meta` catalog | CARRIED (P3 WO-49) | — |
 | `src/frontend/e2e/auth.spec.ts` (Django login) | none — Django auth dies with the web client | RETIRED | — |
 
 ## Deviations recorded

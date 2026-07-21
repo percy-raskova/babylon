@@ -15,6 +15,7 @@ import ast
 import re
 from collections.abc import Iterator
 from pathlib import Path
+from typing import Final
 
 from babylon.models.enums.topology import EdgeType, NodeType
 from babylon.sentinels.base import SentinelCheckError
@@ -1590,3 +1591,73 @@ def function_return_annotation_name(path: Path, func_name: str) -> str | None:
             return annotation.value
         return None
     return None
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Wall-clock-call-site grounding (T1.1 U7, ai/_inbox/t11-seam-severity-design.md
+# §3.2 point 4): a call site inside a P-tier/hashed-artifact producer that reads
+# real wall-clock time is a non-determinism smell even where the value is
+# provably excluded from a byte-identity contract TODAY -- a later refactor
+# that folds it back into a compared field would silently reintroduce
+# non-determinism with every existing unit test staying green (the same
+# silent-drift shape every other seam-algebra check catches in its own
+# vocabulary).
+# ─────────────────────────────────────────────────────────────────────────────
+
+#: The wall-clock symbols this family recognizes -- closed set (design's own
+#: "datetime.now/time.time/perf_counter/monotonic/utcnow" list, §3.2 point 4).
+#: Matched by the CALLEE's own final two dotted components (see
+#: :func:`_wallclock_symbol_for_call`), so any import alias
+#: (``_dt.datetime.now(...)``, an aliased ``time`` submodule) is still
+#: recognized without a per-alias registry row -- and, symmetrically, an
+#: unrelated object's own ``.now()``/``.time()`` method (not rooted at a
+#: `datetime`/`time`-named identifier) is never misread as a wall-clock read.
+#: This is deliberately the SAME heuristic boundary every other extractor in
+#: this module documents: cannot resolve without value-flow analysis, so
+#: honest absence beats a guess.
+WALLCLOCK_SYMBOLS: Final[frozenset[str]] = frozenset(
+    {"datetime.now", "datetime.utcnow", "time.time", "time.perf_counter", "time.monotonic"}
+)
+
+
+def _wallclock_symbol_for_call(call: ast.Call) -> str | None:
+    """The dotted :data:`WALLCLOCK_SYMBOLS` member ``call`` matches, if any.
+
+    :param call: The call node to classify.
+    :returns: One of :data:`WALLCLOCK_SYMBOLS`, or ``None`` if ``call`` is not
+        a recognized wall-clock read.
+    """
+    if not isinstance(call.func, ast.Attribute):
+        return None
+    attr = call.func.attr
+    root = call.func.value
+    if isinstance(root, ast.Name):
+        root_name = root.id
+    elif isinstance(root, ast.Attribute):
+        root_name = root.attr
+    else:
+        root_name = None
+    if attr in ("now", "utcnow") and root_name == "datetime":
+        return f"datetime.{attr}"
+    if attr in ("time", "perf_counter", "monotonic") and root_name == "time":
+        return f"time.{attr}"
+    return None
+
+
+def wallclock_call_lines(path: Path) -> list[tuple[int, str]]:
+    """Every wall-clock read call site anywhere in ``path``.
+
+    :param path: Source file to scan.
+    :returns: Sorted, de-duplicated ``(line, symbol)`` pairs, ``symbol`` one of
+        :data:`WALLCLOCK_SYMBOLS`.
+    :raises SentinelCheckError: If the file is missing or unparseable.
+    """
+    tree = parse_module(path)
+    hits: set[tuple[int, str]] = set()
+    for node in ast.walk(tree):
+        if not isinstance(node, ast.Call):
+            continue
+        symbol = _wallclock_symbol_for_call(node)
+        if symbol is not None:
+            hits.add((node.lineno, symbol))
+    return sorted(hits)

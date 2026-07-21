@@ -105,6 +105,27 @@ independently against the SAME generated table, transitive equality (web ==
 archive) follows whenever both hold, so all three pairwise comparisons the
 design names are covered — across all four detection prongs — without a
 separate web-vs-archive pass.
+
+**Wall-clock-call-site** (T1.1 U7, design §3.2 point 4) is this family's
+fifth and final day-one check: a call site inside a P-tier/hashed-artifact
+producer that reads real wall-clock time
+(:data:`~babylon.sentinels._ast.WALLCLOCK_SYMBOLS` — ``datetime.now``/
+``datetime.utcnow``/``time.time``/``time.perf_counter``/``time.monotonic``)
+is a non-determinism smell even where the read is provably excluded from a
+byte-identity contract TODAY — a later refactor that folds the value back
+into a compared field would silently reintroduce non-determinism with every
+existing unit test staying green. :func:`check_wallclock_call_sites` grounds
+each declared :class:`~babylon.sentinels.seam_algebra.registry.WallclockCallSite`
+row (the exact ``(line, symbol)`` pair is really present in ``def_file``, via
+:func:`~babylon.sentinels._ast.wallclock_call_lines`) and reds it unless
+exempted — the day-one witnesses are ``engine/observers/jsonl_recorder.py``
+(three call sites), ``engine/observers/metrics.py`` (one), and "the run
+manifest" (``engine/headless_runner/runner.py``'s ``wallclock_start``/
+``wallclock_end``, feeding ``engine/headless_runner/manifest.py``) — all six
+held open as dated exemptions (design §9 item 4); the manifest pair's
+exclusion from ``input_hash()`` is a pre-existing, grounded design fact
+(``manifest.py``'s own docstring already declares it), never a gap this unit
+discovers.
 """
 
 from __future__ import annotations
@@ -127,6 +148,7 @@ from babylon.sentinels._ast import (
     module_level_function_names,
     optional_dict_literal_str_items,
     referenced_names,
+    wallclock_call_lines,
 )
 from babylon.sentinels.base import LabelledCheck, SentinelCheckError, run_sensor
 from babylon.sentinels.exemptions import SentinelExemption, is_exempt
@@ -141,11 +163,14 @@ from babylon.sentinels.seam_algebra.registry import (
     SEAM_ALGEBRA_EXEMPTIONS,
     STUB_REGISTRY,
     STUB_VS_CALCULATOR_EXEMPTIONS,
+    WALLCLOCK_EXEMPTIONS,
+    WALLCLOCK_REGISTRY,
     ConstructNode,
     ExpectedConsumer,
     GatedInput,
     RegisteredCalculator,
     StubConsumer,
+    WallclockCallSite,
 )
 
 __all__ = [
@@ -154,6 +179,7 @@ __all__ = [
     "check_gate_satisfaction",
     "check_severity_single_source",
     "check_stub_vs_calculator",
+    "check_wallclock_call_sites",
     "main",
 ]
 
@@ -774,14 +800,104 @@ def check_severity_single_source(
     return sorted(findings)
 
 
+_WHY_WALLCLOCK: Final[str] = (
+    "WHY THIS FAILS: a call site inside a P-tier/hashed-artifact producer that reads real "
+    "wall-clock time is a non-determinism smell -- even where the value is provably excluded "
+    "from a byte-identity contract TODAY, a later refactor that folds it back into a compared "
+    "field would silently reintroduce non-determinism while every existing unit test (which "
+    "never exercises byte-identity across two runs) stays green."
+)
+
+
+def _confirm_wallclock_grounded(site: WallclockCallSite) -> None:
+    """Confirm ``site``'s exact ``(line, wallclock_call)`` pair is still really present.
+
+    A registry row citing a call site that has since been edited away, moved
+    to a different line, or changed to a different wall-clock symbol must
+    fail loud, not silently read as still-live -- mirrors
+    :func:`_confirm_guard_grounded`/:func:`_confirm_stub_grounded`'s own
+    "reject a stale row" posture.
+
+    :param site: The row to ground.
+    :raises babylon.sentinels.base.SentinelCheckError: If ``def_file`` is
+        missing/unparseable, or ``(site.line, site.wallclock_call)`` is not
+        among :func:`~babylon.sentinels._ast.wallclock_call_lines`'s output
+        for ``def_file`` (the registry row is stale -- the call was moved,
+        edited to a different wall-clock symbol, or removed entirely).
+    """
+    path = _REPO_ROOT / site.def_file
+    calls = wallclock_call_lines(path)
+    if (site.line, site.wallclock_call) not in calls:
+        raise SentinelCheckError(
+            f"{site.name!r}: no {site.wallclock_call}() call found at "
+            f"{site.def_file}:{site.line} -- registry row is stale (the call was moved, "
+            "edited to a different wall-clock symbol, or removed entirely)"
+        )
+
+
+def check_wallclock_call_sites(
+    sites: tuple[WallclockCallSite, ...] = WALLCLOCK_REGISTRY,
+    exemptions: tuple[SentinelExemption, ...] = WALLCLOCK_EXEMPTIONS,
+) -> list[str]:
+    """Red every live, non-exempt wall-clock read at a declared P-tier call site.
+
+    T1.1 U7 (design §3.2 point 4): for each declared
+    :class:`~babylon.sentinels.seam_algebra.registry.WallclockCallSite` row,
+    first :func:`_confirm_wallclock_grounded` (the call really exists at the
+    declared line, or this is an infrastructure failure), then check whether
+    the site is exempted. A grounded, non-exempt row is, by definition, a live
+    wall-clock read in a declared P-tier producer -- it reds.
+
+    :param sites: Declared wall-clock call-site rows (defaults to the real
+        :data:`~babylon.sentinels.seam_algebra.registry.WALLCLOCK_REGISTRY`;
+        injectable so tests can supply a fixture site).
+    :param exemptions: Dated, owner-approved rows holding a known wall-clock
+        read open (defaults to the real
+        :data:`~babylon.sentinels.seam_algebra.registry.WALLCLOCK_EXEMPTIONS`;
+        injectable so the mutation test can prove a reverted exemption reds).
+    :returns: Sorted agent-legible finding strings (empty when every declared
+        site is exempted or absent).
+    :raises babylon.sentinels.base.SentinelCheckError: If a declared site's
+        file is missing/unparseable, or a declared ``(line, wallclock_call)``
+        pair has gone stale.
+    """
+    findings: list[str] = []
+    for site in sites:
+        _confirm_wallclock_grounded(site)
+        if is_exempt(("wallclock", site.name), exemptions):
+            continue
+        findings.append(
+            finding(
+                error_class="wallclock-call-site",
+                symbol=site.wallclock_call,
+                file=site.def_file,
+                line=site.line,
+                problem=(
+                    f"{site.wallclock_call}() is read here, feeding {site.artifact} -- a "
+                    "P-tier/hashed-artifact producer reading real wall-clock time."
+                ),
+                remedy=(
+                    "hoist the timestamp out of the hashed/compared path (inject a clock "
+                    "provider, or move the field to a declared non-deterministic-inputs-"
+                    "shaped block excluded from any byte-identity comparison), or add a "
+                    "dated SentinelExemption (key=('wallclock', name)) proving the field is "
+                    f"already excluded — never a silent registry removal. {_WHY_WALLCLOCK}"
+                ),
+            )
+        )
+    return sorted(findings)
+
+
 #: Any non-exempt disconnected subsystem, unsatisfied construct-entry gate,
-#: live-consumer-fed-a-literal-over-a-registered-calculator, OR a reforked
-#: severity surface is a live defect.
+#: live-consumer-fed-a-literal-over-a-registered-calculator, reforked severity
+#: surface, OR a non-exempt wall-clock read at a declared P-tier call site is
+#: a live defect.
 _GATING_CHECKS: Final[tuple[LabelledCheck, ...]] = (
     ("disconnected-subsystem", check_disconnected_subsystems),
     ("gate-satisfaction", check_gate_satisfaction),
     ("severity-single-source", check_severity_single_source),
     ("stub-vs-calculator", check_stub_vs_calculator),
+    ("wallclock-call-site", check_wallclock_call_sites),
 )
 
 
@@ -797,9 +913,10 @@ def _summary(advisory_count: int) -> str:
         f"Seam-algebra clean: {len(live)}/{len(CONSTRUCT_REGISTRY)} declared "
         f"construct(s) reachable from {len(PRODUCTION_ENTRY_POINTS)} production "
         f"entry point(s); {len(SEAM_ALGEBRA_EXEMPTIONS)} disconnected subsystem(s), "
-        f"{len(GATE_SATISFACTION_EXEMPTIONS)} unsatisfied gate(s), and "
-        f"{len(STUB_VS_CALCULATOR_EXEMPTIONS)} stub-vs-calculator site(s) held open "
-        "by a dated exemption; severity single-sourced across all "
+        f"{len(GATE_SATISFACTION_EXEMPTIONS)} unsatisfied gate(s), "
+        f"{len(STUB_VS_CALCULATOR_EXEMPTIONS)} stub-vs-calculator site(s), and "
+        f"{len(WALLCLOCK_EXEMPTIONS)} wall-clock call site(s) held open by a dated "
+        "exemption; severity single-sourced across all "
         f"{len(EventType)} EventType member(s), 0 held open (T1.1 U6)."
     )
 

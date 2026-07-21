@@ -54,6 +54,7 @@ from typing import Final
 
 from pydantic import BaseModel, ConfigDict, model_validator
 
+from babylon.sentinels._ast import WALLCLOCK_SYMBOLS
 from babylon.sentinels.exemptions import SentinelExemption
 
 __all__ = [
@@ -63,16 +64,20 @@ __all__ = [
     "GATE_REGISTRY",
     "GATE_SATISFACTION_EXEMPTIONS",
     "GUARD_SHAPES",
+    "OPEN_FINDINGS_LEDGER",
     "ORIGIN_FAMILIES",
     "PRODUCTION_ENTRY_POINTS",
     "SEAM_ALGEBRA_EXEMPTIONS",
     "STUB_REGISTRY",
     "STUB_VS_CALCULATOR_EXEMPTIONS",
+    "WALLCLOCK_EXEMPTIONS",
+    "WALLCLOCK_REGISTRY",
     "ConstructNode",
     "ExpectedConsumer",
     "GatedInput",
     "RegisteredCalculator",
     "StubConsumer",
+    "WallclockCallSite",
 ]
 
 #: The six legacy families this registry unifies, plus ``"native"`` for a
@@ -772,5 +777,323 @@ SEAM_ALGEBRA_EXEMPTIONS: Final[tuple[SentinelExemption, ...]] = (
         date="2026-07-21",
         tracking_task="N/A (BD-owed R-EC-2 disposition -- retire vs. wire as "
         "observation-noise fifth stratum; no tracking ticket opened yet)",
+    ),
+)
+
+
+class WallclockCallSite(BaseModel):
+    """One declared wall-clock read at a call site inside a P-tier/hashed-artifact producer.
+
+    T1.1 Unit 7 (design §3.2 point 4): every declared row is the positive claim
+    "this exact ``(line, wallclock_call)`` pair really exists in ``def_file``" —
+    grounded at check-run time by :mod:`babylon.sentinels.seam_algebra.checks`'s
+    ``_confirm_wallclock_grounded`` (mirrors :func:`_confirm_guard_grounded`/
+    :func:`_confirm_stub_grounded`'s own "reject a stale row, never a silent
+    pass" posture). A grounded row is, by definition, a live wall-clock read —
+    it reds unless a dated :class:`~babylon.sentinels.exemptions.SentinelExemption`
+    holds it open in :data:`WALLCLOCK_EXEMPTIONS`, same discipline as every
+    sibling registry in this family.
+
+    :ivar name: Stable identity, unique within :data:`WALLCLOCK_REGISTRY`.
+    :ivar def_file: Repo-relative ``.py`` path containing the call.
+    :ivar line: The declared source line the wall-clock call appears on.
+    :ivar wallclock_call: The dotted wall-clock symbol expected at ``line`` —
+        one of :data:`~babylon.sentinels._ast.WALLCLOCK_SYMBOLS`.
+    :ivar artifact: An agent-legible description of the persisted/potentially-
+        compared artifact this call site's value feeds — the "why this
+        matters" half of the finding.
+    """
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    name: str
+    def_file: str
+    line: int
+    wallclock_call: str
+    artifact: str
+
+    @model_validator(mode="after")
+    def _validate_shape(self) -> WallclockCallSite:
+        """Reject a malformed row loudly at import (Constitution III.11).
+
+        :returns: ``self`` when valid.
+        :raises ValueError: If ``name``/``artifact`` is blank, ``def_file`` is
+            not a ``.py`` path, ``line`` is not positive, or ``wallclock_call``
+            is not one of :data:`~babylon.sentinels._ast.WALLCLOCK_SYMBOLS`.
+        """
+        for label, value in (("name", self.name), ("artifact", self.artifact)):
+            if not value.strip():
+                raise ValueError(f"WallclockCallSite.{label} must be non-empty")
+        if not self.def_file.endswith(".py"):
+            raise ValueError(f"{self.name!r}: def_file must be a .py path, got {self.def_file!r}")
+        if self.line <= 0:
+            raise ValueError(f"{self.name!r}: line must be positive, got {self.line!r}")
+        if self.wallclock_call not in WALLCLOCK_SYMBOLS:
+            raise ValueError(
+                f"{self.name!r}: wallclock_call {self.wallclock_call!r} not in "
+                f"{sorted(WALLCLOCK_SYMBOLS)!r}"
+            )
+        return self
+
+
+#: The unified, hand-curated wall-clock-call-site set (T1.1 U7, design §3.2
+#: point 4) — deliberately the SAME small, hand-curated posture as every
+#: sibling registry in this family (never a full-codebase auto-scan): the
+#: three day-one witnesses the design names by file, each grounded to its own
+#: exact line.
+#:
+#: - ``jsonl_recorder_session_dir_timestamp`` / ``jsonl_recorder_summary_
+#:   ended_at`` / ``jsonl_recorder_export_zip_timestamp`` are
+#:   ``engine/observers/jsonl_recorder.py``'s three call sites (lines 90, 156,
+#:   181): a session-directory name, the ``"ended_at"`` field written into
+#:   that session's own ``summary.json``, and a debug-zip filename. None of
+#:   these three is read by ``tools/regression_test.py`` or ``tools/
+#:   vault_regression.py`` today (``JsonlSessionRecorder`` is the black-box
+#:   forensics observer, never the golden-vault/regression harness), so
+#:   nothing currently byte-compares them — but the file it writes (``summary.
+#:   json``, ``metrics.jsonl``) is exactly the shape of artifact a future
+#:   replay/diff tool would want to compare, so the read is flagged rather
+#:   than silently trusted to stay out of scope forever.
+#: - ``tick_state_recorder_generated_at`` is ``engine/observers/metrics.py``
+#:   line 209: the ``"generated_at"`` field of ``TickStateRecorder.to_json()``
+#:   — a run-metadata JSON export. Verified: ``export_json``/``to_json`` have
+#:   zero production callers anywhere in ``src/``/``tools/``/``web/`` today
+#:   (a `disconnected-subsystem`-shaped observation this unit does not
+#:   separately register — the wall-clock read is the finding this check
+#:   owns), so the field cannot reach any comparison harness that does not
+#:   yet call it either.
+#: - ``run_manifest_wallclock_start`` / ``run_manifest_wallclock_end`` are
+#:   ``engine/headless_runner/runner.py`` lines 1132/1368 — "the run
+#:   manifest" witness: they populate ``build_manifest``'s (``engine/
+#:   headless_runner/manifest.py``) ``non_deterministic_inputs.wallclock_
+#:   start``/``wallclock_end``. ``manifest.py``'s own ``input_hash()`` takes
+#:   ONLY ``deterministic_inputs`` as its parameter — ``non_deterministic_
+#:   inputs`` (where these two fields live) is structurally unreachable from
+#:   it, and the module's own docstring already declares "two runs with the
+#:   same hash MUST produce byte-identical trace.csv and summary.json
+#:   (modulo declared wallclock / hostname fields)" — the exclusion is a
+#:   pre-existing, grounded, DECLARED design fact, not a gap this unit
+#:   discovers. Held open via :data:`WALLCLOCK_EXEMPTIONS` all the same
+#:   (uniform family discipline: every live wall-clock read in a P-tier
+#:   producer gets a dated row, whether the disposition is "hoist" or
+#:   "proven excluded, tolerated as-is").
+WALLCLOCK_REGISTRY: Final[tuple[WallclockCallSite, ...]] = (
+    WallclockCallSite(
+        name="jsonl_recorder_session_dir_timestamp",
+        def_file="src/babylon/engine/observers/jsonl_recorder.py",
+        line=90,
+        wallclock_call="datetime.now",
+        artifact="JsonlSessionRecorder session-directory name (path-shaping, not artifact content)",
+    ),
+    WallclockCallSite(
+        name="jsonl_recorder_summary_ended_at",
+        def_file="src/babylon/engine/observers/jsonl_recorder.py",
+        line=156,
+        wallclock_call="datetime.now",
+        artifact="JsonlSessionRecorder summary.json 'ended_at' field",
+    ),
+    WallclockCallSite(
+        name="jsonl_recorder_export_zip_timestamp",
+        def_file="src/babylon/engine/observers/jsonl_recorder.py",
+        line=181,
+        wallclock_call="datetime.now",
+        artifact="JsonlSessionRecorder export_package() debug-zip filename",
+    ),
+    WallclockCallSite(
+        name="tick_state_recorder_generated_at",
+        def_file="src/babylon/engine/observers/metrics.py",
+        line=209,
+        wallclock_call="datetime.now",
+        artifact="TickStateRecorder.to_json() 'generated_at' field",
+    ),
+    WallclockCallSite(
+        name="run_manifest_wallclock_start",
+        def_file="src/babylon/engine/headless_runner/runner.py",
+        line=1132,
+        wallclock_call="datetime.now",
+        artifact="build_manifest() non_deterministic_inputs.wallclock_start",
+    ),
+    WallclockCallSite(
+        name="run_manifest_wallclock_end",
+        def_file="src/babylon/engine/headless_runner/runner.py",
+        line=1368,
+        wallclock_call="datetime.now",
+        artifact="build_manifest() non_deterministic_inputs.wallclock_end",
+    ),
+)
+
+#: The six day-one wall-clock dispositions (design §3.2 point 4 / §9 item 4's
+#: exemption-with-rationale default — this Amendment-S read-only lane may not
+#: hoist a clock provider or edit these production files' own control flow).
+#: Every row cites its recommended fix, per the U7 task brief.
+WALLCLOCK_EXEMPTIONS: Final[tuple[SentinelExemption, ...]] = (
+    SentinelExemption(
+        key=("wallclock", "jsonl_recorder_session_dir_timestamp"),
+        reason=(
+            "engine/observers/jsonl_recorder.py:90 uses datetime.now() to name the "
+            "session directory (JsonlSessionRecorder.on_simulation_start). This shapes "
+            "a PATH, not the content of any hashed/compared artifact -- two runs writing "
+            "to two different session directories is the intended forensics behavior "
+            "(each run gets its own debug bundle), not non-determinism in a value under "
+            "comparison. RECOMMENDED FIX: inject a clock/session-id provider (e.g. an "
+            "explicit session_id parameter, already available at construction) so the "
+            "directory name is derived from a caller-supplied identity rather than a "
+            "direct wall-clock read, for testability -- not required for correctness."
+        ),
+        owner="Persephone Raskova",
+        date="2026-07-21",
+        tracking_task="N/A (BD-owed hoist-vs-tolerate disposition per design "
+        "ai/_inbox/t11-seam-severity-design.md §3.2 point 4; no tracking ticket opened)",
+    ),
+    SentinelExemption(
+        key=("wallclock", "jsonl_recorder_summary_ended_at"),
+        reason=(
+            "engine/observers/jsonl_recorder.py:156 writes datetime.now().isoformat() as "
+            "the 'ended_at' field of that session's own summary.json "
+            "(JsonlSessionRecorder.on_simulation_end). Verified: this summary.json is a "
+            "black-box forensics artifact -- neither tools/regression_test.py nor tools/"
+            "vault_regression.py reads it; no committed golden pins its bytes today. "
+            "RECOMMENDED FIX: if this summary.json is ever admitted into a byte-identity "
+            "comparison, hoist 'ended_at' into a non_deterministic_inputs-shaped sibling "
+            "block excluded from that comparison, mirroring engine/headless_runner/"
+            "manifest.py's own wallclock/hostname exclusion pattern."
+        ),
+        owner="Persephone Raskova",
+        date="2026-07-21",
+        tracking_task="N/A (BD-owed hoist-vs-tolerate disposition per design "
+        "ai/_inbox/t11-seam-severity-design.md §3.2 point 4; no tracking ticket opened)",
+    ),
+    SentinelExemption(
+        key=("wallclock", "jsonl_recorder_export_zip_timestamp"),
+        reason=(
+            "engine/observers/jsonl_recorder.py:181 uses datetime.now() to name the "
+            "debug-zip file produced by export_package(). Shapes a FILENAME, not the "
+            "content of the zip's own members (metrics.jsonl/events.jsonl/narrative.jsonl/"
+            "summary.json, each written earlier by on_tick/on_simulation_end) -- no "
+            "comparison harness reads a zip filename as data. RECOMMENDED FIX: as above, "
+            "accept an explicit identity/clock parameter for testability if this path is "
+            "ever asserted on directly."
+        ),
+        owner="Persephone Raskova",
+        date="2026-07-21",
+        tracking_task="N/A (BD-owed hoist-vs-tolerate disposition per design "
+        "ai/_inbox/t11-seam-severity-design.md §3.2 point 4; no tracking ticket opened)",
+    ),
+    SentinelExemption(
+        key=("wallclock", "tick_state_recorder_generated_at"),
+        reason=(
+            "engine/observers/metrics.py:209 writes datetime.now(UTC).isoformat() as the "
+            "'generated_at' field of TickStateRecorder.to_json()/export_json(). Verified: "
+            "to_json/export_json have zero production callers anywhere in src/, tools/, or "
+            "web/ today -- the field cannot reach any comparison harness that does not yet "
+            "call the method producing it. RECOMMENDED FIX: mirror tools/regression_test."
+            "py's own precedent -- its structurally analogous 'generated_at' field is "
+            "explicitly a.pop('generated_at', None) / b.pop(...) before any byte "
+            "comparison (regression_test.py:1440-1441); if to_json() is ever wired into a "
+            "compared harness, exclude 'generated_at' from that comparison the same way, "
+            "or accept an injectable clock."
+        ),
+        owner="Persephone Raskova",
+        date="2026-07-21",
+        tracking_task="N/A (BD-owed hoist-vs-tolerate disposition per design "
+        "ai/_inbox/t11-seam-severity-design.md §3.2 point 4; no tracking ticket opened)",
+    ),
+    SentinelExemption(
+        key=("wallclock", "run_manifest_wallclock_start"),
+        reason=(
+            "engine/headless_runner/runner.py:1132 reads datetime.now(UTC) into "
+            "wallclock_start, fed to build_manifest()'s non_deterministic_inputs (engine/"
+            "headless_runner/manifest.py). PROVEN excluded from the byte-identity "
+            "contract by construction: input_hash(deterministic_inputs) takes ONLY the "
+            "deterministic_inputs dict as its parameter -- non_deterministic_inputs "
+            "(where wallclock_start lives) is not reachable from it at all -- and "
+            "manifest.py's own module docstring already declares the exclusion ('modulo "
+            "declared wallclock / hostname fields'). Not a gap; a pre-existing, grounded "
+            "design fact. RECOMMENDED FIX: none required; if a future change ever widens "
+            "input_hash's own parameter to accept non_deterministic_inputs, this "
+            "exemption must be revisited immediately."
+        ),
+        owner="Persephone Raskova",
+        date="2026-07-21",
+        tracking_task="N/A (grounded exclusion, not a live gap; revisit only if "
+        "input_hash()'s own signature ever changes)",
+    ),
+    SentinelExemption(
+        key=("wallclock", "run_manifest_wallclock_end"),
+        reason=(
+            "engine/headless_runner/runner.py:1368 reads datetime.now(UTC) into "
+            "wallclock_end -- the sibling half of run_manifest_wallclock_start above; "
+            "same grounded exclusion (non_deterministic_inputs is unreachable from "
+            "input_hash's own parameter list, and manifest.py's docstring already "
+            "declares wallclock excluded)."
+        ),
+        owner="Persephone Raskova",
+        date="2026-07-21",
+        tracking_task="N/A (grounded exclusion, not a live gap; revisit only if "
+        "input_hash()'s own signature ever changes)",
+    ),
+)
+
+#: F-EC-2 and F-3 (T1.1 U7, design §3.3 table): two named day-one findings with
+#: NO corresponding live seam-algebra check -- F-EC-2's full L-ACC static check
+#: is R-EC-2, explicitly staged post-T1.1 (design §3.2 point 4 / §4 U7's own
+#: "NOT a new check day-one"); F-3's "warn instead of raise" pattern has no
+#: generic "raise-vs-warn" scanner in this family either. Both are still
+#: recorded here via the SAME dated :class:`~babylon.sentinels.exemptions.
+#: SentinelExemption` shape every OTHER disposition in this family uses (gate-
+#: governance ruling, 2026-07-18: one exemption model, never a bespoke class) —
+#: `is_exempt` is never called against these two rows by any checker (there is
+#: none to call it), but the row itself is the durable, dated, owner-visible
+#: record the day-one catch-list integration test
+#: (``tests/unit/sentinels/test_seam_algebra_catch_list.py``) asserts exists,
+#: with a rationale, for every named F-* finding.
+OPEN_FINDINGS_LEDGER: Final[tuple[SentinelExemption, ...]] = (
+    SentinelExemption(
+        key=("finding", "F-EC-2"),
+        reason=(
+            "ooda/state_ai/decision.py:504 scores each candidate action as "
+            "faction_score + esc_score + rng.uniform(0.0, 0.01) -- a soft-dither "
+            "tiebreaker added to every combined score before the top-N selection sort. "
+            "This is NOT a wall-clock read (rng is seeded, deterministic given the "
+            "engine's own RNG discipline) -- it is a literal-constant dither range "
+            "(0.0, 0.01) with no declared calculator computing the dither width from real "
+            "inputs, closer in shape to a stub-vs-calculator finding than a gate or a "
+            "wall-clock leak, which is why no new check owns it day-one. RECOMMENDED FIX "
+            "(i), per the design brief: replace the dither with a true argmax over "
+            "(faction_score, esc_score) with an explicit, declared tie-breaking rule "
+            "(e.g. stable candidate-declaration order) rather than a randomized nudge -- "
+            "removing the dither entirely rather than deriving its width. The full "
+            "L-ACC (literal-as-constant) static check that would generalize this "
+            "finding across the codebase is R-EC-2, explicitly staged post-T1.1 (design "
+            "§3.2 point 4)."
+        ),
+        owner="Persephone Raskova",
+        date="2026-07-21",
+        tracking_task="N/A (BD-owed disposition; full L-ACC static check is the staged "
+        "R-EC-2 follow-on, design ai/_inbox/t11-seam-severity-design.md §3.2 point 4)",
+    ),
+    SentinelExemption(
+        key=("finding", "F-3"),
+        reason=(
+            "domain/economics/substrate/conservation.py's DefaultConservationChecker "
+            "(check_total_capital et al., e.g. line 106) logs a logger.warning(...) and "
+            "returns False on a conservation violation rather than raising -- 'non-halting "
+            "... per FR-015' by the module's own docstring, predating the current "
+            "Constitution's III.11 Loud Failure article. Held open as a declared "
+            "disposition pending an owner re-read: FR-015's non-halting intent may still "
+            "be correct (a conservation checker that halts the whole simulation on a "
+            "sub-tolerance floating-point drift could be worse than the drift itself), or "
+            "III.11 may now supersede it. RECOMMENDED FIX: either (a) re-affirm FR-015 "
+            "explicitly under III.11 (a logged warning IS the loud behavior for a "
+            "non-halting invariant, by design), or (b) raise a dedicated "
+            "ConservationViolation exception class the caller may choose to catch, "
+            "converting the current silent-continue into an explicit opt-in tolerance. "
+            "Changing this is a production economics-code decision outside this "
+            "Amendment-S read-only diagnostics lane's remit."
+        ),
+        owner="Persephone Raskova",
+        date="2026-07-21",
+        tracking_task="N/A (BD-owed raise-vs-warn re-read under the current "
+        "Constitution; design ai/_inbox/t11-seam-severity-design.md §9 item 4)",
     ),
 )

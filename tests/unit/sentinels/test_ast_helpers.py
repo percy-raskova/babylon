@@ -28,6 +28,7 @@ from babylon.sentinels._ast import (
     parse_module,
     referenced_names,
     returned_dict_keys,
+    wallclock_call_lines,
 )
 from babylon.sentinels.base import SentinelCheckError
 
@@ -666,3 +667,77 @@ def test_function_return_annotation_name_raises_on_unparseable_source(tmp_path: 
     target.write_text("def (:\n", encoding="utf-8")
     with pytest.raises(SentinelCheckError):
         function_return_annotation_name(target, "f")
+
+
+# ---------------------------------------------------------------------------
+# wallclock_call_lines (T1.1 U7 wall-clock-call-site check)
+# ---------------------------------------------------------------------------
+
+
+def test_wallclock_call_lines_finds_a_plain_datetime_now(tmp_path: Path) -> None:
+    target = tmp_path / "m.py"
+    target.write_text(
+        "from datetime import datetime\n\nx = datetime.now().isoformat()\n", encoding="utf-8"
+    )
+    assert wallclock_call_lines(target) == [(3, "datetime.now")]
+
+
+def test_wallclock_call_lines_finds_datetime_utcnow(tmp_path: Path) -> None:
+    target = tmp_path / "m.py"
+    target.write_text("from datetime import datetime\n\nx = datetime.utcnow()\n", encoding="utf-8")
+    assert wallclock_call_lines(target) == [(3, "datetime.utcnow")]
+
+
+def test_wallclock_call_lines_finds_an_aliased_module_chain(tmp_path: Path) -> None:
+    """``import datetime as _dt; _dt.datetime.now(_dt.UTC)`` -- the real
+    runner.py shape -- is still recognized via the final two dotted
+    components of the callee."""
+    target = tmp_path / "m.py"
+    target.write_text("import datetime as _dt\n\nx = _dt.datetime.now(_dt.UTC)\n", encoding="utf-8")
+    assert wallclock_call_lines(target) == [(3, "datetime.now")]
+
+
+def test_wallclock_call_lines_finds_time_module_calls(tmp_path: Path) -> None:
+    target = tmp_path / "m.py"
+    target.write_text(
+        "import time\n\na = time.time()\nb = time.perf_counter()\nc = time.monotonic()\n",
+        encoding="utf-8",
+    )
+    assert wallclock_call_lines(target) == [
+        (3, "time.time"),
+        (4, "time.perf_counter"),
+        (5, "time.monotonic"),
+    ]
+
+
+def test_wallclock_call_lines_ignores_an_unrelated_dotnow_call(tmp_path: Path) -> None:
+    """A `.now()`/`.time()` call NOT rooted at a `datetime`/`time`-named
+    identifier is never misread as a wall-clock read (the documented
+    heuristic boundary)."""
+    target = tmp_path / "m.py"
+    target.write_text("x = clock.now()\ny = stopwatch.time()\n", encoding="utf-8")
+    assert wallclock_call_lines(target) == []
+
+
+def test_wallclock_call_lines_ignores_a_bare_name_call(tmp_path: Path) -> None:
+    """A bare-name call (``now()``, no attribute access at all) is invisible
+    to this rule -- honest absence, mirrors every other extractor's boundary."""
+    target = tmp_path / "m.py"
+    target.write_text("x = now()\n", encoding="utf-8")
+    assert wallclock_call_lines(target) == []
+
+
+def test_wallclock_call_lines_deduplicates_multiple_hits_on_one_line(tmp_path: Path) -> None:
+    target = tmp_path / "m.py"
+    target.write_text(
+        "from datetime import datetime\n\nx = (datetime.now(), datetime.now())\n",
+        encoding="utf-8",
+    )
+    assert wallclock_call_lines(target) == [(3, "datetime.now")]
+
+
+def test_wallclock_call_lines_raises_on_unparseable_source(tmp_path: Path) -> None:
+    target = tmp_path / "broken.py"
+    target.write_text("def (:\n", encoding="utf-8")
+    with pytest.raises(SentinelCheckError):
+        wallclock_call_lines(target)

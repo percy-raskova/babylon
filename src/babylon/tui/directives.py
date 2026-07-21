@@ -24,7 +24,9 @@ from textual.message import Message
 from textual.widgets import Label
 from textual.widgets._markdown import MarkdownFence
 
+from babylon.models.enums import CommunityType
 from babylon.projection.topology.choropleth import ChoroplethCell, MapTier
+from babylon.projection.topology.incidence import AdjacencyMatrix, IncidenceMatrix
 from babylon.tui.topology.egotree import parse_egotree_body, render_egotree
 
 DIRECTIVE_RE: Final = re.compile(r"^\{(\w+)\}\s*(.*)$")
@@ -204,6 +206,166 @@ def parse_maproom_body(body: str) -> tuple[MapTier, tuple[ChoroplethCell, ...]]:
     return tier, tuple(cells)
 
 
+def _split_matrix_line(line: str) -> tuple[str, str]:
+    """Split one ``{matrix}`` body line into ``(key, rest)``.
+
+    :raises ValueError: if the line has no ``':'`` separator.
+    """
+    key, sep, rest = line.partition(":")
+    if not sep:
+        raise ValueError(f"{{matrix}} line has no ':' separator: {line!r}")
+    return key.strip(), rest
+
+
+def _parse_csv_line(rest: str) -> tuple[str, ...]:
+    """Split a comma-separated ``{matrix}`` line remainder into trimmed parts."""
+    return tuple(part.strip() for part in rest.split(",") if part.strip())
+
+
+def _parse_matrix_lines(
+    body: str,
+) -> tuple[str, tuple[str, ...], tuple[str, ...] | None, dict[str, tuple[str, ...]]]:
+    """Parse every line of a ``{matrix}`` body into its four declared parts.
+
+    :raises ValueError: no ``kind:`` line (or an unrecognized one), no
+        ``nodes:`` line, or a line with no ``':'`` separator.
+    :returns: ``(kind, nodes, hyperedges, rows)`` — ``hyperedges`` is
+        ``None`` when no ``edges:`` line was present; ``rows`` maps every
+        other declared key to its comma-separated targets.
+    """
+    kind: str | None = None
+    nodes: tuple[str, ...] | None = None
+    hyperedges: tuple[str, ...] | None = None
+    rows: dict[str, tuple[str, ...]] = {}
+    for line in (raw.strip() for raw in body.splitlines()):
+        if not line:
+            continue
+        key, rest = _split_matrix_line(line)
+        if key == "kind":
+            candidate = rest.strip()
+            if candidate not in ("incidence", "adjacency"):
+                raise ValueError(f"{{matrix}} kind must be incidence/adjacency, got {candidate!r}")
+            kind = candidate
+        elif key == "nodes":
+            nodes = _parse_csv_line(rest)
+        elif key == "edges":
+            hyperedges = _parse_csv_line(rest)
+        else:
+            rows[key] = _parse_csv_line(rest)
+    if kind is None:
+        raise ValueError("{matrix} body must declare a 'kind: incidence|adjacency' line")
+    if nodes is None:
+        raise ValueError("{matrix} body must declare a 'nodes: ...' line")
+    return kind, nodes, hyperedges, rows
+
+
+def _build_incidence_matrix(
+    nodes: tuple[str, ...],
+    hyperedges: tuple[str, ...] | None,
+    rows: dict[str, tuple[str, ...]],
+) -> IncidenceMatrix:
+    """Build an :class:`IncidenceMatrix` from a parsed ``kind: incidence`` body.
+
+    :raises ValueError: no ``edges:`` line, or a row references an
+        undeclared edge (an unrecognized ``CommunityType`` value surfaces
+        as :class:`ValueError` from the enum constructor itself).
+    """
+    if hyperedges is None:
+        raise ValueError("{matrix} kind: incidence body must declare an 'edges: ...' line")
+    unknown_targets = {t for targets in rows.values() for t in targets} - set(hyperedges)
+    if unknown_targets:
+        raise ValueError(
+            f"{{matrix}} row(s) reference undeclared edge(s): {sorted(unknown_targets)}"
+        )
+    cells = tuple(tuple(edge in rows.get(node, ()) for edge in hyperedges) for node in nodes)
+    return IncidenceMatrix(
+        nodes=nodes,
+        hyperedges=tuple(CommunityType(edge) for edge in hyperedges),
+        cells=cells,
+    )
+
+
+def _build_adjacency_matrix(
+    nodes: tuple[str, ...],
+    hyperedges: tuple[str, ...] | None,
+    rows: dict[str, tuple[str, ...]],
+) -> AdjacencyMatrix:
+    """Build an :class:`AdjacencyMatrix` from a parsed ``kind: adjacency`` body.
+
+    :raises ValueError: an ``edges:`` line was present, a row references an
+        undeclared node, or a connection is declared in only one direction.
+    """
+    if hyperedges is not None:
+        raise ValueError("{matrix} kind: adjacency body must not declare an 'edges: ...' line")
+    unknown_targets = {t for targets in rows.values() for t in targets} - set(nodes)
+    if unknown_targets:
+        raise ValueError(
+            f"{{matrix}} row(s) reference undeclared node(s): {sorted(unknown_targets)}"
+        )
+    declared = {(node, target) for node, targets in rows.items() for target in targets}
+    for node, target in declared:
+        if (target, node) not in declared:
+            raise ValueError(
+                f"{{matrix}} adjacency {node!r}<->{target!r} is not declared symmetrically"
+            )
+    cells = tuple(
+        tuple(row_node != col_node and (row_node, col_node) in declared for col_node in nodes)
+        for row_node in nodes
+    )
+    return AdjacencyMatrix(nodes=nodes, cells=cells)
+
+
+def parse_matrix_body(body: str) -> IncidenceMatrix | AdjacencyMatrix:
+    """Parse a ``{matrix}`` fence body into an incidence or adjacency grid.
+
+    Line-oriented body format, no external fixture required (mirrors
+    :func:`parse_paoh_body`/:func:`parse_maproom_body`)::
+
+        kind: incidence
+        nodes: alpha, beta, gamma
+        edges: settler, women
+        alpha: settler
+        beta: settler, women
+        gamma: women
+
+    or::
+
+        kind: adjacency
+        nodes: alpha, beta, gamma
+        alpha: beta
+        beta: alpha, gamma
+        gamma: beta
+
+    Each node's line lists the *other* labels it connects to (hyperedges for
+    ``incidence``, nodes for ``adjacency``) — an absent node line means "no
+    connections," never an error (mirrors :func:`parse_paoh_body`'s
+    member-list idiom). ``adjacency`` connections must be declared in both
+    directions — a one-sided declaration is a malformed body, not a fact
+    this parser silently repairs by auto-symmetrizing.
+
+    :param body: the raw fenced code block content.
+    :raises ValueError: no ``kind:`` line (or an unrecognized one), no
+        ``nodes:`` line, a row naming an undeclared node, an ``incidence``
+        body missing its ``edges:`` line (or an ``adjacency`` body carrying
+        one), a row referencing an undeclared edge/node, an ``incidence``
+        edge that is not a real :class:`~babylon.models.enums.CommunityType`
+        value, or an ``adjacency`` connection declared in only one
+        direction.
+    :returns: An :class:`~babylon.projection.topology.incidence.
+        IncidenceMatrix` or :class:`~babylon.projection.topology.incidence.
+        AdjacencyMatrix` built directly from the parsed body — a baked page
+        carries its own numbers (III.13), it never re-runs the live
+        community-projection ordering provider at render time.
+    """
+    kind, nodes, hyperedges, rows = _parse_matrix_lines(body)
+    unknown_rows = set(rows) - set(nodes)
+    if unknown_rows:
+        raise ValueError(f"{{matrix}} row(s) name undeclared node(s): {sorted(unknown_rows)}")
+    if kind == "incidence":
+        return _build_incidence_matrix(nodes, hyperedges, rows)
+    return _build_adjacency_matrix(nodes, hyperedges, rows)
+
+
 class BabylonFence(MarkdownFence):
     """Dispatch on the fence info string: ``'{name} args'`` -> a directive;
     anything else still syntax-highlights as an ordinary code fence."""
@@ -355,6 +517,26 @@ class BabylonFence(MarkdownFence):
         # Lane T topology surfaces, so the shared look is apt, not a hack.
         yield Label(render_egotree(tree), classes="paoh", markup=True)
 
+    def _directive_matrix(self, _arg: str) -> ComposeResult:
+        try:
+            matrix = parse_matrix_body(self.code)
+        except ValueError as exc:
+            yield Label(f"▌ ABSENT — {{matrix}} {exc}", classes="absence")
+            return
+        if not matrix.nodes:
+            yield Label("▌ no incidence/adjacency data for this matrix", classes="absence")
+            return
+        # Local import, matching `_directive_maproom`'s own discipline: the
+        # renderer lives in `babylon.tui.topology.matrix`, not this module.
+        from babylon.tui.topology.matrix import render_adjacency_matrix, render_incidence_matrix
+
+        text = (
+            render_incidence_matrix(matrix)
+            if isinstance(matrix, IncidenceMatrix)
+            else render_adjacency_matrix(matrix)
+        )
+        yield Label(text, classes="matrix", markup=True)
+
     # Public naming-convention handlers, not the underscore form: Textual
     # reserves `_on_<event>` for its own base-class interception (dispatch
     # checks `_{name}` before `{name}` per class in the MRO), and no base
@@ -382,5 +564,6 @@ __all__ = [
     "parse_paoh_body",
     "render_paoh",
     "parse_maproom_body",
+    "parse_matrix_body",
     "BabylonFence",
 ]

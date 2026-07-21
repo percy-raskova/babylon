@@ -5,6 +5,22 @@ T1.0 contract commit (84d8405a). Fast-dev mode: lanes commit locally; heavy cere
 (qa:regression byte gate, vault regression, baseline blessing) fires at MERGE time only,
 single-flight in this controller. This file is my scratch — supersede freely.
 
+## LANE STATUS (live — controller poll 2026-07-21 ~18:25)
+
+| Lane | Branch | HEAD | Workflow | Merge gate |
+|---|---|---|---|---|
+| T1.1 seam-severity | lane/t11-seam-severity | f40de06f | **RUNNING** | merges 1st |
+| T1.2 keel | lane/t12-keel | c4dc2f0c | **✓ DONE** (20/20, 0 err; K1–K5 verified in-code) | **HELD** behind T1.1; branch clean + rebased on 84d8405a, merge-ready |
+| Vol I | lane/vol1-value-production | 4627fc23 | RUNNING (U5 landed) | 3rd |
+| Vol II | lane/vol2-circulation | cee36f9a | RUNNING | 4th (rebase on Vol I) |
+| T4 core | lane/t4-campaign-core | aeb0cf91 | RUNNING | last |
+| T7 installer | lane/t7-installer | df41a963 | alpha (separate) | post-Gate-3 (T7-beta) |
+
+Nothing merges until T1.1 lands (dependency head). No heavy single-flight gate fires
+while >1 lane workflow is live. T1.2 verified units: K1 stdout-contract + default_level,
+K2 DSN seam (production.py HOST clobber + vault_regression bypass closed), K3 5-var RAYON
+pin == canonical, K4 severity pins restored, K5 declared-assumptions ledger.
+
 ## Merge order (dependency-forced)
 
 1. **T1.1 seam-severity** merges FIRST among the reflective/keel lanes — it publishes the
@@ -46,6 +62,28 @@ single-flight in this controller. This file is my scratch — supersede freely.
       committed artifact is byte-stable across regenerations (CI-no-drive).
 - [ ] **§10.2 dormancy-sentinel hoist**: lives in T1.1 keel, NOT the Vol lanes (recorded
       ADR103). Confirm neither Vol lane also built one (dedupe).
+- [x] **U5 runner-parity — LANDED by Vol I** (commit `4627fc23`, peer report
+      a3fac268ce84b6d82, 2026-07-21 18:xx). Per §10.3/ADR103 §10.2 the shared runner-parity
+      unit is Vol I's; the lane reached it first and, per the "whoever-reaches-it-first lands
+      BOTH families" contract, wired BOTH `create_vol1_services` (reserve_army/productivity/
+      dispossession/transition_engine) AND `create_circulation_services` (turnover/inventory/
+      depreciation) inside `_build_economics_overrides`'s existing `if scope_fips:` branch,
+      reusing the already-loaded fred_cache — mirrors `web/game/engine_bridge.py` Task 20b/21b.
+      New test `tests/unit/engine/headless_runner/test_vol1_vol2_parity_wiring.py` (RED→GREEN);
+      163-test headless_runner suite green; mypy/ruff clean.
+      **MERGE-TIME DISPOSITION:** (a) if the Vol II lane ALSO wired create_circulation_services
+      into its own runner.py copy, resolve the conflict toward Vol I's version (identical
+      intent) — harmless dedupe, NOT a re-wire; (b) do NOT re-run this unit. **VOL II LANE:
+      treat U5/runner-parity as SATISFIED — verify + scoped-test only, never re-touch
+      `_build_economics_overrides`.**
+- [ ] **Baseline drift now has a NAMED cause (Vol I ceremony)**: U5 genuinely ACTIVATES
+      `_compute_vol1_layer` (median_wage wage-pressure) AND `_compute_circulation_layer`
+      (circulation_state) for every headless run whose `scope_fips` is non-empty (always, in
+      real runs) at any year boundary with FRED coverage. median_wage / circulation_state /
+      downstream phi_hour / wealth channels move in EVERY scenario. This is the "Vol I = real
+      value drift expected" ceremony line — attribute the drift table to U5 activation at
+      blessing time; do NOT let it read as a surprise. (Vol II's own ceremony stays "likely
+      all-zero-with-reason" until vol2_step is lit by its U4.)
 
 ## Post-merge cleanup units (from the fork's research passes — file as small PRs, not blockers)
 

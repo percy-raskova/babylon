@@ -19,7 +19,7 @@ UNKNOWN_TICKS = 20
 
 
 def _entry(node_id: str = "T1", field_group: str = "political", tick_observed: int = 10):
-    from game.fog.ledger import IntelEntry
+    from babylon.projection.fog.ledger import IntelEntry
 
     return IntelEntry(
         node_id=node_id,
@@ -31,7 +31,7 @@ def _entry(node_id: str = "T1", field_group: str = "political", tick_observed: i
 
 class TestFreshEntryIsExact:
     def test_fresh_entry_reads_exact(self) -> None:
-        from game.fog.ledger import IntelLedger, read_intel
+        from babylon.projection.fog.ledger import IntelLedger, read_intel
 
         ledger = IntelLedger().append(_entry(tick_observed=10))
 
@@ -51,7 +51,7 @@ class TestFreshEntryIsExact:
     def test_exact_at_the_staleness_boundary_inclusive(self) -> None:
         """age == staleness_ticks is still exact (boundary is inclusive on
         the fresh side, per the plan's 'fresher than' / 'older' split)."""
-        from game.fog.ledger import IntelLedger, read_intel
+        from babylon.projection.fog.ledger import IntelLedger, read_intel
 
         ledger = IntelLedger().append(_entry(tick_observed=10))
 
@@ -69,7 +69,7 @@ class TestFreshEntryIsExact:
 
 class TestAgedEntryIsApproximate:
     def test_aged_entry_reads_approximate_and_quantizes_numeric_fields(self) -> None:
-        from game.fog.ledger import IntelLedger, read_intel
+        from babylon.projection.fog.ledger import IntelLedger, read_intel
 
         ledger = IntelLedger().append(_entry(tick_observed=10))
 
@@ -91,7 +91,7 @@ class TestAgedEntryIsApproximate:
         assert reading.value_snapshot["dominant_class"] == "core_proletariat"
 
     def test_approximate_at_the_unknown_boundary_inclusive(self) -> None:
-        from game.fog.ledger import IntelLedger, read_intel
+        from babylon.projection.fog.ledger import IntelLedger, read_intel
 
         ledger = IntelLedger().append(_entry(tick_observed=10))
 
@@ -109,7 +109,7 @@ class TestAgedEntryIsApproximate:
 
 class TestStaleEntryIsUnknown:
     def test_stale_entry_reads_unknown(self) -> None:
-        from game.fog.ledger import IntelLedger, read_intel
+        from babylon.projection.fog.ledger import IntelLedger, read_intel
 
         ledger = IntelLedger().append(_entry(tick_observed=10))
 
@@ -129,7 +129,7 @@ class TestStaleEntryIsUnknown:
     def test_never_observed_is_unknown(self) -> None:
         """No entry at all for this (node_id, field_group) — honest unknown,
         never a fabricated default (Constitution III.11)."""
-        from game.fog.ledger import IntelLedger, read_intel
+        from babylon.projection.fog.ledger import IntelLedger, read_intel
 
         reading = read_intel(
             IntelLedger(),
@@ -148,7 +148,7 @@ class TestPureFunctionOfLedgerAndTick:
     def test_same_ledger_and_tick_yields_byte_identical_reading(self) -> None:
         """Same (ledger, tick) in => same reading out, every time — no
         hidden state, no clock reads, no randomness."""
-        from game.fog.ledger import IntelLedger, read_intel
+        from babylon.projection.fog.ledger import IntelLedger, read_intel
 
         ledger = IntelLedger().append(_entry(tick_observed=10))
 
@@ -172,7 +172,7 @@ class TestPureFunctionOfLedgerAndTick:
         assert first == second
 
     def test_most_recent_entry_wins_when_multiple_observations_exist(self) -> None:
-        from game.fog.ledger import IntelLedger, read_intel
+        from babylon.projection.fog.ledger import IntelLedger, read_intel
 
         ledger = IntelLedger().append(_entry(tick_observed=1)).append(_entry(tick_observed=10))
 
@@ -190,7 +190,7 @@ class TestPureFunctionOfLedgerAndTick:
 
 class TestAppendOnlyNoMutation:
     def test_append_returns_a_new_ledger_and_leaves_the_original_untouched(self) -> None:
-        from game.fog.ledger import IntelLedger
+        from babylon.projection.fog.ledger import IntelLedger
 
         original = IntelLedger()
         appended = original.append(_entry())
@@ -209,7 +209,7 @@ class TestAppendOnlyNoMutation:
     def test_ledger_is_frozen(self) -> None:
         from pydantic import ValidationError
 
-        from game.fog.ledger import IntelLedger
+        from babylon.projection.fog.ledger import IntelLedger
 
         ledger = IntelLedger()
         with pytest.raises(ValidationError):
@@ -217,11 +217,11 @@ class TestAppendOnlyNoMutation:
 
 
 class TestLedgerFromEvents:
-    """Track 1 / Task 3 (2026-07-18): :func:`~game.fog.ledger.ledger_from_events`
+    """Track 1 / Task 3 (2026-07-18): :func:`~babylon.projection.fog.ledger.ledger_from_events`
     — the ledger's actual writer. Folds persisted, ALREADY-FILTERED
     INVESTIGATE-resolution rows (the caller, ``engine_bridge.py``, owns the
     ``action_type == ActionType.MAP_NETWORK`` filter and every ``babylon.*``
-    import that requires) into an :class:`~game.fog.ledger.IntelLedger`.
+    import that requires) into an :class:`~babylon.projection.fog.ledger.IntelLedger`.
     Pure — no I/O, no globals — so these rows are plain dicts, never a real
     persistence handle."""
 
@@ -240,7 +240,7 @@ class TestLedgerFromEvents:
         }
 
     def test_one_row_becomes_one_reachable_entry(self) -> None:
-        from game.fog.ledger import ledger_from_events, read_intel
+        from babylon.projection.fog.ledger import ledger_from_events, read_intel
 
         ledger = ledger_from_events([self._row()])
 
@@ -257,12 +257,12 @@ class TestLedgerFromEvents:
         assert reading.tick_observed == 10
 
     def test_empty_rows_yields_an_empty_ledger(self) -> None:
-        from game.fog.ledger import IntelLedger, ledger_from_events
+        from babylon.projection.fog.ledger import IntelLedger, ledger_from_events
 
         assert ledger_from_events([]) == IntelLedger()
 
     def test_most_recent_row_wins_on_read(self) -> None:
-        from game.fog.ledger import ledger_from_events, read_intel
+        from babylon.projection.fog.ledger import ledger_from_events, read_intel
 
         rows = [
             self._row(tick=1, value_snapshot={"heat": 0.1}),
@@ -283,7 +283,7 @@ class TestLedgerFromEvents:
 
     def test_row_missing_target_id_is_skipped(self) -> None:
         """A partial row never fabricates a fake entry (Constitution III.11)."""
-        from game.fog.ledger import ledger_from_events
+        from babylon.projection.fog.ledger import ledger_from_events
 
         row = self._row()
         del row["target_id"]
@@ -292,7 +292,7 @@ class TestLedgerFromEvents:
         assert ledger.entries == ()
 
     def test_row_missing_value_snapshot_is_skipped(self) -> None:
-        from game.fog.ledger import ledger_from_events
+        from babylon.projection.fog.ledger import ledger_from_events
 
         row = self._row()
         row["value_snapshot"] = {}
@@ -301,7 +301,7 @@ class TestLedgerFromEvents:
         assert ledger.entries == ()
 
     def test_row_missing_field_group_is_skipped(self) -> None:
-        from game.fog.ledger import ledger_from_events
+        from babylon.projection.fog.ledger import ledger_from_events
 
         row = self._row()
         del row["field_group"]
@@ -310,7 +310,7 @@ class TestLedgerFromEvents:
         assert ledger.entries == ()
 
     def test_distinct_targets_produce_distinct_entries(self) -> None:
-        from game.fog.ledger import ledger_from_events
+        from babylon.projection.fog.ledger import ledger_from_events
 
         rows = [
             self._row(target_id="T1", value_snapshot={"heat": 0.1}),
@@ -329,7 +329,7 @@ class TestFutureDatedEntryFailsLoud:
     def test_tick_before_observation_raises(self) -> None:
         """An entry observed AFTER the query tick is a determinism bug (or
         clock skew) — fail loud rather than silently misclassify it."""
-        from game.fog.ledger import IntelLedger, read_intel
+        from babylon.projection.fog.ledger import IntelLedger, read_intel
 
         ledger = IntelLedger().append(_entry(tick_observed=50))
 

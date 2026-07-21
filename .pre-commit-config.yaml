@@ -167,11 +167,18 @@ repos:
     rev: v6.0.0
     hooks:
       - id: trailing-whitespace
-        # __snapshots__/*.raw: pytest-textual-snapshot goldens (ADR097/ADR099, III.13
-        # determinism). Rich's SVG export template emits a static whitespace-only line
-        # unconditionally; trimming it here would desync the committed golden from every
-        # future --snapshot-update byte-for-byte, breaking the same-state-same-bytes
-        # contract. Excluded, not fixed: this is generated/vendored, not hand-authored.
+        # tests/**/__snapshots__/**/*.raw: pytest-textual-snapshot goldens are
+        # Rich-exported SVG (ADR097/ADR099 snapshot lanes, III.13 determinism).
+        # Rich's own SVG template bakes in a fixed blank-with-spaces line (the
+        # title-bar gap) that is identical on every render — trimming it in the
+        # committed golden desyncs it from the live re-render `snap_compare`
+        # always produces, permanently red-gating the test (discovered
+        # independently by WO-16, WO-17, AND the ADR097 render seam; the
+        # pre-existing county golden has this same untrimmed line, silently
+        # relying on no hook having touched it since P1 keel). Broadest variant
+        # kept at the Wave-1 merge: integration-tier goldens live under
+        # tests/integration/**/__snapshots__/ too. Excluded, not fixed: these
+        # are generated artifacts, not hand-authored text.
         exclude: ^tests/.*/__snapshots__/.*\.raw$
       - id: end-of-file-fixer
       - id: check-yaml

@@ -16,14 +16,25 @@ pulls it into ``sys.modules`` merely by being on the import path.
 
 from __future__ import annotations
 
+import threading
 from pathlib import Path
-from typing import Final
+from typing import TYPE_CHECKING, Final
+
+if TYPE_CHECKING:
+    from collections.abc import Mapping
 
 from babylon.kernel.sim_clock import sim_datetime
 
 #: Fixed author/committer identity for every vault commit — the vault has
 #: one author, The Archive itself, never a wall-clock-derived human identity.
 _IDENTITY: Final[bytes] = b"The Archive <archive@babylon.local>"
+
+#: In-process single-writer discipline: the narrator side process (WO-42)
+#: commits from its worker thread while the tick baker commits from the
+#: main thread, and dulwich's stage/commit sequence is not safe against a
+#: concurrent writer on the same index file. One process, one committer at
+#: a time — cross-process writers remain out of contract.
+_COMMIT_LOCK: Final[threading.Lock] = threading.Lock()
 
 
 def init_vault(root: Path) -> None:
@@ -68,26 +79,92 @@ def commit_page(
     """
     from dulwich.repo import Repo
 
-    page_path = root / relative_path
-    page_path.parent.mkdir(parents=True, exist_ok=True)
-    page_path.write_text(content, encoding="utf8")
+    with _COMMIT_LOCK:
+        page_path = root / relative_path
+        page_path.parent.mkdir(parents=True, exist_ok=True)
+        page_path.write_text(content, encoding="utf8")
 
-    epoch_seconds = int(sim_datetime(tick).timestamp())
-    repo = Repo(str(root))
-    try:
-        worktree = repo.get_worktree()
-        worktree.stage([relative_path])
-        return worktree.commit(
-            message=message.encode("utf8"),
-            committer=_IDENTITY,
-            author=_IDENTITY,
-            commit_timestamp=epoch_seconds,
-            commit_timezone=0,
-            author_timestamp=epoch_seconds,
-            author_timezone=0,
-        )
-    finally:
-        repo.close()
+        epoch_seconds = int(sim_datetime(tick).timestamp())
+        repo = Repo(str(root))
+        try:
+            worktree = repo.get_worktree()
+            worktree.stage([relative_path])
+            return worktree.commit(
+                message=message.encode("utf8"),
+                committer=_IDENTITY,
+                author=_IDENTITY,
+                commit_timestamp=epoch_seconds,
+                commit_timezone=0,
+                author_timestamp=epoch_seconds,
+                author_timezone=0,
+            )
+        finally:
+            repo.close()
 
 
-__all__ = ["init_vault", "commit_page"]
+def commit_pages(
+    root: Path,
+    pages: Mapping[str, str],
+    *,
+    tick: int,
+    message: str,
+) -> bytes | None:
+    """Write many pages and commit ALL changes as ONE commit (WO-44).
+
+    The vault-at-scale contract: national scope bakes ~3,156 pages per
+    tick, so per-page commits would compound into ~1.64M commits over a
+    campaign. Two guards keep the repository proportional to *change*,
+    not to scope size:
+
+    * **Content-hash skip:** a page whose rendered bytes equal what is
+      already on disk is neither rewritten nor staged — an unchanged
+      county costs nothing.
+    * **One commit per tick:** every page that DID change is staged
+      together and committed once. No changes at all → no commit
+      (``None``), never an empty commit.
+
+    Determinism: pages are staged in sorted-path order, and the commit
+    metadata pins to sim time exactly as :func:`commit_page` — two
+    independent bakes of identical content produce identical shas (or
+    identically skip).
+
+    :param root: an initialized vault repo root (see :func:`init_vault`).
+    :param pages: relative POSIX page path → exact page content.
+    :param tick: the simulation tick driving the commit timestamp.
+    :param message: the commit message.
+    :returns: the commit sha, or ``None`` when every page was unchanged.
+    """
+    from dulwich.repo import Repo
+
+    with _COMMIT_LOCK:
+        changed: list[str] = []
+        for relative_path in sorted(pages):
+            content_bytes = pages[relative_path].encode("utf8")
+            page_path = root / relative_path
+            if page_path.exists() and page_path.read_bytes() == content_bytes:
+                continue
+            page_path.parent.mkdir(parents=True, exist_ok=True)
+            page_path.write_bytes(content_bytes)
+            changed.append(relative_path)
+        if not changed:
+            return None
+
+        epoch_seconds = int(sim_datetime(tick).timestamp())
+        repo = Repo(str(root))
+        try:
+            worktree = repo.get_worktree()
+            worktree.stage(changed)
+            return worktree.commit(
+                message=message.encode("utf8"),
+                committer=_IDENTITY,
+                author=_IDENTITY,
+                commit_timestamp=epoch_seconds,
+                commit_timezone=0,
+                author_timestamp=epoch_seconds,
+                author_timezone=0,
+            )
+        finally:
+            repo.close()
+
+
+__all__ = ["init_vault", "commit_page", "commit_pages"]

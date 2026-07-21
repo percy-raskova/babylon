@@ -890,6 +890,18 @@ run = "uv run pip-audit"
 description = "Regression test against stored baselines"
 run = "uv run python tools/regression_test.py compare"
 
+[tasks."qa:vault-regression"]
+description = "Golden-vault byte-gate (WO-51/Amendment W): two independent bakes per scenario, byte-identical to the committed manifests"
+run = "uv run python tools/vault_regression.py compare"
+
+[tasks."qa:vault-regression-ci"]
+description = "CI lane of the golden-vault byte-gate: the in-process single_county scenario only (CI has no Postgres — ADR064 two-tier; the runner-backed detroit leg runs in the dev-side qa:vault-regression)"
+run = "uv run python tools/vault_regression.py compare --scenario single_county"
+
+[tasks."qa:vault-regression-generate"]
+description = "Seed/regenerate golden-vault manifests (committing tests/baselines/vault/** is a §6.5 ceremony — Baselines: blessed(<slug>) trailer required)"
+run = "uv run python tools/vault_regression.py generate"
+
 [tasks."qa:regression-generate"]
 description = "Generate regression baselines (after intentional changes)"
 run = "uv run python tools/regression_test.py generate --force"
@@ -901,6 +913,10 @@ run = "uv run python tools/regression_test.py generate --force --dense"
 [tasks."archive:record-fixtures"]
 description = "Program 24 P1 keel item 5 (WO-6): harvest the Wayne (26163) county projection fixture from a small deterministic in-process run"
 run = "uv run python tools/record_projection_fixtures.py"
+
+[tasks."archive:record-fixtures-community"]
+description = "Program 24 P2 (WO-24): harvest the SETTLER community projection fixture from a small deterministic in-process run (honestly all-absent — no scenario wires a community_memberships producer)"
+run = "uv run python tools/record_community_fixture.py"
 
 [tasks."qa:e2e-regression"]
 description = "Run headless 5-tick tri-county sim with --strict, compare like-for-like baseline (spec-064; scope pairing fixed in spec-086 T038; dense golden leg added Task 10/E2b)"

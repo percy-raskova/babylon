@@ -72,7 +72,7 @@ from babylon.topology.graph_algorithms import (
 
 from .epilogues import EPILOGUES
 from .fog.filter import ORG_POLITICAL_FIELDS, POLITICAL_FIELDS, apply_fog, political_field_group
-from .fog.ledger import IntelLedger, ledger_from_events, read_intel
+from .fog.ledger import IntelLedger, read_intel
 from .fog.reach import organizing_reach
 from .log_handler import sanitize_for_log
 from .map_contract import MAP_HISTORY_REPLAYABLE_METRICS, MAP_METRIC_PROPERTIES
@@ -160,25 +160,16 @@ _ALERT_SEVERITIES = frozenset({"critical", "warning"})
 # See: specs/041-mvp-nationwide-sim/research.md §2
 # ---------------------------------------------------------------------- #
 
-# Verb-dispatch engine: all 9 canonical player verbs now have a real engine
-# resolver (``babylon.engine.actions.VERB_RESOLVERS``). This map is the sole
-# translation of player verb strings to engine ActionTypes; its values must
-# equal the resolver registry's keys (pinned by
-# ``tests/contract/verbs/test_registry.py``). ``get_available_actions()``
-# derives its output from this map, so every mapped verb is exposed.
-VERB_TO_ACTION_TYPE: dict[str, ActionType] = {
-    "educate": ActionType.EDUCATE,
-    "reproduce": ActionType.RECRUIT,
-    "attack": ActionType.ATTACK_INFRASTRUCTURE,
-    "mobilize": ActionType.PROTEST,
-    "campaign": ActionType.PROPAGANDIZE,
-    "aid": ActionType.PROVIDE_SERVICE,
-    "investigate": ActionType.MAP_NETWORK,
-    "move": ActionType.MOVE,
-    "negotiate": ActionType.PROPOSE_ALLIANCE,
-}
-
-CANONICAL_VERBS: frozenset[str] = frozenset(VERB_TO_ACTION_TYPE.keys())
+# Verb-dispatch engine: all 9 canonical player verbs have a real engine
+# resolver (``babylon.engine.actions.VERB_RESOLVERS``). The verb->ActionType
+# map RELOCATED to ``babylon.projection.verbs.preview`` (Program 24 P2
+# WO-38, verb read-side hoist) — re-imported here so the legacy bridge and
+# the TUI plate can never disagree; its values must equal the resolver
+# registry's keys (pinned by ``tests/contract/verbs/test_registry.py``).
+from babylon.projection.verbs.preview import (  # noqa: E402
+    CANONICAL_VERBS as CANONICAL_VERBS,  # noqa: PLC0414 — re-exported for game.api
+)
+from babylon.projection.verbs.preview import VERB_TO_ACTION_TYPE  # noqa: E402
 
 
 def _fetch_session_rng_seed_from_pool(pool: Any, session_id: UUID) -> int:
@@ -2002,38 +1993,9 @@ def _ternary_consciousness_or_none(ideology: dict[str, Any]) -> dict[str, float]
 #: Vision-state severity order for the max-fold in _class_vision_state.
 _VISION_ORDER: dict[str, int] = {"desert": 0, "mud": 1, "water": 2}
 
-#: Class-inspector fields the corpus gates by vision (fog-of-war.yaml
-#: §visibility: agitation / organization strength / allegiance are what the
-#: masses hold). Material/public fields (wealth, population, wages) are
-#: never gated — the corpus keeps public_info visible in every state.
-_VISION_GATED_CLASS_FIELDS: tuple[str, ...] = (
-    "agitation",
-    "class_consciousness",
-    "national_identity",
-    "organization",
-    "p_revolution",
-)
-
-#: Corpus Mud rule: "±0.2 margin of error" (fog-of-war.yaml:335). A bucket of
-#: width W bounds displayed error to W/2, so honoring a ±0.2 margin needs
-#: 0.4-wide buckets — a 0.2 quantum would ship TWICE the precision the corpus
-#: allows (the 2026-07-16 verify finding). Constitution III.7: masking must be
-#: a deterministic function of committed state — quantization, not noise.
-_MUD_QUANTUM = 0.4
-
-
-def _mud_quantize(value: float) -> float:
-    """One gated value onto the Mud grid: round-half-up (``floor(v/Q + 0.5)``),
-    clamped to [0, 1].
-
-    Explicit half-up, NOT Python's banker's ``round()``: half-to-even makes
-    grid boundaries flip direction by IEEE-754 representation accident
-    (0.3/0.2 evaluates to 1.4999…8 and rounds down while an exact 2.5 also
-    rounds down) — an undocumented rule the player could never learn. The
-    clamp keeps displayed values in the gated fields' [0, 1] domain (a raw
-    half-up grid would show 1.2 for a true 1.0).
-    """
-    return min(1.0, max(0.0, math.floor(value / _MUD_QUANTUM + 0.5) * _MUD_QUANTUM))
+# _VISION_GATED_CLASS_FIELDS / _MUD_QUANTUM / _mud_quantize RELOCATED to
+# babylon.projection.fog.class_vision (Program 24 P2 WO-41) — the gate
+# wrapper below delegates there; nothing else here read them.
 
 
 def _class_vision_state(graph: Any, class_id: str) -> str | None:
@@ -2073,37 +2035,14 @@ def _apply_class_vision_gate(payload: dict[str, Any], vision: str | None) -> Non
     (the DB is the engine's ledger, not the player's view); this gate runs
     only at the player-facing inspector boundary.
     """
-    if vision is None:
-        return
-    payload["class_vision"] = vision
-    if vision == "water":
-        return
-    if vision == "desert":
-        # Mask only fields ACTUALLY holding a value: an already-None field is
-        # honest data-absence, and claiming "the fog hid this" for it would
-        # conflate missing data with withheld data (III.11).
-        masked: list[str] = []
-        for field in _VISION_GATED_CLASS_FIELDS:
-            if payload.get(field) is not None:
-                payload[field] = None
-                masked.append(field)
-        if payload.get("consciousness") is not None:
-            payload["consciousness"] = None
-            masked.append("consciousness")
-        payload["vision_masked"] = masked
-        return
-    # mud — deterministic quantization (see _mud_quantize for the rule)
-    approx: list[str] = []
-    for field in _VISION_GATED_CLASS_FIELDS:
-        value = payload.get(field)
-        if isinstance(value, int | float):
-            payload[field] = _mud_quantize(float(value))
-            approx.append(field)
-    ternary = payload.get("consciousness")
-    if isinstance(ternary, dict):
-        payload["consciousness"] = {k: _mud_quantize(float(v)) for k, v in ternary.items()}
-        approx.append("consciousness")
-    payload["vision_approx"] = approx
+    # RELOCATED to the projection layer (Program 24 P2 WO-41) — delegate to
+    # the pure port so the TUI and this inspector share one gate rule; this
+    # wrapper preserves the legacy in-place mutation contract.
+    from babylon.projection.fog.class_vision import apply_class_vision
+
+    gated = apply_class_vision(payload, vision)
+    payload.clear()
+    payload.update(gated)
 
 
 #: G4: the veiled placeholder narrative — same copy as CircuitPage's
@@ -7538,23 +7477,12 @@ def _derive_intel_ledger(session_id: UUID) -> IntelLedger:
         (zero entries) for a fresh session or one with no recoverable
         INVESTIGATE history.
     """
-    rows = _query_investigate_action_results(session_id)
-    ledger_rows: list[dict[str, Any]] = []
-    for row in rows:
-        details = row.get("details") or {}
-        field_group = details.get("intel_field_group")
-        value_snapshot = details.get("intel_value_snapshot")
-        if not field_group or not value_snapshot:
-            continue
-        ledger_rows.append(
-            {
-                "tick": row.get("tick"),
-                "target_id": row.get("target_id"),
-                "field_group": field_group,
-                "value_snapshot": value_snapshot,
-            }
-        )
-    return ledger_from_events(ledger_rows)
+    # Fold RELOCATED to the projection layer (Program 24 P2 WO-40) — this
+    # shim keeps the query bridge-side and delegates the row->ledger fold so
+    # the legacy bridge and the Archive reader can never disagree.
+    from babylon.projection.fog.investigate import derive_intel_ledger
+
+    return derive_intel_ledger(_query_investigate_action_results(session_id))
 
 
 # Aliases accepted at the API/CLI boundary, mapped to canonical names in the
@@ -11487,24 +11415,11 @@ def _preview_consciousness_delta(
         The estimated collective-identity delta, or 0.0 when the action has no
         consciousness effect.
     """
-    from babylon.ooda.action_effects import compute_consciousness_delta
+    # RELOCATED to the projection layer (Program 24 P2 WO-38) — this shim
+    # delegates so bridge previews and the TUI plate share one math path.
+    from babylon.projection.verbs.preview import preview_consciousness_delta
 
-    defines = GameDefines()
-    # Mirror each resolver's own call signature exactly (see docstring above):
-    # only EDUCATE/CAMPAIGN pass doctrine in production; AID never does.
-    doctrine = (
-        defines.doctrine if action_type in (ActionType.EDUCATE, ActionType.PROPAGANDIZE) else None
-    )
-    delta = compute_consciousness_delta(
-        org_data,
-        target_id,
-        action_type,
-        graph,
-        defines.ooda,
-        defines.organization,
-        doctrine,
-    )
-    return float(delta.collective_identity_delta) if delta is not None else 0.0
+    return preview_consciousness_delta(org_data, target_id, action_type, graph)
 
 
 def _index_engine_action_results(
@@ -11607,25 +11522,11 @@ def _investigate_field_snapshot(
         ``{"field_group": ..., "value_snapshot": ...}`` ready to stash onto
         the persisted ``action_result`` row's ``details``, or ``None``.
     """
-    if action_type_enum is not ActionType.MAP_NETWORK or not target_id:
-        return None
-    revealed_by_target = direct_effects.get("revealed")
-    if not isinstance(revealed_by_target, dict):
-        return None
-    fields = revealed_by_target.get(target_id)
-    if not fields or target_id not in graph.nodes:
-        return None
-    node_data = graph.nodes[target_id]
-    node_type = node_data.get("_node_type")
-    if not node_type:
-        return None
-    value_snapshot = {field: node_data[field] for field in fields if field in node_data}
-    if not value_snapshot:
-        return None
-    return {
-        "field_group": political_field_group(str(node_type)),
-        "value_snapshot": value_snapshot,
-    }
+    # RELOCATED to the projection layer (Program 24 P2 WO-40) — delegate so
+    # bridge snapshots and the Archive writer share one freeze path.
+    from babylon.projection.fog.investigate import investigate_field_snapshot
+
+    return investigate_field_snapshot(action_type_enum, target_id, direct_effects, graph)
 
 
 def _persist_action_results(

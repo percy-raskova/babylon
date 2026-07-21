@@ -238,6 +238,31 @@ def _build_config(args: argparse.Namespace) -> SimulationRunConfig:
         liveness_gate=getattr(args, "liveness_gate", False),
         endgame_detector=getattr(args, "endgame_detector", None),
         write_baseline_to=getattr(args, "write_baseline", None),
+        vault_root=getattr(args, "vault_root", None),
+    )
+
+
+def _build_tick_commit_observer(config: SimulationRunConfig) -> TickCommitObserver | None:
+    """Construct the Archive tick-baker when ``--vault-root`` is set (WO-44).
+
+    ``None`` when no vault root is configured — the observer-free path is
+    the byte-identity contract qa:regression pins, so absence must stay
+    the exact pre-Archive behavior. The projection import is function-local
+    and downward-legal (the vault package documents being imported by the
+    runner post-commit); keeping it out of module scope means runs without
+    a vault never pay for jinja2/dulwich.
+
+    :param config: the frozen run config.
+    :returns: a wired ``CountyTickBaker``, or ``None``.
+    """
+    if config.vault_root is None:
+        return None
+    from babylon.projection.vault.materializer import VaultMaterializer
+    from babylon.projection.vault.tick_baker import ArchiveTickBaker
+
+    return ArchiveTickBaker(
+        VaultMaterializer(config.vault_root),
+        county_fips=tuple(config.scope_fips),
     )
 
 
@@ -1289,6 +1314,7 @@ def run(config: SimulationRunConfig) -> SimulationRunResult:
                     county_exposure_by_external=county_exposure_by_external,
                     external_nodes_phi=external_nodes_phi,
                     dense_rows=dense_rows,
+                    tick_commit_observer=_build_tick_commit_observer(config),
                 )
                 if endgame_event_payload is not None:
                     end_game_event = endgame_event_payload
@@ -1587,6 +1613,12 @@ def _tick_loop(
             expected_hash=determinism_hash_t0,
             expected_hex_rows=bridge.hex_template_size,
         )
+    if tick_commit_observer is not None and graph is not None:
+        # WO-44 tick-0 bake-gap fix: this bare persist_tick predates the
+        # observer seam and bypassed _advance_tick, so tick 0 — the
+        # starting state the player first opens the Archive on — was never
+        # baked. Same post-commit contract as _advance_tick's invocation.
+        tick_commit_observer.on_tick_committed(tick=0, world=world, graph=graph)
     _capture_dense_row(0)
 
     # Spec-102 SLICE B: shock timeline + persistent per-bloc multiplier

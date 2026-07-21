@@ -1200,6 +1200,70 @@ SPEC037_INDEXES_DDL: list[str] = [
 
 # ─── Aggregated DDL list ────────────────────────────────────────────
 
+#: The babylon_meta epistemic tier (Program 24 WO-46, charter P0 ruling 3).
+#: CLIENT-owned state — the Archive TUI writes these; the engine never reads
+#: or writes them, and no tick-hash input derives from them (the epistemic /
+#: material partition: fog-epistemic-vs-material). A dedicated Postgres
+#: schema makes the boundary structural: nothing under ``babylon_meta.*``
+#: can collide with the engine's public-schema Ledger tables.
+BABYLON_META_SCHEMA_DDL = """
+CREATE SCHEMA IF NOT EXISTS babylon_meta
+"""
+
+BABYLON_META_CAMPAIGN_DDL = """
+CREATE TABLE IF NOT EXISTS babylon_meta.campaign (
+    campaign_id UUID PRIMARY KEY,
+    slug TEXT NOT NULL UNIQUE,
+    engine_version TEXT NOT NULL,
+    defines_hash TEXT NOT NULL,
+    last_tick INTEGER NOT NULL DEFAULT 0 CHECK (last_tick >= 0),
+    status TEXT NOT NULL DEFAULT 'ACTIVE'
+        CHECK (status IN ('ACTIVE', 'ABANDONED')),
+    last_played_at TIMESTAMPTZ,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+)
+"""
+
+BABYLON_META_WATCHLIST_DDL = """
+CREATE TABLE IF NOT EXISTS babylon_meta.watchlist (
+    campaign_id UUID NOT NULL REFERENCES babylon_meta.campaign(campaign_id)
+        ON DELETE CASCADE,
+    position INTEGER NOT NULL CHECK (position >= 0),
+    entity_id TEXT NOT NULL,
+    PRIMARY KEY (campaign_id, position),
+    UNIQUE (campaign_id, entity_id)
+)
+"""
+
+BABYLON_META_JUMPLIST_DDL = """
+CREATE TABLE IF NOT EXISTS babylon_meta.jumplist (
+    campaign_id UUID NOT NULL REFERENCES babylon_meta.campaign(campaign_id)
+        ON DELETE CASCADE,
+    position INTEGER NOT NULL CHECK (position >= 0),
+    entity_id TEXT NOT NULL,
+    PRIMARY KEY (campaign_id, position)
+)
+"""
+
+BABYLON_META_BREADCRUMB_DDL = """
+CREATE TABLE IF NOT EXISTS babylon_meta.breadcrumb (
+    campaign_id UUID NOT NULL REFERENCES babylon_meta.campaign(campaign_id)
+        ON DELETE CASCADE,
+    position INTEGER NOT NULL CHECK (position >= 0),
+    entity_id TEXT NOT NULL,
+    PRIMARY KEY (campaign_id, position)
+)
+"""
+
+BABYLON_META_DDL: list[str] = [
+    BABYLON_META_SCHEMA_DDL,
+    BABYLON_META_CAMPAIGN_DDL,
+    BABYLON_META_WATCHLIST_DDL,
+    BABYLON_META_JUMPLIST_DDL,
+    BABYLON_META_BREADCRUMB_DDL,
+]
+
+
 POSTGRES_SCHEMA_DDL: list[str] = [
     *EXTENSIONS_DDL,
     # Layer 1: Game Management
@@ -1254,10 +1318,14 @@ POSTGRES_SCHEMA_DDL: list[str] = [
     *INDEXES_DDL,
     *SPEC037_INDEXES_DDL,
     *CLASS_SNAPSHOT_INDEXES_DDL,
+    # Layer 10: babylon_meta epistemic tier (Program 24 WO-46 — CLIENT-owned,
+    # never read by the engine, never a tick-hash input)
+    *BABYLON_META_DDL,
 ]
 
 
 __all__ = [
+    "BABYLON_META_DDL",
     "CLASS_SNAPSHOT_INDEXES_DDL",
     "INDEXES_DDL",
     "POSTGRES_SCHEMA_DDL",

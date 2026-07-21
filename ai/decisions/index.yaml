@@ -1,8 +1,14 @@
 meta:
-  version: 1.46.0
+  version: 1.47.0
   updated: '2026-07-21'
   description: Architecture Decision Records Index
   format: See individual ADR files in this directory
+  # ADR NUMBER ALLOCATION (controller ruling 2026-07-21, v1.0.0 parallel lanes —
+  # after a three-way 108/109 collision between mainline Amendment AA and both
+  # volume lanes). Blocks: mainline/controller = 109 + anything unallocated;
+  # Vol I lane = ADR110-119; Vol II lane = ADR120-129; T1.1 = ADR130-134;
+  # T1.2 = ADR135-139; T4 = ADR140-144; T7-beta = ADR145-149. Lanes never mint
+  # outside their block; blocks dissolve when the lane merges.
 decisions:
   ADR108_windows_portability_horizon:
     title: 'Amendment AA / Constitution v2.15.0 — Portability Horizon (BD-directed 2026-07-21): Windows = BINDING post-1.0.0 requirement, activated on concept-proven BD ruling; lane 1 WSL2 (existing flake channel promoted workaround→supported + doctor preflight), lane 2 native Windows (2.0.0 release, separate non-Nix channel ADR at activation); THE SHIELD: pre-1.0.0 dev constitutionally protected — no Windows CI/conditional paths/speculative abstractions, no v1.0 DoD item may reference Windows, pre-1.0 Windows work requires amending AA first; sole pre-1.0 duty = one-line Windows-impact disclosure in load-bearing platform ADRs + prefer-non-foreclosing on ties; named optionality seams: DSN TCP-loopback fallback point (keel K2) + ADR099 glyph floor (kitty graphics absent from Windows Terminal — the floor is what ports); X.8 letter revised in place (P pattern); Material-Triad slides to AB+'

@@ -35,10 +35,21 @@ mechanisms are composed here, not one reinvented:
 Scope boundary (read literally from the program plan, Part 2 "The campaign
 runtime"; everything below is a stated non-goal here, not a silent gap):
 the nationwide hex/econ hydration pipeline (``initialize_session`` /
-``WorldStateBridge``), the lobby's campaign-picker screen and the
-lobby-briefing-campaign multi-screen flow (``ArchiveApp`` is still
-single-page), the narrator, and the derived-severity autopause table
-(T1.1's concurrent build — see :data:`PausePredicate`).
+``WorldStateBridge``), the narrator, and the derived-severity autopause
+table (T1.1's concurrent build — see :data:`PausePredicate`).
+
+Unit C2 (the lobby's campaign-picker screen and the lobby->briefing->
+campaign-shell multi-screen flow, ``babylon.tui.app.ArchiveApp``) closes
+the "still single-page" gap the paragraph above used to name here: this
+module now additionally supports being booted with an EXPLICIT
+``session_id`` (:func:`create_new_campaign`'s ``session_id=`` parameter) so
+the lobby's own ``babylon_meta.campaign.campaign_id`` — a client-owned
+epistemic identity — can double as the engine's ``game_session.id``, one
+identity by construction rather than a maintained mapping between two
+separate ID spaces; and an optional injected :data:`VaultPageSource`
+(``pages=``) :meth:`GameSession.read_page` thinly wraps, satisfying the
+TUI's ``CampaignHandle`` seam (``babylon.tui.app``) without either module
+importing the other.
 """
 
 from __future__ import annotations
@@ -110,8 +121,16 @@ class GameRuntimeStore(TurnSink, Protocol):
         *,
         trace_level: str = "NONE",
         player_id: int | None = None,
+        session_id: UUID | None = None,
     ) -> UUID:
-        """Insert one ``game_session`` row and return its UUID."""
+        """Insert one ``game_session`` row and return its UUID.
+
+        :param session_id: an explicit id to insert, rather than letting
+            the store mint one (Unit C2: lets a lobby-chosen
+            ``babylon_meta.campaign_id`` double as this row's own id — one
+            identity, not a maintained mapping); ``None`` mints one as
+            before.
+        """
         ...
 
     def get_session(self, session_id: UUID) -> dict[str, Any] | None:
@@ -274,6 +293,10 @@ class GameSession:
         or ``None`` to run with no vault (tests).
     :param pause_predicate: the pacing driver's autopause SEAM; defaults to
         :func:`default_pause_predicate`.
+    :param pages: this campaign's own :data:`VaultPageSource` (typically
+        :func:`vault_page_source` over its own vault root), read via
+        :meth:`read_page`; ``None`` (the default) reads honestly absent for
+        every subject — the pre-Unit-C2 no-vault path.
     """
 
     def __init__(
@@ -289,6 +312,7 @@ class GameSession:
         scenario_name: str | None = None,
         tick_commit_observer: TickCommitObserver | None = None,
         pause_predicate: PausePredicate = default_pause_predicate,
+        pages: VaultPageSource | None = None,
     ) -> None:
         self.session_id = session_id
         self.graph = graph
@@ -300,6 +324,23 @@ class GameSession:
         self._rng_seed = rng_seed
         self._tick_commit_observer = tick_commit_observer
         self._pause_predicate = pause_predicate
+        self._pages = pages
+
+    def read_page(self, subject: str) -> str | None:
+        """Read one REAL baked vault page for this campaign (Unit C2).
+
+        Thin passthrough to the injected :data:`VaultPageSource` (see
+        :attr:`pages` on the constructor); satisfies ``babylon.tui.app``'s
+        ``CampaignHandle.read_page`` seam without that module importing
+        this one.
+
+        :param subject: the vault-relative subject id (e.g.
+            ``"county/26163"`` or ``"briefing/<session_id>"``).
+        :returns: the page's rendered markdown, or ``None`` if no vault is
+            wired (constructor default) or the vault hasn't baked that
+            subject yet — never fabricated content (Constitution III.11).
+        """
+        return self._pages(subject) if self._pages is not None else None
 
     def submit_verb(
         self,
@@ -394,8 +435,10 @@ def create_new_campaign(
     store: GameRuntimeStore,
     *,
     scenario: Scenario | None = None,
+    session_id: UUID | None = None,
     tick_commit_observer: TickCommitObserver | None = None,
     pause_predicate: PausePredicate = default_pause_predicate,
+    pages: VaultPageSource | None = None,
 ) -> GameSession:
     """Boot a brand-new campaign: build the scenario, then bake tick 0.
 
@@ -406,32 +449,41 @@ def create_new_campaign(
         Scenario-specific ``build()`` kwargs (e.g. Wayne's
         ``extraction_efficiency``) are NOT threaded through here — a stated
         non-goal of this unit, not a silent omission.
+    :param session_id: an explicit id for the new ``game_session`` row
+        (Unit C2: the lobby's own ``babylon_meta.campaign_id``, so the two
+        stores share one identity); ``None`` lets the store mint one, the
+        pre-Unit-C2 behavior.
     :param tick_commit_observer: the vault's tick-commit observer; when
         given, tick 0 is baked immediately (WO-44 tick-0 bake-gap parity:
         the player's first-opened dossier must exist before any turn is
         ever submitted).
     :param pause_predicate: the pacing driver's autopause SEAM (see
         :data:`PausePredicate`).
+    :param pages: this campaign's :data:`VaultPageSource`, read via
+        :meth:`GameSession.read_page` (Unit C2's ``CampaignHandle`` seam).
     :returns: a fresh :class:`GameSession` at tick 0.
     """
     chosen: Scenario = scenario if scenario is not None else WayneCountyScenario()
     world0, sim_config, defines = chosen.build()
 
-    session_id = store.create_session(
+    created_session_id = store.create_session(
         scenario=chosen.name,
         config_json=sim_config.model_dump(mode="json"),
         game_defines_json=defines.model_dump(mode="json"),
         rng_seed=sim_config.rng_seed,
+        session_id=session_id,
     )
 
     graph = world0.to_graph()
     services = ServiceContainer.create(config=sim_config, defines=defines)
     engine = SimulationEngine(list(_DEFAULT_SYSTEMS))
 
-    store.persist_tick(0, graph, session_id=session_id)
-    tick0_hash = _replay_identity_hash(session_id, 0, sim_config.rng_seed)
+    store.persist_tick(0, graph, session_id=created_session_id)
+    tick0_hash = _replay_identity_hash(created_session_id, 0, sim_config.rng_seed)
     store.persist_tick_atomic(
-        PerTickTransactionEnvelope(session_id=session_id, tick=0, determinism_hash=tick0_hash)
+        PerTickTransactionEnvelope(
+            session_id=created_session_id, tick=0, determinism_hash=tick0_hash
+        )
     )
     if tick_commit_observer is not None:
         # Uses world0 (not a from_graph round-trip) at tick 0 — mirrors the
@@ -441,7 +493,7 @@ def create_new_campaign(
         tick_commit_observer.on_tick_committed(tick=0, world=world0, graph=graph)
 
     return GameSession(
-        session_id=session_id,
+        session_id=created_session_id,
         graph=graph,
         services=services,
         engine=engine,
@@ -451,6 +503,7 @@ def create_new_campaign(
         scenario_name=chosen.name,
         tick_commit_observer=tick_commit_observer,
         pause_predicate=pause_predicate,
+        pages=pages,
     )
 
 
@@ -460,6 +513,7 @@ def resume_campaign(
     *,
     tick_commit_observer: TickCommitObserver | None = None,
     pause_predicate: PausePredicate = default_pause_predicate,
+    pages: VaultPageSource | None = None,
 ) -> GameSession:
     """Crash-resume a campaign from its last atomically-committed tick.
 
@@ -475,6 +529,8 @@ def resume_campaign(
     :param session_id: the campaign's ``game_session.id``.
     :param tick_commit_observer: the vault's tick-commit observer.
     :param pause_predicate: the pacing driver's autopause SEAM.
+    :param pages: this campaign's :data:`VaultPageSource` (see
+        :func:`create_new_campaign`'s identical parameter).
     :raises ValueError: if ``session_id`` has no ``game_session`` row, or
         (a genuinely broken state — every session commits tick 0 at
         creation) has a row but no committed tick at all.
@@ -508,6 +564,7 @@ def resume_campaign(
         scenario_name=str(row.get("scenario")) if row.get("scenario") is not None else None,
         tick_commit_observer=tick_commit_observer,
         pause_predicate=pause_predicate,
+        pages=pages,
     )
 
 

@@ -64,8 +64,9 @@ class _FakeStore:
         *,
         trace_level: str = "NONE",
         player_id: int | None = None,
+        session_id: UUID | None = None,
     ) -> UUID:
-        session_id = uuid4()
+        session_id = session_id if session_id is not None else uuid4()
         self.sessions[session_id] = {
             "id": session_id,
             "scenario": scenario,
@@ -212,6 +213,26 @@ def test_create_new_campaign_runs_with_no_vault_observer() -> None:
     store = _FakeStore()
     session = create_new_campaign(store, scenario=WayneCountyScenario())
     assert session.tick == 0
+
+
+def test_create_new_campaign_honors_an_explicit_session_id() -> None:
+    """Unit C2: the lobby's ``babylon_meta.campaign_id`` can double as the
+    engine's ``game_session.id`` — one identity, not a maintained mapping."""
+    store = _FakeStore()
+    chosen_id = uuid4()
+
+    session = create_new_campaign(store, scenario=WayneCountyScenario(), session_id=chosen_id)
+
+    assert session.session_id == chosen_id
+    assert store.sessions[chosen_id]["scenario"] == "wayne_county"
+    assert store.persist_tick_calls == [(0, chosen_id)]
+
+
+def test_create_new_campaign_still_mints_when_session_id_is_none() -> None:
+    """The default (``session_id=None``) mints a fresh id, unchanged."""
+    store = _FakeStore()
+    session = create_new_campaign(store, scenario=WayneCountyScenario())
+    assert session.session_id in store.sessions
 
 
 # --------------------------------------------------------------------------- #
@@ -429,6 +450,30 @@ def test_vault_page_source_reads_real_files_and_returns_none_for_absent(
 
     assert read_page("county/26163") == "# county/26163 — Wayne\n"
     assert read_page("county/99999") is None
+
+
+# --------------------------------------------------------------------------- #
+# GameSession.read_page — the ``CampaignHandle.read_page`` seam (Unit C2).    #
+# --------------------------------------------------------------------------- #
+
+
+def test_read_page_wraps_the_injected_vault_page_source(tmp_path: Any) -> None:
+    (tmp_path / "briefing").mkdir()
+    (tmp_path / "briefing" / "abc.md").write_text("# briefing\n")
+    store = _FakeStore()
+    session = create_new_campaign(
+        store, scenario=WayneCountyScenario(), pages=vault_page_source(tmp_path)
+    )
+
+    assert session.read_page("briefing/abc") == "# briefing\n"
+    assert session.read_page("briefing/nonexistent") is None
+
+
+def test_read_page_is_honestly_none_with_no_vault_wired() -> None:
+    """``pages=None`` (the default) — never a fabricated page."""
+    store = _FakeStore()
+    session = create_new_campaign(store, scenario=WayneCountyScenario())
+    assert session.read_page("county/26163") is None
 
 
 # --------------------------------------------------------------------------- #

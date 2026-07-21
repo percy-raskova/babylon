@@ -999,6 +999,7 @@ class PostgresRuntime:
         *,
         trace_level: str = "NONE",
         player_id: int | None = None,
+        session_id: UUID | None = None,
     ) -> UUID:
         """Create a new game session.
 
@@ -1009,37 +1010,62 @@ class PostgresRuntime:
             rng_seed: RNG seed for deterministic replay.
             trace_level: Trace verbosity level.
             player_id: Optional player ID.
+            session_id: An explicit id to insert, rather than letting the
+                DDL's ``DEFAULT gen_random_uuid()`` mint one (Program
+                v1.0.0 Unit C2: lets a lobby-chosen ``babylon_meta.
+                campaign_id`` double as this row's own id). ``None`` mints
+                one as before.
 
         Returns:
             The UUID of the created session.
         """
         with self._pool.connection() as conn, conn.cursor(row_factory=dict_row) as cur:
-            cur.execute(
-                """
-                    INSERT INTO game_session
-                        (scenario, config_json, game_defines_json, rng_seed,
-                         trace_level, player_id)
-                    VALUES (%s, %s, %s, %s, %s, %s)
-                    RETURNING id
-                    """,
-                (
-                    scenario,
-                    json.dumps(config_json),
-                    json.dumps(game_defines_json),
-                    rng_seed,
-                    trace_level,
-                    player_id,
-                ),
-            )
+            if session_id is None:
+                cur.execute(
+                    """
+                        INSERT INTO game_session
+                            (scenario, config_json, game_defines_json, rng_seed,
+                             trace_level, player_id)
+                        VALUES (%s, %s, %s, %s, %s, %s)
+                        RETURNING id
+                        """,
+                    (
+                        scenario,
+                        json.dumps(config_json),
+                        json.dumps(game_defines_json),
+                        rng_seed,
+                        trace_level,
+                        player_id,
+                    ),
+                )
+            else:
+                cur.execute(
+                    """
+                        INSERT INTO game_session
+                            (id, scenario, config_json, game_defines_json, rng_seed,
+                             trace_level, player_id)
+                        VALUES (%s, %s, %s, %s, %s, %s, %s)
+                        RETURNING id
+                        """,
+                    (
+                        session_id,
+                        scenario,
+                        json.dumps(config_json),
+                        json.dumps(game_defines_json),
+                        rng_seed,
+                        trace_level,
+                        player_id,
+                    ),
+                )
             result = cur.fetchone()
             if result is None:
                 msg = "Failed to create game session"
                 raise RuntimeError(msg)
-            session_id: UUID = result["id"]
+            created_session_id: UUID = result["id"]
 
         # trace_level is stored on the row as inert metadata; the trace_log
         # partition machinery it once gated was retired (fork ledger F10).
-        return session_id
+        return created_session_id
 
     def ensure_session(self, session_id: UUID, *, scenario: str = "headless") -> None:
         """Idempotently insert a minimal ``game_session`` parent row (C1.4).

@@ -1,23 +1,39 @@
-"""Minimal Archive TUI shell: boots, renders a sample county dossier page.
+"""The Archive TUI shell: boots into the campaign lobby, or a sample page.
 
 Demonstrates the WO-5 shell wired together — the ksbc theme, the fenced
 directive dispatch, the wikilink content spans, and the ``babylon://``
 router — on a small sample page rather than any live projection data (that
 wiring is WO-3/WO-7). Headless-runnable via ``App.run_test()``.
+
+Program v1.0.0 Unit C2 adds the Screen-mode boot flow: lobby -> briefing ->
+campaign shell. ``ArchiveApp(campaign_menu=..., campaign_loader=...)`` pushes
+:class:`~babylon.tui.campaign_menu.LobbyScreen` on mount; once it dismisses
+with a chosen campaign UUID, ``campaign_loader`` (the structural
+``CampaignLoader`` seam, fulfilled for real by
+:mod:`babylon.game.session`'s composition-root factories) boots or resumes
+that exact campaign, :class:`BriefingScreen` shows its vault-baked Scenario
+Briefing, and dismissing THAT reveals the campaign shell — the very same
+dossier/breadcrumbs/status widgets ``compose()`` always mounts, now reading
+the live campaign's own vault instead of the built-in demo page. With no
+``campaign_menu`` given (the default), none of this runs: ``ArchiveApp()``
+boots straight into the sample dossier exactly as before — every existing
+caller/test is unaffected.
 """
 
 from __future__ import annotations
 
 from collections.abc import Callable
-from typing import Final
-from uuid import uuid4
+from typing import Final, Protocol, runtime_checkable
+from uuid import UUID, uuid4
 
 from markdown_it import MarkdownIt
 from textual.app import App, ComposeResult
 from textual.binding import Binding
 from textual.containers import VerticalScroll
+from textual.screen import Screen
 from textual.widgets import Footer, Label, Markdown
 
+from babylon.tui.campaign_menu import CampaignMenu, LobbyScreen
 from babylon.tui.directives import BabylonFence, StatblockProvider
 from babylon.tui.dispatch import (
     fixture_known_entities,
@@ -88,7 +104,69 @@ PageSource = Callable[[str], "str | None"]
 for a subject with no baked dossier. WO-49/WO-50 wire a vault-backed
 source; the default below serves only the built-in sample."""
 
-#: The sample page's own subject — the nav shell's seed position.
+
+@runtime_checkable
+class TickOutcome(Protocol):
+    """Structural shape of one :meth:`CampaignHandle.advance_tick` result.
+
+    :class:`~babylon.game.session.TickAdvanceResult` satisfies this
+    structurally (it also carries ``world``/``events``/
+    ``determinism_hash``, which this seam doesn't need) — the WO-37 trick,
+    no import in either direction.
+    """
+
+    @property
+    def tick(self) -> int:
+        """The committed tick just reached."""
+        ...
+
+    @property
+    def paused(self) -> bool:
+        """Whether the pacing driver's pause predicate fired this tick."""
+        ...
+
+
+@runtime_checkable
+class CampaignHandle(Protocol):
+    """Structural seam: one booted/resumed live campaign (Program v1.0.0 Unit C2).
+
+    :class:`~babylon.game.session.GameSession` satisfies this without
+    either module importing the other: ``babylon.tui`` never imports
+    ``babylon.game``/``babylon.engine``/``babylon.persistence`` (the
+    import-linter contract); the composition root hands :class:`ArchiveApp`
+    a real ``GameSession`` where this seam expects one.
+    """
+
+    @property
+    def session_id(self) -> UUID:
+        """The campaign's identity — the same UUID the lobby chose."""
+        ...
+
+    @property
+    def tick(self) -> int:
+        """The last committed tick."""
+        ...
+
+    def read_page(self, subject: str) -> str | None:
+        """Read one baked vault page for this campaign (see :data:`PageSource`)."""
+        ...
+
+    def advance_tick(self) -> TickOutcome:
+        """Resolve exactly one further tick."""
+        ...
+
+
+CampaignLoader = Callable[[UUID], CampaignHandle]
+"""The lobby's boot-or-resume seam: a chosen campaign UUID -> a live
+:class:`CampaignHandle`. Fulfilled for real by :mod:`babylon.game.session`'s
+composition-root factories (:func:`~babylon.game.session.
+create_new_campaign` / :func:`~babylon.game.session.resume_campaign`) in
+the ``babylon play`` composition root — ``babylon.tui`` calls only through
+this seam, never those factories directly."""
+
+#: The sample page's own subject — the nav shell's seed position, and
+#: (Unit C2) the live campaign's own home dossier subject too: Wayne County
+#: is the only scenario wired today (ruling 3, "Wayne stays in lobby").
 _SAMPLE_SUBJECT: Final = "county/26163"
 
 #: How many trail entries the breadcrumb bar displays (newest last).
@@ -161,6 +239,43 @@ class BabylonMarkdown(Markdown):
         self.statblocks: StatblockProvider = statblocks or _default_statblocks()
 
 
+class BriefingScreen(Screen[bool]):
+    """The freshly-booted campaign's Scenario Briefing dossier (Unit C2).
+
+    Renders the vault-baked briefing page
+    (:func:`~babylon.projection.vault.render_briefing.render_briefing`,
+    baked via ``VaultMaterializer.bake_briefing`` — WO-35's previously-
+    orphaned renderer, wired by the composition root at boot/resume time)
+    through the same :class:`BabylonMarkdown` dialect every other dossier
+    page uses. The briefing's own ``{statblock}`` fence carries its numbers
+    baked directly into the fence body (Constitution III.13), so this
+    screen needs no live statblock provider. Dismisses ``True`` when the
+    player presses "Begin Operation" — there is no separate decline action
+    short of leaving the lobby entirely (its own ``escape`` binding),
+    matching design canon's no-dead-ends principle.
+
+    :param markdown: the briefing page's rendered markdown, or its honest
+        absence page if the composition root has not baked one yet
+        (Constitution III.11).
+    """
+
+    BINDINGS = [Binding("enter", "begin", "Begin Operation")]
+
+    def __init__(self, markdown: str) -> None:
+        super().__init__()
+        self._markdown = markdown
+
+    def compose(self) -> ComposeResult:
+        with VerticalScroll(id="briefing-page"):
+            yield BabylonMarkdown(self._markdown, open_links=False, id="briefing-dossier")
+        yield Label("press enter to begin the operation", id="briefing-status")
+        yield Footer()
+
+    def action_begin(self) -> None:
+        """``enter``: dismiss with ``True`` — the operation begins."""
+        self.dismiss(True)
+
+
 class ArchiveApp(App[None]):
     """The Archive TUI shell: renders dossier pages with a nav shell.
 
@@ -182,9 +297,20 @@ class ArchiveApp(App[None]):
     :param known_entities: The palette/redlink known-entity set; defaults
         to the sample set (:data:`KNOWN_ENTITIES`).
     :param pages: The page-content source navigation reads from; defaults
-        to the sample-only source.
+        to the sample-only source. Ignored once a live campaign boots
+        (Unit C2): :attr:`_pages` is then replaced by the booted
+        :class:`CampaignHandle`'s own :meth:`~CampaignHandle.read_page`.
     :param nav: The navigation shell; defaults to a fresh in-memory one
         (state dies with the process — the honest no-database default).
+    :param campaign_menu: The lobby's controller over the campaign catalog
+        seam (Unit C2); when given, :meth:`on_mount` pushes
+        :class:`~babylon.tui.campaign_menu.LobbyScreen` first instead of
+        going straight to the sample/live dossier. ``None`` (the default)
+        preserves the pre-Unit-C2 single-page boot exactly.
+    :param campaign_loader: The boot-or-resume seam (:data:`CampaignLoader`)
+        consuming the lobby's chosen campaign UUID; REQUIRED whenever
+        ``campaign_menu`` is given (a lobby with no way to boot its choice
+        is a broken wiring, not a valid configuration — raised loudly).
     """
 
     COMMANDS = App.COMMANDS | {EntityNavigatorProvider}
@@ -192,6 +318,10 @@ class ArchiveApp(App[None]):
     BINDINGS = [
         Binding("ctrl+o", "jump_back", "Back"),
         Binding("ctrl+i", "jump_forward", "Forward"),
+        # show=False: keeps the golden dossier-shell snapshot's Footer row
+        # byte-identical (layout churn is a merge-time ceremony, not this
+        # unit's) — the key is fully live, just not advertised in chrome.
+        Binding("t", "advance_tick", "Advance Tick", show=False),
     ]
 
     CSS = """
@@ -226,8 +356,16 @@ class ArchiveApp(App[None]):
         known_entities: frozenset[str] | None = None,
         pages: PageSource | None = None,
         nav: NavShell | None = None,
+        campaign_menu: CampaignMenu | None = None,
+        campaign_loader: CampaignLoader | None = None,
     ) -> None:
         super().__init__()
+        if campaign_menu is not None and campaign_loader is None:
+            msg = (
+                "ArchiveApp: campaign_menu was given but no campaign_loader — "
+                "the lobby would have no way to boot the campaign it chooses"
+            )
+            raise ValueError(msg)
         self._page = page if page is not None else SAMPLE_COUNTY_PAGE
         self.known_entities: frozenset[str] = (
             known_entities if known_entities is not None else KNOWN_ENTITIES
@@ -238,15 +376,65 @@ class ArchiveApp(App[None]):
         self.nav: NavShell = nav or NavShell(
             campaign_id=uuid4(), persistence=InMemoryNavPersistence()
         )
+        self._campaign_menu = campaign_menu
+        self._campaign_loader = campaign_loader
+        self.campaign: CampaignHandle | None = None
+        """The live, booted campaign (Unit C2) — ``None`` until the lobby
+        dismisses and :func:`CampaignLoader` returns one; stays ``None``
+        forever in the no-``campaign_menu`` boot path."""
 
     def on_mount(self) -> None:
         self.register_theme(KSBC)
         self.theme = "ksbc"
+        if self._campaign_menu is not None:
+            self.push_screen(LobbyScreen(self._campaign_menu), callback=self._on_campaign_chosen)
+            return
         if self._page == SAMPLE_COUNTY_PAGE and self.nav.current is None:
             # Seed the jumplist with the sample page's own subject so the
             # first outbound jump has somewhere to Ctrl-O back to.
             self.nav.visit(_SAMPLE_SUBJECT)
             self._refresh_breadcrumbs()
+
+    async def _on_campaign_chosen(self, campaign_id: UUID | None) -> None:
+        """``LobbyScreen`` dismissed: boot/resume the chosen campaign.
+
+        :param campaign_id: the campaign the lobby dismissed with, or
+            ``None`` if the player left without choosing (escape) — there
+            is no campaign shell to show, so the app exits rather than
+            revealing an empty/stale default screen.
+        """
+        if campaign_id is None:
+            self.exit()
+            return
+        if self._campaign_loader is None:
+            # Unreachable via any public constructor path — __init__ raises
+            # first whenever campaign_menu is given without a loader — but
+            # never silently swallow a violated invariant (Constitution
+            # III.11).
+            msg = "ArchiveApp: a campaign was chosen but no campaign_loader is wired"
+            raise RuntimeError(msg)
+        campaign = self._campaign_loader(campaign_id)
+        self.campaign = campaign
+        self._pages = campaign.read_page
+        briefing_subject = f"briefing/{campaign_id}"
+        page = self._pages(briefing_subject)
+        markdown = page if page is not None else _absence_page(briefing_subject)
+        self.push_screen(BriefingScreen(markdown), callback=self._on_briefing_dismissed)
+
+    async def _on_briefing_dismissed(self, _began: bool | None) -> None:
+        """``BriefingScreen`` dismissed: reveal the campaign shell.
+
+        Navigates to the live campaign's own home dossier subject — Wayne
+        County's (ruling 3: "Wayne stays in lobby", the only scenario wired
+        today) — sourced from the campaign's own vault via :attr:`_pages`,
+        already reassigned by :meth:`_on_campaign_chosen`.
+
+        :param _began: always ``True`` in practice (``BriefingScreen`` only
+            ever dismisses via its "Begin Operation" action); typed
+            ``bool | None`` to match ``Screen.dismiss``'s own generic
+            signature (unused either way — there is no decline branch).
+        """
+        await self._navigate(_SAMPLE_SUBJECT)
 
     def compose(self) -> ComposeResult:
         yield Label("", id="breadcrumbs")
@@ -293,6 +481,26 @@ class ArchiveApp(App[None]):
         subject = self.nav.forward()
         if subject is not None:
             await self._navigate(subject, record=False)
+
+    async def action_advance_tick(self) -> None:
+        """``t``: advance the live campaign one tick (Program v1.0.0 Unit C2).
+
+        Emits the intent through :attr:`campaign`'s ``advance_tick`` seam
+        (fulfilled for real by
+        :meth:`~babylon.game.session.GameSession.advance_tick`); a loud
+        status note, never a silent no-op, when no live campaign is
+        attached yet (Constitution III.11).
+        """
+        status = self.query_one("#status", Label)
+        if self.campaign is None:
+            status.update("status: no live campaign attached — nothing to advance")
+            return
+        result = self.campaign.advance_tick()
+        subject = self.nav.current
+        if subject is not None:
+            await self._navigate(subject, record=False)
+        paused_marker = " [PAUSED]" if result.paused else ""
+        status.update(f"status: tick {result.tick}{paused_marker}")
 
     async def on_entity_navigated(self, event: EntityNavigated) -> None:
         """Open the page a palette hit chose.

@@ -32,7 +32,7 @@ import sys
 import time
 from contextlib import suppress
 from pathlib import Path
-from typing import Any, Final
+from typing import Any, Final, Protocol
 from uuid import UUID, uuid4
 
 try:
@@ -337,6 +337,29 @@ def _check_strict_alarms(
     return int(row[0]), str(row[1])
 
 
+class TickCommitObserver(Protocol):
+    """Narrow post-commit observer for the tick loop (Program 24, the Archive).
+
+    Invoked by :func:`_advance_tick` strictly *after*
+    ``bridge.persist_tick`` returns — i.e. after the tick's
+    ``persist_tick_atomic`` envelope (whose ``tick_commit`` INSERT is the
+    commit instant) has committed. Observers read the already-committed
+    world/graph and MUST NOT mutate either: this is the vault
+    materializer's bake-at-tick-commit seam (Constitution III.13), not a
+    lifecycle hook. Distinct from the legacy ``SimulationObserver``
+    protocol, which the headless runner never wired.
+    """
+
+    def on_tick_committed(self, *, tick: int, world: Any, graph: Any) -> None:
+        """Observe one committed tick.
+
+        :param tick: The tick number just committed.
+        :param world: The post-tick ``WorldState`` the bridge persisted.
+        :param graph: The post-tick engine graph (read-only by contract).
+        """
+        ...
+
+
 def _advance_tick(
     *,
     bridge: WorldStateBridge,
@@ -349,6 +372,7 @@ def _advance_tick(
     session_id: UUID | None = None,
     county_exposure_by_external: dict[str, dict[str, float]] | None = None,
     external_nodes_phi: dict[str, float] | None = None,
+    tick_commit_observer: TickCommitObserver | None = None,
 ) -> Any:
     """Spec-066 T035: per-tick engine.run_tick() then bridge.persist_tick().
 
@@ -396,6 +420,12 @@ def _advance_tick(
         # does not carry arbitrary graph attrs, so read it off the graph here.
         opposition_states = graph.graph.get("opposition_states")
     bridge.persist_tick(world, tick, determinism_hash, opposition_states)
+    if tick_commit_observer is not None and graph is not None:
+        # Post-commit only: the envelope (and its tick_commit row) is already
+        # durable. Observers read, never write — a None observer (the default,
+        # and every path that predates Program 24) leaves this tick loop
+        # byte-identical to its pre-hook behavior.
+        tick_commit_observer.on_tick_committed(tick=tick, world=world, graph=graph)
     return world
 
 
@@ -1482,6 +1512,7 @@ def _tick_loop(
     county_exposure_by_external: dict[str, dict[str, float]] | None = None,
     external_nodes_phi: dict[str, float] | None = None,
     dense_rows: list[list[str]] | None = None,
+    tick_commit_observer: TickCommitObserver | None = None,
 ) -> tuple[int, dict[str, Any] | None]:
     """Drive the tick loop with tqdm + cooperative SIGINT.
 
@@ -1617,6 +1648,7 @@ def _tick_loop(
             session_id=session_id,
             county_exposure_by_external=county_exposure_by_external,
             external_nodes_phi=effective_external_nodes_phi,
+            tick_commit_observer=tick_commit_observer,
         )
         _capture_dense_row(tick)
         per_tick_durations.append(time.perf_counter() - t_tick)

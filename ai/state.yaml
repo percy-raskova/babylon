@@ -2,9 +2,22 @@
 # What exists vs what's planned - KEEP THIS UPDATED
 
 meta:
-  version: "2.45.0"  # 2.28.0 lives on feature/19-emergent-class-partition (Program 19 Phase 0+1)
+  version: "2.47.0"  # 2.28.0 lives on feature/19-emergent-class-partition (Program 19 Phase 0+1)
   updated: "2026-07-21"
   truth_status: |
+    (2026-07-21 integration) MERGE origin/dev (Program 24 P1 keel + ADR100/
+    ADR101) INTO local dev (ADR096 inference lane + versioning rigor). Semantic
+    union of both branches' state records below, newest-first. Reconciliation:
+    the ADR096 entry immediately below predates ADR101's landing and still
+    describes the legacy intelligence.ai llm_provider lane as "tagged / migrate
+    director+judge as a follow-up"; ADR101 (recorded further down) SUPERSEDES
+    that -- the legacy stack was DELETED and babylon.intelligence.providers is
+    the one transport seam. ADR096's shipped deliverables (llama-server
+    supervisor, signed model manifest + provision, babylon_intel role migration
+    0036, embedding-dims guard, doctor --provision) all survive unchanged; the
+    seam->ai import-linter contract it added is kept (intelligence.ai still
+    exists: director/judge/persona). Versioning-rigor deliverables survive
+    verbatim.
     (2026-07-21) ADR096 INFERENCE LANE MECHANICS PLAN EXECUTED (Task 10
     close-out, branch feat/adr096-inference-lane, on top of the 095 uv
     migration + 094 flake merge, base e3ec4179): all nine implementation
@@ -82,6 +95,64 @@ meta:
     NOT commissioned by ADR096 (no such migration exists in
     src/babylon/persistence/migrations/) -- campaign-creation binding to
     a live embedding column is future embedded-PG work.
+    (2026-07-20 night, latest+1) PROGRAM 24 -- P1 THE KEEL COMPLETE, same
+    session as P0 (branch feature/archive-p1-keel). All five keel items
+    + exit: babylon.projection (the Hoist; fog relocated from web with
+    is-identity shims; project_county with one-producer-per-field
+    rulings in its docstring; declared-view registry + CountyView
+    contract discharging the II.11 TODO via
+    docs/reference/projection-registry.rst); babylon.projection.vault
+    (sandboxed deterministic renderer, dulwich sim-time git, county
+    template with loud absence blocks); babylon.tui (ksbc theme, real
+    _token_to_content wikilink spans, body-first statblock fences,
+    babylon:// router, snapshot lane); fixture recorder + committed
+    county_26163.json (three harvests byte-identical); TickCommitObserver
+    seam in the headless runner (None-default; qa:regression 6/6
+    byte-identical + two-process determinism leg WITH the hook in
+    place); git-doctrine side items 1-3 (trailer schema + pr:body,
+    wt:new/wt:done, ceremony-message generator + pre-push range
+    mirror). Exit pinned by tests/integration/archive/test_county_e2e.py:
+    tick -> projection == committed fixture -> baked page -> rendered ->
+    SVG snapshot golden. Two import-linter contracts minted (projection
+    !-> engine; tui !-> engine/persistence/django). Engine-side value
+    drift: ZERO. Next: P2 fan-out lanes. (Merged origin/dev's ADR101 +
+    ADR100 trains below into this branch in-flight; poetry.lock deleted
+    on the ADR095 side wins, pydantic-ai-slim ported to PEP-621
+    [project.dependencies], uv.lock regenerated.)
+    (2026-07-20 night, latest) ADR101 -- NARRATOR SEAM CONSOLIDATION
+    (branch refactor/ai-seam-consolidation, stacked on merged PR #235):
+    BD-directed deletion of the legacy hand-rolled AI stack --
+    llm_provider.py (LLMProvider/MockLLM/DeepSeek/WorkersAI) and the
+    LLMConfig chat lane are GONE (git history = archive);
+    babylon.intelligence.providers is the ONE transport seam. Director
+    narrator:, judge lazy chat_model_for(resolve_provider().endpoint),
+    web narrative_service resolve_provider + endpoint-pinned model_id
+    (loud "unresolved" degradation), tools via resolver, MockNarrator +
+    ProviderKind.MOCK + ModelFactory/chat_model_for added, DeepSeek lane
+    retired (§A7.6 alignment), OpenAIConfig alias gone. The
+    ADR096-inference-lane plan's quarantine step is superseded by
+    deletion. Verified: mise run check green (11,806 unit),
+    qa:regression 6/6 + determinism. OWED: import-linter contract
+    (providers never imports intelligence.ai); babylon CLI login/doctor
+    still unbuilt; cf-aig-gateway-id header lives at the Worker now if
+    wanted.
+    (2026-07-20 night, later) AMENDMENT Y + ADR100 -- PYDANTIC-AI
+    ADOPTION (branch feature/pydantic-ai-adoption): BD-directed
+    constitution v2.13.0; pydantic-ai-slim[openai] 2.14 replaces the
+    hand-rolled DeepSeek/WorkersAI chat clients (PydanticAIChatClient +
+    ModelFactory seam, fresh model per generate() -- event-loop
+    staleness class retired) and the judge's fence-strip JSON parsing
+    (Agent output_type=JudgmentResult, validation-retry then loud
+    LLM_001); providers.py narrate lane migrated (embed/health stay on
+    stock openai -- no embedding API upstream); LLMProvider protocol,
+    LLM_001/002/003 taxonomy, MockLLM estate unchanged;
+    ALLOW_MODEL_REQUESTS=False global test guard. GOTCHA recorded in
+    ADR100: uv add on this pre-ADR095 poetry-hybrid base guts
+    poetry.lock (static [project].dependencies vs dynamic) -- poetry
+    tables only. Verified: mise run check green (11,849 unit),
+    qa:regression 6/6 + determinism leg. OWED: consolidate
+    director/narrative_service onto the providers.py NarratorProvider
+    seam (dual seams remain, now one SDK).
     (2026-07-20 night) PROGRAM 24 -- THE ARCHIVE: P0 COMPLETE in one
     session (branch docs/archive-p0). Canonical roadmap v3 committed at
     project/roadmap.md (supersedes both ai/_inbox/tui roadmap drafts,

@@ -1,24 +1,31 @@
 """Narrative evaluation via LLM-as-judge pattern.
 
-The NarrativeCommissar evaluates narrative text quality using structured
-prompting to extract consistent metrics. This enables automated verification
-of the "Dialectical U-Curve" hypothesis - that narrative certainty follows
-a U-shape across economic conditions (high at stability, low at inflection,
-high at collapse).
+The NarrativeCommissar evaluates narrative text quality using pydantic-ai
+structured output to extract consistent metrics. This enables automated
+verification of the "Dialectical U-Curve" hypothesis - that narrative
+certainty follows a U-shape across economic conditions (high at stability,
+low at inflection, high at collapse).
 
 Components:
     MetaphorFamily: Enum categorizing metaphorical language in narratives.
     JudgmentResult: Immutable Pydantic model holding evaluation metrics.
     NarrativeCommissar: LLM-powered judge that evaluates narrative quality.
 
-The Commissar follows the same pattern as NarrativeDirector - it uses the
-LLMProvider protocol for swappable LLM backends (MockLLM for testing,
-DeepSeekClient for production).
+Structured output (Amendment Y, ADR100): the judge runs a pydantic-ai
+``Agent`` with ``output_type=JudgmentResult`` — the model's answer is
+validated against the schema at the SDK layer and the model is re-prompted
+on validation failure. The former hand-rolled markdown-fence stripping and
+``json.loads`` parsing are gone; a response that never validates surfaces
+as a loud :class:`~babylon.kernel.exceptions.LLMGenerationError`.
 
 Example:
-    >>> from babylon.intelligence.ai import MockLLM, NarrativeCommissar
-    >>> mock = MockLLM(responses=['{"ominousness": 7, "certainty": 8, "drama": 6, "metaphor_family": "biological"}'])
-    >>> commissar = NarrativeCommissar(llm=mock)
+    >>> from pydantic_ai.models.test import TestModel
+    >>> from babylon.intelligence.ai.judge import NarrativeCommissar
+    >>> model = TestModel(custom_output_args={
+    ...     "ominousness": 7, "certainty": 8, "drama": 6,
+    ...     "metaphor_family": "biological",
+    ... })
+    >>> commissar = NarrativeCommissar(model_factory=lambda: model)
     >>> result = commissar.evaluate("The empire crumbles...")
     >>> result.ominousness
     7
@@ -26,15 +33,17 @@ Example:
 
 from __future__ import annotations
 
-import json
 import logging
 from enum import StrEnum
-from typing import TYPE_CHECKING, Any, Final
+from typing import Final
 
 from pydantic import BaseModel, ConfigDict, Field
+from pydantic_ai import Agent
+from pydantic_ai.exceptions import UnexpectedModelBehavior
+from pydantic_ai.settings import ModelSettings
 
-if TYPE_CHECKING:
-    from babylon.intelligence.ai.llm_provider import LLMProvider
+from babylon.intelligence.providers import ModelFactory, chat_model_for, resolve_provider
+from babylon.kernel.exceptions import LLMGenerationError
 
 logger = logging.getLogger(__name__)
 
@@ -63,7 +72,8 @@ class JudgmentResult(BaseModel):
     """Result of narrative evaluation by the Commissar.
 
     An immutable record of how the LLM-judge evaluated a narrative text.
-    All metrics use a 1-10 scale for consistency.
+    All metrics use a 1-10 scale for consistency. Doubles as the
+    structured-output schema the judge's Agent validates against.
 
     Attributes:
         ominousness: How threatening/foreboding the narrative (1-10).
@@ -110,21 +120,26 @@ class JudgmentResult(BaseModel):
 
 
 COMMISSAR_SYSTEM_PROMPT: Final[str] = """You are a literary critic analyzing narrative text.
-Return ONLY a JSON object with these fields:
-- "ominousness": integer 1-10 (how threatening/foreboding)
-- "certainty": integer 1-10 (how confident/absolute the assertions)
-- "drama": integer 1-10 (emotional intensity)
-- "metaphor_family": one of "biological", "physics", "mechanical", "none"
+Evaluate the narrative on these metrics:
+- ominousness: integer 1-10 (how threatening/foreboding)
+- certainty: integer 1-10 (how confident/absolute the assertions)
+- drama: integer 1-10 (emotional intensity)
+- metaphor_family: one of "biological", "physics", "mechanical", "none"
+  (the dominant metaphorical domain used)"""
 
-Respond with ONLY the JSON object, no other text."""
+#: Lower temperature for consistent evaluation.
+_JUDGE_TEMPERATURE: Final[float] = 0.3
+
+#: Schema-validation retry budget: one re-prompt before failing loud.
+_JUDGE_RETRIES: Final[int] = 1
 
 
 class NarrativeCommissar:
     """LLM-powered judge that evaluates narrative quality.
 
-    The Commissar uses structured prompting to extract consistent metrics
-    from narrative text. It follows the LLM-as-judge pattern where the
-    LLM acts as a consistent evaluator rather than a generator.
+    The Commissar uses pydantic-ai structured output to extract consistent
+    metrics from narrative text. It follows the LLM-as-judge pattern where
+    the LLM acts as a consistent evaluator rather than a generator.
 
     This enables automated verification of narrative hypotheses like the
     "Dialectical U-Curve" - that narrative certainty follows a U-shape
@@ -134,24 +149,40 @@ class NarrativeCommissar:
         name: Identifier for logging ("NarrativeCommissar").
 
     Example:
-        >>> from babylon.intelligence.ai import MockLLM
+        >>> from pydantic_ai.models.test import TestModel
         >>> from babylon.intelligence.ai.judge import NarrativeCommissar
-        >>> mock = MockLLM(responses=['{"ominousness": 5, "certainty": 5, "drama": 5, "metaphor_family": "none"}'])
-        >>> commissar = NarrativeCommissar(llm=mock)
+        >>> model = TestModel(custom_output_args={
+        ...     "ominousness": 5, "certainty": 5, "drama": 5,
+        ...     "metaphor_family": "none",
+        ... })
+        >>> commissar = NarrativeCommissar(model_factory=lambda: model)
         >>> result = commissar.evaluate("The workers unite.")
         >>> isinstance(result.ominousness, int)
         True
     """
 
-    def __init__(self, llm: LLMProvider) -> None:
+    def __init__(self, model_factory: ModelFactory | None = None) -> None:
         """Initialize the NarrativeCommissar.
 
         Args:
-            llm: LLMProvider implementation for text generation.
-                 Use MockLLM for testing, DeepSeekClient for production.
+            model_factory: Builds a fresh pydantic-ai ``Model`` per
+                evaluation (fresh per call for event-loop hygiene — see
+                :data:`~babylon.intelligence.providers.ModelFactory`).
+                Defaults to the §A7.6-resolved lane
+                (``chat_model_for(resolve_provider().endpoint)``), resolved
+                lazily on first evaluate() so construction never probes the
+                network. Tests inject ``lambda: TestModel(...)``.
         """
-        self._llm = llm
+        self._model_factory = model_factory
         self._name: Final[str] = "NarrativeCommissar"
+
+    def _factory(self) -> ModelFactory:
+        """The injected factory, or the §A7.6-resolved lane (lazy)."""
+        if self._model_factory is not None:
+            return self._model_factory
+        endpoint = resolve_provider().endpoint
+        self._model_factory = lambda: chat_model_for(endpoint)
+        return self._model_factory
 
     @property
     def name(self) -> str:
@@ -165,8 +196,9 @@ class NarrativeCommissar:
     def evaluate(self, text: str) -> JudgmentResult:
         """Evaluate a narrative text and return structured metrics.
 
-        Sends the text to the LLM with a structured prompt requesting
-        JSON output. Parses the response and returns a JudgmentResult.
+        Runs a pydantic-ai Agent with ``output_type=JudgmentResult``: the
+        model's response is schema-validated by the SDK, which re-prompts
+        the model once on validation failure before failing loud.
 
         Args:
             text: The narrative text to evaluate.
@@ -175,19 +207,22 @@ class NarrativeCommissar:
             JudgmentResult containing the evaluation metrics.
 
         Raises:
-            json.JSONDecodeError: If LLM response is not valid JSON.
-            pydantic.ValidationError: If JSON values are out of bounds.
+            LLMGenerationError: If the model never produces a response
+                that validates against the JudgmentResult schema.
 
         Example:
-            >>> from babylon.intelligence.ai import MockLLM
+            >>> from pydantic_ai.models.test import TestModel
             >>> from babylon.intelligence.ai.judge import NarrativeCommissar
-            >>> mock = MockLLM(responses=['{"ominousness": 7, "certainty": 8, "drama": 6, "metaphor_family": "biological"}'])
-            >>> commissar = NarrativeCommissar(llm=mock)
+            >>> model = TestModel(custom_output_args={
+            ...     "ominousness": 7, "certainty": 8, "drama": 6,
+            ...     "metaphor_family": "biological",
+            ... })
+            >>> commissar = NarrativeCommissar(model_factory=lambda: model)
             >>> result = commissar.evaluate("The crisis deepens.")
             >>> result.ominousness
             7
         """
-        prompt = f"Evaluate this narrative:\n\n---\n{text}\n---\n\nReturn your evaluation as JSON."
+        prompt = f"Evaluate this narrative:\n\n---\n{text}\n---"
 
         logger.debug(
             "[%s] Evaluating narrative (%d chars)",
@@ -195,41 +230,23 @@ class NarrativeCommissar:
             len(text),
         )
 
-        response = self._llm.generate(
-            prompt,
-            system_prompt=COMMISSAR_SYSTEM_PROMPT,
-            temperature=0.3,  # Lower temperature for consistent evaluation
+        agent: Agent[None, JudgmentResult] = Agent(
+            self._factory()(),
+            output_type=JudgmentResult,
+            instructions=COMMISSAR_SYSTEM_PROMPT,
+            retries=_JUDGE_RETRIES,
         )
+        try:
+            result = agent.run_sync(
+                prompt,
+                model_settings=ModelSettings(temperature=_JUDGE_TEMPERATURE),
+            )
+        except UnexpectedModelBehavior as e:
+            logger.error("[%s] structured evaluation failed: %s", self.name, e)
+            raise LLMGenerationError(
+                f"Judge failed structured evaluation: {e}",
+                error_code="LLM_001",
+            ) from e
 
-        logger.debug("[%s] LLM response: %s", self.name, response[:100])
-
-        data = self._extract_json(response)
-        return JudgmentResult(**data)
-
-    def _extract_json(self, response: str) -> dict[str, Any]:
-        """Extract JSON from LLM response, handling markdown blocks.
-
-        LLMs sometimes wrap JSON in markdown code blocks (```json ... ```).
-        This method strips those wrappers to extract the raw JSON.
-
-        Args:
-            response: Raw LLM response text.
-
-        Returns:
-            Parsed JSON as a dictionary.
-
-        Raises:
-            json.JSONDecodeError: If the response is not valid JSON.
-        """
-        text = response.strip()
-
-        # Handle ```json ... ``` blocks
-        if text.startswith("```json"):
-            text = text[7:]
-        elif text.startswith("```"):
-            text = text[3:]
-
-        if text.endswith("```"):
-            text = text[:-3]
-
-        return dict(json.loads(text.strip()))
+        logger.debug("[%s] judgment: %s", self.name, result.output)
+        return result.output

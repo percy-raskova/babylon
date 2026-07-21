@@ -130,8 +130,13 @@ repos:
   # ==========================================================================
   # BASELINE CEREMONY - §6.5 Provenance & Ceremony (owner ruling 2026-07-20)
   # Commits touching tests/baselines/** must declare their ceremony with a
-  # `Baselines: blessed(<slug>)` trailer. Local leg is best-effort; the CI
-  # ceremony-gate job (PR range) is authoritative.
+  # `Baselines: blessed(<slug>)` trailer. The commit-msg leg is best-effort
+  # (an --amend or pathspec commit can slip past it, since it only inspects
+  # the index at commit time). The pre-push leg below closes that gap
+  # locally by re-running the CHECKER'S OWN --range MODE against the
+  # upstream ref, mirroring the CI ceremony-gate job (which diffs the PR's
+  # base..head) so a slipped amend is caught before it ever leaves the box —
+  # not a substitute for the CI leg, which stays authoritative.
   # ==========================================================================
   - repo: local
     hooks:
@@ -141,6 +146,19 @@ repos:
         language: system
         always_run: true
         stages: [commit-msg]
+
+      - id: baseline-ceremony-range
+        name: baseline ceremony range check (§6.5, pre-push CI mirror)
+        entry: >-
+          bash -c 'set -euo pipefail;
+          git fetch -q origin dev 2>/dev/null || true;
+          base="$(git merge-base HEAD origin/dev 2>/dev/null || git merge-base HEAD dev 2>/dev/null || echo "")";
+          if [ -z "$base" ]; then exit 0; fi;
+          python3 tools/check_baseline_ceremony.py --range "${base}..HEAD"'
+        language: system
+        pass_filenames: false
+        always_run: true
+        stages: [pre-push]
 
   # ==========================================================================
   # GENERAL HYGIENE

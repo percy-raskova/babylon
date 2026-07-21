@@ -1,7 +1,9 @@
 """Seam Sensor 4 (fog field mirror) — the Py<->TS field-list drift gate.
 
-``web/game/fog/filter.py``'s ``POLITICAL_FIELDS``/``ORG_INTERNAL_STATE_FIELDS``
-(the field vocabulary ``apply_fog`` ever gates) and the frontend's
+``src/babylon/projection/fog/filter.py``'s ``POLITICAL_FIELDS``/
+``ORG_INTERNAL_STATE_FIELDS`` (the field vocabulary ``apply_fog`` ever gates —
+relocated from ``web/game/fog/`` by Program 24 P1 WO-1, which left a re-export
+shim this AST check cannot read literals through) and the frontend's
 ``src/frontend/src/lib/inspect/fogFields.ts`` ``FOG_FIELD_LABELS`` are two
 independently hand-maintained lists that must agree exactly. ``fogFields.ts``'s
 own doc comment names the exact risk this sensor closes: "same hand-pinned
@@ -35,7 +37,7 @@ from babylon.sentinels.base import SentinelCheckError
 #: Repo root (this file is ``<root>/src/babylon/sentinels/seam/fog_provenance.py``).
 _REPO_ROOT: Path = Path(__file__).resolve().parents[4]
 
-_FILTER_PATH: Path = _REPO_ROOT / "web" / "game" / "fog" / "filter.py"
+_FILTER_PATH: Path = _REPO_ROOT / "src" / "babylon" / "projection" / "fog" / "filter.py"
 _FOG_FIELDS_TS_PATH: Path = (
     _REPO_ROOT / "src" / "frontend" / "src" / "lib" / "inspect" / "fogFields.ts"
 )

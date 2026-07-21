@@ -9,7 +9,7 @@ Test Classes:
 - TestRenderSystemPrompt: render_system_prompt() output formatting
 - TestPersonaLoader: File loading and validation functions
 - TestPromptBuilderPersonaIntegration: PromptBuilder integration
-- TestNarrativeDirectorPersonaIntegration: Full integration with MockLLM
+- TestNarrativeDirectorPersonaIntegration: Full integration with MockNarrator
 """
 
 from __future__ import annotations
@@ -506,12 +506,12 @@ class TestPromptBuilderPersonaIntegration:
 
 
 # ===========================================================================
-# TestNarrativeDirectorPersonaIntegration - Full Integration with MockLLM
+# TestNarrativeDirectorPersonaIntegration - Full Integration with MockNarrator
 # ===========================================================================
 
 
 class TestNarrativeDirectorPersonaIntegration:
-    """Test NarrativeDirector integration with Persona and MockLLM."""
+    """Test NarrativeDirector integration with Persona and MockNarrator."""
 
     @pytest.fixture
     def percy_persona(self, valid_persona_data: dict[str, Any]) -> Any:
@@ -551,12 +551,12 @@ class TestNarrativeDirectorPersonaIntegration:
     ) -> None:
         """NarrativeDirector with persona should use persona's system prompt."""
         from babylon.intelligence.ai.director import NarrativeDirector
-        from babylon.intelligence.ai.llm_provider import MockLLM
+        from babylon.intelligence.providers import MockNarrator
 
-        mock_llm = MockLLM(default_response="Mock narrative response")
+        mock_llm = MockNarrator(default_response="Mock narrative response")
         director = NarrativeDirector(
             use_llm=True,
-            llm=mock_llm,
+            narrator=mock_llm,
             persona=percy_persona,
         )
 
@@ -570,12 +570,12 @@ class TestNarrativeDirectorPersonaIntegration:
     def test_director_without_persona_uses_default_prompt(self) -> None:
         """NarrativeDirector without persona should use default prompt."""
         from babylon.intelligence.ai.director import NarrativeDirector
-        from babylon.intelligence.ai.llm_provider import MockLLM
+        from babylon.intelligence.providers import MockNarrator
 
-        mock_llm = MockLLM(default_response="Mock narrative response")
+        mock_llm = MockNarrator(default_response="Mock narrative response")
         director = NarrativeDirector(
             use_llm=True,
-            llm=mock_llm,
+            narrator=mock_llm,
             # No persona
         )
 

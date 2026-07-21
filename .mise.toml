@@ -123,6 +123,14 @@ run = "uv run python tools/check_repo_hygiene.py"
 description = "Baseline-ceremony gate (§6.5): commits touching tests/baselines/** must carry Baselines: blessed(<slug>)"
 run = "python3 tools/check_baseline_ceremony.py --range origin/dev..HEAD"
 
+[tasks."pr:body"]
+description = "Generate a deterministic PR body from conventional commits + trailers (git doctrine §5.9 item 1)"
+usage = '''
+arg "[base]" help="Base ref to diff from" default="origin/dev"
+arg "[head]" help="Head ref" default="HEAD"
+'''
+run = "uv run python tools/generate_pr_body.py --base ${usage_base} --head ${usage_head}"
+
 [tasks."check:seams"]
 description = "Seam Observatory Sensor 1: observable-field continuity gate (Constitution VIII.12 / III.11)"
 run = "uv run python tools/sentinel_check.py seam --check"
@@ -322,6 +330,19 @@ uv run pytest tests/unit --ignore=tests/unit/ai \
 [tasks."security:pip-audit"]
 description = "pip-audit through the expiring-ignores policy wrapper (program 15): security/pip-audit-ignores.toml entries need reason + expiry; expired entries hard-fail"
 run = "uv run python tools/run_pip_audit.py"
+
+[tasks."wt:new"]
+description = "Git-doctrine item 2: create .claude/worktrees/NAME on a fresh wt/NAME branch off the current branch; prints the shadow-venv + lint-imports usage recipe (worktrees never get their own venv)"
+usage = 'arg "<name>" help="Worktree slug: lowercase alnum segments joined by single hyphens"'
+run = 'uv run python tools/worktree_tool.py new "$usage_name"'
+
+[tasks."wt:done"]
+description = "Git-doctrine item 2: retire .claude/worktrees/NAME — refuses unless the worktree is clean AND wt/NAME is fully merged into the current branch (pass --force to bypass); removes the worktree and deletes the branch"
+usage = '''
+arg "<name>" help="Worktree slug to retire"
+flag "--force" help="Bypass the clean/merged checks (force-remove worktree, -D delete branch)"
+'''
+run = 'uv run python tools/worktree_tool.py done "$usage_name" ${usage_force:+--force}'
 
 [tasks.commit]
 description = "Hook-safe commit: pre-run hooks, re-stage fixes, retry on hook-rewrite, VERIFY HEAD moved. Pass - to read the message from stdin (multi-line bodies)."
@@ -865,6 +886,10 @@ run = "uv run python tools/regression_test.py generate --force"
 [tasks."qa:regression-generate-dense"]
 description = "Generate dense per-tick golden trace CSVs for the 5 regression scenarios (Program 13 item 2; also regenerates the sampled-checkpoint JSONs)"
 run = "uv run python tools/regression_test.py generate --force --dense"
+
+[tasks."archive:record-fixtures"]
+description = "Program 24 P1 keel item 5 (WO-6): harvest the Wayne (26163) county projection fixture from a small deterministic in-process run"
+run = "uv run python tools/record_projection_fixtures.py"
 
 [tasks."qa:e2e-regression"]
 description = "Run headless 5-tick tri-county sim with --strict, compare like-for-like baseline (spec-064; scope pairing fixed in spec-086 T038; dense golden leg added Task 10/E2b)"

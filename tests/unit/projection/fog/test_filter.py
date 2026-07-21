@@ -2,10 +2,10 @@
 
 Two-layer model (spec-117 §5a): the MATERIAL layer (production, wages,
 rent, demographics, territory) is public record, always visible, never
-gated. The POLITICAL layer (:data:`game.fog.filter.POLITICAL_FIELDS`) is
+gated. The POLITICAL layer (:data:`babylon.projection.fog.filter.POLITICAL_FIELDS`) is
 visible only within organizing ``reach``, or via a session
-:class:`~game.fog.ledger.IntelLedger` entry (which ages exact -> approximate
--> unknown per :func:`game.fog.ledger.read_intel` — this module never
+:class:`~babylon.projection.fog.ledger.IntelLedger` entry (which ages exact -> approximate
+-> unknown per :func:`babylon.projection.fog.ledger.read_intel` — this module never
 re-derives that aging, it only calls it).
 
 Mirrors ``engine_bridge._apply_class_vision_gate``'s three-tier shape
@@ -47,8 +47,8 @@ def _territory_payload() -> dict[str, object]:
 
 class TestInsideReachIsExact:
     def test_political_fields_untouched_and_vision_lists_empty(self) -> None:
-        from game.fog.filter import apply_fog
-        from game.fog.ledger import IntelLedger
+        from babylon.projection.fog.filter import apply_fog
+        from babylon.projection.fog.ledger import IntelLedger
 
         payload = _territory_payload()
         result = apply_fog(
@@ -73,8 +73,8 @@ class TestInsideReachIsExact:
         assert result["vision_approx"] == []
 
     def test_material_fields_untouched(self) -> None:
-        from game.fog.filter import apply_fog
-        from game.fog.ledger import IntelLedger
+        from babylon.projection.fog.filter import apply_fog
+        from babylon.projection.fog.ledger import IntelLedger
 
         payload = _territory_payload()
         result = apply_fog(
@@ -95,8 +95,8 @@ class TestInsideReachIsExact:
     def test_reach_wins_even_with_a_stale_ledger_present(self) -> None:
         """Reach is checked BEFORE the ledger — a node the org can see
         directly is exact regardless of what stale intel might say."""
-        from game.fog.filter import apply_fog
-        from game.fog.ledger import IntelEntry, IntelLedger
+        from babylon.projection.fog.filter import apply_fog
+        from babylon.projection.fog.ledger import IntelEntry, IntelLedger
 
         payload = _territory_payload()
         stale_ledger = IntelLedger().append(
@@ -123,8 +123,8 @@ class TestInsideReachIsExact:
 
 class TestOutsideReachNoLedgerIsMasked:
     def test_every_political_field_is_null_and_listed(self) -> None:
-        from game.fog.filter import apply_fog
-        from game.fog.ledger import IntelLedger
+        from babylon.projection.fog.filter import apply_fog
+        from babylon.projection.fog.ledger import IntelLedger
 
         payload = _territory_payload()
         result = apply_fog(
@@ -153,8 +153,8 @@ class TestOutsideReachNoLedgerIsMasked:
         assert result["vision_approx"] == []
 
     def test_material_fields_untouched_and_exact(self) -> None:
-        from game.fog.filter import apply_fog
-        from game.fog.ledger import IntelLedger
+        from babylon.projection.fog.filter import apply_fog
+        from babylon.projection.fog.ledger import IntelLedger
 
         payload = _territory_payload()
         result = apply_fog(
@@ -178,8 +178,8 @@ class TestOutsideReachNoLedgerIsMasked:
         """Honest absence is not the same as withheld data (mirrors
         ``_apply_class_vision_gate``'s "already-None isn't masked" rule) —
         a field that was never populated must not be claimed as hidden."""
-        from game.fog.filter import apply_fog
-        from game.fog.ledger import IntelLedger
+        from babylon.projection.fog.filter import apply_fog
+        from babylon.projection.fog.ledger import IntelLedger
 
         payload = {"id": "T2", "heat": 0.5, "consciousness": None}
         result = apply_fog(
@@ -206,8 +206,8 @@ class TestAccidentalNullFieldsGetGatedOnceReal:
     re-added later."""
 
     def test_real_values_outside_reach_are_redacted(self) -> None:
-        from game.fog.filter import apply_fog
-        from game.fog.ledger import IntelLedger
+        from babylon.projection.fog.filter import apply_fog
+        from babylon.projection.fog.ledger import IntelLedger
 
         payload = {
             "id": "T1",
@@ -238,8 +238,8 @@ class TestAccidentalNullFieldsGetGatedOnceReal:
 
 class TestOutsideReachWithFreshLedgerIsExact:
     def test_fresh_ledger_entry_serves_its_snapshot_verbatim(self) -> None:
-        from game.fog.filter import apply_fog
-        from game.fog.ledger import IntelEntry, IntelLedger
+        from babylon.projection.fog.filter import apply_fog
+        from babylon.projection.fog.ledger import IntelEntry, IntelLedger
 
         payload = _territory_payload()
         ledger = IntelLedger().append(
@@ -280,8 +280,8 @@ class TestOutsideReachWithFreshLedgerIsExact:
         """One INVESTIGATE resolution need not capture every political
         field; whatever it didn't observe stays honestly unknown even
         though the field_group's aging clock is fresh."""
-        from game.fog.filter import apply_fog
-        from game.fog.ledger import IntelEntry, IntelLedger
+        from babylon.projection.fog.filter import apply_fog
+        from babylon.projection.fog.ledger import IntelEntry, IntelLedger
 
         payload = _territory_payload()
         ledger = IntelLedger().append(
@@ -312,8 +312,8 @@ class TestOutsideReachWithFreshLedgerIsExact:
 
 class TestOutsideReachWithAgedLedgerIsApproximate:
     def test_aged_entry_renders_quantized_and_marked_approx(self) -> None:
-        from game.fog.filter import apply_fog
-        from game.fog.ledger import IntelEntry, IntelLedger
+        from babylon.projection.fog.filter import apply_fog
+        from babylon.projection.fog.ledger import IntelEntry, IntelLedger
 
         payload = _territory_payload()
         ledger = IntelLedger().append(
@@ -344,8 +344,8 @@ class TestOutsideReachWithAgedLedgerIsApproximate:
 
 class TestOutsideReachWithStaleLedgerIsUnknown:
     def test_stale_entry_is_masked_like_no_entry_at_all(self) -> None:
-        from game.fog.filter import apply_fog
-        from game.fog.ledger import IntelEntry, IntelLedger
+        from babylon.projection.fog.filter import apply_fog
+        from babylon.projection.fog.ledger import IntelEntry, IntelLedger
 
         payload = _territory_payload()
         ledger = IntelLedger().append(
@@ -374,8 +374,8 @@ class TestOutsideReachWithStaleLedgerIsUnknown:
 
 class TestPurity:
     def test_same_inputs_yield_equal_outputs_every_time(self) -> None:
-        from game.fog.filter import apply_fog
-        from game.fog.ledger import IntelEntry, IntelLedger
+        from babylon.projection.fog.filter import apply_fog
+        from babylon.projection.fog.ledger import IntelEntry, IntelLedger
 
         payload = _territory_payload()
         ledger = IntelLedger().append(
@@ -412,8 +412,8 @@ class TestPurity:
         assert first == second
 
     def test_input_payload_is_never_mutated(self) -> None:
-        from game.fog.filter import apply_fog
-        from game.fog.ledger import IntelLedger
+        from babylon.projection.fog.filter import apply_fog
+        from babylon.projection.fog.ledger import IntelLedger
 
         payload = _territory_payload()
         original = dict(payload)
@@ -433,14 +433,14 @@ class TestPurity:
         assert result is not payload
 
     def test_never_reads_module_level_session_globals(self) -> None:
-        """Static sentinel: ``game.fog.filter`` must never reference the
+        """Static sentinel: ``babylon.projection.fog.filter`` must never reference the
         four forbidden per-process session dicts
         (``_session_action_history``/``_session_trap_state``/
         ``_session_endgame_detectors``/``_session_causal_observers``) —
         determinism requires it be a pure function of its explicit args."""
         import inspect
 
-        from game.fog import filter as fog_filter
+        from babylon.projection.fog import filter as fog_filter
 
         source = inspect.getsource(fog_filter)
         for forbidden in (
@@ -472,7 +472,7 @@ class TestOrgPoliticalFields:
         }
 
     def test_org_internal_fields_are_in_the_org_political_set(self) -> None:
-        from game.fog.filter import ORG_POLITICAL_FIELDS, POLITICAL_FIELDS
+        from babylon.projection.fog.filter import ORG_POLITICAL_FIELDS, POLITICAL_FIELDS
 
         for field in ("consciousness_tendency", "cohesion", "cadre_level", "heat"):
             assert field in ORG_POLITICAL_FIELDS
@@ -484,8 +484,8 @@ class TestOrgPoliticalFields:
         consciousness_tendency are outside the default POLITICAL_FIELDS set
         and pass through untouched — proving the org tuple is what does the
         gating, not some implicit behavior."""
-        from game.fog.filter import apply_fog
-        from game.fog.ledger import IntelLedger
+        from babylon.projection.fog.filter import apply_fog
+        from babylon.projection.fog.ledger import IntelLedger
 
         payload = self._org_payload()
         result = apply_fog(
@@ -506,8 +506,8 @@ class TestOrgPoliticalFields:
         assert result["heat"] is None
 
     def test_org_political_fields_masks_internal_state_outside_reach(self) -> None:
-        from game.fog.filter import ORG_POLITICAL_FIELDS, apply_fog
-        from game.fog.ledger import IntelLedger
+        from babylon.projection.fog.filter import ORG_POLITICAL_FIELDS, apply_fog
+        from babylon.projection.fog.ledger import IntelLedger
 
         payload = self._org_payload()
         result = apply_fog(
@@ -537,8 +537,8 @@ class TestOrgPoliticalFields:
         assert result["territory_ids"] == ["T1", "T2"]
 
     def test_org_political_fields_exact_inside_reach(self) -> None:
-        from game.fog.filter import ORG_POLITICAL_FIELDS, apply_fog
-        from game.fog.ledger import IntelLedger
+        from babylon.projection.fog.filter import ORG_POLITICAL_FIELDS, apply_fog
+        from babylon.projection.fog.ledger import IntelLedger
 
         payload = self._org_payload()
         result = apply_fog(
@@ -563,8 +563,8 @@ class TestOrgPoliticalFields:
 class TestLedgerFromEventsEndToEnd:
     """Track 1 / Task 3 (2026-07-18): proves the APPROXIMATE tier is
     reachable through the REAL production writer
-    (:func:`game.fog.ledger.ledger_from_events`), not just via a
-    hand-built :class:`~game.fog.ledger.IntelEntry` fixture. Before this
+    (:func:`babylon.projection.fog.ledger.ledger_from_events`), not just via a
+    hand-built :class:`~babylon.projection.fog.ledger.IntelEntry` fixture. Before this
     task ``IntelLedger`` had no writer at all, so this tier had never once
     fired in production — every prior ``apply_fog`` test that reached
     ``"approximate"`` constructed the ledger entry directly."""
@@ -572,8 +572,8 @@ class TestLedgerFromEventsEndToEnd:
     def test_a_persisted_investigate_row_aged_into_the_approximate_window_quantizes(
         self,
     ) -> None:
-        from game.fog.filter import apply_fog
-        from game.fog.ledger import ledger_from_events
+        from babylon.projection.fog.filter import apply_fog
+        from babylon.projection.fog.ledger import ledger_from_events
 
         row = {
             "tick": 100,
@@ -604,8 +604,8 @@ class TestLedgerFromEventsEndToEnd:
 
 class TestFieldsAbsentFromPayloadAreIgnored:
     def test_a_political_field_the_composer_never_produced_is_not_invented(self) -> None:
-        from game.fog.filter import apply_fog
-        from game.fog.ledger import IntelLedger
+        from babylon.projection.fog.filter import apply_fog
+        from babylon.projection.fog.ledger import IntelLedger
 
         payload = {"id": "ORG1", "budget": 100.0, "heat": 0.4}
         result = apply_fog(

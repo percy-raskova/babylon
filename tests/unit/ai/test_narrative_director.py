@@ -545,11 +545,12 @@ class TestNarrativeDirectorDualNarratives:
         initial_state: WorldState,
     ) -> None:
         """Significant events trigger dual narrative generation."""
-        from babylon.intelligence.ai import MockLLM, NarrativeDirector
+        from babylon.intelligence.ai import NarrativeDirector
+        from babylon.intelligence.providers import MockNarrator
         from babylon.models.events import SparkEvent
 
-        llm = MockLLM(responses=["Corporate view", "Liberated view"])
-        director = NarrativeDirector(use_llm=True, llm=llm)
+        llm = MockNarrator(responses=["Corporate view", "Liberated view"])
+        director = NarrativeDirector(use_llm=True, narrator=llm)
 
         # EXCESSIVE_FORCE (SparkEvent) is a SIGNIFICANT_EVENT_TYPE
         spark_event = SparkEvent(
@@ -578,10 +579,11 @@ class TestNarrativeDirectorDualNarratives:
         initial_state: WorldState,
     ) -> None:
         """Non-significant events don't trigger LLM calls for dual narratives."""
-        from babylon.intelligence.ai import MockLLM, NarrativeDirector
+        from babylon.intelligence.ai import NarrativeDirector
+        from babylon.intelligence.providers import MockNarrator
 
-        llm = MockLLM(responses=["Should not be called"])
-        director = NarrativeDirector(use_llm=True, llm=llm)
+        llm = MockNarrator(responses=["Should not be called"])
+        director = NarrativeDirector(use_llm=True, narrator=llm)
 
         # TransmissionEvent (CONSCIOUSNESS_TRANSMISSION) is NOT in SIGNIFICANT_EVENT_TYPES
         event = TransmissionEvent(
@@ -645,16 +647,17 @@ class TestNarrativeDirectorDualNarratives:
         initial_state: WorldState,
     ) -> None:
         """Dual narratives contain both corporate and liberated text."""
-        from babylon.intelligence.ai import MockLLM, NarrativeDirector
+        from babylon.intelligence.ai import NarrativeDirector
+        from babylon.intelligence.providers import MockNarrator
         from babylon.models.events import UprisingEvent
 
-        llm = MockLLM(
+        llm = MockNarrator(
             responses=[
                 "Authorities maintained order during civil unrest.",
                 ">>> TRANSMISSION <<< Workers rose against oppression!",
             ]
         )
-        director = NarrativeDirector(use_llm=True, llm=llm)
+        director = NarrativeDirector(use_llm=True, narrator=llm)
 
         uprising = UprisingEvent(
             tick=5,
@@ -686,17 +689,18 @@ class TestNarrativeDirectorDualNarratives:
         corporate (status quo) and liberated (revolutionary) perspectives
         for the game's conclusion.
         """
-        from babylon.intelligence.ai import MockLLM, NarrativeDirector
+        from babylon.intelligence.ai import NarrativeDirector
+        from babylon.intelligence.providers import MockNarrator
         from babylon.models.enums import GameOutcome
         from babylon.models.events import EndgameEvent
 
-        llm = MockLLM(
+        llm = MockNarrator(
             responses=[
                 "Order has been restored after a period of instability.",
                 ">>> TRANSMISSION <<< The workers have seized the means!",
             ]
         )
-        director = NarrativeDirector(use_llm=True, llm=llm)
+        director = NarrativeDirector(use_llm=True, narrator=llm)
 
         endgame_event = EndgameEvent(
             tick=100,
@@ -727,7 +731,7 @@ class TestNarrativeDirectorDualNarratives:
         from babylon.models.events import RuptureEvent
 
         # No LLM provided, use_llm=True but _llm=None
-        director = NarrativeDirector(use_llm=True, llm=None)
+        director = NarrativeDirector(use_llm=True, narrator=None)
 
         rupture = RuptureEvent(tick=1, edge=f"{PERIPHERY_WORKER_ID}->{COMPRADOR_ID}")
         new_state = initial_state.model_copy(

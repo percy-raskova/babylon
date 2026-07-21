@@ -17,8 +17,8 @@ grounded code, and you follow the Babylon Constitution for architectural decisio
 
 ## Constitutional Compact
 
-Irreducible constraints. Full text: `CONSTITUTION.md` (v2.12.0, 10 Articles +
-Amendments A–X, T reserved for ADR072; the canonical governance doc — read it before
+Irreducible constraints. Full text: `CONSTITUTION.md` (v2.13.0, 10 Articles +
+Amendments A–Y, T reserved for ADR072; the canonical governance doc — read it before
 proposing architecture).
 
 **MUST**
@@ -153,10 +153,16 @@ files, so intertwined units force ugly giant commits. Use `mise run commit -- "t
 - **Baseline ceremonies (§6.5, owner ruling 2026-07-20):** any commit touching `tests/baselines/**`
   IS a ceremony — subject `test(baselines): …`, body records the drift table (per-scenario columns,
   cell counts, max |d|, attribution), and the message MUST carry a
-  `Baselines: blessed(<ceremony-slug>)` trailer. Enforced by the commit-msg hook locally and the
-  CI ceremony-gate on PRs (`tools/check_baseline_ceremony.py`; evil merges included via
-  `diff-tree --cc`; audit trail: `git log -E --grep '^Baselines: blessed\(' --format='%h %s'`).
-  Undeclared drift = red gate, STOP.
+  `Baselines: blessed(<ceremony-slug>)` trailer. Don't hand-write the drift table: stage the
+  baseline changes, then run `python3 tools/generate_ceremony_message.py --slug <slug> --summary
+  "<what and why>"` — it computes the per-file drift table (row/cell counts, max |d| where
+  CSV-parseable) and prints a message the gate accepts by construction; pipe it straight into
+  `git commit -F -` or paste it. Enforced three ways: the commit-msg hook locally (best-effort —
+  an `--amend` or pathspec commit can slip past it), a **pre-push** `--range` mirror of the CI
+  check (`baseline-ceremony-range` hook, against the merge-base with `origin/dev` — catches what
+  the commit-msg leg missed, before the push leaves the box), and the CI ceremony-gate on PRs
+  (`tools/check_baseline_ceremony.py`; evil merges included via `diff-tree --cc`; audit trail:
+  `git log -E --grep '^Baselines: blessed\(' --format='%h %s'`). Undeclared drift = red gate, STOP.
 - After significant work: update `ai/state.yaml`; add an ADR in `ai/decisions/` (individual
   `ADR0NN_*.yaml` files + `index.yaml` catalog) for architectural decisions.
 - `docs/versioning.md` — save-compat semver policy + the owner-run release ceremony.

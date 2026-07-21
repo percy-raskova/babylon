@@ -63,7 +63,7 @@ class TestOrganizingReach:
     """Contract of ``organizing_reach(graph, player_org_id, radius)``."""
 
     def test_includes_presence_linked_territory(self) -> None:
-        from game.fog.reach import organizing_reach
+        from babylon.projection.fog.reach import organizing_reach
 
         reach = organizing_reach(_graph(), "ORG1", radius=1)
 
@@ -72,7 +72,7 @@ class TestOrganizingReach:
     def test_includes_tenancy_linked_class(self) -> None:
         """The TENANCY hop (territory -> social_class) is structural and
         always taken exactly once, regardless of ``radius``."""
-        from game.fog.reach import organizing_reach
+        from babylon.projection.fog.reach import organizing_reach
 
         reach = organizing_reach(_graph(), "ORG1", radius=1)
 
@@ -80,7 +80,7 @@ class TestOrganizingReach:
 
     def test_includes_first_degree_solidarity_ally(self) -> None:
         """``radius=1`` takes one SOLIDARITY hop from the tenant class."""
-        from game.fog.reach import organizing_reach
+        from babylon.projection.fog.reach import organizing_reach
 
         reach = organizing_reach(_graph(), "ORG1", radius=1)
 
@@ -91,7 +91,7 @@ class TestOrganizingReach:
         """``radius=2`` reaches the second-degree SOLIDARITY ally. This is
         the ONLY hop radius controls — PRESENCE and TENANCY are always
         exactly one hop regardless of ``radius``."""
-        from game.fog.reach import organizing_reach
+        from babylon.projection.fog.reach import organizing_reach
 
         reach = organizing_reach(_graph(), "ORG1", radius=2)
 
@@ -100,7 +100,7 @@ class TestOrganizingReach:
     def test_excludes_unrelated_org_and_territory(self) -> None:
         """ORG2/T2 share no PRESENCE/TENANCY/SOLIDARITY path with ORG1, at
         any radius."""
-        from game.fog.reach import organizing_reach
+        from babylon.projection.fog.reach import organizing_reach
 
         reach = organizing_reach(_graph(), "ORG1", radius=5)
 
@@ -108,7 +108,7 @@ class TestOrganizingReach:
         assert "T2" not in reach
 
     def test_deterministic_across_repeated_calls(self) -> None:
-        from game.fog.reach import organizing_reach
+        from babylon.projection.fog.reach import organizing_reach
 
         g = _graph()
 
@@ -118,7 +118,7 @@ class TestOrganizingReach:
         assert first == second
 
     def test_returns_frozenset(self) -> None:
-        from game.fog.reach import organizing_reach
+        from babylon.projection.fog.reach import organizing_reach
 
         reach = organizing_reach(_graph(), "ORG1", radius=1)
 
@@ -127,14 +127,14 @@ class TestOrganizingReach:
     def test_empty_for_none_player_org_id(self) -> None:
         """``player_org_id=None`` is a legitimate sentinel (no player org
         set — synthetic scenarios, headless sweeps), never a crash."""
-        from game.fog.reach import organizing_reach
+        from babylon.projection.fog.reach import organizing_reach
 
         reach = organizing_reach(_graph(), None, radius=5)
 
         assert reach == frozenset()
 
     def test_includes_player_org_itself(self) -> None:
-        from game.fog.reach import organizing_reach
+        from babylon.projection.fog.reach import organizing_reach
 
         reach = organizing_reach(_graph(), "ORG1", radius=1)
 
@@ -153,7 +153,7 @@ class TestOrganizingReachAgainstRealWayneCountyScenario:
 
     def test_reach_includes_tenancy_and_solidarity_hops(self) -> None:
         from babylon.engine.scenarios import create_wayne_county_scenario
-        from game.fog.reach import organizing_reach
+        from babylon.projection.fog.reach import organizing_reach
 
         state, _config, defines = create_wayne_county_scenario()
         graph = state.to_graph()
@@ -187,7 +187,7 @@ class TestOrganizingReachAgainstRealUSScenario:
 
     def test_reach_includes_tenancy_and_solidarity_hops(self) -> None:
         from babylon.engine.scenarios import create_us_scenario
-        from game.fog.reach import organizing_reach
+        from babylon.projection.fog.reach import organizing_reach
 
         state, _config, defines = create_us_scenario()
         graph = state.to_graph()

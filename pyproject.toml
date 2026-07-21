@@ -34,6 +34,10 @@ dependencies = [
     "referencing>=0.37.0,<0.38.0",
     "openpyxl>=3.1.5,<4.0.0",
     "openai>=2.9.0,<3.0.0",
+    # Amendment Y / ADR100: pydantic-ai is the canonical LLM SDK for the
+    # generation lane (slim + openai extra: the wire seam stays OpenAI-compatible
+    # /v1; the stock openai client above carries embeddings and health probes).
+    "pydantic-ai-slim[openai]>=2.14.0,<3.0.0",
     "tokenizers>=0.19.1",
     "aiohttp>=3.13.3,<4.0.0",
     "backoff>=2.2.1",
@@ -59,6 +63,15 @@ dependencies = [
     "duckdb>=1.4.4,<2.0.0",
     "pgvector>=0.5.0,<0.6.0",
     "tqdm>=4.66.0,<5.0.0",
+    # The Archive keel (Program 24 P1, ADR099): TUI client + vault pipeline.
+    # jinja2/markdown-it-py/mdit-py-plugins were already resolved transitively
+    # AT these pins — promoted to direct because the keel imports them.
+    "textual>=8.2,<8.3",
+    "textual-image>=0.13,<0.14",
+    "dulwich>=1.2,<2",
+    "jinja2>=3.1.6,<4.0.0",
+    "markdown-it-py>=4.2.0,<5.0.0",
+    "mdit-py-plugins>=0.6.1,<0.7.0",
 ]
 
 [project.optional-dependencies]
@@ -118,6 +131,11 @@ dev = [
     "pytest-html>=4.1.0,<5.0.0",
     "pytest-timeout>=2.4.0,<3.0.0",
     "import-linter>=2.13.0,<3.0.0",
+    # Archive snapshot lane (ADR099): the plugin hard-pins syrupy==4.8.0,
+    # which declares pytest<9 — impossible beside pytest 9.x. The [tool.uv]
+    # override-dependencies entry below forces syrupy>=5.5 through resolution.
+    "pytest-textual-snapshot==1.1.0",
+    "syrupy>=5.5,<6.0.0",
 ]
 docs = [
     "sphinx>=9,<10",
@@ -127,6 +145,13 @@ docs = [
     "sphinx-autobuild>=2025.8,<2026.0.0",
     "sphinxcontrib-mermaid>=2.0.0,<3.0.0",
 ]
+
+# The Archive snapshot lane (ADR099): pytest-textual-snapshot 1.1.0 declares
+# syrupy==4.8.0, which caps pytest<9; this repo runs pytest 9.x. Override the
+# plugin's pin at resolution — syrupy 5.5+ is the working combo proven by the
+# P0 spike. Watched upstream; drop this when the plugin releases a fix.
+[tool.uv]
+override-dependencies = ["syrupy>=5.5,<6.0.0"]
 
 [tool.poetry]
 packages = [
@@ -536,6 +561,10 @@ extraPaths = ["."]
 [tool.importlinter]
 root_packages = ["babylon"]
 exclude_type_checking_imports = true
+# Required because the tui contract forbids an external package (django).
+# Externals enter the graph squashed; the babylon-internal contracts are
+# unaffected by this flag.
+include_external_packages = true
 
 [[tool.importlinter.contracts]]
 name = "the domain must not import the engine (kernel abstractions only)"
@@ -595,3 +624,19 @@ name = "the framework-free seam must not import the legacy ai abstraction"
 type = "forbidden"
 source_modules = ["babylon.intelligence.providers"]
 forbidden_modules = ["babylon.intelligence.ai"]
+
+[[tool.importlinter.contracts]]
+name = "projection (the Hoist, Program 24) must not import the engine"
+type = "forbidden"
+source_modules = ["babylon.projection"]
+forbidden_modules = ["babylon.engine"]
+
+[[tool.importlinter.contracts]]
+name = "tui client reads projections only — no engine, persistence, or legacy web stack"
+type = "forbidden"
+source_modules = ["babylon.tui"]
+forbidden_modules = [
+    "babylon.engine",
+    "babylon.persistence",
+    "django",
+]

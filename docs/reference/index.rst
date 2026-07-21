@@ -113,6 +113,18 @@ concrete implementations (``PostgresRuntime``, ``RuntimeDatabase``,
 ``PgVectorStore``, ``TraceRecorder``), database schema, and the
 ``PersistenceObserver`` lifecycle hook.
 
+Projection Registry (Program 24, Constitution II.11)
+----------------------------------------------------
+
+.. toctree::
+   :maxdepth: 1
+
+   projection-registry
+
+The declared-view registry behind the transport-neutral projection layer
+(``babylon.projection``): per-view ownership, frozen view-models, explicit
+``ORDER BY`` determinism, and FTS columns. The mandated II.11 spec.
+
 Determinism Contract (Constitution III.12)
 -------------------------------------------
 
@@ -290,3 +302,16 @@ CI/CD Workflow
 
 GitHub Actions workflows, branch protection rules, and the Benevolent
 Dictator governance model.
+
+Git Trailer Schema (Git Doctrine Item 1)
+------------------------------------------
+
+.. toctree::
+   :maxdepth: 1
+
+   trailer-schema
+
+The structured trailer grammar (``Task``/``Train``/``Lane``/``Safety``/
+``Pinned``/``Baselines``/``Session``/``Co-Authored-By``), the generated
+PR-body tool that consumes it, and the audit mapping every local
+pre-commit/pre-push hook to its authoritative CI leg (or its absence).

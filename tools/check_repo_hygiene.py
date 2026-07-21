@@ -87,6 +87,9 @@ ALLOWED_TOP_LEVEL_FILES: frozenset[str] = frozenset(
         "SETUP_GUIDE.md",
         "data-artifacts.yaml",  # ADR076 successor registry for demoted reference tables
         "data-catalog.yaml",
+        "flake.lock",  # ADR094: game flake pin (uv2nix packaging train)
+        "flake.nix",  # ADR094: game flake — packages.babylon via uv2nix
+        "install.sh",  # ADR094 D1/D2: player installer with refuse-until-keyed cache guard
         "logging.yaml",  # runtime logging config (src/babylon/config/logging_config.py)
         "uv.lock",  # ADR095 D3a: uv replaces Poetry as the dependency toolchain
         "pyproject.toml",

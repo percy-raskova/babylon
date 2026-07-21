@@ -1,9 +1,19 @@
 meta:
-  version: 1.40.0
+  version: 1.42.0
   updated: '2026-07-20'
   description: Architecture Decision Records Index
   format: See individual ADR files in this directory
 decisions:
+  ADR101_narrator_seam_consolidation:
+    title: 'Narrator seam consolidation (BD-directed, executes past the ADR096-inference-lane plan''s quarantine): legacy LLMProvider/MockLLM/DeepSeek/WorkersAI stack + LLMConfig chat lane DELETED (git history = archive); babylon.intelligence.providers is the ONE transport seam — director takes narrator: NarratorProvider, judge defaults to chat_model_for(resolve_provider().endpoint) lazily, web narrative_service resolves via resolve_provider with the III.6 pin read from the RESOLVED endpoint inside the try (loud degradation, "unresolved" fallback), tools degrade mute->MockNarrator (demo) or fail loud (interview); MockNarrator + ProviderKind.MOCK + ModelFactory/chat_model_for added to providers.py; LLMConfig = embedding lane only, OpenAIConfig alias gone, DeepSeek lane gone (§A7.6 alignment); GOTCHA: cf-aig-gateway-id header did not survive — resurrect at the babylon-api Worker if wanted'
+    status: accepted
+    date: '2026-07-20'
+    file: ADR101_narrator_seam_consolidation.yaml
+  ADR100_pydantic_ai_adoption:
+    title: 'Pydantic AI as canonical LLM SDK (Amendment Y, v2.13.0): pydantic-ai-slim[openai] 2.14 replaces the hand-rolled DeepSeek/WorkersAI chat clients (one PydanticAIChatClient, ModelFactory test seam, fresh model per generate() — event-loop-staleness class retired) and the judge''s fence-stripping JSON extraction (Agent output_type=JudgmentResult, validation-retry then loud LLM_001); providers.py narrate lane migrated via ChatModelFactory while embed/health stay on the stock openai client (no embedding API in pydantic-ai); LLMProvider protocol, error taxonomy LLM_001/002/003, build_llm_provider semantics, and MockLLM estate unchanged; ALLOW_MODEL_REQUESTS=False global test-tier guard; GOTCHA: uv add on the pre-ADR095 poetry-hybrid base wrote a static [project].dependencies that gutted poetry.lock to one package — poetry tables are the only dependency authority on this base; agentic tool use against engine state remains amendment-gated (V/Y)'
+    status: accepted
+    date: '2026-07-20'
+    file: ADR100_pydantic_ai_adoption.yaml
   ADR099_archive_stack:
     title: 'Program 24 (The Archive) stack ADR: spike-evidenced TUI pins — Textual >=8.2,<8.3 direct (hover/palette/theme verified, 10k fuzzy 56.9ms), fenced-directives-ONLY markdown pipeline on markdown-it-py 4.2 (paired container tokens break the 8.2.8 walker; one MarkdownFence subclass dispatches on token.info; unknown directives fail loud), ~30-line wikilink inline rule emitting standard link tokens with babylon:// hrefs (redlink register for unknowns), Jinja2 3.1.6 ImmutableSandbox+StrictUndefined (dunder/mutation SecurityError tested), Postgres FTS epistemic search (fog = WHERE clause), dulwich 1.2 sim-time vault commits (identical shas across independent builds; stage/commit moved to WorkTree), half-block floor (200x50 full-repaint 58.2ms/frame headless) + kitty-graphics raster lane via textual-image 0.13 (detect-before-boot; sixel is not a target), snapshot lane REAL FINDING: pytest-textual-snapshot 1.1.0''s syrupy==4.8.0 pin IMPOSSIBLE beside pytest 9.1.1 — resolved with syrupy>=5.5 + dep-override install, SVG double-bake sha256-identical (III.13 render-lane evidence); deployment guardrails bound into the keel (DSN-from-config unix-socket, PG17 pin, Ollama->WorkersAI->mute, per-campaign embedding pin, telemetry cadence never in GameDefines). Three Kitty eyes-on items remain owner-verifiable (TGP/ssh, map feel, real-mouse hover)'
     status: accepted

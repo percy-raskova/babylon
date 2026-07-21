@@ -24,6 +24,8 @@ from textual.message import Message
 from textual.widgets import Label
 from textual.widgets._markdown import MarkdownFence
 
+from babylon.projection.topology.choropleth import ChoroplethCell, MapTier
+
 DIRECTIVE_RE: Final = re.compile(r"^\{(\w+)\}\s*(.*)$")
 
 NARRATIVE_CACHE_KEY_RE: Final = re.compile(r"^cached:(\d+):(.+)$")
@@ -142,6 +144,63 @@ def render_paoh(nodes: Sequence[str], edges: Sequence[tuple[int, frozenset[str]]
                 cells.append("[$panel]·[/]   ")
         lines.append(f"[$foreground]{node:<10}[/] " + "".join(cells))
     return "\n".join(lines)
+
+
+def parse_maproom_body(body: str) -> tuple[MapTier, tuple[ChoroplethCell, ...]]:
+    """Parse a ``{maproom}`` fence body into a tier and its choropleth cells.
+
+    Line-oriented body format, no external fixture required (mirrors
+    :func:`parse_paoh_body`)::
+
+        tier: state
+        26: 0.500000
+        08:
+
+    A bare ``<region_id>:`` line with nothing after the colon is an honest
+    absence for that region (Constitution III.11) — never a fabricated 0.0.
+
+    :param body: the raw fenced code block content.
+    :raises ValueError: if there is no ``tier:`` line, the tier is not one of
+        ``ea``/``state``/``county``, a line has no ``:`` separator, or a
+        region line's value is present but not a valid float.
+    :returns: ``(tier, cells)`` — cells in body order (a baked page's own
+        order is its deterministic order, per III.13; this parser does not
+        re-sort).
+    """
+    tier: MapTier | None = None
+    cells: list[ChoroplethCell] = []
+    for line in (raw.strip() for raw in body.splitlines()):
+        if not line:
+            continue
+        key, sep, rest = line.partition(":")
+        key = key.strip()
+        if not sep:
+            raise ValueError(f"{{maproom}} line has no ':' separator: {line!r}")
+        if key == "tier":
+            candidate = rest.strip()
+            if candidate == "ea":
+                tier = "ea"
+            elif candidate == "state":
+                tier = "state"
+            elif candidate == "county":
+                tier = "county"
+            else:
+                raise ValueError(f"{{maproom}} tier must be ea/state/county, got {candidate!r}")
+            continue
+        value_text = rest.strip()
+        if not value_text:
+            cells.append(ChoroplethCell(region_id=key))
+            continue
+        try:
+            value = float(value_text)
+        except ValueError as exc:
+            raise ValueError(
+                f"{{maproom}} region {key!r} has a non-numeric value: {value_text!r}"
+            ) from exc
+        cells.append(ChoroplethCell(region_id=key, exploitation_rate=value))
+    if tier is None:
+        raise ValueError("{maproom} body must declare a 'tier: ...' line")
+    return tier, tuple(cells)
 
 
 class BabylonFence(MarkdownFence):
@@ -264,6 +323,24 @@ class BabylonFence(MarkdownFence):
             return
         yield Label(render_paoh(nodes, edges), classes="paoh", markup=True)
 
+    def _directive_maproom(self, _arg: str) -> ComposeResult:
+        try:
+            tier, cells = parse_maproom_body(self.code)
+        except ValueError as exc:
+            yield Label(f"▌ ABSENT — {{maproom}} {exc}", classes="absence")
+            return
+        if not cells:
+            yield Label(f"▌ no choropleth cells for tier {tier!r}", classes="absence")
+            return
+        # Always the cell-art floor (ADR097 Tier 0, the design target, never
+        # a fallback): no capability flag reaches the fenced-directive
+        # dispatch yet — ADR097 D4's babylon-doctor probe/config plumbing is
+        # separate, future work (babylon.tui.map_room.render_map_room takes
+        # render_tier explicitly for the caller that eventually wires it).
+        from babylon.tui.map_room import render_map_room
+
+        yield render_map_room(cells, render_tier="glyph")
+
     # Public naming-convention handlers, not the underscore form: Textual
     # reserves `_on_<event>` for its own base-class interception (dispatch
     # checks `_{name}` before `{name}` per class in the MRO), and no base
@@ -290,5 +367,6 @@ __all__ = [
     "DirectiveHover",
     "parse_paoh_body",
     "render_paoh",
+    "parse_maproom_body",
     "BabylonFence",
 ]

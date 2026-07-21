@@ -76,3 +76,48 @@ def test_context_manager_starts_and_stops(tmp_path: Path) -> None:
     with _supervisor(port, tmp_path) as supervisor:
         assert supervisor.health_ok() is True
     assert supervisor.health_ok() is False
+
+
+# --- ensure_bundled_running (D1 lazy start) ---------------------------------
+
+import sys as _sys  # noqa: E402 - grouped with the lazy-start tests
+
+from babylon.intelligence.llama_server import ensure_bundled_running  # noqa: E402
+from babylon.intelligence.providers import IntelligenceSettings  # noqa: E402
+
+
+def _factory_using_fake(port: int):
+    def factory(binary, chat_gguf, embed_gguf, *, host, port_, **_):  # noqa: ANN001
+        return LlamaServerSupervisor(
+            binary=Path(_sys.executable),
+            chat_gguf=chat_gguf,
+            embed_gguf=embed_gguf,
+            host=host,
+            port=port_,
+            extra_argv=[str(_FAKE)],
+        )
+
+    return factory
+
+
+def test_ensure_skips_when_mode_is_mute(tmp_path: Path) -> None:
+    settings = IntelligenceSettings(mode="mute")
+    got = ensure_bundled_running(settings, models_dir=tmp_path, env={})
+    assert got is None
+
+
+def test_ensure_skips_when_weights_absent(tmp_path: Path) -> None:
+    # Binary resolvable but the models dir has no gguf → fall through, no start.
+    settings = IntelligenceSettings(mode="auto")
+    env = {"BABYLON_LLAMA_SERVER_BIN": _sys.executable}
+    got = ensure_bundled_running(settings, models_dir=tmp_path, env=env)
+    assert got is None
+
+
+def test_ensure_skips_when_binary_absent(tmp_path: Path) -> None:
+    (tmp_path / "babylon-chat.gguf").write_bytes(b"x")
+    (tmp_path / "babylon-embed.gguf").write_bytes(b"x")
+    settings = IntelligenceSettings(mode="bundled")
+    env = {"PATH": "/nonexistent", "BABYLON_LLAMA_SERVER_BIN": ""}
+    got = ensure_bundled_running(settings, models_dir=tmp_path, env=env)
+    assert got is None  # loud ProviderUnavailable swallowed → degrade, not crash

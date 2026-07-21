@@ -19,11 +19,11 @@ import subprocess
 import time
 import urllib.error
 import urllib.request
-from collections.abc import Mapping, Sequence
+from collections.abc import Callable, Mapping, Sequence
 from pathlib import Path
 from types import TracebackType
 
-from babylon.intelligence.providers import ProviderUnavailable
+from babylon.intelligence.providers import IntelligenceSettings, ProviderUnavailable
 
 logger = logging.getLogger("babylon.intelligence.llama_server")
 
@@ -166,3 +166,59 @@ class LlamaServerSupervisor:
         tb: TracebackType | None,
     ) -> None:
         self.close()
+
+
+SupervisorFactory = Callable[..., LlamaServerSupervisor]
+
+_BUNDLED_CHAT_WEIGHT = "babylon-chat.gguf"
+_BUNDLED_EMBED_WEIGHT = "babylon-embed.gguf"
+
+
+def ensure_bundled_running(
+    settings: IntelligenceSettings,
+    *,
+    models_dir: Path,
+    env: Mapping[str, str] | None = None,
+    supervisor_factory: SupervisorFactory | None = None,
+) -> LlamaServerSupervisor | None:
+    """Start the bundled server iff the bundled lane is selectable and ready.
+
+    Called by the session bootstrap BEFORE ``resolve_provider``. Returns the
+    running supervisor (caller owns ``.close()``), or ``None`` when the bundled
+    lane is not selected/ready — in which case precedence falls through to
+    detected-external → cloudflare → mute untouched. Never raises: a missing
+    binary or a startup failure degrades quietly (loud in the log), because
+    mute is always legal (Amendment V, R4).
+    """
+    import os
+
+    env = os.environ if env is None else env
+    if settings.mode not in {"auto", "bundled"}:
+        return None
+
+    chat = models_dir / _BUNDLED_CHAT_WEIGHT
+    embed = models_dir / _BUNDLED_EMBED_WEIGHT
+    if not (chat.exists() and embed.exists()):
+        logger.info(
+            "bundled lane: weights not provisioned in %s — run `babylon doctor --provision`",
+            models_dir,
+        )
+        return None
+
+    try:
+        binary = resolve_llama_binary(env)
+    except ProviderUnavailable as exc:
+        logger.info("bundled lane unavailable: %s", exc)
+        return None
+
+    factory = supervisor_factory or (
+        lambda **kwargs: LlamaServerSupervisor(**kwargs)  # noqa: E731 - trivial adapter
+    )
+    supervisor = factory(binary=binary, chat_gguf=chat, embed_gguf=embed)
+    try:
+        supervisor.start()
+    except ProviderUnavailable as exc:
+        logger.warning("bundled llama-server failed to start: %s — degrading", exc)
+        supervisor.close()
+        return None
+    return supervisor

@@ -1,4 +1,4 @@
-#!/usr/bin/env bash
+#!/bin/sh
 # Babylon nix-bootstrap installer (ADR104; amends ADR094 D1/D2).
 #
 # What it does, in order:
@@ -12,9 +12,13 @@
 #   3. Installs the `babylon` package from the signed R2 binary cache via
 #      `nix profile install`.
 #
-# Bash is used only for `set -o pipefail` (needed to fail loudly if the
-# installer pipe below breaks mid-stream) and for the shebang itself — the
-# rest of this script is plain POSIX `sh`, no other bashisms.
+# This script is plain POSIX `sh` — no bashisms, no `set -o pipefail` (undefined
+# in POSIX sh per shellcheck SC3040, and unsupported by dash < 0.5.12, which
+# ships on currently-supported Ubuntu/Debian LTS releases). The one pipe below
+# (the Nix-installer download) does not need pipefail to fail loudly: if the
+# curl half fails, the piped installer sees empty/partial stdin and the
+# explicit `command -v nix` check right after still catches the missing
+# binary and dies with a clear message.
 #
 # Paths this script writes to (host-harmlessness, ADR104 item 4):
 #   - Nix's own territory: whatever the Determinate installer and
@@ -44,7 +48,7 @@
 #   curl -o install.sh https://raw.githubusercontent.com/percy-raskova/babylon/main/install.sh
 #   less install.sh
 #   sh install.sh --yes
-set -euo pipefail
+set -eu
 
 # ── Configuration ──────────────────────────────────────────────────────────
 

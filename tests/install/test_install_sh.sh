@@ -32,11 +32,12 @@ STUB
   chmod +x "$1/bin/nix"
 }
 
-# 1. Lint clean (bash dialect — install.sh's shebang is #!/usr/bin/env bash).
-run_shellcheck -s bash "$script" || fail "shellcheck reported issues"
+# 1. Lint clean (POSIX sh dialect — install.sh's shebang is #!/bin/sh, and it
+#    is invoked as `sh install.sh` throughout the docs/runbook/usage block).
+run_shellcheck -s sh "$script" || fail "shellcheck reported issues"
 
 # 2. Syntax clean.
-bash -n "$script" || fail "bash -n reported a syntax error"
+sh -n "$script" || fail "sh -n reported a syntax error"
 
 # 3. Unmodified script must REFUSE (placeholder public key still present),
 #    even with a stubbed nix already on PATH (the cache-key guard fires

@@ -5,6 +5,43 @@ meta:
   version: "2.47.0"  # 2.28.0 lives on feature/19-emergent-class-partition (Program 19 Phase 0+1)
   updated: "2026-07-21"
   truth_status: |
+    (2026-07-21 Vol II U3) VOL II CIRCULATION PROGRAM, UNIT 3 COMPLETE (truth
+    in the tick, ADR122). Replaced the three confirmed stubs in
+    _compute_county_circulation_state: an always-balanced
+    ReproductionBalance/ReproductionAnalysis hardcode, a DepreciationFundState
+    rebuilt from scratch every tick, and advance_circuit never called -- with
+    the real Feature-023 calculators (check_simple_reproduction,
+    check_extended_reproduction, compute_disproportionality,
+    update_depreciation_fund, advance_circuit), fed real per-county
+    department data from the TensorRegistry (ValueTensor4x3, the
+    quickstart-designated source) via new helpers
+    _get_county_departments/_compute_reproduction_state. Cross-tick state
+    (prior CircuitState/DepreciationFundState) is carried on the
+    TickDynamicsSystem instance (self._circulation_prev_state, mirroring the
+    existing self._vol3_sentinel_logged convention) rather than through
+    CountyEconomicState.circulation_state -- _compute_county_states (shared
+    driver code outside this lane's ADR103 room partition) does not thread
+    circulation_state forward from prev_county_states, an upstream gap
+    recorded in ADR122 but explicitly not fixed here. New
+    CirculationCrisisState.disproportionality field (Optional, honest-absence
+    None when no tensor data exists for the county-year -- hydration covers
+    2010-2025 only). Fixed a latent determinism bug found while wiring
+    compute_disproportionality live for the first time: an unconditional
+    datetime.now() wall-clock year, now an explicit year parameter (the 9
+    pre-existing tests are unaffected -- omitting the parameter preserves the
+    old behavior). New CapitalVolumeIIDefines (capital_vol2.py):
+    reproduction_tolerance (0.01) and dept_i_share_required (0.6667, Marx
+    Capital Vol. II Ch. 20 simple-reproduction illustration), defines.yaml
+    regenerated. Verified: mypy clean (scoped), 719 scoped tests green (5 new
+    in tests/unit/economics/tick/test_circulation_layer.py + 2 new in
+    test_reproduction.py + all pre-existing circulation/tick/config-sync
+    suites unaffected). qa:regression NOT run this unit (scoped-test-only
+    lane constraint) -- the depreciation/circuit cross-tick change is new
+    per-tick math that may move circulation_state contents on any canonical
+    scenario with capital_stock>0 and a wired turnover_profile_source; treat
+    as expected drift requiring a declared ceremony if it fires, not a bug.
+    Next: U4 (light the step) or U6 (oppositions) -- neither depends on the
+    other.
     (2026-07-21 Vol II U2) VOL II CIRCULATION PROGRAM, UNIT 2 COMPLETE (data
     path). Closed the program prompt §3 gap: raw hex-resolution LODES OD
     .csv.gz (lodes_commute_matrix.py's actual read source) had no

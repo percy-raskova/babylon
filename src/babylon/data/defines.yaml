@@ -1020,6 +1020,13 @@ substrate:
   entropy_factor: 1.2  # Game design: extraction costs more than it yields (thermodynamic inefficiency) -- mirrors MetabolismDefines.entropy_factor's convention for this parallel raw_material_stock family. (> 1.0, <= 3.0)
 
 # ---------------------------------------------------------------------
+# capital_vol2 — Volume II (circulation / reproduction schema) coefficients.
+# ---------------------------------------------------------------------
+capital_vol2:
+  reproduction_tolerance: 0.01  # Maximum absolute I(v+s) - IIc gap (labor-hours) still considered BALANCED simple reproduction. Passed as the tolerance argument to check_simple_reproduction() from _compute_reproduction_state (Volume II tick wiring, U3). Matches the calculator's own pre-existing tested default (Feature 023 T047, tests/unit/economics/circulation/test_reproduction.py). (> 0.0)
+  dept_i_share_required: 0.6667  # Theoretically required Department I (means of production) share of combined Dept I + Dept II output for balanced reproduction. Passed to compute_disproportionality() from _compute_reproduction_state (Volume II tick wiring, U3). Derived from Marx's own simple-reproduction numerical illustration (Capital Vol. II, Ch. 20 SS II): I = 4000c+1000v+1000s = 6000, II = 2000c+500v+500s = 3000, dept I share = 6000/9000 = 0.6667. (> 0.0, < 1.0)
+
+# ---------------------------------------------------------------------
 # capital_vol3 — Volume III (surplus distribution / credit / counter-tendency) coefficients.
 # ---------------------------------------------------------------------
 capital_vol3:

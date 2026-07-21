@@ -27,12 +27,20 @@ from __future__ import annotations
 import logging
 from typing import TYPE_CHECKING, ClassVar
 
-from babylon.domain.economics.circulation.circuit import initialize_circuit_state
+from babylon.domain.economics.circulation.circuit import advance_circuit, initialize_circuit_state
 from babylon.domain.economics.circulation.crisis import assess_circulation_crisis
 from babylon.domain.economics.circulation.defaults import FALLBACK_PROFILE
+from babylon.domain.economics.circulation.fixed_circulating import update_depreciation_fund
+from babylon.domain.economics.circulation.reproduction import (
+    check_extended_reproduction,
+    check_simple_reproduction,
+    combine_departments_ii,
+    compute_disproportionality,
+)
 from babylon.domain.economics.circulation.types import (
     CirculationCrisisState,
     DepreciationFundState,
+    DisproportionalityCrisis,
     InventoryState,
     ReproductionAnalysis,
     ReproductionBalance,
@@ -49,7 +57,7 @@ from babylon.domain.economics.crisis.bifurcation import BifurcationRiskCalculato
 from babylon.domain.economics.crisis.wage_compression import should_halt_accumulation
 from babylon.domain.economics.dynamics.types import ClassDistribution, EconomicConditions
 from babylon.domain.economics.reserve_army.calculator import DefaultWagePressureCalculator
-from babylon.domain.economics.tensor import NoDataSentinel
+from babylon.domain.economics.tensor import DepartmentRow, NoDataSentinel
 from babylon.domain.economics.tick.crisis_detector import (
     MultiPeriodCrisisDetector,
     ThresholdCrisisDetector,
@@ -79,6 +87,7 @@ from babylon.formulas.constants import HOURS_PER_YEAR, WEEKS_PER_YEAR
 from babylon.kernel.system_base import SystemBase
 from babylon.kernel.tick_partition import TickPartition
 from babylon.models.enums import NodeType
+from babylon.models.types import Currency
 
 if TYPE_CHECKING:
     from babylon.kernel.graph_protocol import GraphProtocol
@@ -1233,6 +1242,24 @@ class TickDynamicsSystem(SystemBase):
         if services.turnover_profile_source is None:
             return county_states
 
+        # U3 (2026-07-21 vol2-circulation-engine program): real cross-tick
+        # accumulation for CircuitState (advance_circuit) and
+        # DepreciationFundState (update_depreciation_fund) needs the PRIOR
+        # tick's CirculationCrisisState per county. CountyEconomicState.
+        # circulation_state cannot supply it: _compute_county_states (the
+        # shared per-year county reconstruction, well outside this ADR103
+        # Vol II banner) does not thread circulation_state forward from
+        # prev_county_states, so every county arrives here with
+        # CirculationCrisisState.default() regardless of history — an
+        # upstream gap outside this unit's room partition. Instead this
+        # System instance carries its own cache, mirroring the
+        # already-established self._vol3_sentinel_logged convention.
+        # Lazily initialized here (rather than in __init__, likewise
+        # outside this banner) to keep the fix wholly inside the Vol II
+        # room; see _compute_county_circulation_state for reads/writes.
+        if not hasattr(self, "_circulation_prev_state"):
+            self._circulation_prev_state: dict[str, CirculationCrisisState] = {}
+
         national = self._compute_national_circulation_state(services, year)
         days_raw, days_finished, national_inventory, annual_depr, gross_inv = national
 
@@ -1294,6 +1321,104 @@ class TickDynamicsSystem(SystemBase):
 
         return days_raw, days_finished, national_inventory, annual_depr, gross_inv
 
+    def _get_county_departments(
+        self,
+        fips: str,
+        year: int,
+        services: ServicesProtocol,
+    ) -> tuple[DepartmentRow, DepartmentRow, DepartmentRow] | None:
+        """Fetch (dept_I, dept_II combined, dept_III) from the tensor registry.
+
+        The designated department-row source for Volume II reproduction
+        analysis (spec 023-capital-volume-ii ``quickstart.md``,
+        "Integration Points": "Reads ValueTensor4x3 from TensorRegistry for
+        department data"). Reuses the Volume III nearest-available-year
+        policy (:meth:`_get_best_tensor_year`, defined in the Volume III
+        banner below but stable/merged infrastructure, not edited here)
+        since tensor hydration (``TensorRegistry.MIN_YEAR``/``MAX_YEAR``,
+        2010-2025) does not cover the full simulation horizon.
+
+        Args:
+            fips: 5-digit county FIPS code.
+            year: Current simulation year.
+            services: ServicesProtocol with tensor_registry.
+
+        Returns:
+            ``(dept_I, dept_II, dept_III)`` DepartmentRow triple (dept_II is
+            IIa+IIb combined via :func:`combine_departments_ii`), or
+            ``None`` — never a fabricated row (Constitution III.11) — when
+            no tensor is available for this county at all.
+        """
+        tensor_registry = getattr(services, "tensor_registry", None)
+        if tensor_registry is None:
+            return None
+        tensor_year = self._get_best_tensor_year(fips, year, services)
+        tensor = tensor_registry.get(fips, tensor_year)
+        if isinstance(tensor, NoDataSentinel):
+            return None
+        dept_ii = combine_departments_ii(tensor.dept_IIa, tensor.dept_IIb)
+        return tensor.dept_I, dept_ii, tensor.dept_III
+
+    def _compute_reproduction_state(
+        self,
+        fips: str,
+        year: int,
+        services: ServicesProtocol,
+    ) -> tuple[ReproductionBalance, ReproductionAnalysis, DisproportionalityCrisis | None]:
+        """Compute the real reproduction-schema assessment for one county.
+
+        U3 (2026-07-21 vol2-circulation-engine program): replaces the
+        always-balanced ``ReproductionBalance``/``ReproductionAnalysis``
+        hardcode with the designated calculators
+        (:func:`check_simple_reproduction`, :func:`check_extended_reproduction`,
+        :func:`compute_disproportionality`) fed real department data from the
+        tensor registry.
+
+        Args:
+            fips: 5-digit county FIPS code.
+            year: Current simulation year.
+            services: ServicesProtocol with tensor_registry and defines.
+
+        Returns:
+            ``(reproduction_balance, reproduction_analysis,
+            disproportionality)``. When tensor department data is
+            unavailable for this county-year, ``reproduction_balance``/
+            ``reproduction_analysis`` degrade to a documented,
+            always-balanced default (a cited exemption per the
+            stub-fed-liveness sentinel class, not a silent lie — there is
+            no real Dept I/II/III split to check) and ``disproportionality``
+            is ``None`` (Constitution III.11: honest absence of the
+            underlying data, not a fabricated assessment).
+        """
+        departments = self._get_county_departments(fips, year, services)
+        if departments is None:
+            balance = ReproductionBalance(
+                condition_met=True,
+                gap=0.0,
+                interpretation="No tensor department data for this county-year",
+            )
+            analysis = ReproductionAnalysis(
+                labor_power_demand=0.0,
+                reproduction_capacity=0.0,
+                gap=0.0,
+                sustainability=True,
+            )
+            return balance, analysis, None
+
+        dept_i, dept_ii, dept_iii = departments
+        vol2_defines = services.defines.capital_vol2
+        balance = check_simple_reproduction(
+            dept_i, dept_ii, tolerance=vol2_defines.reproduction_tolerance
+        )
+        analysis = check_extended_reproduction(dept_i, dept_ii, dept_iii)
+        disproportionality = compute_disproportionality(
+            dept_i_output=Currency(dept_i.total_value),
+            dept_ii_output=Currency(dept_ii.total_value),
+            dept_i_share_required=vol2_defines.dept_i_share_required,
+            year=year,
+        )
+        return balance, analysis, disproportionality
+
     def _compute_county_circulation_state(
         self,
         fips: str,
@@ -1337,15 +1462,33 @@ class TickDynamicsSystem(SystemBase):
         national_employment = 155_000_000.0
         county_share = county.employment / national_employment if county.employment > 0 else 0.0
 
-        # Build CircuitState from capital_stock + turnover profile
-        from babylon.models.types import Currency
+        # U3: prior tick's real CirculationCrisisState for this county, if
+        # this System instance has already computed one (see
+        # _compute_circulation_layer for why this lives on self rather than
+        # on county.circulation_state).
+        prev = self._circulation_prev_state.get(fips)
 
-        circuit = initialize_circuit_state(
-            fips_code=fips,
-            year=year,
-            total_capital=Currency(capital_stock),
-            turnover=profile,
-        )
+        # --- Circuit state: initialize once, then genuinely advance ---
+        # (U3: advance_circuit was never called; every tick re-initialized
+        # from capital_stock, discarding all circuit history.)
+        if prev is not None and prev.circuit_state.total_capital > 0.0:
+            tensor_year = self._get_best_tensor_year(fips, year, services)
+            surplus_raw = self._get_county_surplus(fips, tensor_year, services)
+            surplus_value = max(surplus_raw, 0.0) if surplus_raw is not None else 0.0
+            elapsed_days = services.defines.timescale.days_per_year
+            circuit = advance_circuit(
+                state=prev.circuit_state,
+                turnover=profile,
+                surplus_value=Currency(surplus_value),
+                elapsed_days=elapsed_days,
+            ).model_copy(update={"year": year})
+        else:
+            circuit = initialize_circuit_state(
+                fips_code=fips,
+                year=year,
+                total_capital=Currency(capital_stock),
+                turnover=profile,
+            )
 
         # Build InventoryState: scale national inventory to county
         county_inventory = (national_inventory * county_share) if national_inventory else 0.0
@@ -1361,31 +1504,34 @@ class TickDynamicsSystem(SystemBase):
             days_inventory_finished=days_finished if days_finished is not None else 30.0,
         )
 
-        # Build DepreciationFundState: scale national depreciation to county
+        # Build DepreciationFundState: scale national depreciation to county,
+        # then genuinely accumulate onto the prior tick's fund via
+        # update_depreciation_fund (U3: previously rebuilt from scratch
+        # every tick with no cross-tick accumulation).
         county_depr = (annual_depr_national * county_share) if annual_depr_national else 0.0
         county_repl = (gross_inv_national * county_share) if gross_inv_national else 0.0
         # Ensure annual_depreciation_flow > 0 (required by model)
         safe_depr = max(county_depr, 1.0)
-        depreciation = DepreciationFundState(
-            fips_code=fips,
-            year=year,
-            total_fixed_capital=circuit.fixed_capital,
-            accumulated_depreciation=safe_depr,
-            annual_depreciation_flow=safe_depr,
-            replacement_expenditure=county_repl,
-        )
+        if prev is not None:
+            depreciation = update_depreciation_fund(
+                previous=prev.depreciation_fund,
+                annual_depreciation=Currency(safe_depr),
+                replacement_expenditure=Currency(county_repl),
+            )
+        else:
+            depreciation = DepreciationFundState(
+                fips_code=fips,
+                year=year,
+                total_fixed_capital=circuit.fixed_capital,
+                accumulated_depreciation=safe_depr,
+                annual_depreciation_flow=safe_depr,
+                replacement_expenditure=county_repl,
+            )
 
-        # Reproduction defaults: assume balanced reproduction
-        repro_balance = ReproductionBalance(
-            condition_met=True,
-            gap=0.0,
-            interpretation="Default reproduction balance",
-        )
-        repro_analysis = ReproductionAnalysis(
-            labor_power_demand=county.employment,
-            reproduction_capacity=county.employment,
-            gap=0.0,
-            sustainability=True,
+        # Reproduction schema: real calculators fed real tensor department
+        # data (U3: previously hardcoded to always-balanced).
+        repro_balance, repro_analysis, disproportionality = self._compute_reproduction_state(
+            fips, year, services
         )
 
         assessment = assess_circulation_crisis(
@@ -1400,8 +1546,11 @@ class TickDynamicsSystem(SystemBase):
             circuit_state=circuit,
             inventory_state=inventory,
             depreciation_fund=depreciation,
+            disproportionality=disproportionality,
             latest_assessment=assessment,
         )
+
+        self._circulation_prev_state[fips] = new_circ_state
 
         return county.model_copy(update={"circulation_state": new_circ_state})
 

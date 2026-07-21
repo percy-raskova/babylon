@@ -1256,6 +1256,16 @@ class CirculationCrisisState(BaseModel):
     depreciation_fund: DepreciationFundState = Field(
         ..., description="Depreciation fund adequacy and replacement cycle"
     )
+    disproportionality: DisproportionalityCrisis | None = Field(
+        default=None,
+        description=(
+            "Department I/II output imbalance assessment (Feature 023 U3 tick "
+            "wiring), computed via compute_disproportionality() when tensor "
+            "department data is available for this county-year; None on "
+            "honest absence of that data (Constitution III.11), not a "
+            "fabricated balance."
+        ),
+    )
     latest_assessment: CirculationCrisisAssessment | None = Field(
         default=None, description="Most recent crisis assessment"
     )

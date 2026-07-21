@@ -167,8 +167,9 @@ _ALERT_SEVERITIES = frozenset({"critical", "warning"})
 # the TUI plate can never disagree; its values must equal the resolver
 # registry's keys (pinned by ``tests/contract/verbs/test_registry.py``).
 from babylon.projection.verbs.preview import (  # noqa: E402
-    VERB_TO_ACTION_TYPE,
+    CANONICAL_VERBS as CANONICAL_VERBS,  # noqa: PLC0414 — re-exported for game.api
 )
+from babylon.projection.verbs.preview import VERB_TO_ACTION_TYPE  # noqa: E402
 
 
 def _fetch_session_rng_seed_from_pool(pool: Any, session_id: UUID) -> int:

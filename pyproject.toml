@@ -15,9 +15,69 @@ keywords = [
     "dystopian",
 ]
 requires-python = ">=3.12,<4.0"
-# Poetry 2.x hybrid mode (PEP 621 metadata + Poetry dependency tables):
-# classifiers are auto-derived; dependencies stay under [tool.poetry.*].
-dynamic = ["classifiers", "dependencies"]
+# Poetry 2.x hybrid mode: classifiers are auto-derived from other [project]
+# fields (license/requires-python); dependencies moved to PEP-621
+# [project.dependencies]/[project.optional-dependencies] below (ADR095 D3a).
+dynamic = ["classifiers"]
+
+# PyQt6, PyQt6-WebEngine, pydeck removed in Spec 059 follow-up
+# (commit chore(ui): delete PyQt6 dashboard) — desktop dashboard at
+# src/babylon/ui/dashboard/ deleted; live UI stack is Django + React
+# (mise run web:dev) at web/ + frontend/.
+dependencies = [
+    "pydantic>=2.10.3",
+    "numpy>=1.26.4",
+    "rustworkx>=0.18.0,<0.19.0",
+    "sqlalchemy>=2.0.36",
+    "pandas>=2.2.3",
+    "jsonschema>=4.25.1,<5.0.0",
+    "referencing>=0.37.0,<0.38.0",
+    "openpyxl>=3.1.5,<4.0.0",
+    "openai>=2.9.0,<3.0.0",
+    "tokenizers>=0.19.1",
+    "aiohttp>=3.13.3,<4.0.0",
+    "backoff>=2.2.1",
+    "ratelimit>=2.2.1",
+    "typer>=0.15.1",
+    "rich>=13.9.4",
+    "coloredlogs>=15.0.1",
+    "h3>=4.2.0,<5.0.0",
+    "geopandas>=1.0.0",
+    "pyproj>=3.6.0",
+    "shapely>=2.0.0",
+    "pyyaml>=6.0.2",
+    "python-dotenv>=1.0.1",
+    "requests>=2.32.3",
+    "certifi>=2025.11.12",
+    "filelock>=3.20.3",
+    "scipy>=1.11.0",
+    "xgi>=0.10.0,<0.11.0",
+    "polars>=1.38.1,<2.0.0",
+    "psycopg>=3.3.3,<4.0.0",
+    "psycopg-pool>=3.3.0,<4.0.0",
+    "pyarrow>=25.0.0,<26.0.0",
+    "duckdb>=1.4.4,<2.0.0",
+    "pgvector>=0.5.0,<0.6.0",
+    "sentence-transformers>=5.6.0,<6.0.0",
+    "tqdm>=4.66.0,<5.0.0",
+]
+
+[project.optional-dependencies]
+# server: the legacy web-client stack (Django + DRF + gunicorn) plus the
+# ansible / rst / boto dev-ops tools. X.8 marks this stack legacy — it is
+# opt-in via `--extra server`; the default install slims toward the player
+# closure. Dev + CI install it (see plan Task 7/8); the Nix player closure
+# does not.
+server = [
+    "ansible-dev-tools>=26.2.0,<27.0.0",
+    "rstcheck>=6.2.5,<7.0.0",
+    "doc8>=2.0.0,<3.0.0",
+    "boto3>=1.42.59,<2.0.0",
+    "django>=5.0,<6.0",
+    "djangorestframework>=3.15",
+    "django-cors-headers>=4.0",
+    "gunicorn>=21.0",
+]
 
 [tool.poetry]
 packages = [
@@ -37,55 +97,6 @@ Source = "https://github.com/bogdanscarwash/babylon"
 
 [project.scripts]
 babylon = "babylon.cli:app"
-
-[tool.poetry.dependencies]
-pydantic = ">=2.10.3"
-numpy = ">=1.26.4"
-rustworkx = "^0.18.0"
-sqlalchemy = ">=2.0.36"
-pandas = ">=2.2.3"
-jsonschema = "^4.25.1"
-referencing = "^0.37.0"
-openpyxl = "^3.1.5"
-openai = "^2.9.0"
-tokenizers = ">=0.19.1"
-aiohttp = "^3.13.3"
-backoff = ">=2.2.1"
-ratelimit = ">=2.2.1"
-typer = ">=0.15.1"
-rich = ">=13.9.4"
-coloredlogs = ">=15.0.1"
-# PyQt6, PyQt6-WebEngine, pydeck removed in Spec 059 follow-up
-# (commit chore(ui): delete PyQt6 dashboard) — desktop dashboard at
-# src/babylon/ui/dashboard/ deleted; live UI stack is Django + React
-# (mise run web:dev) at web/ + frontend/.
-h3 = "^4.2"
-geopandas = ">=1.0.0"
-pyproj = ">=3.6.0"
-shapely = ">=2.0.0"
-pyyaml = ">=6.0.2"
-python-dotenv = ">=1.0.1"
-requests = ">=2.32.3"
-certifi = ">=2025.11.12"
-filelock = ">=3.20.3"
-scipy = ">=1.11.0"
-xgi = "^0.10"
-rstcheck = "^6.2.5"
-doc8 = "^2.0.0"
-polars = "^1.38.1"
-psycopg = "^3.3.3"
-psycopg-pool = "^3.3.0"
-pyarrow = "^25.0.0"
-boto3 = "^1.42.59"
-duckdb = "^1.4.4"
-pgvector = "^0.5"
-ansible-dev-tools = "^26.2.0"
-django = ">=5.0,<6.0"
-djangorestframework = ">=3.15"
-django-cors-headers = ">=4.0"
-gunicorn = ">=21.0"
-sentence-transformers = "^5.6"
-tqdm = "^4.66"
 
 [tool.poetry.group.dev.dependencies]
 pytest = "^9.0.3"

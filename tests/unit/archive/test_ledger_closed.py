@@ -136,11 +136,25 @@ def _e2e_spec_filenames() -> list[str]:
     return [path.name for path in files]
 
 
+#: Post-cutover (WO-54): the legacy estates this sentinel enumerates are
+#: DELETED — closure is by deletion, and the ledger remains as the
+#: historical record. The enumeration legs skip with that reason; the
+#: ledger-only legs (vocabulary, GAP visibility, mutation validation)
+#: keep running — the GAP cutover-blockers must stay visible either way.
+_LEGACY_ESTATE_PRESENT = _ENGINE_BRIDGE_TEST.exists() and _E2E_DIR.is_dir()
+
+_post_cutover_skip = pytest.mark.skipif(
+    not _LEGACY_ESTATE_PRESENT,
+    reason="post-cutover: the legacy web/frontend estate is deleted — closure by deletion",
+)
+
+
 # ---------------------------------------------------------------------------
 # 1. Every engine_bridge test class is dispositioned.
 # ---------------------------------------------------------------------------
 
 
+@_post_cutover_skip
 class TestEngineBridgeClassesAllDispositioned:
     def test_class_count_matches_the_wo52_baseline(self) -> None:
         # A drift in this count (a class added/removed/renamed) means the
@@ -161,6 +175,7 @@ class TestEngineBridgeClassesAllDispositioned:
 # ---------------------------------------------------------------------------
 
 
+@_post_cutover_skip
 class TestE2ESpecsAllDispositioned:
     def test_spec_file_count_matches_the_wo52_baseline(self) -> None:
         assert len(_e2e_spec_filenames()) == 11

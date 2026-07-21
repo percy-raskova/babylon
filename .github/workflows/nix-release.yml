@@ -1,7 +1,7 @@
-# Nix release channel — the player-channel doc's §7 job, now with the real
-# R2 push wired. TEMPLATE for the main game repo: merge into the existing
-# release workflow when the packaging train opens (the flake itself is
-# decision-queue work; this file shows the exact cache mechanics).
+# Nix release channel — the player-channel §7 job, now LIVE: the flake exists
+# (flake.nix at repo root, ADR094 Task 1), so this workflow is no longer
+# aspirational. It builds the closure players receive, gates it on the closure
+# regression suite, then signs and pushes it to the R2 binary cache.
 #
 # Secrets required (game repo):
 #   R2_ACCESS_KEY_ID / R2_SECRET_ACCESS_KEY
@@ -10,7 +10,9 @@
 #   CF_ACCOUNT_ID
 #       same account id as the workers; forms the S3 endpoint below.
 #   NIX_CACHE_SIGNING_KEY
-#       secret half from cloudflare/scripts/generate-cache-key.sh (§A10).
+#       secret half from babylon-infra cloudflare/scripts/generate-cache-key.sh.
+#       OWNER-RUN keygen is still pending — until the secret exists this workflow
+#       builds and gates fine but the push step has no key to sign with.
 #
 # Free-tier ledger for this job: R2 storage 10 GB free (a ~1.2 GB closure per
 # release → ~8 releases resident; `nix store` paths dedupe across releases, and
@@ -27,7 +29,28 @@ permissions:
   contents: read
 
 jobs:
+  regression:
+    # Determinism gate ON the built closure (Amendment Q / Amendment-L discipline).
+    # Runs tools/regression_test.py with the venv's python — the same 5-scenario
+    # baseline compare as main.yml's qa-regression, which needs NO Postgres.
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: cachix/install-nix-action@v31
+        with:
+          extra_nix_config: |
+            experimental-features = nix-command flakes
+
+      - name: Build the closure
+        run: nix build .#babylon --print-build-logs
+
+      - name: Regression gate on the closure (5 scenarios vs committed baselines)
+        run: ./result/bin/python tools/regression_test.py compare
+
   nix-release:
+    needs: [regression]
     runs-on: ubuntu-latest
     # House rule (Constitution III.11): every job carries timeout-minutes —
     # a hang must die loudly, not run to the 360min default.
@@ -60,9 +83,7 @@ jobs:
           rm -f /tmp/cache-key
 
       # Players then substitute from the Worker front-door, no compiling:
-      #   extra-substituters = https://babylon-cache.<sub>.workers.dev
+      #   extra-substituters = https://cache.babylon.percypedia.biz
       #   extra-trusted-public-keys = babylon-cache-1:<PUBKEY>
-      # (target hostname once the zone lands: https://cache.babylon.percypedia.biz)
-
       - name: AppImage demo artifact (zero-install path)
         run: nix bundle --bundler github:ralismark/nix-appimage .#babylon || true

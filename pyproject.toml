@@ -58,7 +58,6 @@ dependencies = [
     "pyarrow>=25.0.0,<26.0.0",
     "duckdb>=1.4.4,<2.0.0",
     "pgvector>=0.5.0,<0.6.0",
-    "sentence-transformers>=5.6.0,<6.0.0",
     "tqdm>=4.66.0,<5.0.0",
     # The Archive keel (Program 24 P1, ADR099): TUI client + vault pipeline.
     # jinja2/markdown-it-py/mdit-py-plugins were already resolved transitively
@@ -153,12 +152,16 @@ override-dependencies = ["syrupy>=5.5,<6.0.0"]
 [tool.poetry]
 packages = [
     { include = "babylon", from = "src" },
-    # babylon_data: thin Python wrapper around the data trove at
-    # /media/user/data/babylon-data/. src/babylon_data is a symlink to that
-    # path (committed in git). Restored from commit 4ce7c96a^ in the
-    # post-Spec-059 skip-remediation pass. See ADR-037.
-    { include = "babylon_data", from = "src" },
 ]
+# babylon_data: thin Python wrapper around the data trove at
+# /media/user/data/babylon-data/. src/babylon_data is a symlink to that
+# path (committed in git, kept for workstation use — see ADR-037). It is
+# deliberately NOT listed above: the symlink is dead in any build sandbox
+# (nix build, CI, `uv build`), and poetry-core's wheel builder hard-fails
+# when a declared `packages` include is entirely absent from the source
+# tree ("does not contain any element") rather than skipping it. Dropping
+# it here unblocks the ADR094 nix flake build; it ships in no wheel either
+# way (ADR095's "default install slims toward the player closure").
 
 [project.urls]
 Homepage = "https://babylonrpg.com"

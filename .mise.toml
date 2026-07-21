@@ -123,6 +123,14 @@ run = "uv run python tools/check_repo_hygiene.py"
 description = "Baseline-ceremony gate (§6.5): commits touching tests/baselines/** must carry Baselines: blessed(<slug>)"
 run = "python3 tools/check_baseline_ceremony.py --range origin/dev..HEAD"
 
+[tasks."pr:body"]
+description = "Generate a deterministic PR body from conventional commits + trailers (git doctrine §5.9 item 1)"
+usage = '''
+arg "[base]" help="Base ref to diff from" default="origin/dev"
+arg "[head]" help="Head ref" default="HEAD"
+'''
+run = "uv run python tools/generate_pr_body.py --base ${usage_base} --head ${usage_head}"
+
 [tasks."check:seams"]
 description = "Seam Observatory Sensor 1: observable-field continuity gate (Constitution VIII.12 / III.11)"
 run = "uv run python tools/sentinel_check.py seam --check"

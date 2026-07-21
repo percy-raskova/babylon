@@ -34,9 +34,20 @@ is NOT a second CSR-matrix producer (Constitution II.12: the module stays sole
 producer) — it just feeds the same code a smaller, checked-in, deterministic
 input.
 
-Determinism discipline (mirrors ``tools/make_data_artifacts.py``): rows sorted
-by primary key, explicit column set, plain gzip (no compresslevel drift —
-Python's gzip module defaults to level 9, pinned explicitly below).
+Determinism discipline: rows sorted by primary key, explicit column set,
+gzip ``compresslevel`` pinned explicitly below (Python's gzip module already
+defaults to level 9, so this pin is currently a no-op — it guards against a
+future stdlib default change), AND the gzip header's ``MTIME`` field pinned to
+0 via :func:`_open_deterministic_gzip_text`. This does NOT mirror
+``tools/make_data_artifacts.py``: that generator sidesteps this whole bug
+class by writing plain, uncompressed CSV (``_write_csv`` — no ``gzip`` import
+at all), so it has no header to pin. This tool's output IS gzip-compressed
+(ADR076 Tier-1 convention), and ``gzip.open()``/``GzipFile`` embed the
+wall-clock build timestamp in the header unless ``mtime`` is passed
+explicitly — without the pin, two runs over byte-identical decompressed
+content produce different sha256 digests, which defeats the "hash-stamped
+deterministic artifact" contract this tool exists to satisfy (see the
+program-prompt quote above).
 
 Usage (build-time only; requires the babylon-data drive mounted)::
 
@@ -55,6 +66,7 @@ import argparse
 import csv
 import gzip
 import hashlib
+import io
 import re
 import sys
 from pathlib import Path
@@ -86,6 +98,25 @@ def _sha256(path: Path) -> str:
     digest = hashlib.sha256()
     digest.update(path.read_bytes())
     return digest.hexdigest()
+
+
+def _open_deterministic_gzip_text(path: Path, compresslevel: int) -> io.TextIOWrapper:
+    """Open ``path`` for gzip text-mode writing with a pinned header ``MTIME``.
+
+    ``gzip.open()`` has no ``mtime`` parameter — for a plain filename it always
+    constructs :class:`gzip.GzipFile` with ``mtime=None``, which makes the
+    header embed ``time.time()`` at call time. Two runs of this generator over
+    byte-identical decompressed content therefore produce different sha256
+    digests, which is exactly the "hash-stamped deterministic artifact"
+    contract this module's module docstring commits to — and mirrors, at the
+    artifact-file level, the same byte-identical-rebuild discipline ADR098
+    established for the sqlite reference-DB build product. Constructing
+    ``GzipFile`` directly with ``mtime=0`` pins that field; the rest — text
+    wrapping via :class:`io.TextIOWrapper` — mirrors exactly what
+    ``gzip.open(path, mode="wt")`` does internally.
+    """
+    binary = gzip.GzipFile(filename=str(path), mode="wb", compresslevel=compresslevel, mtime=0)
+    return io.TextIOWrapper(binary, encoding="utf-8", newline="")
 
 
 def _discover_years(lodes_root: Path) -> list[int]:
@@ -153,7 +184,7 @@ def _aggregate_year(
 
 def _write_od_year(out_path: Path, pair_counts: dict[tuple[str, str], int]) -> tuple[int, str]:
     out_path.parent.mkdir(parents=True, exist_ok=True)
-    with gzip.open(out_path, mode="wt", newline="", compresslevel=_GZIP_COMPRESSLEVEL) as fh:
+    with _open_deterministic_gzip_text(out_path, _GZIP_COMPRESSLEVEL) as fh:
         writer = csv.writer(fh, lineterminator="\n")
         writer.writerow(["w_geocode", "h_geocode", "S000"])
         for (origin_hex, dest_id), s000 in sorted(pair_counts.items()):
@@ -175,7 +206,7 @@ def _write_crosswalk(out_path: Path, hex_ids: set[str]) -> tuple[int, str]:
         rows.append((cell, lat, lng))
 
     out_path.parent.mkdir(parents=True, exist_ok=True)
-    with gzip.open(out_path, mode="wt", newline="", compresslevel=_GZIP_COMPRESSLEVEL) as fh:
+    with _open_deterministic_gzip_text(out_path, _GZIP_COMPRESSLEVEL) as fh:
         writer = csv.writer(fh, lineterminator="\n")
         writer.writerow(["tabblk2020", "blklatdd", "blklondd"])
         for cell, lat, lng in rows:

@@ -991,7 +991,7 @@ artifacts:
     generator: tools/make_lodes_tri_county_artifact.py
     mode: generate
     rows: 813
-    sha256: 5672337f7a54fea10625ed5f11f0c9501dfad67933beac39bde50b1fd5b7bd69
+    sha256: 24ec618e740e5dcc1ccf82ce572a4cd0240e2d256551bc84c290d24ab2b52487
     home: src/babylon/data/reference/lodes/tri_county_hex_xwalk.csv.gz
     material_relation: >-
       Detroit tri-county H3 res-7 cell -> synthetic LODES block-geocode + centroid lat/lng
@@ -1005,7 +1005,7 @@ artifacts:
     generator: tools/make_lodes_tri_county_artifact.py
     mode: generate
     rows: 191332
-    sha256: d0036c7a0d4383a9535afefed9acadc114fc86909fcba42abc3585079db54e97
+    sha256: f968a42454a2984116b1d41d248ad36b1b67e96c13210ea91ee9ba1617ce924f
     home: src/babylon/data/reference/lodes/od/mi_od_main_JT00_2010.csv.gz
     material_relation: >-
       2010 Detroit tri-county hex-pair commute matrix (origin_hex, dest_hex_or_rest_of_usa,
@@ -1017,7 +1017,7 @@ artifacts:
     generator: tools/make_lodes_tri_county_artifact.py
     mode: generate
     rows: 189957
-    sha256: b0947ad40e6ad0951f77ae3047d91d8acff302aa00248f71efbb41f43bdf3107
+    sha256: 5587486b3a2020cbbfef3d6ed3ed2b36926242ccb81c0ecff7a87622592fb33b
     home: src/babylon/data/reference/lodes/od/mi_od_main_JT00_2011.csv.gz
     material_relation: >-
       2011 Detroit tri-county hex-pair commute matrix — see lodes_od_tri_county_hex_2010.
@@ -1027,7 +1027,7 @@ artifacts:
     generator: tools/make_lodes_tri_county_artifact.py
     mode: generate
     rows: 194577
-    sha256: 5977626229bbe40b9d3caa43e96f199f547dbcae696c923ca1419ffee7106308
+    sha256: 7a10250188102d54423035844c4c6317492f2ef3cf6e9816aad8d24748a7d784
     home: src/babylon/data/reference/lodes/od/mi_od_main_JT00_2012.csv.gz
     material_relation: >-
       2012 Detroit tri-county hex-pair commute matrix — see lodes_od_tri_county_hex_2010.
@@ -1037,7 +1037,7 @@ artifacts:
     generator: tools/make_lodes_tri_county_artifact.py
     mode: generate
     rows: 195680
-    sha256: ba5dfc842e2c5b5d0ff1654905a18f8ffec20a8e8d52bc4ac81bc504db51c86c
+    sha256: 84ff892a9c39d21ffa68dd1337972c4531cec88edf905792edfa6e784cb4f6be
     home: src/babylon/data/reference/lodes/od/mi_od_main_JT00_2013.csv.gz
     material_relation: >-
       2013 Detroit tri-county hex-pair commute matrix — see lodes_od_tri_county_hex_2010.
@@ -1047,7 +1047,7 @@ artifacts:
     generator: tools/make_lodes_tri_county_artifact.py
     mode: generate
     rows: 195892
-    sha256: dc62322ee5cc5e297c1af6f36d94185f4f2ad4a604221ce0013b61b98224477d
+    sha256: 3c909aea866875e7dd42c1b561fee9acd5265d902590350f1ac4560c3c2395f6
     home: src/babylon/data/reference/lodes/od/mi_od_main_JT00_2014.csv.gz
     material_relation: >-
       2014 Detroit tri-county hex-pair commute matrix — see lodes_od_tri_county_hex_2010.
@@ -1057,7 +1057,7 @@ artifacts:
     generator: tools/make_lodes_tri_county_artifact.py
     mode: generate
     rows: 203144
-    sha256: 32fc70ad4125f0f3f2542d5ff0d3a3a98a2184fea9b7e591aec1cbb055e1342a
+    sha256: 97f8476cb9549786433c36ed345793c1e66e8a06bd4f1c4db6975b20aec3b5d9
     home: src/babylon/data/reference/lodes/od/mi_od_main_JT00_2015.csv.gz
     material_relation: >-
       2015 Detroit tri-county hex-pair commute matrix — see lodes_od_tri_county_hex_2010.
@@ -1067,7 +1067,7 @@ artifacts:
     generator: tools/make_lodes_tri_county_artifact.py
     mode: generate
     rows: 205839
-    sha256: f611f106271f68a23093850632e7c8bf741f18a1dc52ef225677135e7faec1df
+    sha256: 304617ad6e5e36bfa0dbecebdd4d89679fe537b3a0f91ed418bf88b27152705d
     home: src/babylon/data/reference/lodes/od/mi_od_main_JT00_2016.csv.gz
     material_relation: >-
       2016 Detroit tri-county hex-pair commute matrix — see lodes_od_tri_county_hex_2010.
@@ -1077,7 +1077,7 @@ artifacts:
     generator: tools/make_lodes_tri_county_artifact.py
     mode: generate
     rows: 205778
-    sha256: 08b05b000d3d38c52edb681bab4b4f02a3c968efa736c5be77d6d91bda557ef6
+    sha256: ac18d0f5cb9ec6b8275c2330357cb347220394e192de7f1351123c30911fb12a
     home: src/babylon/data/reference/lodes/od/mi_od_main_JT00_2017.csv.gz
     material_relation: >-
       2017 Detroit tri-county hex-pair commute matrix — see lodes_od_tri_county_hex_2010.
@@ -1087,7 +1087,7 @@ artifacts:
     generator: tools/make_lodes_tri_county_artifact.py
     mode: generate
     rows: 207309
-    sha256: fe8bdbecdc085ad9ef0121f1b345b0e36626e708028a35239b24dced20985dd0
+    sha256: 6e200c1d6056a1f26d56240bd1a43ca56f653d3508e922235b8720b30b65f389
     home: src/babylon/data/reference/lodes/od/mi_od_main_JT00_2018.csv.gz
     material_relation: >-
       2018 Detroit tri-county hex-pair commute matrix — see lodes_od_tri_county_hex_2010.
@@ -1097,7 +1097,7 @@ artifacts:
     generator: tools/make_lodes_tri_county_artifact.py
     mode: generate
     rows: 205325
-    sha256: b1898a4e3539204862e54c8ac73d9cc6d9a0d2bdd3d7eaa56987f36abc19bf4e
+    sha256: 4462f307ae74167ac8ec8364ea0042d96d92d0f2e68bbfeeb8a5c9592d90b83c
     home: src/babylon/data/reference/lodes/od/mi_od_main_JT00_2019.csv.gz
     material_relation: >-
       2019 Detroit tri-county hex-pair commute matrix — see lodes_od_tri_county_hex_2010.
@@ -1107,7 +1107,7 @@ artifacts:
     generator: tools/make_lodes_tri_county_artifact.py
     mode: generate
     rows: 195984
-    sha256: f12858b5d3e0472d0e7cc53f953feb9e273ba78374063addfce1148c7e1862cd
+    sha256: badca82307ef53647c24ed13dc8053157b474d0c80be435c738818221ee96a3c
     home: src/babylon/data/reference/lodes/od/mi_od_main_JT00_2020.csv.gz
     material_relation: >-
       2020 Detroit tri-county hex-pair commute matrix — see lodes_od_tri_county_hex_2010.
@@ -1117,7 +1117,7 @@ artifacts:
     generator: tools/make_lodes_tri_county_artifact.py
     mode: generate
     rows: 200596
-    sha256: 1814931bb7901a9cf54cf1e8e581852936cd7d0f3037f34136d8fcca4651e413
+    sha256: cad5c11af69f79cc6ad02c0bf44abdbc2344325e216c40fee085044b28359280
     home: src/babylon/data/reference/lodes/od/mi_od_main_JT00_2021.csv.gz
     material_relation: >-
       2021 Detroit tri-county hex-pair commute matrix — see lodes_od_tri_county_hex_2010.

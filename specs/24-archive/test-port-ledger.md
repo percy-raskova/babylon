@@ -40,7 +40,9 @@ web client).
 | `::TestExpectedDeltas` (spec-116 preview == resolution) | `tests/unit/projection/verbs/test_preview.py` (`TestResolverParity` — doctrine threading pinned per-resolver; heuristic verbs pinned) | PORTED | WO-38 ✓ |
 | `::get_verb_eligibility` plate assertions (eligibility predicates + (reason, remedy) copy + affordability ride-along) | `tests/unit/projection/verbs/test_plate.py` (`build_verb_plate` contract; copy table relocated to `projection/verbs/copy.py`, web shim `is`-single-sourced) | PORTED | WO-38 ✓ |
 | `src/frontend/e2e/verb-submit.spec.ts` (plate render: 9 verbs, ineligible shows reason) | `tests/unit/projection/verbs/test_plate.py` + WO-26 verb-plate snapshot | REWRITTEN | WO-38 ✓ (widget golden lands WO-26) |
-| `src/frontend/e2e/end-turn-flow.spec.ts` (submit → resolve) | verb submission path | CARRIED (P2 Lane E WO-39) | — |
+| `src/frontend/e2e/end-turn-flow.spec.ts` (submit → resolve) | `tests/integration/archive/test_verb_resolution.py` (submit → fold → OODASystem adjudicates; rejection never reaches the engine) | REWRITTEN | WO-39 ✓ |
+| `::TestEngineBridgeActions` / `TestActionInjection` (submit affordability + injection shape) | `tests/unit/projection/verbs/test_submit.py` (attack mode-specific labor gates; JSON-null params coercion; org-absent fallthrough pinned) | PORTED | WO-39 ✓ |
+| bridge endgame-recognition block (century horizon, UNRESOLVED fallback, lock window) | `tests/unit/projection/test_endgame.py` (`endgame_status` pure fold; detector stays engine-side) | PORTED | WO-39 ✓ |
 | `src/frontend/e2e/auth.spec.ts` (Django login) | none — Django auth dies with the web client | RETIRED | — |
 
 ## Deviations recorded

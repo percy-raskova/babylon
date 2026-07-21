@@ -113,6 +113,18 @@ concrete implementations (``PostgresRuntime``, ``RuntimeDatabase``,
 ``PgVectorStore``, ``TraceRecorder``), database schema, and the
 ``PersistenceObserver`` lifecycle hook.
 
+Projection Registry (Program 24, Constitution II.11)
+----------------------------------------------------
+
+.. toctree::
+   :maxdepth: 1
+
+   projection-registry
+
+The declared-view registry behind the transport-neutral projection layer
+(``babylon.projection``): per-view ownership, frozen view-models, explicit
+``ORDER BY`` determinism, and FTS columns. The mandated II.11 spec.
+
 Determinism Contract (Constitution III.12)
 -------------------------------------------
 

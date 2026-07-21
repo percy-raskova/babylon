@@ -603,13 +603,13 @@ def _bootstrap_external_nodes(
         determinism_hash="0" * 64,  # init-time bootstrap; real hashes start tick 1
     )
     # persist_tick_atomic is monkey-patched onto PostgresRuntime by
-    # _spec_062.py at module load; mypy doesn't see the attachment.
+    # _spec_062.py at module load; a TYPE_CHECKING-only stub on the class
+    # (added alongside babylon.game.session's GameRuntimeStore Protocol)
+    # now makes it visible to mypy, so no ignore is needed here anymore.
     # Spec-089 FR-003: like the hex hydrator, the init-time bootstrap must
     # NOT claim the (session, 0) commit marker — its placeholder hash would
     # shadow the bridge's real tick-0 marker via ON CONFLICT DO NOTHING.
-    runtime.persist_tick_atomic(  # type: ignore[attr-defined]
-        envelope, write_commit_marker=False
-    )
+    runtime.persist_tick_atomic(envelope, write_commit_marker=False)
     return len(rows), national_phi
 
 

@@ -23,6 +23,7 @@ from typing import TYPE_CHECKING, Any
 from uuid import UUID
 
 if TYPE_CHECKING:
+    from babylon.persistence.envelope import PerTickTransactionEnvelope
     from babylon.topology.graph import BabylonGraph
 import psycopg
 from psycopg import Connection
@@ -2900,6 +2901,21 @@ class PostgresRuntime:
                 )
         return result
 
+    if TYPE_CHECKING:
+        # Real implementations live in _spec_062.py and are monkey-patched
+        # onto this class at module load by _attach_spec_062_methods() below
+        # (`# type: ignore[attr-defined]` there, since the class body never
+        # declares them) — invisible to mypy's static view without these
+        # TYPE_CHECKING-only stubs. Never executed at runtime (the
+        # monkeypatch assignment is what actually runs); purely so callers
+        # typed against this class (e.g. babylon.game.session's
+        # GameRuntimeStore Protocol) type-check correctly.
+        def persist_tick_atomic(
+            self, envelope: PerTickTransactionEnvelope, *, write_commit_marker: bool = True
+        ) -> None: ...
+
+        def get_last_committed_tick(self, session_id: UUID) -> int | None: ...
+
 
 def _attach_spec_062_methods() -> None:
     """Attach Spec 062 cross-scale methods to PostgresRuntime.
@@ -2911,8 +2927,11 @@ def _attach_spec_062_methods() -> None:
     """
     from babylon.persistence.postgres_runtime import _spec_062
 
-    PostgresRuntime.persist_tick_atomic = _spec_062.persist_tick_atomic  # type: ignore[attr-defined]
-    PostgresRuntime.get_last_committed_tick = _spec_062.get_last_committed_tick  # type: ignore[attr-defined]
+    # Now that the class body carries TYPE_CHECKING-only stubs for these two
+    # names (above), mypy treats this as overwriting a known method rather
+    # than adding an undeclared attribute — method-assign, not attr-defined.
+    PostgresRuntime.persist_tick_atomic = _spec_062.persist_tick_atomic  # type: ignore[method-assign]
+    PostgresRuntime.get_last_committed_tick = _spec_062.get_last_committed_tick  # type: ignore[method-assign]
 
 
 _attach_spec_062_methods()

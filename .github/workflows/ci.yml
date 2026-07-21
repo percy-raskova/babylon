@@ -138,27 +138,6 @@ jobs:
       - name: Gate-coverage truth probe (declared evidence verified at gate cadence)
         run: mise run check:gate-coverage-truth
 
-  frontend:
-    name: Frontend (tsc, eslint, prettier, vitest, build)
-    runs-on: ubuntu-latest
-    timeout-minutes: 15
-    steps:
-      - uses: actions/checkout@v7
-
-      - uses: ./.github/actions/bootstrap-node
-
-      - name: Check (tsc + eslint + prettier + vitest)
-        working-directory: src/frontend
-        run: npm run check
-
-      - name: Build
-        working-directory: src/frontend
-        run: npm run build
-
-      - name: npm audit (prod deps, high+)
-        working-directory: src/frontend
-        run: npm audit --omit=dev --audit-level=high
-
   security:
     # Blocking since 2026-07-11: item 41 closed the CVE wave (73 -> 5, the
     # residue in security/pip-audit-ignores.toml with reasons + expiries).

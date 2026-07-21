@@ -54,7 +54,6 @@ INSTALLED_APPS = [
     "corsheaders",
     # Project apps
     "game.apps.GameConfig",
-    "accounts.apps.AccountsConfig",
     # spec-096 Observatory — read-only debug dashboard over the simulation DB.
     "observatory.apps.ObservatoryConfig",
 ]
@@ -131,9 +130,6 @@ AUTH_PASSWORD_VALIDATORS = [
     {"NAME": "django.contrib.auth.password_validation.CommonPasswordValidator"},
     {"NAME": "django.contrib.auth.password_validation.NumericPasswordValidator"},
 ]
-
-LOGIN_URL = "/accounts/login/"
-LOGIN_REDIRECT_URL = "/api/games/"
 
 # --------------------------------------------------------------------------- #
 # i18n
@@ -260,11 +256,6 @@ LOGGING = {
         "game.engine_bridge": {
             "handlers": ["console", "file_json", "error_file"],
             "level": "DEBUG",
-            "propagate": False,
-        },
-        "accounts": {
-            "handlers": ["console", "file_json"],
-            "level": "INFO",
             "propagate": False,
         },
         # Babylon engine (when called via bridge)

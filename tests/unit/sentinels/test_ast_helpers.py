@@ -17,7 +17,10 @@ from babylon.sentinels._ast import (
     coupling_edges,
     dict_get_call_lines,
     frozenset_str_members,
+    function_return_annotation_name,
     hasattr_guard_lines,
+    literal_keyword_call_lines,
+    module_level_function_names,
     parse_module,
     referenced_names,
     returned_dict_keys,
@@ -302,3 +305,133 @@ def test_hasattr_guard_lines_raises_on_unparseable_source(tmp_path: Path) -> Non
     target.write_text("def (:\n", encoding="utf-8")
     with pytest.raises(SentinelCheckError):
         hasattr_guard_lines(target, "session_id")
+
+
+# ---------------------------------------------------------------------------
+# literal_keyword_call_lines (T1.1 U5 stub-vs-calculator) -- efficacy
+# ---------------------------------------------------------------------------
+
+
+def test_literal_keyword_call_lines_finds_a_bare_constant_keyword(tmp_path: Path) -> None:
+    target = tmp_path / "m.py"
+    target.write_text("value = Thing(condition_met=True, gap=0.0)\n", encoding="utf-8")
+    assert literal_keyword_call_lines(target, "Thing", "condition_met") == [1]
+
+
+def test_literal_keyword_call_lines_matches_the_final_attribute_component(tmp_path: Path) -> None:
+    target = tmp_path / "m.py"
+    target.write_text("value = module.Thing(condition_met=True)\n", encoding="utf-8")
+    assert literal_keyword_call_lines(target, "Thing", "condition_met") == [1]
+
+
+def test_literal_keyword_call_lines_ignores_a_variable_keyword_value(tmp_path: Path) -> None:
+    """The anti-false-positive heuristic: a keyword bound to a NAME (a real
+    computed value) is never classified as a literal stub."""
+    target = tmp_path / "m.py"
+    target.write_text(
+        "computed = check(a, b)\nvalue = Thing(condition_met=computed)\n", encoding="utf-8"
+    )
+    assert literal_keyword_call_lines(target, "Thing", "condition_met") == []
+
+
+def test_literal_keyword_call_lines_ignores_a_different_field(tmp_path: Path) -> None:
+    target = tmp_path / "m.py"
+    target.write_text("value = Thing(other_field=True)\n", encoding="utf-8")
+    assert literal_keyword_call_lines(target, "Thing", "condition_met") == []
+
+
+def test_literal_keyword_call_lines_ignores_a_differently_named_symbol(tmp_path: Path) -> None:
+    target = tmp_path / "m.py"
+    target.write_text("value = OtherThing(condition_met=True)\n", encoding="utf-8")
+    assert literal_keyword_call_lines(target, "Thing", "condition_met") == []
+
+
+def test_literal_keyword_call_lines_raises_on_unparseable_source(tmp_path: Path) -> None:
+    target = tmp_path / "broken.py"
+    target.write_text("def (:\n", encoding="utf-8")
+    with pytest.raises(SentinelCheckError):
+        literal_keyword_call_lines(target, "Thing", "condition_met")
+
+
+# ---------------------------------------------------------------------------
+# module_level_function_names (T1.1 U5 stub-vs-calculator) -- efficacy
+# ---------------------------------------------------------------------------
+
+
+def test_module_level_function_names_finds_top_level_defs(tmp_path: Path) -> None:
+    target = tmp_path / "m.py"
+    target.write_text("def foo():\n    pass\n\ndef bar():\n    pass\n", encoding="utf-8")
+    assert module_level_function_names(target) == frozenset({"foo", "bar"})
+
+
+def test_module_level_function_names_excludes_nested_defs(tmp_path: Path) -> None:
+    target = tmp_path / "m.py"
+    target.write_text(
+        "def foo():\n    def nested():\n        pass\n    return nested\n", encoding="utf-8"
+    )
+    assert module_level_function_names(target) == frozenset({"foo"})
+
+
+def test_module_level_function_names_excludes_class_methods(tmp_path: Path) -> None:
+    target = tmp_path / "m.py"
+    target.write_text("class C:\n    def method(self):\n        pass\n", encoding="utf-8")
+    assert module_level_function_names(target) == frozenset()
+
+
+def test_module_level_function_names_includes_async_defs(tmp_path: Path) -> None:
+    target = tmp_path / "m.py"
+    target.write_text("async def foo():\n    pass\n", encoding="utf-8")
+    assert module_level_function_names(target) == frozenset({"foo"})
+
+
+def test_module_level_function_names_raises_on_unparseable_source(tmp_path: Path) -> None:
+    target = tmp_path / "broken.py"
+    target.write_text("def (:\n", encoding="utf-8")
+    with pytest.raises(SentinelCheckError):
+        module_level_function_names(target)
+
+
+# ---------------------------------------------------------------------------
+# function_return_annotation_name (T1.1 U5 stub-vs-calculator) -- efficacy
+# ---------------------------------------------------------------------------
+
+
+def test_function_return_annotation_name_reads_a_plain_name_annotation(tmp_path: Path) -> None:
+    target = tmp_path / "m.py"
+    target.write_text("def f(a, b) -> Thing:\n    return Thing()\n", encoding="utf-8")
+    assert function_return_annotation_name(target, "f") == "Thing"
+
+
+def test_function_return_annotation_name_reads_a_quoted_forward_ref(tmp_path: Path) -> None:
+    target = tmp_path / "m.py"
+    target.write_text('def f(a, b) -> "Thing":\n    return Thing()\n', encoding="utf-8")
+    assert function_return_annotation_name(target, "f") == "Thing"
+
+
+def test_function_return_annotation_name_returns_none_for_no_annotation(tmp_path: Path) -> None:
+    target = tmp_path / "m.py"
+    target.write_text("def f(a, b):\n    return None\n", encoding="utf-8")
+    assert function_return_annotation_name(target, "f") is None
+
+
+def test_function_return_annotation_name_returns_none_for_unresolvable_annotation(
+    tmp_path: Path,
+) -> None:
+    """A subscripted generic (e.g. ``tuple[int, ...]``) is out of scope --
+    honest absence over a guess."""
+    target = tmp_path / "m.py"
+    target.write_text("def f(a, b) -> tuple[int, ...]:\n    return (a, b)\n", encoding="utf-8")
+    assert function_return_annotation_name(target, "f") is None
+
+
+def test_function_return_annotation_name_returns_none_for_absent_function(tmp_path: Path) -> None:
+    target = tmp_path / "m.py"
+    target.write_text("def other() -> Thing:\n    return Thing()\n", encoding="utf-8")
+    assert function_return_annotation_name(target, "f") is None
+
+
+def test_function_return_annotation_name_raises_on_unparseable_source(tmp_path: Path) -> None:
+    target = tmp_path / "broken.py"
+    target.write_text("def (:\n", encoding="utf-8")
+    with pytest.raises(SentinelCheckError):
+        function_return_annotation_name(target, "f")

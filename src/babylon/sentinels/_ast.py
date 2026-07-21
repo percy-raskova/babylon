@@ -1278,3 +1278,106 @@ def hasattr_guard_lines(path: Path, attr_name: str) -> list[int]:
         if isinstance(second, ast.Constant) and second.value == attr_name:
             lines.add(node.lineno)
     return sorted(lines)
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Stub-vs-calculator grounding (T1.1 U5, ai/_inbox/t11-seam-severity-design.md
+# §3.2 point 2): a live production call site constructs a value type with a
+# bare literal/neutral constant for one field, even though a registered
+# production calculator exists elsewhere that computes exactly that value from
+# real inputs. Two helpers ground the two halves of that claim -- "the literal
+# is really there" (consumer side) and "the calculator really exists and
+# really returns that type" (calculator side) -- so a
+# :class:`~babylon.sentinels.seam_algebra.registry.StubConsumer`/
+# :class:`~babylon.sentinels.seam_algebra.registry.RegisteredCalculator` row
+# that has since gone stale (the stub was wired up, or the calculator renamed)
+# fails loud rather than silently reading as still-live.
+# ─────────────────────────────────────────────────────────────────────────────
+
+
+def literal_keyword_call_lines(path: Path, symbol: str, field: str) -> list[int]:
+    """Line numbers of ``symbol(..., field=<literal>, ...)`` call sites.
+
+    Matches a call whose callee resolves to ``symbol`` (a bare ``Name`` or the
+    final component of an ``Attribute`` chain -- the same call-name matching
+    :func:`calls_missing_keyword_or_positional_arg` already uses) AND whose
+    ``field`` keyword argument is a bare :class:`ast.Constant` (``True``/
+    ``False``/a number/a string). A keyword bound to anything else -- a
+    variable, a function call, an attribute read, an f-string built from real
+    data -- is, by construction, NOT a literal/neutral-constant stub and is
+    invisible to this rule: honest absence over a guess, mirroring every other
+    extractor's documented "cannot resolve without value-flow analysis"
+    boundary. This is deliberately the anti-false-positive heuristic for the
+    stub-vs-calculator check (design §3.2 point 2): the rule only ever
+    classifies a bare constant as a stub candidate, never a computed
+    expression, so a genuinely input-derived value (however trivial-looking)
+    can never be misread as one.
+
+    :param path: Source file to scan for call sites.
+    :param symbol: The bare constructor/function name to match.
+    :param field: The keyword-argument name whose value must be a literal.
+    :returns: Sorted, de-duplicated line numbers.
+    :raises SentinelCheckError: If the file is missing or unparseable.
+    """
+    tree = parse_module(path)
+    lines: set[int] = set()
+    for node in ast.walk(tree):
+        if not isinstance(node, ast.Call):
+            continue
+        called_name: str | None = None
+        if isinstance(node.func, ast.Name):
+            called_name = node.func.id
+        elif isinstance(node.func, ast.Attribute):
+            called_name = node.func.attr
+        if called_name != symbol:
+            continue
+        for kw in node.keywords:
+            if kw.arg == field and isinstance(kw.value, ast.Constant):
+                lines.add(node.lineno)
+    return sorted(lines)
+
+
+def module_level_function_names(path: Path) -> frozenset[str]:
+    """Names of every module-level ``def``/``async def`` in ``path``.
+
+    :param path: Source file to parse.
+    :returns: The function names declared directly at module scope (never a
+        nested/class method -- mirrors :func:`returned_dict_keys`'s own
+        module-level-only lookup).
+    :raises SentinelCheckError: If the file is missing or unparseable.
+    """
+    tree = parse_module(path)
+    return frozenset(
+        node.name for node in tree.body if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef))
+    )
+
+
+def function_return_annotation_name(path: Path, func_name: str) -> str | None:
+    """The bare name of ``func_name``'s ``->`` return-type annotation, if any.
+
+    Handles the plain ``-> Name:`` form and the quoted forward-reference form
+    (``-> "Name":``) -- both appear across this codebase depending on whether
+    the module carries ``from __future__ import annotations``.
+
+    :param path: Source file declaring ``func_name``.
+    :param func_name: The module-level function to inspect.
+    :returns: The annotation's bare name, or ``None`` if ``func_name`` is
+        absent at module level, declares no return annotation, or the
+        annotation is not a simple ``Name``/string-literal (a subscripted
+        generic like ``tuple[int, ...]`` is out of scope -- honest absence
+        over a guess).
+    :raises SentinelCheckError: If the file is missing or unparseable.
+    """
+    tree = parse_module(path)
+    for node in tree.body:
+        if not (
+            isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)) and node.name == func_name
+        ):
+            continue
+        annotation = node.returns
+        if isinstance(annotation, ast.Name):
+            return annotation.id
+        if isinstance(annotation, ast.Constant) and isinstance(annotation.value, str):
+            return annotation.value
+        return None
+    return None

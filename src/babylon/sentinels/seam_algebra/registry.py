@@ -57,6 +57,7 @@ from pydantic import BaseModel, ConfigDict, model_validator
 from babylon.sentinels.exemptions import SentinelExemption
 
 __all__ = [
+    "CALCULATOR_REGISTRY",
     "CONSTRUCT_REGISTRY",
     "EDGE_REGISTRY",
     "GATE_REGISTRY",
@@ -65,9 +66,13 @@ __all__ = [
     "ORIGIN_FAMILIES",
     "PRODUCTION_ENTRY_POINTS",
     "SEAM_ALGEBRA_EXEMPTIONS",
+    "STUB_REGISTRY",
+    "STUB_VS_CALCULATOR_EXEMPTIONS",
     "ConstructNode",
     "ExpectedConsumer",
     "GatedInput",
+    "RegisteredCalculator",
+    "StubConsumer",
 ]
 
 #: The six legacy families this registry unifies, plus ``"native"`` for a
@@ -522,6 +527,226 @@ GATE_SATISFACTION_EXEMPTIONS: Final[tuple[SentinelExemption, ...]] = (
         date="2026-07-21",
         tracking_task="N/A (BD-owed raise-vs-exempt disposition per design "
         "ai/_inbox/t11-seam-severity-design.md §9 item 4)",
+    ),
+)
+
+
+class RegisteredCalculator(BaseModel):
+    """One real production calculator computing a specific value type from inputs.
+
+    T1.1 Unit 5 (design §3.2 point 2): the calculator-side half of the
+    stub-vs-calculator pair. A row here is the positive claim "a real function
+    exists that computes this value from real inputs" — grounded at
+    check-run time by :mod:`babylon.sentinels.seam_algebra.checks`'s
+    ``_confirm_calculator_grounded`` (the function is really defined at
+    module level in ``def_file``, and its own ``->`` return annotation really
+    names ``produces``).
+
+    :ivar name: Stable identity, unique within :data:`CALCULATOR_REGISTRY`.
+    :ivar def_file: Repo-relative ``.py`` path declaring the calculator.
+    :ivar symbol: The calculator's bare function name.
+    :ivar produces: The bare name of the type the calculator's return
+        annotation names — grounds the claim "this IS the calculator for
+        exactly this stubbed value", never just a same-named coincidence.
+    """
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    name: str
+    def_file: str
+    symbol: str
+    produces: str
+
+    @model_validator(mode="after")
+    def _validate_shape(self) -> RegisteredCalculator:
+        """Reject a malformed row loudly at import (Constitution III.11).
+
+        :returns: ``self`` when valid.
+        :raises ValueError: If ``name``/``symbol``/``produces`` is blank, or
+            ``def_file`` is not a ``.py`` path.
+        """
+        for label, value in (
+            ("name", self.name),
+            ("symbol", self.symbol),
+            ("produces", self.produces),
+        ):
+            if not value.strip():
+                raise ValueError(f"RegisteredCalculator.{label} must be non-empty")
+        if not self.def_file.endswith(".py"):
+            raise ValueError(f"{self.name!r}: def_file must be a .py path, got {self.def_file!r}")
+        return self
+
+
+class StubConsumer(BaseModel):
+    """One live production call site fed a literal instead of a computed value.
+
+    T1.1 Unit 5 (design §3.2 point 2): the consumer-side half of the
+    stub-vs-calculator pair. A row here is the positive claim "this
+    production call site constructs ``consumer_symbol`` with a bare literal
+    for ``stub_field``, even though ``calculator_name`` is a registered
+    calculator for exactly that value" — grounded at check-run time by
+    :mod:`babylon.sentinels.seam_algebra.checks`'s ``_confirm_stub_grounded``
+    (the literal call really appears in ``consumer_file``, via
+    :func:`~babylon.sentinels._ast.literal_keyword_call_lines`).
+
+    :ivar name: Stable identity, unique within :data:`STUB_REGISTRY`.
+    :ivar consumer_file: Repo-relative ``.py`` path containing the stub
+        construction.
+    :ivar consumer_symbol: The bare type/class name constructed at the stub
+        site (e.g. ``"ReproductionBalance"``).
+    :ivar stub_field: The keyword field fed a literal/neutral constant instead
+        of a value the cited calculator would compute.
+    :ivar calculator_name: The :attr:`RegisteredCalculator.name` this field
+        SHOULD be sourced from — must resolve against
+        :data:`CALCULATOR_REGISTRY` (validated at collection time, see
+        :func:`_validate_stub_calculators_resolve`, mirroring
+        :func:`_validate_edges_resolve`'s own pattern).
+    """
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    name: str
+    consumer_file: str
+    consumer_symbol: str
+    stub_field: str
+    calculator_name: str
+
+    @model_validator(mode="after")
+    def _validate_shape(self) -> StubConsumer:
+        """Reject a malformed row loudly at import (Constitution III.11).
+
+        :returns: ``self`` when valid.
+        :raises ValueError: If ``name``/``consumer_symbol``/``stub_field``/
+            ``calculator_name`` is blank, or ``consumer_file`` is not a ``.py``
+            path.
+        """
+        for label, value in (
+            ("name", self.name),
+            ("consumer_symbol", self.consumer_symbol),
+            ("stub_field", self.stub_field),
+            ("calculator_name", self.calculator_name),
+        ):
+            if not value.strip():
+                raise ValueError(f"StubConsumer.{label} must be non-empty")
+        if not self.consumer_file.endswith(".py"):
+            raise ValueError(
+                f"{self.name!r}: consumer_file must be a .py path, got {self.consumer_file!r}"
+            )
+        return self
+
+
+#: The unified, hand-curated production-calculator set (T1.1 U5). Deliberately
+#: ONE row today — the founding-case calculator this unit's day-one witness
+#: cites (design §3.2 point 2's "Day-one witness"). Like
+#: :data:`CONSTRUCT_REGISTRY`/:data:`GATE_REGISTRY`, this is a small,
+#: hand-curated registry that grows as later units register more
+#: stub-vs-calculator pairs — deliberately NEVER a full-codebase auto-scan
+#: across every Pydantic-model construction site (see
+#: :mod:`babylon.sentinels.seam_algebra.checks`'s module docstring for why
+#: that scoping IS the anti-false-positive heuristic, not an omission).
+CALCULATOR_REGISTRY: Final[tuple[RegisteredCalculator, ...]] = (
+    RegisteredCalculator(
+        name="check_simple_reproduction",
+        def_file="src/babylon/domain/economics/circulation/reproduction.py",
+        symbol="check_simple_reproduction",
+        produces="ReproductionBalance",
+    ),
+)
+
+#: The unified, hand-curated stub-consumer set — T1.1 U5's day-one witness.
+#:
+#: ``reproduction_balance_default_stub`` is the founding case (design §3.2
+#: point 2; recon detail: ``ai/_inbox/vol2-circulation-engine-program-
+#: prompt.md`` §2c, "worse than inert: the live consumer is fed a lying
+#: stub"): ``domain/economics/tick/system/__init__.py:1378-1382`` hardcodes
+#: ``ReproductionBalance(condition_met=True, gap=0.0, interpretation="Default
+#: reproduction balance")`` and feeds it straight into the LIVE
+#: ``assess_circulation_crisis(...)`` call a few lines below — every county's
+#: reproduction-crisis flag reads permanently "balanced" regardless of that
+#: county's real departmental proportions, because the registered calculator
+#: for exactly this value (``check_simple_reproduction``, the ``I(v+s) =
+#: IIc`` law) is never called from production anywhere in ``src/`` or
+#: ``web/`` — only ``tests/unit/economics/circulation/test_reproduction.py``
+#: exercises it.
+STUB_REGISTRY: Final[tuple[StubConsumer, ...]] = (
+    StubConsumer(
+        name="reproduction_balance_default_stub",
+        consumer_file="src/babylon/domain/economics/tick/system/__init__.py",
+        consumer_symbol="ReproductionBalance",
+        stub_field="condition_met",
+        calculator_name="check_simple_reproduction",
+    ),
+)
+
+
+def _validate_stub_calculators_resolve(
+    calculators: tuple[RegisteredCalculator, ...], stubs: tuple[StubConsumer, ...]
+) -> None:
+    """Every stub row's ``calculator_name`` must name a real :data:`CALCULATOR_REGISTRY` row.
+
+    Mirrors :func:`_validate_edges_resolve` — a typo'd or stale
+    ``calculator_name`` reference would silently make a stub row uncheckable
+    (or resolve against the wrong calculator), the same class of silent drift
+    this whole family forbids.
+
+    :param calculators: The declared calculator rows to resolve against.
+    :param stubs: The declared stub-consumer rows to check.
+    :raises ValueError: If any stub names a calculator absent from ``calculators``.
+    """
+    known = {calc.name for calc in calculators}
+    unknown = sorted({stub.calculator_name for stub in stubs if stub.calculator_name not in known})
+    if unknown:
+        raise ValueError(
+            f"StubConsumer row(s) name unknown calculator(s): {unknown!r} — not present "
+            f"in CALCULATOR_REGISTRY ({sorted(known)!r})"
+        )
+
+
+_validate_stub_calculators_resolve(CALCULATOR_REGISTRY, STUB_REGISTRY)
+
+#: The one day-one exemption: the ReproductionBalance stub (design §3.2 point
+#: 2 / §9 item 4's raise-vs-exempt default). Wiring the REAL fix — computing
+#: genuine Dept I/II ``DepartmentRow(c, v, s)`` rows from county circulation
+#: data and calling ``check_simple_reproduction(...)`` for real — is the Vol
+#: II circulation-engine program's own opening task
+#: (``ai/_inbox/vol2-circulation-engine-program-prompt.md`` §2c), gated
+#: behind that program's own sequencing gates (Vol III merge + the parquet
+#: cutover). It would also change ``assess_circulation_crisis``'s real
+#: inputs — i.e. change simulation math, which would break the
+#: ``qa:regression`` byte-identical contract this Amendment-S read-only
+#: diagnostics lane must never touch by construction. Held open here per the
+#: T1.1 default (exemption-with-rationale) rather than this lane patching
+#: production physics unilaterally.
+STUB_VS_CALCULATOR_EXEMPTIONS: Final[tuple[SentinelExemption, ...]] = (
+    SentinelExemption(
+        key=("stub", "reproduction_balance_default_stub"),
+        reason=(
+            "domain/economics/tick/system/__init__.py:1378-1382 hardcodes "
+            "ReproductionBalance(condition_met=True, gap=0.0, "
+            "interpretation='Default reproduction balance') and feeds it "
+            "straight into the LIVE assess_circulation_crisis(...) call a "
+            "few lines below -- every county's reproduction-crisis flag "
+            "reads permanently 'balanced' regardless of real departmental "
+            "proportions. The registered calculator (check_simple_"
+            "reproduction, the I(v+s) = IIc law, circulation/reproduction.py"
+            ":71) is never called from production anywhere in src/ or web/ "
+            "-- only tests/unit/economics/circulation/test_reproduction.py "
+            "exercises it. Wiring the real fix requires computing genuine "
+            "Dept I/II DepartmentRow(c, v, s) rows from county circulation "
+            "data -- new physics plumbing that is the Vol II "
+            "circulation-engine program's own opening task "
+            "(ai/_inbox/vol2-circulation-engine-program-prompt.md §2c, "
+            "'worse than inert: the live consumer is fed a lying stub'), "
+            "gated behind the Vol III merge + parquet cutover sequencing "
+            "that program declares, and would change assess_circulation_"
+            "crisis's real inputs (the tick hash) -- out of scope for this "
+            "Amendment-S read-only diagnostics lane."
+        ),
+        owner="Persephone Raskova",
+        date="2026-07-21",
+        tracking_task="N/A (tracked by the staged Vol II circulation-engine "
+        "program, ai/_inbox/vol2-circulation-engine-program-prompt.md §2c; "
+        "no standalone ticket opened for this stub alone)",
     ),
 )
 

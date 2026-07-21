@@ -48,6 +48,32 @@ supplier — the day-one witnesses are F-1 (``session_id``) and F-2
 (``distribution_calculator``, ``vol2_step``), both held open as dated
 exemptions (design §9 item 4); ``melt_calculator`` is the shipped POSITIVE
 control proving the check recognizes a genuinely satisfied gate too.
+
+**Stub-vs-calculator** (T1.1 U5, design §3.2 point 2) is this family's third
+check: even a construct that IS live (reachable, per ``check_disconnected_
+subsystems`` above) can still be a lie — a live call site can construct a
+value type with a bare literal/neutral constant for one field while a
+REGISTERED production calculator for exactly that value sits elsewhere,
+uncalled. :func:`check_stub_vs_calculator` reds a
+:class:`~babylon.sentinels.seam_algebra.registry.StubConsumer` row whose
+declared literal stub is still present and whose cited
+:class:`~babylon.sentinels.seam_algebra.registry.RegisteredCalculator` is
+still real. Deliberately a small, hand-curated registry (mirrors
+:data:`~babylon.sentinels.seam_algebra.registry.CONSTRUCT_REGISTRY`/
+:data:`~babylon.sentinels.seam_algebra.registry.GATE_REGISTRY`'s own
+day-one posture) rather than a full-codebase auto-scan across every
+Pydantic-model construction site — **this scoping IS the anti-false-positive
+heuristic**: a row only exists when a human has already confirmed the cited
+calculator genuinely computes that field from real inputs, so a field that is
+LEGITIMATELY constant-by-design is simply never registered here (never
+silenced via a vacuous exemption). The AST-level heuristic layered on top
+(:func:`~babylon.sentinels._ast.literal_keyword_call_lines`) only ever
+classifies a BARE ``ast.Constant`` keyword value as a stub candidate — a
+variable, a function call, or any other computed expression is invisible to
+it by construction, never misread as a stub. The day-one witness is the
+ReproductionBalance stub (``domain/economics/tick/system/__init__.py``),
+held open as a dated exemption (design §9 item 4) citing the staged Vol II
+circulation-engine program as the actual fix's home.
 """
 
 from __future__ import annotations
@@ -60,28 +86,37 @@ from typing import Final
 from babylon.sentinels._ast import (
     attribute_is_none_guard_lines,
     dict_get_call_lines,
+    function_return_annotation_name,
     hasattr_guard_lines,
+    literal_keyword_call_lines,
+    module_level_function_names,
     referenced_names,
 )
 from babylon.sentinels.base import LabelledCheck, SentinelCheckError, run_sensor
 from babylon.sentinels.exemptions import SentinelExemption, is_exempt
 from babylon.sentinels.report import finding
 from babylon.sentinels.seam_algebra.registry import (
+    CALCULATOR_REGISTRY,
     CONSTRUCT_REGISTRY,
     EDGE_REGISTRY,
     GATE_REGISTRY,
     GATE_SATISFACTION_EXEMPTIONS,
     PRODUCTION_ENTRY_POINTS,
     SEAM_ALGEBRA_EXEMPTIONS,
+    STUB_REGISTRY,
+    STUB_VS_CALCULATOR_EXEMPTIONS,
     ConstructNode,
     ExpectedConsumer,
     GatedInput,
+    RegisteredCalculator,
+    StubConsumer,
 )
 
 __all__ = [
     "build_live_set",
     "check_disconnected_subsystems",
     "check_gate_satisfaction",
+    "check_stub_vs_calculator",
     "main",
 ]
 
@@ -329,11 +364,145 @@ def check_gate_satisfaction(
     return sorted(findings)
 
 
-#: Any non-exempt disconnected subsystem OR unsatisfied construct-entry gate
-#: is a live defect.
+_WHY_STUBBED: Final[str] = (
+    "WHY THIS FAILS: a live call site that constructs a value type with a bare "
+    "literal instead of calling the registered calculator for it will silently "
+    "keep returning the SAME fabricated value in production forever -- every "
+    "downstream consumer of that value (a crisis detector, a bifurcation gate, "
+    "a narrative observer) is reasoning over dead data while its own unit tests, "
+    "which construct the type directly, stay green. This is the same silent-drift "
+    "failure the other seam-algebra checks catch in their own vocabulary, applied "
+    "to a construct that IS reachable but whose VALUE is a lie."
+)
+
+
+def _confirm_calculator_grounded(calculator: RegisteredCalculator) -> None:
+    """Confirm ``calculator`` is still a real, module-level function returning ``produces``.
+
+    A registry row citing a calculator that has since been renamed, deleted,
+    or whose return type has changed must fail loud, not silently read as
+    "still the registered calculator" -- mirrors :func:`_confirm_guard_grounded`'s
+    own "reject a stale row" posture.
+
+    :param calculator: The row to ground.
+    :raises babylon.sentinels.base.SentinelCheckError: If ``def_file`` is
+        missing/unparseable, ``symbol`` is not a module-level function in it,
+        or that function's own return annotation does not name ``produces``.
+    """
+    path = _REPO_ROOT / calculator.def_file
+    if calculator.symbol not in module_level_function_names(path):
+        raise SentinelCheckError(
+            f"{calculator.name!r}: no module-level function {calculator.symbol!r} found "
+            f"in {calculator.def_file} -- registry row is stale (renamed, deleted, or "
+            "never existed)"
+        )
+    returned = function_return_annotation_name(path, calculator.symbol)
+    if returned != calculator.produces:
+        raise SentinelCheckError(
+            f"{calculator.name!r}: {calculator.symbol} in {calculator.def_file} returns "
+            f"{returned!r}, not the declared produces={calculator.produces!r} -- registry "
+            "row is stale"
+        )
+
+
+def _confirm_stub_grounded(stub: StubConsumer) -> None:
+    """Confirm ``stub``'s literal call site is still really present.
+
+    :param stub: The row to ground.
+    :raises babylon.sentinels.base.SentinelCheckError: If ``consumer_file`` is
+        missing/unparseable, or no
+        ``consumer_symbol(..., stub_field=<literal>, ...)`` call remains in it
+        (the stub was fixed, renamed, or never existed -- a stale registry row).
+    """
+    path = _REPO_ROOT / stub.consumer_file
+    lines = literal_keyword_call_lines(path, stub.consumer_symbol, stub.stub_field)
+    if not lines:
+        raise SentinelCheckError(
+            f"{stub.name!r}: no {stub.consumer_symbol}(..., {stub.stub_field}=<literal>) "
+            f"call found in {stub.consumer_file} -- registry row is stale (the stub was "
+            "wired to a real value, renamed, or never existed)"
+        )
+
+
+def check_stub_vs_calculator(
+    stubs: tuple[StubConsumer, ...] = STUB_REGISTRY,
+    calculators: tuple[RegisteredCalculator, ...] = CALCULATOR_REGISTRY,
+    exemptions: tuple[SentinelExemption, ...] = STUB_VS_CALCULATOR_EXEMPTIONS,
+) -> list[str]:
+    """Red every live consumer fed a literal where a registered calculator exists.
+
+    For each declared :class:`~babylon.sentinels.seam_algebra.registry.StubConsumer`
+    row: first :func:`_confirm_stub_grounded` (the literal call site is real, or
+    this is an infrastructure failure), then :func:`_confirm_calculator_grounded`
+    on the row's cited :class:`~babylon.sentinels.seam_algebra.registry.
+    RegisteredCalculator` (same discipline). A grounded, non-exempt row is, by
+    definition, a live stub -- the registry itself only ever declares a row once
+    a human has confirmed the calculator genuinely computes that field from real
+    inputs (see the module docstring's "anti-false-positive heuristic" note), so
+    every grounded row reds unless exempted.
+
+    :param stubs: Declared stub-consumer rows (defaults to the real
+        :data:`~babylon.sentinels.seam_algebra.registry.STUB_REGISTRY`;
+        injectable so tests can supply a fixture stub).
+    :param calculators: Declared calculator rows (defaults to the real
+        :data:`~babylon.sentinels.seam_algebra.registry.CALCULATOR_REGISTRY`;
+        injectable).
+    :param exemptions: Dated, owner-approved rows holding a known stub open
+        (defaults to the real
+        :data:`~babylon.sentinels.seam_algebra.registry.STUB_VS_CALCULATOR_EXEMPTIONS`;
+        injectable so the mutation test can prove a reverted exemption reds).
+    :returns: Sorted agent-legible finding strings (empty when every non-exempt
+        stub is grounded-but-tolerated or absent).
+    :raises babylon.sentinels.base.SentinelCheckError: If a consumer/calculator
+        file is missing/unparseable, a declared literal call site has gone
+        stale, a declared calculator has gone stale, or a stub row names a
+        calculator absent from ``calculators`` (should already be impossible
+        given :data:`STUB_REGISTRY`'s own collection-time validation, but an
+        injected fixture pair is checked here too rather than trusting the
+        caller).
+    """
+    by_name = {calculator.name: calculator for calculator in calculators}
+    findings: list[str] = []
+    for stub in stubs:
+        _confirm_stub_grounded(stub)
+        calculator = by_name.get(stub.calculator_name)
+        if calculator is None:
+            raise SentinelCheckError(
+                f"{stub.name!r}: names unknown calculator {stub.calculator_name!r} -- "
+                "not present in the supplied calculators tuple"
+            )
+        _confirm_calculator_grounded(calculator)
+        if is_exempt(("stub", stub.name), exemptions):
+            continue
+        findings.append(
+            finding(
+                error_class="stub-vs-calculator",
+                symbol=stub.consumer_symbol,
+                file=stub.consumer_file,
+                line=0,
+                problem=(
+                    f"{stub.consumer_symbol}(...) is constructed with a literal "
+                    f"{stub.stub_field}=<constant> at a live production call site, even "
+                    f"though {calculator.symbol!r} ({calculator.def_file}) is a "
+                    "registered calculator for exactly this value."
+                ),
+                remedy=(
+                    f"wire {calculator.symbol}(...) to compute {stub.stub_field} from real "
+                    "inputs at this call site, or add a dated SentinelExemption "
+                    f"(key=('stub', {stub.name!r})) citing why the literal stands in for "
+                    f"now — never a silent registry removal. {_WHY_STUBBED}"
+                ),
+            )
+        )
+    return sorted(findings)
+
+
+#: Any non-exempt disconnected subsystem, unsatisfied construct-entry gate, OR
+#: live-consumer-fed-a-literal-over-a-registered-calculator is a live defect.
 _GATING_CHECKS: Final[tuple[LabelledCheck, ...]] = (
     ("disconnected-subsystem", check_disconnected_subsystems),
     ("gate-satisfaction", check_gate_satisfaction),
+    ("stub-vs-calculator", check_stub_vs_calculator),
 )
 
 
@@ -348,8 +517,9 @@ def _summary(advisory_count: int) -> str:
     return (
         f"Seam-algebra clean: {len(live)}/{len(CONSTRUCT_REGISTRY)} declared "
         f"construct(s) reachable from {len(PRODUCTION_ENTRY_POINTS)} production "
-        f"entry point(s); {len(SEAM_ALGEBRA_EXEMPTIONS)} disconnected subsystem(s) "
-        f"and {len(GATE_SATISFACTION_EXEMPTIONS)} unsatisfied gate(s) held open "
+        f"entry point(s); {len(SEAM_ALGEBRA_EXEMPTIONS)} disconnected subsystem(s), "
+        f"{len(GATE_SATISFACTION_EXEMPTIONS)} unsatisfied gate(s), and "
+        f"{len(STUB_VS_CALCULATOR_EXEMPTIONS)} stub-vs-calculator site(s) held open "
         "by a dated exemption."
     )
 

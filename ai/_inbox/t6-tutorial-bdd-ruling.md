@@ -43,9 +43,39 @@ CI before a player ever sees the lie. III.11 Loud Failure applied to UX.
 - **T8 DoD amendment**: "tutorial completes" → "tutorial BDD suite green headlessly AND
   completable interactively" + the option-coverage check green.
 
+## Text is the assertion medium (BD addendum, 2026-07-21)
+
+> BD: "because the output is a terminal it means its textual basis (with perhaps some
+> spots for simple images like png or svg) and so it can be printed and examined as
+> text, much better than visual testing."
+
+The terminal grid IS a text buffer — so behavior asserts on STRINGS, not pixels.
+Assertion tiers, strictly ordered:
+
+1. **Semantic text (primary, behavioral)**: Then-clauses assert on rendered terminal
+   text (Textual `export_text`-style capture) and on vault markdown — exact strings,
+   greppable, printable, reviewable in a PR diff. The golden vault is already this
+   (byte-diffed markdown, the ceremony gate).
+2. **Structural (secondary)**: Pilot widget-tree queries — focus, screen mode, binding
+   dispatch — where a string alone is ambiguous.
+3. **Visual SVG snapshots (tertiary, AESTHETIC ONLY)**: the KSBC look. Never a
+   behavioral gate; regenerate freely (standing rule: vault manifests are ceremony
+   goldens, render SVGs are not).
+
+Image spots (map-room kitty raster, PNG/SVG embeds) stay OUT of the behavioral
+contract: ADR099's glyph floor (half-block text mode) is the assertable layer for the
+map — every raster lane has a text floor beneath it, and the contract binds the floor.
+
+**Playthrough transcript artifact**: the headless BDD run emits the full session as
+text (every screen at every step) — a build artifact that is (a) diffable across
+releases, (b) human-reviewable, (c) itself the developer-education document the
+scenarios promise. Deterministic under narrator-OFF + fixed seed, so transcript drift
+= behavior drift, caught as a text diff.
+
 ## Placement
 
 - T6 lane builds: step-script model + the opening-arc overlay consumer + the Pilot
-  executor + the option-coverage sentinel + authored tutorial vault pages (unchanged).
+  executor + the option-coverage sentinel + the transcript artifact emitter + authored
+  tutorial vault pages (unchanged).
 - T4-core's C2 (bindings) and C3 (driver) are upstream anchors — the coverage
   enumeration reads THEIR registries; no T4 rework required.

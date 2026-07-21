@@ -1890,7 +1890,10 @@ def main_from_argv(args: argparse.Namespace) -> int:
     directory path on stdout for exit-0 runs, and emits the canonical
     error format on stderr for non-zero exits.
     """
-    setup_logging(default_level=args.verbose)
+    # console_stream="stderr": stdout is reserved for the artifact directory
+    # path printed below on success (see `_emit_error`'s stderr contract and
+    # the module docstring) — console logging must never share that stream.
+    setup_logging(default_level=args.verbose, console_stream="stderr")
     try:
         config = _build_config(args)
     except ConfigError as exc:

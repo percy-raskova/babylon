@@ -26,7 +26,7 @@ import sys
 from dataclasses import dataclass, field
 from logging.handlers import RotatingFileHandler
 from pathlib import Path
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, Literal
 
 import yaml
 
@@ -139,14 +139,28 @@ def setup_logging(
     config_path: Path | None = None,
     default_level: str | None = None,
     pyproject_path: Path | None = None,
+    console_stream: Literal["stdout", "stderr"] = "stdout",
 ) -> None:
     """Initialize the logging system.
 
     Args:
         config_path: Path to a YAML logging configuration file.
                     If None, uses pyproject.toml or default configuration.
-        default_level: Override for the default log level.
+        default_level: Override for the default log level. Also raises the
+            console handler's level to match (mirrors the ``LOG_LEVEL``
+            env var's effect below) — this is what makes a caller's
+            ``--verbose``/``-v`` flag actually change console verbosity,
+            not just the inert ``LoggingConfig.default_level`` field.
         pyproject_path: Path to pyproject.toml (optional, auto-detected).
+        console_stream: Which stream the console handler writes to on the
+            default (non-YAML) configuration path — ``"stdout"`` (default,
+            unchanged behavior for the CLI and ``tools/*.py`` scripts) or
+            ``"stderr"`` for callers whose stdout is a machine-readable
+            contract (e.g. the headless runner prints the artifact
+            directory path on stdout for command-substitution callers, so
+            its console logging must never share that stream). Has no
+            effect when ``config_path`` is supplied — an operator-provided
+            YAML override owns its own handler stream configuration.
 
     Configuration is loaded in this order (highest precedence first):
     1. LOG_LEVEL environment variable
@@ -178,6 +192,7 @@ def setup_logging(
     # Override with parameter if provided
     if default_level:
         logging_config.default_level = default_level.upper()
+        logging_config.console_level = default_level.upper()
 
     # Try to load YAML config if provided
     if config_path and config_path.exists():
@@ -198,7 +213,7 @@ def setup_logging(
         _apply_module_levels(logging_config.modules)
     else:
         # Default configuration using pyproject.toml settings
-        _setup_default_logging(logging_config)
+        _setup_default_logging(logging_config, console_stream=console_stream)
 
 
 def _apply_module_levels(modules: dict[str, str]) -> None:
@@ -227,13 +242,19 @@ def _parse_level(level_str: str) -> int:
     return getattr(logging, level_str, logging.INFO)
 
 
-def _build_dict_config(config: LoggingConfig, log_dir: Path) -> dict[str, Any]:
+def _build_dict_config(
+    config: LoggingConfig,
+    log_dir: Path,
+    console_stream: Literal["stdout", "stderr"] = "stdout",
+) -> dict[str, Any]:
     """Build the central ``logging.config.dictConfig`` dict for the ``babylon.*`` tree.
 
     Args:
         config: LoggingConfig with console/file levels from pyproject.toml.
         log_dir: Directory the two rotating file handlers write into
             (the player data dir by default — see ``BaseConfig.LOG_DIR``).
+        console_stream: ``"stdout"`` (default) or ``"stderr"`` — see
+            :func:`setup_logging`'s ``console_stream`` parameter.
 
     Returns:
         A ``version: 1`` dictConfig-compatible dict — ONE declarative
@@ -275,7 +296,7 @@ def _build_dict_config(config: LoggingConfig, log_dir: Path) -> dict[str, Any]:
                 "level": config.console_level,
                 "formatter": "console",
                 "filters": ["context"],
-                "stream": "ext://sys.stdout",
+                "stream": f"ext://sys.{console_stream}",
             },
             "main_file": {
                 "class": "logging.handlers.RotatingFileHandler",
@@ -303,18 +324,25 @@ def _build_dict_config(config: LoggingConfig, log_dir: Path) -> dict[str, Any]:
     }
 
 
-def _setup_default_logging(config: LoggingConfig) -> None:
+def _setup_default_logging(
+    config: LoggingConfig,
+    console_stream: Literal["stdout", "stderr"] = "stdout",
+) -> None:
     """Set up default logging configuration via a central ``dictConfig``.
 
     Args:
         config: LoggingConfig with settings from pyproject.toml.
+        console_stream: ``"stdout"`` (default) or ``"stderr"`` — see
+            :func:`setup_logging`'s ``console_stream`` parameter.
 
     Creates a handler hierarchy with:
     - Console handler (human-readable)
     - Rotating main file handler (JSON Lines, ``config.file_level``)
     - Rotating error file handler (JSON Lines, ERROR only)
     """
-    logging.config.dictConfig(_build_dict_config(config, BaseConfig.LOG_DIR))
+    logging.config.dictConfig(
+        _build_dict_config(config, BaseConfig.LOG_DIR, console_stream=console_stream)
+    )
 
     # Apply per-module levels from pyproject.toml (see _build_dict_config's
     # docstring for why this stays a post-step rather than a "loggers" key).

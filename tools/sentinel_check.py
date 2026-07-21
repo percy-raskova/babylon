@@ -18,6 +18,7 @@ import argparse
 import sys
 from collections.abc import Callable
 
+from babylon.sentinels.absence.checks import main as absence_main
 from babylon.sentinels.aggregation.checks import main as aggregation_intensive_main
 from babylon.sentinels.coupling.checks import main as coupling_main
 from babylon.sentinels.coverage.checks import main as coverage_main
@@ -110,6 +111,7 @@ def _partition_main(argv: list[str] | None) -> int:
 
 #: Registered sentinels: name -> its ``main(argv)`` entry point.
 _SENSORS: dict[str, Callable[[list[str] | None], int]] = {
+    "absence": absence_main,
     "seam": seam_main,
     "coverage": coverage_main,
     "gate-coverage": gate_coverage_main,

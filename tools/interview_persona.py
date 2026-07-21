@@ -35,8 +35,8 @@ from dotenv import load_dotenv
 
 from babylon.engine.factories import create_bourgeoisie, create_proletariat
 from babylon.intelligence.ai.director import NarrativeDirector
-from babylon.intelligence.ai.llm_provider import DeepSeekClient
 from babylon.intelligence.ai.persona_loader import PersonaLoadError, load_default_persona
+from babylon.intelligence.providers import MuteProvider, resolve_provider
 from babylon.models.events import CrisisEvent, ExtractionEvent, PhaseTransitionEvent
 from babylon.models.world_state import WorldState
 
@@ -258,19 +258,27 @@ def main() -> int:
 
     # Initialize real LLM
     try:
-        llm = DeepSeekClient()
-        print(f"Initialized LLM: {llm.name}")
-        logger.info("Initialized LLM: %s", llm.name)
+        llm = resolve_provider()
+        if isinstance(llm, MuteProvider):
+            msg = "no narrator lane reachable (resolve_provider() gave mute)"
+            raise RuntimeError(msg)
+        lane = f"{llm.endpoint.kind.value}:{llm.endpoint.chat_model}"
+        print(f"Initialized narrator lane: {lane}")
+        logger.info("Initialized narrator lane: %s", lane)
     except Exception as e:
         logger.exception("Failed to initialize LLM")
         print(f"ERROR: Failed to initialize LLM: {e}", file=sys.stderr)
-        print("Ensure DEEPSEEK_API_KEY is set in .env or environment", file=sys.stderr)
+        print(
+            "Ensure a narrator lane is reachable (bundled llama-server, local Ollama, "
+            "or BABYLON_INTEL_CLOUDFLARE_* config)",
+            file=sys.stderr,
+        )
         return 1
 
     # Initialize NarrativeDirector with persona
     director = NarrativeDirector(
         use_llm=True,
-        llm=llm,
+        narrator=llm,
         persona=persona,
     )
     print(f"Initialized: {director.name}")

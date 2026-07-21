@@ -245,31 +245,6 @@ def metrics_collector() -> "MetricsCollector":
 
 
 @pytest.fixture
-def mock_llm_provider() -> MagicMock:
-    """Mock LLM provider for narrative tests.
-
-    Uses spec=LLMProvider to ensure mock follows the Protocol interface.
-    Any access to undefined attributes/methods will raise AttributeError.
-
-    Returns:
-        MagicMock with LLMProvider interface, pre-configured generate().
-
-    Example:
-        def test_narrative_uses_llm(mock_llm_provider):
-            mock_llm_provider.generate.return_value = "Custom response"
-            director = NarrativeDirector(llm=mock_llm_provider)
-            assert "Custom" in director.narrate(state)
-    """
-    # Lazy import for mutmut compatibility
-    from babylon.intelligence.ai.llm_provider import LLMProvider
-
-    mock = MagicMock(spec=LLMProvider)
-    mock.name = "MockLLM"
-    mock.generate.return_value = "Mock narrative response"
-    return mock
-
-
-@pytest.fixture
 def mock_simulation() -> MagicMock:
     """Mock Simulation for engine tests.
 

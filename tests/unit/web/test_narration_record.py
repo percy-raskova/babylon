@@ -215,13 +215,13 @@ class TestNarrativeServicePersistence:
         return previous_state, new_state
 
     def test_success_persists_wire_and_analysis_records(self) -> None:
-        from babylon.intelligence.ai.llm_provider import MockLLM
+        from babylon.intelligence.providers import MockNarrator
         from game.narrative_service import NarrativeService
 
         session = GameSession.objects.create(scenario="test")
         previous_state, new_state = self._states()
         service = NarrativeService(
-            llm=MockLLM(responses=["Corporate narrative", "Liberated narrative"])
+            narrator=MockNarrator(responses=["Corporate narrative", "Liberated narrative"])
         )
 
         service._generate(session.id, previous_state, new_state)
@@ -241,15 +241,15 @@ class TestNarrativeServicePersistence:
     def test_degraded_persists_one_visible_record(self) -> None:
         from unittest.mock import MagicMock
 
-        from babylon.intelligence.ai.llm_provider import LLMProvider
+        from babylon.intelligence.providers import MockNarrator, NarratorProvider
         from game.narrative_service import NarrativeService
 
         session = GameSession.objects.create(scenario="test")
         previous_state, new_state = self._states()
-        failing_llm = MagicMock(spec=LLMProvider)
-        failing_llm.name = "FailingProvider"
-        failing_llm.generate.side_effect = RuntimeError("simulated timeout")
-        service = NarrativeService(llm=failing_llm)
+        failing_llm = MagicMock(spec=NarratorProvider)
+        failing_llm.endpoint = MockNarrator().endpoint  # III.6 pin read pre-narrate
+        failing_llm.narrate.side_effect = RuntimeError("simulated timeout")
+        service = NarrativeService(narrator=failing_llm)
 
         service._generate(session.id, previous_state, new_state)
 
@@ -274,20 +274,20 @@ class TestNarrativeServicePersistence:
         legacy main-narrative log) — round 1 and round 2 use distinct
         services/providers so the two rounds are unambiguous.
         """
-        from babylon.intelligence.ai.llm_provider import MockLLM
+        from babylon.intelligence.providers import MockNarrator
         from game.narrative_service import NarrativeService
 
         session = GameSession.objects.create(scenario="test")
         previous_state, new_state = self._states()
 
-        service_round1 = NarrativeService(llm=MockLLM(default_response="Round 1 text"))
+        service_round1 = NarrativeService(narrator=MockNarrator(default_response="Round 1 text"))
         service_round1._generate(session.id, previous_state, new_state)
 
         records_after_round1 = list(NarrationRecord.objects.filter(session=session, tick=1))
         assert len(records_after_round1) == 2
         ids_after_round1 = {r.id for r in records_after_round1}
 
-        service_round2 = NarrativeService(llm=MockLLM(default_response="Round 2 text"))
+        service_round2 = NarrativeService(narrator=MockNarrator(default_response="Round 2 text"))
         service_round2._generate(session.id, previous_state, new_state)
 
         records_after_round2 = list(NarrationRecord.objects.filter(session=session, tick=1))
@@ -302,13 +302,13 @@ class TestNarrativeServicePersistence:
         generation into an explicit ``degraded`` result rather than silently
         losing the beat or logging-and-continuing as if nothing happened.
         """
-        from babylon.intelligence.ai.llm_provider import MockLLM
+        from babylon.intelligence.providers import MockNarrator
         from game.narrative_service import NarrativeService
 
         ghost_session_id = uuid.uuid4()
         previous_state, new_state = self._states()
         service = NarrativeService(
-            llm=MockLLM(responses=["Corporate narrative", "Liberated narrative"])
+            narrator=MockNarrator(responses=["Corporate narrative", "Liberated narrative"])
         )
 
         service._generate(ghost_session_id, previous_state, new_state)
@@ -326,13 +326,13 @@ class TestNarrativeServicePersistence:
         failure and produces no narrative text — persisting a record here
         would fabricate a beat that was never generated (III.11).
         """
-        from babylon.intelligence.ai.llm_provider import MockLLM
+        from babylon.intelligence.providers import MockNarrator
         from game.narrative_service import NarrativeService
 
         session = GameSession.objects.create(scenario="test")
         previous_state, new_state = self._states()
         quiet_new_state = previous_state.model_copy(update={"tick": 1, "events": []})
-        service = NarrativeService(llm=MockLLM(default_response="unused"))
+        service = NarrativeService(narrator=MockNarrator(default_response="unused"))
 
         service._generate(session.id, previous_state, quiet_new_state)
 

@@ -63,9 +63,10 @@ There is no `tests/unit/data/`, `tests/unit/ui/`, or `tests/e2e/`. Browser E2E t
   by a fresh in-memory `NormalizedBase` schema (same dialect as the production reference DB
   at `data/sqlite/marxist-data-3NF.sqlite`).
 - **`metrics_collector`** — fresh `MetricsCollector` per test.
-- **`mock_llm_provider`** / **`mock_simulation`** — `MagicMock(spec=...)` fixtures for
-  `LLMProvider` and `Simulation`. These are the only mock fixtures the root conftest
-  provides; there are no ChromaDB mock fixtures (ChromaDB was removed in favor of pgvector —
+- **`mock_simulation`** — `MagicMock(spec=Simulation)` fixture. This is the only mock
+  fixture the root conftest provides; narrative tests construct
+  `babylon.intelligence.providers.MockNarrator` directly (ADR101), and there are no
+  ChromaDB mock fixtures (ChromaDB was removed in favor of pgvector —
   see `tests/unit/rag/test_retrieval.py`).
 - **`django_db_setup`** override — replicates pytest-django's default fixture but excludes
   the `"postgres"` alias, which `tests/integration/web/conftest.py` owns via an ephemeral

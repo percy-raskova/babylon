@@ -4,8 +4,8 @@ Constitution II.5 (AI narrates, never adjudicates) + III.6 (model pinning)
 + III.11 (loud failure, no fabricated values).
 
 No live LLM calls anywhere in this file — the provider is always a mock
-(``babylon.intelligence.ai.llm_provider.MockLLM`` for the DRY-reuse happy path, or
-``MagicMock(spec=LLMProvider)`` for the degradation path per tests/README.md).
+(``babylon.intelligence.providers.MockNarrator`` for the DRY-reuse happy path, or
+``MagicMock(spec=NarratorProvider)`` for the degradation path per tests/README.md).
 """
 
 from __future__ import annotations
@@ -15,8 +15,7 @@ from unittest.mock import MagicMock
 
 import pytest
 
-from babylon.config import LLMConfig
-from babylon.intelligence.ai.llm_provider import LLMProvider, MockLLM
+from babylon.intelligence.providers import MockNarrator, NarratorProvider
 from babylon.models import EdgeType, Relationship, SocialClass, SocialRole, WorldState
 from babylon.models.entity_registry import COMPRADOR_ID, PERIPHERY_WORKER_ID
 from babylon.models.events import TransmissionEvent, UprisingEvent
@@ -191,7 +190,7 @@ class TestScheduleFlagOff:
         from django.conf import settings as django_settings
 
         monkeypatch.setattr(django_settings, "BABYLON_LLM_NARRATOR", False, raising=False)
-        service = NarrativeService(llm=MockLLM(default_response="should never be seen"))
+        service = NarrativeService(narrator=MockNarrator(default_response="should never be seen"))
 
         future = service.schedule(session_id, previous_state, new_state_with_uprising)
 
@@ -240,8 +239,8 @@ class TestScheduleHappyPath:
 
         monkeypatch.setattr(django_settings, "BABYLON_LLM_NARRATOR", True, raising=False)
         GameSession.objects.create(id=session_id, scenario="narrative-service-test")
-        mock_llm = MockLLM(responses=["Corporate narrative", "Liberated narrative"])
-        service = NarrativeService(llm=mock_llm)
+        mock_llm = MockNarrator(responses=["Corporate narrative", "Liberated narrative"])
+        service = NarrativeService(narrator=mock_llm)
 
         future = service.schedule(session_id, previous_state, new_state_with_uprising)
         assert future is not None
@@ -268,7 +267,7 @@ class TestScheduleHappyPath:
         from django.conf import settings as django_settings
 
         monkeypatch.setattr(django_settings, "BABYLON_LLM_NARRATOR", True, raising=False)
-        service = NarrativeService(llm=MockLLM(default_response="unused"))
+        service = NarrativeService(narrator=MockNarrator(default_response="unused"))
 
         future = service.schedule(session_id, previous_state, new_state_no_events)
         assert future is not None
@@ -290,7 +289,7 @@ class TestScheduleHappyPath:
         from django.conf import settings as django_settings
 
         monkeypatch.setattr(django_settings, "BABYLON_LLM_NARRATOR", True, raising=False)
-        service = NarrativeService(llm=MockLLM(default_response="unused"))
+        service = NarrativeService(narrator=MockNarrator(default_response="unused"))
 
         future = service.schedule(session_id, previous_state, new_state_non_significant)
         assert future is not None
@@ -319,10 +318,10 @@ class TestScheduleDegradation:
 
         monkeypatch.setattr(django_settings, "BABYLON_LLM_NARRATOR", True, raising=False)
 
-        failing_llm = MagicMock(spec=LLMProvider)
-        failing_llm.name = "FailingProvider"
-        failing_llm.generate.side_effect = RuntimeError("simulated timeout")
-        service = NarrativeService(llm=failing_llm)
+        failing_llm = MagicMock(spec=NarratorProvider)
+        failing_llm.endpoint = MockNarrator().endpoint  # III.6 pin read pre-narrate
+        failing_llm.narrate.side_effect = RuntimeError("simulated timeout")
+        service = NarrativeService(narrator=failing_llm)
 
         future = service.schedule(session_id, previous_state, new_state_with_uprising)
         assert future is not None
@@ -347,10 +346,10 @@ class TestScheduleDegradation:
 
         monkeypatch.setattr(django_settings, "BABYLON_LLM_NARRATOR", True, raising=False)
 
-        failing_llm = MagicMock(spec=LLMProvider)
-        failing_llm.name = "FailingProvider"
-        failing_llm.generate.side_effect = RuntimeError("boom")
-        service = NarrativeService(llm=failing_llm)
+        failing_llm = MagicMock(spec=NarratorProvider)
+        failing_llm.endpoint = MockNarrator().endpoint  # III.6 pin read pre-narrate
+        failing_llm.narrate.side_effect = RuntimeError("boom")
+        service = NarrativeService(narrator=failing_llm)
 
         # schedule() itself must not raise even though generation will fail
         # on the background thread.
@@ -393,19 +392,14 @@ class TestScheduleNonBlocking:
 
         release = threading.Event()
 
-        class _BlockingLLM:
-            name = "BlockingProvider"
-
-            def generate(
-                self,
-                prompt: str,
-                system_prompt: str | None = None,
-                temperature: float = 0.7,
-            ) -> str:
+        class _BlockingNarrator(MockNarrator):
+            def narrate(self, system, prompt, *, max_tokens=512, temperature=0.7):  # type: ignore[override]
                 release.wait(timeout=5)
-                return "delayed narrative"
+                return super().narrate(
+                    system, prompt, max_tokens=max_tokens, temperature=temperature
+                )
 
-        service = NarrativeService(llm=_BlockingLLM())
+        service = NarrativeService(narrator=_BlockingNarrator(default_response="delayed narrative"))
 
         future = service.schedule(session_id, previous_state, new_state_with_uprising)
         assert future is not None
@@ -427,23 +421,25 @@ class TestScheduleNonBlocking:
 
 
 # --------------------------------------------------------------------------- #
-# _resolve_llm() — provider factory wiring (program-20 Track B)
+# _resolve_narrator() — §A7.6 resolver wiring (ADR101)
 # --------------------------------------------------------------------------- #
 
 
 @pytest.mark.unit
 class TestProviderFactoryWiring:
-    """No injected llm= → the provider comes from build_llm_provider().
+    """No injected narrator= → the provider comes from resolve_provider().
 
-    Program 20 Track B rewired NarrativeService._resolve_llm from a
-    hardcoded DeepSeekClient() to build_llm_provider() (selects on
-    LLMConfig.PROVIDER). With PROVIDER monkeypatched to "mock", the
-    factory-built MockLLM's fixed default response landing in the cached
-    NarrativeResult proves the factory is actually consulted.
+    ADR101 rewired NarrativeService._resolve_narrator from the retired
+    build_llm_provider() factory to the §A7.6 resolver
+    (babylon.intelligence.providers.resolve_provider). The resolver is
+    monkeypatched at the narrative_service module seam — a unit test must
+    never let it probe real lanes over the network — and its scripted
+    MockNarrator's default response landing in the cached NarrativeResult
+    proves the resolver is actually consulted.
     """
 
     @pytest.mark.django_db(transaction=True)
-    def test_unset_llm_resolves_via_factory(
+    def test_unset_narrator_resolves_via_resolver(
         self,
         monkeypatch: pytest.MonkeyPatch,
         session_id: uuid.UUID,
@@ -456,17 +452,22 @@ class TestProviderFactoryWiring:
         """
         from django.conf import settings as django_settings
 
+        import game.narrative_service as narrative_service_module
+
         monkeypatch.setattr(django_settings, "BABYLON_LLM_NARRATOR", True, raising=False)
-        monkeypatch.setattr(LLMConfig, "PROVIDER", "mock")
+        resolved = MockNarrator()
+        monkeypatch.setattr(
+            narrative_service_module, "resolve_provider", lambda *_a, **_k: resolved
+        )
         GameSession.objects.create(id=session_id, scenario="narrative-service-test")
-        service = NarrativeService()  # deliberately NO llm= — exercises the factory path
+        # Deliberately NO narrator= — exercises the resolver path.
+        service = NarrativeService()
 
-        # Direct check: the lazily-resolved provider is the factory's MockLLM,
-        # not a hardcoded DeepSeekClient (which would raise LLM_001 here —
-        # no API key is configured in the test environment).
-        assert service._resolve_llm().name == "MockLLM"
+        # Direct check: the lazily-resolved provider is what the resolver
+        # returned, not anything constructed inside the service.
+        assert service._resolve_narrator() is resolved
 
-        # End-to-end: the full schedule/_generate path uses the factory-built
+        # End-to-end: the full schedule/_generate path uses the resolved
         # provider, and its canonical default response lands in the result.
         future = service.schedule(session_id, previous_state, new_state_with_uprising)
         assert future is not None

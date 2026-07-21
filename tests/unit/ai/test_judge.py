@@ -388,6 +388,44 @@ class TestStructuredOutputValidation:
 
 
 # =============================================================================
+# TEST CLASS: LLMGenerationError (kernel exception the judge raises)
+# =============================================================================
+
+
+@pytest.mark.unit
+class TestLLMGenerationError:
+    """Contract for the kernel exception surfaced by the judge (ADR101).
+
+    Moved here from the retired test_llm_provider.py — the judge is the
+    remaining raiser of this exception in the intelligence layer.
+    """
+
+    def test_inherits_babylon_error(self) -> None:
+        """LLMGenerationError inherits from BabylonError."""
+        from babylon.kernel.exceptions import BabylonError, LLMGenerationError
+
+        assert issubclass(LLMGenerationError, BabylonError)
+
+    def test_default_code(self) -> None:
+        """LLMGenerationError has default error code LLM_001."""
+        from babylon.kernel.exceptions import LLMGenerationError
+
+        assert LLMGenerationError("Test error").error_code == "LLM_001"
+
+    def test_custom_code_and_details(self) -> None:
+        """LLMGenerationError accepts custom error codes and details."""
+        from babylon.kernel.exceptions import LLMGenerationError
+
+        error = LLMGenerationError(
+            "Rate limit",
+            error_code="LLM_003",
+            details={"retry_after": 60},
+        )
+        assert error.error_code == "LLM_003"
+        assert error.details == {"retry_after": 60}
+
+
+# =============================================================================
 # TEST CLASS: Module Exports
 # =============================================================================
 

@@ -41,7 +41,7 @@ is never hand-written -- it is what the real, unmodified
 ``CausalChainObserver._build_frame`` / ``_build_pulse_frame`` computes from
 these real ``WorldState`` transitions). The director then runs its REAL,
 unmodified ``on_tick`` -> ``build_context_block`` -> ``build_system_prompt``
--> ``LLMProvider.generate`` pipeline, with the LLMProvider being a real,
+-> ``NarratorProvider.narrate`` pipeline, with the provider being a real,
 live Ollama-backed adapter (``_LiveOllamaProvider`` below) -- no mocked LLM
 response anywhere in the eval proper.
 
@@ -75,7 +75,14 @@ from openai import OpenAI
 
 from babylon.engine.observers.causal import CausalChainObserver
 from babylon.intelligence.ai.director import NarrativeDirector
-from babylon.intelligence.ai.llm_provider import LLMProvider
+from babylon.intelligence.providers import (
+    NarrationResult,
+    NarratorProvider,
+    ProviderEndpoint,
+    ProviderHealth,
+    ProviderKind,
+    ProviderUnavailable,
+)
 from babylon.models import GlobalEconomy, SimulationConfig, SocialClass, SocialRole, WorldState
 from babylon.models.entity_registry import PERIPHERY_WORKER_ID
 from babylon.models.events import CrisisEvent
@@ -104,15 +111,14 @@ _DEGENERATE_ECHO_MARKERS = (
 
 
 class _LiveOllamaProvider:
-    """Test-only :class:`LLMProvider` (Protocol-conforming) for a live,
+    """Test-only :class:`NarratorProvider` (Protocol-conforming) for a live,
     locally-running Ollama daemon via its OpenAI-compatible endpoint.
 
-    Not production code: ``babylon.intelligence.ai.llm_provider`` only
-    wires ``DeepSeekClient`` / ``WorkersAIClient`` / ``MockLLM`` -- there is
-    no Ollama chat provider in ``src/`` (see module docstring). This eval
-    needs a REAL, live model call, so it speaks to Ollama directly, mirroring
-    ``DeepSeekClient``'s ``OpenAI(api_key=..., base_url=...)`` construction
-    pattern (Ollama's OpenAI-compatible endpoint ignores the API key).
+    Not production code: this eval wants a pinned model with a bounded
+    degenerate-echo content-retry, which the production seam deliberately
+    does not carry, so it speaks to Ollama directly rather than through
+    ``resolve_provider()`` (Ollama's OpenAI-compatible endpoint ignores
+    the API key).
     """
 
     def __init__(self, model: str = _OLLAMA_MODEL, base_url: str = _OLLAMA_BASE_URL) -> None:
@@ -120,22 +126,21 @@ class _LiveOllamaProvider:
         self._client = OpenAI(
             api_key="ollama-local", base_url=base_url, timeout=_OLLAMA_TIMEOUT_SECONDS
         )
+        self.endpoint = ProviderEndpoint(
+            kind=ProviderKind.EXTERNAL,
+            base_url=base_url,
+            chat_model=model,
+            embed_model="unused",
+            timeout_s=_OLLAMA_TIMEOUT_SECONDS,
+        )
 
-    @property
-    def name(self) -> str:
-        """Provider identifier for logging."""
-        return f"ollama:{self._model}"
-
-    def generate(
-        self,
-        prompt: str,
-        system_prompt: str | None = None,
-        temperature: float = 0.7,
-    ) -> str:
-        """Generate text synchronously via live Ollama (bounded content-retry)."""
+    def narrate(
+        self, system: str, prompt: str, *, max_tokens: int = 512, temperature: float = 0.7
+    ) -> NarrationResult:
+        """Narrate synchronously via live Ollama (bounded content-retry)."""
         messages: list[dict[str, str]] = []
-        if system_prompt:
-            messages.append({"role": "system", "content": system_prompt})
+        if system:
+            messages.append({"role": "system", "content": system})
         messages.append({"role": "user", "content": prompt})
 
         last_text = ""
@@ -150,8 +155,19 @@ class _LiveOllamaProvider:
                 continue
             last_text = content
             if not any(marker in content for marker in _DEGENERATE_ECHO_MARKERS):
-                return content
-        return last_text
+                last_text = content
+                break
+        return NarrationResult(
+            text=last_text, model_pin=self._model, provider=ProviderKind.EXTERNAL
+        )
+
+    def embed(self, texts: object) -> object:
+        """This eval never embeds; the lane is narrate-only."""
+        raise ProviderUnavailable("frame-entailment eval provider cannot embed")
+
+    def health(self) -> ProviderHealth:
+        """Trivially healthy — the eval marker gates on a live daemon."""
+        return ProviderHealth(ok=True, kind=ProviderKind.EXTERNAL, detail=self.endpoint.base_url)
 
 
 # =============================================================================
@@ -453,7 +469,7 @@ def _run_tick_pulse_scenario(
     observer.on_tick(state_before, state_after)
     frame = next(f for f in observer.latest_frames if f["pattern"] == "TICK_PULSE")
 
-    director = NarrativeDirector(use_llm=True, llm=_LiveOllamaProvider())
+    director = NarrativeDirector(use_llm=True, narrator=_LiveOllamaProvider())
     director.on_simulation_start(state_before, SimulationConfig())
     director.on_tick(state_before, state_after)
     assert director.narrative_log, (
@@ -499,7 +515,7 @@ def _run_shock_doctrine_scenario(
     observer.on_tick(state_crash, state_radical)
     frame = next(f for f in observer.latest_frames if f["pattern"] == "SHOCK_DOCTRINE")
 
-    director = NarrativeDirector(use_llm=True, llm=_LiveOllamaProvider())
+    director = NarrativeDirector(use_llm=True, narrator=_LiveOllamaProvider())
     director.on_simulation_start(state_pre, SimulationConfig())
     director.on_tick(state_pre, state_crash)
     director.on_tick(state_crash, state_radical)
@@ -508,14 +524,14 @@ def _run_shock_doctrine_scenario(
 
 
 # =============================================================================
-# TEST: LLMProvider protocol compliance (cheap, no network)
+# TEST: NarratorProvider protocol compliance (cheap, no network)
 # =============================================================================
 
 
 @pytest.mark.unit
 class TestLiveOllamaProviderProtocol:
-    def test_satisfies_llm_provider_protocol(self) -> None:
-        assert isinstance(_LiveOllamaProvider(), LLMProvider)
+    def test_satisfies_narrator_provider_protocol(self) -> None:
+        assert isinstance(_LiveOllamaProvider(), NarratorProvider)
 
 
 # =============================================================================

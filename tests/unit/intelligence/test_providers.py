@@ -26,7 +26,9 @@ from babylon.intelligence.providers import (
     DEFAULT_BUNDLED_BASE_URL,
     DEFAULT_EXTERNAL_BASE_URL,
     IntelligenceSettings,
+    MockNarrator,
     MuteProvider,
+    NarratorProvider,
     OpenAICompatProvider,
     ProviderEndpoint,
     ProviderKind,
@@ -336,6 +338,67 @@ def test_mute_embed_degrades_loudly() -> None:
     m = MuteProvider()
     with pytest.raises(ProviderUnavailable):
         m.embed(["x"])
+
+
+# ---------------------------------------------------------------------------
+# Mock lane (ADR101 — the scripted successor to the retired MockLLM)
+# ---------------------------------------------------------------------------
+
+
+def test_mock_narrator_is_narrator_provider() -> None:
+    assert isinstance(MockNarrator(), NarratorProvider)
+
+
+def test_mock_narrator_scripts_fifo_then_default() -> None:
+    m = MockNarrator(responses=["First", "Second"], default_response="Default")
+    assert m.narrate("s", "p1").text == "First"
+    assert m.narrate("s", "p2").text == "Second"
+    assert m.narrate("s", "p3").text == "Default"
+
+
+def test_mock_narrator_records_calls() -> None:
+    m = MockNarrator()
+    m.narrate("system text", "prompt text", temperature=0.5)
+    assert m.call_count == 1
+    assert m.call_history[0]["system"] == "system text"
+    assert m.call_history[0]["prompt"] == "prompt text"
+    assert m.call_history[0]["temperature"] == 0.5
+
+
+def test_mock_narrator_call_history_is_copy() -> None:
+    m = MockNarrator()
+    m.narrate("s", "p")
+    history = m.call_history
+    history.clear()
+    assert len(m.call_history) == 1
+
+
+def test_mock_narrator_reports_mock_pin() -> None:
+    r = MockNarrator().narrate("s", "p")
+    assert r.model_pin == "mock" and r.provider is ProviderKind.MOCK
+
+
+def test_mock_narrator_embed_degrades_loudly() -> None:
+    with pytest.raises(ProviderUnavailable):
+        MockNarrator().embed(["x"])
+
+
+def test_resolver_never_yields_mock() -> None:
+    """The mock lane is test/demo-only: no settings mode reaches it."""
+    p = resolve_provider(settings_with(mode="mock"), client_factory=factory_for({}))
+    assert not isinstance(p, MockNarrator)
+
+
+# ---------------------------------------------------------------------------
+# Test-tier network guard (Amendment Y hygiene)
+# ---------------------------------------------------------------------------
+
+
+def test_model_requests_are_disallowed() -> None:
+    """pydantic-ai's global request guard is off for the whole test tier."""
+    from pydantic_ai import models
+
+    assert models.ALLOW_MODEL_REQUESTS is False
 
 
 # ---------------------------------------------------------------------------

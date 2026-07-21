@@ -101,7 +101,7 @@ config = RagConfig(
 The RAG system requires:
 
 - `chromadb>=1.0.0` - Vector database
-- OpenAI API access for embeddings (configured via existing `OpenAIConfig`)
+- OpenAI API access for embeddings (configured via existing `LLMConfig`)
 - All existing Babylon dependencies
 
 ### Environment Variables
@@ -213,7 +213,7 @@ async with RagPipeline() as pipeline:
 
 The RAG system integrates seamlessly with existing Babylon components:
 
-- **Configuration**: Uses existing `OpenAIConfig` for API settings
+- **Configuration**: Uses existing `LLMConfig` for API settings
 - **Logging**: Integrated with Babylon's logging framework
 - **Exceptions**: Follows Babylon's error hierarchy
 - **Metrics**: Compatible with existing metrics collection

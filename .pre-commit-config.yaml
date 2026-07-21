@@ -167,6 +167,12 @@ repos:
     rev: v6.0.0
     hooks:
       - id: trailing-whitespace
+        # __snapshots__/*.raw: pytest-textual-snapshot goldens (ADR097/ADR099, III.13
+        # determinism). Rich's SVG export template emits a static whitespace-only line
+        # unconditionally; trimming it here would desync the committed golden from every
+        # future --snapshot-update byte-for-byte, breaking the same-state-same-bytes
+        # contract. Excluded, not fixed: this is generated/vendored, not hand-authored.
+        exclude: ^tests/.*/__snapshots__/.*\.raw$
       - id: end-of-file-fixer
       - id: check-yaml
         args: [--unsafe]  # Allow custom tags in GitHub Actions

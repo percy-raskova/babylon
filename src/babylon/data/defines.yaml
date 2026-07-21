@@ -414,6 +414,8 @@ reserve_army:
   sigmoid_r0: 0.08  # Reserve ratio at sigmoid midpoint (inflection point) (> 0.0, <= 1.0)
   wage_pressure_ceiling: 0.5  # Maximum wage pressure coefficient (prevents total wage elimination) (> 0.0, <= 1.0)
   min_employed_fraction: 0.01  # Minimum fraction of labor force that must remain employed (>= 0.0, <= 1.0)
+  mechanization_displacement_rate: 0.05  # Game design: fraction of a county's employment displaced per 1.0-unit year-over-year INCREASE in organic composition (c/v, from ValueTensor4x3.organic_composition) — parametrizes DefaultAccumulationLoopCalculator.compute_dynamics's mechanization_displacement flow. A falling or flat organic composition contributes zero displacement (Ch. 25 is about rising composition specifically). (> 0.0)
+  firm_failure_conversion_rate: 0.5  # Game design: fraction of a bankrupt establishment's workforce (FRED-derived bankruptcy_rate * employment) that enters the reserve army rather than being reabsorbed elsewhere — parametrizes DefaultAccumulationLoopCalculator.compute_dynamics's firm_failures flow. (> 0.0, <= 1.0)
 
 # ---------------------------------------------------------------------
 # dispossession — Dispossession event intensity weights (Feature 021, FR-004/FR-005).

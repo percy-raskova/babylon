@@ -51,6 +51,38 @@ class ReserveArmyDefines(BaseModel):
         description="Minimum fraction of labor force that must remain employed",
     )
 
+    # Accumulation loop (Capital Vol I U3, Ch. 25 — the General Law of
+    # Capitalist Accumulation): parametrize
+    # DefaultAccumulationLoopCalculator.compute_dynamics
+    # (domain/economics/reserve_army/accumulation.py), which derives
+    # ReserveArmyDynamics from organic-composition delta + FRED bankruptcy
+    # rate, feeding a real reserve_ratio producer for ReserveArmySystem (#5).
+    mechanization_displacement_rate: float = Field(
+        default=0.05,
+        gt=0.0,
+        description=(
+            "Game design: fraction of a county's employment displaced per "
+            "1.0-unit year-over-year INCREASE in organic composition (c/v, "
+            "from ValueTensor4x3.organic_composition) — parametrizes "
+            "DefaultAccumulationLoopCalculator.compute_dynamics's "
+            "mechanization_displacement flow. A falling or flat organic "
+            "composition contributes zero displacement (Ch. 25 is about "
+            "rising composition specifically)."
+        ),
+    )
+    firm_failure_conversion_rate: float = Field(
+        default=0.5,
+        gt=0.0,
+        le=1.0,
+        description=(
+            "Game design: fraction of a bankrupt establishment's workforce "
+            "(FRED-derived bankruptcy_rate * employment) that enters the "
+            "reserve army rather than being reabsorbed elsewhere — "
+            "parametrizes DefaultAccumulationLoopCalculator.compute_dynamics's "
+            "firm_failures flow."
+        ),
+    )
+
 
 class DispossessionDefines(BaseModel):
     """Dispossession event intensity weights (Feature 021, FR-004/FR-005).

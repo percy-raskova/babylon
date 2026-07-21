@@ -1,9 +1,14 @@
 meta:
-  version: 1.46.0
+  version: 1.47.0
   updated: '2026-07-21'
   description: Architecture Decision Records Index
   format: See individual ADR files in this directory
 decisions:
+  ADR110_vol1_u3_accumulation_loop:
+    title: 'Vol I U3 — The accumulation loop: organic composition (ValueTensor4x3, QCEW-populated) wired through a new DefaultAccumulationLoopCalculator into ReserveArmyDynamics flows into a real, derived reserve_ratio/reserve_army_stock producer on territory nodes (TickDynamicsSystem._compute_accumulation_loop, Step 3.6); DispossessionEventSystem fed real foreclosure_rate/eviction_rate from the same FRED adapter (displacement_rate honestly left unfed — no data source); create_vol1_services now also wires transition_engine against that SAME adapter (no parallel dispossession-data path), satisfying _simulate_transitions''s transition_engine gate with real data for the first time; MarketScissors._swell_reserve_army confirmed already-additive, needed no code change to become one input among several. Staged activation: mechanization half lights up in the canonical headless run immediately (tensor_registry already wired via scope_fips); dispossession/transition_engine half stays dormant there until U5 (headless-runner parity) lands — already live for the web bridge and _legacy.py. Real reference-DB integration suite (7/7) + 243 unit tests green; expected qa:regression drift flagged, not regenerated (controller/merge-time ceremony).'
+    status: accepted
+    date: '2026-07-21'
+    file: ADR110_vol1_u3_accumulation_loop.yaml
   ADR109_vol1_u2_fundamental_theorem:
     title: 'Vol I U2 — The Fundamental Theorem, computed: Phi = Wc - Vc per class/county via new compute_fundamental_theorem(wage_value_id_pairs) (domain/dialectics/instances/value_form.py), reusing the wage opposition''s existing (w_paid, v_produced) node-attr feed verbatim (zero new graph traversal); new formula calculate_imperial_rent_gap registered in FormulaRegistry (count 23->24), matching view_imperial_rent.imperial_rent_millions exactly (calibration test added against the live reference DB, mining/2023 row); WIRE-not-retire ruling for the three formerly-dead fundamental_theorem.py formulas + phi_class (all four now have a genuine caller); ContradictionSystem stashes the report on a new fundamental_theorem graph attribute each tick (Phase-1-shadow precedent, no WorldState field this unit); provenance.py left untouched (its labor_aristocracy_ratio call already points at the right formula; its approximate proxy extractor is a deliberate, pinned, out-of-blast-radius design choice, not a regression). calculate_consciousness_drift scope boundary recorded (out of Wc-vs-Vc scope). Full tests/unit/engine/ suite (2169 tests) green, no baseline-column surface touched.'
     status: accepted

@@ -38,7 +38,6 @@ if not settings.configured:
                 "rest_framework",
                 "corsheaders",
                 "game.apps.GameConfig",
-                "accounts.apps.AccountsConfig",
             ],
             "ROOT_URLCONF": "babylon_web.urls",
             "MIDDLEWARE": [

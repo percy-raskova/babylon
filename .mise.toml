@@ -12,7 +12,7 @@
 #   docs:*        - Documentation building
 #   mutate:*      - Mutation testing
 #   midi:*        - Music generation
-#   web:*         - Web app local development (Django + Vite)
+#   web:*         - Web app local development (Django; src/frontend deleted at WO-54)
 
 [tools]
 python = "3.12"
@@ -1441,14 +1441,8 @@ dir = "web"
 raw = true
 run = "uv run python manage.py runserver 8000"
 
-[tasks."web:frontend"]
-description = "Start Vite dev server in foreground (port 5173)"
-dir = "src/frontend"
-raw = true
-run = "npm run dev"
-
 [tasks."web:dev"]
-description = "Start Django + Vite as background daemons"
+description = "Start Django as a background daemon (WO-54: src/frontend deleted, Vite/frontend legs retired)"
 run = """
 mkdir -p .web-pids
 
@@ -1461,18 +1455,8 @@ else
   echo "Django started (PID $!) — log: .web-pids/django.log"
 fi
 
-if [ -f .web-pids/vite.pid ] && kill -0 "$(cat .web-pids/vite.pid)" 2>/dev/null; then
-  echo "Vite already running (PID $(cat .web-pids/vite.pid))"
-else
-  nohup bash -c 'cd src/frontend && exec npx vite' \
-    > .web-pids/vite.log 2>&1 &
-  echo $! > .web-pids/vite.pid
-  echo "Vite started (PID $!) — log: .web-pids/vite.log"
-fi
-
 echo ""
 echo "  Django: http://localhost:8000"
-echo "  Vite:   http://localhost:5173"
 echo ""
 echo "  mise run web:status  — check status"
 echo "  mise run web:logs    — tail logs"
@@ -1480,7 +1464,7 @@ echo "  mise run web:stop    — graceful shutdown"
 """
 
 [tasks."web:stop"]
-description = "Gracefully stop Django + Vite dev servers"
+description = "Gracefully stop the Django dev server"
 run = """
 graceful_stop() {
   name=$1
@@ -1513,13 +1497,12 @@ graceful_stop() {
 }
 
 graceful_stop django
-graceful_stop vite
 """
 
 [tasks."web:status"]
-description = "Show status of Django + Vite dev servers"
+description = "Show status of the Django dev server"
 run = """
-for name in django vite; do
+for name in django; do
   pidfile=".web-pids/${name}.pid"
   if [ -f "$pidfile" ] && kill -0 "$(cat "$pidfile")" 2>/dev/null; then
     echo "${name}: running (PID $(cat "$pidfile"))"
@@ -1531,40 +1514,20 @@ done
 """
 
 [tasks."web:logs"]
-description = "Tail Django + Vite dev server logs"
+description = "Tail the Django dev server log"
 raw = true
-run = "tail -f .web-pids/django.log .web-pids/vite.log"
+run = "tail -f .web-pids/django.log"
 
 [tasks."web:install"]
-description = "Install Python + Node dependencies for the web app"
+description = "Install Python dependencies for the web app"
 run = """
 (cd web && uv sync --extra server)
-(cd src/frontend && npm install)
 """
 
 [tasks."web:migrate"]
 description = "Run Django database migrations"
 dir = "web"
 run = "uv run python manage.py migrate"
-
-# The frontend tasks below target src/frontend — the cockpit (spec-110),
-# THE frontend since the spec-112 cutover deleted web/frontend. The old
-# web:cockpit:* aliases were retired with the cutover; web:* is canonical.
-
-[tasks."web:test"]
-description = "Run frontend tests (Vitest)"
-dir = "src/frontend"
-run = "npm run test"
-
-[tasks."web:check"]
-description = "Run frontend quality checks (tsc + eslint + prettier + vitest)"
-dir = "src/frontend"
-run = "npm run check"
-
-[tasks."web:build"]
-description = "Build frontend for production"
-dir = "src/frontend"
-run = "npm run build"
 
 [tasks."test:optimization"]
 description = "Ungated behavioral-contract tests for the optimization package (in_memory backend, no Postgres required) — NOT wired into mise run check"

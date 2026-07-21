@@ -141,13 +141,8 @@ ai/scratch/*
 # text notes tracked, but babylon_books/ is 555 MB of reference PDFs — never commit it.
 ai/_inbox/babylon_books/
 
-# Frontend (src/frontend — the cockpit, spec-110/112)
 dev_harness.png
 test_hang.py
-src/frontend/dist/
-src/frontend/coverage/
-src/frontend/playwright-report/
-src/frontend/test-results/
 
 # design-sync (claude.ai/design converter) — staged scripts, build output,
 # machine state. The durable set (.design-sync/{config.json,NOTES.md,

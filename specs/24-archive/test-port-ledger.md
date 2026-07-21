@@ -43,6 +43,9 @@ web client).
 | `src/frontend/e2e/end-turn-flow.spec.ts` (submit → resolve) | `tests/integration/archive/test_verb_resolution.py` (submit → fold → OODASystem adjudicates; rejection never reaches the engine) | REWRITTEN | WO-39 ✓ |
 | `::TestEngineBridgeActions` / `TestActionInjection` (submit affordability + injection shape) | `tests/unit/projection/verbs/test_submit.py` (attack mode-specific labor gates; JSON-null params coercion; org-absent fallthrough pinned) | PORTED | WO-39 ✓ |
 | bridge endgame-recognition block (century horizon, UNRESOLVED fallback, lock window) | `tests/unit/projection/test_endgame.py` (`endgame_status` pure fold; detector stays engine-side) | PORTED | WO-39 ✓ |
+| `::TestHexFeaturePropertiesVeilGate` / `TestDerivedEconomyVeilGate` + `test_veil.py` (doctrine veil tiers) | `tests/unit/projection/test_veil_gating.py` + `tests/unit/web/test_veil.py` (green through the `is`-identity shim over `babylon.projection.veil`) | PORTED | WO-41 ✓ |
+| `test_vision_gate.py` (desert/mud/water class gate) | `tests/unit/projection/test_veil_gating.py::TestClassVisionPort` (pure `apply_class_vision`; bridge wrapper delegates, its 12 behavioral tests stay green) | PORTED | WO-41 ✓ |
+| fog+class-vision two-gates hazard (`fog/filter.py` header, unresolved at P1) | `tests/unit/projection/test_veil_gating.py::TestGateComposition` (`apply_political_gates`: vision-then-fog, restriction-map composition — RESOLVED, not carried) | REWRITTEN | WO-41 ✓ |
 | `src/frontend/e2e/auth.spec.ts` (Django login) | none — Django auth dies with the web client | RETIRED | — |
 
 ## Deviations recorded

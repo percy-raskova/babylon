@@ -1992,38 +1992,9 @@ def _ternary_consciousness_or_none(ideology: dict[str, Any]) -> dict[str, float]
 #: Vision-state severity order for the max-fold in _class_vision_state.
 _VISION_ORDER: dict[str, int] = {"desert": 0, "mud": 1, "water": 2}
 
-#: Class-inspector fields the corpus gates by vision (fog-of-war.yaml
-#: §visibility: agitation / organization strength / allegiance are what the
-#: masses hold). Material/public fields (wealth, population, wages) are
-#: never gated — the corpus keeps public_info visible in every state.
-_VISION_GATED_CLASS_FIELDS: tuple[str, ...] = (
-    "agitation",
-    "class_consciousness",
-    "national_identity",
-    "organization",
-    "p_revolution",
-)
-
-#: Corpus Mud rule: "±0.2 margin of error" (fog-of-war.yaml:335). A bucket of
-#: width W bounds displayed error to W/2, so honoring a ±0.2 margin needs
-#: 0.4-wide buckets — a 0.2 quantum would ship TWICE the precision the corpus
-#: allows (the 2026-07-16 verify finding). Constitution III.7: masking must be
-#: a deterministic function of committed state — quantization, not noise.
-_MUD_QUANTUM = 0.4
-
-
-def _mud_quantize(value: float) -> float:
-    """One gated value onto the Mud grid: round-half-up (``floor(v/Q + 0.5)``),
-    clamped to [0, 1].
-
-    Explicit half-up, NOT Python's banker's ``round()``: half-to-even makes
-    grid boundaries flip direction by IEEE-754 representation accident
-    (0.3/0.2 evaluates to 1.4999…8 and rounds down while an exact 2.5 also
-    rounds down) — an undocumented rule the player could never learn. The
-    clamp keeps displayed values in the gated fields' [0, 1] domain (a raw
-    half-up grid would show 1.2 for a true 1.0).
-    """
-    return min(1.0, max(0.0, math.floor(value / _MUD_QUANTUM + 0.5) * _MUD_QUANTUM))
+# _VISION_GATED_CLASS_FIELDS / _MUD_QUANTUM / _mud_quantize RELOCATED to
+# babylon.projection.fog.class_vision (Program 24 P2 WO-41) — the gate
+# wrapper below delegates there; nothing else here read them.
 
 
 def _class_vision_state(graph: Any, class_id: str) -> str | None:
@@ -2063,37 +2034,14 @@ def _apply_class_vision_gate(payload: dict[str, Any], vision: str | None) -> Non
     (the DB is the engine's ledger, not the player's view); this gate runs
     only at the player-facing inspector boundary.
     """
-    if vision is None:
-        return
-    payload["class_vision"] = vision
-    if vision == "water":
-        return
-    if vision == "desert":
-        # Mask only fields ACTUALLY holding a value: an already-None field is
-        # honest data-absence, and claiming "the fog hid this" for it would
-        # conflate missing data with withheld data (III.11).
-        masked: list[str] = []
-        for field in _VISION_GATED_CLASS_FIELDS:
-            if payload.get(field) is not None:
-                payload[field] = None
-                masked.append(field)
-        if payload.get("consciousness") is not None:
-            payload["consciousness"] = None
-            masked.append("consciousness")
-        payload["vision_masked"] = masked
-        return
-    # mud — deterministic quantization (see _mud_quantize for the rule)
-    approx: list[str] = []
-    for field in _VISION_GATED_CLASS_FIELDS:
-        value = payload.get(field)
-        if isinstance(value, int | float):
-            payload[field] = _mud_quantize(float(value))
-            approx.append(field)
-    ternary = payload.get("consciousness")
-    if isinstance(ternary, dict):
-        payload["consciousness"] = {k: _mud_quantize(float(v)) for k, v in ternary.items()}
-        approx.append("consciousness")
-    payload["vision_approx"] = approx
+    # RELOCATED to the projection layer (Program 24 P2 WO-41) — delegate to
+    # the pure port so the TUI and this inspector share one gate rule; this
+    # wrapper preserves the legacy in-place mutation contract.
+    from babylon.projection.fog.class_vision import apply_class_vision
+
+    gated = apply_class_vision(payload, vision)
+    payload.clear()
+    payload.update(gated)
 
 
 #: G4: the veiled placeholder narrative — same copy as CircuitPage's

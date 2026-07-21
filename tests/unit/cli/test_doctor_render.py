@@ -17,3 +17,10 @@ def test_doctor_prints_render_tier(tmp_path: Path, monkeypatch) -> None:  # type
     result = runner.invoke(app, ["doctor"])
     assert result.exit_code == 0
     assert "render tier:" in result.stdout
+
+
+def test_render_override_option_parses(tmp_path: Path, monkeypatch) -> None:  # type: ignore[no-untyped-def]
+    monkeypatch.setenv("BABYLON_CONFIG_DIR", str(tmp_path))
+    monkeypatch.setenv("TERM", "dumb")
+    result = runner.invoke(app, ["--render", "pixel", "doctor"])
+    assert result.exit_code == 0

@@ -14,9 +14,9 @@ Loud Failure clause, III.11, exists to forbid).
 Records are validated through :class:`~pydantic.TypeAdapter` helpers rather
 than direct construction so a client can hydrate an untyped dict — recorded
 fixture, JSON payload, or view row — in one call. :data:`ProjectionRecord` is a
-discriminated union keyed on the ``kind`` literal; it currently holds only
-:class:`CountyView` and is written to grow (state and national dossiers join in
-Program 24 P2) with no change to the hydrate helpers.
+discriminated union keyed on the ``kind`` literal; it holds :class:`CountyView`
+and :class:`InstitutionView` (Program 24 P2 WO-19) today and is written to grow
+further as more Lane P kinds join, with no change to the hydrate helpers.
 """
 
 from __future__ import annotations
@@ -26,6 +26,11 @@ from typing import Annotated, Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, TypeAdapter, model_validator
 
+from babylon.models.enums import (
+    ApparatusType,
+    ClassInscription,
+    SocialFunction,
+)
 from babylon.models.types import (
     Currency,
     Ideology,
@@ -177,17 +182,132 @@ class CountyView(BaseModel):
     sovereign_id: str | None = None
 
 
-#: A projected record of any scale, keyed on ``kind``. It holds only
-#: :class:`CountyView` today; Program 24 P2 widens it to a discriminated
-#: union (``CountyView | StateView | ...``) as state and national dossiers
-#: land — the hydrate helpers below need no change.
+class FactionalComposition(BaseModel):
+    """The three ruling-class-fraction weights within an institution.
+
+    Mirrors the legacy ``InstitutionSerializer.factional_composition``
+    contract (``web/game/serializers.py``) and the engine's
+    ``InternalBalanceOfForces`` (``babylon.models.entities.institution``) —
+    but projects only the three named fraction weights. ``internal_
+    contestation`` and the computed ``hegemonic_fraction`` are deliberately
+    NOT projected here: the former has no legacy-parity contract to mirror,
+    and the latter is an enum member the plain-float weight contract below
+    does not carry (matching ``_institution_factional_control`` in
+    ``web/game/engine_bridge.py``, which extracts the same three keys for the
+    same reason — a raw passthrough of ``internal_balance`` would also trip
+    this model's own ``extra="forbid"``).
+
+    :param liberal_technocratic: Weight of the consent-based-rule faction.
+    :param revanchist_fascist: Weight of the naked-repression faction.
+    :param institutionalist_bonapartist: Weight of the self-preservation
+        faction.
+    """
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    liberal_technocratic: Probability
+    revanchist_fascist: Probability
+    institutionalist_bonapartist: Probability
+
+    @model_validator(mode="after")
+    def _validate_sum(self) -> FactionalComposition:
+        """Require the three weights to sum to one within the engine's own tolerance.
+
+        Uses the wider ``[0.99, 1.01]`` band ``InternalBalanceOfForces``
+        itself validates against — not the tighter :data:`_SUM_TOLERANCE`
+        :class:`ClassComposition`/:class:`ConsciousnessSimplex` use — so a
+        record round-tripping a live engine value is never rejected for float
+        drift the engine's own validator already tolerates.
+
+        :raises ValueError: if the three weights do not sum to one within
+            tolerance — a malformed composition is a bug, not a silently
+            re-normalized input.
+        :returns: The validated model (unchanged).
+        """
+        total = (
+            self.liberal_technocratic + self.revanchist_fascist + self.institutionalist_bonapartist
+        )
+        if not (0.99 <= total <= 1.01):
+            msg = f"factional composition weights must sum to 1.0 (got {total:.6f})"
+            raise ValueError(msg)
+        return self
+
+
+class InstitutionView(BaseModel):
+    """An institution dossier — the projected read-model for one institution.
+
+    Unlike :class:`CountyView` (assembled from several declared sources),
+    every field here has exactly one producer: the institution's own graph
+    node, stamped whole-cloth by ``WorldState.to_graph()`` from the
+    ``Institution`` Pydantic model (Feature 040) — no cross-entity
+    aggregation is needed. The only absence case is therefore "no institution
+    node carries this id" (every field ``None`` but identity/provenance);
+    once a node exists, every field it declares is present, because
+    ``Institution`` stamps them whole-cloth. A present-but-malformed node
+    (e.g. an ``internal_balance`` dict missing a named weight) is a shape bug
+    that fails loud via :class:`FactionalComposition`'s own validation, never
+    a silently-substituted default.
+
+    Extra keys are rejected (``extra="forbid"``): a payload carrying a field
+    this model does not declare is a shape mismatch to surface loudly, not to
+    swallow.
+
+    :param kind: The discriminator literal ``"institution"`` tagging this
+        record in :data:`ProjectionRecord`.
+    :param institution_id: The institution's graph node id — its identity
+        (mirrors the legacy ``InstitutionSerializer.id``).
+    :param verified_tick: The committed tick this dossier was projected from,
+        the staleness anchor for any materialization.
+    :param name: Human-readable institution name, or ``None`` if no
+        institution carries ``institution_id``.
+    :param apparatus_type: The Althusserian apparatus classification, or
+        ``None``.
+    :param social_function: The population need this institution serves, or
+        ``None``.
+    :param class_inscription: Which class the institution serves, or
+        ``None``.
+    :param legitimacy: Public perceived legitimacy in ``[0, 1]``, or
+        ``None``.
+    :param budget: Available resources (money-form, non-negative), or
+        ``None``.
+    :param housed_org_ids: Organization ids housed within this institution —
+        an empty tuple is a real "houses nothing" value, distinct from
+        ``None`` (the institution itself is unattributed).
+    :param territory_ids: Territories where this institution operates, same
+        empty-vs-``None`` distinction as :attr:`housed_org_ids`.
+    :param factional_composition: The three ruling-class-fraction weights, or
+        ``None``.
+    """
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    kind: Literal["institution"] = "institution"
+    institution_id: str = Field(min_length=1)
+    verified_tick: int = Field(ge=0)
+
+    name: str | None = Field(default=None, min_length=1)
+    apparatus_type: ApparatusType | None = None
+    social_function: SocialFunction | None = None
+    class_inscription: ClassInscription | None = None
+    legitimacy: Probability | None = None
+    budget: Currency | None = None
+    housed_org_ids: tuple[str, ...] | None = None
+    territory_ids: tuple[str, ...] | None = None
+    factional_composition: FactionalComposition | None = None
+
+
+#: A projected record of any scale, keyed on ``kind``. Holds
+#: :class:`CountyView` and :class:`InstitutionView` (Program 24 P2 WO-19);
+#: further Lane P kinds join the union the same way, with no change to the
+#: hydrate helpers below.
 ProjectionRecord = Annotated[
-    CountyView,
+    CountyView | InstitutionView,
     Field(discriminator="kind"),
 ]
 
 _COUNTY_ADAPTER: TypeAdapter[CountyView] = TypeAdapter(CountyView)
-_RECORD_ADAPTER: TypeAdapter[CountyView] = TypeAdapter(ProjectionRecord)
+_INSTITUTION_ADAPTER: TypeAdapter[InstitutionView] = TypeAdapter(InstitutionView)
+_RECORD_ADAPTER: TypeAdapter[CountyView | InstitutionView] = TypeAdapter(ProjectionRecord)
 
 
 def hydrate_county(data: Mapping[str, Any]) -> CountyView:
@@ -202,7 +322,19 @@ def hydrate_county(data: Mapping[str, Any]) -> CountyView:
     return _COUNTY_ADAPTER.validate_python(data)
 
 
-def hydrate_record(data: Mapping[str, Any]) -> CountyView:
+def hydrate_institution(data: Mapping[str, Any]) -> InstitutionView:
+    """Validate an untyped mapping into an :class:`InstitutionView`.
+
+    :param data: A mapping shaped like an ``InstitutionView`` — a recorded
+        fixture, a JSON payload, or an assembled row dict. Missing optional
+        keys become ``None``; unknown keys are rejected.
+    :returns: The validated, frozen :class:`InstitutionView`.
+    :raises pydantic.ValidationError: on a shape or constraint violation.
+    """
+    return _INSTITUTION_ADAPTER.validate_python(data)
+
+
+def hydrate_record(data: Mapping[str, Any]) -> CountyView | InstitutionView:
     """Validate an untyped mapping into the correct :data:`ProjectionRecord`.
 
     Dispatch is by the ``kind`` discriminator, so this helper stays correct as
@@ -210,7 +342,8 @@ def hydrate_record(data: Mapping[str, Any]) -> CountyView:
 
     :param data: A mapping carrying a ``kind`` discriminator and the fields of
         the matching record type.
-    :returns: The validated record (a :class:`CountyView` today).
+    :returns: The validated record (:class:`CountyView` or
+        :class:`InstitutionView` today).
     :raises pydantic.ValidationError: if ``kind`` is missing/unknown or the
         payload violates the matched record's shape.
     """
@@ -221,7 +354,10 @@ __all__ = [
     "ClassComposition",
     "ConsciousnessSimplex",
     "CountyView",
+    "FactionalComposition",
+    "InstitutionView",
     "ProjectionRecord",
     "hydrate_county",
+    "hydrate_institution",
     "hydrate_record",
 ]

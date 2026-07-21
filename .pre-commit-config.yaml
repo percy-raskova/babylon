@@ -167,6 +167,16 @@ repos:
     rev: v6.0.0
     hooks:
       - id: trailing-whitespace
+        # Textual/Rich SVG snapshot goldens (pytest-textual-snapshot, Program 24
+        # Archive TUI) are byte-exact renderer output, not hand-written source —
+        # a blank terminal row can legitimately render as a line of trailing
+        # spaces (padding cells), and this hook stripping that byte silently
+        # desyncs the golden from what a live re-render actually produces,
+        # breaking the "regenerate with --snapshot-update, verify with a plain
+        # second run" contract every such golden depends on. Same class of
+        # exclusion as the generated/regenerable baseline files below
+        # (check-added-large-files) — never hand-edited, always regenerated.
+        exclude: ^tests/unit/tui/(.*/)?__snapshots__/.*\.raw$
       - id: end-of-file-fixer
       - id: check-yaml
         args: [--unsafe]  # Allow custom tags in GitHub Actions

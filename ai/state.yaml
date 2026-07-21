@@ -5,6 +5,26 @@ meta:
   version: "2.47.0"  # 2.28.0 lives on feature/19-emergent-class-partition (Program 19 Phase 0+1)
   updated: "2026-07-21"
   truth_status: |
+    (2026-07-21 Vol II U1) VOL II CIRCULATION PROGRAM, UNIT 1 COMPLETE
+    (worktree .claude/worktrees/vol2, branch lane/vol2-circulation, on top
+    of ADR103's T1.0 contract commit 84d8405a). Activation audit +
+    §2b/§2d disposition -- ADR108. Re-verified the 2026-07-19 dormancy map
+    holds on dev tip (Vol2CirculationStep's NodeType.HEX query, economic.py's
+    four-key gate, postgres_initialization.py's four never-supplied LODES
+    kwargs) with only line-drift; refined one fact (PairedCrossBorderEmission
+    Evaluator has been registered since 2026-07-08, running vacuously green
+    pending the step's activation -- not merely "would audit"). §2b resolved
+    per BD ruling 7 (verified, not relitigated): county-keyed NodeType.
+    TERRITORY + a hex->county ScaleAdjunction (sourced from the already-
+    persisted hex_spatial_map table) binds the hex-resolution LODES math at
+    its read/write boundary, mirroring SubstrateSystem (#39 T6) near-
+    mechanically -- spec only, U4 implements. §2d (web/headless parity)
+    recorded OUT of Vol II scope per §10.3, assigned to Vol I; U4's
+    entanglement narrowed to two runner.py context keys (vol2_step,
+    simulated_year) since session_id/boundary_flow_register are already
+    wired in _run_tick_and_persist. No code touched, no baseline drift (10/10
+    scoped tests green). Next: U2 (LODES OD data path, gated on the parquet
+    cutover per program §1).
     (2026-07-21 P2-P4) PROGRAM 24 THE ARCHIVE COMPLETE THROUGH P4 (branch
     feature/archive-p2-p4, PR #240 -> dev auto-merge armed; STAGED cutover
     draft PR #241 pending BD gate 3). P2: 18 Wave-1 builders + Wave-1.5

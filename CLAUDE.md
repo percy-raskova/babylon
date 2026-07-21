@@ -17,8 +17,9 @@ grounded code, and you follow the Babylon Constitution for architectural decisio
 
 ## Constitutional Compact
 
-Irreducible constraints. Full text: `CONSTITUTION.md` (v2.8.0, 10 Articles +
-Amendments A–P; the canonical governance doc — read it before proposing architecture).
+Irreducible constraints. Full text: `CONSTITUTION.md` (v2.12.0, 10 Articles +
+Amendments A–X, T reserved for ADR072; the canonical governance doc — read it before
+proposing architecture).
 
 **MUST**
 
@@ -41,8 +42,11 @@ Amendments A–P; the canonical governance doc — read it before proposing arch
 Three-layer local system, no external servers. Full map: `ai/architecture.yaml`.
 
 - **The Ledger** — rigid material state. SQLite reference DB (`data/sqlite/marxist-data-3NF.sqlite`,
-  read-only) + PostgreSQL runtime (`src/babylon/persistence/`) + a few JSON seeds in
-  `src/babylon/data/game/`.
+  read-only — a deterministic BUILD PRODUCT since ADR098: parquet sources + `schema.sql` in
+  `data-artifacts.yaml` are canonical, `mise run data:build-db` rebuilds it sha-identically on the
+  pinned toolchain; loaders never write it, they produce sources via `tools/loader_to_sources.py` —
+  see `docs/how-to/reference-data-pipeline.rst`) + PostgreSQL runtime (`src/babylon/persistence/`)
+  + a few JSON seeds in `src/babylon/data/game/`.
 - **The Topology** — fluid relational state via **rustworkx** (`babylon.topology.BabylonGraph`;
   its own package since Program 14; NetworkX was removed, Amendment L / ADR052).
   `WorldState.to_graph()` / `from_graph()`. Foundational node types
@@ -53,6 +57,13 @@ Three-layer local system, no external servers. Full map: `ai/architecture.yaml`.
   (`persistence/pgvector_store.py`; replaced ChromaDB in spec-037). AI observes, never controls.
 
 **Principle:** state is pure data; the engine is pure transformation; they never mix.
+
+**Client status (owner ruling 2026-07-20; Amendment V / II.8):** the browser/web client (`web/`,
+`src/frontend/`) is **legacy** — its failures don't gate work and the web `engine_bridge` suite is
+disabled wholesale (module-level `pytestmark` skip in `tests/unit/web/test_engine_bridge.py`). The
+terminal Archive client
+is the successor (program unspecced; drafts in `ai/_inbox/tui/`). The `observe()` projection
+contract is the durable seam; clients are disposable.
 
 ## Engine
 
@@ -138,7 +149,14 @@ files, so intertwined units force ugly giant commits. Use `mise run commit -- "t
   + no-dead-columns leg + in-gate two-process determinism leg, ~10s local) plus `mise run
   check:gate-coverage` (static, fast lane) / `check:gate-coverage-truth` (dynamic, qa lane) —
   coverage is now declared and proved, not implicit (ADR090). If a value moves unintentionally,
-  STOP; if intentionally, regenerate baselines and say so.
+  STOP; if intentionally, regenerate baselines via a declared ceremony (next bullet).
+- **Baseline ceremonies (§6.5, owner ruling 2026-07-20):** any commit touching `tests/baselines/**`
+  IS a ceremony — subject `test(baselines): …`, body records the drift table (per-scenario columns,
+  cell counts, max |d|, attribution), and the message MUST carry a
+  `Baselines: blessed(<ceremony-slug>)` trailer. Enforced by the commit-msg hook locally and the
+  CI ceremony-gate on PRs (`tools/check_baseline_ceremony.py`; evil merges included via
+  `diff-tree --cc`; audit trail: `git log -E --grep '^Baselines: blessed\(' --format='%h %s'`).
+  Undeclared drift = red gate, STOP.
 - After significant work: update `ai/state.yaml`; add an ADR in `ai/decisions/` (individual
   `ADR0NN_*.yaml` files + `index.yaml` catalog) for architectural decisions.
 

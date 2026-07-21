@@ -45,7 +45,7 @@ HEADER = (
 
 
 def extract_schema_sql(conn: sqlite3.Connection) -> str:
-    """Extract canonical DDL text for every non-internal ``sqlite_master``
+    """Extract canonical DDL text for every governed ``sqlite_master``
     object, in rowid order.
 
     Per-statement canonicalization: strip trailing whitespace per line,
@@ -53,37 +53,50 @@ def extract_schema_sql(conn: sqlite3.Connection) -> str:
     newline on the whole file. ``sqlite_%`` internal objects (e.g.
     ``sqlite_sequence``) and NULL-``sql`` rows (auto-indexes from ``UNIQUE``/
     implicit rowid indexes) are excluded — neither is meaningful DDL to
-    replay.
+    replay. Objects outside the governed estate (utility bookkeeping like
+    ``ingest_checkpoint``, plus their indexes) are excluded by the shared
+    ``GOVERNED_PREFIXES`` boundary on ``tbl_name`` — the build product
+    contains exactly the governed estate; loaders recreate their own
+    bookkeeping DDL on demand via ``metadata.create_all``.
 
     :param conn: Open connection to the source DB.
     :returns: The full ``schema.sql`` text (header + statements).
     """
+    from babylon.sentinels.coverage.catalog import GOVERNED_PREFIXES
+
     rows = conn.execute(
-        "SELECT sql FROM sqlite_master "
+        "SELECT sql, tbl_name FROM sqlite_master "
         "WHERE sql IS NOT NULL AND name NOT LIKE 'sqlite_%' ORDER BY rowid"
     ).fetchall()
     statements = []
-    for (sql,) in rows:
+    for sql, tbl_name in rows:
+        if not tbl_name.startswith(GOVERNED_PREFIXES):
+            continue
         body = "\n".join(line.rstrip() for line in sql.strip().splitlines())
         statements.append(body.rstrip(";") + ";")
     return HEADER + "\n" + "\n\n".join(statements) + "\n"
 
 
 def schema_census(conn: sqlite3.Connection) -> dict[str, int]:
-    """Count non-internal ``sqlite_master`` objects by type.
+    """Count governed ``sqlite_master`` objects by type.
 
     :param conn: Open connection to the source DB.
     :returns: ``{"tables": n, "views": n, "indexes": n}`` — the same
-        exclusions as :func:`extract_schema_sql` (``sqlite_%`` objects and
-        NULL-``sql`` auto-indexes never count).
+        exclusions as :func:`extract_schema_sql` (``sqlite_%`` objects,
+        NULL-``sql`` auto-indexes, and non-governed utility objects never
+        count).
     """
-    counts = dict(
-        conn.execute(
-            "SELECT type, COUNT(*) FROM sqlite_master "
-            "WHERE sql IS NOT NULL AND name NOT LIKE 'sqlite_%' "
-            "GROUP BY type"
-        ).fetchall()
-    )
+    from babylon.sentinels.coverage.catalog import GOVERNED_PREFIXES
+
+    rows = conn.execute(
+        "SELECT type, tbl_name FROM sqlite_master "
+        "WHERE sql IS NOT NULL AND name NOT LIKE 'sqlite_%'"
+    ).fetchall()
+    counts: dict[str, int] = {}
+    for object_type, tbl_name in rows:
+        if not tbl_name.startswith(GOVERNED_PREFIXES):
+            continue
+        counts[object_type] = counts.get(object_type, 0) + 1
     return {
         "tables": counts.get("table", 0),
         "views": counts.get("view", 0),

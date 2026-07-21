@@ -40,6 +40,16 @@ CATALOG_PATH: Path = _REPO_ROOT / "data-catalog.yaml"
 #: parity check reconciles against.
 SUBSET_GENERATOR_PATH: Path = _REPO_ROOT / "tools" / "make_reference_subset.py"
 
+#: The governed reference estate: only ``sqlite_master`` objects with these
+#: name prefixes are governed by the catalog, exported as parquet sources,
+#: replayed into the build product, and content-compared at roundtrip.
+#: Utility bookkeeping tables (``ingest_checkpoint``, ``staging_*``) are
+#: OUTSIDE the estate by design — loaders recreate them on demand via
+#: ``metadata.create_all``. This is the single source of truth; every sweep
+#: surface (catalog sentinel, exporter, schema extractor, roundtrip verifier,
+#: subset policy review) must scope through it, never restate it.
+GOVERNED_PREFIXES: tuple[str, ...] = ("fact_", "dim_", "bridge_", "view_")
+
 
 class CatalogTable(BaseModel):
     """One reference-DB table or view declared in ``data-catalog.yaml``.

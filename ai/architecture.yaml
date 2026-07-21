@@ -39,6 +39,12 @@ core_architecture:
         relationships: "Directed edges (exploitation, solidarity, etc.)"
       data_flow: "Hydration Pattern - load at startup, persist on save, NO DB I/O during tick"
       key_insight: "Database is cold storage; simulation runs in RAM"
+      reference_data:
+        authority: "PARQUET-CANONICAL since ADR098 (2026-07-20)"
+        sources: "per-table parquet + schema.sql, sha-pinned in data-artifacts.yaml (lineage authority); data-catalog.yaml = per-table KEEP registry"
+        product: "data/sqlite/marxist-data-3NF.sqlite is a deterministic BUILD PRODUCT of tools/build_reference_db.py (sqlite pinned 3.53.1, double-build byte-identical, product sha in the manifest)"
+        ingest_law: "loaders produce SOURCES via tools/loader_to_sources.py (scratch-copy discipline); only the builder produces the DB; the shared DB is never opened for write"
+        how_to: "docs/how-to/reference-data-pipeline.rst"
 
     topology:
       purpose: "Fluid, relational state (hot computation environment)"

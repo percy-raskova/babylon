@@ -16,29 +16,23 @@ runs without raising but silently degrades to an identical value for every
 county (e.g. a broadcast/constant that looks "wired" but isn't actually
 county-resolution).
 
-KNOWN-RED (Program 17 / Item 1a, verified 2026-07-12, code-correct):
-this test currently FAILS at assertion 2 — every county's phi_hour is
-exactly 0.0 — for a data-availability reason, not a wiring bug. Root cause,
-verified directly against ``data/sqlite/marxist-data-3NF.sqlite``:
-``fact_bea_io_coefficient`` has 131,239 rows split only between
-``table_type='USE'`` (57,876) and ``'TOTAL_REQ'`` (73,363) — ZERO rows with
-``table_type='IMPORT_USE'``, for any year. ``DBImportShareSource`` therefore
-always computes ``m_j = 0.0`` for every industry (correctly, given the
-data), which zeroes the import-content matrix ``M = A_m @ L_d``, which
-zeroes ``phi_vector``, which zeroes every county's allocated ``phi_hour`` —
-deterministically, regardless of how correctly the rest of the pipeline is
-wired. A loader for this exact data exists (``tools/ingest_bea_imports.py``,
-writes ``table_type='IMPORT_USE'``) and its source archive IS present in
-the trove (``/media/user/data/babylon-data/bea/MAKE-USE-IMPORTS (BEFORE
-REDEFINITIONS).zip``) — it was simply never run against the canonical
-reference DB. Running a data-ingestion tool against the shared 6GB
-reference DB is out of scope for "wire the pipeline" (Item 1a) and needs
-its own reviewed remediation step (mirrors the existing spec-086/097/098
-reference-DB remediation program) — see
-``tests/integration/economics/`` for the ~34 other data-availability
-failures already tolerated in this codebase for the same reason. This test
-is expected to start passing, with NO further code changes, the day
-IMPORT_USE data is loaded.
+GREEN since 2026-07-20 (parquet-canonical cutover, plan Task 11 Step 5).
+History, preserved because the reasoning was correct at the time: this test
+was KNOWN-RED from 2026-07-12 (Program 17 / Item 1a) — every county's
+phi_hour was exactly 0.0 because ``fact_bea_io_coefficient`` then held only
+``USE`` (57,876) and ``TOTAL_REQ`` (73,363) rows, ZERO ``IMPORT_USE``, so
+``DBImportShareSource`` computed ``m_j = 0.0`` and the whole Φ chain zeroed
+deterministically. The docstring predicted it would "start passing, with NO
+further code changes, the day IMPORT_USE data is loaded" — verified at the
+cutover: the reference DB now carries 31,688 ``IMPORT_USE`` rows
+(2010–2024, ~2,100/year; ingested out-of-band after 2026-07-12; carried
+byte-faithfully through the parquet export → deterministic rebuild → flip),
+and the test passed untouched, phi_hour varying across the 3 counties. The
+standing mechanism for any FUTURE reference-data ingest is
+``tools/loader_to_sources.py`` (loaders produce sources; only the builder
+produces the DB) — note ``ingest_bea_imports`` itself is one-shot, not
+idempotent: re-running it against a DB that already has IMPORT_USE rows
+aborts loudly on the UNIQUE key, by design.
 """
 
 from __future__ import annotations

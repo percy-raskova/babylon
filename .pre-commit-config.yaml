@@ -167,6 +167,15 @@ repos:
     rev: v6.0.0
     hooks:
       - id: trailing-whitespace
+        # tests/**/__snapshots__/**/*.raw: pytest-textual-snapshot goldens are
+        # Rich-exported SVG (ADR099 snapshot lane). Rich's own SVG template
+        # bakes in a fixed blank-with-spaces line (the title-bar gap) that is
+        # identical on every render — trimming it in the committed golden
+        # desyncs it from the live re-render `snap_compare` always produces,
+        # permanently red-gating the test (discovered WO-17; the pre-existing
+        # county golden has this same untrimmed line, silently relying on no
+        # hook having touched it since P1 keel).
+        exclude: ^tests/.*/__snapshots__/.*\.raw$
       - id: end-of-file-fixer
       - id: check-yaml
         args: [--unsafe]  # Allow custom tags in GitHub Actions

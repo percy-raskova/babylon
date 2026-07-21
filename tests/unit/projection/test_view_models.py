@@ -11,7 +11,9 @@ from babylon.projection.view_models import (
     ClassComposition,
     ConsciousnessSimplex,
     CountyView,
+    NationalView,
     hydrate_county,
+    hydrate_national,
     hydrate_record,
 )
 
@@ -155,3 +157,93 @@ def test_consciousness_simplex_must_sum_to_one() -> None:
     """Three consciousness poles that do not sum to one are rejected."""
     with pytest.raises(ValidationError):
         ConsciousnessSimplex(revolutionary=0.5, liberal=0.5, fascist=0.5)
+
+
+def _usa_national_dict() -> dict[str, Any]:
+    """A fully-populated source dict shaped like the USA national dossier (WO-17)."""
+    return {
+        "kind": "national",
+        "national_id": "USA",
+        "verified_tick": 500,
+        "population": 331000000,
+        "class_composition": {
+            "bourgeoisie": 0.03,
+            "petit_bourgeoisie": 0.10,
+            "labor_aristocracy": 0.28,
+            "proletariat": 0.50,
+            "lumpenproletariat": 0.09,
+        },
+        "median_wage": 22.0,
+        "imperial_rent_pool": 100.0,
+        "consciousness": {
+            "revolutionary": 0.25,
+            "liberal": 0.65,
+            "fascist": 0.10,
+        },
+        "legitimacy": 0.48,
+        "p_acquiescence": 0.65,
+        "p_revolution": 0.30,
+        "bifurcation_score": -0.10,
+        "sovereign_id": "SOV_USA",
+        "c_sum": 1_000_000.0,
+        "v_sum": 500_000.0,
+        "s_sum": 250_000.0,
+        "k_sum": 2_000_000.0,
+        "biocapacity_sum": 750_000.0,
+        "hex_count": 3156,
+    }
+
+
+def test_golden_usa_national_hydration() -> None:
+    """A USA national dict hydrates into a fully-populated ``NationalView``."""
+    view = hydrate_national(_usa_national_dict())
+
+    assert view.kind == "national"
+    assert view.national_id == "USA"
+    assert view.verified_tick == 500
+    assert view.population == 331000000
+    assert view.imperial_rent_pool == pytest.approx(100.0)
+    assert view.c_sum == pytest.approx(1_000_000.0)
+    assert view.hex_count == 3156
+    assert isinstance(view.class_composition, ClassComposition)
+    assert isinstance(view.consciousness, ConsciousnessSimplex)
+
+
+def test_hydrate_record_dispatches_national_kind() -> None:
+    """The discriminated union routes a ``national`` payload to ``NationalView``."""
+    record = hydrate_record(_usa_national_dict())
+    assert isinstance(record, NationalView)
+    assert record.kind == "national"
+
+
+def test_national_view_is_frozen() -> None:
+    """A hydrated national view is immutable, exactly like CountyView."""
+    view = hydrate_national(_usa_national_dict())
+    with pytest.raises(ValidationError):
+        view.national_id = "NOT_USA"  # type: ignore[misc]
+
+
+def test_national_minimal_record_defaults_optionals_to_none() -> None:
+    """Only identity, provenance, and the Gas Tank stock are required."""
+    view = hydrate_national(
+        {
+            "kind": "national",
+            "national_id": "USA",
+            "verified_tick": 1,
+            "imperial_rent_pool": 100.0,
+        }
+    )
+    assert view.population is None
+    assert view.class_composition is None
+    assert view.consciousness is None
+    assert view.sovereign_id is None
+    assert view.c_sum is None
+    assert view.hex_count is None
+
+
+def test_national_extra_keys_are_rejected() -> None:
+    """A payload carrying an undeclared field is a loud shape mismatch."""
+    payload = _usa_national_dict()
+    payload["undeclared_field"] = 1
+    with pytest.raises(ValidationError):
+        hydrate_national(payload)

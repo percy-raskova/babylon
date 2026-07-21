@@ -47,8 +47,33 @@ AUDIO_OUTPUT_DIR = "assets/audio"
 # =============================================================================
 
 [tasks."nix"]
-description = "run any command inside the mounted infra devshell (pinned toolchain incl. sqlite-3.53.1 python), e.g. mise run nix -- uv run python tools/build_reference_db.py; needs: git submodule update --init infra"
-run = 'nix develop "${MISE_PROJECT_ROOT:-$PWD}/infra" --command'
+description = "run any command inside the vendored devshell (pinned toolchain incl. sqlite-3.53.1 python), e.g. mise run nix -- uv run python tools/build_reference_db.py"
+run = 'nix develop "${MISE_PROJECT_ROOT:-$PWD}" --command'
+
+[tasks."check:env-contract"]
+description = "devshell environment contract: no PYTHONPATH leaks from python-built packages (default/dataBuild)"
+run = """
+#!/usr/bin/env bash
+set -euo pipefail
+# The devshells provide TOOLS, not python imports: nixpkgs' python setup
+# hooks export tool site-packages onto PYTHONPATH, shadowing the repo venv
+# (git-hook mypy crash, 2026-07-20 — the `env -u PYTHONPATH git` era). Each
+# shellHook unsets it; this proves the contract for every shell the flake
+# exports. Workstation-run (shells are realized here); run after any flake
+# edit.
+for shell in default dataBuild; do
+  # shellHooks echo greetings to stdout — extract the marker-delimited
+  # value instead of trusting raw captured output.
+  raw="$(nix develop "${MISE_PROJECT_ROOT:-$PWD}#${shell}" --command bash -c 'printf "PYPC<[%s]>PYPC" "${PYTHONPATH:-}"')"
+  leaked="$(printf '%s' "$raw" | sed -n 's/.*PYPC<\\[\\(.*\\)\\]>PYPC.*/\\1/p')"
+  if [ -n "$leaked" ]; then
+    echo "env-contract: ${shell} devshell leaks PYTHONPATH:" >&2
+    printf '%s\\n' "$leaked" | tr ':' '\\n' | sed 's/^/  /' >&2
+    exit 1
+  fi
+  echo "env-contract: ${shell} clean"
+done
+"""
 
 [tasks.install]
 description = "Install all dependencies"

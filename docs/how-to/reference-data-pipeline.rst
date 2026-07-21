@@ -10,9 +10,9 @@ How to add or change reference data (parquet-canonical pipeline)
 Prerequisites
 -------------
 
-- The pinned toolchain (the builder hard-gates on SQLite 3.53.1):
-  ``git submodule update --init infra``, then run builder commands through
-  ``mise run nix -- <cmd>`` or a poetry venv built on the devshell interpreter.
+- The pinned toolchain (the builder hard-gates on SQLite 3.53.1): the repo's
+  own vendored flake (ADR102) — run builder commands through
+  ``mise run nix -- <cmd>`` or a venv built on the devshell interpreter.
 - The data drive mounted (``mise run data:doctor`` green) for drive-sourced
   ingests.
 
@@ -71,6 +71,6 @@ Gotchas (hard-won at the cutover)
 - On a tmpfs-``/tmp`` box, VACUUM spills a full DB copy — the builder pins
   its temp dir next to the output; if a "database or disk is full" appears
   anyway, ``df`` the **output path's** filesystem, not ``/``.
-- CI note: the nightly rebuild-verify leg skips loudly when the runner's
-  sqlite is off-pin (ADR098 declared follow-up: run it inside the infra
-  devshell).
+- CI note: the nightly rebuild-verify leg runs inside the vendored flake's
+  ``dataBuild`` devshell (``nix develop .#dataBuild``) so the runner's sqlite
+  is always on-pin (ADR098; devshells vendored in-repo by ADR102).

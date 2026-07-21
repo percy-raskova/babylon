@@ -1,9 +1,14 @@
 meta:
-  version: 1.42.0
-  updated: '2026-07-20'
+  version: 1.43.0
+  updated: '2026-07-21'
   description: Architecture Decision Records Index
   format: See individual ADR files in this directory
 decisions:
+  ADR102_environment_sovereignty:
+    title: 'Environment sovereignty (BD-directed, Amendment Z / v2.14.0): devshells vendored into babylon''s own flake.nix (default + dataBuild; same locked nixpkgs rev — store paths unchanged; rev-pinned nixpkgs-data carries the sqlite-3.53.1 interpreter, lockstep now SAME-REPO with PINNED_SQLITE_VERSION); infra/ submodule UNMOUNTED (babylon-infra = private sibling ops repo); nightly deploy-key fetch deleted; check_release_pins.sh rewritten gitlink-tag -> in-repo lockstep check; PYTHONPATH root cause = nixpkgs python setup-hook leakage (NOT submodule mechanics), fixed by shellHook unset + check:env-contract guard in both repos; `env -u PYTHONPATH git` litany retired for post-2026-07-21 shells'
+    status: accepted
+    date: '2026-07-21'
+    file: ADR102_environment_sovereignty.yaml
   ADR101_narrator_seam_consolidation:
     title: 'Narrator seam consolidation (BD-directed, executes past the ADR096-inference-lane plan''s quarantine): legacy LLMProvider/MockLLM/DeepSeek/WorkersAI stack + LLMConfig chat lane DELETED (git history = archive); babylon.intelligence.providers is the ONE transport seam — director takes narrator: NarratorProvider, judge defaults to chat_model_for(resolve_provider().endpoint) lazily, web narrative_service resolves via resolve_provider with the III.6 pin read from the RESOLVED endpoint inside the try (loud degradation, "unresolved" fallback), tools degrade mute->MockNarrator (demo) or fail loud (interview); MockNarrator + ProviderKind.MOCK + ModelFactory/chat_model_for added to providers.py; LLMConfig = embedding lane only, OpenAIConfig alias gone, DeepSeek lane gone (§A7.6 alignment); GOTCHA: cf-aig-gateway-id header did not survive — resurrect at the babylon-api Worker if wanted'
     status: accepted

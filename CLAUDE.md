@@ -17,8 +17,8 @@ grounded code, and you follow the Babylon Constitution for architectural decisio
 
 ## Constitutional Compact
 
-Irreducible constraints. Full text: `CONSTITUTION.md` (v2.13.0, 10 Articles +
-Amendments A–Y, T reserved for ADR072; the canonical governance doc — read it before
+Irreducible constraints. Full text: `CONSTITUTION.md` (v2.14.0, 10 Articles +
+Amendments A–Z, T reserved for ADR072; the canonical governance doc — read it before
 proposing architecture).
 
 **MUST**
@@ -186,17 +186,21 @@ CI (`.github/workflows/ci.yml`) invokes the same mise tasks devs run (`test:unit
 `qa:regression`, …) — the only raw-uv exceptions are the py3.13 forward-compat leg (`nightly.yml`)
 and a handful of documented one-offs (migrations, doc build, ad hoc pytest legs).
 
-## Environment — the infra devshell (canonical toolchain)
+## Environment — the vendored flake (canonical toolchain)
 
-`infra/` is a git submodule of [babylon-infra](https://github.com/percy-raskova/babylon-infra)
-(Program 20 / ADR069/071; mounted 2026-07-20 by owner ruling). Its Nix flake is the canonical
-toolchain: python 3.12 with **sqlite pinned 3.53.1** (lockstep with
-`tools/build_reference_db.py::PINNED_SQLITE_VERSION` — the reference-DB byte-identity contract),
-node, gdal/geos/proj, libpq, playwright browsers. Fresh clones/worktrees:
-`git submodule update --init infra`, then run pinned-toolchain commands via
-`mise run nix -- <cmd>`. The host venv (3.46.1 sqlite) still runs everything EXCEPT the
-reference-DB builder, which hard-fails off-pin by design. Bumping the flake's `nixpkgs-data`
-input IS a declared sqlite-pin change.
+The repo's own `flake.nix` is the canonical toolchain (environment-sovereignty ruling
+2026-07-21, ADR102 — the infra submodule is unmounted; babylon-infra remains a private
+sibling repo for ops tooling only). Two devshells: `default` — python 3.12 with **sqlite
+pinned 3.53.1** (the `nixpkgs-data` input, rev-pinned; lockstep with
+`tools/build_reference_db.py::PINNED_SQLITE_VERSION` — the reference-DB byte-identity
+contract, both halves same-repo now), uv, node, gdal/geos/proj, libpq, playwright
+browsers — and `dataBuild` (the reference-DB builder env). Run pinned-toolchain commands
+via `mise run nix -- <cmd>` (no submodule init needed, works in any fresh clone/worktree).
+The host venv (3.46.1 sqlite) still runs everything EXCEPT the reference-DB builder, which
+hard-fails off-pin by design. Bumping `nixpkgs-data` IS a declared sqlite-pin change.
+Every devshell `unset`s `PYTHONPATH` (nixpkgs python setup hooks used to leak tool
+site-packages onto it, shadowing the repo venv — the old `env -u PYTHONPATH git` litany
+is retired for shells entered after 2026-07-21; guard: `mise run check:env-contract`).
 
 ## Machine safety — resource limits (history: froze the dev box twice, 2026-07-12)
 

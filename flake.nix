@@ -4,6 +4,14 @@
   inputs = {
     # Match infra's channel (babylon-infra flake pins nixos-25.11).
     nixpkgs.url = "github:NixOS/nixpkgs/nixos-25.11";
+    # python/sqlite only: the reference-DB builder pins sqlite 3.53.1
+    # (tools/build_reference_db.py::PINNED_SQLITE_VERSION — the byte-identical
+    # build contract, ADR098). This exact rev's python312 links sqlite 3.53.1
+    # (verified 2026-07-20). Pinned by REV in the URL so `nix flake update`
+    # cannot drift it; bumping this input IS a declared sqlite-pin change, and
+    # both halves of the lockstep now live in THIS repo (environment-
+    # sovereignty ruling 2026-07-21; previously the babylon-infra flake).
+    nixpkgs-data.url = "github:NixOS/nixpkgs/a16c3fde2ffeab7f6326f50f460aaffde7ae066d";
     flake-utils.url = "github:numtide/flake-utils";
 
     pyproject-nix = {
@@ -24,13 +32,15 @@
   };
 
   outputs =
-    { nixpkgs, flake-utils, pyproject-nix, uv2nix, pyproject-build-systems, ... }:
+    { nixpkgs, nixpkgs-data, flake-utils, pyproject-nix, uv2nix, pyproject-build-systems, ... }:
     flake-utils.lib.eachDefaultSystem (
       system:
       let
         pkgs = nixpkgs.legacyPackages.${system};
         lib = pkgs.lib;
         python = pkgs.python312;
+        # sqlite-3.53.1 interpreter for the babylon data layer (see nixpkgs-data)
+        pythonData = nixpkgs-data.legacyPackages.${system}.python312;
 
         # Source filter. The committed src/babylon_data symlink points outside
         # the sandbox and is DEAD in any Nix build; a fileset difference drops it
@@ -89,6 +99,85 @@
         packages = {
           babylon = babylonEnv;
           default = babylonEnv;
+        };
+
+        # Canonical dev/build environment (vendored from the babylon-infra
+        # devshell, environment-sovereignty ruling 2026-07-21 — the infra
+        # submodule is unmounted; babylon-infra's flake governs ops tooling
+        # only). Same nixpkgs rev the submodule's lock carried, so every tool
+        # store path is unchanged.
+        devShells.default = pkgs.mkShell {
+          packages = (with pkgs; [
+            uv                  # package/venv manager (pure uv/PEP-621 since PR #236)
+            nodejs_22
+            git-lfs
+            postgresql_16.lib   # libpq for pure-python psycopg
+            gdal                # GeoDjango runtime + geospatial CLI/headers (ogr2ogr, gdal-config)
+            geos
+            proj
+            openblas
+            rustc
+            cargo
+            fluidsynth
+            playwright-driver.browsers
+            mise                # task runner pinned here, not assumed on the host
+            jq                  # post-tool-lint.sh dispatcher
+          ]) ++ [
+            pythonData          # the only python312 on PATH: venvs build on it unchanged
+          ];
+          # sentinel for task guards — IN_NIX_SHELL is too generic (the
+          # workstation shell is itself a nix-shell)
+          BABYLON_DEVSHELL = "default";
+
+          shellHook = ''
+            # Determinism + 2026-07-12 freeze fix (mirrors .mise.toml [env])
+            export OMP_NUM_THREADS=1 OPENBLAS_NUM_THREADS=1 MKL_NUM_THREADS=1
+            export NUMEXPR_NUM_THREADS=1 RAYON_NUM_THREADS=1
+            # libpq for pure-python psycopg, PLUS the nix libstdc++ for
+            # manylinux wheels (greenlet, pyarrow): the nix python's dynamic
+            # linker cannot see host system libs, so every C++-linked wheel
+            # needs the store's libstdc++ on the loader path.
+            export LD_LIBRARY_PATH=${pkgs.stdenv.cc.cc.lib}/lib:${pkgs.postgresql_16.lib}/lib''${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}
+            # GeoDjango cannot ctypes-find_library() under the nix linker —
+            # hand it exact store paths (web settings consume these when set;
+            # host installs keep using ldconfig lookup).
+            export GDAL_LIBRARY_PATH=${pkgs.gdal}/lib/libgdal.so
+            export GEOS_LIBRARY_PATH=${pkgs.geos}/lib/libgeos_c.so
+            # Pinned Playwright browsers (no npx playwright install)
+            export PLAYWRIGHT_BROWSERS_PATH=${pkgs.playwright-driver.browsers}
+            export PLAYWRIGHT_SKIP_VALIDATE_HOST_REQUIREMENTS=true
+            # Environment contract: this shell provides TOOLS, not python
+            # imports. nixpkgs' python setup hooks export python-built
+            # packages' site-packages onto PYTHONPATH (gdal here), which
+            # shadows the repo venv built on a different interpreter (bit
+            # babylon's git hooks 2026-07-20: nix pathspec 0.12.1 shadowed
+            # venv pathspec 1.0.4 → mypy hook crash → silent commit aborts).
+            # Nothing needs the export. Guard: mise run check:env-contract.
+            unset PYTHONPATH
+            echo "babylon devshell: python=$(python3 --version) sqlite=$(python3 -c 'import sqlite3; print(sqlite3.sqlite_version)') node=$(node --version)"
+          '';
+        };
+
+        # Reference-DB builder env (ADR098): exactly the toolchain of
+        # tools/build_reference_db.py — the pinned sqlite-3.53.1 interpreter
+        # plus pyarrow (parquet sources) and pyyaml (manifest product-sha
+        # compare). Its own small closure so the nightly rebuild-verify leg
+        # needs no venv bootstrap.
+        devShells.dataBuild = pkgs.mkShell {
+          packages = [
+            (pythonData.withPackages (ps: [ ps.pyarrow ps.pyyaml ]))
+          ];
+          BABYLON_DEVSHELL = "dataBuild";
+          shellHook = ''
+            # Determinism pins (mirrors the default shell / .mise.toml [env])
+            export OMP_NUM_THREADS=1 OPENBLAS_NUM_THREADS=1 MKL_NUM_THREADS=1
+            export NUMEXPR_NUM_THREADS=1 RAYON_NUM_THREADS=1
+            # Environment contract — see devShells.default. withPackages
+            # embeds pyarrow/pyyaml in the interpreter env; PYTHONPATH is
+            # pure setup-hook leakage here too.
+            unset PYTHONPATH
+            echo "dataBuild shell: python=$(python3 --version) sqlite=$(python3 -c 'import sqlite3; print(sqlite3.sqlite_version)')"
+          '';
         };
 
         # `nix flake check` runs this. It is a SMOKE gate only — importable

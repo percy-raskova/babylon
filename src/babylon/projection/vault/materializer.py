@@ -22,8 +22,9 @@ from typing import TYPE_CHECKING
 
 from babylon.projection.vault.git_backend import commit_page, commit_pages, init_vault
 from babylon.projection.vault.render import render_county
+from babylon.projection.vault.render_national import render_national
 from babylon.projection.vault.render_state import render_state
-from babylon.projection.view_models import CountyView, StateView
+from babylon.projection.view_models import CountyView, NationalView, StateView
 
 if TYPE_CHECKING:
     from collections.abc import Mapping
@@ -116,6 +117,33 @@ class VaultMaterializer:
             content,
             tick=tick,
             message=f"bake: state/{view.state_fips} @ tick {tick}",
+        )
+        return self._vault_root / relative_path
+
+    def bake_national(self, view: NationalView, *, tick: int) -> Path:
+        """Render and commit one national dossier page.
+
+        The page path follows the same stable-ID slug ruling
+        :meth:`bake_county` does: ``national/<national_id>.md``, never a
+        mutable display name.
+
+        :param view: the national projection to materialize.
+        :param tick: the simulation tick driving both the page's
+            ``verified_tick`` frontmatter stamp (via
+            :func:`~babylon.projection.vault.render_national.
+            render_national`) and the commit's sim-time timestamp (via
+            :func:`~babylon.projection.vault.git_backend.commit_page`).
+        :returns: the absolute path of the written page under the vault
+            root.
+        """
+        relative_path = f"national/{view.national_id}.md"
+        content = render_national(view, verified_tick=tick)
+        commit_page(
+            self._vault_root,
+            relative_path,
+            content,
+            tick=tick,
+            message=f"bake: national/{view.national_id} @ tick {tick}",
         )
         return self._vault_root / relative_path
 

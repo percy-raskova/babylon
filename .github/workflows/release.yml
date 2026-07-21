@@ -46,6 +46,9 @@ jobs:
           ref: ${{ steps.tag.outputs.tag }}
           fetch-depth: 0
 
+      - name: Releases pin released infra (docs/versioning.md D5)
+        run: ./tools/check_release_pins.sh
+
       - name: Set up Python
         uses: actions/setup-python@v7
         with:

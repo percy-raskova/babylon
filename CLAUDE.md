@@ -165,6 +165,7 @@ files, so intertwined units force ugly giant commits. Use `mise run commit -- "t
   `git log -E --grep '^Baselines: blessed\(' --format='%h %s'`). Undeclared drift = red gate, STOP.
 - After significant work: update `ai/state.yaml`; add an ADR in `ai/decisions/` (individual
   `ADR0NN_*.yaml` files + `index.yaml` catalog) for architectural decisions.
+- `docs/versioning.md` — save-compat semver policy + the owner-run release ceremony.
 
 ## Commands
 

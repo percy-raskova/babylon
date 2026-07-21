@@ -186,7 +186,7 @@ visibility) lives in `src/babylon/domain/economics/`.
 ```bash
 # Setup
 mise run setup              # Fresh clone: everything
-poetry install && poetry run pre-commit install   # Piecemeal alternative
+uv sync --extra server && uv run pre-commit install   # Piecemeal alternative
 
 # CI gate (lint + format + typecheck + unit tests)
 mise run check
@@ -219,9 +219,9 @@ mise run sim:status                     # Canonical-run status (tick, DB size, l
 For specific tests:
 
 ```bash
-poetry run pytest tests/unit/test_foo.py::test_specific
-poetry run pytest -k "test_name_pattern"
-poetry run pytest -m "math or ledger"     # by marker
+uv run pytest tests/unit/test_foo.py::test_specific
+uv run pytest -k "test_name_pattern"
+uv run pytest -m "math or ledger"     # by marker
 ```
 
 ## Simulation Lab

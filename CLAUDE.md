@@ -106,7 +106,7 @@ All tunable coefficients live in `GameDefines` (Pydantic, 39 category sub-models
 `src/babylon/data/defines.yaml` — generated from the schema by `tools/generate_defines_config.py`,
 read by `GameDefines.load_default()`, sync-guarded by `tests/unit/config/test_constants_sync.py`.
 Modding guide: `docs/how-to/modding-defines.rst`. Never hardcode a coefficient — add a define and
-regenerate the YAML (`poetry run python tools/generate_defines_config.py`).
+regenerate the YAML (`uv run python tools/generate_defines_config.py`).
 
 ## Coding standards
 
@@ -158,7 +158,7 @@ mise run db:sql -- "SELECT ..."         # one-shot SQL vs babylon_test
 ```
 
 CI (`.github/workflows/ci.yml`) invokes the same mise tasks devs run (`test:unit-ci`, `lint:check`,
-`qa:regression`, …) — the only raw-poetry exceptions are the py3.13 forward-compat leg (`nightly.yml`)
+`qa:regression`, …) — the only raw-uv exceptions are the py3.13 forward-compat leg (`nightly.yml`)
 and a handful of documented one-offs (migrations, doc build, ad hoc pytest legs).
 
 ## Environment — the infra devshell (canonical toolchain)
@@ -221,7 +221,7 @@ system backstop). Owner ruling 2026-07-14:
   `territory_ids` — 3 fixed in `web/game/engine_bridge.py` (flat `agitation`/`factional_composition`
   reads where production nests them one level deeper), 3 left open as owner-gated `src/babylon/engine/`
   defects (`ATTRIBUTE_EXEMPTIONS`' "Reason 2" rows name each).
-  **Worktree gotcha**: `poetry run python tools/sentinel_check.py ...` run directly (not via `mise
+  **Worktree gotcha**: `uv run python tools/sentinel_check.py ...` run directly (not via `mise
   run`) resolves `babylon` to whichever checkout's venv is active, not necessarily this worktree's —
   prefix with `PYTHONPATH="$PWD/src"` or use the `mise run check:vocabulary` task, which sets it
   correctly.

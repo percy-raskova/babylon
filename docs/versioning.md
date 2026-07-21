@@ -23,18 +23,21 @@ New scopes are added here first, then used.
 ## The release ceremony (owner-run)
 
 1. `mise run release:bump` — refuses on a dirty tree or off-`dev`; runs the
-   releases-pin-released-infra check (below); shows `cz bump --dry-run`.
+   releases-pin-environment check (below); shows `cz bump --dry-run`.
 2. `mise run release:bump -- --yes` — the real bump commit + `vX.Y.Z` tag (local).
 3. Owner pushes `dev`, then the tag. **Pushing the tag IS the release**: it fires
    `release.yml` (GitHub release) and `nix-release.yml` (signed closure → player cache).
 
-## Releases pin released infra
+## Releases pin their environment
 
-A release may only ship an `infra/` gitlink pointing at a commit that carries an infra
-`v*` tag (`tools/check_release_pins.sh`, run by the ceremony and re-checked in
-`release.yml`). Day-to-day dev may pin any sha. When the infra contract surface (flake
-devshells, deploy workflows, terraform interface) changed since the last infra tag, tag
-infra first (`mise run release:bump` in babylon-infra), bump the gitlink, then release.
+Since the environment-sovereignty ruling (2026-07-21, ADR102) the toolchain is the
+vendored flake: `flake.nix` + `flake.lock` live in this repo, so every tag pins the
+environment by construction — there is no infra gitlink to police. What can still
+drift is the lockstep, so `tools/check_release_pins.sh` (run by the ceremony and
+re-checked in `release.yml`) asserts offline that (1) `flake.lock`'s `nixpkgs-data`
+node matches the rev declared in `flake.nix` and (2) the builder's
+`PINNED_SQLITE_VERSION` matches the `data-artifacts.yaml` product block. babylon-infra
+releases version independently (`mise run release:bump` there) for its own ops surface.
 
 ## Tag namespace
 

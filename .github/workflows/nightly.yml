@@ -149,11 +149,15 @@ jobs:
           -o addopts="" -vv -ra -l --tb=long --durations=0
   # The byte-identity contract is defined ONLY under the pinned sqlite (the
   # builder hard-gates on PINNED_SQLITE_VERSION), so this leg runs inside the
-  # infra flake's dataBuild devshell — the ADR098 declared follow-up, landed
-  # 2026-07-20; the old OFF-PIN warn-and-skip path is deleted with it. Its own
-  # job (not a refdata-tests step): the full rebuild took ~12 min on the dev
-  # box and hosted runners are slower — a 25-minute shared budget can't hold
-  # both it and the test suites, and a separate job gives clean attribution.
+  # vendored flake's dataBuild devshell (environment-sovereignty ruling
+  # 2026-07-21: the devshells live in THIS repo's flake.nix; the nixpkgs-data
+  # input — rev-pinned in the URL — is the sole sqlite pinning authority, in
+  # lockstep with tools/build_reference_db.py::PINNED_SQLITE_VERSION, both
+  # same-repo now. The old private-submodule deploy-key fetch is gone with
+  # the submodule.) Its own job (not a refdata-tests step): the full rebuild
+  # took ~12 min on the dev box and hosted runners are slower — a 25-minute
+  # shared budget can't hold both it and the test suites, and a separate job
+  # gives clean attribution.
   rebuild-verify:
     name: Rebuild-Verify Reference DB (byte-identity, dataBuild devshell)
     if: github.event.schedule != '0 4 * * 0' && vars.CI_REFDB_READY == 'true'
@@ -163,30 +167,6 @@ jobs:
       - uses: actions/checkout@v7
         with:
           ref: dev
-      # babylon is public but the infra submodule is private — GITHUB_TOKEN is
-      # repo-scoped, so the fetch authenticates with a dedicated READ-ONLY
-      # deploy key (babylon-infra → settings → deploy keys, installed
-      # 2026-07-20). The key touches disk only for this fetch. The checked-out
-      # gitlink IS the environment pin: bumping it is the pin ceremony, and the
-      # flake's nixpkgs-data input remains the sole pinning authority.
-      - name: Fetch infra submodule (read-only deploy key)
-        env:
-          INFRA_DEPLOY_KEY: ${{ secrets.INFRA_SUBMODULE_DEPLOY_KEY }}
-        run: |
-          umask 077
-          mkdir -p ~/.ssh
-          printf '%s\n' "$INFRA_DEPLOY_KEY" > ~/.ssh/infra_deploy_key
-          ssh-keyscan github.com >> ~/.ssh/known_hosts 2>/dev/null
-          # --global, not local: `git submodule update` spawns a fresh clone
-          # subprocess that never reads the superproject's local config — a
-          # local insteadOf silently doesn't apply and the clone dies asking
-          # for https credentials (proven on the maiden run, job 88509068677).
-          git config --global \
-            url."git@github.com:percy-raskova/babylon-infra.git".insteadOf \
-            "https://github.com/percy-raskova/babylon-infra.git"
-          GIT_SSH_COMMAND="ssh -i ~/.ssh/infra_deploy_key -o IdentitiesOnly=yes" \
-            git submodule update --init infra
-          rm -f ~/.ssh/infra_deploy_key
       - uses: cachix/install-nix-action@v31
         with:
           github_access_token: ${{ secrets.GITHUB_TOKEN }}
@@ -206,9 +186,9 @@ jobs:
             echo "::error::data-artifacts.yaml has no product block — manifest regression"
             exit 1
           fi
-          nix develop ./infra#dataBuild --command \
+          nix develop .#dataBuild --command \
             python3 tools/build_reference_db.py --out /tmp/rebuilt.sqlite
-          nix develop ./infra#dataBuild --command python3 - <<'EOF'
+          nix develop .#dataBuild --command python3 - <<'EOF'
           import hashlib
           import pathlib
           import sys

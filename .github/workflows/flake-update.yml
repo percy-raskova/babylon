@@ -5,10 +5,13 @@
 # safe. A red regression gate blocks the merge.
 #
 # Escape hatch (sanctioned narrow deviation): a single package that needs a
-# version the pinned nixpkgs lacks gets its OWN extra input with
-# `inputs.nixpkgs.follows`, bumped independently, each with a stated reason —
-# mirroring babylon-infra's nixpkgs-sec (trivy) and nixpkgs-data (sqlite)
-# lockstep inputs. Add such inputs to flake.nix by hand, not via this cron.
+# version the pinned nixpkgs lacks gets its OWN extra input, bumped
+# independently, each with a stated reason — the in-repo example is
+# nixpkgs-data (the sqlite-3.53.1 interpreter pin, vendored from babylon-infra
+# by ADR102). Its URL carries an exact rev, so this cron's `nix flake update`
+# re-locks it to the same rev — bumping it is a hand edit + declared
+# sqlite-pin change, never an automated drift. Add such inputs to flake.nix
+# by hand, not via this cron.
 name: flake-update
 
 on:

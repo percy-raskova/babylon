@@ -203,11 +203,7 @@ def build_drift_row(repo_root: Path, path: str) -> DriftRow:
 def staged_baseline_paths(repo_root: Path) -> list[str]:
     """Every staged path under the governed baseline estate."""
     staged_raw = _git(repo_root, "diff", "--cached", "--name-only")
-    return [
-        line
-        for line in staged_raw.splitlines()
-        if line and line.startswith(BASELINE_PREFIXES)
-    ]
+    return [line for line in staged_raw.splitlines() if line and line.startswith(BASELINE_PREFIXES)]
 
 
 def build_drift_table(rows: list[DriftRow]) -> str:

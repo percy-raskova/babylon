@@ -101,9 +101,7 @@ def get_main_worktree_root(cwd: Path) -> Path:
     """
     result = _run_git(["rev-parse", "--git-common-dir"], cwd=cwd)
     if result.returncode != 0:
-        raise WorktreeToolError(
-            f"not inside a git repository ({cwd}): {result.stderr.strip()}"
-        )
+        raise WorktreeToolError(f"not inside a git repository ({cwd}): {result.stderr.strip()}")
     common_dir = Path(result.stdout.strip())
     if not common_dir.is_absolute():
         common_dir = (cwd / common_dir).resolve()
@@ -218,8 +216,7 @@ def _check_branch_merged(branch: str, into_branch: str, *, cwd: Path) -> bool:
     if result.returncode == 1:
         return False
     raise WorktreeToolError(
-        f"could not determine merge status of {branch} into {into_branch}: "
-        f"{result.stderr.strip()}"
+        f"could not determine merge status of {branch} into {into_branch}: {result.stderr.strip()}"
     )
 
 

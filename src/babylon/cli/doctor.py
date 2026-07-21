@@ -13,6 +13,7 @@ import os
 import typer
 from rich.console import Console
 
+from babylon.config.dsn import resolve_dsn
 from babylon.intelligence.model_manifest import load_bundled_manifest
 from babylon.intelligence.providers import (
     ProviderError,
@@ -36,7 +37,10 @@ def check_database(dsn: str | None) -> tuple[bool, str]:
     """Best-effort reachability probe. Never raises: an unreachable DB is a
     reported condition, not a doctor crash (III.11 loud-but-degrade)."""
     if not dsn:
-        return (False, "no DSN configured (set BABYLON_DATABASE_URL)")
+        return (
+            False,
+            "no DSN configured (set BABYLON_DSN, or the deprecated BABYLON_DATABASE_URL)",
+        )
     try:
         import psycopg
 
@@ -81,7 +85,7 @@ def doctor(
     mark = "ok" if health.ok else "degraded"
     console.print(f"[bold]provider lane:[/bold] {lane} ({mark}: {health.detail})")
 
-    db_ok, db_detail = check_database(os.environ.get("BABYLON_DATABASE_URL"))
+    db_ok, db_detail = check_database(resolve_dsn(legacy_env="BABYLON_DATABASE_URL"))
     console.print(f"[bold]database:[/bold] {'ok' if db_ok else 'unavailable'} — {db_detail}")
 
     if provision:

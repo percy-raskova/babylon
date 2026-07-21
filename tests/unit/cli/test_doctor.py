@@ -34,6 +34,33 @@ def test_check_database_handles_missing_dsn() -> None:
     assert "DSN" in detail or "dsn" in detail
 
 
+def test_doctor_resolves_dsn_through_the_config_seam(monkeypatch, tmp_path) -> None:  # type: ignore[no-untyped-def]
+    """T1.2 keel: ``doctor`` reads the DSN via ``babylon.config.dsn.resolve_dsn``
+    (canonical ``BABYLON_DSN`` > legacy ``BABYLON_DATABASE_URL``), not
+    ``os.environ`` directly."""
+    monkeypatch.setenv("BABYLON_CONFIG_DIR", str(tmp_path))
+    monkeypatch.setattr(doctor_mod, "resolve_provider", lambda: MuteProvider())
+    monkeypatch.delenv("BABYLON_DSN", raising=False)
+    monkeypatch.setenv("BABYLON_DATABASE_URL", "postgresql://legacy/db")
+
+    seen_dsns: list[str | None] = []
+
+    def _spy_check_database(dsn: str | None) -> tuple[bool, str]:
+        seen_dsns.append(dsn)
+        return (False, "no DSN configured")
+
+    monkeypatch.setattr(doctor_mod, "check_database", _spy_check_database)
+    result = runner.invoke(app, ["doctor"])
+    assert result.exit_code == 0
+    assert seen_dsns == ["postgresql://legacy/db"]
+
+    seen_dsns.clear()
+    monkeypatch.setenv("BABYLON_DSN", "postgresql://canonical/db")
+    result = runner.invoke(app, ["doctor"])
+    assert result.exit_code == 0
+    assert seen_dsns == ["postgresql://canonical/db"]
+
+
 def test_doctor_provision_reports_gated_result(monkeypatch, tmp_path) -> None:  # type: ignore[no-untyped-def]
     monkeypatch.setenv("BABYLON_CONFIG_DIR", str(tmp_path))
     monkeypatch.setattr(doctor_mod, "resolve_provider", lambda: MuteProvider())

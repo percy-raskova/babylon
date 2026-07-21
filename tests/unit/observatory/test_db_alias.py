@@ -1,9 +1,11 @@
-"""Unit tests for the read-only ``sim`` database alias builder (spec-096).
+"""Unit tests for Django database-alias building (spec-096, T1.2 keel).
 
 The Observatory reads the simulation runner's Postgres through a second Django
 database alias. ``build_sim_database_alias`` parses the libpq keyword DSN used
 by ``tools/tick_probe.py`` into Django connection params and pins the
-connection read-only at the server level.
+connection read-only at the server level. ``build_primary_database_alias``
+does the same for the ordinary read/write "default" (product) alias; both
+DSNs now resolve through the ONE config seam (``babylon.config.dsn``).
 """
 
 from __future__ import annotations
@@ -12,7 +14,9 @@ import pytest
 
 from observatory.db import (
     SIM_READ_ONLY_OPTION,
+    build_primary_database_alias,
     build_sim_database_alias,
+    default_primary_dsn,
     default_sim_dsn,
 )
 
@@ -65,3 +69,53 @@ class TestBuildSimDatabaseAlias:
         assert alias["USER"] == "u"
         assert alias["HOST"] == "h"
         assert str(alias["PORT"]) == "5432"
+
+    def test_canonical_babylon_dsn_overrides_sim_alias(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.setenv("BABYLON_DSN", "host=canonical port=7 dbname=c user=c password=c")
+        alias = build_sim_database_alias(default_sim_dsn())
+        assert alias["HOST"] == "canonical"
+        assert str(alias["PORT"]) == "7"
+
+
+class TestBuildPrimaryDatabaseAlias:
+    _DSN = "host=localhost port=5432 dbname=babylon user=babylon password=babylon"
+
+    def test_parses_core_connection_params(self) -> None:
+        alias = build_primary_database_alias(self._DSN)
+        assert alias["ENGINE"] == "django.contrib.gis.db.backends.postgis"
+        assert alias["NAME"] == "babylon"
+        assert alias["USER"] == "babylon"
+        assert alias["PASSWORD"] == "babylon"  # noqa: S105 — test fixture value
+        assert alias["HOST"] == "localhost"
+        assert str(alias["PORT"]) == "5432"
+
+    def test_has_no_read_only_or_mirror_settings(self) -> None:
+        # Unlike the sim alias, "default" is ordinary read/write — no
+        # OPTIONS/TEST keys should be injected.
+        alias = build_primary_database_alias(self._DSN)
+        assert "OPTIONS" not in alias
+        assert "TEST" not in alias
+
+    def test_default_primary_dsn_targets_historical_default(self) -> None:
+        dsn = default_primary_dsn()
+        assert "dbname=babylon" in dsn
+        assert "port=5432" in dsn
+
+    def test_legacy_postgres_split_vars_are_honored(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.delenv("BABYLON_DSN", raising=False)
+        monkeypatch.setenv("POSTGRES_HOST", "prod.example")
+        monkeypatch.setenv("POSTGRES_DB", "otherdb")
+        alias = build_primary_database_alias(default_primary_dsn())
+        assert alias["HOST"] == "prod.example"
+        assert alias["NAME"] == "otherdb"
+
+    def test_canonical_babylon_dsn_overrides_split_vars(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.setenv("POSTGRES_HOST", "should-be-ignored")
+        monkeypatch.setenv("BABYLON_DSN", "host=canonical port=9 dbname=c user=c password=c")
+        alias = build_primary_database_alias(default_primary_dsn())
+        assert alias["HOST"] == "canonical"
+        assert str(alias["PORT"]) == "9"

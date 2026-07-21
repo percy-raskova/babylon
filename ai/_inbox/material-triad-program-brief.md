@@ -28,12 +28,14 @@ class *inexpressible* instead of merely *detectable*.
   graph-only via `EXTRA_STAMPABLE_ATTRIBUTES` (`sentinels/vocabulary/registry.py:205-228`).
 - **No `metabolic`/`somatic` opposition exists or is reserved** — catalog has 11 + the seven
   Vol I/II reserved keys only (`instances/catalog.py:459-666`).
-- **DEFECT A — the overshoot signal is structurally suspect.** The sentinel registry's own
-  note says `s_bio`/`s_class` (C's inputs) are "not written anywhere; uniformly-defaulted
-  `.get()` reads" — matching the 2026-07-19 reviewer finding that `ECOLOGICAL_OVERSHOOT`
-  never fires even in a glut scenario. If C is a defaults-times-population constant, both
-  overshoot consumers are near-dead. (An earlier claim that `economic.py` writes them is
-  disputed — settle with T1.1's stub-vs-calculator check post-merge.)
+- **DEFECT A — consumption is seed-static, so the overshoot signal has no dynamics.**
+  CORRECTED 2026-07-21 (verified survey): `s_bio`/`s_class` ARE declared `SocialClass`
+  fields (`social_class.py:374-379`), seeded at scenario build — but **no system ever
+  evolves them**. Vitality (`vitality.py:154,230`), Metabolism, and EndgameDetector
+  (`endgame_detector.py:466`) all consume a constant, so C in O = C/B only moves with
+  population. The never-fires glut finding (2026-07-19) traces to static magnitudes plus
+  DEFECT B's twin thresholds. W1 gives C real dynamics; the durable fix is W5's J_soma
+  somatic floor (consumption as a produced, demographically-scaled matter-book quantity).
 - **DEFECT B — two independent overshoot thresholds.** `MetabolismDefines.overshoot_threshold`
   (drives the event) vs `EndgameDefines.ecological_overshoot_threshold` (drives the
   ECOLOGICAL_COLLAPSE axis, recomputed from WorldState at `endgame_detector.py:448-487`).

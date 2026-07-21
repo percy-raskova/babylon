@@ -14,9 +14,10 @@ Loud Failure clause, III.11, exists to forbid).
 Records are validated through :class:`~pydantic.TypeAdapter` helpers rather
 than direct construction so a client can hydrate an untyped dict — recorded
 fixture, JSON payload, or view row — in one call. :data:`ProjectionRecord` is a
-discriminated union keyed on the ``kind`` literal; it currently holds only
-:class:`CountyView` and is written to grow (state and national dossiers join in
-Program 24 P2) with no change to the hydrate helpers.
+discriminated union keyed on the ``kind`` literal; it holds
+:class:`CountyView` and :class:`OrganizationView` (Program 24 P2 WO-18) so
+far and is written to grow further (state, national, and the remaining Lane P
+dossiers) with no change to the hydrate helpers.
 """
 
 from __future__ import annotations
@@ -26,6 +27,12 @@ from typing import Annotated, Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, TypeAdapter, model_validator
 
+from babylon.models.enums import (
+    ClassCharacter,
+    ConsciousnessTendency,
+    LegalStanding,
+    OrgType,
+)
 from babylon.models.types import (
     Currency,
     Ideology,
@@ -177,17 +184,82 @@ class CountyView(BaseModel):
     sovereign_id: str | None = None
 
 
-#: A projected record of any scale, keyed on ``kind``. It holds only
-#: :class:`CountyView` today; Program 24 P2 widens it to a discriminated
-#: union (``CountyView | StateView | ...``) as state and national dossiers
-#: land — the hydrate helpers below need no change.
+class OrganizationView(BaseModel):
+    """An organization dossier — the projected read-model for one organization
+    (Program 24 P2 WO-18).
+
+    Every field beyond identity and provenance is ``Optional``: ``None`` means
+    ``org_id`` names no known organization this run (see
+    :func:`~babylon.projection.organization.project_organization`'s absence
+    discipline), never a fabricated default. Extra keys are rejected
+    (``extra="forbid"``).
+
+    Fields split into two fog tiers (Track 1 / Task 5 §B; NOT wired to
+    :func:`~babylon.projection.fog.filter.apply_fog` by this WO — see
+    :mod:`babylon.projection.organization`'s module docstring): ``name``
+    through ``is_institution`` are MATERIAL (existence, public activity,
+    territorial presence — never gated); ``heat`` through ``cadre_level`` are
+    POLITICAL (an org's internal state, gated for every non-player org).
+
+    :param kind: The discriminator literal ``"organization"`` tagging this
+        record in :data:`ProjectionRecord`.
+    :param org_id: The organization's node/entity id — organization IS a
+        graph node type (unlike county), so this is the literal node id.
+    :param verified_tick: The committed tick this dossier was projected from.
+    :param name: Human-readable name, or ``None`` if absent.
+    :param org_type: The subtype discriminator (state apparatus / business /
+        political faction / civil society), or ``None`` if absent.
+    :param class_character: Which class this org objectively serves, or
+        ``None`` if absent.
+    :param legal_standing: Legal status, or ``None`` if absent.
+    :param budget: Available resources, or ``None`` if absent.
+    :param territory_ids: Territories where the org operates — an empty
+        tuple is a real fact (zero territories), distinct from ``None``
+        (unattributed).
+    :param headquarters_id: Primary location, or ``None`` (no headquarters
+        set, or unattributed).
+    :param is_institution: Whether the org has crystallized into an
+        institution, or ``None`` if absent.
+    :param heat: State attention level, or ``None`` if absent/gated.
+    :param consciousness_tendency: Ideological tendency pushed on
+        communities, or ``None`` if absent/gated.
+    :param cohesion: Internal unity and coordination, or ``None`` if
+        absent/gated.
+    :param cadre_level: Leadership quality, or ``None`` if absent/gated.
+    """
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    kind: Literal["organization"] = "organization"
+    org_id: str = Field(min_length=1)
+    verified_tick: int = Field(ge=0)
+
+    name: str | None = None
+    org_type: OrgType | None = None
+    class_character: ClassCharacter | None = None
+    legal_standing: LegalStanding | None = None
+    budget: Currency | None = None
+    territory_ids: tuple[str, ...] | None = None
+    headquarters_id: str | None = None
+    is_institution: bool | None = None
+
+    heat: Probability | None = None
+    consciousness_tendency: ConsciousnessTendency | None = None
+    cohesion: Probability | None = None
+    cadre_level: Probability | None = None
+
+
+#: A projected record of any scale, keyed on ``kind``. Program 24 P2 widens
+#: this discriminated union as each dossier kind lands (state, national,
+#: organization, ...) — the hydrate helpers below need no change per addition.
 ProjectionRecord = Annotated[
-    CountyView,
+    CountyView | OrganizationView,
     Field(discriminator="kind"),
 ]
 
 _COUNTY_ADAPTER: TypeAdapter[CountyView] = TypeAdapter(CountyView)
-_RECORD_ADAPTER: TypeAdapter[CountyView] = TypeAdapter(ProjectionRecord)
+_ORGANIZATION_ADAPTER: TypeAdapter[OrganizationView] = TypeAdapter(OrganizationView)
+_RECORD_ADAPTER: TypeAdapter[CountyView | OrganizationView] = TypeAdapter(ProjectionRecord)
 
 
 def hydrate_county(data: Mapping[str, Any]) -> CountyView:
@@ -202,7 +274,19 @@ def hydrate_county(data: Mapping[str, Any]) -> CountyView:
     return _COUNTY_ADAPTER.validate_python(data)
 
 
-def hydrate_record(data: Mapping[str, Any]) -> CountyView:
+def hydrate_organization(data: Mapping[str, Any]) -> OrganizationView:
+    """Validate an untyped mapping into an :class:`OrganizationView`.
+
+    :param data: A mapping shaped like an ``OrganizationView`` — a recorded
+        fixture, a JSON payload, or an assembled row dict. Missing optional
+        keys become ``None``; unknown keys are rejected.
+    :returns: The validated, frozen :class:`OrganizationView`.
+    :raises pydantic.ValidationError: on a shape or constraint violation.
+    """
+    return _ORGANIZATION_ADAPTER.validate_python(data)
+
+
+def hydrate_record(data: Mapping[str, Any]) -> CountyView | OrganizationView:
     """Validate an untyped mapping into the correct :data:`ProjectionRecord`.
 
     Dispatch is by the ``kind`` discriminator, so this helper stays correct as
@@ -210,7 +294,8 @@ def hydrate_record(data: Mapping[str, Any]) -> CountyView:
 
     :param data: A mapping carrying a ``kind`` discriminator and the fields of
         the matching record type.
-    :returns: The validated record (a :class:`CountyView` today).
+    :returns: The validated record (:class:`CountyView` or
+        :class:`OrganizationView`).
     :raises pydantic.ValidationError: if ``kind`` is missing/unknown or the
         payload violates the matched record's shape.
     """
@@ -221,7 +306,9 @@ __all__ = [
     "ClassComposition",
     "ConsciousnessSimplex",
     "CountyView",
+    "OrganizationView",
     "ProjectionRecord",
     "hydrate_county",
+    "hydrate_organization",
     "hydrate_record",
 ]

@@ -4,9 +4,11 @@ from __future__ import annotations
 
 from pathlib import Path
 
+import pytest
+
 from babylon.projection.vault.git_backend import commit_page, init_vault
 from babylon.projection.vault.materializer import VaultMaterializer
-from babylon.projection.view_models import CountyView
+from babylon.projection.view_models import CountyView, OrganizationView
 
 
 class TestBakeCounty:
@@ -79,3 +81,59 @@ class TestBakeCounty:
         materializer = VaultMaterializer(root)
         page_path = materializer.bake_county(wayne_county_view, tick=500)
         assert page_path.is_file()
+
+
+@pytest.fixture
+def rwp_organization_view() -> OrganizationView:
+    """A fully-populated ``OrganizationView`` (Program 24 P2 WO-18)."""
+    return OrganizationView(
+        org_id="org_rwp",
+        verified_tick=500,
+        name="Revolutionary Workers Party",
+        org_type="political_faction",
+    )
+
+
+class TestBakeOrganization:
+    def test_it_writes_exactly_organization_id_md_and_returns_its_path(
+        self, tmp_path: Path, rwp_organization_view: OrganizationView
+    ) -> None:
+        materializer = VaultMaterializer(tmp_path / "vault")
+        page_path = materializer.bake_organization(rwp_organization_view, tick=500)
+
+        assert page_path == tmp_path / "vault" / "organization" / "org_rwp.md"
+        assert page_path.is_file()
+        written_files = sorted(
+            p.relative_to(tmp_path / "vault") for p in (tmp_path / "vault").rglob("*.md")
+        )
+        assert written_files == [Path("organization/org_rwp.md")]
+
+    def test_the_written_page_matches_render_organization_output(
+        self, tmp_path: Path, rwp_organization_view: OrganizationView
+    ) -> None:
+        materializer = VaultMaterializer(tmp_path / "vault")
+        page_path = materializer.bake_organization(rwp_organization_view, tick=500)
+
+        from babylon.projection.vault.render_organization import render_organization
+
+        assert page_path.read_text(encoding="utf8") == render_organization(
+            rwp_organization_view, verified_tick=500
+        )
+
+    def test_two_independent_bakes_of_the_same_view_produce_identical_commit_shas(
+        self, tmp_path: Path, rwp_organization_view: OrganizationView
+    ) -> None:
+        def bake(root: Path) -> bytes:
+            materializer = VaultMaterializer(root)
+            materializer.bake_organization(rwp_organization_view, tick=500)
+            from dulwich.repo import Repo
+
+            repo = Repo(str(root))
+            try:
+                return repo.head()
+            finally:
+                repo.close()
+
+        sha_a = bake(tmp_path / "vault_a")
+        sha_b = bake(tmp_path / "vault_b")
+        assert sha_a == sha_b

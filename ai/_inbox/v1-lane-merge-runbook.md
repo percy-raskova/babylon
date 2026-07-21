@@ -11,8 +11,8 @@ single-flight in this controller. This file is my scratch — supersede freely.
 |---|---|---|---|---|
 | T1.1 seam-severity | lane/t11-seam-severity | c0c9a731 | **✓ DONE** (17/17, 0 err; U1–U7, mutation-verified) | merges 1st — READY |
 | T1.2 keel | lane/t12-keel | c4dc2f0c | **✓ DONE** (20/20, 0 err; K1–K5 verified in-code) | **HELD** behind T1.1; clean, merge-ready |
-| Vol I | lane/vol1-value-production | 4627fc23 | RUNNING (U5 landed) | 3rd |
-| Vol II | lane/vol2-circulation | cee36f9a | RUNNING | 4th (rebase on Vol I) |
+| Vol I | lane/vol1-value-production | 40b9515a+ | RUNNING (U7 committing 19:37; ⚠ vocabulary RED from U6 — fix assigned in-lane, see checkpoint) | 3rd |
+| Vol II | lane/vol2-circulation | 2340a585 | RUNNING (U4 lit the step 19:29, ADR120/123) | 4th (rebase on Vol I) |
 | T4 core | lane/t4-campaign-core | 1e4fbe2c | **✓ DONE** (18/18, 0 err; C1–C6, no blockers) | **HELD** behind all; merges last |
 | T7 installer | lane/t7-installer | df41a963 | alpha (separate) | post-Gate-3 (T7-beta) |
 
@@ -116,6 +116,17 @@ REAL 30-system engine). Non-blocking, verify/file at merge:
       intent) — harmless dedupe, NOT a re-wire; (b) do NOT re-run this unit. **VOL II LANE:
       treat U5/runner-parity as SATISFIED — verify + scoped-test only, never re-touch
       `_build_economics_overrides`.**
+- [ ] **Vol I vocabulary RED (U6 self-inflicted, fix assigned in-lane 19:38)**: U6 commit
+      `40b9515a` stamps `subsistence_threshold` on a `territory` fixture node
+      (tests/unit/engine/systems/test_contradiction_system.py:352) — Territory doesn't declare
+      the field (social_class-only per U6's own design). Reds `check:vocabulary` →
+      `check:sentinels-static` → `mise run check` branch-wide. Provenance confirmed by the
+      lane (git-stash test: pre-existing at lane HEAD, not U7's). Controller ruling sent to
+      lane session ac3e4df8942d2dcb0: fix IN-LANE before ceremony (move stamp to social_class
+      or use a declared Territory field; NO EXTRA_STAMPABLE_ATTRIBUTES exemption), verify
+      check:vocabulary + both named tests + scoped contradiction-system test, commit as
+      `fix(vol1)`. **At merge: confirm the fix commit exists and check:vocabulary is green
+      before firing the Vol I merge.**
 - [ ] **Baseline drift now has a NAMED cause (Vol I ceremony)**: U5 genuinely ACTIVATES
       `_compute_vol1_layer` (median_wage wage-pressure) AND `_compute_circulation_layer`
       (circulation_state) for every headless run whose `scope_fips` is non-empty (always, in

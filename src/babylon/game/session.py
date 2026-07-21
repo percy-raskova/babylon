@@ -68,6 +68,7 @@ from babylon.engine.headless_runner.runner import TickCommitObserver
 from babylon.engine.scenarios import WayneCountyScenario
 from babylon.engine.services import ServiceContainer
 from babylon.engine.simulation_engine import _DEFAULT_SYSTEMS, SimulationEngine
+from babylon.game.chronicle_adapter import chronicle_events_from_bus
 from babylon.kernel.event_bus import Event
 from babylon.models.config import SimulationConfig
 from babylon.models.enums.events import EventType
@@ -76,6 +77,7 @@ from babylon.persistence.envelope import PerTickTransactionEnvelope
 from babylon.persistence.postgres_schema import ensure_ddl_applied
 from babylon.projection.verbs.submit import TurnSink, build_player_actions, submit_verb
 from babylon.topology import BabylonGraph
+from babylon.tui.chronicle import ChronicleEvent
 from babylon.tui.chronicle_salience import classify_event_salience
 
 if TYPE_CHECKING:
@@ -266,12 +268,17 @@ class TickAdvanceResult:
     :param tick: the committed tick number.
     :param world: the post-tick, post-``from_graph`` :class:`WorldState`.
     :param events: this tick's raw event-bus history (chronological).
+    :param chronicle: this tick's raw ``events``, promoted to
+        :class:`~babylon.tui.chronicle.ChronicleEvent`\\ s via
+        :func:`~babylon.game.chronicle_adapter.chronicle_events_from_bus`
+        (Unit C4) — same order, one-to-one with ``events``. The Chronicle
+        client's real content source; never re-derived from ``world``.
     :param paused: the pacing driver's pause-predicate verdict for this tick.
     :param determinism_hash: the tick's replay-identity stamp (see
         :func:`_replay_identity_hash`).
     """
 
-    __slots__ = ("determinism_hash", "events", "paused", "tick", "world")
+    __slots__ = ("chronicle", "determinism_hash", "events", "paused", "tick", "world")
 
     def __init__(
         self,
@@ -279,12 +286,14 @@ class TickAdvanceResult:
         tick: int,
         world: WorldState,
         events: tuple[Event, ...],
+        chronicle: tuple[ChronicleEvent, ...],
         paused: bool,
         determinism_hash: str,
     ) -> None:
         self.tick = tick
         self.world = world
         self.events = events
+        self.chronicle = chronicle
         self.paused = paused
         self.determinism_hash = determinism_hash
 
@@ -407,16 +416,19 @@ class GameSession:
         before ``run_tick``, ``get_history`` after — the exact per-tick
         event-bus collection the pilot test demonstrates) plus the REAL
         persistence (full-graph snapshot + commit marker) and vault-observer
-        hookup the pilot's test-local ``_chronicle_events_from_bus`` adapter
-        stands in for.
+        hookup the pilot's test-local ``_chronicle_events_from_bus`` stood
+        in for. That stand-in is now the PRODUCTION
+        :func:`~babylon.game.chronicle_adapter.chronicle_events_from_bus`
+        (Unit C4), called here on every tick's real bus history —
+        :attr:`TickAdvanceResult.chronicle` is real content, not a seam
+        with no caller.
 
-        HONEST GAP: the tick's raw events are collected and handed to the
-        pause predicate, but are NOT yet written to the ``simulation_event``
-        table (that table's row shape is the older ``SimulationEvent``
-        pydantic model, not the kernel bus ``Event`` — a translation this
-        unit does not invent without a verified contract) nor adapted into
-        ``ChronicleEvent``s (the pilot's own documented gap: no production
-        engine-event to ``ChronicleEvent`` adapter ships yet).
+        REMAINING HONEST GAP: the tick's raw events are collected and handed
+        to the pause predicate and the Chronicle adapter, but are NOT yet
+        written to the ``simulation_event`` table (that table's row shape is
+        the older ``SimulationEvent`` pydantic model, not the kernel bus
+        ``Event`` — a translation this unit does not invent without a
+        verified contract).
 
         Also keeps the lobby's ``babylon_meta.campaign.last_tick`` live when
         a :class:`ProgressStore` is wired — the review fix for the gap where
@@ -431,6 +443,7 @@ class GameSession:
         bus.clear_history()
         self.engine.run_tick(self.graph, self.services, context)
         events = tuple(bus.get_history())
+        chronicle = chronicle_events_from_bus(events)
 
         world = WorldState.from_graph(self.graph, tick=next_tick)
         determinism_hash = _replay_identity_hash(self.session_id, next_tick, self._rng_seed)
@@ -458,6 +471,7 @@ class GameSession:
             tick=next_tick,
             world=world,
             events=events,
+            chronicle=chronicle,
             paused=paused,
             determinism_hash=determinism_hash,
         )

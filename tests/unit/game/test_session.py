@@ -18,6 +18,7 @@ import pytest
 import babylon.game.session as session_module
 from babylon.config.defines import GameDefines
 from babylon.engine.scenarios import WayneCountyScenario
+from babylon.game.chronicle_adapter import chronicle_events_from_bus
 from babylon.game.session import (
     TickAdvanceResult,
     create_new_campaign,
@@ -285,6 +286,8 @@ def test_advance_tick_runs_one_real_tick_and_persists_and_bakes() -> None:
     assert isinstance(result.world, WorldState)
     assert result.world.tick == 1
     assert isinstance(result.events, tuple)
+    assert isinstance(result.chronicle, tuple)
+    assert len(result.chronicle) == len(result.events)
     assert len(result.determinism_hash) == 64
 
     assert store.get_pending_turns_calls == [(session.session_id, 1)]
@@ -297,6 +300,26 @@ def test_advance_tick_runs_one_real_tick_and_persists_and_bakes() -> None:
     # (mirrors headless_runner.runner's sha256(f"{session_id}:{tick}:{seed}")).
     expected_hash = session_module._replay_identity_hash(session.session_id, 1, 0)
     assert result.determinism_hash == expected_hash
+
+
+def test_advance_tick_wires_the_real_chronicle_adapter_not_a_dead_seam() -> None:
+    """Review fix: :func:`~babylon.game.chronicle_adapter.
+    chronicle_events_from_bus` had shipped with no production caller —
+    ``advance_tick`` is that caller. ``result.chronicle`` must be exactly
+    what the adapter produces from this SAME tick's raw ``events`` (one
+    ``ChronicleEvent`` per raw event, same order, real per-EventType
+    summaries) — not a placeholder, not re-derived a second way."""
+    store = _FakeStore()
+    session = create_new_campaign(store, scenario=WayneCountyScenario())
+
+    result = session.advance_tick()
+
+    expected = chronicle_events_from_bus(result.events)
+    assert result.chronicle == expected
+    for chronicle_event, raw_event in zip(result.chronicle, result.events, strict=True):
+        assert chronicle_event.tick == raw_event.tick
+        assert chronicle_event.event_type.value == raw_event.type
+        assert chronicle_event.summary  # non-empty real content, never fabricated
 
 
 def test_advance_tick_clears_bus_history_before_each_tick() -> None:

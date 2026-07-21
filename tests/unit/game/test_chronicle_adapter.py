@@ -12,8 +12,13 @@ engine, Postgres, or ``WorldState`` is needed — plain
 
 from __future__ import annotations
 
+import ast
+import inspect
+
 import pytest
 
+from babylon.engine import event_builders as _event_builders_module
+from babylon.game import chronicle_adapter as _chronicle_adapter_module
 from babylon.game.chronicle_adapter import (
     chronicle_events_from_bus,
     summarize_event,
@@ -80,6 +85,136 @@ def test_summarize_event_handles_missing_optional_field_honestly() -> None:
         {"fips": "26163", "previous_phase": "boom", "new_phase": "bust"},
     )
     assert "profit rate ?" in summary
+
+
+def test_class_decomposition_uses_the_real_wire_key_not_the_pydantic_field_name() -> None:
+    """Regression for a shipped silent-fabrication bug (Constitution III.11):
+    the wire payload key the engine actually publishes is ``source_class``
+    (``babylon.engine.systems.decomposition``'s
+    ``"source_class": la_id`` publish site; corroborated by
+    ``event_builders.EVENT_BUILDERS[EventType.CLASS_DECOMPOSITION]``'s own
+    ``original_id=payload.get("source_class", "")``). ``original_id`` is
+    only the PYDANTIC MODEL's field name post-adaptation, never a wire key —
+    reading it off the raw payload always rendered a blank subject."""
+    summary = summarize_event(
+        EventType.CLASS_DECOMPOSITION,
+        5,
+        {
+            "source_class": "C_labor_aristocracy",
+            "enforcer_fraction": 0.3,
+            "proletariat_fraction": 0.7,
+        },
+    )
+    assert summary == "C_labor_aristocracy decomposes: 0.30 enforcers / 0.70 proletariat"
+
+
+# --------------------------------------------------------------------------- #
+# Baker-equivalence: every _SUMMARY_BUILDERS lambda is cross-checked, field   #
+# by field, against babylon.engine.event_builders.EVENT_BUILDERS' own wire   #
+# contract — not merely claimed in prose (this is what would have caught     #
+# CLASS_DECOMPOSITION's `original_id`/`source_class` mismatch pre-fix).      #
+# --------------------------------------------------------------------------- #
+
+
+def _dict_literal_assigned_to(module: object, name: str) -> ast.Dict:
+    """Parse ``module``'s source and return the ``ast.Dict`` literal bound to
+    the module-level name ``name`` (e.g. ``"_BUILDERS"``).
+
+    :param module: an already-imported module object (its ``__file__`` is
+        read via :func:`inspect.getsource` — no re-execution, just source
+        text).
+    :param name: the plain module-level assignment target to find.
+    :returns: the dict literal AST node.
+    :raises AssertionError: if no such top-level ``name = {...}`` exists —
+        a structural change to the module this test would need updating for.
+    """
+    tree = ast.parse(inspect.getsource(module))
+    for node in ast.walk(tree):
+        if (
+            isinstance(node, ast.Assign)
+            and len(node.targets) == 1
+            and isinstance(node.targets[0], ast.Name)
+            and node.targets[0].id == name
+            and isinstance(node.value, ast.Dict)
+        ):
+            return node.value
+        # `_BUILDERS: dict[EventType, EventBuilder] = {...}` is an annotated
+        # assignment (ast.AnnAssign, singular .target), not a plain ast.Assign.
+        if (
+            isinstance(node, ast.AnnAssign)
+            and isinstance(node.target, ast.Name)
+            and node.target.id == name
+            and isinstance(node.value, ast.Dict)
+        ):
+            return node.value
+    raise AssertionError(f"no top-level `{name} = {{...}}` dict literal in {module.__name__}")
+
+
+def _wire_keys_by_event_type(dict_literal: ast.Dict) -> dict[str, frozenset[str]]:
+    """Map each ``EventType.X`` key in ``dict_literal`` to the frozenset of
+    string-literal keys its lambda value reads via ``<name>.get("key", ...)``.
+
+    This is the WIRE contract each builder actually consults from its raw
+    ``payload``/``p`` dict — independent of whatever a pydantic model on the
+    far end chooses to NAME that field. Loop bound: ``len(dict_literal.keys)``
+    (== ``len(EventType)``, 84).
+
+    :param dict_literal: a dict literal AST node whose keys are
+        ``EventType.X`` attributes and whose values are lambdas.
+    :returns: ``EventType`` member name -> frozenset of wire keys read.
+    """
+    result: dict[str, frozenset[str]] = {}
+    pairs = zip(dict_literal.keys, dict_literal.values, strict=True)
+    for key_node, value_node in pairs:  # loop bound: len(EventType), 84
+        assert isinstance(key_node, ast.Attribute), f"expected `EventType.X` key, got {key_node}"
+        get_calls = [
+            call
+            for call in ast.walk(value_node)
+            if isinstance(call, ast.Call)
+            and isinstance(call.func, ast.Attribute)
+            and call.func.attr == "get"
+            and call.args
+            and isinstance(call.args[0], ast.Constant)
+            and isinstance(call.args[0].value, str)
+        ]
+        result[key_node.attr] = frozenset(call.args[0].value for call in get_calls)
+    return result
+
+
+def test_summary_builders_only_read_wire_keys_event_builders_also_reads() -> None:
+    """The load-bearing cross-check: every wire-payload key a
+    ``_SUMMARY_BUILDERS`` lambda reads, for a given ``EventType``, must be a
+    key ``EVENT_BUILDERS``' OWN builder for that SAME ``EventType`` also
+    reads. ``EVENT_BUILDERS`` is ground truth for the wire contract — it IS
+    the tested bus->pydantic path (``tests/unit/engine/
+    test_event_builders.py``). A summary builder reading any other key
+    silently renders a blank/default field forever — exactly what
+    ``CLASS_DECOMPOSITION``'s ``original_id`` (a pydantic FIELD name, never a
+    wire key) did before this test existed. Parses BOTH registries' real
+    source (no hand-maintained key lists to go stale)."""
+    engine_keys = _wire_keys_by_event_type(
+        _dict_literal_assigned_to(_event_builders_module, "_BUILDERS")
+    )
+    summary_keys = _wire_keys_by_event_type(
+        _dict_literal_assigned_to(_chronicle_adapter_module, "_SUMMARY_BUILDERS")
+    )
+
+    shared_event_types = sorted(set(engine_keys) & set(summary_keys))
+    assert len(shared_event_types) == 64, (
+        "expected _SUMMARY_BUILDERS' coverage to match EVENT_BUILDERS' 64 — "
+        "a change to either registry's coverage should be a deliberate, "
+        "reviewed widening/narrowing, not silent drift"
+    )
+
+    for name in shared_event_types:  # loop bound: len(EventType), 84
+        extra = summary_keys[name] - engine_keys[name]
+        assert not extra, (
+            f"{name}: chronicle_adapter's summary builder reads wire key(s) "
+            f"{sorted(extra)} that event_builders.EVENT_BUILDERS' OWN builder "
+            f"for {name} never reads. Cross-check against the real wire "
+            f"contract (EVENT_BUILDERS' `payload.get(...)` calls), not a "
+            f"pydantic model's field name."
+        )
 
 
 # --------------------------------------------------------------------------- #

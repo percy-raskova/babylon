@@ -27,8 +27,16 @@ generated sentence.
 — cross-checked field-by-field against ``babylon.engine.event_builders.
 EVENT_BUILDERS`` (the tested bus->pydantic contract table
 ``tests/unit/engine/test_event_builders.py`` already pins) and the engine's
-own ``EventBus.publish(Event(...))`` call sites. That is 63 of the 84
-``EventType`` values. The remaining 21 (e.g. ``ENDGAME_REACHED``,
+own ``EventBus.publish(Event(...))`` call sites. That is 64 of the 84
+``EventType`` values — exactly ``EVENT_BUILDERS``' own coverage, and the
+field-by-field cross-check is no longer prose-only: ``tests/unit/game/
+test_chronicle_adapter.py::
+test_summary_builders_only_read_wire_keys_event_builders_also_reads``
+statically parses both registries' source and asserts every wire key a
+``_SUMMARY_BUILDERS`` lambda reads is a key ``EVENT_BUILDERS``' OWN builder
+for that ``EventType`` also reads (this is what caught ``CLASS_DECOMPOSITION``
+reading the pydantic field name ``original_id`` instead of the wire key
+``source_class``). The remaining 20 (e.g. ``ENDGAME_REACHED``,
 ``PATTERN_SHIFT``, ``SOLIDARITY_AWAKENING``, ``STATE_ACTION_EXECUTED``, the
 institution/faction/thread-escalation family) have NO verified production
 publish site as of this writing — several are documented gaps elsewhere
@@ -223,7 +231,11 @@ _SUMMARY_BUILDERS: Final[dict[EventType, SummaryBuilder]] = {
         f"{p.get('available_pool', 0.0):.2f} available)"
     ),
     EventType.CLASS_DECOMPOSITION: lambda p: (
-        f"{p.get('original_id', '')} decomposes: "
+        # Wire key is `source_class` — see engine.systems.decomposition's
+        # publish site and event_builders.EVENT_BUILDERS' own
+        # `original_id=payload.get("source_class", "")`. `original_id` is
+        # only the POST-ADAPTATION pydantic field name, never a wire key.
+        f"{p.get('source_class', '')} decomposes: "
         f"{p.get('enforcer_fraction', 0.3):.2f} enforcers / "
         f"{p.get('proletariat_fraction', 0.7):.2f} proletariat"
     ),

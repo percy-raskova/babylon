@@ -35,8 +35,8 @@ Design:
   under the ``llm_narrative`` key; it never touches the deterministic feed's
   own fields, so the fallback text callers already see is preserved as-is.
 * **Model pinning** (III.6): every stored :class:`NarrativeResult` carries
-  the ``model_id`` (``LLMConfig.CHAT_MODEL``) and ``prompt_version`` used to
-  produce it.
+  the ``model_id`` (the resolved provider's ``endpoint.chat_model``) and
+  ``prompt_version`` used to produce it.
 
 RAG is deliberately NOT wired to a live ``PgVectorStore`` here: constructing
 one requires a psycopg connection pool that does not otherwise exist at the
@@ -52,15 +52,22 @@ from __future__ import annotations
 import logging
 import os
 import threading
+from collections.abc import Sequence
 from concurrent.futures import Future, ThreadPoolExecutor
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any
 from uuid import UUID
 
-from babylon.config.llm_config import LLMConfig
 from babylon.intelligence.ai.director import NarrativeDirector
-from babylon.intelligence.ai.llm_provider import LLMProvider, build_llm_provider
 from babylon.intelligence.ai.prompt_registry import get_prompt_registry
+from babylon.intelligence.providers import (
+    EmbeddingResult,
+    NarrationResult,
+    NarratorProvider,
+    ProviderEndpoint,
+    ProviderHealth,
+    resolve_provider,
+)
 
 if TYPE_CHECKING:
     from babylon.intelligence.rag.rag_pipeline import RagPipeline
@@ -165,8 +172,8 @@ class NarrativeResult:
     error: str | None = None
 
 
-class _ErrorTrackingLLM:
-    """Wraps an LLMProvider, recording (never suppressing) its last failure.
+class _ErrorTrackingNarrator:
+    """Wraps a NarratorProvider, recording (never suppressing) its last failure.
 
     ``NarrativeDirector._generate_perspective`` already catches provider
     exceptions internally — a single perspective failing logs a warning and
@@ -182,29 +189,34 @@ class _ErrorTrackingLLM:
     LLM output.
     """
 
-    def __init__(self, wrapped: LLMProvider) -> None:
+    def __init__(self, wrapped: NarratorProvider) -> None:
         self._wrapped = wrapped
         self.error: str | None = None
 
     @property
-    def name(self) -> str:
-        """Provider identifier for logging (delegates to the wrapped provider)."""
-        return self._wrapped.name
+    def endpoint(self) -> ProviderEndpoint:
+        """The wrapped provider's endpoint (the III.6 model pin lives here)."""
+        return self._wrapped.endpoint
 
-    def generate(
-        self,
-        prompt: str,
-        system_prompt: str | None = None,
-        temperature: float = 0.7,
-    ) -> str:
+    def narrate(
+        self, system: str, prompt: str, *, max_tokens: int = 512, temperature: float = 0.7
+    ) -> NarrationResult:
         """Delegate to the wrapped provider; record and re-raise on failure."""
         try:
-            return self._wrapped.generate(
-                prompt, system_prompt=system_prompt, temperature=temperature
+            return self._wrapped.narrate(
+                system, prompt, max_tokens=max_tokens, temperature=temperature
             )
         except Exception as exc:
             self.error = str(exc)
             raise
+
+    def embed(self, texts: Sequence[str]) -> EmbeddingResult:
+        """Delegate embeddings unchanged (the director never calls this)."""
+        return self._wrapped.embed(texts)
+
+    def health(self) -> ProviderHealth:
+        """Delegate the health probe unchanged."""
+        return self._wrapped.health()
 
 
 # --------------------------------------------------------------------------- #
@@ -223,24 +235,25 @@ class NarrativeService:
 
     def __init__(
         self,
-        llm: LLMProvider | None = None,
+        narrator: NarratorProvider | None = None,
         rag_pipeline: RagPipeline | None = None,
         max_workers: int = 2,
     ) -> None:
         """Initialize the service.
 
         Args:
-            llm: Optional LLMProvider. If None, a provider is constructed
-                lazily on first use via
-                :func:`babylon.intelligence.ai.llm_provider.build_llm_provider`
-                (selects on ``LLMConfig.PROVIDER``; reads its credentials
-                from the environment — never read/echoed by this module).
+            narrator: Optional NarratorProvider. If None, a provider is
+                resolved lazily on first use via
+                :func:`babylon.intelligence.providers.resolve_provider`
+                (§A7.6 precedence bundled → external → cloudflare → mute;
+                credentials come from env/config.toml — never read/echoed
+                by this module).
             rag_pipeline: Optional RagPipeline for historical/theoretical
                 context retrieval. None disables RAG (matches
                 ``NarrativeDirector``'s own backward-compatible default).
             max_workers: Background thread pool size.
         """
-        self._llm = llm
+        self._narrator = narrator
         self._rag_pipeline = rag_pipeline
         self._executor = ThreadPoolExecutor(
             max_workers=max_workers, thread_name_prefix="narrative-service"
@@ -248,10 +261,10 @@ class NarrativeService:
         self._results: dict[tuple[UUID, int], NarrativeResult] = {}
         self._lock = threading.Lock()
 
-    def _resolve_llm(self) -> LLMProvider:
-        if self._llm is not None:
-            return self._llm
-        return build_llm_provider()
+    def _resolve_narrator(self) -> NarratorProvider:
+        if self._narrator is not None:
+            return self._narrator
+        return resolve_provider()
 
     def schedule(
         self,
@@ -323,12 +336,17 @@ class NarrativeService:
         the log stream.
         """
         tick = new_state.tick
-        model_id = LLMConfig.CHAT_MODEL
-        tracker = _ErrorTrackingLLM(self._resolve_llm())
+        # The pin is stamped before generation but INSIDE the try: a provider
+        # whose resolution or endpoint access fails must degrade loudly
+        # (III.11), never crash the pool thread ("schedule() never raises").
+        model_id = "unresolved"
         try:
+            narrator = self._resolve_narrator()
+            model_id = narrator.endpoint.chat_model
+            tracker = _ErrorTrackingNarrator(narrator)
             director = NarrativeDirector(
                 use_llm=True,
-                llm=tracker,
+                narrator=tracker,
                 rag_pipeline=self._rag_pipeline,
             )
             director.on_tick(previous_state, new_state)

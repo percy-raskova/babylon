@@ -1,10 +1,10 @@
 """Integration tests for the narrative generation pipeline.
 
 TDD Red Phase: These tests define the contract for wiring NarrativeDirector
-to LLMProvider for generating AI commentary from simulation events.
+to a NarratorProvider for generating AI commentary from simulation events.
 
 The NarrativeDirector should:
-1. Accept an optional LLMProvider via the `llm` constructor parameter
+1. Accept an optional NarratorProvider via the `narrator` constructor parameter
 2. Track generated narratives in a `narrative_log` property
 3. Call the LLM when significant events occur (Sprint 4.1: typed events)
 4. Include RAG context in the prompt sent to the LLM
@@ -29,7 +29,7 @@ if TYPE_CHECKING:
     pass
 
 from babylon.intelligence.ai.director import NarrativeDirector
-from babylon.intelligence.ai.llm_provider import MockLLM
+from babylon.intelligence.providers import MockNarrator
 from babylon.models import (
     SimulationConfig,
     SocialClass,
@@ -104,7 +104,7 @@ class TestNarrativePipeline:
         """
         # Arrange
         # 3 calls: 2 dual narratives + 1 main narrative
-        mock_llm = MockLLM(
+        mock_llm = MockNarrator(
             responses=[
                 "[CORP] Markets stable.",  # dual: corporate
                 "[LIB] Workers exploited.",  # dual: liberated
@@ -113,7 +113,7 @@ class TestNarrativePipeline:
         )
         director = NarrativeDirector(
             use_llm=True,
-            llm=mock_llm,
+            narrator=mock_llm,
             rag_pipeline=None,  # No RAG for this test
         )
 
@@ -147,7 +147,7 @@ class TestNarrativePipeline:
         assert director.narrative_log[0] == "The capitalist class is extracting value."
         # 3 calls: 2 dual narratives (corporate + liberated) + 1 main narrative
         assert mock_llm.call_count == 3, (
-            "MockLLM should be called 3 times: 2 dual + 1 main for SURPLUS_EXTRACTION"
+            "MockNarrator should be called 3 times: 2 dual + 1 main for SURPLUS_EXTRACTION"
         )
 
     @pytest.mark.integration
@@ -164,10 +164,10 @@ class TestNarrativePipeline:
         Sprint 4.1: Updated to use typed TransmissionEvent (non-significant).
         """
         # Arrange
-        mock_llm = MockLLM(responses=["Should not see this."])
+        mock_llm = MockNarrator(responses=["Should not see this."])
         director = NarrativeDirector(
             use_llm=True,
-            llm=mock_llm,
+            narrator=mock_llm,
         )
 
         # Create a non-significant typed event (Sprint 4.1)
@@ -197,7 +197,9 @@ class TestNarrativePipeline:
         assert len(director.narrative_log) == 0, (
             "No narrative should be generated for non-significant events"
         )
-        assert mock_llm.call_count == 0, "MockLLM should not be called for non-significant events"
+        assert mock_llm.call_count == 0, (
+            "MockNarrator should not be called for non-significant events"
+        )
 
     @pytest.mark.integration
     def test_narrative_with_rag_context(
@@ -215,7 +217,7 @@ class TestNarrativePipeline:
         """
         # Arrange
         # 3 calls: 2 dual narratives + 1 main narrative
-        mock_llm = MockLLM(
+        mock_llm = MockNarrator(
             responses=[
                 "[CORP] Stability maintained.",  # dual: corporate
                 "[LIB] Exploitation exposed.",  # dual: liberated
@@ -232,7 +234,7 @@ class TestNarrativePipeline:
 
         director = NarrativeDirector(
             use_llm=True,
-            llm=mock_llm,
+            narrator=mock_llm,
             rag_pipeline=mock_rag,
         )
 
@@ -283,11 +285,11 @@ class TestNarrativePipeline:
         # Arrange
         mock_llm = MagicMock()
         mock_llm.name = "FailingLLM"
-        mock_llm.generate.side_effect = Exception("LLM service unavailable")
+        mock_llm.narrate.side_effect = Exception("LLM service unavailable")
 
         director = NarrativeDirector(
             use_llm=True,
-            llm=mock_llm,
+            narrator=mock_llm,
         )
 
         # Create typed extraction event (Sprint 4.1)
@@ -327,7 +329,7 @@ class TestNarrativePipeline:
         """
         # Arrange
         # 3 calls: 2 dual narratives + 1 main narrative
-        mock_llm = MockLLM(
+        mock_llm = MockNarrator(
             responses=[
                 "[CORP] Markets adjust.",  # dual: corporate
                 "[LIB] Workers robbed.",  # dual: liberated
@@ -336,7 +338,7 @@ class TestNarrativePipeline:
         )
         director = NarrativeDirector(
             use_llm=True,
-            llm=mock_llm,
+            narrator=mock_llm,
         )
 
         # Create typed extraction event (Sprint 4.1)
@@ -381,7 +383,7 @@ class TestNarrativePipeline:
         """
         # Arrange
         # 5 calls: 2 significant events * 2 dual + 1 main = 5
-        mock_llm = MockLLM(
+        mock_llm = MockNarrator(
             responses=[
                 "[CORP] Event A stable.",  # dual: corporate (event a)
                 "[LIB] Event A exploits.",  # dual: liberated (event a)
@@ -392,7 +394,7 @@ class TestNarrativePipeline:
         )
         director = NarrativeDirector(
             use_llm=True,
-            llm=mock_llm,
+            narrator=mock_llm,
         )
 
         # Create multiple typed events (Sprint 4.1)
@@ -448,7 +450,7 @@ class TestNarrativePipeline:
         """
         # Arrange
         # 3 calls: 2 dual + 1 main
-        mock_llm = MockLLM(
+        mock_llm = MockNarrator(
             responses=[
                 "[CORP] Stability ensured.",  # dual: corporate
                 "[LIB] Workers resist.",  # dual: liberated
@@ -457,7 +459,7 @@ class TestNarrativePipeline:
         )
         director = NarrativeDirector(
             use_llm=True,
-            llm=mock_llm,
+            narrator=mock_llm,
         )
 
         # Create typed extraction event (Sprint 4.1)
@@ -499,10 +501,10 @@ class TestNarrativePipeline:
         Sprint 4.1: Updated to use typed ExtractionEvent.
         """
         # Arrange
-        mock_llm = MockLLM(responses=["Should not be called"])
+        mock_llm = MockNarrator(responses=["Should not be called"])
         director = NarrativeDirector(
             use_llm=False,  # Explicitly disabled
-            llm=mock_llm,
+            narrator=mock_llm,
         )
 
         # Create typed extraction event (Sprint 4.1)
@@ -536,14 +538,14 @@ class TestNarrativePipeline:
         initial_state: WorldState,
         config: SimulationConfig,
     ) -> None:
-        """No LLM generation when llm=None (backward compatibility).
+        """No LLM generation when narrator=None (backward compatibility).
 
         Sprint 4.1: Updated to use typed ExtractionEvent.
         """
         # Arrange
         director = NarrativeDirector(
             use_llm=True,  # Even with this enabled
-            llm=None,  # But no LLM provided
+            narrator=None,  # But no LLM provided
         )
 
         # Create typed extraction event (Sprint 4.1)
@@ -568,7 +570,7 @@ class TestNarrativePipeline:
         director.on_tick(state_t0, state_t1)
 
         # Assert
-        assert len(director.narrative_log) == 0, "No narrative when llm=None"
+        assert len(director.narrative_log) == 0, "No narrative when narrator=None"
 
 
 # =============================================================================
@@ -603,7 +605,7 @@ class TestTypedEventConsumption:
 
         # Arrange
         # 3 calls: 2 dual + 1 main
-        mock_llm = MockLLM(
+        mock_llm = MockNarrator(
             responses=[
                 "[CORP] Situation normal.",  # dual: corporate
                 "[LIB] Movement crystallizes.",  # dual: liberated
@@ -612,7 +614,7 @@ class TestTypedEventConsumption:
         )
         director = NarrativeDirector(
             use_llm=True,
-            llm=mock_llm,
+            narrator=mock_llm,
             rag_pipeline=None,
         )
 
@@ -664,7 +666,7 @@ class TestTypedEventConsumption:
 
         # Arrange
         # 3 calls: 2 dual + 1 main
-        mock_llm = MockLLM(
+        mock_llm = MockNarrator(
             responses=[
                 "[CORP] Markets adjusting.",  # dual: corporate
                 "[LIB] System failing.",  # dual: liberated
@@ -673,7 +675,7 @@ class TestTypedEventConsumption:
         )
         director = NarrativeDirector(
             use_llm=True,
-            llm=mock_llm,
+            narrator=mock_llm,
             rag_pipeline=None,
         )
 
@@ -717,7 +719,7 @@ class TestTypedEventConsumption:
 
         # Arrange
         # 3 calls: 2 dual + 1 main
-        mock_llm = MockLLM(
+        mock_llm = MockNarrator(
             responses=[
                 "[CORP] All is well.",  # dual: corporate
                 "[LIB] They take from us.",  # dual: liberated
@@ -726,7 +728,7 @@ class TestTypedEventConsumption:
         )
         director = NarrativeDirector(
             use_llm=True,
-            llm=mock_llm,
+            narrator=mock_llm,
             rag_pipeline=None,
         )
 
@@ -772,7 +774,7 @@ class TestTypedEventConsumption:
 
         # Arrange
         # 3 calls: 2 dual + 1 main
-        mock_llm = MockLLM(
+        mock_llm = MockNarrator(
             responses=[
                 "[CORP] Disturbance reported.",  # dual: corporate
                 "[LIB] >>> UPRISING! <<<",  # dual: liberated
@@ -781,7 +783,7 @@ class TestTypedEventConsumption:
         )
         director = NarrativeDirector(
             use_llm=True,
-            llm=mock_llm,
+            narrator=mock_llm,
             rag_pipeline=None,
         )
 
@@ -824,7 +826,7 @@ class TestTypedEventConsumption:
 
         # Arrange
         # 3 calls: 2 dual + 1 main
-        mock_llm = MockLLM(
+        mock_llm = MockNarrator(
             responses=[
                 "[CORP] Order maintained.",  # dual: corporate
                 "[LIB] >>> STATE VIOLENCE! <<<",  # dual: liberated
@@ -833,7 +835,7 @@ class TestTypedEventConsumption:
         )
         director = NarrativeDirector(
             use_llm=True,
-            llm=mock_llm,
+            narrator=mock_llm,
             rag_pipeline=None,
         )
 
@@ -875,7 +877,7 @@ class TestTypedEventConsumption:
 
         # Arrange
         # 3 calls: 2 dual + 1 main
-        mock_llm = MockLLM(
+        mock_llm = MockNarrator(
             responses=[
                 "[CORP] Situation contained.",  # dual: corporate
                 "[LIB] >>> RUPTURE! <<<",  # dual: liberated
@@ -884,7 +886,7 @@ class TestTypedEventConsumption:
         )
         director = NarrativeDirector(
             use_llm=True,
-            llm=mock_llm,
+            narrator=mock_llm,
             rag_pipeline=None,
         )
 
@@ -924,7 +926,7 @@ class TestTypedEventConsumption:
 
         # Arrange
         # 3 calls: 2 dual + 1 main
-        mock_llm = MockLLM(
+        mock_llm = MockNarrator(
             responses=[
                 "[CORP] Economy stable.",  # dual: corporate
                 "[LIB] System crumbling.",  # dual: liberated
@@ -933,7 +935,7 @@ class TestTypedEventConsumption:
         )
         director = NarrativeDirector(
             use_llm=True,
-            llm=mock_llm,
+            narrator=mock_llm,
             rag_pipeline=None,
         )
 
@@ -980,7 +982,7 @@ class TestTypedEventConsumption:
 
         # Arrange
         # 5 calls: 2 significant events * 2 dual + 1 main = 5
-        mock_llm = MockLLM(
+        mock_llm = MockNarrator(
             responses=[
                 "[CORP] Extraction stable.",  # dual: corporate (extraction)
                 "[LIB] Workers robbed.",  # dual: liberated (extraction)
@@ -991,7 +993,7 @@ class TestTypedEventConsumption:
         )
         director = NarrativeDirector(
             use_llm=True,
-            llm=mock_llm,
+            narrator=mock_llm,
             rag_pipeline=None,
         )
 
@@ -1047,10 +1049,10 @@ class TestTypedEventConsumption:
         from babylon.models.events import TransmissionEvent
 
         # Arrange
-        mock_llm = MockLLM(responses=["Should not be called."])
+        mock_llm = MockNarrator(responses=["Should not be called."])
         director = NarrativeDirector(
             use_llm=True,
-            llm=mock_llm,
+            narrator=mock_llm,
             rag_pipeline=None,
         )
 
@@ -1112,7 +1114,7 @@ class TestPersonaIntegration:
         # Arrange - load Percy Raskova persona
         percy = load_default_persona()
         # 3 calls: 2 dual narratives + 1 main narrative
-        mock_llm = MockLLM(
+        mock_llm = MockNarrator(
             responses=[
                 "[CORP] Markets stable.",  # dual: corporate
                 "[LIB] Exploitation exposed.",  # dual: liberated
@@ -1122,7 +1124,7 @@ class TestPersonaIntegration:
 
         director = NarrativeDirector(
             use_llm=True,
-            llm=mock_llm,
+            narrator=mock_llm,
             persona=percy,  # Sprint 4.2: persona injection
         )
 
@@ -1150,7 +1152,7 @@ class TestPersonaIntegration:
         # Assert - LLM was called with persona's system prompt (last call is main narrative)
         assert mock_llm.call_count == 3  # 2 dual + 1 main
         call_args = mock_llm.call_history[-1]  # Main narrative (last call) uses persona
-        system_prompt = call_args.get("system_prompt", "")
+        system_prompt = call_args.get("system", "")
 
         # Persona-specific content should be in system prompt
         assert "Persephone" in system_prompt or "Percy" in system_prompt, (
@@ -1180,7 +1182,7 @@ class TestPersonaIntegration:
         # Arrange
         percy = load_default_persona()
         # 3 calls: 2 dual + 1 main
-        mock_llm = MockLLM(
+        mock_llm = MockNarrator(
             responses=[
                 "[CORP] Markets stable.",  # dual: corporate
                 "[LIB] Workers exploited.",  # dual: liberated
@@ -1190,7 +1192,7 @@ class TestPersonaIntegration:
 
         director = NarrativeDirector(
             use_llm=True,
-            llm=mock_llm,
+            narrator=mock_llm,
             persona=percy,
         )
 
@@ -1217,7 +1219,7 @@ class TestPersonaIntegration:
 
         # Assert - Directives should be in system prompt (check last call - main narrative)
         assert mock_llm.call_count == 3  # 2 dual + 1 main
-        system_prompt = mock_llm.call_history[-1].get("system_prompt", "")
+        system_prompt = mock_llm.call_history[-1].get("system", "")
 
         # Check for directive keywords from Percy's character
         assert "moralize" in system_prompt.lower() or "directive" in system_prompt.lower(), (
@@ -1239,7 +1241,7 @@ class TestPersonaIntegration:
         # Arrange
         percy = load_default_persona()
         # 3 calls: 2 dual + 1 main
-        mock_llm = MockLLM(
+        mock_llm = MockNarrator(
             responses=[
                 "[CORP] Status quo maintained.",  # dual: corporate
                 "[LIB] Empire crumbles.",  # dual: liberated
@@ -1249,7 +1251,7 @@ class TestPersonaIntegration:
 
         director = NarrativeDirector(
             use_llm=True,
-            llm=mock_llm,
+            narrator=mock_llm,
             persona=percy,
         )
 
@@ -1274,7 +1276,7 @@ class TestPersonaIntegration:
         director.on_tick(state_t0, state_t1)
 
         # Assert - Obsessions should be in system prompt (check last call - main narrative)
-        system_prompt = mock_llm.call_history[-1].get("system_prompt", "")
+        system_prompt = mock_llm.call_history[-1].get("system", "")
 
         # Percy's obsessions include hegemony, material basis, historical parallels
         assert (
@@ -1295,7 +1297,7 @@ class TestPersonaIntegration:
         """
         # Arrange - NO persona
         # 3 calls: 2 dual + 1 main
-        mock_llm = MockLLM(
+        mock_llm = MockNarrator(
             responses=[
                 "[CORP] Markets stable.",  # dual: corporate
                 "[LIB] Workers exploited.",  # dual: liberated
@@ -1305,7 +1307,7 @@ class TestPersonaIntegration:
 
         director = NarrativeDirector(
             use_llm=True,
-            llm=mock_llm,
+            narrator=mock_llm,
             persona=None,  # Explicitly no persona
         )
 
@@ -1331,7 +1333,7 @@ class TestPersonaIntegration:
 
         # Assert - Should use default (game master style) - check last call (main narrative)
         assert mock_llm.call_count == 3  # 2 dual + 1 main
-        system_prompt = mock_llm.call_history[-1].get("system_prompt", "")
+        system_prompt = mock_llm.call_history[-1].get("system", "")
 
         # Default prompt should mention game master or simulation
         assert "game master" in system_prompt.lower() or "simulation" in system_prompt.lower(), (
@@ -1358,7 +1360,7 @@ class TestPersonaIntegration:
         # Arrange
         percy = load_default_persona()
         # 3 calls: 2 dual + 1 main
-        mock_llm = MockLLM(
+        mock_llm = MockNarrator(
             responses=[
                 "[CORP] Markets adjust.",  # dual: corporate
                 "[LIB] Crisis exposes contradictions.",  # dual: liberated
@@ -1368,7 +1370,7 @@ class TestPersonaIntegration:
 
         director = NarrativeDirector(
             use_llm=True,
-            llm=mock_llm,
+            narrator=mock_llm,
             persona=percy,
         )
 
@@ -1395,7 +1397,7 @@ class TestPersonaIntegration:
 
         # Assert - Persona system prompt used for crisis narration (check last call - main narrative)
         assert mock_llm.call_count == 3  # 2 dual + 1 main
-        system_prompt = mock_llm.call_history[-1].get("system_prompt", "")
+        system_prompt = mock_llm.call_history[-1].get("system", "")
         prompt = mock_llm.call_history[-1]["prompt"]
 
         # Persona should be in system prompt
@@ -1420,7 +1422,7 @@ class TestPersonaIntegration:
         # Arrange
         percy = load_default_persona()
         # 3 calls: 2 dual + 1 main
-        mock_llm = MockLLM(
+        mock_llm = MockNarrator(
             responses=[
                 "[CORP] Organizational changes noted.",  # dual: corporate
                 "[LIB] Solidarity crystallizes!",  # dual: liberated
@@ -1430,7 +1432,7 @@ class TestPersonaIntegration:
 
         director = NarrativeDirector(
             use_llm=True,
-            llm=mock_llm,
+            narrator=mock_llm,
             persona=percy,
         )
 
@@ -1459,7 +1461,7 @@ class TestPersonaIntegration:
 
         # Assert (check last call - main narrative)
         assert mock_llm.call_count == 3  # 2 dual + 1 main
-        system_prompt = mock_llm.call_history[-1].get("system_prompt", "")
+        system_prompt = mock_llm.call_history[-1].get("system", "")
         prompt = mock_llm.call_history[-1]["prompt"]
 
         # Percy's obsessions should be in system prompt
@@ -1500,11 +1502,11 @@ class TestPersonaIntegration:
             "[LIB] Contradictions sharpen!",  # dual: liberated
             "The contradictions accumulate toward rupture.",  # main
         ]
-        mock_llm = MockLLM(responses=mock_responses)
+        mock_llm = MockNarrator(responses=mock_responses)
 
         director = NarrativeDirector(
             use_llm=True,
-            llm=mock_llm,
+            narrator=mock_llm,
             persona=percy,
         )
 
@@ -1567,7 +1569,7 @@ class TestPersonaIntegration:
         main_narrative_indices = [2, 5, 8]
         for idx in main_narrative_indices:
             call = mock_llm.call_history[idx]
-            system_prompt = call.get("system_prompt", "")
+            system_prompt = call.get("system", "")
             assert "Persephone" in system_prompt or "Architect" in system_prompt, (
                 f"Main narrative call at index {idx} should use Percy's persona"
             )

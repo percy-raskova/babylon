@@ -80,6 +80,9 @@ __all__ = [
     "NarratorProvider",
     "OpenAICompatProvider",
     "MuteProvider",
+    "MockNarrator",
+    "ModelFactory",
+    "chat_model_for",
     "load_settings",
     "resolve_provider",
     "prose_cache_key",
@@ -113,6 +116,8 @@ class ProviderKind(StrEnum):
     EXTERNAL = "external"
     CLOUDFLARE = "cloudflare"
     MUTE = "mute"
+    #: Test/demo lane only — never produced by :func:`resolve_provider`.
+    MOCK = "mock"
 
 
 class ProviderError(RuntimeError):
@@ -342,12 +347,28 @@ ChatModelFactory = Callable[[ProviderEndpoint], Model]
 (``lambda ep: FunctionModel(...)``). Called fresh per ``narrate()`` so no
 loop-bound connection pool outlives its event loop."""
 
+ModelFactory = Callable[[], Model]
+"""Zero-arg factory returning a fresh pydantic-ai ``Model``.
+
+The seam for structured-output agents (the judge). A factory rather than a
+``Model`` instance on purpose: each ``Agent.run_sync`` call runs in its own
+event loop, so the underlying ``AsyncOpenAI``/httpx client must be rebuilt
+per call to avoid stale loop-bound connection pools. Tests inject
+``lambda: TestModel(...)``/``FunctionModel`` — returning the same in-memory
+model each time is fine, test models never touch the network."""
+
 
 def _default_client_factory(**kwargs: Any) -> Any:
     return OpenAI(**kwargs)
 
 
-def _default_chat_model_factory(endpoint: ProviderEndpoint) -> Model:
+def chat_model_for(endpoint: ProviderEndpoint) -> Model:
+    """A fresh pydantic-ai chat model for one lane (Amendment Y).
+
+    Public so structured-output agents (the judge) can ride the resolved
+    lane: ``chat_model_for(resolve_provider().endpoint)``. Builds a fresh
+    ``AsyncOpenAI`` client per call — see :data:`ModelFactory`.
+    """
     client = AsyncOpenAI(
         base_url=endpoint.base_url,
         # Local lanes are credential-free; the openai client demands a
@@ -370,7 +391,7 @@ class OpenAICompatProvider:
     ) -> None:
         self.endpoint = endpoint
         factory = client_factory or _default_client_factory
-        self._chat_model_factory = chat_model_factory or _default_chat_model_factory
+        self._chat_model_factory = chat_model_factory or chat_model_for
         self._client = factory(
             base_url=endpoint.base_url,
             # Local lanes are credential-free; the openai client demands a
@@ -467,6 +488,69 @@ class MuteProvider:
 
     def health(self) -> ProviderHealth:
         return ProviderHealth(ok=True, kind=ProviderKind.MUTE, detail="silence is always available")
+
+
+class MockNarrator:
+    """Deterministic scripted narrator for tests and demos (never networked).
+
+    The NarratorProvider-shaped successor to the retired ``MockLLM``
+    (ADR101): returns pre-configured texts in FIFO order, then a fixed
+    default, and records every call. Never produced by
+    :func:`resolve_provider` — tests and demo tools construct it directly.
+
+    * ``narrate`` returns the next scripted text attributed to the ``mock``
+      pin (:attr:`ProviderKind.MOCK`).
+    * ``embed`` raises :class:`ProviderUnavailable` — nothing here embeds.
+    * ``health`` is always ok.
+    """
+
+    def __init__(
+        self,
+        responses: list[str] | None = None,
+        default_response: str = "Mock LLM response",
+    ) -> None:
+        self.endpoint = ProviderEndpoint(
+            kind=ProviderKind.MOCK,
+            base_url="about:mock",
+            chat_model="mock",
+            embed_model="mock",
+        )
+        self._responses: list[str] = list(responses) if responses else []
+        self._default = default_response
+        self._call_count = 0
+        self._call_history: list[dict[str, Any]] = []
+
+    @property
+    def call_count(self) -> int:
+        """Number of times narrate() was called."""
+        return self._call_count
+
+    @property
+    def call_history(self) -> list[dict[str, Any]]:
+        """History of all narrate() calls (a copy; keys: system, prompt,
+        max_tokens, temperature)."""
+        return list(self._call_history)
+
+    def narrate(
+        self, system: str, prompt: str, *, max_tokens: int = 512, temperature: float = 0.7
+    ) -> NarrationResult:
+        self._call_count += 1
+        self._call_history.append(
+            {
+                "system": system,
+                "prompt": prompt,
+                "max_tokens": max_tokens,
+                "temperature": temperature,
+            }
+        )
+        text = self._responses.pop(0) if self._responses else self._default
+        return NarrationResult(text=text, model_pin="mock", provider=ProviderKind.MOCK)
+
+    def embed(self, texts: Sequence[str]) -> EmbeddingResult:  # noqa: ARG002 — NarratorProvider shape
+        raise ProviderUnavailable("mock lane cannot embed")
+
+    def health(self) -> ProviderHealth:
+        return ProviderHealth(ok=True, kind=ProviderKind.MOCK, detail="scripted")
 
 
 # --------------------------------------------------------------------------

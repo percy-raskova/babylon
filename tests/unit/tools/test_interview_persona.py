@@ -3,15 +3,15 @@
 TDD RED Phase: These tests verify the event construction, accumulation pattern,
 and NarrativeDirector integration without requiring real LLM calls.
 
-Tests use MockLLM to verify the full flow without external dependencies.
+Tests use MockNarrator to verify the full flow without external dependencies.
 """
 
 from __future__ import annotations
 
 from babylon.engine.factories import create_bourgeoisie, create_proletariat
 from babylon.intelligence.ai.director import NarrativeDirector
-from babylon.intelligence.ai.llm_provider import MockLLM
 from babylon.intelligence.ai.persona_loader import load_default_persona
+from babylon.intelligence.providers import MockNarrator
 from babylon.models.entities.relationship import Relationship
 from babylon.models.enums import EdgeType, EventType
 from babylon.models.events import CrisisEvent, ExtractionEvent, PhaseTransitionEvent
@@ -180,12 +180,12 @@ class TestMinimalWorldState:
 
 
 class TestNarrativeDirectorIntegration:
-    """Test NarrativeDirector integration with MockLLM."""
+    """Test NarrativeDirector integration with MockNarrator."""
 
     def test_director_processes_significant_events(self) -> None:
         """Verify director calls LLM for significant events."""
         # 3 calls: 2 for dual narratives + 1 for main narrative
-        mock_llm = MockLLM(
+        mock_llm = MockNarrator(
             responses=[
                 "[CORP] Corporate response.",  # dual: corporate
                 "[LIB] Liberated response.",  # dual: liberated
@@ -195,7 +195,7 @@ class TestNarrativeDirectorIntegration:
         persona = load_default_persona()
         director = NarrativeDirector(
             use_llm=True,
-            llm=mock_llm,
+            narrator=mock_llm,
             persona=persona,
         )
 
@@ -237,11 +237,11 @@ class TestNarrativeDirectorIntegration:
 
     def test_director_uses_persona_system_prompt(self) -> None:
         """Verify persona.render_system_prompt() is used."""
-        mock_llm = MockLLM(responses=["Dialectical analysis complete."])
+        mock_llm = MockNarrator(responses=["Dialectical analysis complete."])
         persona = load_default_persona()
         director = NarrativeDirector(
             use_llm=True,
-            llm=mock_llm,
+            narrator=mock_llm,
             persona=persona,
         )
 
@@ -279,7 +279,7 @@ class TestNarrativeDirectorIntegration:
         assert mock_llm.call_count == 3
         # Check the main narrative call (last one) for persona elements
         call = mock_llm.call_history[-1]
-        system_prompt = call["system_prompt"]
+        system_prompt = call["system"]
 
         # Verify persona elements are in system prompt
         assert "Persephone" in system_prompt
@@ -296,7 +296,7 @@ class TestHardCaseScenario:
         # Positions: Tick 1: [0:corporate, 1:liberated, 2:main]
         #            Tick 2: [3:corporate, 4:liberated, 5:main]
         #            Tick 3: [6:corporate, 7:liberated, 8:main]
-        mock_llm = MockLLM(
+        mock_llm = MockNarrator(
             responses=[
                 # Tick 1 (extraction_event)
                 "[CORP] Markets remain stable.",  # 0: corporate
@@ -315,7 +315,7 @@ class TestHardCaseScenario:
         persona = load_default_persona()
         director = NarrativeDirector(
             use_llm=True,
-            llm=mock_llm,
+            narrator=mock_llm,
             persona=persona,
         )
 

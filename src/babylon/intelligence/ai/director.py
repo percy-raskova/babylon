@@ -23,7 +23,6 @@ from __future__ import annotations
 import logging
 from typing import TYPE_CHECKING, Any, Literal
 
-from babylon.intelligence.ai.llm_provider import LLMProvider
 from babylon.intelligence.ai.prompt_builder import DialecticalPromptBuilder
 from babylon.intelligence.ai.prompt_registry import get_prompt_registry
 from babylon.models.enums import EventType
@@ -31,6 +30,7 @@ from babylon.models.events import SimulationEvent
 
 if TYPE_CHECKING:
     from babylon.intelligence.ai.persona import Persona
+    from babylon.intelligence.providers import NarratorProvider
     from babylon.intelligence.rag.rag_pipeline import RagPipeline
     from babylon.models.config import SimulationConfig
     from babylon.models.world_state import WorldState
@@ -127,7 +127,7 @@ class NarrativeDirector:
         use_llm: bool = False,
         rag_pipeline: RagPipeline | None = None,
         prompt_builder: DialecticalPromptBuilder | None = None,
-        llm: LLMProvider | None = None,
+        narrator: NarratorProvider | None = None,
         persona: Persona | None = None,
     ) -> None:
         """Initialize the NarrativeDirector.
@@ -139,7 +139,8 @@ class NarrativeDirector:
                          If None, RAG features are disabled (backward compat).
             prompt_builder: Optional custom DialecticalPromptBuilder.
                            If None, creates default builder.
-            llm: Optional LLMProvider for text generation.
+            narrator: Optional NarratorProvider for text generation
+                 (ADR101 — the one intelligence transport seam).
                  If None, no LLM generation occurs (backward compat).
             persona: Optional Persona for customizing narrative voice.
                     If provided (and no custom prompt_builder), creates
@@ -159,7 +160,7 @@ class NarrativeDirector:
         else:
             self._prompt_builder = DialecticalPromptBuilder()
 
-        self._llm = llm
+        self._narrator = narrator
         self._narrative_log: list[str] = []
         self._config: SimulationConfig | None = None
         self._dual_narratives: dict[int, dict[str, Any]] = {}
@@ -279,7 +280,7 @@ class NarrativeDirector:
         # Generate dual narratives for significant events (Gramscian Wire MVP)
         # Track which events get dual narratives to avoid duplicate LLM calls
         dual_narrative_ticks: set[int] = set()
-        if self._use_llm and self._llm is not None:
+        if self._use_llm and self._narrator is not None:
             for event in new_events:
                 if event.event_type in self.SIGNIFICANT_EVENT_TYPES:
                     corporate = self._generate_perspective(event, "CORPORATE")
@@ -294,17 +295,17 @@ class NarrativeDirector:
         # Generate narrative for significant events (Sprint 4.1)
         # Note: Dual narratives are generated above for WirePanel display.
         # This generates the main narrative for NarrativeTerminal (backward compat).
-        if self._use_llm and self._llm is not None and new_events:
+        if self._use_llm and self._narrator is not None and new_events:
             significant_events = [
                 e for e in new_events if e.event_type in self.SIGNIFICANT_EVENT_TYPES
             ]
             if significant_events:
                 system_prompt = self._prompt_builder.build_system_prompt()
                 try:
-                    narrative = self._llm.generate(
-                        prompt=context_block,
-                        system_prompt=system_prompt,
-                    )
+                    narrative = self._narrator.narrate(
+                        system_prompt,
+                        context_block,
+                    ).text
                     self._narrative_log.append(narrative)
                     logger.info(
                         "[%s] Generated narrative: %s...",
@@ -412,7 +413,7 @@ class NarrativeDirector:
         Returns:
             Generated narrative text.
         """
-        if self._llm is None:
+        if self._narrator is None:
             return f"[{perspective}] {event.event_type.value}"
 
         system_prompt = (
@@ -422,10 +423,10 @@ class NarrativeDirector:
         event_context = self._prompt_builder._format_event(event)
 
         try:
-            return self._llm.generate(
-                prompt=event_context,
-                system_prompt=system_prompt,
-            )
+            return self._narrator.narrate(
+                system_prompt,
+                event_context,
+            ).text
         except Exception as e:
             logger.warning("[%s] %s generation failed: %s", self.name, perspective, e)
             return f"[{perspective}] {event.event_type.value}"

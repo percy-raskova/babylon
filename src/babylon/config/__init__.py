@@ -9,7 +9,7 @@ All configs are immutable after initialization.
 
 from babylon.config.base import BaseConfig
 from babylon.config.defines import GameDefines
-from babylon.config.llm_config import LLMConfig, OpenAIConfig
+from babylon.config.llm_config import LLMConfig
 from babylon.config.logging_config import setup_logging
 from babylon.config.testing import TestingConfig
 
@@ -17,7 +17,6 @@ __all__ = [
     "BaseConfig",
     "GameDefines",
     "LLMConfig",
-    "OpenAIConfig",  # Backward compatibility alias
     "TestingConfig",
     "setup_logging",
 ]

@@ -42,7 +42,7 @@ from pydantic_ai import Agent
 from pydantic_ai.exceptions import UnexpectedModelBehavior
 from pydantic_ai.settings import ModelSettings
 
-from babylon.intelligence.ai.llm_provider import ModelFactory, build_chat_model
+from babylon.intelligence.providers import ModelFactory, chat_model_for, resolve_provider
 from babylon.kernel.exceptions import LLMGenerationError
 
 logger = logging.getLogger(__name__)
@@ -167,13 +167,22 @@ class NarrativeCommissar:
         Args:
             model_factory: Builds a fresh pydantic-ai ``Model`` per
                 evaluation (fresh per call for event-loop hygiene — see
-                :data:`~babylon.intelligence.ai.llm_provider.ModelFactory`).
-                Defaults to the configured lane via
-                :func:`~babylon.intelligence.ai.llm_provider.build_chat_model`.
-                Tests inject ``lambda: TestModel(...)``.
+                :data:`~babylon.intelligence.providers.ModelFactory`).
+                Defaults to the §A7.6-resolved lane
+                (``chat_model_for(resolve_provider().endpoint)``), resolved
+                lazily on first evaluate() so construction never probes the
+                network. Tests inject ``lambda: TestModel(...)``.
         """
-        self._model_factory = model_factory if model_factory is not None else build_chat_model()
+        self._model_factory = model_factory
         self._name: Final[str] = "NarrativeCommissar"
+
+    def _factory(self) -> ModelFactory:
+        """The injected factory, or the §A7.6-resolved lane (lazy)."""
+        if self._model_factory is not None:
+            return self._model_factory
+        endpoint = resolve_provider().endpoint
+        self._model_factory = lambda: chat_model_for(endpoint)
+        return self._model_factory
 
     @property
     def name(self) -> str:
@@ -222,7 +231,7 @@ class NarrativeCommissar:
         )
 
         agent: Agent[None, JudgmentResult] = Agent(
-            self._model_factory(),
+            self._factory()(),
             output_type=JudgmentResult,
             instructions=COMMISSAR_SYSTEM_PROMPT,
             retries=_JUDGE_RETRIES,

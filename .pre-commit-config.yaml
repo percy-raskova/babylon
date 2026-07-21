@@ -167,6 +167,17 @@ repos:
     rev: v6.0.0
     hooks:
       - id: trailing-whitespace
+        # Archive TUI snapshot goldens (pytest-textual-snapshot .raw SVGs,
+        # Program 24) carry a whitespace-only line as a fixed byte in Rich's
+        # own SVG export template (the window-chrome traffic-light group),
+        # identical across every ArchiveApp render regardless of page
+        # content. Trimming it desyncs the committed golden from what
+        # snap_compare's live re-render will always reproduce, permanently
+        # breaking the test on every subsequent plain run — discovered
+        # 2026-07-21 (Program 24 P2 WO-21) reverting an accidental trim of
+        # the pre-existing keel golden. Goldens are machine-generated
+        # artifacts; hand/hook-editing them is never correct.
+        exclude: '__snapshots__/.*\.raw$'
       - id: end-of-file-fixer
       - id: check-yaml
         args: [--unsafe]  # Allow custom tags in GitHub Actions

@@ -14,9 +14,9 @@ Loud Failure clause, III.11, exists to forbid).
 Records are validated through :class:`~pydantic.TypeAdapter` helpers rather
 than direct construction so a client can hydrate an untyped dict — recorded
 fixture, JSON payload, or view row — in one call. :data:`ProjectionRecord` is a
-discriminated union keyed on the ``kind`` literal; it currently holds only
-:class:`CountyView` and is written to grow (state and national dossiers join in
-Program 24 P2) with no change to the hydrate helpers.
+discriminated union keyed on the ``kind`` literal; it grows by one member per
+Program 24 P2 Lane P work order with no change to the hydrate helpers — it now
+also holds :class:`KeyFigureView` (WO-21).
 """
 
 from __future__ import annotations
@@ -177,17 +177,60 @@ class CountyView(BaseModel):
     sovereign_id: str | None = None
 
 
-#: A projected record of any scale, keyed on ``kind``. It holds only
-#: :class:`CountyView` today; Program 24 P2 widens it to a discriminated
-#: union (``CountyView | StateView | ...``) as state and national dossiers
-#: land — the hydrate helpers below need no change.
+class KeyFigureView(BaseModel):
+    """A key-figure dossier — the permanent honest-absence page (ADR084, WO-21).
+
+    Unlike :class:`CountyView`, where individual fields go absent per-run
+    while the *kind* itself is real, this kind has **no live producer at
+    all**: the backing ``KeyFigure`` model and ``WorldState.key_figures``
+    were formally retired under Constitution III.10
+    (``ai/decisions/ADR084_retire_dead_models.yaml``, 2026-07-18) as a dead
+    speculative construct — no scenario, seed, OODA system, or bridge in
+    this engine version ever populated either one.
+    ``models.enums.topology.NodeType.KEY_FIGURE`` was reclassified by the
+    same ADR from production-stamped to "declared but not
+    production-stamped" and dropped from the vocabulary sentinel's
+    ``MODEL_FIELDS_BY_NODE_TYPE``: it now exists purely to type
+    ``classify_topology()``'s COMMAND-edge test fixtures
+    (``tests/unit/.../test_topology_classifier.py``). There is therefore no
+    field beyond identity/provenance this model could honestly declare — a
+    ``name``, ``organization_id``, or similar attribute would have no
+    producer to cite in a field-producer table and would be exactly the
+    fabricated-plausible-default Constitution III.11 forbids. See
+    :func:`babylon.projection.key_figure.project_key_figure` for the
+    projector and :data:`babylon.projection.key_figure.DEAD_PRODUCER_REMEDY`
+    for the dossier's sole absence remedy text.
+
+    Extra keys are rejected (``extra="forbid"``).
+
+    :param kind: The discriminator literal ``"key_figure"`` tagging this
+        record in :data:`ProjectionRecord`.
+    :param key_figure_id: The graph node id naming the key figure. Always
+        caller-supplied, never resolved from a real graph node — production
+        never stamps one.
+    :param verified_tick: The committed tick this dossier was projected
+        from — kept for shape parity with every other Lane P view, even
+        though this kind's (absent) data never changes across ticks.
+    """
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    kind: Literal["key_figure"] = "key_figure"
+    key_figure_id: str = Field(min_length=1)
+    verified_tick: int = Field(ge=0)
+
+
+#: A projected record of any scale, keyed on ``kind``. Grows by one union
+#: member per Program 24 P2 Lane P work order (WO-21 added
+#: :class:`KeyFigureView`) — the hydrate helpers below need no change.
 ProjectionRecord = Annotated[
-    CountyView,
+    CountyView | KeyFigureView,
     Field(discriminator="kind"),
 ]
 
 _COUNTY_ADAPTER: TypeAdapter[CountyView] = TypeAdapter(CountyView)
-_RECORD_ADAPTER: TypeAdapter[CountyView] = TypeAdapter(ProjectionRecord)
+_KEY_FIGURE_ADAPTER: TypeAdapter[KeyFigureView] = TypeAdapter(KeyFigureView)
+_RECORD_ADAPTER: TypeAdapter[CountyView | KeyFigureView] = TypeAdapter(ProjectionRecord)
 
 
 def hydrate_county(data: Mapping[str, Any]) -> CountyView:
@@ -202,7 +245,19 @@ def hydrate_county(data: Mapping[str, Any]) -> CountyView:
     return _COUNTY_ADAPTER.validate_python(data)
 
 
-def hydrate_record(data: Mapping[str, Any]) -> CountyView:
+def hydrate_key_figure(data: Mapping[str, Any]) -> KeyFigureView:
+    """Validate an untyped mapping into a :class:`KeyFigureView`.
+
+    :param data: A mapping shaped like a ``KeyFigureView`` — a recorded
+        fixture, a JSON payload, or an assembled row dict. Unknown keys are
+        rejected.
+    :returns: The validated, frozen :class:`KeyFigureView`.
+    :raises pydantic.ValidationError: on a shape or constraint violation.
+    """
+    return _KEY_FIGURE_ADAPTER.validate_python(data)
+
+
+def hydrate_record(data: Mapping[str, Any]) -> CountyView | KeyFigureView:
     """Validate an untyped mapping into the correct :data:`ProjectionRecord`.
 
     Dispatch is by the ``kind`` discriminator, so this helper stays correct as
@@ -221,7 +276,9 @@ __all__ = [
     "ClassComposition",
     "ConsciousnessSimplex",
     "CountyView",
+    "KeyFigureView",
     "ProjectionRecord",
     "hydrate_county",
+    "hydrate_key_figure",
     "hydrate_record",
 ]

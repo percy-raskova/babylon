@@ -25,6 +25,16 @@ Review fix (same unit): :func:`_load_campaign` also threads the SAME
 seam that keeps the lobby row's ``Tick N`` live via
 :meth:`~babylon.persistence.babylon_meta.BabylonMetaStore.record_progress`,
 previously wired to zero production callers.
+
+Review fix (Unit C3): :func:`run` also passes :func:`_driver_factory` in as
+``ArchiveApp``'s ``driver_factory=`` — without it ``ArchiveApp.driver``
+stayed ``None`` on every real ``babylon play`` boot, so the ``t``/``r``/``a``
+bindings never routed through :class:`~babylon.game.pacing.PacedTickDriver`
+and the permanent endgame lock it enforces never engaged in the shipped game
+(:class:`~babylon.game.pacing.PacedTickDriver` was previously wired to zero
+production callers). :func:`_driver_factory` itself is a thin adapter, not
+:func:`~babylon.game.pacing.paced_driver_for_session` directly — see its own
+docstring for why one is needed.
 """
 
 from __future__ import annotations
@@ -33,15 +43,17 @@ import hashlib
 import json
 import os
 from pathlib import Path
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, cast
 from uuid import UUID
 
 if TYPE_CHECKING:
     from babylon.config.defines import GameDefines
+    from babylon.game.pacing import PacedTickDriver
     from babylon.game.session import GameSession
     from babylon.persistence import PostgresRuntime
     from babylon.persistence.babylon_meta import BabylonMetaStore
     from babylon.projection.vault.materializer import VaultMaterializer
+    from babylon.tui.app import CampaignHandle
 
 
 def play_demo() -> None:
@@ -162,6 +174,32 @@ def _load_campaign(
     return session
 
 
+def _driver_factory(campaign: CampaignHandle) -> PacedTickDriver:
+    """The ``babylon.tui.app.DriverFactory`` seam, fulfilled for real (Unit C3).
+
+    A thin adapter over :func:`~babylon.game.pacing.paced_driver_for_session`,
+    not that function passed straight through: ``paced_driver_for_session``
+    needs a full :class:`~babylon.game.session.GameSession` (specifically
+    ``session.services.defines``, for its default
+    :class:`~babylon.engine.observers.endgame_detector.EndgameDetector`) —
+    strictly more than :class:`~babylon.tui.app.CampaignHandle` structurally
+    promises, so mypy correctly refuses to accept
+    ``paced_driver_for_session`` itself where a ``DriverFactory`` is expected.
+    The cast below is sound ONLY because this composition root is the sole
+    caller of ``driver_factory=`` and its own ``campaign_loader=``
+    (:func:`_load_campaign`) always resolves to a real ``GameSession`` —
+    never any other ``CampaignHandle`` — exactly the invariant
+    :data:`~babylon.tui.app.DriverFactory`'s own docstring names.
+
+    :param campaign: the just-booted campaign — always a real
+        ``GameSession`` in this composition root.
+    :returns: the campaign's paced tick driver.
+    """
+    from babylon.game.pacing import paced_driver_for_session
+
+    return paced_driver_for_session(cast("GameSession", campaign))
+
+
 def run() -> None:
     """Boot the REAL Archive TUI: campaign lobby -> briefing -> campaign shell.
 
@@ -187,7 +225,11 @@ def run() -> None:
         defines_hash=_defines_hash(GameDefines.load_default()),
     )
 
-    app = ArchiveApp(campaign_menu=menu, campaign_loader=partial(_load_campaign, runtime, catalog))
+    app = ArchiveApp(
+        campaign_menu=menu,
+        campaign_loader=partial(_load_campaign, runtime, catalog),
+        driver_factory=_driver_factory,
+    )
     app.run()
 
 

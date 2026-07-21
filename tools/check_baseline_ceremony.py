@@ -22,13 +22,24 @@ Two modes (Constitution III.11 — both fail loudly):
     commit message must declare the ceremony. Best-effort — an ``--amend``
     of an already-committed baseline change, or a pathspec commit
     (``git commit <path>``, which uses a temporary index), can slip past
-    it; the CI range leg catches both and is authoritative.
+    it; the range leg (below) catches both.
 
 ``--range A..B``
-    CI leg: every commit in the range that touches the baseline estate
-    must declare its ceremony. Merge commits are inspected for evil-merge
+    Every commit in the range that touches the baseline estate must
+    declare its ceremony. Merge commits are inspected for evil-merge
     content only (paths differing from ALL parents via ``diff-tree --cc``);
-    clean merges need no trailer of their own.
+    clean merges need no trailer of their own. Run twice: locally at the
+    ``pre-push`` git-hook stage (``.pre-commit-config.yaml``'s
+    ``baseline-ceremony-range`` hook, against the merge-base with the
+    upstream ``dev`` ref — closing the commit-msg leg's best-effort gap
+    *before a push leaves the box*) and again in CI on every PR (the
+    authoritative leg, diffing the PR's base..head).
+
+Authoring a ceremony message by hand is unnecessary: once the baseline
+drift is staged, ``tools/generate_ceremony_message.py`` computes the
+per-file drift table (row/cell counts, max |Δ| where CSV-parseable) and
+emits a full ``subject``/body/trailer skeleton that this gate accepts by
+construction.
 
 Exit codes: 0 = clean, 1 = undeclared ceremony, 2 = usage or git failure.
 Doctrine home: CLAUDE.md "Baseline ceremonies"; the ruling deliberately kept

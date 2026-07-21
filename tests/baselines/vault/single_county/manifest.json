@@ -1,0 +1,13 @@
+{
+  "files": {
+    "county/26163.md": "c97d1e6ab8596731f3dd3f21094b386b1f99ff255a6fa25445ceff2eb2bfee2b",
+    "national/USA.md": "0f8b82b66090b09d100b82ebe4138acb69b9b32568734562c5d89547335f89b6",
+    "social_class/C003.md": "e624872b95ad3b5bb6e95b4b1e798a87818a00625f491bcc86fb6951ff19d52d",
+    "social_class/C004.md": "d01adc9f27150109c79b4a217cc4c43faafad51a46274cf1390dfc79260c24e4",
+    "state/26.md": "4dd8aeff285a12bcd0cd9fe8b6ccb314cef5ec467560d138711ebf3675776697"
+  },
+  "head_sha": "26fa622d0d6208a02f1fd2cea1589b9b6aa504fd",
+  "page_count": 5,
+  "scenario": "single_county",
+  "ticks": 5
+}

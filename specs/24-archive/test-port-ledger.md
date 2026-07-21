@@ -71,6 +71,9 @@ these are the cutover blockers enumerated in the LOUD list.
 | `src/frontend/e2e/lobby-briefing.spec.ts` (codename regex, 5 pattern rows, win badge, "100 years" horizon copy — NOT in ledger before this WO) | `tests/unit/projection/test_briefing.py` + `tests/unit/projection/vault/test_render_briefing.py` (`project_briefing`/`render_briefing` contract: `operation_codename` + `journal_objectives` ports) | REWRITTEN | WO-35 ✓ |
 | `src/frontend/e2e/lobby-briefing.spec.ts` (lobby row codename/tick/status metadata; archive → ABANDONED; arm-then-confirm delete) | campaign menu over the `babylon_meta` catalog | CARRIED (P3 WO-49) | — |
 | `src/frontend/e2e/auth.spec.ts` (Django login) | none — Django auth dies with the web client | RETIRED | — |
+| `src/frontend/e2e/first-session.spec.ts` (lobby→briefing→verb-grid→campaign-submit→resolve-tick legs; spec-116 acceptance gate 6 — absent from this ledger before the WO-52 sentinel build) | every engine/projection behavior this trunk walks already has a row/class above: lobby codenames = row 72 (CARRIED P3 WO-49); briefing content + `journal_objectives` axes = row 71 (REWRITTEN WO-35); verb-grid eligibility = `TestVerbEligibilityAgreesWithTargetsRealWayneCounty` (PORTED WO-38) + `TestDefixturedVerbTargets` (RETIRED); campaign preview/submit = rows 61–63 (REWRITTEN WO-38/39, PORTED WO-39); event-dedup rendering is web-UI-only (`src/frontend/src/lib/__tests__/eventDedup.test.ts`, outside this ledger's python/e2e scope) | RETIRED | — |
+| `src/frontend/e2e/first-session.spec.ts` (epilogue leg, lines 397–482: rigged-horizon UNRESOLVED epilogue body + terminal-state immutability) | `tests/unit/projection/vault/test_epilogues.py` (its own docstring cites this spec file's lines 434–439 verbatim as the `UNRESOLVED` body's source) + `tests/unit/projection/test_endgame.py` (`endgame_status` pure fold) | PORTED | WO-34 ✓ |
+| `src/frontend/e2e/event-popup.spec.ts` (toast rail: urgent-event popup, two-toast-lifetime contract, dismiss→"Missed" tray — absent from this ledger before the WO-52 sentinel build) | web-only React toast UI (`EventToasts.tsx`/`eventsSlice.ts`); classification/dedup already unit-tested in `src/frontend/src/lib/__tests__/eventClassifier.test.ts` + `eventDedup.test.ts` (frontend-only, outside this ledger's python/e2e scope); successor salience/autopause surfacing is the Chronicle (WO-27/48, already CARRIED via the `TestAlertsDashboard`/`TestSpineWhitelistSeverityAndTitles` rows above) | RETIRED | — |
 
 ## Deviations recorded
 
@@ -98,6 +101,16 @@ these are the cutover blockers enumerated in the LOUD list.
   anywhere** and surface in the LOUD gap list below (`TestEconomyDashboardFundamentalTheorem`,
   `TestEconomyDashboardChipContract`). Existing rows are left intact per the
   no-delete rule; this note records the scope gap.
+- **`first-session.spec.ts` and `event-popup.spec.ts` had no ledger row (WO-52
+  closure-sentinel finding).** Building the mechanical sentinel test
+  (`tests/unit/archive/test_ledger_closed.py`) enumerates every
+  `src/frontend/e2e/*.spec.ts` filename and found these two absent from every
+  prior WO-52 pass. Neither hid an unowned behavior: `first-session.spec.ts`'s
+  legs are each already covered by rows/classes landed under other WOs (its
+  epilogue leg is even cited BY NAME in `test_epilogues.py`'s own docstring,
+  WO-34), and `event-popup.spec.ts` is purely legacy React toast-rail UI with
+  its own frontend unit tests. Both appended as rows above rather than
+  weakening the sentinel's containment check.
 
 ## engine_bridge disposition (WO-52)
 
@@ -219,3 +232,49 @@ Secondary / borderline (surface for a ruling, not hard cutover blockers):
   web map-lens, but the ecological-overshoot signal is not surfaced in any TUI hex
   projection (`v_hex_state_asof` has no habitability column). Confirm this is an
   intentional map-lens omission, not a dropped signal.
+
+---
+
+## WO-50 — Pilot e2e (first-session trunk spine → the Archive seams)
+
+The cutover gate #2 acceptance evidence: the legacy web trunk e2e
+`src/frontend/e2e/first-session.spec.ts` (483 lines) ported behavior-not-selectors
+onto the Archive stack (engine + projection + TUI pure logic; the web client is
+never imported). One test per hard-asserted sub-behavior in
+`tests/integration/archive/test_pilot_first_action.py`.
+
+| first-session.spec.ts leg (lines) | Archive test | Disposition |
+|---|---|---|
+| lobby shows generated codenames, no unnamed rows (100–116) | `test_lobby_every_catalog_row_carries_a_derived_codename` | REWRITTEN (real `BabylonMetaStore`/`CampaignMenu` over `pg_pool`; row codename == `operation_codename(campaign_id)`) |
+| briefing: five patterns, win condition, fixed century horizon (118–158) | `test_briefing_five_patterns_win_condition_and_century_horizon` | REWRITTEN (`project_briefing`/`render_briefing`; "100 years" + "Century" copy; honest 0.0 progress on a fresh campaign) |
+| Campaign: preview (prob + cost) before submit, submit succeeds (223–259) | `test_verb_preview_precedes_submit_then_the_engine_adjudicates` | PORTED (from `test_verb_resolution.py`; preview_verb → submit_verb → OODASystem adjudicates; EDUCATE is the affordable eligible verb in the OODA-minimal fixture the web's Campaign maps to) |
+| (verb write-side rejection half of the plate contract) | `test_unaffordable_verb_is_refused_before_the_engine` | PORTED (from `test_verb_resolution.py`) |
+| forced first crisis autopauses + acknowledged live (261–304) | `test_forced_endgame_crisis_autopauses_amber_then_ack_clears` | REWRITTEN (`classify_event_salience`/`compute_autopause_state`/`render_autopause_indicator` + pilot-loop Step gate + ack-clears) |
+| no two consecutive identical event cards; volume floors (319–350) | `test_event_dedup_and_volume_floors_over_real_tick_events` | REWRITTEN (real engine tick → `dedupe_consecutive`/`apply_volume_floors`; test-local engine→ChronicleEvent adapter — see gap 1) |
+| endgame_progress axes render honestly, none pinned 1.00 (352–362) | `test_objective_progress_after_two_real_ticks_never_pinned` | REWRITTEN (two real ticks → real `EndgameDetector.axis_progress()` → `journal_objectives`; none == 1.0) |
+| epilogue: real horizon termination → UNRESOLVED, exact copy (365–439) | `test_rigged_horizon_crosses_into_the_unresolved_epilogue` | REWRITTEN (rigged `campaign_horizon_years=1`/`weeks_per_year=1`; one real tick; `endgame_status` crosses; body byte-equal to `EPILOGUES["unresolved"]`) |
+| terminal-state: further resolve succeeds, persisted epilogue immutable (441–482) | `test_terminal_epilogue_is_stable_across_a_further_tick` | REWRITTEN (further real tick resolves — no engine refusal gate; outcome/epilogue stable; see gap 4) |
+
+### WO-50 honest gaps (load-bearing — surfaced to the BD, never faked)
+
+1. **No shipped engine→Chronicle feed.** `babylon.tui.chronicle` is fixture-fed by
+   construction; the dedup leg reshapes REAL bus events into `ChronicleEvent` via a
+   test-local adapter (`_chronicle_events_from_bus`). Events real, dedup/floor logic
+   real; the production adapter is a **future WO**.
+2. **Narrative-cap floor vacuous in-process.** The minimal in-process scenario emits
+   only warning-tier events (`lifecycle_transition` + `organizational_action`), so the
+   informational-tier per-tick cap holds but caps nothing. The ORGANIZATIONAL_ACTION
+   aggregation floor IS exercised live. A future WO wiring the headless wayne run into
+   the Chronicle feed exercises the informational cap against real informational events.
+3. **`endgame_reached` is critical but NOT the sole critical tier.** The web re-tiered
+   critical to endgame-only (FR-116-2); the ported `EVENT_SEVERITY` keeps the full
+   spec-061 taxonomy (14 critical types). endgame_reached is critical + drives autopause,
+   but not uniquely so in the Archive — a divergence to rule on.
+4. **Pure endgame fold is memoryless.** `endgame_status` recomputes each tick; the web's
+   "first ENDGAME_REACHED row is authoritative" immutability (`ORDER BY tick ASC LIMIT 1`)
+   is a persistence guarantee absent from the pure projection. The terminal-state leg's
+   stability holds because the material state never crosses into a pattern; a future WO
+   must persist the first endgame event to lock the outcome against a LATER pattern.
+5. **No autopause-acknowledgement state machine.** `chronicle_salience` omits the
+   once-per-key ack layer (WO-46 `babylon_meta`); the crisis leg models ack as the pilot
+   dropping the acknowledged critical event from the surfaced slice.

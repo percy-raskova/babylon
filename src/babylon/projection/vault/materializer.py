@@ -22,7 +22,8 @@ from pathlib import Path
 
 from babylon.projection.vault.git_backend import commit_page, init_vault
 from babylon.projection.vault.render import render_county
-from babylon.projection.view_models import CountyView
+from babylon.projection.vault.render_industry import render_industry
+from babylon.projection.view_models import CountyView, IndustryView
 
 
 class VaultMaterializer:
@@ -62,6 +63,33 @@ class VaultMaterializer:
             content,
             tick=tick,
             message=f"bake: county/{view.county_fips} @ tick {tick}",
+        )
+        return self._vault_root / relative_path
+
+    def bake_industry(self, view: IndustryView, *, tick: int) -> Path:
+        """Render and commit one industry dossier page.
+
+        The page path follows the stable-ID slug ruling
+        (``project/programs/24-the-archive.md``): ``industry/<industry_id>.md``,
+        never a mutable display name.
+
+        :param view: the industry projection to materialize.
+        :param tick: the simulation tick driving both the page's
+            ``verified_tick`` frontmatter stamp (via
+            :func:`~babylon.projection.vault.render_industry.render_industry`)
+            and the commit's sim-time timestamp (via
+            :func:`~babylon.projection.vault.git_backend.commit_page`).
+        :returns: the absolute path of the written page under the vault
+            root.
+        """
+        relative_path = f"industry/{view.industry_id}.md"
+        content = render_industry(view, verified_tick=tick)
+        commit_page(
+            self._vault_root,
+            relative_path,
+            content,
+            tick=tick,
+            message=f"bake: industry/{view.industry_id} @ tick {tick}",
         )
         return self._vault_root / relative_path
 

@@ -1,16 +1,23 @@
-"""Shared CountyView fixtures for vault materializer tests.
+"""Shared view-model fixtures for vault materializer tests.
 
-Both fixtures share the Wayne County (FIPS 26163) identity from the WO-2
-contract tests (``tests/unit/projection/test_view_models.py``); the
-"absences" variant leaves several optional fields unattributed to exercise
-the {absence} block path honestly rather than via a fabricated payload.
+The CountyView pair shares the Wayne County (FIPS 26163) identity from the
+WO-2 contract tests (``tests/unit/projection/test_view_models.py``); the
+IndustryView pair (WO-22) mirrors the same "full" vs "absences" shape for the
+Manufacturing sector node. Each "absences" variant leaves several optional
+fields unattributed to exercise the {absence} block path honestly rather than
+via a fabricated payload.
 """
 
 from __future__ import annotations
 
 import pytest
 
-from babylon.projection.view_models import CountyView, hydrate_county
+from babylon.projection.view_models import (
+    CountyView,
+    IndustryView,
+    hydrate_county,
+    hydrate_industry,
+)
 
 
 @pytest.fixture
@@ -60,5 +67,51 @@ def wayne_county_view_with_absences() -> CountyView:
             "population": 1749343,
             "median_wage": 18.5,
             "imperial_rent_phi": 4.2,
+        }
+    )
+
+
+@pytest.fixture
+def manufacturing_industry_view() -> IndustryView:
+    """A fully-populated ``IndustryView`` shaped like NAICS 31-33 (Manufacturing)."""
+    return hydrate_industry(
+        {
+            "kind": "industry",
+            "industry_id": "ind_31-33",
+            "verified_tick": 500,
+            "naics_2digit": "31-33",
+            "naics_label": "Manufacturing",
+            "total_employment": 2000,
+            "total_wages": 100000.0,
+            "profit_rate": 1.0 / 3.0,
+            "occ": 2.0,
+            "department_weights": {
+                "dept_I": 0.4,
+                "dept_IIa": 0.3,
+                "dept_IIb": 0.2,
+                "dept_III": 0.1,
+            },
+            "member_business_count": 2,
+            "member_worker_block_count": 1,
+            "county_fips": ["26125", "26163"],
+        }
+    )
+
+
+@pytest.fixture
+def manufacturing_industry_view_with_absences() -> IndustryView:
+    """The same industry with most optional fields honestly unattributed.
+
+    Only ``naics_2digit``, ``naics_label``, and ``total_employment`` are
+    present; every other optional field hydrates to ``None``.
+    """
+    return hydrate_industry(
+        {
+            "kind": "industry",
+            "industry_id": "ind_31-33",
+            "verified_tick": 500,
+            "naics_2digit": "31-33",
+            "naics_label": "Manufacturing",
+            "total_employment": 2000,
         }
     )

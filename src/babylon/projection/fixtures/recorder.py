@@ -20,9 +20,19 @@ import json
 from pathlib import Path
 from typing import Any
 
-from babylon.projection.view_models import CountyView, hydrate_county
+from babylon.projection.view_models import (
+    CountyView,
+    IndustryView,
+    hydrate_county,
+    hydrate_industry,
+)
 
-__all__ = ["load_county_fixture", "record_county_fixture"]
+__all__ = [
+    "load_county_fixture",
+    "load_industry_fixture",
+    "record_county_fixture",
+    "record_industry_fixture",
+]
 
 
 def record_county_fixture(view: CountyView, path: Path) -> None:
@@ -61,3 +71,41 @@ def load_county_fixture(path: Path) -> CountyView:
     except json.JSONDecodeError as exc:
         raise ValueError(f"malformed JSON in projection fixture {path}: {exc}") from exc
     return hydrate_county(data)
+
+
+def record_industry_fixture(view: IndustryView, path: Path) -> None:
+    """Serialize ``view`` to ``path`` as deterministic, sorted-key JSON.
+
+    :param view: The projected industry dossier to persist.
+    :param path: Destination file. The parent directory is NOT created here —
+        callers (the harvester) own directory setup, so a typo'd path fails
+        loud instead of silently minting a stray directory tree.
+    :raises OSError: if ``path``'s parent directory does not exist or is not
+        writable.
+    """
+    payload: dict[str, Any] = view.model_dump(mode="json")
+    text = json.dumps(payload, sort_keys=True, indent=2) + "\n"
+    path.write_text(text, encoding="utf-8")
+
+
+def load_industry_fixture(path: Path) -> IndustryView:
+    """Hydrate an :class:`IndustryView` from a fixture written by :func:`record_industry_fixture`.
+
+    :param path: The fixture file to load.
+    :returns: The validated, frozen :class:`IndustryView`.
+    :raises FileNotFoundError: if ``path`` does not exist — a missing fixture
+        is a loud failure (Constitution III.11), never a silently-substituted
+        default view.
+    :raises ValueError: if ``path``'s content is not valid JSON.
+    :raises pydantic.ValidationError: if the JSON parses but does not hydrate
+        to a valid :class:`IndustryView` (wrong shape, out-of-range value, an
+        invented field the model rejects under ``extra="forbid"``).
+    """
+    if not path.is_file():
+        raise FileNotFoundError(f"no projection fixture at {path}")
+    raw = path.read_text(encoding="utf-8")
+    try:
+        data = json.loads(raw)
+    except json.JSONDecodeError as exc:
+        raise ValueError(f"malformed JSON in projection fixture {path}: {exc}") from exc
+    return hydrate_industry(data)

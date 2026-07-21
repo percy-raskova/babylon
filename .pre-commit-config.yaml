@@ -167,6 +167,16 @@ repos:
     rev: v6.0.0
     hooks:
       - id: trailing-whitespace
+        # tests/**/__snapshots__/**/*.raw: pytest-textual-snapshot goldens are
+        # whitespace-SIGNIFICANT terminal-cell exports (Textual pads rows with
+        # trailing spaces as real rendered content) — stripping it desyncs the
+        # committed golden from what snap_compare regenerates live, breaking
+        # the very test the golden exists to pin. Discovered landing the WO-22
+        # industry-page golden: both pre-existing committed goldens
+        # (tests/unit/tui/__snapshots__/…, tests/integration/archive/__snapshots__/…)
+        # carry exactly one such trailing-whitespace line each, undisturbed —
+        # this hook would corrupt a freshly (re)generated one the same way.
+        exclude: __snapshots__/.*\.raw$
       - id: end-of-file-fixer
       - id: check-yaml
         args: [--unsafe]  # Allow custom tags in GitHub Actions

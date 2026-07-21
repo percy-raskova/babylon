@@ -99,7 +99,58 @@
         packages = {
           babylon = babylonEnv;
           default = babylonEnv;
+
+          # Game-managed Postgres cluster runtime closure (ADR104 ruling 2:
+          # Postgres — initdb into ~/.local/share/babylon/pg, unix socket,
+          # child process of the game, superuser-in-own-cluster so
+          # `CREATE EXTENSION postgis`/`pgvector` needs no host-admin step).
+          # This output makes the server binaries + both extensions
+          # REACHABLE from the flake (eval-verified: `nix eval
+          # .#packages.<system>.pg-runtime.drvPath`); it does NOT build the
+          # cluster-lifecycle code (initdb/pg_ctl/unix-socket wiring,
+          # first-run idempotent DDL applier + stamp table) — that is a
+          # LATER T7 unit, gated on the keel DSN-unification seam (T1.2),
+          # and lives in src/, out of this lane's scope fence.
+          # `withPackages` bundles the extensions into $out/lib so
+          # `CREATE EXTENSION postgis;` / `CREATE EXTENSION vector;` resolve
+          # without any separate install step.
+          pg-runtime = pkgs.postgresql_17.withPackages (ps: [
+            ps.postgis
+            ps.pgvector
+          ]);
         };
+
+        # ── Reference-data fixed-output derivation — PLANNED, NOT YET WIRED ──
+        # ADR104 (Postgres/data ruling) + PROGRAM_v1_0_0 ruling 1: the 4.49GB
+        # reference DB ships through the SAME signed R2 cache install.sh
+        # already trusts (ADR094 D1) — no second trust mechanism — as a Nix
+        # fixed-output derivation (content-addressed by sha256, so Nix
+        # verifies the download itself; no separate signature check needed
+        # beyond the narinfo signature already covering the closure).
+        #
+        # Pin source (data-artifacts.yaml `product:`, current build,
+        # ADR098 byte-identity contract):
+        #   name          = marxist-data-3NF.sqlite
+        #   sha256        = f760bab5c63ce879decd72cfe3bf51c569a5a4ba2a4a57e0ccbb5d90f5e6fa42
+        #   sqlite_version= 3.53.1  (nixpkgs-data pin, tools/build_reference_db.py::PINNED_SQLITE_VERSION)
+        #
+        # Blocked on Runbook C3's PRE-STEP (ai/_inbox/PROGRAM_v1_0_0_ceremony_runbook.md):
+        # babylon-data has no public serving domain yet — R2 dashboard must
+        # attach a Custom Domain (e.g. data.babylon.percypedia.biz) before any
+        # URL exists to pin. Per this lane's brief: do NOT write a FOD with a
+        # dead URL. The exact shape to drop in, once that domain is live and
+        # the sha is re-confirmed against the release build, is (documented,
+        # not evaluated — this is a comment, not live Nix):
+        #
+        #   packages.reference-data = pkgs.fetchurl {
+        #     url    = "https://<DATA_DOMAIN_FROM_C3>/marxist-data-3NF.sqlite";
+        #     sha256 = "f760bab5c63ce879decd72cfe3bf51c569a5a4ba2a4a57e0ccbb5d90f5e6fa42";
+        #   };
+        #
+        # Nix's own hash verification IS the integrity check (fetchurl fails
+        # loudly on mismatch) — same discipline as the GGUF manifest's
+        # in-band sha256 (Runbook C3). See docs/how-to/reference-data-fod.rst
+        # for the full landing checklist.
 
         # Canonical dev/build environment (vendored from the babylon-infra
         # devshell, environment-sovereignty ruling 2026-07-21 — the infra

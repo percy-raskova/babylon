@@ -1,9 +1,10 @@
 """`babylon doctor` — diagnose the local install: config, provider lane, DB.
 
-Report-only skeleton (ADR095 D1). Extended by 096 (``--provision``) and 097
-(render-capability probe writing ``[render] tier`` into config.toml). Reuses
-the §A8 seam's config-dir precedence and provider resolution rather than
-reinventing them.
+Report-only skeleton (ADR095 D1). Extended by 096 (``--provision``), 097
+(render-capability probe writing ``[render] tier`` into config.toml), and
+T1.2 keel unit K5 (the declared-assumptions ledger — see
+:mod:`babylon.sentinels.assumptions`). Reuses the §A8 seam's config-dir
+precedence and provider resolution rather than reinventing them.
 """
 
 from __future__ import annotations
@@ -24,6 +25,7 @@ from babylon.intelligence.providers import (
 from babylon.intelligence.provision import default_models_dir, provision_models
 from babylon.render.config import render_config_path
 from babylon.render.doctor import run_render_probe
+from babylon.sentinels.assumptions.registry import DECLARED_ASSUMPTIONS, ledger_lines
 
 #: soft_wrap avoids Rich's default 80-column word-wrap splitting long config
 #: paths (e.g. deep tmp_path fixtures, nested XDG dirs) across lines; disabling
@@ -60,7 +62,8 @@ def doctor(
         help="Fetch available model weights per the signed manifest (D3, ADR096).",
     ),
 ) -> None:
-    """Diagnose the local Babylon install (config, provider lane, database)."""
+    """Diagnose the local Babylon install (config, provider lane, database,
+    declared assumptions)."""
     cfg_dir = _config_dir(os.environ)
     config_toml = cfg_dir / "config.toml"
     credentials = cfg_dir / "credentials"
@@ -87,6 +90,11 @@ def doctor(
 
     db_ok, db_detail = check_database(resolve_dsn(legacy_env="BABYLON_DATABASE_URL"))
     console.print(f"[bold]database:[/bold] {'ok' if db_ok else 'unavailable'} — {db_detail}")
+
+    # --- T1.2 keel (K5): declared assumptions ledger ---
+    console.print(f"[bold]declared assumptions:[/bold] {len(DECLARED_ASSUMPTIONS)}")
+    for line in ledger_lines(DECLARED_ASSUMPTIONS):
+        console.print(f"  [yellow]{line}[/yellow]")
 
     if provision:
         console.print("[bold]provisioning models:[/bold]")

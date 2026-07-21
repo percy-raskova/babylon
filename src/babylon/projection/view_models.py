@@ -22,7 +22,7 @@ Program 24 P2) with no change to the hydrate helpers.
 from __future__ import annotations
 
 from collections.abc import Mapping
-from typing import Annotated, Any, Literal, Union
+from typing import Annotated, Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, TypeAdapter, model_validator
 
@@ -177,12 +177,12 @@ class CountyView(BaseModel):
     sovereign_id: str | None = None
 
 
-#: A projected record of any scale. A discriminated union keyed on ``kind``;
-#: it holds only :class:`CountyView` today and grows to include state and
-#: national dossiers in Program 24 P2 by adding members to the ``Union`` — the
-#: hydrate helpers below need no change.
+#: A projected record of any scale, keyed on ``kind``. It holds only
+#: :class:`CountyView` today; Program 24 P2 widens it to a discriminated
+#: union (``CountyView | StateView | ...``) as state and national dossiers
+#: land — the hydrate helpers below need no change.
 ProjectionRecord = Annotated[
-    Union[CountyView],
+    CountyView,
     Field(discriminator="kind"),
 ]
 

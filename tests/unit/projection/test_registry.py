@@ -27,7 +27,7 @@ _REQUIRED_VIEWS = frozenset(
 def test_registry_enumerates_the_required_views() -> None:
     """Every constitutionally-required declared view is present."""
     names = {view.name for view in REGISTRY}
-    assert _REQUIRED_VIEWS <= names
+    assert names >= _REQUIRED_VIEWS
 
 
 def test_every_entry_has_a_non_empty_order_by() -> None:

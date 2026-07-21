@@ -107,9 +107,7 @@ def test_explicit_null_is_honest_absence() -> None:
 
 def test_minimal_record_defaults_optionals_to_none() -> None:
     """Only identity and provenance are required; every other field is absent."""
-    view = hydrate_county(
-        {"kind": "county", "county_fips": "26163", "verified_tick": 1}
-    )
+    view = hydrate_county({"kind": "county", "county_fips": "26163", "verified_tick": 1})
     assert view.population is None
     assert view.class_composition is None
     assert view.consciousness is None

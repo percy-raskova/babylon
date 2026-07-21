@@ -24,7 +24,9 @@ import pytest
 TOOLS_DIR = Path(__file__).resolve().parents[3] / "tools"
 sys.path.insert(0, str(TOOLS_DIR))
 
-from check_baseline_ceremony import message_declares_ceremony  # type: ignore[import-not-found]  # noqa: E402
+from check_baseline_ceremony import (  # type: ignore[import-not-found]  # noqa: E402
+    message_declares_ceremony,
+)
 from generate_ceremony_message import (  # type: ignore[import-not-found]  # noqa: E402
     build_ceremony_message,
     build_drift_row,

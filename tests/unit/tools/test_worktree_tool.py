@@ -30,7 +30,10 @@ import pytest
 TOOLS_DIR = Path(__file__).resolve().parents[3] / "tools"
 sys.path.insert(0, str(TOOLS_DIR))
 
-from worktree_tool import SLUG_MAX_LEN, is_valid_slug  # type: ignore[import-not-found]  # noqa: E402
+from worktree_tool import (  # type: ignore[import-not-found]  # noqa: E402
+    SLUG_MAX_LEN,
+    is_valid_slug,
+)
 
 TOOL_PATH = TOOLS_DIR / "worktree_tool.py"
 
@@ -74,9 +77,7 @@ class TestSlugValidation:
 
 
 def _run_git(args: list[str], *, cwd: Path) -> subprocess.CompletedProcess[str]:
-    result = subprocess.run(
-        ["git", *args], cwd=cwd, capture_output=True, text=True, check=True
-    )
+    result = subprocess.run(["git", *args], cwd=cwd, capture_output=True, text=True, check=True)
     return result
 
 
@@ -120,9 +121,7 @@ class TestNewSubcommand:
         worktree_path = scratch_repo / ".claude" / "worktrees" / "my-feature"
         assert worktree_path.is_dir()
 
-        branch = _run_git(
-            ["rev-parse", "--abbrev-ref", "HEAD"], cwd=worktree_path
-        ).stdout.strip()
+        branch = _run_git(["rev-parse", "--abbrev-ref", "HEAD"], cwd=worktree_path).stdout.strip()
         assert branch == "wt/my-feature"
 
         # Usage recipe surfaced.

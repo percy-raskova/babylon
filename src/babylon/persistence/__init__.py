@@ -23,6 +23,7 @@ from babylon.persistence.archival import (
     query_archived_session,
     upload_to_r2,
 )
+from babylon.persistence.babylon_meta import BabylonMetaStore, CampaignRecord
 from babylon.persistence.pgvector_store import PgVectorStore
 from babylon.persistence.postgres_runtime import PostgresRuntime
 from babylon.persistence.protocols import (
@@ -36,6 +37,8 @@ from babylon.persistence.runtime_db import RuntimeDatabase
 from babylon.persistence.runtime_schema import RUNTIME_SCHEMA_DDL
 
 __all__ = [
+    "BabylonMetaStore",
+    "CampaignRecord",
     "MonotonicityViolationError",
     "PgVectorStore",
     "PostgresRuntime",

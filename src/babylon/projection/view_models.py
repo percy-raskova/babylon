@@ -26,6 +26,7 @@ from typing import Annotated, Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, TypeAdapter, model_validator
 
+from babylon.models.enums import SocialRole
 from babylon.models.types import (
     Currency,
     Ideology,
@@ -177,17 +178,84 @@ class CountyView(BaseModel):
     sovereign_id: str | None = None
 
 
-#: A projected record of any scale, keyed on ``kind``. It holds only
-#: :class:`CountyView` today; Program 24 P2 widens it to a discriminated
-#: union (``CountyView | StateView | ...``) as state and national dossiers
-#: land — the hydrate helpers below need no change.
+class SocialClassView(BaseModel):
+    """A social-class dossier — the projected read-model for one class node.
+
+    Every field beyond identity and provenance is ``Optional``: a
+    ``class_id`` absent from the committed ``WorldState`` (see
+    :func:`~babylon.projection.social_class.project_social_class`) projects
+    as an all-``None`` dossier (honest absence, Constitution III.11), and
+    ``county_class_composition`` is ``None`` whenever the class carries no
+    county attribution or its county has no territory-level composition
+    data yet.
+
+    Extra keys are rejected (``extra="forbid"``): a payload carrying a field
+    this model does not declare is a shape mismatch to surface loudly, not
+    to swallow.
+
+    :param kind: The discriminator literal ``"social_class"`` tagging this
+        record in :data:`ProjectionRecord`.
+    :param class_id: The graph node id — the class's identity (pattern
+        ``^C[0-9]{3,}$``, matching ``SocialClass.id``).
+    :param verified_tick: The committed tick this dossier was projected
+        from, the staleness anchor for any materialization.
+    :param role: This class's position in the world system (``SocialRole``),
+        or ``None`` if the node does not exist.
+    :param county_fips: The county this class is attributed to (spec-065
+        ``SocialClass.county_fips``), or ``None`` if unattributed or the
+        node does not exist; ``""`` is the source's own "explicitly
+        unattributed" sentinel and hydrates through unchanged.
+    :param population: This class's own block size (NOT a county-wide
+        aggregate — contrast :attr:`CountyView.population`), or ``None``.
+    :param wealth: This class's own wealth (money-form), or ``None``.
+    :param organization: This class's collective cohesion in ``[0, 1]``, or
+        ``None``.
+    :param repression_faced: State violence directed at this class in
+        ``[0, 1]``, or ``None``.
+    :param p_acquiescence: This class's own P(S|A), or ``None`` — NOT the
+        county's pop-weighted mean (contrast
+        :attr:`CountyView.p_acquiescence`).
+    :param p_revolution: This class's own P(S|R), or ``None``.
+    :param consciousness: This class's own ``(r, l, f)`` consciousness
+        simplex, mapped from its ``IdeologicalProfile`` via the spec-065
+        bridge, or ``None``.
+    :param county_class_composition: The containing county's five-class
+        share breakdown (nesting context — the same producer
+        :attr:`CountyView.class_composition` uses), resolved via this
+        class's own ``county_fips``; ``None`` if unattributed or the county
+        has no composition data yet.
+    """
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    kind: Literal["social_class"] = "social_class"
+    class_id: str = Field(pattern=r"^C[0-9]{3,}$")
+    verified_tick: int = Field(ge=0)
+
+    role: SocialRole | None = None
+    county_fips: str | None = Field(default=None, pattern=r"^\d{5}$|^$")
+    population: int | None = Field(default=None, ge=0)
+    wealth: Currency | None = None
+    organization: Probability | None = None
+    repression_faced: Probability | None = None
+    p_acquiescence: Probability | None = None
+    p_revolution: Probability | None = None
+    consciousness: ConsciousnessSimplex | None = None
+    county_class_composition: ClassComposition | None = None
+
+
+#: A projected record of any scale, keyed on ``kind``. Program 24 P2 widens
+#: it to a discriminated union (``CountyView | SocialClassView | ...``) as
+#: state, national, and other-kind dossiers land — the hydrate helpers below
+#: need no change beyond their own kind-specific adapter.
 ProjectionRecord = Annotated[
-    CountyView,
+    CountyView | SocialClassView,
     Field(discriminator="kind"),
 ]
 
 _COUNTY_ADAPTER: TypeAdapter[CountyView] = TypeAdapter(CountyView)
-_RECORD_ADAPTER: TypeAdapter[CountyView] = TypeAdapter(ProjectionRecord)
+_SOCIAL_CLASS_ADAPTER: TypeAdapter[SocialClassView] = TypeAdapter(SocialClassView)
+_RECORD_ADAPTER: TypeAdapter[CountyView | SocialClassView] = TypeAdapter(ProjectionRecord)
 
 
 def hydrate_county(data: Mapping[str, Any]) -> CountyView:
@@ -202,7 +270,19 @@ def hydrate_county(data: Mapping[str, Any]) -> CountyView:
     return _COUNTY_ADAPTER.validate_python(data)
 
 
-def hydrate_record(data: Mapping[str, Any]) -> CountyView:
+def hydrate_social_class(data: Mapping[str, Any]) -> SocialClassView:
+    """Validate an untyped mapping into a :class:`SocialClassView`.
+
+    :param data: A mapping shaped like a ``SocialClassView`` — a recorded
+        fixture, a JSON payload, or an assembled row dict. Missing optional
+        keys become ``None``; unknown keys are rejected.
+    :returns: The validated, frozen :class:`SocialClassView`.
+    :raises pydantic.ValidationError: on a shape or constraint violation.
+    """
+    return _SOCIAL_CLASS_ADAPTER.validate_python(data)
+
+
+def hydrate_record(data: Mapping[str, Any]) -> CountyView | SocialClassView:
     """Validate an untyped mapping into the correct :data:`ProjectionRecord`.
 
     Dispatch is by the ``kind`` discriminator, so this helper stays correct as
@@ -210,7 +290,8 @@ def hydrate_record(data: Mapping[str, Any]) -> CountyView:
 
     :param data: A mapping carrying a ``kind`` discriminator and the fields of
         the matching record type.
-    :returns: The validated record (a :class:`CountyView` today).
+    :returns: The validated record (a :class:`CountyView` or
+        :class:`SocialClassView` today).
     :raises pydantic.ValidationError: if ``kind`` is missing/unknown or the
         payload violates the matched record's shape.
     """
@@ -222,6 +303,8 @@ __all__ = [
     "ConsciousnessSimplex",
     "CountyView",
     "ProjectionRecord",
+    "SocialClassView",
     "hydrate_county",
     "hydrate_record",
+    "hydrate_social_class",
 ]

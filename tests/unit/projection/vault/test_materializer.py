@@ -6,7 +6,7 @@ from pathlib import Path
 
 from babylon.projection.vault.git_backend import commit_page, init_vault
 from babylon.projection.vault.materializer import VaultMaterializer
-from babylon.projection.view_models import CountyView
+from babylon.projection.view_models import CountyView, SocialClassView
 
 
 class TestBakeCounty:
@@ -79,3 +79,50 @@ class TestBakeCounty:
         materializer = VaultMaterializer(root)
         page_path = materializer.bake_county(wayne_county_view, tick=500)
         assert page_path.is_file()
+
+
+class TestBakeSocialClass:
+    """Mirrors ``TestBakeCounty`` for :meth:`VaultMaterializer.bake_social_class`."""
+
+    def test_it_writes_exactly_class_id_md_and_returns_its_path(
+        self, tmp_path: Path, wayne_social_class_view: SocialClassView
+    ) -> None:
+        materializer = VaultMaterializer(tmp_path / "vault")
+        page_path = materializer.bake_social_class(wayne_social_class_view, tick=500)
+
+        assert page_path == tmp_path / "vault" / "social_class" / "C004.md"
+        assert page_path.is_file()
+        written_files = sorted(
+            p.relative_to(tmp_path / "vault") for p in (tmp_path / "vault").rglob("*.md")
+        )
+        assert written_files == [Path("social_class/C004.md")]
+
+    def test_the_written_page_matches_render_social_class_output(
+        self, tmp_path: Path, wayne_social_class_view: SocialClassView
+    ) -> None:
+        materializer = VaultMaterializer(tmp_path / "vault")
+        page_path = materializer.bake_social_class(wayne_social_class_view, tick=500)
+
+        from babylon.projection.vault.render_social_class import render_social_class
+
+        assert page_path.read_text(encoding="utf8") == render_social_class(
+            wayne_social_class_view, verified_tick=500
+        )
+
+    def test_two_independent_bakes_of_the_same_view_produce_identical_commit_shas(
+        self, tmp_path: Path, wayne_social_class_view: SocialClassView
+    ) -> None:
+        def bake(root: Path) -> bytes:
+            materializer = VaultMaterializer(root)
+            materializer.bake_social_class(wayne_social_class_view, tick=500)
+            from dulwich.repo import Repo
+
+            repo = Repo(str(root))
+            try:
+                return repo.head()
+            finally:
+                repo.close()
+
+        sha_a = bake(tmp_path / "vault_a")
+        sha_b = bake(tmp_path / "vault_b")
+        assert sha_a == sha_b

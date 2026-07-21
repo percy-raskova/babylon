@@ -167,6 +167,14 @@ repos:
     rev: v6.0.0
     hooks:
       - id: trailing-whitespace
+        # Program 24 P2 WO-23 finding: pytest-textual-snapshot's `.raw` SVG
+        # goldens under any `__snapshots__/` dir use trailing spaces as
+        # meaningful cell-background padding — stripping them corrupts the
+        # golden (confirmed: re-running the fixed hook against the P1 keel's
+        # own committed golden shows it would ALSO be "fixed"/corrupted; it
+        # only ever landed via a path that skipped local hooks). Regenerate
+        # with `--snapshot-update`, verify with a plain re-run, per CLAUDE.md.
+        exclude: '(^|/)__snapshots__/.*\.raw$'
       - id: end-of-file-fixer
       - id: check-yaml
         args: [--unsafe]  # Allow custom tags in GitHub Actions

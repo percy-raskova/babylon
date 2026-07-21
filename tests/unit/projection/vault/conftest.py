@@ -1,16 +1,23 @@
-"""Shared CountyView fixtures for vault materializer tests.
+"""Shared CountyView/SocialClassView fixtures for vault materializer tests.
 
-Both fixtures share the Wayne County (FIPS 26163) identity from the WO-2
-contract tests (``tests/unit/projection/test_view_models.py``); the
+Both CountyView fixtures share the Wayne County (FIPS 26163) identity from
+the WO-2 contract tests (``tests/unit/projection/test_view_models.py``); the
 "absences" variant leaves several optional fields unattributed to exercise
-the {absence} block path honestly rather than via a fabricated payload.
+the {absence} block path honestly rather than via a fabricated payload. The
+SocialClassView fixtures (Program 24 P2 WO-23) mirror the same pattern for
+Wayne County's Labor Aristocracy worker (C004).
 """
 
 from __future__ import annotations
 
 import pytest
 
-from babylon.projection.view_models import CountyView, hydrate_county
+from babylon.projection.view_models import (
+    CountyView,
+    SocialClassView,
+    hydrate_county,
+    hydrate_social_class,
+)
 
 
 @pytest.fixture
@@ -60,5 +67,56 @@ def wayne_county_view_with_absences() -> CountyView:
             "population": 1749343,
             "median_wage": 18.5,
             "imperial_rent_phi": 4.2,
+        }
+    )
+
+
+@pytest.fixture
+def wayne_social_class_view() -> SocialClassView:
+    """A fully-populated ``SocialClassView`` shaped like Wayne's C004 worker."""
+    return hydrate_social_class(
+        {
+            "kind": "social_class",
+            "class_id": "C004",
+            "verified_tick": 500,
+            "role": "labor_aristocracy",
+            "county_fips": "26163",
+            "population": 1,
+            "wealth": 0.563657,
+            "organization": 0.4,
+            "repression_faced": 0.2,
+            "p_acquiescence": 0.933179,
+            "p_revolution": 1.0,
+            "consciousness": {
+                "revolutionary": 0.235071,
+                "liberal": 0.5,
+                "fascist": 0.264929,
+            },
+            "county_class_composition": {
+                "bourgeoisie": 0.01,
+                "petit_bourgeoisie": 0.09,
+                "labor_aristocracy": 0.4,
+                "proletariat": 0.35,
+                "lumpenproletariat": 0.15,
+            },
+        }
+    )
+
+
+@pytest.fixture
+def wayne_social_class_view_with_absences() -> SocialClassView:
+    """The same class with most optional fields honestly unattributed.
+
+    Only ``role``, ``county_fips``, and ``population`` are present; every
+    other optional field hydrates to ``None``.
+    """
+    return hydrate_social_class(
+        {
+            "kind": "social_class",
+            "class_id": "C004",
+            "verified_tick": 500,
+            "role": "labor_aristocracy",
+            "county_fips": "26163",
+            "population": 1,
         }
     )

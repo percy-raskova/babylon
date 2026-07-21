@@ -20,12 +20,15 @@ from pydantic import ValidationError
 
 from babylon.projection.fixtures.recorder import (
     load_county_fixture,
+    load_social_class_fixture,
     record_county_fixture,
+    record_social_class_fixture,
 )
 from babylon.projection.view_models import (
     ClassComposition,
     ConsciousnessSimplex,
     CountyView,
+    SocialClassView,
     hydrate_record,
 )
 
@@ -34,6 +37,12 @@ _COMMITTED_FIXTURE: Path = (
     Path(__file__).parent.parent.parent / "fixtures" / "projection" / "county_26163.json"
 )
 _SHIPPED_FIPS: str = "26163"
+
+#: The fixture the WO-23 harvester ships (``tools/record_social_class_fixture.py``).
+_COMMITTED_SOCIAL_CLASS_FIXTURE: Path = (
+    Path(__file__).parent.parent.parent / "fixtures" / "projection" / "social_class_C004.json"
+)
+_SHIPPED_CLASS_ID: str = "C004"
 
 
 def _full_view(*, tick: int = 847) -> CountyView:
@@ -163,4 +172,108 @@ class TestCommittedFixture:
         view = load_county_fixture(_COMMITTED_FIXTURE)
 
         assert view.county_fips == _SHIPPED_FIPS
+        assert view.verified_tick >= 0
+
+
+def _full_social_class_view(*, tick: int = 847) -> SocialClassView:
+    """A fully-populated Wayne-C004-shaped ``SocialClassView`` — every field set."""
+    return SocialClassView(
+        class_id="C004",
+        verified_tick=tick,
+        role="labor_aristocracy",
+        county_fips="26163",
+        population=1,
+        wealth=0.563657,
+        organization=0.4,
+        repression_faced=0.2,
+        p_acquiescence=0.933179,
+        p_revolution=1.0,
+        consciousness=ConsciousnessSimplex(revolutionary=0.235071, liberal=0.5, fascist=0.264929),
+        county_class_composition=ClassComposition(
+            bourgeoisie=0.01,
+            petit_bourgeoisie=0.09,
+            labor_aristocracy=0.4,
+            proletariat=0.35,
+            lumpenproletariat=0.15,
+        ),
+    )
+
+
+def _sparse_social_class_view(*, tick: int = 3) -> SocialClassView:
+    """An all-``None`` (beyond identity/provenance) ``SocialClassView`` — a
+    class id tracked nowhere in the committed world."""
+    return SocialClassView(class_id="C999", verified_tick=tick)
+
+
+class TestSocialClassRoundTrip:
+    """Mirrors ``TestRoundTrip`` for :class:`SocialClassView`."""
+
+    @pytest.mark.parametrize("view_factory", [_full_social_class_view, _sparse_social_class_view])
+    def test_round_trips_to_an_equal_view(
+        self, tmp_path: Path, view_factory: Callable[[], SocialClassView]
+    ) -> None:
+        """A recorded-then-loaded view compares equal to the original."""
+        view = view_factory()
+        path = tmp_path / "view.json"
+
+        record_social_class_fixture(view, path)
+        loaded = load_social_class_fixture(path)
+
+        assert loaded == view
+        assert loaded.model_dump() == view.model_dump()
+
+    def test_recording_twice_is_byte_identical(self, tmp_path: Path) -> None:
+        """Recording the same view twice writes identical bytes (determinism)."""
+        view = _full_social_class_view()
+        first_path = tmp_path / "first.json"
+        second_path = tmp_path / "second.json"
+
+        record_social_class_fixture(view, first_path)
+        record_social_class_fixture(view, second_path)
+
+        assert first_path.read_bytes() == second_path.read_bytes()
+
+    def test_recorded_file_hydrates_through_hydrate_record(self, tmp_path: Path) -> None:
+        """``hydrate_record`` (keyed on ``kind``) accepts a recorded fixture."""
+        view = _full_social_class_view()
+        path = tmp_path / "view.json"
+        record_social_class_fixture(view, path)
+
+        data = json.loads(path.read_text(encoding="utf-8"))
+        rehydrated = hydrate_record(data)
+
+        assert rehydrated == view
+
+
+class TestSocialClassLoudFailure:
+    """Mirrors ``TestLoudFailure`` for :class:`SocialClassView`."""
+
+    def test_missing_file_raises_file_not_found(self, tmp_path: Path) -> None:
+        with pytest.raises(FileNotFoundError):
+            load_social_class_fixture(tmp_path / "does_not_exist.json")
+
+    def test_wrong_shaped_json_raises_validation_error(self, tmp_path: Path) -> None:
+        path = tmp_path / "wrong_shape.json"
+        path.write_text(json.dumps({"class_id": "not-a-valid-id"}), encoding="utf-8")
+
+        with pytest.raises(ValidationError):
+            load_social_class_fixture(path)
+
+
+class TestCommittedSocialClassFixture:
+    """The WO-23 harvester's committed fixture stays present and well-shaped.
+
+    Deliberately NOT a skip — mirrors ``TestCommittedFixture``.
+    """
+
+    def test_committed_fixture_is_present_and_well_shaped(self) -> None:
+        """The shipped fixture loads, names the right class id, and has a valid tick."""
+        assert _COMMITTED_SOCIAL_CLASS_FIXTURE.is_file(), (
+            f"committed projection fixture missing: {_COMMITTED_SOCIAL_CLASS_FIXTURE} — "
+            "regenerate via `uv run python tools/record_social_class_fixture.py`"
+        )
+
+        view = load_social_class_fixture(_COMMITTED_SOCIAL_CLASS_FIXTURE)
+
+        assert view.class_id == _SHIPPED_CLASS_ID
         assert view.verified_tick >= 0

@@ -887,6 +887,10 @@ run = "uv run python tools/regression_test.py generate --force"
 description = "Generate dense per-tick golden trace CSVs for the 5 regression scenarios (Program 13 item 2; also regenerates the sampled-checkpoint JSONs)"
 run = "uv run python tools/regression_test.py generate --force --dense"
 
+[tasks."archive:record-fixtures"]
+description = "Program 24 P1 keel item 5 (WO-6): harvest the Wayne (26163) county projection fixture from a small deterministic in-process run"
+run = "uv run python tools/record_projection_fixtures.py"
+
 [tasks."qa:e2e-regression"]
 description = "Run headless 5-tick tri-county sim with --strict, compare like-for-like baseline (spec-064; scope pairing fixed in spec-086 T038; dense golden leg added Task 10/E2b)"
 run = """

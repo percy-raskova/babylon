@@ -31,7 +31,10 @@ from babylon.intelligence.ai.llm_provider import (
     DeepSeekClient,
     LLMProvider,
     MockLLM,
+    ModelFactory,
+    PydanticAIChatClient,
     WorkersAIClient,
+    build_chat_model,
     build_llm_provider,
 )
 from babylon.intelligence.ai.persona import Persona, VoiceConfig
@@ -51,6 +54,10 @@ __all__ = [
     # Program 20 Track B: Workers AI provider + factory (Program 07 Decision 3)
     "WorkersAIClient",
     "build_llm_provider",
+    # Amendment Y / ADR100: pydantic-ai transport
+    "PydanticAIChatClient",
+    "ModelFactory",
+    "build_chat_model",
     # Sprint 4.2: Persona system
     "Persona",
     "VoiceConfig",

@@ -18,6 +18,9 @@ from types import SimpleNamespace
 from typing import Any
 
 import pytest
+from pydantic_ai.messages import ModelMessage, ModelResponse, TextPart
+from pydantic_ai.models.function import AgentInfo, FunctionModel
+from pydantic_ai.usage import RequestUsage
 
 from babylon.intelligence.providers import (
     DEFAULT_BUNDLED_BASE_URL,
@@ -247,7 +250,9 @@ def test_mode_override_cloudflare_unconfigured_degrades_to_mute() -> None:
 
 
 def make_provider(
-    client: FakeClient, kind: ProviderKind = ProviderKind.BUNDLED
+    client: FakeClient,
+    kind: ProviderKind = ProviderKind.BUNDLED,
+    chat_model: Any = None,
 ) -> OpenAICompatProvider:
     ep = ProviderEndpoint(
         kind=kind,
@@ -256,22 +261,50 @@ def make_provider(
         embed_model="embed-pin",
         timeout_s=5.0,
     )
-    return OpenAICompatProvider(ep, client_factory=lambda **_: client)
+    return OpenAICompatProvider(
+        ep,
+        client_factory=lambda **_: client,
+        chat_model_factory=(lambda _ep: chat_model) if chat_model is not None else None,
+    )
+
+
+def _narrate_model(text: str) -> FunctionModel:
+    """A pydantic-ai model returning fixed prose with pinned token usage."""
+
+    def fn(messages: list[ModelMessage], info: AgentInfo) -> ModelResponse:
+        return ModelResponse(
+            parts=[TextPart(text)],
+            usage=RequestUsage(input_tokens=7, output_tokens=11),
+        )
+
+    return FunctionModel(fn)
 
 
 def test_narrate_reports_pin_and_provider() -> None:
-    client = FakeClient(chat_text="the metropole trembles")
-    r = make_provider(client).narrate("sys", "prompt")
+    model = _narrate_model("the metropole trembles")
+    r = make_provider(FakeClient(), chat_model=model).narrate("sys", "prompt")
     assert r.text == "the metropole trembles"
     assert r.model_pin == "chat-pin"  # III.6 cache key material
     assert r.provider is ProviderKind.BUNDLED
     assert r.prompt_tokens == 7 and r.completion_tokens == 11
-    assert client.chat_calls[0]["stream"] is False
 
 
 def test_narrate_empty_output_is_loud_failure() -> None:
     with pytest.raises(ProviderUnavailable):
-        make_provider(FakeClient(chat_text="")).narrate("sys", "prompt")
+        make_provider(FakeClient(), chat_model=_narrate_model("")).narrate("sys", "prompt")
+
+
+def test_narrate_passes_system_as_instructions() -> None:
+    seen: dict[str, Any] = {}
+
+    def fn(messages: list[ModelMessage], info: AgentInfo) -> ModelResponse:
+        seen["instructions"] = info.instructions
+        seen["max_tokens"] = (info.model_settings or {}).get("max_tokens")
+        return ModelResponse(parts=[TextPart("prose")])
+
+    make_provider(FakeClient(), chat_model=FunctionModel(fn)).narrate("sys", "prompt")
+    assert seen["instructions"] == "sys"
+    assert seen["max_tokens"] == 512
 
 
 def test_embed_reports_dimensions_and_pin() -> None:
@@ -282,14 +315,11 @@ def test_embed_reports_dimensions_and_pin() -> None:
 
 
 def test_transport_failure_is_provider_unavailable() -> None:
-    class DeadCompletions:
-        def create(self, **_: Any) -> Any:
-            raise TimeoutError("upstream gone")
+    def dead(messages: list[ModelMessage], info: AgentInfo) -> ModelResponse:
+        raise TimeoutError("upstream gone")
 
-    client = FakeClient()
-    client.chat = SimpleNamespace(completions=DeadCompletions())
     with pytest.raises(ProviderUnavailable):
-        make_provider(client).narrate("s", "p")
+        make_provider(FakeClient(), chat_model=FunctionModel(dead)).narrate("s", "p")
 
 
 # ---------------------------------------------------------------------------

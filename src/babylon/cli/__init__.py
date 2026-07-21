@@ -11,6 +11,8 @@ import typer
 
 from babylon import __version__
 from babylon.cli import play as play_cmd
+from babylon.render.session import set_render_override
+from babylon.render.tiers import RenderTier
 
 app = typer.Typer(
     name="babylon",
@@ -53,8 +55,16 @@ def main(
         is_eager=True,
         help="Show the Babylon version and exit.",
     ),
+    # noqa: B008 below — typer's DI-style Option() default; ruff's bugbear allowlist for
+    # Option/Argument defaults doesn't cover Enum-typed params (verified: str/bool are exempt).
+    render: RenderTier | None = typer.Option(  # noqa: B008
+        None,
+        "--render",
+        help="Override the persisted render tier for this session (glyph|pixel).",
+    ),
 ) -> None:
     """Babylon CLI root. With no subcommand, launches the game (play)."""
+    set_render_override(render)
     if ctx.invoked_subcommand is None:
         play_cmd.run()
 

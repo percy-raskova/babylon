@@ -313,6 +313,29 @@ Cold Collapse canon tokens REMAIN (contract add-only; wire/dialectic/data ramps 
 their language). The CHROME skin moves to ksbc: crimson borders, gold selection/action,
 near-black field. §6's "cyan on frames" clause is superseded for chrome.
 
+### Degraded palette (256-color, ADR097 D5)
+
+The crimson/gold truecolor canon has a DECLARED 256-color fallback (ADR097 D5): terminals without
+truecolor render the same roles at their nearest xterm-256 index. This is honest degradation, never
+silent — `babylon doctor` prints the palette verdict. The mapping is computed by
+`nearest_xterm256` and lives in `babylon.render.tiers.DEGRADED_256_PALETTE` (the single source of
+truth; `tests/unit/render/test_design_bible_parity.py` fails if this table drifts from the code).
+
+| Role token | Truecolor | xterm-256 |
+|---|---|---|
+| `field` | #1a0000 | 232 |
+| `text` | #e8e8e8 | 254 |
+| `accent_crimson` | #dc143c | 161 |
+| `accent_gold` | #ffd700 | 220 |
+| `selection_text` | #000000 | 16 |
+| `muted_dim` | #404040 | 238 |
+| `muted_light` | #c0c0c0 | 250 |
+| `muted_dark` | #202020 | 234 |
+| `green_dark` | #228b22 | 28 |
+| `green_bright` | #32cd32 | 77 |
+| `royal` | #4169e1 | 62 |
+| `cyan` | #008b8b | 30 |
+
 ### The dialog anatomy (newt idiom → FloatingPanel/modal reskin)
 
 - **Dead space is composition**: takeovers, lobby, login, scenario select, endgame =

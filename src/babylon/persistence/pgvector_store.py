@@ -28,6 +28,7 @@ from psycopg.rows import dict_row
 from psycopg_pool import ConnectionPool
 
 from babylon.config.llm_config import CANONICAL_EMBEDDING_DIM
+from babylon.intelligence.embedding_dims import assert_store_dimension
 
 logger = logging.getLogger(__name__)
 
@@ -70,7 +71,13 @@ class PgVectorStore:
         pool: ConnectionPool[Connection[Any]],
         dimension: int = CANONICAL_EMBEDDING_DIM,
         collection: str = "default",
+        model_pin: str | None = None,
     ) -> None:
+        # D5 (ADR096): when the campaign's embedding pin is known, the store's
+        # configured dimension MUST equal that pin's dimension — the vector(N)
+        # column, the store, and the model reconcile at construction, loudly.
+        if model_pin is not None:
+            assert_store_dimension(model_pin, dimension)
         self._pool = pool
         self._dimension = dimension
         self._collection = collection

@@ -48,6 +48,7 @@ class _FakeOutcome:
 
     tick: int
     paused: bool = False
+    autosaved: bool = False
     world: Any = None
     events: tuple[Any, ...] = ()
 
@@ -199,6 +200,55 @@ class TestAutopauseAck:
         driver.advance_once()
         assert driver.pending_pause is None
         assert driver.pause_summary is None
+
+
+# --------------------------------------------------------------------------- #
+# Autosave-cadence tracking (Unit T4-core/C6) — reads                         #
+# TickAdvanceResult.autosaved, never re-derives is_checkpoint_tick here.      #
+# --------------------------------------------------------------------------- #
+
+
+class TestAutosaveTracking:
+    def test_last_autosave_tick_is_none_before_any_checkpoint(self) -> None:
+        driver = PacedTickDriver(
+            _FakeAdvancer([_FakeOutcome(tick=1, autosaved=False)]), starting_tick=0
+        )
+        driver.advance_once()
+        assert driver.last_autosave_tick is None
+
+    def test_last_autosave_tick_updates_exactly_on_a_checkpoint_tick(self) -> None:
+        advancer = _FakeAdvancer(
+            [
+                _FakeOutcome(tick=1, autosaved=False),
+                _FakeOutcome(tick=2, autosaved=True),
+                _FakeOutcome(tick=3, autosaved=False),
+            ]
+        )
+        driver = PacedTickDriver(advancer, starting_tick=0)
+
+        driver.advance_once()
+        assert driver.last_autosave_tick is None
+
+        driver.advance_once()
+        assert driver.last_autosave_tick == 2
+
+        # A later non-checkpoint tick does not clear the last observed one.
+        driver.advance_once()
+        assert driver.last_autosave_tick == 2
+
+    def test_run_until_paused_tracks_the_last_checkpoint_across_a_whole_run(self) -> None:
+        advancer = _FakeAdvancer(
+            [
+                _FakeOutcome(tick=1, autosaved=False),
+                _FakeOutcome(tick=2, autosaved=True),
+                _FakeOutcome(tick=3, paused=True, autosaved=False),
+            ]
+        )
+        driver = PacedTickDriver(advancer, starting_tick=0)
+
+        driver.run_until_paused()
+
+        assert driver.last_autosave_tick == 2
 
 
 @dataclass(frozen=True)

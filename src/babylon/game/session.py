@@ -50,6 +50,25 @@ separate ID spaces; and an optional injected :data:`VaultPageSource`
 (``pages=``) :meth:`GameSession.read_page` thinly wraps, satisfying the
 TUI's ``CampaignHandle`` seam (``babylon.tui.app``) without either module
 importing the other.
+
+Unit C6 (the save wire — progress + autosave + resume) closes the
+remaining gap this module used to carry silently:
+:meth:`~babylon.persistence.babylon_meta.BabylonMetaStore.record_progress`
+is now called every tick a :class:`ProgressStore` is wired (see
+:class:`ProgressStore` below — previously unwired to zero production
+callers); :attr:`TickAdvanceResult.autosaved` marks the program plan's
+"autosave cadence 52 (``CHECKPOINT_EVERY_TICKS`` analog)" release
+requirement by reusing :func:`~babylon.persistence.delta.
+is_checkpoint_tick` — the SAME spec-089 constant the hex-delta pipeline
+already checkpoints on, not a second, competing cadence constant; and
+crash-resume is :func:`resume_campaign` composing the two ALREADY-EXISTING
+mechanisms named above (:meth:`~PostgresRuntime.get_last_committed_tick` +
+:meth:`~PostgresRuntime.hydrate_graph`) — this unit adds no new
+persistence mechanism there, only the proof
+(``tests/integration/game/test_session_integration.py``) that the
+composition wired here actually round-trips through real Postgres.
+Pg_dump-style save ARTIFACTS (a portable file a player can copy/share) are
+T7's installer-scoped concern, not this module's.
 """
 
 from __future__ import annotations
@@ -73,6 +92,7 @@ from babylon.kernel.event_bus import Event
 from babylon.models.config import SimulationConfig
 from babylon.models.enums.events import EventType
 from babylon.models.world_state import WorldState
+from babylon.persistence.delta import is_checkpoint_tick
 from babylon.persistence.envelope import PerTickTransactionEnvelope
 from babylon.persistence.postgres_schema import ensure_ddl_applied
 from babylon.projection.verbs.submit import TurnSink, build_player_actions, submit_verb
@@ -274,11 +294,23 @@ class TickAdvanceResult:
         (Unit C4) — same order, one-to-one with ``events``. The Chronicle
         client's real content source; never re-derived from ``world``.
     :param paused: the pacing driver's pause-predicate verdict for this tick.
+    :param autosaved: ``True`` iff this tick is a checkpoint tick under
+        :func:`~babylon.persistence.delta.is_checkpoint_tick` (Unit C6 —
+        the program plan's "autosave cadence 52" release requirement,
+        reusing the SAME spec-089 ``CHECKPOINT_EVERY_TICKS`` constant the
+        hex-delta pipeline already checkpoints on rather than a second,
+        competing cadence). Marks the OFFICIAL yearly savepoints; every
+        tick (checkpoint or not) already persists a full snapshot via
+        :meth:`~PostgresRuntime.persist_tick` +
+        :meth:`~PostgresRuntime.persist_tick_atomic` above — this flag
+        never means "only checkpoint ticks are safe to resume from," it
+        flags the coarser cadence a UI/save-browser should advertise to
+        the player.
     :param determinism_hash: the tick's replay-identity stamp (see
         :func:`_replay_identity_hash`).
     """
 
-    __slots__ = ("chronicle", "determinism_hash", "events", "paused", "tick", "world")
+    __slots__ = ("autosaved", "chronicle", "determinism_hash", "events", "paused", "tick", "world")
 
     def __init__(
         self,
@@ -288,6 +320,7 @@ class TickAdvanceResult:
         events: tuple[Event, ...],
         chronicle: tuple[ChronicleEvent, ...],
         paused: bool,
+        autosaved: bool,
         determinism_hash: str,
     ) -> None:
         self.tick = tick
@@ -295,6 +328,7 @@ class TickAdvanceResult:
         self.events = events
         self.chronicle = chronicle
         self.paused = paused
+        self.autosaved = autosaved
         self.determinism_hash = determinism_hash
 
 
@@ -433,6 +467,11 @@ class GameSession:
         Also keeps the lobby's ``babylon_meta.campaign.last_tick`` live when
         a :class:`ProgressStore` is wired — the review fix for the gap where
         the catalog was written only at campaign creation and never again.
+
+        Unit C6: also stamps :attr:`TickAdvanceResult.autosaved` via
+        :func:`~babylon.persistence.delta.is_checkpoint_tick` — the same
+        52-tick (one simulated year) cadence the hex-delta pipeline already
+        checkpoints on.
         """
         next_tick = self.tick + 1
         pending = self._store.get_pending_turns(self.session_id, next_tick)
@@ -467,12 +506,14 @@ class GameSession:
 
         self.tick = next_tick
         paused = self._pause_predicate(events)
+        autosaved = is_checkpoint_tick(next_tick)
         return TickAdvanceResult(
             tick=next_tick,
             world=world,
             events=events,
             chronicle=chronicle,
             paused=paused,
+            autosaved=autosaved,
             determinism_hash=determinism_hash,
         )
 

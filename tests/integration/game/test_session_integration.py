@@ -66,6 +66,48 @@ def test_create_advance_and_resume_one_real_tick(pg_pool: ConnectionPool) -> Non
             conn.execute("DELETE FROM game_session WHERE id = %s", (session_id,))
 
 
+def test_autosave_marks_the_checkpoint_tick_and_crash_resume_survives_it(
+    pg_pool: ConnectionPool,
+) -> None:
+    """Unit C6, the full "save wire" story against REAL Postgres: a
+    non-checkpoint tick is not autosaved, the checkpoint tick (52) IS, and
+    crash-resume from ``get_last_committed_tick`` reconstructs correctly on
+    both sides of that boundary — the SAME real ``persist_tick``/
+    ``persist_tick_atomic`` mechanism proven in the test above, now proven
+    across an actual checkpoint-cadence crossing.
+    """
+    runtime = PostgresRuntime(pool=pg_pool)
+    ensure_schema(runtime)
+
+    session = create_new_campaign(runtime, scenario=WayneCountyScenario())
+    session_id = session.session_id
+    try:
+        not_yet = session.advance_tick()
+        assert not_yet.tick == 1
+        assert not_yet.autosaved is False
+
+        # Fast-forward to the tick just before the checkpoint boundary —
+        # running the real 30-system engine 51 more times to reach it would
+        # prove nothing this direct jump does not already prove honestly.
+        session.tick = 51
+        checkpoint = session.advance_tick()
+        assert checkpoint.tick == 52
+        assert checkpoint.autosaved is True
+        assert runtime.get_last_committed_tick(session_id) == 52
+
+        resumed = resume_campaign(runtime, session_id)
+        assert resumed.tick == 52
+        assert sorted(resumed.graph.nodes) == sorted(session.graph.nodes)
+
+        after = resumed.advance_tick()
+        assert after.tick == 53
+        assert after.autosaved is False
+        assert runtime.get_last_committed_tick(session_id) == 53
+    finally:
+        with pg_pool.connection() as conn:
+            conn.execute("DELETE FROM game_session WHERE id = %s", (session_id,))
+
+
 def test_progress_store_keeps_the_lobby_row_live_through_create_advance_and_resume(
     pg_pool: ConnectionPool,
 ) -> None:

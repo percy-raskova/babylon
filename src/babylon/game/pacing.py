@@ -28,6 +28,15 @@ place that changes is whatever ``pause_predicate=`` the composition root
 hands to :func:`~babylon.game.session.create_new_campaign` /
 :func:`~babylon.game.session.resume_campaign` — nothing here.
 
+Unit C6 adds the SAME pattern for the autosave cadence:
+:attr:`~babylon.game.session.TickAdvanceResult.autosaved` (``session.py``'s
+own reuse of :func:`~babylon.persistence.delta.is_checkpoint_tick`) is
+read, never re-derived — this module does not import
+``babylon.persistence`` at all. :attr:`PacedTickDriver.last_autosave_tick`
+tracks the most recent checkpoint tick this driver has itself observed, a
+convenience for a status line ("last autosaved: tick N") that would
+otherwise have to re-inspect every past result itself.
+
 **What this module owns instead** — two invariants the wrapped advancer
 does NOT itself enforce:
 
@@ -141,6 +150,13 @@ class TickOutcomeLike(Protocol):
     @property
     def paused(self) -> bool:
         """The wrapped advancer's OWN pause-predicate verdict for this tick."""
+        ...
+
+    @property
+    def autosaved(self) -> bool:
+        """The wrapped advancer's OWN checkpoint-cadence verdict for this
+        tick (Unit C6 — :attr:`~babylon.game.session.TickAdvanceResult.
+        autosaved`, ``is_checkpoint_tick`` reused, never re-derived here)."""
         ...
 
     @property
@@ -303,6 +319,7 @@ class PacedTickDriver:
         self._sleep = sleep
         self._last_tick: int = starting_tick
         self._last_world: WorldState | None = None
+        self._last_autosave_tick: int | None = None
         self._locked = False
         self._lock_reason: GameOutcome | None = None
         self._pending_pause: PauseNotice | None = None
@@ -319,6 +336,15 @@ class PacedTickDriver:
     def last_tick(self) -> int:
         """The last tick this driver has itself observed and validated."""
         return self._last_tick
+
+    @property
+    def last_autosave_tick(self) -> int | None:
+        """The most recent checkpoint tick this driver has itself observed
+        (Unit C6), or ``None`` if no observed tick has been a checkpoint
+        yet. Updated from :attr:`~babylon.game.session.TickAdvanceResult.
+        autosaved` — never recomputed from ``last_tick`` via a second
+        ``is_checkpoint_tick`` call site."""
+        return self._last_autosave_tick
 
     @property
     def locked(self) -> bool:
@@ -457,6 +483,8 @@ class PacedTickDriver:
         previous_world = self._last_world if self._last_world is not None else result.world
         self._last_tick = result.tick
         self._last_world = result.world
+        if result.autosaved:
+            self._last_autosave_tick = result.tick
 
         if self._endgame_observer is not None:
             self._endgame_observer.on_tick(previous_world, result.world)

@@ -363,6 +363,57 @@ def test_advance_tick_runs_with_no_progress_store() -> None:
     assert result.tick == 1
 
 
+# --------------------------------------------------------------------------- #
+# autosave cadence (Unit C6) — reuses delta.CHECKPOINT_EVERY_TICKS/           #
+# is_checkpoint_tick, never a second, competing cadence constant.            #
+# --------------------------------------------------------------------------- #
+
+
+def test_advance_tick_marks_autosaved_exactly_at_checkpoint_cadence() -> None:
+    """``TickAdvanceResult.autosaved`` fires True on ticks 52, 104, ... and
+    False everywhere else — the program plan's "autosave cadence 52
+    (CHECKPOINT_EVERY_TICKS analog)" release requirement, reusing
+    :func:`~babylon.persistence.delta.is_checkpoint_tick` rather than
+    duplicating the constant."""
+    store = _FakeStore()
+    session = create_new_campaign(store, scenario=WayneCountyScenario())
+
+    not_yet = session.advance_tick()
+    assert not_yet.tick == 1
+    assert not_yet.autosaved is False
+
+    # Fast-forward straight to the tick just before a checkpoint boundary —
+    # exercising the real 30-system engine 52 times to prove the same point
+    # buys nothing a direct tick jump does not already prove honestly.
+    session.tick = 51
+    checkpoint = session.advance_tick()
+    assert checkpoint.tick == 52
+    assert checkpoint.autosaved is True
+
+    after = session.advance_tick()
+    assert after.tick == 53
+    assert after.autosaved is False
+
+    session.tick = 103
+    second_checkpoint = session.advance_tick()
+    assert second_checkpoint.tick == 104
+    assert second_checkpoint.autosaved is True
+
+
+def test_advance_tick_autosaved_matches_is_checkpoint_tick_directly() -> None:
+    """Pins the reuse itself: ``autosaved`` and a direct call to
+    ``is_checkpoint_tick`` on the same tick number never disagree."""
+    from babylon.persistence.delta import is_checkpoint_tick
+
+    store = _FakeStore()
+    session = create_new_campaign(store, scenario=WayneCountyScenario())
+    session.tick = 51
+
+    result = session.advance_tick()
+
+    assert result.autosaved == is_checkpoint_tick(result.tick)
+
+
 def test_pause_predicate_seam_is_injectable() -> None:
     """The T1.1 requirement: a caller-supplied predicate overrides the
     default entirely, with no change to ``GameSession`` itself."""

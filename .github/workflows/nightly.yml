@@ -37,6 +37,7 @@ jobs:
       - uses: ./.github/actions/bootstrap-python
         with:
           gdal: "true"
+          server: "true"
       - name: Heavy shard (includes slow)
         env:
           # Self-salvage caps (2026-07-16 wedge incident): a hung shard SIGINTs
@@ -77,6 +78,7 @@ jobs:
       - uses: ./.github/actions/bootstrap-python
         with:
           gdal: "true"
+          server: "true"
       - uses: ./.github/actions/postgres-up
       - uses: ./.github/actions/fetch-reference-db
       - name: Django migrate (fresh compose DB)
@@ -133,6 +135,7 @@ jobs:
       - uses: ./.github/actions/bootstrap-python
         with:
           gdal: "true"
+          server: "true"
       - uses: ./.github/actions/fetch-reference-db
       - name: Catalog sentinel (DB probe — catalog↔DB reconciliation)
         run: uv run python tools/sentinel_check.py catalog --check
@@ -174,6 +177,7 @@ jobs:
       - uses: ./.github/actions/bootstrap-python
         with:
           gdal: "true"
+          server: "true"
       - name: G1 standing pacing gate (mise run qa:pacing)
         run: mise run qa:pacing
       - name: Upload test results

@@ -171,6 +171,17 @@ class SimulationRunConfig(BaseModel):
             "Skipped on non-success exit codes."
         ),
     )
+    vault_root: Path | None = Field(
+        default=None,
+        description=(
+            "Program 24 / Amendment W (III.13): when set, an Archive "
+            "tick-baker is wired as the tick loop's tick_commit_observer, "
+            "baking vault pages into this dulwich repository root at every "
+            "committed tick (tick 0 included). None — the default, and "
+            "what qa:regression runs — wires no observer, leaving the "
+            "tick loop byte-identical to its pre-Archive behavior."
+        ),
+    )
     shock_schedule: tuple[ScheduledBlocShock, ...] = Field(
         default=(),
         description=(

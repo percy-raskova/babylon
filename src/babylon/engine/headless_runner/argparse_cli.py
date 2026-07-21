@@ -163,6 +163,17 @@ def build_parser() -> argparse.ArgumentParser:
             "Skipped silently on non-success exit codes."
         ),
     )
+    parser.add_argument(
+        "--vault-root",
+        type=Path,
+        default=None,
+        help=(
+            "Program 24 (Amendment W): bake Archive vault pages into this "
+            "dulwich repository root at every committed tick, tick 0 "
+            "included. Omitted (default): no observer is wired and the "
+            "tick loop is byte-identical to its pre-Archive behavior."
+        ),
+    )
 
     return parser
 

@@ -18,11 +18,15 @@ skeleton until then.
 
 from __future__ import annotations
 
-from pathlib import Path
+from typing import TYPE_CHECKING
 
-from babylon.projection.vault.git_backend import commit_page, init_vault
+from babylon.projection.vault.git_backend import commit_page, commit_pages, init_vault
 from babylon.projection.vault.render import render_county
 from babylon.projection.view_models import CountyView
+
+if TYPE_CHECKING:
+    from collections.abc import Mapping
+    from pathlib import Path
 
 
 class VaultMaterializer:
@@ -64,6 +68,27 @@ class VaultMaterializer:
             message=f"bake: county/{view.county_fips} @ tick {tick}",
         )
         return self._vault_root / relative_path
+
+    def bake_tick(self, pages: Mapping[str, str], *, tick: int) -> bytes | None:
+        """Bake one committed tick's page set as ONE commit (WO-44).
+
+        The vault-at-scale path: unchanged pages are skipped by content
+        hash and every changed page lands in a single sim-time-pinned
+        commit (see :func:`~babylon.projection.vault.git_backend.
+        commit_pages`) — a quiet tick costs no commit at all.
+
+        :param pages: relative page path → rendered page content, already
+            rendered by the caller (the tick baker composes per-kind
+            renderers; this method only materializes).
+        :param tick: the committed tick, driving the commit timestamp.
+        :returns: the commit sha, or ``None`` when nothing changed.
+        """
+        return commit_pages(
+            self._vault_root,
+            pages,
+            tick=tick,
+            message=f"bake: tick {tick}",
+        )
 
 
 __all__ = ["VaultMaterializer"]

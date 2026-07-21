@@ -14,6 +14,7 @@ from __future__ import annotations
 from typing import TYPE_CHECKING, Any
 
 from babylon.projection.county import project_county
+from babylon.projection.vault.render import render_county
 
 if TYPE_CHECKING:
     from babylon.projection.vault.materializer import VaultMaterializer
@@ -37,12 +38,17 @@ class CountyTickBaker:
         """Project and bake every configured county for a committed tick.
 
         Read-only over ``world``/``graph`` per the observer contract; all
-        writes go to the vault repository.
+        writes go to the vault repository — as ONE commit for the whole
+        tick, with byte-identical pages skipped
+        (:meth:`~babylon.projection.vault.materializer.VaultMaterializer.
+        bake_tick`, the WO-44 vault-at-scale contract).
 
         :param tick: The committed tick number.
         :param world: The post-tick world state.
         :param graph: The post-tick engine graph.
         """
+        pages: dict[str, str] = {}
         for fips in self._county_fips:
             view = project_county(fips, graph=graph, world=world, tick=tick)
-            self._materializer.bake_county(view, tick=tick)
+            pages[f"county/{view.county_fips}.md"] = render_county(view, verified_tick=tick)
+        self._materializer.bake_tick(pages, tick=tick)

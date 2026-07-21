@@ -19,11 +19,21 @@ from typing import Final, Protocol, runtime_checkable
 
 from textual import events
 from textual.app import ComposeResult
+from textual.markup import escape
 from textual.message import Message
 from textual.widgets import Label
 from textual.widgets._markdown import MarkdownFence
 
 DIRECTIVE_RE: Final = re.compile(r"^\{(\w+)\}\s*(.*)$")
+
+NARRATIVE_CACHE_KEY_RE: Final = re.compile(r"^cached:(\d+):(.+)$")
+"""Matches the vault's narrator byline convention (design canon S5,
+``ai/_inbox/tui/20260719archiveinterfacedesign.md`` line 100): a baked
+``{narrative}`` fence's info string is ``cached:<tick>:<model_pin>`` — the
+non-entity two-thirds of the III.6 ``(entity, tick, model_pin)`` cache key
+(the entity is already the enclosing page). Ticks are non-negative by
+construction (``CountyView.verified_tick`` etc. are ``Field(ge=0)``); a
+negative or non-numeric tick is a malformed stamp, not a valid one."""
 
 StatblockRow = tuple[str, str]
 StatblockProvider = Callable[[str], Sequence[StatblockRow] | None]
@@ -188,18 +198,60 @@ class BabylonFence(MarkdownFence):
         if rows is None:
             yield Label(f"▌ no statblock projection for {arg}", classes="absence")
             return
-        lines = [f"[b $accent]{arg}[/]"]
-        lines += [f"[$text-muted]{key:<20}[/] [$foreground]{val}[/]" for key, val in rows]
+        # Row values are real view-model-derived strings (a sovereign id, a
+        # class-composition share, a name) with no character restriction —
+        # a lowercase-initiated bracket span (e.g. "[unclear]", a plausible
+        # LLM/annotation idiom) parses as a Textual Content markup tag and
+        # its text is silently dropped by the renderer if left unescaped
+        # (verified against ``textual.markup.to_content`` at the 8.2.8 pin,
+        # not just ``rich.markup``, since ``Label(markup=True)`` builds a
+        # ``Content`` via ``textual.markup``, not a Rich ``Text``). Escape
+        # every dynamic segment; only the static style tags stay literal.
+        lines = [f"[b $accent]{escape(arg)}[/]"]
+        lines += [
+            f"[$text-muted]{escape(key):<20}[/] [$foreground]{escape(val)}[/]" for key, val in rows
+        ]
         yield Label("\n".join(lines), classes="statblock", markup=True)
 
     def _directive_absence(self, arg: str) -> ComposeResult:
-        body = self.code.strip() or arg
-        yield Label(f"▌ ABSENT — {body}", classes="absence", markup=False)
+        detail = self.code.strip() or arg
+        if not detail:
+            # Both the fence body and the info-string arg are empty: the
+            # template emitted an absence block with no remedy at all. That
+            # is a builder bug, not a game fact — say so loudly rather than
+            # rendering a bare, mysterious dash (III.11: silence is loud).
+            detail = "no remedy recorded — template omitted a reason"
+        yield Label(f"▌ ABSENT — {detail}", classes="absence", markup=False)
 
     def _directive_narrative(self, arg: str) -> ComposeResult:
         body = self.code.strip()
+        stamp: str | None
+        if arg.startswith("cached:"):
+            match = NARRATIVE_CACHE_KEY_RE.match(arg)
+            if match is None:
+                # Carries the cache-key prefix but doesn't parse as
+                # tick+model_pin — a malformed provenance stamp is a loud
+                # refusal, never a plausible-looking byline (III.11).
+                yield Label(
+                    f"▌ MALFORMED NARRATIVE CACHE KEY {arg!r} — refusing to render",
+                    classes="absence",
+                )
+                return
+            tick, model_pin = match.group(1), match.group(2)
+            stamp = f"tick {tick} · {escape(model_pin)}"
+        else:
+            stamp = escape(arg) if arg else None
+        if not body:
+            # No cached prose yet — the async narrator hasn't written this
+            # block (mute provider, or a pending job). S5: pages stay fully
+            # informative with the narrative layer off, so this renders an
+            # honest absence, not a blank plate (S4/III.11).
+            detail = f" for {stamp}" if stamp else ""
+            yield Label(f"▌ no narration cached{detail} yet", classes="absence")
+            return
+        byline = f"— the Narrator ({stamp})" if stamp else "— the Narrator"
         yield Label(
-            f"[i $foreground]{body}[/]\n[$text-muted]— the Narrator ({arg})[/]",
+            f"[i $foreground]{escape(body)}[/]\n[$text-muted]{byline}[/]",
             classes="narrative",
             markup=True,
         )
@@ -231,6 +283,7 @@ class BabylonFence(MarkdownFence):
 
 __all__ = [
     "DIRECTIVE_RE",
+    "NARRATIVE_CACHE_KEY_RE",
     "StatblockRow",
     "StatblockProvider",
     "no_statblocks",

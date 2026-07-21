@@ -25,6 +25,7 @@ from textual.widgets import Label
 from textual.widgets._markdown import MarkdownFence
 
 from babylon.projection.topology.choropleth import ChoroplethCell, MapTier
+from babylon.tui.topology.egotree import parse_egotree_body, render_egotree
 
 DIRECTIVE_RE: Final = re.compile(r"^\{(\w+)\}\s*(.*)$")
 
@@ -340,6 +341,19 @@ class BabylonFence(MarkdownFence):
         from babylon.tui.map_room import render_map_room
 
         yield render_map_room(cells, render_tier="glyph")
+
+    def _directive_egotree(self, _arg: str) -> ComposeResult:
+        try:
+            tree = parse_egotree_body(self.code)
+        except ValueError as exc:
+            yield Label(f"▌ ABSENT — {{egotree}} {exc}", classes="absence")
+            return
+        # Reuses the {paoh} box-container style (round border, panel padding)
+        # rather than a dedicated ".egotree" CSS class — new CSS classes live
+        # in ArchiveApp.CSS (tui/app.py), which is WO-45's serialized-integrator
+        # file and out of bounds for this Wave-1 worktree; both directives are
+        # Lane T topology surfaces, so the shared look is apt, not a hack.
+        yield Label(render_egotree(tree), classes="paoh", markup=True)
 
     # Public naming-convention handlers, not the underscore form: Textual
     # reserves `_on_<event>` for its own base-class interception (dispatch

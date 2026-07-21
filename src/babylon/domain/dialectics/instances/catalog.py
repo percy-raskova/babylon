@@ -110,7 +110,13 @@ from babylon.domain.dialectics.instances.connectivity import (
 )
 from babylon.formulas.contradiction import calculate_wealth_asymmetry_balance
 
-__all__ = ["GraphInputs", "build_default_coupling_graph", "build_default_registry"]
+__all__ = [
+    "VOL_I_RESERVED_OPPOSITIONS",
+    "VOL_II_RESERVED_OPPOSITIONS",
+    "GraphInputs",
+    "build_default_coupling_graph",
+    "build_default_registry",
+]
 
 logger = logging.getLogger(__name__)
 
@@ -631,6 +637,35 @@ def build_default_registry(rate_weight: float = 10.0) -> OppositionRegistry[Grap
     return OppositionRegistry(bindings=bindings, rate_weight=rate_weight)
 
 
+# ============================================================================
+# CAPITAL VOL I ∥ VOL II CONTRACT  (ADR103 · §10 parallel-build protocol)
+# ============================================================================
+# The fork gate for the two-volume parallel build. These tuples RESERVE the
+# opposition keys each lane will register, WITHOUT registering any live binding
+# here — ``build_default_registry`` is untouched, so the tick hash and physics
+# are byte-identical across this commit (proved by
+# ``test_reserved_oppositions_are_dormant``). Each lane, in its own worktree,
+# adds its bindings + measures + ``GraphInputs`` fields inside its reserved key
+# namespace; the dead coupling slots in ``_DEFAULT_COUPLINGS`` below hold the
+# cross-opposition wiring skeleton so the two worktrees never collide on the map.
+#
+# GraphInputs field partition (collision convention): Vol I adds production-layer
+# fields (value/use-value, labor/labor-power, surplus-method pairs); Vol II adds
+# circulation-layer fields (realization, reproduction, disproportionality). Add
+# fields only within your volume's group; never rename or reorder existing ones.
+VOL_I_RESERVED_OPPOSITIONS: tuple[str, ...] = (
+    "value_usevalue",
+    "labor_laborpower",
+    "absolute_relative_surplus",
+)
+VOL_II_RESERVED_OPPOSITIONS: tuple[str, ...] = (
+    "circulation",
+    "realization",
+    "reproduction",
+    "disproportionality",
+)
+
+
 # The ratified crisis-producer map. Every edge is DERIVED — read off the code
 # against ``coupling.py``'s operational definitions of the five kinds, not
 # authored from theory — and carries its citation, because the graph is a
@@ -644,6 +679,17 @@ _DEFAULT_COUPLINGS: tuple[Coupling, ...] = (
     # scope for the Vol III money work and are NOT faked.
     Coupling(source="circulation", target="realization", kind="transforms"),
     Coupling(source="reproduction", target="disproportionality", kind="transforms"),
+    # CAPITAL VOL I reserved slots (ADR103 contract commit; §10 parallel
+    # protocol). The three production-layer oppositions are NOT yet registered
+    # as bindings — these edges hold the wiring skeleton so the Vol I lane and
+    # the Vol II lane never collide on the coupling map. The first two connect
+    # dormant→dormant keys; the third bridges the dormant surplus-method axis
+    # into the LIVE ``wage`` axis (the Fundamental Theorem Wᶜ > Vᶜ). All three
+    # are skipped by the builder until Vol I binds them — exactly as the Vol II
+    # circulation edges above are — and are NOT faked.
+    Coupling(source="value_usevalue", target="labor_laborpower", kind="feeds"),
+    Coupling(source="labor_laborpower", target="absolute_relative_surplus", kind="feeds"),
+    Coupling(source="absolute_relative_surplus", target="wage", kind="feeds"),
     # DebtAccumulation.update consumes profit_of_enterprise — the residual of
     # the surplus distribution (economics/tick/system/__init__.py, the annual
     # county financial block): the distribution's output IS the debt tracker's

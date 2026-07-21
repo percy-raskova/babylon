@@ -1136,6 +1136,9 @@ class TickDynamicsSystem(SystemBase):
                 )
             )
 
+    # === CAPITAL VOL I — production layer (Feature 021) ===
+    # Room partition (ADR103 / §10): the Vol I lane owns this region and its
+    # helpers. The Vol II lane must not edit below this banner.
     def _compute_vol1_layer(
         self,
         county_states: dict[str, CountyEconomicState],
@@ -1204,6 +1207,9 @@ class TickDynamicsSystem(SystemBase):
         adjusted_wage = county.median_wage * (1.0 - pressure)
         return county.model_copy(update={"median_wage": adjusted_wage})
 
+    # === CAPITAL VOL II — circulation layer (Feature 023) ===
+    # Room partition (ADR103 / §10): the Vol II lane owns this region and its
+    # helpers. The Vol I lane must not edit below this banner.
     def _compute_circulation_layer(
         self,
         county_states: dict[str, CountyEconomicState],
@@ -1399,6 +1405,9 @@ class TickDynamicsSystem(SystemBase):
 
         return county.model_copy(update={"circulation_state": new_circ_state})
 
+    # === CAPITAL VOL III — financial layer (Feature 024, LANDED ADR089) ===
+    # Room partition (ADR103 / §10): owned by NEITHER volume lane — Vol III is
+    # merged and baseline-blessed. Neither lane edits below this banner.
     def _compute_financial_layer(
         self,
         county_states: dict[str, CountyEconomicState],

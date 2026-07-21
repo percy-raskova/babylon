@@ -180,17 +180,22 @@ class TestDefaultCouplingGraph:
             ("surplus_distribution", "financial", "constrains"),
         }
 
-    def test_only_the_volume_two_edges_are_still_skipped(
-        self, caplog: pytest.LogCaptureFixture
-    ) -> None:
+    def test_reserved_slots_are_skipped(self, caplog: pytest.LogCaptureFixture) -> None:
         with caplog.at_level(logging.INFO, logger="babylon.domain.dialectics.instances.catalog"):
             build_default_coupling_graph(build_default_registry())
         skipped = [r for r in caplog.records if "Skipping coupling" in r.getMessage()]
-        # Only the two Volume II circulation edges remain unbound; they are
-        # explicitly out of scope and are NOT faked.
-        assert len(skipped) == 2
+        # Reserved-but-unbound slots: the two Volume II circulation edges plus the
+        # three Volume I production edges reserved by the ADR103 contract commit.
+        # All are explicitly out of scope for now and are NOT faked.
+        assert len(skipped) == 5
         joined = " ".join(r.getMessage() for r in skipped)
-        for endpoint in ("realization", "disproportionality"):
+        for endpoint in (
+            "realization",  # Vol II
+            "disproportionality",  # Vol II
+            "value_usevalue",  # Vol I
+            "labor_laborpower",  # Vol I
+            "absolute_relative_surplus",  # Vol I
+        ):
             assert endpoint in joined
         for landed in ("debt_spiral", "financial"):
             assert landed not in joined

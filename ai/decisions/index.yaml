@@ -1,9 +1,14 @@
 meta:
-  version: 1.43.0
+  version: 1.44.0
   updated: '2026-07-21'
   description: Architecture Decision Records Index
   format: See individual ADR files in this directory
 decisions:
+  ADR103_vol1_vol2_contract_commit:
+    title: 'Capital Vol I ∥ Vol II contract commit (T1.0 fork gate, v1.0.0 Playable Archive program): VOL_I/VOL_II_RESERVED_OPPOSITIONS exported from dialectics catalog (value_usevalue/labor_laborpower/absolute_relative_surplus + circulation/realization/reproduction/disproportionality), 3 dead Vol I coupling slots declared (skip-count 2→5; absolute_relative_surplus→wage bridges into the LIVE Fundamental-Theorem axis), room-partition banners over the three _compute_*_layer regions (Vol III = owned by neither), GraphInputs field-partition convention, physics-neutral BY CONSTRUCTION (registry∩reserved=∅ test-pinned; tick hash untouched, no ceremony due); §10.2 deviation recorded: dormancy sentinel hoisted to T1.1 keel, runner-parity stays Vol I; batch claims ADR103–107'
+    status: accepted
+    date: '2026-07-21'
+    file: ADR103_vol1_vol2_contract_commit.yaml
   ADR102_environment_sovereignty:
     title: 'Environment sovereignty (BD-directed, Amendment Z / v2.14.0): devshells vendored into babylon''s own flake.nix (default + dataBuild; same locked nixpkgs rev — store paths unchanged; rev-pinned nixpkgs-data carries the sqlite-3.53.1 interpreter, lockstep now SAME-REPO with PINNED_SQLITE_VERSION); infra/ submodule UNMOUNTED (babylon-infra = private sibling ops repo); nightly deploy-key fetch deleted; check_release_pins.sh rewritten gitlink-tag -> in-repo lockstep check; PYTHONPATH root cause = nixpkgs python setup-hook leakage (NOT submodule mechanics), fixed by shellHook unset + check:env-contract guard in both repos; `env -u PYTHONPATH git` litany retired for post-2026-07-21 shells'
     status: accepted

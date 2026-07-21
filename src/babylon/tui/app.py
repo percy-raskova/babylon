@@ -16,7 +16,12 @@ from textual.app import App, ComposeResult
 from textual.containers import VerticalScroll
 from textual.widgets import Footer, Label, Markdown
 
-from babylon.tui.directives import BabylonFence, StatblockProvider, StatblockRow
+from babylon.tui.directives import BabylonFence, StatblockProvider
+from babylon.tui.dispatch import (
+    fixture_known_entities,
+    fixture_statblock_providers,
+    kind_dispatch_statblocks,
+)
 from babylon.tui.router import InvalidBabylonUri, parse_babylon_uri
 from babylon.tui.theme import KSBC
 from babylon.tui.wikilinks import (
@@ -34,8 +39,12 @@ from babylon.tui.wikilinks import (
     make_parser_factory,
 )
 
-KNOWN_ENTITIES: Final = frozenset({"county/26163", "org/tenants-un"})
-"""Sample known entities for the demo page's wikilink resolver."""
+KNOWN_ENTITIES: Final = fixture_known_entities() | frozenset({"org/tenants-un"})
+"""The demo resolver's known-set: every committed Lane P fixture subject
+(WO-45 kind-dispatch composition) plus the sample page's demo org. A live
+session replaces this with
+:func:`babylon.projection.epistemic_search.known_entity_ids` — the
+``reach ∪ intel`` epistemic set, never a global oracle (WO-43)."""
 
 SAMPLE_COUNTY_PAGE: Final = """\
 # county/26163 — Wayne
@@ -57,19 +66,17 @@ The picket line held through the second shift change.
 narrative aside, and an unknown directive (to exercise the loud-refusal path)."""
 
 
-def _sample_statblocks(subject: str) -> list[StatblockRow] | None:
-    """The demo page's only statblock: county/26163 fixture rows.
+def _default_statblocks() -> StatblockProvider:
+    """The app's default provider: kind-dispatch over every Lane P kind.
 
-    :param subject: the statblock subject id.
-    :returns: fixture rows for ``"county/26163"``, else ``None``.
+    WO-45: replaces the keel's literal ``county/26163`` sample branch with
+    :func:`~babylon.tui.dispatch.kind_dispatch_statblocks` composed over
+    the committed-fixture providers. P3 swaps the composition input to
+    live per-tick projections; the dispatch seam itself is unchanged.
+
+    :returns: the composed provider.
     """
-    if subject != "county/26163":
-        return None
-    return [
-        ("population", "1,749,343"),
-        ("phi_hour", "482.10"),
-        ("bifurcation", "-0.14"),
-    ]
+    return kind_dispatch_statblocks(fixture_statblock_providers())
 
 
 class BabylonMarkdown(Markdown):
@@ -104,7 +111,7 @@ class BabylonMarkdown(Markdown):
         classes: str | None = None,
         parser_factory: Callable[[], MarkdownIt] | None = None,
         open_links: bool = True,
-        statblocks: StatblockProvider = _sample_statblocks,
+        statblocks: StatblockProvider | None = None,
     ) -> None:
         super().__init__(
             markdown,
@@ -114,7 +121,7 @@ class BabylonMarkdown(Markdown):
             parser_factory=parser_factory,
             open_links=open_links,
         )
-        self.statblocks: StatblockProvider = statblocks
+        self.statblocks: StatblockProvider = statblocks or _default_statblocks()
 
 
 class ArchiveApp(App[None]):
@@ -160,7 +167,7 @@ class ArchiveApp(App[None]):
         super().__init__()
         self._page = page if page is not None else SAMPLE_COUNTY_PAGE
         self._resolver = resolver or known_target_resolver(KNOWN_ENTITIES)
-        self._statblocks = statblocks or _sample_statblocks
+        self._statblocks = statblocks or _default_statblocks()
 
     def on_mount(self) -> None:
         self.register_theme(KSBC)

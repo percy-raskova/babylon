@@ -37,7 +37,7 @@ export NIX_CALL_LOG
 
 PATH="$tmp/bin:$PATH" sh "$tmp/install.sh" >/dev/null 2>&1 || fail "install.sh errored with stub nix"
 
-grep -q "nix profile install github:bogdanscarwash/babylon#babylon" "$NIX_CALL_LOG" \
+grep -q "nix profile install github:percy-raskova/babylon#babylon" "$NIX_CALL_LOG" \
   || fail "did not invoke 'nix profile install' with the flake ref"
 grep -q -- "--extra-substituters https://cache.babylon.percypedia.biz" "$NIX_CALL_LOG" \
   || fail "missing --extra-substituters flag"

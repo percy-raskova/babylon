@@ -30,13 +30,12 @@ context: >-
   item 1 (Installer) and item 2 (Postgres) rule the reversal and the
   game-managed cluster respectively; the T7 train entry names the closure
   contents; PROGRAM_v1_0_0_ceremony_runbook.md carries the four owner-only
-  ceremonies this decision depends on, plus a standing FLAKE_REF drift: the
-  runbook's opening "repo-slug conflict" note and its closing "FLAKE_REF
-  mismatch (standing)" flag both confirm install.sh:16
-  (FLAKE_REF="github:bogdanscarwash/babylon#babylon") is stale — verified
-  here via `git remote -v`, origin is github.com/percy-raskova/babylon — and
-  rule the fix a required separate pre-req before T7's `github:` smoke
-  target is correct, not part of these ceremonies. Code-state check: flake.nix
+  ceremonies this decision depends on, plus a FLAKE_REF drift (since fixed):
+  install.sh:16 carried a stale pre-rename repository slug — verified here
+  via `git remote -v`, origin is github.com/percy-raskova/babylon — ruled a
+  required separate pre-req before T7's `github:` smoke target is correct,
+  not part of these ceremonies. RESOLVED 2026-07-21: T7-alpha repointed the
+  installer and a BD-directed sweep purged the dead slug repo-wide. Code-state check: flake.nix
   today vendors only postgresql_16.lib (libpq, for psycopg) — a full
   postgresql+postgis+pgvector server package is NOT yet in the closure; that
   build-out is T7 scope, not landed by ADR102's devshell vendoring.
@@ -73,9 +72,9 @@ decision: >-
   `vX.Y.Z` tag push and end-to-end smoke. Runbook critical path: C1 keygen
   (hard blocker) in parallel with C2's R2 token -> C4 secrets + release ->
   cache populated -> T7 smoke passes; C3 GGUF gates narrator-on-fresh-box
-  only, not the installer merge. The FLAKE_REF fix (install.sh:16,
-  bogdanscarwash/babylon -> percy-raskova/babylon) is a T7 pre-req per the
-  runbook, tracked here as a required companion change, not a ceremony.
+  only, not the installer merge. The FLAKE_REF fix (install.sh:16, stale
+  pre-rename slug -> percy-raskova/babylon) is a T7 pre-req per the runbook,
+  tracked here as a required companion change, not a ceremony (DONE).
 consequences: >-
   T7 (train structure, ai/_inbox/PROGRAM_v1_0_0_playable_archive.md) becomes
   the nix-bootstrap installer variant: it must add the Nix-install branch,

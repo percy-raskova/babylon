@@ -2,7 +2,7 @@
 
 Four owner-owned, local-only ceremonies that the cloud coding session cannot perform. Execute by hand, in the order the DAG below permits.
 
-> **Repo-slug conflict — resolve before running any `gh`/`nix build` command.** C1 confirms `origin = percy-raskova/babylon`. `install.sh`'s `FLAKE_REF` and every `bogdanscarwash/babylon` string in C4 are read off the (likely stale, pre-rename) flake ref, *not* an authoritative source. **All `--repo` / `github:` targets below use `percy-raskova/babylon`; if `gh repo view percy-raskova/babylon` fails, the rename never happened — fall back to `bogdanscarwash/babylon` and treat the `FLAKE_REF` fix as a separate out-of-scope PR.** Do not proceed with a guessed slug.
+> **Repo slug — RESOLVED 2026-07-21.** C1 confirms `origin = percy-raskova/babylon`; `gh repo view percy-raskova/babylon` succeeds. The stale pre-rename slug that `install.sh`'s `FLAKE_REF` once carried has been purged repo-wide by BD directive (T7-alpha fixed the installer; the sweep caught every remaining quote). All `--repo` / `github:` targets below use `percy-raskova/babylon`, full stop.
 
 ---
 

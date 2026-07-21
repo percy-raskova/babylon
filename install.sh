@@ -13,7 +13,7 @@ set -eu
 CACHE_KEY="babylon-cache-1:REPLACE_WITH_PUBLIC_KEY"
 
 SUBSTITUTER="https://cache.babylon.percypedia.biz"
-FLAKE_REF="github:bogdanscarwash/babylon#babylon"
+FLAKE_REF="github:percy-raskova/babylon#babylon"
 
 die() {
     printf 'babylon-install: %s\n' "$1" >&2

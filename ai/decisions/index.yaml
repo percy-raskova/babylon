@@ -1,9 +1,14 @@
 meta:
-  version: 1.44.0
+  version: 1.45.0
   updated: '2026-07-21'
   description: Architecture Decision Records Index
   format: See individual ADR files in this directory
 decisions:
+  ADR108_vol1_u1_activation_audit:
+    title: 'Vol I U1 Activation audit re-verified on lane HEAD (84d8405a, post-ADR103 contract commit): every §2 dormancy claim confirmed with line-number drift only (ReserveArmySystem :72, DispossessionEventSystem :75, territory.py :212 comment unchanged, MarketScissors._swell_reserve_army :439-461 the sole activation path). Three owner design questions settled: (a) DERIVE reserve_ratio/dispossession rates from real producers (U3 accumulation loop + county-tick FRED adapters), never seed as bare scalars (Aleksandrov Test); (b) BOTH extend ReserveArmyDefines/DispossessionDefines/WorkingDayDefines in place AND author new capital_vol1.py->CapitalVolumeIDefines mirroring capital_vol3.py (ADR089) for genuinely new mechanics; (c) parity unit (U5, headless-runner wiring of create_vol1_services) is NOT shared with or closable by Vol II — ADR103 explicitly assigns it to Vol I alone. No code changed, no baseline drift, no ceremony due.'
+    status: accepted
+    date: '2026-07-21'
+    file: ADR108_vol1_u1_activation_audit.yaml
   ADR103_vol1_vol2_contract_commit:
     title: 'Capital Vol I ∥ Vol II contract commit (T1.0 fork gate, v1.0.0 Playable Archive program): VOL_I/VOL_II_RESERVED_OPPOSITIONS exported from dialectics catalog (value_usevalue/labor_laborpower/absolute_relative_surplus + circulation/realization/reproduction/disproportionality), 3 dead Vol I coupling slots declared (skip-count 2→5; absolute_relative_surplus→wage bridges into the LIVE Fundamental-Theorem axis), room-partition banners over the three _compute_*_layer regions (Vol III = owned by neither), GraphInputs field-partition convention, physics-neutral BY CONSTRUCTION (registry∩reserved=∅ test-pinned; tick hash untouched, no ceremony due); §10.2 deviation recorded: dormancy sentinel hoisted to T1.1 keel, runner-parity stays Vol I; batch claims ADR103–107'
     status: accepted

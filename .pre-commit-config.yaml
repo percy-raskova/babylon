@@ -167,7 +167,17 @@ repos:
     rev: v6.0.0
     hooks:
       - id: trailing-whitespace
+        # Textual/Rich SVG snapshot goldens (pytest-textual-snapshot,
+        # tests/unit/**/__snapshots__/**/*.raw) legitimately contain
+        # whitespace-only lines Rich's own export_svg() emits as structural
+        # boilerplate (present in the pre-existing keel golden too, WO-33
+        # recon confirmed) — syrupy's raw-snapshot comparison is byte-exact,
+        # so stripping trailing whitespace here silently breaks the golden's
+        # byte-identity with a fresh render. Never hand-edit a .raw file to
+        # "fix" this; regenerate with --snapshot-update instead.
+        exclude: /__snapshots__/.*\.raw$
       - id: end-of-file-fixer
+        exclude: /__snapshots__/.*\.raw$
       - id: check-yaml
         args: [--unsafe]  # Allow custom tags in GitHub Actions
       - id: check-json

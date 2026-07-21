@@ -1,9 +1,14 @@
 meta:
-  version: 1.48.0
+  version: 1.49.0
   updated: '2026-07-21'
   description: Architecture Decision Records Index
   format: See individual ADR files in this directory
 decisions:
+  ADR112_vol1_u6_oppositions:
+    title: 'Vol I U6 — Oppositions: lights the three ADR103-reserved production-layer bindings (value_usevalue Ch.1, labor_laborpower Ch.6, absolute_relative_surplus Chs.10/12/15), shadow-first, with two new GraphInputs ratio fields (wealth_subsistence_ratio, surplus_strategy_ratio) and a third that reuses the existing wage/imperial (w_paid, v_produced) defect verbatim -- the three reserved coupling slots survive the builder for the first time. Registry 11->14 keys, shadow 1->4; canonical opposition_states unchanged (10 keys), so no baseline drift expected. Found, not fixed: a pre-existing (ADR089-era) stale assertion in test_lawverian_contradiction_bridge.py expecting 5 oppositions where 10 have flowed for a while, confirmed unrelated via git-stash isolation.'
+    status: accepted
+    date: '2026-07-21'
+    file: ADR112_vol1_u6_oppositions.yaml
   ADR111_vol1_u4_working_day:
     title: 'Vol I U4 — The working day wired into consciousness: new domain.economics.working_day.resolve_working_day_visibility_modifier bridges services.productivity_data_source (the FRED OPHNFB+HOANBS adapter, its FIRST production reader) through DefaultWorkingDayClassifier to a new working_day_modifier keyword on compute_exploitation_visibility, computed ONCE per tick in ConsciousnessSystem and multiplicatively dampening imperial-rent-based visibility -- ABSOLUTE_DOMINANT (long hours) stays fully visible, RELATIVE_DOMINANT (productivity/intensity gains) is naturalized toward invisibility (Ch. 10/12). ZERO qa:regression drift expected (headless_runner never calls create_vol1_services; already live for the web bridge). Found+fixed a MagicMock auto-vivification hazard in test_consciousness_integration.py as a direct consequence.'
     status: accepted

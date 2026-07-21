@@ -29,6 +29,7 @@ from babylon.domain.dialectics.core.opposition import (
     OppositionSpec,
 )
 from babylon.domain.dialectics.instances.catalog import GraphInputs
+from babylon.domain.economics.working_day.types import WorkingDayState
 from babylon.engine.context import TickContext
 from babylon.engine.services import ServiceContainer
 from babylon.engine.systems.contradiction import (
@@ -297,6 +298,81 @@ class TestWageValuePairsExtraction:
         graph.add_node("owner", wealth=30.0)
         graph.add_edge("worker", "owner", edge_type=EdgeType.EXPLOITATION)
         assert self._inputs(graph).wage_value_pairs == ()
+
+
+class _FixedProductivitySource:
+    """Minimal ``productivity_data_source`` double: a fixed state, any args."""
+
+    def __init__(self, state: WorkingDayState | None) -> None:
+        self._state = state
+
+    def get_working_day_state(
+        self, fips_code: str, naics_sector: str, year: int
+    ) -> WorkingDayState | None:
+        return self._state
+
+
+class TestVolumeOneProductionRatios:
+    """`_build_graph_inputs` derives Vol I U6's two new ``GraphInputs`` ratios.
+
+    ``wealth_subsistence_ratio`` (``value_usevalue``, Ch. 1) and
+    ``surplus_strategy_ratio`` (``absolute_relative_surplus``, Chs. 10/12/15).
+    """
+
+    @staticmethod
+    def _inputs(
+        graph: BabylonGraph,
+        services: ServiceContainer | None = None,
+        tick: int = 0,
+    ):  # type: ignore[no-untyped-def]
+        return ContradictionSystem()._build_graph_inputs(
+            graph, services if services is not None else ServiceContainer.create(), tick
+        )
+
+    def test_wealth_subsistence_ratio_is_a_ratio_of_sums(self) -> None:
+        graph = BabylonGraph()
+        graph.add_node(
+            "c1", node_type=NodeType.SOCIAL_CLASS, wealth=30.0, subsistence_threshold=10.0
+        )
+        graph.add_node(
+            "c2", node_type=NodeType.SOCIAL_CLASS, wealth=10.0, subsistence_threshold=10.0
+        )
+        ratio = self._inputs(graph).wealth_subsistence_ratio
+        assert ratio == pytest.approx(2.0)  # (30+10) / (10+10)
+
+    def test_wealth_subsistence_ratio_skips_inactive_and_non_class_nodes(self) -> None:
+        graph = BabylonGraph()
+        graph.add_node(
+            "c1",
+            node_type=NodeType.SOCIAL_CLASS,
+            wealth=30.0,
+            subsistence_threshold=10.0,
+            active=False,
+        )
+        graph.add_node(
+            "land", node_type=NodeType.TERRITORY, wealth=1000.0, subsistence_threshold=1.0
+        )
+        assert self._inputs(graph).wealth_subsistence_ratio is None
+
+    def test_wealth_subsistence_ratio_none_when_no_classes(self) -> None:
+        assert self._inputs(BabylonGraph()).wealth_subsistence_ratio is None
+
+    def test_surplus_strategy_ratio_unwired_is_none(self) -> None:
+        assert self._inputs(BabylonGraph()).surplus_strategy_ratio is None
+
+    def test_surplus_strategy_ratio_wired_from_productivity_data_source(self) -> None:
+        # avg_weekly_hours == the default relative_hours_threshold (40.0),
+        # intensity at its own baseline (1.0) -> ratio exactly at parity.
+        state = WorkingDayState(
+            fips_code="00000",
+            naics_sector="00",
+            year=2022,
+            avg_weekly_hours=40.0,
+            labor_intensity_index=1.0,
+        )
+        services = ServiceContainer.create(productivity_data_source=_FixedProductivitySource(state))
+        ratio = self._inputs(BabylonGraph(), services, tick=0).surplus_strategy_ratio
+        assert ratio == pytest.approx(1.0)
 
 
 class TestGraphInputIdPairs:
@@ -615,13 +691,20 @@ class TestPriceValueEndToEnd:
             "financial",
         }
         assert states["price_value"]["balance"] == pytest.approx(math.tanh(0.5 / scale))
-        # task #42-C: national now registers shadow, so the channel is no
-        # longer empty-by-default — but this graph builds no FACTION/
-        # INFLUENCES data at all, so national reads the honest absent zero.
+        # task #42-C / Vol I U6: national plus the three production-layer
+        # shadow bindings now register — but this graph builds no FACTION/
+        # INFLUENCES data, no social_class-typed nodes, and no
+        # productivity_data_source, so all four read the honest absent zero.
         shadow_states = graph.graph["shadow_opposition_states"]
-        assert set(shadow_states) == {"national"}
-        assert shadow_states["national"]["gap"] == 0.0
-        assert shadow_states["national"]["balance"] == 0.0
+        assert set(shadow_states) == {
+            "national",
+            "value_usevalue",
+            "labor_laborpower",
+            "absolute_relative_surplus",
+        }
+        for key in shadow_states:
+            assert shadow_states[key]["gap"] == 0.0
+            assert shadow_states[key]["balance"] == 0.0
 
 
 class TestNationalAxisEndToEnd:

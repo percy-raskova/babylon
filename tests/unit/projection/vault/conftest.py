@@ -15,9 +15,11 @@ from babylon.projection.view_models import (
     CountyView,
     IndustryView,
     NationalView,
+    SocialClassView,
     hydrate_county,
     hydrate_industry,
     hydrate_national,
+    hydrate_social_class,
 )
 
 
@@ -172,5 +174,56 @@ def manufacturing_industry_view_with_absences() -> IndustryView:
             "naics_2digit": "31-33",
             "naics_label": "Manufacturing",
             "total_employment": 2000,
+        }
+    )
+
+
+@pytest.fixture
+def wayne_social_class_view() -> SocialClassView:
+    """A fully-populated ``SocialClassView`` shaped like Wayne's C004 worker."""
+    return hydrate_social_class(
+        {
+            "kind": "social_class",
+            "class_id": "C004",
+            "verified_tick": 500,
+            "role": "labor_aristocracy",
+            "county_fips": "26163",
+            "population": 1,
+            "wealth": 0.563657,
+            "organization": 0.4,
+            "repression_faced": 0.2,
+            "p_acquiescence": 0.933179,
+            "p_revolution": 1.0,
+            "consciousness": {
+                "revolutionary": 0.235071,
+                "liberal": 0.5,
+                "fascist": 0.264929,
+            },
+            "county_class_composition": {
+                "bourgeoisie": 0.01,
+                "petit_bourgeoisie": 0.09,
+                "labor_aristocracy": 0.4,
+                "proletariat": 0.35,
+                "lumpenproletariat": 0.15,
+            },
+        }
+    )
+
+
+@pytest.fixture
+def wayne_social_class_view_with_absences() -> SocialClassView:
+    """The same class with most optional fields honestly unattributed.
+
+    Only ``role``, ``county_fips``, and ``population`` are present; every
+    other optional field hydrates to ``None``.
+    """
+    return hydrate_social_class(
+        {
+            "kind": "social_class",
+            "class_id": "C004",
+            "verified_tick": 500,
+            "role": "labor_aristocracy",
+            "county_fips": "26163",
+            "population": 1,
         }
     )

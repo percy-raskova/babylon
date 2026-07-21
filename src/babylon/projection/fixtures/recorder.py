@@ -29,6 +29,7 @@ from babylon.projection.view_models import (
     KeyFigureView,
     NationalView,
     OrganizationView,
+    SocialClassView,
     SovereignView,
     StateView,
     hydrate_county,
@@ -37,6 +38,7 @@ from babylon.projection.view_models import (
     hydrate_key_figure,
     hydrate_national,
     hydrate_organization,
+    hydrate_social_class,
     hydrate_sovereign,
     hydrate_state,
 )
@@ -276,6 +278,47 @@ def load_industry_fixture(path: Path) -> IndustryView:
     return hydrate_industry(data)
 
 
+def record_social_class_fixture(view: SocialClassView, path: Path) -> None:
+    """Serialize ``view`` to ``path`` as deterministic, sorted-key JSON.
+
+    Mirrors :func:`record_county_fixture` exactly for
+    :class:`~babylon.projection.view_models.SocialClassView`.
+
+    :param view: The projected social-class dossier to persist.
+    :param path: Destination file. The parent directory is NOT created here —
+        callers (the harvester) own directory setup, so a typo'd path fails
+        loud instead of silently minting a stray directory tree.
+    :raises OSError: if ``path``'s parent directory does not exist or is not
+        writable.
+    """
+    payload: dict[str, Any] = view.model_dump(mode="json")
+    text = json.dumps(payload, sort_keys=True, indent=2) + "\n"
+    path.write_text(text, encoding="utf-8")
+
+
+def load_social_class_fixture(path: Path) -> SocialClassView:
+    """Hydrate a :class:`SocialClassView` from a fixture written by :func:`record_social_class_fixture`.
+
+    :param path: The fixture file to load.
+    :returns: The validated, frozen :class:`SocialClassView`.
+    :raises FileNotFoundError: if ``path`` does not exist — a missing fixture
+        is a loud failure (Constitution III.11), never a silently-substituted
+        default view.
+    :raises ValueError: if ``path``'s content is not valid JSON.
+    :raises pydantic.ValidationError: if the JSON parses but does not hydrate
+        to a valid :class:`SocialClassView` (wrong shape, out-of-range value,
+        an invented field the model rejects under ``extra="forbid"``).
+    """
+    if not path.is_file():
+        raise FileNotFoundError(f"no projection fixture at {path}")
+    raw = path.read_text(encoding="utf-8")
+    try:
+        data = json.loads(raw)
+    except json.JSONDecodeError as exc:
+        raise ValueError(f"malformed JSON in projection fixture {path}: {exc}") from exc
+    return hydrate_social_class(data)
+
+
 __all__ = [
     "load_county_fixture",
     "load_industry_fixture",
@@ -283,6 +326,7 @@ __all__ = [
     "load_key_figure_fixture",
     "load_national_fixture",
     "load_organization_fixture",
+    "load_social_class_fixture",
     "load_sovereign_fixture",
     "load_state_fixture",
     "record_county_fixture",
@@ -291,6 +335,7 @@ __all__ = [
     "record_key_figure_fixture",
     "record_national_fixture",
     "record_organization_fixture",
+    "record_social_class_fixture",
     "record_sovereign_fixture",
     "record_state_fixture",
 ]

@@ -30,12 +30,12 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
 from rich.console import Console
-from rich.logging import RichHandler
 from rich.panel import Panel
 from rich.table import Table
 from rich.text import Text
 
 from babylon.config.llm_config import LLMConfig
+from babylon.config.logging_config import setup_logging as _setup_central_logging
 from babylon.engine.scenarios import create_imperial_circuit_scenario
 from babylon.engine.simulation import Simulation
 from babylon.intelligence.ai.director import NarrativeDirector
@@ -468,16 +468,15 @@ class VerboseNarrativeDirector(NarrativeDirector):
             )
 
 
-def setup_logging(verbose: bool, logger: StructuredLogger) -> None:
-    """Configure logging based on verbosity level."""
-    level = logging.DEBUG if verbose else logging.WARNING
+def _configure_stdlib_logging(verbose: bool, logger: StructuredLogger) -> None:
+    """Configure logging based on verbosity level.
 
-    logging.basicConfig(
-        level=level,
-        format="%(message)s",
-        datefmt="[%X]",
-        handlers=[RichHandler(rich_tracebacks=True, show_path=False)],
-    )
+    Retired the tool's ad-hoc ``logging.basicConfig(..., handlers=[RichHandler(...)])``
+    call in favor of the central Observability Spine (T1.2/K1) — same
+    console+JSONL handler hierarchy every other babylon entry point uses.
+    """
+    level = "DEBUG" if verbose else "WARNING"
+    _setup_central_logging(default_level=level)
 
     # Enable specific loggers for verbose mode
     if verbose:
@@ -725,7 +724,7 @@ def main() -> int:
     logger = StructuredLogger(log_path)
 
     verbose = not args.quiet
-    setup_logging(verbose, logger)
+    _configure_stdlib_logging(verbose, logger)
 
     console = Console()
 

@@ -11,8 +11,15 @@ import typer
 
 from babylon import __version__
 from babylon.cli import play as play_cmd
+from babylon.config.logging_config import setup_logging
 from babylon.render.session import set_render_override
 from babylon.render.tiers import RenderTier
+
+# Observability Spine (T1.2/K1): the single entry point for the shipped
+# `babylon` command initializes central logging before any subcommand
+# module is imported/executed — mirrors babylon/__main__.py's demo-entry
+# pattern so both real launch paths go through the same dictConfig.
+setup_logging()
 
 app = typer.Typer(
     name="babylon",

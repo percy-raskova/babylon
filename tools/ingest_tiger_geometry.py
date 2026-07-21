@@ -37,6 +37,7 @@ sys.path.insert(0, str(_REPO_ROOT / "src"))
 
 from sqlalchemy import func, update  # noqa: E402
 
+from babylon.config.logging_config import setup_logging  # noqa: E402
 from babylon.reference.database import get_normalized_session, init_normalized_db  # noqa: E402
 from babylon.reference.schema import (  # noqa: E402
     BridgeCountyH3,
@@ -45,7 +46,7 @@ from babylon.reference.schema import (  # noqa: E402
     DimState,
 )
 
-logging.basicConfig(level=logging.INFO, format="%(levelname)s: %(message)s")
+setup_logging(default_level="INFO")
 logger = logging.getLogger(__name__)
 
 TIGER_SHP = Path("/media/user/data/babylon-data/tiger/county/tl_2024_us_county.shp")

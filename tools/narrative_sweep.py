@@ -50,6 +50,7 @@ sys.path.insert(0, str(Path(__file__).parent.parent / "src"))
 from rich.console import Console
 from rich.table import Table
 
+from babylon.config.logging_config import setup_logging
 from babylon.intelligence.ai import (
     DeepSeekClient,
     MockLLM,
@@ -60,8 +61,8 @@ from babylon.intelligence.ai import (
 from babylon.intelligence.ai.judge import JudgmentResult, MetaphorFamily
 from babylon.models.events import CrisisEvent
 
-# Configure logging
-logging.basicConfig(level=logging.WARNING)
+# Configure logging (central spine — Observability Spine, T1.2/K1)
+setup_logging(default_level="WARNING")
 logger = logging.getLogger(__name__)
 
 # Constants

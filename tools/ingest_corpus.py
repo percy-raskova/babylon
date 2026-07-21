@@ -28,10 +28,9 @@ from difflib import SequenceMatcher
 from pathlib import Path
 from typing import Final
 
-logging.basicConfig(
-    level=logging.INFO,
-    format="%(levelname)s: %(message)s",
-)
+from babylon.config.logging_config import setup_logging
+
+setup_logging(default_level="INFO")
 logger = logging.getLogger(__name__)
 
 

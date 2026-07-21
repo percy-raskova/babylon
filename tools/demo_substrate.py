@@ -17,7 +17,9 @@ from collections.abc import Sequence
 from sqlalchemy import text
 from sqlalchemy.orm import Session
 
-logging.basicConfig(level=logging.INFO, format="%(name)s | %(message)s")
+from babylon.config.logging_config import setup_logging
+
+setup_logging(default_level="INFO")
 logger = logging.getLogger("demo_substrate")
 
 

@@ -26,6 +26,7 @@ import logging
 
 from sqlalchemy import text
 
+from babylon.config.logging_config import setup_logging
 from babylon.engine.simulation import Simulation
 from babylon.reference.database import get_normalized_session_factory
 
@@ -206,7 +207,7 @@ def format_table(
 
 def main() -> None:
     """Run Detroit validation harness."""
-    logging.basicConfig(level=logging.WARNING)
+    setup_logging(default_level="WARNING")
 
     print("=" * 70)
     print("Detroit Validation Harness (Feature 020)")

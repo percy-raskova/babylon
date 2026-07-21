@@ -40,6 +40,7 @@ try:
 except ImportError:  # pragma: no cover - tqdm is a hard dep
     tqdm = None  # type: ignore[assignment,misc]
 
+from babylon.config.logging_config import setup_logging
 from babylon.domain.economics.boundary_flow_register import BoundaryFlowRegister
 from babylon.domain.economics.county_exposure import load_county_exposure_map
 from babylon.engine.context import TickContext
@@ -1889,7 +1890,7 @@ def main_from_argv(args: argparse.Namespace) -> int:
     directory path on stdout for exit-0 runs, and emits the canonical
     error format on stderr for non-zero exits.
     """
-    logging.basicConfig(level=getattr(logging, args.verbose), stream=sys.stderr)
+    setup_logging(default_level=args.verbose)
     try:
         config = _build_config(args)
     except ConfigError as exc:

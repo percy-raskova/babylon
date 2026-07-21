@@ -323,7 +323,9 @@ def _cli() -> int:
     )
     args = parser.parse_args()
 
-    logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
+    from babylon.config.logging_config import setup_logging
+
+    setup_logging(default_level="INFO")
     from psycopg_pool import ConnectionPool
 
     with ConnectionPool(args.dsn, min_size=1, max_size=2, open=True) as pool:

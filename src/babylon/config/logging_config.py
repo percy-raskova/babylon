@@ -26,7 +26,7 @@ import sys
 from dataclasses import dataclass, field
 from logging.handlers import RotatingFileHandler
 from pathlib import Path
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 import yaml
 
@@ -227,65 +227,97 @@ def _parse_level(level_str: str) -> int:
     return getattr(logging, level_str, logging.INFO)
 
 
+def _build_dict_config(config: LoggingConfig, log_dir: Path) -> dict[str, Any]:
+    """Build the central ``logging.config.dictConfig`` dict for the ``babylon.*`` tree.
+
+    Args:
+        config: LoggingConfig with console/file levels from pyproject.toml.
+        log_dir: Directory the two rotating file handlers write into
+            (the player data dir by default — see ``BaseConfig.LOG_DIR``).
+
+    Returns:
+        A ``version: 1`` dictConfig-compatible dict — ONE declarative
+        structure shared by both the default path (this function) and any
+        operator-supplied YAML override (``setup_logging(config_path=...)``),
+        so there is exactly one place that defines the babylon logger tree's
+        handler hierarchy:
+
+        - ``console``: human-readable, ``config.console_level``.
+        - ``main_file``: rotating JSON Lines, ``config.file_level``, all
+          records (spec: "Observability Spine" structured JSONL handler).
+        - ``error_file``: rotating JSON Lines, ERROR-only.
+
+        Per-subsystem level overrides (``config.modules``) are intentionally
+        NOT embedded here — dictConfig's own level lookup raises on an
+        unrecognized name, whereas :func:`_apply_module_levels` degrades to
+        INFO (loud warning, not a hard crash) on a typo'd pyproject.toml
+        entry. Callers apply them via :func:`_apply_module_levels` after
+        ``dictConfig()`` returns.
+    """
+    return {
+        "version": 1,
+        "disable_existing_loggers": False,
+        "formatters": {
+            "console": {
+                "format": "%(asctime)s [%(levelname)s] %(name)s: %(message)s",
+                "datefmt": "%Y-%m-%d %H:%M:%S",
+            },
+            "jsonl": {
+                "class": "babylon.kernel.log.JSONFormatter",
+            },
+        },
+        "filters": {
+            "context": {"()": "babylon.kernel.log.ContextAwareFilter"},
+        },
+        "handlers": {
+            "console": {
+                "class": "logging.StreamHandler",
+                "level": config.console_level,
+                "formatter": "console",
+                "filters": ["context"],
+                "stream": "ext://sys.stdout",
+            },
+            "main_file": {
+                "class": "logging.handlers.RotatingFileHandler",
+                "level": config.file_level,
+                "formatter": "jsonl",
+                "filters": ["context"],
+                "filename": str(log_dir / "babylon.log"),
+                "maxBytes": MAIN_LOG_MAX_BYTES,
+                "backupCount": MAIN_LOG_BACKUP_COUNT,
+            },
+            "error_file": {
+                "class": "logging.handlers.RotatingFileHandler",
+                "level": "ERROR",
+                "formatter": "jsonl",
+                "filters": ["context"],
+                "filename": str(log_dir / "errors.log"),
+                "maxBytes": ERROR_LOG_MAX_BYTES,
+                "backupCount": ERROR_LOG_BACKUP_COUNT,
+            },
+        },
+        "root": {
+            "level": "DEBUG",  # capture everything; handlers filter by their own level
+            "handlers": ["console", "main_file", "error_file"],
+        },
+    }
+
+
 def _setup_default_logging(config: LoggingConfig) -> None:
-    """Set up default logging configuration.
+    """Set up default logging configuration via a central ``dictConfig``.
 
     Args:
         config: LoggingConfig with settings from pyproject.toml.
 
     Creates a handler hierarchy with:
     - Console handler (human-readable)
-    - Rotating main file handler (JSON, DEBUG level)
-    - Rotating error file handler (JSON, ERROR only)
+    - Rotating main file handler (JSON Lines, ``config.file_level``)
+    - Rotating error file handler (JSON Lines, ERROR only)
     """
-    console_level = _parse_level(config.console_level)
-    file_level = _parse_level(config.file_level)
+    logging.config.dictConfig(_build_dict_config(config, BaseConfig.LOG_DIR))
 
-    # Root logger configuration
-    root_logger = logging.getLogger()
-    root_logger.setLevel(logging.DEBUG)  # Capture everything, handlers filter
-
-    # Clear any existing handlers
-    root_logger.handlers.clear()
-
-    # Create context-aware filter for all handlers
-    context_filter = ContextAwareFilter()
-
-    # Console handler - the immediate feedback loop
-    console_handler = logging.StreamHandler(sys.stdout)
-    console_handler.setLevel(console_level)
-    console_formatter = logging.Formatter(
-        "%(asctime)s [%(levelname)s] %(name)s: %(message)s", datefmt="%Y-%m-%d %H:%M:%S"
-    )
-    console_handler.setFormatter(console_formatter)
-    console_handler.addFilter(context_filter)
-    root_logger.addHandler(console_handler)
-
-    # Main file handler - rotating JSON Lines for all logs
-    main_log_file = BaseConfig.LOG_DIR / "babylon.log"
-    main_handler = RotatingFileHandler(
-        main_log_file,
-        maxBytes=MAIN_LOG_MAX_BYTES,
-        backupCount=MAIN_LOG_BACKUP_COUNT,
-    )
-    main_handler.setLevel(file_level)
-    main_handler.setFormatter(JSONFormatter())
-    main_handler.addFilter(context_filter)
-    root_logger.addHandler(main_handler)
-
-    # Error file handler - rotating JSON Lines for errors only
-    error_log_file = BaseConfig.LOG_DIR / "errors.log"
-    error_handler = RotatingFileHandler(
-        error_log_file,
-        maxBytes=ERROR_LOG_MAX_BYTES,
-        backupCount=ERROR_LOG_BACKUP_COUNT,
-    )
-    error_handler.setLevel(logging.ERROR)
-    error_handler.setFormatter(JSONFormatter())
-    error_handler.addFilter(context_filter)
-    root_logger.addHandler(error_handler)
-
-    # Apply per-module levels from pyproject.toml
+    # Apply per-module levels from pyproject.toml (see _build_dict_config's
+    # docstring for why this stays a post-step rather than a "loggers" key).
     _apply_module_levels(config.modules)
 
 

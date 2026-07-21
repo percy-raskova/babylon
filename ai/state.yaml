@@ -5,6 +5,17 @@ meta:
   version: "2.45.0"  # 2.28.0 lives on feature/19-emergent-class-partition (Program 19 Phase 0+1)
   updated: "2026-07-20"
   truth_status: |
+    (2026-07-20 late) ADR098 FOLLOW-UPS BOTH CLOSED same night (the two
+    DECLARED FOLLOW-UPS in the next entry are DONE, do not re-open):
+    nightly rebuild-verify runs in the infra dataBuild devshell via
+    read-only deploy key (PR #231 + infra#4; submodule-clone scope fix
+    PR #233), and the absence sentinel (15th family) landed -- every
+    sqlite connect site carries a cited disposition, get_reference_session
+    raises loudly on absent DB (PR #232, 3eec7914/cf74412b). Section 6.5
+    home question CLOSED by BD ruling this evening: provenance-ceremony
+    discipline stays CLAUDE.md + CI permanently, no constitutional
+    amendment. Remote byte-identity verdict (nightly dispatch 29790479476)
+    still queued at time of writing.
     (2026-07-20) PARQUET-CANONICAL CUTOVER EXECUTED (#46 Phase 6, ADR098,
     branch feat/parquet-cutover): the reference DB is now a deterministic
     BUILD PRODUCT -- 80 per-table parquet sources + schema.sql canonical

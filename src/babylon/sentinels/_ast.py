@@ -1182,3 +1182,99 @@ def calls_missing_keyword_or_positional_arg(
             continue
         misses.add(node.lineno)
     return sorted(misses)
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Gate-satisfaction guard grounding (T1.1 U4, ai/_inbox/t11-seam-severity-
+# design.md §3.2 point 1): three construct-entry guard SHAPES a production
+# early-return can take when a required input is absent. Each helper below
+# grounds ONE shape -- confirms the guard literally exists in a named source
+# file -- so a :class:`~babylon.sentinels.seam_algebra.registry.GatedInput`
+# row citing a guard that has since been edited away fails loud (an
+# infrastructure error) rather than silently reading as still-enforced.
+# ─────────────────────────────────────────────────────────────────────────────
+
+
+def attribute_is_none_guard_lines(path: Path, attr_name: str) -> list[int]:
+    """Line numbers where some object's ``.attr_name`` is compared to ``None``.
+
+    Matches ``<expr>.attr_name is None`` and the reversed ``None is
+    <expr>.attr_name`` anywhere in ``path`` -- the ``services.X is None``
+    early-return guard shape (e.g. ``services.distribution_calculator is
+    None``, ``services.melt_calculator is None``).
+
+    :param path: Source file to scan.
+    :param attr_name: The attribute name compared to ``None``.
+    :returns: Sorted, de-duplicated line numbers.
+    :raises SentinelCheckError: If the file is missing or unparseable.
+    """
+    tree = parse_module(path)
+    lines: set[int] = set()
+    for node in ast.walk(tree):
+        if not (isinstance(node, ast.Compare) and len(node.ops) == 1):
+            continue
+        if not isinstance(node.ops[0], ast.Is):
+            continue
+        for operand, other in ((node.left, node.comparators[0]), (node.comparators[0], node.left)):
+            if (
+                isinstance(operand, ast.Attribute)
+                and operand.attr == attr_name
+                and isinstance(other, ast.Constant)
+                and other.value is None
+            ):
+                lines.add(node.lineno)
+    return sorted(lines)
+
+
+def dict_get_call_lines(path: Path, key: str) -> list[int]:
+    """Line numbers of ``<obj>.get("<key>")`` call sites.
+
+    The ``context.get(K)`` early-return guard shape (e.g.
+    ``context.get("vol2_step")``).
+
+    :param path: Source file to scan.
+    :param key: The literal string key argument to match.
+    :returns: Sorted, de-duplicated line numbers.
+    :raises SentinelCheckError: If the file is missing or unparseable.
+    """
+    tree = parse_module(path)
+    lines: set[int] = set()
+    for node in ast.walk(tree):
+        if not (
+            isinstance(node, ast.Call)
+            and isinstance(node.func, ast.Attribute)
+            and node.func.attr == "get"
+            and node.args
+        ):
+            continue
+        first = node.args[0]
+        if isinstance(first, ast.Constant) and first.value == key:
+            lines.add(node.lineno)
+    return sorted(lines)
+
+
+def hasattr_guard_lines(path: Path, attr_name: str) -> list[int]:
+    """Line numbers of ``hasattr(<expr>, "<attr_name>")`` call sites.
+
+    The optional-attribute early-return guard shape (e.g. ``context.session_id
+    if hasattr(context, "session_id") else None``).
+
+    :param path: Source file to scan.
+    :param attr_name: The literal attribute-name argument to match.
+    :returns: Sorted, de-duplicated line numbers.
+    :raises SentinelCheckError: If the file is missing or unparseable.
+    """
+    tree = parse_module(path)
+    lines: set[int] = set()
+    for node in ast.walk(tree):
+        if not (
+            isinstance(node, ast.Call)
+            and isinstance(node.func, ast.Name)
+            and node.func.id == "hasattr"
+            and len(node.args) >= 2
+        ):
+            continue
+        second = node.args[1]
+        if isinstance(second, ast.Constant) and second.value == attr_name:
+            lines.add(node.lineno)
+    return sorted(lines)

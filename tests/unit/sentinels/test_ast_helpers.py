@@ -13,8 +13,11 @@ from pathlib import Path
 import pytest
 
 from babylon.sentinels._ast import (
+    attribute_is_none_guard_lines,
     coupling_edges,
+    dict_get_call_lines,
     frozenset_str_members,
+    hasattr_guard_lines,
     parse_module,
     referenced_names,
     returned_dict_keys,
@@ -182,3 +185,120 @@ def test_returned_dict_keys_excludes_nested_scope_returns(tmp_path: Path) -> Non
         encoding="utf-8",
     )
     assert returned_dict_keys(target, "make") == ("real_key",)
+
+
+# ---------------------------------------------------------------------------
+# attribute_is_none_guard_lines (T1.1 U4 gate-satisfaction) -- efficacy
+# ---------------------------------------------------------------------------
+
+
+def test_attribute_is_none_guard_lines_finds_a_direct_comparison(tmp_path: Path) -> None:
+    target = tmp_path / "m.py"
+    target.write_text(
+        "def f(services):\n    if services.foo is None:\n        return\n",
+        encoding="utf-8",
+    )
+    assert attribute_is_none_guard_lines(target, "foo") == [2]
+
+
+def test_attribute_is_none_guard_lines_finds_the_reversed_operand_order(tmp_path: Path) -> None:
+    target = tmp_path / "m.py"
+    target.write_text(
+        "def f(services):\n    if None is services.foo:\n        return\n",
+        encoding="utf-8",
+    )
+    assert attribute_is_none_guard_lines(target, "foo") == [2]
+
+
+def test_attribute_is_none_guard_lines_ignores_a_different_attribute(tmp_path: Path) -> None:
+    target = tmp_path / "m.py"
+    target.write_text(
+        "def f(services):\n    if services.bar is None:\n        return\n",
+        encoding="utf-8",
+    )
+    assert attribute_is_none_guard_lines(target, "foo") == []
+
+
+def test_attribute_is_none_guard_lines_ignores_a_non_none_comparison(tmp_path: Path) -> None:
+    target = tmp_path / "m.py"
+    target.write_text(
+        "def f(services):\n    if services.foo == 0:\n        return\n",
+        encoding="utf-8",
+    )
+    assert attribute_is_none_guard_lines(target, "foo") == []
+
+
+def test_attribute_is_none_guard_lines_raises_on_unparseable_source(tmp_path: Path) -> None:
+    target = tmp_path / "broken.py"
+    target.write_text("def (:\n", encoding="utf-8")
+    with pytest.raises(SentinelCheckError):
+        attribute_is_none_guard_lines(target, "foo")
+
+
+# ---------------------------------------------------------------------------
+# dict_get_call_lines (T1.1 U4 gate-satisfaction) -- efficacy
+# ---------------------------------------------------------------------------
+
+
+def test_dict_get_call_lines_finds_the_literal_key(tmp_path: Path) -> None:
+    target = tmp_path / "m.py"
+    target.write_text(
+        'def f(context):\n    return context.get("vol2_step")\n',
+        encoding="utf-8",
+    )
+    assert dict_get_call_lines(target, "vol2_step") == [2]
+
+
+def test_dict_get_call_lines_ignores_a_different_key(tmp_path: Path) -> None:
+    target = tmp_path / "m.py"
+    target.write_text(
+        'def f(context):\n    return context.get("other_key")\n',
+        encoding="utf-8",
+    )
+    assert dict_get_call_lines(target, "vol2_step") == []
+
+
+def test_dict_get_call_lines_ignores_a_differently_named_method(tmp_path: Path) -> None:
+    target = tmp_path / "m.py"
+    target.write_text(
+        'def f(context):\n    return context.fetch("vol2_step")\n',
+        encoding="utf-8",
+    )
+    assert dict_get_call_lines(target, "vol2_step") == []
+
+
+def test_dict_get_call_lines_raises_on_unparseable_source(tmp_path: Path) -> None:
+    target = tmp_path / "broken.py"
+    target.write_text("def (:\n", encoding="utf-8")
+    with pytest.raises(SentinelCheckError):
+        dict_get_call_lines(target, "vol2_step")
+
+
+# ---------------------------------------------------------------------------
+# hasattr_guard_lines (T1.1 U4 gate-satisfaction) -- efficacy
+# ---------------------------------------------------------------------------
+
+
+def test_hasattr_guard_lines_finds_the_literal_attr(tmp_path: Path) -> None:
+    target = tmp_path / "m.py"
+    target.write_text(
+        'def f(context):\n    return context.x if hasattr(context, "session_id") else None\n',
+        encoding="utf-8",
+    )
+    assert hasattr_guard_lines(target, "session_id") == [2]
+
+
+def test_hasattr_guard_lines_ignores_a_different_attr(tmp_path: Path) -> None:
+    target = tmp_path / "m.py"
+    target.write_text(
+        'def f(context):\n    return hasattr(context, "other_attr")\n',
+        encoding="utf-8",
+    )
+    assert hasattr_guard_lines(target, "session_id") == []
+
+
+def test_hasattr_guard_lines_raises_on_unparseable_source(tmp_path: Path) -> None:
+    target = tmp_path / "broken.py"
+    target.write_text("def (:\n", encoding="utf-8")
+    with pytest.raises(SentinelCheckError):
+        hasattr_guard_lines(target, "session_id")

@@ -59,11 +59,15 @@ from babylon.sentinels.exemptions import SentinelExemption
 __all__ = [
     "CONSTRUCT_REGISTRY",
     "EDGE_REGISTRY",
+    "GATE_REGISTRY",
+    "GATE_SATISFACTION_EXEMPTIONS",
+    "GUARD_SHAPES",
     "ORIGIN_FAMILIES",
     "PRODUCTION_ENTRY_POINTS",
     "SEAM_ALGEBRA_EXEMPTIONS",
     "ConstructNode",
     "ExpectedConsumer",
+    "GatedInput",
 ]
 
 #: The six legacy families this registry unifies, plus ``"native"`` for a
@@ -297,6 +301,229 @@ def _validate_edges_resolve(
 
 
 _validate_edges_resolve(CONSTRUCT_REGISTRY, EDGE_REGISTRY)
+
+#: The three construct-entry guard shapes T1.1 U4's gate-satisfaction check
+#: recognizes (design §3.2 point 1): ``context_get`` (``context.get("K")``),
+#: ``services_attr_none`` (``services.X is None``), ``context_hasattr`` (the
+#: ``X if hasattr(obj, "X") else None`` optional-attribute form). Closed set
+#: for the same reason :data:`ORIGIN_FAMILIES`/``_EDGE_KINDS`` are: a typo'd
+#: shape fails a :class:`GatedInput` row loudly rather than silently widening
+#: what this check verifies. The fourth guard shape the design also names --
+#: an OPTIONAL kwarg silently omitted at a call site (the ``defines=``
+#: passthrough pattern :mod:`babylon.sentinels.defines_passthrough` already
+#: polices via ``_ast.optional_defines_param_index`` /
+#: ``_ast.calls_missing_keyword_or_positional_arg``) -- has no day-one witness
+#: among F-1/F-2 (both are ``services_attr_none``/``context_get``/
+#: ``context_hasattr`` shaped) and is deliberately NOT populated here; it is
+#: named future scope for the LODES-kwargs / transition_engine / reserve-army
+#: seed findings the design's "Closes:" list also names (§3.2 point 1),
+#: promoted in a later pass rather than force-fit against witnesses that do
+#: not exhibit it.
+GUARD_SHAPES: Final[frozenset[str]] = frozenset(
+    {"context_get", "services_attr_none", "context_hasattr"}
+)
+
+
+class GatedInput(BaseModel):
+    """One construct-entry guard: an early-return that fires when ``gated_input`` is absent.
+
+    :ivar name: Stable identity, unique within :data:`GATE_REGISTRY`.
+    :ivar guard_file: Repo-relative ``.py`` path containing the guard.
+    :ivar guard_shape: One of :data:`GUARD_SHAPES` -- which AST pattern
+        grounds this row (see :mod:`babylon.sentinels.seam_algebra.checks`'s
+        ``_confirm_guard_grounded``).
+    :ivar gated_input: The context key / services attribute name the guard
+        tests for absence.
+    :ivar supplier_files: Repo-relative ``.py`` path(s) hand-declared as a
+        genuine, unconditional production supplier of ``gated_input``. Empty
+        -- the deliberate "no production supplier exists" claim (F-1's own
+        witness) -- reds unless a dated :class:`SentinelExemption` holds it
+        open. A CONDITIONAL supplier (wired only inside an ``if`` branch
+        elsewhere, e.g. ``distribution_calculator`` only when a headless
+        run's ``scope_fips`` is truthy) is deliberately left undeclared here
+        -- this check does not attempt control-flow analysis (mirrors every
+        other ``_ast`` helper's documented "cannot resolve without
+        value-flow analysis" boundary), so a conditionally-wired input reads
+        honestly as "no unconditional supplier", never as a false-clean pass.
+    """
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    name: str
+    guard_file: str
+    guard_shape: str
+    gated_input: str
+    supplier_files: tuple[str, ...] = ()
+
+    @model_validator(mode="after")
+    def _validate_shape(self) -> GatedInput:
+        """Reject a malformed row loudly at import (Constitution III.11).
+
+        :returns: ``self`` when valid.
+        :raises ValueError: If ``name``/``gated_input`` is blank, ``guard_file``
+            (or any ``supplier_files`` entry) is not a ``.py`` path, or
+            ``guard_shape`` is not one of :data:`GUARD_SHAPES`.
+        """
+        for label, value in (("name", self.name), ("gated_input", self.gated_input)):
+            if not value.strip():
+                raise ValueError(f"GatedInput.{label} must be non-empty")
+        if not self.guard_file.endswith(".py"):
+            raise ValueError(
+                f"{self.name!r}: guard_file must be a .py path, got {self.guard_file!r}"
+            )
+        if self.guard_shape not in GUARD_SHAPES:
+            raise ValueError(
+                f"{self.name!r}: guard_shape {self.guard_shape!r} not in {sorted(GUARD_SHAPES)!r}"
+            )
+        for supplier_file in self.supplier_files:
+            if not supplier_file.endswith(".py"):
+                raise ValueError(
+                    f"{self.name!r}: supplier_files entry must be a .py path, got {supplier_file!r}"
+                )
+        return self
+
+
+#: The unified, hand-curated gate set -- T1.1 U4's day-one witnesses.
+#:
+#: - ``run_audit_session_id`` is **F-1**: ``SimulationEngine._run_audit``
+#:   early-returns "skip silently" when ``context.session_id`` is absent
+#:   (``engine/simulation_engine.py:227-230``). No production caller ever
+#:   sets the ATTRIBUTE ``context.session_id`` -- the headless runner sets
+#:   ``context["session_id"]`` (a dict-style write, routed by
+#:   ``TickContext.__setitem__`` into ``persistent_data``, not the attribute
+#:   ``hasattr`` tests), so the guard can never see it either way. Empty
+#:   ``supplier_files``: verified, no attribute-style supplier anywhere.
+#: - ``financial_layer_distribution_calculator`` is **F-2**'s headline
+#:   example: ``_compute_financial_layer`` returns ``county_states``
+#:   unchanged when ``services.distribution_calculator is None``
+#:   (``domain/economics/tick/system/__init__.py:1439``). The only
+#:   production wiring (``domain/economics/factory.py::
+#:   create_financial_services``, invoked from the headless runner's
+#:   ``_build_economics_overrides``) is CONDITIONAL on a truthy
+#:   ``scope_fips`` -- not a supplier this check declares (see
+#:   :class:`GatedInput` docstring). Empty ``supplier_files``.
+#: - ``vol2_circulation_vol2_step`` is **F-2**'s other half: ``ImperialRent
+#:   System._invoke_vol2_circulation_if_wired`` returns silently when
+#:   ``context.get("vol2_step")`` is ``None`` (``engine/systems/
+#:   economic.py:174-178``). Verified: zero production writers of
+#:   ``context["vol2_step"]``/``context.persistent_data["vol2_step"]``
+#:   anywhere in ``src/`` or ``web/`` -- the sibling
+#:   ``_invoke_phi_distribution_if_wired`` guard on the SAME line range
+#:   (``session_id``/``boundary_flow_register``/``external_nodes_phi``/
+#:   ``county_exposure_by_external``) is, by contrast, genuinely wired by the
+#:   headless runner's ``_run_tick_once`` (conditionally, but for the
+#:   standard tick-loop path) and is correctly NOT flagged here. Empty
+#:   ``supplier_files``.
+#: - ``tick_dynamics_melt_calculator`` is the POSITIVE control: ``services.
+#:   melt_calculator is None`` (``domain/economics/tick/system/
+#:   __init__.py:174``) IS unconditionally wired by the headless runner's
+#:   ``_build_economics_overrides`` (``overrides["melt_calculator"] = melt``,
+#:   ``engine/headless_runner/runner.py:1055``, whenever a session factory is
+#:   supplied -- the one production path this sentinel's declared
+#:   ``supplier_files`` name) -- proves the check recognizes a genuinely
+#:   satisfied gate, not just a red-everything scanner.
+GATE_REGISTRY: Final[tuple[GatedInput, ...]] = (
+    GatedInput(
+        name="run_audit_session_id",
+        guard_file="src/babylon/engine/simulation_engine.py",
+        guard_shape="context_hasattr",
+        gated_input="session_id",
+        supplier_files=(),
+    ),
+    GatedInput(
+        name="financial_layer_distribution_calculator",
+        guard_file="src/babylon/domain/economics/tick/system/__init__.py",
+        guard_shape="services_attr_none",
+        gated_input="distribution_calculator",
+        supplier_files=(),
+    ),
+    GatedInput(
+        name="vol2_circulation_vol2_step",
+        guard_file="src/babylon/engine/systems/economic.py",
+        guard_shape="context_get",
+        gated_input="vol2_step",
+        supplier_files=(),
+    ),
+    GatedInput(
+        name="tick_dynamics_melt_calculator",
+        guard_file="src/babylon/domain/economics/tick/system/__init__.py",
+        guard_shape="services_attr_none",
+        gated_input="melt_calculator",
+        supplier_files=("src/babylon/engine/headless_runner/runner.py",),
+    ),
+)
+
+#: F-1 + F-2's day-one dispositions (design §9 item 4: T1.1 defaults to
+#: exemption-with-rationale over a raise/loud-log behavior change, since this
+#: lane is Amendment-S read-only projection/diagnostics -- it may not feed
+#: back into physics or change engine behavior). The BD-owed raise-vs-exempt
+#: call per §9 item 4 is left open, same as F-EC-1's disposition above.
+GATE_SATISFACTION_EXEMPTIONS: Final[tuple[SentinelExemption, ...]] = (
+    SentinelExemption(
+        key=("gate", "run_audit_session_id"),
+        reason=(
+            "F-1: SimulationEngine._run_audit (engine/simulation_engine.py:227-230) "
+            "early-returns 'skip silently' when context.session_id is absent. "
+            "Verified: no production caller ever sets the ATTRIBUTE "
+            "context.session_id -- the headless runner's _run_tick_once sets "
+            "context['session_id'] instead (a dict-style write TickContext."
+            "__setitem__ routes into persistent_data, never the pydantic "
+            "attribute the hasattr() guard tests), so the two never meet "
+            "regardless of whether session_id is 'wired' upstream. Per the "
+            "T1.1 default (design §9 item 4), held open as an exemption "
+            "rather than this lane changing engine behavior (a raise/loud-log "
+            "fix touches _run_audit's production control flow, out of scope "
+            "for a read-only G-of-P diagnostics lane, Amendment-S tripwire)."
+        ),
+        owner="Persephone Raskova",
+        date="2026-07-21",
+        tracking_task="N/A (BD-owed raise-vs-exempt disposition per design "
+        "ai/_inbox/t11-seam-severity-design.md §9 item 4)",
+    ),
+    SentinelExemption(
+        key=("gate", "financial_layer_distribution_calculator"),
+        reason=(
+            "F-2 (headline example): _compute_financial_layer "
+            "(domain/economics/tick/system/__init__.py:1439) returns "
+            "county_states unchanged when services.distribution_calculator "
+            "is None. The one production wiring path "
+            "(domain/economics/factory.py::create_financial_services, via "
+            "the headless runner's _build_economics_overrides) is CONDITIONAL "
+            "on a truthy scope_fips -- a run without county scoping silently "
+            "skips the whole Volume III financial layer with no log. Per the "
+            "T1.1 default (design §9 item 4: 'loud one-time log OR exemption'), "
+            "held open as an exemption -- the loud-log alternative is a "
+            "production code change out of scope for this Amendment-S "
+            "read-only lane."
+        ),
+        owner="Persephone Raskova",
+        date="2026-07-21",
+        tracking_task="N/A (BD-owed raise-vs-exempt disposition per design "
+        "ai/_inbox/t11-seam-severity-design.md §9 item 4)",
+    ),
+    SentinelExemption(
+        key=("gate", "vol2_circulation_vol2_step"),
+        reason=(
+            "F-2 (vol2/Phi sub-stage half): ImperialRentSystem."
+            "_invoke_vol2_circulation_if_wired (engine/systems/economic.py:"
+            "174-178) returns silently when context.get('vol2_step') (also "
+            "boundary_flow_register/session_id/simulated_year) is absent. "
+            "Verified: zero production writers of context['vol2_step'] "
+            "anywhere in src/ or web/ -- the Vol II Circulation sub-stage "
+            "(spec 063 T019) has never been wired into the headless runner's "
+            "context construction; the sibling _invoke_phi_distribution_if_"
+            "wired guard on the adjacent lines IS wired (runner.py:431-439) "
+            "and is correctly not flagged. Per the T1.1 default (design §9 "
+            "item 4), held open as an exemption -- wiring vol2_step is a "
+            "production change (the vol2-circulation-program-staged effort) "
+            "out of scope for this read-only diagnostics lane."
+        ),
+        owner="Persephone Raskova",
+        date="2026-07-21",
+        tracking_task="N/A (BD-owed raise-vs-exempt disposition per design "
+        "ai/_inbox/t11-seam-severity-design.md §9 item 4)",
+    ),
+)
 
 #: The one day-one exemption: F-EC-1. Per the T1.1 default (design §9 item 3/4
 #: — exemption-with-rationale unless the owner prefers otherwise), this holds

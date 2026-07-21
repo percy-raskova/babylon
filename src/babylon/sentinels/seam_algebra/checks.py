@@ -36,6 +36,18 @@ stop the moment nothing grows, bounded by :data:`_MAX_CLOSURE_PASSES`.
 Day-one scope (design §3.1): **static ∂L only** — no engine import, no probe
 run. The trace-based residual leg (reachable from probe goldens) is staged to
 the nightly lane, not this family.
+
+**Gate-satisfaction** (T1.1 U4, design §3.2 point 1) is this family's second
+check: a construct's LIVENESS (above) says nothing about whether a
+production-reachable function's OWN early-return guards (``context.get(K)``,
+``services.X is None``, the ``X if hasattr(obj, "X") else None`` optional-
+attribute form) ever actually pass in production. :func:`check_gate_satisfaction`
+reds a :class:`~babylon.sentinels.seam_algebra.registry.GatedInput` row whose
+``gated_input`` has no declared, AST-grounded, UNCONDITIONAL production
+supplier — the day-one witnesses are F-1 (``session_id``) and F-2
+(``distribution_calculator``, ``vol2_step``), both held open as dated
+exemptions (design §9 item 4); ``melt_calculator`` is the shipped POSITIVE
+control proving the check recognizes a genuinely satisfied gate too.
 """
 
 from __future__ import annotations
@@ -45,22 +57,31 @@ import sys
 from pathlib import Path
 from typing import Final
 
-from babylon.sentinels._ast import referenced_names
-from babylon.sentinels.base import LabelledCheck, run_sensor
+from babylon.sentinels._ast import (
+    attribute_is_none_guard_lines,
+    dict_get_call_lines,
+    hasattr_guard_lines,
+    referenced_names,
+)
+from babylon.sentinels.base import LabelledCheck, SentinelCheckError, run_sensor
 from babylon.sentinels.exemptions import SentinelExemption, is_exempt
 from babylon.sentinels.report import finding
 from babylon.sentinels.seam_algebra.registry import (
     CONSTRUCT_REGISTRY,
     EDGE_REGISTRY,
+    GATE_REGISTRY,
+    GATE_SATISFACTION_EXEMPTIONS,
     PRODUCTION_ENTRY_POINTS,
     SEAM_ALGEBRA_EXEMPTIONS,
     ConstructNode,
     ExpectedConsumer,
+    GatedInput,
 )
 
 __all__ = [
     "build_live_set",
     "check_disconnected_subsystems",
+    "check_gate_satisfaction",
     "main",
 ]
 
@@ -203,14 +224,121 @@ def check_disconnected_subsystems(
     return sorted(findings)
 
 
-#: The one rule: any non-exempt disconnected subsystem is a live defect.
+_WHY_UNSATISFIED: Final[str] = (
+    "WHY THIS FAILS: an early-return guard whose gated input has no declared, "
+    "grounded, unconditional production supplier will silently no-op forever in "
+    "production while every unit test that hand-supplies the input stays green -- "
+    "the exact gate-blindness failure mode III.11 forbids staying quiet."
+)
+
+
+def _confirm_guard_grounded(gate: GatedInput) -> None:
+    """Confirm ``gate.guard_shape``'s AST pattern is still present in ``gate.guard_file``.
+
+    A registry row citing a guard that has since been edited away (or renamed)
+    must fail loud, not silently read as "still enforced" -- mirrors
+    :func:`_validate_edges_resolve`'s "reject a malformed/stale row" posture,
+    deferred to check-run time here because it requires reading a file.
+
+    :param gate: The row to ground.
+    :raises babylon.sentinels.base.SentinelCheckError: If ``guard_file`` is
+        missing/unparseable, or the declared ``guard_shape`` pattern for
+        ``gated_input`` is not found in it (a stale registry row).
+    """
+    path = _REPO_ROOT / gate.guard_file
+    if gate.guard_shape == "context_get":
+        lines = dict_get_call_lines(path, gate.gated_input)
+    elif gate.guard_shape == "services_attr_none":
+        lines = attribute_is_none_guard_lines(path, gate.gated_input)
+    else:
+        lines = hasattr_guard_lines(path, gate.gated_input)
+    if not lines:
+        raise SentinelCheckError(
+            f"{gate.name!r}: no {gate.guard_shape!r} guard for {gate.gated_input!r} "
+            f"found in {gate.guard_file} -- registry row is stale (guard was edited "
+            "away, renamed, or never existed)"
+        )
+
+
+def check_gate_satisfaction(
+    gates: tuple[GatedInput, ...] = GATE_REGISTRY,
+    exemptions: tuple[SentinelExemption, ...] = GATE_SATISFACTION_EXEMPTIONS,
+) -> list[str]:
+    """Red every construct-entry guard whose gated input has no production supplier.
+
+    For each declared :class:`~babylon.sentinels.seam_algebra.registry.GatedInput`
+    row: first :func:`_confirm_guard_grounded` (the guard itself is real, or this
+    is an infrastructure failure), then check whether ``gated_input`` is
+    genuinely SUPPLIED -- present in :func:`~babylon.sentinels._ast.referenced_names`
+    of at least one declared ``supplier_files`` entry. A row declaring
+    ``supplier_files`` that do NOT actually reference ``gated_input`` is itself a
+    stale/ungrounded positive claim and is also an infrastructure failure (the
+    same "a declared edge/producer must be verifiable" discipline
+    :func:`build_live_set` and every sibling family enforce). An empty
+    ``supplier_files`` tuple is the deliberate "no production supplier declared"
+    claim and reds directly (unless exempted).
+
+    :param gates: Declared gate rows (defaults to the real
+        :data:`~babylon.sentinels.seam_algebra.registry.GATE_REGISTRY`;
+        injectable so tests can supply a fixture gate).
+    :param exemptions: Dated, owner-approved rows holding a known unsatisfied
+        gate open (defaults to the real
+        :data:`~babylon.sentinels.seam_algebra.registry.GATE_SATISFACTION_EXEMPTIONS`;
+        injectable so the mutation test can prove a reverted exemption reds).
+    :returns: Sorted agent-legible finding strings (empty when every non-exempt
+        gate is satisfied).
+    :raises babylon.sentinels.base.SentinelCheckError: If a guard/supplier file
+        is missing/unparseable, a declared guard has gone stale, or a declared
+        ``supplier_files`` entry does not actually reference ``gated_input``.
+    """
+    findings: list[str] = []
+    for gate in gates:
+        _confirm_guard_grounded(gate)
+        supplied_by = [
+            supplier_file
+            for supplier_file in gate.supplier_files
+            if gate.gated_input in referenced_names(_REPO_ROOT / supplier_file)
+        ]
+        if gate.supplier_files and not supplied_by:
+            raise SentinelCheckError(
+                f"{gate.name!r}: declared supplier_files {gate.supplier_files!r} do "
+                f"not reference {gate.gated_input!r} -- registry row is stale"
+            )
+        if supplied_by:
+            continue
+        if is_exempt(("gate", gate.name), exemptions):
+            continue
+        findings.append(
+            finding(
+                error_class="gate-blindness",
+                symbol=gate.gated_input,
+                file=gate.guard_file,
+                line=0,
+                problem=(
+                    f"{gate.name!r} ({gate.guard_shape}) gates on {gate.gated_input!r} "
+                    "with no declared, grounded, unconditional production supplier."
+                ),
+                remedy=(
+                    "wire a real, unconditional production supplier and cite it in "
+                    "GatedInput.supplier_files, or add a dated SentinelExemption "
+                    "(key=('gate', name)) citing why the gate stays unsatisfied for "
+                    f"now — never a silent registry removal. {_WHY_UNSATISFIED}"
+                ),
+            )
+        )
+    return sorted(findings)
+
+
+#: Any non-exempt disconnected subsystem OR unsatisfied construct-entry gate
+#: is a live defect.
 _GATING_CHECKS: Final[tuple[LabelledCheck, ...]] = (
     ("disconnected-subsystem", check_disconnected_subsystems),
+    ("gate-satisfaction", check_gate_satisfaction),
 )
 
 
 def _summary(advisory_count: int) -> str:
-    """Clean one-line summary: registry size and live-subgraph size.
+    """Clean one-line summary: registry size, live-subgraph size, gate count.
 
     :param advisory_count: Number of advisory findings (0 — no advisory tier).
     :returns: The summary line.
@@ -221,7 +349,8 @@ def _summary(advisory_count: int) -> str:
         f"Seam-algebra clean: {len(live)}/{len(CONSTRUCT_REGISTRY)} declared "
         f"construct(s) reachable from {len(PRODUCTION_ENTRY_POINTS)} production "
         f"entry point(s); {len(SEAM_ALGEBRA_EXEMPTIONS)} disconnected subsystem(s) "
-        "held open by a dated exemption."
+        f"and {len(GATE_SATISFACTION_EXEMPTIONS)} unsatisfied gate(s) held open "
+        "by a dated exemption."
     )
 
 

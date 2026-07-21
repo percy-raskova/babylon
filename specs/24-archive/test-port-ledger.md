@@ -71,6 +71,9 @@ these are the cutover blockers enumerated in the LOUD list.
 | `src/frontend/e2e/lobby-briefing.spec.ts` (codename regex, 5 pattern rows, win badge, "100 years" horizon copy — NOT in ledger before this WO) | `tests/unit/projection/test_briefing.py` + `tests/unit/projection/vault/test_render_briefing.py` (`project_briefing`/`render_briefing` contract: `operation_codename` + `journal_objectives` ports) | REWRITTEN | WO-35 ✓ |
 | `src/frontend/e2e/lobby-briefing.spec.ts` (lobby row codename/tick/status metadata; archive → ABANDONED; arm-then-confirm delete) | campaign menu over the `babylon_meta` catalog | CARRIED (P3 WO-49) | — |
 | `src/frontend/e2e/auth.spec.ts` (Django login) | none — Django auth dies with the web client | RETIRED | — |
+| `src/frontend/e2e/first-session.spec.ts` (lobby→briefing→verb-grid→campaign-submit→resolve-tick legs; spec-116 acceptance gate 6 — absent from this ledger before the WO-52 sentinel build) | every engine/projection behavior this trunk walks already has a row/class above: lobby codenames = row 72 (CARRIED P3 WO-49); briefing content + `journal_objectives` axes = row 71 (REWRITTEN WO-35); verb-grid eligibility = `TestVerbEligibilityAgreesWithTargetsRealWayneCounty` (PORTED WO-38) + `TestDefixturedVerbTargets` (RETIRED); campaign preview/submit = rows 61–63 (REWRITTEN WO-38/39, PORTED WO-39); event-dedup rendering is web-UI-only (`src/frontend/src/lib/__tests__/eventDedup.test.ts`, outside this ledger's python/e2e scope) | RETIRED | — |
+| `src/frontend/e2e/first-session.spec.ts` (epilogue leg, lines 397–482: rigged-horizon UNRESOLVED epilogue body + terminal-state immutability) | `tests/unit/projection/vault/test_epilogues.py` (its own docstring cites this spec file's lines 434–439 verbatim as the `UNRESOLVED` body's source) + `tests/unit/projection/test_endgame.py` (`endgame_status` pure fold) | PORTED | WO-34 ✓ |
+| `src/frontend/e2e/event-popup.spec.ts` (toast rail: urgent-event popup, two-toast-lifetime contract, dismiss→"Missed" tray — absent from this ledger before the WO-52 sentinel build) | web-only React toast UI (`EventToasts.tsx`/`eventsSlice.ts`); classification/dedup already unit-tested in `src/frontend/src/lib/__tests__/eventClassifier.test.ts` + `eventDedup.test.ts` (frontend-only, outside this ledger's python/e2e scope); successor salience/autopause surfacing is the Chronicle (WO-27/48, already CARRIED via the `TestAlertsDashboard`/`TestSpineWhitelistSeverityAndTitles` rows above) | RETIRED | — |
 
 ## Deviations recorded
 
@@ -98,6 +101,16 @@ these are the cutover blockers enumerated in the LOUD list.
   anywhere** and surface in the LOUD gap list below (`TestEconomyDashboardFundamentalTheorem`,
   `TestEconomyDashboardChipContract`). Existing rows are left intact per the
   no-delete rule; this note records the scope gap.
+- **`first-session.spec.ts` and `event-popup.spec.ts` had no ledger row (WO-52
+  closure-sentinel finding).** Building the mechanical sentinel test
+  (`tests/unit/archive/test_ledger_closed.py`) enumerates every
+  `src/frontend/e2e/*.spec.ts` filename and found these two absent from every
+  prior WO-52 pass. Neither hid an unowned behavior: `first-session.spec.ts`'s
+  legs are each already covered by rows/classes landed under other WOs (its
+  epilogue leg is even cited BY NAME in `test_epilogues.py`'s own docstring,
+  WO-34), and `event-popup.spec.ts` is purely legacy React toast-rail UI with
+  its own frontend unit tests. Both appended as rows above rather than
+  weakening the sentinel's containment check.
 
 ## engine_bridge disposition (WO-52)
 

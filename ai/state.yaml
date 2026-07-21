@@ -3,8 +3,98 @@
 
 meta:
   version: "2.47.0"  # 2.28.0 lives on feature/19-emergent-class-partition (Program 19 Phase 0+1)
-  updated: "2026-07-20"
+  updated: "2026-07-21"
   truth_status: |
+    (2026-07-21 integration) MERGE origin/dev (Program 24 P1 keel + ADR100/
+    ADR101) INTO local dev (ADR096 inference lane + versioning rigor). Semantic
+    union of both branches' state records below, newest-first. Reconciliation:
+    the ADR096 entry immediately below predates ADR101's landing and still
+    describes the legacy intelligence.ai llm_provider lane as "tagged / migrate
+    director+judge as a follow-up"; ADR101 (recorded further down) SUPERSEDES
+    that -- the legacy stack was DELETED and babylon.intelligence.providers is
+    the one transport seam. ADR096's shipped deliverables (llama-server
+    supervisor, signed model manifest + provision, babylon_intel role migration
+    0036, embedding-dims guard, doctor --provision) all survive unchanged; the
+    seam->ai import-linter contract it added is kept (intelligence.ai still
+    exists: director/judge/persona). Versioning-rigor deliverables survive
+    verbatim.
+    (2026-07-21) ADR096 INFERENCE LANE MECHANICS PLAN EXECUTED (Task 10
+    close-out, branch feat/adr096-inference-lane, on top of the 095 uv
+    migration + 094 flake merge, base e3ec4179): all nine implementation
+    tasks landed. D1 bundled llama-server supervisor (loopback lifecycle,
+    binary resolved from env/PATH until 094's closure bundles it) plus its
+    lazy start ahead of resolve_provider. D3 signed model manifest
+    (data/model_manifest.toml shipped inside the package -> inside the
+    signed Nix closure, so the closure's narinfo signature IS the
+    manifest's signature; both entries ship available=false) + resumable
+    sha256-verified provision core; `doctor --provision` CLI wiring landed
+    ALONGSIDE it in the same commit (Task 6) rather than staying
+    plan-gated, because ADR095's doctor.py was already merged onto this
+    branch when Task 6 ran -- the plan's own gate condition was already
+    satisfied, so there is no deferred wiring follow-up here. D4
+    babylon_intel least-privilege Postgres role migration
+    (0036_babylon_intel_role.sql: LOGIN/NOSUPERUSER/NOCREATEDB/NOCREATEROLE,
+    SELECT-only on 10 composition/current-state views, SELECT+INSERT on
+    document_chunk and narration_record -- the latter's real table name
+    verified against web/game/migrations/0015_narrationrecord.py before
+    shipping, since Django overrides db_table away from the brief's
+    assumed default). D5 embedding-dimension seam
+    (src/babylon/intelligence/embedding_dims.py: bge-m3=1024,
+    bge-base-en-v1.5/embeddinggemma=768) wired into the PgVectorStore
+    construction guard. A7.5 sentence-transformers/torch removal was
+    already done pre-plan (commit 19bf3080) and verified, not redone.
+    Legacy intelligence.ai lane reconciliation: Cloudflare default aligned
+    with the §A8 seam, the legacy lane tagged, and a new import-linter
+    contract forbids seam->ai imports.
+
+    Full gate green: ruff (`All checks passed!` over src+tests), mypy
+    (`Success: no issues found in 702 source files`), lint-imports
+    (`Contracts: 7 kept, 0 broken`, incl. the new seam->ai contract).
+    Touched-suite (tests/unit/{intelligence,persistence,config}): 636
+    passed, 8 failed. Full `pytest -m "not ai and not integration"`:
+    12240 passed, 116 failed, 402 skipped, 1103 deselected, 4 xfailed, 1
+    xpassed, 6 errors in 846s. EVERY one of those touched-suite and
+    full-battery failures/errors was individually traced (not assumed) to
+    one of two pre-existing, worktree-local environment gaps, neither
+    caused by this plan's diff: (a) the overwhelming majority --
+    `data/sqlite/marxist-data-3NF.sqlite` is a 4KB unmaterialized git-lfs
+    pointer in this worktree (`git lfs ls-files` confirms `filter: lfs`;
+    every failure is `sqlite3.OperationalError: no such table: ...` or a
+    catalog-reconciliation cascade from the same empty DB, including
+    tests/integration/test_timeseries_endpoint.py's 5 failures which read
+    "no live DB required" in their own docstring but actually hit the
+    real reference DB via a veil-hydration path); (b) one psycopg
+    `OutOfMemory: out of shared memory` on
+    tests/integration/persistence/test_trace_view_columns_v2.py,
+    reproduced in isolation against the shared dev-box
+    `babylon-pg-isolated` container -- a resource-contention artifact of
+    multiple concurrent sandbox sessions sharing one fixed-named
+    container (flagged as a risk in the 096 Task 9 report), not a code
+    defect. Optional live-Postgres leg (`pytest -m integration
+    tests/integration/persistence`) run since a test Postgres was up: 17
+    passed, 1 skipped (BABYLON_TEST_PG_DSN unset, unrelated), 4
+    deselected -- includes both babylon_intel role tests green against a
+    real DB.
+
+    RECORDED FOLLOW-UPS (out of ADR096 scope, honest status, per the
+    plan's own clause-coverage table): D2 (provider precedence,
+    `resolve_provider`) was ALREADY IMPLEMENTED on dev before this plan
+    (18 passing tests in test_providers.py) -- no work done here. D6
+    (premium billing/metering on the Cloudflare lane) is DELIBERATELY
+    DEFERRED by ADR096 -- lands with the real ingest API, not before; no
+    metering code added. director.py / judge.py (src/babylon/intelligence
+    /ai/) still import the legacy llm_provider/prompt_builder/prompt_
+    registry lane unchanged (verified by grep) -- migrating them onto the
+    §A8 seam is a recorded follow-up, out of ADR096 scope, since they
+    serve the legacy web lane. Model weights: the babylon-data R2 bucket
+    has no gguf uploaded (verified 2026-07-20); the manifest ships both
+    entries `available = false` and `doctor --provision` reports the
+    owner-provisioning gate loudly, provisioning nothing. OWNER GATE:
+    upload weights to R2, fill url/sha256/bytes per entry, flip
+    `available = true`. The vector(1024) column migration for bge-m3 is
+    NOT commissioned by ADR096 (no such migration exists in
+    src/babylon/persistence/migrations/) -- campaign-creation binding to
+    a live embedding column is future embedded-PG work.
     (2026-07-20 night, latest+1) PROGRAM 24 -- P1 THE KEEL COMPLETE, same
     session as P0 (branch feature/archive-p1-keel). All five keel items
     + exit: babylon.projection (the Hoist; fog relocated from web with

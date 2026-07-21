@@ -620,6 +620,12 @@ forbidden_modules = [
 ]
 
 [[tool.importlinter.contracts]]
+name = "the framework-free seam must not import the legacy ai abstraction"
+type = "forbidden"
+source_modules = ["babylon.intelligence.providers"]
+forbidden_modules = ["babylon.intelligence.ai"]
+
+[[tool.importlinter.contracts]]
 name = "projection (the Hoist, Program 24) must not import the engine"
 type = "forbidden"
 source_modules = ["babylon.projection"]

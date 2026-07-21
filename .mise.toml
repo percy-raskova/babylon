@@ -1294,6 +1294,23 @@ echo "Then promote: tools/promote.sh"
 description = "Preview version bump without changes"
 run = "uv run cz bump --dry-run"
 
+[tasks."release:bump"]
+description = "OWNER-RUN release ceremony: pin check + cz bump dry-run; pass -- --yes for the real bump (docs/versioning.md)"
+run = """
+#!/usr/bin/env bash
+set -euo pipefail
+[ -z "$(git status --porcelain)" ] || { echo "release:bump: refuse — dirty tree" >&2; exit 1; }
+[ "$(git branch --show-current)" = "dev" ] || { echo "release:bump: refuse — not on dev" >&2; exit 1; }
+tools/check_release_pins.sh
+uv run cz bump --dry-run
+if [ "${1:-}" = "--yes" ]; then
+  uv run cz bump
+  echo "release:bump: bumped. OWNER: push dev, then push the new tag — the tag push IS the release."
+else
+  echo "release:bump: dry-run only. Execute with: mise run release:bump -- --yes"
+fi
+"""
+
 # =============================================================================
 # UTILITIES
 # =============================================================================

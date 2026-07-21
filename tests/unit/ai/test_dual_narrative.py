@@ -186,10 +186,10 @@ class TestGeneratePerspective:
     ) -> None:
         """NarrativeDirector has _generate_perspective() method."""
         from babylon.intelligence.ai.director import NarrativeDirector
-        from babylon.intelligence.ai.llm_provider import MockLLM
+        from babylon.intelligence.providers import MockNarrator
 
-        mock_llm = MockLLM(default_response="Test narrative")
-        director = NarrativeDirector(use_llm=True, llm=mock_llm)
+        mock_llm = MockNarrator(default_response="Test narrative")
+        director = NarrativeDirector(use_llm=True, narrator=mock_llm)
 
         # Method should exist and be callable
         assert hasattr(director, "_generate_perspective")
@@ -201,10 +201,10 @@ class TestGeneratePerspective:
     ) -> None:
         """_generate_perspective() returns a string."""
         from babylon.intelligence.ai.director import NarrativeDirector
-        from babylon.intelligence.ai.llm_provider import MockLLM
+        from babylon.intelligence.providers import MockNarrator
 
-        mock_llm = MockLLM(default_response="Test narrative")
-        director = NarrativeDirector(use_llm=True, llm=mock_llm)
+        mock_llm = MockNarrator(default_response="Test narrative")
+        director = NarrativeDirector(use_llm=True, narrator=mock_llm)
 
         result = director._generate_perspective(uprising_event, "CORPORATE")
 
@@ -216,18 +216,18 @@ class TestGeneratePerspective:
     ) -> None:
         """_generate_perspective with CORPORATE uses CORPORATE_SYSTEM_PROMPT."""
         from babylon.intelligence.ai.director import NarrativeDirector
-        from babylon.intelligence.ai.llm_provider import MockLLM
+        from babylon.intelligence.providers import MockNarrator
 
-        mock_llm = MockLLM(default_response="Corporate narrative")
-        director = NarrativeDirector(use_llm=True, llm=mock_llm)
+        mock_llm = MockNarrator(default_response="Corporate narrative")
+        director = NarrativeDirector(use_llm=True, narrator=mock_llm)
 
         director._generate_perspective(uprising_event, "CORPORATE")
 
         # Verify the system prompt passed to LLM contains corporate framing
         assert mock_llm.call_count == 1
         call = mock_llm.call_history[0]
-        assert call["system_prompt"] is not None
-        assert "stability" in call["system_prompt"].lower()
+        assert call["system"] is not None
+        assert "stability" in call["system"].lower()
 
     def test_generate_perspective_liberated_uses_liberated_prompt(
         self,
@@ -235,18 +235,18 @@ class TestGeneratePerspective:
     ) -> None:
         """_generate_perspective with LIBERATED uses LIBERATED_SYSTEM_PROMPT."""
         from babylon.intelligence.ai.director import NarrativeDirector
-        from babylon.intelligence.ai.llm_provider import MockLLM
+        from babylon.intelligence.providers import MockNarrator
 
-        mock_llm = MockLLM(default_response="Liberated narrative")
-        director = NarrativeDirector(use_llm=True, llm=mock_llm)
+        mock_llm = MockNarrator(default_response="Liberated narrative")
+        director = NarrativeDirector(use_llm=True, narrator=mock_llm)
 
         director._generate_perspective(uprising_event, "LIBERATED")
 
         # Verify the system prompt passed to LLM contains revolutionary framing
         assert mock_llm.call_count == 1
         call = mock_llm.call_history[0]
-        assert call["system_prompt"] is not None
-        assert "revolutionary" in call["system_prompt"].lower()
+        assert call["system"] is not None
+        assert "revolutionary" in call["system"].lower()
 
     def test_generate_perspective_includes_event_in_prompt(
         self,
@@ -254,10 +254,10 @@ class TestGeneratePerspective:
     ) -> None:
         """_generate_perspective includes event data in the user prompt."""
         from babylon.intelligence.ai.director import NarrativeDirector
-        from babylon.intelligence.ai.llm_provider import MockLLM
+        from babylon.intelligence.providers import MockNarrator
 
-        mock_llm = MockLLM(default_response="Test narrative")
-        director = NarrativeDirector(use_llm=True, llm=mock_llm)
+        mock_llm = MockNarrator(default_response="Test narrative")
+        director = NarrativeDirector(use_llm=True, narrator=mock_llm)
 
         director._generate_perspective(uprising_event, "CORPORATE")
 
@@ -330,10 +330,12 @@ class TestOnTickPopulatesDualNarratives:
     ) -> None:
         """on_tick populates dual_narratives for UprisingEvent."""
         from babylon.intelligence.ai.director import NarrativeDirector
-        from babylon.intelligence.ai.llm_provider import MockLLM
+        from babylon.intelligence.providers import MockNarrator
 
-        mock_llm = MockLLM(responses=["Corporate view of uprising", "Liberated view of uprising"])
-        director = NarrativeDirector(use_llm=True, llm=mock_llm)
+        mock_llm = MockNarrator(
+            responses=["Corporate view of uprising", "Liberated view of uprising"]
+        )
+        director = NarrativeDirector(use_llm=True, narrator=mock_llm)
 
         # Initial state with no events
         previous_state = initial_state
@@ -358,10 +360,10 @@ class TestOnTickPopulatesDualNarratives:
     ) -> None:
         """Dual narrative entry has 'event', 'corporate', 'liberated' keys."""
         from babylon.intelligence.ai.director import NarrativeDirector
-        from babylon.intelligence.ai.llm_provider import MockLLM
+        from babylon.intelligence.providers import MockNarrator
 
-        mock_llm = MockLLM(responses=["Corporate narrative", "Liberated narrative"])
-        director = NarrativeDirector(use_llm=True, llm=mock_llm)
+        mock_llm = MockNarrator(responses=["Corporate narrative", "Liberated narrative"])
+        director = NarrativeDirector(use_llm=True, narrator=mock_llm)
 
         previous_state = initial_state
         new_state = initial_state.model_copy(
@@ -385,10 +387,10 @@ class TestOnTickPopulatesDualNarratives:
     ) -> None:
         """Dual narrative entry 'event' contains the triggering event."""
         from babylon.intelligence.ai.director import NarrativeDirector
-        from babylon.intelligence.ai.llm_provider import MockLLM
+        from babylon.intelligence.providers import MockNarrator
 
-        mock_llm = MockLLM(responses=["Corporate narrative", "Liberated narrative"])
-        director = NarrativeDirector(use_llm=True, llm=mock_llm)
+        mock_llm = MockNarrator(responses=["Corporate narrative", "Liberated narrative"])
+        director = NarrativeDirector(use_llm=True, narrator=mock_llm)
 
         previous_state = initial_state
         new_state = initial_state.model_copy(
@@ -411,13 +413,13 @@ class TestOnTickPopulatesDualNarratives:
     ) -> None:
         """Dual narrative entry contains LLM-generated narratives."""
         from babylon.intelligence.ai.director import NarrativeDirector
-        from babylon.intelligence.ai.llm_provider import MockLLM
+        from babylon.intelligence.providers import MockNarrator
 
         corporate_text = "Order was restored after disturbances subsided."
         liberated_text = "The people rose up against oppression!"
 
-        mock_llm = MockLLM(responses=[corporate_text, liberated_text])
-        director = NarrativeDirector(use_llm=True, llm=mock_llm)
+        mock_llm = MockNarrator(responses=[corporate_text, liberated_text])
+        director = NarrativeDirector(use_llm=True, narrator=mock_llm)
 
         previous_state = initial_state
         new_state = initial_state.model_copy(
@@ -440,16 +442,16 @@ class TestOnTickPopulatesDualNarratives:
     ) -> None:
         """on_tick calls LLM 3 times: 2 for dual narratives + 1 for main narrative."""
         from babylon.intelligence.ai.director import NarrativeDirector
-        from babylon.intelligence.ai.llm_provider import MockLLM
+        from babylon.intelligence.providers import MockNarrator
 
-        mock_llm = MockLLM(
+        mock_llm = MockNarrator(
             responses=[
                 "Corporate narrative",  # dual: corporate
                 "Liberated narrative",  # dual: liberated
                 "Main narrative",  # main narrative
             ]
         )
-        director = NarrativeDirector(use_llm=True, llm=mock_llm)
+        director = NarrativeDirector(use_llm=True, narrator=mock_llm)
 
         previous_state = initial_state
         new_state = initial_state.model_copy(
@@ -493,7 +495,7 @@ class TestOnTickPopulatesDualNarratives:
     ) -> None:
         """on_tick does not populate dual_narratives for non-significant events."""
         from babylon.intelligence.ai.director import NarrativeDirector
-        from babylon.intelligence.ai.llm_provider import MockLLM
+        from babylon.intelligence.providers import MockNarrator
         from babylon.models.events import TransmissionEvent
 
         # TransmissionEvent is not in SIGNIFICANT_EVENT_TYPES
@@ -505,8 +507,8 @@ class TestOnTickPopulatesDualNarratives:
             solidarity_strength=0.5,
         )
 
-        mock_llm = MockLLM(default_response="Should not be called")
-        director = NarrativeDirector(use_llm=True, llm=mock_llm)
+        mock_llm = MockNarrator(default_response="Should not be called")
+        director = NarrativeDirector(use_llm=True, narrator=mock_llm)
 
         previous_state = initial_state
         new_state = initial_state.model_copy(

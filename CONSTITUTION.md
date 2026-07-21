@@ -2,6 +2,26 @@
 ================================================================================
 SYNC IMPACT REPORT
 ================================================================================
+Version Change: 2.12.0 → 2.13.0 (2026-07-20)
+Bump Rationale: MINOR — Amendment Y (Pydantic AI as Canonical LLM SDK)
+  registered, BD-directed 2026-07-20 ("we amend the constitution to use
+  Pydantic AI and we replace our hand rolled vibecode ai client"). Y rules
+  pydantic-ai (slim, openai extra) PASSES the X.6 solo-developer filter — a
+  maintained upstream SDK replacing two hand-rolled per-provider client
+  stacks is maintenance removed, not added — and adopts it as the canonical
+  SDK for the generation lane (narrator + judge). Boundaries unchanged: the
+  §A8 wire seam stays OpenAI-compatible /v1; Amendment V narrator-only holds
+  (no LLM in the input path, no agentic tool loops against engine state —
+  structured output validated by pydantic remains observation, never
+  adjudication); III.6 pinning governs all persisted output; embeddings and
+  health probes remain on the stock openai client (pydantic-ai carries no
+  embedding API); litellm/langchain remain rejected under X.6. Test-tier
+  hygiene: ALLOW_MODEL_REQUESTS=False globally (no real LLM request can
+  escape a test). Implemented same-cycle: ADR100 (llm_provider.py, judge.py
+  structured output, providers.py narrate lane). No principle rewritten,
+  no primitive touched — MINOR under the Amendment L tooling precedent.
+
+--- prior report (v2.11.0 → 2.12.0) ---
 Version Change: 2.11.0 → 2.12.0 (2026-07-20)
 Bump Rationale: MINOR — Amendments V (Client Rebinding & Narrator-Only AI),
   W (Deterministic Materialization), X (Infrastructure Domain & Local-First
@@ -462,6 +482,8 @@ No separate state Negotiate verb — negotiation is a mode of Withdraw (terms of
 
 **Amendment X — Infrastructure Domain & Local-First Distribution** (ratified v2.12.0; X.7 `[IMPLEMENTED]`, X.8 `[PENDING CODE]`): X.1 scoped to the production deployment estate — the blanket "No Docker, no Nix" letter corrected (Amendment P factual-drift pattern; production-host substance unchanged: bare metal, Ansible, systemd, no containers on the VPS). New X.7: the infrastructure domain is governed by the **babylon-infra constitution v1.0.0** in its own repo, mounted as the `infra/` submodule; its Nix flake is the sole toolchain pinning authority (second authorities prohibited; mise = task runner only; the `nixpkgs-data` input carries the data-layer interpreter in lockstep with `PINNED_SQLITE_VERSION` 3.53.1). New X.8: local-first distribution — the whole Trinity on the player machine with a game-managed embedded PostgreSQL 17 + pgvector cluster (unix-socket-only, D1); Nix flake beta channel with R2 binary cache; Debian 13 baseline; the central server (Metropole) repurposed to observability + game-file ingest and bound by the observes-never-adjudicates clause; web serving stack legacy. X.6 carve-out: Grafana+SQL fleet observability (D3). Sources: babylon-infra constitution v1.0.0 (II.2–II.4, III.1), babylonlocalfirstinfrastructure.md (D1–D3), tui-roadmap-update.md §6.4, owner rulings 2026-07-20 (Nix consistency; submodule mount PR #223; sqlite pin PR #222; TUI switch). Owner-ratified 2026-07-20.
 
+**Amendment Y — Pydantic AI as Canonical LLM SDK** (ratified v2.13.0, `[IMPLEMENTED]`): the intelligence layer's **generation lane** (narrator + judge) adopts **pydantic-ai** (`pydantic-ai-slim[openai]`) as its canonical SDK, replacing the hand-rolled per-provider chat clients and the judge's hand-rolled JSON extraction. BD-ruled to **pass the X.6 solo-developer filter**: a maintained upstream SDK that deletes bespoke transport/parse code reduces the maintenance surface — the filter's own test. Boundaries unchanged: the **wire seam stays OpenAI-compatible `/v1`** (§A8 precedence bundled llama-server → external Ollama → Cloudflare → mute; mute always legal); **Amendment V holds in full** — narrator-only, no LLM in the input path (R4), and no agentic tool loops against engine state: pydantic-ai's agentic surface (tools, deps) is out of scope by this amendment's letter — only `Agent(output_type=...)` structured output and plain generation are sanctioned, and pydantic-validated output remains observation, never adjudication. **III.6 pinning** governs all persisted output unchanged. **Embeddings and health probes remain on the stock `openai` client** (pydantic-ai carries no embedding API) — the openai package stays a sanctioned transport beneath and beside the SDK. litellm/langchain remain rejected (X.6). Test-tier hygiene is constitutional: `pydantic_ai.models.ALLOW_MODEL_REQUESTS = False` globally in the test tier — an accidental network-bound model run raises, it never spends. Source: BD directive 2026-07-20; implementation ADR100. Owner-ratified 2026-07-20.
+
 Additional amendments will be registered as they are identified during downstream translation.
 
 **3. AI Decision Procedure** — When an AI agent encounters ambiguity, it MUST follow this escalation ladder:
@@ -501,4 +523,4 @@ Additional amendments will be registered as they are identified during downstrea
 
 ______________________________________________________________________
 
-**Version**: 2.12.0 | **Ratified**: 2026-01-30 | **Last Amended**: 2026-07-20
+**Version**: 2.13.0 | **Ratified**: 2026-01-30 | **Last Amended**: 2026-07-20

@@ -1,11 +1,14 @@
-"""LLM API configuration for text generation and embeddings.
+"""Embedding-lane configuration for the RAG pipeline.
 
-Supports hybrid setup:
-- Chat: DeepSeek API (cloud) or OpenAI (fallback)
-- Embeddings: Ollama (local, default) or OpenAI (cloud)
+ADR101: this module is the EMBEDDING lane only. The chat/generation lane
+(the former DeepSeek/Workers-AI ``API_KEY``/``CHAT_MODEL``/``PROVIDER``
+surface) was retired with the hand-rolled client stack — generation
+configuration lives in ``babylon.intelligence.providers``
+(``IntelligenceSettings``: env ``BABYLON_INTEL_*`` + ``config.toml``,
+§A3 precedence). Git history is the archive for the old surface.
 
-In production Babylon, we aim for full offline operation using
-local models (Ollama). Cloud APIs are transitional tools.
+Embeddings default to local Ollama; OpenAI cloud embeddings remain a
+configurable alternative for the RAG pipeline.
 """
 
 import os
@@ -25,84 +28,30 @@ CANONICAL_EMBEDDING_REVISION: Final[str] = "e8c3b32edf5434bc2275fc9bab85f82640a1
 
 
 class LLMConfig:
-    """Configuration for LLM API integration.
+    """Embedding-lane configuration (Ollama local by default, OpenAI cloud).
 
-    Supports hybrid setup:
-    - Chat: DeepSeek (primary) / OpenAI (fallback)
-    - Embeddings: Ollama (local, default) / OpenAI (cloud)
-
-    The bourgeois cloud API is a transitional tool until local
-    compute infrastructure is fully established.
+    Chat/generation settings do NOT live here (ADR101) — see
+    ``babylon.intelligence.providers.load_settings``.
     """
-
-    # === Chat API Credentials (DeepSeek priority, OpenAI fallback) ===
-    API_KEY: Final[str] = os.getenv("DEEPSEEK_API_KEY", "") or os.getenv("OPENAI_API_KEY", "")
-    API_BASE: Final[str] = os.getenv("LLM_API_BASE", "https://api.deepseek.com")
-
-    # OpenAI-specific (for legacy compatibility)
-    ORGANIZATION_ID: Final[str] = os.getenv("OPENAI_ORGANIZATION_ID", "")
-
-    # === Chat Model Selection ===
-    CHAT_MODEL: Final[str] = os.getenv("LLM_CHAT_MODEL", "deepseek-chat")
 
     # === Embedding Configuration (Ollama local by default) ===
     EMBEDDING_PROVIDER: Final[str] = os.getenv("LLM_EMBEDDING_PROVIDER", "ollama")
     EMBEDDING_API_BASE: Final[str] = os.getenv("LLM_EMBEDDING_API_BASE", "http://localhost:11434")
     EMBEDDING_MODEL: Final[str] = os.getenv("LLM_EMBEDDING_MODEL", "embeddinggemma:latest")
 
-    # === Rate Limiting ===
-    MAX_RETRIES: Final[int] = int(os.getenv("LLM_MAX_RETRIES", "3"))
-    RETRY_DELAY: Final[float] = float(os.getenv("LLM_RETRY_DELAY", "1.0"))
-    RATE_LIMIT_RPM: Final[int] = int(os.getenv("LLM_RATE_LIMIT_RPM", "60"))
+    # OpenAI-specific (cloud embeddings only)
+    ORGANIZATION_ID: Final[str] = os.getenv("OPENAI_ORGANIZATION_ID", "")
 
-    # === Batch Processing ===
+    # === Rate Limiting / Batch Processing (embedding HTTP path) ===
+    MAX_RETRIES: Final[int] = int(os.getenv("LLM_MAX_RETRIES", "3"))
+    RATE_LIMIT_RPM: Final[int] = int(os.getenv("LLM_RATE_LIMIT_RPM", "60"))
     BATCH_SIZE: Final[int] = int(os.getenv("LLM_BATCH_SIZE", "8"))
     REQUEST_TIMEOUT: Final[float] = float(os.getenv("LLM_REQUEST_TIMEOUT", "30.0"))
-
-    # === Provider selection (program-20): deepseek | workers_ai | mock ===
-    PROVIDER: Final[str] = os.getenv("LLM_PROVIDER", "deepseek")
-
-    # === Cloudflare Workers AI via AI Gateway (Program 07 Decision 3) ===
-    WORKERS_AI_ACCOUNT_ID: Final[str] = os.getenv("WORKERS_AI_ACCOUNT_ID", "")
-    WORKERS_AI_TOKEN: Final[str] = os.getenv("WORKERS_AI_TOKEN", "")
-    WORKERS_AI_MODEL: Final[str] = os.getenv("WORKERS_AI_MODEL", "@cf/openai/gpt-oss-20b")
-    WORKERS_AI_GATEWAY_ID: Final[str] = os.getenv("WORKERS_AI_GATEWAY_ID", "babylon-narrator")
-    WORKERS_AI_TIMEOUT: Final[float] = float(os.getenv("WORKERS_AI_TIMEOUT", "15.0"))
-
-    @classmethod
-    def is_workers_ai(cls) -> bool:
-        """True when the selected chat provider is Cloudflare Workers AI."""
-        return cls.PROVIDER.lower() == "workers_ai"
-
-    @classmethod
-    def workers_ai_base_url(cls) -> str:
-        """OpenAI-compatible chat base URL through the AI Gateway (loud when unconfigured)."""
-        if not cls.WORKERS_AI_ACCOUNT_ID:
-            raise ValueError(
-                "WORKERS_AI_ACCOUNT_ID not configured — required for LLM_PROVIDER=workers_ai."
-            )
-        return f"https://api.cloudflare.com/client/v4/accounts/{cls.WORKERS_AI_ACCOUNT_ID}/ai/v1"
-
-    @classmethod
-    def is_configured(cls) -> bool:
-        """Check if Chat LLM API is properly configured."""
-        return bool(cls.API_KEY and cls.API_KEY != "your-api-key-here")
 
     @classmethod
     def is_ollama_embeddings(cls) -> bool:
         """Check if using Ollama for embeddings (local, no API key needed)."""
         return cls.EMBEDDING_PROVIDER.lower() == "ollama"
-
-    @classmethod
-    def get_headers(cls) -> dict[str, str]:
-        """Get HTTP headers for Chat API requests."""
-        headers = {
-            "Authorization": f"Bearer {cls.API_KEY}",
-            "Content-Type": "application/json",
-        }
-        if cls.ORGANIZATION_ID:
-            headers["OpenAI-Organization"] = cls.ORGANIZATION_ID
-        return headers
 
     @classmethod
     def get_embedding_headers(cls) -> dict[str, str]:
@@ -126,18 +75,6 @@ class LLMConfig:
         if cls.is_ollama_embeddings():
             return f"{cls.EMBEDDING_API_BASE}/api/embeddings"
         return f"{cls.EMBEDDING_API_BASE}/v1/embeddings"
-
-    @classmethod
-    def validate(cls) -> None:
-        """Validate the Chat LLM configuration.
-
-        Raises:
-            ValueError: If required configuration is missing
-        """
-        if not cls.is_configured():
-            raise ValueError(
-                "LLM API key not configured. Set DEEPSEEK_API_KEY or OPENAI_API_KEY environment variable."
-            )
 
     @classmethod
     def validate_embeddings(cls) -> None:
@@ -179,7 +116,3 @@ class LLMConfig:
             "all-minilm": 384,
         }
         return model_dimensions.get(cls.EMBEDDING_MODEL, 768)
-
-
-# Backward compatibility alias
-OpenAIConfig = LLMConfig

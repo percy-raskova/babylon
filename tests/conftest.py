@@ -82,9 +82,20 @@ from unittest.mock import MagicMock
 import pytest
 import yaml
 from hypothesis import HealthCheck, settings
+from pydantic_ai import models as _pydantic_ai_models
 
 if TYPE_CHECKING:
     from psycopg_pool import ConnectionPool
+
+# =============================================================================
+# LLM NETWORK GUARD (Amendment Y / ADR100)
+# =============================================================================
+# No test may ever issue a real LLM request. pydantic-ai's global guard makes
+# an accidental network-bound model run raise instead of spend/leak. Tests use
+# TestModel/FunctionModel via the ModelFactory seams; the one live-eval module
+# (test_frame_entailment's opt-in Ollama lane) speaks raw openai and is
+# untouched by this flag.
+_pydantic_ai_models.ALLOW_MODEL_REQUESTS = False
 
 # Register a Hypothesis profile for mutmut runs.
 # mutmut executes tests from a different executor context, which triggers
@@ -231,31 +242,6 @@ def metrics_collector() -> "MetricsCollector":
 # These fixtures provide standardized mocks following the spec= pattern
 # for type safety. See tests/README.md for mock pattern guidelines.
 # =============================================================================
-
-
-@pytest.fixture
-def mock_llm_provider() -> MagicMock:
-    """Mock LLM provider for narrative tests.
-
-    Uses spec=LLMProvider to ensure mock follows the Protocol interface.
-    Any access to undefined attributes/methods will raise AttributeError.
-
-    Returns:
-        MagicMock with LLMProvider interface, pre-configured generate().
-
-    Example:
-        def test_narrative_uses_llm(mock_llm_provider):
-            mock_llm_provider.generate.return_value = "Custom response"
-            director = NarrativeDirector(llm=mock_llm_provider)
-            assert "Custom" in director.narrate(state)
-    """
-    # Lazy import for mutmut compatibility
-    from babylon.intelligence.ai.llm_provider import LLMProvider
-
-    mock = MagicMock(spec=LLMProvider)
-    mock.name = "MockLLM"
-    mock.generate.return_value = "Mock narrative response"
-    return mock
 
 
 @pytest.fixture

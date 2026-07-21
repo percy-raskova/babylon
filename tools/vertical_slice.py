@@ -39,11 +39,11 @@ from babylon.config.llm_config import LLMConfig
 from babylon.engine.scenarios import create_imperial_circuit_scenario
 from babylon.engine.simulation import Simulation
 from babylon.intelligence.ai.director import NarrativeDirector
-from babylon.intelligence.ai.llm_provider import DeepSeekClient, MockLLM
 from babylon.intelligence.ai.prompt_builder import DialecticalPromptBuilder
+from babylon.intelligence.providers import MockNarrator, MuteProvider, resolve_provider
 
 if TYPE_CHECKING:
-    from babylon.intelligence.ai.llm_provider import LLMProvider
+    from babylon.intelligence.providers import NarratorProvider
     from babylon.intelligence.rag.rag_pipeline import RagPipeline
     from babylon.models.world_state import WorldState
 
@@ -289,13 +289,13 @@ class VerboseNarrativeDirector(NarrativeDirector):
         logger: StructuredLogger,
         use_llm: bool = False,
         rag_pipeline: RagPipeline | None = None,
-        llm: LLMProvider | None = None,
+        narrator: NarratorProvider | None = None,
     ) -> None:
         """Initialize with console for verbose output."""
         super().__init__(
             use_llm=use_llm,
             rag_pipeline=rag_pipeline,
-            llm=llm,
+            narrator=narrator,
         )
         self._console = console
         self._logger = logger
@@ -316,7 +316,7 @@ class VerboseNarrativeDirector(NarrativeDirector):
             e for e in new_events if "SURPLUS_EXTRACTION" in e or "surplus_extraction" in e
         ]
 
-        if not surplus_events or not self._use_llm or self._llm is None:
+        if not surplus_events or not self._use_llm or self._narrator is None:
             return
 
         # === SHOW RAG QUERY ===
@@ -422,14 +422,15 @@ class VerboseNarrativeDirector(NarrativeDirector):
 
         # === CALL LLM ===
         self._console.print("\n[bold magenta]═══ LLM GENERATION ═══[/bold magenta]")
-        self._console.print(f"[dim]Calling {self._llm.name}...[/dim]")
+        ep = self._narrator.endpoint
+        self._console.print(f"[dim]Calling {ep.kind.value}:{ep.chat_model}...[/dim]")
 
         start_time = time.time()
         try:
-            narrative = self._llm.generate(
-                prompt=context_block,
-                system_prompt=system_prompt,
-            )
+            narrative = self._narrator.narrate(
+                system_prompt,
+                context_block,
+            ).text
             duration_ms = (time.time() - start_time) * 1000
 
             self._narrative_log.append(narrative)
@@ -487,29 +488,37 @@ def setup_logging(verbose: bool, logger: StructuredLogger) -> None:
     logger.log_config("logging", {"level": level, "verbose": verbose})
 
 
-def setup_llm(console: Console, logger: StructuredLogger) -> LLMProvider:
-    """Set up LLM provider, falling back to mock if no API key."""
-    if LLMConfig.is_configured():
-        console.print("[green]✓[/green] DeepSeek API key found")
-        console.print(f"[dim]  API Base: {LLMConfig.API_BASE}[/dim]")
-        console.print(f"[dim]  Model: {LLMConfig.CHAT_MODEL}[/dim]")
+def setup_llm(console: Console, logger: StructuredLogger) -> NarratorProvider:
+    """Resolve the §A7.6 narrator lane, falling back to a scripted mock.
+
+    ADR101: the lane comes from :func:`resolve_provider` (bundled →
+    external → cloudflare → mute). A mute resolution means no lane is
+    reachable — for this demo tool that degrades to a visible scripted
+    :class:`MockNarrator` rather than silent empty narration.
+    """
+    provider = resolve_provider()
+    if not isinstance(provider, MuteProvider):
+        ep = provider.endpoint
+        console.print(f"[green]✓[/green] Narrator lane resolved: {ep.kind.value}")
+        console.print(f"[dim]  Base URL: {ep.base_url}[/dim]")
+        console.print(f"[dim]  Model: {ep.chat_model}[/dim]")
 
         logger.log_llm_setup(
-            provider="deepseek",
-            model=LLMConfig.CHAT_MODEL,
-            api_base=LLMConfig.API_BASE,
+            provider=ep.kind.value,
+            model=ep.chat_model,
+            api_base=ep.base_url,
             is_mock=False,
         )
-        return DeepSeekClient()
+        return provider
 
-    console.print("[yellow]⚠[/yellow] No API key - RUNNING IN MOCK MODE")
+    console.print("[yellow]⚠[/yellow] No narrator lane reachable - RUNNING IN MOCK MODE")
     logger.log_llm_setup(
         provider="mock",
-        model="MockLLM",
+        model="MockNarrator",
         api_base=None,
         is_mock=True,
     )
-    return MockLLM(
+    return MockNarrator(
         default_response="[Mock] The extraction of surplus value continues unabated. "
         "The worker's wealth diminishes as the owner accumulates capital. "
         "This is the fundamental contradiction of capitalism - the bourgeoisie "
@@ -778,7 +787,7 @@ def main() -> int:
             logger=logger,
             use_llm=True,
             rag_pipeline=rag,
-            llm=llm,
+            narrator=llm,
         )
         console.print("[green]✓[/green] Verbose Narrative Director initialized")
         console.print()

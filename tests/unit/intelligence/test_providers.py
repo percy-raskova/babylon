@@ -18,12 +18,17 @@ from types import SimpleNamespace
 from typing import Any
 
 import pytest
+from pydantic_ai.messages import ModelMessage, ModelResponse, TextPart
+from pydantic_ai.models.function import AgentInfo, FunctionModel
+from pydantic_ai.usage import RequestUsage
 
 from babylon.intelligence.providers import (
     DEFAULT_BUNDLED_BASE_URL,
     DEFAULT_EXTERNAL_BASE_URL,
     IntelligenceSettings,
+    MockNarrator,
     MuteProvider,
+    NarratorProvider,
     OpenAICompatProvider,
     ProviderEndpoint,
     ProviderKind,
@@ -247,7 +252,9 @@ def test_mode_override_cloudflare_unconfigured_degrades_to_mute() -> None:
 
 
 def make_provider(
-    client: FakeClient, kind: ProviderKind = ProviderKind.BUNDLED
+    client: FakeClient,
+    kind: ProviderKind = ProviderKind.BUNDLED,
+    chat_model: Any = None,
 ) -> OpenAICompatProvider:
     ep = ProviderEndpoint(
         kind=kind,
@@ -256,22 +263,50 @@ def make_provider(
         embed_model="embed-pin",
         timeout_s=5.0,
     )
-    return OpenAICompatProvider(ep, client_factory=lambda **_: client)
+    return OpenAICompatProvider(
+        ep,
+        client_factory=lambda **_: client,
+        chat_model_factory=(lambda _ep: chat_model) if chat_model is not None else None,
+    )
+
+
+def _narrate_model(text: str) -> FunctionModel:
+    """A pydantic-ai model returning fixed prose with pinned token usage."""
+
+    def fn(messages: list[ModelMessage], info: AgentInfo) -> ModelResponse:
+        return ModelResponse(
+            parts=[TextPart(text)],
+            usage=RequestUsage(input_tokens=7, output_tokens=11),
+        )
+
+    return FunctionModel(fn)
 
 
 def test_narrate_reports_pin_and_provider() -> None:
-    client = FakeClient(chat_text="the metropole trembles")
-    r = make_provider(client).narrate("sys", "prompt")
+    model = _narrate_model("the metropole trembles")
+    r = make_provider(FakeClient(), chat_model=model).narrate("sys", "prompt")
     assert r.text == "the metropole trembles"
     assert r.model_pin == "chat-pin"  # III.6 cache key material
     assert r.provider is ProviderKind.BUNDLED
     assert r.prompt_tokens == 7 and r.completion_tokens == 11
-    assert client.chat_calls[0]["stream"] is False
 
 
 def test_narrate_empty_output_is_loud_failure() -> None:
     with pytest.raises(ProviderUnavailable):
-        make_provider(FakeClient(chat_text="")).narrate("sys", "prompt")
+        make_provider(FakeClient(), chat_model=_narrate_model("")).narrate("sys", "prompt")
+
+
+def test_narrate_passes_system_as_instructions() -> None:
+    seen: dict[str, Any] = {}
+
+    def fn(messages: list[ModelMessage], info: AgentInfo) -> ModelResponse:
+        seen["instructions"] = info.instructions
+        seen["max_tokens"] = (info.model_settings or {}).get("max_tokens")
+        return ModelResponse(parts=[TextPart("prose")])
+
+    make_provider(FakeClient(), chat_model=FunctionModel(fn)).narrate("sys", "prompt")
+    assert seen["instructions"] == "sys"
+    assert seen["max_tokens"] == 512
 
 
 def test_embed_reports_dimensions_and_pin() -> None:
@@ -282,14 +317,11 @@ def test_embed_reports_dimensions_and_pin() -> None:
 
 
 def test_transport_failure_is_provider_unavailable() -> None:
-    class DeadCompletions:
-        def create(self, **_: Any) -> Any:
-            raise TimeoutError("upstream gone")
+    def dead(messages: list[ModelMessage], info: AgentInfo) -> ModelResponse:
+        raise TimeoutError("upstream gone")
 
-    client = FakeClient()
-    client.chat = SimpleNamespace(completions=DeadCompletions())
     with pytest.raises(ProviderUnavailable):
-        make_provider(client).narrate("s", "p")
+        make_provider(FakeClient(), chat_model=FunctionModel(dead)).narrate("s", "p")
 
 
 # ---------------------------------------------------------------------------
@@ -306,6 +338,67 @@ def test_mute_embed_degrades_loudly() -> None:
     m = MuteProvider()
     with pytest.raises(ProviderUnavailable):
         m.embed(["x"])
+
+
+# ---------------------------------------------------------------------------
+# Mock lane (ADR101 — the scripted successor to the retired MockLLM)
+# ---------------------------------------------------------------------------
+
+
+def test_mock_narrator_is_narrator_provider() -> None:
+    assert isinstance(MockNarrator(), NarratorProvider)
+
+
+def test_mock_narrator_scripts_fifo_then_default() -> None:
+    m = MockNarrator(responses=["First", "Second"], default_response="Default")
+    assert m.narrate("s", "p1").text == "First"
+    assert m.narrate("s", "p2").text == "Second"
+    assert m.narrate("s", "p3").text == "Default"
+
+
+def test_mock_narrator_records_calls() -> None:
+    m = MockNarrator()
+    m.narrate("system text", "prompt text", temperature=0.5)
+    assert m.call_count == 1
+    assert m.call_history[0]["system"] == "system text"
+    assert m.call_history[0]["prompt"] == "prompt text"
+    assert m.call_history[0]["temperature"] == 0.5
+
+
+def test_mock_narrator_call_history_is_copy() -> None:
+    m = MockNarrator()
+    m.narrate("s", "p")
+    history = m.call_history
+    history.clear()
+    assert len(m.call_history) == 1
+
+
+def test_mock_narrator_reports_mock_pin() -> None:
+    r = MockNarrator().narrate("s", "p")
+    assert r.model_pin == "mock" and r.provider is ProviderKind.MOCK
+
+
+def test_mock_narrator_embed_degrades_loudly() -> None:
+    with pytest.raises(ProviderUnavailable):
+        MockNarrator().embed(["x"])
+
+
+def test_resolver_never_yields_mock() -> None:
+    """The mock lane is test/demo-only: no settings mode reaches it."""
+    p = resolve_provider(settings_with(mode="mock"), client_factory=factory_for({}))
+    assert not isinstance(p, MockNarrator)
+
+
+# ---------------------------------------------------------------------------
+# Test-tier network guard (Amendment Y hygiene)
+# ---------------------------------------------------------------------------
+
+
+def test_model_requests_are_disallowed() -> None:
+    """pydantic-ai's global request guard is off for the whole test tier."""
+    from pydantic_ai import models
+
+    assert models.ALLOW_MODEL_REQUESTS is False
 
 
 # ---------------------------------------------------------------------------

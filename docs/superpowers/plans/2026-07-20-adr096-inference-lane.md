@@ -1,5 +1,14 @@
 # ADR096 Inference Lane Mechanics Implementation Plan
 
+> **STATUS NOTE (2026-07-20, ADR101):** this plan's "Task 2" (tag
+> `llm_provider.py` as LEGACY web lane and quarantine it) is **superseded by
+> deletion** — the BD ruled the legacy stack removed outright, and ADR101
+> executed the full director/judge/web migration this plan recorded as a
+> follow-up. The rest of the plan (llama-server lifecycle, model manifest,
+> `babylon_intel` role, embedding-dimension seam, CLI `doctor`) remains
+> unexecuted and valid; its import-linter contract
+> (`providers` never imports `intelligence.ai`) is still owed.
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development
 > (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps
 > use checkbox (`- [ ]`) syntax for tracking.

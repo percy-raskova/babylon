@@ -213,6 +213,14 @@ EXTRA_STAMPABLE_ATTRIBUTES: Final[dict[str, frozenset[str]]] = {
             "intel_confidence",  # engine/systems/epistemic_horizon.py
             "price_divergence",  # engine/systems/market_scissors.py + web bridge
             "habitability",  # engine/systems/metabolism.py (via _write_clamped)
+            "v",  # engine/systems/vol2_circulation.py (Vol2CirculationStep.step,
+            # update_node(fips_to_node[fips], v=v_post_val) -- the county-grain
+            # variable-capital vector written back after the hex-grain LODES OD
+            # pass; #39/Amendment U's ScaleAdjunction binding reads/writes this
+            # via county Territory nodes, never a hex node. Real production
+            # shape invisible to rule (c) because update_node is out of its
+            # static scope (same reason the rule's own docstring already
+            # scopes out update_node/`_write_clamped` calls generally).
             # NOT declared Territory fields, and no production writer stamps
             # them onto a territory node either -- but every reader is a
             # `.get(attr, default)` guard applied UNIFORMLY across every node

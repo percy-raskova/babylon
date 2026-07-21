@@ -21,6 +21,8 @@ from babylon.intelligence.providers import (
     resolve_provider,
 )
 from babylon.intelligence.provision import default_models_dir, provision_models
+from babylon.render.config import render_config_path
+from babylon.render.doctor import run_render_probe
 
 #: soft_wrap avoids Rich's default 80-column word-wrap splitting long config
 #: paths (e.g. deep tmp_path fixtures, nested XDG dirs) across lines; disabling
@@ -92,5 +94,9 @@ def doctor(
         for result in results:
             style = "yellow" if result.status == "gated" else "green"
             console.print(f"  [{style}]{result.name}: {result.status}[/{style}] — {result.detail}")
+
+    # --- ADR097: render capability probe (probe-once; runtime never re-probes) ---
+    for render_line in run_render_probe(os.environ, config_path=render_config_path(os.environ)):
+        console.print(render_line)
 
     raise typer.Exit(code=0)

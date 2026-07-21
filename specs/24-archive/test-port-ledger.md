@@ -24,6 +24,24 @@ web client).
 | CARRIED (P3) | 1 |
 | RETIRED | 1 |
 
+## engine_bridge full-closure counts (WO-52 — all 63 disabled classes)
+
+All 63 `tests/unit/web/test_engine_bridge.py` classes are now dispositioned:
+17 already carried by the Ledger rows above (rows 35–47), 46 added in the
+`engine_bridge disposition` section below. `GAP` is the honest disposition for
+engine/projection behavior that no new test covers and no in-flight WO owns —
+these are the cutover blockers enumerated in the LOUD list.
+
+| Disposition | Classes |
+|---|---|
+| PORTED (already in rows 35–47) | 17 |
+| PORTED (new) | 10 |
+| RE-GUARDED (new) | 3 |
+| CARRIED — P3 (new) | 8 |
+| RETIRED (new) | 21 |
+| GAP — uncovered, unowned (new) | 4 |
+| **Total** | **63** |
+
 ## Ledger
 
 | Old assertion (source) | Destination contract test | Disposition | Landed |
@@ -68,3 +86,136 @@ web client).
 - The disabled `test_engine_bridge.py` suite (module-level skip, owner ruling
   2026-07-20) remains in-tree as the P4 closure worklist: at cutover, every
   one of its 63 test classes must appear in this ledger with a disposition.
+  **CLOSED by WO-52** — see the `engine_bridge disposition` section below.
+- **Row-35 economy mapping is narrower than its wording (WO-52 finding).** Rows 35
+  map `TestGetEconomy`/`TestImperialRentGapByRegion` onto `test_county.py`'s
+  per-county `imperial_rent_phi` (`tick_phi_hour`). That is the Leontief-tensor Φ
+  read straight off a territory attribute — a **different quantity** from the
+  legacy classes' graph-wide `value_produced`/`rent_extracted`/`exploitation_rate`
+  aggregation over `social_class` wealth + EXPLOITATION/WAGES edges and the
+  population-weighted per-capita Wc−Vc breakdown. The per-county Φ reading is
+  genuinely REWRITTEN; the **graph-aggregate economy quantities are NOT projected
+  anywhere** and surface in the LOUD gap list below (`TestEconomyDashboardFundamentalTheorem`,
+  `TestEconomyDashboardChipContract`). Existing rows are left intact per the
+  no-delete rule; this note records the scope gap.
+
+## engine_bridge disposition (WO-52)
+
+Full closure of the 63 disabled `tests/unit/web/test_engine_bridge.py` classes.
+Method: for each class, the **behavior** it pins (not its mock choreography) was
+traced to a landed new test, an in-flight P3/P4 work order, a standing gate, or
+judged legacy-web-only. Branch scanned: `feature/archive-p2-p4 @ 5474c44e`
+(P2 Waves 1/1b/2 + Lane E WO-38…44 landed; P3 WO-46…50 + P4 WO-51…53 in flight).
+
+### Already carried by the Ledger rows above (17)
+
+| Class | Ledger row | Disposition |
+|---|---|---|
+| `TestGetEconomy` | 35 | REWRITTEN (WO-3) — per-county Φ only; see Deviations note |
+| `TestImperialRentGapByRegion` | 35 | REWRITTEN (WO-3) — per-county Φ only; see Deviations note |
+| `TestSerializeTerritoryGraphThreading` | 36 | REWRITTEN (WO-2) |
+| `TestStateToSnapshot` | 36 | REWRITTEN (WO-2) |
+| `TestHexStateProjection` | 37 | RE-GUARDED (WO-2) |
+| `TestDeriveIntelLedger` | 38 | PORTED (WO-1) |
+| `TestDeriveIntelLedgerWithoutDjangoDb` | 38 | PORTED (WO-1) |
+| `TestOrgCountByTerritory` | 39 | REWRITTEN (WO-3) |
+| `TestHeatDeltaByTerritory` | 39 | REWRITTEN (WO-3) |
+| `TestMeanTerritoryAttr` | 39 | REWRITTEN (WO-3) |
+| `TestEndgameDetection` | 40 | CARRIED (P2 Lane P) — recognition fold additionally PORTED via WO-39 `test_endgame.py` |
+| `TestExpectedDeltas` | 41 | PORTED (WO-38) — preview parity; per-target rows die with the picker |
+| `TestVerbEligibility` | 42 | PORTED (WO-38) `verbs/test_plate.py` |
+| `TestEngineBridgeActions` | 45 | PORTED (WO-39) |
+| `TestActionInjection` | 45 | PORTED (WO-39) |
+| `TestHexFeaturePropertiesVeilGate` | 47 | PORTED (WO-41) |
+| `TestDerivedEconomyVeilGate` | 47 | PORTED (WO-41) |
+
+### New dispositions (46)
+
+| Class | Behavior pinned | Destination / rationale | Disposition |
+|---|---|---|---|
+| `TestActionResultPersistence` | engine's per-action results (success/ci/details) written back after resolve | engine adjudication PORTED `tests/integration/archive/test_verb_resolution.py`; action_result round-trip in `projection/fog/test_investigate_wiring.py::TestStashAndDerive` | PORTED (WO-39/40) |
+| `TestResolveTickConsumesEngineResults` | `turn_resolution` is authoritative for per-action success (never blind `success=True`); loud failure on missing result | engine-authoritative resolution PORTED `test_verb_resolution.py`; loud-failure/persist discipline end-to-end in the Pilot | PORTED (WO-39) → Pilot WO-50 |
+| `TestInvestigateFieldSnapshot` | successful INVESTIGATE freezes TRUE post-tick field values; absence→None | `projection/fog/test_investigate_wiring.py::TestInvestigateFieldSnapshot` | PORTED (WO-40) |
+| `TestResolveTickPersistsInvestigateSnapshot` | intel snapshot stashed onto the `action_result` row; bridge-compatible detail keys | `projection/fog/test_investigate_wiring.py::TestStashAndDerive` | PORTED (WO-40) |
+| `TestResolveTickNarrativeServiceHook` | narrative generation scheduled fire-and-forget, never blocks the tick | `projection/vault/test_narrator_cache.py::TestSideProcess` | PORTED (WO-42) |
+| `TestWireFeed` | class/org-scoped events narrate the scenario's REAL names, never the canonical map | actor-naming grounding PORTED `tui/test_chronicle.py::TestActorResolution` (`resolve_actor`); WireFeed envelope + DeterministicNarrator retire (Chronicle plate WO-27 + narrator cache WO-42) | PORTED (WO-27) |
+| `TestEducateTargetsResolveViaTenancy` | social_class targets resolve via TENANCY edges, never a `territory_ids` field | `verbs/plate.py::_tenancy_members_by_territory`, `verbs/test_plate.py`/`test_preview.py` fixtures rely on TENANCY only | PORTED (WO-38) |
+| `TestVerbEligibilityAgreesWithTargetsRealWayneCounty` | eligibility agrees verb-by-verb with the target lists on the real graph | `build_verb_plate` unifies eligibility with the target-existence predicates (one source of truth → the disagreement bug class is structurally eliminated), `verbs/test_plate.py` | PORTED (WO-38) |
+| `TestBuildTickSummarySeriesAggregates` | county-deduped, population-weighted tick_* aggregates (no N-fold inflation, extensive-sum-once-per-county) | `projection/national.py` pop-weighted county rollup + `test_national.py::test_unattributed_territory_does_not_skew_the_rollup` (same intensive-aggregation-variance discipline) | PORTED (WO-17) |
+| `TestEconomyDashboardVeil` | value-axis fields masked below doctrine Veil Tier 1, real at Tier 1+ | veil mechanism PORTED `projection/veil.py` + `test_veil_gating.py`; **no economy payload consumes it yet** (tied to the economy-dashboard GAP below) | PORTED (WO-41) |
+| `TestDefixturedQueryCorrectness` | queries read correct node TYPES/attrs/enums (social_class≠community; no `territory_ids` on social_class; real declared fields) | `mise run check:vocabulary` (3-rule vocabulary sentinel) is the exact standing guard for this bug class; extraction_intensity/edge_mode economy reads fold into the economy GAP | RE-GUARDED |
+| `TestCausalHeartbeatWiring` | per-session observer emits a TICK_PULSE frame each tick | frame emission RE-GUARDED `tests/unit/engine/observers/test_causal_chain.py::TestFrameCaptureApi`; per-session cache + NarrationRecord persistence = web Voice-heartbeat → Archive analogue is the WO-42 narrator cache | RE-GUARDED |
+| `TestCausalHeartbeatPersistence` | pulse beat persisted as a deterministic NarrationRecord | same — observer RE-GUARDED `test_causal_chain.py`; the "week's ledger" beat is web-narration → WO-42 | RE-GUARDED |
+| `TestEngineBridgeCreateGame` | create_game mints a session, seeds tick-0 state, rejects unknown scenario before creating a session | campaign creation is the campaign menu (session mint + reuse `GameSession` path); tick-0 seed is WO-44 | CARRIED (P3 WO-49) |
+| `TestPatternShiftSeverity` | `pattern_shift` classified `warning`; severity keys are plain strings | severity classifier explicitly deferred (chronicle.py docstring) | CARRIED (P3 WO-48) |
+| `TestTickEventPersistence` | tick_event rows built with event_type/severity/source_id; skip when empty | severity-tagged row construction = WO-48; the `persist_tick_events` DB primitive is RE-GUARDED `tests/unit/persistence/test_postgres_runtime.py::TestPersistTickEvents` | CARRIED (P3 WO-48) |
+| `TestJournalDashboard` | persisted tick_event history read back (type/severity/tick/body/data), degrade-to-empty | the journal IS the Chronicle browsable stream (WO-27) + severity (WO-48) | CARRIED (P3 WO-48) |
+| `TestAlertsDashboard` | latest tick's events filtered to critical/warning | chronicle salience/autopause | CARRIED (P3 WO-48) |
+| `TestSpineWhitelistSeverityAndTitles` | severity tiers + humanized titles for 14 event types | WO-48 owns severity classification + the loud-unclassified fix | CARRIED (P3 WO-48) |
+| `TestReactionaryVerbSeverityAndAnchoring` | pogrom/lockout/vigilantism `warning` + anchored to target's territory | severity → WO-48; event→territory anchoring is chronicle enrichment (TENANCY-inversion primitive alive in `plate.py`) — borderline, see LOUD | CARRIED (P3 WO-48) |
+| `TestSerializeEventUprisingTerritoryAnchoring` | UPRISING `data.node_id`→territory via TENANCY inversion; honest None absent | chronicle event enrichment; primitive alive (`plate._tenancy_members_by_territory`) — WO-48 scope doesn't explicitly name it (borderline, see LOUD) | CARRIED (P3 WO-48) |
+| `TestScenarioBootstrap` | `resolve_scenario` aliases (default→us, detroit→wayne_county); every catalog key seedable | web-API alias table (`game.api`); durable scenario-builds-tick-0 is engine-owned (`tests/unit/engine/scenarios/test_scenario_registry.py`, `test_scenario_initialization.py`); Archive selection is WO-49 | RETIRED |
+| `TestEngineBridgeHydrate` | hydrate_state loads graph + reconstructs WorldState; bootstraps when unseeded | web-bridge wrapper over `persistence.hydrate_graph`; `WorldState.from_graph` engine-tested; Archive reads via the headless runner | RETIRED |
+| `TestEngineBridgeResolveTick` | resolve_tick hydrate→step→persist order; events JSON-safe | web tick orchestration; the tick loop is the headless runner (`tests/unit/engine/headless_runner/`); event serialization is chronicle's | RETIRED |
+| `TestEngineBridgeSnapshot` | Spec-052 snapshot envelope (per-type lists, no top-level entities/economy, derived block) | web `GameSnapshotSerializer` shape; replaced by per-kind `ProjectionRecord` view-models (the `observe()` seam); derived.economy veil-gating separately PORTED (row 47) | RETIRED |
+| `TestSessionScopedDefines` | resolve_tick reads defines from the session row, not the global blob | web per-session `game_defines_json` plumbing; durable resolution is runner-owned (`tests/unit/engine/headless_runner/test_defines_resolution.py`); per-campaign runner invocation inherently avoids cross-session leakage | RETIRED |
+| `TestDefixturedVerbTargets` | 5 verb-target LIST methods: real data, iterate all territories, TENANCY, dedup, no fixture literals, warsaw_ghetto from real p_acquiescence | web target-picker lists — the TUI targets via page-navigation + verb plate (R4/S6). TENANCY PORTED in `plate`; node-shape RE-GUARDED by `check:vocabulary`; p_acquiescence/consciousness on `SocialClassView` (WO-23) | RETIRED |
+| `TestInvestigateTargetsDemocked` | get_investigate_targets: observe_capability/targeted_scans/counter_intelligence de-mock | web investigate target-picker; INVESTIGATE's durable intel wiring PORTED WO-40; observe_capability/counter_intelligence rich payload has no TUI analogue | RETIRED |
+| `TestMobilizeTargetsIncludeSeededBusinesses` | QCEW-seeded Business NPCs are MOBILIZE targets with real name/type | web mobilize target-picker; business seeding engine-tested (`create_us_scenario`/`build_seeded_businesses`, `test_us_scenario_county_grain.py`); mobilize eligibility over business/civil_society PORTED in `plate.py` | RETIRED |
+| `TestClassSnapshotRows` | project class dicts onto class_snapshot columns (survival calculus fields) | web class_snapshot persistence-table projection; the survival-calculus fields are projected onto `SocialClassView` (WO-23, `test_social_class.py`) | RETIRED |
+| `TestGetClassHistory` | class_snapshot history sparkline + UPRISING/rupture markers | web class-history dashboard; the Archive's per-tick history is the baked vault page's git log (WO-44/51); ruptures via the Chronicle (WO-27/48) | RETIRED |
+| `TestGetEdgeHistory` | edge-weight sparkline (weight←value_flow, honest null, Decimal→float, edge_id parse) | web edge-history dashboard; the query is RE-GUARDED `test_postgres_runtime.py::TestQueryEdgeSnapshotHistory`; edges surface on entity pages | RETIRED |
+| `TestGetFieldStateStubParity` | StubEngineBridge returns a well-formed empty field-state payload | web-transport stub; no TUI HTTP layer to stub | RETIRED |
+| `TestGetFieldStateAPIView` | Django `field_state/` view returns the standard envelope | web Django REST envelope; no TUI HTTP layer | RETIRED |
+| `TestGetMapHistory` | map-lens scrubber: metric taxonomy (unknown/not_replayable), window cap, veil-0 masking | web map-lens time-scrubber; per-tick history is the baked vault git log (WO-44/51); map room WO-33 renders current-tick | RETIRED |
+| `TestHexFeaturePropertiesHabitability` | per-hex habitability read from an `attributes` JSONB blob, honest None | web per-hex map-lens; habitability stays a live engine attr (MetabolismSystem, read by endgame/balkanization); `v_hex_state_asof` (WO-33) has a fixed column set (no attributes blob) | RETIRED |
+| `TestHexStateRowStateFips` | state_fips = county_fips[:2], absent when no county_fips | web `_hex_state_row` helper; the derivation lives in persistence (`hex_hydrator.py`, `territory_diagnostics.py`) feeding `v_hex_state_asof` | RETIRED |
+| `TestPersistSnapshotsGraphWiring` | `_persist_snapshots_safe` threads graph= so territory rate columns aren't NULL | web territory_snapshot persistence plumbing; the tick_* rate reads are PORTED into `CountyView` (WO-2/3, `test_county.py`) which the Archive tick-baker bakes | RETIRED |
+| `TestBuildTickSummaryMarketAxis` | state.market → tick_summary (price_log/fictitious_log/market_corrections) | web tick_summary columns; the price⟷value scissors axis surfaces per-territory as `price_divergence` in `CountyView` (row 36) and is veil-gated in `projection/veil.py` (WO-41) | RETIRED |
+| `TestBridgeEconomicsOverridesWiresCirculationAndFinancialServices` | `_bridge_economics_overrides` wires FRED circulation/financial services | web-bridge-local DUPLICATE of the headless-runner wiring (`domain/economics/factory.py`); Archive runs the engine via the runner; durable behavior covered by `tests/unit/economics/test_create_financial_services.py` + `tests/integration/test_circulation_one_tick.py` | RETIRED |
+| `TestBridgeEconomicsOverridesWiresVol1ReserveArmyServices` | `_bridge_economics_overrides` wires Vol I reserve-army services | same — web duplicate of the runner's `create_vol1_services`; durable behavior covered by `tests/integration/test_volume_i_integration.py` | RETIRED |
+| `TestGroupCDDocstringsHonest` | web/game/engine_bridge.py docstrings say "CORRECTED 2026-07-18", not "both gating services are unwired" | docstring-accuracy meta-test on web-bridge source that dies at cutover; pins no runtime behavior | RETIRED |
+| `TestEconomyDashboardFundamentalTheorem` | graph-wide Wc−Vc imperial-rent gap + per-region population-weighted per-capita breakdown | **NO projection module computes this** (county `imperial_rent_phi`=`tick_phi_hour` is different math); **no WO owns it** — the Fundamental Theorem is THE core game theorem | GAP (LOUD) |
+| `TestEconomyDashboardChipContract` | economy dashboard emits an exact key set of aggregate quantities | the aggregates (wage_flow_total/tribute_flow_total/rent_extracted/wealth_by_class_role/county_flow/imperial_rent_gap) are **not projected anywhere**; no WO | GAP (LOUD) |
+| `TestGetFieldState` | dialectical field-stack projection: contradiction_fields + field_derivatives (laplacian/df_dt) honest-omitted, id-sorted, TENANCY-anchored edges, principal_field/dialectical_regime | engine-produced + engine-tested, but **no projection read-model** (grep-confirmed zero hits in `src/babylon/projection/`) and **no P2–P4 WO** names the Weather Layer | GAP (LOUD) |
+| `TestBalkanizationMapFields` | balkanization block: faction enumeration + per-territory contested/dominant_faction from INFLUENCES reads | single sovereign IS covered (`project_sovereign`/county `sovereign_id`); **faction enumeration + contested-territory derivation are not projected** (no `FactionView`, no INFLUENCES read); no WO | GAP (LOUD) |
+
+### LOUD — coverage gaps the main loop must close before cutover
+
+Engine/projection behavior that (a) no landed test covers, (b) no in-flight WO
+clearly owns. These block the WO-52 cutover gate:
+
+1. **`TestEconomyDashboardFundamentalTheorem` → graph-wide Wc−Vc imperial-rent gap
+   + per-region population-weighted per-capita breakdown.** THE core theorem
+   (`W_c > V_c`). No projection module computes `value_produced`/`rent_extracted`/
+   `wage_flow_total`/`imperial_rent_gap[_by_region]`; the per-county `tick_phi_hour`
+   (rows 35) is Leontief Φ, a different quantity. **Owner needed: NEW economy-dossier
+   projection WO** (also reconciles the row-35 scope note above).
+2. **`TestEconomyDashboardChipContract` → economy aggregate quantities.** The
+   dashboard's `wealth_by_class_role`/`county_flow`/`rent_extracted`/
+   `tribute_flow_total`/`current_super_wage_rate` are projected nowhere. Same
+   owner as #1 (the chip key-SET contract itself is web-shape and can retire; the
+   quantities are the gap).
+3. **`TestGetFieldState` → dialectical field-stack / "Weather Layer" projection.**
+   `contradiction_fields`, `field_derivatives` (laplacian/df_dt), `principal_field`,
+   `dialectical_regime`, TENANCY-anchored field edges — engine-produced and
+   engine-tested (`test_contradiction_field_system.py`, `test_field_derivative_system.py`)
+   but with no projection read-model and no WO. **Owner needed: NEW field-state
+   dossier / topology-surface WO** (or an explicit RETIRE ruling if the Weather
+   Layer is out of scope for the TUI).
+4. **`TestBalkanizationMapFields` → faction enumeration + contested-territory
+   derivation.** spec-070 balkanization (factions, INFLUENCES influence_level,
+   per-territory contested/dominant_faction) feeds RED_SETTLER_TRAP / secession.
+   Single-sovereign CLAIMS is projected; the faction/contested half is not, and no
+   WO owns it. **Owner needed: NEW balkanization projection, or extend map-room WO-33.**
+
+Secondary / borderline (surface for a ruling, not hard cutover blockers):
+- **Event→territory anchoring** (`TestSerializeEventUprisingTerritoryAnchoring`,
+  anchoring half of `TestReactionaryVerbSeverityAndAnchoring`) — CARRIED to WO-48,
+  but WO-48's charter (salience/dedup/autopause) does not explicitly name event
+  enrichment; confirm WO-48 absorbs it or open a sub-task. The TENANCY-inversion
+  primitive is already alive in `verbs/plate.py`.
+- **Per-hex `habitability`** (`TestHexFeaturePropertiesHabitability`) — RETIRED as a
+  web map-lens, but the ecological-overshoot signal is not surfaced in any TUI hex
+  projection (`v_hex_state_asof` has no habitability column). Confirm this is an
+  intentional map-lens omission, not a dropped signal.

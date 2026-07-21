@@ -101,6 +101,8 @@ class TestPortedPerTypeSeverityPins:
         "event_type",
         [
             EventType.STATE_REPRESSION,
+            EventType.RED_SETTLER_TRAP_DETECTED,
+            EventType.EXCESSIVE_FORCE,
             EventType.FASCIST_RECRUITMENT,
             EventType.ORGANIZATIONAL_FRACTURE,
             EventType.PATTERN_SHIFT,

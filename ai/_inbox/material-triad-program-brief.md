@@ -40,6 +40,14 @@ class *inexpressible* instead of merely *detectable*.
   (drives the event) vs `EndgameDefines.ecological_overshoot_threshold` (drives the
   ECOLOGICAL_COLLAPSE axis, recomputed from WorldState at `endgame_detector.py:448-487`).
   They can disagree; nothing reconciles them.
+- **DEFECT C — the legitimation trajectory is memoryless** (survey 2026-07-21):
+  `LifecycleSystem` reads `legitimation_state` every tick (`lifecycle.py:266`) but never
+  writes it back (its `update_node` calls write `dpd_state`/`legitimation_index`/etc.
+  only), and `legitimation_state` sits in `TERRITORY_EXCLUDED_FIELDS`
+  (`world_state.py:96`) so it can't round-trip either — re-defaulted every tick, a broken
+  accumulator. W4's L-MAT-7 is the principled fix: legitimation becomes a *legally*
+  derived-fresh-per-tick quantity bounded by the s = p+i+r+t serviceability envelope,
+  instead of a stateful trajectory that was never actually stateful.
 - **DEAD ESTATE — hex-grain biocapacity is schema/seed-only**: `DynamicHexState.
   biocapacity_stock`, `BiocapacityType` (6 categories), `InfraTerrainDefines` init/depletion
   rates all have ZERO live per-tick consumers; `aggregate_hexes_by_county` iterates an empty

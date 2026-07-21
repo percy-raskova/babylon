@@ -22,7 +22,8 @@ from pathlib import Path
 
 from babylon.projection.vault.git_backend import commit_page, init_vault
 from babylon.projection.vault.render import render_county
-from babylon.projection.view_models import CountyView
+from babylon.projection.vault.render_state import render_state
+from babylon.projection.view_models import CountyView, StateView
 
 
 class VaultMaterializer:
@@ -62,6 +63,34 @@ class VaultMaterializer:
             content,
             tick=tick,
             message=f"bake: county/{view.county_fips} @ tick {tick}",
+        )
+        return self._vault_root / relative_path
+
+    def bake_state(self, view: StateView, *, tick: int) -> Path:
+        """Render and commit one state dossier page.
+
+        The page path follows the stable-ID slug ruling
+        (``project/programs/24-the-archive.md``): ``state/<fips>.md``,
+        never a mutable display name — mirrors :meth:`bake_county` exactly,
+        for the state nesting tier (Program 24 P2 WO-16).
+
+        :param view: the state projection to materialize.
+        :param tick: the simulation tick driving both the page's
+            ``verified_tick`` frontmatter stamp (via
+            :func:`~babylon.projection.vault.render_state.render_state`) and
+            the commit's sim-time timestamp (via
+            :func:`~babylon.projection.vault.git_backend.commit_page`).
+        :returns: the absolute path of the written page under the vault
+            root.
+        """
+        relative_path = f"state/{view.state_fips}.md"
+        content = render_state(view, verified_tick=tick)
+        commit_page(
+            self._vault_root,
+            relative_path,
+            content,
+            tick=tick,
+            message=f"bake: state/{view.state_fips} @ tick {tick}",
         )
         return self._vault_root / relative_path
 

@@ -167,13 +167,16 @@ DECLARED_ASSUMPTIONS: tuple[Assumption, ...] = (
     Assumption(
         id="vol1_national_series_applied_uniformly_per_county",
         claim=(
-            "create_vol1_services (Vol I's county-tick data-source factory, wired only by "
-            "the legacy web engine_bridge, not the canonical headless runner) builds three "
-            "FRED adapters — _FredReserveArmyAdapter, _FredProductivityAdapter, "
-            "_FredDispossessionAdapter — that each read one NATIONAL-level FRED series "
-            "(UNRATE/NROU/OPHNFB/HOANBS) and apply the identical value to every county; no "
-            "county-level economic variation is modeled for reserve-army decomposition, "
-            "productivity, or dispossession along this path."
+            "create_vol1_services (Vol I's county-tick data-source factory, wired by both "
+            "the legacy web engine_bridge and Simulation.from_sqlite's multi-year path "
+            "(src/babylon/engine/simulation/_legacy.py, gated on years is not None) — the "
+            "latter a live in-process facade reachable from CLI tools such as "
+            "tools/validate_detroit.py, not just the web path) builds three FRED adapters — "
+            "_FredReserveArmyAdapter, _FredProductivityAdapter, _FredDispossessionAdapter — "
+            "that each read one NATIONAL-level FRED series (UNRATE/NROU/OPHNFB/HOANBS) and "
+            "apply the identical value to every county; no county-level economic variation "
+            "is modeled for reserve-army decomposition, productivity, or dispossession along "
+            "either path."
         ),
         owner="Persephone Raskova",
         code_ref="src/babylon/domain/economics/factory.py",

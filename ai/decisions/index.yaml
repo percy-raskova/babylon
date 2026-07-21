@@ -1,9 +1,14 @@
 meta:
-  version: 1.39.0
+  version: 1.40.0
   updated: '2026-07-20'
   description: Architecture Decision Records Index
   format: See individual ADR files in this directory
 decisions:
+  ADR099_archive_stack:
+    title: 'Program 24 (The Archive) stack ADR: spike-evidenced TUI pins — Textual >=8.2,<8.3 direct (hover/palette/theme verified, 10k fuzzy 56.9ms), fenced-directives-ONLY markdown pipeline on markdown-it-py 4.2 (paired container tokens break the 8.2.8 walker; one MarkdownFence subclass dispatches on token.info; unknown directives fail loud), ~30-line wikilink inline rule emitting standard link tokens with babylon:// hrefs (redlink register for unknowns), Jinja2 3.1.6 ImmutableSandbox+StrictUndefined (dunder/mutation SecurityError tested), Postgres FTS epistemic search (fog = WHERE clause), dulwich 1.2 sim-time vault commits (identical shas across independent builds; stage/commit moved to WorkTree), half-block floor (200x50 full-repaint 58.2ms/frame headless) + kitty-graphics raster lane via textual-image 0.13 (detect-before-boot; sixel is not a target), snapshot lane REAL FINDING: pytest-textual-snapshot 1.1.0''s syrupy==4.8.0 pin IMPOSSIBLE beside pytest 9.1.1 — resolved with syrupy>=5.5 + dep-override install, SVG double-bake sha256-identical (III.13 render-lane evidence); deployment guardrails bound into the keel (DSN-from-config unix-socket, PG17 pin, Ollama->WorkersAI->mute, per-campaign embedding pin, telemetry cadence never in GameDefines). Three Kitty eyes-on items remain owner-verifiable (TGP/ssh, map feel, real-mouse hover)'
+    status: accepted
+    date: '2026-07-20'
+    file: ADR099_archive_stack.yaml
   ADR098_parquet_canonical_reference:
     title: 'Parquet-canonical reference pipeline EXECUTED (Phase 6 cutover, #46): per-table parquet sources + schema.sql canonical, the SQLite reference DB a deterministic sha-pinned BUILD PRODUCT (double-build byte-identical on sqlite 3.53.1, product f760bab5...); working DB flipped with byte-verified pre-parquet backup; ci-data-v7 (subset DERIVED from the product, 80 parquet + schema.sql manifest-pinned); loaders produce sources only (tools/loader_to_sources.py) — the shared DB is never opened for write; D1-D4 as ruled, GOVERNED_PREFIXES single SoT, demotion-handoff law, index-order fidelity, ingest_checkpoint out of the estate; IMPORT_USE discovered ALREADY LANDED out-of-band so the dark-Φ consumers lit up with zero code changes; declared follow-ups: CI-devshell sqlite pinning for the nightly rebuild-verify leg (loud off-pin warning until then), auto-create-masks-absence sentinel still owed. NOTE: numbered 098 because 094-097 are claimed by the nix-player-channel packet on the concurrently-active dev line'
     status: accepted

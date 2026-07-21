@@ -2,9 +2,26 @@
 # What exists vs what's planned - KEEP THIS UPDATED
 
 meta:
-  version: "2.46.0"  # 2.28.0 lives on feature/19-emergent-class-partition (Program 19 Phase 0+1)
+  version: "2.47.0"  # 2.28.0 lives on feature/19-emergent-class-partition (Program 19 Phase 0+1)
   updated: "2026-07-20"
   truth_status: |
+    (2026-07-20 night, latest) ADR101 -- NARRATOR SEAM CONSOLIDATION
+    (branch refactor/ai-seam-consolidation, stacked on merged PR #235):
+    BD-directed deletion of the legacy hand-rolled AI stack --
+    llm_provider.py (LLMProvider/MockLLM/DeepSeek/WorkersAI) and the
+    LLMConfig chat lane are GONE (git history = archive);
+    babylon.intelligence.providers is the ONE transport seam. Director
+    narrator:, judge lazy chat_model_for(resolve_provider().endpoint),
+    web narrative_service resolve_provider + endpoint-pinned model_id
+    (loud "unresolved" degradation), tools via resolver, MockNarrator +
+    ProviderKind.MOCK + ModelFactory/chat_model_for added, DeepSeek lane
+    retired (§A7.6 alignment), OpenAIConfig alias gone. The
+    ADR096-inference-lane plan's quarantine step is superseded by
+    deletion. Verified: mise run check green (11,806 unit),
+    qa:regression 6/6 + determinism. OWED: import-linter contract
+    (providers never imports intelligence.ai); babylon CLI login/doctor
+    still unbuilt; cf-aig-gateway-id header lives at the Worker now if
+    wanted.
     (2026-07-20 night, later) AMENDMENT Y + ADR100 -- PYDANTIC-AI
     ADOPTION (branch feature/pydantic-ai-adoption): BD-directed
     constitution v2.13.0; pydantic-ai-slim[openai] 2.14 replaces the

@@ -23,7 +23,7 @@ from babylon.engine.headless_runner.models import SimulationRunConfig
 from babylon.engine.headless_runner.runner import _build_tick_commit_observer, _tick_loop
 from babylon.models import WorldState
 from babylon.projection.vault.materializer import VaultMaterializer
-from babylon.projection.vault.tick_baker import CountyTickBaker
+from babylon.projection.vault.tick_baker import ArchiveTickBaker
 
 pytestmark = [pytest.mark.unit]
 
@@ -101,9 +101,11 @@ class TestObserverConstruction:
         """The None default IS the qa:regression byte-identity contract."""
         assert _build_tick_commit_observer(_make_config()) is None
 
-    def test_vault_root_wires_a_county_tick_baker_over_the_scope(self, tmp_path: Path) -> None:
+    def test_vault_root_wires_the_per_kind_archive_baker_over_the_scope(
+        self, tmp_path: Path
+    ) -> None:
         observer = _build_tick_commit_observer(_make_config(vault_root=tmp_path / "vault"))
-        assert isinstance(observer, CountyTickBaker)
+        assert isinstance(observer, ArchiveTickBaker)
         assert observer._county_fips == ("26099", "26163")
 
 

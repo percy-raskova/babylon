@@ -258,9 +258,9 @@ def _build_tick_commit_observer(config: SimulationRunConfig) -> TickCommitObserv
     if config.vault_root is None:
         return None
     from babylon.projection.vault.materializer import VaultMaterializer
-    from babylon.projection.vault.tick_baker import CountyTickBaker
+    from babylon.projection.vault.tick_baker import ArchiveTickBaker
 
-    return CountyTickBaker(
+    return ArchiveTickBaker(
         VaultMaterializer(config.vault_root),
         county_fips=tuple(config.scope_fips),
     )

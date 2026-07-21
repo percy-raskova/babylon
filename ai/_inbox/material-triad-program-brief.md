@@ -43,8 +43,14 @@ class *inexpressible* instead of merely *detectable*.
   rates all have ZERO live per-tick consumers; `aggregate_hexes_by_county` iterates an empty
   set (no production hex nodes on the engine graph — same class as the Vol II hex defect).
 - **Data**: `fact_hickel_erdi_annual` already ingested (L-MAT-6's bootstrap is live);
-  EPA GHGRP 2010–2023 snapshot **in flight** (agent running 2026-07-21, rescission urgency);
-  the rest of §VI.11's estate is keyless bulk, unqueued.
+  EPA GHGRP 2010–2023 snapshot **DONE 2026-07-21** — 9 files ~49 MB at
+  `/media/user/data/babylon-data/epa_ghgrp/` (all 14 per-year workbooks RY2010–RY2023, no
+  gaps; sha256-pinned `MANIFEST.yaml`; parent-company xlsb, C/D/AA unit-fuel zip, ORIS
+  crosswalk, L/O + I + E/S/BB/CC/LL subpart files, page snapshots; the ~60 superseded
+  revision-vintage files on the archive page were deliberately NOT captured — flagged in
+  the manifest if full revision history is ever wanted). EPA's current "Data Summary
+  Spreadsheets" release IS the full official bulk data — spreadsheet-sized, not multi-GB.
+  The rest of §VI.11's estate is keyless bulk, unqueued.
 
 ## Waves (staged by readiness; none gate Gate 3)
 

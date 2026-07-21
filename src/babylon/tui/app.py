@@ -118,7 +118,16 @@ class BabylonMarkdown(Markdown):
 
 
 class ArchiveApp(App[None]):
-    """Minimal Archive TUI shell: renders a sample county dossier page."""
+    """Minimal Archive TUI shell: renders a dossier page.
+
+    :param page: The markdown page to render; defaults to the built-in
+        sample. Baked vault pages (WO-4/WO-7) hand their content in here.
+    :param resolver: The wikilink known-target resolver; defaults to the
+        sample page's known entities.
+    :param statblocks: The live statblock provider for pages whose
+        ``{statblock}`` fences carry no baked body; defaults to the sample
+        provider.
+    """
 
     CSS = """
     Screen { background: $background; color: $foreground; }
@@ -141,9 +150,17 @@ class ArchiveApp(App[None]):
     #status { dock: bottom; height: 1; background: $panel; color: $accent; padding: 0 1; }
     """
 
-    def __init__(self, *, resolver: WikilinkResolver | None = None) -> None:
+    def __init__(
+        self,
+        *,
+        page: str | None = None,
+        resolver: WikilinkResolver | None = None,
+        statblocks: StatblockProvider | None = None,
+    ) -> None:
         super().__init__()
+        self._page = page if page is not None else SAMPLE_COUNTY_PAGE
         self._resolver = resolver or known_target_resolver(KNOWN_ENTITIES)
+        self._statblocks = statblocks or _sample_statblocks
 
     def on_mount(self) -> None:
         self.register_theme(KSBC)
@@ -152,10 +169,11 @@ class ArchiveApp(App[None]):
     def compose(self) -> ComposeResult:
         with VerticalScroll(id="page"):
             yield BabylonMarkdown(
-                SAMPLE_COUNTY_PAGE,
+                self._page,
                 parser_factory=make_parser_factory(self._resolver),
                 open_links=False,
                 id="dossier",
+                statblocks=self._statblocks,
             )
         yield Label("status: — (click a link)", id="status")
         yield Footer()

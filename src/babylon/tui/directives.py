@@ -161,9 +161,30 @@ class BabylonFence(MarkdownFence):
         yield from method(arg)
 
     def _directive_statblock(self, arg: str) -> ComposeResult:
-        host = self._markdown
-        provider = host.statblocks if isinstance(host, _StatblockHost) else no_statblocks
-        rows = provider(arg)
+        rows: Sequence[StatblockRow] | None
+        body = self.code.strip()
+        if body:
+            # A BAKED page carries its numbers in the fence body (III.13: a
+            # materialized view renders from its own bytes, never a live
+            # provider). Body lines are machine-written ``key: value`` pairs;
+            # anything else means a corrupt page — refuse loudly.
+            parsed: list[StatblockRow] = []
+            for line in body.splitlines():
+                key, sep, value = line.partition(":")
+                if not sep or not key.strip():
+                    yield Label(
+                        f"▌ MALFORMED STATBLOCK BODY in {arg} — refusing to render",
+                        classes="absence",
+                    )
+                    return
+                parsed.append((key.strip(), value.strip()))
+            rows = parsed
+        else:
+            # A LIVE page's empty statblock defers to the host's projection
+            # provider by subject id.
+            host = self._markdown
+            provider = host.statblocks if isinstance(host, _StatblockHost) else no_statblocks
+            rows = provider(arg)
         if rows is None:
             yield Label(f"▌ no statblock projection for {arg}", classes="absence")
             return

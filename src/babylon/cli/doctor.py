@@ -13,12 +13,14 @@ import os
 import typer
 from rich.console import Console
 
+from babylon.intelligence.model_manifest import load_bundled_manifest
 from babylon.intelligence.providers import (
     ProviderError,
     _config_dir,
     load_settings,
     resolve_provider,
 )
+from babylon.intelligence.provision import default_models_dir, provision_models
 
 #: soft_wrap avoids Rich's default 80-column word-wrap splitting long config
 #: paths (e.g. deep tmp_path fixtures, nested XDG dirs) across lines; disabling
@@ -45,7 +47,13 @@ def check_database(dsn: str | None) -> tuple[bool, str]:
     return (True, "reachable")
 
 
-def doctor() -> None:
+def doctor(
+    provision: bool = typer.Option(
+        False,
+        "--provision",
+        help="Fetch available model weights per the signed manifest (D3, ADR096).",
+    ),
+) -> None:
     """Diagnose the local Babylon install (config, provider lane, database)."""
     cfg_dir = _config_dir(os.environ)
     config_toml = cfg_dir / "config.toml"
@@ -73,5 +81,16 @@ def doctor() -> None:
 
     db_ok, db_detail = check_database(os.environ.get("BABYLON_DATABASE_URL"))
     console.print(f"[bold]database:[/bold] {'ok' if db_ok else 'unavailable'} — {db_detail}")
+
+    if provision:
+        console.print("[bold]provisioning models:[/bold]")
+        try:
+            results = provision_models(load_bundled_manifest(), default_models_dir())
+        except ValueError as exc:
+            console.print(f"[bold red]provisioning error:[/bold red] {exc}")
+            raise typer.Exit(code=1) from exc
+        for result in results:
+            style = "yellow" if result.status == "gated" else "green"
+            console.print(f"  [{style}]{result.name}: {result.status}[/{style}] — {result.detail}")
 
     raise typer.Exit(code=0)

@@ -212,12 +212,18 @@ class BabylonFence(MarkdownFence):
             return
         yield Label(render_paoh(nodes, edges), classes="paoh", markup=True)
 
-    def _on_enter(self, _event: events.Enter) -> None:
+    # Public naming-convention handlers, not the underscore form: Textual
+    # reserves `_on_<event>` for its own base-class interception (dispatch
+    # checks `_{name}` before `{name}` per class in the MRO), and no base
+    # defines `_on_enter`/`_on_leave` at the 8.2.8 pin — the public name is
+    # the sanctioned user override point and stays collision-free if a
+    # future Textual adds its own private hover bookkeeping.
+    def on_enter(self, _event: events.Enter) -> None:
         directive = self._directive()
         if directive is not None:
             self.post_message(DirectiveHover(f"{directive[0]}:{directive[1]}", True))
 
-    def _on_leave(self, _event: events.Leave) -> None:
+    def on_leave(self, _event: events.Leave) -> None:
         directive = self._directive()
         if directive is not None:
             self.post_message(DirectiveHover(f"{directive[0]}:{directive[1]}", False))

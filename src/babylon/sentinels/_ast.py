@@ -106,6 +106,166 @@ def literal_dict_keys(path: Path, var_name: str) -> tuple[str, ...]:
     raise SentinelCheckError(f"{path}: no module-level assignment to {var_name!r} found")
 
 
+def all_dict_literal_str_items(path: Path) -> dict[str, dict[str, str]]:
+    """Statically extract EVERY module-level ``dict[str, str]`` literal, keyed
+    by its assigned name.
+
+    Unlike :func:`optional_dict_literal_str_items` (one named target a caller
+    already knows to watch), this scans every module-level assignment
+    regardless of name — T1.1 U6's severity single-source check uses it to
+    catch a hand-copied severity table reintroduced under a name OTHER than
+    the two retired literals it already watches by name
+    (``_EVENT_SEVERITY``/``EVENT_SEVERITY``): a re-forked severity dict does
+    not stop being a re-forked severity dict just because it is renamed.
+
+    :param path: Source file to parse.
+    :returns: ``{var_name: {str_key: str_value}}`` for every module-level
+        ``Assign``/``AnnAssign`` whose value is a dict literal with at least
+        one literal-string-keyed, literal-string-valued entry (mirroring
+        :func:`optional_dict_literal_str_items`'s "skip, don't except" stance
+        on non-literal entries); a dict literal with no literal-string-keyed
+        entries at all contributes nothing to the result.
+    :raises SentinelCheckError: If the file is missing or unparseable.
+    """
+    tree = parse_module(path)
+    found: dict[str, dict[str, str]] = {}
+    for node in tree.body:
+        targets: list[ast.expr]
+        value: ast.expr | None
+        if isinstance(node, ast.Assign):
+            targets = node.targets
+            value = node.value
+        elif isinstance(node, ast.AnnAssign):
+            targets = [node.target]
+            value = node.value
+        else:
+            continue
+        if value is None or not isinstance(value, ast.Dict):
+            continue
+        items = {
+            k.value: v.value
+            for k, v in zip(value.keys, value.values, strict=True)
+            if isinstance(k, ast.Constant)
+            and isinstance(k.value, str)
+            and isinstance(v, ast.Constant)
+            and isinstance(v.value, str)
+        }
+        if not items:
+            continue
+        for target in targets:
+            if isinstance(target, ast.Name):
+                found[target.id] = items
+    return found
+
+
+def conditional_literal_returns_by_enum_member(
+    path: Path,
+    tier_values: frozenset[str],
+    enum_cls: type,
+    enum_name: str,
+) -> dict[str, str]:
+    """Statically find ``if <x> == <EnumName>.<MEMBER>:`` (or ``in {...}``)
+    branches anywhere in the module whose body directly returns a hardcoded
+    literal from ``tier_values`` — the shape a per-member override takes when
+    it is inlined straight into a classify function's control flow rather than
+    factored out into a named dict literal (which
+    :func:`all_dict_literal_str_items`/:func:`optional_dict_literal_str_items`
+    catch instead).
+
+    Deliberately NOT scoped to one named function: T1.1 U6's motivating
+    finding is that an inline override can sit anywhere a classify surface's
+    logic runs, so this scans the WHOLE module for the shape itself — a
+    branch keyed on a specific enum member (or a literal string equal to
+    one), returning a hardcoded tier — rather than trusting a function name a
+    re-fork could just as easily dodge by moving the branch into a helper.
+
+    :param path: Source file to parse.
+    :param tier_values: The literal return values worth flagging (T1.1's
+        three-bucket taxonomy). A return outside this set is not a tier
+        literal at all, so it is not a re-fork candidate.
+    :param enum_cls: The enum class whose members key the observed branches.
+    :param enum_name: The bare name ``enum_cls`` is imported under in the
+        surface being scanned — :func:`_enum_member_value` resolves
+        ``<enum_name>.MEMBER`` attribute access textually, so a branch keyed
+        on the enum imported under a different local alias is invisible to
+        this (true of neither real severity surface today).
+    :returns: ``{event_type_value: tier_literal}`` for every matched branch; a
+        key matched by more than one branch keeps the LAST one seen in
+        source order (an ``if``/``elif`` chain's own last-match-wins shape).
+    :raises SentinelCheckError: If the file is missing or unparseable.
+    """
+    tree = parse_module(path)
+    found: dict[str, str] = {}
+    for node in ast.walk(tree):
+        if not isinstance(node, ast.If):
+            continue
+        keys = _conditional_branch_keys(node.test, enum_cls, enum_name)
+        if not keys:
+            continue
+        for stmt in node.body:
+            tier = _returned_tier_literal(stmt, tier_values)
+            if tier is None:
+                continue
+            for key in keys:
+                found[key] = tier
+    return found
+
+
+def _conditional_branch_keys(test: ast.expr, enum_cls: type, enum_name: str) -> list[str]:
+    """The enum-member/literal keys an ``if`` test compares against, for
+    :func:`conditional_literal_returns_by_enum_member`.
+
+    Handles a single ``==`` comparison against one member/literal, and a
+    single ``in`` comparison against a set/list/tuple of members/literals
+    (an ``if x in {A, B}:`` fan-in branch) — chained/mixed comparisons
+    (``a == b == c``) are out of scope, matching every real branch in both
+    severity surfaces today.
+    """
+    if not isinstance(test, ast.Compare) or len(test.ops) != 1:
+        return []
+    op = test.ops[0]
+    left, right = test.left, test.comparators[0]
+    if isinstance(op, ast.Eq):
+        for side in (left, right):
+            value = _enum_member_value(side, enum_cls, enum_name)
+            if value is not None:
+                return [value]
+        return []
+    if isinstance(op, ast.In) and isinstance(right, (ast.Set, ast.List, ast.Tuple)):
+        return [
+            value
+            for elt in right.elts
+            if (value := _enum_member_value(elt, enum_cls, enum_name)) is not None
+        ]
+    return []
+
+
+def _returned_tier_literal(stmt: ast.stmt, tier_values: frozenset[str]) -> str | None:
+    """The hardcoded tier literal a single ``if``-branch statement returns, if
+    any, for :func:`conditional_literal_returns_by_enum_member`.
+
+    Recognizes a bare ``return "<tier>"`` and a ``return Model(tier="<tier>",
+    ...)`` keyword form (the Archive Chronicle's ``EventSalience(tier=...)``
+    shape) — the two ways either real severity surface's classify function
+    returns its tier.
+    """
+    if not isinstance(stmt, ast.Return) or stmt.value is None:
+        return None
+    value = stmt.value
+    if isinstance(value, ast.Constant) and isinstance(value.value, str):
+        return value.value if value.value in tier_values else None
+    if isinstance(value, ast.Call):
+        for kw in value.keywords:
+            if (
+                kw.arg == "tier"
+                and isinstance(kw.value, ast.Constant)
+                and isinstance(kw.value.value, str)
+                and kw.value.value in tier_values
+            ):
+                return kw.value.value
+    return None
+
+
 def optional_dict_literal_str_items(path: Path, var_name: str) -> dict[str, str]:
     """Statically extract a module-level ``dict[str, str]`` literal's key:value pairs.
 

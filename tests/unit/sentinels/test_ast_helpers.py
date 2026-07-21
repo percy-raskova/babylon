@@ -12,8 +12,11 @@ from pathlib import Path
 
 import pytest
 
+from babylon.models.enums.events import EventType
 from babylon.sentinels._ast import (
+    all_dict_literal_str_items,
     attribute_is_none_guard_lines,
+    conditional_literal_returns_by_enum_member,
     coupling_edges,
     dict_get_call_lines,
     frozenset_str_members,
@@ -223,6 +226,177 @@ def test_optional_dict_literal_str_items_raises_on_unparseable_source(tmp_path: 
     target.write_text("def (:\n", encoding="utf-8")
     with pytest.raises(SentinelCheckError, match="cannot parse"):
         optional_dict_literal_str_items(target, "_EVENT_SEVERITY")
+
+
+def test_all_dict_literal_str_items_returns_every_named_dict(tmp_path: Path) -> None:
+    """T1.1 U6 post-review hardening: unlike ``optional_dict_literal_str_items``
+    (one watched name), this returns EVERY module-level dict literal, keyed by
+    its own name -- a re-forked severity table does not stop being a re-fork
+    just because it is renamed away from the two retired literal names."""
+    target = tmp_path / "m.py"
+    target.write_text(
+        "\n".join(
+            [
+                "_FIRST = {'a': 'b'}",
+                "_SECOND = {'bifurcation_threshold': 'warning'}",
+                "NOT_A_DICT = 'plain string'",
+            ]
+        ),
+        encoding="utf-8",
+    )
+    assert all_dict_literal_str_items(target) == {
+        "_FIRST": {"a": "b"},
+        "_SECOND": {"bifurcation_threshold": "warning"},
+    }
+
+
+def test_all_dict_literal_str_items_skips_non_literal_entries(tmp_path: Path) -> None:
+    """Mirrors ``optional_dict_literal_str_items``'s own "skip, don't except"
+    stance on a computed key/value; a dict left with NO literal entries at all
+    contributes nothing."""
+    target = tmp_path / "m.py"
+    target.write_text(
+        "\n".join(
+            [
+                "_MIXED = {EventType.ECONOMIC_CRISIS.value: 'critical', 'lockout': 'warning'}",
+                "_ALL_COMPUTED = {SOME_KEY: SOME_VALUE}",
+            ]
+        ),
+        encoding="utf-8",
+    )
+    assert all_dict_literal_str_items(target) == {"_MIXED": {"lockout": "warning"}}
+
+
+def test_all_dict_literal_str_items_returns_empty_for_no_dicts(tmp_path: Path) -> None:
+    target = tmp_path / "m.py"
+    target.write_text("X = 1\n", encoding="utf-8")
+    assert all_dict_literal_str_items(target) == {}
+
+
+def test_all_dict_literal_str_items_raises_on_unparseable_source(tmp_path: Path) -> None:
+    target = tmp_path / "broken.py"
+    target.write_text("def (:\n", encoding="utf-8")
+    with pytest.raises(SentinelCheckError, match="cannot parse"):
+        all_dict_literal_str_items(target)
+
+
+def test_conditional_literal_returns_finds_a_bare_string_return(tmp_path: Path) -> None:
+    """T1.1 U6 post-review hardening: an inline per-member override folded
+    straight into a classify function's control flow -- no dict literal at
+    all -- is the vector the two dict-literal prongs above cannot see."""
+    target = tmp_path / "m.py"
+    target.write_text(
+        "\n".join(
+            [
+                "def classify(event_type):",
+                "    if event_type == EventType.BIFURCATION_THRESHOLD:",
+                "        return 'warning'",
+                "    return resolve_severity(event_type).tier",
+            ]
+        ),
+        encoding="utf-8",
+    )
+    tiers = frozenset({"critical", "warning", "informational"})
+    assert conditional_literal_returns_by_enum_member(target, tiers, EventType, "EventType") == {
+        "bifurcation_threshold": "warning"
+    }
+
+
+def test_conditional_literal_returns_finds_a_tier_keyword_return(tmp_path: Path) -> None:
+    """The Archive Chronicle's real return shape wraps the tier in a
+    ``Model(tier=..., ...)`` call, not a bare string -- the keyword form must
+    be recognized too."""
+    target = tmp_path / "m.py"
+    target.write_text(
+        "\n".join(
+            [
+                "def classify(event_type):",
+                "    if event_type == EventType.BIFURCATION_THRESHOLD:",
+                "        return EventSalience(tier='warning', unclassified=False)",
+                "    severity = resolve_severity(event_type)",
+                "    return EventSalience(tier=severity.tier, unclassified=severity.unclassified)",
+            ]
+        ),
+        encoding="utf-8",
+    )
+    tiers = frozenset({"critical", "warning", "informational"})
+    assert conditional_literal_returns_by_enum_member(target, tiers, EventType, "EventType") == {
+        "bifurcation_threshold": "warning"
+    }
+
+
+def test_conditional_literal_returns_finds_a_membership_fan_in(tmp_path: Path) -> None:
+    """``if event_type in {EventType.A, EventType.B}: return "<tier>"`` -- a
+    fan-in branch over several members, not just a single ``==``."""
+    target = tmp_path / "m.py"
+    target.write_text(
+        "\n".join(
+            [
+                "def classify(event_type):",
+                "    if event_type in {EventType.POGROM, EventType.LOCKOUT}:",
+                "        return 'critical'",
+                "    return resolve_severity(event_type).tier",
+            ]
+        ),
+        encoding="utf-8",
+    )
+    tiers = frozenset({"critical", "warning", "informational"})
+    assert conditional_literal_returns_by_enum_member(target, tiers, EventType, "EventType") == {
+        "pogrom": "critical",
+        "lockout": "critical",
+    }
+
+
+def test_conditional_literal_returns_ignores_an_unrelated_if(tmp_path: Path) -> None:
+    """An ``if`` not keyed on the enum at all, or one whose branch does not
+    return a tier literal, contributes nothing -- avoids false positives on
+    unrelated control flow (e.g. the Archive's own ``compute_autopause_state``,
+    which branches on a ``.tier`` VALUE comparison, not an enum-member key)."""
+    target = tmp_path / "m.py"
+    target.write_text(
+        "\n".join(
+            [
+                "def compute_autopause_state(events):",
+                "    for event in events:",
+                "        if classify(event).tier == 'critical':",
+                "            return AutopauseState(active=True)",
+                "    return AutopauseState(active=False)",
+            ]
+        ),
+        encoding="utf-8",
+    )
+    tiers = frozenset({"critical", "warning", "informational"})
+    assert conditional_literal_returns_by_enum_member(target, tiers, EventType, "EventType") == {}
+
+
+def test_conditional_literal_returns_ignores_an_except_clause(tmp_path: Path) -> None:
+    """The Loud-Failure floor's own ``except ValueError: return "warning"`` is
+    not keyed on any enum member at all -- must not be mistaken for a
+    per-member override."""
+    target = tmp_path / "m.py"
+    target.write_text(
+        "\n".join(
+            [
+                "def classify(event_type_str):",
+                "    try:",
+                "        event_type = EventType(event_type_str.lower())",
+                "    except ValueError:",
+                "        return 'warning'",
+                "    return resolve_severity(event_type).tier",
+            ]
+        ),
+        encoding="utf-8",
+    )
+    tiers = frozenset({"critical", "warning", "informational"})
+    assert conditional_literal_returns_by_enum_member(target, tiers, EventType, "EventType") == {}
+
+
+def test_conditional_literal_returns_raises_on_unparseable_source(tmp_path: Path) -> None:
+    target = tmp_path / "broken.py"
+    target.write_text("def (:\n", encoding="utf-8")
+    tiers = frozenset({"critical", "warning", "informational"})
+    with pytest.raises(SentinelCheckError, match="cannot parse"):
+        conditional_literal_returns_by_enum_member(target, tiers, EventType, "EventType")
 
 
 def test_returned_dict_keys_excludes_nested_scope_returns(tmp_path: Path) -> None:

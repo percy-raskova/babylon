@@ -16,6 +16,17 @@ Four tiers, mirroring ``test_seam_algebra_gate_satisfaction.py``'s own shape:
 - **Liveness + CLI wiring** — the real, shipped web bridge and Archive
   Chronicle are clean (post-U2 estate), and the family's CLI dispatch still
   exits 0 with all four gating checks wired.
+
+**Post-review hardening (two prior FALSE-GREEN vectors, both now closed):**
+the original check only ever compared the two named retired literals
+(``_EVENT_SEVERITY``/``EVENT_SEVERITY``) against the generated table, so it
+missed (a) an override dict re-forked under any OTHER name, and (b) an inline
+per-member override folded straight into a classify function's control flow
+(no dict literal at all) — the review's own repro reproduced BOTH against the
+REAL generated table for ``bifurcation_threshold`` (web=``"warning"`` vs
+generated/archive=``"critical"``) and got ``[]`` from both. The
+``TestAnyNameDictOverride``/``TestInlineConditionalOverride`` classes below
+pin exactly those two vectors reding now.
 """
 
 from __future__ import annotations
@@ -164,6 +175,178 @@ def test_mutation_under_the_other_retired_literal_name_also_reds(tmp_path: Path)
     )
     assert len(findings) == 1
     assert "pogrom" in findings[0]
+
+
+# ---------------------------------------------------------------------------
+# Post-review hardening, vector (a): an override dict re-forked under a name
+# OTHER than the two watched retired literals (``_EVENT_SEVERITY``/
+# ``EVENT_SEVERITY``) -- FALSE-GREEN before this prong existed.
+# ---------------------------------------------------------------------------
+
+
+class TestAnyNameDictOverride:
+    """A hand-copied severity dict does not stop being a re-fork just because
+    it is renamed -- reproduces the review's own repro verbatim
+    (``bifurcation_threshold``: web ``"warning"`` vs generated ``"critical"``)."""
+
+    def test_a_differently_named_override_dict_reds(self, tmp_path: Path) -> None:
+        web = _write(
+            tmp_path,
+            "web.py",
+            _CLEAN_SURFACE_SOURCE
+            + '\n_MY_SEVERITY_OVERRIDE = {"bifurcation_threshold": "warning"}\n',
+        )
+        archive = _write(tmp_path, "archive.py", _CLEAN_SURFACE_SOURCE)
+        generated_table = {"bifurcation_threshold": "critical"}
+        findings = check_severity_single_source(
+            web_path=web, archive_path=archive, generated_table=generated_table
+        )
+        assert len(findings) == 1
+        assert "bifurcation_threshold" in findings[0]
+        assert "'warning'" in findings[0]
+        assert "'critical'" in findings[0]
+
+    def test_the_same_shape_reds_on_the_archive_surface_too(self, tmp_path: Path) -> None:
+        web = _write(tmp_path, "web.py", _CLEAN_SURFACE_SOURCE)
+        archive = _write(
+            tmp_path,
+            "archive.py",
+            _CLEAN_SURFACE_SOURCE + '\n_ARCHIVE_OVERRIDE = {"bifurcation_threshold": "warning"}\n',
+        )
+        generated_table = {"bifurcation_threshold": "critical"}
+        findings = check_severity_single_source(
+            web_path=web, archive_path=archive, generated_table=generated_table
+        )
+        assert len(findings) == 1
+        assert "archive" in findings[0]
+
+    def test_a_consistent_differently_named_dict_is_clean(self, tmp_path: Path) -> None:
+        """Mirrors the named-literal prong's own stance: a redundant-but-
+        consistent dict is not itself the inequality this check gates on."""
+        web = _write(
+            tmp_path,
+            "web.py",
+            _CLEAN_SURFACE_SOURCE
+            + '\n_MY_SEVERITY_OVERRIDE = {"bifurcation_threshold": "critical"}\n',
+        )
+        archive = _write(tmp_path, "archive.py", _CLEAN_SURFACE_SOURCE)
+        generated_table = {"bifurcation_threshold": "critical"}
+        findings = check_severity_single_source(
+            web_path=web, archive_path=archive, generated_table=generated_table
+        )
+        assert findings == []
+
+    def test_an_unrelated_dict_is_not_a_false_positive(self, tmp_path: Path) -> None:
+        """A dict whose keys/values are not event-type/tier-shaped at all (the
+        common case for any other module-level dict in a large surface file)
+        must not be mistaken for a severity re-fork."""
+        web = _write(
+            tmp_path,
+            "web.py",
+            _CLEAN_SURFACE_SOURCE + '\n_EVENT_TITLE_OVERRIDES = {"entity_death": "Class '
+            'Extinction"}\n',
+        )
+        archive = _write(tmp_path, "archive.py", _CLEAN_SURFACE_SOURCE)
+        generated_table = {"entity_death": "warning"}
+        findings = check_severity_single_source(
+            web_path=web, archive_path=archive, generated_table=generated_table
+        )
+        assert findings == []
+
+
+# ---------------------------------------------------------------------------
+# Post-review hardening, vector (b): an inline per-member override folded
+# straight into a classify function's control flow, introducing NO dict
+# literal at all -- FALSE-GREEN before this prong existed.
+# ---------------------------------------------------------------------------
+
+_INLINE_OVERRIDE_WEB_SOURCE = (
+    "from babylon.models.enums.events import EventType\n"
+    "from babylon.models.event_severity import resolve_severity\n"
+    "\n"
+    "def classify(event_type):\n"
+    "    if event_type == EventType.BIFURCATION_THRESHOLD:\n"
+    '        return "warning"\n'
+    "    return resolve_severity(event_type).tier\n"
+)
+
+_INLINE_OVERRIDE_ARCHIVE_SOURCE = (
+    "from babylon.models.enums.events import EventType\n"
+    "from babylon.models.event_severity import resolve_severity\n"
+    "\n"
+    "def classify(event_type):\n"
+    "    if event_type == EventType.BIFURCATION_THRESHOLD:\n"
+    '        return EventSalience(tier="warning", unclassified=False)\n'
+    "    severity = resolve_severity(event_type)\n"
+    "    return EventSalience(tier=severity.tier, unclassified=severity.unclassified)\n"
+)
+
+
+class TestInlineConditionalOverride:
+    """Reproduces the review's own repro verbatim: an inline per-member
+    override inside the classify function, no dict literal introduced at
+    all, for ``bifurcation_threshold`` (web ``"warning"`` vs generated
+    ``"critical"``)."""
+
+    def test_a_bare_string_return_inline_override_reds(self, tmp_path: Path) -> None:
+        web = _write(tmp_path, "web.py", _INLINE_OVERRIDE_WEB_SOURCE)
+        archive = _write(tmp_path, "archive.py", _CLEAN_SURFACE_SOURCE)
+        generated_table = {"bifurcation_threshold": "critical"}
+        findings = check_severity_single_source(
+            web_path=web, archive_path=archive, generated_table=generated_table
+        )
+        assert len(findings) == 1
+        assert "bifurcation_threshold" in findings[0]
+        assert "'warning'" in findings[0]
+        assert "'critical'" in findings[0]
+
+    def test_a_tier_keyword_return_inline_override_reds(self, tmp_path: Path) -> None:
+        """The Archive Chronicle's real return shape is
+        ``EventSalience(tier=..., unclassified=...)``, not a bare string --
+        the ``tier=`` keyword form must be caught too."""
+        web = _write(tmp_path, "web.py", _CLEAN_SURFACE_SOURCE)
+        archive = _write(tmp_path, "archive.py", _INLINE_OVERRIDE_ARCHIVE_SOURCE)
+        generated_table = {"bifurcation_threshold": "critical"}
+        findings = check_severity_single_source(
+            web_path=web, archive_path=archive, generated_table=generated_table
+        )
+        assert len(findings) == 1
+        assert "archive" in findings[0]
+        assert "bifurcation_threshold" in findings[0]
+
+    def test_a_membership_form_inline_override_reds(self, tmp_path: Path) -> None:
+        """``if event_type in {EventType.A, EventType.B}: return "<tier>"`` --
+        a fan-in branch over several members, not just a single ``==``."""
+        source = (
+            "from babylon.models.enums.events import EventType\n"
+            "from babylon.models.event_severity import resolve_severity\n"
+            "\n"
+            "def classify(event_type):\n"
+            "    if event_type in {EventType.POGROM, EventType.LOCKOUT}:\n"
+            '        return "critical"\n'
+            "    return resolve_severity(event_type).tier\n"
+        )
+        web = _write(tmp_path, "web.py", source)
+        archive = _write(tmp_path, "archive.py", _CLEAN_SURFACE_SOURCE)
+        generated_table = {"pogrom": "warning", "lockout": "warning"}
+        findings = check_severity_single_source(
+            web_path=web, archive_path=archive, generated_table=generated_table
+        )
+        assert len(findings) == 2
+        assert any("pogrom" in f for f in findings)
+        assert any("lockout" in f for f in findings)
+
+    def test_a_consistent_inline_branch_is_clean(self, tmp_path: Path) -> None:
+        """Mirrors the dict-literal prongs' own stance: a branch that happens
+        to resolve to the SAME tier the generated table already names is not
+        itself the inequality this check gates on."""
+        web = _write(tmp_path, "web.py", _INLINE_OVERRIDE_WEB_SOURCE)
+        archive = _write(tmp_path, "archive.py", _CLEAN_SURFACE_SOURCE)
+        generated_table = {"bifurcation_threshold": "warning"}
+        findings = check_severity_single_source(
+            web_path=web, archive_path=archive, generated_table=generated_table
+        )
+        assert findings == []
 
 
 # ---------------------------------------------------------------------------

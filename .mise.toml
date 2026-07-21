@@ -883,6 +883,10 @@ run = "uv run python tools/regression_test.py compare"
 description = "Golden-vault byte-gate (WO-51/Amendment W): two independent bakes per scenario, byte-identical to the committed manifests"
 run = "uv run python tools/vault_regression.py compare"
 
+[tasks."qa:vault-regression-ci"]
+description = "CI lane of the golden-vault byte-gate: the in-process single_county scenario only (CI has no Postgres — ADR064 two-tier; the runner-backed detroit leg runs in the dev-side qa:vault-regression)"
+run = "uv run python tools/vault_regression.py compare --scenario single_county"
+
 [tasks."qa:vault-regression-generate"]
 description = "Seed/regenerate golden-vault manifests (committing tests/baselines/vault/** is a §6.5 ceremony — Baselines: blessed(<slug>) trailer required)"
 run = "uv run python tools/vault_regression.py generate"

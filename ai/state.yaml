@@ -5,6 +5,34 @@ meta:
   version: "2.47.0"  # 2.28.0 lives on feature/19-emergent-class-partition (Program 19 Phase 0+1)
   updated: "2026-07-21"
   truth_status: |
+    (2026-07-21 P2-P4) PROGRAM 24 THE ARCHIVE COMPLETE THROUGH P4 (branch
+    feature/archive-p2-p4, PR #240 -> dev auto-merge armed; STAGED cutover
+    draft PR #241 pending BD gate 3). P2: 18 Wave-1 builders + Wave-1.5
+    (PAOH/egotree/matrix/watchlist) + Lane E WO-38..44 (narrator cache,
+    epistemic search, vault-at-scale one-commit-per-tick + content-hash
+    skip, per-kind ArchiveTickBaker, runner --vault-root incl. tick-0 bake)
+    + WO-45 kind-dispatch integrator. P3: WO-46 babylon_meta epistemic tier
+    (schema + campaign/watchlist/jumplist/breadcrumb, migration 0037,
+    BabylonMetaStore; engine never touches it, tick hash blind to it),
+    WO-47 nav shell (vim jumplist Ctrl-O/I, breadcrumbs, palette fuzzy
+    switcher -> real navigation), WO-48 chronicle salience (unclassified ->
+    LOUD warning per III.11; consecutive dedup; AMBER autopause; ADR086
+    volume floors), WO-49 campaign lobby (codename-on-read spec-116,
+    reversible ABANDONED, arm-then-confirm delete), WO-50 Pilot e2e
+    (first-session.spec.ts spine ported, 9 hard-asserted legs; 5 honest
+    gaps recorded in ledger). P4: WO-51 qa:vault-regression byte-gate + THE
+    one declared ceremony 00b7e488 blessed(archive-golden-vault)
+    (single_county 5 pages / detroit_tri_county 11 pages, two independent
+    bakes byte-identical); WO-52 ledger closure 63/63 + mutation-validated
+    sentinel pinning 4 GAP rows visible; WO-53 qa:vault-regression-ci in
+    the CI determinism-gate job; WO-54 cutover STAGED as PR #241 (deletes
+    src/frontend + web/accounts + fog shim; web/game + web/observatory
+    KEPT - verifiably load-bearing, WO-52b ledger-extension owed before
+    full demotion). OPEN FOR BD: cutover gate 3 (full TUI campaign
+    session), the 4 ledger GAPs (economy Wc-Vc aggregates, economy chips,
+    field-state read-model, balkanization factions), WO-50's five honest
+    gaps (no production engine->Chronicle adapter; memoryless endgame fold
+    needs first-row persistence; critical-tier divergence vs FR-116-2).
     (2026-07-21 integration) MERGE origin/dev (Program 24 P1 keel + ADR100/
     ADR101) INTO local dev (ADR096 inference lane + versioning rigor). Semantic
     union of both branches' state records below, newest-first. Reconciliation:

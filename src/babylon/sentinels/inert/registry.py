@@ -150,7 +150,9 @@ class DeclaredProducer(BaseModel):
 DECLARED_STORES: Final[tuple[DeclaredStore, ...]] = (
     DeclaredStore(
         name="intel_ledger",
-        def_file="web/game/fog/ledger.py",
+        # Relocated web/game/fog/ -> babylon.projection.fog by Program 24 P1
+        # WO-1 (the Hoist); web/game/fog/ledger.py is now a re-export shim.
+        def_file="src/babylon/projection/fog/ledger.py",
         class_name="IntelLedger",
         writer_methods=("append",),
         what_it_stores=(

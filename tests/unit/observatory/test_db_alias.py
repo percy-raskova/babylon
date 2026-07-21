@@ -119,3 +119,39 @@ class TestBuildPrimaryDatabaseAlias:
         alias = build_primary_database_alias(default_primary_dsn())
         assert alias["HOST"] == "canonical"
         assert str(alias["PORT"]) == "9"
+
+    def test_host_default_param_applies_when_nothing_else_is_set(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        # production.py's own default (a unix-socket path) — differs from
+        # this function's historical "localhost" default (used by base.py).
+        monkeypatch.delenv("BABYLON_DSN", raising=False)
+        monkeypatch.delenv("POSTGRES_HOST", raising=False)
+        alias = build_primary_database_alias(
+            default_primary_dsn(host_default="/var/run/postgresql")
+        )
+        assert alias["HOST"] == "/var/run/postgresql"
+
+    def test_host_default_param_never_overrides_canonical_babylon_dsn(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        # T1.2 K2 review fix: production.py must not clobber a HOST that
+        # BABYLON_DSN already resolved — passing host_default must be a
+        # pure fallback, never a post-hoc override.
+        monkeypatch.setenv(
+            "BABYLON_DSN", "host=db.internal port=5432 dbname=babylon user=u password=p"
+        )
+        alias = build_primary_database_alias(
+            default_primary_dsn(host_default="/var/run/postgresql")
+        )
+        assert alias["HOST"] == "db.internal"
+
+    def test_host_default_param_never_overrides_explicit_postgres_host(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.delenv("BABYLON_DSN", raising=False)
+        monkeypatch.setenv("POSTGRES_HOST", "explicit.example")
+        alias = build_primary_database_alias(
+            default_primary_dsn(host_default="/var/run/postgresql")
+        )
+        assert alias["HOST"] == "explicit.example"

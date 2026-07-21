@@ -44,15 +44,28 @@ def default_sim_dsn() -> str:
     return resolve_dsn(legacy_env="BABYLON_PG_DSN", default=_DEFAULT_SIM_DSN)
 
 
-def default_primary_dsn() -> str:
+def default_primary_dsn(*, host_default: str = "localhost") -> str:
     """Return the product ("default") DSN, honouring ``BABYLON_DSN`` then the
     deprecated Django ``POSTGRES_*`` split vars (see
     :func:`babylon.config.dsn.postgres_split_dsn`).
 
+    ``host_default`` is a pure fallback — it only takes effect when
+    *neither* ``BABYLON_DSN`` nor ``POSTGRES_HOST`` is set. It exists so a
+    caller (``production.py``'s unix-socket deployment default) can change
+    what "unconfigured" resolves to without ever clobbering a HOST the
+    canonical or legacy env vars already resolved (T1.2 K2 review fix —
+    previously ``production.py`` patched ``DATABASES["default"]["HOST"]``
+    after the fact, unconditionally, defeating ``BABYLON_DSN``).
+
+    Args:
+        host_default: fallback host used only when neither ``BABYLON_DSN``
+            nor ``POSTGRES_HOST`` is set. Defaults to ``"localhost"`` (the
+            historical Django default, used by ``base.py``/``development.py``).
+
     Returns:
         A libpq keyword DSN string.
     """
-    return resolve_dsn(default=postgres_split_dsn())
+    return resolve_dsn(default=postgres_split_dsn(host=host_default))
 
 
 def _database_alias_from_dsn(dsn: str, *, engine: str) -> dict[str, Any]:

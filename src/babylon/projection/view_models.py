@@ -26,6 +26,7 @@ from typing import Annotated, Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, TypeAdapter, model_validator
 
+from babylon.models.enums import CommunityType
 from babylon.models.types import (
     Currency,
     Ideology,
@@ -177,17 +178,105 @@ class CountyView(BaseModel):
     sovereign_id: str | None = None
 
 
-#: A projected record of any scale, keyed on ``kind``. It holds only
-#: :class:`CountyView` today; Program 24 P2 widens it to a discriminated
-#: union (``CountyView | StateView | ...``) as state and national dossiers
-#: land — the hydrate helpers below need no change.
+class CommunityOverlap(BaseModel):
+    """One other community sharing at least one roster member with the queried one.
+
+    :param community_id: The other :class:`~babylon.models.enums.CommunityType`
+        this dossier's roster overlaps with.
+    :param shared_member_count: How many of the queried community's roster
+        members also belong to ``community_id``. Always ``>= 1`` — a pair
+        sharing zero members is simply absent from
+        :attr:`CommunityView.overlaps`, never a listed zero (mirrors the
+        ``CountyView`` honest-absence discipline: a fact that isn't true
+        isn't recorded as a false zero).
+    """
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    community_id: CommunityType
+    shared_member_count: int = Field(ge=1)
+
+
+class CommunityView(BaseModel):
+    """A community/hyperedge dossier — the projected read-model for one
+    :class:`~babylon.models.enums.CommunityType`.
+
+    Community is **never a graph node** (Constitution II.7; MEMORY
+    hex/community Lawverian disposition, ``NoCommunityFanOut`` INV-010) — a
+    community is an XGI hyperedge whose members are ``SocialClass`` nodes
+    carrying a ``community_memberships`` entry, so this dossier is projected
+    from that entity-level data, never from a node lookup. **Amendment D
+    (read-only):** hyperedge *rendering* is presentation-only and safe while
+    II.7 is ``[TRANSITION STATE]`` for hyperedge *mutation* — this view (and
+    its vault page) carries no mutation affordance, roster/formation-tick/
+    overlaps are display fields only.
+
+    As of Program 24 P2 (WO-24), no scenario populates
+    ``SocialClass.community_memberships`` in any real game
+    (``CommunitySystem.step`` is a structural no-op —
+    ``src/babylon/sentinels/seam/registry.py`` marks the payload
+    ``STRUCTURALLY_IMPOSSIBLE``), so :attr:`roster` and :attr:`overlaps`
+    honestly hydrate to ``None`` today; the projection code exists to light
+    up the moment a producer lands, not to fabricate activity.
+
+    Extra keys are rejected (``extra="forbid"``): a payload carrying a field
+    this model does not declare is a shape mismatch to surface loudly.
+
+    :param kind: The discriminator literal ``"community"`` tagging this
+        record in :data:`ProjectionRecord`.
+    :param community_id: The community this dossier describes — one of the
+        14 fixed :class:`~babylon.models.enums.CommunityType` members, NOT a
+        free-form id. An unrecognized string is a caller error (loud
+        ``ValidationError``), never an absence — absence is the *fields*
+        being empty, not the identity being unrecognized.
+    :param verified_tick: The committed tick this dossier was projected from,
+        the staleness anchor for any materialization.
+    :param roster: The sorted tuple of member ``SocialClass`` ids currently
+        attributed to this community, or ``None`` if nobody is (honest
+        absence — never an empty tuple for "nobody"; an empty tuple is
+        reserved for a *different*, currently-unreachable case, see
+        :attr:`overlaps`). Renders as read-only ``[[social_class/<id>]]``
+        wikilinks — incidence-via-backlinks (design-canon S9).
+    :param formation_tick: The tick this hyperedge was first instantiated —
+        **always ``None`` today, and not merely per-run absent**: neither
+        ``CommunityState`` nor ``CommunityMembership``
+        (``babylon.models.entities.community``) carries any timestamp field,
+        because a ``CommunityType`` is a fixed 14-member taxonomy assigned at
+        import time (``COMMUNITY_CATEGORY_MAP``), not a hyperedge
+        dynamically instantiated at some tick. Declared ``Optional`` so a
+        future spec adding hyperedge lifecycle tracking can populate it
+        without a schema break, not because this run simply lacks the data.
+    :param overlaps: Every *other* community sharing at least one roster
+        member with this one, sorted by ``community_id``, or ``None`` when
+        :attr:`roster` itself is ``None`` (overlap cannot be computed without
+        a roster). A roster that IS attributed but shares zero members with
+        any other community projects :attr:`overlaps` as an empty tuple, not
+        ``None`` — "computed and found none" is a different fact from "not
+        computed."
+    """
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    kind: Literal["community"] = "community"
+    community_id: CommunityType
+    verified_tick: int = Field(ge=0)
+
+    roster: tuple[str, ...] | None = None
+    formation_tick: int | None = None
+    overlaps: tuple[CommunityOverlap, ...] | None = None
+
+
+#: A projected record of any scale, keyed on ``kind``. Program 24 P2 widens
+#: this union as further dossier kinds land (state, national, ... — the
+#: hydrate helpers below need no change per kind added).
 ProjectionRecord = Annotated[
-    CountyView,
+    CountyView | CommunityView,
     Field(discriminator="kind"),
 ]
 
 _COUNTY_ADAPTER: TypeAdapter[CountyView] = TypeAdapter(CountyView)
-_RECORD_ADAPTER: TypeAdapter[CountyView] = TypeAdapter(ProjectionRecord)
+_COMMUNITY_ADAPTER: TypeAdapter[CommunityView] = TypeAdapter(CommunityView)
+_RECORD_ADAPTER: TypeAdapter[CountyView | CommunityView] = TypeAdapter(ProjectionRecord)
 
 
 def hydrate_county(data: Mapping[str, Any]) -> CountyView:
@@ -202,7 +291,19 @@ def hydrate_county(data: Mapping[str, Any]) -> CountyView:
     return _COUNTY_ADAPTER.validate_python(data)
 
 
-def hydrate_record(data: Mapping[str, Any]) -> CountyView:
+def hydrate_community(data: Mapping[str, Any]) -> CommunityView:
+    """Validate an untyped mapping into a :class:`CommunityView`.
+
+    :param data: A mapping shaped like a ``CommunityView`` — a recorded
+        fixture, a JSON payload, or an assembled row dict. Missing optional
+        keys become ``None``; unknown keys are rejected.
+    :returns: The validated, frozen :class:`CommunityView`.
+    :raises pydantic.ValidationError: on a shape or constraint violation.
+    """
+    return _COMMUNITY_ADAPTER.validate_python(data)
+
+
+def hydrate_record(data: Mapping[str, Any]) -> CountyView | CommunityView:
     """Validate an untyped mapping into the correct :data:`ProjectionRecord`.
 
     Dispatch is by the ``kind`` discriminator, so this helper stays correct as
@@ -210,7 +311,8 @@ def hydrate_record(data: Mapping[str, Any]) -> CountyView:
 
     :param data: A mapping carrying a ``kind`` discriminator and the fields of
         the matching record type.
-    :returns: The validated record (a :class:`CountyView` today).
+    :returns: The validated record, typed to the member :data:`ProjectionRecord`
+        matches (a :class:`CountyView` or :class:`CommunityView` today).
     :raises pydantic.ValidationError: if ``kind`` is missing/unknown or the
         payload violates the matched record's shape.
     """
@@ -219,9 +321,12 @@ def hydrate_record(data: Mapping[str, Any]) -> CountyView:
 
 __all__ = [
     "ClassComposition",
+    "CommunityOverlap",
+    "CommunityView",
     "ConsciousnessSimplex",
     "CountyView",
     "ProjectionRecord",
+    "hydrate_community",
     "hydrate_county",
     "hydrate_record",
 ]

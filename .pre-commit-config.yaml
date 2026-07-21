@@ -167,6 +167,12 @@ repos:
     rev: v6.0.0
     hooks:
       - id: trailing-whitespace
+        # pytest-textual-snapshot .raw goldens are byte-exact contracts
+        # (syrupy compares verbatim against a fresh take_svg_screenshot()
+        # render, which is Rich's own SVG-chrome template output, not
+        # anything this repo controls) — stripping trailing whitespace here
+        # desyncs the committed golden from every future plain test run.
+        exclude: ^tests/.*/__snapshots__/.*\.raw$
       - id: end-of-file-fixer
       - id: check-yaml
         args: [--unsafe]  # Allow custom tags in GitHub Actions

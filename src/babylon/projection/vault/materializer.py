@@ -22,7 +22,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING
 
 from babylon.projection.vault.git_backend import commit_page, commit_pages, init_vault
-from babylon.projection.vault.render import render_county
+from babylon.projection.vault.render import render_county, render_sovereign
 from babylon.projection.vault.render_institution import render_institution
 from babylon.projection.vault.render_national import render_national
 from babylon.projection.vault.render_organization import render_organization
@@ -32,6 +32,7 @@ from babylon.projection.view_models import (
     InstitutionView,
     NationalView,
     OrganizationView,
+    SovereignView,
     StateView,
 )
 
@@ -207,6 +208,32 @@ class VaultMaterializer:
             content,
             tick=tick,
             message=f"bake: institution/{view.institution_id} @ tick {tick}",
+        )
+        return self._vault_root / relative_path
+
+    def bake_sovereign(self, view: SovereignView, *, tick: int) -> Path:
+        """Render and commit one sovereign dossier page.
+
+        The page path follows the same stable-ID slug ruling as
+        ``bake_county``: ``sovereign/<id>.md``.
+
+        :param view: the sovereign projection to materialize.
+        :param tick: the simulation tick driving both the page's
+            ``verified_tick`` frontmatter stamp (via
+            :func:`~babylon.projection.vault.render.render_sovereign`) and
+            the commit's sim-time timestamp (via
+            :func:`~babylon.projection.vault.git_backend.commit_page`).
+        :returns: the absolute path of the written page under the vault
+            root.
+        """
+        relative_path = f"sovereign/{view.sovereign_id}.md"
+        content = render_sovereign(view, verified_tick=tick)
+        commit_page(
+            self._vault_root,
+            relative_path,
+            content,
+            tick=tick,
+            message=f"bake: sovereign/{view.sovereign_id} @ tick {tick}",
         )
         return self._vault_root / relative_path
 

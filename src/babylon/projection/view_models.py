@@ -31,9 +31,11 @@ from babylon.models.enums import (
     ClassCharacter,
     ClassInscription,
     ConsciousnessTendency,
+    ExtractionPolicy,
     LegalStanding,
     OrgType,
     SocialFunction,
+    SovereigntyType,
 )
 from babylon.models.types import Currency, Ideology, Probability, SignedLaborHours
 
@@ -521,11 +523,87 @@ class InstitutionView(BaseModel):
     factional_composition: FactionalComposition | None = None
 
 
+class SovereignView(BaseModel):
+    """A sovereign dossier — the projected read-model for one sovereign authority.
+
+    Program 24 P2 WO-20: sovereign is the CLAIMS-edge claimant
+    :func:`~babylon.projection.county.project_county`'s ``_single_claimant``
+    already resolves for a county's ``sovereign_id`` field; this view is what
+    a county page's ``[[sovereign/<id>]]`` wikilink resolves to.
+
+    Every field beyond identity and provenance is ``Optional`` because the
+    sovereign either doesn't exist in this run (a stale/unminted id) or one
+    of its attributes genuinely isn't attributed; in both cases the honest
+    projection is ``None``, never a defaulted value. ``claimed_county_fips``
+    is the one field where an *empty* value (``()``) and ``None`` mean
+    different things — see :attr:`claimed_county_fips`.
+
+    Extra keys are rejected (``extra="forbid"``): a payload carrying a field
+    this model does not declare is a shape mismatch to surface loudly, not to
+    swallow.
+
+    :param kind: The discriminator literal ``"sovereign"`` tagging this
+        record in :data:`ProjectionRecord`.
+    :param sovereign_id: The sovereign's stable node id (``SOV_*``,
+        spec-070) — the sovereign's identity; sovereign IS a graph node
+        (unlike county, which addresses a territory by ``county_fips``).
+    :param verified_tick: The committed tick this dossier was projected from
+        (``tick_commit``), the staleness anchor for any materialization.
+    :param name: Display name, or ``None`` if the sovereign node doesn't
+        exist / carries none.
+    :param sovereignty_type: The sovereign's classification (recognized
+        state, provisional, insurgent, occupation, secessionist, emergency),
+        or ``None``.
+    :param legitimacy: Current legitimacy in ``[0, 1]`` — the same attribute
+        ``CollapseTransitionSystem`` reads for the FR-023
+        ``SOVEREIGN_COLLAPSE`` trigger — or ``None``.
+    :param ruling_faction_id: The ruling
+        :class:`~babylon.models.entities.balkanization_faction.BalkanizationFaction`'s
+        id, or ``None`` (legitimately ``None`` for the FR-040b
+        ``SOV_EXTERIOR_NULL`` fallback, or absence).
+    :param extraction_policy: The sovereign's per-tick extractive relationship
+        (intensify/continue/cease), or ``None``.
+    :param capital_territory_id: The raw capital territory node id, or
+        ``None`` if the sovereign names no capital / doesn't exist.
+    :param capital_county_fips: The capital territory's ``county_fips``,
+        derived from :attr:`capital_territory_id`, or ``None`` when there is
+        no capital, the named territory doesn't exist, or it carries no
+        ``county_fips``.
+    :param founded_tick: The tick the sovereign was instantiated, or ``None``.
+    :param dissolved_tick: The tick the sovereign dissolved, or ``None`` (the
+        common case for a still-active sovereign, not necessarily an
+        attribution gap).
+    :param claimed_county_fips: The sorted, de-duplicated ``county_fips`` of
+        every territory this sovereign CLAIMS — the reverse of
+        ``project_county``'s ``sovereign_id``. ``None`` when the sovereign
+        node itself doesn't exist; an empty tuple is a real, present value
+        ("this sovereign currently claims nothing"), never conflated with
+        absence.
+    """
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    kind: Literal["sovereign"] = "sovereign"
+    sovereign_id: str = Field(pattern=r"^SOV_[A-Z][A-Z0-9_]*$")
+    verified_tick: int = Field(ge=0)
+
+    name: str | None = None
+    sovereignty_type: SovereigntyType | None = None
+    legitimacy: Probability | None = None
+    ruling_faction_id: str | None = Field(default=None, pattern=r"^FAC_[A-Z][A-Z0-9_]*$")
+    extraction_policy: ExtractionPolicy | None = None
+    capital_territory_id: str | None = None
+    capital_county_fips: str | None = Field(default=None, pattern=r"^\d{5}$")
+    founded_tick: int | None = Field(default=None, ge=0)
+    dissolved_tick: int | None = Field(default=None, ge=0)
+    claimed_county_fips: tuple[str, ...] | None = None
+
+
 #: A projected record of any scale, keyed on ``kind``. Widened by
 #: Program 24 P2 as each entity-kind page lands; the hydrate helpers
 #: below need no change as the union grows.
 ProjectionRecord = Annotated[
-    CountyView | InstitutionView | NationalView | OrganizationView | StateView,
+    CountyView | InstitutionView | NationalView | OrganizationView | SovereignView | StateView,
     Field(discriminator="kind"),
 ]
 
@@ -534,6 +612,7 @@ _STATE_ADAPTER: TypeAdapter[StateView] = TypeAdapter(StateView)
 _NATIONAL_ADAPTER: TypeAdapter[NationalView] = TypeAdapter(NationalView)
 _ORGANIZATION_ADAPTER: TypeAdapter[OrganizationView] = TypeAdapter(OrganizationView)
 _INSTITUTION_ADAPTER: TypeAdapter[InstitutionView] = TypeAdapter(InstitutionView)
+_SOVEREIGN_ADAPTER: TypeAdapter[SovereignView] = TypeAdapter(SovereignView)
 _RECORD_ADAPTER: TypeAdapter[CountyView | NationalView | OrganizationView | StateView] = (
     TypeAdapter(ProjectionRecord)
 )
@@ -599,6 +678,18 @@ def hydrate_institution(data: Mapping[str, Any]) -> InstitutionView:
     return _INSTITUTION_ADAPTER.validate_python(data)
 
 
+def hydrate_sovereign(data: Mapping[str, Any]) -> SovereignView:
+    """Validate an untyped mapping into a :class:`SovereignView`.
+
+    :param data: A mapping shaped like a ``SovereignView`` — a recorded
+        fixture, a JSON payload, or an assembled row dict. Missing optional
+        keys become ``None``; unknown keys are rejected.
+    :returns: The validated, frozen :class:`SovereignView`.
+    :raises pydantic.ValidationError: on a shape or constraint violation.
+    """
+    return _SOVEREIGN_ADAPTER.validate_python(data)
+
+
 def hydrate_record(
     data: Mapping[str, Any],
 ) -> CountyView | NationalView | OrganizationView | StateView:
@@ -625,11 +716,13 @@ __all__ = [
     "NationalView",
     "OrganizationView",
     "ProjectionRecord",
+    "SovereignView",
     "StateView",
     "hydrate_county",
     "hydrate_institution",
     "hydrate_national",
     "hydrate_organization",
     "hydrate_record",
+    "hydrate_sovereign",
     "hydrate_state",
 ]

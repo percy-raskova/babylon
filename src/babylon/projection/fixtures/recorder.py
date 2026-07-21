@@ -27,11 +27,13 @@ from babylon.projection.view_models import (
     InstitutionView,
     NationalView,
     OrganizationView,
+    SovereignView,
     StateView,
     hydrate_county,
     hydrate_institution,
     hydrate_national,
     hydrate_organization,
+    hydrate_sovereign,
     hydrate_state,
 )
 
@@ -150,16 +152,60 @@ def load_institution_fixture(path: Path) -> InstitutionView:
     return hydrate_institution(data)
 
 
+def record_sovereign_fixture(view: SovereignView, path: Path) -> None:
+    """Serialize ``view`` to ``path`` as deterministic, sorted-key JSON.
+
+    Mirrors :func:`record_county_fixture` exactly — same determinism
+    contract (``model_dump(mode="json")`` through ``json.dumps(...,
+    sort_keys=True)`` plus a trailing newline).
+
+    :param view: The projected sovereign dossier to persist.
+    :param path: Destination file. The parent directory is NOT created here —
+        callers (the harvester) own directory setup, so a typo'd path fails
+        loud instead of silently minting a stray directory tree.
+    :raises OSError: if ``path``'s parent directory does not exist or is not
+        writable.
+    """
+    payload: dict[str, Any] = view.model_dump(mode="json")
+    text = json.dumps(payload, sort_keys=True, indent=2) + "\n"
+    path.write_text(text, encoding="utf-8")
+
+
+def load_sovereign_fixture(path: Path) -> SovereignView:
+    """Hydrate a :class:`SovereignView` from a fixture written by :func:`record_sovereign_fixture`.
+
+    :param path: The fixture file to load.
+    :returns: The validated, frozen :class:`SovereignView`.
+    :raises FileNotFoundError: if ``path`` does not exist — a missing fixture
+        is a loud failure (Constitution III.11), never a silently-substituted
+        default view.
+    :raises ValueError: if ``path``'s content is not valid JSON.
+    :raises pydantic.ValidationError: if the JSON parses but does not hydrate
+        to a valid :class:`SovereignView` (wrong shape, out-of-range value, an
+        invented field the model rejects under ``extra="forbid"``).
+    """
+    if not path.is_file():
+        raise FileNotFoundError(f"no projection fixture at {path}")
+    raw = path.read_text(encoding="utf-8")
+    try:
+        data = json.loads(raw)
+    except json.JSONDecodeError as exc:
+        raise ValueError(f"malformed JSON in projection fixture {path}: {exc}") from exc
+    return hydrate_sovereign(data)
+
+
 __all__ = [
     "load_county_fixture",
     "load_institution_fixture",
     "load_national_fixture",
     "load_organization_fixture",
+    "load_sovereign_fixture",
     "load_state_fixture",
     "record_county_fixture",
     "record_institution_fixture",
     "record_national_fixture",
     "record_organization_fixture",
+    "record_sovereign_fixture",
     "record_state_fixture",
 ]
 

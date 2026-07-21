@@ -20,14 +20,17 @@ from pydantic import ValidationError
 
 from babylon.projection.fixtures.recorder import (
     load_county_fixture,
+    load_industry_fixture,
     load_organization_fixture,
     record_county_fixture,
+    record_industry_fixture,
     record_organization_fixture,
 )
 from babylon.projection.view_models import (
     ClassComposition,
     ConsciousnessSimplex,
     CountyView,
+    IndustryView,
     OrganizationView,
     hydrate_record,
 )
@@ -260,3 +263,103 @@ class TestOrganizationCommittedFixture:
         assert view.verified_tick >= 0
         # Honest absence: single_county seeds zero organizations.
         assert view.name is None
+
+
+#: The fixture the WO-22 harvester ships (honest-absence — see
+#: ``tools/record_industry_fixture.py``'s docstring for why).
+_COMMITTED_INDUSTRY_FIXTURE: Path = (
+    Path(__file__).parent.parent.parent / "fixtures" / "projection" / "industry_ind_31-33.json"
+)
+
+_SHIPPED_INDUSTRY_ID: str = "ind_31-33"
+
+
+def _full_industry_view(*, tick: int = 500) -> IndustryView:
+    """A fully-populated Manufacturing-shaped ``IndustryView`` — every field set."""
+    return IndustryView(
+        industry_id="ind_31-33",
+        verified_tick=tick,
+        naics_2digit="31-33",
+        naics_label="Manufacturing",
+        total_employment=2000,
+        total_wages=100000.0,
+        profit_rate=1.0 / 3.0,
+        occ=2.0,
+        member_business_count=2,
+        member_worker_block_count=1,
+        county_fips=("26125", "26163"),
+    )
+
+
+def _sparse_industry_view(*, tick: int = 5) -> IndustryView:
+    """An all-``None`` (beyond identity/provenance) ``IndustryView`` — the
+    honest-absence shape ``tools/record_industry_fixture.py`` actually ships."""
+    return IndustryView(industry_id="ind_31-33", verified_tick=tick)
+
+
+class TestIndustryRoundTrip:
+    """Recording then loading an industry view yields an equal artifact."""
+
+    @pytest.mark.parametrize("view_factory", [_full_industry_view, _sparse_industry_view])
+    def test_round_trips_to_an_equal_view(
+        self, tmp_path: Path, view_factory: Callable[[], IndustryView]
+    ) -> None:
+        """A recorded-then-loaded view compares equal to the original."""
+        view = view_factory()
+        path = tmp_path / "view.json"
+
+        record_industry_fixture(view, path)
+        loaded = load_industry_fixture(path)
+
+        assert loaded == view
+        assert loaded.model_dump() == view.model_dump()
+
+    def test_recording_twice_is_byte_identical(self, tmp_path: Path) -> None:
+        """Recording the same view twice writes identical bytes (determinism)."""
+        view = _full_industry_view()
+        first_path = tmp_path / "first.json"
+        second_path = tmp_path / "second.json"
+
+        record_industry_fixture(view, first_path)
+        record_industry_fixture(view, second_path)
+
+        assert first_path.read_bytes() == second_path.read_bytes()
+
+
+class TestIndustryLoudFailure:
+    """A missing or malformed industry fixture fails loud — never a silent default."""
+
+    def test_missing_file_raises_file_not_found(self, tmp_path: Path) -> None:
+        """Loading a path with no file raises ``FileNotFoundError``."""
+        with pytest.raises(FileNotFoundError):
+            load_industry_fixture(tmp_path / "does_not_exist.json")
+
+    def test_malformed_json_raises_value_error(self, tmp_path: Path) -> None:
+        """Loading a file with invalid JSON syntax raises ``ValueError``."""
+        path = tmp_path / "malformed.json"
+        path.write_text("{not valid json", encoding="utf-8")
+
+        with pytest.raises(ValueError):
+            load_industry_fixture(path)
+
+
+class TestCommittedIndustryFixture:
+    """The WO-22 harvester's committed fixture stays present and well-shaped.
+
+    Deliberately NOT a skip: if
+    ``tests/fixtures/projection/industry_ind_31-33.json`` goes missing or
+    drifts out of ``IndustryView``'s schema, this test must fail loud
+    (Constitution III.11).
+    """
+
+    def test_committed_fixture_is_present_and_well_shaped(self) -> None:
+        """The shipped fixture loads, names the right id, and has a valid tick."""
+        assert _COMMITTED_INDUSTRY_FIXTURE.is_file(), (
+            f"committed projection fixture missing: {_COMMITTED_INDUSTRY_FIXTURE} — "
+            "regenerate via `uv run python tools/record_industry_fixture.py`"
+        )
+
+        view = load_industry_fixture(_COMMITTED_INDUSTRY_FIXTURE)
+
+        assert view.industry_id == _SHIPPED_INDUSTRY_ID
+        assert view.verified_tick >= 0

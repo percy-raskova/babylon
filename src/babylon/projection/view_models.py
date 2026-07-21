@@ -37,7 +37,7 @@ from babylon.models.enums import (
     SocialFunction,
     SovereigntyType,
 )
-from babylon.models.types import Currency, Ideology, Probability, SignedLaborHours
+from babylon.models.types import Coefficient, Currency, Ideology, Probability, SignedLaborHours
 
 #: Tolerance for the simplex/share sum invariants — matches the engine-side
 #: ``ClassDistribution`` and ternary-consciousness tolerance so a record that
@@ -642,11 +642,139 @@ class KeyFigureView(BaseModel):
     verified_tick: int = Field(ge=0)
 
 
+class DepartmentComposition(BaseModel):
+    """The Volume II department shares of an industry's output, summing to one.
+
+    Mirrors ``babylon.domain.economics.department_mapper.DepartmentAllocation``
+    (the Marx Vol II department schema, extended to four departments: means of
+    production, necessary consumption, luxury consumption, social
+    reproduction) — projected here, not imported, per the projection layer's
+    no-engine-no-domain-import discipline (Constitution's layering; WO-22).
+
+    :param dept_I: Share allocated to Department I (means of production).
+    :param dept_IIa: Share allocated to Department IIa (necessary consumption).
+    :param dept_IIb: Share allocated to Department IIb (luxury consumption).
+    :param dept_III: Share allocated to Department III (social reproduction).
+    """
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    dept_I: Coefficient
+    dept_IIa: Coefficient
+    dept_IIb: Coefficient
+    dept_III: Coefficient
+
+    @model_validator(mode="after")
+    def _validate_sum(self) -> DepartmentComposition:
+        """Require the four department shares to sum to one within tolerance.
+
+        :raises ValueError: if the shares do not sum to one — a malformed
+            allocation is a bug, not a silently-normalized input.
+        :returns: The validated model (unchanged).
+        """
+        total = self.dept_I + self.dept_IIa + self.dept_IIb + self.dept_III
+        if abs(total - 1.0) > _SUM_TOLERANCE:
+            msg = f"department shares must sum to 1.0 (got {total:.6f})"
+            raise ValueError(msg)
+        return self
+
+
+class IndustryView(BaseModel):
+    """An industry dossier — the projected read-model for one NAICS-sector hyperedge.
+
+    Unlike :class:`CountyView`, which composes several independent
+    subsystem-sourced quantities, an industry has exactly one producer for
+    every field: the ``INDUSTRY``-typed graph node itself
+    (``babylon.models.entities.industry.IndustryHyperedge``, hydrated by
+    ``babylon.engine.hydration.reference.hydrate_industry_hyperedges`` from
+    the reference QCEW/BEA tables and stamped onto the graph by
+    ``WorldState.to_graph()``). So presence/absence is a single binary gate —
+    a graph carrying no node for ``industry_id`` projects every non-identity
+    field as ``None``, never a defaulted zero (Constitution III.11).
+
+    .. list-table:: Field-producer rulings
+       :header-rows: 1
+
+       * - Field
+         - Producer
+       * - ``naics_2digit`` / ``naics_label``
+         - ``IndustryHyperedge.naics_2digit`` / ``naics_label`` node
+           attributes — the reference ``DimIndustry`` sector identity.
+       * - ``total_employment`` / ``total_wages``
+         - ``IndustryHyperedge.total_employment`` / ``total_wages`` — the
+           QCEW ``FactQcewAnnual`` employment/wages sum for the sector
+           (variable capital *v* in money-form).
+       * - ``profit_rate`` / ``occ``
+         - ``IndustryHyperedge.profit_rate`` / ``occ`` — the Leontief/Marx
+           Vol III derived quantities (``sv_ratio / (cv_ratio + 1)`` and the
+           sector c/v ratio) computed by
+           ``babylon.domain.economics.department_mapper.DepartmentMapper``
+           at hydration time and stamped onto the graph node; projected here
+           by reading the node's attributes only, never by importing
+           ``domain.economics`` (WO-22: "read it via the graph").
+       * - ``department_weights``
+         - ``IndustryHyperedge.department_weights`` — the Vol II department
+           allocation (``DepartmentMapper.get_allocation(...).to_dict()``).
+       * - ``member_business_count`` / ``member_worker_block_count``
+         - Cardinality of ``IndustryHyperedge.member_business_ids`` /
+           ``member_worker_block_ids``. No live hydrator populates
+           membership today (only a unit test constructs it, for XGI
+           topology) — a present-but-empty roster projects as ``0``, a
+           genuinely absent node projects both counts as ``None``.
+       * - ``county_fips``
+         - ``IndustryHyperedge.county_fips`` — the counties this sector's
+           QCEW aggregate spans, sorted for deterministic ordering (the
+           source ``frozenset`` carries none, Constitution III.13).
+
+    Extra keys are rejected (``extra="forbid"``): a payload carrying a field
+    this model does not declare is a shape mismatch to surface loudly, not to
+    swallow.
+
+    :param kind: The discriminator literal ``"industry"`` tagging this record
+        in :data:`ProjectionRecord`.
+    :param industry_id: The graph node id (e.g. ``"ind_31-33"``) — the
+        industry's identity; industry is not FIPS-keyed like county.
+    :param verified_tick: The committed tick this dossier was projected from,
+        the staleness anchor for any materialization.
+    :param naics_2digit: The 2-digit NAICS sector code, or ``None`` if absent.
+    :param naics_label: The human-readable sector title, or ``None``.
+    :param total_employment: Sector employment count, or ``None``.
+    :param total_wages: Sector total wages (variable capital *v*), or
+        ``None``.
+    :param profit_rate: The BEA/QCEW-derived sector profit rate, or ``None``.
+    :param occ: The sector Organic Composition of Capital (c/v), or ``None``.
+    :param department_weights: The Vol II department allocation, or ``None``.
+    :param member_business_count: Count of member business ids, or ``None``.
+    :param member_worker_block_count: Count of member worker-block ids, or
+        ``None``.
+    :param county_fips: The sorted tuple of counties this sector spans, or
+        ``None``.
+    """
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    kind: Literal["industry"] = "industry"
+    industry_id: str = Field(min_length=1)
+    verified_tick: int = Field(ge=0)
+
+    naics_2digit: str | None = None
+    naics_label: str | None = None
+    total_employment: int | None = Field(default=None, ge=0)
+    total_wages: Currency | None = None
+    profit_rate: float | None = Field(default=None, ge=0.0)
+    occ: float | None = Field(default=None, ge=0.0)
+    department_weights: DepartmentComposition | None = None
+    member_business_count: int | None = Field(default=None, ge=0)
+    member_worker_block_count: int | None = Field(default=None, ge=0)
+    county_fips: tuple[str, ...] | None = None
+
+
 #: A projected record of any scale, keyed on ``kind``. Widened by
 #: Program 24 P2 as each entity-kind page lands; the hydrate helpers
 #: below need no change as the union grows.
 ProjectionRecord = Annotated[
     CountyView
+    | IndustryView
     | InstitutionView
     | KeyFigureView
     | NationalView
@@ -663,6 +791,7 @@ _ORGANIZATION_ADAPTER: TypeAdapter[OrganizationView] = TypeAdapter(OrganizationV
 _INSTITUTION_ADAPTER: TypeAdapter[InstitutionView] = TypeAdapter(InstitutionView)
 _SOVEREIGN_ADAPTER: TypeAdapter[SovereignView] = TypeAdapter(SovereignView)
 _KEY_FIGURE_ADAPTER: TypeAdapter[KeyFigureView] = TypeAdapter(KeyFigureView)
+_INDUSTRY_ADAPTER: TypeAdapter[IndustryView] = TypeAdapter(IndustryView)
 _RECORD_ADAPTER: TypeAdapter[CountyView | NationalView | OrganizationView | StateView] = (
     TypeAdapter(ProjectionRecord)
 )
@@ -752,6 +881,18 @@ def hydrate_key_figure(data: Mapping[str, Any]) -> KeyFigureView:
     return _KEY_FIGURE_ADAPTER.validate_python(data)
 
 
+def hydrate_industry(data: Mapping[str, Any]) -> IndustryView:
+    """Validate an untyped mapping into an :class:`IndustryView`.
+
+    :param data: A mapping shaped like an ``IndustryView`` — a recorded
+        fixture, a JSON payload, or an assembled row dict. Missing optional
+        keys become ``None``; unknown keys are rejected.
+    :returns: The validated, frozen :class:`IndustryView`.
+    :raises pydantic.ValidationError: on a shape or constraint violation.
+    """
+    return _INDUSTRY_ADAPTER.validate_python(data)
+
+
 def hydrate_record(
     data: Mapping[str, Any],
 ) -> CountyView | NationalView | OrganizationView | StateView:
@@ -773,7 +914,9 @@ __all__ = [
     "ClassComposition",
     "ConsciousnessSimplex",
     "CountyView",
+    "DepartmentComposition",
     "FactionalComposition",
+    "IndustryView",
     "InstitutionView",
     "KeyFigureView",
     "NationalView",
@@ -782,6 +925,7 @@ __all__ = [
     "SovereignView",
     "StateView",
     "hydrate_county",
+    "hydrate_industry",
     "hydrate_institution",
     "hydrate_key_figure",
     "hydrate_national",

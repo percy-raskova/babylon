@@ -13,8 +13,10 @@ import pytest
 
 from babylon.projection.view_models import (
     CountyView,
+    IndustryView,
     NationalView,
     hydrate_county,
+    hydrate_industry,
     hydrate_national,
 )
 
@@ -124,5 +126,51 @@ def usa_national_view_with_absences() -> NationalView:
             "population": 331000000,
             "median_wage": 22.0,
             "imperial_rent_pool": 100.0,
+        }
+    )
+
+
+@pytest.fixture
+def manufacturing_industry_view() -> IndustryView:
+    """A fully-populated ``IndustryView`` shaped like NAICS 31-33 (Manufacturing)."""
+    return hydrate_industry(
+        {
+            "kind": "industry",
+            "industry_id": "ind_31-33",
+            "verified_tick": 500,
+            "naics_2digit": "31-33",
+            "naics_label": "Manufacturing",
+            "total_employment": 2000,
+            "total_wages": 100000.0,
+            "profit_rate": 1.0 / 3.0,
+            "occ": 2.0,
+            "department_weights": {
+                "dept_I": 0.4,
+                "dept_IIa": 0.3,
+                "dept_IIb": 0.2,
+                "dept_III": 0.1,
+            },
+            "member_business_count": 2,
+            "member_worker_block_count": 1,
+            "county_fips": ["26125", "26163"],
+        }
+    )
+
+
+@pytest.fixture
+def manufacturing_industry_view_with_absences() -> IndustryView:
+    """The same industry with most optional fields honestly unattributed.
+
+    Only ``naics_2digit``, ``naics_label``, and ``total_employment`` are
+    present; every other optional field hydrates to ``None``.
+    """
+    return hydrate_industry(
+        {
+            "kind": "industry",
+            "industry_id": "ind_31-33",
+            "verified_tick": 500,
+            "naics_2digit": "31-33",
+            "naics_label": "Manufacturing",
+            "total_employment": 2000,
         }
     )

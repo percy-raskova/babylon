@@ -589,3 +589,9 @@ forbidden_modules = [
     "babylon.ooda",
     "babylon.intelligence",
 ]
+
+[[tool.importlinter.contracts]]
+name = "the framework-free seam must not import the legacy ai abstraction"
+type = "forbidden"
+source_modules = ["babylon.intelligence.providers"]
+forbidden_modules = ["babylon.intelligence.ai"]

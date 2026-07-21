@@ -65,7 +65,9 @@ class LLMConfig:
     # === Cloudflare Workers AI via AI Gateway (Program 07 Decision 3) ===
     WORKERS_AI_ACCOUNT_ID: Final[str] = os.getenv("WORKERS_AI_ACCOUNT_ID", "")
     WORKERS_AI_TOKEN: Final[str] = os.getenv("WORKERS_AI_TOKEN", "")
-    WORKERS_AI_MODEL: Final[str] = os.getenv("WORKERS_AI_MODEL", "@cf/openai/gpt-oss-20b")
+    WORKERS_AI_MODEL: Final[str] = os.getenv(
+        "WORKERS_AI_MODEL", "@cf/meta/llama-3.1-8b-instruct-fast"
+    )
     WORKERS_AI_GATEWAY_ID: Final[str] = os.getenv("WORKERS_AI_GATEWAY_ID", "babylon-narrator")
     WORKERS_AI_TIMEOUT: Final[float] = float(os.getenv("WORKERS_AI_TIMEOUT", "15.0"))
 

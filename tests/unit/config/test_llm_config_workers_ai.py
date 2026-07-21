@@ -7,7 +7,7 @@ from babylon.config import LLMConfig
 
 def test_defaults(monkeypatch: pytest.MonkeyPatch) -> None:
     assert LLMConfig.PROVIDER in {"deepseek", "workers_ai", "mock"}
-    assert LLMConfig.WORKERS_AI_MODEL == "@cf/openai/gpt-oss-20b"
+    assert LLMConfig.WORKERS_AI_MODEL == "@cf/meta/llama-3.1-8b-instruct-fast"
     assert LLMConfig.WORKERS_AI_GATEWAY_ID == "babylon-narrator"
 
 

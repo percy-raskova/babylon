@@ -1,4 +1,12 @@
-"""LLM Provider strategy pattern for text generation.
+"""LLM Provider strategy pattern for text generation (LEGACY web lane).
+
+DEPRECATION NOTE (ADR096, 2026-07-20): this is the OLD provider abstraction
+serving the legacy web/narration lane (director.py, judge.py). The current,
+framework-free inference seam is ``babylon.intelligence.providers`` (§A8):
+one OpenAI-compatible transport, precedence bundled → external → cloudflare
+→ mute. New code MUST target that seam. Migrating director/judge onto it is
+a RECORDED follow-up, deliberately out of ADR096 scope — they still serve
+the legacy web lane. Do not add features here.
 
 This module provides the "Mouth" of the AI Observer - the interface
 through which the NarrativeDirector speaks. It follows the same

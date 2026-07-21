@@ -20,12 +20,15 @@ from pydantic import ValidationError
 
 from babylon.projection.fixtures.recorder import (
     load_county_fixture,
+    load_organization_fixture,
     record_county_fixture,
+    record_organization_fixture,
 )
 from babylon.projection.view_models import (
     ClassComposition,
     ConsciousnessSimplex,
     CountyView,
+    OrganizationView,
     hydrate_record,
 )
 
@@ -34,6 +37,13 @@ _COMMITTED_FIXTURE: Path = (
     Path(__file__).parent.parent.parent / "fixtures" / "projection" / "county_26163.json"
 )
 _SHIPPED_FIPS: str = "26163"
+
+#: The fixture the WO-18 harvester ships (Program 24 P2). A committed
+#: artifact, not built here — see ``tools/record_organization_fixture.py``.
+_COMMITTED_ORGANIZATION_FIXTURE: Path = (
+    Path(__file__).parent.parent.parent / "fixtures" / "projection" / "organization_org_rwp.json"
+)
+_SHIPPED_ORG_ID: str = "org_rwp"
 
 
 def _full_view(*, tick: int = 847) -> CountyView:
@@ -164,3 +174,89 @@ class TestCommittedFixture:
 
         assert view.county_fips == _SHIPPED_FIPS
         assert view.verified_tick >= 0
+
+
+def _full_organization_view(*, tick: int = 847) -> OrganizationView:
+    """A fully-populated RWP-shaped ``OrganizationView`` — every field set."""
+    return OrganizationView(
+        org_id="org_rwp",
+        verified_tick=tick,
+        name="Revolutionary Workers Party",
+        org_type="political_faction",
+        class_character="proletarian",
+        legal_standing="registered",
+        budget=5_000.0,
+        territory_ids=("territory_detroit",),
+        headquarters_id="territory_detroit",
+        is_institution=False,
+        heat=0.3,
+        consciousness_tendency="revolutionary",
+        cohesion=0.6,
+        cadre_level=0.7,
+    )
+
+
+def _sparse_organization_view(*, tick: int = 3) -> OrganizationView:
+    """An all-``None`` (beyond identity/provenance) ``OrganizationView`` — an
+    organization nobody has attributed yet."""
+    return OrganizationView(org_id="org_ghost", verified_tick=tick)
+
+
+class TestOrganizationRoundTrip:
+    """Recording then loading an organization view round-trips (WO-18)."""
+
+    @pytest.mark.parametrize("view_factory", [_full_organization_view, _sparse_organization_view])
+    def test_round_trips_to_an_equal_view(
+        self, tmp_path: Path, view_factory: Callable[[], OrganizationView]
+    ) -> None:
+        view = view_factory()
+        path = tmp_path / "view.json"
+
+        record_organization_fixture(view, path)
+        loaded = load_organization_fixture(path)
+
+        assert loaded == view
+        assert loaded.model_dump() == view.model_dump()
+
+    def test_recording_twice_is_byte_identical(self, tmp_path: Path) -> None:
+        view = _full_organization_view()
+        first_path = tmp_path / "first.json"
+        second_path = tmp_path / "second.json"
+
+        record_organization_fixture(view, first_path)
+        record_organization_fixture(view, second_path)
+
+        assert first_path.read_bytes() == second_path.read_bytes()
+
+    def test_recorded_file_hydrates_through_hydrate_record(self, tmp_path: Path) -> None:
+        view = _full_organization_view()
+        path = tmp_path / "view.json"
+        record_organization_fixture(view, path)
+
+        data = json.loads(path.read_text(encoding="utf-8"))
+        rehydrated = hydrate_record(data)
+
+        assert rehydrated == view
+
+
+class TestOrganizationCommittedFixture:
+    """The WO-18 harvester's committed fixture stays present and well-shaped.
+
+    Deliberately NOT a skip (Constitution III.11). Per the WO-18 no-producer
+    contingency, the shipped fixture is the HONEST-ABSENCE dossier — the
+    ``single_county`` scenario seeds zero organizations — so this test pins
+    presence/shape/identity, not populated field values.
+    """
+
+    def test_committed_fixture_is_present_and_well_shaped(self) -> None:
+        assert _COMMITTED_ORGANIZATION_FIXTURE.is_file(), (
+            f"committed projection fixture missing: {_COMMITTED_ORGANIZATION_FIXTURE} — "
+            "regenerate via `uv run python tools/record_organization_fixture.py`"
+        )
+
+        view = load_organization_fixture(_COMMITTED_ORGANIZATION_FIXTURE)
+
+        assert view.org_id == _SHIPPED_ORG_ID
+        assert view.verified_tick >= 0
+        # Honest absence: single_county seeds zero organizations.
+        assert view.name is None

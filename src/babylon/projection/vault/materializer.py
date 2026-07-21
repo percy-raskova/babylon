@@ -18,13 +18,15 @@ skeleton until then.
 
 from __future__ import annotations
 
+from pathlib import Path
 from typing import TYPE_CHECKING
 
 from babylon.projection.vault.git_backend import commit_page, commit_pages, init_vault
 from babylon.projection.vault.render import render_county
 from babylon.projection.vault.render_national import render_national
+from babylon.projection.vault.render_organization import render_organization
 from babylon.projection.vault.render_state import render_state
-from babylon.projection.view_models import CountyView, NationalView, StateView
+from babylon.projection.view_models import CountyView, NationalView, OrganizationView, StateView
 
 if TYPE_CHECKING:
     from collections.abc import Mapping
@@ -147,5 +149,34 @@ class VaultMaterializer:
         )
         return self._vault_root / relative_path
 
+    def bake_organization(self, view: OrganizationView, *, tick: int) -> Path:
+        """Render and commit one organization dossier page (Program 24 P2 WO-18).
 
-__all__ = ["VaultMaterializer"]
+        The page path follows the same stable-ID slug ruling
+        (``project/programs/24-the-archive.md``) county established:
+        ``organization/<id>.md``, never a mutable display name.
+
+        :param view: the organization projection to materialize.
+        :param tick: the simulation tick driving both the page's
+            ``verified_tick`` frontmatter stamp (via
+            :func:`~babylon.projection.vault.render_organization.render_organization`)
+            and the commit's sim-time timestamp (via
+            :func:`~babylon.projection.vault.git_backend.commit_page`).
+        :returns: the absolute path of the written page under the vault
+            root.
+        """
+        relative_path = f"organization/{view.org_id}.md"
+        content = render_organization(view, verified_tick=tick)
+        commit_page(
+            self._vault_root,
+            relative_path,
+            content,
+            tick=tick,
+            message=f"bake: organization/{view.org_id} @ tick {tick}",
+        )
+        return self._vault_root / relative_path
+
+
+__all__ = [
+    "VaultMaterializer",
+]

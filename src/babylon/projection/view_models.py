@@ -26,12 +26,8 @@ from typing import Annotated, Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, TypeAdapter, model_validator
 
-from babylon.models.types import (
-    Currency,
-    Ideology,
-    Probability,
-    SignedLaborHours,
-)
+from babylon.models.enums import ClassCharacter, ConsciousnessTendency, LegalStanding, OrgType
+from babylon.models.types import Currency, Ideology, Probability, SignedLaborHours
 
 #: Tolerance for the simplex/share sum invariants — matches the engine-side
 #: ``ClassDistribution`` and ternary-consciousness tolerance so a record that
@@ -338,18 +334,86 @@ class NationalView(BaseModel):
     hex_count: int | None = Field(default=None, ge=0)
 
 
+class OrganizationView(BaseModel):
+    """An organization dossier — the projected read-model for one organization
+    (Program 24 P2 WO-18).
+
+    Every field beyond identity and provenance is ``Optional``: ``None`` means
+    ``org_id`` names no known organization this run (see
+    :func:`~babylon.projection.organization.project_organization`'s absence
+    discipline), never a fabricated default. Extra keys are rejected
+    (``extra="forbid"``).
+
+    Fields split into two fog tiers (Track 1 / Task 5 §B; NOT wired to
+    :func:`~babylon.projection.fog.filter.apply_fog` by this WO — see
+    :mod:`babylon.projection.organization`'s module docstring): ``name``
+    through ``is_institution`` are MATERIAL (existence, public activity,
+    territorial presence — never gated); ``heat`` through ``cadre_level`` are
+    POLITICAL (an org's internal state, gated for every non-player org).
+
+    :param kind: The discriminator literal ``"organization"`` tagging this
+        record in :data:`ProjectionRecord`.
+    :param org_id: The organization's node/entity id — organization IS a
+        graph node type (unlike county), so this is the literal node id.
+    :param verified_tick: The committed tick this dossier was projected from.
+    :param name: Human-readable name, or ``None`` if absent.
+    :param org_type: The subtype discriminator (state apparatus / business /
+        political faction / civil society), or ``None`` if absent.
+    :param class_character: Which class this org objectively serves, or
+        ``None`` if absent.
+    :param legal_standing: Legal status, or ``None`` if absent.
+    :param budget: Available resources, or ``None`` if absent.
+    :param territory_ids: Territories where the org operates — an empty
+        tuple is a real fact (zero territories), distinct from ``None``
+        (unattributed).
+    :param headquarters_id: Primary location, or ``None`` (no headquarters
+        set, or unattributed).
+    :param is_institution: Whether the org has crystallized into an
+        institution, or ``None`` if absent.
+    :param heat: State attention level, or ``None`` if absent/gated.
+    :param consciousness_tendency: Ideological tendency pushed on
+        communities, or ``None`` if absent/gated.
+    :param cohesion: Internal unity and coordination, or ``None`` if
+        absent/gated.
+    :param cadre_level: Leadership quality, or ``None`` if absent/gated.
+    """
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    kind: Literal["organization"] = "organization"
+    org_id: str = Field(min_length=1)
+    verified_tick: int = Field(ge=0)
+
+    name: str | None = None
+    org_type: OrgType | None = None
+    class_character: ClassCharacter | None = None
+    legal_standing: LegalStanding | None = None
+    budget: Currency | None = None
+    territory_ids: tuple[str, ...] | None = None
+    headquarters_id: str | None = None
+    is_institution: bool | None = None
+
+    heat: Probability | None = None
+    consciousness_tendency: ConsciousnessTendency | None = None
+    cohesion: Probability | None = None
+    cadre_level: Probability | None = None
+
+
 #: A projected record of any scale, keyed on ``kind``. Widened by
 #: Program 24 P2 as each entity-kind page lands; the hydrate helpers
 #: below need no change as the union grows.
 ProjectionRecord = Annotated[
-    CountyView | NationalView | StateView,
+    CountyView | NationalView | OrganizationView | StateView,
     Field(discriminator="kind"),
 ]
 
 _COUNTY_ADAPTER: TypeAdapter[CountyView] = TypeAdapter(CountyView)
 _STATE_ADAPTER: TypeAdapter[StateView] = TypeAdapter(StateView)
 _NATIONAL_ADAPTER: TypeAdapter[NationalView] = TypeAdapter(NationalView)
-_RECORD_ADAPTER: TypeAdapter[CountyView | NationalView | StateView] = TypeAdapter(ProjectionRecord)
+_ORGANIZATION_ADAPTER: TypeAdapter[OrganizationView] = TypeAdapter(OrganizationView)
+_RECORD_ADAPTER: TypeAdapter[CountyView | NationalView | OrganizationView | StateView] = (
+    TypeAdapter(ProjectionRecord)
+)
 
 
 def hydrate_county(data: Mapping[str, Any]) -> CountyView:
@@ -388,7 +452,21 @@ def hydrate_national(data: Mapping[str, Any]) -> NationalView:
     return _NATIONAL_ADAPTER.validate_python(data)
 
 
-def hydrate_record(data: Mapping[str, Any]) -> CountyView | NationalView | StateView:
+def hydrate_organization(data: Mapping[str, Any]) -> OrganizationView:
+    """Validate an untyped mapping into an :class:`OrganizationView`.
+
+    :param data: A mapping shaped like an ``OrganizationView`` — a recorded
+        fixture, a JSON payload, or an assembled row dict. Missing optional
+        keys become ``None``; unknown keys are rejected.
+    :returns: The validated, frozen :class:`OrganizationView`.
+    :raises pydantic.ValidationError: on a shape or constraint violation.
+    """
+    return _ORGANIZATION_ADAPTER.validate_python(data)
+
+
+def hydrate_record(
+    data: Mapping[str, Any],
+) -> CountyView | NationalView | OrganizationView | StateView:
     """Validate an untyped mapping into the correct :data:`ProjectionRecord`.
 
     Dispatch is by the ``kind`` discriminator, so this helper stays correct as
@@ -408,10 +486,12 @@ __all__ = [
     "ConsciousnessSimplex",
     "CountyView",
     "NationalView",
+    "OrganizationView",
     "ProjectionRecord",
     "StateView",
     "hydrate_county",
     "hydrate_national",
+    "hydrate_organization",
     "hydrate_record",
     "hydrate_state",
 ]

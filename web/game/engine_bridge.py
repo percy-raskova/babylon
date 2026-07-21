@@ -72,7 +72,7 @@ from babylon.topology.graph_algorithms import (
 
 from .epilogues import EPILOGUES
 from .fog.filter import ORG_POLITICAL_FIELDS, POLITICAL_FIELDS, apply_fog, political_field_group
-from .fog.ledger import IntelLedger, ledger_from_events, read_intel
+from .fog.ledger import IntelLedger, read_intel
 from .fog.reach import organizing_reach
 from .log_handler import sanitize_for_log
 from .map_contract import MAP_HISTORY_REPLAYABLE_METRICS, MAP_METRIC_PROPERTIES
@@ -7528,23 +7528,12 @@ def _derive_intel_ledger(session_id: UUID) -> IntelLedger:
         (zero entries) for a fresh session or one with no recoverable
         INVESTIGATE history.
     """
-    rows = _query_investigate_action_results(session_id)
-    ledger_rows: list[dict[str, Any]] = []
-    for row in rows:
-        details = row.get("details") or {}
-        field_group = details.get("intel_field_group")
-        value_snapshot = details.get("intel_value_snapshot")
-        if not field_group or not value_snapshot:
-            continue
-        ledger_rows.append(
-            {
-                "tick": row.get("tick"),
-                "target_id": row.get("target_id"),
-                "field_group": field_group,
-                "value_snapshot": value_snapshot,
-            }
-        )
-    return ledger_from_events(ledger_rows)
+    # Fold RELOCATED to the projection layer (Program 24 P2 WO-40) — this
+    # shim keeps the query bridge-side and delegates the row->ledger fold so
+    # the legacy bridge and the Archive reader can never disagree.
+    from babylon.projection.fog.investigate import derive_intel_ledger
+
+    return derive_intel_ledger(_query_investigate_action_results(session_id))
 
 
 # Aliases accepted at the API/CLI boundary, mapped to canonical names in the
@@ -11584,25 +11573,11 @@ def _investigate_field_snapshot(
         ``{"field_group": ..., "value_snapshot": ...}`` ready to stash onto
         the persisted ``action_result`` row's ``details``, or ``None``.
     """
-    if action_type_enum is not ActionType.MAP_NETWORK or not target_id:
-        return None
-    revealed_by_target = direct_effects.get("revealed")
-    if not isinstance(revealed_by_target, dict):
-        return None
-    fields = revealed_by_target.get(target_id)
-    if not fields or target_id not in graph.nodes:
-        return None
-    node_data = graph.nodes[target_id]
-    node_type = node_data.get("_node_type")
-    if not node_type:
-        return None
-    value_snapshot = {field: node_data[field] for field in fields if field in node_data}
-    if not value_snapshot:
-        return None
-    return {
-        "field_group": political_field_group(str(node_type)),
-        "value_snapshot": value_snapshot,
-    }
+    # RELOCATED to the projection layer (Program 24 P2 WO-40) — delegate so
+    # bridge snapshots and the Archive writer share one freeze path.
+    from babylon.projection.fog.investigate import investigate_field_snapshot
+
+    return investigate_field_snapshot(action_type_enum, target_id, direct_effects, graph)
 
 
 def _persist_action_results(

@@ -160,25 +160,15 @@ _ALERT_SEVERITIES = frozenset({"critical", "warning"})
 # See: specs/041-mvp-nationwide-sim/research.md §2
 # ---------------------------------------------------------------------- #
 
-# Verb-dispatch engine: all 9 canonical player verbs now have a real engine
-# resolver (``babylon.engine.actions.VERB_RESOLVERS``). This map is the sole
-# translation of player verb strings to engine ActionTypes; its values must
-# equal the resolver registry's keys (pinned by
-# ``tests/contract/verbs/test_registry.py``). ``get_available_actions()``
-# derives its output from this map, so every mapped verb is exposed.
-VERB_TO_ACTION_TYPE: dict[str, ActionType] = {
-    "educate": ActionType.EDUCATE,
-    "reproduce": ActionType.RECRUIT,
-    "attack": ActionType.ATTACK_INFRASTRUCTURE,
-    "mobilize": ActionType.PROTEST,
-    "campaign": ActionType.PROPAGANDIZE,
-    "aid": ActionType.PROVIDE_SERVICE,
-    "investigate": ActionType.MAP_NETWORK,
-    "move": ActionType.MOVE,
-    "negotiate": ActionType.PROPOSE_ALLIANCE,
-}
-
-CANONICAL_VERBS: frozenset[str] = frozenset(VERB_TO_ACTION_TYPE.keys())
+# Verb-dispatch engine: all 9 canonical player verbs have a real engine
+# resolver (``babylon.engine.actions.VERB_RESOLVERS``). The verb->ActionType
+# map RELOCATED to ``babylon.projection.verbs.preview`` (Program 24 P2
+# WO-38, verb read-side hoist) — re-imported here so the legacy bridge and
+# the TUI plate can never disagree; its values must equal the resolver
+# registry's keys (pinned by ``tests/contract/verbs/test_registry.py``).
+from babylon.projection.verbs.preview import (  # noqa: E402
+    VERB_TO_ACTION_TYPE,
+)
 
 
 def _fetch_session_rng_seed_from_pool(pool: Any, session_id: UUID) -> int:
@@ -11487,24 +11477,11 @@ def _preview_consciousness_delta(
         The estimated collective-identity delta, or 0.0 when the action has no
         consciousness effect.
     """
-    from babylon.ooda.action_effects import compute_consciousness_delta
+    # RELOCATED to the projection layer (Program 24 P2 WO-38) — this shim
+    # delegates so bridge previews and the TUI plate share one math path.
+    from babylon.projection.verbs.preview import preview_consciousness_delta
 
-    defines = GameDefines()
-    # Mirror each resolver's own call signature exactly (see docstring above):
-    # only EDUCATE/CAMPAIGN pass doctrine in production; AID never does.
-    doctrine = (
-        defines.doctrine if action_type in (ActionType.EDUCATE, ActionType.PROPAGANDIZE) else None
-    )
-    delta = compute_consciousness_delta(
-        org_data,
-        target_id,
-        action_type,
-        graph,
-        defines.ooda,
-        defines.organization,
-        doctrine,
-    )
-    return float(delta.collective_identity_delta) if delta is not None else 0.0
+    return preview_consciousness_delta(org_data, target_id, action_type, graph)
 
 
 def _index_engine_action_results(

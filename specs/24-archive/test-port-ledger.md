@@ -13,14 +13,14 @@ RE-GUARDED (behavior now pinned by a registry/view contract test), CARRIED
 (deferred to a named P2 lane), RETIRED (legacy-only behavior, dies with the
 web client).
 
-## Disposition counts (P1 seed)
+## Disposition counts (P1 seed + P2 WO-38)
 
 | Disposition | Rows |
 |---|---|
-| PORTED | 2 |
-| REWRITTEN | 5 |
+| PORTED | 4 |
+| REWRITTEN | 6 |
 | RE-GUARDED | 2 |
-| CARRIED (P2) | 2 |
+| CARRIED (P2) | 1 |
 | RETIRED | 1 |
 
 ## Ledger
@@ -37,7 +37,10 @@ web client).
 | `::TestDeriveIntelLedger*` | `tests/unit/projection/fog/test_ledger.py` | PORTED | WO-1 ✓ |
 | `::TestOrgCountByTerritory` / `TestMeanTerritoryAttr` / `TestHeatDeltaByTerritory` | `tests/unit/projection/test_county.py` (aggregation helpers contract) | REWRITTEN | WO-3 ✓ |
 | `::TestEndgameDetection` (national axes) | national dossier lane — the axis is national-only, not county | CARRIED (P2 Lane P) | — |
-| `src/frontend/e2e/{verb-submit,end-turn-flow}.spec.ts` | verb submission path | CARRIED (P2 Lane E) | — |
+| `::TestExpectedDeltas` (spec-116 preview == resolution) | `tests/unit/projection/verbs/test_preview.py` (`TestResolverParity` — doctrine threading pinned per-resolver; heuristic verbs pinned) | PORTED | WO-38 ✓ |
+| `::get_verb_eligibility` plate assertions (eligibility predicates + (reason, remedy) copy + affordability ride-along) | `tests/unit/projection/verbs/test_plate.py` (`build_verb_plate` contract; copy table relocated to `projection/verbs/copy.py`, web shim `is`-single-sourced) | PORTED | WO-38 ✓ |
+| `src/frontend/e2e/verb-submit.spec.ts` (plate render: 9 verbs, ineligible shows reason) | `tests/unit/projection/verbs/test_plate.py` + WO-26 verb-plate snapshot | REWRITTEN | WO-38 ✓ (widget golden lands WO-26) |
+| `src/frontend/e2e/end-turn-flow.spec.ts` (submit → resolve) | verb submission path | CARRIED (P2 Lane E WO-39) | — |
 | `src/frontend/e2e/auth.spec.ts` (Django login) | none — Django auth dies with the web client | RETIRED | — |
 
 ## Deviations recorded

@@ -81,7 +81,6 @@ def _graph() -> BabylonGraph:
         cohesion=0.6,
         budget=50.0,
         heat=0.1,
-        ooda_profile={"action_points": 4, "decision_mode": "autocratic"},
     )
     graph.add_node(
         COMMUNITY,

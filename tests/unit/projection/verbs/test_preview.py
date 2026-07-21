@@ -54,7 +54,6 @@ def _graph(*, cohesion: float = 0.6, budget: float = 10.0, heat: float = 0.1) ->
         NodeType.SOCIAL_CLASS,
         name="Wayne proletariat",
         population=1000,
-        class_consciousness=0.4,
     )
     graph.add_edge(TARGET, TERRITORY, EdgeType.TENANCY)
     return graph

@@ -5,10 +5,15 @@ P4 cutover gate, §6.5 provenance home, git-doctrine adoption items 1–3; (2) t
 batch — stack ADR099 as drafted, the brief §10 sextet (below), embedding pin deferred to
 P1, next-trains order (keel next; Vol I ∥ Vol II alongside when the BD wants the engine
 train running).
-**Status:** **P0 COMPLETE** (2026-07-20 night: charter + spike 19/19 green with SVG
-evidence + ADR099 accepted). Next: **P1 The Keel.** Three Kitty eyes-on checks remain
-owner-verifiable (spike RESULTS.md commands); failure reopens only ADR099's
-graphics-lane rows.
+**Status:** **P1 THE KEEL COMPLETE** (2026-07-20 night, same session as P0: all five
+keel items + the county end-to-end exit + git-doctrine side items 1–3). The exit
+criterion is pinned by `tests/integration/archive/test_county_e2e.py` — tick →
+projection ≡ committed fixture → baked page → rendered → SVG snapshot golden — and
+the II.11 TODO is discharged by `docs/reference/projection-registry.rst`. The
+tick-commit seam is the runner's `TickCommitObserver` (None-default; qa:regression
+byte-identical with it in place). Next: **P2 fan-out lanes.** Three Kitty eyes-on
+checks remain owner-verifiable (spike RESULTS.md commands); failure reopens only
+ADR099's graphics-lane rows.
 **Authority:** this file is the program master. Design canon (binding, incorporated by
 reference): `ai/_inbox/tui/20260719archiveinterfacedesign.md` (rulings R1–R8, synthesis
 S1–S11), `ai/_inbox/tui/20260719archivestackresearch.md` (stack evidence),

@@ -51,7 +51,7 @@ jobs:
         with:
           python-version: "3.12"
 
-      # Pinned to the version poetry.lock resolves (bare pip install would
+      # Pinned to the version uv.lock resolves (bare pip install would
       # silently pull whatever is latest on PyPI at run time).
       - name: Install Commitizen
         run: pip install commitizen==4.15.1

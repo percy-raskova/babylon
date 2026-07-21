@@ -40,6 +40,7 @@ jobs:
       - uses: ./.github/actions/bootstrap-python
         with:
           gdal: "true"
+          server: "true"
       - name: Heavy shard (includes slow)
         env:
           # Self-salvage caps (2026-07-16 wedge incident): a hung shard SIGINTs
@@ -80,6 +81,7 @@ jobs:
       - uses: ./.github/actions/bootstrap-python
         with:
           gdal: "true"
+          server: "true"
       - uses: ./.github/actions/postgres-up
       - uses: ./.github/actions/fetch-reference-db
       - name: Django migrate (fresh compose DB)
@@ -90,7 +92,7 @@ jobs:
           POSTGRES_DB: babylon_test
           POSTGRES_USER: test
           POSTGRES_PASSWORD: test
-        run: poetry run python manage.py migrate
+        run: uv run python manage.py migrate
       # The engine-runtime tables (node_state, edge_state, dynamic_*, …) are
       # NOT Django's — locally test:int-pg applies POSTGRES_SCHEMA_DDL via
       # db:bootstrap after db:up. This step was missing since the workflow's
@@ -105,7 +107,7 @@ jobs:
           POSTGRES_DB: babylon_test
           POSTGRES_USER: test
           POSTGRES_PASSWORD: test
-        run: poetry run pytest tests/integration/web/ -o addopts="" -vv -ra -l --tb=long --durations=0
+        run: uv run pytest tests/integration/web/ -o addopts="" -vv -ra -l --tb=long --durations=0
       # Audit 2026-07-16: qa:tick-budget (spec-104, ratified per-system wallclock
       # budget) was built and wired into NO workflow — engine perf regressions
       # were architecturally ungated. This job already has Postgres + the
@@ -136,12 +138,13 @@ jobs:
       - uses: ./.github/actions/bootstrap-python
         with:
           gdal: "true"
+          server: "true"
       - uses: ./.github/actions/fetch-reference-db
       - name: Catalog sentinel (DB probe — catalog↔DB reconciliation)
-        run: poetry run python tools/sentinel_check.py catalog --check
+        run: uv run python tools/sentinel_check.py catalog --check
       - name: Run requires_reference_db suites
         run: >-
-          poetry run pytest tests -m requires_reference_db
+          uv run pytest tests -m requires_reference_db
           --ignore=tests/integration/web
           -o addopts="" -vv -ra -l --tb=long --durations=0
   # The byte-identity contract is defined ONLY under the pinned sqlite (the
@@ -240,6 +243,7 @@ jobs:
       - uses: ./.github/actions/bootstrap-python
         with:
           gdal: "true"
+          server: "true"
       - uses: ./.github/actions/fetch-reference-db
       - name: G1 standing pacing gate (mise run qa:pacing)
         run: mise run qa:pacing
@@ -262,23 +266,17 @@ jobs:
         with:
           ref: dev
       # Documented exception to the mise-pinned toolchain: this leg exists
-      # precisely to run a DIFFERENT python than .mise.toml pins.
-      - uses: actions/setup-python@v7
-        with:
-          python-version: "3.13"
-      - name: Install Poetry
-        run: pipx install poetry==2.2.1
-      - name: Install dependencies
-        run: |
-          poetry config virtualenvs.in-project true
-          poetry env use python3.13
-          poetry install --no-interaction
+      # precisely to run a DIFFERENT python (3.13) than .mise.toml pins.
+      - name: Install uv
+        uses: astral-sh/setup-uv@v6
+      - name: Install dependencies on 3.13
+        run: uv sync --frozen --extra server --python 3.13
       - name: Install GeoDjango system libraries
         run: sudo apt-get update && sudo apt-get install -y --no-install-recommends binutils libproj-dev gdal-bin
       # Max verbosity by owner ruling (2026-07-11): CI logs are agent-read.
       - name: Full suite on 3.13
         run: >-
-          poetry run pytest tests --ignore=tests/unit/ai --ignore=tests/integration/web
+          uv run --python 3.13 pytest tests --ignore=tests/unit/ai --ignore=tests/integration/web
           -o addopts="" -vv -ra -l --tb=long --durations=0
           -m "not red_phase and not requires_reference_db and not pacing_gate"
 

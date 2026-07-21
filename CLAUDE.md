@@ -117,7 +117,7 @@ All tunable coefficients live in `GameDefines` (Pydantic, 39 category sub-models
 `src/babylon/data/defines.yaml` — generated from the schema by `tools/generate_defines_config.py`,
 read by `GameDefines.load_default()`, sync-guarded by `tests/unit/config/test_constants_sync.py`.
 Modding guide: `docs/how-to/modding-defines.rst`. Never hardcode a coefficient — add a define and
-regenerate the YAML (`poetry run python tools/generate_defines_config.py`).
+regenerate the YAML (`uv run python tools/generate_defines_config.py`).
 
 ## Coding standards
 
@@ -153,10 +153,16 @@ files, so intertwined units force ugly giant commits. Use `mise run commit -- "t
 - **Baseline ceremonies (§6.5, owner ruling 2026-07-20):** any commit touching `tests/baselines/**`
   IS a ceremony — subject `test(baselines): …`, body records the drift table (per-scenario columns,
   cell counts, max |d|, attribution), and the message MUST carry a
-  `Baselines: blessed(<ceremony-slug>)` trailer. Enforced by the commit-msg hook locally and the
-  CI ceremony-gate on PRs (`tools/check_baseline_ceremony.py`; evil merges included via
-  `diff-tree --cc`; audit trail: `git log -E --grep '^Baselines: blessed\(' --format='%h %s'`).
-  Undeclared drift = red gate, STOP.
+  `Baselines: blessed(<ceremony-slug>)` trailer. Don't hand-write the drift table: stage the
+  baseline changes, then run `python3 tools/generate_ceremony_message.py --slug <slug> --summary
+  "<what and why>"` — it computes the per-file drift table (row/cell counts, max |d| where
+  CSV-parseable) and prints a message the gate accepts by construction; pipe it straight into
+  `git commit -F -` or paste it. Enforced three ways: the commit-msg hook locally (best-effort —
+  an `--amend` or pathspec commit can slip past it), a **pre-push** `--range` mirror of the CI
+  check (`baseline-ceremony-range` hook, against the merge-base with `origin/dev` — catches what
+  the commit-msg leg missed, before the push leaves the box), and the CI ceremony-gate on PRs
+  (`tools/check_baseline_ceremony.py`; evil merges included via `diff-tree --cc`; audit trail:
+  `git log -E --grep '^Baselines: blessed\(' --format='%h %s'`). Undeclared drift = red gate, STOP.
 - After significant work: update `ai/state.yaml`; add an ADR in `ai/decisions/` (individual
   `ADR0NN_*.yaml` files + `index.yaml` catalog) for architectural decisions.
 
@@ -176,7 +182,7 @@ mise run db:sql -- "SELECT ..."         # one-shot SQL vs babylon_test
 ```
 
 CI (`.github/workflows/ci.yml`) invokes the same mise tasks devs run (`test:unit-ci`, `lint:check`,
-`qa:regression`, …) — the only raw-poetry exceptions are the py3.13 forward-compat leg (`nightly.yml`)
+`qa:regression`, …) — the only raw-uv exceptions are the py3.13 forward-compat leg (`nightly.yml`)
 and a handful of documented one-offs (migrations, doc build, ad hoc pytest legs).
 
 ## Environment — the infra devshell (canonical toolchain)
@@ -239,7 +245,7 @@ system backstop). Owner ruling 2026-07-14:
   `territory_ids` — 3 fixed in `web/game/engine_bridge.py` (flat `agitation`/`factional_composition`
   reads where production nests them one level deeper), 3 left open as owner-gated `src/babylon/engine/`
   defects (`ATTRIBUTE_EXEMPTIONS`' "Reason 2" rows name each).
-  **Worktree gotcha**: `poetry run python tools/sentinel_check.py ...` run directly (not via `mise
+  **Worktree gotcha**: `uv run python tools/sentinel_check.py ...` run directly (not via `mise
   run`) resolves `babylon` to whichever checkout's venv is active, not necessarily this worktree's —
   prefix with `PYTHONPATH="$PWD/src"` or use the `mise run check:vocabulary` task, which sets it
   correctly.

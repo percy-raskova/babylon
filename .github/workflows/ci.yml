@@ -40,6 +40,7 @@ jobs:
       - uses: ./.github/actions/bootstrap-python
         with:
           gdal: "true"
+          server: "true"
 
       # Incremental mypy state. Key ends in the commit SHA so every run saves
       # a fresh snapshot; restore-keys fall back to the newest same-lock cache.
@@ -48,9 +49,9 @@ jobs:
         uses: actions/cache@v6
         with:
           path: .mypy_cache
-          key: mypy-${{ runner.os }}-py3.12-${{ hashFiles('poetry.lock') }}-${{ github.sha }}
+          key: mypy-${{ runner.os }}-py3.12-${{ hashFiles('uv.lock') }}-${{ github.sha }}
           restore-keys: |
-            mypy-${{ runner.os }}-py3.12-${{ hashFiles('poetry.lock') }}-
+            mypy-${{ runner.os }}-py3.12-${{ hashFiles('uv.lock') }}-
 
       - name: Repo hygiene gate
         run: mise run check:hygiene
@@ -73,8 +74,8 @@ jobs:
       - name: Type check (mypy strict)
         run: mise run typecheck
 
-      - name: Poetry lock consistency
-        run: poetry check --lock
+      - name: uv lock consistency
+        run: uv lock --check
 
   # §6.5 Provenance & Ceremony (owner ruling 2026-07-20; doctrine in CLAUDE.md
   # "Baseline ceremonies"): every PR commit touching tests/baselines/** must
@@ -106,6 +107,7 @@ jobs:
       - uses: ./.github/actions/bootstrap-python
         with:
           gdal: "true"
+          server: "true"
 
       - name: Unit shard (excludes ai/slow/reference-DB; engine/systems cov >= 80%)
         run: mise run test:unit-ci

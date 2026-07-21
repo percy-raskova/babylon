@@ -38,6 +38,7 @@ jobs:
       - uses: ./.github/actions/bootstrap-python
         with:
           gdal: "true"
+          server: "true"
       # Incremental mypy state. Key ends in the commit SHA so every run saves
       # a fresh snapshot; restore-keys fall back to the newest same-lock cache.
       # Speed only — mypy's verdict is identical warm or cold.
@@ -45,9 +46,9 @@ jobs:
         uses: actions/cache@v6
         with:
           path: .mypy_cache
-          key: mypy-${{ runner.os }}-py3.12-${{ hashFiles('poetry.lock') }}-${{ github.sha }}
+          key: mypy-${{ runner.os }}-py3.12-${{ hashFiles('uv.lock') }}-${{ github.sha }}
           restore-keys: |
-            mypy-${{ runner.os }}-py3.12-${{ hashFiles('poetry.lock') }}-
+            mypy-${{ runner.os }}-py3.12-${{ hashFiles('uv.lock') }}-
 
       - name: Repo hygiene gate
         run: mise run check:hygiene
@@ -70,8 +71,8 @@ jobs:
         run: mise run lint:imports
       - name: Type check (mypy strict)
         run: mise run typecheck
-      - name: Poetry lock consistency
-        run: poetry check --lock
+      - name: uv lock consistency
+        run: uv lock --check
 
   test-unit:
     name: Unit Tests (xdist, coverage gate)
@@ -82,6 +83,7 @@ jobs:
       - uses: ./.github/actions/bootstrap-python
         with:
           gdal: "true"
+          server: "true"
       - name: Unit shard (excludes ai/slow/reference-DB; engine/systems cov >= 80%)
         run: mise run test:unit-ci
       - name: Upload test results + coverage
@@ -142,6 +144,7 @@ jobs:
       - uses: ./.github/actions/bootstrap-python
         with:
           gdal: "true"
+          server: "true"
       - name: Heavy shard (includes slow; web-Postgres suites run in their own job)
         env:
           # Self-salvage caps (2026-07-16 wedge incident): a hung shard SIGINTs
@@ -173,6 +176,7 @@ jobs:
       - uses: ./.github/actions/bootstrap-python
         with:
           gdal: "true"
+          server: "true"
       - uses: ./.github/actions/postgres-up
       - uses: ./.github/actions/fetch-reference-db
       # Maiden-run finding (2026-07-11): the engine runtime schema
@@ -189,7 +193,7 @@ jobs:
           POSTGRES_DB: babylon_test
           POSTGRES_USER: test
           POSTGRES_PASSWORD: test
-        run: poetry run python manage.py migrate
+        run: uv run python manage.py migrate
       # Max verbosity by owner ruling (2026-07-11): CI logs are agent-read.
       - name: Run web integration suites (direct-host + testcontainers)
         env:
@@ -198,7 +202,7 @@ jobs:
           POSTGRES_DB: babylon_test
           POSTGRES_USER: test
           POSTGRES_PASSWORD: test
-        run: poetry run pytest tests/integration/web/ -o addopts="" -vv -ra -l --tb=long --durations=0
+        run: uv run pytest tests/integration/web/ -o addopts="" -vv -ra -l --tb=long --durations=0
       # Audit 2026-07-16: the non-web requires_postgres suites (balkanization,
       # persistence, observatory, headless_runner) had NO Postgres-provisioned
       # CI home — test-rest selects them but never starts Postgres, so their
@@ -216,7 +220,7 @@ jobs:
           POSTGRES_USER: test
           POSTGRES_PASSWORD: test
         run: >-
-          poetry run pytest
+          uv run pytest
           tests/integration/balkanization tests/integration/persistence
           tests/integration/observatory tests/integration/engine
           -m requires_postgres
@@ -239,6 +243,7 @@ jobs:
       - uses: ./.github/actions/bootstrap-python
         with:
           gdal: "true"
+          server: "true"
       - uses: ./.github/actions/bootstrap-node
       # Browser binaries keyed on the lockfile (carries @playwright/test's
       # resolved version). install --with-deps still runs for OS packages;
@@ -261,7 +266,7 @@ jobs:
           POSTGRES_DB: babylon_test
           POSTGRES_USER: test
           POSTGRES_PASSWORD: test
-        run: poetry run python manage.py migrate
+        run: uv run python manage.py migrate
       # RUN_MAIN=true is required: game/apps.py skips EngineBridge init for
       # DEBUG-mode management commands otherwise and the seed refuses the stub.
       - name: Seed wayne_county session
@@ -274,7 +279,7 @@ jobs:
           POSTGRES_PASSWORD: test
           RUN_MAIN: "true"
         run: |
-          SEED_OUT=$(poetry run python manage.py seed_initial_game --scenario wayne_county --player admin)
+          SEED_OUT=$(uv run python manage.py seed_initial_game --scenario wayne_county --player admin)
           echo "$SEED_OUT"
           SESSION_ID=$(echo "$SEED_OUT" | grep -oE 'Game session created: [0-9a-f-]{36}' | awk '{print $4}')
           test -n "$SESSION_ID"
@@ -291,8 +296,8 @@ jobs:
           POSTGRES_PASSWORD: test
           RUN_MAIN: "true"
         run: |
-          nohup poetry run python manage.py runserver 8000 --noreload > ../django-ci.log 2>&1 &
-          for i in $(seq 1 30); do
+          nohup uv run python manage.py runserver 8000 --noreload > ../django-ci.log 2>&1 &
+          for _ in $(seq 1 30); do
             curl -sf http://localhost:8000/health/ && break
             sleep 1
           done
@@ -344,6 +349,7 @@ jobs:
       - uses: ./.github/actions/bootstrap-python
         with:
           gdal: "true"
+          server: "true"
       - uses: ./.github/actions/postgres-up
       - uses: ./.github/actions/fetch-reference-db
       - name: Apply engine schema (canonical DDL)
@@ -370,12 +376,13 @@ jobs:
       - uses: ./.github/actions/bootstrap-python
         with:
           gdal: "true"
+          server: "true"
       - uses: ./.github/actions/fetch-reference-db
       - name: Catalog sentinel (DB probe — catalog↔DB reconciliation)
-        run: poetry run python tools/sentinel_check.py catalog --check
+        run: uv run python tools/sentinel_check.py catalog --check
       - name: Run requires_reference_db suites
         run: >-
-          poetry run pytest tests -m requires_reference_db
+          uv run pytest tests -m requires_reference_db
           --ignore=tests/integration/web
           -o addopts="" -vv -ra -l --tb=long --durations=0
 
@@ -389,8 +396,9 @@ jobs:
       - uses: ./.github/actions/bootstrap-python
         with:
           gdal: "true"
+          server: "true"
       - name: Run AI unit tests
-        run: poetry run pytest tests/unit/ai -o addopts="" -vv -ra -l --tb=long --durations=0
+        run: uv run pytest tests/unit/ai -o addopts="" -vv -ra -l --tb=long --durations=0
 
   docs:
     name: Documentation Build (doctest blocks; manual advisory)
@@ -405,10 +413,11 @@ jobs:
           # which initializes Django -> contrib.gis -> libgdal, so even the
           # formulas-scoped doctest run needs the system GDAL package.
           gdal: "true"
+          server: "true"
       # The doctest run STAYS blocking: it verifies the formula docstring
       # examples (III.12 float-honesty contract). It is cheap and deterministic.
       - name: Run doctest examples
-        run: poetry run pytest --doctest-modules src/babylon/formulas -o addopts="" -vv -ra --tb=long
+        run: uv run pytest --doctest-modules src/babylon/formulas -o addopts="" -vv -ra --tb=long
       # Bundling the manual is a RELEASE-TIME concern, not a per-push gate
       # (owner ruling 2026-07-11: "we don't really need to bundle the docs as a
       # manual until we're ready to release — lower priority"). Kept running so
@@ -426,7 +435,7 @@ jobs:
         # showed "cancelled" instead of green (proving run #4, 2026-07-11).
         # coreutils `timeout` turns "too slow" into a swallowed step failure
         # (exit 124) well under the job cap; real sphinx errors still show red.
-        run: timeout 480 poetry run sphinx-build -b html . _build/html
+        run: timeout 480 uv run sphinx-build -b html . _build/html
 
   gitleaks:
     name: Secret Scan (gitleaks, full history)

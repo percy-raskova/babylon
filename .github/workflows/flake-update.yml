@@ -1,0 +1,41 @@
+# Monthly nixpkgs / flake-input pin cadence (ADR094 D5, Amendment-L discipline).
+# Opens a `nix flake update` PR on the 1st of each month. The PR does NOT
+# self-merge: the repo's normal CI (unit + the determinism gate) plus, at
+# release, nix-release.yml's closure regression job decide whether the bump is
+# safe. A red regression gate blocks the merge.
+#
+# Escape hatch (sanctioned narrow deviation): a single package that needs a
+# version the pinned nixpkgs lacks gets its OWN extra input with
+# `inputs.nixpkgs.follows`, bumped independently, each with a stated reason —
+# mirroring babylon-infra's nixpkgs-sec (trivy) and nixpkgs-data (sqlite)
+# lockstep inputs. Add such inputs to flake.nix by hand, not via this cron.
+name: flake-update
+
+on:
+  schedule:
+    - cron: "0 4 1 * *"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  flake-update:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: cachix/install-nix-action@v31
+        with:
+          extra_nix_config: |
+            experimental-features = nix-command flakes
+
+      - uses: DeterminateSystems/update-flake-lock@v28
+        with:
+          pr-title: "chore(nix): monthly flake.lock update (ADR094 D5)"
+          pr-labels: |
+            dependencies
+            nix
+          commit-msg: "chore(nix): monthly flake.lock update (ADR094 D5)"

@@ -7,7 +7,7 @@
 ## Quick Start
 
 ```bash
-poetry install                      # Install dependencies
+uv sync --extra server               # Install dependencies
 mise run ci                         # Fast CI gate: lint + format + typecheck + test:unit
 mise run test:all                   # All non-AI tests (~1500 tests)
 mise run docs-live                  # Live documentation server
@@ -103,9 +103,9 @@ mise run docs:strict                # Build with warnings as errors (CI mode)
 **Direct pytest** (for specific tests):
 
 ```bash
-poetry run pytest tests/unit/test_foo.py::test_specific    # Single test
-poetry run pytest -k "test_name_pattern"                   # Pattern matching
-poetry run pytest -m "math"                                # Run specific markers
+uv run pytest tests/unit/test_foo.py::test_specific    # Single test
+uv run pytest -k "test_name_pattern"                   # Pattern matching
+uv run pytest -m "math"                                # Run specific markers
 ```
 
 ## Pytest Markers
@@ -122,9 +122,9 @@ Tests are categorized by performance and I/O characteristics:
 **Filter examples:**
 
 ```bash
-poetry run pytest -m "math"                    # Only fast math tests
-poetry run pytest -m "not ai"                  # Exclude slow AI tests (default)
-poetry run pytest -m "math or ledger"          # Multiple markers
+uv run pytest -m "math"                    # Only fast math tests
+uv run pytest -m "not ai"                  # Exclude slow AI tests (default)
+uv run pytest -m "math or ledger"          # Multiple markers
 ```
 
 ## Engine Architecture
@@ -236,7 +236,7 @@ Before submitting any PR:
 ```bash
 mise run check                      # Fast CI gate (lint + format + typecheck + test:unit)
 mise run test:all                   # All non-AI tests
-poetry run pytest --doctest-modules src/babylon/formulas/formulas/  # If you modified formulas
+uv run pytest --doctest-modules src/babylon/formulas/formulas/  # If you modified formulas
 ```
 
 ## Key Files Reference
@@ -260,7 +260,7 @@ poetry run pytest --doctest-modules src/babylon/formulas/formulas/  # If you mod
 - ❌ Delete tests to make them pass - Fix the code, not the tests
 - ❌ Hallucinate APIs - Only use imports from codebase or `pyproject.toml`
 - ❌ Ignore edge cases - Check boundaries, empty inputs, error states
-- ❌ Add dependencies without verification - Check PyPI first (`poetry show <package>`)
+- ❌ Add dependencies without verification - Check PyPI first (`uv pip show <package>`)
 - ❌ Use raw dicts - All game objects must be Pydantic models
 - ❌ Let AI control mechanics - AI observes only, formulas are deterministic
 - ❌ Use `test_` prefix in production code - Pytest auto-collects these (use `check_`, `verify_`, `validate_`)

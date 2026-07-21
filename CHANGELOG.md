@@ -2,6 +2,9 @@
 
 ### Feat
 
+- **packaging**: babylon CLI entry point (play/doctor/login/telemetry/self-update/uninstall),
+  server extra split + uuid relic deletion, and the uv single-lock migration (ADR095). Follow-up
+  debt: docs/ still references poetry in 37 files (tracked separately).
 - **ideology**: add wealth extraction as crisis trigger
 - **physics**: implement Epoch 0 quantization and weekly ticks (GREEN phase)
 - **ui**: wire 4-node imperial circuit to dashboard

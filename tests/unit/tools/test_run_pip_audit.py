@@ -103,15 +103,15 @@ class TestPolicyParsing:
             "GHSA-aaaa-bbbb-cccc",
         ]
 
-    def test_command_uses_poetry_by_default(self, tmp_path: Path) -> None:
+    def test_command_uses_uv_by_default(self, tmp_path: Path) -> None:
         policy_path = tmp_path / "ignores.toml"
         policy_path.write_text(VALID_TOML)
         entries = get_ignore_entries(load_ignores_file(policy_path))
 
-        command = build_pip_audit_command(entries, no_poetry=False)
+        command = build_pip_audit_command(entries, no_uv=False)
 
         assert command == [
-            "poetry",
+            "uv",
             "run",
             "pip-audit",
             "--ignore-vuln",
@@ -120,15 +120,15 @@ class TestPolicyParsing:
             "GHSA-aaaa-bbbb-cccc",
         ]
 
-    def test_command_respects_no_poetry(self, tmp_path: Path) -> None:
+    def test_command_respects_no_uv(self, tmp_path: Path) -> None:
         policy_path = tmp_path / "ignores.toml"
         policy_path.write_text(VALID_TOML)
         entries = get_ignore_entries(load_ignores_file(policy_path))
 
-        command = build_pip_audit_command(entries, no_poetry=True)
+        command = build_pip_audit_command(entries, no_uv=True)
 
         assert command[:2] == ["pip-audit", "--ignore-vuln"]
-        assert "poetry" not in command
+        assert "uv" not in command
 
     def test_empty_ignores_file_is_valid_with_zero_flags(self, tmp_path: Path) -> None:
         policy_path = tmp_path / "ignores.toml"

@@ -114,7 +114,7 @@
           # `withPackages` bundles the extensions into $out/lib so
           # `CREATE EXTENSION postgis;` / `CREATE EXTENSION vector;` resolve
           # without any separate install step.
-          pg-runtime = pkgs.postgresql_16.withPackages (ps: [
+          pg-runtime = pkgs.postgresql_17.withPackages (ps: [
             ps.postgis
             ps.pgvector
           ]);

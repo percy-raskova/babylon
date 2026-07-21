@@ -483,6 +483,17 @@ uv run pytest tests/scenarios \
   --html=reports/test-results/scenario/report.html --self-contained-html
 """
 
+[tasks."test:render"]
+description = "Render seam unit + snapshot tests (ADR097) → reports/test-results/render/"
+run = """
+mkdir -p reports/test-results/render
+uv run pytest tests/unit/render \
+  -vv --tb=long --showlocals --show-capture=all --capture=tee-sys -r aR --durations=25 \
+  --junit-xml=reports/test-results/render/junit.xml \
+  --json-report --json-report-file=reports/test-results/render/report.json --json-report-indent=2 \
+  --html=reports/test-results/render/report.html --self-contained-html
+"""
+
 [tasks."test:all"]
 description = "All non-AI tests → reports/test-results/all/"
 run = """

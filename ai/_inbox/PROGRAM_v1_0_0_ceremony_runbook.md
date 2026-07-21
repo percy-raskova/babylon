@@ -285,4 +285,4 @@ Pass: log shows only `copying path … from 'https://cache.babylon.percypedia.bi
 
 **D3 Terraform-import obligation (babylon-infra).** Buckets `babylon-cache`/`babylon-data` and KV `babylon-beta-keys` were hand-provisioned. Terraform **must `import` them before any `apply`** — an apply against declared-but-unimported resources will attempt duplicate creation and either fail or diverge from live state. This is a standing obligation on babylon-infra, blocking further IaC provisioning of R2/KV.
 
-**FLAKE_REF mismatch (standing).** `install.sh` still names `bogdanscarwash/babylon` while `origin` is `percy-raskova/babylon`. Out of scope for these ceremonies but a required separate fix before the T7 PR's `github:` smoke target is correct.
+**FLAKE_REF mismatch — RESOLVED 2026-07-21.** `install.sh` once carried a stale pre-rename slug; T7-alpha repointed it to `percy-raskova/babylon` and the BD-directed sweep purged the dead slug repo-wide. Nothing left to do here.

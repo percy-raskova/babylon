@@ -1,9 +1,14 @@
 meta:
-  version: 1.47.0
+  version: 1.48.0
   updated: '2026-07-21'
   description: Architecture Decision Records Index
   format: See individual ADR files in this directory
 decisions:
+  ADR111_vol1_u4_working_day:
+    title: 'Vol I U4 — The working day wired into consciousness: new domain.economics.working_day.resolve_working_day_visibility_modifier bridges services.productivity_data_source (the FRED OPHNFB+HOANBS adapter, its FIRST production reader) through DefaultWorkingDayClassifier to a new working_day_modifier keyword on compute_exploitation_visibility, computed ONCE per tick in ConsciousnessSystem and multiplicatively dampening imperial-rent-based visibility -- ABSOLUTE_DOMINANT (long hours) stays fully visible, RELATIVE_DOMINANT (productivity/intensity gains) is naturalized toward invisibility (Ch. 10/12). ZERO qa:regression drift expected (headless_runner never calls create_vol1_services; already live for the web bridge). Found+fixed a MagicMock auto-vivification hazard in test_consciousness_integration.py as a direct consequence.'
+    status: accepted
+    date: '2026-07-21'
+    file: ADR111_vol1_u4_working_day.yaml
   ADR110_vol1_u3_accumulation_loop:
     title: 'Vol I U3 — The accumulation loop: organic composition (ValueTensor4x3, QCEW-populated) wired through a new DefaultAccumulationLoopCalculator into ReserveArmyDynamics flows into a real, derived reserve_ratio/reserve_army_stock producer on territory nodes (TickDynamicsSystem._compute_accumulation_loop, Step 3.6); DispossessionEventSystem fed real foreclosure_rate/eviction_rate from the same FRED adapter (displacement_rate honestly left unfed — no data source); create_vol1_services now also wires transition_engine against that SAME adapter (no parallel dispossession-data path), satisfying _simulate_transitions''s transition_engine gate with real data for the first time; MarketScissors._swell_reserve_army confirmed already-additive, needed no code change to become one input among several. Staged activation: mechanization half lights up in the canonical headless run immediately (tensor_registry already wired via scope_fips); dispossession/transition_engine half stays dormant there until U5 (headless-runner parity) lands — already live for the web bridge and _legacy.py. Real reference-DB integration suite (7/7) + 243 unit tests green; expected qa:regression drift flagged, not regenerated (controller/merge-time ceremony).'
     status: accepted

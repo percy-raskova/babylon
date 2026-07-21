@@ -12,6 +12,9 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING, Any, ClassVar
 
+from babylon.domain.economics.working_day.resolver import (
+    resolve_working_day_visibility_modifier,
+)
 from babylon.formulas.consciousness_routing import (
     compute_agitation_delta,
     compute_exploitation_visibility,
@@ -104,6 +107,18 @@ class ConsciousnessSystem(SystemBase):
         # TickContext stores persistent data in .persistent_data attribute
         # Raw dict stores persistent data directly
         persistent: dict[str, Any] = context.persistent_data
+
+        # Vol I U4 (Ch. 10, The Working Day): resolve this tick's working-day
+        # visibility modifier ONCE (not per node) -- the wired FRED adapter
+        # (services.productivity_data_source, its first production reader)
+        # is national-level and uniform regardless of geography, and no
+        # per-class county/sector identity exists on social_class nodes to
+        # honestly vary the call by. ``None`` (source unwired, or no data
+        # for this tick's year) is the multiplicative identity applied
+        # below -- existing behavior is unchanged when disconnected.
+        working_day_modifier = resolve_working_day_visibility_modifier(
+            graph, services, context.tick
+        )
 
         # Lawverian wage-opposition deterioration (C1.5, signed in the Phase D
         # review). ContradictionSystem (position 18) stashes the registry
@@ -387,6 +402,7 @@ class ConsciousnessSystem(SystemBase):
                         exploitation_rate=abs(wage_change) if wage_change < 0 else 0.0,
                         imperial_rent=max(0.0, wealth_change),
                         defines=services.defines.consciousness,
+                        working_day_modifier=working_day_modifier,
                     ),
                     "reification_buffer": compute_reification_buffer(
                         imperial_rent=max(0.0, wealth_change),

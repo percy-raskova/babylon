@@ -155,19 +155,34 @@ def test_tick_coverage_advisory_lists_unregistered_engine_attrs() -> None:
 
 
 def test_severity_vocabulary_is_clean_and_gates() -> None:
-    """After the drift repair, every _EVENT_SEVERITY key is a real EventType (gating)."""
+    """After T1.1 U2's single-sourcing, the real bridge carries no local
+    _EVENT_SEVERITY literal (gating)."""
     assert sensor1.check_severity_vocabulary() == []
 
 
-def test_severity_vocabulary_reds_on_non_eventtype_key(tmp_path: Path) -> None:
-    """A regression that keys _EVENT_SEVERITY on a non-EventType string reds the gate."""
+def test_severity_vocabulary_reds_on_a_reintroduced_local_literal(tmp_path: Path) -> None:
+    """A regression that reintroduces a local _EVENT_SEVERITY dict reds the gate —
+    T1.1 U2's single-source guardrail (the vocabulary invariant the old version of
+    this check validated is now a structural Pydantic-typed guarantee upstream in
+    babylon.models.event_severity; this check's job is only to catch the literal's
+    reappearance)."""
     fake = tmp_path / "fake_bridge.py"
     fake.write_text(
         '_EVENT_SEVERITY = {"economic_crisis": "critical", "totally_fake_event": "warning"}\n'
     )
     violations = sensor1.check_severity_vocabulary(path=fake)
     assert len(violations) == 1
-    assert "totally_fake_event" in violations[0]
+    assert "_EVENT_SEVERITY" in violations[0]
+
+
+def test_severity_vocabulary_stays_clean_without_any_severity_assignment(
+    tmp_path: Path,
+) -> None:
+    """A fixture with no _EVENT_SEVERITY assignment at all is clean, not an
+    infrastructure error — the check must not require the name to exist."""
+    fake = tmp_path / "fake_bridge_no_severity.py"
+    fake.write_text("SOME_OTHER_CONSTANT = 1\n")
+    assert sensor1.check_severity_vocabulary(path=fake) == []
 
 
 def test_narrator_vocabulary_advisory_flags_unreachable_templates() -> None:

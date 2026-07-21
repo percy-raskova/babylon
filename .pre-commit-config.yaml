@@ -167,7 +167,16 @@ repos:
     rev: v6.0.0
     hooks:
       - id: trailing-whitespace
+        # tests/**/__snapshots__/**/*.raw: pytest-textual-snapshot SVG goldens
+        # (Program 24 Archive TUI). Rich's SVG export template emits a fixed
+        # whitespace-only line after the traffic-light window-chrome group on
+        # every render — trimming it here desyncs the committed golden from
+        # what a fresh render always reproduces byte-for-byte, turning a
+        # passing snapshot test red with no code change (discovered WO-25,
+        # 2026-07-21). Excluded, not disabled: the hook still runs elsewhere.
+        exclude: ^tests/.*/__snapshots__/.*\.raw$
       - id: end-of-file-fixer
+        exclude: ^tests/.*/__snapshots__/.*\.raw$
       - id: check-yaml
         args: [--unsafe]  # Allow custom tags in GitHub Actions
       - id: check-json

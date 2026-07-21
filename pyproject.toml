@@ -79,6 +79,56 @@ server = [
     "gunicorn>=21.0",
 ]
 
+[dependency-groups]
+dev = [
+    "pytest>=9.0.3,<10.0.0",
+    "pytest-mock>=3.14.0,<4.0.0",
+    "pytest-asyncio>=1.0.0,<2.0.0",
+    "pytest-cov>=7.0.0,<8.0.0",
+    "mypy>=1.13.0,<2.0.0",
+    "ruff>=0.15.12,<0.16.0",
+    "pre-commit>=4.0.0,<5.0.0",
+    "commitizen>=4.1.0,<5.0.0",
+    "types-jsonschema>=4.25.1.20251009,<5.0.0",
+    "types-pyyaml>=6.0.12.20250915,<7.0.0",
+    "types-ratelimit>=2.2.0.20250501,<3.0.0",
+    "midiutil>=1.2.1,<2.0.0",
+    "markdownify>=1.2.2,<2.0.0",
+    "yamllint>=1.37.1,<2.0.0",
+    "mido>=1.3.3,<2.0.0",
+    "linkify-it-py>=2.0.3,<3.0.0",
+    "pip-audit>=2.7.3,<3.0.0",
+    "pytest-playwright>=0.8.0,<0.9.0",
+    "radon>=6.0.1,<7.0.0",
+    "xenon>=0.9.3,<0.10.0",
+    "pytest-randomly>=4.0.1,<5.0.0",
+    "mutmut>=3.4.0,<4.0.0",
+    "deptry>=0.25.1,<0.26.0",
+    "salib>=1.5.2,<2.0.0",
+    "optuna>=4.9.0,<5.0.0",
+    "optuna-dashboard>=0.20.0,<0.21.0",
+    "types-docutils>=0.22.3.20251115,<0.23.0",
+    "types-tqdm>=4.67.0.20250809,<5.0.0",
+    "vulture>=2.14.0,<3.0.0",
+    "hypothesis>=6.149.0,<7.0.0",
+    "pytest-django>=4.8.0,<5.0.0",
+    "django-stubs[compatible-mypy]>=5.0",
+    "djangorestframework-stubs[compatible-mypy]>=3.15",
+    "testcontainers[postgres]>=4.14.2,<5.0.0",
+    "pytest-json-report>=1.5.0,<2.0.0",
+    "pytest-html>=4.1.0,<5.0.0",
+    "pytest-timeout>=2.4.0,<3.0.0",
+    "import-linter>=2.13.0,<3.0.0",
+]
+docs = [
+    "sphinx>=9,<10",
+    "sphinx-rtd-theme>=3.0.2,<4.0.0",
+    "sphinx-autodoc-typehints<3.13",
+    "myst-parser>=5.0.0,<6.0.0",
+    "sphinx-autobuild>=2025.8,<2026.0.0",
+    "sphinxcontrib-mermaid>=2.0.0,<3.0.0",
+]
+
 [tool.poetry]
 packages = [
     { include = "babylon", from = "src" },
@@ -97,55 +147,6 @@ Source = "https://github.com/bogdanscarwash/babylon"
 
 [project.scripts]
 babylon = "babylon.cli:app"
-
-[tool.poetry.group.dev.dependencies]
-pytest = "^9.0.3"
-pytest-mock = "^3.14.0"
-pytest-asyncio = "^1.0.0"
-pytest-cov = "^7.0.0"
-mypy = "^1.13.0"
-ruff = "^0.15.12"
-pre-commit = "^4.0.0"
-commitizen = "^4.1.0"
-types-jsonschema = "^4.25.1.20251009"
-types-pyyaml = "^6.0.12.20250915"
-types-ratelimit = "^2.2.0.20250501"
-midiutil = "^1.2.1"
-markdownify = "^1.2.2"
-yamllint = "^1.37.1"
-mido = "^1.3.3"
-linkify-it-py = "^2.0.3"
-pip-audit = "^2.7.3"
-pytest-playwright = "^0.8.0"
-# pytest-qt removed with the PyQt6 dashboard cleanup
-radon = "^6.0.1"
-xenon = "^0.9.3"
-pytest-randomly = "^4.0.1"
-mutmut = "^3.4.0"
-deptry = "^0.25.1"
-salib = "^1.5.2"
-optuna = "^4.9"
-optuna-dashboard = "^0.20"
-types-docutils = "^0.22.3.20251115"
-types-tqdm = "^4.67.0.20250809"
-vulture = "^2.14"
-hypothesis = "^6.149.0"
-pytest-django = "^4.8"
-django-stubs = {version = ">=5.0", extras = ["compatible-mypy"]}
-djangorestframework-stubs = {version = ">=3.15", extras = ["compatible-mypy"]}
-testcontainers = {extras = ["postgres"], version = "^4.14.2"}
-pytest-json-report = "^1.5.0"
-pytest-html = "^4.1.0"
-pytest-timeout = "^2.4.0"
-import-linter = "^2.13"
-
-[tool.poetry.group.docs.dependencies]
-sphinx = ">=9,<10"
-sphinx-rtd-theme = "^3.0.2"
-sphinx-autodoc-typehints = "<3.13"
-myst-parser = "^5.0.0"
-sphinx-autobuild = "^2025.8"
-sphinxcontrib-mermaid = "^2.0"
 
 [tool.pytest.ini_options]
 DJANGO_SETTINGS_MODULE = "babylon_web.settings.testing"

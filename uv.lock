@@ -427,6 +427,7 @@ dependencies = [
     { name = "openpyxl" },
     { name = "pandas" },
     { name = "pgvector" },
+    { name = "pillow" },
     { name = "polars" },
     { name = "psycopg" },
     { name = "psycopg-pool" },
@@ -446,7 +447,9 @@ dependencies = [
     { name = "sqlalchemy" },
     { name = "textual" },
     { name = "textual-image" },
+    { name = "textual-plotext" },
     { name = "tokenizers" },
+    { name = "tomlkit" },
     { name = "tqdm" },
     { name = "typer" },
     { name = "xgi" },
@@ -543,6 +546,7 @@ requires-dist = [
     { name = "openpyxl", specifier = ">=3.1.5,<4.0.0" },
     { name = "pandas", specifier = ">=2.2.3" },
     { name = "pgvector", specifier = ">=0.5.0,<0.6.0" },
+    { name = "pillow", specifier = ">=12.3.0" },
     { name = "polars", specifier = ">=1.38.1,<2.0.0" },
     { name = "psycopg", specifier = ">=3.3.3,<4.0.0" },
     { name = "psycopg-pool", specifier = ">=3.3.0,<4.0.0" },
@@ -563,7 +567,9 @@ requires-dist = [
     { name = "sqlalchemy", specifier = ">=2.0.36" },
     { name = "textual", specifier = ">=8.2,<8.3" },
     { name = "textual-image", specifier = ">=0.13,<0.14" },
+    { name = "textual-plotext", specifier = ">=1.0.1" },
     { name = "tokenizers", specifier = ">=0.19.1" },
+    { name = "tomlkit", specifier = ">=0.15.1" },
     { name = "tqdm", specifier = ">=4.66.0,<5.0.0" },
     { name = "typer", specifier = ">=0.15.1" },
     { name = "xgi", specifier = ">=0.10.0,<0.11.0" },
@@ -3467,6 +3473,15 @@ wheels = [
 ]
 
 [[package]]
+name = "plotext"
+version = "5.3.2"
+source = { registry = "https://pypi.org/simple" }
+sdist = { url = "https://files.pythonhosted.org/packages/c9/d7/f75f397af966fe252d0d34ffd3cae765317fce2134f925f95e7d6725d1ce/plotext-5.3.2.tar.gz", hash = "sha256:52d1e932e67c177bf357a3f0fe6ce14d1a96f7f7d5679d7b455b929df517068e", size = 61967, upload-time = "2024-09-24T15:13:37.728Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/f6/1e/12fe7c40cd2099a1f454518754ed229b01beaf3bbb343127f0cc13ce6c22/plotext-5.3.2-py3-none-any.whl", hash = "sha256:394362349c1ddbf319548cfac17ca65e6d5dfc03200c40dfdc0503b3e95a2283", size = 64047, upload-time = "2024-09-24T15:13:36.296Z" },
+]
+
+[[package]]
 name = "pluggy"
 version = "1.6.0"
 source = { registry = "https://pypi.org/simple" }
@@ -5348,6 +5363,19 @@ dependencies = [
 sdist = { url = "https://files.pythonhosted.org/packages/10/77/b2128ced69556bfbb8e1c19d8f013e621cf12531eaba4e9b09e1cfa81e37/textual_image-0.13.2.tar.gz", hash = "sha256:8ca0cee2bfcd7734de5b16a1936da226b77b745e28830d9cf2bc202cb70e43ee", size = 2185178, upload-time = "2026-05-30T21:42:33.563Z" }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/36/be/60aafd7263a6daa8cc4017e8bd4452c85b63ccd82a64f02636ca46e073b7/textual_image-0.13.2-py3-none-any.whl", hash = "sha256:41635f545ce2d0b3544763a2d10f25ada7f64c51acef77483b80fbfcf7ab22ee", size = 118469, upload-time = "2026-05-30T21:42:31.964Z" },
+]
+
+[[package]]
+name = "textual-plotext"
+version = "1.0.1"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "plotext" },
+    { name = "textual" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/9a/b0/e4e0f38df057db778252db0dd2c08522d7222b8537b6a0181d797b9044bd/textual_plotext-1.0.1.tar.gz", hash = "sha256:836f53a3316756609e194129a35c2875638e7958c261f541e0a794f7c98011be", size = 16489, upload-time = "2024-11-30T19:25:56.625Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/35/53/fba7da208f9d3f59254413660fa0aa6599f2aca806f3ae356670455fd4ea/textual_plotext-1.0.1-py3-none-any.whl", hash = "sha256:6b6bfd00b29f121ddf216eaaf9bdac9d688ed72f40028484d279a10cbbb169ed", size = 16558, upload-time = "2024-11-30T19:25:32.208Z" },
 ]
 
 [[package]]

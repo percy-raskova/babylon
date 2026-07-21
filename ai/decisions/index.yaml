@@ -1,9 +1,29 @@
 meta:
-  version: 1.44.0
+  version: 1.45.0
   updated: '2026-07-21'
   description: Architecture Decision Records Index
   format: See individual ADR files in this directory
 decisions:
+  ADR107_corpus_canon_apocrypha:
+    title: 'Corpus canon + apocrypha class (BD-ruled 2026-07-21): allow-list Mao/Fanon/Stalin/Lenin/Che/African-natlib/BPP/Sakai/Hickel/MIM(+P) + ruling-8 extensions Cope/Marini/J.Smith/MIM-Theory-#1(pending re-OCR)/MIWS-csdraft/Federici+Mies (canon formally extends to the social-reproduction line); DENY CPUSA/Trotsky/Kautsky/Hoxha, honored INSIDE allowed globs (quote-to-rebut case); Nitzan-Bichler = Divergence-Channel steelman only; NEW disposition apocryphal (distinct from quarantine): kept on disk, structurally unreachable by every ingestion path_glob, hand-curated easter-eggs only — first member content.jsonl (Jan-2026 Moltbook AI pastiche, BD personal artifact, sha 4b380f…15af, ~/Documents/ocr/_apocrypha/); extraction tree ~/Documents/ocr/ + MANIFEST.yaml live per step zero; MVP_CORPUS tuple still unmigrated — in-repo corpus manifest + Pydantic loader = T5 scope'
+    status: accepted
+    date: '2026-07-21'
+    file: ADR107_corpus_canon_apocrypha.yaml
+  ADR106_determinism_boundary:
+    title: 'Determinism boundary (v1.0.0 program): econophysics citation rule — Farjoun-Machover/Classical-Econophysics cited for distribution SHAPE (invariants/calibration) only, never a stochastic runtime sampler, all randomness through SimulationConfig.rng_seed (III.7); shipped-entry-point pin owed to T1.2/T7 — the babylon launcher must os.execv re-exec with PYTHONHASHSEED=0 + OMP/OPENBLAS/MKL/NUMEXPR_NUM_THREADS=1 (verified absent from src/, present only in tests/conftest, .mise.toml, flake devshells); HONESTY RECORD verified at HEAD: tick_commit.determinism_hash = unchained session/tick/seed identity key (runner.py:1600-1647) while the real-but-narrow content hash lives in conservation_audit_log (conservation_audit.py:70-111); three wall-clock leaks into persisted artifacts named (metrics.py:209, jsonl_recorder.py:90/156/181, runner manifest wallclock fields); chained content hash DEFERRED post-1.0; narrator-ON non-reproducible BY DESIGN, OFF byte-reproducible, verify stories exclude narrative/**'
+    status: accepted
+    date: '2026-07-21'
+    file: ADR106_determinism_boundary.yaml
+  ADR105_inference_lane_v1_amendments:
+    title: 'Inference-lane v1.0 amendments (amends ADR096 D5; corpus ships): embeddings = embeddinggemma-300m/768-dim BOTH lanes (Ollama default + @cf/google/embeddinggemma-300m), retiring bge-m3(1024)/bge-base as never-implemented against the baked vector(768) schema — no migration; chat pin = Llama 3.1 8B end-to-end: bundled Meta-Llama-3.1-8B-Instruct Q4_K_M GGUF first (ADR096 D3 as ratified, BD uploads signed weights pre-release), detected Ollama llama3.1:8b second, CF llama-3.1-8b-instruct-fast/-fp8 third, mute always legal (CF 2026-05-08 deprecation notice verified: every other ≤12B instruct model dead 5/30/2026); corpus redistribution = SHIP EVERYTHING (owner-accepted copyright exposure): curated canon corpus embedded+ready-grounded in the installer payload — NOT the raw ~26GB mirrors (BYO via manifest) — gated on a per-work PROVENANCE/LICENSES file + "Built with Llama" attribution (Llama Community License makes it non-optional)'
+    status: accepted
+    date: '2026-07-21'
+    file: ADR105_inference_lane_v1_amendments.yaml
+  ADR104_nix_bootstrap_installer:
+    title: 'Installer = nix bootstrap (amends ADR094; BD cluster-A rulings 1-2, 2026-07-21): install.sh now INSTALLS Nix for the player (Determinate installer, consent-gated) — reverses ADR094''s refusal clause; Nix is the MEANS of one-script Ubuntu/Debian install, not a power-user channel; game-managed Postgres cluster (initdb → ~/.local/share/babylon/pg, unix socket, child process, superuser-in-own-cluster) built from the flake closure carrying postgresql+postgis+pgvector, apt fallback documented only; 4.49GB reference DB delivered as sha-pinned fixed-output derivation through the same signed cache; four BD-owed critical-path ceremonies (ed25519 keygen→CACHE_KEY, R2 cache+worker deploy, GGUF upload+signed manifest, nix-release signing secret — runbook ai/_inbox/PROGRAM_v1_0_0_ceremony_runbook.md); standing FLAKE_REF drift recorded (bogdanscarwash/babylon vs origin percy-raskova/babylon — T7 pre-req fix); WSL post-1.0'
+    status: accepted
+    date: '2026-07-21'
+    file: ADR104_nix_bootstrap_installer.yaml
   ADR103_vol1_vol2_contract_commit:
     title: 'Capital Vol I ∥ Vol II contract commit (T1.0 fork gate, v1.0.0 Playable Archive program): VOL_I/VOL_II_RESERVED_OPPOSITIONS exported from dialectics catalog (value_usevalue/labor_laborpower/absolute_relative_surplus + circulation/realization/reproduction/disproportionality), 3 dead Vol I coupling slots declared (skip-count 2→5; absolute_relative_surplus→wage bridges into the LIVE Fundamental-Theorem axis), room-partition banners over the three _compute_*_layer regions (Vol III = owned by neither), GraphInputs field-partition convention, physics-neutral BY CONSTRUCTION (registry∩reserved=∅ test-pinned; tick hash untouched, no ceremony due); §10.2 deviation recorded: dormancy sentinel hoisted to T1.1 keel, runner-parity stays Vol I; batch claims ADR103–107'
     status: accepted

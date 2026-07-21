@@ -2,9 +2,32 @@
 # What exists vs what's planned - KEEP THIS UPDATED
 
 meta:
-  version: "2.47.0"  # 2.28.0 lives on feature/19-emergent-class-partition (Program 19 Phase 0+1)
+  version: "2.48.0"  # 2.28.0 lives on feature/19-emergent-class-partition (Program 19 Phase 0+1)
   updated: "2026-07-21"
   truth_status: |
+    (2026-07-21 v1.0.0 KICKOFF) THE PLAYABLE ARCHIVE PROGRAM LAUNCHED (master
+    plan ratified via PR #244: ai/_inbox/PROGRAM_v1_0_0_playable_archive.md +
+    ceremony runbook; BD stop-goal = fully playable game; fast-dev mode:
+    local commits, ceremony at merge-time only). T1.0 CONTRACT COMMIT LANDED
+    84d8405a on chore/vol1-vol2-contract (ADR103: reserved Vol I/II opposition
+    keys + 3 dead Vol I coupling slots skip-count 2->5 + room-partition
+    banners over the three _compute_*_layer regions + test_contract.py
+    physics-neutrality proof; §10.2 deviation: dormancy sentinel hoisted to
+    T1.1 keel). GOVERNANCE BATCH ADR104-107 LANDED same branch (104 nix-
+    bootstrap installer amends ADR094 — install.sh installs Nix, game-managed
+    PG cluster, 4 BD-owed ceremonies; 105 inference-lane amends ADR096 D5 —
+    embeddinggemma-300m/768 both lanes, Llama 3.1 8B end-to-end, corpus
+    SHIPS w/ LICENSES + Built-with-Llama; 106 determinism boundary —
+    econophysics shape-only rule, launcher os.execv re-exec owed T1.2/T7,
+    honesty record on the unchained identity hash + 3 named wall-clock
+    leaks; 107 corpus canon + apocrypha class). FIVE LANE WORKTREES FORKED
+    from 84d8405a under .claude/worktrees/ (vol1, vol2, t11 seam-severity,
+    t12 keel, t4 campaign-core), each driven by its own background workflow
+    (sonnet implements / opus adversarial review per unit / scoped test:q
+    only / heavy gates controller-owned single-flight). OCR canon corpus
+    preserved at ~/Documents/ocr/: 10 works 785,800 words w/ provenance +
+    MANIFEST.yaml; content.jsonl reclassified APOCRYPHAL (kept, canon-
+    fenced, easter-egg-eligible — BD personal artifact ruling).
     (2026-07-21 P2-P4) PROGRAM 24 THE ARCHIVE COMPLETE THROUGH P4 (branch
     feature/archive-p2-p4, PR #240 -> dev auto-merge armed; STAGED cutover
     draft PR #241 pending BD gate 3). P2: 18 Wave-1 builders + Wave-1.5

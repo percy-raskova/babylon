@@ -1,10 +1,9 @@
 # Shared Python bootstrap (Program 15). ONE provisioner: mise installs the
-# exact [tools] pins from .mise.toml (python 3.12 + poetry 2.2.1), so CI and
-# local dev run the identical toolchain. The venv cache key carries every
-# invalidating input: OS, python, poetry, lock hash, and a -vN generation
-# counter (bump it to evict a poisoned cache fleet-wide).
+# exact [tools] pins from .mise.toml (python 3.12 + uv), so CI and local dev
+# run the identical toolchain against the single uv.lock. The venv cache key
+# hashes uv.lock AND .mise.toml (the uv pin lives there); bump -vN to evict.
 name: Bootstrap Python
-description: mise toolchain + in-project venv cache + poetry install
+description: mise toolchain + uv-managed venv cache + uv sync
 
 inputs:
   gdal:
@@ -18,6 +17,13 @@ inputs:
     description: Install the docs dependency group
     required: false
     default: "false"
+  server:
+    description: >-
+      Install the `server` optional-dependencies extra (Django/DRF/gunicorn +
+      ansible/rst/boto). Required by any job that runs pytest or mypy, since
+      DJANGO_SETTINGS_MODULE + django-stubs load Django at import.
+    required: false
+    default: "false"
 
 runs:
   using: composite
@@ -27,35 +33,23 @@ runs:
       with:
         cache: true
 
-    - name: Configure in-project venv
-      shell: bash
-      run: poetry config virtualenvs.in-project true
-
     - name: Load cached venv
       id: venv-cache
       uses: actions/cache@v6
       with:
         path: .venv
-        key: venv-${{ runner.os }}-py3.12-poetry2.2.1-v3-${{ inputs.docs }}-${{ hashFiles('poetry.lock') }}
+        key: >-
+          venv-${{ runner.os }}-py3.12-uv-v1-${{ inputs.docs }}-${{ inputs.server }}-${{
+          hashFiles('uv.lock', '.mise.toml') }}
 
-    - name: Install dependencies (cache miss)
-      if: steps.venv-cache.outputs.cache-hit != 'true'
+    - name: Sync dependencies (uv)
       shell: bash
       run: |
-        if [ "${{ inputs.docs }}" = "true" ]; then
-          poetry install --no-interaction --no-root --with docs
-        else
-          poetry install --no-interaction --no-root
-        fi
-
-    - name: Install project
-      shell: bash
-      run: |
-        if [ "${{ inputs.docs }}" = "true" ]; then
-          poetry install --no-interaction --with docs
-        else
-          poetry install --no-interaction
-        fi
+        EXTRA=""
+        GROUP=""
+        if [ "${{ inputs.server }}" = "true" ]; then EXTRA="--extra server"; fi
+        if [ "${{ inputs.docs }}" = "true" ]; then GROUP="--group docs"; fi
+        uv sync --frozen $EXTRA $GROUP
 
     # GeoDjango: settings/base.py uses the postgis backend, which loads
     # GEOS/GDAL/PROJ at import — pytest touching Django settings AND mypy

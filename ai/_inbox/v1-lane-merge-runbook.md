@@ -9,17 +9,57 @@ single-flight in this controller. This file is my scratch — supersede freely.
 
 | Lane | Branch | HEAD | Workflow | Merge gate |
 |---|---|---|---|---|
-| T1.1 seam-severity | lane/t11-seam-severity | f40de06f | **RUNNING** | merges 1st |
-| T1.2 keel | lane/t12-keel | c4dc2f0c | **✓ DONE** (20/20, 0 err; K1–K5 verified in-code) | **HELD** behind T1.1; branch clean + rebased on 84d8405a, merge-ready |
+| T1.1 seam-severity | lane/t11-seam-severity | c0c9a731 | **✓ DONE** (17/17, 0 err; U1–U7, mutation-verified) | merges 1st — READY |
+| T1.2 keel | lane/t12-keel | c4dc2f0c | **✓ DONE** (20/20, 0 err; K1–K5 verified in-code) | **HELD** behind T1.1; clean, merge-ready |
 | Vol I | lane/vol1-value-production | 4627fc23 | RUNNING (U5 landed) | 3rd |
 | Vol II | lane/vol2-circulation | cee36f9a | RUNNING | 4th (rebase on Vol I) |
-| T4 core | lane/t4-campaign-core | aeb0cf91 | RUNNING | last |
+| T4 core | lane/t4-campaign-core | 1e4fbe2c | **✓ DONE** (18/18, 0 err; C1–C6, no blockers) | **HELD** behind all; merges last |
 | T7 installer | lane/t7-installer | df41a963 | alpha (separate) | post-Gate-3 (T7-beta) |
 
-Nothing merges until T1.1 lands (dependency head). No heavy single-flight gate fires
-while >1 lane workflow is live. T1.2 verified units: K1 stdout-contract + default_level,
-K2 DSN seam (production.py HOST clobber + vault_regression bypass closed), K3 5-var RAYON
-pin == canonical, K4 severity pins restored, K5 declared-assumptions ledger.
+**DEPENDENCY HEAD CLEARED.** T1.1 done. THREE lanes home (T1.1, T1.2, T4); only Vol I + Vol II
+still building. The merge cascade is UNBLOCKED — but held for single-flight safety: no heavy
+gate fires while >1 lane workflow is live (Vol I + Vol II = 2 live). **Trigger: when Vol I +
+Vol II both complete, run the full cascade single-flight** in order T1.1 → T1.2 → Vol I → Vol
+II → T4, `mise run check` + (where drift) qa:regression/baseline per merge. Merging T1.1/T1.2
+early buys nothing — Vol I/II forked from 84d8405a and rebase at THEIR merge time regardless.
+T1.2 verified units: K1 stdout-contract + default_level, K2 DSN seam (production.py HOST
+clobber + vault_regression bypass closed), K3 5-var RAYON pin == canonical, K4 severity pins
+restored, K5 ledger.
+
+### T1.1 merge notes (adversarial review, mutation-verified)
+U1 derived severity catalog (`models/event_severity.py`): drift-guard reds on any un-rationaled
+tier change; reconciliation pin independent; 16 principled drifts (8 warn→crit, 8 warn→info)
+each rationaled. U2 single-source. U3 ∂L seam-algebra (`sentinels/seam_algebra/`): disconnected-
+subsystem check wired into `check:seam-algebra` → `check:sentinels-static` → fast CI gate;
+mutation-verified non-vacuous (reds on `anisotropic_observation_error`, the F-EC-1 witness).
+U7 wall-clock-call-site check + F-* closeout. Non-blocking, carry to merge/ceremony:
+- **[ceremony]** the §7 severity ceremony note must record the **37-member unclassified→warning
+  floor flip** (when U2's `resolve_severity` lands) ALONGSIDE the 16-row drift table — it's
+  design-sanctioned (III.11) and matches the Archive/TUI successor (already warns-on-miss); only
+  the legacy/disposable web client changes. Don't let the ceremony disclose only 16 of the picture.
+- **[owed → U6]** Amendment-S grep-gate scans only `engine|domain`; `formulas/` (feeds the hash)
+  is uncovered. No live violation exists; U6 chartered to widen to the full physics surface.
+- cosmetic: `.mise.toml:132` parent `check` desc still says "ALL 14 sentinels" (now 15+) — 1-char fix.
+
+### T4-core merge notes (adversarial review, 2026-07-21)
+C1–C6 present: composition root + real boot (C1 `02550de9`); lobby→briefing→campaign shell
+(C2 `6cf0d50f`) + record_progress writeback (`a846528d`); paced tick driver wired into boot
+(C3 `53cfca4b`+`ab360493` — CLOSES C1's "no advance in production" finding); chronicle
+adapter → production (C4); incremental dirty-entity baker (C5 `9243dd35` — nationwide);
+autosave-cadence save wire (C6). Gates green (lint:imports 9/9, mypy strict, 19 tests on the
+REAL 30-system engine). Non-blocking, verify/file at merge:
+- **[design-relevant]** campaign-runtime envelope carries EMPTY `audit_log_rows` → `babylon
+  play` persists only the identity-stamp `determinism_hash` (sha256 session:tick:seed), NOT
+  the ConservationAudit CONTENT hash the headless/bridge path computes. Consistent with the
+  known "hash chain aspirational / III.13 PENDING" fact. **Consequence for the interface-shell
+  BDD gate (layer 3):** the determinism assertion is REPLAY-IDENTITY for v1.0; true content-
+  determinism waits on III.13. The plan must state which hash the gate asserts on.
+- advance_tick non-atomic ordering (persist before mark_turns_resolved + bake) — crash
+  window, low severity, undriven path.
+- coverage gap: real ArchiveTickBaker × real Wayne tick-0 bake only inspection-verified.
+- uncommitted `ai/_inbox/PROGRAM_v1_0_0_playable_archive.md` edit left in the t4 worktree —
+  reconcile (commit or discard) at merge.
+- doc nit: runner.py `_advance_tick` says "21 systems" (should be 30).
 
 ## Merge order (dependency-forced)
 

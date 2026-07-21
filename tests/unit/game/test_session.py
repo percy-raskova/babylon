@@ -154,6 +154,16 @@ class _RecordingObserver:
         self.ticks.append(tick)
 
 
+class _RecordingProgressStore:
+    """``ProgressStore`` double — records every ``(campaign_id, last_tick)`` pair."""
+
+    def __init__(self) -> None:
+        self.calls: list[tuple[UUID, int]] = []
+
+    def record_progress(self, campaign_id: UUID, *, last_tick: int) -> None:
+        self.calls.append((campaign_id, last_tick))
+
+
 # --------------------------------------------------------------------------- #
 # default_pause_predicate — the T1.1 seam's default implementation.           #
 # --------------------------------------------------------------------------- #
@@ -235,6 +245,25 @@ def test_create_new_campaign_still_mints_when_session_id_is_none() -> None:
     assert session.session_id in store.sessions
 
 
+def test_create_new_campaign_runs_with_no_progress_store() -> None:
+    """``progress_store=None`` (the default) must not error — the pre-fix
+    behavior for any caller with no lobby catalog to keep live."""
+    store = _FakeStore()
+    session = create_new_campaign(store, scenario=WayneCountyScenario())
+    assert session.tick == 0
+
+
+def test_create_new_campaign_stamps_the_lobby_row_at_tick_zero() -> None:
+    """Review fix: a wired ``progress_store`` is synced immediately at boot,
+    not left to catch up only after the first ``advance_tick``."""
+    store = _FakeStore()
+    progress = _RecordingProgressStore()
+
+    session = create_new_campaign(store, scenario=WayneCountyScenario(), progress_store=progress)
+
+    assert progress.calls == [(session.session_id, 0)]
+
+
 # --------------------------------------------------------------------------- #
 # advance_tick — the pacing driver's one step (clear_history/run_tick/        #
 # get_history + real persistence + observer hookup).                         #
@@ -283,6 +312,32 @@ def test_advance_tick_clears_bus_history_before_each_tick() -> None:
     # The bus is cleared each tick, so every tick-2 event carries tick=2 —
     # none of tick 1's events leaked forward (the WO-50 clear_history contract).
     assert all(event.tick == 2 for event in second.events)
+
+
+def test_advance_tick_keeps_the_lobby_row_live_each_tick() -> None:
+    """Review fix: the gap where ``babylon_meta.campaign.last_tick`` was
+    written only at campaign creation and never again — every subsequent
+    ``advance_tick`` must also record progress when a store is wired."""
+    store = _FakeStore()
+    progress = _RecordingProgressStore()
+    session = create_new_campaign(store, scenario=WayneCountyScenario(), progress_store=progress)
+
+    session.advance_tick()
+    session.advance_tick()
+
+    assert progress.calls == [
+        (session.session_id, 0),
+        (session.session_id, 1),
+        (session.session_id, 2),
+    ]
+
+
+def test_advance_tick_runs_with_no_progress_store() -> None:
+    """``progress_store=None`` (the default) must not error mid-tick."""
+    store = _FakeStore()
+    session = create_new_campaign(store, scenario=WayneCountyScenario())
+    result = session.advance_tick()
+    assert result.tick == 1
 
 
 def test_pause_predicate_seam_is_injectable() -> None:
@@ -384,6 +439,30 @@ def test_resume_campaign_reconstructs_from_last_committed_tick() -> None:
     # SAME replay-identity hash formula with seed=42, not the default 0.
     next_result = resumed.advance_tick()
     assert next_result.determinism_hash == session_module._replay_identity_hash(session_id, 4, 42)
+
+
+def test_resume_campaign_syncs_a_stale_lobby_row_to_the_ledgers_own_tick() -> None:
+    """Review fix: the exact reported symptom — a campaign resumed at a real
+    Ledger tick (here 3) whose ``babylon_meta`` catalog row was stuck at its
+    creation-time value must be corrected to the Ledger's own tick on
+    resume, before any further tick is even advanced."""
+    store = _FakeStore()
+    session_id = uuid4()
+    store.sessions[session_id] = {
+        "id": session_id,
+        "scenario": "wayne_county",
+        "config_json": SimulationConfig().model_dump(mode="json"),
+        "game_defines_json": GameDefines().model_dump(mode="json"),
+        "rng_seed": 0,
+    }
+    store._graphs[(session_id, 3)] = BabylonGraph()
+    store._last_committed[session_id] = 3
+    progress = _RecordingProgressStore()
+
+    resumed = resume_campaign(store, session_id, progress_store=progress)
+
+    assert resumed.tick == 3
+    assert progress.calls == [(session_id, 3)]
 
 
 def test_resume_campaign_tolerates_jsonb_read_back_as_a_string() -> None:

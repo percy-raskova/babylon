@@ -18,6 +18,13 @@ lobby's own ``babylon_meta.campaign_id`` doubles as the engine's
 two separate ID spaces — and each campaign gets its own vault subdirectory
 (``vault/<campaign_id>/``) so concurrent campaigns' baked pages never
 collide.
+
+Review fix (same unit): :func:`_load_campaign` also threads the SAME
+``BabylonMetaStore`` in as :func:`~babylon.game.session.create_new_campaign`/
+:func:`~babylon.game.session.resume_campaign`'s ``progress_store=`` — the
+seam that keeps the lobby row's ``Tick N`` live via
+:meth:`~babylon.persistence.babylon_meta.BabylonMetaStore.record_progress`,
+previously wired to zero production callers.
 """
 
 from __future__ import annotations
@@ -33,6 +40,7 @@ if TYPE_CHECKING:
     from babylon.config.defines import GameDefines
     from babylon.game.session import GameSession
     from babylon.persistence import PostgresRuntime
+    from babylon.persistence.babylon_meta import BabylonMetaStore
     from babylon.projection.vault.materializer import VaultMaterializer
 
 
@@ -103,7 +111,9 @@ def _bake_briefing(materializer: VaultMaterializer, session: GameSession) -> Non
     materializer.bake_briefing(view, tick=session.tick)
 
 
-def _load_campaign(runtime: PostgresRuntime, campaign_id: UUID) -> GameSession:
+def _load_campaign(
+    runtime: PostgresRuntime, catalog: BabylonMetaStore, campaign_id: UUID
+) -> GameSession:
     """The lobby's ``CampaignLoader`` seam, fulfilled for real (Unit C2).
 
     Boots a NEW ``game_session`` row the first time this campaign's id is
@@ -113,6 +123,12 @@ def _load_campaign(runtime: PostgresRuntime, campaign_id: UUID) -> GameSession:
     construction.
 
     :param runtime: the open Postgres runtime.
+    :param catalog: the lobby's own ``babylon_meta`` catalog store, threaded
+        through as ``progress_store=`` so ``create_new_campaign``/
+        ``resume_campaign`` keep this campaign's lobby row live (review fix:
+        the catalog was previously written only at campaign creation and
+        never again, so a resumed campaign's lobby row stayed stuck at
+        ``Tick 0``).
     :param campaign_id: the lobby's chosen campaign UUID.
     :returns: the live, booted/resumed :class:`~babylon.game.session.GameSession`
         (structurally satisfies ``babylon.tui.app.CampaignHandle``).
@@ -129,7 +145,9 @@ def _load_campaign(runtime: PostgresRuntime, campaign_id: UUID) -> GameSession:
     pages = vault_page_source(vault_root)
 
     session = (
-        resume_campaign(runtime, campaign_id, tick_commit_observer=baker, pages=pages)
+        resume_campaign(
+            runtime, campaign_id, tick_commit_observer=baker, pages=pages, progress_store=catalog
+        )
         if runtime.get_session(campaign_id) is not None
         else create_new_campaign(
             runtime,
@@ -137,6 +155,7 @@ def _load_campaign(runtime: PostgresRuntime, campaign_id: UUID) -> GameSession:
             session_id=campaign_id,
             tick_commit_observer=baker,
             pages=pages,
+            progress_store=catalog,
         )
     )
     _bake_briefing(materializer, session)
@@ -168,7 +187,7 @@ def run() -> None:
         defines_hash=_defines_hash(GameDefines.load_default()),
     )
 
-    app = ArchiveApp(campaign_menu=menu, campaign_loader=partial(_load_campaign, runtime))
+    app = ArchiveApp(campaign_menu=menu, campaign_loader=partial(_load_campaign, runtime, catalog))
     app.run()
 
 

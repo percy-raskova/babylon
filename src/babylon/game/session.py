@@ -85,6 +85,7 @@ if TYPE_CHECKING:
 __all__ = [
     "GameRuntimeStore",
     "PausePredicate",
+    "ProgressStore",
     "VaultPageSource",
     "TickAdvanceResult",
     "GameSession",
@@ -170,6 +171,25 @@ class GameRuntimeStore(TurnSink, Protocol):
 
     def get_last_committed_tick(self, session_id: UUID) -> int | None:
         """The largest tick with a committed ``tick_commit`` marker, or ``None``."""
+        ...
+
+
+class ProgressStore(Protocol):
+    """Structural seam for the client-owned ``babylon_meta.campaign`` lobby row.
+
+    Satisfied by :class:`~babylon.persistence.babylon_meta.BabylonMetaStore`'s
+    :meth:`~babylon.persistence.babylon_meta.BabylonMetaStore.record_progress`
+    without this module importing that store (the same WO-37 trick
+    :class:`GameRuntimeStore` already uses) — kept as its own narrow seam
+    rather than folded into :class:`GameRuntimeStore` because it writes a
+    DIFFERENT tier (the client-owned epistemic catalog, not the engine's
+    Ledger). Optional everywhere it is threaded through: a session with no
+    ``progress_store`` runs exactly as it did before this seam existed (unit
+    tests, and any caller with no lobby catalog to keep live).
+    """
+
+    def record_progress(self, campaign_id: UUID, *, last_tick: int) -> None:
+        """Record that ``campaign_id`` reached ``last_tick`` just now."""
         ...
 
 
@@ -297,6 +317,10 @@ class GameSession:
         :func:`vault_page_source` over its own vault root), read via
         :meth:`read_page`; ``None`` (the default) reads honestly absent for
         every subject — the pre-Unit-C2 no-vault path.
+    :param progress_store: the lobby's :class:`ProgressStore` seam
+        (typically the same ``BabylonMetaStore`` the composition root's
+        ``CampaignMenu`` already holds); ``None`` (the default) runs with no
+        lobby catalog to keep live — the pre-writeback no-op path.
     """
 
     def __init__(
@@ -313,6 +337,7 @@ class GameSession:
         tick_commit_observer: TickCommitObserver | None = None,
         pause_predicate: PausePredicate = default_pause_predicate,
         pages: VaultPageSource | None = None,
+        progress_store: ProgressStore | None = None,
     ) -> None:
         self.session_id = session_id
         self.graph = graph
@@ -325,6 +350,7 @@ class GameSession:
         self._tick_commit_observer = tick_commit_observer
         self._pause_predicate = pause_predicate
         self._pages = pages
+        self._progress_store = progress_store
 
     def read_page(self, subject: str) -> str | None:
         """Read one REAL baked vault page for this campaign (Unit C2).
@@ -391,6 +417,10 @@ class GameSession:
         unit does not invent without a verified contract) nor adapted into
         ``ChronicleEvent``s (the pilot's own documented gap: no production
         engine-event to ``ChronicleEvent`` adapter ships yet).
+
+        Also keeps the lobby's ``babylon_meta.campaign.last_tick`` live when
+        a :class:`ProgressStore` is wired — the review fix for the gap where
+        the catalog was written only at campaign creation and never again.
         """
         next_tick = self.tick + 1
         pending = self._store.get_pending_turns(self.session_id, next_tick)
@@ -419,6 +449,8 @@ class GameSession:
             self._tick_commit_observer.on_tick_committed(
                 tick=next_tick, world=world, graph=self.graph
             )
+        if self._progress_store is not None:
+            self._progress_store.record_progress(self.session_id, last_tick=next_tick)
 
         self.tick = next_tick
         paused = self._pause_predicate(events)
@@ -439,6 +471,7 @@ def create_new_campaign(
     tick_commit_observer: TickCommitObserver | None = None,
     pause_predicate: PausePredicate = default_pause_predicate,
     pages: VaultPageSource | None = None,
+    progress_store: ProgressStore | None = None,
 ) -> GameSession:
     """Boot a brand-new campaign: build the scenario, then bake tick 0.
 
@@ -461,6 +494,11 @@ def create_new_campaign(
         :data:`PausePredicate`).
     :param pages: this campaign's :data:`VaultPageSource`, read via
         :meth:`GameSession.read_page` (Unit C2's ``CampaignHandle`` seam).
+    :param progress_store: the lobby's :class:`ProgressStore` seam; when
+        given, the freshly-minted campaign's ``last_tick`` is stamped ``0``
+        immediately (the lobby row already defaults to 0 at
+        ``create_campaign``, so this is a harmless, honest sync rather than
+        a required correction).
     :returns: a fresh :class:`GameSession` at tick 0.
     """
     chosen: Scenario = scenario if scenario is not None else WayneCountyScenario()
@@ -491,6 +529,8 @@ def create_new_campaign(
         # the graph round-trip loses computed fields the freshly-built
         # WorldState still carries.
         tick_commit_observer.on_tick_committed(tick=0, world=world0, graph=graph)
+    if progress_store is not None:
+        progress_store.record_progress(created_session_id, last_tick=0)
 
     return GameSession(
         session_id=created_session_id,
@@ -504,6 +544,7 @@ def create_new_campaign(
         tick_commit_observer=tick_commit_observer,
         pause_predicate=pause_predicate,
         pages=pages,
+        progress_store=progress_store,
     )
 
 
@@ -514,6 +555,7 @@ def resume_campaign(
     tick_commit_observer: TickCommitObserver | None = None,
     pause_predicate: PausePredicate = default_pause_predicate,
     pages: VaultPageSource | None = None,
+    progress_store: ProgressStore | None = None,
 ) -> GameSession:
     """Crash-resume a campaign from its last atomically-committed tick.
 
@@ -531,6 +573,11 @@ def resume_campaign(
     :param pause_predicate: the pacing driver's autopause SEAM.
     :param pages: this campaign's :data:`VaultPageSource` (see
         :func:`create_new_campaign`'s identical parameter).
+    :param progress_store: the lobby's :class:`ProgressStore` seam; when
+        given, the lobby row is synced to the Ledger's own
+        ``last_committed_tick`` right here — the fix for a campaign whose
+        catalog row drifted (or never moved past its creation-time ``0``)
+        while the Ledger kept advancing.
     :raises ValueError: if ``session_id`` has no ``game_session`` row, or
         (a genuinely broken state — every session commits tick 0 at
         creation) has a row but no committed tick at all.
@@ -553,6 +600,9 @@ def resume_campaign(
     services = ServiceContainer.create(config=sim_config, defines=defines)
     engine = SimulationEngine(list(_DEFAULT_SYSTEMS))
 
+    if progress_store is not None:
+        progress_store.record_progress(session_id, last_tick=last_tick)
+
     return GameSession(
         session_id=session_id,
         graph=graph,
@@ -565,6 +615,7 @@ def resume_campaign(
         tick_commit_observer=tick_commit_observer,
         pause_predicate=pause_predicate,
         pages=pages,
+        progress_store=progress_store,
     )
 
 

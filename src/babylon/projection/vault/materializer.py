@@ -23,6 +23,7 @@ from typing import TYPE_CHECKING
 
 from babylon.projection.vault.git_backend import commit_page, commit_pages, init_vault
 from babylon.projection.vault.render import render_county, render_sovereign
+from babylon.projection.vault.render_community import render_community
 from babylon.projection.vault.render_industry import render_industry
 from babylon.projection.vault.render_institution import render_institution
 from babylon.projection.vault.render_key_figure import render_key_figure
@@ -31,6 +32,7 @@ from babylon.projection.vault.render_organization import render_organization
 from babylon.projection.vault.render_social_class import render_social_class
 from babylon.projection.vault.render_state import render_state
 from babylon.projection.view_models import (
+    CommunityView,
     CountyView,
     IndustryView,
     InstitutionView,
@@ -322,6 +324,35 @@ class VaultMaterializer:
             content,
             tick=tick,
             message=f"bake: social_class/{view.class_id} @ tick {tick}",
+        )
+        return self._vault_root / relative_path
+
+    def bake_community(self, view: CommunityView, *, tick: int) -> Path:
+        """Render and commit one community/hyperedge dossier page.
+
+        Same stable-ID slug ruling as :meth:`bake_county`:
+        ``community/<community_id>.md``, never a mutable display name.
+        Amendment D (read-only): baking projects and commits a page, it
+        never writes back to the graph or world — no mutation affordance
+        exists on this path.
+
+        :param view: the community projection to materialize.
+        :param tick: the simulation tick driving both the page's
+            ``verified_tick`` frontmatter stamp (via
+            :func:`~babylon.projection.vault.render_community.render_community`)
+            and the commit's sim-time timestamp (via
+            :func:`~babylon.projection.vault.git_backend.commit_page`).
+        :returns: the absolute path of the written page under the vault
+            root.
+        """
+        relative_path = f"community/{view.community_id}.md"
+        content = render_community(view, verified_tick=tick)
+        commit_page(
+            self._vault_root,
+            relative_path,
+            content,
+            tick=tick,
+            message=f"bake: community/{view.community_id} @ tick {tick}",
         )
         return self._vault_root / relative_path
 

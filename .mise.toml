@@ -891,6 +891,10 @@ run = "uv run python tools/regression_test.py generate --force --dense"
 description = "Program 24 P1 keel item 5 (WO-6): harvest the Wayne (26163) county projection fixture from a small deterministic in-process run"
 run = "uv run python tools/record_projection_fixtures.py"
 
+[tasks."archive:record-fixtures-community"]
+description = "Program 24 P2 (WO-24): harvest the SETTLER community projection fixture from a small deterministic in-process run (honestly all-absent — no scenario wires a community_memberships producer)"
+run = "uv run python tools/record_community_fixture.py"
+
 [tasks."qa:e2e-regression"]
 description = "Run headless 5-tick tri-county sim with --strict, compare like-for-like baseline (spec-064; scope pairing fixed in spec-086 T038; dense golden leg added Task 10/E2b)"
 run = """

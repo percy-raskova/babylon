@@ -74,6 +74,7 @@ class FormulaRegistry:
         - labor_aristocracy_ratio
         - is_labor_aristocracy
         - consciousness_drift
+        - imperial_rent_gap
         - acquiescence_probability
         - revolution_probability
         - crossover_threshold
@@ -92,6 +93,7 @@ class FormulaRegistry:
         registry.register("labor_aristocracy_ratio", formulas.calculate_labor_aristocracy_ratio)
         registry.register("is_labor_aristocracy", formulas.is_labor_aristocracy)
         registry.register("consciousness_drift", formulas.calculate_consciousness_drift)
+        registry.register("imperial_rent_gap", formulas.calculate_imperial_rent_gap)
 
         # Survival Calculus formulas
         registry.register("acquiescence_probability", formulas.calculate_acquiescence_probability)

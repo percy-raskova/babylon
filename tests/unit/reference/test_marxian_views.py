@@ -95,6 +95,55 @@ class TestImperialRentView:
         assert ratio == 0.161  # W_c / V_c for mining — deep below 1
 
 
+class TestFundamentalTheoremCalibration:
+    """U2 calibration check (Constitution III.12 redundant verification):
+
+    the sim-side Fundamental Theorem formulas
+    (``babylon.formulas.fundamental_theorem``,
+    ``babylon.domain.dialectics.instances.value_form.compute_fundamental_theorem``)
+    must reproduce ``view_imperial_rent``'s SQL-computed numbers exactly when
+    fed the SAME (wages_core, value_produced) inputs — two independent
+    derivations of one theorem must not disagree.
+    """
+
+    def test_mining_2023_reproduces_the_view_exactly(self, conn: sqlite3.Connection) -> None:
+        _require_view(conn, "view_imperial_rent")
+        wages_core, value_produced, imperial_rent, ratio = conn.execute(
+            "SELECT wages_core_millions, value_produced_millions,"
+            " imperial_rent_millions, labor_aristocracy_ratio FROM view_imperial_rent"
+            " WHERE naics_code = '21' AND year = 2023"
+        ).fetchone()
+
+        from babylon.formulas.fundamental_theorem import (
+            calculate_imperial_rent_gap,
+            calculate_labor_aristocracy_ratio,
+            is_labor_aristocracy,
+        )
+
+        assert calculate_imperial_rent_gap(wages_core, value_produced) == pytest.approx(
+            imperial_rent
+        )
+        assert calculate_labor_aristocracy_ratio(wages_core, value_produced) == pytest.approx(ratio)
+        assert is_labor_aristocracy(wages_core, value_produced) is (ratio > 1.0)
+
+    def test_compute_fundamental_theorem_reproduces_the_view(
+        self, conn: sqlite3.Connection
+    ) -> None:
+        _require_view(conn, "view_imperial_rent")
+        wages_core, value_produced, imperial_rent, ratio = conn.execute(
+            "SELECT wages_core_millions, value_produced_millions,"
+            " imperial_rent_millions, labor_aristocracy_ratio FROM view_imperial_rent"
+            " WHERE naics_code = '21' AND year = 2023"
+        ).fetchone()
+
+        from babylon.domain.dialectics.instances.value_form import compute_fundamental_theorem
+
+        (reading,) = compute_fundamental_theorem((("mining_21_2023", wages_core, value_produced),))
+        assert reading.phi_absolute == pytest.approx(imperial_rent)
+        assert reading.labor_aristocracy_ratio == pytest.approx(ratio)
+        assert reading.is_labor_aristocracy is (ratio > 1.0)
+
+
 class TestRentCrisisView:
     def test_repaired_definition_is_installed(self, conn: sqlite3.Connection) -> None:
         _require_view(conn, "view_rent_crisis")

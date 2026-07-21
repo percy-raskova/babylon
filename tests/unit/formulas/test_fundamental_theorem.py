@@ -3,8 +3,11 @@
 Theoretical basis (CLAUDE.md / CONSTITUTION.md): revolution in the Core is
 impossible while ``W_c > V_c`` (core wages exceed value produced) — the gap
 is Imperial Rent (Phi). ``babylon.formulas.fundamental_theorem`` implements
-three pure, dependency-light functions expressing that theorem:
+four pure, dependency-light functions expressing that theorem:
 
+- ``calculate_imperial_rent_gap``: ``Wc - Vc`` (the absolute, dollar-
+  denominated gap — matches the reference calibration surface
+  ``view_imperial_rent.imperial_rent_millions``, ``data-catalog.yaml``).
 - ``calculate_labor_aristocracy_ratio``: ``Wc / Vc``.
 - ``is_labor_aristocracy``: ``Wc > Vc`` (strict — equality is NOT
   aristocracy, the theorem's own boundary).
@@ -51,11 +54,57 @@ import pytest
 from babylon.formulas.fundamental_theorem import (
     LOSS_AVERSION_COEFFICIENT,
     calculate_consciousness_drift,
+    calculate_imperial_rent_gap,
     calculate_labor_aristocracy_ratio,
     is_labor_aristocracy,
 )
 
 pytestmark = pytest.mark.unit
+
+
+@pytest.mark.math
+class TestCalculateImperialRentGap:
+    """Phi = Wc - Vc — the absolute, dollar-denominated Fundamental Theorem gap.
+
+    Matches ``view_imperial_rent.imperial_rent_millions`` exactly
+    (``wages_core_millions - value_produced_millions``,
+    ``data-catalog.yaml``/the reference sqlite view SQL) — the calibration
+    test in ``tests/unit/reference/test_marxian_views.py`` cross-checks this
+    function against that view's real BLS-derived numbers.
+    """
+
+    def test_docstring_example_imperial_bribe(self) -> None:
+        """Wc=120, Vc=100 -> +20.0 (the imperial bribe: paid more than produced)."""
+        assert calculate_imperial_rent_gap(120.0, 100.0) == 20.0
+
+    def test_docstring_example_super_exploitation(self) -> None:
+        """Wc=60, Vc=100 -> -40.0 (super-exploited: produced more than paid)."""
+        assert calculate_imperial_rent_gap(60.0, 100.0) == -40.0
+
+    def test_equality_boundary_is_zero(self) -> None:
+        """Wc == Vc -> Phi == 0.0 exactly (no rounding: pure subtraction)."""
+        assert calculate_imperial_rent_gap(100.0, 100.0) == 0.0
+
+    def test_zero_value_produced_is_not_an_error(self) -> None:
+        """Unlike the ratio formulas, subtraction has no singularity at
+        Vc == 0 — no ValueError, just the honest gap Wc - 0 == Wc."""
+        assert calculate_imperial_rent_gap(50.0, 0.0) == 50.0
+
+    def test_both_zero_is_zero(self) -> None:
+        assert calculate_imperial_rent_gap(0.0, 0.0) == 0.0
+
+    def test_agrees_with_ratio_sign_above_one(self) -> None:
+        """ratio > 1 (labor aristocracy) <=> gap > 0 — the two forms of the
+        same theorem must never disagree on which side of the line a class
+        falls."""
+        core_wages, value_produced = 150.0, 100.0
+        assert calculate_labor_aristocracy_ratio(core_wages, value_produced) > 1.0
+        assert calculate_imperial_rent_gap(core_wages, value_produced) > 0.0
+
+    def test_agrees_with_ratio_sign_below_one(self) -> None:
+        core_wages, value_produced = 50.0, 100.0
+        assert calculate_labor_aristocracy_ratio(core_wages, value_produced) < 1.0
+        assert calculate_imperial_rent_gap(core_wages, value_produced) < 0.0
 
 
 @pytest.mark.math

@@ -13,6 +13,16 @@ wage form* — the gap between what a wage commands and what the labor it buys
 actually produced (:func:`phi_class`, the §6 contract form ``(W_c − V_c)/V_c``;
 :func:`phi_hour`, the §9.3 sorting form ``wage_hourly − τ_eff``).
 
+**The Fundamental Theorem, computed (U2).** :func:`compute_fundamental_theorem`
+bundles :func:`phi_class` with the three ``formulas.fundamental_theorem``
+functions (``calculate_imperial_rent_gap``, ``calculate_labor_aristocracy_ratio``,
+``is_labor_aristocracy``) into one :class:`ClassPhiReading` per class/county,
+reusing the SAME ``wage_value_id_pairs`` triples
+:mod:`babylon.domain.dialectics.instances.catalog` extracts for the ``wage``/
+``imperial`` oppositions — all four formulas had zero production call sites
+before this. ``babylon.engine.systems.contradiction.ContradictionSystem``
+stashes the result on the ``fundamental_theorem`` graph attribute each tick.
+
 **Re-consumed orphan.** The typed poles reuse the C1.7-orphaned
 :mod:`babylon.domain.economics.value` models: :class:`~babylon.domain.economics.value.AbstractLabor`
 (pole A, hours) ⇄ :class:`~babylon.domain.economics.value.ExchangeValue` (pole B,
@@ -88,12 +98,19 @@ from babylon.domain.economics.gamma.shadow_subsidy import DefaultShadowSubsidyCa
 from babylon.domain.economics.gamma.types import GammaBasket, GammaIII
 from babylon.domain.economics.melt.types import ClassPosition
 from babylon.domain.economics.value import AbstractLabor, ExchangeValue
+from babylon.formulas.fundamental_theorem import (
+    calculate_imperial_rent_gap,
+    calculate_labor_aristocracy_ratio,
+)
+from babylon.formulas.fundamental_theorem import is_labor_aristocracy as _is_labor_aristocracy
 from babylon.formulas.lifecycle import compute_shadow_subsidy
 
 __all__ = [
+    "ClassPhiReading",
     "PhiDecomposition",
     "ValueFormAdjunction",
     "class_position_by_phi_hour",
+    "compute_fundamental_theorem",
     "phi_class",
     "phi_domestic",
     "phi_hour",
@@ -215,6 +232,121 @@ def phi_class(w_c: float, v_c: float) -> float:
     if v_c <= 0.0:
         raise ValueError(f"v_c must be > 0 to define Φ_class, got {v_c}")
     return (w_c - v_c) / v_c
+
+
+class ClassPhiReading(BaseModel):
+    """One class/county's Fundamental Theorem reading for one tick (U2).
+
+    "The Fundamental Theorem, computed" — the Vol I value-production
+    program's U2 unit. Bundles the four formulas that name the theorem
+    (:func:`~babylon.formulas.fundamental_theorem.calculate_imperial_rent_gap`,
+    :func:`~babylon.formulas.fundamental_theorem.calculate_labor_aristocracy_ratio`,
+    :func:`~babylon.formulas.fundamental_theorem.is_labor_aristocracy`, and
+    :func:`phi_class`) — all four had zero production call sites before
+    :func:`compute_fundamental_theorem` gave them one.
+
+    Attributes:
+        entity_id: Graph node id (class/county) this reading is for.
+        w_paid: W_c — total wages paid this tick (``economic.py``'s wages
+            phase, Phase D4).
+        v_produced: V_c — productivity value captured this tick
+            (``ProductionSystem``).
+        phi_absolute: Phi = W_c − V_c in dollars — matches the reference
+            calibration surface ``view_imperial_rent.imperial_rent_millions``
+            (``data-catalog.yaml``) exactly. Always defined (subtraction has
+            no singularity).
+        phi_relative: :func:`phi_class`'s ``(W_c − V_c)/V_c`` — the §6
+            contract form. ``None`` when ``v_produced <= 0``: a class that
+            produced nothing has no defined RATIO of imperial rent
+            (Constitution III.11 — honest absence, not fabrication).
+        labor_aristocracy_ratio: ``W_c / V_c`` — matches
+            ``view_imperial_rent.labor_aristocracy_ratio`` exactly. ``None``
+            under the same ``v_produced <= 0`` guard.
+        is_labor_aristocracy: ``W_c > V_c`` (strict). ``None`` under the
+            same guard.
+
+    Example:
+        >>> ClassPhiReading(
+        ...     entity_id="C001", w_paid=120.0, v_produced=100.0,
+        ...     phi_absolute=20.0, phi_relative=0.2,
+        ...     labor_aristocracy_ratio=1.2, is_labor_aristocracy=True,
+        ... ).is_labor_aristocracy
+        True
+    """
+
+    entity_id: str = Field(
+        ..., min_length=1, description="Graph node id (class/county) this reading is for"
+    )
+    w_paid: float = Field(..., description="W_c — total wages paid this tick")
+    v_produced: float = Field(..., description="V_c — productivity value captured this tick")
+    phi_absolute: float = Field(
+        ...,
+        description="Phi = W_c - V_c in dollars (view_imperial_rent.imperial_rent_millions form)",
+    )
+    phi_relative: float | None = Field(
+        default=None, description="phi_class's (W_c - V_c)/V_c; None when v_produced <= 0"
+    )
+    labor_aristocracy_ratio: float | None = Field(
+        default=None,
+        description="W_c / V_c (view_imperial_rent.labor_aristocracy_ratio form); "
+        "None when v_produced <= 0",
+    )
+    is_labor_aristocracy: bool | None = Field(
+        default=None, description="W_c > V_c (strict); None when v_produced <= 0"
+    )
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+
+def compute_fundamental_theorem(
+    wage_value_id_pairs: tuple[tuple[str, float, float], ...],
+) -> tuple[ClassPhiReading, ...]:
+    """The Fundamental Theorem of MLM-TW, computed per class/county (U2).
+
+    Reuses the EXACT ``(node_id, w_paid, v_produced)`` triples
+    :class:`~babylon.domain.dialectics.instances.catalog.GraphInputs`
+    already extracts for the ``wage``/``imperial`` oppositions
+    (``wage_value_id_pairs``, Phase D4, ``economic.py``'s wages phase) — the
+    wage opposition IS existing Fundamental-Theorem infrastructure (Vol I
+    value-production program prompt §2f); this function performs zero new
+    graph traversal, only the theorem's own named readings over the same
+    feed.
+
+    Marx, *Capital* Vol. I; MLM-TW Fundamental Theorem (CLAUDE.md /
+    CONSTITUTION.md): revolution in the Core is impossible while
+    ``W_c > V_c`` — the gap is Imperial Rent (Phi), the material condition
+    for a labor aristocracy pacified by the imperial bribe (Ch. 25's
+    accumulation law feeds the same wage relation this reads).
+
+    Args:
+        wage_value_id_pairs: ``(node_id, w_paid, v_produced)`` per paid
+            worker-class node, verbatim from
+            ``GraphInputs.wage_value_id_pairs``.
+
+    Returns:
+        One :class:`ClassPhiReading` per input triple, in the same order.
+    """
+    readings: list[ClassPhiReading] = []
+    for entity_id, w_paid, v_produced in wage_value_id_pairs:
+        phi_relative: float | None = None
+        ratio: float | None = None
+        aristocracy: bool | None = None
+        if v_produced > 0.0:
+            phi_relative = phi_class(w_c=w_paid, v_c=v_produced)
+            ratio = calculate_labor_aristocracy_ratio(w_paid, v_produced)
+            aristocracy = _is_labor_aristocracy(w_paid, v_produced)
+        readings.append(
+            ClassPhiReading(
+                entity_id=entity_id,
+                w_paid=w_paid,
+                v_produced=v_produced,
+                phi_absolute=calculate_imperial_rent_gap(w_paid, v_produced),
+                phi_relative=phi_relative,
+                labor_aristocracy_ratio=ratio,
+                is_labor_aristocracy=aristocracy,
+            )
+        )
+    return tuple(readings)
 
 
 def phi_hour(wage_hourly: float, tau_effective: float) -> float:

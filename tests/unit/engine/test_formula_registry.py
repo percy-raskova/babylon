@@ -85,10 +85,12 @@ class TestFormulaRegistry:
     def test_default_registers_all_formulas(self) -> None:
         """default() factory creates registry with all standard formulas.
 
-        Spec 057 unquarantine: count is 23 (was 24); 'imperial_rent' formula
-        was permanently removed in commit a5f73139. Spec 057 wired the new
-        Leontief pipeline via ServiceContainer fields, NOT via FormulaRegistry,
-        so the count stays at 23 and 'imperial_rent' remains absent.
+        Spec 057 unquarantine: count was 23 (was 24 before that); 'imperial_rent'
+        formula was permanently removed in commit a5f73139. Spec 057 wired the
+        new Leontief pipeline via ServiceContainer fields, NOT via
+        FormulaRegistry, so 'imperial_rent' remains absent. U2 (Vol I
+        value-production program) adds 'imperial_rent_gap' (Phi = Wc - Vc,
+        the Fundamental Theorem's absolute form) — count is now 24.
         """
         from babylon.engine.formula_registry import FormulaRegistry
 
@@ -99,6 +101,7 @@ class TestFormulaRegistry:
             "labor_aristocracy_ratio",
             "is_labor_aristocracy",
             "consciousness_drift",
+            "imperial_rent_gap",
             "acquiescence_probability",
             "revolution_probability",
             "crossover_threshold",
@@ -115,7 +118,7 @@ class TestFormulaRegistry:
             "solidarity_amplification",  # Feature 022
         ]
 
-        assert len(formulas) == 23  # post-Spec 057
+        assert len(formulas) == 24  # post-U2 (imperial_rent_gap added)
         assert "imperial_rent" not in formulas  # moved to ServiceContainer
         for name in expected_formulas:
             assert name in formulas, f"Missing formula: {name}"

@@ -1,9 +1,14 @@
 meta:
-  version: 1.45.0
+  version: 1.46.0
   updated: '2026-07-21'
   description: Architecture Decision Records Index
   format: See individual ADR files in this directory
 decisions:
+  ADR109_vol1_u2_fundamental_theorem:
+    title: 'Vol I U2 — The Fundamental Theorem, computed: Phi = Wc - Vc per class/county via new compute_fundamental_theorem(wage_value_id_pairs) (domain/dialectics/instances/value_form.py), reusing the wage opposition''s existing (w_paid, v_produced) node-attr feed verbatim (zero new graph traversal); new formula calculate_imperial_rent_gap registered in FormulaRegistry (count 23->24), matching view_imperial_rent.imperial_rent_millions exactly (calibration test added against the live reference DB, mining/2023 row); WIRE-not-retire ruling for the three formerly-dead fundamental_theorem.py formulas + phi_class (all four now have a genuine caller); ContradictionSystem stashes the report on a new fundamental_theorem graph attribute each tick (Phase-1-shadow precedent, no WorldState field this unit); provenance.py left untouched (its labor_aristocracy_ratio call already points at the right formula; its approximate proxy extractor is a deliberate, pinned, out-of-blast-radius design choice, not a regression). calculate_consciousness_drift scope boundary recorded (out of Wc-vs-Vc scope). Full tests/unit/engine/ suite (2169 tests) green, no baseline-column surface touched.'
+    status: accepted
+    date: '2026-07-21'
+    file: ADR109_vol1_u2_fundamental_theorem.yaml
   ADR108_vol1_u1_activation_audit:
     title: 'Vol I U1 Activation audit re-verified on lane HEAD (84d8405a, post-ADR103 contract commit): every §2 dormancy claim confirmed with line-number drift only (ReserveArmySystem :72, DispossessionEventSystem :75, territory.py :212 comment unchanged, MarketScissors._swell_reserve_army :439-461 the sole activation path). Three owner design questions settled: (a) DERIVE reserve_ratio/dispossession rates from real producers (U3 accumulation loop + county-tick FRED adapters), never seed as bare scalars (Aleksandrov Test); (b) BOTH extend ReserveArmyDefines/DispossessionDefines/WorkingDayDefines in place AND author new capital_vol1.py->CapitalVolumeIDefines mirroring capital_vol3.py (ADR089) for genuinely new mechanics; (c) parity unit (U5, headless-runner wiring of create_vol1_services) is NOT shared with or closable by Vol II — ADR103 explicitly assigns it to Vol I alone. No code changed, no baseline drift, no ceremony due.'
     status: accepted

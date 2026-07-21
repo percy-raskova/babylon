@@ -32,6 +32,7 @@ from babylon.domain.dialectics.instances.catalog import GraphInputs
 from babylon.engine.context import TickContext
 from babylon.engine.services import ServiceContainer
 from babylon.engine.systems.contradiction import (
+    FUNDAMENTAL_THEOREM_ATTR,
     OPPOSITION_INTERVENTIONS_ATTR,
     ContradictionSystem,
 )
@@ -339,6 +340,55 @@ class TestGraphInputIdPairs:
         inputs = self._inputs(graph)
         assert inputs.exploitation_id_pairs == ()
         assert inputs.wage_value_id_pairs == ()
+
+
+class TestFundamentalTheoremStash:
+    """U2 (Vol I value-production program): the Fundamental Theorem, computed.
+
+    ``_step_registry`` reuses the SAME ``wage_value_id_pairs`` triples
+    ``_build_graph_inputs`` already extracts for the ``wage``/``imperial``
+    oppositions (Phase D4) — zero new graph traversal — and stashes one
+    :class:`ClassPhiReading` per paid class node on the
+    ``fundamental_theorem`` graph attribute.
+    """
+
+    def test_stash_written_for_paid_class_nodes(self) -> None:
+        graph = BabylonGraph()
+        graph.add_node("owner", wealth=30.0, w_paid=120.0, v_produced=100.0)
+        graph.add_node("worker", wealth=10.0, w_paid=60.0, v_produced=100.0)
+
+        ContradictionSystem().step(graph, ServiceContainer.create(), TickContext(tick=1))
+
+        report = graph.graph[FUNDAMENTAL_THEOREM_ATTR]
+        assert set(report.keys()) == {"owner", "worker"}
+        assert report["owner"]["phi_absolute"] == pytest.approx(20.0)
+        assert report["owner"]["is_labor_aristocracy"] is True
+        assert report["worker"]["phi_absolute"] == pytest.approx(-40.0)
+        assert report["worker"]["is_labor_aristocracy"] is False
+
+    def test_stash_omits_unpaid_nodes(self) -> None:
+        graph = BabylonGraph()
+        graph.add_node("bystander", wealth=5.0)  # no w_paid/v_produced
+
+        ContradictionSystem().step(graph, ServiceContainer.create(), TickContext(tick=1))
+
+        assert graph.graph[FUNDAMENTAL_THEOREM_ATTR] == {}
+
+    def test_stash_recomputed_fresh_each_tick(self) -> None:
+        graph = BabylonGraph()
+        graph.add_node("c1", w_paid=6.0, v_produced=5.0)
+        services = ServiceContainer.create()
+        system = ContradictionSystem()
+
+        system.step(graph, services, TickContext(tick=1))
+        first = graph.graph[FUNDAMENTAL_THEOREM_ATTR]["c1"]["phi_absolute"]
+
+        graph.update_node("c1", w_paid=9.0, v_produced=5.0)
+        system.step(graph, services, TickContext(tick=2))
+        second = graph.graph[FUNDAMENTAL_THEOREM_ATTR]["c1"]["phi_absolute"]
+
+        assert first == pytest.approx(1.0)
+        assert second == pytest.approx(4.0)
 
 
 class TestShadowPartition:

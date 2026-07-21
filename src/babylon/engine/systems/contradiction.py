@@ -47,6 +47,7 @@ from babylon.domain.dialectics.core.opposition import OppositionState, PoleReadi
 from babylon.domain.dialectics.core.regime import classify_regime
 from babylon.domain.dialectics.instances.catalog import GraphInputs
 from babylon.domain.dialectics.instances.levels import level_index_for, spatial_lattice_for_counties
+from babylon.domain.dialectics.instances.value_form import compute_fundamental_theorem
 from babylon.domain.economics.distribution.types import (
     DebtAccumulation,
     SurplusValueDistribution,
@@ -93,6 +94,16 @@ SHADOW_OPPOSITION_STATES_ATTR = "shadow_opposition_states"
 #: Graph attribute holding this tick's fixed-point regime (Phase E2):
 #: ``{"regime": <reproduction|crisis|sublation>, "principal": key, "rate": float}``.
 DIALECTICAL_REGIME_ATTR = "dialectical_regime"
+
+#: Graph attribute holding ``{entity_id: ClassPhiReading.model_dump()}`` —
+#: the Fundamental Theorem of MLM-TW, computed (U2, Vol I value-production
+#: program): Phi = W_c - V_c per class/county, read from the SAME
+#: ``wage_value_id_pairs`` triples the ``wage``/``imperial`` oppositions
+#: already consume (Phase D4) — zero new graph traversal. Written whenever
+#: the opposition registry is wired, independent of whether any opposition
+#: binding is itself live this tick (the report needs only the raw feed).
+#: See :func:`babylon.domain.dialectics.instances.value_form.compute_fundamental_theorem`.
+FUNDAMENTAL_THEOREM_ATTR = "fundamental_theorem"
 
 #: County-chain level index of the capital_labor field the regime probes.
 _COUNTY_LEVEL_INDEX = 1
@@ -213,6 +224,7 @@ class ContradictionSystem(SystemBase):
 
         previous = self._read_previous(graph)
         inputs = self._build_graph_inputs(graph, services)
+        self._stash_fundamental_theorem(graph, inputs)
         states = registry.step(inputs, tick, previous)
         if not states:
             return
@@ -427,6 +439,22 @@ class ContradictionSystem(SystemBase):
                 graph, float(services.defines.capital_vol3.credit_fragility_scale)
             ),
             financialization_index=financialization_index,
+        )
+
+    @staticmethod
+    def _stash_fundamental_theorem(graph: GraphProtocol, inputs: GraphInputs) -> None:
+        """Stash the Fundamental Theorem's per-class/county Φ report (U2).
+
+        Reuses ``inputs.wage_value_id_pairs`` verbatim — the SAME
+        ``(node_id, w_paid, v_produced)`` feed the ``wage``/``imperial``
+        oppositions already measure (Phase D4) — so this adds zero new
+        graph traversal. Independent of whether any opposition binding is
+        registered/live this tick; the report needs only the raw feed.
+        """
+        report = compute_fundamental_theorem(inputs.wage_value_id_pairs)
+        graph.set_graph_attr(
+            FUNDAMENTAL_THEOREM_ATTR,
+            {reading.entity_id: reading.model_dump() for reading in report},
         )
 
     @staticmethod

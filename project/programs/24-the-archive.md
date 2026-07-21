@@ -1,10 +1,14 @@
 # Program 24 — The Archive: wiki-as-gameplay terminal client
 
-**Ratified (partial):** 2026-07-20 — codename + number, the P4 cutover gate, §6.5
-provenance home, and git-doctrine adoption items 1–3 ruled by the BD in-session; the
-remaining P0 exit batch (stack ADR, brief §10 rulings, embedding pin) is pending spike
-evidence.
-**Status:** P0 EXECUTING (charter + spike + stack ADR drafted 2026-07-20 night).
+**Ratified:** 2026-07-20 — two BD ruling batches in-session: (1) codename + number, the
+P4 cutover gate, §6.5 provenance home, git-doctrine adoption items 1–3; (2) the P0 exit
+batch — stack ADR099 as drafted, the brief §10 sextet (below), embedding pin deferred to
+P1, next-trains order (keel next; Vol I ∥ Vol II alongside when the BD wants the engine
+train running).
+**Status:** **P0 COMPLETE** (2026-07-20 night: charter + spike 19/19 green with SVG
+evidence + ADR099 accepted). Next: **P1 The Keel.** Three Kitty eyes-on checks remain
+owner-verifiable (spike RESULTS.md commands); failure reopens only ADR099's
+graphics-lane rows.
 **Authority:** this file is the program master. Design canon (binding, incorporated by
 reference): `ai/_inbox/tui/20260719archiveinterfacedesign.md` (rulings R1–R8, synthesis
 S1–S11), `ai/_inbox/tui/20260719archivestackresearch.md` (stack evidence),
@@ -125,14 +129,24 @@ sanctioned engine train (gates green as of tonight). Heavy runs single-flight; p
 agents read-only or worktree-isolated with scoped `test:q`; fixture-first for all view
 tasks.
 
-## Open rulings (P0 exit batch)
+## P0 exit batch — RESOLVED (BD, 2026-07-20; binding)
 
-1. Brief §10 sextet: vault path/slug conventions; epistemic `/` search semantics;
-   watchlist/jumplist/breadcrumb persistence; narrator doctrine-conditioning in v1 or
-   later; `/explain` + Observatory absorption as Archive pages; map-room cell-art vs
-   raster tier assignments.
-2. Embedding model pin (per-campaign default; ADR099 records it).
-3. Stack ADR099 ratification with spike evidence.
+1. **Vault slugs:** stable IDs as paths (`county/26163.md`); readable name lives in
+   frontmatter + page title. Rename-proof, grep-friendly.
+2. **Epistemic `/` search:** FTS over org-known entities only; the unknown surfaces
+   *only* as red links from known pages — discovery is Investigate-gated; there is no
+   global oracle.
+3. **Watchlist / jumplist / breadcrumbs:** persist per-campaign in `babylon_meta` — the
+   epistemic store, never in the tick hash (fog ruling).
+4. **Narrator doctrine-conditioning:** deferred past v1 (S5 stays optional).
+5. **`/explain` + Observatory:** absorbed as Archive pages (concept cards + formula
+   terminals).
+6. **Map-room tiers:** cell-art choropleths at EA/state tiers; TGP raster for
+   county-resolution fills; braille reserved for line-work.
+
+**Embedding pin:** mechanism ratified in ADR099 (per-campaign pin + dimensionality in
+campaign metadata, never mixed); the concrete default model is named at P1 with in-env
+evidence. **Stack ADR099:** ratified as drafted.
 
 Deferred by design: multiplayer/remote (S2 makes it transport reinsertion); ssh serving;
 AAR static-site export builder choice (Sphinx custom domain, export path only);

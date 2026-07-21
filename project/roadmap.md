@@ -182,17 +182,18 @@ Spine) — every queued prompt re-picks from 100+ at its own ratification.
 2. ~~Cutover gate ratification~~ — **RULED tonight: ratified (§3).**
 3. ~~§6.5 provenance home~~ — **RULED tonight: CLAUDE.md + CI.**
 4. ~~Git doctrine adoption~~ — **RULED tonight: items 1–3 approved.**
-5. Brief §10 rulings (6 sub-items: vault slugs; epistemic search semantics;
-   watchlist/jumplist persistence; narrator doctrine-conditioning scope; `/explain` +
-   Observatory absorption; map-room tier assignments) — batched at P0 exit with spike
-   evidence.
-6. Embedding model pin (per-campaign default; local-first §10.4) — with the stack ADR.
-7. Wayne #57 brainstorm session (7 decisions in the committed brief).
-8. Vol I ∥ Vol II launch timing (gates green; interleaving rule permits it as *the* engine
-   train alongside the Archive train once the keel opens — or before the keel, serially).
-9. CCL re-derivation review, when re-derived (engine matter).
-10. Clone Sentinel re-pin + punch-list destination.
-11. Carried: R-1 hegemonic mass; shop hiring/placement; NLCD amendment; R-2…R-6 as their
+5. ~~Brief §10 rulings~~ — **RULED tonight: all six recommendations adopted, binding**
+   (recorded in the charter's P0-exit section).
+6. ~~Embedding model pin~~ — **RULED tonight: mechanism in ADR099; concrete model named
+   at P1 with in-env evidence.**
+7. ~~Stack ADR099~~ — **RATIFIED tonight as drafted** (P0 exit complete; three Kitty
+   eyes-on checks remain owner-verifiable, reopening only graphics-lane rows).
+8. ~~Next trains~~ — **RULED tonight: keel (Archive P1) next session; Vol I ∥ Vol II
+   launches as the one engine train whenever the BD wants it running.**
+9. Wayne #57 brainstorm session (7 decisions in the committed brief).
+10. CCL re-derivation review, when re-derived (engine matter).
+11. Clone Sentinel re-pin + punch-list destination.
+12. Carried: R-1 hegemonic mass; shop hiring/placement; NLCD amendment; R-2…R-6 as their
     phases arrive; Amendment T disposition (ADR072); telemetry payload-schema ADR + beta
     agreement text (Metropole parcel, post-keel).
 

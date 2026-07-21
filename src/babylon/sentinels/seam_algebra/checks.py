@@ -74,6 +74,28 @@ it by construction, never misread as a stub. The day-one witness is the
 ReproductionBalance stub (``domain/economics/tick/system/__init__.py``),
 held open as a dated exemption (design §9 item 4) citing the staged Vol II
 circulation-engine program as the actual fix's home.
+
+**Severity single-source** (T1.1 U6, design §3.2 point 3) is this family's
+fourth check, and generalizes :func:`babylon.sentinels.seam.checks.
+check_severity_vocabulary` (which only guarded ``web/game/engine_bridge.py``
+against a reappeared ``_EVENT_SEVERITY`` literal, by NAME, never by value) into
+the full three-way parity gate T1.1 promises: web severity == Archive severity
+== U1's generated table (:func:`babylon.models.event_severity.resolve_severity`),
+across all 84 :class:`~babylon.models.enums.events.EventType` members including
+the loud ``unclassified -> warning`` floor. Static by the same family
+discipline as every check above (never importing ``web.game.engine_bridge`` or
+``babylon.tui.chronicle_salience`` live — the former transitively reaches
+``babylon.engine``, which the layer-0.5 import contract forbids reaching from
+``babylon.sentinels`` at all): :func:`check_severity_single_source` confirms,
+via :func:`~babylon.sentinels._ast.referenced_names`, that both surfaces still
+genuinely reference ``resolve_severity``, and, via
+:func:`~babylon.sentinels._ast.optional_dict_literal_str_items`, that neither
+retired hand-copied literal name (``_EVENT_SEVERITY``/``EVENT_SEVERITY``) has
+reappeared in EITHER file with a value diverging from the generated table.
+Because each surface is checked independently against the SAME generated
+table, transitive equality (web == archive) follows whenever both hold, so all
+three pairwise comparisons the design names are covered without a separate
+web-vs-archive pass.
 """
 
 from __future__ import annotations
@@ -83,6 +105,8 @@ import sys
 from pathlib import Path
 from typing import Final
 
+from babylon.models.enums.events import EventType
+from babylon.models.event_severity import resolve_severity
 from babylon.sentinels._ast import (
     attribute_is_none_guard_lines,
     dict_get_call_lines,
@@ -90,6 +114,7 @@ from babylon.sentinels._ast import (
     hasattr_guard_lines,
     literal_keyword_call_lines,
     module_level_function_names,
+    optional_dict_literal_str_items,
     referenced_names,
 )
 from babylon.sentinels.base import LabelledCheck, SentinelCheckError, run_sensor
@@ -116,12 +141,24 @@ __all__ = [
     "build_live_set",
     "check_disconnected_subsystems",
     "check_gate_satisfaction",
+    "check_severity_single_source",
     "check_stub_vs_calculator",
     "main",
 ]
 
 #: Repo root (this file is ``<root>/src/babylon/sentinels/seam_algebra/checks.py``).
 _REPO_ROOT: Final[Path] = Path(__file__).resolve().parents[4]
+
+#: The two severity surfaces T1.1 U2 single-sourced onto ``resolve_severity``.
+_WEB_SEVERITY_PATH: Final[Path] = _REPO_ROOT / "web" / "game" / "engine_bridge.py"
+_ARCHIVE_SEVERITY_PATH: Final[Path] = (
+    _REPO_ROOT / "src" / "babylon" / "tui" / "chronicle_salience.py"
+)
+
+#: The two hand-copied severity dict names T1.1 U2 retired — checked in BOTH
+#: files (not just each name's "home" surface) so a mutation reintroducing
+#: either name in either file is caught regardless of which surface it lands on.
+_SEVERITY_LITERAL_NAMES: Final[tuple[str, ...]] = ("_EVENT_SEVERITY", "EVENT_SEVERITY")
 
 #: A fixed, statically-provable upper bound on the reachability fixed-point
 #: closure (Constitution "no unbounded loop" discipline) — mirrors
@@ -497,11 +534,148 @@ def check_stub_vs_calculator(
     return sorted(findings)
 
 
-#: Any non-exempt disconnected subsystem, unsatisfied construct-entry gate, OR
-#: live-consumer-fed-a-literal-over-a-registered-calculator is a live defect.
+_WHY_SEVERITY_FORKED: Final[str] = (
+    "WHY THIS FAILS: web/game/engine_bridge.py and babylon.tui.chronicle_salience used to "
+    "each carry their own hand-copied 47-entry severity dict with no mechanical guarantee "
+    "they stayed equal -- T1.1 U2 deleted both in favor of ONE generated resolver "
+    "(babylon.models.event_severity.resolve_severity). A reintroduced local severity "
+    "literal, or a classify function that no longer calls resolve_severity at all, is "
+    "exactly that silent-refork failure resurfacing -- the two surfaces (and the "
+    "render-tier / autopause behavior they drive) would drift apart again with every "
+    "green unit test unaware, until a player sees two different severities for the same "
+    "event on two different clients."
+)
+
+
+def _generated_severity_table() -> dict[str, str]:
+    """Build the real ``{EventType.value: tier}`` table for all 84 members.
+
+    Imports only :mod:`babylon.models.event_severity` (layer 0 — never the
+    engine), so calling this from a sentinel check carries no engine/web
+    weight, unlike importing either live surface would.
+
+    :returns: The generated table, one entry per :class:`~babylon.models.
+        enums.events.EventType` member — the 47 U1 classifies directly, plus
+        the 37 that resolve through the loud ``unclassified -> warning`` floor.
+    """
+    return {event_type.value: resolve_severity(event_type).tier for event_type in EventType}
+
+
+def check_severity_single_source(
+    web_path: Path = _WEB_SEVERITY_PATH,
+    archive_path: Path = _ARCHIVE_SEVERITY_PATH,
+    generated_table: dict[str, str] | None = None,
+) -> list[str]:
+    """GATING: web severity == Archive severity == U1's generated table, all 84 members.
+
+    T1.1 U6 (design §3.2 point 3) generalizes :func:`babylon.sentinels.seam.
+    checks.check_severity_vocabulary` (which only guarded the web bridge
+    against a reappeared ``_EVENT_SEVERITY`` literal, by NAME, regardless of
+    value) into the full three-way parity gate the design names. For each
+    surface (web bridge, Archive Chronicle) this check:
+
+    1. confirms, via :func:`~babylon.sentinels._ast.referenced_names`, that the
+       surface still genuinely references ``resolve_severity`` (T1.1 U2's
+       single-sourcing has not been quietly undone); and
+    2. confirms, via :func:`~babylon.sentinels._ast.optional_dict_literal_str_items`,
+       that neither retired hand-copied literal name (``_EVENT_SEVERITY`` /
+       ``EVENT_SEVERITY``) has reappeared in that file with an entry whose
+       value diverges from ``generated_table``.
+
+    Because both surfaces are checked independently against the SAME
+    ``generated_table``, transitive equality (web == archive) is implied
+    whenever both individually hold — so all three pairwise comparisons the
+    design names (web/archive, web/generated, archive/generated) are covered
+    without a separate web-vs-archive pass.
+
+    :param web_path: The web bridge source (defaults to the real
+        ``web/game/engine_bridge.py``; injectable so tests can supply a
+        deliberately-forked fixture).
+    :param archive_path: The Archive Chronicle source (defaults to the real
+        ``src/babylon/tui/chronicle_salience.py``; injectable).
+    :param generated_table: The ``{EventType.value: tier}`` reference table
+        (defaults to the real 84-member table via
+        :func:`_generated_severity_table` when ``None``; injectable so a
+        fixture table can accompany a fixture path without touching the real
+        module — covers all 84 members, including the 37 that resolve
+        through the loud unclassified floor, by construction of
+        :func:`_generated_severity_table`).
+    :returns: Sorted agent-legible finding strings (empty when both surfaces
+        are clean — no reintroduced literal diverges from the generated
+        table, and both still reference ``resolve_severity``).
+    :raises babylon.sentinels.base.SentinelCheckError: If a source file is
+        missing/unparseable, or a reintroduced literal name is assigned to
+        something other than a dict literal.
+    """
+    table = generated_table if generated_table is not None else _generated_severity_table()
+    findings: list[str] = []
+    for label, path in (("web", web_path), ("archive", archive_path)):
+        if "resolve_severity" not in referenced_names(path):
+            findings.append(
+                finding(
+                    error_class="severity-single-source",
+                    symbol="resolve_severity",
+                    file=str(path),
+                    line=0,
+                    problem=(
+                        f"the {label} surface no longer references resolve_severity at all — "
+                        "severity has been re-forked away from the single source."
+                    ),
+                    remedy=(
+                        "restore a delegation to babylon.models.event_severity.resolve_severity "
+                        f"in this surface's classify function. {_WHY_SEVERITY_FORKED}"
+                    ),
+                )
+            )
+        for literal_name in _SEVERITY_LITERAL_NAMES:
+            for key, tier in optional_dict_literal_str_items(path, literal_name).items():
+                generated_tier = table.get(key)
+                if generated_tier is None:
+                    findings.append(
+                        finding(
+                            error_class="severity-single-source",
+                            symbol=f"{literal_name}[{key!r}]",
+                            file=str(path),
+                            line=0,
+                            problem=(
+                                f"the {label} surface's local {literal_name} names key {key!r}, "
+                                "which is not a value in the generated table (not a real "
+                                "EventType.value, or the table is stale)."
+                            ),
+                            remedy=(
+                                "delete the reintroduced literal dict and resolve severity "
+                                f"through resolve_severity() instead. {_WHY_SEVERITY_FORKED}"
+                            ),
+                        )
+                    )
+                elif tier != generated_tier:
+                    findings.append(
+                        finding(
+                            error_class="severity-single-source",
+                            symbol=f"{literal_name}[{key!r}]",
+                            file=str(path),
+                            line=0,
+                            problem=(
+                                f"the {label} surface's local {literal_name}[{key!r}] = {tier!r} "
+                                f"but the generated table resolves {key!r} to {generated_tier!r} "
+                                "— single source violated."
+                            ),
+                            remedy=(
+                                "delete the reintroduced literal dict and resolve severity "
+                                f"through resolve_severity() instead. {_WHY_SEVERITY_FORKED}"
+                            ),
+                        )
+                    )
+    return sorted(findings)
+
+
+#: Any non-exempt disconnected subsystem, unsatisfied construct-entry gate,
+#: live-consumer-fed-a-literal-over-a-registered-calculator, OR a reforked
+#: severity surface is a live defect.
 _GATING_CHECKS: Final[tuple[LabelledCheck, ...]] = (
     ("disconnected-subsystem", check_disconnected_subsystems),
     ("gate-satisfaction", check_gate_satisfaction),
+    ("severity-single-source", check_severity_single_source),
     ("stub-vs-calculator", check_stub_vs_calculator),
 )
 
@@ -520,7 +694,8 @@ def _summary(advisory_count: int) -> str:
         f"entry point(s); {len(SEAM_ALGEBRA_EXEMPTIONS)} disconnected subsystem(s), "
         f"{len(GATE_SATISFACTION_EXEMPTIONS)} unsatisfied gate(s), and "
         f"{len(STUB_VS_CALCULATOR_EXEMPTIONS)} stub-vs-calculator site(s) held open "
-        "by a dated exemption."
+        "by a dated exemption; severity single-sourced across all "
+        f"{len(EventType)} EventType member(s), 0 held open (T1.1 U6)."
     )
 
 

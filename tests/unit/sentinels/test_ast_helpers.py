@@ -21,6 +21,7 @@ from babylon.sentinels._ast import (
     hasattr_guard_lines,
     literal_keyword_call_lines,
     module_level_function_names,
+    optional_dict_literal_str_items,
     parse_module,
     referenced_names,
     returned_dict_keys,
@@ -166,6 +167,62 @@ def test_frozenset_str_members_raises_on_non_literal_value(tmp_path: Path) -> No
     )
     with pytest.raises(SentinelCheckError, match="not a frozenset/set/list/tuple literal"):
         frozenset_str_members(target, "EXPECTED")
+
+
+def test_optional_dict_literal_str_items_returns_empty_when_absent(tmp_path: Path) -> None:
+    """T1.1 U6: absence of the named var is the CLEAN state (severity is
+    single-sourced), never an error — the opposite contract of
+    ``literal_dict_keys``."""
+    target = tmp_path / "m.py"
+    target.write_text("OTHER = {'a': 'b'}\n", encoding="utf-8")
+    assert optional_dict_literal_str_items(target, "_EVENT_SEVERITY") == {}
+
+
+def test_optional_dict_literal_str_items_reads_a_present_dict(tmp_path: Path) -> None:
+    target = tmp_path / "m.py"
+    target.write_text(
+        '_EVENT_SEVERITY = {"economic_crisis": "critical", "surplus_extraction": "informational"}\n',
+        encoding="utf-8",
+    )
+    assert optional_dict_literal_str_items(target, "_EVENT_SEVERITY") == {
+        "economic_crisis": "critical",
+        "surplus_extraction": "informational",
+    }
+
+
+def test_optional_dict_literal_str_items_skips_non_literal_entries(tmp_path: Path) -> None:
+    """A computed key or value (e.g. ``EventType.X.value``) is invisible to a
+    static reader — skipped, never misread as a literal."""
+    target = tmp_path / "m.py"
+    target.write_text(
+        "\n".join(
+            [
+                "_EVENT_SEVERITY = {",
+                "    EventType.ECONOMIC_CRISIS.value: 'critical',",
+                "    'pogrom': SOME_VARIABLE,",
+                "    'lockout': 'warning',",
+                "}",
+            ]
+        ),
+        encoding="utf-8",
+    )
+    assert optional_dict_literal_str_items(target, "_EVENT_SEVERITY") == {"lockout": "warning"}
+
+
+def test_optional_dict_literal_str_items_raises_on_non_dict_value(tmp_path: Path) -> None:
+    """The name IS bound, but not to a dict literal — a genuinely malformed
+    reappearance, distinct from clean absence."""
+    target = tmp_path / "m.py"
+    target.write_text("_EVENT_SEVERITY = some_function()\n", encoding="utf-8")
+    with pytest.raises(SentinelCheckError, match="not a dict literal"):
+        optional_dict_literal_str_items(target, "_EVENT_SEVERITY")
+
+
+def test_optional_dict_literal_str_items_raises_on_unparseable_source(tmp_path: Path) -> None:
+    target = tmp_path / "broken.py"
+    target.write_text("def (:\n", encoding="utf-8")
+    with pytest.raises(SentinelCheckError, match="cannot parse"):
+        optional_dict_literal_str_items(target, "_EVENT_SEVERITY")
 
 
 def test_returned_dict_keys_excludes_nested_scope_returns(tmp_path: Path) -> None:

@@ -106,6 +106,55 @@ def literal_dict_keys(path: Path, var_name: str) -> tuple[str, ...]:
     raise SentinelCheckError(f"{path}: no module-level assignment to {var_name!r} found")
 
 
+def optional_dict_literal_str_items(path: Path, var_name: str) -> dict[str, str]:
+    """Statically extract a module-level ``dict[str, str]`` literal's key:value pairs.
+
+    Unlike :func:`literal_dict_keys` (which treats an absent ``var_name`` as an
+    *error* — a missing baseline), this treats absence as the CLEAN, expected
+    state: T1.1 U6's severity single-source check calls this against the two
+    retired hand-copied severity dict names (``_EVENT_SEVERITY``/
+    ``EVENT_SEVERITY``) precisely because their absence is what "single-sourced"
+    means — only a genuine reappearance (the name IS bound, to a dict literal)
+    is a finding worth comparing against the generated table.
+
+    :param path: Source file to parse.
+    :param var_name: The assigned name to look for.
+    :returns: ``{str_key: str_value}`` for every literal-string-keyed,
+        literal-string-valued entry (a non-literal key or value is skipped,
+        mirroring :func:`literal_dict_keys`'s own "skip, don't except" stance
+        on computed keys); ``{}`` if ``var_name`` is not assigned at module
+        level at all.
+    :raises SentinelCheckError: If the file is missing/unparseable, or
+        ``var_name`` IS assigned but to something other than a dict literal
+        (a genuinely malformed reappearance, not a clean absence).
+    """
+    tree = parse_module(path)
+    for node in tree.body:
+        targets: list[ast.expr]
+        value: ast.expr | None
+        if isinstance(node, ast.Assign):
+            targets = node.targets
+            value = node.value
+        elif isinstance(node, ast.AnnAssign):
+            targets = [node.target]
+            value = node.value
+        else:
+            continue
+        if value is None or not any(isinstance(t, ast.Name) and t.id == var_name for t in targets):
+            continue
+        if not isinstance(value, ast.Dict):
+            raise SentinelCheckError(f"{path}:{var_name} is not a dict literal")
+        return {
+            k.value: v.value
+            for k, v in zip(value.keys, value.values, strict=True)
+            if isinstance(k, ast.Constant)
+            and isinstance(k.value, str)
+            and isinstance(v, ast.Constant)
+            and isinstance(v.value, str)
+        }
+    return {}
+
+
 def frozenset_str_members(path: Path, var_name: str) -> tuple[str, ...]:
     """Return the string members of a module-level ``frozenset({...})`` literal.
 

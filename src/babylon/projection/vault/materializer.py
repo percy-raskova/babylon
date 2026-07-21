@@ -24,12 +24,14 @@ from typing import TYPE_CHECKING
 from babylon.projection.vault.git_backend import commit_page, commit_pages, init_vault
 from babylon.projection.vault.render import render_county, render_sovereign
 from babylon.projection.vault.render_institution import render_institution
+from babylon.projection.vault.render_key_figure import render_key_figure
 from babylon.projection.vault.render_national import render_national
 from babylon.projection.vault.render_organization import render_organization
 from babylon.projection.vault.render_state import render_state
 from babylon.projection.view_models import (
     CountyView,
     InstitutionView,
+    KeyFigureView,
     NationalView,
     OrganizationView,
     SovereignView,
@@ -234,6 +236,34 @@ class VaultMaterializer:
             content,
             tick=tick,
             message=f"bake: sovereign/{view.sovereign_id} @ tick {tick}",
+        )
+        return self._vault_root / relative_path
+
+    def bake_key_figure(self, view: KeyFigureView, *, tick: int) -> Path:
+        """Render and commit one key-figure dossier page.
+
+        Always the honest-absence page (ADR084 — see
+        :mod:`babylon.projection.key_figure`'s module docstring): this kind
+        has no live producer, so the rendered content is the same for every
+        ``key_figure_id`` beyond the identity stamped into it.
+
+        :param view: the key-figure projection to materialize.
+        :param tick: the simulation tick driving both the page's
+            ``verified_tick`` frontmatter stamp (via
+            :func:`~babylon.projection.vault.render_key_figure.render_key_figure`)
+            and the commit's sim-time timestamp (via
+            :func:`~babylon.projection.vault.git_backend.commit_page`).
+        :returns: the absolute path of the written page under the vault
+            root.
+        """
+        relative_path = f"key_figure/{view.key_figure_id}.md"
+        content = render_key_figure(view, verified_tick=tick)
+        commit_page(
+            self._vault_root,
+            relative_path,
+            content,
+            tick=tick,
+            message=f"bake: key_figure/{view.key_figure_id} @ tick {tick}",
         )
         return self._vault_root / relative_path
 

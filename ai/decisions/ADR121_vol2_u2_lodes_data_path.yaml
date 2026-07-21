@@ -1,4 +1,4 @@
-id: ADR109
+id: ADR121
 title: >-
   Vol II Circulation program, Unit 2 (Data path): the raw hex-resolution LODES
   OD .csv.gz source (lodes_commute_matrix.py's actual read target — distinct
@@ -15,7 +15,8 @@ date: '2026-07-21'
 context: >-
   Unit 2 of ai/_inbox/vol2-circulation-engine-program-prompt.md §3, executed
   in worktree .claude/worktrees/vol2 (branch lane/vol2-circulation) on top of
-  ADR108 (U1). The program prompt's §1.3 hard gate ("strongly preferred: the
+  ADR120 (U1, renumbered from ADR108 — controller notice 2026-07-21, ADR
+  reallocation). The program prompt's §1.3 hard gate ("strongly preferred: the
   parquet reference-pipeline program has cut over") was already satisfied —
   ADR098/PR #227 merged 2026-07-20. §3's specific finding: `LODESCommuteMatrix
   Loader` (`domain/economics/lodes_commute_matrix.py`) reads raw LODES OD

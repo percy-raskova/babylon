@@ -52,7 +52,8 @@ meta:
     (2026-07-21 Vol II U1) VOL II CIRCULATION PROGRAM, UNIT 1 COMPLETE
     (worktree .claude/worktrees/vol2, branch lane/vol2-circulation, on top
     of ADR103's T1.0 contract commit 84d8405a). Activation audit +
-    §2b/§2d disposition -- ADR108. Re-verified the 2026-07-19 dormancy map
+    §2b/§2d disposition -- ADR120 (renumbered from ADR108, controller notice
+    2026-07-21 ADR reallocation). Re-verified the 2026-07-19 dormancy map
     holds on dev tip (Vol2CirculationStep's NodeType.HEX query, economic.py's
     four-key gate, postgres_initialization.py's four never-supplied LODES
     kwargs) with only line-drift; refined one fact (PairedCrossBorderEmission

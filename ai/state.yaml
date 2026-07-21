@@ -5,6 +5,74 @@ meta:
   version: "2.47.0"  # 2.28.0 lives on feature/19-emergent-class-partition (Program 19 Phase 0+1)
   updated: "2026-07-21"
   truth_status: |
+    (2026-07-21 Vol II U4) VOL II CIRCULATION PROGRAM, UNIT 4 COMPLETE (light
+    the step, ADR123). Vol2CirculationStep.step() reconciled per U1's
+    disposition (ADR120, BD ruling 7): the read/write endpoints of the
+    per-hex v vector moved off NodeType.HEX (no production code ever stamps
+    one) onto eligible NodeType.TERRITORY nodes (resolve_county_identity(node)
+    is not None, mirroring SubstrateSystem near-mechanically), bound to the
+    UNCHANGED hex-resolution matrix-vector algorithm via a new required
+    constructor kwarg hex_county_adjunction: ScaleAdjunction -- allocate()
+    at the read endpoint (county v -> hex grain), aggregate() at the write
+    endpoint (hex-grain post-state -> county v), both failing loud (KeyError)
+    on an adjunction/graph mismatch rather than fabricating a zero.
+    Boundary-register rows are unaffected (they key on NodeKind.HEX as a
+    label, not a graph node id -- ADR120's own finding, re-confirmed). New
+    persistence.hex_hydrator.read_hex_county_adjunction(runtime, session_id):
+    the real, session-scoped adjunction builder queried from hex_spatial_map,
+    uniform shares (mirrors hydrate_hex_state's own per-county-uniform
+    convention). New CirculationVConservationEvaluator
+    (conservation_audit.py) registers circulation_preserves_sum_v -- declared
+    in ConservationAuditor._DEFAULT_INVARIANTS since spec-062, never wired
+    to an evaluator until now; reads context["vol2_circulation_result"],
+    stashed by economic.py's _invoke_vol2_circulation_if_wired right after
+    calling step() (pure addition, four-key gate unchanged). All 9
+    direct-invocation test suites (matching U1's re-verified count) updated
+    for the new contract; 2 new fast unit-test files
+    (test_circulation_v_conservation_evaluator.py,
+    test_vol2_wiring.py) pin the evaluator + the stash/gate directly.
+    Verification: 13 fast DB-free scoped tests green + 9 new evaluator/
+    wiring tests green (22 total), plus test_atomicity_inheritance.py's 3/3
+    passed LIVE against this box's real Postgres (BABYLON_TEST_PG_DSN via
+    mise env) -- proving the reconciled allocate/aggregate round-trip
+    through a real BoundaryFlowRegister + transaction envelope, not just
+    in-memory. FLAGGED FINDING (real, diagnosed, NOT silently assumed
+    green): a live run of test_paired_cross_border_emission.py against real
+    national LODES data (drive symlink data/lodes -> babylon-data, a
+    PRE-EXISTING spec-063 test dependency, not this unit's) raised
+    CirculationConservationViolation, residual ~0.14% of pre_total_v --
+    matching EXACTLY the residual the pre-existing test_circulation_one_
+    tick.py docstring already flagged 2026-07-08 as a known pre-wiring
+    hazard. Root cause confirmed by reading LODESCommuteMatrixLoader.
+    _read_one_state_file: the loader's in-area/external split uses ONLY its
+    own study_area_hexes param (DETROIT_TRI_COUNTY_HEXES_RES7, an
+    independently-computed lat/lng BOUNDING-BOX envelope) -- a STRICT
+    SUPERSET of hex_spatial_map's real TIGER-polygon county coverage (this
+    unit's adjunction source). Envelope-but-uncounty hexes (water, boundary
+    slivers) get classified in-area by the loader but have no adjunction
+    entry, so their computed contribution is silently dropped before the
+    write endpoint -- the OLD suite hid this identical gap via synthetic
+    v=0 hex-node padding, a trick unavailable once reads/writes move to
+    county grain. The principled fix (derive the loader's study_area_hexes
+    FROM the adjunction) hits a real ordering problem for 3 of 5 files:
+    hex_spatial_map and the persisted LODES matrix are BOTH populated
+    inside the SAME initialize_session() call, so the adjunction can't be
+    built before the LODES hydration that needs it -- a genuine
+    postgres_initialization.py two-phase-hydration restructure (or an
+    owner ruling on envelope-but-uncounty hexes), not a "light the step"
+    fix. NOT attempted; a partial fix (2 of 5 files only) was rejected as
+    worse than none. The other 4 live-Postgres files share this exact root
+    cause by construction and were not independently re-confirmed (each
+    costs 5+ min of real drive-backed national LODES parsing -- one
+    confirmation run was judged sufficient to isolate the cause). No
+    baseline drift: no golden scenario sets vol2_step, qa:regression
+    untouched. runner.py wiring (vol2_step/simulated_year gate keys;
+    auditor.register_invariant for the new evaluator; a production
+    read_hex_county_adjunction call site) stays the coordinated cross-lane
+    follow-up -- runner.py is outside Vol II's
+    ADR103/section-10.3 room partition (ADR120's own finding). Next: U5
+    (parity), U6 (oppositions), or the runner.py coordination itself --
+    none block each other.
     (2026-07-21 Vol II U3) VOL II CIRCULATION PROGRAM, UNIT 3 COMPLETE (truth
     in the tick, ADR122). Replaced the three confirmed stubs in
     _compute_county_circulation_state: an always-balanced

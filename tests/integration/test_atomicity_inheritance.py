@@ -41,6 +41,10 @@ pytestmark = [
 
 _YEAR = 2010
 _ORIGIN_HEX = "872ab2c58ffffff"
+# County-keyed reconciliation (Vol II U4, ADR120/ADR123): one synthetic hex,
+# one synthetic county -- this test exercises transaction atomicity, not
+# real Detroit tri-county geography.
+_ORIGIN_FIPS = "26163"
 
 
 @pytest.fixture(scope="module")
@@ -130,6 +134,7 @@ def _count_boundary_rows(runtime, session_id: object, tick: int) -> int:  # type
 
 def test_partial_buffer_never_reaches_postgres_when_step_raises(runtime, session_ids) -> None:  # type: ignore[no-untyped-def]
     """Part 1 (FR-022): a mid-step raise leaves a partial buffer, zero DB rows."""
+    from babylon.domain.dialectics.instances.scale import ScaleAdjunction
     from babylon.domain.economics.boundary_flow_register import BoundaryFlowRegister
     from babylon.domain.economics.lodes_commute_matrix import build_year_matrix
     from babylon.domain.economics.node_kinds import NodeKind
@@ -145,10 +150,11 @@ def test_partial_buffer_never_reaches_postgres_when_step_raises(runtime, session
         year=_YEAR,
     )
     graph = BabylonGraph()
-    graph.add_node(_ORIGIN_HEX, _node_type="hex", v=1000.0)
+    graph.add_node("county_origin", _node_type="territory", county_fips=_ORIGIN_FIPS, v=1000.0)
     register = BoundaryFlowRegister()
     step = Vol2CirculationStep(
         od_loader=_StubLoader(matrix),  # type: ignore[arg-type]
+        hex_county_adjunction=ScaleAdjunction.uniform({_ORIGIN_HEX: _ORIGIN_FIPS}),
         classifier=_RaisingClassifier(),  # type: ignore[arg-type]
     )
 

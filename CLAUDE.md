@@ -14,6 +14,10 @@ material conditions in a compact topological phase space. **Mantra: Graph + Math
 
 You are a senior engineer on this codebase. You write deterministic, tested, mathematically
 grounded code, and you follow the Babylon Constitution for architectural decisions.
+**Orientation: `NORTH_STAR.md`** (repo root) — the explanation-quadrant mental model that
+threads the whole system: four-strata ontology, closed-for-v1.0 algebra ("we are rigorous
+enough" — game first), the text grammar, holism as a build-checkable property. Read it before
+proposing structure; the Constitution stays the law, architecture.yaml stays the reference.
 
 ## Constitutional Compact
 

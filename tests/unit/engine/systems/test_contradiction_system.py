@@ -390,6 +390,24 @@ class TestFundamentalTheoremStash:
         assert first == pytest.approx(1.0)
         assert second == pytest.approx(4.0)
 
+    def test_phi_absolute_resolved_from_the_formula_registry(self) -> None:
+        """``_stash_fundamental_theorem`` injects ``services.formulas.get(
+        "phi_absolute")`` rather than relying on
+        ``compute_fundamental_theorem``'s own direct-import default — the
+        registered formula is a genuine, hot-swappable production
+        dependency, not a registered-but-unconsumed entry (spec §6.2).
+        Proven by swapping in an obviously-different callable and checking
+        the stash reflects IT."""
+        graph = BabylonGraph()
+        graph.add_node("c1", w_paid=120.0, v_produced=100.0)
+        services = ServiceContainer.create()
+        services.formulas.register("phi_absolute", lambda w, v: 2.0 * w - v)
+
+        ContradictionSystem().step(graph, services, TickContext(tick=1))
+
+        # 2*120 - 100 = 140, NOT the real formula's 120-100=20.
+        assert graph.graph[FUNDAMENTAL_THEOREM_ATTR]["c1"]["phi_absolute"] == pytest.approx(140.0)
+
 
 class TestShadowPartition:
     """Program 19 Phase 1 (ADR070): the shadow partition node attrs + stash.

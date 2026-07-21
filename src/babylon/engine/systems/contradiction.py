@@ -224,7 +224,7 @@ class ContradictionSystem(SystemBase):
 
         previous = self._read_previous(graph)
         inputs = self._build_graph_inputs(graph, services)
-        self._stash_fundamental_theorem(graph, inputs)
+        self._stash_fundamental_theorem(graph, inputs, services)
         states = registry.step(inputs, tick, previous)
         if not states:
             return
@@ -442,7 +442,9 @@ class ContradictionSystem(SystemBase):
         )
 
     @staticmethod
-    def _stash_fundamental_theorem(graph: GraphProtocol, inputs: GraphInputs) -> None:
+    def _stash_fundamental_theorem(
+        graph: GraphProtocol, inputs: GraphInputs, services: ServicesProtocol
+    ) -> None:
         """Stash the Fundamental Theorem's per-class/county Φ report (U2).
 
         Reuses ``inputs.wage_value_id_pairs`` verbatim — the SAME
@@ -450,8 +452,18 @@ class ContradictionSystem(SystemBase):
         oppositions already measure (Phase D4) — so this adds zero new
         graph traversal. Independent of whether any opposition binding is
         registered/live this tick; the report needs only the raw feed.
+
+        Resolves ``phi_absolute`` via ``services.formulas.get(...)`` (the
+        same DI pattern ``survival.py``/``economic.py``/``community.py``/
+        ``solidarity.py`` already use) rather than
+        :func:`~babylon.domain.dialectics.instances.value_form.
+        compute_fundamental_theorem`'s own direct-import default, so the
+        registered formula has a genuine, hot-swappable production
+        consumer — closing the dead-registration gap the direct-import
+        default alone would have left (spec §6.2).
         """
-        report = compute_fundamental_theorem(inputs.wage_value_id_pairs)
+        phi_absolute_fn = services.formulas.get("phi_absolute")
+        report = compute_fundamental_theorem(inputs.wage_value_id_pairs, phi_absolute_fn)
         graph.set_graph_attr(
             FUNDAMENTAL_THEOREM_ATTR,
             {reading.entity_id: reading.model_dump() for reading in report},

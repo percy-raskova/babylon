@@ -96,14 +96,42 @@ class TestImperialRentView:
 
 
 class TestFundamentalTheoremCalibration:
-    """U2 calibration check (Constitution III.12 redundant verification):
+    """U2 live-DB calibration check (Constitution III.12 redundant verification):
 
     the sim-side Fundamental Theorem formulas
     (``babylon.formulas.fundamental_theorem``,
     ``babylon.domain.dialectics.instances.value_form.compute_fundamental_theorem``)
     must reproduce ``view_imperial_rent``'s SQL-computed numbers exactly when
-    fed the SAME (wages_core, value_produced) inputs — two independent
-    derivations of one theorem must not disagree.
+    fed the SAME (wages_core, value_produced) inputs read live off the
+    reference DB — a freshness check that the two derivations never drift
+    apart as the reference data is refreshed.
+
+    **Scope, honestly stated (adversarial re-review correction):** feeding a
+    view row's own ``wages_core``/``value_produced`` columns back through the
+    identical subtraction/division the view's SQL already performed is a
+    same-arithmetic check (Python vs SQLite on one float pair) — it catches a
+    sign/operand-order inversion, not more. It does NOT exercise
+    SIM-PRODUCED graph attrs (real ``w_paid``/``v_produced`` node attrs from
+    an actual tick); that wiring path (graph attrs ->
+    ``GraphInputs.wage_value_id_pairs`` -> ``compute_fundamental_theorem`` ->
+    the ``fundamental_theorem`` graph attribute) is pinned separately and
+    non-skippably by
+    ``tests/unit/engine/systems/test_contradiction_system.py::
+    TestFundamentalTheoremStash``.
+
+    This class is entirely reference-DB-gated (skips on the ci-data subset),
+    so III.12's redundant verification did not execute in CI at all before
+    this correction. The CI-unconditional companions — pinned, literal
+    golden values captured from these SAME two live rows, requiring no
+    ``conn``/reference DB — now live where the formulas/domain function
+    themselves are tested:
+    ``tests/unit/formulas/test_fundamental_theorem.py::
+    TestGoldenReferenceRows`` (raw formulas) and
+    ``tests/unit/dialectics/test_value_form.py::TestComputeFundamentalTheorem
+    ::test_reproduces_pinned_reference_rows`` (``compute_fundamental_theorem``)
+    — so the redundant check runs on every CI invocation, and this live-DB
+    class is purely a *freshness* check that the reference data hasn't
+    drifted out from under those pinned values.
     """
 
     def test_mining_2023_reproduces_the_view_exactly(self, conn: sqlite3.Connection) -> None:

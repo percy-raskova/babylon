@@ -74,6 +74,20 @@ production-chain rent per hour via the Leontief pipeline
 (``CountyEconomicState.phi_hour``). The :func:`phi_hour` here is the *wage
 defect* ``wage_hourly − τ_eff``. They are unrelated; do not conflate.
 
+**Second name-collision fence (U2 adversarial re-review).** The engine's
+:class:`~babylon.engine.formula_registry.FormulaRegistry` registers
+:func:`~babylon.formulas.fundamental_theorem.calculate_imperial_rent_gap`
+under the key ``"phi_absolute"``, NOT ``"imperial_rent_gap"`` — that string
+is already a LIVE, player-facing scope key
+(``web/game/engine_bridge.py``'s per-class ``imperial_rent_gap`` = ``core_wages
+- wealth`` and the economy-dashboard ``wage_flow_total - value_produced``,
+both gated via :mod:`babylon.projection.veil`'s Tier-1 registry) computed
+from a DIFFERENT feed than :func:`compute_fundamental_theorem`'s
+``(w_paid, v_produced)`` node-attr pair. Registering under the identical
+name would have been a silent parallel-Φ collision under one label; the
+registry key is ``"phi_absolute"`` to match the
+:attr:`ClassPhiReading.phi_absolute` field it fills.
+
 **Fortunati duplication flag (D0).** ``economics/shadow_labor.py`` is a
 config-lens Fortunati duplicate of the data-driven ``economics/gamma/``
 package. The gamma package is the kernel of record used here; reconciling the
@@ -91,6 +105,8 @@ See Also:
 """
 
 from __future__ import annotations
+
+from collections.abc import Callable
 
 from pydantic import BaseModel, ConfigDict, Field, computed_field
 
@@ -300,6 +316,7 @@ class ClassPhiReading(BaseModel):
 
 def compute_fundamental_theorem(
     wage_value_id_pairs: tuple[tuple[str, float, float], ...],
+    phi_absolute_fn: Callable[[float, float], float] = calculate_imperial_rent_gap,
 ) -> tuple[ClassPhiReading, ...]:
     """The Fundamental Theorem of MLM-TW, computed per class/county (U2).
 
@@ -322,6 +339,18 @@ def compute_fundamental_theorem(
         wage_value_id_pairs: ``(node_id, w_paid, v_produced)`` per paid
             worker-class node, verbatim from
             ``GraphInputs.wage_value_id_pairs``.
+        phi_absolute_fn: The ``phi_absolute`` formula, ``(w_paid,
+            v_produced) -> W_c - V_c``. Defaults to
+            :func:`~babylon.formulas.fundamental_theorem.calculate_imperial_rent_gap`
+            directly (the domain layer may not import the engine-layer
+            :class:`~babylon.engine.formula_registry.FormulaRegistry` —
+            Program 14 layering). The production caller
+            (``babylon.engine.systems.contradiction.ContradictionSystem
+            ._stash_fundamental_theorem``) injects
+            ``services.formulas.get("phi_absolute")`` instead, so the
+            registered formula is genuinely hot-swappable in production, not
+            a registered-but-unconsumed entry (spec §6.2's dead-registration
+            sentinel class).
 
     Returns:
         One :class:`ClassPhiReading` per input triple, in the same order.
@@ -340,7 +369,7 @@ def compute_fundamental_theorem(
                 entity_id=entity_id,
                 w_paid=w_paid,
                 v_produced=v_produced,
-                phi_absolute=calculate_imperial_rent_gap(w_paid, v_produced),
+                phi_absolute=phi_absolute_fn(w_paid, v_produced),
                 phi_relative=phi_relative,
                 labor_aristocracy_ratio=ratio,
                 is_labor_aristocracy=aristocracy,

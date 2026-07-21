@@ -89,8 +89,13 @@ class TestFormulaRegistry:
         formula was permanently removed in commit a5f73139. Spec 057 wired the
         new Leontief pipeline via ServiceContainer fields, NOT via
         FormulaRegistry, so 'imperial_rent' remains absent. U2 (Vol I
-        value-production program) adds 'imperial_rent_gap' (Phi = Wc - Vc,
-        the Fundamental Theorem's absolute form) — count is now 24.
+        value-production program) adds 'phi_absolute' (Phi = Wc - Vc,
+        the Fundamental Theorem's absolute form) — count is now 24. NOT
+        registered as 'imperial_rent_gap': that string is already a LIVE,
+        player-facing scope key computed from a DIFFERENT feed
+        (web/game/engine_bridge.py's core_wages - wealth); see
+        domain/dialectics/instances/value_form.py's "Second name-collision
+        fence" for the full rationale (adversarial re-review finding).
         """
         from babylon.engine.formula_registry import FormulaRegistry
 
@@ -101,7 +106,7 @@ class TestFormulaRegistry:
             "labor_aristocracy_ratio",
             "is_labor_aristocracy",
             "consciousness_drift",
-            "imperial_rent_gap",
+            "phi_absolute",
             "acquiescence_probability",
             "revolution_probability",
             "crossover_threshold",
@@ -118,7 +123,8 @@ class TestFormulaRegistry:
             "solidarity_amplification",  # Feature 022
         ]
 
-        assert len(formulas) == 24  # post-U2 (imperial_rent_gap added)
+        assert len(formulas) == 24  # post-U2 (phi_absolute added)
+        assert "imperial_rent_gap" not in formulas  # collision fence: NOT this key
         assert "imperial_rent" not in formulas  # moved to ServiceContainer
         for name in expected_formulas:
             assert name in formulas, f"Missing formula: {name}"

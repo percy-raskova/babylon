@@ -159,3 +159,62 @@ consequences: >-
   were added (the new formula and report take no new coefficients — pure
   arithmetic over already-live per-tick data), so no ``capital_vol1.py``
   work was needed for this specific unit.
+addendum_2026-07-21_adversarial_re_review: >-
+  Three findings against this decision, fixed in place (context/decision/
+  consequences above left UNCHANGED -- this addendum records what was wrong
+  and what changed, per the doc philosophy of not rewriting history):
+
+  1. NAME COLLISION (the decision's own point 2 framing implied nothing a
+  player or narrator could point to as the Fundamental Theorem, computed --
+  that was factually wrong): ``web/game/engine_bridge.py`` already exposes a
+  LIVE, player-facing ``imperial_rent_gap`` (per-class ``core_wages - wealth``
+  at :2114, economy-dashboard ``wage_flow_total - value_produced`` at :3369),
+  gated via ``projection/veil.py``'s Tier-1 registry -- a DIFFERENT feed than
+  this unit's ``(w_paid, v_produced)``. Registering the SAME string in
+  ``FormulaRegistry`` was a parallel-Phi-under-one-label collision, exactly
+  what the program prompt's "no parallel Phi" directive forbids. FIX: the
+  registry key is renamed ``"phi_absolute"`` (matches the
+  ``ClassPhiReading.phi_absolute`` field it fills); the web bridge's
+  ``imperial_rent_gap`` is untouched. See ``value_form.py``'s "Second
+  name-collision fence" docstring.
+
+  2. DEAD REGISTRY REGISTRATION: the registered ``FormulaRegistry`` entry had
+  zero ``.get(...)`` consumers -- ``compute_fundamental_theorem`` called
+  ``calculate_imperial_rent_gap`` via direct import, bypassing the registry
+  entirely, the exact "registered but never looked up" pattern program
+  prompt section 6.2 exists to catch (a genuine CALLER via direct import is
+  not the same thing as the REGISTRY ENTRY being consumed). FIX:
+  ``compute_fundamental_theorem`` gained an injectable ``phi_absolute_fn``
+  parameter (default: the direct-import formula, for non-engine callers);
+  ``ContradictionSystem._stash_fundamental_theorem`` now resolves
+  ``services.formulas.get("phi_absolute")`` and injects it -- the same DI
+  pattern ``survival.py``/``economic.py``/``community.py``/``solidarity.py``
+  already use. Proven by two hot-swap tests (an obviously-different
+  injected callable changes the stashed reading):
+  ``tests/unit/dialectics/test_value_form.py::TestComputeFundamentalTheorem
+  ::test_phi_absolute_fn_is_injectable`` and
+  ``tests/unit/engine/systems/test_contradiction_system.py::
+  TestFundamentalTheoremStash::test_phi_absolute_resolved_from_the_formula_registry``.
+
+  3. WEAK CALIBRATION TEST: ``TestFundamentalTheoremCalibration`` fed
+  ``view_imperial_rent``'s own operand columns back through the identical
+  subtraction the view's SQL already performs -- near-tautological (Python
+  vs SQLite on one float pair), and gated entirely behind the live
+  reference DB (skips on the ci-data subset), so III.12's redundant
+  verification never executed in CI. FIX: two literal, pinned golden rows
+  (mining/2023 negative-Phi, warehousing-493/2023 positive-Phi -- BOTH
+  signs, intentionally rather than by accident) captured from the same
+  view now live, unconditionally (no DB connection, no skip), in
+  ``tests/unit/formulas/test_fundamental_theorem.py::TestGoldenReferenceRows``
+  (raw formulas) and
+  ``tests/unit/dialectics/test_value_form.py::TestComputeFundamentalTheorem
+  ::test_reproduces_pinned_reference_rows`` (``compute_fundamental_theorem``).
+  The live-DB class's docstring now honestly scopes itself as a
+  *data-freshness* check, not the CI-executed redundant verification.
+
+  FormulaRegistry count is unchanged at 24 (rename only, no add/remove); no
+  baseline drift (the ``fundamental_theorem`` graph attribute remains
+  outside the fixed dense-trace/checkpoint column contract, unchanged from
+  the original decision). Full scoped suites green: test_value_form.py,
+  test_fundamental_theorem.py, test_formula_registry.py, test_services.py,
+  test_contradiction_system.py, test_marxian_views.py (157 tests).

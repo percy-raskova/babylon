@@ -108,6 +108,48 @@ class TestCalculateImperialRentGap:
 
 
 @pytest.mark.math
+class TestGoldenReferenceRows:
+    """CI-unconditional companion to
+    ``tests/unit/reference/test_marxian_views.py::
+    TestFundamentalTheoremCalibration`` (adversarial re-review correction,
+    Constitution III.12).
+
+    That class's redundant-verification is entirely gated behind the live
+    reference DB (``pytest.mark.requires_reference_db``, skipped on the
+    ci-data subset) — so it never actually ran in CI, only on a dev box with
+    the full reference DB mounted. These two rows are literal, pinned golden
+    values captured from ``view_imperial_rent`` in
+    ``data/sqlite/marxist-data-3NF.sqlite`` on 2026-07-21 (NAICS ``'21'``
+    mining and NAICS ``'493'`` warehousing, both year 2023) — no DB
+    connection, no skip, executed on every CI run regardless of
+    reference-DB presence.
+
+    Two DISTINCT rows, deliberately spanning BOTH signs of Φ: mining is
+    deep-negative (super-exploited, ratio << 1) and warehousing is positive
+    (an actual labor-aristocracy reading, ratio > 1) — the sign/
+    operand-order-inversion failure mode a single-row same-arithmetic check
+    catches only by accident is here an explicit, intentional two-case
+    assertion pinned against real BLS-derived data.
+    """
+
+    #: (wages_core_millions, value_produced_millions, imperial_rent_millions,
+    #:  labor_aristocracy_ratio) — captured 2026-07-21 from view_imperial_rent.
+    _MINING_2023 = (92189.496, 573679.598, -481490.102, 0.16069857865156292)
+    _WAREHOUSING_2023 = (114593.056, 56155.266, 58437.78999999999, 2.0406466599232207)
+
+    @pytest.mark.parametrize("golden", [_MINING_2023, _WAREHOUSING_2023])
+    def test_reproduces_the_pinned_reference_row(
+        self, golden: tuple[float, float, float, float]
+    ) -> None:
+        wages_core, value_produced, imperial_rent, ratio = golden
+        assert calculate_imperial_rent_gap(wages_core, value_produced) == pytest.approx(
+            imperial_rent
+        )
+        assert calculate_labor_aristocracy_ratio(wages_core, value_produced) == pytest.approx(ratio)
+        assert is_labor_aristocracy(wages_core, value_produced) is (ratio > 1.0)
+
+
+@pytest.mark.math
 class TestLossAversionCoefficient:
     """Pins the Kahneman-Tversky prospect-theory coefficient this module
     imports from ``GameDefines.behavioral.loss_aversion_lambda`` at import

@@ -71,7 +71,7 @@ from __future__ import annotations
 from typing import TYPE_CHECKING, Final, cast
 
 from babylon.models.enums.topology import NodeType
-from babylon.persistence.county_aggregation import (
+from babylon.projection.aggregation import (
     aggregate_consciousness_for_county,
     aggregate_survival_for_county,
 )

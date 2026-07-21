@@ -70,7 +70,7 @@ from collections.abc import Callable
 from typing import TYPE_CHECKING, Any
 
 from babylon.models.enums.topology import NodeType
-from babylon.persistence.county_aggregation import _ideology_to_ternary
+from babylon.projection.aggregation import _ideology_to_ternary
 from babylon.projection.view_models import (
     ClassComposition,
     ConsciousnessSimplex,

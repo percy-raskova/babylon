@@ -79,11 +79,10 @@ from collections.abc import Callable, Mapping, Sequence
 from typing import TYPE_CHECKING, Final
 
 from babylon.models.enums.topology import EdgeType, NodeType
-from babylon.persistence.county_aggregation import (
+from babylon.projection.aggregation import (
     aggregate_consciousness_for_county,
     aggregate_survival_for_county,
 )
-from babylon.persistence.postgres_aggregation import NationalValueAggregate
 from babylon.projection.view_models import (
     ClassComposition,
     ConsciousnessSimplex,
@@ -93,6 +92,7 @@ from babylon.projection.view_models import (
 if TYPE_CHECKING:
     from babylon.kernel.graph_protocol import GraphProtocol
     from babylon.models.world_state import WorldState
+    from babylon.persistence.postgres_aggregation import NationalValueAggregate
 
 __all__ = ["national_statblocks", "project_national"]
 

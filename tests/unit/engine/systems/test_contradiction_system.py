@@ -349,9 +349,12 @@ class TestVolumeOneProductionRatios:
             subsistence_threshold=10.0,
             active=False,
         )
-        graph.add_node(
-            "land", node_type=NodeType.TERRITORY, wealth=1000.0, subsistence_threshold=1.0
-        )
+        # `subsistence_threshold` deliberately omitted here: Territory declares no such
+        # field (vocabulary sentinel, check:vocabulary) and _wealth_subsistence_ratio's
+        # own graph.query_nodes(node_type=SOCIAL_CLASS) filter excludes this node by
+        # TYPE alone -- any attribute it carried would be irrelevant to what this test
+        # proves (a non-class node's wealth never contributes to the ratio).
+        graph.add_node("land", node_type=NodeType.TERRITORY, wealth=1000.0)
         assert self._inputs(graph).wealth_subsistence_ratio is None
 
     def test_wealth_subsistence_ratio_none_when_no_classes(self) -> None:

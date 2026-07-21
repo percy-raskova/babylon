@@ -104,7 +104,7 @@ description = "Run complexity gate (xenon) - fails if CC > 15"
 run = "poetry run xenon --max-absolute C src/"
 
 [tasks.check]
-description = "Fast CI gate: data-pathway + hygiene + ALL 13 sentinels + lint + imports + format + typecheck + unit tests"
+description = "Fast CI gate: data-pathway + hygiene + ALL 14 sentinels + lint + imports + format + typecheck + unit tests"
 depends = ["data:doctor", "check:hygiene", "check:sentinels", "lint", "lint:imports", "format", "typecheck", "test:unit"]
 
 [tasks."data:doctor"]
@@ -175,13 +175,17 @@ run = "poetry run python tools/sentinel_check.py partition --check"
 description = "Synthetic-data sentinel: every declared synthetic source's source + guard symbols exist (static gate)"
 run = "poetry run python tools/sentinel_check.py synthetic --check"
 
+[tasks."check:absence"]
+description = "Absence sentinel (task #64): every sqlite3.connect/create_engine(sqlite) site carries a cited disposition — auto-create must never mask a missing reference DB (static gate)"
+run = "poetry run python tools/sentinel_check.py absence --check"
+
 [tasks."check:sentinels"]
-description = "ALL 14 sentinels (owner ruling 2026-07-18: the whole family is fast-gate LOCALLY — the dev box has the reference DB): seam coverage vocabulary inert dangling unconsumed masked-arithmetic aggregation fog catalog partition synthetic defines-passthrough gate-coverage"
+description = "ALL 15 sentinels (owner ruling 2026-07-18: the whole family is fast-gate LOCALLY — the dev box has the reference DB): seam coverage vocabulary inert dangling unconsumed masked-arithmetic aggregation fog catalog partition synthetic defines-passthrough gate-coverage absence"
 depends = ["check:sentinels-static", "check:catalog"]
 
 [tasks."check:sentinels-static"]
-description = "The 13 static sentinels (no reference DB needed) — CI's fast-gate job runs THIS; the catalog DB-probe runs where the DB exists (locally via check:sentinels, in CI via nightly's requires_reference_db job)"
-depends = ["check:seams", "check:coverage", "check:vocabulary", "check:inert", "check:dangling", "check:unconsumed", "check:masked-arithmetic", "check:aggregation", "check:fog", "check:partition", "check:synthetic", "check:defines-passthrough", "check:gate-coverage"]
+description = "The 14 static sentinels (no reference DB needed) — CI's fast-gate job runs THIS; the catalog DB-probe runs where the DB exists (locally via check:sentinels, in CI via nightly's requires_reference_db job)"
+depends = ["check:seams", "check:coverage", "check:vocabulary", "check:inert", "check:dangling", "check:unconsumed", "check:masked-arithmetic", "check:aggregation", "check:fog", "check:partition", "check:synthetic", "check:defines-passthrough", "check:gate-coverage", "check:absence"]
 
 [tasks."check:surface"]
 description = "Sentinel: __all__ vs its pinned baseline frozenset (public-surface baseline blindness gate)"

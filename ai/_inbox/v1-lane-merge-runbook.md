@@ -116,17 +116,15 @@ REAL 30-system engine). Non-blocking, verify/file at merge:
       intent) — harmless dedupe, NOT a re-wire; (b) do NOT re-run this unit. **VOL II LANE:
       treat U5/runner-parity as SATISFIED — verify + scoped-test only, never re-touch
       `_build_economics_overrides`.**
-- [ ] **Vol I vocabulary RED (U6 self-inflicted, fix assigned in-lane 19:38)**: U6 commit
-      `40b9515a` stamps `subsistence_threshold` on a `territory` fixture node
-      (tests/unit/engine/systems/test_contradiction_system.py:352) — Territory doesn't declare
-      the field (social_class-only per U6's own design). Reds `check:vocabulary` →
-      `check:sentinels-static` → `mise run check` branch-wide. Provenance confirmed by the
-      lane (git-stash test: pre-existing at lane HEAD, not U7's). Controller ruling sent to
-      lane session ac3e4df8942d2dcb0: fix IN-LANE before ceremony (move stamp to social_class
-      or use a declared Territory field; NO EXTRA_STAMPABLE_ATTRIBUTES exemption), verify
-      check:vocabulary + both named tests + scoped contradiction-system test, commit as
-      `fix(vol1)`. **At merge: confirm the fix commit exists and check:vocabulary is green
-      before firing the Vol I merge.**
+- [x] **Vol I vocabulary RED — RESOLVED in-lane 19:43** (`c435d3a6`): U6's fixture stamped
+      `subsistence_threshold` on a `territory` node; fix dropped the fabricated attribute
+      (proven non-load-bearing — production filters by node type alone). check:vocabulary +
+      48-test file + full 15-sentinel static battery verified green by the lane. No
+      exemption added. U7 itself landed as `a80616f2` (new `check:formula-registration`
+      sentinel, counts 14→15 static; ADR113).
+- [ ] **Vol I U5 ADR is MISSING** (lane's own report, 19:43): the runner-parity unit
+      (`4627fc23`) never wrote its ADR. Write it mechanically at merge review if U8/U9
+      don't — it's the shared-unit disposition record both volumes cite (ADR103 §10.3).
 - [ ] **Baseline drift now has a NAMED cause (Vol I ceremony)**: U5 genuinely ACTIVATES
       `_compute_vol1_layer` (median_wage wage-pressure) AND `_compute_circulation_layer`
       (circulation_state) for every headless run whose `scope_fips` is non-empty (always, in

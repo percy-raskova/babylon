@@ -1,18 +1,17 @@
 """Tests for NarrativeCommissar - LLM-as-judge for narrative evaluation.
 
-TDD Red Phase: Define expected behavior before implementation.
-
-The NarrativeCommissar evaluates narrative quality using structured prompting
-to extract consistent metrics. This enables automated verification of the
-"Dialectical U-Curve" hypothesis - that narrative certainty follows a U-shape
-across economic conditions.
+Behavioral contract on the pydantic-ai structured-output transport
+(Amendment Y, ADR100): the judge runs an Agent with
+``output_type=JudgmentResult`` — schema validation happens at the SDK
+layer with a re-prompt on failure, replacing the former hand-rolled
+markdown-fence stripping and ``json.loads`` parsing.
 
 Test Classes:
     TestMetaphorFamilyEnum: Enum value validation.
     TestJudgmentResultModel: Pydantic model bounds (1-10 for metrics).
     TestNarrativeCommissarProtocol: Protocol compliance, has name property.
     TestNarrativeCommissarEvaluation: evaluate() returns JudgmentResult.
-    TestJSONExtraction: Handles markdown code blocks, plain JSON.
+    TestStructuredOutputValidation: schema retry + loud failure behavior.
 """
 
 from __future__ import annotations
@@ -21,6 +20,9 @@ from typing import TYPE_CHECKING
 
 import pytest
 from pydantic import ValidationError
+from pydantic_ai.messages import ModelMessage, ModelResponse, ToolCallPart
+from pydantic_ai.models.function import AgentInfo, FunctionModel
+from pydantic_ai.models.test import TestModel
 
 if TYPE_CHECKING:
     from babylon.intelligence.ai.judge import NarrativeCommissar
@@ -31,20 +33,21 @@ if TYPE_CHECKING:
 # =============================================================================
 
 
-@pytest.fixture
-def mock_json_response() -> str:
-    """Valid JSON response from LLM."""
-    return '{"ominousness": 7, "certainty": 8, "drama": 6, "metaphor_family": "biological"}'
+VALID_ARGS = {
+    "ominousness": 7,
+    "certainty": 8,
+    "drama": 6,
+    "metaphor_family": "biological",
+}
 
 
 @pytest.fixture
-def commissar_with_mock(mock_json_response: str) -> NarrativeCommissar:
-    """NarrativeCommissar with MockLLM returning valid JSON."""
-    from babylon.intelligence.ai import MockLLM
+def commissar_with_mock() -> NarrativeCommissar:
+    """NarrativeCommissar backed by a deterministic TestModel."""
     from babylon.intelligence.ai.judge import NarrativeCommissar
 
-    mock_llm = MockLLM(responses=[mock_json_response])
-    return NarrativeCommissar(llm=mock_llm)
+    model = TestModel(custom_output_args=VALID_ARGS)
+    return NarrativeCommissar(model_factory=lambda: model)
 
 
 # =============================================================================
@@ -125,7 +128,6 @@ class TestJudgmentResultModel:
                 metaphor_family=MetaphorFamily.NONE,
             )
 
-        # Verify the error is about ominousness
         errors = exc_info.value.errors()
         assert any("ominousness" in str(e.get("loc", ())) for e in errors)
 
@@ -148,7 +150,6 @@ class TestJudgmentResultModel:
         """certainty must be 1-10, values outside raise ValidationError."""
         from babylon.intelligence.ai.judge import JudgmentResult, MetaphorFamily
 
-        # Below minimum
         with pytest.raises(ValidationError):
             JudgmentResult(
                 ominousness=5,
@@ -157,7 +158,6 @@ class TestJudgmentResultModel:
                 metaphor_family=MetaphorFamily.NONE,
             )
 
-        # Above maximum
         with pytest.raises(ValidationError):
             JudgmentResult(
                 ominousness=5,
@@ -170,7 +170,6 @@ class TestJudgmentResultModel:
         """drama must be 1-10, values outside raise ValidationError."""
         from babylon.intelligence.ai.judge import JudgmentResult, MetaphorFamily
 
-        # Below minimum
         with pytest.raises(ValidationError):
             JudgmentResult(
                 ominousness=5,
@@ -179,7 +178,6 @@ class TestJudgmentResultModel:
                 metaphor_family=MetaphorFamily.NONE,
             )
 
-        # Above maximum
         with pytest.raises(ValidationError):
             JudgmentResult(
                 ominousness=5,
@@ -199,7 +197,6 @@ class TestJudgmentResultModel:
             metaphor_family=MetaphorFamily.NONE,
         )
 
-        # Attempting to modify should raise an error
         with pytest.raises((ValidationError, TypeError, AttributeError)):
             result.ominousness = 10  # type: ignore[misc]
 
@@ -215,22 +212,17 @@ class TestNarrativeCommissarProtocol:
 
     def test_commissar_has_name_property(self) -> None:
         """NarrativeCommissar has name property returning 'NarrativeCommissar'."""
-        from babylon.intelligence.ai import MockLLM
         from babylon.intelligence.ai.judge import NarrativeCommissar
 
-        mock_llm = MockLLM()
-        commissar = NarrativeCommissar(llm=mock_llm)
+        commissar = NarrativeCommissar(model_factory=lambda: TestModel())
 
         assert commissar.name == "NarrativeCommissar"
 
-    def test_commissar_accepts_llm_provider(self) -> None:
-        """NarrativeCommissar constructor takes LLMProvider."""
-        from babylon.intelligence.ai import MockLLM
+    def test_commissar_accepts_model_factory(self) -> None:
+        """NarrativeCommissar constructor takes a pydantic-ai ModelFactory."""
         from babylon.intelligence.ai.judge import NarrativeCommissar
 
-        mock_llm = MockLLM()
-        # Should not raise
-        commissar = NarrativeCommissar(llm=mock_llm)
+        commissar = NarrativeCommissar(model_factory=lambda: TestModel())
         assert commissar is not None
 
 
@@ -254,108 +246,145 @@ class TestNarrativeCommissarEvaluation:
         assert isinstance(result, JudgmentResult)
 
     def test_evaluate_parses_ominousness(self, commissar_with_mock: NarrativeCommissar) -> None:
-        """evaluate() correctly extracts ominousness from LLM response."""
+        """evaluate() correctly extracts ominousness from the model output."""
         result = commissar_with_mock.evaluate("Test narrative text.")
 
         assert result.ominousness == 7
 
     def test_evaluate_parses_metaphor_family(self, commissar_with_mock: NarrativeCommissar) -> None:
-        """evaluate() correctly extracts MetaphorFamily from LLM response."""
+        """evaluate() correctly extracts MetaphorFamily from the model output."""
         from babylon.intelligence.ai.judge import MetaphorFamily
 
         result = commissar_with_mock.evaluate("Test narrative text.")
 
         assert result.metaphor_family == MetaphorFamily.BIOLOGICAL
 
-    def test_evaluate_passes_text_to_llm(self) -> None:
-        """evaluate() passes the input text to the LLM provider."""
-        from babylon.intelligence.ai import MockLLM
+    def test_evaluate_passes_text_to_model(self) -> None:
+        """evaluate() passes the narrative text to the model."""
         from babylon.intelligence.ai.judge import NarrativeCommissar
 
-        json_response = '{"ominousness": 5, "certainty": 5, "drama": 5, "metaphor_family": "none"}'
-        mock_llm = MockLLM(responses=[json_response])
-        commissar = NarrativeCommissar(llm=mock_llm)
+        seen: dict[str, object] = {}
+
+        def capture(messages: list[ModelMessage], info: AgentInfo) -> ModelResponse:
+            user_parts = [
+                p for p in messages[0].parts if getattr(p, "part_kind", "") == "user-prompt"
+            ]
+            seen["prompt"] = user_parts[0].content if user_parts else None
+            return ModelResponse(parts=[ToolCallPart(info.output_tools[0].name, VALID_ARGS)])
+
+        commissar = NarrativeCommissar(model_factory=lambda: FunctionModel(capture))
 
         test_text = "The bourgeoisie trembles as their empire crumbles."
         commissar.evaluate(test_text)
 
-        # Verify the text was passed to the LLM
-        assert len(mock_llm.call_history) == 1
-        assert test_text in mock_llm.call_history[0]["prompt"]
+        assert isinstance(seen["prompt"], str)
+        assert test_text in seen["prompt"]
 
     def test_evaluate_uses_system_prompt(self) -> None:
-        """evaluate() provides a system prompt to the LLM."""
-        from babylon.intelligence.ai import MockLLM
+        """evaluate() provides the Commissar instructions to the model."""
         from babylon.intelligence.ai.judge import NarrativeCommissar
 
-        json_response = '{"ominousness": 5, "certainty": 5, "drama": 5, "metaphor_family": "none"}'
-        mock_llm = MockLLM(responses=[json_response])
-        commissar = NarrativeCommissar(llm=mock_llm)
+        seen: dict[str, object] = {}
 
+        def capture(messages: list[ModelMessage], info: AgentInfo) -> ModelResponse:
+            seen["instructions"] = info.instructions
+            return ModelResponse(parts=[ToolCallPart(info.output_tools[0].name, VALID_ARGS)])
+
+        commissar = NarrativeCommissar(model_factory=lambda: FunctionModel(capture))
         commissar.evaluate("Test text.")
 
-        # Verify system prompt was provided
-        assert mock_llm.call_history[0]["system_prompt"] is not None
+        assert isinstance(seen["instructions"], str)
+        assert "literary critic" in seen["instructions"]
+
+    def test_evaluate_uses_low_temperature(self) -> None:
+        """evaluate() pins a low sampling temperature for consistency."""
+        from babylon.intelligence.ai.judge import NarrativeCommissar
+
+        seen: dict[str, object] = {}
+
+        def capture(messages: list[ModelMessage], info: AgentInfo) -> ModelResponse:
+            seen["temperature"] = (info.model_settings or {}).get("temperature")
+            return ModelResponse(parts=[ToolCallPart(info.output_tools[0].name, VALID_ARGS)])
+
+        commissar = NarrativeCommissar(model_factory=lambda: FunctionModel(capture))
+        commissar.evaluate("Test text.")
+
+        assert seen["temperature"] == 0.3
 
 
 # =============================================================================
-# TEST CLASS: JSON Extraction
+# TEST CLASS: Structured Output Validation (replaces JSON extraction)
 # =============================================================================
 
 
 @pytest.mark.unit
-class TestJSONExtraction:
-    """Tests for JSON extraction from various LLM response formats."""
+class TestStructuredOutputValidation:
+    """Schema validation happens at the SDK layer, with retry then loud failure.
 
-    def test_extracts_json_from_markdown_block(self) -> None:
-        """Handles LLM response wrapped in ```json ... ``` block."""
-        from babylon.intelligence.ai import MockLLM
+    This replaces the retired markdown-fence/JSON-extraction tests: there is
+    no hand-rolled parsing left to test — the contract is now that invalid
+    model output is re-prompted once and a never-valid model fails loud.
+    """
+
+    def test_invalid_output_is_retried_then_succeeds(self) -> None:
+        """An out-of-bounds first answer triggers a schema retry."""
         from babylon.intelligence.ai.judge import NarrativeCommissar
 
-        markdown_response = """```json
-{"ominousness": 3, "certainty": 9, "drama": 2, "metaphor_family": "physics"}
-```"""
-        mock_llm = MockLLM(responses=[markdown_response])
-        commissar = NarrativeCommissar(llm=mock_llm)
+        calls = {"n": 0}
+
+        def flaky(messages: list[ModelMessage], info: AgentInfo) -> ModelResponse:
+            calls["n"] += 1
+            args = dict(VALID_ARGS)
+            if calls["n"] == 1:
+                args["ominousness"] = 999  # out of the 1-10 bound
+            return ModelResponse(parts=[ToolCallPart(info.output_tools[0].name, args)])
+
+        model = FunctionModel(flaky)
+        commissar = NarrativeCommissar(model_factory=lambda: model)
 
         result = commissar.evaluate("Test text.")
 
-        assert result.ominousness == 3
-        assert result.certainty == 9
+        assert calls["n"] == 2
+        assert result.ominousness == 7
 
-    def test_extracts_plain_json(self) -> None:
-        """Handles raw JSON response without markdown."""
-        from babylon.intelligence.ai import MockLLM
+    def test_never_valid_output_fails_loud(self) -> None:
+        """A model that never validates raises LLMGenerationError (LLM_001)."""
         from babylon.intelligence.ai.judge import NarrativeCommissar
+        from babylon.kernel.exceptions import LLMGenerationError
 
-        plain_response = (
-            '{"ominousness": 8, "certainty": 4, "drama": 9, "metaphor_family": "mechanical"}'
-        )
-        mock_llm = MockLLM(responses=[plain_response])
-        commissar = NarrativeCommissar(llm=mock_llm)
+        def always_invalid(messages: list[ModelMessage], info: AgentInfo) -> ModelResponse:
+            args = dict(VALID_ARGS)
+            args["ominousness"] = 999
+            return ModelResponse(parts=[ToolCallPart(info.output_tools[0].name, args)])
+
+        model = FunctionModel(always_invalid)
+        commissar = NarrativeCommissar(model_factory=lambda: model)
+
+        with pytest.raises(LLMGenerationError) as exc:
+            commissar.evaluate("Test text.")
+
+        assert exc.value.error_code == "LLM_001"
+
+    def test_invalid_metaphor_family_is_retried(self) -> None:
+        """An unknown metaphor_family string triggers a schema retry."""
+        from babylon.intelligence.ai.judge import MetaphorFamily, NarrativeCommissar
+
+        calls = {"n": 0}
+
+        def flaky(messages: list[ModelMessage], info: AgentInfo) -> ModelResponse:
+            calls["n"] += 1
+            args = dict(VALID_ARGS)
+            if calls["n"] == 1:
+                args["metaphor_family"] = "astrological"
+            return ModelResponse(parts=[ToolCallPart(info.output_tools[0].name, args)])
+
+        model = FunctionModel(flaky)
+        commissar = NarrativeCommissar(model_factory=lambda: model)
 
         result = commissar.evaluate("Test text.")
 
-        assert result.ominousness == 8
-        assert result.drama == 9
-
-    def test_handles_json_with_whitespace(self) -> None:
-        """Handles JSON with leading/trailing whitespace."""
-        from babylon.intelligence.ai import MockLLM
-        from babylon.intelligence.ai.judge import NarrativeCommissar
-
-        whitespace_response = """
-
-  {"ominousness": 6, "certainty": 6, "drama": 6, "metaphor_family": "none"}
-
-"""
-        mock_llm = MockLLM(responses=[whitespace_response])
-        commissar = NarrativeCommissar(llm=mock_llm)
-
-        result = commissar.evaluate("Test text.")
-
-        assert result.ominousness == 6
-        assert result.metaphor_family.value == "none"
+        assert calls["n"] == 2
+        assert result.metaphor_family == MetaphorFamily.BIOLOGICAL
 
 
 # =============================================================================

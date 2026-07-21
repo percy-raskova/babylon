@@ -11,9 +11,13 @@ resolver that walks the §A7.6 order of precedence:
 Design commitments, from the nix-player-channel and local-first docs:
 
 * **The seam is the wire protocol.** llama-server, Ollama, and the
-  ``babylon-api`` Worker all speak OpenAI-compatible ``/v1``; the stock
-  ``openai`` client (already in deps) is the only transport. No litellm, no
-  langchain — X.6.
+  ``babylon-api`` Worker all speak OpenAI-compatible ``/v1``. Generation
+  runs on **pydantic-ai** (Amendment Y, ADR100 — BD-ruled to pass the X.6
+  solo-developer filter: maintained upstream replacing hand-rolled
+  transport); embeddings and health probes stay on the stock ``openai``
+  client (pydantic-ai carries no embedding API). No litellm, no
+  langchain — X.6 still bars frameworks that add maintenance rather than
+  remove it.
 * **Mute is always legal** (R4). The game is fully playable and fully
   informative silent; nothing here is ever load-bearing for the sim.
 * **AI observes and narrates; the engine adjudicates** (II.5). This module
@@ -54,8 +58,13 @@ from enum import StrEnum
 from pathlib import Path
 from typing import Any, Protocol, runtime_checkable
 
-from openai import OpenAI
+from openai import AsyncOpenAI, OpenAI
 from pydantic import BaseModel, ConfigDict, Field, SecretStr
+from pydantic_ai import Agent
+from pydantic_ai.models import Model
+from pydantic_ai.models.openai import OpenAIChatModel
+from pydantic_ai.providers.openai import OpenAIProvider
+from pydantic_ai.settings import ModelSettings
 
 logger = logging.getLogger("babylon.intelligence.providers")
 
@@ -323,21 +332,45 @@ def load_settings(
 # --------------------------------------------------------------------------
 
 ClientFactory = Callable[..., Any]
-"""Signature-compatible with ``openai.OpenAI`` — injected for tests."""
+"""Signature-compatible with ``openai.OpenAI`` — injected for tests.
+
+Carries the embed/health lanes only; narration runs on pydantic-ai via
+:data:`ChatModelFactory`."""
+
+ChatModelFactory = Callable[[ProviderEndpoint], Model]
+"""Builds the pydantic-ai chat model for an endpoint — injected for tests
+(``lambda ep: FunctionModel(...)``). Called fresh per ``narrate()`` so no
+loop-bound connection pool outlives its event loop."""
 
 
 def _default_client_factory(**kwargs: Any) -> Any:
     return OpenAI(**kwargs)
 
 
+def _default_chat_model_factory(endpoint: ProviderEndpoint) -> Model:
+    client = AsyncOpenAI(
+        base_url=endpoint.base_url,
+        # Local lanes are credential-free; the openai client demands a
+        # string, so a sentinel stands in. Never a real secret.
+        api_key=endpoint.api_key.get_secret_value() if endpoint.api_key else "babylon-local",
+        timeout=endpoint.timeout_s,
+        max_retries=1,
+    )
+    return OpenAIChatModel(endpoint.chat_model, provider=OpenAIProvider(openai_client=client))
+
+
 class OpenAICompatProvider:
     """The one real implementation: any /v1-speaking endpoint, fully pinned."""
 
     def __init__(
-        self, endpoint: ProviderEndpoint, client_factory: ClientFactory | None = None
+        self,
+        endpoint: ProviderEndpoint,
+        client_factory: ClientFactory | None = None,
+        chat_model_factory: ChatModelFactory | None = None,
     ) -> None:
         self.endpoint = endpoint
         factory = client_factory or _default_client_factory
+        self._chat_model_factory = chat_model_factory or _default_chat_model_factory
         self._client = factory(
             base_url=endpoint.base_url,
             # Local lanes are credential-free; the openai client demands a
@@ -352,32 +385,26 @@ class OpenAICompatProvider:
     def narrate(
         self, system: str, prompt: str, *, max_tokens: int = 512, temperature: float = 0.7
     ) -> NarrationResult:
+        agent: Agent[None, str] = Agent(
+            self._chat_model_factory(self.endpoint), instructions=system
+        )
         try:
-            completion = self._client.chat.completions.create(
-                model=self.endpoint.chat_model,
-                messages=[
-                    {"role": "system", "content": system},
-                    {"role": "user", "content": prompt},
-                ],
-                max_tokens=max_tokens,
-                temperature=temperature,
-                stream=False,
+            result = agent.run_sync(
+                prompt,
+                model_settings=ModelSettings(max_tokens=max_tokens, temperature=temperature),
             )
-        except Exception as exc:  # transport, auth, quota — all one fate
+        except Exception as exc:  # transport, auth, quota, empty output — all one fate
+            # Empty narration arrives here too: pydantic-ai refuses empty
+            # model output (Loud Failure III.11 — nothing fabricated).
             raise ProviderUnavailable(f"{self.endpoint.kind} narrate failed: {exc}") from exc
 
-        choice = completion.choices[0] if completion.choices else None
-        text = choice.message.content if choice and choice.message else None
-        if not isinstance(text, str) or text == "":
-            # Loud Failure III.11: never fabricate prose the model didn't produce.
-            raise ProviderUnavailable(f"{self.endpoint.kind} returned empty narration")
-        usage = getattr(completion, "usage", None)
+        usage = result.usage
         return NarrationResult(
-            text=text,
+            text=result.output,
             model_pin=self.endpoint.chat_model,
             provider=self.endpoint.kind,
-            prompt_tokens=getattr(usage, "prompt_tokens", None),
-            completion_tokens=getattr(usage, "completion_tokens", None),
+            prompt_tokens=usage.input_tokens,
+            completion_tokens=usage.output_tokens,
         )
 
     def embed(self, texts: Sequence[str]) -> EmbeddingResult:

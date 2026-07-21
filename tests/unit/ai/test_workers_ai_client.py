@@ -1,11 +1,17 @@
-"""WorkersAIClient: Workers AI via AI Gateway, OpenAI-compatible (program-20)."""
+"""WorkersAIClient: Workers AI via AI Gateway on the pydantic-ai transport.
 
-from types import SimpleNamespace
-from typing import Any
+Behavioral contract (Amendment Y, ADR100): the lane's config validation,
+error taxonomy, and factory selection — exercised through the
+``ModelFactory`` seam with pydantic-ai test models, no network.
+"""
+
 from unittest.mock import MagicMock
 
 import pytest
 from openai import APIError, APITimeoutError, RateLimitError
+from pydantic_ai.messages import ModelMessage, ModelResponse, TextPart
+from pydantic_ai.models.function import AgentInfo, FunctionModel
+from pydantic_ai.models.test import TestModel
 
 from babylon.config import LLMConfig
 from babylon.intelligence.ai.llm_provider import (
@@ -16,37 +22,11 @@ from babylon.intelligence.ai.llm_provider import (
 from babylon.kernel.exceptions import LLMGenerationError
 
 
-class _FakeCompletions:
-    def __init__(self, content: str | None) -> None:
-        self._content = content
-        self.last_kwargs: dict[str, Any] | None = None
+def _raising_model(exc: Exception) -> FunctionModel:
+    def raise_it(messages: list[ModelMessage], info: AgentInfo) -> ModelResponse:
+        raise exc
 
-    def create(self, **kwargs: Any) -> Any:
-        self.last_kwargs = kwargs
-        msg = SimpleNamespace(content=self._content)
-        return SimpleNamespace(choices=[SimpleNamespace(message=msg)])
-
-
-class _RaisingCompletions:
-    """Fake completions endpoint that raises.
-
-    Mirrors how test_llm_provider.py's DeepSeekClient error-taxonomy tests
-    fake APITimeoutError/RateLimitError/APIError via a raising create().
-    """
-
-    def __init__(self, exc: Exception) -> None:
-        self._exc = exc
-
-    def create(self, **kwargs: Any) -> Any:
-        raise self._exc
-
-
-def _fake_client(content: str | None) -> Any:
-    return SimpleNamespace(chat=SimpleNamespace(completions=_FakeCompletions(content)))
-
-
-def _raising_client(exc: Exception) -> Any:
-    return SimpleNamespace(chat=SimpleNamespace(completions=_RaisingCompletions(exc)))
+    return FunctionModel(raise_it)
 
 
 @pytest.fixture(autouse=True)
@@ -56,37 +36,48 @@ def _configured(monkeypatch: pytest.MonkeyPatch) -> None:
 
 
 def test_generate_returns_content() -> None:
-    fake = _fake_client("narrated text")
-    client = WorkersAIClient(client=fake)
+    seen: dict[str, object] = {}
+
+    def capture(messages: list[ModelMessage], info: AgentInfo) -> ModelResponse:
+        seen["instructions"] = info.instructions
+        return ModelResponse(parts=[TextPart("narrated text")])
+
+    client = WorkersAIClient(model_factory=lambda: FunctionModel(capture))
     assert client.generate("prompt", system_prompt="sys") == "narrated text"
-    kwargs = fake.chat.completions.last_kwargs
-    assert kwargs["model"] == LLMConfig.WORKERS_AI_MODEL
-    assert kwargs["messages"][0] == {"role": "system", "content": "sys"}
-    assert kwargs["messages"][1] == {"role": "user", "content": "prompt"}
+    assert seen["instructions"] == "sys"
 
 
 def test_passes_temperature() -> None:
-    fake = _fake_client("ok")
-    client = WorkersAIClient(client=fake)
+    seen: dict[str, object] = {}
+
+    def capture(messages: list[ModelMessage], info: AgentInfo) -> ModelResponse:
+        seen["temperature"] = (info.model_settings or {}).get("temperature")
+        return ModelResponse(parts=[TextPart("ok")])
+
+    client = WorkersAIClient(model_factory=lambda: FunctionModel(capture))
     client.generate("prompt", temperature=0.3)
-    kwargs = fake.chat.completions.last_kwargs
-    assert kwargs["temperature"] == 0.3
+    assert seen["temperature"] == 0.3
 
 
 def test_workers_ai_client_is_llm_provider() -> None:
-    client = WorkersAIClient(client=_fake_client("x"))
+    client = WorkersAIClient(model_factory=lambda: TestModel(custom_output_text="x"))
     assert isinstance(client, LLMProvider)
 
 
 def test_empty_response_is_loud() -> None:
-    client = WorkersAIClient(client=_fake_client(None))
+    def empty(messages: list[ModelMessage], info: AgentInfo) -> ModelResponse:
+        return ModelResponse(parts=[TextPart("")])
+
+    client = WorkersAIClient(model_factory=lambda: FunctionModel(empty))
     with pytest.raises(LLMGenerationError) as exc:
         client.generate("prompt")
     assert exc.value.error_code == "LLM_001"
 
 
 def test_timeout_maps_to_llm_002() -> None:
-    client = WorkersAIClient(client=_raising_client(APITimeoutError(request=MagicMock())))
+    client = WorkersAIClient(
+        model_factory=lambda: _raising_model(APITimeoutError(request=MagicMock()))
+    )
     with pytest.raises(LLMGenerationError) as exc:
         client.generate("prompt")
     assert exc.value.error_code == "LLM_002"
@@ -96,7 +87,7 @@ def test_rate_limit_maps_to_llm_003() -> None:
     mock_response = MagicMock()
     mock_response.status_code = 429
     client = WorkersAIClient(
-        client=_raising_client(
+        model_factory=lambda: _raising_model(
             RateLimitError(message="Rate limit", response=mock_response, body=None)
         )
     )
@@ -107,7 +98,9 @@ def test_rate_limit_maps_to_llm_003() -> None:
 
 def test_api_error_maps_to_llm_001() -> None:
     client = WorkersAIClient(
-        client=_raising_client(APIError(message="Server error", request=MagicMock(), body=None))
+        model_factory=lambda: _raising_model(
+            APIError(message="Server error", request=MagicMock(), body=None)
+        )
     )
     with pytest.raises(LLMGenerationError) as exc:
         client.generate("prompt")

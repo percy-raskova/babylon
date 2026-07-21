@@ -82,9 +82,20 @@ from unittest.mock import MagicMock
 import pytest
 import yaml
 from hypothesis import HealthCheck, settings
+from pydantic_ai import models as _pydantic_ai_models
 
 if TYPE_CHECKING:
     from psycopg_pool import ConnectionPool
+
+# =============================================================================
+# LLM NETWORK GUARD (Amendment Y / ADR100)
+# =============================================================================
+# No test may ever issue a real LLM request. pydantic-ai's global guard makes
+# an accidental network-bound model run raise instead of spend/leak. Tests use
+# TestModel/FunctionModel via the ModelFactory seams; the one live-eval module
+# (test_frame_entailment's opt-in Ollama lane) speaks raw openai and is
+# untouched by this flag.
+_pydantic_ai_models.ALLOW_MODEL_REQUESTS = False
 
 # Register a Hypothesis profile for mutmut runs.
 # mutmut executes tests from a different executor context, which triggers

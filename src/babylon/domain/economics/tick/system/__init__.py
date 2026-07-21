@@ -228,7 +228,9 @@ class TickDynamicsSystem(SystemBase):
         county_states = self._compute_imperial_rent(county_states, national_params, services)
 
         # Step 4.5: Compute circulation layer (Feature 023)
-        county_states = self._compute_circulation_layer(county_states, services, year)
+        county_states = self._compute_circulation_layer(
+            county_states, prev_county_states, services, year
+        )
 
         # Step 5: Check crisis triggers (batch-within-step quarterly evaluation)
         county_states = self._check_crisis_triggers(county_states, services, tick)
@@ -1222,6 +1224,7 @@ class TickDynamicsSystem(SystemBase):
     def _compute_circulation_layer(
         self,
         county_states: dict[str, CountyEconomicState],
+        prev_county_states: dict[str, CountyEconomicState] | None,
         services: ServicesProtocol,
         year: int,
     ) -> dict[str, CountyEconomicState]:
@@ -1231,8 +1234,29 @@ class TickDynamicsSystem(SystemBase):
         Computes national circulation parameters once from FRED data, then
         applies per-county circuit/inventory/depreciation state and crisis assessment.
 
+        U3 determinism fix (2026-07-21 vol2-circulation-engine program,
+        code-review finding): real cross-tick accumulation for CircuitState
+        (advance_circuit) and DepreciationFundState (update_depreciation_fund)
+        needs the PRIOR tick's CirculationCrisisState per county. This used
+        to live in a ``self._circulation_prev_state`` instance-level cache —
+        but TickDynamicsSystem instances are engine singletons
+        (``simulation_engine._DEFAULT_SYSTEMS``) reused across separate
+        simulation runs in the same process, so that cache leaked run A's
+        final state into run B's tick 0 (Constitution: every tick produces a
+        deterministic hash). Fixed by threading ``prev_county_states``
+        explicitly through the call chain — mirroring every other
+        cross-tick field in this pipeline (``crisis_state``,
+        ``bifurcation_risk``, ...) — so continuity flows solely through the
+        graph/WorldState round trip (see
+        :func:`~babylon.domain.economics.tick.graph_bridge.read_tick_state_from_graph`,
+        fixed in lockstep to actually carry ``circulation_state`` forward),
+        never through ``self``.
+
         Args:
             county_states: Current county snapshots.
+            prev_county_states: Previous tick's county snapshots (``None`` on
+                a genuinely fresh run/graph), read for their
+                ``circulation_state`` only.
             services: ServicesProtocol with circulation data sources.
             year: Current simulation year.
 
@@ -1241,24 +1265,6 @@ class TickDynamicsSystem(SystemBase):
         """
         if services.turnover_profile_source is None:
             return county_states
-
-        # U3 (2026-07-21 vol2-circulation-engine program): real cross-tick
-        # accumulation for CircuitState (advance_circuit) and
-        # DepreciationFundState (update_depreciation_fund) needs the PRIOR
-        # tick's CirculationCrisisState per county. CountyEconomicState.
-        # circulation_state cannot supply it: _compute_county_states (the
-        # shared per-year county reconstruction, well outside this ADR103
-        # Vol II banner) does not thread circulation_state forward from
-        # prev_county_states, so every county arrives here with
-        # CirculationCrisisState.default() regardless of history — an
-        # upstream gap outside this unit's room partition. Instead this
-        # System instance carries its own cache, mirroring the
-        # already-established self._vol3_sentinel_logged convention.
-        # Lazily initialized here (rather than in __init__, likewise
-        # outside this banner) to keep the fix wholly inside the Vol II
-        # room; see _compute_county_circulation_state for reads/writes.
-        if not hasattr(self, "_circulation_prev_state"):
-            self._circulation_prev_state: dict[str, CirculationCrisisState] = {}
 
         national = self._compute_national_circulation_state(services, year)
         days_raw, days_finished, national_inventory, annual_depr, gross_inv = national
@@ -1271,9 +1277,11 @@ class TickDynamicsSystem(SystemBase):
                     "County count exceeds %d, truncating circulation layer", max_counties
                 )
                 break
+            prev_county = prev_county_states.get(fips) if prev_county_states else None
             updated[fips] = self._compute_county_circulation_state(
                 fips,
                 county,
+                prev_county,
                 services,
                 year,
                 days_raw,
@@ -1364,7 +1372,9 @@ class TickDynamicsSystem(SystemBase):
         fips: str,
         year: int,
         services: ServicesProtocol,
-    ) -> tuple[ReproductionBalance, ReproductionAnalysis, DisproportionalityCrisis | None]:
+    ) -> tuple[
+        ReproductionBalance | None, ReproductionAnalysis | None, DisproportionalityCrisis | None
+    ]:
         """Compute the real reproduction-schema assessment for one county.
 
         U3 (2026-07-21 vol2-circulation-engine program): replaces the
@@ -1382,28 +1392,22 @@ class TickDynamicsSystem(SystemBase):
         Returns:
             ``(reproduction_balance, reproduction_analysis,
             disproportionality)``. When tensor department data is
-            unavailable for this county-year, ``reproduction_balance``/
-            ``reproduction_analysis`` degrade to a documented,
-            always-balanced default (a cited exemption per the
-            stub-fed-liveness sentinel class, not a silent lie — there is
-            no real Dept I/II/III split to check) and ``disproportionality``
-            is ``None`` (Constitution III.11: honest absence of the
-            underlying data, not a fabricated assessment).
+            unavailable for this county-year, all three are ``None``
+            (Constitution III.11: honest absence of the underlying data,
+            never a fabricated assessment). A prior version of this method
+            degraded ``reproduction_balance``/``reproduction_analysis`` to
+            an always-``condition_met=True``/``sustainability=True``
+            placeholder — the exact "stub-fed liveness" bug-class this
+            program's own sentinel targets: fed to
+            :func:`~babylon.domain.economics.circulation.crisis.assess_circulation_crisis`,
+            that positive assertion silently suppressed
+            ``reproduction_crisis`` detection instead of leaving it
+            ``None`` (unknown), the way its sibling ``disproportionality``
+            already did.
         """
         departments = self._get_county_departments(fips, year, services)
         if departments is None:
-            balance = ReproductionBalance(
-                condition_met=True,
-                gap=0.0,
-                interpretation="No tensor department data for this county-year",
-            )
-            analysis = ReproductionAnalysis(
-                labor_power_demand=0.0,
-                reproduction_capacity=0.0,
-                gap=0.0,
-                sustainability=True,
-            )
-            return balance, analysis, None
+            return None, None, None
 
         dept_i, dept_ii, dept_iii = departments
         vol2_defines = services.defines.capital_vol2
@@ -1423,6 +1427,7 @@ class TickDynamicsSystem(SystemBase):
         self,
         fips: str,
         county: CountyEconomicState,
+        prev_county: CountyEconomicState | None,
         services: ServicesProtocol,
         year: int,
         days_raw: float | None,
@@ -1436,6 +1441,11 @@ class TickDynamicsSystem(SystemBase):
         Args:
             fips: 5-digit county FIPS code.
             county: Current county economic state.
+            prev_county: Previous tick's county state (``None`` on a
+                genuinely fresh run/graph or a never-before-seen county),
+                read for its ``circulation_state`` only — the sole source of
+                cross-tick continuity (U3 determinism fix; see
+                :meth:`_compute_circulation_layer`).
             services: ServicesProtocol with circulation sources.
             year: Current simulation year.
             days_raw: National raw-materials days-of-inventory (or None).
@@ -1462,11 +1472,16 @@ class TickDynamicsSystem(SystemBase):
         national_employment = 155_000_000.0
         county_share = county.employment / national_employment if county.employment > 0 else 0.0
 
-        # U3: prior tick's real CirculationCrisisState for this county, if
-        # this System instance has already computed one (see
-        # _compute_circulation_layer for why this lives on self rather than
-        # on county.circulation_state).
-        prev = self._circulation_prev_state.get(fips)
+        # U3 determinism fix: prior tick's real CirculationCrisisState for
+        # this county comes from prev_county_states (threaded explicitly
+        # through _compute_circulation_layer), never from an instance-level
+        # cache — see that method's docstring for why. total_capital > 0.0
+        # (not merely "prev_county is not None") is the genuine "has real
+        # prior circulation history" test: a bootstrap/fresh county still
+        # carries CirculationCrisisState.default() (total_capital == 0.0),
+        # which must take the initialize/construct-fresh branches below,
+        # not the advance/accumulate ones.
+        prev = prev_county.circulation_state if prev_county is not None else None
 
         # --- Circuit state: initialize once, then genuinely advance ---
         # (U3: advance_circuit was never called; every tick re-initialized
@@ -1507,12 +1522,17 @@ class TickDynamicsSystem(SystemBase):
         # Build DepreciationFundState: scale national depreciation to county,
         # then genuinely accumulate onto the prior tick's fund via
         # update_depreciation_fund (U3: previously rebuilt from scratch
-        # every tick with no cross-tick accumulation).
+        # every tick with no cross-tick accumulation). Same
+        # "real prior circulation history" gate as the circuit state above
+        # (not merely "prev is not None") — a bootstrap/fresh county's
+        # CirculationCrisisState.default() carries a zeroed depreciation_fund
+        # too, and must take the fresh-construct branch, not accumulate onto
+        # a placeholder.
         county_depr = (annual_depr_national * county_share) if annual_depr_national else 0.0
         county_repl = (gross_inv_national * county_share) if gross_inv_national else 0.0
         # Ensure annual_depreciation_flow > 0 (required by model)
         safe_depr = max(county_depr, 1.0)
-        if prev is not None:
+        if prev is not None and prev.circuit_state.total_capital > 0.0:
             depreciation = update_depreciation_fund(
                 previous=prev.depreciation_fund,
                 annual_depreciation=Currency(safe_depr),
@@ -1550,8 +1570,10 @@ class TickDynamicsSystem(SystemBase):
             latest_assessment=assessment,
         )
 
-        self._circulation_prev_state[fips] = new_circ_state
-
+        # U3 determinism fix: no instance-level cache write. new_circ_state
+        # flows back to the caller solely via the returned CountyEconomicState
+        # (below), which becomes next tick's prev_county_states through the
+        # graph/WorldState round trip — never through self.
         return county.model_copy(update={"circulation_state": new_circ_state})
 
     # === CAPITAL VOL III — financial layer (Feature 024, LANDED ADR089) ===

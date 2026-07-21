@@ -1196,7 +1196,10 @@ class CirculationCrisisAssessment(BaseModel):
         year: Calendar year.
         realization_crisis: True if realization gap exceeds threshold.
         turnover_crisis: True if turnover time is critically extended.
-        reproduction_crisis: True if reproduction balance is violated.
+        reproduction_crisis: True if reproduction balance is violated;
+            ``None`` when the underlying department data was unavailable
+            for this county-year (honest absence, U3 code-review fix —
+            never a fabricated ``False``).
         vulnerabilities: List of specific vulnerability descriptions.
 
     Example:
@@ -1218,8 +1221,13 @@ class CirculationCrisisAssessment(BaseModel):
     turnover_crisis: bool = Field(
         default=False, description="True if turnover time is critically extended"
     )
-    reproduction_crisis: bool = Field(
-        default=False, description="True if reproduction balance is violated"
+    reproduction_crisis: bool | None = Field(
+        default=None,
+        description=(
+            "True if reproduction balance is violated; None when department "
+            "data was unavailable this county-year (honest absence, never a "
+            "fabricated False)"
+        ),
     )
     vulnerabilities: list[str] = Field(
         default_factory=list, description="List of specific vulnerability descriptions"

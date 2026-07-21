@@ -45,8 +45,8 @@ def assess_circulation_crisis(
     circuit_state: CircuitState,
     turnover: TurnoverProfile,
     inventory: InventoryState,
-    reproduction_balance: ReproductionBalance,
-    reproduction_analysis: ReproductionAnalysis,
+    reproduction_balance: ReproductionBalance | None,
+    reproduction_analysis: ReproductionAnalysis | None,
 ) -> CirculationCrisisAssessment:
     """Detect all Volume II crisis types independently.
 
@@ -57,7 +57,11 @@ def assess_circulation_crisis(
     2. **Turnover crisis**: liquidity_ratio < 0.1 AND circulation_time >
        production_time means capital is stuck AND turning slowly.
     3. **Reproduction crisis**: departmental balance not met OR labor
-       reproduction unsustainable.
+       reproduction unsustainable — ``None`` (unknown), never a fabricated
+       ``False``, when the underlying department data is absent for this
+       county-year (Constitution III.11; U3 code-review fix). Realization
+       and turnover crisis detection are independent of reproduction data
+       and are still computed even when reproduction inputs are ``None``.
 
     Each crisis is assessed independently. Vulnerability strings are
     generated for specific conditions that may not map 1:1 to the
@@ -67,11 +71,15 @@ def assess_circulation_crisis(
         circuit_state: Capital composition across the three circuit forms.
         turnover: Sectoral turnover time decomposition.
         inventory: Inventory levels and health diagnosis.
-        reproduction_balance: Simple reproduction balance condition.
-        reproduction_analysis: Labor power reproduction capacity.
+        reproduction_balance: Simple reproduction balance condition, or
+            ``None`` when no department data is available this county-year.
+        reproduction_analysis: Labor power reproduction capacity, or
+            ``None`` when no department data is available this county-year.
 
     Returns:
-        CirculationCrisisAssessment with boolean flags and vulnerability list.
+        CirculationCrisisAssessment with boolean (or, for
+        ``reproduction_crisis``, optional-boolean) flags and a
+        vulnerability list.
     """
     # --- Realization crisis ---
     realization_crisis = circuit_state.commodity_overhang > COMMODITY_OVERHANG_CRISIS
@@ -82,9 +90,18 @@ def assess_circulation_crisis(
     turnover_crisis = low_liquidity and slow_circulation
 
     # --- Reproduction crisis ---
-    reproduction_crisis = (
-        not reproduction_balance.condition_met or not reproduction_analysis.sustainability
-    )
+    # None (unknown) rather than a fabricated False when either input is
+    # absent — mirrors the sibling DisproportionalityCrisis | None field on
+    # CirculationCrisisState (U3 code-review fix: a positive
+    # ReproductionBalance/Analysis placeholder here used to silently
+    # suppress this flag instead of leaving it honestly unknown).
+    reproduction_crisis: bool | None
+    if reproduction_balance is None or reproduction_analysis is None:
+        reproduction_crisis = None
+    else:
+        reproduction_crisis = (
+            not reproduction_balance.condition_met or not reproduction_analysis.sustainability
+        )
 
     # --- Vulnerability strings ---
     vulnerabilities: list[str] = []
@@ -95,7 +112,7 @@ def assess_circulation_crisis(
     if inventory.inventory_problem == InventoryDiagnosis.SUPPLY_CRISIS:
         vulnerabilities.append(_VULN_SUPPLY_CHAIN_CRISIS)
 
-    if not reproduction_analysis.sustainability:
+    if reproduction_analysis is not None and not reproduction_analysis.sustainability:
         vulnerabilities.append(_VULN_LABOR_SHORTAGE)
 
     if circuit_state.liquidity_ratio < LIQUIDITY_CRISIS_RATIO:

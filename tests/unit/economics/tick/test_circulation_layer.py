@@ -123,7 +123,7 @@ class TestReproductionRealCalculators:
         services = _make_services(tensor_registry=registry, defines=exact_share_defines)
         system = TickDynamicsSystem()
 
-        result = system._compute_circulation_layer({FIPS: _make_county()}, services, 2015)
+        result = system._compute_circulation_layer({FIPS: _make_county()}, None, services, 2015)
         circ = result[FIPS].circulation_state
 
         # Not the old hardcoded stub literal.
@@ -147,27 +147,32 @@ class TestReproductionRealCalculators:
         assert circ.latest_assessment.reproduction_crisis is False
 
     def test_honest_fallback_without_tensor_data(self) -> None:
-        """No tensor department data -> cited exemption, never a lie."""
+        """No tensor department data -> honest absence (None), never a
+        fabricated positive balance claim (U3 code-review fix)."""
         services = _make_services(tensor_registry=MockTensorRegistry({}))
         system = TickDynamicsSystem()
 
-        result = system._compute_circulation_layer({FIPS: _make_county()}, services, 2015)
+        result = system._compute_circulation_layer({FIPS: _make_county()}, None, services, 2015)
         circ = result[FIPS].circulation_state
 
         assert circ.disproportionality is None
         balance, analysis, disprop = system._compute_reproduction_state(FIPS, 2015, services)
-        assert balance.interpretation == "No tensor department data for this county-year"
-        assert balance.condition_met is True
-        assert analysis.sustainability is True
+        assert balance is None
+        assert analysis is None
         assert disprop is None
+        # The absence propagates all the way to the crisis assessment: None
+        # (unknown), never a fabricated "no crisis" claim.
+        assert circ.latest_assessment is not None
+        assert circ.latest_assessment.reproduction_crisis is None
 
     def test_no_tensor_registry_service_at_all(self) -> None:
         """tensor_registry service unwired (None) is likewise honest absence."""
         services = _make_services()
         system = TickDynamicsSystem()
 
-        balance, _analysis, disprop = system._compute_reproduction_state(FIPS, 2015, services)
-        assert balance.interpretation == "No tensor department data for this county-year"
+        balance, analysis, disprop = system._compute_reproduction_state(FIPS, 2015, services)
+        assert balance is None
+        assert analysis is None
         assert disprop is None
 
 
@@ -178,13 +183,20 @@ class TestDepreciationFundCrossTickAccumulation:
         services = _make_services()
         system = TickDynamicsSystem()
 
-        result1 = system._compute_circulation_layer({FIPS: _make_county(year=2015)}, services, 2015)
+        result1 = system._compute_circulation_layer(
+            {FIPS: _make_county(year=2015)}, None, services, 2015
+        )
         fund1 = result1[FIPS].circulation_state.depreciation_fund
         # No depreciation_data_source wired -> county_depr=0.0, safe floor=1.0.
         assert fund1.accumulated_depreciation == pytest.approx(1.0)
         assert fund1.annual_depreciation_flow == pytest.approx(1.0)
 
-        result2 = system._compute_circulation_layer({FIPS: _make_county(year=2016)}, services, 2016)
+        # prev_county_states threaded explicitly (U3 determinism fix):
+        # cross-tick continuity flows through this parameter, never
+        # through instance state.
+        result2 = system._compute_circulation_layer(
+            {FIPS: _make_county(year=2016)}, result1, services, 2016
+        )
         fund2 = result2[FIPS].circulation_state.depreciation_fund
 
         # update_depreciation_fund: new_accumulated = previous + annual.
@@ -203,7 +215,7 @@ class TestCircuitAdvancesAcrossTicks:
         system = TickDynamicsSystem()
 
         result1 = system._compute_circulation_layer(
-            {FIPS: _make_county(year=2015, capital_stock=1000.0)}, services, 2015
+            {FIPS: _make_county(year=2015, capital_stock=1000.0)}, None, services, 2015
         )
         circuit1 = result1[FIPS].circulation_state.circuit_state
         # initialize_circuit_state proportions for FALLBACK_PROFILE
@@ -217,7 +229,7 @@ class TestCircuitAdvancesAcrossTicks:
         # must come from advance_circuit(circuit1, ...), not a fresh
         # initialize_circuit_state(new capital_stock).
         result2 = system._compute_circulation_layer(
-            {FIPS: _make_county(year=2016, capital_stock=999_999.0)}, services, 2016
+            {FIPS: _make_county(year=2016, capital_stock=999_999.0)}, result1, services, 2016
         )
         circuit2 = result2[FIPS].circulation_state.circuit_state
 
@@ -235,3 +247,60 @@ class TestCircuitAdvancesAcrossTicks:
 
         # Proof this is NOT a fresh initialize_circuit_state(999_999.0, ...):
         assert circuit2.total_capital != pytest.approx(999_999.0)
+
+
+class TestNoCrossRunInstanceLeakage:
+    """U3 code-review fix (determinism, primary finding): TickDynamicsSystem
+    instances are engine singletons (``simulation_engine._DEFAULT_SYSTEMS``)
+    reused across separate simulation runs sharing one process (in-memory
+    optimization sweeps via ``step()``, batch/headless runs). Circulation
+    continuity used to live in a ``self._circulation_prev_state`` cache that
+    was never reset, so a second, unrelated run's tick 0 could read a
+    prior run's leftover state and take the advance/accumulate branch
+    instead of initialize -> a different determinism hash for the same
+    seed (Constitution: every tick produces a deterministic hash).
+
+    Cross-tick continuity now flows solely through the explicit
+    ``prev_county_states`` parameter, so a reused instance's next call with
+    ``prev_county_states=None`` (a genuinely fresh run/graph) must produce
+    results identical to a brand-new instance's first call, regardless of
+    what the reused instance computed before.
+    """
+
+    def test_second_unrelated_run_matches_fresh_instance(self) -> None:
+        tensor = _balanced_tensor()
+        registry = MockTensorRegistry({(FIPS, 2015): tensor})
+        services = _make_services(tensor_registry=registry)
+
+        reused = TickDynamicsSystem()
+        # "Run A" on `reused`: two real ticks build up genuine cross-tick
+        # circulation history (non-trivial circuit/depreciation state).
+        run_a_1 = reused._compute_circulation_layer(
+            {FIPS: _make_county(year=2015, capital_stock=1000.0)}, None, services, 2015
+        )
+        reused._compute_circulation_layer(
+            {FIPS: _make_county(year=2016, capital_stock=2000.0)}, run_a_1, services, 2016
+        )
+
+        # "Run B" on the SAME reused instance: an unrelated simulation's
+        # tick 0 -- prev_county_states=None, exactly as a fresh graph's
+        # first annual boundary presents it.
+        run_b_on_reused = reused._compute_circulation_layer(
+            {FIPS: _make_county(year=2015, capital_stock=1000.0)}, None, services, 2015
+        )
+
+        fresh = TickDynamicsSystem()
+        run_b_on_fresh = fresh._compute_circulation_layer(
+            {FIPS: _make_county(year=2015, capital_stock=1000.0)}, None, services, 2015
+        )
+
+        circ_reused = run_b_on_reused[FIPS].circulation_state
+        circ_fresh = run_b_on_fresh[FIPS].circulation_state
+        assert circ_reused.circuit_state == circ_fresh.circuit_state
+        assert circ_reused.depreciation_fund == circ_fresh.depreciation_fund
+        assert circ_reused.inventory_state == circ_fresh.inventory_state
+        assert circ_reused.latest_assessment == circ_fresh.latest_assessment
+
+        # And proof this is genuinely the tick-0/initialize path, not a
+        # leaked run-A accumulation:
+        assert circ_reused.circuit_state.total_capital == pytest.approx(1000.0)

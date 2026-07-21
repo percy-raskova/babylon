@@ -172,9 +172,9 @@ packages = [
 
 [project.urls]
 Homepage = "https://babylonrpg.com"
-Documentation = "https://github.com/bogdanscarwash/babylon#readme"
-Issues = "https://github.com/bogdanscarwash/babylon/issues"
-Source = "https://github.com/bogdanscarwash/babylon"
+Documentation = "https://github.com/percy-raskova/babylon#readme"
+Issues = "https://github.com/percy-raskova/babylon/issues"
+Source = "https://github.com/percy-raskova/babylon"
 
 [project.scripts]
 babylon = "babylon.cli:app"

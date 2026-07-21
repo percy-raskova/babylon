@@ -20,11 +20,17 @@ def _reexec_with_sealed_environment() -> None:
     (adversarial finding 3, ``ai/_inbox/PROGRAM_v1_0_0_playable_archive.md``
     spine G). The only way to pin it for a process that already exists is to
     replace that process image with a fresh interpreter that has the
-    variable pre-set: an :func:`os.execve` re-exec. It also pins the BLAS/
-    OpenMP thread caps to ``1`` — the same pin ``tests/conftest.py`` and
-    ``tests/unit/test_blas_thread_cap.py`` already enforce for the test
-    suite (deterministic FP reduction order, Constitution III.7; see the
-    dev-box-freeze history in ``CLAUDE.md``) — so a real ``babylon play``
+    variable pre-set: an :func:`os.execve` re-exec. It also pins the
+    BLAS/OpenMP/rayon thread caps to ``1`` — the same five-variable pin
+    ``tests/conftest.py`` (its ``_blas_var`` loop), ``.mise.toml``'s
+    ``[env]``, and ``flake.nix`` already enforce (deterministic FP
+    reduction order, Constitution III.7; see the dev-box-freeze history
+    in ``CLAUDE.md``). The rayon variable covers rustworkx's centrality
+    functions (``topology/graph_algorithms.py``), which parallelize via
+    rayon above their node-count threshold and run live on the tick path
+    (``ooda/attention/sparrow.py``, ``domain/bifurcation/resilience.py``,
+    ``domain/organizations/topology.py`` — W1.8, also guarded by
+    ``tests/unit/test_blas_thread_cap.py``). So a real ``babylon play``
     run gets the identical single-threaded, byte-identical arithmetic the
     test suite already proves, not just the tests.
 
@@ -55,6 +61,14 @@ def _reexec_with_sealed_environment() -> None:
         "OPENBLAS_NUM_THREADS",
         "MKL_NUM_THREADS",
         "NUMEXPR_NUM_THREADS",
+        # W1.8: rustworkx centrality parallelizes via rayon above its
+        # parallel_threshold (50 nodes) -- same per-core oversubscription
+        # and FP-reduction-order determinism hazard as the BLAS vars above.
+        # Mirrors tests/conftest.py's `_blas_var` tuple / .mise.toml [env] /
+        # flake.nix -- kept in parity by
+        # tests/unit/cli/test_launcher_reexec.py::
+        # test_launcher_thread_vars_match_canonical_pin.
+        "RAYON_NUM_THREADS",
     ):
         sealed_env[thread_var] = "1"
 

@@ -17,6 +17,7 @@ files never triggers any of this.
 
 from __future__ import annotations
 
+import ast
 import os
 import subprocess
 import sys
@@ -26,7 +27,8 @@ from pathlib import Path
 # its src/ is what the subprocess must import from -- the shared venv's
 # babylon.pth points at the *main* checkout, not this worktree (the
 # "Worktree gotcha" documented in CLAUDE.md).
-_WORKTREE_SRC = Path(__file__).resolve().parents[3] / "src"
+_WORKTREE_ROOT = Path(__file__).resolve().parents[3]
+_WORKTREE_SRC = _WORKTREE_ROOT / "src"
 
 _ENV_VARS = (
     "BABYLON_ENV_SEALED",
@@ -35,7 +37,36 @@ _ENV_VARS = (
     "OPENBLAS_NUM_THREADS",
     "MKL_NUM_THREADS",
     "NUMEXPR_NUM_THREADS",
+    # W1.8: rustworkx centrality (graph_algorithms.py) parallelizes via rayon
+    # on the tick path -- must match tests/conftest.py's `_blas_var` pin
+    # (cross-checked dynamically below, not just listed here).
+    "RAYON_NUM_THREADS",
 )
+
+
+def _extract_for_loop_tuple_strings(source: str, loop_var_name: str) -> frozenset[str]:
+    """Extract the string literals of a ``for <loop_var_name> in (...):`` tuple.
+
+    Walks the AST rather than regexing the text, so the extraction survives
+    comment reflows and stays exact about which literal tuple is inspected.
+    Raises if no such loop is found, so a rename anywhere fails loudly instead
+    of silently comparing against an empty set.
+    """
+    tree = ast.parse(source)
+    for node in ast.walk(tree):
+        if (
+            isinstance(node, ast.For)
+            and isinstance(node.target, ast.Name)
+            and node.target.id == loop_var_name
+            and isinstance(node.iter, ast.Tuple)
+        ):
+            return frozenset(
+                elt.value
+                for elt in node.iter.elts
+                if isinstance(elt, ast.Constant) and isinstance(elt.value, str)
+            )
+    raise AssertionError(f"no `for {loop_var_name} in (...)` loop found in source")
+
 
 # Appends one line to $REEXEC_MARKER_FILE every time this script body runs,
 # then imports babylon.cli (which may or may not re-exec) and prints the
@@ -94,6 +125,7 @@ def test_unsealed_process_reexecs_exactly_once_and_seals_determinism_env(
     assert parsed["OPENBLAS_NUM_THREADS"] == "1"
     assert parsed["MKL_NUM_THREADS"] == "1"
     assert parsed["NUMEXPR_NUM_THREADS"] == "1"
+    assert parsed["RAYON_NUM_THREADS"] == "1"
 
     # Exactly one re-exec: the script body ran twice (once unsealed, once
     # sealed) -- never once (no re-exec happened) and never 3+ (a loop).
@@ -127,3 +159,27 @@ def test_import_inside_pytest_process_never_reexecs() -> None:
     import babylon.cli  # noqa: F401 -- import-for-side-effect is the point
 
     assert os.environ.get("BABYLON_ENV_SEALED") != "1"
+
+
+def test_launcher_thread_vars_match_canonical_pin() -> None:
+    """The launcher's sealed thread-var set must equal the canonical pin.
+
+    ``tests/conftest.py``'s ``_blas_var`` loop (mirrored in ``.mise.toml``
+    ``[env]`` and ``flake.nix``) is the canonical BLAS/rayon thread-cap pin --
+    see ``tests/unit/test_blas_thread_cap.py``. Comparing hardcoded literals on
+    both sides would pass tautologically even if the two drifted (exactly how
+    the launcher silently dropped ``RAYON_NUM_THREADS`` while conftest/mise/
+    flake all carried it). Parsing both files' actual loop tuples via AST ties
+    this assertion to the real production tuple in ``babylon.cli``, not a
+    hand-copied stand-in, so any future addition to one side without the other
+    fails loudly here instead of only showing up as a runtime determinism bug.
+    """
+    conftest_source = (_WORKTREE_ROOT / "tests" / "conftest.py").read_text(encoding="utf-8")
+    canonical_pin = _extract_for_loop_tuple_strings(conftest_source, "_blas_var")
+
+    launcher_source = (_WORKTREE_SRC / "babylon" / "cli" / "__init__.py").read_text(
+        encoding="utf-8"
+    )
+    launcher_thread_vars = _extract_for_loop_tuple_strings(launcher_source, "thread_var")
+
+    assert launcher_thread_vars == canonical_pin

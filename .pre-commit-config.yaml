@@ -167,7 +167,16 @@ repos:
     rev: v6.0.0
     hooks:
       - id: trailing-whitespace
+        # ADR099 pytest-textual-snapshot goldens (tests/**/__snapshots__/*.raw)
+        # are committed SVG bytes from Rich's export_svg — Rich's own template
+        # legitimately emits an all-whitespace continuation line after the
+        # title-bar circles group on every screenshot. Trimming it desyncs the
+        # golden from what a live re-render (or --snapshot-update) produces,
+        # permanently reddening the very test it's meant to protect (found
+        # committing WO-28's tests/unit/tui/snapshots/ golden).
+        exclude: ^tests/.*/__snapshots__/.*$
       - id: end-of-file-fixer
+        exclude: ^tests/.*/__snapshots__/.*$
       - id: check-yaml
         args: [--unsafe]  # Allow custom tags in GitHub Actions
       - id: check-json

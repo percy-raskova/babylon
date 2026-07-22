@@ -62,6 +62,7 @@ ALLOWED_TOP_LEVEL_DIRS: frozenset[str] = frozenset(
 #: Sanctioned tracked top-level files (root canon + tool dot-configs).
 ALLOWED_TOP_LEVEL_FILES: frozenset[str] = frozenset(
     {
+        ".actrc",  # act (gh act) local-runner defaults — ci:local tasks (uv train, 2026-07-22)
         ".env.example",
         ".gitattributes",
         ".gitignore",
@@ -72,6 +73,7 @@ ALLOWED_TOP_LEVEL_FILES: frozenset[str] = frozenset(
         ".mdformat.toml",
         ".mise.toml",
         ".pre-commit-config.yaml",
+        ".python-version",  # uv-facing interpreter-minor pin (3.12); guard test in tests/unit/cli/test_uv_migration.py
         ".semgrep.yml",
         ".trivyignore",  # curated IaC-scan ignores, every entry evidenced (program 15)
         ".yamllint.yaml",

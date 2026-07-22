@@ -135,6 +135,19 @@ class PoliticsDefines(BaseModel):
             "replaces this scalar at U10."
         ),
     )
+    recount_margin: float = Field(
+        default=0.005,
+        ge=0.0,
+        le=1.0,
+        description=(
+            "Θ_theory — the recount-grade tie window (U10): only when the "
+            "top-two vote shares sit within this margin does the election "
+            "resolve through ξ_t (the congress-purge III.7 precedent — one "
+            "seeded draw, deterministic per tick); wider margins resolve "
+            "deterministically by the count. The SHAPE (contingency enters "
+            "ONLY at recount grain, Bush-v-Gore scale) is theory."
+        ),
+    )
     # ------------------------------------------------------------------ Θ_feel
     strike_equalization_rate: float = Field(
         default=0.05,
@@ -240,6 +253,29 @@ class PoliticsDefines(BaseModel):
             "Θ_feel — duration of the boosted-conversion disillusion window "
             "after loss/suspension/betrayal rupture (U10 H-collapse; T-7 "
             "routes the boost by SOLIDARITY topology). Default half a year."
+        ),
+    )
+    disillusion_conversion_boost: float = Field(
+        default=2.0,
+        ge=1.0,
+        description=(
+            "Θ_feel — the disillusion window's conversion multiplier (U10 "
+            "T-7 routing): bridges present ⟹ the Agitation→Organization "
+            "valve conversion multiplies by this (the Bernie→DSA surge); "
+            "bridges absent ⟹ the excess routes into fascist_alignment "
+            "instead (the Obama→Trump pipeline). Bounded ≥ 1 — a window "
+            "never suppresses; the topology only chooses the DIRECTION."
+        ),
+    )
+    legitimation_refresh_weight: float = Field(
+        default=0.5,
+        ge=0.0,
+        le=1.0,
+        description=(
+            "Θ_feel — election-day consent blend (U10 §2.5): "
+            "legitimation_index moves toward turnout×competitiveness by "
+            "this fraction on ELECTION_HELD. 1.0 = the ritual fully resets "
+            "consent each cycle; 0.0 disables the refresh circuit."
         ),
     )
     betrayal_threshold: float = Field(

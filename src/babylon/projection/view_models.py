@@ -171,6 +171,12 @@ class CountyView(BaseModel):
         ``None``.
     :param bifurcation_score: The county bifurcation axis in ``[-1, +1]``
         (revolutionary at ``-1``, fascist at ``+1``), or ``None``.
+    :param habitability: Territory ecological viability in ``[0, 1]``
+        (MetabolismSystem's biocapacity/Sovereign-metabolic-impact index), or
+        ``None`` before MetabolismSystem has ever run this session (tick 0)
+        or when no territory carries this county's FIPS — never a fabricated
+        ``0.0`` or the ``1.0`` some aggregators default an unattributed
+        reading to.
     :param sovereign_id: The id of the sovereign claiming this county via a
         CLAIMS edge, or ``None`` when unclaimed (no CLAIMS edge projected).
     """
@@ -190,6 +196,7 @@ class CountyView(BaseModel):
     p_acquiescence: Probability | None = None
     p_revolution: Probability | None = None
     bifurcation_score: Ideology | None = None
+    habitability: Probability | None = None
     sovereign_id: str | None = None
 
 

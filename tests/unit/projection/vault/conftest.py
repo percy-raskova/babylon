@@ -54,6 +54,7 @@ def wayne_county_view() -> CountyView:
             "p_acquiescence": 0.7,
             "p_revolution": 0.25,
             "bifurcation_score": -0.35,
+            "habitability": 0.83,
             "sovereign_id": "SOV_USA",
         }
     )

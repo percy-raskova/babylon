@@ -1,5 +1,5 @@
 meta:
-  version: 1.58.0
+  version: 1.59.0
   updated: '2026-07-22'
   description: Architecture Decision Records Index
   format: See individual ADR files in this directory
@@ -25,6 +25,11 @@ decisions:
     status: accepted
     date: '2026-07-22'
     file: ADR130_p25_u4_organization_component_port.yaml
+  ADR128_p25_u2_event_vocabulary:
+    title: 'P25 U2 — electoral event vocabulary: 13 EventTypes (84→97), typed payloads, builders 64→77, derived severity for every member (taxonomy 47→60; ELECTIONS_SUSPENDED terminal-adjacent critical; POPULAR_FRONT_CALLED pattern over BIFURCATION_THRESHOLD); reconciliation guard widened with the declared _POST_DAY_ONE_ADDITIONS ledger. No publishers until U8-U12.'
+    status: accepted
+    date: '2026-07-22'
+    file: ADR128_p25_u2_event_vocabulary.yaml
   ADR129_p25_u3_political_form_opposition:
     title: 'P25 U3 — political_form joins the opposition catalog (19th binding): self-organization ⇄ representation, shadow-first (ADR127 launch ruling; declared promotion ceremony at U10); measure reads new GraphInputs.political_labor_share (None → honest (0,0) absence in every org-less scenario; producer arrives U5); couplings deferred to their lighting units (U8/U9) — the coupling graph is a claim about the code and their operational sides do not exist yet; qa:regression byte-identical 6/6 proved as the unit gate, registry pins 18→19.'
     status: accepted

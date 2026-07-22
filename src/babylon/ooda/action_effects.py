@@ -307,12 +307,36 @@ def _resolve_agitate(
 def _resolve_repressive(
     action: Action,
     org_attrs: dict[str, Any],
-    graph: BabylonGraph,  # noqa: ARG001 — reserved for future location-dependent backfire
+    graph: BabylonGraph,
     defines: OODADefines,
     org_defines: OrganizationDefines,
 ) -> ActionResult:
-    """REPRESS/SURVEIL: backfire raises target CI."""
+    """REPRESS/SURVEIL: backfire raises target CI, repression IS material.
+
+    Mirrors :func:`_resolve_fascist_verb`'s task #42-B pattern: raise the
+    target's ``repression_faced`` scalar (same clamp-at-1.0 idiom) and stamp
+    a REPRESSION edge (acting org -> target) via :func:`_bump_repression_edge`,
+    weighted by the SAME increment. Adversary-train W1 (2026-07-22): before
+    this, REPRESS/SURVEIL computed only a (never-consumed) CI backfire and
+    tagged ``events_generated`` — the target's ``repression_faced`` was
+    never touched, so ``SurvivalSystem``'s P(S|R) denominator
+    (``survival.py``) and ``ConsciousnessSystem``'s continuous repression
+    term (``ideology.py``) never saw a state-produced value (Aleksandrov
+    Test: a formal construct — ``repression_faced`` — with no material
+    producer is not grounded).
+
+    The increment reuses ``OODADefines.repress_heat_delta`` /
+    ``surveil_heat_delta`` (0.15 / 0.05) — the SAME coefficients
+    :func:`~babylon.ooda.layer3._propagate_heat` already uses for this
+    identical action pair's community-heat bump ("repression IS
+    high-profile attention"), rather than inventing a new tunable: one
+    action, one intensity, two downstream readouts (heat, repression_faced).
+
+    No-ops (no ``repression_increment``/edge stamp, only the CI backfire)
+    when *target_id* names no live node — mirrors the fascist-verb guard.
+    """
     action_type = action.action_type
+    target_id = action.target_id
 
     base_credibility = _derive_credibility_from_attrs(org_attrs, org_defines)
     action_base = defines.get_action_base(action_type.value)
@@ -333,11 +357,24 @@ def _resolve_repressive(
         else EventType.STATE_SURVEILLANCE.value
     )
 
+    effects: dict[str, Any] = {"backfire_delta": backfire_delta}
+    node = graph.get_node(target_id)
+    if node is not None:
+        increment = (
+            defines.repress_heat_delta
+            if action_type == ActionType.REPRESS
+            else defines.surveil_heat_delta
+        )
+        current_rep = float(node.attributes.get("repression_faced", 0.0))
+        graph.update_node(target_id, repression_faced=min(1.0, current_rep + increment))
+        effects["repression_increment"] = increment
+        _bump_repression_edge(graph, action.org_id, target_id, increment)
+
     return ActionResult(
         action=action,
         success=True,
         consciousness_delta=ci_delta,
-        direct_effects={"backfire": True},
+        direct_effects=effects,
         events_generated=[event_type],
     )
 

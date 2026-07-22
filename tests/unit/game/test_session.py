@@ -20,6 +20,7 @@ import babylon.game.session as session_module
 from babylon.config.defines import GameDefines
 from babylon.engine.scenarios import WayneCountyScenario
 from babylon.engine.simulation_engine import SimulationEngine
+from babylon.engine.systems.ooda import OODASystem
 from babylon.game.chronicle_adapter import chronicle_events_from_bus
 from babylon.game.session import (
     TickAdvanceResult,
@@ -448,8 +449,10 @@ class _EmitsUprisingSystem:
     (struggle.py), minus its spark/agitation/hopelessness trigger
     conditions. Satisfies ``babylon.kernel.system_protocol.System``
     structurally (name + step). Deliberately does NOT publish
-    STATE_REPRESSION: no production code does, and stubbing a publisher
-    production never implements would green a permanently-dead wire."""
+    STATE_REPRESSION: this stub isolates the uprising_count wiring alone —
+    a real STATE_REPRESSION publisher now exists in production (OODASystem,
+    adversary-train W1), so faking one here would be a dishonest SECOND
+    stub duplicating real engine behavior, not a legitimate test double."""
 
     name = "test_emits_uprising"
 
@@ -457,16 +460,21 @@ class _EmitsUprisingSystem:
         services.event_bus.publish(Event(type=EventType.UPRISING, tick=context.tick, payload={}))
 
 
-def test_advance_tick_persists_real_uprising_count_and_null_repression() -> None:
-    """Regression pin (T5 U2 review fix, both halves): drives a REAL
-    ``advance_tick`` over a tick whose bus emits a real UPRISING event and
-    asserts (a) the PERSISTED ``uprising_count`` reflects it — the first
-    cut counted ``WorldState.events``, which ``from_graph()`` never
-    restamps per tick, a fabricated ``0`` — and (b) ``repression_count``
-    is honestly ``None``, NOT a count: no production code publishes
-    STATE_REPRESSION to the bus (the OODA first-class-action gate covers
-    only POGROM/LOCKOUT/VIGILANTISM), so a bus count would be a
-    structurally fabricated ``0`` (Constitution III.11)."""
+def test_advance_tick_persists_real_uprising_count_and_zero_repression() -> None:
+    """Regression pin (T5 U2 review fix, both halves), re-pinned for
+    adversary-train W1: drives a REAL ``advance_tick`` over a tick whose
+    bus emits a real UPRISING event (via the isolating ``_EmitsUprisingSystem``
+    stub, no OODASystem in this reduced engine) and asserts (a) the
+    PERSISTED ``uprising_count`` reflects it — the first cut counted
+    ``WorldState.events``, which ``from_graph()`` never restamps per tick,
+    a fabricated ``0`` — and (b) ``repression_count`` is ``0``, NOT
+    ``None``: ``events=`` IS threaded this tick (the bus history the
+    stub's own UPRISING publish populates), it just carries zero
+    STATE_REPRESSION entries in THIS reduced single-system engine — the
+    honest-null-vs-zero distinction, not the old ALWAYS-None contract (see
+    ``test_advance_tick_with_real_ooda_persists_nonzero_repression_count``
+    below for a REAL nonzero count, driven by the real OODASystem, never a
+    stub publisher production doesn't implement)."""
     store = _FakeStore()
     session = create_new_campaign(store, scenario=WayneCountyScenario())
     session.engine = SimulationEngine([_EmitsUprisingSystem()])
@@ -475,7 +483,31 @@ def test_advance_tick_persists_real_uprising_count_and_null_repression() -> None
 
     _tick, summary, _session_id = store.persist_tick_summary_calls[-1]
     assert summary["uprising_count"] == 1
-    assert summary["repression_count"] is None
+    assert summary["repression_count"] == 0
+
+
+def test_advance_tick_with_real_ooda_persists_nonzero_repression_count() -> None:
+    """Adversary-train W1: proves ``repression_count`` reflects a REAL
+    state REPRESS end to end through ``session.advance_tick()`` — driven
+    by the REAL production ``OODASystem`` (never a stub publisher
+    production doesn't implement, the T5 U2 defect this must not
+    reintroduce). WayneCountyScenario seeds ORG002 (Detroit PD) with a real
+    ``FactionBalance`` + pinned ``rng_seed=0`` (Constitution III.7) — the
+    SAME activation gate ``tests/integration/test_state_ai_wayne_county.py``
+    exercises. ORG001 starts at ``heat=0.0`` (a fresh scenario has no
+    visible threat yet), so this seeds a believable nonzero heat on it
+    first, mirroring that integration test's own established idiom, so
+    RuleBasedStateAI has a real target to select (never self-targeting)."""
+    store = _FakeStore()
+    session = create_new_campaign(store, scenario=WayneCountyScenario())
+    session.engine = SimulationEngine([OODASystem()])
+    session.graph.nodes["ORG001"]["heat"] = 0.4
+
+    session.advance_tick()
+
+    _tick, summary, _session_id = store.persist_tick_summary_calls[-1]
+    assert summary["repression_count"] is not None
+    assert summary["repression_count"] >= 1
 
 
 # --------------------------------------------------------------------------- #

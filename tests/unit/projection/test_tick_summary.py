@@ -133,23 +133,27 @@ class TestEventCounts:
         summary = build_tick_summary_kwargs(WorldState(tick=1), events=events)
         assert summary["uprising_count"] == 2
 
-    def test_repression_count_is_always_null_even_with_bus_events(self) -> None:
-        """STATE_REPRESSION has NO production bus publisher (the OODA
-        first-class-action gate covers only POGROM/LOCKOUT/VIGILANTISM;
-        the type lives only as a string in ActionResult.events_generated),
-        so a bus count would be a structurally fabricated ``0``
-        (Constitution III.11). The column is honestly NULL until an engine
-        unit adds a real publisher — even a bus history that DOES carry
-        the type (only a non-production stub could produce one) must not
-        flip it to a count."""
-        events = [Event(type=EventType.STATE_REPRESSION, tick=1, payload={})]
+    def test_repression_count_counts_state_repression_bus_events(self) -> None:
+        """Adversary-train W1 (2026-07-22): STATE_REPRESSION now has a real
+        production bus publisher (OODASystem._FIRST_CLASS_ACTION_EVENTS,
+        fed by ooda.action_effects._resolve_repressive on the REPRESS path)
+        — retires the prior ALWAYS-NULL contract. Counts the SAME way
+        uprising_count counts UPRISING."""
+        events = [
+            Event(type=EventType.STATE_REPRESSION, tick=1, payload={}),
+            Event(type=EventType.STATE_REPRESSION, tick=1, payload={}),
+            Event(type=EventType.LIFECYCLE_TRANSITION, tick=1, payload={}),
+        ]
         summary = build_tick_summary_kwargs(WorldState(tick=1), events=events)
-        assert summary["repression_count"] is None
+        assert summary["repression_count"] == 2
 
     def test_world_events_are_never_read_for_these_counts(self) -> None:
         """A populated ``world.events`` must NOT leak into the count when a
         real ``events=`` bus history is also supplied — the count comes
-        from ONE source, never a union of both."""
+        from ONE source, never a union of both. ``repression_count`` is
+        ``0`` (not ``None``) here: ``events=`` IS threaded, it just carries
+        zero STATE_REPRESSION entries — proving the ``world.events``
+        STATE_REPRESSION entry does not leak in as a phantom +1."""
         from babylon.models.events import SimulationEvent
 
         world = WorldState(
@@ -163,7 +167,7 @@ class TestEventCounts:
             world, events=[Event(type=EventType.UPRISING, tick=1, payload={})]
         )
         assert summary["uprising_count"] == 1
-        assert summary["repression_count"] is None
+        assert summary["repression_count"] == 0
 
     def test_no_events_threaded_is_honest_null_not_zero(self) -> None:
         summary = build_tick_summary_kwargs(WorldState(tick=1))

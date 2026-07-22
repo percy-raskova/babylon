@@ -408,7 +408,9 @@ class TestResolveAction:
         assert result.consciousness_delta.collective_identity_delta > 0.0
         assert result.consciousness_delta.tendency_pressure == ConsciousnessTendency.REVOLUTIONARY
         assert result.direct_effects is not None
-        assert result.direct_effects.get("backfire") is True
+        assert result.direct_effects.get("backfire_delta") == pytest.approx(
+            result.consciousness_delta.collective_identity_delta
+        )
         assert EventType.STATE_REPRESSION.value in result.events_generated
 
     def test_surveil_backfire_positive_ci(self) -> None:
@@ -651,6 +653,99 @@ class TestResolveAction:
 
         assert result.success is True
         assert result.consciousness_delta is not None
+
+
+class TestRepressiveMaterialEffect:
+    """Adversary-train W1: REPRESS/SURVEIL must ALSO bump ``repression_faced``
+    on the target and stamp a REPRESSION edge (org -> target) -- the SAME
+    task #42-B pattern ``_resolve_fascist_verb`` already proves for
+    POGROM/VIGILANTISM (see ``test_reactionary_ooda_verbs.py::
+    TestRepressionEdgeProducer``). Before this, REPRESS/SURVEIL computed
+    only a CI backfire nobody consumed -- the target's material state (the
+    thing ``SurvivalSystem``'s P(S|R) denominator and ``ConsciousnessSystem``'s
+    continuous repression term actually read) never moved.
+    """
+
+    def test_repress_raises_repression_faced_on_target(self) -> None:
+        defines = OODADefines()
+        org_defines = OrganizationDefines()
+        org_attrs = _default_org_attrs(org_type=OrgType.STATE_APPARATUS.value)
+        graph = BabylonGraph()
+        graph.add_node("org_1", **org_attrs)
+        graph.add_node("C900", _node_type="social_class", repression_faced=0.2)
+
+        action = Action(org_id="org_1", action_type=ActionType.REPRESS, target_id="C900")
+        result = resolve_action(action, org_attrs, graph, defines, org_defines)
+
+        assert result.success is True
+        assert graph.get_node("C900").attributes["repression_faced"] == pytest.approx(
+            0.2 + defines.repress_heat_delta
+        )
+        assert result.direct_effects.get("repression_increment") == pytest.approx(
+            defines.repress_heat_delta
+        )
+
+    def test_surveil_raises_repression_faced_by_the_smaller_surveil_increment(self) -> None:
+        defines = OODADefines()
+        org_defines = OrganizationDefines()
+        org_attrs = _default_org_attrs(org_type=OrgType.STATE_APPARATUS.value)
+        graph = BabylonGraph()
+        graph.add_node("org_1", **org_attrs)
+        graph.add_node("C900", _node_type="social_class", repression_faced=0.2)
+
+        action = Action(org_id="org_1", action_type=ActionType.SURVEIL, target_id="C900")
+        resolve_action(action, org_attrs, graph, defines, org_defines)
+
+        assert graph.get_node("C900").attributes["repression_faced"] == pytest.approx(
+            0.2 + defines.surveil_heat_delta
+        )
+        assert defines.surveil_heat_delta < defines.repress_heat_delta
+
+    def test_repress_stamps_repression_edge_from_org_to_target(self) -> None:
+        defines = OODADefines()
+        org_defines = OrganizationDefines()
+        org_attrs = _default_org_attrs(org_type=OrgType.STATE_APPARATUS.value)
+        graph = BabylonGraph()
+        graph.add_node("org_1", **org_attrs)
+        graph.add_node("C900", _node_type="social_class", repression_faced=0.2)
+
+        action = Action(org_id="org_1", action_type=ActionType.REPRESS, target_id="C900")
+        resolve_action(action, org_attrs, graph, defines, org_defines)
+
+        edge = graph.get_edge("org_1", "C900", EdgeType.REPRESSION.value)
+        assert edge is not None, "REPRESS must stamp a REPRESSION edge org -> target"
+        assert edge.weight == pytest.approx(defines.repress_heat_delta)
+
+    def test_repression_faced_clamped_at_one(self) -> None:
+        defines = OODADefines()
+        org_defines = OrganizationDefines()
+        org_attrs = _default_org_attrs(org_type=OrgType.STATE_APPARATUS.value)
+        graph = BabylonGraph()
+        graph.add_node("org_1", **org_attrs)
+        graph.add_node("C900", _node_type="social_class", repression_faced=0.95)
+
+        action = Action(org_id="org_1", action_type=ActionType.REPRESS, target_id="C900")
+        resolve_action(action, org_attrs, graph, defines, org_defines)
+
+        assert graph.get_node("C900").attributes["repression_faced"] == pytest.approx(1.0)
+
+    def test_missing_target_node_skips_material_effect_not_ci_backfire(self) -> None:
+        """A target_id naming no live graph node is an honest no-op for the
+        material effect (mirrors the fascist-verb guard) -- the CI backfire
+        (computed from the acting org alone) still resolves."""
+        defines = OODADefines()
+        org_defines = OrganizationDefines()
+        org_attrs = _default_org_attrs(org_type=OrgType.STATE_APPARATUS.value)
+        graph = BabylonGraph()
+        graph.add_node("org_1", **org_attrs)
+
+        action = Action(org_id="org_1", action_type=ActionType.REPRESS, target_id="ghost")
+        result = resolve_action(action, org_attrs, graph, defines, org_defines)
+
+        assert result.success is True
+        assert result.consciousness_delta is not None
+        assert "repression_increment" not in result.direct_effects
+        assert graph.get_edge("org_1", "ghost", EdgeType.REPRESSION.value) is None
 
 
 class TestCredibilityByOrgType:

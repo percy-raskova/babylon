@@ -64,6 +64,7 @@ from babylon.models.enums.organizations import (
     SurveillanceMethod,
     ThreadPhase,
 )
+from babylon.models.enums.politics import PolicyAxis
 from babylon.models.enums.social import (
     ClassCharacter,
     ClassInscription,
@@ -133,6 +134,7 @@ __all__ = [
     "OperationalProfile",
     "OrgType",
     "PlayerMode",
+    "PolicyAxis",
     "ResolutionType",
     "RulingClassFraction",
     "SectorType",

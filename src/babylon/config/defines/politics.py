@@ -73,7 +73,95 @@ class PoliticsDefines(BaseModel):
         ),
     )
 
+    policy_agenda_rate: int = Field(
+        default=1,
+        ge=1,
+        description=(
+            "Θ_theory — maximum agenda items the LEGISLATE resolver executes "
+            "per tick (U9 §2.3: the agenda is 'executed through LEGISLATE at "
+            "a bounded rate'). The SHAPE (a finite legislative throughput "
+            "exists) is theory; also the static loop bound on PolicySystem's "
+            "agenda pass."
+        ),
+    )
+    debt_finance_share: float = Field(
+        default=0.5,
+        ge=0.0,
+        le=1.0,
+        description=(
+            "Θ_theory — share of an unfunded social-wage promise the state "
+            "debt-finances instead of under-delivering (U9 §2.4 bond "
+            "discipline: 'borrowing against unfunded promises opens the "
+            "scissors'). The borrowed principal enters the sovereign debt "
+            "stock; next tick's debt_service = endogenous rate × stock "
+            "shrinks the funded ceiling — O'Connor's fiscal crisis as "
+            "arithmetic. 0 = pure pay-go, 1 = full deficit finance."
+        ),
+    )
+    bond_discipline_threshold: float = Field(
+        default=0.25,
+        gt=0.0,
+        description=(
+            "Θ_theory — the serviceability tightener (U9 §2.4 arm 2): once "
+            "debt_service / t_claim exceeds this ratio, further deficit "
+            "financing is refused and delivery collapses to the funded "
+            "ceiling alone. The SHAPE (bond markets discipline unfunded "
+            "promises) is theory; the value is calibrated by the mitterrand "
+            "golden at U13."
+        ),
+    )
+    judicial_tolerance_scale: float = Field(
+        default=0.5,
+        ge=0.0,
+        description=(
+            "Θ_theory — judicial strike-down tolerance = scale × the "
+            "striking RSA_JUDICIAL institution's "
+            "InternalBalanceOfForces.liberal_technocratic weight (U9 §2.4 "
+            "arm 3: a liberal court tolerates more redistribution than a "
+            "revanchist one). Policy incidence above the tolerance is "
+            "voided (POLICY_STRUCK)."
+        ),
+    )
+    preemption_envelope: float = Field(
+        default=0.2,
+        ge=0.0,
+        le=1.0,
+        description=(
+            "Θ_theory — maximum overlay magnitude a LOWER sovereign on the "
+            "ADMINISTERS DAG may enact before the higher sovereign nullifies "
+            "it (U9 §2.4 arm 4, POLICY_PREEMPTED — the municipal-socialism "
+            "ceiling: Seattle passes the wage; the state legislature erases "
+            "it). U9 proxy for the governing platform's envelope, which "
+            "replaces this scalar at U10."
+        ),
+    )
     # ------------------------------------------------------------------ Θ_feel
+    strike_equalization_rate: float = Field(
+        default=0.05,
+        ge=0.0,
+        le=1.0,
+        description=(
+            "Θ_feel — α for the capital-strike application of the "
+            "equalization operator Δc = α(r − r̄)c over the enacting "
+            "sovereign's claimed counties (U9 §2.4 arm 1: policy incidence "
+            "past capital_tolerance enters as a local profit-rate penalty; "
+            "capital migrates out, ΣΔc = 0). Distinct from "
+            "economy.alpha_annual (Spec 062's ambient hex-grain rate): this "
+            "is the STRIKE-response rate, event-gated, county-grain."
+        ),
+    )
+    policy_default_magnitude: float = Field(
+        default=0.1,
+        ge=0.0,
+        le=1.0,
+        description=(
+            "Θ_feel — overlay magnitude for agenda items the state AI "
+            "drafts through the LEGISLATE sub-verb when no explicit "
+            "magnitude is carried (U9; StateAction.parameters ships empty "
+            "today). Scenario-seeded and U10 platform-drafted items carry "
+            "their own magnitudes."
+        ),
+    )
     valve_strength: float = Field(
         default=0.6,
         ge=0.0,

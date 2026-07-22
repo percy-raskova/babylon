@@ -726,9 +726,27 @@ class ArchiveApp(App[None]):
         self._resolver = known_target_resolver(self.known_entities)
 
     def _refresh_breadcrumbs(self) -> None:
-        """Render the trail's newest entries into the breadcrumb bar."""
+        """Render the trail's newest entries into the breadcrumb bar.
+
+        Tolerant of a transient-absent breadcrumb widget. This runs from
+        the briefing-dismiss ``call_next`` callback via :meth:`_navigate` —
+        a window in which the campaign shell's compose can still be
+        settling under concurrent load (the source of the CI-only
+        ``NoMatches`` this guard closes). ``#breadcrumbs`` is yielded
+        unconditionally in :meth:`compose`, so an empty query here is only
+        ever a transition artifact, never a structural absence — and the
+        bar is chrome (the tutorial-BDD transcript asserts semantic text,
+        never chrome, per the T6 ruling), so a skipped repaint self-heals
+        on the next navigation. ``#dossier``/``#status`` deliberately stay
+        loud ``query_one`` calls in :meth:`_navigate`: those ARE asserted
+        behavior. This never masks a real absence — only the transition
+        window can empty a query on an unconditionally-composed widget.
+        """
+        bar = self.query("#breadcrumbs")
+        if not bar:
+            return
         crumbs = self.nav.trail.entries[-_BREADCRUMB_DISPLAY:]
-        self.query_one("#breadcrumbs", Label).update(" › ".join(crumbs))
+        bar.first(Label).update(" › ".join(crumbs))
 
     async def _navigate(self, subject: str, *, record: bool = True) -> None:
         """Show ``subject``'s page (or its loud absence page).

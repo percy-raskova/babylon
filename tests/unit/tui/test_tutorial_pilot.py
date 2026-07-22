@@ -580,6 +580,26 @@ _EXTRA_CONTENT_CHECK_BY_STEP_ID: Final[dict[str, Callable[[ArchiveApp], None]]] 
 }
 
 
+def _raise_deferred_app_exception(pilot: Pilot[None], *, step_id: str) -> None:
+    """Surface a screen-callback exception at the step that caused it.
+
+    Textual stores an exception raised inside a ``call_next``-deferred
+    callback (e.g. a screen-dismiss result callback) on ``App._exception``
+    and only re-raises it at ``run_test()`` teardown — detaching the
+    failure from its cause and misattributing it to whichever step's
+    ``run_test`` block happens to close. Checking it right after the
+    per-step settle turns that into a loud, attributable, immediate
+    failure at the real step (Constitution III.11), instead of a
+    mysterious teardown crash under concurrent CI load.
+    """
+    deferred = getattr(pilot.app, "_exception", None)
+    if deferred is not None:
+        raise AssertionError(
+            f"tutorial step {step_id!r} left a deferred app exception "
+            f"({type(deferred).__name__}: {deferred})"
+        ) from deferred
+
+
 async def drive_step(pilot: Pilot[None], step: TutorialStep) -> None:
     """The step interpreter's public entry point: drive ``step.when`` via
     its anchor, then hard-assert ``step.then`` via its completion predicate.
@@ -599,6 +619,7 @@ async def drive_step(pilot: Pilot[None], step: TutorialStep) -> None:
     await _perform_anchor(pilot, step.anchor)
     await pilot.app.workers.wait_for_complete()
     await pilot.pause()
+    _raise_deferred_app_exception(pilot, step_id=step.id)
     app = _archive_app(pilot)
     _assert_completion(app, step.completion, step_id=step.id)
     extra_check = _EXTRA_CONTENT_CHECK_BY_STEP_ID.get(step.id)

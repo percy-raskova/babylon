@@ -48,7 +48,8 @@ jobs:
       - uses: actions/checkout@v7
 
       - name: Harness (bash -n, shellcheck, placeholder guard, dry-run legs)
-        run: sh tools/installer_smoke.sh
+        # bash, not sh: the harness uses `set -o pipefail`, which ubuntu's dash rejects
+        run: bash tools/installer_smoke.sh
 
   # Enable beyond workflow_dispatch after the CACHE_KEY ceremony: flip the
   # placeholder assertion in the harness, add this job to the push/PR path

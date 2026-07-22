@@ -292,7 +292,7 @@ run = "gh act workflow_dispatch -W .github/workflows/installer.yml -j installer-
 
 [tasks."install:test"]
 description = "Static + dry-run smoke of install.sh / Patches wizard (same harness the CI installer-smoke job runs)"
-run = "sh tools/installer_smoke.sh"
+run = "bash tools/installer_smoke.sh"  # bash: the harness sets pipefail, dash rejects it
 
 [tasks."lint:check"]
 description = "Ruff lint, no fixes (CI parity; the auto-fixing variant is tasks.lint)"

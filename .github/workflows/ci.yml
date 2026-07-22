@@ -74,35 +74,8 @@ jobs:
       - name: Type check (mypy strict)
         run: mise run typecheck
 
-      # The hypergraph dependency-group's path source (../hypergraph-rs) is an
-      # unpublished sibling repo — runners don't have it, but `uv lock --check`
-      # re-resolves and must read the package's metadata. Materialize a
-      # metadata-equivalent stub (same name, dynamic version, no deps,
-      # requires-python) purely so resolution can read it. If the stub drifts
-      # from the real package's metadata the check fails loudly — that is the
-      # guard working, not a bug in this step. See [tool.uv.sources] in
-      # pyproject.toml.
       - name: Materialize hypergraph-rs metadata stub (sibling repo, no remote)
-        run: |
-          mkdir -p ../hypergraph-rs
-          cat > ../hypergraph-rs/pyproject.toml <<'STUB'
-          [build-system]
-          requires = ["hatchling"]
-          build-backend = "hatchling.build"
-
-          [project]
-          name = "hypergraph-rs"
-          requires-python = ">=3.12"
-          dependencies = []
-          dynamic = ["version"]
-
-          [tool.hatch.version]
-          path = "version.py"
-
-          [tool.hatch.build.targets.wheel]
-          bypass-selection = true
-          STUB
-          echo '__version__ = "0.1.0"' > ../hypergraph-rs/version.py
+        run: sh tools/ci_hypergraph_stub.sh
 
       - name: uv lock consistency
         run: uv lock --check
@@ -134,6 +107,9 @@ jobs:
     steps:
       - uses: actions/checkout@v7
 
+      - name: Materialize hypergraph-rs metadata stub (sibling repo, no remote)
+        run: sh tools/ci_hypergraph_stub.sh
+
       - uses: ./.github/actions/bootstrap-python
         with:
           gdal: "true"
@@ -156,6 +132,9 @@ jobs:
     timeout-minutes: 15
     steps:
       - uses: actions/checkout@v7
+
+      - name: Materialize hypergraph-rs metadata stub (sibling repo, no remote)
+        run: sh tools/ci_hypergraph_stub.sh
 
       # No gdal: the 5 regression scenarios are synthetic in-memory factories
       # (no Django, no reference DB, no Postgres) — proven by the Phase-0
@@ -200,6 +179,9 @@ jobs:
     timeout-minutes: 10
     steps:
       - uses: actions/checkout@v7
+
+      - name: Materialize hypergraph-rs metadata stub (sibling repo, no remote)
+        run: sh tools/ci_hypergraph_stub.sh
 
       - uses: ./.github/actions/bootstrap-python
 

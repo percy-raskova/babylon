@@ -1393,15 +1393,33 @@ class ArchiveApp(App[None]):
         crumbs = self.nav.trail.entries[-_BREADCRUMB_DISPLAY:]
         bar.first(Label).update(" › ".join(crumbs))
 
-    async def _navigate(self, subject: str, *, record: bool = True) -> None:
+    async def _navigate(self, subject: str, *, record: bool = True, reveal: bool = True) -> None:
         """Show ``subject``'s page (or its loud absence page).
+
+        Unit "navigate-pane-couple" (shell-interconnect): before this fix, every
+        caller updated ``#dossier`` under whatever pane happened to be showing —
+        a player parked on the Map/Topology/Dashboard pane who walked the
+        jumplist, picked a command-palette hit, or clicked a wikilink would
+        never actually SEE the new page (the "P8 dodge"; ``#dossier`` changed,
+        but ``ContentSwitcher`` was still showing something else). ``reveal``
+        closes that for every DELIBERATE navigation by switching ``#main`` back
+        to the Wiki pane — but stays ``False`` for the post-tick "refresh the
+        CURRENTLY-shown subject in place" calls
+        (:meth:`action_advance_tick`/:meth:`action_run_until_paused`), which
+        must never clobber a player deliberately parked on the Dashboard/Map/
+        Topology pane watching ITS OWN live refresh just because a tick
+        advanced.
 
         :param subject: the subject id to open.
         :param record: whether this is a new jump (recorded in the
             jumplist and trail) or a jumplist walk (already recorded).
+        :param reveal: whether to switch ``#main`` to the Wiki pane so this
+            update is actually visible.
         """
         page = self._pages(subject)
         document = page if page is not None else _absence_page(subject)
+        if reveal:
+            self.query_one("#main", ContentSwitcher).current = "wiki"
         await self.query_one("#dossier", BabylonMarkdown).update(document)
         if record:
             self.nav.visit(subject)
@@ -1498,7 +1516,11 @@ class ArchiveApp(App[None]):
         self._refresh_chronicle(result.chronicle)
         subject = self.nav.current
         if subject is not None:
-            await self._navigate(subject, record=False)
+            # reveal=False: refresh the currently-shown subject's dossier
+            # content in place — never yank a player parked on the
+            # Dashboard/Map/Topology pane back to the Wiki pane just
+            # because a tick advanced (``_navigate``'s own docstring).
+            await self._navigate(subject, record=False, reveal=False)
         paused_marker = " [PAUSED]" if result.paused else ""
         status.update(f"status: tick {result.tick}{paused_marker}")
         self._refresh_tutorial_progress()
@@ -1560,7 +1582,10 @@ class ArchiveApp(App[None]):
         self._refresh_chronicle(tuple(event for result in results for event in result.chronicle))
         subject = self.nav.current
         if subject is not None:
-            await self._navigate(subject, record=False)
+            # reveal=False: see action_advance_tick's own comment above —
+            # a background refresh must never clobber a deliberately
+            # non-wiki pane.
+            await self._navigate(subject, record=False, reveal=False)
         if self.driver.locked:
             status.update(
                 f"status: ran to tick {last.tick} — campaign ended ({self.driver.lock_reason})"

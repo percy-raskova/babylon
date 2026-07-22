@@ -82,7 +82,11 @@ class TutorialRuntimeProgress:
     :param current_pane: reads the hybrid shell's ``ContentSwitcher``
         ``.current`` pane id at call time (Program 24 P8) — a plain callable
         rather than a Textual import, mirroring :attr:`current_subject`'s own
-        seam-crossing idiom.
+        seam-crossing idiom. Also consulted by :class:`~babylon.game.tutorial.
+        OnPage` itself (unit "navigate-pane-couple", shell-interconnect): a
+        subject match alone cannot prove the player actually SAW the page —
+        only ``current_pane() == "wiki"`` does, since that is where
+        ``#dossier`` renders.
     :param is_pinned: reads whether a given subject id currently holds a pin
         on the watchlist at call time (Program 24 P8), mirroring
         :meth:`~babylon.tui.watchlist.WatchlistState.is_pinned` — a plain
@@ -117,7 +121,13 @@ class TutorialRuntimeProgress:
             return False
         predicate = self._steps[step_index].completion
         if isinstance(predicate, OnPage):
-            return self._current_subject() == predicate.subject
+            # Unit "navigate-pane-couple" (shell-interconnect): subject-match
+            # alone let a step "complete" even while the player was looking
+            # at a different pane entirely — nav.current changed, but the
+            # dossier that changed was invisible. The Wiki pane is where
+            # `#dossier` actually renders (see WikiView), so an OnPage step
+            # is only truly satisfied once the player can SEE it there.
+            return self._current_subject() == predicate.subject and self._current_pane() == "wiki"
         if isinstance(predicate, TickAtLeast):
             return self._campaign.tick >= predicate.tick
         if isinstance(predicate, PausePending):

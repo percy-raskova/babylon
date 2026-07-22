@@ -289,6 +289,67 @@ class TestAppWiring:
             assert "[REDLINK]" in str(status.content)
 
 
+class TestNavigatePaneCoupling:
+    """Unit "navigate-pane-couple" (shell-interconnect): before this fix,
+    every navigation path updated ``#dossier`` under whatever pane happened
+    to be showing — a player parked on the Map/Topology/Dashboard pane who
+    navigated would never actually SEE the new page (the "P8 dodge").
+    Navigating a NEW subject must always reveal the Wiki pane; each test
+    below switches away from Wiki first so the reveal is actually exercised,
+    never just trivially already-true.
+    """
+
+    @pytest.mark.asyncio
+    async def test_palette_navigation_reveals_the_wiki_pane_from_elsewhere(self) -> None:
+        from textual.widgets import ContentSwitcher
+
+        from babylon.tui.app import ArchiveApp
+        from babylon.tui.palette import EntityNavigated
+
+        app = ArchiveApp()
+        async with app.run_test() as pilot:
+            await pilot.press("2")
+            assert app.query_one("#main", ContentSwitcher).current == "map"
+
+            app.post_message(EntityNavigated(parse_babylon_uri("babylon://org/tenants-un")))
+            await pilot.pause()
+            assert app.query_one("#main", ContentSwitcher).current == "wiki"
+
+    @pytest.mark.asyncio
+    async def test_jumplist_walk_reveals_the_wiki_pane_from_elsewhere(self) -> None:
+        from textual.widgets import ContentSwitcher
+
+        from babylon.tui.app import ArchiveApp
+        from babylon.tui.palette import EntityNavigated
+
+        app = ArchiveApp()
+        async with app.run_test() as pilot:
+            app.post_message(EntityNavigated(parse_babylon_uri("babylon://org/tenants-un")))
+            await pilot.pause()
+
+            await pilot.press("4")
+            assert app.query_one("#main", ContentSwitcher).current == "topology"
+
+            await pilot.press("[")
+            assert app.query_one("#main", ContentSwitcher).current == "wiki"
+
+    @pytest.mark.asyncio
+    async def test_wikilink_click_reveals_the_wiki_pane_from_elsewhere(self) -> None:
+        from textual.widgets import ContentSwitcher, Markdown
+
+        from babylon.tui.app import ArchiveApp, BabylonMarkdown
+
+        app = ArchiveApp()
+        async with app.run_test() as pilot:
+            await pilot.press("1")
+            assert app.query_one("#main", ContentSwitcher).current == "dashboard"
+
+            dossier = app.query_one("#dossier", BabylonMarkdown)
+            app.post_message(Markdown.LinkClicked(dossier, "babylon://county/26163"))
+            await pilot.pause()
+            assert app.query_one("#main", ContentSwitcher).current == "wiki"
+
+
 class TestSubjectKeys:
     def test_explicit_kind_uri_rebuilds_the_subject(self) -> None:
         target = parse_babylon_uri("babylon://county/26163")

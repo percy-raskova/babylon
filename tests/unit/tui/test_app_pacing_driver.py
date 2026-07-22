@@ -418,6 +418,54 @@ class TestAcknowledgePause:
             assert "no paced driver attached" in str(status.content)
 
 
+class TestAdvanceDoesNotClobberANonWikiPane:
+    """Unit "navigate-pane-couple" (shell-interconnect): ``_navigate``'s new
+    pane-reveal (unconditional for jumplist/palette/wikilink navigation)
+    must NOT apply to the post-tick "refresh the currently-shown subject in
+    place" calls here — a player deliberately parked on the Dashboard/Map/
+    Topology pane watching its own live refresh must never be yanked back
+    to the Wiki pane just because a tick advanced."""
+
+    @pytest.mark.asyncio
+    async def test_t_refreshes_the_dossier_without_switching_away_from_dashboard(self) -> None:
+        from textual.widgets import ContentSwitcher
+
+        driver = _FakeDriver([_FakeTickOutcome(tick=1, paused=False)])
+        app, _campaign, _cid = _wired_app(driver)
+
+        async with app.run_test() as pilot:
+            await _boot_into_campaign_shell(pilot, app)
+            await pilot.press("1")
+            assert app.query_one("#main", ContentSwitcher).current == "dashboard"
+
+            await pilot.press("t")
+            await pilot.pause()
+
+            assert driver.advance_calls == 1
+            assert app.query_one("#main", ContentSwitcher).current == "dashboard"
+
+    @pytest.mark.asyncio
+    async def test_r_refreshes_the_dossier_without_switching_away_from_topology(self) -> None:
+        from textual.widgets import ContentSwitcher
+
+        driver = _FakeDriver(
+            [_FakeTickOutcome(tick=1, paused=False), _FakeTickOutcome(tick=2, paused=True)]
+        )
+        app, _campaign, _cid = _wired_app(driver)
+
+        async with app.run_test() as pilot:
+            await _boot_into_campaign_shell(pilot, app)
+            await pilot.press("4")
+            assert app.query_one("#main", ContentSwitcher).current == "topology"
+
+            await pilot.press("r")
+            await app.workers.wait_for_complete()
+            await pilot.pause()
+
+            assert driver.run_calls == 1
+            assert app.query_one("#main", ContentSwitcher).current == "topology"
+
+
 class TestTickOutcomeConformance:
     def test_fake_tick_outcome_satisfies_tick_outcome(self) -> None:
         assert isinstance(_FakeTickOutcome(tick=1, paused=False), TickOutcome)

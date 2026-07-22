@@ -153,14 +153,24 @@ class DefaultAccumulationLoopCalculator:
         Returns:
             ``(new_stock, reserve_ratio)`` — stock floored at ``0.0`` (a
             reserve army cannot go negative), ratio =
-            ``new_stock / (new_stock + employment)``, clamped to [0, 1].
+            ``new_stock / (new_stock + employment)``, clamped to
+            ``[0, 1 - min_employed_fraction]``. The ceiling (U8 defines
+            sweep) mirrors ``wage_pressure_ceiling``'s "prevents total wage
+            elimination" precedent on the labor-force side of the same
+            mechanic: a reserve ratio of exactly 1.0 would mean zero
+            employment, an unmodeled total-collapse state; the sim reserves
+            ``min_employed_fraction`` of the labor force as always-employed
+            (e.g. subsistence/informal-sector activity outside the formal
+            reserve-army accounting) rather than let the ratio saturate at a
+            bare 1.0.
         """
         new_stock = max(0.0, prior_stock + dynamics.net_inflow)
         denominator = new_stock + employment
         if denominator <= 0.0:
             return new_stock, 0.0
         reserve_ratio = new_stock / denominator
-        return new_stock, min(reserve_ratio, 1.0)
+        ceiling = 1.0 - self._defines.min_employed_fraction
+        return new_stock, min(reserve_ratio, ceiling)
 
 
 __all__ = ["DefaultAccumulationLoopCalculator"]

@@ -220,9 +220,14 @@ class TestComputeReserveRatio:
         assert new_stock == 0.0
         assert ratio == 0.0
 
-    def test_ratio_never_exceeds_one(self) -> None:
-        """Reserve ratio is a fraction of the labor force — never > 1.0."""
-        calc = DefaultAccumulationLoopCalculator()
+    def test_ratio_never_exceeds_min_employed_floor(self) -> None:
+        """Reserve ratio saturates at ``1.0 - min_employed_fraction`` (U8), not a
+        bare 1.0 — the ``min_employed_fraction`` define's own contract (a floor
+        under employment, mirroring ``wage_pressure_ceiling``'s "prevents total
+        wage elimination" precedent on the labor-force side of the same
+        mechanic). Default ``min_employed_fraction`` is 0.01."""
+        defines = ReserveArmyDefines()
+        calc = DefaultAccumulationLoopCalculator(defines)
         dynamics = ReserveArmyDynamics(
             fips_code="26163",
             tick=104,
@@ -235,5 +240,42 @@ class TestComputeReserveRatio:
             prior_stock=0.0, dynamics=dynamics, employment=0.0
         )
         assert new_stock == pytest.approx(10_000.0)
-        assert ratio <= 1.0
-        assert math.isclose(ratio, 1.0)
+        assert ratio <= 1.0 - defines.min_employed_fraction
+        assert math.isclose(ratio, 1.0 - defines.min_employed_fraction)
+
+    def test_ratio_floor_scales_with_custom_min_employed_fraction(self) -> None:
+        """A modded ``min_employed_fraction`` changes the saturation ceiling —
+        proving the field is genuinely read, not a fixed 1.0 in disguise."""
+        defines = ReserveArmyDefines(min_employed_fraction=0.2)
+        calc = DefaultAccumulationLoopCalculator(defines)
+        dynamics = ReserveArmyDynamics(
+            fips_code="26163",
+            tick=104,
+            mechanization_displacement=10_000,
+            firm_failures=0,
+            expansion_absorption=0,
+            emigration=0,
+        )
+        new_stock, ratio = calc.compute_reserve_ratio(
+            prior_stock=0.0, dynamics=dynamics, employment=0.0
+        )
+        assert new_stock == pytest.approx(10_000.0)
+        assert math.isclose(ratio, 0.8)
+
+    def test_ratio_unaffected_by_floor_in_normal_range(self) -> None:
+        """Far from saturation, the floor changes nothing — first-tick example
+        from :class:`TestComputeReserveRatio`'s own docstring precedent."""
+        calc = DefaultAccumulationLoopCalculator()
+        dynamics = ReserveArmyDynamics(
+            fips_code="26163",
+            tick=52,
+            mechanization_displacement=1000,
+            firm_failures=0,
+            expansion_absorption=0,
+            emigration=0,
+        )
+        new_stock, ratio = calc.compute_reserve_ratio(
+            prior_stock=0.0, dynamics=dynamics, employment=99_000.0
+        )
+        assert new_stock == pytest.approx(1000.0)
+        assert ratio == pytest.approx(1000.0 / 100_000.0)

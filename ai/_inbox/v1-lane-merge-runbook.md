@@ -11,7 +11,7 @@ single-flight in this controller. This file is my scratch — supersede freely.
 |---|---|---|---|---|
 | T1.1 seam-severity | lane/t11-seam-severity | c0c9a731 | **✓ DONE** (17/17, 0 err; U1–U7, mutation-verified) | merges 1st — READY |
 | T1.2 keel | lane/t12-keel | c4dc2f0c | **✓ DONE** (20/20, 0 err; K1–K5 verified in-code) | **HELD** behind T1.1; clean, merge-ready |
-| Vol I | lane/vol1-value-production | 40b9515a+ | RUNNING (U7 committing 19:37; ⚠ vocabulary RED from U6 — fix assigned in-lane, see checkpoint) | 3rd |
+| Vol I | lane/vol1-value-production | 18c2e2d9 | RUNNING (U8 done 20:0x, ADR114; U7 a80616f2 + vocab fix c435d3a6 done; ONLY U9 monitoring + ceremony remain) | 3rd |
 | Vol II | lane/vol2-circulation | 2340a585 | RUNNING (U4 lit the step 19:29, ADR120/123) | 4th (rebase on Vol I) |
 | T4 core | lane/t4-campaign-core | 1e4fbe2c | **✓ DONE** (18/18, 0 err; C1–C6, no blockers) | **HELD** behind all; merges last |
 | T7 installer | lane/t7-installer | df41a963 | alpha (separate) | post-Gate-3 (T7-beta) |
@@ -125,6 +125,17 @@ REAL 30-system engine). Non-blocking, verify/file at merge:
 - [ ] **Vol I U5 ADR is MISSING** (lane's own report, 19:43): the runner-parity unit
       (`4627fc23`) never wrote its ADR. Write it mechanically at merge review if U8/U9
       don't — it's the shared-unit disposition record both volumes cite (ADR103 §10.3).
+- [ ] **Vol I U8 (18c2e2d9, ADR114) merge obligations**: (a) ACCEPTED deviation — no
+      CapitalVolumeIDefines built (zero parameter-bearing coefficients existed to home;
+      empty file = placeholder violation; ADR114 records it — don't re-litigate at review);
+      (b) **confirm zero drift from `min_employed_fraction` wiring** at the single-flight
+      qa:regression run — lane argues it only bites at reserve_ratio=1.0, outside the 6
+      scenarios' range, but did NOT run the gate (correct per single-flight rule); if drift
+      appears it joins the U5-activation attribution table, not a surprise; (c) the Vol I
+      ceremony/PR disclosure must note the **3 removed defines.yaml keys**
+      (DispossessionDefines weight_wage_theft/weight_incarceration_seizure/
+      weight_pension_default — dead-code removal, zero consumers, no proxy existed) since
+      defines.yaml is the player-facing moddable surface.
 - [ ] **Baseline drift now has a NAMED cause (Vol I ceremony)**: U5 genuinely ACTIVATES
       `_compute_vol1_layer` (median_wage wage-pressure) AND `_compute_circulation_layer`
       (circulation_state) for every headless run whose `scope_fips` is non-empty (always, in

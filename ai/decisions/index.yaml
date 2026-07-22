@@ -1,5 +1,5 @@
 meta:
-  version: 1.59.0
+  version: 1.60.0
   updated: '2026-07-22'
   description: Architecture Decision Records Index
   format: See individual ADR files in this directory
@@ -25,6 +25,11 @@ decisions:
     status: accepted
     date: '2026-07-22'
     file: ADR130_p25_u4_organization_component_port.yaml
+  ADR131_p25_u5_electoral_fixture:
+    title: 'P25 U5 — electoral fixture scenario: four NPC PoliticalFactions (duopoly machines + latent socdem/fascist currents), finance-donor Business, MEMBERSHIP class-base edges (L-PRZ terrain in miniature), TRANSACTIONAL donor-dependence flows; built on two_node; first production PoliticalFaction instantiation; graph round-trip pinned; NOT in the qa six (byte-safety by disjointness); political-labor flow derivation deferred to U8.'
+    status: accepted
+    date: '2026-07-22'
+    file: ADR131_p25_u5_electoral_fixture.yaml
   ADR128_p25_u2_event_vocabulary:
     title: 'P25 U2 — electoral event vocabulary: 13 EventTypes (84→97), typed payloads, builders 64→77, derived severity for every member (taxonomy 47→60; ELECTIONS_SUSPENDED terminal-adjacent critical; POPULAR_FRONT_CALLED pattern over BIFURCATION_THRESHOLD); reconciliation guard widened with the declared _POST_DAY_ONE_ADDITIONS ledger. No publishers until U8-U12.'
     status: accepted

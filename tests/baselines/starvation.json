@@ -1,8 +1,8 @@
 {
   "scenario": "starvation",
   "description": "Low extraction efficiency stress",
-  "generated_at": "2026-07-22T20:16:06+00:00",
-  "defines_hash": "d31bc27e532061b0",
+  "generated_at": "2026-07-22T21:06:55+00:00",
+  "defines_hash": "cbef5d02804d93f1",
   "max_ticks": 52,
   "checkpoints": [
     {

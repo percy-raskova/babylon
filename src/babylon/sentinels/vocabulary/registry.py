@@ -81,14 +81,20 @@ PRODUCTION_ROOTS: Final[tuple[str, ...]] = ("src", "web")
 #:
 #: - ``hex``: production carries hex substrate state on TERRITORY nodes via
 #:   ``domain/economics/substrate/hex_graph_bridge.py``; no code path stamps a
-#:   ``hex`` node onto the engine graph. ``Vol2CirculationStep``,
-#:   ``territory_diagnostics`` and the ``simulation_engine`` determinism-hash
-#:   row collector therefore all iterate an empty set at runtime. (#39 T6,
-#:   2026-07-20: ``SubstrateSystem`` (MATERIAL_BASE @2.5) was rewritten to
-#:   query ``NodeType.TERRITORY`` instead -- it no longer belongs to this
-#:   list -- but the entry itself stays, since the other two consumers are
-#:   still live; the #40 lesson is to keep this citation matching reality,
-#:   not to remove the entry the moment one consumer is fixed.)
+#:   ``hex`` node onto the engine graph. ``territory_diagnostics`` and the
+#:   ``simulation_engine`` determinism-hash row collector iterate an empty set
+#:   at runtime. (#39 T6, 2026-07-20: ``SubstrateSystem`` (MATERIAL_BASE @2.5)
+#:   was rewritten to query ``NodeType.TERRITORY`` instead -- it no longer
+#:   belongs to this list. Vol II U4, 2026-07-21 (ADR120/ADR123):
+#:   ``Vol2CirculationStep`` was reconciled the same way -- its read/write
+#:   endpoints moved off ``NodeType.HEX`` onto county-keyed
+#:   ``NodeType.TERRITORY`` nodes via a constructor-injected
+#:   ``ScaleAdjunction`` (hex-grain <-> county-grain allocate/aggregate), so it
+#:   no longer belongs to this list either -- leaving ``territory_diagnostics``
+#:   and the ``simulation_engine`` collector as the two still-live citations.
+#:   The entry itself stays open on those two; the #40 lesson is to keep this
+#:   citation matching reality, not to remove the entry the moment a consumer
+#:   is fixed.)
 #: - ``community``: community membership lives in the XGI *hypergraph*
 #:   (``engine/systems/community.py``), not the main graph, so no production
 #:   code ever stamps a ``community`` node onto the engine graph either. Task

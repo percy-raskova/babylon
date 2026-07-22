@@ -2,9 +2,27 @@
 # What exists vs what's planned - KEEP THIS UPDATED
 
 meta:
-  version: "2.48.0"  # 2.28.0 lives on feature/19-emergent-class-partition (Program 19 Phase 0+1)
+  version: "2.49.0"  # 2.28.0 lives on feature/19-emergent-class-partition (Program 19 Phase 0+1)
   updated: "2026-07-21"
   truth_status: |
+    (2026-07-21 T1.2 keel, WO-52b) spec-061 live test-estate ledger extension
+    CLOSED (`specs/24-archive/test-port-ledger-wo52b.md`, 19 files
+    dispositioned: 5 PORTED incl. a new `tests/integration/archive/
+    test_session_persistence_contracts.py` archive-side twin of tick-
+    immutability/atomic-persist/session-isolation + per-type severity pins
+    added to `tests/unit/tui/test_chronicle_salience.py`; 4 RE-GUARDED
+    citing already-landed projection coverage; 3 CARRIED to named future
+    WOs -- honest gaps, not fabricated; 2 classes RETARGETED in place
+    (`test_rate_criteria.py` SC-003/SC-006, tags only, zero assertion
+    change); 6 files STAYS-WEB, Django-transport-only, no Archive analogue
+    needed. Nothing deleted -- every original spec-061 file still runs.
+    `web/observatory` untouched per decision #10 (stays local diagnostic
+    until a Grafana metropole). Genuine NEW finding surfaced, not fixed
+    here (assumptions-ledger material): the Archive's headless runner
+    never threads `SimulationRunConfig.random_seed` into the engine's
+    `SimulationConfig.rng_seed` (`ServiceContainer.create(...)` at
+    `engine/headless_runner/runner.py` omits `config=`) -- the web bridge
+    does this correctly (spec-061 FR-024); dormant on the canonical path.
     (2026-07-21 v1.0.0 KICKOFF) THE PLAYABLE ARCHIVE PROGRAM LAUNCHED (master
     plan ratified via PR #244: ai/_inbox/PROGRAM_v1_0_0_playable_archive.md +
     ceremony runbook; BD stop-goal = fully playable game; fast-dev mode:

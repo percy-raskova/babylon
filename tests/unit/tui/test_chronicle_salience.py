@@ -12,6 +12,8 @@ from __future__ import annotations
 
 from typing import Any
 
+import pytest
+
 from babylon.models.enums.events import EventType
 from babylon.models.event_severity import SEVERITY_BY_EVENT
 from babylon.tui.chronicle import ChronicleEvent
@@ -58,6 +60,70 @@ class TestSeverityTiers:
     def test_an_informational_type_classifies_informational(self) -> None:
         salience = classify_event_salience(EventType.SURPLUS_EXTRACTION)
         assert salience.tier == "informational"
+        assert salience.unclassified is False
+
+
+class TestPortedPerTypeSeverityPins:
+    """WO-52b test-port: the specific event-type-to-tier examples the legacy
+    ``tests/integration/test_event_serialization.py::TestSeveritySchema``
+    pinned against ``web/game/engine_bridge.py::_classify_event``.
+
+    ``TestSeverityTiers`` above and ``test_ported_tier_counts_match_the_
+    legacy_bridge`` already prove one example per tier plus the aggregate
+    14/20/13 counts, but a count-only check cannot catch two types swapping
+    tiers — this class pins the exact named types the legacy suite did, so
+    that regression class is caught here too. See
+    ``specs/24-archive/test-port-ledger-wo52b.md`` for the full disposition
+    (including the one deliberate divergence this class does NOT port: the
+    legacy suite's unknown-type default was "informational" — this module's
+    ``classify_event_salience`` intentionally surfaces unknown types at
+    "warning" + ``unclassified=True`` instead, per Constitution III.11 —
+    already pinned by ``TestUnclassifiedSurfacesLoud`` above).
+    """
+
+    @pytest.mark.parametrize(
+        "event_type",
+        [
+            EventType.ECONOMIC_CRISIS,
+            EventType.CLASS_DECOMPOSITION,
+            EventType.SUPERWAGE_CRISIS,
+            EventType.UPRISING,
+            EventType.ENDGAME_REACHED,
+            EventType.RED_BROWN_COUP,
+        ],
+    )
+    def test_named_critical_types_classify_critical(self, event_type: EventType) -> None:
+        salience = classify_event_salience(event_type)
+        assert salience.tier == "critical", event_type.value
+        assert salience.unclassified is False
+
+    @pytest.mark.parametrize(
+        "event_type",
+        [
+            EventType.STATE_REPRESSION,
+            EventType.RED_SETTLER_TRAP_DETECTED,
+            EventType.EXCESSIVE_FORCE,
+            EventType.FASCIST_RECRUITMENT,
+            EventType.ORGANIZATIONAL_FRACTURE,
+            EventType.PATTERN_SHIFT,
+        ],
+    )
+    def test_named_warning_types_classify_warning(self, event_type: EventType) -> None:
+        salience = classify_event_salience(event_type)
+        assert salience.tier == "warning", event_type.value
+        assert salience.unclassified is False
+
+    @pytest.mark.parametrize(
+        "event_type",
+        [
+            EventType.SURPLUS_EXTRACTION,
+            EventType.IMPERIAL_SUBSIDY,
+            EventType.CONSCIOUSNESS_TRANSMISSION,
+        ],
+    )
+    def test_named_informational_types_classify_informational(self, event_type: EventType) -> None:
+        salience = classify_event_salience(event_type)
+        assert salience.tier == "informational", event_type.value
         assert salience.unclassified is False
 
 

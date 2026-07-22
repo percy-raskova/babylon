@@ -24,7 +24,6 @@ import datetime as _dt
 import hashlib
 import json
 import logging
-import os
 import shutil
 import signal
 import statistics
@@ -40,6 +39,8 @@ try:
 except ImportError:  # pragma: no cover - tqdm is a hard dep
     tqdm = None  # type: ignore[assignment,misc]
 
+from babylon.config.dsn import resolve_dsn
+from babylon.config.logging_config import setup_logging
 from babylon.domain.economics.boundary_flow_register import BoundaryFlowRegister
 from babylon.domain.economics.county_exposure import load_county_exposure_map
 from babylon.engine.context import TickContext
@@ -274,11 +275,17 @@ def _prepare_output_dir(path: Path) -> None:
 
 
 def _open_postgres_pool() -> Any:
-    """Open a psycopg ConnectionPool from ``BABYLON_PG_DSN`` / ``BABYLON_TEST_PG_DSN``."""
-    dsn = os.environ.get("BABYLON_PG_DSN") or os.environ.get("BABYLON_TEST_PG_DSN")
+    """Open a psycopg ConnectionPool from the config seam (T1.2 keel).
+
+    Resolves via :func:`babylon.config.dsn.resolve_dsn`: the canonical
+    ``BABYLON_DSN`` wins, then the legacy ``BABYLON_PG_DSN`` /
+    ``BABYLON_TEST_PG_DSN`` names (DEPRECATED, kept for back-compat).
+    """
+    dsn = resolve_dsn(legacy_env=("BABYLON_PG_DSN", "BABYLON_TEST_PG_DSN"))
     if not dsn:
         raise PostgresUnreachableError(
-            "No Postgres DSN found in BABYLON_PG_DSN or BABYLON_TEST_PG_DSN."
+            "No Postgres DSN found. Set BABYLON_DSN (or the deprecated "
+            "BABYLON_PG_DSN / BABYLON_TEST_PG_DSN)."
         )
     try:
         from psycopg_pool import ConnectionPool
@@ -1889,7 +1896,10 @@ def main_from_argv(args: argparse.Namespace) -> int:
     directory path on stdout for exit-0 runs, and emits the canonical
     error format on stderr for non-zero exits.
     """
-    logging.basicConfig(level=getattr(logging, args.verbose), stream=sys.stderr)
+    # console_stream="stderr": stdout is reserved for the artifact directory
+    # path printed below on success (see `_emit_error`'s stderr contract and
+    # the module docstring) — console logging must never share that stream.
+    setup_logging(default_level=args.verbose, console_stream="stderr")
     try:
         config = _build_config(args)
     except ConfigError as exc:

@@ -13,7 +13,7 @@ from __future__ import annotations
 
 import pytest
 
-from babylon.tui.app import ArchiveApp
+from babylon.tui.app import _COPY_HINT, ArchiveApp
 from babylon.tui.theme import CRIMSON, FIELD, GOLD, GREEN_DARK, PANEL, ROYAL
 
 pytestmark = pytest.mark.unit
@@ -46,12 +46,17 @@ class TestKsbcThemeIsActuallyApplied:
 class TestShellChromeCarriesItsTitleTab:
     """DESIGN_BIBLE §9b: "Title tab breaks the border: panel titles render as a
     label interrupting the top border line." The four domain panes + the HUD
-    sub-strip had no chrome of their own before this pass, so they each get one.
-    The rails/action-bar deliberately do NOT — their own Rich-rendered content
-    already carries a crimson-Panel + gold title (chronicle's per-tick bulletins,
-    the watchlist's pin-count panel, the verb plate's org/tick panel), so boxing
-    the rail widget too would double-frame that content inside an already-narrow
-    24-column rail."""
+    sub-strip had no chrome of their own before Program 24 P7, so they each got one.
+
+    Unit "selection-unwrap" (shell-interconnect) extends this to the three rails:
+    their own Rich-rendered content used to self-title via an inner ``Panel``
+    (chronicle's per-tick bulletins, the watchlist's pin-count panel, the verb
+    plate's org/tick panel) — that Panel is gone now (a bare, selectable ``Text``
+    replaced it, so ``Widget.get_selection`` can extract it), so the SAME title
+    moved to the Static's own CSS ``border_title`` instead, exactly like the four
+    panes, plus a permanent ``border_subtitle`` copy-affordance hint neither the
+    panes nor the pre-unit rails ever carried.
+    """
 
     @pytest.mark.asyncio
     async def test_every_new_chrome_plate_carries_its_title_tab(self) -> None:
@@ -71,11 +76,31 @@ class TestShellChromeCarriesItsTitleTab:
                 )
 
     @pytest.mark.asyncio
-    async def test_rails_and_action_bar_are_not_double_framed(self) -> None:
-        """The rails/action-bar keep their pre-P7 partial separator border
-        (crimson, one edge) — no outer ``border_title``, since their own
-        Rich-rendered content already self-titles when populated."""
+    async def test_rails_and_action_bar_now_carry_their_own_title_tab(self) -> None:
+        """Since their inner Panel is gone (unit "selection-unwrap"), the rails/
+        action-bar each get a real ``border_title`` of their own — never ``None``
+        — mirroring the four domain panes above, at the same boot-time seam
+        (``ArchiveApp._apply_shell_chrome_titles``)."""
+        app = ArchiveApp()
+        async with app.run_test():
+            expected = {
+                "#chronicle-rail": "CHRONICLE",
+                "#watchlist-rail": "Watchlist (0 pinned)",
+                "#action-bar": "ACTION BAR — no verb plate wired yet",
+            }
+            for selector, title in expected.items():
+                widget = app.query_one(selector)
+                assert widget.border_title == title, (
+                    f"{selector}: expected border_title {title!r}, got {widget.border_title!r}"
+                )
+
+    @pytest.mark.asyncio
+    async def test_rails_and_action_bar_carry_the_permanent_copy_hint_subtitle(self) -> None:
+        """The three un-paneled rails carry the same static
+        :data:`~babylon.tui.app._COPY_HINT` ``border_subtitle`` — surfacing the
+        already-live but undiscoverable ``ctrl+c``/``super+c`` copy binding now
+        that mouse-drag selection on these rails actually extracts real text."""
         app = ArchiveApp()
         async with app.run_test():
             for selector in ("#chronicle-rail", "#watchlist-rail", "#action-bar"):
-                assert app.query_one(selector).border_title is None
+                assert app.query_one(selector).border_subtitle == _COPY_HINT

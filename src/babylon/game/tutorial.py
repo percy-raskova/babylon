@@ -620,6 +620,18 @@ WAYNE_OPENING_ARC: Final[TutorialScript] = TutorialScript(
             anchor="binding:ArchiveApp:1",
             completion=PaneShowing(pane="dashboard"),
         ),
+        # Unit "selection-unwrap" (shell-interconnect, 2026-07-22): no NEW binding
+        # here — ctrl+c/super+c (Screen.copy_text) was already live, just
+        # undiscoverable (show=False). This step's own `then` picked up the
+        # discoverability line instead of a new arc step, since it is the one
+        # place the arc already teaches a rail (the watchlist). The chronicle
+        # rail and action bar carry the same un-paneled selectable text + the
+        # same border_subtitle copy hint (babylon.tui.app._COPY_HINT) but have
+        # no dedicated teaching step of their own (an honest, pre-existing gap —
+        # see this module's own docstring on the chronicle rail). Kitty's own
+        # Shift+drag (terminal-native selection, bypassing Textual's mouse
+        # reporting) remains the documented escape hatch for the #dashboard/
+        # #wiki panes, which are NOT part of this unit.
         TutorialStep(
             id="pin_the_proletariat_to_the_watchlist",
             given=(
@@ -629,7 +641,8 @@ WAYNE_OPENING_ARC: Final[TutorialScript] = TutorialScript(
             when="the player presses 'p' to pin the current subject",
             then=(
                 "social_class/C001 — the class the player organizes among — is "
-                "pinned onto the right rail's watchlist"
+                "pinned onto the right rail's watchlist, its rendered text now "
+                "mouse-selectable and copyable with ctrl+c/super+c"
             ),
             anchor="binding:ArchiveApp:p",
             completion=PinnedInWatchlist(subject="social_class/C001"),

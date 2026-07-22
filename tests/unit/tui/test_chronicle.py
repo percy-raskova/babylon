@@ -12,7 +12,6 @@ from typing import Any
 
 import pytest
 from pydantic import ValidationError
-from rich.panel import Panel
 from rich.text import Text
 
 from babylon.models.enums.events import EventType
@@ -208,10 +207,9 @@ class TestHonestAbsence:
     def test_a_quiet_tick_renders_the_wire_is_quiet_naming_the_tick(self) -> None:
         bulletin = TickBulletin(tick=848, events=())
         rendered = render_bulletin(bulletin)
-        assert isinstance(rendered, Panel)
-        assert isinstance(rendered.renderable, Text)
-        assert "the wire is quiet" in rendered.renderable.plain
-        assert "0848" in rendered.renderable.plain
+        assert isinstance(rendered, Text)
+        assert "the wire is quiet" in rendered.plain
+        assert "0848" in rendered.plain
 
     def test_an_empty_stream_renders_the_wire_is_quiet(self) -> None:
         rendered = render_chronicle(())
@@ -220,7 +218,14 @@ class TestHonestAbsence:
 
 
 class TestRendering:
-    """Populated bulletins show the resolved actor (when any) plus the summary."""
+    """Populated bulletins show the resolved actor (when any) plus the summary.
+
+    Unit "selection-unwrap" (shell-interconnect): ``render_bulletin`` returns a bare,
+    selectable ``Text`` rather than a ``Panel`` — the crimson-box/gold-title chrome moved
+    to ``#chronicle-rail``'s own CSS (``babylon.tui.app``); the tick number that used to
+    live ONLY in the Panel's ``title`` is now the body's own first line instead ("T0847"),
+    bold gold, so a bulletin rendered standalone never loses its date.
+    """
 
     def test_a_populated_bulletin_shows_the_actor_and_the_summary(self) -> None:
         bulletin = TickBulletin(
@@ -230,22 +235,21 @@ class TestRendering:
             ),
         )
         rendered = render_bulletin(bulletin)
-        assert isinstance(rendered, Panel)
-        assert isinstance(rendered.renderable, Text)
-        plain = rendered.renderable.plain
+        assert isinstance(rendered, Text)
+        plain = rendered.plain
+        assert "T0847" in plain
         assert "the Periphery Proletariat" in plain
         assert "stirs to action" in plain
 
-    def test_an_actorless_event_shows_only_the_summary(self) -> None:
+    def test_an_actorless_event_shows_only_the_tick_header_and_the_summary(self) -> None:
         bulletin = TickBulletin(
             tick=847, events=(_event(847, EventType.UPRISING, summary="mass insurrection"),)
         )
         rendered = render_bulletin(bulletin)
-        assert isinstance(rendered, Panel)
-        assert isinstance(rendered.renderable, Text)
-        assert rendered.renderable.plain == "mass insurrection"
+        assert isinstance(rendered, Text)
+        assert rendered.plain == "T0847\nmass insurrection"
 
-    def test_multiple_events_render_one_line_each_in_order(self) -> None:
+    def test_multiple_events_render_one_line_each_in_order_after_the_tick_header(self) -> None:
         bulletin = TickBulletin(
             tick=1,
             events=(
@@ -254,19 +258,41 @@ class TestRendering:
             ),
         )
         rendered = render_bulletin(bulletin)
-        assert isinstance(rendered, Panel)
-        assert isinstance(rendered.renderable, Text)
-        assert rendered.renderable.plain.splitlines() == ["first", "second"]
+        assert isinstance(rendered, Text)
+        assert rendered.plain.splitlines() == ["T0001", "first", "second"]
 
     def test_two_renders_of_the_same_bulletin_are_identical(self) -> None:
         bulletin = TickBulletin(tick=1, events=(_event(1, EventType.UPRISING, summary="x"),))
         first = render_bulletin(bulletin)
         second = render_bulletin(bulletin)
-        assert isinstance(first, Panel)
-        assert isinstance(second, Panel)
-        assert isinstance(first.renderable, Text)
-        assert isinstance(second.renderable, Text)
-        assert first.renderable.plain == second.renderable.plain
+        assert isinstance(first, Text)
+        assert isinstance(second, Text)
+        assert first.plain == second.plain
+
+
+class TestRenderChronicleStacksSelectableText:
+    """``render_chronicle`` concatenates bulletins into ONE bare ``Text`` (never a
+    ``rich.console.Group`` of Panels — both a ``Panel`` and a ``Group`` are opaque to
+    ``Widget.get_selection``, per ``render_bulletin``'s own "selection-unwrap" docstring)."""
+
+    def test_multiple_bulletins_stack_newest_first_each_keeping_its_own_tick_header(self) -> None:
+        bulletins = (
+            TickBulletin(tick=2, events=(_event(2, EventType.UPRISING, summary="second tick"),)),
+            TickBulletin(tick=1, events=(_event(1, EventType.UPRISING, summary="first tick"),)),
+        )
+        rendered = render_chronicle(bulletins)
+        assert isinstance(rendered, Text)
+        plain = rendered.plain
+        assert plain.index("T0002") < plain.index("second tick") < plain.index("T0001")
+        assert "first tick" in plain
+
+    def test_two_renders_of_the_same_stream_are_identical(self) -> None:
+        bulletins = (TickBulletin(tick=1, events=(_event(1, EventType.UPRISING, summary="x"),)),)
+        first = render_chronicle(bulletins)
+        second = render_chronicle(bulletins)
+        assert isinstance(first, Text)
+        assert isinstance(second, Text)
+        assert first.plain == second.plain
 
 
 class TestSeverityColoring:
@@ -280,9 +306,8 @@ class TestSeverityColoring:
             tick=1, events=(_event(1, EventType.UPRISING, summary="mass insurrection"),)
         )
         rendered = render_bulletin(bulletin)
-        assert isinstance(rendered, Panel)
-        assert isinstance(rendered.renderable, Text)
-        styles = [span.style for span in rendered.renderable.spans]
+        assert isinstance(rendered, Text)
+        styles = [span.style for span in rendered.spans]
         assert f"bold {CRIMSON}" in styles
 
     def test_a_warning_tier_event_renders_amber(self) -> None:
@@ -291,9 +316,8 @@ class TestSeverityColoring:
             tick=1, events=(_event(1, EventType.STATE_REPRESSION, summary="crackdown ordered"),)
         )
         rendered = render_bulletin(bulletin)
-        assert isinstance(rendered, Panel)
-        assert isinstance(rendered.renderable, Text)
-        styles = [span.style for span in rendered.renderable.spans]
+        assert isinstance(rendered, Text)
+        styles = [span.style for span in rendered.spans]
         assert AMBER in styles
 
     def test_an_informational_tier_event_renders_plain_bone(self) -> None:
@@ -302,9 +326,8 @@ class TestSeverityColoring:
             tick=1, events=(_event(1, EventType.SURPLUS_EXTRACTION, summary="value flows"),)
         )
         rendered = render_bulletin(bulletin)
-        assert isinstance(rendered, Panel)
-        assert isinstance(rendered.renderable, Text)
-        styles = [span.style for span in rendered.renderable.spans]
+        assert isinstance(rendered, Text)
+        styles = [span.style for span in rendered.spans]
         assert BONE in styles
 
     def test_an_unclassified_event_type_renders_at_the_loud_amber_warning_floor(self) -> None:
@@ -314,9 +337,8 @@ class TestSeverityColoring:
             tick=1, events=(_event(1, EventType.CONSCIOUSNESS_SHIFT, summary="a shift"),)
         )
         rendered = render_bulletin(bulletin)
-        assert isinstance(rendered, Panel)
-        assert isinstance(rendered.renderable, Text)
-        styles = [span.style for span in rendered.renderable.spans]
+        assert isinstance(rendered, Text)
+        styles = [span.style for span in rendered.spans]
         assert AMBER in styles
 
     def test_different_tiers_in_the_same_bulletin_are_colored_independently(self) -> None:
@@ -328,8 +350,7 @@ class TestSeverityColoring:
             ),
         )
         rendered = render_bulletin(bulletin)
-        assert isinstance(rendered, Panel)
-        assert isinstance(rendered.renderable, Text)
-        styles = [span.style for span in rendered.renderable.spans]
+        assert isinstance(rendered, Text)
+        styles = [span.style for span in rendered.spans]
         assert f"bold {CRIMSON}" in styles
         assert BONE in styles

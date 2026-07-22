@@ -140,7 +140,7 @@ from babylon.tui.shell.views.map_view import MapView
 from babylon.tui.shell.views.topology_view import TopologyView
 from babylon.tui.theme import KSBC
 from babylon.tui.tutorial_overlay import TutorialOverlay, TutorialProgress, TutorialStepView
-from babylon.tui.verb_plate import render_verb_plate
+from babylon.tui.verb_plate import render_verb_plate, verb_plate_title
 from babylon.tui.watchlist import (
     InMemoryWatchlistPersistence,
     WatchlistPersistence,
@@ -148,6 +148,7 @@ from babylon.tui.watchlist import (
     load_watchlist,
     render_watchlist,
     save_watchlist,
+    watchlist_title,
 )
 from babylon.tui.wikilinks import (
     BabylonH1,
@@ -519,6 +520,26 @@ _ACTION_BAR_ABSENT: Final = (
 (:func:`~babylon.projection.verbs.plate.build_verb_plate`) is not wired to any live campaign
 graph yet; never fabricate a plate from no data (Constitution III.11)."""
 
+_COPY_HINT: Final = "^c/⌘c copy · kitty: shift-drag"
+"""Unit "selection-unwrap" (shell-interconnect): the static ``border_subtitle``
+every un-paneled rail (:data:`_UNPANELED_RAIL_IDS`) carries — surfacing the
+already-live but undiscoverable ``ctrl+c``/``super+c`` `Screen.copy_text`
+binding (``screen.py:272``, ``show=False`` -> no Footer entry) now that
+mouse-drag selection on these three rails actually extracts real text
+(``Widget.get_selection`` needs a bare ``Text``/``Content`` body — see
+:mod:`babylon.tui.chronicle`/:mod:`babylon.tui.watchlist`/
+:mod:`babylon.tui.verb_plate`'s own "selection-unwrap" docstring notes). The
+"kitty: shift-drag" half documents the terminal-native-selection escape
+hatch for the #dashboard/#wiki panes, which stay OUTSIDE this unit's scope
+(they render Markdown/HUD widgets, not a bare Text/Content body) — a real
+gap, deliberately left as a documented absence rather than a code fix."""
+
+_UNPANELED_RAIL_IDS: Final[tuple[str, ...]] = ("#chronicle-rail", "#watchlist-rail", "#action-bar")
+"""The three ``Static`` ids this unit converted from an inner Rich ``Panel``
+to a bare ``Text``/``Content`` body plus outer CSS chrome (border +
+border-title + border-subtitle) — see :data:`_COPY_HINT` and
+:meth:`ArchiveApp._apply_shell_chrome_titles`."""
+
 _VERB_ACTION_KEYS: Final[tuple[str, ...]] = (
     "f1",
     "f2",
@@ -776,27 +797,59 @@ class ArchiveApp(App[None]):
     #shell-body { height: 1fr; }
 
     #chronicle-rail {
-        width: 24; height: 1fr; dock: left; border-right: solid $primary;
+        width: 24; height: 1fr; dock: left;
         background: $panel; color: $foreground; padding: 0 1;
+        border: solid $primary;
     }
     #watchlist-rail {
-        width: 24; height: 1fr; dock: right; border-left: solid $primary;
+        width: 24; height: 1fr; dock: right;
         background: $panel; color: $foreground; padding: 0 1;
+        border: solid $primary;
     }
     #main { height: 1fr; }
     #action-bar {
-        height: 3; dock: bottom; border-top: solid $primary;
+        height: 3; dock: bottom;
         background: $panel; color: $foreground; padding: 0 1;
+        border: solid $primary;
+    }
+
+    /* Unit "selection-unwrap" (shell-interconnect): the three rails' own
+       Rich-rendered CONTENT used to carry a crimson Panel + gold title
+       (chronicle's per-tick bulletins, the watchlist's pin-count panel, the
+       verb plate's org/tick panel — Program 24 P2/P3/P5/P6). That Panel is
+       gone now — render_chronicle/render_watchlist/render_verb_plate return
+       a bare rich.text.Text so Widget.get_selection (widget.py:4213-4232)
+       can extract it; a Panel/Group is opaque to that method, only
+       Text/Content qualify — so the SAME crimson-box-plus-gold-title chrome
+       moves here, onto the Static's own CSS border/border-title. Gold
+       ($accent), not crimson ($primary): matches the old Rich title's own
+       "bold GOLD" style; the four domain panes below use crimson ($primary)
+       titles by contrast, a pre-existing, intentional difference this unit
+       does not touch. border-title text is set dynamically, once per
+       repaint (ArchiveApp._apply_shell_chrome_titles at boot,
+       _refresh_watchlist/_refresh_action_bar on every live update —
+       _refresh_chronicle never touches it: the tick number now lives
+       inline in the body text itself, one header line per bulletin, so a
+       single static rail-level title is enough). border-subtitle carries a
+       static copy-affordance hint: the already-live but undiscoverable
+       ctrl+c/super+c Screen.copy_text binding (screen.py:272, show=False)
+       — mouse-drag a selection on any of these three rails, then copy it.
+       Kitty's own Shift+drag (terminal-native selection, bypassing
+       Textual's mouse reporting entirely) remains the escape hatch for the
+       #dashboard/#wiki panes, which are NOT bare Text/Content widgets and
+       so are NOT part of this unit — a documented {absence}, not a code
+       fix (see ArchiveApp._apply_shell_chrome_titles' own docstring). */
+    #chronicle-rail, #watchlist-rail, #action-bar {
+        border-title-color: $accent;
+        border-title-background: $panel;
+        border-title-style: bold;
+        border-subtitle-color: $text-muted;
+        border-subtitle-background: $panel;
     }
 
     /* Program 24 P7 (KSBC aesthetic pass, DESIGN_BIBLE §9b "The Installer"):
        the four domain panes + the HUD sub-strip had NO chrome of their own
-       before this pass (unlike the rails/action-bar, whose Rich-rendered
-       CONTENT already carries a crimson Panel + gold title — chronicle's
-       per-tick bulletins, the watchlist's pin-count panel, the verb
-       plate's org/tick panel — from Program 24 P2/P3/P5/P6; boxing the rail
-       WIDGET too would double-frame that content inside an already-narrow
-       24-column column). Each pane plate is a crimson-bordered box with its
+       before this pass. Each pane plate is a crimson-bordered box with its
        own title tab breaking the top border line ("┤ TITLE ├" idiom) — a
        bold crimson label chipped on a panel-tone backing. #wiki is the one
        scrollable content region among the four, so it gets the doc's
@@ -948,13 +1001,23 @@ class ArchiveApp(App[None]):
         """Stamp the Program 24 P7 KSBC title-tab label on every domain pane +
         the HUD sub-strip (DESIGN_BIBLE §9b "title tab breaks the border"
         idiom) — the four panes and the HUD had no chrome of their own
-        before this pass (see the CSS comment above ``#dashboard, #map,
-        #wiki, #topology { border: ... }`` for why the rails/action-bar are
-        deliberately NOT re-boxed here: their own Rich-rendered content
-        already carries a crimson-Panel + gold title). :meth:`compose`
-        unconditionally mounts all five, so this always runs once at boot
-        regardless of which path (lobby or demo) :meth:`on_mount` takes
-        next.
+        before this pass. :meth:`compose` unconditionally mounts all five, so
+        this always runs once at boot regardless of which path (lobby or
+        demo) :meth:`on_mount` takes next.
+
+        Unit "selection-unwrap" (shell-interconnect) extends this to the
+        three un-paneled rails (:data:`_UNPANELED_RAIL_IDS`): each gets the
+        SAME boot-time chrome stamp the four panes do, plus the static
+        :data:`_COPY_HINT` ``border_subtitle`` every rail carries
+        permanently (never touched again — it is not data-dependent, unlike
+        ``border_title``). ``#chronicle-rail``'s own title never changes
+        after this (the tick number now lives inline in the rendered body,
+        one header line per bulletin, not in the title); ``#watchlist-rail``
+        and ``#action-bar`` start with their own honest "nothing live yet"
+        title and are overwritten with the real pin-count/org-tick string by
+        :meth:`_refresh_watchlist`/:meth:`_refresh_action_bar` the moment a
+        live campaign feeds them (Constitution III.11 — the boot-time title
+        never claims data that is not there yet).
         """
         # Lazy import: WikiView imports BabylonMarkdown from this module — the
         # same one-way-seam trick :meth:`compose` already uses.
@@ -965,6 +1028,12 @@ class ArchiveApp(App[None]):
         self.query_one(MapView).border_title = "MAP"
         self.query_one(WikiView).border_title = "WIKI"
         self.query_one(TopologyView).border_title = "TOPOLOGY"
+
+        self.query_one("#chronicle-rail", Static).border_title = "CHRONICLE"
+        self.query_one("#watchlist-rail", Static).border_title = watchlist_title(())
+        self.query_one("#action-bar", Static).border_title = "ACTION BAR — no verb plate wired yet"
+        for rail_id in _UNPANELED_RAIL_IDS:
+            self.query_one(rail_id, Static).border_subtitle = _COPY_HINT
 
     async def _on_campaign_chosen(self, campaign_id: UUID | None) -> None:
         """``LobbyScreen`` dismissed: boot/resume the chosen campaign.
@@ -1161,12 +1230,20 @@ class ArchiveApp(App[None]):
         bar's existing :data:`_ACTION_BAR_ABSENT` fence untouched when this
         composition root chose not to wire a live plate (Constitution III.11: never
         a blank or fabricated repaint), same as :meth:`_refresh_dashboard`.
+
+        Unit "selection-unwrap": also stamps the bar's ``border_title`` with
+        :func:`~babylon.tui.verb_plate.verb_plate_title` — the org/tick
+        header the old ``Panel(title=...)`` used to carry, now CSS chrome
+        (see :mod:`babylon.tui.app`'s own CSS comment) — so the two always
+        repaint together, never one stale against the other.
         """
         if self.campaign is None:
             return
         view = self.campaign.verb_plate_view()
         if view is not None:
-            self.query_one("#action-bar", Static).update(render_verb_plate(view))
+            bar = self.query_one("#action-bar", Static)
+            bar.update(render_verb_plate(view))
+            bar.border_title = verb_plate_title(view)
 
     def _refresh_chronicle(self, chronicle: Sequence[ChronicleEvent]) -> None:
         """Append ``chronicle``'s events to :attr:`_chronicle_history` and repaint
@@ -1200,10 +1277,16 @@ class ArchiveApp(App[None]):
         resolvable" row — never silently dropped (Constitution III.11). An
         empty :attr:`watchlist` renders the same honest "nothing pinned yet"
         fence :meth:`compose` boots with.
+
+        Unit "selection-unwrap": also stamps the rail's ``border_title`` with
+        :func:`~babylon.tui.watchlist.watchlist_title` — the pin count the
+        old ``Panel(title=...)`` used to carry, now CSS chrome (see
+        :mod:`babylon.tui.app`'s own CSS comment) — so the two always
+        repaint together, never one stale against the other.
         """
-        self.query_one("#watchlist-rail", Static).update(
-            render_watchlist(self.watchlist.pinned_ids, self._subject_views)
-        )
+        rail = self.query_one("#watchlist-rail", Static)
+        rail.update(render_watchlist(self.watchlist.pinned_ids, self._subject_views))
+        rail.border_title = watchlist_title(self.watchlist.pinned_ids)
 
     def _save_watchlist(self) -> None:
         """Persist :attr:`watchlist`'s current pin order (Program 24 P6).

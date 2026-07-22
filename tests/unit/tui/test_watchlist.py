@@ -10,7 +10,6 @@ from __future__ import annotations
 
 import pytest
 from pydantic import ValidationError
-from rich.panel import Panel
 from rich.text import Text
 
 from babylon.projection.view_models import ClassComposition, ConsciousnessSimplex, CountyView
@@ -22,6 +21,7 @@ from babylon.tui.watchlist import (
     load_watchlist,
     render_watchlist,
     save_watchlist,
+    watchlist_title,
 )
 
 WAYNE = CountyView(
@@ -190,7 +190,15 @@ class TestPersistenceSeam:
 
 
 class TestRenderWatchlist:
-    """The page: ``peek(view, depth=0)`` rows stacked in pin order."""
+    """The page: ``peek(view, depth=0)`` rows stacked in pin order.
+
+    Unit "selection-unwrap" (shell-interconnect): ``render_watchlist`` returns a bare,
+    selectable ``Text`` rather than a ``Panel`` — the crimson-box/gold-title chrome moved
+    to ``#watchlist-rail``'s own CSS (``babylon.tui.app``); the pin-count title that used
+    to live in the Panel's ``title=`` is now :func:`watchlist_title`, a separate pure
+    string function the caller (``ArchiveApp._refresh_watchlist``) assigns to the rail's
+    ``border_title``.
+    """
 
     def test_an_empty_watchlist_renders_the_honest_absence_line(self) -> None:
         result = render_watchlist((), {})
@@ -199,39 +207,27 @@ class TestRenderWatchlist:
 
     def test_a_pinned_entity_renders_its_depth_zero_peek_row(self) -> None:
         result = render_watchlist(("county/26163",), {"county/26163": WAYNE})
-        assert isinstance(result, Panel)
-        assert isinstance(result.renderable, Text)
-        plain = result.renderable.plain
+        assert isinstance(result, Text)
+        plain = result.plain
         assert "population" in plain
         # depth=0 shows only the first declared field (peek's own contract).
         assert "median_wage" not in plain
-
-    def test_the_title_names_the_pin_count(self) -> None:
-        result = render_watchlist(
-            ("county/26163", "county/26125"),
-            {"county/26163": WAYNE, "county/26125": OAKLAND},
-        )
-        assert isinstance(result, Panel)
-        assert isinstance(result.title, Text)
-        assert result.title.plain == "Watchlist (2 pinned)"
 
     def test_rows_stack_in_pinned_id_order(self) -> None:
         result = render_watchlist(
             ("county/26125", "county/26163"),
             {"county/26163": WAYNE, "county/26125": OAKLAND},
         )
-        assert isinstance(result, Panel)
-        assert isinstance(result.renderable, Text)
-        lines = result.renderable.plain.splitlines()
+        assert isinstance(result, Text)
+        lines = result.plain.splitlines()
         assert len(lines) == 2
         assert "county/26125" in lines[0]
         assert "county/26163" in lines[1]
 
     def test_a_pinned_id_missing_from_views_by_id_renders_a_named_absence_row(self) -> None:
         result = render_watchlist(("county/99999",), {})
-        assert isinstance(result, Panel)
-        assert isinstance(result.renderable, Text)
-        plain = result.renderable.plain
+        assert isinstance(result, Text)
+        plain = result.plain
         assert "county/99999" in plain
         assert "no longer resolvable" in plain
 
@@ -240,8 +236,16 @@ class TestRenderWatchlist:
         views = {"county/26163": WAYNE}
         first = render_watchlist(pinned, views)
         second = render_watchlist(pinned, views)
-        assert isinstance(first, Panel)
-        assert isinstance(second, Panel)
-        assert isinstance(first.renderable, Text)
-        assert isinstance(second.renderable, Text)
-        assert first.renderable.plain == second.renderable.plain
+        assert isinstance(first, Text)
+        assert isinstance(second, Text)
+        assert first.plain == second.plain
+
+
+class TestWatchlistTitle:
+    """The dynamic border-title string, split out of the old Panel's ``title=``."""
+
+    def test_zero_pins_names_zero(self) -> None:
+        assert watchlist_title(()) == "Watchlist (0 pinned)"
+
+    def test_the_title_names_the_pin_count(self) -> None:
+        assert watchlist_title(("county/26163", "county/26125")) == "Watchlist (2 pinned)"

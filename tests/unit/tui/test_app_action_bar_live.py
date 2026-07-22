@@ -14,6 +14,14 @@ own dashboard-body seam.
 The Wayne/barren fixture graphs mirror ``test_verb_plate.py``'s own two personas verbatim (all
 nine verbs eligible vs. almost nothing eligible) so this file exercises the SAME eligibility
 predicates the plate's own contract tests already pin, rather than a hand-typed lookalike.
+
+Unit "selection-unwrap" (shell-interconnect): ``render_verb_plate`` used to return a
+``rich.panel.Panel`` with the org/tick header as its ``title``; it now returns a bare ``Text``
+(a ``Panel`` is opaque to ``Widget.get_selection``), with the header moved to
+:func:`~babylon.tui.verb_plate.verb_plate_title`, assigned to the bar's own ``border_title`` by
+``ArchiveApp._refresh_action_bar``. ``_action_bar_text`` below reads both (content +
+``border_title``) and joins them the same way the old combined string did, so every
+pre-existing assertion here keeps working unchanged.
 """
 
 from __future__ import annotations
@@ -23,7 +31,6 @@ from dataclasses import dataclass
 from uuid import UUID
 
 import pytest
-from rich.panel import Panel
 from rich.text import Text
 from textual.pilot import Pilot
 from textual.widgets import Label, OptionList, Static
@@ -211,17 +218,17 @@ def _action_bar_text(app: ArchiveApp) -> str:
     ``.render()``, which wraps a Rich renderable in an opaque ``Visual``; see this
     file's own module docstring / ``test_app_chronicle_live.py``'s identical note)
     hands back the exact object :meth:`~babylon.tui.app.ArchiveApp._refresh_action_bar`
-    passed to ``.update()`` — a live :class:`~rich.panel.Panel` (``render_verb_plate``'s
-    own return shape, mirroring ``test_verb_plate.py``'s own ``_lines_of`` helper,
-    extended with the title line since this file also asserts the header's tick stamp)
-    or the plain :data:`~babylon.tui.app._ACTION_BAR_ABSENT` string when no live plate
-    is wired."""
-    content = app.query_one("#action-bar", Static).content
-    if isinstance(content, Panel):
-        assert isinstance(content.renderable, Text)
-        assert isinstance(content.title, Text)
-        return f"{content.title.plain}\n{content.renderable.plain}"
-    return str(content)
+    passed to ``.update()`` — a live bare :class:`~rich.text.Text` (``render_verb_plate``'s
+    own return shape, mirroring ``test_verb_plate.py``'s own ``_lines_of`` helper) or the
+    plain :data:`~babylon.tui.app._ACTION_BAR_ABSENT` string when no live plate is wired.
+    The bar's ``border_title`` (:func:`~babylon.tui.verb_plate.verb_plate_title`, the
+    org/tick header that used to live in the old Panel's own ``title=``) is joined in
+    front, so every pre-existing tick-stamp assertion below keeps working unchanged."""
+    widget = app.query_one("#action-bar", Static)
+    content = widget.content
+    body_plain = content.plain if isinstance(content, Text) else str(content)
+    title = widget.border_title or ""
+    return f"{title}\n{body_plain}"
 
 
 class TestSeams:

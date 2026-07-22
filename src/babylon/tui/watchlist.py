@@ -49,14 +49,11 @@ from collections.abc import Mapping, Sequence
 from typing import Final, Protocol, runtime_checkable
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
-from rich import box
-from rich.console import RenderableType
-from rich.panel import Panel
 from rich.text import Text
 
 from babylon.projection.view_models import ProjectionRecord
 from babylon.tui.peek import peek
-from babylon.tui.theme import CRIMSON, GOLD
+from babylon.tui.theme import CRIMSON
 
 __all__ = [
     "DEFAULT_WATCHLIST_CAPACITY",
@@ -65,6 +62,7 @@ __all__ = [
     "InMemoryWatchlistPersistence",
     "load_watchlist",
     "save_watchlist",
+    "watchlist_title",
     "render_watchlist",
 ]
 
@@ -282,9 +280,25 @@ def _missing_row(entity_id: str) -> Text:
     return Text(f"▌ {entity_id} — no longer resolvable", style=f"bold {CRIMSON}")
 
 
+def watchlist_title(pinned_ids: Sequence[str]) -> str:
+    """The rail's dynamic border title: ``"Watchlist (N pinned)"``.
+
+    Unit "selection-unwrap" (shell-interconnect): this text used to be the
+    ``title=`` of :func:`render_watchlist`'s own :class:`~rich.panel.Panel`;
+    it now lives in ``#watchlist-rail``'s CSS ``border-title-*`` chrome
+    instead (:mod:`babylon.tui.app`), set at every repaint alongside the
+    body :func:`render_watchlist` still returns.
+
+    :param pinned_ids: the pin order the rail is showing, normally
+        :attr:`WatchlistState.pinned_ids`.
+    :returns: ``"Watchlist ({len(pinned_ids)} pinned)"``.
+    """
+    return f"Watchlist ({len(pinned_ids)} pinned)"
+
+
 def render_watchlist(
     pinned_ids: Sequence[str], views_by_id: Mapping[str, ProjectionRecord]
-) -> RenderableType:
+) -> Text:
     """Render the watchlist page: ``peek(view, depth=0)`` rows, one per pin.
 
     **Live-query, not baked** (matches :func:`~babylon.tui.peek.peek`'s own
@@ -295,15 +309,18 @@ def render_watchlist(
     not-yet-resolved entity) still renders its own named absence row, rather
     than being silently skipped.
 
+    Unit "selection-unwrap": returns a bare, selectable :class:`~rich.text.
+    Text` rather than a :class:`~rich.panel.Panel` — the crimson border/gold
+    title (the pin count — :func:`watchlist_title`) moved to
+    ``#watchlist-rail``'s own CSS chrome, since a ``Panel`` is opaque to
+    ``Widget.get_selection`` (only bare ``Text``/``Content`` qualify).
+
     :param pinned_ids: the pin order to render, normally
         :attr:`WatchlistState.pinned_ids`.
     :param views_by_id: caller-resolved view-models keyed by entity id, for
         some or all of ``pinned_ids``.
     :returns: the honest-absence line when ``pinned_ids`` is empty;
-        otherwise a bordered §9b-chrome panel (crimson border, gold title,
-        square corners — matching :mod:`babylon.tui.peek`'s and
-        :mod:`babylon.tui.verb_plate`'s plate anatomy) titled with the pin
-        count, stacking one ``peek(view, depth=0)`` row per pinned id.
+        otherwise one ``peek(view, depth=0)`` row per pinned id, stacked.
     """
     if not pinned_ids:
         return _absence_text()
@@ -321,12 +338,4 @@ def render_watchlist(
             body.append_text(row)
         else:  # pragma: no cover - peek()'s own depth==0 contract always returns Text
             body.append(str(row))
-
-    title = Text(f"Watchlist ({len(pinned_ids)} pinned)", style=f"bold {GOLD}")
-    return Panel(
-        body,
-        title=title,
-        border_style=CRIMSON,
-        box=box.SQUARE,
-        padding=(0, 1),
-    )
+    return body

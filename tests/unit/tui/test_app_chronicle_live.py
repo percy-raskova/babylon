@@ -11,10 +11,16 @@ run-until-paused), and staying quiet when a tick genuinely produces nothing — 
 Program 24 P2's dashboard seam.
 
 ``Static.content`` (not ``.render()``, which wraps the renderable in a ``Visual``) hands back the
-exact ``Group``/``Text`` object ``ArchiveApp._refresh_chronicle`` passed to ``.update()`` — the
-same object shape ``render_chronicle``/``render_bulletin`` already return, so these tests inspect
-it the same way ``test_chronicle.py``'s own ``TestRendering``/``TestSeverityColoring`` do (``Text.
-plain`` for content, ``Text.spans`` for the applied severity style).
+exact ``Text`` object ``ArchiveApp._refresh_chronicle`` passed to ``.update()`` — the same object
+shape ``render_chronicle``/``render_bulletin`` already return, so these tests inspect it the same
+way ``test_chronicle.py``'s own ``TestRendering``/``TestSeverityColoring`` do (``Text.plain`` for
+content, ``Text.spans`` for the applied severity style).
+
+Unit "selection-unwrap" (shell-interconnect): ``render_chronicle`` used to return a
+``rich.console.Group`` of per-bulletin ``Panel``\\ s; it now returns ONE bare ``Text`` (a
+``Panel``/``Group`` is opaque to ``Widget.get_selection`` — only ``Text``/``Content`` qualify), with
+each bulletin's own tick number as an inline header line rather than a Panel ``title``. These tests
+were rewritten to match: no more ``Group``/``Panel`` unwrapping, just ``Text.plain``/``.spans``.
 """
 
 from __future__ import annotations
@@ -24,8 +30,6 @@ from dataclasses import dataclass
 from uuid import UUID
 
 import pytest
-from rich.console import Group
-from rich.panel import Panel
 from rich.text import Text
 from textual.pilot import Pilot
 from textual.widgets import OptionList, Static
@@ -170,8 +174,10 @@ async def _boot_into_campaign_shell(pilot: Pilot[None]) -> None:
     await pilot.pause()
 
 
-def _rail_content(app: ArchiveApp) -> Group | Text:
-    return app.query_one("#chronicle-rail", Static).content
+def _rail_content(app: ArchiveApp) -> Text:
+    content = app.query_one("#chronicle-rail", Static).content
+    assert isinstance(content, Text)
+    return content
 
 
 class TestChronicleRailStaysQuietWithNoEvents:
@@ -203,13 +209,8 @@ class TestChronicleRailShowsLiveEvents:
             await pilot.pause()
 
             content = _rail_content(app)
-            assert isinstance(content, Group)
-            panel = content.renderables[0]
-            assert isinstance(panel, Panel)
-            body = panel.renderable
-            assert isinstance(body, Text)
-            assert "mass insurrection" in body.plain
-            styles = [span.style for span in body.spans]
+            assert "mass insurrection" in content.plain
+            styles = [span.style for span in content.spans]
             assert f"bold {CRIMSON}" in styles
 
     @pytest.mark.asyncio
@@ -229,14 +230,8 @@ class TestChronicleRailShowsLiveEvents:
             await pilot.press("t")
             await pilot.pause()
 
-            content = _rail_content(app)
-            assert isinstance(content, Group)
-            assert len(content.renderables) == 2
-            first_panel, second_panel = content.renderables
-            assert isinstance(first_panel, Panel)
-            assert isinstance(second_panel, Panel)
-            assert "second tick" in first_panel.renderable.plain  # newest tick first
-            assert "first tick" in second_panel.renderable.plain
+            plain = _rail_content(app).plain
+            assert plain.index("second tick") < plain.index("first tick")  # newest tick first
 
     @pytest.mark.asyncio
     async def test_a_quiet_tick_after_history_leaves_the_history_visible(self) -> None:
@@ -252,10 +247,10 @@ class TestChronicleRailShowsLiveEvents:
             await pilot.press("t")  # tick 2: genuinely no events
             await pilot.pause()
 
-            content = _rail_content(app)
-            assert isinstance(content, Group)
-            assert len(content.renderables) == 1  # only tick 1 ever produced a bulletin
-            assert "only tick with an event" in content.renderables[0].renderable.plain
+            plain = _rail_content(app).plain
+            assert "only tick with an event" in plain
+            assert plain.count("T0001") == 1  # only tick 1 ever produced a bulletin/header
+            assert "T0002" not in plain  # tick 2 was genuinely quiet: no bulletin at all
 
 
 class TestChronicleRailStaysLiveThroughThePacedDriver:
@@ -278,9 +273,5 @@ class TestChronicleRailStaysLiveThroughThePacedDriver:
             await app.workers.wait_for_complete()
             await pilot.pause()
 
-            content = _rail_content(app)
-            assert isinstance(content, Group)
-            assert len(content.renderables) == 2
-            first_panel, second_panel = content.renderables
-            assert "run two" in first_panel.renderable.plain  # newest tick first
-            assert "run one" in second_panel.renderable.plain
+            plain = _rail_content(app).plain
+            assert plain.index("run two") < plain.index("run one")  # newest tick first

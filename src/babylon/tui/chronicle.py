@@ -58,9 +58,6 @@ from collections.abc import Sequence
 from typing import Any, Final
 
 from pydantic import BaseModel, ConfigDict, Field
-from rich import box
-from rich.console import Group, RenderableType
-from rich.panel import Panel
 from rich.text import Text
 
 from babylon.models.enums.events import EventType
@@ -366,37 +363,59 @@ def _event_line(event: ChronicleEvent) -> Text:
     return line
 
 
-def render_bulletin(bulletin: TickBulletin) -> RenderableType:
-    """Render one dated page (a bordered panel) for ``bulletin``.
+def render_bulletin(bulletin: TickBulletin) -> Text:
+    """Render one dated page for ``bulletin`` as a bare, selectable :class:`~rich.text.Text`.
 
-    An empty bulletin renders the honest "the wire is quiet" line, naming
-    the tick it was asked about — the absence always names what was looked
-    up, never a bare unattributable blank (Constitution III.11).
+    Unit "selection-unwrap" (shell-interconnect): this used to return a
+    :class:`~rich.panel.Panel` with the tick number as its ``title`` — a
+    Rich renderable :meth:`~babylon.tui.widget.Widget.get_selection`
+    (``widget.py:4213-4232``) cannot extract text from, since ``_render()``
+    only recognizes bare :class:`~rich.text.Text`/:class:`~textual.content.
+    Content`. The crimson box + gold title moved to ``#chronicle-rail``'s own
+    CSS ``border``/``border-title-*`` (:mod:`babylon.tui.app`); the tick
+    number that used to live ONLY in the Panel title is now the first
+    inline line of the returned body instead, bold gold, so a bulletin
+    rendered standalone (or stacked by :func:`render_chronicle`) never loses
+    its own date. An empty bulletin already named its own tick inline in the
+    honest "the wire is quiet" line (Constitution III.11: the absence always
+    names what was looked up), so no separate header line is added there —
+    doing so would repeat the tick number for no reason.
 
     :param bulletin: the tick's bulletin to render.
-    :returns: a bordered Rich :class:`~rich.panel.Panel` titled by the tick.
+    :returns: the bulletin's selectable body text.
     """
-    title = Text(f"T{bulletin.tick:04d}", style=f"bold {GOLD}")
-    body: RenderableType
     if not bulletin.events:
-        body = Text(f"▌ T{bulletin.tick:04d} — {_WIRE_QUIET}", style=f"bold {CRIMSON}")
-    else:
-        body = Text()
-        for index, event in enumerate(bulletin.events):
-            if index:
-                body.append("\n")
-            body.append(_event_line(event))
-    return Panel(body, title=title, border_style=CRIMSON, box=box.SQUARE, padding=(0, 1))
+        return Text(f"▌ T{bulletin.tick:04d} — {_WIRE_QUIET}", style=f"bold {CRIMSON}")
+    body = Text()
+    body.append(f"T{bulletin.tick:04d}\n", style=f"bold {GOLD}")
+    for index, event in enumerate(bulletin.events):
+        if index:
+            body.append("\n")
+        body.append(_event_line(event))
+    return body
 
 
-def render_chronicle(bulletins: Sequence[TickBulletin]) -> RenderableType:
+def render_chronicle(bulletins: Sequence[TickBulletin]) -> Text:
     """Render the full browsable stream: bulletins stacked newest-tick-first.
+
+    Unit "selection-unwrap": returns one bare :class:`~rich.text.Text` (each
+    bulletin's own :func:`render_bulletin` text concatenated, separated by a
+    blank line) rather than a :class:`~rich.console.Group` of Panels — a
+    ``Group`` is, like a ``Panel``, opaque to ``Widget.get_selection`` (only
+    ``Text``/``Content`` qualify), so stacking Panels used to make the whole
+    ``#chronicle-rail`` unselectable even though each bulletin's own body was
+    plain text underneath.
 
     :param bulletins: the tick bulletins to render (as produced by
         :func:`chronicle_stream`).
-    :returns: a Rich renderable stacking one panel per bulletin, or the bare
+    :returns: the concatenated, selectable stream text, or the bare
         "the wire is quiet" line when ``bulletins`` is empty.
     """
     if not bulletins:
         return Text(f"▌ {_WIRE_QUIET}", style=f"bold {CRIMSON}")
-    return Group(*(render_bulletin(bulletin) for bulletin in bulletins))
+    combined = Text()
+    for index, bulletin in enumerate(bulletins):
+        if index:
+            combined.append("\n\n")
+        combined.append_text(render_bulletin(bulletin))
+    return combined

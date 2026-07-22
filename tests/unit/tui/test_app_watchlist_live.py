@@ -11,6 +11,15 @@ pure and complete (P1 wired the rail's honest ``"nothing pinned yet"`` absence a
 fake) keeps the pin order across a resumed campaign — following the exact
 ``_booted_app``/``_boot_into_campaign_shell`` idiom ``test_app_dashboard_live.py``/
 ``test_app_chronicle_live.py`` established.
+
+Unit "selection-unwrap" (shell-interconnect): ``render_watchlist`` used to return a
+``rich.panel.Panel`` with the pin count as its ``title``; it now returns a bare ``Text``
+(a ``Panel`` is opaque to ``Widget.get_selection``), with the pin count moved to
+:func:`~babylon.tui.watchlist.watchlist_title`, assigned to the rail's own
+``border_title`` by ``ArchiveApp._refresh_watchlist``. ``_rail_text`` below reads both
+(content + ``border_title``) and joins them the same way the old combined string did, so
+every pre-existing assertion here (``"Watchlist (N pinned)" in rail``) keeps working
+unchanged.
 """
 
 from __future__ import annotations
@@ -19,7 +28,6 @@ from dataclasses import dataclass
 from uuid import UUID
 
 import pytest
-from rich.panel import Panel
 from rich.text import Text
 from textual.pilot import Pilot
 from textual.widgets import Label, OptionList, Static
@@ -137,21 +145,20 @@ async def _boot_into_campaign_shell(pilot: Pilot[None]) -> None:
 def _rail_text(app: ArchiveApp) -> str:
     """The right rail's plain text — mirrors ``test_app_chronicle_live.py``'s own
     ``_rail_content``: ``Static.content`` (not ``.render()``, which wraps the
-    renderable in a ``Visual``) hands back the exact object
+    renderable in a ``Visual``) hands back the exact bare :class:`~rich.text.Text`
     :meth:`~babylon.tui.app.ArchiveApp._refresh_watchlist` passed to ``.update()``
-    (a bare :class:`~rich.text.Text` for the absence fence, a
-    :class:`~rich.panel.Panel` once something is pinned — same shape
-    :func:`~babylon.tui.watchlist.render_watchlist` itself returns)."""
-    content = app.query_one("#watchlist-rail", Static).content
-    if isinstance(content, Panel):
-        title = content.title
-        title_plain = title.plain if isinstance(title, Text) else str(title)
-        body = content.renderable
-        body_plain = body.plain if isinstance(body, Text) else str(body)
-        return f"{title_plain}\n{body_plain}"
-    if isinstance(content, Text):
-        return content.plain
-    return str(content)  # pragma: no cover - render_watchlist only ever returns the above two
+    — the same shape :func:`~babylon.tui.watchlist.render_watchlist` itself
+    returns, for both the absence fence and a populated page (unit
+    "selection-unwrap": no more :class:`~rich.panel.Panel` wrapping). The rail's
+    ``border_title`` (:func:`~babylon.tui.watchlist.watchlist_title`, the pin
+    count that used to live in the Panel's own ``title=``) is joined in front,
+    so every pre-existing ``"Watchlist (N pinned)" in rail`` assertion below
+    keeps working unchanged."""
+    widget = app.query_one("#watchlist-rail", Static)
+    content = widget.content
+    assert isinstance(content, Text)
+    title = widget.border_title or ""
+    return f"{title}\n{content.plain}"
 
 
 class TestEmptyWatchlistShowsTheHonestAbsenceOnBoot:

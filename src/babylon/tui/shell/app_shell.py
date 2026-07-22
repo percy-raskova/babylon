@@ -48,3 +48,10 @@ class AppShell(App[None]):
     def action_switch_view(self, view: str) -> None:
         """Switch the main region to ``view`` (one of the four domain pane ids)."""
         self.query_one("#main", ContentSwitcher).current = view
+
+    def export_visible_text(self) -> str:
+        """Export the visible widget tree as plain text (BDD capture, design §G)."""
+        # Lazy import: bdd may grow an AppShell type reference; keep the seam one-way.
+        from babylon.tui.shell.bdd.harness import export_visible_text
+
+        return export_visible_text(self)

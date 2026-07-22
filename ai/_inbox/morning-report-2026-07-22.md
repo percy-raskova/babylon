@@ -61,6 +61,40 @@ this). PR #249 merges as INFRASTRUCTURE — "finished tutorial" now means the
 post-adversary arc. Recon in flight (wf_6b111651-cfe); design synthesis + build train
 follow. Gate 3 moves AFTER this train.
 
+### ★ EXECUTED (same day, ~12:00): the adversary train is DONE — PR #253
+
+Five units, five clean opus verdicts, on `feature/adversary-train` (auto-merge armed):
+
+| Unit | Verdict | Delivered |
+|---|---|---|
+| W1 The Publisher | APPROVED | STATE_REPRESSION/STATE_SURVEILLANCE are real bus events (single publish site); `repression_faced` bump + REPRESSION edge mirror the fascist-verb pattern; `tick_summary.repression_count` NULL→real count; 4-test Aleksandrov cascade proof |
+| W2 CPU Felt | APPROVED | Full 30-system live `GameSession` Wayne campaign dispatches `RuleBasedStateAI`; bulletin renders; byte-identical state event stream across independent runs |
+| W3 Sparrow (I.21 LIVE) | APPROVED_AFTER_FIX | Raid→centrality / Infiltrate→cutset / Surveil→isolation on the real decision path (review caught the Surveil mapping inverted toward hubs — fixed) |
+| W4 Tutorial arc | APPROVED | Wayne arc 9→13 steps: state-apparatus dossier + repression ledger; coverage sentinel green |
+| W5 Live cascade | APPROVED | Controller-chartered: REPRESS on an org propagates `repression_faced` onto its SOLIDARITY-linked class base (COINTELPRO grounding) — the P(S|R)/agitation game loop now closes IN THE LIVE GAME, proven control/treatment over a real campaign |
+
+Battery at head: 14,147 unit tests green, 18/18 sentinel families, qa 6/6 byte-identical +
+two-process determinism. No baseline moved, no ceremony owed (the tutorial transcript is
+a gitignored self-check, not a committed golden). Honest gap left FLAGGED, not faked: the
+scripted opening arc can't fire a live REPRESS bulletin (org heat stays 0 without a
+player-verb affordance — the verb-plate work is the barrier, documented in
+`game/tutorial.py`).
+
+### 🚨 SECURITY — ROTATE TWO KEYS (action needed, ~5 min)
+
+Your inbox-tidy commit this morning included `snapshot_report.html` — a generated
+environment report whose HTML embeds a **plaintext env-var table with the live
+`CLOUDFLARE_API_KEY` and `BLS_API_KEY` values**. GitHub push protection caught the
+Cloudflare token and **blocked the push — nothing ever reached the remote.** I rewrote
+the branch history to exclude the file entirely (re-created your tidy commit as
+`1c3060b1` without it; every other file kept; train commits replayed; lineage verified
+blob-free). The report stays on your disk untracked at `ai/_inbox/snapshot_report.html`.
+**Please rotate both keys anyway** — they sit in a rendered HTML on disk and in whatever
+generated it. This is the same disease as the known "sops-migrate the plaintext .envrc
+keys" follow-up (babylon-infra memory, 2026-07-20) — worth pulling that forward. Related
+prior incident: the 2026-07-08 Cloudflare token leak (filter-repo'd; rotation was
+"advisable" then — if it never happened, this may be the same token, twice lucky).
+
 ## Gate 3 — what's left for your eyes (after the adversary train)
 
 The BD Gate-3 check ("full TUI campaign session") should now be a five-minute yes:

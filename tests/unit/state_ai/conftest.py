@@ -12,6 +12,8 @@ from babylon.models.entities.state_apparatus_ai import (
     StateBudget,
 )
 from babylon.models.enums import (
+    EdgeType,
+    NodeType,
     OrgType,
     StateActionType,
     StateFaction,
@@ -236,4 +238,67 @@ def make_directed_path(n: int, prefix: str = "node_") -> BabylonGraph:
         u, v = f"{prefix}{i}", f"{prefix}{i + 1}"
         graph.add_edge(u, v)
         graph.add_edge(v, u)
+    return graph
+
+
+def make_org_solidarity_double_star_with_bridge(prefix: str = "org_") -> BabylonGraph:
+    """Two SOLIDARITY-linked ORGANIZATION star clusters joined by one bridge.
+
+    Built for Sparrow topological-targeting tests (Constitution I.21, task
+    W3): ``hub_a``/``hub_b`` are structural peers with the highest combined
+    degree+betweenness centrality in the graph (the Raid/Liquidate
+    "centrality" target); ``bridge`` is the sole connector between the two
+    clusters -- a Sparrow articulation-point/cutset (the Infiltrate target)
+    with markedly lower degree than either hub. All values verified
+    empirically via :func:`babylon.ooda.attention.sparrow.analyze_network`
+    (see ``tests/unit/state_ai/test_sparrow_targeting.py``):
+
+    - Combined degree+betweenness: hub_a == hub_b (1.1667, tied) >
+      bridge (0.7556) > every leaf (0.1).
+    - Known cutsets: {hub_a, hub_b, bridge} (all three; a tree-shaped join
+      makes every non-leaf node on the unique connecting path a cut
+      vertex -- see ``test_sparrow.py::TestSparrowCutsets`` for the same
+      property on a plain path graph).
+
+    Layout (all edges bidirectional, EdgeType.SOLIDARITY):
+        hub_a -- leafA1, leafA2, leafA3, leafA4
+        hub_a -- bridge -- hub_b
+        hub_b -- leafB1, leafB2, leafB3, leafB4
+
+    Args:
+        prefix: Node ID prefix (default ``"org_"``).
+
+    Returns:
+        Directed BabylonGraph with SOLIDARITY edges in both directions
+        per link (NetworkX ``to_directed()`` parity, matching
+        ``make_directed_star`` et al. above).
+    """
+    graph = BabylonGraph()
+    node_suffixes = [
+        "hub_a",
+        "leafA1",
+        "leafA2",
+        "leafA3",
+        "leafA4",
+        "bridge",
+        "hub_b",
+        "leafB1",
+        "leafB2",
+        "leafB3",
+        "leafB4",
+    ]
+    for suffix in node_suffixes:
+        graph.add_node(f"{prefix}{suffix}", NodeType.ORGANIZATION)
+
+    def _bi(u: str, v: str) -> None:
+        graph.add_edge(u, v, EdgeType.SOLIDARITY)
+        graph.add_edge(v, u, EdgeType.SOLIDARITY)
+
+    for leaf in ("leafA1", "leafA2", "leafA3", "leafA4"):
+        _bi(f"{prefix}hub_a", f"{prefix}{leaf}")
+    _bi(f"{prefix}hub_a", f"{prefix}bridge")
+    _bi(f"{prefix}bridge", f"{prefix}hub_b")
+    for leaf in ("leafB1", "leafB2", "leafB3", "leafB4"):
+        _bi(f"{prefix}hub_b", f"{prefix}{leaf}")
+
     return graph

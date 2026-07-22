@@ -259,8 +259,9 @@ def select_repress_target(
     org_id: str,
     candidates: list[tuple[str, float]],
     visibility: float = 1.0,
+    topology_scores: dict[str, float] | None = None,
 ) -> str | None:
-    """Select the highest Heat x Visibility visible threat.
+    """Select the highest Heat x Visibility x Topology visible threat.
 
     Implements the "reactive_doctrine" / "The Blind Giant" from
     ``ai/epochs/epoch3/state-attention-economy.yaml`` (~L524-545): the
@@ -275,6 +276,15 @@ def select_repress_target(
     visible threats by heat." Callers should pass real per-candidate
     visibility once spec-077 ships instead of relying on this default.
 
+    ``topology_scores`` (task W3) layers Constitution I.21's Sparrow
+    topological targeting on top of the Heat x Visibility sort:
+    Surveil→singleton, Infiltrate→cutset, Raid/Liquidate→centrality. It
+    is computed by
+    :func:`babylon.ooda.npc_stub._compute_sparrow_topology_scores` from
+    the real SOLIDARITY subgraph over *candidates* and reflects which
+    sub-verb the caller's verb-scoring step actually selected — see
+    :meth:`RuleBasedStateAI.select_action`.
+
     Args:
         org_id: The acting state organization's own ID. Defensively
             excluded from the candidate pool even if *candidates*
@@ -288,6 +298,22 @@ def select_repress_target(
             candidates`` for why SocialClass nodes are excluded).
         visibility: Uniform visibility multiplier applied to every
             candidate (interim constant; see above).
+        topology_scores: Optional per-candidate Sparrow structural score
+            (Constitution I.21) for the sub-verb actually being enacted
+            this tick. When given AND at least one eligible candidate has
+            a positive score, the sort key becomes ``heat * visibility *
+            topology_scores[candidate_id]`` (missing keys default to
+            0.0 — Sparrow found no structural signal for that candidate
+            under this mode). If EVERY eligible candidate's topology
+            score is 0.0 (no structural signal at all this tick — e.g.
+            no bridges exist for Infiltrate, or the SOLIDARITY subgraph
+            is empty because nothing has wired org-to-org SOLIDARITY
+            edges yet), this degrades honestly to the plain ``heat *
+            visibility`` sort instead of collapsing the ranking to a
+            pure id tie-break — the Blind Giant falls back to raw heat,
+            it never goes fully blind just because one dimension read
+            zero. ``None`` (the default) preserves the pre-W3 behavior
+            exactly.
 
     Returns:
         The ID of the highest-scoring candidate, or ``None`` if no
@@ -307,10 +333,19 @@ def select_repress_target(
     if not eligible:
         return None
 
-    # Descending Heat x Visibility, ascending id tiebreak — the
-    # established idiom (babylon.ooda.initiative.resolve_action_order:
+    # Descending Heat x Visibility [x Topology], ascending id tiebreak —
+    # the established idiom (babylon.ooda.initiative.resolve_action_order:
     # ``sorted(scores, key=lambda s: (-s.score, s.org_id))``).
-    winner_id, _winner_heat = min(eligible, key=lambda c: (-(c[1] * visibility), c[0]))
+    if topology_scores is not None and any(
+        topology_scores.get(cid, 0.0) > 0.0 for cid, _ in eligible
+    ):
+        scores: dict[str, float] = topology_scores
+        winner_id, _winner_heat = min(
+            eligible,
+            key=lambda c: (-(c[1] * visibility * scores.get(c[0], 0.0)), c[0]),
+        )
+    else:
+        winner_id, _winner_heat = min(eligible, key=lambda c: (-(c[1] * visibility), c[0]))
     return winner_id
 
 
@@ -406,10 +441,12 @@ class RuleBasedStateAI:
 
     Follows the OODA cycle each tick:
     1. OBSERVE — read heat level, faction balance, and visible-threat candidates
-    2. ORIENT — select the top Heat x Visibility threat (see
-       :func:`select_repress_target`), generate action candidates, compute
-       escalation scores
-    3. DECIDE — score candidates via factional objective + escalation affinity
+    2. ORIENT — generate action candidates, compute escalation scores
+    3. DECIDE — score candidates via factional objective + escalation
+       affinity, THEN select the top Heat x Visibility [x Sparrow
+       Topology] threat (see :func:`select_repress_target`) using the
+       winning candidate's sub-verb to pick the Sparrow targeting mode
+       (Constitution I.21, task W3)
     4. ACT — select best action(s) within budget, all directed at the
        resolved target (task #73 — never self, honest no-op if nothing
        is visible)
@@ -429,6 +466,7 @@ class RuleBasedStateAI:
         rng_seed: int | None = None,
         target_candidates: list[tuple[str, float]] | None = None,
         target_visibility: float = 1.0,
+        sparrow_topology_scores: dict[StateActionType, dict[str, float]] | None = None,
     ) -> list[StateAction]:
         """Select actions for one tick.
 
@@ -455,6 +493,14 @@ class RuleBasedStateAI:
             target_visibility: Uniform visibility multiplier forwarded to
                 :func:`select_repress_target` (interim constant; see its
                 docstring re: spec-077 Panopticon).
+            sparrow_topology_scores: Optional ``{sub_verb: {candidate_id:
+                score}}`` map (Constitution I.21, task W3) from
+                :func:`babylon.ooda.npc_stub._compute_sparrow_topology_
+                scores`. The mode dict keyed by the TOP-scored candidate's
+                ``sub_verb`` (see below) is forwarded to
+                :func:`select_repress_target` as its ``topology_scores``.
+                ``None`` (the default) preserves the pre-W3 pure
+                Heat x Visibility targeting exactly.
 
         Returns:
             List of StateAction objects (at most ``defines.actions_per_tick``),
@@ -464,18 +510,19 @@ class RuleBasedStateAI:
         """
         rng = random.Random(rng_seed)
 
-        # Target selection ("The Blind Giant" — see select_repress_target).
-        if target_candidates is None:
-            resolved_target: str | None = org_id
-        else:
-            resolved_target = select_repress_target(org_id, target_candidates, target_visibility)
-            if resolved_target is None:
-                return []
-
         max_actions = defines.actions_per_tick
         available = budget.available
 
-        # OBSERVE + ORIENT: Generate feasible candidates
+        # OBSERVE + ORIENT: Generate feasible candidates. Verb scoring
+        # (DECIDE, below) runs BEFORE target resolution so that, when
+        # Sparrow topology data is supplied, targeting can be informed by
+        # which sub-verb actually wins this tick (Constitution I.21:
+        # Raid/Liquidate hunt centrality, Infiltrate hunts cutsets,
+        # Surveil hunts singletons) rather than guessing. This reordering
+        # does not change RNG consumption order relative to itself —
+        # target resolution draws no RNG — so it is behavior-preserving
+        # for every caller that omits sparrow_topology_scores (D-01..D-06,
+        # and all pre-W3 target_candidates call sites).
         candidates = _generate_candidates(available, defines)
 
         if not candidates:
@@ -506,6 +553,25 @@ class RuleBasedStateAI:
 
         # Sort by score descending
         scored.sort(key=lambda x: x[0], reverse=True)
+
+        # Target selection ("The Blind Giant" + Sparrow topological
+        # targeting, Constitution I.21). Only the top-scored candidate's
+        # sub-verb determines the Sparrow mode for this tick's single
+        # resolved target — when actions_per_tick > 1, lower-ranked
+        # co-selected actions still share that one target, mirroring the
+        # pre-existing one-target-per-tick design (unchanged by W3).
+        if target_candidates is None:
+            resolved_target: str | None = org_id
+        else:
+            top_sub_verb = scored[0][1].sub_verb
+            topology_scores = (
+                sparrow_topology_scores.get(top_sub_verb) if sparrow_topology_scores else None
+            )
+            resolved_target = select_repress_target(
+                org_id, target_candidates, target_visibility, topology_scores=topology_scores
+            )
+            if resolved_target is None:
+                return []
 
         # ACT: Select top actions within budget
         selected: list[StateAction] = []

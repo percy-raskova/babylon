@@ -51,6 +51,7 @@ class _FakeStore:
     def __init__(self) -> None:
         self.sessions: dict[UUID, dict[str, Any]] = {}
         self.persist_tick_calls: list[tuple[int, UUID | None]] = []
+        self.persist_tick_summary_calls: list[tuple[int, dict[str, Any], UUID | None]] = []
         self.persist_tick_atomic_calls: list[PerTickTransactionEnvelope] = []
         self.mark_resolved_calls: list[tuple[UUID, int]] = []
         self.get_pending_turns_calls: list[tuple[UUID, int]] = []
@@ -102,6 +103,15 @@ class _FakeStore:
     ) -> None:
         self.persist_tick_calls.append((tick, session_id))
         self._graphs[(session_id, tick)] = graph  # type: ignore[index]
+
+    def persist_tick_summary(
+        self,
+        tick: int,
+        summary: dict[str, Any],
+        *,
+        session_id: UUID,
+    ) -> None:
+        self.persist_tick_summary_calls.append((tick, summary, session_id))
 
     def hydrate_graph(
         self, tick: int | None = None, *, session_id: UUID | None = None
@@ -363,6 +373,70 @@ def test_advance_tick_runs_with_no_progress_store() -> None:
     session = create_new_campaign(store, scenario=WayneCountyScenario())
     result = session.advance_tick()
     assert result.tick == 1
+
+
+# --------------------------------------------------------------------------- #
+# persist_tick_summary wiring (T5 Unit U2) — the tick_summary read-model      #
+# write, previously reachable only through the legacy web bridge.            #
+# --------------------------------------------------------------------------- #
+
+
+def test_advance_tick_persists_tick_summary_at_the_persist_tick_commit_boundary() -> None:
+    """One ``persist_tick_summary`` call per committed tick, with the exact
+    kwargs :func:`~babylon.projection.tick_summary.build_tick_summary_kwargs`
+    computes over this SAME tick's ``world``/``graph`` — never a second,
+    independently-derived payload."""
+    from babylon.projection.tick_summary import build_tick_summary_kwargs
+
+    store = _FakeStore()
+    session = create_new_campaign(store, scenario=WayneCountyScenario())
+
+    result = session.advance_tick()
+
+    assert len(store.persist_tick_summary_calls) == 1
+    tick, summary, session_id = store.persist_tick_summary_calls[0]
+    assert tick == 1
+    assert session_id == session.session_id
+    assert summary == build_tick_summary_kwargs(result.world, graph=session.graph)
+
+
+def test_advance_tick_persists_tick_summary_once_per_further_tick() -> None:
+    store = _FakeStore()
+    session = create_new_campaign(store, scenario=WayneCountyScenario())
+
+    session.advance_tick()
+    session.advance_tick()
+
+    assert [tick for tick, _summary, _sid in store.persist_tick_summary_calls] == [1, 2]
+
+
+def test_advance_tick_persists_tick_summary_in_the_same_batch_as_persist_tick() -> None:
+    """ "Same commit boundary as persist_tick" pinned as call ORDER: the
+    summary write happens strictly between ``persist_tick`` and
+    ``persist_tick_atomic`` (the commit marker), never before the full
+    snapshot or after the tick is already marked committed."""
+    order: list[str] = []
+
+    class _OrderedStore(_FakeStore):
+        def persist_tick(self, *args: Any, **kwargs: Any) -> None:
+            order.append("persist_tick")
+            super().persist_tick(*args, **kwargs)
+
+        def persist_tick_summary(self, *args: Any, **kwargs: Any) -> None:
+            order.append("persist_tick_summary")
+            super().persist_tick_summary(*args, **kwargs)
+
+        def persist_tick_atomic(self, *args: Any, **kwargs: Any) -> None:
+            order.append("persist_tick_atomic")
+            super().persist_tick_atomic(*args, **kwargs)
+
+    store = _OrderedStore()
+    session = create_new_campaign(store, scenario=WayneCountyScenario())
+    order.clear()  # drop tick 0's own boot sequence
+
+    session.advance_tick()
+
+    assert order == ["persist_tick", "persist_tick_summary", "persist_tick_atomic"]
 
 
 # --------------------------------------------------------------------------- #

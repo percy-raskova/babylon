@@ -95,6 +95,7 @@ from babylon.models.world_state import WorldState
 from babylon.persistence.delta import is_checkpoint_tick
 from babylon.persistence.envelope import PerTickTransactionEnvelope
 from babylon.persistence.postgres_schema import ensure_ddl_applied
+from babylon.projection.tick_summary import build_tick_summary_kwargs
 from babylon.projection.verbs.submit import TurnSink, build_player_actions, submit_verb
 from babylon.topology import BabylonGraph
 from babylon.tui.chronicle import ChronicleEvent
@@ -135,7 +136,9 @@ class GameRuntimeStore(TurnSink, Protocol):
     lifecycle named in the program plan (spine D): ``create_session`` /
     ``get_session`` / ``get_pending_turns`` / ``mark_turns_resolved`` /
     ``persist_tick`` / ``hydrate_graph`` / ``persist_tick_atomic`` /
-    ``get_last_committed_tick``.
+    ``get_last_committed_tick`` / ``persist_tick_summary`` (T5 Unit U2 — the
+    ``tick_summary`` read-model write, previously only reachable through the
+    legacy web bridge).
     """
 
     def create_session(
@@ -196,6 +199,16 @@ class GameRuntimeStore(TurnSink, Protocol):
 
     def get_last_committed_tick(self, session_id: UUID) -> int | None:
         """The largest tick with a committed ``tick_commit`` marker, or ``None``."""
+        ...
+
+    def persist_tick_summary(
+        self,
+        tick: int,
+        summary: dict[str, Any],
+        *,
+        session_id: UUID,
+    ) -> None:
+        """Persist one pre-aggregated ``tick_summary`` row (T5 Unit U2)."""
         ...
 
 
@@ -581,6 +594,15 @@ class GameSession:
         :func:`~babylon.persistence.delta.is_checkpoint_tick` — the same
         52-tick (one simulated year) cadence the hex-delta pipeline already
         checkpoints on.
+
+        T5 Unit U2: also persists this tick's ``tick_summary`` row (the
+        national trend read-model's source table — the ``v_national_trend``
+        declared view's ``LAG`` windows read this table) at the SAME commit
+        boundary as :meth:`~PostgresRuntime.persist_tick`, via
+        :func:`~babylon.projection.tick_summary.build_tick_summary_kwargs`
+        over this tick's own ``world``/``graph`` — previously reachable only
+        through the legacy web bridge, so a real Archive campaign wrote
+        nothing to ``tick_summary`` at all.
         """
         next_tick = self.tick + 1
         pending = self._store.get_pending_turns(self.session_id, next_tick)
@@ -600,6 +622,11 @@ class GameSession:
         determinism_hash = _replay_identity_hash(self.session_id, next_tick, self._rng_seed)
 
         self._store.persist_tick(next_tick, self.graph, session_id=self.session_id)
+        self._store.persist_tick_summary(
+            next_tick,
+            build_tick_summary_kwargs(world, graph=self.graph),
+            session_id=self.session_id,
+        )
         self._store.persist_tick_atomic(
             PerTickTransactionEnvelope(
                 session_id=self.session_id,

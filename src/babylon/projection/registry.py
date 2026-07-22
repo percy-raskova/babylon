@@ -30,6 +30,7 @@ from babylon.persistence.postgres_aggregation import (
     NationalValueAggregate,
     StateValueAggregate,
 )
+from babylon.projection.view_models import NationalTrendView
 
 #: Sentinel prefix stamped on :attr:`DeclaredView.owning_subsystem` when a view
 #: reads tables from more than one subsystem and no single owner is declared by
@@ -228,6 +229,31 @@ _GLOBAL_PHI_BALANCE = DeclaredView(
     ownership_ambiguous=True,
 )
 
+_NATIONAL_TREND = DeclaredView(
+    name="v_national_trend",
+    owning_subsystem=(
+        "game_session tick-summary read-model (spec-037 bootstrap + "
+        "spec-061 FR-003 US4; single write path via GameSession.advance_tick's "
+        "persist_tick_summary commit, T5 Unit U2 — 'the wind is blowing')"
+    ),
+    sql_view="v_national_trend",
+    order_by="session_id, tick",
+    columns=(
+        "session_id",
+        "tick",
+        "imperial_rent",
+        "imperial_rent_delta",
+        "price_log",
+        "price_log_delta",
+        "fictitious_log",
+        "fictitious_log_delta",
+        "market_corrections",
+        "market_corrections_delta",
+    ),
+    fts_columns=(),
+    view_model=NationalTrendView,
+)
+
 #: The closed set of declared cross-subsystem read interfaces (Constitution
 #: II.11). Immutable by being a tuple of frozen models; new views join by
 #: adding an entry here and a row to the ownership table in
@@ -238,6 +264,7 @@ REGISTRY: Final[tuple[DeclaredView, ...]] = (
     _STATE_VALUE_AGGREGATE,
     _NATIONAL_VALUE_AGGREGATE,
     _GLOBAL_PHI_BALANCE,
+    _NATIONAL_TREND,
 )
 
 

@@ -540,6 +540,15 @@ class _MinimalFakeStore:
             tick = max(t for sid, t in self._graphs if sid == session_id)
         return self._graphs[(session_id, tick)]
 
+    def persist_tick_summary(
+        self,
+        tick: int,
+        summary: dict[str, Any],
+        *,
+        session_id: Any,
+    ) -> None:
+        pass
+
     def persist_tick_atomic(self, envelope: Any, *, write_commit_marker: bool = True) -> None:
         pass
 

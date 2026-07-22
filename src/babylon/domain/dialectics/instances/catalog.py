@@ -274,10 +274,16 @@ class GraphInputs:
             ``productivity_data_source`` wired, or no data for this tick's
             year.
         political_labor_share: pre-derived signed share of class political
-            labor-hours flowing through the representation channel vs the
-            self-organization channel, in [-1, 1] (P25 U3, ADR129; measured
-            fresh per tick from flows — I-FRESH, no accumulator). ``None``
-            until the U5 party/organ producers exist anywhere in the world.
+            energy, in [-1, 1] (P25 U3, ADR129; measured fresh per tick from
+            flows — I-FRESH, no accumulator). BD ruling 2026-07-22 (U8,
+            ADR134): the dialectic analyzed is SYSTEM-LOYAL vs
+            SYSTEM-OPPOSITIONAL — positive = mass delegated INTO the
+            system's channel (allegiance: the ballot, the parties, the
+            ISA_POLITICAL apparatus; the representation pole), negative =
+            autonomous capacity built AGAINST it (organization, the P(S|R)
+            numerator; the self-organization pole). Producer:
+            AllegianceSystem @17.42 (graph attr, party-bearing scenarios
+            only). ``None`` in every party-less world (honest absence).
         commodity_overhang_share: NATIONAL ``Σcommodity_capital /
             Σtotal_capital`` (Vol II circulation program, U5) — a ratio of
             sums over every county carrying a live
@@ -636,14 +642,18 @@ def _national_measure(inputs: GraphInputs) -> GapReading:
 def _political_form_measure(inputs: GraphInputs) -> GapReading:
     """self-organization (A) ⇄ representation (B) — P25 U3 (ADR129).
 
-    Reads the pre-derived signed share of the class's political labor-hours
-    flowing through delegation into the ISA_POLITICAL apparatus (pole B)
-    versus its own organs (pole A) — canvass-hours vs organizing-hours,
-    dues-to-parties vs dues-to-organs (the-electoral-question.md §2.6).
-    ``None`` → ``(0, 0)``: no party or organ political-labor flow exists
-    anywhere (every org-less scenario), so there is no political-form
-    contradiction to measure (Constitution III.11). Positive balance =
-    representation (pole B) dominant.
+    The dialectic analyzed is SYSTEM-LOYAL vs SYSTEM-OPPOSITIONAL (BD
+    ruling 2026-07-22, U8/ADR134): pole B (representation) is the class's
+    political energy delegated INTO the system's channel — allegiance mass
+    in the ballot, the parties, the ISA_POLITICAL apparatus; pole A
+    (self-organization) is the autonomous capacity built AGAINST it —
+    organization, the P(S|R) numerator. The valve law (1 − v·H) is this
+    opposition's internal struggle: the loyal pole suppressing the
+    oppositional one. Producer: AllegianceSystem @17.42 (U8).
+    ``None`` → ``(0, 0)``: no party terrain exists anywhere (every
+    party-less scenario), so there is no political-form contradiction to
+    measure (Constitution III.11). Positive balance = system-loyal
+    (pole B) dominant.
     """
     if inputs.political_labor_share is None:
         return GapReading(gap=0.0, balance=0.0)

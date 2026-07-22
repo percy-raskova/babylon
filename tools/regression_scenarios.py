@@ -2235,6 +2235,16 @@ COVERAGE_GAPS_DATA: Final[tuple[dict[str, str], ...]] = (
         "remediation": "a balkanization-scenario fixture seeding FACTION + INFLUENCES edges",
     },
     {
+        "system": "AllegianceSystem",
+        "reason": "no PoliticalFaction orgs are seeded in any canonical scenario; the "
+        "parties-exist guard (P25 U8 TRAP 3, ADR134) makes the system a hard no-op — "
+        "zero allegiance/hope/organization writes, zero HOPE_SPIKE events, no "
+        "political_labor_share graph attr — which is exactly what keeps the six "
+        "baselines byte-identical",
+        "remediation": "the U13 electoral goldens (mitterrand/weimar/debs/syriza/"
+        "bernie_valve), which run on the electoral_fixture party terrain",
+    },
+    {
         "system": "DoctrineSystem",
         "reason": "no ORGANIZATION nodes are seeded (single_county, Task 8, included); the "
         "system's own module docstring documents it as a no-op on the qa:regression "

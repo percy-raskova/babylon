@@ -42,6 +42,7 @@ from babylon.domain.economics.tick.system import TickDynamicsSystem
 from babylon.engine.context import TickContext
 from babylon.engine.event_builders import EVENT_BUILDERS
 from babylon.engine.services import ServiceContainer
+from babylon.engine.systems.allegiance import AllegianceSystem
 from babylon.engine.systems.collapse_transition import CollapseTransitionSystem
 from babylon.engine.systems.community import CommunitySystem
 from babylon.engine.systems.contradiction import ContradictionSystem
@@ -343,6 +344,7 @@ _SYSTEM_CLASSES: Final[tuple[type[SystemBase], ...]] = (
     StruggleSystem,
     ConsciousnessSystem,
     FascistFactionSystem,
+    AllegianceSystem,
     SovereigntySystem,
     MarketScissorsSystem,
     ContradictionSystem,

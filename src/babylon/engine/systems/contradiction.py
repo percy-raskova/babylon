@@ -464,6 +464,11 @@ class ContradictionSystem(SystemBase):
             tenancy_id_pairs=tuple(tenancy_ids),
             market_balance=market_balance,
             national_balance=self._national_chauvinism_balance(graph),
+            # P25 U8 (ADR134): AllegianceSystem @17.42 publishes the signed
+            # system-loyal vs system-oppositional share on party terrain;
+            # absent (None) in every party-less world — the political_form
+            # measure reads honest absence, never a fabricated zero.
+            political_labor_share=graph.get_graph_attr("political_labor_share", None),
             rentier_share=rentier_share,
             debt_ratio=debt_ratio,
             credit_fragility=self._credit_fragility(

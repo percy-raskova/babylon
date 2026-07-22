@@ -82,6 +82,11 @@ SOCIAL_CLASS_COMPUTED_FIELDS: Final[frozenset[str]] = frozenset(
         "sigma_capital_labor",
         "sigma_wage",
         "derived_class_cell",
+        # P25 U8 (ADR134): the electoral hope field H(c) — transient per-tick
+        # bookkeeping AllegianceSystem @17.42 recomputes and ElectoralSystem
+        # @17.45 consumes same-tick (the threat_score precedent); not a
+        # SocialClass model field, dropped on reconstruction.
+        "hope",
     }
 )
 

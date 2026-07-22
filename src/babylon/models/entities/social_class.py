@@ -320,6 +320,18 @@ class SocialClass(BaseModel):
             "owner-gated)."
         ),
     )
+    allegiance: dict[str, float] = Field(
+        default_factory=dict,
+        description=(
+            "Electoral allegiance distribution over party org ids (P25 U8/"
+            "ADR134, brief §2.2 node-attribute ruling): per-party mass in "
+            "[0,1] with abstention as the implicit residual 1−Σ. Written "
+            "each tick by AllegianceSystem on party-bearing scenarios only "
+            "(TRAP 3 guard: party-less scenarios never receive a write). A "
+            "declared field so the distribution survives the "
+            "extra='forbid' graph round-trip (the wealth_share precedent)."
+        ),
+    )
     ideology: IdeologicalProfile = Field(
         default_factory=IdeologicalProfile,
         description="Multi-dimensional ideological profile (Sprint 3.4.3). Float input auto-converts via model_validator.",

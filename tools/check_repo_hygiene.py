@@ -83,6 +83,7 @@ ALLOWED_TOP_LEVEL_FILES: frozenset[str] = frozenset(
         "CONSTITUTION.md",
         "CONTRIBUTORS.md",
         "LICENSE",
+        "NORTH_STAR.md",  # BD-blessed orientation doc (2026-07-21); cited by CLAUDE.md as repo-root
         "README.md",
         "SETUP_GUIDE.md",
         "data-artifacts.yaml",  # ADR076 successor registry for demoted reference tables

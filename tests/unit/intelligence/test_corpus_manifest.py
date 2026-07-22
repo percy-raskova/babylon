@@ -185,6 +185,84 @@ class TestDenyInsideAllowPrecedence:
         assert manifest.resolve_ingestible_files(tmp_path) == ()
 
 
+class TestBroadAllowGlobDoesNotLeakNonAllowFiles:
+    """Reviewer-reproduced regression: a broad allow glob whose literal
+    string never mentions a non-allow row's directory still RESOLVES into it
+    at runtime. ``ingest_targets`` must exclude those files by set difference
+    over ALL non-allow rows (not deny rows alone) — a narrow per-row glob
+    check on the string is not enough.
+    """
+
+    def test_broad_allow_glob_does_not_leak_apocrypha_files(self, tmp_path: Path) -> None:
+        (tmp_path / APOCRYPHA_DIR_NAME).mkdir(parents=True)
+        apocrypha_file = tmp_path / APOCRYPHA_DIR_NAME / "content.jsonl"
+        apocrypha_file.write_text('{"text": "pastiche"}\n')
+        real_file = tmp_path / "real.jsonl"
+        real_file.write_text('{"text": "canon"}\n')
+
+        manifest = parse_manifest(
+            {
+                "rows": [
+                    _row(path_glob="**/*.jsonl", format="jsonl", canon_status="allow"),
+                    _row(
+                        path_glob=f"{APOCRYPHA_DIR_NAME}/content.jsonl",
+                        canon_status="apocryphal",
+                        format="jsonl",
+                    ),
+                ]
+            }
+        )
+
+        resolved = manifest.resolve_ingestible_files(tmp_path)
+        assert real_file in resolved
+        assert apocrypha_file not in resolved
+
+    def test_broad_allow_glob_does_not_leak_flag_bd_files(self, tmp_path: Path) -> None:
+        work_dir = tmp_path / "nitzan-bichler" / "capital-as-power"
+        work_dir.mkdir(parents=True)
+        flagged_file = work_dir / "full.txt"
+        flagged_file.write_text("adversarial-only steelman text")
+        real_dir = tmp_path / "zak-cope" / "divided-world-divided-class"
+        real_dir.mkdir(parents=True)
+        real_file = real_dir / "full.txt"
+        real_file.write_text("canon body")
+
+        manifest = parse_manifest(
+            {
+                "rows": [
+                    _row(path_glob="**/*.txt", canon_status="allow"),
+                    _row(
+                        path_glob="nitzan-bichler/capital-as-power/*.txt",
+                        canon_status="flag_bd",
+                    ),
+                ]
+            }
+        )
+
+        resolved = manifest.resolve_ingestible_files(tmp_path)
+        assert real_file in resolved
+        assert flagged_file not in resolved
+
+    def test_apocrypha_dir_excluded_structurally_even_without_a_matching_row(
+        self, tmp_path: Path
+    ) -> None:
+        # The independent structural fence (_under_apocrypha): even with NO
+        # row declaring canon_status=apocryphal for this exact path (so
+        # nothing exists in the per-row exclusion set for it), a resolved
+        # file under _apocrypha/ must still never surface.
+        (tmp_path / APOCRYPHA_DIR_NAME).mkdir(parents=True)
+        apocrypha_file = tmp_path / APOCRYPHA_DIR_NAME / "stray.txt"
+        apocrypha_file.write_text("should never surface")
+        real_file = tmp_path / "canon.txt"
+        real_file.write_text("canon body")
+
+        manifest = parse_manifest({"rows": [_row(path_glob="**/*.txt", canon_status="allow")]})
+
+        resolved = manifest.resolve_ingestible_files(tmp_path)
+        assert real_file in resolved
+        assert apocrypha_file not in resolved
+
+
 class TestPresenceReporting:
     def test_absent_row_reports_empty_files_not_an_error(self, tmp_path: Path) -> None:
         # corpus_root exists but this row's work has not been extracted yet —

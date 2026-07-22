@@ -17,18 +17,25 @@ Four canon dispositions (ADR107 widens the original allow/deny/flag_bd
 triad to four so the apocrypha row can even be represented):
 
 * ``allow`` — canon; eligible for narrator/RAG ingestion.
-* ``deny`` — ruled OUT. Honored even *inside* an enclosing allow glob: the
-  exclusion is computed as a set-difference over matched files, never a
-  directory-level carve-out, so a denied sub-path wins over whatever allow
-  glob happens to sweep over it (the "Trotsky-quoted-for-rebuttal" case).
-* ``flag_bd`` — adversarial-only (Divergence Channel, ADR072). Never
-  reachable from :meth:`CorpusManifest.ingest_targets` — only ``allow`` rows
-  ever populate that set.
+* ``deny`` — ruled OUT.
+* ``flag_bd`` — adversarial-only (Divergence Channel, ADR072).
 * ``apocryphal`` — kept deliberately, structurally fenced: a row may resolve
   into an ``_apocrypha/`` directory only if it declares this status, and a
-  row declaring this status may resolve nowhere else. Enforced by
-  :meth:`CorpusRow._check_apocrypha_fencing`, not by trusting every future
-  ``path_glob`` author to remember a deny row (ADR107 consequences).
+  row declaring this status may resolve nowhere else. Enforced at load time
+  by :meth:`CorpusRow._check_apocrypha_fencing` (rejects the glob *string*
+  itself), not by trusting every future ``path_glob`` author to remember a
+  deny row (ADR107 consequences).
+
+Every one of ``deny``/``flag_bd``/``apocryphal`` is honored even *inside* an
+enclosing allow glob: :meth:`CorpusManifest.ingest_targets` computes the
+exclusion as a set-difference over matched *files*, subtracting ALL non-allow
+rows' matches (not deny alone), never a directory-level carve-out — so a
+denied/flagged/apocryphal sub-path wins over whatever allow glob happens to
+sweep over it, however broad that glob is (the "Trotsky-quoted-for-rebuttal"
+case, and its ``_apocrypha``/``flag_bd`` analogues). The ``_apocrypha/``
+directory additionally gets a second, independent structural check at
+resolved-file granularity (:func:`_under_apocrypha`), so it stays unreachable
+from ``ingest_targets`` even if the per-row exclusion above were ever wrong.
 
 Presence vs. validity: a row whose glob matches nothing on a given box is a
 MANIFEST fact (nothing has been extracted there yet), never a validation
@@ -126,7 +133,7 @@ class CorpusRow(BaseModel):
 
 
 class ManifestTarget(BaseModel):
-    """One ``allow`` row plus its deny-subtracted, existing-only matched files.
+    """One ``allow`` row plus its excluded-and-existing-only matched files.
 
     ``files`` is already sorted (deterministic ordering). An empty tuple is a
     MANIFEST fact — the row's work has not been extracted onto this box yet —
@@ -164,26 +171,39 @@ class CorpusManifest(BaseModel):
         return tuple(r for r in self.rows if r.canon_status is CanonStatus.APOCRYPHAL)
 
     def ingest_targets(self, corpus_root: Path) -> tuple[ManifestTarget, ...]:
-        """Allow rows (in manifest order), each with deny-subtracted, existing files.
+        """Allow rows (in manifest order), each with excluded/existing files resolved.
 
         This is the enumeration contract that replaces ``MVP_CORPUS``: allow
-        minus deny, existing-files-only, deterministic ordering. Deny rows are
-        honored INSIDE allow globs — a denied sub-path's matched files are
-        removed from an allow row's matches by set difference, never by a
-        directory-level exclusion — so a deny row nested inside a broader
-        allow glob still wins (the Trotsky-quoted-for-rebuttal case).
+        minus every OTHER canon_status (deny, flag_bd, apocryphal) —
+        existing-files-only, deterministic ordering. The exclusion is a set
+        difference over matched files, never a directory-level carve-out, so
+        a narrower deny/flag_bd/apocryphal glob nested inside a broader allow
+        glob still wins (the Trotsky-quoted-for-rebuttal case) — and this
+        holds for a broad allow glob too (e.g. a raw marxists.org mirror
+        import, or ``**/*.jsonl``): it can never sweep a flag_bd or
+        apocryphal row's files back into the ingestible set, because ANY
+        non-allow row's matches are excluded, not just deny rows'.
+
+        On top of that per-row exclusion, every resolved file is also checked
+        structurally against :data:`APOCRYPHA_DIR_NAME` (see
+        :func:`_under_apocrypha`) — a second, independent fence so the
+        ``_apocrypha/`` directory stays unreachable even if the exclusion set
+        above were ever computed wrong.
 
         A row whose matched-files tuple ends up empty is a MANIFEST fact
         (nothing extracted onto this box yet), never an error.
         """
-        deny_files: set[Path] = set()
-        for row in self.deny_rows():
-            deny_files.update(_glob_matches(corpus_root, row.path_glob))
+        excluded_files: set[Path] = set()
+        for row in self.rows:
+            if row.canon_status is not CanonStatus.ALLOW:
+                excluded_files.update(_glob_matches(corpus_root, row.path_glob))
 
         targets: list[ManifestTarget] = []
         for row in self.allow_rows():
             matched = tuple(
-                f for f in _glob_matches(corpus_root, row.path_glob) if f not in deny_files
+                f
+                for f in _glob_matches(corpus_root, row.path_glob)
+                if f not in excluded_files and not _under_apocrypha(corpus_root, f)
             )
             targets.append(ManifestTarget(row=row, files=matched))
         return tuple(targets)
@@ -207,6 +227,19 @@ def _glob_matches(corpus_root: Path, path_glob: str) -> list[Path]:
     return sorted(corpus_root.glob(path_glob))
 
 
+def _under_apocrypha(corpus_root: Path, file_path: Path) -> bool:
+    """Whether ``file_path`` (a match under ``corpus_root``) lives under ``_apocrypha/``.
+
+    Structural fence (ADR107), applied unconditionally in
+    :meth:`CorpusManifest.ingest_targets` regardless of which row's glob
+    matched the file — the apocrypha directory is never bulk-ingestible via
+    any allow row, however broad. ``file_path`` always comes from
+    ``corpus_root.glob(...)`` (see :func:`_glob_matches`), so it is always
+    relative to ``corpus_root``.
+    """
+    return APOCRYPHA_DIR_NAME in file_path.relative_to(corpus_root).parts
+
+
 def parse_manifest(raw: dict[str, Any]) -> CorpusManifest:
     """Parse a YAML mapping (a ``rows:`` list) into a validated manifest."""
     return CorpusManifest(rows=tuple(raw.get("rows", [])))
@@ -225,9 +258,19 @@ def load_manifest(path: Path) -> CorpusManifest:
 
 
 def load_bundled_manifest() -> CorpusManifest:
-    """Load the manifest shipped in the package (``babylon/data/corpus/manifest.yaml``)."""
-    from importlib import resources
+    """Load the manifest shipped in the package (``babylon/data/corpus/manifest.yaml``).
 
-    data = resources.files("babylon.data.corpus").joinpath("manifest.yaml")
-    with resources.as_file(data) as path:
-        return load_manifest(path)
+    Loaded via a filesystem-relative path from this module's own location —
+    the same convention every other consumer under ``babylon/data/`` uses
+    (e.g. ``GameDefines.default_yaml_path`` in
+    :mod:`babylon.config.defines._assembler`), rather than
+    :mod:`importlib.resources`. ``babylon/data/`` and ``babylon/data/corpus/``
+    carry no ``__init__.py`` (unlike :mod:`babylon.intelligence.data`, the one
+    true ``importlib.resources`` package in this tree, which
+    :mod:`babylon.intelligence.model_manifest` reads from) — resolving them as
+    ``importlib.resources`` packages would lean on implicit namespace-package
+    behavior that the rest of ``babylon/data/`` deliberately does not depend
+    on for a real wheel / signed Nix-closure build.
+    """
+    manifest_path = Path(__file__).parent.parent / "data" / "corpus" / "manifest.yaml"
+    return load_manifest(manifest_path)

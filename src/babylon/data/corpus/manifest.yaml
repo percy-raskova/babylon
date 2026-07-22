@@ -18,11 +18,16 @@
 #                denied sub-path wins over whatever allow glob sweeps over it
 #                (the Trotsky-quoted-for-rebuttal case)
 #   flag_bd    - adversarial-only (Divergence Channel, ADR072). Never reachable
-#                from CorpusManifest.ingest_targets() — only allow rows ever
-#                populate that set
-#   apocryphal - kept deliberately, structurally fenced: CorpusRow's validator
-#                requires every row resolving into _apocrypha/ to declare this
-#                status, and forbids every other row from resolving there
+#                from CorpusManifest.ingest_targets() — that method excludes
+#                every non-allow row's matched files (not deny rows alone), so
+#                no allow glob, however broad, can sweep a flag_bd row's files
+#                back in
+#   apocryphal - kept deliberately, structurally fenced two ways: CorpusRow's
+#                validator requires every row resolving into _apocrypha/ to
+#                declare this status (and forbids every other row from
+#                resolving there), AND ingest_targets() independently drops any
+#                resolved file under _apocrypha/ regardless of which row
+#                matched it
 #
 # role is multi-valued (narrator, atlas_ru, atlas_cn, atlas_us, concept_card,
 # glossary, doctrine). It rides chunk metadata jsonb for `@>` retrieval
@@ -200,8 +205,10 @@ rows:
 
   # =========================================================================
   # adversarial-only (ADR072 Divergence Channel) — never the narrator's
-  # RagPipeline ingestion path; CorpusManifest.ingest_targets() only ever
-  # walks allow rows, so a flag_bd row can never leak into that set.
+  # RagPipeline ingestion path; CorpusManifest.ingest_targets() excludes this
+  # row's matched files from every allow row's results too (not just its own
+  # absence from allow_rows()), so a flag_bd row's files can never leak in
+  # via some broader, unrelated allow glob either.
   # =========================================================================
 
   - path_glob: "nitzan-bichler/capital-as-power/*.txt"

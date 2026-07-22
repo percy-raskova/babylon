@@ -178,26 +178,41 @@ class TestDefaultCouplingGraph:
             ("price_value", "financial", "feeds"),
             ("financial", "price_value", "feeds"),
             ("surplus_distribution", "financial", "constrains"),
+            # Vol I U6: the reserved production-layer skeleton is now lit.
+            ("value_usevalue", "labor_laborpower", "feeds"),
+            ("labor_laborpower", "absolute_relative_surplus", "feeds"),
+            ("absolute_relative_surplus", "wage", "feeds"),
         }
+
+    def test_the_three_reserved_vol_one_feeds_now_survive(self) -> None:
+        """The edges that sat dormant since the ADR103 contract commit, awaiting
+        Vol I's lane to bind their endpoints (U6)."""
+        graph = build_default_coupling_graph(build_default_registry())
+        triples = {_triple(c) for c in graph.couplings}
+        assert ("value_usevalue", "labor_laborpower", "feeds") in triples
+        assert ("labor_laborpower", "absolute_relative_surplus", "feeds") in triples
+        assert ("absolute_relative_surplus", "wage", "feeds") in triples
 
     def test_reserved_slots_are_skipped(self, caplog: pytest.LogCaptureFixture) -> None:
         with caplog.at_level(logging.INFO, logger="babylon.domain.dialectics.instances.catalog"):
             build_default_coupling_graph(build_default_registry())
         skipped = [r for r in caplog.records if "Skipping coupling" in r.getMessage()]
-        # Reserved-but-unbound slots: the two Volume II circulation edges plus the
-        # three Volume I production edges reserved by the ADR103 contract commit.
-        # All are explicitly out of scope for now and are NOT faked.
-        assert len(skipped) == 5
+        # Reserved-but-unbound slots: only Vol II's two circulation edges
+        # remain — Vol I's three production edges are now bound (U6).
+        assert len(skipped) == 2
         joined = " ".join(r.getMessage() for r in skipped)
         for endpoint in (
             "realization",  # Vol II
             "disproportionality",  # Vol II
-            "value_usevalue",  # Vol I
-            "labor_laborpower",  # Vol I
-            "absolute_relative_surplus",  # Vol I
         ):
             assert endpoint in joined
-        for landed in ("debt_spiral", "financial"):
+        for landed in (
+            "debt_spiral",
+            "financial",
+            "value_usevalue",  # Vol I, U6
+            "labor_laborpower",  # Vol I, U6
+            "absolute_relative_surplus",  # Vol I, U6
+        ):
             assert landed not in joined
 
 

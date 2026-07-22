@@ -25,7 +25,7 @@ See Also:
 from __future__ import annotations
 
 import logging
-from typing import TYPE_CHECKING, ClassVar
+from typing import TYPE_CHECKING, Any, ClassVar
 
 from babylon.domain.economics.circulation.circuit import initialize_circuit_state
 from babylon.domain.economics.circulation.crisis import assess_circulation_crisis
@@ -48,6 +48,9 @@ from babylon.domain.economics.credit.types import (
 from babylon.domain.economics.crisis.bifurcation import BifurcationRiskCalculator
 from babylon.domain.economics.crisis.wage_compression import should_halt_accumulation
 from babylon.domain.economics.dynamics.types import ClassDistribution, EconomicConditions
+from babylon.domain.economics.reserve_army.accumulation import (
+    DefaultAccumulationLoopCalculator,
+)
 from babylon.domain.economics.reserve_army.calculator import DefaultWagePressureCalculator
 from babylon.domain.economics.tensor import NoDataSentinel
 from babylon.domain.economics.tick.crisis_detector import (
@@ -214,6 +217,13 @@ class TickDynamicsSystem(SystemBase):
 
         # Step 3.5: Compute Vol I production layer — wage pressure (Feature 021)
         county_states = self._compute_vol1_layer(county_states, services, year)
+
+        # Step 3.6: The accumulation loop — derive reserve_ratio + dispossession
+        # rates onto territory nodes (Capital Vol I U3, Ch. 25). Writes directly
+        # to the graph (these are territory-node facts, not CountyEconomicState
+        # fields) so ReserveArmySystem (#5) / DispossessionEventSystem (#10),
+        # both later in this SAME tick, read real values instead of zero defaults.
+        self._compute_accumulation_loop(graph, county_states, services, year, tick)
 
         # Step 4: Compute imperial rent flows
         county_states = self._compute_imperial_rent(county_states, national_params, services)
@@ -1206,6 +1216,127 @@ class TickDynamicsSystem(SystemBase):
         pressure = wage_calc.compute_wage_pressure(state.reserve_ratio)
         adjusted_wage = county.median_wage * (1.0 - pressure)
         return county.model_copy(update={"median_wage": adjusted_wage})
+
+    def _compute_accumulation_loop(
+        self,
+        graph: GraphProtocol,
+        county_states: dict[str, CountyEconomicState],
+        services: ServicesProtocol,
+        year: int,
+        tick: int,
+    ) -> None:
+        """Step 3.6: The accumulation loop — a real reserve_ratio producer.
+
+        Feature: 021-capital-volume-i / vol1-value-production program U3
+
+        Ch. 25 (The General Law of Capitalist Accumulation): rising organic
+        composition of capital displaces workers via mechanization; firm
+        failures (bankruptcy) add a second inflow. Derives
+        ``ReserveArmyDynamics`` from ``services.tensor_registry``'s
+        organic-composition delta and ``services.dispossession_data_source``'s
+        bankruptcy rate (:class:`~babylon.domain.economics.reserve_army.accumulation.DefaultAccumulationLoopCalculator`),
+        accumulates the net inflow into each territory's carried
+        ``reserve_army_stock``, and writes the derived ``reserve_ratio``
+        directly onto the territory node — the scalar ``ReserveArmySystem``
+        (#5) reads later in this SAME tick (previously fed by nothing; a
+        scenario-seeded value would be a fabricated input, ADR116 ruling (a)).
+        ``MarketScissors._swell_reserve_army`` remains additive on top of this
+        baseline during a price/value crisis — one input among several, not
+        the sole producer (program prompt §2g).
+
+        Also writes ``foreclosure_rate``/``eviction_rate`` from the same FRED
+        dispossession adapter directly onto the territory node, feeding
+        ``DispossessionEventSystem`` (#10)'s previously-ungrounded gate.
+        ``displacement_rate`` is left unfed — no FRED-backed data source for
+        gentrification displacement exists (honest absence, not a fabricated
+        proxy).
+
+        Args:
+            graph: Mutable world graph with territory nodes (updated in-place).
+            county_states: Current county snapshots (for ``employment``).
+            services: ServicesProtocol with optional ``tensor_registry`` and
+                ``dispossession_data_source``.
+            year: Current simulation year.
+            tick: Current simulation tick (stamped onto ``ReserveArmyDynamics``).
+        """
+        tensor_registry = getattr(services, "tensor_registry", None)
+        dispossession_source = services.dispossession_data_source
+        if tensor_registry is None and dispossession_source is None:
+            return  # honest absence: no producer wired, nothing to derive
+
+        defines = getattr(services.defines, "reserve_army", None)
+        calculator = DefaultAccumulationLoopCalculator(defines)
+
+        for node in graph.query_nodes(node_type=NodeType.TERRITORY):
+            fips = resolve_county_identity(node)
+            if fips is None:
+                continue  # empty domain: abstract territory, no county identity
+
+            updates: dict[str, float] = {}
+
+            if tensor_registry is not None:
+                county = county_states.get(fips)
+                employment = county.employment if county is not None else 0.0
+                occ_current = self._get_organic_composition(tensor_registry, fips, year)
+                occ_prior = self._get_organic_composition(tensor_registry, fips, year - 1)
+                bankruptcy_rate = None
+                if dispossession_source is not None:
+                    bankruptcy_rate = dispossession_source.get_bankruptcy_rate(fips, year)
+
+                dynamics = calculator.compute_dynamics(
+                    fips_code=fips,
+                    tick=tick,
+                    occ_current=occ_current,
+                    occ_prior=occ_prior,
+                    bankruptcy_rate=bankruptcy_rate,
+                    employment=employment,
+                )
+                if dynamics is not None:
+                    prior_stock = node.attributes.get("reserve_army_stock", 0.0)
+                    new_stock, reserve_ratio = calculator.compute_reserve_ratio(
+                        prior_stock, dynamics, employment
+                    )
+                    updates["reserve_army_stock"] = new_stock
+                    updates["reserve_ratio"] = reserve_ratio
+
+            if dispossession_source is not None:
+                foreclosure = dispossession_source.get_foreclosure_rate(fips, year)
+                if foreclosure is not None:
+                    updates["foreclosure_rate"] = max(0.0, min(foreclosure, 1.0))
+                eviction = dispossession_source.get_eviction_rate(fips, year)
+                if eviction is not None:
+                    updates["eviction_rate"] = max(0.0, min(eviction, 1.0))
+
+            if updates:
+                graph.update_node(node.id, **updates)
+
+    @staticmethod
+    def _get_organic_composition(
+        tensor_registry: Any,
+        fips: str,
+        year: int,
+    ) -> float | None:
+        """Read ``ValueTensor4x3.organic_composition`` for a county-year.
+
+        Args:
+            tensor_registry: TensorRegistry (or test double) with ``.get``.
+            fips: 5-digit county FIPS code.
+            year: Calendar year.
+
+        Returns:
+            The tensor's organic composition, or ``None`` if the registry has
+            no data for this county-year (:class:`NoDataSentinel`) or the
+            resolved tensor carries no numeric ``organic_composition`` (a
+            test double built for an unrelated field, e.g. ``MockTensor``
+            instances that only set ``profit_rate``/``total_s``).
+        """
+        tensor = tensor_registry.get(fips, year)
+        if isinstance(tensor, NoDataSentinel):
+            return None
+        occ = getattr(tensor, "organic_composition", None)
+        if not isinstance(occ, (int, float)):
+            return None
+        return float(occ)
 
     # === CAPITAL VOL II — circulation layer (Feature 023) ===
     # Room partition (ADR103 / §10): the Vol II lane owns this region and its

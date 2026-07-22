@@ -1,5 +1,5 @@
 meta:
-  version: 1.48.0
+  version: 1.51.0
   updated: '2026-07-21'
   description: Architecture Decision Records Index
   format: See individual ADR files in this directory
@@ -10,6 +10,51 @@ meta:
   # T1.2 = ADR135-139; T4 = ADR140-144; T7-beta = ADR145-149. Lanes never mint
   # outside their block; blocks dissolve when the lane merges.
 decisions:
+  ADR118_vol1_u5_headless_parity:
+    title: 'Vol I U5 — Headless-runner parity (ADR written mechanically at cascade merge from lane commit 4627fc23; the lane shipped the unit without its ADR): _build_economics_overrides wires create_vol1_services AND create_circulation_services inside the existing scope_fips branch, reusing the already-loaded fred_cache — reserve_army/productivity/dispossession data sources + transition_engine (Vol I) and turnover/inventory/depreciation sources (Vol II circulation); genuinely activates _compute_vol1_layer and _compute_circulation_layer for every headless run and satisfies _simulate_transitions''s transition_engine gate (all three previously canonical-path-dormant); closes the §2d web/headless parity gap (engine_bridge.py Spec-116 Tasks 20b/21b already wired both). EXPECTED qa:regression drift channel: median_wage, circulation_state, downstream phi_hour/wealth — the U5 channel of the Vol I merge ceremony. Shared-by-charter with Vol II but assigned to Vol I alone (ADR103 §10.2, confirmed ADR116/U1).'
+    status: accepted
+    date: '2026-07-21'
+    file: ADR118_vol1_u5_headless_parity.yaml
+  ADR117_vol1_u2_fundamental_theorem:
+    title: 'Vol I U2 — The Fundamental Theorem, computed: Phi = Wc - Vc per class/county via new compute_fundamental_theorem(wage_value_id_pairs) (domain/dialectics/instances/value_form.py), reusing the wage opposition''s existing (w_paid, v_produced) node-attr feed verbatim (zero new graph traversal); new formula calculate_imperial_rent_gap registered in FormulaRegistry (count 23->24), matching view_imperial_rent.imperial_rent_millions exactly (calibration test added against the live reference DB, mining/2023 row); WIRE-not-retire ruling for the three formerly-dead fundamental_theorem.py formulas + phi_class (all four now have a genuine caller); ContradictionSystem stashes the report on a new fundamental_theorem graph attribute each tick (Phase-1-shadow precedent, no WorldState field this unit); provenance.py left untouched (its labor_aristocracy_ratio call already points at the right formula; its approximate proxy extractor is a deliberate, pinned, out-of-blast-radius design choice, not a regression). calculate_consciousness_drift scope boundary recorded (out of Wc-vs-Vc scope). Full tests/unit/engine/ suite (2169 tests) green, no baseline-column surface touched.'
+    status: accepted
+    date: '2026-07-21'
+    file: ADR117_vol1_u2_fundamental_theorem.yaml
+  ADR116_vol1_u1_activation_audit:
+    title: 'Vol I U1 Activation audit re-verified on lane HEAD (84d8405a, post-ADR103 contract commit): every §2 dormancy claim confirmed with line-number drift only (ReserveArmySystem :72, DispossessionEventSystem :75, territory.py :212 comment unchanged, MarketScissors._swell_reserve_army :439-461 the sole activation path). Three owner design questions settled: (a) DERIVE reserve_ratio/dispossession rates from real producers (U3 accumulation loop + county-tick FRED adapters), never seed as bare scalars (Aleksandrov Test); (b) BOTH extend ReserveArmyDefines/DispossessionDefines/WorkingDayDefines in place AND author new capital_vol1.py->CapitalVolumeIDefines mirroring capital_vol3.py (ADR089) for genuinely new mechanics; (c) parity unit (U5, headless-runner wiring of create_vol1_services) is NOT shared with or closable by Vol II — ADR103 explicitly assigns it to Vol I alone. No code changed, no baseline drift, no ceremony due.'
+    status: accepted
+    date: '2026-07-21'
+    file: ADR116_vol1_u1_activation_audit.yaml
+  ADR115_vol1_u9_monitoring:
+    title: 'Vol I U9 — Monitoring (program-closing unit): four Feature 021 Territory fields (reserve_ratio/foreclosure_rate/eviction_rate/displacement_rate) that U3 finally activates get their first-ever seam-registry rows; three new liveness-registry rows (fundamental_theorem dormant per its own ADR117 scope boundary, wealth_subsistence_ratio/surplus_strategy_ratio consumed by catalog.py); a doubly-stale engine_bridge.py comment (still claiming productivity_data_source/transition_engine are inert after U3/U4 made both false, in the SAME factory call) corrected; U7''s dispossession_intensity retirement re-verified intact (already complete, nothing to do); the veil-gating question resolved as a documented forward-pin, not new code -- nothing this program produced reaches a web-facing endpoint yet, so projection/veil.py''s TIER1_VALUE_RELATION_FIELDS has nothing real to gate today.'
+    status: accepted
+    date: '2026-07-21'
+    file: ADR115_vol1_u9_monitoring.yaml
+  ADR114_vol1_u8_defines_sweep:
+    title: 'Vol I U8 — Defines sweep: every field in ReserveArmyDefines/DispossessionDefines/WorkingDayDefines now names its exact file:function consumer (mirroring the capital_vol3.py citation convention). Full grep audit of every U1-U7 commit for hardcoded coefficients found none -- U2''s theorem formulas and U6''s new oppositions both ended up parameter-free by reusing existing zero-parameter measures/defines, so capital_vol1.py -> CapitalVolumeIDefines (anticipated by ADR116 ruling (b)) was NOT created: there is nothing to put in it, and an empty model would itself violate this unit''s own "no unread field"/no-placeholders rules. Two pre-existing (spec-021-era) dead fields found and fixed: min_employed_fraction (zero consumers) wired as the reserve_ratio saturation floor in DefaultAccumulationLoopCalculator.compute_reserve_ratio, mirroring wage_pressure_ceiling''s precedent; weight_wage_theft/weight_incarceration_seizure/weight_pension_default (zero consumers, no data source exists to feed them honestly) removed from DispossessionDefines -- pure dead-code elimination, zero runtime-behavior change, zero baseline drift possible. defines.yaml regenerated (descriptions + 3 removed keys only, every retained default byte-identical); docs/reference/volume-i-production.rst corrected to match.'
+    status: accepted
+    date: '2026-07-21'
+    file: ADR114_vol1_u8_defines_sweep.yaml
+  ADR113_vol1_u7_sentinels:
+    title: 'Vol I U7 — Sentinels (scoped): new babylon.sentinels.formula_registration family closes the "inert family sees the registration as a satisfied reference" gap for FormulaRegistry entries (labor_aristocracy_ratio / is_labor_aristocracy genuinely live via U2''s compute_fundamental_theorem, the latter callable only found via import-alias resolution added for this sentinel; calculate_consciousness_drift a real, open gap held GREEN via one cited SentinelExemption naming provenance.py''s non-invoking reference). sentinels/seam/registry.py''s two dispossession_intensity DECLARED_CONDITIONAL rows updated to retire their pre-U3 dead-observability characterization now that TickDynamicsSystem._compute_accumulation_loop (U3/ADR110) feeds a real foreclosure_rate/eviction_rate producer. Item 1 (gated-dormancy registry) explicitly out of scope (ADR103 §10.2 hoists it to the T1.1 keel lane); item 4 (defines-passthrough + vocabulary sentinels) pure reuse -- the vocabulary sentinel''s own run during verification caught a real, pre-existing U6 violation (subsistence_threshold fabricated on a territory node), found and flagged, not fixed (out of scope).'
+    status: accepted
+    date: '2026-07-21'
+    file: ADR113_vol1_u7_sentinels.yaml
+  ADR112_vol1_u6_oppositions:
+    title: 'Vol I U6 — Oppositions: lights the three ADR103-reserved production-layer bindings (value_usevalue Ch.1, labor_laborpower Ch.6, absolute_relative_surplus Chs.10/12/15), shadow-first, with two new GraphInputs ratio fields (wealth_subsistence_ratio, surplus_strategy_ratio) and a third that reuses the existing wage/imperial (w_paid, v_produced) defect verbatim -- the three reserved coupling slots survive the builder for the first time. Registry 11->14 keys, shadow 1->4; canonical opposition_states unchanged (10 keys), so no baseline drift expected. Found, not fixed: a pre-existing (ADR089-era) stale assertion in test_lawverian_contradiction_bridge.py expecting 5 oppositions where 10 have flowed for a while, confirmed unrelated via git-stash isolation.'
+    status: accepted
+    date: '2026-07-21'
+    file: ADR112_vol1_u6_oppositions.yaml
+  ADR111_vol1_u4_working_day:
+    title: 'Vol I U4 — The working day wired into consciousness: new domain.economics.working_day.resolve_working_day_visibility_modifier bridges services.productivity_data_source (the FRED OPHNFB+HOANBS adapter, its FIRST production reader) through DefaultWorkingDayClassifier to a new working_day_modifier keyword on compute_exploitation_visibility, computed ONCE per tick in ConsciousnessSystem and multiplicatively dampening imperial-rent-based visibility -- ABSOLUTE_DOMINANT (long hours) stays fully visible, RELATIVE_DOMINANT (productivity/intensity gains) is naturalized toward invisibility (Ch. 10/12). ZERO qa:regression drift expected (headless_runner never calls create_vol1_services; already live for the web bridge). Found+fixed a MagicMock auto-vivification hazard in test_consciousness_integration.py as a direct consequence.'
+    status: accepted
+    date: '2026-07-21'
+    file: ADR111_vol1_u4_working_day.yaml
+  ADR110_vol1_u3_accumulation_loop:
+    title: 'Vol I U3 — The accumulation loop: organic composition (ValueTensor4x3, QCEW-populated) wired through a new DefaultAccumulationLoopCalculator into ReserveArmyDynamics flows into a real, derived reserve_ratio/reserve_army_stock producer on territory nodes (TickDynamicsSystem._compute_accumulation_loop, Step 3.6); DispossessionEventSystem fed real foreclosure_rate/eviction_rate from the same FRED adapter (displacement_rate honestly left unfed — no data source); create_vol1_services now also wires transition_engine against that SAME adapter (no parallel dispossession-data path), satisfying _simulate_transitions''s transition_engine gate with real data for the first time; MarketScissors._swell_reserve_army confirmed already-additive, needed no code change to become one input among several. Staged activation: mechanization half lights up in the canonical headless run immediately (tensor_registry already wired via scope_fips); dispossession/transition_engine half stays dormant there until U5 (headless-runner parity) lands — already live for the web bridge and _legacy.py. Real reference-DB integration suite (7/7) + 243 unit tests green; expected qa:regression drift flagged, not regenerated (controller/merge-time ceremony).'
+    status: accepted
+    date: '2026-07-21'
+    file: ADR110_vol1_u3_accumulation_loop.yaml
   ADR109_wiring_doctrine:
     title: 'The Wiring Doctrine RATIFIED (owner 2026-07-21): wiring = a typed motion in one of the three moduli (W-C dataflow / W-hex-D opposition / W-G scale adjunction / W-P projection / W-A4 conservation closure), entered through declared data, closed by its motion class sentinel row -- never a bare import-and-call; review rule effective immediately (a wiring PR without its sentinel row or blocking-dependency citation is incomplete); 8-unit enforcement build (wiring registry seeded from the 11-gap ledger, W-G empty-iteration check NEW, W-A4 residual-severity F-3 detector, event rule, verb rule blocked on ActionSpec registry) forks POST-CASCADE extending the T1.1/T1.2 sentinel estates; Kaggle = discovery index never source-of-record; doctrine text ai/wiring-doctrine.md'
     status: accepted

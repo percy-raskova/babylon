@@ -347,6 +347,75 @@ class TestComputeExploitationVisibility:
 
 @pytest.mark.unit
 @pytest.mark.math
+class TestComputeExploitationVisibilityWorkingDayModifier:
+    """Vol I U4: the Ch. 10 working-day visibility modifier
+    (:meth:`~babylon.domain.economics.working_day.classifier
+    .DefaultWorkingDayClassifier.compute_visibility_modifier`) multiplicatively
+    dampens the imperial-rent-based visibility computed above -- ABSOLUTE_DOMINANT
+    exploitation (long hours) is directly experienced (modifier near 1.0, no
+    dampening); RELATIVE_DOMINANT (productivity/intensity gains) is naturalized
+    and largely invisible (modifier near 0.3 by default). ``None`` (no
+    productivity data wired) is the multiplicative identity -- existing callers
+    unaffected."""
+
+    def test_default_omitted_is_backward_compatible(self) -> None:
+        """Omitting ``working_day_modifier`` must behave EXACTLY as before."""
+        without_kwarg = compute_exploitation_visibility(
+            exploitation_rate=2.0,
+            imperial_rent=0.1,
+        )
+        with_none = compute_exploitation_visibility(
+            exploitation_rate=2.0,
+            imperial_rent=0.1,
+            working_day_modifier=None,
+        )
+        assert without_kwarg == with_none
+
+    def test_modifier_of_one_leaves_visibility_unchanged(self) -> None:
+        """A modifier of 1.0 (ABSOLUTE_DOMINANT default) is the identity."""
+        base = compute_exploitation_visibility(exploitation_rate=2.0, imperial_rent=0.1)
+        modified = compute_exploitation_visibility(
+            exploitation_rate=2.0, imperial_rent=0.1, working_day_modifier=1.0
+        )
+        assert modified == pytest.approx(base)
+
+    def test_modifier_below_one_dampens_visibility(self) -> None:
+        """A sub-1.0 modifier (RELATIVE_DOMINANT) proportionally reduces
+        visibility -- productivity-gain exploitation is less visible."""
+        base = compute_exploitation_visibility(exploitation_rate=2.0, imperial_rent=0.1)
+        modified = compute_exploitation_visibility(
+            exploitation_rate=2.0, imperial_rent=0.1, working_day_modifier=0.3
+        )
+        assert modified == pytest.approx(base * 0.3)
+        assert modified < base
+
+    def test_modifier_above_one_is_clamped(self) -> None:
+        """A modifier > 1.0 (should never happen given WorkingDayDefines'
+        ``le=1.0`` bound, but this function must not silently amplify past
+        the documented [0, 1] visibility range) clamps to 1.0."""
+        base = compute_exploitation_visibility(exploitation_rate=2.0, imperial_rent=0.1)
+        modified = compute_exploitation_visibility(
+            exploitation_rate=2.0, imperial_rent=0.1, working_day_modifier=1.5
+        )
+        assert modified == pytest.approx(base)
+
+    def test_negative_modifier_is_clamped_to_zero(self) -> None:
+        """A negative modifier clamps to 0.0 -- never a sign-flipped visibility."""
+        modified = compute_exploitation_visibility(
+            exploitation_rate=2.0, imperial_rent=0.1, working_day_modifier=-0.5
+        )
+        assert modified == pytest.approx(0.0)
+
+    def test_result_stays_within_unit_interval(self) -> None:
+        """Combined output remains clamped to [0, 1] regardless of inputs."""
+        modified = compute_exploitation_visibility(
+            exploitation_rate=100.0, imperial_rent=0.0, working_day_modifier=1.0
+        )
+        assert 0.0 <= modified <= 1.0
+
+
+@pytest.mark.unit
+@pytest.mark.math
 class TestComputeReificationBuffer:
     """compute_reification_buffer: imperial rent → reification [0, 1]."""
 

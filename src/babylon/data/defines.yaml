@@ -407,39 +407,38 @@ contradiction_field:
   default_transition_priority: 0  # Game design: default priority for transitions without explicit priority. (>= 0)
 
 # ---------------------------------------------------------------------
-# reserve_army — Reserve army of labor coefficients (Feature 021, FR-001/FR-002).
+# reserve_army — Reserve army of labor coefficients (Feature 021, FR-001/FR-002/FR-003).
 # ---------------------------------------------------------------------
 reserve_army:
-  sigmoid_k: 20.0  # Sigmoid steepness for reserve_ratio -> wage_pressure mapping (> 0.0, <= 100.0)
-  sigmoid_r0: 0.08  # Reserve ratio at sigmoid midpoint (inflection point) (> 0.0, <= 1.0)
-  wage_pressure_ceiling: 0.5  # Maximum wage pressure coefficient (prevents total wage elimination) (> 0.0, <= 1.0)
-  min_employed_fraction: 0.01  # Minimum fraction of labor force that must remain employed (>= 0.0, <= 1.0)
+  sigmoid_k: 20.0  # Sigmoid steepness for reserve_ratio -> wage_pressure mapping. Consumer: babylon.domain.economics.reserve_army.calculator.DefaultWagePressureCalculator.compute_wage_pressure. (> 0.0, <= 100.0)
+  sigmoid_r0: 0.08  # Reserve ratio at sigmoid midpoint (inflection point). Consumer: babylon.domain.economics.reserve_army.calculator.DefaultWagePressureCalculator.compute_wage_pressure. (> 0.0, <= 1.0)
+  wage_pressure_ceiling: 0.5  # Maximum wage pressure coefficient (prevents total wage elimination). Consumer: babylon.domain.economics.reserve_army.calculator.DefaultWagePressureCalculator.compute_wage_pressure. (> 0.0, <= 1.0)
+  min_employed_fraction: 0.01  # Minimum fraction of labor force that must remain employed — the reserve_ratio saturation floor (prevents total employment elimination, mirroring wage_pressure_ceiling's own precedent on the labor-force side of the same mechanic). Consumer (wired U8, vol1-value-production program defines sweep — zero consumers before this unit): babylon.domain.economics.reserve_army.accumulation.DefaultAccumulationLoopCalculator.compute_reserve_ratio, which clamps reserve_ratio to [0, 1 - min_employed_fraction] rather than a bare [0, 1]. (>= 0.0, <= 1.0)
+  mechanization_displacement_rate: 0.05  # Game design: fraction of a county's employment displaced per 1.0-unit year-over-year INCREASE in organic composition (c/v, from ValueTensor4x3.organic_composition) — parametrizes DefaultAccumulationLoopCalculator.compute_dynamics's mechanization_displacement flow. A falling or flat organic composition contributes zero displacement (Ch. 25 is about rising composition specifically). Consumer: babylon.domain.economics.reserve_army.accumulation.DefaultAccumulationLoopCalculator.compute_dynamics. (> 0.0)
+  firm_failure_conversion_rate: 0.5  # Game design: fraction of a bankrupt establishment's workforce (FRED-derived bankruptcy_rate * employment) that enters the reserve army rather than being reabsorbed elsewhere — parametrizes DefaultAccumulationLoopCalculator.compute_dynamics's firm_failures flow. Consumer: babylon.domain.economics.reserve_army.accumulation.DefaultAccumulationLoopCalculator.compute_dynamics. (> 0.0, <= 1.0)
 
 # ---------------------------------------------------------------------
 # dispossession — Dispossession event intensity weights (Feature 021, FR-004/FR-005).
 # ---------------------------------------------------------------------
 dispossession:
-  weight_foreclosure: 0.4  # Game design: weight for foreclosure events. (>= 0.0, <= 1.0)
-  weight_eviction: 0.3  # Game design: weight for eviction events. (>= 0.0, <= 1.0)
-  weight_displacement: 0.15  # Game design: weight for gentrification displacement events. (>= 0.0, <= 1.0)
-  weight_tax_sale: 0.05  # Game design: weight for tax sale events. (>= 0.0, <= 1.0)
-  weight_eminent_domain: 0.02  # Game design: weight for eminent domain events. (>= 0.0, <= 1.0)
-  weight_wage_theft: 0.03  # Game design: weight for wage theft events. (>= 0.0, <= 1.0)
-  weight_incarceration_seizure: 0.03  # Game design: weight for incarceration-related seizure events. (>= 0.0, <= 1.0)
-  weight_pension_default: 0.02  # Game design: weight for pension default events. (>= 0.0, <= 1.0)
-  deadweight_loss_fraction: 0.05  # Game design: fraction of transferred value lost as deadweight (not received by anyone). (>= 0.0, <= 1.0)
-  transfer_scale: 0.01  # Scale factor for wealth transfer amount: territory_wealth * intensity * scale (>= 0.0, <= 1.0)
+  weight_foreclosure: 0.4  # Game design: weight for foreclosure events. Consumer: babylon.domain.economics.dispossession.intensity.DispossessionIntensityCalculator.compute_intensity (state.foreclosure_rate). (>= 0.0, <= 1.0)
+  weight_eviction: 0.3  # Game design: weight for eviction events. Consumer: babylon.domain.economics.dispossession.intensity.DispossessionIntensityCalculator.compute_intensity (state.eviction_rate). (>= 0.0, <= 1.0)
+  weight_displacement: 0.15  # Game design: weight for gentrification displacement events. Consumer: babylon.domain.economics.dispossession.intensity.DispossessionIntensityCalculator.compute_intensity (state.displacement_rate). (>= 0.0, <= 1.0)
+  weight_tax_sale: 0.05  # Game design: weight for tax sale events, read against the concentrated_ownership structural proxy (no direct tax-sale-rate field exists). Consumer: babylon.domain.economics.dispossession.intensity.DispossessionIntensityCalculator.compute_intensity (state.concentrated_ownership). (>= 0.0, <= 1.0)
+  weight_eminent_domain: 0.02  # Game design: weight for eminent domain events, read against the absentee_landlord_share structural proxy (no direct eminent-domain-rate field exists). Consumer: babylon.domain.economics.dispossession.intensity.DispossessionIntensityCalculator.compute_intensity (state.absentee_landlord_share). (>= 0.0, <= 1.0)
+  deadweight_loss_fraction: 0.05  # Game design: fraction of transferred value lost as deadweight (not received by anyone). Consumer: babylon.domain.economics.dispossession.intensity.DispossessionIntensityCalculator.compute_value_transfer. (>= 0.0, <= 1.0)
+  transfer_scale: 0.01  # Scale factor for wealth transfer amount: territory_wealth * intensity * scale. Consumer: babylon.engine.systems.dispossession_events.DispossessionEventSystem.step. (>= 0.0, <= 1.0)
 
 # ---------------------------------------------------------------------
-# working_day — Working day characterization thresholds (Feature 021, FR-007/FR-008).
+# working_day — Working day characterization thresholds (Feature 021, FR-007/FR-008/FR-011).
 # ---------------------------------------------------------------------
 working_day:
-  absolute_hours_threshold: 45.0  # Game design: weekly hours above which exploitation is ABSOLUTE_DOMINANT. (> 0.0, <= 168.0)
-  relative_hours_threshold: 40.0  # Game design: weekly hours at or below which exploitation may be RELATIVE_DOMINANT. (> 0.0, <= 168.0)
-  intensity_threshold_high: 1.2  # Game design: labor intensity above which exploitation is RELATIVE_DOMINANT (with low hours). (> 0.0)
-  intensity_threshold_low: 1.1  # Game design: labor intensity below which exploitation is ABSOLUTE_DOMINANT (with high hours). (> 0.0)
-  absolute_visibility: 1.0  # Game design: consciousness visibility modifier for ABSOLUTE exploitation. (>= 0.0, <= 1.0)
-  relative_visibility: 0.3  # Game design: consciousness visibility modifier for RELATIVE exploitation. (>= 0.0, <= 1.0)
+  absolute_hours_threshold: 45.0  # Game design: weekly hours above which exploitation is ABSOLUTE_DOMINANT. Consumer: babylon.domain.economics.working_day.classifier.DefaultWorkingDayClassifier.classify (also the upper bound of the MIXED-mode interpolation span in compute_visibility_modifier). (> 0.0, <= 168.0)
+  relative_hours_threshold: 40.0  # Game design: weekly hours at or below which exploitation may be RELATIVE_DOMINANT. Consumers: babylon.domain.economics.working_day.classifier.DefaultWorkingDayClassifier.classify/compute_visibility_modifier; and (Vol I U6) babylon.domain.economics.working_day.resolver.resolve_absolute_relative_surplus_ratio, which reuses this same threshold as the ``absolute_relative_surplus`` opposition's hours reference — no second coefficient authored. (> 0.0, <= 168.0)
+  intensity_threshold_high: 1.2  # Game design: labor intensity above which exploitation is RELATIVE_DOMINANT (with low hours). Consumer: babylon.domain.economics.working_day.classifier.DefaultWorkingDayClassifier.classify. (> 0.0)
+  intensity_threshold_low: 1.1  # Game design: labor intensity below which exploitation is ABSOLUTE_DOMINANT (with high hours). Consumer: babylon.domain.economics.working_day.classifier.DefaultWorkingDayClassifier.classify. (> 0.0)
+  absolute_visibility: 1.0  # Game design: consciousness visibility modifier for ABSOLUTE exploitation. Consumer: babylon.domain.economics.working_day.classifier.DefaultWorkingDayClassifier.compute_visibility_modifier, threaded into babylon.engine.systems.ideology.ConsciousnessSystem.step (Vol I U4) via babylon.formulas.consciousness_routing.compute_exploitation_visibility's working_day_modifier keyword. (>= 0.0, <= 1.0)
+  relative_visibility: 0.3  # Game design: consciousness visibility modifier for RELATIVE exploitation. Consumer: babylon.domain.economics.working_day.classifier.DefaultWorkingDayClassifier.compute_visibility_modifier, threaded into babylon.engine.systems.ideology.ConsciousnessSystem.step (Vol I U4) via babylon.formulas.consciousness_routing.compute_exploitation_visibility's working_day_modifier keyword. (>= 0.0, <= 1.0)
 
 # ---------------------------------------------------------------------
 # community — Hypergraph community layer coefficients (Feature 022).

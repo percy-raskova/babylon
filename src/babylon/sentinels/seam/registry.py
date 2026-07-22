@@ -427,7 +427,20 @@ _MAP_METRICS: tuple[SeamEntry, ...] = (
             "Composite carceral/eviction intensity (DispossessionIntensityCalculator's weighted "
             "foreclosure/eviction/displacement/tax-sale/eminent-domain blend) — rides "
             "hex_latest's JSONB attributes column like habitability/mass_receptivity. "
-            "Population-weighted MEAN at county zoom, partial-coverage-aware."
+            "Population-weighted MEAN at county zoom, partial-coverage-aware. RETIRED "
+            "dead-observability characterization (Vol I U3/ADR110, 2026-07-21): this row's "
+            "gate was, before U3, a structurally-dead condition (DispossessionEventSystem had "
+            "zero production producers of foreclosure_rate/eviction_rate/displacement_rate "
+            "repo-wide — ADR116). U3 landed a real upstream producer, "
+            "TickDynamicsSystem._compute_accumulation_loop "
+            "(domain/economics/tick/system/__init__.py:1220-1311, year boundaries only, "
+            "System #4 — runs before DispossessionEventSystem #10 in the same tick), which "
+            "writes foreclosure_rate/eviction_rate from the FRED dispossession adapter onto "
+            "the same territory node. The condition above is now genuinely witnessable in "
+            "production (web bridge already; headless runner since U5) — DECLARED_CONDITIONAL "
+            "remains the correct class (still presence-conditional, not universal), but the "
+            "gate is no longer permanently dark. displacement_rate remains honestly unfed (no "
+            "FRED-backed source for gentrification displacement exists)."
         ),
     ),
     # --- Program 23 Phase 2 (ADR078): the per-county scissors' map reading.
@@ -1178,7 +1191,129 @@ _TERRITORY_TICK_METRICS: tuple[SeamEntry, ...] = (
         notes=(
             "Read via _territory_graph_attr, same shape as habitability/mass_receptivity on "
             "this surface. None until DispossessionEventSystem writes it (some dispossession "
-            "rate > 0 this tick)."
+            "rate > 0 this tick). RETIRED dead-observability characterization (Vol I U3/ADR110, "
+            "2026-07-21) — see the MAP-scope 'map.dispossession_intensity' row's notes for the "
+            "full citation: TickDynamicsSystem._compute_accumulation_loop now writes a real "
+            "foreclosure_rate/eviction_rate feed earlier in the same tick, so this gate is no "
+            "longer permanently dark, only genuinely presence-conditional."
+        ),
+    ),
+    # --- Feature 021 base Territory fields, activated by Vol I U3
+    # (accumulation loop / dispossession rate feed) and registered now
+    # (Vol I U9/ADR115): unlike wage_pressure/dispossession_intensity above
+    # (optional graph attrs read via _territory_graph_attr, absent until a
+    # system writes them), these are REQUIRED Territory model fields — always
+    # present on the wire (`nullable=False`), `ge=0.0`-bounded, defaulting to
+    # 0.0 in the model schema itself (territory.py:216-261). Before U3 they
+    # were the textbook gated-dormancy case (program prompt §2b, ADR116):
+    # read directly off `t.<field>` at `_serialize_territory` since Feature
+    # 021 shipped, but no scenario ever seeded a producer, so every session
+    # serialized a structurally-correct-but-permanently-0.0 value — present
+    # and non-null the whole time, never genuinely computed. A row's mere
+    # presence here does not certify liveness; `liveness_condition` does.
+    SeamEntry(
+        payload="reserve_ratio",
+        wire_keys=("reserve_ratio",),
+        scope=SeamScope.TERRITORY,
+        owner_layer="domain.economics.tick (TickDynamicsSystem._compute_accumulation_loop)",
+        liveness_class=LivenessClass.DECLARED_CONDITIONAL,
+        liveness_condition=(
+            "non-zero only once TickDynamicsSystem._compute_accumulation_loop (Vol I U3) "
+            "derives real ReserveArmyDynamics from a wired tensor_registry's organic-"
+            "composition delta (or MarketScissors._swell_reserve_army fires during a "
+            "price/value crisis) — frozen at the Pydantic 0.0 default otherwise, never a "
+            "fabricated nonzero"
+        ),
+        dtype="float",
+        nullable=False,
+        write_site=(
+            "src/babylon/domain/economics/tick/system/__init__.py::"
+            "TickDynamicsSystem._compute_accumulation_loop (graph.update_node); additively "
+            "topped up by src/babylon/engine/systems/market_scissors.py::"
+            "MarketScissorsSystem._swell_reserve_army during a price/value crisis"
+        ),
+        read_paths=_TERRITORY_EMITTERS,
+        spec_ref="Feature 021 · Vol I U3 · ADR116 · ADR110",
+        notes=(
+            "Territory.reserve_ratio (territory.py:220) — the SAME graph attribute "
+            "ReserveArmySystem (#5) reads for its wage_pressure sigmoid (the "
+            "'map.wage_pressure'/'territory.wage_pressure' rows above gate on this exact "
+            "value), read here raw off the round-tripped model field rather than via "
+            "_territory_graph_attr. Previously the textbook gated-dormancy case (ADR116): "
+            "zero production producers repo-wide, so always 0.0. U3 gives it a real producer."
+        ),
+    ),
+    SeamEntry(
+        payload="foreclosure_rate",
+        wire_keys=("foreclosure_rate",),
+        scope=SeamScope.TERRITORY,
+        owner_layer="domain.economics.tick (TickDynamicsSystem._compute_accumulation_loop)",
+        liveness_class=LivenessClass.DECLARED_CONDITIONAL,
+        liveness_condition=(
+            "non-zero only once TickDynamicsSystem._compute_accumulation_loop (Vol I U3) "
+            "wires a real dispossession_data_source AND get_foreclosure_rate(fips, year) "
+            "returns non-None for the county-year — frozen at the Pydantic 0.0 default "
+            "otherwise, never a fabricated nonzero"
+        ),
+        dtype="float",
+        nullable=False,
+        write_site=(
+            "src/babylon/domain/economics/tick/system/__init__.py::"
+            "TickDynamicsSystem._compute_accumulation_loop (graph.update_node)"
+        ),
+        read_paths=_TERRITORY_EMITTERS,
+        spec_ref="Feature 021 · Vol I U3 · ADR116 · ADR110",
+        notes=(
+            "Territory.foreclosure_rate (territory.py:244) — one of DispossessionEventSystem "
+            "(#10)'s three gating inputs (see the 'territory.dispossession_intensity' row's "
+            "RETIRED-dead-observability note above); previously fed by nothing repo-wide "
+            "(ADR116), now sourced from the FRED-backed _FredDispossessionAdapter (hardcoded "
+            "2007-2020, UNRATE-proxy 2021+ — program prompt §2c's own honesty gap, not this "
+            "row's concern)."
+        ),
+    ),
+    SeamEntry(
+        payload="eviction_rate",
+        wire_keys=("eviction_rate",),
+        scope=SeamScope.TERRITORY,
+        owner_layer="domain.economics.tick (TickDynamicsSystem._compute_accumulation_loop)",
+        liveness_class=LivenessClass.DECLARED_CONDITIONAL,
+        liveness_condition=(
+            "non-zero only once TickDynamicsSystem._compute_accumulation_loop (Vol I U3) "
+            "wires a real dispossession_data_source AND get_eviction_rate(fips, year) "
+            "returns non-None for the county-year — frozen at the Pydantic 0.0 default "
+            "otherwise, never a fabricated nonzero"
+        ),
+        dtype="float",
+        nullable=False,
+        write_site=(
+            "src/babylon/domain/economics/tick/system/__init__.py::"
+            "TickDynamicsSystem._compute_accumulation_loop (graph.update_node)"
+        ),
+        read_paths=_TERRITORY_EMITTERS,
+        spec_ref="Feature 021 · Vol I U3 · ADR116 · ADR110",
+        notes=(
+            "Territory.eviction_rate (territory.py:250) — same DispossessionEventSystem (#10) "
+            "gating family as foreclosure_rate above; same FRED-backed adapter, same prior "
+            "gated-dormancy history."
+        ),
+    ),
+    SeamEntry(
+        payload="displacement_rate",
+        wire_keys=("displacement_rate",),
+        scope=SeamScope.TERRITORY,
+        owner_layer="domain.economics.tick (unwired — no production writer)",
+        liveness_class=LivenessClass.NOT_YET_COMPUTED,
+        dtype="float",
+        nullable=False,
+        read_paths=_TERRITORY_EMITTERS,
+        spec_ref="Feature 021 · Vol I U3 (program prompt §2b/§2c)",
+        notes=(
+            "Territory.displacement_rate (territory.py:256) — the one DispossessionEventSystem "
+            "(#10) gating input Vol I U3 deliberately left unfed: no FRED-backed source for "
+            "gentrification/displacement exists (honest absence, not a fabricated proxy — U3's "
+            "own recorded scope boundary, ADR110). Permanently 0.0 today; a future data source "
+            "would light this row the same way U3 lit foreclosure_rate/eviction_rate above."
         ),
     ),
 )

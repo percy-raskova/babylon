@@ -1025,6 +1025,18 @@ def _build_economics_overrides(
             per county instead of staying permanently ``None``
             (``services.tensor_registry is None`` gate,
             ``domain/economics/tick/system/__init__.py:1547,1599,1599``).
+            vol1-value-production/vol2-circulation-engine programs, U5
+            (headless/web parity, ADR103 §10.2): also wires the Vol I
+            production layer (:func:`~babylon.domain.economics.factory.create_vol1_services`
+            — ``reserve_army_data_source``, ``productivity_data_source``,
+            ``dispossession_data_source``, ``transition_engine``) and the
+            Vol II circulation layer
+            (:func:`~babylon.domain.economics.factory.create_circulation_services`
+            — ``turnover_profile_source``, ``inventory_data_source``,
+            ``depreciation_data_source``), mirroring
+            ``web/game/engine_bridge.py``'s Task 20b/21b wiring so the
+            canonical headless run no longer computes less economics than a
+            web session.
 
     Returns:
         A ``(overrides, leontief_session)`` tuple: ``overrides`` is a dict
@@ -1110,6 +1122,42 @@ def _build_economics_overrides(
             fred_cache = load_fred_series_from_db(session_factory)
             overrides.update(
                 create_financial_services(fred_series_cache=fred_cache, defines=defines)
+            )
+
+            # vol1-value-production program U5 / vol2-circulation-engine
+            # program U5 (SHARED unit, ADR103 §10.2: runner-parity assigned
+            # to the Vol I lane): mirror ``web/game/engine_bridge.py``'s
+            # Task 20b/21b wiring (:8002-8051) so the canonical headless run
+            # computes the SAME Vol I/Vol II economics a web session already
+            # does. Without this, ``services.reserve_army_data_source``/
+            # ``transition_engine``/``turnover_profile_source`` etc. stay at
+            # their ``None`` defaults and ``_compute_vol1_layer``/
+            # ``_compute_circulation_layer``
+            # (domain/economics/tick/system/__init__.py) silently no-op for
+            # every headless run. Reuses ``fred_cache`` just loaded above
+            # (both families read from the same Vol III FRED cache, matching
+            # the bridge's reuse convention) — no second query.
+            from babylon.domain.economics.factory import (
+                create_circulation_services,
+                create_vol1_services,
+                load_circulation_series_from_db,
+                load_vol1_series_from_db,
+            )
+
+            circulation_cache = load_circulation_series_from_db(session_factory)
+            overrides.update(
+                create_circulation_services(
+                    circulation_series_cache=circulation_cache,
+                    fred_series_cache=fred_cache,
+                )
+            )
+
+            vol1_cache = load_vol1_series_from_db(session_factory)
+            overrides.update(
+                create_vol1_services(
+                    vol1_series_cache=vol1_cache,
+                    fred_series_cache=fred_cache,
+                )
             )
 
     return overrides, leontief_session

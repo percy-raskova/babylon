@@ -47,6 +47,7 @@ from babylon.domain.dialectics.core.opposition import OppositionState, PoleReadi
 from babylon.domain.dialectics.core.regime import classify_regime
 from babylon.domain.dialectics.instances.catalog import GraphInputs
 from babylon.domain.dialectics.instances.levels import level_index_for, spatial_lattice_for_counties
+from babylon.domain.dialectics.instances.value_form import compute_fundamental_theorem
 from babylon.domain.economics.distribution.types import (
     DebtAccumulation,
     SurplusValueDistribution,
@@ -54,6 +55,9 @@ from babylon.domain.economics.distribution.types import (
 from babylon.domain.economics.tick.graph_bridge import (
     NATIONAL_FINANCIAL_ATTR,
     TICK_DYNAMICS_KEY,
+)
+from babylon.domain.economics.working_day.resolver import (
+    resolve_absolute_relative_surplus_ratio,
 )
 from babylon.engine.topology_monitor import extract_solidarity_subgraph
 from babylon.formulas.contradiction import calculate_wealth_asymmetry_gap
@@ -93,6 +97,16 @@ SHADOW_OPPOSITION_STATES_ATTR = "shadow_opposition_states"
 #: Graph attribute holding this tick's fixed-point regime (Phase E2):
 #: ``{"regime": <reproduction|crisis|sublation>, "principal": key, "rate": float}``.
 DIALECTICAL_REGIME_ATTR = "dialectical_regime"
+
+#: Graph attribute holding ``{entity_id: ClassPhiReading.model_dump()}`` —
+#: the Fundamental Theorem of MLM-TW, computed (U2, Vol I value-production
+#: program): Phi = W_c - V_c per class/county, read from the SAME
+#: ``wage_value_id_pairs`` triples the ``wage``/``imperial`` oppositions
+#: already consume (Phase D4) — zero new graph traversal. Written whenever
+#: the opposition registry is wired, independent of whether any opposition
+#: binding is itself live this tick (the report needs only the raw feed).
+#: See :func:`babylon.domain.dialectics.instances.value_form.compute_fundamental_theorem`.
+FUNDAMENTAL_THEOREM_ATTR = "fundamental_theorem"
 
 #: County-chain level index of the capital_labor field the regime probes.
 _COUNTY_LEVEL_INDEX = 1
@@ -212,7 +226,8 @@ class ContradictionSystem(SystemBase):
             return
 
         previous = self._read_previous(graph)
-        inputs = self._build_graph_inputs(graph, services)
+        inputs = self._build_graph_inputs(graph, services, tick)
+        self._stash_fundamental_theorem(graph, inputs, services)
         states = registry.step(inputs, tick, previous)
         if not states:
             return
@@ -338,7 +353,9 @@ class ContradictionSystem(SystemBase):
         }
         return {key: OppositionState(**value) for key, value in raw.items()}
 
-    def _build_graph_inputs(self, graph: GraphProtocol, services: ServicesProtocol) -> GraphInputs:
+    def _build_graph_inputs(
+        self, graph: GraphProtocol, services: ServicesProtocol, tick: int = 0
+    ) -> GraphInputs:
         """Pre-extract the per-tick views the catalog measures read.
 
         The ``*_id_pairs`` twins (ADR070) are built in the SAME loops as the
@@ -349,6 +366,15 @@ class ContradictionSystem(SystemBase):
         The national Balance (task #42-C) is derived the same way from the
         FACTION/INFLUENCES political-topology layer (spec-070), though here
         no coefficient is owned at all — the weighting is a plain ratio.
+
+        Args:
+            graph: The live graph.
+            services: The service container.
+            tick: Current simulation tick (Vol I U6 — resolves the
+                ``absolute_relative_surplus`` ratio's FRED-data year the same
+                way ``resolve_working_day_visibility_modifier`` does).
+                Defaults to 0 so existing direct callers (tests exercising
+                this method in isolation) are unaffected.
         """
         exploitation: list[tuple[float, float]] = []
         exploitation_ids: list[tuple[str, str, float, float]] = []
@@ -427,6 +453,78 @@ class ContradictionSystem(SystemBase):
                 graph, float(services.defines.capital_vol3.credit_fragility_scale)
             ),
             financialization_index=financialization_index,
+            wealth_subsistence_ratio=self._wealth_subsistence_ratio(graph),
+            surplus_strategy_ratio=resolve_absolute_relative_surplus_ratio(graph, services, tick),
+        )
+
+    @staticmethod
+    def _wealth_subsistence_ratio(graph: GraphProtocol) -> float | None:
+        """National ``Σwealth / Σsubsistence_threshold`` over active classes.
+
+        Vol I U6 (vol1-value-production program), the ``value_usevalue``
+        opposition's feed (Capital Vol. I ch. 1): does the value a class has
+        accumulated (``wealth``, the abstract, generalized form) actually
+        supply the use-values it must consume to reproduce itself
+        (``subsistence_threshold``, the concrete floor Survival Calculus
+        already prices, ``engine/systems/survival.py``)? A RATIO OF SUMS —
+        never a mean of per-class ratios — the same intensive-aggregation
+        discipline :meth:`_county_money_ratios`/
+        :meth:`_national_chauvinism_balance` use: a class holding a sliver of
+        national wealth must not swing the reading as hard as one holding
+        the bulk of it.
+
+        Classes are visited in sorted-id order so the float summation order
+        is fixed (Constitution III.7).
+
+        Args:
+            graph: The live graph.
+
+        Returns:
+            ``None`` when no active ``social_class`` node carries a numeric,
+            positive-summing ``subsistence_threshold`` this tick (an empty
+            world) — absence, never a fabricated ratio (Constitution III.11).
+        """
+        wealth_sum = 0.0
+        subsistence_sum = 0.0
+        for node in sorted(graph.query_nodes(node_type=NodeType.SOCIAL_CLASS), key=lambda n: n.id):
+            attrs = node.attributes
+            if not attrs.get("active", True):
+                continue
+            subsistence = attrs.get("subsistence_threshold")
+            if not isinstance(subsistence, (int, float)) or isinstance(subsistence, bool):
+                continue
+            wealth_sum += float(attrs.get("wealth", 0.0))
+            subsistence_sum += float(subsistence)
+        if subsistence_sum <= 0.0:
+            return None
+        return wealth_sum / subsistence_sum
+
+    @staticmethod
+    def _stash_fundamental_theorem(
+        graph: GraphProtocol, inputs: GraphInputs, services: ServicesProtocol
+    ) -> None:
+        """Stash the Fundamental Theorem's per-class/county Φ report (U2).
+
+        Reuses ``inputs.wage_value_id_pairs`` verbatim — the SAME
+        ``(node_id, w_paid, v_produced)`` feed the ``wage``/``imperial``
+        oppositions already measure (Phase D4) — so this adds zero new
+        graph traversal. Independent of whether any opposition binding is
+        registered/live this tick; the report needs only the raw feed.
+
+        Resolves ``phi_absolute`` via ``services.formulas.get(...)`` (the
+        same DI pattern ``survival.py``/``economic.py``/``community.py``/
+        ``solidarity.py`` already use) rather than
+        :func:`~babylon.domain.dialectics.instances.value_form.
+        compute_fundamental_theorem`'s own direct-import default, so the
+        registered formula has a genuine, hot-swappable production
+        consumer — closing the dead-registration gap the direct-import
+        default alone would have left (spec §6.2).
+        """
+        phi_absolute_fn = services.formulas.get("phi_absolute")
+        report = compute_fundamental_theorem(inputs.wage_value_id_pairs, phi_absolute_fn)
+        graph.set_graph_attr(
+            FUNDAMENTAL_THEOREM_ATTR,
+            {reading.entity_id: reading.model_dump() for reading in report},
         )
 
     @staticmethod

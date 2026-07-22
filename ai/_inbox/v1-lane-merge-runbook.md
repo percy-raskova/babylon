@@ -12,7 +12,14 @@ single-flight in this controller. This file is my scratch — supersede freely.
 | T1.1 seam-severity | lane/t11-seam-severity | c0c9a731 | **✓ DONE** (17/17, 0 err; U1–U7, mutation-verified) | merges 1st — READY |
 | T1.2 keel | lane/t12-keel | c4dc2f0c | **✓ DONE** (20/20, 0 err; K1–K5 verified in-code) | **HELD** behind T1.1; clean, merge-ready |
 | Vol I | lane/vol1-value-production | de4f63ff | **✓ DONE** (23 agents, 0 err; U1–U9 all done + vocab fix; every unit Opus-reviewed w/ fix loops; ceremony = LANE-OWNED, fires AT its merge) | 3rd |
-| Vol II | lane/vol2-circulation | d694928d | RUNNING (U6a vocab-allowlist narrowing 20:27; U4 lit step 19:29 ADR120/123; U6b seam-rows DEFERRED→rebase; U5 = Vol I's) | 4th (rebase on Vol I) |
+| Vol II | lane/vol2-circulation | f41cd33f | **✓ DONE** (25 agents, 0 err; U1–U8 all done+reviewed; step LIT county-keyed; LODES MTIME=0 verified; `v` allowlisted w/ real writer; 4 circulation oppositions shadow-bound honest-absence; U6b seam rows owed AT REBASE) | 4th (rebase on Vol I) |
+
+**BOTH VOL LANES HOME 2026-07-21 21:0x — CASCADE COMMENCING.** Integration shape: one
+integration branch off chore/vol1-vol2-contract, lanes merged sequentially with local
+gates per merge (check every merge; qa:regression + lane-owned ceremony at Vol I and
+Vol II; goldens/vault check at T4), then ONE ceremonial PR → dev, self-merge on green
+(2026-07-15 gated-stack precedent + queue-autonomy grant). Heavy gates single-flight
+throughout — all lane workflows are finished, box is free.
 | T4 core | lane/t4-campaign-core | 1e4fbe2c | **✓ DONE** (18/18, 0 err; C1–C6, no blockers) | **HELD** behind all; merges last |
 | T7 installer | lane/t7-installer | df41a963 | alpha (separate) | post-Gate-3 (T7-beta) |
 

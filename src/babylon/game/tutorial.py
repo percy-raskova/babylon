@@ -1,0 +1,374 @@
+"""The tutorial step script — the T6 unification (Program v1.0.0, Unit U1).
+
+Per ``ai/_inbox/t6-tutorial-bdd-ruling.md`` (BD, 2026-07-21): the opening-arc
+tutorial IS the BDD acceptance suite. ONE data artifact —
+:class:`TutorialScript` — is meant to be consumed three ways: the player
+overlay renders each :class:`TutorialStep`'s Given/When/Then as instruction
+text over the live campaign; a headless Textual-Pilot executor drives the
+When and hard-asserts the Then; the developer-facing docs read the same
+steps as living specification. Because all three consumers read the SAME
+fields, "the strings the player reads ARE the scenario definitions CI
+runs" — there is no second, separately-authored copy of this prose anywhere
+(:attr:`TutorialStep.scenario_name` / :attr:`TutorialStep.overlay_text`
+below both derive verbatim from ``given``/``when``/``then``; nothing else
+in this module, or any future consumer, is licensed to hardcode a parallel
+description).
+
+This unit ships ONLY the model + the authored opening-arc script (the
+ruling's own placement note: the overlay consumer, the Pilot executor, the
+option-coverage sentinel, and the transcript emitter are separate T6 units
+building on this one).
+
+Completion predicates are DATA, never callables (the ruling: "no prose
+duplication anywhere, ever" generalizes to "no hidden behavior anywhere
+either" — a lambda could not serialize into the overlay/docs the way a
+Pydantic model does). The closed vocabulary below is deliberately small —
+exactly the four kinds an opening-arc teaching script needs:
+
+* :class:`OnPage` — the player is viewing a named dossier subject.
+* :class:`TickAtLeast` — the campaign has resolved at least a given tick.
+* :class:`EventAcked` — a pending autopause has been acknowledged.
+* :class:`VerbIssued` — a named verb/binding action has been issued (this
+  covers BOTH a TUI keybinding's action name — ``"advance_tick"``,
+  ``"run_until_paused"`` — and, in a future script, an Article-V player
+  verb string; the ruling's own anchor phrasing, "the page/binding/verb it
+  exercises", already treats bindings and verbs as one family).
+
+:data:`CompletionPredicateAdapter` validates against exactly this closed set
+— an unrecognized ``kind`` raises :class:`pydantic.ValidationError` loudly
+(Constitution III.11), never a silently-ignored predicate.
+
+**Anchor grammar** (a plain string field, not its own typed union — the
+ruling names anchor as a single field; the option-coverage sentinel, a
+later unit, is where matching anchors against live registries belongs, not
+here). Three prefixes, used consistently by the authored script below:
+
+* ``"binding:<ClassName>:<key>"`` — a :class:`~textual.binding.Binding`
+  entry's key on that Textual class's own ``BINDINGS`` (qualified by class
+  name because the same key means different things on different
+  screens — ``"a"`` is ``LobbyScreen``'s archive-toggle but
+  ``ArchiveApp``'s acknowledge-pause).
+* ``"page:<subject>"`` — a vault-baked dossier subject id (the
+  ``babylon.tui.app.PageSource``/``CampaignHandle.read_page`` convention).
+* ``"palette:<subject>"`` — a command-palette
+  (:class:`~babylon.tui.palette.EntityNavigatorProvider`) pick of that
+  known subject.
+
+Every anchor below was verified against the LIVE registries before
+authoring (Constitution: no fiction) — ``babylon.tui.app.ArchiveApp.
+BINDINGS`` (``t``/``r``/``a``/``ctrl+o``/``ctrl+i``), ``babylon.tui.
+app.BriefingScreen.BINDINGS`` (``enter``), ``babylon.tui.campaign_menu.
+LobbyScreen.BINDINGS`` (``n``/``a``/``d``/``escape``), and the real baked
+subjects ``county/26163`` (Wayne — ruling 3, "Wayne stays in lobby"),
+``economy/USA`` (:mod:`babylon.projection.vault.tick_baker`'s singleton
+economy dossier, carrying the real Fundamental Theorem verdict —
+:attr:`~babylon.projection.view_models.EconomyView.labor_aristocracy_verdict`)
+via ``tests/unit/tui/test_t3_live_reachability.py``'s own
+``TestCommandPaletteSurfacesT3Pages`` (a palette search for ``"economy"``
+finds ``"economy/USA"`` on a live campaign, proving the ``palette:``
+anchor below is real, not aspirational).
+
+**Deviation from the task brief's literal beat list** ("... advance a tick
+-> read the chronicle -> run to autopause -> ..."): there is today no live
+Chronicle screen wired into :class:`~babylon.tui.app.ArchiveApp` —
+:mod:`babylon.tui.chronicle`'s ``render_chronicle``/``chronicle_stream`` are
+real, tested, and fed real per-tick content by
+:func:`~babylon.game.chronicle_adapter.chronicle_events_from_bus`, but no
+production caller mounts them as a screen or widget yet (verified by
+grepping every non-test caller). Authoring a "read the chronicle" STEP
+would be exactly the fiction the ruling forbids ("do NOT author steps for
+verbs/options that do not exist in the shell today"). The tick's real
+outcome — what the chronicle would show — is instead folded into
+``advance_a_tick``'s own Then-clause (the status line reports it); wiring a
+live Chronicle screen and giving it its own step is a future unit's honest
+gap to close, not this one's to fabricate.
+"""
+
+from __future__ import annotations
+
+from typing import Annotated, Final, Literal, Self
+
+from pydantic import BaseModel, ConfigDict, Field, TypeAdapter, model_validator
+
+from babylon.engine.scenarios.wayne_county import WayneCountyScenario
+
+__all__ = [
+    "EventAcked",
+    "OnPage",
+    "TickAtLeast",
+    "VerbIssued",
+    "CompletionPredicate",
+    "CompletionPredicateAdapter",
+    "TutorialStep",
+    "TutorialScript",
+    "WAYNE_OPENING_ARC",
+]
+
+#: Shared id-slug shape for both a step's own id and a script's id: lowercase,
+#: starts with a letter, ``[a-z0-9_]`` after — a stable machine key, never a
+#: free-text title (that lives in ``given``/``when``/``then`` instead).
+_ID_PATTERN: Final[str] = r"^[a-z][a-z0-9_]*$"
+
+
+class OnPage(BaseModel):
+    """Then: the player is viewing ``subject``'s dossier page.
+
+    :param subject: the vault-relative subject id (e.g. ``"county/26163"``),
+        matching :data:`babylon.tui.app.PageSource`'s own convention.
+    """
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    kind: Literal["on_page"] = "on_page"
+    subject: str = Field(min_length=1)
+
+
+class TickAtLeast(BaseModel):
+    """Then: the campaign has resolved at least tick ``tick``.
+
+    :param tick: the minimum committed tick this predicate is satisfied by.
+    """
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    kind: Literal["tick_at_least"] = "tick_at_least"
+    tick: int = Field(ge=0)
+
+
+class EventAcked(BaseModel):
+    """Then: the pending autopause has been acknowledged.
+
+    Unconditional by design (no ``event_type``/``tick`` filter): the
+    opening-arc script only ever teaches ONE acknowledge beat, and a later
+    script needing to distinguish which pending pause it acks can widen
+    this predicate kind then — never with an ad hoc field this unit does
+    not exercise (YAGNI, CLAUDE.md "no features beyond what was asked").
+    """
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    kind: Literal["event_acked"] = "event_acked"
+
+
+class VerbIssued(BaseModel):
+    """Then: the named verb/binding action has been issued.
+
+    :param verb: an action name — either a TUI binding's own
+        ``Binding(key, action, ...)`` action string (e.g.
+        ``"advance_tick"``, ``"run_until_paused"``, ``"begin"``,
+        ``"new_campaign"``) or, in a future script, an Article-V player
+        verb string (e.g. ``"educate"``). Never the raw KEY (``"t"``) —
+        the action name is what a remapped keybinding would still share.
+    """
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    kind: Literal["verb_issued"] = "verb_issued"
+    verb: str = Field(min_length=1)
+
+
+CompletionPredicate = Annotated[
+    OnPage | TickAtLeast | EventAcked | VerbIssued,
+    Field(discriminator="kind"),
+]
+"""The closed completion-predicate vocabulary (module docstring). Every
+:class:`TutorialStep` carries exactly one — DATA, never a callable, so the
+same script serializes for the overlay, the Pilot executor, and the docs."""
+
+CompletionPredicateAdapter: TypeAdapter[OnPage | TickAtLeast | EventAcked | VerbIssued] = (
+    TypeAdapter(CompletionPredicate)
+)
+"""Validates a raw ``{"kind": ..., ...}`` payload against the closed set
+above. An unrecognized ``kind`` (or one missing it) raises
+:class:`pydantic.ValidationError` loudly (Constitution III.11) — there is
+no silent fallback predicate kind."""
+
+#: Generous static bound on ``anchor``'s length (Power-of-10 rule: every
+#: bounded thing gets a named, provable ceiling, not an implicit one) —
+#: anchors are short identifiers (``"binding:ArchiveApp:ctrl+o"``), never
+#: prose; this sits far above any real anchor string.
+_MAX_ANCHOR_LEN: Final[int] = 256
+
+
+class TutorialStep(BaseModel):
+    """One Given/When/Then teaching beat, keyed to one real UI anchor.
+
+    :param id: a stable machine key, unique within its
+        :class:`TutorialScript` (validated there, not here — uniqueness is
+        a property of the SET of steps, not of one step in isolation).
+    :param given: the precondition sentence fragment.
+    :param when: the player's action sentence fragment.
+    :param then: the observable-result sentence fragment.
+    :param anchor: the page/binding/verb this step exercises (module
+        docstring's anchor grammar).
+    :param completion: the DATA predicate (:data:`CompletionPredicate`)
+        proving ``then`` actually happened.
+    """
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    id: str = Field(min_length=1, pattern=_ID_PATTERN)
+    given: str = Field(min_length=1)
+    when: str = Field(min_length=1)
+    then: str = Field(min_length=1)
+    anchor: str = Field(min_length=1, max_length=_MAX_ANCHOR_LEN)
+    completion: CompletionPredicate
+
+    @property
+    def scenario_name(self) -> str:
+        """The step's scenario-name sentence — the developer-docs title.
+
+        Derives VERBATIM from :attr:`given`/:attr:`when`/:attr:`then` (the
+        rendering contract this module's docstring names): there is no
+        second, separately-authored title string anywhere for this step.
+        Mirrors :class:`~babylon.tui.campaign_menu.LobbyRow`'s own
+        ``label`` property — a frozen model's derived display string.
+        """
+        return f"Given {self.given}, when {self.when}, then {self.then}."
+
+    @property
+    def overlay_text(self) -> str:
+        """The player-facing overlay block — the SAME fields,
+        :attr:`scenario_name`'s sibling rendering (module docstring: "no
+        prose duplication anywhere, ever"). A future opening-arc overlay
+        consumer renders exactly this, never a separately-authored copy.
+        """
+        return f"GIVEN: {self.given}\nWHEN: {self.when}\nTHEN: {self.then}"
+
+
+#: Generous static bound on a script's step count (Power-of-10 rule 2): the
+#: authored Wayne arc below has 9; this sits far above any teaching arc a
+#: single opening session would plausibly need.
+_MAX_SCRIPT_STEPS: Final[int] = 64
+
+
+class TutorialScript(BaseModel):
+    """An ordered, uniquely-keyed sequence of :class:`TutorialStep`\\ s.
+
+    :param id: the script's own stable machine key.
+    :param scenario: the engine scenario this script is authored against
+        (e.g. ``"wayne_county"`` — :attr:`~babylon.engine.scenarios.
+        wayne_county.WayneCountyScenario.name`, reused rather than
+        re-typed, so the two never drift). The headless Pilot executor
+        (a later T6 unit) boots exactly this scenario before driving the
+        script — never an unstated implicit one.
+    :param steps: the ordered beats; length bounded by
+        :data:`_MAX_SCRIPT_STEPS` (Power-of-10 rule 2).
+    """
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    id: str = Field(min_length=1, pattern=_ID_PATTERN)
+    scenario: str = Field(min_length=1)
+    steps: tuple[TutorialStep, ...] = Field(min_length=1, max_length=_MAX_SCRIPT_STEPS)
+
+    @model_validator(mode="after")
+    def _unique_step_ids(self) -> Self:
+        """Reject a script whose steps do not carry pairwise-distinct ids.
+
+        :raises ValueError: on the first duplicate id found (loud, not a
+            silently-deduplicated script — Constitution III.11).
+        """
+        seen: set[str] = set()
+        for step in self.steps:  # loop bound: len(self.steps) <= _MAX_SCRIPT_STEPS
+            if step.id in seen:
+                msg = f"TutorialScript {self.id!r}: duplicate step id {step.id!r}"
+                raise ValueError(msg)
+            seen.add(step.id)
+        return self
+
+
+WAYNE_OPENING_ARC: Final[TutorialScript] = TutorialScript(
+    id="wayne_opening_arc",
+    scenario=WayneCountyScenario.name,
+    steps=(
+        TutorialStep(
+            id="boot_into_lobby",
+            given="a fresh boot with no campaign chosen yet, the campaign lobby showing",
+            when="the player presses 'n' to mint a new campaign",
+            then="a freshly minted campaign row appears in the lobby, ready to be loaded",
+            anchor="binding:LobbyScreen:n",
+            completion=VerbIssued(verb="new_campaign"),
+        ),
+        TutorialStep(
+            id="begin_the_operation",
+            given="the freshly minted campaign is chosen and its Scenario Briefing dossier is showing",
+            when="the player presses Enter to begin the operation",
+            then="the campaign shell reveals Wayne County's own home dossier",
+            anchor="binding:BriefingScreen:enter",
+            completion=VerbIssued(verb="begin"),
+        ),
+        TutorialStep(
+            id="read_the_county_dossier",
+            given="the campaign shell has just revealed Wayne County's home dossier at tick 0",
+            when="the player reads county/26163's page",
+            then="the county dossier's statblock renders Wayne's own material state, not a fixture",
+            anchor="page:county/26163",
+            completion=OnPage(subject="county/26163"),
+        ),
+        TutorialStep(
+            id="advance_a_tick",
+            given="Wayne County's dossier is showing at tick 0",
+            when="the player presses 't' to advance one tick",
+            then=(
+                "the campaign resolves tick 1 through the full 30-system engine and "
+                "the status line reports the tick just committed"
+            ),
+            anchor="binding:ArchiveApp:t",
+            completion=TickAtLeast(tick=1),
+        ),
+        TutorialStep(
+            id="run_until_autopause",
+            given="the campaign has resolved at least one tick",
+            when="the player presses 'r' to run until an autopause or the endgame lock",
+            then=(
+                "the paced driver auto-advances through uneventful ticks and stops the "
+                "instant a critical event or the endgame pattern fires"
+            ),
+            anchor="binding:ArchiveApp:r",
+            completion=VerbIssued(verb="run_until_paused"),
+        ),
+        TutorialStep(
+            id="acknowledge_the_pause",
+            given="an autopause is pending after a run",
+            when="the player presses 'a' to acknowledge it",
+            then="the pending autopause clears and further 't'/'r' presses are permitted again",
+            anchor="binding:ArchiveApp:a",
+            completion=EventAcked(),
+        ),
+        TutorialStep(
+            id="palette_to_the_economy_dossier",
+            given="the campaign shell is showing any dossier page",
+            when="the player opens the command palette with Ctrl-P and picks economy/USA",
+            then="the dossier pane navigates to the national economy dossier",
+            anchor="palette:economy/USA",
+            completion=OnPage(subject="economy/USA"),
+        ),
+        TutorialStep(
+            id="read_the_theorem_verdict",
+            given="the economy dossier is showing",
+            when="the player reads its Fundamental Theorem verdict",
+            then=(
+                "the wage balance and the labor-aristocracy verdict render as real numbers "
+                "read off the SAME opposition the engine itself adjudicates, never a "
+                "fabricated parallel feed"
+            ),
+            anchor="page:economy/USA",
+            completion=OnPage(subject="economy/USA"),
+        ),
+        TutorialStep(
+            id="jump_back_to_wayne",
+            given="the player has navigated away from Wayne County's dossier to economy/USA",
+            when="the player presses Ctrl-O to walk back one jumplist step",
+            then="the dossier pane returns to county/26163, the campaign's own home page",
+            anchor="binding:ArchiveApp:ctrl+o",
+            completion=OnPage(subject="county/26163"),
+        ),
+    ),
+)
+"""The Wayne first-session opening arc (Program v1.0.0 T6, Unit U1) — the
+core loop end-to-end over what the shell actually does today: lobby ->
+briefing -> the county dossier -> a tick -> a run to autopause ->
+acknowledge -> the command palette -> the economy dossier's theorem verdict
+-> jump back. Every anchor and subject id above was checked against the
+live registries before authoring (module docstring)."""

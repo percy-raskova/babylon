@@ -143,11 +143,19 @@ def _load_campaign(
         ``Tick 0``).
     :param campaign_id: the lobby's chosen campaign UUID.
     :returns: the live, booted/resumed :class:`~babylon.game.session.GameSession`
-        (structurally satisfies ``babylon.tui.app.CampaignHandle``).
+        (structurally satisfies ``babylon.tui.app.CampaignHandle``, now
+        including its Unit U1 ``known_subjects`` seam via the same
+        ``vault_root`` :func:`~babylon.game.session.vault_known_subjects`
+        reads).
     """
     from babylon.engine.headless_runner.scopes import DETROIT_TRI_COUNTY_FIPS
     from babylon.engine.scenarios import WayneCountyScenario
-    from babylon.game.session import create_new_campaign, resume_campaign, vault_page_source
+    from babylon.game.session import (
+        create_new_campaign,
+        resume_campaign,
+        vault_known_subjects,
+        vault_page_source,
+    )
     from babylon.projection.vault.materializer import VaultMaterializer
     from babylon.projection.vault.tick_baker import ArchiveTickBaker
 
@@ -155,10 +163,16 @@ def _load_campaign(
     materializer = VaultMaterializer(vault_root)
     baker = ArchiveTickBaker(materializer, county_fips=tuple(DETROIT_TRI_COUNTY_FIPS))
     pages = vault_page_source(vault_root)
+    known_subjects = vault_known_subjects(vault_root)
 
     session = (
         resume_campaign(
-            runtime, campaign_id, tick_commit_observer=baker, pages=pages, progress_store=catalog
+            runtime,
+            campaign_id,
+            tick_commit_observer=baker,
+            pages=pages,
+            known_subjects=known_subjects,
+            progress_store=catalog,
         )
         if runtime.get_session(campaign_id) is not None
         else create_new_campaign(
@@ -167,6 +181,7 @@ def _load_campaign(
             session_id=campaign_id,
             tick_commit_observer=baker,
             pages=pages,
+            known_subjects=known_subjects,
             progress_store=catalog,
         )
     )

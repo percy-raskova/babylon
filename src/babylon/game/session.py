@@ -78,7 +78,7 @@ import json
 import os
 from collections.abc import Callable, Sequence
 from pathlib import Path
-from typing import TYPE_CHECKING, Any, Protocol
+from typing import TYPE_CHECKING, Any, Final, Protocol
 from uuid import UUID
 
 from babylon.config.defines import GameDefines
@@ -106,6 +106,7 @@ if TYPE_CHECKING:
 
 __all__ = [
     "GameRuntimeStore",
+    "KnownSubjectsSource",
     "PausePredicate",
     "ProgressStore",
     "VaultPageSource",
@@ -116,6 +117,7 @@ __all__ = [
     "resume_campaign",
     "ensure_schema",
     "open_runtime",
+    "vault_known_subjects",
     "vault_page_source",
 ]
 
@@ -229,6 +231,14 @@ VaultPageSource = Callable[[str], "str | None"]
 to :data:`babylon.tui.app.PageSource`; kept as a plain type alias here (not
 imported from ``babylon.tui.app``) so this module does not pull in Textual
 merely to describe :func:`vault_page_source`'s return shape."""
+
+KnownSubjectsSource = Callable[[], "frozenset[str]"]
+"""A zero-arg reader of every subject id a campaign's vault has baked so far.
+Structurally identical to the return shape of
+:data:`babylon.tui.app.CampaignHandle`'s ``known_subjects`` seam (Unit U1);
+kept as a plain type alias here for the same reason :data:`VaultPageSource`
+is — no Textual import merely to describe :func:`vault_known_subjects`'s
+return shape."""
 
 
 def default_pause_predicate(events: Sequence[Event]) -> bool:
@@ -364,6 +374,10 @@ class GameSession:
         :func:`vault_page_source` over its own vault root), read via
         :meth:`read_page`; ``None`` (the default) reads honestly absent for
         every subject — the pre-Unit-C2 no-vault path.
+    :param known_subjects: this campaign's own :data:`KnownSubjectsSource`
+        (typically :func:`vault_known_subjects` over its own vault root,
+        Unit U1), read via :meth:`known_subjects`; ``None`` (the default)
+        reads honestly empty — the pre-Unit-U1 no-vault path.
     :param progress_store: the lobby's :class:`ProgressStore` seam
         (typically the same ``BabylonMetaStore`` the composition root's
         ``CampaignMenu`` already holds); ``None`` (the default) runs with no
@@ -384,6 +398,7 @@ class GameSession:
         tick_commit_observer: TickCommitObserver | None = None,
         pause_predicate: PausePredicate = default_pause_predicate,
         pages: VaultPageSource | None = None,
+        known_subjects: KnownSubjectsSource | None = None,
         progress_store: ProgressStore | None = None,
     ) -> None:
         self.session_id = session_id
@@ -397,6 +412,7 @@ class GameSession:
         self._tick_commit_observer = tick_commit_observer
         self._pause_predicate = pause_predicate
         self._pages = pages
+        self._known_subjects = known_subjects
         self._progress_store = progress_store
 
     def read_page(self, subject: str) -> str | None:
@@ -414,6 +430,21 @@ class GameSession:
             subject yet — never fabricated content (Constitution III.11).
         """
         return self._pages(subject) if self._pages is not None else None
+
+    def known_subjects(self) -> frozenset[str]:
+        """Every subject id this campaign's vault has baked so far (Unit U1).
+
+        Thin passthrough to the injected :data:`KnownSubjectsSource` (see
+        :attr:`known_subjects` on the constructor), read fresh on every
+        call; satisfies ``babylon.tui.app``'s ``CampaignHandle.
+        known_subjects`` seam the same way :meth:`read_page` satisfies
+        ``read_page`` — without either module importing the other.
+
+        :returns: the current baked-subject frozenset, or an empty one if
+            no vault reader is wired (constructor default) — never
+            fabricated (Constitution III.11).
+        """
+        return self._known_subjects() if self._known_subjects is not None else frozenset()
 
     def submit_verb(
         self,
@@ -533,6 +564,7 @@ def create_new_campaign(
     tick_commit_observer: TickCommitObserver | None = None,
     pause_predicate: PausePredicate = default_pause_predicate,
     pages: VaultPageSource | None = None,
+    known_subjects: KnownSubjectsSource | None = None,
     progress_store: ProgressStore | None = None,
 ) -> GameSession:
     """Boot a brand-new campaign: build the scenario, then bake tick 0.
@@ -556,6 +588,9 @@ def create_new_campaign(
         :data:`PausePredicate`).
     :param pages: this campaign's :data:`VaultPageSource`, read via
         :meth:`GameSession.read_page` (Unit C2's ``CampaignHandle`` seam).
+    :param known_subjects: this campaign's :data:`KnownSubjectsSource`, read
+        via :meth:`GameSession.known_subjects` (Unit U1's ``CampaignHandle``
+        seam).
     :param progress_store: the lobby's :class:`ProgressStore` seam; when
         given, the freshly-minted campaign's ``last_tick`` is stamped ``0``
         immediately (the lobby row already defaults to 0 at
@@ -606,6 +641,7 @@ def create_new_campaign(
         tick_commit_observer=tick_commit_observer,
         pause_predicate=pause_predicate,
         pages=pages,
+        known_subjects=known_subjects,
         progress_store=progress_store,
     )
 
@@ -617,6 +653,7 @@ def resume_campaign(
     tick_commit_observer: TickCommitObserver | None = None,
     pause_predicate: PausePredicate = default_pause_predicate,
     pages: VaultPageSource | None = None,
+    known_subjects: KnownSubjectsSource | None = None,
     progress_store: ProgressStore | None = None,
 ) -> GameSession:
     """Crash-resume a campaign from its last atomically-committed tick.
@@ -634,6 +671,8 @@ def resume_campaign(
     :param tick_commit_observer: the vault's tick-commit observer.
     :param pause_predicate: the pacing driver's autopause SEAM.
     :param pages: this campaign's :data:`VaultPageSource` (see
+        :func:`create_new_campaign`'s identical parameter).
+    :param known_subjects: this campaign's :data:`KnownSubjectsSource` (see
         :func:`create_new_campaign`'s identical parameter).
     :param progress_store: the lobby's :class:`ProgressStore` seam; when
         given, the lobby row is synced to the Ledger's own
@@ -677,6 +716,7 @@ def resume_campaign(
         tick_commit_observer=tick_commit_observer,
         pause_predicate=pause_predicate,
         pages=pages,
+        known_subjects=known_subjects,
         progress_store=progress_store,
     )
 
@@ -754,3 +794,52 @@ def vault_page_source(vault_root: Path) -> VaultPageSource:
             return None
 
     return _read
+
+
+#: Repo loop-bound rule (CLAUDE.md Power-of-10 #2): the nationwide worst case
+#: is ~3,300 baked pages (``commit_pages``'s own "~3,156 pages per tick"
+#: figure, plus briefing/narrative pages); this cap sits generously above
+#: that, so slicing ``all_pages[:_MAX_VAULT_PAGES]`` below is a trivially
+#: bounded loop, not a runtime-dependent walk of the vault's actual size.
+_MAX_VAULT_PAGES: Final = 100_000
+
+
+def vault_known_subjects(vault_root: Path) -> KnownSubjectsSource:
+    """A reader enumerating every subject id a vault has baked (Unit U1).
+
+    Walks ``vault_root`` for the exact ``<subject>.md`` files
+    :class:`~babylon.projection.vault.tick_baker.ArchiveTickBaker` writes —
+    the same convention :func:`vault_page_source` reads in reverse: a
+    subject id is a baked file's vault-relative POSIX path, minus the
+    ``.md`` suffix. Excludes the vault's own ``.git/`` directory (never a
+    page) and a top-level ``narrative/`` subtree if present (the WO-42
+    narrator prose cache — attributed blocks a dossier page's
+    ``{narrative}`` fence pulls IN, never standalone navigable subjects in
+    their own right).
+
+    :param vault_root: the campaign's vault repository root.
+    :returns: a zero-arg callable producing the CURRENT known-subject
+        frozenset (:data:`KnownSubjectsSource`), read fresh on every call —
+        pages bake as ticks advance, so this is deliberately never cached.
+    """
+
+    def _known_subjects() -> frozenset[str]:
+        if not vault_root.is_dir():
+            return frozenset()
+        all_pages = sorted(vault_root.rglob("*.md"))
+        if len(all_pages) > _MAX_VAULT_PAGES:
+            # Loud refusal (Constitution III.11), never a silent truncation
+            # of the known-subject set.
+            raise RuntimeError(
+                f"vault at {vault_root} has grown past the "
+                f"{_MAX_VAULT_PAGES}-page static scan bound"
+            )
+        subjects: set[str] = set()
+        for page_path in all_pages[:_MAX_VAULT_PAGES]:
+            relative = page_path.relative_to(vault_root)
+            if ".git" in relative.parts or relative.parts[0] == "narrative":
+                continue
+            subjects.add(relative.with_suffix("").as_posix())
+        return frozenset(subjects)
+
+    return _known_subjects

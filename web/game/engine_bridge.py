@@ -86,8 +86,6 @@ from .veil import (
 from .verb_copy import VERB_INELIGIBILITY_COPY
 
 if TYPE_CHECKING:
-    from babylon.models.entities.relationship import Relationship
-    from babylon.models.entities.territory import Territory
     from game.narrative_service import NarrativeService
     from game.narrator import NarratorProvider
 
@@ -7543,97 +7541,15 @@ def _build_initial_state_for_scenario(scenario: str) -> WorldState:
     """
     canonical = resolve_scenario(scenario)
     state, _config, _defines = get_scenario(canonical)().build()
-    # #39 T5: the reference-DB read for the county influence path lives HERE,
-    # at the call boundary — only paid for scenarios that actually have
-    # county-only territories (Wayne's hex-grid territories skip it entirely).
-    hex_to_county = (
-        _load_seed_hex_to_county_bridge() if _has_county_only_territories(state) else None
-    )
-    state = _seed_balkanization_layer(state, hex_to_county=hex_to_county)
+    # P25 U6: wayne's county-FIPS stamp runs BEFORE the balkanization seed —
+    # the seed data is county-FIPS-keyed (seed_influences.json v2.0.0), so a
+    # stamped territory resolves directly through its county_fips attribute
+    # and no reference-DB hex->county read exists on this path anymore (the
+    # retired #39 T5 bridge read; the whole session build is now DB-free).
     if canonical == "wayne_county":
         state = _seed_wayne_county_fips(state)
+    state = _seed_balkanization_layer(state)
     return state
-
-
-def _has_county_only_territories(state: WorldState) -> bool:
-    """True if any territory carries ``county_fips`` with no ``h3_index``.
-
-    Gates whether :func:`_build_initial_state_for_scenario` pays the
-    reference-DB round trip for :func:`_load_seed_hex_to_county_bridge`
-    (#39 T5) — hex-grid scenarios (Wayne) have nothing for the county
-    influence path to do.
-    """
-    return any(
-        getattr(t, "county_fips", None) and not getattr(t, "h3_index", None)
-        for t in state.territories.values()
-    )
-
-
-def _load_seed_hex_to_county_bridge() -> dict[str, str]:
-    """Resolve the balkanization seed's res-7 hex cells to county FIPS (#39 T5).
-
-    The real reference-DB read for :func:`_seed_balkanization_layer`'s
-    county path — the seeding function itself takes the mapping as an
-    explicit DI parameter (testable with a synthetic mapping, no DB); only
-    this call-boundary wrapper touches ``bridge_county_h3``, and only when
-    :func:`_has_county_only_territories` says a session needs it.
-
-    Scoped to the ~1.6K unique H3 cells appearing in
-    ``load_seed_influences()`` — never the full ``bridge_county_h3`` table.
-    Measured on the dev box's reference DB: ~0.05s for this scoped chunked
-    read vs ~0.13s for an unscoped resolution-7 read of the whole table
-    (45,572 rows) — well under the ~0.5s session-creation budget either way,
-    but the scoped read is the disciplined choice regardless (cost doesn't
-    grow with the table).
-
-    The reference SQLite (``data/sqlite/marxist-data-3NF.sqlite``) is absent
-    on the dev CI tier by design (``requires_reference_db`` tests are
-    excluded there for exactly this reason — see pyproject.toml's marker
-    doc) — but ``_build_initial_state_for_scenario("default"/"us")`` is
-    exercised by many *plain* ``unit``-marked tests that never expected a DB
-    dependency (``us_county_data``'s own docstring: this scenario builder
-    "must stay reference-DB-free at build time"). An **absent** DB file is
-    therefore the one legitimate degradation case: the influence layer
-    falls back to its pre-existing no-op, loudly logged, rather than take
-    the whole session build down with it.
-
-    T5 review I1: that graceful degradation must NOT extend to a DB file
-    that exists but is broken (corruption, locks, disk I/O) — those are
-    real production faults on a dev-box web session where the reference DB
-    genuinely exists, and silently emptying the county influence layer for
-    them would mute Constitution III.11 ("MUST fail loud"). So the
-    existence check below runs *before* the query, using the same path
-    resolution :mod:`babylon.reference.database` already exposes
-    (``NORMALIZED_DB_PATH`` — honors ``BABYLON_NORMALIZED_DB_PATH``, no new
-    config knob). Only a missing file degrades; a present-but-failing
-    query is left to propagate unguarded.
-
-    Returns:
-        ``{h3_index: county_fips}`` — see
-        :func:`babylon.engine.hydration.reference.query_h3_to_county_fips`.
-        Empty when the reference DB file is absent.
-
-    Raises:
-        sqlalchemy.exc.SQLAlchemyError: If the reference DB file exists but
-            the query fails (corruption, lock, missing table/column, disk
-            I/O). Deliberately not caught — see the I1 note above.
-    """
-    from babylon.data.game.balkanization import load_seed_influences
-    from babylon.engine.hydration.reference import query_h3_to_county_fips
-    from babylon.reference.database import NORMALIZED_DB_PATH
-
-    if not NORMALIZED_DB_PATH.is_file():
-        logger.warning(
-            "_load_seed_hex_to_county_bridge: reference DB file absent at "
-            "%s -- county-grain balkanization influence layer skipped for "
-            "this session (degrades to the pre-existing no-op for county "
-            "scenarios).",
-            NORMALIZED_DB_PATH,
-        )
-        return {}
-
-    hex_ids = [str(edge["territory_id"]) for edge in load_seed_influences()]
-    return query_h3_to_county_fips(hex_ids)
 
 
 def _seed_wayne_county_fips(state: WorldState) -> WorldState:
@@ -7678,7 +7594,9 @@ def _seed_wayne_county_fips(state: WorldState) -> WorldState:
     dict rather than the per-node writeback.
 
     Args:
-        state: The wayne_county tick-0 WorldState (post balkanization seed).
+        state: The wayne_county tick-0 WorldState (pre balkanization seed —
+            P25 U6 reordered this stamp BEFORE the county-FIPS-keyed seed so
+            wayne territories resolve influences/claims directly).
 
     Returns:
         The state with every territory's ``county_fips`` set to
@@ -8743,243 +8661,32 @@ def _county_tick_series_aggregates(graph: Any) -> dict[str, float | None]:
     }
 
 
-def _aggregate_county_influences(
-    county_territories: dict[str, Territory],
-    hex_to_county: dict[str, str],
-    influence_edges: list[dict[str, Any]],
-) -> list[Relationship]:
-    """County-grain twin of ``_seed_balkanization_layer``'s hex-parent pass (#39 T5).
-
-    Aggregates the res-7 seed's INFLUENCES edges onto ``county_fips`` instead
-    of an H3 parent cell (via ``hex_to_county``), using the identical
-    aggregation rule as the hex path: arithmetic mean ``influence_level``
-    (the faithful downsample for an intensive [0, 1] quantity), lexicographic
-    max ``support_type`` tie-break, sorted iteration for determinism (III.7).
-    A seed edge whose ``hex_to_county``-resolved county has no matching
-    scenario territory is silently dropped — the same unmatched-parent
-    behavior the hex path already has (``if parent not in hex_territories``).
-
-    Args:
-        county_territories: ``{territory_id: Territory}`` restricted to
-            territories with ``county_fips`` set and no ``h3_index``.
-        hex_to_county: ``{h3_index: county_fips}`` map covering (some subset
-            of) the seed's res-7 cells.
-        influence_edges: The raw ``load_seed_influences()`` edge records.
-
-    Returns:
-        One ``Relationship(edge_type=EdgeType.INFLUENCES)`` per
-        ``(faction_id, territory_id)`` pair with at least one matched edge.
-    """
-    from babylon.models.entities.relationship import Relationship
-    from babylon.models.enums import EdgeType
-
-    # Sorted construction makes a county_fips collision deterministic (highest
-    # tid wins, last writer) rather than order-dependent; acceptable because
-    # the current data model guarantees one territory per county_fips (T4's
-    # committed county-seed artifact), so no collision is expected in practice.
-    territory_by_fips = {t.county_fips: tid for tid, t in sorted(county_territories.items())}
-    # (faction_id, target_tid) -> list of (influence_level, support_type)
-    buckets: dict[tuple[str, str], list[tuple[float, str]]] = {}
-    for edge in influence_edges:
-        fips = hex_to_county.get(str(edge["territory_id"]))
-        if fips is None:
-            continue
-        target = territory_by_fips.get(fips)
-        if target is None:
-            continue
-        key = (str(edge["faction_id"]), target)
-        buckets.setdefault(key, []).append(
-            (float(edge["influence_level"]), str(edge["support_type"]))
-        )
-
-    relationships: list[Relationship] = []
-    for (faction_id, target), children in sorted(buckets.items()):
-        level = sum(lvl for lvl, _ in children) / len(children)
-        support = max(children, key=lambda c: (c[0], c[1]))[1]
-        relationships.append(
-            Relationship(
-                source_id=faction_id,
-                target_id=target,
-                edge_type=EdgeType.INFLUENCES,
-                influence_level=round(level, 6),
-                support_type=support,
-            )
-        )
-    return relationships
-
-
 def _seed_balkanization_layer(
     state: WorldState,
     hex_to_county: dict[str, str] | None = None,
 ) -> WorldState:
-    """Seed the spec-070 political layer into a web session's initial state.
+    """Seed the spec-070 political layer (delegates to the engine builder).
 
-    Owner item 8 ("balkanization seed gap — no scenario seeds spec-070
-    data") ruled IN SCOPE: every web session seeds the 4 canonical
-    factions, the 3 canonical sovereigns, and the proxy-data INFLUENCES
-    edges (``src/babylon/data/game/balkanization/``), so the spec-093 map
-    lens set has data and ``FactionInfluenceSystem`` has material to act
-    on. **Bridge-layer only** — headless scenarios build without this, so
-    regression baselines are untouched.
-
-    The seed pipeline computed influences at H3 res-7; scenarios may sit
-    at a coarser resolution (wayne_county is res-6). Child edges aggregate
-    onto the scenario's cells via ``h3.cell_to_parent`` with the
-    arithmetic **mean** — the faithful downsample for an intensive [0, 1]
-    quantity (sum would exceed the bound; max overweights outliers). The
-    aggregated edge takes the support_type of its highest-influence child
-    (lexicographic tie-break — deterministic per III.7). Sovereign
-    ``initial_claims`` seed as CLAIMS edges when their ``territory_id``
-    literally matches a scenario Territory key (the shipped seed file's
-    ``canada`` / ``rest_of_usa`` are :mod:`persistence.external_node`
-    IDs, never scenario Territory keys, so this pass is currently a
-    no-op in every scenario). Per FR-040b (spec-070, reinterpreted by
-    Task R / ADR080): every Territory the literal pass doesn't claim
-    falls to ``SOV_USA_FED`` — the domestic federal sovereign — because
-    every Territory in ``state.territories`` is a domestic interior H3
-    cell; ``SOV_EXTERIOR_NULL`` (``ruling_faction_id`` null) remains
-    reserved for genuinely external nodes, which are never scenario
-    Territory keys. This preserves total CLAIMS coverage (SC-017) while
-    making every Territory's sovereign stance-attributable from tick 0
-    (SOV_USA_FED's ruling Faction is UPHOLD-aligned), which is what makes
-    the IGNORE/ABOLISH endgame routes (RED_OGV, REVOLUTIONARY_VICTORY)
-    reachable at all as the dynamics play out.
-
-    #39 T5: USScenario territories are county-grain (``county_fips`` set,
-    ``h3_index`` always ``None`` — Amendment U / #39 T4), so the hex path
-    above is a silent no-op for them. This adds the parallel COUNTY path:
-    the same res-7 seed edges aggregate onto ``county_fips`` instead of an
-    H3 parent cell, via a hex→county FIPS map (``bridge_county_h3``, joined
-    to ``dim_county`` for the ``fips`` column). The two paths are mutually
-    exclusive per-territory today (a territory has either ``h3_index`` or
-    ``county_fips``, never both) but are written as independent passes, not
-    ``elif``, so a future mixed scenario would still get both. Same
-    aggregation rule as the hex path (mean, lexicographic support_type
-    tie-break) and the same silent-skip-on-unmatched-parent behavior.
-
-    ``hex_to_county`` is an explicit DI parameter — this function never
-    queries the reference DB itself. The real read
-    (:func:`_load_seed_hex_to_county_bridge`) happens at the call boundary
-    (:func:`_build_initial_state_for_scenario`), only for scenarios that
-    actually have county-only territories, so this function stays testable
-    with a synthetic mapping and no DB.
+    P25 U6 (ADR132): the seeding logic moved to
+    :func:`babylon.engine.scenarios.balkanization_seed.apply_balkanization_seed`
+    so ``NodeType.FACTION`` / ``NodeType.SOVEREIGN`` nodes exist headless —
+    the bridge keeps this thin wrapper for its existing call/test surface.
+    The seed data is county-FIPS-keyed; territories resolve through their
+    ``county_fips`` attribute (wayne territories are stamped before seeding
+    in :func:`_build_initial_state_for_scenario`), so the old hex-parent
+    aggregation and the ``bridge_county_h3`` reference-DB read are retired.
 
     Args:
         state: The scenario-built tick-0 WorldState.
-        hex_to_county: Optional ``{h3_index: county_fips}`` map covering the
-            seed's res-7 cells, for the county aggregation path. ``None``
-            (the default) simply skips that path — matching today's
-            behavior for every scenario without county territories.
+        hex_to_county: Optional ``{h3_index: county_fips}`` map for
+            hex-grain territories without a stamped ``county_fips``.
 
     Returns:
-        The state with factions/sovereigns/edges merged in; unchanged
-        collections are reused as-is.
+        The state with factions/sovereigns/edges merged in.
     """
-    import h3
+    from babylon.engine.scenarios.balkanization_seed import apply_balkanization_seed
 
-    from babylon.data.game.balkanization import (
-        load_seed_factions,
-        load_seed_influences,
-        load_seed_sovereigns,
-        load_seed_sovereigns_raw,
-    )
-    from babylon.models.entities.relationship import Relationship
-    from babylon.models.enums import EdgeType
-
-    factions = {f.id: f for f in load_seed_factions()}
-    sovereigns = {s.id: s for s in load_seed_sovereigns()}
-
-    hex_territories = {
-        tid: t for tid, t in state.territories.items() if getattr(t, "h3_index", None)
-    }
-    county_territories = {
-        tid: t
-        for tid, t in state.territories.items()
-        if getattr(t, "county_fips", None) and not getattr(t, "h3_index", None)
-    }
-    new_relationships: list[Relationship] = []
-    influence_edges = load_seed_influences()
-
-    if hex_territories:
-        resolution = h3.get_resolution(next(iter(sorted(hex_territories))))
-        # (faction_id, parent_tid) -> list of (influence_level, support_type)
-        buckets: dict[tuple[str, str], list[tuple[float, str]]] = {}
-        for edge in influence_edges:
-            try:
-                parent = h3.cell_to_parent(str(edge["territory_id"]), resolution)
-            except (ValueError, TypeError):
-                continue
-            if parent not in hex_territories:
-                continue
-            key = (str(edge["faction_id"]), parent)
-            buckets.setdefault(key, []).append(
-                (float(edge["influence_level"]), str(edge["support_type"]))
-            )
-        for (faction_id, parent), children in sorted(buckets.items()):
-            level = sum(lvl for lvl, _ in children) / len(children)
-            support = max(children, key=lambda c: (c[0], c[1]))[1]
-            new_relationships.append(
-                Relationship(
-                    source_id=faction_id,
-                    target_id=parent,
-                    edge_type=EdgeType.INFLUENCES,
-                    influence_level=round(level, 6),
-                    support_type=support,
-                )
-            )
-
-    if county_territories and hex_to_county:
-        new_relationships.extend(
-            _aggregate_county_influences(county_territories, hex_to_county, influence_edges)
-        )
-
-    claimed_territory_ids: set[str] = set()
-    for record in load_seed_sovereigns_raw():
-        for claim in record.get("initial_claims", []):
-            territory_id = str(claim.get("territory_id", ""))
-            if territory_id not in state.territories:
-                continue
-            new_relationships.append(
-                Relationship(
-                    source_id=str(record["id"]),
-                    target_id=territory_id,
-                    edge_type=EdgeType.CLAIMS,
-                    control_level=float(claim.get("control_level", 0.0)),
-                    legal_status=str(claim.get("legal_status", "de_jure")),
-                )
-            )
-            claimed_territory_ids.add(territory_id)
-
-    # FR-040b fallback (spec-070, reinterpreted by Task R / ADR080):
-    # SOV_USA_FED claims every Territory the literal pass above left
-    # unclaimed, so the SC-017 coverage invariant (every Territory
-    # influenced or claimed) holds even when the seed file's
-    # initial_claims don't resolve to real Territory keys. Every
-    # Territory in state.territories is a domestic interior H3 cell, so
-    # its default sovereign is the domestic federal sovereign, not the
-    # provisional exterior-null sovereign (SOV_EXTERIOR_NULL stays
-    # reserved for genuinely external nodes). Deterministic iteration
-    # order per III.7.
-    for territory_id in sorted(state.territories):
-        if territory_id in claimed_territory_ids:
-            continue
-        new_relationships.append(
-            Relationship(
-                source_id="SOV_USA_FED",
-                target_id=territory_id,
-                edge_type=EdgeType.CLAIMS,
-                control_level=1.0,
-                legal_status="de_jure",
-            )
-        )
-
-    return state.model_copy(
-        update={
-            "factions": {**state.factions, **factions},
-            "sovereigns": {**state.sovereigns, **sovereigns},
-            "relationships": [*state.relationships, *new_relationships],
-        }
-    )
+    return apply_balkanization_seed(state, hex_to_county=hex_to_county)
 
 
 def _is_unseeded_graph(graph: BabylonGraph) -> bool:

@@ -1,18 +1,17 @@
-"""Unit tests for ``_seed_balkanization_layer`` CLAIMS-edge seeding.
+"""Unit tests for the web bridge's ``_seed_balkanization_layer`` delegate.
 
-Wave-1 item W1.5 (spine goal): the shipped ``seed_sovereigns.json``
-initial_claims reference ExternalNode IDs ("canada" / "rest_of_usa"),
-never real ``state.territories`` keys, so the literal ``territory_id in
-state.territories`` join at ``_seed_balkanization_layer`` rejected every
-claim in every scenario, unconditionally — CLAIMS edges never seeded and
-``SOV_EXTERIOR_NULL`` (the documented FR-040b fallback sovereign, spec-070)
-never claimed anything either.
+P25 U6 (ADR132): the seeding logic lives in
+``babylon.engine.scenarios.balkanization_seed.apply_balkanization_seed``
+(full behavioral contract:
+``tests/unit/engine/scenarios/test_balkanization_seed.py``); the bridge keeps
+a thin wrapper plus the wayne-specific ordering rule (county-FIPS stamp
+BEFORE seeding, so wayne's 81 hex territories resolve the county-keyed seed
+directly — the old hex-parent aggregation and the ``bridge_county_h3``
+reference-DB read are retired, and the whole session build is DB-free).
 
-These tests pin the FR-040b coverage invariant against production code
-(the SC-017 integration test at
-``tests/integration/balkanization/test_seed_coverage_invariant.py``
-hand-fabricates the same shape but never exercises
-``_seed_balkanization_layer`` itself).
+These tests pin the BRIDGE-facing consequences: FR-040b claims coverage on
+the wayne scenario, the stamped-wayne influence broadcast, and the county
+scenario's direct resolution.
 """
 
 from __future__ import annotations
@@ -23,9 +22,15 @@ from babylon.engine.scenarios._legacy_wayne import create_wayne_county_scenario
 from babylon.models.entities.territory import Territory
 from babylon.models.enums import EdgeType, SectorType
 from babylon.models.world_state import WorldState
-from game.engine_bridge import _seed_balkanization_layer
+from game.engine_bridge import (
+    _build_initial_state_for_scenario,
+    _seed_balkanization_layer,
+    _seed_wayne_county_fips,
+)
 
 pytestmark = pytest.mark.unit
+
+_WAYNE_FIPS = "26163"
 
 
 def _build_state():
@@ -47,75 +52,15 @@ def _county_territory(territory_id: str, county_fips: str) -> Territory:
     )
 
 
-def _expected_hex_influences(
-    hex_territories: dict[str, Territory],
-) -> dict[tuple[str, str], tuple[float, str]]:
-    """Independently recompute the hex-parent aggregation for assertions.
-
-    Mirrors the hex path's own aggregation rule (mean ``influence_level``,
-    lexicographic-max ``support_type`` tie-break — see
-    ``_seed_balkanization_layer``'s docstring) via ``h3.cell_to_parent`` at
-    the fixture's own resolution. Uses only the raw seed data and the h3
-    library (never ``_seed_balkanization_layer`` or its internal loop), so
-    this is an independent oracle, not a tautological re-assertion of
-    production's own output (T5 review M1).
-    """
-    import h3
-
+def _wayne_seed_values() -> dict[str, tuple[float, str]]:
+    """The committed seed's Wayne County rows — the independent oracle."""
     from babylon.data.game.balkanization import load_seed_influences
 
-    resolution = h3.get_resolution(next(iter(sorted(hex_territories))))
-    buckets: dict[tuple[str, str], list[tuple[float, str]]] = {}
-    for edge in load_seed_influences():
-        try:
-            parent = h3.cell_to_parent(str(edge["territory_id"]), resolution)
-        except (ValueError, TypeError):
-            continue
-        if parent not in hex_territories:
-            continue
-        key = (str(edge["faction_id"]), parent)
-        buckets.setdefault(key, []).append(
-            (float(edge["influence_level"]), str(edge["support_type"]))
-        )
-    expected: dict[tuple[str, str], tuple[float, str]] = {}
-    for key, children in buckets.items():
-        level = round(sum(lvl for lvl, _ in children) / len(children), 6)
-        support = max(children, key=lambda c: (c[0], c[1]))[1]
-        expected[key] = (level, support)
-    return expected
-
-
-def _expected_county_influences(
-    hex_to_county: dict[str, str],
-    territory_by_fips: dict[str, str],
-) -> dict[tuple[str, str], tuple[float, str]]:
-    """Independently recompute the county-grain aggregation for assertions.
-
-    Mirrors the hex path's own aggregation rule (mean ``influence_level``,
-    lexicographic-max ``support_type`` tie-break — see
-    ``_seed_balkanization_layer``'s docstring) applied to the county grain
-    instead of the hex-parent grain.
-    """
-    from babylon.data.game.balkanization import load_seed_influences
-
-    buckets: dict[tuple[str, str], list[tuple[float, str]]] = {}
-    for edge in load_seed_influences():
-        fips = hex_to_county.get(str(edge["territory_id"]))
-        if fips is None:
-            continue
-        target = territory_by_fips.get(fips)
-        if target is None:
-            continue
-        key = (str(edge["faction_id"]), target)
-        buckets.setdefault(key, []).append(
-            (float(edge["influence_level"]), str(edge["support_type"]))
-        )
-    expected: dict[tuple[str, str], tuple[float, str]] = {}
-    for key, children in buckets.items():
-        level = round(sum(lvl for lvl, _ in children) / len(children), 6)
-        support = max(children, key=lambda c: (c[0], c[1]))[1]
-        expected[key] = (level, support)
-    return expected
+    return {
+        str(e["faction_id"]): (float(e["influence_level"]), str(e["support_type"]))
+        for e in load_seed_influences()
+        if str(e["territory_id"]) == _WAYNE_FIPS
+    }
 
 
 @pytest.mark.unit
@@ -148,15 +93,11 @@ class TestSeedBalkanizationLayerClaims:
             )
 
     def test_otherwise_unclaimed_territories_go_to_sov_usa_fed(self) -> None:
-        """Task R / ADR080: neither ``canada`` nor ``rest_of_usa`` (the seed
-        file's literal initial_claims territory_ids) are real territory
-        keys in this scenario, so every territory falls to the FR-040b
-        fallback — which now routes to the domestic federal sovereign
-        ``SOV_USA_FED`` (every Territory in ``state.territories`` is a
-        domestic interior H3 cell), never the provisional exterior-null
-        sovereign. Zero CLAIMS may source from SOV_EXTERIOR_NULL, and
-        SOV_USA_FED must hold a CLAIMS majority (in this all-fallback
-        scenario, all of it) of the interior Territories."""
+        """Task R / ADR080: an UNSTAMPED wayne state (hex territories, no
+        county_fips, no map) resolves nothing literally, so every territory
+        falls to the FR-040b fallback — which routes to the domestic federal
+        sovereign ``SOV_USA_FED``, never the provisional exterior-null
+        sovereign."""
         state = _build_state()
 
         seeded = _seed_balkanization_layer(state)
@@ -172,82 +113,77 @@ class TestSeedBalkanizationLayerClaims:
 
 
 @pytest.mark.unit
-class TestSeedBalkanizationLayerHexPathUnchanged:
-    """#39 T5: the hex aggregation path must stay byte-identical.
+class TestWayneStampThenSeedOrdering:
+    """P25 U6: the production ordering (FIPS stamp -> seed) makes wayne's
+    hex territories resolve the county-keyed seed directly."""
 
-    Pre-existing tests in this file only ever asserted on CLAIMS edges;
-    the INFLUENCES/hex-parent aggregation pass was never pinned at all.
-    This test closes that gap so a future edit to the county path cannot
-    silently regress Wayne's hex path.
-    """
-
-    def test_wayne_hex_scenario_still_gets_influences(self) -> None:
+    def test_unstamped_wayne_gets_no_influences(self) -> None:
+        """Without the stamp (and without a hex_to_county map) the county-
+        keyed seed has nothing to bind to — the retired hex-parent
+        aggregation is really gone."""
         state = _build_state()
 
         seeded = _seed_balkanization_layer(state)
 
         influences = [r for r in seeded.relationships if r.edge_type == EdgeType.INFLUENCES]
-        assert influences, "hex-parent aggregation must still produce INFLUENCES edges"
-        # Every aggregated edge must target a real scenario territory (the
-        # h3.cell_to_parent join), never a raw hex id absent from the scenario.
-        assert {r.target_id for r in influences} <= set(seeded.territories)
+        assert influences == []
 
-        # T5 review M1: pin the actual influence_level/support_type VALUES,
-        # not just edge existence + target subset — an independent oracle
-        # (never the production aggregation) computed from the fixture's own
-        # seed data.
-        hex_territories = {
-            tid: t for tid, t in state.territories.items() if getattr(t, "h3_index", None)
-        }
-        expected = _expected_hex_influences(hex_territories)
-        actual = {
-            (r.source_id, r.target_id): (r.influence_level, r.support_type) for r in influences
-        }
-        assert actual == expected
+    def test_stamped_wayne_broadcasts_the_county_values(self) -> None:
+        """The production order (mirroring ``_build_initial_state_for_
+        scenario``): every stamped wayne territory receives Wayne County's
+        exact seed values — an intensive broadcast, verified against the
+        raw seed file (independent oracle, never production's own loop)."""
+        state = _seed_wayne_county_fips(_build_state())
+
+        seeded = _seed_balkanization_layer(state)
+
+        influences = [r for r in seeded.relationships if r.edge_type == EdgeType.INFLUENCES]
+        assert influences, "stamped wayne territories must bind the county-keyed seed"
+        assert {r.target_id for r in influences} == set(seeded.territories)
+
+        expected = _wayne_seed_values()
+        for rel in influences:
+            level, support = expected[rel.source_id]
+            assert rel.influence_level == pytest.approx(level)
+            assert rel.support_type == support
+
+    def test_build_initial_state_seeds_wayne_with_influences(self) -> None:
+        """The real call boundary: a wayne_county session build carries the
+        full political layer with per-territory influence — no reference-DB
+        read anywhere on the path."""
+        state = _build_initial_state_for_scenario("wayne_county")
+
+        assert len(state.factions) == 4
+        assert len(state.sovereigns) == 3
+        influences = [r for r in state.relationships if r.edge_type == EdgeType.INFLUENCES]
+        assert {r.target_id for r in influences} == set(state.territories)
+        claims = [r for r in state.relationships if r.edge_type == EdgeType.CLAIMS]
+        assert sorted(r.target_id for r in claims) == sorted(state.territories)
 
 
 @pytest.mark.unit
-class TestSeedBalkanizationLayerCountyInfluences:
-    """#39 T5: county-grain influence aggregation via an injected hex→county map.
+class TestCountyGrainDirectResolution:
+    """County-grain (T4-shaped) territories resolve the seed directly by
+    their ``county_fips`` attribute — no map, no DB."""
 
-    The mapping is injected (DI, no runtime discovery) so this logic is
-    testable without the reference DB — the real ``bridge_county_h3`` read
-    lives at the call boundary (``_load_seed_hex_to_county_bridge``,
-    called from ``_build_initial_state_for_scenario``), never inside
-    ``_seed_balkanization_layer`` itself.
-    """
-
-    def test_county_keyed_scenario_gets_influences_from_injected_mapping(self) -> None:
-        from babylon.data.game.balkanization import load_seed_influences
-
-        seed_hex_ids = sorted({str(e["territory_id"]) for e in load_seed_influences()})
-        hex_a, hex_b = seed_hex_ids[0], seed_hex_ids[1]
-
+    def test_county_keyed_territory_gets_the_seed_rows(self) -> None:
         state = WorldState(
             territories={
-                "T0001": _county_territory("T0001", "26163"),
-                "T0002": _county_territory("T0002", "06037"),
+                "T0001": _county_territory("T0001", _WAYNE_FIPS),
+                "T0002": _county_territory("T0002", "06037"),  # not in the tri-county seed
             }
         )
-        hex_to_county = {hex_a: "26163", hex_b: "06037"}
 
-        seeded = _seed_balkanization_layer(state, hex_to_county=hex_to_county)
+        seeded = _seed_balkanization_layer(state)
 
         influences = [r for r in seeded.relationships if r.edge_type == EdgeType.INFLUENCES]
-        assert influences, "expected a non-empty county-grain influence layer"
-
-        expected = _expected_county_influences(hex_to_county, {"26163": "T0001", "06037": "T0002"})
+        expected = _wayne_seed_values()
         actual = {
             (r.source_id, r.target_id): (r.influence_level, r.support_type) for r in influences
         }
-        assert actual == expected
+        assert actual == {(faction, "T0001"): values for faction, values in expected.items()}
 
     def test_territory_with_neither_key_is_skipped(self) -> None:
-        from babylon.data.game.balkanization import load_seed_influences
-
-        seed_hex_ids = sorted({str(e["territory_id"]) for e in load_seed_influences()})
-        hex_a = seed_hex_ids[0]
-
         abstract_territory = Territory(
             id="T9999",
             name="Abstract (no county_fips, no h3_index)",
@@ -255,36 +191,29 @@ class TestSeedBalkanizationLayerCountyInfluences:
         )
         state = WorldState(
             territories={
-                "T0001": _county_territory("T0001", "26163"),
+                "T0001": _county_territory("T0001", _WAYNE_FIPS),
                 "T9999": abstract_territory,
             }
         )
-        hex_to_county = {hex_a: "26163"}
 
-        seeded = _seed_balkanization_layer(state, hex_to_county=hex_to_county)
+        seeded = _seed_balkanization_layer(state)
 
         influences = [r for r in seeded.relationships if r.edge_type == EdgeType.INFLUENCES]
         assert influences, "the county-keyed territory must still get influences"
         assert all(r.target_id != "T9999" for r in influences), (
             "a territory with neither h3_index nor county_fips must never be an INFLUENCES target"
         )
+        # ...but SC-017 still holds: the abstract territory is claimed.
+        claims = [r for r in seeded.relationships if r.edge_type == EdgeType.CLAIMS]
+        assert {r.target_id for r in claims} == {"T0001", "T9999"}
 
-    def test_seed_hex_whose_county_is_absent_from_scenario_is_dropped(self) -> None:
-        """Mirrors the hex path's own unmatched-parent behavior: a seed edge
-        whose resolved parent/county isn't a scenario territory is silently
-        skipped (``if parent not in hex_territories: continue`` in the hex
-        branch) — never a loud error, never a fabricated territory."""
-        from babylon.data.game.balkanization import load_seed_influences
+    def test_seed_county_absent_from_scenario_is_dropped(self) -> None:
+        """A seed county (Oakland/Macomb) with no matching scenario
+        territory is silently skipped — never a loud error, never a
+        fabricated territory."""
+        state = WorldState(territories={"T0001": _county_territory("T0001", _WAYNE_FIPS)})
 
-        seed_hex_ids = sorted({str(e["territory_id"]) for e in load_seed_influences()})
-        hex_a, hex_unmatched = seed_hex_ids[0], seed_hex_ids[2]
-
-        state = WorldState(territories={"T0001": _county_territory("T0001", "26163")})
-        # hex_unmatched resolves to a real-shaped FIPS that simply has no
-        # matching territory in this (deliberately narrow) scenario.
-        hex_to_county = {hex_a: "26163", hex_unmatched: "51999"}
-
-        seeded = _seed_balkanization_layer(state, hex_to_county=hex_to_county)
+        seeded = _seed_balkanization_layer(state)
 
         influences = [r for r in seeded.relationships if r.edge_type == EdgeType.INFLUENCES]
         assert influences
@@ -304,20 +233,15 @@ class TestSeedBalkanizationLayerCountyInfluences:
         assert influences == []
 
     def test_determinism_two_runs_identical(self) -> None:
-        from babylon.data.game.balkanization import load_seed_influences
-
-        seed_hex_ids = sorted({str(e["territory_id"]) for e in load_seed_influences()})
-        hex_a, hex_b = seed_hex_ids[0], seed_hex_ids[1]
         state = WorldState(
             territories={
-                "T0001": _county_territory("T0001", "26163"),
-                "T0002": _county_territory("T0002", "06037"),
+                "T0001": _county_territory("T0001", _WAYNE_FIPS),
+                "T0002": _county_territory("T0002", "26125"),
             }
         )
-        hex_to_county = {hex_a: "26163", hex_b: "06037"}
 
-        first = _seed_balkanization_layer(state, hex_to_county=hex_to_county)
-        second = _seed_balkanization_layer(state, hex_to_county=hex_to_county)
+        first = _seed_balkanization_layer(state)
+        second = _seed_balkanization_layer(state)
 
         first_influences = [r for r in first.relationships if r.edge_type == EdgeType.INFLUENCES]
         second_influences = [r for r in second.relationships if r.edge_type == EdgeType.INFLUENCES]
@@ -325,101 +249,26 @@ class TestSeedBalkanizationLayerCountyInfluences:
 
 
 @pytest.mark.unit
-@pytest.mark.requires_reference_db
-class TestSeedBalkanizationLayerCountyInfluencesRealDB:
-    """#39 T5: the real ``bridge_county_h3`` end-to-end path.
+class TestUSScenarioDirectResolution:
+    """The national county-grain scenario binds the tri-county seed without
+    any reference-DB read (the retired #39 T5 bridge read is gone — this
+    used to be a ``requires_reference_db`` test)."""
 
-    Excluded from CI (``requires_reference_db``); runs locally where
-    ``data/sqlite/marxist-data-3NF.sqlite`` exists.
-    """
-
-    def test_us_scenario_county_territories_get_real_influences(self) -> None:
+    def test_us_scenario_tri_county_territories_get_real_influences(self) -> None:
         from babylon.engine.scenarios._legacy import create_us_scenario
-        from game.engine_bridge import _load_seed_hex_to_county_bridge
 
         state, _config, _defines = create_us_scenario()
-        hex_to_county = _load_seed_hex_to_county_bridge()
-        assert hex_to_county, "real bridge_county_h3 read returned nothing"
 
-        seeded = _seed_balkanization_layer(state, hex_to_county=hex_to_county)
+        seeded = _seed_balkanization_layer(state)
 
         influences = [r for r in seeded.relationships if r.edge_type == EdgeType.INFLUENCES]
-        assert influences, "USScenario county territories must get a non-empty influence layer"
+        assert len(influences) == 12, "3 tri-county territories x 4 factions"
         assert {r.target_id for r in influences} <= set(seeded.territories)
-
-
-@pytest.mark.unit
-class TestLoadSeedHexToCountyBridgeDegradesGracefully:
-    """#39 T5 blocker found during implementation: the reference SQLite is
-    ABSENT (not just thin) on the dev CI tier by design (pyproject.toml's
-    ``requires_reference_db`` marker doc), but ``_build_initial_state_for_scenario
-    ("default"/"us")`` — county-grain since #39 T4 — is exercised by dozens
-    of plain ``unit``-marked tests across the suite that never expected a DB
-    dependency. Reproduced locally by pointing ``BABYLON_NORMALIZED_DB_PATH``
-    at a nonexistent file: every one of those tests raised
-    ``sqlite3.OperationalError: no such table: bridge_county_h3`` before this
-    guard existed. ``_load_seed_hex_to_county_bridge`` must degrade to ``{}``
-    (the pre-existing county-influence no-op), loudly logged, never let a DB
-    hiccup take an entire session build down with it.
-
-    T5 review I1: that degradation is legitimate ONLY when the reference DB
-    file is genuinely absent (the CI/unit-tier case above). A file that
-    EXISTS but is broken (corrupt, locked, missing the table) is a real
-    production fault and must propagate loud (Constitution III.11), never
-    collapse into the same silent no-op — the two tests below pin both
-    halves of that boundary.
-    """
-
-    def test_missing_db_file_degrades_to_empty_mapping(
-        self, tmp_path, monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
-    ) -> None:
-        import logging
-
-        import babylon.reference.database as database_module
-        from game.engine_bridge import _load_seed_hex_to_county_bridge
-
-        missing_path = tmp_path / "does_not_exist.sqlite"
-        monkeypatch.setattr(database_module, "NORMALIZED_DB_PATH", missing_path)
-
-        with caplog.at_level(logging.WARNING):
-            result = _load_seed_hex_to_county_bridge()
-
-        assert result == {}
-        assert any("reference DB file absent" in record.message for record in caplog.records), (
-            f"expected a loud WARNING naming the absent DB file, got: {caplog.records}"
-        )
-
-    def test_present_but_broken_db_raises(self, tmp_path, monkeypatch: pytest.MonkeyPatch) -> None:
-        """A DB file that EXISTS but lacks ``bridge_county_h3``/``dim_county``
-        (e.g. a fresh, empty SQLite file) is the "present but broken" case
-        I1 distinguishes from "absent" — it must raise, never degrade to
-        the no-op, because the file genuinely being there but unusable is
-        exactly the production fault (corruption/locks/schema drift) the
-        old blanket ``except OperationalError`` used to mute."""
-        import sqlite3
-
-        from sqlalchemy.exc import OperationalError
-
-        import babylon.reference.database as database_module
-        from game.engine_bridge import _load_seed_hex_to_county_bridge
-
-        broken_path = tmp_path / "empty_no_table.sqlite"
-        # A genuinely valid, connectable SQLite file that simply has none
-        # of the normalized schema's tables.
-        sqlite3.connect(str(broken_path)).close()
-
-        monkeypatch.setattr(database_module, "NORMALIZED_DB_PATH", broken_path)
-        monkeypatch.setattr(database_module, "NORMALIZED_DATABASE_URL", f"sqlite:///{broken_path}")
-        # normalized_engine()/get_normalized_session_factory() memoize into
-        # these module globals on first use anywhere in the test process;
-        # reset them so this test's engine is actually bound to broken_path
-        # instead of reusing whatever the reference DB already resolved to.
-        # monkeypatch restores both to their prior value on teardown.
-        monkeypatch.setattr(database_module, "_normalized_engine", None)
-        monkeypatch.setattr(database_module, "_NormalizedSessionLocal", None)
-
-        # SQLAlchemy wraps the raw sqlite3.OperationalError ("no such
-        # table: bridge_county_h3") in its own exception type; the original
-        # driver exception is chained on .orig.
-        with pytest.raises(OperationalError):
-            _load_seed_hex_to_county_bridge()
+        fips_by_territory = {
+            tid: t.county_fips for tid, t in seeded.territories.items() if t.county_fips
+        }
+        assert {fips_by_territory[r.target_id] for r in influences} == {
+            "26163",
+            "26125",
+            "26099",
+        }

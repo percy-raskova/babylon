@@ -48,6 +48,10 @@ from babylon.domain.dialectics.core.regime import classify_regime
 from babylon.domain.dialectics.instances.catalog import GraphInputs
 from babylon.domain.dialectics.instances.levels import level_index_for, spatial_lattice_for_counties
 from babylon.domain.dialectics.instances.value_form import compute_fundamental_theorem
+from babylon.domain.economics.circulation.types import (
+    CirculationCrisisState,
+    DisproportionalityCrisis,
+)
 from babylon.domain.economics.distribution.types import (
     DebtAccumulation,
     SurplusValueDistribution,
@@ -365,7 +369,11 @@ class ContradictionSystem(SystemBase):
         because the tanh scale is a define and the catalog stays defines-free.
         The national Balance (task #42-C) is derived the same way from the
         FACTION/INFLUENCES political-topology layer (spec-070), though here
-        no coefficient is owned at all — the weighting is a plain ratio.
+        no coefficient is owned at all — the weighting is a plain ratio. The
+        four Volume II circulation-layer ratios (Vol II circulation program,
+        U5 Oppositions) are derived the same way again from the
+        ``tick_dynamics`` county layer's ``circulation_state`` — see
+        :meth:`_circulation_layer_ratios`.
 
         Args:
             graph: The live graph.
@@ -425,6 +433,15 @@ class ContradictionSystem(SystemBase):
             graph, float(services.defines.capital_vol3.debt_spiral_threshold)
         )
 
+        (
+            commodity_overhang_share,
+            realization_crisis_share,
+            reproduction_crisis_share,
+            disproportionality_imbalance,
+        ) = self._circulation_layer_ratios(
+            graph, float(services.defines.capital_vol2.dept_i_share_required)
+        )
+
         financialization_index: float | None = None
         if isinstance(market_raw, dict) and "fictitious_log" in market_raw:
             # The fictitious axis IS a log-ratio around the value anchor, so
@@ -455,6 +472,10 @@ class ContradictionSystem(SystemBase):
             financialization_index=financialization_index,
             wealth_subsistence_ratio=self._wealth_subsistence_ratio(graph),
             surplus_strategy_ratio=resolve_absolute_relative_surplus_ratio(graph, services, tick),
+            commodity_overhang_share=commodity_overhang_share,
+            realization_crisis_share=realization_crisis_share,
+            reproduction_crisis_share=reproduction_crisis_share,
+            disproportionality_imbalance=disproportionality_imbalance,
         )
 
     @staticmethod
@@ -658,6 +679,118 @@ class ContradictionSystem(SystemBase):
         # parity nobody argued for.
         debt_ratio = (total_debt / total_surplus) / debt_spiral_threshold if saw_debt else None
         return (total_claims / total_surplus, debt_ratio)
+
+    @staticmethod
+    def _circulation_layer_ratios(
+        graph: GraphProtocol, dept_i_share_required: float
+    ) -> tuple[float | None, float | None, float | None, float | None]:
+        """Vol II circulation-layer NATIONAL ratios (U5 Oppositions unit).
+
+        ``(commodity_overhang_share, realization_crisis_share,
+        reproduction_crisis_share, disproportionality_imbalance)`` — all four
+        are RATIOS OF SUMS over the same ``tick_dynamics`` county layer
+        :meth:`_county_money_ratios` already reads, never a mean of
+        per-county ratios (the intensive-aggregation error class). Skips any
+        county whose ``circulation_state`` is still the bootstrap/fresh
+        ``CirculationCrisisState.default()`` (``circuit_state.total_capital
+        == 0.0``) — the same "has real prior circulation history" gate the
+        Volume II tick wiring (U3, ``_compute_county_circulation_state``)
+        uses, since a county that has never run the circulation layer
+        carries no real reading to aggregate.
+
+        Args:
+            graph: The live graph.
+            dept_i_share_required: ``defines.capital_vol2.dept_i_share_required``
+                (in ``(0, 1)`` by schema) — the SAME define
+                :func:`~babylon.domain.economics.circulation.reproduction.compute_disproportionality`
+                is called with in the Volume II tick wiring (U3), reused here
+                so the national aggregate and the per-county reading share
+                one scale (the engine owns the scale, keeping the catalog
+                defines-free, exactly as ``market_balance``'s ``tanh`` scale
+                does).
+
+        Returns:
+            Four ``None``s when no county carries a live circulation state
+            this tick (Constitution III.11: honest absence, never a
+            fabricated neutral reading) — permanently, by construction, in
+            the 5 canonical scenarios until Vol II data hydration (task #46)
+            lands. ``reproduction_crisis_share`` and
+            ``disproportionality_imbalance`` each degrade to ``None``
+            independently when their own underlying reading is absent even
+            while circuit state exists (e.g. no tensor department data this
+            county-year).
+
+            Counties are visited in sorted FIPS order so the float
+            summation order is fixed (Constitution III.7).
+        """
+        tick_data = graph.get_graph_attr(TICK_DYNAMICS_KEY, None)
+        if not isinstance(tick_data, dict):
+            return (None, None, None, None)
+        county_states = tick_data.get("county_states")
+        if not isinstance(county_states, dict):
+            return (None, None, None, None)
+
+        total_capital = 0.0
+        total_commodity = 0.0
+        total_capital_realization_crisis = 0.0
+        total_capital_reproduction_known = 0.0
+        total_capital_reproduction_crisis = 0.0
+        total_dept_i = 0.0
+        total_dept_ii = 0.0
+        saw_circuit = False
+        saw_disproportionality = False
+
+        for fips in sorted(county_states):  # bounded by the county layer
+            county = county_states[fips]
+            circ = getattr(county, "circulation_state", None)
+            if not isinstance(circ, CirculationCrisisState):
+                continue
+            circuit_total = float(circ.circuit_state.total_capital)
+            if circuit_total <= 0.0:
+                continue  # bootstrap/fresh county: no real circulation history
+            saw_circuit = True
+            total_capital += circuit_total
+            total_commodity += float(circ.circuit_state.commodity_capital)
+
+            assessment = circ.latest_assessment
+            if assessment is not None:
+                if assessment.realization_crisis:
+                    total_capital_realization_crisis += circuit_total
+                if assessment.reproduction_crisis is not None:
+                    total_capital_reproduction_known += circuit_total
+                    if assessment.reproduction_crisis:
+                        total_capital_reproduction_crisis += circuit_total
+
+            disproportionality = circ.disproportionality
+            if isinstance(disproportionality, DisproportionalityCrisis):
+                saw_disproportionality = True
+                total_dept_i += float(disproportionality.dept_i_output)
+                total_dept_ii += float(disproportionality.dept_ii_output)
+
+        if not saw_circuit or total_capital <= 0.0:
+            return (None, None, None, None)
+
+        commodity_overhang_share = total_commodity / total_capital
+        realization_crisis_share = total_capital_realization_crisis / total_capital
+        reproduction_crisis_share = (
+            total_capital_reproduction_crisis / total_capital_reproduction_known
+            if total_capital_reproduction_known > 0.0
+            else None
+        )
+
+        dept_total = total_dept_i + total_dept_ii
+        disproportionality_imbalance = (
+            (total_dept_i / dept_total) - dept_i_share_required
+            if saw_disproportionality and dept_total > 0.0
+            else None
+        )
+
+        return (
+            commodity_overhang_share,
+            realization_crisis_share,
+            reproduction_crisis_share,
+            disproportionality_imbalance,
+        )
 
     @staticmethod
     def _credit_fragility(graph: GraphProtocol, scale: float) -> float | None:

@@ -97,6 +97,18 @@ Tier >= 1 — wage-vs-value-produced axis and the imperial-rent family
   is a forward pin so the mask applies automatically the instant a future
   MOBILIZE resolver populates them, the same defense-in-depth precedent
   ``profit_rate``/``occ`` already set while THEY had no live producer.
+- ``tick_disproportionality`` (vol2-circulation-engine program, U8
+  Monitoring): the Dept I/II output-share imbalance
+  (``DisproportionalityCrisis.imbalance``, U3/ADR122's
+  ``compute_disproportionality``) — a value-output ratio built from the
+  same Marxian value decomposition as ``profit_rate``/``occ``, gated
+  identically. The other Group C/D ``tick_``-prefixed circulation/
+  financial-distribution fields (``tick_liquidity_ratio``,
+  ``tick_ground_rent``, etc.) remain deliberately OUT OF this registry —
+  an open, pre-existing gap this pass does not retroactively close (see
+  ``EngineBridge._serialize_territory``'s own docstring); ``tick_
+  disproportionality`` is gated because it is newly introduced by this
+  pass, not because the gap it joins was resolved.
 
 Tier >= 2 — the price<->value divergence instruments
 (:data:`TIER2_SCISSORS_FIELDS`):
@@ -225,6 +237,7 @@ TIER1_VALUE_RELATION_FIELDS: frozenset[str] = frozenset(
         "occ",
         "surplus_denied",
         "disrupted_production",
+        "tick_disproportionality",
     }
 )
 

@@ -10427,6 +10427,19 @@ def _serialize_territory(
     status — a row still showing its fallback constant (0.0/False/0, plus
     ``tick_housing_fictitious_fraction``'s honest ``None``) means that
     SPECIFIC gating service is unwired on this path, not the whole family.
+
+    U8 (2026-07-21 vol2-circulation-engine program, Monitoring):
+    ``tick_disproportionality`` joins the same ``tick_``-prefixed graph-attr
+    family off ``tick_disproportionality`` — the Dept I/II output-share
+    imbalance U3 (ADR122) computes via ``compute_disproportionality`` but
+    which never reached a graph attr before this pass (a computed-but-
+    unserialized silent no-op, Constitution VIII.12/III.11). SIGNED, same
+    shape as ``price_divergence``: positive = over-industrialized (excess
+    means-of-production output), negative = under-industrialized, ``None``
+    when the county carries no tensor department data this county-year
+    (never a fabricated 0.0). Gated Tier >= 1 by
+    :func:`~game.veil.gate_value_axis_fields` — a Dept I/II value-output
+    ratio, the same family as ``profit_rate``/``occ``.
     """
     territory_id = t.id
     payload = {
@@ -10510,6 +10523,9 @@ def _serialize_territory(
         "tick_turnover_crisis": _territory_graph_attr(graph, territory_id, "tick_turnover_crisis"),
         "tick_reproduction_crisis": _territory_graph_attr(
             graph, territory_id, "tick_reproduction_crisis"
+        ),
+        "tick_disproportionality": _territory_graph_attr(
+            graph, territory_id, "tick_disproportionality"
         ),
         "tick_interest_burden": _territory_graph_attr(graph, territory_id, "tick_interest_burden"),
         "tick_ground_rent": _territory_graph_attr(graph, territory_id, "tick_ground_rent"),

@@ -1,4 +1,4 @@
-"""The production opposition catalog: Babylon's fourteen bound contradictions.
+"""The production opposition catalog: Babylon's eighteen bound contradictions.
 
 :func:`build_default_registry` wires an
 :class:`~babylon.domain.dialectics.core.opposition.OppositionRegistry` over
@@ -9,14 +9,17 @@ module free of any ``babylon.engine`` import, so the dialectics package
 stays a pure downstream of ``formulas`` + ``models`` and cannot form an
 import cycle with the system that consumes it.
 
-The fourteen oppositions, and the honest measure each is bound to. The first
+The eighteen oppositions, and the honest measure each is bound to. The first
 five were verified against a 30-tick single-county bridged probe
 (2026-07-02); ``price_value`` was promoted to CANONICAL by ADR078; the
 four Volume III money oppositions were bound by the Vol III money-scissors
 work (2026-07-18); ``national`` landed SHADOW-first (task #42-C, 2026-07-20);
 ``value_usevalue``, ``labor_laborpower`` and ``absolute_relative_surplus``
 landed SHADOW-first (Vol I value-production program U6, ADR103's reserved
-namespace lit, 2026-07-21):
+namespace lit, 2026-07-21); ``circulation``, ``realization``,
+``reproduction`` and ``disproportionality`` landed SHADOW-first (Vol II
+circulation program U5, the other half of ADR103's reserved namespace,
+2026-07-21):
 
 - ``capital_labor`` — mean wealth-asymmetry over EXPLOITATION edges
   (labor = pole A / source, capital = pole B / target). Antagonistic.
@@ -97,6 +100,34 @@ namespace lit, 2026-07-21):
   from the SAME FRED-backed ``WorkingDayState`` U4 wired — §2e's classifier,
   no new ingestion) through ``_ratio_reading``. SHADOW (U6). National
   aggregate (the wired adapter is itself national-uniform); unplaced.
+- ``circulation`` — money-capital⇄commodity-capital: capital advanced as
+  money returns to money-form only after passing through the
+  commodity-form the M-C-P-C'-M' circuit produces (Capital Vol. II ch.
+  1-6). Read as the national ``commodity_overhang`` share — a ratio of
+  sums over the county circulation layer (Feature 023, U3 wiring) — high
+  overhang means capital is piling up unsold rather than completing its
+  return to money. SHADOW (Vol II circulation program, U5 Oppositions):
+  the ``circulation`` -> ``realization`` transforms coupling ADR103
+  reserved lights up with this binding.
+- ``realization`` — realized⇄unrealized: whether that overhang has
+  actually crossed :func:`~babylon.domain.economics.circulation.crisis.assess_circulation_crisis`'s
+  crisis threshold this tick (the C'-M' stall, Capital Vol. II ch. 3),
+  read as the capital-weighted national share of counties in realization
+  crisis. SHADOW.
+- ``reproduction`` — balanced⇄unbalanced: Marx's simple-reproduction law
+  I(v+s) = IIc and the labor-power reproduction-capacity test (Capital
+  Vol. II ch. 20-21; ``check_simple_reproduction`` /
+  ``check_extended_reproduction``), read as the capital-weighted national
+  share of counties — among those carrying a KNOWN reading — whose
+  combined ``CirculationCrisisAssessment.reproduction_crisis`` flag reads
+  unbalanced. SHADOW.
+- ``disproportionality`` — means-of-production⇄means-of-consumption: the
+  actual national Department I output share against Marx's own
+  numerical-illustration required share (``compute_disproportionality``,
+  Capital Vol. II ch. 20 §II), read directly as the signed imbalance —
+  already bounded, no further scale. SHADOW: the ``reproduction`` ->
+  ``disproportionality`` transforms coupling ADR103 reserved lights up
+  with this binding (the same departmental accounting feeds both).
 
 All four Volume III bindings, plus ``value_usevalue`` and
 ``absolute_relative_surplus`` (U6), share ``_ratio_reading``'s zero-parameter
@@ -238,6 +269,34 @@ class GraphInputs:
             ``market_balance``'s ``tanh`` scale uses. ``None`` = no
             ``productivity_data_source`` wired, or no data for this tick's
             year.
+        commodity_overhang_share: NATIONAL ``Σcommodity_capital /
+            Σtotal_capital`` (Vol II circulation program, U5) — a ratio of
+            sums over every county carrying a live
+            ``CirculationCrisisState`` this tick (``circuit_state`` from
+            Feature 023's M-C-P-C'-M' circuit, U3/U4 wiring), already
+            bounded in ``[0, 1]`` by construction. ``None`` = no county
+            carries a live circulation state this tick (permanent, by
+            construction, until Vol II data hydration — task #46 — lands).
+        realization_crisis_share: NATIONAL capital-weighted
+            ``Σtotal_capital[realization_crisis] / Σtotal_capital`` — the
+            share of circulation-bearing capital whose
+            ``CirculationCrisisAssessment.realization_crisis`` reads True
+            this tick. ``None`` on the same absence as
+            ``commodity_overhang_share``.
+        reproduction_crisis_share: NATIONAL capital-weighted
+            ``Σtotal_capital[reproduction_crisis] / Σtotal_capital[known]``
+            — among counties carrying a KNOWN (non-``None``)
+            ``reproduction_crisis`` reading, the share reading unbalanced.
+            ``None`` = no county carries a known reading this tick (honest
+            absence, e.g. no tensor department data — Constitution III.11).
+        disproportionality_imbalance: NATIONAL ``(Σdept_i_output /
+            Σ(dept_i_output + dept_ii_output)) − dept_i_share_required`` —
+            the actual Department I output share against the
+            defines-owned required share (the engine divides here, keeping
+            the catalog defines-free, exactly as it divides for
+            ``market_balance``'s ``tanh`` scale), already signed and
+            bounded in ``[-1, 1]``. ``None`` = no county carries a
+            ``DisproportionalityCrisis`` reading this tick.
     """
 
     exploitation_pairs: tuple[WealthPair, ...] = ()
@@ -255,6 +314,10 @@ class GraphInputs:
     national_balance: float | None = field(default=None)
     wealth_subsistence_ratio: float | None = field(default=None)
     surplus_strategy_ratio: float | None = field(default=None)
+    commodity_overhang_share: float | None = field(default=None)
+    realization_crisis_share: float | None = field(default=None)
+    reproduction_crisis_share: float | None = field(default=None)
+    disproportionality_imbalance: float | None = field(default=None)
 
 
 _ASYMMETRY_EPSILON: Final[float] = 1e-9
@@ -560,8 +623,88 @@ def _national_measure(inputs: GraphInputs) -> GapReading:
     return GapReading(gap=abs(balance), balance=balance)
 
 
+def _circulation_measure(inputs: GraphInputs) -> GapReading:
+    """money-capital (A) ⇄ commodity-capital (B) — the circuit's own defect.
+
+    Reads the pre-derived national ``commodity_overhang_share`` (the engine
+    aggregates ``CircuitState.commodity_overhang`` as a ratio of sums over
+    the county circulation layer — see
+    ``GraphInputs.commodity_overhang_share``). ``None`` -> ``(0, 0)``: no
+    county carries a live circulation state this tick, so there is nothing
+    to read (Constitution III.11) — the honest, by-construction reading
+    until Vol II data hydration (task #46) lands. Positive balance =
+    commodity-capital (B) dominant: capital stuck unsold.
+    """
+    if inputs.commodity_overhang_share is None:
+        return GapReading(gap=0.0, balance=0.0)
+    balance = max(-1.0, min(1.0, 2.0 * inputs.commodity_overhang_share - 1.0))
+    return GapReading(gap=abs(balance), balance=balance)
+
+
+def _realization_measure(inputs: GraphInputs) -> GapReading:
+    """realized (A) ⇄ unrealized (B) — whether the circulation defect above
+    has actually crossed the crisis threshold this tick.
+
+    ``circulation``'s own overhang reading IS what this crosses (the
+    ``transforms`` coupling ADR103 reserved: the source's output becomes
+    the target's input). Reads the pre-derived national
+    ``realization_crisis_share`` (capital-weighted fraction of counties
+    whose ``CirculationCrisisAssessment.realization_crisis`` reads True
+    this tick). ``None`` -> ``(0, 0)``: no county carries a live assessment
+    (Constitution III.11). Positive balance = unrealized (B) dominant.
+    """
+    if inputs.realization_crisis_share is None:
+        return GapReading(gap=0.0, balance=0.0)
+    balance = max(-1.0, min(1.0, 2.0 * inputs.realization_crisis_share - 1.0))
+    return GapReading(gap=abs(balance), balance=balance)
+
+
+def _reproduction_measure(inputs: GraphInputs) -> GapReading:
+    """balanced (A) ⇄ unbalanced (B) — the reproduction-schema balance test.
+
+    Marx's simple-reproduction law I(v+s) = IIc and the labor-power
+    reproduction-capacity test, folded together in
+    ``CirculationCrisisAssessment.reproduction_crisis`` (Capital Vol. II
+    ch. 20-21; ``check_simple_reproduction`` / ``check_extended_reproduction``,
+    Vol II U3 wiring). Reads the pre-derived national
+    ``reproduction_crisis_share`` (capital-weighted fraction of counties,
+    AMONG those with a KNOWN reading, whose reproduction_crisis flag is
+    True). ``None`` -> ``(0, 0)``: no county carries a known reading this
+    tick — honest absence, not a fabricated balance (Constitution III.11;
+    the same tensor-coverage gap ``_compute_reproduction_state`` already
+    degrades to ``None`` for). Positive balance = unbalanced (B) dominant.
+    """
+    if inputs.reproduction_crisis_share is None:
+        return GapReading(gap=0.0, balance=0.0)
+    balance = max(-1.0, min(1.0, 2.0 * inputs.reproduction_crisis_share - 1.0))
+    return GapReading(gap=abs(balance), balance=balance)
+
+
+def _disproportionality_measure(inputs: GraphInputs) -> GapReading:
+    """means-of-production (A) ⇄ means-of-consumption (B) — the Dept I/II
+    output-share imbalance.
+
+    Reads the same departmental accounting ``reproduction`` reads (the
+    ``transforms`` coupling ADR103 reserved) against Marx's own numerical
+    illustration's required Dept I share (``compute_disproportionality``,
+    Capital Vol. II ch. 20 §II). Reads the pre-derived national
+    ``disproportionality_imbalance`` (``actual Dept I share −
+    defines.capital_vol2.dept_i_share_required``, a ratio of sums over the
+    county layer — the engine owns the defines read, keeping the catalog
+    defines-free). Already signed and bounded in ``[-1, 1]`` by
+    construction (two shares in ``[0, 1]``), so no further scale is
+    applied. ``None`` -> ``(0, 0)``: no county carries a disproportionality
+    reading this tick (Constitution III.11). Positive balance = Dept I (B,
+    over-industrialized) dominant.
+    """
+    if inputs.disproportionality_imbalance is None:
+        return GapReading(gap=0.0, balance=0.0)
+    balance = max(-1.0, min(1.0, inputs.disproportionality_imbalance))
+    return GapReading(gap=abs(balance), balance=balance)
+
+
 def build_default_registry(rate_weight: float = 10.0) -> OppositionRegistry[GraphInputs]:
-    """Build the production opposition registry (fourteen bindings).
+    """Build the production opposition registry (eighteen bindings).
 
     Args:
         rate_weight: Weight of ``|rate|`` in principal-contradiction scoring;
@@ -569,7 +712,7 @@ def build_default_registry(rate_weight: float = 10.0) -> OppositionRegistry[Grap
 
     Returns:
         An :class:`OppositionRegistry` over :class:`GraphInputs` binding all
-        fourteen oppositions named in the module docstring above (keys
+        eighteen oppositions named in the module docstring above (keys
         lexicographically ordered inside the registry).
     """
     bindings: list[BoundOpposition[GraphInputs]] = [
@@ -792,6 +935,72 @@ def build_default_registry(rate_weight: float = 10.0) -> OppositionRegistry[Grap
             measure=_absolute_relative_surplus_measure,
             shadow=True,
         ),
+        # === CAPITAL VOL II — circulation-layer bindings (U5, the other
+        # half of ADR103's reserved namespace lit) ===
+        BoundOpposition(
+            spec=OppositionSpec(
+                key="circulation",
+                pole_a="money-capital",
+                pole_b="commodity-capital",
+                unity="money advanced for production returns as commodities that "
+                "presuppose their own reconversion into money; the circuit "
+                "M-C-P-C'-M' is one movement of capital through both forms "
+                "(Capital Vol. II ch. 1-6)",
+                level_name="county",
+                antagonistic=False,
+            ),
+            measure=_circulation_measure,
+            # SHADOW (Vol II circulation program, U5 Oppositions): measured
+            # every tick, excluded from principal scoring/frames/rupture —
+            # the ADR077 discipline every Vol II binding is born under.
+            shadow=True,
+        ),
+        BoundOpposition(
+            spec=OppositionSpec(
+                key="realization",
+                pole_a="realized",
+                pole_b="unrealized",
+                unity="a commodity's value exists only potentially until it is "
+                "sold; production and sale (C'-M') are the same value "
+                "asserting itself at two moments, and the gap between them is "
+                "the realization problem (Capital Vol. II ch. 3)",
+                level_name="county",
+                antagonistic=False,
+            ),
+            measure=_realization_measure,
+            shadow=True,
+        ),
+        BoundOpposition(
+            spec=OppositionSpec(
+                key="reproduction",
+                pole_a="balanced",
+                pole_b="unbalanced",
+                unity="Department I's revenue and Department II's "
+                "constant-capital demand are two sides of one annual social "
+                "product that must replace itself in kind for reproduction to "
+                "continue (Capital Vol. II ch. 20-21)",
+                level_name="county",
+                antagonistic=False,
+            ),
+            measure=_reproduction_measure,
+            shadow=True,
+        ),
+        BoundOpposition(
+            spec=OppositionSpec(
+                key="disproportionality",
+                pole_a="means-of-production",
+                pole_b="means-of-consumption",
+                unity="Department I and Department II output are the same "
+                "annual product divided in proportions the reproduction "
+                "schema fixes; either department's overshoot is the same "
+                "imbalance read from its own side (Capital Vol. II ch. 20 "
+                "§II)",
+                level_name="county",
+                antagonistic=False,
+            ),
+            measure=_disproportionality_measure,
+            shadow=True,
+        ),
     ]
     return OppositionRegistry(bindings=bindings, rate_weight=rate_weight)
 
@@ -802,13 +1011,13 @@ def build_default_registry(rate_weight: float = 10.0) -> OppositionRegistry[Grap
 # The fork gate for the two-volume parallel build. These tuples originally
 # RESERVED the opposition keys each lane would register, WITHOUT registering
 # any live binding — proved byte-identical by
-# ``test_reserved_oppositions_are_dormant`` at the contract commit. Vol I's
-# three keys are now LIT (U6, vol1-value-production program): bound above in
-# ``build_default_registry``, with real ``GraphInputs`` fields and measures.
-# The tuple below stays as the documented record of Vol I's namespace; Vol
-# II's four keys remain genuinely reserved-but-dormant until its own lane
-# binds them (test_contract.py checks Vol II's disjointness only, now that
-# Vol I's is deliberately, loudly, no longer disjoint).
+# ``test_reserved_oppositions_are_dormant`` at the contract commit. BOTH
+# namespaces are now LIT (v1-cascade merge, 2026-07-21): Vol I's three keys
+# by U6 (vol1-value-production program) and Vol II's four keys by U5
+# (vol2-circulation program), each bound above in ``build_default_registry``
+# with real ``GraphInputs`` fields and measures. The tuples below stay as
+# the documented record of each lane's namespace; the contract-commit
+# disjointness proof is history, not a live invariant.
 #
 # GraphInputs field partition (collision convention): Vol I adds production-layer
 # fields (value/use-value, labor/labor-power, surplus-method pairs); Vol II adds
@@ -836,8 +1045,10 @@ VOL_II_RESERVED_OPPOSITIONS: tuple[str, ...] = (
 # endpoints are registered; it never invents a null binding for an absent one.
 _DEFAULT_COUPLINGS: tuple[Coupling, ...] = (
     # crisis producers: source's output becomes target's input prices.
-    # Still unbound — the two Volume II circulation oppositions are out of
-    # scope for the Vol III money work and are NOT faked.
+    # Live since the Vol II circulation program's U5 Oppositions unit: the
+    # commodity-overhang reading (circulation) is what actually crosses the
+    # crisis threshold (realization); the departmental accounting
+    # (reproduction) is what disproportionality analyzes as a share.
     Coupling(source="circulation", target="realization", kind="transforms"),
     Coupling(source="reproduction", target="disproportionality", kind="transforms"),
     # CAPITAL VOL I production-layer feeds (ADR103 contract commit's reserved

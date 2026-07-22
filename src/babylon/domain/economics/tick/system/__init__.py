@@ -27,12 +27,20 @@ from __future__ import annotations
 import logging
 from typing import TYPE_CHECKING, Any, ClassVar
 
-from babylon.domain.economics.circulation.circuit import initialize_circuit_state
+from babylon.domain.economics.circulation.circuit import advance_circuit, initialize_circuit_state
 from babylon.domain.economics.circulation.crisis import assess_circulation_crisis
 from babylon.domain.economics.circulation.defaults import FALLBACK_PROFILE
+from babylon.domain.economics.circulation.fixed_circulating import update_depreciation_fund
+from babylon.domain.economics.circulation.reproduction import (
+    check_extended_reproduction,
+    check_simple_reproduction,
+    combine_departments_ii,
+    compute_disproportionality,
+)
 from babylon.domain.economics.circulation.types import (
     CirculationCrisisState,
     DepreciationFundState,
+    DisproportionalityCrisis,
     InventoryState,
     ReproductionAnalysis,
     ReproductionBalance,
@@ -52,7 +60,7 @@ from babylon.domain.economics.reserve_army.accumulation import (
     DefaultAccumulationLoopCalculator,
 )
 from babylon.domain.economics.reserve_army.calculator import DefaultWagePressureCalculator
-from babylon.domain.economics.tensor import NoDataSentinel
+from babylon.domain.economics.tensor import DepartmentRow, NoDataSentinel
 from babylon.domain.economics.tick.crisis_detector import (
     MultiPeriodCrisisDetector,
     ThresholdCrisisDetector,
@@ -82,6 +90,7 @@ from babylon.formulas.constants import HOURS_PER_YEAR, WEEKS_PER_YEAR
 from babylon.kernel.system_base import SystemBase
 from babylon.kernel.tick_partition import TickPartition
 from babylon.models.enums import NodeType
+from babylon.models.types import Currency
 
 if TYPE_CHECKING:
     from babylon.kernel.graph_protocol import GraphProtocol
@@ -229,7 +238,9 @@ class TickDynamicsSystem(SystemBase):
         county_states = self._compute_imperial_rent(county_states, national_params, services)
 
         # Step 4.5: Compute circulation layer (Feature 023)
-        county_states = self._compute_circulation_layer(county_states, services, year)
+        county_states = self._compute_circulation_layer(
+            county_states, prev_county_states, services, year
+        )
 
         # Step 5: Check crisis triggers (batch-within-step quarterly evaluation)
         county_states = self._check_crisis_triggers(county_states, services, tick)
@@ -1344,6 +1355,7 @@ class TickDynamicsSystem(SystemBase):
     def _compute_circulation_layer(
         self,
         county_states: dict[str, CountyEconomicState],
+        prev_county_states: dict[str, CountyEconomicState] | None,
         services: ServicesProtocol,
         year: int,
     ) -> dict[str, CountyEconomicState]:
@@ -1353,8 +1365,29 @@ class TickDynamicsSystem(SystemBase):
         Computes national circulation parameters once from FRED data, then
         applies per-county circuit/inventory/depreciation state and crisis assessment.
 
+        U3 determinism fix (2026-07-21 vol2-circulation-engine program,
+        code-review finding): real cross-tick accumulation for CircuitState
+        (advance_circuit) and DepreciationFundState (update_depreciation_fund)
+        needs the PRIOR tick's CirculationCrisisState per county. This used
+        to live in a ``self._circulation_prev_state`` instance-level cache —
+        but TickDynamicsSystem instances are engine singletons
+        (``simulation_engine._DEFAULT_SYSTEMS``) reused across separate
+        simulation runs in the same process, so that cache leaked run A's
+        final state into run B's tick 0 (Constitution: every tick produces a
+        deterministic hash). Fixed by threading ``prev_county_states``
+        explicitly through the call chain — mirroring every other
+        cross-tick field in this pipeline (``crisis_state``,
+        ``bifurcation_risk``, ...) — so continuity flows solely through the
+        graph/WorldState round trip (see
+        :func:`~babylon.domain.economics.tick.graph_bridge.read_tick_state_from_graph`,
+        fixed in lockstep to actually carry ``circulation_state`` forward),
+        never through ``self``.
+
         Args:
             county_states: Current county snapshots.
+            prev_county_states: Previous tick's county snapshots (``None`` on
+                a genuinely fresh run/graph), read for their
+                ``circulation_state`` only.
             services: ServicesProtocol with circulation data sources.
             year: Current simulation year.
 
@@ -1375,9 +1408,11 @@ class TickDynamicsSystem(SystemBase):
                     "County count exceeds %d, truncating circulation layer", max_counties
                 )
                 break
+            prev_county = prev_county_states.get(fips) if prev_county_states else None
             updated[fips] = self._compute_county_circulation_state(
                 fips,
                 county,
+                prev_county,
                 services,
                 year,
                 days_raw,
@@ -1425,10 +1460,105 @@ class TickDynamicsSystem(SystemBase):
 
         return days_raw, days_finished, national_inventory, annual_depr, gross_inv
 
+    def _get_county_departments(
+        self,
+        fips: str,
+        year: int,
+        services: ServicesProtocol,
+    ) -> tuple[DepartmentRow, DepartmentRow, DepartmentRow] | None:
+        """Fetch (dept_I, dept_II combined, dept_III) from the tensor registry.
+
+        The designated department-row source for Volume II reproduction
+        analysis (spec 023-capital-volume-ii ``quickstart.md``,
+        "Integration Points": "Reads ValueTensor4x3 from TensorRegistry for
+        department data"). Reuses the Volume III nearest-available-year
+        policy (:meth:`_get_best_tensor_year`, defined in the Volume III
+        banner below but stable/merged infrastructure, not edited here)
+        since tensor hydration (``TensorRegistry.MIN_YEAR``/``MAX_YEAR``,
+        2010-2025) does not cover the full simulation horizon.
+
+        Args:
+            fips: 5-digit county FIPS code.
+            year: Current simulation year.
+            services: ServicesProtocol with tensor_registry.
+
+        Returns:
+            ``(dept_I, dept_II, dept_III)`` DepartmentRow triple (dept_II is
+            IIa+IIb combined via :func:`combine_departments_ii`), or
+            ``None`` — never a fabricated row (Constitution III.11) — when
+            no tensor is available for this county at all.
+        """
+        tensor_registry = getattr(services, "tensor_registry", None)
+        if tensor_registry is None:
+            return None
+        tensor_year = self._get_best_tensor_year(fips, year, services)
+        tensor = tensor_registry.get(fips, tensor_year)
+        if isinstance(tensor, NoDataSentinel):
+            return None
+        dept_ii = combine_departments_ii(tensor.dept_IIa, tensor.dept_IIb)
+        return tensor.dept_I, dept_ii, tensor.dept_III
+
+    def _compute_reproduction_state(
+        self,
+        fips: str,
+        year: int,
+        services: ServicesProtocol,
+    ) -> tuple[
+        ReproductionBalance | None, ReproductionAnalysis | None, DisproportionalityCrisis | None
+    ]:
+        """Compute the real reproduction-schema assessment for one county.
+
+        U3 (2026-07-21 vol2-circulation-engine program): replaces the
+        always-balanced ``ReproductionBalance``/``ReproductionAnalysis``
+        hardcode with the designated calculators
+        (:func:`check_simple_reproduction`, :func:`check_extended_reproduction`,
+        :func:`compute_disproportionality`) fed real department data from the
+        tensor registry.
+
+        Args:
+            fips: 5-digit county FIPS code.
+            year: Current simulation year.
+            services: ServicesProtocol with tensor_registry and defines.
+
+        Returns:
+            ``(reproduction_balance, reproduction_analysis,
+            disproportionality)``. When tensor department data is
+            unavailable for this county-year, all three are ``None``
+            (Constitution III.11: honest absence of the underlying data,
+            never a fabricated assessment). A prior version of this method
+            degraded ``reproduction_balance``/``reproduction_analysis`` to
+            an always-``condition_met=True``/``sustainability=True``
+            placeholder — the exact "stub-fed liveness" bug-class this
+            program's own sentinel targets: fed to
+            :func:`~babylon.domain.economics.circulation.crisis.assess_circulation_crisis`,
+            that positive assertion silently suppressed
+            ``reproduction_crisis`` detection instead of leaving it
+            ``None`` (unknown), the way its sibling ``disproportionality``
+            already did.
+        """
+        departments = self._get_county_departments(fips, year, services)
+        if departments is None:
+            return None, None, None
+
+        dept_i, dept_ii, dept_iii = departments
+        vol2_defines = services.defines.capital_vol2
+        balance = check_simple_reproduction(
+            dept_i, dept_ii, tolerance=vol2_defines.reproduction_tolerance
+        )
+        analysis = check_extended_reproduction(dept_i, dept_ii, dept_iii)
+        disproportionality = compute_disproportionality(
+            dept_i_output=Currency(dept_i.total_value),
+            dept_ii_output=Currency(dept_ii.total_value),
+            dept_i_share_required=vol2_defines.dept_i_share_required,
+            year=year,
+        )
+        return balance, analysis, disproportionality
+
     def _compute_county_circulation_state(
         self,
         fips: str,
         county: CountyEconomicState,
+        prev_county: CountyEconomicState | None,
         services: ServicesProtocol,
         year: int,
         days_raw: float | None,
@@ -1442,6 +1572,11 @@ class TickDynamicsSystem(SystemBase):
         Args:
             fips: 5-digit county FIPS code.
             county: Current county economic state.
+            prev_county: Previous tick's county state (``None`` on a
+                genuinely fresh run/graph or a never-before-seen county),
+                read for its ``circulation_state`` only — the sole source of
+                cross-tick continuity (U3 determinism fix; see
+                :meth:`_compute_circulation_layer`).
             services: ServicesProtocol with circulation sources.
             year: Current simulation year.
             days_raw: National raw-materials days-of-inventory (or None).
@@ -1464,76 +1599,124 @@ class TickDynamicsSystem(SystemBase):
             if resolved is not None:
                 profile = resolved
 
-        # National employment share for county scaling
-        national_employment = 155_000_000.0
+        # National employment share for county scaling (U7 defines sweep:
+        # migrated off a hardcoded literal to capital_vol2.national_employment).
+        vol2_defines = services.defines.capital_vol2
+        national_employment = vol2_defines.national_employment
         county_share = county.employment / national_employment if county.employment > 0 else 0.0
 
-        # Build CircuitState from capital_stock + turnover profile
-        from babylon.models.types import Currency
+        # U3 determinism fix: prior tick's real CirculationCrisisState for
+        # this county comes from prev_county_states (threaded explicitly
+        # through _compute_circulation_layer), never from an instance-level
+        # cache — see that method's docstring for why. total_capital > 0.0
+        # (not merely "prev_county is not None") is the genuine "has real
+        # prior circulation history" test: a bootstrap/fresh county still
+        # carries CirculationCrisisState.default() (total_capital == 0.0),
+        # which must take the initialize/construct-fresh branches below,
+        # not the advance/accumulate ones.
+        prev = prev_county.circulation_state if prev_county is not None else None
 
-        circuit = initialize_circuit_state(
-            fips_code=fips,
-            year=year,
-            total_capital=Currency(capital_stock),
-            turnover=profile,
-        )
+        # --- Circuit state: initialize once, then genuinely advance ---
+        # (U3: advance_circuit was never called; every tick re-initialized
+        # from capital_stock, discarding all circuit history.)
+        if prev is not None and prev.circuit_state.total_capital > 0.0:
+            tensor_year = self._get_best_tensor_year(fips, year, services)
+            surplus_raw = self._get_county_surplus(fips, tensor_year, services)
+            surplus_value = max(surplus_raw, 0.0) if surplus_raw is not None else 0.0
+            elapsed_days = services.defines.timescale.days_per_year
+            circuit = advance_circuit(
+                state=prev.circuit_state,
+                turnover=profile,
+                surplus_value=Currency(surplus_value),
+                elapsed_days=elapsed_days,
+            ).model_copy(update={"year": year})
+        else:
+            circuit = initialize_circuit_state(
+                fips_code=fips,
+                year=year,
+                total_capital=Currency(capital_stock),
+                turnover=profile,
+            )
 
         # Build InventoryState: scale national inventory to county
         county_inventory = (national_inventory * county_share) if national_inventory else 0.0
         county_raw = county_inventory * profile.fixed_capital_ratio
         county_finished = county_inventory * (1.0 - profile.fixed_capital_ratio)
+        # U7 defines sweep: fallback (national data source unwired/absent)
+        # migrated off a hardcoded literal to capital_vol2.fallback_days_inventory.
+        fallback_days = vol2_defines.fallback_days_inventory
         inventory = InventoryState(
             fips_code=fips,
             year=year,
             raw_materials=county_raw,
             work_in_progress=0.0,
             finished_goods=county_finished,
-            days_inventory_raw=days_raw if days_raw is not None else 30.0,
-            days_inventory_finished=days_finished if days_finished is not None else 30.0,
+            days_inventory_raw=days_raw if days_raw is not None else fallback_days,
+            days_inventory_finished=days_finished if days_finished is not None else fallback_days,
         )
 
-        # Build DepreciationFundState: scale national depreciation to county
+        # Build DepreciationFundState: scale national depreciation to county,
+        # then genuinely accumulate onto the prior tick's fund via
+        # update_depreciation_fund (U3: previously rebuilt from scratch
+        # every tick with no cross-tick accumulation). Same
+        # "real prior circulation history" gate as the circuit state above
+        # (not merely "prev is not None") — a bootstrap/fresh county's
+        # CirculationCrisisState.default() carries a zeroed depreciation_fund
+        # too, and must take the fresh-construct branch, not accumulate onto
+        # a placeholder.
         county_depr = (annual_depr_national * county_share) if annual_depr_national else 0.0
         county_repl = (gross_inv_national * county_share) if gross_inv_national else 0.0
-        # Ensure annual_depreciation_flow > 0 (required by model)
-        safe_depr = max(county_depr, 1.0)
-        depreciation = DepreciationFundState(
-            fips_code=fips,
-            year=year,
-            total_fixed_capital=circuit.fixed_capital,
-            accumulated_depreciation=safe_depr,
-            annual_depreciation_flow=safe_depr,
-            replacement_expenditure=county_repl,
+        # Ensure annual_depreciation_flow > 0 (required by model). U7 defines
+        # sweep: floor migrated off a hardcoded literal to
+        # capital_vol2.min_annual_depreciation_floor.
+        safe_depr = max(county_depr, vol2_defines.min_annual_depreciation_floor)
+        if prev is not None and prev.circuit_state.total_capital > 0.0:
+            depreciation = update_depreciation_fund(
+                previous=prev.depreciation_fund,
+                annual_depreciation=Currency(safe_depr),
+                replacement_expenditure=Currency(county_repl),
+            )
+        else:
+            depreciation = DepreciationFundState(
+                fips_code=fips,
+                year=year,
+                total_fixed_capital=circuit.fixed_capital,
+                accumulated_depreciation=safe_depr,
+                annual_depreciation_flow=safe_depr,
+                replacement_expenditure=county_repl,
+            )
+
+        # Reproduction schema: real calculators fed real tensor department
+        # data (U3: previously hardcoded to always-balanced).
+        repro_balance, repro_analysis, disproportionality = self._compute_reproduction_state(
+            fips, year, services
         )
 
-        # Reproduction defaults: assume balanced reproduction
-        repro_balance = ReproductionBalance(
-            condition_met=True,
-            gap=0.0,
-            interpretation="Default reproduction balance",
-        )
-        repro_analysis = ReproductionAnalysis(
-            labor_power_demand=county.employment,
-            reproduction_capacity=county.employment,
-            gap=0.0,
-            sustainability=True,
-        )
-
+        # U7 defines sweep: crisis thresholds migrated off module-level
+        # Final constants to capital_vol2.commodity_overhang_threshold /
+        # capital_vol2.liquidity_crisis_ratio.
         assessment = assess_circulation_crisis(
             circuit_state=circuit,
             turnover=profile,
             inventory=inventory,
             reproduction_balance=repro_balance,
             reproduction_analysis=repro_analysis,
+            commodity_overhang_threshold=vol2_defines.commodity_overhang_threshold,
+            liquidity_crisis_ratio=vol2_defines.liquidity_crisis_ratio,
         )
 
         new_circ_state = CirculationCrisisState(
             circuit_state=circuit,
             inventory_state=inventory,
             depreciation_fund=depreciation,
+            disproportionality=disproportionality,
             latest_assessment=assessment,
         )
 
+        # U3 determinism fix: no instance-level cache write. new_circ_state
+        # flows back to the caller solely via the returned CountyEconomicState
+        # (below), which becomes next tick's prev_county_states through the
+        # graph/WorldState round trip — never through self.
         return county.model_copy(update={"circulation_state": new_circ_state})
 
     # === CAPITAL VOL III — financial layer (Feature 024, LANDED ADR089) ===

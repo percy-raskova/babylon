@@ -48,6 +48,7 @@ from babylon.engine.headless_runner.argparse_cli import build_parser
 from babylon.engine.headless_runner.bridge import WorldStateBridge
 from babylon.engine.headless_runner.dense_trace import dense_trace_header, dense_trace_row
 from babylon.engine.headless_runner.event_capture import EventCapture
+from babylon.engine.headless_runner.lodes_hydration import resolve_lodes_hydration_kwargs
 from babylon.engine.headless_runner.manifest import build_manifest
 from babylon.engine.headless_runner.models import (
     AuditEntry,
@@ -1207,6 +1208,11 @@ def run(config: SimulationRunConfig) -> SimulationRunResult:
         defines = _resolve_defines(config)
 
         t0 = time.perf_counter()
+        # Vol II Program Unit U2: real production supplier for the LODES OD-
+        # matrix hydration kwargs (checked-in tri-county artifact; honest
+        # `None` — no kwargs supplied — when scope_fips doesn't touch Detroit
+        # tri-county). See lodes_hydration.resolve_lodes_hydration_kwargs.
+        lodes_kwargs = resolve_lodes_hydration_kwargs(config.scope_fips) or {}
         report = initialize_session(
             session_id=session_id,
             sqlite_path=config.sqlite_reference_path,
@@ -1216,6 +1222,7 @@ def run(config: SimulationRunConfig) -> SimulationRunResult:
             scenario_length_years=max(1, config.ticks // 52 + 1),
             counties=sorted(config.scope_fips),
             hex_hydration_counties=config.scope_fips,
+            **lodes_kwargs,
         )
         t_session = time.perf_counter() - t0
         t_hex = t_session  # subset; refined when hex hydration exposes its own timer

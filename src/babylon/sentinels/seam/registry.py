@@ -543,7 +543,19 @@ _CIRCULATION_LIVE: str = (
     "use, so the `services.turnover_profile_source is None` gate "
     "(domain/economics/tick/system/__init__.py:1167) no longer holds. Distinct from this "
     "attr's prior NOT_YET_COMPUTED state (Task 20 de-mock correction) — that gap was pure "
-    "engineering (the calculator was never constructed), now fixed."
+    "engineering (the calculator was never constructed), now fixed. U3 correction "
+    "(vol2-circulation-engine program, ADR122, 2026-07-21): this wiring alone did not make "
+    "every reading genuinely honest — CircuitState/DepreciationFundState were "
+    "reinitialized from capital_stock every tick (advance_circuit/update_depreciation_fund "
+    "had zero callers, discarding all cross-tick history) and the CirculationAssessment "
+    "feeding tick_realization_crisis/tick_turnover_crisis/tick_reproduction_crisis "
+    "consumed a hardcoded always-balanced ReproductionBalance/ReproductionAnalysis "
+    "regardless of turnover_profile_source — a second, independent stub-fed-liveness bug "
+    "this wiring did not touch. U3 fixed both: genuine cross-tick accumulation, and real "
+    "check_simple_reproduction/check_extended_reproduction calculators fed from the "
+    "TensorRegistry's per-county Department I/II/III data (degrading to the same "
+    "documented always-balanced default, now a cited exemption rather than a silent "
+    "hardcode, only when no tensor exists for that county-year)."
 )
 
 _FINANCIAL_LIVE: str = (
@@ -568,6 +580,19 @@ _FINANCIAL_LIVENESS_CONDITION: str = (
     "interest_calculator (Task 20b) AND the county's tensor-derived total_surplus > 0 "
     "(domain/economics/tick/system/__init__.py:1448, inside "
     "_compute_county_financial_state via distribution_calculator)"
+)
+
+#: vol2-circulation-engine program, U3 (ADR122): disproportionality shares
+#: Group C's base gate (turnover_profile_source wired AND capital_stock > 0)
+#: but ALSO needs a tensor department row for this county-year — a second,
+#: narrower gate its Group C siblings above do not carry (they read
+#: circuit/inventory/depreciation state that needs no TensorRegistry lookup).
+_DISPROPORTIONALITY_LIVENESS_CONDITION: str = (
+    f"{_CIRCULATION_LIVENESS_CONDITION}; ALSO requires the county to carry a "
+    "ValueTensor4x3 for this county-year in the TensorRegistry (hydration covers "
+    "2010-2025 only; outside that coverage, or for a county with no tensor at all, "
+    "TickDynamicsSystem._get_county_departments returns None and this field stays an "
+    "honest None, never a fabricated 0.0)"
 )
 
 #: Task 21b (spec-116): _bridge_economics_overrides now wires a real
@@ -913,6 +938,47 @@ _TERRITORY_TICK_METRICS: tuple[SeamEntry, ...] = (
         read_paths=_TICK_DARK_EMITTERS,
         spec_ref="Epochs audit · Wave 2 · Gap-1 · spec-116 Task 20b",
         notes=_CIRCULATION_LIVE,
+    ),
+    # --- U8 (2026-07-21 vol2-circulation-engine program, Monitoring): the
+    # Department I/II disproportionality reading (U3/ADR122's
+    # compute_disproportionality) was computed onto
+    # CirculationCrisisState.disproportionality but never reached a graph
+    # attr — a computed-but-unserialized silent no-op (Constitution
+    # VIII.12/III.11) this Seam Observatory exists to catch. Closed here:
+    # write_tick_state_to_graph now stamps the signed imbalance reading. ---
+    SeamEntry(
+        payload="tick_disproportionality",
+        wire_keys=("tick_disproportionality",),
+        scope=SeamScope.TERRITORY,
+        owner_layer=(
+            "domain.economics.tick (CirculationCrisisState.disproportionality via "
+            "compute_disproportionality, Feature 023/U3 ADR122)"
+        ),
+        liveness_class=LivenessClass.DECLARED_CONDITIONAL,
+        liveness_condition=_DISPROPORTIONALITY_LIVENESS_CONDITION,
+        dtype="float",
+        read_paths=_TICK_DARK_EMITTERS,
+        spec_ref="vol2-circulation-engine program · U3 (ADR122) · U8 Monitoring",
+        notes=(
+            "SIGNED Dept I/II output-share imbalance: actual_i_share - "
+            "dept_i_share_required (DisproportionalityCrisis.imbalance), positive = "
+            "over-industrialized (excess means-of-production output), negative = "
+            "under-industrialized (excess consumption-goods output), 0 = balanced per "
+            "Marx's own numerical illustration (Capital Vol. II Ch. 20; "
+            "dept_i_share_required default 0.6667, CapitalVolumeIIDefines). Same "
+            "'signed ratio, honest-absence, never a fabricated 0.0' shape as MAP-scope "
+            "price_divergence, one level down at TERRITORY/per-county granularity — "
+            "gated Tier >= 1 by gate_value_axis_fields, same family as profit_rate/occ "
+            "(babylon.projection.veil.TIER1_VALUE_RELATION_FIELDS). Distinct from the "
+            "NATIONAL, capital-weighted GraphInputs.disproportionality_imbalance the U5 "
+            "reproduction<->disproportionality shadow opposition reads "
+            "(ContradictionSystem._circulation_layer_ratios) — that quantity is an "
+            "ephemeral per-tick aggregate recomputed fresh from tick_dynamics each tick "
+            "with no graph-attr home of its own, out of scope for this pass (a general "
+            "shadow-opposition observability sweep is already deferred to the T1.1 "
+            "seam_algebra cascade, per this lane's own merge-runbook note); this row is "
+            "the per-county RAW reading only."
+        ),
     ),
     # --- Group D: financial distribution, gated on interest_calculator (:1365)
     # — LIT by Task 20b (spec-116): _bridge_economics_overrides now wires a

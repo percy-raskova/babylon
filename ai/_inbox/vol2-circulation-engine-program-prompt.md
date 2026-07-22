@@ -1,3 +1,11 @@
+> **CONTROLLER NOTICE 2026-07-21 (binding, read before your next unit): ADR NUMBER REALLOCATION.**
+> The mainline minted ADR108 (Amendment AA, constitutionally referenced) after this worktree forked,
+> and both volume lanes independently claimed 108/109 — three-way collision. Your lane's allocated
+> block is **ADR120–129**. REQUIRED as a small standalone commit before your next unit: rename ADR108_vol2_u1_activation_audit→ADR120_..., ADR109_vol2_u2_lodes_data_path→ADR121_...; next free is 122.
+> Update each file's id: field, your worktree's ai/decisions/index.yaml keys/file fields, and rg for
+> any ADR108/ADR109 references your lane wrote (comments, docstrings, EXCEPTION notes, tests) —
+> repoint them. Leave git history alone. Never mint outside your block.
+
 # PROGRAM PROMPT — Volume II: The Circulation Engine
 
 **Authored:** 2026-07-19 by the gap-fix controller session, at `fix/null-play-coupling` @ `3e7bff05`,

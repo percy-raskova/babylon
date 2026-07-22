@@ -21,6 +21,7 @@ if TYPE_CHECKING:
     from babylon.kernel.graph_protocol import GraphProtocol
 
 from babylon.config.defines import GameDefines
+from babylon.domain.economics.circulation.types import CirculationCrisisState
 from babylon.domain.economics.dynamics.types import ClassDistribution
 from babylon.domain.economics.tick.derived_rates import DerivedRateCalculator
 from babylon.domain.economics.tick.types import (
@@ -195,6 +196,18 @@ def write_tick_state_to_graph(  # pragma: no mutate — data serialization
                 if county.circulation_state.latest_assessment is not None  # pragma: no mutate
                 else False  # pragma: no mutate
             ),  # pragma: no mutate
+            # U8 (2026-07-21 vol2-circulation-engine program, Monitoring):
+            # DisproportionalityCrisis.imbalance was computed by U3 (ADR122's
+            # compute_disproportionality) but never reached a graph attr — a
+            # computed-but-unserialized silent no-op (Constitution
+            # VIII.12/III.11) the rest of Group C's fields do not share.
+            # Honest None (never a fabricated 0.0) when the county carries no
+            # tensor department data this county-year.
+            tick_disproportionality=(  # pragma: no mutate
+                county.circulation_state.disproportionality.imbalance  # pragma: no mutate
+                if county.circulation_state.disproportionality is not None  # pragma: no mutate
+                else None  # pragma: no mutate
+            ),  # pragma: no mutate
             # Financial distribution state (Feature 024)
             tick_interest_burden=(  # pragma: no mutate
                 county.surplus_distribution.interest_payments  # pragma: no mutate
@@ -269,6 +282,21 @@ def read_tick_state_from_graph(  # pragma: no mutate — data serialization
     tick_summary: TickSummary | None = tick_data.get("tick_summary")  # pragma: no mutate
     year: int = tick_data["year"]  # pragma: no mutate
 
+    # U3 (2026-07-21 vol2-circulation-engine program, determinism fix):
+    # tick_data["county_states"] is the FULL prior-tick CountyEconomicState
+    # objects (written verbatim at write_tick_state_to_graph, never lossy
+    # scalar attrs) and lives ON this graph's own metadata dict, so it is
+    # per-graph state, never per-process/per-instance state — reading it
+    # here is what makes circulation continuity replay-safe instead of a
+    # System-instance-level cache (which leaked across separate
+    # simulation runs sharing one process, Constitution III — every tick
+    # a deterministic hash). Consulted below only for the
+    # ``circulation_state`` reserved key (ADR103 §10); every other field
+    # keeps its existing node-attribute-only reconstruction.
+    raw_county_states: dict[str, CountyEconomicState] = tick_data.get(  # pragma: no mutate
+        "county_states", {}
+    )
+
     # Reconstruct county states from territory nodes (preferred) or from
     # the tick_data dict (fallback for when graph has no territory nodes,
     # e.g. Feature 020 from_sqlite path)
@@ -286,6 +314,20 @@ def read_tick_state_from_graph(  # pragma: no mutate — data serialization
         fips = resolve_county_identity(node)  # pragma: no mutate
         if fips is None:  # pragma: no mutate
             continue  # pragma: no mutate
+        # U3 (circulation reserved key, ADR103 §10): the per-node tick_
+        # attrs are lossy derived summaries (liquidity_ratio, ...), not the
+        # full CircuitState/InventoryState/DepreciationFundState needed to
+        # advance_circuit / update_depreciation_fund next tick — pull the
+        # real prior object from raw_county_states instead. Honest default
+        # (CirculationCrisisState.default(), total_capital=0.0) when this
+        # fips has no prior entry (first tick for this county).
+        prior_county = raw_county_states.get(fips)  # pragma: no mutate
+        circulation_state = (  # pragma: no mutate
+            prior_county.circulation_state  # pragma: no mutate
+            if prior_county is not None  # pragma: no mutate
+            else CirculationCrisisState.default()  # pragma: no mutate
+        )
+
         dist_dict = node_data.get("tick_class_distribution", {})  # pragma: no mutate
         class_dist = ClassDistribution(  # pragma: no mutate
             fips=fips,  # pragma: no mutate
@@ -326,6 +368,7 @@ def read_tick_state_from_graph(  # pragma: no mutate — data serialization
             bifurcation_risk=BifurcationRiskMetric(  # pragma: no mutate
                 score=node_data.get("tick_bifurcation_score", 0.0),  # pragma: no mutate
             ),  # pragma: no mutate
+            circulation_state=circulation_state,  # pragma: no mutate
         )  # pragma: no mutate
 
     # Fallback: use county_states stored directly in tick_data dict

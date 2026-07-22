@@ -694,16 +694,22 @@ class TestPriceValueEndToEnd:
             "financial",
         }
         assert states["price_value"]["balance"] == pytest.approx(math.tanh(0.5 / scale))
-        # task #42-C / Vol I U6: national plus the three production-layer
+        # task #42-C / Vol I U6 / Vol II U5: national, the three
+        # production-layer shadow bindings AND the four circulation-layer
         # shadow bindings now register — but this graph builds no FACTION/
-        # INFLUENCES data, no social_class-typed nodes, and no
-        # productivity_data_source, so all four read the honest absent zero.
+        # INFLUENCES data, no social_class-typed nodes, no
+        # productivity_data_source and no ``tick_dynamics`` county-layer
+        # data, so all eight read the honest absent zero.
         shadow_states = graph.graph["shadow_opposition_states"]
         assert set(shadow_states) == {
             "national",
             "value_usevalue",
             "labor_laborpower",
             "absolute_relative_surplus",
+            "circulation",
+            "realization",
+            "reproduction",
+            "disproportionality",
         }
         for key in shadow_states:
             assert shadow_states[key]["gap"] == 0.0

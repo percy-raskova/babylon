@@ -380,38 +380,44 @@ def test_mutation_pointing_a_fixture_consumer_at_a_literal_reds(
     assert "check_condition" in findings[0]
 
 
-def test_mutation_reverting_reproduction_balance_exemption_reds_the_real_registry() -> None:
-    """MUTATION (design §4 U5): 'revert the ReproductionBalance disposition ->
-    real run reds.' Proves the exemption is load-bearing, not vacuous: with it
-    removed, the REAL shipped STUB_REGISTRY/CALCULATOR_REGISTRY must red on
-    exactly the ReproductionBalance stub and nothing else."""
-    findings = check_stub_vs_calculator(exemptions=())
-    assert len(findings) == 1
-    assert "stub-vs-calculator" in findings[0]
-    assert "ReproductionBalance" in findings[0]
-    assert "check_simple_reproduction" in findings[0]
+def test_retired_founding_stub_leaves_the_real_registry_vacuously_clean() -> None:
+    """The founding ReproductionBalance stub was RETIRED at the v1-cascade
+    merge (Vol II U3/ADR122 wired the real check_simple_reproduction call;
+    the grounding check itself forced the retirement — a stale row is loud).
+    The shipped registry is now empty, so the real run is clean even with
+    ZERO exemptions — the mutation witness for the check's red path lives in
+    test_a_grounded_stub_with_a_real_calculator_reds (synthetic fixture)."""
+    assert check_stub_vs_calculator(exemptions=()) == []
 
 
-def test_exemption_does_not_leak_across_unrelated_stub_names() -> None:
+def test_exemption_does_not_leak_across_unrelated_stub_names(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
     """The kind-tagged exemption key (`("stub", name)`) must not clear a
     DIFFERENT stub sharing no name with the exempted row."""
+    _write(tmp_path, "calc.py", "def compute(a, b) -> Thing:\n    return Thing(k=a + b)\n")
+    _write(tmp_path, "consumer.py", "value = Thing(k=True, other=1)\n")
+    _patch_repo_root(monkeypatch, tmp_path)
     stub = StubConsumer(
         name="unrelated_stub",
-        consumer_file="src/babylon/domain/economics/tick/system/__init__.py",
-        consumer_symbol="ReproductionBalance",
-        stub_field="condition_met",
-        calculator_name="check_simple_reproduction",
+        consumer_file="consumer.py",
+        consumer_symbol="Thing",
+        stub_field="k",
+        calculator_name="fixture_calc",
+    )
+    calc = RegisteredCalculator(
+        name="fixture_calc", def_file="calc.py", symbol="compute", produces="Thing"
     )
     exemption = SentinelExemption(
-        key=("stub", "reproduction_balance_default_stub"),
+        key=("stub", "some_other_stub_name"),
         reason="an exemption for a DIFFERENT stub row",
         owner="test",
         date="2026-07-21",
         tracking_task="#1",
     )
-    findings = check_stub_vs_calculator(stubs=(stub,), exemptions=(exemption,))
+    findings = check_stub_vs_calculator(stubs=(stub,), calculators=(calc,), exemptions=(exemption,))
     assert len(findings) == 1
-    assert "ReproductionBalance" in findings[0]
+    assert "Thing" in findings[0]
 
 
 # ---------------------------------------------------------------------------
@@ -423,9 +429,10 @@ def test_real_registry_is_clean_with_the_shipped_exemption() -> None:
     assert check_stub_vs_calculator() == []
 
 
-def test_shipped_exemptions_hold_exactly_the_reproduction_balance_stub() -> None:
-    keys = {exemption.key for exemption in STUB_VS_CALCULATOR_EXEMPTIONS}
-    assert keys == {("stub", "reproduction_balance_default_stub")}
+def test_shipped_exemptions_are_empty_since_the_founding_stub_retired() -> None:
+    """Both the stub row and its exemption retired together (v1-cascade
+    merge): an exemption without a row would be a vacuous hold-open."""
+    assert STUB_VS_CALCULATOR_EXEMPTIONS == ()
 
 
 def test_repo_root_resolves_to_the_real_repository_root() -> None:

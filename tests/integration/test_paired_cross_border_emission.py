@@ -123,11 +123,19 @@ def runtime(pg_pool, apply_migrations, tiger_geometries_ingested):  # type: igno
     return PostgresRuntime(pool=pg_pool)
 
 
-def _hex_graph_from_session(runtime, session_id: UUID):  # type: ignore[no-untyped-def]
-    """Tick-0 hex frame → BabylonGraph (full frame per spec-089; never MAX(tick))."""
+def _county_graph_from_session(runtime, session_id: UUID):  # type: ignore[no-untyped-def]
+    """Tick-0 hex frame, AGGREGATED to county Territory nodes (Vol II U4).
+
+    ADR120/ADR123: no production code stamps a hex node — reads the real
+    ``hex_spatial_map`` -> ScaleAdjunction (:func:`read_hex_county_adjunction`)
+    and aggregates the tick-0 per-hex ``v`` frame up to county grain, the
+    same right-adjoint the step itself uses at its write endpoint. Full
+    frame per spec-089; never ``MAX(tick)``.
+    """
+    from babylon.persistence.hex_hydrator import read_hex_county_adjunction
     from babylon.topology.graph import BabylonGraph
 
-    graph = BabylonGraph()
+    adjunction = read_hex_county_adjunction(runtime, session_id)
     with runtime._pool.connection() as pg, pg.cursor() as cur:  # noqa: SLF001
         cur.execute(
             "SELECT h3_index, v FROM dynamic_hex_state WHERE session_id = %s AND tick = 0",
@@ -135,21 +143,18 @@ def _hex_graph_from_session(runtime, session_id: UUID):  # type: ignore[no-untyp
         )
         rows = cur.fetchall()
     frame = {h3_index: float(v) for h3_index, v in rows}
-    # Pad to the SPEC's full study area: polygon-envelope cells that the
-    # county-based hydration does not populate enter at v=0.0. Without the
-    # padding, v routed to in-study-but-unhydrated HEX dest columns is
-    # dropped by the step and the FR-010 guard aborts the tick (observed
-    # 2026-07-08: residual ~0.14% of pre_total_v — a real pre-wiring hazard
-    # for remediation Phase 5.2's runner integration).
-    for hex_id in sorted(DETROIT_TRI_COUNTY_HEXES_RES7 | frozenset(frame)):
-        graph.add_node(hex_id, _node_type="hex", v=frame.get(hex_id, 0.0))
-    return graph
+    county_v = adjunction.aggregate({h: frame.get(h, 0.0) for h in adjunction.mapping})
+
+    graph = BabylonGraph()
+    for fips in sorted(county_v):
+        graph.add_node(f"county_{fips}", _node_type="territory", county_fips=fips, v=county_v[fips])
+    return graph, adjunction, frame
 
 
 def _snapshot_v(graph) -> list[tuple[str, float]]:  # type: ignore[no-untyped-def]
     return sorted(
         (node.id, float(node.attributes.get("v", 0.0)))
-        for node in graph.query_nodes(node_type="hex")
+        for node in graph.query_nodes(node_type="territory")
     )
 
 
@@ -179,12 +184,11 @@ def emission_run(runtime) -> dict[str, Any]:  # type: ignore[no-untyped-def]
         lodes_study_area_hexes=DETROIT_TRI_COUNTY_HEXES_RES7,
         lodes_study_area_states=_STUDY_STATES,
     )
-    graph = _hex_graph_from_session(runtime, sid)
-    origin = min(
-        node.id
-        for node in graph.query_nodes(node_type="hex")
-        if float(node.attributes.get("v", 0.0)) > 0.0
-    )
+    graph, adjunction, frame = _county_graph_from_session(runtime, sid)
+    # Origin selection is a REAL hex id (the OD injection below keys on hex
+    # ids, not county ids) — read directly off the per-hex frame, decoupled
+    # from the graph's (now county-grain) node type.
+    origin = min(hex_id for hex_id, v in frame.items() if v > 0.0)
     with runtime._pool.connection() as pg, pg.cursor() as cur:  # noqa: SLF001
         cur.execute(
             """
@@ -212,7 +216,11 @@ def emission_run(runtime) -> dict[str, Any]:  # type: ignore[no-untyped-def]
         study_area_states=_STUDY_STATES,
         domestic_states=US_DOMESTIC_FIPS_STATES,
     )
-    step = Vol2CirculationStep(od_loader=_PgLoader(), classifier=classifier)  # type: ignore[arg-type]
+    step = Vol2CirculationStep(  # type: ignore[arg-type]
+        od_loader=_PgLoader(),
+        hex_county_adjunction=adjunction,
+        classifier=classifier,
+    )
     register = BoundaryFlowRegister()
     step.step(
         graph=graph,

@@ -308,6 +308,65 @@ class PairedCrossBorderEmissionEvaluator:
         ]
 
 
+class CirculationVConservationEvaluator:
+    """FR-010 conservation invariant for Vol2CirculationStep.step (spec-063).
+
+    Vol II Circulation program, Unit U4 (light the step; ADR120/ADR123).
+    ``circulation_preserves_sum_v`` is one of the ``audit_log.yaml``-
+    enumerated ``per_stage`` invariants (spec-062: "within-tick invariants
+    for Production / Circulation / Equalization / Distribution /
+    ImperialRent") — declared in :attr:`ConservationAuditor._DEFAULT_INVARIANTS`
+    since spec-062 but never registered with a real evaluator until this unit.
+
+    Reads the tick's :class:`~babylon.engine.systems.vol2_circulation.
+    CirculationStepResult`, stashed by ``ImperialRentSystem.
+    _invoke_vol2_circulation_if_wired`` into
+    ``context["vol2_circulation_result"]`` whenever the sub-stage actually
+    ran this tick, and reports whether
+    ``post_total_v_in_area + boundary_out_total_v`` reconstitutes
+    ``pre_total_v`` (FR-010 / SC-002).
+
+    This is the independent, non-aborting POST-HOC audit trail
+    (``conservation_audit_log``) — NOT a second enforcement mechanism.
+    ``Vol2CirculationStep.step`` already enforces FR-010 hard, in-tick, by
+    raising :class:`~babylon.engine.systems.vol2_circulation.
+    CirculationConservationViolation` the instant the residual exceeds
+    tolerance (aborting the per-tick transaction before this evaluator ever
+    sees a result). A row from this evaluator can therefore only ever be
+    graded ``ok`` in practice; it exists to give the invariant a durable,
+    queryable trail in ``conservation_audit_log`` alongside every other
+    invariant, per FR-043's "append-only forensic log of per-tick
+    conservation invariants" charter — not to catch what the hard raise
+    already caught.
+
+    Quiet no-op (``[]``) when the sub-stage did not run this tick (context
+    ``None``, or the key absent) — Vol2CirculationStep's runtime gate
+    (``ImperialRentSystem._invoke_vol2_circulation_if_wired``) is gated on
+    four context keys that production wiring does not yet fully supply
+    (U4 status; see ADR123), so an absent key is today's honest common
+    case, not an error.
+    """
+
+    _INVARIANT_NAME = "circulation_preserves_sum_v"
+
+    def __call__(self, _pre_state: Any, _post_state: Any, context: Any) -> list[_InvariantResult]:
+        """Return one FR-010 residual result, or none if the step didn't run."""
+        if context is None:
+            return []
+        result = context.get("vol2_circulation_result")
+        if result is None:
+            return []
+        computed = float(result.post_total_v_in_area) + float(result.boundary_out_total_v)
+        return [
+            _InvariantResult(
+                scale="per_stage",
+                invariant_name=self._INVARIANT_NAME,
+                computed_value=computed,
+                expected_value=float(result.pre_total_v),
+            )
+        ]
+
+
 class ConservationAlarmEvent(BaseModel):
     """Event payload emitted when an audit row has severity=alarm.
 

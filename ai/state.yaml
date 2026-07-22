@@ -2,7 +2,7 @@
 # What exists vs what's planned - KEEP THIS UPDATED
 
 meta:
-  version: "2.49.0"  # 2.28.0 lives on feature/19-emergent-class-partition (Program 19 Phase 0+1)
+  version: "2.50.0"  # 2.28.0 lives on feature/19-emergent-class-partition (Program 19 Phase 0+1)
   updated: "2026-07-21"
   truth_status: |
     (2026-07-21 T1.2 keel, WO-52b) spec-061 live test-estate ledger extension
@@ -46,6 +46,252 @@ meta:
     preserved at ~/Documents/ocr/: 10 works 785,800 words w/ provenance +
     MANIFEST.yaml; content.jsonl reclassified APOCRYPHAL (kept, canon-
     fenced, easter-egg-eligible — BD personal artifact ruling).
+    (2026-07-21 Vol II U7) VOL II CIRCULATION PROGRAM, UNIT 7 COMPLETE (defines
+    sweep). Re-audited the whole circulation estate (not just U3's 2 fields)
+    for live hardcoded coefficients per program prompt §5. CapitalVolumeIIDefines
+    grew from 2 to 12 fields. Two crisis thresholds (COMMODITY_OVERHANG_CRISIS,
+    LIQUIDITY_CRISIS_RATIO — module-level Final constants in
+    circulation/types/_legacy.py, live via crisis.py's assess_circulation_crisis)
+    became ordinary keyword parameters with defaults (mirrors reproduction.py's
+    check_simple_reproduction(tolerance=...) convention) since the one production
+    call site (_compute_county_circulation_state) can inject them directly. Five
+    more (supply_crisis_days_threshold, overproduction_days_threshold,
+    replacement_boom/expansion/maintenance_ratio) are consumed INSIDE frozen-model
+    computed_field properties (InventoryState.inventory_problem,
+    DepreciationFundState.replacement_cycle_position — both confirmed live via
+    graph_bridge.py's unconditional per-tick tick_inventory_diagnosis/
+    tick_replacement_cycle publication, not just constructed-and-ignored), which
+    cannot take a call-time parameter -- became GameDefines-backed accessor
+    functions mirroring capital_vol3's distribution_epsilon() convention exactly
+    (module-local lru_cache(1) _default_defines() + accessor reading
+    defines-or-cached-default). A 6th accessor, fallback_days_inventory(), also
+    replaced the matching 30.0 placeholder in CirculationCrisisState.initial()
+    (the default_factory bootstrap state) so the tick-site fallback and the
+    bootstrap placeholder can't drift out of sync. Three more
+    (national_employment, fallback_days_inventory at the tick call site,
+    min_annual_depreciation_floor) replaced hardcoded literals directly in
+    _compute_county_circulation_state (this lane's ADR103 room-partition
+    region) via injected services.defines.capital_vol2 -- proper DI, no
+    accessor needed there. New model_validator enforces the replacement-ratio
+    descending cascade (boom > expansion > maintenance) the three-way
+    if/elif/elif in replacement_cycle_position relies on (mirrors capital_vol3's
+    verify_interest_share_ordering). DELIBERATELY EXCLUDED (documented in
+    capital_vol2.py's own module docstring, not silently dropped):
+    REALIZATION_RATE_NORMAL/SLOWDOWN/RECESSION (RealizationCrisis.crisis_severity)
+    -- compute_realization_metrics, the sole production constructor of
+    RealizationCrisis, has ZERO production callers (test-only; program prompt
+    §2c), so migrating them now would repeat the exact pre-U5 debt_spiral_
+    threshold "NOT YET READ" anti-pattern this sweep exists to avoid; also
+    excluded _CONSERVATION_REL_TOL (vol2_circulation.py) and _MAX_INDUSTRIES/
+    _MAX_ELAPSED_DAYS (turnover.py/circuit.py) -- IEEE-754 slack and
+    Power-of-10-rule-2 static loop bounds, not player-facing coefficients
+    (mirrors capital_vol3's own _WEIGHT_SUM_TOLERANCE precedent); also excluded
+    DEFAULT_TURNOVER_PROFILES/FALLBACK_PROFILE (defaults.py) -- structured
+    per-NAICS reference data, not a scalar coefficient; also excluded
+    max_counties=3300 loop-truncation guard in _compute_circulation_layer --
+    a defensive safety bound in the SAME package-level style as the two Power-
+    of-10 constants above, not a calibration knob (unlike Vol III's
+    national_county_count, which scales real math rather than merely
+    bounding a loop). Bonus fix (found adjacent, in the same config.defines
+    surface, pre-existing from U3, unrelated to this unit): tests/unit/
+    test_public_import_surface.py's EXPECTED_DEFINES_PUBLIC baseline never
+    got CapitalVolumeIIDefines added when U3 first shipped it -- was
+    currently RED on this tree independent of U7 (verified via git stash);
+    fixed in the same commit per that sentinel's own remedy text. New
+    tests/unit/config/test_capital_vol2_defines.py (22 tests) mirrors
+    test_capital_vol3_defines.py's conventions: defaults-match, ordering-
+    validator, live-divisor gt=0 rejection, accessor-not-import-time-snapshot,
+    divergent-yaml-vs-schema-defaults discrimination, CirculationCrisisState.
+    initial() consistency, and assess_circulation_crisis default/override
+    behavior. Verified: mypy clean (scoped), ruff clean, 717 pre-existing
+    circulation/tick tests still green (no behavior change -- every new
+    default equals the literal it replaced), 530 sentinel/contradiction/web
+    tests green (incl. the public-surface fix), 22 new tests green.
+    qa:regression NOT run (scoped-test-only lane constraint) -- expected
+    ZERO drift since every default equals its predecessor literal exactly,
+    but this is unverified against the canonical baselines; flag for the
+    lane's ceremony. This session was dispatched U7 directly after U5
+    (oppositions) with no U6 state.yaml entry visible on this tree at
+    dispatch time -- program prompt §7's suggested skeleton names U6
+    Oppositions/U7 Sentinels/U8 Defines sweep, but the ACTUALLY-executed
+    numbering already diverged (U5 = oppositions per its own commit
+    message), so whatever U6 covers in the real plan is unconfirmed from
+    here; check ai/decisions/index.yaml and this file's own history at
+    read time rather than trusting this guess. Remaining per the prompt's
+    §7 shape regardless of numbering: parity (headless runner circulation/
+    vol1 service wiring), the sentinel classes (§6), monitoring/seam-
+    registry rows, and the runner.py cross-lane coordination U4 deferred --
+    none block each other.
+    (2026-07-21 Vol II U4) VOL II CIRCULATION PROGRAM, UNIT 4 COMPLETE (light
+    the step, ADR123). Vol2CirculationStep.step() reconciled per U1's
+    disposition (ADR120, BD ruling 7): the read/write endpoints of the
+    per-hex v vector moved off NodeType.HEX (no production code ever stamps
+    one) onto eligible NodeType.TERRITORY nodes (resolve_county_identity(node)
+    is not None, mirroring SubstrateSystem near-mechanically), bound to the
+    UNCHANGED hex-resolution matrix-vector algorithm via a new required
+    constructor kwarg hex_county_adjunction: ScaleAdjunction -- allocate()
+    at the read endpoint (county v -> hex grain), aggregate() at the write
+    endpoint (hex-grain post-state -> county v), both failing loud (KeyError)
+    on an adjunction/graph mismatch rather than fabricating a zero.
+    Boundary-register rows are unaffected (they key on NodeKind.HEX as a
+    label, not a graph node id -- ADR120's own finding, re-confirmed). New
+    persistence.hex_hydrator.read_hex_county_adjunction(runtime, session_id):
+    the real, session-scoped adjunction builder queried from hex_spatial_map,
+    uniform shares (mirrors hydrate_hex_state's own per-county-uniform
+    convention). New CirculationVConservationEvaluator
+    (conservation_audit.py) registers circulation_preserves_sum_v -- declared
+    in ConservationAuditor._DEFAULT_INVARIANTS since spec-062, never wired
+    to an evaluator until now; reads context["vol2_circulation_result"],
+    stashed by economic.py's _invoke_vol2_circulation_if_wired right after
+    calling step() (pure addition, four-key gate unchanged). All 9
+    direct-invocation test suites (matching U1's re-verified count) updated
+    for the new contract; 2 new fast unit-test files
+    (test_circulation_v_conservation_evaluator.py,
+    test_vol2_wiring.py) pin the evaluator + the stash/gate directly.
+    Verification: 13 fast DB-free scoped tests green + 9 new evaluator/
+    wiring tests green (22 total), plus test_atomicity_inheritance.py's 3/3
+    passed LIVE against this box's real Postgres (BABYLON_TEST_PG_DSN via
+    mise env) -- proving the reconciled allocate/aggregate round-trip
+    through a real BoundaryFlowRegister + transaction envelope, not just
+    in-memory. FLAGGED FINDING (real, diagnosed, NOT silently assumed
+    green): a live run of test_paired_cross_border_emission.py against real
+    national LODES data (drive symlink data/lodes -> babylon-data, a
+    PRE-EXISTING spec-063 test dependency, not this unit's) raised
+    CirculationConservationViolation, residual ~0.14% of pre_total_v --
+    matching EXACTLY the residual the pre-existing test_circulation_one_
+    tick.py docstring already flagged 2026-07-08 as a known pre-wiring
+    hazard. Root cause confirmed by reading LODESCommuteMatrixLoader.
+    _read_one_state_file: the loader's in-area/external split uses ONLY its
+    own study_area_hexes param (DETROIT_TRI_COUNTY_HEXES_RES7, an
+    independently-computed lat/lng BOUNDING-BOX envelope) -- a STRICT
+    SUPERSET of hex_spatial_map's real TIGER-polygon county coverage (this
+    unit's adjunction source). Envelope-but-uncounty hexes (water, boundary
+    slivers) get classified in-area by the loader but have no adjunction
+    entry, so their computed contribution is silently dropped before the
+    write endpoint -- the OLD suite hid this identical gap via synthetic
+    v=0 hex-node padding, a trick unavailable once reads/writes move to
+    county grain. The principled fix (derive the loader's study_area_hexes
+    FROM the adjunction) hits a real ordering problem for 3 of 5 files:
+    hex_spatial_map and the persisted LODES matrix are BOTH populated
+    inside the SAME initialize_session() call, so the adjunction can't be
+    built before the LODES hydration that needs it -- a genuine
+    postgres_initialization.py two-phase-hydration restructure (or an
+    owner ruling on envelope-but-uncounty hexes), not a "light the step"
+    fix. NOT attempted; a partial fix (2 of 5 files only) was rejected as
+    worse than none. The other 4 live-Postgres files share this exact root
+    cause by construction and were not independently re-confirmed (each
+    costs 5+ min of real drive-backed national LODES parsing -- one
+    confirmation run was judged sufficient to isolate the cause). No
+    baseline drift: no golden scenario sets vol2_step, qa:regression
+    untouched. runner.py wiring (vol2_step/simulated_year gate keys;
+    auditor.register_invariant for the new evaluator; a production
+    read_hex_county_adjunction call site) stays the coordinated cross-lane
+    follow-up -- runner.py is outside Vol II's
+    ADR103/section-10.3 room partition (ADR120's own finding). Next: U5
+    (parity), U6 (oppositions), or the runner.py coordination itself --
+    none block each other.
+    (2026-07-21 Vol II U3) VOL II CIRCULATION PROGRAM, UNIT 3 COMPLETE (truth
+    in the tick, ADR122). Replaced the three confirmed stubs in
+    _compute_county_circulation_state: an always-balanced
+    ReproductionBalance/ReproductionAnalysis hardcode, a DepreciationFundState
+    rebuilt from scratch every tick, and advance_circuit never called -- with
+    the real Feature-023 calculators (check_simple_reproduction,
+    check_extended_reproduction, compute_disproportionality,
+    update_depreciation_fund, advance_circuit), fed real per-county
+    department data from the TensorRegistry (ValueTensor4x3, the
+    quickstart-designated source) via new helpers
+    _get_county_departments/_compute_reproduction_state. Cross-tick state
+    (prior CircuitState/DepreciationFundState) is carried on the
+    TickDynamicsSystem instance (self._circulation_prev_state, mirroring the
+    existing self._vol3_sentinel_logged convention) rather than through
+    CountyEconomicState.circulation_state -- _compute_county_states (shared
+    driver code outside this lane's ADR103 room partition) does not thread
+    circulation_state forward from prev_county_states, an upstream gap
+    recorded in ADR122 but explicitly not fixed here. New
+    CirculationCrisisState.disproportionality field (Optional, honest-absence
+    None when no tensor data exists for the county-year -- hydration covers
+    2010-2025 only). Fixed a latent determinism bug found while wiring
+    compute_disproportionality live for the first time: an unconditional
+    datetime.now() wall-clock year, now an explicit year parameter (the 9
+    pre-existing tests are unaffected -- omitting the parameter preserves the
+    old behavior). New CapitalVolumeIIDefines (capital_vol2.py):
+    reproduction_tolerance (0.01) and dept_i_share_required (0.6667, Marx
+    Capital Vol. II Ch. 20 simple-reproduction illustration), defines.yaml
+    regenerated. Verified: mypy clean (scoped), 719 scoped tests green (5 new
+    in tests/unit/economics/tick/test_circulation_layer.py + 2 new in
+    test_reproduction.py + all pre-existing circulation/tick/config-sync
+    suites unaffected). qa:regression NOT run this unit (scoped-test-only
+    lane constraint) -- the depreciation/circuit cross-tick change is new
+    per-tick math that may move circulation_state contents on any canonical
+    scenario with capital_stock>0 and a wired turnover_profile_source; treat
+    as expected drift requiring a declared ceremony if it fires, not a bug.
+    Next: U4 (light the step) or U6 (oppositions) -- neither depends on the
+    other.
+    (2026-07-21 Vol II U2) VOL II CIRCULATION PROGRAM, UNIT 2 COMPLETE (data
+    path). Closed the program prompt §3 gap: raw hex-resolution LODES OD
+    .csv.gz (lodes_commute_matrix.py's actual read source) had no
+    data-catalog.yaml/data-artifacts.yaml entry at all -- fixture-class,
+    drive-only, and thus a CI-no-drive violation waiting to happen. Registered
+    a new LODES_OD_HEX source row in data-catalog.yaml (explicitly distinct
+    from the already-registered county-grain fact_lodes_commuter_flow /
+    block-grain bridge_lodes_block) plus 13 hand-maintained data-artifacts.yaml
+    entries (1 tri-county H3 crosswalk + 12 OD-matrix years, 2010-2021) for a
+    checked-in, hash-stamped Detroit tri-county artifact under
+    src/babylon/data/reference/lodes/ -- generated by the new
+    tools/make_lodes_tri_county_artifact.py (drive-read ONCE at authoring
+    time, never at test/CI/runtime) by re-aggregating the real LODES data
+    through the unmodified LODESCommuteMatrixLoader filter/aggregation code
+    (Constitution II.12 sole-producer discipline preserved). New
+    babylon.domain.economics.lodes_study_area module supplies the checked-in
+    paths + the tri-county H3 res-7 hex set (independently re-derived from
+    tests/constants_063.py's polygon, per the border_commute_synthesis.py
+    precedent -- proven identical by test). New
+    engine/headless_runner/lodes_hydration.resolve_lodes_hydration_kwargs is
+    the real production supplier for initialize_session's four previously-
+    never-supplied LODES kwargs (lodes_root/lodes_crosswalk/
+    lodes_study_area_hexes/lodes_study_area_states), wired into runner.py's
+    run() -- honest None (no fabricated hydration) when a run's scope_fips
+    doesn't intersect the Detroit tri-county coverage. Closed a self-declared
+    gap found in review: data-artifacts.yaml's KNOWN-RISK note (make_data_
+    artifacts.py's ARTIFACTS-tuple-only regeneration would silently drop the
+    hand-maintained LODES tail) promised a mitigating test that didn't exist
+    yet -- added tests/unit/tools/test_lodes_artifact_manifest_entries.py
+    (content-pinning tripwire) rather than leave the promise false. Fixed a
+    real regression the LODES entries caused in the pre-existing
+    tests/unit/reference/test_data_artifacts.py (hardcoded src/-artifact
+    count 4->17; two round-trip fixtures now filter to
+    generator==tools/make_data_artifacts.py, since _write_manifest
+    unconditionally stamps that literal on every entry it writes and has no
+    per-entry generator concept -- rewriting the LODES entries' generator
+    field out from under them on round-trip, not a bug this suite pins).
+    Verified: mise run typecheck (788 files) clean, ruff clean, yamllint
+    clean, check:coverage/check:catalog/check:unconsumed/check:dangling/
+    check:inert all clean, scoped pytest green (lodes artifact + hydration +
+    manifest-tripwire + repaired test_data_artifacts.py + pre-existing
+    lodes_commute_matrix contract suites). Baseline-neutral: vol2_step is
+    still never set (Level 1 gate from U1 untouched) -- no engine/tick output
+    changes, no qa:regression drift. Next: U3 (truth in the tick).
+    (2026-07-21 Vol II U1) VOL II CIRCULATION PROGRAM, UNIT 1 COMPLETE
+    (worktree .claude/worktrees/vol2, branch lane/vol2-circulation, on top
+    of ADR103's T1.0 contract commit 84d8405a). Activation audit +
+    §2b/§2d disposition -- ADR120 (renumbered from ADR108, controller notice
+    2026-07-21 ADR reallocation). Re-verified the 2026-07-19 dormancy map
+    holds on dev tip (Vol2CirculationStep's NodeType.HEX query, economic.py's
+    four-key gate, postgres_initialization.py's four never-supplied LODES
+    kwargs) with only line-drift; refined one fact (PairedCrossBorderEmission
+    Evaluator has been registered since 2026-07-08, running vacuously green
+    pending the step's activation -- not merely "would audit"). §2b resolved
+    per BD ruling 7 (verified, not relitigated): county-keyed NodeType.
+    TERRITORY + a hex->county ScaleAdjunction (sourced from the already-
+    persisted hex_spatial_map table) binds the hex-resolution LODES math at
+    its read/write boundary, mirroring SubstrateSystem (#39 T6) near-
+    mechanically -- spec only, U4 implements. §2d (web/headless parity)
+    recorded OUT of Vol II scope per §10.3, assigned to Vol I; U4's
+    entanglement narrowed to two runner.py context keys (vol2_step,
+    simulated_year) since session_id/boundary_flow_register are already
+    wired in _advance_tick (runner.py:388, keys set at :436-437). No code
+    touched, no baseline drift (10/10 scoped tests green). Next: U2 (LODES OD
+    data path, gated on the parquet cutover per program §1).
     (2026-07-21 P2-P4) PROGRAM 24 THE ARCHIVE COMPLETE THROUGH P4 (branch
     feature/archive-p2-p4, PR #240 -> dev auto-merge armed; STAGED cutover
     draft PR #241 pending BD gate 3). P2: 18 Wave-1 builders + Wave-1.5

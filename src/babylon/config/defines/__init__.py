@@ -12,6 +12,7 @@ re-exports below.
 from __future__ import annotations
 
 from babylon.config.defines._assembler import GameDefines
+from babylon.config.defines.capital_vol2 import CapitalVolumeIIDefines
 from babylon.config.defines.capital_vol3 import CapitalVolumeIIIDefines
 from babylon.config.defines.consciousness import (
     BifurcationDefines,
@@ -89,6 +90,7 @@ __all__ = [
     "ArcGISDefines",
     "BehavioralDefines",
     "BifurcationDefines",
+    "CapitalVolumeIIDefines",
     "CapitalVolumeIIIDefines",
     "CarceralDefines",
     "ClassDynamicsDefines",

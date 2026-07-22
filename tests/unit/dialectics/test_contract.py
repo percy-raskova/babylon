@@ -2,18 +2,21 @@
 
 Pins the reserved-slot contract established by the T1.0 contract commit: the two
 volumes' opposition keys are RESERVED — named, and wired as *dead* coupling slots
-— without any live binding, so the production registry (and therefore the tick
-hash) is untouched while the two lanes build in parallel worktrees. See the
+— without any live binding, so each lane may register (or not) inside its own
+namespace without touching the other's. See the
 ``=== CAPITAL VOL I ∥ VOL II CONTRACT ===`` block in ``instances/catalog.py`` and
 the §10 parallel protocol in the volume program prompts.
 
-The load-bearing guarantee at the contract commit was physics-neutrality by
-CONSTRUCTION (it registered nothing) — proved by a dormancy test over BOTH
-volumes' reserved keys. Vol I's lane has since bound its three keys (U6):
-:func:`test_vol2_reserved_oppositions_remain_dormant` now checks ONLY Vol II's
-still-genuinely-reserved set, and :func:`test_vol1_reserved_oppositions_are_now_registered`
-gives the positive confirmation the ADR's consequences section called for —
-the loud signal that a reserved key going live is meant to be.
+The T1.0 contract commit itself was physics-neutral by CONSTRUCTION (it
+registered nothing) — proved by a dormancy test over BOTH volumes' reserved
+keys. BOTH lanes have since bound their namespaces (v1-cascade merge,
+2026-07-21): Vol I's three keys by U6, Vol II's four keys by U5, all
+SHADOW-first so the CANONICAL registry/tick hash stay untouched (see
+``BoundOpposition.shadow`` in ``instances/catalog.py``).
+:func:`test_vol1_reserved_oppositions_are_now_registered` and
+:func:`test_vol2_reserved_oppositions_are_now_bound` give the positive
+confirmation the ADR's consequences section called for — the loud signal
+that a reserved key going live is meant to be.
 """
 
 from __future__ import annotations
@@ -50,12 +53,13 @@ class TestReservedContract:
             "disproportionality",
         )
 
-    def test_vol2_reserved_oppositions_remain_dormant(self) -> None:
-        """Vol II's four keys stay genuinely reserved-but-unregistered: its lane
-        has not yet bound them, so the registry shape (and the deterministic
-        tick hash) is untouched by Vol II's portion of the contract."""
+    def test_vol2_reserved_oppositions_are_now_bound(self) -> None:
+        """Vol II's four reserved keys are now LIVE (SHADOW-bound by the Vol
+        II lane's U5 Oppositions unit) — registering a reserved key flips
+        this set arithmetic, which is the loud signal ADR103's contract
+        commit designed this test to give."""
         registered = set(build_default_registry().keys)
-        assert registered.isdisjoint(set(VOL_II_RESERVED_OPPOSITIONS))
+        assert set(VOL_II_RESERVED_OPPOSITIONS) <= registered
 
     def test_vol1_reserved_oppositions_are_now_registered(self) -> None:
         """Vol I's lane has bound its three reserved keys (U6): the ADR's own

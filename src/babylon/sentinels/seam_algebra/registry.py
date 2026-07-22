@@ -524,14 +524,23 @@ GATE_SATISFACTION_EXEMPTIONS: Final[tuple[SentinelExemption, ...]] = (
             "context construction; the sibling _invoke_phi_distribution_if_"
             "wired guard on the adjacent lines IS wired (runner.py:431-439) "
             "and is correctly not flagged. Per the T1.1 default (design §9 "
-            "item 4), held open as an exemption -- wiring vol2_step is a "
-            "production change (the vol2-circulation-program-staged effort) "
-            "out of scope for this read-only diagnostics lane."
+            "item 4), held open as an exemption. POST-CASCADE UPDATE "
+            "(2026-07-21, Vol II U6b): the Vol II circulation program RAN and "
+            "deliberately did not write this context key -- U4 (ADR123) "
+            "reconciled Vol2CirculationStep onto county-keyed territories + "
+            "ScaleAdjunction so the step is now honestly constructible, but "
+            "wiring context['vol2_step'] into the runner is a W-C dataflow "
+            "motion under the wiring doctrine (ADR109): it changes "
+            "assess-path physics and the tick hash, so it enters through "
+            "declared data with its own sentinel row and ceremony, not as a "
+            "merge side effect. Zero production writers remains TRUE at the "
+            "cascade merge."
         ),
         owner="Persephone Raskova",
         date="2026-07-21",
-        tracking_task="N/A (BD-owed raise-vs-exempt disposition per design "
-        "ai/_inbox/t11-seam-severity-design.md §9 item 4)",
+        tracking_task="N/A (tracked by the wiring-doctrine gap ledger, "
+        "ai/wiring-doctrine.md -- vol2_step context wire, W-C motion; "
+        "enforcement train post-cascade)",
     ),
 )
 
@@ -660,28 +669,23 @@ CALCULATOR_REGISTRY: Final[tuple[RegisteredCalculator, ...]] = (
 
 #: The unified, hand-curated stub-consumer set — T1.1 U5's day-one witness.
 #:
-#: ``reproduction_balance_default_stub`` is the founding case (design §3.2
-#: point 2; recon detail: ``ai/_inbox/vol2-circulation-engine-program-
-#: prompt.md`` §2c, "worse than inert: the live consumer is fed a lying
-#: stub"): ``domain/economics/tick/system/__init__.py:1378-1382`` hardcodes
-#: ``ReproductionBalance(condition_met=True, gap=0.0, interpretation="Default
-#: reproduction balance")`` and feeds it straight into the LIVE
-#: ``assess_circulation_crisis(...)`` call a few lines below — every county's
-#: reproduction-crisis flag reads permanently "balanced" regardless of that
-#: county's real departmental proportions, because the registered calculator
-#: for exactly this value (``check_simple_reproduction``, the ``I(v+s) =
-#: IIc`` law) is never called from production anywhere in ``src/`` or
-#: ``web/`` — only ``tests/unit/economics/circulation/test_reproduction.py``
-#: exercises it.
-STUB_REGISTRY: Final[tuple[StubConsumer, ...]] = (
-    StubConsumer(
-        name="reproduction_balance_default_stub",
-        consumer_file="src/babylon/domain/economics/tick/system/__init__.py",
-        consumer_symbol="ReproductionBalance",
-        stub_field="condition_met",
-        calculator_name="check_simple_reproduction",
-    ),
-)
+#: RETIRED (v1-cascade merge, 2026-07-21, the Vol II U6b seam contribution):
+#: ``reproduction_balance_default_stub`` was the founding case (design §3.2
+#: point 2; "worse than inert: the live consumer is fed a lying stub") —
+#: ``domain/economics/tick/system/__init__.py`` hardcoded
+#: ``ReproductionBalance(condition_met=True, ...)`` into the LIVE
+#: ``assess_circulation_crisis(...)`` call while the registered calculator
+#: (``check_simple_reproduction``, the ``I(v+s) = IIc`` law) had zero
+#: production callers. Vol II U3 ("truth in the tick", ADR122) CLOSED it:
+#: ``_compute_county_circulation_state`` now computes genuine Dept I/II/III
+#: ``DepartmentRow`` data and calls ``check_simple_reproduction`` /
+#: ``check_extended_reproduction`` for real, with honest ``None`` absence
+#: when no tensor department data exists. The sentinel's own grounding check
+#: forced this retirement (a stale row is loud, never silently satisfied) —
+#: exactly the drift-detection this family exists for. The registry is empty
+#: until the next real stub is found; the check is trivially clean over an
+#: empty tuple.
+STUB_REGISTRY: Final[tuple[StubConsumer, ...]] = ()
 
 
 def _validate_stub_calculators_resolve(
@@ -709,51 +713,13 @@ def _validate_stub_calculators_resolve(
 
 _validate_stub_calculators_resolve(CALCULATOR_REGISTRY, STUB_REGISTRY)
 
-#: The one day-one exemption: the ReproductionBalance stub (design §3.2 point
-#: 2 / §9 item 4's raise-vs-exempt default). Wiring the REAL fix — computing
-#: genuine Dept I/II ``DepartmentRow(c, v, s)`` rows from county circulation
-#: data and calling ``check_simple_reproduction(...)`` for real — is the Vol
-#: II circulation-engine program's own opening task
-#: (``ai/_inbox/vol2-circulation-engine-program-prompt.md`` §2c), gated
-#: behind that program's own sequencing gates (Vol III merge + the parquet
-#: cutover). It would also change ``assess_circulation_crisis``'s real
-#: inputs — i.e. change simulation math, which would break the
-#: ``qa:regression`` byte-identical contract this Amendment-S read-only
-#: diagnostics lane must never touch by construction. Held open here per the
-#: T1.1 default (exemption-with-rationale) rather than this lane patching
-#: production physics unilaterally.
-STUB_VS_CALCULATOR_EXEMPTIONS: Final[tuple[SentinelExemption, ...]] = (
-    SentinelExemption(
-        key=("stub", "reproduction_balance_default_stub"),
-        reason=(
-            "domain/economics/tick/system/__init__.py:1378-1382 hardcodes "
-            "ReproductionBalance(condition_met=True, gap=0.0, "
-            "interpretation='Default reproduction balance') and feeds it "
-            "straight into the LIVE assess_circulation_crisis(...) call a "
-            "few lines below -- every county's reproduction-crisis flag "
-            "reads permanently 'balanced' regardless of real departmental "
-            "proportions. The registered calculator (check_simple_"
-            "reproduction, the I(v+s) = IIc law, circulation/reproduction.py"
-            ":71) is never called from production anywhere in src/ or web/ "
-            "-- only tests/unit/economics/circulation/test_reproduction.py "
-            "exercises it. Wiring the real fix requires computing genuine "
-            "Dept I/II DepartmentRow(c, v, s) rows from county circulation "
-            "data -- new physics plumbing that is the Vol II "
-            "circulation-engine program's own opening task "
-            "(ai/_inbox/vol2-circulation-engine-program-prompt.md §2c, "
-            "'worse than inert: the live consumer is fed a lying stub'), "
-            "gated behind the Vol III merge + parquet cutover sequencing "
-            "that program declares, and would change assess_circulation_"
-            "crisis's real inputs (the tick hash) -- out of scope for this "
-            "Amendment-S read-only diagnostics lane."
-        ),
-        owner="Persephone Raskova",
-        date="2026-07-21",
-        tracking_task="N/A (tracked by the staged Vol II circulation-engine "
-        "program, ai/_inbox/vol2-circulation-engine-program-prompt.md §2c; "
-        "no standalone ticket opened for this stub alone)",
-    ),
-)
+#: Empty since the v1-cascade merge (2026-07-21): the one day-one exemption
+#: (the ReproductionBalance stub, design §3.2 point 2 / §9 item 4's
+#: raise-vs-exempt default) retired together with its registry row when Vol
+#: II U3 (ADR122) wired the real ``check_simple_reproduction`` /
+#: ``check_extended_reproduction`` calls — see the retirement record on
+#: :data:`STUB_REGISTRY` above.
+STUB_VS_CALCULATOR_EXEMPTIONS: Final[tuple[SentinelExemption, ...]] = ()
 
 #: The one day-one exemption: F-EC-1. Per the T1.1 default (design §9 item 3/4
 #: — exemption-with-rationale unless the owner prefers otherwise), this holds
@@ -909,14 +875,14 @@ WALLCLOCK_REGISTRY: Final[tuple[WallclockCallSite, ...]] = (
     WallclockCallSite(
         name="run_manifest_wallclock_start",
         def_file="src/babylon/engine/headless_runner/runner.py",
-        line=1187,
+        line=1188,
         wallclock_call="datetime.now",
         artifact="build_manifest() non_deterministic_inputs.wallclock_start",
     ),
     WallclockCallSite(
         name="run_manifest_wallclock_end",
         def_file="src/babylon/engine/headless_runner/runner.py",
-        line=1423,
+        line=1430,
         wallclock_call="datetime.now",
         artifact="build_manifest() non_deterministic_inputs.wallclock_end",
     ),
@@ -1001,7 +967,7 @@ WALLCLOCK_EXEMPTIONS: Final[tuple[SentinelExemption, ...]] = (
     SentinelExemption(
         key=("wallclock", "run_manifest_wallclock_start"),
         reason=(
-            "engine/headless_runner/runner.py:1187 reads datetime.now(UTC) into "
+            "engine/headless_runner/runner.py:1188 reads datetime.now(UTC) into "
             "wallclock_start, fed to build_manifest()'s non_deterministic_inputs (engine/"
             "headless_runner/manifest.py). PROVEN excluded from the byte-identity "
             "contract by construction: input_hash(deterministic_inputs) takes ONLY the "
@@ -1021,7 +987,7 @@ WALLCLOCK_EXEMPTIONS: Final[tuple[SentinelExemption, ...]] = (
     SentinelExemption(
         key=("wallclock", "run_manifest_wallclock_end"),
         reason=(
-            "engine/headless_runner/runner.py:1423 reads datetime.now(UTC) into "
+            "engine/headless_runner/runner.py:1430 reads datetime.now(UTC) into "
             "wallclock_end -- the sibling half of run_manifest_wallclock_start above; "
             "same grounded exclusion (non_deterministic_inputs is unreachable from "
             "input_hash's own parameter list, and manifest.py's docstring already "

@@ -11,7 +11,7 @@ single-flight in this controller. This file is my scratch — supersede freely.
 |---|---|---|---|---|
 | T1.1 seam-severity | lane/t11-seam-severity | c0c9a731 | **✓ DONE** (17/17, 0 err; U1–U7, mutation-verified) | merges 1st — READY |
 | T1.2 keel | lane/t12-keel | c4dc2f0c | **✓ DONE** (20/20, 0 err; K1–K5 verified in-code) | **HELD** behind T1.1; clean, merge-ready |
-| Vol I | lane/vol1-value-production | 18c2e2d9 | RUNNING (U8 done 20:0x, ADR114; U7 a80616f2 + vocab fix c435d3a6 done; ONLY U9 monitoring + ceremony remain) | 3rd |
+| Vol I | lane/vol1-value-production | de4f63ff | **✓ DONE** (23 agents, 0 err; U1–U9 all done + vocab fix; every unit Opus-reviewed w/ fix loops; ceremony = LANE-OWNED, fires AT its merge) | 3rd |
 | Vol II | lane/vol2-circulation | d694928d | RUNNING (U6a vocab-allowlist narrowing 20:27; U4 lit step 19:29 ADR120/123; U6b seam-rows DEFERRED→rebase; U5 = Vol I's) | 4th (rebase on Vol I) |
 | T4 core | lane/t4-campaign-core | 1e4fbe2c | **✓ DONE** (18/18, 0 err; C1–C6, no blockers) | **HELD** behind all; merges last |
 | T7 installer | lane/t7-installer | df41a963 | alpha (separate) | post-Gate-3 (T7-beta) |
@@ -60,6 +60,46 @@ REAL 30-system engine). Non-blocking, verify/file at merge:
 - uncommitted `ai/_inbox/PROGRAM_v1_0_0_playable_archive.md` edit left in the t4 worktree —
   reconcile (commit or discard) at merge.
 - doc nit: runner.py `_advance_tick` says "21 systems" (should be 30).
+
+### VOL I DONE — merge review ledger (workflow w2htteeii, 2026-07-21 20:51)
+
+Full per-unit notes: the workflow result (tasks/w2htteeii.output). Controller-actionable:
+
+- [ ] **ADR COLLISION — renumber at merge**: the lane's U1 audit shipped as
+      `ADR108_vol1_u1_activation_audit.yaml` — mainline ADR108 = Amendment AA
+      (immovable). Lane block used 110–115; renumber the U1 audit → **ADR116**
+      mechanically before merge (mainline 109 = wiring doctrine, also taken).
+- [ ] **Ceremony is LANE-OWNED (ADR103 §10.5, orient correction)**: Vol I's baseline
+      ceremony fires AS PART OF its merge with a Vol-I-attributed drift table — never
+      blended with Vol II's. Controller arbitrates order only.
+- [ ] **Drift attribution channels (now THREE sources, not one)**: (a) U5 activation —
+      median_wage / circulation_state / phi_hour; (b) **U4-via-U5**: U5 wiring
+      create_vol1_services into the canonical runner makes U4's working-day
+      visibility_modifier LIVE on the canonical path → exploitation_visibility/
+      consciousness channels move (U6 reviewer's cross-unit finding); (c) U3
+      reserve_ratio/reserve_army_stock producers. Lane qa:regression is RED on
+      defines_hash (U3's new define — expected, disclosed). At merge: run qa:regression
+      + two-process determinism leg, attribute all three channels in the ceremony.
+- [ ] **U8 min_employed_fraction**: independent analysis says the clamp cannot bind in
+      the 6 canonical scenarios — confirm zero-or-attributed at the gate; disclosure of
+      the 3 removed defines keys rides the ceremony (already recorded above).
+- [ ] **Non-blocking defect queue (file as follow-ups at merge, not blockers)**:
+      (1) latent firm_failures-gated-behind-tensor_registry
+      (tick/system/__init__.py:1277-1300 — bankruptcy inflow silently dead if
+      dispossession wired w/o tensor; against the program's own spirit); (2) real-data
+      liveness of reserve_ratio unproven by any executed test (add a real-reference-DB
+      nonzero assertion — "real data over mocks" rule); (3) reserve army is a one-way
+      ratchet (expansion_absorption/emigration hardcoded 0 — Ch. 25 reabsorption
+      unimplemented; ADR limitation note owed); (4) U7 sentinel Attribute-branch
+      name-collision weakness (restrict to ast.Call func position — hand to the ADR109
+      enforcement train); (5) U4 honesty overclaim: FRED adapter never returns None
+      (fabricated MIXED fallback, factory.py:747-764) — dead None branch, web-only;
+      (6) stale comments: factory.py:801-802 false headless claim + web bridge Task-21b
+      "no transition_engine" now false; (7) capital_calculator parity gap (web wires it
+      under fips_codes, headless doesn't — separate service family, T3-relevant).
+- [ ] **Pre-existing RED (not Vol I's)**: tests/integration/test_lawverian_contradiction_
+      bridge.py::test_contradiction_field_rows_flow (asserts 5 vs live 10, ADR089-era) —
+      verified unrelated; disposition it at merge review, don't let it ride silently.
 
 ## Merge order (dependency-forced)
 

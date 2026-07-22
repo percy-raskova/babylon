@@ -1468,8 +1468,10 @@ class TickDynamicsSystem(SystemBase):
             if resolved is not None:
                 profile = resolved
 
-        # National employment share for county scaling
-        national_employment = 155_000_000.0
+        # National employment share for county scaling (U7 defines sweep:
+        # migrated off a hardcoded literal to capital_vol2.national_employment).
+        vol2_defines = services.defines.capital_vol2
+        national_employment = vol2_defines.national_employment
         county_share = county.employment / national_employment if county.employment > 0 else 0.0
 
         # U3 determinism fix: prior tick's real CirculationCrisisState for
@@ -1509,14 +1511,17 @@ class TickDynamicsSystem(SystemBase):
         county_inventory = (national_inventory * county_share) if national_inventory else 0.0
         county_raw = county_inventory * profile.fixed_capital_ratio
         county_finished = county_inventory * (1.0 - profile.fixed_capital_ratio)
+        # U7 defines sweep: fallback (national data source unwired/absent)
+        # migrated off a hardcoded literal to capital_vol2.fallback_days_inventory.
+        fallback_days = vol2_defines.fallback_days_inventory
         inventory = InventoryState(
             fips_code=fips,
             year=year,
             raw_materials=county_raw,
             work_in_progress=0.0,
             finished_goods=county_finished,
-            days_inventory_raw=days_raw if days_raw is not None else 30.0,
-            days_inventory_finished=days_finished if days_finished is not None else 30.0,
+            days_inventory_raw=days_raw if days_raw is not None else fallback_days,
+            days_inventory_finished=days_finished if days_finished is not None else fallback_days,
         )
 
         # Build DepreciationFundState: scale national depreciation to county,
@@ -1530,8 +1535,10 @@ class TickDynamicsSystem(SystemBase):
         # a placeholder.
         county_depr = (annual_depr_national * county_share) if annual_depr_national else 0.0
         county_repl = (gross_inv_national * county_share) if gross_inv_national else 0.0
-        # Ensure annual_depreciation_flow > 0 (required by model)
-        safe_depr = max(county_depr, 1.0)
+        # Ensure annual_depreciation_flow > 0 (required by model). U7 defines
+        # sweep: floor migrated off a hardcoded literal to
+        # capital_vol2.min_annual_depreciation_floor.
+        safe_depr = max(county_depr, vol2_defines.min_annual_depreciation_floor)
         if prev is not None and prev.circuit_state.total_capital > 0.0:
             depreciation = update_depreciation_fund(
                 previous=prev.depreciation_fund,
@@ -1554,12 +1561,17 @@ class TickDynamicsSystem(SystemBase):
             fips, year, services
         )
 
+        # U7 defines sweep: crisis thresholds migrated off module-level
+        # Final constants to capital_vol2.commodity_overhang_threshold /
+        # capital_vol2.liquidity_crisis_ratio.
         assessment = assess_circulation_crisis(
             circuit_state=circuit,
             turnover=profile,
             inventory=inventory,
             reproduction_balance=repro_balance,
             reproduction_analysis=repro_analysis,
+            commodity_overhang_threshold=vol2_defines.commodity_overhang_threshold,
+            liquidity_crisis_ratio=vol2_defines.liquidity_crisis_ratio,
         )
 
         new_circ_state = CirculationCrisisState(

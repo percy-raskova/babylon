@@ -5,6 +5,82 @@ meta:
   version: "2.47.0"  # 2.28.0 lives on feature/19-emergent-class-partition (Program 19 Phase 0+1)
   updated: "2026-07-21"
   truth_status: |
+    (2026-07-21 Vol II U7) VOL II CIRCULATION PROGRAM, UNIT 7 COMPLETE (defines
+    sweep). Re-audited the whole circulation estate (not just U3's 2 fields)
+    for live hardcoded coefficients per program prompt §5. CapitalVolumeIIDefines
+    grew from 2 to 12 fields. Two crisis thresholds (COMMODITY_OVERHANG_CRISIS,
+    LIQUIDITY_CRISIS_RATIO — module-level Final constants in
+    circulation/types/_legacy.py, live via crisis.py's assess_circulation_crisis)
+    became ordinary keyword parameters with defaults (mirrors reproduction.py's
+    check_simple_reproduction(tolerance=...) convention) since the one production
+    call site (_compute_county_circulation_state) can inject them directly. Five
+    more (supply_crisis_days_threshold, overproduction_days_threshold,
+    replacement_boom/expansion/maintenance_ratio) are consumed INSIDE frozen-model
+    computed_field properties (InventoryState.inventory_problem,
+    DepreciationFundState.replacement_cycle_position — both confirmed live via
+    graph_bridge.py's unconditional per-tick tick_inventory_diagnosis/
+    tick_replacement_cycle publication, not just constructed-and-ignored), which
+    cannot take a call-time parameter -- became GameDefines-backed accessor
+    functions mirroring capital_vol3's distribution_epsilon() convention exactly
+    (module-local lru_cache(1) _default_defines() + accessor reading
+    defines-or-cached-default). A 6th accessor, fallback_days_inventory(), also
+    replaced the matching 30.0 placeholder in CirculationCrisisState.initial()
+    (the default_factory bootstrap state) so the tick-site fallback and the
+    bootstrap placeholder can't drift out of sync. Three more
+    (national_employment, fallback_days_inventory at the tick call site,
+    min_annual_depreciation_floor) replaced hardcoded literals directly in
+    _compute_county_circulation_state (this lane's ADR103 room-partition
+    region) via injected services.defines.capital_vol2 -- proper DI, no
+    accessor needed there. New model_validator enforces the replacement-ratio
+    descending cascade (boom > expansion > maintenance) the three-way
+    if/elif/elif in replacement_cycle_position relies on (mirrors capital_vol3's
+    verify_interest_share_ordering). DELIBERATELY EXCLUDED (documented in
+    capital_vol2.py's own module docstring, not silently dropped):
+    REALIZATION_RATE_NORMAL/SLOWDOWN/RECESSION (RealizationCrisis.crisis_severity)
+    -- compute_realization_metrics, the sole production constructor of
+    RealizationCrisis, has ZERO production callers (test-only; program prompt
+    §2c), so migrating them now would repeat the exact pre-U5 debt_spiral_
+    threshold "NOT YET READ" anti-pattern this sweep exists to avoid; also
+    excluded _CONSERVATION_REL_TOL (vol2_circulation.py) and _MAX_INDUSTRIES/
+    _MAX_ELAPSED_DAYS (turnover.py/circuit.py) -- IEEE-754 slack and
+    Power-of-10-rule-2 static loop bounds, not player-facing coefficients
+    (mirrors capital_vol3's own _WEIGHT_SUM_TOLERANCE precedent); also excluded
+    DEFAULT_TURNOVER_PROFILES/FALLBACK_PROFILE (defaults.py) -- structured
+    per-NAICS reference data, not a scalar coefficient; also excluded
+    max_counties=3300 loop-truncation guard in _compute_circulation_layer --
+    a defensive safety bound in the SAME package-level style as the two Power-
+    of-10 constants above, not a calibration knob (unlike Vol III's
+    national_county_count, which scales real math rather than merely
+    bounding a loop). Bonus fix (found adjacent, in the same config.defines
+    surface, pre-existing from U3, unrelated to this unit): tests/unit/
+    test_public_import_surface.py's EXPECTED_DEFINES_PUBLIC baseline never
+    got CapitalVolumeIIDefines added when U3 first shipped it -- was
+    currently RED on this tree independent of U7 (verified via git stash);
+    fixed in the same commit per that sentinel's own remedy text. New
+    tests/unit/config/test_capital_vol2_defines.py (22 tests) mirrors
+    test_capital_vol3_defines.py's conventions: defaults-match, ordering-
+    validator, live-divisor gt=0 rejection, accessor-not-import-time-snapshot,
+    divergent-yaml-vs-schema-defaults discrimination, CirculationCrisisState.
+    initial() consistency, and assess_circulation_crisis default/override
+    behavior. Verified: mypy clean (scoped), ruff clean, 717 pre-existing
+    circulation/tick tests still green (no behavior change -- every new
+    default equals the literal it replaced), 530 sentinel/contradiction/web
+    tests green (incl. the public-surface fix), 22 new tests green.
+    qa:regression NOT run (scoped-test-only lane constraint) -- expected
+    ZERO drift since every default equals its predecessor literal exactly,
+    but this is unverified against the canonical baselines; flag for the
+    lane's ceremony. This session was dispatched U7 directly after U5
+    (oppositions) with no U6 state.yaml entry visible on this tree at
+    dispatch time -- program prompt §7's suggested skeleton names U6
+    Oppositions/U7 Sentinels/U8 Defines sweep, but the ACTUALLY-executed
+    numbering already diverged (U5 = oppositions per its own commit
+    message), so whatever U6 covers in the real plan is unconfirmed from
+    here; check ai/decisions/index.yaml and this file's own history at
+    read time rather than trusting this guess. Remaining per the prompt's
+    §7 shape regardless of numbering: parity (headless runner circulation/
+    vol1 service wiring), the sentinel classes (§6), monitoring/seam-
+    registry rows, and the runner.py cross-lane coordination U4 deferred --
+    none block each other.
     (2026-07-21 Vol II U4) VOL II CIRCULATION PROGRAM, UNIT 4 COMPLETE (light
     the step, ADR123). Vol2CirculationStep.step() reconciled per U1's
     disposition (ADR120, BD ruling 7): the read/write endpoints of the

@@ -11,21 +11,26 @@ LOC budget for this commit.
 Import equivalence (FR-003 / contracts/import-equivalence.md C6): every
 existing ``from babylon.domain.economics.circulation.types import X`` resolves
 unchanged via this re-export.
+
+Exception (U7 defines sweep, 2026-07-21 vol2-circulation-engine program):
+seven module-level ``Final`` threshold constants (``COMMODITY_OVERHANG_CRISIS``,
+``LIQUIDITY_CRISIS_RATIO``, ``OVERPRODUCTION_DAYS_THRESHOLD``,
+``SUPPLY_CRISIS_DAYS_THRESHOLD``, ``REPLACEMENT_BOOM_RATIO``,
+``REPLACEMENT_EXPANSION_RATIO``, ``REPLACEMENT_MAINTENANCE_RATIO``) were
+migrated off this re-export — the first two became ``assess_circulation_crisis``
+keyword parameters (``crisis.py``), the remaining five became GameDefines-backed
+accessor functions (``supply_crisis_days_threshold()`` etc., same names,
+lowercase) — mirroring the ``capital_vol3`` honesty-sweep precedent. No
+importer outside this package referenced the removed names (verified by
+repo-wide grep at authoring time).
 """
 
 from __future__ import annotations
 
 from babylon.domain.economics.circulation.types._legacy import (
-    COMMODITY_OVERHANG_CRISIS,
-    LIQUIDITY_CRISIS_RATIO,
-    OVERPRODUCTION_DAYS_THRESHOLD,
     REALIZATION_RATE_NORMAL,
     REALIZATION_RATE_RECESSION,
     REALIZATION_RATE_SLOWDOWN,
-    REPLACEMENT_BOOM_RATIO,
-    REPLACEMENT_EXPANSION_RATIO,
-    REPLACEMENT_MAINTENANCE_RATIO,
-    SUPPLY_CRISIS_DAYS_THRESHOLD,
     AnnualSurplusValue,
     CapitalForm,
     CircuitState,
@@ -45,11 +50,16 @@ from babylon.domain.economics.circulation.types._legacy import (
     ReproductionBalance,
     TransportationValue,
     TurnoverProfile,
+    fallback_days_inventory,
+    overproduction_days_threshold,
+    replacement_boom_ratio,
+    replacement_expansion_ratio,
+    replacement_maintenance_ratio,
+    supply_crisis_days_threshold,
 )
 
 __all__ = [
     "AnnualSurplusValue",
-    "COMMODITY_OVERHANG_CRISIS",
     "CapitalForm",
     "CircuitState",
     "CirculationCrisisAssessment",
@@ -57,24 +67,24 @@ __all__ = [
     "CrisisSeverity",
     "DepreciationFundState",
     "DisproportionalityCrisis",
+    "fallback_days_inventory",
     "FixedCapitalItem",
     "InventoryDiagnosis",
     "InventoryState",
-    "LIQUIDITY_CRISIS_RATIO",
     "MoralDepreciation",
-    "OVERPRODUCTION_DAYS_THRESHOLD",
+    "overproduction_days_threshold",
     "PureCirculationCosts",
     "REALIZATION_RATE_NORMAL",
     "REALIZATION_RATE_RECESSION",
     "REALIZATION_RATE_SLOWDOWN",
-    "REPLACEMENT_BOOM_RATIO",
-    "REPLACEMENT_EXPANSION_RATIO",
-    "REPLACEMENT_MAINTENANCE_RATIO",
     "RealizationCrisis",
+    "replacement_boom_ratio",
+    "replacement_expansion_ratio",
+    "replacement_maintenance_ratio",
     "ReplacementCyclePosition",
     "ReproductionAnalysis",
     "ReproductionBalance",
-    "SUPPLY_CRISIS_DAYS_THRESHOLD",
+    "supply_crisis_days_threshold",
     "TransportationValue",
     "TurnoverProfile",
 ]

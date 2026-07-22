@@ -163,6 +163,11 @@ REAL 30-system engine). Non-blocking, verify/file at merge:
 2. **Material Triad W1** (territory repair + `metabolic` registration) — needs merged
    catalog + T1.1 stub-vs-calculator.
 3. **Interface-shell plan** (11 tasks, BD-queued behind cascade + T3's EconomyView).
+4. **H3-in-Postgres delegation** (BD-ruled 2026-07-21 "must implement";
+   `ai/_inbox/h3-postgres-delegation-brief.md`): U1 BIGINT H3 key migration =
+   CEREMONY-GATED (reference-DB rebuild), rides T7-beta or Material Triad W5,
+   whichever fires first; U2 folds into the existing choropleth-re-sum unit;
+   U3 h3-pg decision at T7-beta.
 
 ## Post-merge cleanup units (from the fork's research passes — file as small PRs, not blockers)
 

@@ -63,6 +63,10 @@ circulation program U5, the other half of ADR103's reserved namespace,
 - ``financial`` — real⇄fictitious: claims on future value over present
   production, read from the scissors' ``fictitious_log`` in ratio space.
   National; unplaced on the level lattice.
+- ``political_form`` — self-organization⇄representation: the class acting
+  through its own organs versus delegation into the ISA_POLITICAL
+  apparatus — both forms of one political existence (P25 U3, ADR129;
+  shadow-first, promotion ceremony at P25 U10).
 - ``national`` — national-chauvinism⇄internationalism: the settler bribe
   that trades international class unity for a national privilege, versus
   the solidarity that refuses it (Lenin, *Imperialism and the Split in
@@ -269,6 +273,11 @@ class GraphInputs:
             ``market_balance``'s ``tanh`` scale uses. ``None`` = no
             ``productivity_data_source`` wired, or no data for this tick's
             year.
+        political_labor_share: pre-derived signed share of class political
+            labor-hours flowing through the representation channel vs the
+            self-organization channel, in [-1, 1] (P25 U3, ADR129; measured
+            fresh per tick from flows — I-FRESH, no accumulator). ``None``
+            until the U5 party/organ producers exist anywhere in the world.
         commodity_overhang_share: NATIONAL ``Σcommodity_capital /
             Σtotal_capital`` (Vol II circulation program, U5) — a ratio of
             sums over every county carrying a live
@@ -312,6 +321,7 @@ class GraphInputs:
     credit_fragility: float | None = field(default=None)
     financialization_index: float | None = field(default=None)
     national_balance: float | None = field(default=None)
+    political_labor_share: float | None = field(default=None)
     wealth_subsistence_ratio: float | None = field(default=None)
     surplus_strategy_ratio: float | None = field(default=None)
     commodity_overhang_share: float | None = field(default=None)
@@ -623,6 +633,24 @@ def _national_measure(inputs: GraphInputs) -> GapReading:
     return GapReading(gap=abs(balance), balance=balance)
 
 
+def _political_form_measure(inputs: GraphInputs) -> GapReading:
+    """self-organization (A) ⇄ representation (B) — P25 U3 (ADR129).
+
+    Reads the pre-derived signed share of the class's political labor-hours
+    flowing through delegation into the ISA_POLITICAL apparatus (pole B)
+    versus its own organs (pole A) — canvass-hours vs organizing-hours,
+    dues-to-parties vs dues-to-organs (the-electoral-question.md §2.6).
+    ``None`` → ``(0, 0)``: no party or organ political-labor flow exists
+    anywhere (every org-less scenario), so there is no political-form
+    contradiction to measure (Constitution III.11). Positive balance =
+    representation (pole B) dominant.
+    """
+    if inputs.political_labor_share is None:
+        return GapReading(gap=0.0, balance=0.0)
+    balance = max(-1.0, min(1.0, inputs.political_labor_share))
+    return GapReading(gap=abs(balance), balance=balance)
+
+
 def _circulation_measure(inputs: GraphInputs) -> GapReading:
     """money-capital (A) ⇄ commodity-capital (B) — the circuit's own defect.
 
@@ -878,6 +906,31 @@ def build_default_registry(rate_weight: float = 10.0) -> OppositionRegistry[Grap
             # SHADOW (task #42-C): measured every tick, excluded from principal
             # scoring/frames/rupture; states ride shadow_opposition_states,
             # exactly the ADR077 discipline price_value was born under.
+            shadow=True,
+        ),
+        BoundOpposition(
+            spec=OppositionSpec(
+                key="political_form",
+                pole_a="self-organization",
+                pole_b="representation",
+                unity="direct action through the class's own organs and "
+                "delegation into the ISA_POLITICAL apparatus are both forms "
+                "of the same class's political existence; neither exists "
+                "without the political energy the class expends "
+                "(the-electoral-question.md §2.6, RULED 2026-07-22 ADR126)",
+                # level_name stays "" (unplaced): political labor-hours
+                # aggregate across the class's whole reach, same as national.
+                antagonistic=False,
+            ),
+            measure=_political_form_measure,
+            # SHADOW (P25 U3, ADR129): shadow-first per the launch ruling —
+            # the declared ADR078-style promotion ceremony lands at P25 U10
+            # (else the _principal_key shadow filter would silently bar §2.6's
+            # principal-contradiction payoff forever). Couplings (wage feeds
+            # political_form / political_form constrains atomization /
+            # imperial transforms political_form) are DEFERRED to their
+            # lighting units (U8/U9): the coupling graph is a claim about the
+            # code, and their operational sides do not exist yet.
             shadow=True,
         ),
         # === CAPITAL VOL I — production-layer bindings (U6, ADR103's

@@ -10,7 +10,11 @@ from __future__ import annotations
 
 import pytest
 
-from babylon.domain.dialectics.instances.catalog import GraphInputs, build_default_registry
+from babylon.domain.dialectics.instances.catalog import (
+    GraphInputs,
+    _political_form_measure,
+    build_default_registry,
+)
 from babylon.topology.graph import BabylonUGraph
 
 pytestmark = [pytest.mark.unit, pytest.mark.math]
@@ -25,7 +29,7 @@ def _states(inputs: GraphInputs, tick: int = 0):  # type: ignore[no-untyped-def]
 
 
 class TestRegistryShape:
-    def test_eighteen_oppositions_bound(self) -> None:
+    def test_nineteen_oppositions_bound(self) -> None:
         assert _reg().keys == (
             "absolute_relative_surplus",
             "atomization",
@@ -38,6 +42,7 @@ class TestRegistryShape:
             "imperial",
             "labor_laborpower",
             "national",
+            "political_form",
             "price_value",
             "realization",
             "reproduction",
@@ -51,10 +56,12 @@ class TestRegistryShape:
         """task #42-C's ``national``, Vol I U6's three production-layer
         bindings and Vol II U5's four circulation-layer bindings all land
         shadow-first, on the same discipline price_value was born under
-        (ADR077) before its ADR078 promotion."""
+        (ADR077) before its ADR078 promotion; P25 U3's ``political_form``
+        joins the same way (ADR129; declared promotion ceremony at P25 U10)."""
         assert _reg().shadow_keys == frozenset(
             {
                 "national",
+                "political_form",
                 "value_usevalue",
                 "labor_laborpower",
                 "absolute_relative_surplus",
@@ -239,6 +246,7 @@ class TestLevelPlacement:
             # NATIONALLY (INFLUENCES reach, no county/class rung) — unplaced,
             # same as credit/financial.
             "national": "",
+            "political_form": "",  # P25 U3: unplaced, aggregates class-wide
             # Vol I U6: value_usevalue and absolute_relative_surplus both
             # aggregate NATIONALLY (unplaced, same as credit/financial/
             # national); labor_laborpower shares wage's per-class/per-county
@@ -769,3 +777,33 @@ class TestCatalogDocstringAccuracy:
         docstring = catalog_module.__doc__ or ""
         assert "five bound contradictions" not in docstring
         assert "The five oppositions" not in docstring
+
+
+class TestPoliticalFormMeasure:
+    """P25 U3 (ADR129): the political_form measure's honest-absence contract."""
+
+    def test_absence_when_no_political_labor_flows(self) -> None:
+        # Org-less world (all six qa:regression scenarios): no party or organ
+        # political-labor flows exist, so there is no political-form
+        # contradiction to measure — gap and balance are the by-construction
+        # zero reading, never a fabricated position (Constitution III.11), and
+        # the shadow discipline keeps it out of principal contention.
+        states = _states(GraphInputs(wage_value_pairs=((10.0, 10.0),)))
+        reading = states["political_form"]
+        assert reading.gap == 0.0
+        assert reading.balance == 0.0
+        assert reading.is_principal is False  # shadow: barred from principal
+
+    def test_balance_reads_the_representation_share(self) -> None:
+        reading = _political_form_measure(GraphInputs(political_labor_share=0.6))
+        assert reading.balance == pytest.approx(0.6)
+        assert reading.gap == pytest.approx(0.6)
+
+    def test_share_is_clamped_to_unit_interval(self) -> None:
+        reading = _political_form_measure(GraphInputs(political_labor_share=1.7))
+        assert reading.balance == pytest.approx(1.0)
+
+    def test_none_share_reads_zero_zero(self) -> None:
+        reading = _political_form_measure(GraphInputs())
+        assert reading.gap == 0.0
+        assert reading.balance == 0.0

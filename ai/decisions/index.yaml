@@ -1,5 +1,5 @@
 meta:
-  version: 1.55.0
+  version: 1.56.0
   updated: '2026-07-22'
   description: Architecture Decision Records Index
   format: See individual ADR files in this directory
@@ -15,6 +15,11 @@ meta:
   # 2026-07-22 at charter (ADR127) — Vol II's 120-129 and T1.1/T1.2's
   # 130-139 blocks dissolved at their merges; next mainline free >= 140.
 decisions:
+  ADR129_p25_u3_political_form_opposition:
+    title: 'P25 U3 — political_form joins the opposition catalog (19th binding): self-organization ⇄ representation, shadow-first (ADR127 launch ruling; declared promotion ceremony at U10); measure reads new GraphInputs.political_labor_share (None → honest (0,0) absence in every org-less scenario; producer arrives U5); couplings deferred to their lighting units (U8/U9) — the coupling graph is a claim about the code and their operational sides do not exist yet; qa:regression byte-identical 6/6 proved as the unit gate, registry pins 18→19.'
+    status: accepted
+    date: '2026-07-22'
+    file: ADR129_p25_u3_political_form_opposition.yaml
   ADR127_p25_political_superstructure_charter:
     title: 'Program 25 — The Political Superstructure (electoralism) chartered as the one engine train on feature/political-superstructure off dev e0ece454; ADR block 127-139 claimed; 13-unit train ratified from the 5-agent launch recon (U1 defines / U2 events / U3 political_form shadow / U4 OrganizationComponent port / U5 party+MEMBERSHIP+donor producers / U6 spec-070 ELECTORAL faction seeding / U7 pure politics kernel / U8 AllegianceSystem + the REAL Agitation->Organization valve / U9 PolicySystem + LEGISLATE resolver + reform ceiling / U10 ElectoralSystem + political_form promotion ceremony / U11 doctrine fork five stances / U12 conjunctures + governance endgame / U13 five goldens + declared baseline ceremony). Two delegated launch rulings recorded: TRAP 1 -> build the real conversion pathway, never throttle the consciousness router; TRAP 2 -> shadow-first with a declared ADR078-style promotion ceremony at U10. TRAP 3 discipline: parties-exist guards on every class-node write; per-unit qa:regression byte-identity gates; baselines move only at U13. Recon corrections: s=p+i+r+t in domain/economics/distribution/, catalog 18->19, debt_service/equalization-wire/InternalBalanceOfForces are BUILDS.'
     status: accepted

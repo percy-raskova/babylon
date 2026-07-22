@@ -760,6 +760,30 @@ class ArchiveApp(App[None]):
         background: $panel; color: $foreground; padding: 0 1;
     }
 
+    /* Program 24 P7 (KSBC aesthetic pass, DESIGN_BIBLE §9b "The Installer"):
+       the four domain panes + the HUD sub-strip had NO chrome of their own
+       before this pass (unlike the rails/action-bar, whose Rich-rendered
+       CONTENT already carries a crimson Panel + gold title — chronicle's
+       per-tick bulletins, the watchlist's pin-count panel, the verb
+       plate's org/tick panel — from Program 24 P2/P3/P5/P6; boxing the rail
+       WIDGET too would double-frame that content inside an already-narrow
+       24-column column). Each pane plate is a crimson-bordered box with its
+       own title tab breaking the top border line ("┤ TITLE ├" idiom) — a
+       bold crimson label chipped on a panel-tone backing. #wiki is the one
+       scrollable content region among the four, so it gets the doc's
+       "inner well" double border instead of the others' single plate
+       border; #dashboard-hud nests inside #dashboard's own plate (ample
+       width in the main content region, unlike the rails). */
+    #dashboard, #map, #topology { border: solid $primary; }
+    #wiki { border: double $primary; }
+    #dashboard-hud { border: solid $primary; margin-bottom: 1; }
+
+    #dashboard, #map, #wiki, #topology, #dashboard-hud {
+        border-title-color: $primary;
+        border-title-background: $panel;
+        border-title-style: bold;
+    }
+
     .statblock {
         border: double $primary; padding: 0 2; margin: 1 0;
         background: $panel; width: auto;
@@ -881,6 +905,7 @@ class ArchiveApp(App[None]):
     def on_mount(self) -> None:
         self.register_theme(KSBC)
         self.theme = "ksbc"
+        self._apply_shell_chrome_titles()
         if self._campaign_menu is not None:
             self.push_screen(LobbyScreen(self._campaign_menu), callback=self._on_campaign_chosen)
             return
@@ -889,6 +914,28 @@ class ArchiveApp(App[None]):
             # first outbound jump has somewhere to Ctrl-O back to.
             self.nav.visit(_SAMPLE_SUBJECT)
             self._refresh_breadcrumbs()
+
+    def _apply_shell_chrome_titles(self) -> None:
+        """Stamp the Program 24 P7 KSBC title-tab label on every domain pane +
+        the HUD sub-strip (DESIGN_BIBLE §9b "title tab breaks the border"
+        idiom) — the four panes and the HUD had no chrome of their own
+        before this pass (see the CSS comment above ``#dashboard, #map,
+        #wiki, #topology { border: ... }`` for why the rails/action-bar are
+        deliberately NOT re-boxed here: their own Rich-rendered content
+        already carries a crimson-Panel + gold title). :meth:`compose`
+        unconditionally mounts all five, so this always runs once at boot
+        regardless of which path (lobby or demo) :meth:`on_mount` takes
+        next.
+        """
+        # Lazy import: WikiView imports BabylonMarkdown from this module — the
+        # same one-way-seam trick :meth:`compose` already uses.
+        from babylon.tui.shell.views.wiki_view import WikiView
+
+        self.query_one(DashboardView).border_title = "DASHBOARD"
+        self.query_one("#dashboard-hud", Static).border_title = "HUD"
+        self.query_one(MapView).border_title = "MAP"
+        self.query_one(WikiView).border_title = "WIKI"
+        self.query_one(TopologyView).border_title = "TOPOLOGY"
 
     async def _on_campaign_chosen(self, campaign_id: UUID | None) -> None:
         """``LobbyScreen`` dismissed: boot/resume the chosen campaign.

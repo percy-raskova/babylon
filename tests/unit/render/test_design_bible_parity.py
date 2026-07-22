@@ -40,3 +40,22 @@ def test_design_bible_degraded_row_matches_code() -> None:
         token.value: (TRUECOLOR_PALETTE[token], DEGRADED_256_PALETTE[token]) for token in RoleToken
     }
     assert rows == expected
+
+
+def test_design_bible_truecolor_row_matches_theme() -> None:
+    """``babylon.tui.theme`` (Program 24 P7) — the module Textual actually
+    renders pixels through — must carry the same truecolor hex per role
+    token as DESIGN_BIBLE §9b's own truecolor column.
+
+    Checked against the doc directly, not against ``babylon.render.tiers``:
+    ``theme.py`` sources its constants from ``tiers.TRUECOLOR_PALETTE``
+    today, but a future regression that reintroduces a hardcoded, drifted
+    hex in ``theme.py`` (bypassing that import) must still fail here, the
+    same way the degraded-row test above guards ``tiers.py`` directly.
+    """
+    from babylon.tui import theme
+
+    doc_truecolor = {token: hexval for token, (hexval, _index) in _parse_degraded_rows().items()}
+    expected = {role.value: doc_truecolor[role.value] for role in theme.PARITY_TOKENS}
+    actual = {role.value: hexval for role, hexval in theme.PARITY_TOKENS.items()}
+    assert actual == expected

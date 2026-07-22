@@ -14,7 +14,7 @@ PRECOMMIT = (ROOT / ".pre-commit-config.yaml").read_text(encoding="utf-8")
 def test_dependency_groups_are_pep735() -> None:
     groups = PYPROJECT["dependency-groups"]
     assert "dev" in groups and "docs" in groups
-    assert "group" not in PYPROJECT["tool"]["poetry"], "legacy [tool.poetry.group.*] remains"
+    assert "poetry" not in PYPROJECT.get("tool", {}), "legacy [tool.poetry] table remains"
 
 
 def test_uv_lock_committed_poetry_lock_gone() -> None:
@@ -36,3 +36,11 @@ def test_precommit_lock_hook_is_uv() -> None:
     assert "uv lock --check" in PRECOMMIT
     assert "poetry check --lock" not in PRECOMMIT
     assert "poetry run" not in PRECOMMIT
+
+
+def test_build_system_is_not_poetry() -> None:
+    """Backend regression guard: the 2026-07-22 hatchling cutover removed the
+    last Poetry artifact from the toolchain; it must never come back."""
+    build = PYPROJECT["build-system"]
+    assert build["build-backend"] == "hatchling.build"
+    assert all("poetry" not in req for req in build["requires"])

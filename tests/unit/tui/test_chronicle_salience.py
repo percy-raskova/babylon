@@ -72,7 +72,16 @@ class TestPortedPerTypeSeverityPins:
     legacy_bridge`` already prove one example per tier plus the aggregate
     14/20/13 counts, but a count-only check cannot catch two types swapping
     tiers — this class pins the exact named types the legacy suite did, so
-    that regression class is caught here too. See
+    that regression class is caught here too.
+
+    v1-cascade merge note: five of the ported pins moved tiers when T1.1's
+    derived taxonomy (``babylon.models.event_severity``, kind x
+    terminal_proximity) superseded the legacy hand map this port copied from —
+    EXCESSIVE_FORCE / ORGANIZATIONAL_FRACTURE down to informational
+    (intra-level crossings), FASCIST_RECRUITMENT / RED_SETTLER_TRAP_DETECTED /
+    PATTERN_SHIFT up to critical (terminal-adjacent crossing + patterns
+    inheriting terminal bases). The pins below assert the DERIVED tiers;
+    ``DRIFT_TABLE`` in that module carries the per-type reconciliation. See
     ``specs/24-archive/test-port-ledger-wo52b.md`` for the full disposition
     (including the one deliberate divergence this class does NOT port: the
     legacy suite's unknown-type default was "informational" — this module's
@@ -90,6 +99,9 @@ class TestPortedPerTypeSeverityPins:
             EventType.UPRISING,
             EventType.ENDGAME_REACHED,
             EventType.RED_BROWN_COUP,
+            EventType.FASCIST_RECRUITMENT,
+            EventType.RED_SETTLER_TRAP_DETECTED,
+            EventType.PATTERN_SHIFT,
         ],
     )
     def test_named_critical_types_classify_critical(self, event_type: EventType) -> None:
@@ -101,11 +113,6 @@ class TestPortedPerTypeSeverityPins:
         "event_type",
         [
             EventType.STATE_REPRESSION,
-            EventType.RED_SETTLER_TRAP_DETECTED,
-            EventType.EXCESSIVE_FORCE,
-            EventType.FASCIST_RECRUITMENT,
-            EventType.ORGANIZATIONAL_FRACTURE,
-            EventType.PATTERN_SHIFT,
         ],
     )
     def test_named_warning_types_classify_warning(self, event_type: EventType) -> None:
@@ -119,6 +126,8 @@ class TestPortedPerTypeSeverityPins:
             EventType.SURPLUS_EXTRACTION,
             EventType.IMPERIAL_SUBSIDY,
             EventType.CONSCIOUSNESS_TRANSMISSION,
+            EventType.EXCESSIVE_FORCE,
+            EventType.ORGANIZATIONAL_FRACTURE,
         ],
     )
     def test_named_informational_types_classify_informational(self, event_type: EventType) -> None:

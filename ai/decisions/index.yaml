@@ -1,5 +1,5 @@
 meta:
-  version: 1.56.0
+  version: 1.57.0
   updated: '2026-07-22'
   description: Architecture Decision Records Index
   format: See individual ADR files in this directory
@@ -15,6 +15,11 @@ meta:
   # 2026-07-22 at charter (ADR127) — Vol II's 120-129 and T1.1/T1.2's
   # 130-139 blocks dissolved at their merges; next mainline free >= 140.
 decisions:
+  ADR130_p25_u4_organization_component_port:
+    title: 'P25 U4 — OrganizationComponent carried task discharged: shim + lazy PEP-562 loader + 274-line suite DELETED; capacity contract re-pinned on the Organization entity (defaults/bounds/immutability/JSON + graph round-trip incl. the from_graph gotcha); probability-bounds discovery-walk test simplified to an unconditional warnings-as-errors pin. Gates: 1253 tests green, mypy, vocabulary, qa:regression byte-identical.'
+    status: accepted
+    date: '2026-07-22'
+    file: ADR130_p25_u4_organization_component_port.yaml
   ADR129_p25_u3_political_form_opposition:
     title: 'P25 U3 — political_form joins the opposition catalog (19th binding): self-organization ⇄ representation, shadow-first (ADR127 launch ruling; declared promotion ceremony at U10); measure reads new GraphInputs.political_labor_share (None → honest (0,0) absence in every org-less scenario; producer arrives U5); couplings deferred to their lighting units (U8/U9) — the coupling graph is a claim about the code and their operational sides do not exist yet; qa:regression byte-identical 6/6 proved as the unit gate, registry pins 18→19.'
     status: accepted

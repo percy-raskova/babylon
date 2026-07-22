@@ -611,13 +611,14 @@ class AttritionDefaults:
 
 @dataclass(frozen=True)
 class OrganizationDefaults:
-    """OrganizationComponent and Organization entity default values.
+    """Organization entity default values.
 
-    Source: OrganizationComponent model + Feature 031 Organization entities.
+    Source: Organization entity hierarchy (Feature 031; capacity contract
+    ported from the retired OrganizationComponent shim by P25 U4/ADR130).
     Represents organizational capacity, consciousness, and structure.
     """
 
-    # Legacy OrganizationComponent defaults
+    # Capacity defaults (ex-OrganizationComponent contract)
     DEFAULT_COHESION: float = 0.1  # Low cohesion
     DEFAULT_CADRE: float = 0.0  # No cadre leadership
 
@@ -1277,7 +1278,7 @@ class Thresholds:
             GlobalEconomy: Dynamic Balance super-wage and pool values
             Precarity: PrecarityState model test values
             Vitality: VitalityComponent population and subsistence values
-            Organization: OrganizationComponent cohesion and cadre values
+            Organization: capacity (cohesion/cadre) defaults
             Spatial: SpatialComponent mobility values
             Agitation: George Jackson model agitation values [0, inf)
             Event: Event model test values (ticks, deltas, amounts)

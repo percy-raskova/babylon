@@ -1,8 +1,8 @@
 {
   "scenario": "imperial_circuit",
   "description": "4-node default scenario",
-  "generated_at": "2026-07-22T21:06:55+00:00",
-  "defines_hash": "3d84a7353ef821a6",
+  "generated_at": "2026-07-22T21:14:00+00:00",
+  "defines_hash": "6977df4aecf133e8",
   "max_ticks": 52,
   "checkpoints": [
     {

@@ -1,8 +1,8 @@
 {
   "scenario": "fascist_bifurcation",
   "description": "Consciousness routing to national identity",
-  "generated_at": "2026-07-22T21:06:56+00:00",
-  "defines_hash": "9225e9755ab7ad62",
+  "generated_at": "2026-07-22T21:14:00+00:00",
+  "defines_hash": "0e72501cd154da1b",
   "max_ticks": 52,
   "checkpoints": [
     {

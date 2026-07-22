@@ -71,6 +71,10 @@ ENGINE_HOT_PATH_LOGGING_BASELINE: frozenset[str] = frozenset(
         "engine/bifurcation_monitor.py",
         "engine/field_registry.py",
         "engine/headless_runner/bridge.py",
+        # Vol II U2 (v1-cascade merge): LODES OD-matrix hydration — one-shot
+        # data-loading plumbing beside runner.py, not per-tick hot path;
+        # logs through the same spine as its siblings above/below.
+        "engine/headless_runner/lodes_hydration.py",
         "engine/headless_runner/runner.py",
         "engine/headless_runner/storage_probe.py",
         "engine/hydration/reference.py",

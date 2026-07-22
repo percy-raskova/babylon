@@ -26,18 +26,20 @@ import pydantic
 import pytest
 
 from babylon.engine.scenarios.wayne_county import WayneCountyScenario
+from babylon.game.pacing import PacedTickDriver
 from babylon.game.tutorial import (
     _MAX_SCRIPT_STEPS,
     WAYNE_OPENING_ARC,
     CompletionPredicateAdapter,
     EventAcked,
     OnPage,
+    PausePending,
     TickAtLeast,
     TutorialScript,
     TutorialStep,
     VerbIssued,
 )
-from babylon.tui.app import ArchiveApp, BriefingScreen
+from babylon.tui.app import ArchiveApp, BriefingScreen, PacedDriverHandle
 from babylon.tui.campaign_menu import LobbyScreen
 
 pytestmark = [pytest.mark.unit]
@@ -118,6 +120,7 @@ class TestTutorialStepModel:
         for predicate in (
             OnPage(subject="county/26163"),
             TickAtLeast(tick=1),
+            PausePending(),
             EventAcked(),
             VerbIssued(verb="advance_tick"),
         ):
@@ -155,6 +158,7 @@ class TestCompletionPredicateAdapter:
         for predicate in (
             OnPage(subject="county/26163"),
             TickAtLeast(tick=52),
+            PausePending(),
             EventAcked(),
             VerbIssued(verb="run_until_paused"),
         ):
@@ -275,6 +279,39 @@ class TestWayneOpeningArcIntegrity:
             if step.anchor.startswith(("page:", "palette:")):
                 _, subject = step.anchor.split(":", 1)
                 assert "/" in subject, f"{step.id}: {subject!r} is not a kind/id subject"
+
+    def test_run_until_autopause_verifies_the_stop_not_just_the_dispatch(self) -> None:
+        """Reviewer finding (T6 U1 fix pass): a step whose ``then`` advertises
+        the paced driver STOPPING must carry a completion predicate that
+        checks the stop, not merely that the keypress dispatched."""
+        step = next(s for s in WAYNE_OPENING_ARC.steps if s.id == "run_until_autopause")
+        assert step.completion == PausePending()
+
+    def test_pause_pending_predicate_is_grounded_in_the_live_pacing_seam(self) -> None:
+        """``PausePending`` is not fiction: the two primitives its own
+        docstring names (``awaiting_ack``/``pending_pause``) are real,
+        live attributes on both the concrete driver and the structural
+        seam ``babylon.tui`` crosses with it — never an invented surface.
+        """
+        assert hasattr(PacedTickDriver, "awaiting_ack")
+        assert hasattr(PacedTickDriver, "pending_pause")
+        assert hasattr(PacedDriverHandle, "awaiting_ack")
+
+    def test_begin_the_operation_verifies_the_outcome_not_just_the_dispatch(self) -> None:
+        """Reviewer finding (T6 U1 fix pass): the dossier-reveal OUTCOME is
+        queryable here (unlike ``boot_into_lobby``, pre-campaign), so this
+        step is made self-contained rather than relying on the next
+        step's ``OnPage`` to cover it after the fact."""
+        step = next(s for s in WAYNE_OPENING_ARC.steps if s.id == "begin_the_operation")
+        assert step.completion == OnPage(subject="county/26163")
+
+    def test_boot_into_lobby_completion_is_the_documented_honest_floor(self) -> None:
+        """No page/tick outcome predicate is queryable pre-campaign, so
+        ``VerbIssued`` (dispatch-only) is the deliberate, documented gap —
+        never silently upgraded without also removing the honest-gap
+        comment in the authored script."""
+        step = next(s for s in WAYNE_OPENING_ARC.steps if s.id == "boot_into_lobby")
+        assert step.completion == VerbIssued(verb="new_campaign")
 
     def test_arc_covers_the_advertised_core_loop_beats(self) -> None:
         """The 9 authored beats span mint -> briefing -> dossier -> tick ->

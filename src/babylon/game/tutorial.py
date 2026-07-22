@@ -23,16 +23,33 @@ Completion predicates are DATA, never callables (the ruling: "no prose
 duplication anywhere, ever" generalizes to "no hidden behavior anywhere
 either" — a lambda could not serialize into the overlay/docs the way a
 Pydantic model does). The closed vocabulary below is deliberately small —
-exactly the four kinds an opening-arc teaching script needs:
+exactly the five kinds an opening-arc teaching script needs:
 
 * :class:`OnPage` — the player is viewing a named dossier subject.
 * :class:`TickAtLeast` — the campaign has resolved at least a given tick.
+* :class:`PausePending` — an autopause has become pending — the paced
+  driver actually STOPPED, not merely that a run was requested. The
+  load-bearing symmetric counterpart to :class:`EventAcked` below,
+  grounded on the live :attr:`~babylon.game.pacing.PacedTickDriver.
+  awaiting_ack`/:attr:`~babylon.game.pacing.PacedTickDriver.
+  pending_pause` state (the same primitives
+  :class:`~babylon.tui.app.PacedDriverHandle` already crosses the
+  tui/game seam with). Added in this unit's fix pass: a step whose
+  ``then`` advertises "the driver ... stops" must be verified by a
+  predicate that actually checks the stop — :class:`VerbIssued` alone
+  cannot distinguish "ran and stopped as designed" from "ran and kept
+  going".
 * :class:`EventAcked` — a pending autopause has been acknowledged.
 * :class:`VerbIssued` — a named verb/binding action has been issued (this
   covers BOTH a TUI keybinding's action name — ``"advance_tick"``,
   ``"run_until_paused"`` — and, in a future script, an Article-V player
   verb string; the ruling's own anchor phrasing, "the page/binding/verb it
-  exercises", already treats bindings and verbs as one family).
+  exercises", already treats bindings and verbs as one family). This is
+  the HONEST FLOOR only where no outcome-shaped predicate is queryable
+  yet (e.g. ``boot_into_lobby`` below, pre-campaign — there is no page or
+  tick to read FROM yet); it proves dispatch, never the advertised
+  outcome, and must not stand in for an outcome predicate where one is
+  available (the fix pass's ``begin_the_operation`` correction).
 
 :data:`CompletionPredicateAdapter` validates against exactly this closed set
 — an unrecognized ``kind`` raises :class:`pydantic.ValidationError` loudly
@@ -95,6 +112,7 @@ from babylon.engine.scenarios.wayne_county import WayneCountyScenario
 __all__ = [
     "EventAcked",
     "OnPage",
+    "PausePending",
     "TickAtLeast",
     "VerbIssued",
     "CompletionPredicate",
@@ -135,6 +153,30 @@ class TickAtLeast(BaseModel):
     tick: int = Field(ge=0)
 
 
+class PausePending(BaseModel):
+    """Then: the paced driver has actually STOPPED at a pending autopause.
+
+    Grounds on :attr:`~babylon.game.pacing.PacedTickDriver.awaiting_ack`
+    being ``True`` (equivalently, :attr:`~babylon.game.pacing.
+    PacedTickDriver.pending_pause` being non-``None``) — the same two
+    primitives :class:`~babylon.tui.app.PacedDriverHandle` already
+    exposes across the tui/game structural seam, so a later executor unit
+    can check this predicate without importing ``babylon.game.pacing``
+    itself. Deliberately unconditional (no ``tick`` filter), mirroring
+    :class:`EventAcked`'s own YAGNI reasoning: the opening-arc script only
+    ever teaches ONE run-until-autopause beat.
+
+    Reviewer finding (T6 U1 fix pass): ``VerbIssued(verb="run_until_paused")``
+    proves only that the keypress dispatched, never that the driver
+    actually stopped — a step whose ``then`` advertises the STOP behavior
+    needs a predicate that checks the stop, not the dispatch.
+    """
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    kind: Literal["pause_pending"] = "pause_pending"
+
+
 class EventAcked(BaseModel):
     """Then: the pending autopause has been acknowledged.
 
@@ -168,16 +210,16 @@ class VerbIssued(BaseModel):
 
 
 CompletionPredicate = Annotated[
-    OnPage | TickAtLeast | EventAcked | VerbIssued,
+    OnPage | TickAtLeast | PausePending | EventAcked | VerbIssued,
     Field(discriminator="kind"),
 ]
 """The closed completion-predicate vocabulary (module docstring). Every
 :class:`TutorialStep` carries exactly one — DATA, never a callable, so the
 same script serializes for the overlay, the Pilot executor, and the docs."""
 
-CompletionPredicateAdapter: TypeAdapter[OnPage | TickAtLeast | EventAcked | VerbIssued] = (
-    TypeAdapter(CompletionPredicate)
-)
+CompletionPredicateAdapter: TypeAdapter[
+    OnPage | TickAtLeast | PausePending | EventAcked | VerbIssued
+] = TypeAdapter(CompletionPredicate)
 """Validates a raw ``{"kind": ..., ...}`` payload against the closed set
 above. An unrecognized ``kind`` (or one missing it) raises
 :class:`pydantic.ValidationError` loudly (Constitution III.11) — there is
@@ -288,6 +330,16 @@ WAYNE_OPENING_ARC: Final[TutorialScript] = TutorialScript(
             when="the player presses 'n' to mint a new campaign",
             then="a freshly minted campaign row appears in the lobby, ready to be loaded",
             anchor="binding:LobbyScreen:n",
+            # Honest gap (reviewer finding, T6 U1 fix pass): no page/tick
+            # outcome predicate is queryable pre-campaign — there is no
+            # campaign yet to read a page or a tick FROM — so VerbIssued
+            # is the honest floor here, not a shortcut. This proves ONLY
+            # that the keypress dispatched; the advertised "row appears"
+            # outcome is left unverified by this step. A future
+            # rendered-text predicate (module docstring's OBSERVATION on
+            # the closed vocabulary) is the eventual fix; until then the
+            # executor must not over-certify this step's `then` from a
+            # green run of this predicate alone.
             completion=VerbIssued(verb="new_campaign"),
         ),
         TutorialStep(
@@ -296,7 +348,12 @@ WAYNE_OPENING_ARC: Final[TutorialScript] = TutorialScript(
             when="the player presses Enter to begin the operation",
             then="the campaign shell reveals Wayne County's own home dossier",
             anchor="binding:BriefingScreen:enter",
-            completion=VerbIssued(verb="begin"),
+            # Verifies the advertised OUTCOME (the dossier reveal), not
+            # merely the keypress dispatch — unlike boot_into_lobby above,
+            # an outcome predicate IS queryable here (reviewer finding,
+            # T6 U1 fix pass): self-contained rather than relying on the
+            # next step's OnPage to cover it after the fact.
+            completion=OnPage(subject="county/26163"),
         ),
         TutorialStep(
             id="read_the_county_dossier",
@@ -326,7 +383,13 @@ WAYNE_OPENING_ARC: Final[TutorialScript] = TutorialScript(
                 "instant a critical event or the endgame pattern fires"
             ),
             anchor="binding:ArchiveApp:r",
-            completion=VerbIssued(verb="run_until_paused"),
+            # Verifies the advertised STOP itself (reviewer finding, T6 U1
+            # fix pass) — VerbIssued would prove only that the keypress
+            # dispatched, not that the driver actually stopped, which is
+            # the whole point of this Then. See PausePending's own
+            # docstring for the grounding (PacedTickDriver.awaiting_ack /
+            # .pending_pause).
+            completion=PausePending(),
         ),
         TutorialStep(
             id="acknowledge_the_pause",

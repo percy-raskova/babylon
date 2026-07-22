@@ -13,10 +13,12 @@ import pytest
 
 from babylon.projection.view_models import (
     CountyView,
+    EconomyView,
     IndustryView,
     NationalView,
     SocialClassView,
     hydrate_county,
+    hydrate_economy,
     hydrate_industry,
     hydrate_national,
     hydrate_social_class,
@@ -128,6 +130,69 @@ def usa_national_view_with_absences() -> NationalView:
             "population": 331000000,
             "median_wage": 22.0,
             "imperial_rent_pool": 100.0,
+        }
+    )
+
+
+@pytest.fixture
+def usa_economy_view() -> EconomyView:
+    """A fully-populated ``EconomyView`` (T3 U2 spine-C economy dossier).
+
+    ``energy_beta_j`` is the ONE field that is never present, even here —
+    genuinely absent tree-wide by design (see ``EconomyView``'s docstring).
+    """
+    return hydrate_economy(
+        {
+            "kind": "economy",
+            "economy_id": "USA",
+            "verified_tick": 500,
+            "wage_balance": 0.18,
+            "labor_aristocracy_verdict": True,
+            "class_phi_readings": [
+                {
+                    "entity_id": "C001",
+                    "w_paid": 120.0,
+                    "v_produced": 100.0,
+                    "phi_absolute": 20.0,
+                    "phi_relative": 0.2,
+                    "labor_aristocracy_ratio": 1.2,
+                    "is_labor_aristocracy": True,
+                }
+            ],
+            "phi_unequal_exchange": 12.0,
+            "phi_reproduction": 8.0,
+            "phi_domestic": 5.0,
+            "phi_iii_report": 2.0,
+            "phi_decomposition_total": 25.0,
+            "surplus_produced": 1500.0,
+            "profit_of_enterprise": 600.0,
+            "interest_burden": 150.0,
+            "ground_rent": 450.0,
+            "taxes_on_surplus": 300.0,
+            "rentier_share": 0.3,
+            "financialization_share": 0.1,
+            "total_consumption": 900.0,
+            "total_biocapacity": 1000.0,
+            "overshoot_ratio": 0.9,
+            "biocapacity_ceiling": 1200.0,
+        }
+    )
+
+
+@pytest.fixture
+def usa_economy_view_with_absences() -> EconomyView:
+    """The same economy with only the Fundamental Theorem verdict attributed.
+
+    Only ``wage_balance``/``labor_aristocracy_verdict`` are present; every
+    other optional field hydrates to ``None``.
+    """
+    return hydrate_economy(
+        {
+            "kind": "economy",
+            "economy_id": "USA",
+            "verified_tick": 500,
+            "wage_balance": 0.18,
+            "labor_aristocracy_verdict": True,
         }
     )
 

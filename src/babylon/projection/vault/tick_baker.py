@@ -16,6 +16,7 @@ from typing import TYPE_CHECKING, Any
 from babylon.models.enums.topology import NodeType
 from babylon.projection.community import project_community
 from babylon.projection.county import project_county
+from babylon.projection.economy import project_economy
 from babylon.projection.industry import project_industry
 from babylon.projection.institution import project_institution
 from babylon.projection.national import project_national
@@ -25,6 +26,7 @@ from babylon.projection.sovereign import project_sovereign
 from babylon.projection.state import project_state
 from babylon.projection.vault.render import render_county, render_sovereign
 from babylon.projection.vault.render_community import render_community
+from babylon.projection.vault.render_economy import render_economy
 from babylon.projection.vault.render_industry import render_industry
 from babylon.projection.vault.render_institution import render_institution
 from babylon.projection.vault.render_national import render_national
@@ -39,6 +41,9 @@ __all__ = ["ArchiveTickBaker", "CountyTickBaker"]
 
 #: The one national dossier id (NATIONWIDE canonical scale, Amendment R/S).
 _NATIONAL_ID = "USA"
+
+#: The one economy dossier id (T3 spine-C singleton, mirrors _NATIONAL_ID).
+_ECONOMY_ID = "USA"
 
 
 def _node_ids(graph: Any, node_type: NodeType) -> list[str]:
@@ -144,6 +149,8 @@ class ArchiveTickBaker:
             pages[f"state/{state_fips}.md"] = render_state(state, verified_tick=tick)
         national = project_national(_NATIONAL_ID, graph=graph, world=world, tick=tick)
         pages[f"national/{_NATIONAL_ID}.md"] = render_national(national, verified_tick=tick)
+        economy = project_economy(_ECONOMY_ID, graph=graph, world=world, tick=tick)
+        pages[f"economy/{_ECONOMY_ID}.md"] = render_economy(economy, verified_tick=tick)
         for org_id in _node_ids(graph, NodeType.ORGANIZATION):
             org = project_organization(org_id, graph=graph, world=world, tick=tick)
             pages[f"organization/{org_id}.md"] = render_organization(org, verified_tick=tick)

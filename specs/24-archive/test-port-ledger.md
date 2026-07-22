@@ -39,7 +39,8 @@ these are the cutover blockers enumerated in the LOUD list.
 | RE-GUARDED (new) | 3 |
 | CARRIED — P3 (new) | 8 |
 | RETIRED (new) | 21 |
-| GAP — uncovered, unowned (new) | 4 |
+| REWRITTEN (new — T3 U2 closure) | 2 |
+| GAP — uncovered, unowned (new) | 2 |
 | **Total** | **63** |
 
 ## Ledger
@@ -188,8 +189,8 @@ judged legacy-web-only. Branch scanned: `feature/archive-p2-p4 @ 5474c44e`
 | `TestBridgeEconomicsOverridesWiresCirculationAndFinancialServices` | `_bridge_economics_overrides` wires FRED circulation/financial services | web-bridge-local DUPLICATE of the headless-runner wiring (`domain/economics/factory.py`); Archive runs the engine via the runner; durable behavior covered by `tests/unit/economics/test_create_financial_services.py` + `tests/integration/test_circulation_one_tick.py` | RETIRED |
 | `TestBridgeEconomicsOverridesWiresVol1ReserveArmyServices` | `_bridge_economics_overrides` wires Vol I reserve-army services | same — web duplicate of the runner's `create_vol1_services`; durable behavior covered by `tests/integration/test_volume_i_integration.py` | RETIRED |
 | `TestGroupCDDocstringsHonest` | web/game/engine_bridge.py docstrings say "CORRECTED 2026-07-18", not "both gating services are unwired" | docstring-accuracy meta-test on web-bridge source that dies at cutover; pins no runtime behavior | RETIRED |
-| `TestEconomyDashboardFundamentalTheorem` | graph-wide Wc−Vc imperial-rent gap + per-region population-weighted per-capita breakdown | **NO projection module computes this** (county `imperial_rent_phi`=`tick_phi_hour` is different math); **no WO owns it** — the Fundamental Theorem is THE core game theorem | GAP (LOUD) |
-| `TestEconomyDashboardChipContract` | economy dashboard emits an exact key set of aggregate quantities | the aggregates (wage_flow_total/tribute_flow_total/rent_extracted/wealth_by_class_role/county_flow/imperial_rent_gap) are **not projected anywhere**; no WO | GAP (LOUD) |
+| `TestEconomyDashboardFundamentalTheorem` | graph-wide Wc−Vc imperial-rent gap + per-region population-weighted per-capita breakdown | the T3 spine-C economy dossier reads the SAME verdict the engine already adjudicates (`opposition_states["wage"].balance`, never a parallel Φ) + per-class Φ readings off the `fundamental_theorem` graph stash — `babylon.projection.economy.project_economy`, `tests/unit/projection/test_economy.py::TestEconomyDashboardFundamentalTheorem` | REWRITTEN (T3 U2) |
+| `TestEconomyDashboardChipContract` | economy dashboard emits an exact key set of aggregate quantities | the chip key-SET itself was web-shape and retires; the underlying quantities (Volume III surplus split s=p+i+r+t + the metabolic matter-book) are now projected, extensive RATIO-OF-SUMS — `babylon.projection.economy.project_economy`, `tests/unit/projection/test_economy.py::TestEconomyDashboardChipContract` | REWRITTEN (T3 U2) |
 | `TestGetFieldState` | dialectical field-stack projection: contradiction_fields + field_derivatives (laplacian/df_dt) honest-omitted, id-sorted, TENANCY-anchored edges, principal_field/dialectical_regime | engine-produced + engine-tested, but **no projection read-model** (grep-confirmed zero hits in `src/babylon/projection/`) and **no P2–P4 WO** names the Weather Layer | GAP (LOUD) |
 | `TestBalkanizationMapFields` | balkanization block: faction enumeration + per-territory contested/dominant_faction from INFLUENCES reads | single sovereign IS covered (`project_sovereign`/county `sovereign_id`); **faction enumeration + contested-territory derivation are not projected** (no `FactionView`, no INFLUENCES read); no WO | GAP (LOUD) |
 
@@ -198,17 +199,22 @@ judged legacy-web-only. Branch scanned: `feature/archive-p2-p4 @ 5474c44e`
 Engine/projection behavior that (a) no landed test covers, (b) no in-flight WO
 clearly owns. These block the WO-52 cutover gate:
 
-1. **`TestEconomyDashboardFundamentalTheorem` → graph-wide Wc−Vc imperial-rent gap
-   + per-region population-weighted per-capita breakdown.** THE core theorem
-   (`W_c > V_c`). No projection module computes `value_produced`/`rent_extracted`/
-   `wage_flow_total`/`imperial_rent_gap[_by_region]`; the per-county `tick_phi_hour`
-   (rows 35) is Leontief Φ, a different quantity. **Owner needed: NEW economy-dossier
-   projection WO** (also reconciles the row-35 scope note above).
-2. **`TestEconomyDashboardChipContract` → economy aggregate quantities.** The
-   dashboard's `wealth_by_class_role`/`county_flow`/`rent_extracted`/
-   `tribute_flow_total`/`current_super_wage_rate` are projected nowhere. Same
-   owner as #1 (the chip key-SET contract itself is web-shape and can retire; the
-   quantities are the gap).
+1. **CLOSED (T3 U2).** ~~`TestEconomyDashboardFundamentalTheorem` → graph-wide
+   Wc−Vc imperial-rent gap + per-region population-weighted per-capita
+   breakdown.~~ Closed by `babylon.projection.economy.project_economy` — the
+   verdict reads `opposition_states["wage"].balance` verbatim (never a
+   parallel Φ) plus the `fundamental_theorem` graph stash's per-class Φ
+   readings. Row 35's `tick_phi_hour` remains a distinct quantity (per-county
+   Leontief Φ, not the Fundamental Theorem) — the reconciling note that scope
+   boundary still stands. See row 191 above.
+2. **CLOSED (T3 U2).** ~~`TestEconomyDashboardChipContract` → economy
+   aggregate quantities.~~ The chip key-SET contract itself was web-shape and
+   retires with the web client; the underlying aggregates are now the
+   economy dossier's Volume III surplus split (`s = p + i + r + t`, extensive
+   ratio-of-sums) + metabolic matter-book (`overshoot_ratio`,
+   `biocapacity_ceiling`) — `wealth_by_class_role`/`county_flow` specifically
+   have no successor (no `FactionView`/per-role rollup exists; not this
+   unit's scope). See row 192 above.
 3. **`TestGetFieldState` → dialectical field-stack / "Weather Layer" projection.**
    `contradiction_fields`, `field_derivatives` (laplacian/df_dt), `principal_field`,
    `dialectical_regime`, TENANCY-anchored field edges — engine-produced and

@@ -71,6 +71,7 @@ class TestArchiveTickBaker:
             f"county/{WAYNE}.md",
             "state/26.md",
             "national/USA.md",
+            "economy/USA.md",
             "organization/ORG1.md",
             "social_class/C001.md",
             "community/settler.md",

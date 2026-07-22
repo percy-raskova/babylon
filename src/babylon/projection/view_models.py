@@ -837,6 +837,167 @@ class SocialClassView(BaseModel):
     county_class_composition: ClassComposition | None = None
 
 
+class ClassPhiReadingView(BaseModel):
+    """One class/county's Fundamental Theorem reading (Vol I U2).
+
+    Projection-side mirror of
+    :class:`~babylon.domain.dialectics.instances.value_form.ClassPhiReading`
+    — the projection layer declares its own wire shape rather than importing
+    the domain model (WO-22's no-engine-no-domain-import discipline, the
+    same choice :class:`DepartmentComposition` makes for
+    ``DepartmentMapper.DepartmentAllocation``). Hydrated verbatim from the
+    ``fundamental_theorem`` graph-attribute dump
+    (``ContradictionSystem._stash_fundamental_theorem``), never recomputed.
+
+    :param entity_id: The class/county graph node id this reading is for.
+    :param w_paid: W_c — total wages paid this tick.
+    :param v_produced: V_c — productivity value captured this tick.
+    :param phi_absolute: Phi = W_c − V_c in dollars. Always defined.
+    :param phi_relative: ``(W_c − V_c)/V_c``, or ``None`` when ``v_produced
+        <= 0`` (a class that produced nothing has no defined ratio).
+    :param labor_aristocracy_ratio: ``W_c / V_c``, or ``None`` under the
+        same guard.
+    :param is_labor_aristocracy: ``W_c > V_c`` (strict), or ``None`` under
+        the same guard.
+    """
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    entity_id: str = Field(min_length=1)
+    w_paid: float
+    v_produced: float
+    phi_absolute: float
+    phi_relative: float | None = None
+    labor_aristocracy_ratio: float | None = None
+    is_labor_aristocracy: bool | None = None
+
+
+class EconomyView(BaseModel):
+    """The economy dossier — the singleton national Φ/surplus/matter read-model.
+
+    T3 spine-C prescription (``ai/_inbox/PROGRAM_v1_0_0_playable_archive.md``
+    §C): (1) the Fundamental Theorem verdict read off the SAME
+    ``opposition_states["wage"].balance`` the engine's own contradiction
+    registry adjudicates — never a parallel Φ; (2) the per-class/county Φ
+    readings the ``fundamental_theorem`` graph stash carries (Vol I U2);
+    (3) Φ's tri-decomposition (unequal exchange + reproduction + domestic,
+    excluding the report-only Φ_III term from the total); (4) the Volume
+    III surplus split ``s = p + i + r + t``, aggregated RATIO-OF-SUMS across
+    territories, never mean-of-ratios; (5) the metabolic "matter-book"
+    (overshoot ``O = C/B``, the monotone ceiling ``M̄``); (6) the energy
+    vertex β_J, an UNPOSITIONED honest absence (genuinely absent tree-wide —
+    no EROI/joule accounting anywhere in the engine). Money and matter are
+    never rendered as interconvertible — see
+    :func:`~babylon.projection.economy.project_economy` for the full
+    field-by-field producer ruling.
+
+    Extra keys are rejected (``extra="forbid"``): a payload carrying a field
+    this model does not declare is a shape mismatch to surface loudly, not
+    to swallow.
+
+    :param kind: The discriminator literal ``"economy"`` tagging this record
+        in :data:`ProjectionRecord`.
+    :param economy_id: The economy's identity (``"USA"`` today, matching
+        :attr:`NationalView.national_id`'s singleton convention) — not a
+        FIPS code.
+    :param verified_tick: The committed tick this dossier was projected from.
+    :param wage_balance: The ``wage`` opposition's signed Balance
+        ``(W_c − V_c)/(W_c + V_c)`` read verbatim off ``opposition_states``
+        — positive means the wage exceeds value produced (the imperial
+        bribe). ``None`` when the opposition registry is unwired or the
+        ``wage`` key is not registered this run.
+    :param labor_aristocracy_verdict: ``wage_balance > 0``, the Fundamental
+        Theorem verdict BY CONSTRUCTION (never recomputed from a parallel
+        feed). ``None`` under the same guard as :attr:`wage_balance`.
+    :param class_phi_readings: Every class/county's
+        :class:`ClassPhiReadingView`, sorted by ``entity_id`` for
+        deterministic ordering, or ``None`` when the ``fundamental_theorem``
+        graph attribute itself is absent (the opposition registry never
+        ran). An attributed-but-empty tuple means the registry ran but no
+        node carried both ``w_paid``/``v_produced`` this tick — a real,
+        different fact from "never computed".
+    :param phi_unequal_exchange: Emmanuel/Amin international transfer
+        (``(1 − γ_basket)·Consumption``), or ``None`` — genuinely absent
+        tree-wide: no engine producer publishes ``γ_basket`` or aggregate
+        consumption to the graph today.
+    :param phi_reproduction: Meillassoux externalized reproduction
+        (``max(0, P_g2 − wage)``), or ``None`` — genuinely absent tree-wide.
+    :param phi_domestic: Fortunati domestic shadow labor (``τ · L_unpaid``),
+        or ``None`` — genuinely absent tree-wide (unpaid/reproductive
+        labor-hours have no producer, even though national MELT τ is itself
+        live elsewhere).
+    :param phi_iii_report: The kernel's narrower invisible-fraction Φ_III
+        (report only, excluded from any total), or ``None`` — same absence.
+    :param phi_decomposition_total: The sum of :attr:`phi_unequal_exchange`
+        + :attr:`phi_reproduction` + :attr:`phi_domestic` (excluding
+        :attr:`phi_iii_report` by design — the domain model's own ``total``
+        computed-field rule), or ``None`` unless all three conservation
+        components are present.
+    :param surplus_produced: Σ ``tick_total_surplus`` (s) across territories
+        this tick, or ``None`` when no territory carries the attribute.
+    :param profit_of_enterprise: Σ ``tick_profit_of_enterprise`` (p) —
+        signed; may be negative in a debt spiral.
+    :param interest_burden: Σ ``tick_interest_burden`` (i).
+    :param ground_rent: Σ ``tick_ground_rent`` (r).
+    :param taxes_on_surplus: Σ ``tick_taxes_on_surplus`` (t).
+    :param rentier_share: The national ``Σr / Σs`` — a genuine RATIO OF
+        SUMS, never a mean of the per-territory ``tick_rentier_share``
+        readings (the intensive-aggregation error class). ``None`` when
+        Σs is not positive.
+    :param financialization_share: The national ``Σi / Σs``, same
+        ratio-of-sums discipline.
+    :param total_consumption: Σ ``consumption_needs`` nationwide (C, the
+        ``WorldState.total_consumption`` extensive sum), or ``None`` when
+        the world carries no territory.
+    :param total_biocapacity: Σ ``Territory.biocapacity`` nationwide (B),
+        or ``None`` under the same guard.
+    :param overshoot_ratio: ``C / B``, or ``None`` when B is not positive —
+        never the ``WorldState.overshoot_ratio`` computed-field's own
+        fabricated ``999.0`` sentinel (Constitution III.11 forbids a
+        substituted default standing in for absence).
+    :param biocapacity_ceiling: Σ ``Territory.max_biocapacity`` nationwide
+        (the monotone ceiling M̄), or ``None`` when the world carries no
+        territory.
+    :param energy_beta_j: The energy vertex β_J — always ``None``.
+        Genuinely absent tree-wide (verified: no EROI, fossil,
+        power-density, or joule accounting anywhere in the engine); an
+        UNPOSITIONED {absence} fence naming the energy-split prerequisite.
+        Never derived from the money-form quantities above — money and
+        matter are not interconvertible.
+    """
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    kind: Literal["economy"] = "economy"
+    economy_id: str = Field(min_length=1)
+    verified_tick: int = Field(ge=0)
+
+    wage_balance: Ideology | None = None
+    labor_aristocracy_verdict: bool | None = None
+    class_phi_readings: tuple[ClassPhiReadingView, ...] | None = None
+
+    phi_unequal_exchange: float | None = None
+    phi_reproduction: float | None = None
+    phi_domestic: float | None = None
+    phi_iii_report: float | None = None
+    phi_decomposition_total: float | None = None
+
+    surplus_produced: Currency | None = None
+    profit_of_enterprise: float | None = None
+    interest_burden: Currency | None = None
+    ground_rent: Currency | None = None
+    taxes_on_surplus: Currency | None = None
+    rentier_share: float | None = None
+    financialization_share: float | None = None
+
+    total_consumption: Currency | None = None
+    total_biocapacity: Currency | None = None
+    overshoot_ratio: float | None = Field(default=None, ge=0.0)
+    biocapacity_ceiling: Currency | None = None
+
+    energy_beta_j: float | None = None
+
+
 class CommunityOverlap(BaseModel):
     """One other community sharing at least one roster member with the queried one.
 
@@ -931,6 +1092,7 @@ class CommunityView(BaseModel):
 ProjectionRecord = Annotated[
     CountyView
     | CommunityView
+    | EconomyView
     | IndustryView
     | InstitutionView
     | KeyFigureView
@@ -952,6 +1114,7 @@ _KEY_FIGURE_ADAPTER: TypeAdapter[KeyFigureView] = TypeAdapter(KeyFigureView)
 _INDUSTRY_ADAPTER: TypeAdapter[IndustryView] = TypeAdapter(IndustryView)
 _SOCIAL_CLASS_ADAPTER: TypeAdapter[SocialClassView] = TypeAdapter(SocialClassView)
 _COMMUNITY_ADAPTER: TypeAdapter[CommunityView] = TypeAdapter(CommunityView)
+_ECONOMY_ADAPTER: TypeAdapter[EconomyView] = TypeAdapter(EconomyView)
 _RECORD_ADAPTER: TypeAdapter[CountyView | NationalView | OrganizationView | StateView] = (
     TypeAdapter(ProjectionRecord)
 )
@@ -967,6 +1130,18 @@ def hydrate_county(data: Mapping[str, Any]) -> CountyView:
     :raises pydantic.ValidationError: on a shape or constraint violation.
     """
     return _COUNTY_ADAPTER.validate_python(data)
+
+
+def hydrate_economy(data: Mapping[str, Any]) -> EconomyView:
+    """Validate an untyped mapping into an :class:`EconomyView`.
+
+    :param data: A mapping shaped like an ``EconomyView`` — a recorded
+        fixture, a JSON payload, or an assembled row dict. Missing optional
+        keys become ``None``; unknown keys are rejected.
+    :returns: The validated, frozen :class:`EconomyView`.
+    :raises pydantic.ValidationError: on a shape or constraint violation.
+    """
+    return _ECONOMY_ADAPTER.validate_python(data)
 
 
 def hydrate_state(data: Mapping[str, Any]) -> StateView:
@@ -1096,11 +1271,13 @@ def hydrate_record(
 
 __all__ = [
     "ClassComposition",
+    "ClassPhiReadingView",
     "CommunityOverlap",
     "CommunityView",
     "ConsciousnessSimplex",
     "CountyView",
     "DepartmentComposition",
+    "EconomyView",
     "FactionalComposition",
     "IndustryView",
     "InstitutionView",
@@ -1113,6 +1290,7 @@ __all__ = [
     "StateView",
     "hydrate_community",
     "hydrate_county",
+    "hydrate_economy",
     "hydrate_industry",
     "hydrate_institution",
     "hydrate_key_figure",

@@ -1283,6 +1283,13 @@ class ArchiveApp(App[None]):
         old ``Panel(title=...)`` used to carry, now CSS chrome (see
         :mod:`babylon.tui.app`'s own CSS comment) — so the two always
         repaint together, never one stale against the other.
+
+        Unit "post-tick-fanout" (shell-interconnect): called via
+        :meth:`_refresh_after_tick` on every ``t``/``r`` too, not only from
+        :meth:`action_toggle_pin` — closes issue #281 (a pinned subject's row
+        used to go stale across every tick). Still fixture-fed content-wise
+        until a live per-subject projector lands (see above); this fix is the
+        repaint wiring only.
         """
         rail = self.query_one("#watchlist-rail", Static)
         rail.update(render_watchlist(self.watchlist.pinned_ids, self._subject_views))
@@ -1428,6 +1435,53 @@ class ArchiveApp(App[None]):
         self.query_one("#status", Label).update(f"status: {subject}{marker}")
         self._refresh_tutorial_progress()
 
+    async def _refresh_after_tick(self, chronicle: Sequence[ChronicleEvent]) -> None:
+        """Bundle the six post-tick pane refreshes shared by
+        :meth:`action_advance_tick`/:meth:`action_run_until_paused` (Unit
+        "post-tick-fanout", shell-interconnect).
+
+        Both actions used to inline the same five-call sequence (known
+        entities, dashboard, action bar, chronicle, then the currently-shown
+        subject's dossier) after every committed tick/run-until-paused batch
+        — duplicated verbatim between them, with the right rail
+        (:meth:`_refresh_watchlist`, wired to :meth:`action_toggle_pin` at
+        Program 24 P6 but never to either tick path) left stale across every
+        ``t``/``r`` (issue #281). This extracts that shared sequence into one
+        place and adds the missing watchlist repaint as its sixth call,
+        slotted in alongside the OTHER rail refresh (:meth:`_refresh_chronicle`)
+        rather than tacked on at the end.
+
+        HONEST NOTE: this fixes the REPAINT only — the rail's CONTENT still
+        resolves against :attr:`_subject_views`, which stays fixture-fed until
+        a live per-subject projector lands (:meth:`_refresh_watchlist`'s own
+        docstring); a pinned subject outside that map already renders its own
+        named "no longer resolvable" row (Constitution III.11), so repainting
+        it more often introduces no dishonest data.
+
+        Call order (preserved exactly from both former inline sequences):
+        known entities -> dashboard -> action bar -> chronicle -> watchlist ->
+        the shown subject's dossier. Tutorial-progress re-polling stays
+        OUTSIDE this bundle — each caller still updates its own status line
+        first, then calls :meth:`_refresh_tutorial_progress` last, unchanged.
+
+        :param chronicle: this tick's (or run-until-paused batch's)
+            chronicle events, in order — threaded straight through to
+            :meth:`_refresh_chronicle`.
+        """
+        if self.campaign is not None:
+            self._refresh_known_entities(self.campaign)
+        self._refresh_dashboard()
+        self._refresh_action_bar()
+        self._refresh_chronicle(chronicle)
+        self._refresh_watchlist()
+        subject = self.nav.current
+        if subject is not None:
+            # reveal=False: refresh the currently-shown subject's dossier
+            # content in place — never yank a player parked on the
+            # Dashboard/Map/Topology pane back to the Wiki pane just
+            # because a tick advanced (``_navigate``'s own docstring).
+            await self._navigate(subject, record=False, reveal=False)
+
     async def action_jump_back(self) -> None:
         """``[`` (alias ``Ctrl-O``): walk back one jumplist step, if there is one.
 
@@ -1489,6 +1543,11 @@ class ArchiveApp(App[None]):
         Program 24 P5: also re-renders the action bar's verb plate via
         :meth:`_refresh_action_bar`, so its eligibility/affordability/preview
         columns reflect this instant's graph, not the tick this pane last painted.
+
+        Unit "post-tick-fanout" (shell-interconnect): the four refreshes above,
+        plus the dossier's own in-place repaint and (issue #281's fix) the
+        watchlist rail's, now live in one shared :meth:`_refresh_after_tick`
+        helper — see its own docstring for the exact call order preserved.
         """
         status = self.query_one("#status", Label)
         if self.campaign is None:
@@ -1510,17 +1569,7 @@ class ArchiveApp(App[None]):
             result: TickOutcome = self.driver.advance_once()
         else:
             result = self.campaign.advance_tick()
-        self._refresh_known_entities(self.campaign)
-        self._refresh_dashboard()
-        self._refresh_action_bar()
-        self._refresh_chronicle(result.chronicle)
-        subject = self.nav.current
-        if subject is not None:
-            # reveal=False: refresh the currently-shown subject's dossier
-            # content in place — never yank a player parked on the
-            # Dashboard/Map/Topology pane back to the Wiki pane just
-            # because a tick advanced (``_navigate``'s own docstring).
-            await self._navigate(subject, record=False, reveal=False)
+        await self._refresh_after_tick(result.chronicle)
         paused_marker = " [PAUSED]" if result.paused else ""
         status.update(f"status: tick {result.tick}{paused_marker}")
         self._refresh_tutorial_progress()
@@ -1556,6 +1605,11 @@ class ArchiveApp(App[None]):
 
         Program 24 P5: also re-renders the action bar's verb plate via
         :meth:`_refresh_action_bar`, same as ``t``.
+
+        Unit "post-tick-fanout" (shell-interconnect): shares
+        :meth:`action_advance_tick`'s own :meth:`_refresh_after_tick` bundle —
+        see that method's docstring for the exact call order preserved,
+        including the watchlist-rail fix (issue #281).
         """
         status = self.query_one("#status", Label)
         if self.driver is None:
@@ -1575,17 +1629,8 @@ class ArchiveApp(App[None]):
             return
         results = await asyncio.to_thread(self.driver.run_until_paused)
         last = results[-1]
-        if self.campaign is not None:
-            self._refresh_known_entities(self.campaign)
-        self._refresh_dashboard()
-        self._refresh_action_bar()
-        self._refresh_chronicle(tuple(event for result in results for event in result.chronicle))
-        subject = self.nav.current
-        if subject is not None:
-            # reveal=False: see action_advance_tick's own comment above —
-            # a background refresh must never clobber a deliberately
-            # non-wiki pane.
-            await self._navigate(subject, record=False, reveal=False)
+        chronicle = tuple(event for result in results for event in result.chronicle)
+        await self._refresh_after_tick(chronicle)
         if self.driver.locked:
             status.update(
                 f"status: ran to tick {last.tick} — campaign ended ({self.driver.lock_reason})"

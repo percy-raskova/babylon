@@ -51,7 +51,7 @@ class TestEveryTaxonomyKeyIsARealEventType:
     """Structural: ``event_type: EventType`` makes this a type-system guarantee."""
 
     def test_taxonomy_has_exactly_47_rows(self) -> None:
-        assert len(SEVERITY_TAXONOMY) == 47
+        assert len(SEVERITY_TAXONOMY) == 60  # day-one 47 + 13 P25 members (ADR128)
 
     def test_no_duplicate_event_type_across_rows(self) -> None:
         seen = {row.event_type for row in SEVERITY_TAXONOMY}
@@ -240,7 +240,7 @@ class TestSeverityByEventSpotChecks:
     """A handful of representative resolved tiers, cross-referenced against the design."""
 
     def test_severity_by_event_has_47_entries(self) -> None:
-        assert len(SEVERITY_BY_EVENT) == 47
+        assert len(SEVERITY_BY_EVENT) == 60  # day-one 47 + 13 P25 members (ADR128)
 
     def test_alarm_family_kind_is_flow_not_alarm(self) -> None:
         # Open owner question §9.1: FLOW (not ALARM) preserves current informational tier.
@@ -349,6 +349,23 @@ _EXPECTED_TIERS: dict[EventType, SeverityTier] = {
     EventType.CO_OPTIVE_BREAKDOWN: "critical",
     EventType.LEVEL_TRANSITION: "critical",
     EventType.PATTERN_SHIFT: "critical",
+    # --- P25 electoral machine (ADR128), derived tiers ---
+    # CROSSING TERMINAL_ADJACENT -> critical; PATTERN inherits BIFURCATION_THRESHOLD (critical).
+    EventType.ELECTIONS_SUSPENDED: "critical",
+    EventType.POPULAR_FRONT_CALLED: "critical",
+    # ACT/FLOW warning floors.
+    EventType.GOVERNMENT_FORMED: "warning",
+    EventType.POLICY_STRUCK: "warning",
+    EventType.POLICY_PREEMPTED: "warning",
+    EventType.CAPITAL_STRIKE: "warning",
+    EventType.LINE_STRUGGLE_SPLIT: "warning",
+    # ACT/FLOW informational floors; CROSSING INTRA_LEVEL -> informational.
+    EventType.ELECTION_HELD: "informational",
+    EventType.POLICY_ENACTED: "informational",
+    EventType.HOPE_SPIKE: "informational",
+    EventType.LEGITIMATION_REFRESH: "informational",
+    EventType.DELIVERY_GAP_CROSSED: "informational",
+    EventType.DISILLUSION_WINDOW_OPEN: "informational",
     # Warning (4, all ACT).
     EventType.STATE_REPRESSION: "warning",
     EventType.POGROM: "warning",

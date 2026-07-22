@@ -567,6 +567,90 @@ SEVERITY_TAXONOMY: Final[tuple[EventKindRow, ...]] = (
         terminal_proximity=TerminalProximity.NA,
         base_crossing=EventType.ENDGAME_REACHED,
     ),
+    # --- P25 electoral machine (ADR128): derived, never hand-tiered ---
+    EventKindRow(
+        event_type=EventType.ELECTION_HELD,
+        kind=EventKind.ACT,
+        terminal_proximity=TerminalProximity.NA,
+        salience_floor="informational",
+    ),
+    EventKindRow(
+        event_type=EventType.GOVERNMENT_FORMED,
+        kind=EventKind.ACT,
+        terminal_proximity=TerminalProximity.NA,
+        salience_floor="warning",
+    ),
+    EventKindRow(
+        event_type=EventType.POLICY_ENACTED,
+        kind=EventKind.ACT,
+        terminal_proximity=TerminalProximity.NA,
+        salience_floor="informational",
+    ),
+    EventKindRow(
+        event_type=EventType.POLICY_STRUCK,
+        kind=EventKind.ACT,
+        terminal_proximity=TerminalProximity.NA,
+        salience_floor="warning",
+    ),
+    EventKindRow(
+        event_type=EventType.POLICY_PREEMPTED,
+        kind=EventKind.ACT,
+        terminal_proximity=TerminalProximity.NA,
+        salience_floor="warning",
+    ),
+    # CAPITAL_STRIKE is a FLOW: the equalization operator's outflow is a register
+    # row (BoundaryFlowRegister discipline), not a chi change at a sited atom.
+    EventKindRow(
+        event_type=EventType.CAPITAL_STRIKE,
+        kind=EventKind.FLOW,
+        terminal_proximity=TerminalProximity.NA,
+        salience_floor="warning",
+    ),
+    # Betrayal/disillusion crossings are reversible within the current qualitative
+    # level (the window closes; patience can be re-earned) -> INTRA_LEVEL.
+    EventKindRow(
+        event_type=EventType.DELIVERY_GAP_CROSSED,
+        kind=EventKind.CROSSING,
+        terminal_proximity=TerminalProximity.INTRA_LEVEL,
+    ),
+    EventKindRow(
+        event_type=EventType.DISILLUSION_WINDOW_OPEN,
+        kind=EventKind.CROSSING,
+        terminal_proximity=TerminalProximity.INTRA_LEVEL,
+    ),
+    EventKindRow(
+        event_type=EventType.HOPE_SPIKE,
+        kind=EventKind.FLOW,
+        terminal_proximity=TerminalProximity.NA,
+        salience_floor="informational",
+    ),
+    EventKindRow(
+        event_type=EventType.LEGITIMATION_REFRESH,
+        kind=EventKind.FLOW,
+        terminal_proximity=TerminalProximity.NA,
+        salience_floor="informational",
+    ),
+    # Bonapartist clock suspension is regime->crisis entry — TERMINAL_ADJACENT by
+    # the TerminalProximity docstring's own definition; derives critical.
+    EventKindRow(
+        event_type=EventType.ELECTIONS_SUSPENDED,
+        kind=EventKind.CROSSING,
+        terminal_proximity=TerminalProximity.TERMINAL_ADJACENT,
+    ),
+    # POPULAR_FRONT_CALLED is a PATTERN over the fascist_consolidation axis —
+    # same family as RED_SETTLER_TRAP_DETECTED, inheriting BIFURCATION_THRESHOLD.
+    EventKindRow(
+        event_type=EventType.POPULAR_FRONT_CALLED,
+        kind=EventKind.PATTERN,
+        terminal_proximity=TerminalProximity.NA,
+        base_crossing=EventType.BIFURCATION_THRESHOLD,
+    ),
+    EventKindRow(
+        event_type=EventType.LINE_STRUGGLE_SPLIT,
+        kind=EventKind.ACT,
+        terminal_proximity=TerminalProximity.NA,
+        salience_floor="warning",
+    ),
 )
 
 
@@ -647,8 +731,8 @@ SEVERITY_BY_EVENT: Final[dict[EventType, SeverityTier]] = _build_severity_by_eve
     SEVERITY_TAXONOMY
 )
 """The generated ``EventType -> SeverityTier`` table — U2's single source of truth for both the
-web bridge and the Archive Chronicle. Covers exactly the 47 members :data:`SEVERITY_TAXONOMY`
-classifies; every other :class:`~babylon.models.enums.events.EventType` resolves through
+web bridge and the Archive Chronicle. Covers exactly the members :data:`SEVERITY_TAXONOMY` classifies (the day-one 47
+plus :data:`_POST_DAY_ONE_ADDITIONS`); every other :class:`~babylon.models.enums.events.EventType` resolves through
 :func:`resolve_severity`'s loud unclassified floor."""
 
 
@@ -746,11 +830,40 @@ _LEGACY_HAND_TIERS: Final[dict[EventType, SeverityTier]] = {
 input for :data:`DRIFT_TABLE`, never a runtime dependency. U2 deletes the live copies in
 ``web/game/engine_bridge.py`` and ``babylon.tui.chronicle_salience``."""
 
-if set(_LEGACY_HAND_TIERS) != {row.event_type for row in SEVERITY_TAXONOMY}:
+_POST_DAY_ONE_ADDITIONS: Final[frozenset[EventType]] = frozenset(
+    {
+        # P25 electoral machine (ADR128): classified at birth, no legacy hand tier exists.
+        EventType.ELECTION_HELD,
+        EventType.GOVERNMENT_FORMED,
+        EventType.POLICY_ENACTED,
+        EventType.POLICY_STRUCK,
+        EventType.POLICY_PREEMPTED,
+        EventType.CAPITAL_STRIKE,
+        EventType.DELIVERY_GAP_CROSSED,
+        EventType.HOPE_SPIKE,
+        EventType.DISILLUSION_WINDOW_OPEN,
+        EventType.LEGITIMATION_REFRESH,
+        EventType.ELECTIONS_SUSPENDED,
+        EventType.POPULAR_FRONT_CALLED,
+        EventType.LINE_STRUGGLE_SPLIT,
+    }
+)
+"""Taxonomy members added after the day-one 47 — each entry cites its ADR. An addition
+appears here AND in :data:`SEVERITY_TAXONOMY` (classified, derived) but never in
+:data:`_LEGACY_HAND_TIERS` (there is no hand tier to reconcile against)."""
+
+if set(_LEGACY_HAND_TIERS) | _POST_DAY_ONE_ADDITIONS != {
+    row.event_type for row in SEVERITY_TAXONOMY
+}:
     raise ValueError(
-        "SEVERITY_TAXONOMY and _LEGACY_HAND_TIERS must classify the exact same EventType set "
-        "on day one (later units may grow the taxonomy past the legacy 47; that requires "
-        "widening this check's scope, not silencing it)"
+        "SEVERITY_TAXONOMY must classify exactly the legacy 47 plus the declared "
+        "_POST_DAY_ONE_ADDITIONS — grow the taxonomy only alongside its additions "
+        "ledger (each entry citing its ADR), never silently"
+    )
+if set(_LEGACY_HAND_TIERS) & _POST_DAY_ONE_ADDITIONS:
+    raise ValueError(
+        "_POST_DAY_ONE_ADDITIONS may not overlap the legacy 47 — a legacy member has "
+        "a hand tier to reconcile and belongs in DRIFT_TABLE instead"
     )
 
 

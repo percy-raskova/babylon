@@ -65,6 +65,21 @@ from babylon.models.events.dispossession_payloads import (
     ReserveArmyPressureEvent,
     ValueTransferEvent,
 )
+from babylon.models.events.politics_payloads import (
+    CapitalStrikeEvent,
+    DeliveryGapCrossedEvent,
+    DisillusionWindowOpenEvent,
+    ElectionHeldEvent,
+    ElectionsSuspendedEvent,
+    GovernmentFormedEvent,
+    HopeSpikeEvent,
+    LegitimationRefreshEvent,
+    LineStruggleSplitEvent,
+    PolicyEnactedEvent,
+    PolicyPreemptedEvent,
+    PolicyStruckEvent,
+    PopularFrontCalledEvent,
+)
 from babylon.models.events.struggle_payloads import (
     FascistRevanchismEvent,
     PeripheralRevoltEvent,
@@ -131,4 +146,18 @@ __all__ = [
     "ReserveArmyPressureEvent",
     "DispossessionCascadeEvent",
     "EcologicalOvershootEvent",
+    # P25 electoral machine payloads (politics_payloads.py, ADR128)
+    "CapitalStrikeEvent",
+    "DeliveryGapCrossedEvent",
+    "DisillusionWindowOpenEvent",
+    "ElectionHeldEvent",
+    "ElectionsSuspendedEvent",
+    "GovernmentFormedEvent",
+    "HopeSpikeEvent",
+    "LegitimationRefreshEvent",
+    "LineStruggleSplitEvent",
+    "PolicyEnactedEvent",
+    "PolicyPreemptedEvent",
+    "PolicyStruckEvent",
+    "PopularFrontCalledEvent",
 ]

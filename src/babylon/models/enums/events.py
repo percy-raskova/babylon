@@ -168,6 +168,20 @@ class EventType(StrEnum):
     DOCTRINE_TRAP_SPRUNG = "doctrine_trap_sprung"  # org fell into a reachable ideological trap
     DOCTRINE_TRAP_ESCAPED = "doctrine_trap_escaped"  # Party Congress purge succeeded
     DOCTRINE_PURGE_FAILED = "doctrine_purge_failed"  # Party Congress purge attempt failed
+    # Program 25 The Political Superstructure (ADR128): the ambient electoral machine
+    ELECTION_HELD = "election_held"  # the ISA_POLITICAL clock fired (U10)
+    GOVERNMENT_FORMED = "government_formed"  # elected configuration perturbs FactionBalance (U10)
+    POLICY_ENACTED = "policy_enacted"  # LEGISLATE overlay survived the gauntlet (U9)
+    POLICY_STRUCK = "policy_struck"  # judicial strike-down (U9)
+    POLICY_PREEMPTED = "policy_preempted"  # higher-sovereign nullification (U9)
+    CAPITAL_STRIKE = "capital_strike"  # incidence past tolerance; equalization outflow (U9)
+    DELIVERY_GAP_CROSSED = "delivery_gap_crossed"  # betrayal integral crossed threshold (U9/U10)
+    HOPE_SPIKE = "hope_spike"  # H(c) jumped on a viable platform (U8)
+    DISILLUSION_WINDOW_OPEN = "disillusion_window_open"  # H collapsed; T-7 routes the boost (U10)
+    LEGITIMATION_REFRESH = "legitimation_refresh"  # election-day consent write (U10)
+    ELECTIONS_SUSPENDED = "elections_suspended"  # bonapartist clock suspension (U10)
+    POPULAR_FRONT_CALLED = "popular_front_called"  # conjuncture forced on every line (U12)
+    LINE_STRUGGLE_SPLIT = "line_struggle_split"  # congress line-change resolved as a split (U11)
 
 
 class GameOutcome(StrEnum):

@@ -132,7 +132,7 @@ async def _boot_into_campaign_shell(pilot: object, app: ArchiveApp) -> None:
 class TestConstructorValidation:
     def test_tutorial_progress_factory_without_tutorial_steps_raises(self) -> None:
         with pytest.raises(ValueError, match="tutorial_steps"):
-            ArchiveApp(tutorial_progress_factory=lambda _c, _d, _s: None)
+            ArchiveApp(tutorial_progress_factory=lambda _c, _d, _s, _p, _i: None)
 
     def test_tutorial_steps_alone_is_a_valid_inert_configuration(self) -> None:
         """The reverse pairing is NOT required to raise (unlike
@@ -180,7 +180,7 @@ class TestCompositionRootGating:
             campaign_menu=menu,
             campaign_loader=_FakeLoader(_campaign_for(campaign_id, tick=5)),
             tutorial_steps=_STEPS,
-            tutorial_progress_factory=lambda _c, _d, _s: None,
+            tutorial_progress_factory=lambda _c, _d, _s, _p, _i: None,
         )
         async with app.run_test() as pilot:
             await _boot_into_campaign_shell(pilot, app)
@@ -200,7 +200,7 @@ class TestCompositionRootGating:
             campaign_menu=menu,
             campaign_loader=_FakeLoader(_campaign_for(campaign_id, tick=0)),
             tutorial_steps=_STEPS,
-            tutorial_progress_factory=lambda _c, _d, _s: _StubProgress(),
+            tutorial_progress_factory=lambda _c, _d, _s, _p, _i: _StubProgress(),
         )
         async with app.run_test() as pilot:
             await _boot_into_campaign_shell(pilot, app)
@@ -219,6 +219,8 @@ class TestCompositionRootGating:
             booted: CampaignHandle,
             driver: PacedDriverHandle | None,
             _current_subject: Callable[[], str | None],
+            _current_pane: Callable[[], str | None],
+            _is_pinned: Callable[[str], bool],
         ) -> TutorialProgress | None:
             seen.append((booted, driver))
             return None

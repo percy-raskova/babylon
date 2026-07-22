@@ -31,7 +31,9 @@ from typing import Protocol, runtime_checkable
 from babylon.game.tutorial import (
     EventAcked,
     OnPage,
+    PaneShowing,
     PausePending,
+    PinnedInWatchlist,
     TickAtLeast,
     TutorialStep,
     VerbIssued,
@@ -62,7 +64,9 @@ class _PausedDriverSource(Protocol):
 class TutorialRuntimeProgress:
     """The live evaluator: closed dispatch over :data:`~babylon.game.
     tutorial.CompletionPredicate`, reading the campaign's tick, the paced
-    driver's ``awaiting_ack``, and the nav shell's current subject.
+    driver's ``awaiting_ack``, the nav shell's current subject, the hybrid
+    shell's current pane, and the watchlist's pinned subjects (the last two,
+    Program 24 P8, "the tutorial learns the shell").
 
     :param steps: the exact step sequence :class:`~babylon.tui.
         tutorial_overlay.TutorialOverlay` was ALSO constructed with — indices
@@ -75,6 +79,14 @@ class TutorialRuntimeProgress:
     :param current_subject: reads the nav shell's CURRENT subject at call
         time — a plain callable rather than a nav-shell import, so this
         module never needs to know :class:`~babylon.tui.nav.NavShell` exists.
+    :param current_pane: reads the hybrid shell's ``ContentSwitcher``
+        ``.current`` pane id at call time (Program 24 P8) — a plain callable
+        rather than a Textual import, mirroring :attr:`current_subject`'s own
+        seam-crossing idiom.
+    :param is_pinned: reads whether a given subject id currently holds a pin
+        on the watchlist at call time (Program 24 P8), mirroring
+        :meth:`~babylon.tui.watchlist.WatchlistState.is_pinned` — a plain
+        callable rather than a ``babylon.tui.watchlist`` import, same reason.
     """
 
     def __init__(
@@ -84,11 +96,15 @@ class TutorialRuntimeProgress:
         campaign: _TickSource,
         driver: _PausedDriverSource | None,
         current_subject: Callable[[], str | None],
+        current_pane: Callable[[], str | None],
+        is_pinned: Callable[[str], bool],
     ) -> None:
         self._steps: tuple[TutorialStep, ...] = tuple(steps)
         self._campaign = campaign
         self._driver = driver
         self._current_subject = current_subject
+        self._current_pane = current_pane
+        self._is_pinned = is_pinned
 
     def is_step_complete(self, step_index: int) -> bool:
         """See :meth:`~babylon.tui.tutorial_overlay.TutorialProgress.is_step_complete`.
@@ -108,6 +124,10 @@ class TutorialRuntimeProgress:
             return self._driver is not None and self._driver.awaiting_ack
         if isinstance(predicate, EventAcked):
             return self._driver is not None and not self._driver.awaiting_ack
+        if isinstance(predicate, PaneShowing):
+            return self._current_pane() == predicate.pane
+        if isinstance(predicate, PinnedInWatchlist):
+            return self._is_pinned(predicate.subject)
         if isinstance(predicate, VerbIssued):
             msg = (
                 f"TutorialRuntimeProgress: step {self._steps[step_index].id!r}'s "

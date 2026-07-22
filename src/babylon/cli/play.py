@@ -304,13 +304,22 @@ def _tutorial_steps() -> tuple[Any, ...]:
 def _tutorial_progress_factory(
     tutorial_enabled: bool | None, steps: tuple[Any, ...]
 ) -> Callable[
-    [CampaignHandle, PacedDriverHandle | None, Callable[[], str | None]], TutorialProgress | None
+    [
+        CampaignHandle,
+        PacedDriverHandle | None,
+        Callable[[], str | None],
+        Callable[[], str | None],
+        Callable[[str], bool],
+    ],
+    TutorialProgress | None,
 ]:
-    """Build ``ArchiveApp``'s ``tutorial_progress_factory=`` seam (Unit U4).
+    """Build ``ArchiveApp``'s ``tutorial_progress_factory=`` seam (Unit U4;
+    extended by Program 24 P8, "the tutorial learns the shell").
 
     Returns a closure fulfilling :data:`~babylon.tui.app.TutorialProgressFactory`:
-    given the just-booted campaign, its paced driver (or ``None``), and a
-    nav-subject query, decide whether the T6 opening-arc overlay should show
+    given the just-booted campaign, its paced driver (or ``None``), a
+    nav-subject query, a current-pane query, and a watchlist-pin query
+    (the last two, P8), decide whether the T6 opening-arc overlay should show
     for THIS campaign, and if so build its
     :class:`~babylon.tui.tutorial_overlay.TutorialProgress` evaluator.
 
@@ -347,6 +356,8 @@ def _tutorial_progress_factory(
         campaign: CampaignHandle,
         driver: PacedDriverHandle | None,
         current_subject: Callable[[], str | None],
+        current_pane: Callable[[], str | None],
+        is_pinned: Callable[[str], bool],
     ) -> TutorialProgress | None:
         from babylon.game.tutorial_runtime import TutorialRuntimeProgress
 
@@ -354,7 +365,12 @@ def _tutorial_progress_factory(
         if not show:
             return None
         return TutorialRuntimeProgress(
-            steps=steps, campaign=campaign, driver=driver, current_subject=current_subject
+            steps=steps,
+            campaign=campaign,
+            driver=driver,
+            current_subject=current_subject,
+            current_pane=current_pane,
+            is_pinned=is_pinned,
         )
 
     return _factory

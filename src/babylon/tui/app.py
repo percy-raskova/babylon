@@ -58,7 +58,12 @@ root's own new-vs-resumed gating — see ``babylon.cli.play``). Every
 committed-tick action (``t``/``r``/``a``) and every navigation event
 (``Ctrl-O``/``Ctrl-I``/palette pick/wikilink follow — all of which route
 through :meth:`ArchiveApp._navigate`) re-polls the mounted overlay via
-:meth:`ArchiveApp._refresh_tutorial_progress`. With no
+:meth:`ArchiveApp._refresh_tutorial_progress` — as does, since Program 24 P8
+("the tutorial learns the shell"), every pane switch (``1``-``4``,
+:meth:`ArchiveApp.action_switch_view`) and every watchlist pin/unpin
+(``p``, :meth:`ArchiveApp.action_toggle_pin`), the same trigger-path idiom
+extended to the two new :class:`~babylon.game.tutorial.PaneShowing`/
+:class:`~babylon.game.tutorial.PinnedInWatchlist` completion kinds. With no
 ``tutorial_progress_factory`` given (the default), nothing here runs at
 all — every pre-Unit-U4 caller/test, and the demo boot path, is completely
 unaffected.
@@ -474,19 +479,29 @@ needs — the composition root holds the real
 through the narrower seam types)."""
 
 TutorialProgressFactory = Callable[
-    [CampaignHandle, "PacedDriverHandle | None", Callable[[], "str | None"]],
+    [
+        CampaignHandle,
+        "PacedDriverHandle | None",
+        Callable[[], "str | None"],
+        Callable[[], "str | None"],
+        Callable[[str], bool],
+    ],
     "TutorialProgress | None",
 ]
-"""The booted campaign's tutorial-progress seam (Program v1.0.0 T6, Unit U4)
-— one layer up from :data:`DriverFactory`, same shape. Takes the just-booted
+"""The booted campaign's tutorial-progress seam (Program v1.0.0 T6, Unit U4;
+extended by Program 24 P8, "the tutorial learns the shell") — one layer up
+from :data:`DriverFactory`, same shape. Takes the just-booted
 :class:`CampaignHandle`, the just-built :class:`PacedDriverHandle` (or
-``None`` when no ``driver_factory`` was wired), and a zero-arg callable
-reading :attr:`ArchiveApp.nav`'s current subject at call time; returns
-``None`` to mean "the tutorial should not show for this campaign" — the
-composition root's own new-vs-resumed gating decision (see
-``babylon.cli.play``'s own docstring for the honest first-session heuristic
-it uses), in which case :meth:`ArchiveApp._on_briefing_dismissed` never
-mounts a :class:`~babylon.tui.tutorial_overlay.TutorialOverlay` at all."""
+``None`` when no ``driver_factory`` was wired), a zero-arg callable reading
+:attr:`ArchiveApp.nav`'s current subject at call time, a zero-arg callable
+reading the hybrid shell's ``ContentSwitcher`` ``.current`` pane at call time
+(P8), and a one-arg callable reading whether a given subject id currently
+holds a watchlist pin at call time (P8); returns ``None`` to mean "the
+tutorial should not show for this campaign" — the composition root's own
+new-vs-resumed gating decision (see ``babylon.cli.play``'s own docstring for
+the honest first-session heuristic it uses), in which case
+:meth:`ArchiveApp._on_briefing_dismissed` never mounts a
+:class:`~babylon.tui.tutorial_overlay.TutorialOverlay` at all."""
 
 #: The sample page's own subject — the nav shell's seed position, and
 #: (Unit C2) the live campaign's own home dossier subject too: Wayne County
@@ -960,7 +975,11 @@ class ArchiveApp(App[None]):
         self.driver = self._driver_factory(campaign) if self._driver_factory is not None else None
         if self._tutorial_progress_factory is not None:
             self._tutorial_progress = self._tutorial_progress_factory(
-                campaign, self.driver, lambda: self.nav.current
+                campaign,
+                self.driver,
+                lambda: self.nav.current,
+                lambda: self.query_one("#main", ContentSwitcher).current,
+                lambda subject: self.watchlist.is_pinned(subject),
             )
         self._pages = campaign.read_page
         self._refresh_known_entities(campaign)
@@ -1064,11 +1083,18 @@ class ArchiveApp(App[None]):
         campaign's current :meth:`CampaignHandle.dashboard_view` — a player pressing ``1``
         always sees this instant's numbers, not whatever was last painted at boot.
 
+        Program 24 P8: also re-polls the tutorial overlay via
+        :meth:`_refresh_tutorial_progress` — the same trigger-path idiom every other
+        committed-tick/navigation action already follows, extended here so a
+        :class:`~babylon.game.tutorial.PaneShowing` completion is actually observed the
+        instant it becomes true, not only on some LATER unrelated action.
+
         :param view: one of ``"dashboard"``/``"map"``/``"wiki"``/``"topology"``.
         """
         self.query_one("#main", ContentSwitcher).current = view
         if view == "dashboard":
             self._refresh_dashboard()
+        self._refresh_tutorial_progress()
 
     def _refresh_dashboard(self) -> None:
         """Render the dashboard pane's live :class:`EconomyView` (Program 24 P2)
@@ -1187,6 +1213,13 @@ class ArchiveApp(App[None]):
         :class:`~babylon.tui.watchlist.WatchlistState`'s own capacity
         ceiling, the status line names exactly why nothing moved
         (Constitution III.11).
+
+        Program 24 P8: also re-polls the tutorial overlay via
+        :meth:`_refresh_tutorial_progress` on every successful toggle — the
+        same "success path only" shape :meth:`action_advance_tick`/
+        :meth:`action_run_until_paused`/:meth:`action_acknowledge_pause`
+        already use, so a :class:`~babylon.game.tutorial.PinnedInWatchlist`
+        completion is observed the instant the pin actually lands.
         """
         status = self.query_one("#status", Label)
         subject = self.nav.current
@@ -1205,6 +1238,7 @@ class ArchiveApp(App[None]):
             status.update(f"status: pinned {subject}")
         self._save_watchlist()
         self._refresh_watchlist()
+        self._refresh_tutorial_progress()
 
     def _current_parser(self) -> MarkdownIt:
         """The dossier's zero-arg ``parser_factory``, rebuilt fresh every call.

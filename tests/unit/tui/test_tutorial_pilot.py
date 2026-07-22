@@ -80,7 +80,7 @@ from rich.console import Console
 from textual.content import Content
 from textual.css.query import NoMatches
 from textual.pilot import Pilot
-from textual.widgets import Label, OptionList
+from textual.widgets import ContentSwitcher, Label, OptionList, Static
 
 from babylon.engine.scenarios import WayneCountyScenario
 from babylon.game.pacing import PacedTickDriver, paced_driver_for_session
@@ -94,7 +94,9 @@ from babylon.game.tutorial import (
     WAYNE_OPENING_ARC,
     EventAcked,
     OnPage,
+    PaneShowing,
     PausePending,
+    PinnedInWatchlist,
     TickAtLeast,
     TutorialStep,
     VerbIssued,
@@ -433,7 +435,7 @@ def _dossier_plain_text(app: ArchiveApp) -> str:
 
 def _assert_completion(app: ArchiveApp, predicate: object, *, step_id: str) -> None:
     """Hard-assert one completion predicate against the live app — closed
-    dispatch over the five-member :data:`~babylon.game.tutorial.
+    dispatch over the seven-member :data:`~babylon.game.tutorial.
     CompletionPredicate` union (``VerbIssued`` is handled separately, in
     :func:`_drive_verb_issued`, since its verification must wrap the drive
     itself). Semantic text first, structural state second — never a visual
@@ -477,6 +479,21 @@ def _assert_completion(app: ArchiveApp, predicate: object, *, step_id: str) -> N
         )
         assert app.driver is not None, f"{step_id}: no paced driver to check acknowledgement on"
         assert app.driver.awaiting_ack is False, f"{step_id}: the autopause is still pending"
+        return
+    if isinstance(predicate, PaneShowing):
+        switcher = app.query_one("#main", ContentSwitcher)
+        assert switcher.current == predicate.pane, (
+            f"{step_id}: expected pane {predicate.pane!r} showing, got {switcher.current!r}"
+        )
+        return
+    if isinstance(predicate, PinnedInWatchlist):
+        rail_text = str(app.query_one("#watchlist-rail", Static).render())
+        assert "nothing pinned yet" not in rail_text, (
+            f"{step_id}: watchlist rail still shows the empty-pin absence fence"
+        )
+        assert app.watchlist.is_pinned(predicate.subject), (
+            f"{step_id}: expected {predicate.subject!r} pinned in the watchlist, found unpinned"
+        )
         return
     raise AssertionError(f"{step_id}: unrecognized completion predicate kind {predicate!r}")
 
@@ -684,7 +701,7 @@ async def _load_the_minted_campaign(pilot: Pilot[None]) -> None:
     await pilot.pause()
 
 
-#: Repo loop-bound rule (Power-of-10 #2): the authored arc is fixed at 9
+#: Repo loop-bound rule (Power-of-10 #2): the authored arc is fixed at 14
 #: steps today and statically bounded at 64 (``TutorialScript``'s own
 #: ``_MAX_SCRIPT_STEPS``) — this loop's upper bound is that same constant.
 _MAX_REPLAY_STEPS: Final = 64

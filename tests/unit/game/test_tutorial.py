@@ -33,7 +33,9 @@ from babylon.game.tutorial import (
     CompletionPredicateAdapter,
     EventAcked,
     OnPage,
+    PaneShowing,
     PausePending,
+    PinnedInWatchlist,
     TickAtLeast,
     TutorialScript,
     TutorialStep,
@@ -123,6 +125,8 @@ class TestTutorialStepModel:
             PausePending(),
             EventAcked(),
             VerbIssued(verb="advance_tick"),
+            PaneShowing(pane="map"),
+            PinnedInWatchlist(subject="county/26163"),
         ):
             step = _minimal_step()
             step = step.model_copy(update={"completion": predicate})
@@ -161,6 +165,8 @@ class TestCompletionPredicateAdapter:
             PausePending(),
             EventAcked(),
             VerbIssued(verb="run_until_paused"),
+            PaneShowing(pane="dashboard"),
+            PinnedInWatchlist(subject="county/26163"),
         ):
             dumped = predicate.model_dump(mode="json")
             reloaded = CompletionPredicateAdapter.validate_python(dumped)
@@ -239,7 +245,7 @@ class TestWayneOpeningArcIntegrity:
         assert WAYNE_OPENING_ARC.scenario == WayneCountyScenario.name == "wayne_county"
 
     def test_every_step_anchor_is_non_empty(self) -> None:
-        for step in WAYNE_OPENING_ARC.steps:  # loop bound: len(steps) == 9
+        for step in WAYNE_OPENING_ARC.steps:  # loop bound: len(steps) == 14
             assert step.anchor.strip() != ""
 
     def test_every_step_id_is_unique(self) -> None:
@@ -247,7 +253,7 @@ class TestWayneOpeningArcIntegrity:
         assert len(ids) == len(set(ids))
 
     def test_every_predicate_parses_through_the_closed_vocabulary_adapter(self) -> None:
-        for step in WAYNE_OPENING_ARC.steps:  # loop bound: len(steps) == 9
+        for step in WAYNE_OPENING_ARC.steps:  # loop bound: len(steps) == 14
             dumped = step.completion.model_dump(mode="json")
             reloaded = CompletionPredicateAdapter.validate_python(dumped)
             assert reloaded == step.completion
@@ -259,7 +265,7 @@ class TestWayneOpeningArcIntegrity:
         rather than a one-time authoring-time check.
         """
         checked = 0
-        for step in WAYNE_OPENING_ARC.steps:  # loop bound: len(steps) == 9
+        for step in WAYNE_OPENING_ARC.steps:  # loop bound: len(steps) == 14
             parsed = _parse_binding_anchor(step.anchor)
             if parsed is None:
                 continue
@@ -275,7 +281,7 @@ class TestWayneOpeningArcIntegrity:
         assert checked > 0, "no binding: anchors were exercised by this test"
 
     def test_every_page_or_palette_anchor_names_a_kind_slash_id_subject(self) -> None:
-        for step in WAYNE_OPENING_ARC.steps:  # loop bound: len(steps) == 9
+        for step in WAYNE_OPENING_ARC.steps:  # loop bound: len(steps) == 14
             if step.anchor.startswith(("page:", "palette:")):
                 _, subject = step.anchor.split(":", 1)
                 assert "/" in subject, f"{step.id}: {subject!r} is not a kind/id subject"
@@ -314,8 +320,11 @@ class TestWayneOpeningArcIntegrity:
         assert step.completion == VerbIssued(verb="new_campaign")
 
     def test_arc_covers_the_advertised_core_loop_beats(self) -> None:
-        """The 9 authored beats span mint -> briefing -> dossier -> tick ->
-        run -> ack -> palette -> theorem -> jump-back, in that order."""
+        """The 14 authored beats span mint -> briefing -> dossier -> tick ->
+        run -> ack -> palette -> theorem -> jump-back -> the Map/Wiki/
+        Topology/Dashboard panes -> pin Wayne to the watchlist, in that order
+        (Program 24 P8 extends the original 9-beat core loop with the last
+        five)."""
         assert [step.id for step in WAYNE_OPENING_ARC.steps] == [
             "boot_into_lobby",
             "begin_the_operation",
@@ -326,7 +335,70 @@ class TestWayneOpeningArcIntegrity:
             "palette_to_the_economy_dossier",
             "read_the_theorem_verdict",
             "jump_back_to_wayne",
+            "learn_the_map_pane",
+            "learn_the_wiki_pane",
+            "learn_the_topology_pane",
+            "learn_the_dashboard_pane",
+            "pin_wayne_to_the_watchlist",
         ]
+
+    def test_pin_wayne_to_the_watchlist_subject_matches_the_arcs_own_current_subject(self) -> None:
+        """Cross-reference for the honest-expectation note in
+        :mod:`babylon.game.tutorial`'s own authored-script comment: no step
+        between ``jump_back_to_wayne`` (which lands on county/26163) and
+        ``pin_wayne_to_the_watchlist`` ever calls ``_navigate`` (switching
+        panes does not itself navigate), so county/26163 really is still the
+        dossier's current subject by the time the pin fires — a hardcoded
+        expected subject here is honest, not a guess."""
+        pin_step = next(s for s in WAYNE_OPENING_ARC.steps if s.id == "pin_wayne_to_the_watchlist")
+        assert pin_step.completion == PinnedInWatchlist(subject="county/26163")
+
+
+class TestShellTeachingTailProgram24P8:
+    """The five Program 24 P8 beats — pins the coverage sentinel's own
+    required anchor set (``binding:ArchiveApp:1``/``:2``/``:3``/``:4``/``:p``
+    exactly) as a durable regression, and that each step's own completion
+    predicate matches the pane/subject its ``then`` advertises."""
+
+    def test_the_five_shell_steps_carry_the_sentinels_required_anchors_in_order(self) -> None:
+        shell_step_ids = [
+            "learn_the_map_pane",
+            "learn_the_wiki_pane",
+            "learn_the_topology_pane",
+            "learn_the_dashboard_pane",
+            "pin_wayne_to_the_watchlist",
+        ]
+        steps_by_id = {step.id: step for step in WAYNE_OPENING_ARC.steps}
+        anchors = [steps_by_id[step_id].anchor for step_id in shell_step_ids]
+        assert anchors == [
+            "binding:ArchiveApp:2",
+            "binding:ArchiveApp:3",
+            "binding:ArchiveApp:4",
+            "binding:ArchiveApp:1",
+            "binding:ArchiveApp:p",
+        ]
+
+    @pytest.mark.parametrize(
+        ("step_id", "expected_pane"),
+        [
+            ("learn_the_map_pane", "map"),
+            ("learn_the_wiki_pane", "wiki"),
+            ("learn_the_topology_pane", "topology"),
+            ("learn_the_dashboard_pane", "dashboard"),
+        ],
+    )
+    def test_each_pane_step_completion_names_its_own_advertised_pane(
+        self, step_id: str, expected_pane: str
+    ) -> None:
+        step = next(s for s in WAYNE_OPENING_ARC.steps if s.id == step_id)
+        assert step.completion == PaneShowing(pane=expected_pane)
+
+    def test_the_five_shell_steps_appear_after_the_original_nine_beat_core_loop(self) -> None:
+        """The shell-teaching tail follows ``jump_back_to_wayne`` — the
+        player has read both dossiers and walked back before the room
+        itself is taught (module docstring's own placement rationale)."""
+        ids = [step.id for step in WAYNE_OPENING_ARC.steps]
+        assert ids.index("jump_back_to_wayne") < ids.index("learn_the_map_pane")
 
 
 # --------------------------------------------------------------------------- #
@@ -340,13 +412,13 @@ class TestRenderingContract:
     """
 
     def test_scenario_name_contains_every_field_verbatim(self) -> None:
-        for step in WAYNE_OPENING_ARC.steps:  # loop bound: len(steps) == 9
+        for step in WAYNE_OPENING_ARC.steps:  # loop bound: len(steps) == 14
             assert step.given in step.scenario_name
             assert step.when in step.scenario_name
             assert step.then in step.scenario_name
 
     def test_overlay_text_contains_every_field_verbatim(self) -> None:
-        for step in WAYNE_OPENING_ARC.steps:  # loop bound: len(steps) == 9
+        for step in WAYNE_OPENING_ARC.steps:  # loop bound: len(steps) == 14
             assert step.given in step.overlay_text
             assert step.when in step.overlay_text
             assert step.then in step.overlay_text
@@ -371,6 +443,6 @@ class TestRenderingContract:
         """The ruling: "scenario names are sentences" — one, ending in a
         period, not a multi-line block (that's what ``overlay_text`` is
         for)."""
-        for step in WAYNE_OPENING_ARC.steps:  # loop bound: len(steps) == 9
+        for step in WAYNE_OPENING_ARC.steps:  # loop bound: len(steps) == 14
             assert step.scenario_name.endswith(".")
             assert "\n" not in step.scenario_name

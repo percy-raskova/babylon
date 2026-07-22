@@ -1,0 +1,1606 @@
+{
+  "generated_by": "conformance/generate_fixtures.py",
+  "vectors": {
+    "add_edge_auto_ids_sequence": {
+      "edge_ids": [
+        0,
+        1
+      ]
+    },
+    "add_edge_dedups_members": {
+      "members": {
+        "e1": [
+          "a",
+          "b"
+        ]
+      },
+      "num_nodes": 2
+    },
+    "add_edge_dup_idx_warns_noop": {
+      "members": {
+        "e1": [
+          "a"
+        ]
+      },
+      "num_edges": 1,
+      "return": null,
+      "warned": true,
+      "warning_prefix": "uid e1 already exists,"
+    },
+    "add_edge_empty_creates_edge": {
+      "edge_ids": [
+        0
+      ],
+      "members": {
+        "0": []
+      },
+      "num_edges": 1,
+      "num_nodes": 0,
+      "return": null
+    },
+    "add_edge_float_idx_bumps": {
+      "edge_ids": [
+        5.0,
+        6
+      ]
+    },
+    "add_edge_int_idx_bumps_counter": {
+      "edge_ids": [
+        5,
+        6
+      ]
+    },
+    "add_edge_str_idx_no_bump": {
+      "edge_ids": [
+        "5",
+        0
+      ]
+    },
+    "add_edge_three_empty_auto_ids": {
+      "edge_ids": [
+        0,
+        1,
+        2
+      ],
+      "num_edges": 3
+    },
+    "add_edges_from_dup_warns_continues": {
+      "edge_ids": [
+        "e1",
+        "e2"
+      ],
+      "members": {
+        "e1": [
+          "a"
+        ],
+        "e2": [
+          "c"
+        ]
+      },
+      "num_edges": 2,
+      "num_nodes": 2,
+      "return": null,
+      "warned": true,
+      "warning_prefix": "uid e1 already exists,"
+    },
+    "add_node_existing_updates_attrs": {
+      "attrs": {
+        "x": 1,
+        "y": 2
+      },
+      "num_nodes": 1
+    },
+    "add_node_to_edge_autocreate": {
+      "edge_attrs_e1": {
+        "heat": 0.5
+      },
+      "edge_ids": [
+        "new_edge",
+        "e1"
+      ],
+      "members": {
+        "e1": [
+          "a",
+          "b",
+          "c"
+        ],
+        "new_edge": [
+          "new_node"
+        ]
+      },
+      "memberships": {
+        "a": [
+          "e1"
+        ],
+        "b": [
+          "e1"
+        ],
+        "c": [
+          "e1"
+        ],
+        "new_node": [
+          "new_edge"
+        ]
+      },
+      "node_ids": [
+        "a",
+        "b",
+        "c",
+        "new_node"
+      ],
+      "num_edges": 2,
+      "num_nodes": 4,
+      "return_create": null,
+      "return_readd": null
+    },
+    "add_node_to_edge_numeric_id_no_bump": {
+      "edge_ids": [
+        5,
+        0
+      ],
+      "members": {
+        "0": [
+          "y"
+        ],
+        "5": [
+          "x"
+        ]
+      }
+    },
+    "clear_all": {
+      "auto_ids_after_clear": [
+        1
+      ],
+      "edge_ids": [],
+      "net_attrs": {},
+      "node_ids": [],
+      "num_edges": 0,
+      "num_nodes": 0
+    },
+    "clear_edges_keeps_nodes_counter": {
+      "auto_ids_after_clear_edges": [
+        1
+      ],
+      "edge_ids": [],
+      "lonely_attrs": {
+        "x": 1
+      },
+      "memberships_a": [],
+      "net_attrs": {
+        "name": "test"
+      },
+      "node_ids": [
+        "a",
+        "b",
+        "c",
+        "d",
+        "lonely"
+      ],
+      "num_edges": 0,
+      "num_nodes": 5,
+      "return": null
+    },
+    "copy_counter_preserved": {
+      "cp_edge_ids": [
+        0,
+        1
+      ],
+      "cp_num_edges": 2,
+      "h_edge_ids": [
+        0
+      ],
+      "h_num_edges": 1
+    },
+    "copy_independence": {
+      "edge_attrs": {
+        "heat": 0.5
+      },
+      "has_c": false,
+      "net_name": "test",
+      "node_attrs": {
+        "color": "red"
+      },
+      "num_edges": 1,
+      "num_nodes": 2
+    },
+    "di_add_edge_dimembers": {
+      "dimembers": {
+        "0": {
+          "head": [
+            "2",
+            "3",
+            "4"
+          ],
+          "tail": [
+            "1",
+            "2",
+            "3"
+          ]
+        }
+      },
+      "dimemberships": {
+        "1": [
+          [],
+          [
+            "0"
+          ]
+        ],
+        "2": [
+          [
+            "0"
+          ],
+          [
+            "0"
+          ]
+        ],
+        "3": [
+          [
+            "0"
+          ],
+          [
+            "0"
+          ]
+        ],
+        "4": [
+          [
+            "0"
+          ],
+          []
+        ]
+      },
+      "edge_ids": [
+        0
+      ],
+      "members": {
+        "0": [
+          "1",
+          "2",
+          "3",
+          "4"
+        ]
+      },
+      "memberships": {
+        "1": [
+          "0"
+        ],
+        "2": [
+          "0"
+        ],
+        "3": [
+          "0"
+        ],
+        "4": [
+          "0"
+        ]
+      },
+      "node_ids": [
+        "1",
+        "2",
+        "3",
+        "4"
+      ],
+      "num_nodes": 4,
+      "return": null
+    },
+    "di_add_edges_from": {
+      "broadcast": {
+        "0": {
+          "color": "red",
+          "size": 10
+        }
+      },
+      "dup_warns_continues": {
+        "dimembers": {
+          "e1": {
+            "head": [
+              "b"
+            ],
+            "tail": [
+              "a"
+            ]
+          },
+          "e2": {
+            "head": [
+              "f"
+            ],
+            "tail": [
+              "e"
+            ]
+          }
+        },
+        "edge_ids": [
+          "e1",
+          "e2"
+        ],
+        "num_nodes": 4,
+        "return": null,
+        "warned": true,
+        "warning_prefix": "uid e1 already exists,"
+      },
+      "empty_created": {
+        "dimembers": {
+          "0": {
+            "head": [],
+            "tail": []
+          },
+          "1": {
+            "head": [
+              "b"
+            ],
+            "tail": [
+              "a"
+            ]
+          }
+        },
+        "edge_ids": [
+          0,
+          1
+        ]
+      },
+      "members_only": {
+        "dimembers": {
+          "0": {
+            "head": [
+              "c"
+            ],
+            "tail": [
+              "a",
+              "b"
+            ]
+          },
+          "1": {
+            "head": [
+              "e",
+              "f"
+            ],
+            "tail": [
+              "d"
+            ]
+          }
+        },
+        "edge_ids": [
+          0,
+          1
+        ],
+        "return": null
+      },
+      "with_idx_attrs": {
+        "attrs": {
+          "one": {
+            "color": "red"
+          },
+          "two": {
+            "age": 40,
+            "color": "blue"
+          }
+        },
+        "dimembers": {
+          "one": {
+            "head": [
+              "b"
+            ],
+            "tail": [
+              "a"
+            ]
+          },
+          "two": {
+            "head": [],
+            "tail": [
+              "c"
+            ]
+          }
+        },
+        "edge_ids": [
+          "one",
+          "two"
+        ]
+      }
+    },
+    "di_add_node_to_edge": {
+      "dimembers": {
+        "e1": {
+          "head": [
+            "1",
+            "2"
+          ],
+          "tail": [
+            "1"
+          ]
+        },
+        "e2": {
+          "head": [
+            "n2"
+          ],
+          "tail": []
+        },
+        "newedge": {
+          "head": [],
+          "tail": [
+            "newnode"
+          ]
+        }
+      },
+      "dimemberships": {
+        "1": [
+          [
+            "e1"
+          ],
+          [
+            "e1"
+          ]
+        ],
+        "2": [
+          [
+            "e1"
+          ],
+          []
+        ],
+        "n2": [
+          [
+            "e2"
+          ],
+          []
+        ],
+        "newnode": [
+          [],
+          [
+            "newedge"
+          ]
+        ]
+      },
+      "edge_ids": [
+        "newedge",
+        "e2",
+        "e1"
+      ],
+      "node_ids": [
+        "1",
+        "2",
+        "n2",
+        "newnode"
+      ],
+      "num_nodes": 4,
+      "numeric_id_no_bump": {
+        "dimembers": {
+          "0": {
+            "head": [
+              "2"
+            ],
+            "tail": [
+              "1"
+            ]
+          },
+          "5": {
+            "head": [],
+            "tail": [
+              "x"
+            ]
+          }
+        },
+        "edge_ids": [
+          5,
+          0
+        ]
+      },
+      "return_in": null,
+      "return_out": null
+    },
+    "di_both_directions": {
+      "dimembers": {
+        "e1": {
+          "head": [
+            "2",
+            "3"
+          ],
+          "tail": [
+            "1",
+            "2"
+          ]
+        }
+      },
+      "dimemberships": {
+        "1": [
+          [],
+          [
+            "e1"
+          ]
+        ],
+        "2": [
+          [
+            "e1"
+          ],
+          [
+            "e1"
+          ]
+        ],
+        "3": [
+          [
+            "e1"
+          ],
+          []
+        ]
+      },
+      "members": {
+        "e1": [
+          "1",
+          "2",
+          "3"
+        ]
+      },
+      "num_nodes": 3
+    },
+    "di_clear_freeze": {
+      "clear": {
+        "auto_ids_after_clear": [
+          1
+        ],
+        "edge_ids": [],
+        "net_attrs": {},
+        "node_ids": [],
+        "num_edges": 0,
+        "num_nodes": 0
+      },
+      "freeze": {
+        "copy_of_frozen_is_frozen": false,
+        "guarded": {
+          "add_edge": {
+            "exception": "XGIError",
+            "message": "Frozen higher-order network can't be modified"
+          },
+          "add_edges_from": {
+            "exception": "XGIError",
+            "message": "Frozen higher-order network can't be modified"
+          },
+          "add_node": {
+            "exception": "XGIError",
+            "message": "Frozen higher-order network can't be modified"
+          },
+          "add_node_to_edge": null,
+          "add_nodes_from": {
+            "exception": "XGIError",
+            "message": "Frozen higher-order network can't be modified"
+          },
+          "clear": {
+            "exception": "XGIError",
+            "message": "Frozen higher-order network can't be modified"
+          },
+          "clear_edges": {
+            "exception": "AttributeError",
+            "message": "clear_edges is not a method of DiHypergraph or a recognized DiNodeStat or DiEdgeStat"
+          },
+          "remove_edge": {
+            "exception": "XGIError",
+            "message": "Frozen higher-order network can't be modified"
+          },
+          "remove_edges_from": {
+            "exception": "XGIError",
+            "message": "Frozen higher-order network can't be modified"
+          },
+          "remove_node": {
+            "exception": "XGIError",
+            "message": "Frozen higher-order network can't be modified"
+          },
+          "remove_node_from_edge": null,
+          "remove_nodes_from": {
+            "exception": "XGIError",
+            "message": "Frozen higher-order network can't be modified"
+          },
+          "set_edge_attributes": null,
+          "set_node_attributes": null
+        },
+        "is_frozen_after": true,
+        "is_frozen_before": false
+      }
+    },
+    "di_dup_idx": {
+      "dimembers": {
+        "e1": {
+          "head": [
+            "2"
+          ],
+          "tail": [
+            "1"
+          ]
+        }
+      },
+      "edge_ids": [
+        "e1"
+      ],
+      "num_edges": 1,
+      "num_nodes": 2,
+      "return": null,
+      "warned": true,
+      "warning_prefix": "uid e1 already exists,"
+    },
+    "di_empty_edge": {
+      "both_empty": {
+        "dimembers": {
+          "0": {
+            "head": [],
+            "tail": []
+          }
+        },
+        "edge_ids": [
+          0
+        ],
+        "num_edges": 1,
+        "num_nodes": 0,
+        "return": null
+      },
+      "empty_head": {
+        "dimembers": {
+          "0": {
+            "head": [],
+            "tail": [
+              "1"
+            ]
+          }
+        }
+      },
+      "empty_tail": {
+        "dimembers": {
+          "0": {
+            "head": [
+              "1"
+            ],
+            "tail": []
+          }
+        }
+      }
+    },
+    "di_eq": {
+      "both_vs_tail_only": false,
+      "diff_edge_attr": false,
+      "diff_edge_id": false,
+      "diff_net_attr": false,
+      "diff_node_attr": false,
+      "direction_flipped": false,
+      "empty_attr_lonely_vs_absent": false,
+      "lonely_missing": false,
+      "lonely_same": true,
+      "member_order_insignificant": true,
+      "same": true
+    },
+    "di_members_must_be_pair": {
+      "int_list_members": {
+        "exception": "TypeError",
+        "message": "'int' object is not iterable"
+      },
+      "invalid_direction": {
+        "exception": "XGIError",
+        "message": "Invalid direction!"
+      },
+      "set_members": {
+        "exception": "XGIError",
+        "message": "Directed edge must be a list or tuple!"
+      },
+      "str_members": {
+        "exception": "XGIError",
+        "message": "Directed edge must be a list or tuple!"
+      }
+    },
+    "di_remove_node_from_edge": {
+      "both_empty_dropped": {
+        "edge_ids": [],
+        "node_ids": [
+          "1",
+          "2"
+        ]
+      },
+      "direction_only": {
+        "dimembers": {
+          "e1": {
+            "head": [
+              "2",
+              "3"
+            ],
+            "tail": [
+              "1"
+            ]
+          }
+        },
+        "dimemberships": {
+          "1": [
+            [],
+            [
+              "e1"
+            ]
+          ],
+          "2": [
+            [
+              "e1"
+            ],
+            []
+          ],
+          "3": [
+            [
+              "e1"
+            ],
+            []
+          ]
+        },
+        "edge_ids": [
+          "e1"
+        ],
+        "node_ids": [
+          "1",
+          "2",
+          "3"
+        ]
+      },
+      "empty_means_both_sides": {
+        "dimembers": {
+          "e2": {
+            "head": [
+              "2"
+            ],
+            "tail": []
+          }
+        },
+        "edge_ids": [
+          "e2"
+        ]
+      },
+      "errors": {
+        "missing_edge": {
+          "exception": "XGIError",
+          "message": "Edge noedge not in the hypergraph"
+        },
+        "missing_node": {
+          "exception": "XGIError",
+          "message": "Node ghost not in the hypergraph"
+        },
+        "not_in_head": {
+          "exception": "XGIError",
+          "message": "out-edge e1 does not contain node b"
+        },
+        "not_in_tail": {
+          "exception": "XGIError",
+          "message": "in-edge e1 does not contain node b"
+        },
+        "wrong_direction_member": {
+          "exception": "XGIError",
+          "message": "in-edge e1 does not contain node 2"
+        }
+      },
+      "keep_empty": {
+        "dimembers": {
+          "e3": {
+            "head": [],
+            "tail": []
+          }
+        },
+        "edge_ids": [
+          "e3"
+        ]
+      }
+    },
+    "di_remove_node_modes": {
+      "edges_from_missing": {
+        "edge_ids_after": [
+          "e2",
+          "e3"
+        ],
+        "exception": "IDNotFound",
+        "message": "'ID ghost not found'"
+      },
+      "missing_node": {
+        "exception": "IDNotFound",
+        "message": "'ID ghost not found'"
+      },
+      "nodes_from_missing": {
+        "dimembers": {
+          "e1": {
+            "head": [
+              "3"
+            ],
+            "tail": []
+          }
+        },
+        "edge_ids": [
+          "e1"
+        ],
+        "node_ids": [
+          "3"
+        ],
+        "return": null,
+        "warned": true,
+        "warning_message": "Node ghost not in dihypergraph"
+      },
+      "remove_edge_missing": {
+        "exception": "IDNotFound",
+        "message": "'ID ghost not found'"
+      },
+      "strong_ignores_flag": {
+        "dimembers": {
+          "e4": {
+            "head": [
+              "7"
+            ],
+            "tail": [
+              "6"
+            ]
+          }
+        },
+        "edge_ids": [
+          "e4"
+        ],
+        "node_ids": [
+          "1",
+          "3",
+          "4",
+          "5",
+          "6",
+          "7"
+        ]
+      },
+      "weak_drop": {
+        "dimembers": {
+          "e2": {
+            "head": [
+              "4"
+            ],
+            "tail": []
+          }
+        },
+        "edge_ids": [
+          "e2"
+        ]
+      },
+      "weak_keep": {
+        "dimembers": {
+          "e1": {
+            "head": [
+              "3"
+            ],
+            "tail": [
+              "1"
+            ]
+          },
+          "e2": {
+            "head": [
+              "4"
+            ],
+            "tail": []
+          },
+          "e3": {
+            "head": [],
+            "tail": [
+              "5"
+            ]
+          }
+        },
+        "edge_ids": [
+          "e1",
+          "e2",
+          "e3"
+        ],
+        "has_node_2": false,
+        "node_ids": [
+          "1",
+          "3",
+          "4",
+          "5"
+        ],
+        "return": null
+      }
+    },
+    "di_repr": {
+      "dimembers_sorted": [
+        [
+          [
+            "a",
+            "b",
+            "c"
+          ],
+          [
+            "b",
+            "d"
+          ]
+        ],
+        [
+          [
+            "a"
+          ],
+          []
+        ]
+      ],
+      "repr_both_empty_edge": "DiHypergraph([(set(), set())])",
+      "repr_empty": "DiHypergraph([])",
+      "repr_prefix": "DiHypergraph("
+    },
+    "di_set_attrs": {
+      "edge_dict_of_dicts": {
+        "attrs_e1": {
+          "heat": 0.5,
+          "w": 1
+        },
+        "attrs_e2": {},
+        "num_edges": 2,
+        "return": null,
+        "warned": true,
+        "warning_message": "Edge ghost does not exist!"
+      },
+      "node_dict_of_dicts": {
+        "attrs_a": {
+          "color": "red",
+          "x": 1
+        },
+        "attrs_b": {
+          "color": "blue"
+        },
+        "num_nodes": 3,
+        "return": null,
+        "warned": true,
+        "warning_message": "Node ghost does not exist!"
+      },
+      "node_dict_of_scalars": {
+        "attrs_a": {
+          "color": "red"
+        },
+        "attrs_b": {},
+        "warned": true,
+        "warning_message": "Node ghost does not exist!"
+      },
+      "node_pairs_exception": "XGIError",
+      "node_pairs_message": "Must pass a dictionary of dictionaries",
+      "node_scalar_broadcast": {
+        "attrs_a": {
+          "color": "red"
+        },
+        "attrs_c": {
+          "color": "red"
+        }
+      }
+    },
+    "di_uid_counter": {
+      "float_idx_bumps": [
+        5.0,
+        6
+      ],
+      "int_idx_bumps": [
+        0,
+        1,
+        5,
+        6
+      ],
+      "nonnumeric_idx_no_bump": [
+        "x",
+        0
+      ],
+      "str_idx_no_bump": [
+        "5",
+        0
+      ]
+    },
+    "eq_structural": {
+      "diff_edge_attr": false,
+      "diff_edge_id": false,
+      "diff_members": false,
+      "diff_net_attr": false,
+      "diff_node_attr": false,
+      "lonely_same": true,
+      "member_order_insignificant": true,
+      "same": true
+    },
+    "freeze_blocks_mutation": {
+      "copy_of_frozen_is_frozen": false,
+      "guarded": {
+        "add_edge": {
+          "exception": "XGIError",
+          "message": "Frozen higher-order network can't be modified"
+        },
+        "add_node": {
+          "exception": "XGIError",
+          "message": "Frozen higher-order network can't be modified"
+        },
+        "add_node_to_edge": {
+          "exception": "XGIError",
+          "message": "Frozen higher-order network can't be modified"
+        },
+        "clear": {
+          "exception": "XGIError",
+          "message": "Frozen higher-order network can't be modified"
+        },
+        "clear_edges": null,
+        "remove_edge": {
+          "exception": "XGIError",
+          "message": "Frozen higher-order network can't be modified"
+        },
+        "remove_node": {
+          "exception": "XGIError",
+          "message": "Frozen higher-order network can't be modified"
+        },
+        "remove_node_from_edge": {
+          "exception": "XGIError",
+          "message": "Frozen higher-order network can't be modified"
+        },
+        "set_edge_attributes": null,
+        "set_node_attributes": null
+      },
+      "is_frozen_after": true,
+      "is_frozen_before": false
+    },
+    "membership_errors": {
+      "missing_edge": {
+        "exception": "XGIError",
+        "message": "Edge noedge not in the hypergraph"
+      },
+      "missing_node": {
+        "exception": "XGIError",
+        "message": "Node ghost not in the hypergraph"
+      },
+      "not_in_edge": {
+        "exception": "XGIError",
+        "message": "Edge e1 does not contain node b"
+      }
+    },
+    "node_attr_set_read": {
+      "attrs": {
+        "color": "red"
+      }
+    },
+    "remove_edge_basic": {
+      "edge_ids": [
+        "e2"
+      ],
+      "members": {
+        "e2": [
+          "a",
+          "c"
+        ]
+      },
+      "memberships": {
+        "a": [
+          "e2"
+        ],
+        "b": [],
+        "c": [
+          "e2"
+        ]
+      },
+      "node_ids": [
+        "a",
+        "b",
+        "c"
+      ],
+      "num_edges": 1,
+      "num_nodes": 3
+    },
+    "remove_edge_missing_raises": {
+      "exception": "IDNotFound",
+      "message": "'ID nonexistent not found'"
+    },
+    "remove_edge_then_readd": {
+      "edge_ids": [
+        "e1",
+        0
+      ],
+      "members": {
+        "0": [
+          "d"
+        ],
+        "e1": [
+          "c"
+        ]
+      },
+      "node_ids": [
+        "a",
+        "b",
+        "c",
+        "d"
+      ],
+      "num_edges": 2,
+      "num_nodes": 4,
+      "return": null
+    },
+    "remove_edges_from_missing": {
+      "all_valid_edges": [],
+      "all_valid_nodes": [
+        "a",
+        "b",
+        "c"
+      ],
+      "all_valid_return": null,
+      "edge_ids_after": [
+        "e2",
+        "e3"
+      ],
+      "exception": "IDNotFound",
+      "message": "'ID ghost not found'",
+      "num_nodes": 4
+    },
+    "remove_node_from_edge_drop_empty": {
+      "edge_ids": [
+        "e1"
+      ],
+      "members": {
+        "e1": [
+          "a",
+          "b"
+        ]
+      },
+      "memberships": {
+        "a": [
+          "e1"
+        ],
+        "b": [
+          "e1"
+        ]
+      },
+      "node_ids": [
+        "a",
+        "b"
+      ],
+      "num_edges": 1,
+      "num_nodes": 2
+    },
+    "remove_node_from_edge_keep_empty": {
+      "edge_ids": [
+        "e1"
+      ],
+      "members": {
+        "e1": []
+      },
+      "memberships": {
+        "a": []
+      },
+      "num_edges": 1,
+      "num_nodes": 1
+    },
+    "remove_node_missing_raises": {
+      "exception": "IDNotFound",
+      "message": "'ID nonexistent not found'"
+    },
+    "remove_node_remove_empty": {
+      "strong_ignores_flag": {
+        "edge_ids": [
+          "e4"
+        ],
+        "members": {
+          "e4": [
+            "c",
+            "d"
+          ]
+        },
+        "node_ids": [
+          "b",
+          "c",
+          "d"
+        ]
+      },
+      "weak_drop": {
+        "edge_ids": [
+          "e1"
+        ],
+        "members": {
+          "e1": [
+            "a"
+          ]
+        },
+        "num_edges": 1
+      },
+      "weak_keep": {
+        "edge_ids": [
+          "e1",
+          "e2"
+        ],
+        "has_node_b": false,
+        "members": {
+          "e1": [
+            "a"
+          ],
+          "e2": []
+        },
+        "node_ids": [
+          "a"
+        ],
+        "num_edges": 2,
+        "return": null
+      }
+    },
+    "remove_node_strong": {
+      "edge_ids": [
+        "e4"
+      ],
+      "members": {
+        "e4": [
+          "c",
+          "d"
+        ]
+      },
+      "memberships": {
+        "b": [],
+        "c": [
+          "e4"
+        ],
+        "d": [
+          "e4"
+        ]
+      },
+      "node_ids": [
+        "b",
+        "c",
+        "d"
+      ],
+      "num_edges": 1,
+      "num_nodes": 3
+    },
+    "remove_node_weak": {
+      "edge_ids": [
+        "e1",
+        "e2"
+      ],
+      "members": {
+        "e1": [
+          "a",
+          "c"
+        ],
+        "e2": [
+          "d"
+        ]
+      },
+      "memberships": {
+        "a": [
+          "e1"
+        ],
+        "c": [
+          "e1"
+        ],
+        "d": [
+          "e2"
+        ]
+      },
+      "node_ids": [
+        "a",
+        "c",
+        "d"
+      ],
+      "num_edges": 2,
+      "num_nodes": 3
+    },
+    "remove_nodes_from_missing": {
+      "edge_ids": [
+        "e1"
+      ],
+      "members": {
+        "e1": [
+          "a"
+        ]
+      },
+      "node_ids": [
+        "a"
+      ],
+      "return": null,
+      "warned": true,
+      "warning_message": "Node ghost not in hypergraph"
+    },
+    "repr_format": {
+      "members_sorted": [
+        [
+          "a",
+          "b",
+          "c"
+        ],
+        [
+          "b",
+          "c"
+        ]
+      ],
+      "repr_empty": "Hypergraph([])",
+      "repr_lone_empty_edge": "Hypergraph([set()])",
+      "repr_prefix": "Hypergraph("
+    },
+    "sc_add_simplex_closure": {
+      "four": {
+        "edge_ids": [
+          0,
+          1,
+          2,
+          3,
+          4,
+          5,
+          6,
+          7,
+          8,
+          9,
+          10
+        ],
+        "members": {
+          "0": [
+            "1",
+            "2",
+            "3",
+            "4"
+          ],
+          "1": [
+            "2",
+            "4"
+          ],
+          "10": [
+            "1",
+            "2",
+            "4"
+          ],
+          "2": [
+            "1",
+            "2"
+          ],
+          "3": [
+            "3",
+            "4"
+          ],
+          "4": [
+            "1",
+            "2",
+            "3"
+          ],
+          "5": [
+            "1",
+            "3",
+            "4"
+          ],
+          "6": [
+            "1",
+            "4"
+          ],
+          "7": [
+            "2",
+            "3"
+          ],
+          "8": [
+            "2",
+            "3",
+            "4"
+          ],
+          "9": [
+            "1",
+            "3"
+          ]
+        }
+      },
+      "int_idx_bumps": {
+        "edge_ids": [
+          10,
+          11,
+          12,
+          13
+        ],
+        "members": {
+          "10": [
+            "1",
+            "2",
+            "3"
+          ],
+          "11": [
+            "2",
+            "3"
+          ],
+          "12": [
+            "1",
+            "2"
+          ],
+          "13": [
+            "1",
+            "3"
+          ]
+        }
+      },
+      "str_idx_no_bump": {
+        "edge_ids": [
+          "top",
+          0,
+          1,
+          2
+        ],
+        "members": {
+          "0": [
+            "2",
+            "3"
+          ],
+          "1": [
+            "1",
+            "2"
+          ],
+          "2": [
+            "1",
+            "3"
+          ],
+          "top": [
+            "1",
+            "2",
+            "3"
+          ]
+        }
+      },
+      "three": {
+        "edge_ids": [
+          0,
+          1,
+          2,
+          3
+        ],
+        "members": {
+          "0": [
+            "1",
+            "2",
+            "3"
+          ],
+          "1": [
+            "2",
+            "3"
+          ],
+          "2": [
+            "1",
+            "2"
+          ],
+          "3": [
+            "1",
+            "3"
+          ]
+        },
+        "return": null
+      },
+      "two": {
+        "edge_ids": [
+          0
+        ],
+        "members": {
+          "0": [
+            "1",
+            "2"
+          ]
+        }
+      }
+    },
+    "sc_attrs_no_propagate": {
+      "attrs": {
+        "0": {
+          "color": "red"
+        },
+        "1": {},
+        "2": {},
+        "3": {}
+      }
+    },
+    "sc_dup_idx": {
+      "edge_ids": [
+        "s1",
+        0,
+        1,
+        2
+      ],
+      "members": {
+        "0": [
+          "2",
+          "3"
+        ],
+        "1": [
+          "1",
+          "2"
+        ],
+        "2": [
+          "1",
+          "3"
+        ],
+        "s1": [
+          "1",
+          "2",
+          "3"
+        ]
+      },
+      "num_edges": 4,
+      "num_nodes": 3,
+      "return": null,
+      "warned": true,
+      "warning_prefix": "uid s1 already exists,"
+    },
+    "sc_empty_simplex": {
+      "again": {
+        "edge_ids": [
+          0
+        ],
+        "num_edges": 1,
+        "return": null
+      },
+      "edge_ids": [
+        0
+      ],
+      "has_empty": true,
+      "members": {
+        "0": []
+      },
+      "num_edges": 1,
+      "num_nodes": 0,
+      "return": null
+    },
+    "sc_falsy_idx_is_auto": {
+      "after_int_idx": [
+        5,
+        6,
+        7,
+        8
+      ],
+      "empty_str_idx_edges": [
+        0
+      ],
+      "zero_idx_edges": [
+        5,
+        6,
+        7,
+        8,
+        9
+      ]
+    },
+    "sc_has_simplex": {
+      "closure_face": true,
+      "missing_set": false,
+      "no_singletons": false,
+      "reordered": true,
+      "top": true
+    },
+    "sc_redundant_simplex": {
+      "existing_face": {
+        "edge_ids": [
+          0,
+          1,
+          2,
+          3
+        ],
+        "num_edges": 4,
+        "return": null,
+        "warned": false
+      },
+      "num_edges_before": 4,
+      "reorder": {
+        "edge_ids": [
+          0,
+          1,
+          2,
+          3
+        ],
+        "num_edges": 4,
+        "return": null,
+        "warned": false
+      },
+      "reorder_new_idx": {
+        "edge_ids": [
+          0,
+          1,
+          2,
+          3
+        ],
+        "num_edges": 4,
+        "return": null,
+        "warned": false
+      }
+    },
+    "set_edge_attributes_bulk": {
+      "attrs_e1": {
+        "heat": 0.5,
+        "w": 1
+      },
+      "attrs_e2": {},
+      "num_edges": 2,
+      "return": null,
+      "warned": true,
+      "warning_message": "Edge ghost does not exist!"
+    },
+    "set_node_attributes_bulk": {
+      "attrs_a": {
+        "color": "red",
+        "x": 1
+      },
+      "attrs_b": {
+        "color": "blue"
+      },
+      "num_nodes": 2,
+      "pairs_exception": "XGIError",
+      "pairs_message": "Must pass a dictionary of dictionaries",
+      "return": null,
+      "warned": true,
+      "warning_message": "Node ghost does not exist!"
+    }
+  },
+  "xgi_version": "0.10.2"
+}

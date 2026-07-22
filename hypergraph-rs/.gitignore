@@ -1,0 +1,5 @@
+/target
+**/*.rs.bk
+# Cargo.lock IS committed: this workspace ships binaries (cli) and the
+# lockfile is the dev-environment pin (reproducible builds). Published
+# library crates ignore it downstream regardless.

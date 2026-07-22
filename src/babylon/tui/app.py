@@ -75,11 +75,12 @@ from markdown_it import MarkdownIt
 from textual import work
 from textual.app import App, ComposeResult
 from textual.binding import Binding
-from textual.containers import VerticalScroll
+from textual.containers import Container, Vertical, VerticalScroll
 from textual.screen import Screen
-from textual.widgets import Footer, Label, Markdown
+from textual.widgets import ContentSwitcher, Footer, Label, Markdown, Static
 
 from babylon.tui.campaign_menu import CampaignMenu, LobbyScreen
+from babylon.tui.chronicle import render_chronicle
 from babylon.tui.directives import BabylonFence, StatblockProvider
 from babylon.tui.dispatch import (
     fixture_known_entities,
@@ -89,8 +90,12 @@ from babylon.tui.dispatch import (
 from babylon.tui.nav import InMemoryNavPersistence, NavShell, subject_for
 from babylon.tui.palette import EntityNavigated, EntityNavigatorProvider
 from babylon.tui.router import InvalidBabylonUri, parse_babylon_uri
+from babylon.tui.shell.views.dashboard_view import DashboardView
+from babylon.tui.shell.views.map_view import MapView
+from babylon.tui.shell.views.topology_view import TopologyView
 from babylon.tui.theme import KSBC
 from babylon.tui.tutorial_overlay import TutorialOverlay, TutorialProgress, TutorialStepView
+from babylon.tui.watchlist import render_watchlist
 from babylon.tui.wikilinks import (
     BabylonH1,
     BabylonH2,
@@ -317,6 +322,14 @@ _SAMPLE_SUBJECT: Final = "county/26163"
 #: How many trail entries the breadcrumb bar displays (newest last).
 _BREADCRUMB_DISPLAY: Final = 5
 
+_ACTION_BAR_ABSENT: Final = (
+    "▌ action bar: no verb plate wired yet (feed wires in at Program 24 P2-P6)."
+)
+"""Program 24 P1 honest-absence fence for the bottom action bar — the live
+:class:`~babylon.projection.verbs.view_models.VerbPlateView` seam
+(:func:`~babylon.projection.verbs.plate.build_verb_plate`) is not wired to any live campaign
+graph yet; never fabricate a plate from no data (Constitution III.11)."""
+
 
 def _sample_page_source(subject: str) -> str | None:
     """Serve the built-in sample dossier and nothing else — honestly.
@@ -492,20 +505,41 @@ class ArchiveApp(App[None]):
     BINDINGS = [
         Binding("ctrl+o", "jump_back", "Back"),
         Binding("ctrl+i", "jump_forward", "Forward"),
-        # show=False on this whole trio: keeps the golden dossier-shell
-        # snapshot's Footer row byte-identical (layout churn is a merge-time
-        # ceremony, not this unit's) — every key is fully live, just not
-        # advertised in chrome.
+        # show=False on this trio: not advertised in Footer chrome, but every
+        # key is fully live — a pre-existing convention this unit leaves as-is
+        # (the P1 layout change already regenerates the golden snapshot for
+        # its own, unrelated reasons; see this unit's own commit).
         Binding("t", "advance_tick", "Advance Tick", show=False),
         Binding("r", "run_until_paused", "Run", show=False),
         Binding("a", "acknowledge_pause", "Acknowledge", show=False),
+        # Program 24 P1 — the four-pane hybrid shell's domain switcher,
+        # mirroring babylon.tui.shell.app_shell.AppShell's own BINDINGS.
+        Binding("1", "switch_view('dashboard')", "Dashboard"),
+        Binding("2", "switch_view('map')", "Map"),
+        Binding("3", "switch_view('wiki')", "Wiki"),
+        Binding("4", "switch_view('topology')", "Topology"),
     ]
 
     CSS = """
     Screen { background: $background; color: $foreground; }
-    #page { padding: 1 4; }
 
     #breadcrumbs { dock: top; height: 1; background: $panel; color: $foreground; padding: 0 1; }
+
+    #shell-body { height: 1fr; }
+
+    #chronicle-rail {
+        width: 24; height: 1fr; dock: left; border-right: solid $primary;
+        background: $panel; color: $foreground; padding: 0 1;
+    }
+    #watchlist-rail {
+        width: 24; height: 1fr; dock: right; border-left: solid $primary;
+        background: $panel; color: $foreground; padding: 0 1;
+    }
+    #main { height: 1fr; }
+    #action-bar {
+        height: 3; dock: bottom; border-top: solid $primary;
+        background: $panel; color: $foreground; padding: 0 1;
+    }
 
     .statblock {
         border: double $primary; padding: 0 2; margin: 1 0;
@@ -680,17 +714,54 @@ class ArchiveApp(App[None]):
             self._tutorial_overlay.check_progress()
 
     def compose(self) -> ComposeResult:
+        """Program 24 P1 — the four-pane hybrid shell: docked chronicle/watchlist rails,
+        a bottom action bar, and a ``ContentSwitcher`` across Dashboard/Map/Wiki/Topology
+        (``1``-``4`` switch panes, mirroring
+        :class:`~babylon.tui.shell.app_shell.AppShell`'s own layout). The dossier that used
+        to be this method's whole body now lives inside the "wiki" pane's
+        :class:`~babylon.tui.shell.views.wiki_view.WikiView` — same ``#dossier`` id, same
+        live wikilink resolver/statblock provider, zero behavior change for navigation.
+        Dashboard/Map/Topology and both rails render their own honest ``{absence}`` fence
+        until Program 24 P2-P6 wires real data through them.
+        """
+        # Lazy import: WikiView imports BabylonMarkdown from this module — importing it
+        # here (compose() only ever runs after this module has fully loaded) keeps the
+        # babylon.tui.app <-> shell.views seam one-way, the same trick
+        # babylon.tui.shell.app_shell.export_visible_text already uses for its own
+        # reverse reference.
+        from babylon.tui.shell.views.wiki_view import WikiView
+
         yield Label("", id="breadcrumbs")
-        with VerticalScroll(id="page"):
-            yield BabylonMarkdown(
-                self._page,
-                parser_factory=self._current_parser,
-                open_links=False,
-                id="dossier",
-                statblocks=self._statblocks,
-            )
+        # A separate arrange pass (own box, not the Screen's): the rails dock left/right
+        # WITHIN #shell-body's own height, so they never fight #breadcrumbs'/#status'/
+        # Footer's dock:top/dock:bottom strips for the same top-left/bottom-left corner
+        # cells — each edge's dock reservation stays inside the layer that owns it.
+        with Container(id="shell-body"):
+            yield Static(render_chronicle(()), id="chronicle-rail")
+            yield Static(render_watchlist((), {}), id="watchlist-rail")
+            with Vertical():
+                with ContentSwitcher(initial="wiki", id="main"):
+                    yield DashboardView(id="dashboard")
+                    yield MapView(id="map")
+                    yield WikiView(
+                        id="wiki",
+                        page=self._page,
+                        parser_factory=self._current_parser,
+                        open_links=False,
+                        statblocks=self._statblocks,
+                    )
+                    yield TopologyView(id="topology")
+                yield Static(_ACTION_BAR_ABSENT, id="action-bar")
         yield Label("status: — (click a link)", id="status")
         yield Footer()
+
+    def action_switch_view(self, view: str) -> None:
+        """``1``-``4``: switch the main region to ``view`` (one of the four domain pane
+        ids), mirroring :meth:`~babylon.tui.shell.app_shell.AppShell.action_switch_view`.
+
+        :param view: one of ``"dashboard"``/``"map"``/``"wiki"``/``"topology"``.
+        """
+        self.query_one("#main", ContentSwitcher).current = view
 
     def _current_parser(self) -> MarkdownIt:
         """The dossier's zero-arg ``parser_factory``, rebuilt fresh every call.

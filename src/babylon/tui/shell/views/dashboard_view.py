@@ -9,11 +9,22 @@ renders as a loud absence, never a fabricated zero.
 
 from __future__ import annotations
 
+from typing import Final
+
+from textual.app import ComposeResult
 from textual.widget import Widget
+from textual.widgets import Static
 
 from babylon.projection.view_models import EconomyView
 
 _ABSENT = "— absent (feed unwired)"
+
+_PANE_ABSENT: Final[str] = (
+    "▌ dashboard: no EconomyView projected yet (feed wires in at Program 24 P2-P6)."
+)
+"""Program 24 P1 honest-absence fence: this pane has no live economy projection to render
+until the host-side composition root (``babylon.game.session``) wires one in. Constitution
+III.11 — never a fabricated number, never a bare placeholder word."""
 
 
 def _fmt(value: float | None, *, prefix: str = "", digits: int = 4) -> str:
@@ -55,6 +66,11 @@ def render_economy_text(view: EconomyView) -> str:
 class DashboardView(Widget):
     """Economic dashboard pane."""
 
+    def compose(self) -> ComposeResult:
+        yield Static(_PANE_ABSENT, id="dashboard-body")
+
     def render_economy(self, view: EconomyView) -> str:
-        """Render ``view`` as the pane's glyph-floor body text."""
-        return render_economy_text(view)
+        """Render ``view`` as the pane's glyph-floor body text, replacing the pane body."""
+        text = render_economy_text(view)
+        self.query_one("#dashboard-body", Static).update(text)
+        return text

@@ -147,6 +147,70 @@ def platform_vector(
     return tuple(x / norm for x in acc)
 
 
+def allegiance_drift(
+    fit: float,
+    contact: float,
+    align_rate: float,
+    contact_rate: float,
+    media_influence: float = 0.0,
+    media_rate: float = 0.0,
+    delivery_gap_term: float = 0.0,
+    betrayal_rate: float = 0.0,
+) -> float:
+    """Per-tick allegiance drift toward one party for one class (§2.2).
+
+    The four-term law, all Θ-projections, deterministic::
+
+        Δallegiance(c, p) = θ.align · fit  +  θ.media · media_influence
+                          + θ.contact · contact  −  θ.betrayal · delivery_gap
+
+    The media (ISA_COMM apparatus) and betrayal (U9 delivery-gap) terms
+    default to exact zeros until their producers exist — honest absence,
+    never a fabricated weight (U8/ADR134).
+
+    :param fit: :func:`interest_fit` of the class's interest vector against
+        the party's derived platform.
+    :param contact: Organizing-contact signal (MEMBERSHIP-edge base reach).
+    :param align_rate: Θ_feel ``politics.allegiance_align_rate``.
+    :param contact_rate: Θ_feel ``politics.allegiance_contact_rate``.
+    :param media_influence: Σ ISA_COMM influence·line (producer pending).
+    :param media_rate: θ.media (0.0 until the media apparatus lands).
+    :param delivery_gap_term: Incumbent promise − delivery (U9's producer).
+    :param betrayal_rate: θ.betrayal (0.0 until U9).
+    :returns: Signed drift delta for this (class, party) pair.
+    """
+    return (
+        align_rate * fit
+        + media_rate * media_influence
+        + contact_rate * contact
+        - betrayal_rate * delivery_gap_term
+    )
+
+
+def apply_allegiance_drift(
+    allegiance: tuple[float, ...],
+    deltas: tuple[float, ...],
+) -> tuple[tuple[float, ...], float]:
+    """Apply drift deltas under mass discipline (§2.2 node-attribute ruling).
+
+    The allegiance distribution over (parties ∪ abstention) is a partition
+    of the class's political existence: deltas MOVE mass between parties
+    and the abstention pool, they never mint or destroy it. Per-party
+    masses clamp at zero; if the party total exceeds unit mass it rescales
+    proportionally (abstention exhausted); otherwise abstention absorbs
+    the residual.
+
+    :param allegiance: Current per-party masses (abstention excluded).
+    :param deltas: Per-party drift deltas (same order/length).
+    :returns: ``(new_party_masses, abstention)`` summing to exactly 1.0.
+    """
+    updated = [max(0.0, mass + delta) for mass, delta in zip(allegiance, deltas, strict=True)]
+    total = sum(updated)
+    if total > 1.0:
+        return tuple(mass / total for mass in updated), 0.0
+    return tuple(updated), 1.0 - total
+
+
 def interest_fit(interest: tuple[float, ...], platform: tuple[float, ...]) -> float:
     """Cosine-style alignment between a class interest vector and a platform (§2.2).
 

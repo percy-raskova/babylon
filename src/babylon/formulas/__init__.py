@@ -121,6 +121,8 @@ from babylon.formulas.metabolic_rift import (
 
 # Re-export Survival Calculus formulas
 from babylon.formulas.politics import (
+    allegiance_drift,
+    apply_allegiance_drift,
     counterfactual_hope_gain,
     delivery_gap,
     delivery_ratio,
@@ -171,7 +173,9 @@ EPSILON = _DEFINES.precision.epsilon
 LOSS_AVERSION_COEFFICIENT = _DEFINES.behavioral.loss_aversion_lambda
 
 __all__ = [
-    # P25 U7 pure politics kernel (ADR133)
+    # P25 U7 pure politics kernel (ADR133; drift additions U8/ADR134)
+    "allegiance_drift",
+    "apply_allegiance_drift",
     "counterfactual_hope_gain",
     "delivery_gap",
     "delivery_ratio",

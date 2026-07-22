@@ -139,3 +139,69 @@ class TestLPrz:
 
     def test_empty_platform_is_zero_vector(self) -> None:
         assert platform_vector((), donor_terms=(), donor_weight=0.0) == ()
+
+
+class TestAllegianceDrift:
+    """U8 (ADR134): the §2.2 drift law in pure form — align/media/contact
+    pull toward a party, betrayal pushes away; absent producers contribute
+    exactly zero through their defaulted terms."""
+
+    def test_sign_structure(self) -> None:
+        from babylon.formulas.politics import allegiance_drift
+
+        pull = allegiance_drift(fit=0.8, contact=1.0, align_rate=0.05, contact_rate=0.03)
+        assert pull == pytest.approx(0.05 * 0.8 + 0.03 * 1.0)
+        pushed = allegiance_drift(
+            fit=0.0,
+            contact=0.0,
+            align_rate=0.05,
+            contact_rate=0.03,
+            delivery_gap_term=2.0,
+            betrayal_rate=0.1,
+        )
+        assert pushed == pytest.approx(-0.2)
+
+    def test_absent_producers_are_exact_zeros(self) -> None:
+        """Media (ISA_COMM) and betrayal (U9 delivery gaps) default to zero
+        terms — honest absence, never a fabricated weight."""
+        from babylon.formulas.politics import allegiance_drift
+
+        assert allegiance_drift(
+            fit=0.5, contact=0.0, align_rate=0.0, contact_rate=0.0
+        ) == pytest.approx(0.0)
+
+
+class TestApplyAllegianceDrift:
+    """Mass discipline: the allegiance distribution over (parties ∪
+    abstention) is a partition of the class's political existence —
+    deltas move mass, they never mint or destroy it."""
+
+    def test_conserves_unit_mass(self) -> None:
+        from babylon.formulas.politics import apply_allegiance_drift
+
+        parties, abstention = apply_allegiance_drift(allegiance=(0.2, 0.1), deltas=(0.05, -0.02))
+        assert sum(parties) + abstention == pytest.approx(1.0)
+        assert parties[0] == pytest.approx(0.25)
+        assert parties[1] == pytest.approx(0.08)
+
+    def test_clamps_at_zero(self) -> None:
+        from babylon.formulas.politics import apply_allegiance_drift
+
+        parties, abstention = apply_allegiance_drift(allegiance=(0.1,), deltas=(-0.5,))
+        assert parties == (0.0,)
+        assert abstention == pytest.approx(1.0)
+
+    def test_oversubscription_rescales_to_unit(self) -> None:
+        from babylon.formulas.politics import apply_allegiance_drift
+
+        parties, abstention = apply_allegiance_drift(allegiance=(0.7, 0.6), deltas=(0.2, 0.2))
+        assert sum(parties) == pytest.approx(1.0)
+        assert abstention == 0.0
+        assert parties[0] > parties[1]  # relative order preserved
+
+    def test_empty_party_set_is_all_abstention(self) -> None:
+        from babylon.formulas.politics import apply_allegiance_drift
+
+        parties, abstention = apply_allegiance_drift(allegiance=(), deltas=())
+        assert parties == ()
+        assert abstention == 1.0

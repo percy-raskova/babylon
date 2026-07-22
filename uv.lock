@@ -518,6 +518,9 @@ docs = [
     { name = "sphinx-rtd-theme" },
     { name = "sphinxcontrib-mermaid" },
 ]
+hypergraph = [
+    { name = "hypergraph-rs" },
+]
 
 [package.metadata]
 requires-dist = [
@@ -627,6 +630,7 @@ docs = [
     { name = "sphinx-rtd-theme", specifier = ">=3.0.2,<4.0.0" },
     { name = "sphinxcontrib-mermaid", specifier = ">=2.0.0,<3.0.0" },
 ]
+hypergraph = [{ name = "hypergraph-rs", directory = "../hypergraph-rs" }]
 
 [[package]]
 name = "backoff"
@@ -2057,6 +2061,10 @@ sdist = { url = "https://files.pythonhosted.org/packages/cc/3f/2c29224acb2e2df4d
 wheels = [
     { url = "https://files.pythonhosted.org/packages/f0/0f/310fb31e39e2d734ccaa2c0fb981ee41f7bd5056ce9bc29b2248bd569169/humanfriendly-10.0-py2.py3-none-any.whl", hash = "sha256:1697e1a8a8f550fd43c2865cd84542fc175a61dcb779b6fee18cf6b6ccba1477", size = 86794, upload-time = "2021-09-17T21:40:39.897Z" },
 ]
+
+[[package]]
+name = "hypergraph-rs"
+source = { directory = "../hypergraph-rs" }
 
 [[package]]
 name = "hypothesis"

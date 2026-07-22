@@ -154,6 +154,17 @@ docs = [
     "sphinx-autobuild>=2025.8,<2026.0.0",
     "sphinxcontrib-mermaid>=2.0.0,<3.0.0",
 ]
+# hypergraph-rs (Rust XGI port, sibling repo ../hypergraph-rs): the Phase-11
+# XGI->Rust swap lane (roadmap 2026-07-18, ADR083-pending). Opt-in ONLY —
+# deliberately absent from any default-groups list, so bare `uv sync`, CI,
+# and the uv2nix player closure (deps.default) never pull it or need the
+# sibling checkout. Enable with `uv sync --group hypergraph`. Building it
+# needs cargo (flake devshell / mise provide it). NOTE for the Phase-11
+# implementer: uv does not recompile the native module on Rust edits — run
+# `uvx maturin develop` in ../hypergraph-rs after changing Rust code.
+hypergraph = [
+    "hypergraph-rs",
+]
 
 # The Archive snapshot lane (ADR099): pytest-textual-snapshot 1.1.0 declares
 # syrupy==4.8.0, which caps pytest<9; this repo runs pytest 9.x. Override the
@@ -161,6 +172,18 @@ docs = [
 # P0 spike. Watched upstream; drop this when the plugin releases a fix.
 [tool.uv]
 override-dependencies = ["syrupy>=5.5,<6.0.0"]
+
+[tool.uv.sources]
+# Sibling checkout; see the hypergraph dependency-group comment above.
+# Not editable: the wheel is built once per sync; the binding surface is a
+# stub until hypergraph-rs Phase 7, so rebuild ergonomics are moot — and a
+# non-editable wheel keeps the venv self-contained if the sibling moves.
+# WORKTREE GOTCHA: the path resolves relative to THIS file, so in a
+# .claude/worktrees/<name> checkout ../hypergraph-rs points inside
+# .claude/worktrees/ — symlink it there (ln -s /home/user/projects/game/
+# hypergraph-rs .claude/worktrees/hypergraph-rs) before uv lock/sync
+# --group hypergraph, or run those from the main checkout.
+hypergraph-rs = { path = "../hypergraph-rs" }
 
 [tool.hatch.build.targets.wheel]
 # babylon lives under src/ (src-layout): map src/babylon -> babylon in the

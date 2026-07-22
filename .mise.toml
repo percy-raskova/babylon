@@ -76,15 +76,20 @@ done
 """
 
 [tasks.install]
-description = "Install all dependencies"
-run = "uv sync --extra server"
+description = "Install all dependencies (from the committed lock — see deps:lock to re-resolve)"
+# --frozen: install exactly uv.lock, never re-resolve. Load-bearing since the
+# hypergraph dependency-group landed: re-resolution reads metadata from the
+# ../hypergraph-rs path source, which only exists on boxes with the sibling
+# checkout. Changing deps? Edit pyproject, then `uv lock` (needs the sibling
+# or the CI stub — see the [tool.uv.sources] comment in pyproject.toml).
+run = "uv sync --extra server --frozen"
 
 [tasks.setup]
 description = "One-shot bootstrap for a fresh clone: toolchain + deps + hooks + tuned Postgres 16 + canonical schema (spec-087 FR-008)"
 run = """
 set -e
 mise install
-uv sync --extra server
+uv sync --extra server --frozen
 uv run pre-commit install --hook-type commit-msg --hook-type pre-commit --hook-type pre-push
 mise run db:up
 mise run db:bootstrap

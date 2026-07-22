@@ -51,3 +51,20 @@ def test_election_clocks_are_positive_per_level():
 def test_disillusion_window_is_at_least_one_tick():
     with pytest.raises(ValidationError):
         PoliticsDefines(disillusion_window_ticks=0)
+
+
+def test_u8_drift_and_conversion_rates_are_bounded_shares():
+    """U8 (ADR134): the Agitation->Organization conversion rate and the two
+    live allegiance-drift rates (align/contact) are [0,1]-bounded pacing
+    knobs — the media and betrayal drift terms wait for their producers
+    (ISA_COMM apparatus; U9 delivery gaps)."""
+    defines = PoliticsDefines()
+    assert 0.0 <= defines.organizing_conversion_rate <= 1.0
+    assert 0.0 <= defines.allegiance_align_rate <= 1.0
+    assert 0.0 <= defines.allegiance_contact_rate <= 1.0
+    with pytest.raises(ValidationError):
+        PoliticsDefines(organizing_conversion_rate=1.5)
+    with pytest.raises(ValidationError):
+        PoliticsDefines(allegiance_align_rate=-0.1)
+    with pytest.raises(ValidationError):
+        PoliticsDefines(allegiance_contact_rate=2.0)

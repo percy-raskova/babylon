@@ -94,6 +94,41 @@ class PoliticsDefines(BaseModel):
             "platform emergence (U8; the Bernie-surge steepness knob)."
         ),
     )
+    organizing_conversion_rate: float = Field(
+        default=0.02,
+        ge=0.0,
+        le=1.0,
+        description=(
+            "Θ_feel — base per-tick Agitation→Organization conversion "
+            "efficiency, the REAL quantity the valve throttles "
+            "(U8/ADR134: organization += rate·agitation·(1−v·H), the "
+            "first production increase pathway for the P(S|R) numerator; "
+            "TRAP 1 ruling — never the consciousness router). Bounded "
+            "[0,1]; pacing calibrated by the bernie_valve golden at U13."
+        ),
+    )
+    allegiance_align_rate: float = Field(
+        default=0.05,
+        ge=0.0,
+        le=1.0,
+        description=(
+            "Θ_feel — θ.align in the allegiance-drift law (U8 §2.2): "
+            "per-tick pull toward parties whose platform fits the class's "
+            "interest vector (material interest term)."
+        ),
+    )
+    allegiance_contact_rate: float = Field(
+        default=0.03,
+        ge=0.0,
+        le=1.0,
+        description=(
+            "Θ_feel — θ.contact in the allegiance-drift law (U8 §2.2): "
+            "per-tick organizing-contact pull along MEMBERSHIP edges "
+            "(party→class base reach). The media (ISA_COMM) and betrayal "
+            "(delivery-gap) drift terms arrive with their producers "
+            "(media apparatus program; U9 PolicySystem)."
+        ),
+    )
     disillusion_window_ticks: int = Field(
         default=26,
         ge=1,

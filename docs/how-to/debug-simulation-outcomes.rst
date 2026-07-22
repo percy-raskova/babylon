@@ -76,7 +76,7 @@ For detailed event-by-event debugging, use the vertical slice tool:
 
 .. code-block:: bash
 
-   poetry run python tools/vertical_slice.py
+   uv run python tools/vertical_slice.py
 
 This tool provides:
 

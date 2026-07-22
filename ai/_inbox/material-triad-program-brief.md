@@ -68,10 +68,10 @@ class *inexpressible* instead of merely *detectable*.
 pin manifest. Remaining §VI.11 keyless ingests queue as idle [P] tasks, NOT now (box busy).
 
 **W1 — territory-system repair + the metabolic opposition (post-cascade; small; first).**
-1. Settle DEFECT A: find/confirm the C writer; if `s_bio`/`s_class` are decorative-defaults,
-   wire a real consumption producer (class subsistence × population is already modeled
-   class-side) and make `ECOLOGICAL_OVERSHOOT` genuinely fireable; regression-test the glut
-   scenario fires it. Ceremony expected (real drift).
+1. Settle DEFECT A: wire a real consumption producer over the seeded `s_bio`/`s_class`
+   fields (W-C motion per the wiring doctrine — a system whose declared write-set evolves
+   subsistence needs with conditions) and make `ECOLOGICAL_OVERSHOOT` genuinely fireable;
+   regression-test the glut scenario fires it. Ceremony expected (real drift).
 2. Settle DEFECT B: one derived overshoot signal, two declared consumers (or a recorded
    ruling for why event-tier and endgame-tier thresholds differ). No silent twins — the
    severity-map lesson applies verbatim.

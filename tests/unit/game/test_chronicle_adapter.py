@@ -89,6 +89,41 @@ def test_summarize_event_handles_missing_optional_field_honestly() -> None:
     assert "profit rate ?" in summary
 
 
+def test_state_repression_bulletin_names_org_and_target_with_backfire() -> None:
+    """Adversary-train W2: the STATE_REPRESSION/STATE_SURVEILLANCE bulletins
+    (``chronicle_adapter.py``'s ``_SUMMARY_BUILDERS`` lambdas) are the
+    player-facing "the state moves against X" line the BD asked for — a
+    real, readable sentence naming the acting org, the target, and the CI
+    backfire the state's own action risks, never a placeholder. Payload
+    keys mirror exactly what ``OODASystem``'s first-class publish loop
+    sends (``org_id``/``target_id`` + ``result.direct_effects``,
+    ``engine/systems/ooda.py``) and what
+    ``event_builders.EVENT_BUILDERS[EventType.STATE_REPRESSION]`` reads."""
+    repress_summary = summarize_event(
+        EventType.STATE_REPRESSION,
+        3,
+        {"org_id": "ORG002", "target_id": "ORG001", "backfire_delta": 0.05},
+    )
+    assert repress_summary == "ORG002 represses ORG001 (backfire Δ0.05)"
+
+    surveil_summary = summarize_event(
+        EventType.STATE_SURVEILLANCE,
+        3,
+        {"org_id": "ORG002", "target_id": "ORG001", "backfire_delta": 0.02},
+    )
+    assert surveil_summary == "ORG002 surveils ORG001 (backfire Δ0.02)"
+
+    # Real payload, real difference — not a canned string (mirrors
+    # test_summarize_event_reflects_real_payload_not_a_constant's discipline).
+    other_target = summarize_event(
+        EventType.STATE_REPRESSION,
+        3,
+        {"org_id": "ORG002", "target_id": "BIZ_WAYNE_1", "backfire_delta": 0.05},
+    )
+    assert other_target != repress_summary
+    assert "BIZ_WAYNE_1" in other_target
+
+
 def test_class_decomposition_uses_the_real_wire_key_not_the_pydantic_field_name() -> None:
     """Regression for a shipped silent-fabrication bug (Constitution III.11):
     the wire payload key the engine actually publishes is ``source_class``

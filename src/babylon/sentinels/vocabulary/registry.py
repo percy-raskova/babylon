@@ -606,6 +606,20 @@ ATTRIBUTE_EXEMPTIONS: Final[tuple[SentinelExemption, ...]] = (
 #:   test_repression_edge`` — a ``Relationship`` MODEL unit test (can the
 #:   model represent a comprador->periphery REPRESSION edge), independent of
 #:   whether the two CURRENT scenario factories choose to wire one.
+#: - ``("solidarity", "organization")``: category 1 — the real producer is
+#:   ``engine/actions/_mass_work.py``'s ``apply_mass_work_solidarity``,
+#:   ``graph.add_edge(org_id, target_id, edge_type=EdgeType.SOLIDARITY.value,
+#:   ...)`` (org -> social_class mass-work SOLIDARITY, ADR087), invisible to
+#:   this rule for the SAME reason as ``("transactional", "organization")``
+#:   below: ``org_id``/``target_id`` are function parameters, never literals.
+#:   Adversary-train W5 (2026-07-22) added the first test fixtures exercising
+#:   this real shape from the READ side (``action_effects.
+#:   _propagate_repression_to_class_base`` walks the SAME org -> social_class
+#:   SOLIDARITY edge to propagate a state REPRESS/SURVEIL onto an org's class
+#:   base) — ``tests/unit/ooda/test_action_effects.py::
+#:   TestRepressiveOrgTargetPropagatesToClassBase`` and
+#:   ``tests/unit/game/test_session.py::
+#:   TestStateRepressOnOrgPropagatesToClassBase``.
 #: - ``("tenancy", "organization")``: ``tests/unit/web/test_map_dominant_class_solidarity.py::
 #:   test_non_social_class_tenants_are_excluded`` — the test's own comment:
 #:   "malformed data, still real-world-possible" — a deliberate negative case
@@ -631,6 +645,7 @@ EDGE_SOURCE_ALLOWLIST: Final[frozenset[tuple[str, str]]] = frozenset(
         ("membership", "organization"),
         ("membership", "social_class"),
         ("repression", "social_class"),
+        ("solidarity", "organization"),
         ("tenancy", "organization"),
         ("transactional", "organization"),
     }

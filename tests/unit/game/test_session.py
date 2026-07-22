@@ -20,6 +20,7 @@ import babylon.game.session as session_module
 from babylon.config.defines import GameDefines
 from babylon.engine.scenarios import WayneCountyScenario
 from babylon.engine.simulation_engine import SimulationEngine
+from babylon.engine.systems.ooda import OODASystem
 from babylon.game.chronicle_adapter import chronicle_events_from_bus
 from babylon.game.session import (
     TickAdvanceResult,
@@ -32,6 +33,7 @@ from babylon.game.session import (
 )
 from babylon.kernel.event_bus import Event
 from babylon.models.config import SimulationConfig
+from babylon.models.enums import EdgeType
 from babylon.models.enums.events import EventType
 from babylon.models.world_state import WorldState
 from babylon.persistence.envelope import PerTickTransactionEnvelope
@@ -448,8 +450,10 @@ class _EmitsUprisingSystem:
     (struggle.py), minus its spark/agitation/hopelessness trigger
     conditions. Satisfies ``babylon.kernel.system_protocol.System``
     structurally (name + step). Deliberately does NOT publish
-    STATE_REPRESSION: no production code does, and stubbing a publisher
-    production never implements would green a permanently-dead wire."""
+    STATE_REPRESSION: this stub isolates the uprising_count wiring alone —
+    a real STATE_REPRESSION publisher now exists in production (OODASystem,
+    adversary-train W1), so faking one here would be a dishonest SECOND
+    stub duplicating real engine behavior, not a legitimate test double."""
 
     name = "test_emits_uprising"
 
@@ -457,16 +461,21 @@ class _EmitsUprisingSystem:
         services.event_bus.publish(Event(type=EventType.UPRISING, tick=context.tick, payload={}))
 
 
-def test_advance_tick_persists_real_uprising_count_and_null_repression() -> None:
-    """Regression pin (T5 U2 review fix, both halves): drives a REAL
-    ``advance_tick`` over a tick whose bus emits a real UPRISING event and
-    asserts (a) the PERSISTED ``uprising_count`` reflects it — the first
-    cut counted ``WorldState.events``, which ``from_graph()`` never
-    restamps per tick, a fabricated ``0`` — and (b) ``repression_count``
-    is honestly ``None``, NOT a count: no production code publishes
-    STATE_REPRESSION to the bus (the OODA first-class-action gate covers
-    only POGROM/LOCKOUT/VIGILANTISM), so a bus count would be a
-    structurally fabricated ``0`` (Constitution III.11)."""
+def test_advance_tick_persists_real_uprising_count_and_zero_repression() -> None:
+    """Regression pin (T5 U2 review fix, both halves), re-pinned for
+    adversary-train W1: drives a REAL ``advance_tick`` over a tick whose
+    bus emits a real UPRISING event (via the isolating ``_EmitsUprisingSystem``
+    stub, no OODASystem in this reduced engine) and asserts (a) the
+    PERSISTED ``uprising_count`` reflects it — the first cut counted
+    ``WorldState.events``, which ``from_graph()`` never restamps per tick,
+    a fabricated ``0`` — and (b) ``repression_count`` is ``0``, NOT
+    ``None``: ``events=`` IS threaded this tick (the bus history the
+    stub's own UPRISING publish populates), it just carries zero
+    STATE_REPRESSION entries in THIS reduced single-system engine — the
+    honest-null-vs-zero distinction, not the old ALWAYS-None contract (see
+    ``test_advance_tick_with_real_ooda_persists_nonzero_repression_count``
+    below for a REAL nonzero count, driven by the real OODASystem, never a
+    stub publisher production doesn't implement)."""
     store = _FakeStore()
     session = create_new_campaign(store, scenario=WayneCountyScenario())
     session.engine = SimulationEngine([_EmitsUprisingSystem()])
@@ -475,7 +484,293 @@ def test_advance_tick_persists_real_uprising_count_and_null_repression() -> None
 
     _tick, summary, _session_id = store.persist_tick_summary_calls[-1]
     assert summary["uprising_count"] == 1
-    assert summary["repression_count"] is None
+    assert summary["repression_count"] == 0
+
+
+def test_advance_tick_with_real_ooda_persists_nonzero_repression_count() -> None:
+    """Adversary-train W1: proves ``repression_count`` reflects a REAL
+    state REPRESS end to end through ``session.advance_tick()`` — driven
+    by the REAL production ``OODASystem`` (never a stub publisher
+    production doesn't implement, the T5 U2 defect this must not
+    reintroduce). WayneCountyScenario seeds ORG002 (Detroit PD) with a real
+    ``FactionBalance`` + pinned ``rng_seed=0`` (Constitution III.7) — the
+    SAME activation gate ``tests/integration/test_state_ai_wayne_county.py``
+    exercises. ORG001 starts at ``heat=0.0`` (a fresh scenario has no
+    visible threat yet), so this seeds a believable nonzero heat on it
+    first, mirroring that integration test's own established idiom, so
+    RuleBasedStateAI has a real target to select (never self-targeting)."""
+    store = _FakeStore()
+    session = create_new_campaign(store, scenario=WayneCountyScenario())
+    session.engine = SimulationEngine([OODASystem()])
+    session.graph.nodes["ORG001"]["heat"] = 0.4
+
+    session.advance_tick()
+
+    _tick, summary, _session_id = store.persist_tick_summary_calls[-1]
+    assert summary["repression_count"] is not None
+    assert summary["repression_count"] >= 1
+
+
+class TestStateRepressionFiresInTheLiveCampaign:
+    """Adversary-train W2: "in-engine != in-game" — the test above (and
+    ``tests/integration/test_state_ai_wayne_county.py``) already prove
+    ``RuleBasedStateAI`` dispatches and materially resolves when driven
+    directly via ``OODASystem.step()`` or a REDUCED single-system engine.
+    Neither drives the FULL, unmodified composition-root engine
+    (``_DEFAULT_SYSTEMS``, all 30 systems, position 14 among them) the real
+    ``babylon play`` campaign runs every tick — the other 29 systems could,
+    in principle, race or clobber the same graph nodes REPRESS touches.
+    This class is that missing proof, over several ticks, narrator OFF,
+    fixed seed (``StateApparatus.rng_seed=0``, ``_legacy_wayne.py``).
+
+    Finding: already-live-just-unverified. No wiring change was needed —
+    ``OODASystem`` is already in ``_DEFAULT_SYSTEMS`` (``game/session.py``),
+    ``StateApparatus.faction_balance``/``rng_seed`` survive
+    ``WorldState.to_graph()``'s ``**org.model_dump()`` (neither name is in
+    ``ORGANIZATION_EXCLUDED_FIELDS``), and ``GameSession.advance_tick``
+    already threads this tick's real bus history through
+    ``chronicle_events_from_bus``. This class only adds the end-to-end
+    proof; ``src/babylon/`` is untouched by this unit.
+
+    Formerly an honest scope note, now CLOSED by adversary-train W5
+    (2026-07-22): ``npc_stub._gather_repress_target_candidates`` still
+    restricts live REPRESS targets to non-state ORGANIZATION nodes only
+    (SocialClass is deliberately excluded — see that function's own
+    docstring, unchanged, correct Sparrow doctrine). ``Organization`` still
+    has no ``repression_faced`` field, so a state REPRESS landing on ORG001
+    no longer writes a phantom scalar there at all (W1's original direct
+    bump was dropped silently on the next ``WorldState.from_graph()``
+    reconstruction anyway — a fabricated effect, not a material one).
+    Instead, ``action_effects._resolve_repressive`` now PROPAGATES the
+    increment to ORG001's SOLIDARITY-linked class base (the same edge shape
+    ``_mass_work.apply_mass_work_solidarity`` writes for mass-work verbs —
+    state violence against an organization IS violence against its class
+    base, COINTELPRO-grounded). ``TestStateRepressOnOrgPropagatesToClassBase``
+    below is that closed-cascade proof, over the REAL GameSession Wayne
+    campaign: a social_class node's ``repression_faced`` RISES from the
+    state's action, and ``SurvivalSystem``'s P(S|R) /
+    ``ConsciousnessSystem``'s agitation actually move — the live Aleksandrov
+    proof ``test_state_repression_cascade.py`` only established in isolation
+    for a hand-built direct social_class target. The event, chronicle
+    bulletin, and heat bump this class already proved above are unchanged.
+    """
+
+    def test_state_repress_fires_bumps_target_and_reaches_chronicle_over_several_ticks(
+        self,
+    ) -> None:
+        store = _FakeStore()
+        session = create_new_campaign(store, scenario=WayneCountyScenario())
+        # Established idiom (test_state_ai_wayne_county.py /
+        # test_advance_tick_with_real_ooda_persists_nonzero_repression_count):
+        # ORG001 starts at heat=0.0 (a fresh scenario has no visible threat
+        # yet) — seed a believable nonzero heat so the Blind Giant has a
+        # real target to select (never self-targeting).
+        session.graph.nodes["ORG001"]["heat"] = 0.4
+
+        state_events: list[Event] = []
+        chronicle_bulletins: list[str] = []
+        max_ticks = 5
+        for _tick in range(max_ticks):
+            result = session.advance_tick()
+            for event in result.events:
+                if event.type in (
+                    EventType.STATE_REPRESSION.value,
+                    EventType.STATE_SURVEILLANCE.value,
+                ):
+                    state_events.append(event)
+            for chronicle_event in result.chronicle:
+                if chronicle_event.event_type in (
+                    EventType.STATE_REPRESSION,
+                    EventType.STATE_SURVEILLANCE,
+                ):
+                    chronicle_bulletins.append(chronicle_event.summary)
+
+        assert state_events, (
+            "RuleBasedStateAI never dispatched a materially-resolved REPRESS/"
+            "SURVEIL over 5 ticks of the FULL default composition-root engine "
+            "(all 30 _DEFAULT_SYSTEMS) — dormant in the live campaign despite "
+            "the seed"
+        )
+        # At least one event targets the only visible threat (ORG001).
+        assert any(e.payload.get("target_id") == "ORG001" for e in state_events)
+        # W5 (2026-07-22): ORG001 (an ``organization`` node) never receives a
+        # phantom ``repression_faced`` write -- ``Organization`` declares no
+        # such field, and W1's original direct bump there was dropped
+        # silently on the next ``WorldState.from_graph()`` round-trip anyway
+        # (a fabricated effect, not a material one). ORG001 has no
+        # SOLIDARITY-linked class base in this bare scenario (no mass-work
+        # verb has run), so ``_propagate_repression_to_class_base`` is an
+        # honest no-op here too -- see
+        # ``TestStateRepressOnOrgPropagatesToClassBase`` below for the case
+        # where a class base IS reachable and the cascade closes.
+        assert "repression_faced" not in session.graph.nodes["ORG001"]
+
+        # The chronicle bulletin: a real, readable line naming the acting
+        # org and the target — the "enemy chasing you" the BD wants VISIBLE
+        # — never empty, never generic.
+        assert chronicle_bulletins
+        assert any("ORG002" in b and "ORG001" in b for b in chronicle_bulletins)
+
+    def test_state_repress_stream_is_deterministic_across_independent_full_campaigns(
+        self,
+    ) -> None:
+        """Constitution III.7: two fresh ``GameSession``s (full default
+        engine, identical Wayne seeding, identical seeded heat) must
+        produce a byte-identical STATE_REPRESSION/STATE_SURVEILLANCE event
+        stream. Proves ``RuleBasedStateAI``'s seeded ``random.Random``
+        tiebreaker (fed ``StateApparatus.rng_seed=0``, sourced from the
+        graph via ``org_attrs.get("rng_seed")`` in
+        ``npc_stub._try_state_ai_dispatch`` — never wall-clock, never OS
+        entropy) stays reproducible end to end through
+        ``advance_tick``'s FULL 30-system engine, not just
+        ``OODASystem.step()`` in isolation
+        (``tests/integration/test_state_ai_wayne_county.py::
+        test_targeting_is_deterministic_across_independent_runs`` already
+        proves that narrower claim)."""
+
+        def _run() -> list[tuple[str, str, str, float]]:
+            store = _FakeStore()
+            session = create_new_campaign(store, scenario=WayneCountyScenario())
+            session.graph.nodes["ORG001"]["heat"] = 0.4
+            stream: list[tuple[str, str, str, float]] = []
+            max_ticks = 5
+            for _tick in range(max_ticks):
+                result = session.advance_tick()
+                for event in result.events:
+                    if event.type in (
+                        EventType.STATE_REPRESSION.value,
+                        EventType.STATE_SURVEILLANCE.value,
+                    ):
+                        stream.append(
+                            (
+                                event.type,
+                                str(event.payload.get("org_id", "")),
+                                str(event.payload.get("target_id", "")),
+                                float(event.payload.get("backfire_delta", 0.0)),
+                            )
+                        )
+            return stream
+
+        run_a = _run()
+        run_b = _run()
+
+        assert run_a, "Expected at least one STATE_REPRESSION/SURVEILLANCE event"
+        assert run_a == run_b, f"Determinism violated: run A={run_a} != run B={run_b}"
+
+
+# Detroit proletariat -- _legacy_wayne.py's _DETROIT_PROLETARIAT_ID. ORG001
+# (Wayne County Organizing Committee) is seeded in the same Detroit periphery
+# hexes; a SOLIDARITY edge from ORG001 to this class is the SAME edge shape
+# a real PROVIDE_SERVICE/EDUCATE mass-work action would create
+# (engine.actions._mass_work.apply_mass_work_solidarity).
+_DETROIT_PROLETARIAT_ID = "C001"
+
+
+class TestStateRepressOnOrgPropagatesToClassBase:
+    """Adversary-train W5: closes the cascade gap
+    ``TestStateRepressionFiresInTheLiveCampaign`` flagged and left open (see
+    its docstring, now updated to point here). ``action_effects.
+    _resolve_repressive`` now propagates a state REPRESS/SURVEIL landing on
+    an ORGANIZATION target to that org's SOLIDARITY-linked social_class base
+    (``action_effects._propagate_repression_to_class_base``). This proves
+    the full cascade over the REAL GameSession Wayne campaign (all 30
+    ``_DEFAULT_SYSTEMS``, narrator OFF, fixed seed): the class's
+    ``repression_faced`` RISES, and — because ``repression_faced`` feeds
+    ``SurvivalSystem``'s P(S|R) denominator and ``ConsciousnessSystem``'s
+    continuous repression term through EXISTING tested channels
+    (``test_state_repression_cascade.py``) — P(S|R) falls and agitation
+    rises too.
+
+    Isolation design: BOTH arms seed the IDENTICAL ORG001 -> C001 SOLIDARITY
+    edge (so any consciousness-routing effect that edge has via the normal
+    ``effective_solidarity`` term is present in both and cancels out); the
+    ONLY difference is whether ORG001's heat is high enough for ORG002 (the
+    state) to actually select it as a REPRESS/SURVEIL target. This isolates
+    the measured effect to "does the state's REPRESS actually propagate",
+    not "does a SOLIDARITY edge exist at all".
+    """
+
+    def test_repress_on_org_propagates_and_moves_survival_and_consciousness(
+        self,
+    ) -> None:
+        def _run(*, org_visible: bool) -> tuple[float, float, float]:
+            store = _FakeStore()
+            session = create_new_campaign(store, scenario=WayneCountyScenario())
+            session.graph.add_edge(
+                "ORG001",
+                _DETROIT_PROLETARIAT_ID,
+                edge_type=EdgeType.SOLIDARITY.value,
+                solidarity_strength=0.3,
+            )
+            if org_visible:
+                # Established idiom (see the class above): a fresh scenario
+                # has no visible threat yet -- seed a believable nonzero
+                # heat so the Blind Giant has a real target to select.
+                session.graph.nodes["ORG001"]["heat"] = 0.4
+
+            max_ticks = 5
+            for _tick in range(max_ticks):
+                session.advance_tick()
+
+            class_attrs = session.graph.nodes[_DETROIT_PROLETARIAT_ID]
+            return (
+                float(class_attrs.get("repression_faced", 0.0)),
+                float(class_attrs["p_revolution"]),
+                float(class_attrs["ideology"]["agitation"]),
+            )
+
+        control_repression, control_p_rev, control_agitation = _run(org_visible=False)
+        treatment_repression, treatment_p_rev, treatment_agitation = _run(org_visible=True)
+
+        assert treatment_repression > control_repression, (
+            "C001's repression_faced must RISE when ORG001 is visible enough "
+            "for the state to actually REPRESS/SURVEIL it -- the propagated "
+            "Aleksandrov chain this unit closes"
+        )
+        assert treatment_p_rev < control_p_rev, (
+            "propagated repression_faced must LOWER SurvivalSystem's P(S|R) "
+            "-- repression_faced is calculate_revolution_probability's "
+            "denominator (survival_calculus.py)"
+        )
+        assert treatment_agitation > control_agitation, (
+            "propagated repression_faced must RAISE ConsciousnessSystem's "
+            "continuous repression term (ideology.py) once repression_faced "
+            "rises above the ambient baseline"
+        )
+
+    def test_repress_on_org_propagation_is_deterministic_across_independent_full_campaigns(
+        self,
+    ) -> None:
+        """Constitution III.7: the propagation is a pure graph read (SOLIDARITY
+        edges, id-sorted) + deterministic arithmetic -- no RNG of its own.
+        Two independent full campaigns, identical seeding, must produce a
+        byte-identical C001 ``repression_faced`` trajectory."""
+
+        def _run() -> list[float]:
+            store = _FakeStore()
+            session = create_new_campaign(store, scenario=WayneCountyScenario())
+            session.graph.add_edge(
+                "ORG001",
+                _DETROIT_PROLETARIAT_ID,
+                edge_type=EdgeType.SOLIDARITY.value,
+                solidarity_strength=0.3,
+            )
+            session.graph.nodes["ORG001"]["heat"] = 0.4
+
+            trajectory: list[float] = []
+            max_ticks = 5
+            for _tick in range(max_ticks):
+                session.advance_tick()
+                trajectory.append(
+                    float(session.graph.nodes[_DETROIT_PROLETARIAT_ID].get("repression_faced", 0.0))
+                )
+            return trajectory
+
+        run_a = _run()
+        run_b = _run()
+
+        assert run_a[-1] > run_a[0], "Expected repression_faced to rise at all over 5 ticks"
+        assert run_a == run_b, f"Determinism violated: run A={run_a} != run B={run_b}"
 
 
 # --------------------------------------------------------------------------- #

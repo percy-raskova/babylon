@@ -314,8 +314,10 @@ class TestWayneOpeningArcIntegrity:
         assert step.completion == VerbIssued(verb="new_campaign")
 
     def test_arc_covers_the_advertised_core_loop_beats(self) -> None:
-        """The 9 authored beats span mint -> briefing -> dossier -> tick ->
-        run -> ack -> palette -> theorem -> jump-back, in that order."""
+        """The 13 authored beats span mint -> briefing -> dossier -> tick ->
+        run -> ack -> palette -> theorem -> jump-back, then the adversary
+        tail (adversary train W4): state-apparatus dossier -> repression
+        ledger, in that order."""
         assert [step.id for step in WAYNE_OPENING_ARC.steps] == [
             "boot_into_lobby",
             "begin_the_operation",
@@ -326,6 +328,10 @@ class TestWayneOpeningArcIntegrity:
             "palette_to_the_economy_dossier",
             "read_the_theorem_verdict",
             "jump_back_to_wayne",
+            "palette_to_the_state_apparatus_dossier",
+            "read_the_state_apparatus_dossier",
+            "palette_to_the_repression_ledger",
+            "read_the_repression_ledger",
         ]
 
 

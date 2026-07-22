@@ -511,8 +511,8 @@ decisions:
     date: '2026-05-18'
     file: ADR048_spec_070_balkanization.yaml
   ADR049_election_lab_catalog_addition:
-    title: 'Data-catalog v2.6.4 PATCH proposal — add MIT Election Lab county-presidential dataset'
-    status: proposed
+    title: 'Data-catalog PATCH — add MIT Election Lab county-presidential dataset (ratified 2026-07-22 as v2.7.2 MIT_Election_Lab, P25 U6/ADR132)'
+    status: accepted
     date: '2026-05-18'
     file: ADR049_election_lab_catalog_addition.yaml
   ADR050_qcew_suppression_imputation:

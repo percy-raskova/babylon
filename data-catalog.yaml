@@ -3,7 +3,7 @@
 # Canonical machine-readable catalog for III.4 Data Source Traceability.
 # Runtime data sources are fetched/updated during operation.
 # Fixtures are pinned snapshots for reproducible tests and NEVER runtime dependencies.
-version: "2.7.1"
+version: "2.7.2"
 categories:
   - name: Federal Economic
     sources:
@@ -176,6 +176,19 @@ categories:
         granularity: National/Region
         cadence: Annual
         class: Runtime
+      - id: MIT_Election_Lab
+        agency: MIT Election Data and Science Lab
+        dataset: County Presidential Election Returns 2000-2024
+        vintage: Static (dataset v20, 2026-02-25; CC0 1.0)
+        granularity: County
+        cadence: Static (per-election releases)
+        class: Fixture
+        provenance_url: https://doi.org/10.7910/DVN/VOQCHQ
+        local_path: /media/user/data/babylon-data/elections/mit_countypres/countypres_2000-2024_mirror.csv
+        added_by: >-
+          spec-070 T118 / ADR049 (ratified P25 U6, ADR132) — FR-039
+          FAC_RESTORATIONIST electoral seed; committed derivative =
+          data-artifacts.yaml mit_countypres_rep_share
   - name: Federal Infrastructure
     sources:
       - id: HIFLD

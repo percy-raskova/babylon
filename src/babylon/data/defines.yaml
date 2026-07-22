@@ -1066,3 +1066,28 @@ capital_vol3:
 veil:
   tier1_doctrine_node_id: class_consciousness  # Ruling D7: acquiring this doctrine node unlocks veil Tier 1 (exploitation visible — wage vs value-produced axes). Default is the free tree root (cost_tl=0), reachable the first DoctrineSystem tick for any organization regardless of cadre_level (bootstrap fires once theoretical_labor >= 0).
   tier2_doctrine_node_id: trade_unionism  # Ruling D7: acquiring this doctrine node unlocks veil Tier 2 (the scissors — price/value divergence instruments, the Fundamental Theorem meter's full form). Default costs 25 TL; at cadre_level=0.25 (the nationwide Cadre Council seed) and study_allocation=0.20 that is 25 / (0.25*0.20) = 500 ticks — reachable inside a 520-tick campaign, but earned near its end.
+
+# ---------------------------------------------------------------------
+# politics — Ambient electoral-machine + doctrine-fork coefficients (P25/ADR127).
+# ---------------------------------------------------------------------
+politics:
+  cycle_ticks:  # Θ_data — election clock per JurisdictionLevel, in ticks (1 tick = 1 week): federal/state biennial (104), local annual (52). Consumed by ElectoralSystem's clock (U10, the congress_interval_ticks idiom). Terrain fact; per-sovereign electoral RULES (FPTP thresholds, ballot access, malapportionment) arrive with the MIT Election Lab data tier at U6/U10, not as scalars here.
+    federal: 104
+    state: 104
+    local: 52
+  base_turnout: 0.55  # Θ_data — base turnout rate before allegiance-concentration, hope, and suppression modifiers (U10 turnout law). Calibrated against VAP turnout in the IV window (~0.5-0.6 presidential). (>= 0.0, <= 1.0)
+  capital_tolerance: 0.15  # Θ_theory — the policy-incidence share of measured surplus beyond which the capital veto arms (investment strike via the equalization operator + bond discipline; U9 §2.4). The SHAPE (a finite tolerance exists) is theory; the value is calibrated by the mitterrand golden at U13. (> 0.0, <= 1.0)
+  phi_social_share: 0.25  # Θ_theory — the maximum slice of Φ pool inflow routable into the social wage (U9 funding identity: SW_deliverable = min(SW_promised, t_claim + phi_social_share·Φ_inflow − debt_service)). Bounded ≤ 1.0 as the anti-list row: no θ may let the social wage exceed measured surplus — reform redistributes, it never mints value (L-CEILING, T-6's premise). (>= 0.0, <= 1.0)
+  valve_strength: 0.6  # Θ_feel — v in the valve law: Agitation→Organization conversion ×= (1 − v·H(c)) (U8). Bounded [0,1] so hope SUPPRESSES and never amplifies organizing (the Θ_theory sign law lives in the bound); 0 disables the valve, 1 lets saturated hope halt conversion entirely. L-VALVE pins monotonicity in this knob. (>= 0.0, <= 1.0)
+  hope_spike_gain: 0.3  # Θ_feel — HOPE_SPIKE event gain applied to H(c) on viable-platform emergence (U8; the Bernie-surge steepness knob). (>= 0.0)
+  disillusion_window_ticks: 26  # Θ_feel — duration of the boosted-conversion disillusion window after loss/suspension/betrayal rupture (U10 H-collapse; T-7 routes the boost by SOLIDARITY topology). Default half a year. (>= 1)
+  betrayal_threshold: 1.0  # Θ_feel — the accumulated delivery-gap integral b(c) = Σ gap at which patience ruptures into a disillusion window regardless of the next cycle's promises (U10; the SYRIZA-voter curve). (> 0.0)
+  office_capture_rate: 0.02  # Θ_feel — per-tenure-tick drift of an org's effective line toward its officeholders' institutional median (U11 institutional_pull; Michels' iron law as a rate, resisted by cadre_level and cohesion). (>= 0.0, <= 1.0)
+  split_asset_retention: 0.4  # Θ_feel — share of branch-specific assets retained through a line-change split at congress (U11; electeds rarely follow you out; canvass-cadre skills convert below par). (>= 0.0, <= 1.0)
+  sect_isolation_rate: 0.05  # Θ_feel — per-tick MASS_LINK decay while boycotting a live hope field the org's own base carries (U11 Principled Abstention stance; the sect death spiral, priced). (>= 0.0, <= 1.0)
+  boycott_conversion: 0.1  # Θ_feel — efficiency of Campaign(Election, mode=BOYCOTT) at converting ambient H into agitation (U11; dominant only where legitimacy is already broken). (>= 0.0, <= 1.0)
+  popular_front_trigger: 0.6  # Θ_feel — the fascist_consolidation axis_progress at which the popular-front conjuncture fires for EVERY line (U12 §3.4; Third Period vs Popular Front, forced). (>= 0.0, <= 1.0)
+  donor_platform_weight: 0.35  # Θ_feel — θ.politics.donor_platform_weight in the derived platform vector (U7 §2.1: donor funding-share pull vs base composition; the Brahmin-left capture knob). (>= 0.0)
+  suppression_cost_weight: 0.2  # Θ_feel — turnout penalty per unit of REPRESSION exposure / carceral disenfranchisement pressure (U10 turnout law; the franchise is class-differential, from data). (>= 0.0)
+  host_threat_threshold: 0.3  # Θ_feel — intra-host influence share past which the host machine runs derecognition counter-play against an entryist org (U11; superdelegates as INCORPORATE, primary purges as DIVIDE). (>= 0.0, <= 1.0)
+  legitimacy_backfire_threshold: 0.35  # Θ_feel — legitimation_index floor below which each Repress action converts to agitation at the multiplied repression_backfire rate (U10 §2.5 wiring of the existing consciousness-defines coefficient). (>= 0.0, <= 1.0)

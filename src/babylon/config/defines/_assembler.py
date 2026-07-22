@@ -58,6 +58,7 @@ from babylon.config.defines.organizations import (
     NegotiateDefines,
     OrganizationDefines,
 )
+from babylon.config.defines.politics import PoliticsDefines
 from babylon.config.defines.reactionary import ReactionaryDefines
 from babylon.config.defines.state_apparatus import (
     InstitutionDefines,
@@ -137,6 +138,8 @@ class GameDefines(BaseModel):
       thresholds (024-capital-volume-iii; migrated off module-level Finals
       in the 2026-07-18 honesty sweep)
     - veil: The Veil of Money's theoretical disclosure tier thresholds (D7, spec-117 §5d)
+    - politics: ambient electoral machine + doctrine fork coefficients
+      (Program 25, ADR127; A6 tiers declared at birth)
     """
 
     model_config = ConfigDict(frozen=True)
@@ -212,6 +215,8 @@ class GameDefines(BaseModel):
     capital_vol3: CapitalVolumeIIIDefines = Field(default_factory=CapitalVolumeIIIDefines)
     # Veil of Money — theoretical disclosure tier thresholds (D7, spec-117 §5d)
     veil: VeilDefines = Field(default_factory=VeilDefines)
+    # The Political Superstructure — electoral machine + doctrine fork (Program 25, ADR127)
+    politics: PoliticsDefines = Field(default_factory=PoliticsDefines)
 
     # Legacy flat attributes for backward compatibility
     # These delegate to the nested structure
@@ -345,6 +350,7 @@ class GameDefines(BaseModel):
             capital_vol2=CapitalVolumeIIDefines(**data.get("capital_vol2", {})),
             capital_vol3=CapitalVolumeIIIDefines(**data.get("capital_vol3", {})),
             veil=VeilDefines(**data.get("veil", {})),
+            politics=PoliticsDefines(**data.get("politics", {})),
         )
 
     @classmethod

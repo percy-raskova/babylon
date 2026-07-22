@@ -16,6 +16,7 @@ from __future__ import annotations
 
 import pytest
 
+from babylon.domain.economics.tick.types import TickSummary
 from babylon.models.entities.social_class import IdeologicalProfile, SocialClass
 from babylon.models.entities.territory import Territory
 from babylon.models.enums import SocialRole
@@ -40,6 +41,29 @@ _OAKLAND_SURPLUS_ATTRS = {
     "tick_interest_burden": 50.0,
     "tick_ground_rent": 150.0,
     "tick_taxes_on_surplus": 100.0,
+}
+
+#: A minimal valid TickSummary carrying national_melt=65.0 — the ONE input
+#: phi_domestic/phi_iii_report share, already live on the graph independent
+#: of the Φ tri-decomposition wiring (see project_economy's own docstring).
+_NATIONAL_MELT_SUMMARY = TickSummary(
+    year=2020,
+    counties_processed=1,
+    phi_aggregate=0.0,
+    national_melt=65.0,
+    mean_profit_rate=0.1,
+    mean_occ=1.0,
+    mean_exploitation_rate=1.0,
+    national_class_distribution={},
+)
+
+_GAMMA_BASKET_DUMP = {"year": 2022, "alpha": 0.35, "gamma_import": 0.65, "gamma_basket": 0.74}
+_GAMMA_III_DUMP = {
+    "year": 2022,
+    "paid_care_hours": 16.5,
+    "unpaid_care_hours": 33.0,
+    "gamma_iii": 0.333,
+    "fortunati_exploitation": 2.003,
 }
 
 
@@ -206,6 +230,124 @@ class TestEconomyDashboardFundamentalTheorem:
         assert view.phi_domestic is None
         assert view.phi_iii_report is None
         assert view.phi_decomposition_total is None
+
+
+class TestPhiTriDecomposition:
+    """Each Φ tri-decomposition component reads its OWN named graph inputs.
+
+    Fix-commit regression coverage: the tri-decomposition must have a real
+    read site per component (each attempting ``graph.get_graph_attr`` for
+    its own named inputs and calling the matching ``value_form`` builder
+    only when all of them resolve) rather than five hardcoded ``None``
+    literals — a future producer publishing any ONE component's inputs must
+    make that component light up with no change to ``project_economy``.
+    These tests exercise the lit-up path directly, giving the previously
+    zero-caller ``value_form`` builders (and ``PhiDecomposition`` itself) a
+    real call site.
+    """
+
+    def test_unequal_exchange_lights_up_from_gamma_basket_and_consumption(self) -> None:
+        graph = BabylonGraph()
+        graph.set_graph_attr("gamma_basket", _GAMMA_BASKET_DUMP)
+        graph.set_graph_attr("consumption", 1000.0)
+        view = project_economy("USA", graph=graph, world=WorldState(), tick=1)
+
+        assert view.phi_unequal_exchange == pytest.approx((1.0 - 0.74) * 1000.0)
+        # The other components still lack THEIR OWN inputs — each reads
+        # independently, so one lighting up must not fabricate the rest.
+        assert view.phi_reproduction is None
+        assert view.phi_domestic is None
+        assert view.phi_iii_report is None
+        assert view.phi_decomposition_total is None
+
+    def test_reproduction_lights_up_from_p_g2_and_wage_paid(self) -> None:
+        graph = BabylonGraph()
+        graph.set_graph_attr("p_g2_labor_value", 60000.0)
+        graph.set_graph_attr("wage_paid_for_d_g2", 12000.0)
+        view = project_economy("USA", graph=graph, world=WorldState(), tick=1)
+
+        assert view.phi_reproduction == pytest.approx(48000.0)
+        assert view.phi_unequal_exchange is None
+        assert view.phi_decomposition_total is None
+
+    def test_domestic_lights_up_from_l_unpaid_and_national_melt(self) -> None:
+        graph = BabylonGraph()
+        graph.set_graph_attr("l_unpaid", 1000.0)
+        graph.set_graph_attr("tick_dynamics", {"tick_summary": _NATIONAL_MELT_SUMMARY})
+        view = project_economy("USA", graph=graph, world=WorldState(), tick=1)
+
+        assert view.phi_domestic == pytest.approx(65.0 * 1000.0)
+        assert view.phi_decomposition_total is None
+
+    def test_domestic_stays_absent_without_national_melt_even_with_l_unpaid(self) -> None:
+        """One input alone is not both inputs — τ must ALSO resolve."""
+        graph = BabylonGraph()
+        graph.set_graph_attr("l_unpaid", 1000.0)
+        view = project_economy("USA", graph=graph, world=WorldState(), tick=1)
+
+        assert view.phi_domestic is None
+
+    def test_iii_report_lights_up_from_gamma_iii_and_national_melt(self) -> None:
+        graph = BabylonGraph()
+        graph.set_graph_attr("gamma_iii", _GAMMA_III_DUMP)
+        graph.set_graph_attr("tick_dynamics", {"tick_summary": _NATIONAL_MELT_SUMMARY})
+        view = project_economy("USA", graph=graph, world=WorldState(), tick=1)
+
+        assert view.phi_iii_report == pytest.approx((1.0 - 0.333) * 33.0 * 65.0)
+        # phi_iii_report is report-only (D2 kernel-fork resolution) — it
+        # never gates phi_decomposition_total on its own.
+        assert view.phi_decomposition_total is None
+
+    def test_decomposition_total_requires_all_three_conservation_components(self) -> None:
+        graph = BabylonGraph()
+        graph.set_graph_attr("gamma_basket", _GAMMA_BASKET_DUMP)
+        graph.set_graph_attr("consumption", 1000.0)
+        graph.set_graph_attr("p_g2_labor_value", 60000.0)
+        graph.set_graph_attr("wage_paid_for_d_g2", 12000.0)
+        graph.set_graph_attr("l_unpaid", 1000.0)
+        graph.set_graph_attr("tick_dynamics", {"tick_summary": _NATIONAL_MELT_SUMMARY})
+        view = project_economy("USA", graph=graph, world=WorldState(), tick=1)
+
+        expected_unequal_exchange = (1.0 - 0.74) * 1000.0
+        expected_reproduction = 48000.0
+        expected_domestic = 65.0 * 1000.0
+        assert view.phi_unequal_exchange == pytest.approx(expected_unequal_exchange)
+        assert view.phi_reproduction == pytest.approx(expected_reproduction)
+        assert view.phi_domestic == pytest.approx(expected_domestic)
+        assert view.phi_decomposition_total == pytest.approx(
+            expected_unequal_exchange + expected_reproduction + expected_domestic
+        )
+
+    def test_decomposition_total_missing_one_conservation_component_is_none(self) -> None:
+        """Two of three conservation components present is still not enough."""
+        graph = BabylonGraph()
+        graph.set_graph_attr("gamma_basket", _GAMMA_BASKET_DUMP)
+        graph.set_graph_attr("consumption", 1000.0)
+        graph.set_graph_attr("p_g2_labor_value", 60000.0)
+        graph.set_graph_attr("wage_paid_for_d_g2", 12000.0)
+        # l_unpaid / national_melt deliberately absent — phi_domestic stays None.
+        view = project_economy("USA", graph=graph, world=WorldState(), tick=1)
+
+        assert view.phi_unequal_exchange is not None
+        assert view.phi_reproduction is not None
+        assert view.phi_domestic is None
+        assert view.phi_decomposition_total is None
+
+    def test_decomposition_total_excludes_iii_report(self) -> None:
+        """Adding phi_iii_report's OWN inputs must not change the total (D2 fork)."""
+        graph = BabylonGraph()
+        graph.set_graph_attr("gamma_basket", _GAMMA_BASKET_DUMP)
+        graph.set_graph_attr("consumption", 1000.0)
+        graph.set_graph_attr("p_g2_labor_value", 60000.0)
+        graph.set_graph_attr("wage_paid_for_d_g2", 12000.0)
+        graph.set_graph_attr("l_unpaid", 1000.0)
+        graph.set_graph_attr("gamma_iii", _GAMMA_III_DUMP)
+        graph.set_graph_attr("tick_dynamics", {"tick_summary": _NATIONAL_MELT_SUMMARY})
+        view = project_economy("USA", graph=graph, world=WorldState(), tick=1)
+
+        assert view.phi_iii_report is not None
+        without_iii_report = view.phi_unequal_exchange + view.phi_reproduction + view.phi_domestic
+        assert view.phi_decomposition_total == pytest.approx(without_iii_report)
 
 
 class TestEconomyDashboardChipContract:

@@ -3,12 +3,16 @@
 Assembles a :class:`~babylon.projection.view_models.EconomyView` from the
 post-tick world: the Fundamental Theorem verdict read verbatim off the
 ``wage`` opposition's Balance, the per-class/county Φ readings the
-``fundamental_theorem`` graph stash carries, Φ's tri-decomposition (wired
-here as a pure read of graph inputs — genuinely absent tree-wide today), the
-Volume III surplus split aggregated RATIO-OF-SUMS across territories, and
-the metabolic matter-book. Transport-neutral by construction — no Django, no
-engine imports, no database connection; callers hand in the graph and world
-they already hold.
+``fundamental_theorem`` graph stash carries, Φ's tri-decomposition (each
+component's own named graph inputs are attempted at project time and fed
+straight into the matching :mod:`~babylon.domain.dialectics.instances.
+value_form` builder — genuinely absent tree-wide today, so every attempt
+currently resolves ``None``, but the read sites are real: the first future
+unit to publish a component's inputs makes that component light up with no
+change to this module), the Volume III surplus split aggregated
+RATIO-OF-SUMS across territories, and the metabolic matter-book.
+Transport-neutral by construction — no Django, no engine imports, no
+database connection; callers hand in the graph and world they already hold.
 
 **One producer per field** (mirrors the WO-3 ruling
 :mod:`babylon.projection.county` records):
@@ -38,19 +42,30 @@ they already hold.
        ``phi_iii_report`` / ``phi_decomposition_total``
      - Φ's tri-decomposition (:mod:`~babylon.domain.dialectics.instances.
        value_form`'s ``phi_unequal_exchange``/``phi_reproduction``/
-       ``phi_domestic``/``phi_iii_report`` builders, §9.3). Wired here as a
-       pure read of graph inputs at project time — NOT engine computation.
-       Each component needs its own raw input (``γ_basket`` + consumption
-       for unequal exchange; ``p_g2_labor_value`` + wages-for-rearing for
-       reproduction; unpaid reproductive labor-hours for domestic) and
-       **none of these five inputs is published to the graph anywhere in
-       the engine today** (verified tree-wide, 2026-07-22 — not even the
-       national MELT τ alone, itself live on
-       ``tick_dynamics.tick_summary.national_melt``, can complete
-       ``τ · L_unpaid`` without ``L_unpaid``). All five project as honest
-       ``None`` until a future unit lands the first missing input, one
-       component at a time (Constitution III.11) — this module never
-       fabricates them and never adds the missing engine-side computation.
+       ``phi_domestic``/``phi_iii_report``/``PhiDecomposition`` builders,
+       §9.3). Each component attempts its own named graph reads at project
+       time — NOT engine computation — and calls the matching builder only
+       when every one of its inputs resolves:
+       ``phi_unequal_exchange`` reads the ``"gamma_basket"`` (a
+       :class:`~babylon.domain.economics.gamma.types.GammaBasket` dump) and
+       ``"consumption"`` graph attrs; ``phi_reproduction`` reads
+       ``"p_g2_labor_value"`` and ``"wage_paid_for_d_g2"``; ``phi_domestic``
+       reads ``"l_unpaid"`` plus the national MELT τ already live on
+       ``tick_dynamics.tick_summary.national_melt``; ``phi_iii_report``
+       reads ``"gamma_iii"`` (a
+       :class:`~babylon.domain.economics.gamma.types.GammaIII` dump) plus
+       the same τ. ``phi_decomposition_total`` builds a real
+       :class:`~babylon.domain.dialectics.instances.value_form.
+       PhiDecomposition` and reads its ``total`` — but only once all THREE
+       conservation components (unequal exchange, reproduction, domestic)
+       resolve; ``phi_iii_report`` is report-only and never gates it.
+       **None of these six graph attrs is published anywhere in the engine
+       today** (verified tree-wide, 2026-07-22), so every read attempt
+       currently resolves ``None`` and every component projects honest
+       ``None`` (Constitution III.11) — this module never fabricates an
+       input and never adds the missing engine-side computation. The read
+       sites are real, though: the first future unit to publish any one
+       input lights up that component with no change to this module.
    * - ``surplus_produced`` / ``profit_of_enterprise`` / ``interest_burden``
        / ``ground_rent`` / ``taxes_on_surplus`` / ``rentier_share`` /
        ``financialization_share``
@@ -93,6 +108,14 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
+from babylon.domain.dialectics.instances.value_form import (
+    PhiDecomposition,
+    phi_domestic,
+    phi_iii_report,
+    phi_reproduction,
+    phi_unequal_exchange,
+)
+from babylon.domain.economics.gamma.types import GammaBasket, GammaIII
 from babylon.models.enums.topology import NodeType
 from babylon.projection.view_models import ClassPhiReadingView, EconomyView
 
@@ -137,6 +160,140 @@ def _class_phi_readings(graph: GraphProtocol) -> tuple[ClassPhiReadingView, ...]
     if raw is None:
         return None
     return tuple(ClassPhiReadingView(**data) for _, data in sorted(raw.items()))
+
+
+def _national_melt(graph: GraphProtocol) -> float | None:
+    """Read the national MELT (τ) off the live ``tick_dynamics`` graph stash.
+
+    ``TickDynamicsSystem`` writes ``state.tick_summary`` (a
+    :class:`~babylon.domain.economics.tick.types.TickSummary` instance, not a
+    dump) verbatim into the ``"tick_dynamics"`` graph attr's ``"tick_summary"``
+    key (:func:`~babylon.domain.economics.tick.graph_bridge.
+    write_tick_state_to_graph`) — read here via ``graph.get_graph_attr``
+    through the SAME live in-memory graph object, never a round-tripped copy.
+
+    :param graph: The post-tick graph.
+    :returns: ``tick_dynamics.tick_summary.national_melt``, or ``None`` when
+        the ``tick_dynamics`` stash or its ``tick_summary`` sub-object is
+        absent this tick.
+    """
+    tick_dynamics = graph.get_graph_attr("tick_dynamics", None)
+    if not isinstance(tick_dynamics, dict):
+        return None
+    tick_summary = tick_dynamics.get("tick_summary")
+    if tick_summary is None:
+        return None
+    return float(tick_summary.national_melt)
+
+
+def _phi_unequal_exchange(graph: GraphProtocol) -> float | None:
+    """Emmanuel/Amin Φ_unequal_exchange, from its two named graph inputs.
+
+    :param graph: The post-tick graph.
+    :returns: :func:`~babylon.domain.dialectics.instances.value_form.
+        phi_unequal_exchange` over the ``"gamma_basket"``/``"consumption"``
+        graph attrs, or ``None`` when either is absent this tick.
+    :raises pydantic.ValidationError: if a present ``"gamma_basket"`` dump is
+        malformed.
+    """
+    raw_gamma_basket = graph.get_graph_attr("gamma_basket", None)
+    consumption = graph.get_graph_attr("consumption", None)
+    if raw_gamma_basket is None or consumption is None:
+        return None
+    gamma_basket = GammaBasket(**raw_gamma_basket)
+    return phi_unequal_exchange(gamma_basket, float(consumption))
+
+
+def _phi_reproduction(graph: GraphProtocol) -> float | None:
+    """Meillassoux Φ_reproduction, from its two named graph inputs.
+
+    :param graph: The post-tick graph.
+    :returns: :func:`~babylon.domain.dialectics.instances.value_form.
+        phi_reproduction` over the ``"p_g2_labor_value"``/
+        ``"wage_paid_for_d_g2"`` graph attrs, or ``None`` when either is
+        absent this tick.
+    """
+    p_g2_labor_value = graph.get_graph_attr("p_g2_labor_value", None)
+    wage_paid_for_d_g2 = graph.get_graph_attr("wage_paid_for_d_g2", None)
+    if p_g2_labor_value is None or wage_paid_for_d_g2 is None:
+        return None
+    return phi_reproduction(
+        p_g2_labor_value=float(p_g2_labor_value),
+        wage_paid_for_d_g2=float(wage_paid_for_d_g2),
+    )
+
+
+def _phi_domestic(graph: GraphProtocol) -> float | None:
+    """Fortunati Φ_domestic (``τ · L_unpaid``), from its named graph inputs.
+
+    :param graph: The post-tick graph.
+    :returns: :func:`~babylon.domain.dialectics.instances.value_form.
+        phi_domestic` over the ``"l_unpaid"`` graph attr and
+        :func:`_national_melt`, or ``None`` when either is absent this tick.
+    """
+    l_unpaid = graph.get_graph_attr("l_unpaid", None)
+    tau = _national_melt(graph)
+    if l_unpaid is None or tau is None:
+        return None
+    return phi_domestic(tau, float(l_unpaid))
+
+
+def _phi_iii_report(graph: GraphProtocol) -> float | None:
+    """The kernel's narrower Φ_III report term, from its named graph inputs.
+
+    :param graph: The post-tick graph.
+    :returns: :func:`~babylon.domain.dialectics.instances.value_form.
+        phi_iii_report` over the ``"gamma_iii"`` graph attr and
+        :func:`_national_melt`, or ``None`` when either is absent this tick.
+    :raises pydantic.ValidationError: if a present ``"gamma_iii"`` dump is
+        malformed.
+    """
+    raw_gamma_iii = graph.get_graph_attr("gamma_iii", None)
+    tau = _national_melt(graph)
+    if raw_gamma_iii is None or tau is None:
+        return None
+    gamma_iii = GammaIII(**raw_gamma_iii)
+    return phi_iii_report(gamma_iii, tau)
+
+
+#: One Φ tri-decomposition tuple:
+#: (unequal_exchange, reproduction, domestic, iii_report, decomposition_total).
+_PhiTriDecomposition = tuple[float | None, float | None, float | None, float | None, float | None]
+
+
+def _phi_tri_decomposition(graph: GraphProtocol) -> _PhiTriDecomposition:
+    """Attempt every Φ tri-decomposition component's own named graph read.
+
+    Each component is read and, where possible, built independently — a
+    present ``phi_unequal_exchange`` does not require ``phi_domestic`` to
+    also be present. ``phi_decomposition_total`` is the odd one out: it
+    builds a real :class:`~babylon.domain.dialectics.instances.value_form.
+    PhiDecomposition` and reads its ``total`` computed field, so it requires
+    all THREE conservation components (unequal exchange, reproduction,
+    domestic) to resolve — ``phi_iii_report`` is report-only (D2 kernel-fork
+    resolution) and never gates it, matching
+    :attr:`~babylon.domain.dialectics.instances.value_form.PhiDecomposition.total`'s
+    own exclusion.
+
+    :param graph: The post-tick graph.
+    :returns: ``(phi_unequal_exchange, phi_reproduction, phi_domestic,
+        phi_iii_report, phi_decomposition_total)`` — each independently
+        ``None`` when its own inputs are absent this tick.
+    """
+    unequal_exchange = _phi_unequal_exchange(graph)
+    reproduction = _phi_reproduction(graph)
+    domestic = _phi_domestic(graph)
+    iii_report = _phi_iii_report(graph)
+    total: float | None = None
+    if unequal_exchange is not None and reproduction is not None and domestic is not None:
+        decomposition = PhiDecomposition(
+            phi_unequal_exchange=unequal_exchange,
+            phi_reproduction=reproduction,
+            phi_domestic=domestic,
+            phi_iii_report=iii_report if iii_report is not None else 0.0,
+        )
+        total = decomposition.total
+    return (unequal_exchange, reproduction, domestic, iii_report, total)
 
 
 #: One RATIO-OF-SUMS tuple: (s, p, i, r, t, rentier_share, financialization_share).
@@ -246,6 +403,13 @@ def project_economy(
     wage_balance, labor_aristocracy_verdict = _fundamental_theorem_verdict(graph)
     class_phi_readings = _class_phi_readings(graph)
     (
+        phi_unequal_exchange_reading,
+        phi_reproduction_reading,
+        phi_domestic_reading,
+        phi_iii_report_reading,
+        phi_decomposition_total_reading,
+    ) = _phi_tri_decomposition(graph)
+    (
         surplus_produced,
         profit_of_enterprise,
         interest_burden,
@@ -267,19 +431,18 @@ def project_economy(
         wage_balance=wage_balance,
         labor_aristocracy_verdict=labor_aristocracy_verdict,
         class_phi_readings=class_phi_readings,
-        # Φ's tri-decomposition (§9.3): genuinely absent tree-wide today —
-        # no engine producer publishes gamma_basket/consumption (unequal
-        # exchange), p_g2_labor_value/wage_paid_for_d_g2 (reproduction), or
-        # l_unpaid (domestic labor's unpaid-hours half; national MELT tau
-        # IS live elsewhere, but alone cannot complete tau * l_unpaid).
-        # Wired to light up the moment any ONE producer lands, one
-        # component at a time (Constitution III.11) — never engine
-        # computation added here (see this module's own docstring table).
-        phi_unequal_exchange=None,
-        phi_reproduction=None,
-        phi_domestic=None,
-        phi_iii_report=None,
-        phi_decomposition_total=None,
+        # Φ's tri-decomposition (§9.3): each component reads its own named
+        # graph inputs at project time (see :func:`_phi_tri_decomposition`
+        # and this module's own docstring table) — genuinely absent
+        # tree-wide today, so every attempt currently resolves None, but the
+        # read sites are real and light up the moment a future unit
+        # publishes the first input (Constitution III.11) — never engine
+        # computation added here.
+        phi_unequal_exchange=phi_unequal_exchange_reading,
+        phi_reproduction=phi_reproduction_reading,
+        phi_domestic=phi_domestic_reading,
+        phi_iii_report=phi_iii_report_reading,
+        phi_decomposition_total=phi_decomposition_total_reading,
         surplus_produced=surplus_produced,
         profit_of_enterprise=profit_of_enterprise,
         interest_burden=interest_burden,

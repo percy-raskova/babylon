@@ -41,6 +41,9 @@ class _FakeCampaign:
     def read_page(self, subject: str) -> str | None:
         return self._pages.get(subject)
 
+    def known_subjects(self) -> frozenset[str]:
+        return frozenset(self._pages)
+
     def advance_tick(self) -> _FakeTickOutcome:  # pragma: no cover - unused once a driver is wired
         raise AssertionError("campaign.advance_tick() called directly while a driver was wired")
 

@@ -22,7 +22,7 @@ from uuid import UUID, uuid4
 import pytest
 from textual.widgets import Label, OptionList
 
-from babylon.tui.app import ArchiveApp, BabylonMarkdown, CampaignHandle, TickOutcome
+from babylon.tui.app import KNOWN_ENTITIES, ArchiveApp, BabylonMarkdown, CampaignHandle, TickOutcome
 from babylon.tui.campaign_menu import CampaignMenu, InMemoryCampaign, InMemoryCampaignCatalog
 
 pytestmark = pytest.mark.unit
@@ -47,6 +47,12 @@ class _FakeCampaign:
 
     def read_page(self, subject: str) -> str | None:
         return self._pages.get(subject)
+
+    def known_subjects(self) -> frozenset[str]:
+        """Every subject currently baked into ``self._pages`` — a test can
+        mutate that dict directly (simulating a mid-campaign bake) and the
+        next call here picks it up, same as the real vault-backed reader."""
+        return frozenset(self._pages)
 
     def advance_tick(self) -> _FakeTickOutcome:
         self.advance_calls += 1
@@ -226,3 +232,75 @@ class TestLobbyToCampaignShellFlow:
 
             assert app._exit is True
             assert loader.calls == []
+
+
+class TestLiveVaultKnownEntities:
+    """Program v1.0.0 Unit U1: the palette/resolver's known-entity set is
+    rebuilt from the live campaign's own vault instead of staying frozen on
+    the demo :data:`KNOWN_ENTITIES` fixture — see ``babylon.tui.app``'s
+    module docstring for the gap this closes.
+    """
+
+    @pytest.mark.asyncio
+    async def test_choosing_a_campaign_rebuilds_known_entities_from_its_vault(self) -> None:
+        menu, campaign_id = _seeded_menu()
+        briefing_subject = f"briefing/{campaign_id}"
+        campaign = _FakeCampaign(
+            campaign_id,
+            {briefing_subject: "# OPERATION TEST\n", "county/26163": "# Wayne — LIVE\n"},
+        )
+        loader = _FakeLoader(campaign)
+        app = ArchiveApp(campaign_menu=menu, campaign_loader=loader)
+
+        async with app.run_test() as pilot:
+            await pilot.pause()
+            app.screen.query_one("#campaigns", OptionList).focus()
+            await pilot.press("enter")
+            await pilot.pause()
+
+            # A real, baked subject is now known...
+            assert "county/26163" in app.known_entities
+            assert app._resolver("county/26163") is True
+            # ...and a fixture-only demo entity the live vault never baked
+            # is no longer known — no more speaking the demo set.
+            assert "national/USA" not in app.known_entities
+            assert app._resolver("national/USA") is False
+
+    @pytest.mark.asyncio
+    async def test_an_advance_that_bakes_a_new_page_is_picked_up(self) -> None:
+        menu, campaign_id = _seeded_menu()
+        briefing_subject = f"briefing/{campaign_id}"
+        campaign = _FakeCampaign(
+            campaign_id,
+            {briefing_subject: "# OPERATION TEST\n", "county/26163": "# Wayne\n"},
+        )
+        loader = _FakeLoader(campaign)
+        app = ArchiveApp(campaign_menu=menu, campaign_loader=loader)
+
+        async with app.run_test() as pilot:
+            await pilot.pause()
+            app.screen.query_one("#campaigns", OptionList).focus()
+            await pilot.press("enter")
+            await pilot.pause()
+            await pilot.press("enter")  # "Begin Operation"
+            await pilot.pause()
+
+            assert "economy/USA" not in app.known_entities
+
+            # Simulate the vault baking a new page as part of this tick.
+            campaign._pages["economy/USA"] = "# economy/USA\n"
+            await pilot.press("t")
+            await pilot.pause()
+
+            assert "economy/USA" in app.known_entities
+            assert app._resolver("economy/USA") is True
+
+    @pytest.mark.asyncio
+    async def test_demo_path_still_resolves_the_fixture_sample_set(self) -> None:
+        """No ``campaign_menu`` at all — zero behavior change without a
+        live campaign (ground rule 4)."""
+        app = ArchiveApp()
+        assert app.known_entities == KNOWN_ENTITIES
+        assert app._resolver("county/26163") is True
+        assert app._resolver("org/tenants-un") is True
+        assert app._resolver("org/uaw-9999") is False

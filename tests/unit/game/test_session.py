@@ -25,6 +25,7 @@ from babylon.game.session import (
     default_pause_predicate,
     open_runtime,
     resume_campaign,
+    vault_known_subjects,
     vault_page_source,
 )
 from babylon.kernel.event_bus import Event
@@ -627,6 +628,78 @@ def test_read_page_is_honestly_none_with_no_vault_wired() -> None:
     store = _FakeStore()
     session = create_new_campaign(store, scenario=WayneCountyScenario())
     assert session.read_page("county/26163") is None
+
+
+# --------------------------------------------------------------------------- #
+# vault_known_subjects — enumerates baked pages, honest empty for absence     #
+# (Program v1.0.0 Unit U1).                                                   #
+# --------------------------------------------------------------------------- #
+
+
+def test_vault_known_subjects_enumerates_baked_pages(tmp_path: Any) -> None:
+    (tmp_path / "county").mkdir()
+    (tmp_path / "county" / "26163.md").write_text("# county/26163 — Wayne\n")
+    (tmp_path / "economy").mkdir()
+    (tmp_path / "economy" / "USA.md").write_text("# economy/USA\n")
+
+    known_subjects = vault_known_subjects(tmp_path)
+
+    assert known_subjects() == frozenset({"county/26163", "economy/USA"})
+
+
+def test_vault_known_subjects_excludes_git_and_narrative(tmp_path: Any) -> None:
+    """``.git/`` is the vault's own backend, never a page; ``narrative/`` is
+    the WO-42 narrator prose cache — attributed blocks a dossier's
+    ``{narrative}`` fence pulls IN, never a standalone navigable subject."""
+    (tmp_path / "county").mkdir()
+    (tmp_path / "county" / "26163.md").write_text("# county/26163\n")
+    (tmp_path / ".git").mkdir()
+    (tmp_path / ".git" / "HEAD.md").write_text("not a page\n")
+    (tmp_path / "narrative" / "org").mkdir(parents=True)
+    (tmp_path / "narrative" / "org" / "cache-key.md").write_text("prose\n")
+
+    known_subjects = vault_known_subjects(tmp_path)
+
+    assert known_subjects() == frozenset({"county/26163"})
+
+
+def test_vault_known_subjects_reads_fresh_every_call(tmp_path: Any) -> None:
+    """Pages bake as ticks advance — no caching, unlike a one-shot scan."""
+    known_subjects = vault_known_subjects(tmp_path)
+    assert known_subjects() == frozenset()
+
+    (tmp_path / "county").mkdir()
+    (tmp_path / "county" / "26163.md").write_text("# county/26163\n")
+    assert known_subjects() == frozenset({"county/26163"})
+
+
+def test_vault_known_subjects_is_honestly_empty_for_a_nonexistent_root(tmp_path: Any) -> None:
+    known_subjects = vault_known_subjects(tmp_path / "does-not-exist")
+    assert known_subjects() == frozenset()
+
+
+# --------------------------------------------------------------------------- #
+# GameSession.known_subjects — the CampaignHandle.known_subjects seam        #
+# (Program v1.0.0 Unit U1).                                                   #
+# --------------------------------------------------------------------------- #
+
+
+def test_known_subjects_wraps_the_injected_vault_known_subjects(tmp_path: Any) -> None:
+    (tmp_path / "county").mkdir()
+    (tmp_path / "county" / "26163.md").write_text("# county/26163\n")
+    store = _FakeStore()
+    session = create_new_campaign(
+        store, scenario=WayneCountyScenario(), known_subjects=vault_known_subjects(tmp_path)
+    )
+
+    assert session.known_subjects() == frozenset({"county/26163"})
+
+
+def test_known_subjects_is_honestly_empty_with_no_vault_wired() -> None:
+    """``known_subjects=None`` (the default) — never a fabricated set."""
+    store = _FakeStore()
+    session = create_new_campaign(store, scenario=WayneCountyScenario())
+    assert session.known_subjects() == frozenset()
 
 
 # --------------------------------------------------------------------------- #

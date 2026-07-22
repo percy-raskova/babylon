@@ -30,6 +30,21 @@ autopause-ack flow) instead of calling :attr:`ArchiveApp.campaign` directly
 With no ``driver_factory`` given (the default), :attr:`ArchiveApp.driver`
 stays ``None`` and ``t`` behaves exactly as it did before this unit —
 existing callers/tests are unaffected.
+
+Program v1.0.0 Unit U1 (live-campaign navigation) closes the gap left by
+Unit C2's own ``known_entities``/``_resolver`` docstrings: booting a live
+campaign used to swap :attr:`ArchiveApp._pages` but never the demo
+:data:`KNOWN_ENTITIES` fixture set, so wikilink classification and the
+command palette (:class:`~babylon.tui.palette.EntityNavigatorProvider`)
+kept speaking the demo entities on every real ``babylon play`` boot —
+real baked pages were unreachable except by direct ``Ctrl-O``/``Ctrl-I``
+jumplist replay. :meth:`CampaignHandle.known_subjects` is the new
+enumeration seam; :meth:`ArchiveApp._on_campaign_chosen` rebuilds
+``known_entities``/``_resolver`` from it right after swapping ``_pages``,
+and every successful ``t``/``r`` tick advance re-scans it again (cheap
+frozenset compare, skipped when unchanged) so pages baked mid-campaign
+become navigable immediately. The demo (no-``campaign_menu``) boot path is
+completely unaffected.
 """
 
 from __future__ import annotations
@@ -163,6 +178,18 @@ class CampaignHandle(Protocol):
 
     def read_page(self, subject: str) -> str | None:
         """Read one baked vault page for this campaign (see :data:`PageSource`)."""
+        ...
+
+    def known_subjects(self) -> frozenset[str]:
+        """Every subject id this campaign's vault has baked so far (Unit U1).
+
+        Replaces the demo :data:`KNOWN_ENTITIES` fixture set once a live
+        campaign boots — :meth:`ArchiveApp._on_campaign_chosen` reads this
+        to rebuild :attr:`ArchiveApp.known_entities`/``_resolver`` against
+        the REAL vault instead of the built-in fixture set, so wikilink
+        classification and the command palette speak the live campaign's
+        own baked pages.
+        """
         ...
 
     def advance_tick(self) -> TickOutcome:
@@ -380,7 +407,10 @@ class ArchiveApp(App[None]):
         ``{statblock}`` fences carry no baked body; defaults to the sample
         provider.
     :param known_entities: The palette/redlink known-entity set; defaults
-        to the sample set (:data:`KNOWN_ENTITIES`).
+        to the sample set (:data:`KNOWN_ENTITIES`). Ignored once a live
+        campaign boots (Unit U1): rebuilt from the booted
+        :class:`CampaignHandle`'s own :meth:`~CampaignHandle.known_subjects`
+        instead, same shape as ``pages`` below.
     :param pages: The page-content source navigation reads from; defaults
         to the sample-only source. Ignored once a live campaign boots
         (Unit C2): :attr:`_pages` is then replaced by the booted
@@ -528,6 +558,7 @@ class ArchiveApp(App[None]):
         self.campaign = campaign
         self.driver = self._driver_factory(campaign) if self._driver_factory is not None else None
         self._pages = campaign.read_page
+        self._refresh_known_entities(campaign)
         briefing_subject = f"briefing/{campaign_id}"
         page = self._pages(briefing_subject)
         markdown = page if page is not None else _absence_page(briefing_subject)
@@ -553,13 +584,46 @@ class ArchiveApp(App[None]):
         with VerticalScroll(id="page"):
             yield BabylonMarkdown(
                 self._page,
-                parser_factory=make_parser_factory(self._resolver),
+                parser_factory=self._current_parser,
                 open_links=False,
                 id="dossier",
                 statblocks=self._statblocks,
             )
         yield Label("status: — (click a link)", id="status")
         yield Footer()
+
+    def _current_parser(self) -> MarkdownIt:
+        """The dossier's zero-arg ``parser_factory``, rebuilt fresh every call.
+
+        ``BabylonMarkdown``/``Markdown.update()`` invokes its
+        ``parser_factory`` fresh on every render (never caching the
+        ``MarkdownIt`` instance), but a plain ``make_parser_factory(self.
+        _resolver)`` closure captures :attr:`_resolver`'s VALUE at
+        :meth:`compose` time — swapping the attribute later (Unit U1's
+        live-campaign known-set refresh) would never reach an already-built
+        closure. Passing this bound method instead means every render reads
+        :attr:`_resolver` fresh, so the very next navigation after a swap
+        classifies links against the live set — the same shape the existing
+        :attr:`_pages` swap already relies on.
+
+        :returns: a freshly configured parser.
+        """
+        return make_parser_factory(self._resolver)()
+
+    def _refresh_known_entities(self, campaign: CampaignHandle) -> None:
+        """Recompute :attr:`known_entities`/``_resolver`` from the live
+        campaign's vault, IF the baked subject set actually changed (Unit
+        U1). Pages bake once per committed tick, so most ticks contribute
+        no new subjects — comparing the frozensets first skips an
+        unnecessary resolver rebuild.
+
+        :param campaign: the live campaign to re-scan.
+        """
+        subjects = campaign.known_subjects()
+        if subjects == self.known_entities:
+            return
+        self.known_entities = subjects
+        self._resolver = known_target_resolver(self.known_entities)
 
     def _refresh_breadcrumbs(self) -> None:
         """Render the trail's newest entries into the breadcrumb bar."""
@@ -606,6 +670,11 @@ class ArchiveApp(App[None]):
         ``t`` past an autopause (or while ``r``'s worker is still running
         in the background) sees WHY nothing moved, not a crash or silence
         (Constitution III.11).
+
+        Unit U1: also re-scans :attr:`campaign`'s vault via
+        :meth:`_refresh_known_entities` after a successful advance, so a
+        page baked THIS tick becomes navigable/known immediately, not only
+        on the next lobby boot.
         """
         status = self.query_one("#status", Label)
         if self.campaign is None:
@@ -627,6 +696,7 @@ class ArchiveApp(App[None]):
             result: TickOutcome = self.driver.advance_once()
         else:
             result = self.campaign.advance_tick()
+        self._refresh_known_entities(self.campaign)
         subject = self.nav.current
         if subject is not None:
             await self._navigate(subject, record=False)
@@ -652,6 +722,9 @@ class ArchiveApp(App[None]):
         awaiting it; the executor thread underneath keeps running either
         way (cooperative-only cancellation), so refusing the SECOND press
         is the only choice that is actually honest about what is running.
+
+        Unit U1: re-scans :attr:`campaign`'s vault via
+        :meth:`_refresh_known_entities` once the run stops, same as ``t``.
         """
         status = self.query_one("#status", Label)
         if self.driver is None:
@@ -671,6 +744,8 @@ class ArchiveApp(App[None]):
             return
         results = await asyncio.to_thread(self.driver.run_until_paused)
         last = results[-1]
+        if self.campaign is not None:
+            self._refresh_known_entities(self.campaign)
         subject = self.nav.current
         if subject is not None:
             await self._navigate(subject, record=False)

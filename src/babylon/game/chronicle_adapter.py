@@ -53,6 +53,30 @@ never dropped, never guessed at, always loud about the gap.
 the pilot's own coercion discipline: a bus ``Event`` whose ``.type`` is not
 a real ``EventType`` value raises (a bug elsewhere — a malformed event is
 never silently absorbed into the Chronicle).
+
+**Event-to-territory anchoring (Unit U5).** Several verified payload shapes
+carry a bare social_class node id with no place to report — e.g. struggle.py's
+``EventType.UPRISING``/``EXCESSIVE_FORCE``/``SOLIDARITY_SPIKE`` all publish
+the SAME struggling class's ``node.id``; ``reactionary.py`` does the same
+for ``FASCIST_DRIFT``; the reactionary-verb family (``POGROM``/``LOCKOUT``/
+``VIGILANTISM``) publishes the victim class as ``target_id`` — the SAME
+``target_id`` the legacy ``web/game/engine_bridge.py::
+_TERRITORY_ANCHORED_VERB_EVENTS`` precedent already anchors for the map
+layer. :data:`_CLASS_ANCHOR_FIELD` names, per ``EventType``, which payload
+key holds that resolvable social_class id; when a live ``graph`` is threaded
+through (:func:`chronicle_events_from_bus`'s ``graph=`` parameter —
+``GameSession.advance_tick`` threads its own live, post-tick graph, never a
+``WorldState.from_graph()`` round trip, which drops the TENANCY edges this
+resolution reads), the resolved :class:`~babylon.projection.
+territory_anchor.TerritoryAnchor` is added as ``data["anchor"]`` and
+appended to the human summary. The TENANCY-inversion primitive itself
+(:func:`~babylon.projection.territory_anchor.tenancy_members_by_territory` /
+:func:`~babylon.projection.territory_anchor.class_to_territory`) is the ONE
+shared home :mod:`babylon.projection.verbs.plate` also consumes — no third
+copy. An event whose payload never carries the field, or whose class id
+carries no live TENANCY edge into any territory, resolves to no anchor at
+all (Constitution III.11: honest absence, never a fabricated territory);
+``graph=None`` (the default) reproduces the exact pre-U5 behavior.
 """
 
 from __future__ import annotations
@@ -62,6 +86,13 @@ from typing import Any, Final
 
 from babylon.kernel.event_bus import Event
 from babylon.models.enums.events import EventType
+from babylon.projection.territory_anchor import (
+    TerritoryAnchor,
+    class_to_territory,
+    resolve_class_territory_anchor,
+    tenancy_members_by_territory,
+)
+from babylon.topology import BabylonGraph
 from babylon.tui.chronicle import ChronicleEvent
 
 __all__ = [
@@ -69,6 +100,23 @@ __all__ = [
     "summarize_event",
     "chronicle_events_from_bus",
 ]
+
+_CLASS_ANCHOR_FIELD: Final[dict[EventType, str]] = {
+    EventType.EXCESSIVE_FORCE: "node_id",
+    EventType.UPRISING: "node_id",
+    EventType.SOLIDARITY_SPIKE: "node_id",
+    EventType.FASCIST_DRIFT: "node_id",
+    EventType.POGROM: "target_id",
+    EventType.LOCKOUT: "target_id",
+    EventType.VIGILANTISM: "target_id",
+}
+"""``EventType`` -> the payload key holding a resolvable social_class node id
+(see the module docstring's "Event-to-territory anchoring" section for the
+per-EventType provenance). Deliberately narrow: only EventTypes this module
+could VERIFY carry a social_class id here — the same "ground truth, not
+invention" discipline :data:`_SUMMARY_BUILDERS` already applies. An
+``EventType`` absent from this table never gains an anchor, even when a
+live ``graph`` is supplied."""
 
 SummaryBuilder = Callable[[Mapping[str, Any]], str]
 """A pure function: one event's raw ``payload`` -> its one-line summary."""
@@ -467,7 +515,37 @@ def summarize_event(event_type: EventType, tick: int, payload: Mapping[str, Any]
     return _generic_summary(event_type, tick, payload)
 
 
-def chronicle_events_from_bus(raw_events: Sequence[Event]) -> tuple[ChronicleEvent, ...]:
+def _resolve_event_anchor(
+    event_type: EventType,
+    payload: Mapping[str, Any],
+    class_to_territory_map: Mapping[str, str],
+    graph: BabylonGraph,
+) -> TerritoryAnchor | None:
+    """Resolve one event's :class:`TerritoryAnchor`, or ``None`` if it has none.
+
+    :param event_type: the event's coerced, real :class:`EventType`.
+    :param payload: the event's raw payload dict.
+    :param class_to_territory_map: this tick's precomputed
+        :func:`~babylon.projection.territory_anchor.class_to_territory` map
+        (computed once per :func:`chronicle_events_from_bus` call, never
+        recomputed per-event).
+    :param graph: the live world graph (for the territory's display name).
+    :returns: the resolved anchor, or ``None`` when ``event_type`` carries no
+        anchor-eligible field (:data:`_CLASS_ANCHOR_FIELD`), the field is
+        absent/malformed, or the class id resolves to no territory.
+    """
+    field = _CLASS_ANCHOR_FIELD.get(event_type)
+    if field is None:
+        return None
+    class_id = payload.get(field)
+    if not isinstance(class_id, str) or not class_id:
+        return None
+    return resolve_class_territory_anchor(graph, dict(class_to_territory_map), class_id)
+
+
+def chronicle_events_from_bus(
+    raw_events: Sequence[Event], *, graph: BabylonGraph | None = None
+) -> tuple[ChronicleEvent, ...]:
     """Promote one tick's real bus events into real :class:`ChronicleEvent`\\ s.
 
     The PRODUCTION replacement for the WO-50 pilot test's own documented
@@ -485,19 +563,36 @@ def chronicle_events_from_bus(raw_events: Sequence[Event]) -> tuple[ChronicleEve
     ``len(raw_events)``.
 
     :param raw_events: one tick's raw event-bus history, in emission order.
+    :param graph: the live, post-tick world graph (see the module
+        docstring's "Event-to-territory anchoring" section) —
+        :meth:`~babylon.game.session.GameSession.advance_tick`'s OWN live
+        graph object, never a ``WorldState.from_graph()`` round trip (which
+        drops the TENANCY edges this resolution reads). ``None`` (the
+        default) reproduces the exact pre-U5 behavior: no event gains an
+        ``anchor``.
     :returns: one :class:`ChronicleEvent` per input event, same order.
     :raises ValueError: if any event's ``.type`` is not a real
         :class:`EventType` value.
     """
+    class_to_territory_map: dict[str, str] = (
+        class_to_territory(tenancy_members_by_territory(graph)) if graph is not None else {}
+    )
     chronicle: list[ChronicleEvent] = []
     for event in raw_events:  # loop bound: len(raw_events)
         event_type = EventType(event.type)
+        summary = summarize_event(event_type, event.tick, event.payload)
+        data = dict(event.payload)
+        if graph is not None:
+            anchor = _resolve_event_anchor(event_type, event.payload, class_to_territory_map, graph)
+            if anchor is not None:
+                summary = f"{summary} (in {anchor.territory_name})"
+                data["anchor"] = anchor.model_dump()
         chronicle.append(
             ChronicleEvent(
                 tick=event.tick,
                 event_type=event_type,
-                summary=summarize_event(event_type, event.tick, event.payload),
-                data=dict(event.payload),
+                summary=summary,
+                data=data,
             )
         )
     return tuple(chronicle)

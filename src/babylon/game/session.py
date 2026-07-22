@@ -293,6 +293,10 @@ class TickAdvanceResult:
         :func:`~babylon.game.chronicle_adapter.chronicle_events_from_bus`
         (Unit C4) — same order, one-to-one with ``events``. The Chronicle
         client's real content source; never re-derived from ``world``.
+        Class-scoped events (e.g. UPRISING) carry a resolved territory
+        ``anchor`` when the graph's TENANCY edges make one resolvable
+        (Unit U5), since ``chronicle`` is built from :attr:`graph` itself,
+        not ``world``.
     :param paused: the pacing driver's pause-predicate verdict for this tick.
     :param autosaved: ``True`` iff this tick is a checkpoint tick under
         :func:`~babylon.persistence.delta.is_checkpoint_tick` (Unit C6 —
@@ -482,7 +486,10 @@ class GameSession:
         bus.clear_history()
         self.engine.run_tick(self.graph, self.services, context)
         events = tuple(bus.get_history())
-        chronicle = chronicle_events_from_bus(events)
+        # Unit U5: threads the session's OWN live, post-tick graph so the
+        # adapter can resolve event-to-territory anchors (TENANCY edges) —
+        # never a WorldState.from_graph() round trip, which drops them.
+        chronicle = chronicle_events_from_bus(events, graph=self.graph)
 
         world = WorldState.from_graph(self.graph, tick=next_tick)
         determinism_hash = _replay_identity_hash(self.session_id, next_tick, self._rng_seed)

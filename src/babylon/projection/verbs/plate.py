@@ -20,32 +20,13 @@ territories non-empty) — eligibility must never launder a fixture into
 from __future__ import annotations
 
 from babylon.config.defines import GameDefines
-from babylon.models.enums.topology import EdgeType, NodeType
+from babylon.models.enums.topology import NodeType
 from babylon.models.vanguard_resources import VanguardResources, check_can_afford
+from babylon.projection.territory_anchor import tenancy_members_by_territory
 from babylon.projection.verbs.copy import VERB_INELIGIBILITY_COPY
 from babylon.projection.verbs.preview import VERB_TO_ACTION_TYPE, preview_verb
 from babylon.projection.verbs.view_models import VerbPlateView, VerbRow
 from babylon.topology import BabylonGraph
-
-
-def _tenancy_members_by_territory(graph: BabylonGraph) -> dict[str, list[str]]:
-    """Map territory id -> social-class occupants via TENANCY edges.
-
-    Social classes carry no ``territory_ids`` field — their spatial link is
-    the Occupant -> Territory TENANCY edge (Track 1 / Task 8b). This is the
-    same resolution the educate/aid target lists apply, so the plate's
-    predicate can never disagree with them.
-
-    :param graph: World graph (read-only).
-    :returns: Territory id to occupant social-class ids, insertion-ordered.
-    """
-    members: dict[str, list[str]] = {}
-    for source, target, data in graph.edges(data=True):
-        if data.get("_edge_type") == EdgeType.TENANCY:
-            source_type = graph.nodes[source].get("_node_type")
-            if source_type == NodeType.SOCIAL_CLASS:
-                members.setdefault(str(target), []).append(str(source))
-    return members
 
 
 def build_verb_plate(
@@ -71,7 +52,7 @@ def build_verb_plate(
     org_data = graph.nodes[org_id]
     own_tids = {str(t) for t in org_data.get("territory_ids", [])}
 
-    tenancy_members = _tenancy_members_by_territory(graph)
+    tenancy_members = tenancy_members_by_territory(graph)
     has_social_class = any(tid in tenancy_members for tid in own_tids)
 
     # One bounded pass over the graph gathers every remaining predicate input.

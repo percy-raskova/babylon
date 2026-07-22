@@ -314,7 +314,7 @@ def test_advance_tick_wires_the_real_chronicle_adapter_not_a_dead_seam() -> None
 
     result = session.advance_tick()
 
-    expected = chronicle_events_from_bus(result.events)
+    expected = chronicle_events_from_bus(result.events, graph=session.graph)
     assert result.chronicle == expected
     for chronicle_event, raw_event in zip(result.chronicle, result.events, strict=True):
         assert chronicle_event.tick == raw_event.tick

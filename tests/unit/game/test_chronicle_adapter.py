@@ -25,6 +25,8 @@ from babylon.game.chronicle_adapter import (
 )
 from babylon.kernel.event_bus import Event
 from babylon.models.enums.events import EventType
+from babylon.models.enums.topology import EdgeType, NodeType
+from babylon.topology import BabylonGraph
 
 pytestmark = [pytest.mark.unit]
 
@@ -310,3 +312,116 @@ def test_chronicle_events_from_bus_is_per_tick_not_cumulative() -> None:
     # exact same result — determinism, not first-call-wins caching.
     replayed_tick1 = chronicle_events_from_bus(tick1_events)
     assert replayed_tick1 == first_call
+
+
+# --------------------------------------------------------------------------- #
+# Event-to-territory anchoring (Unit U5): a class/org node_id in the payload  #
+# gains a resolved territory anchor when a live graph is threaded through.    #
+# --------------------------------------------------------------------------- #
+
+
+def _graph_with_tenancy(class_id: str = "C001", territory_id: str = "T001") -> BabylonGraph:
+    """A minimal live graph: one social_class TENANCY-linked to one territory."""
+    graph = BabylonGraph()
+    graph.add_node(territory_id, NodeType.TERRITORY, name="Wayne County")
+    graph.add_node(class_id, NodeType.SOCIAL_CLASS, name="Periphery Proletariat")
+    graph.add_edge(class_id, territory_id, EdgeType.TENANCY)
+    return graph
+
+
+def test_uprising_on_a_tenancy_linked_class_resolves_its_territory_anchor() -> None:
+    """UPRISING's ``node_id`` is a social_class id (``struggle.py``'s own
+    ``node.id``) — with a live graph carrying that class's TENANCY edge, the
+    ChronicleEvent gains a real ``data["anchor"]`` AND the human summary
+    stops showing a bare, unanchored node id."""
+    graph = _graph_with_tenancy()
+    raw = [
+        Event(
+            type=EventType.UPRISING.value,
+            tick=9,
+            payload={"node_id": "C001", "trigger": "spark", "agitation": 0.8, "repression": 0.3},
+        )
+    ]
+    result = chronicle_events_from_bus(raw, graph=graph)
+    assert result[0].data["anchor"] == {"territory_id": "T001", "territory_name": "Wayne County"}
+    assert "Wayne County" in result[0].summary
+    # The raw payload is preserved verbatim alongside the anchor, not replaced.
+    assert result[0].data["node_id"] == "C001"
+
+
+def test_uprising_with_no_node_id_stays_clean() -> None:
+    """A payload that never carries the anchor-eligible key resolves to no
+    anchor at all — honest absence, not a fabricated one."""
+    graph = _graph_with_tenancy()
+    raw = [Event(type=EventType.UPRISING.value, tick=9, payload={"trigger": "spark"})]
+    result = chronicle_events_from_bus(raw, graph=graph)
+    assert "anchor" not in result[0].data
+
+
+def test_uprising_on_a_class_with_no_tenancy_edge_stays_unanchored() -> None:
+    """A real node_id with NO TENANCY edge into any territory resolves to no
+    anchor — Constitution III.11, never a guessed territory."""
+    graph = _graph_with_tenancy()
+    raw = [Event(type=EventType.UPRISING.value, tick=9, payload={"node_id": "C999"})]
+    result = chronicle_events_from_bus(raw, graph=graph)
+    assert "anchor" not in result[0].data
+
+
+def test_anchoring_is_deterministic_over_repeated_calls() -> None:
+    """The SAME graph + SAME events always resolve the SAME anchor —
+    Constitution III.7 determinism, not a first-call-wins cache."""
+    graph = _graph_with_tenancy()
+    raw = [Event(type=EventType.UPRISING.value, tick=9, payload={"node_id": "C001"})]
+    first = chronicle_events_from_bus(raw, graph=graph)
+    second = chronicle_events_from_bus(raw, graph=graph)
+    assert first == second
+    assert first[0].data["anchor"] == second[0].data["anchor"]
+
+
+def test_no_graph_threaded_preserves_the_pre_existing_unanchored_behavior() -> None:
+    """Callers that never thread a graph through (the default) get exactly
+    the pre-U5 behavior — no ``anchor`` key, no crash. Backward compatible
+    with every pre-existing call site/test."""
+    raw = [Event(type=EventType.UPRISING.value, tick=9, payload={"node_id": "C001"})]
+    result = chronicle_events_from_bus(raw)
+    assert "anchor" not in result[0].data
+
+
+def test_event_type_with_no_anchor_field_never_gains_one_even_with_a_graph() -> None:
+    """An EventType outside the anchor-field registry (e.g.
+    ORGANIZATIONAL_ACTION, which has no class/org subject at all) never
+    gains a fabricated anchor just because a graph happens to be present."""
+    graph = _graph_with_tenancy()
+    raw = [
+        Event(
+            type=EventType.ORGANIZATIONAL_ACTION.value,
+            tick=9,
+            payload={"org_count": 2, "action_count": 3, "layer0_count": 1},
+        )
+    ]
+    result = chronicle_events_from_bus(raw, graph=graph)
+    assert "anchor" not in result[0].data
+
+
+@pytest.mark.parametrize(
+    ("event_type", "field"),
+    [
+        (EventType.EXCESSIVE_FORCE, "node_id"),
+        (EventType.SOLIDARITY_SPIKE, "node_id"),
+        (EventType.FASCIST_DRIFT, "node_id"),
+        (EventType.POGROM, "target_id"),
+        (EventType.LOCKOUT, "target_id"),
+        (EventType.VIGILANTISM, "target_id"),
+    ],
+)
+def test_other_class_scoped_event_types_also_anchor(event_type: EventType, field: str) -> None:
+    """Every other verified class-scoped ``EventType`` (struggle.py's
+    EXCESSIVE_FORCE/SOLIDARITY_SPIKE sharing UPRISING's own ``node.id``;
+    ``reactionary.py``'s FASCIST_DRIFT; the reactionary-verb family's
+    ``target_id`` — the SAME ``target_id`` the legacy
+    ``web/game/engine_bridge.py::_TERRITORY_ANCHORED_VERB_EVENTS`` precedent
+    already anchors) resolves through the same mechanism, not just UPRISING."""
+    graph = _graph_with_tenancy()
+    raw = [Event(type=event_type.value, tick=9, payload={field: "C001"})]
+    result = chronicle_events_from_bus(raw, graph=graph)
+    assert result[0].data["anchor"] == {"territory_id": "T001", "territory_name": "Wayne County"}

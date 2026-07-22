@@ -136,26 +136,18 @@ LIVENESS_ROWS: tuple[LivenessRow, ...] = (
         producer_file=f"{_ENGINE_SYSTEMS}/contradiction.py",
         producer_symbol="ContradictionSystem",
         output_symbol="fundamental_theorem",
-        consumer_files=(),
-        dormant_reason=(
-            "Written to the graph every tick (ContradictionSystem._stash_fundamental_theorem, "
-            "Vol I U2/ADR117) and read by nothing in production today — a deliberate scope "
-            "boundary, not an oversight: U2 stopped at graph-attribute-only observability, the "
-            "SAME Phase-1-shadow precedent pole_readings/market_balance above already "
-            "establish. Declared dormant pending a future unit surfacing it through "
-            "WorldState/persistence or a narrator/dashboard reader (ADR117 names this as "
-            "U9's/a later unit's open scope); until then it is a live producer with zero "
-            "production readers, recorded rather than hidden. If a future unit does surface "
-            "it on a web-facing endpoint, its wire fields (phi_absolute, phi_relative, "
-            "labor_aristocracy_ratio, is_labor_aristocracy) must be added to "
-            "projection/veil.py's TIER1_VALUE_RELATION_FIELDS before exposure, the same "
-            "forward-pin discipline that module's docstring already applies to "
-            "profit_rate/occ/surplus_denied (Vol I U9/ADR115)."
-        ),
+        consumer_files=("src/babylon/projection/economy.py",),
         material_relation=(
             "Phi = W_c - V_c per class/county, the Fundamental Theorem computed "
             "(compute_fundamental_theorem, domain/dialectics/instances/value_form.py) — "
-            "the named comparison Ch. 25's imperial-rent thesis rests on."
+            "the named comparison Ch. 25's imperial-rent thesis rests on. Surfaced "
+            "(T3 spine-C, ADR109 W-P wiring motion) by "
+            "babylon.projection.economy.project_economy's class_phi_readings field — "
+            "the dossier this row's original dormant_reason named as its open scope. "
+            "Its wire fields (phi_absolute, phi_relative, labor_aristocracy_ratio, "
+            "is_labor_aristocracy) are projection-layer read-only today; adding a "
+            "web-facing endpoint still requires the same forward-pin into "
+            "projection/veil.py's TIER1_VALUE_RELATION_FIELDS this row's prior note flagged."
         ),
     ),
     LivenessRow(

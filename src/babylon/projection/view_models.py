@@ -30,6 +30,7 @@ from babylon.models.enums import (
     ApparatusType,
     ClassCharacter,
     ClassInscription,
+    ColonialStance,
     CommunityType,
     ConsciousnessTendency,
     ExtractionPolicy,
@@ -39,7 +40,14 @@ from babylon.models.enums import (
     SocialRole,
     SovereigntyType,
 )
-from babylon.models.types import Coefficient, Currency, Ideology, Probability, SignedLaborHours
+from babylon.models.types import (
+    Coefficient,
+    Currency,
+    Ideology,
+    Intensity,
+    Probability,
+    SignedLaborHours,
+)
 
 #: Tolerance for the simplex/share sum invariants — matches the engine-side
 #: ``ClassDistribution`` and ternary-consciousness tolerance so a record that
@@ -163,6 +171,12 @@ class CountyView(BaseModel):
         ``None``.
     :param bifurcation_score: The county bifurcation axis in ``[-1, +1]``
         (revolutionary at ``-1``, fascist at ``+1``), or ``None``.
+    :param habitability: Territory ecological viability in ``[0, 1]``
+        (MetabolismSystem's biocapacity/Sovereign-metabolic-impact index), or
+        ``None`` before MetabolismSystem has ever run this session (tick 0)
+        or when no territory carries this county's FIPS — never a fabricated
+        ``0.0`` or the ``1.0`` some aggregators default an unattributed
+        reading to.
     :param sovereign_id: The id of the sovereign claiming this county via a
         CLAIMS edge, or ``None`` when unclaimed (no CLAIMS edge projected).
     """
@@ -182,6 +196,7 @@ class CountyView(BaseModel):
     p_acquiescence: Probability | None = None
     p_revolution: Probability | None = None
     bifurcation_score: Ideology | None = None
+    habitability: Probability | None = None
     sovereign_id: str | None = None
 
 
@@ -837,6 +852,349 @@ class SocialClassView(BaseModel):
     county_class_composition: ClassComposition | None = None
 
 
+class ClassPhiReadingView(BaseModel):
+    """One class/county's Fundamental Theorem reading (Vol I U2).
+
+    Projection-side mirror of
+    :class:`~babylon.domain.dialectics.instances.value_form.ClassPhiReading`
+    — the projection layer declares its own wire shape rather than importing
+    the domain model (WO-22's no-engine-no-domain-import discipline, the
+    same choice :class:`DepartmentComposition` makes for
+    ``DepartmentMapper.DepartmentAllocation``). Hydrated verbatim from the
+    ``fundamental_theorem`` graph-attribute dump
+    (``ContradictionSystem._stash_fundamental_theorem``), never recomputed.
+
+    :param entity_id: The class/county graph node id this reading is for.
+    :param w_paid: W_c — total wages paid this tick.
+    :param v_produced: V_c — productivity value captured this tick.
+    :param phi_absolute: Phi = W_c − V_c in dollars. Always defined.
+    :param phi_relative: ``(W_c − V_c)/V_c``, or ``None`` when ``v_produced
+        <= 0`` (a class that produced nothing has no defined ratio).
+    :param labor_aristocracy_ratio: ``W_c / V_c``, or ``None`` under the
+        same guard.
+    :param is_labor_aristocracy: ``W_c > V_c`` (strict), or ``None`` under
+        the same guard.
+    """
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    entity_id: str = Field(min_length=1)
+    w_paid: float
+    v_produced: float
+    phi_absolute: float
+    phi_relative: float | None = None
+    labor_aristocracy_ratio: float | None = None
+    is_labor_aristocracy: bool | None = None
+
+
+class EconomyView(BaseModel):
+    """The economy dossier — the singleton national Φ/surplus/matter read-model.
+
+    T3 spine-C prescription (``ai/_inbox/PROGRAM_v1_0_0_playable_archive.md``
+    §C): (1) the Fundamental Theorem verdict read off the SAME
+    ``opposition_states["wage"].balance`` the engine's own contradiction
+    registry adjudicates — never a parallel Φ; (2) the per-class/county Φ
+    readings the ``fundamental_theorem`` graph stash carries (Vol I U2);
+    (3) Φ's tri-decomposition (unequal exchange + reproduction + domestic,
+    excluding the report-only Φ_III term from the total); (4) the Volume
+    III surplus split ``s = p + i + r + t``, aggregated RATIO-OF-SUMS across
+    territories, never mean-of-ratios; (5) the metabolic "matter-book"
+    (overshoot ``O = C/B``, the monotone ceiling ``M̄``); (6) the energy
+    vertex β_J, an UNPOSITIONED honest absence (genuinely absent tree-wide —
+    no EROI/joule accounting anywhere in the engine). Money and matter are
+    never rendered as interconvertible — see
+    :func:`~babylon.projection.economy.project_economy` for the full
+    field-by-field producer ruling.
+
+    Extra keys are rejected (``extra="forbid"``): a payload carrying a field
+    this model does not declare is a shape mismatch to surface loudly, not
+    to swallow.
+
+    :param kind: The discriminator literal ``"economy"`` tagging this record
+        in :data:`ProjectionRecord`.
+    :param economy_id: The economy's identity (``"USA"`` today, matching
+        :attr:`NationalView.national_id`'s singleton convention) — not a
+        FIPS code.
+    :param verified_tick: The committed tick this dossier was projected from.
+    :param wage_balance: The ``wage`` opposition's signed Balance
+        ``(W_c − V_c)/(W_c + V_c)`` read verbatim off ``opposition_states``
+        — positive means the wage exceeds value produced (the imperial
+        bribe). ``None`` when the opposition registry is unwired or the
+        ``wage`` key is not registered this run.
+    :param labor_aristocracy_verdict: ``wage_balance > 0``, the Fundamental
+        Theorem verdict BY CONSTRUCTION (never recomputed from a parallel
+        feed). ``None`` under the same guard as :attr:`wage_balance`.
+    :param class_phi_readings: Every class/county's
+        :class:`ClassPhiReadingView`, sorted by ``entity_id`` for
+        deterministic ordering, or ``None`` when the ``fundamental_theorem``
+        graph attribute itself is absent (the opposition registry never
+        ran). An attributed-but-empty tuple means the registry ran but no
+        node carried both ``w_paid``/``v_produced`` this tick — a real,
+        different fact from "never computed".
+    :param phi_unequal_exchange: Emmanuel/Amin international transfer
+        (``(1 − γ_basket)·Consumption``), or ``None`` — genuinely absent
+        tree-wide: no engine producer publishes ``γ_basket`` or aggregate
+        consumption to the graph today.
+    :param phi_reproduction: Meillassoux externalized reproduction
+        (``max(0, P_g2 − wage)``), or ``None`` — genuinely absent tree-wide.
+    :param phi_domestic: Fortunati domestic shadow labor (``τ · L_unpaid``),
+        or ``None`` — genuinely absent tree-wide (unpaid/reproductive
+        labor-hours have no producer, even though national MELT τ is itself
+        live elsewhere).
+    :param phi_iii_report: The kernel's narrower invisible-fraction Φ_III
+        (report only, excluded from any total), or ``None`` — same absence.
+    :param phi_decomposition_total: The sum of :attr:`phi_unequal_exchange`
+        + :attr:`phi_reproduction` + :attr:`phi_domestic` (excluding
+        :attr:`phi_iii_report` by design — the domain model's own ``total``
+        computed-field rule), or ``None`` unless all three conservation
+        components are present.
+    :param surplus_produced: Σ ``tick_total_surplus`` (s) across territories
+        this tick, or ``None`` when no territory carries the attribute.
+    :param profit_of_enterprise: Σ ``tick_profit_of_enterprise`` (p) —
+        signed; may be negative in a debt spiral.
+    :param interest_burden: Σ ``tick_interest_burden`` (i).
+    :param ground_rent: Σ ``tick_ground_rent`` (r).
+    :param taxes_on_surplus: Σ ``tick_taxes_on_surplus`` (t).
+    :param rentier_share: The national ``Σr / Σs`` — a genuine RATIO OF
+        SUMS, never a mean of the per-territory ``tick_rentier_share``
+        readings (the intensive-aggregation error class). ``None`` when
+        Σs is not positive.
+    :param financialization_share: The national ``Σi / Σs``, same
+        ratio-of-sums discipline.
+    :param total_consumption: Σ ``consumption_needs`` nationwide (C, the
+        ``WorldState.total_consumption`` extensive sum), or ``None`` when
+        the world carries no territory.
+    :param total_biocapacity: Σ ``Territory.biocapacity`` nationwide (B),
+        or ``None`` under the same guard.
+    :param overshoot_ratio: ``C / B``, or ``None`` when B is not positive —
+        never the ``WorldState.overshoot_ratio`` computed-field's own
+        fabricated ``999.0`` sentinel (Constitution III.11 forbids a
+        substituted default standing in for absence).
+    :param biocapacity_ceiling: Σ ``Territory.max_biocapacity`` nationwide
+        (the monotone ceiling M̄), or ``None`` when the world carries no
+        territory.
+    :param energy_beta_j: The energy vertex β_J — always ``None``.
+        Genuinely absent tree-wide (verified: no EROI, fossil,
+        power-density, or joule accounting anywhere in the engine); an
+        UNPOSITIONED {absence} fence naming the energy-split prerequisite.
+        Never derived from the money-form quantities above — money and
+        matter are not interconvertible.
+    """
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    kind: Literal["economy"] = "economy"
+    economy_id: str = Field(min_length=1)
+    verified_tick: int = Field(ge=0)
+
+    wage_balance: Ideology | None = None
+    labor_aristocracy_verdict: bool | None = None
+    class_phi_readings: tuple[ClassPhiReadingView, ...] | None = None
+
+    phi_unequal_exchange: float | None = None
+    phi_reproduction: float | None = None
+    phi_domestic: float | None = None
+    phi_iii_report: float | None = None
+    phi_decomposition_total: float | None = None
+
+    surplus_produced: Currency | None = None
+    profit_of_enterprise: float | None = None
+    interest_burden: Currency | None = None
+    ground_rent: Currency | None = None
+    taxes_on_surplus: Currency | None = None
+    rentier_share: float | None = None
+    financialization_share: float | None = None
+
+    total_consumption: Currency | None = None
+    total_biocapacity: Currency | None = None
+    overshoot_ratio: float | None = Field(default=None, ge=0.0)
+    biocapacity_ceiling: Currency | None = None
+
+    energy_beta_j: float | None = None
+
+
+class FieldStateNodeView(BaseModel):
+    """One social-class node's Systems #19/#20 field-stack reading (T3 U3).
+
+    Projection-side mirror of the shape
+    ``web/game/engine_bridge.py::_build_field_state_nodes`` serializes —
+    ContradictionFieldSystem @19's ``contradiction_fields`` (per-field
+    value), FieldDerivativeSystem @20's ``field_derivatives`` (only its
+    ``laplacian``/``df_dt`` sub-keys — ``d2f_dt2`` is deliberately out of
+    this dossier's declared contract, matching the ported endpoint), and
+    FascistFactionSystem's ``fascist_alignment``. A node contributes only
+    the keys it actually carries this tick — never a fabricated zero for a
+    field the engine did not compute.
+
+    :param node_id: The social_class graph node id.
+    :param name: The node's ``name`` attribute, or ``node_id`` itself when
+        unattributed (matches the ported helper's own fallback).
+    :param fields: ``{field_name: value}`` from ``contradiction_fields``, or
+        ``None`` when the node carries none this tick.
+    :param laplacian: ``{field_name: value}``, the ``laplacian`` sub-key of
+        every field in ``field_derivatives`` that has one, or ``None``.
+    :param df_dt: ``{field_name: value}``, the ``df_dt`` sub-key of every
+        field in ``field_derivatives`` that has one (``None`` df_dt entries
+        — fewer than 2 ticks of history — are excluded, not zero-filled), or
+        ``None`` when no field has one yet.
+    :param fascist_alignment: The node's ``fascist_alignment`` (a required
+        ``Intensity`` ``SocialClass`` field, default 0.0 — so this is
+        ``None`` only when the node itself carries no such attribute at
+        all, never when the true value happens to be zero).
+    """
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    node_id: str = Field(min_length=1)
+    name: str = Field(min_length=1)
+    fields: dict[str, float] | None = None
+    laplacian: dict[str, float] | None = None
+    df_dt: dict[str, float] | None = None
+    fascist_alignment: Intensity | None = None
+
+
+class FieldStateEdgeView(BaseModel):
+    """One field-gradient edge entry (T3 U3), one per ``(edge, field)`` pair.
+
+    Projection-side mirror of
+    ``web/game/engine_bridge.py::_build_field_state_edges`` — an edge
+    carrying gradients for N fields contributes N entries, one per field
+    name, sorted. Territory anchoring reuses the TENANCY membership the
+    engine's own ``ProductionSystem._find_tenancy_target`` establishes
+    (Occupant -> Territory); an endpoint with no resolvable territory keeps
+    its entry with that key present but ``None`` — never omitted or
+    fabricated (the same keep-key-use-null convention the ported helper's
+    own docstring documents).
+
+    :param source: The edge's source social_class node id.
+    :param target: The edge's target social_class node id.
+    :param source_territory: The territory ``source`` holds a TENANCY edge
+        into, or ``None`` when unresolved.
+    :param target_territory: The territory ``target`` holds a TENANCY edge
+        into, or ``None`` when unresolved.
+    :param field: The field name this gradient reading is for.
+    :param gradient: ``f(target) - f(source)`` for :attr:`field`.
+    """
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    source: str = Field(min_length=1)
+    target: str = Field(min_length=1)
+    source_territory: str | None = None
+    target_territory: str | None = None
+    field: str = Field(min_length=1)
+    gradient: float
+
+
+class PrincipalFieldView(BaseModel):
+    """FieldDerivativeSystem @20's principal-FIELD identification (T3 U3).
+
+    Deliberately distinct from ContradictionSystem @18's Maoist principal
+    OPPOSITION (E0 rename) — this is the field-stack's fastest-developing
+    contradiction FIELD (max ``|df/dt|`` across every node), never the
+    opposition-layer's own principal.
+
+    :param field_name: The identified principal field's name, or ``None``
+        when no field has yet shown any nonzero ``df/dt`` (legitimately
+        null under 2 ticks of history — never a fabricated first field).
+    :param max_abs_df_dt: The winning field's max ``|df/dt|`` across every
+        node (``0.0`` when :attr:`field_name` is ``None``).
+    :param changed: Whether the principal field differs from the previous
+        tick's.
+    """
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    field_name: str | None = None
+    max_abs_df_dt: float = Field(ge=0.0)
+    changed: bool
+
+
+class DialecticalRegimeView(BaseModel):
+    """ContradictionSystem @18's fixed-point regime classification (T3 U3).
+
+    Classifies the capital_labor opposition (falling back to whichever
+    opposition is principal) into one of three regimes from its trajectory
+    — reproduction (converged or contained), crisis (rising, no Aufhebung),
+    or sublation (rising, level transition available).
+
+    :param regime: ``"reproduction"``, ``"crisis"``, or ``"sublation"``.
+    :param opposition: The classified opposition's key (``"capital_labor"``
+        today, or its principal fallback).
+    :param rate: The classified opposition's own rate this tick.
+    """
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    regime: Literal["reproduction", "crisis", "sublation"]
+    opposition: str = Field(min_length=1)
+    rate: float
+
+
+class FieldStateView(BaseModel):
+    """The field-state dossier — the Weather Layer, Systems #19/#20's field stack (T3 U3).
+
+    Port of ``web/game/engine_bridge.py::EngineBridge.get_field_state`` (the
+    ``{tick, nodes, edges, principal_field, dialectical_regime}`` shape) into
+    a pure projection read-model — same read logic, no redesign. Transport-
+    neutral by construction — no Django, no engine imports, no database
+    connection; the caller hands in the LIVE post-tick graph it already
+    holds (never a ``WorldState.from_graph()`` round trip, which drops the
+    graph-level ``principal_field``/``dialectical_regime`` attrs and every
+    node/edge attr this dossier reads outside its own ``field_stack`` carrier
+    — see :func:`~babylon.projection.field_state.project_field_state`).
+
+    **One producer per field:**
+
+    .. list-table:: Field-producer rulings
+       :header-rows: 1
+
+       * - Field
+         - Producer
+       * - ``nodes``
+         - :class:`FieldStateNodeView` per social_class node carrying
+           ``contradiction_fields`` (ContradictionFieldSystem @19),
+           ``field_derivatives`` (FieldDerivativeSystem @20 — ``laplacian``/
+           ``df_dt`` sub-keys only), or ``fascist_alignment``
+           (FascistFactionSystem), sorted by ``node_id``. ``None`` when no
+           social_class node carries any of the three this tick (the field
+           stack never ran).
+       * - ``edges``
+         - :class:`FieldStateEdgeView` per ``(edge, field)`` pair carrying a
+           ``field_gradients`` entry (FieldDerivativeSystem @20), territory-
+           anchored via the live TENANCY edges, sorted by ``(source, target,
+           field)``. ``None`` when no edge carries a gradient this tick.
+       * - ``principal_field``
+         - The ``principal_field`` graph attribute
+           (``FieldDerivativeSystem._identify_principal_contradiction``),
+           hydrated verbatim. ``None`` when the attribute itself is absent
+           (the field stack never ran this tick — it is otherwise always
+           written once ``FieldDerivativeSystem`` runs with a nonempty field
+           registry).
+       * - ``dialectical_regime``
+         - The ``dialectical_regime`` graph attribute
+           (``ContradictionSystem._classify_regime`` @18), hydrated
+           verbatim. ``None`` when no ``capital_labor``/principal
+           ``OppositionState`` existed yet this tick — the classifier
+           returns without writing the attribute in that case.
+
+    Absence discipline (Constitution III.11): a fresh graph with neither
+    system having run yet (tick 0) projects every field ``None`` — an
+    honest "the weather has not formed" reading, never a fabricated calm.
+    """
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    kind: Literal["field_state"] = "field_state"
+    field_state_id: str = Field(min_length=1)
+    verified_tick: int = Field(ge=0)
+
+    nodes: tuple[FieldStateNodeView, ...] | None = None
+    edges: tuple[FieldStateEdgeView, ...] | None = None
+    principal_field: PrincipalFieldView | None = None
+    dialectical_regime: DialecticalRegimeView | None = None
+
+
 class CommunityOverlap(BaseModel):
     """One other community sharing at least one roster member with the queried one.
 
@@ -925,12 +1283,118 @@ class CommunityView(BaseModel):
     overlaps: tuple[CommunityOverlap, ...] | None = None
 
 
+class FactionTerritoryInfluence(BaseModel):
+    """One INFLUENCES edge from a faction into a territory (spec-070 FR-014).
+
+    The reverse-direction sibling of :class:`FieldStateEdgeView`'s territory
+    anchoring: a faction's influence is inherently relational (a faction, a
+    territory, and how strongly/by what channel), so it gets its own
+    per-entry composite rather than collapsing to a bare id the way
+    :attr:`SovereignView.claimed_county_fips` does for weight-free CLAIMS.
+
+    :param territory_id: The raw territory node id the faction influences
+        (the INFLUENCES edge's target).
+    :param county_fips: The territory's ``county_fips`` attribute, resolved
+        the same way :func:`babylon.projection.sovereign._county_fips_of`
+        resolves a sovereign's capital/claims, or ``None`` when the
+        territory node doesn't exist or carries no ``county_fips``.
+    :param influence_level: The edge's influence intensity in ``[0, 1]``.
+    :param support_type: The edge's support channel (e.g.
+        labor/ideological/material).
+    """
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    territory_id: str = Field(min_length=1)
+    county_fips: str | None = Field(default=None, pattern=r"^\d{5}$")
+    influence_level: Probability
+    support_type: str = Field(min_length=1)
+
+
+class FactionView(BaseModel):
+    """A balkanization-faction dossier — the projected read-model for one
+    political coalition (T3 U4).
+
+    Mirrors :func:`~babylon.projection.sovereign.project_sovereign`'s recipe:
+    faction IS a graph node (spec-070's ``BalkanizationFaction``, stamped
+    whole-cloth by ``WorldState.to_graph()``), so every identity field beyond
+    provenance is that node's own attribute. ``territory_influence`` is the
+    reverse of :attr:`SovereignView.claimed_county_fips` — carrying the
+    INFLUENCES edge's weight/channel, not just the anchored id, per FR-014.
+
+    Every field beyond identity and provenance is ``Optional`` because the
+    faction either doesn't exist in this run (a stale/unminted id) or one of
+    its attributes genuinely isn't attributed; in both cases the honest
+    projection is ``None``, never a defaulted value. ``territory_influence``
+    is the one field where an *empty* tuple ("influences nothing right now")
+    and ``None`` ("this faction doesn't exist") are deliberately distinct.
+
+    Extra keys are rejected (``extra="forbid"``): a payload carrying a field
+    this model does not declare is a shape mismatch to surface loudly, not to
+    swallow.
+
+    :param kind: The discriminator literal ``"faction"`` tagging this record
+        in :data:`ProjectionRecord`.
+    :param faction_id: The faction's stable node id (``FAC_*``, spec-070).
+    :param verified_tick: The committed tick this dossier was projected from
+        (``tick_commit``), the staleness anchor for any materialization.
+    :param name: Display name, or ``None`` if the faction node doesn't exist
+        / carries none.
+    :param ideology: Free-text ideological label, or ``None``.
+    :param colonial_stance: The principal political axis (UPHOLD / IGNORE /
+        ABOLISH), or ``None``.
+    :param is_settler_formation: Whether the faction is a settler-formation
+        coalition, or ``None``.
+    :param extraction_modifier: Mechanical multiplier on extraction, or
+        ``None``.
+    :param violence_modifier: Mechanical multiplier on state violence, or
+        ``None``.
+    :param class_reduction: The faction's effect on class contradiction in
+        ``[0, 1]``, or ``None``.
+    :param metabolic_reduction: The faction's effect on metabolic impact in
+        ``[-1, +1]``, or ``None``.
+    :param color_hex: UI color in ``#RRGGBB`` form, or ``None``.
+    :param founded_tick: The tick the faction was instantiated, or ``None``.
+    :param dissolved_tick: The tick the faction dissolved, or ``None`` (the
+        common case for a still-active faction, not necessarily an
+        attribution gap).
+    :param territory_influence: Every INFLUENCES edge this faction casts,
+        sorted by influence level descending then territory id ascending
+        (matching ``GraphProtocol.query_faction_influence_by_territory``'s
+        own ordering). ``None`` when the faction node itself doesn't exist;
+        an empty tuple is a real, present value ("this faction currently
+        influences nothing"), never conflated with absence.
+    """
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    kind: Literal["faction"] = "faction"
+    faction_id: str = Field(pattern=r"^FAC_[A-Z][A-Z0-9_]*$")
+    verified_tick: int = Field(ge=0)
+
+    name: str | None = None
+    ideology: str | None = Field(default=None, min_length=1, max_length=64)
+    colonial_stance: ColonialStance | None = None
+    is_settler_formation: bool | None = None
+    extraction_modifier: float | None = Field(default=None, ge=0.0)
+    violence_modifier: float | None = Field(default=None, ge=0.0)
+    class_reduction: Probability | None = None
+    metabolic_reduction: float | None = Field(default=None, ge=-1.0, le=1.0)
+    color_hex: str | None = Field(default=None, pattern=r"^#[0-9A-Fa-f]{6}$")
+    founded_tick: int | None = Field(default=None, ge=0)
+    dissolved_tick: int | None = Field(default=None, ge=0)
+    territory_influence: tuple[FactionTerritoryInfluence, ...] | None = None
+
+
 #: A projected record of any scale, keyed on ``kind``. Widened by
 #: Program 24 P2 as each entity-kind page lands; the hydrate helpers
 #: below need no change as the union grows.
 ProjectionRecord = Annotated[
     CountyView
     | CommunityView
+    | EconomyView
+    | FactionView
+    | FieldStateView
     | IndustryView
     | InstitutionView
     | KeyFigureView
@@ -948,10 +1412,13 @@ _NATIONAL_ADAPTER: TypeAdapter[NationalView] = TypeAdapter(NationalView)
 _ORGANIZATION_ADAPTER: TypeAdapter[OrganizationView] = TypeAdapter(OrganizationView)
 _INSTITUTION_ADAPTER: TypeAdapter[InstitutionView] = TypeAdapter(InstitutionView)
 _SOVEREIGN_ADAPTER: TypeAdapter[SovereignView] = TypeAdapter(SovereignView)
+_FACTION_ADAPTER: TypeAdapter[FactionView] = TypeAdapter(FactionView)
 _KEY_FIGURE_ADAPTER: TypeAdapter[KeyFigureView] = TypeAdapter(KeyFigureView)
 _INDUSTRY_ADAPTER: TypeAdapter[IndustryView] = TypeAdapter(IndustryView)
 _SOCIAL_CLASS_ADAPTER: TypeAdapter[SocialClassView] = TypeAdapter(SocialClassView)
 _COMMUNITY_ADAPTER: TypeAdapter[CommunityView] = TypeAdapter(CommunityView)
+_ECONOMY_ADAPTER: TypeAdapter[EconomyView] = TypeAdapter(EconomyView)
+_FIELD_STATE_ADAPTER: TypeAdapter[FieldStateView] = TypeAdapter(FieldStateView)
 _RECORD_ADAPTER: TypeAdapter[CountyView | NationalView | OrganizationView | StateView] = (
     TypeAdapter(ProjectionRecord)
 )
@@ -967,6 +1434,30 @@ def hydrate_county(data: Mapping[str, Any]) -> CountyView:
     :raises pydantic.ValidationError: on a shape or constraint violation.
     """
     return _COUNTY_ADAPTER.validate_python(data)
+
+
+def hydrate_economy(data: Mapping[str, Any]) -> EconomyView:
+    """Validate an untyped mapping into an :class:`EconomyView`.
+
+    :param data: A mapping shaped like an ``EconomyView`` — a recorded
+        fixture, a JSON payload, or an assembled row dict. Missing optional
+        keys become ``None``; unknown keys are rejected.
+    :returns: The validated, frozen :class:`EconomyView`.
+    :raises pydantic.ValidationError: on a shape or constraint violation.
+    """
+    return _ECONOMY_ADAPTER.validate_python(data)
+
+
+def hydrate_field_state(data: Mapping[str, Any]) -> FieldStateView:
+    """Validate an untyped mapping into a :class:`FieldStateView`.
+
+    :param data: A mapping shaped like a ``FieldStateView`` — a recorded
+        fixture, a JSON payload, or an assembled row dict. Missing optional
+        keys become ``None``; unknown keys are rejected.
+    :returns: The validated, frozen :class:`FieldStateView`.
+    :raises pydantic.ValidationError: on a shape or constraint violation.
+    """
+    return _FIELD_STATE_ADAPTER.validate_python(data)
 
 
 def hydrate_state(data: Mapping[str, Any]) -> StateView:
@@ -1027,6 +1518,18 @@ def hydrate_sovereign(data: Mapping[str, Any]) -> SovereignView:
     :raises pydantic.ValidationError: on a shape or constraint violation.
     """
     return _SOVEREIGN_ADAPTER.validate_python(data)
+
+
+def hydrate_faction(data: Mapping[str, Any]) -> FactionView:
+    """Validate an untyped mapping into a :class:`FactionView`.
+
+    :param data: A mapping shaped like a ``FactionView`` — a recorded
+        fixture, a JSON payload, or an assembled row dict. Missing optional
+        keys become ``None``; unknown keys are rejected.
+    :returns: The validated, frozen :class:`FactionView`.
+    :raises pydantic.ValidationError: on a shape or constraint violation.
+    """
+    return _FACTION_ADAPTER.validate_python(data)
 
 
 def hydrate_key_figure(data: Mapping[str, Any]) -> KeyFigureView:
@@ -1096,23 +1599,35 @@ def hydrate_record(
 
 __all__ = [
     "ClassComposition",
+    "ClassPhiReadingView",
     "CommunityOverlap",
     "CommunityView",
     "ConsciousnessSimplex",
     "CountyView",
     "DepartmentComposition",
+    "DialecticalRegimeView",
+    "EconomyView",
     "FactionalComposition",
+    "FactionTerritoryInfluence",
+    "FactionView",
+    "FieldStateEdgeView",
+    "FieldStateNodeView",
+    "FieldStateView",
     "IndustryView",
     "InstitutionView",
     "KeyFigureView",
     "NationalView",
     "OrganizationView",
+    "PrincipalFieldView",
     "ProjectionRecord",
     "SocialClassView",
     "SovereignView",
     "StateView",
     "hydrate_community",
     "hydrate_county",
+    "hydrate_economy",
+    "hydrate_faction",
+    "hydrate_field_state",
     "hydrate_industry",
     "hydrate_institution",
     "hydrate_key_figure",

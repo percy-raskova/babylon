@@ -1,6 +1,6 @@
 meta:
-  version: 1.52.0
-  updated: '2026-07-21'
+  version: 1.53.0
+  updated: '2026-07-22'
   description: Architecture Decision Records Index
   format: See individual ADR files in this directory
   # ADR NUMBER ALLOCATION (controller ruling 2026-07-21, v1.0.0 parallel lanes —
@@ -8,8 +8,15 @@ meta:
   # volume lanes). Blocks: mainline/controller = 109 + anything unallocated;
   # Vol I lane = ADR110-119; Vol II lane = ADR120-129; T1.1 = ADR130-134;
   # T1.2 = ADR135-139; T4 = ADR140-144; T7-beta = ADR145-149. Lanes never mint
-  # outside their block; blocks dissolve when the lane merges.
+  # outside their block; blocks dissolve when the lane merges. ADR125 = T3
+  # gap-projections (post-cascade, next free slot >= 125 per controller
+  # ruling 2026-07-22 — does not fill the reserved Vol I 119 hole).
 decisions:
+  ADR125_t3_gap_projections:
+    title: 'T3 Gap Projections (Program 24 spine-C): five new Archive projection modules (economy, field-state, balkanization faction, chronicle event-anchoring, hex habitability) close the four remaining WO-52b/test-port-ledger LOUD gap rows; two Vol I/Vol II cascade dormancy gaps lit (fundamental_theorem graph stash consumed by the economy dossier — W-P; the value_form Phi tri-decomposition builders wired to real graph-input reads — W-C/W-P); U1 completes the SurplusValueDistribution graph publication (taxes_on_surplus + total_surplus — W-C). One gap found, not closed, and explicitly deferred: no engine scenario stamps NodeType.FACTION, so the balkanization dossier is honest-empty on every real campaign until the RED_OGV repair program seeds it (new OPEN row in ai/wiring-doctrine.md). Per-hex habitability ships as a county-grain inheritance (broadcast, not aggregation), pending a real dynamic_hex_state substrate column for a hex-native reading. Governance close-out ADR: no production code changes.'
+    status: accepted
+    date: '2026-07-22'
+    file: ADR125_t3_gap_projections.yaml
   ADR124_vol2_u8_monitoring:
     title: 'Vol II Circulation program U8 (Monitoring, lane/vol2-circulation): audited what the program''s new opposition bindings/GraphInputs fields/catalog artifact/gate satisfiers actually have on a wire today — the four shadow GraphInputs ratios and the gate-satisfiers have no persisted graph-attr home or wire path at all (recomputed fresh each tick purely to feed the opposition step; the LODES artifact is already cataloged in data-artifacts.yaml, not the seam registry''s remit) and building bespoke exposure for them was judged disproportionate to one unit, deferred to the T1.1 seam_algebra cascade this lane''s own merge-runbook already names for that. What DID have a concrete gap: U3''s compute_disproportionality output was computed but never reached a graph attr (a computed-but-unserialized silent no-op, Constitution VIII.12/III.11) — fixed: write_tick_state_to_graph now stamps tick_disproportionality (signed imbalance, honest None absent tensor data), _serialize_territory reads it through, and it is gated Tier >= 1 in babylon.projection.veil (same family as profit_rate/occ) — the other 13 pre-existing Group C/D fields deliberately stay out of that registry, a separate already-flagged gap not retroactively closed here. Also corrected the shared _CIRCULATION_LIVE seam-registry note (feeding all 7 pre-existing Group C rows) to record U3''s full fix (real reproduction calculators + genuine cross-tick accumulation), not just the turnover_profile_source wiring it previously described alone. New TestWriteDisproportionality (2 tests) red->green; full seam sentinel suite (63 tests) + veil suites (45 tests) re-run green; real-registry CLI gate exit 0, 124 observables, zero new advisories. No baseline drift (additive-only graph attr, no golden scenario reads it).'
     status: accepted

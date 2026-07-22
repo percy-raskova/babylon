@@ -107,6 +107,10 @@ budget L-MAT-1, population conservation (F-3 warn→alarm), the carbon register.
 | Divergence Channel (ADR072) | 𝕊 — correctly BLOCKED on Amendment T | — |
 | energy vertex J | 𝕊 (Amendment AB) then W-C/W-𝔇 | EIA/USWTDB/USPVDB keyless [V per §VI.11]; `energy/` thin (13M) |
 | hex biocapacity estate | W-G (ScaleAdjunction) or retire-with-record | NLCD/NASS/FIA/gSSURGO [V per §VI.11] |
+| fundamental_theorem dormancy (Vol I ADR117 graph stash, zero consumers) | W-P — **CLOSED** (T3 U2; `babylon.projection.economy.project_economy` consumes the stash's per-class Phi readings; liveness-registry row updated) | none needed (existing wage-opposition + `contradiction.py` feed) |
+| Phi tri-decomposition (value_form builders, zero callers tree-wide) | W-C read-side **CLOSED** (T3 U2 fix) / W-P consumer live; every component input still genuinely absent | `gamma_basket`+`consumption`; `p_g2_labor_value`+`wage_paid_for_d_g2`; `l_unpaid`+national MELT; `gamma_iii`+tau — none published tree-wide [U — unresearched producer] |
+| SurplusValueDistribution taxes_on_surplus/total_surplus unpublished (2 of 6 terms) | W-C — **CLOSED** (T3 U1; `graph_bridge.py` tick_taxes_on_surplus/tick_total_surplus) | none needed (already-computed field) |
+| balkanization FACTION-node seeding (no engine scenario stamps `NodeType.FACTION`; only the legacy web bridge's `_seed_balkanization_layer`) | W-C — **OPEN**, deferred to the RED_OGV repair program (T3 U4 finding; distinct from the Θ_data sovereignty-seed row above) | LODES ON DRIVE (7.9G), shared estate with the row above |
 
 ## 5. Data-estate posture
 

@@ -73,6 +73,7 @@ def _full_graph() -> BabylonGraph:
         tick_bifurcation_score=-0.32,
         tick_class_distribution=dict(_DISTRIBUTION),
         legitimation_index=0.71,
+        habitability=0.83,
     )
     graph.add_node("SOV_USA", NodeType.SOVEREIGN, name="United States")
     graph.add_edge("SOV_USA", "T001", EdgeType.CLAIMS)
@@ -113,6 +114,7 @@ class TestFullDossier:
         assert view.imperial_rent_phi == pytest.approx(412.7)
         assert view.bifurcation_score == pytest.approx(-0.32)
         assert view.legitimacy == pytest.approx(0.71)
+        assert view.habitability == pytest.approx(0.83)
         assert view.sovereign_id == "SOV_USA"
         assert view.class_composition is not None
         assert view.class_composition.proletariat == pytest.approx(0.382)
@@ -166,6 +168,7 @@ class TestHonestAbsence:
         assert view.bifurcation_score is None
         assert view.legitimacy is None
         assert view.class_composition is None
+        assert view.habitability is None
         assert view.sovereign_id is None
 
     def test_unattributed_county_has_no_consciousness(self) -> None:
@@ -192,6 +195,7 @@ class TestHonestAbsence:
         assert view.population == 250
         assert view.p_acquiescence is not None
         assert view.median_wage is None
+        assert view.habitability is None
         assert view.sovereign_id is None
 
     def test_contested_claims_project_no_single_sovereign(self) -> None:
@@ -216,6 +220,13 @@ class TestLoudFailure:
             county_fips=WAYNE,
             tick_class_distribution={"proletariat": 1.0},
         )
+        with pytest.raises(ValidationError):
+            project_county(WAYNE, graph=graph, world=_world(), tick=1)
+
+    def test_out_of_range_habitability_raises(self) -> None:
+        """A present ``habitability`` outside ``[0, 1]`` fails validation loudly."""
+        graph = BabylonGraph()
+        graph.add_node("T001", NodeType.TERRITORY, county_fips=WAYNE, habitability=1.5)
         with pytest.raises(ValidationError):
             project_county(WAYNE, graph=graph, world=_world(), tick=1)
 

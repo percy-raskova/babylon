@@ -14,6 +14,7 @@ _ABSENT_FIELDS_WHEN_ONLY_CORE_STATS_KNOWN = (
     "p_acquiescence",
     "p_revolution",
     "bifurcation_score",
+    "habitability",
     "sovereign_id",
 )
 
@@ -38,6 +39,7 @@ class TestRenderCounty:
         assert "median_wage: 18.500000" in page
         assert "class_composition.proletariat: 0.550000" in page
         assert "consciousness.liberal: 0.600000" in page
+        assert "habitability: 0.830000" in page
         assert "sovereign_id: SOV_USA" in page
 
     def test_it_renders_one_absence_block_per_absent_field_with_remedy_text(

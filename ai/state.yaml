@@ -2,9 +2,40 @@
 # What exists vs what's planned - KEEP THIS UPDATED
 
 meta:
-  version: "2.51.0"  # 2.28.0 lives on feature/19-emergent-class-partition (Program 19 Phase 0+1)
-  updated: "2026-07-21"
+  version: "2.52.0"  # 2.28.0 lives on feature/19-emergent-class-partition (Program 19 Phase 0+1)
+  updated: "2026-07-22"
   truth_status: |
+    (2026-07-22 T3 U7 governance close-out, ADR125) T3 GAP PROJECTIONS
+    PROGRAM COMPLETE (feature/t3-gap-projections, post-cascade spine-C):
+    U1-U6 all APPROVED (U2 APPROVED_AFTER_FIX; the PhiDecomposition
+    hardcoded-None finding fixed same session). Five new projection modules
+    ship: economy.py (Fundamental Theorem verdict off
+    opposition_states["wage"].balance, per-class Phi off the
+    fundamental_theorem graph stash, Volume III surplus split s=p+i+r+t as
+    extensive ratio-of-sums, matter-book overshoot honest-None), field_state
+    .py (Weather Layer — direct port of EngineBridge.get_field_state's read
+    logic), faction.py (balkanization dossier mirroring project_sovereign's
+    recipe), territory_anchor.py (TENANCY-inversion primitive deduped out of
+    web bridge + plate.py into one shared home, feeding chronicle event
+    anchoring), and topology/hex_habitability.py (county-grain broadcast to
+    hexes, pending a real dynamic_hex_state column for hex-native data).
+    Plus U1's graph_bridge.py completion publishing tick_taxes_on_surplus/
+    tick_total_surplus (the last 2 of 6 SurplusValueDistribution terms).
+    Closes all four remaining WO-52b/test-port-ledger LOUD gap rows
+    (TestEconomyDashboardFundamentalTheorem, TestEconomyDashboardChipContract,
+    TestGetFieldState, TestBalkanizationMapFields — rows 192-195 + items
+    1-4 all now CLOSED/REWRITTEN); lights the fundamental_theorem
+    liveness-registry row (ADR117's declared-dormant graph stash, a W-P
+    wiring motion) and the value_form Phi tri-decomposition builders'
+    read-side (W-C/W-P, still honest-None tree-wide — no producer exists
+    yet). One gap found, not fixed, and formally handed off: no engine
+    scenario stamps NodeType.FACTION (only the legacy web bridge's
+    _seed_balkanization_layer), so the balkanization dossier is honest-empty
+    on every real campaign — recorded as a new OPEN row in
+    ai/wiring-doctrine.md's §4 gap ledger citing the RED_OGV repair program
+    as owner. ADR125 written (governance close-out, no production code);
+    index.yaml bumped 1.52.0->1.53.0. tests/baselines/** untouched (docs +
+    ledgers only, per the controller's ceremony-ownership ruling).
     (2026-07-21 CASCADE) THE v1.0.0 FIVE-LANE MERGE CASCADE EXECUTED AND
     GREEN on merge/v1-cascade: T1.1 seam-severity (derived severity catalog
     single-sourced across web+Archive, seam-algebra dL sentinel, wall-clock

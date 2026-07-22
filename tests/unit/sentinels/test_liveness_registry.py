@@ -46,16 +46,17 @@ def test_pole_readings_is_the_declared_dormant_row() -> None:
     assert "sentinel" in row.dormant_reason.lower()
 
 
-def test_fundamental_theorem_is_the_vol1_u2_dormant_row() -> None:
-    """``fundamental_theorem`` (Vol I U2) is graph-attribute-only, same as
+def test_fundamental_theorem_is_consumed_by_the_economy_projection() -> None:
+    """``fundamental_theorem`` (Vol I U2) is surfaced by the T3 economy dossier.
 
-    ``pole_readings``/``market_balance`` — a declared, reasoned dormancy, not
-    a silent one (ADR117's own recorded scope boundary, closed out by U9).
+    Formerly a declared, reasoned dormancy (graph-attribute-only, same as
+    ``pole_readings``/``market_balance``); closed out by T3 U2's ADR109 W-P
+    wiring motion — ``babylon.projection.economy.project_economy`` is now a
+    genuine production reader, not merely a dev-time probe.
     """
     row = next(r for r in LIVENESS_ROWS if r.name == "fundamental_theorem")
-    assert row.consumer_files == ()
-    assert "u2" in row.dormant_reason.lower() or "phase-1-shadow" in row.dormant_reason.lower()
-    assert "veil" in row.dormant_reason.lower()
+    assert row.consumer_files == ("src/babylon/projection/economy.py",)
+    assert "veil" in row.material_relation.lower()
 
 
 def test_vol1_u6_ratio_rows_are_consumed_by_the_opposition_catalog() -> None:

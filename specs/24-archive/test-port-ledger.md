@@ -39,8 +39,7 @@ these are the cutover blockers enumerated in the LOUD list.
 | RE-GUARDED (new) | 3 |
 | CARRIED — P3 (new) | 8 |
 | RETIRED (new) | 21 |
-| REWRITTEN (new — T3 U2 closure) | 2 |
-| GAP — uncovered, unowned (new) | 2 |
+| REWRITTEN (new — T3 U2/U3/U4 closure) | 4 |
 | **Total** | **63** |
 
 ## Ledger

@@ -14,10 +14,13 @@ the claim mechanically checked instead:
 3. Every disposition cell across the ledger's three per-item tables uses the
    closed vocabulary the ledger itself declares: ``PORTED`` / ``REWRITTEN``
    / ``RE-GUARDED`` / ``CARRIED(...)`` / ``RETIRED`` / ``GAP``.
-4. The four ``GAP`` rows (cutover blockers: the economy Wc-Vc aggregates,
-   the economy chip contract, the field-state read-model, and balkanization
-   factions) stay visible — these must survive until a BD ruling closes
-   them, not vanish in a ledger edit.
+4. The four former ``GAP`` rows (cutover blockers: the economy Wc-Vc
+   aggregates, the economy chip contract, the field-state read-model, and
+   balkanization factions) were CLOSED by the T3 gap-projections train
+   (U2/U3/U4, ADR125) under the BD ruling "4 LOUD ledger gaps -> BUILD all"
+   (ratified master plan, 2026-07-21). The check now pins the closed state:
+   the four classes stay NAMED (as ``REWRITTEN (T3 ...)`` rows) and ZERO
+   ``GAP`` cells remain — a reappearing ``GAP`` is a regression.
 5. The checker is itself mutation-tested: each check is proven to fail on a
    ledger copy with the fact it depends on removed.
 
@@ -51,8 +54,8 @@ _CLASS_RE = re.compile(r"^class (Test\w+)")
 # The ledger's own declared vocabulary (test-port-ledger.md lines 10-13).
 _DISPOSITION_RE = re.compile(r"^(PORTED|REWRITTEN|RE-GUARDED|RETIRED|GAP)\b|^CARRIED\s*\(")
 
-# The four cutover blockers (test-port-ledger.md "LOUD" section) — must stay
-# both NAMED and tagged GAP.
+# The four former cutover blockers (test-port-ledger.md "LOUD" section) —
+# closed by T3 U2/U3/U4 (ADR125); must stay NAMED as REWRITTEN (T3 ...) rows.
 _LOUD_GAP_CLASSES = (
     "TestEconomyDashboardFundamentalTheorem",
     "TestEconomyDashboardChipContract",
@@ -190,21 +193,29 @@ class TestDispositionVocabularyClosed:
 
 
 # ---------------------------------------------------------------------------
-# 4. The four LOUD GAP rows stay visible.
+# 4. The four LOUD rows are CLOSED (T3 U2/U3/U4) and stay that way.
 # ---------------------------------------------------------------------------
 
 
-class TestLoudGapsStayVisible:
-    def test_all_four_gap_classes_are_named(self) -> None:
+class TestLoudGapsClosed:
+    def test_all_four_former_gap_classes_stay_named(self) -> None:
         ledger_text = _LEDGER.read_text(encoding="utf-8")
         missing = _missing_names(list(_LOUD_GAP_CLASSES), ledger_text)
-        assert missing == [], f"a GAP cutover-blocker silently vanished: {missing}"
+        assert missing == [], f"a closed cutover-blocker silently vanished: {missing}"
 
-    def test_exactly_four_rows_are_tagged_gap(self) -> None:
+    def test_zero_rows_are_tagged_gap(self) -> None:
+        # T3 closed all four LOUD gaps (ADR125); the honest-GAP vocabulary
+        # stays legal for FUTURE rows, but today a GAP cell reappearing means
+        # either a regression or an undispositioned new gap — both loud.
         ledger_text = _LEDGER.read_text(encoding="utf-8")
         cells = _all_disposition_cells(ledger_text)
         gap_cells = [cell for cell in cells if cell.startswith("GAP")]
-        assert len(gap_cells) == 4, f"expected exactly 4 GAP rows, found {len(gap_cells)}"
+        assert gap_cells == [], f"expected zero GAP rows post-T3, found: {gap_cells}"
+
+    def test_all_four_closures_are_tagged_rewritten_t3(self) -> None:
+        ledger_text = _LEDGER.read_text(encoding="utf-8")
+        for marker in ("REWRITTEN (T3 U2)", "REWRITTEN (T3 U3)", "REWRITTEN (T3 U4)"):
+            assert marker in ledger_text, f"missing closure disposition: {marker}"
 
 
 # ---------------------------------------------------------------------------
@@ -236,26 +247,24 @@ class TestSentinelCatchesMutation:
         bad = [cell for cell in cells if not _DISPOSITION_RE.match(cell)]
         assert bad == ["SHIPPED (WO-27)"]
 
-    def test_gap_visibility_check_reds_when_a_gap_row_is_deleted(self) -> None:
+    def test_closure_check_reds_when_a_closed_row_regresses_to_gap(self) -> None:
+        # Mutate on the disposition CELL, not the row's full prose (the prose
+        # drifted once already and broke the old fixture) — flipping the
+        # balkanization closure back to GAP must red the zero-GAP check.
         real_ledger = _LEDGER.read_text(encoding="utf-8")
-        gap_row = (
-            "| `TestBalkanizationMapFields` | balkanization block: faction enumeration + "
-            "per-territory contested/dominant_faction from INFLUENCES reads | single "
-            "sovereign IS covered (`project_sovereign`/county `sovereign_id`); **faction "
-            "enumeration + contested-territory derivation are not projected** (no "
-            "`FactionView`, no INFLUENCES read); no WO | GAP (LOUD) |"
-        )
-        assert gap_row in real_ledger, "the GAP row's exact text drifted — update the fixture"
-        # The class name is ALSO named a second time, in the "LOUD" prose list
-        # below the table (a deliberate redundancy) — both mentions must be
-        # gone for the class to genuinely vanish from the ledger, so the row
-        # deletion is followed by scrubbing the remaining name occurrence too.
-        assert real_ledger.count("TestBalkanizationMapFields") == 2
-        mutated = real_ledger.replace(gap_row, "").replace("TestBalkanizationMapFields", "")
-
-        missing = _missing_names(["TestBalkanizationMapFields"], mutated)
-        assert missing == ["TestBalkanizationMapFields"]
-
+        closed_cell = "| REWRITTEN (T3 U4) |"
+        assert closed_cell in real_ledger, "the U4 closure cell drifted — update the fixture"
+        mutated = real_ledger.replace(closed_cell, "| GAP (LOUD) |")
         cells = _all_disposition_cells(mutated)
         gap_cells = [cell for cell in cells if cell.startswith("GAP")]
-        assert len(gap_cells) == 3, "deleting one GAP row must drop the count from 4 to 3"
+        assert gap_cells == ["GAP (LOUD)"], "a regressed GAP cell must be seen by the checker"
+
+    def test_containment_check_reds_when_a_closed_class_vanishes(self) -> None:
+        # The class name appears in its REWRITTEN row AND the struck-through
+        # LOUD prose item (deliberate redundancy) — scrub every mention and
+        # the containment check must red.
+        real_ledger = _LEDGER.read_text(encoding="utf-8")
+        assert real_ledger.count("TestBalkanizationMapFields") >= 2
+        mutated = real_ledger.replace("TestBalkanizationMapFields", "")
+        missing = _missing_names(["TestBalkanizationMapFields"], mutated)
+        assert missing == ["TestBalkanizationMapFields"]

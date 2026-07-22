@@ -1,7 +1,7 @@
 <!-- Provenance: BD-authored draft, delivered in-session 2026-07-22 and committed
      verbatim (Immutability of History — this text is design material, not a
-     ratified spec). The companion module BabylonCoreDraft.hs referenced below is
-     held by the BD and should be committed beside this file when dropped.
+     ratified spec). The companion module BabylonCoreDraft.hs is committed beside
+     this file (BD-dropped 2026-07-22, verbatim).
      The preparatory spec that frames this draft for ratification is
      2026-07-22-mirror-typed-core-spec.md. -->
 

@@ -101,7 +101,7 @@ budget L-MAT-1, population conservation (F-3 warn→alarm), the carbon register.
 | doctrine → bifurcation feedback | W-C (coupling rows; DT Unit 6) | none needed (endogenous) |
 | EpistemicHorizon consumers | W-P (Episteme; fog interior) | `fcc/` BDC broadband ON DRIVE (2.0G) |
 | φ_repro Meillassoux proxy | W-A4 (L-MAT-9 vs L-VAL-5) | ATUS shipped; Chetty ON DRIVE |
-| balkanization / RED_OGV | Θ_data seed repair (specced) | LODES ON DRIVE (7.9G) |
+| balkanization / RED_OGV | Θ_data seed repair **LANDED** (P25 U6/ADR132: SOV_USA_FED literal tri-county FIPS claims + ADR080 fallback in the engine path; stance gates attributable from tick 0 on seeded terrain). Endgame-reachability verification on live campaigns = U12 | MIT Election Lab SHIPPED (`mit_countypres_rep_share`); LODES no longer needed for this row |
 | σ-gradient (spec-107, zero code) | W-𝔇 + W-P | ERDI INGESTED; EXIOBASE [V per §VI.11] |
 | transport substrate (spec-108, scaffold only) | W-C + quasi-metric W-P (II.12 stack) | `freight/faf` ON DRIVE (1.3G) |
 | Divergence Channel (ADR072) | 𝕊 — correctly BLOCKED on Amendment T | — |
@@ -110,7 +110,7 @@ budget L-MAT-1, population conservation (F-3 warn→alarm), the carbon register.
 | fundamental_theorem dormancy (Vol I ADR117 graph stash, zero consumers) | W-P — **CLOSED** (T3 U2; `babylon.projection.economy.project_economy` consumes the stash's per-class Phi readings; liveness-registry row updated) | none needed (existing wage-opposition + `contradiction.py` feed) |
 | Phi tri-decomposition (value_form builders, zero callers tree-wide) | W-C read-side **CLOSED** (T3 U2 fix) / W-P consumer live; every component input still genuinely absent | `gamma_basket`+`consumption`; `p_g2_labor_value`+`wage_paid_for_d_g2`; `l_unpaid`+national MELT; `gamma_iii`+tau — none published tree-wide [U — unresearched producer] |
 | SurplusValueDistribution taxes_on_surplus/total_surplus unpublished (2 of 6 terms) | W-C — **CLOSED** (T3 U1; `graph_bridge.py` tick_taxes_on_surplus/tick_total_surplus) | none needed (already-computed field) |
-| balkanization FACTION-node seeding (no engine scenario stamps `NodeType.FACTION`; only the legacy web bridge's `_seed_balkanization_layer`) | W-C — **OPEN**, deferred to the RED_OGV repair program (T3 U4 finding; distinct from the Θ_data sovereignty-seed row above) | LODES ON DRIVE (7.9G), shared estate with the row above |
+| balkanization FACTION-node seeding (no engine scenario stamps `NodeType.FACTION`; only the legacy web bridge's `_seed_balkanization_layer`) | W-C — **CLOSED** (P25 U6/ADR132: `engine/scenarios/balkanization_seed.py::apply_balkanization_seed`, county-FIPS-keyed seed, applied by the electoral fixture; web bridge delegates. Sentinel: `tests/unit/projection/test_faction.py::TestElectoralScenarioHarvest` — faction pages project NON-EMPTY on real engine terrain — + the builder contract suite `tests/unit/engine/scenarios/test_balkanization_seed.py`) | MIT Election Lab 2024 SHIPPED as committed artifact `mit_countypres_rep_share` (ADR049 ratified); LODES proration dissolved at county grain |
 
 ## 5. Data-estate posture
 

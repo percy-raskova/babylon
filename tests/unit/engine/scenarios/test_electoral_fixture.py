@@ -6,6 +6,8 @@ social_class, and donor-dependence TRANSACTIONAL funding Business → party.
 NOT one of the six qa:regression scenarios — byte-safety by disjointness.
 """
 
+import pytest
+
 from babylon.engine.scenarios.electoral_fixture import create_electoral_fixture_scenario
 from babylon.models.entities.organization import Business, PoliticalFaction
 from babylon.models.enums import EdgeType, OrgType
@@ -62,6 +64,31 @@ def test_donor_dependence_is_a_transactional_flow():
     funded = {t for _, t, _ in funding}
     assert {"org/party-liberal", "org/party-restorationist"} <= funded
     assert "org/party-socdem" not in funded
+
+
+def test_balkanization_layer_is_seeded():
+    """U6 (ADR132): the electoral scenario carries BOTH political entity
+    families — PoliticalFaction orgs (U5) and the spec-070 layer
+    (BalkanizationFaction nodes, Sovereigns, Wayne's real electoral
+    INFLUENCES, SOV_USA_FED's literal claim on the FIPS-grounded T001)."""
+    state = _build()
+    assert set(state.factions) == {
+        "FAC_WORKERS_CONGRESS",
+        "FAC_DECOLONIAL",
+        "FAC_RESTORATIONIST",
+        "FAC_LIBERAL_IMPERIAL",
+    }
+    assert set(state.sovereigns) == {"SOV_USA_FED", "SOV_CAN_FED", "SOV_EXTERIOR_NULL"}
+    assert state.territories["T001"].county_fips == "26163"
+
+    influences = [r for r in state.relationships if r.edge_type == EdgeType.INFLUENCES]
+    assert {r.source_id for r in influences} == set(state.factions)
+    assert all(r.target_id == "T001" for r in influences)
+    restorationist = next(r for r in influences if r.source_id == "FAC_RESTORATIONIST")
+    assert restorationist.influence_level == pytest.approx(0.3372)  # real Wayne 2024
+
+    claims = [r for r in state.relationships if r.edge_type == EdgeType.CLAIMS]
+    assert [(r.source_id, r.target_id) for r in claims] == [("SOV_USA_FED", "T001")]
 
 
 def test_graph_round_trip_preserves_the_parties():

@@ -13,6 +13,14 @@ exploitation/wages/tenancy triangle) so every downstream system sees a
 complete material base. NOT one of the six qa:regression scenarios —
 byte-safety by disjointness; the engine derivation of political-labor flows
 (GraphInputs.political_labor_share) is U8's work, not this builder's.
+
+U6 (ADR132) grounds the terrain: the territory carries Wayne County's FIPS
+(``county_fips="26163"``) and the builder applies the spec-070 balkanization
+seed — 4 ``BalkanizationFaction`` nodes, 3 ``Sovereign`` nodes, the real
+2024 electoral INFLUENCES for Wayne, and SOV_USA_FED's literal CLAIMS — so
+the electoral scenario is the first headless terrain where BOTH political
+entity families (PoliticalFaction orgs and BalkanizationFaction nodes,
+deliberately disjoint — charter §U6(e)) exist together.
 """
 
 from __future__ import annotations
@@ -31,6 +39,10 @@ if TYPE_CHECKING:
 
 _WORKER = "C001"
 _OWNER = "C002"
+
+#: Wayne County, Michigan — grounds the fixture's territory in the county
+#: namespace the balkanization seed is keyed by (single_county's precedent).
+_WAYNE_COUNTY_FIPS = "26163"
 
 
 def _party(
@@ -67,8 +79,14 @@ def _funding(donor_id: str, party_id: str, amount: float) -> Relationship:
 def create_electoral_fixture_scenario() -> tuple[WorldState, SimulationConfig, GameDefines]:
     """Build the electoral terrain on the two_node material substrate."""
     from babylon.engine.scenarios._legacy import create_two_node_scenario
+    from babylon.engine.scenarios.balkanization_seed import apply_balkanization_seed
 
     state, config, defines = create_two_node_scenario()
+
+    # Ground the abstract two_node territory in Wayne County so the
+    # county-FIPS-keyed balkanization seed resolves onto it (U6).
+    territory = state.territories["T001"].model_copy(update={"county_fips": _WAYNE_COUNTY_FIPS})
+    state = state.model_copy(update={"territories": {**state.territories, "T001": territory}})
 
     parties = {
         "org/party-liberal": _party(
@@ -127,6 +145,9 @@ def create_electoral_fixture_scenario() -> tuple[WorldState, SimulationConfig, G
             "relationships": relationships,
         }
     )
+    # The spec-070 political layer (U6): BalkanizationFaction/Sovereign
+    # nodes + Wayne's real electoral INFLUENCES + SOV_USA_FED's claims.
+    state = apply_balkanization_seed(state)
     return state, config, defines
 
 

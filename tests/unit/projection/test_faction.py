@@ -185,12 +185,12 @@ class TestHonestAbsence:
 
 
 class TestNoScenarioSeedsFactions:
-    """The HONEST-EMPTY case: no engine scenario seeds FACTION nodes today.
+    """The HONEST-EMPTY case: a graph with zero faction nodes.
 
-    Only the legacy web bridge's ``_seed_balkanization_layer`` does
-    (Bridge-layer only, owner item 8) -- a real headless campaign's graph
-    has zero faction nodes, and this projector must handle that gracefully
-    rather than assume at least one faction always exists.
+    Until P25 U6 this was every headless scenario's shape (only the legacy
+    web bridge seeded FACTION nodes); it remains the shape of any scenario
+    that doesn't apply the balkanization seed, and this projector must
+    handle it gracefully rather than assume at least one faction exists.
     """
 
     def test_empty_graph_with_no_faction_nodes_at_all(self) -> None:
@@ -204,6 +204,32 @@ class TestNoScenarioSeedsFactions:
         assert view.verified_tick == 520
         assert view.name is None
         assert view.territory_influence is None
+
+
+class TestElectoralScenarioHarvest:
+    """The U6 gate (charter §U6(c)): the fixture-harvest is NON-EMPTY on the
+    electoral scenario — faction pages project from real engine terrain,
+    through the real ``to_graph()`` path, with the real 2024 electoral data."""
+
+    def test_faction_projects_non_empty_on_the_electoral_scenario(self) -> None:
+        from babylon.engine.scenarios.electoral_fixture import (
+            create_electoral_fixture_scenario,
+        )
+
+        state, _config, _defines = create_electoral_fixture_scenario()
+        graph = state.to_graph()
+
+        view = project_faction("FAC_RESTORATIONIST", graph=graph, world=_world(), tick=0)
+
+        assert view.name == "Settler Restoration Coalition"
+        assert view.colonial_stance == "uphold"
+        assert view.territory_influence is not None
+        assert len(view.territory_influence) == 1
+        row = view.territory_influence[0]
+        assert row.territory_id == "T001"
+        assert row.county_fips == "26163"
+        assert row.influence_level == pytest.approx(0.3372)  # real Wayne 2024
+        assert row.support_type == "electoral"
 
 
 class TestLoudFailure:

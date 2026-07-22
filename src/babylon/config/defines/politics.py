@@ -212,9 +212,25 @@ class PoliticsDefines(BaseModel):
         description=(
             "Θ_feel — θ.contact in the allegiance-drift law (U8 §2.2): "
             "per-tick organizing-contact pull along MEMBERSHIP edges "
-            "(party→class base reach). The media (ISA_COMM) and betrayal "
-            "(delivery-gap) drift terms arrive with their producers "
-            "(media apparatus program; U9 PolicySystem)."
+            "(party→class base reach). The media (ISA_COMM) drift term "
+            "arrives with its producer (media apparatus program); the "
+            "betrayal term landed with U9's delivery-gap register "
+            "(allegiance_betrayal_rate)."
+        ),
+    )
+    allegiance_betrayal_rate: float = Field(
+        default=0.04,
+        ge=0.0,
+        le=1.0,
+        description=(
+            "Θ_feel — θ.betrayal in the allegiance-drift law (U8 §2.2, "
+            "producer landed U9/ADR135): per-tick allegiance repulsion from "
+            "an incumbent per unit of PRIOR-tick delivery gap (PolicySystem "
+            "@17.47 writes the per-class gap register; AllegianceSystem "
+            "@17.42 reads it next tick — the one-tick lag is the I-ORD "
+            "grain). Betrayal outpaces alignment by default "
+            "(0.04 vs 0.05·fit): delivered promises are forgiven, broken "
+            "ones compound toward the U10 betrayal integral."
         ),
     )
     disillusion_window_ticks: int = Field(

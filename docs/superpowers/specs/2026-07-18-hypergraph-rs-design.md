@@ -38,8 +38,13 @@ across 7 consumer files, removing the `xgi` Poetry dependency entirely.
 
 ## 2. Workspace architecture
 
-Top-level `/hypergraph-rs/` in the babylon repo (external dep — Babylon
-declares it via a Poetry path dependency).
+Sibling repo `../hypergraph-rs` (relative to the babylon repo root), its **own
+git repository** (moved out of the babylon tree 2026-07-22; the earlier
+owner ruling 2026-07-18 had it mounted at `/hypergraph-rs/` inside babylon,
+parent-gitignored — the mount pattern is retired, the ignore entry stays as a
+guard). Becomes a submodule/remote repo when published — publishing is an
+owner decision. Babylon declares it via a **uv path dependency** at swap time
+(Phase 11) and imports only the built PyO3 extension.
 
 ```
 hypergraph-rs/                          # top-level workspace, external dep
@@ -89,8 +94,8 @@ hypergraph-rs/                          # top-level workspace, external dep
   deps) + three thin binding crates. The core does all the work; bindings are
   thin adapters.
 - **`rustworkx-core` is the backbone.** The hypergraph IS a
-  `rustworkx_core::petgraph::Graph` under the hood (see §3) — this is what
-  makes it a "genuine plugin."
+  `rustworkx_core::petgraph::stable_graph::StableDiGraph` under the hood
+  (see §3) — this is what makes it a "genuine plugin."
 - **The npm package is optional/secondary.** The scene-graph JSON is the
   contract; the React renderer is one consumer.
 

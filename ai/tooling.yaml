@@ -1018,30 +1018,7 @@ known_issues:
     solution: "Add time.sleep(0.01) between time-sensitive operations"
     note: "Python 3.13 tests run in extended-analysis, not main CI"
 
-# =============================================================================
-# RUST (hypergraph-rs — standalone XGI port workspace, 2026-07-18)
-# =============================================================================
-
-rust:
-  philosophy: "Same house rules as the Python side: one invocation source of truth (mise tasks), CI runs what devs run, loud failure, pinned everything"
-
-  toolchain:
-    pin: "hypergraph-rs/rust-toolchain.toml ([toolchain] table — channel 1.91.1, components rustfmt+clippy, target wasm32-unknown-unknown)"
-    selection: "rustup by cwd ancestry — every mise rust:* task sets dir = 'hypergraph-rs' because --manifest-path does NOT trigger toolchain selection"
-    msrv: "rust-version in hypergraph-rs/Cargo.toml (1.85) — honest floor from the resolved dep tree via cargo metadata, NOT aspirational; tested by mise run rust:msrv (rustup installs the floor toolchain on demand)"
-    lockfile: "Cargo.lock is COMMITTED (workspace ships the cli binary; the lockfile is the dev-env pin). All cargo invocations use --locked"
-
-  tasks:
-    namespace: "rust:* (ADR035)"
-    gate: "rust:check = fmt --check + clippy -D warnings + test --locked + doc -D warnings"
-    sequencing: "rust:check is a sequential run-block, not parallel depends: one cargo target dir has one file lock, so parallel legs only contend (machine-safety: heavy builds single-flight)"
-    fixtures: "rust:fixtures regenerates the XGI conformance ground truth via the venv's installed XGI — a fixture diff is news, investigate before committing"
-
-  conformance:
-    harness: "crates/hypergraph-rs/conformance/generate_fixtures.py runs the ACTUAL installed XGI (never docstrings) and commits observed behavior as JSON; tests/conformance/main.rs replays every vector with an executable divergence register (D1..D7) — drift on either side fails loudly"
-    origin: "D1 broke because the plan trusted XGI's add_edge docstring ('Raises XGIError') over its runtime (creates an empty edge; XGI's own test suite asserts it)"
-
-  gotchas:
-    toolchain_table: "rust-toolchain.toml uses [toolchain], NOT [tool] — the latter fails with 'missing field toolchain'"
-    doc_name_collision: "a bin target named like the lib crate (hypergraph-rs vs hypergraph_rs) collides in cargo doc output (cargo bug #6313) — the cli bin is named 'hypergraph'"
-    mise_trust: "editing .mise.toml invalidates mise's trust hash — run 'mise trust' before 'mise run'"
+# hypergraph-rs (standalone Rust XGI port): extracted 2026-07-22 to the sibling
+# repo ../hypergraph-rs (own git repo, own mise tasks + CI + toolchain pin).
+# Its rust:* task doctrine lives in that repo now; babylon consumes it only as
+# a uv path dependency (crates/hypergraph-rs-python, maturin).

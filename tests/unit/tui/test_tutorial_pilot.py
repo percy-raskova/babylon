@@ -11,6 +11,18 @@ status line), structural Pilot state second (``nav.current``, the paced
 driver's own ``awaiting_ack``) only where a string alone would be ambiguous,
 never a visual/pixel comparison.
 
+**Review fix pass**: ``OnPage`` alone (nav.current + non-emptiness) is a
+navigation-only check — it cannot distinguish a step whose ``then`` merely
+advertises "the dossier pane shows/returns to X" from one whose ``then``
+advertises specific rendered CONTENT ("the wage balance ... render as real
+numbers", "Wayne's own material state, not a fixture"). Two steps
+(``read_the_county_dossier``, ``read_the_theorem_verdict``) are the latter
+kind; :func:`drive_step` layers a distinctive-token check onto those two
+(:data:`_EXTRA_CONTENT_CHECK_BY_STEP_ID`) rather than widening ``OnPage``
+itself or adding a new :data:`~babylon.game.tutorial.CompletionPredicate`
+kind in U1 — a reviewer-specified, minimally-scoped fix over U2's own
+assertion path.
+
 Runs against a REAL :class:`~babylon.game.session.GameSession` — the real
 30-system engine, the real :class:`~babylon.game.pacing.PacedTickDriver` +
 :class:`~babylon.engine.observers.endgame_detector.EndgameDetector`, and a
@@ -55,6 +67,7 @@ a durable regression rather than a one-time comment.
 from __future__ import annotations
 
 import io
+import re
 from collections.abc import AsyncIterator, Callable, Sequence
 from contextlib import asynccontextmanager
 from pathlib import Path
@@ -467,6 +480,106 @@ def _assert_completion(app: ArchiveApp, predicate: object, *, step_id: str) -> N
     raise AssertionError(f"{step_id}: unrecognized completion predicate kind {predicate!r}")
 
 
+# --------------------------------------------------------------------------- #
+# Step-specific content checks (review fix pass) — see module note above     #
+# drive_step for why these are layered ON TOP OF _assert_completion rather   #
+# than folded into it or promoted to a new CompletionPredicate kind.         #
+# --------------------------------------------------------------------------- #
+
+#: A real ``ClassComposition`` row, always present on Wayne's county
+#: statblock by the time ``read_the_county_dossier`` runs (verified against
+#: this exact composition's own emitted transcript). Distinguishes a REAL
+#: rendered county statblock from any other non-empty page shown at the
+#: same subject — unlike ``_WAYNE_FIPS`` alone, this string cannot leak in
+#: from a refusal message (``_directive_statblock``'s own "no statblock
+#: projection for {arg}"/"MALFORMED STATBLOCK BODY" refusals echo the
+#: subject id too, so the FIPS alone is not fully distinctive; a genuine
+#: class-composition row only ever comes from an actually-rendered
+#: statblock body).
+_WAYNE_CLASS_COMPOSITION_ROW: Final = "class_composition.labor_aristocracy"
+
+#: ``wage_balance``'s own statblock row, rendered by
+#: ``babylon.tui.directives._directive_statblock`` as
+#: ``"wage_balance<padding><value>"`` (the colon from the baked
+#: ``key: value`` fence body is stripped at parse time — verified against
+#: this exact composition's own emitted transcript, never assumed). The
+#: numeric value itself is NOT pinned (unlike ``test_t3_live_
+#: reachability.py``'s fixture-backed ``"0.180000"`` literal) because this
+#: suite runs the real engine through real ticks — a genuine coefficient
+#: retune could shift the float without being a regression this step's own
+#: Then cares about; what the Then actually advertises is "renders as a
+#: real number", which a numeric-shaped regex proves without over-pinning.
+_WAGE_BALANCE_ROW_PATTERN: Final = re.compile(r"wage_balance\s+-?\d+\.\d+")
+
+#: ``labor_aristocracy_verdict``'s own statblock row — same rendering
+#: contract as above, value is the literal ``str(bool)`` render
+#: (``"True"``/``"False"``), verified against the emitted transcript.
+_LABOR_ARISTOCRACY_VERDICT_ROW_PATTERN: Final = re.compile(
+    r"labor_aristocracy_verdict\s+(True|False)"
+)
+
+
+def _assert_county_dossier_is_wayne_real(app: ArchiveApp, *, step_id: str) -> None:
+    """``read_the_county_dossier``'s own extra Then-check (review fix pass).
+
+    The step's own ``then`` advertises Wayne's REAL material state, "not a
+    fixture" — ``OnPage`` alone (nav.current + non-emptiness) cannot tell
+    that apart from any other non-empty page shown under the same subject.
+    A real class-composition row is the distinctive proof.
+
+    :raises AssertionError: no real class-composition row (or the county's
+        own FIPS) appears in the rendered statblock.
+    """
+    text = _dossier_plain_text(app)
+    assert _WAYNE_CLASS_COMPOSITION_ROW in text, (
+        f"{step_id}: no real {_WAYNE_CLASS_COMPOSITION_ROW!r} row in the rendered "
+        "statblock — cannot distinguish Wayne's own state from an empty/fixture page"
+    )
+    assert _WAYNE_FIPS in text, f"{step_id}: county/{_WAYNE_FIPS}'s own FIPS never rendered"
+
+
+def _assert_theorem_verdict_is_real(app: ArchiveApp, *, step_id: str) -> None:
+    """``read_the_theorem_verdict``'s own extra Then-check (review fix pass).
+
+    The step's own ``then`` advertises the wage balance and the
+    labor-aristocracy verdict rendering "as real numbers read off the SAME
+    opposition the engine itself adjudicates" — ``OnPage`` alone cannot
+    verify that distinctive content is actually on screen, only that
+    *something* non-empty is showing at ``economy/USA``.
+
+    :raises AssertionError: either row is missing, or ``wage_balance``'s
+        value is not numeric-shaped.
+    """
+    text = _dossier_plain_text(app)
+    assert _WAGE_BALANCE_ROW_PATTERN.search(text), (
+        f"{step_id}: no 'wage_balance <number>' row in the rendered statblock"
+    )
+    assert _LABOR_ARISTOCRACY_VERDICT_ROW_PATTERN.search(text), (
+        f"{step_id}: no 'labor_aristocracy_verdict <bool>' row in the rendered statblock"
+    )
+
+
+#: Closed, named extension keyed by step id — NOT a second predicate
+#: vocabulary alongside :func:`_assert_completion` (that function alone
+#: owns closed dispatch over :data:`~babylon.game.tutorial.
+#: CompletionPredicate`). Every OTHER step id is a deliberate no-op here:
+#: the two entries below are exactly the CONTENT-advertising ``OnPage``
+#: steps the review identified (their ``then`` names specific rendered
+#: numbers/rows) as opposed to the NAVIGATION-only ``OnPage`` steps
+#: (``begin_the_operation``, ``palette_to_the_economy_dossier``,
+#: ``jump_back_to_wayne``) whose own ``then`` only advertises "the dossier
+#: pane shows/returns to/navigates to X" — already fully covered by
+#: ``_assert_completion``'s nav.current + non-emptiness check.
+_EXTRA_CONTENT_CHECK_BY_STEP_ID: Final[dict[str, Callable[[ArchiveApp], None]]] = {
+    "read_the_county_dossier": lambda app: _assert_county_dossier_is_wayne_real(
+        app, step_id="read_the_county_dossier"
+    ),
+    "read_the_theorem_verdict": lambda app: _assert_theorem_verdict_is_real(
+        app, step_id="read_the_theorem_verdict"
+    ),
+}
+
+
 async def drive_step(pilot: Pilot[None], step: TutorialStep) -> None:
     """The step interpreter's public entry point: drive ``step.when`` via
     its anchor, then hard-assert ``step.then`` via its completion predicate.
@@ -474,7 +587,11 @@ async def drive_step(pilot: Pilot[None], step: TutorialStep) -> None:
     Closed dispatch over the anchor grammar (:func:`_perform_anchor`) and
     the completion-predicate union (:func:`_assert_completion`) — an
     anchor prefix or predicate kind outside either closed vocabulary raises
-    loudly, never skips (Constitution III.11).
+    loudly, never skips (Constitution III.11). A second, narrow layer
+    (:data:`_EXTRA_CONTENT_CHECK_BY_STEP_ID`, review fix pass) asserts the
+    distinctive rendered content two CONTENT-advertising steps promise,
+    on top of (never instead of) the generic ``OnPage`` check — see that
+    dict's own docstring for why only those two step ids need it.
     """
     if isinstance(step.completion, VerbIssued):
         await _drive_verb_issued(pilot, step.anchor, step.completion.verb, step_id=step.id)
@@ -482,7 +599,11 @@ async def drive_step(pilot: Pilot[None], step: TutorialStep) -> None:
     await _perform_anchor(pilot, step.anchor)
     await pilot.app.workers.wait_for_complete()
     await pilot.pause()
-    _assert_completion(_archive_app(pilot), step.completion, step_id=step.id)
+    app = _archive_app(pilot)
+    _assert_completion(app, step.completion, step_id=step.id)
+    extra_check = _EXTRA_CONTENT_CHECK_BY_STEP_ID.get(step.id)
+    if extra_check is not None:
+        extra_check(app)
 
 
 async def _load_the_minted_campaign(pilot: Pilot[None]) -> None:

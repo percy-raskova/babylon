@@ -239,7 +239,7 @@ def create_objective(
     if not HAS_OPTUNA:
         raise ImportError(
             "optuna is required for Bayesian tuning. Install the dev "
-            "dependency group: `poetry install --with dev`."
+            "dependency group: `uv sync`."
         )
 
     def objective(trial: optuna.Trial) -> float:
@@ -321,7 +321,7 @@ def run_optimization(
     if not HAS_OPTUNA:
         raise ImportError(
             "optuna is required for Bayesian tuning. Install the dev "
-            "dependency group: `poetry install --with dev`."
+            "dependency group: `uv sync`."
         )
 
     resolved_categories = categories if categories is not None else TUNING_CATEGORIES
@@ -509,7 +509,7 @@ def run_bayesian(
     if not HAS_OPTUNA:
         raise ImportError(
             "optuna is required for Bayesian tuning. Install the dev "
-            "dependency group: `poetry install --with dev`."
+            "dependency group: `uv sync`."
         )
 
     if show_best:

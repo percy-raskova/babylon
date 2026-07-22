@@ -12,7 +12,7 @@ single-flight in this controller. This file is my scratch — supersede freely.
 | T1.1 seam-severity | lane/t11-seam-severity | c0c9a731 | **✓ DONE** (17/17, 0 err; U1–U7, mutation-verified) | merges 1st — READY |
 | T1.2 keel | lane/t12-keel | c4dc2f0c | **✓ DONE** (20/20, 0 err; K1–K5 verified in-code) | **HELD** behind T1.1; clean, merge-ready |
 | Vol I | lane/vol1-value-production | 18c2e2d9 | RUNNING (U8 done 20:0x, ADR114; U7 a80616f2 + vocab fix c435d3a6 done; ONLY U9 monitoring + ceremony remain) | 3rd |
-| Vol II | lane/vol2-circulation | 2340a585 | RUNNING (U4 lit the step 19:29, ADR120/123) | 4th (rebase on Vol I) |
+| Vol II | lane/vol2-circulation | d694928d | RUNNING (U6a vocab-allowlist narrowing 20:27; U4 lit step 19:29 ADR120/123; U6b seam-rows DEFERRED→rebase; U5 = Vol I's) | 4th (rebase on Vol I) |
 | T4 core | lane/t4-campaign-core | 1e4fbe2c | **✓ DONE** (18/18, 0 err; C1–C6, no blockers) | **HELD** behind all; merges last |
 | T7 installer | lane/t7-installer | df41a963 | alpha (separate) | post-Gate-3 (T7-beta) |
 
@@ -100,6 +100,16 @@ REAL 30-system engine). Non-blocking, verify/file at merge:
       confirm no third hand-copy survives; the equality sentinel should enforce it.
 - [ ] **Vol II LODES artifact determinism**: gzip MTIME pinned (432ea99a) — confirm the
       committed artifact is byte-stable across regenerations (CI-no-drive).
+- [ ] **Vol II U6b — seam-algebra registry rows owed AT REBASE**: correctly deferred
+      (T1.1's `sentinels/seam_algebra/` doesn't exist in the vol2 tree pre-cascade).
+      When Vol II rebases onto merged Vol I + T1.1, it MUST contribute its circulation
+      seam rows (gate-satisfaction/stub-vs-calculator entries for the lit vol2_step) and
+      rerun its battery — track it as part of the rebase, not a new unit.
+- [ ] **THIRD live hex-query citation** (Vol II U6a finding, d694928d):
+      `engine/simulation_engine.py:235` — the determinism-hash hex-row collector still
+      queries `hex` with no production stamper (empty-set fold in the hash path;
+      deterministic but dead). The hex allowlist entry was NARROWED, not retired.
+      Feeds Material Triad W1 item 5's disposition (now three citations, not two).
 - [ ] **§10.2 dormancy-sentinel hoist**: lives in T1.1 keel, NOT the Vol lanes (recorded
       ADR103). Confirm neither Vol lane also built one (dedupe).
 - [x] **U5 runner-parity — LANDED by Vol I** (commit `4627fc23`, peer report

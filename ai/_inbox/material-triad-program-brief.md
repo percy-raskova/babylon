@@ -52,6 +52,9 @@ class *inexpressible* instead of merely *detectable*.
   biocapacity_stock`, `BiocapacityType` (6 categories), `InfraTerrainDefines` init/depletion
   rates all have ZERO live per-tick consumers; `aggregate_hexes_by_county` iterates an empty
   set (no production hex nodes on the engine graph — same class as the Vol II hex defect).
+  Vol II U6a (d694928d) found a THIRD live hex-query citation:
+  `engine/simulation_engine.py:235`, the determinism-hash hex-row collector — also an
+  empty-set fold (deterministic but dead). W1 item 5's disposition covers all three.
 - **Data**: `fact_hickel_erdi_annual` already ingested (L-MAT-6's bootstrap is live);
   EPA GHGRP 2010–2023 snapshot **DONE 2026-07-21** — 9 files ~49 MB at
   `/media/user/data/babylon-data/epa_ghgrp/` (all 14 per-year workbooks RY2010–RY2023, no

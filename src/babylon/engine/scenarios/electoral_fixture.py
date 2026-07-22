@@ -21,6 +21,13 @@ seed — 4 ``BalkanizationFaction`` nodes, 3 ``Sovereign`` nodes, the real
 the electoral scenario is the first headless terrain where BOTH political
 entity families (PoliticalFaction orgs and BalkanizationFaction nodes,
 deliberately disjoint — charter §U6(e)) exist together.
+
+U9 (ADR135) adds the veto terrain: the FIRST production ``Institution``
+node anywhere (``INST_FED_JUDICIARY``, RSA_JUDICIAL — before this, the
+entity existed since Feature 040 with zero producers) and the FIRST
+``ADMINISTERS`` edge ever built (``SOV_USA_FED → SOV_MI_STATE``, the
+jurisdiction DAG federal preemption nullifies along — declared in
+topology.py since spec-070 with zero producers).
 """
 
 from __future__ import annotations
@@ -28,9 +35,22 @@ from __future__ import annotations
 from typing import TYPE_CHECKING, Any, ClassVar
 
 from babylon.engine.scenarios.base import Scenario
+from babylon.models.entities.institution import (
+    Institution,
+    InternalBalanceOfForces,
+    ReproductionMechanism,
+)
 from babylon.models.entities.organization import Business, PoliticalFaction
 from babylon.models.entities.relationship import Relationship
-from babylon.models.enums import ClassCharacter, EdgeType
+from babylon.models.entities.sovereign import Sovereign
+from babylon.models.enums import (
+    ApparatusType,
+    ClassCharacter,
+    EdgeType,
+    ExtractionPolicy,
+    SocialFunction,
+    SovereigntyType,
+)
 
 if TYPE_CHECKING:
     from babylon.config.defines import GameDefines
@@ -148,6 +168,59 @@ def create_electoral_fixture_scenario() -> tuple[WorldState, SimulationConfig, G
     # The spec-070 political layer (U6): BalkanizationFaction/Sovereign
     # nodes + Wayne's real electoral INFLUENCES + SOV_USA_FED's claims.
     state = apply_balkanization_seed(state)
+
+    # The U9 veto terrain (ADR135). The judiciary is the first production
+    # Institution node anywhere: a liberal-leaning federal bench whose
+    # InternalBalanceOfForces.liberal_technocratic weight IS the judicial
+    # strike-down tolerance (§2.4 arm 3 — a liberal court tolerates more
+    # redistribution than a revanchist one; U10 moves the weights).
+    judiciary = Institution(
+        id="INST_FED_JUDICIARY",
+        name="Federal Judiciary",
+        apparatus_type=ApparatusType.RSA_JUDICIAL,
+        social_function=SocialFunction.ADJUDICATION,
+        internal_balance=InternalBalanceOfForces(
+            liberal_technocratic=0.6,
+            revanchist_fascist=0.25,
+            institutionalist_bonapartist=0.15,
+        ),
+        reproduction=ReproductionMechanism(
+            succession_protocol=True,
+            legal_self_perpetuation=True,
+        ),
+        jurisdiction=frozenset({"national"}),
+        territory_ids=["T001"],
+    )
+    # Michigan sits under the federal sovereign on the ADMINISTERS DAG —
+    # the first ADMINISTERS edge ever produced. Its enactments past
+    # politics.preemption_envelope are nullified (POLICY_PREEMPTED, the
+    # municipal-socialism ceiling). FR-040b: a null ruling faction pairs
+    # only with CONTINUE extraction.
+    michigan = Sovereign(
+        id="SOV_MI_STATE",
+        name="State of Michigan",
+        sovereignty_type=SovereigntyType.RECOGNIZED_STATE,
+        legitimacy=1.0,
+        color_hex="#0d3b66",
+        ruling_faction_id=None,
+        extraction_policy=ExtractionPolicy.CONTINUE,
+        founded_tick=0,
+    )
+    state = state.model_copy(
+        update={
+            "institutions": {**state.institutions, judiciary.id: judiciary},
+            "sovereigns": {**state.sovereigns, michigan.id: michigan},
+            "relationships": [
+                *state.relationships,
+                Relationship(
+                    source_id="SOV_USA_FED",
+                    target_id="SOV_MI_STATE",
+                    edge_type=EdgeType.ADMINISTERS,
+                    description="Federal supremacy over the Michigan state government",
+                ),
+            ],
+        }
+    )
     return state, config, defines
 
 

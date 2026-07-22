@@ -78,7 +78,12 @@ def test_balkanization_layer_is_seeded():
         "FAC_RESTORATIONIST",
         "FAC_LIBERAL_IMPERIAL",
     }
-    assert set(state.sovereigns) == {"SOV_USA_FED", "SOV_CAN_FED", "SOV_EXTERIOR_NULL"}
+    assert set(state.sovereigns) == {
+        "SOV_USA_FED",
+        "SOV_CAN_FED",
+        "SOV_EXTERIOR_NULL",
+        "SOV_MI_STATE",  # U9: the ADMINISTERS child (ADR135)
+    }
     assert state.territories["T001"].county_fips == "26163"
 
     influences = [r for r in state.relationships if r.edge_type == EdgeType.INFLUENCES]
@@ -107,3 +112,33 @@ def test_graph_round_trip_preserves_the_parties():
     }
     assert parties["org/party-liberal"].org_type == OrgType.POLITICAL_FACTION
     assert parties["org/party-fascist"].ideology == "fascist"
+
+
+def test_u9_veto_terrain_institution_and_administers_dag():
+    """U9 (ADR135): the fixture carries the FIRST production Institution
+    node (RSA_JUDICIAL bench, its liberal_technocratic weight = the
+    strike-down tolerance base) and the FIRST ADMINISTERS edge ever built
+    (SOV_USA_FED → SOV_MI_STATE, the preemption DAG)."""
+    from babylon.models.enums import ApparatusType
+
+    state = _build()
+    judiciary = state.institutions["INST_FED_JUDICIARY"]
+    assert judiciary.apparatus_type is ApparatusType.RSA_JUDICIAL
+    assert judiciary.internal_balance.liberal_technocratic == pytest.approx(0.6)
+
+    administers = [r for r in state.relationships if r.edge_type == EdgeType.ADMINISTERS]
+    assert [(r.source_id, r.target_id) for r in administers] == [("SOV_USA_FED", "SOV_MI_STATE")]
+    assert state.sovereigns["SOV_MI_STATE"].ruling_faction_id is None
+
+
+def test_u9_veto_terrain_survives_the_graph_round_trip():
+    """The judiciary node and the ADMINISTERS edge reconstruct from the
+    graph — the veto terrain is durable state, not builder-only decoration."""
+    state = _build()
+    restored = WorldState.from_graph(state.to_graph(), tick=state.tick)
+    assert "INST_FED_JUDICIARY" in restored.institutions
+    balance = restored.institutions["INST_FED_JUDICIARY"].internal_balance
+    assert balance.liberal_technocratic == pytest.approx(0.6)
+    assert "SOV_MI_STATE" in restored.sovereigns
+    administers = [r for r in restored.relationships if r.edge_type == EdgeType.ADMINISTERS]
+    assert [(r.source_id, r.target_id) for r in administers] == [("SOV_USA_FED", "SOV_MI_STATE")]

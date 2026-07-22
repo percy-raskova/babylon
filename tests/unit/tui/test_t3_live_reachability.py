@@ -46,6 +46,7 @@ from textual.content import Content
 from textual.pilot import Pilot
 from textual.widgets import Label, OptionList
 
+from babylon.projection.endgame import EndgameStatus
 from babylon.projection.vault.render_economy import render_economy
 from babylon.projection.vault.render_field_state import render_field_state
 from babylon.projection.view_models import EconomyView, hydrate_economy, hydrate_field_state
@@ -181,6 +182,12 @@ class _FakeCampaign:
         (Program 24 P2's ``CampaignHandle.dashboard_view`` seam); this
         unit's own concern is the vault-page wikilink/palette reachability,
         not the dashboard pane."""
+        return None
+
+    def endgame_status(self) -> EndgameStatus | None:
+        """No live endgame-progress projection wired for this double — honest ``None``
+        (Program 24 P4's ``CampaignHandle.endgame_status`` seam); unrelated to this
+        unit's own concern."""
         return None
 
     def advance_tick(self) -> TickOutcome:

@@ -79,6 +79,7 @@ from textual.containers import Container, Vertical, VerticalScroll
 from textual.screen import Screen
 from textual.widgets import ContentSwitcher, Footer, Label, Markdown, Static
 
+from babylon.projection.endgame import EndgameStatus
 from babylon.projection.view_models import EconomyView
 from babylon.tui.campaign_menu import CampaignMenu, LobbyScreen
 from babylon.tui.chronicle import (
@@ -253,6 +254,29 @@ class CampaignHandle(Protocol):
             :meth:`ArchiveApp._refresh_dashboard` then leaves the pane's
             existing honest-absence fence untouched (Constitution III.11),
             never a blank or fabricated repaint.
+        """
+        ...
+
+    def endgame_status(self) -> EndgameStatus | None:
+        """This campaign's live endgame-progress HUD status (Program 24 P4).
+
+        Computed HOST-SIDE by the composition root
+        (:meth:`~babylon.game.session.GameSession.endgame_status`, folding
+        its own :class:`~babylon.engine.observers.endgame_detector.
+        EndgameDetector` via :func:`~babylon.projection.endgame.
+        endgame_status` — never from ``babylon.tui``: the detector needs the
+        live world/graph this Protocol deliberately never exposes, the same
+        projection-purity reasoning :attr:`dashboard_view`'s docstring
+        already names). Handed to
+        :class:`~babylon.tui.shell.views.dashboard_view.DashboardView` as a
+        pure, frozen pydantic view model — the TUI only ever renders it,
+        never computes it.
+
+        :returns: the freshly-folded :class:`~babylon.projection.endgame.
+            EndgameStatus`, or ``None`` when this composition root chose not
+            to wire a live projection — :meth:`ArchiveApp._refresh_dashboard`
+            then leaves the HUD's existing honest-absence fence untouched
+            (Constitution III.11), same as :attr:`dashboard_view`.
         """
         ...
 
@@ -822,24 +846,41 @@ class ArchiveApp(App[None]):
             self._refresh_dashboard()
 
     def _refresh_dashboard(self) -> None:
-        """Render the dashboard pane's live :class:`EconomyView` (Program 24 P2).
+        """Render the dashboard pane's live :class:`EconomyView` (Program 24 P2)
+        and its HUD strip (Program 24 P4) — the tick/horizon counter, the five
+        endgame axis progress bars, and the paced driver's lock/pause state.
 
-        Reads ONLY through :meth:`CampaignHandle.dashboard_view` — the host-side
-        composition root (:mod:`babylon.game.session`) already did the
-        ``project_economy`` work; this app hands the resulting pure view model
-        straight to :meth:`~babylon.tui.shell.views.dashboard_view.DashboardView.
-        render_economy`, never touching a graph/world itself (projection purity).
-        A no-op with no live :attr:`campaign`, or when the campaign's own
-        composition root returns ``None`` (chose not to wire a projection) — the
-        pane's existing honest-absence fence is left exactly as :meth:`compose`
-        painted it (Constitution III.11: never a blank or fabricated repaint).
+        Reads ONLY through :meth:`CampaignHandle.dashboard_view`/
+        :meth:`CampaignHandle.endgame_status` — the host-side composition root
+        (:mod:`babylon.game.session`) already did the ``project_economy``/
+        ``EndgameDetector`` work; this app hands the resulting pure view models
+        straight to :class:`~babylon.tui.shell.views.dashboard_view.DashboardView`,
+        never touching a graph/world/detector itself (projection purity). A
+        no-op with no live :attr:`campaign`; the economy body and the HUD strip
+        are each independently left exactly as :meth:`compose` painted them
+        (Constitution III.11: never a blank or fabricated repaint) whenever
+        their own accessor returns ``None`` — one pane's absence never blocks
+        the other's live repaint.
         """
         if self.campaign is None:
             return
+        dashboard = self.query_one(DashboardView)
         view = self.campaign.dashboard_view()
-        if view is None:
-            return
-        self.query_one(DashboardView).render_economy(view)
+        if view is not None:
+            dashboard.render_economy(view)
+        status = self.campaign.endgame_status()
+        if status is not None:
+            driver = self.driver
+            dashboard.render_hud(
+                status,
+                tick=self.campaign.tick,
+                driver_attached=driver is not None,
+                locked=driver.locked if driver is not None else False,
+                lock_reason=driver.lock_reason if driver is not None else None,
+                awaiting_ack=driver.awaiting_ack if driver is not None else False,
+                busy=driver.busy if driver is not None else False,
+                pause_summary=driver.pause_summary if driver is not None else None,
+            )
 
     def _refresh_chronicle(self, chronicle: Sequence[ChronicleEvent]) -> None:
         """Append ``chronicle``'s events to :attr:`_chronicle_history` and repaint

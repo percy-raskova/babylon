@@ -32,9 +32,10 @@ from babylon.game.session import (
 )
 from babylon.kernel.event_bus import Event
 from babylon.models.config import SimulationConfig
-from babylon.models.enums.events import EventType
+from babylon.models.enums.events import EventType, GameOutcome
 from babylon.models.world_state import WorldState
 from babylon.persistence.envelope import PerTickTransactionEnvelope
+from babylon.projection.endgame import EndgameStatus, campaign_horizon_tick
 from babylon.projection.view_models import EconomyView
 from babylon.topology import BabylonGraph
 
@@ -177,6 +178,34 @@ class _RecordingProgressStore:
 
     def record_progress(self, campaign_id: UUID, *, last_tick: int) -> None:
         self.calls.append((campaign_id, last_tick))
+
+
+class _FakeEndgameDetector:
+    """``EndgameProgressObserver`` double — a scripted detector, no real axis math.
+
+    ``on_tick`` only records how many times it was called (``on_tick_calls``); the three
+    read-only members return whatever this test set up, so :meth:`GameSession.endgame_status`'s
+    OWN fold logic (not ``EndgameDetector``'s real axis evaluators, covered by
+    ``tests/unit/engine/observers/test_endgame_detector.py``) is what these tests pin.
+    """
+
+    def __init__(
+        self,
+        *,
+        recognized_pattern: GameOutcome | None = None,
+        pattern_since_tick: int | None = None,
+        axes: dict[str, float] | None = None,
+    ) -> None:
+        self.recognized_pattern = recognized_pattern
+        self.pattern_since_tick = pattern_since_tick
+        self._axes = axes if axes is not None else {}
+        self.on_tick_calls = 0
+
+    def axis_progress(self) -> dict[str, float]:
+        return dict(self._axes)
+
+    def on_tick(self, previous_state: WorldState, new_state: WorldState) -> None:  # noqa: ARG002
+        self.on_tick_calls += 1
 
 
 # --------------------------------------------------------------------------- #
@@ -1049,6 +1078,83 @@ def test_dashboard_view_reads_the_live_graph_fresh_every_call() -> None:
 
     assert before.verified_tick == 0
     assert after.verified_tick == 1
+
+
+# --------------------------------------------------------------------------- #
+# GameSession.endgame_status — the CampaignHandle.endgame_status seam       #
+# (Program 24 P4). Field-by-field correctness of EndgameDetector's own five  #
+# axis evaluators is ``tests/unit/engine/observers/test_endgame_detector.py``'s #
+# own concern — this section pins only that the seam folds THIS session's   #
+# own detector (default-constructed, or injected) via                      #
+# ``babylon.projection.endgame.endgame_status`` fresh every call, and that   #
+# ``advance_tick`` drives that SAME detector's ``on_tick`` exactly once per  #
+# real committed tick.                                                      #
+# --------------------------------------------------------------------------- #
+
+
+def test_endgame_status_returns_a_real_endgame_status_for_this_session() -> None:
+    store = _FakeStore()
+    session = create_new_campaign(store, scenario=WayneCountyScenario())
+
+    status = session.endgame_status()
+
+    assert isinstance(status, EndgameStatus)
+    assert status.pattern is None
+    assert status.outcome == GameOutcome.UNRESOLVED
+    assert status.horizon_tick == campaign_horizon_tick(session.services.defines)
+    assert set(status.axes) == {
+        "revolutionary_victory",
+        "ecological_collapse",
+        "fascist_consolidation",
+        "red_ogv",
+        "fragmented_collapse",
+    }
+
+
+def test_endgame_status_defaults_to_a_real_endgame_detector_over_this_sessions_defines() -> None:
+    """No ``endgame_detector=`` given — the honest default (Program 24 P4's own
+    ``GameSession`` constructor docstring), never a session with no HUD signal at all."""
+    from babylon.engine.observers.endgame_detector import EndgameDetector
+
+    store = _FakeStore()
+    session = create_new_campaign(store, scenario=WayneCountyScenario())
+
+    assert isinstance(session._endgame_detector, EndgameDetector)  # noqa: SLF001
+
+
+def test_endgame_status_folds_an_injected_detector_verbatim() -> None:
+    """The fold itself — not ``EndgameDetector``'s real axis math — is this seam's own
+    contract: whatever the wired detector reports must reach ``EndgameStatus`` unchanged."""
+    store = _FakeStore()
+    axes = {
+        "revolutionary_victory": 0.3,
+        "ecological_collapse": 0.0,
+        "fascist_consolidation": 0.6,
+        "red_ogv": 0.0,
+        "fragmented_collapse": 0.1,
+    }
+    detector = _FakeEndgameDetector(
+        recognized_pattern=GameOutcome.FASCIST_CONSOLIDATION, pattern_since_tick=2, axes=axes
+    )
+    session = create_new_campaign(store, scenario=WayneCountyScenario(), endgame_detector=detector)
+
+    status = session.endgame_status()
+
+    assert status.pattern == GameOutcome.FASCIST_CONSOLIDATION
+    assert status.outcome == GameOutcome.FASCIST_CONSOLIDATION
+    assert status.since_tick == 2
+    assert status.axes == axes
+
+
+def test_advance_tick_calls_on_tick_on_the_injected_detector_exactly_once_per_tick() -> None:
+    store = _FakeStore()
+    detector = _FakeEndgameDetector()
+    session = create_new_campaign(store, scenario=WayneCountyScenario(), endgame_detector=detector)
+
+    session.advance_tick()
+    assert detector.on_tick_calls == 1
+    session.advance_tick()
+    assert detector.on_tick_calls == 2
 
 
 # --------------------------------------------------------------------------- #

@@ -84,18 +84,21 @@ from uuid import UUID
 from babylon.config.defines import GameDefines
 from babylon.engine.context import TickContext
 from babylon.engine.headless_runner.runner import TickCommitObserver
+from babylon.engine.observers.endgame_detector import EndgameDetector
 from babylon.engine.scenarios import WayneCountyScenario
 from babylon.engine.services import ServiceContainer
 from babylon.engine.simulation_engine import _DEFAULT_SYSTEMS, SimulationEngine
 from babylon.game.chronicle_adapter import chronicle_events_from_bus
 from babylon.kernel.event_bus import Event
 from babylon.models.config import SimulationConfig
-from babylon.models.enums.events import EventType
+from babylon.models.enums.events import EventType, GameOutcome
 from babylon.models.world_state import WorldState
 from babylon.persistence.delta import is_checkpoint_tick
 from babylon.persistence.envelope import PerTickTransactionEnvelope
 from babylon.persistence.postgres_schema import ensure_ddl_applied
 from babylon.projection.economy import project_economy
+from babylon.projection.endgame import EndgameStatus
+from babylon.projection.endgame import endgame_status as fold_endgame_status
 from babylon.projection.tick_summary import build_tick_summary_kwargs
 from babylon.projection.verbs.submit import TurnSink, build_player_actions, submit_verb
 from babylon.projection.view_models import EconomyView
@@ -108,6 +111,7 @@ if TYPE_CHECKING:
     from babylon.persistence import PostgresRuntime
 
 __all__ = [
+    "EndgameProgressObserver",
     "GameRuntimeStore",
     "KnownSubjectsSource",
     "NarratorScheduler",
@@ -252,6 +256,52 @@ class NarratorScheduler(Protocol):
     def schedule(self, entity_id: str, tick: int, *, system: str, prompt: str) -> object:
         """Submit one narration generation for ``(entity_id, tick)``; never
         blocks, never raises (the implementation's own contract)."""
+        ...
+
+
+class EndgameProgressObserver(Protocol):
+    """Structural seam for :class:`GameSession`'s own endgame-progress detector
+    (Program 24 P4 — the live HUD's "how close" read-model).
+
+    :class:`~babylon.engine.observers.endgame_detector.EndgameDetector`
+    satisfies this structurally (the WO-37 trick — no runtime dependency
+    beyond what this composition-root module already carries directly
+    elsewhere; this Protocol exists so a unit test can inject a deterministic
+    double, matching :class:`TickCommitObserver`'s own already-established
+    pattern in this file). A STRICT SUPERSET of :mod:`~babylon.game.pacing`'s
+    OWN, narrower ``EndgameObserver`` (which reads only ``recognized_pattern``/
+    ``on_tick`` for the pacing driver's permanent lock latch): this
+    session-owned instance additionally exposes ``pattern_since_tick`` and
+    ``axis_progress`` for :meth:`GameSession.endgame_status`'s fold.
+
+    Deliberately a SEPARATE detector instance from whatever
+    :func:`~babylon.game.pacing.paced_driver_for_session` constructs for the
+    SAME campaign when a driver is wired, rather than one shared object: both
+    are pure re-derivations of the identical committed-tick world stream
+    (:meth:`~babylon.engine.observers.endgame_detector.EndgameDetector.on_tick`'s
+    own docstring notes ``previous_state`` is unused by every current axis
+    evaluator, so the two instances can never disagree on what they report)
+    — this trades a small amount of duplicate per-tick computation for a HUD
+    accessor that needs no coupling to whether, or how, a pacing driver
+    happens to be wired for this particular boot.
+    """
+
+    @property
+    def recognized_pattern(self) -> GameOutcome | None:
+        """The currently recognized terminal pattern, or ``None``."""
+        ...
+
+    @property
+    def pattern_since_tick(self) -> int | None:
+        """The tick ``recognized_pattern`` was last set (or cleared)."""
+        ...
+
+    def axis_progress(self) -> dict[str, float]:
+        """This tick's five-axis progress payload, each in ``[0.0, 1.0]``."""
+        ...
+
+    def on_tick(self, previous_state: WorldState, new_state: WorldState) -> None:
+        """Re-evaluate every endgame axis against this tick's states."""
         ...
 
 
@@ -467,6 +517,13 @@ class GameSession:
         U1); ``None`` (the default) means the narrator lane is OFF —
         :meth:`advance_tick` never calls :meth:`~NarratorScheduler.schedule`
         at all, the pre-Unit-U1 byte-identical path.
+    :param endgame_detector: this session's own :class:`EndgameProgressObserver`
+        seam (Program 24 P4), read by :meth:`endgame_status`; ``None`` (the
+        default) self-constructs a real
+        :class:`~babylon.engine.observers.endgame_detector.EndgameDetector`
+        over ``services.defines`` — the same coefficients the tick loop
+        itself already runs under, not a mismatched fresh default set. Tests
+        inject a deterministic double here.
     """
 
     def __init__(
@@ -486,6 +543,7 @@ class GameSession:
         known_subjects: KnownSubjectsSource | None = None,
         progress_store: ProgressStore | None = None,
         narrator: NarratorScheduler | None = None,
+        endgame_detector: EndgameProgressObserver | None = None,
     ) -> None:
         self.session_id = session_id
         self.graph = graph
@@ -501,6 +559,11 @@ class GameSession:
         self._known_subjects = known_subjects
         self._progress_store = progress_store
         self._narrator = narrator
+        self._endgame_detector: EndgameProgressObserver = (
+            endgame_detector
+            if endgame_detector is not None
+            else EndgameDetector(defines=services.defines)
+        )
 
     def read_page(self, subject: str) -> str | None:
         """Read one REAL baked vault page for this campaign (Unit C2).
@@ -557,6 +620,38 @@ class GameSession:
         """
         world = WorldState.from_graph(self.graph, tick=self.tick)
         return project_economy(_DASHBOARD_ECONOMY_ID, graph=self.graph, world=world, tick=self.tick)
+
+    def endgame_status(self) -> EndgameStatus:
+        """Fold this session's own endgame-progress detector into the
+        Archive HUD's live status (Program 24 P4).
+
+        Reads :attr:`_endgame_detector` — updated exactly once per real
+        committed tick, inside :meth:`advance_tick` (never re-derived here) —
+        through :func:`~babylon.projection.endgame.endgame_status`, the SAME
+        fold :meth:`dashboard_view`'s own P2 seam already established the
+        pattern for: this composition root is the ONE place the fold is ever
+        called from a live campaign; ``babylon.tui`` only ever renders the
+        :class:`~babylon.projection.endgame.EndgameStatus` this returns.
+        Satisfies ``babylon.tui.app.CampaignHandle.endgame_status`` without
+        either module importing the other (the WO-37 trick
+        :meth:`read_page`/:meth:`known_subjects`/:meth:`dashboard_view`
+        already use).
+
+        :returns: the freshly-folded :class:`~babylon.projection.endgame.
+            EndgameStatus`. Never ``None`` for a real ``GameSession`` (there
+            is always a live detector to fold from — see
+            :attr:`_endgame_detector`'s own constructor default) — the
+            Protocol's ``EndgameStatus | None`` return accommodates OTHER
+            ``CampaignHandle`` implementations/test doubles that choose not
+            to wire a live projection at all.
+        """
+        return fold_endgame_status(
+            tick=self.tick,
+            pattern=self._endgame_detector.recognized_pattern,
+            since_tick=self._endgame_detector.pattern_since_tick,
+            defines=self.services.defines,
+            axes=self._endgame_detector.axis_progress(),
+        )
 
     def submit_verb(
         self,
@@ -659,6 +754,14 @@ class GameSession:
         world = WorldState.from_graph(self.graph, tick=next_tick)
         determinism_hash = _replay_identity_hash(self.session_id, next_tick, self._rng_seed)
 
+        # Program 24 P4: re-evaluate this session's OWN endgame-progress detector for
+        # :meth:`endgame_status`'s HUD fold — exactly once per real committed tick, mirroring
+        # babylon.game.pacing.PacedTickDriver's own "previous_state is unused by every current
+        # axis evaluator" substitution (this tick's own world for BOTH arguments; see
+        # EndgameDetector.on_tick's docstring) rather than tracking a second prior-world slot
+        # purely to satisfy a parameter nothing reads.
+        self._endgame_detector.on_tick(world, world)
+
         self._store.persist_tick(next_tick, self.graph, session_id=self.session_id)
         self._store.persist_tick_summary(
             next_tick,
@@ -709,6 +812,7 @@ def create_new_campaign(
     known_subjects: KnownSubjectsSource | None = None,
     progress_store: ProgressStore | None = None,
     narrator: NarratorScheduler | None = None,
+    endgame_detector: EndgameProgressObserver | None = None,
 ) -> GameSession:
     """Boot a brand-new campaign: build the scenario, then bake tick 0.
 
@@ -744,6 +848,11 @@ def create_new_campaign(
         subsequent :meth:`GameSession.advance_tick`. Tick 0's bake above
         never schedules narration itself — a stated non-goal of this unit
         (there is no chronicle yet at boot; narration begins at tick 1).
+    :param endgame_detector: this campaign's :class:`EndgameProgressObserver`
+        seam (Program 24 P4); ``None`` (the default) self-constructs a real
+        :class:`~babylon.engine.observers.endgame_detector.EndgameDetector`
+        over the freshly-built ``defines`` (see :class:`GameSession`'s own
+        constructor docstring).
     :returns: a fresh :class:`GameSession` at tick 0.
     """
     chosen: Scenario = scenario if scenario is not None else WayneCountyScenario()
@@ -792,6 +901,7 @@ def create_new_campaign(
         known_subjects=known_subjects,
         progress_store=progress_store,
         narrator=narrator,
+        endgame_detector=endgame_detector,
     )
 
 
@@ -805,6 +915,7 @@ def resume_campaign(
     known_subjects: KnownSubjectsSource | None = None,
     progress_store: ProgressStore | None = None,
     narrator: NarratorScheduler | None = None,
+    endgame_detector: EndgameProgressObserver | None = None,
 ) -> GameSession:
     """Crash-resume a campaign from its last atomically-committed tick.
 
@@ -831,6 +942,16 @@ def resume_campaign(
         while the Ledger kept advancing.
     :param narrator: this campaign's :class:`NarratorScheduler` seam (see
         :func:`create_new_campaign`'s identical parameter, T5 Unit U1).
+    :param endgame_detector: this campaign's :class:`EndgameProgressObserver`
+        seam (see :func:`create_new_campaign`'s identical parameter, Program
+        24 P4) — ``None`` (the default) self-constructs a fresh
+        :class:`~babylon.engine.observers.endgame_detector.EndgameDetector`
+        over the resumed ``defines``, so a resumed campaign's axis-progress
+        counters (habitability window, consecutive-tick streaks) start from
+        zero rather than replaying every prior tick — an honest, documented
+        approximation (the same shape :func:`resume_campaign` already
+        accepts for reconstructing state via ``hydrate_graph`` rather than a
+        full replay), never a fabricated carried-over reading.
     :raises ValueError: if ``session_id`` has no ``game_session`` row, or
         (a genuinely broken state — every session commits tick 0 at
         creation) has a row but no committed tick at all.
@@ -871,6 +992,7 @@ def resume_campaign(
         known_subjects=known_subjects,
         progress_store=progress_store,
         narrator=narrator,
+        endgame_detector=endgame_detector,
     )
 
 

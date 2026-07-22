@@ -31,6 +31,7 @@ from textual.pilot import Pilot
 from textual.widgets import OptionList, Static
 
 from babylon.models.enums.events import EventType
+from babylon.projection.endgame import EndgameStatus
 from babylon.projection.view_models import EconomyView
 from babylon.tui.app import ArchiveApp, CampaignHandle, PacedDriverHandle
 from babylon.tui.campaign_menu import CampaignMenu, InMemoryCampaign, InMemoryCampaignCatalog
@@ -77,6 +78,11 @@ class _FakeCampaign:
 
     def dashboard_view(self) -> EconomyView | None:
         """No live projection wired for this double — unrelated to this unit's own concern."""
+        return None
+
+    def endgame_status(self) -> EndgameStatus | None:
+        """No live endgame-progress projection wired for this double — unrelated to this
+        unit's own concern (Program 24 P4's ``CampaignHandle.endgame_status`` seam)."""
         return None
 
     def advance_tick(self) -> _FakeTickOutcome:

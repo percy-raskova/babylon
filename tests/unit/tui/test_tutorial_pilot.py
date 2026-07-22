@@ -78,6 +78,7 @@ from uuid import UUID
 import pytest
 from rich.console import Console
 from textual.content import Content
+from textual.css.query import NoMatches
 from textual.pilot import Pilot
 from textual.widgets import Label, OptionList
 
@@ -600,6 +601,38 @@ def _raise_deferred_app_exception(pilot: Pilot[None], *, step_id: str) -> None:
         ) from deferred
 
 
+#: Upper bound for :func:`_settled`'s retry loop (Power-of-10 #2). Each
+#: retry is one ``pilot.pause()`` (drain-until-idle), so the bound is a
+#: message-pump-cycle budget, never a wall-clock one — the Gauntlet ruling
+#: names wall-clock timing in tests as determinism poison.
+_MAX_SETTLE_RETRIES: Final = 20
+
+
+async def _settled(pilot: Pilot[None], check: Callable[[], None], *, step_id: str) -> None:
+    """Run ``check``, retrying (bounded) ONLY while it raises ``NoMatches``.
+
+    Under xdist load a completion assert can query a widget while a screen
+    transition is still mounting — observed once as ``NoMatches: No nodes
+    match '#status' on Screen(id='_default')`` at the economy-dossier step
+    (evidence: ``ai/_inbox/flake-tutorial-pilot-screen-race.md``). NoMatches
+    is a STRUCTURAL not-yet-mounted signal, so it earns another message-pump
+    drain; an ``AssertionError`` is a BEHAVIORAL verdict and propagates
+    immediately — this helper must never soften a failing Then.
+
+    :raises NoMatches: the widget never mounted within the retry bound —
+        still loud, just no longer racy.
+    """
+    for attempt in range(_MAX_SETTLE_RETRIES):  # loop bound: _MAX_SETTLE_RETRIES
+        try:
+            check()
+        except NoMatches:
+            if attempt == _MAX_SETTLE_RETRIES - 1:
+                raise
+            await pilot.pause()
+        else:
+            return
+
+
 async def drive_step(pilot: Pilot[None], step: TutorialStep) -> None:
     """The step interpreter's public entry point: drive ``step.when`` via
     its anchor, then hard-assert ``step.then`` via its completion predicate.
@@ -621,10 +654,13 @@ async def drive_step(pilot: Pilot[None], step: TutorialStep) -> None:
     await pilot.pause()
     _raise_deferred_app_exception(pilot, step_id=step.id)
     app = _archive_app(pilot)
-    _assert_completion(app, step.completion, step_id=step.id)
+    await _settled(
+        pilot, lambda: _assert_completion(app, step.completion, step_id=step.id), step_id=step.id
+    )
     extra_check = _EXTRA_CONTENT_CHECK_BY_STEP_ID.get(step.id)
     if extra_check is not None:
-        extra_check(app)
+        bound_check = extra_check  # narrowed binding: closures don't inherit narrowing
+        await _settled(pilot, lambda: bound_check(app), step_id=step.id)
 
 
 async def _load_the_minted_campaign(pilot: Pilot[None]) -> None:

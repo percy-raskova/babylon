@@ -12,6 +12,7 @@ from babylon.domain.economics.circulation.types import (
     CircuitState,
     CirculationCrisisState,
     DepreciationFundState,
+    DisproportionalityCrisis,
     InventoryState,
 )
 from babylon.domain.economics.credit.types import EndogenousInterestRate, FictitiousCapitalStock
@@ -292,6 +293,59 @@ class TestReadTickStateFromGraph:
         assert result is not None
         recovered = result.county_states[WAYNE_FIPS].circulation_state
         assert recovered.circuit_state.total_capital == pytest.approx(0.0)
+
+
+class TestWriteDisproportionality:
+    """U8 (2026-07-21 vol2-circulation-engine program, Monitoring): the
+    Department I/II disproportionality reading (U3/ADR122's
+    ``compute_disproportionality``) was computed onto
+    ``CirculationCrisisState.disproportionality`` but never reached a graph
+    attr — a computed-but-unserialized silent no-op (Constitution
+    VIII.12/III.11). These pin the fix: an honest ``None`` when the county
+    carries no ``DisproportionalityCrisis`` (no tensor department data this
+    county-year), and the real signed ``imbalance`` reading when it does.
+    """
+
+    def test_writes_none_when_disproportionality_absent(
+        self,
+        sample_tick_state: SimulationTickState,
+    ) -> None:
+        """Default CirculationCrisisState carries no disproportionality reading."""
+        graph = build_territory_graph()
+        write_tick_state_to_graph(graph, sample_tick_state)
+
+        node_data = graph.nodes[WAYNE_FIPS]
+        assert node_data["tick_disproportionality"] is None
+
+    def test_writes_signed_imbalance_when_disproportionality_present(
+        self,
+        sample_tick_state: SimulationTickState,
+    ) -> None:
+        """The signed imbalance (actual Dept I share - required share) is written."""
+        crisis = DisproportionalityCrisis(
+            year=2015,
+            dept_i_output=600000.0,
+            dept_ii_output=400000.0,
+            dept_i_share_required=0.55,
+        )
+        original_county = sample_tick_state.county_states[WAYNE_FIPS]
+        modified_circulation = original_county.circulation_state.model_copy(
+            update={"disproportionality": crisis}
+        )
+        modified_county = original_county.model_copy(
+            update={"circulation_state": modified_circulation}
+        )
+        modified_state = sample_tick_state.model_copy(
+            update={"county_states": {WAYNE_FIPS: modified_county}}
+        )
+
+        graph = build_territory_graph()
+        write_tick_state_to_graph(graph, modified_state)
+
+        node_data = graph.nodes[WAYNE_FIPS]
+        # actual_i_share = 600000/1000000 = 0.6; imbalance = 0.6 - 0.55 = 0.05
+        assert node_data["tick_disproportionality"] == pytest.approx(0.05)
+        assert node_data["tick_disproportionality"] == pytest.approx(crisis.imbalance)
 
 
 class TestWriteFinancialState:

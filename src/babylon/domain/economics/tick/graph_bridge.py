@@ -196,6 +196,18 @@ def write_tick_state_to_graph(  # pragma: no mutate — data serialization
                 if county.circulation_state.latest_assessment is not None  # pragma: no mutate
                 else False  # pragma: no mutate
             ),  # pragma: no mutate
+            # U8 (2026-07-21 vol2-circulation-engine program, Monitoring):
+            # DisproportionalityCrisis.imbalance was computed by U3 (ADR122's
+            # compute_disproportionality) but never reached a graph attr — a
+            # computed-but-unserialized silent no-op (Constitution
+            # VIII.12/III.11) the rest of Group C's fields do not share.
+            # Honest None (never a fabricated 0.0) when the county carries no
+            # tensor department data this county-year.
+            tick_disproportionality=(  # pragma: no mutate
+                county.circulation_state.disproportionality.imbalance  # pragma: no mutate
+                if county.circulation_state.disproportionality is not None  # pragma: no mutate
+                else None  # pragma: no mutate
+            ),  # pragma: no mutate
             # Financial distribution state (Feature 024)
             tick_interest_burden=(  # pragma: no mutate
                 county.surplus_distribution.interest_payments  # pragma: no mutate

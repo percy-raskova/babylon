@@ -20,6 +20,14 @@ over a kind with no live producer (honest empty rows); county, sovereign
 and community have no fixture-shaped provider of their own, so
 :func:`view_statblock_rows` derives rows generically from the frozen view
 (same 6-decimal float form the vault renderer uses).
+
+:func:`fixture_subject_views` (Program 24 P6) is a sibling of
+:func:`fixture_statblock_providers`: same ten committed fixtures, same
+loader calls, but handing back the loaded :data:`~babylon.projection.
+view_models.ProjectionRecord` itself rather than its row projection —
+the shape :func:`~babylon.tui.peek.peek` needs (the watchlist rail's
+stat-plate renderer), which operates on a view-model, not on
+already-tabulated ``StatblockRow`` pairs.
 """
 
 from __future__ import annotations
@@ -32,12 +40,14 @@ from pydantic import BaseModel
 from babylon.projection.fixtures.recorder import (
     load_community_fixture,
     load_county_fixture,
+    load_industry_fixture,
     load_institution_fixture,
     load_key_figure_fixture,
     load_national_fixture,
     load_organization_fixture,
     load_social_class_fixture,
     load_sovereign_fixture,
+    load_state_fixture,
 )
 from babylon.projection.industry import industry_statblocks
 from babylon.projection.institution import institution_statblocks
@@ -50,6 +60,7 @@ from babylon.projection.state import state_statblocks
 if TYPE_CHECKING:
     from collections.abc import Mapping, Sequence
 
+    from babylon.projection.view_models import ProjectionRecord
     from babylon.tui.directives import StatblockProvider, StatblockRow
 
 #: The committed projection fixtures (one per Lane P kind), keyed by the
@@ -185,6 +196,37 @@ def fixture_statblock_providers(
     }
 
 
+def fixture_subject_views(fixture_dir: Path = _FIXTURE_DIR) -> dict[str, ProjectionRecord]:
+    """The committed-fixture view-models, keyed by subject id (Program 24 P6).
+
+    Sibling of :func:`fixture_statblock_providers`: loads the SAME ten
+    committed fixture files with the SAME loader calls, but hands back each
+    loaded :data:`~babylon.projection.view_models.ProjectionRecord` itself
+    rather than converting it to statblock rows — the shape
+    :func:`~babylon.tui.peek.peek` needs (the watchlist rail's pinned
+    stat-plate rows, Program 24 P6). No new fixture data, no duplicated
+    JSON; only what each caller does with the loaded object differs.
+
+    :param fixture_dir: where the committed projection fixtures live.
+    :returns: subject id -> its loaded view-model, one entry per fixture
+        kind (matching :func:`fixture_known_entities`'s ten ids exactly).
+    """
+    return {
+        "county/26163": load_county_fixture(fixture_dir / "county_26163.json"),
+        "state/26": load_state_fixture(fixture_dir / "state_26.json"),
+        "national/USA": load_national_fixture(fixture_dir / "national_USA.json"),
+        "organization/org_rwp": load_organization_fixture(
+            fixture_dir / "organization_org_rwp.json"
+        ),
+        "institution/doj": load_institution_fixture(fixture_dir / "institution_doj.json"),
+        "sovereign/SOV_USA_FED": load_sovereign_fixture(fixture_dir / "sovereign_SOV_USA_FED.json"),
+        "key_figure/kf-001": load_key_figure_fixture(fixture_dir / "key_figure_kf-001.json"),
+        "social_class/C004": load_social_class_fixture(fixture_dir / "social_class_C004.json"),
+        "community/settler": load_community_fixture(fixture_dir / "community_settler.json"),
+        "industry/ind_31-33": load_industry_fixture(fixture_dir / "industry_ind_31-33.json"),
+    }
+
+
 def fixture_known_entities() -> frozenset[str]:
     """The demo wikilink known-set: every committed fixture's subject id.
 
@@ -213,6 +255,7 @@ def fixture_known_entities() -> frozenset[str]:
 __all__ = [
     "fixture_known_entities",
     "fixture_statblock_providers",
+    "fixture_subject_views",
     "kind_dispatch_statblocks",
     "view_statblock_rows",
 ]

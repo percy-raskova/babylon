@@ -76,12 +76,28 @@ refusal without ever attempting the write. With no live :attr:`campaign` (the
 demo boot path) or a composition root that declines to wire
 :meth:`CampaignHandle.verb_plate_view`, the pane keeps its honest absence fence
 — unaffected, same as every other pane's Program 24 P1 default.
+
+Program 24 P6 (the right rail) wires :attr:`ArchiveApp.watchlist` — a
+:class:`~babylon.tui.watchlist.WatchlistState` pin/unpin domain object,
+persisted through :data:`~babylon.tui.watchlist.WatchlistPersistence` (the
+``babylon_meta``-backed store the composition root already threads in as the
+campaign catalog — the WO-37 structural trick) — to the ``#watchlist-rail``
+pane P1 left painting its own honest "nothing pinned yet" fence.
+:meth:`ArchiveApp.action_toggle_pin` (bound to ``p``) pins/unpins
+:attr:`nav`'s current subject; :meth:`ArchiveApp._refresh_watchlist` stacks a
+:func:`~babylon.tui.peek.peek` ``depth=0`` stat plate per pinned subject via
+:func:`~babylon.tui.watchlist.render_watchlist`, resolving each id against
+:attr:`ArchiveApp._subject_views` (:func:`_default_subject_views`'s
+committed-fixture map by default — the same fixture-fed-until-a-live-per-
+subject-projector-lands shape :func:`_default_statblocks` already carries).
+A pin outside that map renders the rail's own named "no longer resolvable"
+row rather than a crash or a silent drop (Constitution III.11).
 """
 
 from __future__ import annotations
 
 import asyncio
-from collections.abc import Callable, Sequence
+from collections.abc import Callable, Mapping, Sequence
 from typing import Final, Protocol, runtime_checkable
 from uuid import UUID, uuid4
 
@@ -96,7 +112,7 @@ from textual.widgets import ContentSwitcher, Footer, Label, Markdown, Static
 from babylon.projection.endgame import EndgameStatus
 from babylon.projection.verbs.preview import VERB_TO_ACTION_TYPE
 from babylon.projection.verbs.view_models import VerbPlateView
-from babylon.projection.view_models import EconomyView
+from babylon.projection.view_models import EconomyView, ProjectionRecord
 from babylon.tui.campaign_menu import CampaignMenu, LobbyScreen
 from babylon.tui.chronicle import (
     CHRONICLE_ROW_CEILING,
@@ -108,6 +124,7 @@ from babylon.tui.directives import BabylonFence, StatblockProvider
 from babylon.tui.dispatch import (
     fixture_known_entities,
     fixture_statblock_providers,
+    fixture_subject_views,
     kind_dispatch_statblocks,
 )
 from babylon.tui.nav import InMemoryNavPersistence, NavShell, subject_for
@@ -119,7 +136,14 @@ from babylon.tui.shell.views.topology_view import TopologyView
 from babylon.tui.theme import KSBC
 from babylon.tui.tutorial_overlay import TutorialOverlay, TutorialProgress, TutorialStepView
 from babylon.tui.verb_plate import render_verb_plate
-from babylon.tui.watchlist import render_watchlist
+from babylon.tui.watchlist import (
+    InMemoryWatchlistPersistence,
+    WatchlistPersistence,
+    WatchlistState,
+    load_watchlist,
+    render_watchlist,
+    save_watchlist,
+)
 from babylon.tui.wikilinks import (
     BabylonH1,
     BabylonH2,
@@ -173,6 +197,27 @@ def _default_statblocks() -> StatblockProvider:
     :returns: the composed provider.
     """
     return kind_dispatch_statblocks(fixture_statblock_providers())
+
+
+def _default_subject_views() -> Mapping[str, ProjectionRecord]:
+    """The app's default peek-plate source: the committed fixtures, unwrapped.
+
+    Program 24 P6: the right rail's watchlist stacks
+    :func:`~babylon.tui.peek.peek` stat plates for its pinned subjects, which
+    needs the actual :data:`ProjectionRecord` view-model, not the row form
+    :func:`_default_statblocks` composes. :func:`~babylon.tui.dispatch.
+    fixture_subject_views` is the sibling function that loads the SAME ten
+    committed fixtures and hands back the models themselves. Fixture-fed
+    today; a live campaign wires no override yet (no per-subject-id live
+    projection producer exists tree-wide — the same honest gap
+    :func:`_default_statblocks` already carries for the dossier's own
+    statblocks in the real ``babylon play`` boot), so a pinned subject
+    outside this committed set renders the watchlist's own honest "no
+    longer resolvable" row (Constitution III.11) until that producer lands.
+
+    :returns: the composed subject-id -> view-model mapping.
+    """
+    return fixture_subject_views()
 
 
 PageSource = Callable[[str], "str | None"]
@@ -646,6 +691,24 @@ class ArchiveApp(App[None]):
         campaign shell IFF the factory did not return ``None``. ``None``
         (the default) never mounts one — the pre-Unit-U4 behavior,
         unchanged.
+    :param subject_views: The right rail's peek-plate source (Program 24
+        P6) — subject id -> its :data:`~babylon.projection.view_models.
+        ProjectionRecord`, read by :meth:`_refresh_watchlist` to build each
+        pinned subject's :func:`~babylon.tui.peek.peek` stat plate; defaults
+        to :func:`_default_subject_views` (the committed fixtures). A pinned
+        subject absent from this mapping renders
+        :func:`~babylon.tui.watchlist.render_watchlist`'s own honest "no
+        longer resolvable" row, never a crash or a silently dropped pin.
+    :param watchlist_persistence: The watchlist's cross-session store
+        (:data:`~babylon.tui.watchlist.WatchlistPersistence`, Program 24 P6);
+        ``None`` (the default) uses
+        :class:`~babylon.tui.watchlist.InMemoryWatchlistPersistence` (state
+        dies with the process — the same honest no-database default
+        :attr:`nav`'s own default persistence uses). The composition root
+        threads the same ``babylon_meta``-backed
+        :class:`~babylon.persistence.babylon_meta.BabylonMetaStore` in here
+        it already threads as the campaign catalog (structurally satisfies
+        this seam via its own ``load``/``save`` — the WO-37 trick).
     """
 
     COMMANDS = App.COMMANDS | {EntityNavigatorProvider}
@@ -666,6 +729,8 @@ class ArchiveApp(App[None]):
         Binding("2", "switch_view('map')", "Map"),
         Binding("3", "switch_view('wiki')", "Wiki"),
         Binding("4", "switch_view('topology')", "Topology"),
+        # Program 24 P6 — pin/unpin the current dossier subject on the right rail.
+        Binding("p", "toggle_pin", "Pin/Unpin"),
         # Program 24 P5 — one F-key per canonical Article V verb (see
         # _VERB_ACTION_KEYS' own docstring for why F-keys, not mnemonic letters).
         *(
@@ -726,6 +791,8 @@ class ArchiveApp(App[None]):
         driver_factory: DriverFactory | None = None,
         tutorial_steps: Sequence[TutorialStepView] | None = None,
         tutorial_progress_factory: TutorialProgressFactory | None = None,
+        subject_views: Mapping[str, ProjectionRecord] | None = None,
+        watchlist_persistence: WatchlistPersistence | None = None,
     ) -> None:
         super().__init__()
         if campaign_menu is not None and campaign_loader is None:
@@ -792,6 +859,24 @@ class ArchiveApp(App[None]):
         never survive that same ceiling on render anyway) with the OLDEST events
         dropped first. Empty until the first tick advances; stays empty forever
         on the no-``campaign_menu`` demo boot path."""
+        self._subject_views: Mapping[str, ProjectionRecord] = (
+            subject_views if subject_views is not None else _default_subject_views()
+        )
+        self._watchlist_persistence: WatchlistPersistence = (
+            watchlist_persistence or InMemoryWatchlistPersistence()
+        )
+        self.watchlist: WatchlistState = WatchlistState()
+        """The right rail's pinned-subject set (Program 24 P6) — starts empty
+        (:meth:`compose`'s ``#watchlist-rail`` paints its own honest "nothing
+        pinned yet" fence) and is replaced with the persisted pin order once a
+        live campaign boots (:meth:`_on_campaign_chosen`, keyed by
+        :attr:`_watchlist_session_id`)."""
+        self._watchlist_session_id: UUID = uuid4()
+        """The watchlist's persistence key — a fresh id for the no-
+        ``campaign_menu`` demo boot path (state lives exactly as long as the
+        process, the same honest shape :attr:`nav`'s own in-memory default
+        uses), replaced with the live campaign's own
+        :attr:`~CampaignHandle.session_id` in :meth:`_on_campaign_chosen`."""
 
     def on_mount(self) -> None:
         self.register_theme(KSBC)
@@ -832,6 +917,8 @@ class ArchiveApp(App[None]):
             )
         self._pages = campaign.read_page
         self._refresh_known_entities(campaign)
+        self._watchlist_session_id = campaign.session_id
+        self.watchlist = load_watchlist(self._watchlist_persistence, str(campaign.session_id))
         briefing_subject = f"briefing/{campaign_id}"
         page = self._pages(briefing_subject)
         markdown = page if page is not None else _absence_page(briefing_subject)
@@ -852,6 +939,7 @@ class ArchiveApp(App[None]):
         """
         await self._navigate(_SAMPLE_SUBJECT)
         self._refresh_action_bar()
+        self._refresh_watchlist()
         await self._mount_tutorial_overlay_if_active()
 
     async def _mount_tutorial_overlay_if_active(self) -> None:
@@ -1013,6 +1101,63 @@ class ArchiveApp(App[None]):
         self._chronicle_history = combined[-CHRONICLE_ROW_CEILING:]
         bulletins = chronicle_stream(self._chronicle_history, limit=CHRONICLE_ROW_CEILING)
         self.query_one("#chronicle-rail", Static).update(render_chronicle(bulletins))
+
+    def _refresh_watchlist(self) -> None:
+        """Repaint the right rail from :attr:`watchlist` (Program 24 P6).
+
+        Stacks one :func:`~babylon.tui.peek.peek` ``depth=0`` stat-plate row
+        per pinned subject via :func:`~babylon.tui.watchlist.render_watchlist`,
+        resolving each pinned id against :attr:`_subject_views`. A pin with no
+        entry there (a subject outside the committed fixture set, or a kind
+        with no live producer yet) still renders its own named "no longer
+        resolvable" row — never silently dropped (Constitution III.11). An
+        empty :attr:`watchlist` renders the same honest "nothing pinned yet"
+        fence :meth:`compose` boots with.
+        """
+        self.query_one("#watchlist-rail", Static).update(
+            render_watchlist(self.watchlist.pinned_ids, self._subject_views)
+        )
+
+    def _save_watchlist(self) -> None:
+        """Persist :attr:`watchlist`'s current pin order (Program 24 P6).
+
+        Keyed by :attr:`_watchlist_session_id` — the live campaign's own
+        :attr:`~CampaignHandle.session_id` once one has booted, else the
+        demo boot's own process-lifetime id (see that attribute's own
+        docstring).
+        """
+        save_watchlist(self._watchlist_persistence, str(self._watchlist_session_id), self.watchlist)
+
+    def action_toggle_pin(self) -> None:
+        """``p``: pin/unpin the dossier's current subject (Program 24 P6).
+
+        Reads :attr:`nav.current` — the subject the dossier is presently
+        showing. Persists the resulting pin order via
+        :meth:`_save_watchlist` and repaints the rail via
+        :meth:`_refresh_watchlist` on every successful toggle. Never
+        crashes or silently no-ops: with no current subject (nothing
+        navigated to yet) or a pin that would exceed
+        :class:`~babylon.tui.watchlist.WatchlistState`'s own capacity
+        ceiling, the status line names exactly why nothing moved
+        (Constitution III.11).
+        """
+        status = self.query_one("#status", Label)
+        subject = self.nav.current
+        if subject is None:
+            status.update("status: no current subject to pin")
+            return
+        if self.watchlist.is_pinned(subject):
+            self.watchlist = self.watchlist.unpin(subject)
+            status.update(f"status: unpinned {subject}")
+        else:
+            try:
+                self.watchlist = self.watchlist.pin(subject)
+            except ValueError as exc:
+                status.update(f"status: {exc}")
+                return
+            status.update(f"status: pinned {subject}")
+        self._save_watchlist()
+        self._refresh_watchlist()
 
     def _current_parser(self) -> MarkdownIt:
         """The dossier's zero-arg ``parser_factory``, rebuilt fresh every call.

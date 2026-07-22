@@ -145,6 +145,23 @@ def test_run_still_wires_campaign_menu_and_loader(_patched_composition_root: Non
     assert catalog.pool is runtime.pool
 
 
+def test_run_wires_the_same_catalog_as_watchlist_persistence(
+    _patched_composition_root: None,
+) -> None:
+    """Program 24 P6: ``run()`` threads the SAME ``BabylonMetaStore`` catalog
+    in as ``ArchiveApp``'s ``watchlist_persistence=`` — no second store, no
+    second schema (``BabylonMetaStore.load``/``.save`` structurally satisfy
+    ``WatchlistPersistence``, the same WO-37 trick the campaign-catalog wire
+    above already uses)."""
+    play_cmd.run()
+
+    kwargs = _captured[0].kwargs
+    campaign_menu_catalog = kwargs["campaign_menu"].catalog
+    assert kwargs["watchlist_persistence"] is campaign_menu_catalog
+    _runtime, loader_catalog = kwargs["campaign_loader"].args
+    assert kwargs["watchlist_persistence"] is loader_catalog
+
+
 def test_run_threads_narrator_enabled_default_true_into_the_loader(
     _patched_composition_root: None,
 ) -> None:

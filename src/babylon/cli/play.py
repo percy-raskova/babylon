@@ -62,6 +62,16 @@ signal it would need instead, and why threading it here would ripple into
 ``LobbyScreen``'s dismiss contract); ``True``/``False`` (an explicit flag)
 always overrides the heuristic outright, for either a fresh or a resumed
 campaign.
+
+Program 24 P6 (the right rail) threads the SAME ``catalog``
+(:class:`~babylon.persistence.babylon_meta.BabylonMetaStore`) in a second
+time, as ``ArchiveApp``'s ``watchlist_persistence=`` — no separate store, no
+separate schema: ``BabylonMetaStore.load``/``.save`` structurally satisfy
+:data:`~babylon.tui.watchlist.WatchlistPersistence` (the same WO-37 trick
+already used for the campaign catalog and, one layer up, for
+:class:`~babylon.tui.nav.NavShell`'s own persistence seam), and its DDL is
+the same ``babylon_meta`` schema ``catalog.ensure_schema()`` already applies
+above — a pinned subject now survives a quit/resume of the same campaign.
 """
 
 from __future__ import annotations
@@ -392,6 +402,7 @@ def run(*, narrator_enabled: bool = True, tutorial_enabled: bool | None = None) 
         driver_factory=_driver_factory,
         tutorial_steps=steps,
         tutorial_progress_factory=_tutorial_progress_factory(tutorial_enabled, steps),
+        watchlist_persistence=catalog,
     )
     app.run()
 

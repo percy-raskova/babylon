@@ -80,7 +80,7 @@ so the "why" is traceable — see `EndgameDefines.fascist_majority_fraction`'s d
 
 **Change (values only, no engine logic touched):** `EndgameDefines.fascist_majority_fraction`
 raised from `0.75` to `0.9` (`src/babylon/config/defines/endgame.py`, regenerated into
-`src/babylon/data/defines.yaml` via `poetry run python tools/generate_defines_config.py`).
+`src/babylon/data/defines.yaml` via `uv run python tools/generate_defines_config.py`).
 At 0.9, `us`'s 4/6 fraction gives `progress = 0.667/0.9 = 0.7407` (down from 0.8889's
 proximity to 1.0), and — critically — **all 6 entities** must flip fascist-aligned before
 the axis matches (6/6 = 1.0 is the only fraction above 0.9 with N=6), restoring "total

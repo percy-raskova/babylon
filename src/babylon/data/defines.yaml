@@ -13,7 +13,7 @@
 #   2. Restart the simulation. `GameDefines.load_default()` reads this file
 #      (src/babylon/data/defines.yaml) and applies your values.
 #   3. To revert to the shipped defaults, delete this file OR regenerate it:
-#        poetry run python tools/generate_defines_config.py
+#        uv run python tools/generate_defines_config.py
 #
 # NOTES:
 #   * This file is GENERATED from the `GameDefines` Pydantic schema. Do not add

@@ -28,7 +28,7 @@ vs ``fogFields.ts``'s ``FOG_FIELD_LABELS`` — agrees exactly, both directions).
 surface pre-existing drift awaiting a scoped remediation before promotion:
 ``check_tick_coverage``, ``check_narrator_vocabulary``, ``check_event_coverage``.
 
-Run via the family CLI: ``poetry run python tools/sentinel_check.py seam --check``.
+Run via the family CLI: ``uv run python tools/sentinel_check.py seam --check``.
 Exit 0 = clean (gating passed; advisory findings may still print), 1 = gating
 violations, 2 = infrastructure failure (source missing or unparseable — itself a
 loud failure, never swallowed).

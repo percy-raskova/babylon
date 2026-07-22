@@ -333,7 +333,7 @@ def print_diff(report: dict[str, Any]) -> None:
     """Compare report against baseline and print deltas."""
     if not BASELINE_PATH.exists():
         print(f"No baseline found at {BASELINE_PATH}")
-        print("Run: poetry run python tools/mutmut_report.py baseline")
+        print("Run: uv run python tools/mutmut_report.py baseline")
         sys.exit(1)
 
     baseline = json.loads(BASELINE_PATH.read_text())

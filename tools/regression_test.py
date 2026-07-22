@@ -6,14 +6,14 @@ to simulation behavior during refactoring.
 
 Usage:
     # Generate baselines (after intentional changes)
-    poetry run python tools/regression_test.py generate --force
+    uv run python tools/regression_test.py generate --force
 
     # Also (re)generate the dense per-tick trace CSVs (Program 13 item 2)
-    poetry run python tools/regression_test.py generate --force --dense
+    uv run python tools/regression_test.py generate --force --dense
 
     # Compare against baselines (in CI) — byte-compares the dense CSVs
     # too, when tests/baselines/dense/<scenario>.csv exists.
-    poetry run python tools/regression_test.py compare
+    uv run python tools/regression_test.py compare
 
 Scenarios:
     - imperial_circuit: 4-node default scenario
@@ -1765,7 +1765,7 @@ Examples:
             print()
             print("REGRESSION DETECTED!")
             print("If these changes are intentional, regenerate baselines:")
-            print("  poetry run python tools/regression_test.py generate --force")
+            print("  uv run python tools/regression_test.py generate --force")
             return 1
 
         print("All regression tests passed!")

@@ -122,7 +122,7 @@ disposition as thread 2 (real defect pinned; document in its docstring).
   `feature/113-living-map` off dev @ `2d3b2547`. NEVER touch
   `ci/two-tier-refactor` (other CC session) or main-checkout state.
 - Django :8001 = THIS worktree's web/ (started:
-  `cd web && RUN_MAIN=true BABYLON_EXTRA_DEV_ORIGINS="http://localhost:5180,http://127.0.0.1:5180" nohup poetry run python manage.py runserver 8001 --noreload`).
+  `cd web && RUN_MAIN=true BABYLON_EXTRA_DEV_ORIGINS="http://localhost:5180,http://127.0.0.1:5180" nohup uv run python manage.py runserver 8001 --noreload`).
   Log: scratchpad `django-8001.log`. The :8000 Django is the MAIN checkout's —
   no `/explain/`, don't use, don't kill.
 - Vite :5180 = `node node_modules/.bin/vite --port 5180 --strictPort --host

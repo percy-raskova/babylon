@@ -7,7 +7,7 @@ sentinel's ``main``. The check logic lives in the importable package
 (``babylon.sentinels.*``) so it is unit-testable and mutation-testable without a
 ``sys.path`` hack — this file carries no logic of its own.
 
-Run: ``poetry run python tools/sentinel_check.py seam --check``. Exit codes are
+Run: ``uv run python tools/sentinel_check.py seam --check``. Exit codes are
 the sentinel's own contract: 0 clean, 1 gating violations, 2 infrastructure
 failure (source missing/unparseable — never swallowed into a false pass).
 """

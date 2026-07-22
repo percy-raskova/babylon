@@ -54,7 +54,7 @@ only the bare-``Name`` form needs alias resolution.
   which root they sit under) — a test-only caller would silently reproduce
   the false-liveness bug this sensor exists to catch.
 
-Run: ``poetry run python tools/sentinel_check.py formula_registration --check``.
+Run: ``uv run python tools/sentinel_check.py formula_registration --check``.
 """
 
 from __future__ import annotations

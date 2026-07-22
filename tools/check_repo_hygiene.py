@@ -17,7 +17,7 @@ c. **No tracked blob over 1 MiB at HEAD** — LFS pointers are ~130-byte blobs,
    blob is either missing an LFS attribute or missing a renormalize. Named
    exemptions live in ``LARGE_BLOB_EXEMPTIONS`` (empty by design).
 
-Run: ``poetry run python tools/check_repo_hygiene.py`` (wired into
+Run: ``uv run python tools/check_repo_hygiene.py`` (wired into
 ``mise run check`` as ``check:hygiene`` and into CI). Exit 0 = clean,
 1 = violations (printed), 2 = git itself failed.
 """

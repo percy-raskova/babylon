@@ -8,7 +8,7 @@ that no producer is wholly dormant.
 
 Both checks are **advisory** per the standing owner ruling: they print loudly and
 locally, and never gate CI. Run:
-``poetry run python tools/sentinel_check.py liveness``.
+``uv run python tools/sentinel_check.py liveness``.
 """
 
 from __future__ import annotations

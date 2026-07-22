@@ -32,7 +32,7 @@ did not.
 
 Usage::
 
-    poetry run python tools/make_reference_subset.py \\
+    uv run python tools/make_reference_subset.py \\
         --output /path/to/reference-subset.sqlite \\
         --manifest /path/to/manifest.json
 """

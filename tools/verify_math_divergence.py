@@ -16,7 +16,7 @@ The "unearned increment" = Effective Wealth - Nominal Wage = material basis
 of labor aristocracy loyalty.
 
 Usage:
-    poetry run python tools/verify_math_divergence.py
+    uv run python tools/verify_math_divergence.py
 """
 
 from __future__ import annotations

@@ -97,7 +97,7 @@ def test_persist_events_uses_event_type_key_not_type(pg_runtime, session_id):
 
 ## Verification after the fix
 
-1. `poetry run pytest tests/unit/persistence/ -q` — the new test green.
+1. `uv run pytest tests/unit/persistence/ -q` — the new test green.
 2. `mise run qa:regression` — expect **byte-identical** (proof above).
 3. Live: play a `wayne_county` session past tick 18 without a resolve 500, and
    confirm the spec-113 `event-popup.spec.ts` + `end-turn-flow.spec.ts` (spacebar)

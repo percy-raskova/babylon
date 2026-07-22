@@ -48,7 +48,7 @@ from textual.widgets import Label, OptionList
 
 from babylon.projection.vault.render_economy import render_economy
 from babylon.projection.vault.render_field_state import render_field_state
-from babylon.projection.view_models import hydrate_economy, hydrate_field_state
+from babylon.projection.view_models import EconomyView, hydrate_economy, hydrate_field_state
 from babylon.tui.app import ArchiveApp, BabylonMarkdown, TickOutcome
 from babylon.tui.campaign_menu import CampaignMenu, InMemoryCampaign, InMemoryCampaignCatalog
 from babylon.tui.palette import EntityNavigated, EntityNavigatorProvider
@@ -175,6 +175,13 @@ class _FakeCampaign:
 
     def known_subjects(self) -> frozenset[str]:
         return frozenset(self._pages)
+
+    def dashboard_view(self) -> EconomyView | None:
+        """No live projection wired for this double — honest ``None``
+        (Program 24 P2's ``CampaignHandle.dashboard_view`` seam); this
+        unit's own concern is the vault-page wikilink/palette reachability,
+        not the dashboard pane."""
+        return None
 
     def advance_tick(self) -> TickOutcome:
         """Unused by this unit — proving the T3 pages are already

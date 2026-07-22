@@ -95,8 +95,10 @@ from babylon.models.world_state import WorldState
 from babylon.persistence.delta import is_checkpoint_tick
 from babylon.persistence.envelope import PerTickTransactionEnvelope
 from babylon.persistence.postgres_schema import ensure_ddl_applied
+from babylon.projection.economy import project_economy
 from babylon.projection.tick_summary import build_tick_summary_kwargs
 from babylon.projection.verbs.submit import TurnSink, build_player_actions, submit_verb
+from babylon.projection.view_models import EconomyView
 from babylon.topology import BabylonGraph
 from babylon.tui.chronicle import ChronicleEvent
 from babylon.tui.chronicle_salience import classify_event_salience
@@ -316,6 +318,12 @@ def _replay_identity_hash(session_id: UUID, tick: int, rng_seed: int) -> str:
 #: ``national/USA.md`` dossier it narrates.
 _NARRATOR_SUBJECT: Final[str] = "national/USA"
 
+#: The one economy dossier id :meth:`GameSession.dashboard_view` projects
+#: against — mirrors ``tick_baker._ECONOMY_ID``'s own ``"USA"`` singleton
+#: convention (the one nationwide economy dossier), so the live dashboard
+#: HUD and the vault-baked ``economy/USA`` page describe the same economy.
+_DASHBOARD_ECONOMY_ID: Final[str] = "USA"
+
 
 def _narrator_beat(tick: int, chronicle: tuple[ChronicleEvent, ...]) -> tuple[str, str]:
     """The ``(system, prompt)`` pair one committed tick schedules narration with.
@@ -524,6 +532,31 @@ class GameSession:
             fabricated (Constitution III.11).
         """
         return self._known_subjects() if self._known_subjects is not None else frozenset()
+
+    def dashboard_view(self) -> EconomyView:
+        """Project this campaign's live economy dashboard (Program 24 P2).
+
+        Computed FRESH on every call via :func:`~babylon.projection.economy.
+        project_economy`, over this session's own live, in-place-mutated
+        :attr:`graph` — the same ``WorldState.from_graph`` reconstruction
+        :meth:`advance_tick` already performs post-tick, not a cached,
+        potentially-stale snapshot, so a call between ticks always reflects
+        the graph's CURRENT state. Satisfies ``babylon.tui.app.
+        CampaignHandle.dashboard_view`` without either module importing the
+        other (the same WO-37 trick :meth:`read_page`/:meth:`known_subjects`
+        already use) — this is the ONE place ``project_economy`` is ever
+        called from a live campaign; ``babylon.tui`` only ever renders the
+        :class:`~babylon.projection.view_models.EconomyView` this returns.
+
+        :returns: the freshly-projected :class:`~babylon.projection.
+            view_models.EconomyView`. Never ``None`` for a real
+            ``GameSession`` (there is always a live graph/tick to project
+            from) — the Protocol's ``EconomyView | None`` return
+            accommodates OTHER ``CampaignHandle`` implementations/test
+            doubles that choose not to wire a live projection at all.
+        """
+        world = WorldState.from_graph(self.graph, tick=self.tick)
+        return project_economy(_DASHBOARD_ECONOMY_ID, graph=self.graph, world=world, tick=self.tick)
 
     def submit_verb(
         self,

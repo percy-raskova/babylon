@@ -28,6 +28,7 @@ from uuid import UUID
 import pytest
 from textual.widgets import Label, OptionList
 
+from babylon.projection.view_models import EconomyView
 from babylon.tui.app import ArchiveApp, CampaignHandle, PacedDriverHandle
 from babylon.tui.campaign_menu import CampaignMenu, InMemoryCampaign, InMemoryCampaignCatalog
 from babylon.tui.tutorial_overlay import TutorialOverlay, TutorialProgress
@@ -61,6 +62,11 @@ class _FakeCampaign:
 
     def known_subjects(self) -> frozenset[str]:
         return frozenset(self._pages)
+
+    def dashboard_view(self) -> EconomyView | None:
+        """No live projection wired for this double — honest ``None``
+        (Program 24 P2's ``CampaignHandle.dashboard_view`` seam)."""
+        return None
 
     def advance_tick(self) -> object:  # pragma: no cover - unused by these tests
         raise AssertionError("advance_tick should not be called by these wiring tests")

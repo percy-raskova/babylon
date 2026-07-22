@@ -79,6 +79,7 @@ from textual.containers import Container, Vertical, VerticalScroll
 from textual.screen import Screen
 from textual.widgets import ContentSwitcher, Footer, Label, Markdown, Static
 
+from babylon.projection.view_models import EconomyView
 from babylon.tui.campaign_menu import CampaignMenu, LobbyScreen
 from babylon.tui.chronicle import render_chronicle
 from babylon.tui.directives import BabylonFence, StatblockProvider
@@ -212,6 +213,29 @@ class CampaignHandle(Protocol):
         the REAL vault instead of the built-in fixture set, so wikilink
         classification and the command palette speak the live campaign's
         own baked pages.
+        """
+        ...
+
+    def dashboard_view(self) -> EconomyView | None:
+        """This campaign's live economy dashboard projection (Program 24 P2).
+
+        Computed HOST-SIDE by the composition root
+        (:func:`~babylon.projection.economy.project_economy`, called from
+        :mod:`babylon.game.session` — never from ``babylon.tui``:
+        ``project_economy`` needs the live graph/world this Protocol
+        deliberately never exposes, and calling it from this module would be
+        a projection-purity violation, the same import-linter contract
+        :attr:`known_subjects`'s docstring already names). Handed to
+        :class:`~babylon.tui.shell.views.dashboard_view.DashboardView` as a
+        pure, frozen pydantic view model — the TUI only ever renders it,
+        never builds it.
+
+        :returns: the freshly-projected :class:`EconomyView`, or ``None``
+            when this composition root chose not to wire a live projection
+            (e.g. a test double standing in for a campaign with no vault) —
+            :meth:`ArchiveApp._refresh_dashboard` then leaves the pane's
+            existing honest-absence fence untouched (Constitution III.11),
+            never a blank or fabricated repaint.
         """
         ...
 
@@ -759,9 +783,35 @@ class ArchiveApp(App[None]):
         """``1``-``4``: switch the main region to ``view`` (one of the four domain pane
         ids), mirroring :meth:`~babylon.tui.shell.app_shell.AppShell.action_switch_view`.
 
+        Switching TO the dashboard pane (Program 24 P2) also re-renders it from the live
+        campaign's current :meth:`CampaignHandle.dashboard_view` — a player pressing ``1``
+        always sees this instant's numbers, not whatever was last painted at boot.
+
         :param view: one of ``"dashboard"``/``"map"``/``"wiki"``/``"topology"``.
         """
         self.query_one("#main", ContentSwitcher).current = view
+        if view == "dashboard":
+            self._refresh_dashboard()
+
+    def _refresh_dashboard(self) -> None:
+        """Render the dashboard pane's live :class:`EconomyView` (Program 24 P2).
+
+        Reads ONLY through :meth:`CampaignHandle.dashboard_view` — the host-side
+        composition root (:mod:`babylon.game.session`) already did the
+        ``project_economy`` work; this app hands the resulting pure view model
+        straight to :meth:`~babylon.tui.shell.views.dashboard_view.DashboardView.
+        render_economy`, never touching a graph/world itself (projection purity).
+        A no-op with no live :attr:`campaign`, or when the campaign's own
+        composition root returns ``None`` (chose not to wire a projection) — the
+        pane's existing honest-absence fence is left exactly as :meth:`compose`
+        painted it (Constitution III.11: never a blank or fabricated repaint).
+        """
+        if self.campaign is None:
+            return
+        view = self.campaign.dashboard_view()
+        if view is None:
+            return
+        self.query_one(DashboardView).render_economy(view)
 
     def _current_parser(self) -> MarkdownIt:
         """The dossier's zero-arg ``parser_factory``, rebuilt fresh every call.
@@ -865,6 +915,10 @@ class ArchiveApp(App[None]):
         :meth:`_refresh_known_entities` after a successful advance, so a
         page baked THIS tick becomes navigable/known immediately, not only
         on the next lobby boot.
+
+        Program 24 P2: also re-renders the dashboard pane via
+        :meth:`_refresh_dashboard`, so the HUD stays live across ticks even
+        while a different pane is showing.
         """
         status = self.query_one("#status", Label)
         if self.campaign is None:
@@ -887,6 +941,7 @@ class ArchiveApp(App[None]):
         else:
             result = self.campaign.advance_tick()
         self._refresh_known_entities(self.campaign)
+        self._refresh_dashboard()
         subject = self.nav.current
         if subject is not None:
             await self._navigate(subject, record=False)
@@ -916,6 +971,9 @@ class ArchiveApp(App[None]):
 
         Unit U1: re-scans :attr:`campaign`'s vault via
         :meth:`_refresh_known_entities` once the run stops, same as ``t``.
+
+        Program 24 P2: also re-renders the dashboard pane via
+        :meth:`_refresh_dashboard`, same as ``t``.
         """
         status = self.query_one("#status", Label)
         if self.driver is None:
@@ -937,6 +995,7 @@ class ArchiveApp(App[None]):
         last = results[-1]
         if self.campaign is not None:
             self._refresh_known_entities(self.campaign)
+        self._refresh_dashboard()
         subject = self.nav.current
         if subject is not None:
             await self._navigate(subject, record=False)

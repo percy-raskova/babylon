@@ -35,6 +35,7 @@ from babylon.models.config import SimulationConfig
 from babylon.models.enums.events import EventType
 from babylon.models.world_state import WorldState
 from babylon.persistence.envelope import PerTickTransactionEnvelope
+from babylon.projection.view_models import EconomyView
 from babylon.topology import BabylonGraph
 
 pytestmark = [pytest.mark.unit]
@@ -1014,6 +1015,40 @@ def test_known_subjects_is_honestly_empty_with_no_vault_wired() -> None:
     store = _FakeStore()
     session = create_new_campaign(store, scenario=WayneCountyScenario())
     assert session.known_subjects() == frozenset()
+
+
+# --------------------------------------------------------------------------- #
+# GameSession.dashboard_view — the CampaignHandle.dashboard_view seam        #
+# (Program 24 P2). Field-by-field correctness of the projection itself is   #
+# ``tests/unit/projection/test_economy.py``'s own concern — this section    #
+# pins only that the seam calls ``project_economy`` over THIS session's own #
+# live graph/tick, fresh on every call.                                     #
+# --------------------------------------------------------------------------- #
+
+
+def test_dashboard_view_returns_a_real_economy_view_for_this_session() -> None:
+    store = _FakeStore()
+    session = create_new_campaign(store, scenario=WayneCountyScenario())
+
+    view = session.dashboard_view()
+
+    assert isinstance(view, EconomyView)
+    assert view.economy_id == "USA"
+    assert view.verified_tick == session.tick == 0
+
+
+def test_dashboard_view_reads_the_live_graph_fresh_every_call() -> None:
+    """Two calls straddling a real tick advance must reflect the graph's
+    CURRENT tick each time — never a snapshot cached once at boot."""
+    store = _FakeStore()
+    session = create_new_campaign(store, scenario=WayneCountyScenario())
+
+    before = session.dashboard_view()
+    session.advance_tick()
+    after = session.dashboard_view()
+
+    assert before.verified_tick == 0
+    assert after.verified_tick == 1
 
 
 # --------------------------------------------------------------------------- #

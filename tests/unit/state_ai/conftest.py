@@ -302,3 +302,80 @@ def make_org_solidarity_double_star_with_bridge(prefix: str = "org_") -> Babylon
         _bi(f"{prefix}hub_b", f"{prefix}{leaf}")
 
     return graph
+
+
+def make_org_solidarity_biconnected_clusters_with_unique_bridge(
+    prefix: str = "org_",
+) -> BabylonGraph:
+    """Two internally-biconnected SOLIDARITY clusters joined by ONE bridge
+    node that is the graph's SOLE articulation point.
+
+    Purpose-built to isolate topology from heat in Infiltrate-targeting
+    tests (Constitution I.21, task W3 review fix). Unlike
+    :func:`make_org_solidarity_double_star_with_bridge` (a tree, where
+    EVERY non-leaf node is honestly a cut vertex too -- documented on that
+    function), each cluster here is a 4-cycle and ``bridge`` attaches to
+    TWO distinct nodes per cluster (not one), so no single cluster node is
+    critical to the bridge's reachability. Empirically verified via
+    :func:`babylon.ooda.attention.sparrow.analyze_network` (see
+    ``tests/unit/state_ai/test_sparrow_targeting.py``):
+
+    - ``known_cutsets == [{bridge}]`` -- ``bridge`` is the graph's ONLY
+      articulation point; removing any other single node leaves an
+      alternate path around it.
+    - ``bridge`` also has the highest combined degree+betweenness of any
+      node here (its position joins both clusters) -- so this fixture is
+      deliberately not reused for a Raid/centrality test; its sole job is
+      proving Infiltrate's choice is driven by the cutset signal, not by
+      heat, which the accompanying test proves by giving ``bridge`` the
+      LOWEST heat of any candidate and confirming Infiltrate still picks
+      it.
+
+    Layout (all edges bidirectional, EdgeType.SOLIDARITY):
+        Cluster A (4-cycle): hub_a -- leafA1 -- leafA2 -- leafA3 -- hub_a
+        Cluster B (4-cycle): hub_b -- leafB1 -- leafB2 -- leafB3 -- hub_b
+        bridge -- hub_a, bridge -- leafA1, bridge -- hub_b, bridge -- leafB1
+
+    Args:
+        prefix: Node ID prefix (default ``"org_"``).
+
+    Returns:
+        Directed BabylonGraph with SOLIDARITY edges in both directions
+        per link (NetworkX ``to_directed()`` parity, matching
+        ``make_directed_star`` et al. above).
+    """
+    graph = BabylonGraph()
+    node_suffixes = [
+        "hub_a",
+        "leafA1",
+        "leafA2",
+        "leafA3",
+        "bridge",
+        "hub_b",
+        "leafB1",
+        "leafB2",
+        "leafB3",
+    ]
+    for suffix in node_suffixes:
+        graph.add_node(f"{prefix}{suffix}", NodeType.ORGANIZATION)
+
+    def _bi(u: str, v: str) -> None:
+        graph.add_edge(u, v, EdgeType.SOLIDARITY)
+        graph.add_edge(v, u, EdgeType.SOLIDARITY)
+
+    _bi(f"{prefix}hub_a", f"{prefix}leafA1")
+    _bi(f"{prefix}leafA1", f"{prefix}leafA2")
+    _bi(f"{prefix}leafA2", f"{prefix}leafA3")
+    _bi(f"{prefix}leafA3", f"{prefix}hub_a")
+
+    _bi(f"{prefix}hub_b", f"{prefix}leafB1")
+    _bi(f"{prefix}leafB1", f"{prefix}leafB2")
+    _bi(f"{prefix}leafB2", f"{prefix}leafB3")
+    _bi(f"{prefix}leafB3", f"{prefix}hub_b")
+
+    _bi(f"{prefix}bridge", f"{prefix}hub_a")
+    _bi(f"{prefix}bridge", f"{prefix}leafA1")
+    _bi(f"{prefix}bridge", f"{prefix}hub_b")
+    _bi(f"{prefix}bridge", f"{prefix}leafB1")
+
+    return graph

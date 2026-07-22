@@ -12,6 +12,7 @@ static priority queue.
 from __future__ import annotations
 
 import logging
+from itertools import islice
 from typing import TYPE_CHECKING, Any
 
 from babylon.config.defines import OODADefines
@@ -203,24 +204,52 @@ def _compute_sparrow_topology_scores(
     organization's STRUCTURAL POSITION in the SOLIDARITY network, not raw
     heat/activity. This builds the observed SOLIDARITY subgraph over
     *candidates* and reuses :func:`babylon.ooda.attention.sparrow.
-    analyze_network` verbatim -- no centrality/cutset/singleton algorithm is
+    analyze_network` verbatim -- no centrality/cutset algorithm is
     reimplemented here, only consumed -- to derive one score map per
     targeting mode (rank↔verb correspondence, Constitution I.21):
 
     - ``centrality`` (RAID, LIQUIDATE): degree + betweenness centrality
-      summed (decapitation -- hit the best-connected node). PROSECUTE has
-      no ratified mode mapping (the constitutional clause names only
-      Surveil/Infiltrate/Raid) and is deliberately left unmapped here.
+      summed (decapitation -- hit the best-connected node). I.21's text
+      names only Surveil/Infiltrate/Raid explicitly; LIQUIDATE and
+      PROSECUTE are both REPRESS sub-verbs the clause lists but does not
+      assign a mode. LIQUIDATE is mapped here anyway because it shares
+      RAID's *kind* of targeting logic, not just its degree of severity:
+      both are kinetic decapitation -- arrest vs. eliminate the same
+      best-connected node, found by the same structural discovery. That
+      logic does not carry to PROSECUTE, which is not a targeting-mode
+      operation at all: it builds a legal case against a target the state
+      has *already* identified through other means, so there is no graph
+      -discovery step to map a Sparrow mode onto. This is a difference in
+      kind (legal process vs. structural targeting), not merely an
+      arbitrary editorial choice to map one unnamed verb and not the
+      other -- PROSECUTE deliberately stays unmapped for that reason,
+      not because it was overlooked. degree + betweenness (rather than
+      betweenness/point-strength alone, which ``coin.md`` #1 flags as the
+      methodologically preferred metric -- "targeting high-degree nodes
+      is NOT the optimal strategy") is used because I.21's ratified text,
+      which governs over the source synthesis, names the target in plain
+      terms as "hubs and critical nodes" / "most connected", which reads
+      naturally as degree-inclusive; a purer point-strength-weighted
+      formula is a legitimate future refinement, not a correctness defect.
     - ``cutset`` (INFILTRATE): 1.0 if the candidate is a known articulation
       point/bridge, else 0.0 (fragmentation -- sever the network at its
       bottleneck).
-    - ``singleton`` (SURVEIL): 1.0 if the candidate is a
-      Sparrow-``identified_singleton``, else 0.0 (mapping). Reuses
-      sparrow.py's existing, tested "singleton" semantics
-      (structurally-unique/high-betweenness node -- see
-      ``tests/unit/state_ai/test_sparrow.py::
-      TestSparrowSingletonIdentification``) unchanged; this function does
-      not reinterpret what "singleton" means.
+    - ``isolation`` (SURVEIL): ``1.0 - degree_centrality`` -- the HIGHER a
+      candidate's isolation, the more it looks like I.21's actual
+      definition of a Surveil target: "isolated targets -- vulnerable
+      because they lack solidarity edges, but also invisible because they
+      lack network presence" (CONSTITUTION.md:336), i.e. LOW network
+      presence/periphery, the Granovetter "weak ties" case
+      (``coin.md`` #1). This is deliberately NOT
+      ``analysis.identified_singletons`` -- that field is a name
+      collision: ``sparrow.py``'s "singleton" means the opposite,
+      a node whose betweenness exceeds 2x the mean (a *critical hub* --
+      see ``tests/unit/state_ai/test_sparrow.py::
+      TestSparrowSingletonIdentification::test_star_hub_is_singleton``,
+      which asserts the star's HUB is the "singleton"). Wiring SURVEIL to
+      that field would target the same hubs RAID already hunts and never
+      the periphery I.21 actually names -- reusing ``degree`` (already
+      computed for ``centrality``, no new algorithm) inverted instead.
 
     Args:
         candidates: The same ``(entity_id, heat)`` pairs
@@ -239,11 +268,20 @@ def _compute_sparrow_topology_scores(
         subgraph (the common case today -- no verb yet writes an
         org-to-org SOLIDARITY edge; see ``engine/actions/_mass_work.py``,
         which only writes org->social_class SOLIDARITY) yields all-zero
-        score maps, which :func:`babylon.ooda.state_ai.decision.
+        ``centrality``/``cutset`` scores (no edges to compute either metric
+        from), which :func:`babylon.ooda.state_ai.decision.
         select_repress_target` treats as "no topological signal this tick"
-        and falls back to the pre-existing heat*visibility sort -- this
-        wiring is honestly a no-op until something populates org-to-org
-        SOLIDARITY edges.
+        and falls back to the pre-existing heat*visibility sort for RAID/
+        LIQUIDATE/INFILTRATE -- this wiring is honestly a no-op for those
+        three modes until something populates org-to-org SOLIDARITY edges.
+        SURVEIL's ``isolation`` score is the opposite case: zero edges is
+        the textbook-purest form of isolation, so it legitimately scores
+        every candidate ``1.0`` (uniformly maximally isolated) rather than
+        ``0.0`` -- a uniform non-zero multiplier still ranks candidates by
+        heat alone (multiplying every score by the same constant changes
+        no ordering), so this is behaviorally indistinguishable from the
+        heat-only fallback even though the score value itself is honest
+        about what "no SOLIDARITY edges" structurally means for isolation.
     """
     from babylon.ooda.attention.sparrow import analyze_network
     from babylon.topology.graph import BabylonGraph as _BabylonGraph
@@ -256,14 +294,21 @@ def _compute_sparrow_topology_scores(
     for idx in range(min(len(candidate_ids), max_nodes)):
         subgraph.add_node(candidate_ids[idx], NodeType.ORGANIZATION)
 
+    # Bound the MATCHED result (edges actually added to the subgraph), not
+    # the raw scan -- production SOLIDARITY is dominated by org->social_class
+    # edges (engine/actions/_mass_work.py), so capping the raw scan before
+    # filtering could truncate away the genuine org<->org edges this
+    # function needs if they sort later than 5000 irrelevant ones. The
+    # candidate-membership predicate runs inside query_edges' own scan (no
+    # separate unbounded intermediate list), and islice bounds the loop
+    # below to a statically provable max_edges iterations.
     max_edges = 5000
-    solidarity_edges = list(graph.query_edges(edge_type=EdgeType.SOLIDARITY))
-    for idx in range(min(len(solidarity_edges), max_edges)):
-        edge = solidarity_edges[idx]
-        if edge.source_id in id_set and edge.target_id in id_set:
-            subgraph.add_edge(
-                edge.source_id, edge.target_id, EdgeType.SOLIDARITY, weight=edge.weight
-            )
+    matched_edges = graph.query_edges(
+        edge_type=EdgeType.SOLIDARITY,
+        predicate=lambda e: e.source_id in id_set and e.target_id in id_set,
+    )
+    for edge in islice(matched_edges, max_edges):
+        subgraph.add_edge(edge.source_id, edge.target_id, EdgeType.SOLIDARITY, weight=edge.weight)
 
     analysis = analyze_network(thread_id="state_ai_topology_scan", tick=0, g_observed=subgraph)
 
@@ -281,16 +326,17 @@ def _compute_sparrow_topology_scores(
         node_id: (1.0 if node_id in cutset_nodes else 0.0) for node_id in candidate_ids
     }
 
-    singleton_scores = {
-        node_id: (1.0 if node_id in analysis.identified_singletons else 0.0)
-        for node_id in candidate_ids
-    }
+    # Surveil -> isolation, NOT sparrow.py's `identified_singletons` (see
+    # docstring above: that field means "critical hub", the inverse of
+    # I.21's actual Surveil target). Reuses the `degree` dict already
+    # computed for `centrality_scores` -- no new algorithm.
+    isolation_scores = {node_id: 1.0 - degree.get(node_id, 0.0) for node_id in candidate_ids}
 
     return {
         StateActionType.RAID: centrality_scores,
         StateActionType.LIQUIDATE: centrality_scores,
         StateActionType.INFILTRATE: cutset_scores,
-        StateActionType.SURVEIL: singleton_scores,
+        StateActionType.SURVEIL: isolation_scores,
     }
 
 

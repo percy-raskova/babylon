@@ -278,8 +278,10 @@ def select_repress_target(
 
     ``topology_scores`` (task W3) layers Constitution I.21's Sparrow
     topological targeting on top of the Heat x Visibility sort:
-    Surveil→singleton, Infiltrate→cutset, Raid/Liquidate→centrality. It
-    is computed by
+    Surveil→isolation (periphery/weak-tie, NOT sparrow.py's misleadingly-
+    named ``identified_singletons`` -- see
+    :func:`babylon.ooda.npc_stub._compute_sparrow_topology_scores`),
+    Infiltrate→cutset, Raid/Liquidate→centrality. It is computed by
     :func:`babylon.ooda.npc_stub._compute_sparrow_topology_scores` from
     the real SOLIDARITY subgraph over *candidates* and reflects which
     sub-verb the caller's verb-scoring step actually selected — see

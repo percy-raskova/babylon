@@ -21,7 +21,11 @@ declared in `ai/_inbox/POLITICAL-SUPERSTRUCTURE-LANE-ACTIVE.md`.
 - **TRAP 3 is discipline, not a ruling:** every class-node write in U3/U8 sits behind a
   parties-exist guard / absence sentinel — never stamp a neutral 0.0 onto a node that did not
   carry the attribute; each of U3/U8/U9/U10/U11/U12 carries `qa:regression` byte-identical as
-  its unit gate.
+  its unit gate. **Charter correction (learned at U1):** the gate's defines-provenance
+  tooth re-hashes GameDefines, so ANY defines-category unit carries a metadata-only
+  ceremony (`Baselines: blessed(...)`, defines_hash + generated_at cells only, verified
+  cell-by-cell) — `blessed(p25-politics-defines-hash)` is U1's. VALUE baselines still
+  move only at U13's declared golden ceremony.
 
 The unit train below is the recon-corrected plan (5-agent launch recon + Opus synthesis,
 2026-07-22; recon corrections are folded in-line — s=p+i+r+t lives in

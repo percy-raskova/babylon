@@ -164,6 +164,14 @@ class TestDefaultCouplingGraph:
         triples = {_triple(c) for c in graph.couplings}
         assert ("surplus_distribution", "financial", "constrains") in triples
 
+    def test_the_two_reserved_vol_two_transforms_now_survive(self) -> None:
+        """Vol II circulation program U5 Oppositions: the edges ADR103
+        reserved light up the moment both endpoints are registered."""
+        graph = build_default_coupling_graph(build_default_registry())
+        triples = {_triple(c) for c in graph.couplings}
+        assert ("circulation", "realization", "transforms") in triples
+        assert ("reproduction", "disproportionality", "transforms") in triples
+
     def test_only_the_bound_edges_survive(self) -> None:
         graph = build_default_coupling_graph(build_default_registry())
         non_contains = {_triple(c) for c in graph.couplings if c.kind != "contains"}
@@ -178,26 +186,27 @@ class TestDefaultCouplingGraph:
             ("price_value", "financial", "feeds"),
             ("financial", "price_value", "feeds"),
             ("surplus_distribution", "financial", "constrains"),
+            ("circulation", "realization", "transforms"),
+            ("reproduction", "disproportionality", "transforms"),
         }
 
     def test_reserved_slots_are_skipped(self, caplog: pytest.LogCaptureFixture) -> None:
         with caplog.at_level(logging.INFO, logger="babylon.domain.dialectics.instances.catalog"):
             build_default_coupling_graph(build_default_registry())
         skipped = [r for r in caplog.records if "Skipping coupling" in r.getMessage()]
-        # Reserved-but-unbound slots: the two Volume II circulation edges plus the
-        # three Volume I production edges reserved by the ADR103 contract commit.
-        # All are explicitly out of scope for now and are NOT faked.
-        assert len(skipped) == 5
+        # Reserved-but-unbound slots: the three Volume I production edges
+        # reserved by the ADR103 contract commit. The Volume II pair (Vol II
+        # circulation program U5 Oppositions) now BINDS instead — see
+        # test_the_two_reserved_vol_two_transforms_now_survive.
+        assert len(skipped) == 3
         joined = " ".join(r.getMessage() for r in skipped)
         for endpoint in (
-            "realization",  # Vol II
-            "disproportionality",  # Vol II
             "value_usevalue",  # Vol I
             "labor_laborpower",  # Vol I
             "absolute_relative_surplus",  # Vol I
         ):
             assert endpoint in joined
-        for landed in ("debt_spiral", "financial"):
+        for landed in ("debt_spiral", "financial", "realization", "disproportionality"):
             assert landed not in joined
 
 

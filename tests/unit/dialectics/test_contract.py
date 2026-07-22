@@ -2,14 +2,17 @@
 
 Pins the reserved-slot contract established by the T1.0 contract commit: the two
 volumes' opposition keys are RESERVED — named, and wired as *dead* coupling slots
-— without any live binding, so the production registry (and therefore the tick
-hash) is untouched while the two lanes build in parallel worktrees. See the
+— without any live binding, so each lane may register (or not) inside its own
+namespace without touching the other's. See the
 ``=== CAPITAL VOL I ∥ VOL II CONTRACT ===`` block in ``instances/catalog.py`` and
 the §10 parallel protocol in the volume program prompts.
 
-The load-bearing guarantee: this commit is physics-neutral by CONSTRUCTION (it
-registers nothing), not merely by ceremony — :func:`test_reserved_oppositions_are_dormant`
-proves the registry shape is disjoint from every reserved key.
+The T1.0 contract commit itself was physics-neutral by CONSTRUCTION (it
+registered nothing). Since then the Vol II lane's U5 Oppositions unit has bound
+its four reserved keys (SHADOW-first, so the CANONICAL registry/tick hash stay
+untouched — see ``BoundOpposition.shadow`` in ``instances/catalog.py``);
+Vol I's three keys remain dormant. :func:`test_vol1_reserved_oppositions_are_dormant`
+and :func:`test_vol2_reserved_oppositions_are_now_bound` pin exactly that split.
 """
 
 from __future__ import annotations
@@ -46,12 +49,20 @@ class TestReservedContract:
             "disproportionality",
         )
 
-    def test_reserved_oppositions_are_dormant(self) -> None:
-        """The contract adds NO live binding: no reserved key is registered, so the
-        registry shape — and the deterministic tick hash — is unchanged by T1.0."""
+    def test_vol1_reserved_oppositions_are_dormant(self) -> None:
+        """Vol I's three reserved keys stay dormant: no live binding registered,
+        so the registry shape — and the deterministic tick hash — is
+        unchanged for that lane."""
         registered = set(build_default_registry().keys)
-        reserved = set(VOL_I_RESERVED_OPPOSITIONS) | set(VOL_II_RESERVED_OPPOSITIONS)
-        assert registered.isdisjoint(reserved)
+        assert registered.isdisjoint(set(VOL_I_RESERVED_OPPOSITIONS))
+
+    def test_vol2_reserved_oppositions_are_now_bound(self) -> None:
+        """Vol II's four reserved keys are now LIVE (SHADOW-bound by the Vol
+        II lane's U5 Oppositions unit) — registering a reserved key flips
+        this set arithmetic, which is the loud signal ADR103's contract
+        commit designed this test to give."""
+        registered = set(build_default_registry().keys)
+        assert set(VOL_II_RESERVED_OPPOSITIONS) <= registered
 
     def test_vol1_coupling_skeleton_declared_but_dead(self) -> None:
         """The three Vol I production edges are DECLARED in the coupling map but

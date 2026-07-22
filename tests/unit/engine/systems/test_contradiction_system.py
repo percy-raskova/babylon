@@ -550,10 +550,23 @@ class TestPriceValueEndToEnd:
         # task #42-C: national now registers shadow, so the channel is no
         # longer empty-by-default — but this graph builds no FACTION/
         # INFLUENCES data at all, so national reads the honest absent zero.
+        # Vol II circulation program (U5): the four circulation-layer
+        # bindings register shadow too, and this graph sets no
+        # ``tick_dynamics`` county-layer data at all, so all four read the
+        # same honest absent zero.
         shadow_states = graph.graph["shadow_opposition_states"]
-        assert set(shadow_states) == {"national"}
+        assert set(shadow_states) == {
+            "national",
+            "circulation",
+            "realization",
+            "reproduction",
+            "disproportionality",
+        }
         assert shadow_states["national"]["gap"] == 0.0
         assert shadow_states["national"]["balance"] == 0.0
+        for key in ("circulation", "realization", "reproduction", "disproportionality"):
+            assert shadow_states[key]["gap"] == 0.0
+            assert shadow_states[key]["balance"] == 0.0
 
 
 class TestNationalAxisEndToEnd:

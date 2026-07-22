@@ -15,6 +15,7 @@ import ast
 import re
 from collections.abc import Iterator
 from pathlib import Path
+from typing import Final
 
 from babylon.models.enums.topology import EdgeType, NodeType
 from babylon.sentinels.base import SentinelCheckError
@@ -104,6 +105,215 @@ def literal_dict_keys(path: Path, var_name: str) -> tuple[str, ...]:
             k.value for k in value.keys if isinstance(k, ast.Constant) and isinstance(k.value, str)
         )
     raise SentinelCheckError(f"{path}: no module-level assignment to {var_name!r} found")
+
+
+def all_dict_literal_str_items(path: Path) -> dict[str, dict[str, str]]:
+    """Statically extract EVERY module-level ``dict[str, str]`` literal, keyed
+    by its assigned name.
+
+    Unlike :func:`optional_dict_literal_str_items` (one named target a caller
+    already knows to watch), this scans every module-level assignment
+    regardless of name — T1.1 U6's severity single-source check uses it to
+    catch a hand-copied severity table reintroduced under a name OTHER than
+    the two retired literals it already watches by name
+    (``_EVENT_SEVERITY``/``EVENT_SEVERITY``): a re-forked severity dict does
+    not stop being a re-forked severity dict just because it is renamed.
+
+    :param path: Source file to parse.
+    :returns: ``{var_name: {str_key: str_value}}`` for every module-level
+        ``Assign``/``AnnAssign`` whose value is a dict literal with at least
+        one literal-string-keyed, literal-string-valued entry (mirroring
+        :func:`optional_dict_literal_str_items`'s "skip, don't except" stance
+        on non-literal entries); a dict literal with no literal-string-keyed
+        entries at all contributes nothing to the result.
+    :raises SentinelCheckError: If the file is missing or unparseable.
+    """
+    tree = parse_module(path)
+    found: dict[str, dict[str, str]] = {}
+    for node in tree.body:
+        targets: list[ast.expr]
+        value: ast.expr | None
+        if isinstance(node, ast.Assign):
+            targets = node.targets
+            value = node.value
+        elif isinstance(node, ast.AnnAssign):
+            targets = [node.target]
+            value = node.value
+        else:
+            continue
+        if value is None or not isinstance(value, ast.Dict):
+            continue
+        items = {
+            k.value: v.value
+            for k, v in zip(value.keys, value.values, strict=True)
+            if isinstance(k, ast.Constant)
+            and isinstance(k.value, str)
+            and isinstance(v, ast.Constant)
+            and isinstance(v.value, str)
+        }
+        if not items:
+            continue
+        for target in targets:
+            if isinstance(target, ast.Name):
+                found[target.id] = items
+    return found
+
+
+def conditional_literal_returns_by_enum_member(
+    path: Path,
+    tier_values: frozenset[str],
+    enum_cls: type,
+    enum_name: str,
+) -> dict[str, str]:
+    """Statically find ``if <x> == <EnumName>.<MEMBER>:`` (or ``in {...}``)
+    branches anywhere in the module whose body directly returns a hardcoded
+    literal from ``tier_values`` — the shape a per-member override takes when
+    it is inlined straight into a classify function's control flow rather than
+    factored out into a named dict literal (which
+    :func:`all_dict_literal_str_items`/:func:`optional_dict_literal_str_items`
+    catch instead).
+
+    Deliberately NOT scoped to one named function: T1.1 U6's motivating
+    finding is that an inline override can sit anywhere a classify surface's
+    logic runs, so this scans the WHOLE module for the shape itself — a
+    branch keyed on a specific enum member (or a literal string equal to
+    one), returning a hardcoded tier — rather than trusting a function name a
+    re-fork could just as easily dodge by moving the branch into a helper.
+
+    :param path: Source file to parse.
+    :param tier_values: The literal return values worth flagging (T1.1's
+        three-bucket taxonomy). A return outside this set is not a tier
+        literal at all, so it is not a re-fork candidate.
+    :param enum_cls: The enum class whose members key the observed branches.
+    :param enum_name: The bare name ``enum_cls`` is imported under in the
+        surface being scanned — :func:`_enum_member_value` resolves
+        ``<enum_name>.MEMBER`` attribute access textually, so a branch keyed
+        on the enum imported under a different local alias is invisible to
+        this (true of neither real severity surface today).
+    :returns: ``{event_type_value: tier_literal}`` for every matched branch; a
+        key matched by more than one branch keeps the LAST one seen in
+        source order (an ``if``/``elif`` chain's own last-match-wins shape).
+    :raises SentinelCheckError: If the file is missing or unparseable.
+    """
+    tree = parse_module(path)
+    found: dict[str, str] = {}
+    for node in ast.walk(tree):
+        if not isinstance(node, ast.If):
+            continue
+        keys = _conditional_branch_keys(node.test, enum_cls, enum_name)
+        if not keys:
+            continue
+        for stmt in node.body:
+            tier = _returned_tier_literal(stmt, tier_values)
+            if tier is None:
+                continue
+            for key in keys:
+                found[key] = tier
+    return found
+
+
+def _conditional_branch_keys(test: ast.expr, enum_cls: type, enum_name: str) -> list[str]:
+    """The enum-member/literal keys an ``if`` test compares against, for
+    :func:`conditional_literal_returns_by_enum_member`.
+
+    Handles a single ``==`` comparison against one member/literal, and a
+    single ``in`` comparison against a set/list/tuple of members/literals
+    (an ``if x in {A, B}:`` fan-in branch) — chained/mixed comparisons
+    (``a == b == c``) are out of scope, matching every real branch in both
+    severity surfaces today.
+    """
+    if not isinstance(test, ast.Compare) or len(test.ops) != 1:
+        return []
+    op = test.ops[0]
+    left, right = test.left, test.comparators[0]
+    if isinstance(op, ast.Eq):
+        for side in (left, right):
+            value = _enum_member_value(side, enum_cls, enum_name)
+            if value is not None:
+                return [value]
+        return []
+    if isinstance(op, ast.In) and isinstance(right, (ast.Set, ast.List, ast.Tuple)):
+        return [
+            value
+            for elt in right.elts
+            if (value := _enum_member_value(elt, enum_cls, enum_name)) is not None
+        ]
+    return []
+
+
+def _returned_tier_literal(stmt: ast.stmt, tier_values: frozenset[str]) -> str | None:
+    """The hardcoded tier literal a single ``if``-branch statement returns, if
+    any, for :func:`conditional_literal_returns_by_enum_member`.
+
+    Recognizes a bare ``return "<tier>"`` and a ``return Model(tier="<tier>",
+    ...)`` keyword form (the Archive Chronicle's ``EventSalience(tier=...)``
+    shape) — the two ways either real severity surface's classify function
+    returns its tier.
+    """
+    if not isinstance(stmt, ast.Return) or stmt.value is None:
+        return None
+    value = stmt.value
+    if isinstance(value, ast.Constant) and isinstance(value.value, str):
+        return value.value if value.value in tier_values else None
+    if isinstance(value, ast.Call):
+        for kw in value.keywords:
+            if (
+                kw.arg == "tier"
+                and isinstance(kw.value, ast.Constant)
+                and isinstance(kw.value.value, str)
+                and kw.value.value in tier_values
+            ):
+                return kw.value.value
+    return None
+
+
+def optional_dict_literal_str_items(path: Path, var_name: str) -> dict[str, str]:
+    """Statically extract a module-level ``dict[str, str]`` literal's key:value pairs.
+
+    Unlike :func:`literal_dict_keys` (which treats an absent ``var_name`` as an
+    *error* — a missing baseline), this treats absence as the CLEAN, expected
+    state: T1.1 U6's severity single-source check calls this against the two
+    retired hand-copied severity dict names (``_EVENT_SEVERITY``/
+    ``EVENT_SEVERITY``) precisely because their absence is what "single-sourced"
+    means — only a genuine reappearance (the name IS bound, to a dict literal)
+    is a finding worth comparing against the generated table.
+
+    :param path: Source file to parse.
+    :param var_name: The assigned name to look for.
+    :returns: ``{str_key: str_value}`` for every literal-string-keyed,
+        literal-string-valued entry (a non-literal key or value is skipped,
+        mirroring :func:`literal_dict_keys`'s own "skip, don't except" stance
+        on computed keys); ``{}`` if ``var_name`` is not assigned at module
+        level at all.
+    :raises SentinelCheckError: If the file is missing/unparseable, or
+        ``var_name`` IS assigned but to something other than a dict literal
+        (a genuinely malformed reappearance, not a clean absence).
+    """
+    tree = parse_module(path)
+    for node in tree.body:
+        targets: list[ast.expr]
+        value: ast.expr | None
+        if isinstance(node, ast.Assign):
+            targets = node.targets
+            value = node.value
+        elif isinstance(node, ast.AnnAssign):
+            targets = [node.target]
+            value = node.value
+        else:
+            continue
+        if value is None or not any(isinstance(t, ast.Name) and t.id == var_name for t in targets):
+            continue
+        if not isinstance(value, ast.Dict):
+            raise SentinelCheckError(f"{path}:{var_name} is not a dict literal")
+        return {
+            k.value: v.value
+            for k, v in zip(value.keys, value.values, strict=True)
+            if isinstance(k, ast.Constant)
+            and isinstance(k.value, str)
+            and isinstance(v, ast.Constant)
+            and isinstance(v.value, str)
+        }
+    return {}
 
 
 def frozenset_str_members(path: Path, var_name: str) -> tuple[str, ...]:
@@ -1182,3 +1392,272 @@ def calls_missing_keyword_or_positional_arg(
             continue
         misses.add(node.lineno)
     return sorted(misses)
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Gate-satisfaction guard grounding (T1.1 U4, ai/_inbox/t11-seam-severity-
+# design.md §3.2 point 1): three construct-entry guard SHAPES a production
+# early-return can take when a required input is absent. Each helper below
+# grounds ONE shape -- confirms the guard literally exists in a named source
+# file -- so a :class:`~babylon.sentinels.seam_algebra.registry.GatedInput`
+# row citing a guard that has since been edited away fails loud (an
+# infrastructure error) rather than silently reading as still-enforced.
+# ─────────────────────────────────────────────────────────────────────────────
+
+
+def attribute_is_none_guard_lines(path: Path, attr_name: str) -> list[int]:
+    """Line numbers where some object's ``.attr_name`` is compared to ``None``.
+
+    Matches ``<expr>.attr_name is None`` and the reversed ``None is
+    <expr>.attr_name`` anywhere in ``path`` -- the ``services.X is None``
+    early-return guard shape (e.g. ``services.distribution_calculator is
+    None``, ``services.melt_calculator is None``).
+
+    :param path: Source file to scan.
+    :param attr_name: The attribute name compared to ``None``.
+    :returns: Sorted, de-duplicated line numbers.
+    :raises SentinelCheckError: If the file is missing or unparseable.
+    """
+    tree = parse_module(path)
+    lines: set[int] = set()
+    for node in ast.walk(tree):
+        if not (isinstance(node, ast.Compare) and len(node.ops) == 1):
+            continue
+        if not isinstance(node.ops[0], ast.Is):
+            continue
+        for operand, other in ((node.left, node.comparators[0]), (node.comparators[0], node.left)):
+            if (
+                isinstance(operand, ast.Attribute)
+                and operand.attr == attr_name
+                and isinstance(other, ast.Constant)
+                and other.value is None
+            ):
+                lines.add(node.lineno)
+    return sorted(lines)
+
+
+def dict_get_call_lines(path: Path, key: str) -> list[int]:
+    """Line numbers of ``<obj>.get("<key>")`` call sites.
+
+    The ``context.get(K)`` early-return guard shape (e.g.
+    ``context.get("vol2_step")``).
+
+    :param path: Source file to scan.
+    :param key: The literal string key argument to match.
+    :returns: Sorted, de-duplicated line numbers.
+    :raises SentinelCheckError: If the file is missing or unparseable.
+    """
+    tree = parse_module(path)
+    lines: set[int] = set()
+    for node in ast.walk(tree):
+        if not (
+            isinstance(node, ast.Call)
+            and isinstance(node.func, ast.Attribute)
+            and node.func.attr == "get"
+            and node.args
+        ):
+            continue
+        first = node.args[0]
+        if isinstance(first, ast.Constant) and first.value == key:
+            lines.add(node.lineno)
+    return sorted(lines)
+
+
+def hasattr_guard_lines(path: Path, attr_name: str) -> list[int]:
+    """Line numbers of ``hasattr(<expr>, "<attr_name>")`` call sites.
+
+    The optional-attribute early-return guard shape (e.g. ``context.session_id
+    if hasattr(context, "session_id") else None``).
+
+    :param path: Source file to scan.
+    :param attr_name: The literal attribute-name argument to match.
+    :returns: Sorted, de-duplicated line numbers.
+    :raises SentinelCheckError: If the file is missing or unparseable.
+    """
+    tree = parse_module(path)
+    lines: set[int] = set()
+    for node in ast.walk(tree):
+        if not (
+            isinstance(node, ast.Call)
+            and isinstance(node.func, ast.Name)
+            and node.func.id == "hasattr"
+            and len(node.args) >= 2
+        ):
+            continue
+        second = node.args[1]
+        if isinstance(second, ast.Constant) and second.value == attr_name:
+            lines.add(node.lineno)
+    return sorted(lines)
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Stub-vs-calculator grounding (T1.1 U5, ai/_inbox/t11-seam-severity-design.md
+# §3.2 point 2): a live production call site constructs a value type with a
+# bare literal/neutral constant for one field, even though a registered
+# production calculator exists elsewhere that computes exactly that value from
+# real inputs. Two helpers ground the two halves of that claim -- "the literal
+# is really there" (consumer side) and "the calculator really exists and
+# really returns that type" (calculator side) -- so a
+# :class:`~babylon.sentinels.seam_algebra.registry.StubConsumer`/
+# :class:`~babylon.sentinels.seam_algebra.registry.RegisteredCalculator` row
+# that has since gone stale (the stub was wired up, or the calculator renamed)
+# fails loud rather than silently reading as still-live.
+# ─────────────────────────────────────────────────────────────────────────────
+
+
+def literal_keyword_call_lines(path: Path, symbol: str, field: str) -> list[int]:
+    """Line numbers of ``symbol(..., field=<literal>, ...)`` call sites.
+
+    Matches a call whose callee resolves to ``symbol`` (a bare ``Name`` or the
+    final component of an ``Attribute`` chain -- the same call-name matching
+    :func:`calls_missing_keyword_or_positional_arg` already uses) AND whose
+    ``field`` keyword argument is a bare :class:`ast.Constant` (``True``/
+    ``False``/a number/a string). A keyword bound to anything else -- a
+    variable, a function call, an attribute read, an f-string built from real
+    data -- is, by construction, NOT a literal/neutral-constant stub and is
+    invisible to this rule: honest absence over a guess, mirroring every other
+    extractor's documented "cannot resolve without value-flow analysis"
+    boundary. This is deliberately the anti-false-positive heuristic for the
+    stub-vs-calculator check (design §3.2 point 2): the rule only ever
+    classifies a bare constant as a stub candidate, never a computed
+    expression, so a genuinely input-derived value (however trivial-looking)
+    can never be misread as one.
+
+    :param path: Source file to scan for call sites.
+    :param symbol: The bare constructor/function name to match.
+    :param field: The keyword-argument name whose value must be a literal.
+    :returns: Sorted, de-duplicated line numbers.
+    :raises SentinelCheckError: If the file is missing or unparseable.
+    """
+    tree = parse_module(path)
+    lines: set[int] = set()
+    for node in ast.walk(tree):
+        if not isinstance(node, ast.Call):
+            continue
+        called_name: str | None = None
+        if isinstance(node.func, ast.Name):
+            called_name = node.func.id
+        elif isinstance(node.func, ast.Attribute):
+            called_name = node.func.attr
+        if called_name != symbol:
+            continue
+        for kw in node.keywords:
+            if kw.arg == field and isinstance(kw.value, ast.Constant):
+                lines.add(node.lineno)
+    return sorted(lines)
+
+
+def module_level_function_names(path: Path) -> frozenset[str]:
+    """Names of every module-level ``def``/``async def`` in ``path``.
+
+    :param path: Source file to parse.
+    :returns: The function names declared directly at module scope (never a
+        nested/class method -- mirrors :func:`returned_dict_keys`'s own
+        module-level-only lookup).
+    :raises SentinelCheckError: If the file is missing or unparseable.
+    """
+    tree = parse_module(path)
+    return frozenset(
+        node.name for node in tree.body if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef))
+    )
+
+
+def function_return_annotation_name(path: Path, func_name: str) -> str | None:
+    """The bare name of ``func_name``'s ``->`` return-type annotation, if any.
+
+    Handles the plain ``-> Name:`` form and the quoted forward-reference form
+    (``-> "Name":``) -- both appear across this codebase depending on whether
+    the module carries ``from __future__ import annotations``.
+
+    :param path: Source file declaring ``func_name``.
+    :param func_name: The module-level function to inspect.
+    :returns: The annotation's bare name, or ``None`` if ``func_name`` is
+        absent at module level, declares no return annotation, or the
+        annotation is not a simple ``Name``/string-literal (a subscripted
+        generic like ``tuple[int, ...]`` is out of scope -- honest absence
+        over a guess).
+    :raises SentinelCheckError: If the file is missing or unparseable.
+    """
+    tree = parse_module(path)
+    for node in tree.body:
+        if not (
+            isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)) and node.name == func_name
+        ):
+            continue
+        annotation = node.returns
+        if isinstance(annotation, ast.Name):
+            return annotation.id
+        if isinstance(annotation, ast.Constant) and isinstance(annotation.value, str):
+            return annotation.value
+        return None
+    return None
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Wall-clock-call-site grounding (T1.1 U7, ai/_inbox/t11-seam-severity-design.md
+# §3.2 point 4): a call site inside a P-tier/hashed-artifact producer that reads
+# real wall-clock time is a non-determinism smell even where the value is
+# provably excluded from a byte-identity contract TODAY -- a later refactor
+# that folds it back into a compared field would silently reintroduce
+# non-determinism with every existing unit test staying green (the same
+# silent-drift shape every other seam-algebra check catches in its own
+# vocabulary).
+# ─────────────────────────────────────────────────────────────────────────────
+
+#: The wall-clock symbols this family recognizes -- closed set (design's own
+#: "datetime.now/time.time/perf_counter/monotonic/utcnow" list, §3.2 point 4).
+#: Matched by the CALLEE's own final two dotted components (see
+#: :func:`_wallclock_symbol_for_call`), so any import alias
+#: (``_dt.datetime.now(...)``, an aliased ``time`` submodule) is still
+#: recognized without a per-alias registry row -- and, symmetrically, an
+#: unrelated object's own ``.now()``/``.time()`` method (not rooted at a
+#: `datetime`/`time`-named identifier) is never misread as a wall-clock read.
+#: This is deliberately the SAME heuristic boundary every other extractor in
+#: this module documents: cannot resolve without value-flow analysis, so
+#: honest absence beats a guess.
+WALLCLOCK_SYMBOLS: Final[frozenset[str]] = frozenset(
+    {"datetime.now", "datetime.utcnow", "time.time", "time.perf_counter", "time.monotonic"}
+)
+
+
+def _wallclock_symbol_for_call(call: ast.Call) -> str | None:
+    """The dotted :data:`WALLCLOCK_SYMBOLS` member ``call`` matches, if any.
+
+    :param call: The call node to classify.
+    :returns: One of :data:`WALLCLOCK_SYMBOLS`, or ``None`` if ``call`` is not
+        a recognized wall-clock read.
+    """
+    if not isinstance(call.func, ast.Attribute):
+        return None
+    attr = call.func.attr
+    root = call.func.value
+    if isinstance(root, ast.Name):
+        root_name = root.id
+    elif isinstance(root, ast.Attribute):
+        root_name = root.attr
+    else:
+        root_name = None
+    if attr in ("now", "utcnow") and root_name == "datetime":
+        return f"datetime.{attr}"
+    if attr in ("time", "perf_counter", "monotonic") and root_name == "time":
+        return f"time.{attr}"
+    return None
+
+
+def wallclock_call_lines(path: Path) -> list[tuple[int, str]]:
+    """Every wall-clock read call site anywhere in ``path``.
+
+    :param path: Source file to scan.
+    :returns: Sorted, de-duplicated ``(line, symbol)`` pairs, ``symbol`` one of
+        :data:`WALLCLOCK_SYMBOLS`.
+    :raises SentinelCheckError: If the file is missing or unparseable.
+    """
+    tree = parse_module(path)
+    hits: set[tuple[int, str]] = set()
+    for node in ast.walk(tree):
+        if not isinstance(node, ast.Call):
+            continue
+        symbol = _wallclock_symbol_for_call(node)
+        if symbol is not None:
+            hits.add((node.lineno, symbol))
+    return sorted(hits)

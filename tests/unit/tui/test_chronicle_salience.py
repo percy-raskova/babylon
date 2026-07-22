@@ -13,9 +13,9 @@ from __future__ import annotations
 from typing import Any
 
 from babylon.models.enums.events import EventType
+from babylon.models.event_severity import SEVERITY_BY_EVENT
 from babylon.tui.chronicle import ChronicleEvent
 from babylon.tui.chronicle_salience import (
-    EVENT_SEVERITY,
     NARRATIVE_EVENT_CEILING_PER_TICK,
     AutopauseState,
     aggregate_organizational_actions,
@@ -75,27 +75,28 @@ class TestUnclassifiedSurfacesLoud:
         assert salience.tier != "informational"
 
 
-class TestPortedKeysAreRealEventTypes:
-    """The casing-bug regression pin: every ported key is a real lowercase value."""
+class TestClassifySalienceMatchesTheGeneratedTable:
+    """T1.1 U2: classify_event_salience delegates to the single-sourced
+    generated table (babylon.models.event_severity.SEVERITY_BY_EVENT), not a
+    locally hand-copied dict — the casing-bug regression class this module
+    used to guard directly is now a structural guarantee upstream (every
+    ``SEVERITY_BY_EVENT`` key is a typed ``EventType`` member, enforced by
+    Pydantic at import in ``babylon.models.event_severity``)."""
 
-    def test_every_ported_key_is_a_real_event_type_value(self) -> None:
-        valid_values = {member.value for member in EventType}
-        for key in EVENT_SEVERITY:
-            assert key in valid_values, (
-                f"{key!r} does not match any EventType.value — "
-                "this is exactly the casing-bug failure mode the porting guards against"
-            )
+    def test_every_classified_event_type_matches_severity_by_event(self) -> None:
+        for event_type, tier in SEVERITY_BY_EVENT.items():
+            assert classify_event_salience(event_type).tier == tier
 
-    def test_no_key_is_uppercase(self) -> None:
-        for key in EVENT_SEVERITY:
-            assert key == key.lower(), f"{key!r} is not lowercase — the frontend's fixed bug"
-
-    def test_ported_tier_counts_match_the_legacy_bridge(self) -> None:
-        tiers = list(EVENT_SEVERITY.values())
-        assert tiers.count("critical") == 14
-        assert tiers.count("warning") == 20
-        assert tiers.count("informational") == 13
-        assert len(EVENT_SEVERITY) == 47
+    def test_tier_counts_match_the_derived_taxonomy(self) -> None:
+        # T1.1's pure kind x terminal_proximity rule reclassifies 16 of the 47
+        # legacy hand tiers (a CROSSING is binary critical-or-informational;
+        # only FLOW/ACT legitimately sit at warning) — see
+        # babylon.models.event_severity.DRIFT_TABLE for the full reconciliation.
+        tiers = list(SEVERITY_BY_EVENT.values())
+        assert tiers.count("critical") == 22
+        assert tiers.count("warning") == 4
+        assert tiers.count("informational") == 21
+        assert len(SEVERITY_BY_EVENT) == 47
 
 
 class TestSubjectResolution:

@@ -43,11 +43,13 @@ class _StubEvent:
 class TestSeveritySchema:
     """FR-012: severity is one of the canonical three buckets.
 
-    Every key exercised here is a real ``EventType.value`` (the Seam
-    Observatory's ``check_severity_vocabulary`` gate now enforces that
-    ``_EVENT_SEVERITY`` cannot key on a non-EventType string). The prior
-    version of this test asserted eight drifted strings that no engine event
-    ever carried — false confidence the Program-17 seam work removed.
+    T1.1 U1/U2 (``ai/_inbox/t11-seam-severity-design.md``) retargeted severity
+    onto ``babylon.models.event_severity``'s derived kind x terminal_proximity
+    taxonomy, replacing the hand-copied ``_EVENT_SEVERITY`` dict this test
+    previously exercised directly. The pure rule is not a rubber stamp of the
+    old hand tiers: a CROSSING is binary critical-or-informational, so several
+    members below moved tier (design §2's disclosed drift table) — each with
+    a declared rationale in ``event_severity._DRIFT_RATIONALES``.
     """
 
     def test_critical_events_classified_as_critical(self) -> None:
@@ -58,30 +60,24 @@ class TestSeveritySchema:
             "uprising",
             "endgame_reached",
             "red_brown_coup",
+            # DRIFT (warning -> critical): PATTERN inheriting
+            # BIFURCATION_THRESHOLD's tier — detecting this pattern means the
+            # RED_OGV terminal-endgame track is live.
+            "red_settler_trap_detected",
+            # DRIFT (warning -> critical): a completed hostile capture, same
+            # axis as red_brown_coup.
+            "fascist_recruitment",
+            # DRIFT (warning -> critical): PATTERN inheriting
+            # ENDGAME_REACHED's tier — directly endgame-axis content.
+            "pattern_shift",
         ):
             assert _classify_event(event_type) == "critical", event_type
 
     def test_warning_events_classified_as_warning(self) -> None:
-        for event_type in (
-            "state_repression",
-            "red_settler_trap_detected",
-            "excessive_force",
-            # Task #82 / AW3-R1: fascist-capture escalation siblings of the
-            # critical-tier "red_brown_coup" (reactionary.py) — a single
-            # node's recruitment (fascist_recruitment_threshold cross) or a
-            # single member's defection (organizational_fracture) is the
-            # threshold-cross precursor; red_brown_coup only fires once
-            # defections exceed the majority fraction. Previously absent
-            # from _EVENT_SEVERITY entirely, silently defaulting to
-            # "informational".
-            "fascist_recruitment",
-            "organizational_fracture",
-            # Spec-116 Task 4: a recognized-pattern change (including
-            # dissolving to None) is a threshold-cross signal on the
-            # endgame axes — it never ends the game (that's
-            # endgame_reached, critical, above).
-            "pattern_shift",
-        ):
+        # Only ACT-kind verb resolutions stay at warning under the pure rule
+        # (a CROSSING is binary critical-or-informational — there is no
+        # warning tier for one).
+        for event_type in ("state_repression",):
             assert _classify_event(event_type) == "warning", event_type
 
     def test_informational_events_classified_as_informational(self) -> None:
@@ -89,12 +85,24 @@ class TestSeveritySchema:
             "surplus_extraction",
             "imperial_subsidy",
             "consciousness_transmission",
+            # DRIFT (warning -> informational): a reversible precursor to
+            # fascist_recruitment's completed capture (above), not the
+            # violation itself.
+            "excessive_force",
+            # DRIFT (warning -> informational): a single member's defection —
+            # only accumulates into red_brown_coup (critical) once a majority
+            # is reached.
+            "organizational_fracture",
         ):
             assert _classify_event(event_type) == "informational", event_type
 
-    def test_unknown_events_default_to_informational(self) -> None:
-        assert _classify_event("unknown_made_up_event_type") == "informational"
-        assert _classify_event("") == "informational"
+    def test_unknown_events_default_to_warning(self) -> None:
+        """Constitution III.11 (Loud Failure): the T1.1 single-source floor is
+        "warning", never the legacy quiet "informational" default — matching
+        babylon.tui.chronicle_salience's identical floor on the Archive
+        surface."""
+        assert _classify_event("unknown_made_up_event_type") == "warning"
+        assert _classify_event("") == "warning"
 
 
 class TestSerializedEventShape:

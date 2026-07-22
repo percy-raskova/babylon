@@ -47,6 +47,7 @@ from babylon.formulas.constants import HOURS_PER_YEAR, WEEKS_PER_YEAR
 from babylon.formulas.unequal_exchange import calculate_unequal_exchange_rate
 from babylon.models.config import SimulationConfig
 from babylon.models.enums import ActionType, EventType, GameOutcome, SocialRole
+from babylon.models.event_severity import resolve_severity
 from babylon.models.events import EndgameEvent, PatternShiftEvent
 from babylon.models.vanguard_resources import VanguardResources, check_can_afford
 from babylon.models.world_state import WorldState
@@ -152,7 +153,8 @@ _MAP_HISTORY_COUNTY_TRACE_METRICS: dict[str, str] = {
     "exploitation_rate": "exploitation_rate",
 }
 # Severities surfaced by get_alerts_dashboard — "informational" is routine
-# flow, not an alert (matches _EVENT_SEVERITY's three-bucket taxonomy).
+# flow, not an alert (matches resolve_severity's three-bucket taxonomy,
+# babylon.models.event_severity).
 _ALERT_SEVERITIES = frozenset({"critical", "warning"})
 
 # ---------------------------------------------------------------------- #
@@ -5583,7 +5585,8 @@ class EngineBridge:
         # layer only — reads state, mutates nothing, outside the tick hash;
         # its frames ride _persist_causal_beats_safe below, never
         # new_state.events (frames are narration, not EventTypes — the
-        # _EVENT_SEVERITY seam sentinel enforces that boundary).
+        # severity single-source (babylon.models.event_severity) resolves
+        # only real EventType members, enforcing that boundary).
         causal_observer = _session_causal_observers.get(session_id)
         if causal_observer is None:
             causal_observer = CausalChainObserver()
@@ -8994,105 +8997,14 @@ def _optional_float(value: Any) -> float | None:
 
 
 # Spec 061 US3 FR-012: event severity classification.
-# Maps engine EventType values (the canonical lowercase form) to the
-# three-bucket frontend taxonomy. Default for unmapped types is
-# "informational" — the safe non-alarming bucket.
 #
-# Every key here is a real ``EventType.value`` — enforced by the Seam
-# Observatory's Sensor 1 (``tools/sentinel_check.py seam``,
-# ``babylon.sentinels.seam.checks.check_severity_vocabulary``). Eight dead
-# keys that matched no EventType
-# (and so classified nothing, silently defaulting their intended events to
-# "informational") were removed, and three drifted aliases were repaired to
-# their real events: ``repression_event`` -> ``state_repression``,
-# ``trap_activated`` -> ``red_settler_trap_detected``, and
-# ``solidarity_transmission`` -> ``consciousness_transmission``
-# (Program 17 Seam Observatory, 2026-07-12).
-_EVENT_SEVERITY: dict[str, str] = {
-    # Critical: state-violation / collapse events
-    "economic_crisis": "critical",
-    "class_decomposition": "critical",
-    "superwage_crisis": "critical",
-    "uprising": "critical",
-    "endgame_reached": "critical",
-    "power_vacuum": "critical",
-    "revolutionary_offensive": "critical",
-    "fascist_revanchism": "critical",
-    "spontaneous_riot": "critical",
-    "peripheral_revolt": "critical",
-    "ecological_overshoot": "critical",
-    # AW3-R1: a majority-LA-defection org capture is a state-violation event
-    # on par with the rest of this critical tier, not routine flow.
-    "red_brown_coup": "critical",
-    # ADR073 Doctrine Tree (Unit 6a): falling into a trap is a high-severity
-    # ideological deviation, on par with the other completed-state-violation
-    # events in this tier.
-    "doctrine_trap_sprung": "critical",
-    # spec-116 FR-116-4.7 sweep: a declared secession is fragmented-collapse
-    # proximity — genuine rupture, peer of power_vacuum.
-    "secession_declared": "critical",
-    # Warning: threshold-cross / repression events
-    "state_repression": "warning",
-    "red_settler_trap_detected": "warning",
-    "excessive_force": "warning",
-    "mass_awakening": "warning",
-    "fascist_drift": "warning",
-    "dispossession_cascade": "warning",
-    # Task #82 / AW3-R1: fascist-capture escalation siblings of the
-    # critical-tier "red_brown_coup" above (reactionary.py) — each is a
-    # threshold-cross precursor to that completed state-violation, not the
-    # violation itself: FASCIST_RECRUITMENT fires when a single node's
-    # fascist alignment crosses fascist_recruitment_threshold;
-    # ORGANIZATIONAL_FRACTURE fires per individual member defection, and
-    # only accumulates into RED_BROWN_COUP once defections exceed
-    # red_brown_coup_fraction of the org. Both were previously absent from
-    # this map entirely, silently defaulting to "informational".
-    "fascist_recruitment": "warning",
-    "organizational_fracture": "warning",
-    # ADR073 Doctrine Tree (Unit 6a): a congress purge attempt resolving
-    # (either way) is a threshold-cross event, same tier as the trap
-    # detection/drift siblings above — escaping is the good outcome, a
-    # failed purge leaves the org still trapped, but both are congress
-    # ATTEMPTS rather than routine flow.
-    "doctrine_trap_escaped": "warning",
-    "doctrine_purge_failed": "warning",
-    # spec-116 FR-116-4.7: first-class reactionary verb events (OODASystem
-    # per-action publish). Repression-family tier — peers of state_repression
-    # / excessive_force; FR-116-2 reserves the critical tier for genuine
-    # rupture/endgame proximity, so targeted reactionary violence tiers as
-    # warning, not crimson.
-    "pogrom": "warning",
-    "lockout": "warning",
-    "vigilantism": "warning",
-    # spec-116 FR-116-4.7 sweep: threshold-cross tier.
-    "market_correction": "warning",
-    "entity_death": "warning",
-    "crisis_phase_transition": "warning",
-    "bifurcation_threshold": "warning",
-    "co_optive_breakdown": "warning",
-    "level_transition": "warning",
-    # Spec-116 Task 4: a recognized-pattern change (including dissolving to
-    # None) is a threshold-cross signal on the endgame axes, same tier as
-    # the trap/drift siblings above — it never ends the game (that's
-    # endgame_reached, critical, above), so it does not belong in that tier.
-    "pattern_shift": "warning",
-    # Informational: routine flow events
-    "surplus_extraction": "informational",
-    "imperial_subsidy": "informational",
-    "consciousness_transmission": "informational",
-    "dispossession_event": "informational",
-    "value_transfer": "informational",
-    "reserve_army_pressure": "informational",
-    # spec-116 FR-116-4.7 sweep: routine-flow tier (edge/aspect churn is
-    # high-volume per tick; calibration warnings are data-quality signals).
-    "population_attrition": "informational",
-    "edge_mode_transition": "informational",
-    "latent_contradiction_release": "informational",
-    "aspect_reversal": "informational",
-    "calibration_warning.axiom_violation": "informational",
-    "calibration_warning.qcew_carry_forward": "informational",
-    "calibration_warning.phi_hour_outlier": "informational",
-}
+# T1.1 U2 (``ai/_inbox/t11-seam-severity-design.md``): this surface used to
+# carry its own hand-copied 47-entry ``_EVENT_SEVERITY`` dict — a byte-identical
+# twin of ``babylon.tui.chronicle_salience.EVENT_SEVERITY`` with no mechanical
+# guarantee the two stayed equal. Both dicts are retired in favor of ONE
+# generated resolver, :func:`babylon.models.event_severity.resolve_severity`
+# (U1's kind x terminal_proximity derivation), so this surface and the Archive
+# Chronicle can never silently drift apart again.
 
 
 #: spec-116 FR-116-4.7: reactionary verb events anchor to the TARGET
@@ -9104,10 +9016,26 @@ _TERRITORY_ANCHORED_VERB_EVENTS: frozenset[str] = frozenset({"pogrom", "lockout"
 def _classify_event(event_type_str: str) -> str:
     """Map an event_type to one of {critical, warning, informational}.
 
-    Per spec 061 FR-012. Unrecognized types default to informational so
-    the frontend can render them without raising the alarm level.
+    T1.1 U2: delegates to :func:`babylon.models.event_severity.resolve_severity`
+    — the single-sourced derivation (U1) shared with
+    :func:`babylon.tui.chronicle_salience.classify_event_salience` on the Archive
+    surface, replacing this surface's own hand-copied ``_EVENT_SEVERITY`` dict.
+
+    Constitution III.11 (Loud Failure): a string that resolves to no real
+    :class:`~babylon.models.enums.events.EventType` member (a typo, an empty
+    string, a test fixture's made-up type) or a real member with no declared
+    classification row renders at the loud **"warning"** floor — never this
+    function's former quiet "informational" default — matching the Archive
+    surface's identical floor.
+
+    :param event_type_str: the raw ``event_type`` string (any case).
+    :returns: the resolved severity tier.
     """
-    return _EVENT_SEVERITY.get(event_type_str.lower(), "informational")
+    try:
+        event_type = EventType(event_type_str.lower())
+    except ValueError:
+        return "warning"
+    return resolve_severity(event_type).tier
 
 
 #: spec-116 FR-116-4.7: title overrides where the naive ``title()`` humanization

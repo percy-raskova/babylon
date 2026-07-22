@@ -45,9 +45,11 @@ never a fabricated assertion):
   future WO wiring the headless wayne run into the Chronicle feed would exercise
   the informational cap against real informational events.
 * **``endgame_reached`` is critical but NOT the sole critical tier.** The web
-  frontend re-tiered critical to endgame-only (FR-116-2); the ported
-  ``EVENT_SEVERITY`` keeps the full spec-061 taxonomy (14 critical types). The
-  crisis leg asserts endgame_reached is critical and drives autopause, and
+  frontend re-tiered critical to endgame-only (FR-116-2); T1.1's derived
+  ``SEVERITY_BY_EVENT`` (``babylon.models.event_severity``) keeps a broad
+  critical tier (22 of 47 classified types — a CROSSING is binary
+  critical-or-informational under the pure kind x terminal_proximity rule).
+  The crisis leg asserts endgame_reached is critical and drives autopause, and
   documents that it is not uniquely so in the Archive.
 * **The pure endgame fold is memoryless.** ``endgame_status`` recomputes every
   tick; the web's "first ENDGAME_REACHED row is authoritative" immutability
@@ -88,6 +90,7 @@ from babylon.models.entities.territory import Territory
 from babylon.models.enums import EdgeType, OperationalProfile, OrgType, SectorType
 from babylon.models.enums.events import EventType, GameOutcome
 from babylon.models.enums.topology import NodeType
+from babylon.models.event_severity import SEVERITY_BY_EVENT
 from babylon.models.world_state import WorldState
 from babylon.persistence.babylon_meta import BabylonMetaStore
 from babylon.projection.briefing import (
@@ -106,7 +109,6 @@ from babylon.topology import BabylonGraph
 from babylon.tui.campaign_menu import CampaignMenu
 from babylon.tui.chronicle import ChronicleEvent
 from babylon.tui.chronicle_salience import (
-    EVENT_SEVERITY,
     apply_volume_floors,
     classify_event_salience,
     compute_autopause_state,
@@ -491,10 +493,10 @@ def test_forced_endgame_crisis_autopauses_amber_then_ack_clears() -> None:
     """
     # endgame_reached IS a critical-tier type (the autopause trigger).
     assert classify_event_salience(EventType.ENDGAME_REACHED).tier == "critical"
-    # DEVIATION from the web's FR-116-2 re-tier: the ported EVENT_SEVERITY keeps
-    # the full spec-061 taxonomy, so endgame_reached is critical but NOT the sole
+    # DEVIATION from the web's FR-116-2 re-tier: T1.1's derived SEVERITY_BY_EVENT
+    # keeps a broad critical tier, so endgame_reached is critical but NOT the sole
     # critical type. Documented, not asserted as unique.
-    assert sum(1 for tier in EVENT_SEVERITY.values() if tier == "critical") > 1
+    assert sum(1 for tier in SEVERITY_BY_EVENT.values() if tier == "critical") > 1
 
     crisis = ChronicleEvent(
         tick=1,

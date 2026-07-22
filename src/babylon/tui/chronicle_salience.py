@@ -14,25 +14,21 @@ caller applies **before** handing events to
 work-orders-p2-p4.md WO-48 frame): built from two pieces of prior art instead
 of a design doc.
 
-**Salience** ports ``web/game/engine_bridge.py``'s ``_EVENT_SEVERITY``
-(spec-061 FR-012's three-bucket taxonomy: critical/warning/informational,
-47 of 84 :class:`~babylon.models.enums.events.EventType` values classified —
-14 critical, 20 warning, 13 informational). Every ported key was cross-checked
-against the real enum — all 47 are genuine lowercase snake_case
-``EventType.value`` strings, so none needed correcting; the porting hazard
-this guards against is real, though: ``src/frontend/src/lib/eventClassifier.ts``
-documents (in its own docstring) that ITS predecessor mapping used UPPERCASE
-keys that never matched anything, silently defaulting every lookup to
-"informational" — the opposite of a salience system's job. This module fixes
-the OTHER half of that same failure mode at its root: the legacy Python
-default for an unmapped type is also "informational"
-(``_classify_event``: *"Unrecognized types default to informational so the
-frontend can render them without raising the alarm level"*) — a quiet
-degrade that Constitution III.11 ("Loud Failure") forbids. Here, an
-unclassified :class:`~babylon.models.enums.events.EventType` renders at
-**warning**-tier visibility, and :attr:`EventSalience.unclassified` is
-``True`` so the caller can visibly mark it (never a silent, indistinguishable
-"informational").
+**Salience** (T1.1 U2, ``ai/_inbox/t11-seam-severity-design.md``) delegates to
+:func:`babylon.models.event_severity.resolve_severity` — U1's single-sourced
+kind x terminal_proximity derivation, shared with
+``web/game/engine_bridge.py``'s ``_classify_event``. This module originally
+ported that surface's hand-copied ``_EVENT_SEVERITY`` dict (spec-061 FR-012's
+three-bucket taxonomy: critical/warning/informational, 47 of 84
+:class:`~babylon.models.enums.events.EventType` values classified) verbatim as
+its own ``EVENT_SEVERITY`` — a byte-identical twin with no mechanical
+guarantee the two stayed equal; both hand-copied dicts are now retired in
+favor of the one generated resolver. Constitution III.11 ("Loud Failure")
+governs the unclassified case exactly as before: an unclassified
+:class:`~babylon.models.enums.events.EventType` renders at **warning**-tier
+visibility, and :attr:`EventSalience.unclassified` is ``True`` so the caller
+can visibly mark it (never a silent, indistinguishable "informational" — the
+legacy web bridge's original quiet default, also retired by this unit).
 
 **Dedup + autopause** port ``src/frontend/src/lib/eventDedup.ts`` (spec-116
 FR-116-2's "no two consecutive identical event cards" / autopause-once
@@ -75,12 +71,12 @@ from pydantic import BaseModel, ConfigDict
 from rich.text import Text
 
 from babylon.models.enums.events import EventType
+from babylon.models.event_severity import resolve_severity
 from babylon.tui.chronicle import ChronicleEvent
 from babylon.tui.theme import AMBER
 
 __all__ = [
     "SeverityTier",
-    "EVENT_SEVERITY",
     "EventSalience",
     "classify_event_salience",
     "SUBJECT_FIELDS",
@@ -98,77 +94,23 @@ __all__ = [
 ]
 
 SeverityTier = Literal["critical", "warning", "informational"]
-"""The three-bucket taxonomy ported from ``web/game/engine_bridge.py``'s
-``_EVENT_SEVERITY`` (spec-061 FR-012)."""
-
-EVENT_SEVERITY: Final[dict[str, SeverityTier]] = {
-    # Critical: state-violation / collapse events (14).
-    "economic_crisis": "critical",
-    "class_decomposition": "critical",
-    "superwage_crisis": "critical",
-    "uprising": "critical",
-    "endgame_reached": "critical",
-    "power_vacuum": "critical",
-    "revolutionary_offensive": "critical",
-    "fascist_revanchism": "critical",
-    "spontaneous_riot": "critical",
-    "peripheral_revolt": "critical",
-    "ecological_overshoot": "critical",
-    "red_brown_coup": "critical",
-    "doctrine_trap_sprung": "critical",
-    "secession_declared": "critical",
-    # Warning: threshold-cross / repression events (20).
-    "state_repression": "warning",
-    "red_settler_trap_detected": "warning",
-    "excessive_force": "warning",
-    "mass_awakening": "warning",
-    "fascist_drift": "warning",
-    "dispossession_cascade": "warning",
-    "fascist_recruitment": "warning",
-    "organizational_fracture": "warning",
-    "doctrine_trap_escaped": "warning",
-    "doctrine_purge_failed": "warning",
-    "pogrom": "warning",
-    "lockout": "warning",
-    "vigilantism": "warning",
-    "market_correction": "warning",
-    "entity_death": "warning",
-    "crisis_phase_transition": "warning",
-    "bifurcation_threshold": "warning",
-    "co_optive_breakdown": "warning",
-    "level_transition": "warning",
-    "pattern_shift": "warning",
-    # Informational: routine flow events (13).
-    "surplus_extraction": "informational",
-    "imperial_subsidy": "informational",
-    "consciousness_transmission": "informational",
-    "dispossession_event": "informational",
-    "value_transfer": "informational",
-    "reserve_army_pressure": "informational",
-    "population_attrition": "informational",
-    "edge_mode_transition": "informational",
-    "latent_contradiction_release": "informational",
-    "aspect_reversal": "informational",
-    "calibration_warning.axiom_violation": "informational",
-    "calibration_warning.qcew_carry_forward": "informational",
-    "calibration_warning.phi_hour_outlier": "informational",
-}
-"""Ported verbatim from ``web/game/engine_bridge.py::_EVENT_SEVERITY``
-(47 of 84 :class:`~babylon.models.enums.events.EventType` values: 14
-critical / 20 warning / 13 informational). Keys are real lowercase
-snake_case ``EventType.value`` strings — pinned by
-``test_every_ported_key_is_a_real_event_type_value`` — never the frontend's
-former UPPERCASE keys (``eventClassifier.ts``'s own docstring documents that
-bug and its fix; this dict was already lowercase-correct in its source, so
-nothing needed correcting when porting it here)."""
+"""The three-bucket taxonomy (spec-061 FR-012), resolved by
+:func:`babylon.models.event_severity.resolve_severity` (T1.1 U1/U2's single
+source), not a locally hand-copied dict."""
 
 
 class EventSalience(BaseModel):
-    """One event's resolved tier, plus whether it fell through the ported map.
+    """One event's resolved tier, plus whether it fell through to the loud floor.
+
+    A thin per-surface adapter over
+    :class:`babylon.models.event_severity.EventSeverity` (T1.1 U2): identical
+    shape, kept as this module's own type so its public API (and every
+    existing caller) is unaffected by the single-sourcing underneath it.
 
     :param tier: the resolved :data:`SeverityTier`.
-    :param unclassified: ``True`` when ``tier`` came from the loud default
-        (no entry in :data:`EVENT_SEVERITY`) rather than a real classification.
+    :param unclassified: ``True`` when ``tier`` came from the loud
+        unclassified floor (no declared row for this event type) rather than
+        a real classification.
     """
 
     model_config = ConfigDict(frozen=True, extra="forbid")
@@ -180,19 +122,22 @@ class EventSalience(BaseModel):
 def classify_event_salience(event_type: EventType) -> EventSalience:
     """Resolve ``event_type``'s salience tier.
 
-    Constitution III.11 ("Loud Failure"): an ``event_type`` absent from
-    :data:`EVENT_SEVERITY` (any :class:`EventType` added after this WO, or
-    one of the 37 never classified) renders at **warning**-tier visibility —
-    never the legacy Python bridge's quiet "informational" degrade — with
+    T1.1 U2: delegates to :func:`babylon.models.event_severity.resolve_severity`
+    — the single-sourced derivation shared with ``web/game/engine_bridge.py``'s
+    ``_classify_event`` — so this surface and the web bridge can never
+    silently drift apart the way their two hand-copied dicts could.
+
+    Constitution III.11 ("Loud Failure"): an ``event_type`` with no declared
+    classification row (any :class:`EventType` added after T1.1, or one of the
+    37 never classified) renders at **warning**-tier visibility — never the
+    legacy Python bridge's quiet "informational" degrade — with
     :attr:`EventSalience.unclassified` set so callers can visibly mark it.
 
     :param event_type: the event type to classify.
     :returns: the resolved :class:`EventSalience`.
     """
-    tier = EVENT_SEVERITY.get(event_type.value)
-    if tier is None:
-        return EventSalience(tier="warning", unclassified=True)
-    return EventSalience(tier=tier, unclassified=False)
+    severity = resolve_severity(event_type)
+    return EventSalience(tier=severity.tier, unclassified=severity.unclassified)
 
 
 SUBJECT_FIELDS: Final[tuple[str, ...]] = (
@@ -425,11 +370,11 @@ def apply_volume_floors(events: Sequence[ChronicleEvent]) -> tuple[ChronicleEven
     informational-tier per-tick cap.
 
     The two floors touch disjoint event types (:func:`aggregate_organizational_actions`
-    only ever touches ``ORGANIZATIONAL_ACTION``, which is not a
-    :data:`EVENT_SEVERITY`-classified type and so resolves to the
-    unclassified **warning** tier — never :data:`NARRATIVE_TIER`), so
-    applying them in either order yields the same result; this composes them
-    in the order a caller would normally want them evaluated.
+    only ever touches ``ORGANIZATIONAL_ACTION``, which has no declared
+    classification row and so resolves to the unclassified **warning** tier
+    — never :data:`NARRATIVE_TIER`), so applying them in either order yields
+    the same result; this composes them in the order a caller would normally
+    want them evaluated.
 
     :param events: the raw events to floor, any order/tick mix.
     :returns: the floored events, ready for

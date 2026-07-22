@@ -29,6 +29,7 @@ import pytest
 from textual.widgets import Label, OptionList
 
 from babylon.projection.endgame import EndgameStatus
+from babylon.projection.verbs.view_models import VerbPlateView
 from babylon.projection.view_models import EconomyView
 from babylon.tui.app import ArchiveApp, CampaignHandle, PacedDriverHandle
 from babylon.tui.campaign_menu import CampaignMenu, InMemoryCampaign, InMemoryCampaignCatalog
@@ -73,6 +74,15 @@ class _FakeCampaign:
         """No live endgame-progress projection wired for this double — honest ``None``
         (Program 24 P4's ``CampaignHandle.endgame_status`` seam)."""
         return None
+
+    def verb_plate_view(self) -> VerbPlateView | None:
+        """No live verb plate wired for this double — honest ``None``
+        (Program 24 P5's ``CampaignHandle.verb_plate_view`` seam), unrelated
+        to this unit's own concern."""
+        return None
+
+    def issue_verb(self, action_id: str) -> int:  # pragma: no cover - unused by these tests
+        raise AssertionError("issue_verb should not be called by these wiring tests")
 
     def advance_tick(self) -> object:  # pragma: no cover - unused by these tests
         raise AssertionError("advance_tick should not be called by these wiring tests")

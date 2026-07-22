@@ -88,6 +88,7 @@ from babylon.engine.observers.endgame_detector import EndgameDetector
 from babylon.engine.scenarios import WayneCountyScenario
 from babylon.engine.services import ServiceContainer
 from babylon.engine.simulation_engine import _DEFAULT_SYSTEMS, SimulationEngine
+from babylon.game.actions.player_driver import issue_action
 from babylon.game.chronicle_adapter import chronicle_events_from_bus
 from babylon.kernel.event_bus import Event
 from babylon.models.config import SimulationConfig
@@ -100,7 +101,9 @@ from babylon.projection.economy import project_economy
 from babylon.projection.endgame import EndgameStatus
 from babylon.projection.endgame import endgame_status as fold_endgame_status
 from babylon.projection.tick_summary import build_tick_summary_kwargs
+from babylon.projection.verbs.plate import build_verb_plate
 from babylon.projection.verbs.submit import TurnSink, build_player_actions, submit_verb
+from babylon.projection.verbs.view_models import VerbPlateView
 from babylon.projection.view_models import EconomyView
 from babylon.topology import BabylonGraph
 from babylon.tui.chronicle import ChronicleEvent
@@ -373,6 +376,14 @@ _NARRATOR_SUBJECT: Final[str] = "national/USA"
 #: convention (the one nationwide economy dossier), so the live dashboard
 #: HUD and the vault-baked ``economy/USA`` page describe the same economy.
 _DASHBOARD_ECONOMY_ID: Final[str] = "USA"
+
+#: The human player's fixed :class:`~babylon.game.actions.registry.ActionSpec`
+#: ``agent_types`` persona (Program 24 P5) — distinct from the acting org
+#: node's own ``org_type`` attribute (``political_faction``/``civil_society``/
+#: etc.): every Article V verb in the registry is gated to this one bucket,
+#: so :meth:`GameSession.issue_verb` always issues as "organizer", never a
+#: value derived from the org's graph attributes.
+_PLAYER_AGENT_TYPE: Final[str] = "organizer"
 
 
 def _narrator_beat(tick: int, chronicle: tuple[ChronicleEvent, ...]) -> tuple[str, str]:
@@ -651,6 +662,87 @@ class GameSession:
             since_tick=self._endgame_detector.pattern_since_tick,
             defines=self.services.defines,
             axes=self._endgame_detector.axis_progress(),
+        )
+
+    def verb_plate_view(self) -> VerbPlateView | None:
+        """Project this campaign's live verb-plate (Program 24 P5).
+
+        Computed FRESH on every call via :func:`~babylon.projection.verbs.plate.
+        build_verb_plate`, over this session's own live, in-place-mutated
+        :attr:`graph` and its stamped ``player_org_id`` (the WayneCountyScenario's
+        own EH-ruling-6 pointer — see :attr:`~babylon.models.world_state.
+        WorldState.player_org_id` / :meth:`~babylon.models.world_state.
+        WorldState.to_graph`'s own player-org-pointer stamp) — the same
+        "compute fresh, never cache" contract :meth:`dashboard_view` already
+        established. Satisfies ``babylon.tui.app.CampaignHandle.
+        verb_plate_view`` without either module importing the other (the WO-37
+        trick :meth:`read_page`/:meth:`known_subjects`/:meth:`dashboard_view`/
+        :meth:`endgame_status` already use) — this is the ONE place
+        ``build_verb_plate`` is ever called from a live campaign; ``babylon.tui``
+        only ever renders the :class:`~babylon.projection.verbs.view_models.
+        VerbPlateView` this returns.
+
+        :returns: the freshly-built plate, or ``None`` when this campaign's
+            graph carries no ``player_org_id`` (a scenario that never set
+            :attr:`~babylon.models.world_state.WorldState.player_org_id`) —
+            an honest absence (Constitution III.11), never a fabricated plate
+            for an org that does not exist.
+        """
+        org_id = self.graph.graph.get("player_org_id")
+        if not isinstance(org_id, str):
+            return None
+        return build_verb_plate(self.graph, org_id, tick=self.tick, defines=self.services.defines)
+
+    def issue_verb(self, action_id: str) -> int:
+        """Issue one player verb through the registry-gated write path (Program 24 P5).
+
+        The FIRST real write the player can make on the world from the Archive
+        shell's action bar. Delegates to :func:`~babylon.game.actions.
+        player_driver.issue_action` with the registry persona fixed to
+        :data:`_PLAYER_AGENT_TYPE` ("organizer"), this campaign's own
+        ``player_org_id`` as the acting org, :attr:`_store` as the
+        :class:`~babylon.projection.verbs.submit.TurnSink` (:class:`
+        GameRuntimeStore` already extends it), and ``tick + 1`` — the SAME
+        "queued for the next tick" convention :meth:`submit_verb` already
+        uses. ``issue_action`` gates on the registry's ``agent_types``/
+        ``status`` BEFORE ever reaching :func:`~babylon.projection.verbs.
+        submit.submit_verb`'s own affordability gate: an institutional
+        macro-action (``status="STUB"``) or an action outside the organizer's
+        registry row is refused loudly here, never silently queued
+        (Constitution III.11) — unlike :meth:`submit_verb`, which carries NO
+        registry gating at all and must never be substituted for this method
+        as the shell's write path.
+
+        :param action_id: one of the nine canonical Article V verbs (a
+            :class:`~babylon.projection.verbs.view_models.VerbPlateView`
+            row's own ``verb``).
+        :raises RuntimeError: this campaign's graph carries no
+            ``player_org_id`` (see :meth:`verb_plate_view`'s identical
+            absence case) — or, via ``issue_action``'s own
+            ``ActionNotPermitted``/``ActionNotLive`` (both ``RuntimeError``
+            subclasses, never imported by name into ``babylon.tui`` — the
+            WO-37 primitives-only crossing :class:`~babylon.tui.app.
+            PacedDriverHandle` already established), the organizer may not
+            issue ``action_id``, or it is a STUB with no wired effect yet.
+        :raises KeyError: ``action_id`` names no registered action at all.
+        :raises ValueError: propagated from :func:`~babylon.projection.verbs.
+            submit.submit_verb`'s own gate (a non-canonical verb, or the org
+            cannot afford it).
+        :returns: the queued ``game_turn`` row's integer id.
+        """
+        org_id = self.graph.graph.get("player_org_id")
+        if not isinstance(org_id, str):
+            raise RuntimeError(
+                "GameSession.issue_verb: no player_org_id stamped on this campaign's graph"
+            )
+        return issue_action(
+            action_id,
+            _PLAYER_AGENT_TYPE,
+            org_id,
+            self._store,
+            session_id=self.session_id,
+            tick=self.tick + 1,
+            graph=self.graph,
         )
 
     def submit_verb(

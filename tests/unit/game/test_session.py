@@ -1158,6 +1158,95 @@ def test_advance_tick_calls_on_tick_on_the_injected_detector_exactly_once_per_ti
 
 
 # --------------------------------------------------------------------------- #
+# verb_plate_view / issue_verb — Program 24 P5's action-bar write path.       #
+# --------------------------------------------------------------------------- #
+
+
+def test_verb_plate_view_projects_the_live_organizer_plate() -> None:
+    """A real ``WayneCountyScenario`` stamps ``player_org_id="ORG001"`` (EH ruling 6) —
+    ``verb_plate_view`` must build the SAME nine-verb plate ``build_verb_plate`` would,
+    over this session's own live graph, never a fixture or a cached snapshot."""
+    store = _FakeStore()
+    session = create_new_campaign(store, scenario=WayneCountyScenario())
+
+    view = session.verb_plate_view()
+
+    assert view is not None
+    assert view.org_id == "ORG001"
+    assert view.tick == session.tick
+    assert {row.verb for row in view.verbs} == {
+        "educate",
+        "reproduce",
+        "attack",
+        "mobilize",
+        "campaign",
+        "aid",
+        "investigate",
+        "move",
+        "negotiate",
+    }
+
+
+def test_verb_plate_view_is_none_without_a_player_org_id() -> None:
+    """Honest absence (Constitution III.11): a graph carrying no ``player_org_id``
+    (a scenario that never stamped one) must never be laundered into a fabricated
+    plate for an org that does not exist."""
+    store = _FakeStore()
+    session = create_new_campaign(store, scenario=WayneCountyScenario())
+    del session.graph.graph["player_org_id"]
+
+    assert session.verb_plate_view() is None
+
+
+def test_issue_verb_reaches_submit_turn_for_an_eligible_organizer_verb() -> None:
+    """The FIRST real write path (Program 24 P5): an affordable verb issued through
+    :meth:`~babylon.game.session.GameSession.issue_verb` must reach the SAME
+    ``submit_turn`` queue :meth:`~babylon.game.session.GameSession.submit_verb`
+    already writes to — never a bypass, never a silent no-op. ``"move"`` (not
+    ``"educate"``) because ORG001's real tick-0 resources
+    (``cadre_level=0.1``) afford only the cheapest verbs — this proves the
+    write path against the REAL affordability gate, never a fixture org
+    tuned to make every verb pass."""
+    store = _FakeStore()
+    session = create_new_campaign(store, scenario=WayneCountyScenario())
+
+    turn_id = session.issue_verb("move")
+
+    assert turn_id == 1
+    (call,) = store.submit_turn_calls
+    assert call["org_id"] == "ORG001"
+    assert call["verb"] == "move"
+    assert call["tick"] == session.tick + 1
+
+
+def test_issue_verb_refuses_an_institutional_macro_action_never_resolving() -> None:
+    """An institutional macro-action (``status="STUB"`` in ``ACTION_REGISTRY`` — see
+    ``tests/unit/game/actions/test_registry.py``'s own assertion of that fact) is gated
+    to ``agent_types={"state", "corporation"}``; the player's fixed ``"organizer"``
+    registry persona may never issue one — it must refuse loudly and NEVER reach
+    ``submit_turn`` (never fake-resolve), whichever of ``issue_action``'s two gates
+    (agent-type or LIVE-status) catches it first."""
+    store = _FakeStore()
+    session = create_new_campaign(store, scenario=WayneCountyScenario())
+
+    with pytest.raises(RuntimeError):
+        session.issue_verb("fund_research")
+
+    assert store.submit_turn_calls == []
+
+
+def test_issue_verb_raises_when_no_player_org_id_is_stamped() -> None:
+    store = _FakeStore()
+    session = create_new_campaign(store, scenario=WayneCountyScenario())
+    del session.graph.graph["player_org_id"]
+
+    with pytest.raises(RuntimeError, match="player_org_id"):
+        session.issue_verb("reproduce")
+
+    assert store.submit_turn_calls == []
+
+
+# --------------------------------------------------------------------------- #
 # open_runtime — loud refusal without a DSN, never a silent demo fallback.    #
 # --------------------------------------------------------------------------- #
 

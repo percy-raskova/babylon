@@ -28,6 +28,7 @@ from textual.pilot import Pilot
 from textual.widgets import OptionList, Static
 
 from babylon.projection.endgame import EndgameStatus
+from babylon.projection.verbs.view_models import VerbPlateView
 from babylon.projection.view_models import EconomyView
 from babylon.tui.app import ArchiveApp, CampaignHandle
 from babylon.tui.campaign_menu import CampaignMenu, InMemoryCampaign, InMemoryCampaignCatalog
@@ -99,6 +100,14 @@ class _FakeCampaign:
         """No live endgame-progress projection wired for this double — unrelated to this
         unit's own concern (Program 24 P4's ``CampaignHandle.endgame_status`` seam)."""
         return None
+
+    def verb_plate_view(self) -> VerbPlateView | None:
+        """No live verb plate wired for this double — unrelated to this unit's own
+        concern (Program 24 P5's ``CampaignHandle.verb_plate_view`` seam)."""
+        return None
+
+    def issue_verb(self, action_id: str) -> int:  # pragma: no cover - unused by these tests
+        raise AssertionError("issue_verb should not be called by these dashboard tests")
 
     def advance_tick(self) -> _FakeTickOutcome:
         self.tick += 1

@@ -62,6 +62,20 @@ through :meth:`ArchiveApp._navigate`) re-polls the mounted overlay via
 ``tutorial_progress_factory`` given (the default), nothing here runs at
 all — every pre-Unit-U4 caller/test, and the demo boot path, is completely
 unaffected.
+
+Program 24 P5 (the bottom action bar) closes :data:`_ACTION_BAR_ABSENT`'s own
+"feed wires in at Program 24 P2-P6" note: :meth:`ArchiveApp._refresh_action_bar`
+paints the ``#action-bar`` pane with :meth:`CampaignHandle.verb_plate_view`'s
+live :class:`~babylon.projection.verbs.view_models.VerbPlateView` (mirroring
+:meth:`_refresh_dashboard`'s own projection-purity shape) on boot and on every
+``t``/``r`` tick, and :meth:`ArchiveApp.action_issue_verb` (bound to ``F1``-``F9``,
+see :data:`_VERB_ACTION_KEYS`) is the FIRST real write the player can make on
+the world from this shell: an eligible verb reaches
+:meth:`CampaignHandle.issue_verb`; an ineligible one shows its already-rendered
+refusal without ever attempting the write. With no live :attr:`campaign` (the
+demo boot path) or a composition root that declines to wire
+:meth:`CampaignHandle.verb_plate_view`, the pane keeps its honest absence fence
+— unaffected, same as every other pane's Program 24 P1 default.
 """
 
 from __future__ import annotations
@@ -80,6 +94,8 @@ from textual.screen import Screen
 from textual.widgets import ContentSwitcher, Footer, Label, Markdown, Static
 
 from babylon.projection.endgame import EndgameStatus
+from babylon.projection.verbs.preview import VERB_TO_ACTION_TYPE
+from babylon.projection.verbs.view_models import VerbPlateView
 from babylon.projection.view_models import EconomyView
 from babylon.tui.campaign_menu import CampaignMenu, LobbyScreen
 from babylon.tui.chronicle import (
@@ -102,6 +118,7 @@ from babylon.tui.shell.views.map_view import MapView
 from babylon.tui.shell.views.topology_view import TopologyView
 from babylon.tui.theme import KSBC
 from babylon.tui.tutorial_overlay import TutorialOverlay, TutorialProgress, TutorialStepView
+from babylon.tui.verb_plate import render_verb_plate
 from babylon.tui.watchlist import render_watchlist
 from babylon.tui.wikilinks import (
     BabylonH1,
@@ -280,6 +297,53 @@ class CampaignHandle(Protocol):
         """
         ...
 
+    def verb_plate_view(self) -> VerbPlateView | None:
+        """This campaign's live verb-plate projection (Program 24 P5).
+
+        Computed HOST-SIDE by the composition root
+        (:func:`~babylon.projection.verbs.plate.build_verb_plate`, called from
+        :meth:`~babylon.game.session.GameSession.verb_plate_view` — never
+        from ``babylon.tui``: ``build_verb_plate`` needs the live graph this
+        Protocol deliberately never exposes, the same projection-purity
+        reasoning :attr:`dashboard_view`'s docstring already names). Handed
+        to :func:`~babylon.tui.verb_plate.render_verb_plate` as a pure,
+        frozen pydantic view model — the TUI only ever renders it, never
+        builds it.
+
+        :returns: the freshly-built :class:`~babylon.projection.verbs.
+            view_models.VerbPlateView`, or ``None`` when this composition
+            root chose not to wire a live plate (e.g. a test double, or a
+            campaign whose graph carries no player-org pointer) —
+            :meth:`ArchiveApp._refresh_action_bar` then leaves the bar's
+            existing honest-absence fence untouched (Constitution III.11),
+            never a blank or fabricated repaint.
+        """
+        ...
+
+    def issue_verb(self, action_id: str) -> int:
+        """Issue one player verb through the registry-gated write path (Program 24 P5).
+
+        The action bar's real write-path seam — the FIRST time the player
+        can act on the world from this shell. Computed HOST-SIDE (
+        :meth:`~babylon.game.session.GameSession.issue_verb`, which composes
+        :func:`~babylon.game.actions.player_driver.issue_action`'s
+        agent-type/``LIVE``-status gate with :func:`~babylon.projection.
+        verbs.submit.submit_verb`'s own affordability gate) — never from
+        ``babylon.tui``: only primitives (``str`` in, ``int`` out, or a
+        builtin exception) cross this boundary, the same deliberately narrow
+        crossing :class:`PacedDriverHandle` already established, so this
+        module never needs to import ``ActionNotPermitted``/``ActionNotLive``
+        by name.
+
+        :param action_id: one of the nine canonical Article V verbs.
+        :raises RuntimeError: no player org to act as, the organizer may not
+            issue ``action_id``, or it is a STUB with no wired effect yet.
+        :raises KeyError: ``action_id`` names no registered action at all.
+        :raises ValueError: a non-canonical verb, or the org cannot afford it.
+        :returns: the queued turn's integer id.
+        """
+        ...
+
     def advance_tick(self) -> TickOutcome:
         """Resolve exactly one further tick."""
         ...
@@ -394,6 +458,25 @@ _ACTION_BAR_ABSENT: Final = (
 :class:`~babylon.projection.verbs.view_models.VerbPlateView` seam
 (:func:`~babylon.projection.verbs.plate.build_verb_plate`) is not wired to any live campaign
 graph yet; never fabricate a plate from no data (Constitution III.11)."""
+
+_VERB_ACTION_KEYS: Final[tuple[str, ...]] = (
+    "f1",
+    "f2",
+    "f3",
+    "f4",
+    "f5",
+    "f6",
+    "f7",
+    "f8",
+    "f9",
+)
+"""One function key per canonical Article V verb (Program 24 P5), zipped onto
+:data:`~babylon.projection.verbs.preview.VERB_TO_ACTION_TYPE`'s own plate order —
+educate/reproduce/attack/mobilize/campaign/aid/investigate/move/negotiate. Function keys
+were chosen deliberately: every mnemonic first letter collides with an ALREADY-bound key
+(``r``un vs ``r``eproduce, ``a``cknowledge vs ``a``ttack/``a``id, ``m``obilize vs ``m``ove),
+so a positional F-key scheme is the only collision-free single-keypress mapping over the
+existing ``t``/``r``/``a``/``1``-``4``/``ctrl+o``/``ctrl+i`` bindings."""
 
 
 def _sample_page_source(subject: str) -> str | None:
@@ -583,6 +666,12 @@ class ArchiveApp(App[None]):
         Binding("2", "switch_view('map')", "Map"),
         Binding("3", "switch_view('wiki')", "Wiki"),
         Binding("4", "switch_view('topology')", "Topology"),
+        # Program 24 P5 — one F-key per canonical Article V verb (see
+        # _VERB_ACTION_KEYS' own docstring for why F-keys, not mnemonic letters).
+        *(
+            Binding(key, f"issue_verb({verb!r})", verb.capitalize(), show=False)
+            for key, verb in zip(_VERB_ACTION_KEYS, VERB_TO_ACTION_TYPE, strict=True)
+        ),
     ]
 
     CSS = """
@@ -762,6 +851,7 @@ class ArchiveApp(App[None]):
             signature (unused either way — there is no decline branch).
         """
         await self._navigate(_SAMPLE_SUBJECT)
+        self._refresh_action_bar()
         await self._mount_tutorial_overlay_if_active()
 
     async def _mount_tutorial_overlay_if_active(self) -> None:
@@ -881,6 +971,27 @@ class ArchiveApp(App[None]):
                 busy=driver.busy if driver is not None else False,
                 pause_summary=driver.pause_summary if driver is not None else None,
             )
+
+    def _refresh_action_bar(self) -> None:
+        """Render the bottom action bar's live verb plate (Program 24 P5) — the
+        player's first real write-path onto the world.
+
+        Reads ONLY through :meth:`CampaignHandle.verb_plate_view` — the host-side
+        composition root (:mod:`babylon.game.session`) already did the
+        ``build_verb_plate`` work; this app hands the resulting pure
+        :class:`~babylon.projection.verbs.view_models.VerbPlateView` straight to
+        :func:`~babylon.tui.verb_plate.render_verb_plate`, never touching a graph
+        itself (projection purity, the same reasoning :meth:`_refresh_dashboard`
+        already documents). A no-op with no live :attr:`campaign`; leaves the
+        bar's existing :data:`_ACTION_BAR_ABSENT` fence untouched when this
+        composition root chose not to wire a live plate (Constitution III.11: never
+        a blank or fabricated repaint), same as :meth:`_refresh_dashboard`.
+        """
+        if self.campaign is None:
+            return
+        view = self.campaign.verb_plate_view()
+        if view is not None:
+            self.query_one("#action-bar", Static).update(render_verb_plate(view))
 
     def _refresh_chronicle(self, chronicle: Sequence[ChronicleEvent]) -> None:
         """Append ``chronicle``'s events to :attr:`_chronicle_history` and repaint
@@ -1012,6 +1123,10 @@ class ArchiveApp(App[None]):
 
         Program 24 P3: also appends this tick's chronicle to the left rail via
         :meth:`_refresh_chronicle`.
+
+        Program 24 P5: also re-renders the action bar's verb plate via
+        :meth:`_refresh_action_bar`, so its eligibility/affordability/preview
+        columns reflect this instant's graph, not the tick this pane last painted.
         """
         status = self.query_one("#status", Label)
         if self.campaign is None:
@@ -1035,6 +1150,7 @@ class ArchiveApp(App[None]):
             result = self.campaign.advance_tick()
         self._refresh_known_entities(self.campaign)
         self._refresh_dashboard()
+        self._refresh_action_bar()
         self._refresh_chronicle(result.chronicle)
         subject = self.nav.current
         if subject is not None:
@@ -1071,6 +1187,9 @@ class ArchiveApp(App[None]):
 
         Program 24 P3: also appends every advanced tick's chronicle (in order)
         to the left rail via :meth:`_refresh_chronicle`, same as ``t``.
+
+        Program 24 P5: also re-renders the action bar's verb plate via
+        :meth:`_refresh_action_bar`, same as ``t``.
         """
         status = self.query_one("#status", Label)
         if self.driver is None:
@@ -1093,6 +1212,7 @@ class ArchiveApp(App[None]):
         if self.campaign is not None:
             self._refresh_known_entities(self.campaign)
         self._refresh_dashboard()
+        self._refresh_action_bar()
         self._refresh_chronicle(tuple(event for result in results for event in result.chronicle))
         subject = self.nav.current
         if subject is not None:
@@ -1121,6 +1241,57 @@ class ArchiveApp(App[None]):
         self.driver.acknowledge_pause()
         status.update("status: autopause acknowledged — ready to advance")
         self._refresh_tutorial_progress()
+
+    def action_issue_verb(self, verb: str) -> None:
+        """``F1``-``F9``: issue one Article V verb through the action bar's real
+        write path (Program 24 P5) — the FIRST time the player can act on the
+        world from this shell.
+
+        Reads the ALREADY-RENDERED :class:`~babylon.projection.verbs.view_models.
+        VerbPlateView` (:meth:`CampaignHandle.verb_plate_view`, the same call
+        :meth:`_refresh_action_bar` just painted) to decide whether to even
+        attempt the write: ``eligible`` is a target-existence predicate
+        :meth:`CampaignHandle.issue_verb`'s own agent-type/``LIVE`` gate knows
+        nothing about (:func:`~babylon.projection.verbs.plate.build_verb_plate`'s
+        own docstring — "the UI disables on eligible only, never on
+        can_afford") — so an ineligible row's reason is surfaced WITHOUT ever
+        calling :meth:`CampaignHandle.issue_verb`, never a silent no-op
+        (Constitution III.11). An eligible row proceeds to
+        :meth:`CampaignHandle.issue_verb`; any refusal it raises (an
+        institutional macro-action, the wrong agent type, an unaffordable verb,
+        an unknown action id) surfaces as a loud status note too, never an
+        unhandled crash — the concrete ``ActionNotPermitted``/``ActionNotLive``
+        types stay inside ``babylon.game.actions.player_driver`` (both are
+        ``RuntimeError`` subclasses; this module never imports them by name,
+        the same primitives-only crossing :class:`PacedDriverHandle` already
+        established).
+
+        :param verb: one of the nine canonical Article V verbs (bound 1:1 to
+            ``F1``-``F9`` via :data:`_VERB_ACTION_KEYS`).
+        """
+        status = self.query_one("#status", Label)
+        if self.campaign is None:
+            status.update("status: no live campaign attached — nothing to act on")
+            return
+        view = self.campaign.verb_plate_view()
+        if view is None:
+            status.update("status: no verb plate wired — cannot issue an action")
+            return
+        row = next((candidate for candidate in view.verbs if candidate.verb == verb), None)
+        if row is None:
+            status.update(f"status: {verb} — missing from plate view")
+            return
+        if not row.eligible:
+            status.update(f"status: {verb} refused — {row.reason}")
+            return
+        try:
+            turn_id = self.campaign.issue_verb(verb)
+        except (RuntimeError, ValueError, KeyError) as exc:
+            status.update(f"status: {verb} refused — {exc}")
+            return
+        afford_note = "" if row.can_afford else f" · {row.afford_note}"
+        status.update(f"status: {verb} queued (turn #{turn_id}){afford_note}")
+        self._refresh_action_bar()
 
     async def on_entity_navigated(self, event: EntityNavigated) -> None:
         """Open the page a palette hit chose.

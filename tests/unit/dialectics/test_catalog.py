@@ -1,6 +1,6 @@
 """Unit tests for the production opposition catalog (Phase C).
 
-Pins the honest measure each of the five oppositions is bound to, the
+Pins the honest measure each of the fourteen oppositions is bound to, the
 empty-input degeneracies, the tenancy rent-free guard, and the
 atomization pole mapping — the contract the engine's ContradictionSystem
 relies on when it fills :class:`GraphInputs` each tick.
@@ -25,25 +25,45 @@ def _states(inputs: GraphInputs, tick: int = 0):  # type: ignore[no-untyped-def]
 
 
 class TestRegistryShape:
-    def test_eleven_oppositions_bound(self) -> None:
+    def test_eighteen_oppositions_bound(self) -> None:
         assert _reg().keys == (
+            "absolute_relative_surplus",
             "atomization",
             "capital_labor",
+            "circulation",
             "credit",
             "debt_spiral",
+            "disproportionality",
             "financial",
             "imperial",
+            "labor_laborpower",
             "national",
             "price_value",
+            "realization",
+            "reproduction",
             "surplus_distribution",
             "tenancy",
+            "value_usevalue",
             "wage",
         )
 
-    def test_national_is_the_only_shadow_binding(self) -> None:
-        """task #42-C: national lands shadow-first, on the same discipline
-        price_value was born under (ADR077) before its ADR078 promotion."""
-        assert _reg().shadow_keys == frozenset({"national"})
+    def test_shadow_bindings(self) -> None:
+        """task #42-C's ``national``, Vol I U6's three production-layer
+        bindings and Vol II U5's four circulation-layer bindings all land
+        shadow-first, on the same discipline price_value was born under
+        (ADR077) before its ADR078 promotion."""
+        assert _reg().shadow_keys == frozenset(
+            {
+                "national",
+                "value_usevalue",
+                "labor_laborpower",
+                "absolute_relative_surplus",
+                "circulation",
+                "realization",
+                "reproduction",
+                "disproportionality",
+            }
+        )
 
     def test_capital_labor_is_antagonistic(self) -> None:
         assert _reg().spec_for("capital_labor").antagonistic is True
@@ -219,6 +239,22 @@ class TestLevelPlacement:
             # NATIONALLY (INFLUENCES reach, no county/class rung) — unplaced,
             # same as credit/financial.
             "national": "",
+            # Vol I U6: value_usevalue and absolute_relative_surplus both
+            # aggregate NATIONALLY (unplaced, same as credit/financial/
+            # national); labor_laborpower shares wage's per-class/per-county
+            # granularity, so it takes wage's own level.
+            "value_usevalue": "",
+            "labor_laborpower": "county",
+            "absolute_relative_surplus": "",
+            # Vol II circulation program (U5): all four circulation-layer
+            # bindings are county-level material processes (CircuitState /
+            # CirculationCrisisAssessment / DisproportionalityCrisis all
+            # keyed per-county), aggregated nationally for the reading —
+            # same placement convention as surplus_distribution/debt_spiral.
+            "circulation": "county",
+            "realization": "county",
+            "reproduction": "county",
+            "disproportionality": "county",
         }
 
 
@@ -312,6 +348,122 @@ class TestNational:
         # A genuine class-rupturing contradiction (the fascist bifurcation
         # theory this engine models), same flag as capital_labor/imperial.
         assert _reg().spec_for("national").antagonistic is True
+
+
+class TestValueUseValue:
+    """Ch. 1's commodity dialectic (Vol I U6): use-value (A) vs value (B).
+
+    Shares ``_ratio_reading`` with the Vol III money family: natural zero
+    point at exact parity (wealth == subsistence).
+    """
+
+    def test_absent_ratio_is_zero(self) -> None:
+        state = _states(GraphInputs())["value_usevalue"]
+        assert state.gap == 0.0
+        assert state.balance == 0.0
+
+    def test_unity_point_is_the_balance_zero_crossing(self) -> None:
+        state = _states(GraphInputs(wealth_subsistence_ratio=1.0))["value_usevalue"]
+        assert state.balance == pytest.approx(0.0)
+        assert state.gap == pytest.approx(0.5)
+
+    def test_wealth_exceeding_subsistence_is_the_value_pole(self) -> None:
+        state = _states(GraphInputs(wealth_subsistence_ratio=3.0))["value_usevalue"]
+        assert state.balance == pytest.approx(0.5)  # (3-1)/(3+1)
+        assert state.leading_pole == "b"
+
+    def test_wealth_below_subsistence_is_the_use_value_pole(self) -> None:
+        # ratio 0.5: wealth is half of subsistence — real deprivation.
+        state = _states(GraphInputs(wealth_subsistence_ratio=0.5))["value_usevalue"]
+        assert state.balance == pytest.approx(-1.0 / 3.0)
+        assert state.leading_pole == "a"
+
+    def test_is_shadow_and_never_antagonistic(self) -> None:
+        reg = _reg()
+        assert "value_usevalue" in reg.shadow_keys
+        assert reg.spec_for("value_usevalue").antagonistic is False
+
+    def test_poles_are_named_as_specified(self) -> None:
+        spec = _reg().spec_for("value_usevalue")
+        assert spec.pole_a == "use-value"
+        assert spec.pole_b == "value"
+
+
+class TestLaborLaborPower:
+    """Ch. 6's wage-form mystification (Vol I U6): labor (A) vs labor-power (B).
+
+    Reads the IDENTICAL ``(w_paid, v_produced)`` defect as ``wage``/``imperial``
+    (the "shared defect, different poles" design note) — a third framing of
+    the same arithmetic.
+    """
+
+    def test_reads_the_same_wage_value_defect(self) -> None:
+        inputs = GraphInputs(wage_value_pairs=((18.0, 2.0),))
+        states = _states(inputs)
+        assert states["labor_laborpower"].gap == pytest.approx(states["wage"].gap)
+        assert states["labor_laborpower"].balance == pytest.approx(states["wage"].balance)
+
+    def test_labor_exceeding_labor_power_price_is_the_labor_pole(self) -> None:
+        # (w_paid=2, v_produced=18): labor's product vastly exceeds what was
+        # paid for the labor-power that performed it — "the secret of
+        # profit-making". Reordered to (value=A="labor", wage=B="labor-power").
+        state = _states(GraphInputs(wage_value_pairs=((2.0, 18.0),)))["labor_laborpower"]
+        assert state.balance == pytest.approx(-0.8)
+        assert state.leading_pole == "a"
+
+    def test_empty_pairs_is_zero(self) -> None:
+        state = _states(GraphInputs())["labor_laborpower"]
+        assert state.gap == 0.0
+        assert state.balance == 0.0
+
+    def test_is_shadow_and_placed_at_county_level(self) -> None:
+        reg = _reg()
+        assert "labor_laborpower" in reg.shadow_keys
+        assert reg.spec_for("labor_laborpower").level_name == "county"
+        assert reg.spec_for("labor_laborpower").antagonistic is False
+
+    def test_poles_are_named_as_specified(self) -> None:
+        spec = _reg().spec_for("labor_laborpower")
+        assert spec.pole_a == "labor"
+        assert spec.pole_b == "labor-power"
+
+
+class TestAbsoluteRelativeSurplus:
+    """Chs. 10, 12, 15's two surplus-value strategies (Vol I U6):
+    absolute-surplus-value (A) vs relative-surplus-value (B).
+
+    Shares ``_ratio_reading`` with the Vol III money family: natural zero
+    point at exact parity (intensity/hours reference ratios both at 1.0).
+    """
+
+    def test_absent_ratio_is_zero(self) -> None:
+        state = _states(GraphInputs())["absolute_relative_surplus"]
+        assert state.gap == 0.0
+        assert state.balance == 0.0
+
+    def test_unity_point_is_the_balance_zero_crossing(self) -> None:
+        state = _states(GraphInputs(surplus_strategy_ratio=1.0))["absolute_relative_surplus"]
+        assert state.balance == pytest.approx(0.0)
+
+    def test_relative_dominant_ratio_is_the_relative_pole(self) -> None:
+        state = _states(GraphInputs(surplus_strategy_ratio=3.0))["absolute_relative_surplus"]
+        assert state.balance == pytest.approx(0.5)
+        assert state.leading_pole == "b"
+
+    def test_absolute_dominant_ratio_is_the_absolute_pole(self) -> None:
+        state = _states(GraphInputs(surplus_strategy_ratio=0.5))["absolute_relative_surplus"]
+        assert state.balance == pytest.approx(-1.0 / 3.0)
+        assert state.leading_pole == "a"
+
+    def test_is_shadow_and_never_antagonistic(self) -> None:
+        reg = _reg()
+        assert "absolute_relative_surplus" in reg.shadow_keys
+        assert reg.spec_for("absolute_relative_surplus").antagonistic is False
+
+    def test_poles_are_named_as_specified(self) -> None:
+        spec = _reg().spec_for("absolute_relative_surplus")
+        assert spec.pole_a == "absolute-surplus-value"
+        assert spec.pole_b == "relative-surplus-value"
 
 
 class TestVolumeThreeInputFields:
@@ -445,6 +597,154 @@ class TestVolumeThreeOppositions:
         states = _states(GraphInputs(debt_ratio=-2.0))
         assert states["debt_spiral"].gap == pytest.approx(0.0)
         assert states["debt_spiral"].balance == pytest.approx(0.0)
+
+
+class TestVolumeTwoInputFields:
+    """The four Vol II circulation fields are optional and absent by default.
+
+    Absence is the normal steady state until Vol II data hydration (task
+    #46) lands, so ``None`` must be the DEFAULT, never a fabricated 0.0
+    (Constitution III.11).
+    """
+
+    def test_all_four_default_to_none(self) -> None:
+        inputs = GraphInputs()
+        assert inputs.commodity_overhang_share is None
+        assert inputs.realization_crisis_share is None
+        assert inputs.reproduction_crisis_share is None
+        assert inputs.disproportionality_imbalance is None
+
+    def test_all_four_are_settable_floats(self) -> None:
+        inputs = GraphInputs(
+            commodity_overhang_share=0.4,
+            realization_crisis_share=0.2,
+            reproduction_crisis_share=0.1,
+            disproportionality_imbalance=-0.3,
+        )
+        assert inputs.commodity_overhang_share == pytest.approx(0.4)
+        assert inputs.realization_crisis_share == pytest.approx(0.2)
+        assert inputs.reproduction_crisis_share == pytest.approx(0.1)
+        assert inputs.disproportionality_imbalance == pytest.approx(-0.3)
+
+    def test_graph_inputs_stays_frozen(self) -> None:
+        inputs = GraphInputs(commodity_overhang_share=0.4)
+        with pytest.raises(AttributeError):
+            inputs.commodity_overhang_share = 0.9  # type: ignore[misc]
+
+
+class TestVolumeTwoOppositions:
+    """The four Vol II circulation bindings (U5 Oppositions): SHADOW-first,
+    on the same discipline ``national``/``price_value`` were born under
+    (ADR077) — measured every tick, never principal, absent input reads
+    zero. ``circulation``/``realization``/``reproduction`` share the
+    ``2x-1`` bounded-share family (their inputs are already extensive
+    shares in ``[0, 1]``); ``disproportionality`` reads its already-signed
+    ``[-1, 1]`` input directly.
+    """
+
+    @pytest.mark.parametrize(
+        "key",
+        ["circulation", "realization", "reproduction", "disproportionality"],
+    )
+    def test_absent_input_reads_zero_zero(self, key: str) -> None:
+        states = _states(GraphInputs())
+        assert states[key].gap == pytest.approx(0.0)
+        assert states[key].balance == pytest.approx(0.0)
+
+    @pytest.mark.parametrize(
+        "key",
+        ["circulation", "realization", "reproduction", "disproportionality"],
+    )
+    def test_none_of_them_is_antagonistic(self, key: str) -> None:
+        assert _reg().spec_for(key).antagonistic is False
+
+    @pytest.mark.parametrize(
+        "key",
+        ["circulation", "realization", "reproduction", "disproportionality"],
+    )
+    def test_all_four_are_shadow_and_never_principal(self, key: str) -> None:
+        assert _reg().shadow_keys >= {key}
+
+    def test_all_four_are_county_level(self) -> None:
+        for key in ("circulation", "realization", "reproduction", "disproportionality"):
+            assert _reg().spec_for(key).level_name == "county"
+
+    def test_poles_are_named_as_specified(self) -> None:
+        reg = _reg()
+        assert reg.spec_for("circulation").pole_a == "money-capital"
+        assert reg.spec_for("circulation").pole_b == "commodity-capital"
+        assert reg.spec_for("realization").pole_a == "realized"
+        assert reg.spec_for("realization").pole_b == "unrealized"
+        assert reg.spec_for("reproduction").pole_a == "balanced"
+        assert reg.spec_for("reproduction").pole_b == "unbalanced"
+        assert reg.spec_for("disproportionality").pole_a == "means-of-production"
+        assert reg.spec_for("disproportionality").pole_b == "means-of-consumption"
+
+    def test_zero_share_is_pole_a_dominant_not_neutral(self) -> None:
+        # A share of 0.0 (no overhang / no crisis anywhere / fully balanced)
+        # is the pole-A extreme, not the midpoint: balance = 2*0 - 1 = -1.
+        states = _states(
+            GraphInputs(
+                commodity_overhang_share=0.0,
+                realization_crisis_share=0.0,
+                reproduction_crisis_share=0.0,
+            )
+        )
+        for key in ("circulation", "realization", "reproduction"):
+            assert states[key].balance == pytest.approx(-1.0)
+            assert states[key].gap == pytest.approx(1.0)
+            assert states[key].leading_pole == "a"
+
+    def test_full_share_is_pole_b_dominant(self) -> None:
+        states = _states(
+            GraphInputs(
+                commodity_overhang_share=1.0,
+                realization_crisis_share=1.0,
+                reproduction_crisis_share=1.0,
+            )
+        )
+        for key in ("circulation", "realization", "reproduction"):
+            assert states[key].balance == pytest.approx(1.0)
+            assert states[key].gap == pytest.approx(1.0)
+            assert states[key].leading_pole == "b"
+
+    def test_half_share_is_the_neutral_midpoint(self) -> None:
+        states = _states(
+            GraphInputs(
+                commodity_overhang_share=0.5,
+                realization_crisis_share=0.5,
+                reproduction_crisis_share=0.5,
+            )
+        )
+        for key in ("circulation", "realization", "reproduction"):
+            assert states[key].gap == pytest.approx(0.0)
+            assert states[key].balance == pytest.approx(0.0)
+
+    def test_disproportionality_reads_the_signed_imbalance_directly(self) -> None:
+        states = _states(GraphInputs(disproportionality_imbalance=0.15))
+        assert states["disproportionality"].balance == pytest.approx(0.15)
+        assert states["disproportionality"].gap == pytest.approx(0.15)
+        assert states["disproportionality"].leading_pole == "b"  # over-industrialized
+
+    def test_disproportionality_negative_imbalance_is_pole_a(self) -> None:
+        states = _states(GraphInputs(disproportionality_imbalance=-0.2))
+        assert states["disproportionality"].balance == pytest.approx(-0.2)
+        assert states["disproportionality"].leading_pole == "a"  # under-industrialized
+
+    def test_disproportionality_is_clamped_to_unit_interval(self) -> None:
+        states = _states(GraphInputs(disproportionality_imbalance=1.7))
+        assert states["disproportionality"].balance == pytest.approx(1.0)
+
+    def test_circulation_and_reproduction_transforms_couplings_are_reserved(self) -> None:
+        """ADR103's two dead ``transforms`` slots name exactly these keys —
+        pinned here so a rename of either side silently breaking the
+        coupling is caught at the opposition-catalog layer too (the
+        coupling-graph layer already pins it in test_coupling.py)."""
+        reg = _reg()
+        assert "circulation" in reg.keys
+        assert "realization" in reg.keys
+        assert "reproduction" in reg.keys
+        assert "disproportionality" in reg.keys
 
 
 class TestCatalogDocstringAccuracy:

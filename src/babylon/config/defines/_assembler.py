@@ -14,6 +14,7 @@ import yaml
 from pydantic import BaseModel, ConfigDict, Field
 
 from babylon.config.defines.balkanization import BalkanizationDefines
+from babylon.config.defines.capital_vol2 import CapitalVolumeIIDefines
 from babylon.config.defines.capital_vol3 import CapitalVolumeIIIDefines
 from babylon.config.defines.consciousness import (
     BifurcationDefines,
@@ -130,6 +131,8 @@ class GameDefines(BaseModel):
     - doctrine: DoctrineSystem mechanic coefficients (owner-ratified 2026-07-15)
     - market: Price⟷value scissors dynamics (Program 23 Phase-1 shadow, ADR077)
     - substrate: raw_material_stock depletion/regeneration (#39 T6)
+    - capital_vol2: Volume II reproduction-schema thresholds
+      (023-capital-volume-ii; U3 tick wiring, 2026-07-21)
     - capital_vol3: Volume III surplus-distribution / credit / counter-tendency
       thresholds (024-capital-volume-iii; migrated off module-level Finals
       in the 2026-07-18 honesty sweep)
@@ -201,6 +204,9 @@ class GameDefines(BaseModel):
     market: MarketDefines = Field(default_factory=MarketDefines)
     # Substrate physical stocks — raw_material_stock depletion/regeneration (#39 T6)
     substrate: SubstrateDefines = Field(default_factory=SubstrateDefines)
+    # Volume II reproduction-schema thresholds (023-capital-volume-ii;
+    # U3 tick wiring, 2026-07-21)
+    capital_vol2: CapitalVolumeIIDefines = Field(default_factory=CapitalVolumeIIDefines)
     # Volume III financial-claims thresholds (024-capital-volume-iii;
     # 2026-07-18 honesty sweep, U2)
     capital_vol3: CapitalVolumeIIIDefines = Field(default_factory=CapitalVolumeIIIDefines)
@@ -336,6 +342,7 @@ class GameDefines(BaseModel):
             doctrine=DoctrineDefines(**data.get("doctrine", {})),
             market=MarketDefines(**data.get("market", {})),
             substrate=SubstrateDefines(**data.get("substrate", {})),
+            capital_vol2=CapitalVolumeIIDefines(**data.get("capital_vol2", {})),
             capital_vol3=CapitalVolumeIIIDefines(**data.get("capital_vol3", {})),
             veil=VeilDefines(**data.get("veil", {})),
         )

@@ -1,3 +1,15 @@
+> **CONTROLLER NOTICE 2026-07-21 (TEXTUAL MANUAL) — binding reference for remaining T4 units.**
+> An installed-source-verified Textual 8.2.8 reference manual now exists at
+> /home/user/projects/game/babylon/project/research/24-the-archive/TEXTUAL_MANUAL.md (main checkout — READ it, do not copy it).
+> Two findings are load-bearing for YOUR units: (1) PACED DRIVER (C3): set_timer defers through the
+> message queue but set_interval fires directly from its own asyncio Task, bypassing the queue — both
+> are wall-clock, both tick-skip under load; the driver must therefore own tick monotonicity itself and
+> never derive state ordering from timer callbacks. Thread-worker cancellation is cooperative-only.
+> (2) TEXT CAPTURE: there is NO App.export_text in 8.2.8 — any text-assertion surface builds on
+> Strip.text / render_line(s) / Console.export_text over the recording console (the SVG screenshot's
+> unused sibling). Also: @on and convention handlers dispatch for EVERY class in the MRO — beware
+> double-handling in Screen subclasses.
+
 # Babylon v1.0.0 — The Playable Archive (master plan, FINAL)
 
 > STATUS: RATIFIED — refined and BD-approved 2026-07-21 (remote plan session). All recon

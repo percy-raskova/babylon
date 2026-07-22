@@ -127,6 +127,22 @@ Repo-specific gotchas for future syncs. One bullet per fact.
   the real endgame path is `panels.endgame` reading `types/dialectic.ts`.
   Don't "fix" previews toward the dead field.
 
+## Archive-direction guidelines drop (2026-07-21, atomic mini-push, no converter)
+
+- Uploaded 3 `guidelines/` files (00-archive-tui-direction, 01-typography-iconography,
+  02-interface-shell-views) steering the design agent to the TUI era: Guix-newt + KSBC
+  idiom, the 2026-07-21 gradient delta (crimson→gold ramps on chrome SANCTIONED), the
+  ruled font stack (Iosevka Term + Symbols NF Mono + Noto Emoji — spec at
+  project/research/24-the-archive/TYPOGRAPHY_ICONOGRAPHY_spec.md), and the 4-view shell
+  content (Dashboard theorem gauge / Map lenses / Wiki vault / Topology + rails + verb
+  bar). Local authoring dir: `.design-sync/guidelines-drop/` (was the plan's localDir).
+- **Cockpit component library deliberately left untouched**: the cockpit is LEGACY
+  (TUI-switch ruling 2026-07-20) and `src/frontend/` is DELETED by cutover PR #241 —
+  a full converter re-sync is low-value and the estate will be GONE after cutover. The
+  project's ongoing role is brand playground for Archive TUI mockups. If a future run
+  finds `src/frontend/` missing, that's the cutover, not breakage — do not "repair";
+  ask Percy whether to retire or repurpose the project.
+
 ## spec-113 Living Map re-sync (2026-07-11 — 49 → 59 components)
 
 - **9 components REMOVED** (shell teardown deleted their source): `BottomStrip`

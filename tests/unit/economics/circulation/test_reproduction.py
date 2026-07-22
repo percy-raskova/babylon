@@ -9,6 +9,8 @@ check_extended_reproduction, and compute_disproportionality functions.
 
 from __future__ import annotations
 
+import datetime
+
 import pytest
 
 from babylon.domain.economics.circulation.reproduction import (
@@ -395,3 +397,29 @@ class TestComputeDisproportionality:
         assert result.actual_i_share == pytest.approx(0.95)
         assert result.imbalance == pytest.approx(0.45)
         assert result.imbalance_direction == "OVERPRODUCTION_MEANS_PRODUCTION"
+
+    def test_explicit_year_is_used_verbatim(self) -> None:
+        """An explicit year argument is stamped as-is, not the wall-clock year.
+
+        U3 (2026-07-21 vol2-circulation-engine wiring): simulation callers
+        must be able to pass the simulated year so the tick stays
+        deterministic — a result must not depend on *when* the tick
+        happens to execute.
+        """
+        result = compute_disproportionality(
+            dept_i_output=Currency(600.0),
+            dept_ii_output=Currency(400.0),
+            dept_i_share_required=0.55,
+            year=2019,
+        )
+        assert result.year == 2019
+
+    def test_omitted_year_falls_back_to_wall_clock(self) -> None:
+        """Omitting year preserves the original standalone-script behavior."""
+        result = compute_disproportionality(
+            dept_i_output=Currency(600.0),
+            dept_ii_output=Currency(400.0),
+            dept_i_share_required=0.55,
+        )
+        current_year = datetime.datetime.now(tz=datetime.UTC).year
+        assert result.year == current_year

@@ -29,9 +29,11 @@ from babylon.domain.dialectics.core.opposition import (
     OppositionSpec,
 )
 from babylon.domain.dialectics.instances.catalog import GraphInputs
+from babylon.domain.economics.working_day.types import WorkingDayState
 from babylon.engine.context import TickContext
 from babylon.engine.services import ServiceContainer
 from babylon.engine.systems.contradiction import (
+    FUNDAMENTAL_THEOREM_ATTR,
     OPPOSITION_INTERVENTIONS_ATTR,
     ContradictionSystem,
 )
@@ -298,6 +300,84 @@ class TestWageValuePairsExtraction:
         assert self._inputs(graph).wage_value_pairs == ()
 
 
+class _FixedProductivitySource:
+    """Minimal ``productivity_data_source`` double: a fixed state, any args."""
+
+    def __init__(self, state: WorkingDayState | None) -> None:
+        self._state = state
+
+    def get_working_day_state(
+        self, fips_code: str, naics_sector: str, year: int
+    ) -> WorkingDayState | None:
+        return self._state
+
+
+class TestVolumeOneProductionRatios:
+    """`_build_graph_inputs` derives Vol I U6's two new ``GraphInputs`` ratios.
+
+    ``wealth_subsistence_ratio`` (``value_usevalue``, Ch. 1) and
+    ``surplus_strategy_ratio`` (``absolute_relative_surplus``, Chs. 10/12/15).
+    """
+
+    @staticmethod
+    def _inputs(
+        graph: BabylonGraph,
+        services: ServiceContainer | None = None,
+        tick: int = 0,
+    ):  # type: ignore[no-untyped-def]
+        return ContradictionSystem()._build_graph_inputs(
+            graph, services if services is not None else ServiceContainer.create(), tick
+        )
+
+    def test_wealth_subsistence_ratio_is_a_ratio_of_sums(self) -> None:
+        graph = BabylonGraph()
+        graph.add_node(
+            "c1", node_type=NodeType.SOCIAL_CLASS, wealth=30.0, subsistence_threshold=10.0
+        )
+        graph.add_node(
+            "c2", node_type=NodeType.SOCIAL_CLASS, wealth=10.0, subsistence_threshold=10.0
+        )
+        ratio = self._inputs(graph).wealth_subsistence_ratio
+        assert ratio == pytest.approx(2.0)  # (30+10) / (10+10)
+
+    def test_wealth_subsistence_ratio_skips_inactive_and_non_class_nodes(self) -> None:
+        graph = BabylonGraph()
+        graph.add_node(
+            "c1",
+            node_type=NodeType.SOCIAL_CLASS,
+            wealth=30.0,
+            subsistence_threshold=10.0,
+            active=False,
+        )
+        # `subsistence_threshold` deliberately omitted here: Territory declares no such
+        # field (vocabulary sentinel, check:vocabulary) and _wealth_subsistence_ratio's
+        # own graph.query_nodes(node_type=SOCIAL_CLASS) filter excludes this node by
+        # TYPE alone -- any attribute it carried would be irrelevant to what this test
+        # proves (a non-class node's wealth never contributes to the ratio).
+        graph.add_node("land", node_type=NodeType.TERRITORY, wealth=1000.0)
+        assert self._inputs(graph).wealth_subsistence_ratio is None
+
+    def test_wealth_subsistence_ratio_none_when_no_classes(self) -> None:
+        assert self._inputs(BabylonGraph()).wealth_subsistence_ratio is None
+
+    def test_surplus_strategy_ratio_unwired_is_none(self) -> None:
+        assert self._inputs(BabylonGraph()).surplus_strategy_ratio is None
+
+    def test_surplus_strategy_ratio_wired_from_productivity_data_source(self) -> None:
+        # avg_weekly_hours == the default relative_hours_threshold (40.0),
+        # intensity at its own baseline (1.0) -> ratio exactly at parity.
+        state = WorkingDayState(
+            fips_code="00000",
+            naics_sector="00",
+            year=2022,
+            avg_weekly_hours=40.0,
+            labor_intensity_index=1.0,
+        )
+        services = ServiceContainer.create(productivity_data_source=_FixedProductivitySource(state))
+        ratio = self._inputs(BabylonGraph(), services, tick=0).surplus_strategy_ratio
+        assert ratio == pytest.approx(1.0)
+
+
 class TestGraphInputIdPairs:
     """`_build_graph_inputs` carries node ids beside the float pairs (Program 19).
 
@@ -339,6 +419,73 @@ class TestGraphInputIdPairs:
         inputs = self._inputs(graph)
         assert inputs.exploitation_id_pairs == ()
         assert inputs.wage_value_id_pairs == ()
+
+
+class TestFundamentalTheoremStash:
+    """U2 (Vol I value-production program): the Fundamental Theorem, computed.
+
+    ``_step_registry`` reuses the SAME ``wage_value_id_pairs`` triples
+    ``_build_graph_inputs`` already extracts for the ``wage``/``imperial``
+    oppositions (Phase D4) — zero new graph traversal — and stashes one
+    :class:`ClassPhiReading` per paid class node on the
+    ``fundamental_theorem`` graph attribute.
+    """
+
+    def test_stash_written_for_paid_class_nodes(self) -> None:
+        graph = BabylonGraph()
+        graph.add_node("owner", wealth=30.0, w_paid=120.0, v_produced=100.0)
+        graph.add_node("worker", wealth=10.0, w_paid=60.0, v_produced=100.0)
+
+        ContradictionSystem().step(graph, ServiceContainer.create(), TickContext(tick=1))
+
+        report = graph.graph[FUNDAMENTAL_THEOREM_ATTR]
+        assert set(report.keys()) == {"owner", "worker"}
+        assert report["owner"]["phi_absolute"] == pytest.approx(20.0)
+        assert report["owner"]["is_labor_aristocracy"] is True
+        assert report["worker"]["phi_absolute"] == pytest.approx(-40.0)
+        assert report["worker"]["is_labor_aristocracy"] is False
+
+    def test_stash_omits_unpaid_nodes(self) -> None:
+        graph = BabylonGraph()
+        graph.add_node("bystander", wealth=5.0)  # no w_paid/v_produced
+
+        ContradictionSystem().step(graph, ServiceContainer.create(), TickContext(tick=1))
+
+        assert graph.graph[FUNDAMENTAL_THEOREM_ATTR] == {}
+
+    def test_stash_recomputed_fresh_each_tick(self) -> None:
+        graph = BabylonGraph()
+        graph.add_node("c1", w_paid=6.0, v_produced=5.0)
+        services = ServiceContainer.create()
+        system = ContradictionSystem()
+
+        system.step(graph, services, TickContext(tick=1))
+        first = graph.graph[FUNDAMENTAL_THEOREM_ATTR]["c1"]["phi_absolute"]
+
+        graph.update_node("c1", w_paid=9.0, v_produced=5.0)
+        system.step(graph, services, TickContext(tick=2))
+        second = graph.graph[FUNDAMENTAL_THEOREM_ATTR]["c1"]["phi_absolute"]
+
+        assert first == pytest.approx(1.0)
+        assert second == pytest.approx(4.0)
+
+    def test_phi_absolute_resolved_from_the_formula_registry(self) -> None:
+        """``_stash_fundamental_theorem`` injects ``services.formulas.get(
+        "phi_absolute")`` rather than relying on
+        ``compute_fundamental_theorem``'s own direct-import default — the
+        registered formula is a genuine, hot-swappable production
+        dependency, not a registered-but-unconsumed entry (spec §6.2).
+        Proven by swapping in an obviously-different callable and checking
+        the stash reflects IT."""
+        graph = BabylonGraph()
+        graph.add_node("c1", w_paid=120.0, v_produced=100.0)
+        services = ServiceContainer.create()
+        services.formulas.register("phi_absolute", lambda w, v: 2.0 * w - v)
+
+        ContradictionSystem().step(graph, services, TickContext(tick=1))
+
+        # 2*120 - 100 = 140, NOT the real formula's 120-100=20.
+        assert graph.graph[FUNDAMENTAL_THEOREM_ATTR]["c1"]["phi_absolute"] == pytest.approx(140.0)
 
 
 class TestShadowPartition:
@@ -547,13 +694,26 @@ class TestPriceValueEndToEnd:
             "financial",
         }
         assert states["price_value"]["balance"] == pytest.approx(math.tanh(0.5 / scale))
-        # task #42-C: national now registers shadow, so the channel is no
-        # longer empty-by-default — but this graph builds no FACTION/
-        # INFLUENCES data at all, so national reads the honest absent zero.
+        # task #42-C / Vol I U6 / Vol II U5: national, the three
+        # production-layer shadow bindings AND the four circulation-layer
+        # shadow bindings now register — but this graph builds no FACTION/
+        # INFLUENCES data, no social_class-typed nodes, no
+        # productivity_data_source and no ``tick_dynamics`` county-layer
+        # data, so all eight read the honest absent zero.
         shadow_states = graph.graph["shadow_opposition_states"]
-        assert set(shadow_states) == {"national"}
-        assert shadow_states["national"]["gap"] == 0.0
-        assert shadow_states["national"]["balance"] == 0.0
+        assert set(shadow_states) == {
+            "national",
+            "value_usevalue",
+            "labor_laborpower",
+            "absolute_relative_surplus",
+            "circulation",
+            "realization",
+            "reproduction",
+            "disproportionality",
+        }
+        for key in shadow_states:
+            assert shadow_states[key]["gap"] == 0.0
+            assert shadow_states[key]["balance"] == 0.0
 
 
 class TestNationalAxisEndToEnd:

@@ -5,9 +5,14 @@ tri-county session via ``initialize_session()``, drive ``Vol2CirculationStep``
 directly against the session's persisted tick-0 hex frame, and verify value
 conservation plus the FR-008a boundary-row round trip.
 
-The step is exercised directly (not via ``engine.run_tick``) because the
-canonical runner's engine graph carries no ``_node_type='hex'`` nodes —
-vol2 runner wiring is Phase 5.2 scope, not this test's. The quickstart's
+The step is exercised directly (not via ``engine.run_tick``) because
+``context["vol2_step"]`` runtime-gate wiring is a separate, coordinated
+cross-lane unit (ADR120 §2d), not this test's. Per Vol II U4 (ADR120/
+ADR123): no production code stamps a hex node — the fixture graph carries
+county Territory nodes, and the real hex<->county
+:class:`~babylon.domain.dialectics.instances.scale.ScaleAdjunction`
+(:func:`~babylon.persistence.hex_hydrator.read_hex_county_adjunction`)
+binds them to the step's hex-resolution LODES math. The quickstart's
 ``runtime.fetch_v_total_in_study_area()`` helper does not exist; totals
 come from :class:`CirculationStepResult` + the graph.
 
@@ -118,15 +123,23 @@ def runtime(pg_pool, apply_migrations, tiger_geometries_ingested):  # type: igno
     return PostgresRuntime(pool=pg_pool)
 
 
-def _hex_graph_from_session(runtime, session_id: UUID):  # type: ignore[no-untyped-def]
-    """Build a BabylonGraph of _node_type='hex' nodes from tick-0 hex rows.
+def _county_graph_from_session(runtime, session_id: UUID):  # type: ignore[no-untyped-def]
+    """Build a BabylonGraph of county Territory nodes from tick-0 hex rows.
 
-    Tick 0 is a full frame per spec-089, so ``WHERE tick = 0`` is safe
-    (never ``MAX(tick)`` — dynamic_hex_state is sparse from tick 1 on).
+    Vol II U4 (ADR120/ADR123) reconciliation: no production code stamps a
+    hex node — territories are COUNTY-keyed. Reads the REAL
+    ``hex_spatial_map`` -> :class:`ScaleAdjunction` for this session
+    (:func:`read_hex_county_adjunction`) and AGGREGATES the tick-0 per-hex
+    ``v`` frame up to county grain (the same right-adjoint the step itself
+    uses at its write endpoint) so the fixture matches the reconciled
+    contract exactly. Tick 0 is a full frame per spec-089, so
+    ``WHERE tick = 0`` is safe (never ``MAX(tick)`` — dynamic_hex_state is
+    sparse from tick 1 on).
     """
+    from babylon.persistence.hex_hydrator import read_hex_county_adjunction
     from babylon.topology.graph import BabylonGraph
 
-    graph = BabylonGraph()
+    adjunction = read_hex_county_adjunction(runtime, session_id)
     with runtime._pool.connection() as pg, pg.cursor() as cur:  # noqa: SLF001
         cur.execute(
             "SELECT h3_index, v FROM dynamic_hex_state WHERE session_id = %s AND tick = 0",
@@ -134,18 +147,15 @@ def _hex_graph_from_session(runtime, session_id: UUID):  # type: ignore[no-untyp
         )
         rows = cur.fetchall()
     frame = {h3_index: float(v) for h3_index, v in rows}
-    # Pad to the SPEC's full study area: polygon-envelope cells that the
-    # county-based hydration does not populate enter at v=0.0. Without the
-    # padding, v routed to in-study-but-unhydrated HEX dest columns is
-    # dropped by the step and the FR-010 guard aborts the tick (observed
-    # 2026-07-08: residual ~0.14% of pre_total_v — a real pre-wiring hazard
-    # for remediation Phase 5.2's runner integration).
-    for hex_id in sorted(DETROIT_TRI_COUNTY_HEXES_RES7 | frozenset(frame)):
-        graph.add_node(hex_id, _node_type="hex", v=frame.get(hex_id, 0.0))
-    return graph
+    county_v = adjunction.aggregate({h: frame.get(h, 0.0) for h in adjunction.mapping})
+
+    graph = BabylonGraph()
+    for fips in sorted(county_v):
+        graph.add_node(f"county_{fips}", _node_type="territory", county_fips=fips, v=county_v[fips])
+    return graph, adjunction
 
 
-def _run_one_circulation_tick(session_id: UUID, graph, *, tick: int = 1):  # type: ignore[no-untyped-def]
+def _run_one_circulation_tick(session_id: UUID, graph, adjunction, *, tick: int = 1):  # type: ignore[no-untyped-def]
     """One Vol2CirculationStep tick against the on-disk LODES matrix."""
     from babylon.domain.economics.boundary_flow_register import BoundaryFlowRegister
     from babylon.domain.economics.lodes_commute_matrix import LODESCommuteMatrixLoader
@@ -163,7 +173,9 @@ def _run_one_circulation_tick(session_id: UUID, graph, *, tick: int = 1):  # typ
         study_area_states=_STUDY_STATES,
         domestic_states=US_DOMESTIC_FIPS_STATES,
     )
-    step = Vol2CirculationStep(od_loader=loader, classifier=classifier)
+    step = Vol2CirculationStep(
+        od_loader=loader, hex_county_adjunction=adjunction, classifier=classifier
+    )
     register = BoundaryFlowRegister()
     result = step.step(
         graph=graph,
@@ -196,11 +208,11 @@ def circulation_run(runtime) -> dict[str, Any]:  # type: ignore[no-untyped-def]
         lodes_study_area_hexes=DETROIT_TRI_COUNTY_HEXES_RES7,
         lodes_study_area_states=_STUDY_STATES,
     )
-    graph = _hex_graph_from_session(runtime, sid)
+    graph, adjunction = _county_graph_from_session(runtime, sid)
     pre_total = sum(
-        float(node.attributes.get("v", 0.0)) for node in graph.query_nodes(node_type="hex")
+        float(node.attributes.get("v", 0.0)) for node in graph.query_nodes(node_type="territory")
     )
-    result, register = _run_one_circulation_tick(sid, graph)
+    result, register = _run_one_circulation_tick(sid, graph, adjunction)
     rows = register.flush()
     return {"sid": sid, "pre_total": pre_total, "result": result, "rows": rows}
 

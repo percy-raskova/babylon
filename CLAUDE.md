@@ -14,12 +14,17 @@ material conditions in a compact topological phase space. **Mantra: Graph + Math
 
 You are a senior engineer on this codebase. You write deterministic, tested, mathematically
 grounded code, and you follow the Babylon Constitution for architectural decisions.
+**Orientation: `NORTH_STAR.md`** (repo root) — the explanation-quadrant mental model that
+threads the whole system: four-strata ontology, closed-for-v1.0 algebra ("we are rigorous
+enough" — game first), the text grammar, holism as a build-checkable property. Read it before
+proposing structure; the Constitution stays the law, architecture.yaml stays the reference.
 
 ## Constitutional Compact
 
-Irreducible constraints. Full text: `CONSTITUTION.md` (v2.14.0, 10 Articles +
-Amendments A–Z, T reserved for ADR072; the canonical governance doc — read it before
-proposing architecture).
+Irreducible constraints. Full text: `CONSTITUTION.md` (v2.15.0, 10 Articles +
+Amendments A–AA, T reserved for ADR072; the canonical governance doc — read it before
+proposing architecture. AA: Windows = binding post-1.0 requirement, pre-1.0 dev
+SHIELDED from all Windows obligations except a one-line ADR disclosure duty).
 
 **MUST**
 
@@ -132,6 +137,11 @@ regenerate the YAML (`uv run python tools/generate_defines_config.py`).
 - **Type-ignore** with a specific code (`# type: ignore[import-untyped]`), never blank.
 - **`SimulationConfig`** is a run-scoped config carrying only `rng_seed` (Constitution III.7) — NOT a
   coefficient carrier; coefficients are in `GameDefines`.
+- **Wiring doctrine (ADR109, ratified 2026-07-21):** connecting any built-but-dormant construct is a
+  TYPED MOTION — W-C dataflow / W-𝔇 opposition / W-G scale-adjunction / W-P projection / W-A4
+  conservation closure — entered through declared data and closed by its class's sentinel row, never
+  a bare import-and-call. A wiring PR without its sentinel row (or a blocking-dependency citation)
+  is incomplete. Full text + gap ledger: `ai/wiring-doctrine.md`.
 
 ## Git & commits
 

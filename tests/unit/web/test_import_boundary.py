@@ -53,6 +53,12 @@ ALLOWED_FILES = {
     # consumer, so it needs GameDefines/SimulationConfig/EndgameDetector/
     # step() directly to instrument+calibrate EndgameDetector pacing.
     "game/management/commands/pacing_probe.py",
+    # T1.2 keel (DSN unification, ADR099 guardrail): observatory/db.py
+    # resolves both Django database aliases' DSNs through the ONE config
+    # seam (babylon.config.dsn) instead of reading os.environ ad hoc per
+    # alias. Same shape as babylon_web/health/views.py's exception below —
+    # a read-only config lookup, never engine mechanics.
+    "observatory/db.py",
 }
 
 

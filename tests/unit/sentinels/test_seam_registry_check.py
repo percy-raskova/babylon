@@ -117,6 +117,58 @@ def test_tick_write_set_extracts_engine_attrs() -> None:
     assert len(write_set) >= 30  # the engine stamps ~30 tick_* attrs per territory
 
 
+# --- Vol I U9 (monitoring): the four Feature 021 base-field rows U3 finally
+# activates — reserve_ratio/foreclosure_rate/eviction_rate (real once U3's
+# accumulation loop is wired) + displacement_rate (honestly still unfed) ---
+
+
+class TestVol1U9TerritoryBaseFieldRows:
+    """``reserve_ratio``/``foreclosure_rate``/``eviction_rate``/``displacement_rate``
+    are Territory model fields ``_serialize_territory`` has emitted since
+    Feature 021 but the Seam Observatory never declared — closed by U9/ADR115
+    now that Vol I U3 makes three of the four genuinely live."""
+
+    @pytest.mark.parametrize(
+        "payload",
+        ["reserve_ratio", "foreclosure_rate", "eviction_rate", "displacement_rate"],
+    )
+    def test_row_exists_at_territory_scope(self, payload: str) -> None:
+        row = next(
+            e for e in SEAM_REGISTRY if e.scope is SeamScope.TERRITORY and e.payload == payload
+        )
+        assert row.wire_keys == (payload,)
+        assert row.dtype == "float"
+        assert row.nullable is False
+
+    @pytest.mark.parametrize("payload", ["reserve_ratio", "foreclosure_rate", "eviction_rate"])
+    def test_u3_activated_rows_are_declared_conditional(self, payload: str) -> None:
+        """The three rows U3 gives a real producer are DECLARED_CONDITIONAL,
+
+        never MUST_BE_LIVE — they were frozen at 0.0 for their whole prior
+        life and only *can* vary now, not *must*.
+        """
+        row = next(
+            e for e in SEAM_REGISTRY if e.scope is SeamScope.TERRITORY and e.payload == payload
+        )
+        assert row.liveness_class is LivenessClass.DECLARED_CONDITIONAL
+        assert row.liveness_condition is not None
+        assert "U3" in row.liveness_condition
+
+    def test_displacement_rate_is_honestly_not_yet_computed(self) -> None:
+        """No FRED-backed source exists for it — U3's own recorded scope boundary."""
+        row = next(
+            e
+            for e in SEAM_REGISTRY
+            if e.scope is SeamScope.TERRITORY and e.payload == "displacement_rate"
+        )
+        assert row.liveness_class is LivenessClass.NOT_YET_COMPUTED
+
+    def test_new_rows_do_not_break_sensor_1(self) -> None:
+        """Sensor 1 stays green with the four new rows present (no phantom/drop)."""
+        assert sensor1.check_map_metrics() == []
+        assert sensor1.check_tick_payloads_exist() == []
+
+
 def test_registered_tick_payloads_exist_in_engine() -> None:
     """Every shipped tick_* payload is actually written by the engine (green)."""
     assert sensor1.check_tick_payloads_exist() == []
@@ -155,19 +207,34 @@ def test_tick_coverage_advisory_lists_unregistered_engine_attrs() -> None:
 
 
 def test_severity_vocabulary_is_clean_and_gates() -> None:
-    """After the drift repair, every _EVENT_SEVERITY key is a real EventType (gating)."""
+    """After T1.1 U2's single-sourcing, the real bridge carries no local
+    _EVENT_SEVERITY literal (gating)."""
     assert sensor1.check_severity_vocabulary() == []
 
 
-def test_severity_vocabulary_reds_on_non_eventtype_key(tmp_path: Path) -> None:
-    """A regression that keys _EVENT_SEVERITY on a non-EventType string reds the gate."""
+def test_severity_vocabulary_reds_on_a_reintroduced_local_literal(tmp_path: Path) -> None:
+    """A regression that reintroduces a local _EVENT_SEVERITY dict reds the gate —
+    T1.1 U2's single-source guardrail (the vocabulary invariant the old version of
+    this check validated is now a structural Pydantic-typed guarantee upstream in
+    babylon.models.event_severity; this check's job is only to catch the literal's
+    reappearance)."""
     fake = tmp_path / "fake_bridge.py"
     fake.write_text(
         '_EVENT_SEVERITY = {"economic_crisis": "critical", "totally_fake_event": "warning"}\n'
     )
     violations = sensor1.check_severity_vocabulary(path=fake)
     assert len(violations) == 1
-    assert "totally_fake_event" in violations[0]
+    assert "_EVENT_SEVERITY" in violations[0]
+
+
+def test_severity_vocabulary_stays_clean_without_any_severity_assignment(
+    tmp_path: Path,
+) -> None:
+    """A fixture with no _EVENT_SEVERITY assignment at all is clean, not an
+    infrastructure error — the check must not require the name to exist."""
+    fake = tmp_path / "fake_bridge_no_severity.py"
+    fake.write_text("SOME_OTHER_CONSTANT = 1\n")
+    assert sensor1.check_severity_vocabulary(path=fake) == []
 
 
 def test_narrator_vocabulary_advisory_flags_unreachable_templates() -> None:

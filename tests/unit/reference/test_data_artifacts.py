@@ -63,9 +63,13 @@ class TestManifest:
             digest = hashlib.sha256(path.read_bytes()).hexdigest()
             assert digest == entry["sha256"], f"{entry['name']} drifted from its manifest hash"
             checked += 1
-        assert (
-            checked == 4
-        )  # the four registered canonical CSVs (R1 pair post-demotion, ricci, county->CZ)
+        assert checked == 17
+        # the four registered canonical CSVs (R1 pair post-demotion, ricci,
+        # county->CZ) plus the 13 Vol II Unit U2 hand-registered LODES
+        # entries (1 tri-county crosswalk + 12 OD-matrix years, generator
+        # tools/make_lodes_tri_county_artifact.py — see
+        # tests/unit/tools/test_lodes_artifact_manifest_entries.py for their
+        # dedicated content-pinning tripwire).
 
     def test_manifest_carries_all_registered_artifacts(self) -> None:
         # Post-cutover the manifest is FULL-COVERAGE: the nine registered
@@ -322,9 +326,25 @@ class TestManifestV2Writer:
         """The actual committed v1 manifest's artifact entries — reused so
         the round-trip tests prove something about real content, not just
         synthetic fixtures, and so at least one entry exercises a
-        multi-line-wrapped ``material_relation`` (the FOLD-IN 1 fix)."""
+        multi-line-wrapped ``material_relation`` (the FOLD-IN 1 fix).
+
+        Filtered to entries this writer actually manages
+        (``generator: tools/make_data_artifacts.py``): ``_write_manifest``
+        unconditionally stamps that literal on every entry it writes (it has
+        no per-entry ``generator`` concept), so round-tripping the Vol II
+        Unit U2 hand-maintained LODES entries (``generator:
+        tools/make_lodes_tri_county_artifact.py``) through it would rewrite
+        their generator field out from under them — a real fact about the
+        writer, not a bug this suite is chartered to pin. See
+        ``tests/unit/tools/test_lodes_artifact_manifest_entries.py`` for the
+        LODES entries' own dedicated content contract.
+        """
         manifest = yaml.safe_load(_MANIFEST.read_text())
-        return manifest["artifacts"]  # type: ignore[no-any-return]
+        return [
+            entry
+            for entry in manifest["artifacts"]
+            if entry["generator"] == "tools/make_data_artifacts.py"
+        ]
 
     @pytest.fixture()
     def schema_block(self) -> dict[str, object]:
@@ -558,8 +578,16 @@ class TestManifestRewriteAtomicity:
 
     @pytest.fixture()
     def real_entries(self) -> list[dict[str, object]]:
+        # Filtered like TestManifestV2Writer's fixture of the same name (see
+        # its docstring): entries the writer round-trips faithfully, not the
+        # Vol II Unit U2 hand-maintained LODES entries whose generator field
+        # this writer doesn't preserve.
         manifest = yaml.safe_load(_MANIFEST.read_text())
-        return manifest["artifacts"]  # type: ignore[no-any-return]
+        return [
+            entry
+            for entry in manifest["artifacts"]
+            if entry["generator"] == "tools/make_data_artifacts.py"
+        ]
 
     @pytest.fixture()
     def schema_block(self) -> dict[str, object]:

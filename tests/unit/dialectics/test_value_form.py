@@ -19,9 +19,11 @@ from hypothesis import given, settings
 from hypothesis import strategies as st
 
 from babylon.domain.dialectics.instances.value_form import (
+    ClassPhiReading,
     PhiDecomposition,
     ValueFormAdjunction,
     class_position_by_phi_hour,
+    compute_fundamental_theorem,
     phi_class,
     phi_domestic,
     phi_hour,
@@ -111,6 +113,186 @@ class TestPhiClass:
     def test_negative_value_raises(self) -> None:
         with pytest.raises(ValueError, match="v_c"):
             phi_class(w_c=100.0, v_c=-5.0)
+
+
+class TestClassPhiReading:
+    """The frozen per-class/county Fundamental Theorem reading model."""
+
+    def test_constructs_with_all_fields(self) -> None:
+        reading = ClassPhiReading(
+            entity_id="C001",
+            w_paid=120.0,
+            v_produced=100.0,
+            phi_absolute=20.0,
+            phi_relative=0.2,
+            labor_aristocracy_ratio=1.2,
+            is_labor_aristocracy=True,
+        )
+        assert reading.entity_id == "C001"
+        assert reading.is_labor_aristocracy is True
+
+    def test_optional_fields_default_to_none(self) -> None:
+        reading = ClassPhiReading(entity_id="C001", w_paid=10.0, v_produced=5.0, phi_absolute=5.0)
+        assert reading.phi_relative is None
+        assert reading.labor_aristocracy_ratio is None
+        assert reading.is_labor_aristocracy is None
+
+    def test_is_frozen(self) -> None:
+        from pydantic import ValidationError
+
+        reading = ClassPhiReading(entity_id="C001", w_paid=10.0, v_produced=5.0, phi_absolute=5.0)
+        with pytest.raises(ValidationError):
+            reading.entity_id = "C002"  # type: ignore[misc]
+
+    def test_rejects_unknown_fields(self) -> None:
+        from pydantic import ValidationError
+
+        with pytest.raises(ValidationError):
+            ClassPhiReading(
+                entity_id="C001",
+                w_paid=10.0,
+                v_produced=5.0,
+                phi_absolute=5.0,
+                bogus=1.0,  # type: ignore[call-arg]
+            )
+
+
+class TestComputeFundamentalTheorem:
+    """The Fundamental Theorem, computed per class/county (U2).
+
+    Reuses the EXACT ``(node_id, w_paid, v_produced)`` triples
+    ``GraphInputs.wage_value_id_pairs`` already extracts for the
+    ``wage``/``imperial`` oppositions (Phase D4) — no parallel Φ
+    computation. Wires the four formerly-dead formulas
+    (``calculate_imperial_rent_gap``, ``calculate_labor_aristocracy_ratio``,
+    ``is_labor_aristocracy``, ``phi_class``) to a genuine caller.
+    """
+
+    def test_imperial_bribe_reading(self) -> None:
+        readings = compute_fundamental_theorem((("owner", 120.0, 100.0),))
+        (reading,) = readings
+        assert reading.entity_id == "owner"
+        assert reading.w_paid == pytest.approx(120.0)
+        assert reading.v_produced == pytest.approx(100.0)
+        assert reading.phi_absolute == pytest.approx(20.0)
+        assert reading.phi_relative == pytest.approx(0.2)
+        assert reading.labor_aristocracy_ratio == pytest.approx(1.2)
+        assert reading.is_labor_aristocracy is True
+
+    def test_super_exploited_reading(self) -> None:
+        readings = compute_fundamental_theorem((("worker", 60.0, 100.0),))
+        (reading,) = readings
+        assert reading.phi_absolute == pytest.approx(-40.0)
+        assert reading.phi_relative == pytest.approx(-0.4)
+        assert reading.labor_aristocracy_ratio == pytest.approx(0.6)
+        assert reading.is_labor_aristocracy is False
+
+    def test_reuses_phi_class_and_the_fundamental_theorem_formulas(self) -> None:
+        """Cross-check: the report's fields equal calling the underlying
+        formulas directly on the SAME (w_paid, v_produced) pair — this
+        function adds no parallel arithmetic, only the bundling."""
+        from babylon.formulas.fundamental_theorem import (
+            calculate_imperial_rent_gap,
+            calculate_labor_aristocracy_ratio,
+            is_labor_aristocracy,
+        )
+
+        w_paid, v_produced = 87.0, 65.0
+        (reading,) = compute_fundamental_theorem((("c1", w_paid, v_produced),))
+        assert reading.phi_absolute == calculate_imperial_rent_gap(w_paid, v_produced)
+        assert reading.phi_relative == phi_class(w_c=w_paid, v_c=v_produced)
+        assert reading.labor_aristocracy_ratio == calculate_labor_aristocracy_ratio(
+            w_paid, v_produced
+        )
+        assert reading.is_labor_aristocracy == is_labor_aristocracy(w_paid, v_produced)
+
+    def test_phi_absolute_fn_defaults_to_calculate_imperial_rent_gap(self) -> None:
+        """No injected callable: falls back to the direct-import default —
+        every pre-existing call site (this test file, the reference
+        calibration test) keeps working unchanged."""
+        (reading,) = compute_fundamental_theorem((("c1", 120.0, 100.0),))
+        assert reading.phi_absolute == pytest.approx(20.0)
+
+    def test_phi_absolute_fn_is_injectable(self) -> None:
+        """The engine layer injects ``services.formulas.get("phi_absolute")``
+        (``ContradictionSystem._stash_fundamental_theorem``) instead of
+        relying on the direct-import default, so the ``FormulaRegistry``
+        entry is a genuine, hot-swappable production dependency — not a
+        registered-but-unconsumed entry (spec §6.2). Proven here by
+        injecting an obviously-different callable and checking the report
+        reflects IT, not the default formula."""
+
+        def double_the_wage(w_paid: float, v_produced: float) -> float:
+            return 2.0 * w_paid - v_produced
+
+        (reading,) = compute_fundamental_theorem(
+            (("c1", 120.0, 100.0),), phi_absolute_fn=double_the_wage
+        )
+        assert reading.phi_absolute == pytest.approx(140.0)  # 2*120 - 100, NOT 120-100=20
+
+    def test_zero_value_produced_is_honest_absence_not_fabrication(self) -> None:
+        """v_produced <= 0 has no defined RATIO (phi_class/ratio/aristocracy
+        all raise on it) — those three fields are None rather than a
+        fabricated number (Constitution III.11); phi_absolute stays defined
+        (subtraction has no singularity)."""
+        (reading,) = compute_fundamental_theorem((("idle", 10.0, 0.0),))
+        assert reading.phi_absolute == pytest.approx(10.0)
+        assert reading.phi_relative is None
+        assert reading.labor_aristocracy_ratio is None
+        assert reading.is_labor_aristocracy is None
+
+    def test_negative_value_produced_is_also_honest_absence(self) -> None:
+        (reading,) = compute_fundamental_theorem((("corrupt", 10.0, -5.0),))
+        assert reading.phi_absolute == pytest.approx(15.0)
+        assert reading.phi_relative is None
+        assert reading.labor_aristocracy_ratio is None
+        assert reading.is_labor_aristocracy is None
+
+    def test_empty_input_yields_empty_report(self) -> None:
+        assert compute_fundamental_theorem(()) == ()
+
+    def test_multiple_classes_preserve_input_order(self) -> None:
+        pairs = (("a", 10.0, 5.0), ("b", 1.0, 1.0), ("c", 0.0, 3.0))
+        readings = compute_fundamental_theorem(pairs)
+        assert tuple(r.entity_id for r in readings) == ("a", "b", "c")
+
+    def test_reading_is_frozen(self) -> None:
+        from pydantic import ValidationError
+
+        (reading,) = compute_fundamental_theorem((("c1", 10.0, 5.0),))
+        with pytest.raises(ValidationError):
+            reading.phi_absolute = 999.0  # type: ignore[misc]
+
+    #: (entity_id, wages_core_millions, value_produced_millions,
+    #:  imperial_rent_millions, labor_aristocracy_ratio) — captured 2026-07-21
+    #:  from view_imperial_rent (data/sqlite/marxist-data-3NF.sqlite).
+    _MINING_2023 = ("mining_21_2023", 92189.496, 573679.598, -481490.102, 0.16069857865156292)
+    _WAREHOUSING_2023 = (
+        "warehousing_493_2023",
+        114593.056,
+        56155.266,
+        58437.78999999999,
+        2.0406466599232207,
+    )
+
+    @pytest.mark.parametrize("golden", [_MINING_2023, _WAREHOUSING_2023])
+    def test_reproduces_pinned_reference_rows(
+        self, golden: tuple[str, float, float, float, float]
+    ) -> None:
+        """CI-unconditional companion to
+        ``tests/unit/reference/test_marxian_views.py::
+        TestFundamentalTheoremCalibration`` (adversarial re-review
+        correction, Constitution III.12) — that class is entirely gated
+        behind the live reference DB (skips on the ci-data subset), so its
+        redundant verification never ran in CI. These two literal, pinned
+        rows (BOTH signs of Φ: mining super-exploited, warehousing an
+        actual labor-aristocracy reading) require no DB connection and
+        execute on every CI run."""
+        entity_id, wages_core, value_produced, imperial_rent, ratio = golden
+        (reading,) = compute_fundamental_theorem(((entity_id, wages_core, value_produced),))
+        assert reading.phi_absolute == pytest.approx(imperial_rent)
+        assert reading.labor_aristocracy_ratio == pytest.approx(ratio)
+        assert reading.is_labor_aristocracy is (ratio > 1.0)
 
 
 class TestPhiHour:

@@ -12,6 +12,23 @@ from :class:`babylon.kernel.system_protocol.System` because the caller is
 ``ImperialRentSystem.step()`` and supplies the boundary register and session
 metadata directly.
 
+**County-keyed reconciliation (Vol II Circulation program, Unit U4;
+owner ruling 7, #39/Amendment U — ADR120/ADR123).** No production code ever
+stamps a ``hex`` graph node — territories are COUNTY-keyed; hex res-7 is
+immutable substrate. The LODES OD matrix is genuinely hex-resolution (it
+models commute flows between H3 cells), so the reconciliation is a BINDING
+at the boundary, not a rewrite of the math: :meth:`step` reads/writes a
+``v`` value per eligible county ``Territory`` node and uses the
+constructor-injected :class:`~babylon.domain.dialectics.instances.scale.
+ScaleAdjunction` (``allocate ⊣ aggregate``) to push each county's aggregate
+``v`` down to hex grain before the unchanged matrix-vector algorithm runs,
+then sum the resulting hex-grain post-state back up to its county parent
+for the ``update_node`` write. Boundary register rows are UNAFFECTED — they
+key on ``NodeKind.HEX`` (a register-row label), not a graph node id, so hex
+ids inside the register are not "hex stamping" and carry no county binding.
+See :func:`babylon.persistence.hex_hydrator.read_hex_county_adjunction` for
+the real, session-scoped adjunction builder.
+
 Constitution constraints:
 
 - **II.6 + GATE-2**: no DB I/O during the step body; the OD matrix is loaded
@@ -40,11 +57,13 @@ from uuid import UUID
 
 import numpy as np
 
+from babylon.domain.dialectics.instances.scale import ScaleAdjunction
 from babylon.domain.economics.boundary_flow_register import (
     BoundaryEdgeKind,
     BoundaryFlowRegister,
     NodeKind,
 )
+from babylon.domain.economics.tick.graph_bridge import resolve_county_identity
 from babylon.kernel.system_base import SystemBase
 from babylon.models.enums import NodeType
 
@@ -106,16 +125,22 @@ class Vol2CirculationStep:
 
     Construction takes the loader so the year-scoped matrix is fetched
     lazily at each ``step()`` call (the loader caches the current year, so
-    repeated step calls in a year share the same CSR matrix).
+    repeated step calls in a year share the same CSR matrix). It also takes
+    the hex<->county :class:`ScaleAdjunction` binding (see the module
+    docstring's "County-keyed reconciliation" section) so the read/write
+    endpoints of the per-hex ``v`` vector go through county ``Territory``
+    nodes, never hex nodes.
     """
 
     def __init__(
         self,
         *,
         od_loader: LODESCommuteMatrixLoader,
+        hex_county_adjunction: ScaleAdjunction,
         classifier: CrossBorderCommuteClassifier | None = None,
     ) -> None:
         self._od_loader = od_loader
+        self._hex_county_adjunction = hex_county_adjunction
         self._classifier = classifier
 
     def step(  # noqa: C901, PLR0915 — FR-009/010/011/030a/conservation are inherently coupled; splitting would harm clarity
@@ -130,9 +155,13 @@ class Vol2CirculationStep:
         """Execute one tick of Vol II Circulation.
 
         Args:
-            graph: In-memory hex graph; hex nodes carry the ``v`` attribute.
-                Modified in-place: post-step ``v`` values are written back
-                to ``graph.nodes[hex_id]["v"]``.
+            graph: In-memory graph; eligible county ``Territory`` nodes
+                (``resolve_county_identity(node) is not None``) carry the
+                county-grain ``v`` attribute. Modified in-place: post-step
+                ``v`` values are ALLOCATED to hex grain (read), run through
+                the unchanged hex-resolution algorithm, then AGGREGATED
+                back and written to ``graph.nodes[territory_id]["v"]`` for
+                each eligible county — never to a hex node (none exist).
             register: Per-tick boundary register buffer; receives the
                 ``COMMUTE_OUT`` + paired ``TRADE_EDGE`` rows.
             session_id: UUID of the active session (for register rows).
@@ -158,11 +187,30 @@ class Vol2CirculationStep:
         year_matrix = self._od_loader.load_year(simulated_year)
         od_year_used = year_matrix.year
 
-        # ── 1. Snapshot pre-state v vector for in-area hexes ────────────────
-        # We treat any hex node carrying _node_type == "hex" as in-area.
-        hex_v: dict[str, float] = {}
-        for node in protocol.query_nodes(node_type=NodeType.HEX):
-            hex_v[node.id] = float(node.attributes.get("v", 0.0))
+        # ── 1. Snapshot pre-state v, ALLOCATED from county grain to hex grain ─
+        # #39/Amendment U (owner ruling 7): no production code stamps a hex
+        # node -- territories are COUNTY-keyed. Read each eligible county
+        # Territory node's v, then ALLOCATE it down to hex grain by the
+        # constructor-injected ScaleAdjunction's per-hex share (left adjoint)
+        # so the hex-resolution algorithm below runs UNCHANGED (ADR120/123
+        # disposition: a boundary binding, not a rewrite of the math).
+        county_v: dict[str, float] = {}
+        fips_to_node: dict[str, str] = {}
+        for node in sorted(
+            protocol.query_nodes(node_type=NodeType.TERRITORY),
+            key=lambda n: n.id,
+        ):
+            fips = resolve_county_identity(node)
+            if fips is None:
+                continue
+            county_v[fips] = float(node.attributes.get("v", 0.0))
+            fips_to_node[fips] = str(node.id)
+
+        # allocate() fails loud (KeyError) when the adjunction names a
+        # county this graph carries no eligible Territory for -- a
+        # session/adjunction mismatch is a wiring bug, not a zero
+        # (Constitution III.11).
+        hex_v: dict[str, float] = self._hex_county_adjunction.allocate(county_v)
 
         pre_total_v = float(sum(hex_v.values()))
 
@@ -281,9 +329,19 @@ class Vol2CirculationStep:
                 f"boundary_out={boundary_out_total:.6f}"
             )
 
-        # ── 7. Write v_post back to the graph (in-place mutation) ───────────
-        for hex_id, v_post_val in hex_v_post.items():
-            protocol.update_node(hex_id, v=v_post_val)
+        # ── 7. AGGREGATE hex_v_post back to county grain, write back ────────
+        # The write endpoint mirrors the read endpoint's binding: sum
+        # (right adjoint) the hex-grain post-state back up to its county
+        # parent -- an extensive quantity, never averaged -- and write the
+        # county Territory node's v. hex_v_post's key set equals hex_v's
+        # (built above from allocate()), which is exactly the adjunction's
+        # full child set, so aggregate() cannot KeyError here; fips_to_node
+        # covers every adjunction parent because county_v (built from the
+        # SAME eligible-territory loop) already had to for allocate() to
+        # have succeeded above.
+        county_v_post = self._hex_county_adjunction.aggregate(hex_v_post)
+        for fips, v_post_val in county_v_post.items():
+            protocol.update_node(fips_to_node[fips], v=v_post_val)
 
         wall_time_ms = (time.perf_counter() - t0) * 1000.0
         return CirculationStepResult(

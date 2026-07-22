@@ -47,10 +47,11 @@ from __future__ import annotations
 
 import argparse
 import logging
-import os
 import sqlite3
 from pathlib import Path
 from typing import TYPE_CHECKING
+
+from babylon.config.dsn import resolve_dsn
 
 if TYPE_CHECKING:
     from psycopg_pool import ConnectionPool
@@ -312,18 +313,17 @@ def _cli() -> int:
     )
     parser.add_argument(
         "--dsn",
-        default=os.environ.get(
-            "BABYLON_PG_DSN",
-            os.environ.get(
-                "BABYLON_TEST_PG_DSN",
-                "dbname=babylon_test host=localhost port=5433 user=test password=test",
-            ),
+        default=resolve_dsn(
+            legacy_env=("BABYLON_PG_DSN", "BABYLON_TEST_PG_DSN"),
+            default="dbname=babylon_test host=localhost port=5433 user=test password=test",
         ),
-        help="Postgres DSN (defaults to BABYLON_PG_DSN env var)",
+        help="Postgres DSN (defaults to BABYLON_DSN, or the deprecated BABYLON_PG_DSN env var)",
     )
     args = parser.parse_args()
 
-    logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
+    from babylon.config.logging_config import setup_logging
+
+    setup_logging(default_level="INFO")
     from psycopg_pool import ConnectionPool
 
     with ConnectionPool(args.dsn, min_size=1, max_size=2, open=True) as pool:

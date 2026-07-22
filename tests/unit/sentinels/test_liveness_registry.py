@@ -27,6 +27,9 @@ def test_registry_declares_the_known_producers() -> None:
         "ground_rent_path_a",
         "fictitious_capital_stock",
         "debt_spiral_threshold",
+        "fundamental_theorem",
+        "wealth_subsistence_ratio",
+        "surplus_strategy_ratio",
     } <= names
 
 
@@ -41,6 +44,26 @@ def test_pole_readings_is_the_declared_dormant_row() -> None:
     row = next(r for r in LIVENESS_ROWS if r.name == "pole_readings")
     assert row.consumer_files == ()
     assert "sentinel" in row.dormant_reason.lower()
+
+
+def test_fundamental_theorem_is_the_vol1_u2_dormant_row() -> None:
+    """``fundamental_theorem`` (Vol I U2) is graph-attribute-only, same as
+
+    ``pole_readings``/``market_balance`` — a declared, reasoned dormancy, not
+    a silent one (ADR117's own recorded scope boundary, closed out by U9).
+    """
+    row = next(r for r in LIVENESS_ROWS if r.name == "fundamental_theorem")
+    assert row.consumer_files == ()
+    assert "u2" in row.dormant_reason.lower() or "phase-1-shadow" in row.dormant_reason.lower()
+    assert "veil" in row.dormant_reason.lower()
+
+
+def test_vol1_u6_ratio_rows_are_consumed_by_the_opposition_catalog() -> None:
+    """``wealth_subsistence_ratio``/``surplus_strategy_ratio`` (U6) feed catalog.py."""
+    names = {"wealth_subsistence_ratio", "surplus_strategy_ratio"}
+    for row in LIVENESS_ROWS:
+        if row.name in names:
+            assert row.consumer_files == ("src/babylon/domain/dialectics/instances/catalog.py",)
 
 
 def test_row_rejects_output_with_neither_consumer_nor_reason() -> None:

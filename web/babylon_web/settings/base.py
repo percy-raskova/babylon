@@ -10,7 +10,12 @@ from __future__ import annotations
 import os
 from pathlib import Path
 
-from observatory.db import build_sim_database_alias, default_sim_dsn
+from observatory.db import (
+    build_primary_database_alias,
+    build_sim_database_alias,
+    default_primary_dsn,
+    default_sim_dsn,
+)
 
 # --------------------------------------------------------------------------- #
 # Paths
@@ -96,15 +101,14 @@ WSGI_APPLICATION = "babylon_web.wsgi.application"
 # --------------------------------------------------------------------------- #
 # Database — PostGIS backend for H3 spatial queries
 # --------------------------------------------------------------------------- #
+# T1.2 keel: both DSNs below resolve through the ONE config seam
+# (babylon.config.dsn, via observatory/db.py) — BABYLON_DSN (canonical) wins
+# for either alias; each alias keeps its own deprecated legacy fallback
+# (POSTGRES_* split vars for "default", BABYLON_PG_DSN for "sim") and its own
+# historical default. See ai/_inbox/PROGRAM_v1_0_0_playable_archive.md Part 3
+# (T1.2) and babylon.config.dsn's module docstring for the precedence order.
 DATABASES = {
-    "default": {
-        "ENGINE": "django.contrib.gis.db.backends.postgis",
-        "NAME": os.environ.get("POSTGRES_DB", "babylon"),
-        "USER": os.environ.get("POSTGRES_USER", "babylon"),
-        "PASSWORD": os.environ.get("POSTGRES_PASSWORD", "babylon"),
-        "HOST": os.environ.get("POSTGRES_HOST", "localhost"),
-        "PORT": os.environ.get("POSTGRES_PORT", "5432"),
-    },
+    "default": build_primary_database_alias(default_primary_dsn()),
     # spec-096: the second, READ-ONLY alias pointing at the simulation runner's
     # Postgres (spec-062 dynamic_* schema + spec-087-089 additions). DSN from
     # BABYLON_PG_DSN (default localhost:5433/babylon_test — the tick_probe

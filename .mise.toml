@@ -160,6 +160,10 @@ run = "uv run python tools/generate_pr_body.py --base ${usage_base} --head ${usa
 description = "Seam Observatory Sensor 1: observable-field continuity gate (Constitution VIII.12 / III.11)"
 run = "uv run python tools/sentinel_check.py seam --check"
 
+[tasks."check:seam-algebra"]
+description = "Seam-algebra sentinel (T1.1 U3): static Lawvere co-Heyting boundary (dL) over the unified construct-to-expected-consumer registry -- disconnected-subsystem gate (static)"
+run = "uv run python tools/sentinel_check.py seam-algebra --check"
+
 [tasks."check:coverage"]
 description = "Data-coverage sentinel: every declared reference-data source class exists (static gate)"
 run = "uv run python tools/sentinel_check.py coverage --check"
@@ -179,6 +183,10 @@ run = "uv run python tools/sentinel_check.py dangling --check"
 [tasks."check:unconsumed"]
 description = "Unconsumed-value sentinel: every declared computed dict key has a real production reader (static gate)"
 run = "uv run python tools/sentinel_check.py unconsumed --check"
+
+[tasks."check:formula-registration"]
+description = "Dead-formula-registration sentinel (Vol I U7): every declared FormulaRegistry entry has a real production caller other than its own registration call, or a cited exemption (static gate)"
+run = "uv run python tools/sentinel_check.py formula_registration --check"
 
 [tasks."check:defines-passthrough"]
 description = "Defines-passthrough sentinel (task #42): every formulas-layer call declaring an optional `defines` param must pass the run's live defines, not silently fall back to schema defaults (static gate)"
@@ -213,12 +221,12 @@ description = "Absence sentinel (task #64): every sqlite3.connect/create_engine(
 run = "uv run python tools/sentinel_check.py absence --check"
 
 [tasks."check:sentinels"]
-description = "ALL 15 sentinels (owner ruling 2026-07-18: the whole family is fast-gate LOCALLY — the dev box has the reference DB): seam coverage vocabulary inert dangling unconsumed masked-arithmetic aggregation fog catalog partition synthetic defines-passthrough gate-coverage absence"
+description = "ALL 17 sentinels (owner ruling 2026-07-18: the whole family is fast-gate LOCALLY — the dev box has the reference DB): seam seam-algebra coverage vocabulary inert dangling unconsumed masked-arithmetic aggregation fog catalog partition synthetic defines-passthrough gate-coverage absence formula-registration"
 depends = ["check:sentinels-static", "check:catalog"]
 
 [tasks."check:sentinels-static"]
-description = "The 14 static sentinels (no reference DB needed) — CI's fast-gate job runs THIS; the catalog DB-probe runs where the DB exists (locally via check:sentinels, in CI via nightly's requires_reference_db job)"
-depends = ["check:seams", "check:coverage", "check:vocabulary", "check:inert", "check:dangling", "check:unconsumed", "check:masked-arithmetic", "check:aggregation", "check:fog", "check:partition", "check:synthetic", "check:defines-passthrough", "check:gate-coverage", "check:absence"]
+description = "The 16 static sentinels (no reference DB needed) — CI's fast-gate job runs THIS; the catalog DB-probe runs where the DB exists (locally via check:sentinels, in CI via nightly's requires_reference_db job)"
+depends = ["check:seams", "check:seam-algebra", "check:coverage", "check:vocabulary", "check:inert", "check:dangling", "check:unconsumed", "check:masked-arithmetic", "check:aggregation", "check:fog", "check:partition", "check:synthetic", "check:defines-passthrough", "check:gate-coverage", "check:absence", "check:formula-registration"]
 
 [tasks."check:surface"]
 description = "Sentinel: __all__ vs its pinned baseline frozenset (public-surface baseline blindness gate)"

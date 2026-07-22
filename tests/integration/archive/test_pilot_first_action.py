@@ -31,13 +31,16 @@ real ``BabylonMetaStore`` over the ``pg_pool`` fixture.
 HONEST GAPS recorded here (each a code comment at its site + a report row —
 never a fabricated assertion):
 
-* **No shipped engine→Chronicle feed.** ``babylon.tui.chronicle`` is fixture-fed
-  by construction ("renders that stream from a fixture list of events — no
-  engine"). The event-dedup leg therefore reshapes REAL bus events into
-  ``ChronicleEvent`` via a small, clearly-labeled TEST-LOCAL adapter
-  (:func:`_chronicle_events_from_bus`) — the events are real, the dedup/floor
-  logic exercised is the real production code; only the adapter is test-local. A
-  future WO must ship the production engine-event→ChronicleEvent adapter.
+* **Engine->Chronicle feed IS shipped (Unit T4-core/C4).** ``babylon.tui.
+  chronicle`` itself still renders a plain fixture list ("no engine" — that
+  module's own concern is rendering, not sourcing). The event-dedup leg below
+  reshapes REAL bus events into ``ChronicleEvent`` via the PRODUCTION adapter
+  :func:`~babylon.game.chronicle_adapter.chronicle_events_from_bus`
+  (``babylon.game.chronicle_adapter`` — promoted from what used to be this
+  test's own test-local stand-in, per the program plan's Part 2 spine D): the
+  events are real, the summaries are real (per-``EventType``, generated from
+  the payload — see that module's docstring), and the dedup/floor logic
+  exercised is the real production code too.
 * **Narrative-cap floor is vacuous on the in-process minimal scenario.** That
   scenario emits only warning-tier events (``lifecycle_transition`` +
   ``organizational_action``); the informational-tier per-tick cap holds but caps
@@ -45,9 +48,11 @@ never a fabricated assertion):
   future WO wiring the headless wayne run into the Chronicle feed would exercise
   the informational cap against real informational events.
 * **``endgame_reached`` is critical but NOT the sole critical tier.** The web
-  frontend re-tiered critical to endgame-only (FR-116-2); the ported
-  ``EVENT_SEVERITY`` keeps the full spec-061 taxonomy (14 critical types). The
-  crisis leg asserts endgame_reached is critical and drives autopause, and
+  frontend re-tiered critical to endgame-only (FR-116-2); T1.1's derived
+  ``SEVERITY_BY_EVENT`` (``babylon.models.event_severity``) keeps a broad
+  critical tier (22 of 47 classified types — a CROSSING is binary
+  critical-or-informational under the pure kind x terminal_proximity rule).
+  The crisis leg asserts endgame_reached is critical and drives autopause, and
   documents that it is not uniquely so in the Archive.
 * **The pure endgame fold is memoryless.** ``endgame_status`` recomputes every
   tick; the web's "first ENDGAME_REACHED row is authoritative" immutability
@@ -81,6 +86,7 @@ from babylon.engine.observers.endgame_detector import EndgameDetector
 from babylon.engine.services import ServiceContainer
 from babylon.engine.simulation_engine import _DEFAULT_SYSTEMS, SimulationEngine
 from babylon.engine.systems.ooda import OODASystem
+from babylon.game.chronicle_adapter import chronicle_events_from_bus
 from babylon.kernel.event_bus import Event
 from babylon.models.entities.relationship import Relationship
 from babylon.models.entities.social_class import SocialClass
@@ -88,6 +94,7 @@ from babylon.models.entities.territory import Territory
 from babylon.models.enums import EdgeType, OperationalProfile, OrgType, SectorType
 from babylon.models.enums.events import EventType, GameOutcome
 from babylon.models.enums.topology import NodeType
+from babylon.models.event_severity import SEVERITY_BY_EVENT
 from babylon.models.world_state import WorldState
 from babylon.persistence.babylon_meta import BabylonMetaStore
 from babylon.projection.briefing import (
@@ -106,7 +113,6 @@ from babylon.topology import BabylonGraph
 from babylon.tui.campaign_menu import CampaignMenu
 from babylon.tui.chronicle import ChronicleEvent
 from babylon.tui.chronicle_salience import (
-    EVENT_SEVERITY,
     apply_volume_floors,
     classify_event_salience,
     compute_autopause_state,
@@ -208,31 +214,6 @@ def _advance_tick(
     new_world = WorldState.from_graph(harness.graph, tick)
     harness.detector.on_tick(prev_world, new_world)
     return raw_events, new_world
-
-
-def _chronicle_events_from_bus(raw_events: list[Event]) -> tuple[ChronicleEvent, ...]:
-    """TEST-LOCAL adapter: reshape REAL bus events into ``ChronicleEvent``.
-
-    HONEST GAP: no production engine-event→ChronicleEvent adapter ships yet
-    (``babylon.tui.chronicle`` is fixture-fed by construction). The events here
-    are real (emitted by a real tick); only this reshaping is test-local. A
-    future WO must ship the production adapter this stands in for. Coercion of
-    ``event.type`` to a real ``EventType`` is loud (Constitution III.11): a bus
-    event carrying a non-``EventType`` type raises here rather than being
-    silently dropped.
-    """
-    chronicle: list[ChronicleEvent] = []
-    for event in raw_events:  # loop bound: len(raw_events)
-        event_type = EventType(event.type)
-        chronicle.append(
-            ChronicleEvent(
-                tick=event.tick,
-                event_type=event_type,
-                summary=f"{event_type.value} · tick {event.tick}",
-                data=dict(event.payload),
-            )
-        )
-    return tuple(chronicle)
 
 
 def _pilot_can_step(active: bool) -> bool:
@@ -491,10 +472,10 @@ def test_forced_endgame_crisis_autopauses_amber_then_ack_clears() -> None:
     """
     # endgame_reached IS a critical-tier type (the autopause trigger).
     assert classify_event_salience(EventType.ENDGAME_REACHED).tier == "critical"
-    # DEVIATION from the web's FR-116-2 re-tier: the ported EVENT_SEVERITY keeps
-    # the full spec-061 taxonomy, so endgame_reached is critical but NOT the sole
+    # DEVIATION from the web's FR-116-2 re-tier: T1.1's derived SEVERITY_BY_EVENT
+    # keeps a broad critical tier, so endgame_reached is critical but NOT the sole
     # critical type. Documented, not asserted as unique.
-    assert sum(1 for tier in EVENT_SEVERITY.values() if tier == "critical") > 1
+    assert sum(1 for tier in SEVERITY_BY_EVENT.values() if tier == "critical") > 1
 
     crisis = ChronicleEvent(
         tick=1,
@@ -538,7 +519,7 @@ def test_event_dedup_and_volume_floors_over_real_tick_events() -> None:
     """
     harness, world0 = _fresh_engine()
     raw_tick1, world1 = _advance_tick(harness, world0, tick=1)
-    cards = _chronicle_events_from_bus(raw_tick1)
+    cards = chronicle_events_from_bus(raw_tick1)
     assert cards, "the real tick emitted event cards to render"
 
     # Acceptance gate 2: after consecutive-run dedup, no two adjacent kept cards
@@ -556,7 +537,7 @@ def test_event_dedup_and_volume_floors_over_real_tick_events() -> None:
     # happening"). Rendering that one territory's two-tick timeline collapses to
     # one card.
     raw_tick2, _ = _advance_tick(harness, world1, tick=2)
-    both = _chronicle_events_from_bus(raw_tick1) + _chronicle_events_from_bus(raw_tick2)
+    both = chronicle_events_from_bus(raw_tick1) + chronicle_events_from_bus(raw_tick2)
     t000_timeline = tuple(ev for ev in both if ev.data.get("territory_id") == "T000")
     assert len(t000_timeline) == 2, "T000 fired a lifecycle card on each of two ticks"
     assert len({dedup_key(ev) for ev in t000_timeline}) == 1

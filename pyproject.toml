@@ -172,9 +172,9 @@ packages = [
 
 [project.urls]
 Homepage = "https://babylonrpg.com"
-Documentation = "https://github.com/bogdanscarwash/babylon#readme"
-Issues = "https://github.com/bogdanscarwash/babylon/issues"
-Source = "https://github.com/bogdanscarwash/babylon"
+Documentation = "https://github.com/percy-raskova/babylon#readme"
+Issues = "https://github.com/percy-raskova/babylon/issues"
+Source = "https://github.com/percy-raskova/babylon"
 
 [project.scripts]
 babylon = "babylon.cli:app"
@@ -538,10 +538,10 @@ file_level = "DEBUG"
 "babylon.engine" = "INFO"
 "babylon.engine.systems" = "INFO"
 "babylon.engine.simulation" = "INFO"
-"babylon.rag" = "INFO"
-"babylon.rag.retrieval" = "INFO"
-"babylon.rag.embeddings" = "INFO"
-"babylon.rag.chunker" = "INFO"
+"babylon.intelligence.rag" = "INFO"
+"babylon.intelligence.rag.retrieval" = "INFO"
+"babylon.intelligence.rag.embeddings" = "INFO"
+"babylon.intelligence.rag.chunker" = "INFO"
 httpx = "WARNING"
 httpcore = "WARNING"
 urllib3 = "WARNING"

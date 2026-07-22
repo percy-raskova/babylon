@@ -81,14 +81,20 @@ PRODUCTION_ROOTS: Final[tuple[str, ...]] = ("src", "web")
 #:
 #: - ``hex``: production carries hex substrate state on TERRITORY nodes via
 #:   ``domain/economics/substrate/hex_graph_bridge.py``; no code path stamps a
-#:   ``hex`` node onto the engine graph. ``Vol2CirculationStep``,
-#:   ``territory_diagnostics`` and the ``simulation_engine`` determinism-hash
-#:   row collector therefore all iterate an empty set at runtime. (#39 T6,
-#:   2026-07-20: ``SubstrateSystem`` (MATERIAL_BASE @2.5) was rewritten to
-#:   query ``NodeType.TERRITORY`` instead -- it no longer belongs to this
-#:   list -- but the entry itself stays, since the other two consumers are
-#:   still live; the #40 lesson is to keep this citation matching reality,
-#:   not to remove the entry the moment one consumer is fixed.)
+#:   ``hex`` node onto the engine graph. ``territory_diagnostics`` and the
+#:   ``simulation_engine`` determinism-hash row collector iterate an empty set
+#:   at runtime. (#39 T6, 2026-07-20: ``SubstrateSystem`` (MATERIAL_BASE @2.5)
+#:   was rewritten to query ``NodeType.TERRITORY`` instead -- it no longer
+#:   belongs to this list. Vol II U4, 2026-07-21 (ADR120/ADR123):
+#:   ``Vol2CirculationStep`` was reconciled the same way -- its read/write
+#:   endpoints moved off ``NodeType.HEX`` onto county-keyed
+#:   ``NodeType.TERRITORY`` nodes via a constructor-injected
+#:   ``ScaleAdjunction`` (hex-grain <-> county-grain allocate/aggregate), so it
+#:   no longer belongs to this list either -- leaving ``territory_diagnostics``
+#:   and the ``simulation_engine`` collector as the two still-live citations.
+#:   The entry itself stays open on those two; the #40 lesson is to keep this
+#:   citation matching reality, not to remove the entry the moment a consumer
+#:   is fixed.)
 #: - ``community``: community membership lives in the XGI *hypergraph*
 #:   (``engine/systems/community.py``), not the main graph, so no production
 #:   code ever stamps a ``community`` node onto the engine graph either. Task
@@ -213,6 +219,14 @@ EXTRA_STAMPABLE_ATTRIBUTES: Final[dict[str, frozenset[str]]] = {
             "intel_confidence",  # engine/systems/epistemic_horizon.py
             "price_divergence",  # engine/systems/market_scissors.py + web bridge
             "habitability",  # engine/systems/metabolism.py (via _write_clamped)
+            "v",  # engine/systems/vol2_circulation.py (Vol2CirculationStep.step,
+            # update_node(fips_to_node[fips], v=v_post_val) -- the county-grain
+            # variable-capital vector written back after the hex-grain LODES OD
+            # pass; #39/Amendment U's ScaleAdjunction binding reads/writes this
+            # via county Territory nodes, never a hex node. Real production
+            # shape invisible to rule (c) because update_node is out of its
+            # static scope (same reason the rule's own docstring already
+            # scopes out update_node/`_write_clamped` calls generally).
             # NOT declared Territory fields, and no production writer stamps
             # them onto a territory node either -- but every reader is a
             # `.get(attr, default)` guard applied UNIFORMLY across every node

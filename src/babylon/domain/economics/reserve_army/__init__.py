@@ -5,6 +5,9 @@ wage pressure coefficients that modify variable capital (v) in the
 value tensor.
 """
 
+from babylon.domain.economics.reserve_army.accumulation import (
+    DefaultAccumulationLoopCalculator,
+)
 from babylon.domain.economics.reserve_army.calculator import DefaultWagePressureCalculator
 from babylon.domain.economics.reserve_army.data_sources import ReserveArmyDataSource
 from babylon.domain.economics.reserve_army.types import ReserveArmyDynamics, ReserveArmyState
@@ -14,4 +17,5 @@ __all__ = [
     "ReserveArmyDynamics",
     "ReserveArmyDataSource",
     "DefaultWagePressureCalculator",
+    "DefaultAccumulationLoopCalculator",
 ]

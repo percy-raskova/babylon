@@ -21,7 +21,6 @@ from babylon.models.enums import ActionType, EventType
 from babylon.models.events import SimulationEvent
 from babylon.topology.graph import BabylonGraph
 from game.engine_bridge import (
-    _EVENT_SEVERITY,
     _MAP_HISTORY_WINDOW_CAP,
     VERB_TO_ACTION_TYPE,
     EngineBridge,
@@ -613,17 +612,17 @@ class TestEndgameDetection:
 
 @pytest.mark.unit
 class TestPatternShiftSeverity:
-    """Spec-116 Task 4: pattern_shift is a real EventType, classified warning."""
+    """Spec-116 Task 4 / T1.1 U1-U2: pattern_shift is a real EventType.
 
-    def test_pattern_shift_is_a_string_literal_key(self) -> None:
-        """``_EVENT_SEVERITY`` is ``dict[str, str]`` — every key (including
-        this one) must be a plain string literal, never an EventType member,
-        matching every existing entry in the map."""
-        assert "pattern_shift" in _EVENT_SEVERITY
-        assert all(isinstance(key, str) for key in _EVENT_SEVERITY)
+    T1.1's derived taxonomy (``babylon.models.event_severity``) classifies
+    ``pattern_shift`` as a PATTERN row inheriting ``ENDGAME_REACHED``'s tier —
+    a recognized-endgame-pattern change is directly endgame-axis content by
+    definition, promoting it from the legacy hand tier's "warning" to
+    "critical" (design §2's disclosed drift table).
+    """
 
-    def test_pattern_shift_classified_as_warning(self) -> None:
-        assert _classify_event("pattern_shift") == "warning"
+    def test_pattern_shift_classified_as_critical(self) -> None:
+        assert _classify_event("pattern_shift") == "critical"
 
 
 # ---------------------------------------------------------------------- #
@@ -5151,22 +5150,42 @@ class TestDerivedEconomyVeilGate:
 @pytest.mark.unit
 class TestSpineWhitelistSeverityAndTitles:
     """spec-116 FR-116-4.7 sweep: severity tiers + humanized titles for the
-    14 newly wired types (FR-116-2 reserves critical for genuine
-    rupture/endgame proximity; secession IS fragmented-collapse proximity)."""
+    14 newly wired types.
+
+    T1.1 U1/U2 (``ai/_inbox/t11-seam-severity-design.md``) retargeted severity
+    onto the derived kind x terminal_proximity taxonomy
+    (``babylon.models.event_severity``): a CROSSING is binary
+    critical-or-informational under the pure rule, so six of these members
+    that were "warning" under the legacy hand tier are now reclassified —
+    each with a declared rationale in ``event_severity._DRIFT_RATIONALES``.
+    """
 
     @pytest.mark.parametrize(
         ("event_type", "expected"),
         [
-            ("market_correction", "warning"),
-            ("entity_death", "warning"),
+            # DRIFT (warning -> critical): a completed crisis-axis "snap",
+            # material peer of ECONOMIC_CRISIS/SUPERWAGE_CRISIS.
+            ("market_correction", "critical"),
+            # DRIFT (warning -> informational): per-entity starvation; the
+            # aggregate POPULATION_ATTRITION already carries the system-level
+            # informational signal.
+            ("entity_death", "informational"),
             ("population_attrition", "informational"),
-            ("crisis_phase_transition", "warning"),
-            ("bifurcation_threshold", "warning"),
+            # DRIFT (warning -> informational): the CreditCyclePhase machine's
+            # 6 arcs are mostly routine reversible business-cycle churn.
+            ("crisis_phase_transition", "informational"),
+            # DRIFT (warning -> critical): the George-Jackson bifurcation-axis
+            # crossing itself — an endgame-axis lock.
+            ("bifurcation_threshold", "critical"),
             ("edge_mode_transition", "informational"),
-            ("co_optive_breakdown", "warning"),
+            # DRIFT (warning -> critical): co-optation failure WITH
+            # bifurcation — structurally the same axis as POWER_VACUUM et al.
+            ("co_optive_breakdown", "critical"),
             ("latent_contradiction_release", "informational"),
             ("aspect_reversal", "informational"),
-            ("level_transition", "warning"),
+            # DRIFT (warning -> critical): sublating the principal
+            # contradiction to a higher level is a major regime-level leap.
+            ("level_transition", "critical"),
             ("secession_declared", "critical"),
             ("calibration_warning.axiom_violation", "informational"),
             ("calibration_warning.qcew_carry_forward", "informational"),

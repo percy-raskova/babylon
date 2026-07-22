@@ -29,6 +29,9 @@ EXPECTED_DEFINES_PUBLIC: frozenset[str] = frozenset(
         "ArcGISDefines",
         "BehavioralDefines",
         "BifurcationDefines",
+        "CapitalVolumeIIDefines",  # U3 (vol2-circulation-engine program; pre-existing
+        # gap fixed alongside U7's own defines-surface sweep — never added when
+        # CapitalVolumeIIDefines first shipped)
         "CapitalVolumeIIIDefines",  # U2.3 (Vol III money-scissors program)
         "CarceralDefines",
         "ClassDynamicsDefines",

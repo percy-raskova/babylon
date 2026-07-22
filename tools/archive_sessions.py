@@ -28,6 +28,7 @@ import sys
 from pathlib import Path
 from uuid import UUID
 
+from babylon.config.dsn import resolve_dsn
 from babylon.persistence.archival import (
     export_session_to_parquet,
     purge_session,
@@ -44,9 +45,12 @@ def _open_pool() -> object:
     """Open a pool from the same env DSNs the headless runner uses."""
     from psycopg_pool import ConnectionPool
 
-    dsn = os.environ.get("BABYLON_PG_DSN") or os.environ.get("BABYLON_TEST_PG_DSN")
+    dsn = resolve_dsn(legacy_env=("BABYLON_PG_DSN", "BABYLON_TEST_PG_DSN"))
     if not dsn:
-        print("ERROR: set BABYLON_PG_DSN or BABYLON_TEST_PG_DSN", file=sys.stderr)
+        print(
+            "ERROR: set BABYLON_DSN (or the deprecated BABYLON_PG_DSN / BABYLON_TEST_PG_DSN)",
+            file=sys.stderr,
+        )
         raise SystemExit(4)
     return ConnectionPool(dsn, min_size=1, max_size=2, open=True)
 

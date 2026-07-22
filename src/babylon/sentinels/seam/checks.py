@@ -18,8 +18,10 @@ Checks come in two tiers. **Gating** checks red the fast-gate (exit 1):
 ``check_map_metrics`` (registry MAP-scope keys vs ``map_contract.py``'s
 ``MAP_METRIC_PROPERTIES``), ``check_tick_payloads_exist`` (every registered
 ``tick_*`` payload exists in the engine write-set),
-``check_severity_vocabulary`` (every ``_EVENT_SEVERITY`` key is a real
-``EventType`` value), and ``check_fog_field_mirror`` (Sensor 4: the fog political
+``check_severity_vocabulary`` (T1.1 U2: no local ``_EVENT_SEVERITY`` literal
+has reappeared — severity is single-sourced via
+``babylon.models.event_severity.resolve_severity``), and ``check_fog_field_mirror``
+(Sensor 4: the fog political
 field vocabulary — ``filter.py``'s ``POLITICAL_FIELDS``/``ORG_INTERNAL_STATE_FIELDS``
 vs ``fogFields.ts``'s ``FOG_FIELD_LABELS`` — agrees exactly, both directions).
 **Advisory** checks print loudly but do NOT gate — they
@@ -35,6 +37,7 @@ loud failure, never swallowed).
 from __future__ import annotations
 
 import argparse
+import ast
 import sys
 from pathlib import Path
 
@@ -43,6 +46,7 @@ from babylon.sentinels._ast import (
     eventtype_names_in_module,
     literal_dict_keys,
     literal_str_tuple,
+    parse_module,
     tick_write_set,
 )
 from babylon.sentinels.base import LabelledCheck, SentinelCheckError, run_sensor
@@ -244,25 +248,44 @@ def check_tick_coverage() -> list[str]:
 
 
 def check_severity_vocabulary(path: Path = _ENGINE_BRIDGE_PATH) -> list[str]:
-    """GATING: every ``_EVENT_SEVERITY`` key must be a real ``EventType`` value.
+    """GATING: no local ``_EVENT_SEVERITY`` literal may reappear in the bridge.
 
-    A severity key that matches no ``EventType`` value can never classify a real
-    event, so that event silently defaults to ``"informational"``. The bridge's
-    ``_EVENT_SEVERITY`` was repaired (dead keys removed, aliases fixed to their
-    real events) so this gate now passes clean and blocks any regression.
+    T1.1 U2 (``ai/_inbox/t11-seam-severity-design.md``) single-sourced event
+    severity: both the web bridge and the Archive Chronicle now resolve through
+    :func:`babylon.models.event_severity.resolve_severity` (the generated table
+    derived from kind x terminal_proximity), replacing the hand-copied 47-entry
+    ``_EVENT_SEVERITY``/``EVENT_SEVERITY`` dict literals this check used to
+    validate — a severity key keyed on a non-``EventType`` string is now
+    structurally impossible (``EventKindRow.event_type: EventType`` is a typed
+    Pydantic field, checked at import). This check's narrower day-one job is
+    the inverse: catch a hand-copied literal reappearing here at all, which
+    would be exactly the silent-drift failure mode single-sourcing eliminates.
+    U6 (the ``seam_algebra`` family) generalizes this into the full three-way
+    (web / Archive / generated) parity gate this check is a placeholder for.
 
-    :param path: The source file holding ``_EVENT_SEVERITY`` (injectable so tests
-        can supply a deliberately-broken fixture to prove the gate reds).
-    :returns: Sorted violation strings (empty when all keys are EventType values).
+    :param path: The source file that must carry no ``_EVENT_SEVERITY``
+        module-level assignment (injectable so tests can supply a
+        deliberately-regressed fixture to prove the gate reds).
+    :returns: A single violation string if a local ``_EVENT_SEVERITY``
+        assignment exists, else an empty list.
     :raises SentinelCheckError: If ``path`` cannot be parsed.
     """
-    event_values = {e.value for e in EventType}
-    severity = set(literal_dict_keys(path, "_EVENT_SEVERITY"))
-    return [
-        f"_EVENT_SEVERITY key {key!r} is not an EventType value — matching events "
-        f"silently default to 'informational'"
-        for key in sorted(severity - event_values)
-    ]
+    tree = parse_module(path)
+    for node in tree.body:
+        targets: list[ast.expr]
+        if isinstance(node, ast.Assign):
+            targets = node.targets
+        elif isinstance(node, ast.AnnAssign):
+            targets = [node.target]
+        else:
+            continue
+        if any(isinstance(t, ast.Name) and t.id == "_EVENT_SEVERITY" for t in targets):
+            return [
+                f"{path}: a local _EVENT_SEVERITY literal has reappeared — severity must "
+                "resolve through babylon.models.event_severity.resolve_severity (T1.1 U2 "
+                "single-source), never a hand-copied dict"
+            ]
+    return []
 
 
 def check_narrator_vocabulary() -> list[str]:
@@ -316,7 +339,7 @@ def check_event_coverage() -> list[str]:
 _GATING_CHECKS: tuple[LabelledCheck, ...] = (
     ("map metric not reconciled with MAP_METRIC_PROPERTIES", check_map_metrics),
     ("registered tick_* payload missing from the engine write-set", check_tick_payloads_exist),
-    ("_EVENT_SEVERITY keyed on a non-EventType string", check_severity_vocabulary),
+    ("a local _EVENT_SEVERITY literal has reappeared in the bridge", check_severity_vocabulary),
     (
         "economy_dashboard key not reconciled with get_economy_dashboard (G4 Task C)",
         check_economy_dashboard_keys,

@@ -164,6 +164,14 @@ class TestDefaultCouplingGraph:
         triples = {_triple(c) for c in graph.couplings}
         assert ("surplus_distribution", "financial", "constrains") in triples
 
+    def test_the_two_reserved_vol_two_transforms_now_survive(self) -> None:
+        """Vol II circulation program U5 Oppositions: the edges ADR103
+        reserved light up the moment both endpoints are registered."""
+        graph = build_default_coupling_graph(build_default_registry())
+        triples = {_triple(c) for c in graph.couplings}
+        assert ("circulation", "realization", "transforms") in triples
+        assert ("reproduction", "disproportionality", "transforms") in triples
+
     def test_only_the_bound_edges_survive(self) -> None:
         graph = build_default_coupling_graph(build_default_registry())
         non_contains = {_triple(c) for c in graph.couplings if c.kind != "contains"}
@@ -178,21 +186,42 @@ class TestDefaultCouplingGraph:
             ("price_value", "financial", "feeds"),
             ("financial", "price_value", "feeds"),
             ("surplus_distribution", "financial", "constrains"),
+            # Vol I U6: the reserved production-layer skeleton is now lit.
+            ("value_usevalue", "labor_laborpower", "feeds"),
+            ("labor_laborpower", "absolute_relative_surplus", "feeds"),
+            ("absolute_relative_surplus", "wage", "feeds"),
+            # Vol II U5: the reserved circulation transforms are now lit.
+            ("circulation", "realization", "transforms"),
+            ("reproduction", "disproportionality", "transforms"),
         }
 
-    def test_only_the_volume_two_edges_are_still_skipped(
-        self, caplog: pytest.LogCaptureFixture
-    ) -> None:
+    def test_the_three_reserved_vol_one_feeds_now_survive(self) -> None:
+        """The edges that sat dormant since the ADR103 contract commit, awaiting
+        Vol I's lane to bind their endpoints (U6)."""
+        graph = build_default_coupling_graph(build_default_registry())
+        triples = {_triple(c) for c in graph.couplings}
+        assert ("value_usevalue", "labor_laborpower", "feeds") in triples
+        assert ("labor_laborpower", "absolute_relative_surplus", "feeds") in triples
+        assert ("absolute_relative_surplus", "wage", "feeds") in triples
+
+    def test_reserved_slots_are_skipped(self, caplog: pytest.LogCaptureFixture) -> None:
         with caplog.at_level(logging.INFO, logger="babylon.domain.dialectics.instances.catalog"):
             build_default_coupling_graph(build_default_registry())
         skipped = [r for r in caplog.records if "Skipping coupling" in r.getMessage()]
-        # Only the two Volume II circulation edges remain unbound; they are
-        # explicitly out of scope and are NOT faked.
-        assert len(skipped) == 2
+        # No reserved-but-unbound slots remain: Vol I's three production
+        # edges (U6) and Vol II's two circulation edges (U5) are all bound
+        # as of the v1-cascade merge — every declared coupling survives.
+        assert len(skipped) == 0
         joined = " ".join(r.getMessage() for r in skipped)
-        for endpoint in ("realization", "disproportionality"):
-            assert endpoint in joined
-        for landed in ("debt_spiral", "financial"):
+        for landed in (
+            "debt_spiral",
+            "financial",
+            "value_usevalue",  # Vol I, U6
+            "labor_laborpower",  # Vol I, U6
+            "absolute_relative_surplus",  # Vol I, U6
+            "realization",  # Vol II, U5
+            "disproportionality",  # Vol II, U5
+        ):
             assert landed not in joined
 
 

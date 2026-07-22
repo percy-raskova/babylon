@@ -124,20 +124,31 @@ class TestEventCounts:
     fabricate a ``0`` (Constitution III.11) instead of reporting the truth.
     """
 
-    def test_counts_uprising_and_repression_bus_events_only(self) -> None:
+    def test_counts_uprising_bus_events_only(self) -> None:
         events = [
             Event(type=EventType.UPRISING, tick=1, payload={}),
             Event(type=EventType.UPRISING, tick=1, payload={}),
-            Event(type=EventType.STATE_REPRESSION, tick=1, payload={}),
             Event(type=EventType.LIFECYCLE_TRANSITION, tick=1, payload={}),
         ]
         summary = build_tick_summary_kwargs(WorldState(tick=1), events=events)
         assert summary["uprising_count"] == 2
-        assert summary["repression_count"] == 1
+
+    def test_repression_count_is_always_null_even_with_bus_events(self) -> None:
+        """STATE_REPRESSION has NO production bus publisher (the OODA
+        first-class-action gate covers only POGROM/LOCKOUT/VIGILANTISM;
+        the type lives only as a string in ActionResult.events_generated),
+        so a bus count would be a structurally fabricated ``0``
+        (Constitution III.11). The column is honestly NULL until an engine
+        unit adds a real publisher — even a bus history that DOES carry
+        the type (only a non-production stub could produce one) must not
+        flip it to a count."""
+        events = [Event(type=EventType.STATE_REPRESSION, tick=1, payload={})]
+        summary = build_tick_summary_kwargs(WorldState(tick=1), events=events)
+        assert summary["repression_count"] is None
 
     def test_world_events_are_never_read_for_these_counts(self) -> None:
         """A populated ``world.events`` must NOT leak into the count when a
-        real ``events=`` bus history is also supplied — the two counts come
+        real ``events=`` bus history is also supplied — the count comes
         from ONE source, never a union of both."""
         from babylon.models.events import SimulationEvent
 
@@ -152,7 +163,7 @@ class TestEventCounts:
             world, events=[Event(type=EventType.UPRISING, tick=1, payload={})]
         )
         assert summary["uprising_count"] == 1
-        assert summary["repression_count"] == 0
+        assert summary["repression_count"] is None
 
     def test_no_events_threaded_is_honest_null_not_zero(self) -> None:
         summary = build_tick_summary_kwargs(WorldState(tick=1))

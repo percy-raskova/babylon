@@ -694,23 +694,31 @@ _MAX_SETTLE_RETRIES: Final = 20
 
 
 async def _settled(pilot: Pilot[None], check: Callable[[], None], *, step_id: str) -> None:
-    """Run ``check``, retrying (bounded) ONLY while it raises ``NoMatches``.
+    """Run ``check``, retrying (bounded) while the app is still settling.
 
-    Under xdist load a completion assert can query a widget while a screen
-    transition is still mounting — observed once as ``NoMatches: No nodes
-    match '#status' on Screen(id='_default')`` at the economy-dossier step
-    (evidence: ``ai/_inbox/flake-tutorial-pilot-screen-race.md``). NoMatches
-    is a STRUCTURAL not-yet-mounted signal, so it earns another message-pump
-    drain; an ``AssertionError`` is a BEHAVIORAL verdict and propagates
-    immediately — this helper must never soften a failing Then.
+    Anchor effects complete across SEVERAL message-pump cycles — a palette
+    pick alone spans dismiss-callback -> ``_navigate`` -> dossier re-render
+    -> nav/status update — and ``workers.wait_for_complete()`` + one pause
+    does not cover that tail. Under xdist/CI load the completion check can
+    run mid-chain; observed twice (evidence:
+    ``ai/_inbox/flake-tutorial-pilot-screen-race.md``): the dossier text
+    already showing the target page while ``nav.current`` still held the
+    prior subject (``AssertionError``), and a widget queried before its
+    mount/after its unmount (``NoMatches``). Both are IN-FLIGHT states, so
+    both earn another drain. What keeps the Then honest is the BOUND, not
+    the exception filter: a genuinely wrong outcome fails with the SAME
+    verdict after ``_MAX_SETTLE_RETRIES`` drains — settled-and-wrong is
+    indistinguishable from wrong, never absorbed. Message-pump drains, not
+    wall-clock waits (the Gauntlet ruling names wall-clock timing in tests
+    as determinism poison).
 
-    :raises NoMatches: the widget never mounted within the retry bound —
-        still loud, just no longer racy.
+    :raises AssertionError: the Then still does not hold once settled.
+    :raises NoMatches: the widget never mounted within the retry bound.
     """
     for attempt in range(_MAX_SETTLE_RETRIES):  # loop bound: _MAX_SETTLE_RETRIES
         try:
             check()
-        except NoMatches:
+        except (AssertionError, NoMatches):
             if attempt == _MAX_SETTLE_RETRIES - 1:
                 raise
             await pilot.pause()

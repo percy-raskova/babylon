@@ -32,3 +32,24 @@ timing as determinism poison in tests.
 Full failure record: the 12:25 run's `reports/test-results/unit/report.json` in the
 `verify-north-star` worktree (deleted after verification; longrepr preserved here in
 summary). Memory: [[player-interface-shell-design]] session notes.
+
+---
+
+## Addendum 2026-07-22 ~17:20 (interface-refinement train, CI run 29957598863)
+
+Second occurrence, richer evidence — the PR #277 CI unit shard failed the
+`learn_the_dashboard_pane` replay AT step `palette_to_the_repression_ledger`:
+
+- **Primary (root):** `AssertionError: expected nav.current == 'social_class/C001',
+  got 'organization/ORG002'` — while the dossier text local in the SAME frame already
+  showed C001's full rendered statblock. The palette chain
+  (dismiss-callback → `_navigate` → dossier re-render → nav/status update) spans
+  several message-pump cycles; the completion assert ran mid-chain.
+- **Secondary (the '#status' NoMatches both reports led with):** raised DURING
+  unwinding — the still-in-flight navigation's status update racing app teardown.
+  Noise, not the disease.
+
+**Fix shipped (this branch):** `_settled` now drain-retries the WHOLE completion
+check on `(AssertionError, NoMatches)`, bounded at `_MAX_SETTLE_RETRIES` pump
+drains. The bound is what keeps the Then honest — settled-and-wrong still fails
+with the identical verdict; only in-flight states are absorbed. No wall-clock.

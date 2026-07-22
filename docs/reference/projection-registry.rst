@@ -79,6 +79,13 @@ it. This table is the normative registry; the code in
        FR-044 conservation view
      - ``session_id, tick``
      - ``GlobalPhiBalance``
+   * - ``v_national_trend``
+     - game_session tick-summary read-model (spec-037 bootstrap +
+       spec-061 FR-003 US4; single write path via
+       ``GameSession.advance_tick``'s ``persist_tick_summary`` commit,
+       T5 Unit U2 — "the wind is blowing")
+     - ``session_id, tick``
+     - ``NationalTrendView``
 
 The row-models ``CountyValueAggregate``, ``StateValueAggregate``,
 ``NationalValueAggregate``, and ``GlobalPhiBalance`` live in
@@ -86,6 +93,11 @@ The row-models ``CountyValueAggregate``, ``StateValueAggregate``,
 II.11-branded typed facade that the registry **generalizes rather than
 reinvents**. Their SQL definitions are canonical in
 ``src/babylon/persistence/migrations/0030_views_current.sql``.
+``NationalTrendView`` lives in :mod:`babylon.projection.view_models` instead
+— ``v_national_trend`` reads the game-session tick-summary tier, not the hex
+substrate, so its row-model joins the dossier module rather than the
+hex-aggregation facade. Its SQL definition is canonical in
+``src/babylon/persistence/migrations/0038_tick_summary_trend.sql``.
 
 Ambiguous ownership is recorded, never guessed
 ----------------------------------------------

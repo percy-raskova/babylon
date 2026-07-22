@@ -36,12 +36,25 @@ def test_play_subcommand_boots_the_composition_root(monkeypatch) -> None:  # typ
     """Since Unit C1, ``babylon play`` boots the real campaign session
     (``babylon.game.session``) through ``play_cmd.run``, not the legacy
     two-node demo — ``play_cmd.play_demo`` preserves the old behavior for
-    anyone scripting against it directly, but no entry point calls it."""
-    calls: list[str] = []
-    monkeypatch.setattr(play_cmd, "run", lambda: calls.append("ran"))
+    anyone scripting against it directly, but no entry point calls it.
+
+    T5 Unit U1: ``play`` now threads ``narrator_enabled=`` into ``run`` —
+    ON by default with no flag given."""
+    calls: list[dict[str, object]] = []
+    monkeypatch.setattr(play_cmd, "run", lambda **kwargs: calls.append(kwargs))
     result = runner.invoke(app, ["play"])
     assert result.exit_code == 0
-    assert calls == ["ran"]
+    assert calls == [{"narrator_enabled": True}]
+
+
+def test_play_subcommand_no_narrator_flag_disables_the_narrator(monkeypatch) -> None:  # type: ignore[no-untyped-def]
+    """T5 Unit U1: ``--no-narrator`` threads ``narrator_enabled=False``
+    through to ``run`` — OFF means ``schedule()`` is never called at all."""
+    calls: list[dict[str, object]] = []
+    monkeypatch.setattr(play_cmd, "run", lambda **kwargs: calls.append(kwargs))
+    result = runner.invoke(app, ["play", "--no-narrator"])
+    assert result.exit_code == 0
+    assert calls == [{"narrator_enabled": False}]
 
 
 def test_play_demo_preserved_for_direct_scripting(monkeypatch) -> None:  # type: ignore[no-untyped-def]

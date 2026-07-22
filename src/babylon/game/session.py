@@ -95,6 +95,7 @@ from babylon.models.world_state import WorldState
 from babylon.persistence.delta import is_checkpoint_tick
 from babylon.persistence.envelope import PerTickTransactionEnvelope
 from babylon.persistence.postgres_schema import ensure_ddl_applied
+from babylon.projection.tick_summary import build_tick_summary_kwargs
 from babylon.projection.verbs.submit import TurnSink, build_player_actions, submit_verb
 from babylon.topology import BabylonGraph
 from babylon.tui.chronicle import ChronicleEvent
@@ -107,6 +108,7 @@ if TYPE_CHECKING:
 __all__ = [
     "GameRuntimeStore",
     "KnownSubjectsSource",
+    "NarratorScheduler",
     "PausePredicate",
     "ProgressStore",
     "VaultPageSource",
@@ -134,7 +136,9 @@ class GameRuntimeStore(TurnSink, Protocol):
     lifecycle named in the program plan (spine D): ``create_session`` /
     ``get_session`` / ``get_pending_turns`` / ``mark_turns_resolved`` /
     ``persist_tick`` / ``hydrate_graph`` / ``persist_tick_atomic`` /
-    ``get_last_committed_tick``.
+    ``get_last_committed_tick`` / ``persist_tick_summary`` (T5 Unit U2 — the
+    ``tick_summary`` read-model write, previously only reachable through the
+    legacy web bridge).
     """
 
     def create_session(
@@ -197,6 +201,16 @@ class GameRuntimeStore(TurnSink, Protocol):
         """The largest tick with a committed ``tick_commit`` marker, or ``None``."""
         ...
 
+    def persist_tick_summary(
+        self,
+        tick: int,
+        summary: dict[str, Any],
+        *,
+        session_id: UUID,
+    ) -> None:
+        """Persist one pre-aggregated ``tick_summary`` row (T5 Unit U2)."""
+        ...
+
 
 class ProgressStore(Protocol):
     """Structural seam for the client-owned ``babylon_meta.campaign`` lobby row.
@@ -214,6 +228,28 @@ class ProgressStore(Protocol):
 
     def record_progress(self, campaign_id: UUID, *, last_tick: int) -> None:
         """Record that ``campaign_id`` reached ``last_tick`` just now."""
+        ...
+
+
+class NarratorScheduler(Protocol):
+    """Structural seam for the async narrator side-process (T5 Unit U1).
+
+    Satisfied by :class:`~babylon.projection.vault.narrator_cache.
+    NarratorSideProcess` (fire-and-forget: :meth:`schedule` never blocks and
+    never raises, per that class's own docstring) without this module
+    importing that concrete class — the same WO-37 trick
+    :class:`GameRuntimeStore`/:class:`ProgressStore` already use. ``None``
+    (the constructor default) means the narrator lane is OFF:
+    :meth:`GameSession.advance_tick` then never calls :meth:`schedule` at
+    all, so narrator-OFF stays the exact pre-Unit-U1 byte-identical path
+    (Constitution's determinism tiering — narrator-ON is non-reproducible
+    BY DESIGN and only ever touches the vault's ``narrative/`` subtree,
+    never a baked deterministic page).
+    """
+
+    def schedule(self, entity_id: str, tick: int, *, system: str, prompt: str) -> object:
+        """Submit one narration generation for ``(entity_id, tick)``; never
+        blocks, never raises (the implementation's own contract)."""
         ...
 
 
@@ -270,6 +306,41 @@ def _replay_identity_hash(session_id: UUID, tick: int, rng_seed: int) -> str:
     convention rather than inventing a second.
     """
     return hashlib.sha256(f"{session_id}:{tick}:{rng_seed}".encode()).hexdigest()
+
+
+#: The one narration subject id :meth:`GameSession.advance_tick` schedules
+#: against per committed tick — mirrors ``tick_baker._NATIONAL_ID``'s
+#: ``"national/USA"`` sentinel/subject-id convention (the one nationwide
+#: "wind is blowing" beat), so its narrative page lands at
+#: ``narrative/national/USA/<tick>--<pin>.md`` alongside the deterministic
+#: ``national/USA.md`` dossier it narrates.
+_NARRATOR_SUBJECT: Final[str] = "national/USA"
+
+
+def _narrator_beat(tick: int, chronicle: tuple[ChronicleEvent, ...]) -> tuple[str, str]:
+    """The ``(system, prompt)`` pair one committed tick schedules narration with.
+
+    Minimal and honest by deliberate scope choice: built ONLY from this
+    tick's own committed chronicle (real per-event summaries from
+    :func:`~babylon.game.chronicle_adapter.chronicle_events_from_bus`),
+    never fabricated (Constitution III.11). Doctrine-conditioning of prompts
+    and the trend-view digest ("the wind is blowing" build, spine E) are
+    DEFERRED past this unit — :mod:`~babylon.projection.vault.narrator_cache`
+    already treats ``(system, prompt)`` as opaque caller-supplied text.
+
+    :param tick: the committed tick number.
+    :param chronicle: this tick's chronicle events, chronological (see
+        :attr:`TickAdvanceResult.chronicle`).
+    :returns: the ``(system, prompt)`` pair for :meth:`NarratorScheduler.schedule`.
+    """
+    system = (
+        "You are the Narrator: observe this committed tick's material state "
+        "and write one brief, grounded prose beat. Never invent facts beyond "
+        "what is given."
+    )
+    body = "; ".join(event.summary for event in chronicle) if chronicle else "no events recorded"
+    prompt = f"Tick {tick} committed. {body}."
+    return system, prompt
 
 
 def _as_dict(value: Any) -> dict[str, Any]:
@@ -382,6 +453,12 @@ class GameSession:
         (typically the same ``BabylonMetaStore`` the composition root's
         ``CampaignMenu`` already holds); ``None`` (the default) runs with no
         lobby catalog to keep live — the pre-writeback no-op path.
+    :param narrator: this campaign's own :class:`NarratorScheduler` seam
+        (typically a real :class:`~babylon.projection.vault.narrator_cache.
+        NarratorSideProcess` over this campaign's own vault root, T5 Unit
+        U1); ``None`` (the default) means the narrator lane is OFF —
+        :meth:`advance_tick` never calls :meth:`~NarratorScheduler.schedule`
+        at all, the pre-Unit-U1 byte-identical path.
     """
 
     def __init__(
@@ -400,6 +477,7 @@ class GameSession:
         pages: VaultPageSource | None = None,
         known_subjects: KnownSubjectsSource | None = None,
         progress_store: ProgressStore | None = None,
+        narrator: NarratorScheduler | None = None,
     ) -> None:
         self.session_id = session_id
         self.graph = graph
@@ -414,6 +492,7 @@ class GameSession:
         self._pages = pages
         self._known_subjects = known_subjects
         self._progress_store = progress_store
+        self._narrator = narrator
 
     def read_page(self, subject: str) -> str | None:
         """Read one REAL baked vault page for this campaign (Unit C2).
@@ -503,10 +582,32 @@ class GameSession:
         a :class:`ProgressStore` is wired — the review fix for the gap where
         the catalog was written only at campaign creation and never again.
 
+        T5 Unit U1: when a :class:`NarratorScheduler` is wired, schedules
+        exactly ONE narration generation for this tick, AFTER the
+        deterministic bake (:attr:`_tick_commit_observer`) completes —
+        fire-and-forget, never blocking this method and never able to raise
+        into it (the side process's own isolation contract). ``narrator=None``
+        (the default) means :meth:`~NarratorScheduler.schedule` is never
+        called at all — the exact pre-Unit-U1 byte-identical path.
+
         Unit C6: also stamps :attr:`TickAdvanceResult.autosaved` via
         :func:`~babylon.persistence.delta.is_checkpoint_tick` — the same
         52-tick (one simulated year) cadence the hex-delta pipeline already
         checkpoints on.
+
+        T5 Unit U2: also persists this tick's ``tick_summary`` row (the
+        national trend read-model's source table — the ``v_national_trend``
+        declared view's ``LAG`` windows read this table) at the SAME commit
+        boundary as :meth:`~PostgresRuntime.persist_tick`, via
+        :func:`~babylon.projection.tick_summary.build_tick_summary_kwargs`
+        over this tick's own ``world``/``graph`` — previously reachable only
+        through the legacy web bridge, so a real Archive campaign wrote
+        nothing to ``tick_summary`` at all. REVIEW FIX: also threads this
+        tick's own ``events`` (the SAME bus history collected above for the
+        Chronicle adapter) so ``uprising_count``/``repression_count`` count
+        REAL events, not the always-empty ``world.events``
+        (``WorldState.from_graph()`` never restamps ``graph.graph['events']``
+        per tick — see :func:`build_tick_summary_kwargs`'s own docstring).
         """
         next_tick = self.tick + 1
         pending = self._store.get_pending_turns(self.session_id, next_tick)
@@ -526,6 +627,11 @@ class GameSession:
         determinism_hash = _replay_identity_hash(self.session_id, next_tick, self._rng_seed)
 
         self._store.persist_tick(next_tick, self.graph, session_id=self.session_id)
+        self._store.persist_tick_summary(
+            next_tick,
+            build_tick_summary_kwargs(world, graph=self.graph, events=events),
+            session_id=self.session_id,
+        )
         self._store.persist_tick_atomic(
             PerTickTransactionEnvelope(
                 session_id=self.session_id,
@@ -539,6 +645,9 @@ class GameSession:
             self._tick_commit_observer.on_tick_committed(
                 tick=next_tick, world=world, graph=self.graph
             )
+        if self._narrator is not None:
+            system, prompt = _narrator_beat(next_tick, chronicle)
+            self._narrator.schedule(_NARRATOR_SUBJECT, next_tick, system=system, prompt=prompt)
         if self._progress_store is not None:
             self._progress_store.record_progress(self.session_id, last_tick=next_tick)
 
@@ -566,6 +675,7 @@ def create_new_campaign(
     pages: VaultPageSource | None = None,
     known_subjects: KnownSubjectsSource | None = None,
     progress_store: ProgressStore | None = None,
+    narrator: NarratorScheduler | None = None,
 ) -> GameSession:
     """Boot a brand-new campaign: build the scenario, then bake tick 0.
 
@@ -596,6 +706,11 @@ def create_new_campaign(
         immediately (the lobby row already defaults to 0 at
         ``create_campaign``, so this is a harmless, honest sync rather than
         a required correction).
+    :param narrator: this campaign's :class:`NarratorScheduler` seam (T5 Unit
+        U1); ``None`` (the default) means the narrator lane is OFF for every
+        subsequent :meth:`GameSession.advance_tick`. Tick 0's bake above
+        never schedules narration itself — a stated non-goal of this unit
+        (there is no chronicle yet at boot; narration begins at tick 1).
     :returns: a fresh :class:`GameSession` at tick 0.
     """
     chosen: Scenario = scenario if scenario is not None else WayneCountyScenario()
@@ -643,6 +758,7 @@ def create_new_campaign(
         pages=pages,
         known_subjects=known_subjects,
         progress_store=progress_store,
+        narrator=narrator,
     )
 
 
@@ -655,6 +771,7 @@ def resume_campaign(
     pages: VaultPageSource | None = None,
     known_subjects: KnownSubjectsSource | None = None,
     progress_store: ProgressStore | None = None,
+    narrator: NarratorScheduler | None = None,
 ) -> GameSession:
     """Crash-resume a campaign from its last atomically-committed tick.
 
@@ -679,6 +796,8 @@ def resume_campaign(
         ``last_committed_tick`` right here — the fix for a campaign whose
         catalog row drifted (or never moved past its creation-time ``0``)
         while the Ledger kept advancing.
+    :param narrator: this campaign's :class:`NarratorScheduler` seam (see
+        :func:`create_new_campaign`'s identical parameter, T5 Unit U1).
     :raises ValueError: if ``session_id`` has no ``game_session`` row, or
         (a genuinely broken state — every session commits tick 0 at
         creation) has a row but no committed tick at all.
@@ -718,6 +837,7 @@ def resume_campaign(
         pages=pages,
         known_subjects=known_subjects,
         progress_store=progress_store,
+        narrator=narrator,
     )
 
 

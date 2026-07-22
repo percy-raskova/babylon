@@ -10,6 +10,7 @@ trick) — no Postgres required. The PG-reachable integration leg lives at
 
 from __future__ import annotations
 
+from pathlib import Path
 from typing import Any
 from uuid import UUID, uuid4
 
@@ -18,6 +19,7 @@ import pytest
 import babylon.game.session as session_module
 from babylon.config.defines import GameDefines
 from babylon.engine.scenarios import WayneCountyScenario
+from babylon.engine.simulation_engine import SimulationEngine
 from babylon.game.chronicle_adapter import chronicle_events_from_bus
 from babylon.game.session import (
     TickAdvanceResult,
@@ -50,6 +52,7 @@ class _FakeStore:
     def __init__(self) -> None:
         self.sessions: dict[UUID, dict[str, Any]] = {}
         self.persist_tick_calls: list[tuple[int, UUID | None]] = []
+        self.persist_tick_summary_calls: list[tuple[int, dict[str, Any], UUID | None]] = []
         self.persist_tick_atomic_calls: list[PerTickTransactionEnvelope] = []
         self.mark_resolved_calls: list[tuple[UUID, int]] = []
         self.get_pending_turns_calls: list[tuple[UUID, int]] = []
@@ -101,6 +104,15 @@ class _FakeStore:
     ) -> None:
         self.persist_tick_calls.append((tick, session_id))
         self._graphs[(session_id, tick)] = graph  # type: ignore[index]
+
+    def persist_tick_summary(
+        self,
+        tick: int,
+        summary: dict[str, Any],
+        *,
+        session_id: UUID,
+    ) -> None:
+        self.persist_tick_summary_calls.append((tick, summary, session_id))
 
     def hydrate_graph(
         self, tick: int | None = None, *, session_id: UUID | None = None
@@ -362,6 +374,308 @@ def test_advance_tick_runs_with_no_progress_store() -> None:
     session = create_new_campaign(store, scenario=WayneCountyScenario())
     result = session.advance_tick()
     assert result.tick == 1
+
+
+# --------------------------------------------------------------------------- #
+# persist_tick_summary wiring (T5 Unit U2) — the tick_summary read-model      #
+# write, previously reachable only through the legacy web bridge.            #
+# --------------------------------------------------------------------------- #
+
+
+def test_advance_tick_persists_tick_summary_at_the_persist_tick_commit_boundary() -> None:
+    """One ``persist_tick_summary`` call per committed tick, with the exact
+    kwargs :func:`~babylon.projection.tick_summary.build_tick_summary_kwargs`
+    computes over this SAME tick's ``world``/``graph`` — never a second,
+    independently-derived payload."""
+    from babylon.projection.tick_summary import build_tick_summary_kwargs
+
+    store = _FakeStore()
+    session = create_new_campaign(store, scenario=WayneCountyScenario())
+
+    result = session.advance_tick()
+
+    assert len(store.persist_tick_summary_calls) == 1
+    tick, summary, session_id = store.persist_tick_summary_calls[0]
+    assert tick == 1
+    assert session_id == session.session_id
+    assert summary == build_tick_summary_kwargs(
+        result.world, graph=session.graph, events=result.events
+    )
+
+
+def test_advance_tick_persists_tick_summary_once_per_further_tick() -> None:
+    store = _FakeStore()
+    session = create_new_campaign(store, scenario=WayneCountyScenario())
+
+    session.advance_tick()
+    session.advance_tick()
+
+    assert [tick for tick, _summary, _sid in store.persist_tick_summary_calls] == [1, 2]
+
+
+def test_advance_tick_persists_tick_summary_in_the_same_batch_as_persist_tick() -> None:
+    """ "Same commit boundary as persist_tick" pinned as call ORDER: the
+    summary write happens strictly between ``persist_tick`` and
+    ``persist_tick_atomic`` (the commit marker), never before the full
+    snapshot or after the tick is already marked committed."""
+    order: list[str] = []
+
+    class _OrderedStore(_FakeStore):
+        def persist_tick(self, *args: Any, **kwargs: Any) -> None:
+            order.append("persist_tick")
+            super().persist_tick(*args, **kwargs)
+
+        def persist_tick_summary(self, *args: Any, **kwargs: Any) -> None:
+            order.append("persist_tick_summary")
+            super().persist_tick_summary(*args, **kwargs)
+
+        def persist_tick_atomic(self, *args: Any, **kwargs: Any) -> None:
+            order.append("persist_tick_atomic")
+            super().persist_tick_atomic(*args, **kwargs)
+
+    store = _OrderedStore()
+    session = create_new_campaign(store, scenario=WayneCountyScenario())
+    order.clear()  # drop tick 0's own boot sequence
+
+    session.advance_tick()
+
+    assert order == ["persist_tick", "persist_tick_summary", "persist_tick_atomic"]
+
+
+class _EmitsUprisingSystem:
+    """Test-only ``System`` stub: publishes one real UPRISING bus event per
+    tick — the same publication ``StruggleSystem`` performs in production
+    (struggle.py), minus its spark/agitation/hopelessness trigger
+    conditions. Satisfies ``babylon.kernel.system_protocol.System``
+    structurally (name + step). Deliberately does NOT publish
+    STATE_REPRESSION: no production code does, and stubbing a publisher
+    production never implements would green a permanently-dead wire."""
+
+    name = "test_emits_uprising"
+
+    def step(self, graph: Any, services: Any, context: Any) -> None:  # noqa: ARG002
+        services.event_bus.publish(Event(type=EventType.UPRISING, tick=context.tick, payload={}))
+
+
+def test_advance_tick_persists_real_uprising_count_and_null_repression() -> None:
+    """Regression pin (T5 U2 review fix, both halves): drives a REAL
+    ``advance_tick`` over a tick whose bus emits a real UPRISING event and
+    asserts (a) the PERSISTED ``uprising_count`` reflects it — the first
+    cut counted ``WorldState.events``, which ``from_graph()`` never
+    restamps per tick, a fabricated ``0`` — and (b) ``repression_count``
+    is honestly ``None``, NOT a count: no production code publishes
+    STATE_REPRESSION to the bus (the OODA first-class-action gate covers
+    only POGROM/LOCKOUT/VIGILANTISM), so a bus count would be a
+    structurally fabricated ``0`` (Constitution III.11)."""
+    store = _FakeStore()
+    session = create_new_campaign(store, scenario=WayneCountyScenario())
+    session.engine = SimulationEngine([_EmitsUprisingSystem()])
+
+    session.advance_tick()
+
+    _tick, summary, _session_id = store.persist_tick_summary_calls[-1]
+    assert summary["uprising_count"] == 1
+    assert summary["repression_count"] is None
+
+
+# --------------------------------------------------------------------------- #
+# NarratorScheduler seam (T5 Unit U1) — one schedule() per committed tick,    #
+# AFTER the deterministic bake, gated entirely on whether a narrator is       #
+# wired at all (narrator=None means schedule() is never called).             #
+# --------------------------------------------------------------------------- #
+
+
+class _RecordingNarrator:
+    """``NarratorScheduler`` double — records every ``schedule()`` call
+    (entity id, tick, and non-empty ``system``/``prompt``) without touching
+    any real provider or vault."""
+
+    def __init__(self) -> None:
+        self.calls: list[tuple[str, int, str, str]] = []
+
+    def schedule(self, entity_id: str, tick: int, *, system: str, prompt: str) -> None:
+        self.calls.append((entity_id, tick, system, prompt))
+
+
+def test_advance_tick_schedules_narration_exactly_once_per_tick_when_wired() -> None:
+    store = _FakeStore()
+    narrator = _RecordingNarrator()
+    session = create_new_campaign(store, scenario=WayneCountyScenario(), narrator=narrator)
+
+    session.advance_tick()
+    session.advance_tick()
+
+    assert [tick for _entity, tick, _system, _prompt in narrator.calls] == [1, 2]
+    assert all(entity == "national/USA" for entity, _t, _s, _p in narrator.calls)
+    # Real, non-empty (system, prompt) content — never a placeholder call.
+    assert all(system and prompt for _e, _t, system, prompt in narrator.calls)
+
+
+def test_advance_tick_never_schedules_narration_with_no_narrator_wired() -> None:
+    """``narrator=None`` (the default) — ``schedule()`` is never called at
+    all; the pre-Unit-U1 behavior and the narrator-OFF byte-identity
+    guarantee's actual mechanism (see ``TestNarratorVaultParity`` below for
+    the full vault-tree proof)."""
+    store = _FakeStore()
+    session = create_new_campaign(store, scenario=WayneCountyScenario())
+
+    result = session.advance_tick()  # must not raise with nothing wired
+
+    assert result.tick == 1
+
+
+def test_advance_tick_schedules_narration_after_the_deterministic_bake() -> None:
+    """Ordering: the vault's tick-commit observer (the deterministic bake)
+    runs strictly BEFORE narration is scheduled for the same tick."""
+    order: list[str] = []
+
+    class _OrderedObserver(_RecordingObserver):
+        def on_tick_committed(self, *, tick: int, world: Any, graph: Any) -> None:
+            order.append("bake")
+            super().on_tick_committed(tick=tick, world=world, graph=graph)
+
+    class _OrderedNarrator(_RecordingNarrator):
+        def schedule(self, entity_id: str, tick: int, *, system: str, prompt: str) -> None:
+            order.append("narrate")
+            super().schedule(entity_id, tick, system=system, prompt=prompt)
+
+    store = _FakeStore()
+    session = create_new_campaign(
+        store,
+        scenario=WayneCountyScenario(),
+        tick_commit_observer=_OrderedObserver(),
+        narrator=_OrderedNarrator(),
+    )
+    order.clear()  # drop tick 0's own bake (create_new_campaign never narrates tick 0)
+
+    session.advance_tick()
+
+    assert order == ["bake", "narrate"]
+
+
+def _vault_file_bytes(
+    vault_root: Path, *, exclude_top: frozenset[str] = frozenset()
+) -> dict[str, bytes]:
+    """Every real file byte-for-byte under ``vault_root``, excluding ``.git``
+    and any top-level directory named in ``exclude_top`` — the OFF/ON
+    deterministic-page parity comparison helper."""
+    result: dict[str, bytes] = {}
+    for path in sorted(vault_root.rglob("*")):
+        if not path.is_file():
+            continue
+        relative = path.relative_to(vault_root)
+        if ".git" in relative.parts or relative.parts[0] in exclude_top:
+            continue
+        result[relative.as_posix()] = path.read_bytes()
+    return result
+
+
+class TestNarratorVaultParity:
+    """T5 Unit U1's determinism-tiering contract, end to end through a real
+    vault: narrator-OFF stays byte-reproducible; narrator-ON schedules
+    exactly once per tick and never perturbs a single deterministic page —
+    only ``narrative/`` differs."""
+
+    @staticmethod
+    def _bake_two_ticks(vault_root: Path, *, narrator: object | None) -> None:
+        from babylon.projection.vault.materializer import VaultMaterializer
+        from babylon.projection.vault.tick_baker import ArchiveTickBaker
+
+        store = _FakeStore()
+        baker = ArchiveTickBaker(VaultMaterializer(vault_root), county_fips=("26163",))
+        session = create_new_campaign(
+            store,
+            scenario=WayneCountyScenario(),
+            tick_commit_observer=baker,
+            narrator=narrator,  # type: ignore[arg-type]
+        )
+        session.advance_tick()
+        session.advance_tick()
+
+    def test_narrator_off_two_independent_bakes_are_byte_identical(self, tmp_path: Path) -> None:
+        """(a) narrator OFF: two identical campaign advances produce
+        byte-identical vault trees."""
+        root_a, root_b = tmp_path / "a", tmp_path / "b"
+        self._bake_two_ticks(root_a, narrator=None)
+        self._bake_two_ticks(root_b, narrator=None)
+
+        assert _vault_file_bytes(root_a) == _vault_file_bytes(root_b)
+
+    def test_narrator_on_schedules_once_per_tick_and_deterministic_pages_match_off(
+        self, tmp_path: Path
+    ) -> None:
+        """(b) narrator ON + MockNarrator: schedule() fires exactly once per
+        committed tick, and every deterministic (non-narrative) page stays
+        byte-identical to the OFF run."""
+        from babylon.intelligence.providers import MockNarrator
+        from babylon.projection.vault.narrator_cache import NarratorCache, NarratorSideProcess
+
+        off_root = tmp_path / "off"
+        self._bake_two_ticks(off_root, narrator=None)
+
+        on_root = tmp_path / "on"
+        mock = MockNarrator(responses=["Beat one.", "Beat two."])
+        narrator = NarratorSideProcess(NarratorCache(on_root), provider=mock)
+        try:
+            self._bake_two_ticks(on_root, narrator=narrator)
+        finally:
+            narrator.close()  # drains the worker before any assertion below
+
+        assert mock.call_count == 2  # exactly one schedule()-driven narrate() per tick
+        assert (on_root / "narrative").is_dir()
+        assert _vault_file_bytes(off_root) == _vault_file_bytes(
+            on_root, exclude_top=frozenset({"narrative"})
+        )
+
+    def test_narrator_provider_failure_never_breaks_the_tick(self, tmp_path: Path) -> None:
+        """(c) a provider that raises does not break the tick — the side
+        process's own isolation (``NarratorSideProcess._run``'s broad
+        ``except Exception``) absorbs even an UNEXPECTED (non-
+        ``ProviderUnavailable``) failure, never propagating into
+        ``advance_tick``."""
+        from babylon.intelligence.providers import (
+            NarrationResult,
+            ProviderEndpoint,
+            ProviderHealth,
+            ProviderKind,
+            ProviderUnavailable,
+        )
+        from babylon.projection.vault.narrator_cache import NarratorCache, NarratorSideProcess
+
+        class _RaisingProvider:
+            endpoint = ProviderEndpoint(
+                kind=ProviderKind.MOCK,
+                base_url="about:mock",
+                chat_model="mock",
+                embed_model="mock",
+            )
+
+            def narrate(
+                self,
+                system: str,  # noqa: ARG002 — NarratorProvider shape
+                prompt: str,  # noqa: ARG002 — NarratorProvider shape
+                *,
+                max_tokens: int = 512,  # noqa: ARG002 — NarratorProvider shape
+                temperature: float = 0.7,  # noqa: ARG002 — NarratorProvider shape
+            ) -> NarrationResult:
+                raise RuntimeError("simulated unexpected narrator failure")
+
+            def embed(self, texts: object) -> object:  # noqa: ARG002
+                raise ProviderUnavailable("n/a")
+
+            def health(self) -> ProviderHealth:
+                return ProviderHealth(ok=True, kind=ProviderKind.MOCK, detail="raising")
+
+        store = _FakeStore()
+        narrator = NarratorSideProcess(
+            NarratorCache(tmp_path / "vault"), provider=_RaisingProvider()
+        )
+        session = create_new_campaign(store, scenario=WayneCountyScenario(), narrator=narrator)
+
+        result = session.advance_tick()  # must not raise
+        narrator.close()  # drains the worker; confirms the failure stayed contained
+
+        assert result.tick == 1
 
 
 # --------------------------------------------------------------------------- #

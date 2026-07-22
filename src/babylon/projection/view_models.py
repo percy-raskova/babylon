@@ -23,6 +23,7 @@ from __future__ import annotations
 
 from collections.abc import Mapping
 from typing import Annotated, Any, Literal
+from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field, TypeAdapter, model_validator
 
@@ -1013,6 +1014,61 @@ class EconomyView(BaseModel):
     energy_beta_j: float | None = None
 
 
+class NationalTrendView(BaseModel):
+    """One row of ``v_national_trend`` — the declared trend read-model (T5 Unit U2).
+
+    Constitution II.11's declared cross-subsystem read interface over
+    ``tick_summary`` (spec-037; extended by migrations 0033-0035): per-tick
+    ``LAG``-window deltas for the series a real Archive campaign now
+    actually writes (:func:`~babylon.projection.tick_summary.
+    build_tick_summary_kwargs`, wired at :class:`~babylon.game.session.
+    GameSession`'s commit boundary, T5 Unit U2) — Φ (``imperial_rent``, the
+    Fundamental Theorem's Imperial Rent gap) and the Program 23 Market
+    Scissors price⟷value axis (``price_log``/``fictitious_log``,
+    ADR077/078), plus the correction-snap ledger's own foreshadowed
+    increment read (``market_corrections``, a cumulative counter —
+    migration ``0034_market_corrections.sql``'s own docstring: "the
+    cockpit derives the snap ticks from increments"). ``tick_summary``'s
+    remaining columns (``year``/``total_c``/``total_v``/``total_s``/
+    ``exploitation_rate``/``profit_rate``/``co_optive_edge_count``/
+    ``conservation_check``) carry no computed value from any engine system
+    yet (see :func:`~babylon.projection.tick_summary.
+    build_tick_summary_kwargs`'s own docstring) — a trend of a permanently
+    ``NULL`` column is not a signal, so this view does not window them.
+
+    Every ``*_delta`` is ``NULL`` at a session's first committed tick (no
+    prior row for ``LAG`` to read) and whenever either endpoint of the pair
+    is itself ``NULL`` (the axis was absent one side of the step) — honest
+    absence (Constitution III.11), never a fabricated zero.
+
+    :param session_id: The campaign session this row belongs to.
+    :param tick: The committed tick this row summarizes.
+    :param imperial_rent: ``GlobalEconomy.imperial_rent_pool`` this tick.
+    :param imperial_rent_delta: ``imperial_rent - LAG(imperial_rent)``.
+    :param price_log: The Market Scissors price-index log this tick.
+    :param price_log_delta: ``price_log - LAG(price_log)``.
+    :param fictitious_log: The Market Scissors fictitious-capitalization log.
+    :param fictitious_log_delta: ``fictitious_log - LAG(fictitious_log)``.
+    :param market_corrections: Cumulative correction-snap count as of this
+        tick.
+    :param market_corrections_delta: New correction snaps since the prior
+        tick — a positive value marks a snap tick this tick.
+    """
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    session_id: UUID
+    tick: int = Field(ge=0)
+    imperial_rent: float | None = None
+    imperial_rent_delta: float | None = None
+    price_log: float | None = None
+    price_log_delta: float | None = None
+    fictitious_log: float | None = None
+    fictitious_log_delta: float | None = None
+    market_corrections: int | None = None
+    market_corrections_delta: int | None = None
+
+
 class FieldStateNodeView(BaseModel):
     """One social-class node's Systems #19/#20 field-stack reading (T3 U3).
 
@@ -1616,6 +1672,7 @@ __all__ = [
     "IndustryView",
     "InstitutionView",
     "KeyFigureView",
+    "NationalTrendView",
     "NationalView",
     "OrganizationView",
     "PrincipalFieldView",

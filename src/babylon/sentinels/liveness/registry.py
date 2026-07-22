@@ -150,7 +150,7 @@ LIVENESS_ROWS: tuple[LivenessRow, ...] = (
             "labor_aristocracy_ratio, is_labor_aristocracy) must be added to "
             "projection/veil.py's TIER1_VALUE_RELATION_FIELDS before exposure, the same "
             "forward-pin discipline that module's docstring already applies to "
-            "profit_rate/occ/surplus_denied (Vol I U9/ADR114)."
+            "profit_rate/occ/surplus_denied (Vol I U9/ADR115)."
         ),
         material_relation=(
             "Phi = W_c - V_c per class/county, the Fundamental Theorem computed "

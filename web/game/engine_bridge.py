@@ -8030,7 +8030,7 @@ def _bridge_economics_overrides(fips_codes: tuple[str, ...] = ()) -> tuple[dict[
     # ``productivity_data_source``/``dispossession_data_source``/
     # ``transition_engine`` ride along in the same dict, mirroring the
     # headless runner's ``.update(vol1_overrides)`` faithfully. STALE-COMMENT
-    # FIX (Vol I U9/ADR114): this paragraph previously read
+    # FIX (Vol I U9/ADR115): this paragraph previously read
     # ``productivity_data_source`` as having "zero tick readers anywhere" and
     # ``transition_engine`` as unwired here — both were made false by this
     # SAME program's later units, in this SAME factory call, without anyone

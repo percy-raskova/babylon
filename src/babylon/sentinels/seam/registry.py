@@ -1200,7 +1200,7 @@ _TERRITORY_TICK_METRICS: tuple[SeamEntry, ...] = (
     ),
     # --- Feature 021 base Territory fields, activated by Vol I U3
     # (accumulation loop / dispossession rate feed) and registered now
-    # (Vol I U9/ADR114): unlike wage_pressure/dispossession_intensity above
+    # (Vol I U9/ADR115): unlike wage_pressure/dispossession_intensity above
     # (optional graph attrs read via _territory_graph_attr, absent until a
     # system writes them), these are REQUIRED Territory model fields — always
     # present on the wire (`nullable=False`), `ge=0.0`-bounded, defaulting to

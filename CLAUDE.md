@@ -21,8 +21,9 @@ proposing structure; the Constitution stays the law, architecture.yaml stays the
 
 ## Constitutional Compact
 
-Irreducible constraints. Full text: `CONSTITUTION.md` (v2.15.0, 10 Articles +
-Amendments A–AA, T reserved for ADR072; the canonical governance doc — read it before
+Irreducible constraints. Full text: `CONSTITUTION.md` (v2.16.0, 10 Articles +
+Amendments A–AA — T ratified 2026-07-22 (Divergence Channel, observes-only, code
+queued; ADR072/ADR126); the canonical governance doc — read it before
 proposing architecture. AA: Windows = binding post-1.0 requirement, pre-1.0 dev
 SHIELDED from all Windows obligations except a one-line ADR disclosure duty).
 

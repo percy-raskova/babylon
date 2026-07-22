@@ -1,5 +1,5 @@
 meta:
-  version: 1.53.0
+  version: 1.54.0
   updated: '2026-07-22'
   description: Architecture Decision Records Index
   format: See individual ADR files in this directory
@@ -12,6 +12,11 @@ meta:
   # gap-projections (post-cascade, next free slot >= 125 per controller
   # ruling 2026-07-22 — does not fill the reserved Vol I 119 hole).
 decisions:
+  ADR126_bd_ruling_batch_2026_07_22:
+    title: 'BD ruling batch 2026-07-22 (in-session directives, executed under delegated autonomy): (1) adversary-train merge to dev AUTHORIZED — landing executed by the train-owner session, W1-W5 each opus-reviewed; (2) the Electoral Question §7 rulings 1-8 ALL APPROVED as recommended (node-attribute allegiance / political_form joins the opposition catalog with its index assigned at implementation / fascism captures the RESTORATIONIST vehicle / org-level officeholder capture / primaries deferred to a Phase-2 fiber / this program owns spec-070''s election decision-moment / reformist trunk replaced in place with liquidationism demoted to a detected absorbing state / trap_detection.py absorbed and its hardcoded thresholds retired) — program is spec-ready and QUEUED as an engine train, not forked, while the adversary-train surfaces are freshly merged and the action surface is still landing; (3) Amendment T RATIFIED as drafted (BD-delegated call), observes-only, with the off-critical-path rider — CONSTITUTION.md v2.16.0, ADR072 proposed->accepted; (4) the Player Interface Shell plan (11 tasks, project/research/24-the-archive/PLAYER_INTERFACE_SHELL_plan.md) APPROVED for execution on feature/interface-shell off dev — its ADR109 sentinel-row duty is discharged via blocking-dependency citation (the wiring registry does not exist until the ADR109 enforcement train, FIRST in the standing post-cascade queue, builds it) and its one deliberate engine hunk (promoting player verbs in ooda.py _FIRST_CLASS_ACTION_EVENTS) lands coordinated post-train-merge. Basis: 9-agent read-only ultracode recon (7 sonnet recon + opus synthesis + opus adversarial critique, field-verified). Governance batch: no production code changes in this ADR.'
+    status: accepted
+    date: '2026-07-22'
+    file: ADR126_bd_ruling_batch_2026_07_22.yaml
   ADR125_t3_gap_projections:
     title: 'T3 Gap Projections (Program 24 spine-C): five new Archive projection modules (economy, field-state, balkanization faction, chronicle event-anchoring, hex habitability) close the four remaining WO-52b/test-port-ledger LOUD gap rows; two Vol I/Vol II cascade dormancy gaps lit (fundamental_theorem graph stash consumed by the economy dossier — W-P; the value_form Phi tri-decomposition builders wired to real graph-input reads — W-C/W-P); U1 completes the SurplusValueDistribution graph publication (taxes_on_surplus + total_surplus — W-C). One gap found, not closed, and explicitly deferred: no engine scenario stamps NodeType.FACTION, so the balkanization dossier is honest-empty on every real campaign until the RED_OGV repair program seeds it (new OPEN row in ai/wiring-doctrine.md). Per-hex habitability ships as a county-grain inheritance (broadcast, not aggregation), pending a real dynamic_hex_state substrate column for a hex-native reading. Governance close-out ADR: no production code changes.'
     status: accepted

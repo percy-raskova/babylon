@@ -145,6 +145,15 @@ REAL 30-system engine). Non-blocking, verify/file at merge:
       blessing time; do NOT let it read as a surprise. (Vol II's own ceremony stays "likely
       all-zero-with-reason" until vol2_step is lit by its U4.)
 
+## Post-cascade queue (order among these decided at fork time; none gate Gate 3)
+
+1. **Wiring-doctrine enforcement train** (ADR109 §7, 8 units) — FIRST of the queue: it
+   extends the just-merged T1.1 seam_algebra + T1.2 spine estates, and every later wiring
+   unit (Material Triad W1, interface-shell drivers) then lands under its registry.
+2. **Material Triad W1** (territory repair + `metabolic` registration) — needs merged
+   catalog + T1.1 stub-vs-calculator.
+3. **Interface-shell plan** (11 tasks, BD-queued behind cascade + T3's EconomyView).
+
 ## Post-merge cleanup units (from the fork's research passes — file as small PRs, not blockers)
 
 - **Choropleth re-sum anti-pattern**: state-tier choropleth re-sums hex rows in Python when a

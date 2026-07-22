@@ -137,6 +137,11 @@ regenerate the YAML (`uv run python tools/generate_defines_config.py`).
 - **Type-ignore** with a specific code (`# type: ignore[import-untyped]`), never blank.
 - **`SimulationConfig`** is a run-scoped config carrying only `rng_seed` (Constitution III.7) — NOT a
   coefficient carrier; coefficients are in `GameDefines`.
+- **Wiring doctrine (ADR109, ratified 2026-07-21):** connecting any built-but-dormant construct is a
+  TYPED MOTION — W-C dataflow / W-𝔇 opposition / W-G scale-adjunction / W-P projection / W-A4
+  conservation closure — entered through declared data and closed by its class's sentinel row, never
+  a bare import-and-call. A wiring PR without its sentinel row (or a blocking-dependency citation)
+  is incomplete. Full text + gap ledger: `ai/wiring-doctrine.md`.
 
 ## Git & commits
 

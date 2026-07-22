@@ -1,5 +1,5 @@
 meta:
-  version: 1.47.0
+  version: 1.48.0
   updated: '2026-07-21'
   description: Architecture Decision Records Index
   format: See individual ADR files in this directory
@@ -10,6 +10,11 @@ meta:
   # T1.2 = ADR135-139; T4 = ADR140-144; T7-beta = ADR145-149. Lanes never mint
   # outside their block; blocks dissolve when the lane merges.
 decisions:
+  ADR109_wiring_doctrine:
+    title: 'The Wiring Doctrine RATIFIED (owner 2026-07-21): wiring = a typed motion in one of the three moduli (W-C dataflow / W-hex-D opposition / W-G scale adjunction / W-P projection / W-A4 conservation closure), entered through declared data, closed by its motion class sentinel row -- never a bare import-and-call; review rule effective immediately (a wiring PR without its sentinel row or blocking-dependency citation is incomplete); 8-unit enforcement build (wiring registry seeded from the 11-gap ledger, W-G empty-iteration check NEW, W-A4 residual-severity F-3 detector, event rule, verb rule blocked on ActionSpec registry) forks POST-CASCADE extending the T1.1/T1.2 sentinel estates; Kaggle = discovery index never source-of-record; doctrine text ai/wiring-doctrine.md'
+    status: accepted
+    date: '2026-07-21'
+    file: ADR109_wiring_doctrine.yaml
   ADR108_windows_portability_horizon:
     title: 'Amendment AA / Constitution v2.15.0 — Portability Horizon (BD-directed 2026-07-21): Windows = BINDING post-1.0.0 requirement, activated on concept-proven BD ruling; lane 1 WSL2 (existing flake channel promoted workaround→supported + doctor preflight), lane 2 native Windows (2.0.0 release, separate non-Nix channel ADR at activation); THE SHIELD: pre-1.0.0 dev constitutionally protected — no Windows CI/conditional paths/speculative abstractions, no v1.0 DoD item may reference Windows, pre-1.0 Windows work requires amending AA first; sole pre-1.0 duty = one-line Windows-impact disclosure in load-bearing platform ADRs + prefer-non-foreclosing on ties; named optionality seams: DSN TCP-loopback fallback point (keel K2) + ADR099 glyph floor (kitty graphics absent from Windows Terminal — the floor is what ports); X.8 letter revised in place (P pattern); Material-Triad slides to AB+'
     status: accepted

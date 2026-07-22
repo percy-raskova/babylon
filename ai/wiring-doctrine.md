@@ -1,9 +1,11 @@
 # The Wiring Doctrine — how disconnected subsystems get connected, in grammar
 
-> STATUS: CONTROLLER DRAFT 2026-07-21, for BD review. The principled method for closing
-> the built-but-disconnected estate (11 verified gaps, see the Material Triad brief §Ground
-> truth and the fork sweep of 2026-07-21), grounded in `ai/_inbox/math/formalism.md`
-> Parts III (grammar of motion), VII (three moduli) and the Event Calculus (R-EC-1).
+> STATUS: **RATIFIED — owner ruling 2026-07-21** ("the wiring doctrine is excellent, I
+> approve lets make it Official including with Tests and Sentinels"). Record: **ADR109**;
+> enforcement charter: **§7** (review rule effective immediately; sentinel build forks
+> post-cascade). Drafted same day from `ai/_inbox/math/formalism.md` Parts III (grammar
+> of motion), VII (three moduli) and the Event Calculus (R-EC-1), grounded against the
+> 11-gap verified sweep (Material Triad brief §Ground truth).
 > One sentence: **wiring is never a function call — it is a typed motion in one of the
 > three moduli, entered through declared data, verified by a sentinel.**
 
@@ -137,3 +139,49 @@ sort no production path stamps is the hex-aggregation bug class); W-P → import
 one-way lattice + Amendment-S grep-gate (widen to `formulas/`, owed from T1.1); W-A4 →
 conservation registry + stub-vs-calculator. A wiring PR that adds no sentinel row for
 its class is incomplete by definition.
+
+## 7. Enforcement charter (ratified with the doctrine — ADR109)
+
+**Effective immediately, no code required:** a wiring PR that does not ship its motion
+class's sentinel row — or cite the dependency that blocks it — is **incomplete and
+review-rejectable**. This binds every post-cascade lane from ratification day.
+
+**The build** forks post-cascade as its own small train. It deliberately does NOT start
+now: it EXTENDS estates still sitting unmerged on lane branches — T1.1's
+`sentinels/seam_algebra/` (∂L, gate-satisfaction, stub-vs-calculator), T1.2's
+observability spine, and the vocabulary family — and building against pre-merge HEAD
+would fork those estates. Units, one PR per row, TDD, self-merge on green:
+
+1. **The wiring registry** — `sentinels/wiring/registry.py` in the
+   closed-hand-curated-registry shape (the U7 `formula_registration` precedent): one
+   frozen row per declared wire — motion class, producer anchor, consumer anchor, data
+   feed, gate ref, status `OPEN | BLOCKED | CLOSED`. §4's gap ledger seeds it. Checks:
+   CLOSED rows' anchors must resolve by AST; OPEN rows must cite their charter; BLOCKED
+   rows must cite the blocking amendment or dependency. Silent gaps become impossible —
+   a wire is either declared here or the ∂L family reds it.
+2. **W-C** — core shipped in T1.1. Extension: every declared `W(p) ∩ R(c)` edge appears
+   in the conflict DAG with materialist-causality direction audited.
+3. **W-𝔇** — parametrized property suite over the opposition registry: fresh-per-tick
+   measure (no accumulator state anywhere in the measure path), an UNPOSITIONED path
+   test per opposition, shadow-first (a non-shadow registration must cite its
+   promotion ADR).
+4. **W-G** — the NEW empty-iteration check (§6): a type-filtered fold over a node sort
+   no production path stamps is red — the hex-aggregation bug class, caught statically
+   (AST over `query_nodes`/type-filter folds × the vocabulary producer table).
+5. **W-P** — import-linter lattice (shipped) + Amendment-S grep-gate widened to
+   `formulas/` (the T1.1-owed item lands here if the lane's U6 didn't take it) + every
+   W-P registry row must cite its DeclaredView.
+6. **W-A4** — conservation-registry presence + residual-severity check: a residual
+   evaluator that warns instead of alarming reds statically (the F-3 anti-pattern
+   detector).
+7. **Event rule** — static check: no `logging` call site emits catalog event kinds;
+   game-semantic events travel only the event bus (the Spine subscribes one-way).
+8. **Verb rule** — BLOCKED on the ActionSpec registry (interface-shell Task 1). When it
+   lands: every `effect_ref` resolves to verb × target-sort on the fixed generators,
+   and no resolver carries `creates_value` (L-SPEND).
+
+**Discipline:** every check ships red-phase-first against a synthetic witness (the T1.1
+mutation-verification pattern); mutation validation LOCAL-ONLY, never CI; each check
+enters `tools/sentinel_check.py`'s dispatcher and `check:sentinels-static` with the
+counts bumped; §4's ledger rows migrate into the registry as its seed data and the §4
+table is then superseded by the registry (single source).

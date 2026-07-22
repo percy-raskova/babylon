@@ -161,10 +161,13 @@ Full per-unit notes: the workflow result (tasks/w2htteeii.output). Controller-ac
 
 ## Cross-lane checkpoints to verify AT merge review (do not let these slip)
 
-- [ ] **ADR renumbers executed**: Vol I → 110/111 (was 108/109), Vol II → 120/121. Both got
-      binding controller notices prepended to their prompts + block allocation in index meta
-      (df087dce). If a lane didn't renumber, do it mechanically before its merge; mainline
-      ADR108 = Amendment AA is immovable.
+- [x] **ADR renumbers executed** (VERIFIED at merge; original 110/111 target was stale —
+      the lane minted 110–115 for U3–U9 before the renumber fired, so the collision pair
+      took the block's free tail instead): Vol I U1/U2 → **ADR116/ADR117** + **ADR118**
+      minted mechanically for the ADR-less U5 (19-file cross-ref sweep on the cascade
+      branch); Vol II → 120/121 done in-lane (e86cdf06). Mainline ADR108 = Amendment AA /
+      ADR109 = wiring doctrine immovable, confirmed sole meanings repo-wide by the
+      close-out auditor.
 - [ ] **DSN TCP-loopback fallback** (Windows/AA disclosure, keel K2): resolver documents a
       TCP-loopback point beside the unix-socket default. Confirm present; it's the one-line
       Windows optionality seam the AA amendment named.

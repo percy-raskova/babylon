@@ -30,14 +30,29 @@ exactly matching the ported ``_build_tick_summary``'s own contract:
   ``None`` when its own axis is absent this tick.
 * ``solidarity_edge_count``/``antagonistic_edge_count`` count
   :class:`~babylon.models.entities.relationship.Relationship` rows by
-  ``edge_type``; ``uprising_count``/``repression_count`` count this tick's
-  ``WorldState.events`` by ``event_type`` (the ported source's own
-  ``_enum_val``-string comparison is replaced here by direct
-  :class:`~babylon.models.enums.topology.EdgeType`/
-  :class:`~babylon.models.enums.events.EventType` comparison — the SAME
-  counting rule, since ``Relationship.edge_type``/``SimulationEvent.
-  event_type`` are strictly-typed enum fields in this module's Pydantic
-  boundary, unlike the web bridge's own dict-serialized payloads).
+  ``edge_type`` (direct :class:`~babylon.models.enums.topology.EdgeType`
+  comparison — the SAME counting rule as the ported source's own
+  ``_enum_val``-string match, since ``Relationship.edge_type`` is a
+  strictly-typed enum field in this module's Pydantic boundary, unlike the
+  web bridge's own dict-serialized payloads).
+* ``uprising_count``/``repression_count`` count this tick's raw kernel
+  :class:`~babylon.kernel.event_bus.Event` history (the ``events=`` param)
+  by ``.type`` against :class:`~babylon.models.enums.events.EventType`
+  (REVIEW FIX, T5 U2: the first cut counted ``WorldState.events`` instead,
+  which is ALWAYS empty on the Archive path —
+  ``WorldState.from_graph()`` reconstructs ``.events`` from
+  ``graph.graph['events']``, a key only
+  :meth:`~babylon.models.world_state.WorldState.to_graph` ever writes
+  (once, at tick-0 boot); no engine system restamps it per tick, so every
+  ``advance_tick`` call was silently persisting a fabricated ``0`` instead
+  of the real count — exactly the invented-zero Constitution III.11
+  forbids. :meth:`~babylon.game.session.GameSession.advance_tick` already
+  collects the tick's real bus history via ``bus.get_history()`` for the
+  Chronicle adapter; this module reuses that SAME tuple rather than
+  inventing a second event source). ``events=None`` (no history threaded)
+  keeps both columns honestly ``None`` — a caller with no history is a
+  different state from "zero events happened this tick", so it is never
+  collapsed to the same ``0``.
 * ``org_count``/``player_org_count`` read ``WorldState.organizations``/
   ``player_org_id`` directly rather than the ported source's own
   already-``_serialize_organization``-ed ``organizations`` list — the same
@@ -54,12 +69,14 @@ are honest ``None`` — tick-0 has no TickDynamics output.
 
 from __future__ import annotations
 
+from collections.abc import Sequence
 from typing import TYPE_CHECKING, Any, Final
 
 from babylon.models.enums.events import EventType
 from babylon.models.enums.topology import EdgeType, NodeType
 
 if TYPE_CHECKING:
+    from babylon.kernel.event_bus import Event
     from babylon.kernel.graph_protocol import GraphProtocol
     from babylon.models.world_state import WorldState
 
@@ -190,26 +207,38 @@ def build_tick_summary_kwargs(
     world: WorldState,
     *,
     graph: GraphProtocol | None = None,
+    events: Sequence[Event] | None = None,
 ) -> dict[str, Any]:
     """Aggregate one committed tick's ``tick_summary`` row from live state.
 
     Port of ``web/game/engine_bridge.py::_build_tick_summary`` (lines
     ~9341-9420) — same field semantics, no redesign (see this module's own
-    docstring for the field-by-field ruling and the two deliberate
-    mechanical simplifications: direct enum comparison in place of
-    ``_enum_val``-string matching, and reading ``org_count``/
-    ``player_org_count`` straight off ``WorldState`` rather than an
-    already-``_serialize_organization``-ed list).
+    docstring for the field-by-field ruling and the deliberate mechanical
+    simplifications: direct enum comparison in place of ``_enum_val``-string
+    matching, and reading ``org_count``/``player_org_count`` straight off
+    ``WorldState`` rather than an already-``_serialize_organization``-ed
+    list).
 
     :param world: The committed, post-tick ``WorldState``
         (``WorldState.from_graph(graph, tick=...)`` — never a bootstrap
         ``WorldState`` with a stale ``events`` list, since ``events`` is
-        per-tick, not cumulative).
+        per-tick, not cumulative). NOTE: ``world.events`` is NOT read for
+        ``uprising_count``/``repression_count`` (see ``events=`` below) —
+        ``WorldState.from_graph()`` never restamps it per tick, so it would
+        always be empty on this path.
     :param graph: The SAME committed post-tick graph ``world`` was built
         from, when the caller has one — unlocks the five county-deduped
         year-boundary aggregates via :func:`_county_tick_series_aggregates`.
         ``None`` (tick-0 bootstrap call sites) keeps those five honestly
         ``None`` rather than fabricating a step-function head.
+    :param events: This tick's raw kernel bus history (typically
+        ``tuple(bus.get_history())`` — the SAME tuple
+        :meth:`~babylon.game.session.GameSession.advance_tick` already
+        collects for the Chronicle adapter), used to count
+        ``uprising_count``/``repression_count`` by ``.type``. ``None`` (no
+        history threaded) keeps both columns honestly ``None`` rather than
+        a fabricated ``0`` (Constitution III.11; see this module's own
+        docstring, "REVIEW FIX, T5 U2").
     :returns: Kwargs dict for
         :meth:`~babylon.persistence.postgres_runtime.PostgresRuntime.
         persist_tick_summary`.
@@ -227,10 +256,14 @@ def build_tick_summary_kwargs(
     antagonistic_edge_count = sum(
         1 for rel in world.relationships if rel.edge_type == EdgeType.EXPLOITATION
     )
-    uprising_count = sum(1 for event in world.events if event.event_type == EventType.UPRISING)
-    repression_count = sum(
-        1 for event in world.events if event.event_type == EventType.STATE_REPRESSION
-    )
+    uprising_count: int | None
+    repression_count: int | None
+    if events is None:
+        uprising_count = None
+        repression_count = None
+    else:
+        uprising_count = sum(1 for event in events if event.type == EventType.UPRISING)
+        repression_count = sum(1 for event in events if event.type == EventType.STATE_REPRESSION)
     player_org_count = sum(
         1 for org in world.organizations.values() if org.id == world.player_org_id
     )

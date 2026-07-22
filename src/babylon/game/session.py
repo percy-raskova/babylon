@@ -602,7 +602,12 @@ class GameSession:
         :func:`~babylon.projection.tick_summary.build_tick_summary_kwargs`
         over this tick's own ``world``/``graph`` — previously reachable only
         through the legacy web bridge, so a real Archive campaign wrote
-        nothing to ``tick_summary`` at all.
+        nothing to ``tick_summary`` at all. REVIEW FIX: also threads this
+        tick's own ``events`` (the SAME bus history collected above for the
+        Chronicle adapter) so ``uprising_count``/``repression_count`` count
+        REAL events, not the always-empty ``world.events``
+        (``WorldState.from_graph()`` never restamps ``graph.graph['events']``
+        per tick — see :func:`build_tick_summary_kwargs`'s own docstring).
         """
         next_tick = self.tick + 1
         pending = self._store.get_pending_turns(self.session_id, next_tick)
@@ -624,7 +629,7 @@ class GameSession:
         self._store.persist_tick(next_tick, self.graph, session_id=self.session_id)
         self._store.persist_tick_summary(
             next_tick,
-            build_tick_summary_kwargs(world, graph=self.graph),
+            build_tick_summary_kwargs(world, graph=self.graph, events=events),
             session_id=self.session_id,
         )
         self._store.persist_tick_atomic(

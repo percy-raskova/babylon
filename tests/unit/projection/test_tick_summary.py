@@ -14,13 +14,13 @@ from __future__ import annotations
 import pytest
 
 from babylon.engine.factories import create_proletariat
+from babylon.kernel.event_bus import Event
 from babylon.models.entities.economy import GlobalEconomy
 from babylon.models.entities.organization import CivilSocietyOrg
 from babylon.models.entities.relationship import Relationship
 from babylon.models.entities.social_class import IdeologicalProfile
 from babylon.models.enums import ClassCharacter, EdgeType, EventType, ServiceType
 from babylon.models.enums.topology import NodeType
-from babylon.models.events import SimulationEvent
 from babylon.models.market import MarketState
 from babylon.models.world_state import WorldState
 from babylon.projection.tick_summary import build_tick_summary_kwargs
@@ -117,19 +117,47 @@ class TestOrgCounts:
 
 
 class TestEventCounts:
-    def test_counts_uprising_and_repression_events_only(self) -> None:
+    """REVIEW FIX (T5 U2): counts the ``events=`` kernel bus history, NEVER
+    ``WorldState.events`` — ``WorldState.from_graph()`` never restamps
+    ``graph.graph['events']`` per tick, so on the real Archive path
+    ``world.events`` is always ``[]`` and these two columns would silently
+    fabricate a ``0`` (Constitution III.11) instead of reporting the truth.
+    """
+
+    def test_counts_uprising_and_repression_bus_events_only(self) -> None:
+        events = [
+            Event(type=EventType.UPRISING, tick=1, payload={}),
+            Event(type=EventType.UPRISING, tick=1, payload={}),
+            Event(type=EventType.STATE_REPRESSION, tick=1, payload={}),
+            Event(type=EventType.LIFECYCLE_TRANSITION, tick=1, payload={}),
+        ]
+        summary = build_tick_summary_kwargs(WorldState(tick=1), events=events)
+        assert summary["uprising_count"] == 2
+        assert summary["repression_count"] == 1
+
+    def test_world_events_are_never_read_for_these_counts(self) -> None:
+        """A populated ``world.events`` must NOT leak into the count when a
+        real ``events=`` bus history is also supplied — the two counts come
+        from ONE source, never a union of both."""
+        from babylon.models.events import SimulationEvent
+
         world = WorldState(
             tick=1,
             events=[
                 SimulationEvent(event_type=EventType.UPRISING, tick=1),
-                SimulationEvent(event_type=EventType.UPRISING, tick=1),
                 SimulationEvent(event_type=EventType.STATE_REPRESSION, tick=1),
-                SimulationEvent(event_type=EventType.LIFECYCLE_TRANSITION, tick=1),
             ],
         )
-        summary = build_tick_summary_kwargs(world)
-        assert summary["uprising_count"] == 2
-        assert summary["repression_count"] == 1
+        summary = build_tick_summary_kwargs(
+            world, events=[Event(type=EventType.UPRISING, tick=1, payload={})]
+        )
+        assert summary["uprising_count"] == 1
+        assert summary["repression_count"] == 0
+
+    def test_no_events_threaded_is_honest_null_not_zero(self) -> None:
+        summary = build_tick_summary_kwargs(WorldState(tick=1))
+        assert summary["uprising_count"] is None
+        assert summary["repression_count"] is None
 
 
 class TestMarketAxis:

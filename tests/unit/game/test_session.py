@@ -19,6 +19,7 @@ import pytest
 import babylon.game.session as session_module
 from babylon.config.defines import GameDefines
 from babylon.engine.scenarios import WayneCountyScenario
+from babylon.engine.simulation_engine import SimulationEngine
 from babylon.game.chronicle_adapter import chronicle_events_from_bus
 from babylon.game.session import (
     TickAdvanceResult,
@@ -397,7 +398,9 @@ def test_advance_tick_persists_tick_summary_at_the_persist_tick_commit_boundary(
     tick, summary, session_id = store.persist_tick_summary_calls[0]
     assert tick == 1
     assert session_id == session.session_id
-    assert summary == build_tick_summary_kwargs(result.world, graph=session.graph)
+    assert summary == build_tick_summary_kwargs(
+        result.world, graph=session.graph, events=result.events
+    )
 
 
 def test_advance_tick_persists_tick_summary_once_per_further_tick() -> None:
@@ -437,6 +440,41 @@ def test_advance_tick_persists_tick_summary_in_the_same_batch_as_persist_tick() 
     session.advance_tick()
 
     assert order == ["persist_tick", "persist_tick_summary", "persist_tick_atomic"]
+
+
+class _EmitsUprisingAndRepressionSystem:
+    """Test-only ``System`` stub: publishes one real UPRISING + one real
+    STATE_REPRESSION bus event per tick — no struggle-system trigger
+    conditions (spark/agitation/hopelessness) required. Satisfies
+    ``babylon.kernel.system_protocol.System`` structurally (name + step)."""
+
+    name = "test_emits_uprising_and_repression"
+
+    def step(self, graph: Any, services: Any, context: Any) -> None:  # noqa: ARG002
+        services.event_bus.publish(Event(type=EventType.UPRISING, tick=context.tick, payload={}))
+        services.event_bus.publish(
+            Event(type=EventType.STATE_REPRESSION, tick=context.tick, payload={})
+        )
+
+
+def test_advance_tick_persists_real_uprising_and_repression_counts() -> None:
+    """Regression pin (T5 U2 review fix): drives a REAL ``advance_tick``
+    over a tick whose bus emits a real UPRISING + STATE_REPRESSION event,
+    and asserts the PERSISTED ``uprising_count``/``repression_count``
+    reflect them. Before the fix these were structurally always ``0``:
+    ``build_tick_summary_kwargs`` counted ``WorldState.events``, which
+    ``WorldState.from_graph()`` never restamps per tick (only ``to_graph()``
+    writes ``graph.graph['events']``, once, at tick-0 boot) — a fabricated
+    ``0`` where the truth was "not observed" (Constitution III.11)."""
+    store = _FakeStore()
+    session = create_new_campaign(store, scenario=WayneCountyScenario())
+    session.engine = SimulationEngine([_EmitsUprisingAndRepressionSystem()])
+
+    session.advance_tick()
+
+    _tick, summary, _session_id = store.persist_tick_summary_calls[-1]
+    assert summary["uprising_count"] == 1
+    assert summary["repression_count"] == 1
 
 
 # --------------------------------------------------------------------------- #

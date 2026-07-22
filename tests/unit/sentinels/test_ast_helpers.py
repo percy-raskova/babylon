@@ -18,6 +18,7 @@ from babylon.sentinels._ast import (
     attribute_is_none_guard_lines,
     conditional_literal_returns_by_enum_member,
     coupling_edges,
+    declared_bindings,
     dict_get_call_lines,
     frozenset_str_members,
     function_return_annotation_name,
@@ -28,6 +29,7 @@ from babylon.sentinels._ast import (
     parse_module,
     referenced_names,
     returned_dict_keys,
+    tutorial_step_anchors,
     wallclock_call_lines,
 )
 from babylon.sentinels.base import SentinelCheckError
@@ -741,3 +743,99 @@ def test_wallclock_call_lines_raises_on_unparseable_source(tmp_path: Path) -> No
     target.write_text("def (:\n", encoding="utf-8")
     with pytest.raises(SentinelCheckError):
         wallclock_call_lines(target)
+
+
+def test_declared_bindings_reads_the_real_archive_app() -> None:
+    """The live ArchiveApp's own BINDINGS list is extracted with real lines."""
+    bindings = declared_bindings(_REPO_ROOT / "src/babylon/tui/app.py")
+    triples = {(cls, key, action) for cls, key, action, _line in bindings}
+    assert ("ArchiveApp", "t", "advance_tick") in triples
+    assert ("ArchiveApp", "ctrl+o", "jump_back") in triples
+    assert ("BriefingScreen", "enter", "begin") in triples
+    for _cls, _key, _action, line in bindings:
+        assert line > 0
+
+
+def test_declared_bindings_only_reads_a_class_own_body(tmp_path: Path) -> None:
+    """A BINDINGS list belonging to a DIFFERENT class is not misattributed."""
+    target = tmp_path / "m.py"
+    target.write_text(
+        "class Outer:\n"
+        "    BINDINGS = [Binding('a', 'outer_action', 'A')]\n"
+        "\n"
+        "class Inner:\n"
+        "    BINDINGS = [Binding('b', 'inner_action', 'B')]\n",
+        encoding="utf-8",
+    )
+    triples = {(cls, key, action) for cls, key, action, _line in declared_bindings(target)}
+    assert triples == {
+        ("Outer", "a", "outer_action"),
+        ("Inner", "b", "inner_action"),
+    }
+
+
+def test_declared_bindings_skips_computed_key_or_action(tmp_path: Path) -> None:
+    """A computed key/action is not a DECLARED one -- skipped, not fabricated."""
+    target = tmp_path / "m.py"
+    target.write_text(
+        "class C:\n"
+        "    BINDINGS = [\n"
+        "        Binding('x', 'real_action', 'X'),\n"
+        "        Binding(computed_key, 'other_action', 'Y'),\n"
+        "        Binding('z', computed_action, 'Z'),\n"
+        "    ]\n",
+        encoding="utf-8",
+    )
+    triples = {(cls, key, action) for cls, key, action, _line in declared_bindings(target)}
+    assert triples == {("C", "x", "real_action")}
+
+
+def test_declared_bindings_ignores_a_class_with_no_bindings_list(tmp_path: Path) -> None:
+    target = tmp_path / "m.py"
+    target.write_text("class C:\n    pass\n", encoding="utf-8")
+    assert declared_bindings(target) == ()
+
+
+def test_declared_bindings_raises_on_unparseable_source(tmp_path: Path) -> None:
+    target = tmp_path / "broken.py"
+    target.write_text("def (:\n", encoding="utf-8")
+    with pytest.raises(SentinelCheckError):
+        declared_bindings(target)
+
+
+def test_tutorial_step_anchors_reads_the_real_wayne_arc() -> None:
+    """The authored opening-arc script's own anchors are extracted."""
+    anchors = tutorial_step_anchors(_REPO_ROOT / "src/babylon/game/tutorial.py")
+    assert "binding:LobbyScreen:n" in anchors
+    assert "binding:ArchiveApp:t" in anchors
+    assert "page:county/26163" in anchors
+    assert "palette:economy/USA" in anchors
+
+
+def test_tutorial_step_anchors_preserves_duplicates(tmp_path: Path) -> None:
+    """Two steps sharing an anchor both count -- never silently deduplicated."""
+    target = tmp_path / "m.py"
+    target.write_text(
+        "S = (\n"
+        "    TutorialStep(id='a', anchor='page:x', other=1),\n"
+        "    TutorialStep(id='b', anchor='page:x', other=2),\n"
+        ")\n",
+        encoding="utf-8",
+    )
+    assert tutorial_step_anchors(target) == ("page:x", "page:x")
+
+
+def test_tutorial_step_anchors_skips_computed_anchor(tmp_path: Path) -> None:
+    target = tmp_path / "m.py"
+    target.write_text(
+        "S = (TutorialStep(id='a', anchor=computed_anchor),)\n",
+        encoding="utf-8",
+    )
+    assert tutorial_step_anchors(target) == ()
+
+
+def test_tutorial_step_anchors_raises_on_unparseable_source(tmp_path: Path) -> None:
+    target = tmp_path / "broken.py"
+    target.write_text("def (:\n", encoding="utf-8")
+    with pytest.raises(SentinelCheckError):
+        tutorial_step_anchors(target)

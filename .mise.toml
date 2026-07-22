@@ -221,16 +221,20 @@ description = "Absence sentinel (task #64): every sqlite3.connect/create_engine(
 run = "uv run python tools/sentinel_check.py absence --check"
 
 [tasks."check:sentinels"]
-description = "ALL 17 sentinels (owner ruling 2026-07-18: the whole family is fast-gate LOCALLY — the dev box has the reference DB): seam seam-algebra coverage vocabulary inert dangling unconsumed masked-arithmetic aggregation fog catalog partition synthetic defines-passthrough gate-coverage absence formula-registration"
+description = "ALL 18 sentinels (owner ruling 2026-07-18: the whole family is fast-gate LOCALLY — the dev box has the reference DB): seam seam-algebra coverage vocabulary inert dangling unconsumed masked-arithmetic aggregation fog catalog partition synthetic defines-passthrough gate-coverage absence formula-registration tutorial-coverage"
 depends = ["check:sentinels-static", "check:catalog"]
 
 [tasks."check:sentinels-static"]
-description = "The 16 static sentinels (no reference DB needed) — CI's fast-gate job runs THIS; the catalog DB-probe runs where the DB exists (locally via check:sentinels, in CI via nightly's requires_reference_db job)"
-depends = ["check:seams", "check:seam-algebra", "check:coverage", "check:vocabulary", "check:inert", "check:dangling", "check:unconsumed", "check:masked-arithmetic", "check:aggregation", "check:fog", "check:partition", "check:synthetic", "check:defines-passthrough", "check:gate-coverage", "check:absence", "check:formula-registration"]
+description = "The 17 static sentinels (no reference DB needed) — CI's fast-gate job runs THIS; the catalog DB-probe runs where the DB exists (locally via check:sentinels, in CI via nightly's requires_reference_db job)"
+depends = ["check:seams", "check:seam-algebra", "check:coverage", "check:vocabulary", "check:inert", "check:dangling", "check:unconsumed", "check:masked-arithmetic", "check:aggregation", "check:fog", "check:partition", "check:synthetic", "check:defines-passthrough", "check:gate-coverage", "check:absence", "check:formula-registration", "check:tutorial-coverage"]
 
 [tasks."check:surface"]
 description = "Sentinel: __all__ vs its pinned baseline frozenset (public-surface baseline blindness gate)"
 run = "uv run python tools/sentinel_check.py surface --check"
+
+[tasks."check:tutorial-coverage"]
+description = "Tutorial option-coverage sentinel (T6): every declared TUI Binding is exercised by an authored TutorialStep or carries a cited exemption (static gate)"
+run = "uv run python tools/sentinel_check.py tutorial-coverage --check"
 
 [tasks."check:gate-coverage"]
 description = "Sentinel: qa:regression estate declaration is complete over all 30 engine systems (gate-blindness gate)"

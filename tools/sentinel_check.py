@@ -33,6 +33,7 @@ from babylon.sentinels.seam.checks import main as seam_main
 from babylon.sentinels.seam_algebra.checks import main as seam_algebra_main
 from babylon.sentinels.surface.checks import main as surface_main
 from babylon.sentinels.synthetic.checks import main as synthetic_main
+from babylon.sentinels.tutorial_coverage.checks import main as tutorial_coverage_main
 from babylon.sentinels.unconsumed.checks import main as unconsumed_main
 from babylon.sentinels.vocabulary.checks import main as vocabulary_main
 
@@ -135,6 +136,7 @@ _SENSORS: dict[str, Callable[[list[str] | None], int]] = {
     "liveness": liveness_main,
     "coupling": coupling_main,
     "surface": surface_main,
+    "tutorial-coverage": tutorial_coverage_main,
 }
 
 

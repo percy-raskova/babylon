@@ -1661,3 +1661,81 @@ def wallclock_call_lines(path: Path) -> list[tuple[int, str]]:
         if symbol is not None:
             hits.add((node.lineno, symbol))
     return sorted(hits)
+
+
+def declared_bindings(path: Path) -> tuple[tuple[str, str, str, int], ...]:
+    """Extract every class's own declared ``BINDINGS = [Binding(...), ...]``.
+
+    Reads a Textual client module statically — :mod:`babylon.sentinels` never
+    imports :mod:`textual` or ``babylon.tui`` (layer 0.5) — and returns each
+    class's OWN ``BINDINGS`` list literal (never an inherited/merged one; a
+    subclass that does not redeclare ``BINDINGS`` contributes nothing here,
+    matching Textual's own "class attribute, not accumulated" semantics). Only
+    ``Binding(key, action, ...)`` calls whose first two positional args are
+    string constants are extracted; a computed key or action is not a
+    *declared* one and is skipped, mirroring :func:`coupling_edges`.
+
+    :param path: The module to scan.
+    :returns: ``(class_name, key, action, line)`` tuples, in source order.
+    :raises SentinelCheckError: If the file is missing or unparseable.
+    """
+    tree = parse_module(path)
+    found: list[tuple[str, str, str, int]] = []
+    for node in ast.walk(tree):
+        if not isinstance(node, ast.ClassDef):
+            continue
+        for stmt in node.body:  # own body only -- never a nested/inherited list
+            if not (
+                isinstance(stmt, ast.Assign)
+                and any(isinstance(t, ast.Name) and t.id == "BINDINGS" for t in stmt.targets)
+                and isinstance(stmt.value, ast.List)
+            ):
+                continue
+            for element in stmt.value.elts:
+                if not (
+                    isinstance(element, ast.Call)
+                    and isinstance(element.func, ast.Name)
+                    and element.func.id == "Binding"
+                    and len(element.args) >= 2
+                    and isinstance(element.args[0], ast.Constant)
+                    and isinstance(element.args[0].value, str)
+                    and isinstance(element.args[1], ast.Constant)
+                    and isinstance(element.args[1].value, str)
+                ):
+                    continue
+                found.append(
+                    (node.name, element.args[0].value, element.args[1].value, element.lineno)
+                )
+    return tuple(found)
+
+
+def tutorial_step_anchors(path: Path) -> tuple[str, ...]:
+    """Extract every declared ``TutorialStep(..., anchor="...", ...)`` literal.
+
+    Reads a tutorial-script-authoring module statically -- the option-coverage
+    sentinel never imports :mod:`babylon.game.tutorial` itself (it transitively
+    pulls in the engine layer, which ``babylon.sentinels`` may not import).
+
+    :param path: The module to scan.
+    :returns: The declared ``anchor`` string literals, in source order
+        (duplicates preserved -- a script may legitimately exercise the same
+        anchor from two different steps).
+    :raises SentinelCheckError: If the file is missing or unparseable.
+    """
+    tree = parse_module(path)
+    anchors: list[str] = []
+    for node in ast.walk(tree):
+        if not (
+            isinstance(node, ast.Call)
+            and isinstance(node.func, ast.Name)
+            and node.func.id == "TutorialStep"
+        ):
+            continue
+        for kw in node.keywords:
+            if (
+                kw.arg == "anchor"
+                and isinstance(kw.value, ast.Constant)
+                and isinstance(kw.value.value, str)
+            ):
+                anchors.append(kw.value.value)
+    return tuple(anchors)

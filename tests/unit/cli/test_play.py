@@ -166,3 +166,76 @@ def test_run_threads_narrator_enabled_false_into_the_loader(
 
     loader = _captured[0].kwargs["campaign_loader"]
     assert loader.keywords == {"narrator_enabled": False}
+
+
+def test_run_wires_tutorial_steps_and_a_callable_progress_factory(
+    _patched_composition_root: None,
+) -> None:
+    """T6 Unit U4: ``run()`` always threads ``tutorial_steps=``/
+    ``tutorial_progress_factory=`` into ``ArchiveApp(...)`` — the Wayne
+    opening arc's own step slice (skipping the two pre-shell beats), and a
+    callable seam factory."""
+    from babylon.game.tutorial import WAYNE_OPENING_ARC
+
+    play_cmd.run()
+
+    kwargs = _captured[0].kwargs
+    assert kwargs["tutorial_steps"] == WAYNE_OPENING_ARC.steps[2:]
+    assert callable(kwargs["tutorial_progress_factory"])
+
+
+class _FakeCampaignForFactory:
+    """A minimal ``CampaignHandle``-shaped double — just ``tick``, all this
+    factory's own gating heuristic reads."""
+
+    def __init__(self, tick: int) -> None:
+        self.tick = tick
+
+
+class TestTutorialProgressFactoryGating:
+    """Exercises :func:`babylon.cli.play._tutorial_progress_factory`'s own
+    resolution logic directly (unit-tier, no ``ArchiveApp``/Textual needed)."""
+
+    def test_explicit_true_shows_regardless_of_tick(self) -> None:
+        factory = play_cmd._tutorial_progress_factory(True, steps=(object(),))
+        result = factory(_FakeCampaignForFactory(tick=99), None, lambda: None)
+        assert result is not None
+
+    def test_explicit_false_hides_regardless_of_tick(self) -> None:
+        factory = play_cmd._tutorial_progress_factory(False, steps=(object(),))
+        result = factory(_FakeCampaignForFactory(tick=0), None, lambda: None)
+        assert result is None
+
+    def test_default_none_shows_for_a_fresh_campaign_at_tick_zero(self) -> None:
+        factory = play_cmd._tutorial_progress_factory(None, steps=(object(),))
+        result = factory(_FakeCampaignForFactory(tick=0), None, lambda: None)
+        assert result is not None
+
+    def test_default_none_hides_for_a_campaign_already_past_tick_zero(self) -> None:
+        factory = play_cmd._tutorial_progress_factory(None, steps=(object(),))
+        result = factory(_FakeCampaignForFactory(tick=1), None, lambda: None)
+        assert result is None
+
+    def test_shown_result_is_built_over_the_exact_steps_given(self) -> None:
+        from babylon.game.tutorial_runtime import TutorialRuntimeProgress
+
+        steps = tuple(range(3))  # placeholder objects, never dispatched in this test
+        factory = play_cmd._tutorial_progress_factory(True, steps=steps)
+        result = factory(_FakeCampaignForFactory(tick=0), None, lambda: None)
+        assert isinstance(result, TutorialRuntimeProgress)
+        assert result._steps == steps  # noqa: SLF001 - white-box wiring check
+
+
+def test_tutorial_steps_skips_the_two_pre_shell_beats() -> None:
+    """:func:`babylon.cli.play._tutorial_steps` slices off ``boot_into_lobby``/
+    ``begin_the_operation`` — both already necessarily true by the time the
+    campaign shell (and the overlay) exist (module docstring)."""
+    from babylon.game.tutorial import WAYNE_OPENING_ARC
+
+    steps = play_cmd._tutorial_steps()
+
+    assert steps == WAYNE_OPENING_ARC.steps[2:]
+    assert steps[0].id == "read_the_county_dossier"
+    ids = [step.id for step in steps]
+    assert "boot_into_lobby" not in ids
+    assert "begin_the_operation" not in ids

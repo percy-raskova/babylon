@@ -1,5 +1,5 @@
 meta:
-  version: 1.57.0
+  version: 1.58.0
   updated: '2026-07-22'
   description: Architecture Decision Records Index
   format: See individual ADR files in this directory
@@ -15,6 +15,11 @@ meta:
   # 2026-07-22 at charter (ADR127) — Vol II's 120-129 and T1.1/T1.2's
   # 130-139 blocks dissolved at their merges; next mainline free >= 140.
 decisions:
+  ADR133_p25_u7_pure_politics_kernel:
+    title: 'P25 U7 — pure politics kernel: formulas/politics.py (valve law, hope field with counterfactual sigmoid gain, funding identity/reform ceiling, delivery ratio+gap, derived platform vector, interest fit); four property laws pinned in pure form (L-VALVE, L-CEILING, L-HOPE-MATERIAL, L-PRZ; 20 tests); zero system wiring — consumers arrive U8-U10; FormulaRegistry membership deferred to U8; qa:regression byte-identical.'
+    status: accepted
+    date: '2026-07-22'
+    file: ADR133_p25_u7_pure_politics_kernel.yaml
   ADR130_p25_u4_organization_component_port:
     title: 'P25 U4 — OrganizationComponent carried task discharged: shim + lazy PEP-562 loader + 274-line suite DELETED; capacity contract re-pinned on the Organization entity (defaults/bounds/immutability/JSON + graph round-trip incl. the from_graph gotcha); probability-bounds discovery-walk test simplified to an unconditional warnings-as-errors pin. Gates: 1253 tests green, mypy, vocabulary, qa:regression byte-identical.'
     status: accepted

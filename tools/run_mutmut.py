@@ -7,7 +7,7 @@ Usage:
     python tools/run_mutmut.py --paths src/foo/   # Custom paths
 
 Results are saved to .mutmut-cache (SQLite database).
-View with: poetry run mutmut results
+View with: uv run mutmut results
 """
 
 import argparse

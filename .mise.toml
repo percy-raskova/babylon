@@ -76,15 +76,20 @@ done
 """
 
 [tasks.install]
-description = "Install all dependencies"
-run = "uv sync --extra server"
+description = "Install all dependencies (from the committed lock — see deps:lock to re-resolve)"
+# --frozen: install exactly uv.lock, never re-resolve. Load-bearing since the
+# hypergraph dependency-group landed: re-resolution reads metadata from the
+# ../hypergraph-rs path source, which only exists on boxes with the sibling
+# checkout. Changing deps? Edit pyproject, then `uv lock` (needs the sibling
+# or the CI stub — see the [tool.uv.sources] comment in pyproject.toml).
+run = "uv sync --extra server --frozen"
 
 [tasks.setup]
 description = "One-shot bootstrap for a fresh clone: toolchain + deps + hooks + tuned Postgres 16 + canonical schema (spec-087 FR-008)"
 run = """
 set -e
 mise install
-uv sync --extra server
+uv sync --extra server --frozen
 uv run pre-commit install --hook-type commit-msg --hook-type pre-commit --hook-type pre-push
 mise run db:up
 mise run db:bootstrap
@@ -274,7 +279,20 @@ run = "uv run lint-imports"
 
 [tasks."ci:local"]
 description = "Run a GitHub Actions job locally via gh-act (program 15) — e.g. mise run ci:local -- -W .github/workflows/ci.yml -j fast-gate. Install once: gh extension install https://github.com/nektos/gh-act"
-run = "gh act -P ubuntu-latest=ghcr.io/catthehacker/ubuntu:act-latest --container-architecture linux/amd64"
+# Image + arch live in .actrc so raw `gh act` behaves identically.
+# --apply-event-filters: CORRECTNESS — without it act ignores paths:/branches:
+#   filters and can go green on a job GitHub would not even trigger.
+# --reuse/--pull=false/--action-offline-mode: SPEED — keep the container and
+#   cached actions between runs; do an occasional clean run without them.
+run = "gh act --apply-event-filters --reuse --pull=false --action-offline-mode"
+
+[tasks."ci:local:install"]
+description = "Simulate the installer-smoke CI job locally on the act ubuntu image (no GitHub minutes)"
+run = "gh act workflow_dispatch -W .github/workflows/installer.yml -j installer-smoke --reuse --pull=false --action-offline-mode"
+
+[tasks."install:test"]
+description = "Static + dry-run smoke of install.sh / Patches wizard (same harness the CI installer-smoke job runs)"
+run = "bash tools/installer_smoke.sh"  # bash: the harness sets pipefail, dash rejects it
 
 [tasks."lint:check"]
 description = "Ruff lint, no fixes (CI parity; the auto-fixing variant is tasks.lint)"

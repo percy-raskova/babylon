@@ -18,10 +18,10 @@ a running PostgreSQL instance with pgvector and is NOT performed here
 
 Usage:
     # Prepare corpus files from the OCR extraction tree
-    poetry run python tools/ingest_corpus.py --prepare
+    uv run python tools/ingest_corpus.py --prepare
 
     # List corpus status
-    poetry run python tools/ingest_corpus.py --list
+    uv run python tools/ingest_corpus.py --list
 """
 
 from __future__ import annotations

@@ -9,7 +9,7 @@ Originally lived at ``scripts/audit_simplex_bypasses.py``; moved into
 
 Usage::
 
-    poetry run python tools/audit_simplex_bypasses.py
+    uv run python tools/audit_simplex_bypasses.py
     # or, via mise:
     mise run qa:audit-consciousness
 """

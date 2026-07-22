@@ -15,10 +15,16 @@ keywords = [
     "dystopian",
 ]
 requires-python = ">=3.12,<4.0"
-# Poetry 2.x hybrid mode: classifiers are auto-derived from other [project]
-# fields (license/requires-python); dependencies moved to PEP-621
-# [project.dependencies]/[project.optional-dependencies] below (ADR095 D3a).
-dynamic = ["classifiers"]
+# Static classifiers, transcribed byte-for-byte from the last poetry-core
+# wheel's METADATA before the hatchling cutover (2026-07-22; poetry-core
+# emits no license classifier under PEP 639 — the [project] license
+# expression carries that). Bump the list when requires-python moves.
+classifiers = [
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Programming Language :: Python :: 3.14",
+]
 
 # PyQt6, PyQt6-WebEngine, pydeck removed in Spec 059 follow-up
 # (commit chore(ui): delete PyQt6 dashboard) — desktop dashboard at
@@ -148,6 +154,17 @@ docs = [
     "sphinx-autobuild>=2025.8,<2026.0.0",
     "sphinxcontrib-mermaid>=2.0.0,<3.0.0",
 ]
+# hypergraph-rs (Rust XGI port, sibling repo ../hypergraph-rs): the Phase-11
+# XGI->Rust swap lane (roadmap 2026-07-18, ADR083-pending). Opt-in ONLY —
+# deliberately absent from any default-groups list, so bare `uv sync`, CI,
+# and the uv2nix player closure (deps.default) never pull it or need the
+# sibling checkout. Enable with `uv sync --group hypergraph`. Building it
+# needs cargo (flake devshell / mise provide it). NOTE for the Phase-11
+# implementer: uv does not recompile the native module on Rust edits — run
+# `uvx maturin develop` in ../hypergraph-rs after changing Rust code.
+hypergraph = [
+    "hypergraph-rs",
+]
 
 # The Archive snapshot lane (ADR099): pytest-textual-snapshot 1.1.0 declares
 # syrupy==4.8.0, which caps pytest<9; this repo runs pytest 9.x. Override the
@@ -156,19 +173,36 @@ docs = [
 [tool.uv]
 override-dependencies = ["syrupy>=5.5,<6.0.0"]
 
-[tool.poetry]
-packages = [
-    { include = "babylon", from = "src" },
-]
-# babylon_data: thin Python wrapper around the data trove at
-# /media/user/data/babylon-data/. src/babylon_data is a symlink to that
-# path (committed in git, kept for workstation use — see ADR-037). It is
-# deliberately NOT listed above: the symlink is dead in any build sandbox
-# (nix build, CI, `uv build`), and poetry-core's wheel builder hard-fails
-# when a declared `packages` include is entirely absent from the source
-# tree ("does not contain any element") rather than skipping it. Dropping
-# it here unblocks the ADR094 nix flake build; it ships in no wheel either
-# way (ADR095's "default install slims toward the player closure").
+[tool.uv.sources]
+# Sibling checkout; see the hypergraph dependency-group comment above.
+# Not editable: the wheel is built once per sync; the binding surface is a
+# stub until hypergraph-rs Phase 7, so rebuild ergonomics are moot — and a
+# non-editable wheel keeps the venv self-contained if the sibling moves.
+# WORKTREE GOTCHA: the path resolves relative to THIS file, so in a
+# .claude/worktrees/<name> checkout ../hypergraph-rs points inside
+# .claude/worktrees/ — symlink it there (ln -s /home/user/projects/game/
+# hypergraph-rs .claude/worktrees/hypergraph-rs) before uv lock/sync
+# --group hypergraph, or run those from the main checkout.
+hypergraph-rs = { path = "../hypergraph-rs" }
+
+[tool.hatch.build.targets.wheel]
+# babylon lives under src/ (src-layout): map src/babylon -> babylon in the
+# wheel, explicitly — no backend discovery magic.
+# babylon_data (thin wrapper around the data trove at
+# /media/user/data/babylon-data/; src/babylon_data is a committed symlink,
+# ADR-037) is deliberately NOT packaged: the symlink is dead in every build
+# sandbox (nix build, CI, `uv build`) and ships in no wheel either way
+# (ADR095's "default install slims toward the player closure"). Unlike
+# poetry-core — which hard-failed on a declared-but-absent include and
+# forced the ADR094/ADR095 workaround note that used to live here —
+# hatchling never touches it because it is not under src/babylon.
+packages = ["src/babylon"]
+
+[tool.hatch.build.targets.sdist]
+# sdist is consumed by neither uv2nix (wheel preference) nor the player
+# closure (nix builds from the fileset-filtered tree). Kept correct for a
+# potential PyPI future: never ship the dead data symlink.
+exclude = ["/src/babylon_data"]
 
 [project.urls]
 Homepage = "https://babylonrpg.com"
@@ -548,10 +582,14 @@ urllib3 = "WARNING"
 asyncio = "WARNING"
 
 [build-system]
+# hatchling replaced poetry-core 2026-07-22 — the last Poetry artifact in
+# the toolchain (tasks/lock/CI went uv in ADR095's train). Chosen over
+# uv_build for explicit src-layout packages= control and longer-proven
+# pyproject-build-systems support in the uv2nix lane.
 requires = [
-    "poetry-core>=2.0.0,<3.0.0",
+    "hatchling>=1.27.0",
 ]
-build-backend = "poetry.core.masonry.api"
+build-backend = "hatchling.build"
 
 [tool.pyright]
 extraPaths = ["."]

@@ -17,8 +17,8 @@ the time dimension is shared state this tool must not mutate.
 
 Usage::
 
-    poetry run python tools/load_productivity_annual.py             # dry run
-    poetry run python tools/load_productivity_annual.py --execute
+    uv run python tools/load_productivity_annual.py             # dry run
+    uv run python tools/load_productivity_annual.py --execute
 """
 
 from __future__ import annotations

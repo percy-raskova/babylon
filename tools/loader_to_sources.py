@@ -24,7 +24,7 @@ opened for write by this module.
 
 Usage::
 
-    poetry run python tools/loader_to_sources.py \\
+    uv run python tools/loader_to_sources.py \\
         --loader ingest_bea_imports \\
         --tables fact_bea_io_coefficient,dim_bea_io_table_type,dim_time
 """

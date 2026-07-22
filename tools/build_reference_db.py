@@ -50,8 +50,8 @@ smarter splitter before this builder can claim real trigger support.
 
 Usage::
 
-    poetry run python tools/build_reference_db.py --out dist/build/ref.sqlite
-    poetry run python tools/build_reference_db.py --out dist/build/ref.sqlite --update-manifest
+    uv run python tools/build_reference_db.py --out dist/build/ref.sqlite
+    uv run python tools/build_reference_db.py --out dist/build/ref.sqlite --update-manifest
 """
 
 from __future__ import annotations

@@ -35,6 +35,9 @@ jobs:
     timeout-minutes: 35
     steps:
       - uses: actions/checkout@v7
+      - name: Materialize hypergraph-rs metadata stub (sibling repo, no remote)
+        run: sh tools/ci_hypergraph_stub.sh
+
         with:
           ref: dev
       - uses: ./.github/actions/bootstrap-python
@@ -63,6 +66,9 @@ jobs:
     timeout-minutes: 10
     steps:
       - uses: actions/checkout@v7
+      - name: Materialize hypergraph-rs metadata stub (sibling repo, no remote)
+        run: sh tools/ci_hypergraph_stub.sh
+
         with:
           ref: dev
       - uses: ./.github/actions/bootstrap-python
@@ -76,6 +82,9 @@ jobs:
     timeout-minutes: 25
     steps:
       - uses: actions/checkout@v7
+      - name: Materialize hypergraph-rs metadata stub (sibling repo, no remote)
+        run: sh tools/ci_hypergraph_stub.sh
+
         with:
           ref: dev
       - uses: ./.github/actions/bootstrap-python
@@ -133,6 +142,9 @@ jobs:
     timeout-minutes: 25
     steps:
       - uses: actions/checkout@v7
+      - name: Materialize hypergraph-rs metadata stub (sibling repo, no remote)
+        run: sh tools/ci_hypergraph_stub.sh
+
         with:
           ref: dev
       - uses: ./.github/actions/bootstrap-python
@@ -165,6 +177,9 @@ jobs:
     timeout-minutes: 60
     steps:
       - uses: actions/checkout@v7
+      - name: Materialize hypergraph-rs metadata stub (sibling repo, no remote)
+        run: sh tools/ci_hypergraph_stub.sh
+
         with:
           ref: dev
       - uses: cachix/install-nix-action@v31
@@ -218,6 +233,9 @@ jobs:
     timeout-minutes: 75
     steps:
       - uses: actions/checkout@v7
+      - name: Materialize hypergraph-rs metadata stub (sibling repo, no remote)
+        run: sh tools/ci_hypergraph_stub.sh
+
         with:
           ref: dev
       - uses: ./.github/actions/bootstrap-python
@@ -243,6 +261,9 @@ jobs:
     timeout-minutes: 60
     steps:
       - uses: actions/checkout@v7
+      - name: Materialize hypergraph-rs metadata stub (sibling repo, no remote)
+        run: sh tools/ci_hypergraph_stub.sh
+
         with:
           ref: dev
       # Documented exception to the mise-pinned toolchain: this leg exists
@@ -267,6 +288,9 @@ jobs:
     timeout-minutes: 60
     steps:
       - uses: actions/checkout@v7
+      - name: Materialize hypergraph-rs metadata stub (sibling repo, no remote)
+        run: sh tools/ci_hypergraph_stub.sh
+
         with:
           ref: dev
       - uses: ./.github/actions/bootstrap-python

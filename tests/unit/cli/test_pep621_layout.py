@@ -21,12 +21,15 @@ def _names(specs: list[str]) -> set[str]:
 def test_project_dependencies_is_static_list() -> None:
     assert isinstance(DATA["project"]["dependencies"], list)
     assert "dependencies" not in DATA["project"].get("dynamic", [])
-    # classifiers stay poetry-derived
-    assert "classifiers" in DATA["project"].get("dynamic", [])
+    # classifiers went static at the hatchling cutover (2026-07-22):
+    # transcribed from the last poetry-core wheel's METADATA
+    assert "classifiers" not in DATA["project"].get("dynamic", [])
+    assert isinstance(DATA["project"]["classifiers"], list)
+    assert "Programming Language :: Python :: 3.12" in DATA["project"]["classifiers"]
 
 
-def test_no_legacy_poetry_dependencies_table() -> None:
-    assert "dependencies" not in DATA["tool"]["poetry"], "legacy [tool.poetry.dependencies] remains"
+def test_no_legacy_poetry_table() -> None:
+    assert "poetry" not in DATA.get("tool", {}), "legacy [tool.poetry] table remains"
 
 
 def test_server_extra_absorbs_legacy_web_stack() -> None:
@@ -53,5 +56,8 @@ def test_core_stays_in_default_deps() -> None:
     assert "gunicorn" not in core
 
 
-def test_build_backend_stays_poetry_core() -> None:
-    assert DATA["build-system"]["build-backend"] == "poetry.core.masonry.api"
+def test_build_backend_is_hatchling() -> None:
+    # hatchling replaced poetry-core 2026-07-22 (uv completion train); the
+    # explicit src-layout mapping lives in [tool.hatch.build.targets.wheel]
+    assert DATA["build-system"]["build-backend"] == "hatchling.build"
+    assert DATA["tool"]["hatch"]["build"]["targets"]["wheel"]["packages"] == ["src/babylon"]

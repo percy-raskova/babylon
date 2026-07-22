@@ -7,7 +7,7 @@ Requirements
 ------------
 
 - Python 3.12 or higher
-- Poetry for dependency management
+- uv for dependency management
 - Git
 
 Installation Steps
@@ -20,23 +20,23 @@ Installation Steps
       git clone https://github.com/percy-raskova/babylon.git
       cd babylon
 
-2. Install dependencies using Poetry:
+2. Install dependencies using uv:
 
    .. code-block:: bash
 
-      poetry install
+      uv sync --extra server
 
 3. Install pre-commit hooks:
 
    .. code-block:: bash
 
-      poetry run pre-commit install --hook-type commit-msg --hook-type pre-commit
+      uv run pre-commit install --hook-type commit-msg --hook-type pre-commit
 
 4. Verify the installation:
 
    .. code-block:: bash
 
-      poetry run pytest -m "not ai" --tb=short -q
+      uv run pytest -m "not ai" --tb=short -q
 
 Development Tools
 -----------------
@@ -54,13 +54,13 @@ Running Tests
 .. code-block:: bash
 
    # Run fast math/logic tests
-   poetry run pytest -m "not ai"
+   uv run pytest -m "not ai"
 
    # Run AI/narrative evaluation tests
-   poetry run pytest -m "ai"
+   uv run pytest -m "ai"
 
    # Run a specific test
-   poetry run pytest tests/unit/test_foo.py::test_specific
+   uv run pytest tests/unit/test_foo.py::test_specific
 
 Linting and Formatting
 ^^^^^^^^^^^^^^^^^^^^^^
@@ -68,10 +68,10 @@ Linting and Formatting
 .. code-block:: bash
 
    # Check and fix linting issues
-   poetry run ruff check . --fix
+   uv run ruff check . --fix
 
    # Format code
-   poetry run ruff format .
+   uv run ruff format .
 
    # Type check
-   poetry run mypy src
+   uv run mypy src

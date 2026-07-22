@@ -8,7 +8,7 @@ exercised by an authored :class:`~babylon.game.tutorial.TutorialStep` or carry
 a cited :class:`~babylon.sentinels.exemptions.SentinelExemption`.
 
 Gating and local/on-demand:
-``poetry run python tools/sentinel_check.py tutorial-coverage --check``.
+``uv run python tools/sentinel_check.py tutorial-coverage --check``.
 
 Layer 0.5: reads ``babylon.tui``/``babylon.game`` statically via :mod:`ast` —
 it may not import them (import-linter contract, ``pyproject.toml``).

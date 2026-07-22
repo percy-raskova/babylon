@@ -352,7 +352,7 @@ def run_morris_analysis(
         parameter.
     """
     if not HAS_SALIB:
-        raise ImportError("SALib not installed. Run: poetry add SALib")
+        raise ImportError("SALib not installed. Run: uv add SALib")
 
     problem = create_problem(param_names)
     if problem["num_vars"] == 0:
@@ -425,7 +425,7 @@ def run_sobol_analysis(
         parameter.
     """
     if not HAS_SALIB:
-        raise ImportError("SALib not installed. Run: poetry add SALib")
+        raise ImportError("SALib not installed. Run: uv add SALib")
 
     problem = create_problem(param_names)
     if problem["num_vars"] == 0:

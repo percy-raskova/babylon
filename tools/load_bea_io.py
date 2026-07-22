@@ -22,9 +22,9 @@ Audit reports land at reports/ingest/bea_io_<timestamp>.{md,json}.
 
 Usage::
 
-    poetry run python tools/load_bea_io.py --years 2010-2024
-    poetry run python tools/load_bea_io.py --rollback
-    poetry run python tools/load_bea_io.py --dry-run --years 2010-2024
+    uv run python tools/load_bea_io.py --years 2010-2024
+    uv run python tools/load_bea_io.py --rollback
+    uv run python tools/load_bea_io.py --dry-run --years 2010-2024
 """
 
 from __future__ import annotations

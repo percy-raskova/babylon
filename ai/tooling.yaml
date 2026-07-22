@@ -1017,3 +1017,8 @@ known_issues:
     example: "timestamp collision in checkpoint tests"
     solution: "Add time.sleep(0.01) between time-sensitive operations"
     note: "Python 3.13 tests run in extended-analysis, not main CI"
+
+# hypergraph-rs (standalone Rust XGI port): extracted 2026-07-22 to the sibling
+# repo ../hypergraph-rs (own git repo, own mise tasks + CI + toolchain pin).
+# Its rust:* task doctrine lives in that repo now; babylon consumes it only as
+# a uv path dependency (crates/hypergraph-rs-python, maturin).

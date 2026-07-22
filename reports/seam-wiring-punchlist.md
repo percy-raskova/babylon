@@ -4,7 +4,7 @@
 Regenerate anytime with:
 
 ```bash
-poetry run python tools/sentinel_check.py seam --check   # or: mise run check:seams
+uv run python tools/sentinel_check.py seam --check   # or: mise run check:seams
 ```
 
 Every row below is a line the sentinels emit on the real tree (82 advisory findings at time of

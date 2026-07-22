@@ -3,7 +3,7 @@ fixed evidence file for the Vol III baseline-delta report (U8.2), and
 propagate its exit code unchanged.
 
 Usage:
-    poetry run python tools/capture_qa_diff.py
+    uv run python tools/capture_qa_diff.py
 
 Writes: reports/vol3-baseline-delta-raw-diff.txt
 Exits: the underlying `compare` invocation's own exit code (0 = every

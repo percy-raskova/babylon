@@ -177,10 +177,11 @@ deploy/ansible/.ansible/
 # program-20: infra/ is now a proper git submodule (github.com/percy-raskova/babylon-infra),
 # so it is tracked as a gitlink — no ignore entry needed.
 
-# hypergraph-rs: local subrepo mount (standalone Rust XGI port, own git repo —
-# same pattern as infra/; becomes a submodule/remote repo when published.
-# Owner ruling 2026-07-18: isolated dev environment, Babylon imports the built
-# extension. Spec: docs/superpowers/specs/2026-07-18-hypergraph-rs-design.md)
+# hypergraph-rs: standalone Rust XGI port, own git repo — MOVED 2026-07-22 to
+# the sibling directory ../hypergraph-rs (out of the babylon tree entirely).
+# Babylon imports the built PyO3 extension via a uv path dependency. The ignore
+# entry stays as a guard against accidental re-mounting at the old location.
+# Spec: docs/superpowers/specs/2026-07-18-hypergraph-rs-design.md)
 /hypergraph-rs/
 
 # ADR076 release-tier data artifacts (parquet; shipped via ci-data releases)

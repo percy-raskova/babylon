@@ -70,7 +70,7 @@ mise run web:dev
 ```
 
 **Requirements:** [mise](https://mise.jdx.dev) (it provisions Python 3.12 and
-Poetry for you) and Docker (for the tuned Postgres 16 compose stack). New to the
+uv for you) and Docker (for the tuned Postgres 16 compose stack). New to the
 project? See [SETUP_GUIDE.md](SETUP_GUIDE.md) for a beginner-friendly,
 OS-by-OS walkthrough.
 

@@ -45,6 +45,23 @@ and every successful ``t``/``r`` tick advance re-scans it again (cheap
 frozenset compare, skipped when unchanged) so pages baked mid-campaign
 become navigable immediately. The demo (no-``campaign_menu``) boot path is
 completely unaffected.
+
+Program v1.0.0 T6 Unit U4 (the guided opening-arc overlay — not to be
+confused with the earlier, unrelated "Unit U1" above) adds
+``tutorial_steps``/``tutorial_progress_factory``: when both are given,
+:meth:`ArchiveApp._on_campaign_chosen` builds this campaign's
+:class:`~babylon.tui.tutorial_overlay.TutorialProgress` seam, and
+:meth:`ArchiveApp._on_briefing_dismissed` mounts a
+:class:`~babylon.tui.tutorial_overlay.TutorialOverlay` over the freshly-
+revealed campaign shell IFF that seam is not ``None`` (the composition
+root's own new-vs-resumed gating — see ``babylon.cli.play``). Every
+committed-tick action (``t``/``r``/``a``) and every navigation event
+(``Ctrl-O``/``Ctrl-I``/palette pick/wikilink follow — all of which route
+through :meth:`ArchiveApp._navigate`) re-polls the mounted overlay via
+:meth:`ArchiveApp._refresh_tutorial_progress`. With no
+``tutorial_progress_factory`` given (the default), nothing here runs at
+all — every pre-Unit-U4 caller/test, and the demo boot path, is completely
+unaffected.
 """
 
 from __future__ import annotations
@@ -73,6 +90,7 @@ from babylon.tui.nav import InMemoryNavPersistence, NavShell, subject_for
 from babylon.tui.palette import EntityNavigated, EntityNavigatorProvider
 from babylon.tui.router import InvalidBabylonUri, parse_babylon_uri
 from babylon.tui.theme import KSBC
+from babylon.tui.tutorial_overlay import TutorialOverlay, TutorialProgress, TutorialStepView
 from babylon.tui.wikilinks import (
     BabylonH1,
     BabylonH2,
@@ -276,6 +294,21 @@ needs — the composition root holds the real
 :class:`~babylon.game.session.GameSession`, this module only ever sees it
 through the narrower seam types)."""
 
+TutorialProgressFactory = Callable[
+    [CampaignHandle, "PacedDriverHandle | None", Callable[[], "str | None"]],
+    "TutorialProgress | None",
+]
+"""The booted campaign's tutorial-progress seam (Program v1.0.0 T6, Unit U4)
+— one layer up from :data:`DriverFactory`, same shape. Takes the just-booted
+:class:`CampaignHandle`, the just-built :class:`PacedDriverHandle` (or
+``None`` when no ``driver_factory`` was wired), and a zero-arg callable
+reading :attr:`ArchiveApp.nav`'s current subject at call time; returns
+``None`` to mean "the tutorial should not show for this campaign" — the
+composition root's own new-vs-resumed gating decision (see
+``babylon.cli.play``'s own docstring for the honest first-session heuristic
+it uses), in which case :meth:`ArchiveApp._on_briefing_dismissed` never
+mounts a :class:`~babylon.tui.tutorial_overlay.TutorialOverlay` at all."""
+
 #: The sample page's own subject — the nav shell's seed position, and
 #: (Unit C2) the live campaign's own home dossier subject too: Wayne County
 #: is the only scenario wired today (ruling 3, "Wayne stays in lobby").
@@ -435,6 +468,23 @@ class ArchiveApp(App[None]):
         same pattern as ``campaign_menu``/``campaign_loader``). ``None``
         (the default) leaves :attr:`driver` ``None`` forever — the pre-
         Unit-C3 behavior, unchanged.
+    :param tutorial_steps: The guided opening-arc step sequence to render
+        (Program v1.0.0 T6, Unit U4) — MUST be the exact same sequence
+        ``tutorial_progress_factory`` builds its evaluator against (same
+        length, same order; see :data:`TutorialProgressFactory`). ``None``
+        (the default) never mounts a tutorial overlay, unchanged from every
+        pre-Unit-U4 caller/test.
+    :param tutorial_progress_factory: The tutorial-progress seam
+        (:data:`TutorialProgressFactory`, Unit U4); when given (and
+        ``tutorial_steps`` too — REQUIRED together, raised loudly otherwise,
+        same pattern as ``campaign_menu``/``campaign_loader``),
+        :meth:`_on_campaign_chosen` builds this campaign's
+        :class:`~babylon.tui.tutorial_overlay.TutorialProgress`, and
+        :meth:`_on_briefing_dismissed` mounts a
+        :class:`~babylon.tui.tutorial_overlay.TutorialOverlay` over the
+        campaign shell IFF the factory did not return ``None``. ``None``
+        (the default) never mounts one — the pre-Unit-U4 behavior,
+        unchanged.
     """
 
     COMMANDS = App.COMMANDS | {EntityNavigatorProvider}
@@ -486,6 +536,8 @@ class ArchiveApp(App[None]):
         campaign_menu: CampaignMenu | None = None,
         campaign_loader: CampaignLoader | None = None,
         driver_factory: DriverFactory | None = None,
+        tutorial_steps: Sequence[TutorialStepView] | None = None,
+        tutorial_progress_factory: TutorialProgressFactory | None = None,
     ) -> None:
         super().__init__()
         if campaign_menu is not None and campaign_loader is None:
@@ -498,6 +550,12 @@ class ArchiveApp(App[None]):
             msg = (
                 "ArchiveApp: driver_factory was given but no campaign_loader — "
                 "there would never be a booted campaign to wrap in a driver"
+            )
+            raise ValueError(msg)
+        if tutorial_progress_factory is not None and tutorial_steps is None:
+            msg = (
+                "ArchiveApp: tutorial_progress_factory was given but no tutorial_steps — "
+                "there would be nothing for a TutorialOverlay to render"
             )
             raise ValueError(msg)
         self._page = page if page is not None else SAMPLE_COUNTY_PAGE
@@ -513,6 +571,8 @@ class ArchiveApp(App[None]):
         self._campaign_menu = campaign_menu
         self._campaign_loader = campaign_loader
         self._driver_factory = driver_factory
+        self._tutorial_steps = tutorial_steps
+        self._tutorial_progress_factory = tutorial_progress_factory
         self.campaign: CampaignHandle | None = None
         """The live, booted campaign (Unit C2) — ``None`` until the lobby
         dismisses and :func:`CampaignLoader` returns one; stays ``None``
@@ -523,6 +583,16 @@ class ArchiveApp(App[None]):
         ``None`` forever in the no-``driver_factory`` boot path (``t``
         then falls back to calling :attr:`campaign` directly, unchanged
         from before this unit)."""
+        self._tutorial_progress: TutorialProgress | None = None
+        """This campaign's tutorial-progress seam (Unit U4) — ``None``
+        until :attr:`campaign` boots AND ``tutorial_progress_factory``
+        both was given AND itself returned non-``None`` (its own new-vs-
+        resumed gating); stays ``None`` forever otherwise."""
+        self._tutorial_overlay: TutorialOverlay | None = None
+        """The mounted :class:`~babylon.tui.tutorial_overlay.TutorialOverlay`
+        (Unit U4) — ``None`` until :meth:`_on_briefing_dismissed` mounts one
+        (only when :attr:`_tutorial_progress` is not ``None``); stays
+        ``None`` forever otherwise."""
 
     def on_mount(self) -> None:
         self.register_theme(KSBC)
@@ -557,6 +627,10 @@ class ArchiveApp(App[None]):
         campaign = self._campaign_loader(campaign_id)
         self.campaign = campaign
         self.driver = self._driver_factory(campaign) if self._driver_factory is not None else None
+        if self._tutorial_progress_factory is not None:
+            self._tutorial_progress = self._tutorial_progress_factory(
+                campaign, self.driver, lambda: self.nav.current
+            )
         self._pages = campaign.read_page
         self._refresh_known_entities(campaign)
         briefing_subject = f"briefing/{campaign_id}"
@@ -578,6 +652,32 @@ class ArchiveApp(App[None]):
             signature (unused either way — there is no decline branch).
         """
         await self._navigate(_SAMPLE_SUBJECT)
+        await self._mount_tutorial_overlay_if_active()
+
+    async def _mount_tutorial_overlay_if_active(self) -> None:
+        """Mount :attr:`_tutorial_overlay` over the freshly-revealed campaign
+        shell, IFF :attr:`_tutorial_progress` is not ``None`` (Unit U4).
+
+        A no-op with no ``tutorial_progress_factory`` wired, or when the
+        factory itself decided not to show the tutorial for THIS campaign
+        (its own new-vs-resumed gating) — every pre-Unit-U4 caller/test is
+        unaffected either way.
+        """
+        if self._tutorial_progress is None or self._tutorial_steps is None:
+            return
+        overlay = TutorialOverlay(self._tutorial_steps, self._tutorial_progress)
+        self._tutorial_overlay = overlay
+        await self.mount(overlay)
+
+    def _refresh_tutorial_progress(self) -> None:
+        """Re-poll the mounted overlay's current step (Unit U4) — called
+        at the tail of every committed-tick action and navigation event
+        (:meth:`action_advance_tick`, :meth:`action_run_until_paused`,
+        :meth:`action_acknowledge_pause`, :meth:`_navigate`). A no-op with
+        no overlay mounted.
+        """
+        if self._tutorial_overlay is not None:
+            self._tutorial_overlay.check_progress()
 
     def compose(self) -> ComposeResult:
         yield Label("", id="breadcrumbs")
@@ -645,6 +745,7 @@ class ArchiveApp(App[None]):
         self._refresh_breadcrumbs()
         marker = " [ABSENT]" if page is None else ""
         self.query_one("#status", Label).update(f"status: {subject}{marker}")
+        self._refresh_tutorial_progress()
 
     async def action_jump_back(self) -> None:
         """``Ctrl-O``: walk back one jumplist step, if there is one."""
@@ -702,6 +803,7 @@ class ArchiveApp(App[None]):
             await self._navigate(subject, record=False)
         paused_marker = " [PAUSED]" if result.paused else ""
         status.update(f"status: tick {result.tick}{paused_marker}")
+        self._refresh_tutorial_progress()
 
     @work()
     async def action_run_until_paused(self) -> None:
@@ -757,6 +859,7 @@ class ArchiveApp(App[None]):
             status.update(f"status: ran to tick {last.tick} [PAUSED] ({self.driver.pause_summary})")
         else:
             status.update(f"status: ran to tick {last.tick} (stopped at the run limit)")
+        self._refresh_tutorial_progress()
 
     def action_acknowledge_pause(self) -> None:
         """``a``: acknowledge a pending autopause (Program v1.0.0 Unit C3),
@@ -771,6 +874,7 @@ class ArchiveApp(App[None]):
             return
         self.driver.acknowledge_pause()
         status.update("status: autopause acknowledged — ready to advance")
+        self._refresh_tutorial_progress()
 
     async def on_entity_navigated(self, event: EntityNavigated) -> None:
         """Open the page a palette hit chose.

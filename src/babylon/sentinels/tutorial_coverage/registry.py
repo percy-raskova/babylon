@@ -68,4 +68,15 @@ TUTORIAL_COVERAGE_EXEMPTIONS: tuple[SentinelExemption, ...] = (
         date="2026-07-22",
         tracking_task="N/A (the arc teaches choosing a campaign, not abandoning the lobby)",
     ),
+    SentinelExemption(
+        key=("binding", "TutorialOverlay", "escape"),
+        reason=(
+            "TutorialOverlay.dismiss_tutorial lets the player close the guided "
+            "overlay early -- tutorial-system chrome, not a game-loop verb the "
+            "opening arc itself teaches."
+        ),
+        owner="Persephone Raskova",
+        date="2026-07-22",
+        tracking_task="N/A (tutorial-chrome dismiss action, not a wired gap)",
+    ),
 )

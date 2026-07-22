@@ -47,6 +47,21 @@ session.resume_campaign`'s ``narrator=`` (previously wired to zero
 production callers); OFF passes ``narrator=None``, so
 :meth:`~babylon.game.session.GameSession.advance_tick` never calls
 ``schedule()`` at all — the exact pre-Unit-U1 byte-identical path.
+
+T6 Unit U4 (the guided opening-arc overlay) adds the ``--tutorial/--no-
+tutorial`` flag on :func:`play`, threaded through :func:`run` into
+:func:`_tutorial_progress_factory`. Deliberately TRI-STATE (``bool | None``,
+default ``None``) rather than the narrator flag's plain bool — the ruling's
+own default is "ON for a new campaign, OFF for a resumed one," a decision
+that cannot be resolved until a specific campaign is chosen in the lobby,
+long after Typer has already parsed the CLI. ``None`` (no flag given) defers
+to :func:`_tutorial_progress_factory`'s own first-session heuristic
+(``campaign.tick == 0``, an HONEST, DOCUMENTED approximation of "was this
+campaign just minted" — see that function's own docstring for the precise
+signal it would need instead, and why threading it here would ripple into
+``LobbyScreen``'s dismiss contract); ``True``/``False`` (an explicit flag)
+always overrides the heuristic outright, for either a fresh or a resumed
+campaign.
 """
 
 from __future__ import annotations
@@ -61,13 +76,17 @@ from uuid import UUID
 import typer
 
 if TYPE_CHECKING:
+    from collections.abc import Callable
+    from typing import Any
+
     from babylon.config.defines import GameDefines
     from babylon.game.pacing import PacedTickDriver
     from babylon.game.session import GameSession
     from babylon.persistence import PostgresRuntime
     from babylon.persistence.babylon_meta import BabylonMetaStore
     from babylon.projection.vault.materializer import VaultMaterializer
-    from babylon.tui.app import CampaignHandle
+    from babylon.tui.app import CampaignHandle, PacedDriverHandle
+    from babylon.tui.tutorial_overlay import TutorialProgress
 
 
 def play_demo() -> None:
@@ -244,7 +263,94 @@ def _driver_factory(campaign: CampaignHandle) -> PacedTickDriver:
     return paced_driver_for_session(cast("GameSession", campaign))
 
 
-def run(*, narrator_enabled: bool = True) -> None:
+def _tutorial_steps() -> tuple[Any, ...]:
+    """The guided opening-arc's step slice the campaign shell can teach.
+
+    Skips the authored arc's first TWO beats (lobby mint + briefing begin):
+    the overlay only ever mounts once the campaign shell itself is visible
+    (:meth:`~babylon.tui.app.ArchiveApp._on_briefing_dismissed`), by which
+    point both are already necessarily true (reaching the shell requires
+    having done them), and their own completion (``VerbIssued``) is not
+    observable from inside the shell anyway (see
+    :class:`~babylon.game.tutorial_runtime.TutorialRuntimeProgress`'s own
+    docstring). Computed ONCE and reused as BOTH ``ArchiveApp``'s
+    ``tutorial_steps=`` and the same steps :func:`_tutorial_progress_factory`
+    builds its evaluator against — a single source of the slice keeps the
+    overlay's rendering list and its evaluator's index space identical by
+    construction (see :data:`~babylon.tui.app.TutorialProgressFactory`'s own
+    docstring on why that alignment matters).
+
+    :returns: the sliced step sequence, typed loosely (``Any``) in this
+        function's own signature to avoid importing ``babylon.game.tutorial``
+        (and transitively ``babylon.engine``) at module scope — this
+        composition root already imports it lazily elsewhere in this file for
+        the same reason.
+    """
+    from babylon.game.tutorial import WAYNE_OPENING_ARC
+
+    return WAYNE_OPENING_ARC.steps[2:]
+
+
+def _tutorial_progress_factory(
+    tutorial_enabled: bool | None, steps: tuple[Any, ...]
+) -> Callable[
+    [CampaignHandle, PacedDriverHandle | None, Callable[[], str | None]], TutorialProgress | None
+]:
+    """Build ``ArchiveApp``'s ``tutorial_progress_factory=`` seam (Unit U4).
+
+    Returns a closure fulfilling :data:`~babylon.tui.app.TutorialProgressFactory`:
+    given the just-booted campaign, its paced driver (or ``None``), and a
+    nav-subject query, decide whether the T6 opening-arc overlay should show
+    for THIS campaign, and if so build its
+    :class:`~babylon.tui.tutorial_overlay.TutorialProgress` evaluator.
+
+    :param tutorial_enabled: the resolved ``--tutorial``/``--no-tutorial``
+        tri-state flag (see :func:`play`); ``True``/``False`` always wins;
+        ``None`` (no flag given) falls back to ``campaign.tick == 0`` — an
+        HONEST, DOCUMENTED APPROXIMATION of "this campaign was just minted,"
+        not a precise new-vs-resumed signal. The precise signal
+        (``runtime.get_session(campaign_id) is None``, computed inside
+        :func:`_load_campaign`) does not survive past that function's own
+        return (``ArchiveApp`` only ever sees the resulting ``GameSession``,
+        never the fact that produced it), and threading it through would mean
+        either widening :class:`~babylon.tui.app.CampaignHandle` with a new
+        REQUIRED member (breaking every existing fake in
+        ``tests/unit/tui/test_app_lobby_flow.py``/``test_app_pacing_driver.
+        py``) or changing :class:`~babylon.tui.campaign_menu.LobbyScreen`'s
+        own ``dismiss`` contract (rippling into ``test_campaign_menu.py`` and
+        ``test_tutorial_pilot.py`` too) — both a far larger blast radius than
+        this ruling's own "first-session semantics" asks for. Wayne's own
+        material state means a genuinely-resumed campaign realistically sits
+        at tick >= 1 (it autopauses every tick from tick 1 onward — see
+        ``tests/unit/tui/test_tutorial_pilot.py``'s own HONEST GAP docstring),
+        so the one false-positive this approximation admits (a resumed
+        campaign that was minted but never advanced past tick 0 in its prior
+        session) is narrow and self-correcting: the player sees the tutorial
+        once more, never a crash or a wrong answer.
+    :param steps: the exact step sequence to build the evaluator against —
+        :func:`_tutorial_steps`'s own return, so it stays index-aligned with
+        whatever ``ArchiveApp`` was given as ``tutorial_steps=``.
+    :returns: the ``tutorial_progress_factory`` closure.
+    """
+
+    def _factory(
+        campaign: CampaignHandle,
+        driver: PacedDriverHandle | None,
+        current_subject: Callable[[], str | None],
+    ) -> TutorialProgress | None:
+        from babylon.game.tutorial_runtime import TutorialRuntimeProgress
+
+        show = tutorial_enabled if tutorial_enabled is not None else campaign.tick == 0
+        if not show:
+            return None
+        return TutorialRuntimeProgress(
+            steps=steps, campaign=campaign, driver=driver, current_subject=current_subject
+        )
+
+    return _factory
+
+
+def run(*, narrator_enabled: bool = True, tutorial_enabled: bool | None = None) -> None:
     """Boot the REAL Archive TUI: campaign lobby -> briefing -> campaign shell.
 
     Requires a reachable Postgres — see :func:`babylon.game.session.open_runtime`.
@@ -252,6 +358,10 @@ def run(*, narrator_enabled: bool = True) -> None:
     :param narrator_enabled: T5 Unit U1's ``--narrator/--no-narrator`` flag
         (see :func:`play`), threaded straight into every
         :func:`_load_campaign` call this boot makes.
+    :param tutorial_enabled: T6 Unit U4's ``--tutorial/--no-tutorial``
+        tri-state flag (see :func:`play`), threaded into
+        :func:`_tutorial_progress_factory` (see its own docstring for the
+        ``None`` default's first-session heuristic).
     """
     from functools import partial
 
@@ -273,12 +383,15 @@ def run(*, narrator_enabled: bool = True) -> None:
         defines_hash=_defines_hash(GameDefines.load_default()),
     )
 
+    steps = _tutorial_steps()
     app = ArchiveApp(
         campaign_menu=menu,
         campaign_loader=partial(
             _load_campaign, runtime, catalog, narrator_enabled=narrator_enabled
         ),
         driver_factory=_driver_factory,
+        tutorial_steps=steps,
+        tutorial_progress_factory=_tutorial_progress_factory(tutorial_enabled, steps),
     )
     app.run()
 
@@ -294,6 +407,16 @@ def play(
             "legal (Constitution R4)."
         ),
     ),
+    tutorial: bool | None = typer.Option(
+        None,
+        "--tutorial/--no-tutorial",
+        help=(
+            "Show the guided opening-arc overlay (T6 Unit U4). Unset (the "
+            "default) shows it for a freshly-minted campaign only, never a "
+            "resumed one (first-session semantics); an explicit flag always "
+            "wins either way."
+        ),
+    ),
 ) -> None:
     """Play Babylon — the real campaign session, via the composition root."""
-    run(narrator_enabled=narrator)
+    run(narrator_enabled=narrator, tutorial_enabled=tutorial)

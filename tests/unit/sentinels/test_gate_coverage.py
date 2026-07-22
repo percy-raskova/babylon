@@ -21,10 +21,15 @@ from babylon.sentinels.gate_coverage.checks import (
 pytestmark = pytest.mark.unit
 
 
-def test_real_engine_has_thirty_systems() -> None:
+def test_real_engine_system_count() -> None:
+    """Count pin over the AST-read ``_SYSTEM_CLASSES`` (was hardcoded 30 and
+    silently stale from U8's 31st system until U9's estate sweep caught it —
+    the U8 closeout gate ran off-tree, ADR135 §estate)."""
     names = engine_system_names()
-    assert len(names) == 30
+    assert len(names) == 32
     assert "MarketScissorsSystem" in names
+    assert "AllegianceSystem" in names  # P25 U8, ADR134
+    assert "PolicySystem" in names  # P25 U9, ADR135
 
 
 def test_real_union_covers_all_systems() -> None:

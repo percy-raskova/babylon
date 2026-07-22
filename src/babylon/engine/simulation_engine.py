@@ -61,6 +61,7 @@ from babylon.engine.systems.lifecycle import LifecycleSystem
 from babylon.engine.systems.market_scissors import MarketScissorsSystem
 from babylon.engine.systems.metabolism import MetabolismSystem
 from babylon.engine.systems.ooda import OODASystem
+from babylon.engine.systems.policy import PolicySystem
 from babylon.engine.systems.production import ProductionSystem
 from babylon.engine.systems.reactionary import FascistFactionSystem
 from babylon.engine.systems.reserve_army import ReserveArmySystem
@@ -345,6 +346,7 @@ _SYSTEM_CLASSES: Final[tuple[type[SystemBase], ...]] = (
     ConsciousnessSystem,
     FascistFactionSystem,
     AllegianceSystem,
+    PolicySystem,
     SovereigntySystem,
     MarketScissorsSystem,
     ContradictionSystem,

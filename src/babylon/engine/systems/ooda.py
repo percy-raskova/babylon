@@ -17,7 +17,7 @@ from typing import TYPE_CHECKING, Any, ClassVar
 from babylon.kernel.system_base import SystemBase
 from babylon.kernel.system_protocol import ContextType
 from babylon.kernel.tick_partition import TickPartition
-from babylon.models.enums import ActionType, EventType, OrgType
+from babylon.models.enums import ActionType, EventType, OrgType, StateActionType
 from babylon.ooda.cycle_time import compute_cycle_time
 from babylon.ooda.initiative import (
     compute_community_embeddedness,
@@ -192,6 +192,7 @@ class OODASystem(SystemBase):
                 defines=defines,
                 graph=graph,
                 services=services,
+                tick=tick,
             )
             action_phase_results.extend(new_results)
 
@@ -259,6 +260,7 @@ class OODASystem(SystemBase):
         defines: Any,
         graph: BabylonGraph,
         services: ServicesProtocol,
+        tick: int = 0,
     ) -> list[ActionResult]:
         """Resolve one organization's action(s) for the current tick.
 
@@ -330,6 +332,16 @@ class OODASystem(SystemBase):
                 state_ai_defines=services.defines.state_ai,
             )
             for action in npc_actions:
+                if action.params.get("state_sub_verb") == StateActionType.LEGISLATE.value:
+                    # P25 U9 (ADR135): the state AI selected the ADMINISTER/
+                    # LEGISLATE sub-verb — route it to the policy-agenda
+                    # register (PolicySystem @17.47 drains it through the
+                    # resolve_legislate gauntlet this same tick). Before this
+                    # branch the npc_stub conversion stamped REPRESS on every
+                    # StateAction, so a chosen LEGISLATE materially resolved
+                    # as repression.
+                    results.append(self._enqueue_legislate(action, org_data, graph, services, tick))
+                    continue
                 if action.action_type in _MATERIALLY_RESOLVED_NPC_VERBS:
                     # W1: route through the real Feature-032 resolver so the
                     # state-AI/legacy-priority-queue driver gets the SAME
@@ -357,6 +369,61 @@ class OODASystem(SystemBase):
                     )
 
         return results
+
+    def _enqueue_legislate(
+        self,
+        action: Any,
+        org_data: dict[str, Any],
+        graph: BabylonGraph,
+        services: ServicesProtocol,
+        tick: int,
+    ) -> ActionResult:
+        """Draft the LEGISLATE selection onto the policy-agenda register.
+
+        The enacting sovereign is the TOP claims-holder of the acting
+        org's territory (the SovereigntySystem sort — a state apparatus
+        legislates under whichever sovereign effectively controls its
+        ground; U10's governing configuration refines the attribution).
+        An org with no claimed territory has no sovereign to legislate
+        under — a loud failure result, never a silent drop (P25 U9,
+        ADR135).
+        """
+        from babylon.domain.politics.policy import PolicyAgendaItem
+        from babylon.engine.systems.policy import enqueue_agenda_item
+        from babylon.models.enums import PolicyAxis
+
+        territory_ids: list[str] = org_data.get("territory_ids", [])
+        sovereign_id: str | None = None
+        for territory_id in territory_ids:
+            rows = graph.query_territory_claims(territory_id)
+            if rows:
+                sovereign_id = rows[0][0]
+                break
+        if sovereign_id is None:
+            return ActionResult(
+                action=action,
+                success=False,
+                failure_reason=(
+                    "LEGISLATE drafted by an org with no sovereign-claimed "
+                    "territory — nothing to legislate under"
+                ),
+            )
+        enqueue_agenda_item(
+            graph,
+            PolicyAgendaItem(
+                sovereign_id=sovereign_id,
+                axis=PolicyAxis(str(action.params.get("policy_axis"))),
+                magnitude=float(services.defines.politics.policy_default_magnitude),
+                promised=0.0,
+                drafted_tick=tick,
+                source_org_id=str(action.org_id),
+            ),
+        )
+        return ActionResult(
+            action=action,
+            success=True,
+            events_generated=[EventType.ORGANIZATIONAL_ACTION.value],
+        )
 
 
 def _collect_org_nodes(graph: BabylonGraph) -> list[tuple[str, dict[str, Any]]]:

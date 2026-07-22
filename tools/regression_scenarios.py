@@ -2245,6 +2245,18 @@ COVERAGE_GAPS_DATA: Final[tuple[dict[str, str], ...]] = (
         "bernie_valve), which run on the electoral_fixture party terrain",
     },
     {
+        "system": "PolicySystem",
+        "reason": "no agenda register and no sovereign fiscal register exist in any "
+        "canonical scenario (nothing ever drafts a policy without a state-apparatus "
+        "org or a seeded agenda); the empty-register guard (P25 U9, ADR135) makes the "
+        "system a hard no-op — zero overlay/fiscal/delivery writes, zero "
+        "POLICY_*/CAPITAL_STRIKE events — which is exactly what keeps the six "
+        "baselines byte-identical",
+        "remediation": "the U13 electoral goldens (mitterrand carries the calibration "
+        "agenda: reform enactment past tolerance → strike + bond channels → forced "
+        "austerity turn)",
+    },
+    {
         "system": "DoctrineSystem",
         "reason": "no ORGANIZATION nodes are seeded (single_county, Task 8, included); the "
         "system's own module docstring documents it as a no-op on the qa:regression "

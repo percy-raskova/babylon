@@ -132,6 +132,7 @@ EXPECTED_ENUMS_PUBLIC: frozenset[str] = frozenset(
         "OperationalProfile",
         "OrgType",
         "PlayerMode",
+        "PolicyAxis",  # P25 U9 / the six overlay axes (ADR135, deliberate surface addition)
         "ResolutionType",
         "RulingClassFraction",
         "SectorType",

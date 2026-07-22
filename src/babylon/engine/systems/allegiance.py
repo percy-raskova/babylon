@@ -12,9 +12,10 @@ qa:regression six are byte-identical because nothing ever fires, not because
 a write is filtered):
 
 1. **Allegiance drift** (brief §2.2): each class's allegiance distribution
-   over the party terrain drifts by ``θ.align·fit + θ.contact·contact``
-   (media/ISA_COMM and betrayal/delivery-gap terms arrive with their
-   producers), plus the reactionary coupling — a class's
+   over the party terrain drifts by ``θ.align·fit + θ.contact·contact −
+   θ.betrayal·gap_ratio`` (the betrayal term reads the PRIOR tick's
+   delivery ledger, its producer landed with U9/ADR135; the media/ISA_COMM
+   term still awaits its producer), plus the reactionary coupling — a class's
    ``fascist_alignment`` (@17.4) pulls its allegiance toward
    fascist-ideology parties: the same reactionary machinery, now with a
    ballot expression. Mass discipline via
@@ -50,6 +51,7 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING, Any, ClassVar
 
+from babylon.engine.systems.policy import POLICY_DELIVERY_ATTR
 from babylon.formulas.politics import (
     allegiance_drift,
     apply_allegiance_drift,
@@ -122,6 +124,18 @@ class AllegianceSystem(SystemBase):
         platforms = self._platforms(parties, classes, membership, funding_share, interest, defines)
         viability = self._viability(parties, membership, funding_share)
 
+        # P25 U9 (ADR135): the PRIOR tick's per-class delivery ledger —
+        # PolicySystem @17.47 writes it AFTER this system runs (17.47 >
+        # 17.42), so the betrayal drift term always reads last tick's gap
+        # (the one-tick lag is the I-ORD grain). Absent ledger ⟹ the term
+        # is exactly zero, the pre-U9 arithmetic.
+        delivery_raw = wrapped.get_graph_attr(POLICY_DELIVERY_ATTR, None)
+        delivery: dict[str, dict[str, object]] = (
+            {k: dict(v) for k, v in dict(delivery_raw).items()}
+            if isinstance(delivery_raw, dict)
+            else {}
+        )
+
         prev_hope_raw = context.persistent_data.get(_HOPE_KEY, {})
         prev_hope: dict[str, float] = dict(prev_hope_raw) if prev_hope_raw else {}
         new_hope: dict[str, float] = {}
@@ -131,7 +145,7 @@ class AllegianceSystem(SystemBase):
         for node in classes:
             attrs = node.attributes
             allegiance = self._drift_allegiance(
-                node, parties, platforms, membership, interest, defines
+                node, parties, platforms, membership, interest, defines, delivery
             )
             hope = self._hope(
                 node, parties, allegiance, platforms, viability, interest, defines, steepness
@@ -285,11 +299,26 @@ class AllegianceSystem(SystemBase):
         membership: dict[str, set[str]],
         interest: dict[str, tuple[float, float]],
         defines: object,
+        delivery: dict[str, dict[str, object]],
     ) -> dict[str, float]:
         """One class's drifted allegiance masses over the party terrain."""
         attrs = node.attributes
         current_raw = attrs.get("allegiance") or {}
         fascist_alignment = float(attrs.get("fascist_alignment", 0.0))
+
+        # The betrayal term (θ.betrayal, producer landed U9/ADR135): the
+        # incumbent's PRIOR-tick delivery gap, as the dimensionless ratio
+        # gap/promised, repels this class's allegiance from the incumbent.
+        # Pre-U10 the ledger's incumbent is the enacting SOVEREIGN, which
+        # no party id matches — the term goes live when U10 seats a
+        # governing party as the incumbent (or a scenario stamps one).
+        row = delivery.get(node.id) or {}
+        incumbent_id = str(row.get("incumbent_id", ""))
+        gap = row.get("gap")
+        promised = row.get("promised")
+        gap_ratio = 0.0
+        if isinstance(gap, (int, float)) and isinstance(promised, (int, float)) and promised > 0.0:
+            gap_ratio = min(1.0, max(0.0, float(gap) / float(promised)))
 
         ordered = [p.id for p in parties]
         current = tuple(float(current_raw.get(pid, 0.0)) for pid in ordered)
@@ -297,11 +326,14 @@ class AllegianceSystem(SystemBase):
         for party in parties:
             fit = interest_fit(interest[node.id], platforms[party.id])
             contact = 1.0 if node.id in membership.get(party.id, ()) else 0.0
+            betrayed = gap_ratio if party.id == incumbent_id else 0.0
             delta = allegiance_drift(
                 fit=fit,
                 contact=contact,
                 align_rate=defines.allegiance_align_rate,  # type: ignore[attr-defined]
                 contact_rate=defines.allegiance_contact_rate,  # type: ignore[attr-defined]
+                delivery_gap_term=betrayed,
+                betrayal_rate=defines.allegiance_betrayal_rate,  # type: ignore[attr-defined]
             )
             if fascist_alignment > 0.0 and self._is_fascist_vehicle(party):
                 # The reactionary coupling: @17.4's drift acquires its

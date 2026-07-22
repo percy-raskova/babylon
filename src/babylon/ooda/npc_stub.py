@@ -16,7 +16,14 @@ from itertools import islice
 from typing import TYPE_CHECKING, Any
 
 from babylon.config.defines import OODADefines
-from babylon.models.enums import ActionType, EdgeType, NodeType, OrgType, StateActionType
+from babylon.models.enums import (
+    ActionType,
+    EdgeType,
+    NodeType,
+    OrgType,
+    StateActionType,
+    StateFaction,
+)
 from babylon.ooda.action_eligibility import check_eligibility
 from babylon.ooda.types import Action
 
@@ -455,6 +462,36 @@ def _try_state_ai_dispatch(
     for idx, sa in enumerate(state_actions):
         if idx >= max_convert:
             break
+        if sa.sub_verb is StateActionType.LEGISLATE:
+            # P25 U9 (ADR135): before this branch existed, EVERY StateAction
+            # was stamped ActionType.REPRESS below — a selected LEGISLATE
+            # materially resolved as repression (repression_faced bump on
+            # the target). The sub-verb identity now survives as a params
+            # marker; the OODA dispatch routes it to the policy-agenda
+            # enqueue instead of a material resolver. The drafted axis is
+            # the dominant faction's apparatus preference (declared U9
+            # proxy — U10's governing platform replaces it): the finance
+            # wing maintains the imperial circuit, the security wing its
+            # repressive capacity, the settler wing the border.
+            axis_by_faction = {
+                StateFaction.FINANCE_CAPITAL: "war_posture",
+                StateFaction.SECURITY_STATE: "police_budget",
+                StateFaction.SETTLER_POPULIST: "border_regime",
+            }
+            legacy_actions.append(
+                Action(
+                    org_id=org_id,
+                    action_type=ActionType.ORGANIZE,  # non-material legacy slot
+                    target_id=sa.target_id or org_id,
+                    action_point_cost=1,
+                    budget_cost=sa.budget_cost,
+                    params={
+                        "state_sub_verb": StateActionType.LEGISLATE.value,
+                        "policy_axis": axis_by_faction[balance.dominant_faction],
+                    },
+                )
+            )
+            continue
         legacy_actions.append(
             Action(
                 org_id=org_id,

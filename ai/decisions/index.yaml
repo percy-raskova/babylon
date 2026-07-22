@@ -15,6 +15,11 @@ meta:
   # 2026-07-22 at charter (ADR127) — Vol II's 120-129 and T1.1/T1.2's
   # 130-139 blocks dissolved at their merges; next mainline free >= 140.
 decisions:
+  ADR135_p25_u9_policy_system:
+    title: 'P25 U9 — PolicySystem @17.47 (LEGISLATE resolver + reform ceiling, 32nd system): agenda register drains through the §2.4 gauntlet — preemption on the first-ever ADMINISTERS edge, judicial strike-down off the first-ever Institution node, funding identity w/ deficit financing under bond discipline (debt_service BUILT: SovereignFiscalState register × the live endogenous rate), overlays effective next tick by position, per-class delivery ledger (θ.betrayal goes live, ADR134 §5 discharged); capital strike = the extracted grain-agnostic equalization law over county tick_capital_stock (ΣΔc=0, hex computer delegates); npc_stub REPRESS-misstamp on LEGISLATE fixed at source; I-ORD = 19th sentinel (declared write ownership, sentinels/superstructure/); 8 new defines, two metadata ceremonies; qa byte-identical w/ the system live; caught+fixed the stale-at-30 gate-coverage count pin (U8 closeout gate ran off-tree).'
+    status: accepted
+    date: '2026-07-22'
+    file: ADR135_p25_u9_policy_system.yaml
   ADR134_p25_u8_allegiance_valve:
     title: 'P25 U8 — AllegianceSystem @17.42 (THE VALVE, 31st system): allegiance drift + hope field H(c) + the FIRST Agitation→Organization conversion pathway throttled by (1−v·H) (TRAP 1 discharged, router untouched); parties-exist guard proves qa byte-identity (TRAP 3); political_form producer closes U3''s deferred input under the BD ruling SYSTEM-LOYAL vs SYSTEM-OPPOSITIONAL; allegiance = real SocialClass field, hope = dual-registered transient; 3 new Θ_feel defines w/ metadata ceremony; L-VALVE bound to the live quantity.'
     status: accepted

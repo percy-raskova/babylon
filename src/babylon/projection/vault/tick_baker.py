@@ -17,6 +17,7 @@ from babylon.models.enums.topology import NodeType
 from babylon.projection.community import project_community
 from babylon.projection.county import project_county
 from babylon.projection.economy import project_economy
+from babylon.projection.faction import project_faction
 from babylon.projection.field_state import project_field_state
 from babylon.projection.industry import project_industry
 from babylon.projection.institution import project_institution
@@ -28,6 +29,7 @@ from babylon.projection.state import project_state
 from babylon.projection.vault.render import render_county, render_sovereign
 from babylon.projection.vault.render_community import render_community
 from babylon.projection.vault.render_economy import render_economy
+from babylon.projection.vault.render_faction import render_faction
 from babylon.projection.vault.render_field_state import render_field_state
 from babylon.projection.vault.render_industry import render_industry
 from babylon.projection.vault.render_institution import render_institution
@@ -120,11 +122,19 @@ class ArchiveTickBaker:
     The per-kind composition over the Lane P estate: counties from the
     configured scope, states from the scope's FIPS prefixes, the national
     dossier, graph-enumerated organizations / institutions / sovereigns /
-    industries / social classes, and membership-enumerated communities —
-    all rendered into ONE pages dict and landed as ONE content-hash-skipped
-    commit per tick (:meth:`~babylon.projection.vault.materializer.
-    VaultMaterializer.bake_tick`). Key figures bake nothing: the kind has
-    no producer, so there are no ids to enumerate (honest absence).
+    factions / industries / social classes, and membership-enumerated
+    communities — all rendered into ONE pages dict and landed as ONE
+    content-hash-skipped commit per tick (:meth:`~babylon.projection.vault.
+    materializer.VaultMaterializer.bake_tick`). Key figures bake nothing: the
+    kind has no producer, so there are no ids to enumerate (honest absence).
+    Factions bake nothing in every current scenario for a related but
+    distinct reason: the node type has a real producer
+    (``WorldState.to_graph()``), but no ``babylon.engine.scenarios`` builder
+    populates ``WorldState.factions`` — only the legacy web bridge's
+    ``_seed_balkanization_layer`` does (Bridge-layer only) — so
+    ``_node_ids(graph, NodeType.FACTION)`` is honestly empty for a headless
+    campaign today; that is a scenario-coverage gap, not a bug (see
+    :mod:`babylon.projection.faction`'s module docstring).
 
     Read-only over ``world``/``graph`` per the observer contract; page
     ordering inside the commit is sorted-path (the materializer's own
@@ -171,6 +181,9 @@ class ArchiveTickBaker:
         for sovereign_id in _node_ids(graph, NodeType.SOVEREIGN):
             sovereign = project_sovereign(sovereign_id, graph=graph, world=world, tick=tick)
             pages[f"sovereign/{sovereign_id}.md"] = render_sovereign(sovereign, verified_tick=tick)
+        for faction_id in _node_ids(graph, NodeType.FACTION):
+            faction = project_faction(faction_id, graph=graph, world=world, tick=tick)
+            pages[f"faction/{faction_id}.md"] = render_faction(faction, verified_tick=tick)
         for industry_id in _node_ids(graph, NodeType.INDUSTRY):
             industry = project_industry(industry_id, graph=graph, world=world, tick=tick)
             pages[f"industry/{industry_id}.md"] = render_industry(industry, verified_tick=tick)

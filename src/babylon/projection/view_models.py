@@ -30,6 +30,7 @@ from babylon.models.enums import (
     ApparatusType,
     ClassCharacter,
     ClassInscription,
+    ColonialStance,
     CommunityType,
     ConsciousnessTendency,
     ExtractionPolicy,
@@ -1275,6 +1276,109 @@ class CommunityView(BaseModel):
     overlaps: tuple[CommunityOverlap, ...] | None = None
 
 
+class FactionTerritoryInfluence(BaseModel):
+    """One INFLUENCES edge from a faction into a territory (spec-070 FR-014).
+
+    The reverse-direction sibling of :class:`FieldStateEdgeView`'s territory
+    anchoring: a faction's influence is inherently relational (a faction, a
+    territory, and how strongly/by what channel), so it gets its own
+    per-entry composite rather than collapsing to a bare id the way
+    :attr:`SovereignView.claimed_county_fips` does for weight-free CLAIMS.
+
+    :param territory_id: The raw territory node id the faction influences
+        (the INFLUENCES edge's target).
+    :param county_fips: The territory's ``county_fips`` attribute, resolved
+        the same way :func:`babylon.projection.sovereign._county_fips_of`
+        resolves a sovereign's capital/claims, or ``None`` when the
+        territory node doesn't exist or carries no ``county_fips``.
+    :param influence_level: The edge's influence intensity in ``[0, 1]``.
+    :param support_type: The edge's support channel (e.g.
+        labor/ideological/material).
+    """
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    territory_id: str = Field(min_length=1)
+    county_fips: str | None = Field(default=None, pattern=r"^\d{5}$")
+    influence_level: Probability
+    support_type: str = Field(min_length=1)
+
+
+class FactionView(BaseModel):
+    """A balkanization-faction dossier — the projected read-model for one
+    political coalition (T3 U4).
+
+    Mirrors :func:`~babylon.projection.sovereign.project_sovereign`'s recipe:
+    faction IS a graph node (spec-070's ``BalkanizationFaction``, stamped
+    whole-cloth by ``WorldState.to_graph()``), so every identity field beyond
+    provenance is that node's own attribute. ``territory_influence`` is the
+    reverse of :attr:`SovereignView.claimed_county_fips` — carrying the
+    INFLUENCES edge's weight/channel, not just the anchored id, per FR-014.
+
+    Every field beyond identity and provenance is ``Optional`` because the
+    faction either doesn't exist in this run (a stale/unminted id) or one of
+    its attributes genuinely isn't attributed; in both cases the honest
+    projection is ``None``, never a defaulted value. ``territory_influence``
+    is the one field where an *empty* tuple ("influences nothing right now")
+    and ``None`` ("this faction doesn't exist") are deliberately distinct.
+
+    Extra keys are rejected (``extra="forbid"``): a payload carrying a field
+    this model does not declare is a shape mismatch to surface loudly, not to
+    swallow.
+
+    :param kind: The discriminator literal ``"faction"`` tagging this record
+        in :data:`ProjectionRecord`.
+    :param faction_id: The faction's stable node id (``FAC_*``, spec-070).
+    :param verified_tick: The committed tick this dossier was projected from
+        (``tick_commit``), the staleness anchor for any materialization.
+    :param name: Display name, or ``None`` if the faction node doesn't exist
+        / carries none.
+    :param ideology: Free-text ideological label, or ``None``.
+    :param colonial_stance: The principal political axis (UPHOLD / IGNORE /
+        ABOLISH), or ``None``.
+    :param is_settler_formation: Whether the faction is a settler-formation
+        coalition, or ``None``.
+    :param extraction_modifier: Mechanical multiplier on extraction, or
+        ``None``.
+    :param violence_modifier: Mechanical multiplier on state violence, or
+        ``None``.
+    :param class_reduction: The faction's effect on class contradiction in
+        ``[0, 1]``, or ``None``.
+    :param metabolic_reduction: The faction's effect on metabolic impact in
+        ``[-1, +1]``, or ``None``.
+    :param color_hex: UI color in ``#RRGGBB`` form, or ``None``.
+    :param founded_tick: The tick the faction was instantiated, or ``None``.
+    :param dissolved_tick: The tick the faction dissolved, or ``None`` (the
+        common case for a still-active faction, not necessarily an
+        attribution gap).
+    :param territory_influence: Every INFLUENCES edge this faction casts,
+        sorted by influence level descending then territory id ascending
+        (matching ``GraphProtocol.query_faction_influence_by_territory``'s
+        own ordering). ``None`` when the faction node itself doesn't exist;
+        an empty tuple is a real, present value ("this faction currently
+        influences nothing"), never conflated with absence.
+    """
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    kind: Literal["faction"] = "faction"
+    faction_id: str = Field(pattern=r"^FAC_[A-Z][A-Z0-9_]*$")
+    verified_tick: int = Field(ge=0)
+
+    name: str | None = None
+    ideology: str | None = Field(default=None, min_length=1, max_length=64)
+    colonial_stance: ColonialStance | None = None
+    is_settler_formation: bool | None = None
+    extraction_modifier: float | None = Field(default=None, ge=0.0)
+    violence_modifier: float | None = Field(default=None, ge=0.0)
+    class_reduction: Probability | None = None
+    metabolic_reduction: float | None = Field(default=None, ge=-1.0, le=1.0)
+    color_hex: str | None = Field(default=None, pattern=r"^#[0-9A-Fa-f]{6}$")
+    founded_tick: int | None = Field(default=None, ge=0)
+    dissolved_tick: int | None = Field(default=None, ge=0)
+    territory_influence: tuple[FactionTerritoryInfluence, ...] | None = None
+
+
 #: A projected record of any scale, keyed on ``kind``. Widened by
 #: Program 24 P2 as each entity-kind page lands; the hydrate helpers
 #: below need no change as the union grows.
@@ -1282,6 +1386,7 @@ ProjectionRecord = Annotated[
     CountyView
     | CommunityView
     | EconomyView
+    | FactionView
     | FieldStateView
     | IndustryView
     | InstitutionView
@@ -1300,6 +1405,7 @@ _NATIONAL_ADAPTER: TypeAdapter[NationalView] = TypeAdapter(NationalView)
 _ORGANIZATION_ADAPTER: TypeAdapter[OrganizationView] = TypeAdapter(OrganizationView)
 _INSTITUTION_ADAPTER: TypeAdapter[InstitutionView] = TypeAdapter(InstitutionView)
 _SOVEREIGN_ADAPTER: TypeAdapter[SovereignView] = TypeAdapter(SovereignView)
+_FACTION_ADAPTER: TypeAdapter[FactionView] = TypeAdapter(FactionView)
 _KEY_FIGURE_ADAPTER: TypeAdapter[KeyFigureView] = TypeAdapter(KeyFigureView)
 _INDUSTRY_ADAPTER: TypeAdapter[IndustryView] = TypeAdapter(IndustryView)
 _SOCIAL_CLASS_ADAPTER: TypeAdapter[SocialClassView] = TypeAdapter(SocialClassView)
@@ -1407,6 +1513,18 @@ def hydrate_sovereign(data: Mapping[str, Any]) -> SovereignView:
     return _SOVEREIGN_ADAPTER.validate_python(data)
 
 
+def hydrate_faction(data: Mapping[str, Any]) -> FactionView:
+    """Validate an untyped mapping into a :class:`FactionView`.
+
+    :param data: A mapping shaped like a ``FactionView`` — a recorded
+        fixture, a JSON payload, or an assembled row dict. Missing optional
+        keys become ``None``; unknown keys are rejected.
+    :returns: The validated, frozen :class:`FactionView`.
+    :raises pydantic.ValidationError: on a shape or constraint violation.
+    """
+    return _FACTION_ADAPTER.validate_python(data)
+
+
 def hydrate_key_figure(data: Mapping[str, Any]) -> KeyFigureView:
     """Validate an untyped mapping into a :class:`KeyFigureView`.
 
@@ -1483,6 +1601,8 @@ __all__ = [
     "DialecticalRegimeView",
     "EconomyView",
     "FactionalComposition",
+    "FactionTerritoryInfluence",
+    "FactionView",
     "FieldStateEdgeView",
     "FieldStateNodeView",
     "FieldStateView",
@@ -1499,6 +1619,7 @@ __all__ = [
     "hydrate_community",
     "hydrate_county",
     "hydrate_economy",
+    "hydrate_faction",
     "hydrate_field_state",
     "hydrate_industry",
     "hydrate_institution",

@@ -4,7 +4,7 @@
 committed tick it composes ONE pages dict across every bakeable kind —
 counties from the configured scope, states derived from the scope's FIPS
 prefixes, the national dossier, graph-enumerated organizations /
-institutions / sovereigns / industries / social classes, and
+institutions / sovereigns / factions / industries / social classes, and
 membership-enumerated communities — and lands them as ONE
 content-hash-skipped commit (the WO-44 vault-at-scale contract).
 Key figures are deliberately absent: the kind has no producer, so there
@@ -54,6 +54,7 @@ def _graph(world: WorldState):  # type: ignore[no-untyped-def]
         legitimation_index=0.71,
     )
     graph.add_node("ORG1", NodeType.ORGANIZATION, name="Rev Workers Party")
+    graph.add_node("FAC_REV1", NodeType.FACTION, name="Rev Workers Faction")
     return graph
 
 
@@ -74,6 +75,7 @@ class TestArchiveTickBaker:
             "economy/USA.md",
             "field_state/USA.md",
             "organization/ORG1.md",
+            "faction/FAC_REV1.md",
             "social_class/C001.md",
             "community/settler.md",
         ):

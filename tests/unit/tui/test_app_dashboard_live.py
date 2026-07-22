@@ -30,6 +30,7 @@ from textual.widgets import OptionList, Static
 from babylon.projection.view_models import EconomyView
 from babylon.tui.app import ArchiveApp, CampaignHandle
 from babylon.tui.campaign_menu import CampaignMenu, InMemoryCampaign, InMemoryCampaignCatalog
+from babylon.tui.chronicle import ChronicleEvent
 
 pytestmark = pytest.mark.unit
 
@@ -38,6 +39,7 @@ pytestmark = pytest.mark.unit
 class _FakeTickOutcome:
     tick: int
     paused: bool
+    chronicle: tuple[ChronicleEvent, ...] = ()
 
 
 def _economy_view(*, verified_tick: int, wage_balance: float) -> EconomyView:

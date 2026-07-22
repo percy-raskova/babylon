@@ -25,6 +25,7 @@ from textual.widgets import Label, OptionList
 from babylon.projection.view_models import EconomyView
 from babylon.tui.app import KNOWN_ENTITIES, ArchiveApp, BabylonMarkdown, CampaignHandle, TickOutcome
 from babylon.tui.campaign_menu import CampaignMenu, InMemoryCampaign, InMemoryCampaignCatalog
+from babylon.tui.chronicle import ChronicleEvent
 
 pytestmark = pytest.mark.unit
 
@@ -35,6 +36,7 @@ class _FakeTickOutcome:
 
     tick: int
     paused: bool
+    chronicle: tuple[ChronicleEvent, ...] = ()
 
 
 class _FakeCampaign:

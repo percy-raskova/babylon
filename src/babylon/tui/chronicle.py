@@ -33,10 +33,23 @@ naming the tick it was asked about rather than an unattributable blank
 panel. This mirrors :mod:`babylon.tui.peek`'s "no attributed data" marker
 and :mod:`babylon.tui.directives`'s ``▌`` absence convention.
 
-**Salience/dedup/autopause are out of scope here** (Program 24 P3 WO-48):
-this module renders the raw stream faithfully; severity-driven filtering,
-consecutive-duplicate collapsing, and the ``AMBER`` autopause wiring land
-later, on top of the shapes this module defines.
+**Severity-tier coloring is wired** (Program 24 P3): :func:`_event_line`
+colors each event's summary by its resolved
+:data:`~babylon.models.event_severity.SeverityTier` — critical bold
+:data:`~babylon.tui.theme.CRIMSON`, warning
+:data:`~babylon.tui.theme.AMBER` (including the loud unclassified floor),
+informational plain :data:`~babylon.tui.theme.BONE` — reading
+:func:`~babylon.models.event_severity.resolve_severity` directly (NOT
+through :mod:`babylon.tui.chronicle_salience`, which itself imports
+:class:`ChronicleEvent` from here; importing back would cycle).
+
+**Dedup/volume-floor/autopause-indicator wiring remain out of scope here**
+(WO-48's remaining pieces): :mod:`babylon.tui.chronicle_salience`'s
+:func:`~babylon.tui.chronicle_salience.dedupe_consecutive`,
+:func:`~babylon.tui.chronicle_salience.apply_volume_floors`, and
+:func:`~babylon.tui.chronicle_salience.compute_autopause_state` are not
+applied by any caller yet — this unit renders the raw (severity-colored)
+stream faithfully, on top of the shapes this module defines.
 """
 
 from __future__ import annotations
@@ -51,7 +64,8 @@ from rich.panel import Panel
 from rich.text import Text
 
 from babylon.models.enums.events import EventType
-from babylon.tui.theme import BONE, CRIMSON, GOLD
+from babylon.models.event_severity import resolve_severity
+from babylon.tui.theme import AMBER, BONE, CRIMSON, GOLD
 
 __all__ = [
     "CHRONICLE_ROW_CEILING",
@@ -315,8 +329,29 @@ def bulletin_for_tick(
 # --------------------------------------------------------------------------- #
 
 
+_SEVERITY_STYLE: Final[dict[str, str]] = {
+    "critical": f"bold {CRIMSON}",
+    "warning": AMBER,
+    "informational": BONE,
+}
+"""Summary-text style per resolved :data:`~babylon.models.event_severity.SeverityTier`
+(Program 24 P3). The loud unclassified floor (:attr:`~babylon.models.event_severity.
+EventSeverity.unclassified`) resolves its tier to ``"warning"`` already
+(Constitution III.11), so it renders :data:`~babylon.tui.theme.AMBER` here with no
+separate branch — an unclassified event is never silently indistinguishable from a
+real informational one."""
+
+
 def _event_line(event: ChronicleEvent) -> Text:
     """Render one event's line: ``"{actor}: {summary}"`` or bare ``summary``.
+
+    The summary is colored by :func:`~babylon.models.event_severity.resolve_severity`'s
+    resolved tier (Program 24 P3) — critical bold :data:`~babylon.tui.theme.CRIMSON`,
+    warning :data:`~babylon.tui.theme.AMBER`, informational plain
+    :data:`~babylon.tui.theme.BONE` — so the loudest "the world is alive" signal (a
+    critical event) is visually distinct from routine flow, not flatly uniform. The
+    actor prefix (the "who," not the "what") stays bold :data:`~babylon.tui.theme.GOLD`
+    regardless of tier.
 
     :param event: the event to render.
     :returns: the formatted line; no actor prefix when :func:`resolve_actor`
@@ -326,7 +361,8 @@ def _event_line(event: ChronicleEvent) -> Text:
     actor = resolve_actor(event)
     if actor is not None:
         line.append(f"{actor}: ", style=f"bold {GOLD}")
-    line.append(event.summary, style=BONE)
+    tier = resolve_severity(event.event_type).tier
+    line.append(event.summary, style=_SEVERITY_STYLE[tier])
     return line
 
 

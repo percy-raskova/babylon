@@ -81,7 +81,12 @@ from textual.widgets import ContentSwitcher, Footer, Label, Markdown, Static
 
 from babylon.projection.view_models import EconomyView
 from babylon.tui.campaign_menu import CampaignMenu, LobbyScreen
-from babylon.tui.chronicle import render_chronicle
+from babylon.tui.chronicle import (
+    CHRONICLE_ROW_CEILING,
+    ChronicleEvent,
+    chronicle_stream,
+    render_chronicle,
+)
 from babylon.tui.directives import BabylonFence, StatblockProvider
 from babylon.tui.dispatch import (
     fixture_known_entities,
@@ -176,6 +181,18 @@ class TickOutcome(Protocol):
     @property
     def paused(self) -> bool:
         """Whether the pacing driver's pause predicate fired this tick."""
+        ...
+
+    @property
+    def chronicle(self) -> tuple[ChronicleEvent, ...]:
+        """This tick's chronicle events, chronological (Program 24 P3).
+
+        :attr:`~babylon.game.session.TickAdvanceResult.chronicle` satisfies this
+        structurally — the same WO-37 trick this Protocol already uses for
+        ``tick``/``paused``. :meth:`ArchiveApp._refresh_chronicle` appends this
+        ONE tick's events onto its own running history; this seam never carries
+        more than one tick's worth at a time.
+        """
         ...
 
 
@@ -651,6 +668,17 @@ class ArchiveApp(App[None]):
         (Unit U4) — ``None`` until :meth:`_on_briefing_dismissed` mounts one
         (only when :attr:`_tutorial_progress` is not ``None``); stays
         ``None`` forever otherwise."""
+        self._chronicle_history: tuple[ChronicleEvent, ...] = ()
+        """Every chronicle event advanced so far this session (Program 24 P3),
+        newest-appended-last — the accumulator :meth:`_refresh_chronicle` grows
+        one tick's worth at a time and :meth:`compose`'s ``#chronicle-rail``
+        renders from. Bounded to :data:`~babylon.tui.chronicle.CHRONICLE_ROW_CEILING`
+        (the same ceiling :func:`~babylon.tui.chronicle.chronicle_stream` applies
+        to what's ever displayed — trimming the raw history to the same bound
+        loses nothing a player could see, since a genuinely older event would
+        never survive that same ceiling on render anyway) with the OLDEST events
+        dropped first. Empty until the first tick advances; stays empty forever
+        on the no-``campaign_menu`` demo boot path."""
 
     def on_mount(self) -> None:
         self.register_theme(KSBC)
@@ -813,6 +841,27 @@ class ArchiveApp(App[None]):
             return
         self.query_one(DashboardView).render_economy(view)
 
+    def _refresh_chronicle(self, chronicle: Sequence[ChronicleEvent]) -> None:
+        """Append ``chronicle``'s events to :attr:`_chronicle_history` and repaint
+        the left rail (Program 24 P3) — the loudest "the world is alive" signal.
+
+        A no-op when ``chronicle`` is empty: a genuinely quiet tick contributes no
+        bulletin (:func:`~babylon.tui.chronicle.chronicle_stream`'s own documented
+        behavior), so the rail is left exactly as it last rendered — either the
+        boot-time honest "the wire is quiet" fence (Constitution III.11) when no
+        tick has ever produced an event, or the prior history when it has. Called
+        with ONE tick's events from :meth:`action_advance_tick`, and with every
+        tick's events (concatenated, in order) from a ``run_until_paused`` batch.
+
+        :param chronicle: newly-produced chronicle events, chronological.
+        """
+        if not chronicle:
+            return
+        combined = (*self._chronicle_history, *chronicle)
+        self._chronicle_history = combined[-CHRONICLE_ROW_CEILING:]
+        bulletins = chronicle_stream(self._chronicle_history, limit=CHRONICLE_ROW_CEILING)
+        self.query_one("#chronicle-rail", Static).update(render_chronicle(bulletins))
+
     def _current_parser(self) -> MarkdownIt:
         """The dossier's zero-arg ``parser_factory``, rebuilt fresh every call.
 
@@ -919,6 +968,9 @@ class ArchiveApp(App[None]):
         Program 24 P2: also re-renders the dashboard pane via
         :meth:`_refresh_dashboard`, so the HUD stays live across ticks even
         while a different pane is showing.
+
+        Program 24 P3: also appends this tick's chronicle to the left rail via
+        :meth:`_refresh_chronicle`.
         """
         status = self.query_one("#status", Label)
         if self.campaign is None:
@@ -942,6 +994,7 @@ class ArchiveApp(App[None]):
             result = self.campaign.advance_tick()
         self._refresh_known_entities(self.campaign)
         self._refresh_dashboard()
+        self._refresh_chronicle(result.chronicle)
         subject = self.nav.current
         if subject is not None:
             await self._navigate(subject, record=False)
@@ -974,6 +1027,9 @@ class ArchiveApp(App[None]):
 
         Program 24 P2: also re-renders the dashboard pane via
         :meth:`_refresh_dashboard`, same as ``t``.
+
+        Program 24 P3: also appends every advanced tick's chronicle (in order)
+        to the left rail via :meth:`_refresh_chronicle`, same as ``t``.
         """
         status = self.query_one("#status", Label)
         if self.driver is None:
@@ -996,6 +1052,7 @@ class ArchiveApp(App[None]):
         if self.campaign is not None:
             self._refresh_known_entities(self.campaign)
         self._refresh_dashboard()
+        self._refresh_chronicle(tuple(event for result in results for event in result.chronicle))
         subject = self.nav.current
         if subject is not None:
             await self._navigate(subject, record=False)

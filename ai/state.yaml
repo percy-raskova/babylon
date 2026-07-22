@@ -2,9 +2,34 @@
 # What exists vs what's planned - KEEP THIS UPDATED
 
 meta:
-  version: "2.50.0"  # 2.28.0 lives on feature/19-emergent-class-partition (Program 19 Phase 0+1)
+  version: "2.51.0"  # 2.28.0 lives on feature/19-emergent-class-partition (Program 19 Phase 0+1)
   updated: "2026-07-21"
   truth_status: |
+    (2026-07-21 CASCADE) THE v1.0.0 FIVE-LANE MERGE CASCADE EXECUTED AND
+    GREEN on merge/v1-cascade: T1.1 seam-severity (derived severity catalog
+    single-sourced across web+Archive, seam-algebra dL sentinel, wall-clock
+    registry) -> T1.2 keel (observability spine dictConfig, DSN unification
+    resolve_dsn, WO-52b test ports) -> Vol I value-production (Fundamental
+    Theorem computed, accumulation loop, working day, 3 oppositions lit,
+    formula-registration sentinel; ceremony blessed(vol1-value-production-
+    merge) c8aef4a1, defines_hash-only) -> Vol II circulation (LODES OD
+    artifact, real circulation calculators incl. I(v+s)=IIc wired, step
+    county-keyed via ScaleAdjunction, 4 oppositions lit, CapitalVolumeII
+    Defines 2->12; ceremony blessed(vol2-circulation-merge) 3ce087ec,
+    defines_hash-only) -> T4 campaign-core (babylon.game.session
+    composition root, paced driver, chronicle adapter, incremental dirty
+    baker, lobby flow — conflict-free). Registry now 18 oppositions (10
+    canonical + 8 shadow), zero reserved slots skipped, both ADR103
+    coupling skeletons lit. Final battery: check 13,768 passed;
+    check:sentinels 17/17; qa:regression 6/6 + determinism leg;
+    qa:vault-regression byte-identical (no vault ceremony due). Cross-lane
+    fixes on-branch: Vol I ADRs renumbered 108/109->116/117 + ADR118
+    written for U5; founding ReproductionBalance stub-vs-calculator row
+    RETIRED (U3 closed it); five WO-52b severity pins re-tiered to the
+    derived taxonomy; wall-clock anchors re-grounded 3x; lodes_hydration
+    admitted to K1 logging baseline. Next: ceremonial PR -> dev self-merge
+    on green, then post-cascade queue (ADR109 enforcement train first,
+    Material Triad W1, interface-shell plan, H3-PG U1).
     (2026-07-21 T1.2 keel, WO-52b) spec-061 live test-estate ledger extension
     CLOSED (`specs/24-archive/test-port-ledger-wo52b.md`, 19 files
     dispositioned: 5 PORTED incl. a new `tests/integration/archive/

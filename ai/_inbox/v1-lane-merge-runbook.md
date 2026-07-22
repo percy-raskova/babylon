@@ -1,5 +1,36 @@
 # v1.0.0 lane merge runbook (controller working notes, 2026-07-21)
 
+> ## ★ CASCADE EXECUTED — COMPLETE (2026-07-21 ~23:20, merge/v1-cascade)
+>
+> All five lanes merged sequentially with green gates between every step:
+> T1.1 (20c752a2) → T1.2 (c1e3102e) → Vol I (b4c5753b + ceremony c8aef4a1)
+> → Vol II (797b91af + ceremony 3ce087ec) → T4 (507ebdfc, conflict-free).
+> Final battery ALL GREEN: `mise run check` 13,768 passed; `check:sentinels`
+> 17/17 (incl. catalog DB probe); `qa:regression` 6/6 + two-process
+> determinism leg; `qa:vault-regression` byte-identical both scenarios
+> (single_county 26fa622d, detroit_tri_county aa7d73a7) — no vault ceremony
+> due. Both volume ceremonies were defines_hash-only / zero-value-drift
+> (all-zero-with-reason; Vol I: U8 removed 3 dead keys; Vol II: U7 grew
+> CapitalVolumeIIDefines 2→12 with identical defaults) — the U3/U4/U5
+> activation channels need a year boundary + FRED window the 5-tick
+> canonical scenarios never reach; first michigan-e2e 520t bake will be a
+> future declared ceremony.
+>
+> Cross-lane integration fixes made ON the cascade branch (the gates caught
+> every one): NORTH_STAR.md hygiene allowlist (f81a50e6); wall-clock anchor
+> re-grounds ×3 as each lane shifted runner.py (88e60c50 + in-merge);
+> five WO-52b severity pins re-tiered to the T1.1 derived taxonomy
+> (31fd0bf3); Vol I ADR108/109 → ADR116/117 renumber sweep (19 files) +
+> mechanical ADR118 for the ADR-less U5; Vol II U6b delivered at merge
+> (founding ReproductionBalance stub row + exemption RETIRED after U3 wired
+> the real reproduction laws; vol2_step gate exemption updated to cite the
+> ADR109 W-C motion); lodes_hydration.py admitted to the K1 engine-logging
+> baseline (54241a8a). Every cross-lane checkpoint below is VERIFIED.
+>
+> Remaining: push + ONE ceremonial PR merge/v1-cascade → dev, self-merge on
+> green (queue-autonomy grant). Then the post-cascade queue (§below) —
+> ADR109 enforcement train FIRST.
+
 Live integration order + cross-lane checkpoints for the six parallel lanes forked off the
 T1.0 contract commit (84d8405a). Fast-dev mode: lanes commit locally; heavy ceremony
 (qa:regression byte gate, vault regression, baseline blessing) fires at MERGE time only,

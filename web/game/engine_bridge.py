@@ -8027,16 +8027,26 @@ def _bridge_economics_overrides(fips_codes: tuple[str, ...] = ()) -> tuple[dict[
     # compresses ``median_wage`` at year boundaries for web sessions too.
     # Reuses the ``fred_cache`` Task 20b already loaded above (UNRATE lives
     # in that same Vol III cache) — no second query.
-    # ``productivity_data_source``/``dispossession_data_source`` ride along
-    # in the same dict, mirroring the headless runner's
-    # ``.update(vol1_overrides)`` faithfully: ``productivity_data_source``
-    # has zero tick readers anywhere in ``src/`` (registered on
-    # ServicesProtocol, never called), so it is inert; ``dispossession_
-    # data_source`` IS read inside ``_simulate_transitions`` (:1757), but
-    # that whole method still no-ops unconditionally on its OWN, separate
-    # ``services.transition_engine is None`` gate (:1736) — no
-    # ``transition_engine`` is wired here — so it is equally inert today,
-    # not a newly-activated blast radius.
+    # ``productivity_data_source``/``dispossession_data_source``/
+    # ``transition_engine`` ride along in the same dict, mirroring the
+    # headless runner's ``.update(vol1_overrides)`` faithfully. STALE-COMMENT
+    # FIX (Vol I U9/ADR114): this paragraph previously read
+    # ``productivity_data_source`` as having "zero tick readers anywhere" and
+    # ``transition_engine`` as unwired here — both were made false by this
+    # SAME program's later units, in this SAME factory call, without anyone
+    # returning to update this comment. ``productivity_data_source`` now has
+    # a real reader (Vol I U4:
+    # ``domain.economics.working_day.resolve_working_day_visibility_modifier``,
+    # threaded into ``ideology.py``'s ``compute_exploitation_visibility`` —
+    # not a *tick-system* reader, but a genuine production one). And
+    # ``create_vol1_services`` itself now constructs and returns a real
+    # ``transition_engine`` (Vol I U3, ``factory.py``'s
+    # ``DefaultClassTransitionEngine`` wired against the SAME
+    # ``dispossession_data_source`` adapter instance) — so
+    # ``services.transition_engine is None`` (:2171) is FALSE for every web
+    # session reaching this call, and ``_simulate_transitions`` (:2151)
+    # genuinely runs its per-county transition simulation here, not just for
+    # the headless runner (parity landed by U5). Neither gate is dark today.
     from babylon.domain.economics.factory import (
         create_vol1_services,
         load_vol1_series_from_db,

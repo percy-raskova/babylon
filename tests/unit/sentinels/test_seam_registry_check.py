@@ -117,6 +117,58 @@ def test_tick_write_set_extracts_engine_attrs() -> None:
     assert len(write_set) >= 30  # the engine stamps ~30 tick_* attrs per territory
 
 
+# --- Vol I U9 (monitoring): the four Feature 021 base-field rows U3 finally
+# activates — reserve_ratio/foreclosure_rate/eviction_rate (real once U3's
+# accumulation loop is wired) + displacement_rate (honestly still unfed) ---
+
+
+class TestVol1U9TerritoryBaseFieldRows:
+    """``reserve_ratio``/``foreclosure_rate``/``eviction_rate``/``displacement_rate``
+    are Territory model fields ``_serialize_territory`` has emitted since
+    Feature 021 but the Seam Observatory never declared — closed by U9/ADR115
+    now that Vol I U3 makes three of the four genuinely live."""
+
+    @pytest.mark.parametrize(
+        "payload",
+        ["reserve_ratio", "foreclosure_rate", "eviction_rate", "displacement_rate"],
+    )
+    def test_row_exists_at_territory_scope(self, payload: str) -> None:
+        row = next(
+            e for e in SEAM_REGISTRY if e.scope is SeamScope.TERRITORY and e.payload == payload
+        )
+        assert row.wire_keys == (payload,)
+        assert row.dtype == "float"
+        assert row.nullable is False
+
+    @pytest.mark.parametrize("payload", ["reserve_ratio", "foreclosure_rate", "eviction_rate"])
+    def test_u3_activated_rows_are_declared_conditional(self, payload: str) -> None:
+        """The three rows U3 gives a real producer are DECLARED_CONDITIONAL,
+
+        never MUST_BE_LIVE — they were frozen at 0.0 for their whole prior
+        life and only *can* vary now, not *must*.
+        """
+        row = next(
+            e for e in SEAM_REGISTRY if e.scope is SeamScope.TERRITORY and e.payload == payload
+        )
+        assert row.liveness_class is LivenessClass.DECLARED_CONDITIONAL
+        assert row.liveness_condition is not None
+        assert "U3" in row.liveness_condition
+
+    def test_displacement_rate_is_honestly_not_yet_computed(self) -> None:
+        """No FRED-backed source exists for it — U3's own recorded scope boundary."""
+        row = next(
+            e
+            for e in SEAM_REGISTRY
+            if e.scope is SeamScope.TERRITORY and e.payload == "displacement_rate"
+        )
+        assert row.liveness_class is LivenessClass.NOT_YET_COMPUTED
+
+    def test_new_rows_do_not_break_sensor_1(self) -> None:
+        """Sensor 1 stays green with the four new rows present (no phantom/drop)."""
+        assert sensor1.check_map_metrics() == []
+        assert sensor1.check_tick_payloads_exist() == []
+
+
 def test_registered_tick_payloads_exist_in_engine() -> None:
     """Every shipped tick_* payload is actually written by the engine (green)."""
     assert sensor1.check_tick_payloads_exist() == []

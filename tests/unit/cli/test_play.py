@@ -143,3 +143,26 @@ def test_run_still_wires_campaign_menu_and_loader(_patched_composition_root: Non
     assert isinstance(runtime, _FakeRuntime)
     assert isinstance(catalog, _FakeMetaStore)
     assert catalog.pool is runtime.pool
+
+
+def test_run_threads_narrator_enabled_default_true_into_the_loader(
+    _patched_composition_root: None,
+) -> None:
+    """T5 Unit U1: ``run()`` with no argument threads ``narrator_enabled=True``
+    (the sensible ON default, R4) into ``_load_campaign``'s partial — never
+    silently dropped."""
+    play_cmd.run()
+
+    loader = _captured[0].kwargs["campaign_loader"]
+    assert loader.keywords == {"narrator_enabled": True}
+
+
+def test_run_threads_narrator_enabled_false_into_the_loader(
+    _patched_composition_root: None,
+) -> None:
+    """``run(narrator_enabled=False)`` — the ``--no-narrator`` path — threads
+    straight through, unweakened."""
+    play_cmd.run(narrator_enabled=False)
+
+    loader = _captured[0].kwargs["campaign_loader"]
+    assert loader.keywords == {"narrator_enabled": False}

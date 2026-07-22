@@ -35,6 +35,18 @@ and the permanent endgame lock it enforces never engaged in the shipped game
 production callers). :func:`_driver_factory` itself is a thin adapter, not
 :func:`~babylon.game.pacing.paced_driver_for_session` directly — see its own
 docstring for why one is needed.
+
+T5 Unit U1 (the narrator lane) adds the ``--narrator/--no-narrator`` flag on
+:func:`play`, threaded through :func:`run` into :func:`_load_campaign`: ON
+(the default — the provider chain shipped by :mod:`babylon.intelligence.
+providers` ends in a mute lane, so ON is always legal, R4) constructs a real
+:class:`~babylon.projection.vault.narrator_cache.NarratorSideProcess` over
+this campaign's own vault root and threads it in as
+:func:`~babylon.game.session.create_new_campaign`/:func:`~babylon.game.
+session.resume_campaign`'s ``narrator=`` (previously wired to zero
+production callers); OFF passes ``narrator=None``, so
+:meth:`~babylon.game.session.GameSession.advance_tick` never calls
+``schedule()`` at all — the exact pre-Unit-U1 byte-identical path.
 """
 
 from __future__ import annotations
@@ -45,6 +57,8 @@ import os
 from pathlib import Path
 from typing import TYPE_CHECKING, cast
 from uuid import UUID
+
+import typer
 
 if TYPE_CHECKING:
     from babylon.config.defines import GameDefines
@@ -124,7 +138,11 @@ def _bake_briefing(materializer: VaultMaterializer, session: GameSession) -> Non
 
 
 def _load_campaign(
-    runtime: PostgresRuntime, catalog: BabylonMetaStore, campaign_id: UUID
+    runtime: PostgresRuntime,
+    catalog: BabylonMetaStore,
+    campaign_id: UUID,
+    *,
+    narrator_enabled: bool = True,
 ) -> GameSession:
     """The lobby's ``CampaignLoader`` seam, fulfilled for real (Unit C2).
 
@@ -142,6 +160,13 @@ def _load_campaign(
         never again, so a resumed campaign's lobby row stayed stuck at
         ``Tick 0``).
     :param campaign_id: the lobby's chosen campaign UUID.
+    :param narrator_enabled: T5 Unit U1's ``--narrator/--no-narrator`` flag
+        (see :func:`play`); ``True`` (the default) constructs a real
+        :class:`~babylon.projection.vault.narrator_cache.NarratorSideProcess`
+        over this campaign's own vault root, threaded through as
+        ``narrator=``; ``False`` threads ``narrator=None`` so
+        :meth:`~babylon.game.session.GameSession.advance_tick` never
+        schedules narration at all.
     :returns: the live, booted/resumed :class:`~babylon.game.session.GameSession`
         (structurally satisfies ``babylon.tui.app.CampaignHandle``, now
         including its Unit U1 ``known_subjects`` seam via the same
@@ -157,6 +182,7 @@ def _load_campaign(
         vault_page_source,
     )
     from babylon.projection.vault.materializer import VaultMaterializer
+    from babylon.projection.vault.narrator_cache import NarratorCache, NarratorSideProcess
     from babylon.projection.vault.tick_baker import ArchiveTickBaker
 
     vault_root = _campaign_vault_root(campaign_id)
@@ -164,6 +190,7 @@ def _load_campaign(
     baker = ArchiveTickBaker(materializer, county_fips=tuple(DETROIT_TRI_COUNTY_FIPS))
     pages = vault_page_source(vault_root)
     known_subjects = vault_known_subjects(vault_root)
+    narrator = NarratorSideProcess(NarratorCache(vault_root)) if narrator_enabled else None
 
     session = (
         resume_campaign(
@@ -173,6 +200,7 @@ def _load_campaign(
             pages=pages,
             known_subjects=known_subjects,
             progress_store=catalog,
+            narrator=narrator,
         )
         if runtime.get_session(campaign_id) is not None
         else create_new_campaign(
@@ -183,6 +211,7 @@ def _load_campaign(
             pages=pages,
             known_subjects=known_subjects,
             progress_store=catalog,
+            narrator=narrator,
         )
     )
     _bake_briefing(materializer, session)
@@ -215,10 +244,14 @@ def _driver_factory(campaign: CampaignHandle) -> PacedTickDriver:
     return paced_driver_for_session(cast("GameSession", campaign))
 
 
-def run() -> None:
+def run(*, narrator_enabled: bool = True) -> None:
     """Boot the REAL Archive TUI: campaign lobby -> briefing -> campaign shell.
 
     Requires a reachable Postgres — see :func:`babylon.game.session.open_runtime`.
+
+    :param narrator_enabled: T5 Unit U1's ``--narrator/--no-narrator`` flag
+        (see :func:`play`), threaded straight into every
+        :func:`_load_campaign` call this boot makes.
     """
     from functools import partial
 
@@ -242,12 +275,25 @@ def run() -> None:
 
     app = ArchiveApp(
         campaign_menu=menu,
-        campaign_loader=partial(_load_campaign, runtime, catalog),
+        campaign_loader=partial(
+            _load_campaign, runtime, catalog, narrator_enabled=narrator_enabled
+        ),
         driver_factory=_driver_factory,
     )
     app.run()
 
 
-def play() -> None:
+def play(
+    narrator: bool = typer.Option(
+        True,
+        "--narrator/--no-narrator",
+        help=(
+            "Enable the async narrator side-process, which writes prose into "
+            "the vault's narrative/ channel (T5 Unit U1). ON by default — the "
+            "shipped provider chain ends in a mute lane, so ON is always "
+            "legal (Constitution R4)."
+        ),
+    ),
+) -> None:
     """Play Babylon — the real campaign session, via the composition root."""
-    run()
+    run(narrator_enabled=narrator)

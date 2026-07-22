@@ -20,12 +20,13 @@ DB envelope" to "which dossier pages are worth re-baking this tick":
   re-baked only when the backing node's attribute snapshot changed since
   its last bake (:class:`~babylon.projection.vault.dirty_tracker.
   NodeSnapshotTracker`, the generalized ``hex_value_key`` comparison).
-* **Derived dirtiness for rollups** — ``state``/``national`` have no
-  single backing node (they aggregate every territory in scope); they are
-  dirty whenever ANY constituent county is (:class:`~babylon.projection.
-  vault.dirty_tracker.PendingDirtySet`, which — unlike a same-tick
-  derivation — survives a budget-clamped tick so a rollup is never
-  silently left stale).
+* **Derived dirtiness for rollups** — ``state``/``national``/``economy``
+  have no single backing node (they aggregate every territory in scope, and
+  ``economy`` additionally reads the graph-wide ``opposition_states``
+  attribute); they are dirty whenever ANY constituent county is
+  (:class:`~babylon.projection.vault.dirty_tracker.PendingDirtySet`, which
+  — unlike a same-tick derivation — survives a budget-clamped tick so a
+  rollup is never silently left stale).
 * **Cross-node dependency** — a social class's ``county_class_composition``
   field reads its *containing* territory (:mod:`babylon.projection.
   social_class`'s own field-producer table), so a social class is ALSO
@@ -74,6 +75,7 @@ from pydantic import BaseModel, ConfigDict, Field
 from babylon.models.enums.topology import NodeType
 from babylon.projection.community import project_community
 from babylon.projection.county import project_county
+from babylon.projection.economy import project_economy
 from babylon.projection.industry import project_industry
 from babylon.projection.institution import project_institution
 from babylon.projection.national import project_national
@@ -83,13 +85,14 @@ from babylon.projection.sovereign import project_sovereign
 from babylon.projection.state import project_state
 from babylon.projection.vault.dirty_tracker import NodeSnapshotTracker, PendingDirtySet
 from babylon.projection.vault.render import render_county, render_sovereign
+from babylon.projection.vault.render_economy import render_economy
 from babylon.projection.vault.render_industry import render_industry
 from babylon.projection.vault.render_institution import render_institution
 from babylon.projection.vault.render_national import render_national
 from babylon.projection.vault.render_organization import render_organization
 from babylon.projection.vault.render_social_class import render_social_class
 from babylon.projection.vault.render_state import render_state
-from babylon.projection.vault.tick_baker import _NATIONAL_ID, _node_ids
+from babylon.projection.vault.tick_baker import _ECONOMY_ID, _NATIONAL_ID, _node_ids
 
 if TYPE_CHECKING:
     from collections.abc import Callable
@@ -114,6 +117,7 @@ class BakeBudgets(BaseModel):
     county: int | None = Field(default=None, ge=0)
     state: int | None = Field(default=None, ge=0)
     national: int | None = Field(default=None, ge=0)
+    economy: int | None = Field(default=None, ge=0)
     organization: int | None = Field(default=None, ge=0)
     institution: int | None = Field(default=None, ge=0)
     sovereign: int | None = Field(default=None, ge=0)
@@ -270,6 +274,7 @@ class IncrementalArchiveTickBaker:
         for fips in county_dirty_raw:
             self._pending.mark("state", fips[:2])
             self._pending.mark("national", _NATIONAL_ID)
+            self._pending.mark("economy", _ECONOMY_ID)
 
         state_prefixes = sorted({fips[:2] for fips in self._county_fips})
         state_dirty = [p for p in state_prefixes if self._pending.is_dirty("state", p)]
@@ -283,6 +288,12 @@ class IncrementalArchiveTickBaker:
             national = project_national(national_id, graph=graph, world=world, tick=tick)
             pages[f"national/{national_id}.md"] = render_national(national, verified_tick=tick)
             self._pending.clear("national", national_id)
+
+        economy_dirty = [_ECONOMY_ID] if self._pending.is_dirty("economy", _ECONOMY_ID) else []
+        for economy_id in _clamp(economy_dirty, self._budgets.economy):
+            economy = project_economy(economy_id, graph=graph, world=world, tick=tick)
+            pages[f"economy/{economy_id}.md"] = render_economy(economy, verified_tick=tick)
+            self._pending.clear("economy", economy_id)
 
     def _bake_simple_kind(
         self,

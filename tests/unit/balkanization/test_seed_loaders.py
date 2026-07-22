@@ -101,6 +101,40 @@ def test_raw_loader_preserves_initial_claims() -> None:
     assert any(claim["territory_id"] == "rest_of_usa" for claim in null_sov["initial_claims"])
 
 
+def test_usa_fed_holds_domestic_county_fips_claims() -> None:
+    """The LODES-vs-H3 namespace fix (P25 U6/ADR132): SOV_USA_FED's
+    ``initial_claims`` name real county FIPS — the Detroit tri-county at
+    minimum (quickstart.md §3's tick-0 promise) — so the literal claims
+    pass in the seeding builder is live for the first time. Before this,
+    SOV_USA_FED had ZERO claims and every claim in the file named a
+    ``persistence.external_node`` registry ID that no scenario Territory
+    ever matches (the 100%-fallback bug, ADR080)."""
+
+    raw = load_seed_sovereigns_raw()
+    by_id = {record["id"]: record for record in raw}
+    usa = by_id["SOV_USA_FED"]
+    claimed = {claim["territory_id"] for claim in usa["initial_claims"]}
+    assert {"26163", "26125", "26099"} <= claimed
+    for claim in usa["initial_claims"]:
+        assert len(claim["territory_id"]) == 5 and claim["territory_id"].isdigit()
+        assert claim["legal_status"] == "de_jure"
+        assert claim["control_level"] == 1.0
+
+
+def test_external_claims_stay_in_the_external_namespace() -> None:
+    """'canada' / 'rest_of_usa' are INTENTIONAL persistence.external_node
+    registry IDs (ADR080), not bugs to re-key: they mark claims on nodes
+    that are never scenario Territories. Only SOV_USA_FED's domestic
+    claims live in the county-FIPS namespace."""
+
+    raw = load_seed_sovereigns_raw()
+    by_id = {record["id"]: record for record in raw}
+    assert [c["territory_id"] for c in by_id["SOV_CAN_FED"]["initial_claims"]] == ["canada"]
+    assert [c["territory_id"] for c in by_id["SOV_EXTERIOR_NULL"]["initial_claims"]] == [
+        "rest_of_usa"
+    ]
+
+
 def test_load_seed_influences_absent_returns_empty(tmp_path: Path) -> None:
     """The proxy-data influences seed is optional at load time."""
 

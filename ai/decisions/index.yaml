@@ -1,5 +1,5 @@
 meta:
-  version: 1.54.0
+  version: 1.55.0
   updated: '2026-07-22'
   description: Architecture Decision Records Index
   format: See individual ADR files in this directory
@@ -11,7 +11,15 @@ meta:
   # outside their block; blocks dissolve when the lane merges. ADR125 = T3
   # gap-projections (post-cascade, next free slot >= 125 per controller
   # ruling 2026-07-22 — does not fill the reserved Vol I 119 hole).
+  # ADR127-139 = Program 25 (Political Superstructure) lane block, claimed
+  # 2026-07-22 at charter (ADR127) — Vol II's 120-129 and T1.1/T1.2's
+  # 130-139 blocks dissolved at their merges; next mainline free >= 140.
 decisions:
+  ADR127_p25_political_superstructure_charter:
+    title: 'Program 25 — The Political Superstructure (electoralism) chartered as the one engine train on feature/political-superstructure off dev e0ece454; ADR block 127-139 claimed; 13-unit train ratified from the 5-agent launch recon (U1 defines / U2 events / U3 political_form shadow / U4 OrganizationComponent port / U5 party+MEMBERSHIP+donor producers / U6 spec-070 ELECTORAL faction seeding / U7 pure politics kernel / U8 AllegianceSystem + the REAL Agitation->Organization valve / U9 PolicySystem + LEGISLATE resolver + reform ceiling / U10 ElectoralSystem + political_form promotion ceremony / U11 doctrine fork five stances / U12 conjunctures + governance endgame / U13 five goldens + declared baseline ceremony). Two delegated launch rulings recorded: TRAP 1 -> build the real conversion pathway, never throttle the consciousness router; TRAP 2 -> shadow-first with a declared ADR078-style promotion ceremony at U10. TRAP 3 discipline: parties-exist guards on every class-node write; per-unit qa:regression byte-identity gates; baselines move only at U13. Recon corrections: s=p+i+r+t in domain/economics/distribution/, catalog 18->19, debt_service/equalization-wire/InternalBalanceOfForces are BUILDS.'
+    status: accepted
+    date: '2026-07-22'
+    file: ADR127_p25_political_superstructure_charter.yaml
   ADR126_bd_ruling_batch_2026_07_22:
     title: 'BD ruling batch 2026-07-22 (in-session directives, executed under delegated autonomy): (1) adversary-train merge to dev AUTHORIZED — landing executed by the train-owner session, W1-W5 each opus-reviewed; (2) the Electoral Question §7 rulings 1-8 ALL APPROVED as recommended (node-attribute allegiance / political_form joins the opposition catalog with its index assigned at implementation / fascism captures the RESTORATIONIST vehicle / org-level officeholder capture / primaries deferred to a Phase-2 fiber / this program owns spec-070''s election decision-moment / reformist trunk replaced in place with liquidationism demoted to a detected absorbing state / trap_detection.py absorbed and its hardcoded thresholds retired) — program is spec-ready and QUEUED as an engine train, not forked, while the adversary-train surfaces are freshly merged and the action surface is still landing; (3) Amendment T RATIFIED as drafted (BD-delegated call), observes-only, with the off-critical-path rider — CONSTITUTION.md v2.16.0, ADR072 proposed->accepted; (4) the Player Interface Shell plan (11 tasks, project/research/24-the-archive/PLAYER_INTERFACE_SHELL_plan.md) APPROVED for execution on feature/interface-shell off dev — its ADR109 sentinel-row duty is discharged via blocking-dependency citation (the wiring registry does not exist until the ADR109 enforcement train, FIRST in the standing post-cascade queue, builds it) and its one deliberate engine hunk (promoting player verbs in ooda.py _FIRST_CLASS_ACTION_EVENTS) lands coordinated post-train-merge. Basis: 9-agent read-only ultracode recon (7 sonnet recon + opus synthesis + opus adversarial critique, field-verified). Governance batch: no production code changes in this ADR.'
     status: accepted

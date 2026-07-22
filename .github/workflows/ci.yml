@@ -35,6 +35,10 @@ jobs:
     steps:
       - uses: actions/checkout@v7
 
+      - name: Materialize hypergraph-rs metadata stub (sibling repo, no remote)
+        run: sh tools/ci_hypergraph_stub.sh
+
+
       # gdal:true — mypy's django-stubs plugin loads Django settings at
       # startup, and the postgis backend imports GEOS/GDAL/PROJ.
       - uses: ./.github/actions/bootstrap-python
@@ -73,9 +77,6 @@ jobs:
 
       - name: Type check (mypy strict)
         run: mise run typecheck
-
-      - name: Materialize hypergraph-rs metadata stub (sibling repo, no remote)
-        run: sh tools/ci_hypergraph_stub.sh
 
       - name: uv lock consistency
         run: uv lock --check

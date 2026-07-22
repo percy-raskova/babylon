@@ -167,11 +167,15 @@ class TestClassifySalienceMatchesTheGeneratedTable:
         # legacy hand tiers (a CROSSING is binary critical-or-informational;
         # only FLOW/ACT legitimately sit at warning) — see
         # babylon.models.event_severity.DRIFT_TABLE for the full reconciliation.
+        # P25 U2 (ADR128) adds 13 classified members: +2 critical
+        # (ELECTIONS_SUSPENDED terminal-adjacent, POPULAR_FRONT_CALLED via
+        # BIFURCATION_THRESHOLD), +5 warning (ACT/FLOW floors), +6
+        # informational (ACT/FLOW floors + INTRA_LEVEL crossings).
         tiers = list(SEVERITY_BY_EVENT.values())
-        assert tiers.count("critical") == 22
-        assert tiers.count("warning") == 4
-        assert tiers.count("informational") == 21
-        assert len(SEVERITY_BY_EVENT) == 47
+        assert tiers.count("critical") == 24
+        assert tiers.count("warning") == 9
+        assert tiers.count("informational") == 27
+        assert len(SEVERITY_BY_EVENT) == 60
 
 
 class TestSubjectResolution:

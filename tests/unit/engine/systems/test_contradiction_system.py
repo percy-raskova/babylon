@@ -699,10 +699,11 @@ class TestPriceValueEndToEnd:
         # shadow bindings now register — but this graph builds no FACTION/
         # INFLUENCES data, no social_class-typed nodes, no
         # productivity_data_source and no ``tick_dynamics`` county-layer
-        # data, so all eight read the honest absent zero.
+        # data, so all nine read the honest absent zero.
         shadow_states = graph.graph["shadow_opposition_states"]
         assert set(shadow_states) == {
             "national",
+            "political_form",
             "value_usevalue",
             "labor_laborpower",
             "absolute_relative_surplus",

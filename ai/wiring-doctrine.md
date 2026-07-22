@@ -99,6 +99,8 @@ budget L-MAT-1, population conservation (F-3 warn→alarm), the carbon register.
 | legitimation circuit (state read-never-written) | W-C + W-A4 (L-MAT-7 scissors vs s-split) | SSA/DOL-5500/HUD-homeownership [U — unresearched] |
 | consumption statics (s_bio/s_class seeded, never evolved) | W-C now; 𝕊 later (J_soma on Matter sort) | FAOSTAT FBS (soma) [V per §VI.11]; CDC/Census shipped |
 | doctrine → bifurcation feedback | W-C (coupling rows; DT Unit 6) | none needed (endogenous) |
+| political_form measure input (`GraphInputs.political_labor_share`, U3-deferred) | W-C — **CLOSED** (P25 U8/ADR134: AllegianceSystem @17.42 publishes the SYSTEM-LOYAL vs SYSTEM-OPPOSITIONAL share — BD ruling 2026-07-22 — read by ContradictionSystem @18. Sentinel: `tests/unit/engine/systems/test_allegiance.py::TestFullEngineTick` — shadow `political_form` balance == the producer value through a real 31-system tick) | none needed (endogenous: allegiance + organization masses) |
+| hope/allegiance player projections (H(c), allegiance dossier surfaces) | W-P — **OPEN**, lands with the U10+ player surface (ElectoralSystem + TUI views); the engine side ships U8 | none needed (endogenous) |
 | EpistemicHorizon consumers | W-P (Episteme; fog interior) | `fcc/` BDC broadband ON DRIVE (2.0G) |
 | φ_repro Meillassoux proxy | W-A4 (L-MAT-9 vs L-VAL-5) | ATUS shipped; Chetty ON DRIVE |
 | balkanization / RED_OGV | Θ_data seed repair **LANDED** (P25 U6/ADR132: SOV_USA_FED literal tri-county FIPS claims + ADR080 fallback in the engine path; stance gates attributable from tick 0 on seeded terrain). Endgame-reachability verification on live campaigns = U12 | MIT Election Lab SHIPPED (`mit_countypres_rep_share`); LODES no longer needed for this row |

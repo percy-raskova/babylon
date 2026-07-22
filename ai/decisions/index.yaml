@@ -15,6 +15,11 @@ meta:
   # 2026-07-22 at charter (ADR127) — Vol II's 120-129 and T1.1/T1.2's
   # 130-139 blocks dissolved at their merges; next mainline free >= 140.
 decisions:
+  ADR134_p25_u8_allegiance_valve:
+    title: 'P25 U8 — AllegianceSystem @17.42 (THE VALVE, 31st system): allegiance drift + hope field H(c) + the FIRST Agitation→Organization conversion pathway throttled by (1−v·H) (TRAP 1 discharged, router untouched); parties-exist guard proves qa byte-identity (TRAP 3); political_form producer closes U3''s deferred input under the BD ruling SYSTEM-LOYAL vs SYSTEM-OPPOSITIONAL; allegiance = real SocialClass field, hope = dual-registered transient; 3 new Θ_feel defines w/ metadata ceremony; L-VALVE bound to the live quantity.'
+    status: accepted
+    date: '2026-07-22'
+    file: ADR134_p25_u8_allegiance_valve.yaml
   ADR132_p25_u6_electoral_faction_seeding:
     title: 'P25 U6 — spec-070 ELECTORAL faction seeding / FACTION honest-empty repair: seed re-keyed res-7 H3 → county FIPS; FR-039 electoral component REAL (MIT Election Lab 2024, ADR049 ratified, committed artifact mit_countypres_rep_share); SOV_USA_FED gains literal tri-county FIPS claims (LODES-vs-H3 namespace fix); apply_balkanization_seed lands in engine.scenarios (web bridge delegates, wayne stamp-then-seed, session build DB-free); electoral fixture grounds T001 in Wayne + carries the full layer; wiring-doctrine W-C row CLOSED (sentinel: TestElectoralScenarioHarvest); qa:regression byte-identical.'
     status: accepted

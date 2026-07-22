@@ -14,8 +14,8 @@ they mean instead of inheriting an accidental blowup.
 
 Usage::
 
-    poetry run python tools/repair_rent_crisis_view.py            # dry run
-    poetry run python tools/repair_rent_crisis_view.py --execute
+    uv run python tools/repair_rent_crisis_view.py            # dry run
+    uv run python tools/repair_rent_crisis_view.py --execute
 """
 
 from __future__ import annotations

@@ -13,7 +13,7 @@ representing different economic phases, then evaluates them using the
 NarrativeCommissar (LLM-as-judge pattern).
 
 Usage:
-    poetry run python tools/narrative_sweep.py
+    uv run python tools/narrative_sweep.py
     mise run narrative-sweep
 
 Example Output:

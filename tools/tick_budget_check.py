@@ -9,11 +9,11 @@ configured tick count. The budget is ratified AFTER the first measurement
 (per master plan §6: "number set AFTER first measurement").
 
 Usage:
-    poetry run python tools/tick_budget_check.py [--ticks N] [--budget FILE]
+    uv run python tools/tick_budget_check.py [--ticks N] [--budget FILE]
 
 Examples:
-    poetry run python tools/tick_budget_check.py
-    poetry run python tools/tick_budget_check.py --ticks 5
+    uv run python tools/tick_budget_check.py
+    uv run python tools/tick_budget_check.py --ticks 5
 """
 
 from __future__ import annotations

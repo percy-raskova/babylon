@@ -302,6 +302,18 @@ Property laws: **L-VALVE** (`∂conversion/∂H ≤ 0`, monotone in `valve_stren
 
 ## §7 Open rulings requested from the BD
 
+> **RULED — 2026-07-22: all eight approved as recommended** (BD in-session; batch record
+> **ADR126**). 1 node-attribute allegiance · 2 `political_form` joins the catalog (index assigned
+> at implementation — three lanes race for append slots: `metabolic`, the `national` extension,
+> this) · 3 capture-of-RESTORATIONIST vehicle · 4 org-level officeholder capture · 5 primaries
+> deferred to a Phase-2 fiber · 6 this program owns spec-070's election decision-moment ·
+> 7 reformist trunk replaced in place, `liquidationism` demoted to a detected absorbing state ·
+> 8 `trap_detection.py` absorbed (liberal-trap factors → `political_form` measures; hardcoded
+> thresholds retired, III.1). Sequencing (same batch): the program is **spec-ready and QUEUED as
+> an engine train** — it does not fork while the adversary-train surfaces (`ooda/npc_stub.py`,
+> `ooda/state_ai/`, `engine/systems/ooda.py`) are freshly merged and the player action surface
+> (interface shell) is still landing; the one-engine-train limit holds.
+
 1. **Allegiance representation** — node-attribute distribution (recommended, §5.2) vs. edge fabric. Rules the Modulus boundary.
 2. **`political_form` as catalog opposition #11** (recommended) vs. nesting under `atomization`.
 3. **Fascist electoral vehicle** — capture-of-RESTORATIONIST-machine (recommended; reuses spec-070 seeding) vs. distinct latent party org.

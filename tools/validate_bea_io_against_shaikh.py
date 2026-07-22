@@ -10,9 +10,9 @@ averages across years, and validates against the Shaikh band table.
 
 Usage::
 
-    poetry run python tools/validate_bea_io_against_shaikh.py
-    poetry run python tools/validate_bea_io_against_shaikh.py --year 2020
-    poetry run python tools/validate_bea_io_against_shaikh.py --tolerance 0.3
+    uv run python tools/validate_bea_io_against_shaikh.py
+    uv run python tools/validate_bea_io_against_shaikh.py --year 2020
+    uv run python tools/validate_bea_io_against_shaikh.py --tolerance 0.3
 """
 
 from __future__ import annotations

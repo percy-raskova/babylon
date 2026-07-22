@@ -58,7 +58,7 @@ flowchart LR
 ```
 
 - **`coverage`** sensor gains the two static checks in its `_GATING_CHECKS` (`coverage/checks.py:95`). Runs where it already runs: `mise run check` fast-gate. No new lane.
-- **`catalog`** is a *new* key in `tools/sentinel_check.py` `_SENSORS` (`:39`), routed through a `_catalog_main` lazy-import shim exactly like `_partition_main` (`:26-35`) because it opens sqlite3 and must not load into the layer-0.5 fast-gate. Invoked **only** in the `refdata-tests` job (add `poetry run python tools/sentinel_check.py catalog --check` beside `main.yml:372`/`nightly.yml:139`), which already has `fetch-reference-db`. Same 0/1/2 exit contract via `run_sensor`.
+- **`catalog`** is a *new* key in `tools/sentinel_check.py` `_SENSORS` (`:39`), routed through a `_catalog_main` lazy-import shim exactly like `_partition_main` (`:26-35`) because it opens sqlite3 and must not load into the layer-0.5 fast-gate. Invoked **only** in the `refdata-tests` job (add `uv run python tools/sentinel_check.py catalog --check` beside `main.yml:372`/`nightly.yml:139`), which already has `fetch-reference-db`. Same 0/1/2 exit contract via `run_sensor`.
 
 ## (4) TDD test list (`tests/unit/sentinels/test_catalog.py` static; `tests/integration/reference/test_catalog_db.py` `@requires_reference_db`)
 

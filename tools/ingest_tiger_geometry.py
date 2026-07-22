@@ -13,7 +13,7 @@ Data Source:
 
 Usage::
 
-    poetry run python tools/ingest_tiger_geometry.py [--h3-state 26]
+    uv run python tools/ingest_tiger_geometry.py [--h3-state 26]
     # or, via mise:
     mise run data:tiger-sqlite [-- --h3-state 26]
 

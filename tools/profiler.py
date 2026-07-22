@@ -9,12 +9,12 @@ imports remain — SC-007).
 Spec-104: ``--scope`` arg added for national-scale profiling.
 
 Usage:
-    poetry run python tools/profiler.py [--ticks N] [--scope NAME] [--output FILE]
+    uv run python tools/profiler.py [--ticks N] [--scope NAME] [--output FILE]
 
 Examples:
-    poetry run python tools/profiler.py --ticks 100
-    poetry run python tools/profiler.py --ticks 50 --output results/profile.prof
-    poetry run python tools/profiler.py --scope national --ticks 20
+    uv run python tools/profiler.py --ticks 100
+    uv run python tools/profiler.py --ticks 50 --output results/profile.prof
+    uv run python tools/profiler.py --scope national --ticks 20
     snakeviz results/profile.prof
 """
 

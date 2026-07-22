@@ -12,7 +12,7 @@ merged back into one module.
 Run once (and re-run only when the reference DB's fred_series/fred_national
 tables are refreshed):
 
-    poetry run python tools/export_vol3_fred_fixture.py
+    uv run python tools/export_vol3_fred_fixture.py
 
 Prerequisite: the worktree's data/ symlink farm must resolve
 (``mise run data:doctor``) — this script opens the reference SQLite DB via

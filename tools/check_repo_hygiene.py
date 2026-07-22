@@ -17,7 +17,7 @@ c. **No tracked blob over 1 MiB at HEAD** — LFS pointers are ~130-byte blobs,
    blob is either missing an LFS attribute or missing a renormalize. Named
    exemptions live in ``LARGE_BLOB_EXEMPTIONS`` (empty by design).
 
-Run: ``poetry run python tools/check_repo_hygiene.py`` (wired into
+Run: ``uv run python tools/check_repo_hygiene.py`` (wired into
 ``mise run check`` as ``check:hygiene`` and into CI). Exit 0 = clean,
 1 = violations (printed), 2 = git itself failed.
 """
@@ -62,6 +62,7 @@ ALLOWED_TOP_LEVEL_DIRS: frozenset[str] = frozenset(
 #: Sanctioned tracked top-level files (root canon + tool dot-configs).
 ALLOWED_TOP_LEVEL_FILES: frozenset[str] = frozenset(
     {
+        ".actrc",  # act (gh act) local-runner defaults — ci:local tasks (uv train, 2026-07-22)
         ".env.example",
         ".gitattributes",
         ".gitignore",
@@ -72,6 +73,7 @@ ALLOWED_TOP_LEVEL_FILES: frozenset[str] = frozenset(
         ".mdformat.toml",
         ".mise.toml",
         ".pre-commit-config.yaml",
+        ".python-version",  # uv-facing interpreter-minor pin (3.12); guard test in tests/unit/cli/test_uv_migration.py
         ".semgrep.yml",
         ".trivyignore",  # curated IaC-scan ignores, every entry evidenced (program 15)
         ".yamllint.yaml",

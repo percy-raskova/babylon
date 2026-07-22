@@ -42,7 +42,7 @@ Change rows in an existing table (ingest)
 Loaders produce **sources**; only the builder produces the DB. Run any legacy
 DB-writing loader through the wrapper::
 
-    poetry run python tools/loader_to_sources.py \
+    uv run python tools/loader_to_sources.py \
         --loader <module_name_in_tools> \
         --tables <comma-separated affected tables>
 

@@ -57,13 +57,13 @@ Quick Start
    # Install dependencies
    git clone https://github.com/percy-raskova/babylon.git
    cd babylon
-   poetry install
+   uv sync --extra server
 
    # Run tests
-   poetry run pytest -m "not ai"
+   uv run pytest -m "not ai"
 
    # Run simulation
-   poetry run python -m babylon
+   uv run python -m babylon
 
 Contents
 --------

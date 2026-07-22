@@ -24,13 +24,13 @@ into Shapely via ``shapely.wkt.loads()``.
 **Reproducibility**::
 
     # Default: load from SQLite reference DB (no 132 MB shapefile dependency)
-    poetry run python -m babylon.persistence.tiger_ingestion
+    uv run python -m babylon.persistence.tiger_ingestion
 
     # Or explicit:
-    poetry run python -m babylon.persistence.tiger_ingestion --source sqlite
+    uv run python -m babylon.persistence.tiger_ingestion --source sqlite
 
     # Legacy path (still supported):
-    poetry run python -m babylon.persistence.tiger_ingestion --source shapefile
+    uv run python -m babylon.persistence.tiger_ingestion --source shapefile
 
     # Programmatic:
     from babylon.persistence.tiger_ingestion import (

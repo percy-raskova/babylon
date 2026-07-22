@@ -9,8 +9,8 @@ Demonstrates the full Babylon pipeline with VERBOSE logging:
 5. LLM generates narrative commentary
 
 Usage:
-    poetry run python tools/vertical_slice.py
-    poetry run python tools/vertical_slice.py --quiet  # Less verbose
+    uv run python tools/vertical_slice.py
+    uv run python tools/vertical_slice.py --quiet  # Less verbose
 
 Set DEEPSEEK_API_KEY for real AI, or run in mock mode.
 

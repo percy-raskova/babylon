@@ -69,7 +69,7 @@ See `specs/099-observatory-deep-panes/`.
 
 Ensure you have:
 
-- Python 3.12+ with `poetry` installed
+- Python 3.12+ with `uv` installed
 - Node.js 20+ with `npm`
 - PostgreSQL 16+ with the **PostGIS** extension enabled
 - A local PostgreSQL database named `babylon` (or whatever you set in env vars)
@@ -102,9 +102,9 @@ Bootstrap order on a clean database:
    from spec 061, which drop the orphan `sim.hex_states` schema, purge legacy
    fixture sessions, drop `game_session.snapshot_json`, and reconcile the
    `document_chunk` pgvector schema)
-1. `poetry run python manage.py createsuperuser` (from `web/`) — create the
+1. `uv run python manage.py createsuperuser` (from `web/`) — create the
    Django user the seed command will own the game as
-1. `RUN_MAIN=true poetry run python manage.py seed_initial_game --scenario wayne_county --player admin`
+1. `RUN_MAIN=true uv run python manage.py seed_initial_game --scenario wayne_county --player admin`
    — seed the first real-engine game session (`RUN_MAIN=true` is required:
    under the DEBUG development settings `game/apps.py` skips EngineBridge
    init for management commands otherwise, and the seed refuses the stub)
@@ -138,7 +138,7 @@ From the repository root:
 cd web/
 
 # Install Python dependencies (if not already done)
-poetry install
+uv sync --extra server
 
 # Set environment variables (defaults work for local dev)
 export POSTGRES_DB=babylon
@@ -148,18 +148,18 @@ export POSTGRES_HOST=localhost
 export POSTGRES_PORT=5432
 
 # Run migrations
-poetry run python manage.py migrate
+uv run python manage.py migrate
 
 # Create a superuser for the admin panel and game access
-poetry run python manage.py createsuperuser
+uv run python manage.py createsuperuser
 
 # Seed an initial game session against the real engine.
 # RUN_MAIN=true is required: under DEBUG development settings game/apps.py
 # skips EngineBridge init for management commands unless it is set.
-RUN_MAIN=true poetry run python manage.py seed_initial_game --scenario wayne_county --player admin
+RUN_MAIN=true uv run python manage.py seed_initial_game --scenario wayne_county --player admin
 
 # Start the development server on port 8000
-poetry run python manage.py runserver 8000
+uv run python manage.py runserver 8000
 ```
 
 `seed_initial_game` invokes the real `EngineBridge.create_game()` — there is no
@@ -275,7 +275,7 @@ npm run format:check      # Prettier only
 ```bash
 cd web/
 DJANGO_SETTINGS_MODULE=babylon_web.settings.testing \
-  poetry run python manage.py test
+  uv run python manage.py test
 ```
 
 The `testing` settings module uses SQLite in-memory, so no PostGIS is needed for
@@ -322,7 +322,7 @@ cd web/
 # Add your LAN IP to ALLOWED_HOSTS in development settings,
 # or override via environment variable and production settings:
 DJANGO_SETTINGS_MODULE=babylon_web.settings.development \
-  poetry run python manage.py runserver 0.0.0.0:8000
+  uv run python manage.py runserver 0.0.0.0:8000
 ```
 
 You also need to temporarily add your LAN IP to the `ALLOWED_HOSTS` in
@@ -400,7 +400,7 @@ The console also shows human-readable log output during development.
 
 **"No module named 'django.contrib.gis'"**: PostGIS and its Python bindings are
 missing. Install `libgdal-dev` and `libgeos-dev` on Debian/Ubuntu, then
-`poetry install` again.
+`uv sync --extra server` again.
 
 **CSRF token errors on login**: The Vite proxy must forward cookies. The
 `changeOrigin: true` setting in `vite.config.ts` handles this. If you see CSRF
@@ -430,7 +430,7 @@ PGPASSWORD=babylon psql -h localhost -U babylon -d babylon -c "SELECT current_us
 If `sudo -u postgres ...` prompts for your password, enter your Linux account
 password.
 
-**"relation does not exist" errors**: Run `poetry run python manage.py migrate`
+**"relation does not exist" errors**: Run `uv run python manage.py migrate`
 from the `web/` directory. The `game_session`, `game_turn`, and `action_result`
 tables are created by the engine's DDL (`postgres_schema.py`), not Django
 migrations. Only `game_event_log` and `accounts_playerprofile` are

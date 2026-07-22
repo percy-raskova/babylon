@@ -16,7 +16,7 @@ the "Stable Necropolis" - the equilibrium state where a reduced population
 persists indefinitely through periodic culling.
 
 Usage:
-    poetry run python tools/necropolis_viewer.py [--years N] [--interval N]
+    uv run python tools/necropolis_viewer.py [--years N] [--interval N]
 
 Arguments:
     --years N     Simulation length in years (default: 100)

@@ -195,7 +195,7 @@ Workflow
 
    .. code-block:: bash
 
-      poetry run python -c "
+      uv run python -c "
       from babylon.config.defines import GameDefines
       d = GameDefines()
       assert d.economy.base_subsistence > 0.0

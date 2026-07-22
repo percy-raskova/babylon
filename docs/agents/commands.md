@@ -3,8 +3,8 @@
 ## Setup
 
 ```bash
-poetry install
-poetry run pre-commit install
+uv sync --extra server
+uv run pre-commit install
 ```
 
 ## CI & Quality (Fast Gate)

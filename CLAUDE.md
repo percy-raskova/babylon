@@ -21,8 +21,9 @@ proposing structure; the Constitution stays the law, architecture.yaml stays the
 
 ## Constitutional Compact
 
-Irreducible constraints. Full text: `CONSTITUTION.md` (v2.15.0, 10 Articles +
-Amendments A–AA, T reserved for ADR072; the canonical governance doc — read it before
+Irreducible constraints. Full text: `CONSTITUTION.md` (v2.16.0, 10 Articles +
+Amendments A–AA — T ratified 2026-07-22 (Divergence Channel, observes-only, code
+queued; ADR072/ADR126); the canonical governance doc — read it before
 proposing architecture. AA: Windows = binding post-1.0 requirement, pre-1.0 dev
 SHIELDED from all Windows obligations except a one-line ADR disclosure duty).
 
@@ -200,7 +201,11 @@ and a handful of documented one-offs (migrations, doc build, ad hoc pytest legs)
 
 The repo's own `flake.nix` is the canonical toolchain (environment-sovereignty ruling
 2026-07-21, ADR102 — the infra submodule is unmounted; babylon-infra remains a private
-sibling repo for ops tooling only). Two devshells: `default` — python 3.12 with **sqlite
+sibling repo for ops tooling only). `.python-version` pins the interpreter MINOR (3.12)
+as the uv-facing source of truth — the flake owns the patch via the rev-pinned `python312`
+(guard: `tests/unit/cli/test_uv_migration.py::test_python_version_pin_consistency`).
+`mise run install` is frozen-sync (install-from-lock; re-resolution needs the
+../hypergraph-rs sibling — see the [tool.uv.sources] comment in pyproject.toml). Two devshells: `default` — python 3.12 with **sqlite
 pinned 3.53.1** (the `nixpkgs-data` input, rev-pinned; lockstep with
 `tools/build_reference_db.py::PINNED_SQLITE_VERSION` — the reference-DB byte-identity
 contract, both halves same-repo now), uv, node, gdal/geos/proj, libpq, playwright

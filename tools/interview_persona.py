@@ -16,7 +16,7 @@ Outputs:
     - results/interview_persona.md: Markdown transcript
 
 Usage:
-    poetry run python tools/interview_persona.py
+    uv run python tools/interview_persona.py
     mise run interview-persona
 
 Environment:

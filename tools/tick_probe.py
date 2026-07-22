@@ -8,7 +8,7 @@ during the spec-066/dialectics sessions (see .mise.toml `sim:probe`).
 
 Usage::
 
-    poetry run python tools/tick_probe.py --county 26163 --ticks 3
+    uv run python tools/tick_probe.py --county 26163 --ticks 3
 """
 
 from __future__ import annotations

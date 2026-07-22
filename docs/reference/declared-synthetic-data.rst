@@ -262,7 +262,7 @@ Run it directly:
 
 .. code-block:: bash
 
-   poetry run python tools/sentinel_check.py synthetic --check
+   uv run python tools/sentinel_check.py synthetic --check
 
 This sensor proves static **coherence** (the named symbols exist), not each
 guard's runtime behavior — that is what the dynamic test named in each

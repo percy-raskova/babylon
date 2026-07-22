@@ -14,11 +14,13 @@ import pytest
 from babylon.projection.view_models import (
     CountyView,
     EconomyView,
+    FieldStateView,
     IndustryView,
     NationalView,
     SocialClassView,
     hydrate_county,
     hydrate_economy,
+    hydrate_field_state,
     hydrate_industry,
     hydrate_national,
     hydrate_social_class,
@@ -193,6 +195,60 @@ def usa_economy_view_with_absences() -> EconomyView:
             "verified_tick": 500,
             "wage_balance": 0.18,
             "labor_aristocracy_verdict": True,
+        }
+    )
+
+
+@pytest.fixture
+def usa_field_state_view() -> FieldStateView:
+    """A fully-populated ``FieldStateView`` (T3 U3 Weather Layer dossier)."""
+    return hydrate_field_state(
+        {
+            "kind": "field_state",
+            "field_state_id": "USA",
+            "verified_tick": 500,
+            "nodes": [
+                {
+                    "node_id": "C001",
+                    "name": "Periphery Proletariat",
+                    "fields": {"exploitation": 0.523, "atomization": 0.1},
+                    "laplacian": {"exploitation": 0.4},
+                    "df_dt": {"exploitation": 0.05},
+                    "fascist_alignment": 0.2,
+                }
+            ],
+            "edges": [
+                {
+                    "source": "C001",
+                    "target": "C002",
+                    "source_territory": "T001",
+                    "target_territory": "T001",
+                    "field": "exploitation",
+                    "gradient": 0.2,
+                }
+            ],
+            "principal_field": {
+                "field_name": "exploitation",
+                "max_abs_df_dt": 0.42,
+                "changed": True,
+            },
+            "dialectical_regime": {
+                "regime": "crisis",
+                "opposition": "capital_labor",
+                "rate": 0.07,
+            },
+        }
+    )
+
+
+@pytest.fixture
+def usa_field_state_view_with_absences() -> FieldStateView:
+    """The same field state with every optional field honestly unattributed."""
+    return hydrate_field_state(
+        {
+            "kind": "field_state",
+            "field_state_id": "USA",
+            "verified_tick": 500,
         }
     )
 

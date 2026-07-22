@@ -39,7 +39,14 @@ from babylon.models.enums import (
     SocialRole,
     SovereigntyType,
 )
-from babylon.models.types import Coefficient, Currency, Ideology, Probability, SignedLaborHours
+from babylon.models.types import (
+    Coefficient,
+    Currency,
+    Ideology,
+    Intensity,
+    Probability,
+    SignedLaborHours,
+)
 
 #: Tolerance for the simplex/share sum invariants — matches the engine-side
 #: ``ClassDistribution`` and ternary-consciousness tolerance so a record that
@@ -998,6 +1005,188 @@ class EconomyView(BaseModel):
     energy_beta_j: float | None = None
 
 
+class FieldStateNodeView(BaseModel):
+    """One social-class node's Systems #19/#20 field-stack reading (T3 U3).
+
+    Projection-side mirror of the shape
+    ``web/game/engine_bridge.py::_build_field_state_nodes`` serializes —
+    ContradictionFieldSystem @19's ``contradiction_fields`` (per-field
+    value), FieldDerivativeSystem @20's ``field_derivatives`` (only its
+    ``laplacian``/``df_dt`` sub-keys — ``d2f_dt2`` is deliberately out of
+    this dossier's declared contract, matching the ported endpoint), and
+    FascistFactionSystem's ``fascist_alignment``. A node contributes only
+    the keys it actually carries this tick — never a fabricated zero for a
+    field the engine did not compute.
+
+    :param node_id: The social_class graph node id.
+    :param name: The node's ``name`` attribute, or ``node_id`` itself when
+        unattributed (matches the ported helper's own fallback).
+    :param fields: ``{field_name: value}`` from ``contradiction_fields``, or
+        ``None`` when the node carries none this tick.
+    :param laplacian: ``{field_name: value}``, the ``laplacian`` sub-key of
+        every field in ``field_derivatives`` that has one, or ``None``.
+    :param df_dt: ``{field_name: value}``, the ``df_dt`` sub-key of every
+        field in ``field_derivatives`` that has one (``None`` df_dt entries
+        — fewer than 2 ticks of history — are excluded, not zero-filled), or
+        ``None`` when no field has one yet.
+    :param fascist_alignment: The node's ``fascist_alignment`` (a required
+        ``Intensity`` ``SocialClass`` field, default 0.0 — so this is
+        ``None`` only when the node itself carries no such attribute at
+        all, never when the true value happens to be zero).
+    """
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    node_id: str = Field(min_length=1)
+    name: str = Field(min_length=1)
+    fields: dict[str, float] | None = None
+    laplacian: dict[str, float] | None = None
+    df_dt: dict[str, float] | None = None
+    fascist_alignment: Intensity | None = None
+
+
+class FieldStateEdgeView(BaseModel):
+    """One field-gradient edge entry (T3 U3), one per ``(edge, field)`` pair.
+
+    Projection-side mirror of
+    ``web/game/engine_bridge.py::_build_field_state_edges`` — an edge
+    carrying gradients for N fields contributes N entries, one per field
+    name, sorted. Territory anchoring reuses the TENANCY membership the
+    engine's own ``ProductionSystem._find_tenancy_target`` establishes
+    (Occupant -> Territory); an endpoint with no resolvable territory keeps
+    its entry with that key present but ``None`` — never omitted or
+    fabricated (the same keep-key-use-null convention the ported helper's
+    own docstring documents).
+
+    :param source: The edge's source social_class node id.
+    :param target: The edge's target social_class node id.
+    :param source_territory: The territory ``source`` holds a TENANCY edge
+        into, or ``None`` when unresolved.
+    :param target_territory: The territory ``target`` holds a TENANCY edge
+        into, or ``None`` when unresolved.
+    :param field: The field name this gradient reading is for.
+    :param gradient: ``f(target) - f(source)`` for :attr:`field`.
+    """
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    source: str = Field(min_length=1)
+    target: str = Field(min_length=1)
+    source_territory: str | None = None
+    target_territory: str | None = None
+    field: str = Field(min_length=1)
+    gradient: float
+
+
+class PrincipalFieldView(BaseModel):
+    """FieldDerivativeSystem @20's principal-FIELD identification (T3 U3).
+
+    Deliberately distinct from ContradictionSystem @18's Maoist principal
+    OPPOSITION (E0 rename) — this is the field-stack's fastest-developing
+    contradiction FIELD (max ``|df/dt|`` across every node), never the
+    opposition-layer's own principal.
+
+    :param field_name: The identified principal field's name, or ``None``
+        when no field has yet shown any nonzero ``df/dt`` (legitimately
+        null under 2 ticks of history — never a fabricated first field).
+    :param max_abs_df_dt: The winning field's max ``|df/dt|`` across every
+        node (``0.0`` when :attr:`field_name` is ``None``).
+    :param changed: Whether the principal field differs from the previous
+        tick's.
+    """
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    field_name: str | None = None
+    max_abs_df_dt: float = Field(ge=0.0)
+    changed: bool
+
+
+class DialecticalRegimeView(BaseModel):
+    """ContradictionSystem @18's fixed-point regime classification (T3 U3).
+
+    Classifies the capital_labor opposition (falling back to whichever
+    opposition is principal) into one of three regimes from its trajectory
+    — reproduction (converged or contained), crisis (rising, no Aufhebung),
+    or sublation (rising, level transition available).
+
+    :param regime: ``"reproduction"``, ``"crisis"``, or ``"sublation"``.
+    :param opposition: The classified opposition's key (``"capital_labor"``
+        today, or its principal fallback).
+    :param rate: The classified opposition's own rate this tick.
+    """
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    regime: Literal["reproduction", "crisis", "sublation"]
+    opposition: str = Field(min_length=1)
+    rate: float
+
+
+class FieldStateView(BaseModel):
+    """The field-state dossier — the Weather Layer, Systems #19/#20's field stack (T3 U3).
+
+    Port of ``web/game/engine_bridge.py::EngineBridge.get_field_state`` (the
+    ``{tick, nodes, edges, principal_field, dialectical_regime}`` shape) into
+    a pure projection read-model — same read logic, no redesign. Transport-
+    neutral by construction — no Django, no engine imports, no database
+    connection; the caller hands in the LIVE post-tick graph it already
+    holds (never a ``WorldState.from_graph()`` round trip, which drops the
+    graph-level ``principal_field``/``dialectical_regime`` attrs and every
+    node/edge attr this dossier reads outside its own ``field_stack`` carrier
+    — see :func:`~babylon.projection.field_state.project_field_state`).
+
+    **One producer per field:**
+
+    .. list-table:: Field-producer rulings
+       :header-rows: 1
+
+       * - Field
+         - Producer
+       * - ``nodes``
+         - :class:`FieldStateNodeView` per social_class node carrying
+           ``contradiction_fields`` (ContradictionFieldSystem @19),
+           ``field_derivatives`` (FieldDerivativeSystem @20 — ``laplacian``/
+           ``df_dt`` sub-keys only), or ``fascist_alignment``
+           (FascistFactionSystem), sorted by ``node_id``. ``None`` when no
+           social_class node carries any of the three this tick (the field
+           stack never ran).
+       * - ``edges``
+         - :class:`FieldStateEdgeView` per ``(edge, field)`` pair carrying a
+           ``field_gradients`` entry (FieldDerivativeSystem @20), territory-
+           anchored via the live TENANCY edges, sorted by ``(source, target,
+           field)``. ``None`` when no edge carries a gradient this tick.
+       * - ``principal_field``
+         - The ``principal_field`` graph attribute
+           (``FieldDerivativeSystem._identify_principal_contradiction``),
+           hydrated verbatim. ``None`` when the attribute itself is absent
+           (the field stack never ran this tick — it is otherwise always
+           written once ``FieldDerivativeSystem`` runs with a nonempty field
+           registry).
+       * - ``dialectical_regime``
+         - The ``dialectical_regime`` graph attribute
+           (``ContradictionSystem._classify_regime`` @18), hydrated
+           verbatim. ``None`` when no ``capital_labor``/principal
+           ``OppositionState`` existed yet this tick — the classifier
+           returns without writing the attribute in that case.
+
+    Absence discipline (Constitution III.11): a fresh graph with neither
+    system having run yet (tick 0) projects every field ``None`` — an
+    honest "the weather has not formed" reading, never a fabricated calm.
+    """
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    kind: Literal["field_state"] = "field_state"
+    field_state_id: str = Field(min_length=1)
+    verified_tick: int = Field(ge=0)
+
+    nodes: tuple[FieldStateNodeView, ...] | None = None
+    edges: tuple[FieldStateEdgeView, ...] | None = None
+    principal_field: PrincipalFieldView | None = None
+    dialectical_regime: DialecticalRegimeView | None = None
+
+
 class CommunityOverlap(BaseModel):
     """One other community sharing at least one roster member with the queried one.
 
@@ -1093,6 +1282,7 @@ ProjectionRecord = Annotated[
     CountyView
     | CommunityView
     | EconomyView
+    | FieldStateView
     | IndustryView
     | InstitutionView
     | KeyFigureView
@@ -1115,6 +1305,7 @@ _INDUSTRY_ADAPTER: TypeAdapter[IndustryView] = TypeAdapter(IndustryView)
 _SOCIAL_CLASS_ADAPTER: TypeAdapter[SocialClassView] = TypeAdapter(SocialClassView)
 _COMMUNITY_ADAPTER: TypeAdapter[CommunityView] = TypeAdapter(CommunityView)
 _ECONOMY_ADAPTER: TypeAdapter[EconomyView] = TypeAdapter(EconomyView)
+_FIELD_STATE_ADAPTER: TypeAdapter[FieldStateView] = TypeAdapter(FieldStateView)
 _RECORD_ADAPTER: TypeAdapter[CountyView | NationalView | OrganizationView | StateView] = (
     TypeAdapter(ProjectionRecord)
 )
@@ -1142,6 +1333,18 @@ def hydrate_economy(data: Mapping[str, Any]) -> EconomyView:
     :raises pydantic.ValidationError: on a shape or constraint violation.
     """
     return _ECONOMY_ADAPTER.validate_python(data)
+
+
+def hydrate_field_state(data: Mapping[str, Any]) -> FieldStateView:
+    """Validate an untyped mapping into a :class:`FieldStateView`.
+
+    :param data: A mapping shaped like a ``FieldStateView`` — a recorded
+        fixture, a JSON payload, or an assembled row dict. Missing optional
+        keys become ``None``; unknown keys are rejected.
+    :returns: The validated, frozen :class:`FieldStateView`.
+    :raises pydantic.ValidationError: on a shape or constraint violation.
+    """
+    return _FIELD_STATE_ADAPTER.validate_python(data)
 
 
 def hydrate_state(data: Mapping[str, Any]) -> StateView:
@@ -1277,13 +1480,18 @@ __all__ = [
     "ConsciousnessSimplex",
     "CountyView",
     "DepartmentComposition",
+    "DialecticalRegimeView",
     "EconomyView",
     "FactionalComposition",
+    "FieldStateEdgeView",
+    "FieldStateNodeView",
+    "FieldStateView",
     "IndustryView",
     "InstitutionView",
     "KeyFigureView",
     "NationalView",
     "OrganizationView",
+    "PrincipalFieldView",
     "ProjectionRecord",
     "SocialClassView",
     "SovereignView",
@@ -1291,6 +1499,7 @@ __all__ = [
     "hydrate_community",
     "hydrate_county",
     "hydrate_economy",
+    "hydrate_field_state",
     "hydrate_industry",
     "hydrate_institution",
     "hydrate_key_figure",

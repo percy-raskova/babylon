@@ -191,7 +191,7 @@ judged legacy-web-only. Branch scanned: `feature/archive-p2-p4 @ 5474c44e`
 | `TestGroupCDDocstringsHonest` | web/game/engine_bridge.py docstrings say "CORRECTED 2026-07-18", not "both gating services are unwired" | docstring-accuracy meta-test on web-bridge source that dies at cutover; pins no runtime behavior | RETIRED |
 | `TestEconomyDashboardFundamentalTheorem` | graph-wide Wc−Vc imperial-rent gap + per-region population-weighted per-capita breakdown | the T3 spine-C economy dossier reads the SAME verdict the engine already adjudicates (`opposition_states["wage"].balance`, never a parallel Φ) + per-class Φ readings off the `fundamental_theorem` graph stash — `babylon.projection.economy.project_economy`, `tests/unit/projection/test_economy.py::TestEconomyDashboardFundamentalTheorem` | REWRITTEN (T3 U2) |
 | `TestEconomyDashboardChipContract` | economy dashboard emits an exact key set of aggregate quantities | the chip key-SET itself was web-shape and retires; the underlying quantities (Volume III surplus split s=p+i+r+t + the metabolic matter-book) are now projected, extensive RATIO-OF-SUMS — `babylon.projection.economy.project_economy`, `tests/unit/projection/test_economy.py::TestEconomyDashboardChipContract` | REWRITTEN (T3 U2) |
-| `TestGetFieldState` | dialectical field-stack projection: contradiction_fields + field_derivatives (laplacian/df_dt) honest-omitted, id-sorted, TENANCY-anchored edges, principal_field/dialectical_regime | engine-produced + engine-tested, but **no projection read-model** (grep-confirmed zero hits in `src/babylon/projection/`) and **no P2–P4 WO** names the Weather Layer | GAP (LOUD) |
+| `TestGetFieldState` | dialectical field-stack projection: contradiction_fields + field_derivatives (laplacian/df_dt) honest-omitted, id-sorted, TENANCY-anchored edges, principal_field/dialectical_regime | the T3 U3 field-state dossier ports `EngineBridge.get_field_state`'s exact read logic — `babylon.projection.field_state.project_field_state`, `tests/unit/projection/test_field_state.py::TestGetFieldStateNodes`/`TestGetFieldStateEdges`/`TestGetFieldStatePrincipalFieldAndRegime` | REWRITTEN (T3 U3) |
 | `TestBalkanizationMapFields` | balkanization block: faction enumeration + per-territory contested/dominant_faction from INFLUENCES reads | single sovereign IS covered (`project_sovereign`/county `sovereign_id`); **faction enumeration + contested-territory derivation are not projected** (no `FactionView`, no INFLUENCES read); no WO | GAP (LOUD) |
 
 ### LOUD — coverage gaps the main loop must close before cutover
@@ -215,13 +215,15 @@ clearly owns. These block the WO-52 cutover gate:
    `biocapacity_ceiling`) — `wealth_by_class_role`/`county_flow` specifically
    have no successor (no `FactionView`/per-role rollup exists; not this
    unit's scope). See row 192 above.
-3. **`TestGetFieldState` → dialectical field-stack / "Weather Layer" projection.**
-   `contradiction_fields`, `field_derivatives` (laplacian/df_dt), `principal_field`,
-   `dialectical_regime`, TENANCY-anchored field edges — engine-produced and
-   engine-tested (`test_contradiction_field_system.py`, `test_field_derivative_system.py`)
-   but with no projection read-model and no WO. **Owner needed: NEW field-state
-   dossier / topology-surface WO** (or an explicit RETIRE ruling if the Weather
-   Layer is out of scope for the TUI).
+3. **CLOSED (T3 U3).** ~~`TestGetFieldState` → dialectical field-stack /
+   "Weather Layer" projection.~~ Closed by
+   `babylon.projection.field_state.project_field_state` — a direct port of
+   `EngineBridge.get_field_state`'s read logic (`contradiction_fields`,
+   `field_derivatives` laplacian/df_dt only, `fascist_alignment`,
+   TENANCY-anchored `field_gradients`, graph-level `principal_field`/
+   `dialectical_regime`) into a pure projection read-model, singleton page
+   `field_state/USA.md` (`ArchiveTickBaker`/`IncrementalArchiveTickBaker`
+   dispatch). See row 194 above.
 4. **`TestBalkanizationMapFields` → faction enumeration + contested-territory
    derivation.** spec-070 balkanization (factions, INFLUENCES influence_level,
    per-territory contested/dominant_faction) feeds RED_SETTLER_TRAP / secession.

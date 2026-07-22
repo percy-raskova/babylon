@@ -72,6 +72,7 @@ class TestArchiveTickBaker:
             "state/26.md",
             "national/USA.md",
             "economy/USA.md",
+            "field_state/USA.md",
             "organization/ORG1.md",
             "social_class/C001.md",
             "community/settler.md",

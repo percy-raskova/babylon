@@ -17,6 +17,7 @@ from babylon.models.enums.topology import NodeType
 from babylon.projection.community import project_community
 from babylon.projection.county import project_county
 from babylon.projection.economy import project_economy
+from babylon.projection.field_state import project_field_state
 from babylon.projection.industry import project_industry
 from babylon.projection.institution import project_institution
 from babylon.projection.national import project_national
@@ -27,6 +28,7 @@ from babylon.projection.state import project_state
 from babylon.projection.vault.render import render_county, render_sovereign
 from babylon.projection.vault.render_community import render_community
 from babylon.projection.vault.render_economy import render_economy
+from babylon.projection.vault.render_field_state import render_field_state
 from babylon.projection.vault.render_industry import render_industry
 from babylon.projection.vault.render_institution import render_institution
 from babylon.projection.vault.render_national import render_national
@@ -44,6 +46,9 @@ _NATIONAL_ID = "USA"
 
 #: The one economy dossier id (T3 spine-C singleton, mirrors _NATIONAL_ID).
 _ECONOMY_ID = "USA"
+
+#: The one field-state dossier id (T3 U3 singleton, mirrors _ECONOMY_ID).
+_FIELD_STATE_ID = "USA"
 
 
 def _node_ids(graph: Any, node_type: NodeType) -> list[str]:
@@ -151,6 +156,10 @@ class ArchiveTickBaker:
         pages[f"national/{_NATIONAL_ID}.md"] = render_national(national, verified_tick=tick)
         economy = project_economy(_ECONOMY_ID, graph=graph, world=world, tick=tick)
         pages[f"economy/{_ECONOMY_ID}.md"] = render_economy(economy, verified_tick=tick)
+        field_state = project_field_state(_FIELD_STATE_ID, graph=graph, tick=tick)
+        pages[f"field_state/{_FIELD_STATE_ID}.md"] = render_field_state(
+            field_state, verified_tick=tick
+        )
         for org_id in _node_ids(graph, NodeType.ORGANIZATION):
             org = project_organization(org_id, graph=graph, world=world, tick=tick)
             pages[f"organization/{org_id}.md"] = render_organization(org, verified_tick=tick)

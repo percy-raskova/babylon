@@ -20,13 +20,21 @@ DB envelope" to "which dossier pages are worth re-baking this tick":
   re-baked only when the backing node's attribute snapshot changed since
   its last bake (:class:`~babylon.projection.vault.dirty_tracker.
   NodeSnapshotTracker`, the generalized ``hex_value_key`` comparison).
-* **Derived dirtiness for rollups** — ``state``/``national``/``economy``
-  have no single backing node (they aggregate every territory in scope, and
-  ``economy`` additionally reads the graph-wide ``opposition_states``
-  attribute); they are dirty whenever ANY constituent county is
+* **Derived dirtiness for rollups** — ``state``/``national``/``economy``/
+  ``field_state`` have no single backing node (they aggregate every
+  territory in scope, and ``economy``/``field_state`` additionally read
+  graph-wide attributes — ``opposition_states``, and
+  ``contradiction_fields``/``field_derivatives``/``field_gradients``/
+  ``principal_field``/``dialectical_regime`` respectively); they are dirty
+  whenever ANY constituent county is
   (:class:`~babylon.projection.vault.dirty_tracker.PendingDirtySet`, which
   — unlike a same-tick derivation — survives a budget-clamped tick so a
-  rollup is never silently left stale).
+  rollup is never silently left stale). This is the SAME documented
+  approximation ``economy``'s own ``opposition_states`` read already
+  accepts (see the scope-boundary paragraph below) — ``field_state``'s true
+  drivers are social_class/edge state, not territory state, but no cheaper
+  sound signal exists yet, so it piggybacks on county dirtiness exactly
+  like ``economy`` rather than silently going untracked.
 * **Cross-node dependency** — a social class's ``county_class_composition``
   field reads its *containing* territory (:mod:`babylon.projection.
   social_class`'s own field-producer table), so a social class is ALSO
@@ -76,6 +84,7 @@ from babylon.models.enums.topology import NodeType
 from babylon.projection.community import project_community
 from babylon.projection.county import project_county
 from babylon.projection.economy import project_economy
+from babylon.projection.field_state import project_field_state
 from babylon.projection.industry import project_industry
 from babylon.projection.institution import project_institution
 from babylon.projection.national import project_national
@@ -86,13 +95,19 @@ from babylon.projection.state import project_state
 from babylon.projection.vault.dirty_tracker import NodeSnapshotTracker, PendingDirtySet
 from babylon.projection.vault.render import render_county, render_sovereign
 from babylon.projection.vault.render_economy import render_economy
+from babylon.projection.vault.render_field_state import render_field_state
 from babylon.projection.vault.render_industry import render_industry
 from babylon.projection.vault.render_institution import render_institution
 from babylon.projection.vault.render_national import render_national
 from babylon.projection.vault.render_organization import render_organization
 from babylon.projection.vault.render_social_class import render_social_class
 from babylon.projection.vault.render_state import render_state
-from babylon.projection.vault.tick_baker import _ECONOMY_ID, _NATIONAL_ID, _node_ids
+from babylon.projection.vault.tick_baker import (
+    _ECONOMY_ID,
+    _FIELD_STATE_ID,
+    _NATIONAL_ID,
+    _node_ids,
+)
 
 if TYPE_CHECKING:
     from collections.abc import Callable
@@ -118,6 +133,7 @@ class BakeBudgets(BaseModel):
     state: int | None = Field(default=None, ge=0)
     national: int | None = Field(default=None, ge=0)
     economy: int | None = Field(default=None, ge=0)
+    field_state: int | None = Field(default=None, ge=0)
     organization: int | None = Field(default=None, ge=0)
     institution: int | None = Field(default=None, ge=0)
     sovereign: int | None = Field(default=None, ge=0)
@@ -275,6 +291,7 @@ class IncrementalArchiveTickBaker:
             self._pending.mark("state", fips[:2])
             self._pending.mark("national", _NATIONAL_ID)
             self._pending.mark("economy", _ECONOMY_ID)
+            self._pending.mark("field_state", _FIELD_STATE_ID)
 
         state_prefixes = sorted({fips[:2] for fips in self._county_fips})
         state_dirty = [p for p in state_prefixes if self._pending.is_dirty("state", p)]
@@ -294,6 +311,16 @@ class IncrementalArchiveTickBaker:
             economy = project_economy(economy_id, graph=graph, world=world, tick=tick)
             pages[f"economy/{economy_id}.md"] = render_economy(economy, verified_tick=tick)
             self._pending.clear("economy", economy_id)
+
+        field_state_dirty = (
+            [_FIELD_STATE_ID] if self._pending.is_dirty("field_state", _FIELD_STATE_ID) else []
+        )
+        for field_state_id in _clamp(field_state_dirty, self._budgets.field_state):
+            field_state = project_field_state(field_state_id, graph=graph, tick=tick)
+            pages[f"field_state/{field_state_id}.md"] = render_field_state(
+                field_state, verified_tick=tick
+            )
+            self._pending.clear("field_state", field_state_id)
 
     def _bake_simple_kind(
         self,

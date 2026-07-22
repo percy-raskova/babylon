@@ -234,6 +234,20 @@ def write_tick_state_to_graph(  # pragma: no mutate — data serialization
                 if county.surplus_distribution is not None  # pragma: no mutate
                 else 0.0  # pragma: no mutate
             ),  # pragma: no mutate
+            # U1 (surplus-split publication completion): the remaining 2 of
+            # the 6 SurplusValueDistribution terms — without these the
+            # Marxian identity s = p + i + r + t could not be reconstructed
+            # from the graph (5 of 6 terms were already published above).
+            tick_taxes_on_surplus=(  # pragma: no mutate
+                county.surplus_distribution.taxes_on_surplus  # pragma: no mutate
+                if county.surplus_distribution is not None  # pragma: no mutate
+                else 0.0  # pragma: no mutate
+            ),  # pragma: no mutate
+            tick_total_surplus=(  # pragma: no mutate
+                county.surplus_distribution.total_surplus_produced  # pragma: no mutate
+                if county.surplus_distribution is not None  # pragma: no mutate
+                else 0.0  # pragma: no mutate
+            ),  # pragma: no mutate
             tick_accumulated_debt=(  # pragma: no mutate
                 county.debt_accumulation.accumulated_debt  # pragma: no mutate
                 if county.debt_accumulation is not None  # pragma: no mutate

@@ -365,6 +365,10 @@ class TestWriteFinancialState:
         assert node_data["tick_rentier_share"] == 0.0
         assert node_data["tick_profit_of_enterprise"] == 0.0
         assert node_data["tick_financialization_share"] == 0.0
+        # U1 (surplus-split publication completion): the remaining 2 of the
+        # 6 SurplusValueDistribution terms (s = p + i + r + t).
+        assert node_data["tick_taxes_on_surplus"] == 0.0
+        assert node_data["tick_total_surplus"] == 0.0
         assert node_data["tick_accumulated_debt"] == 0.0
         assert node_data["tick_claims_exceed_surplus"] is False
         assert node_data["tick_housing_fictitious_fraction"] is None
@@ -440,11 +444,54 @@ class TestWriteFinancialState:
         assert node_data["tick_rentier_share"] == 0.1  # 100 / 1000
         assert node_data["tick_profit_of_enterprise"] == 650.0
         assert node_data["tick_financialization_share"] == 0.2  # 200 / 1000
+        # U1 (surplus-split publication completion): the remaining 2 of the
+        # 6 SurplusValueDistribution terms (s = p + i + r + t).
+        assert node_data["tick_taxes_on_surplus"] == 50.0
+        assert node_data["tick_total_surplus"] == 1000.0
         assert node_data["tick_accumulated_debt"] == 500.0
         assert node_data["tick_claims_exceed_surplus"] is False  # 200+100+50 < 1000
         expected_fict = (50000.0 + 30000.0) / 180000.0
         assert abs(node_data["tick_housing_fictitious_fraction"] - expected_fict) < 1e-9
         assert node_data["tick_financial_crisis_signals"] == 4
+
+    def test_surplus_split_identity_holds_on_node_attrs(
+        self,
+        sample_tick_state: SimulationTickState,
+    ) -> None:
+        """Verify s = p + i + r + t on the graph's published node attrs.
+
+        U1 (surplus-split publication completion): the bridge now publishes
+        all 6 :class:`SurplusValueDistribution` terms as ``tick_`` node
+        attrs (previously 5 of 6 — ``taxes_on_surplus`` and
+        ``total_surplus_produced`` were missing), so the Marxian identity
+        is reconstructible from the LIVE graph object alone, without a
+        ``WorldState`` round-trip (which drops every ``tick_*``/``flow_*``
+        node attr, ``world_state.py:241``).
+        """
+        svd = SurplusValueDistribution(
+            fips_code="26163",
+            year=2015,
+            total_surplus_produced=1000.0,
+            interest_payments=200.0,
+            ground_rent=100.0,
+            taxes_on_surplus=50.0,
+        )
+        original_county = sample_tick_state.county_states[WAYNE_FIPS]
+        modified_county = original_county.model_copy(update={"surplus_distribution": svd})
+        modified_state = sample_tick_state.model_copy(
+            update={"county_states": {WAYNE_FIPS: modified_county}}
+        )
+
+        graph = build_territory_graph()
+        write_tick_state_to_graph(graph, modified_state)
+
+        node_data = graph.nodes[WAYNE_FIPS]
+        p = node_data["tick_profit_of_enterprise"]
+        i = node_data["tick_interest_burden"]
+        r = node_data["tick_ground_rent"]
+        t = node_data["tick_taxes_on_surplus"]
+        s = node_data["tick_total_surplus"]
+        assert p + i + r + t == pytest.approx(s)
 
     def test_credit_cycle_phase_in_metadata(
         self,

@@ -15,13 +15,18 @@ never a visual/pixel comparison.
 navigation-only check — it cannot distinguish a step whose ``then`` merely
 advertises "the dossier pane shows/returns to X" from one whose ``then``
 advertises specific rendered CONTENT ("the wage balance ... render as real
-numbers", "Wayne's own material state, not a fixture"). Two steps
-(``read_the_county_dossier``, ``read_the_theorem_verdict``) are the latter
-kind; :func:`drive_step` layers a distinctive-token check onto those two
-(:data:`_EXTRA_CONTENT_CHECK_BY_STEP_ID`) rather than widening ``OnPage``
-itself or adding a new :data:`~babylon.game.tutorial.CompletionPredicate`
-kind in U1 — a reviewer-specified, minimally-scoped fix over U2's own
-assertion path.
+numbers", "Wayne's own material state, not a fixture"). Four steps
+(``read_the_county_dossier``, ``read_the_theorem_verdict``, and — added by
+adversary-train W4, see :data:`~babylon.game.tutorial.WAYNE_OPENING_ARC`'s
+own trailing docstring for the honest-gap finding behind them —
+``read_the_state_apparatus_dossier``/``read_the_repression_ledger``) are
+the latter kind; :func:`drive_step` layers a distinctive-token check onto
+those four (:data:`_EXTRA_CONTENT_CHECK_BY_STEP_ID`) rather than widening
+``OnPage`` itself or adding a new
+:data:`~babylon.game.tutorial.CompletionPredicate` kind — a
+reviewer-specified, minimally-scoped fix over U2's own assertion path,
+reused rather than re-litigated for W4's own two content-advertising
+steps.
 
 Runs against a REAL :class:`~babylon.game.session.GameSession` — the real
 30-system engine, the real :class:`~babylon.game.pacing.PacedTickDriver` +
@@ -536,6 +541,21 @@ _LABOR_ARISTOCRACY_VERDICT_ROW_PATTERN: Final = re.compile(
     r"labor_aristocracy_verdict\s+(True|False)"
 )
 
+#: Adversary-train W4: ``organization/ORG002``'s own ``heat`` statblock row
+#: (``babylon.projection.vault.render_organization``'s ``f"{heat:.6f}"``
+#: render), verified against this exact scenario's own emitted transcript
+#: (Wayne's seeded ``_create_state_apparatus_org`` gives ORG002
+#: ``heat=0.3``, but this pattern is numeric-shaped rather than pinning
+#: ``"0.300000"`` literally — same reasoning as ``_WAGE_BALANCE_ROW_
+#: PATTERN`` above: the Then advertises "renders as a real number", not one
+#: specific float).
+_STATE_APPARATUS_HEAT_ROW_PATTERN: Final = re.compile(r"heat\s+-?\d+\.\d+")
+
+#: ``social_class/C001``'s own ``repression_faced`` statblock row
+#: (``babylon.projection.vault.render_social_class``'s identical ``.6f``
+#: render). Numeric-shaped for the same reason as the heat pattern above.
+_REPRESSION_FACED_ROW_PATTERN: Final = re.compile(r"repression_faced\s+-?\d+\.\d+")
+
 
 def _assert_county_dossier_is_wayne_real(app: ArchiveApp, *, step_id: str) -> None:
     """``read_the_county_dossier``'s own extra Then-check (review fix pass).
@@ -577,23 +597,71 @@ def _assert_theorem_verdict_is_real(app: ArchiveApp, *, step_id: str) -> None:
     )
 
 
+def _assert_state_apparatus_dossier_is_real(app: ArchiveApp, *, step_id: str) -> None:
+    """``read_the_state_apparatus_dossier``'s own extra Then-check
+    (adversary-train W4).
+
+    The step's own ``then`` advertises the state apparatus's heat and
+    faction balance rendering "as real numbers off the SAME
+    RuleBasedStateAI-driven organization" — ``OnPage`` alone cannot verify
+    that distinctive content is actually on screen, only that *something*
+    non-empty is showing at ``organization/ORG002`` (the same gap the
+    review fix pass found for ``read_the_theorem_verdict``).
+
+    :raises AssertionError: the ``org_type``/``heat`` rows are missing, or
+        ``heat``'s value is not numeric-shaped.
+    """
+    text = _dossier_plain_text(app)
+    assert "org_type" in text and "state_apparatus" in text, (
+        f"{step_id}: no 'org_type ... state_apparatus' row in the rendered statblock"
+    )
+    assert _STATE_APPARATUS_HEAT_ROW_PATTERN.search(text), (
+        f"{step_id}: no 'heat <number>' row in the rendered statblock"
+    )
+
+
+def _assert_repression_ledger_is_real(app: ArchiveApp, *, step_id: str) -> None:
+    """``read_the_repression_ledger``'s own extra Then-check
+    (adversary-train W4).
+
+    The step's own ``then`` advertises ``repression_faced`` rendering "as a
+    real number" — ``OnPage`` alone cannot verify that distinctive content
+    is actually on screen, only that *something* non-empty is showing at
+    ``social_class/C001``.
+
+    :raises AssertionError: no numeric-shaped ``repression_faced`` row.
+    """
+    text = _dossier_plain_text(app)
+    assert _REPRESSION_FACED_ROW_PATTERN.search(text), (
+        f"{step_id}: no 'repression_faced <number>' row in the rendered statblock"
+    )
+
+
 #: Closed, named extension keyed by step id — NOT a second predicate
 #: vocabulary alongside :func:`_assert_completion` (that function alone
 #: owns closed dispatch over :data:`~babylon.game.tutorial.
 #: CompletionPredicate`). Every OTHER step id is a deliberate no-op here:
-#: the two entries below are exactly the CONTENT-advertising ``OnPage``
+#: the entries below are exactly the CONTENT-advertising ``OnPage``
 #: steps the review identified (their ``then`` names specific rendered
 #: numbers/rows) as opposed to the NAVIGATION-only ``OnPage`` steps
 #: (``begin_the_operation``, ``palette_to_the_economy_dossier``,
-#: ``jump_back_to_wayne``) whose own ``then`` only advertises "the dossier
-#: pane shows/returns to/navigates to X" — already fully covered by
-#: ``_assert_completion``'s nav.current + non-emptiness check.
+#: ``jump_back_to_wayne``, and adversary-train W4's own
+#: ``palette_to_the_state_apparatus_dossier``/
+#: ``palette_to_the_repression_ledger``) whose own ``then`` only advertises
+#: "the dossier pane shows/returns to/navigates to X" — already fully
+#: covered by ``_assert_completion``'s nav.current + non-emptiness check.
 _EXTRA_CONTENT_CHECK_BY_STEP_ID: Final[dict[str, Callable[[ArchiveApp], None]]] = {
     "read_the_county_dossier": lambda app: _assert_county_dossier_is_wayne_real(
         app, step_id="read_the_county_dossier"
     ),
     "read_the_theorem_verdict": lambda app: _assert_theorem_verdict_is_real(
         app, step_id="read_the_theorem_verdict"
+    ),
+    "read_the_state_apparatus_dossier": lambda app: _assert_state_apparatus_dossier_is_real(
+        app, step_id="read_the_state_apparatus_dossier"
+    ),
+    "read_the_repression_ledger": lambda app: _assert_repression_ledger_is_real(
+        app, step_id="read_the_repression_ledger"
     ),
 }
 

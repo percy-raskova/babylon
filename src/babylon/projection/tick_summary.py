@@ -35,11 +35,17 @@ exactly matching the ported ``_build_tick_summary``'s own contract:
   ``_enum_val``-string match, since ``Relationship.edge_type`` is a
   strictly-typed enum field in this module's Pydantic boundary, unlike the
   web bridge's own dict-serialized payloads).
-* ``uprising_count`` counts this tick's raw kernel
-  :class:`~babylon.kernel.event_bus.Event` history (the ``events=`` param)
-  by ``.type`` against :class:`~babylon.models.enums.events.EventType`;
-  ``repression_count`` is ALWAYS ``None`` — no production bus publisher
-  for STATE_REPRESSION exists (see the assignment-site comment)
+* ``uprising_count`` and ``repression_count`` both count this tick's raw
+  kernel :class:`~babylon.kernel.event_bus.Event` history (the ``events=``
+  param) by ``.type`` against :class:`~babylon.models.enums.events.EventType`
+  — ``repression_count`` counts ``STATE_REPRESSION`` the SAME way
+  ``uprising_count`` counts ``UPRISING``. Adversary-train W1 (2026-07-22)
+  gave ``STATE_REPRESSION`` a real production bus publisher
+  (``OODASystem._FIRST_CLASS_ACTION_EVENTS``, ``engine/systems/ooda.py``,
+  fed by ``ooda.action_effects._resolve_repressive``), retiring the
+  honest-NULL contract this column carried before (a bus count over an
+  EventType nothing ever published would have been a fabricated 0,
+  Constitution III.11)
   (REVIEW FIX, T5 U2: the first cut counted ``WorldState.events`` instead,
   which is ALWAYS empty on the Archive path —
   ``WorldState.from_graph()`` reconstructs ``.events`` from
@@ -237,11 +243,10 @@ def build_tick_summary_kwargs(
         ``tuple(bus.get_history())`` — the SAME tuple
         :meth:`~babylon.game.session.GameSession.advance_tick` already
         collects for the Chronicle adapter), used to count
-        ``uprising_count`` by ``.type``. ``None`` (no history threaded)
-        keeps it honestly ``None`` rather than a fabricated ``0``
-        (Constitution III.11). ``repression_count`` is ALWAYS ``None``
-        regardless — no production bus publisher for STATE_REPRESSION
-        exists (see the inline comment at its assignment).
+        ``uprising_count``/``repression_count`` by ``.type``. ``None`` (no
+        history threaded) keeps BOTH columns honestly ``None`` rather than
+        a fabricated ``0`` (Constitution III.11) — a caller with no history
+        is a different state from "zero events happened this tick".
     :returns: Kwargs dict for
         :meth:`~babylon.persistence.postgres_runtime.PostgresRuntime.
         persist_tick_summary`.
@@ -260,20 +265,20 @@ def build_tick_summary_kwargs(
         1 for rel in world.relationships if rel.edge_type == EdgeType.EXPLOITATION
     )
     uprising_count: int | None
+    repression_count: int | None
     if events is None:
         uprising_count = None
+        repression_count = None
     else:
         uprising_count = sum(1 for event in events if event.type == EventType.UPRISING)
-    # repression_count is honestly NULL, never a bus count: NO production
-    # code publishes STATE_REPRESSION to the kernel bus (the OODA
-    # first-class-action gate covers only POGROM/LOCKOUT/VIGILANTISM; the
-    # type otherwise lives only as a string inside ActionResult.
-    # events_generated), so counting it over bus history is a structural
-    # fabricated 0 (Constitution III.11). The web-bridge reference is
-    # latently 0 for the same reason. Flip this to a real count only when
-    # an engine unit adds a STATE_REPRESSION bus publisher on the REPRESS
-    # path (declared drift ceremony).
-    repression_count: int | None = None
+        # Adversary-train W1 (2026-07-22): STATE_REPRESSION now has a real
+        # production bus publisher (OODASystem._FIRST_CLASS_ACTION_EVENTS,
+        # fed by ooda.action_effects._resolve_repressive on the REPRESS
+        # path for both the player-verb and state-AI/NPC drivers) — the
+        # prior ALWAYS-None contract is retired; this counts it the SAME
+        # way uprising_count counts UPRISING (a real bus count is no longer
+        # a fabricated 0, Constitution III.11).
+        repression_count = sum(1 for event in events if event.type == EventType.STATE_REPRESSION)
     player_org_count = sum(
         1 for org in world.organizations.values() if org.id == world.player_org_id
     )

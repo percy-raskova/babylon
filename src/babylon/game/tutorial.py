@@ -492,20 +492,71 @@ WAYNE_OPENING_ARC: Final[TutorialScript] = TutorialScript(
             anchor="binding:ArchiveApp:ctrl+o",
             completion=OnPage(subject="county/26163"),
         ),
+        # ------------------------------------------------------------- #
+        # Adversary-train W4 (2026-07-22): "the tutorial learns the      #
+        # enemy." See this block's own note, below the arc, for the     #
+        # honest-gap finding that shaped these four steps.              #
+        # ------------------------------------------------------------- #
+        TutorialStep(
+            id="palette_to_the_state_apparatus_dossier",
+            given="the campaign shell has just returned to Wayne County's own home dossier",
+            when="the player opens the command palette with Ctrl-P and picks organization/ORG002",
+            then=(
+                "the dossier pane navigates to the Detroit Police Department's own "
+                "dossier — the state apparatus already watching the county"
+            ),
+            anchor="palette:organization/ORG002",
+            completion=OnPage(subject="organization/ORG002"),
+        ),
+        TutorialStep(
+            id="read_the_state_apparatus_dossier",
+            given="the Detroit Police Department's dossier is showing",
+            when="the player reads organization/ORG002's page",
+            then=(
+                "the apparatus's own heat and its security-leaning faction balance "
+                "render as real numbers off the SAME RuleBasedStateAI-driven organization "
+                "the engine actually adjudicates — a real, quantified adversary, never "
+                "narrative color"
+            ),
+            anchor="page:organization/ORG002",
+            completion=OnPage(subject="organization/ORG002"),
+        ),
+        TutorialStep(
+            id="palette_to_the_repression_ledger",
+            given="the state apparatus's own dossier is showing",
+            when="the player opens the command palette with Ctrl-P and picks social_class/C001",
+            then=(
+                "the dossier pane navigates to the Detroit Proletariat's own dossier — "
+                "the class whose repression the state apparatus's actions actually land on"
+            ),
+            anchor="palette:social_class/C001",
+            completion=OnPage(subject="social_class/C001"),
+        ),
+        TutorialStep(
+            id="read_the_repression_ledger",
+            given="the Detroit Proletariat's dossier is showing",
+            when="the player reads social_class/C001's page",
+            then=(
+                "repression_faced renders as a real number — the same scalar "
+                "SurvivalSystem divides Organization by (P(S|R) = Organization / "
+                "Repression) — the material consequence the player's own organizing "
+                "must outrun"
+            ),
+            anchor="page:social_class/C001",
+            completion=OnPage(subject="social_class/C001"),
+        ),
         # Program 24 P8 ("the tutorial learns the shell") — five more beats,
-        # placed here because the player has just finished reading both
-        # dossiers (Wayne's own, the economy's) and walking back: the core
-        # single-pane loop is taught, so now the room itself — the hybrid
-        # shell's other three panes plus the watchlist rail — is. Wayne's
-        # own dossier (county/26163) is still the dossier's current subject
-        # throughout this whole tail (switching panes never itself
-        # navigates), which is what makes pin_wayne_to_the_watchlist's own
-        # hardcoded expected subject an HONEST expectation rather than a
-        # guess (see this step's own docstring cross-reference in
-        # tests/unit/game/test_tutorial.py).
+        # placed after the adversary tail: the player has just read the
+        # Detroit Proletariat's repression ledger, so the class the state's
+        # violence lands on is the dossier's current subject. Switching
+        # panes never itself navigates, so social_class/C001 stays current
+        # through this whole tail — which is what makes
+        # pin_the_proletariat_to_the_watchlist's hardcoded expected subject
+        # an HONEST expectation rather than a guess (see the beat-list pin
+        # in tests/unit/game/test_tutorial.py).
         TutorialStep(
             id="learn_the_map_pane",
-            given="the player has walked back to Wayne County's own home dossier in the Wiki pane",
+            given="the player has just read the Detroit Proletariat's repression ledger in the Wiki pane",
             when="the player presses '2' to switch to the Map pane",
             then="the main region switches to the Map pane, the hybrid shell's own choropleth view",
             anchor="binding:ArchiveApp:2",
@@ -516,8 +567,8 @@ WAYNE_OPENING_ARC: Final[TutorialScript] = TutorialScript(
             given="the Map pane is showing",
             when="the player presses '3' to switch back to the Wiki pane",
             then=(
-                "the main region switches back to the Wiki pane, Wayne County's own "
-                "dossier still showing beneath it"
+                "the main region switches back to the Wiki pane, the Detroit "
+                "Proletariat's own dossier still showing beneath it"
             ),
             anchor="binding:ArchiveApp:3",
             completion=PaneShowing(pane="wiki"),
@@ -542,19 +593,108 @@ WAYNE_OPENING_ARC: Final[TutorialScript] = TutorialScript(
             completion=PaneShowing(pane="dashboard"),
         ),
         TutorialStep(
-            id="pin_wayne_to_the_watchlist",
-            given="the Dashboard pane is showing and county/26163 is still the dossier's own current subject",
+            id="pin_the_proletariat_to_the_watchlist",
+            given=(
+                "the Dashboard pane is showing and social_class/C001 is still the "
+                "dossier's own current subject"
+            ),
             when="the player presses 'p' to pin the current subject",
-            then="county/26163 is pinned onto the right rail's watchlist",
+            then=(
+                "social_class/C001 — the class the player organizes among — is "
+                "pinned onto the right rail's watchlist"
+            ),
             anchor="binding:ArchiveApp:p",
-            completion=PinnedInWatchlist(subject="county/26163"),
+            completion=PinnedInWatchlist(subject="social_class/C001"),
         ),
     ),
 )
-"""The Wayne first-session opening arc (Program v1.0.0 T6, Unit U1; extended by
+"""The Wayne first-session opening arc (Program v1.0.0 T6, Unit U1; extended
+by the Adversary-train's Unit W4 with the state-apparatus tail, and by
 Program 24 P8 with the shell-teaching tail) — the core loop end-to-end over
-what the shell actually does today: lobby -> briefing -> the county dossier ->
-a tick -> a run to autopause -> acknowledge -> the command palette -> the
-economy dossier's theorem verdict -> jump back -> the Map/Wiki/Topology/
-Dashboard panes -> pin Wayne to the watchlist. Every anchor and subject id above was checked against the
-live registries before authoring (module docstring)."""
+what the shell actually does today: lobby -> briefing -> the county dossier
+-> a tick -> a run to autopause -> acknowledge -> the command palette ->
+the economy dossier's theorem verdict -> jump back -> the state apparatus's
+own dossier -> the repression ledger it falls on -> the Map/Wiki/Topology/
+Dashboard panes -> pin the Detroit Proletariat to the watchlist. Every
+anchor and subject id above was checked against the live registries before
+authoring (module docstring).
+
+**W4's own honest-gap finding** (verified against this exact composition,
+not assumed): a fired ``STATE_REPRESSION``/``STATE_SURVEILLANCE`` chronicle
+bulletin — the literal "the player reads a state-REPRESS chronicle
+bulletin" beat the adversary-train design doc
+(``ai/_inbox/adversary-train-design.md``) names — is NOT reachable from
+this opening arc, and authoring a step asserting one would RED (which is
+"the system working": the executor drives a REAL engine, so a step whose
+Then never actually happens must not ship). The chain, cited:
+
+1. ``RuleBasedStateAI.select_action`` returns an EMPTY action list "if
+   *target_candidates* was supplied but no candidate has ``heat > 0``"
+   (:mod:`babylon.ooda.state_ai.decision`'s own docstring) — the Blind
+   Giant never self-targets, so REPRESS/SURVEIL simply does not fire with
+   nothing visible.
+2. Every REPRESS-target candidate (:func:`~babylon.ooda.npc_stub.
+   _gather_repress_target_candidates`) is an ``organization`` node, and
+   every organization's ``heat`` defaults to ``0.0``
+   (:class:`~babylon.models.entities.organization.Organization`). Wayne's
+   own player org is seeded at exactly that default
+   (``_create_player_org``'s own ``heat=0.0``,
+   :mod:`babylon.engine.scenarios._legacy_wayne`) — deliberately, per that
+   module's ``_create_state_apparatus_org`` docstring: "with zero visible
+   threats (heat 0 everywhere ... e.g. right at scenario start before
+   ORG001 has done anything to attract attention) it honestly no-ops".
+3. Nothing else raises organization heat absent a player REPRESS target
+   already existing: :func:`~babylon.ooda.layer3._propagate_heat` only
+   bumps a REPRESS/SURVEIL action's *target* (the chain in (1) already
+   forecloses that), and the two player-verb resolvers that DO raise
+   organization heat (``engine/actions/mobilize.py``'s target bump,
+   ``engine/actions/attack.py``'s acting-org bump) only fire through
+   :func:`~babylon.engine.actions.resolve_player_action`, which requires a
+   submitted player turn — this opening arc scripts no player-verb
+   submission (the action-bar affordance itself exists since Program 24
+   P5, but no arc step drives it yet). An NPC-selected
+   non-REPRESS/SURVEIL verb for ORG001 (the legacy priority-queue path,
+   absent a player turn) resolves as a blind ``success=True`` with zero
+   graph effect (:data:`~babylon.engine.systems.ooda._MATERIALLY_
+   RESOLVED_NPC_VERBS` is ``{REPRESS, SURVEIL}`` only), so it cannot seed
+   heat either.
+4. Seeding a nonzero starting heat in the scenario itself (the one way to
+   break the deadlock) was considered and rejected: ``tests/integration/
+   test_state_ai_wayne_county.py::TestStateAINoLongerSelfTargets::
+   test_zero_visible_threat_is_honest_no_op_never_self_target`` hard-pins
+   the UNTOUCHED scenario default producing zero actions — changing that
+   default would regress an existing, deliberately-authored regression
+   test, not fix a gap.
+
+So these four steps teach the SAME material fact the design doc's beat
+was reaching for — the state apparatus is real, watching, and quantified;
+repression is a real material toll already seeded on the people the
+player organizes among — through the two dossier pages that ARE always
+real and already baked (:meth:`~babylon.projection.vault.tick_baker.
+ArchiveTickBaker.on_tick_committed` enumerates every ``organization`` and
+``social_class`` node every tick) rather than a fired event that cannot
+happen yet. The player-verb-submission AFFORDANCE has since landed
+(Program 24 P5: the bottom action bar submits real verbs through
+``submit_verb``); AUTHORING the arc beat that uses it to raise real heat
+and witness a genuine STATE_REPRESSION chronicle bulletin remains the
+follow-up unit's honest gap to close, not fabricated here.
+
+No new :class:`TutorialStep` completion-predicate kind was needed for
+these four steps: both new "read" steps reuse :class:`OnPage` plus the
+executor's own established distinctive-content-check pattern
+(``test_tutorial_pilot.py``'s ``_EXTRA_CONTENT_CHECK_BY_STEP_ID``, the
+same layering ``read_the_county_dossier``/``read_the_theorem_verdict``
+already use) — a rendered-chronicle-text predicate was considered and
+declined for the reason above: adding one that no real fired event could
+ever satisfy would be exactly the Potemkin predicate the closed vocabulary
+is designed to keep out. No new binding/option was introduced either
+(both new "navigate" steps reuse the SAME ``palette:`` anchor grammar
+``palette_to_the_economy_dossier`` already exercises), so the tutorial
+option-coverage sentinel (:mod:`babylon.sentinels.tutorial_coverage`)
+needs no new exemption or coverage row — it only tracks ``binding:``
+anchors, and these four steps declare none. (The FIVE P8 shell-teaching
+steps that follow them are the opposite case by design: each declares the
+``binding:`` anchor for one of the shell's new player-facing options —
+keys ``1``-``4`` and ``p`` — which is exactly what turns the sentinel's
+five uncovered-option violations green through real coverage, never an
+exemption.)"""

@@ -245,7 +245,7 @@ class TestWayneOpeningArcIntegrity:
         assert WAYNE_OPENING_ARC.scenario == WayneCountyScenario.name == "wayne_county"
 
     def test_every_step_anchor_is_non_empty(self) -> None:
-        for step in WAYNE_OPENING_ARC.steps:  # loop bound: len(steps) == 14
+        for step in WAYNE_OPENING_ARC.steps:  # loop bound: len(steps) == 18
             assert step.anchor.strip() != ""
 
     def test_every_step_id_is_unique(self) -> None:
@@ -253,7 +253,7 @@ class TestWayneOpeningArcIntegrity:
         assert len(ids) == len(set(ids))
 
     def test_every_predicate_parses_through_the_closed_vocabulary_adapter(self) -> None:
-        for step in WAYNE_OPENING_ARC.steps:  # loop bound: len(steps) == 14
+        for step in WAYNE_OPENING_ARC.steps:  # loop bound: len(steps) == 18
             dumped = step.completion.model_dump(mode="json")
             reloaded = CompletionPredicateAdapter.validate_python(dumped)
             assert reloaded == step.completion
@@ -265,7 +265,7 @@ class TestWayneOpeningArcIntegrity:
         rather than a one-time authoring-time check.
         """
         checked = 0
-        for step in WAYNE_OPENING_ARC.steps:  # loop bound: len(steps) == 14
+        for step in WAYNE_OPENING_ARC.steps:  # loop bound: len(steps) == 18
             parsed = _parse_binding_anchor(step.anchor)
             if parsed is None:
                 continue
@@ -281,7 +281,7 @@ class TestWayneOpeningArcIntegrity:
         assert checked > 0, "no binding: anchors were exercised by this test"
 
     def test_every_page_or_palette_anchor_names_a_kind_slash_id_subject(self) -> None:
-        for step in WAYNE_OPENING_ARC.steps:  # loop bound: len(steps) == 14
+        for step in WAYNE_OPENING_ARC.steps:  # loop bound: len(steps) == 18
             if step.anchor.startswith(("page:", "palette:")):
                 _, subject = step.anchor.split(":", 1)
                 assert "/" in subject, f"{step.id}: {subject!r} is not a kind/id subject"
@@ -320,11 +320,12 @@ class TestWayneOpeningArcIntegrity:
         assert step.completion == VerbIssued(verb="new_campaign")
 
     def test_arc_covers_the_advertised_core_loop_beats(self) -> None:
-        """The 14 authored beats span mint -> briefing -> dossier -> tick ->
-        run -> ack -> palette -> theorem -> jump-back -> the Map/Wiki/
-        Topology/Dashboard panes -> pin Wayne to the watchlist, in that order
-        (Program 24 P8 extends the original 9-beat core loop with the last
-        five)."""
+        """The 18 authored beats span mint -> briefing -> dossier -> tick ->
+        run -> ack -> palette -> theorem -> jump-back, then the adversary
+        tail (adversary train W4): state-apparatus dossier -> repression
+        ledger, then the shell-teaching tail (Program 24 P8): the Map/Wiki/
+        Topology/Dashboard panes -> pin the Detroit Proletariat to the
+        watchlist, in that order."""
         assert [step.id for step in WAYNE_OPENING_ARC.steps] == [
             "boot_into_lobby",
             "begin_the_operation",
@@ -335,23 +336,30 @@ class TestWayneOpeningArcIntegrity:
             "palette_to_the_economy_dossier",
             "read_the_theorem_verdict",
             "jump_back_to_wayne",
+            "palette_to_the_state_apparatus_dossier",
+            "read_the_state_apparatus_dossier",
+            "palette_to_the_repression_ledger",
+            "read_the_repression_ledger",
             "learn_the_map_pane",
             "learn_the_wiki_pane",
             "learn_the_topology_pane",
             "learn_the_dashboard_pane",
-            "pin_wayne_to_the_watchlist",
+            "pin_the_proletariat_to_the_watchlist",
         ]
 
-    def test_pin_wayne_to_the_watchlist_subject_matches_the_arcs_own_current_subject(self) -> None:
+    def test_pin_step_subject_matches_the_arcs_own_current_subject(self) -> None:
         """Cross-reference for the honest-expectation note in
         :mod:`babylon.game.tutorial`'s own authored-script comment: no step
-        between ``jump_back_to_wayne`` (which lands on county/26163) and
-        ``pin_wayne_to_the_watchlist`` ever calls ``_navigate`` (switching
-        panes does not itself navigate), so county/26163 really is still the
-        dossier's current subject by the time the pin fires — a hardcoded
-        expected subject here is honest, not a guess."""
-        pin_step = next(s for s in WAYNE_OPENING_ARC.steps if s.id == "pin_wayne_to_the_watchlist")
-        assert pin_step.completion == PinnedInWatchlist(subject="county/26163")
+        between ``read_the_repression_ledger`` (which lands on
+        social_class/C001) and ``pin_the_proletariat_to_the_watchlist`` ever
+        calls ``_navigate`` (switching panes does not itself navigate), so
+        social_class/C001 really is still the dossier's current subject by
+        the time the pin fires — a hardcoded expected subject here is
+        honest, not a guess."""
+        pin_step = next(
+            s for s in WAYNE_OPENING_ARC.steps if s.id == "pin_the_proletariat_to_the_watchlist"
+        )
+        assert pin_step.completion == PinnedInWatchlist(subject="social_class/C001")
 
 
 class TestShellTeachingTailProgram24P8:
@@ -366,7 +374,7 @@ class TestShellTeachingTailProgram24P8:
             "learn_the_wiki_pane",
             "learn_the_topology_pane",
             "learn_the_dashboard_pane",
-            "pin_wayne_to_the_watchlist",
+            "pin_the_proletariat_to_the_watchlist",
         ]
         steps_by_id = {step.id: step for step in WAYNE_OPENING_ARC.steps}
         anchors = [steps_by_id[step_id].anchor for step_id in shell_step_ids]
@@ -393,12 +401,14 @@ class TestShellTeachingTailProgram24P8:
         step = next(s for s in WAYNE_OPENING_ARC.steps if s.id == step_id)
         assert step.completion == PaneShowing(pane=expected_pane)
 
-    def test_the_five_shell_steps_appear_after_the_original_nine_beat_core_loop(self) -> None:
-        """The shell-teaching tail follows ``jump_back_to_wayne`` — the
-        player has read both dossiers and walked back before the room
-        itself is taught (module docstring's own placement rationale)."""
+    def test_the_five_shell_steps_appear_after_the_adversary_tail(self) -> None:
+        """The shell-teaching tail follows ``read_the_repression_ledger`` —
+        the player has read the county, the economy, AND the state
+        apparatus's ledger before the room itself is taught, which is also
+        what makes social_class/C001 the pin step's honest current subject
+        (module docstring's own placement rationale)."""
         ids = [step.id for step in WAYNE_OPENING_ARC.steps]
-        assert ids.index("jump_back_to_wayne") < ids.index("learn_the_map_pane")
+        assert ids.index("read_the_repression_ledger") < ids.index("learn_the_map_pane")
 
 
 # --------------------------------------------------------------------------- #
@@ -412,13 +422,13 @@ class TestRenderingContract:
     """
 
     def test_scenario_name_contains_every_field_verbatim(self) -> None:
-        for step in WAYNE_OPENING_ARC.steps:  # loop bound: len(steps) == 14
+        for step in WAYNE_OPENING_ARC.steps:  # loop bound: len(steps) == 18
             assert step.given in step.scenario_name
             assert step.when in step.scenario_name
             assert step.then in step.scenario_name
 
     def test_overlay_text_contains_every_field_verbatim(self) -> None:
-        for step in WAYNE_OPENING_ARC.steps:  # loop bound: len(steps) == 14
+        for step in WAYNE_OPENING_ARC.steps:  # loop bound: len(steps) == 18
             assert step.given in step.overlay_text
             assert step.when in step.overlay_text
             assert step.then in step.overlay_text
@@ -443,6 +453,6 @@ class TestRenderingContract:
         """The ruling: "scenario names are sentences" — one, ending in a
         period, not a multi-line block (that's what ``overlay_text`` is
         for)."""
-        for step in WAYNE_OPENING_ARC.steps:  # loop bound: len(steps) == 14
+        for step in WAYNE_OPENING_ARC.steps:  # loop bound: len(steps) == 18
             assert step.scenario_name.endswith(".")
             assert "\n" not in step.scenario_name

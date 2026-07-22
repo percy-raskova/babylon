@@ -45,6 +45,10 @@ from babylon.engine.scenarios.base import (
     get_scenario,
     list_scenarios,
 )
+from babylon.engine.scenarios.electoral_fixture import (
+    ElectoralFixtureScenario,
+    create_electoral_fixture_scenario,
+)
 
 # Re-export the 6 Scenario subclasses (importing populates _SCENARIO_REGISTRY).
 from babylon.engine.scenarios.high_tension import HighTensionScenario
@@ -67,14 +71,16 @@ __all__ = [
     "_SCENARIO_REGISTRY",
     "get_scenario",
     "list_scenarios",
-    # 6 Scenario subclasses
+    # Scenario subclasses
     "TwoNodeScenario",
+    "ElectoralFixtureScenario",
     "HighTensionScenario",
     "LaborAristocracyScenario",
     "ImperialCircuitScenario",
     "USScenario",
     "WayneCountyScenario",
     # Legacy free-function shims (preserved for FR-003 import equivalence)
+    "create_electoral_fixture_scenario",  # P25 U5 (ADR131)
     "create_two_node_scenario",
     "create_high_tension_scenario",
     "create_labor_aristocracy_scenario",

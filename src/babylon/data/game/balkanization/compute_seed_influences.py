@@ -1,81 +1,86 @@
-"""Proxy-data INFLUENCES seed computation pipeline (T112).
+"""County-grain INFLUENCES seed computation pipeline (T112; P25 U6/ADR132).
 
 Computes ``seed_influences.json`` for the Detroit tri-county area
-(Wayne + Oakland + Macomb counties) per FR-039 + data-model.md §8.
+(Wayne 26163 + Oakland 26125 + Macomb 26099) per FR-039 + data-model.md §8,
+keyed by **county FIPS** — the Amendment-U substrate contract (county_fips
+is the sole spatial key the engine reads via ``resolve_county_identity``).
+The original res-7 H3 hex keying was retired with this re-key: at county
+grain the LODES residential-density proration step disappears, because the
+county-level source data applies directly.
 
-This module ships a **fixture-grade** computation that approximates the
-real QCEW/LODES/AIANNH/election pipeline with a geographic demographic
-model. The approximation is grounded in publicly known tri-county
-demographics:
+Component provenance (honest, per component):
 
-- **Detroit core**: high union density (UAW legacy), heavily Democratic
-  presidential vote, minimal AIANNH intersection (per research.md R-001:
-  "Wayne / Oakland / Macomb counties intersect with no major AIANNH
-  areas").
-- **Inner suburbs** (Dearborn, Hamtramck, Highland Park ring): moderate
-  union, mixed voting.
-- **Outer suburbs** (Livonia, Warren, Southfield): lower union density,
-  more Republican.
-- **Exurban** (northern Oakland/Macomb): lowest union, most Republican.
+- **FAC_RESTORATIONIST** (``support_type=electoral``) is DATA-DRIVEN: the
+  real 2024 presidential Republican vote share per county from the committed
+  MIT Election Lab artifact
+  (``src/babylon/data/reference/election/mit_countypres_rep_share.csv``,
+  registered as ``mit_countypres_rep_share`` in ``data-artifacts.yaml``;
+  ADR049 ratified). No jitter — real data needs none.
+- **FAC_WORKERS_CONGRESS** (``labor``) and **FAC_DECOLONIAL**
+  (``ideological``) remain FIXTURE-GRADE pending their own data programs
+  (QCEW union-employment share; AIANNH intersection — minimal in tri-county
+  per research.md R-001): a county-centroid zone model against publicly
+  known tri-county demographics (Wayne: UAW-legacy union density; the
+  Oakland/Macomb ring: lower), with deterministic SHA-256 jitter keyed by
+  county FIPS.
+- **FAC_LIBERAL_IMPERIAL** (``ideological``) is the complement, clamped to
+  ``liberal_imperial_influence_cap``.
 
-The fixture uses ``CENSUS_BUREAU_FIXTURE`` provenance per the schema's
-``election_source`` enum. When real QCEW/LODES/AIANNH/election data
-becomes available, the ``_workers_congress_influence``,
-``_decolonial_influence``, and ``_restorationist_influence`` functions
-can be replaced with data-driven loaders without changing the module
-interface.
-
-Determinism (FR-044 + SC-011): given the same bounding box + resolution +
-cap + provenance constants, the output is byte-identical on every run.
-The ``computed_at_iso`` timestamp is fixed (not ``datetime.now()``).
-Cadre/sympathizer counts use a SHA-256-based deterministic RNG seeded
-from ``hex_id + faction_id``.
+Determinism (FR-044 + SC-011): given the same county set + cap + provenance
+constants + committed election artifact, the output is byte-identical on
+every run. The ``computed_at_iso`` timestamp is fixed (never
+``datetime.now()``). Cadre/sympathizer counts use a SHA-256-based
+deterministic RNG seeded from ``county_fips + faction_id``.
 """
 
 from __future__ import annotations
 
+import csv
 import hashlib
 import json
 import math
 from pathlib import Path
 from typing import Any
 
-import h3
-
 # ---------------------------------------------------------------------------
 # Constants
 # ---------------------------------------------------------------------------
 
-# Tri-county bounding box: covers Wayne (26163) + Oakland (26125) +
-# Macomb (26099) with a small margin to catch edge hexes.
-TRI_COUNTY_BOUNDS: dict[str, float] = {
-    "lat_min": 42.05,
-    "lat_max": 43.10,
-    "lon_min": -83.70,
-    "lon_max": -82.80,
-}
+#: Detroit tri-county FIPS: Wayne, Oakland, Macomb. Mirrors the headless
+#: runner's ``DETROIT_TRI_COUNTY_FIPS`` (engine/headless_runner/scopes.py) —
+#: duplicated here because the data layer must not import the engine.
+TRI_COUNTY_FIPS: tuple[str, ...] = ("26163", "26125", "26099")
 
-H3_RESOLUTION: int = 7
+#: The committed census atom (county names/centroids) and the MIT Election
+#: Lab derivative — both in-repo, so the pipeline never reads the drive.
+_DATA_ROOT = Path(__file__).resolve().parents[2]
+_COUNTY_ATOM_PATH = _DATA_ROOT / "game" / "us_county_territories.json"
+_ELECTION_ARTIFACT_PATH = _DATA_ROOT / "reference" / "election" / "mit_countypres_rep_share.csv"
 
 # Downtown Detroit core (the reference point for zone classification)
 DETROIT_CORE: tuple[float, float] = (42.3314, -83.0458)
 
-# Zone distance thresholds (km from Detroit core)
+# Zone distance thresholds (km from Detroit core), applied to county
+# centroids. Wayne's centroid falls in the core/inner band; Oakland's and
+# Macomb's fall in the outer band — matching the tri-county demographics the
+# retired hex fixture encoded.
 _CORE_RADIUS_KM: float = 10.0
 _INNER_SUBURB_RADIUS_KM: float = 25.0
 _OUTER_SUBURB_RADIUS_KM: float = 45.0
 
 DEFAULT_LIBERAL_IMPERIAL_CAP: float = 0.4
 
-# Fixture provenance (per schema seed_influences.schema.json)
+# Provenance (per schema seed_influences.schema.json). The election component
+# is real (MIT_ELECTION_LAB, ADR049 ratified); qcew/natural_earth remain
+# fixture-grade markers for the two zone-model components.
 FIXTURE_QCEW_VINTAGE: str = "2024"
 FIXTURE_NATURAL_EARTH_VERSION: str = "5.1.2"
-FIXTURE_ELECTION_SOURCE: str = "CENSUS_BUREAU_FIXTURE"
-FIXTURE_ELECTION_YEAR: int = 2020
+FIXTURE_ELECTION_SOURCE: str = "MIT_ELECTION_LAB"
+FIXTURE_ELECTION_YEAR: int = 2024
 
 # Fixed timestamp for byte-identical determinism (SC-011)
-FIXTURE_COMPUTED_AT: str = "2026-01-01T00:00:00Z"
-FIXTURE_VERSION: str = "1.0.0"
+FIXTURE_COMPUTED_AT: str = "2026-07-22T00:00:00Z"
+FIXTURE_VERSION: str = "2.0.0"
 
 # Faction IDs (must match seed_factions.json)
 _FAC_WORKERS_CONGRESS: str = "FAC_WORKERS_CONGRESS"
@@ -113,7 +118,7 @@ def _haversine_km(lat1: float, lon1: float, lat2: float, lon2: float) -> float:
 
 
 def _classify_zone(distance_km: float) -> str:
-    """Classify a hex by distance from Detroit core into a demographic zone."""
+    """Classify a county centroid by distance from Detroit core."""
     if distance_km < _CORE_RADIUS_KM:
         return _ZONE_CORE
     if distance_km < _INNER_SUBURB_RADIUS_KM:
@@ -123,26 +128,37 @@ def _classify_zone(distance_km: float) -> str:
     return _ZONE_EXURBAN
 
 
-def _generate_tri_county_hexes(
-    bounds: dict[str, float],
-    resolution: int,
-) -> list[str]:
-    """Generate sorted H3 cell IDs within the tri-county bounding box.
+# ---------------------------------------------------------------------------
+# Committed-data readers (in-repo only; never the drive)
+# ---------------------------------------------------------------------------
 
-    The bounding box is a rough rectangle; a real pipeline would filter to
-    the three county FIPS polygons. For the fixture, the bounding box is
-    sufficient and deterministic.
-    """
-    polygon = h3.LatLngPoly(
-        [
-            (bounds["lat_min"], bounds["lon_min"]),
-            (bounds["lat_max"], bounds["lon_min"]),
-            (bounds["lat_max"], bounds["lon_max"]),
-            (bounds["lat_min"], bounds["lon_max"]),
-        ]
-    )
-    cells = h3.polygon_to_cells(polygon, resolution)
-    return sorted(cells)
+
+def _county_centroids(county_fips: tuple[str, ...]) -> dict[str, tuple[float, float]]:
+    """Read (lat, lon) centroids for the requested counties from the atom."""
+    payload = json.loads(_COUNTY_ATOM_PATH.read_text(encoding="utf-8"))
+    wanted = set(county_fips)
+    centroids: dict[str, tuple[float, float]] = {}
+    for county in payload["counties"]:
+        if county["fips"] in wanted:
+            centroids[county["fips"]] = (county["centroid_lat"], county["centroid_lon"])
+    missing = wanted - set(centroids)
+    if missing:
+        raise KeyError(f"census atom missing counties: {sorted(missing)}")
+    return centroids
+
+
+def _republican_vote_share(county_fips: tuple[str, ...]) -> dict[str, float]:
+    """Read the real 2024 Republican vote share from the committed artifact."""
+    wanted = set(county_fips)
+    shares: dict[str, float] = {}
+    with _ELECTION_ARTIFACT_PATH.open(newline="", encoding="utf-8") as handle:
+        for row in csv.DictReader(handle):
+            if row["county_fips"] in wanted:
+                shares[row["county_fips"]] = float(row["rep_vote_share"])
+    missing = wanted - set(shares)
+    if missing:
+        raise KeyError(f"election artifact missing counties: {sorted(missing)}")
+    return shares
 
 
 # ---------------------------------------------------------------------------
@@ -150,9 +166,9 @@ def _generate_tri_county_hexes(
 # ---------------------------------------------------------------------------
 
 
-def _hex_seed(hex_id: str) -> int:
-    """Deterministic 32-bit integer seed from hex ID."""
-    return int(hashlib.sha256(hex_id.encode("utf-8")).hexdigest()[:8], 16)
+def _county_seed(county_fips: str) -> int:
+    """Deterministic 32-bit integer seed from county FIPS."""
+    return int(hashlib.sha256(county_fips.encode("utf-8")).hexdigest()[:8], 16)
 
 
 def _deterministic_float(seed: int, salt: str) -> float:
@@ -171,14 +187,14 @@ def _deterministic_int(seed: int, salt: str, lo: int, hi: int) -> int:
 
 
 # ---------------------------------------------------------------------------
-# Influence level computation (fixture-grade)
+# Influence level computation
 # ---------------------------------------------------------------------------
 
-# Base influence levels by zone. These approximate publicly known
-# demographics of the Detroit tri-county area:
-# - Detroit core: UAW legacy → high Workers' Congress; heavily
-#   Democratic → low Restorationist; minimal AIANNH → low Decolonial.
-# - Exurban ring: lower union density; more Republican.
+# Fixture-grade zone bases for the two components without a landed data
+# program yet (see module docstring). The values approximate publicly known
+# tri-county demographics: Wayne (core/inner) carries the UAW-legacy union
+# density; the outer ring carries less; AIANNH intersection is minimal
+# everywhere in tri-county (research.md R-001).
 _BASE_WORKERS: dict[str, float] = {
     _ZONE_CORE: 0.62,
     _ZONE_INNER: 0.42,
@@ -191,17 +207,10 @@ _BASE_DECOLONIAL: dict[str, float] = {
     _ZONE_OUTER: 0.03,
     _ZONE_EXURBAN: 0.02,
 }
-_BASE_RESTORATIONIST: dict[str, float] = {
-    _ZONE_CORE: 0.10,
-    _ZONE_INNER: 0.32,
-    _ZONE_OUTER: 0.48,
-    _ZONE_EXURBAN: 0.58,
-}
 
-# Jitter amplitude (±) per faction — keeps totals bounded.
+# Jitter amplitude (±) per fixture-grade faction — keeps totals bounded.
 _JITTER_WORKERS: float = 0.04
 _JITTER_DECOLONIAL: float = 0.02
-_JITTER_RESTORATIONIST: float = 0.05
 
 
 def _clamp(value: float, lo: float, hi: float) -> float:
@@ -209,23 +218,16 @@ def _clamp(value: float, lo: float, hi: float) -> float:
 
 
 def _workers_congress_influence(zone: str, seed: int) -> float:
-    """Union-employment-share prorated by LODES residential density."""
+    """Fixture-grade union-density zone model (QCEW program pending)."""
     base = _BASE_WORKERS[zone]
     jitter = _deterministic_float(seed, "wc") * _JITTER_WORKERS
     return round(_clamp(base + jitter, 0.0, 1.0), 4)
 
 
 def _decolonial_influence(zone: str, seed: int) -> float:
-    """AIANNH intersection area (minimal in tri-county per R-001)."""
+    """Fixture-grade AIANNH-intersection zone model (minimal per R-001)."""
     base = _BASE_DECOLONIAL[zone]
     jitter = _deterministic_float(seed, "dec") * _JITTER_DECOLONIAL
-    return round(_clamp(base + jitter, 0.0, 1.0), 4)
-
-
-def _restorationist_influence(zone: str, seed: int) -> float:
-    """Republican presidential vote share prorated by LODES."""
-    base = _BASE_RESTORATIONIST[zone]
-    jitter = _deterministic_float(seed, "res") * _JITTER_RESTORATIONIST
     return round(_clamp(base + jitter, 0.0, 1.0), 4)
 
 
@@ -245,9 +247,9 @@ def _liberal_imperial_influence(
 # ---------------------------------------------------------------------------
 
 
-def _cadre_count(faction_id: str, hex_id: str, influence: float) -> int:
+def _cadre_count(faction_id: str, county_fips: str, influence: float) -> int:
     """Deterministic cadre count proportional to influence level."""
-    seed = _hex_seed(hex_id)
+    seed = _county_seed(county_fips)
     base = int(round(influence * 40))
     if base == 0:
         return 0
@@ -255,9 +257,9 @@ def _cadre_count(faction_id: str, hex_id: str, influence: float) -> int:
     return base + jitter
 
 
-def _sympathizer_count(faction_id: str, hex_id: str, influence: float) -> int:
+def _sympathizer_count(faction_id: str, county_fips: str, influence: float) -> int:
     """Deterministic sympathizer count proportional to influence level."""
-    seed = _hex_seed(hex_id)
+    seed = _county_seed(county_fips)
     base = int(round(influence * 400))
     if base == 0:
         return 0
@@ -272,42 +274,43 @@ def _sympathizer_count(faction_id: str, hex_id: str, influence: float) -> int:
 
 def _build_edge(
     faction_id: str,
-    hex_id: str,
+    county_fips: str,
     influence: float,
     support_type: str,
 ) -> dict[str, Any]:
-    """Build a single INFLUENCES edge record."""
+    """Build a single INFLUENCES edge record keyed by county FIPS."""
     return {
         "faction_id": faction_id,
-        "territory_id": hex_id,
+        "territory_id": county_fips,
         "influence_level": influence,
         "support_type": support_type,
-        "cadre_count": _cadre_count(faction_id, hex_id, influence),
-        "sympathizer_count": _sympathizer_count(faction_id, hex_id, influence),
+        "cadre_count": _cadre_count(faction_id, county_fips, influence),
+        "sympathizer_count": _sympathizer_count(faction_id, county_fips, influence),
         "established_tick": 0,
     }
 
 
-def _compute_hex_edges(
-    hex_id: str,
+def _compute_county_edges(
+    county_fips: str,
+    centroid: tuple[float, float],
+    rep_share: float,
     liberal_imperial_cap: float,
 ) -> list[dict[str, Any]]:
-    """Compute all 4 faction edges for a single hex."""
-    lat, lon = h3.cell_to_latlng(hex_id)
-    distance = _haversine_km(DETROIT_CORE[0], DETROIT_CORE[1], lat, lon)
+    """Compute all 4 faction edges for a single county."""
+    distance = _haversine_km(DETROIT_CORE[0], DETROIT_CORE[1], centroid[0], centroid[1])
     zone = _classify_zone(distance)
-    seed = _hex_seed(hex_id)
+    seed = _county_seed(county_fips)
 
     workers = _workers_congress_influence(zone, seed)
     decolonial = _decolonial_influence(zone, seed)
-    restorationist = _restorationist_influence(zone, seed)
+    restorationist = round(_clamp(rep_share, 0.0, 1.0), 4)
     liberal = _liberal_imperial_influence(workers, decolonial, restorationist, liberal_imperial_cap)
 
     return [
-        _build_edge(_FAC_WORKERS_CONGRESS, hex_id, workers, _SUPPORT_TYPE_LABOR),
-        _build_edge(_FAC_DECOLONIAL, hex_id, decolonial, _SUPPORT_TYPE_IDEOLOGICAL),
-        _build_edge(_FAC_RESTORATIONIST, hex_id, restorationist, _SUPPORT_TYPE_ELECTORAL),
-        _build_edge(_FAC_LIBERAL_IMPERIAL, hex_id, liberal, _SUPPORT_TYPE_IDEOLOGICAL),
+        _build_edge(_FAC_WORKERS_CONGRESS, county_fips, workers, _SUPPORT_TYPE_LABOR),
+        _build_edge(_FAC_DECOLONIAL, county_fips, decolonial, _SUPPORT_TYPE_IDEOLOGICAL),
+        _build_edge(_FAC_RESTORATIONIST, county_fips, restorationist, _SUPPORT_TYPE_ELECTORAL),
+        _build_edge(_FAC_LIBERAL_IMPERIAL, county_fips, liberal, _SUPPORT_TYPE_IDEOLOGICAL),
     ]
 
 
@@ -317,44 +320,49 @@ def _compute_hex_edges(
 
 
 def compute_seed_influences(
-    bounds: dict[str, float] | None = None,
-    resolution: int = H3_RESOLUTION,
+    county_fips: tuple[str, ...] = TRI_COUNTY_FIPS,
     liberal_imperial_cap: float = DEFAULT_LIBERAL_IMPERIAL_CAP,
     qcew_vintage: str = FIXTURE_QCEW_VINTAGE,
     natural_earth_version: str = FIXTURE_NATURAL_EARTH_VERSION,
     election_source: str = FIXTURE_ELECTION_SOURCE,
     election_year: int = FIXTURE_ELECTION_YEAR,
 ) -> dict[str, Any]:
-    """Compute the INFLUENCES edge seed payload for the Detroit tri-county area.
+    """Compute the county-FIPS-keyed INFLUENCES edge seed payload.
 
     Args:
-        bounds: Optional bounding box override. Defaults to
-            :data:`TRI_COUNTY_BOUNDS`.
-        resolution: H3 resolution. Defaults to 7 (per spec R-004).
+        county_fips: Counties to seed. Defaults to :data:`TRI_COUNTY_FIPS`
+            (Wayne + Oakland + Macomb, the spec-070 fixture scope).
         liberal_imperial_cap: Cap on FAC_LIBERAL_IMPERIAL influence.
             Defaults to 0.4 (per ``BalkanizationDefines``).
-        qcew_vintage: QCEW vintage string for provenance.
-        natural_earth_version: Natural Earth version for provenance.
-        election_source: Election data source (``MIT_ELECTION_LAB`` or
-            ``CENSUS_BUREAU_FIXTURE``).
-        election_year: Presidential election year.
+        qcew_vintage: QCEW vintage string for provenance (fixture-grade
+            component marker).
+        natural_earth_version: Natural Earth version for provenance
+            (fixture-grade component marker).
+        election_source: Election data source. ``MIT_ELECTION_LAB`` since
+            ADR049's ratification (the committed artifact backs it).
+        election_year: Presidential election year (2024 — FR-039's
+            most-recent-election clause).
 
     Returns:
         Schema-conformant payload dict with keys ``version``,
         ``computed_at_iso``, ``proxy_data_provenance``, ``edges``.
 
-    Note:
-        Output is byte-identical on re-computation (SC-011) given the
-        same parameters.
-    """
-    if bounds is None:
-        bounds = TRI_COUNTY_BOUNDS
+    Raises:
+        KeyError: If a requested county is missing from the census atom or
+            the committed election artifact (loud failure, never a default).
 
-    hexes = _generate_tri_county_hexes(bounds, resolution)
+    Note:
+        Output is byte-identical on re-computation (SC-011) given the same
+        parameters and committed inputs.
+    """
+    centroids = _county_centroids(county_fips)
+    rep_shares = _republican_vote_share(county_fips)
 
     edges: list[dict[str, Any]] = []
-    for hex_id in hexes:
-        edges.extend(_compute_hex_edges(hex_id, liberal_imperial_cap))
+    for fips in sorted(county_fips):
+        edges.extend(
+            _compute_county_edges(fips, centroids[fips], rep_shares[fips], liberal_imperial_cap)
+        )
 
     return {
         "version": FIXTURE_VERSION,
@@ -395,8 +403,7 @@ def write_seed_influences(
 __all__ = [
     "compute_seed_influences",
     "write_seed_influences",
-    "TRI_COUNTY_BOUNDS",
-    "H3_RESOLUTION",
+    "TRI_COUNTY_FIPS",
     "DEFAULT_LIBERAL_IMPERIAL_CAP",
     "FIXTURE_QCEW_VINTAGE",
     "FIXTURE_NATURAL_EARTH_VERSION",
